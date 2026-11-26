@@ -105,8 +105,8 @@ done
 for m in lnaddr-policy:lnaddr-policy wallet-policy:wallet-policy wallet-vault-store:wallet-vault; do
   "$work/source/coax/bin/coax" c "$work/source/pay/${m%%:*}.coax" --run-steps 250000000 --library --header "$stage/gen/${m##*:}.generated.h" > "$stage/gen/${m##*:}.generated.c"
 done
-# A world's own rules are its realm's Coax, the code its page runs (metaverse/splice-bots/, #13412): SOURCE:GENERATED from the root.
-for m in metaverse/splice-bots/world-api:splice-world; do
+# A world's own rules are its realm's Coax, the code its page runs (metaverse/splice-bots/, #13412), and the WorkOS Coax SDK (coax/lib/workos/, #14100): SOURCE:GENERATED from the root.
+for m in metaverse/splice-bots/world-api:splice-world coax/lib/workos/adapters/c_unit:workos-sdk; do
   "$work/source/coax/bin/coax" c "$work/source/${m%%:*}.coax" --run-steps 250000000 --library --header "$stage/gen/${m##*:}.generated.h" > "$stage/gen/${m##*:}.generated.c"
 done
 # The authenticated connection broker uses the same Coax HOST carriage as the computers.
@@ -223,6 +223,17 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   # the account chat, and does nothing else"): exact origins between commas. Production lists
   # GameBuilder's site, whose load balancer sends those five paths here; staging lists none.
   [[ "$6" != production ]] || env+="~OA_API_SITE_ORIGINS=https://gamebuilder.org"
+  # WorkOS authentication, webhooks, AuthKit Actions & Events mirror (workos.c, #14097/#14100/#14102).
+  # Secrets are bound only when present in Secret Manager; OA_WORKOS_ENABLED and OA_WORKOS_GAMEBUILDER_ENABLED
+  # carry over from the live service so owner-controlled rollout flags survive deploys.
+  if gcloud secrets describe "oa-workos-api-key$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_WORKOS_API_KEY=oa-workos-api-key$sfx:latest"; fi
+  if gcloud secrets describe "oa-workos-client-id$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_WORKOS_CLIENT_ID=oa-workos-client-id$sfx:latest"; fi
+  if gcloud secrets describe "oa-workos-webhook-secret$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_WORKOS_WEBHOOK_SECRET=oa-workos-webhook-secret$sfx:latest"; fi
+  if gcloud secrets describe "oa-workos-action-secret$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_WORKOS_ACTION_SECRET=oa-workos-action-secret$sfx:latest"; fi
+  local wos_on; wos_on="$(live_env "$1" OA_WORKOS_ENABLED)"
+  [[ -n "$wos_on" ]] && env+="~OA_WORKOS_ENABLED=$wos_on"
+  local wos_gb; wos_gb="$(live_env "$1" OA_WORKOS_GAMEBUILDER_ENABLED)"
+  [[ -n "$wos_gb" ]] && env+="~OA_WORKOS_GAMEBUILDER_ENABLED=$wos_gb"
   # Security notices as NIP-17 messages (auth-recover.c): our notice key, one per environment.
   if gcloud secrets describe "oa-auth-notice-nsec$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_NOTICE_NSEC=oa-auth-notice-nsec$sfx:latest"; fi
   # Security notices as push to the apps (push.c, #13233): Apple's push key (the .p8 file's text) and

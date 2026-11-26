@@ -62,6 +62,7 @@
 // route, the rule and the principal's kind.
 #include "api.h"
 #include "nostr.h"
+#include "workos.h"
 #include "auth-policy.generated.h"
 #include "auth-seal.generated.h"
 #include "auth-internal.h"
@@ -126,6 +127,20 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/auth/sessions", false, AP_ACCOUNT, "the devices list"),
   R("POST", "/api/auth/sessions/", true, AP_ACCOUNT, "remove one device's session"),
   R("POST", "/api/auth/freeze", false, AP_PUBLIC, "a notice's link token, or the session's account"),
+  // ---- WorkOS authentication, orgs, webhooks, and AuthKit Actions (workos.c, #14100)
+  R("GET",  "/api/auth/workos/config", false, AP_PUBLIC, "whether WorkOS login is enabled and its public client config"),
+  R("POST", "/api/auth/workos/magic/start", false, AP_PUBLIC, "start inline WorkOS Magic Auth 6-digit email flow"),
+  R("POST", "/api/auth/workos/magic/verify", false, AP_PUBLIC, "verify WorkOS Magic Auth 6-digit code and mint Option A1 session at L1"),
+  R("GET",  "/api/auth/workos/oauth/start", false, AP_PUBLIC, "start WorkOS OAuth (Google/GitHub/Apple) or Enterprise SSO PKCE redirect"),
+  R("GET",  "/api/auth/workos/callback", false, AP_PUBLIC, "complete WorkOS OAuth/SSO PKCE callback and mint Option A1 session at L1"),
+  R("GET",  "/api/auth/workos/org/pending", false, AP_PUBLIC, "list organizations for a pending organization_selection_required login"),
+  R("POST", "/api/auth/workos/org/select", false, AP_PUBLIC, "complete organization selection for a pending WorkOS login"),
+  R("POST", "/api/auth/workos/sso/discover", false, AP_PUBLIC, "discover an active WorkOS Enterprise SSO connection by email domain"),
+  R("POST", "/api/auth/workos/exchange", false, AP_PUBLIC, "native PKCE code or CLI device access_token exchange into device-bound Option A1 tokens"),
+  R("GET",  "/api/auth/workos/orgs", false, AP_ACCOUNT, "list the account's WorkOS organizations and active organization"),
+  R("POST", "/api/auth/workos/orgs/switch", false, AP_HUMAN, "switch the active WorkOS organization for this account"),
+  R("POST", "/api/auth/workos/webhook", false, AP_PUBLIC, "verified WorkOS webhook receiver (HMAC-SHA256 +/-180s) updating workos.* mirror"),
+  R("POST", "/api/auth/workos/action", false, AP_PUBLIC, "verified synchronous WorkOS AuthKit Actions receiver (+/-30s) returning signed Allow/Deny"),
   // ---- device keys (auth-device.c, auth-device-policy.coax, #13216)
   R("GET",  "/api/auth/devices", false, AP_HUMAN, "the device keys that hold your logins"),
   R("POST", "/api/auth/devices/", true, AP_HUMAN, "remove one device (its key is revoked and its logins end); push {service, token} or push/off: security notices to this login's device"),
@@ -1587,6 +1602,7 @@ static void logout_everywhere(const request *q, PGconn *db, const char *body) {
   PQclear(r);
   // {"agents": true}: every agent of the account is paused too, until resumed (agents.c).
   int paused = auw_ask_agents(cs(body)) ? agents_pause_all(db, p->account) : 0;
+  workos_revoke_account_sessions(db, p->account);
   char d[64];
   audit(db, p->account, p->session, "logout.everywhere", "ok", detail_of(d, auw_ended_all_write(n, paused, OUT(d))));
   char headers[200], json[80], lines[80]; cookie_header(headers, sizeof headers, SESSION_COOKIE, "", 0);
@@ -1633,6 +1649,7 @@ static void freeze(const request *q, PGconn *db, const char *body) {
     PQclear(PQexecParams(db, "SELECT auth.freeze($1)", 1, NULL, v, NULL, NULL, 0));
   }
   audit(db, acct, NULL, "freeze", "ok", NULL);
+  workos_revoke_account_sessions(db, acct);
   auth_life_froze(db, acct, t[0] != 0 && strlen(t) == 64);   // its agents pause; every way in is told (#13214)
   char headers[200]; cookie_header(headers, sizeof headers, SESSION_COOKIE, "", 0);
   set_cookie[0] = 0;
@@ -1748,6 +1765,35 @@ static void limits(const request *q) {
   }
   j = auw_limits_close_write(OUT(json), j);
   answer_n(q, 200, "Cache-Control: public, max-age=300\r\n", json, j, lines, l);
+}
+
+bool auth_login_web_redirect(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *level,
+                             bool made, const char *action, const char *location) {
+  char identity[65];
+  if (auth_identity_ensure(db, acct, identity) < 0) { refuse(q, 503, "Identity unavailable. Try again."); return false; }
+  char tok[160], dig[65], name[96], country[8] = "";
+  device_name(q, name, sizeof name);
+  api_header(q, "X-Client-Region", country, sizeof country);
+  if (!new_token("oas_", tok, sizeof tok, dig)) { refuse(q, 503, "No randomness here. Try again."); return false; }
+  const char *s[8] = {dig, acct, via_kind, NULL, level, "web", name, country};
+  PGresult *r = PQexecParams(db, "SELECT auth.session_new($1, $2, $3, $4::bigint, $5, $6, $7, $8), a.team FROM auth.accounts a WHERE a.id = $2",
+                             8, NULL, s, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
+  char sid[32] = ""; bool team = false;
+  if (ok) { snprintf(sid, sizeof sid, "%s", PQgetvalue(r, 0, 0)); team = !strcmp(PQgetvalue(r, 0, 1), "t"); }
+  PQclear(r);
+  if (!ok) { refuse(q, 410, "This account was deleted."); return false; }
+  char detail[500], from[256];
+  audit(db, acct, sid, action, "ok", detail_of(detail, auw_login_detail_write(cs(via_kind), cs("web"), made, false, cs(listed_site(q, from)), OUT(detail))));
+  set_cookie[0] = 0;
+  char headers[1200];
+  snprintf(headers, sizeof headers,
+           "Location: %s\r\n"
+           "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\r\n"
+           "Set-Cookie: __Host-oa_wos_state=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n%s",
+           location, SESSION_COOKIE, tok, SESSION_MAX_AGE, team ? TEAM_COOKIE : "");
+  api_respond(q->fd, 303, "text/plain", headers, "", 0);
+  return true;
 }
 
 // A key's login for another file's route (the admin page's signed GET, admin.c): a web session
@@ -1907,6 +1953,8 @@ bool auth_api_route(const request *q) {
   if (passkeys_route(q, api_db(), op)) return true;
   api_route_at("auth_device_route");
   if (auth_device_route(q, api_db(), op)) return true;
+  api_route_at("workos_route");
+  if (workos_route(q, api_db(), op)) return true;
   api_route_at("auth_api_route");
   bool get = !strcmp(q->method, "GET");
   static const char *const posts[] = {"email/start", "email/verify", "email/link", "nostr/challenge", "nostr", "phone/start", "phone/approve",

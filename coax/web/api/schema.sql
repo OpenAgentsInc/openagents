@@ -138,6 +138,13 @@ CREATE SCHEMA villa;
 
 
 --
+-- Name: workos; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA workos;
+
+
+--
 -- Name: worldbuilder; Type: SCHEMA; Schema: -; Owner: -
 --
 
@@ -19513,6 +19520,165 @@ END $_$;
 
 
 --
+-- Name: account_resolve(text, text[], text, boolean, boolean, text, text); Type: FUNCTION; Schema: workos; Owner: -
+--
+
+CREATE FUNCTION workos.account_resolve(wos_user_id text, email_lookups text[], primary_lookup text, email_verified boolean, is_team boolean, provider_ text, org_id_ text) RETURNS TABLE(acct text, made boolean, auto_linked boolean, email_id bigint)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  a text;
+  eid bigint;
+BEGIN
+  -- 1. Existing link by workos_user_id (skip deleted/merged tombstones).
+  SELECT wi.account INTO a
+    FROM auth.workos_identities wi
+    JOIN auth.accounts acc ON acc.id = wi.account
+   WHERE wi.workos_user_id = wos_user_id
+     AND acc.deleted_at IS NULL
+     AND acc.merged_into IS NULL
+   LIMIT 1;
+  IF a IS NOT NULL THEN
+    UPDATE auth.workos_identities
+       SET last_seen_at = now(),
+           provider = coalesce(nullif(provider_, ''), provider),
+           last_organization_id = coalesce(nullif(org_id_, ''), last_organization_id)
+     WHERE workos_user_id = wos_user_id;
+    RETURN QUERY SELECT a, false, false, NULL::bigint;
+    RETURN;
+  END IF;
+
+  -- 2. Auto-link by verified email ONLY when email_verified = true.
+  IF email_verified AND email_lookups IS NOT NULL AND cardinality(email_lookups) > 0 THEN
+    SELECT e.account, e.id INTO a, eid
+      FROM auth.emails e
+      JOIN auth.accounts acc ON acc.id = e.account
+     WHERE e.lookup = ANY(email_lookups)
+       AND acc.deleted_at IS NULL
+       AND acc.merged_into IS NULL
+     ORDER BY e.is_primary DESC, e.id ASC
+     LIMIT 1;
+    IF a IS NOT NULL THEN
+      INSERT INTO auth.workos_identities (workos_user_id, account, provider, last_organization_id)
+      VALUES (wos_user_id, a, nullif(provider_, ''), nullif(org_id_, ''))
+      ON CONFLICT (workos_user_id) DO UPDATE
+        SET account = EXCLUDED.account,
+            provider = coalesce(EXCLUDED.provider, auth.workos_identities.provider),
+            last_organization_id = coalesce(EXCLUDED.last_organization_id, auth.workos_identities.last_organization_id),
+            last_seen_at = now();
+      RETURN QUERY SELECT a, false, true, eid;
+      RETURN;
+    END IF;
+  END IF;
+
+  -- 3. Provision a brand-new acct_ (for new users or unverified emails — never merges on unverified email).
+  a := auth.new_account_id();
+  INSERT INTO auth.accounts (id, kind, team, verse_account)
+  VALUES (a, 'person', coalesce(is_team, false), a);
+
+  eid := NULL;
+  IF email_verified AND nullif(primary_lookup, '') IS NOT NULL THEN
+    INSERT INTO auth.emails (account, lookup, sealed, is_primary, verified_at)
+    VALUES (a, primary_lookup, '', true, now())
+    RETURNING id INTO eid;
+  END IF;
+
+  INSERT INTO auth.workos_identities (workos_user_id, account, provider, last_organization_id)
+  VALUES (wos_user_id, a, nullif(provider_, ''), nullif(org_id_, ''))
+  ON CONFLICT (workos_user_id) DO UPDATE
+    SET account = EXCLUDED.account,
+        provider = coalesce(EXCLUDED.provider, auth.workos_identities.provider),
+        last_organization_id = coalesce(EXCLUDED.last_organization_id, auth.workos_identities.last_organization_id),
+        last_seen_at = now();
+
+  RETURN QUERY SELECT a, true, false, eid;
+END $$;
+
+
+--
+-- Name: queue_due_purges(); Type: FUNCTION; Schema: workos; Owner: -
+--
+
+CREATE FUNCTION workos.queue_due_purges() RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE n int := 0;
+BEGIN
+  INSERT INTO workos.pending_deletes (workos_user_id, account)
+  SELECT wi.workos_user_id, wi.account
+    FROM auth.workos_identities wi
+    JOIN auth.accounts a ON a.id = wi.account
+   WHERE a.deleted_at IS NULL
+     AND a.purge_at IS NOT NULL
+     AND a.purge_at <= now()
+  ON CONFLICT (workos_user_id) DO NOTHING;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END $$;
+
+
+--
+-- Name: upsert_event(text, text, jsonb); Type: FUNCTION; Schema: workos; Owner: -
+--
+
+CREATE FUNCTION workos.upsert_event(ev_id text, ev_type text, raw jsonb) RETURNS boolean
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  inserted boolean := false;
+  d jsonb := raw->'data';
+  eid text := coalesce(d->>'id', '');
+BEGIN
+  INSERT INTO workos.events (id, event, _raw)
+  VALUES (ev_id, ev_type, raw)
+  ON CONFLICT (id) DO NOTHING;
+  GET DIAGNOSTICS inserted = ROW_COUNT;
+  IF NOT inserted THEN
+    RETURN false;
+  END IF;
+
+  IF d IS NOT NULL AND eid <> '' THEN
+    IF ev_type IN ('user.created', 'user.updated') THEN
+      INSERT INTO workos.users (id, _raw, updated_at, deleted_at)
+      VALUES (eid, d, now(), NULL)
+      ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = NULL;
+    ELSIF ev_type = 'user.deleted' THEN
+      INSERT INTO workos.users (id, _raw, updated_at, deleted_at)
+      VALUES (eid, d, now(), now())
+      ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = coalesce(workos.users.deleted_at, now());
+    ELSIF ev_type IN ('organization.created', 'organization.updated') THEN
+      INSERT INTO workos.organizations (id, _raw, updated_at, deleted_at)
+      VALUES (eid, d, now(), NULL)
+      ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = NULL;
+    ELSIF ev_type = 'organization.deleted' THEN
+      INSERT INTO workos.organizations (id, _raw, updated_at, deleted_at)
+      VALUES (eid, d, now(), now())
+      ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = coalesce(workos.organizations.deleted_at, now());
+    ELSIF ev_type IN ('organization_membership.created', 'organization_membership.updated') THEN
+      INSERT INTO workos.organization_memberships (id, _raw, updated_at, deleted_at)
+      VALUES (eid, d, now(), NULL)
+      ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = NULL;
+    ELSIF ev_type = 'organization_membership.deleted' THEN
+      INSERT INTO workos.organization_memberships (id, _raw, updated_at, deleted_at)
+      VALUES (eid, d, now(), now())
+      ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = coalesce(workos.organization_memberships.deleted_at, now());
+    ELSIF ev_type = 'session.created' THEN
+      INSERT INTO workos.sessions (id, _raw, updated_at, deleted_at)
+      VALUES (eid, d, now(), NULL)
+      ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = NULL;
+    ELSIF ev_type = 'session.revoked' THEN
+      INSERT INTO workos.sessions (id, _raw, updated_at, deleted_at)
+      VALUES (eid, d, now(), now())
+      ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = coalesce(workos.sessions.deleted_at, now());
+    END IF;
+  END IF;
+
+  UPDATE workos.events SET applied_at = now() WHERE id = ev_id;
+  RETURN true;
+END $$;
+
+
+--
 -- Name: answer_text(jsonb); Type: FUNCTION; Schema: worldbuilder; Owner: -
 --
 
@@ -20793,7 +20959,7 @@ CREATE TABLE auth.sessions (
     CONSTRAINT sessions_client_check CHECK ((client = ANY (ARRAY['web'::text, 'app'::text]))),
     CONSTRAINT sessions_level_check CHECK ((level = ANY (ARRAY['L1'::text, 'L2'::text]))),
     CONSTRAINT sessions_token_sha256_check CHECK ((token_sha256 ~ '^[0-9a-f]{64}$'::text)),
-    CONSTRAINT sessions_via_kind_check CHECK ((via_kind = ANY (ARRAY['email'::text, 'nostr'::text, 'passkey'::text, 'device'::text, 'recovery'::text])))
+    CONSTRAINT sessions_via_kind_check CHECK ((via_kind = ANY (ARRAY['email'::text, 'nostr'::text, 'passkey'::text, 'device'::text, 'recovery'::text, 'workos'::text])))
 );
 
 
@@ -20848,6 +21014,45 @@ CREATE TABLE auth.wallet_spends (
     voided_at timestamp with time zone,
     CONSTRAINT wallet_spends_payment_id_check CHECK ((payment_id ~ '^[A-Za-z0-9_-]{8,64}$'::text)),
     CONSTRAINT wallet_spends_sats_check CHECK (((sats >= 1) AND (sats <= '2100000000000000'::bigint)))
+);
+
+
+--
+-- Name: workos_identities; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.workos_identities (
+    workos_user_id text NOT NULL,
+    account text NOT NULL,
+    provider text,
+    last_organization_id text,
+    linked_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT workos_identities_workos_user_id_check CHECK (((length(workos_user_id) >= 4) AND (length(workos_user_id) <= 128)))
+);
+
+
+--
+-- Name: workos_pending; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.workos_pending (
+    id text NOT NULL,
+    kind text NOT NULL,
+    token_sha256 text NOT NULL,
+    email text,
+    verifier text,
+    next_path text,
+    pending_auth_token text,
+    orgs_json jsonb,
+    client text NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    spent_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT workos_pending_client_check CHECK ((client = ANY (ARRAY['web'::text, 'app'::text]))),
+    CONSTRAINT workos_pending_id_check CHECK ((id ~ '^[0-9a-f]{32}$'::text)),
+    CONSTRAINT workos_pending_kind_check CHECK ((kind = ANY (ARRAY['magic'::text, 'oauth'::text, 'org'::text]))),
+    CONSTRAINT workos_pending_token_sha256_check CHECK ((token_sha256 ~ '^[0-9a-f]{64}$'::text))
 );
 
 
@@ -23834,6 +24039,168 @@ ALTER SEQUENCE villa.vases_id_seq OWNED BY villa.vases.id;
 
 
 --
+-- Name: events; Type: TABLE; Schema: workos; Owner: -
+--
+
+CREATE TABLE workos.events (
+    id text NOT NULL,
+    event text NOT NULL,
+    _raw jsonb NOT NULL,
+    received_at timestamp with time zone DEFAULT now() NOT NULL,
+    applied_at timestamp with time zone
+);
+
+
+--
+-- Name: organization_memberships; Type: TABLE; Schema: workos; Owner: -
+--
+
+CREATE TABLE workos.organization_memberships (
+    id text NOT NULL,
+    _raw jsonb NOT NULL,
+    user_id text GENERATED ALWAYS AS ((_raw ->> 'user_id'::text)) STORED,
+    organization_id text GENERATED ALWAYS AS ((_raw ->> 'organization_id'::text)) STORED,
+    status text GENERATED ALWAYS AS ((_raw ->> 'status'::text)) STORED,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
+);
+
+
+--
+-- Name: organization_memberships_live; Type: VIEW; Schema: workos; Owner: -
+--
+
+CREATE VIEW workos.organization_memberships_live AS
+ SELECT id,
+    _raw,
+    user_id,
+    organization_id,
+    status,
+    updated_at,
+    deleted_at
+   FROM workos.organization_memberships
+  WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: organizations; Type: TABLE; Schema: workos; Owner: -
+--
+
+CREATE TABLE workos.organizations (
+    id text NOT NULL,
+    _raw jsonb NOT NULL,
+    name text GENERATED ALWAYS AS ((_raw ->> 'name'::text)) STORED,
+    external_id text GENERATED ALWAYS AS ((_raw ->> 'external_id'::text)) STORED,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
+);
+
+
+--
+-- Name: organizations_live; Type: VIEW; Schema: workos; Owner: -
+--
+
+CREATE VIEW workos.organizations_live AS
+ SELECT id,
+    _raw,
+    name,
+    external_id,
+    updated_at,
+    deleted_at
+   FROM workos.organizations
+  WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: pending_deletes; Type: TABLE; Schema: workos; Owner: -
+--
+
+CREATE TABLE workos.pending_deletes (
+    workos_user_id text NOT NULL,
+    account text NOT NULL,
+    queued_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
+);
+
+
+--
+-- Name: sessions; Type: TABLE; Schema: workos; Owner: -
+--
+
+CREATE TABLE workos.sessions (
+    id text NOT NULL,
+    _raw jsonb NOT NULL,
+    user_id text GENERATED ALWAYS AS ((_raw ->> 'user_id'::text)) STORED,
+    organization_id text GENERATED ALWAYS AS ((_raw ->> 'organization_id'::text)) STORED,
+    status text GENERATED ALWAYS AS ((_raw ->> 'status'::text)) STORED,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
+);
+
+
+--
+-- Name: sessions_live; Type: VIEW; Schema: workos; Owner: -
+--
+
+CREATE VIEW workos.sessions_live AS
+ SELECT id,
+    _raw,
+    user_id,
+    organization_id,
+    status,
+    updated_at,
+    deleted_at
+   FROM workos.sessions
+  WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: sync_cursor; Type: TABLE; Schema: workos; Owner: -
+--
+
+CREATE TABLE workos.sync_cursor (
+    stream text NOT NULL,
+    after_event_id text,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: users; Type: TABLE; Schema: workos; Owner: -
+--
+
+CREATE TABLE workos.users (
+    id text NOT NULL,
+    _raw jsonb NOT NULL,
+    email text GENERATED ALWAYS AS ((_raw ->> 'email'::text)) STORED,
+    email_verified boolean GENERATED ALWAYS AS (COALESCE(((_raw ->> 'email_verified'::text))::boolean, false)) STORED,
+    external_id text GENERATED ALWAYS AS ((_raw ->> 'external_id'::text)) STORED,
+    first_name text GENERATED ALWAYS AS ((_raw ->> 'first_name'::text)) STORED,
+    last_name text GENERATED ALWAYS AS ((_raw ->> 'last_name'::text)) STORED,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
+);
+
+
+--
+-- Name: users_live; Type: VIEW; Schema: workos; Owner: -
+--
+
+CREATE VIEW workos.users_live AS
+ SELECT id,
+    _raw,
+    email,
+    email_verified,
+    external_id,
+    first_name,
+    last_name,
+    updated_at,
+    deleted_at
+   FROM workos.users
+  WHERE (deleted_at IS NULL);
+
+
+--
 -- Name: calls; Type: TABLE; Schema: worldbuilder; Owner: -
 --
 
@@ -24842,6 +25209,30 @@ ALTER TABLE ONLY auth.wallet_limits
 
 ALTER TABLE ONLY auth.wallet_spends
     ADD CONSTRAINT wallet_spends_pkey PRIMARY KEY (account, payment_id);
+
+
+--
+-- Name: workos_identities workos_identities_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.workos_identities
+    ADD CONSTRAINT workos_identities_pkey PRIMARY KEY (workos_user_id);
+
+
+--
+-- Name: workos_pending workos_pending_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.workos_pending
+    ADD CONSTRAINT workos_pending_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: workos_pending workos_pending_token_sha256_key; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.workos_pending
+    ADD CONSTRAINT workos_pending_token_sha256_key UNIQUE (token_sha256);
 
 
 --
@@ -26349,6 +26740,62 @@ ALTER TABLE ONLY villa.vases
 
 
 --
+-- Name: events events_pkey; Type: CONSTRAINT; Schema: workos; Owner: -
+--
+
+ALTER TABLE ONLY workos.events
+    ADD CONSTRAINT events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: organization_memberships organization_memberships_pkey; Type: CONSTRAINT; Schema: workos; Owner: -
+--
+
+ALTER TABLE ONLY workos.organization_memberships
+    ADD CONSTRAINT organization_memberships_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: organizations organizations_pkey; Type: CONSTRAINT; Schema: workos; Owner: -
+--
+
+ALTER TABLE ONLY workos.organizations
+    ADD CONSTRAINT organizations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pending_deletes pending_deletes_pkey; Type: CONSTRAINT; Schema: workos; Owner: -
+--
+
+ALTER TABLE ONLY workos.pending_deletes
+    ADD CONSTRAINT pending_deletes_pkey PRIMARY KEY (workos_user_id);
+
+
+--
+-- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: workos; Owner: -
+--
+
+ALTER TABLE ONLY workos.sessions
+    ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sync_cursor sync_cursor_pkey; Type: CONSTRAINT; Schema: workos; Owner: -
+--
+
+ALTER TABLE ONLY workos.sync_cursor
+    ADD CONSTRAINT sync_cursor_pkey PRIMARY KEY (stream);
+
+
+--
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: workos; Owner: -
+--
+
+ALTER TABLE ONLY workos.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: calls calls_pkey; Type: CONSTRAINT; Schema: worldbuilder; Owner: -
 --
 
@@ -26691,6 +27138,20 @@ CREATE INDEX sessions_prev ON auth.sessions USING btree (prev_sha256) WHERE (pre
 --
 
 CREATE INDEX wallet_spends_recent ON auth.wallet_spends USING btree (account, at) WHERE (voided_at IS NULL);
+
+
+--
+-- Name: workos_identities_account; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX workos_identities_account ON auth.workos_identities USING btree (account);
+
+
+--
+-- Name: workos_pending_expires; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX workos_pending_expires ON auth.workos_pending USING btree (expires_at);
 
 
 --
@@ -27296,6 +27757,48 @@ CREATE INDEX vases_placed ON villa.vases USING btree (placed_ms);
 
 
 --
+-- Name: workos_events_received; Type: INDEX; Schema: workos; Owner: -
+--
+
+CREATE INDEX workos_events_received ON workos.events USING btree (received_at DESC);
+
+
+--
+-- Name: workos_memberships_org; Type: INDEX; Schema: workos; Owner: -
+--
+
+CREATE INDEX workos_memberships_org ON workos.organization_memberships USING btree (organization_id) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: workos_memberships_user; Type: INDEX; Schema: workos; Owner: -
+--
+
+CREATE INDEX workos_memberships_user ON workos.organization_memberships USING btree (user_id) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: workos_sessions_user; Type: INDEX; Schema: workos; Owner: -
+--
+
+CREATE INDEX workos_sessions_user ON workos.sessions USING btree (user_id) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: workos_users_email; Type: INDEX; Schema: workos; Owner: -
+--
+
+CREATE INDEX workos_users_email ON workos.users USING btree (lower(email)) WHERE (email IS NOT NULL);
+
+
+--
+-- Name: workos_users_external_id; Type: INDEX; Schema: workos; Owner: -
+--
+
+CREATE INDEX workos_users_external_id ON workos.users USING btree (external_id) WHERE (external_id IS NOT NULL);
+
+
+--
 -- Name: worldbuilder_calls_day; Type: INDEX; Schema: worldbuilder; Owner: -
 --
 
@@ -27878,6 +28381,14 @@ ALTER TABLE ONLY auth.wallet_limits
 
 ALTER TABLE ONLY auth.wallet_spends
     ADD CONSTRAINT wallet_spends_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: workos_identities workos_identities_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.workos_identities
+    ADD CONSTRAINT workos_identities_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
 
 
 --

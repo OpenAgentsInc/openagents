@@ -13,7 +13,7 @@
 # listed in API_COAX_WRAPPED instead, so its generated C is made but not linked twice.
 API_C="api.c config.c http_client.c queue.c stream.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c villa.c chat.c chat-history.c account-chat-library.c account-chat.c account-chat-turns.c account-chat-wire-unit.c projects.c projects-wire-unit.c environment.c environment-wire-unit.c realms.c
   access.c makers.c inference.c mesh.c mesh-gemini-unit.c router.c router-wire-unit.c
-  anime.c seats.c nostr.c email.c jobs.c relay.c verse_packs.c worldbuilder.c auth.c auth-identity.c account-settings.c nostr-messaging.c nostr-messaging-unit.c auth-seal-unit.c
+  anime.c seats.c nostr.c email.c jobs.c relay.c verse_packs.c worldbuilder.c auth.c workos.c workos-sdk-unit.c auth-identity.c account-settings.c nostr-messaging.c nostr-messaging-unit.c auth-seal-unit.c
   lnaddr.c lnaddr-unit.c agents.c agent-wire-unit.c agent-attest-unit.c auth-recover.c auth-life.c
   auth-recover-crypto-unit.c auth-device.c auth-device-crypto-unit.c push.c passkeys.c passkey-verify-unit.c
   wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c worlds.c splice-world-unit.c scripts.c script-job-run.c script-store-unit.c"
@@ -23,7 +23,7 @@ API_COAX="mesh-policy caller-policy route-policy config-policy log-context maint
   account-chat-library-wire auth-identity-policy auth-identity-wire account-settings-wire auth-wire auth-recover-wire auth-life-wire auth-device-wire passkeys-wire chat-wire player-wire rooms-wire lnaddr-wire makers-wire worldbuilder-wire"
 API_COAX_WRAPPED="nostr-messaging projects-wire account-chat-service:account-chat-wire environment-wire mesh-gemini router-wire auth-seal pay/lnaddr-policy:lnaddr-policy agent-wire agent-attest auth-recover-crypto
   auth-device-crypto passkey-verify pay/wallet-vault-store:wallet-vault ticket-sign
-  metaverse/splice-bots/world-api:splice-world script-store"
+  metaverse/splice-bots/world-api:splice-world coax/lib/workos/adapters/c_unit:workos-sdk script-store"
 api_sources() {
   local a="$1" work="$2" coax="$3" root u src name
   root="$(cd "$a/../../.." && pwd)"
@@ -32,7 +32,7 @@ api_sources() {
   API_SOURCES+=("$root/coax/platform/process-native.c" "$root/coax/platform/store-file-native.c")
   for u in $API_COAX $API_COAX_WRAPPED; do
     src="${u%%:*}"; name="${u##*:}"
-    if [[ "$src" == pay/* || "$src" == metaverse/* ]]; then src="$root/$src.coax"; else src="$a/$src.coax"; fi
+    if [[ "$src" == pay/* || "$src" == metaverse/* || "$src" == coax/* ]]; then src="$root/$src.coax"; else src="$a/$src.coax"; fi
     "$coax" c "$src" --run-steps 250000000 --library --header "$work/$name.generated.h" > "$work/$name.generated.c"
     [[ " $(echo $API_COAX) " == *" $u "* ]] && API_SOURCES+=("$work/$name.generated.c")
   done

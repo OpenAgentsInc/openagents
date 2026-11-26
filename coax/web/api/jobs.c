@@ -18,6 +18,7 @@
 // day, so no key cache.
 #include "api.h"
 #include "http_client.h"
+#include "workos.h"
 #include "jobs-wire.generated.h"
 
 #include <stdio.h>
@@ -91,6 +92,9 @@ static char *job_heartbeat(PGconn *db, const char *day) {
 // Our own login's housekeeping (auth.c, #13202, #13203): old rate-limit windows, ended
 // sessions and spent logins go; audit rows older than two years lose their account.
 static char *job_auth_sweep(PGconn *db, const char *day) {
+  // Capture WorkOS user IDs for accounts due to purge before auth.purge_due() deletes auth.workos_identities.
+  PQclear(PQexec(db, "SELECT workos.queue_due_purges()"));
+  PQclear(PQexec(db, "DELETE FROM auth.workos_pending WHERE expires_at < now() - interval '1 day'"));
   // The two deletes are WITH items of the statement itself: Postgres refuses a data-modifying WITH
   // inside a sub-select ("must be at the top level"), which made every run of this job fail (#13250).
   PGresult *r = PQexec(db, "WITH p AS (DELETE FROM auth.pending WHERE expires_at < now() - interval '1 day' RETURNING 1), "
@@ -106,15 +110,18 @@ static char *job_auth_sweep(PGconn *db, const char *day) {
   }
   else api_log("job auth-sweep: %s", PQerrorMessage(db));
   PQclear(r);
+  workos_process_pending_deletes(db);
   return out;
 }
 static const struct { const char *name; char *(*run)(PGconn *db, const char *day); } JOBS[] = {
   {"heartbeat", job_heartbeat},   // proves the schedule: one run each morning
   {"auth-sweep", job_auth_sweep},
 };
-// Jobs that run on every call, not once a day: the minute's service watch (service.c, #13297).
+// Jobs that run on every call, not once a day: the minute's service watch (service.c, #13297)
+// and the pure Coax/C WorkOS Events API mirror poller (workos.c, #14100).
 static const struct { const char *name; char *(*run)(PGconn *db, const char *day); } EVERY[] = {
   {"service-watch", service_watch},
+  {"workos-events", workos_poll_events},
 };
 
 bool jobs_route(const request *q) {

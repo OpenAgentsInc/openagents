@@ -13,7 +13,7 @@
 // the API reads, or "!WORDS"; the autofill (conditional) says nothing when it is dismissed or
 // replaced. Message 75 says what this browser can do: "0" no passkeys, "1" passkeys, "2" and the
 // autofill. User verification is always required.
-const SIGN = 72, HAS_KEY = 73, PASSKEY = 74, HAS_PASSKEY = 75;
+const SIGN = 72, HAS_KEY = 73, PASSKEY = 74, HAS_PASSKEY = 75, WORKOS_CFG = 76;
 const signer = () => !!(globalThis.nostr && typeof globalThis.nostr.signEvent === "function");
 const send = (kind, text) => globalThis.coaxial?.send(kind, text);
 const hex = (bytes) => Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -98,6 +98,10 @@ addEventListener("coaxial", (e) => {
   if (code === 0) {
     send(HAS_KEY, signer() ? "1" : "0");
     canPasskey().then((v) => send(HAS_PASSKEY, v));
+    fetch("/api/auth/workos/config?as=lines", { credentials: "same-origin" })
+      .then((r) => r.ok ? r.text() : "enabled 0\n")
+      .then((t) => send(WORKOS_CFG, t))
+      .catch(() => send(WORKOS_CFG, "enabled 0\n"));
     // An extension can arrive after the page: ask again once it has had time.
     setTimeout(() => send(HAS_KEY, signer() ? "1" : "0"), 1500);
   } else if (code === SIGN) sign(e.detail.text || "");

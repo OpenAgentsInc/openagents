@@ -94,11 +94,18 @@ void http_client_send(const http_client_req *req, http_client_res *res) {
   }
   http_buf b = {NULL, 0, max_bytes};
   curl_easy_setopt(h, CURLOPT_URL, req->url);
+  curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 0L);
   if (hdrs) curl_easy_setopt(h, CURLOPT_HTTPHEADER, hdrs);
   if (req->method && !strcmp(req->method, "POST")) {
     curl_easy_setopt(h, CURLOPT_POST, 1L);
     curl_easy_setopt(h, CURLOPT_POSTFIELDS, req->body ? req->body : "");
     curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, (long)(req->body ? (req->body_len ? req->body_len : strlen(req->body)) : 0));
+  } else if (req->method && !strcmp(req->method, "PUT")) {
+    curl_easy_setopt(h, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_easy_setopt(h, CURLOPT_POSTFIELDS, req->body ? req->body : "");
+    curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, (long)(req->body ? (req->body_len ? req->body_len : strlen(req->body)) : 0));
+  } else if (req->method && !strcmp(req->method, "DELETE")) {
+    curl_easy_setopt(h, CURLOPT_CUSTOMREQUEST, "DELETE");
   }
   curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, http_write_cb);
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);

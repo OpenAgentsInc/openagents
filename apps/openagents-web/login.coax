@@ -27,6 +27,7 @@ LG_MSG_SIGNED :: 72;     // login/key.js: "Nostr <base64 event>" or "!WORDS"
 LG_MSG_HAS_KEY :: 73;    // login/key.js: "1" a NIP-07 extension is here, "0" none
 LG_MSG_PASSKEY :: 74;    // login/key.js: a passkey's answer (the JSON body the API reads), "!WORDS", or nothing
 LG_MSG_HAS_PASSKEY :: 75;   // login/key.js: "0" no passkeys here, "1" passkeys, "2" and autofill (conditional UI)
+LG_MSG_WORKOS :: 76;     // login/key.js: GET /api/auth/workos/config?as=lines ("enabled 1\n...")
 LG_ACT_GO :: 1;          // go to the outbox's path
 LG_ACT_HASH :: 3;        // set the hash (cleared once the link's token is read)
 LG_ACT_SIGN :: 72;       // login/key.js: sign "URL\nBODY" with NIP-07 (NIP-98, kind 27235)
@@ -46,6 +47,7 @@ LG_ELSEWHERE :: 5;  // the link was opened in another browser: the code to type 
 LG_LINK_FAILED :: 6;
 LG_PHONE :: 7;      // the phone app's QR, polled until the app approves
 LG_OFFER :: 8;      // after an email login, once: add a passkey, or not now
+LG_ORG_SELECT :: 9; // WorkOS multi-org selection (organization_selection_required) or org switcher
 // The one request in flight.
 REQ_NONE :: 0; REQ_ACCOUNT :: 1; REQ_START :: 2; REQ_VERIFY :: 3; REQ_LINK :: 4;
 REQ_LOGOUT :: 5; REQ_CHALLENGE :: 6; REQ_NOSTR :: 7; REQ_SIGNING :: 8;   // SIGNING: waiting on key.js
@@ -54,10 +56,16 @@ REQ_PHONE :: 9; REQ_POLL :: 10;
 // login the offer, its challenge, the new passkey, and "not now".
 REQ_PK_COND :: 11; REQ_PK_OPTIONS :: 12; REQ_PK_WAIT :: 13; REQ_PK_LOGIN :: 14;
 REQ_PK_OFFER :: 15; REQ_PK_REG :: 16; REQ_PK_REGISTER :: 17; REQ_PK_OFFERED :: 18;
+// WorkOS: Enterprise SSO discovery, multi-org pending/select, and signed-in org switcher.
+REQ_WOS_DISCOVER :: 19; REQ_WOS_ORG_PENDING :: 20; REQ_WOS_ORG_SELECT :: 21;
+REQ_WOS_ORGS :: 22; REQ_WOS_ORG_SWITCH :: 23;
 // What can be pressed.
 H_NONE :: -1; H_FIELD :: 0; H_MAIN :: 1; H_RESEND :: 2; H_OTHER :: 3; H_KEY :: 4; H_LIMITS :: 5; H_HOME :: 6; H_LOGOUT :: 7; H_PHONE :: 8; H_PASSKEY :: 9;
 H_LIGHTNING :: 10;   // LG_IN: YOUR LIGHTNING ADDRESS, /settings/lightning (#13209)
-LG_HITS :: 11;
+H_GOOGLE :: 11; H_GITHUB :: 12; H_APPLE :: 13; H_SSO :: 14;
+H_ORG0 :: 15; H_ORG1 :: 16; H_ORG2 :: 17; H_ORG3 :: 18; H_SWITCH_ORG :: 19;
+LG_HITS :: 20;
+LG_MAX_ORGS :: 4;
 LG_QR :: 5929;           // every QR version's grid (coax/lib/qr)
 LG_POLL_EVERY :: 2.0;   // seconds between polls while the phone's QR shows
 LG_QR_WIDE :: 520.0;    // narrower than this, the page is most likely the phone that would scan it
@@ -76,6 +84,12 @@ Lg :: struct {
   pk_login: bool = false;                                   // the login page offers passkeys (off since 2026-11-13: a first visit met the browser's QR dialog)
   has_passkey: int = -1;                                    // -1 not heard yet, 0 none, 1 passkeys, 2 and autofill
   pk_wait: int; cond_asked: bool; cond_at: f32;             // key.js's ceremony: 1 a button's, 2 the autofill's, 3 adding one
+  workos: bool = false;                                     // true when /api/auth/workos/config answers enabled 1
+  wos_pending: [80] u8; wos_pending_n: int;                 // pending org-selection token
+  org_ids: [LG_MAX_ORGS] [96] u8; org_id_n: [LG_MAX_ORGS] int;
+  org_names: [LG_MAX_ORGS] [96] u8; org_name_n: [LG_MAX_ORGS] int;
+  org_n: int; org_mode_switch: bool;
+  active_org: [96] u8; active_org_n: int;
   after_root: bool;                                         // after the offer: home (the email link) rather than next
   next: [256] u8; next_n: int; next_hash: bool;              // next_hash: it came from #next= (it wins over ?next=)
   // The request the face hands to coaxial_http, when want is set.
@@ -175,7 +189,9 @@ lg_facts :: (s: [] Lg, text: string) {
     stop := i; while stop < url.count && url[stop] != '&' && url[stop] != '#' { stop += 1; }
     if lg_is(url, i, "next=") {
       if !s[0].next_hash { _ = lg_take_next(s, url[i + 5..<stop]); }
-      return;
+    }
+    if lg_is(url, i, "error=oauth") {
+      lg_err(s, "Sign-in didn't finish. Try again.");
     }
     i = stop + 1;
   }
@@ -210,13 +226,74 @@ lg_start :: (s: [] Lg) {
   at := 0; while at < e.count && e[at] != '@' { at += 1; }
   if e.count < 3 || at == 0 || at >= e.count - 1 { lg_err(s, "Type your email address."); return; }
   b: [400] u8; n := lg_add(b[..], 0, "{\"email\":\""); n = lg_json(b[..], n, e); n = lg_add(b[..], n, "\"}");
-  lg_no_err(s); lg_ask(s, REQ_START, "/api/auth/email/start?as=lines", cast(string) b[0..<n], LG_HTTP_POST);
+  lg_no_err(s);
+  url := ifx s[0].workos then "/api/auth/workos/magic/start?as=lines" else "/api/auth/email/start?as=lines";
+  lg_ask(s, REQ_START, url, cast(string) b[0..<n], LG_HTTP_POST);
 }
 lg_verify :: (s: [] Lg) {
   if s[0].req != REQ_NONE { return; }
   if s[0].code_n != 6 { lg_err(s, "Type the 6 digits from the email."); return; }
-  b: [40] u8; n := lg_add(b[..], 0, "{\"code\":\""); n = lg_add(b[..], n, cast(string) s[0].code[0..<6]); n = lg_add(b[..], n, "\"}");
-  lg_no_err(s); lg_ask(s, REQ_VERIFY, "/api/auth/email/verify?as=lines", cast(string) b[0..<n], LG_HTTP_POST);
+  b: [400] u8; n := lg_add(b[..], 0, "{\"code\":\""); n = lg_add(b[..], n, cast(string) s[0].code[0..<6]);
+  if s[0].workos && s[0].sent_n > 0 {
+    n = lg_add(b[..], n, "\",\"email\":\""); n = lg_json(b[..], n, cast(string) s[0].sent_to[0..<s[0].sent_n]);
+  }
+  n = lg_add(b[..], n, "\"}");
+  lg_no_err(s);
+  url := ifx s[0].workos then "/api/auth/workos/magic/verify?as=lines" else "/api/auth/email/verify?as=lines";
+  lg_ask(s, REQ_VERIFY, url, cast(string) b[0..<n], LG_HTTP_POST);
+}
+lg_wos_oauth :: (s: [] Lg, provider: string, conn_id: string) {
+  if s[0].req != REQ_NONE { return; }
+  b: [512] u8; n := lg_add(b[..], 0, "/api/auth/workos/oauth/start?");
+  if provider.count > 0 { n = lg_add(b[..], n, "provider="); n = lg_add(b[..], n, provider); }
+  else { n = lg_add(b[..], n, "connection_id="); n = lg_add(b[..], n, conn_id); }
+  if s[0].next_n > 0 { n = lg_add(b[..], n, "&next="); n = lg_add(b[..], n, cast(string) s[0].next[0..<s[0].next_n]); }
+  lg_go(s, cast(string) b[0..<n]);
+}
+lg_wos_sso :: (s: [] Lg) {
+  if s[0].req != REQ_NONE { return; }
+  e := cast(string) s[0].email[0..<s[0].email_n];
+  at := 0; while at < e.count && e[at] != '@' { at += 1; }
+  if e.count < 3 || at == 0 || at >= e.count - 1 { lg_err(s, "Type your work email to use Enterprise SSO."); return; }
+  b: [400] u8; n := lg_add(b[..], 0, "{\"email\":\""); n = lg_json(b[..], n, e); n = lg_add(b[..], n, "\"}");
+  lg_no_err(s); lg_ask(s, REQ_WOS_DISCOVER, "/api/auth/workos/sso/discover?as=lines", cast(string) b[0..<n], LG_HTTP_POST);
+}
+lg_wos_parse_orgs :: (s: [] Lg, lines: string) {
+  s[0].org_n = 0;
+  at := 0;
+  while at < lines.count && s[0].org_n < LG_MAX_ORGS {
+    end := at; while end < lines.count && lines[end] != '\n' { end += 1; }
+    if lg_is(lines, at, "org ") && at + 4 < end {
+      rest := lines[at + 4..<end];
+      sp := 0; while sp < rest.count && rest[sp] != ' ' { sp += 1; }
+      oid := rest[0..<sp];
+      oname := ifx sp + 1 < rest.count then rest[sp + 1..<rest.count] else oid;
+      if oid.count > 0 {
+        idx := s[0].org_n;
+        s[0].org_id_n[idx] = lg_set(s[0].org_ids[idx][..], oid);
+        s[0].org_name_n[idx] = lg_set(s[0].org_names[idx][..], oname);
+        s[0].org_n += 1;
+      }
+    }
+    at = end + 1;
+  }
+}
+lg_wos_pick_org :: (s: [] Lg, idx: int) {
+  if s[0].req != REQ_NONE || idx < 0 || idx >= s[0].org_n { return; }
+  oid := cast(string) s[0].org_ids[idx][0..<s[0].org_id_n[idx]];
+  b: [400] u8; n := lg_add(b[..], 0, "{\"organization_id\":\""); n = lg_json(b[..], n, oid);
+  if !s[0].org_mode_switch && s[0].wos_pending_n > 0 {
+    n = lg_add(b[..], n, "\",\"pending\":\""); n = lg_json(b[..], n, cast(string) s[0].wos_pending[0..<s[0].wos_pending_n]);
+  }
+  n = lg_add(b[..], n, "\"}");
+  lg_no_err(s);
+  if s[0].org_mode_switch { lg_ask(s, REQ_WOS_ORG_SWITCH, "/api/auth/workos/orgs/switch?as=lines", cast(string) b[0..<n], LG_HTTP_POST); }
+  else { lg_ask(s, REQ_WOS_ORG_SELECT, "/api/auth/workos/org/select?as=lines", cast(string) b[0..<n], LG_HTTP_POST); }
+}
+lg_wos_load_orgs :: (s: [] Lg) {
+  if s[0].req != REQ_NONE { return; }
+  lg_no_err(s); s[0].org_mode_switch = true;
+  lg_ask(s, REQ_WOS_ORGS, "/api/auth/workos/orgs?as=lines", "", 0);
 }
 lg_key :: (s: [] Lg) {
   if s[0].req != REQ_NONE { return; }
@@ -356,13 +433,48 @@ lg_answer :: (s: [] Lg, text: string) {
     x := lg_value(lines, "expires_in", found[..]); s[0].left = cast(f32) (ifx found[0] then lg_int(x) else 600);
     return;
   }
-  if req == REQ_VERIFY || req == REQ_NOSTR {
-    if ok && lg_value(lines, "state", found[..]) == "logged-in" {
-      if req == REQ_VERIFY { lg_email_in(s, false); return; }
+  if req == REQ_VERIFY || req == REQ_NOSTR || req == REQ_WOS_ORG_SELECT {
+    state := lg_value(lines, "state", found[..]);
+    if ok && state == "logged-in" {
+      if req == REQ_VERIFY || req == REQ_WOS_ORG_SELECT { lg_email_in(s, false); return; }
       s[0].screen = LG_DONE; lg_go_next(s); return;
+    }
+    if ok && req == REQ_VERIFY && state == "need-org" {
+      pt := lg_value(lines, "pending", found[..]);
+      if found[0] { s[0].wos_pending_n = lg_set(s[0].wos_pending[..], pt); }
+      lg_wos_parse_orgs(s, lines);
+      s[0].org_mode_switch = false; s[0].screen = LG_ORG_SELECT; s[0].focus = -1; return;
     }
     if req == REQ_VERIFY && status == 401 && s[0].tries > 0 { s[0].tries -= 1; s[0].code_n = 0; }
     lg_failed(s, status, lines); return;
+  }
+  if req == REQ_WOS_DISCOVER {
+    if !ok { lg_failed(s, status, lines); return; }
+    if lg_value(lines, "sso", found[..]) == "1" {
+      cid := lg_value(lines, "connection_id", found[..]);
+      if found[0] && cid.count > 0 { lg_wos_oauth(s, "", cid); return; }
+    }
+    lg_err(s, "No Enterprise SSO connection found for that email domain. Use SEND CODE instead.");
+    return;
+  }
+  if req == REQ_WOS_ORG_PENDING {
+    if !ok { s[0].screen = LG_EMAIL; s[0].focus = H_FIELD; lg_failed(s, status, lines); return; }
+    lg_wos_parse_orgs(s, lines);
+    s[0].org_mode_switch = false; s[0].screen = LG_ORG_SELECT; s[0].focus = -1; return;
+  }
+  if req == REQ_WOS_ORGS {
+    if !ok { lg_failed(s, status, lines); return; }
+    ao := lg_value(lines, "active_organization_id", found[..]);
+    if found[0] { s[0].active_org_n = lg_set(s[0].active_org[..], ao); }
+    lg_wos_parse_orgs(s, lines);
+    if s[0].org_n == 0 { lg_err(s, "Your account is not in any WorkOS organization yet."); return; }
+    s[0].org_mode_switch = true; s[0].screen = LG_ORG_SELECT; s[0].focus = -1; return;
+  }
+  if req == REQ_WOS_ORG_SWITCH {
+    if !ok { lg_failed(s, status, lines); return; }
+    ao := lg_value(lines, "active_organization_id", found[..]);
+    if found[0] { s[0].active_org_n = lg_set(s[0].active_org[..], ao); }
+    s[0].screen = LG_IN; s[0].focus = -1; return;
   }
   if req == REQ_LINK {
     state := lg_value(lines, "state", found[..]);
@@ -456,6 +568,17 @@ lg_signed :: (s: [] Lg, text: string) {
 lg_hash :: (s: [] Lg, text: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   if s[0].page == LG_PAGE_LOGIN {
+    if lg_is(text, 0, "wos_org=") {
+      pt := text[8..<text.count];
+      if pt.count == 64 {
+        s[0].wos_pending_n = lg_set(s[0].wos_pending[..], pt);
+        s[0].org_mode_switch = false;
+        b: [160] u8; n := lg_add(b[..], 0, "/api/auth/workos/org/pending?as=lines&pending="); n = lg_add(b[..], n, pt);
+        lg_ask(s, REQ_WOS_ORG_PENDING, cast(string) b[0..<n], "", 0);
+      }
+      if s[0].action == 0 { s[0].out_n = 0; s[0].action = LG_ACT_HASH; }
+      return;
+    }
     if !lg_is(text, 0, "next=") { return; }
     if lg_take_next(s, text[5..<text.count]) { s[0].next_hash = true; }
     if s[0].action == 0 { s[0].out_n = 0; s[0].action = LG_ACT_HASH; }   // the way back (and its code) leaves the address bar
@@ -504,6 +627,11 @@ lg_message :: (s: [] Lg, kind: int, text: string) #export_c #effects(all) {
   if kind == LG_MSG_HAS_KEY { s[0].has_key = ifx text == "1" then 1 else 0; return; }
   if kind == LG_MSG_HAS_PASSKEY { s[0].has_passkey = ifx text == "2" then 2 else ifx text == "1" then 1 else 0; lg_pk_cond(s); return; }
   if kind == LG_MSG_PASSKEY { lg_pk_answer(s, text); return; }
+  if kind == LG_MSG_WORKOS {
+    found: [1] bool;
+    s[0].workos = lg_value(text, "enabled", found[..]) == "1";
+    return;
+  }
   if kind >= LG_MSG_HTTP && kind < LG_MSG_HTTP + 64 && kind - LG_MSG_HTTP == s[0].req_id && s[0].req != REQ_NONE { lg_answer(s, text); }
 }
 lg_press :: (s: [] Lg, h: int) {
@@ -513,9 +641,22 @@ lg_press :: (s: [] Lg, h: int) {
   if h == H_LIMITS && s[0].others { lg_go(s, "/docs/limits"); return; }
   if sc == LG_EMAIL {
     if h == H_MAIN { lg_start(s); }
+    if h == H_GOOGLE && s[0].workos { lg_wos_oauth(s, "GoogleOAuth", ""); }
+    if h == H_GITHUB && s[0].workos { lg_wos_oauth(s, "GitHubOAuth", ""); }
+    if h == H_APPLE && s[0].workos { lg_wos_oauth(s, "AppleOAuth", ""); }
+    if h == H_SSO && s[0].workos { lg_wos_sso(s); }
     if h == H_PASSKEY { lg_passkey(s); }
-    if h == H_KEY && s[0].others { lg_key(s); }
+    if h == H_KEY && (s[0].others || (s[0].workos && s[0].has_key == 1)) { lg_key(s); }
     if h == H_PHONE && lg_phone_ok(s) { lg_phone_start(s); }
+    return;
+  }
+  if sc == LG_ORG_SELECT {
+    if h >= H_ORG0 && h < H_ORG0 + LG_MAX_ORGS { lg_wos_pick_org(s, h - H_ORG0); }
+    if h == H_OTHER && s[0].req == REQ_NONE {
+      s[0].screen = ifx s[0].org_mode_switch then LG_IN else LG_EMAIL;
+      s[0].focus = ifx s[0].screen == LG_EMAIL then H_FIELD else -1;
+      lg_no_err(s);
+    }
     return;
   }
   if sc == LG_PHONE {
@@ -536,6 +677,7 @@ lg_press :: (s: [] Lg, h: int) {
   }
   if sc == LG_IN {
     if h == H_MAIN { lg_go_next(s); }
+    if h == H_SWITCH_ORG && s[0].workos { lg_wos_load_orgs(s); }
     if h == H_LOGOUT { lg_logout(s); }
     if h == H_KEY && s[0].others { lg_key(s); }
     if h == H_LIGHTNING { lg_go(s, "/settings/lightning"); }
@@ -561,7 +703,7 @@ lg_key_in :: (s: [] Lg, key: int) -> bool #export_c #effects(all) {
     lg_press(s, ifx s[0].focus > H_FIELD then s[0].focus else H_MAIN); return true;
   }
   if key == -15 {   // Tab: through what this screen shows
-    order: [8] int; n := lg_order(s, order[..]);
+    order: [16] int; n := lg_order(s, order[..]);
     if n == 0 { return false; }
     s[0].focus = lg_tab(order[..], n, s[0].focus); return true;
   }
@@ -579,26 +721,36 @@ lg_order :: (s: [] Lg, out: [] int) -> int {
   sc := s[0].screen; n := 0;
   if sc == LG_EMAIL {
     out[0] = H_FIELD; out[1] = H_MAIN; n = 2;
+    if s[0].workos { out[n] = H_GOOGLE; n += 1; out[n] = H_GITHUB; n += 1; out[n] = H_APPLE; n += 1; out[n] = H_SSO; n += 1; }
     if lg_pk(s) != 0 { out[n] = H_PASSKEY; n += 1; }
     if lg_key_ok(s) { out[n] = H_KEY; n += 1; }
     if lg_phone_ok(s) { out[n] = H_PHONE; n += 1; }
     if s[0].others { out[n] = H_LIMITS; n += 1; }
   }
   if sc == LG_CODE { out[0] = H_FIELD; out[1] = H_MAIN; out[2] = H_RESEND; out[3] = H_OTHER; n = 4; if s[0].others { out[n] = H_LIMITS; n += 1; } }
-  if sc == LG_IN { out[0] = H_MAIN; out[1] = H_LIGHTNING; out[2] = H_LOGOUT; n = 3; if lg_key_ok(s) { out[n] = H_KEY; n += 1; } }
+  if sc == LG_IN {
+    out[0] = H_MAIN; n = 1;
+    if s[0].workos { out[n] = H_SWITCH_ORG; n += 1; }
+    out[n] = H_LIGHTNING; n += 1; out[n] = H_LOGOUT; n += 1;
+    if lg_key_ok(s) { out[n] = H_KEY; n += 1; }
+  }
+  if sc == LG_ORG_SELECT {
+    for i: 0..<s[0].org_n { out[n] = H_ORG0 + i; n += 1; }
+    out[n] = H_OTHER; n += 1;
+  }
   if sc == LG_ELSEWHERE || sc == LG_LINK_FAILED { out[0] = H_MAIN; n = 1; }
   if sc == LG_OFFER { out[0] = H_MAIN; out[1] = H_OTHER; n = 2; }
   if sc == LG_PHONE { if s[0].phone_over { out[n] = H_RESEND; n += 1; } out[n] = H_OTHER; n += 1; }
   out[n] = H_HOME; n += 1;
   return n;
 }
-lg_shown :: (s: [] Lg, h: int) -> bool { order: [10] int; n := lg_order(s, order[..]); for i: 0..<n { if order[i] == h { return true; } } return false; }
+lg_shown :: (s: [] Lg, h: int) -> bool { order: [16] int; n := lg_order(s, order[..]); for i: 0..<n { if order[i] == h { return true; } } return false; }
 // The phone app's QR only where a phone could scan it: not on a phone-width page.
 lg_wide :: (s: [] Lg) -> bool { return s[0].w >= LG_QR_WIDE; }
 // The ways in besides email, each off while the page is email only (s[0].others false).
-lg_key_ok :: (s: [] Lg) -> bool { return s[0].others && s[0].has_key != 0; }
+lg_key_ok :: (s: [] Lg) -> bool { return (s[0].others && s[0].has_key != 0) || (s[0].workos && s[0].has_key == 1); }
 lg_phone_ok :: (s: [] Lg) -> bool { return s[0].others && lg_wide(s); }
-lg_alts :: (s: [] Lg) -> bool { return s[0].others || lg_pk(s) != 0; }
+lg_alts :: (s: [] Lg) -> bool { return s[0].others || lg_pk(s) != 0 || s[0].workos; }
 LG_PANEL_W :: 440.0;
 LG_PARA :: 8.2;          // a screen's words: cap height, CSS pixels; a line is 2.1 caps
 LG_ERR :: 8.0;           // a refusal's
@@ -628,6 +780,7 @@ lg_words :: (s: [] Lg, buf: [] u8) -> string {
   if sc == LG_ELSEWHERE { return "This link was opened in another browser. Type this code in the window where you asked:"; }
   if sc == LG_PHONE { return "Scan this with the OpenAgents app on your phone, then approve the login there."; }
   if sc == LG_OFFER { return "You're logged in. Next time, log in with your face, fingerprint or screen lock instead of an email code: add a passkey to this account."; }
+  if sc == LG_ORG_SELECT { return ifx s[0].org_mode_switch then "Choose an active organization for this session." else "Choose an organization to finish logging in."; }
   return "";
 }
 // The refusal's place: whole, wrapped, at y; returns the y under it.
@@ -653,6 +806,15 @@ lg_layout :: (s: [] Lg) {
     y += 36; s[0].hits[H_FIELD] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 8;
     y = lg_err_at(s, y, w) + 12;
     s[0].hits[H_MAIN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + ifx lg_alts(s) then 40.0f32 else 12.0f32;   // then OR, when there is another way in
+    if s[0].workos {
+      third := (w - 16) / 3.0;
+      s[0].hits[H_GOOGLE] = Box.{x0 = x0, y0 = y, x1 = x0 + third, y1 = y + 40};
+      s[0].hits[H_GITHUB] = Box.{x0 = x0 + third + 8, y0 = y, x1 = x0 + third * 2 + 8, y1 = y + 40};
+      s[0].hits[H_APPLE]  = Box.{x0 = x1 - third, y0 = y, x1 = x1, y1 = y + 40};
+      y += 40 + 10;
+      s[0].hits[H_SSO] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40};
+      y += 40 + 12;
+    }
     if lg_pk(s) != 0 { s[0].hits[H_PASSKEY] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
     if lg_key_ok(s) { s[0].hits[H_KEY] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
     else if s[0].others { y += lg_tall(LG_NO_KEY, w, 7.8) + 8; }
@@ -672,10 +834,19 @@ lg_layout :: (s: [] Lg) {
   if sc == LG_IN {
     y = lg_err_at(s, y + 4, w) + 8;
     s[0].hits[H_MAIN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 16;
+    if s[0].workos { s[0].hits[H_SWITCH_ORG] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 14; }
     s[0].hits[H_LIGHTNING] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16;
     s[0].hits[H_LOGOUT] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16;
     if lg_key_ok(s) { s[0].hits[H_KEY] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16; }
     y += 8;
+  }
+  if sc == LG_ORG_SELECT {
+    y = lg_err_at(s, y + 4, w) + 8;
+    for i: 0..<s[0].org_n {
+      s[0].hits[H_ORG0 + i] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 42};
+      y += 42 + 10;
+    }
+    s[0].hits[H_OTHER] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 20;
   }
   if sc == LG_DONE || sc == LG_LINK { y = lg_err_at(s, y, w) + 24; }
   if sc == LG_OFFER {
@@ -819,7 +990,7 @@ lg_ceil :: (x: f32) -> f32 { f := floor(x); return ifx f < x then f + 1 else f; 
 lg_body :: (s: [] Lg, out: [] f32, at: int, p: Pen, still: bool) -> int {
   d := p.d; b := s[0].panel; x := b.x0 + 24; w := b.x1 - b.x0 - 48; v := at; below: [1] f32;
   sc := s[0].screen;
-  title := ifx sc == LG_CODE then "CHECK YOUR EMAIL" else ifx sc == LG_IN then "YOU'RE LOGGED IN" else ifx sc == LG_DONE then "LOGGED IN" else ifx sc == LG_ELSEWHERE then "ONE MORE STEP" else ifx sc == LG_PHONE then "LOG IN WITH THE PHONE APP" else ifx sc == LG_OFFER then "ADD A PASSKEY" else "LOG IN";
+  title := ifx sc == LG_CODE then "CHECK YOUR EMAIL" else ifx sc == LG_IN then "YOU'RE LOGGED IN" else ifx sc == LG_DONE then "LOGGED IN" else ifx sc == LG_ELSEWHERE then "ONE MORE STEP" else ifx sc == LG_PHONE then "LOG IN WITH THE PHONE APP" else ifx sc == LG_OFFER then "ADD A PASSKEY" else ifx sc == LG_ORG_SELECT then (ifx s[0].org_mode_switch then "SWITCH ORGANIZATION" else "CHOOSE ORGANIZATION") else "LOG IN";
   v = put_fit(out, v, title, x * d, (b.y0 + 44) * d, (ifx p.phone then 13.0f32 else 15.0f32) * d, chrome(ink(p, INK_WHITE)), w * d);
   buf: [400] u8; n := 0;
   words := lg_words(s, buf[..]);
@@ -831,6 +1002,13 @@ lg_body :: (s: [] Lg, out: [] f32, at: int, p: Pen, still: bool) -> int {
     m := s[0].hits[H_MAIN].y1;
     if lg_alts(s) { v = put_centred(out, v, "OR", (x + w * 0.5) * d, (m + 26) * d, 6.2 * d, ink(p, INK_DIM)); }
     y := m + 40;
+    if s[0].workos {
+      v = lg_button(s, out, v, p, H_GOOGLE, "GOOGLE", false);
+      v = lg_button(s, out, v, p, H_GITHUB, "GITHUB", false);
+      v = lg_button(s, out, v, p, H_APPLE, "APPLE", false);
+      v = lg_button(s, out, v, p, H_SSO, ifx s[0].req == REQ_WOS_DISCOVER then "CHECKING SSO" else "ENTERPRISE SSO", false);
+      y = s[0].hits[H_SSO].y1 + 12;
+    }
     if lg_pk(s) != 0 {
       busy := s[0].req == REQ_PK_OPTIONS || s[0].req == REQ_PK_LOGIN || (s[0].req == REQ_PK_WAIT && s[0].pk_wait == 1);
       v = lg_button(s, out, v, p, H_PASSKEY, ifx busy then "CHECKING" else "LOG IN WITH A PASSKEY", false);
@@ -857,9 +1035,17 @@ lg_body :: (s: [] Lg, out: [] f32, at: int, p: Pen, still: bool) -> int {
   }
   if sc == LG_IN {
     v = lg_button(s, out, v, p, H_MAIN, "CONTINUE", true);
+    if s[0].workos { v = lg_button(s, out, v, p, H_SWITCH_ORG, ifx s[0].req == REQ_WOS_ORGS then "LOADING ORGS" else "SWITCH ORGANIZATION", false); }
     v = lg_button(s, out, v, p, H_LIGHTNING, "YOUR LIGHTNING ADDRESS", false);
     v = lg_button(s, out, v, p, H_LOGOUT, ifx s[0].req == REQ_LOGOUT && !s[0].logout_then_key then "LOGGING OUT" else "LOG OUT", false);
     if lg_key_ok(s) { v = lg_button(s, out, v, p, H_KEY, "LOG IN WITH A KEY INSTEAD", false); }
+  }
+  if sc == LG_ORG_SELECT {
+    for i: 0..<s[0].org_n {
+      nm := cast(string) s[0].org_names[i][0..<s[0].org_name_n[i]];
+      v = lg_button(s, out, v, p, H_ORG0 + i, nm, i == 0);
+    }
+    v = lg_button(s, out, v, p, H_OTHER, "BACK", false);
   }
   if sc == LG_ELSEWHERE {
     v = put_centred(out, v, cast(string) s[0].elsewhere[0..<s[0].elsewhere_n], (x + w * 0.5) * d, (s[0].err_y - 26) * d, 22 * d, chrome(ink(p, INK_BRIGHT)));
@@ -1414,4 +1600,82 @@ LG_PK_CH :: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
   #assert s[0].req == REQ_NONE;
   lg_email_in(s[..], true);
   #assert s[0].req != REQ_PK_OFFER;
+}
+
+#test "WorkOS Custom Coax UI: Magic Auth, OAuth buttons, Enterprise SSO discovery, multi-org picker, and org switcher" #steps 500000000 {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN);
+  lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  lg_message(s[..], LG_MSG_WORKOS, "enabled 1\nclient_id client_01\nproviders magic,google,github,apple,sso\n");
+  lg_facts(s[..], "url=https://openagents.com/login?next=%2Fchat");
+  lg_layout(s[..]);
+  #assert s[0].workos && lg_shown(s[..], H_GOOGLE) && lg_shown(s[..], H_GITHUB) && lg_shown(s[..], H_APPLE) && lg_shown(s[..], H_SSO);
+
+  // Google, GitHub, Apple OAuth start links carry validated next path.
+  lg_press(s[..], H_GOOGLE);
+  #assert s[0].action == LG_ACT_GO && lg_out(s[..]) == "/api/auth/workos/oauth/start?provider=GoogleOAuth&next=/chat";
+  lg_done(s[..]); lg_press(s[..], H_APPLE);
+  #assert s[0].action == LG_ACT_GO && lg_out(s[..]) == "/api/auth/workos/oauth/start?provider=AppleOAuth&next=/chat";
+  lg_done(s[..]); lg_press(s[..], H_GITHUB);
+  #assert s[0].action == LG_ACT_GO && lg_out(s[..]) == "/api/auth/workos/oauth/start?provider=GitHubOAuth&next=/chat";
+  lg_done(s[..]);
+
+  // Enterprise SSO domain discovery redirects when active connection is found.
+  lg_type(s[..], "alice@acme.test");
+  lg_press(s[..], H_SSO);
+  #assert s[0].req == REQ_WOS_DISCOVER && lg_url(s[..]) == "/api/auth/workos/sso/discover?as=lines";
+  lg_reply(s[..], 1, "200\nsso 1\nconnection_id conn_01\nname Acme Okta\norganization_id org_01\n");
+  #assert s[0].action == LG_ACT_GO && lg_out(s[..]) == "/api/auth/workos/oauth/start?connection_id=conn_01&next=/chat";
+  lg_done(s[..]);
+
+  // Magic Auth inline 6-digit flow -> multi-org need-org -> org/select -> LG_DONE.
+  lg_press(s[..], H_MAIN);
+  #assert s[0].req == REQ_START && lg_url(s[..]) == "/api/auth/workos/magic/start?as=lines";
+  lg_reply(s[..], 2, "200\nstate sent\nexpires_in 600\ntries 5\n");
+  #assert s[0].screen == LG_CODE;
+  lg_type(s[..], "123456");
+  #assert s[0].req == REQ_VERIFY && lg_url(s[..]) == "/api/auth/workos/magic/verify?as=lines";
+  lg_reply(s[..], 3, "200\nstate need-org\npending aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\norg org_1 Acme Robotics\norg org_2 Orbit Labs\n");
+  #assert s[0].screen == LG_ORG_SELECT && s[0].org_n == 2;
+  lg_layout(s[..]);
+  #assert lg_shown(s[..], H_ORG0) && lg_shown(s[..], H_ORG1);
+  lg_press(s[..], H_ORG1);
+  #assert s[0].req == REQ_WOS_ORG_SELECT && lg_url(s[..]) == "/api/auth/workos/org/select?as=lines";
+  lg_reply(s[..], 4, "200\nstate logged-in\naccount acct_x\nnew 0\n");
+  #assert s[0].screen == LG_DONE && lg_out(s[..]) == "/chat";
+
+  // Signed-in org switcher (Phase 5 readiness): LG_IN -> H_SWITCH_ORG -> orgs/switch.
+  u: [1] Lg; lg_new(u[..], LG_PAGE_LOGIN);
+  lg_message(u[..], LG_MSG_WORKOS, "enabled 1\n");
+  lg_reply(u[..], 0, "200\nlogged_in 1\naccount acct_x\n");
+  #assert u[0].screen == LG_IN && lg_shown(u[..], H_SWITCH_ORG);
+  lg_press(u[..], H_SWITCH_ORG);
+  #assert u[0].req == REQ_WOS_ORGS && lg_url(u[..]) == "/api/auth/workos/orgs?as=lines";
+  lg_reply(u[..], 1, "200\nactive_organization_id org_1\norg org_1 Acme Robotics\norg org_2 Orbit Labs\n");
+  #assert u[0].screen == LG_ORG_SELECT && u[0].org_mode_switch && u[0].org_n == 2;
+  lg_press(u[..], H_ORG1);
+  #assert u[0].req == REQ_WOS_ORG_SWITCH && lg_url(u[..]) == "/api/auth/workos/orgs/switch?as=lines";
+  lg_reply(u[..], 2, "200\nstate switched\nactive_organization_id org_2\n");
+  #assert u[0].screen == LG_IN && cast(string) u[0].active_org[0..<u[0].active_org_n] == "org_2";
+
+  // Verify WorkOS screens fit inside 360x640 phone & 1440x900 desktop with zero overlapping boxes.
+  out: [LG_MAX_VERTICES * VERTEX_FLOATS] f32; unif: [UNIFORM_FLOATS] f32; world: [1] LandState;
+  for k: 0..<2 {
+    v: [1] Lg; lg_new(v[..], LG_PAGE_LOGIN); lg_reply(v[..], 0, "200\nlogged_in 0\n");
+    lg_message(v[..], LG_MSG_WORKOS, "enabled 1\n");
+    v[0].w = ifx k == 0 then 360.0f32 else 1440.0f32; v[0].h = ifx k == 0 then 640.0f32 else 900.0f32;
+    v[0].org_n = 2; v[0].org_id_n[0] = lg_set(v[0].org_ids[0][..], "org_1"); v[0].org_name_n[0] = lg_set(v[0].org_names[0][..], "Acme");
+    v[0].org_id_n[1] = lg_set(v[0].org_ids[1][..], "org_2"); v[0].org_name_n[1] = lg_set(v[0].org_names[1][..], "Orbit");
+    for sc_i: 0..<3 {
+      v[0].screen = ifx sc_i == 0 then LG_EMAIL else ifx sc_i == 1 then LG_ORG_SELECT else LG_IN;
+      lg_layout(v[..]);
+      order: [16] int; on := lg_order(v[..], order[..]);
+      for i: 0..<on {
+        b := v[0].hits[order[i]];
+        #assert b.x1 > b.x0 && b.x0 >= 0 && b.x1 <= v[0].w && b.y0 >= 0 && b.y1 <= v[0].h;
+        for j: 0..<on { if j != i { c := v[0].hits[order[j]]; #assert b.x1 <= c.x0 || c.x1 <= b.x0 || b.y1 <= c.y0 || c.y1 <= b.y0; } }
+      }
+      verts := lg_frame(v[..], world[0..<0], out[..], unif[..], v[0].w, v[0].h, 1, 0.016, true);
+      #assert verts > 0 && verts < LG_MAX_VERTICES;
+    }
+  }
 }

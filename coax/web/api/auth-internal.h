@@ -30,6 +30,8 @@ bool auth_normal_email(const char *raw, char *out, size_t cap);
 void auth_mask_email(const char *email, char *out, size_t cap);
 void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *via_id, const char *level,
                     bool app, bool made, const char *action, const char *extra_json, const char *extra_lines);
+bool auth_login_web_redirect(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *level,
+                             bool made, const char *action, const char *location);
 
 // ---- auth-recover.c
 // auth-recover-policy.coax's numbers (AR_*), checked against it at start (auth_recover_init).

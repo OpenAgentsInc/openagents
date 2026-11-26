@@ -21,6 +21,7 @@
 // A frozen account's sessions work (it can log in to unfreeze, cancel a deletion or delete), but
 // the gate lets them do only what al_frozen_route allows: no spending, no agents, no changes.
 #include "auth-internal.h"
+#include "workos.h"
 #include "auth-life-policy.generated.h"
 #include "auth-life-wire.generated.h"
 #include "auth-policy.generated.h"
@@ -143,7 +144,7 @@ static int route_kind(const char *method, const char *path) {
   bool get = !strcmp(method, "GET") || !strcmp(method, "HEAD");
   if (strncmp(path, "/api/auth/", 10)) return AL_RT_OTHER_;
   const char *op = path + 10;
-  static const char *const looks[] = {"account", "life", "ways", "notices", "recovery", "sessions", "limits", NULL};
+  static const char *const looks[] = {"account", "life", "ways", "notices", "recovery", "sessions", "limits", "workos/config", NULL};
   if (get) {
     if (!strcmp(op, "export")) return AL_RT_EXPORT_;
     for (const char *const *o = looks; *o; o++) if (!strcmp(op, *o)) return AL_RT_LOOK_;
@@ -205,6 +206,7 @@ static void delete_ask(const request *q, PGconn *db, const auth_principal *p) {
   if (!one(db, "SELECT auth.delete_ask($1)", 1, a, purge, sizeof purge) || !purge[0]) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
   long long purge_ms = atoll(purge);
   agents_pause_all(db, p->account);
+  workos_revoke_account_sessions(db, p->account);
   char when[40], detail[120], words[900];
   utc(purge_ms, when, sizeof when);
   auth_audit(db, p->account, p->session, "delete.ask", "ok", detail_of(detail, alw_purge_detail_write(purge_ms, OUT(detail))));
