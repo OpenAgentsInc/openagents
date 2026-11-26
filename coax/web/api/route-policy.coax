@@ -1,0 +1,117 @@
+// Coax Web route policy (Issue #14075):
+//   - Canonical JSON error negotiation (Laravel 13 f32d701): /api, /api/*, /up,
+//     or callers sending Accept: application/json always receive JSON errors.
+//   - Liveness probe classification: GET/HEAD /up.
+//   - Route table shadowing detection: flags when an earlier rule subsumes a
+//     later rule (duplicate or broader prefix/method declared before a specific
+//     route).
+#authority;
+
+rp_starts_with :: (s: string, prefix: string) -> bool #effects(all) {
+  if s.count < prefix.count { return false; }
+  for i: 0..<prefix.count { if s[i] != prefix[i] { return false; } }
+  return true;
+}
+
+rp_contains :: (hay: string, needle: string) -> bool #effects(all) {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  limit := hay.count - needle.count;
+  i := 0;
+  while i <= limit {
+    ok := true;
+    for j: 0..<needle.count {
+      if hay[i + j] != needle[j] { ok = false; break; }
+    }
+    if ok { return true; }
+    i += 1;
+  }
+  return false;
+}
+
+rp_is_api_path :: (path: string) -> bool #export_c #effects(all) {
+  if path == "/api" { return true; }
+  return rp_starts_with(path, "/api/");
+}
+
+rp_is_liveness :: (method: string, path: string) -> bool #export_c #effects(all) {
+  if path != "/up" { return false; }
+  return method == "GET" || method == "HEAD";
+}
+
+rp_should_render_json :: (path: string, accept: string) -> bool #export_c #effects(all) {
+  if rp_is_api_path(path) { return true; }
+  if path == "/up" { return true; }
+  return rp_contains(accept, "application/json");
+}
+
+rp_method_covers :: (prev_method: string, method: string) -> bool #effects(all) {
+  if prev_method == "*" { return true; }
+  if prev_method == method { return true; }
+  return prev_method == "GET" && method == "HEAD";
+}
+
+// True when an earlier rule (prev_*) completely shadows a later rule.
+rp_rule_shadowed :: (prev_method: string, prev_path: string, prev_prefix: bool,
+                     method: string, path: string, prefix: bool) -> bool #export_c #effects(all) {
+  if !rp_method_covers(prev_method, method) { return false; }
+  if prev_prefix { return rp_starts_with(path, prev_path); }
+  if prefix { return false; }
+  return prev_path == path;
+}
+
+#test "api root, api subpaths, /up, and json Accept render JSON" {
+  #assert rp_is_api_path("/api");
+  #assert rp_is_api_path("/api/");
+  #assert rp_is_api_path("/api/openapi.json");
+  #assert !rp_is_api_path("xapi/foo");
+  #assert !rp_is_api_path("/apiv2");
+  #assert !rp_is_api_path("/");
+  #assert rp_should_render_json("/api", "text/html");
+  #assert rp_should_render_json("/api/auth/me", "");
+  #assert rp_should_render_json("/up", "text/html");
+  #assert rp_should_render_json("/projects/coax", "application/json");
+  #assert rp_should_render_json("/projects/coax", "text/html, application/json;q=0.9");
+  #assert !rp_should_render_json("/projects/coax", "text/html");
+  #assert !rp_should_render_json("/projects/coax", "xpplication/json");
+  #assert !rp_should_render_json("/", "");
+}
+
+#test "liveness matches only GET and HEAD /up" {
+  #assert rp_is_liveness("GET", "/up");
+  #assert rp_is_liveness("HEAD", "/up");
+  #assert !rp_is_liveness("POST", "/up");
+  #assert !rp_is_liveness("GET", "/up/");
+  #assert !rp_is_liveness("GET", "/api/up");
+}
+
+#test "shadowing detects duplicate exact routes and prefix-before-specific bugs" {
+  // Duplicate exact route
+  #assert rp_rule_shadowed("GET", "/api/auth/me", false, "GET", "/api/auth/me", false);
+  // Wildcard method covers specific method
+  #assert rp_rule_shadowed("*", "/api/auth/me", false, "POST", "/api/auth/me", false);
+  // GET covers HEAD
+  #assert rp_rule_shadowed("GET", "/up", false, "HEAD", "/up", false);
+  // Prefix before specific route shadows it
+  #assert rp_rule_shadowed("*", "/api/admin/", true, "POST", "/api/admin/flags", false);
+  #assert rp_rule_shadowed("GET", "/api/worlds/", true, "GET", "/api/worlds/abc", false);
+  // Exact route before prefix on same or broader path does NOT shadow the prefix
+  #assert !rp_rule_shadowed("POST", "/api/admin/flags", false, "*", "/api/admin/", true);
+  #assert !rp_rule_shadowed("GET", "/api/worlds/", false, "GET", "/api/worlds/", true);
+  // Different methods do not shadow
+  #assert !rp_rule_shadowed("GET", "/api/agents", false, "POST", "/api/agents", false);
+  // Unrelated prefixes do not shadow
+  #assert !rp_rule_shadowed("GET", "/api/auth/", true, "GET", "/api/agents", false);
+  #assert !rp_rule_shadowed("GET", "/api/a", false, "GET", "/api/ab", false);
+}
+
+#test "contains handles empty, single-char, exact-length, prefix, suffix, and miss cases" {
+  #assert rp_contains("abc", "");
+  #assert !rp_contains("ab", "abc");
+  #assert rp_contains("abc", "abc");
+  #assert rp_contains("abc", "a");
+  #assert !rp_contains("bc", "a");
+  #assert rp_contains("abc", "bc");
+  #assert !rp_contains("abc", "xc");
+  #assert !rp_contains("abc", "bd");
+}

@@ -87,6 +87,8 @@ typedef struct { const char *method, *path; bool prefix; int rule; const char *n
 #define S(m, p, pre, scope, note) {m, p, pre, AP_SCOPE, note, scope}   // an agent whose grant has this scope (AG_* bit number)
 // First match wins: specific paths before their families. "*" is any method.
 static const auth_rule RULES[] = {
+  R("GET",  "/up", false, AP_PUBLIC, "fast liveness probe"),
+  R("GET",  "/api/openapi.json", false, AP_PUBLIC, "OpenAPI 3.1 route manifest"),
   R("GET",  "/api/playtest/health", false, AP_PUBLIC, "a database round trip"),
   R("GET",  "/api/playtest/old-link", false, AP_PUBLIC, "the old playtest's links move"),
   // ---- our own authentication (this file)
@@ -311,6 +313,83 @@ static const auth_rule *rule_for(const char *method, const char *path) {
 void auth_print_rules(FILE *out) {
   for (size_t i = 0; i < sizeof RULES / sizeof RULES[0]; i++)
     fprintf(out, "%s\t%s%s\t%s\t%s\n", RULES[i].method, RULES[i].path, RULES[i].prefix ? "*" : "", rule_name(RULES[i].rule), RULES[i].note);
+}
+static void fprint_json_str(FILE *out, const char *s) {
+  fputc('"', out);
+  for (const unsigned char *p = (const unsigned char *)(s ? s : ""); *p; p++) {
+    if (*p == '"' || *p == '\\') { fputc('\\', out); fputc(*p, out); }
+    else if (*p == '\n') fputs("\\n", out);
+    else if (*p == '\r') fputs("\\r", out);
+    else if (*p == '\t') fputs("\\t", out);
+    else if (*p < 0x20) fprintf(out, "\\u%04x", *p);
+    else fputc(*p, out);
+  }
+  fputc('"', out);
+}
+void auth_print_routes_json(FILE *out) {
+  fputs("[\n", out);
+  for (size_t i = 0; i < sizeof RULES / sizeof RULES[0]; i++) {
+    const auth_rule *r = &RULES[i];
+    fputs("  {\"method\":", out); fprint_json_str(out, r->method);
+    fputs(",\"path\":", out); fprint_json_str(out, r->path);
+    fprintf(out, ",\"prefix\":%s,\"access\":", r->prefix ? "true" : "false");
+    fprint_json_str(out, rule_name(r->rule));
+    fprintf(out, ",\"scope\":%d,\"note\":", r->scope);
+    fprint_json_str(out, r->note);
+    fputs(i + 1 < sizeof RULES / sizeof RULES[0] ? "},\n" : "}\n", out);
+  }
+  fputs("]\n", out);
+}
+void auth_print_openapi(FILE *out) {
+  fputs("{\"openapi\":\"3.1.0\",\"info\":{\"title\":\"OpenAgents Coax Web API\",\"version\":\"1.0.0\"},\"paths\":{", out);
+  size_t n = sizeof RULES / sizeof RULES[0];
+  bool first_path = true;
+  for (size_t i = 0; i < n; i++) {
+    char key_i[256];
+    snprintf(key_i, sizeof key_i, "%s%s", RULES[i].path, RULES[i].prefix ? "{rest}" : "");
+    bool seen = false;
+    for (size_t k = 0; k < i; k++) {
+      char key_k[256];
+      snprintf(key_k, sizeof key_k, "%s%s", RULES[k].path, RULES[k].prefix ? "{rest}" : "");
+      if (!strcmp(key_i, key_k)) { seen = true; break; }
+    }
+    if (seen) continue;
+    if (!first_path) fputc(',', out);
+    first_path = false;
+    fprint_json_str(out, key_i);
+    fputs(":{", out);
+    bool first_m = true;
+    for (size_t j = i; j < n; j++) {
+      char key_j[256];
+      snprintf(key_j, sizeof key_j, "%s%s", RULES[j].path, RULES[j].prefix ? "{rest}" : "");
+      if (strcmp(key_i, key_j)) continue;
+      const char *m = !strcmp(RULES[j].method, "*") ? "post"
+                    : !strcmp(RULES[j].method, "GET") ? "get"
+                    : !strcmp(RULES[j].method, "POST") ? "post"
+                    : !strcmp(RULES[j].method, "PUT") ? "put"
+                    : !strcmp(RULES[j].method, "DELETE") ? "delete" : "get";
+      if (!first_m) fputc(',', out);
+      first_m = false;
+      fprint_json_str(out, m);
+      fputs(":{\"summary\":", out); fprint_json_str(out, RULES[j].note);
+      fputs(",\"x-oa-access\":", out); fprint_json_str(out, rule_name(RULES[j].rule));
+      fputs(",\"x-oa-method\":", out); fprint_json_str(out, RULES[j].method);
+      fputs(",\"responses\":{\"200\":{\"description\":\"OK\"}}}", out);
+    }
+    fputc('}', out);
+  }
+  fputs("}}\n", out);
+}
+bool auth_openapi_route(const request *q) {
+  if (strcmp(q->path, "/api/openapi.json") || (strcmp(q->method, "GET") && strcmp(q->method, "HEAD"))) return false;
+  char *buf = NULL; size_t len = 0;
+  FILE *fp = open_memstream(&buf, &len);
+  if (!fp) { api_error(q->fd, 500, "out of memory"); return true; }
+  auth_print_openapi(fp);
+  fclose(fp);
+  api_respond(q->fd, 200, "application/json", NULL, buf ? buf : "{}", len);
+  free(buf);
+  return true;
 }
 // The rule a path would get (api --rule METHOD PATH), for the route check.
 const char *auth_rule_of(const char *method, const char *path) {

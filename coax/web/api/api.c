@@ -50,6 +50,7 @@
 //   private human packs            /api/metaverse/packs/<name>, /api/metaverse/packs/fetch/<sid>, per-session keys; /api/verse/packs/ kept (verse_packs.c)
 #include "api.h"
 #include "error-wire.generated.h"
+#include "route-policy.generated.h"
 
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -408,6 +409,11 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   route_at = "auth_gate";
   if (auth_gate(&q)) return;
   route_at = "api";   // the route's rule (auth.c); a route with no rule is 404
+  if (rp_is_liveness((coax_string){q.method, (int64_t)strlen(q.method)}, (coax_string){q.path, (int64_t)strlen(q.path)})) {
+    api_json(cl->fd, 200, "{\"status\":\"ok\"}");
+    return;
+  }
+  ROUTE(auth_openapi_route);
   if (!strcmp(q.path, "/api/playtest/health")) { health(cl->fd); return; }
   if (!strcmp(q.path, "/api/playtest/fault/slow")) { fault_slow(&q); return; }
   ROUTE(auth_api_route);
@@ -544,6 +550,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--migrations") && i + 1 < argc) { snprintf(migrations_dir, sizeof migrations_dir, "%s", argv[++i]); migrations = true; }
     else if (!strcmp(argv[i], "--migrate-only")) migrate_only = true;
     else if (!strcmp(argv[i], "--rules")) { auth_print_rules(stdout); return 0; }    // every route's rule
+    else if (!strcmp(argv[i], "--routes-json")) { auth_print_routes_json(stdout); return 0; }
+    else if (!strcmp(argv[i], "--openapi")) { auth_print_openapi(stdout); return 0; }
     else if (!strcmp(argv[i], "--limits")) { auth_print_limits(stdout); lnaddr_print_limits(stdout); makers_print_limits(stdout); npc_print_limits(stdout); rooms_print_limits(stdout); return 0; }  // docs/limits/index.md
     else if (!strcmp(argv[i], "--rule") && i + 2 < argc) { const char *r = auth_rule_of(argv[i + 1], argv[i + 2]); printf("%s\n", r ? r : "none"); return r ? 0 : 1; }
   }

@@ -17,7 +17,7 @@ API_C="api.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c
   lnaddr.c lnaddr-unit.c agents.c agent-wire-unit.c agent-attest-unit.c auth-recover.c auth-life.c
   auth-recover-crypto-unit.c auth-device.c auth-device-crypto-unit.c push.c passkeys.c passkey-verify-unit.c
   wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c worlds.c splice-world-unit.c scripts.c script-job-run.c script-store-unit.c"
-API_COAX="mesh-policy caller-policy nip98 npc-personas anime-director-policy seat-policy progress-policy item-policy moderation-policy
+API_COAX="mesh-policy caller-policy route-policy nip98 npc-personas anime-director-policy seat-policy progress-policy item-policy moderation-policy
   character-policy worldbuilder-policy auth-policy chat-history-wire auth-recover-policy auth-life-policy
   auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push seat-wire jobs-wire email-wire packs-wire world-policy error-wire mesh-wire inference-upstream-policy
   account-chat-library-wire auth-identity-policy auth-identity-wire account-settings-wire auth-wire auth-recover-wire auth-life-wire auth-device-wire passkeys-wire chat-wire player-wire rooms-wire lnaddr-wire makers-wire worldbuilder-wire"

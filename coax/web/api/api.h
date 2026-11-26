@@ -216,6 +216,9 @@ const auth_principal *auth_principal_of(const request *q);   // NULL: the creden
 const char *auth_extra_headers(void);     // a rotated or cleared session cookie, for this answer
 bool auth_api_route(const request *q);    // /api/auth/{me,limits,email/*,nostr*,phone/*,refresh,logout*,sessions*,freeze}
 void auth_print_rules(FILE *out);         // api --rules
+void auth_print_routes_json(FILE *out);   // api --routes-json
+void auth_print_openapi(FILE *out);       // api --openapi
+bool auth_openapi_route(const request *q); // GET /api/openapi.json
 void auth_print_limits(FILE *out);        // api --limits
 const char *auth_rule_of(const char *method, const char *path);   // api --rule METHOD PATH
 bool auth_login_key_redirect(const request *q, PGconn *db, const char *pk, const char *location);
