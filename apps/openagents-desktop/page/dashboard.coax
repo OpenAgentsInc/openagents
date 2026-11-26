@@ -116,14 +116,24 @@ cp_dash_multiline_tail :: (text: string, out: [] u8) -> int {
   start := 0;
   if end > out.count {
     start = cp_dash_utf8_start(text, end - out.count);
-    // Prefer starting on a clean word or line boundary if close.
-    probe := start;
-    lim := start + 28;
-    if lim > end { lim = end; }
-    while probe < lim && text[probe] != 10 && text[probe] != 32 { probe += 1; }
-    if probe < lim {
-      while probe < end && (text[probe] == 32 || text[probe] == 10 || text[probe] == 13) { probe += 1; }
-      if probe < end { start = probe; }
+    // Prefer starting on a clean line boundary if one is nearby so Markdown spans aren't split mid-token.
+    nl_probe := start;
+    nl_lim := start + 80;
+    if nl_lim > end { nl_lim = end; }
+    while nl_probe < nl_lim && text[nl_probe] != 10 { nl_probe += 1; }
+    if nl_probe < nl_lim {
+      while nl_probe < end && (text[nl_probe] == 32 || text[nl_probe] == 10 || text[nl_probe] == 13) { nl_probe += 1; }
+      if nl_probe < end { start = nl_probe; }
+    } else {
+      // Otherwise prefer starting on a clean word boundary if close.
+      probe := start;
+      lim := start + 28;
+      if lim > end { lim = end; }
+      while probe < lim && text[probe] != 10 && text[probe] != 32 { probe += 1; }
+      if probe < lim {
+        while probe < end && (text[probe] == 32 || text[probe] == 10 || text[probe] == 13) { probe += 1; }
+        if probe < end { start = probe; }
+      }
     }
   }
   // Skip leading whitespace.
@@ -551,6 +561,121 @@ cp_dash_count_lines :: (f: [] UiFrame, text: string, w: f32, face: int, cap: int
   return ifx n > cap then cap else n;
 }
 
+// Skin for compact Markdown rendering inside Dashboard card thinking streams.
+cp_dash_thought_skin :: (k: UiSkin) -> UiSkin {
+  ns := k;
+  ns.ink = k.muted;
+  ns.body.face = k.small.face;
+  ns.body.line = k.small.line + 2.0f32;
+  ns.strong.face = FONT_CHIP;
+  ns.code.face = k.mono_small.face;
+  ns.mono.face = k.mono_small.face;
+  ns.md.line = k.small.line + 2.0f32;
+  ns.md.block_line = k.small.line + 2.0f32;
+  ns.md.block_gap = 6.0f32;
+  ns.md.item_gap = 3.0f32;
+  ns.md.code_pad_x = 3.0f32;
+  ns.md.code_inset_y = 1.0f32;
+  ns.md.code_radius = 4.0f32;
+  ns.md.block_header = 0.0f32;
+  ns.md.block_pad_x = 8.0f32;
+  ns.md.block_pad_y = 6.0f32;
+  ns.md.block_radius = 6.0f32;
+  ns.md.action = 0.0f32;
+  ns.md.link_paths = false;
+  ns.md.link_urls = false;
+  ns.accent = rgba_mix(k.muted, k.ink, 0.30f32);
+  ns.code_wash = opacity(k.code_wash, 0.70f32);
+  return ns;
+}
+
+// Parse and draw Markdown-formatted text into a bounded vertical region of max_h,
+// pinning to the tail (latest blocks/lines) when the rendered content exceeds max_h.
+// Falls back to plain wrapped text if the frame's MdDoc is full.
+// Returns the y position after the last rendered content.
+cp_dash_draw_md :: (s: [] CoderPage, f: [] UiFrame, text: string, x: f32, y: f32, w: f32, max_h: f32, ns: UiSkin) -> f32 {
+  if text.count == 0 || max_h < ns.md.line || w < 24.0f32 { return y; }
+  sh := f[0].sheet; m := f[0].m;
+  at := s[0].think_at;
+  doc := s[0].think[at..<at + 1];
+  b0 := doc[0].nb;
+  nb := md_parse(doc, text, 0);
+  if nb < 1 {
+    max_lines := cast(int) (max_h / ns.md.line);
+    if max_lines < 1 { return y; }
+    return cp_dash_draw_wrapped(f, text, x, y, w, max_lines, ns.body.face, ns.body.line - 2.0f32, ns.ink, true);
+  }
+  gap := ns.md.block_gap;
+  lh := ns.md.line;
+  bh: [64] f32;
+  shown_nb := ifx nb > bh.count then bh.count else nb;
+  start_b := b0 + (nb - shown_nb);
+  total: f32 = 0.0f32;
+  for i: 0..<shown_nb {
+    bh[i] = markdown_height(sh, m, ns, doc, start_b + i, w);
+    if i > 0 { total += gap; }
+    total += bh[i];
+  }
+  if total <= max_h + 0.5f32 {
+    cy := y;
+    for i: 0..<shown_nb {
+      if i > 0 { cy += gap; }
+      cy += markdown_block(sh, m, ns, doc, start_b + i, x, cy, w);
+    }
+    return cy;
+  }
+  // Overflow: include as many whole tail blocks as fit inside max_h.
+  used: f32 = 0.0f32;
+  first := shown_nb;
+  k := shown_nb - 1;
+  while k >= 0 {
+    need := bh[k] + (ifx first < shown_nb then gap else 0.0f32);
+    if used + need <= max_h + 0.5f32 {
+      used += need;
+      first = k;
+      k -= 1;
+    } else {
+      break;
+    }
+  }
+  cy := y;
+  if first > 0 {
+    rem := max_h - used - (ifx first < shown_nb then gap else 0.0f32);
+    pb := start_b + first - 1;
+    if rem >= lh - 0.5f32 && doc[0].blocks[pb].kind == MB_PARA {
+      fit_lines := cast(int) ((rem + 0.5f32) / lh);
+      if fit_lines >= 1 {
+        pt := md_block_text(doc, pb);
+        pr := md_block_runs(doc, pb);
+        faces := uiskin_faces(ns);
+        lines: [64] TextLine;
+        nl := text_wrap(m, faces, pt, pr, w, lines[..]);
+        if nl > 0 {
+          take := ifx nl > fit_lines then fit_lines else nl;
+          from_l := nl - take;
+          for q: 0..<take {
+            lq := from_l + q;
+            markdown_line(sh, m, ns, faces, pt, pr, lines[lq].from, lines[lq].to, x, cy, lh, ns.ink, lq + 1 == nl);
+            cy += lh;
+          }
+          if first < shown_nb { cy += gap; }
+        }
+      }
+    } else if first == shown_nb {
+      // Single non-paragraph tail block taller than max_h: clip cleanly pinned to bottom.
+      uiframe_clip(f, x - 2.0f32, y, x + w + 2.0f32, y + max_h);
+      _ := markdown_block(sh, m, ns, doc, pb, x, y + max_h - bh[shown_nb - 1], w);
+      uiframe_unclip(f);
+      return y + max_h;
+    }
+  }
+  for i: first..<shown_nb {
+    if i > first { cy += gap; }
+    cy += markdown_block(sh, m, ns, doc, start_b + i, x, cy, w);
+  }
+  return cy;
+}
+
 // Render one active chat as a live mini-window card.
 cp_dash_card :: (s: [] CoderPage, f: [] UiFrame, idx: int, items: [] CpDashItem, use_host: bool, cx: f32, cy: f32, cw: f32, ch: f32) {
   k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m;
@@ -726,21 +851,22 @@ cp_dash_card :: (s: [] CoderPage, f: [] UiFrame, idx: int, items: [] CpDashItem,
   if rem_h > k.small.line && (has_thought || has_msg) {
     small_step := k.small.line + 2.0f32;
     body_step := k.body.line + 2.0f32;
+    t_ns := cp_dash_thought_skin(k);
 
     if has_thought && has_msg {
       t_budget := rem_h * 0.36f32;
       t_head_h := k.small.line + 3.0f32;
-      t_lines := cast(int) ((t_budget - t_head_h - 8.0f32) / small_step);
-      if t_lines < 2 { t_lines = 2; }
-      if t_lines > 5 { t_lines = 5; }
-      t_text := cast(string) items[idx].thought[0..<items[idx].thought_n];
-      t_need := cp_dash_count_lines(f, t_text, iw - 12.0f32, k.small.face, t_lines);
-      if t_need < t_lines { t_lines = t_need; }
-      if t_lines > 0 && hy + t_head_h + cast(f32) t_lines * small_step + 24.0f32 < body_bottom {
+      t_max_h := t_budget - t_head_h - 8.0f32;
+      if t_max_h < 2.0f32 * small_step { t_max_h = 2.0f32 * small_step; }
+      if t_max_h > 5.0f32 * small_step { t_max_h = 5.0f32 * small_step; }
+      avail_t := body_bottom - hy - t_head_h - 24.0f32;
+      if t_max_h > avail_t { t_max_h = avail_t; }
+      if t_max_h >= small_step {
         t_y0 := hy;
         _ := sheet_text(sh, m, -1, ix + 10.0f32, hy, k.small.line, k.small.face, k.faint, "Thinking");
         hy += t_head_h;
-        hy = cp_dash_draw_wrapped(f, t_text, ix + 10.0f32, hy, iw - 12.0f32, t_lines, k.small.face, k.small.line, k.muted, true);
+        t_text := cast(string) items[idx].thought[0..<items[idx].thought_n];
+        hy = cp_dash_draw_md(s, f, t_text, ix + 10.0f32, hy, iw - 12.0f32, t_max_h, t_ns);
         sheet_fill(sh, ix + 1.0f32, t_y0 + 2.0f32, 2.0f32, hy - t_y0 - 4.0f32, 1.0f32, k.hairline);
         hy += 10.0f32;
       }
@@ -753,13 +879,13 @@ cp_dash_card :: (s: [] CoderPage, f: [] UiFrame, idx: int, items: [] CpDashItem,
       }
     } else if has_thought {
       t_head_h := k.small.line + 4.0f32;
-      t_lines := cast(int) ((rem_h - t_head_h) / small_step);
-      if t_lines >= 1 {
+      t_max_h := rem_h - t_head_h;
+      if t_max_h >= small_step {
         t_y0 := hy;
         _ := sheet_text(sh, m, -1, ix + 10.0f32, hy, k.small.line, k.small.face, k.faint, "Thinking");
         hy += t_head_h;
         t_text := cast(string) items[idx].thought[0..<items[idx].thought_n];
-        hy = cp_dash_draw_wrapped(f, t_text, ix + 10.0f32, hy, iw - 12.0f32, t_lines, k.small.face, k.small.line, k.muted, true);
+        hy = cp_dash_draw_md(s, f, t_text, ix + 10.0f32, hy, iw - 12.0f32, t_max_h, t_ns);
         sheet_fill(sh, ix + 1.0f32, t_y0 + 2.0f32, 2.0f32, hy - t_y0 - 4.0f32, 1.0f32, rgba_mix(k.hairline, k.accent, 0.35f32));
       }
     } else if has_msg {
@@ -779,6 +905,8 @@ cp_dash_card :: (s: [] CoderPage, f: [] UiFrame, idx: int, items: [] CpDashItem,
 // Render the Dashboard home screen using the full available canvas with adaptive live chat windows.
 cp_dashboard :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32) {
   k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m;
+  at := s[0].think_at;
+  s[0].think[at].n = 0; s[0].think[at].nb = 0; s[0].think[at].nr = 0; s[0].think[at].ni = 0; s[0].think[at].nlink = 0;
   avail_w := w - left;
   pad_x := ifx avail_w >= 720.0f32 then 28.0f32 else 16.0f32;
   cw := avail_w - 2.0f32 * pad_x;

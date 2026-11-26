@@ -160,3 +160,59 @@ cp_dash_has_text :: (s: [] CoderPage, needle: string) -> bool {
   #assert cp_dash_has_text(s, "Running swiftc");
   #assert cp_dash_has_text(s, "apps · main");
 }
+
+cp_dash_has_text_face :: (s: [] CoderPage, needle: string, face: int) -> bool {
+  sh := surface_sheet(s[0].surface[..]);
+  for i: 0..<sh.no {
+    if sh.over[i].kind == PRIM_TEXT && sh.over[i].id == face && cp_contains(sh.over[i].text, needle) { return true; }
+  }
+  return false;
+}
+
+#test "dashboard: thinking stream renders Markdown bold, inline code, lists, and tail-pins cleanly" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  coder_page_sb_now_ms(s, 1763600125000);
+
+  fb: [1024] u8; fn := 0;
+  fn = el_put(fb[..], fn, "c1\tResolve open issues\t1763600000000\t125\tflawed\t\tmain\tThinking\t7\t40\tContinue working\t");
+  // Encode multiline markdown thought with 0x1F line separators: bold heading, inline code, and bullet item.
+  fn = el_put(fb[..], fn, "**Testing Worker Integration**");
+  fb[fn] = 31; fn += 1; fb[fn] = 31; fn += 1;
+  fn = el_put(fb[..], fn, "Checking `Sandbox.worker_env` filters:");
+  fb[fn] = 31; fn += 1;
+  fn = el_put(fb[..], fn, "- verify `oa-worker` launch");
+  fn = el_put(fb[..], fn, "\t+Read worker.coax\n");
+  coder_page_dashboard_items(s, cast(string) fb[0..<fn]);
+  coder_page_dashboard_open(s, true);
+
+  f: [1] UiFrame;
+  #assert cp_dash_test_frame(s, f[..], 0.0f32);
+  // Raw markdown markers must be stripped; bold and inline code use their styled faces.
+  #assert !cp_dash_has_text(s, "**Testing Worker Integration**");
+  #assert !cp_dash_has_text(s, "`Sandbox.worker_env`");
+  #assert cp_dash_has_text_face(s, "Testing Worker Integration", FONT_CHIP);
+  #assert cp_dash_has_text_face(s, "Sandbox.worker_env", FONT_MONO_12);
+  #assert cp_dash_has_text_face(s, "oa-worker", FONT_MONO_12);
+  #assert cp_dash_has_text(s, "verify ");
+
+  // Also verify tail-pinning when thinking coexists with a live reply and exceeds the compact budget.
+  fb2: [1024] u8; fn2 := 0;
+  fn2 = el_put(fb2[..], fn2, "c2\tDense card\t1763600000000\t60\tflawed\tLive reply text here\tmain\tResponding\t3\t12\tFix it\t");
+  fn2 = el_put(fb2[..], fn2, "**Early Step**");
+  fb2[fn2] = 31; fn2 += 1; fb2[fn2] = 31; fn2 += 1;
+  fn2 = el_put(fb2[..], fn2, "First paragraph of older reasoning that should scroll off when compact.");
+  fb2[fn2] = 31; fn2 += 1; fb2[fn2] = 31; fn2 += 1;
+  fn2 = el_put(fb2[..], fn2, "Second paragraph of middle reasoning.");
+  fb2[fn2] = 31; fn2 += 1; fb2[fn2] = 31; fn2 += 1;
+  fn2 = el_put(fb2[..], fn2, "**Latest Step**");
+  fb2[fn2] = 31; fn2 += 1; fb2[fn2] = 31; fn2 += 1;
+  fn2 = el_put(fb2[..], fn2, "Checking `final_check` now.");
+  fn2 = el_put(fb2[..], fn2, "\t+Read a.coax\n");
+  coder_page_dashboard_items(s, cast(string) fb2[0..<fn2]);
+  #assert cp_dash_test_frame(s, f[..], 0.02f32);
+  #assert !cp_dash_has_text(s, "**Latest Step**");
+  #assert cp_dash_has_text_face(s, "Latest Step", FONT_CHIP);
+  #assert cp_dash_has_text_face(s, "final_check", FONT_MONO_12);
+  #assert cp_dash_has_text(s, "Live reply text here");
+}
