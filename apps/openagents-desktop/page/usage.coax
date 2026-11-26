@@ -91,6 +91,22 @@ CpUsageState :: struct {
   total_out: int;
   total_cost_micros: int;
   skipped_index_dbs: int;
+  // Authoritative OpenAgents Cloud spend & credit synced from GET /api/v1/inference/usage (#14072).
+  cloud_credit_msat: int;
+  cloud_today_micros: int;
+  cloud_month_micros: int;
+  cloud_total_micros: int;
+  cloud_decision_micros: int;
+  cloud_decision_calls: int;
+  cloud_in_tokens: int;
+  cloud_cached_tokens: int;
+  cloud_out_tokens: int;
+  cloud_calls: int;
+  cloud_synced: bool;
+  // Free on-device local compute counters (Inkling 2 Mini / Psionic Metal; always $0.00).
+  local_chats: int;
+  local_in_tokens: int;
+  local_out_tokens: int;
   pool_enabled: bool;
   recovery_enabled: bool;
   recovery_fired: bool;
@@ -400,9 +416,43 @@ cp_usage_price_set :: (s: [] CoderPage, model: string, in_micros_per_m: int, out
   return true;
 }
 
+// True when `model` is a local on-device model (Inkling 2 Mini / Psionic Metal / Hybrid Executor).
+// Local compute is ALWAYS $0.00 and never contributes to billed USD spend (#14072).
+cp_usage_is_local_model :: (model: string) -> bool {
+  m := model;
+  if cp_starts_ci(m, 0, "oa:") { m = cast(string) m[3..<m.count]; }
+  else if cp_starts_ci(m, 0, "flawed:") { m = cast(string) m[7..<m.count]; }
+  if cp_starts_ci(m, 0, "inkling") || cp_starts_ci(m, 0, "hybrid-exec") { return true; }
+  return (m.count == 5 && cp_starts_ci(m, 0, "local"));
+}
+
+// Updates authoritative OpenAgents Cloud spend & credit synced from GET /api/v1/inference/usage (#14072).
+cp_usage_cloud_set :: (
+  s: [] CoderPage,
+  credit_msat: int, today_micros: int, month_micros: int, total_micros: int,
+  decision_micros: int, decision_calls: int,
+  in_tok: int, cached_tok: int, out_tok: int, calls: int, synced: bool
+) {
+  if s.count < 1 { return; }
+  u := s[0].usage[..];
+  u[0].cloud_credit_msat = credit_msat;
+  u[0].cloud_today_micros = ifx today_micros > 0 then today_micros else 0;
+  u[0].cloud_month_micros = ifx month_micros > 0 then month_micros else 0;
+  u[0].cloud_total_micros = ifx total_micros > 0 then total_micros else 0;
+  u[0].cloud_decision_micros = ifx decision_micros > 0 then decision_micros else 0;
+  u[0].cloud_decision_calls = ifx decision_calls > 0 then decision_calls else 0;
+  u[0].cloud_in_tokens = ifx in_tok > 0 then in_tok else 0;
+  u[0].cloud_cached_tokens = ifx cached_tok > 0 then cached_tok else 0;
+  u[0].cloud_out_tokens = ifx out_tok > 0 then out_tok else 0;
+  u[0].cloud_calls = ifx calls > 0 then calls else 0;
+  u[0].cloud_synced = synced;
+}
+
 // Computes microdollars for a model's tokens using user price overrides when present,
 // otherwise returning `fallback_micros` (recorded cost from chat history).
+// Local models ALWAYS return 0 regardless of overrides or fallback_micros (#14072).
 cp_usage_calc_cost_micros :: (s: [] CoderPage, model: string, in_tok: int, cached_tok: int, out_tok: int, fallback_micros: int) -> int {
+  if cp_usage_is_local_model(model) { return 0; }
   if s.count < 1 { return ifx fallback_micros > 0 then fallback_micros else 0; }
   u := s[0].usage[..];
   for i: 0..<u[0].nprices {
@@ -427,10 +477,12 @@ cp_usage_spend_reset :: (s: [] CoderPage) {
   u := s[0].usage[..];
   for i: 0..<CP_US_PROV_COUNT { u[0].spend[i] = CpProviderSpend.{}; }
   u[0].total_chats = 0; u[0].total_in = 0; u[0].total_cached = 0; u[0].total_out = 0; u[0].total_cost_micros = 0;
+  u[0].local_chats = 0; u[0].local_in_tokens = 0; u[0].local_out_tokens = 0;
   u[0].skipped_index_dbs = 0;
 }
 
 // Adds one local session/chat record to aggregate spend. Skips Antigravity index DBs (#13838).
+// Local on-device models increment free Local Compute counters and NEVER add to billed USD spend (#14072).
 cp_usage_spend_add :: (s: [] CoderPage, path: string, provider_in: int, model: string, in_tok: int, cached_tok: int, out_tok: int, fallback_micros: int) -> bool {
   if s.count < 1 { return false; }
   u := s[0].usage[..];
@@ -438,10 +490,16 @@ cp_usage_spend_add :: (s: [] CoderPage, path: string, provider_in: int, model: s
     u[0].skipped_index_dbs += 1;
     return false;
   }
-  prov := ifx provider_in >= 0 && provider_in < CP_US_PROV_COUNT then provider_in else cp_usage_provider_for_model(model);
   in_t := ifx in_tok > 0 then in_tok else 0;
   ca_t := ifx cached_tok > 0 then cached_tok else 0;
   ou_t := ifx out_tok > 0 then out_tok else 0;
+  if cp_usage_is_local_model(model) {
+    u[0].local_chats += 1;
+    u[0].local_in_tokens += in_t;
+    u[0].local_out_tokens += ou_t;
+    return true;
+  }
+  prov := ifx provider_in >= 0 && provider_in < CP_US_PROV_COUNT then provider_in else cp_usage_provider_for_model(model);
   cost := cp_usage_calc_cost_micros(s, model, in_t, ca_t, ou_t, fallback_micros);
   u[0].spend[prov].chats += 1;
   u[0].spend[prov].in_tokens += in_t;
@@ -588,11 +646,18 @@ cp_usage_popover :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, box_y: f32
   }
   // Aggregate spend line
   cb: [32] u8; tkb: [32] u8; spb: [128] u8;
-  spn := el_put(spb[..], 0, "Local spend: ");
-  spn = el_put(spb[..], spn, ifx u[0].total_cost_micros > 0 then cp_cost(cb[..], u[0].total_cost_micros) else "$0.00");
-  spn = el_put(spb[..], spn, " · ");
-  spn = el_put(spb[..], spn, cp_tokens(tkb[..], u[0].total_in + u[0].total_cached + u[0].total_out));
-  spn = el_put(spb[..], spn, " tokens");
+  spn := 0;
+  if u[0].cloud_synced {
+    spn = el_put(spb[..], 0, "Cloud: ");
+    spn = el_put(spb[..], spn, ifx u[0].cloud_total_micros > 0 then cp_cost(cb[..], u[0].cloud_total_micros) else "$0.00");
+    spn = el_put(spb[..], spn, " · Local: $0.00 (Free)");
+  } else {
+    spn = el_put(spb[..], 0, "Billed spend: ");
+    spn = el_put(spb[..], spn, ifx u[0].total_cost_micros > 0 then cp_cost(cb[..], u[0].total_cost_micros) else "$0.00");
+    spn = el_put(spb[..], spn, " · ");
+    spn = el_put(spb[..], spn, cp_tokens(tkb[..], u[0].total_in + u[0].total_cached + u[0].total_out));
+    spn = el_put(spb[..], spn, " tokens");
+  }
   _ := sheet_text(sh, f[0].m, -1, px + pad, cy + 4.0f32, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, sheet_pool(sh, cast(string) spb[0..<spn]), tw));
   cy += spend_h;
   // Footer buttons: Refresh and Open Usage…
@@ -610,18 +675,71 @@ cp_settings_usage :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -
   k := f[0].skin; t := k.set; sh := f[0].sheet;
   u := s[0].usage[..];
   y := y0;
-  y += set_page_head(f, "set.title", x, y, w, "Usage", "Live quota windows, local token & USD spend, model price overrides, multi-account pooling, and limit recovery.") + t.block_gap;
+  y += set_page_head(f, "set.title", x, y, w, "Usage", "OpenAgents Cloud retail usage & credit, free $0.00 on-device compute, and optional delegated local harness quotas.") + t.block_gap;
 
-  // Section 1: Quota Limits
-  y += set_section_head(f, "set.usage.quota.head", x, y, w, "Quota Limits", "Live plan windows from Claude, Codex, and Antigravity. Tokens are never logged or shown.") + t.section_gap;
+  // Section 1: OpenAgents Cloud Usage & Credit (#14072)
+  y += set_section_head(f, "set.usage.cloud.head", x, y, w, "OpenAgents Cloud Usage & Credit", "Authoritative OpenAgents retail spend (including Gemini 4 & decision routing) synced from /api/v1/inference/usage.") + t.section_gap;
   ref_btn := ifx u[0].refreshing then "Refreshing…" else "Refresh now";
-  q_top: [1] SetRow;
-  q_top[0] = SetRow.{id = "set.usage.refresh", name = "Quota probe status",
-    desc = "Probes local Claude, Codex, and Antigravity sessions using shared Coax quota probes.",
-    value = ifx u[0].refreshing then "Probing…" else ifx cp_usage_has_observed(s) then "Live" else "Idle",
-    kind = SET_ROW_BUTTON, button = ref_btn, action = CP_SET_ACT, state = ifx u[0].refreshing then EL_S_DISABLED else 0};
-  y += cp_set_group(s, f, "set.usage.refresh.group", x, y, w, q_top[..]) + t.section_gap;
+  crows: [4] SetRow;
+  cl_cb: [32] u8; cl_td: [32] u8; cl_ib: [32] u8; cl_ob: [32] u8; cl_db: [220] u8;
+  cdn := 0;
+  if u[0].cloud_synced {
+    cdn = el_put(cl_db[..], cdn, "Today ");
+    cdn = el_put(cl_db[..], cdn, ifx u[0].cloud_today_micros > 0 then cp_cost(cl_td[..], u[0].cloud_today_micros) else "$0.00");
+    cdn = el_put(cl_db[..], cdn, " · ");
+    cdn = el_put_i(cl_db[..], cdn, u[0].cloud_calls);
+    cdn = el_put(cl_db[..], cdn, " calls · In ");
+    cdn = el_put(cl_db[..], cdn, cp_tokens(cl_ib[..], u[0].cloud_in_tokens));
+    cdn = el_put(cl_db[..], cdn, " · Out ");
+    cdn = el_put(cl_db[..], cdn, cp_tokens(cl_ob[..], u[0].cloud_out_tokens));
+  } else {
+    cdn = el_put(cl_db[..], 0, "Sign in to OpenAgents and click Refresh now to sync authoritative cloud spend & credit.");
+  }
+  crows[0] = SetRow.{id = "set.usage.cloud.spend", name = "OpenAgents Cloud spend",
+    desc = sheet_pool(sh, cast(string) cl_db[0..<cdn]),
+    value = sheet_pool(sh, ifx u[0].cloud_synced then (ifx u[0].cloud_total_micros > 0 then cp_cost(cl_cb[..], u[0].cloud_total_micros) else "$0.00") else "Not synced"),
+    kind = SET_ROW_PLAIN};
 
+  dc_cb: [32] u8; dc_db: [160] u8;
+  dcn := el_put_i(dc_db[..], 0, u[0].cloud_decision_calls);
+  dcn = el_put(dc_db[..], dcn, " System One routing decisions billed at OpenAgents retail rates.");
+  crows[1] = SetRow.{id = "set.usage.cloud.decisions", name = "Decision router billing",
+    desc = sheet_pool(sh, cast(string) dc_db[0..<dcn]),
+    value = sheet_pool(sh, ifx u[0].cloud_decision_micros > 0 then cp_cost(dc_cb[..], u[0].cloud_decision_micros) else "$0.00"),
+    kind = SET_ROW_PLAIN};
+
+  cr_vb: [48] u8;
+  cr_sats := u[0].cloud_credit_msat / 1000;
+  crn := el_put_i(cr_vb[..], 0, cr_sats);
+  crn = el_put(cr_vb[..], crn, " sats");
+  crows[2] = SetRow.{id = "set.usage.cloud.credit", name = "Prepaid cloud credit",
+    desc = "Remaining OpenAgents Cloud Lightning credit balance (debited in msat per cloud call).",
+    value = sheet_pool(sh, ifx u[0].cloud_synced then cast(string) cr_vb[0..<crn] else "—"),
+    kind = SET_ROW_PLAIN};
+
+  crows[3] = SetRow.{id = "set.usage.refresh", name = "Sync usage & quotas",
+    desc = "Syncs OpenAgents Cloud spend/credit and (when opted in) probes delegated local harness quotas.",
+    value = ifx u[0].refreshing then "Syncing…" else ifx u[0].cloud_synced || cp_usage_has_observed(s) then "Live" else "Idle",
+    kind = SET_ROW_BUTTON, button = ref_btn, action = CP_SET_ACT, state = ifx u[0].refreshing then EL_S_DISABLED else 0};
+  y += cp_set_group(s, f, "set.usage.cloud.group", x, y, w, crows[..]) + t.block_gap;
+
+  // Section 2: Local Compute (Free · $0.00) (#14072)
+  y += set_section_head(f, "set.usage.local.head", x, y, w, "Local Compute (Free · $0.00)", "On-device Inkling 2 Mini / Psionic Metal inference is always free and never billed.") + t.section_gap;
+  l_ib: [32] u8; l_ob: [32] u8; l_db: [160] u8;
+  ldn := el_put_i(l_db[..], 0, u[0].local_chats);
+  ldn = el_put(l_db[..], ldn, " local chats · Input ");
+  ldn = el_put(l_db[..], ldn, cp_tokens(l_ib[..], u[0].local_in_tokens));
+  ldn = el_put(l_db[..], ldn, " · Output ");
+  ldn = el_put(l_db[..], ldn, cp_tokens(l_ob[..], u[0].local_out_tokens));
+  lrows: [1] SetRow;
+  lrows[0] = SetRow.{id = "set.usage.local.compute", name = "On-device Inkling 2 Mini",
+    desc = sheet_pool(sh, cast(string) l_db[0..<ldn]),
+    value = "$0.00 (Free · On-device)",
+    kind = SET_ROW_PLAIN};
+  y += cp_set_group(s, f, "set.usage.local.group", x, y, w, lrows[..]) + t.block_gap;
+
+  // Section 3: Delegated Local Harnesses (opt-in sub-agent quotas)
+  y += set_section_head(f, "set.usage.quota.head", x, y, w, "Delegated Local Harnesses", "Optional sub-agent quota windows for Claude Code, Codex, and Antigravity (enabled via Settings → Agent). Tokens are never logged or shown.") + t.section_gap;
   if u[0].naccts > 0 {
     arows: [CP_US_MAX_ACCTS] SetRow;
     cnt := u[0].naccts;
@@ -656,11 +774,17 @@ cp_settings_usage :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -
         kind = SET_ROW_PLAIN};
     }
     y += cp_set_group(s, f, "set.usage.accts.group", x, y, w, arows[0..<cnt]) + t.block_gap;
+  } else if !cp_flawed_allow_local_harnesses(s) {
+    hrows: [1] SetRow;
+    hrows[0] = SetRow.{id = "set.usage.harnesses.off", name = "External harness delegation is off",
+      desc = "Enable \"Allow delegating to other local harnesses\" in Settings → Agent to probe Claude Code, Codex, and Antigravity sub-agent quotas.",
+      value = "Off (opt-in)", kind = SET_ROW_PLAIN};
+    y += cp_set_group(s, f, "set.usage.accts.group", x, y, w, hrows[..]) + t.block_gap;
   } else {
     drows: [3] SetRow;
-    drows[0] = SetRow.{id = "set.usage.claude", name = "Claude", desc = "No probe data yet. Click Refresh now to check Claude Code quota.", value = "unavailable", kind = SET_ROW_PLAIN};
-    drows[1] = SetRow.{id = "set.usage.codex", name = "Codex", desc = "No probe data yet. Click Refresh now to check Codex quota.", value = "unavailable", kind = SET_ROW_PLAIN};
-    drows[2] = SetRow.{id = "set.usage.agy", name = "Antigravity", desc = "No probe data yet. Click Refresh now to check Antigravity quota.", value = "unavailable", kind = SET_ROW_PLAIN};
+    drows[0] = SetRow.{id = "set.usage.claude", name = "Claude", desc = "No probe data yet. Click Refresh now to check Claude Code sub-agent quota.", value = "unavailable", kind = SET_ROW_PLAIN};
+    drows[1] = SetRow.{id = "set.usage.codex", name = "Codex", desc = "No probe data yet. Click Refresh now to check Codex sub-agent quota.", value = "unavailable", kind = SET_ROW_PLAIN};
+    drows[2] = SetRow.{id = "set.usage.agy", name = "Antigravity", desc = "No probe data yet. Click Refresh now to check Antigravity sub-agent quota.", value = "unavailable", kind = SET_ROW_PLAIN};
     y += cp_set_group(s, f, "set.usage.accts.group", x, y, w, drows[..]) + t.block_gap;
   }
 
@@ -805,4 +929,13 @@ coder_page_usage_total_tokens :: (s: [] CoderPage) -> int #export_c #effects(all
   if s.count < 1 { return 0; }
   u := s[0].usage[0];
   return u.total_in + u.total_cached + u.total_out;
+}
+
+coder_page_usage_cloud_set :: (
+  s: [] CoderPage,
+  credit_msat: int, today_micros: int, month_micros: int, total_micros: int,
+  decision_micros: int, decision_calls: int,
+  in_tok: int, cached_tok: int, out_tok: int, calls: int, synced: bool
+) #export_c #effects(all) {
+  cp_usage_cloud_set(s, credit_msat, today_micros, month_micros, total_micros, decision_micros, decision_calls, in_tok, cached_tok, out_tok, calls, synced);
 }

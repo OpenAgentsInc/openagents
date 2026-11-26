@@ -36,6 +36,20 @@ struct UsageChatRecord {
     var costMicros: Int64
 }
 
+struct UsageCloudSnapshot {
+    var synced: Bool
+    var creditMsat: Int64
+    var todayMicros: Int64
+    var monthMicros: Int64
+    var totalMicros: Int64
+    var decisionMicros: Int64
+    var decisionCalls: Int64
+    var inTokens: Int64
+    var cachedTokens: Int64
+    var outTokens: Int64
+    var calls: Int64
+}
+
 enum UsagePrefs {
     private static let pricesKey = "usagePriceOverrides"
     private static let poolKey = "usagePoolEnabled"
@@ -198,6 +212,69 @@ enum UsageProber {
         }
     }
 
+    /// Fetches authoritative OpenAgents Cloud spend & credit from `GET /api/v1/inference/usage` (#14072).
+    static func fetchCloudUsage() -> UsageCloudSnapshot {
+        let empty = UsageCloudSnapshot(synced: false, creditMsat: 0, todayMicros: 0, monthMicros: 0, totalMicros: 0, decisionMicros: 0, decisionCalls: 0, inTokens: 0, cachedTokens: 0, outTokens: 0, calls: 0)
+        let origin: String
+        var authHeader: String? = nil
+        #if OA_FULL
+        origin = MacAccount.origin
+        if let tok = MacAccount.shared.store.load()?.access, !tok.isEmpty {
+            authHeader = "Bearer \(tok)"
+        } else if let signed = try? MacKey.signer(MacAccount.shared.keyFile)(origin + "/api/v1/inference/usage", "", Date()), !signed.isEmpty {
+            authHeader = signed
+        }
+        #else
+        let rawOrigin = ProcessInfo.processInfo.environment["OPENAGENTS_API_ORIGIN"] ?? ""
+        origin = (rawOrigin == "https://staging.openagents.com" || rawOrigin.hasPrefix("http://127.0.0.1:") || rawOrigin.hasPrefix("http://localhost:")) ? rawOrigin : "https://openagents.com"
+        let loginURL = homeURL.appendingPathComponent(".openagents/desktop/login.json")
+        if let data = try? Data(contentsOf: loginURL),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let tok = obj["access"] as? String, !tok.isEmpty {
+            authHeader = "Bearer \(tok)"
+        }
+        #endif
+        guard let authHeader, let url = URL(string: origin + "/api/v1/inference/usage") else { return empty }
+        var req = URLRequest(url: url, timeoutInterval: 6.0)
+        req.httpMethod = "GET"
+        req.setValue(authHeader, forHTTPHeaderField: "Authorization")
+        let sem = DispatchSemaphore(value: 0)
+        var result = empty
+        URLSession.shared.dataTask(with: req) { data, resp, _ in
+            defer { sem.signal() }
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  let data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            let creditMsat = (obj["credit_msat"] as? NSNumber)?.int64Value ?? 0
+            let today = obj["today"] as? [String: Any] ?? [:]
+            let total = obj["total"] as? [String: Any] ?? [:]
+            let decisions = obj["decisions"] as? [String: Any] ?? [:]
+            let todayMicros = (today["usd_micros"] as? NSNumber)?.int64Value ?? 0
+            let totalMicros = (total["usd_micros"] as? NSNumber)?.int64Value ?? 0
+            let decisionMicros = (decisions["usd_micros"] as? NSNumber)?.int64Value ?? 0
+            let decisionCalls = (decisions["calls"] as? NSNumber)?.int64Value ?? 0
+            let inTok = (total["in_tokens"] as? NSNumber)?.int64Value ?? 0
+            let cachedTok = (total["cached_in_tokens"] as? NSNumber)?.int64Value ?? 0
+            let outTok = (total["out_tokens"] as? NSNumber)?.int64Value ?? 0
+            let calls = (total["calls"] as? NSNumber)?.int64Value ?? 0
+            result = UsageCloudSnapshot(
+                synced: true,
+                creditMsat: creditMsat,
+                todayMicros: todayMicros,
+                monthMicros: totalMicros,
+                totalMicros: totalMicros,
+                decisionMicros: decisionMicros,
+                decisionCalls: decisionCalls,
+                inTokens: inTok,
+                cachedTokens: cachedTok,
+                outTokens: outTok,
+                calls: calls
+            )
+        }.resume()
+        _ = sem.wait(timeout: .now() + 7.0)
+        return result
+    }
+
     /// Scans local stored chats from `CoderStore`, skipping any Antigravity index DBs (`cd_usage_is_index_db`).
     static func scanLocalChats(store: CoderStore) -> [UsageChatRecord] {
         var out: [UsageChatRecord] = []
@@ -244,18 +321,35 @@ extension CoderWindow {
         }
     }
 
-    /// Probes cached Claude/Codex/Antigravity quota state and aggregates local chat spend off the main thread.
+    /// Syncs authoritative OpenAgents Cloud usage/credit, aggregates local chats, and (only when
+    /// opted in via AgentSettings.allowLocalHarnesses) probes external local harness quota caches (#14072).
     func refreshUsageDashboard() {
         cd_usage_refreshing_set(page, 1)
         wake()
         let storeRef = self.store
+        let probeExternalHarnesses = AgentSettings.allowLocalHarnesses
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let accounts = UsageProber.probeAll()
+            let cloud = UsageProber.fetchCloudUsage()
+            let accounts = probeExternalHarnesses ? UsageProber.probeAll() : []
             let records = UsageProber.scanLocalChats(store: storeRef)
             let nowS = Int64(Date().timeIntervalSince1970)
             DispatchQueue.main.async {
                 guard let self, !self.retired else { return }
                 self.applyUsagePriceOverrides()
+                cd_usage_cloud_set(
+                    self.page,
+                    cloud.creditMsat,
+                    cloud.todayMicros,
+                    cloud.monthMicros,
+                    cloud.totalMicros,
+                    cloud.decisionMicros,
+                    cloud.decisionCalls,
+                    cloud.inTokens,
+                    cloud.cachedTokens,
+                    cloud.outTokens,
+                    cloud.calls,
+                    cloud.synced ? 1 : 0
+                )
                 cd_usage_clear(self.page)
                 for a in accounts {
                     let idx = cd_usage_set_account(self.page, a.provider, a.profile, a.plan, a.status, a.why, a.gotMs, a.limited ? 1 : 0, a.limitResetS)

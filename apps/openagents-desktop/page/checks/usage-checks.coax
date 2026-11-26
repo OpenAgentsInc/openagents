@@ -187,3 +187,48 @@
   #assert cp_settings_press(s, CP_SET_ACT, "set.usage.pool.0") && coder_page_action(s) == CP_ASK_USAGE_POOL && !coder_page_usage_pool_enabled(s);
   #assert cp_settings_press(s, CP_SET_ACT, "set.usage.recovery.0") && coder_page_action(s) == CP_ASK_USAGE_RECOVERY && !coder_page_usage_recovery_enabled(s);
 }
+
+#test "usage (#14072): local Inkling models are always $0.00 free and Cloud usage + gated harnesses render" {
+  // Local detector matches all Inkling / on-device variants and never matches cloud models.
+  #assert cp_usage_is_local_model("inkling-2-mini");
+  #assert cp_usage_is_local_model("oa:inkling-2-mini");
+  #assert cp_usage_is_local_model("flawed:inkling-2-mini-uncensored-lora");
+  #assert cp_usage_is_local_model("oa:local");
+  #assert cp_usage_is_local_model("hybrid-exec-v1");
+  #assert !cp_usage_is_local_model("oa:gemini-4-neon");
+  #assert !cp_usage_is_local_model("gemini-4-neon");
+  #assert !cp_usage_is_local_model("claude-sonnet-4");
+
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_usage_price_clear(s);
+  // Even if someone sets an override for inkling-2-mini and passes non-zero fallback cost, local compute is $0.
+  #assert coder_page_usage_price_set(s, "inkling-2-mini", 5000000, 10000000, 0);
+  #assert cp_usage_calc_cost_micros(s, "oa:inkling-2-mini", 500000, 0, 100000, 999999) == 0;
+
+  coder_page_usage_spend_reset(s);
+  #assert coder_page_usage_spend_add(s, "local-1.json", -1, "oa:inkling-2-mini", 120000, 0, 30000, 888888);
+  #assert coder_page_usage_spend_add(s, "local-2.json", -1, "flawed:inkling-2-mini-uncensored-lora", 80000, 0, 20000, 777777);
+  #assert s[0].usage[0].local_chats == 2;
+  #assert s[0].usage[0].local_in_tokens == 200000;
+  #assert s[0].usage[0].local_out_tokens == 50000;
+  #assert coder_page_usage_total_cost_micros(s) == 0;
+  #assert coder_page_usage_total_tokens(s) == 0;
+
+  // Authoritative OpenAgents Cloud sync populates Cloud spend, decision routing spend, and credit.
+  coder_page_usage_cloud_set(s, 5000000, 125000, 4200000, 4200000, 18000, 42, 800000, 200000, 150000, 65, true);
+  #assert s[0].usage[0].cloud_synced;
+  #assert s[0].usage[0].cloud_credit_msat == 5000000;
+  #assert s[0].usage[0].cloud_total_micros == 4200000;
+  #assert s[0].usage[0].cloud_decision_micros == 18000;
+  #assert s[0].usage[0].cloud_decision_calls == 42;
+
+  // Settings -> Usage renders Cloud Usage & Credit, Free Local Compute, and Delegated Harnesses (gated off by default).
+  coder_page_settings_open(s, CP_PG_USAGE, "");
+  #assert cp_set_test_frame(s, 1200, 1400);
+  #assert surface_find(s[0].surface[..], "set.usage.cloud.spend") >= 0;
+  #assert surface_find(s[0].surface[..], "set.usage.cloud.decisions") >= 0;
+  #assert surface_find(s[0].surface[..], "set.usage.cloud.credit") >= 0;
+  #assert surface_find(s[0].surface[..], "set.usage.local.compute") >= 0;
+  #assert surface_find(s[0].surface[..], "set.usage.harnesses.off") >= 0;
+}

@@ -1423,6 +1423,12 @@ void cd_usage_refreshing_set(void *page, int on) { CoderHost *c = page; if (!c) 
 int cd_usage_is_index_db(const char *path) { return coder_page_usage_is_index_db(cd_string(path)) ? 1 : 0; }
 int64_t cd_usage_total_cost_micros(void *page) { CoderHost *c = page; return c ? (int64_t)coder_page_usage_total_cost_micros(cd_state(c)) : 0; }
 int64_t cd_usage_total_tokens(void *page) { CoderHost *c = page; return c ? (int64_t)coder_page_usage_total_tokens(cd_state(c)) : 0; }
+void cd_usage_cloud_set(void *page, int64_t credit_msat, int64_t today_micros, int64_t month_micros, int64_t total_micros, int64_t decision_micros, int64_t decision_calls, int64_t in_tok, int64_t cached_tok, int64_t out_tok, int64_t calls, int synced) {
+  CoderHost *c = page;
+  if (!c) return;
+  coder_page_usage_cloud_set(cd_state(c), credit_msat, today_micros, month_micros, total_micros, decision_micros, decision_calls, in_tok, cached_tok, out_tok, calls, synced != 0);
+  cd_woke(c);
+}
 // MCP server management, OAuth PKCE card, and Skills catalog (page/mcpskills.coax, GitHub #13879).
 int cd_mcp_load_json(void *page, const char *json) {
   CoderHost *c = page;
