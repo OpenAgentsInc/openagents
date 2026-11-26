@@ -1,0 +1,132 @@
+// Native HTTP transport adapter for coax/lib/workos/ over coax/lib/net/http.coax (#14099).
+// Executes any Sans-I/O WosReq with automatic retry/backoff (retry.coax),
+// Retry-After honoring, Authorization Bearer injection (strictly omitted on
+// public_auth requests), Idempotency-Key support, and structured error parsing.
+#load "../error.coax";
+#load "../retry.coax";
+#load "../gen/runtime.coax";
+#load "../../net/http.coax";
+
+WOS_HTTP_DEFAULT_TIMEOUT_MS :: 15000;
+WOS_HTTP_DEFAULT_MAX_RETRIES :: 2;
+WOS_HTTP_USER_AGENT :: "openagents-workos-coax/0.1";
+
+WosHttpOpts :: struct {
+  api_key: string;
+  idempotency_key: string;
+  user_agent: string;
+  timeout_ms: int;
+  max_retries: int;
+}
+
+WosHttpResp :: struct {
+  transport_error: int; // HTTP_OK (0) or HTTP_E_*
+  status: int;
+  body_n: int;
+  attempts: int;
+  request_id: [WOS_ERR_REQID_MAX] u8; request_id_n: int;
+  retry_after_sec: int;
+  api_error: WosApiError;
+}
+
+wos_method_str :: (method: int) -> string {
+  if method == WOS_METHOD_GET { return "GET"; }
+  if method == WOS_METHOD_HEAD { return "HEAD"; }
+  if method == WOS_METHOD_OPTIONS { return "OPTIONS"; }
+  if method == WOS_METHOD_POST { return "POST"; }
+  if method == WOS_METHOD_PUT { return "PUT"; }
+  if method == WOS_METHOD_PATCH { return "PATCH"; }
+  if method == WOS_METHOD_DELETE { return "DELETE"; }
+  return "GET";
+}
+
+wos_hdr_line :: (prefix: string, val: string, out: [] u8) -> string {
+  if prefix.count + val.count > out.count { return ""; }
+  n := 0;
+  for c: prefix { out[n] = c; n += 1; }
+  for c: val { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+// Execute a Sans-I/O WosReq built in `scratch` and write response body into `body_out`.
+// Callers supply `work` ([1] HttpWork) so zero heap allocation occurs.
+wos_http_exec :: (
+  work: [] HttpWork,
+  req: WosReq,
+  scratch: [] u8,
+  opts: WosHttpOpts,
+  body_out: [] u8,
+) -> WosHttpResp {
+  resp: WosHttpResp;
+  resp.retry_after_sec = -1;
+  if req.error != WOS_GEN_OK {
+    resp.transport_error = HTTP_E_REQUEST;
+    return resp;
+  }
+
+  url := wos_req_url(req, scratch);
+  body := wos_req_body(req, scratch);
+  method := wos_method_str(req.method);
+  timeout_ms := ifx opts.timeout_ms > 0 then opts.timeout_ms else WOS_HTTP_DEFAULT_TIMEOUT_MS;
+  max_retries := ifx opts.max_retries >= 0 then opts.max_retries else WOS_HTTP_DEFAULT_MAX_RETRIES;
+  ua := ifx opts.user_agent.count > 0 then opts.user_agent else WOS_HTTP_USER_AGENT;
+
+  auth_buf: [600] u8;
+  ua_buf: [256] u8;
+  idem_buf: [256] u8;
+  hdrs: [5] string;
+  hn := 0;
+  hdrs[hn] = "Accept: application/json"; hn += 1;
+  if req.has_body { hdrs[hn] = "Content-Type: application/json"; hn += 1; }
+  ua_line := wos_hdr_line("User-Agent: ", ua, ua_buf[..]);
+  if ua_line.count > 0 { hdrs[hn] = ua_line; hn += 1; }
+  if !req.public_auth && opts.api_key.count > 0 {
+    auth_line := wos_hdr_line("Authorization: Bearer ", opts.api_key, auth_buf[..]);
+    if auth_line.count > 0 { hdrs[hn] = auth_line; hn += 1; }
+  }
+  has_idem := opts.idempotency_key.count > 0;
+  if has_idem {
+    idem_line := wos_hdr_line("Idempotency-Key: ", opts.idempotency_key, idem_buf[..]);
+    if idem_line.count > 0 { hdrs[hn] = idem_line; hn += 1; }
+  }
+
+  attempt := 0;
+  while true {
+    resp.attempts = attempt + 1;
+    // Redirects = 0 so Authorization headers are never forwarded across origins.
+    hr := http_do(work, method, url, hdrs[0..<hn], body, timeout_ms, 0, body_out);
+    resp.transport_error = hr.error;
+    resp.status = ifx hr.error == HTTP_OK then hr.code else 0;
+    resp.body_n = ifx hr.error == HTTP_OK then hr.n else 0;
+
+    head_s := ifx hr.error == HTTP_OK then cast(string) work[0].head[0..<work[0].head_n] else "";
+    ra_hdr := ifx head_s.count > 0 then http_header(head_s, "retry-after") else "";
+    reqid_hdr := ifx head_s.count > 0 then http_header(head_s, "x-request-id") else "";
+    resp.retry_after_sec = wos_retry_after_parse(ra_hdr);
+    if reqid_hdr.count > 0 {
+      rn := ifx reqid_hdr.count > WOS_ERR_REQID_MAX then WOS_ERR_REQID_MAX else reqid_hdr.count;
+      for i: 0..<rn { resp.request_id[i] = reqid_hdr[i]; }
+      resp.request_id_n = rn;
+    }
+
+    if resp.status >= 200 && resp.status < 300 {
+      return resp;
+    }
+    err_arr: [1] WosApiError;
+    body_s := ifx resp.body_n > 0 then cast(string) body_out[0..<resp.body_n] else "";
+    wos_parse_api_error(resp.status, body_s, ra_hdr, reqid_hdr, err_arr[..]);
+    resp.api_error = err_arr[0];
+
+    if !wos_retry_allowed(req.method, has_idem, resp.status, attempt, max_retries) {
+      return resp;
+    }
+    // Bounded spin-free delay via cxsock_now_ms (callers running in CI / emulate get immediate retry on Retry-After: 0).
+    delay_ms := wos_backoff_ms(attempt, resp.retry_after_sec, cast(u64) (cxsock_now_ms() & 65535), true);
+    if delay_ms > 0 {
+      until_ms := cxsock_now_ms() + delay_ms;
+      while cxsock_now_ms() < until_ms {}
+    }
+    attempt += 1;
+  }
+  return resp;
+}

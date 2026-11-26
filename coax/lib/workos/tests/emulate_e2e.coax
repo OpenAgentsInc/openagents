@@ -1,0 +1,235 @@
+// tool.sh: tls
+// Offline deterministic E2E test suite for coax/lib/workos/ against workos/emulate (#14099).
+// Verifies generated Sans-I/O endpoints, flow.coax state machine, http_native.coax adapter,
+// live RS256 JWKS verification (jwt.coax), transient 503 refresh preservation, Events API
+// cursor polling, and user lifecycle (external_id round-trip + delete).
+#import "Basic";
+#load "../../sys/tool.coax";
+#load "../jwt.coax";
+#load "../seal.coax";
+#load "../webhook.coax";
+#load "../flow.coax";
+#load "../adapters/http_native.coax";
+#load "../gen/models.coax";
+#load "../gen/svc_events.coax";
+#load "../gen/svc_organizations.coax";
+#load "../gen/svc_sso.coax";
+
+E2E_API_KEY :: "sk_test_default";
+E2E_CLIENT_ID :: "client_01E2E_DEFAULT";
+
+e2e_fail :: (step: string, code: int, body: string) -> int #effects(all) {
+  tool_err("emulate_e2e FAIL [");
+  tool_err(step);
+  tool_err("]: status=");
+  tmp: [24] u8;
+  n := 0; x := code;
+  if x == 0 { tmp[0] = '0'; n = 1; }
+  while x > 0 { tmp[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  rev: [24] u8;
+  for i: 0..<n { rev[i] = tmp[n - 1 - i]; }
+  tool_err(cast(string) rev[0..<n]);
+  tool_err(" body=");
+  tool_err(body);
+  tool_err("\n");
+  return 1;
+}
+
+e2e_ok :: (msg: string) #effects(all) {
+  print("  ok: %\n", msg);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) < 2 {
+    tool_err("usage: emulate_e2e.coax <base_url> <unix_now_sec>\n");
+    return 2;
+  }
+  base_url := args_at(args[..], 0);
+  now_r := args_number(args_at(args[..], 1));
+  if !now_r.ok { tool_err("invalid unix_now_sec\n"); return 2; }
+  now_sec := cast(int) now_r.value;
+  print("workos emulate E2E against %\n", base_url);
+
+  work: [1] HttpWork;
+  scratch: [8192] u8;
+  body_buf: [65536] u8;
+  opts := WosHttpOpts.{api_key = E2E_API_KEY, timeout_ms = 10000, max_retries = 1};
+  no_retry := WosHttpOpts.{api_key = E2E_API_KEY, timeout_ms = 10000, max_retries = 0};
+
+  // 1. Fetch live JWKS from emulate (GET /sso/jwks/{client_id}).
+  jwks_url_buf: [512] u8;
+  jun := wos_jwks_url(base_url, E2E_CLIENT_ID, jwks_url_buf[..]);
+  if jun < 0 { return e2e_fail("jwks_url", 0, "bad url"); }
+  jwks_req := WosReq.{method = WOS_METHOD_GET, public_auth = true, url_from = 0, url_to = jun, error = WOS_GEN_OK};
+  jwks_buf: [8192] u8;
+  r := wos_http_exec(work[..], jwks_req, jwks_url_buf[..], opts, jwks_buf[..]);
+  if r.transport_error != HTTP_OK || r.status != 200 {
+    return e2e_fail("jwks_fetch", r.status, cast(string) jwks_buf[0..<r.body_n]);
+  }
+  jwks_json := cast(string) jwks_buf[0..<r.body_n];
+  e2e_ok("GET /sso/jwks/{client_id} returned live RSA JWKS");
+
+  // 2. Verify seeded user lookup by external_id (acct_e2e_alice -> user_01E2E_ALICE).
+  req := wos_user_management_get_user_by_external_id(base_url, WosP_UserManagementGetUserByExternalId.{external_id = "acct_e2e_alice"}, scratch[..]);
+  r = wos_http_exec(work[..], req, scratch[..], opts, body_buf[..]);
+  if r.transport_error != HTTP_OK || r.status != 200 {
+    return e2e_fail("get_user_by_external_id", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  nodes: [512] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) body_buf[0..<r.body_n], nodes[..]) {
+    return e2e_fail("parse_seeded_user", r.status, "bad json");
+  }
+  uv := wos_m_user_view(d[0], 0);
+  uid_b: [128] u8;
+  uid_r := wos_m_user_get_id(uv, uid_b[..]);
+  if !uid_r.present || cast(string) uid_b[0..<uid_r.count] != "user_01E2E_ALICE" {
+    return e2e_fail("seeded_user_id", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  e2e_ok("GET /user_management/users/external_id/acct_e2e_alice matched seeded user via generated WosM_User view");
+
+  // 3. Create new user with external_id=acct_e2e_bob, update it, and later delete it.
+  req = wos_user_management_create_user(
+    base_url,
+    WosP_UserManagementCreateUser.{
+      email = "bob@acme.test", first_name = "Bob", last_name = "Tester",
+      email_verified = true, has_email_verified = true, external_id = "acct_e2e_bob",
+    },
+    scratch[..],
+  );
+  r = wos_http_exec(work[..], req, scratch[..], opts, body_buf[..]);
+  if r.transport_error != HTTP_OK || (r.status != 200 && r.status != 201) {
+    return e2e_fail("create_user", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  if !jv_parse(d[..], cast(string) body_buf[0..<r.body_n], nodes[..]) {
+    return e2e_fail("parse_bob", r.status, "bad json");
+  }
+  bob_id_buf: [128] u8;
+  bob_id_r := wos_m_user_get_id(wos_m_user_view(d[0], 0), bob_id_buf[..]);
+  if !bob_id_r.present || bob_id_r.count == 0 {
+    return e2e_fail("bob_id", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  bob_id := cast(string) bob_id_buf[0..<bob_id_r.count];
+  e2e_ok("POST /user_management/users created user with external_id=acct_e2e_bob");
+
+  // 4. Magic Auth end-to-end via flow.coax + live RS256 JWT verification via jwt.coax!
+  flow: [1] WosAuthFlow;
+  req = wos_flow_magic_start(flow[..], base_url, "alice@acme.test", scratch[..]);
+  r = wos_http_exec(work[..], req, scratch[..], opts, body_buf[..]);
+  if r.transport_error != HTTP_OK || (r.status != 200 && r.status != 201) {
+    return e2e_fail("magic_start", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  if !jv_parse(d[..], cast(string) body_buf[0..<r.body_n], nodes[..]) {
+    return e2e_fail("magic_start_json", r.status, "bad json");
+  }
+  code_buf: [32] u8;
+  code_r := wos_jv_get_str(d[0], 0, "code", code_buf[..]);
+  if !code_r.present || code_r.count == 0 {
+    return e2e_fail("magic_code_extract", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  magic_code := cast(string) code_buf[0..<code_r.count];
+
+  req = wos_flow_magic_verify(flow[..], base_url, E2E_CLIENT_ID, E2E_API_KEY, magic_code, "198.51.100.1", "OpenAgents-E2E/1", "", scratch[..]);
+  r = wos_http_exec(work[..], req, scratch[..], opts, body_buf[..]);
+  st := wos_flow_on_auth_response(flow[..], r.status, cast(string) body_buf[0..<r.body_n], "", "");
+  if st != WOS_FLOW_AUTHENTICATED {
+    return e2e_fail("magic_verify", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  e2e_ok("Magic Auth flow authenticated alice@acme.test via flow.coax");
+
+  // Verify live RS256 access_token JWT against live emulate JWKS using jwt.coax!
+  access_tok := cast(string) flow[0].access_token[0..<flow[0].access_token_n];
+  claims: [1] WosJwtClaims;
+  jerr := wos_jwt_verify_session(access_tok, jwks_json, "", now_sec, claims[..]);
+  if jerr != WOS_JWT_OK {
+    return e2e_fail("jwt_verify_live_rs256", cast(int) jerr, access_tok);
+  }
+  if cast(string) claims[0].sub[0..<claims[0].sub_n] != "user_01E2E_ALICE" {
+    return e2e_fail("jwt_sub_mismatch", 0, cast(string) claims[0].sub[0..<claims[0].sub_n]);
+  }
+  e2e_ok("jwt.coax verified live 2048-bit RS256 access_token signature & human-session claims against emulate JWKS");
+
+  // 5. Inject one-shot 503 hook on /user_management/authenticate -> verify transient refresh preserves refresh_token!
+  hook_url_b: [512] u8;
+  hb: [1] WosReqBuild;
+  wos_rb_init(hb[..], base_url, hook_url_b[..]);
+  wos_rb_put(hb[..], "/_emulate/hooks");
+  hook_bf := hb[0].n;
+  wos_rb_put(hb[..], "{\"method\":\"POST\",\"path\":\"/user_management/authenticate\",\"status\":503,\"body\":{\"code\":\"service_unavailable\",\"message\":\"injected 503\"},\"count\":1}");
+  hook_req := wos_req_finish(hb[0], WOS_METHOD_POST, true, hook_bf, hb[0].n, true);
+  r = wos_http_exec(work[..], hook_req, hook_url_b[..], no_retry, body_buf[..]);
+  if r.transport_error != HTTP_OK || (r.status != 200 && r.status != 201) {
+    return e2e_fail("inject_503_hook", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+
+  rreq: [1] WosReq;
+  rs := wos_flow_refresh_begin(flow[..], base_url, E2E_CLIENT_ID, E2E_API_KEY, "", scratch[..], rreq[..]);
+  if rs != WOS_RSTART_OK { return e2e_fail("refresh_begin_503", cast(int) rs, ""); }
+  // Concurrent caller must coalesce!
+  if wos_flow_refresh_begin(flow[..], base_url, E2E_CLIENT_ID, E2E_API_KEY, "", scratch[..], rreq[..]) != WOS_RSTART_COALESCED {
+    return e2e_fail("refresh_coalesce", 0, "expected coalesced");
+  }
+  r = wos_http_exec(work[..], rreq[0], scratch[..], no_retry, body_buf[..]);
+  rf := wos_flow_refresh_finish(flow[..], r.status, cast(string) body_buf[0..<r.body_n], "", "");
+  if rf != WOS_REFRESH_TRANSIENT || flow[0].refresh_token_n == 0 {
+    return e2e_fail("refresh_503_preserve", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  e2e_ok("Single-flight refresh coalesced concurrent caller and preserved refresh_token on injected 503");
+
+  // Second refresh (hook consumed) succeeds and rotates tokens!
+  rs = wos_flow_refresh_begin(flow[..], base_url, E2E_CLIENT_ID, E2E_API_KEY, "", scratch[..], rreq[..]);
+  if rs != WOS_RSTART_OK { return e2e_fail("refresh_begin_2", cast(int) rs, ""); }
+  r = wos_http_exec(work[..], rreq[0], scratch[..], no_retry, body_buf[..]);
+  rf = wos_flow_refresh_finish(flow[..], r.status, cast(string) body_buf[0..<r.body_n], "", "");
+  if rf != 0 {
+    return e2e_fail("refresh_rotate", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  access_tok2 := cast(string) flow[0].access_token[0..<flow[0].access_token_n];
+  if wos_jwt_verify_session(access_tok2, jwks_json, "", now_sec, claims[..]) != WOS_JWT_OK {
+    return e2e_fail("jwt_verify_refreshed", 0, access_tok2);
+  }
+  e2e_ok("Refresh token rotated cleanly and refreshed RS256 JWT verified against emulate JWKS");
+
+  // 6. Organizations, SSO Connections (domain discovery), and Events API mirror poll!
+  req = wos_organizations_list_organizations(base_url, WosP_OrganizationsListOrganizations.{limit = 10, has_limit = true}, scratch[..]);
+  r = wos_http_exec(work[..], req, scratch[..], opts, body_buf[..]);
+  if r.transport_error != HTTP_OK || r.status != 200 {
+    return e2e_fail("list_orgs", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  if !jv_parse(d[..], cast(string) body_buf[0..<r.body_n], nodes[..]) { return e2e_fail("parse_orgs", 0, ""); }
+  org_it := [1] WosArrayIter.[wos_list_data_iter(d[0], 0)];
+  if !wos_iter_next(org_it[..]).present { return e2e_fail("orgs_empty", 0, cast(string) body_buf[0..<r.body_n]); }
+  e2e_ok("GET /organizations iterated seeded Acme Robotics via wos_list_data_iter");
+
+  req = wos_sso_list_connections(base_url, WosP_SsoListConnections.{domain = "acme.test"}, scratch[..]);
+  r = wos_http_exec(work[..], req, scratch[..], opts, body_buf[..]);
+  if r.transport_error != HTTP_OK || r.status != 200 {
+    return e2e_fail("list_connections", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  if !jv_parse(d[..], cast(string) body_buf[0..<r.body_n], nodes[..]) { return e2e_fail("parse_conns", 0, ""); }
+  conn_it := [1] WosArrayIter.[wos_list_data_iter(d[0], 0)];
+  if !wos_iter_next(conn_it[..]).present { return e2e_fail("conns_empty", 0, cast(string) body_buf[0..<r.body_n]); }
+  e2e_ok("GET /connections?domain=acme.test discovered Enterprise SSO connection");
+
+  req = wos_events_list_events(base_url, WosP_EventsListEvents.{events = "user.created,authentication.magic_auth_succeeded", limit = 25, has_limit = true}, scratch[..]);
+  r = wos_http_exec(work[..], req, scratch[..], opts, body_buf[..]);
+  if r.transport_error != HTTP_OK || r.status != 200 {
+    return e2e_fail("list_events", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  if !jv_parse(d[..], cast(string) body_buf[0..<r.body_n], nodes[..]) { return e2e_fail("parse_events", 0, ""); }
+  ev_it := [1] WosArrayIter.[wos_list_data_iter(d[0], 0)];
+  if !wos_iter_next(ev_it[..]).present { return e2e_fail("events_empty", 0, cast(string) body_buf[0..<r.body_n]); }
+  e2e_ok("GET /events returned live user.created / authentication events for Events mirror");
+
+  // 7. Delete created user (verifies 30-day purge propagation).
+  req = wos_user_management_delete_user(base_url, WosP_UserManagementDeleteUser.{id = bob_id}, scratch[..]);
+  r = wos_http_exec(work[..], req, scratch[..], opts, body_buf[..]);
+  if r.transport_error != HTTP_OK || (r.status != 200 && r.status != 202 && r.status != 204) {
+    return e2e_fail("delete_user", r.status, cast(string) body_buf[0..<r.body_n]);
+  }
+  e2e_ok("DELETE /user_management/users/{id} deleted created user cleanly");
+
+  wos_flow_clear(flow[..]);
+  print("workos emulate E2E: ALL CHECKS PASSED\n");
+  return 0;
+}

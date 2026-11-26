@@ -7,11 +7,11 @@ Sans-I/O, zero-heap, `#authority` Coax SDK for the [WorkOS](https://workos.com) 
 Every core module operates purely on caller-owned buffers with explicit entropy and wall-clock
 inputs, so the exact same code compiles into:
 
-- `coax/web/api` (C11 via `coax lib`),
-- `apps/openagents-web` (Wasm via `wasm32-wasip1`),
-- `apps/openagents-ios` & `apps/openagents-desktop` (Apple Swift hosts via C ABI),
-- `apps/shared/host/android` (Android JNI host via C ABI), and
-- `apps/openagents-cli` (native binary via `coax/lib/net/http.coax`).
+- `coax/web/api` (C11 via `coax lib`, `adapters/c_unit.coax`),
+- `apps/openagents-web` (Wasm via `wasm32-wasip1`, `adapters/app_unit.coax`),
+- `apps/openagents-ios` & `apps/openagents-desktop` (Apple Swift hosts via C ABI, `adapters/app_unit.coax`),
+- `apps/shared/host/android` (Android JNI host via C ABI, `adapters/app_unit.coax`), and
+- `apps/openagents-cli` (native binary via `adapters/http_native.coax`).
 
 ## Phase 1 modules (`#14098`)
 
@@ -26,12 +26,27 @@ inputs, so the exact same code compiles into:
 | `retry.coax` | Safe-method / `Idempotency-Key` retry eligibility and capped exponential backoff with equal jitter | `coax test` + `coax mutate` (0 survivors) |
 | `phase1_unit.coax` | `#export_c` C ABI boundary + native ASan/UBSan & Wasm verification unit | `verify.sh` |
 
+## Phase 2 modules (`#14099`)
+
+| Path | Role | Verification |
+| --- | --- | --- |
+| `tools/oagen-coax/` | `@workos/oagen` + `@workos/openapi-spec` emitter generating deterministic checked-in Coax files | `bun run typecheck && bun run check` |
+| `gen/` | 38 checked-in files covering all 269 WorkOS OpenAPI operations across 24 services, 12 typed authenticate/create wrappers, 844 borrowed-`Jv` model views, and 216 enums | `coax test gen/all.coax --library` |
+| `flow.coax` | Pure `#authority` Sans-I/O auth state machine (PKCE, Magic Auth, multi-org selection, RFC 8628 device flow, single-flight refresh) | `coax test` + `coax mutate` (0 survivors) |
+| `adapters/http_native.coax` | Native HTTP/TLS adapter over `coax/lib/net/http.coax` (retry/backoff, `Retry-After`, `Idempotency-Key`, zero-redirect Auth safety) | `tests/emulate_e2e.sh` |
+| `adapters/c_unit.coax` | Server `#export_c` C ABI unit compiled into `coax/web/api` | `coax test` + C11 compile |
+| `adapters/app_unit.coax` | Public-client `#export_c` C ABI unit for iOS/macOS/Android/Wasm (strictly omits `client_secret`) | `coax test` + C11 + `wasm32-wasip1` |
+| `tests/emulate_e2e.{sh,coax,yaml}` | Offline deterministic E2E test suite against `workos/emulate` | `tests/emulate_e2e.sh` |
+
 ## Verification
 
 ```sh
 coax/lib/workos/verify.sh
+coax/lib/workos/tests/emulate_e2e.sh
 ```
 
-Runs `coax test --library`, `coax mutate --library` (requiring zero surviving mutants on every
-`#authority` module), C11 ASan/UBSan native ABI tests (`tests/c_check.c`), and a `wasm32-wasip1`
-freestanding compile check.
+To regenerate checked-in `gen/` files after bumping `@workos/openapi-spec`:
+
+```sh
+cd tools/oagen-coax && bun install && bun run generate && bun run check
+```

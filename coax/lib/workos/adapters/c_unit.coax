@@ -1,0 +1,139 @@
+// Cohesive server-side C ABI compilation unit for oa-api (coax/web/api) (#14099 / #14100).
+// Emits one C11 library + header via `coax c --library --header` combining all
+// Phase 1 #authority primitives, the Sans-I/O flow machine, and C-callable
+// request-builder wrappers for server-side WorkOS endpoints (Magic Auth, OAuth/SSO
+// code exchange, org selection, session revocation, Events API mirror, users,
+// connections, webhooks, and AuthKit Actions).
+#load "../pkce.coax";
+#load "../url.coax";
+#load "../webhook.coax";
+#load "../seal.coax";
+#load "../jwt.coax";
+#load "../error.coax";
+#load "../retry.coax";
+#load "../flow.coax";
+#load "../gen/svc_events.coax";
+#load "../gen/svc_sso.coax";
+#load "../gen/svc_organizations.coax";
+#load "../gen/svc_organization_membership.coax";
+#load "../gen/svc_webhooks.coax";
+
+// C-callable request builders returning bytes written into url_out / body_out (or -1 on error).
+wos_c_build_magic_auth :: (base_url: string, email: string, url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int) -> bool #export_c #effects(all) {
+  scratch: [4096] u8;
+  r := wos_user_management_create_magic_auth(base_url, WosP_UserManagementCreateMagicAuth.{email = email}, scratch[..]);
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
+wos_c_build_auth_magic :: (
+  base_url: string, client_id: string, api_key: string, email: string, code: string,
+  ip_address: string, user_agent: string, radar_attempt_id: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  scratch: [4096] u8;
+  r := wos_user_management_authenticate_with_magic_auth(
+    base_url, client_id, api_key,
+    WosP_UserManagementAuthenticateWithMagicAuth.{
+      code = code, email = email, ip_address = ip_address,
+      user_agent = user_agent, radar_auth_attempt_id = radar_attempt_id,
+    },
+    scratch[..],
+  );
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
+wos_c_build_auth_code :: (
+  base_url: string, client_id: string, api_key: string, code: string, code_verifier: string,
+  ip_address: string, user_agent: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  scratch: [4096] u8;
+  r := wos_user_management_authenticate_with_code(
+    base_url, client_id, api_key,
+    WosP_UserManagementAuthenticateWithCode.{
+      code = code, code_verifier = code_verifier,
+      ip_address = ip_address, user_agent = user_agent,
+    },
+    scratch[..],
+  );
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
+wos_c_build_auth_org_select :: (
+  base_url: string, client_id: string, api_key: string, pending_token: string, organization_id: string,
+  ip_address: string, user_agent: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  scratch: [4096] u8;
+  r := wos_user_management_authenticate_with_organization_selection(
+    base_url, client_id, api_key,
+    WosP_UserManagementAuthenticateWithOrganizationSelection.{
+      pending_authentication_token = pending_token, organization_id = organization_id,
+      ip_address = ip_address, user_agent = user_agent,
+    },
+    scratch[..],
+  );
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
+wos_c_build_revoke_session :: (base_url: string, session_id: string, url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int) -> bool #export_c #effects(all) {
+  scratch: [4096] u8;
+  r := wos_user_management_revoke_session(base_url, WosP_UserManagementRevokeSession.{session_id = session_id}, scratch[..]);
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
+wos_c_build_update_user_ext_id :: (base_url: string, workos_user_id: string, external_id: string, url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int) -> bool #export_c #effects(all) {
+  scratch: [4096] u8;
+  r := wos_user_management_update_user(base_url, WosP_UserManagementUpdateUser.{id = workos_user_id, external_id = external_id}, scratch[..]);
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
+wos_c_build_delete_user :: (base_url: string, workos_user_id: string, url_out: [] u8, url_n: [] int) -> bool #export_c #effects(all) {
+  scratch: [2048] u8;
+  empty: [1] u8; bn: [1] int;
+  r := wos_user_management_delete_user(base_url, WosP_UserManagementDeleteUser.{id = workos_user_id}, scratch[..]);
+  return wos_c_export_req(r, scratch[..], url_out, empty[0..<0], url_n, bn[..]);
+}
+
+wos_c_build_list_events :: (base_url: string, events_csv: string, after: string, limit: int, url_out: [] u8, url_n: [] int) -> bool #export_c #effects(all) {
+  scratch: [2048] u8;
+  empty: [1] u8; bn: [1] int;
+  r := wos_events_list_events(base_url, WosP_EventsListEvents.{events = events_csv, after = after, limit = limit, has_limit = limit > 0}, scratch[..]);
+  return wos_c_export_req(r, scratch[..], url_out, empty[0..<0], url_n, bn[..]);
+}
+
+wos_c_build_list_connections :: (base_url: string, domain: string, url_out: [] u8, url_n: [] int) -> bool #export_c #effects(all) {
+  scratch: [2048] u8;
+  empty: [1] u8; bn: [1] int;
+  r := wos_sso_list_connections(base_url, WosP_SsoListConnections.{domain = domain}, scratch[..]);
+  return wos_c_export_req(r, scratch[..], url_out, empty[0..<0], url_n, bn[..]);
+}
+
+wos_c_export_req :: (r: WosReq, scratch: [] u8, url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int) -> bool #effects(all) {
+  url_n[0] = 0; body_n[0] = 0;
+  if r.error != WOS_GEN_OK { return false; }
+  u := wos_req_url(r, scratch);
+  if u.count > url_out.count { return false; }
+  for i: 0..<u.count { url_out[i] = u[i]; }
+  url_n[0] = u.count;
+  if r.has_body {
+    b := wos_req_body(r, scratch);
+    if b.count > body_out.count { return false; }
+    for i: 0..<b.count { body_out[i] = b[i]; }
+    body_n[0] = b.count;
+  }
+  return true;
+}
+
+#test "server C ABI unit builds Magic Auth, OAuth/PKCE, org selection, Events, Connections, and lifecycle requests cleanly" {
+  ub: [512] u8; bb: [1024] u8; un: [1] int; bn: [1] int;
+  #assert wos_c_build_magic_auth("", "a@b.co", ub[..], bb[..], un[..], bn[..]);
+  #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/magic_auth";
+  #assert wos_c_build_auth_code("", "client_01", "", "c1", "v1", "1.1.1.1", "OA", ub[..], bb[..], un[..], bn[..]);
+  #assert wos_c_build_revoke_session("", "sess_1", ub[..], bb[..], un[..], bn[..]);
+  #assert wos_c_build_update_user_ext_id("", "user_1", "acct_1", ub[..], bb[..], un[..], bn[..]);
+  #assert wos_c_build_delete_user("", "user_1", ub[..], un[..]);
+  #assert !wos_c_build_delete_user("", "..", ub[..], un[..]);
+  #assert wos_c_build_list_events("", "user.created,user.updated", "evt_1", 100, ub[..], un[..]);
+  #assert wos_c_build_list_connections("", "acme.com", ub[..], un[..]);
+}

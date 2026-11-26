@@ -1,0 +1,607 @@
+// Sans-I/O WorkOS authentication state machine (#authority, Phase 2 / #14099).
+// Drives PKCE authorize/callback, Magic Auth, multi-org selection
+// (organization_selection_required), RFC 8628 device authorization polling
+// (authorization_pending / slow_down), and single-flight refresh with
+// transient (0/408/429/5xx) vs terminal (401/invalid_grant) classification.
+// Pure caller-buffer state machine: zero sockets, zero timers, zero heap.
+#load "pkce.coax";
+#load "url.coax";
+#load "error.coax";
+#load "gen/svc_user_management.coax";
+#authority;
+
+WOS_FLOW_IDLE :: 0;
+WOS_FLOW_AWAIT_CALLBACK :: 1;
+WOS_FLOW_AWAIT_MAGIC_CODE :: 2;
+WOS_FLOW_EXCHANGING :: 3;
+WOS_FLOW_NEED_ORG_SELECT :: 4;
+WOS_FLOW_AWAIT_DEVICE_INIT :: 5;
+WOS_FLOW_POLLING_DEVICE :: 6;
+WOS_FLOW_AUTHENTICATED :: 7;
+WOS_FLOW_REVOKED :: 8;
+WOS_FLOW_FAILED :: 9;
+
+WOS_RSTART_OK :: 0;
+WOS_RSTART_COALESCED :: 1;
+WOS_RSTART_NO_TOKEN :: 2;
+WOS_RSTART_ERROR :: 3;
+
+WOS_DPOLL_READY :: 0;
+WOS_DPOLL_WAIT :: 1;
+WOS_DPOLL_EXPIRED :: 2;
+WOS_DPOLL_BAD_STATE :: 3;
+
+WOS_FLOW_TOK_MAX :: 2048;
+WOS_FLOW_STR_MAX :: 256;
+
+WosAuthFlow :: struct {
+  state: u32;
+  refresh_in_flight: bool;
+  last_error: WosApiError;
+
+  // PKCE & Magic Auth transient state
+  verifier: [WOS_PKCE_VERIFIER_MAX] u8; verifier_n: int;
+  oauth_state: [WOS_STATE_LEN] u8; oauth_state_n: int;
+  email: [WOS_FLOW_STR_MAX] u8; email_n: int;
+  pending_token: [WOS_ERR_TOK_MAX] u8; pending_token_n: int;
+
+  // RFC 8628 device flow state
+  device_code: [WOS_FLOW_STR_MAX] u8; device_code_n: int;
+  user_code: [64] u8; user_code_n: int;
+  verification_uri: [WOS_FLOW_STR_MAX] u8; verification_uri_n: int;
+  verification_uri_complete: [512] u8; verification_uri_complete_n: int;
+  poll_interval_sec: int;
+  poll_next_sec: int;
+  poll_deadline_sec: int;
+
+  // Authenticated session output
+  access_token: [WOS_FLOW_TOK_MAX] u8; access_token_n: int;
+  refresh_token: [WOS_FLOW_TOK_MAX] u8; refresh_token_n: int;
+  user_id: [WOS_FLOW_STR_MAX] u8; user_id_n: int;
+  org_id: [WOS_FLOW_STR_MAX] u8; org_id_n: int;
+}
+
+#test "PKCE flow validates state constant-time, emits public request without client_secret, and handles multi-org selection" {
+  #assert !wos_flow_is_2xx(199) && wos_flow_is_2xx(200) && wos_flow_is_2xx(299) && !wos_flow_is_2xx(300);
+
+  f: [1] WosAuthFlow;
+  ver_ent: [32] u8; st_ent: [32] u8;
+  for i: 0..<32 { ver_ent[i] = cast(u8) (i + 1); st_ent[i] = cast(u8) (i + 65); }
+  url_buf: [1024] u8;
+  scratch: [4096] u8;
+
+  // Seed prior token so we verify pkce_start clears prior secrets.
+  f[0].access_token[0] = 'z'; f[0].access_token_n = 1;
+  #assert wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "AppleOAuth", "", "", "", "", ver_ent[0..<31], st_ent[..], url_buf[..]) == -1;
+  #assert f[0].access_token_n == 0 && f[0].access_token[0] == 0;
+  // Failed state entropy or URL build clears partial verifier bytes.
+  #assert wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "AppleOAuth", "", "", "", "", ver_ent[..], st_ent[0..<31], url_buf[..]) == -1;
+  #assert f[0].verifier[0] == 0 && f[0].verifier_n == 0;
+  #assert wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "AppleOAuth", "", "", "", "", ver_ent[..], st_ent[..], url_buf[0..<10]) == -1;
+  #assert f[0].verifier[0] == 0 && f[0].oauth_state[0] == 0;
+
+  un := wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "AppleOAuth", "", "", "", "", ver_ent[..], st_ent[..], url_buf[..]);
+  #assert un > 0 && f[0].state == WOS_FLOW_AWAIT_CALLBACK && f[0].verifier_n == 43 && f[0].oauth_state_n == 43;
+
+  st_copy: [WOS_STATE_LEN] u8;
+  for i: 0..<43 { st_copy[i] = f[0].oauth_state[i]; }
+  st_s := cast(string) st_copy[..];
+  ver_copy: [43] u8;
+  for i: 0..<43 { ver_copy[i] = f[0].verifier[i]; }
+  ver_s := cast(string) ver_copy[..];
+  // Verify exact state appears inside authorize URL (including byte 0).
+  url_s := cast(string) url_buf[0..<un];
+  found_st := false;
+  for i: 0..<url_s.count - st_s.count + 1 {
+    if url_s[i..<i + st_s.count] == st_s { found_st = true; break; }
+  }
+  #assert found_st;
+
+  // Provider 1-char error, state mismatch, and missing code fail closed and clear verifier.
+  #assert wos_flow_pkce_callback(f[..], "", "client_01", "", "code_1", st_s, "e", scratch[..]).error == WOS_GEN_MISSING;
+  #assert f[0].state == WOS_FLOW_FAILED && f[0].verifier_n == 0 && f[0].verifier[0] == 0;
+  #assert wos_flow_pkce_callback(f[..], "", "client_01", "", "code_1", st_s, "", scratch[..]).error == WOS_GEN_BAD_TYPE;
+
+  #assert wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "GoogleOAuth", "", "", "", "", ver_ent[..], st_ent[..], url_buf[..]) > 0;
+  #assert wos_flow_pkce_callback(f[..], "", "client_01", "", "code_1", "wrong_state_value_0000000000000000000000000", "", scratch[..]).error == WOS_GEN_MISSING;
+  #assert f[0].state == WOS_FLOW_FAILED && f[0].verifier_n == 0 && f[0].verifier[0] == 0;
+  #assert wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "GoogleOAuth", "", "", "", "", ver_ent[..], st_ent[..], url_buf[..]) > 0;
+  #assert wos_flow_pkce_callback(f[..], "", "client_01", "", "", st_s, "", scratch[..]).error == WOS_GEN_MISSING;
+
+  // Valid PKCE callback builds public request (no client_secret, exact code_verifier from byte 0) and erases transient verifier/state.
+  #assert wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "GoogleOAuth", "", "", "", "", ver_ent[..], st_ent[..], url_buf[..]) > 0;
+  req := wos_flow_pkce_callback(f[..], "", "client_01", "", "code_ok", st_s, "", scratch[..]);
+  #assert req.error == WOS_GEN_OK && req.public_auth && f[0].state == WOS_FLOW_EXCHANGING;
+  #assert f[0].verifier_n == 0 && f[0].oauth_state_n == 0;
+  body := wos_req_body(req, scratch[..]);
+  nodes: [32] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], body, nodes[..]);
+  #assert jv_get(d[0], 0, "client_secret") == -1;
+  tmp: [64] u8;
+  #assert jv_str(d[0], jv_get(d[0], 0, "code_verifier"), tmp[..]) == 43 && cast(string) tmp[0..<43] == ver_s;
+
+  // Multi-org 403 captures 1-char or full pending_authentication_token; non-403 does not trigger NEED_ORG_SELECT.
+  #assert wos_flow_on_auth_response(f[..], 400, "{\"code\":\"organization_selection_required\",\"pending_authentication_token\":\"p\"}", "", "") == WOS_FLOW_FAILED;
+  #assert f[0].state == WOS_FLOW_FAILED && f[0].last_error.status == 400;
+  #assert wos_flow_on_auth_response(f[..], 403, "{\"code\":\"organization_selection_required\",\"pending_authentication_token\":\"p\"}", "", "") == WOS_FLOW_NEED_ORG_SELECT;
+  #assert f[0].pending_token_n == 1 && f[0].pending_token[0] == 'p';
+  #assert wos_flow_on_auth_response(f[..], 403, "{\"code\":\"organization_selection_required\",\"message\":\"Select org\",\"pending_authentication_token\":\"pat_99\"}", "", "") == WOS_FLOW_NEED_ORG_SELECT;
+  #assert f[0].state == WOS_FLOW_NEED_ORG_SELECT && cast(string) f[0].pending_token[0..<f[0].pending_token_n] == "pat_99";
+  #assert wos_flow_select_org(f[..], "", "client_01", "", "", "", "", scratch[..]).error == WOS_GEN_MISSING;
+  org_req := wos_flow_select_org(f[..], "", "client_01", "", "org_01", "1.2.3.4", "OA/1", scratch[..]);
+  #assert org_req.error == WOS_GEN_OK && f[0].state == WOS_FLOW_EXCHANGING;
+  #assert jv_parse(d[..], wos_req_body(org_req, scratch[..]), nodes[..]);
+  #assert jv_str(d[0], jv_get(d[0], 0, "pending_authentication_token"), tmp[..]) == 6 && cast(string) tmp[0..<6] == "pat_99";
+  #assert wos_flow_select_org(f[..], "", "client_01", "", "org_01", "", "", scratch[..]).error == WOS_GEN_BAD_TYPE;
+
+  // 200 authenticates and extracts tokens + user_id + org_id; 1-char minimal access_token and bad optional types work cleanly.
+  ok_json := "{\"access_token\":\"at_1\",\"refresh_token\":\"rt_1\",\"organization_id\":\"org_01\",\"user\":{\"id\":\"user_01\"}}";
+  #assert wos_flow_on_auth_response(f[..], 200, ok_json, "", "") == WOS_FLOW_AUTHENTICATED;
+  #assert cast(string) f[0].access_token[0..<f[0].access_token_n] == "at_1";
+  #assert cast(string) f[0].refresh_token[0..<f[0].refresh_token_n] == "rt_1";
+  #assert cast(string) f[0].user_id[0..<f[0].user_id_n] == "user_01";
+  #assert cast(string) f[0].org_id[0..<f[0].org_id_n] == "org_01";
+
+  // Stale user_id_n is cleared when a subsequent response has no user object.
+  #assert wos_flow_on_auth_response(f[..], 200, "{\"access_token\":\"a\",\"refresh_token\":1,\"organization_id\":2}", "", "") == WOS_FLOW_AUTHENTICATED;
+  #assert f[0].access_token_n == 1 && f[0].refresh_token_n == 0 && f[0].org_id_n == 0 && f[0].user_id_n == 0;
+  // Non-string user.id also yields user_id_n == 0.
+  #assert wos_flow_on_auth_response(f[..], 200, "{\"access_token\":\"a\",\"user\":{\"id\":3}}", "", "") == WOS_FLOW_AUTHENTICATED;
+  #assert f[0].user_id_n == 0;
+
+  // Invalid JSON, non-string access_token, empty access_token, and missing pending_token fail cleanly.
+  #assert wos_flow_on_auth_response(f[..], 200, "not-json", "", "") == WOS_FLOW_FAILED && f[0].state == WOS_FLOW_FAILED;
+  #assert wos_flow_on_auth_response(f[..], 200, "{\"access_token\":123}", "", "") == WOS_FLOW_FAILED;
+  #assert wos_flow_on_auth_response(f[..], 200, "{\"access_token\":\"\"}", "", "") == WOS_FLOW_FAILED;
+  #assert wos_flow_on_auth_response(f[..], 200, "{}", "", "") == WOS_FLOW_FAILED;
+  #assert wos_flow_on_auth_response(f[..], 403, "{\"code\":\"organization_selection_required\"}", "", "") == WOS_FLOW_FAILED;
+
+  // Exercise wos_flow_zero_secrets and wos_flow_clear with every secret and non-secret field populated.
+  f[0].verifier[0] = 'v'; f[0].verifier_n = 1;
+  f[0].oauth_state[0] = 's'; f[0].oauth_state_n = 1;
+  f[0].pending_token[0] = 'p'; f[0].pending_token_n = 1;
+  f[0].device_code[0] = 'd'; f[0].device_code_n = 1;
+  f[0].access_token[0] = 'a'; f[0].access_token_n = 1;
+  f[0].refresh_token[0] = 'r'; f[0].refresh_token_n = 1;
+  f[0].refresh_in_flight = true;
+  f[0].email_n = 1; f[0].user_code_n = 1; f[0].verification_uri_n = 1; f[0].verification_uri_complete_n = 1;
+  f[0].poll_interval_sec = 5; f[0].poll_next_sec = 10; f[0].poll_deadline_sec = 20;
+  f[0].user_id_n = 1; f[0].org_id_n = 1;
+  wos_flow_clear(f[..]);
+  #assert f[0].state == WOS_FLOW_IDLE && !f[0].refresh_in_flight && f[0].email_n == 0 && f[0].user_code_n == 0;
+  #assert f[0].verification_uri_n == 0 && f[0].verification_uri_complete_n == 0 && f[0].poll_interval_sec == 0 && f[0].poll_next_sec == 0 && f[0].poll_deadline_sec == 0;
+  #assert f[0].user_id_n == 0 && f[0].org_id_n == 0;
+  #assert f[0].verifier_n == 0 && f[0].oauth_state_n == 0 && f[0].pending_token_n == 0 && f[0].device_code_n == 0 && f[0].access_token_n == 0 && f[0].refresh_token_n == 0;
+  #assert f[0].device_code[0] == 0 && f[0].access_token[0] == 0;
+}
+
+#test "Magic Auth flow validates email and 6-digit code and forwards Radar context" {
+  f: [1] WosAuthFlow;
+  scratch: [4096] u8;
+  f[0].access_token[0] = 'x'; f[0].access_token_n = 1;
+  #assert wos_flow_magic_start(f[..], "", "", scratch[..]).error == WOS_GEN_MISSING;
+  long_em: [WOS_FLOW_STR_MAX + 1] u8;
+  for i: 0..<long_em.count { long_em[i] = 'a'; }
+  #assert wos_flow_magic_start(f[..], "", cast(string) long_em[0..<WOS_FLOW_STR_MAX], scratch[..]).error == WOS_GEN_OK;
+  #assert f[0].email_n == WOS_FLOW_STR_MAX && f[0].access_token_n == 0;
+  #assert wos_flow_magic_start(f[..], "", cast(string) long_em[..], scratch[..]).error == WOS_GEN_CAPACITY;
+
+  mr := wos_flow_magic_start(f[..], "", "alice@example.com", scratch[..]);
+  #assert mr.error == WOS_GEN_OK && f[0].state == WOS_FLOW_AWAIT_MAGIC_CODE;
+  #assert wos_req_body(mr, scratch[..]) == "{\"email\":\"alice@example.com\"}";
+
+  #assert wos_flow_magic_verify(f[..], "", "client_01", "sk_1", "", "", "", "", scratch[..]).error == WOS_GEN_MISSING;
+  vr := wos_flow_magic_verify(f[..], "", "client_01", "sk_1", "123456", "203.0.113.1", "OA-Web", "rad_7", scratch[..]);
+  #assert vr.error == WOS_GEN_OK && f[0].state == WOS_FLOW_EXCHANGING;
+  #assert wos_flow_magic_verify(f[..], "", "client_01", "sk_1", "123456", "", "", "", scratch[..]).error == WOS_GEN_BAD_TYPE;
+  nodes: [32] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], wos_req_body(vr, scratch[..]), nodes[..]);
+  tmp: [64] u8;
+  #assert jv_str(d[0], jv_get(d[0], 0, "email"), tmp[..]) == 17 && cast(string) tmp[0..<17] == "alice@example.com";
+  #assert jv_str(d[0], jv_get(d[0], 0, "radar_auth_attempt_id"), tmp[..]) == 5 && cast(string) tmp[0..<5] == "rad_7";
+}
+
+#test "RFC 8628 device flow polls with authorization_pending, slow_down (+5s), deadline expiry, and public no-secret body" {
+  f: [1] WosAuthFlow;
+  scratch: [4096] u8;
+  f[0].access_token[0] = 'x'; f[0].access_token_n = 1;
+  #assert wos_flow_device_start(f[..], "", "", scratch[..]).error == WOS_GEN_MISSING;
+  dr := wos_flow_device_start(f[..], "", "client_01", scratch[..]);
+  #assert dr.error == WOS_GEN_OK && dr.public_auth && f[0].state == WOS_FLOW_AWAIT_DEVICE_INIT && f[0].access_token_n == 0;
+  #assert wos_req_body(dr, scratch[..]) == "{\"client_id\":\"client_01\"}";
+
+  // Non-2xx, bad JSON, and every required field missing/empty/zero fail init cleanly.
+  #assert wos_flow_device_on_init(f[..], 500, "{}", 1000) == WOS_FLOW_FAILED && f[0].state == WOS_FLOW_FAILED;
+  f[0].state = WOS_FLOW_AWAIT_DEVICE_INIT;
+  #assert wos_flow_device_on_init(f[..], 200, "not-json", 1000) == WOS_FLOW_FAILED && f[0].state == WOS_FLOW_FAILED;
+  f[0].state = WOS_FLOW_AWAIT_DEVICE_INIT;
+  #assert wos_flow_device_on_init(f[..], 200, "{\"user_code\":\"u\",\"verification_uri\":\"v\",\"expires_in\":1}", 1000) == WOS_FLOW_FAILED && f[0].state == WOS_FLOW_FAILED;
+  #assert wos_flow_device_on_init(f[..], 200, "{\"device_code\":\"\",\"user_code\":\"u\",\"verification_uri\":\"v\",\"expires_in\":1}", 1000) == WOS_FLOW_FAILED;
+  #assert wos_flow_device_on_init(f[..], 200, "{\"device_code\":\"d\",\"verification_uri\":\"v\",\"expires_in\":1}", 1000) == WOS_FLOW_FAILED;
+  #assert wos_flow_device_on_init(f[..], 200, "{\"device_code\":\"d\",\"user_code\":\"\",\"verification_uri\":\"v\",\"expires_in\":1}", 1000) == WOS_FLOW_FAILED;
+  #assert wos_flow_device_on_init(f[..], 200, "{\"device_code\":\"d\",\"user_code\":\"u\",\"expires_in\":1}", 1000) == WOS_FLOW_FAILED;
+  #assert wos_flow_device_on_init(f[..], 200, "{\"device_code\":\"d\",\"user_code\":\"u\",\"verification_uri\":\"\",\"expires_in\":1}", 1000) == WOS_FLOW_FAILED;
+  #assert wos_flow_device_on_init(f[..], 200, "{\"device_code\":\"d\",\"user_code\":\"u\",\"verification_uri\":\"v\"}", 1000) == WOS_FLOW_FAILED;
+  #assert wos_flow_device_on_init(f[..], 200, "{\"device_code\":\"d\",\"user_code\":\"u\",\"verification_uri\":\"v\",\"expires_in\":0}", 1000) == WOS_FLOW_FAILED;
+
+  // Minimal 1-char fields + expires_in=1 + interval=0 (defaults to 5) + interval=1 (honored).
+  #assert wos_flow_device_on_init(f[..], 200, "{\"device_code\":\"d\",\"user_code\":\"u\",\"verification_uri\":\"v\",\"verification_uri_complete\":123,\"expires_in\":1,\"interval\":0}", 1000) == WOS_FLOW_POLLING_DEVICE;
+  #assert f[0].poll_interval_sec == 5 && f[0].verification_uri_n == 1 && f[0].verification_uri_complete_n == 0;
+  #assert wos_flow_device_on_init(f[..], 200, "{\"device_code\":\"d\",\"user_code\":\"u\",\"verification_uri\":\"v\",\"expires_in\":1,\"interval\":1}", 1000) == WOS_FLOW_POLLING_DEVICE;
+  #assert f[0].poll_interval_sec == 1 && f[0].poll_next_sec == 1001;
+
+  // Full init with verification_uri_complete.
+  init_json := "{\"device_code\":\"dev_1\",\"user_code\":\"ABCD-1234\",\"verification_uri\":\"https://auth.example/device\",\"verification_uri_complete\":\"https://auth.example/device?code=ABCD-1234\",\"expires_in\":300}";
+  #assert wos_flow_device_on_init(f[..], 200, init_json, 1000) == WOS_FLOW_POLLING_DEVICE;
+  #assert f[0].poll_interval_sec == 5 && f[0].poll_next_sec == 1005 && f[0].poll_deadline_sec == 1300;
+  #assert cast(string) f[0].user_code[0..<f[0].user_code_n] == "ABCD-1234";
+  #assert cast(string) f[0].verification_uri[0..<f[0].verification_uri_n] == "https://auth.example/device";
+  #assert cast(string) f[0].verification_uri_complete[0..<f[0].verification_uri_complete_n] == "https://auth.example/device?code=ABCD-1234";
+
+  init2 := "{\"device_code\":\"dev_1\",\"user_code\":\"U1\",\"verification_uri\":\"https://x\",\"expires_in\":60,\"interval\":10}";
+  #assert wos_flow_device_on_init(f[..], 200, init2, 1000) == WOS_FLOW_POLLING_DEVICE && f[0].poll_interval_sec == 10 && f[0].poll_next_sec == 1010;
+
+  // Poll scheduling: before next_poll -> WAIT; at next_poll -> READY; at deadline -> EXPIRED.
+  req: [1] WosReq;
+  #assert wos_flow_device_poll_req(f[..], "", "client_01", 1009, scratch[..], req[..]) == WOS_DPOLL_WAIT;
+  #assert wos_flow_device_poll_req(f[..], "", "client_01", 1010, scratch[..], req[..]) == WOS_DPOLL_READY;
+  #assert req[0].error == WOS_GEN_OK && wos_req_body(req[0], scratch[..]) == "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:device_code\",\"client_id\":\"client_01\",\"device_code\":\"dev_1\"}";
+
+  // authorization_pending keeps polling; slow_down adds +5s; 200 authenticates.
+  #assert wos_flow_device_on_poll(f[..], 400, "{\"error\":\"authorization_pending\"}", 1010) == WOS_FLOW_POLLING_DEVICE;
+  #assert f[0].poll_interval_sec == 10 && f[0].poll_next_sec == 1020 && f[0].last_error.kind == WOS_ERR_KIND_AUTH_PENDING;
+  #assert wos_flow_device_on_poll(f[..], 400, "{\"error\":\"slow_down\"}", 1020) == WOS_FLOW_POLLING_DEVICE;
+  #assert f[0].poll_interval_sec == 15 && f[0].poll_next_sec == 1035;
+  #assert wos_flow_device_poll_req(f[..], "", "client_01", 1060, scratch[..], req[..]) == WOS_DPOLL_EXPIRED;
+  #assert f[0].state == WOS_FLOW_FAILED;
+  #assert wos_flow_device_poll_req(f[..], "", "client_01", 1060, scratch[..], req[..]) == WOS_DPOLL_BAD_STATE;
+
+  // Re-init to verify terminal poll failure and 200 success.
+  #assert wos_flow_device_on_init(f[..], 200, init2, 2000) == WOS_FLOW_POLLING_DEVICE;
+  #assert wos_flow_device_on_poll(f[..], 400, "{\"error\":\"access_denied\"}", 2010) == WOS_FLOW_FAILED && f[0].state == WOS_FLOW_FAILED;
+  #assert wos_flow_device_on_init(f[..], 200, init2, 2000) == WOS_FLOW_POLLING_DEVICE;
+  #assert wos_flow_device_on_poll(f[..], 200, "{\"access_token\":\"at_d\",\"refresh_token\":\"rt_d\",\"user\":{\"id\":\"u_d\"}}", 2010) == WOS_FLOW_AUTHENTICATED;
+  #assert cast(string) f[0].access_token[0..<f[0].access_token_n] == "at_d";
+}
+
+#test "single-flight refresh coalesces concurrent callers, preserves tokens on 429/5xx, and clears on 401/invalid_grant" {
+  f: [1] WosAuthFlow;
+  scratch: [4096] u8;
+  req: [1] WosReq;
+
+  #assert wos_flow_refresh_begin(f[..], "", "client_01", "", "", scratch[..], req[..]) == WOS_RSTART_NO_TOKEN;
+
+  #assert wos_flow_on_auth_response(f[..], 200, "{\"access_token\":\"at_1\",\"refresh_token\":\"rt_1\",\"user\":{\"id\":\"u1\"}}", "", "") == WOS_FLOW_AUTHENTICATED;
+  #assert wos_flow_refresh_begin(f[..], "", "client_01", "", "", scratch[0..<8], req[..]) == WOS_RSTART_ERROR && !f[0].refresh_in_flight;
+
+  // First caller starts refresh and populates exact refresh_token body; second coalesces.
+  #assert wos_flow_refresh_begin(f[..], "", "client_01", "", "", scratch[..], req[..]) == WOS_RSTART_OK && f[0].refresh_in_flight;
+  #assert wos_req_body(req[0], scratch[..]) == "{\"grant_type\":\"refresh_token\",\"client_id\":\"client_01\",\"refresh_token\":\"rt_1\"}";
+  #assert wos_flow_refresh_begin(f[..], "", "client_01", "", "", scratch[..], req[..]) == WOS_RSTART_COALESCED;
+
+  // Transient 503 preserves rt_1, records last_error, and clears refresh_in_flight.
+  #assert wos_flow_refresh_finish(f[..], 503, "upstream down", "5", "") == WOS_REFRESH_TRANSIENT;
+  #assert !f[0].refresh_in_flight && f[0].state == WOS_FLOW_AUTHENTICATED && f[0].last_error.status == 503;
+  #assert cast(string) f[0].refresh_token[0..<f[0].refresh_token_n] == "rt_1";
+
+  // Successful refresh rotates tokens and restores WOS_FLOW_AUTHENTICATED even from another state.
+  f[0].state = WOS_FLOW_EXCHANGING;
+  #assert wos_flow_refresh_begin(f[..], "", "client_01", "", "org_2", scratch[..], req[..]) == WOS_RSTART_OK;
+  #assert wos_flow_refresh_finish(f[..], 200, "{\"access_token\":\"at_2\",\"refresh_token\":\"rt_2\",\"user\":{\"id\":\"u1\"}}", "", "") == 0;
+  #assert f[0].state == WOS_FLOW_AUTHENTICATED && cast(string) f[0].access_token[0..<f[0].access_token_n] == "at_2" && cast(string) f[0].refresh_token[0..<f[0].refresh_token_n] == "rt_2";
+
+  // Bad 200 body reports FAILED without erasing refresh_token; 400 non-invalid_grant reports FAILED.
+  #assert wos_flow_refresh_begin(f[..], "", "client_01", "", "", scratch[..], req[..]) == WOS_RSTART_OK;
+  #assert wos_flow_refresh_finish(f[..], 200, "{}", "", "") == WOS_REFRESH_FAILED && f[0].refresh_token_n == 4;
+  #assert wos_flow_refresh_begin(f[..], "", "client_01", "", "", scratch[..], req[..]) == WOS_RSTART_OK;
+  #assert wos_flow_refresh_finish(f[..], 400, "{\"error\":\"bad_request\"}", "", "") == WOS_REFRESH_FAILED && f[0].refresh_token_n == 4;
+
+  // 401 / invalid_grant zeroes and clears stored tokens and transitions to REVOKED.
+  #assert wos_flow_refresh_begin(f[..], "", "client_01", "", "", scratch[..], req[..]) == WOS_RSTART_OK;
+  #assert wos_flow_refresh_finish(f[..], 401, "{\"error\":\"invalid_grant\"}", "", "") == WOS_REFRESH_REVOKED;
+  #assert f[0].state == WOS_FLOW_REVOKED && f[0].access_token_n == 0 && f[0].refresh_token_n == 0;
+}
+
+wos_flow_is_2xx :: (status: int) -> bool #effects(all) {
+  return status >= 200 && status <= 299;
+}
+
+wos_flow_fail :: (f: [] WosAuthFlow) -> u32 #effects(all) {
+  f[0].state = WOS_FLOW_FAILED;
+  return WOS_FLOW_FAILED;
+}
+
+wos_flow_copy_str :: (s: string, out: [] u8) -> int #effects(all) {
+  if s.count > out.count { return -1; }
+  for i: 0..<s.count { out[i] = s[i]; }
+  return s.count;
+}
+
+wos_flow_zero_secrets :: (f: [] WosAuthFlow) #effects(all) {
+  secure_zero(f[0].verifier[..]); #assert crypto_zeroed(f[0].verifier[..]);
+  secure_zero(f[0].oauth_state[..]); #assert crypto_zeroed(f[0].oauth_state[..]);
+  secure_zero(f[0].pending_token[..]); #assert crypto_zeroed(f[0].pending_token[..]);
+  secure_zero(f[0].device_code[..]); #assert crypto_zeroed(f[0].device_code[..]);
+  secure_zero(f[0].access_token[..]); #assert crypto_zeroed(f[0].access_token[..]);
+  secure_zero(f[0].refresh_token[..]); #assert crypto_zeroed(f[0].refresh_token[..]);
+  f[0].verifier_n = 0;
+  f[0].oauth_state_n = 0;
+  f[0].pending_token_n = 0;
+  f[0].device_code_n = 0;
+  f[0].access_token_n = 0;
+  f[0].refresh_token_n = 0;
+}
+
+wos_flow_clear :: (f: [] WosAuthFlow) #export_c #effects(all) {
+  wos_flow_zero_secrets(f);
+  f[0].state = WOS_FLOW_IDLE;
+  f[0].refresh_in_flight = false;
+  f[0].email_n = 0;
+  f[0].user_code_n = 0;
+  f[0].verification_uri_n = 0;
+  f[0].verification_uri_complete_n = 0;
+  f[0].poll_interval_sec = 0;
+  f[0].poll_next_sec = 0;
+  f[0].poll_deadline_sec = 0;
+  f[0].user_id_n = 0;
+  f[0].org_id_n = 0;
+}
+
+wos_flow_pkce_start :: (
+  f: [] WosAuthFlow, base_url: string, client_id: string, redirect_uri: string,
+  provider: string, connection_id: string, organization_id: string,
+  domain_hint: string, login_hint: string,
+  verifier_entropy: [] u8, state_entropy: [] u8, url_out: [] u8,
+) -> int #export_c #effects(all) {
+  wos_flow_clear(f);
+  vn := wos_pkce_verifier_from_entropy(verifier_entropy, f[0].verifier[..]);
+  if vn == -1 { return -1; }
+  sn := wos_state_from_entropy(state_entropy, f[0].oauth_state[..]);
+  if sn == -1 { wos_flow_clear(f); return -1; }
+  ch: [WOS_PKCE_CHALLENGE_LEN] u8;
+  cn := wos_pkce_challenge(cast(string) f[0].verifier[0..<vn], ch[..]);
+  #assert cn == WOS_PKCE_CHALLENGE_LEN;
+  p := WosAuthUrlParams.{
+    client_id = client_id,
+    redirect_uri = redirect_uri,
+    provider = provider,
+    connection_id = connection_id,
+    organization_id = organization_id,
+    domain_hint = domain_hint,
+    login_hint = login_hint,
+    state = cast(string) f[0].oauth_state[0..<sn],
+    code_challenge = cast(string) ch[..],
+    code_challenge_method = "S256",
+  };
+  un := wos_authorize_url(base_url, p, url_out);
+  if un == -1 { wos_flow_clear(f); return -1; }
+  f[0].verifier_n = vn;
+  f[0].oauth_state_n = sn;
+  f[0].state = WOS_FLOW_AWAIT_CALLBACK;
+  return un;
+}
+
+wos_flow_pkce_callback :: (
+  f: [] WosAuthFlow, base_url: string, client_id: string, api_key: string,
+  code: string, got_state: string, error_param: string, scratch: [] u8,
+) -> WosReq #effects(all) {
+  if f[0].state != WOS_FLOW_AWAIT_CALLBACK { return WosReq.{error = WOS_GEN_BAD_TYPE}; }
+  if error_param.count > 0 || code.count == 0 {
+    wos_flow_clear(f);
+    _ = wos_flow_fail(f);
+    return WosReq.{error = WOS_GEN_MISSING};
+  }
+  expected_state := cast(string) f[0].oauth_state[0..<f[0].oauth_state_n];
+  if !wos_state_equal(expected_state, got_state) {
+    wos_flow_clear(f);
+    _ = wos_flow_fail(f);
+    return WosReq.{error = WOS_GEN_MISSING};
+  }
+  req := wos_user_management_authenticate_with_code(
+    base_url, client_id, api_key,
+    WosP_UserManagementAuthenticateWithCode.{
+      code = code,
+      code_verifier = cast(string) f[0].verifier[0..<f[0].verifier_n],
+    },
+    scratch,
+  );
+  secure_zero(f[0].verifier[..]); #assert crypto_zeroed(f[0].verifier[..]);
+  secure_zero(f[0].oauth_state[..]); #assert crypto_zeroed(f[0].oauth_state[..]);
+  f[0].verifier_n = 0;
+  f[0].oauth_state_n = 0;
+  f[0].state = WOS_FLOW_EXCHANGING;
+  return req;
+}
+
+wos_flow_magic_start :: (f: [] WosAuthFlow, base_url: string, email: string, scratch: [] u8) -> WosReq #effects(all) {
+  if email.count == 0 { return WosReq.{error = WOS_GEN_MISSING}; }
+  wos_flow_clear(f);
+  en := wos_flow_copy_str(email, f[0].email[..]);
+  if en == -1 { return WosReq.{error = WOS_GEN_CAPACITY}; }
+  f[0].email_n = en;
+  f[0].state = WOS_FLOW_AWAIT_MAGIC_CODE;
+  return wos_user_management_create_magic_auth(base_url, WosP_UserManagementCreateMagicAuth.{email = email}, scratch);
+}
+
+wos_flow_magic_verify :: (
+  f: [] WosAuthFlow, base_url: string, client_id: string, api_key: string,
+  code: string, ip_address: string, user_agent: string, radar_attempt_id: string, scratch: [] u8,
+) -> WosReq #effects(all) {
+  if f[0].state != WOS_FLOW_AWAIT_MAGIC_CODE { return WosReq.{error = WOS_GEN_BAD_TYPE}; }
+  if code.count == 0 { return WosReq.{error = WOS_GEN_MISSING}; }
+  f[0].state = WOS_FLOW_EXCHANGING;
+  return wos_user_management_authenticate_with_magic_auth(
+    base_url, client_id, api_key,
+    WosP_UserManagementAuthenticateWithMagicAuth.{
+      code = code,
+      email = cast(string) f[0].email[0..<f[0].email_n],
+      ip_address = ip_address,
+      user_agent = user_agent,
+      radar_auth_attempt_id = radar_attempt_id,
+    },
+    scratch,
+  );
+}
+
+wos_flow_extract_tokens :: (f: [] WosAuthFlow, body: string) -> bool #effects(all) {
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) { return false; }
+  at_r := wos_jv_get_str(d[0], 0, "access_token", f[0].access_token[..]);
+  if at_r.count == 0 { return false; }
+  f[0].access_token_n = at_r.count;
+  f[0].refresh_token_n = wos_jv_get_str(d[0], 0, "refresh_token", f[0].refresh_token[..]).count;
+  f[0].org_id_n = wos_jv_get_str(d[0], 0, "organization_id", f[0].org_id[..]).count;
+  f[0].user_id_n = 0;
+  unode := jv_get(d[0], 0, "user");
+  if jv_kind(d[0], unode) == JV_OBJECT {
+    f[0].user_id_n = wos_jv_get_str(d[0], unode, "id", f[0].user_id[..]).count;
+  }
+  return true;
+}
+
+wos_flow_on_auth_response :: (
+  f: [] WosAuthFlow, status: int, body: string, retry_after_hdr: string, req_id_hdr: string,
+) -> u32 #export_c #effects(all) {
+  if wos_flow_is_2xx(status) {
+    if !wos_flow_extract_tokens(f, body) { return wos_flow_fail(f); }
+    f[0].state = WOS_FLOW_AUTHENTICATED;
+    return WOS_FLOW_AUTHENTICATED;
+  }
+  e: [1] WosApiError;
+  wos_parse_api_error(status, body, retry_after_hdr, req_id_hdr, e[..]);
+  f[0].last_error = e[0];
+  if status == 403 && e[0].kind == WOS_ERR_KIND_ORG_SELECT && e[0].pending_n > 0 {
+    pn := wos_flow_copy_str(cast(string) e[0].pending_auth_token[0..<e[0].pending_n], f[0].pending_token[..]);
+    #assert pn == e[0].pending_n;
+    f[0].pending_token_n = pn;
+    f[0].state = WOS_FLOW_NEED_ORG_SELECT;
+    return WOS_FLOW_NEED_ORG_SELECT;
+  }
+  return wos_flow_fail(f);
+}
+
+wos_flow_select_org :: (
+  f: [] WosAuthFlow, base_url: string, client_id: string, api_key: string,
+  organization_id: string, ip_address: string, user_agent: string, scratch: [] u8,
+) -> WosReq #effects(all) {
+  if f[0].state != WOS_FLOW_NEED_ORG_SELECT { return WosReq.{error = WOS_GEN_BAD_TYPE}; }
+  if organization_id.count == 0 { return WosReq.{error = WOS_GEN_MISSING}; }
+  f[0].state = WOS_FLOW_EXCHANGING;
+  return wos_user_management_authenticate_with_organization_selection(
+    base_url, client_id, api_key,
+    WosP_UserManagementAuthenticateWithOrganizationSelection.{
+      pending_authentication_token = cast(string) f[0].pending_token[0..<f[0].pending_token_n],
+      organization_id = organization_id,
+      ip_address = ip_address,
+      user_agent = user_agent,
+    },
+    scratch,
+  );
+}
+
+wos_flow_device_start :: (f: [] WosAuthFlow, base_url: string, client_id: string, scratch: [] u8) -> WosReq #effects(all) {
+  if client_id.count == 0 { return WosReq.{error = WOS_GEN_MISSING}; }
+  wos_flow_clear(f);
+  f[0].state = WOS_FLOW_AWAIT_DEVICE_INIT;
+  return wos_user_management_create_device(base_url, WosP_UserManagementCreateDevice.{client_id = client_id}, scratch);
+}
+
+wos_flow_device_on_init :: (f: [] WosAuthFlow, status: int, body: string, now_sec: int) -> u32 #export_c #effects(all) {
+  if !wos_flow_is_2xx(status) { return wos_flow_fail(f); }
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) { return wos_flow_fail(f); }
+  dc := wos_jv_get_str(d[0], 0, "device_code", f[0].device_code[..]);
+  uc := wos_jv_get_str(d[0], 0, "user_code", f[0].user_code[..]);
+  vu := wos_jv_get_str(d[0], 0, "verification_uri", f[0].verification_uri[..]);
+  exp_r := wos_jv_get_int(d[0], 0, "expires_in");
+  if !dc.present || dc.count == 0 || !uc.present || uc.count == 0 || !vu.present || vu.count == 0 || !exp_r.present || exp_r.value < 1 {
+    return wos_flow_fail(f);
+  }
+  f[0].device_code_n = dc.count;
+  f[0].user_code_n = uc.count;
+  f[0].verification_uri_n = vu.count;
+  f[0].verification_uri_complete_n = wos_jv_get_str(d[0], 0, "verification_uri_complete", f[0].verification_uri_complete[..]).count;
+  iv_r := wos_jv_get_int(d[0], 0, "interval");
+  iv := ifx iv_r.present && iv_r.value > 0 then iv_r.value else 5;
+  f[0].poll_interval_sec = iv;
+  f[0].poll_next_sec = now_sec + iv;
+  f[0].poll_deadline_sec = now_sec + exp_r.value;
+  f[0].state = WOS_FLOW_POLLING_DEVICE;
+  return WOS_FLOW_POLLING_DEVICE;
+}
+
+wos_flow_device_poll_req :: (
+  f: [] WosAuthFlow, base_url: string, client_id: string, now_sec: int, scratch: [] u8, req_out: [] WosReq,
+) -> u32 #effects(all) {
+  if f[0].state != WOS_FLOW_POLLING_DEVICE { return WOS_DPOLL_BAD_STATE; }
+  if now_sec >= f[0].poll_deadline_sec { _ = wos_flow_fail(f); return WOS_DPOLL_EXPIRED; }
+  if now_sec < f[0].poll_next_sec { return WOS_DPOLL_WAIT; }
+  req_out[0] = wos_user_management_authenticate_with_device_code(
+    base_url, client_id, "",
+    WosP_UserManagementAuthenticateWithDeviceCode.{
+      device_code = cast(string) f[0].device_code[0..<f[0].device_code_n],
+    },
+    scratch,
+  );
+  return WOS_DPOLL_READY;
+}
+
+wos_flow_device_on_poll :: (f: [] WosAuthFlow, status: int, body: string, now_sec: int) -> u32 #export_c #effects(all) {
+  if wos_flow_is_2xx(status) {
+    return wos_flow_on_auth_response(f, status, body, "", "");
+  }
+  e: [1] WosApiError;
+  wos_parse_api_error(status, body, "", "", e[..]);
+  f[0].last_error = e[0];
+  if e[0].kind == WOS_ERR_KIND_AUTH_PENDING {
+    f[0].poll_next_sec = now_sec + f[0].poll_interval_sec;
+    return WOS_FLOW_POLLING_DEVICE;
+  }
+  if e[0].kind == WOS_ERR_KIND_SLOW_DOWN {
+    f[0].poll_interval_sec += 5;
+    f[0].poll_next_sec = now_sec + f[0].poll_interval_sec;
+    return WOS_FLOW_POLLING_DEVICE;
+  }
+  return wos_flow_fail(f);
+}
+
+wos_flow_refresh_begin :: (
+  f: [] WosAuthFlow, base_url: string, client_id: string, api_key: string,
+  organization_id: string, scratch: [] u8, req_out: [] WosReq,
+) -> u32 #effects(all) {
+  if f[0].refresh_in_flight { return WOS_RSTART_COALESCED; }
+  if f[0].refresh_token_n == 0 { return WOS_RSTART_NO_TOKEN; }
+  req := wos_user_management_authenticate_with_refresh_token(
+    base_url, client_id, api_key,
+    WosP_UserManagementAuthenticateWithRefreshToken.{
+      refresh_token = cast(string) f[0].refresh_token[0..<f[0].refresh_token_n],
+      organization_id = organization_id,
+    },
+    scratch,
+  );
+  if req.error != WOS_GEN_OK { return WOS_RSTART_ERROR; }
+  f[0].refresh_in_flight = true;
+  req_out[0] = req;
+  return WOS_RSTART_OK;
+}
+
+// Returns 0 on success, or WOS_REFRESH_TRANSIENT / WOS_REFRESH_REVOKED / WOS_REFRESH_FAILED.
+wos_flow_refresh_finish :: (
+  f: [] WosAuthFlow, status: int, body: string, retry_after_hdr: string, req_id_hdr: string,
+) -> u32 #export_c #effects(all) {
+  f[0].refresh_in_flight = false;
+  if wos_flow_is_2xx(status) {
+    if !wos_flow_extract_tokens(f, body) { return WOS_REFRESH_FAILED; }
+    f[0].state = WOS_FLOW_AUTHENTICATED;
+    return 0;
+  }
+  e: [1] WosApiError;
+  wos_parse_api_error(status, body, retry_after_hdr, req_id_hdr, e[..]);
+  f[0].last_error = e[0];
+  cls := wos_refresh_classify(e[0]);
+  if cls == WOS_REFRESH_REVOKED {
+    wos_flow_zero_secrets(f);
+    f[0].state = WOS_FLOW_REVOKED;
+  }
+  return cls;
+}

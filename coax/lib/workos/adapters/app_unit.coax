@@ -1,0 +1,64 @@
+// Cohesive client-side C ABI compilation unit for iOS, macOS desktop, Android, and Wasm (#14099 / #14101).
+// Exposes ONLY public-client auth helpers (PKCE S256, OAuth authorize URL, state compare,
+// error/retry classification, wos2. session sealing, RS256 JWT inspection, and public
+// PKCE/device flow helpers) — strictly zero server secrets.
+#load "../pkce.coax";
+#load "../url.coax";
+#load "../seal.coax";
+#load "../jwt.coax";
+#load "../error.coax";
+#load "../retry.coax";
+#load "../flow.coax";
+
+wos_app_pkce_start :: (
+  f: [] WosAuthFlow, base_url: string, client_id: string, redirect_uri: string,
+  provider: string, connection_id: string, organization_id: string,
+  domain_hint: string, login_hint: string,
+  verifier_entropy: [] u8, state_entropy: [] u8, url_out: [] u8,
+) -> int #export_c #effects(all) {
+  return wos_flow_pkce_start(
+    f, base_url, client_id, redirect_uri, provider, connection_id, organization_id,
+    domain_hint, login_hint, verifier_entropy, state_entropy, url_out,
+  );
+}
+
+// Validate callback CSRF state constant-time and extract verifier for posting
+// `(code, code_verifier, redirect_uri)` to oa-api's POST /api/auth/workos/exchange
+// (Option A1: oa-api mints OA-Device-Proof bound oa_at_/oa_rt_).
+wos_app_pkce_finish_for_oa_api :: (
+  f: [] WosAuthFlow, got_state: string, error_param: string, verifier_out: [] u8,
+) -> int #export_c #effects(all) {
+  if f[0].state != WOS_FLOW_AWAIT_CALLBACK { return -1; }
+  if error_param.count > 0 || f[0].verifier_n < WOS_PKCE_VERIFIER_MIN || verifier_out.count < f[0].verifier_n {
+    wos_flow_clear(f);
+    f[0].state = WOS_FLOW_FAILED;
+    return -1;
+  }
+  expected_state := cast(string) f[0].oauth_state[0..<f[0].oauth_state_n];
+  if !wos_state_equal(expected_state, got_state) {
+    wos_flow_clear(f);
+    f[0].state = WOS_FLOW_FAILED;
+    return -1;
+  }
+  n := f[0].verifier_n;
+  for i: 0..<n { verifier_out[i] = f[0].verifier[i]; }
+  secure_zero(f[0].verifier[..]); #assert crypto_zeroed(f[0].verifier[..]);
+  secure_zero(f[0].oauth_state[..]); #assert crypto_zeroed(f[0].oauth_state[..]);
+  f[0].verifier_n = 0;
+  f[0].oauth_state_n = 0;
+  f[0].state = WOS_FLOW_EXCHANGING;
+  return n;
+}
+
+#test "app client C ABI unit builds PKCE authorize URL and releases verifier only on valid state match" {
+  f: [1] WosAuthFlow;
+  ve: [32] u8; se: [32] u8;
+  for i: 0..<32 { ve[i] = cast(u8) (i + 3); se[i] = cast(u8) (i + 40); }
+  ub: [1024] u8; vb: [128] u8;
+  un := wos_app_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "AppleOAuth", "", "", "", "", ve[..], se[..], ub[..]);
+  #assert un > 0 && f[0].state == WOS_FLOW_AWAIT_CALLBACK;
+  st: [WOS_STATE_LEN] u8;
+  for i: 0..<WOS_STATE_LEN { st[i] = f[0].oauth_state[i]; }
+  vn := wos_app_pkce_finish_for_oa_api(f[..], cast(string) st[..], "", vb[..]);
+  #assert vn == 43 && wos_pkce_verifier_ok(cast(string) vb[0..<vn]) && f[0].verifier_n == 0;
+}

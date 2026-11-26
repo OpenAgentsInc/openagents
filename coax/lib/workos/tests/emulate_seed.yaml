@@ -1,0 +1,24 @@
+# Deterministic offline seed fixture for workos/emulate E2E verification (#14099).
+organizations:
+  - id: org_01E2E_ACME
+    name: Acme Robotics
+    domains:
+      - domain: acme.test
+        state: verified
+
+users:
+  - id: user_01E2E_ALICE
+    email: alice@acme.test
+    first_name: Alice
+    last_name: Builder
+    email_verified: true
+    external_id: acct_e2e_alice
+    oauth_provider: GoogleOAuth
+
+connections:
+  - name: Acme Okta SAML
+    connection_type: OktaSAML
+    organization: Acme Robotics
+    state: active
+    domains:
+      - acme.test
