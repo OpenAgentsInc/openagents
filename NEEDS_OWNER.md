@@ -200,3 +200,74 @@ group. Install it from that group; the handoff records the delivery and checks.
 - [ ] Share excerpt → verify the chooser and Cancel; check VoiceOver and
       largest text. Model/effort, attachments and mic remain hidden.
 
+## WorkOS Authentication provisioning & rollout (#14097, #14100, #14101, #14102)
+
+All repo-side SDK (`coax/lib/workos/`), `oa-api` backend + Postgres `workos.*` mirror (`0218_workos_auth.sql`), Custom Coax web/iOS/macOS/Android/CLI adapters, backup restore drill (`auth:workos`), and cutover runbook (`docs/auth/2026-11-26-workos-cutover-runbook.md`) are landed and verified locally against `workos/emulate` and Postgres 16. The following owner-only dashboard, Secret Manager, and Cloud Run actions remain:
+
+### 1. WorkOS Dashboard configuration (Staging & Production environments)
+
+- [ ] Provision **Staging** and **Production** environments in WorkOS Dashboard (reversing D7).
+- [ ] **Authentication methods:**
+  - Enable **Magic Auth** (6-digit email code), **Google OAuth**, **GitHub OAuth**, **Apple OAuth** (required for iOS App Store Guideline 4.8), and **Enterprise SSO**.
+  - Explicitly **disable Passwords**.
+  - Explicitly **disable Phone/SMS auth, SMS MFA, and Radar SMS challenges** (preserving D3 — zero phone numbers collected).
+  - Configure **Optional Organizations** (`org_id = null` for consumer accounts; multi-org picker for B2B/SSO).
+- [ ] **Redirect URIs & Logout URIs:**
+  - Web: `https://openagents.com/api/auth/workos/callback` (prod), `https://staging.openagents.com/api/auth/workos/callback` (staging)
+  - Native Apple (iOS/macOS `ASWebAuthenticationSession`): `openagents://auth/callback`
+  - Native Android (verified App Link): `https://openagents.com/app/auth/callback` (prod), `https://staging.openagents.com/app/auth/callback` (staging)
+- [ ] **Webhooks:** Subscribe to `user.*`, `organization.*`, `organization_membership.*`, `session.*` delivering to:
+  - Staging: `https://staging.openagents.com/api/auth/workos/webhook`
+  - Prod: `https://openagents.com/api/auth/workos/webhook`
+- [ ] **AuthKit Actions (Pre-Authentication & Pre-Registration) + Radar:**
+  - Enable WorkOS Radar (IP/UA/attempt scoring; SMS challenges OFF).
+  - Point Pre-Authentication & Pre-Registration Actions to:
+    - Staging: `https://staging.openagents.com/api/auth/workos/action`
+    - Prod: `https://openagents.com/api/auth/workos/action`
+
+### 2. GCP Secret Manager (owner-run; bound strictly to runtime API SA)
+
+Replace placeholder values with the real Staging / Production WorkOS secrets:
+
+```bash
+SA="serviceAccount:157437760789-compute@developer.gserviceaccount.com"
+PROJECT="openagentsgemini"
+
+# Staging secrets
+for pair in \
+  "oa-workos-api-key-staging:sk_test_REPLACE" \
+  "oa-workos-client-id-staging:client_REPLACE" \
+  "oa-workos-webhook-secret-staging:whsec_REPLACE" \
+  "oa-workos-action-secret-staging:actsec_REPLACE"; do
+  name="${pair%%:*}"; val="${pair#*:}"
+  printf '%s' "$val" | gcloud secrets create "$name" --project="$PROJECT" --data-file=- 2>/dev/null \
+    || printf '%s' "$val" | gcloud secrets versions add "$name" --project="$PROJECT" --data-file=-
+  gcloud secrets add-iam-policy-binding "$name" --project="$PROJECT" \
+    --member="$SA" --role="roles/secretmanager.secretAccessor" --condition=None
+done
+
+# Production secrets
+for pair in \
+  "oa-workos-api-key:sk_live_REPLACE" \
+  "oa-workos-client-id:client_REPLACE" \
+  "oa-workos-webhook-secret:whsec_REPLACE" \
+  "oa-workos-action-secret:actsec_REPLACE"; do
+  name="${pair%%:*}"; val="${pair#*:}"
+  printf '%s' "$val" | gcloud secrets create "$name" --project="$PROJECT" --data-file=- 2>/dev/null \
+    || printf '%s' "$val" | gcloud secrets versions add "$name" --project="$PROJECT" --data-file=-
+  gcloud secrets add-iam-policy-binding "$name" --project="$PROJECT" \
+    --member="$SA" --role="roles/secretmanager.secretAccessor" --condition=None
+done
+```
+
+### 3. Deploy, register `workos-events` schedule, validate & cut over
+
+- [ ] Deploy staging (`coax/web/api/deploy.sh staging`), register the 1-minute `workos-events` mirror poller (`coax/web/api/schedules.sh --staging workos-events`), enable `OA_WORKOS_ENABLED=1` on `oa-api-staging`, and verify with:
+  ```bash
+  coax/web/api/workos-env-check.sh --staging
+  ```
+- [ ] Run end-to-end staging verification across web (`staging.openagents.com/login`), iOS Simulator/TestFlight, macOS desktop, Android, and `openagents login --workos --origin https://staging.openagents.com`.
+- [ ] Redeploy backup jobs so the 6-hourly auth dump includes both `auth` and `workos` schemas (`coax/web/api/backup/deploy.sh --run dump-auth && coax/web/api/backup/deploy.sh --run drill`).
+- [ ] Follow `docs/auth/2026-11-26-workos-cutover-runbook.md` to enable `OA_WORKOS_ENABLED=1` on production `openagents.com`, and later `OA_WORKOS_GAMEBUILDER_ENABLED=1` for `gamebuilder.org`.
+
+

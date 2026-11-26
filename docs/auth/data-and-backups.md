@@ -31,7 +31,9 @@ A sketch, not a migration. Every id is random; every secret is a digest.
 | `auth.pending` | Login attempts: `id`, `code_sha256`, `link_sha256`, `target_lookup`, `tries`, `expires_at`, `browser_sha256` |
 | `auth.nip98_seen` | Event ids already used, kept 10 minutes past their window |
 | `auth.connections` | `account`, `provider` (github, google), `subject`, `scopes`, `token_sealed`, `refreshed_at` |
+| `auth.workos_identities` | `workos_user_id` (PK), `account` (FK to `auth.accounts`), `provider`, `last_organization_id`, `linked_at`; registered in `auth.life_columns` for export, merge, and 30-day purge (#14100) |
 | `auth.audit` | Append-only; see below |
+| `workos.*` | Postgres data-sovereignty mirror (`users`, `organizations`, `organization_memberships`, `sessions` with `_raw jsonb`, generated columns, `deleted_at` tombstones, `*_live` views; `events`, `sync_cursor`, `pending_deletes`) populated by verified webhooks + 1-minute `workos-events` poller (#14100, #14102) |
 
 There is no phone table and no phone column anywhere: we never collect
 phone numbers (decision D3). Lightning Address names live in
@@ -96,7 +98,7 @@ runtime role can't change a row.
 | Logical dumps outside Cloud SQL | Nightly at 09:30 UTC: Cloud Run job `oa-db-dump`, scheduler `oa-db-dump-nightly` |
 | Locked retention | `gs://openagentsgemini-db-backups`: 35 days, **locked**. Nobody, us included, can delete or overwrite a dump before it is 35 days old; a lifecycle rule deletes dumps and drills at 40 days; `keys/` (the sealed auth keys) is kept |
 | Encryption of dumps | [age](https://age-encryption.org), to two keys in `coax/web/api/backup/recipients.txt`: the offline key (the owner holds the private half, on paper) and the drill key (Secret Manager `oa-db-backup-drill-age-key`). The job can encrypt but can't decrypt |
-| The `auth` schema alone | Every six hours at :15 UTC: Cloud Run job `oa-db-dump-auth`, scheduler `oa-db-dump-auth-6h`, into `oa_analytics-auth/` in the same locked bucket, encrypted the same way (#13200) |
+| The `auth` & `workos` schemas alone | Every six hours at :15 UTC: Cloud Run job `oa-db-dump-auth` (`OA_BACKUP_SCHEMA=auth:workos`), scheduler `oa-db-dump-auth-6h`, into `oa_analytics-auth/` in the same locked bucket, encrypted the same way (#13200, #14102) |
 | Restore drill | Monthly, the 3rd at 12:00 UTC: Cloud Run job `oa-db-drill`, scheduler `oa-db-drill-monthly`. Results in `gs://openagentsgemini-db-backups/drills/` |
 | Who can drop tables | Nobody outside a migration. The API serves as `oa_api`, which has no DDL, no `TRUNCATE` and owns nothing. Migrations run as `oa_analytics` in the job `oa-api-migrate-production`, which `deploy.sh` runs before each rollout. An event trigger refuses `DROP` and a trigger on every table refuses `TRUNCATE` unless the transaction set `oa.allow_ddl` |
 | Who can read the owner's connection string | The migration jobs, and still the automation account until the owner's step in `NEEDS_OWNER.md` (D9) |

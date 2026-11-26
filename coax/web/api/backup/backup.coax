@@ -1,7 +1,8 @@
 // The API database's logical backups (docs/auth/data-and-backups.md, #13194, #13219).
 //
-//   backup dump    pg_dump of the whole database (or of one schema, OA_BACKUP_SCHEMA),
-//                  encrypted to recipients.txt, into the locked bucket, with its row counts
+//   backup dump    pg_dump of the whole database (or of one or more schemas, OA_BACKUP_SCHEMA,
+//                  colon-separated e.g. "auth:workos"), encrypted to recipients.txt, into the
+//                  locked bucket, with its row counts
 //   backup drill   the newest dump, decrypted with the drill key, restored into
 //                  a throwaway Postgres in this container, its row counts checked
 //                  against the dump's and against production; the result goes
@@ -36,14 +37,42 @@ BK_COUNTS_SQL :: "SELECT format('%s.%s', n.nspname, c.relname) || E'\\t' ||\n  (
 BK_COUNTS_HEAD :: "SELECT format('%s.%s', n.nspname, c.relname) || E'\\t' ||\n  (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', n.nspname, c.relname), false, true, '')))[1]::text\nFROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%'\n";
 BK_COUNTS_END :: "ORDER BY 1;";
 
-// OA_BACKUP_SCHEMA: empty (the whole database) or one schema's plain name.
+// OA_BACKUP_SCHEMA: empty (the whole database), one plain schema name ("auth"),
+// or a colon-separated list of up to 8 plain schema names ("auth:workos").
+BK_MAX_SCHEMAS :: 8;
 bk_schema_ok :: (s: string) -> bool {
-  for c: s { if !((c >= 'a' && c <= 'z') || c == '_') { return false; } }
-  return true;
+  if s.count == 0 { return true; }
+  parts := 0; cur := 0;
+  for c: s {
+    if c == ':' {
+      if cur == 0 { return false; }
+      parts += 1; cur = 0;
+      if parts >= BK_MAX_SCHEMAS { return false; }
+      continue;
+    }
+    if !((c >= 'a' && c <= 'z') || c == '_') { return false; }
+    cur += 1;
+  }
+  return cur > 0;
 }
-#test "a schema is a plain lower-case name" {
-  #assert bk_schema_ok("") && bk_schema_ok("auth") && bk_schema_ok("metaverse_x");
+// Splits a validated OA_BACKUP_SCHEMA into slices; returns the count (0 when empty).
+bk_split_schemas :: (s: string, out: [] string) -> int {
+  if s.count == 0 { return 0; }
+  n := 0; start := 0;
+  for i: 0..<s.count + 1 {
+    if i < s.count && s[i] != ':' { continue; }
+    if n < out.count { out[n] = s[start..<i]; n += 1; }
+    start = i + 1;
+  }
+  return n;
+}
+#test "a schema is a plain lower-case name or colon-separated list" {
+  #assert bk_schema_ok("") && bk_schema_ok("auth") && bk_schema_ok("auth:workos") && bk_schema_ok("metaverse_x:auth:workos");
+  #assert !bk_schema_ok(":auth") && !bk_schema_ok("auth:") && !bk_schema_ok("auth::workos");
   #assert !bk_schema_ok("auth;drop") && !bk_schema_ok("Auth") && !bk_schema_ok("a b") && !bk_schema_ok("a'");
+  ss: [BK_MAX_SCHEMAS] string;
+  #assert bk_split_schemas("", ss[..]) == 0;
+  #assert bk_split_schemas("auth:workos", ss[..]) == 2 && ss[0] == "auth" && ss[1] == "workos";
 }
 
 // A text being built.
@@ -310,7 +339,16 @@ bk_dump :: (b: Bk) -> int {
   if !bk_snapshot_ok(snap) { tool_err("dump: no snapshot: "); tool_errln(snap); r := proc_release(h); return 1; }
   sn: [1] Bt; bt_s(sn[..], "--snapshot="); bt_s(sn[..], snap);
   cq: [1] Bt; bt_s(cq[..], BK_COUNTS_HEAD);
-  if b.schema.count > 0 { bt_s(cq[..], "  AND n.nspname = '"); bt_s(cq[..], b.schema); bt_s(cq[..], "'\n"); }
+  schemas: [BK_MAX_SCHEMAS] string;
+  sn_count := bk_split_schemas(b.schema, schemas[..]);
+  if sn_count > 0 {
+    bt_s(cq[..], "  AND n.nspname IN (");
+    for si: 0..<sn_count {
+      if si > 0 { bt_s(cq[..], ", "); }
+      bt_s(cq[..], "'"); bt_s(cq[..], schemas[si]); bt_s(cq[..], "'");
+    }
+    bt_s(cq[..], ")\n");
+  }
   bt_s(cq[..], BK_COUNTS_END);
   sent = proc_send(h, bt_text(cq[..])) && proc_send(h, "\nSELECT '--end--';\n");
   tsv: [BK_BIG] u8; tn := 0; tables := 0;
@@ -327,10 +365,14 @@ bk_dump :: (b: Bk) -> int {
   dp: [1] Bt; dump_path := bk_path(b, "db.dump", dp[..]);
   ap: [1] Bt; age_path := bk_path(b, "db.dump.age", ap[..]);
   if !fs_write(counts_path, cast(string) tsv[0..<tn]) { tool_errln("dump: can't write the counts"); r := proc_release(h); return 1; }
-  sc: [1] Bt; bt_s(sc[..], "--schema="); bt_s(sc[..], b.schema);
+  sc_args: [BK_MAX_SCHEMAS] Bt;
   pd := [7] string.["pg_dump", b.dsn, bt_text(sn[..]), "-Fc", "-Z", "6", "-f"];
-  pdv: [9] string; for a, i: pd { pdv[i] = a; } pdv[7] = dump_path;
-  pn := 8; if b.schema.count > 0 { pdv[8] = bt_text(sc[..]); pn = 9; }
+  pdv: [8 + BK_MAX_SCHEMAS] string; for a, i: pd { pdv[i] = a; } pdv[7] = dump_path;
+  pn := 8;
+  for si: 0..<sn_count {
+    bt_s(sc_args[si..<si + 1], "--schema="); bt_s(sc_args[si..<si + 1], schemas[si]);
+    pdv[pn] = bt_text(sc_args[si..<si + 1]); pn += 1;
+  }
   if !bk_ok(pdv[0..<pn], BK_OURS) { r := proc_release(h); return 1; }
   sent = proc_send(h, "COMMIT;\n");
   closed := proc_close_stdin(h);

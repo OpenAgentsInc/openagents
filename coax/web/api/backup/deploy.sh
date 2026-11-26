@@ -7,7 +7,7 @@
 #   coax/web/api/backup/deploy.sh --run dump   # then run one: dump or drill, and wait
 #
 #   oa-db-dump   nightly 09:30 UTC (scheduler oa-db-dump-nightly): backup dump (backup.coax)
-#   oa-db-dump-auth  every six hours (scheduler oa-db-dump-auth-6h): the auth schema alone, #13200
+#   oa-db-dump-auth  every six hours (scheduler oa-db-dump-auth-6h): auth + workos schemas, #13200, #14102
 #   oa-db-drill  the 3rd of each month 12:00 UTC (scheduler oa-db-drill-monthly): backup drill
 #
 # Both run as the API's runtime account, read the database as oa_dump
@@ -64,7 +64,7 @@ job() {  # name mode cpu memory timeout retries secrets [prefix schema]
   echo "backup: job $1"
 }
 job oa-db-dump dump 1 1Gi 1800s 1 "OA_DUMP_DATABASE=oa-db-dump-database-url:latest"
-job oa-db-dump-auth dump 1 512Mi 900s 1 "OA_DUMP_DATABASE=oa-db-dump-database-url:latest" oa_analytics-auth auth
+job oa-db-dump-auth dump 1 512Mi 900s 1 "OA_DUMP_DATABASE=oa-db-dump-database-url:latest" oa_analytics-auth auth:workos
 job oa-db-drill drill 2 4Gi 3600s 0 "OA_DUMP_DATABASE=oa-db-dump-database-url:latest,OA_DRILL_AGE_KEY=oa-db-backup-drill-age-key:latest"
 
 schedule() {  # name cron job
