@@ -74,6 +74,21 @@ mkdir -p "$state"
 
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') coder-release: $*"; }
 commit_of() { /usr/libexec/PlistBuddy -c "Print :OACommit" "$1/Contents/Info.plist" 2>/dev/null || true; }
+version_of() {
+  local plist="$1/Contents/Info.plist"
+  [[ -f "$plist" ]] || return 0
+  local sv bv cm sh out
+  sv="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$plist" 2>/dev/null || true)"
+  bv="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$plist" 2>/dev/null || true)"
+  cm="$(/usr/libexec/PlistBuddy -c "Print :OACommit" "$plist" 2>/dev/null || true)"
+  [[ -n "$sv" ]] || sv="1.0.0"
+  sv="${sv#v}"; sv="${sv#V}"
+  sh="$(printf '%s' "$cm" | tr 'A-F' 'a-f' | cut -c1-7)"
+  out="$sv"
+  if [[ "$bv" =~ ^[0-9]+$ && "$bv" -gt 0 ]]; then out="${out}.${bv}"; fi
+  if [[ -n "$sh" ]]; then out="${out}.${sh}"; fi
+  printf '%s' "$out"
+}
 profile_of() {
   [[ -f "$1/Contents/Info.plist" ]] || return 0
   local p
@@ -151,17 +166,37 @@ for f in (os.listdir(d) if os.path.isdir(d) else []):
 sys.exit(1)
 PY
 }
-# It runs the given app's coder-host (the installed app's by default): a newer build waiting for
-# OpenAgents to quit hands its daemon over first, so a paired phone gets it without that quit.
+# Syncs the given app's bundled worker binaries (~/.openagents/bin/*) and resident daemon
+# (coder-host -> ~/.openagents/bin/openagents-environment) to the exact same version identifier
+# ({version}.{build}.{hash7}). A newer build waiting for OpenAgents to quit hands its daemon and
+# workers over first so paired clients and standalone invocations stay in lockstep.
 sync_resident() {
   local from="${1:-$app}"
-  local bundled="$from/Contents/Resources/coder-host" commit dir want
+  local res="$from/Contents/Resources"
+  local bundled="$res/coder-host" commit ver_id dir want bin_dir="$HOME/.openagents/bin"
   [[ -x "$bundled" ]] || return 0
-  commit="$(commit_of "$from" | cut -c1-16)"; [[ -n "$commit" ]] || return 0
-  dir="$HOME/.openagents/environment/bin/$commit"
+  commit="$(commit_of "$from" | cut -c1-16)"
+  ver_id="$(version_of "$from")"
+  [[ -n "$ver_id" ]] || ver_id="${commit:-unknown}"
+  mkdir -p "$bin_dir" "$HOME/.openagents/environment/bin"
+  # Atomically sync all bundled worker and runtime helpers into ~/.openagents/bin/
+  local helper src_h dst_h tmp_h mode
+  for helper in oa-worker agyworker gitguard coder-host psionic-inkling-serve inkling-kernels.metal claudeworker oasim ple-run lean-run tbench-run gbench-run; do
+    src_h="$res/$helper"
+    [[ -f "$src_h" ]] || continue
+    dst_h="$bin_dir/$helper"
+    if ! cmp -s "$src_h" "$dst_h" 2>/dev/null; then
+      tmp_h="$bin_dir/.${helper}.new.$$"
+      mode=0755; [[ "$helper" == *.metal ]] && mode=0644
+      cp "$src_h" "$tmp_h" && chmod "$mode" "$tmp_h" && mv -f "$tmp_h" "$dst_h"
+    fi
+  done
+  printf '%s\n' "$ver_id" > "$bin_dir/.worker-version.new.$$" && mv -f "$bin_dir/.worker-version.new.$$" "$bin_dir/.worker-version"
+  dir="$HOME/.openagents/environment/bin/$ver_id"
   if ! cmp -s "$bundled" "$dir/openagents-environment" 2>/dev/null; then
-    mkdir -p "$dir" && cp "$bundled" "$dir/openagents-environment.new" && mv "$dir/openagents-environment.new" "$dir/openagents-environment"
+    mkdir -p "$dir" && cp "$bundled" "$dir/openagents-environment.new.$$" && chmod 0755 "$dir/openagents-environment.new.$$" && mv -f "$dir/openagents-environment.new.$$" "$dir/openagents-environment"
   fi
+  printf '%s\n' "$ver_id" > "$HOME/.openagents/environment/version.new.$$" && mv -f "$HOME/.openagents/environment/version.new.$$" "$HOME/.openagents/environment/version"
   mkdir -p "$(dirname "$env_link")"
   [[ "$(readlink "$env_link" 2>/dev/null)" == "$dir/openagents-environment" ]] || ln -sfn "$dir/openagents-environment" "$env_link"
   # Which binary answers now: the login service's (through the link) or a coder-host Coder started.
@@ -181,19 +216,19 @@ sync_resident() {
     fi
   fi
   (( stale || restart )) || return 0
-  if daemon_busy; then say "the resident daemon runs work; it moves to ${commit:0:10} at a later check"; return 0; fi
+  if daemon_busy; then say "the resident daemon runs work; it moves to $ver_id at a later check (workers synced to $ver_id)"; return 0; fi
   if [[ -f "$env_plist" ]]; then
     # The login service stops (launchd would restart it otherwise), then whatever still holds the
     # socket (a coder-host Coder started; only that PID), then the service starts from the new plist.
     launchctl bootout "gui/$(id -u)/$env_label" 2>/dev/null || true
     [[ -n "$p" ]] && { kill "$p" 2>/dev/null || true; for _ in $(seq 1 40); do kill -0 "$p" 2>/dev/null || break; sleep 0.25; done; }
     launchctl bootstrap "gui/$(id -u)" "$env_plist"
-    say "resident daemon at ${commit:0:10} ($env_label)"
+    say "resident daemon & workers at $ver_id ($env_label)"
   elif [[ -n "$p" ]]; then
     # No login service: Coder starts its own coder-host when none answers, so the old one only stops.
     kill "$p" 2>/dev/null || true
     for _ in $(seq 1 40); do kill -0 "$p" 2>/dev/null || break; sleep 0.25; done
-    say "stopped the old resident daemon; Coder starts ${commit:0:10}'s when it opens"
+    say "stopped the old resident daemon; OpenAgents starts $ver_id's when it opens (workers synced to $ver_id)"
   fi
 }
 
@@ -267,16 +302,19 @@ fi
 
 if [[ "$mode" == --status ]]; then
   git -C "$clone" fetch -q origin main 2>/dev/null || true
-  echo "main:      $(git -C "$clone" rev-parse --short origin/main)"
+  main_rev="$((28830 + $(git -C "$clone" rev-list --count origin/main 2>/dev/null || echo 0)))"
+  main_sha="$(git -C "$clone" rev-parse --short=7 origin/main 2>/dev/null || true)"
+  echo "main:      1.0.0.${main_rev}.${main_sha}"
   echo "profile:   $want_profile"
-  inst_c="$(commit_of "$app" | cut -c1-10)"
+  inst_id="$(version_of "$app")"
   inst_p="$(profile_of "$app")"
-  inst_v="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist" 2>/dev/null || true)"
   inst_d="$(/usr/libexec/PlistBuddy -c 'Print :OABuildDate' "$app/Contents/Info.plist" 2>/dev/null || true)"
-  echo "installed: ${inst_c}${inst_c:+ [$inst_p${inst_v:+, build $inst_v}${inst_d:+, $inst_d}]} ($app)"
-  wait_c="$(commit_of "$stage/OpenAgents.app" | cut -c1-10)"
+  echo "installed: ${inst_id}${inst_id:+ [$inst_p${inst_d:+, $inst_d}]} ($app)"
+  wait_id="$(version_of "$stage/OpenAgents.app")"
   wait_p="$(profile_of "$stage/OpenAgents.app")"
-  echo "waiting:   ${wait_c}${wait_c:+ [$wait_p]}"
+  echo "waiting:   ${wait_id}${wait_id:+ [$wait_p]}"
+  worker_v="$(cat "$HOME/.openagents/bin/.worker-version" 2>/dev/null || true)"
+  echo "workers:   ${worker_v:-untracked}"
   echo "checked:   $(cut -c1-10 "$state/current" 2>/dev/null || true)"
   launchctl print "gui/$(id -u)/$label" > /dev/null 2>&1 && echo "checks:    every 15 minutes (log: $state/log)" || echo "checks:    off"
   exit 0
@@ -429,13 +467,17 @@ for line in sys.stdin:
   staged_profile="$want_profile"
 fi
 
-[[ "$use_local" == 0 && "$force_build" == 0 && "$installed" == "$target" && "$installed_profile" == "$want_profile" && ! -e "$legacy_app" ]] && { say "up to date at ${target:0:10} ($want_profile)"; sync_resident; retire_legacy_agent; exit 0; }
+target_id="$(version_of "$stage/OpenAgents.app")"
+[[ -n "$target_id" ]] || target_id="$(version_of "$app")"
+[[ -n "$target_id" ]] || target_id="${target:0:10}"
+
+[[ "$use_local" == 0 && "$force_build" == 0 && "$installed" == "$target" && "$installed_profile" == "$want_profile" && ! -e "$legacy_app" ]] && { say "up to date at $target_id ($want_profile)"; sync_resident; retire_legacy_agent; exit 0; }
 
 pids="$(coder_pids)"
 if [[ -n "$pids" ]]; then
-  if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit OpenAgents"; sync_resident "$stage/OpenAgents.app"; retire_legacy_agent; exit 0; fi
-  if inside_app $pids; then say "DEFERRED: ${target:0:10} is built and staged at $stage/OpenAgents.app (click 'Restart to update' in OpenAgents, or quit OpenAgents and re-run install.sh)"; sync_resident "$stage/OpenAgents.app"; retire_legacy_agent; exit 4; fi
-  if [[ -z "${OA_INSTALL_FORCE:-}" ]] && replies_running; then say "DEFERRED: ${target:0:10} is built, but a reply is running in OpenAgents; re-run with OA_INSTALL_FORCE=1 to quit and install now"; retire_legacy_agent; exit 4; fi
+  if [[ "$mode" == --check ]]; then say "$target_id is built and installs when you quit OpenAgents"; sync_resident "$stage/OpenAgents.app"; retire_legacy_agent; exit 0; fi
+  if inside_app $pids; then say "DEFERRED: $target_id is built and staged at $stage/OpenAgents.app (click 'Restart to update' in OpenAgents, or quit OpenAgents and re-run install.sh)"; sync_resident "$stage/OpenAgents.app"; retire_legacy_agent; exit 4; fi
+  if [[ -z "${OA_INSTALL_FORCE:-}" ]] && replies_running; then say "DEFERRED: $target_id is built, but a reply is running in OpenAgents; re-run with OA_INSTALL_FORCE=1 to quit and install now"; retire_legacy_agent; exit 4; fi
   kill $pids 2>/dev/null || true
   for _ in $(seq 1 40); do [[ -z "$(coder_pids)" ]] && break; sleep 0.25; done
   if [[ -n "$(coder_pids)" ]]; then
@@ -467,7 +509,7 @@ if [[ "$installed_now" != "$target" || "$installed_profile_now" != "$want_profil
   say "ERROR: post-install metadata mismatch (got ${installed_now:-none} [${installed_profile_now:-none}], expected $target [$want_profile])"
   exit 1
 fi
-say "installed ${target:0:10} ($want_profile, build $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist" 2>/dev/null || echo ?)) at $app"
+say "installed $(version_of "$app") ($want_profile) at $app"
 sync_resident
 [[ -n "$pids" || "$mode" == now ]] && open "$app"
 retire_legacy_agent

@@ -385,7 +385,8 @@ extension CoderWindow {
         keep(shown ? nil : r)
         guard let id = shown ? chat : r.chat, let text = store.text(id) else { return }
         let t = CoderTurn(run: runID, chat: id, offset: from, folder: (shown ? folder : r.folder).path,
-                          session: r.session, program: r.worker.program, agents: [])
+                          session: r.session, program: r.worker.program, agents: [],
+                          appVersion: BundleMetadata.currentUpdateIdentifier)
         r.turn = t
         t.save(chatText: text)
     }
@@ -395,6 +396,7 @@ extension CoderWindow {
     /// A run no kept message names (an idle worker of a Coder that crashed) is stopped, and its files go.
     func reattach() {
         guard let daemon = CoderWorker.daemon, daemon.ownsRuns else { return }
+        let currentVer = BundleMetadata.currentUpdateIdentifier
         var named = Set<String>()
         for t in CoderTurn.all() {
             guard CoderWorker.runState(t.run) != nil else {
@@ -403,6 +405,14 @@ extension CoderWindow {
             if store.meta(t.chat) == nil {
                 // Chat was deleted: stop and forget its orphaned daemon run instead of leaking a busy slot.
                 CoderWorker.logStop(t.run, "stopped at launch: chat deleted")
+                daemon.stopRun(t.run) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(t.run) } }
+                CoderTurn.remove(t.run)
+                for id in t.agents { daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } }
+                continue
+            }
+            let versionMismatch = t.appVersion != currentVer
+            if versionMismatch && CoderWorker.runIdle(t.run) {
+                CoderWorker.logStop(t.run, "stopped at launch: idle worker version \(t.appVersion ?? "legacy") != app \(currentVer)")
                 daemon.stopRun(t.run) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(t.run) } }
                 CoderTurn.remove(t.run)
                 for id in t.agents { daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } }
@@ -440,6 +450,7 @@ extension CoderWindow {
             _ = cd_task(back, t.session, t.folder, &out, Int32(out.count))   // the worker had it when the message was sent
             let r = CoderRun(page: back, folder: URL(fileURLWithPath: t.folder))
             r.chat = t.chat; r.session = t.session; r.turn = t; r.worker.program = t.program
+            r.needsVersionRecycle = versionMismatch
             r.worker.attach(t.run, from: t.offset)
             replay(r)
             followUpBegan(r)   // the worker started a queued message while Coder was closed
@@ -493,11 +504,23 @@ extension CoderWindow {
         sweptAt = CACurrentMediaTime()
         guard let daemon = CoderWorker.daemon, daemon.ownsRuns, !sweeping else { return }
         sweeping = true
+        let needDaemonSync = pendingWorkerDaemonSync
+        let appBundleURL = Bundle.main.bundleURL
+        let daemonSock = daemon.socketPath
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            var syncedDaemonNow = false
+            if needDaemonSync {
+                let res = WorkerVersionSync().syncResidentDaemon(from: appBundleURL, socketPath: daemonSock)
+                syncedDaemonNow = res.synced && !res.pendingBusy
+            }
             let live = daemon.listRuns()
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.sweeping = false
+                if syncedDaemonNow {
+                    self.pendingWorkerDaemonSync = false
+                    _ = daemon.ensureDaemon()
+                }
                 guard let live else { return }
                 let held = self.heldRuns, now = Int(Date().timeIntervalSince1970)
                 for id in CoderWindow.orphans(live, held: held, now: now) where !CoderWorker.isPhoneRun(id) {

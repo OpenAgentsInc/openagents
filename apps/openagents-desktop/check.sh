@@ -24,4 +24,11 @@ xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-librar
   "$here/TitleGenerator.swift" "$here/tests/title-generator-check.swift" -o "$title_bin"
 "$title_bin"
 rm -f "$title_bin"
+updater_bin="$(mktemp -t oa-updater-sync)"
+xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 \
+  -import-objc-header "$here/desktop-core-mac.h" \
+  "$here/DesktopCore.swift" "$here/Updater.swift" "$here/tests/updater-sync-check.swift" \
+  "${CODER_BUILD:-$here/build}/c/desktop-core.o" -framework CryptoKit -o "$updater_bin"
+"$updater_bin"
+rm -f "$updater_bin"
 echo "openagents-desktop check: ok"

@@ -412,7 +412,7 @@ CoderPage :: struct {
   stop_agent: int;            // 0-based sub-agent to stop for CP_ASK_STOP_AGENT (-1: none; #13766)
   update_state: int;
   update_label: [64] u8; update_label_n: int;
-  update_detail: [48] u8; update_detail_n: int;
+  update_detail: [64] u8; update_detail_n: int;
   dx: f32; dy: f32; col_x: f32; col_w: f32;   // where the pointer went down; the column as last drawn
   // settings (settings.coax): open, its page, the page's and the list's scroll, the search and the
   // row it asked for, the search field's box, and what the host told it
@@ -478,7 +478,7 @@ CoderPage :: struct {
   set_gauth: [96] u8; set_gauth_n: int;   // the sign-in Gemini models run on, as mcworker --auth reports it ("Vertex AI (service account, project P)", "API key ending 1a2b (Settings)"); "" none
   gauth_vertex: bool;                     // that sign-in is Vertex AI (Microcoder tries it before any API key)
   set_orkey: [48] u8; set_orkey_n: int;
-  set_version: [48] u8; set_version_n: int;
+  set_version: [64] u8; set_version_n: int;
   set_agy_status: [96] u8; set_agy_status_n: int;
   set_agy_model: [96] u8; set_agy_model_n: int;
   set_agy_auth: [96] u8; set_agy_auth_n: int;

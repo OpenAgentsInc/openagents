@@ -33,9 +33,11 @@ final class CoderRun {
     var lastGoalStatus: Int32 = 0
     var lastProviderKind: Int32 = -1
     var startedAtMs: Int64 = 0
+    var needsVersionRecycle = false    // true when reattached to a worker from an older app version; recycled once its turn ends
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         stopRequestedAt = 0; stopGen &+= 1
+        needsVersionRecycle = false
         endTurn()
         worker.gone = nil; worker.line = nil; worker.stop()
         for one in agents.values { one.gone = nil; one.line = nil; one.stop() }
@@ -44,10 +46,21 @@ final class CoderRun {
     /// The message ended: nothing is left to attach to, and its sub-agents' runs go.
     func endTurn() {
         stopRequestedAt = 0; stopGen &+= 1
-        guard let t = turn else { return }
-        turn = nil
-        CoderTurn.remove(t.run)
-        for id in t.agents { CoderWorker.daemon?.forgetRun(id) }
+        let recycle = needsVersionRecycle
+        needsVersionRecycle = false
+        if let t = turn {
+            turn = nil
+            CoderTurn.remove(t.run)
+            for id in t.agents { CoderWorker.daemon?.forgetRun(id) }
+        }
+        if recycle && worker.alive {
+            if let id = worker.runID {
+                CoderWorker.logStop(id, "recycled after turn: worker version differed from app \(BundleMetadata.currentUpdateIdentifier)")
+            }
+            worker.gone = nil; worker.line = nil; worker.stop()
+            for one in agents.values { one.gone = nil; one.line = nil; one.stop() }
+            agents = [:]
+        }
     }
     /// Coder quits: the daemon keeps its workers running, and the kept turn says where to attach.
     func detach() {
@@ -69,6 +82,7 @@ struct CoderTurn: Codable {
     var session: String
     var program: String
     var agents: [String]
+    var appVersion: String? = nil
     static var dir: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
         return base.appendingPathComponent("Coder/turns", isDirectory: true)
@@ -112,6 +126,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private var watchdog: Timer?         // ticks while the display link is paused (the window hidden or off every screen)
     private var ticked = 0.0             // when tick last ran
     private var then: String?   // --then TEXT: sent in a new chat once --send's reply ends
+    var pendingWorkerDaemonSync = false
     private var also: String?   // --new TEXT: sent in a new chat while --send's reply runs
     private var showAgent: Int?   // --agent N: the Nth sub-agent's transcript opens as soon as there is one
     var owed = 3   // frames still to draw after a change
@@ -293,6 +308,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if FeatureFlags.isOn(.foreman) { startForemanServer() }
         if FeatureFlags.isOn(.gym) { startGymRequests() }
         #endif
+        // Keep ~/.openagents/bin workers and the resident coder-host daemon strictly synced with this app's version.
+        let workerSyncReport = WorkerVersionSync.syncAll(from: Bundle.main.bundleURL, socketPath: daemonClient.socketPath)
+        pendingWorkerDaemonSync = workerSyncReport.daemonPendingBusy
         // the unified daemon runs the workers when it can, so runs outlive Coder (GitHub #13694)
         CoderWorker.daemon = daemonClient
         daemonClient.ensureDaemon()

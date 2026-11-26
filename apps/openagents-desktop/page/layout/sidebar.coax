@@ -448,14 +448,51 @@ cp_side_key_badge :: (f: [] UiFrame, right: f32, y: f32, row_h: f32, key: string
 }
 
 // Bottom-of-sidebar always-on Usage strip (#14064) + desktop auto-updater pill.
+cp_side_update_h :: (s: [] CoderPage, k: UiSkin) -> f32 {
+  if s.count < 1 || s[0].update_state == CP_UPD_HIDDEN { return 0.0f32; }
+  if s[0].update_detail_n > 0 { return 44.0f32; }
+  return k.cmp.chip_h;
+}
 cp_side_footer_h :: (s: [] CoderPage, k: UiSkin) -> f32 {
   if s.count < 1 { return 0.0f32; }
   pad_v := 8.0f32;
   h := k.border + pad_v + k.cmp.chip_h + pad_v;
   if s[0].update_state != CP_UPD_HIDDEN {
-    h += k.cmp.chip_h + 6.0f32;
+    h += cp_side_update_h(s, k) + 6.0f32;
   }
   return h;
+}
+cp_side_update_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, detail: string, action: int, highlighted: bool) {
+  if detail.count == 0 {
+    cp_side_pill(f, id, x, y, w, icon, label, detail, action, highlighted);
+    return;
+  }
+  k := f[0].skin; c := k.cmp; sh := f[0].sheet; m := f[0].m;
+  h := 44.0f32; r := 10.0f32;
+  hv := uiframe_hover_on(f, KEYED_LAZY, id, action != 0 && uiframe_hovered(f, id));
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, 0, action);
+  elt_value(f[0].rows, row, detail);
+  bg := rgba_mix(k.raised, k.hover, hv);
+  border := ifx highlighted then k.accent else k.hairline;
+  _ := sheet_box(sh, x, y, w, h, r, k.border, bg, border);
+  ink := ifx highlighted then k.ink else rgba_mix(k.muted, k.ink, hv);
+  icon_ink := ifx highlighted then k.accent else ink;
+  pad := 10.0f32;
+  tx := x + pad;
+  if icon >= 0 {
+    sheet_icon(sh, icon, tx, y + (h - c.chip_icon) / 2.0f32, c.chip_icon, icon_ink);
+    tx += c.chip_icon + c.chip_gap;
+  }
+  room := x + w - pad - tx;
+  if room > 0 {
+    gap := 2.0f32;
+    total_h := k.small.line + gap + k.label.line;
+    y1 := y + (h - total_h) / 2.0f32;
+    y2 := y1 + k.small.line + gap;
+    _ := sheet_text(sh, m, -1, tx, y1, k.small.line, k.small.face, ink, app_fit(f, k.small.face, label, room));
+    _ := sheet_text(sh, m, -1, tx, y2, k.label.line, k.label.face, k.faint, app_fit(f, k.label.face, detail, room));
+  }
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
 }
 cp_side_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, detail: string, action: int, highlighted: bool) {
   k := f[0].skin; c := k.cmp; sh := f[0].sheet; m := f[0].m;
@@ -544,5 +581,5 @@ cp_side_footer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
   else if st == CP_UPD_ERROR { icon = ICON_DANGER; def_label = "Update failed"; }
   label := ifx s[0].update_label_n > 0 then sheet_pool(f[0].sheet, cast(string) s[0].update_label[0..<s[0].update_label_n]) else def_label;
   detail := ifx s[0].update_detail_n > 0 then sheet_pool(f[0].sheet, cast(string) s[0].update_detail[0..<s[0].update_detail_n]) else "";
-  cp_side_pill(f, "coder.side.pill.update", px, py, pw, icon, label, detail, action, highlighted);
+  cp_side_update_pill(f, "coder.side.pill.update", px, py, pw, icon, label, detail, action, highlighted);
 }

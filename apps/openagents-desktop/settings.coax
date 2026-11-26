@@ -766,11 +766,24 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     y += set_section_head(f, "set.update.head", x, y, w, "Updates", "") + t.section_gap;
     st := s[0].update_state;
     label := ifx s[0].update_label_n > 0 then sheet_pool(sh, cast(string) s[0].update_label[0..<s[0].update_label_n]) else "";
-    desc := ifx st == CP_UPD_AVAILABLE then (ifx label.count > 0 then label else "A new version is ready to download.")
-       else ifx st == CP_UPD_DOWNLOADING then "Downloading the new version."
-       else ifx st == CP_UPD_READY then "The new version is downloaded. Coder restarts to use it."
-       else ifx st == CP_UPD_ERROR then (ifx label.count > 0 then label else "The last check failed.")
-       else "Coder looks for a new version every 15 minutes.";
+    detail := ifx s[0].update_detail_n > 0 then sheet_pool(sh, cast(string) s[0].update_detail[0..<s[0].update_detail_n]) else "";
+    ub: [160] u8; un := 0;
+    if st == CP_UPD_AVAILABLE {
+      if detail.count > 0 { un = el_put(ub[..], 0, "Update "); un = el_put(ub[..], un, detail); un = el_put(ub[..], un, " is ready to download."); }
+      else if label.count > 0 { un = el_put(ub[..], 0, label); }
+      else { un = el_put(ub[..], 0, "A new version is ready to download."); }
+    } else if st == CP_UPD_DOWNLOADING {
+      if detail.count > 0 { un = el_put(ub[..], 0, "Downloading update ("); un = el_put(ub[..], un, detail); un = el_put(ub[..], un, ")…"); }
+      else { un = el_put(ub[..], 0, "Downloading the new version."); }
+    } else if st == CP_UPD_READY {
+      if detail.count > 0 { un = el_put(ub[..], 0, "Update "); un = el_put(ub[..], un, detail); un = el_put(ub[..], un, " is ready. OpenAgents restarts to use it."); }
+      else { un = el_put(ub[..], 0, "The new version is downloaded. OpenAgents restarts to use it."); }
+    } else if st == CP_UPD_ERROR {
+      un = el_put(ub[..], 0, ifx label.count > 0 then label else "The last check failed.");
+    } else {
+      un = el_put(ub[..], 0, "OpenAgents looks for a new version every 15 minutes.");
+    }
+    desc := sheet_pool(sh, cast(string) ub[0..<un]);
     button := ifx st == CP_UPD_AVAILABLE then "Update" else ifx st == CP_UPD_READY then "Restart to update" else ifx st == CP_UPD_DOWNLOADING then "Updating…" else "Check now";
     one[0] = SetRow.{id = "set.update", name = "Check for updates", desc = desc, kind = SET_ROW_BUTTON, button = button, action = CP_SET_ACT,
       state = ifx st == CP_UPD_DOWNLOADING then EL_S_DISABLED else 0};

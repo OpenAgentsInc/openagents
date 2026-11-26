@@ -1,5 +1,9 @@
 import CryptoKit
+import Darwin
 import Foundation
+
+@_silgen_name("proc_pidpath")
+private func oa_proc_pidpath(_ pid: Int32, _ buffer: UnsafeMutableRawPointer, _ buffersize: UInt32) -> Int32
 
 // MARK: - Signed Release Manifest Types (verified by coax/lib/agent/desktop/update.coax)
 
@@ -18,6 +22,7 @@ struct UpdateManifest: Codable, Equatable {
     let schema: String?
     let version: String
     let build: Int?
+    let commit: String?
     let bundleID: String
     let teamID: String
     let url: String
@@ -25,16 +30,64 @@ struct UpdateManifest: Codable, Equatable {
     let size: Int64
     let notes: String?
 
+    init(
+        schema: String?,
+        version: String,
+        build: Int?,
+        commit: String? = nil,
+        bundleID: String,
+        teamID: String,
+        url: String,
+        sha256: String,
+        size: Int64,
+        notes: String?
+    ) {
+        self.schema = schema
+        self.version = version
+        self.build = build
+        self.commit = commit
+        self.bundleID = bundleID
+        self.teamID = teamID
+        self.url = url
+        self.sha256 = sha256
+        self.size = size
+        self.notes = notes
+    }
+
     enum CodingKeys: String, CodingKey {
         case schema
         case version
         case build
+        case commit
         case bundleID = "bundle_id"
         case teamID = "team_id"
         case url
         case sha256
         case size
         case notes
+    }
+}
+
+/// Formats human-ordered desktop update identifiers combining version, consecutive build number,
+/// and short commit hash (e.g. `1.0.0.34395.5277b8c`).
+enum UpdateIdentifier {
+    static func format(shortVersion: String, buildNumber: Int, commit: String) -> String {
+        var ver = shortVersion.trimmingCharacters(in: .whitespacesAndNewlines)
+        if ver.hasPrefix("v") || ver.hasPrefix("V") { ver.removeFirst() }
+        if ver.isEmpty { ver = "0.0.0" }
+        let shortHash = String(commit.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().prefix(7))
+        var parts: [String] = [ver]
+        if buildNumber > 0 { parts.append(String(buildNumber)) }
+        if !shortHash.isEmpty { parts.append(shortHash) }
+        return parts.joined(separator: ".")
+    }
+
+    static func format(metadata: BundleMetadata) -> String {
+        format(shortVersion: metadata.shortVersion, buildNumber: metadata.buildNumber, commit: metadata.commit)
+    }
+
+    static func format(manifest: UpdateManifest) -> String {
+        format(shortVersion: manifest.version, buildNumber: manifest.build ?? 0, commit: manifest.commit ?? "")
     }
 }
 
@@ -510,6 +563,22 @@ struct BundleMetadata: Equatable {
     let buildNumber: Int
     let commit: String
 
+    /// Consecutive human-ordered identifier, e.g. `1.0.0.34395.5277b8c`.
+    var updateIdentifier: String {
+        UpdateIdentifier.format(metadata: self)
+    }
+
+    static var currentUpdateIdentifier: String {
+        if let meta = read(from: Bundle.main.bundleURL) {
+            return meta.updateIdentifier
+        }
+        let info = Bundle.main.infoDictionary
+        let shortVer = (info?["CFBundleShortVersionString"] as? String) ?? "1.0.0"
+        let buildNum = Int((info?["CFBundleVersion"] as? String) ?? "0") ?? 0
+        let commit = (info?["OACommit"] as? String) ?? ""
+        return UpdateIdentifier.format(shortVersion: shortVer, buildNumber: buildNum, commit: commit)
+    }
+
     static func read(from appURL: URL) -> BundleMetadata? {
         let plistURL = appURL.appendingPathComponent("Contents/Info.plist")
         guard let data = try? Data(contentsOf: plistURL),
@@ -546,7 +615,7 @@ struct LocalStagedUpdateDetector {
     }
 
     /// Checks both the `install.sh` stage directory (`$CODER_RELEASE_HOME/stage/OpenAgents.app`)
-    /// and whether the running `.app` on disk was already replaced with a newer commit.
+    /// and whether the running `.app` on disk was already replaced with a newer build/commit.
     func detect(runningAppURL: URL, launchMetadata: BundleMetadata?) -> UpdateSource? {
         // 1. Check if the running app on disk was already swapped out from under us.
         if let launch = launchMetadata, let disk = BundleMetadata.read(from: runningAppURL),
@@ -554,8 +623,7 @@ struct LocalStagedUpdateDetector {
             let commitChanged = !disk.commit.isEmpty && !launch.commit.isEmpty && disk.commit != launch.commit
             let buildBumped = disk.buildNumber > launch.buildNumber && launch.buildNumber > 0
             if commitChanged || buildBumped {
-                let label = !disk.commit.isEmpty ? String(disk.commit.prefix(7)) : "v\(disk.shortVersion)"
-                return .diskAlreadyUpdated(version: label, commit: disk.commit)
+                return .diskAlreadyUpdated(version: disk.updateIdentifier, commit: disk.commit)
             }
         }
 
@@ -570,12 +638,274 @@ struct LocalStagedUpdateDetector {
             if !staged.commit.isEmpty && staged.commit == launch.commit {
                 return nil
             }
+            // Refuse to downgrade when both consecutive build numbers are known and staged is older.
+            if staged.buildNumber > 0 && launch.buildNumber > 0 && staged.buildNumber < launch.buildNumber {
+                return nil
+            }
             if staged.commit.isEmpty && staged.buildNumber <= launch.buildNumber {
                 return nil
             }
         }
-        let label = !staged.commit.isEmpty ? String(staged.commit.prefix(7)) : "v\(staged.shortVersion)"
-        return .localStaged(appPath: stagedApp.path, version: label, commit: staged.commit)
+        return .localStaged(appPath: stagedApp.path, version: staged.updateIdentifier, commit: staged.commit)
+    }
+}
+
+// MARK: - Worker & Resident Daemon Version Sync
+
+/// Keeps `~/.openagents/bin/` worker binaries, `~/.openagents/bin/openagents-environment`, and the
+/// running resident `coder-host` daemon strictly synchronized with the installed `OpenAgents.app`
+/// version identifier (`{version}.{build}.{shortHash}`).
+struct WorkerVersionSync {
+    struct SyncReport: Equatable {
+        let versionID: String
+        let updatedFiles: [String]
+        let daemonSynced: Bool
+        let daemonPendingBusy: Bool
+    }
+
+    /// Bundled worker & runtime artifacts in `Contents/Resources/` to keep synced in `~/.openagents/bin/`.
+    static let bundledArtifacts: [(name: String, executable: Bool)] = [
+        ("oa-worker", true),
+        ("agyworker", true),
+        ("gitguard", true),
+        ("coder-host", true),
+        ("psionic-inkling-serve", true),
+        ("inkling-kernels.metal", false),
+        ("claudeworker", true),
+        ("oasim", true),
+        ("ple-run", true),
+        ("lean-run", true),
+        ("tbench-run", true),
+        ("gbench-run", true),
+    ]
+
+    let home: URL
+    let envLabel: String
+
+    init(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        envLabel: String = ProcessInfo.processInfo.environment["CODER_ENV_LABEL"] ?? "com.openagents.coax.environment"
+    ) {
+        self.home = home
+        self.envLabel = envLabel
+    }
+
+    var binDir: URL { home.appendingPathComponent(".openagents/bin", isDirectory: true) }
+    var envRootDir: URL { home.appendingPathComponent(".openagents/environment", isDirectory: true) }
+    var envBinDir: URL { envRootDir.appendingPathComponent("bin", isDirectory: true) }
+    var envLink: URL { binDir.appendingPathComponent("openagents-environment") }
+    var workerVersionFile: URL { binDir.appendingPathComponent(".worker-version") }
+    var envVersionFile: URL { envRootDir.appendingPathComponent("version") }
+    var envPlist: URL { home.appendingPathComponent("Library/LaunchAgents/\(envLabel).plist") }
+
+    static func installedWorkerVersion(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String? {
+        let url = home.appendingPathComponent(".openagents/bin/.worker-version")
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Atomically syncs all bundled worker binaries and the `openagents-environment` symlink/version
+    /// stamps from `appURL/Contents/Resources/` into `~/.openagents/`.
+    @discardableResult
+    func syncBinaries(from appURL: URL) -> (versionID: String, updatedFiles: [String]) {
+        let fm = FileManager.default
+        let versionID = BundleMetadata.read(from: appURL)?.updateIdentifier ?? BundleMetadata.currentUpdateIdentifier
+        let resourcesDir = appURL.appendingPathComponent("Contents/Resources", isDirectory: true)
+        var updated: [String] = []
+
+        try? fm.createDirectory(at: binDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: envBinDir, withIntermediateDirectories: true)
+
+        for artifact in Self.bundledArtifacts {
+            let src = resourcesDir.appendingPathComponent(artifact.name)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            let dst = binDir.appendingPathComponent(artifact.name)
+            if !filesEqual(src, dst) {
+                if atomicCopyFile(from: src, to: dst, executable: artifact.executable) {
+                    updated.append(artifact.name)
+                }
+            }
+        }
+
+        // Sync resident daemon binary under ~/.openagents/environment/bin/<versionID>/openagents-environment
+        let bundledHost = resourcesDir.appendingPathComponent("coder-host")
+        if fm.fileExists(atPath: bundledHost.path) {
+            let versionedDir = envBinDir.appendingPathComponent(versionID, isDirectory: true)
+            let versionedHost = versionedDir.appendingPathComponent("openagents-environment")
+            try? fm.createDirectory(at: versionedDir, withIntermediateDirectories: true)
+            if !filesEqual(bundledHost, versionedHost) {
+                if atomicCopyFile(from: bundledHost, to: versionedHost, executable: true) {
+                    updated.append("openagents-environment")
+                }
+            }
+            let currentTarget = (try? fm.destinationOfSymbolicLink(atPath: envLink.path)) ?? ""
+            if currentTarget != versionedHost.path {
+                let tmpLink = binDir.appendingPathComponent(".openagents-environment.new.\(getpid())")
+                try? fm.removeItem(at: tmpLink)
+                if (try? fm.createSymbolicLink(atPath: tmpLink.path, withDestinationPath: versionedHost.path)) != nil {
+                    if rename(tmpLink.path, envLink.path) == 0 {
+                        if !updated.contains("openagents-environment") {
+                            updated.append("openagents-environment")
+                        }
+                    } else {
+                        try? fm.removeItem(at: tmpLink)
+                    }
+                }
+            }
+        }
+
+        writeVersionStamp(versionID, to: workerVersionFile)
+        writeVersionStamp(versionID, to: envVersionFile)
+        return (versionID, updated)
+    }
+
+    /// Ensures the running resident `coder-host` daemon matches `appURL/Contents/Resources/coder-host`.
+    /// Never kills an active mid-reply daemon; returns `daemonPendingBusy = true` so the caller can
+    /// retry once active worker runs go idle.
+    func syncResidentDaemon(from appURL: URL, socketPath: String? = nil) -> (synced: Bool, pendingBusy: Bool) {
+        let fm = FileManager.default
+        let bundledHost = appURL.appendingPathComponent("Contents/Resources/coder-host")
+        guard fm.isExecutableFile(atPath: bundledHost.path) else {
+            return (true, false)
+        }
+        let sock = socketPath ?? home.appendingPathComponent(".openagents/coder/host/service.sock").path
+        guard let daemonPID = socketOwnerPID(socketPath: sock) else {
+            // No daemon running right now; ensureDaemon() or launchd will launch the synced binary.
+            return (true, false)
+        }
+        let runningExe = executablePath(forPID: daemonPID)
+        let stale = runningExe == nil || !filesEqual(URL(fileURLWithPath: runningExe!), bundledHost)
+        guard stale else {
+            return (true, false)
+        }
+        if hasActiveChildren(pid: daemonPID) {
+            let ver = BundleMetadata.read(from: appURL)?.updateIdentifier ?? BundleMetadata.currentUpdateIdentifier
+            NSLog("OpenAgents: resident daemon (pid %d) is busy running workers; deferring sync to %@", daemonPID, ver)
+            return (false, true)
+        }
+        let uid = getuid()
+        if fm.fileExists(atPath: envPlist.path) {
+            _ = runTool("/bin/launchctl", arguments: ["bootout", "gui/\(uid)/\(envLabel)"])
+            terminateAndWait(pid: daemonPID, maxSeconds: 4.0)
+            _ = runTool("/bin/launchctl", arguments: ["bootstrap", "gui/\(uid)", envPlist.path])
+        } else {
+            terminateAndWait(pid: daemonPID, maxSeconds: 4.0)
+        }
+        let ver = BundleMetadata.read(from: appURL)?.updateIdentifier ?? BundleMetadata.currentUpdateIdentifier
+        NSLog("OpenAgents: synced resident daemon to %@", ver)
+        return (true, false)
+    }
+
+    @discardableResult
+    static func syncAll(from appURL: URL, socketPath: String? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> SyncReport {
+        let syncer = WorkerVersionSync(home: home)
+        let (versionID, updatedFiles) = syncer.syncBinaries(from: appURL)
+        let (daemonSynced, pendingBusy) = syncer.syncResidentDaemon(from: appURL, socketPath: socketPath)
+        return SyncReport(
+            versionID: versionID,
+            updatedFiles: updatedFiles,
+            daemonSynced: daemonSynced,
+            daemonPendingBusy: pendingBusy
+        )
+    }
+
+    private func writeVersionStamp(_ versionID: String, to url: URL) {
+        let existing = (try? String(contentsOf: url, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard existing != versionID else { return }
+        try? Data((versionID + "\n").utf8).write(to: url, options: .atomic)
+    }
+
+    private func filesEqual(_ a: URL, _ b: URL) -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: a.path), fm.fileExists(atPath: b.path) else { return false }
+        let aSize = (try? fm.attributesOfItem(atPath: a.path)[.size] as? NSNumber)?.int64Value
+        let bSize = (try? fm.attributesOfItem(atPath: b.path)[.size] as? NSNumber)?.int64Value
+        guard let aSize, let bSize, aSize == bSize else { return false }
+        return fm.contentsEqual(atPath: a.path, andPath: b.path)
+    }
+
+    private func atomicCopyFile(from src: URL, to dst: URL, executable: Bool) -> Bool {
+        let fm = FileManager.default
+        let tmp = dst.deletingLastPathComponent().appendingPathComponent(".\(dst.lastPathComponent).new.\(getpid()).\(UUID().uuidString.prefix(6))")
+        try? fm.removeItem(at: tmp)
+        do {
+            try fm.copyItem(at: src, to: tmp)
+            try fm.setAttributes([.posixPermissions: executable ? 0o755 : 0o644], ofItemAtPath: tmp.path)
+            if rename(tmp.path, dst.path) != 0 {
+                try? fm.removeItem(at: tmp)
+                return false
+            }
+            return true
+        } catch {
+            try? fm.removeItem(at: tmp)
+            return false
+        }
+    }
+
+    private func socketOwnerPID(socketPath: String) -> pid_t? {
+        guard FileManager.default.fileExists(atPath: socketPath) else { return nil }
+        let res = runTool("/usr/sbin/lsof", arguments: ["-U", "-F", "pn"])
+        guard res.exitCode == 0 else { return nil }
+        var currentPID: pid_t?
+        var pids: [pid_t] = []
+        for rawLine in res.stdout.split(separator: "\n") {
+            guard let first = rawLine.first else { continue }
+            let val = String(rawLine.dropFirst())
+            if first == "p", let p = pid_t(val) {
+                currentPID = p
+            } else if first == "n", val == socketPath, let p = currentPID {
+                if !pids.contains(p) { pids.append(p) }
+            }
+        }
+        guard !pids.isEmpty else { return nil }
+        let pidSet = Set(pids)
+        for p in pids {
+            let ppidRes = runTool("/bin/ps", arguments: ["-o", "ppid=", "-p", String(p)])
+            let ppid = pid_t(ppidRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+            if !pidSet.contains(ppid) { return p }
+        }
+        return pids.first
+    }
+
+    private func executablePath(forPID pid: pid_t) -> String? {
+        var buf = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+        let n = oa_proc_pidpath(pid, &buf, UInt32(buf.count))
+        guard n > 0 else { return nil }
+        return String(cString: buf)
+    }
+
+    private func hasActiveChildren(pid: pid_t) -> Bool {
+        let res = runTool("/usr/bin/pgrep", arguments: ["-P", String(pid)])
+        return res.exitCode == 0 && !res.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func terminateAndWait(pid: pid_t, maxSeconds: TimeInterval) {
+        _ = kill(pid, SIGTERM)
+        let deadline = Date().addingTimeInterval(maxSeconds)
+        while Date() < deadline {
+            if kill(pid, 0) != 0 { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
+
+    private func runTool(_ path: String, arguments: [String]) -> (exitCode: Int32, stdout: String, stderr: String) {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: path)
+        proc.arguments = arguments
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        proc.standardOutput = outPipe
+        proc.standardError = errPipe
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+        } catch {
+            return (-1, "", error.localizedDescription)
+        }
+        let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return (proc.terminationStatus, out, err)
     }
 }
 
@@ -710,7 +1040,7 @@ final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
                     currentBuild: currentBuild,
                     allowFileURL: allowFile
                 )
-                let label = manifest.version.hasPrefix("v") ? manifest.version : "v\(manifest.version)"
+                let label = UpdateIdentifier.format(manifest: manifest)
                 self.state = .available(version: label, source: .signedRelease(manifest))
             } catch UpdaterError.versionNotNewer {
                 self.state = .hidden
@@ -727,7 +1057,7 @@ final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
     func beginDownload(for manifest: UpdateManifest) {
         queue.async { [weak self] in
             guard let self else { return }
-            let label = manifest.version.hasPrefix("v") ? manifest.version : "v\(manifest.version)"
+            let label = UpdateIdentifier.format(manifest: manifest)
             guard let url = URL(string: manifest.url) else {
                 self.state = .error(message: UpdaterError.unsafeDownloadURL(manifest.url).localizedDescription, retryable: true)
                 return
@@ -743,13 +1073,14 @@ final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
         }
     }
 
-    /// Applies a staged update (atomic swap + relaunch). Returns true if the host should terminate now.
+    /// Applies a staged update (atomic swap + worker/daemon sync + relaunch).
     func applyStagedAndRelaunch() -> Result<Void, Error> {
         switch state {
         case .ready(_, let stagedPath, let source):
             do {
                 switch source {
                 case .diskAlreadyUpdated:
+                    _ = WorkerVersionSync.syncAll(from: runningAppURL)
                     try installer.scheduleRelaunch(appURL: runningAppURL)
                     return .success(())
                 case .localStaged(let path, _, _):
@@ -761,6 +1092,7 @@ final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
                     )
                     try localInstaller.verifyAppBundle(at: stagedURL)
                     try localInstaller.atomicSwap(stagedApp: stagedURL, targetApp: runningAppURL)
+                    _ = WorkerVersionSync.syncAll(from: runningAppURL)
                     try localInstaller.scheduleRelaunch(appURL: runningAppURL)
                     return .success(())
                 case .signedRelease(let manifest):
@@ -770,6 +1102,7 @@ final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
                     let stagedURL = URL(fileURLWithPath: path)
                     try installer.verifyAppBundle(at: stagedURL, expectedVersion: manifest.version)
                     try installer.atomicSwap(stagedApp: stagedURL, targetApp: runningAppURL)
+                    _ = WorkerVersionSync.syncAll(from: runningAppURL)
                     try installer.scheduleRelaunch(appURL: runningAppURL)
                     return .success(())
                 }
@@ -788,13 +1121,13 @@ final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
         guard let manifest = activeManifest else { return }
         let total = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : manifest.size
         let pct = total > 0 ? Int(min(99, max(0, (totalBytesWritten * 100) / total))) : 0
-        let label = manifest.version.hasPrefix("v") ? manifest.version : "v\(manifest.version)"
+        let label = UpdateIdentifier.format(manifest: manifest)
         state = .downloading(version: label, progress: pct)
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let manifest = activeManifest else { return }
-        let label = manifest.version.hasPrefix("v") ? manifest.version : "v\(manifest.version)"
+        let label = UpdateIdentifier.format(manifest: manifest)
         state = .downloading(version: label, progress: 100)
         do {
             let fm = FileManager.default

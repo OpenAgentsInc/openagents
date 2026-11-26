@@ -56,11 +56,16 @@ final class CoderWorker {
     private func extraEnvLines() -> String {
         var merged = extraEnv
         if merged["OA_AGENT_ID"] == nil { merged["OA_AGENT_ID"] = defaultAgentID }
+        if merged["OA_DESKTOP_VERSION"] == nil { merged["OA_DESKTOP_VERSION"] = BundleMetadata.currentUpdateIdentifier }
         return merged.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
     }
 
     private func environment() -> (set: [String: String], unset: [String]) {
-        var env: [String: String] = ["PATH": CoderWorker.path, "OA_AGENT_ID": defaultAgentID]
+        var env: [String: String] = [
+            "PATH": CoderWorker.path,
+            "OA_AGENT_ID": defaultAgentID,
+            "OA_DESKTOP_VERSION": BundleMetadata.currentUpdateIdentifier,
+        ]
         for (k, v) in extraEnv { env[k] = v }
         #if OA_FULL
         // oasim (the iOS Simulator's command, #13811) is in Contents/Resources: on the PATH after the person's own
