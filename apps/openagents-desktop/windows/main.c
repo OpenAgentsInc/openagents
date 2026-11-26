@@ -32,12 +32,8 @@
 #define OA_PLATFORM_NAME "Windows"
 #define OA_LOCAL_OS 3
 #define OA_LOCAL_SERVER "psionic-inkling-serve.exe"
-#ifdef OA_MINIMAL
-#define OA_WORKER "inky.exe"
-#else
-#define OA_WORKER "mcworker.exe"
-#endif
-#define OA_INKY_WORKER "inky.exe"
+#define OA_WORKER "oa-worker.exe"
+#define OA_INKY_WORKER "oa-worker.exe"
 #define OA_CLAUDE_WORKER "claudeworker.exe"
 #define OA_AGY_WORKER "agyworker.exe"
 #define OA_FLAWED_WORKER "oa-worker.exe"

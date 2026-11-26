@@ -202,7 +202,7 @@ tool_main :: () -> int #export_c #effects(all) {
       violations += vbc_check_required(contents, "Info.plist", "Contents/Info.plist");
       violations += vbc_check_required(contents, "MacOS/OpenAgents", "Contents/MacOS/OpenAgents");
       violations += vbc_check_required(contents, "Resources/coder-host", "Contents/Resources/coder-host");
-      violations += vbc_check_required(contents, "Resources/inky", "Contents/Resources/inky");
+      violations += vbc_check_required(contents, "Resources/oa-worker", "Contents/Resources/oa-worker");
       violations += vbc_check_required(contents, "Resources/psionic-inkling-serve", "Contents/Resources/psionic-inkling-serve");
       violations += vbc_check_required(contents, "Resources/inkling-kernels.metal", "Contents/Resources/inkling-kernels.metal");
       violations += vbc_check_required(contents, "Resources/Components", "Contents/Resources/Components");
@@ -255,7 +255,7 @@ tool_main :: () -> int #export_c #effects(all) {
   } else if platform == VBC_LINUX {
     violations += vbc_check_required(target, "OpenAgents", "OpenAgents");
     violations += vbc_check_required(target, "coder-host", "coder-host");
-    violations += vbc_check_required(target, "inky", "inky");
+    violations += vbc_check_required(target, "oa-worker", "oa-worker");
     violations += vbc_check_required(target, "psionic-inkling-serve", "psionic-inkling-serve");
 
     nl := fs_list(target, list[..]);
@@ -275,7 +275,7 @@ tool_main :: () -> int #export_c #effects(all) {
   } else if platform == VBC_WINDOWS {
     violations += vbc_check_required(target, "OpenAgents.exe", "OpenAgents.exe");
     violations += vbc_check_required(target, "coder-host.exe", "coder-host.exe");
-    violations += vbc_check_required(target, "inky.exe", "inky.exe");
+    violations += vbc_check_required(target, "oa-worker.exe", "oa-worker.exe");
     violations += vbc_check_required(target, "psionic-inkling-serve.exe", "psionic-inkling-serve.exe");
 
     nw := fs_list(target, list[..]);

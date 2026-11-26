@@ -496,6 +496,7 @@ int cd_sides(void *page, float out[2]) { CoderHost *c = page; return c && coder_
 void cd_sides_set(void *page, float left, float right) { CoderHost *c = page; if (c) { coder_page_sides_set(cd_state(c), left, right); cd_woke(c); } }
 int cd_pane(void *page, int n) { CoderHost *c = page; return c && coder_page_pane(cd_state(c), n); }
 int cd_agent_claude(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_claude(cd_state(c), agent); }
+int cd_agent_engine(void *page, int agent) { CoderHost *c = page; return c ? (int)coder_page_agent_engine(cd_state(c), agent) : 0; }
 int cd_agent_running(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_running(cd_state(c), agent); }
 int cd_agent_cancel(void *page, int agent) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_agent_cancel(cd_state(c), agent); }
 int cd_stop_agent(void *page) { CoderHost *c = page; return c ? (int)coder_page_stop_agent(cd_state(c)) : -1; }

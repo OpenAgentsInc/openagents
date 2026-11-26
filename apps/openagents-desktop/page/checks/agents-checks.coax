@@ -624,3 +624,38 @@
   // subsequent ask is not paused because quiet was reset
   #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":5}") == MWW_ASK && !s[0].turns[0].agents[0].paused && s[0].turns[0].agents[0].quiet == 1;
 }
+
+#test "external CLIs (Claude, Antigravity, Codex, Cursor) run as delegated subagents inside the single OpenAgents thread (#14053)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  coder_page_show_other_models_set(s, false);
+  #assert coder_page_model_flawed(s) && coder_page_model_provider(s) == CP_PROV_FLAWED;
+  #assert coder_page_set_text(s, "have Claude Opus, Codex, Antigravity, and Cursor review this") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"opus\",\"task\":\"claude review\"},{\"level\":\"agy\",\"task\":\"agy review\"},{\"level\":\"codex\",\"task\":\"codex fix\"},{\"level\":\"cursor\",\"task\":\"cursor check\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 4;
+  #assert coder_page_agent_engine(s, 0) == 1 && coder_page_agent_claude(s, 0);
+  #assert coder_page_agent_engine(s, 1) == 2 && !coder_page_agent_claude(s, 1);
+  #assert coder_page_agent_engine(s, 2) == 3 && !coder_page_agent_claude(s, 2);
+  #assert coder_page_agent_engine(s, 3) == 4 && !coder_page_agent_claude(s, 3);
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Antigravity";
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[2].level] == "Codex";
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[3].level] == "Cursor";
+  // Main chat remains on OpenAgents (never switches main chat harness).
+  #assert coder_page_model_flawed(s) && coder_page_model_provider(s) == CP_PROV_FLAWED;
+  // Worktree cwd is handed cleanly to each delegated subagent task line.
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  wt := "/tmp/oa-wt-ext";
+  for j: 0..<4 {
+    ar[0].at = 0;
+    n := coder_page_agent_task(s, j, "sess-ext", wt, out[..]);
+    #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].cwd == wt && !back[0].agents;
+  }
+  // Cascading Stop cancels an individual delegated subagent cleanly without killing siblings.
+  #assert coder_page_agent_cancel(s, 2) && !coder_page_agent_running(s, 2) && coder_page_agent_running(s, 0) && coder_page_agent_running(s, 1) && coder_page_agent_running(s, 3);
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"opus ok\"}") == MWW_ENDED;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"agy ok\"}") == MWW_ENDED;
+  #assert coder_page_agent_line(s, 3, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"cursor ok\"}") == MWW_ENDED;
+  #assert coder_page_answer_line(s, out[..]) > 0;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"All external reviews merged.\"}") == MWW_ENDED;
+  #assert coder_page_model_flawed(s) && !coder_page_running(s);
+}

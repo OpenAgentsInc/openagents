@@ -30,12 +30,8 @@
 #define OA_PLATFORM_NAME "Linux"
 #define OA_LOCAL_OS 2
 #define OA_LOCAL_SERVER "psionic-inkling-serve"
-#ifdef OA_MINIMAL
-#define OA_WORKER "inky"
-#else
-#define OA_WORKER "mcworker"
-#endif
-#define OA_INKY_WORKER "inky"
+#define OA_WORKER "oa-worker"
+#define OA_INKY_WORKER "oa-worker"
 #define OA_CLAUDE_WORKER "claudeworker"
 #define OA_AGY_WORKER "agyworker"
 #define OA_FLAWED_WORKER "oa-worker"

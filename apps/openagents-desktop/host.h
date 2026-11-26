@@ -282,6 +282,7 @@ void cd_openrouter(void *page, const char *main, const char *sub);
 // cd_pick_model: the shown chat's model by name (a launch's --model); 0 when no entry has that name.
 int cd_pick_model(void *page, const char *name);
 int cd_agent_claude(void *page, int agent);
+int cd_agent_engine(void *page, int agent);
 // Opens the transcript of sub-agent n (1 is the first) of the newest message that has that many, on
 // the window's right, as a press on its row does. 0 when no message has.
 int cd_pane(void *page, int n);

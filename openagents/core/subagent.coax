@@ -183,6 +183,61 @@ flawed_wt_stale_sweep_can_remove :: (
          status_clean && unpushed_empty;
 }
 
+// External delegatable subagent executor engines (Phase 1B, #14053).
+// Primary chat turns always run on oa-worker; external CLIs are strictly delegatable subagents
+// when explicitly requested by the user or enabled via Developer flags.
+FLAWED_SUB_ENGINE_OPENAGENTS :: 0; // oa-worker (default)
+FLAWED_SUB_ENGINE_CLAUDE :: 1;     // claudeworker (Claude Code)
+FLAWED_SUB_ENGINE_AGY :: 2;        // agyworker (Antigravity)
+FLAWED_SUB_ENGINE_CODEX :: 3;      // codex (OpenAI Codex CLI)
+FLAWED_SUB_ENGINE_CURSOR :: 4;     // agyworker + CODER_ACP_PROVIDER=cursor
+
+flawed_subagent_engine_for_level :: (level: string) -> int #effects(reads, traps) {
+  if level == "claude" || level == "opus" || level == "sonnet" || level == "haiku" || level == "fable" {
+    return FLAWED_SUB_ENGINE_CLAUDE;
+  }
+  if level == "agy" || level == "antigravity" { return FLAWED_SUB_ENGINE_AGY; }
+  if level == "codex" { return FLAWED_SUB_ENGINE_CODEX; }
+  if level == "cursor" { return FLAWED_SUB_ENGINE_CURSOR; }
+  return FLAWED_SUB_ENGINE_OPENAGENTS;
+}
+
+flawed_subagent_engine_program :: (engine: int) -> string #effects(traps) {
+  if engine == FLAWED_SUB_ENGINE_CLAUDE { return "claudeworker"; }
+  if engine == FLAWED_SUB_ENGINE_AGY { return "agyworker"; }
+  if engine == FLAWED_SUB_ENGINE_CODEX { return "codex"; }
+  if engine == FLAWED_SUB_ENGINE_CURSOR { return "agyworker"; }
+  return "oa-worker";
+}
+
+flawed_subagent_external_allowed :: (engine: int, explicit_user_request: bool, dev_flag_on: bool) -> bool #effects(traps) {
+  if engine == FLAWED_SUB_ENGINE_OPENAGENTS { return true; }
+  return explicit_user_request || dev_flag_on;
+}
+
+#test "subagent: external delegatable executor routing and gating (#14053)" {
+  #assert flawed_subagent_engine_for_level("neon") == FLAWED_SUB_ENGINE_OPENAGENTS;
+  #assert flawed_subagent_engine_for_level("carbon") == FLAWED_SUB_ENGINE_OPENAGENTS;
+  #assert flawed_subagent_engine_for_level("claude") == FLAWED_SUB_ENGINE_CLAUDE;
+  #assert flawed_subagent_engine_for_level("opus") == FLAWED_SUB_ENGINE_CLAUDE;
+  #assert flawed_subagent_engine_for_level("agy") == FLAWED_SUB_ENGINE_AGY;
+  #assert flawed_subagent_engine_for_level("codex") == FLAWED_SUB_ENGINE_CODEX;
+  #assert flawed_subagent_engine_for_level("cursor") == FLAWED_SUB_ENGINE_CURSOR;
+
+  #assert flawed_subagent_engine_program(FLAWED_SUB_ENGINE_OPENAGENTS) == "oa-worker";
+  #assert flawed_subagent_engine_program(FLAWED_SUB_ENGINE_CLAUDE) == "claudeworker";
+  #assert flawed_subagent_engine_program(FLAWED_SUB_ENGINE_AGY) == "agyworker";
+  #assert flawed_subagent_engine_program(FLAWED_SUB_ENGINE_CODEX) == "codex";
+  #assert flawed_subagent_engine_program(FLAWED_SUB_ENGINE_CURSOR) == "agyworker";
+
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_OPENAGENTS, false, false);
+  #assert !flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CLAUDE, false, false);
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CLAUDE, true, false);
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CODEX, false, true);
+  #assert !flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CURSOR, false, false);
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CURSOR, true, false);
+}
+
 #test "subagent: context isolation, cache-exact forking, recursion guard, tool filtering & async launch" {
   #assert flawed_subagent_share_ui_state(false) && !flawed_subagent_share_ui_state(true);
   #assert flawed_subagent_avoid_prompts(true, true, true);

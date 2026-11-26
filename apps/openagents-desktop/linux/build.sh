@@ -146,11 +146,12 @@ fi
 if [[ "$want_worker" == 1 ]]; then
   coax_hash="$(sha256sum "$coax" | cut -d " " -f 1)"
   if [[ "$minimal" == 1 ]]; then
-    # agyworker: the onboarding's Connect Google Antigravity where Inkling cannot run
-    worker_pairs=("oa-worker:oa-worker" "inky:inky" "agyworker:agyworker" "gitguard:gitguard" "host:coder-host")
-    rm -f "$work/mcworker" "$work/claudeworker" "$work/flawedworker"
+    # agyworker: delegatable Antigravity/ACP subagent & onboarding fallback
+    worker_pairs=("oa-worker:oa-worker" "agyworker:agyworker" "gitguard:gitguard" "host:coder-host")
+    rm -f "$work/inky" "$work/mcworker" "$work/claudeworker" "$work/flawedworker"
   else
-    worker_pairs=("oa-worker:oa-worker" "inky:inky" "mcworker:mcworker" "claudeworker:claudeworker" "agyworker:agyworker" "gitguard:gitguard" "host:coder-host")
+    worker_pairs=("oa-worker:oa-worker" "claudeworker:claudeworker" "agyworker:agyworker" "gitguard:gitguard" "host:coder-host")
+    rm -f "$work/inky" "$work/mcworker"
   fi
   for pair in "${worker_pairs[@]}"; do
     src_name="${pair%%:*}"; dst_name="${pair##*:}"
@@ -190,13 +191,13 @@ if [[ "$minimal" == 1 || -n "$stage_dir" ]]; then
   rm -rf "$out_stage"
   mkdir -p "$out_stage/resources/fonts" "$out_stage/resources/icons"
   install -m 0755 "$work/OpenAgents" "$out_stage/OpenAgents"
-  for bin in oa-worker inky agyworker coder-host gitguard psionic-inkling-serve; do
+  for bin in oa-worker agyworker coder-host gitguard psionic-inkling-serve; do
     if [[ -x "$work/$bin" ]]; then
       install -m 0755 "$work/$bin" "$out_stage/$bin"
     fi
   done
   if [[ "$minimal" == 1 ]] && command -v strip >/dev/null 2>&1; then
-    for bin in OpenAgents oa-worker inky agyworker coder-host gitguard psionic-inkling-serve; do
+    for bin in OpenAgents oa-worker agyworker coder-host gitguard psionic-inkling-serve; do
       if [[ -x "$out_stage/$bin" ]]; then
         strip --strip-unneeded "$out_stage/$bin" 2>/dev/null || strip "$out_stage/$bin" 2>/dev/null || true
       fi

@@ -108,13 +108,12 @@ extension CoderWindow {
             if bgAct == 1 { sendTask(r) }
             else if bgAct == 3 { stopRun(r) }
         }
-        if FeatureFlags.anyExtraModel && cd_budget_exceeded(page) == 0 {
+        if cd_budget_exceeded(page) == 0 {
             while true {
                 let j = cd_agent_next(page)
                 if j < 0 { break }
                 let one = CoderWorker()
-                if FeatureFlags.isOn(.modelsClaude) && cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
-                one.folder = cwd
+                configureSubagentWorker(one, page: page, j: j, cwd: cwd)
                 wireAgent(r, j, one)
                 guard one.start() else { cd_agent_failed(page, j, one.failure ?? "The sub-agent's worker could not start."); continue }
                 r.agents[j] = one
@@ -132,6 +131,40 @@ extension CoderWindow {
         let n = cd_answer_line(page, &out, Int32(out.count)); r.worker.write(out, count: Int(n))
         checkRunNotifications(r)
         wake()
+    }
+    /// Configures a delegated sub-agent worker based on cd_agent_engine (#14053):
+    /// 0 = oa-worker (default), 1 = claudeworker, 2 = agyworker, 3 = codex, 4 = cursor (agyworker ACP).
+    private func configureSubagentWorker(_ one: CoderWorker, page: UnsafeMutableRawPointer, j: Int32, cwd: String) {
+        let engine = cd_agent_engine(page, j)
+        one.folder = cwd
+        switch engine {
+        case 1:
+            one.program = "claudeworker"
+        case 2:
+            one.program = "agyworker"
+            for (k, v) in CoderAntigravity.workerEnv() { one.extraEnv[k] = v }
+        case 3:
+            one.program = "oa-worker"
+            for (k, v) in AgentSettings.workerEnv() { one.extraEnv[k] = v }
+            #if OA_FULL
+            if let bin = ExternalProviders.codexBinaryPath() { one.extraEnv["CODER_CODEX_BIN"] = bin }
+            #endif
+            one.extraEnv["CODER_PROVIDER"] = "codex"
+        case 4:
+            one.program = "agyworker"
+            #if OA_FULL
+            if let bin = ExternalProviders.cursorBinaryPath() { one.extraEnv["CODER_AGY_BIN"] = bin }
+            #endif
+            one.extraEnv["CODER_ACP_PROVIDER"] = "cursor"
+        default:
+            one.program = "oa-worker"
+            for (k, v) in AgentSettings.workerEnv() { one.extraEnv[k] = v }
+            if LocalModelServer.shared.isReady {
+                one.extraEnv["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
+                one.extraEnv["PSIONIC_MODEL"] = LocalModelStore.entry.id
+                one.extraEnv["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
+            }
+        }
     }
     /// Sub-agent j's worker lines go to its run's page.
     private func wireAgent(_ r: CoderRun, _ j: Int32, _ one: CoderWorker) {
@@ -282,7 +315,7 @@ extension CoderWindow {
         #if OA_FULL
         let resolved = resolveProviderWorker(r)
         #else
-        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = useFlawed ? ("oa-worker", 8, nil) : useAgy ? ("agyworker", 1, nil) : ("inky", 2, nil)
+        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = useAgy ? ("agyworker", 1, nil) : ("oa-worker", 8, nil)
         #endif
         let wantProgram = resolved.program
         let switchedProvider = r.lastProviderKind >= 0 && r.lastProviderKind != resolved.providerKind
@@ -885,8 +918,7 @@ extension CoderWindow {
             let j = cd_agent_next(page)
             if j < 0 { break }
             let one = CoderWorker()
-            if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
-            one.folder = r.folder.path
+            configureSubagentWorker(one, page: page, j: j, cwd: r.folder.path)
             let n = cd_agent_task(page, j, r.session + "-agent-\(j)-" + UUID().uuidString.lowercased(), r.folder.path, &out, Int32(out.count))
             if !started.isEmpty {
                 one.attach(started.removeFirst(), from: 0)
@@ -1177,9 +1209,9 @@ extension CoderWindow {
         } else {
             env = CoderAntigravity.workerEnv()
         }
-        if cd_model_flawed(r.page) != 0 {
+        if cd_model_flawed(r.page) != 0 || cd_model_inkling(r.page) != 0 || r.worker.program == "oa-worker" {
             for (k, v) in AgentSettings.workerEnv() { env[k] = v }
-            if AgentSettings.pageNeedsLocal(r.page) || LocalModelServer.shared.isReady {
+            if AgentSettings.pageNeedsLocal(r.page) || cd_model_inkling(r.page) != 0 || LocalModelServer.shared.isReady {
                 env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
                 env["PSIONIC_MODEL"] = LocalModelStore.entry.id
                 env["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)

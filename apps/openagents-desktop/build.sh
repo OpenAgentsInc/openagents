@@ -60,7 +60,6 @@ fi
 # COAX_TOOL_BUILD_ONLY=1 compiles without executing workers (prevents 0-byte .ajr leaks).
 worker_pids=()
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" < /dev/null > /dev/null & worker_pids+=($!)
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/inky.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" < /dev/null > /dev/null & worker_pids+=($!)
@@ -223,10 +222,10 @@ cp "$here/resources/OpenAgents.icns" "$res/OpenAgents.icns"
 coax_hash="$(shasum -a 256 "$coax" | cut -d " " -f 1)"
 for p in "${worker_pids[@]}"; do wait "$p"; done
 cp "$repo/coax/web/build/tools/oa-worker-$coax_hash" "$res/oa-worker"
-cp "$repo/coax/web/build/tools/inky-$coax_hash" "$res/inky"
 cp "$repo/coax/web/build/tools/agyworker-$coax_hash" "$res/agyworker"
 cp "$repo/coax/web/build/tools/gitguard-$coax_hash" "$res/gitguard"
 cp "$repo/coax/web/build/tools/host-$coax_hash" "$res/coder-host"
+rm -f "$res/inky" "$res/mcworker"
 cp "$work/psionic-inkling/psionic-inkling-serve" "$res/psionic-inkling-serve"
 chmod +x "$res/psionic-inkling-serve"
 cp "$work/psionic-inkling/inkling-kernels.metal" "$res/inkling-kernels.metal"
@@ -239,7 +238,6 @@ cp "$repo/components/NOTICE" "$res/Components/NOTICE"
 if [[ "$minimal" != "1" ]]; then
   cp "$repo/metaverse/stage-resources/bip39-english.txt" "$res/bip39-english.txt"
   full_pids=()
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/mcworker.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oasim.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null & full_pids+=($!)
@@ -273,7 +271,6 @@ if [[ "$minimal" != "1" ]]; then
   [[ -f "$repo/resources/lean-checker/OpenAgentsVerify.lean" ]] && cp "$repo/resources/lean-checker/OpenAgentsVerify.lean" "$res/lean-checker/OpenAgentsVerify.lean"
   [[ -d "$repo/evals/openagents-desktop/lean/samples/add_zero_right" ]] && cp -R "$repo/evals/openagents-desktop/lean/samples/add_zero_right" "$res/fixtures/lean-samples/"
   for p in "${full_pids[@]}"; do wait "$p"; done
-  cp "$repo/coax/web/build/tools/mcworker-$coax_hash" "$res/mcworker"
   cp "$repo/coax/web/build/tools/claudeworker-$coax_hash" "$res/claudeworker"
   cp "$repo/coax/web/build/tools/oasim-$coax_hash" "$res/oasim"
   cp "$repo/coax/web/build/tools/ple-run-$coax_hash" "$res/ple-run"

@@ -660,14 +660,27 @@ coder_page_set_claude :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s[0].nturns == 0 && !cp_running(s) { s[0].model = cp_model_start(s); }
   s[0].model = cp_model_index(s);
 }
-// Whether sub-agent j runs in Claude Code: the host starts the Claude worker for it, not Microcoder's.
-coder_page_agent_claude :: (s: [] CoderPage, j: int) -> bool #export_c #effects(all) {
-  if s.count < 1 || s[0].nturns < 1 { return false; }
+// Sub-agent executor engine id for sub-agent j (Phase 1B, #14053):
+// 0 = oa-worker (OpenAgents), 1 = claudeworker (Claude), 2 = agyworker (Antigravity),
+// 3 = codex, 4 = cursor (agyworker ACP).
+coder_page_agent_engine :: (s: [] CoderPage, j: int) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].nturns < 1 { return 0; }
   i := s[0].nturns - 1;
-  return j >= 0 && j < s[0].turns[i].nagents && s[0].turns[i].agents[j].level >= CP_LEVEL_CLAUDE;
+  if j < 0 || j >= s[0].turns[i].nagents { return 0; }
+  lvl := s[0].turns[i].agents[j].level;
+  if lvl >= CP_LEVEL_CLAUDE && lvl < CP_LEVEL_CLAUDE_END { return 1; }
+  if lvl == CP_LEVEL_AGY { return 2; }
+  if lvl == CP_LEVEL_CODEX { return 3; }
+  if lvl == CP_LEVEL_CURSOR { return 4; }
+  return 0;
+}
+// Whether sub-agent j runs in Claude Code: the host starts claudeworker for it.
+coder_page_agent_claude :: (s: [] CoderPage, j: int) -> bool #export_c #effects(all) {
+  return coder_page_agent_engine(s, j) == 1;
 }
 // Sub-agent j's task line for its worker: a simple task on Hydrogen, a complex one on Carbon, a
-// neon one on Gemini 4 Neon, an openrouter one on the OpenRouter model set for sub-agents, a Claude level's on that Claude model (the task alone: Claude Code finds the skills itself).
+// neon one on Gemini 4 Neon, an openrouter one on the OpenRouter model set for sub-agents, a Claude level's on that Claude model,
+// or an explicit delegated external CLI subagent (Antigravity, Codex, Cursor).
 // It has no sub-agents of its own.
 coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
@@ -677,7 +690,12 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   n += cp_out(whole[n..<whole.count], cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]);
   level := s[0].turns[i].agents[j].level;
-  if level >= CP_LEVEL_CLAUDE { return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level], effort = CP_CLAUDE_EFFORT_WORD[cp_claude_effort(s, CP_LEVELS - 1 - level)], no_steer = true}); }
+  if level >= CP_LEVEL_CLAUDE && level < CP_LEVEL_CLAUDE_END {
+    return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level], effort = CP_CLAUDE_EFFORT_WORD[cp_claude_effort(s, CP_LEVEL_CLAUDE_END - 1 - level)], no_steer = true});
+  }
+  if level >= CP_LEVEL_AGY && level < CP_LEVELS {
+    return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level], no_steer = true});
+  }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true,
                model = CP_MODEL_SIMPLE, effort = "low", no_steer = true};
   if level == 1 { t.model = CP_MODEL_COMPLEX; t.effort = "medium"; }

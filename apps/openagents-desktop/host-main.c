@@ -1268,8 +1268,10 @@ static void pump_subagents(DesktopApp *a) {
       cd_agent_failed(a->page, next, "sub-agent limit reached");
     } else {
       char err[512] = {0}, extra[2200];
-      int want_claude = cd_agent_claude(a->page, next) != 0 && a->claude_worker_bin[0] != '\0';
-      const char *sub_bin = want_claude ? a->claude_worker_bin : a->worker_bin;
+      int eng = cd_agent_engine(a->page, next);
+      const char *sub_bin = (eng == 1 && a->claude_worker_bin[0] != '\0') ? a->claude_worker_bin
+                          : ((eng == 2 || eng == 4) && a->agy_worker_bin[0] != '\0') ? a->agy_worker_bin
+                          : (a->flawed_worker_bin[0] != '\0' ? a->flawed_worker_bin : a->worker_bin);
       worker_extra(a, 0, extra, sizeof extra);
       int started = oa_core_subagent_start(vc(a), slot, cs(sub_bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
       memset(extra, 0, sizeof extra);

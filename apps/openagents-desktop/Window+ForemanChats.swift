@@ -281,7 +281,7 @@ extension CoderWindow {
         if cd_action(back) == 1 {
             var out = [CChar](repeating: 0, count: 262144)
             moved.worker.folder = moved.folder.path
-            moved.worker.program = cd_model_flawed(back) != 0 ? "oa-worker" : cd_model_agy(back) != 0 ? "agyworker" : cd_model_claude(back) != 0 ? "claudeworker" : cd_model_inkling(back) != 0 ? "inky" : "mcworker"
+            moved.worker.program = cd_model_agy(back) != 0 ? "agyworker" : cd_model_claude(back) != 0 ? "claudeworker" : "oa-worker"
             if moved.worker.start() {
                 var rn = cd_recall_line(back, &out, Int32(out.count))
                 if rn == 0 { rn = cd_forget_line(&out, Int32(out.count)) }

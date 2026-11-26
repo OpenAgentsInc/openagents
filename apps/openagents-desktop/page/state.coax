@@ -37,14 +37,18 @@ CP_MODEL_NEON :: "gemini-4-neon";          // a level neon task's model: Gemini 
 // computer (coder/tui/claudeworker.coax, GitHub #13660). Chats keep a level by its name, so a
 // level's place in the list can change.
 // openrouter runs on the OpenRouter model the person set for sub-agents (Coder > OpenRouter Models).
-CP_LEVELS :: 9;
-CP_LEVEL :: [CP_LEVELS] string.["hydrogen", "carbon", "neon", "openrouter", "inkling", "haiku", "sonnet", "opus", "fable"];
+CP_LEVELS :: 12;
+CP_LEVEL :: [CP_LEVELS] string.["hydrogen", "carbon", "neon", "openrouter", "inkling", "haiku", "sonnet", "opus", "fable", "agy", "codex", "cursor"];
 // What the first two were called before 2026-11-17, as chats kept then have them.
 CP_LEVEL_OLD :: [2] string.["simple", "complex"];
-CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "OpenRouter", "Inkling", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5", "Claude Fable 5.2"];
+CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "OpenRouter", "Inkling", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5", "Claude Fable 5.2", "Antigravity", "Codex", "Cursor"];
 CP_LEVEL_OR :: 3;                           // the OpenRouter level
 CP_LEVEL_INKLING :: 4;                      // the free local Inkling/psionic level
 CP_LEVEL_CLAUDE :: 5;                       // the first Claude level
+CP_LEVEL_CLAUDE_END :: 9;                   // exclusive end of Claude levels (5..8)
+CP_LEVEL_AGY :: 9;                          // delegated Antigravity subagent
+CP_LEVEL_CODEX :: 10;                       // delegated Codex subagent
+CP_LEVEL_CURSOR :: 11;                      // delegated Cursor ACP subagent
 CP_PAD :: 32;               // the page's margin: Zeron's side room for the composer
 CP_CHATS :: 512;            // recent chats the sidebar lists (50 cap lifted in #13875); it says how many more there are
 CP_CHAT_ID :: 48;           // bytes of a chat's row id ("chat." and the host's id)

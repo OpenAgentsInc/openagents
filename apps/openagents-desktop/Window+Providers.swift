@@ -270,7 +270,7 @@ extension CoderWindow {
     func resolveProviderWorker(_ r: CoderRun) -> (program: String, providerKind: Int32, handoffJSON: String?) {
         let kind = cd_model_provider(r.page)
         let prevKind = r.lastProviderKind
-        var program = "mcworker"
+        var program = "oa-worker"
         switch kind {
         case ExternalProviders.providerAgy:
             program = "agyworker"
@@ -304,16 +304,16 @@ extension CoderWindow {
             program = "oa-worker"
             r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
         case ExternalProviders.providerInkling:
-            program = "inky"
+            program = "oa-worker"
             r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
         case ExternalProviders.providerCodex:
-            program = "mcworker"
+            program = "oa-worker"
             if let bin = ExternalProviders.codexBinaryPath() {
                 r.worker.extraEnv["CODER_CODEX_BIN"] = bin
             }
             r.worker.extraEnv["CODER_PROVIDER"] = "codex"
         default:
-            program = "mcworker"
+            program = "oa-worker"
             r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
         }
 
