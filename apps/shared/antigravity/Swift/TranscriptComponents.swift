@@ -212,6 +212,25 @@ struct TranscriptRowView: View {
                                         .foregroundStyle(OATheme.statusWarn)
                                 }
                             }
+                            if !item.subagentType.isEmpty {
+                                Text(item.subagentType)
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(OATheme.textSecondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(OATheme.elevated, in: Capsule())
+                            }
+                            if item.isBackground {
+                                Text("bg")
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(OATheme.statusWarn)
+                            }
+                            if !item.worktreeBranch.isEmpty {
+                                Text(item.worktreeBranch)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(OATheme.textMuted)
+                                    .lineLimit(1)
+                            }
                             if item.subagentCalls > 0 {
                                 Text("\(item.subagentCalls) calls")
                                     .font(.system(size: 11, design: .monospaced))

@@ -1,0 +1,43 @@
+{
+  "id": "sb3_six_service_security_audit",
+  "category": "subagent-bench",
+  "fixture": "six_services_audit",
+  "timeout_s": 240,
+  "budget_usd_micros": 1000000,
+  "description": "Read-only security audit of 6 microservices producing structured AUDIT_REPORT.json covering 12 CWE findings",
+  "steps": [
+    {
+      "send": "Perform a read-only security audit of all 6 microservices under `services/` (`gateway`, `payments`, `uploads`, `search`, `webhooks`, `admin`). Do NOT modify any file under `services/`. Write a structured JSON report to `AUDIT_REPORT.json` at the repository root with schema `{\"findings\": [{\"service\": \"...\", \"file\": \"...\", \"line\": 123, \"cwe\": \"CWE-...\", \"severity\": \"critical|high|medium\", \"summary\": \"...\", \"remediation\": \"...\"}]}` covering every concrete vulnerability across all 6 services with exact file paths, line numbers, and CWE IDs."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended",
+      "ending": "finished"
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "services/gateway/app.py",
+        "services/payments/processor.py",
+        "services/uploads/handler.py",
+        "services/search/engine.py",
+        "services/webhooks/receiver.py",
+        "services/admin/panel.py"
+      ]
+    },
+    {
+      "type": "command",
+      "run": "python3 \"$OA_EVAL_REPO_ROOT/evals/subagent-bench/verifiers/verify_sb3.py\""
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

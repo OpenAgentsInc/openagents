@@ -1,0 +1,65 @@
+{
+  "name": "22_subagent_bg_unlinked_notify",
+  "description": "Background subagent returns async_launched immediately, survives parent turn end (unlinked abort), and delivers <task-notification> on completion (#14096)",
+  "workers": {
+    "main": {
+      "turns": [
+        {
+          "steps": [
+            {
+              "emit": {
+                "kind": "delegate",
+                "wait_all": true,
+                "ticket": 1,
+                "tasks": [
+                  {"level": "neon", "subagent_type": "Explore", "description": "Sync scan", "agent_id": "aexp-0000000000000011", "read_only": true, "task": "Scan files"},
+                  {"level": "neon", "subagent_type": "general-purpose", "description": "Bg audit", "agent_id": "agen-0000000000000022", "run_in_background": true, "task": "Run background audit"}
+                ]
+              }
+            },
+            {"expect": "results"},
+            {"emit": {"kind": "reply", "text": "Sync scan complete; background audit is running."}},
+            {"emit": {"kind": "ended", "ending": "finished", "text": "Sync scan complete; background audit is running."}}
+          ]
+        }
+      ]
+    },
+    "sub_sync": {
+      "turns": [
+        {
+          "steps": [
+            {"emit": {"kind": "view", "path": "README.md", "found": true}},
+            {"emit": {"kind": "ended", "ending": "finished", "text": "Sync scan ok"}}
+          ]
+        }
+      ]
+    },
+    "sub_bg": {
+      "turns": [
+        {
+          "steps": [
+            {"sleep_ms": 150},
+            {"emit": {"kind": "ended", "ending": "finished", "text": "Background audit passed"}}
+          ]
+        }
+      ]
+    }
+  },
+  "commands": [
+    {"cmd": "OPEN 0 0 {resources}", "expect": {"ok": true}},
+    {"cmd": "SPAWN_WORKER 0 {script:main} {record:main}", "expect": {"ok": true}},
+    {"cmd": "SET_AGENT_SCRIPT 0 0 {script:sub_sync}", "expect": {"ok": true}},
+    {"cmd": "SET_AGENT_SCRIPT 0 1 {script:sub_bg}", "expect": {"ok": true}},
+    {"cmd": "SET_TEXT 0 run one sync explore and one background audit", "expect": {"ok": true}},
+    {"cmd": "SUBMIT 0", "expect": {"ok": true}},
+    {"cmd": "PUMP 0 8000 1", "expect": {"ok": true, "running": 0, "agents_running": 1, "max_vertices_seen_lte": 200000}},
+    {"cmd": "PUMP 0 500 0", "expect": {"ok": true, "running": 0, "agents_running": 0}},
+    {"cmd": "QUIT", "expect": {"ok": true}}
+  ],
+  "assert_records": {
+    "main": {
+      "count_by_kind": {"task": 1, "results": 1},
+      "contains": ["Sync scan ok", "async_launched", "agen-0000000000000022", "<task-notification>", "Background audit passed"]
+    }
+  }
+}

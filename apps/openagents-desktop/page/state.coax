@@ -280,7 +280,8 @@ CpAgent :: struct {
   allowed_tools: [192] u8; allowed_tools_n: int;      // CSV tool allowlist (#14096)
   disallowed_tools: [192] u8; disallowed_tools_n: int;// CSV tool denylist (#14096)
   task_long_at: int; task_long_n: int;                // full prompt in CoderPage.long_buf when > CP_AGENT_TASK (#14096)
-  is_background: bool; omit_claudemd: bool; read_only: bool; is_cc_agent: bool;
+  fork_ctx_path: [256] u8; fork_ctx_path_n: int;      // FORK_AGENT cache-exact context snapshot path (#14096)
+  is_background: bool; omit_claudemd: bool; read_only: bool; is_cc_agent: bool; is_fork: bool;
   tokens_in: int; tokens_out: int;
 }
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
@@ -435,6 +436,9 @@ CoderPage :: struct {
   open_call: int; open_turn: int; open_file: int; open_term_path: bool;   // the file a press asked to open (CP_ASK_OPEN_FILE): row open_call's, else the open_file'th the reply of open_turn names
   open_url_turn: int; open_url: int; open_url_pane: bool; open_url_term: bool;   // the http(s) link a press asked to open (CP_ASK_OPEN_URL)
   stop_agent: int;            // 0-based sub-agent to stop for CP_ASK_STOP_AGENT (-1: none; #13766)
+  bg_notif_due: bool;         // pending automatic <task-notification> from finished background subagent (#14096)
+  bg_notif_id: [48] u8; bg_notif_id_n: int;
+  bg_notif_buf: [4096] u8; bg_notif_n: int;
   update_state: int;
   update_label: [64] u8; update_label_n: int;
   update_detail: [64] u8; update_detail_n: int;

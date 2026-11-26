@@ -444,12 +444,21 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             }
             let failed = item.noticeKind == "error" || item.noticeKind == "failed"
             let elapsed: Int32 = item.startedAtMs > 0 ? Int32(max(0, (nowMs - item.startedAtMs) / 1000)) : 0
+            let toolLabel: String
+            if item.isSubagent && !item.subagentType.isEmpty {
+                var parts = [item.subagentType]
+                if item.isBackground { parts.append("bg") }
+                if !item.worktreeBranch.isEmpty { parts.append(item.worktreeBranch) }
+                toolLabel = parts.joined(separator: " · ")
+            } else {
+                toolLabel = item.toolName
+            }
             oa_ios_items_push(
                 surface,
                 roleCode,
                 item.id,
                 displayText,
-                item.toolName,
+                toolLabel,
                 item.path,
                 item.diff,
                 item.complete ? 1 : 0,

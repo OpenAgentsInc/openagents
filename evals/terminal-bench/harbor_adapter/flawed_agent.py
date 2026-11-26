@@ -53,6 +53,14 @@ class FlawedAgentOptions(InstalledAgentOptions):
         default=None,
         description="Optional wall-clock pacing budget seconds (sets FLAWED_BUDGET_S).",
     )
+    subagents: bool | None = Field(
+        default=None,
+        description="Enable or disable parallel Agent subagent delegation (sets OA_AGENT_SUBAGENTS=1|0).",
+    )
+    subagent_effort: str | None = Field(
+        default=None,
+        description="Child subagent reasoning effort override (sets OA_SUBAGENT_EFFORT=low|medium|high).",
+    )
     binary_path: str | None = Field(
         default=None,
         description="Path to static Linux flawedworker binary.",
@@ -216,6 +224,13 @@ class FlawedAgent(BaseInstalledAgent):
             env["FLAWED_BASH_TIMEOUT_S"] = str(self.options.bash_timeout_s)
         if self.options.budget_s is not None:
             env["FLAWED_BUDGET_S"] = str(self.options.budget_s)
+        if self.options.subagents is not None:
+            flag = "1" if self.options.subagents else "0"
+            env["OA_AGENT_SUBAGENTS"] = flag
+            env["FLAWED_SUBAGENTS"] = flag
+        if self.options.subagent_effort:
+            env["OA_SUBAGENT_EFFORT"] = self.options.subagent_effort
+            env["FLAWED_SUBAGENT_EFFORT"] = self.options.subagent_effort
 
         runner_cmd = (
             'export PATH="/opt/flawed/bin:$PATH"; '

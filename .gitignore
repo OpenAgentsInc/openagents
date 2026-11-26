@@ -100,6 +100,7 @@ build/pipeline/
 /evals/openagents-desktop/results/
 /evals/openagents-desktop/host_driver/build/
 /evals/session-history/results/
+/evals/subagent-bench/results/
 
 # Copied from metaverse/stage-resources/Cast.bin by apps/openagents-web/build.sh
 apps/openagents-web/demos/grid-crowd/assets/cast/Cast.bin

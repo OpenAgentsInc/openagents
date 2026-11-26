@@ -1,0 +1,39 @@
+{
+  "id": "sb1_five_service_bugfix",
+  "category": "subagent-bench",
+  "fixture": "five_services",
+  "timeout_s": 240,
+  "budget_usd_micros": 1000000,
+  "description": "Fix 10 subtle bugs across 5 independent Python service packages (auth, billing, inventory, notifications, analytics)",
+  "steps": [
+    {
+      "send": "Fix all failing tests across all 5 service packages (`auth`, `billing`, `inventory`, `notifications`, `analytics`). Do not weaken or alter the test files; fix the implementation bugs in each service module and verify that `python3 -m unittest discover -s . -p 'test_*.py' -v` passes with 0 failures."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended",
+      "ending": "finished"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest discover -s . -p 'test_*.py' -v",
+      "restore": [
+        "auth/test_tokens.py",
+        "billing/test_ledger.py",
+        "inventory/test_allocator.py",
+        "notifications/test_dispatcher.py",
+        "analytics/test_rollup.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

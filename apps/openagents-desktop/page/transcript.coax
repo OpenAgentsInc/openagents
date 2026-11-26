@@ -105,12 +105,17 @@ cp_working_word :: (s: [] CoderPage, i: int) -> string {
   while q >= 0 { if s[0].calls[q].running { return "Working"; } q = s[0].calls[q].next - 1; }
   return "Thinking";
 }
-// The run is over: nothing is still running.
+// The run is over: foreground sub-agents stop with the parent turn, while background sub-agents
+// have an unlinked abort controller and continue running until completion or explicit stop (#14096).
 cp_cmds_end :: (s: [] CoderPage, i: int) {
   cp_calls_end(s, i, -1, true);
   for j: 0..<s[0].turns[i].nagents {
-    if s[0].turns[i].agents[j].state == CP_RUNNING { s[0].turns[i].agents[j].state = CP_STOPPED; s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began; cp_calls_end(s, i, j, true); }
-    s[0].turns[i].agents[j].start_due = false; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].now_running = false; s[0].turns[i].agents[j].paused = false; s[0].turns[i].agents[j].deny_due = false;
+    if s[0].turns[i].agents[j].state == CP_RUNNING && !s[0].turns[i].agents[j].is_background {
+      s[0].turns[i].agents[j].state = CP_STOPPED;
+      s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began;
+      cp_calls_end(s, i, j, true);
+      s[0].turns[i].agents[j].start_due = false; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].now_running = false; s[0].turns[i].agents[j].paused = false; s[0].turns[i].agents[j].deny_due = false;
+    }
   }
   s[0].turns[i].waiting = false; s[0].results_due = false;
 }
@@ -596,6 +601,10 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     if oc_b.ok && oc_b.value { s[0].turns[i].agents[j].omit_claudemd = true; }
     ro_b := cl_bool(one, "read_only");
     if ro_b.ok && ro_b.value { s[0].turns[i].agents[j].read_only = true; }
+    fk_b := cl_bool(one, "is_fork");
+    if fk_b.ok && fk_b.value { s[0].turns[i].agents[j].is_fork = true; }
+    fkp_s := cl_str(ar[..], one, "fork_context_path");
+    if fkp_s.count > 0 { s[0].turns[i].agents[j].fork_ctx_path_n = cp_out(s[0].turns[i].agents[j].fork_ctx_path[..], fkp_s); }
     s[0].turns[i].agents[j].state = CP_RUNNING; s[0].turns[i].agents[j].start_due = true;
     s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1; s[0].turns[i].agents[j].heard = s[0].clock;
     s[0].turns[i].agents[j].after = s[0].turns[i].early_cmds + s[0].turns[i].ncmds;
@@ -692,12 +701,76 @@ cp_agent_end :: (s: [] CoderPage, i: int, j: int, state: int, text: string) {
   cp_agent_finish(s, i, j, state);
 }
 // Sub-agent j ended with the reply it already has.
+// When a background sub-agent finishes, format an automatic <task-notification> XML payload
+// queued for immediate delivery to the parent worker (#14096).
 cp_agent_finish :: (s: [] CoderPage, i: int, j: int, state: int) {
+  was_bg := s[0].turns[i].agents[j].is_background;
   s[0].turns[i].agents[j].state = state; s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began;
   s[0].turns[i].agents[j].now_running = false; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].paused = false; s[0].turns[i].agents[j].deny_due = false;
   cp_calls_end(s, i, j, state != CP_DONE);
   n := s[0].turns[i].agents[j].reply_n; if n > 0 && s[0].pane_open && s[0].pane_turn == i && s[0].pane_agent == j { s[0].live_pane = i * CP_AGENTS + j; } s[0].turns[i].h = 0;
+  if was_bg {
+    st_s := ifx state == CP_DONE then "completed" else ifx state == CP_STOPPED then "killed" else "failed";
+    aid_s := ifx s[0].turns[i].agents[j].agent_id_n > 0 then cast(string) s[0].turns[i].agents[j].agent_id[0..<s[0].turns[i].agents[j].agent_id_n] else "bg-agent";
+    desc_s := ifx s[0].turns[i].agents[j].desc_n > 0 then cast(string) s[0].turns[i].agents[j].desc[0..<s[0].turns[i].agents[j].desc_n] else "background subagent";
+    rep_s := cp_agent_reply(s, i, j);
+    nb := s[0].bg_notif_buf[..];
+    k := cp_out(nb, "<task-notification>\n<task-id>");
+    k += cp_out(nb[k..<nb.count], aid_s);
+    k += cp_out(nb[k..<nb.count], "</task-id>\n<status>");
+    k += cp_out(nb[k..<nb.count], st_s);
+    k += cp_out(nb[k..<nb.count], "</status>\n<summary>Agent \"");
+    k += cp_out(nb[k..<nb.count], desc_s);
+    k += cp_out(nb[k..<nb.count], "\" ");
+    k += cp_out(nb[k..<nb.count], st_s);
+    k += cp_out(nb[k..<nb.count], "</summary>\n<result>");
+    k += cp_out(nb[k..<nb.count], rep_s);
+    k += cp_out(nb[k..<nb.count], "</result>\n<usage>total_tokens: ");
+    k = el_put_i(nb, k, s[0].turns[i].agents[j].tokens_in + s[0].turns[i].agents[j].tokens_out);
+    k += cp_out(nb[k..<nb.count], "\ntool_uses: ");
+    k = el_put_i(nb, k, s[0].turns[i].agents[j].calls);
+    k += cp_out(nb[k..<nb.count], "\nduration_ms: ");
+    took_ms := ifx s[0].turns[i].agents[j].took > 0 then cast(int) (s[0].turns[i].agents[j].took * 1000.0f32) else 0;
+    k = el_put_i(nb, k, took_ms);
+    k += cp_out(nb[k..<nb.count], "</usage>\n</task-notification>");
+    s[0].bg_notif_id_n = cp_out(s[0].bg_notif_id[..], aid_s);
+    s[0].bg_notif_n = k;
+    s[0].bg_notif_due = true;
+  }
   cp_round_check(s, i);
+}
+
+// Whether the active turn is currently waiting on one or more foreground running sub-agents (#14096).
+cp_has_fg_running_agents :: (s: [] CoderPage) -> bool {
+  if s.count < 1 || !cp_running(s) { return false; }
+  i := s[0].nturns - 1;
+  if !s[0].turns[i].waiting { return false; }
+  for q: 0..<s[0].turns[i].round_asked {
+    w := s[0].turns[i].round_who[q];
+    if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING && !s[0].turns[i].agents[w - 1].is_background { return true; }
+  }
+  return false;
+}
+
+// Mid-run foreground -> background promotion (Ctrl+B; #14096): promotes all running foreground
+// sub-agents in the current round to background, immediately returning async_launched results
+// to the parent worker while the sub-agents continue running with unlinked abort.
+coder_page_background_agents :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if !cp_has_fg_running_agents(s) { return 0; }
+  i := s[0].nturns - 1;
+  moved := 0;
+  for q: 0..<s[0].turns[i].round_asked {
+    w := s[0].turns[i].round_who[q];
+    if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING && !s[0].turns[i].agents[w - 1].is_background {
+      s[0].turns[i].agents[w - 1].is_background = true;
+      moved += 1;
+    }
+  }
+  if moved > 0 {
+    s[0].turns[i].h = 0;
+    cp_round_check(s, i);
+  }
+  return moved;
 }
 // The next sub-agent the host is to start a worker for (once each), -1 for none.
 coder_page_agent_next :: (s: [] CoderPage) -> int #export_c #effects(all) {
@@ -773,6 +846,8 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
       omit_claudemd = s[0].turns[i].agents[j].omit_claudemd,
       read_only = s[0].turns[i].agents[j].read_only,
       is_subagent = true,
+      is_fork = s[0].turns[i].agents[j].is_fork,
+      fork_context_path = cast(string) s[0].turns[i].agents[j].fork_ctx_path[0..<s[0].turns[i].agents[j].fork_ctx_path_n],
     };
     if s[0].turns[i].agents[j].model_ovr_n > 0 {
       t.model = cast(string) s[0].turns[i].agents[j].model_ovr[0..<s[0].turns[i].agents[j].model_ovr_n];
@@ -1049,10 +1124,12 @@ cp_cmd_edits_file :: (cmd: string) -> bool {
   return false;
 }
 // One line from sub-agent j's worker. Returns its kind (MWW_*).
+// Background sub-agents keep running after the parent turn ends (unlinked abort; #14096).
 coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_c #effects(all) {
-  if s.count < 1 || !cp_running(s) { return 0; }
+  if s.count < 1 || s[0].nturns < 1 { return 0; }
   i := s[0].nturns - 1;
   if j < 0 || j >= s[0].turns[i].nagents || s[0].turns[i].agents[j].state != CP_RUNNING { return 0; }
+  if !cp_running(s) && !s[0].turns[i].agents[j].is_background { return 0; }
   ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
   l: [1] MwwLine;
   kind := mww_read(ar[..], line, l[..]);
@@ -1140,22 +1217,26 @@ cp_ended_why :: (ending: string, text: string, sub: bool) -> string {
 }
 // Sub-agent j's worker could not start or went away.
 coder_page_agent_failed :: (s: [] CoderPage, j: int, why: string) #export_c #effects(all) {
-  if s.count < 1 || !cp_running(s) { return; }
+  if s.count < 1 || s[0].nturns < 1 { return; }
   i := s[0].nturns - 1;
   if j < 0 || j >= s[0].turns[i].nagents || s[0].turns[i].agents[j].state != CP_RUNNING { return; }
+  if !cp_running(s) && !s[0].turns[i].agents[j].is_background { return; }
   cp_agent_end(s, i, j, CP_FAILED, why);
 }
 // Whether sub-agent j is still running (the host stops the worker of one that is not).
+// Background sub-agents remain running even after parent turn completes or ESC (unlinked abort; #14096).
 coder_page_agent_running :: (s: [] CoderPage, j: int) -> bool #export_c #effects(all) {
-  if s.count < 1 || !cp_running(s) { return false; }
+  if s.count < 1 || s[0].nturns < 1 { return false; }
   i := s[0].nturns - 1;
-  return j >= 0 && j < s[0].turns[i].nagents && s[0].turns[i].agents[j].state == CP_RUNNING;
+  if j < 0 || j >= s[0].turns[i].nagents || s[0].turns[i].agents[j].state != CP_RUNNING { return false; }
+  return cp_running(s) || s[0].turns[i].agents[j].is_background;
 }
 // The yes sub-agent j's worker is owed for the command it asked about, once.
 coder_page_agent_answer_line :: (s: [] CoderPage, j: int, out: [] u8) -> int #export_c #effects(all) {
-  if s.count < 1 || !cp_running(s) { return 0; }
+  if s.count < 1 || s[0].nturns < 1 { return 0; }
   i := s[0].nturns - 1;
   if j < 0 || j >= s[0].turns[i].nagents { return 0; }
+  if !cp_running(s) && !s[0].turns[i].agents[j].is_background { return 0; }
   // Microcoder's note for it goes first, as a parent's steer (#13776); an answer owed follows it
   at := 0;
   if s[0].turns[i].agents[j].note == CP_NOTE_DUE {
@@ -1279,10 +1360,11 @@ cp_results_list :: (s: [] CoderPage, i: int, b: [] u8, most: int) -> int {
 
 // Stop one running sub-agent without stopping the parent turn or sibling sub-agents (#13766).
 coder_page_agent_cancel :: (s: [] CoderPage, agent: int) -> bool #export_c #effects(all) {
-  if s.count < 1 || !cp_running(s) { return false; }
+  if s.count < 1 || s[0].nturns < 1 { return false; }
   i := s[0].nturns - 1;
   if agent < 0 || agent >= s[0].turns[i].nagents { return false; }
   if s[0].turns[i].agents[agent].state != CP_RUNNING { return false; }
+  if !cp_running(s) && !s[0].turns[i].agents[agent].is_background { return false; }
   cp_agent_end(s, i, agent, CP_STOPPED, "Stopped by user.");
   return true;
 }

@@ -1,0 +1,21 @@
+{
+  "id": "c7_subagent_sendmessage_resume",
+  "category": "subagents",
+  "fixture": "twobugs",
+  "timeout_s": 180,
+  "budget_usd_micros": 200000,
+  "description": "Delegate to a subagent and follow up using SendMessage (#14096)",
+  "steps": [
+    {
+      "send": "Delegate an initial inspection task to a general-purpose subagent using Agent, then use SendMessage to ask that same subagent one follow-up question about the test files, and report both answers."
+    }
+  ],
+  "graders": [
+    { "type": "not_timed_out" },
+    { "type": "ended", "ending": "finished" },
+    { "type": "diff_max_files", "max": 0 },
+    { "type": "wire_count", "kind": "delegate", "main_only": true, "min": 2 },
+    { "type": "wire_count", "dir": "to_worker", "key": "results", "main_only": true, "min": 2 },
+    { "type": "no_guard_trips" }
+  ]
+}

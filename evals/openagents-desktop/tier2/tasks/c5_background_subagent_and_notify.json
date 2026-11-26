@@ -1,0 +1,21 @@
+{
+  "id": "c5_background_subagent_and_notify",
+  "category": "subagents",
+  "fixture": "twobugs",
+  "timeout_s": 180,
+  "budget_usd_micros": 200000,
+  "description": "Launch a background subagent (run_in_background) and handle completion (#14096)",
+  "steps": [
+    {
+      "send": "Launch one background Explore subagent (using Agent with run_in_background: true) to inspect the files in this workspace while you summarize the repository layout."
+    }
+  ],
+  "graders": [
+    { "type": "not_timed_out" },
+    { "type": "ended", "ending": "finished" },
+    { "type": "diff_max_files", "max": 0 },
+    { "type": "wire_count", "kind": "delegate", "main_only": true, "min": 1 },
+    { "type": "wire_count", "dir": "to_worker", "key": "results", "main_only": true, "min": 1 },
+    { "type": "no_guard_trips" }
+  ]
+}

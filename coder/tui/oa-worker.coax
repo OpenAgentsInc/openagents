@@ -176,6 +176,8 @@ FwConfig :: struct {
   extended_ctx: bool;
   remote_bridge: bool;
   allow_local_harnesses: bool; // Opt-in (default Off): allow external local harness sub-agent delegates (#14071)
+  subagents_enabled: bool;     // Default On (OA_AGENT_SUBAGENTS=0 disables OA_PACK_AGENTS & catalog prompt for A/B evals)
+  subagent_effort: [32] u8; nsubagent_effort: int; // Optional child subagent effort override (OA_SUBAGENT_EFFORT)
   max_turns: int;             // 0 = unlimited (capped at 64 safety)
   max_budget_micros: int;     // 0 = unlimited
   budget_s: int;              // 0 = no wall-clock pacing budget (set via FLAWED_BUDGET_S)
@@ -284,6 +286,9 @@ fww_load_config :: (cfg: [] FwConfig) {
   cfg[0].extended_ctx = fww_env_bool2("OA_AGENT_EXTENDED_CTX", "FLAWED_EXTENDED_CTX", false);
   cfg[0].remote_bridge = fww_env_bool2("OA_AGENT_REMOTE_BRIDGE", "FLAWED_REMOTE_BRIDGE", false);
   cfg[0].allow_local_harnesses = fww_env_bool("OA_ALLOW_LOCAL_HARNESSES", false);
+  cfg[0].subagents_enabled = fww_env_bool2("OA_AGENT_SUBAGENTS", "FLAWED_SUBAGENTS", true);
+  se := fww_getenv2("OA_SUBAGENT_EFFORT", "FLAWED_SUBAGENT_EFFORT", b[..]);
+  cfg[0].nsubagent_effort = fww_keep(cfg[0].subagent_effort[..], se);
   cfg[0].max_turns = fww_env_int2("OA_AGENT_MAX_TURNS", "FLAWED_MAX_TURNS", 0);
   cfg[0].max_budget_micros = fww_env_int2("OA_AGENT_MAX_BUDGET_MICROS", "FLAWED_MAX_BUDGET_MICROS", 0);
   cfg[0].budget_s = fww_env_int2("OA_AGENT_BUDGET_S", "FLAWED_BUDGET_S", 0);
@@ -1883,7 +1888,7 @@ fww_git_quick :: (cwd: string, a1: string, a2: string, a3: string, a4: string, o
     _ = proc_close_stdin(h);
     lbuf: [1024] u8;
     deadline := proc_now_ms() + 1200;
-    while proc_now_ms() < deadline && n + 64 < out.count {
+    while proc_now_ms() < deadline && n + 1 < out.count {
       r := proc_line(h, 100, lbuf[..]);
       if r == PROC_EOF || r < 0 { break; }
       if r == PROC_TIMEOUT { continue; }
@@ -4804,6 +4809,7 @@ FwRun :: struct {
   host_agents: bool;
   host_claude: bool;   // this turn may hand a task to Claude Code: the app can run it and the person allowed it (GitHub #14104)
   is_subagent: bool;
+  is_fork_child: bool;
   subagent_read_only: bool;
   subagent_omit_claudemd: bool;
   subagent_type: [32] u8; nsubagent_type: int;
@@ -4811,9 +4817,11 @@ FwRun :: struct {
   subagent_disallowed: [256] u8; nsubagent_disallowed: int;
   agent_reg: [1] OaAgentRegistry;
   waiting_delegate: bool;
+  waiting_local_delegate: bool;
   delegate_ticket: int;
   delegate_slots: [FWW_MAX_DELEGATE_BATCH] FwDelegateSlot;
   ndelegate_slots: int;
+  local_subs: [FWW_MAX_DELEGATE_BATCH] FwLocalSubProc;
   subagents: [FWW_MAX_SUBAGENT_RECS] FwSubagentRec;
   nsubagents: int;
   agent_seq: int;
@@ -5096,7 +5104,7 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   no_tools := fww_turn_no_tools(r[0].force_wrapup_once);
   include_coax_intel := !no_tools && !(is_local && ctx_win <= 32768) && fww_is_coax_repo(cwd_now);
   packs_mask := ifx no_tools then 0 else fww_active_packs(cwd_now, include_coax_intel);
-  if !no_tools && !r[0].is_subagent { packs_mask |= OA_PACK_AGENTS; }
+  if !no_tools && !r[0].is_subagent && cfg[0].subagents_enabled { packs_mask |= OA_PACK_AGENTS; }
   eff_cfg: [1] FwConfig;
   eff_cfg[0] = cfg[0];
   if r[0].is_subagent {
@@ -5458,8 +5466,8 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
         batch_end += 1;
       }
       home_s := cast(string) r[0].home[0..<r[0].nhome];
-      if fww_start_delegate_batch(r, cfg, home_s, idx, batch_end, out) {
-        return ""; // waiting asynchronously for MWW_RESULTS from host
+      if fww_start_delegate_batch(r, cfg, h, home_s, idx, batch_end, out) {
+        return ""; // waiting asynchronously for MWW_RESULTS or local subprocesses
       }
       r[0].next_tool_idx = batch_end;
       continue;
@@ -6020,8 +6028,12 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
     return "";
   }
 
-  // 2. Waiting for interactive permission card answer or delegated subagent results
-  if r[0].waiting_permit || r[0].waiting_delegate { return ""; }
+  // 2. Poll any standalone headless subagent subprocesses (foreground & background)
+  ls_end := fww_poll_local_subagents(r, cfg, auth, h, b, st, out, active_io);
+  if ls_end.count > 0 { return ls_end; }
+
+  // 2b. Waiting for interactive permission card answer or delegated subagent results
+  if r[0].waiting_permit || r[0].waiting_delegate || r[0].waiting_local_delegate { return ""; }
 
   // 3. Active async Bash subprocess
   if r[0].cmd[0].active {
@@ -6307,7 +6319,22 @@ fww_stop_active :: (r: [] FwRun, out: [] u8) {
     r[0].cmd[0].h = -1;
     r[0].cmd[0].active = false;
   }
+  // Stop foreground standalone subagents; background subagents have unlinked abort (#14096)
+  for si: 0..<FWW_MAX_DELEGATE_BATCH {
+    if r[0].local_subs[si].active && !r[0].local_subs[si].is_bg {
+      if r[0].local_subs[si].h >= 0 {
+        _ = proc_kill(r[0].local_subs[si].h, PROC_SIGTERM);
+        _ = proc_wait(r[0].local_subs[si].h, 400);
+        _ = proc_release(r[0].local_subs[si].h);
+        r[0].local_subs[si].h = -1;
+      }
+      r[0].local_subs[si].active = false;
+      r[0].local_subs[si].done = true;
+    }
+  }
   r[0].waiting_permit = false;
+  r[0].waiting_delegate = false;
+  r[0].waiting_local_delegate = false;
   r[0].retry_at_ms = 0;
   r[0].active = false;
   fww_send(out, mww_ended(out, "stopped", ""));
@@ -6475,7 +6502,14 @@ fww_queue_op :: (running: bool, req: [] MwwRequest, q: [] MwQueue, f: [] FwFollo
       else { _ = mwq_load(q, path, f[0].qbuf[..], f[0].qarena[..]); }
     }
   }
-  else if op == "add" { why = mwq_add(q, id, req[0].text, req[0].message); }
+  else if op == "add" {
+    msg_use := req[0].message;
+    tmp_mb: [MWQ_MESSAGE] u8;
+    if msg_use.count == 0 && req[0].text.count > 0 && f[0].nlast > 0 {
+      msg_use = fww_task_with(f, req[0].text, tmp_mb[..]);
+    }
+    why = mwq_add(q, id, req[0].text, msg_use);
+  }
   else if op == "update" { why = mwq_update(q, id, req[0].text, req[0].message); }
   else if op == "delete" { why = mwq_delete(q, id); }
   else if op == "move" { why = mwq_move(q, id, ifx req[0].to.ok then req[0].to.value else 0); }
@@ -6589,6 +6623,8 @@ tool_main :: () -> int #export_c #effects(all) {
     if run[0].active {
       ended = fww_poll_step(run[..], cfg[..], auth[..], hist[..], bufs[..], st[..], out[..], polled[..]);
       fww_drained(st[..], f[..], out[..]);
+    } else if fww_has_active_local_subs(run[..]) {
+      fww_poll_idle_local_bg(run[..], q[..], f[..], out[..], polled[..]);
     }
     if !run[0].active && f[0].starting && ended.count == 0 { ended = "failed"; }
     if ended.count > 0 { fww_turn_end(ended, st[..], q[..], f[..], out[..]); }
@@ -6596,7 +6632,7 @@ tool_main :: () -> int #export_c #effects(all) {
     fed := false;
     if !run[0].active && nl == 0 { nl = fww_dispatch(q[..], f[..], line[..], out[..]); fed = nl > 0; }
     if !fed {
-      ch := cxterm_byte(fww_poll_wait_ms(run[0].active, polled[0]));
+      ch := cxterm_byte(fww_poll_wait_ms(run[0].active || fww_has_active_local_subs(run[..]), polled[0]));
       if ch == -2 { break; }
       got_line := false;
       while ch >= 0 {
@@ -6764,14 +6800,19 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].host_agents = req[0].agents;
     run[0].host_claude = req[0].agents && req[0].claude && cfg[0].allow_local_harnesses;
     run[0].is_subagent = req[0].is_subagent;
+    run[0].is_fork_child = req[0].is_fork;
     run[0].subagent_read_only = req[0].read_only;
     run[0].subagent_omit_claudemd = req[0].omit_claudemd;
     run[0].nsubagent_type = fww_keep(run[0].subagent_type[..], req[0].subagent_type);
     run[0].nsubagent_allowed = fww_keep(run[0].subagent_allowed[..], req[0].allowed_tools);
     run[0].nsubagent_disallowed = fww_keep(run[0].subagent_disallowed[..], req[0].disallowed_tools);
     run[0].waiting_delegate = false;
+    run[0].waiting_local_delegate = false;
     run[0].ndelegate_slots = 0;
     fww_load_agent_registry(run[0].agent_reg[..], cd, home);
+    if run[0].is_subagent && cfg[0].nsubagent_effort > 0 {
+      picked_effort = cast(string) cfg[0].subagent_effort[0..<cfg[0].nsubagent_effort];
+    }
     run[0].nmodel = fww_keep(run[0].model[..], picked_model);
     run[0].neffort = fww_keep(run[0].effort[..], picked_effort);
     run[0].step_num = 1;
@@ -6824,6 +6865,9 @@ tool_main :: () -> int #export_c #effects(all) {
     if hist[0].nmsgs >= FWW_MAX_MSGS - 4 || hist[0].nslab + tk.count + 8192 >= FWW_SLAB {
       _ = fww_emergency_compact(hist[..], 3, 0, bufs[0].compact_buf[..]);
     }
+    if req[0].is_fork && req[0].fork_context_path.count > 0 && hist[0].nmsgs == 0 {
+      _ = fww_load_fork_context(hist[..], req[0].fork_context_path);
+    }
     fww_hist_push_user(hist[..], tk);
     fww_hist_sanitize(hist[..], bufs[0].compact_buf[..]);
     mc_steer_clear(st[..]); st[0].nd = 0;
@@ -6836,7 +6880,7 @@ tool_main :: () -> int #export_c #effects(all) {
       run[0].nsys = fww_build_coding_system_prompt_core(cfg[..], cd, platform, run[0].sys_prompt[..]);
     } else {
       run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
-      if !cfg[0].bare_mode && repo_name.count > 0 {
+      if !cfg[0].bare_mode && !run[0].is_subagent && repo_name.count > 0 {
         if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
           run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
           run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
@@ -6853,7 +6897,7 @@ tool_main :: () -> int #export_c #effects(all) {
         run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].agent_reg[0].defs[pi].prompt[0..<run[0].agent_reg[0].defs[pi].nprompt]);
         run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n");
       }
-    } else if !run[0].is_subagent {
+    } else if !run[0].is_subagent && cfg[0].subagents_enabled {
       cat_b: [4096] u8;
       cn_cat := oa_agent_build_catalog_prompt(run[0].agent_reg[..], cat_b[..]);
       if cn_cat > 0 {
@@ -7897,4 +7941,32 @@ tool_main :: () -> int #export_c #effects(all) {
   ob: [1024] u8;
   on := fww_tool_task_output(r[..], "{\"task_id\":\"aexplore-0123456789abcdef\"}", ob[..], is_err[..]);
   #assert !is_err[0] && on > 0 && fww_contains_ci(cast(string) ob[0..<on], "5 files inspected");
+}
+
+#test "flawedworker: cache-exact FORK_AGENT context snapshot, recursion guard & standalone subprocess state (#14096)" {
+  fh_parent: [1] FwHist;
+  fww_hist_push_user(fh_parent[..], "Inspect the auth layer");
+  fww_hist_push_assistant_text(fh_parent[..], "Found auth in openagents/core/wire.coax");
+  sibs := [2] string.["tc_a", "tc_b"];
+  fb1: [4096] u8; fb2: [4096] u8;
+  rd1 := fww_format_fork_context_json(fh_parent[..], sibs[..], fb1[..]);
+  rd2 := fww_format_fork_context_json(fh_parent[..], sibs[..], fb2[..]);
+  // Both fork context payloads are byte-identical (exact prompt-cache prefix parity across parallel fork children)
+  #assert rd1 > 0 && rd1 == rd2 && cast(string) fb1[0..<rd1] == cast(string) fb2[0..<rd2];
+  // Hydrate child history from fork context JSON
+  fh_child: [1] FwHist;
+  #assert fww_apply_fork_context_json(fh_child[..], cast(string) fb1[0..<rd1]);
+  #assert fh_child[0].nmsgs == 3;
+  #assert fww_contains_ci(fww_hist_msg_text(fh_child[..], 2), OA_FORK_PLACEHOLDER_RESULT);
+  // Compaction-resistant recursion guard blocks nested fork via either flag OR sentinel in history
+  fr: [1] FwRun;
+  #assert !fww_fork_guard_tripped(fr[..], fh_parent[..]);
+  fr[0].is_fork_child = true;
+  #assert fww_fork_guard_tripped(fr[..], fh_parent[..]);
+  fr[0].is_fork_child = false;
+  dir_b: [512] u8;
+  dn_f := oa_agent_format_fork_directive("check wire.coax", dir_b[..]);
+  fww_hist_push_user(fh_child[..], cast(string) dir_b[0..<dn_f]);
+  #assert fww_fork_guard_tripped(fr[..], fh_child[..]);
+  #assert !fww_has_active_local_subs(fr[..]);
 }

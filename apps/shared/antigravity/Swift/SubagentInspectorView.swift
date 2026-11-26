@@ -12,11 +12,30 @@ struct SubagentInspectorView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(OATheme.textSecondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(subagent.toolName.isEmpty ? "Subagent" : subagent.toolName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(OATheme.textPrimary)
-                    if !subagent.subagentNow.isEmpty {
-                        Text(subagent.subagentNow)
+                    HStack(spacing: 6) {
+                        Text(subagent.subagentType.isEmpty ? (subagent.toolName.isEmpty ? "Subagent" : subagent.toolName) : subagent.subagentType)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(OATheme.textPrimary)
+                        if subagent.isBackground {
+                            Text("bg")
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(OATheme.textSecondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(OATheme.surface, in: Capsule())
+                        }
+                        if !subagent.worktreeBranch.isEmpty {
+                            Text(subagent.worktreeBranch)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(OATheme.textMuted)
+                                .lineLimit(1)
+                        }
+                    }
+                    if !subagent.subagentNow.isEmpty || subagent.subagentTokens > 0 {
+                        let meta = subagent.subagentTokens > 0
+                            ? (subagent.subagentNow.isEmpty ? "\(subagent.subagentTokens) tok" : "\(subagent.subagentNow) · \(subagent.subagentTokens) tok")
+                            : subagent.subagentNow
+                        Text(meta)
                             .font(.system(size: 11))
                             .foregroundStyle(OATheme.textMuted)
                             .lineLimit(1)

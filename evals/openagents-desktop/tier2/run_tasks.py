@@ -420,12 +420,18 @@ class Sandbox:
         return dict(os.environ, HOME=str(self.home), GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="eval", GIT_AUTHOR_EMAIL="eval@example.invalid",
                     GIT_COMMITTER_NAME="eval", GIT_COMMITTER_EMAIL="eval@example.invalid")
 
-    def worker_env(self, psionic_base_url: str = "", model: str = DEFAULT_MODEL, effort: str = "") -> dict[str, str]:
+    def worker_env(self, psionic_base_url: str = "", model: str = DEFAULT_MODEL, effort: str = "",
+                   subagents: bool = True, subagent_effort: str = "") -> dict[str, str]:
         env = {k: v for k, v in os.environ.items() if not k.startswith(("CODER_", "GW_", "CLAUDE", "PSIONIC_", "MC_DELEGATE_", "OA_", "FLAWED_"))}
         # no __pycache__ from the agent's own test runs: it would count as files the task changed
         env.update(HOME=str(self.home), BROWSER="/usr/bin/true", TMPDIR=str(self.root / "tmp"), PYTHONDONTWRITEBYTECODE="1")
         env.update(GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="eval", GIT_AUTHOR_EMAIL="eval@example.invalid",
                    GIT_COMMITTER_NAME="eval", GIT_COMMITTER_EMAIL="eval@example.invalid")
+        env["OA_AGENT_SUBAGENTS"] = "1" if subagents else "0"
+        env["FLAWED_SUBAGENTS"] = "1" if subagents else "0"
+        if subagent_effort:
+            env["OA_SUBAGENT_EFFORT"] = subagent_effort
+            env["FLAWED_SUBAGENT_EFFORT"] = subagent_effort
         if effort:
             env["OA_AGENT_EFFORT"] = effort
         if psionic_base_url:
@@ -531,12 +537,13 @@ def snapshot(d: Path) -> dict[str, str]:
 # ---------------------------------------------------------------- driver
 
 class Driver:
-    def __init__(self, sb: Sandbox, worker: Path, claude_worker: Path | None, log_path: Path, psionic_base_url: str = "", model: str = DEFAULT_MODEL, effort: str = ""):
+    def __init__(self, sb: Sandbox, worker: Path, claude_worker: Path | None, log_path: Path, psionic_base_url: str = "", model: str = DEFAULT_MODEL, effort: str = "",
+                 subagents: bool = True, subagent_effort: str = ""):
         args = [str(HOST_DRIVER_BIN), "--worker", str(worker)]
         if claude_worker:
             args += ["--claude-worker", str(claude_worker)]
         self.log = open(log_path, "w")
-        self.p = subprocess.Popen(args, cwd=str(sb.root), env=sb.worker_env(psionic_base_url, model, effort), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.p = subprocess.Popen(args, cwd=str(sb.root), env=sb.worker_env(psionic_base_url, model, effort, subagents=subagents, subagent_effort=subagent_effort), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=self.log, text=True, bufsize=1)
 
     def cmd(self, line: str) -> dict[str, Any]:
@@ -618,7 +625,7 @@ def compute_ttft_ms(lines: list[dict[str, Any]]) -> int:
 
 def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: Path | None, gcloud_cache: Path,
              keep: bool, model: str = "", psionic_base_url: str = "", timeout_floor: int = 0,
-             include_na: bool = False, effort: str = "") -> dict[str, Any]:
+             include_na: bool = False, effort: str = "", subagents: bool = True, subagent_effort: str = "") -> dict[str, Any]:
     case_dir.mkdir(parents=True, exist_ok=True)
     eff_model = model or DEFAULT_MODEL
     if eff_model in ("inkling-2-mini", "inkling") and not include_na and task["id"] in INKLING_NOT_APPLICABLE_TASKS:
@@ -670,7 +677,8 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
     error = None
     reloads = 0
     d = Driver(sb, worker, claude_worker if task.get("claude") else None, case_dir / "driver.log",
-               psionic_base_url=psionic_base_url, model=eff_model, effort=effort)
+               psionic_base_url=psionic_base_url, model=eff_model, effort=effort,
+               subagents=subagents, subagent_effort=subagent_effort)
     try:
         must(d.cmd(f"WIRE_LOG {wire}"), "WIRE_LOG")
         open_slot(d, sb, task, session, bool(task.get("claude")), eff_model)
@@ -876,7 +884,7 @@ def g_command(g, c):
         for rel, text in g.get("add", {}).items():
             (work / rel).parent.mkdir(parents=True, exist_ok=True)
             (work / rel).write_text(text)
-        env = dict(os.environ, HOME=td, PYTHONDONTWRITEBYTECODE="1")
+        env = dict(os.environ, HOME=td, PYTHONDONTWRITEBYTECODE="1", OA_EVAL_REPO_ROOT=str(REPO_ROOT))
         r = subprocess.run(g["run"], shell=True, cwd=str(work), env=env, capture_output=True, text=True, timeout=g.get("timeout_s", 120))
         want = g.get("expect_exit", 0)
         out = (r.stdout + r.stderr)[-600:]
@@ -1054,6 +1062,9 @@ def main() -> int:
     ap.add_argument("--include-na", action="store_true", help="run even tasks marked not_applicable for single-model Inkling")
     ap.add_argument("--worker", default="oa-worker", choices=["oa-worker", "mcworker", "inky"], help="worker binary to run (default oa-worker)")
     ap.add_argument("--effort", default="", help="reasoning effort override (low|medium|high)")
+    ap.add_argument("--subagents", dest="subagents", action="store_true", default=True, help="enable Agent subagent delegation tools (default)")
+    ap.add_argument("--no-subagents", dest="subagents", action="store_false", help="disable Agent subagent delegation tools for A/B comparison")
+    ap.add_argument("--subagent-effort", default="", help="child subagent reasoning effort override (low|medium|high)")
     ap.add_argument("-j", "--workers", type=int, default=1, help="number of parallel task workers (default 1)")
     ap.add_argument("--allow-dirty-host", action="store_true", help="allow local Metal benchmarks even when competing GPU/LLM servers or host pressure are detected")
     args = ap.parse_args()
@@ -1118,6 +1129,7 @@ def main() -> int:
     results = []
     print_lock = threading.Lock()
     server_meta: dict[str, Any] = {"engine": "psionic-metal" if is_local else "cloud", "worker": args.worker, "ctx": args.ctx if is_local else None,
+                                   "subagents": bool(args.subagents), "subagent_effort": args.subagent_effort or "",
                                    "server_boot_ms": 0, "server_reused": False, "peak_rss_mb": 0,
                                    "host_preflight": preflight_meta, "host_clean": bool(preflight_meta.get("clean", True)),
                                    "mid_run_interference": []}
@@ -1137,7 +1149,8 @@ def main() -> int:
                 pre_procs = hc.sample_processes() if is_local else []
                 log_off0 = srv.log_offset() if is_local else 0
                 r = run_task(t, run_dir / "cases" / t["id"], worker, claude_worker, gcloud_cache, args.keep,
-                             eff_model, psionic_base_url=srv.base_url, timeout_floor=timeout_floor, include_na=args.include_na, effort=args.effort)
+                             eff_model, psionic_base_url=srv.base_url, timeout_floor=timeout_floor, include_na=args.include_na, effort=args.effort,
+                             subagents=bool(args.subagents), subagent_effort=args.subagent_effort)
                 srv.sample_rss()
                 if is_local and not r.get("not_applicable"):
                     r["effective_tps"] = r.get("decode_tps", 0.0)
@@ -1249,6 +1262,8 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: 
         "tier": tier, "git_sha": sha, "os": sys.platform, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "engine": meta.get("engine", "psionic-metal"),
         "worker": meta.get("worker", "mcworker"),
+        "subagents": meta.get("subagents", True),
+        "subagent_effort": meta.get("subagent_effort", ""),
         "ctx": meta.get("ctx"),
         "server_boot_ms": meta.get("server_boot_ms", 0),
         "peak_rss_mb": meta.get("peak_rss_mb", 0),

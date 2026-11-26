@@ -499,6 +499,7 @@ int cd_pane(void *page, int n) { CoderHost *c = page; return c && coder_page_pan
 int cd_agent_claude(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_claude(cd_state(c), agent); }
 int cd_agent_engine(void *page, int agent) { CoderHost *c = page; return c ? (int)coder_page_agent_engine(cd_state(c), agent) : 0; }
 int cd_agent_running(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_running(cd_state(c), agent); }
+int cd_background_agents(void *page) { CoderHost *c = page; if (!c) return 0; int n = (int)coder_page_background_agents(cd_state(c)); if (n > 0) cd_changed(c); return n; }
 int cd_agent_cancel(void *page, int agent) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_agent_cancel(cd_state(c), agent); }
 int cd_stop_agent(void *page) { CoderHost *c = page; return c ? (int)coder_page_stop_agent(cd_state(c)) : -1; }
 // Kept chats (page.coax): the list, the chat that is shown, and a chat's text each way.

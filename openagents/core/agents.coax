@@ -28,6 +28,9 @@ OA_AGENT_COLOR_MAX  :: 24;
 
 // Compaction-resistant recursive fork sentinel (matches cc/tools/AgentTool/forkSubagent.ts).
 OA_AGENT_FORK_BOILERPLATE :: "STOP. READ THIS FIRST.";
+// Byte-identical placeholder tool_result text shared by all sibling tool_uses in a forked batch
+// so prompt-cache prefix stays byte-exact across parallel fork children (matches cc/tools/AgentTool/forkSubagent.ts).
+OA_FORK_PLACEHOLDER_RESULT :: "Fork started — processing in background";
 
 OaAgentDef :: struct {
   active: bool;
@@ -505,7 +508,9 @@ oa_agent_build_catalog_prompt :: (reg: [] OaAgentRegistry, out: [] u8) -> int #e
   n := 0;
   n = oa_ag_cat(out, n, "\n# Subagent Delegation (`Agent` tool)\n");
   n = oa_ag_cat(out, n, "- Use the `Agent` tool to delegate research, exploration, planning, verification, or independent subtasks to subagents.\n");
-  n = oa_ag_cat(out, n, "- Launch multiple independent `Agent` calls in parallel in a SINGLE assistant response whenever tasks do not depend on each other.\n");
+  n = oa_ag_cat(out, n, "- **Parallelize heavy independent work for wall-clock speed**: Whenever a task requires **substantial independent implementation, multi-step debugging/testing, or deep analysis across 3+ modules, packages, or services**, fan out **immediately on Turn 1** (or after reading a single shared spec/guide) into parallel `Agent` calls in a **SINGLE assistant response** — one subagent per independent unit with disjoint file ownership. Do NOT pre-read each module's files in the parent before delegating.\n");
+  n = oa_ag_cat(out, n, "- Give each parallel subagent a crisp, self-contained prompt naming its exact target directory/files, requirements, and per-module test command so it finishes in 1-3 turns. Once parallel subagents return, trust their verified results — immediately write any aggregate output or run ONE final test command and finish without re-reading files they already handled.\n");
+  n = oa_ag_cat(out, n, "- For small/quick tasks (e.g. small edits across a few short files or tightly coupled sequential steps), work directly with batched `Read`/`Edit` calls instead of spawning subagents.\n");
   n = oa_ag_cat(out, n, "- Set `run_in_background: true` for long-running work you do not need immediately; you will be notified automatically via `<task-notification>` when it completes (do not poll or sleep).\n");
   n = oa_ag_cat(out, n, "- Use `SendMessage` with `to: <agentId>` to resume or steer an existing subagent, `TaskStop` to stop a running background subagent, and `isolation: \"worktree\"` when parallel subagents must edit files without conflicts.\n");
   n = oa_ag_cat(out, n, "- Available `subagent_type` values:\n");
@@ -635,6 +640,54 @@ oa_agent_format_fork_directive :: (directive: string, out: [] u8) -> int #effect
   return n;
 }
 
+// Appends one JSON-escaped string into dst[at..], returning new index.
+oa_ag_json_str :: (dst: [] u8, at: int, s: string) -> int #effects(reads, writes, traps) {
+  n := oa_ag_cat(dst, at, "\"");
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '"' { n = oa_ag_cat(dst, n, "\\\""); }
+    else if c == '\\' { n = oa_ag_cat(dst, n, "\\\\"); }
+    else if c == '\n' { n = oa_ag_cat(dst, n, "\\n"); }
+    else if c == '\r' { n = oa_ag_cat(dst, n, "\\r"); }
+    else if c == '\t' { n = oa_ag_cat(dst, n, "\\t"); }
+    else if c < 32 { n = oa_ag_cat(dst, n, " "); }
+    else {
+      if n < dst.count { dst[n] = c; n += 1; }
+    }
+  }
+  return oa_ag_cat(dst, n, "\"");
+}
+
+// Builds a cache-exact sibling placeholder tool_result JSON array for a parallel FORK_AGENT batch.
+// Every sibling tool_use_id receives the exact same OA_FORK_PLACEHOLDER_RESULT text so all forked
+// children share a byte-identical history prefix up to the trailing per-child directive block.
+oa_agent_build_fork_placeholders :: (tool_ids: [] string, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := oa_ag_cat(out, 0, "[");
+  for i: 0..<tool_ids.count {
+    if i > 0 { n = oa_ag_cat(out, n, ","); }
+    n = oa_ag_cat(out, n, "{\"type\":\"tool_result\",\"tool_use_id\":");
+    n = oa_ag_json_str(out, n, tool_ids[i]);
+    n = oa_ag_cat(out, n, ",\"content\":");
+    n = oa_ag_json_str(out, n, OA_FORK_PLACEHOLDER_RESULT);
+    n = oa_ag_cat(out, n, "}");
+  }
+  return oa_ag_cat(out, n, "]");
+}
+
+// Builds the complete fork child user message (shared sibling placeholder block + per-child directive).
+// Comparing two parallel fork children: their prefixes up to `directive` are byte-exact!
+oa_agent_build_fork_user_turn :: (tool_ids: [] string, directive: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  ph: [2048] u8;
+  pn := oa_agent_build_fork_placeholders(tool_ids, ph[..]);
+  db: [4096] u8;
+  dn := oa_agent_format_fork_directive(directive, db[..]);
+  n := oa_ag_cat(out, 0, "{\"placeholders\":");
+  n = oa_ag_cat(out, n, cast(string) ph[0..<pn]);
+  n = oa_ag_cat(out, n, ",\"directive\":");
+  n = oa_ag_json_str(out, n, cast(string) db[0..<dn]);
+  return oa_ag_cat(out, n, "}");
+}
+
 // ============================================================================
 // Unit Tests
 // ============================================================================
@@ -739,4 +792,25 @@ oa_agent_format_fork_directive :: (directive: string, out: [] u8) -> int #effect
   #assert oa_ag_contains_ci(cast(string) out[0..<n3], "Async agent launched") && oa_ag_contains_ci(cast(string) out[0..<n3], "<task-notification>");
   n4 := oa_agent_format_task_notification(id_s, "completed", "scan repo", "ok", "/tmp/a.jsonl", 500, 2, 300, out[..]);
   #assert oa_ag_contains_ci(cast(string) out[0..<n4], "<task-notification>") && oa_ag_contains_ci(cast(string) out[0..<n4], "<status>completed</status>");
+}
+
+#test "agents: cache-exact FORK_AGENT sibling placeholders share identical prefix across parallel children" {
+  tids := [3] string.["call_1", "call_2", "call_3"];
+  ph1: [1024] u8; ph2: [1024] u8;
+  nph1 := oa_agent_build_fork_placeholders(tids[..], ph1[..]);
+  nph2 := oa_agent_build_fork_placeholders(tids[..], ph2[..]);
+  #assert nph1 == nph2 && cast(string) ph1[0..<nph1] == cast(string) ph2[0..<nph2];
+  #assert oa_ag_contains_ci(cast(string) ph1[0..<nph1], OA_FORK_PLACEHOLDER_RESULT);
+  #assert oa_ag_contains_ci(cast(string) ph1[0..<nph1], "call_1") && oa_ag_contains_ci(cast(string) ph1[0..<nph1], "call_3");
+
+  // Two parallel fork children get byte-identical placeholder prefix before their unique directive
+  u1: [4096] u8; u2: [4096] u8;
+  nu1 := oa_agent_build_fork_user_turn(tids[..], "Inspect wire.coax", u1[..]);
+  nu2 := oa_agent_build_fork_user_turn(tids[..], "Inspect state.coax", u2[..]);
+  s1 := cast(string) u1[0..<nu1];
+  s2 := cast(string) u2[0..<nu2];
+  prefix_len := 16 + nph1 + 14; // {"placeholders":<ph>,"directive":"
+  #assert nu1 > prefix_len && nu2 > prefix_len;
+  #assert cast(string) s1[0..<prefix_len] == cast(string) s2[0..<prefix_len];
+  #assert oa_agent_fork_blocked(false, s1) && oa_agent_fork_blocked(false, s2);
 }

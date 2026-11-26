@@ -9,7 +9,7 @@ struct SubagentSheetView: View {
     var body: some View {
         NavigationStack {
             SubagentInspectorView(store: store, subagent: subagent)
-                .navigationTitle("Subagent")
+                .navigationTitle(subagent.subagentType.isEmpty ? "Subagent" : subagent.subagentType)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {

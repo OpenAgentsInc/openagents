@@ -704,6 +704,54 @@
   #assert rn > 0 && cp_find(res, "\"agent_id\":\"aexp-0000000000000005\"") > 0;
   #assert cp_find(res, "\"status\":\"async_launched\",\"agent_id\":\"agen-0000000000000006\"") > 0;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Summary of all 5 read-only subagents.\"}") == MWW_ENDED;
+  // Background subagent #6 has an UNLINKED abort controller: it survives parent turn end!
+  #assert coder_page_agent_running(s, 5);
+  // When background subagent #6 finishes after parent turn ended, coder_page_answer_line emits automatic <task-notification> into parent queue!
+  #assert coder_page_agent_line(s, 5, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Bg audit clean\"}") == MWW_ENDED;
+  #assert !coder_page_agent_running(s, 5) && s[0].bg_notif_due;
+  nn := coder_page_answer_line(s, out[..]);
+  nline := cast(string) out[0..<nn];
+  #assert nn > 0 && cp_find(nline, "\"queue\":\"add\"") >= 0 && cp_find(nline, "<task-notification>") > 0 && cp_find(nline, "agen-0000000000000006") > 0 && cp_find(nline, "Bg audit clean") > 0;
+}
+
+#test "sub-agents (#14096): Ctrl+B mid-run foreground->background promotion, unlinked abort on parent ESC, live steer notification & FORK_AGENT task pass-through" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].ready = true;
+  #assert coder_page_set_text(s, "run long parallel fork") && coder_page_submit(s);
+
+  // Delegate 1 foreground Explore + 1 foreground FORK_AGENT with wait_all: true
+  del := "{\"kind\":\"delegate\",\"wait_all\":true,\"ticket\":7,\"tasks\":[{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"description\":\"Scan src\",\"agent_id\":\"aexp-1111111111111111\",\"read_only\":true,\"task\":\"Scan src\"},{\"level\":\"neon\",\"subagent_type\":\"fork\",\"description\":\"Fork audit\",\"agent_id\":\"afork-2222222222222222\",\"is_fork\":true,\"fork_context_path\":\"/tmp/fork-2.json\",\"task\":\"Audit auth\"}]}";
+  #assert coder_page_line(s, del) == MWW_DELEGATE;
+  #assert coder_page_agent_next(s) == 0 && coder_page_agent_next(s) == 1 && coder_page_agent_next(s) == -1;
+
+  // Verify FORK_AGENT metadata rides on coder_page_agent_task
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  tn := coder_page_agent_task(s, 1, "s-fk", "/repo", out[..]);
+  #assert tn > 0 && mww_task_read(ar[..], cast(string) out[0..<tn - 1], back[..]);
+  #assert back[0].is_subagent && back[0].is_fork && back[0].fork_context_path == "/tmp/fork-2.json";
+
+  // Mid-run Ctrl+B promotes both foreground subagents to background and immediately wakes parent with async_launched
+  #assert cp_has_fg_running_agents(s) && !s[0].results_due;
+  #assert coder_page_key(s, 'b', MOD_CTRL);
+  #assert !cp_has_fg_running_agents(s) && s[0].results_due;
+  #assert s[0].turns[0].agents[0].is_background && s[0].turns[0].agents[1].is_background;
+  rn := coder_page_answer_line(s, out[..]);
+  res := cast(string) out[0..<rn];
+  #assert rn > 0 && cp_find(res, "\"status\":\"async_launched\",\"agent_id\":\"aexp-1111111111111111\"") > 0;
+  #assert cp_find(res, "\"status\":\"async_launched\",\"agent_id\":\"afork-2222222222222222\"") > 0;
+
+  // While parent turn is STILL RUNNING, agent 0 finishes -> automatic <task-notification> delivered as MWW_STEER!
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"src ok\"}") == MWW_ENDED;
+  #assert s[0].bg_notif_due;
+  sn := coder_page_answer_line(s, out[..]);
+  sline := cast(string) out[0..<sn];
+  #assert sn > 0 && cp_find(sline, "\"steer\":\"<task-notification>") >= 0 && cp_find(sline, "aexp-1111111111111111") > 0;
+
+  // Parent turn is stopped by ESC -> background agent 1 SURVIVES (unlinked abort)!
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED;
+  #assert !cp_running(s) && coder_page_agent_running(s, 1);
+  // Explicit user cancel still stops the surviving background agent
+  #assert coder_page_agent_cancel(s, 1) && !coder_page_agent_running(s, 1);
 }
 
 #test "sub-agents: a chat tells its worker it may hand a task to Claude only when Claude Code can run here and the person allowed it; without Claude Code a Claude task fails with why (#14104)" {

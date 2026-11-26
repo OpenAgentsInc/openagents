@@ -1,0 +1,32 @@
+{
+  "id": "sb2_five_plugin_impl",
+  "category": "subagent-bench",
+  "fixture": "five_plugins",
+  "timeout_s": 240,
+  "budget_usd_micros": 2500000,
+  "description": "Implement 5 independent algorithmic plugins (csv_norm, json_patch, log_parser, rate_limiter, cron_matcher) from each SPEC.md",
+  "steps": [
+    {
+      "send": "Implement all 5 plugins under `plugins/` (`csv_norm`, `json_patch`, `log_parser`, `rate_limiter`, `cron_matcher`) strictly following each directory's `SPEC.md`. Thoroughly test every requirement and edge case across all 5 plugins."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended",
+      "ending": "finished"
+    },
+    {
+      "type": "command",
+      "run": "PYTHONPATH=. python3 \"$OA_EVAL_REPO_ROOT/evals/subagent-bench/verifiers/verify_sb2.py\""
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "id": "sb4_five_client_v2_migration",
+  "category": "subagent-bench",
+  "fixture": "five_clients",
+  "timeout_s": 240,
+  "budget_usd_micros": 1000000,
+  "description": "Migrate 5 independent API clients and their tests from lib.http_v1 to lib.http_v2 per MIGRATION_GUIDE.md",
+  "steps": [
+    {
+      "send": "Migrate all 5 API clients under `clients/` (`orders`, `users`, `catalog`, `shipping`, `ledger`) and their unit tests from `lib.http_v1` to `lib.http_v2` strictly following `MIGRATION_GUIDE.md`. Ensure zero remaining references to `http_v1` or `LegacyTransport` under `clients/`, keep `lib/http_v2.py` untouched, and verify all tests pass with `python3 -m unittest discover -s clients -p 'test_*.py' -v`."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended",
+      "ending": "finished"
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "lib/http_v2.py"
+      ]
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest discover -s clients -p 'test_*.py' -v && PYTHONPATH=. python3 \"$OA_EVAL_REPO_ROOT/evals/subagent-bench/verifiers/verify_sb4.py\""
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

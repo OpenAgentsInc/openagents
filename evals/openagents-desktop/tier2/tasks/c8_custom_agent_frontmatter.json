@@ -1,0 +1,21 @@
+{
+  "id": "c8_custom_agent_frontmatter",
+  "category": "subagents",
+  "fixture": "twobugs",
+  "timeout_s": 180,
+  "budget_usd_micros": 200000,
+  "description": "Discover and delegate to a custom Markdown+YAML frontmatter agent persona (#14096)",
+  "steps": [
+    {
+      "send": "Create a custom read-only agent definition at .openagents/agents/reviewer.md with YAML frontmatter (name: reviewer, description: Read-only code reviewer, tools: Read, Glob, Grep), then delegate a review of the repo to subagent_type: reviewer and report its findings."
+    }
+  ],
+  "graders": [
+    { "type": "not_timed_out" },
+    { "type": "ended", "ending": "finished" },
+    { "type": "file_exists", "path": ".openagents/agents/reviewer.md" },
+    { "type": "wire_count", "kind": "delegate", "main_only": true, "min": 1 },
+    { "type": "wire_count", "dir": "to_worker", "key": "results", "main_only": true, "min": 1 },
+    { "type": "no_guard_trips" }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "id": "sb6_five_ci_fuzz_services",
+  "category": "subagent-bench",
+  "fixture": "five_ci_fuzz_services",
+  "timeout_s": 240,
+  "budget_usd_micros": 2500000,
+  "description": "Debug and fix 5 independent services each verified by a heavy randomized fuzz/property test suite",
+  "steps": [
+    {
+      "send": "Fix all bugs across all 5 service packages (`svc_crypto`, `svc_graph`, `svc_sched`, `svc_pack`, `svc_cache`) without altering any test file, and verify every package's fuzz test suite (`test_*.py`) passes cleanly."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended",
+      "ending": "finished"
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest discover -s . -p 'test_*.py' -v",
+      "restore": [
+        "svc_crypto/test_svc_crypto.py",
+        "svc_graph/test_svc_graph.py",
+        "svc_sched/test_svc_sched.py",
+        "svc_pack/test_svc_pack.py",
+        "svc_cache/test_svc_cache.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

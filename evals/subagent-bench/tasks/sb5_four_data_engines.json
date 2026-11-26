@@ -1,0 +1,32 @@
+{
+  "id": "sb5_four_data_engines",
+  "category": "subagent-bench",
+  "fixture": "four_data_engines",
+  "timeout_s": 240,
+  "budget_usd_micros": 2500000,
+  "description": "Implement 4 substantial independent data/compiler engines (mini_sql, expr_vm, diff_engine, kv_wal) from SPEC.md",
+  "steps": [
+    {
+      "send": "Implement all 4 engines under `engines/` (`mini_sql`, `expr_vm`, `diff_engine`, `kv_wal`) strictly following each directory's `SPEC.md`. Thoroughly test every requirement and edge case across all 4 engines."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended",
+      "ending": "finished"
+    },
+    {
+      "type": "command",
+      "run": "PYTHONPATH=. python3 \"$OA_EVAL_REPO_ROOT/evals/subagent-bench/verifiers/verify_sb5.py\""
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

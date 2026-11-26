@@ -255,6 +255,17 @@ coder_page_answer_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effect
     s[0].results_due = false; s[0].turns[i].waiting = false; s[0].turns[i].h = 0;
     return cp_results(s, i, out);
   }
+  if s[0].bg_notif_due {
+    s[0].bg_notif_due = false;
+    nid := cast(string) s[0].bg_notif_id[0..<s[0].bg_notif_id_n];
+    ntxt := cast(string) s[0].bg_notif_buf[0..<s[0].bg_notif_n];
+    if cp_running(s) {
+      n := mww_steer(out, nid, ntxt, s[0].fu[0].turn);
+      return ifx n > 0 then n else 0;
+    }
+    n := mww_queue(out, "add", nid, ntxt, "", 0, false, "");
+    return ifx n > 0 then n else 0;
+  }
   if s[0].permit[0].answer_due { return cp_permit_answer_line(s, out); }
   if !s[0].answer_due { return 0; }
   s[0].answer_due = false;

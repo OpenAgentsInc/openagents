@@ -112,6 +112,8 @@ McTask :: struct {
   omit_claudemd: bool;           // skip CLAUDE.md/AGENTS.md & git status for one-shot Explore/Plan (#14096)
   read_only: bool;               // strictly read-only tool & Bash guard (#14096)
   is_subagent: bool;             // marks child worker as a subagent (disables recursive Agent tool, #14096)
+  is_fork: bool;                 // marks child worker as a FORK_AGENT sharing parent cached context (#14096)
+  fork_context_path: string;     // path to serialized parent history + sibling placeholder tool_results (#14096)
 }
 mww_task :: (o: [] u8, t: McTask) -> int {
   n := json_raw(o, 0, "{\"task\":"); n = json_write_string(o, n, t.task);
@@ -143,6 +145,8 @@ mww_task :: (o: [] u8, t: McTask) -> int {
   if t.omit_claudemd { n = json_raw(o, n, ",\"omit_claudemd\":true"); }
   if t.read_only { n = json_raw(o, n, ",\"read_only\":true"); }
   if t.is_subagent { n = json_raw(o, n, ",\"is_subagent\":true"); }
+  if t.is_fork { n = json_raw(o, n, ",\"is_fork\":true"); }
+  if t.fork_context_path.count > 0 { n = json_raw(o, n, ",\"fork_context_path\":"); n = json_write_string(o, n, t.fork_context_path); }
   n = json_raw(o, n, "}\n");
   return n;
 }
@@ -246,6 +250,7 @@ MwwRequest :: struct {
   ceiling: JsonInt;              // policy.ceiling
   subagent_type: string; agent_id: string; allowed_tools: string; disallowed_tools: string;
   omit_claudemd: bool; read_only: bool; is_subagent: bool;
+  is_fork: bool; fork_context_path: string;
 }
 // The strings are in msg or in ar; they hold until either changes. model is read only for a task
 // that is not local, as the worker always did.
@@ -320,6 +325,8 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
   oc := cl_bool(msg, "omit_claudemd"); r[0].omit_claudemd = oc.ok && oc.value;
   ro := cl_bool(msg, "read_only"); r[0].read_only = ro.ok && ro.value;
   isub := cl_bool(msg, "is_subagent"); r[0].is_subagent = isub.ok && isub.value;
+  ifk := cl_bool(msg, "is_fork"); r[0].is_fork = ifk.ok && ifk.value;
+  r[0].fork_context_path = cl_str(ar, msg, "fork_context_path");
   r[0].kind = MWW_TASK; return MWW_TASK;
 }
 
@@ -352,6 +359,8 @@ mww_task_read :: (ar: [] ClArena, msg: string, t: [] McTask) -> bool {
   oc := cl_bool(msg, "omit_claudemd"); t[0].omit_claudemd = oc.ok && oc.value;
   ro := cl_bool(msg, "read_only"); t[0].read_only = ro.ok && ro.value;
   isub := cl_bool(msg, "is_subagent"); t[0].is_subagent = isub.ok && isub.value;
+  ifk := cl_bool(msg, "is_fork"); t[0].is_fork = ifk.ok && ifk.value;
+  t[0].fork_context_path = cl_str(ar, msg, "fork_context_path");
   return !ar[0].full;
 }
 

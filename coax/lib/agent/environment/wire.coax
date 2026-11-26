@@ -130,7 +130,7 @@ EA_DIFF :: 4000;
 EA_NOTICE_INSTALL :: "install"; EA_NOTICE_LOGIN :: "login"; EA_NOTICE_LIMIT :: "limit";
 // note: a quiet line about the chat itself, in plain words (the agent it fell back to), not a problem
 EA_NOTICE_NOTE :: "note";
-EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;calls:int;now:[160]u8;nn:int;path:[512]u8;np:int;diff_at:int;ndiff:int;diff_cut:bool;notice:[16]u8;nnk:int;}
+EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;calls:int;now:[160]u8;nn:int;path:[512]u8;np:int;diff_at:int;ndiff:int;diff_cut:bool;notice:[16]u8;nnk:int;subagent_type:[32]u8;nst:int;wt_branch:[96]u8;nwb:int;is_bg:bool;tokens:int;}
 // A notice kind the wire carries (canonical + forward-compatible lowercase token for #14004).
 ea_notice_ok :: (k:string)->bool #effects(all) {return k==EA_NOTICE_INSTALL || k==EA_NOTICE_LOGIN || k==EA_NOTICE_LIMIT || k==EA_NOTICE_NOTE;}
 ea_notice_read_ok :: (k:string)->bool #effects(all) {
@@ -242,6 +242,10 @@ ea_item :: (o:[]Jo,m_in:EaItem,text:string,diff:string) #effects(all) {
   jo_key(o,"text");jo_str(o,text);jo_key(o,"tool_name");jo_str(o,cast(string)m.tool[0..<m.nk]);jo_key(o,"complete");jo_bool(o,m.complete);
   if m.started>0 {jo_key(o,"started_at_ms");jo_int(o,m.started);}
   if m.calls>0 {jo_key(o,"subagent_calls");jo_int(o,m.calls);if m.nn>0 {jo_key(o,"subagent_now");jo_str(o,cast(string)m.now[0..<m.nn]);}}
+  if m.nst>0 {jo_key(o,"subagent_type");jo_str(o,cast(string)m.subagent_type[0..<m.nst]);}
+  if m.nwb>0 {jo_key(o,"worktree_branch");jo_str(o,cast(string)m.wt_branch[0..<m.nwb]);}
+  if m.is_bg {jo_key(o,"is_background");jo_bool(o,true);}
+  if m.tokens>0 {jo_key(o,"subagent_tokens");jo_int(o,m.tokens);}
   if m.np>0 {jo_key(o,"path");jo_str(o,cast(string)m.path[0..<m.np]);}
   if diff.count>0 {jo_key(o,"diff");jo_str(o,diff);if m.diff_cut {jo_key(o,"diff_cut");jo_bool(o,true);}}
   if m.nnk>0 {jo_key(o,"notice_kind");jo_str(o,cast(string)m.notice[0..<m.nnk]);}jo_end(o);
@@ -387,7 +391,11 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     at:=jv_get(j,row,"started_at_ms");m.started=ifx at<0 then 0 else jv_int(j,at,-1); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
     sc:=jv_get(j,row,"subagent_calls");m.calls=ifx sc<0 then 0 else jv_int(j,sc,-1); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree; the -1 fallback is pinned by a check)
     sn:=jv_get(j,row,"subagent_now");m.nn=ifx sn<0 then 0 else jv_str(j,sn,m.now[..]); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
-    if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 || m.started<0 || m.calls<0 || m.nn<0 || (m.nn>0 && m.calls==0) {return false;}v[0].text_n+=m.nt;
+    st_k:=jv_get(j,row,"subagent_type");m.nst=ifx st_k<0 then 0 else jv_str(j,st_k,m.subagent_type[..]);
+    wb_k:=jv_get(j,row,"worktree_branch");m.nwb=ifx wb_k<0 then 0 else jv_str(j,wb_k,m.wt_branch[..]);
+    bg_k:=jv_get(j,row,"is_background");m.is_bg=bg_k>=0 && jv_bool(j,bg_k);
+    tk_k:=jv_get(j,row,"subagent_tokens");m.tokens=ifx tk_k<0 then 0 else jv_int(j,tk_k,-1);
+    if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 || m.started<0 || m.calls<0 || m.nn<0 || m.nst<0 || m.nwb<0 || m.tokens<0 || (m.nn>0 && m.calls==0) {return false;}v[0].text_n+=m.nt;
     pk:=jv_get(j,row,"path");m.np=ifx pk<0 then 0 else jv_str(j,pk,m.path[..]); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
     dk:=jv_get(j,row,"diff");m.diff_at=v[0].text_n;m.ndiff=0; // mutant: equivalent (m is a copy of an item of a view ea_view_read just zeroed, so ndiff is 0 already)
     if dk>=0 {dend:=ifx v[0].text_n+EA_DIFF<v[0].text.count then v[0].text_n+EA_DIFF else v[0].text.count;m.ndiff=jv_str(j,dk,v[0].text[v[0].text_n..<dend]);} // mutant: equivalent (at text_n+EA_DIFF == the arena both arms are the same end; text.count is the array's fixed length, the same whichever view it is read through; a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
@@ -596,5 +604,19 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   vout:[8192]u8;vn:=ea_view_write(v[..],vout[..]);rv:[1]EaView;
   #assert vn>0 && ea_view_read(cast(string)vout[0..<vn],rv[..]) && cast(string)rv[0].sessions[0].mode[0..<rv[0].sessions[0].nmd]=="plan";
   #assert cast(string)rv[0].inter_prompt[0..<rv[0].nip]=="Run rm -rf build?" && cast(string)rv[0].inter_warn[0..<rv[0].niw]=="Deletes files" && cast(string)rv[0].inter_opts[0..<rv[0].nio]==opts && rv[0].inter_q;
+}
+#test "CC-parity subagent metadata (subagent_type, worktree_branch, is_background, subagent_tokens) round-trips optionally (#14096)" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ReadSession");v[0].ni=1;
+  v[0].items[0].ni=ea_copy(v[0].items[0].id[..],"0:0");v[0].items[0].nr=ea_copy(v[0].items[0].role[..],"tool");
+  v[0].items[0].nk=ea_copy(v[0].items[0].tool[..],"Agent");v[0].items[0].calls=4;
+  v[0].items[0].nn=ea_copy(v[0].items[0].now[..],"Grep wire.coax");
+  v[0].items[0].nst=ea_copy(v[0].items[0].subagent_type[..],"Explore");
+  v[0].items[0].nwb=ea_copy(v[0].items[0].wt_branch[..],"worktree-agent-aexp1");
+  v[0].items[0].is_bg=true;v[0].items[0].tokens=1850;
+  out:[4096]u8;n:=ea_view_write(v[..],out[..]);r:[1]EaView;
+  #assert n>0 && ea_view_read(cast(string)out[0..<n],r[..]);
+  #assert cast(string)r[0].items[0].subagent_type[0..<r[0].items[0].nst]=="Explore";
+  #assert cast(string)r[0].items[0].wt_branch[0..<r[0].items[0].nwb]=="worktree-agent-aexp1";
+  #assert r[0].items[0].is_bg && r[0].items[0].tokens==1850 && r[0].items[0].calls==4;
 }
 #load "wire-view-checks.coax" #test;   // the view's optional tail at its bounds (#13610)

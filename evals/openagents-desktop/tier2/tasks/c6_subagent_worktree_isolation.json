@@ -1,0 +1,21 @@
+{
+  "id": "c6_subagent_worktree_isolation",
+  "category": "subagents",
+  "fixture": "twobugs",
+  "timeout_s": 180,
+  "budget_usd_micros": 200000,
+  "description": "Delegate a subagent with isolation: worktree and fail-closed cleanup (#14096)",
+  "steps": [
+    {
+      "send": "Delegate a read-only inspection task to a subagent using Agent with isolation: \"worktree\" and summarize what it found without modifying the main working tree."
+    }
+  ],
+  "graders": [
+    { "type": "not_timed_out" },
+    { "type": "ended", "ending": "finished" },
+    { "type": "diff_max_files", "max": 0 },
+    { "type": "wire_count", "kind": "delegate", "main_only": true, "min": 1 },
+    { "type": "wire_count", "dir": "to_worker", "key": "results", "main_only": true, "min": 1 },
+    { "type": "no_guard_trips" }
+  ]
+}

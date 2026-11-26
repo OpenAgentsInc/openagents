@@ -875,9 +875,13 @@ struct TranscriptItem: Identifiable, Equatable, Codable {
     let diff: String
     let diffCut: Bool
     let noticeKind: String
+    var subagentType: String = ""
+    var worktreeBranch: String = ""
+    var isBackground: Bool = false
+    var subagentTokens: Int = 0
 
     var isSubagent: Bool {
-        role == .tool && (subagentCalls > 0 || toolName.lowercased() == "task" || toolName.lowercased().contains("subagent"))
+        role == .tool && (subagentCalls > 0 || !subagentType.isEmpty || toolName.lowercased() == "agent" || toolName.lowercased() == "task" || toolName.lowercased().contains("subagent"))
     }
 
     var typedNoticeKind: NoticeKind { NoticeKind(raw: noticeKind) }
@@ -910,6 +914,10 @@ private struct WireEnvironmentViewDTO: Decodable {
         let started_at_ms: Int64?
         let subagent_calls: Int?
         let subagent_now: String?
+        let subagent_type: String?
+        let worktree_branch: String?
+        let is_background: Bool?
+        let subagent_tokens: Int?
         let path: String?
         let diff: String?
         let diff_cut: Bool?
@@ -1046,7 +1054,11 @@ struct ParsedEnvironmentView {
                 path: row.path ?? "",
                 diff: row.diff ?? "",
                 diffCut: row.diff_cut ?? false,
-                noticeKind: row.notice_kind ?? ""
+                noticeKind: row.notice_kind ?? "",
+                subagentType: row.subagent_type ?? "",
+                worktreeBranch: row.worktree_branch ?? "",
+                isBackground: row.is_background ?? false,
+                subagentTokens: row.subagent_tokens ?? 0
             )
         }
 

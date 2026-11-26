@@ -1,17 +1,22 @@
 {
   "id": "c4_five_parallel_readonly_explore",
-  "category": "C",
-  "title": "Delegate 5 parallel read-only Explore subagents and summarize (#14096)",
+  "category": "subagents",
   "fixture": "twobugs",
   "timeout_s": 180,
-  "turns": [
-    "delegate to 5 subagents very simple readonly tasks (inspect the files in this workspace) and summarize their findings at the end"
+  "budget_usd_micros": 250000,
+  "description": "Delegate 5 parallel read-only Explore subagents and summarize (#14096)",
+  "steps": [
+    {
+      "send": "delegate to 5 subagents very simple readonly tasks (inspect the files in this workspace) and summarize their findings at the end"
+    }
   ],
   "graders": [
     { "type": "not_timed_out" },
     { "type": "ended", "ending": "finished" },
     { "type": "diff_max_files", "max": 0 },
-    { "type": "wire_count", "dir": "from_worker", "agent": -1, "kind": "delegate", "gte": 1 },
+    { "type": "wire_count", "kind": "delegate", "main_only": true, "min": 1 },
+    { "type": "wire_count", "dir": "to_worker", "key": "results", "main_only": true, "min": 1 },
+    { "type": "wire_count", "dir": "to_worker", "key": "task", "min": 6 },
     { "type": "no_guard_trips" }
   ]
 }
