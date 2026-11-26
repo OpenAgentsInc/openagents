@@ -23,6 +23,7 @@
 #load "../../coax/lib/agent/user-instructions.coax";
 #load "../../coax/lib/agent/custom-system-prompt.coax";
 #load "../../coax/lib/agent/router/decide.coax";
+#load "../../coax/lib/agent/desktop/metaverse-route.coax";
 #load "../../coax/lib/microcoder/steer.coax";
 #load "../../openagents/core/core.coax";
 
@@ -1757,9 +1758,11 @@ fww_is_coding_turn :: (cfg: [] FwConfig, h: [] FwHist) -> bool {
       for k: kws {
         if fww_has_word_ci(t, k) { return true; }
       }
-      kws2 := [12] string.[
+      kws2 := [28] string.[
         "function", "proc", "struct", "symbol", "defines", "uses", "exports", "coax",
         "cargo", "npm", "pytest", "selftest",
+        "wallet", "bitcoin", "lightning", "sats", "invoice", "spark", "nostr", "pylon",
+        "vault", "realm", "tasks", "dictate", "transcribe", "metaverse", "gamebuilder", "playtest",
       ];
       for k: kws2 {
         if fww_has_word_ci(t, k) { return true; }
@@ -1775,6 +1778,53 @@ fww_is_coax_repo :: (cwd: string) -> bool {
   p2: [FS_PATH_MAX] u8;
   return fs_exists(fs_join(cwd, "coax/lib/agent/intel/intel.coax", p1[..])) &&
          fs_exists(fs_join(cwd, "coax/web/tool.sh", p2[..]));
+}
+
+fww_wallet_control_path :: (out: [] u8) -> string {
+  eb: [FS_PATH_MAX] u8;
+  custom := fww_trim(cl_getenv("CODER_FOREMAN_CONTROL_FILE", eb[..]));
+  if custom.count > 0 && custom.count <= out.count {
+    n := fww_keep(out, custom);
+    return cast(string) out[0..<n];
+  }
+  hb: [FS_PATH_MAX] u8;
+  h := cl_getenv("HOME", hb[..]);
+  if h.count == 0 { return ""; }
+  return fs_join(h, "Library/Application Support/Coder/foreman-control.json", out);
+}
+
+// Compute active member-tool packs bitmask (#14057) from feature flags, env, and workspace.
+fww_active_packs :: (cwd: string, include_coax_intel: bool) -> int {
+  eb: [128] u8;
+  w_env := fww_trim(cl_getenv("OA_WALLET_TOOLS", eb[..]));
+  has_wallet := false;
+  if w_env == "1" || w_env == "true" { has_wallet = true; }
+  else if w_env != "0" && w_env != "false" {
+    cpb: [FS_PATH_MAX] u8;
+    cp := fww_wallet_control_path(cpb[..]);
+    has_wallet = cp.count > 0 && fs_exists(cp);
+  }
+
+  c_env := fww_trim(cl_getenv("OA_CLI_TOOLS", eb[..]));
+  has_cli := false;
+  if c_env == "1" || c_env == "true" { has_cli = true; }
+  else if c_env != "0" && c_env != "false" {
+    cb: [FS_PATH_MAX] u8;
+    p1: [FS_PATH_MAX] u8;
+    has_cli = fww_trim(cl_getenv("OA_CLI_BIN", cb[..])).count > 0 ||
+              (cwd.count > 0 && fs_exists(fs_join(cwd, "apps/openagents-cli/main.coax", p1[..])));
+  }
+
+  m_env := fww_trim(cl_getenv("OA_METAVERSE_TOOLS", eb[..]));
+  has_mv := false;
+  if m_env == "1" || m_env == "true" { has_mv = true; }
+  else if m_env != "0" && m_env != "false" {
+    gb1: [64] u8; gb2: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8;
+    has_mv = fww_trim(cl_getenv("OA_GB_MCP", gb1[..])) == "1" ||
+             fww_trim(cl_getenv("OA_GAMEBUILDER", gb2[..])).count > 0 ||
+             (cwd.count > 0 && fs_exists(fs_join(cwd, "coax/lib/agent/desktop/metaverse-route.coax", p2[..])));
+  }
+  return oa_member_packs_from_flags(include_coax_intel, has_wallet, has_cli, has_mv);
 }
 
 // Compact coding system prompt for 32K local Inkling 2 Mini (#14055).
@@ -1878,7 +1928,7 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
 
 // ---------------------------------------------------------------- request JSON builders (Gemini Native & OpenAI/Psionic)
 
-fww_build_gemini_body_ex :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, include_coax_intel: bool, out: [] u8) -> int {
+fww_build_gemini_body_packs :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, packs_mask: int, out: [] u8) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
@@ -1902,7 +1952,7 @@ fww_build_gemini_body_ex :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys
     allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
     disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
     jo_key(o[..], "tools");
-    _ = flawed_wire_write_tools_ex(o[..], true, allowed, disallowed, include_coax_intel);
+    _ = flawed_wire_write_tools_packs(o[..], true, allowed, disallowed, packs_mask);
     if no_tools {
       jo_key(o[..], "toolConfig");
       jo_raw(o[..], "{\"functionCallingConfig\":{\"mode\":\"NONE\"}}");
@@ -2073,11 +2123,15 @@ fww_build_gemini_body_ex :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys
   return ifx o[0].bad then -1 else o[0].n;
 }
 
-fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, out: [] u8) -> int {
-  return fww_build_gemini_body_ex(cfg, h, effort, sys_prompt, no_tools, false, out);
+fww_build_gemini_body_ex :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, include_coax_intel: bool, out: [] u8) -> int {
+  return fww_build_gemini_body_packs(cfg, h, effort, sys_prompt, no_tools, ifx include_coax_intel then OA_PACK_COAX_INTEL else 0, out);
 }
 
-fww_build_openai_body_ex :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, include_coax_intel: bool, out: [] u8) -> int {
+fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, out: [] u8) -> int {
+  return fww_build_gemini_body_packs(cfg, h, effort, sys_prompt, no_tools, 0, out);
+}
+
+fww_build_openai_body_packs :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, packs_mask: int, out: [] u8) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
@@ -2107,7 +2161,7 @@ fww_build_openai_body_ex :: (cfg: [] FwConfig, h: [] FwHist, model: string, effo
     allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
     disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
     jo_key(o[..], "tools");
-    _ = flawed_wire_write_tools_ex(o[..], false, allowed, disallowed, include_coax_intel);
+    _ = flawed_wire_write_tools_packs(o[..], false, allowed, disallowed, packs_mask);
   }
 
   jo_key(o[..], "messages");
@@ -2266,8 +2320,12 @@ fww_build_openai_body_ex :: (cfg: [] FwConfig, h: [] FwHist, model: string, effo
   return ifx o[0].bad then -1 else o[0].n;
 }
 
+fww_build_openai_body_ex :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, include_coax_intel: bool, out: [] u8) -> int {
+  return fww_build_openai_body_packs(cfg, h, model, effort, sys_prompt, is_local, local_ctx, no_tools, force_no_think, ifx include_coax_intel then OA_PACK_COAX_INTEL else 0, out);
+}
+
 fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, out: [] u8) -> int {
-  return fww_build_openai_body_ex(cfg, h, model, effort, sys_prompt, is_local, local_ctx, no_tools, force_no_think, false, out);
+  return fww_build_openai_body_packs(cfg, h, model, effort, sys_prompt, is_local, local_ctx, no_tools, force_no_think, 0, out);
 }
 
 // ---------------------------------------------------------------- workspace tools implementation (8 Claude-Code-parity tools)
@@ -3888,6 +3946,396 @@ fww_tool_coax_intel :: (cwd: string, name: string, args_json: string, out_res: [
   return n;
 }
 
+// ---------------------------------------------------------------- Member Tool Packs (#14057): Wallet, CLI, Metaverse/GameBuilder
+
+// Talk to OpenAgents Desktop's local Spark wallet loopback RPC (Window+WalletRPC.swift).
+// Seeds and private keys NEVER enter the worker; WalletPay is bypass-immune in #authority members.coax
+// and double-gated by Desktop's pay/wallet-rpc.coax + interactive approval dialog.
+fww_tool_wallet :: (name: string, args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  cpath_b: [FS_PATH_MAX] u8;
+  cpath := fww_wallet_control_path(cpath_b[..]);
+  if cpath.count == 0 || !fs_exists(cpath) {
+    is_err[0] = true;
+    return fww_keep(out_res, "OpenAgents Desktop wallet RPC control server is not running (open OpenAgents.app with Wallet enabled first).");
+  }
+  raw: [8192] u8;
+  rn := fs_read(cpath, raw[..]);
+  if rn <= 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "Failed to read Desktop control server descriptor.");
+  }
+  cnodes: [128] JvNode; cd: [1] Jv;
+  if !jv_parse(cd[..], cast(string) raw[0..<rn], cnodes[..]) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Malformed Desktop control server descriptor.");
+  }
+  url_b: [256] u8; tok_b: [256] u8;
+  un := jv_str(cd[0], jv_get(cd[0], 0, "url"), url_b[..]);
+  tn := jv_str(cd[0], jv_get(cd[0], 0, "token"), tok_b[..]);
+  if un <= 0 || tn <= 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "Desktop control descriptor missing url or token.");
+  }
+
+  method := "GET";
+  route := "/v1/wallet/status";
+  body_b: [8192] u8;
+  body_s := "";
+
+  if name != "WalletStatus" {
+    method = "POST";
+    nodes: [128] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], args_json, nodes[..]) {
+      is_err[0] = true;
+      return fww_keep(out_res, "Invalid JSON arguments for Wallet tool.");
+    }
+    o: [1] Jo; jo_start(o[..], body_b[..]);
+    jo_obj(o[..]);
+    if name == "WalletReceive" {
+      route = "/v1/wallet/receive";
+      kb: [32] u8; db: [512] u8;
+      kn := jv_str(d[0], jv_get(d[0], 0, "kind"), kb[..]);
+      dn := jv_str(d[0], jv_get(d[0], 0, "description"), db[..]);
+      amt := jv_int(d[0], jv_get(d[0], 0, "amount_sats"), 0);
+      jo_key(o[..], "kind"); jo_str(o[..], ifx kn > 0 then cast(string) kb[0..<kn] else "lightning");
+      jo_key(o[..], "description"); jo_str(o[..], ifx dn > 0 then cast(string) db[0..<dn] else "OpenAgents");
+      if amt > 0 { jo_key(o[..], "amount_sats"); jo_int(o[..], amt); }
+    } else if name == "WalletQuote" || name == "WalletPay" {
+      route = ifx name == "WalletQuote" then "/v1/wallet/quote" else "/v1/wallet/pay";
+      dest_b: [2048] u8; cmt_b: [512] u8; rsn_b: [512] u8; x4_b: [2048] u8;
+      dest_n := jv_str(d[0], jv_get(d[0], 0, "destination"), dest_b[..]);
+      if dest_n <= 0 {
+        is_err[0] = true;
+        return fww_keep(out_res, "Wallet tool requires destination.");
+      }
+      jo_key(o[..], "destination"); jo_str(o[..], cast(string) dest_b[0..<dest_n]);
+      amt := jv_int(d[0], jv_get(d[0], 0, "amount_sats"), 0);
+      if amt > 0 { jo_key(o[..], "amount_sats"); jo_int(o[..], amt); }
+      if name == "WalletQuote" {
+        cn := jv_str(d[0], jv_get(d[0], 0, "comment"), cmt_b[..]);
+        if cn > 0 { jo_key(o[..], "comment"); jo_str(o[..], cast(string) cmt_b[0..<cn]); }
+      } else {
+        rsn_n := jv_str(d[0], jv_get(d[0], 0, "reason"), rsn_b[..]);
+        jo_key(o[..], "reason"); jo_str(o[..], ifx rsn_n > 0 then cast(string) rsn_b[0..<rsn_n] else "OpenAgents worker payment request");
+        x4_n := jv_str(d[0], jv_get(d[0], 0, "x402"), x4_b[..]);
+        if x4_n > 0 { jo_key(o[..], "x402"); jo_str(o[..], cast(string) x4_b[0..<x4_n]); }
+      }
+    } else {
+      is_err[0] = true;
+      return fww_keep(out_res, "Unknown Wallet tool.");
+    }
+    jo_end(o[..]);
+    if o[0].bad {
+      is_err[0] = true;
+      return fww_keep(out_res, "Wallet request payload overflow.");
+    }
+    body_s = jo_text(o[..]);
+  }
+
+  full_url_b: [512] u8;
+  fu_n := fww_cat(full_url_b[..], 0, cast(string) url_b[0..<un]);
+  fu_n = fww_cat(full_url_b[..], fu_n, route);
+  auth_b: [320] u8;
+  an := fww_cat(auth_b[..], 0, "Authorization: Bearer ");
+  an = fww_cat(auth_b[..], an, cast(string) tok_b[0..<tn]);
+
+  h := proc_new();
+  if h < 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "Failed to allocate process for Wallet RPC.");
+  }
+  ok := proc_arg(h, "curl") && proc_arg(h, "-sS") && proc_arg(h, "--max-time") && proc_arg(h, ifx name == "WalletPay" then "120" else "20") &&
+        proc_arg(h, "-H") && proc_arg(h, cast(string) auth_b[0..<an]) &&
+        proc_arg(h, "-X") && proc_arg(h, method);
+  if method == "POST" {
+    ok = ok && proc_arg(h, "-H") && proc_arg(h, "Content-Type: application/json") && proc_arg(h, "-d") && proc_arg(h, body_s);
+  }
+  ok = ok && proc_arg(h, cast(string) full_url_b[0..<fu_n]);
+
+  n := 0;
+  exit_code := -1;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    lbuf: [4096] u8;
+    deadline := proc_now_ms() + (ifx name == "WalletPay" then 125000 else 25000);
+    while proc_now_ms() < deadline {
+      r := proc_line(h, 250, lbuf[..]);
+      if r == PROC_EOF { break; }
+      if r == PROC_TIMEOUT { continue; }
+      if r < 0 { break; }
+      if n + r + 2 >= out_res.count { break; }
+      n = fww_cat(out_res, n, cast(string) lbuf[0..<r]);
+      n = fww_cat(out_res, n, "\n");
+    }
+    exit_code = proc_wait(h, 2000);
+  }
+  _ = proc_release(h);
+  is_err[0] = exit_code != 0;
+  if n == 0 { n = fww_keep(out_res, ifx exit_code == 0 then "{}" else "Wallet RPC call failed."); }
+  if wire_out.count > 0 {
+    fww_send(wire_out, mww_command(wire_out, name, exit_code, false, cast(string) out_res[0..<n]));
+  }
+  return n;
+}
+
+// Execute an allowlisted OpenAgents CLI subcommand via argv array (NEVER sh -c).
+fww_tool_cli :: (cwd: string, args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Invalid JSON arguments for OpenAgentsCli.");
+  }
+  sub_b: [64] u8;
+  sub_n := jv_str(d[0], jv_get(d[0], 0, "subcommand"), sub_b[..]);
+  sub := ifx sub_n > 0 then cast(string) sub_b[0..<sub_n] else "";
+  if !oa_cli_subcmd_allowed(sub) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Refused by #authority policy: subcommand not in OpenAgentsCli allowlist (nostr, pylon, project, dictate, transcribe, realm, vault, tasks).");
+  }
+
+  bin_b: [FS_PATH_MAX] u8;
+  cli_bin := fww_trim(cl_getenv("OA_CLI_BIN", bin_b[..]));
+  tool_pb: [FS_PATH_MAX] u8;
+  main_pb: [FS_PATH_MAX] u8;
+  use_tool_sh := false;
+  if cli_bin.count == 0 {
+    ts := fs_join(cwd, "coax/web/tool.sh", tool_pb[..]);
+    mc := fs_join(cwd, "apps/openagents-cli/main.coax", main_pb[..]);
+    if fs_exists(ts) && fs_exists(mc) {
+      use_tool_sh = true;
+    } else {
+      is_err[0] = true;
+      return fww_keep(out_res, "OpenAgents CLI not found (set OA_CLI_BIN or run inside the openagents workspace).");
+    }
+  }
+
+  h := proc_new();
+  if h < 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "Failed to allocate process for OpenAgentsCli.");
+  }
+  ok := ifx use_tool_sh
+        then proc_arg(h, cast(string) tool_pb[0..<fs_join(cwd, "coax/web/tool.sh", tool_pb[..]).count]) &&
+             proc_arg(h, cast(string) main_pb[0..<fs_join(cwd, "apps/openagents-cli/main.coax", main_pb[..]).count])
+        else proc_arg(h, cli_bin);
+  ok = ok && proc_arg(h, sub) && proc_cwd(h, cwd);
+
+  lbl_b: [512] u8;
+  ln := fww_cat(lbl_b[..], 0, "openagents ");
+  ln = fww_cat(lbl_b[..], ln, sub);
+
+  arr := jv_get(d[0], 0, "args");
+  if jv_kind(d[0], arr) == JV_ARRAY {
+    al := jv_len(d[0], arr);
+    if al > 32 { al = 32; }
+    ab: [2048] u8;
+    for i: 0..<al {
+      an := jv_str(d[0], jv_at(d[0], arr, i), ab[..]);
+      if an < 0 { continue; }
+      s := cast(string) ab[0..<an];
+      if !oa_cli_arg_safe(s) {
+        _ = proc_release(h);
+        is_err[0] = true;
+        return fww_keep(out_res, "Refused by #authority policy: unsafe control character in OpenAgentsCli argument.");
+      }
+      ok = ok && proc_arg(h, s);
+      if ln + s.count + 2 < lbl_b.count {
+        ln = fww_cat(lbl_b[..], ln, " ");
+        ln = fww_cat(lbl_b[..], ln, s);
+      }
+    }
+  }
+
+  n := 0;
+  exit_code := -1;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    lbuf: [4096] u8;
+    deadline := proc_now_ms() + 30000;
+    while proc_now_ms() < deadline {
+      r := proc_line(h, 250, lbuf[..]);
+      if r == PROC_EOF { break; }
+      if r == PROC_TIMEOUT { continue; }
+      if r < 0 { break; }
+      if n + r + 2 >= out_res.count { break; }
+      n = fww_cat(out_res, n, cast(string) lbuf[0..<r]);
+      n = fww_cat(out_res, n, "\n");
+    }
+    exit_code = proc_wait(h, 2000);
+  }
+  _ = proc_release(h);
+  is_err[0] = exit_code != 0;
+  if n == 0 { n = fww_keep(out_res, ifx exit_code == 0 then "(ok)" else "OpenAgentsCli failed."); }
+  if wire_out.count > 0 {
+    fww_send(wire_out, mww_command(wire_out, cast(string) lbl_b[0..<ln], exit_code, false, cast(string) out_res[0..<n]));
+  }
+  return n;
+}
+
+// Metaverse / GameBuilder member tools (#14057):
+// - MetaverseRoute: in-process #authority mv_route_classify + mv_route_write_json
+// - GameBuilder: #authority allowlisted status/list/check-lease/build/playtest/etc.
+fww_tool_metaverse :: (cwd: string, name: string, args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Invalid JSON arguments for Metaverse/GameBuilder tool.");
+  }
+
+  if name == "MetaverseRoute" {
+    pb: [2048] u8;
+    pn := jv_str(d[0], jv_get(d[0], 0, "path"), pb[..]);
+    if pn <= 0 {
+      is_err[0] = true;
+      return fww_keep(out_res, "MetaverseRoute requires path.");
+    }
+    flags_mask := jv_int(d[0], jv_get(d[0], 0, "flags_mask"), DC_FLAGS_ALL);
+    r := mv_route_classify(cast(string) pb[0..<pn], flags_mask);
+    n := mv_route_write_json(r, out_res);
+    if n <= 0 {
+      is_err[0] = true;
+      return fww_keep(out_res, "Failed to serialize metaverse route decision.");
+    }
+    return n;
+  }
+
+  // GameBuilder tool
+  act_b: [64] u8; tgt_b: [1024] u8;
+  act_n := jv_str(d[0], jv_get(d[0], 0, "action"), act_b[..]);
+  act := ifx act_n > 0 then cast(string) act_b[0..<act_n] else "";
+  if !oa_metaverse_action_allowed(act) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Refused by #authority policy: action not in GameBuilder allowlist.");
+  }
+  tgt_n := jv_str(d[0], jv_get(d[0], 0, "target"), tgt_b[..]);
+  tgt := ifx tgt_n > 0 then cast(string) tgt_b[0..<tgt_n] else "";
+
+  if act == "route" {
+    if tgt.count == 0 { is_err[0] = true; return fww_keep(out_res, "GameBuilder route requires target."); }
+    r := mv_route_classify(tgt, DC_FLAGS_ALL);
+    n := mv_route_write_json(r, out_res);
+    return ifx n > 0 then n else fww_keep(out_res, "{}");
+  }
+
+  // Built-in status & catalog/lease inspection via coax/lib/agent/desktop/agents-catalog.coax or live attach pointer
+  if act == "status" || act == "list" || act == "check-lease" {
+    if act == "status" {
+      hb: [FS_PATH_MAX] u8; apb: [FS_PATH_MAX] u8; raw: [1024] u8; gbb: [FS_PATH_MAX] u8;
+      hdir := cl_getenv("HOME", hb[..]);
+      ap := ifx hdir.count > 0 then fs_join(hdir, ".openagents/gamebuilder/Levels/attach", apb[..]) else "";
+      attached := ap.count > 0 && fs_exists(ap);
+      an := ifx attached then fs_read(ap, raw[..]) else 0;
+      gb_bin := fww_trim(cl_getenv("OA_GAMEBUILDER", gbb[..]));
+      o: [1] Jo; jo_start(o[..], out_res);
+      jo_obj(o[..]);
+      jo_key(o[..], "attached"); jo_bool(o[..], attached);
+      jo_key(o[..], "attach_target"); jo_str(o[..], ifx an > 0 then fww_trim(cast(string) raw[0..<an]) else "");
+      jo_key(o[..], "gamebuilder_bin"); jo_str(o[..], gb_bin);
+      jo_end(o[..]);
+      return ifx !o[0].bad then jo_text(o[..]).count else fww_keep(out_res, "{}");
+    }
+    ts_b: [FS_PATH_MAX] u8; cat_b: [FS_PATH_MAX] u8;
+    ts := fs_join(cwd, "coax/web/tool.sh", ts_b[..]);
+    cat := fs_join(cwd, "coax/lib/agent/desktop/agents-catalog.coax", cat_b[..]);
+    if !fs_exists(ts) || !fs_exists(cat) {
+      is_err[0] = true;
+      return fww_keep(out_res, "agents-catalog.coax not found in workspace.");
+    }
+    h := proc_new();
+    if h < 0 { is_err[0] = true; return fww_keep(out_res, "Failed to allocate process."); }
+    ok := proc_arg(h, ts) && proc_arg(h, cat) && proc_arg(h, act) && proc_cwd(h, cwd);
+    arr := jv_get(d[0], 0, "args");
+    if jv_kind(d[0], arr) == JV_ARRAY {
+      al := jv_len(d[0], arr);
+      if al > 16 { al = 16; }
+      ab: [1024] u8;
+      for i: 0..<al {
+        an := jv_str(d[0], jv_at(d[0], arr, i), ab[..]);
+        if an > 0 {
+          s := cast(string) ab[0..<an];
+          if !oa_cli_arg_safe(s) { _ = proc_release(h); is_err[0] = true; return fww_keep(out_res, "Unsafe GameBuilder argument."); }
+          ok = ok && proc_arg(h, s);
+        }
+      }
+    }
+    n := 0; exit_code := -1;
+    if ok && proc_start(h) == 0 {
+      _ = proc_close_stdin(h);
+      lbuf: [4096] u8;
+      deadline := proc_now_ms() + 20000;
+      while proc_now_ms() < deadline {
+        r := proc_line(h, 250, lbuf[..]);
+        if r == PROC_EOF { break; }
+        if r == PROC_TIMEOUT { continue; }
+        if r < 0 { break; }
+        if n + r + 2 >= out_res.count { break; }
+        n = fww_cat(out_res, n, cast(string) lbuf[0..<r]);
+        n = fww_cat(out_res, n, "\n");
+      }
+      exit_code = proc_wait(h, 2000);
+    }
+    _ = proc_release(h);
+    is_err[0] = exit_code != 0 && act != "check-lease";
+    if n == 0 { n = fww_keep(out_res, ifx exit_code == 0 then "(ok)" else "GameBuilder catalog command failed."); }
+    return n;
+  }
+
+  // Live bundled GameBuilder CLI (--attach)
+  gbb: [FS_PATH_MAX] u8;
+  gb_bin := fww_trim(cl_getenv("OA_GAMEBUILDER", gbb[..]));
+  if gb_bin.count == 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "Live GameBuilder Studio binary not attached (open GameBuilder in OpenAgents.app or set OA_GAMEBUILDER).");
+  }
+  h := proc_new();
+  if h < 0 { is_err[0] = true; return fww_keep(out_res, "Failed to allocate GameBuilder process."); }
+  ok := proc_arg(h, gb_bin) && proc_arg(h, "--attach") && proc_arg(h, act) && proc_cwd(h, cwd);
+  if tgt.count > 0 {
+    if !oa_cli_arg_safe(tgt) { _ = proc_release(h); is_err[0] = true; return fww_keep(out_res, "Unsafe GameBuilder target."); }
+    ok = ok && proc_arg(h, tgt);
+  }
+  arr := jv_get(d[0], 0, "args");
+  if jv_kind(d[0], arr) == JV_ARRAY {
+    al := jv_len(d[0], arr);
+    if al > 16 { al = 16; }
+    ab: [1024] u8;
+    for i: 0..<al {
+      an := jv_str(d[0], jv_at(d[0], arr, i), ab[..]);
+      if an > 0 {
+        s := cast(string) ab[0..<an];
+        if !oa_cli_arg_safe(s) { _ = proc_release(h); is_err[0] = true; return fww_keep(out_res, "Unsafe GameBuilder argument."); }
+        ok = ok && proc_arg(h, s);
+      }
+    }
+  }
+  n := 0; exit_code := -1;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    lbuf: [4096] u8;
+    deadline := proc_now_ms() + 30000;
+    while proc_now_ms() < deadline {
+      r := proc_line(h, 250, lbuf[..]);
+      if r == PROC_EOF { break; }
+      if r == PROC_TIMEOUT { continue; }
+      if r < 0 { break; }
+      if n + r + 2 >= out_res.count { break; }
+      n = fww_cat(out_res, n, cast(string) lbuf[0..<r]);
+      n = fww_cat(out_res, n, "\n");
+    }
+    exit_code = proc_wait(h, 2000);
+  }
+  _ = proc_release(h);
+  is_err[0] = exit_code != 0;
+  if n == 0 { n = fww_keep(out_res, ifx exit_code == 0 then "(ok)" else "GameBuilder command failed."); }
+  if wire_out.count > 0 {
+    fww_send(wire_out, mww_command(wire_out, "GameBuilder", exit_code, false, cast(string) out_res[0..<n]));
+  }
+  return n;
+}
+
 // ---------------------------------------------------------------- active streaming turn & tool loop state
 
 FwPendingTool :: struct {
@@ -4324,7 +4772,9 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     }
   }
   no_tools := r[0].force_wrapup_once || !coding_turn;
-  include_coax_intel := coding_turn && !no_tools && !(is_local && ctx_win <= 32768) && fww_is_coax_repo(cast(string) r[0].cwd[0..<r[0].ncwd]);
+  cwd_now := cast(string) r[0].cwd[0..<r[0].ncwd];
+  include_coax_intel := coding_turn && !no_tools && !(is_local && ctx_win <= 32768) && fww_is_coax_repo(cwd_now);
+  packs_mask := ifx no_tools then 0 else fww_active_packs(cwd_now, include_coax_intel);
   no_think := r[0].force_no_think_once;
   r[0].force_no_think_once = false;
 
@@ -4334,23 +4784,23 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
 
   bn := ifx is_gem
-        then fww_build_gemini_body_ex(cfg, h, eff, sys, no_tools, include_coax_intel, b[0].req_body[..])
-        else fww_build_openai_body_ex(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, include_coax_intel, b[0].req_body[..]);
+        then fww_build_gemini_body_packs(cfg, h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
+        else fww_build_openai_body_packs(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
   if bn <= 0 {
     _ = fww_emergency_compact(h, 2, ctx_win, b[0].compact_buf[..]);
     fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
-         then fww_build_gemini_body_ex(cfg, h, eff, sys, no_tools, include_coax_intel, b[0].req_body[..])
-         else fww_build_openai_body_ex(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, include_coax_intel, b[0].req_body[..]);
+         then fww_build_gemini_body_packs(cfg, h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
+         else fww_build_openai_body_packs(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
   }
   if bn <= 0 {
     _ = fww_emergency_compact(h, 3, ctx_win, b[0].compact_buf[..]);
     fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
-         then fww_build_gemini_body_ex(cfg, h, eff, sys, no_tools, include_coax_intel, b[0].req_body[..])
-         else fww_build_openai_body_ex(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, include_coax_intel, b[0].req_body[..]);
+         then fww_build_gemini_body_packs(cfg, h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
+         else fww_build_openai_body_packs(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
   }
   if bn <= 0 { return "Request body exceeded buffer capacity (try /compact)."; }
 
@@ -4449,6 +4899,32 @@ fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
   n := 0;
   if name == "Bash" { n = jv_str(d[0], jv_get(d[0], 0, "command"), out); }
   else if name == "WebFetch" { n = jv_str(d[0], jv_get(d[0], 0, "url"), out); }
+  else if name == "WalletPay" || name == "WalletQuote" {
+    db: [512] u8; rb: [256] u8;
+    dn := jv_str(d[0], jv_get(d[0], 0, "destination"), db[..]);
+    amt := jv_int(d[0], jv_get(d[0], 0, "amount_sats"), 0);
+    rn := jv_str(d[0], jv_get(d[0], 0, "reason"), rb[..]);
+    if dn > 0 { n = fww_cat(out, n, cast(string) db[0..<dn]); }
+    if amt > 0 { n = fww_cat(out, n, " ("); n = fww_put_int(out, n, amt); n = fww_cat(out, n, " sats)"); }
+    if rn > 0 { n = fww_cat(out, n, " — "); n = fww_cat(out, n, cast(string) rb[0..<rn]); }
+  }
+  else if name == "OpenAgentsCli" {
+    sb: [64] u8; vb: [256] u8;
+    sn := jv_str(d[0], jv_get(d[0], 0, "subcommand"), sb[..]);
+    if sn > 0 { n = fww_cat(out, n, cast(string) sb[0..<sn]); }
+    arr := jv_get(d[0], 0, "args");
+    if jv_kind(d[0], arr) == JV_ARRAY && jv_len(d[0], arr) > 0 {
+      vn := jv_str(d[0], jv_at(d[0], arr, 0), vb[..]);
+      if vn > 0 { n = fww_cat(out, n, " "); n = fww_cat(out, n, cast(string) vb[0..<vn]); }
+    }
+  }
+  else if name == "GameBuilder" {
+    ab: [64] u8; tb: [512] u8;
+    an := jv_str(d[0], jv_get(d[0], 0, "action"), ab[..]);
+    if an > 0 { n = fww_cat(out, n, cast(string) ab[0..<an]); }
+    tn := jv_str(d[0], jv_get(d[0], 0, "target"), tb[..]);
+    if tn > 0 { n = fww_cat(out, n, " "); n = fww_cat(out, n, cast(string) tb[0..<tn]); }
+  }
   else {
     n = jv_str(d[0], jv_get(d[0], 0, "file_path"), out);
     if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "file"), out); }
@@ -4545,6 +5021,15 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; }
     }
   }
+  else if oa_member_is_wallet_tool(name) {
+    rn = fww_tool_wallet(name, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
+  }
+  else if oa_member_is_cli_tool(name) {
+    rn = fww_tool_cli(cwd, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
+  }
+  else if oa_member_is_metaverse_tool(name) {
+    rn = fww_tool_metaverse(cwd, name, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
+  }
   else {
     is_err[0] = true;
     rn = fww_keep(r[0].acc[0].tools[idx].res[..], "Unknown tool.");
@@ -4580,10 +5065,13 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       r[0].permit_ticket = r[0].next_ticket;
       r[0].permit_tool_idx = idx;
       r[0].waiting_permit = true;
-      ttl_b: [128] u8;
-      tn := fww_cat(ttl_b[..], 0, "Allow OpenAgents to run ");
+      is_sensitive := oa_member_is_bypass_immune(name, check_target);
+      ttl_b: [160] u8;
+      tn := fww_cat(ttl_b[..], 0, ifx is_sensitive then "Approve sensitive action: " else "Allow OpenAgents to run ");
       tn = fww_cat(ttl_b[..], tn, name);
-      opts := "[{\"optionId\":\"allow_once\",\"name\":\"Allow once\",\"kind\":\"allow_once\"},{\"optionId\":\"allow_session\",\"name\":\"Allow for session\",\"kind\":\"allow_always\"}]";
+      opts := ifx is_sensitive
+              then "[{\"optionId\":\"allow_once\",\"name\":\"Approve once\",\"kind\":\"allow_once\"}]"
+              else "[{\"optionId\":\"allow_once\",\"name\":\"Allow once\",\"kind\":\"allow_once\"},{\"optionId\":\"allow_session\",\"name\":\"Allow for session\",\"kind\":\"allow_always\"}]";
       fww_send(out, mww_permit(out, r[0].permit_ticket, false, cast(string) ttl_b[0..<tn], target, opts));
       return "";
     }
@@ -5748,7 +6236,11 @@ tool_main :: () -> int #export_c #effects(all) {
           run[0].waiting_permit = false;
           ti := run[0].permit_tool_idx;
           if req[0].allow {
-            if req[0].option == "allow_session" { run[0].session_allow = true; }
+            tnm := cast(string) run[0].acc[0].tools[ti].name[0..<run[0].acc[0].tools[ti].nname];
+            tar := cast(string) run[0].acc[0].tools[ti].args[0..<run[0].acc[0].tools[ti].nargs];
+            ttb: [512] u8;
+            ttgt := fww_tool_target(tnm, tar, ttb[..]);
+            if req[0].option == "allow_session" && !oa_member_is_bypass_immune(tnm, ttgt) { run[0].session_allow = true; }
             run[0].next_tool_idx = ti + 1;
             if !fww_exec_tool_now(run[..], cfg[..], auth[..], hist[..], bufs[..], ti, out[..]) {
               e := fww_advance_tools(run[..], cfg[..], auth[..], hist[..], bufs[..], st[..], out[..]);
@@ -6731,4 +7223,37 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert p[0].ok && p[0].continue_active && p[0].capability_packs[0] == "coder" && p[0].compute_tier == "cloud_deep";
   fww_route_auto_plan("Check my Lightning wallet sats", "", "", "", true, true, "", p[..]);
   #assert p[0].ok && p[0].capability_packs[0] == "wallet";
+
+  // 6) Member tool packs (#14057): Wallet, CLI, Metaverse/GameBuilder target extraction, schema mounting, & non-bypassable policy
+  tb: [512] u8;
+  #assert fww_tool_target("WalletPay", "{\"destination\":\"alice@openagents.com\",\"amount_sats\":500,\"reason\":\"coffee\"}", tb[..]) == "alice@openagents.com (500 sats) — coffee";
+  #assert fww_tool_target("OpenAgentsCli", "{\"subcommand\":\"vault\",\"args\":[\"get\",\"api_key\"]}", tb[..]) == "vault get";
+  #assert fww_tool_target("OpenAgentsCli", "{\"subcommand\":\"tasks\",\"args\":[\"list\",\"--json\"]}", tb[..]) == "tasks list";
+  #assert fww_tool_target("GameBuilder", "{\"action\":\"build\",\"target\":\"scrappers-arena/level-1\"}", tb[..]) == "build scrappers-arena/level-1";
+
+  // Wire serialization with all member packs includes WalletStatus, WalletPay, OpenAgentsCli, MetaverseRoute, GameBuilder
+  packs_all := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE;
+  mp_n := fww_build_gemini_body_packs(cfg[..], h_code[..], "high", full_sys, false, packs_all, b_code[..]);
+  #assert mp_n > 0;
+  mp_s := cast(string) b_code[0..<mp_n];
+  #assert fww_contains_ci(mp_s, "WalletStatus") && fww_contains_ci(mp_s, "WalletPay");
+  #assert fww_contains_ci(mp_s, "OpenAgentsCli") && fww_contains_ci(mp_s, "MetaverseRoute") && fww_contains_ci(mp_s, "GameBuilder");
+
+  // In-process #authority MetaverseRoute tool execution returns canonical JSON for 3D assets and rejects traversal
+  mr_out: [4096] u8;
+  mr_err := [1] bool.[false];
+  empty_w: [1] u8;
+  mr_n := fww_tool_metaverse("/repo", "MetaverseRoute", "{\"path\":\"assets/robot.glb\"}", mr_out[..], mr_err[..], empty_w[0..<0]);
+  #assert !mr_err[0] && mr_n > 0 && fww_contains_ci(cast(string) mr_out[0..<mr_n], "\"target_pane\":\"metaverse\"") && fww_contains_ci(cast(string) mr_out[0..<mr_n], "\"tab_kind\":\"model\"");
+  mr_n2 := fww_tool_metaverse("/repo", "MetaverseRoute", "{\"path\":\"../../etc/passwd.glb\"}", mr_out[..], mr_err[..], empty_w[0..<0]);
+  #assert !mr_err[0] && mr_n2 > 0 && fww_contains_ci(cast(string) mr_out[0..<mr_n2], "\"target_pane\":\"reject\"");
+
+  // OpenAgentsCli rejects disallowed subcommands & unsafe args even at executor layer
+  cli_n := fww_tool_cli("/repo", "{\"subcommand\":\"rm\",\"args\":[\"-rf\",\"/\"]}", mr_out[..], mr_err[..], empty_w[0..<0]);
+  #assert mr_err[0] && cli_n > 0 && fww_contains_ci(cast(string) mr_out[0..<cli_n], "allowlist");
+
+  // Wallet prompts activate tools on non-coding turns
+  h_wal: [1] FwHist;
+  fww_hist_push_user(h_wal[..], "What is my Bitcoin wallet balance?");
+  #assert fww_is_coding_turn(cfg[..], h_wal[..]);
 }

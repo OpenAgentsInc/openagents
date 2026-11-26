@@ -1,0 +1,346 @@
+// OpenAgents Member Tool Packs & #authority Permission Policy (GitHub #14057, Phase 3).
+//
+// Mounts Desktop member tools (Wallet, OpenAgents CLI, Metaverse/GameBuilder) into the
+// unified OpenAgents agent core with non-bypassable #authority security invariants:
+//   1. WalletPay (satoshi spending) is BYPASS-IMMUNE: even in Allow All / BYPASS mode
+//      or with session_allow=true, WalletPay ALWAYS requires an explicit interactive
+//      approval card (ASK) — and is DENIED in non-interactive PLAN/DONT_ASK modes.
+//      Wallet seeds and private keys NEVER enter the worker; all spends also pass
+//      through Desktop's pay/wallet-rpc.coax (#authority) and Spark RPC approval dialog.
+//   2. OpenAgentsCli enforces a closed 8-subcommand allowlist (nostr, pylon, project,
+//      dictate, transcribe, realm, vault, tasks), rejects unsafe argument characters,
+//      classifies read-only vs mutating/signing verbs, and makes vault secret access /
+//      nostr signing & publishing BYPASS-IMMUNE (always ASK, never session-auto-allowed).
+//   3. Metaverse / GameBuilder tools enforce a closed action allowlist and read/write
+//      permission boundary alongside metaverse-route.coax and agents-catalog target leases.
+//
+//   coax/bin/coax test openagents/core/members.coax --library
+//   coax/bin/coax mutate openagents/core/members.coax --root-only
+#authority;
+
+// Feature-pack bitmask for flawed_wire_write_tools_packs
+OA_PACK_COAX_INTEL :: 1;
+OA_PACK_WALLET     :: 2;
+OA_PACK_CLI        :: 4;
+OA_PACK_METAVERSE  :: 8;
+
+OA_MEMBER_NWALLET    :: 4;
+OA_MEMBER_NCLI       :: 1;
+OA_MEMBER_NMETAVERSE :: 2;
+
+// Permission modes & behaviors (exact numeric values of openagents/core/permissions.coax;
+// lockstep-asserted in openagents/core/wire.coax).
+OA_MP_PMODE_DEFAULT      :: 1;
+OA_MP_PMODE_ACCEPT_EDITS :: 2;
+OA_MP_PMODE_PLAN         :: 3;
+OA_MP_PMODE_DONT_ASK     :: 4;
+OA_MP_PMODE_BYPASS       :: 5;
+OA_MP_PMODE_AUTO         :: 6;
+
+OA_MP_PBEH_ALLOW :: 2;
+OA_MP_PBEH_ASK   :: 3;
+OA_MP_PBEH_DENY  :: 4;
+
+oa_member_packs_from_flags :: (is_coax_repo: bool, has_wallet: bool, has_cli: bool, has_metaverse: bool) -> int #effects() {
+  m := 0;
+  if is_coax_repo { m |= OA_PACK_COAX_INTEL; }
+  if has_wallet { m |= OA_PACK_WALLET; }
+  if has_cli { m |= OA_PACK_CLI; }
+  if has_metaverse { m |= OA_PACK_METAVERSE; }
+  return m;
+}
+
+oa_member_is_wallet_tool :: (name: string) -> bool #effects(reads, traps) {
+  return name == "WalletStatus" || name == "WalletReceive" || name == "WalletQuote" || name == "WalletPay";
+}
+
+oa_member_is_cli_tool :: (name: string) -> bool #effects(reads, traps) {
+  return name == "OpenAgentsCli";
+}
+
+oa_member_is_metaverse_tool :: (name: string) -> bool #effects(reads, traps) {
+  return name == "MetaverseRoute" || name == "GameBuilder";
+}
+
+oa_member_is_member_tool :: (name: string) -> bool #effects(reads, traps) {
+  return oa_member_is_wallet_tool(name) || oa_member_is_cli_tool(name) || oa_member_is_metaverse_tool(name);
+}
+
+// Extract the whitespace-delimited token at index `want` (0 = first token, 1 = second token).
+oa_member_tok :: (s: string, want: int) -> string #effects(reads, traps) {
+  if want < 0 { return ""; }
+  i := 0;
+  idx := 0;
+  while i < s.count { // mutant: equivalent (when i == s.count, inner loops don't run and next check breaks)
+    while i < s.count && (s[i] == ' ' || s[i] == '\t') { i += 1; }
+    if i >= s.count { break; } // mutant: equivalent (i never exceeds s.count)
+    start := i;
+    while i < s.count && s[i] != ' ' && s[i] != '\t' { i += 1; }
+    if idx == want { return s[start..<i]; }
+    idx += 1;
+  }
+  return "";
+}
+
+// Closed allowlist of the 8 OpenAgents CLI subcommands mounted by the CLI pack (#14057).
+oa_cli_subcmd_allowed :: (subcmd: string) -> bool #effects(reads, traps) {
+  return subcmd == "nostr" || subcmd == "pylon" || subcmd == "project" ||
+         subcmd == "dictate" || subcmd == "transcribe" || subcmd == "realm" ||
+         subcmd == "vault" || subcmd == "tasks";
+}
+
+// Rejects NUL bytes, control characters, and newlines in CLI arguments before argv exec.
+oa_cli_arg_safe :: (arg: string) -> bool #effects(reads, traps) {
+  if arg.count > 2048 { return false; }
+  for i: 0..<arg.count {
+    c := arg[i];
+    if c < 32 || c == 127 { return false; }
+  }
+  return true;
+}
+
+// Pure #authority read-only vs mutating classification for OpenAgents CLI subcommands.
+oa_cli_action_mutating :: (subcmd: string, verb: string) -> bool #effects(reads, traps) {
+  if !oa_cli_subcmd_allowed(subcmd) { return true; }
+  if verb == "" { return true; }
+  // Vault is secret-bearing: only status/list/help are non-sensitive read-only.
+  if subcmd == "vault" {
+    return !(verb == "status" || verb == "list" || verb == "help");
+  }
+  // Safe read-only inspection verbs across the remaining 7 subcommands.
+  if verb == "status" || verb == "list" || verb == "ls" || verb == "show" ||
+     verb == "get" || verb == "info" || verb == "help" || verb == "whoami" ||
+     verb == "check" || verb == "version" || verb == "inspect" {
+    return false;
+  }
+  return true;
+}
+
+// Sensitive signing / secret-export CLI operations that are ALWAYS bypass-immune.
+oa_cli_is_bypass_immune :: (subcmd: string, verb: string) -> bool #effects(reads, traps) {
+  if subcmd == "vault" {
+    return !(verb == "status" || verb == "list" || verb == "help");
+  }
+  if subcmd == "nostr" {
+    return verb == "sign" || verb == "publish" || verb == "post" || verb == "send" ||
+           verb == "dm" || verb == "delete" || verb == "zap" || verb == "keygen";
+  }
+  return false;
+}
+
+// Closed action allowlist for the GameBuilder / Metaverse member tool.
+oa_metaverse_action_allowed :: (action: string) -> bool #effects(reads, traps) {
+  return action == "status" || action == "list" || action == "inspect" ||
+         action == "validate" || action == "route" || action == "check-lease" ||
+         action == "build" || action == "playtest" || action == "screenshot" ||
+         action == "edit" || action == "open";
+}
+
+oa_metaverse_action_mutating :: (action: string) -> bool #effects(reads, traps) {
+  if action == "status" || action == "list" || action == "inspect" ||
+     action == "validate" || action == "route" || action == "check-lease" {
+    return false;
+  }
+  return true;
+}
+
+// Returns true when a tool invocation MUST NEVER be auto-approved by BYPASS mode,
+// bypass_danger, AUTO mode, or session_allow (and its approval card MUST NOT offer
+// an "Allow for session" option).
+oa_member_is_bypass_immune :: (tool_name: string, target: string) -> bool #effects(reads, traps) {
+  if tool_name == "WalletPay" { return true; }
+  if tool_name == "OpenAgentsCli" {
+    sub := oa_member_tok(target, 0);
+    verb := oa_member_tok(target, 1);
+    return oa_cli_is_bypass_immune(sub, verb);
+  }
+  return false;
+}
+
+// Authoritative permission decision for all member-pack tools.
+// Returns OA_MP_PBEH_ALLOW, OA_MP_PBEH_ASK, or OA_MP_PBEH_DENY.
+oa_member_tool_permission :: (tool_name: string, target: string, pmode: int, bypass_danger: bool, session_allow: bool) -> int #effects(reads, traps) {
+  // ---- Wallet pack ----
+  if tool_name == "WalletStatus" || tool_name == "WalletReceive" || tool_name == "WalletQuote" {
+    return OA_MP_PBEH_ALLOW;
+  }
+  if tool_name == "WalletPay" {
+    // Non-interactive modes cannot display an interactive approval card -> DENY.
+    if pmode == OA_MP_PMODE_PLAN || pmode == OA_MP_PMODE_DONT_ASK { return OA_MP_PBEH_DENY; }
+    // Even in BYPASS / bypass_danger / AUTO / session_allow, WalletPay ALWAYS asks.
+    return OA_MP_PBEH_ASK;
+  }
+
+  // ---- CLI pack ----
+  if tool_name == "OpenAgentsCli" {
+    sub := oa_member_tok(target, 0);
+    verb := oa_member_tok(target, 1);
+    if !oa_cli_subcmd_allowed(sub) || !oa_cli_arg_safe(target) { return OA_MP_PBEH_DENY; }
+    if oa_cli_is_bypass_immune(sub, verb) {
+      if pmode == OA_MP_PMODE_PLAN || pmode == OA_MP_PMODE_DONT_ASK { return OA_MP_PBEH_DENY; }
+      return OA_MP_PBEH_ASK;
+    }
+    if !oa_cli_action_mutating(sub, verb) { return OA_MP_PBEH_ALLOW; }
+    if bypass_danger || pmode == OA_MP_PMODE_BYPASS { return OA_MP_PBEH_ALLOW; }
+    if pmode == OA_MP_PMODE_PLAN || pmode == OA_MP_PMODE_DONT_ASK { return OA_MP_PBEH_DENY; }
+    if pmode == OA_MP_PMODE_AUTO || session_allow { return OA_MP_PBEH_ALLOW; }
+    return OA_MP_PBEH_ASK;
+  }
+
+  // ---- Metaverse / GameBuilder pack ----
+  if tool_name == "MetaverseRoute" {
+    return OA_MP_PBEH_ALLOW;
+  }
+  if tool_name == "GameBuilder" {
+    act := oa_member_tok(target, 0);
+    if !oa_metaverse_action_allowed(act) || !oa_cli_arg_safe(target) { return OA_MP_PBEH_DENY; }
+    if !oa_metaverse_action_mutating(act) { return OA_MP_PBEH_ALLOW; }
+    if bypass_danger || pmode == OA_MP_PMODE_BYPASS { return OA_MP_PBEH_ALLOW; }
+    if pmode == OA_MP_PMODE_PLAN || pmode == OA_MP_PMODE_DONT_ASK { return OA_MP_PBEH_DENY; }
+    if pmode == OA_MP_PMODE_AUTO || pmode == OA_MP_PMODE_ACCEPT_EDITS || session_allow { return OA_MP_PBEH_ALLOW; }
+    return OA_MP_PBEH_ASK;
+  }
+
+  return OA_MP_PBEH_ASK;
+}
+
+// ============================================================================
+// #forall & #test Verification (0 surviving mutants)
+// ============================================================================
+
+#forall "members: WalletPay is NEVER auto-approved under any mode, bypass, or session flag" pmode: 1..<7, bypass: bool, sess: bool {
+  beh := oa_member_tool_permission("WalletPay", "lnbc100n1...", pmode, bypass, sess);
+  #assert beh != OA_MP_PBEH_ALLOW;
+  if pmode == OA_MP_PMODE_PLAN || pmode == OA_MP_PMODE_DONT_ASK {
+    #assert beh == OA_MP_PBEH_DENY;
+  } else {
+    #assert beh == OA_MP_PBEH_ASK;
+  }
+  #assert oa_member_is_bypass_immune("WalletPay", "lnbc100n1...");
+}
+
+#forall "members: vault secret access and nostr signing are NEVER auto-approved" pmode: 1..<7, bypass: bool, sess: bool {
+  v1 := oa_member_tool_permission("OpenAgentsCli", "vault get api_key", pmode, bypass, sess);
+  v2 := oa_member_tool_permission("OpenAgentsCli", "nostr publish hello", pmode, bypass, sess);
+  #assert v1 != OA_MP_PBEH_ALLOW && v2 != OA_MP_PBEH_ALLOW;
+  if pmode == OA_MP_PMODE_PLAN || pmode == OA_MP_PMODE_DONT_ASK {
+    #assert v1 == OA_MP_PBEH_DENY && v2 == OA_MP_PBEH_DENY;
+  } else {
+    #assert v1 == OA_MP_PBEH_ASK && v2 == OA_MP_PBEH_ASK;
+  }
+}
+
+#forall "members: disallowed CLI subcommands and GameBuilder actions are DENIED even in BYPASS" pmode: 1..<7, bypass: bool, sess: bool {
+  #assert oa_member_tool_permission("OpenAgentsCli", "rm -rf /", pmode, bypass, sess) == OA_MP_PBEH_DENY;
+  #assert oa_member_tool_permission("OpenAgentsCli", "wallet pay x", pmode, bypass, sess) == OA_MP_PBEH_DENY;
+  #assert oa_member_tool_permission("GameBuilder", "shell whoami", pmode, bypass, sess) == OA_MP_PBEH_DENY;
+}
+
+#test "members: pack bitmask, tool membership, token parsing, and arg safety" {
+  #assert oa_member_packs_from_flags(false, false, false, false) == 0;
+  #assert oa_member_packs_from_flags(true, false, false, false) == OA_PACK_COAX_INTEL;
+  #assert oa_member_packs_from_flags(false, true, false, false) == OA_PACK_WALLET;
+  #assert oa_member_packs_from_flags(false, false, true, false) == OA_PACK_CLI;
+  #assert oa_member_packs_from_flags(false, false, false, true) == OA_PACK_METAVERSE;
+  #assert oa_member_packs_from_flags(true, true, true, true) == 15;
+
+  #assert oa_member_is_wallet_tool("WalletStatus") && oa_member_is_wallet_tool("WalletReceive");
+  #assert oa_member_is_wallet_tool("WalletQuote") && oa_member_is_wallet_tool("WalletPay");
+  #assert !oa_member_is_wallet_tool("Read");
+  #assert oa_member_is_cli_tool("OpenAgentsCli") && !oa_member_is_cli_tool("Bash");
+  #assert oa_member_is_metaverse_tool("MetaverseRoute") && oa_member_is_metaverse_tool("GameBuilder");
+  #assert !oa_member_is_metaverse_tool("Read");
+  #assert oa_member_is_member_tool("WalletPay") && oa_member_is_member_tool("OpenAgentsCli") && oa_member_is_member_tool("GameBuilder");
+  #assert !oa_member_is_member_tool("Read") && !oa_member_is_member_tool("Bash");
+
+  #assert oa_member_tok("  nostr\tstatus  --json ", 0) == "nostr";
+  #assert oa_member_tok("  nostr\tstatus  --json ", 1) == "status";
+  #assert oa_member_tok("  nostr\tstatus  --json ", 2) == "--json";
+  #assert oa_member_tok("  nostr\tstatus  --json ", 3) == "";
+  #assert oa_member_tok("a", -1) == "";
+  #assert oa_member_tok("   ", 0) == "";
+
+  #assert oa_cli_arg_safe("tasks list --json");
+  #assert !oa_cli_arg_safe("\ntasks");
+  #assert !oa_cli_arg_safe("tasks\nrm -rf /");
+  del_b := [3] u8.['a', 127, 'b'];
+  #assert !oa_cli_arg_safe(cast(string) del_b[0..<3]);
+  #assert !oa_cli_arg_safe("tasks\0list");
+  big: [2049] u8;
+  for i: 0..<2049 { big[i] = 'a'; }
+  #assert oa_cli_arg_safe(cast(string) big[0..<2048]);
+  #assert !oa_cli_arg_safe(cast(string) big[0..<2049]);
+}
+
+#test "members: CLI 8-subcommand allowlist, read/write classification, and GameBuilder policy" {
+  // All 8 allowed subcommands
+  #assert oa_cli_subcmd_allowed("nostr") && oa_cli_subcmd_allowed("pylon");
+  #assert oa_cli_subcmd_allowed("project") && oa_cli_subcmd_allowed("dictate");
+  #assert oa_cli_subcmd_allowed("transcribe") && oa_cli_subcmd_allowed("realm");
+  #assert oa_cli_subcmd_allowed("vault") && oa_cli_subcmd_allowed("tasks");
+  #assert !oa_cli_subcmd_allowed("") && !oa_cli_subcmd_allowed("wallet") && !oa_cli_subcmd_allowed("bash");
+
+  // Read-only verbs allowed across all non-vault subcommands; vault only status/list/help
+  #assert !oa_cli_action_mutating("tasks", "status") && !oa_cli_action_mutating("tasks", "list");
+  #assert !oa_cli_action_mutating("tasks", "ls") && !oa_cli_action_mutating("tasks", "show");
+  #assert !oa_cli_action_mutating("tasks", "get") && !oa_cli_action_mutating("tasks", "info");
+  #assert !oa_cli_action_mutating("tasks", "help") && !oa_cli_action_mutating("nostr", "whoami");
+  #assert !oa_cli_action_mutating("project", "check") && !oa_cli_action_mutating("pylon", "version");
+  #assert !oa_cli_action_mutating("realm", "inspect");
+  #assert oa_cli_action_mutating("tasks", "create") && oa_cli_action_mutating("tasks", "");
+  #assert oa_cli_action_mutating("badcmd", "status");
+  #assert !oa_cli_action_mutating("vault", "status") && !oa_cli_action_mutating("vault", "list") && !oa_cli_action_mutating("vault", "help");
+  #assert oa_cli_action_mutating("vault", "get") && oa_cli_action_mutating("vault", "set");
+
+  // Bypass-immune classification
+  #assert !oa_cli_is_bypass_immune("vault", "status") && !oa_cli_is_bypass_immune("vault", "list") && !oa_cli_is_bypass_immune("vault", "help");
+  #assert oa_cli_is_bypass_immune("vault", "export") && oa_cli_is_bypass_immune("vault", "get");
+  #assert oa_cli_is_bypass_immune("nostr", "sign") && oa_cli_is_bypass_immune("nostr", "publish");
+  #assert oa_cli_is_bypass_immune("nostr", "post") && oa_cli_is_bypass_immune("nostr", "send");
+  #assert oa_cli_is_bypass_immune("nostr", "dm") && oa_cli_is_bypass_immune("nostr", "delete");
+  #assert oa_cli_is_bypass_immune("nostr", "zap") && oa_cli_is_bypass_immune("nostr", "keygen");
+  #assert !oa_cli_is_bypass_immune("nostr", "whoami") && !oa_cli_is_bypass_immune("tasks", "create");
+  #assert oa_member_is_bypass_immune("OpenAgentsCli", "vault get k");
+  #assert oa_member_is_bypass_immune("OpenAgentsCli", "nostr sign ev");
+  #assert !oa_member_is_bypass_immune("OpenAgentsCli", "tasks create foo");
+  #assert !oa_member_is_bypass_immune("Read", "x");
+
+  // Wallet read/receive/quote always ALLOW
+  #assert oa_member_tool_permission("WalletStatus", "", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("WalletReceive", "lightning", OA_MP_PMODE_DEFAULT, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("WalletQuote", "a@b.com", OA_MP_PMODE_DEFAULT, false, false) == OA_MP_PBEH_ALLOW;
+
+  // CLI read vs mutating across permission modes
+  #assert oa_member_tool_permission("OpenAgentsCli", "tasks list", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("OpenAgentsCli", "tasks list\nrm", OA_MP_PMODE_BYPASS, true, true) == OA_MP_PBEH_DENY;
+  #assert oa_member_tool_permission("OpenAgentsCli", "tasks create foo", OA_MP_PMODE_DEFAULT, false, false) == OA_MP_PBEH_ASK;
+  #assert oa_member_tool_permission("OpenAgentsCli", "tasks create foo", OA_MP_PMODE_DEFAULT, false, true) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("OpenAgentsCli", "tasks create foo", OA_MP_PMODE_AUTO, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("OpenAgentsCli", "tasks create foo", OA_MP_PMODE_BYPASS, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("OpenAgentsCli", "tasks create foo", OA_MP_PMODE_DEFAULT, true, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("OpenAgentsCli", "tasks create foo", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_DENY;
+  #assert oa_member_tool_permission("OpenAgentsCli", "tasks create foo", OA_MP_PMODE_DONT_ASK, false, true) == OA_MP_PBEH_DENY;
+
+  // MetaverseRoute & GameBuilder
+  #assert oa_member_tool_permission("MetaverseRoute", "scene.glb", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_metaverse_action_allowed("status") && oa_metaverse_action_allowed("list") && oa_metaverse_action_allowed("inspect");
+  #assert oa_metaverse_action_allowed("validate") && oa_metaverse_action_allowed("route") && oa_metaverse_action_allowed("check-lease");
+  #assert oa_metaverse_action_allowed("build") && oa_metaverse_action_allowed("playtest") && oa_metaverse_action_allowed("screenshot");
+  #assert oa_metaverse_action_allowed("edit") && oa_metaverse_action_allowed("open") && !oa_metaverse_action_allowed("exec");
+  #assert !oa_metaverse_action_mutating("status") && !oa_metaverse_action_mutating("list") && !oa_metaverse_action_mutating("inspect");
+  #assert !oa_metaverse_action_mutating("validate") && !oa_metaverse_action_mutating("route") && !oa_metaverse_action_mutating("check-lease");
+  #assert oa_metaverse_action_mutating("build") && oa_metaverse_action_mutating("edit");
+  #assert oa_member_tool_permission("GameBuilder", "status", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("GameBuilder", "status\nbad", OA_MP_PMODE_BYPASS, true, true) == OA_MP_PBEH_DENY;
+  #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_DEFAULT, false, false) == OA_MP_PBEH_ASK;
+  #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_ACCEPT_EDITS, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_AUTO, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_DEFAULT, false, true) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_BYPASS, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_DEFAULT, true, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_DENY;
+  #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_DONT_ASK, false, true) == OA_MP_PBEH_DENY;
+
+  // Unknown non-member fallback
+  #assert oa_member_tool_permission("SomethingElse", "", OA_MP_PMODE_BYPASS, true, true) == OA_MP_PBEH_ASK;
+}

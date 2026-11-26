@@ -1242,6 +1242,13 @@ extension CoderWindow {
             env["OA_SIM_CHAT"] = (r === run ? chat : r.chat) ?? r.simChat
             env["OA_SIM_ENGINE"] = r.worker.program == "oa-worker" ? "OpenAgents" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
         }
+        // Member tool packs for oa-worker (#14057)
+        if FeatureFlags.isOn(.wallet) {
+            env["OA_WALLET_TOOLS"] = "1"
+        }
+        if FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) {
+            env["OA_METAVERSE_TOOLS"] = "1"
+        }
         // Bundled GameBuilder CLI & per-session MCP registration (#14039)
         if FeatureFlags.isOn(.gamebuilder) {
             env["OA_GB_MCP"] = "1"
