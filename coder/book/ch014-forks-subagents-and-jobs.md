@@ -145,9 +145,9 @@ stdout; the installed Codex runtime keeps its normal local rollout.
 - Goals. A goal is a recorded objective with a check. The session works
   toward it across turns, and the check decides when it is met.
 
-Chapter20 builds the asynchronous loop on these jobs: long tools start and
+Chapter 20 builds the asynchronous loop on these jobs: long tools start and
 stop, and their results return as events while the session keeps answering.
-Chapter17 runs many Workers, each of which may use this chapter's subagents.
+Chapter 17 runs many Workers, each of which may use this chapter's subagents.
 
 ## What runs
 
@@ -206,9 +206,31 @@ in a 63-byte message and got "heliotrope". Its first request read 13,537
 tokens from the cache against the parent's 11,268, so the parent's turn
 came from the server's cache instead of being resent.
 
-The psionic engine (chapter 12) runs on a server we run, so its fork has
-to come from Psionic chapter 176's prefix cache. Psionic's GPUs are off,
-so that isn't built yet.
+The psionic engine (chapter 12) now runs live via `psionic-inkling-serve` with
+post-decode KV cache retention (`0fe366840e`), while `oa-subagent.coax` adds
+cache-exact `FORK_AGENT` context serialization with byte-identical sibling tool
+placeholders (`OA_FORK_PLACEHOLDER_RESULT`) and a 2-tier compaction-resistant
+recursion guard (`#14096`).
+
+### Unified CC-parity subagents, background tasks, and `/goal` parity (`#14083`–`#14086`, `#14096`)
+
+Inside the unified `openagents/core/` runtime (`oa-worker`), subagents,
+background tasks, and goals reach Claude-Code parity in pure Coax:
+
+- **Subagent registry & built-in personas (`openagents/core/agents.coax`, `subagent.coax`, `coder/tui/oa-subagent.coax`, `#14096`):**
+  supports built-in `general`, `explore` (read-only Bash guard), `plan`,
+  `verify`, `fork`, and custom Markdown+frontmatter personas discovered from
+  `.openagents/agents/*.md` and `.claude/agents/*.md` under 6-tier precedence;
+  parallel batching over `MWW_DELEGATE` (`FWW_MAX_DELEGATE_BATCH = 12`),
+  background launch (`async_launched`) with `SendMessage` / `TaskStop` /
+  `TaskOutput`, sidechain transcript persistence (`~/.openagents/subagents/`),
+  and per-subagent Git worktree isolation with fail-closed cleanup.
+- **Background task runtime & Sleep (`openagents/core/tasks.coax`, `#14083`–`#14085`):**
+  `#authority` task lifecycle, sleep/timer wakeups, and reactive completion
+  delivery without busy-polling.
+- **`/goal` desktop parity (`apps/openagents-desktop/page/goal.coax`, `#14086`):**
+  bounded autonomous verification loop with crash recovery, reply-to-resume,
+  structured failure reasons, and explicit failed verdicts.
 
 ### Resume and import
 
@@ -333,10 +355,10 @@ python3 coder/tui/smoke.py        # fork carries the turns; a Claude Code fork r
 
 ## Dependencies
 
-- [Chapter2](ch002-model-visible-means-logged.md): forks start from the log.
+- [Chapter 2](ch002-model-visible-means-logged.md): forks start from the log.
 - [Psionic chapter 176](../../psionic/book/ch176-paged-state-and-a-tiered-prefix-cache.md): prefix-state reuse on the server.
 - [Psionic chapter 174](../../psionic/book/ch174-clients-streams-and-background-jobs.md): asynchronous jobs in the client contract.
-- [Chapter5](ch005-a-sandbox-and-approvals.md): grants and budgets.
+- [Chapter 5](ch005-a-sandbox-and-approvals.md): grants and budgets.
 
 ## Done means
 
@@ -353,11 +375,14 @@ python3 coder/tui/smoke.py        # fork carries the turns; a Claude Code fork r
   past its deadline is reported as expired.
 - [x] A goal's check decides when the session's work is done; the smoke and
   a live Claude Code run check it.
-- [ ] Each addition shows a measured gain in [Chapter21](ch021-measure-the-harness.md) on tasks it was not built
+- [ ] Each addition shows a measured gain in [Chapter 21](ch021-measure-the-harness.md) on tasks it was not built
   from, or it is removed.
 
 ## Sources
 
+- `openagents/core/subagent.coax`, `openagents/core/agents.coax`,
+  `openagents/core/tasks.coax`, `coder/tui/oa-subagent.coax`,
+  `apps/openagents-desktop/page/goal.coax`.
 - `coder/tui/import.coax` (`ci_import_claude`, `ci_walk`, `ci_line`), `coder/tui/coder.coax` (`cd_fork_setup`, `cd_resume_cmd`, `cd_show_past`)
 - `coder/tui/session.coax` (`cs_turns_text`, `cs_sibling`), `coder/tui/coder.coax`
   (`cd_detach`, `cd_cmd_stop`, `cd_report_job`, the fork in `tool_main`),

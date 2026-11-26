@@ -1,12 +1,49 @@
 # 9. Microcoder
 
-> **Status: implemented.** The loop runs in Coder: `coder run
-> "TASK" --engine micro` and the terminal UI's third agent both drive
-> `coax/lib/microcoder/` through a gateway plan of Vertex Gemini 4 Hydrogen, the
-> Gemini API and OpenRouter. Its checks cover every ending, the state's
-> caps and the reply streaming out of a partial action. Gateway streams
-> recorded live replay through the loop with no credentials, the same each
-> time, and replayed responses reach each ending through `coder run`.
+> **Status: implemented.** Microcoder (`coax/lib/microcoder/`,
+> `coder/tui/mcworker.coax`) still runs for `coder run "TASK" --engine micro`
+> and deterministic recorded-stream replay, but was formally deprecated for
+> primary desktop sessions in `#13983`: first succeeded by **Inky**
+> (`coax/lib/inky/`, `coder/tui/inky.coax`, `#13979`–`#13982`) for native
+> Inkling 2.0 streaming/tool calls, and then by the unified 24-layer pure-Coax
+> **`openagents/core/`** agent runtime (`coder/tui/oa-worker.coax`,
+> `#14050`–`#14057`), which now owns primary turns across local Psionic
+> Metal/CUDA, OpenAgents Cloud, and Vertex/Gemini.
+
+## Evolution: Microcoder → Inky → Unified `openagents/core/` (`oa-worker`)
+
+Microcoder proved that a small, zero-dependency Coax loop can drive frontier
+and local models without wrapping a third-party agent CLI. Production desktop
+and benchmark usage exposed three limits of Microcoder's single-JSON-object
+`next_action` protocol: no native SSE tool-call streaming, rigid 6-turn memory
+truncation, and lack of a unified permission/hook/subagent/compaction core.
+OpenAgents replaced it in two steps while preserving the shared
+`mcworker-wire.coax` host boundary:
+
+1. **Inky (`coax/lib/inky/`, `coder/tui/inky.coax`, `#13979`–`#13982`):** an
+   I/O-free pure-Coax loop (`IkLoop`) tailored to local Inkling 2.0 on Psionic
+   Metal 4 and CUDA with native `<|content_text|>` / `<|content_thinking|>`
+   streaming, parallel `GwToolStep` calls, 2-stage compaction, and post-decode
+   KV reuse. Phase 5 (`#13983`) deprecated `mcworker` as the default desktop
+   worker.
+2. **Unified `openagents/core/` (`coder/tui/oa-worker.coax`, `#14050`–`#14057`):**
+   a complete 24-layer pure-Coax autonomous agent harness (`openagents/core/core.coax`)
+   with `#authority` zero-survivor mutation boundaries across atoms/scheduler
+   (`ids.coax`, `scheduler.coax`), tool contracts (`tool.coax`, `tool_exec.coax`,
+   `tool_spill.coax`), prompt-cache boundaries (`prompt_cache.coax`), SSE
+   streaming (`sse_stream.coax`), query loop (`query_loop.coax`), transcript
+   DAG (`session.coax`, `transcript_dag.coax`), five-layer compaction
+   (`compaction.coax`), memory (`memory.coax`), permissions & hooks
+   (`permissions.coax`, `perm_match.coax`, `hooks.coax`), member packs with
+   bypass-immune `WalletPay` (`members.coax`, `#14057`), background tasks
+   (`tasks.coax`), CC-parity subagents (`subagent.coax`, `agents.coax`,
+   `coder/tui/oa-subagent.coax`, `#14096`), and swarm/remote-bridge protocols.
+   `oa-worker` runs primary turns across OpenAgents Cloud (`#14070`), local
+   Psionic Inkling 2 Mini (`#14055`), and Vertex/Gemini while speaking the same
+   `mcworker-wire.coax` stdin/stdout protocol (`#14053`).
+
+The sections below retain Microcoder's original loop, replay fixtures, and
+checks, which continue to back `coder run --engine micro`.
 
 The [repository pilot](../../docs/coder/repository-pilot.md) exercises this
 engine on actual edits and external acceptance checks. Gateway playback
@@ -176,7 +213,12 @@ zero silent hallucinations ([W6.1 verification record](../../docs/verification/e
 
 - `coax/lib/microcoder/` (`loop.coax`, `state.coax`, `action.coax`,
   `text_action.coax`, `tools.coax`, `run.coax`, `executor-guard.coax`,
-  `executor-bench.coax`).
+  `executor-bench.coax`) — deprecated legacy engine (`#13983`).
+- `coax/lib/inky/` (`loop.coax`, `run.coax`, `compact.coax`, `tools.coax`) and
+  `coder/tui/inky.coax` — native Inkling 2.0 loop (`#13979`–`#13982`).
+- `openagents/core/` (`core.coax`, `query_loop.coax`, `compaction.coax`,
+  `permissions.coax`, `members.coax`, `agents.coax`) and
+  `coder/tui/oa-worker.coax` — unified 24-layer pure-Coax runtime (`#14050`–`#14057`).
 - `coder/tui/mcworker.coax`, `coder/tui/microcoder_keys.coax`,
   `coder/tui/microcoder.coax`.
 - [Microcoder in Coax, and the inference gateways](../../docs/coder/microcoder.md).

@@ -248,7 +248,7 @@ python3 coder/tui/smoke.py        # a plugin's command runs; disabled, it keeps 
 
 ## Dependencies
 
-- [Chapter4](ch004-tools-as-typed-capabilities.md) and [Chapter5](ch005-a-sandbox-and-approvals.md): tools and grants that plugins register.
+- [Chapter 4](ch004-tools-as-typed-capabilities.md) and [Chapter 5](ch005-a-sandbox-and-approvals.md): tools and grants that plugins register.
 - [Psionic chapter 59](../../psionic/book/ch059-run-in-the-browser.md): Coax compiled to Wasm.
 - `coax/lib/nostr`: signed events (see the Part IV prerequisites in the
   [plan](PLAN.md)).

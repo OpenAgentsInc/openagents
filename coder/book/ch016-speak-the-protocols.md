@@ -3,7 +3,7 @@
 > **Status: partly implemented.** An MCP 2025-06-18 subset (the
 > handshake, `tools/list` and `tools/call`) and Open Responses function
 > calls run in both directions over byte strings, with typed import,
-> chapter4's admission, a remote policy and a hash-chained message log.
+> chapter 4's admission, a remote policy and a hash-chained message log.
 > Coder also serves its verbs as MCP tools over the stdio transport
 > (`coder mcp`, chapter 23), which Claude Code drives live, and runs as an
 > agent for editors over the Agent Client Protocol (`coder acp`), which asks
@@ -25,7 +25,7 @@ admitted against a grant, and checked after it runs.
 
 The adapter has five parts:
 - **an import** that turns each tool of a `tools/list` reply into one of
-  [chapter4](ch004-tools-as-typed-capabilities.md)'s `HtTool`
+  [chapter 4](ch004-tools-as-typed-capabilities.md)'s `HtTool`
   declarations, and refuses a tool whose arguments or result have no typed
   counterpart instead of guessing;
 - **a client** that writes a harness call, `name{arguments}`, as a
@@ -34,7 +34,7 @@ The adapter has five parts:
 - **a server** that answers the same requests from a registry, so the other
   direction is the same code read backwards;
 - **a remote policy** in the shape of
-  [chapter5](ch005-a-sandbox-and-approvals.md)'s: an effect ceiling, an
+  [chapter 5](ch005-a-sandbox-and-approvals.md)'s: an effect ceiling, an
   approval for anything stronger than what runs freely, and limits on
   remote calls and their bytes;
 - **a message log** that every message enters, sent or received, before
@@ -53,7 +53,7 @@ coax/bin/coax test psionic/tests/protocols-checks.coax
   ids from 0 to 999999;
 - the methods `initialize`, `notifications/initialized`, `tools/list` (one
   page, no `nextCursor`) and `tools/call`;
-- tool schemas limited to chapter4's types: an integer from 0 to
+- tool schemas limited to chapter 4's types: an integer from 0 to
   10^d − 1 for d from 1 to 6 (`"minimum":0`, `"maximum"` all nines), a
   boolean, or a string `enum` of 1 to 8 words; every property required; at
   most 8 tools of at most 4 fields; a result declared as the one property
@@ -64,7 +64,7 @@ coax/bin/coax test psionic/tests/protocols-checks.coax
 - no transport: messages are byte strings passed between client and server
   in one process.
 
-Chapter4's own profile still holds for every call: canonical JSON with
+Chapter 4's own profile still holds for every call: canonical JSON with
 no whitespace and fields in declared order, at most 256 bytes.
 
 ## Why types, not strings
@@ -76,7 +76,7 @@ with one argument:
 "location":{"type":"string","description":"City name or zip code"}
 ```
 
-Any string is a valid location. Chapter4's grammar can't mask a free
+Any string is a valid location. Chapter 4's grammar can't mask a free
 string down to the values a tool accepts, and its after stage can't check
 one either, so this adapter refuses the tool: `untyped`, tool 0, field 0.
 Refusing is the point. A tool that comes in with a type gets every
@@ -91,7 +91,7 @@ The refusals have three kinds:
 
 ## A hand trace
 
-Take chapter4's `get`. Its declaration is one field, `room`, a choice
+Take chapter 4's `get`. Its declaration is one field, `room`, a choice
 of `hall`, `den` or `study`; a boolean result; effect read. Written as an
 MCP tool it becomes, field by field:
 
@@ -104,13 +104,13 @@ MCP tool it becomes, field by field:
 | result boolean | `"outputSchema":{…"properties":{"result":{"type":"boolean"}}…}` |
 | effect read | `"annotations":{"readOnlyHint":true}` |
 
-MCP has no word for a tool with no effect, so chapter4's `add` and
+MCP has no word for a tool with no effect, so chapter 4's `add` and
 `div`, whose effect is none, cross as `readOnlyHint: true` and import as
 read. The effect can only get stronger in a round trip, never weaker.
 
 Import reads the same bytes back. The properties come in the order they're
 written: JSON objects are unordered, but the subset fixes the order the
-bytes give, because chapter4's grammar wants fields in declared order.
+bytes give, because chapter 4's grammar wants fields in declared order.
 `required` must name each property exactly once; `["room","room"]` is a
 `feature` refusal at field 0.
 
@@ -127,7 +127,7 @@ request is three fixed pieces around two copies:
 ```
 
 That's 97 bytes. The server reads `name` and the raw `arguments` back,
-joins them into `get{"room":"den"}`, and runs chapter4's `ht_call`.
+joins them into `get{"room":"den"}`, and runs chapter 4's `ht_call`.
 `den` is room 1, and the world starts with every room off, so the value is
 0. The server writes it as the tool's result object, `{"result":false}`,
 twice: once as the one text content (escaped as a JSON string) and once as
@@ -184,7 +184,7 @@ pr_head :: (out:[]u8,id:int)->int #effects(all) {return json_write_int(out,json_
 object schema onto fields; `pr_tool` puts a tool together; `pr_import`
 reads the reply's envelope and every tool. The first refusal wins and names
 the tool and the field where it fell. The declarations are views into a
-caller's `PrStore`, the same way chapter4's registry lives in its
+caller's `PrStore`, the same way chapter 4's registry lives in its
 caller's storage.
 
 <!-- source: psionic/lib/harness/protocols.coax import -->
@@ -384,7 +384,7 @@ pr_result :: (reply:string,id:int,t:HtTool)->PrEvent #effects(all) {
 
 The same subset served from a registry. A call refused before it runs
 answers as a protocol error, `-32602`, the code the specification gives an
-unknown tool or invalid arguments, with chapter4's rendered refusal as
+unknown tool or invalid arguments, with chapter 4's rendered refusal as
 its message. A call that ran and failed (a division by zero, a result that
 doesn't fit) answers as the tool's own error, `isError: true`.
 
@@ -436,7 +436,7 @@ pr_serve :: (env:PrEnv,u:[]HtUsage,world:[]int,request:string,out:[]u8)->int #ef
 
 A model served by Psionic chapter 79 names a tool as a `function_call` item whose
 `arguments` is the JSON text as a string. Unescaped, it's the same bytes
-chapter4 admits, so a function call becomes a harness call by joining
+chapter 4 admits, so a function call becomes a harness call by joining
 the name and the arguments.
 
 <!-- source: psionic/lib/harness/protocols.coax responses -->
@@ -499,7 +499,7 @@ pr_verify :: (g:PrLog)->int #effects(all) {
 
 ## A remote call
 
-`pr_send` puts a call through chapter4's admission (the grant, the call
+`pr_send` puts a call through chapter 4's admission (the grant, the call
 and cost budgets, the argument grammar) against the imported registry, then
 the remote policy, then the log. Only then is the call charged. A refusal at
 any stage sends nothing and charges nothing. `pr_receive` logs the reply
@@ -540,16 +540,16 @@ pr_receive :: (env:PrEnv,sent:PrEvent,reply:string,l:[]PrLog)->PrEvent #effects(
 }
 ```
 
-The policy here is chapter5's rules in small: a ceiling no approval
+The policy here is chapter 5's rules in small: a ceiling no approval
 passes, an approval for any effect stronger than what runs freely, and
-limits on calls and bytes. It isn't chapter5's `sb_call`, which is
-bound to chapter4's four built-in bodies and their ticks; see
+limits on calls and bytes. It isn't chapter 5's `sb_call`, which is
+bound to chapter 4's four built-in bodies and their ticks; see
 [What remains](#what-remains).
 
 ## Run it
 
 The [example](../../psionic/examples/protocols.coax) runs a client and a server in one process. The server holds
-chapter4's registry; the client imports it through `tools/list` and
+chapter 4's registry; the client imports it through `tools/list` and
 grants `get`, `set`, `add` and `div`, with reads running freely and writes
 asking first.
 
@@ -620,7 +620,7 @@ freely, and nothing is sent. Approved, it runs, and the next `get` sees the
 den on. `div` by zero and `999 + 1` (which doesn't fit 3 digits) are
 refused by the server's run and after stages, and both come back as the
 tool's own error, `remote`. `attic` isn't a room and `mul` isn't a tool, so
-chapter4 refuses both before the client writes a byte. The session
+chapter 4 refuses both before the client writes a byte. The session
 counts 7 calls and 131 bytes: the seven calls that were sent.
 
 ## Refusals
@@ -636,7 +636,7 @@ Each refusal in the transcript is a deliberately broken input:
 - the specification's JSON-RPC error reply: `error`;
 - the specification's failed call, `isError: true`: `remote`;
 - the specification's `tools/call` example sent to this server: `-32602`
-  with chapter4's refusal, `{"error":"unknown","at":0}`;
+  with chapter 4's refusal, `{"error":"unknown","at":0}`;
 - `set` under a read-only ceiling, even approved: `effect`.
 
 The checks in `psionic/lib/harness/protocols.coax` cover the rest, one
@@ -653,11 +653,11 @@ or when the value is `1000` for a 3-digit result, `-1`, `8.5`, `"85"` or
 
 The fixtures in `psionic/tests/harness-protocols-fixtures.coax` are written
 by hand from the specification's message shapes (the lifecycle and tools
-pages of 2025-06-18) for chapter4's registry, and the `PR_FX_SPEC_*`
+pages of 2025-06-18) for chapter 4's registry, and the `PR_FX_SPEC_*`
 messages are the specification's own examples. The checks require:
 - every writer to reproduce its fixture byte for byte, and to return −1
   with one byte less room;
-- the fixture tool list to import as chapter4's registry, field by field
+- the fixture tool list to import as chapter 4's registry, field by field
   and type by type, and to export again to the same bytes;
 - the server to answer each fixture request with its fixture reply;
 - a `function_call` item to become the harness call and back, byte for
@@ -666,11 +666,11 @@ messages are the specification's own examples. The checks require:
   encoding.
 
 [protocols-checks.coax](../../psionic/tests/protocols-checks.coax) adds a `#forall`
-over 40 random registries from chapter4's own enumeration oracle
+over 40 random registries from chapter 4's own enumeration oracle
 (`psionic/tests/harness-tools-oracle.coax`): each registry is served,
 listed, imported and exported again to the same bytes, and every call the
 oracle writes goes client to server to client and must give the same
-outcome as calling chapter4's `ht_call` directly.
+outcome as calling chapter 4's `ht_call` directly.
 
 ## Coder as an editor's agent
 
@@ -863,9 +863,9 @@ The smoke posts an `initialize`, a notification, a `coder_status` call, a
 - **The rest of MCP.** Prompts, sampling, resource subscriptions, pagination with
   `nextCursor`, notifications other than `initialized`, string request ids,
   and content other than one text item.
-- **Chapter5's sandbox itself.** Remote calls go through this chapter's
+- **Chapter 5's sandbox itself.** Remote calls go through this chapter's
   policy, not `sb_call`, whose approvals, pattern grants, simulated clock
-  and replay are bound to chapter4's four built-in bodies.
+  and replay are bound to chapter 4's four built-in bodies.
 - **ACP beyond the basics.** `coder acp` doesn't read files through the
   editor, and Codex's edits carry no diff content. No editor
   has driven it yet; the smoke drives it as one would.

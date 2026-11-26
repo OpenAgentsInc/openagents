@@ -4,7 +4,7 @@
 > a checker that refuses a request which changes what the previous request
 > held before its cache boundary, and a measurement on Psionic chapter 176's prefix
 > cache priced with Psionic chapter 177's cost model (profile px-prefix-v1) run on
-> the CPU over chapter2's log and scripted sessions. Times are modeled
+> the CPU over chapter 2's log and scripted sessions. Times are modeled
 > with Psionic chapter 175's step cost, not measured: time to first token on a
 > named host and model, real tokenized system prompts and tool schemas, and
 > a long session of more than 16 requests remain.
@@ -43,7 +43,7 @@ This chapter's profile is `px-prefix-v1`:
 
 - Tokens are integers. A request holds at most 16 sections and 64 tokens;
   a session has at most 8 tools, each with a schema of at most 8 tokens.
-- The history is chapter2's log, read from its token store.
+- The history is chapter 2's log, read from its token store.
 - The cache measurement runs up to 16 requests of up to 32 tokens on one
   model through Psionic chapter 176's `pg_run`, one request at a time, with pages
   of 4 positions and 16 frames in each tier.
@@ -60,7 +60,7 @@ one order, and a request must hold them in it:
 | `system` | system text | never within a session |
 | `tool` | one tool's schema; the key is the tool's id | never within a session |
 | `header` | values fixed when the session opens, such as its date | never within a session |
-| `history` | the tokens chapter2's log holds | only by appending |
+| `history` | the tokens chapter 2's log holds | only by appending |
 | `tail` | values that change every request, such as a clock or a counter | every request |
 
 The **cache boundary** is where the first `tail` section starts, or the
@@ -91,10 +91,10 @@ PxVerdict :: struct {status:PxStatus;request:int;section:int;kind:PxKind;at:int;
 `px_open` lays out a session's frozen prefix once: the system text, every
 tool's schema in increasing id order (whatever order the tools were
 registered in), and the header. `px_assemble` adds the history and the
-tail. The history comes from chapter2's log: either everything logged
+tail. The history comes from chapter 2's log: either everything logged
 so far, or exactly the tokens a logged request event saw. The log must
 verify, and no event in the history may be redacted, the same rule
-chapter2's `lg_run` applies before it sends anything. `px_naive` is the
+chapter 2's `lg_run` applies before it sends anything. `px_naive` is the
 assembler this chapter replaces: tools in registration order, and the
 tail at the top when `top` is set.
 
@@ -221,7 +221,7 @@ px_session :: (reqs:[]PxRequest)->PxVerdict #effects(all) {
 
 ## A session by hand
 
-The hand session puts chapter1's hand trace, logged as in chapter2,
+The hand session puts chapter 1's hand trace, logged as in chapter 2,
 behind a frozen prefix:
 
 - System text `[1, 2, 3, 4]`.
@@ -232,7 +232,7 @@ behind a frozen prefix:
 The frozen prefix is 12 tokens: system at positions 0 to 3, tool 10 at 4
 and 5, tool 20 at 6 and 7, tool 30 at 8 and 9, the header at 10 and 11.
 
-Chapter2's log holds 11 events and 30 tokens. Its three request events,
+Chapter 2's log holds 11 events and 30 tokens. Its three request events,
 at events 2, 5 and 8, saw 5, 16 and 27 tokens; a request at the log's end
 sees all 30. Request `k` (counting from 0) gets the tail
 `[1000 + k, k]`. Its length is 12 + history + 2 and its boundary is 12 +
@@ -347,7 +347,7 @@ paged cache, and reads how many prompt blocks each one reused. Time to
 first token for a request of `n` tokens with `c` of them cached is chapter
 177's `rr_prefill`: one step of `n - c` rows. The total adds one step of
 one row for each further output token, as Psionic chapter 177's `rr_cost` does.
-Psionic chapter 177's file cannot be loaded beside chapter2's (a name in each
+Psionic chapter 177's file cannot be loaded beside chapter 2's (a name in each
 collides), so `px_prefill` and `px_cost` restate its two lines, and a
 check compares them with Psionic chapter 177's own recorded values.
 
@@ -460,7 +460,7 @@ row after the first:
 ## The program
 
 The example, [prefix-stable.coax](../../psionic/examples/prefix-stable.coax), logs
-chapter1's hand trace, assembles its four requests and checks them,
+chapter 1's hand trace, assembles its four requests and checks them,
 prints each broken assembly's verdict, and runs the three assemblers'
 sessions through the cache.
 
@@ -558,7 +558,7 @@ order; the clock at the top loses everything.
 
 - **The hand session:** the frozen prefix's layout, each request's length,
   boundary and shared length, the session verdict, and each history
-  admitted by chapter2's `lg_admit` for the request event that saw it.
+  admitted by chapter 2's `lg_admit` for the request event that saw it.
 - **Each broken assembly** with its status, section, kind and position,
   and `px_session` naming the request.
 - **The log:** an index that is not a request event or the log's end, a
@@ -613,7 +613,7 @@ same prefix-stability invariants on the real agent loop:
   over a long session, rather than modeled from Psionic chapter 175's step cost.
 - Real system prompts and tool schemas as tokens from a tokenizer, and
   sessions longer than Psionic chapter 176's bounds of 16 requests of 32 tokens.
-- Condensation now runs in [chapter7](ch007-condense-the-history.md),
+- Condensation now runs in [chapter 7](ch007-condense-the-history.md),
   whose `cd_admit` wraps `px_admit` with the one exception: a break at a
   logged condensation. Merging that exception into this chapter's
   assembler, so one checker covers both, remains.

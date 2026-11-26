@@ -1,7 +1,7 @@
 # 21. Measure the harness
 
 > **Status: partly implemented.** End-to-end task suites run through
-> chapter1's loop with a scripted stand-in model, one configuration
+> chapter 1's loop with a scripted stand-in model, one configuration
 > change at a time, with seed blocks, a noise floor, Psionic chapter 241's verdicts
 > and a receipt chain. Benchmarks of the harness's own operations, wall-clock
 > time on a named host, real models and cache hits remain; see
@@ -21,11 +21,11 @@ bench that decides that:
   tasks, fixed by [Psionic chapter 239](../../psionic/book/ch239-a-suite-is-three-digests.md)'s three
   digests, split into development tasks and held-out tasks;
 - **runs through the harness:** each task goes through
-  [chapter1](ch001-the-simplest-loop.md)'s loop, under one
+  [chapter 1](ch001-the-simplest-loop.md)'s loop, under one
   configuration's budgets and tools, once per seed, with a scripted
   stand-in model;
 - **what each run costs:** whether Psionic chapter 242's exact checker passes the
-  answer, the steps, the tokens drawn, the tool calls, chapter1's clock
+  answer, the steps, the tokens drawn, the tool calls, chapter 1's clock
   ticks and the stop that ended the turn;
 - **a receipt chain:** each configuration's results on one partition are a
   receipt bound to the suite, harness and configuration digests, in a hash
@@ -44,12 +44,12 @@ coax/bin/coax test psionic/lib/harness/measure.coax
 ## The profile
 
 `cpu-harness-bench-v1`:
-- chapter1's `cpu-harness-loop-v1` with its scripted model, so the loop,
+- chapter 1's `cpu-harness-loop-v1` with its scripted model, so the loop,
   its budgets, its calculator tool and its typed stops are the ones under
   test;
 - the stand-in model agent-sim-tools-v1, over Psionic chapter 242's agent-sim-v1;
 - up to 64 tasks, 16 runs and 32 steps, a window of at most 512 tokens;
-- cost counted in tokens the model draws, and time in chapter1's logical
+- cost counted in tokens the model draws, and time in chapter 1's logical
   clock ticks: the positions each reply reads plus a fixed cost per tool
   call. No wall-clock time is measured;
 - binary64 for means, floors and the bootstrap, as in Psionic chapters 240 and 241;
@@ -110,7 +110,7 @@ bumped by one, the last value dropped, or the input handed back. Offered
 the calculator on a running-sums task, it adds one value per call and then
 writes the sums, which are then right.
 
-Chapter1's scripted model plays a fixed list of replies. That works here
+Chapter 1's scripted model plays a fixed list of replies. That works here
 because the calculator is exact: the stand-in knows in advance what each
 call will return. The loop still runs each call, appends its output and
 charges for it, and the run's record holds both.
@@ -148,7 +148,7 @@ mh_turn :: (tb:[]u8,h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int)->MhRun #effects
 ```
 
 A run is one task under one configuration, at run q's seed. It renders the
-prompt, scripts the stand-in, and hands both to chapter1's `hl_run`
+prompt, scripts the stand-in, and hands both to chapter 1's `hl_run`
 with the configuration's budgets. Only an answer can be right: a turn that
 ends any other way scores 0. An answer is numbers of one to four digits
 separated by single spaces, at most 16 of them, and Psionic chapter 242's exact
@@ -187,7 +187,7 @@ That is 5 + 5 + 5 + 9 = 24 tokens, 3 tool calls, and
 17 + 25 + 33 + 46 + 3 × 3 = 130 ticks, and the answer is right. The sort
 and the repeats are the same as direct, so three runs of six are right.
 
-Tighter budgets end the same turn with chapter1's typed stops:
+Tighter budgets end the same turn with chapter 1's typed stops:
 - **3 steps:** the loop stops before the answer, at `steps`, after 15
   tokens and 17 + 25 + 33 + 9 = 84 ticks.
 - **20 tokens:** step 3 may draw only 5, and ends at `tokens`; it reads up
@@ -213,7 +213,7 @@ mh_run_replay :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int,claimed:MhRun)->bo
 
 A run's digest covers the harness, the configuration, the environment,
 the task and run numbers, the number of scripted replies, the turn's stop
-and counts, whether it was right, each step's seed in chapter1's record,
+and counts, whether it was right, each step's seed in chapter 1's record,
 and every token of the transcript, prompt, replies and tool outputs alike.
 A replay runs it again from the same seeds and accepts the record only
 when every field and the digest come out the same.
@@ -266,9 +266,9 @@ The suite's items digest covers each task as Psionic chapter 242's environment
 development and held-out tasks. Its questions digest covers every prompt,
 and its gate digest the verdict's settings: bootstrap replicates and seed,
 and limits on tokens and ticks per run. The harness digest covers what
-stays fixed between configurations: chapter1's window and tool cost,
+stays fixed between configurations: chapter 1's window and tool cost,
 the stand-in's skill, and the seed blocks. The configuration digest covers
-what may change: the calculator and each of chapter1's budgets.
+what may change: the calculator and each of chapter 1's budgets.
 
 ## A receipt per configuration
 
@@ -598,33 +598,62 @@ sequence and link checks were only reached together with the digest, so
 resealed forgeries now test each alone; a harness out of range now has its
 own refusal; and pinned digests fix the run, receipt and suite encodings.
 
+## Live evaluation suites in the repository
+
+Alongside this chapter's deterministic `cpu-harness-bench-v1` tutorial and
+`coder-repository-pilot-v1`, four real-world benchmark harnesses now run inside
+the repository and Desktop Gym:
+
+- **gBench (`coax/lib/gbench/`, `coder/tui/gbench-run.coax`):** curated golden,
+  perf, and local/cloud coding suites (`GB_PROF_TEMPLATE_SMOKE`,
+  `GB_PROF_PERF_QUICK`, `GB_PROF_PERF_AGENTIC`, `GB_PROF_LOCAL_FAST`,
+  `GB_PROF_LOCAL_CORE`, `GB_PROF_CODING_LINUX`) covering Inkling 2 Mini
+  variants, llama.cpp comparators, Gemini 4 Neon, and `oa-worker` (`35/38`
+  passing on the core coding suite).
+- **Terminal-Bench 2.0 / 2.1 / 4.0 / 4.1 (`coax/lib/tbench/`, `coder/tui/tbench-run.coax`, `#13950`–`#13953`):**
+  deterministic train/held-out partitions across official Terminal-Bench suites
+  (`tb2-smoke` 3, `tb2-cross-section` 12, `tb2-full` 89, `tb21-oos` 89,
+  `tb4-full` 66, `tb41-full` 66), used to hillclimb `oa-worker` against
+  Antigravity (`2.0×` pass-rate lead on TB 4.1).
+- **Session-History Evals & Transcript Friction Scorecard (`evals/session-history/`, `#13830`):**
+  converts real Claude Code, Codex, OpenAgents Desktop, Antigravity, and
+  OpenCode sessions into canonical Harbor **`ATIF-v1.8`** (`coax/lib/nostr/atif/`),
+  sanitizes 27 hermeticity-gated repository tasks across Buckets A–E (27/27
+  fail on `base_sha`, 27/27 pass on `target_sha`), and scores live session
+  friction (`evals/session-history/run.sh friction`).
+- **Gym A/B Subagent Bench (`#14096`):** measures parallel subagent speedup
+  and context-forking efficiency directly in `apps/openagents-desktop/`.
+
 ## What remains
 
 - **Benchmarks of the harness's own operations:** opening a session,
   folding a long conversation with
-  [chapter7](ch007-condense-the-history.md), reconnecting a stream and
+  [chapter 7](ch007-condense-the-history.md), reconnecting a stream and
   continuing an agent, each with P50 and P95 wall-clock time on a named
   host. Nothing here measures seconds.
 - **A real model.** The stand-in is scripted. Running the suite with a
-  model behind chapter1's loop, with real token counts, remains.
+  model behind chapter 1's loop, with real token counts, remains.
   The separate repository pilot now measures installed engines on source
   repairs; it does not turn this calculator experiment into a live run.
 - **Cache hits and money.** Cost is tokens drawn and time is logical clock
   ticks, with no cache and no price.
 - **More additions under test.** Prompt assembly from
-  [chapter3](ch003-keep-the-prefix-stable.md), condensation from
-  chapter7 and the protocols of
-  [chapter16](ch016-speak-the-protocols.md) are not yet configurations
-  of this bench; only the calculator and chapter1's budgets are.
-- **Chapters17 and 20** add system-level runs (an ablation of Router
+  [chapter 3](ch003-keep-the-prefix-stable.md), condensation from
+  chapter 7 and the protocols of
+  [chapter 16](ch016-speak-the-protocols.md) are not yet configurations
+  of this bench; only the calculator and chapter 1's budgets are.
+- **Chapters 17 and 20** add system-level runs (an ablation of Router
   and Workers, a Router batching stress test and fault injection for the
   watchdog) that will report through this chapter.
 
 ## Sources
 
+- `coax/lib/gbench/` (`suites.coax`, `runner.coax`, `policy.coax`, `atif.coax`),
+  `coax/lib/tbench/` (`suites.coax`, `runner.coax`, `policy.coax`), and
+  [`evals/session-history/README.md`](../../evals/session-history/README.md).
 - [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
 - [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
-- [Chapter1](ch001-the-simplest-loop.md): the loop, its budgets and its
+- [Chapter 1](ch001-the-simplest-loop.md): the loop, its budgets and its
   typed stops.
 - [Psionic chapter 239](../../psionic/book/ch239-a-suite-is-three-digests.md),
   [Psionic chapter 240](../../psionic/book/ch240-how-far-a-metric-moves-by-itself.md) and

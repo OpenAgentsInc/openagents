@@ -3,13 +3,13 @@
 > **Status: partly implemented.** A model can write one small program
 > instead of one tool call per request. The program binds call results to
 > variables, branches on a boolean variable and repeats a block a fixed
-> number of times, over chapter4's tools. A grammar built from the
+> number of times, over chapter 4's tools. A grammar built from the
 > granted tools constrains decoding. Before anything runs, the program is
-> parsed and checked against the grant, chapter5's policy and the log's
+> parsed and checked against the grant, chapter 5's policy and the log's
 > room, using its worst case. An interpreter then sends each call through
-> chapter5's sandbox with a step limit, and stops at the exact statement
+> chapter 5's sandbox with a step limit, and stops at the exact statement
 > where a call asks, fails or is refused. The program, each call and its
-> result, and the outcome are events in chapter2's log, and a replay
+> result, and the outcome are events in chapter 2's log, and a replay
 > rebuilds the same log and world. Still to come: a served model writing
 > the programs, and the measurement of model requests, tokens and
 > wall-clock time on a fixed task set against one call per request;
@@ -36,20 +36,20 @@ runs. Its checks leave no mutant alive.
 
 This chapter's profile is `cpu-harness-program-v1`:
 
-- The tools are chapter4's four: `add` and `div` (integers of up to
+- The tools are chapter 4's four: `add` and `div` (integers of up to
   three digits, effect none), `get` (read a room's light) and `set` (write
-  one). The world is chapter4's three rooms.
+  one). The world is chapter 4's three rooms.
 - A program has at most 12 statements and 384 bytes of text. It has eight
   variables, `x0` to `x7`.
 - Blocks are one level deep. A loop runs 1 to 9 times.
-- Time is chapter5's clock in ticks: `add` 1, `div` 2, `set` 3, `get` 1.
+- Time is chapter 5's clock in ticks: `add` 1, `div` 2, `set` 3, `get` 1.
 
 ## The language
 
 A program is a sequence of statements with no spaces:
 
 - `x1=add{"a":1,"b":2};` calls a tool and binds its result to `x1`. The
-  call is chapter4's call text, except that an integer or boolean
+  call is chapter 4's call text, except that an integer or boolean
   argument may be a variable instead of a literal.
 - `if x0{...}` runs the bind statements in the braces once if `x0` is true.
 - `for 3{...}` runs them three times.
@@ -69,7 +69,7 @@ bind, a condition, and the bind inside the condition.
 
 ## A grammar of programs
 
-The program grammar is a byte automaton built with chapter4's builder
+The program grammar is a byte automaton built with chapter 4's builder
 and compiled by Psionic chapter 53. Four states hold the shape of a program:
 `top` before the first statement, `done` after a statement (the only
 accepting state), `open` after a block opens, and `inner` after a statement
@@ -125,7 +125,7 @@ pg_grammar :: (tools:[]HtTool,offered:[]int,w:HtWork)->HtGrammar #effects(all) {
 }
 ```
 
-Over chapter4's four tools the grammar has 262 states and 317 edges.
+Over chapter 4's four tools the grammar has 262 states and 317 edges.
 Built from only the granted tools, it is the mask for decoding: the model
 cannot write a call to a tool that is not granted, a variable in a room
 argument, or a block inside a block.
@@ -338,7 +338,7 @@ so the program is admitted.
 The interpreter runs the statements in order. Each statement instance is
 one step, and fuel limits the steps: when the steps reach the fuel, the
 program stops before the next statement. A bind renders its call with the
-variables' current values and sends it to chapter5's `sb_call`. A call
+variables' current values and sends it to chapter 5's `sb_call`. A call
 that runs binds its variable. A call that asks stops the program there and
 leaves the request pending; a call whose body fails (division by zero, or a
 result too wide for its type) stops it after the run; a call the sandbox
@@ -449,7 +449,7 @@ request 0, deadline 6 + 5 = 11. The program stops at statement 1 after 2
 steps; `x6=get` is never sent.
 
 While the request waits, a third program is refused as `paused` before it
-runs. The approval at 8 runs the paused `set` through chapter5's
+runs. The approval at 8 runs the paused `set` through chapter 5's
 `sb_answer`: the clock goes to 8 + 3 = 11, calls to 7, bytes to 128, and the
 den's light is on.
 
@@ -468,7 +468,7 @@ changes nothing:
 
 A program's event holds `4`, the session, the fuel, why it was refused (0
 when it was not) and the byte or statement, then the program text, one
-token per byte. Each call it sends is chapter5's call event, with the
+token per byte. Each call it sends is chapter 5's call event, with the
 call's text and its result. After the calls comes the outcome event: `5`,
 the session, the stop, the sandbox's reason for the last call, the
 statement, the steps, the calls, a mask of the bound variables, and the
@@ -477,7 +477,7 @@ eight variables. For `PG_ONE` the outcome is
 `5 1 3 10 1 2 2 16 0 0 0 0 0 0 0 0` (stop `asked`, reason `effect`).
 
 Replay verifies the chain, opens a fresh session from the first event as
-chapter5's replay does, then feeds it each logged program, with its
+chapter 5's replay does, then feeds it each logged program, with its
 fuel, and each answer. Every event the fresh session logs must have the
 original's digest, so a program's calls and outcome are compared as well
 as the program.
@@ -678,7 +678,7 @@ second call.
 - Limits on a program's output bytes and memory as their own policy fields.
   Here the bounds are the statement, variable and text limits of the
   profile.
-- Host functions beyond chapter4's four tools, and the programs of
+- Host functions beyond chapter 4's four tools, and the programs of
   chapters [235](../../psionic/book/ch235-can-gradient-descent-learn-exact-execution.md),
   [236](../../psionic/book/ch236-a-frozen-exact-core-with-a-learned-interface.md) and
   [237](../../psionic/book/ch237-composable-weight-modules.md).
@@ -702,10 +702,10 @@ receipts and typed `<exec_refuse>` traps instead of silent hallucinations
 
 - [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
 - [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
-- [Chapter5](ch005-a-sandbox-and-approvals.md): the sandbox every call
+- [Chapter 5](ch005-a-sandbox-and-approvals.md): the sandbox every call
   goes through.
-- [Chapter4](ch004-tools-as-typed-capabilities.md): the tools, their
+- [Chapter 4](ch004-tools-as-typed-capabilities.md): the tools, their
   grammar builder and the grant.
-- [Chapter2](ch002-model-visible-means-logged.md): the log.
+- [Chapter 2](ch002-model-visible-means-logged.md): the log.
 - [Psionic chapter 53](../../psionic/book/ch053-choosing-the-next-token.md): the byte automaton and
   the guided step.

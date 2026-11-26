@@ -14,15 +14,19 @@ sets out the split.
 
 The book builds the harness one measured piece at a time: a simple loop, a log
 that rebuilds every request, typed tools, a sandbox, condensing, programs as
-tool calls (Part I). It then adds engines: Coder's own Microcoder loop, models
-that [Psionic](../../psionic/book/README.md) serves, and the Claude Code or
-Codex a person already uses (Part II). Parts III and IV turn one session into
+tool calls (Part I). It then adds engines: Coder's own pure-Coax runtime
+(`openagents/core/` + `oa-worker`, superseding Inky and the deprecated
+Microcoder loop), local and hybrid models that [Psionic](../../psionic/book/README.md)
+serves, and the Claude Code, Codex, Cursor, or Antigravity CLIs a person
+already uses (Part II & Part VIII). Parts III and IV turn one session into
 one agent across many tasks and channels that stays online, following the
 DeepSeek Harness team's Super-agent design. Part V builds measurement
-machinery and a live repository pilot; comparative ablations of many
-additions remain. Part VI collects the implemented paths into the
-`openagents coder` command line. Part VII reads other coding agents' source,
-one agent per chapter, and records what Coder takes from each.
+machinery, a live repository pilot, gBench, Terminal-Bench 4.1, and ATIF-v1.8
+session-history evals; comparative ablations of many additions remain. Part VI
+collects the implemented paths into the `openagents coder` command line. Part
+VII reads other coding agents' source, one agent per chapter, and records what
+Coder takes from each. Part IX documents the unified native GPU desktop app
+(`apps/openagents-desktop/`), its JSON-lines worker wire, and the Foreman.
 
 The chapters target `openagents coder` verbs as their product interface.
 The [plan](PLAN.md#the-cli-is-the-spine) lists those targets; chapter status
@@ -53,8 +57,8 @@ checks from measurements of real coding outcomes.
 
 ## Status
 
-Written 2026-11-01; updated 2026-11-18. Of the 42 chapters, 11 are
-implemented, 18 are partly implemented, 12 are written surveys and 1 is a
+Written 2026-11-01; updated 2026-11-26. Of the 43 chapters, 11 are
+implemented, 19 are partly implemented, 12 are written surveys and 1 is a
 design draft. The
 opening native profile composes the owned worker, durable journal and Linux
 confinement; the finite teaching examples remain under `psionic/lib/harness/`.
@@ -80,19 +84,19 @@ The [registry](chapters.json) names each chapter’s sources and qualified targe
 | [6. A document tries to become the system prompt](ch006-a-document-tries-to-become-the-system-prompt.md) | Partly implemented: ij-inject-v1, bounded CPU, deterministic stand-in agent |
 | [7. Condense the history](ch007-condense-the-history.md) | Partly implemented: cd-condense-v1, bounded CPU |
 | [8. Programs as tool calls](ch008-programs-as-tool-calls.md) | Partly implemented: cpu-harness-program-v1, bounded CPU |
-| [9. Microcoder](ch009-microcoder.md) | Implemented: `coder run --engine micro`, Vertex, Gemini API and OpenRouter; recorded streams replay |
+| [9. Microcoder](ch009-microcoder.md) | Implemented: deprecated `mcworker` (Vertex, Gemini API, OpenRouter; recorded streams replay); superseded by `coax/lib/inky/` and unified `openagents/core/` (`oa-worker`) |
 | [10. Drive Claude Code](ch010-drive-claude-code.md) | Implemented: Claude Code 2.1.316 on the person's login; approvals by policy; Coder's tools in-process |
 | [11. Drive Codex](ch011-drive-codex.md) | Partly implemented: codex-cli 0.163.0 app-server |
-| [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) | Partly implemented: `--engine psionic` on a local Chat Completions server |
-| [13. Choose an engine](ch013-choose-an-engine.md) | Partly implemented: Gemini Decision 1 first, then local Elephant or mammoth-1; both route 44/44 on the labelled set; effort reaches the engine |
-| [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) | Partly implemented: forks (Claude Code ones resumed on the server), jobs with deadlines and reports, subagents held to the parent's policy, goals |
+| [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) | Partly implemented: `psionic-inkling-serve` local Metal 4 / CUDA serving (32K KV, 21-quant/LoRA, hybrid-exec-v1, $0 local tier) plus `--engine psionic` |
+| [13. Choose an engine](ch013-choose-an-engine.md) | Partly implemented: `openagents.router.v2alpha1` `RoutePlan` + `coax/lib/agent/router/` (66/66 dev, 30/31 held-out) with opt-in external delegation gating |
+| [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) | Partly implemented: forks, jobs with deadlines and reports, CC-parity subagents (`oa-subagent.coax`, `openagents/core/agents.coax`, parallel/bg/fork, worktrees), `/goal` parity, and `tasks.coax` |
 | [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) | Implemented: profiles, capabilities, draining, signed installs, Wasm plugins with admitted imports |
 | [16. Speak the protocols](ch016-speak-the-protocols.md) | Partly implemented: MCP over stdio both ways and HTTP, `coder mcp` with resources, ACP, System One as a tool |
 | [17. One agent, many tasks](ch017-one-agent-many-tasks.md) | Partly implemented: a Router with local, GitHub issue and CI sources, Workers, replies, issue context inline and recall through named sessions |
 | [18. Consent before sharing](ch018-consent-before-sharing.md) | Partly implemented: cs-consent-v1 hash-chained ledger; `coder consent` gates remembered facts to every engine, and Worker logs, routing and Router decisions to System One |
 | [19. Remember a fact, then revise it](ch019-remember-a-fact-then-revise-it.md) | Partly implemented: mm-memory-v1 hash-chained memory events; `coder remember`/`revise`/`forget`/`recall` on disk, ranked by Vertex embeddings, checked against the session line they came from |
 | [20. An agent that stays online](ch020-an-agent-that-stays-online.md) | Partly implemented: a resumable loop, a watchdog with provider rechecks, machine daemons, credential handles, a read ceiling for unnamed authors (checked live against chapter 6's attacks), channel rules and mail replies as Gmail drafts |
-| [21. Measure the harness](ch021-measure-the-harness.md) | Partly implemented: cpu-harness-bench-v1 plus coder-repository-pilot-v1; live engine bundles on macOS arm64 |
+| [21. Measure the harness](ch021-measure-the-harness.md) | Partly implemented: cpu-harness-bench-v1, coder-repository-pilot-v1, gBench, Terminal-Bench 4.1, ATIF-v1.8 session-history friction scorecard, and Gym A/B subagent bench |
 | [22. Generate candidates, then check them](ch022-generate-candidates-then-check-them.md) | Partly implemented: cpu-int-candidates-v1, bounded CPU |
 | [23. `openagents coder`](ch023-openagents-coder.md) | Partly implemented: every verb, `--on ssh:DEST`, `coder daemon`, offline bench journey; `--on cloud` not live |
 | [24. DeepSeek Harness](ch024-deepseek-harness.md) | Written: deepseek-ai/deepseek-harness@ce7073d |
@@ -110,11 +114,11 @@ The [registry](chapters.json) names each chapter’s sources and qualified targe
 | [36. A terminal UI](ch036-a-terminal-ui.md) | Implemented: three agents inline, themes, job status, macOS terminal |
 | [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) | Partly implemented: vt-text-v1, bounded CPU |
 | [38. Drive Cursor](ch038-drive-cursor.md) | Partly implemented: cursor-agent 2026.10.14-941492e ACP |
-| [39. Drive Antigravity](ch039-drive-antigravity.md) | Implemented: agy 1.5.6 ACP on Google Cloud credits |
-| [40. The desktop app](ch040-the-desktop-app.md) | Implemented: native macOS Metal + AppKit app, concurrent chats, skills |
-| [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) | Implemented: mcworker-wire.coax JSON-lines protocol, parallel sub-agents |
+| [39. Drive Antigravity](ch039-drive-antigravity.md) | Implemented: `agy` ACP + `coder/tui/agyworker.coax` with T3 quirk fixes, prompt-cache expiry/idle compaction, and opt-in subagent delegation |
+| [40. The desktop app](ch040-the-desktop-app.md) | Implemented: unified `apps/openagents-desktop/` (`OpenAgents.app`, `--minimal`/`--full`, macOS Metal + Linux/Windows Vulkan, modular `page/*.coax`) |
+| [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) | Implemented: `mcworker-wire.coax` JSON-lines protocol driving `oa-worker`, `oa-subagent`, `inky`, `agyworker`, `claudeworker`, and legacy `mcworker` |
 | [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) | Unimplemented: design draft |
-| [43. The Foreman](ch043-the-foreman.md) | Unimplemented: design draft |
+| [43. The Foreman](ch043-the-foreman.md) | Partly implemented: Foreman supervisory chat in `apps/openagents-desktop/` (`Foreman.swift`, `Window+Foreman.swift`, `Window+ForemanAPI.swift`), feature-flagged under `foreman` |
 
 ## Contents
 

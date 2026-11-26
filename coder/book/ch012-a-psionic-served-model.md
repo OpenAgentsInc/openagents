@@ -1,13 +1,39 @@
 # 12. A Psionic-served model as an engine
 
-> **Status: partly implemented.** `coder run "TASK" --engine psionic` runs
-> Microcoder on a Chat Completions server on this machine: Psionic's, or
-> any server with the same API. Nothing leaves the machine, and the run
-> needs no key. The offline smoke runs it against a stand-in server. Still
-> to come: a Pylon as the server, the prefix-cache measurements, tool
-> arguments constrained during generation, and the comparison with a hosted
-> model on the same tasks. Psionic's GPUs are off for budget, so no run on a
-> real Psionic-served model is recorded yet.
+> **Status: partly implemented.** Local Psionic serving now runs live in
+> OpenAgents Desktop and `oa-worker` via **`psionic-inkling-serve`** on Apple
+> Silicon **Metal 4** (FlashAttention, 110–150+ tok/s decode on M5 Max, 32K KV
+> context, 21 GGML quantizations + LoRA adapters in `#14028`) and **CUDA**
+> (RTX 4080 75.7+ tok/s decode / 634 tok/s prefill, Linux and Windows) as the
+> `$0.00` local compute tier (`#14055`, `#14072`, `#14087`), alongside
+> `coder run "TASK" --engine psionic` against any local Chat Completions
+> server. Still to come: Pylon-served remote inference in the CLI plan,
+> constrained tool-argument decoding in the server loop, and side-by-side
+> prefix-cache ablations against hosted models on a shared held-out coding
+> suite.
+
+## Live local serving: `psionic-inkling-serve`, 32K tuning, and `$0` compute tier
+
+Since the initial CLI stub below, Psionic's local model serving moved into
+production for OpenAgents Desktop and `oa-worker`:
+
+- **Metal 4 and CUDA native servers (`#13966`, `#13975`–`#13977`, `#14028`):**
+  `psionic-inkling-serve` serves **Inkling 2 Mini** (and the 8-variant local
+  catalog including AtomicChat Uncensored, OrcaRouter Abliterated, 21 GGML
+  quantizations, and hot-swappable LoRA adapters, `#14028`) with a 32,768-token
+  Q8S/Q8_0 KV cache, FlashAttention, post-decode KV cache retention
+  (`0fe366840e`), and zero API keys or outbound traffic.
+- **32K local budget tuning in `oa-worker` (`#14055`):** `coder/tui/oa-worker.coax`
+  applies local-aware read/tool budgets (`FWW_LOCAL_TOOL_OUT_MAX = 8192`,
+  `FWW_READ_LOCAL_LINES = 200`, `FWW_TURN_TOOLS_BUDGET_LOCAL = 16384`) and
+  five-layer compaction so Inkling 2 Mini stays responsive inside 32K context.
+- **Unified cloud-first onboarding + `$0.00` local tier (`#14072`, `#14087`):**
+  Desktop onboarding lets users start immediately on OpenAgents Cloud and opt
+  into local Inkling 2 Mini (`$0.00` enforced in Usage HUD, zero cloud tokens
+  billed).
+
+The CLI path below documents the original `--engine psionic` adapter shared
+with legacy Microcoder.
 
 Psionic serves models on this machine and on Pylons. This chapter runs
 Microcoder on one and measures what owning both the harness and the server
@@ -104,6 +130,7 @@ hallucinations; [W3.1 verification record](../../docs/verification/executor-w31-
 
 ## Sources
 
+- `coder/tui/oa-worker.coax`, `coder/tui/inky.coax`, `psionic/lib/executor-desktop.coax`.
 - `coder/tui/microcoder_keys.coax` (`mk_plan_local`), `coder/tui/mcworker.coax`,
   `coder/tui/local_model.py`.
 - `coax/lib/gateway/psionic.coax`, `coax/lib/gateway/pylon.coax`.

@@ -10,12 +10,12 @@
 > calls, effects, held calls, refusals, unauthorized effects, changed
 > answers, sentinel leaks and task completion. The same eight attacks, in
 > plain language, also run against Claude Code through Coder's Router
-> (chapter20). Still to come: runs of a
+> (chapter 20). Still to come: runs of a
 > pinned Psionic-served model on held-out attack variants, with grants,
 > seeds and acceptance bounds frozen before the comparison; the gate wired
-> into [chapter1](ch001-the-simplest-loop.md)'s loop,
-> [chapter5](ch005-a-sandbox-and-approvals.md)'s approvals and
-> [chapter16](ch016-speak-the-protocols.md)'s remote calls; and attacks
+> into [chapter 1](ch001-the-simplest-loop.md)'s loop,
+> [chapter 5](ch005-a-sandbox-and-approvals.md)'s approvals and
+> [chapter 16](ch016-speak-the-protocols.md)'s remote calls; and attacks
 > on the `book-search --answer-eval` tool itself rather than on its
 > answerer called directly.
 
@@ -945,16 +945,16 @@ structural data-plane fencing for untrusted files and command outputs:
 - **No model has been measured in this lab.** The stand-in agent is
   deterministic and obeys every instruction. Plain-language versions of
   the corpus have run against Claude Code through Coder's Router under a
-  read ceiling (see [chapter20's containment](ch020-an-agent-that-stays-online.md#containment)):
+  read ceiling (see [chapter 20's containment](ch020-an-agent-that-stays-online.md#containment)):
   Claude Code tried a tool on four of the eight, and Coder's policy
   refused or denied each of those calls. That run measures the Router's ceiling, not this gate. Runs of a pinned Psionic-served model on
   held-out attack variants, with grants, seeds, model and build identities
   and acceptance bounds frozen first, are still to come. Until then, the
   measurements above describe this agent only.
-- **The gate is not in the harness yet.** Chapter1's loop, chapter4's
-  tools and chapter5's approvals still decide calls on their own terms,
-  and chapter16's remote results are not yet labelled `remote` on their
-  way in. Chapter18's consent gate also labels data as it moves, and the
+- **The gate is not in the harness yet.** Chapter 1's loop, chapter 4's
+  tools and chapter 5's approvals still decide calls on their own terms,
+  and chapter 16's remote results are not yet labelled `remote` on their
+  way in. Chapter 18's consent gate also labels data as it moves, and the
   two are not yet joined.
 - **Text is not gated.** An attack that changes the answer is reported, not
   stopped. A granted data flow carries whatever the answer became.
@@ -966,15 +966,15 @@ structural data-plane fencing for untrusted files and command outputs:
 
 - [Psionic chapter 57](../../psionic/book/ch057-answer-from-current-sources.md): the extractive
   answerer the attacks try to steer.
-- [Chapter3](ch003-keep-the-prefix-stable.md): prompts as typed
+- [Chapter 3](ch003-keep-the-prefix-stable.md): prompts as typed
   sections in a fixed order.
-- [Chapter4](ch004-tools-as-typed-capabilities.md): tools granted per
+- [Chapter 4](ch004-tools-as-typed-capabilities.md): tools granted per
   turn and refused before anything runs.
-- [Chapter5](ch005-a-sandbox-and-approvals.md): a call between what runs
+- [Chapter 5](ch005-a-sandbox-and-approvals.md): a call between what runs
   freely and the ceiling pauses for the person's answer.
-- [Chapter16](ch016-speak-the-protocols.md): remote tools, whose results
+- [Chapter 16](ch016-speak-the-protocols.md): remote tools, whose results
   are data.
-- [Chapter18](ch018-consent-before-sharing.md): labels that carry data
+- [Chapter 18](ch018-consent-before-sharing.md): labels that carry data
   classes through a session.
 
 ## Sources

@@ -495,11 +495,11 @@ held-out checks live in a separate file it does not load.
 ## What remains
 
 - **A real model.** The sampler is simulated. Drawing candidates from a
-  model through [chapter1](ch001-the-simplest-loop.md)'s loop, with real
+  model through [chapter 1](ch001-the-simplest-loop.md)'s loop, with real
   token counts, remains.
 - **Running candidates.** The tasks' answers are data checked by a pure
   function. Candidates that are programs, compiled and run in
-  [chapter5](ch005-a-sandbox-and-approvals.md)'s sandbox, with
+  [chapter 5](ch005-a-sandbox-and-approvals.md)'s sandbox, with
   compilation recorded apart from correctness, remain.
 - **The repair strategy.** Generate, run the visible tests, read the
   failures and repair needs a model that reads its failures. The selection

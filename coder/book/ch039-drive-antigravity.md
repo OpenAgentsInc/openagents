@@ -186,13 +186,25 @@ message is sent. If agy cannot read the session, Coder notes it and opens a
 new one. `coder replay` knows such a fork sent no earlier turns, for
 Cursor's `session/load` forks as well.
 
-## Routing
+## Routing and desktop worker (`agyworker.coax`, `#13802`, `#14024`, `#14031`, `#14053`, `#14071`)
 
-System One still chooses among its four engines (chapter 13). Antigravity is
-not a route label. It is a candidate for automatic routing only when
-`CODER_ROUTE_ENGINES` names it (bit 16 of the masks), only when `agy` is
-installed and not cooling down, and only when none of the other four is
-eligible. `--engine antigravity` always runs it.
+On desktop, [`coder/tui/agyworker.coax`](../../coder/tui/agyworker.coax)
+exposes `agy acp` over the shared `mcworker-wire.coax` JSON-lines protocol with
+mid-turn steer (`session/prompt` without cancel), Edit-from-here rollback, and
+reactive wakeup holds. Three follow-ups hardened the driver:
+
+- **Layer-1 CLI quirk fixes (`#14024`):** harvests 7 post-v0.1.11 T3 ACP
+  handling fixes (tool-call normalization, streaming edge cases, error
+  classification, and shutdown cleanup).
+- **`#authority` prompt-cache expiry & idle compaction policy (`#14031`):**
+  tracks cloud prompt-cache TTLs and schedules idle compaction so long sessions
+  avoid silent cold-cache cost spikes.
+- **Opt-in delegated subagent role (`#14053`, `#14071`):** primary desktop
+  turns now run on `oa-worker`, and Antigravity—alongside Claude Code
+  (`claudeworker`, `#14104`), Codex, and Cursor—runs as an opt-in external
+  delegated subagent gated by the user's local harness delegation toggle
+  (`CODER_ROUTE_ENGINES` or explicit `--engine antigravity` in CLI still
+  override directly).
 
 ## Checks
 
@@ -233,6 +245,6 @@ chapter's change.
 
 - `coax/lib/agent/engine/antigravity.coax`, `coax/lib/agent/engine/cursor.coax`,
   `coax/lib/agent/cursor/`.
-- `coder/tui/cursor.coax`, `coder/tui/agy_standin.coax`.
+- `coder/tui/agyworker.coax`, `coder/tui/cursor.coax`, `coder/tui/agy_standin.coax`.
 - google-antigravity/antigravity-cli `CHANGELOG.md` for 1.5.6, read
   2026-11-11, and `agy acp` as it answered on `coderos-4080`.

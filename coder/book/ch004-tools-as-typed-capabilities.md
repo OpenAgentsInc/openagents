@@ -8,7 +8,7 @@
 > automaton is a separate generation profile; it does not claim to constrain
 > every provider's decoder.
 
-Chapter1's loop has one tool, the calculator, and its grammar is written
+Chapter 1's loop has one tool, the calculator, and its grammar is written
 into the loop. A harness needs more than one tool, and it needs to answer
 three questions about each call before anything runs. Is the model allowed
 to call this tool in this turn? Are the arguments the right types? Can the
@@ -568,5 +568,5 @@ before it reached 12 steps. The last line limits a call to 3 pieces, so
   and guided sampling.
 - [Psionic chapter 77](../../psionic/book/ch077-call-a-tool.md): granted tools and a finite schema on
   gpt-oss.
-- [Chapter1](ch001-the-simplest-loop.md): the loop, and the composed native
+- [Chapter 1](ch001-the-simplest-loop.md): the loop, and the composed native
   profile with real tools and durable records.

@@ -78,15 +78,15 @@ grow together:
 
 ## II. Engines
 
-> **2026-11-20 desktop & runtime additions to fold into Part II–III:** Antigravity ACP driver (`coder/tui/agyworker.coax`, `#13831`–`#13839`), local Metal inference (`Inkling 2 Mini`, `#13825`–`#13826`), Git-backed per-turn checkpoints (`#13872`), universal interactive permission/Plan Mode cards (`#13873`), `/goal` verification turns (`apps/openagents-desktop/page/goal.coax`), and ATIF-v1.8 canonical traces (`coax/lib/nostr/atif/`, `#13830`).
+> **2026-11-26 unified runtime & desktop status:** Primary agent turns now run on the pure-Coax 24-layer **`openagents/core/`** runtime (`coder/tui/oa-worker.coax`, `#14050`–`#14057`), superseding Inky (`coax/lib/inky/`, `#13979`–`#13982`) and deprecated Microcoder (`#13983`). External CLIs (Claude Code, Codex, Cursor, Antigravity `coder/tui/agyworker.coax`) are opt-in delegated subagents (`#14053`, `#14071`). Also shipped: local Metal 4 / CUDA `psionic-inkling-serve` with 21-quant/LoRA (`#14028`) and `$0` local tier (`#14072`, `#14087`), `openagents.router.v2alpha1` `RoutePlan` (`#14056`), CC-parity subagents (`coder/tui/oa-subagent.coax`, `openagents/core/agents.coax`, `#14096`), `/goal` parity (`apps/openagents-desktop/page/goal.coax`, `#14086`), Git-backed Checkpoints (`#14026`), Full Auto (`#14063`), Usage HUD (`#14064`), Voice (`#14065`), File Viewer (`#13992`), Embedded Metaverse & Browser panes (`#14040`, `#14105`), and ATIF-v1.8 evals (`coax/lib/nostr/atif/`, `#13830`).
 
 | Chapter | What we build and check |
 | --- | --- |
-| [9. Microcoder](ch009-microcoder.md) — partly implemented | Our own loop: state, one structured call per step, run the commands, repeat. Gateways to any model we can reach, and the endings it reports. |
-| [10. Drive Claude Code](ch010-drive-claude-code.md) — partly implemented | The `claude` CLI's stream-json protocol as a Coax state machine: queries, control frames, in-process MCP servers and approvals, checked against recorded fixtures. |
+| [9. Microcoder](ch009-microcoder.md) — implemented | Our own loop: originally `coax/lib/microcoder/` (now deprecated, `#13983`), superseded by `coax/lib/inky/` and the unified 24-layer pure-Coax `openagents/core/` runtime (`coder/tui/oa-worker.coax`). |
+| [10. Drive Claude Code](ch010-drive-claude-code.md) — implemented | The `claude` CLI's stream-json protocol as a Coax state machine: queries, control frames, in-process MCP servers and approvals, checked against recorded fixtures. |
 | [11. Drive Codex](ch011-drive-codex.md) — partly implemented | `codex app-server` over JSON-RPC as a pull-based client: requests, server requests, approvals and recorded sessions replayed byte for byte. |
-| [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — partly implemented | Microcoder's loop on a model Psionic serves on this machine or a Pylon, with the prefix-cache and constrained-tool gains measured against a hosted model. |
-| [13. Choose an engine](ch013-choose-an-engine.md) — partly implemented | A System One decision picks the engine, model and effort for each task from the request and the machine, with a labelled set split into tuning and held-out halves. |
+| [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — partly implemented | Local and hybrid Psionic serving (`psionic-inkling-serve` on Metal 4 and CUDA, 32K KV, 21-quant/LoRA, `hybrid-exec-v1`, `$0` local tier) plus `--engine psionic` and Pylon routing. |
+| [13. Choose an engine](ch013-choose-an-engine.md) — partly implemented | A System One decision (`openagents.router.v2alpha1` `RoutePlan` in `coax/lib/agent/router/`) picks packs, compute tier, effort, and opt-in external delegation (`#14056`, `#14071`). |
 
 ## III. Many tasks
 
@@ -146,7 +146,7 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 
 | Chapter | What we build and check |
 | --- | --- |
-| [36. A terminal UI](ch036-a-terminal-ui.md) — partly implemented | Coder inline in the person's terminal, as Claude Code and Codex run: a live region for status, the streaming reply and the composer, and finished turns committed to scrollback. Raw keys, a key decoder with bracketed paste, display width, a composer with history, and a pseudo-terminal smoke test. Code: `coax/lib/tui/tui.coax` and `coder/tui/`. |
+| [36. A terminal UI](ch036-a-terminal-ui.md) — implemented | Coder inline in the person's terminal, as Claude Code and Codex run: a live region for status, the streaming reply and the composer, and finished turns committed to scrollback. Raw keys, a key decoder with bracketed paste, display width, a composer with history, and a pseudo-terminal smoke test. Code: `coax/lib/tui/tui.coax` and `coder/tui/`. |
 | [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) — partly implemented | A VT emulator in Coax so Coder can run programs that draw to a terminal and read the screen as text, checked against libghostty as an oracle and never linked to it. |
 | [38. Drive Cursor](ch038-drive-cursor.md) — partly implemented | The installed Cursor CLI as an engine, driven as `agent acp` on the person's own login: one session, streamed replies, tool rows and diffs, chapter 5's approvals. Pinned CLI build `2026.10.14-941492e`. |
 | [39. Drive Antigravity](ch039-drive-antigravity.md) — implemented | Google's Antigravity CLI as an engine, driven as `agy acp` on the same ACP client and engine as Cursor: its own sign-in or a credentials file naming Google Cloud credentials, models and thought level, `session/resume` for forks, chapter 5's approvals. agy 1.5.6. |
@@ -155,10 +155,10 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 
 | Chapter | What we build and check |
 | --- | --- |
-| [40. The desktop app](ch040-the-desktop-app.md) — implemented | Native macOS desktop app (`apps/coder-desktop/`): a Coax UI/state machine (`page.coax`) on a Metal GPU carrier with an AppKit host (`App.swift`) and native editor (`KitEditorMac.swift`), concurrent and headless background chats, disk persistence and `~/.claude/skills` injection. |
-| [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) — implemented | The shared JSON-lines wire protocol (`mcworker-wire.coax`) between the desktop/TUI host and `mcworker` / `claudeworker`, including parallel sub-agent delegation across Gemini and Claude levels and streamed thinking/replies. |
-| [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) — design draft | Connecting the desktop app to the rest of the book: unified Chapter 2 session logs, Codex/Psionic/ACP engines and System One routing, approvals/consent/memory in the UI, embedded VT terminal, remote daemons and cross-platform carriers. |
-| [43. The Foreman](ch043-the-foreman.md) — design draft | A persistent supervisory chat pinned to the top of the Coder desktop sidebar that commands other chats, spawns new chats, searches across the whole repository and previous chats, and operates under scoped elevated permissions (`docs/coder/foreman-spec.md`). |
+| [40. The desktop app](ch040-the-desktop-app.md) — implemented | Unified native desktop app (`apps/openagents-desktop/`, `OpenAgents.app`, `--minimal`/`--full` builds, macOS Metal + Linux/Windows Vulkan): modular Coax UI (`page/*.coax`) with concurrent chats, worktrees, checkpoints, Full Auto, Usage HUD, Voice, File Viewer, Wallet, Metaverse, and Browser panes. |
+| [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) — implemented | The shared JSON-lines wire protocol (`mcworker-wire.coax`) between desktop/TUI hosts and `oa-worker`, `oa-subagent`, `inky`, `agyworker`, `claudeworker`, and legacy `mcworker`, including CC-parity parallel/background/fork sub-agents and streamed thinking/replies. |
+| [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) — design draft | Connecting the desktop app to the rest of the book: tracking shipped milestones (Linux/Windows Vulkan, `coder-host`, approvals/Full Auto, multimodal Read, gBench) alongside open tracks (`#14066`–`#14068` Universal Introspection, Borderless Session Control, Mobile parity). |
+| [43. The Foreman](ch043-the-foreman.md) — partly implemented | Supervisory chat (`Foreman.swift`, `ForemanOperator.swift`, `Window+Foreman.swift`, `Window+ForemanAPI.swift`, feature-flagged under `foreman`) that inspects, spawns, and commands sidebar chats under scoped permissions (`docs/coder/foreman-spec.md`). |
 
 ## What stays in Psionic
 

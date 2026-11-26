@@ -60,7 +60,7 @@ one model request plus the tool call its reply ends with, if any. The
 transcript is one token array, `ids`. The prompt fills `ids[0..<prompt]`;
 each reply and each tool output is appended after it. Step `k`'s request is
 exactly `ids[0..<steps[k].seen]`: the model never sees anything the
-transcript does not hold, and later steps only append. Chapters2 and 3
+transcript does not hold, and later steps only append. Chapters 2 and 3
 build on that property.
 
 A reply ends in one of four ways, the same ways Psionic chapter 126's engine ends

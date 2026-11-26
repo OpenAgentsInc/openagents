@@ -13,14 +13,14 @@ the live engine boundaries and defaults. The three-room experiment below
 checks admission decisions; the native profile exercises the same sequence
 of proposal, decision, durable intent, effect and result with real tools.
 
-Chapter4's grant answers whether a tool may be called in a turn. It does
+Chapter 4's grant answers whether a tool may be called in a turn. It does
 not say which parts of the world the tool may touch, how much a session may
 spend, or what happens when a call is risky but not forbidden. This chapter
 adds a sandbox around every call. No tool inherits authority by default:
 the sandbox runs a call only when its policy allows it, or when the policy
 allows it to be asked about and a person approves.
 
-The world is still chapter4's: a light switch in each of three rooms,
+The world is still chapter 4's: a light switch in each of three rooms,
 `hall`, `den` and `study`, read by `get` and written by `set`. The rooms
 stand in for the directories a process would see. A real process sandbox
 needs operating-system confinement, which this chapter does not build; the
@@ -34,7 +34,7 @@ what runs. Its checks leave no mutant alive.
 
 This chapter's profile is `cpu-harness-sandbox-v1`:
 
-- The tools are chapter4's registry: `add` and `div` (effect none),
+- The tools are chapter 4's registry: `add` and `div` (effect none),
   `get` (read) and `set` (write). `get` and `set` name a room in their first
   field. `add` and `div` touch no room.
 - Time is a simulated clock in ticks. Each body takes a fixed number:
@@ -73,7 +73,7 @@ opened with one.
 
 ## Deciding a call
 
-The decision for a call that chapter4 has admitted goes in a fixed
+The decision for a call that chapter 4 has admitted goes in a fixed
 order. The limits come first, then the ceiling. Nothing passes those two,
 not even an approval. Then a pattern the session holds, or an approval, runs
 the call. Otherwise the call asks when its effect is above `allow`, its
@@ -166,10 +166,10 @@ the world.
 
 ## Every outcome is logged
 
-Each outcome is a `context` event in chapter2's log, so the same hash
+Each outcome is a `context` event in chapter 2's log, so the same hash
 chain that covers a model's requests covers the sandbox's decisions. The
 first event holds the policy. A call's event holds the session, the
-verdict, why, chapter4's tool, the room, chapter4's outcome and
+verdict, why, chapter 4's tool, the room, chapter 4's outcome and
 value, the request, and then the call's text, one token per byte. An
 answer's event holds the answer as given and then what took effect.
 
@@ -218,7 +218,7 @@ approve 1, deny 2, expire 3):
 | 10, step 9 | `3 1 3 1 1 11 1 0 1 0 1` |
 
 A call that never enters the session is not logged. That covers three
-cases: text longer than chapter4's 256 bytes, a world too small for the
+cases: text longer than chapter 4's 256 bytes, a world too small for the
 registry's rooms, and a log with no room for the event. The sandbox checks
 for room first, so an effect never happens without its event.
 
@@ -260,7 +260,7 @@ sb_call :: (env:SbTools,s:[]SbSession,text:string,world:[]int,l:[]LgLog)->SbEven
 }
 ```
 
-A call that runs goes through chapter4's `ht_call` unchanged, so its
+A call that runs goes through chapter 4's `ht_call` unchanged, so its
 budgets, its argument grammar and its result type still apply. The sandbox
 charges the session after the run.
 
@@ -270,7 +270,7 @@ An answer names its session and its request. Both must match the pending
 request, and the answer's time may not be earlier than the session's clock.
 An answer with no decision is refused as `answer`, and the request keeps
 waiting. A valid answer closes the request. Deny and expire run nothing. An
-approval runs the call that was paused, admitted again by chapter4 under
+approval runs the call that was paused, admitted again by chapter 4 under
 the grant passed in now, and decided again at the new clock. If the grant
 no longer names the tool, or the wait used up the session's ticks, the
 approved call is refused.
@@ -386,7 +386,7 @@ sb_replay :: (env:SbTools,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck 
   unchanged. Five patterns replace the oldest.
 - **Before the session.** Text of 257 bytes, a world of 7 rooms, and logs
   with one event or one token too few are refused and not logged; a log
-  with exactly enough room takes the event. A log with an open chapter1
+  with exactly enough room takes the event. A log with an open chapter 1
   turn takes nothing.
 - **Replay refusals.** Thirty-two forged logs, each rechained so the hash chain
   verifies, each change one token of one event, drop tokens, or change its
@@ -396,7 +396,7 @@ sb_replay :: (env:SbTools,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck 
   or log too small are refused too.
 - **Random sessions.** A `#forall` over 12 seeds draws a valid policy and
   16 steps of calls and answers. After every refused, paused or asked step
-  the world, the calls, the bytes and chapter4's cost are unchanged.
+  the world, the calls, the bytes and chapter 4's cost are unchanged.
   Every run is within the ceiling and the limits. An approval that ran is
   refused when sent again and when sent to another session, and the world
   does not change. The log replays to the same world and clock.
@@ -506,9 +506,9 @@ that event's digest differs from the forged one.
 
 - [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
 - [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
-- [Chapter4](ch004-tools-as-typed-capabilities.md): the tool pipeline
+- [Chapter 4](ch004-tools-as-typed-capabilities.md): the tool pipeline
   that the sandbox wraps.
-- [Chapter2](ch002-model-visible-means-logged.md): the log that records
+- [Chapter 2](ch002-model-visible-means-logged.md): the log that records
   policies, requests and answers.
 
 ## Expected transcript

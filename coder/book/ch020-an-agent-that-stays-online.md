@@ -6,7 +6,7 @@
 > that repeats one step or, by System One's judgment, isn't making progress,
 > and stops it if that happens again. Replies follow per-channel rules: at
 > most 100 words for chat, structured for issues. Long work runs as
-> background jobs (chapter14). `coder daemon` attaches a machine as an
+> background jobs (chapter 14). `coder daemon` attaches a machine as an
 > execution environment: it starts queued jobs only within the machine's
 > grant, and a job for a machine that is offline waits and is sent when the
 > machine answers. A Router killed between an effect and its record
@@ -19,7 +19,7 @@
 > backoff, and then continues in a fork the Thread follows. Mail and
 > document replies have their own structure. A Worker for an event from an
 > author its source's policy doesn't name runs under a read ceiling, and
-> its forks keep it. Chapter6's attacks, sent through the Router to Claude
+> its forks keep it. Chapter 6's attacks, sent through the Router to Claude
 > Code, ran no effect above read and leaked no secret. Mail replies go to Gmail as drafts,
 > or are sent when the source says so. Still open: following a project's
 > own templates.
@@ -29,7 +29,7 @@ limits the claims below to their checked boundaries. Router launch and
 delivery recovery do not establish exactly-once arbitrary engine tool
 effects; an unrecorded completion can have an unknown outcome.
 
-Chapter17's agent is only useful if it keeps working while a laptop sleeps,
+Chapter 17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
 recovers from failures without a person watching. This chapter covers the
 asynchronous loop, channel rules, the split between compute, state and
@@ -41,7 +41,7 @@ DeepSeek Harness team's Super-agent article
 
 - **Full duplex.** Long tools become `start` and `stop`. `start` returns a
   `started` notice with a job ID at once, and the loop goes on; the result
-  arrives later as a new event in the log (chapter14's background jobs). The
+  arrives later as a new event in the log (chapter 14's background jobs). The
   model can `stop` a job that runs too long. New input is handled when the
   current inference step ends, not when the tools finish.
 - **Channel rules.** The Router writes every reply, so verbose reasoning and
@@ -53,12 +53,12 @@ DeepSeek Harness team's Super-agent article
     project's conventions.
 - **Compute apart from state.** The loop runs in stateless containers that can
   restart, scale out or move. Sessions, Threads, subscriptions and jobs live
-  in a durable store as chapter2's log, and a replacement container
+  in a durable store as chapter 2's log, and a replacement container
   resumes from the log.
 - **Compute apart from execution environments.** Repositories with
   uncommitted work, local credentials, intranet services and specific
   hardware stay where they are. Each machine runs a small daemon that holds no
-  session state; it runs commands and returns results under chapter5's
+  session state; it runs commands and returns results under chapter 5's
   sandbox:
   - The person's own machine, a cloud machine or a sandbox made on demand all
     attach through the same interface.
@@ -69,7 +69,7 @@ DeepSeek Harness team's Super-agent article
   - Handles infrastructure faults: API errors, failed state recovery, stuck
     jobs. It rechecks transient external failures until they clear.
   - Judges with a model whether each Worker is making real progress or has
-    drifted from its goal (chapter14's goal check), and stops or redirects
+    drifted from its goal (chapter 14's goal check), and stops or redirects
     it.
   - Answers maintainers' questions about failures and can change the main
     system's prompts and trigger rules while it runs. Every change it makes is
@@ -157,7 +157,7 @@ marker, record it as posted, post no second comment, and start no Worker
 for it.
 
 Long work doesn't block the loop: each Worker is a background job
-(chapter14), and the Router only starts it and records the session ID.
+(chapter 14), and the Router only starts it and records the session ID.
 
 A follow-up on a Thread whose Worker is still working forks that Worker
 with the new message, so the answer doesn't wait for the long work, and
@@ -607,12 +607,12 @@ it with `thread.stop` while it runs.
 
 ## Dependencies
 
-- [Chapter2](ch002-model-visible-means-logged.md): the durable log the stateless loop resumes from.
-- [Chapter5](ch005-a-sandbox-and-approvals.md): grants and confinement on each daemon.
-- [Chapter6](ch006-a-document-tries-to-become-the-system-prompt.md): hostile events and tool results.
-- [Chapter14](ch014-forks-subagents-and-jobs.md): background jobs and goals.
-- [Chapter18](ch018-consent-before-sharing.md) and [Chapter19](ch019-remember-a-fact-then-revise-it.md): consent and long-term memory.
-- [Chapter17](ch017-one-agent-many-tasks.md): the Router and Workers this chapter keeps online.
+- [Chapter 2](ch002-model-visible-means-logged.md): the durable log the stateless loop resumes from.
+- [Chapter 5](ch005-a-sandbox-and-approvals.md): grants and confinement on each daemon.
+- [Chapter 6](ch006-a-document-tries-to-become-the-system-prompt.md): hostile events and tool results.
+- [Chapter 14](ch014-forks-subagents-and-jobs.md): background jobs and goals.
+- [Chapter 18](ch018-consent-before-sharing.md) and [Chapter 19](ch019-remember-a-fact-then-revise-it.md): consent and long-term memory.
+- [Chapter 17](ch017-one-agent-many-tasks.md): the Router and Workers this chapter keeps online.
 
 ## Done means
 
@@ -621,7 +621,7 @@ it with `thread.stop` while it runs.
   stopped job reports as stopped, and an expired one as expired. Checked
   by the smoke with an 8-second Worker in place of a ten-minute one; a
   stopped Worker's reply starts "Stopped (stopped)", and an expired job's
-  ending is checked by chapter14's `--deadline` smoke.
+  ending is checked by chapter 14's `--deadline` smoke.
 - [x] **Channels.** Every chat reply in a replayed stream is 100 words or fewer,
   and every pull request body has its required sections. Checked by unit
   checks on `rt_reply`, `rt_reply_pr`, `rt_reply_mail` and `rt_reply_doc`,
@@ -641,12 +641,12 @@ it with `thread.stop` while it runs.
   provider is rechecked until it answers (see
   [Provider errors](#provider-errors)); its time to detection is one pass,
   and the time to recovery depends on the provider.
-- [x] **Containment.** In chapter6's lab, extended to Triggers, a hostile event
+- [x] **Containment.** In chapter 6's lab, extended to Triggers, a hostile event
   produces no admitted command outside a daemon's grant and no secret in
   model context, the log or outbound messages. Checked in Coder by the
   smoke's hostile event, and live by chapter 6's corpus through the
   Router against Claude Code (see [Containment](#containment)).
-- Each mechanism passes chapter21 against the simpler design on tasks it was
+- Each mechanism passes chapter 21 against the simpler design on tasks it was
   not built from, or it is removed.
 
 ## Sources

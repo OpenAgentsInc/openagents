@@ -11,7 +11,7 @@ The [coverage matrix and replay definitions](CONTRACT.md) distinguish this
 experiment's token log from the owned worker's exact request journal and
 from driven-engine reports. Claude Code and Codex own their internal requests.
 
-The model sees only what the harness sends it. Chapter1's loop already
+The model sees only what the harness sends it. Chapter 1's loop already
 keeps that small: step `k`'s request is a prefix of one token array. This
 chapter makes the array itself a record. The harness writes an append-only
 log of events, each event's tokens are the only way anything enters the
@@ -32,7 +32,7 @@ This chapter's profile is `sha256-harness-log-v1`:
 - SHA-256 from `coax/lib/crypto`, over Psionic chapter 239's encoding: integers as
   little-endian 64-bit words (two's complement for negative numbers), text
   as its length then its bytes.
-- Tokens, the model and the tool are chapter1's: the scripted model or
+- Tokens, the model and the tool are chapter 1's: the scripted model or
   Psionic chapter 126's engine, and the calculator.
 
 ## Events
@@ -53,7 +53,7 @@ and nothing else.
 
 `system`, `user` and `context` are text for the model. `context` is text the
 harness injects, such as a retrieved document; it is logged like any other
-text. The other kinds are one turn of chapter1's loop: the budget, each
+text. The other kinds are one turn of chapter 1's loop: the budget, each
 request's place and seed, each reply and tool output, and the turn's
 `HlTurn`.
 
@@ -128,7 +128,7 @@ lg_say :: (l:[]LgLog,kind:LgKind,text:[]int)->LgStatus #effects(all) {
 }
 ```
 
-`lg_run` is chapter1's turn with the log as its transcript. Its prompt
+`lg_run` is chapter 1's turn with the log as its transcript. Its prompt
 is every token logged so far. Before each request it logs a `request`
 event, then sends exactly `tokens[0..<used]`. The model draws into the
 store past `used`, where nothing is visible: the reply becomes part of
@@ -189,12 +189,12 @@ lg_loop :: (m:HlModel,b:HlBudget,seed:u64,l:[]LgLog,prompt:int)->HlTurn #effects
 }
 ```
 
-The loop's control flow is chapter1's, line for line, so the checks
+The loop's control flow is chapter 1's, line for line, so the checks
 compare it with `hl_run` on every run rather than trust the copy.
 
 ## A log by hand
 
-Chapter1's hand trace becomes eleven events: the prompt as one `user`
+Chapter 1's hand trace becomes eleven events: the prompt as one `user`
 event, then the turn at seed 7 with the budget `steps 3, tokens 17,
 deadline 68, reply 8, tool 3`, no cancel (`-1`).
 
@@ -215,13 +215,13 @@ deadline 68, reply 8, tool 3`, no cancel (`-1`).
 Each number can be rebuilt from the events before it. A request's `seen` is
 the count of tokens logged before it: `5`, then `5 + 7 + 4 = 16`, then
 `16 + 6 + 5 = 27`. Its seed is Psionic chapter 53's counter word `cr_bits(7, k)`.
-Each reply's draws follow chapter1's rule: the tokens kept, plus one when
+Each reply's draws follow chapter 1's rule: the tokens kept, plus one when
 the reply ended on `<|assistant_end|>` or `<|bos|>`, so `7`, `6` and
 `3 + 1 = 4`. The stop's fields are sums over the steps: 3 replies; the
 transcript ends at `27 + 3 = 30`; the last reply started at 27; draws
 `7 + 6 + 4 = 17`; the clock is the positions read plus 3 ticks a tool
 call, `11 + 3 + 21 + 3 + 30 = 68`; and 2 tool calls. These are exactly
-chapter1's hand-traced numbers.
+chapter 1's hand-traced numbers.
 
 Event 0's content digest hashes 86 bytes: the 8-byte length 30, the 30
 bytes of `psionic.harness.log.content.v1`, the count 5, and the five tokens
@@ -360,7 +360,7 @@ and no new turn may be added until it is closed, and `lg_turn` reports it as
 ## Admitting a request
 
 `lg_admit` is the gate for a request built somewhere other than the log,
-such as chapter3's prompt assembly. Given a `request` event and the
+such as chapter 3's prompt assembly. Given a `request` event and the
 tokens that were, or would be, sent, it refuses unless the tokens are
 exactly the tokens of the events before it: the length must equal the
 request's `seen` (`view`), and each event's slice of the request must hash
@@ -431,7 +431,7 @@ lg_offset :: (g:LgLog,index:int)->int #effects(all) {at:=0;for e:g.events[0..<in
 
 `lg_replay` rebuilds a turn's `HlTurn` and `HlStep` records from the
 events and hands them, with the log's own tokens as the transcript, to
-chapter1's `hl_replay`. Replay from the log is therefore chapter1's
+chapter 1's `hl_replay`. Replay from the log is therefore chapter 1's
 replay: every reply is redrawn from its logged seed and must match token
 for token, and every tool output is recomputed.
 
@@ -567,8 +567,8 @@ script.
   against the values Python's `hashlib` gives in
   [harness_log_oracle.py](../../psionic/tests/harness_log_oracle.py), and the
   transcript equal to `hl_run`'s.
-- **Chapter1's boundaries, logged:** every budget and window case
-  chapter1 checks at its limit and one past it, each cancel boundary and
+- **Chapter 1's boundaries, logged:** every budget and window case
+  chapter 1 checks at its limit and one past it, each cancel boundary and
   a free tool, run through `hl_run` and `lg_run`: the same turn, transcript
   and steps, rebuilt from the log, and replay.
 - **Tampering without rewriting the chain:** every one of the 30 tokens
@@ -594,7 +594,7 @@ script.
   log, an open turn), text rules, exact room, a model refusal logged as a
   request with no reply, and a second turn whose prompt is the whole log.
 - **Every step's view is rebuilt from the log:** 200 random scripts and
-  budgets from chapter1's brute-force oracle, with the prompt split into
+  budgets from chapter 1's brute-force oracle, with the prompt split into
   one to three text events of random kinds, run through `hl_run` and
   `lg_run`. The turns must be equal, the token store must equal `hl_run`'s
   transcript, the steps rebuilt from the log must equal `hl_run`'s field

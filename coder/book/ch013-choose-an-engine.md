@@ -1,13 +1,16 @@
 # 13. Choose an engine
 
-> **Status: partly implemented.** `coder run "TASK"` with no `--engine`
-> asks System One (Google's Gemini Decision 1 first since 2026-11-13, then
-> local Elephant or Baseten's mammoth-1) which engine should take the task,
-> how hard it is and how much effort to give it, and runs the answer with
-> that effort. In the terminal UI, `--engine auto` or `/engine auto` asks at
-> each conversation's first message. On the labelled set, both halves route
-> 22 of 22 on mammoth-1 (2026-11-02), with a mean probability of 0.95 on the
-> held-out half, and 44 of 44 on Gemini Decision 1 (2026-11-13). See
+> **Status: partly implemented.** Routing has expanded in two layers:
+> (1) the CLI router (`coax/lib/agent/engine/route.coax`) asks Gemini Decision
+> 1 first, then local Elephant or mammoth-1 (44/44 on the 44-message CLI set);
+> and (2) the unified **System One Front v2** (`openagents.router.v2alpha1`
+> `RoutePlan` in [`proto/openagents/router/v2alpha1/router.proto`](../../proto/openagents/router/v2alpha1/router.proto)
+> and [`coax/lib/agent/router/`](../../coax/lib/agent/router/README.md), `#14056`)
+> routes across all 8 OpenAgents capability packs, compute tiers
+> (`local_inkling`, `cloud_fast`, `cloud_deep`, `remote_station`), and opt-in
+> external CLI delegation (`#14071`), scoring **66/66** on the tuned set and
+> **30/31** on the held-out set (2026-11-14). See
+> [System One Front v2 (`RoutePlan`)](#system-one-front-v2-routeplan) and
 > [The door order](#the-door-order).
 
 The labelled accuracy below measures agreement with a routing policy, not
@@ -44,9 +47,10 @@ It asks three typed questions:
 The labels split Claude Code and Codex by the job's shape: work that spans
 files or needs understanding first goes to Claude Code, and quick contained
 jobs go to Codex. They don't split by whether the task mentions code. A
-plain question or small talk goes to Microcoder. The desktop Lab's router
-(`apps/openagents-desktop/router.coax`) asks the same way; earlier labels
-that split by "code" sent refactors and one-line edits near 50/50.
+plain question or small talk goes to Microcoder. The unified delegation router
+([`coax/lib/agent/router/`](../../coax/lib/agent/router/README.md)) builds on
+these same shape-based labels; earlier labels that split by "code" sent
+refactors and one-line edits near 50/50.
 
 Each key comes from its variable (`GEMINI_API_KEY`, `BASETEN_API_KEY`), or
 from its file under `~/work/.secrets/` (`openagents-gemini-provider.env`,
@@ -155,11 +159,36 @@ of 2026-11-02, the path didn't answer:
 Coder calls the doors directly through `coax/lib/systemone`, the same
 request the desktop Lab sends.
 
+## System One Front v2 (`RoutePlan`)
+
+With `oa-worker` owning primary turns across local Inkling, OpenAgents Cloud,
+and capability packs (`#14053`, `#14056`, `#14071`), routing generalized from
+picking one of four coding CLIs into `openagents.router.v2alpha1`
+([`proto/openagents/router/v2alpha1/router.proto`](../../proto/openagents/router/v2alpha1/router.proto))
+implemented in [`coax/lib/agent/router/`](../../coax/lib/agent/router/README.md):
+
+- **Code decides eligibility first (`policy.coax`):** stale station reports
+  (>2 min), keep-clear flags, disk floors, max agents, logged-out accounts, and
+  opt-in external delegation gates (`#14071`: external CLIs `claude`, `codex`,
+  `antigravity`, `cursor` are ineligible unless the user explicitly enables
+  external harness delegation or names them) are enforced deterministically in
+  Coax before any model call.
+- **Typed `RoutePlan` questions (`ask.coax`, `decide.coax`):** selects
+  `primary_pack`, `secondary_pack`, `compute_tier` (`local_inkling`,
+  `cloud_fast`, `cloud_deep`, `remote_station`), `explicit_delegate`,
+  `difficulty`, `effort`, `continue_active`, and `missing_capability` (Episode
+  289 P9 authoring trigger).
+- **Verified labelled sets (`replay-check.coax`):** **66/66** wants right on
+  the 33-task tuned set and **30/31** on the 20-task held-out set against
+  recorded Gemini Decision 1 exchanges (`fixtures/google/`,
+  `fixtures/google-held/`), plus 30,000 policy fuzz mixes and 2,048 seeded
+  codec goldens (`wire-goldens.coax`).
+
 ## Checks
 
 ### Local Elephant and desktop routing (2026-11-04)
 
-The OpenAgents Metaverse Engine now replaces its agent/model/effort dropdowns with this router.
+OpenAgents Desktop replaces manual agent/model/effort dropdowns with this router.
 Shared `~/.openagents/coder/router.json`, with schema `coder.router.v1`, selects
 a System One `url` and explicit `remote` boolean. The desktop's default is
 keyless local Elephant at `http://127.0.0.1:8793/v1/systemone`; it reuses the
@@ -231,9 +260,11 @@ No message in it needs the psionic engine, so that answer has no check yet.
 
 ## Sources
 
+- `coax/lib/agent/router/` (`decide.coax`, `policy.coax`, `ask.coax`,
+  `wire.coax`, `station.coax`, `eval.coax`, `replay-check.coax`,
+  `wire-goldens.coax`) and `proto/openagents/router/v2alpha1/router.proto`.
 - `coax/lib/agent/engine/route.coax`, `route-policy.coax`, `availability.coax` and
-  `availability-policy.coax` (the shared router); `coder/tui/route.coax`
+  `availability-policy.coax` (the CLI router); `coder/tui/route.coax`
   (Coder's consent gate around it), `coder/tui/route-labels.tsv`,
   `coder/tui/route_eval.py`.
 - `coax/lib/systemone/` (`request.coax`, `answers.coax`, `transport.coax`).
-- `apps/openagents-desktop/router.coax` and `router-labels.tsv`.

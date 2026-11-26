@@ -117,7 +117,7 @@ The event digest covers every field except `redacted`, the content
 digest, and the previous event's digest, so the events form a chain. The
 content digest covers the three lengths and the bytes. Forgetting
 overwrites bytes and sets `redacted` but leaves both digests alone, so the
-chain still verifies after a forget; the same rule as chapter2's
+chain still verifies after a forget; the same rule as chapter 2's
 redaction.
 
 <!-- source: psionic/lib/harness/memory.coax encode -->

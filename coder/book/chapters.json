@@ -236,7 +236,7 @@
       "title": "Microcoder",
       "file": "ch009-microcoder.md",
       "status": "implemented",
-      "profile": "`coder run --engine micro`, Vertex, Gemini API and OpenRouter; recorded streams replay",
+      "profile": "deprecated `mcworker` (Vertex, Gemini API, OpenRouter; recorded streams replay); superseded by `coax/lib/inky/` and unified `openagents/core/` (`oa-worker`)",
       "depends_on": [
         1,
         5
@@ -252,6 +252,11 @@
         "coax/lib/microcoder/tools.coax",
         "coax/lib/microcoder/tools_smoke.coax",
         "coax/lib/microcoder/tools_smoke.sh",
+        "coax/lib/inky/loop.coax",
+        "coder/tui/inky.coax",
+        "openagents/core/core.coax",
+        "openagents/core/query_loop.coax",
+        "coder/tui/oa-worker.coax",
         "coder/tui/mcworker.coax",
         "coder/tui/microcoder_keys.coax",
         "coder/tui/microcoder.coax"
@@ -259,7 +264,9 @@
       "qualified_targets": [
         "macos-arm64"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 10,
@@ -328,7 +335,7 @@
       "title": "A Psionic-served model as an engine",
       "file": "ch012-a-psionic-served-model.md",
       "status": "partly implemented",
-      "profile": "`--engine psionic` on a local Chat Completions server",
+      "profile": "`psionic-inkling-serve` local Metal 4 / CUDA serving (32K KV, 21-quant/LoRA, hybrid-exec-v1, $0 local tier) plus `--engine psionic`",
       "depends_on": [
         3,
         9,
@@ -337,6 +344,9 @@
         "psionic:176"
       ],
       "source": [
+        "coder/tui/oa-worker.coax",
+        "coder/tui/inky.coax",
+        "psionic/lib/executor-desktop.coax",
         "coder/tui/microcoder_keys.coax",
         "coder/tui/mcworker.coax",
         "coder/tui/local_model.py",
@@ -345,14 +355,16 @@
       "qualified_targets": [
         "macos-arm64"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-desktop/LocalModels.swift"
+      ]
     },
     {
       "number": 13,
       "title": "Choose an engine",
       "file": "ch013-choose-an-engine.md",
       "status": "partly implemented",
-      "profile": "Gemini Decision 1 first, then local Elephant or mammoth-1; both route 44/44 on the labelled set; effort reaches the engine",
+      "profile": "`openagents.router.v2alpha1` `RoutePlan` + `coax/lib/agent/router/` (66/66 dev, 30/31 held-out) with opt-in external delegation gating",
       "depends_on": [
         9,
         10,
@@ -361,6 +373,10 @@
         16
       ],
       "source": [
+        "proto/openagents/router/v2alpha1/router.proto",
+        "coax/lib/agent/router/decide.coax",
+        "coax/lib/agent/router/policy.coax",
+        "coax/lib/agent/router/wire.coax",
         "coax/lib/agent/engine/route.coax",
         "coder/tui/route.coax",
         "coder/tui/route-labels.tsv",
@@ -372,14 +388,16 @@
       "qualified_targets": [
         "macos-arm64"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 14,
       "title": "Forks, subagents and jobs",
       "file": "ch014-forks-subagents-and-jobs.md",
       "status": "partly implemented",
-      "profile": "forks (Claude Code ones resumed on the server), jobs with deadlines and reports, subagents held to the parent's policy, goals",
+      "profile": "forks, jobs with deadlines and reports, CC-parity subagents (`oa-subagent.coax`, `openagents/core/agents.coax`, parallel/bg/fork, worktrees), `/goal` parity, and `tasks.coax`",
       "depends_on": [
         "psionic:174",
         "psionic:176",
@@ -387,6 +405,11 @@
         5
       ],
       "source": [
+        "openagents/core/subagent.coax",
+        "openagents/core/agents.coax",
+        "openagents/core/tasks.coax",
+        "coder/tui/oa-subagent.coax",
+        "apps/openagents-desktop/page/goal.coax",
         "coder/tui/session.coax",
         "coder/tui/coder.coax",
         "coder/tui/smoke.py"
@@ -394,7 +417,9 @@
       "qualified_targets": [
         "macos-arm64"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 15,
@@ -552,7 +577,7 @@
       "title": "Measure the harness",
       "file": "ch021-measure-the-harness.md",
       "status": "partly implemented",
-      "profile": "cpu-harness-bench-v1 plus coder-repository-pilot-v1; live engine bundles on macOS arm64",
+      "profile": "cpu-harness-bench-v1, coder-repository-pilot-v1, gBench, Terminal-Bench 4.1, ATIF-v1.8 session-history friction scorecard, and Gym A/B subagent bench",
       "depends_on": [
         "psionic:172",
         1,
@@ -571,7 +596,10 @@
         "psionic/lib/noise.coax",
         "psionic/fixtures/measure-harness.out",
         "coder/tests/repository.coax",
-        "coder/tests/repository-summary.coax"
+        "coder/tests/repository-summary.coax",
+        "coax/lib/gbench/suites.coax",
+        "coax/lib/tbench/suites.coax",
+        "evals/session-history/README.md"
       ],
       "qualified_targets": [
         "cpu",
@@ -933,7 +961,7 @@
       "title": "Drive Antigravity",
       "file": "ch039-drive-antigravity.md",
       "status": "implemented",
-      "profile": "agy 1.5.6 ACP on Google Cloud credits",
+      "profile": "`agy` ACP + `coder/tui/agyworker.coax` with T3 quirk fixes, prompt-cache expiry/idle compaction, and opt-in subagent delegation",
       "depends_on": [
         5,
         13,
@@ -945,6 +973,7 @@
         "coax/lib/agent/engine/cursor.coax",
         "coax/lib/agent/cursor/client.coax",
         "coax/lib/agent/cursor/transport.coax",
+        "coder/tui/agyworker.coax",
         "coder/tui/cursor.coax",
         "coder/tui/agy_standin.coax",
         "coder/tui/coder.coax"
@@ -952,14 +981,16 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-desktop/Worker.swift"
+      ]
     },
     {
       "number": 40,
       "title": "The desktop app",
       "file": "ch040-the-desktop-app.md",
       "status": "implemented",
-      "profile": "native macOS Metal + AppKit app, concurrent chats, skills",
+      "profile": "unified `apps/openagents-desktop/` (`OpenAgents.app`, `--minimal`/`--full`, macOS Metal + Linux/Windows Vulkan, modular `page/*.coax`)",
       "depends_on": [
         9,
         10,
@@ -968,6 +999,14 @@
       "source": [
         "apps/openagents-desktop/app.coax",
         "apps/openagents-desktop/page.coax",
+        "apps/openagents-desktop/page/checkpoint.coax",
+        "apps/openagents-desktop/page/filepane.coax",
+        "apps/openagents-desktop/page/usage.coax",
+        "apps/openagents-desktop/page/voice.coax",
+        "apps/openagents-desktop/page/walletpane.coax",
+        "apps/openagents-desktop/page/metaversepane.coax",
+        "apps/openagents-desktop/page/browserpane.coax",
+        "apps/openagents-desktop/page/dashboard.coax",
         "apps/openagents-desktop/host.h",
         "apps/openagents-desktop/host.c",
         "apps/openagents-desktop/carrier.c",
@@ -987,7 +1026,7 @@
       "title": "Worker protocol and sub-agents",
       "file": "ch041-worker-protocol-and-sub-agents.md",
       "status": "implemented",
-      "profile": "mcworker-wire.coax JSON-lines protocol, parallel sub-agents",
+      "profile": "`mcworker-wire.coax` JSON-lines protocol driving `oa-worker`, `oa-subagent`, `inky`, `agyworker`, `claudeworker`, and legacy `mcworker`",
       "depends_on": [
         9,
         10,
@@ -996,6 +1035,10 @@
       ],
       "source": [
         "coax/lib/agent/engine/mcworker-wire.coax",
+        "coder/tui/oa-worker.coax",
+        "coder/tui/oa-subagent.coax",
+        "coder/tui/inky.coax",
+        "coder/tui/agyworker.coax",
         "coder/tui/mcworker.coax",
         "coder/tui/claudeworker.coax",
         "apps/openagents-desktop/page.coax",
@@ -1034,16 +1077,24 @@
       "number": 43,
       "title": "The Foreman",
       "file": "ch043-the-foreman.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "Foreman supervisory chat in `apps/openagents-desktop/` (`Foreman.swift`, `Window+Foreman.swift`, `Window+ForemanAPI.swift`), feature-flagged under `foreman`",
       "depends_on": [
         17,
         40,
         41,
         42
       ],
-      "source": [],
-      "qualified_targets": [],
+      "source": [
+        "apps/openagents-desktop/Foreman.swift",
+        "apps/openagents-desktop/ForemanOperator.swift",
+        "apps/openagents-desktop/Window+Foreman.swift",
+        "apps/openagents-desktop/Window+ForemanAPI.swift",
+        "apps/openagents-desktop/foreman-control-test.sh"
+      ],
+      "qualified_targets": [
+        "macos-arm64"
+      ],
       "adopted_by": []
     }
   ]

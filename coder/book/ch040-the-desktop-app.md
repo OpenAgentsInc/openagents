@@ -1,125 +1,109 @@
 # 40. The desktop app
 
-> **Status: implemented.** Coder runs as a native macOS desktop app
-> (`apps/coder-desktop/`): a Coax state machine and GPU-rendered UI
-> (`page.coax`) hosted inside an AppKit window (`App.swift`) with a native
-> text editor (`KitEditorMac.swift`). It streams replies, thinking blocks,
-> commands and file views from background worker processes, runs multiple
-> chats concurrently (including headless background chats), persists chats
-> on disk, and loads installed skills. `coax/bin/coax test
-> apps/coder-desktop/page.coax --library` passes all 206 checks (25 `#test`
-> blocks in `page.coax` plus its libraries).
+> **Status: implemented.** OpenAgents Desktop (`apps/openagents-desktop/`,
+> `OpenAgents.app`) is the unified native GPU desktop app across macOS
+> (Metal + AppKit), Linux (Wayland/X11 + Vulkan), and Windows (Win32 + Vulkan).
+> Its Coax state machine and modular UI (`app.coax`, `page.coax`, `page/*.coax`)
+> drive primary turns on `oa-worker` (local Psionic Metal/CUDA Inkling 2 Mini
+> or OpenAgents Cloud) plus opt-in delegated subagents (`oa-subagent`,
+> `agyworker`, `claudeworker`), shipping `--minimal` and `--full` builds with
+> per-chat Git worktrees, Checkpoints (`#14026`), Full Auto (`#14063`),
+> Always-On Usage HUD (`#14064`), Voice (`#14065`), File Viewer (`#13992`),
+> Bitcoin Spark + Nostr Wallet pane (`1acfa5d96e`), Metaverse/GameBuilder pane
+> (`#14040`), and Embedded Browser pane (`#14105`).
 
 The terminal UI ([Chapter 36](ch036-a-terminal-ui.md)) keeps Coder inside a
-shell the person already has open. The desktop app takes the same Coax
-engine and worker processes and puts them in a native macOS window built on
-the shared GPU component carrier: crisp text and layout on Metal, a real
-AppKit text editor for the composer, and a sidebar for switching between
-concurrent chats without interrupting a running reply.
+shell the person already has open. OpenAgents Desktop (`apps/openagents-desktop/`,
+which superseded the earlier standalone Coder desktop prototype) puts the unified
+`openagents/core/` runtime and worker processes inside a native GPU window
+built on the shared `components/` display-list carrier: crisp text and layout
+on Metal or Vulkan, modular Coax panes in `page/*.coax`, and concurrent chats
+running in isolated Git worktrees backed by resident `coder-host`.
 
 ## What runs
 
 ```sh
-apps/coder-desktop/build.sh --open                       # build Coder.app and launch it
-coax/bin/coax test apps/coder-desktop/page.coax --library # 206 checks across page.coax and its libraries
+apps/openagents-desktop/build.sh --minimal --open       # build minimal OpenAgents.app and launch it
+apps/openagents-desktop/build.sh --full                 # build full feature-flagged bundle
+coax/bin/coax test apps/openagents-desktop/page.coax --library
 ```
 
-`build.sh` compiles the Coax UI to C (`coax c app.coax --library`), compiles
-the Metal shader (`coax metal components/backend/gpu-shader.coax`), links
-the C/Objective-C carrier and Swift AppKit host into `Coder.app`, builds the
-`mcworker` and `claudeworker` binaries into `Contents/Resources/`, copies
-fonts and icons, and ad-hoc signs the bundle.
+`build.sh` compiles the Coax UI to C (`coax c app.coax --library` or
+`app-v1.coax` for `--minimal`), compiles the GPU shaders (`coax metal` on
+macOS; `coax spirv` for `apps/openagents-desktop/linux/` and `windows/`), links
+the C/Objective-C carrier and Swift AppKit host (`Window.swift`,
+`Worker.swift`, `Store.swift`, `DesktopCore.swift`, `Window+*.swift`) into
+`OpenAgents.app`, bundles `oa-worker`, `psionic-inkling-serve`, `gitguard`, and
+optional external workers into `Contents/Resources/`, copies fonts and icons,
+and signs the bundle.
 
-## Architecture: Coax state machine on a native GPU carrier
+## Architecture: Modular Coax state machine on cross-platform GPU carriers
 
-The app is split across three narrow layers so the UI logic stays in Coax
-and testable without a window server:
+The app splits UI logic from platform carriers so state transitions, layout,
+and policy stay in pure Coax testable without a window server:
 
 | Layer | Files | Responsibility |
 | --- | --- | --- |
-| Coax UI & state | `apps/coder-desktop/app.coax`, `apps/coder-desktop/page.coax` (2,053 lines) | Conversation model, layout, Markdown/code rendering, sub-agent cards, saved-chat JSON serialization, keyboard/mouse actions |
-| C/Metal carrier | `apps/coder-desktop/host.h`, `host.c`, `carrier.c`, `apps/shared/host/apple/ui-host.m` | Compiles `page.coax` into an opaque C ABI (`cd_*`), drives the Metal view (`components/backend/gpu-shader.coax`), and ticks animations |
-| Swift AppKit host | `apps/coder-desktop/App.swift` (655 lines), `KitEditorMac.swift`, `Bridge.h` | Window lifecycle, native text editor, worker process spawning (`mcworker`, `claudeworker`), disk persistence, folder picker, `~/.claude/skills` discovery |
+| Coax UI & state | `apps/openagents-desktop/app.coax`, `app-v1.coax`, `page.coax`, `page/*.coax` (`state`, `compose`, `editor`, `chats`, `checkpoint`, `filepane`, `gitdiff`, `goal`, `permit`, `usage`, `voice`, `walletpane`, `metaversepane`, `browserpane`, `dashboard`, `transcript`, `todos`) | Conversation model, GPU layout & text editing (`page/editor.coax`), Markdown/syntax-highlighted diffs, subagent cards, saved-chat JSON, keyboard/mouse actions, and 28 `#authority` feature flags (`coax/lib/agent/desktop/flags.coax`) |
+| C/GPU carriers | `apps/openagents-desktop/host.h`, `host.c`, `carrier.c`, `apps/shared/host/apple/ui-host.m`, `apps/openagents-desktop/linux/`, `apps/openagents-desktop/windows/` | Compiles Coax UI into an opaque C ABI (`cd_*`), renders the display list on Metal (macOS) or Vulkan (Linux Wayland/X11, Windows Win32), and attaches external GPU panes (`mv_host.c`, `gb_host.c`, `br_host.c`) |
+| Platform host | `apps/openagents-desktop/Window.swift`, `Window+*.swift`, `Worker.swift`, `Store.swift`, `Account.swift`, `LocalModels.swift`, `Foreman.swift`, `DaemonClient.swift` | Window lifecycle, IME/clipboard bridge, worker subprocess & `coder-host` RPC management (`oa-worker`, `oa-subagent`, `agyworker`, `claudeworker`), per-chat Git worktrees (`Worktree.swift`), Breez Spark wallet (`Window+Wallet.swift`), and local Inkling model downloads |
 
-### The C ABI boundary (`host.h`)
+### Key shipped capabilities
 
-Swift never reaches into Coax structs. Everything crosses `host.h` through
-opaque `cd_*` functions:
-
-- **Lifecycle and frames:** `cd_open`, `cd_view`, `cd_frame`, `cd_moving`,
-  `cd_on_change`, `cd_close`, `cd_tick`.
-- **Native editor bridge:** `cd_env` passes focus, editor height and reduced
-  motion into Coax; `cd_editor` returns the composer's bounding box so
-  AppKit positions `KitEditorMac` over the Metal view; `cd_style` hands
-  AppKit the current font and colors; `cd_set_text`, `cd_submit`, `cd_new`
-  and `cd_action` (sent, focus, stop, new, copy, folder, open chat) drive
-  interaction.
-- **Layout and preferences:** `cd_zoom` / `cd_zoom_set`, `cd_sides` /
-  `cd_sides_set`, `cd_pane`, `cd_folder`, `cd_skills`, `cd_copied`.
-- **Worker and sub-agent I/O:** `cd_task`, `cd_answer_line`, `cd_stop_line`,
-  `cd_forget_line`, `cd_line`, `cd_failed`, `cd_running`, plus the
-  `cd_agent_*` functions for delegated sub-agents and `cd_claude` /
-  `cd_agent_claude` for Claude Code routing.
-- **Persistence:** `cd_chats`, `cd_current`, `cd_open_id`, `cd_title`,
-  `cd_chat_at`, `cd_save_due`, `cd_save`, `cd_load`, `cd_recall_line`.
-
-Because the composer is a real AppKit text view positioned by `cd_editor`,
-macOS text editing, IME input, spellcheck, selection and clipboard work
-without reimplementing them on the GPU, while the conversation, sidebars,
-cards and streaming Markdown render in one Metal pass.
-
-## Concurrent chats and background runs
-
-A person rarely waits on one long-running task with nothing else to do.
-`App.swift` keeps a live headless Coax page (`cd_headless`) for any chat
-that is still running when you switch away or press Command-N to start a
-new chat:
-
-- Switching chats swaps the active page (`cd_take`) while the previous
-  chat's worker process keeps streaming lines into its headless page.
-- `cd_tick` advances animations and timers on background pages, and
-  `cd_save_due` triggers disk writes as turns complete.
-- Chats persist as an `index.json` manifest plus one `<ID>.json` file per
-  chat, restored via `cd_load` and fed back to the worker as conversation
-  context via `cd_recall_line`.
-
-## Working folders, skills and controls
-
-- **Working folder:** Each chat targets a repository directory (`cd_folder`),
-  passed as `cwd` in every worker task.
-- **Installed skills:** `App.swift` scans `~/.claude/skills` and passes the
-  discovered skill names and descriptions to `page.coax` (`cd_skills`) and
-  into the worker prompt so installed skills and slash commands are
-  reachable from the desktop composer.
-- **Controls:** Stop cancels the active worker (`cd_stop_line`), New Chat
-  (Command-N) resets or forks into a fresh chat (`cd_new` /
-  `cd_forget_line`), Copy copies a reply or code block (`cd_copied`), and
-  zoom/sidebar toggles adjust the workspace without restarting workers.
+- **Concurrent chats, headless runs, and `coder-host`:** switching chats swaps
+  the active view (`cd_take`) while background chats keep streaming into
+  headless Coax pages (`cd_headless`) or survive window closure under the
+  resident `coder-host` service (`DaemonClient.swift`).
+- **Per-chat Git worktrees and Checkpoints (`#13758`, `#14026`):** each new
+  chat inside a Git repository gets an isolated worktree (`~/.openagents/worktrees/REPO/CHAT`)
+  with APFS copy-on-write tool cloning, `gitguard`, syntax-highlighted Git
+  diffs (`page/gitdiff.coax`), and per-turn rewind checkpoints guarded by
+  `#authority` `CheckpointRestoreSafety` (`page/checkpoint.coax`,
+  `Window+Checkpoints.swift`).
+- **Permissions, Plan Mode, and Full Auto (`#13873`, `#14063`):** interactive
+  permission and question cards (`page/permit.coax`), opt-in Full Auto mode
+  with Operator Vault autofill (`#14063`), while `WalletPay` stays
+  `#forall`-proven bypass-immune (`openagents/core/members.coax`, `#14057`).
+- **Always-On Usage HUD & `$0` local tier (`#14064`, `#14072`, `#14087`):**
+  cloud-first onboarding with optional local Inkling 2 Mini (`$0.00` compute
+  enforced), synced OpenAgents Cloud account credits pill (`page/usage.coax`,
+  `Window+Usage.swift`), and per-turn token/cost telemetry.
+- **Right-side workspace panes:** unflagged File Viewer (`page/filepane.coax`,
+  `#13992`, macOS/Linux/Windows), Voice dictation & streaming TTS
+  (`page/voice.coax`, `Window+Voice.swift`, `#14065`), Bitcoin Spark +
+  read-only NIP-06 Nostr Wallet pane (`page/walletpane.coax`,
+  `Window+Wallet.swift`, `1acfa5d96e`), expandable Metaverse Viewer &
+  GameBuilder pane (`page/metaversepane.coax`, `#14040`–`#14045`), and
+  Embedded Desktop Browser pane (`page/browserpane.coax`,
+  `Window+Browser.swift`, `#14105`–`#14110`).
 
 ## Checks
 
 ```sh
-coax/bin/coax test apps/coder-desktop/page.coax --library
-apps/coder-desktop/build.sh
+coax/bin/coax test apps/openagents-desktop/page.coax --library
+apps/openagents-desktop/check.sh
+apps/openagents-desktop/build.sh --minimal
 ```
 
 ## Dependencies
 
-- [Chapter 9](ch009-microcoder.md): Microcoder, the default local loop
-  running inside `mcworker`.
-- [Chapter 10](ch010-drive-claude-code.md): Claude Code, driven inside
-  `claudeworker`.
-- [Chapter 36](ch036-a-terminal-ui.md): the shared `coder/tui/` worker
-  binaries.
-- [Chapter 41](ch041-worker-protocol-and-sub-agents.md): the JSON-lines
-  wire protocol and sub-agent delegation between `App.swift`, `page.coax`
-  and the workers.
+- [Chapter 9](ch009-microcoder.md): `openagents/core/` (`oa-worker`), Inky,
+  and legacy Microcoder.
+- [Chapter 10](ch010-drive-claude-code.md) & [Chapter 39](ch039-drive-antigravity.md):
+  opt-in delegated Claude Code and Antigravity workers.
+- [Chapter 36](ch036-a-terminal-ui.md): shared `coder/tui/` worker binaries.
+- [Chapter 41](ch041-worker-protocol-and-sub-agents.md): the JSON-lines wire
+  protocol and sub-agent delegation between `Window.swift` / `Worker.swift`,
+  `page/*.coax`, and the workers.
 
 ## Done means
 
-- [x] `apps/coder-desktop/build.sh` builds a signed `Coder.app` bundle with
-  the Metal shader, AppKit host, `mcworker` and `claudeworker`.
-- [x] `coax/bin/coax test apps/coder-desktop/page.coax --library` passes all
-  checks without a window server.
-- [x] A running reply continues in a headless page when the user opens or
-  starts another chat, and saved chats reload from disk.
+- [x] `apps/openagents-desktop/build.sh` builds a signed `OpenAgents.app`
+  bundle (`--minimal` and `--full`) with Metal shaders, `oa-worker`,
+  `psionic-inkling-serve`, and optional external workers; Linux and Windows
+  Vulkan hosts compile the same Coax UI.
+- [x] `coax/bin/coax test apps/openagents-desktop/page.coax --library` passes
+  without a window server.
+- [x] Running replies continue in headless pages or resident `coder-host` when
+  switching chats, and saved chats reload from disk with worktrees and
+  checkpoints intact.

@@ -1,6 +1,15 @@
 # 43. The Foreman
 
-> **Status: unimplemented — design draft.** The desktop app ([Chapter 40](ch040-the-desktop-app.md)) already runs multiple concurrent chats in the sidebar, and the worker protocol ([Chapter 41](ch041-worker-protocol-and-sub-agents.md)) already lets one chat delegate ephemeral sub-agents. This chapter designs the **Foreman**: a persistent supervisory chat pinned to the top of the Coder desktop sidebar that commands other chats, spawns new chats, searches across the whole repository and across previous chats, and operates under scoped elevated permissions. The full engineering specification lives in [`docs/coder/foreman-spec.md`](../../docs/coder/foreman-spec.md).
+> **Status: partly implemented.** The Foreman now ships behind the `foreman`
+> feature flag in `apps/openagents-desktop/` (`Foreman.swift`,
+> `ForemanOperator.swift`, `Window+Foreman.swift`, `Window+ForemanAPI.swift`,
+> `foreman-ctl`, verified by `foreman-control-test.sh`): a persistent
+> supervisory chat pinned at the top of the sidebar (`⌘\``) that inspects,
+> spawns, and commands sidebar chats with worktree isolation, repo/chat search,
+> `From Foreman` attribution, and `Stop All`. Unflagging it by default across
+> all platforms and bridging remote cross-device control (`#14067`) remain
+> open. The full engineering specification lives in
+> [`docs/coder/foreman-spec.md`](../../docs/coder/foreman-spec.md).
 
 ---
 
@@ -18,7 +27,7 @@ The **Foreman** closes that gap. It sits at the top of the Coder desktop sidebar
 
 ## Where the Foreman Lives in the Desktop App
 
-In `apps/coder-desktop/page.coax`, the sidebar currently stacks `New Chat`, user-pinned chats (`Pinned`), and chronological chats (`Recents`). The Foreman adds a permanent, non-deletable slot pinned above `Pinned`:
+In `apps/openagents-desktop/page.coax` (and `page/layout/sidebar.coax`), the sidebar stacks `New Chat`, user-pinned chats (`Pinned`), and chronological chats (`Recents`). When the `foreman` feature flag is enabled, the Foreman adds a permanent, non-deletable slot pinned above `Pinned`:
 
 ```text
 ┌──────────────────────────────────┐
@@ -46,7 +55,7 @@ Two design rules keep the Foreman legible rather than magical:
 
 ### 1. Commanding Other Chats
 
-The Foreman can inspect every chat in `CoderStore` and every live `CoderRun` in `apps/coder-desktop/` (`Store.swift`, `Window.swift`):
+The Foreman inspects every chat in `CoderStore` and every live `CoderRun` in `apps/openagents-desktop/` (`Store.swift`, `Window.swift`, `Foreman.swift`, `Window+Foreman.swift`, `Window+ForemanAPI.swift`):
 
 - Read the status of all chats (idle, running, blocked on a gated `ask`, hit budget, or errored) and read bounded turn ranges from any chat's transcript.
 - Send follow-up instructions to an existing chat—waking it headlessly via `cd_headless` if it is not the currently focused window chat.
@@ -78,7 +87,7 @@ Hard invariants hold in every tier: an aggregate USD budget cap across the Forem
 
 ## How It Fits the Existing Architecture
 
-Coder Desktop keeps Coax in charge of UI state and wire encoding (`page.coax`, `mcworker-wire.coax`) and Swift (`App.swift`) in charge of native windows, `CoderStore`, and worker subprocesses. The Foreman extends that exact architecture without adding a background daemon:
+OpenAgents Desktop keeps Coax in charge of UI state and wire encoding (`page/*.coax`, `mcworker-wire.coax`) and Swift (`Window.swift`, `Foreman.swift`, `ForemanOperator.swift`, `Worker.swift`, `Store.swift`) in charge of native windows, `CoderStore`, and worker subprocesses. The Foreman extends that exact architecture without adding a separate background daemon:
 
 - **Role separation on the wire:** `mww_request` in `coax/lib/agent/engine/mcworker-wire.coax` tags the Foreman worker with `"role":"foreman"` and its active permission tier. Regular chats never receive Foreman control tools, and a Foreman-spawned chat cannot spawn another Foreman.
 - **Host-bridged control plane:** Instead of letting the Foreman touch `chats/*.json` directly on disk, Foreman control actions (`foreman_list_chats`, `foreman_read_chat`, `foreman_search_chats`, `foreman_search_repo`, `foreman_create_chat`, `foreman_send_chat`, `foreman_control_chat`, `foreman_resolve_ask`) travel over the same ticketed JSON-lines request/response channel already used by `MWW_ASK` and `MWW_DELEGATE` ([Chapter 41](ch041-worker-protocol-and-sub-agents.md)).
@@ -86,10 +95,13 @@ Coder Desktop keeps Coax in charge of UI state and wire encoding (`page.coax`, `
 
 ---
 
-## What Comes Next
+## Verification and What Remains
 
-The rollout in [`docs/coder/foreman-spec.md`](../../docs/coder/foreman-spec.md) proceeds in three phases:
+```sh
+apps/openagents-desktop/foreman-control-test.sh
+```
 
-1. **Read-only Foreman:** Pinned sidebar entry, `⌘0` shortcut, repo-wide search, and indexed search/inspection across previous chats.
-2. **Supervised orchestration:** Spawning and commanding sidebar chats, `From Foreman` attribution, aggregate budget enforcement, `foreman-audit.jsonl`, and `Stop All`.
-3. **Tiered permissions:** `Supervised` / `Delegated` / `Elevated` selector, approval mediation for worker `ask` prompts, and negative security tests for hard invariants.
+The rollout in [`docs/coder/foreman-spec.md`](../../docs/coder/foreman-spec.md) has shipped core macOS functionality behind `--flag foreman` (`Foreman.swift`, `ForemanOperator.swift`, `Window+Foreman.swift`, `Window+ForemanAPI.swift`, `foreman-ctl`):
+
+1. **Shipped (feature-flagged `foreman`):** Pinned sidebar entry, repo and previous-chat inspection, supervised spawning and commanding of sidebar chats (each in its own Git worktree), `From Foreman` attribution, aggregate budget controls, `Stop All`, and the local control API (`foreman-control-test.sh`).
+2. **Remaining:** Linux/Windows Foreman host parity, borderless remote session control (`#14067`), and default-on graduation out of feature flags once tiered-permission negative tests pass across all hosts.

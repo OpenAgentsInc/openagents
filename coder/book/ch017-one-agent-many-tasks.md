@@ -17,7 +17,7 @@
 > chat sources, a Router model for replies that need more than the Worker's
 > result, acting ahead, many-to-many subscriptions, and the ablation.
 
-Chapters1–19 build one session well. A person can follow only three to
+Chapters 1–19 build one session well. A person can follow only three to
 five active sessions at once, so past that point the limit is their attention,
 not the model. This chapter turns the harness into one continuous agent that
 takes work from chat rooms, issues, pull requests and CI, runs many tasks at
@@ -36,8 +36,8 @@ the harness, and the agent they talk to is the same agent in every channel.
     shell or file tools and does not execute tasks, so it stays fast. A
     smaller model can serve it.
   - Each Worker owns one task, has an isolated context and the full tool grant
-    of chapters4 and 5, and never talks to people. It reports status and
-    conclusions to the Router. A Worker can use chapter14's subagents
+    of chapters 4 and 5, and never talks to people. It reports status and
+    conclusions to the Router. A Worker can use chapter 14's subagents
     internally; the Router does not see them.
 - **Triggers.** The agent's input is events from its environment: chat
   messages, issue and review comments, CI results, calendar items and mail.
@@ -66,7 +66,7 @@ the harness, and the agent they talk to is the same agent in every channel.
   and enter the next request together. The Router's steps have long inputs
   and short outputs, so prefill computes the batch in parallel and the time
   per decision falls as the queue grows, up to the context and accuracy
-  limit. Chapter3's stable prefix keeps those long inputs cached.
+  limit. Chapter 3's stable prefix keeps those long inputs cached.
 - **Inline and spill.** The context window is a cache:
   - Start an injected object with its ID and a short summary.
   - Inline what the model is likely to need next by locality: IDs of related
@@ -77,7 +77,7 @@ the harness, and the agent they talk to is the same agent in every channel.
 - **Chain of recall.** Triggers, Threads, Workers and tasks all have IDs, and
   every injected or recalled object inlines the IDs and summaries of the
   objects next to it. The Router recovers an old task's context by following
-  references hop by hop through the reference graph, from chapter2's log,
+  references hop by hop through the reference graph, from chapter 2's log,
   instead of keeping every task in its window.
 - **Acting ahead.** A policy can start a Worker before anyone asks: reproduce
   a reported bug, check a proposed change, draft a reply to an invitation. The
@@ -220,7 +220,7 @@ starts to drop.
 
 ### Workers and subscription
 
-A Worker is a background Coder session (chapter14): the Router runs `coder
+A Worker is a background Coder session (chapter 14): the Router runs `coder
 run TEXT --detach`, on the source's engine when the policy names one. The
 Thread then subscribes to that session, in `router/threads` (one Thread and
 session ID per line). A later event on the Thread passes to its Worker in
@@ -237,7 +237,7 @@ Decided events move to `inbox/done/`, so each event is decided once.
 ### Replies
 
 When a Thread's Worker ends, the Router writes the reply once
-(`rt_report`), under the source's channel (chapter20's channel rules):
+(`rt_report`), under the source's channel (chapter 20's channel rules):
 
 - `chat`, the default: the last turn's result in at most 100 words, cut with
   " …". A Worker that didn't finish says how it stopped: `Stopped (lost): …`.
@@ -345,14 +345,14 @@ references.
 
 ## Dependencies
 
-- [Chapter1](ch001-the-simplest-loop.md) and [Chapter2](ch002-model-visible-means-logged.md): the loop each session runs, and the log that every object ID points into.
-- [Chapter3](ch003-keep-the-prefix-stable.md): the Router's long, stable prefix.
-- [Chapter4](ch004-tools-as-typed-capabilities.md) and [Chapter5](ch005-a-sandbox-and-approvals.md): Worker tool grants; the Router has none that execute.
-- [Chapter6](ch006-a-document-tries-to-become-the-system-prompt.md): Triggers are untrusted input.
-- [Chapter14](ch014-forks-subagents-and-jobs.md): subagents and jobs inside a Worker.
-- [Chapter16](ch016-speak-the-protocols.md): System One decisions for the slow-path filter.
-- [Chapter21](ch021-measure-the-harness.md): the measurements below.
-- [Chapter20](ch020-an-agent-that-stays-online.md): the asynchronous loop and channel rules the Router uses.
+- [Chapter 1](ch001-the-simplest-loop.md) and [Chapter 2](ch002-model-visible-means-logged.md): the loop each session runs, and the log that every object ID points into.
+- [Chapter 3](ch003-keep-the-prefix-stable.md): the Router's long, stable prefix.
+- [Chapter 4](ch004-tools-as-typed-capabilities.md) and [Chapter 5](ch005-a-sandbox-and-approvals.md): Worker tool grants; the Router has none that execute.
+- [Chapter 6](ch006-a-document-tries-to-become-the-system-prompt.md): Triggers are untrusted input.
+- [Chapter 14](ch014-forks-subagents-and-jobs.md): subagents and jobs inside a Worker.
+- [Chapter 16](ch016-speak-the-protocols.md): System One decisions for the slow-path filter.
+- [Chapter 21](ch021-measure-the-harness.md): the measurements below.
+- [Chapter 20](ch020-an-agent-that-stays-online.md): the asynchronous loop and channel rules the Router uses.
 
 ## Done means
 
@@ -393,7 +393,7 @@ references.
   confirmed.
 - A Worker never writes to a channel directly, checked against the captured
   outbound sink.
-- Each mechanism passes chapter21 against the simpler design on tasks it was
+- Each mechanism passes chapter 21 against the simpler design on tasks it was
   not built from, or it is removed.
 
 ## Sources

@@ -1,23 +1,26 @@
 # 41. Worker protocol and sub-agents
 
-> **Status: implemented.** Both the terminal UI and the Coder desktop app
-> talk to agent workers over one bounded JSON-lines protocol defined in
-> `coax/lib/agent/engine/mcworker-wire.coax`. `coder/tui/mcworker.coax`
-> runs Microcoder and can delegate up to six parallel sub-agents per step
-> across Gemini (`hydrogen`, `carbon`, `neon`) and Claude (`haiku`,
-> `sonnet`, `opus`, `fable`) levels; `coder/tui/claudeworker.coax` wraps
-> the Claude Code SDK behind the exact same wire frames.
+> **Status: implemented.** Both the terminal UI and OpenAgents Desktop
+> (`apps/openagents-desktop/`) talk to agent workers over one bounded
+> JSON-lines protocol defined in `coax/lib/agent/engine/mcworker-wire.coax`.
+> **`coder/tui/oa-worker.coax`** (powered by `openagents/core/` and
+> `coder/tui/oa-subagent.coax`, `#14053`, `#14096`) owns primary turns and
+> CC-parity parallel/background/fork subagents (up to 12 per batch, personas,
+> worktree isolation), while `coder/tui/inky.coax`, `coder/tui/agyworker.coax`,
+> `coder/tui/claudeworker.coax` (`#14104`), and deprecated
+> `coder/tui/mcworker.coax` speak the exact same wire frames.
 
 The UI process never holds API keys and never blocks on a model call.
-Instead, it spawns child worker processes and exchanges one JSON object per
-line over stdin and stdout.
+Instead, it spawns child worker processes (or attaches via `coder-host`) and
+exchanges one JSON object per line over stdin and stdout.
 
 ## The wire protocol (`mcworker-wire.coax`)
 
 Every message is parsed and written by
 [coax/lib/agent/engine/mcworker-wire.coax](../../coax/lib/agent/engine/mcworker-wire.coax),
-which is shared by `mcworker.coax`, `claudeworker.coax`, `coder/tui/` and
-`apps/coder-desktop/page.coax`.
+which is shared by `oa-worker.coax`, `oa-subagent.coax`, `inky.coax`,
+`agyworker.coax`, `claudeworker.coax`, `mcworker.coax`, `coder/tui/`, and
+`apps/openagents-desktop/page.coax`.
 
 ### Owner to worker (`mww_request`)
 
@@ -47,59 +50,64 @@ which is shared by `mcworker.coax`, `claudeworker.coax`, `coder/tui/` and
 | `MWW_EMBEDDING` (9) | `{"kind":"embedding","values":[...]}` | Returned embedding vector (or `{"kind":"embedding","error":W}`). |
 | `MWW_DELEGATE` (10) | `{"kind":"delegate","tasks":[{"level":L,"task":T}],"ticket":N}` | Request the owner to run 1–6 sub-agents in parallel and return `MWW_RESULTS`. |
 
-## Two workers, one protocol
+## Workers on one protocol
 
-- **`coder/tui/mcworker.coax`** runs Microcoder's loop
-  ([Chapter 9](ch009-microcoder.md)) against Vertex, Gemini API and
-  OpenRouter gateways. It supports `MWW_DELEGATE`, `MWW_EMBED`, `MWW_RECALL`
-  and multi-turn conversations.
-- **`coder/tui/claudeworker.coax`** wraps the `claude` CLI through the Coax
-  Claude Agent SDK ([Chapter 10](ch010-drive-claude-code.md)) as a
-  single-task worker speaking the same `ready`, `thought`, `command`,
-  `reply` and `ended` frames. It maps `model` (`haiku`, `sonnet`, `opus`,
-  `fable`, or a full model ID; default `sonnet`), enables
-  `--thinking-display summarized`, and isolates credentials by translating
-  `CODER_CLAUDE_KEY` (`sk-ant-oat...` to `CLAUDE_CODE_OAUTH_TOKEN`, any
-  other key to `ANTHROPIC_API_KEY`) while stripping other inherited auth
-  variables.
+- **`coder/tui/oa-worker.coax` + `coder/tui/oa-subagent.coax` (primary, `#14053`, `#14096`):**
+  runs the 24-layer pure-Coax `openagents/core/` harness against OpenAgents
+  Cloud (`FLAWED_BE_OURS`, `#14070`), local Psionic Inkling 2 Mini (`$0` tier,
+  `#14055`), and Vertex/Gemini with SSE streaming, 8+ built-in tools plus
+  member packs (`Wallet`, `OpenAgentsCli`, `GameBuilder`, `#14057`), interactive
+  approvals, five-layer compaction, and CC-parity subagent delegation
+  (`general`, `explore`, `plan`, `verify`, `fork`, custom `.openagents/agents/*.md`
+  / `.claude/agents/*.md` personas, background `async_launched` + `SendMessage`,
+  and per-subagent Git worktree isolation).
+- **`coder/tui/inky.coax` (`#13979`–`#13982`):** native Inkling 2.0 loop for
+  local Psionic Metal/CUDA sessions speaking the identical wire.
+- **`coder/tui/agyworker.coax` (`#13802`, `#14024`, `#14031`):** drives
+  Antigravity (`agy acp`) as an opt-in delegated subagent with mid-turn steer
+  and prompt-cache expiry/idle compaction.
+- **`coder/tui/claudeworker.coax` (`#14104`):** wraps the `claude` CLI through
+  the Coax Claude Agent SDK ([Chapter 10](ch010-drive-claude-code.md)) as an
+  opt-in delegated worker with `--thinking-display summarized` and isolated
+  `CODER_CLAUDE_KEY` handling.
+- **`coder/tui/mcworker.coax` (deprecated `#13983`):** legacy Microcoder worker
+  retained for CLI `--engine micro` and recorded-stream replay compatibility.
 
-## Multi-level sub-agent delegation
+## Multi-level and CC-parity sub-agent delegation
 
-When Microcoder emits a `delegate` array in `next_action`, `mcworker` does
-not spawn child processes itself. It emits `MWW_DELEGATE` with a `ticket`
-and pauses for `MWW_RESULTS`. The owner (`App.swift` + `page.coax`) owns
-the sub-agent lifecycle:
+When `oa-worker` (or legacy `mcworker`) emits `MWW_DELEGATE` with a `ticket`,
+the desktop host (`Worker.swift` + `apps/openagents-desktop/page.coax`) owns
+the live sub-agent lifecycle:
 
-1. `page.coax` registers each delegated task, shows a live sub-agent card
-   in the UI (status, model level, streamed thoughts, commands and reply),
-   and exposes pending launches through `cd_agent_next` / `cd_agent_task`.
-2. `App.swift` spawns the right worker for each level:
-   - `hydrogen`, `carbon`, `neon` -> `mcworker` at the requested Gemini
-     tier.
-   - `haiku`, `sonnet`, `opus`, `fable` -> `claudeworker` on the person's
-     Claude login.
-3. Up to six sub-agents run concurrently in the same working directory.
-   When a sub-agent makes 100 tool calls in a row without changing a file,
-   it pauses and reports its handle so the parent can decide whether to
-   `resume` it with a note or stop it.
-4. Once all delegated tasks for a ticket finish, `page.coax` formats
-   `MWW_RESULTS` and sends it back to the parent worker, which resumes its
-   loop with every sub-agent's reply as step results.
+1. `page.coax` registers each delegated task, renders a live sub-agent card in
+   the UI (persona/model level, streamed thoughts, tool calls, and reply), and
+   exposes launches through `cd_agent_next` / `cd_agent_task`.
+2. `Worker.swift` spawns the right worker for the requested persona or opt-in
+   external harness (`oa-worker` for built-in/custom personas and cache-exact
+   `fork` children; `claudeworker` or `agyworker` when external harness
+   delegation is enabled `#14071`).
+3. Up to 12 sub-agents per batch (`FWW_MAX_DELEGATE_BATCH`) run concurrently
+   in the workspace or in isolated Git worktrees, with sidechain transcripts
+   persisted under `~/.openagents/subagents/` and background subagents
+   reachable via `SendMessage`, `TaskOutput`, and `TaskStop`.
+4. Once delegated tasks complete, `page.coax` returns `MWW_RESULTS` by ticket
+   so the parent resumes cleanly with every child's reply.
 
-Keeping sub-agent orchestration in the owner gives the desktop app full
-visibility into every child worker—each can be watched, inspected, or
-stopped with the parent—without duplicating UI plumbing inside the worker.
+Keeping sub-agent orchestration in the owner gives OpenAgents Desktop full
+visibility into every child worker—each can be watched, inspected, or stopped
+with the parent—without duplicating UI plumbing inside the worker.
 
 ## Checks
 
 ```sh
 coax/bin/coax test coax/lib/agent/engine/mcworker-wire.coax --library
-coax/bin/coax test apps/coder-desktop/page.coax --library
+coax/bin/coax test openagents/core/agents.coax --library
+coax/bin/coax test apps/openagents-desktop/page.coax --library
 ```
 
-The wire tests in `mcworker-wire.coax` and `page.coax` verify every owner
-and worker frame, embedding bounds, and round-trip `MWW_DELEGATE` /
-`MWW_RESULTS` framing.
+The wire and subagent checks verify every owner and worker frame, embedding
+bounds, persona precedence, read-only Bash guards, compaction-resistant fork
+guards, and round-trip `MWW_DELEGATE` / `MWW_RESULTS` framing.
 
 ## Dependencies
 

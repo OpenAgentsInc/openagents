@@ -78,7 +78,7 @@ psionic/check.sh --only harness/consent
 This chapter's profile is `cs-consent-v1`:
 
 - Five data classes, one bit each in a label: `session` (typed in the
-  session), `user` (a fact about the user, such as chapter19's
+  session), `user` (a fact about the user, such as chapter 19's
   user-scope facts), `project` (project files and facts), `tool` (a
   tool's output) and `identity` (ids and keys).
 - Four kinds of destination (a tool, an agent, a mesh peer, an export),
@@ -803,13 +803,13 @@ and its state to System One.
 
 ## Dependencies
 
-- [Chapter2](ch002-model-visible-means-logged.md): the hash-chained log
+- [Chapter 2](ch002-model-visible-means-logged.md): the hash-chained log
   this ledger is shaped like.
-- [Chapter5](ch005-a-sandbox-and-approvals.md): approvals that are
+- [Chapter 5](ch005-a-sandbox-and-approvals.md): approvals that are
   explicit, bound to what they approve and limited in time.
-- [Chapter16](ch016-speak-the-protocols.md): the protocols that carry
+- [Chapter 16](ch016-speak-the-protocols.md): the protocols that carry
   content to other services.
-- [Chapter19](ch019-remember-a-fact-then-revise-it.md): facts with a
+- [Chapter 19](ch019-remember-a-fact-then-revise-it.md): facts with a
   scope and an owner, the sources of `user` and `project` labels.
 
 ## Opt-in redacted `ATIF-v1.8` trajectory contribution (W6.2)
