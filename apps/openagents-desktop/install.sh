@@ -98,12 +98,18 @@ profile_of() {
 # The app's folder in a checkout: apps/openagents-desktop once the Phase 2 move lands (#13780), apps/coder-desktop
 # before it. Checked per build, so this script keeps working across the move.
 app_dir() { if [[ -f "$1/apps/openagents-desktop/app.coax" ]]; then echo apps/openagents-desktop; else echo apps/coder-desktop; fi; }
-# True when this script runs inside one of the given app processes (an agent in OpenAgents ran it): quitting the
-# app would kill this run with it, half done.
+# True when this script runs inside OpenAgents or a daemon-owned agent worker (an agent in OpenAgents ran it):
+# quitting the app or restarting the daemon would kill this run with it, half done (#14095).
 inside_app() {
-  local p=$$ pids=" $* "
+  # Workers always export OA_AGENT_ID; even a `nohup ... &` reparented to PID 1 inherits it.
+  [[ -n "${OA_AGENT_ID:-}" ]] && return 0
+  local p=$$ pids=" $* " comm
   while [[ -n "$p" && "$p" -gt 1 ]]; do
     [[ "$pids" == *" $p "* ]] && return 0
+    comm="$(ps -o comm= -p "$p" 2>/dev/null || true)"
+    case "${comm##*/}" in
+      oa-worker|agyworker|claudeworker|inky|coder-host|openagents-environment) return 0 ;;
+    esac
     p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"
   done
   return 1
@@ -119,17 +125,91 @@ env_label="${CODER_ENV_LABEL:-com.openagents.coax.environment}"
 env_plist="$HOME/Library/LaunchAgents/$env_label.plist"
 env_link="$HOME/.openagents/bin/openagents-environment"
 host_sock="$HOME/.openagents/coder/host/service.sock"
-# The process that holds the socket and whose parent does not: a worker run inherits the descriptor.
+host_discovery="$HOME/.openagents/coder/host/daemon.json"
+# True when PID is a running openagents-environment / coder-host daemon process (never a leaked child/Python process).
+is_daemon_pid() {
+  local p="$1" comm exe
+  [[ "$p" =~ ^[0-9]+$ && "$p" -gt 1 ]] || return 1
+  kill -0 "$p" 2>/dev/null || return 1
+  comm="$(ps -o comm= -p "$p" 2>/dev/null || true)"
+  case "${comm##*/}" in
+    openagents-environment|coder-host) return 0 ;;
+  esac
+  exe="$(lsof -a -p "$p" -d txt -Fn 2>/dev/null | awk 'NR > 0 && /^n/ && e == "" {e = substr($0, 2)} END {print e}' || true)"
+  case "${exe##*/}" in
+    openagents-environment|coder-host) return 0 ;;
+  esac
+  return 1
+}
+# The resident daemon process owning service.sock: prefer the verified PID in daemon.json, falling back to
+# lsof -U filtered strictly to openagents-environment/coder-host (#14095).
 # awk reads all of lsof's output (an early exit would end lsof by SIGPIPE, which pipefail makes fatal).
 sock_pid() {
-  local all p
+  if [[ -f "$host_discovery" ]]; then
+    local dpid
+    dpid="$(python3 -I - "$host_discovery" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    if isinstance(d, dict) and d.get("alive") is True:
+        p = d.get("pid")
+        if isinstance(p, int) and p > 1:
+            print(p)
+except Exception:
+    pass
+PY
+)"
+    if [[ -n "$dpid" ]] && is_daemon_pid "$dpid"; then
+      echo "$dpid"
+      return 0
+    fi
+  fi
+  local all filtered="" p
   all="$(lsof -U 2>/dev/null | awk -v s="$host_sock" '$NF == s {print $2}' | sort -u)"
   for p in $all; do
-    grep -qx "$(ps -o ppid= -p "$p" | tr -d ' ')" <<< "$all" || { echo "$p"; return 0; }
+    if is_daemon_pid "$p"; then
+      filtered="${filtered}${filtered:+$'\n'}${p}"
+    fi
+  done
+  [[ -n "$filtered" ]] || return 0
+  for p in $filtered; do
+    grep -qx "$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')" <<< "$filtered" || { echo "$p"; return 0; }
   done
 }
-# The daemon is busy while it has a child (a worker run); a restart then waits for a later check.
-daemon_busy() { local p; p="$(sock_pid)"; [[ -n "$p" ]] && [[ -n "$(pgrep -P "$p" || true)" ]]; }
+# True while any daemon run in ~/.openagents/coder/host/runs/*.state is still running or stopping with a live worker PID.
+runs_active() {
+  python3 -I - "$HOME/.openagents/coder/host/runs" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+for f in (os.listdir(d) if os.path.isdir(d) else []):
+    if not f.endswith(".state"): continue
+    try:
+        st = json.load(open(os.path.join(d, f)))
+        if not isinstance(st, dict) or st.get("state") not in ("running", "stopping"): continue
+        pid = st.get("pid")
+        if isinstance(pid, int) and pid > 1:
+            try:
+                os.kill(pid, 0)
+                sys.exit(0)
+            except PermissionError:
+                sys.exit(0)
+            except OSError:
+                continue
+        else:
+            sys.exit(0)
+    except (OSError, ValueError):
+        continue
+sys.exit(1)
+PY
+}
+# The daemon is busy while it has any child process OR any live run in runs/*.state; a restart then waits (#14095).
+daemon_busy() {
+  local p; p="$(sock_pid)"
+  if [[ -n "$p" ]] && [[ -n "$(pgrep -P "$p" 2>/dev/null || true)" ]]; then return 0; fi
+  runs_active && return 0
+  replies_running && return 0
+  return 1
+}
 # True while a worker run is mid-reply: a running run whose last line is neither an idle line
 # (ready, journal, aware, ended, empty queue) nor an empty .out file (host-runs.coax dr_idle_line).
 # Quitting OpenAgents then could cost that reply, so an install waits (#13810).
@@ -179,22 +259,30 @@ sync_resident() {
   ver_id="$(version_of "$from")"
   [[ -n "$ver_id" ]] || ver_id="${commit:-unknown}"
   mkdir -p "$bin_dir" "$HOME/.openagents/environment/bin"
-  # Atomically sync all bundled worker and runtime helpers into ~/.openagents/bin/
-  local helper src_h dst_h tmp_h mode
+  dir="$HOME/.openagents/environment/bin/$ver_id"
+  mkdir -p "$dir"
+  # Atomically sync all bundled worker and runtime helpers into ~/.openagents/bin/ AND the immutable
+  # per-version directory ~/.openagents/environment/bin/<ver_id>/ so swapping OpenAgents.app never
+  # replaces binaries underneath active daemon workers (#14095).
+  local helper src_h dst_h vdst_h tmp_h mode
   for helper in oa-worker agyworker gitguard coder-host psionic-inkling-serve inkling-kernels.metal claudeworker oasim ple-run lean-run tbench-run gbench-run; do
     src_h="$res/$helper"
     [[ -f "$src_h" ]] || continue
+    mode=0755; [[ "$helper" == *.metal ]] && mode=0644
     dst_h="$bin_dir/$helper"
     if ! cmp -s "$src_h" "$dst_h" 2>/dev/null; then
       tmp_h="$bin_dir/.${helper}.new.$$"
-      mode=0755; [[ "$helper" == *.metal ]] && mode=0644
       cp "$src_h" "$tmp_h" && chmod "$mode" "$tmp_h" && mv -f "$tmp_h" "$dst_h"
+    fi
+    vdst_h="$dir/$helper"
+    if ! cmp -s "$src_h" "$vdst_h" 2>/dev/null; then
+      tmp_h="$dir/.${helper}.new.$$"
+      cp "$src_h" "$tmp_h" && chmod "$mode" "$tmp_h" && mv -f "$tmp_h" "$vdst_h"
     fi
   done
   printf '%s\n' "$ver_id" > "$bin_dir/.worker-version.new.$$" && mv -f "$bin_dir/.worker-version.new.$$" "$bin_dir/.worker-version"
-  dir="$HOME/.openagents/environment/bin/$ver_id"
   if ! cmp -s "$bundled" "$dir/openagents-environment" 2>/dev/null; then
-    mkdir -p "$dir" && cp "$bundled" "$dir/openagents-environment.new.$$" && chmod 0755 "$dir/openagents-environment.new.$$" && mv -f "$dir/openagents-environment.new.$$" "$dir/openagents-environment"
+    cp "$bundled" "$dir/openagents-environment.new.$$" && chmod 0755 "$dir/openagents-environment.new.$$" && mv -f "$dir/openagents-environment.new.$$" "$dir/openagents-environment"
   fi
   printf '%s\n' "$ver_id" > "$HOME/.openagents/environment/version.new.$$" && mv -f "$HOME/.openagents/environment/version.new.$$" "$HOME/.openagents/environment/version"
   mkdir -p "$(dirname "$env_link")"

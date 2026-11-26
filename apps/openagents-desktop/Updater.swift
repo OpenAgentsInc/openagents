@@ -716,6 +716,8 @@ struct WorkerVersionSync {
 
         try? fm.createDirectory(at: binDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: envBinDir, withIntermediateDirectories: true)
+        let versionedDir = envBinDir.appendingPathComponent(versionID, isDirectory: true)
+        try? fm.createDirectory(at: versionedDir, withIntermediateDirectories: true)
 
         for artifact in Self.bundledArtifacts {
             let src = resourcesDir.appendingPathComponent(artifact.name)
@@ -726,14 +728,18 @@ struct WorkerVersionSync {
                     updated.append(artifact.name)
                 }
             }
+            // Mirror into immutable per-version directory so swapping OpenAgents.app never
+            // replaces binaries underneath running daemon workers (#14095).
+            let vdst = versionedDir.appendingPathComponent(artifact.name)
+            if !filesEqual(src, vdst) {
+                _ = atomicCopyFile(from: src, to: vdst, executable: artifact.executable)
+            }
         }
 
         // Sync resident daemon binary under ~/.openagents/environment/bin/<versionID>/openagents-environment
         let bundledHost = resourcesDir.appendingPathComponent("coder-host")
         if fm.fileExists(atPath: bundledHost.path) {
-            let versionedDir = envBinDir.appendingPathComponent(versionID, isDirectory: true)
             let versionedHost = versionedDir.appendingPathComponent("openagents-environment")
-            try? fm.createDirectory(at: versionedDir, withIntermediateDirectories: true)
             if !filesEqual(bundledHost, versionedHost) {
                 if atomicCopyFile(from: bundledHost, to: versionedHost, executable: true) {
                     updated.append("openagents-environment")
@@ -779,7 +785,7 @@ struct WorkerVersionSync {
         guard stale else {
             return (true, false)
         }
-        if hasActiveChildren(pid: daemonPID) {
+        if hasActiveChildren(pid: daemonPID) || hasActiveRuns() {
             let ver = BundleMetadata.read(from: appURL)?.updateIdentifier ?? BundleMetadata.currentUpdateIdentifier
             NSLog("OpenAgents: resident daemon (pid %d) is busy running workers; deferring sync to %@", daemonPID, ver)
             return (false, true)
@@ -843,8 +849,26 @@ struct WorkerVersionSync {
         }
     }
 
+    private func isDaemonExecutable(pid: pid_t) -> Bool {
+        guard pid > 1, kill(pid, 0) == 0 else { return false }
+        guard let path = executablePath(forPID: pid) else { return false }
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        return name == "openagents-environment" || name == "coder-host"
+    }
+
     private func socketOwnerPID(socketPath: String) -> pid_t? {
-        guard FileManager.default.fileExists(atPath: socketPath) else { return nil }
+        let fm = FileManager.default
+        let discoveryURL = URL(fileURLWithPath: socketPath).deletingLastPathComponent().appendingPathComponent("daemon.json")
+        if let data = try? Data(contentsOf: discoveryURL),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           (obj["alive"] as? Bool) == true,
+           let rawPID = obj["pid"] as? NSNumber {
+            let pid = pid_t(rawPID.int32Value)
+            if isDaemonExecutable(pid: pid) {
+                return pid
+            }
+        }
+        guard fm.fileExists(atPath: socketPath) else { return nil }
         let res = runTool("/usr/sbin/lsof", arguments: ["-U", "-F", "pn"])
         guard res.exitCode == 0 else { return nil }
         var currentPID: pid_t?
@@ -855,7 +879,7 @@ struct WorkerVersionSync {
             if first == "p", let p = pid_t(val) {
                 currentPID = p
             } else if first == "n", val == socketPath, let p = currentPID {
-                if !pids.contains(p) { pids.append(p) }
+                if !pids.contains(p), isDaemonExecutable(pid: p) { pids.append(p) }
             }
         }
         guard !pids.isEmpty else { return nil }
@@ -878,6 +902,28 @@ struct WorkerVersionSync {
     private func hasActiveChildren(pid: pid_t) -> Bool {
         let res = runTool("/usr/bin/pgrep", arguments: ["-P", String(pid)])
         return res.exitCode == 0 && !res.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// True while any `~/.openagents/coder/host/runs/*.state` reports a live `"running"` or `"stopping"` worker (#14095).
+    private func hasActiveRuns() -> Bool {
+        let runsDir = home.appendingPathComponent(".openagents/coder/host/runs", isDirectory: true)
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: runsDir.path) else { return false }
+        for name in entries where name.hasSuffix(".state") {
+            let url = runsDir.appendingPathComponent(name)
+            guard let data = try? Data(contentsOf: url),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let state = obj["state"] as? String,
+                  state == "running" || state == "stopping" else { continue }
+            if let rawPID = obj["pid"] as? NSNumber {
+                let pid = pid_t(rawPID.int32Value)
+                if pid > 1 {
+                    if kill(pid, 0) == 0 || errno == EPERM { return true }
+                    continue
+                }
+            }
+            return true
+        }
+        return false
     }
 
     private func terminateAndWait(pid: pid_t, maxSeconds: TimeInterval) {

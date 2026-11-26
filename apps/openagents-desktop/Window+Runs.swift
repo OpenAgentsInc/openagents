@@ -29,12 +29,78 @@ extension CoderWindow {
             if cd_running(r.page) == 0 {
                 r.stopRequestedAt = 0
                 r.stopGen &+= 1
+                r.autoRecoveries = 0
+                r.recoverGen &+= 1
             }
             self.followUpBegan(r)
             self.markUnread(r)
             self.pump(r)
         }
-        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; r.stopRequestedAt = 0; r.stopGen &+= 1; let label = r.worker.program == "oa-worker" ? "OpenAgents" : r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "OpenAgents"; cd_failed(r.page, "\(label) stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.notifyTurnFailed(chatID: r === self.run ? self.chat : r.chat, detail: "\(label) stopped running.", isActiveChat: r === self.run); self.pump(r) }   // a new worker is told the chat so far
+        r.worker.gone = { [weak self, weak r] in
+            guard let self, let r else { return }
+            self.handleWorkerGone(r)
+        }
+    }
+    /// Handles an exited or `"lost"` worker cleanly (#14095):
+    /// - Idle worker exit (between turns): quietly mark recallDue, never fail or notify.
+    /// - User-requested stop: finalize as stopped rather than failed.
+    /// - Unexpected mid-turn exit / daemon restart: bounded automatic recovery (up to 2 attempts)
+    ///   that ensures the daemon is up, spawns a fresh worker with recall + current task, and
+    ///   continues seamlessly instead of surfacing `"stopped running. Send the message again."`.
+    private func handleWorkerGone(_ r: CoderRun) {
+        let wasStopping = r.stopRequestedAt > 0
+        r.stopRequestedAt = 0
+        r.stopGen &+= 1
+        let stillShown = r === self.run
+        let stillBackground = !stillShown && r.chat != nil && self.runs[r.chat!] === r
+        guard stillShown || stillBackground else { return }
+        if cd_running(r.page) == 0 {
+            if stillShown { self.recallDue = true }
+            r.endTurn()
+            self.pump(r)
+            return
+        }
+        if wasStopping {
+            forceStopRun(r)
+            return
+        }
+        let reason = r.worker.lastEndState ?? "exited"
+        let maxAutoRecoveries = 2
+        if r.autoRecoveries < maxAutoRecoveries {
+            r.autoRecoveries += 1
+            r.recoverGen &+= 1
+            let gen = r.recoverGen
+            let attempt = r.autoRecoveries
+            let delay: TimeInterval = attempt == 1 ? 0.6 : 1.5
+            NSLog("OpenAgents: %@ worker ended unexpectedly (%@) mid-turn; auto-recovering (%d/%d)", r.worker.program, reason, attempt, maxAutoRecoveries)
+            for (_, one) in r.agents {
+                one.gone = nil
+                one.line = nil
+                one.stop(forget: false)
+            }
+            r.agents = [:]
+            r.endTurn()
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + delay) { [weak self, weak r] in
+                _ = CoderWorker.daemon?.ensureDaemon()
+                DispatchQueue.main.async { [weak self, weak r] in
+                    guard let self, let r, r.recoverGen == gen else { return }
+                    let activeShown = r === self.run
+                    let activeBg = !activeShown && r.chat != nil && self.runs[r.chat!] === r
+                    guard activeShown || activeBg else { return }
+                    guard cd_running(r.page) != 0, r.stopRequestedAt == 0, !r.worker.alive, !r.startingWorker else { return }
+                    if activeShown { self.recallDue = true }
+                    self.sendTask(r, isRecovery: true)
+                }
+            }
+            return
+        }
+        let label = r.worker.program == "oa-worker" ? "OpenAgents" : r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "OpenAgents"
+        cd_failed(r.page, "\(label) could not recover after an unexpected interruption (\(reason)).")
+        if stillShown { self.recallDue = true }
+        r.endTurn()
+        self.markUnread(r)
+        self.notifyTurnFailed(chatID: stillShown ? self.chat : r.chat, detail: "\(label) interrupted (\(reason)).", isActiveChat: stillShown)
+        self.pump(r)
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
     /// stop the workers of those that have ended. Microcoder hands tasks over in one line; each runs
@@ -55,6 +121,8 @@ extension CoderWindow {
         r.preparingWorktree = false
         r.stopRequestedAt = 0
         r.stopGen &+= 1
+        r.autoRecoveries = 0
+        r.recoverGen &+= 1
         r.worker.gone = nil
         r.worker.line = nil
         if r.worker.alive { r.worker.stop(forget: false) }
@@ -174,10 +242,14 @@ extension CoderWindow {
     }
     /// Starts `r`'s worker without blocking the main thread on daemon RPCs, then writes the pending
     /// recall/task lines and records the turn. Works whether `r` stays shown or is detached while starting.
-    func sendTask(_ r: CoderRun) {
+    func sendTask(_ r: CoderRun, isRecovery: Bool = false) {
         guard !r.startingWorker else { return }
         r.stopRequestedAt = 0
         r.stopGen &+= 1
+        if !isRecovery {
+            r.autoRecoveries = 0
+            r.recoverGen &+= 1
+        }
         r.startedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         let shown = r === run
         let needsRecall: Bool

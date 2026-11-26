@@ -2,6 +2,8 @@
 // shared session metadata (pin, rename, archive, folder) served over both
 // local Unix socket (Coder Desktop / CLI) and sealed NIP-HOST relay (Mobile).
 
+cxproc_self_pid :: () -> int #foreign #effects(all);
+
 dm_foreman_path :: (out:[]u8)->string #effects(all) {return es_path("foreman-state.json",out);}
 dm_meta_path :: (out:[]u8)->string #effects(all) {return es_path("session-meta.json",out);}
 dm_discovery_path :: (out:[]u8)->string #effects(all) {return es_path("daemon.json",out);}
@@ -82,6 +84,7 @@ dm_write_discovery :: (h:[]HsHost,alive:bool) #effects(all) {
   jo_obj(o[..]);
   jo_key(o[..],"schema");jo_str(o[..],DM_SCHEMA);
   jo_key(o[..],"alive");jo_bool(o[..],alive);
+  jo_key(o[..],"pid");jo_int(o[..],cxproc_self_pid());
   jo_key(o[..],"host");jo_str(o[..],cast(string)h[0].xhex[..]);
   jo_key(o[..],"started_at");jo_int(o[..],h[0].started_at);
   jo_key(o[..],"updated_at");jo_int(o[..],hs_now());

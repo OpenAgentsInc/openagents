@@ -17,6 +17,8 @@ final class CoderWorker {
     static let runLimitNote = "Coder runs up to \(runLimit) workers at once, sub-agents included. Stop a chat or wait for one to finish, then send again."
     /// Why the last start() failed, when the daemon refused it.
     private(set) var failure: String?
+    /// Last terminal state observed when the worker exited (e.g. "lost", "exited", "exit-15").
+    private(set) var lastEndState: String?
 
     private(set) var runID: String?
     private var tail: DispatchSourceTimer?
@@ -78,15 +80,52 @@ final class CoderWorker {
         return (env, ["CODER_CLAUDE_KEY"])
     }
 
+    /// Resolves the executable path for `program`. For daemon-owned runs, prefers an immutable
+    /// versioned copy under `~/.openagents/environment/bin/<versionID>/<program>` (materializing
+    /// atomically from `Bundle.main` if needed) so replacing `/Applications/OpenAgents.app` never
+    /// pulls binaries out from under active workers (#14095).
+    private func resolvedProgramPath(forDaemon: Bool) -> String? {
+        guard let bundled = Bundle.main.path(forResource: program, ofType: nil) else { return nil }
+        guard forDaemon else { return bundled }
+        let fm = FileManager.default
+        let verID = BundleMetadata.currentUpdateIdentifier
+        let dir = fm.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents/environment/bin/\(verID)", isDirectory: true)
+        let dst = dir.appendingPathComponent(program)
+        if fm.isExecutableFile(atPath: dst.path) {
+            let srcSize = (try? fm.attributesOfItem(atPath: bundled)[.size] as? NSNumber)?.int64Value
+            let dstSize = (try? fm.attributesOfItem(atPath: dst.path)[.size] as? NSNumber)?.int64Value
+            if let srcSize, let dstSize, srcSize == dstSize {
+                return dst.path
+            }
+        }
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let tmp = dir.appendingPathComponent(".\(program).new.\(getpid()).\(UUID().uuidString.prefix(6))")
+        try? fm.removeItem(at: tmp)
+        do {
+            try fm.copyItem(at: URL(fileURLWithPath: bundled), to: tmp)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmp.path)
+            if rename(tmp.path, dst.path) == 0 {
+                return dst.path
+            }
+            try? fm.removeItem(at: tmp)
+        } catch {
+            try? fm.removeItem(at: tmp)
+        }
+        return bundled
+    }
+
     func start() -> Bool {
         guard !alive else { return true }
         failure = nil
-        guard let path = Bundle.main.path(forResource: program, ofType: nil) else { failure = "This build of OpenAgents is missing its \(program)."; return false }
+        lastEndState = nil
+        guard let bundledPath = resolvedProgramPath(forDaemon: false) else { failure = "This build of OpenAgents is missing its \(program)."; return false }
         if let daemon = CoderWorker.daemon, daemon.ownsRuns {
-            if startRun(path, daemon) { return true }
+            let daemonPath = resolvedProgramPath(forDaemon: true) ?? bundledPath
+            if startRun(daemonPath, daemon) { return true }
             if failure == Self.runLimitNote { return false }
         }
-        return startChild(path)
+        return startChild(bundledPath)
     }
 
     /// The worker as this app's own child: when no daemon owns runs, or the daemon refused a run
@@ -110,7 +149,7 @@ final class CoderWorker {
             DispatchQueue.main.async { self?.read(bytes) }
         }
         p.terminationHandler = { [weak self] ended in
-            DispatchQueue.main.async { guard let self, self.process === ended else { return }; self.process = nil; self.input = nil; self.gone?() }
+            DispatchQueue.main.async { guard let self, self.process === ended else { return }; self.lastEndState = "exit-\(ended.terminationStatus)"; self.process = nil; self.input = nil; self.gone?() }
         }
         do { try p.run() } catch { failure = failure ?? "The worker did not start: \(error.localizedDescription)"; return false }
         process = p; input = into.fileHandleForWriting; held = Data(); failure = nil
@@ -167,9 +206,11 @@ final class CoderWorker {
     func startAsync(_ completion: @escaping (Bool) -> Void) {
         guard !alive else { completion(true); return }
         failure = nil
-        guard let path = Bundle.main.path(forResource: program, ofType: nil) else { failure = "This build of OpenAgents is missing its \(program)."; completion(false); return }
+        lastEndState = nil
+        guard let bundledPath = resolvedProgramPath(forDaemon: false) else { failure = "This build of OpenAgents is missing its \(program)."; completion(false); return }
         if let daemon = CoderWorker.daemon, daemon.ownsRuns {
-            startRunAsync(path, daemon, completion: completion)
+            let daemonPath = resolvedProgramPath(forDaemon: true) ?? bundledPath
+            startRunAsync(daemonPath, daemon, completion: completion)
             return
         }
         completion(start())
@@ -237,6 +278,7 @@ final class CoderWorker {
 
     func attach(_ id: String, from: UInt64) {
         guard CoderWorker.daemon != nil else { return }
+        lastEndState = nil
         runID = id; offset = from; tailHeld = Data()
         touch(force: true)
     }
@@ -394,6 +436,7 @@ final class CoderWorker {
             if let state = CoderWorker.runState(id), state != "running", state != "stopping" {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.runID == id else { return }
+                    self.lastEndState = state
                     self.tail?.cancel(); self.tail = nil
                     self.runID = nil
                     self.gone?()

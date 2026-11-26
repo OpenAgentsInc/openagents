@@ -177,6 +177,7 @@ int64_t cxsock_listen(int64_t port) {
   if (port < 0 || port > 65535) return CXSOCK_ERROR;
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) return CXSOCK_ERROR;
+  fcntl(fd, F_SETFD, FD_CLOEXEC);
   int one = 1; setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   int flags = fcntl(fd, F_GETFL, 0);
   if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) { close(fd); return CXSOCK_ERROR; }
@@ -200,6 +201,7 @@ int64_t cxsock_listen_ip(int64_t port) {
   if (inet_pton(AF_INET, ip, &a.sin_addr) != 1) return CXSOCK_ERROR;
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) return CXSOCK_ERROR;
+  fcntl(fd, F_SETFD, FD_CLOEXEC);
   int one = 1; setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   int flags = fcntl(fd, F_GETFL, 0);
   if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) { close(fd); return CXSOCK_ERROR; }
@@ -225,6 +227,7 @@ int64_t cxsock_listen_unix(void) {
     if (!S_ISSOCK(st.st_mode) || st.st_uid!=geteuid() || unlink(a.sun_path)!=0) return CXSOCK_REFUSED;
   } else if (errno!=ENOENT) return CXSOCK_REFUSED;
   int fd=socket(AF_UNIX,SOCK_STREAM,0);if (fd<0) return CXSOCK_ERROR;
+  fcntl(fd,F_SETFD,FD_CLOEXEC);
   int flags=fcntl(fd,F_GETFL,0);
   if (flags<0 || fcntl(fd,F_SETFL,flags|O_NONBLOCK)<0) {close(fd);return CXSOCK_ERROR;}
   mode_t old=umask(0077);int bound=bind(fd,(struct sockaddr *)&a,sizeof a);umask(old);
