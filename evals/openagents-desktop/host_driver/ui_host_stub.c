@@ -47,6 +47,10 @@ void ui_atlas(UiHost *h, const uint8_t *mono, uint32_t mw, uint32_t mh,
   (void)h; (void)mono; (void)mw; (void)mh; (void)color; (void)cw; (void)ch;
 }
 
+void ui_host_set_ext_texture(UiHost *h, int slot, void *native_tex) {
+  (void)h; (void)slot; (void)native_tex;
+}
+
 float ui_dpr(UiHost *h) { return h ? h->dpr : 1.0f; }
 void ui_set_dpr(UiHost *h, float dpr) { if (h && dpr > 0.0f) h->dpr = dpr; }
 void ui_cursor(UiHost *h, int kind) { if (h) h->cursor = kind; }
