@@ -110,6 +110,20 @@ CREATE SCHEMA projects;
 
 
 --
+-- Name: queue; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA queue;
+
+
+--
+-- Name: sys; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA sys;
+
+
+--
 -- Name: verse; Type: SCHEMA; Schema: -; Owner: -
 --
 
@@ -5645,25 +5659,59 @@ $$;
 
 
 --
--- Name: finish(text, text, integer, integer, integer, integer); Type: FUNCTION; Schema: inference; Owner: -
+-- Name: decision_record(text, integer, integer, boolean); Type: FUNCTION; Schema: inference; Owner: -
 --
 
-CREATE FUNCTION inference.finish(who text, model text, http integer, in_tokens integer, out_tokens integer, ms_taken integer) RETURNS bigint
+CREATE FUNCTION inference.decision_record(who text, http integer, ms_taken integer, free boolean) RETURNS bigint
     LANGUAGE plpgsql
     AS $$
 DECLARE
   m inference.models;
   cost bigint := 0;
+  up_cost bigint := 0;
+  rate bigint;
+  msat_due bigint := 0;
 BEGIN
-  SELECT * INTO m FROM inference.models WHERE name = model;
-  IF FOUND THEN
-    cost := (greatest(in_tokens, 0)::bigint * m.input_micros + greatest(out_tokens, 0)::bigint * m.output_micros + 999999) / 1000000;
+  SELECT * INTO m FROM inference.models WHERE name = 'openagents/router-decision';
+  IF FOUND AND http = 200 THEN
+    cost := m.per_call_micros;
+    up_cost := (m.per_call_micros * 10000) / (10000 + greatest(m.markup_bps, 0));
   END IF;
-  INSERT INTO inference.calls (ms, pubkey, model, status, in_tokens, out_tokens, usd_micros, ms_taken)
-  VALUES ((extract(epoch FROM clock_timestamp()) * 1000)::bigint, who, model, http, greatest(in_tokens, 0), greatest(out_tokens, 0), cost, ms_taken);
-  UPDATE inference.account_day SET usd_micros = usd_micros + cost WHERE pubkey = who AND day = current_date;
-  RETURN cost;
+  INSERT INTO inference.account_day AS a (pubkey, day, n, usd_micros)
+  VALUES (who, current_date, 1, cost)
+  ON CONFLICT (pubkey, day) DO UPDATE SET n = a.n + 1, usd_micros = a.usd_micros + cost;
+  INSERT INTO inference.calls
+    (ms, pubkey, model, status, in_tokens, cached_in_tokens, out_tokens, usd_micros, upstream_usd_micros, ms_taken, kind)
+  VALUES
+    ((extract(epoch FROM clock_timestamp()) * 1000)::bigint, who, 'openagents/router-decision', http, 0, 0, 0, cost, up_cost, ms_taken, 'decision');
+  IF NOT free AND cost > 0 THEN
+    SELECT usd_per_btc INTO rate FROM inference.btc_usd;
+    msat_due := CASE WHEN coalesce(rate, 0) > 0 THEN (cost * 100000 + rate - 1) / rate ELSE 0 END;
+    UPDATE inference.credit SET msat = msat - msat_due, updated = now() WHERE pubkey = who;
+    UPDATE inference.calls SET msat = msat_due WHERE id = (SELECT max(id) FROM inference.calls WHERE pubkey = who);
+    IF msat_due > 0 THEN
+      INSERT INTO auth.credit_spends AS c (account, hour, msat)
+      SELECT a.id, date_trunc('hour', now()), msat_due
+        FROM auth.accounts a
+        LEFT JOIN auth.nostr_keys k ON k.account = a.id
+       WHERE a.kind = 'person' AND (k.pubkey = who OR a.id = who)
+       GROUP BY a.id
+      ON CONFLICT (account, hour) DO UPDATE SET msat = c.msat + EXCLUDED.msat;
+    END IF;
+  END IF;
+  RETURN msat_due;
 END $$;
+
+
+--
+-- Name: finish(text, text, integer, integer, integer, integer); Type: FUNCTION; Schema: inference; Owner: -
+--
+
+CREATE FUNCTION inference.finish(who text, model text, http integer, in_tokens integer, out_tokens integer, ms_taken integer) RETURNS bigint
+    LANGUAGE sql
+    AS $$
+  SELECT inference.finish_call(who, model, http, in_tokens, 0, out_tokens, ms_taken)
+$$;
 
 
 --
@@ -5671,26 +5719,70 @@ END $$;
 --
 
 CREATE FUNCTION inference.finish(who text, model text, http integer, in_tokens integer, out_tokens integer, ms_taken integer, free boolean) RETURNS bigint
+    LANGUAGE sql
+    AS $$
+  SELECT inference.finish(who, model, http, in_tokens, 0, out_tokens, ms_taken, free)
+$$;
+
+
+--
+-- Name: finish(text, text, integer, integer, integer, integer, integer, boolean); Type: FUNCTION; Schema: inference; Owner: -
+--
+
+CREATE FUNCTION inference.finish(who text, model text, http integer, in_tokens integer, cached_in_tokens integer, out_tokens integer, ms_taken integer, free boolean) RETURNS bigint
     LANGUAGE plpgsql
     AS $$
 DECLARE
   cost bigint; rate bigint; m bigint := 0;
 BEGIN
-  cost := inference.finish(who, model, http, in_tokens, out_tokens, ms_taken);
+  cost := inference.finish_call(who, model, http, in_tokens, cached_in_tokens, out_tokens, ms_taken);
   IF NOT free AND cost > 0 THEN
     SELECT usd_per_btc INTO rate FROM inference.btc_usd;
-    -- msat = micros / 1e6 USD * 1e11 msat/BTC / usd_per_btc
     m := CASE WHEN coalesce(rate, 0) > 0 THEN (cost * 100000 + rate - 1) / rate ELSE 0 END;
     UPDATE inference.credit SET msat = msat - m, updated = now() WHERE pubkey = who;
     UPDATE inference.calls SET msat = m WHERE id = (SELECT max(id) FROM inference.calls WHERE pubkey = who);
     IF m > 0 THEN
       INSERT INTO auth.credit_spends AS c (account, hour, msat)
-      SELECT k.account, date_trunc('hour', now()), m FROM auth.nostr_keys k JOIN auth.accounts a ON a.id = k.account AND a.kind = 'person'
-       WHERE k.pubkey = who
+      SELECT a.id, date_trunc('hour', now()), m
+        FROM auth.accounts a
+        LEFT JOIN auth.nostr_keys k ON k.account = a.id
+       WHERE a.kind = 'person' AND (k.pubkey = who OR a.id = who)
+       GROUP BY a.id
       ON CONFLICT (account, hour) DO UPDATE SET msat = c.msat + EXCLUDED.msat;
     END IF;
   END IF;
   RETURN m;
+END $$;
+
+
+--
+-- Name: finish_call(text, text, integer, integer, integer, integer, integer); Type: FUNCTION; Schema: inference; Owner: -
+--
+
+CREATE FUNCTION inference.finish_call(who text, model text, http integer, in_tokens integer, cached_in_tokens integer, out_tokens integer, ms_taken integer) RETURNS bigint
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  m inference.models;
+  tot_in int := greatest(in_tokens, 0);
+  cached int := least(greatest(cached_in_tokens, 0), tot_in);
+  plain int := tot_in - cached;
+  out_t int := greatest(out_tokens, 0);
+  cost bigint := 0;
+  up_cost bigint := 0;
+BEGIN
+  SELECT * INTO m FROM inference.models WHERE name = model;
+  IF FOUND THEN
+    cost := (plain::bigint * m.input_micros + cached::bigint * m.cached_input_micros + out_t::bigint * m.output_micros + 999999) / 1000000
+          + CASE WHEN http = 200 THEN m.per_call_micros ELSE 0 END;
+    up_cost := (plain::bigint * m.upstream_input_micros + cached::bigint * m.upstream_cached_input_micros + out_t::bigint * m.upstream_output_micros + 999999) / 1000000;
+  END IF;
+  INSERT INTO inference.calls
+    (ms, pubkey, model, status, in_tokens, cached_in_tokens, out_tokens, usd_micros, upstream_usd_micros, ms_taken, kind)
+  VALUES
+    ((extract(epoch FROM clock_timestamp()) * 1000)::bigint, who, model, http, tot_in, cached, out_t, cost, up_cost, ms_taken, coalesce(m.kind, 'chat'));
+  UPDATE inference.account_day SET usd_micros = usd_micros + cost WHERE pubkey = who AND day = current_date;
+  RETURN cost;
 END $$;
 
 
@@ -5701,6 +5793,33 @@ END $$;
 CREATE FUNCTION inference.network() RETURNS text
     LANGUAGE sql IMMUTABLE
     AS $$ SELECT 'lnbtc:000000000019d6689c085ae165831e93' $$;
+
+
+--
+-- Name: pricing(); Type: FUNCTION; Schema: inference; Owner: -
+--
+
+CREATE FUNCTION inference.pricing() RETURNS jsonb
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT jsonb_build_object(
+    'currency', 'USD',
+    'unit', 'micros_per_million_tokens',
+    'local_cost_usd_micros', 0,
+    'models', coalesce((
+      SELECT jsonb_agg(jsonb_build_object(
+        'name', m.name,
+        'kind', m.kind,
+        'input_micros', m.input_micros,
+        'cached_input_micros', m.cached_input_micros,
+        'output_micros', m.output_micros,
+        'per_call_micros', m.per_call_micros,
+        'markup_bps', m.markup_bps
+      ) ORDER BY m.kind, m.name)
+      FROM inference.models m
+    ), '[]'::jsonb)
+  )
+$$;
 
 
 --
@@ -5744,7 +5863,7 @@ BEGIN
   IF jsonb_typeof(b) IS DISTINCT FROM 'object' OR jsonb_typeof(b->'messages') IS DISTINCT FROM 'array' OR jsonb_array_length(b->'messages') = 0 THEN
     RETURN '{"status":400,"error":"a Chat Completions request needs messages"}';
   END IF;
-  SELECT * INTO m FROM inference.models WHERE name = b->>'model';
+  SELECT * INTO m FROM inference.models WHERE name = b->>'model' AND kind = 'chat';
   IF NOT FOUND THEN RETURN '{"status":400,"error":"this route does not serve that model"}'; END IF;
   INSERT INTO inference.account_day AS a (pubkey, day, n) VALUES (who, current_date, 1)
   ON CONFLICT (pubkey, day) DO UPDATE SET n = a.n + 1 RETURNING * INTO d;
@@ -5756,7 +5875,7 @@ BEGIN
   END IF;
   stream := coalesce(b->'stream' = 'true'::jsonb, false);
   cap := least(coalesce(CASE WHEN jsonb_typeof(b->'max_tokens') = 'number' THEN (b->>'max_tokens')::numeric END,
-                        CASE WHEN jsonb_typeof(b->'max_completion_tokens') = 'number' THEN (b->>'max_completion_tokens')::numeric END, 8192), 8192)::int;
+                        CASE WHEN jsonb_typeof(b->'max_completion_tokens') = 'number' THEN (b->>'max_completion_tokens')::numeric END, 8192), 65536)::int;
   b := (b - 'store' - 'max_completion_tokens' - 'user') || jsonb_build_object('model', m.upstream, 'max_tokens', greatest(cap, 1));
   IF stream THEN b := b || '{"stream_options":{"include_usage":true}}'; END IF;
   RETURN jsonb_build_object('status', 200, 'request', b, 'model', m.name, 'stream', stream);
@@ -5938,6 +6057,42 @@ BEGIN
   RETURN jsonb_build_object('status', 200, 'pubkey', pk, 'msat', m::bigint, 'sats', (m / 1000)::bigint, 'digest', d,
                             'memo', format('OpenAgents inference credit, %s sats. x402 %s', m / 1000, d));
 END $_$;
+
+
+--
+-- Name: usage_summary(text); Type: FUNCTION; Schema: inference; Owner: -
+--
+
+CREATE FUNCTION inference.usage_summary(who text) RETURNS jsonb
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT jsonb_build_object(
+    'who', who,
+    'credit_msat', coalesce((SELECT msat FROM inference.credit WHERE pubkey = who), 0),
+    'local_usd_micros', 0,
+    'today', jsonb_build_object(
+      'requests', coalesce((SELECT n FROM inference.account_day WHERE pubkey = who AND day = current_date), 0),
+      'usd_micros', coalesce((SELECT usd_micros FROM inference.account_day WHERE pubkey = who AND day = current_date), 0)
+    ),
+    'total', (
+      SELECT jsonb_build_object(
+        'calls', count(*)::bigint,
+        'in_tokens', coalesce(sum(in_tokens), 0)::bigint,
+        'cached_in_tokens', coalesce(sum(cached_in_tokens), 0)::bigint,
+        'out_tokens', coalesce(sum(out_tokens), 0)::bigint,
+        'usd_micros', coalesce(sum(usd_micros), 0)::bigint,
+        'msat', coalesce(sum(msat), 0)::bigint
+      ) FROM inference.calls WHERE pubkey = who
+    ),
+    'decisions', (
+      SELECT jsonb_build_object(
+        'calls', count(*)::bigint,
+        'usd_micros', coalesce(sum(usd_micros), 0)::bigint,
+        'msat', coalesce(sum(msat), 0)::bigint
+      ) FROM inference.calls WHERE pubkey = who AND kind = 'decision'
+    )
+  )
+$$;
 
 
 --
@@ -21234,7 +21389,10 @@ CREATE TABLE inference.calls (
     out_tokens integer DEFAULT 0 NOT NULL,
     usd_micros bigint DEFAULT 0 NOT NULL,
     ms_taken integer,
-    msat bigint DEFAULT 0 NOT NULL
+    msat bigint DEFAULT 0 NOT NULL,
+    cached_in_tokens integer DEFAULT 0 NOT NULL,
+    upstream_usd_micros bigint DEFAULT 0 NOT NULL,
+    kind text DEFAULT 'chat'::text NOT NULL
 );
 
 
@@ -21276,7 +21434,14 @@ CREATE TABLE inference.models (
     name text NOT NULL,
     upstream text NOT NULL,
     input_micros bigint NOT NULL,
-    output_micros bigint NOT NULL
+    output_micros bigint NOT NULL,
+    upstream_input_micros bigint DEFAULT 0 NOT NULL,
+    upstream_cached_input_micros bigint DEFAULT 0 NOT NULL,
+    upstream_output_micros bigint DEFAULT 0 NOT NULL,
+    cached_input_micros bigint DEFAULT 0 NOT NULL,
+    markup_bps integer DEFAULT 2500 NOT NULL,
+    per_call_micros bigint DEFAULT 0 NOT NULL,
+    kind text DEFAULT 'chat'::text NOT NULL
 );
 
 
@@ -21938,6 +22103,117 @@ ALTER SEQUENCE projects.turns_id_seq OWNED BY projects.turns.id;
 CREATE TABLE public.schema_migrations (
     name text NOT NULL,
     applied timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: failed_jobs; Type: TABLE; Schema: queue; Owner: -
+--
+
+CREATE TABLE queue.failed_jobs (
+    id bigint NOT NULL,
+    queue text NOT NULL,
+    kind text NOT NULL,
+    payload jsonb NOT NULL,
+    error_text text NOT NULL,
+    failed_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: failed_jobs_id_seq; Type: SEQUENCE; Schema: queue; Owner: -
+--
+
+CREATE SEQUENCE queue.failed_jobs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: failed_jobs_id_seq; Type: SEQUENCE OWNED BY; Schema: queue; Owner: -
+--
+
+ALTER SEQUENCE queue.failed_jobs_id_seq OWNED BY queue.failed_jobs.id;
+
+
+--
+-- Name: job_batches; Type: TABLE; Schema: queue; Owner: -
+--
+
+CREATE TABLE queue.job_batches (
+    id text NOT NULL,
+    name text NOT NULL,
+    total_jobs integer DEFAULT 0 NOT NULL,
+    pending_jobs integer DEFAULT 0 NOT NULL,
+    failed_jobs integer DEFAULT 0 NOT NULL,
+    failed_job_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    cancelled_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    finished_at timestamp with time zone
+);
+
+
+--
+-- Name: jobs; Type: TABLE; Schema: queue; Owner: -
+--
+
+CREATE TABLE queue.jobs (
+    id bigint NOT NULL,
+    queue text DEFAULT 'default'::text NOT NULL,
+    kind text NOT NULL,
+    payload jsonb NOT NULL,
+    idempotency_key text,
+    attempts smallint DEFAULT 0 NOT NULL,
+    max_attempts smallint DEFAULT 3 NOT NULL,
+    reserved_at timestamp with time zone,
+    reserved_by text,
+    available_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: jobs_id_seq; Type: SEQUENCE; Schema: queue; Owner: -
+--
+
+CREATE SEQUENCE queue.jobs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: jobs_id_seq; Type: SEQUENCE OWNED BY; Schema: queue; Owner: -
+--
+
+ALTER SEQUENCE queue.jobs_id_seq OWNED BY queue.jobs.id;
+
+
+--
+-- Name: cache; Type: TABLE; Schema: sys; Owner: -
+--
+
+CREATE TABLE sys.cache (
+    key text NOT NULL,
+    value bytea NOT NULL,
+    created_ms bigint NOT NULL,
+    expires_ms bigint NOT NULL
+);
+
+
+--
+-- Name: locks; Type: TABLE; Schema: sys; Owner: -
+--
+
+CREATE TABLE sys.locks (
+    key text NOT NULL,
+    owner text NOT NULL,
+    expires_ms bigint NOT NULL
 );
 
 
@@ -23782,6 +24058,20 @@ ALTER TABLE ONLY projects.turns ALTER COLUMN id SET DEFAULT nextval('projects.tu
 
 
 --
+-- Name: failed_jobs id; Type: DEFAULT; Schema: queue; Owner: -
+--
+
+ALTER TABLE ONLY queue.failed_jobs ALTER COLUMN id SET DEFAULT nextval('queue.failed_jobs_id_seq'::regclass);
+
+
+--
+-- Name: jobs id; Type: DEFAULT; Schema: queue; Owner: -
+--
+
+ALTER TABLE ONLY queue.jobs ALTER COLUMN id SET DEFAULT nextval('queue.jobs_id_seq'::regclass);
+
+
+--
 -- Name: character_outbox seq; Type: DEFAULT; Schema: verse; Owner: -
 --
 
@@ -25205,6 +25495,54 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
+-- Name: failed_jobs failed_jobs_pkey; Type: CONSTRAINT; Schema: queue; Owner: -
+--
+
+ALTER TABLE ONLY queue.failed_jobs
+    ADD CONSTRAINT failed_jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: job_batches job_batches_pkey; Type: CONSTRAINT; Schema: queue; Owner: -
+--
+
+ALTER TABLE ONLY queue.job_batches
+    ADD CONSTRAINT job_batches_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: jobs jobs_idempotency_key_key; Type: CONSTRAINT; Schema: queue; Owner: -
+--
+
+ALTER TABLE ONLY queue.jobs
+    ADD CONSTRAINT jobs_idempotency_key_key UNIQUE (idempotency_key);
+
+
+--
+-- Name: jobs jobs_pkey; Type: CONSTRAINT; Schema: queue; Owner: -
+--
+
+ALTER TABLE ONLY queue.jobs
+    ADD CONSTRAINT jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: cache cache_pkey; Type: CONSTRAINT; Schema: sys; Owner: -
+--
+
+ALTER TABLE ONLY sys.cache
+    ADD CONSTRAINT cache_pkey PRIMARY KEY (key);
+
+
+--
+-- Name: locks locks_pkey; Type: CONSTRAINT; Schema: sys; Owner: -
+--
+
+ALTER TABLE ONLY sys.locks
+    ADD CONSTRAINT locks_pkey PRIMARY KEY (key);
+
+
+--
 -- Name: accounts accounts_npub_key; Type: CONSTRAINT; Schema: verse; Owner: -
 --
 
@@ -26570,6 +26908,34 @@ CREATE INDEX project_knowledge_v1 ON projects.knowledge_v1 USING btree (project,
 --
 
 CREATE INDEX turns_slug ON projects.turns USING btree (slug, id);
+
+
+--
+-- Name: queue_failed_jobs_idx; Type: INDEX; Schema: queue; Owner: -
+--
+
+CREATE INDEX queue_failed_jobs_idx ON queue.failed_jobs USING btree (queue, failed_at DESC);
+
+
+--
+-- Name: queue_jobs_claim_idx; Type: INDEX; Schema: queue; Owner: -
+--
+
+CREATE INDEX queue_jobs_claim_idx ON queue.jobs USING btree (queue, available_at, id) WHERE (reserved_at IS NULL);
+
+
+--
+-- Name: sys_cache_expires_idx; Type: INDEX; Schema: sys; Owner: -
+--
+
+CREATE INDEX sys_cache_expires_idx ON sys.cache USING btree (expires_ms);
+
+
+--
+-- Name: sys_locks_expires_idx; Type: INDEX; Schema: sys; Owner: -
+--
+
+CREATE INDEX sys_locks_expires_idx ON sys.locks USING btree (expires_ms);
 
 
 --

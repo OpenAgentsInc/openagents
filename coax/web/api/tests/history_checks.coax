@@ -157,6 +157,12 @@ pc_api_checks :: (t:[]Ap,account:string,auth:string) {
  ap_check(t,"a body that is not a route request is refused",ac_call(t,"POST","/api/chat/route/v1","{}",auth,"","")==400,ap_body(t));
  st=ac_call(t,"POST","/api/chat/route/v1","{\"schema\":\"openagents.router.request.v1alpha1\",\"text\":\"Fix the typo\",\"now_ms\":1000,\"stations\":[{\"station_id\":\"mac\",\"display_name\":\"Mac\",\"reported_at_ms\":1000,\"agents\":[{\"engine\":\"claude\",\"installed\":true,\"logged_in\":true}]}]}",auth,"","");
  ap_check(t,"a route names a computer the request holds, and says when no door answered",st==200 && ap_has(ap_body(t),"\"schema\":\"openagents.router.decision.v1alpha1\"") && ap_has(ap_body(t),"\"station\":\"mac\"") && ap_has(ap_body(t),"\"engine\":\"claude\"") && ap_has(ap_body(t),"door_unavailable"),ap_body(t));
+ st=ac_call(t,"GET","/api/v1/inference/usage","",auth,"","");
+ ap_check(t,"account session Bearer token reads /api/v1/inference/usage",st==200 && ap_has(ap_body(t),"\"credit_msat\"") && ap_has(ap_body(t),"\"local_usd_micros\": 0"),ap_body(t));
+ st=ac_call(t,"GET","/api/v1/inference/credit","",auth,"","");
+ ap_check(t,"account session Bearer token reads /api/v1/inference/credit",st==200 && ap_has(ap_body(t),"\"credit_msat\""),ap_body(t));
+ st=ac_call(t,"POST","/api/v1/inference","{\"model\":\"google/gemini-4-neon\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",auth,"","");
+ ap_check(t,"account session Bearer token invokes /api/v1/inference on google/gemini-4-neon",st==200 && ap_has(ap_body(t),"Hello from the account agent"),ap_body(t));
  ap_do(t,"UPDATE projects.docs SET doc=jsonb_set(doc,'{members}','[]') WHERE slug='native-project-a'");ap_check(t,"revoked project membership also revokes saved project history",ac_call(t,"GET","/api/chat/project/v1?project=native-project-a","",auth,"","")==404,ap_body(t));
  sb_clear(q[..]);sb(q[..],"SELECT (SELECT owner FROM drops.account_owners_v1 WHERE account='");sb(q[..],account);sb(q[..],"') = ANY(auth.life_values('");sb(q[..],account);sb(q[..],"','pubkey'))");out:[128]u8;ap_check(t,"account project handles are included in export and purge resolution",ap_sql(t,sb_text(q[..]),out[..])=="t","");
  sb_clear(q[..]);sb(q[..],"SELECT auth.life_delete('drops.drops'::regclass,'owner',auth.life_values('");sb(q[..],account);sb(q[..],"','pubkey'),0)");ap_do(t,sb_text(q[..]));

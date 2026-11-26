@@ -39,7 +39,16 @@ GwRate :: struct {
 // its words): the Golems board's list prices, moved here from its own table (golems.coax gs_price,
 // cents a million tokens) when that table was deleted (GitHub #13243): input, cache reads, cache
 // writes kept five minutes and an hour, output.
-GW_RATES :: [26] GwRate.[
+GW_RATES :: [34] GwRate.[
+  // OpenAgents Cloud ("ours") retail pricing (+25% over upstream Vertex list prices; #14069).
+  GwRate.{gateway = "ours", model = "google/gemini-4-neon", input = 3750000, cached_input = 187500, output = 18750000},
+  GwRate.{gateway = "ours", model = "gemini-4-neon", input = 3750000, cached_input = 187500, output = 18750000},
+  GwRate.{gateway = "ours", model = "google/gemini-4-carbon", input = 5000000, cached_input = 250000, output = 25000000},
+  GwRate.{gateway = "ours", model = "gemini-4-carbon", input = 5000000, cached_input = 250000, output = 25000000},
+  GwRate.{gateway = "ours", model = "google/gemini-4-argon", input = 5000000, cached_input = 250000, output = 25000000},
+  GwRate.{gateway = "ours", model = "gemini-4-argon", input = 5000000, cached_input = 250000, output = 25000000},
+  GwRate.{gateway = "ours", model = "google/gemini-4-hydrogen", input = 1875000, cached_input = 93750, output = 9375000},
+  GwRate.{gateway = "ours", model = "gemini-4-hydrogen", input = 1875000, cached_input = 93750, output = 9375000},
   GwRate.{gateway = "vertex", model = "google/gemini-4-hydrogen", input = 1500000, cached_input = 75000, output = 7500000},
   GwRate.{gateway = "vertex", model = "gemini-4-hydrogen", input = 1500000, cached_input = 75000, output = 7500000},
   GwRate.{gateway = "vertex", model = "google/gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
@@ -149,6 +158,43 @@ gw_card_cost :: (rate: GwRate, input: int, cached_in: int, cache_write: int, out
   // a row without an hour's price charges the five-minute one; without either, the input price
   h := gw_rate("anthropic", "claude-haiku-4-5").rate;
   #assert gw_card_scaled(h, 0, 0, 0, 7, 0) == 7 * 1250000 && gw_card_scaled(gw_rate("vertex", "gemini-4-carbon").rate, 0, 0, 2, 3, 0) == 5 * 4000000;
+}
+
+// Local on-device models (Inkling 2 Mini / Psionic Metal) are always $0 and never billed (#14069).
+gw_is_local_model :: (model: string) -> bool {
+  m := model;
+  if m.count > 7 && m[0..<7] == "flawed:" { m = cast(string) m[7..<m.count]; }
+  if m == "inkling-2-mini" || m == "hybrid-exec-v1" || m == "local" || m == "oa:local" { return true; }
+  return m.count > 15 && m[0..<15] == "inkling-2-mini-";
+}
+
+// Cost in micro-USD for a local model is unconditionally 0; non-local models return -1 (caller uses gw_rate).
+gw_local_cost_micros :: (model: string, input: int, cached_in: int, output: int) -> int {
+  if gw_is_local_model(model) { return 0; }
+  return -1;
+}
+
+#test "OpenAgents Cloud retail rows (+25% over upstream) and $0 local Inkling helpers" {
+  n := gw_rate("ours", "google/gemini-4-neon");
+  #assert n.ok && n.rate.input == 3750000 && n.rate.cached_input == 187500 && n.rate.output == 18750000;
+  na := gw_rate("ours", "gemini-4-neon");
+  #assert na.ok && na.rate.input == 3750000 && na.rate.cached_input == 187500 && na.rate.output == 18750000;
+  c := gw_rate("ours", "google/gemini-4-carbon");
+  #assert c.ok && c.rate.input == 5000000 && c.rate.cached_input == 250000 && c.rate.output == 25000000;
+  a := gw_rate("ours", "google/gemini-4-argon");
+  #assert a.ok && a.rate.input == 5000000 && a.rate.cached_input == 250000 && a.rate.output == 25000000;
+  h := gw_rate("ours", "google/gemini-4-hydrogen");
+  #assert h.ok && h.rate.input == 1875000 && h.rate.cached_input == 93750 && h.rate.output == 9375000;
+  // 1M tokens on Neon: 500k plain ($1.875) + 500k cached ($0.09375) + 100k out ($1.875) = $3.84375 = 3,843,750 micros
+  #assert gw_card_cost(n.rate, 1000000, 500000, 0, 100000) == 3843750;
+  // Local Inkling models are always $0.
+  #assert gw_is_local_model("inkling-2-mini") && gw_is_local_model("flawed:inkling-2-mini");
+  #assert gw_is_local_model("flawed:local") && !gw_is_local_model("flawed:1");
+  #assert gw_is_local_model("inkling-2-mini-a") && gw_is_local_model("inkling-2-mini-uncensored-lora") && gw_is_local_model("hybrid-exec-v1") && gw_is_local_model("local") && gw_is_local_model("oa:local");
+  #assert !gw_is_local_model("google/gemini-4-neon") && !gw_is_local_model("") && !gw_is_local_model("flawed:") && !gw_is_local_model("flawed:x") && !gw_is_local_model("inkling-2-mini-");
+  #assert gw_local_cost_micros("inkling-2-mini", 50000, 10000, 8000) == 0;
+  #assert gw_local_cost_micros("flawed:inkling-2-mini-uncensored-q4k", 1000, 0, 500) == 0;
+  #assert gw_local_cost_micros("google/gemini-4-neon", 1000, 0, 500) == -1;
 }
 
 // ---------------------------------------------------------------- context windows

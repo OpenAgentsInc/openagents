@@ -5,6 +5,12 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#if defined(__APPLE__)
+static inline void explicit_bzero(void *p, size_t n) {
+  volatile unsigned char *v = (volatile unsigned char *)p;
+  while (n--) *v++ = 0;
+}
+#endif
 
 typedef struct {
   int fd;

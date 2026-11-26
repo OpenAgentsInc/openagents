@@ -65,7 +65,9 @@ if [[ "$(uname -s)" == Darwin ]]; then
   secp_inc=(${secp:+-I"$secp/include"}); secp_lib=(${secp:+-L"$secp/lib"})
   ssl="$(brew --prefix openssl@3)"
   ssl_inc=(-I"$ssl/include"); ssl_lib=(-L"$ssl/lib")
+  sec_fw=(-framework CoreFoundation -framework Security)
 else
+  sec_fw=()
   # PGDG's postgresql-16 (Debian 12 ships 15), else the newest installed.
   pgbin=/usr/lib/postgresql/16/bin
   [[ -x "$pgbin/initdb" ]] || pgbin="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -n 1 || true)"
@@ -154,11 +156,11 @@ api_sources "$here" "$work" "$cli_coax"
 if [[ $serve == 0 ]]; then
   "$cli_coax" c "$here/environment-broker-fixture.coax" --library > "$work/environment-fixture.c"
   "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -I"$repo_root/coax/platform" \
-    "$work/environment-fixture.c" "$repo_root/coax/platform/tool-native.c" "$repo_root/coax/platform/store-file-native.c" "$repo_root/coax/platform/process-native.c" -lpthread -lm -o "$work/environment-fixture"
+    "$work/environment-fixture.c" "$repo_root/coax/platform/tool-native.c" "$repo_root/coax/platform/store-file-native.c" "$repo_root/coax/platform/process-native.c" ${sec_fw[@]+"${sec_fw[@]}"} -lpthread -lm -o "$work/environment-fixture"
 fi
 if [[ $serve == 0 ]] && runs checks; then
   "$cc" -std=c11 -O1 -g -D_DEFAULT_SOURCE -fsanitize=address,undefined -I"$work" -I"$here" -I"$repo_root/coax/platform" \
-    "$here/tests/environment_proxy.c" "$here/environment-wire-unit.c" "$here/projects-wire-unit.c" "$repo_root/coax/platform/process-native.c" "$repo_root/coax/platform/store-file-native.c" -lpthread -lm -o "$work/environment-proxy"
+    "$here/tests/environment_proxy.c" "$here/environment-wire-unit.c" "$here/projects-wire-unit.c" "$repo_root/coax/platform/process-native.c" "$repo_root/coax/platform/store-file-native.c" ${sec_fw[@]+"${sec_fw[@]}"} -lpthread -lm -o "$work/environment-proxy"
   "$work/environment-proxy" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb /unused "$work/environment-request.json" "$work/environment-fixture"
 fi
@@ -183,7 +185,7 @@ local_serve=(); [[ $serve == 0 ]] || local_serve=(-DOA_LOCAL_SERVE)
 "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -DOA_LNADDR_TEST_FETCH ${local_serve[@]+"${local_serve[@]}"} -fsanitize=address,undefined \
   -I"$work" ${pq_inc[@]+"${pq_inc[@]}"} ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} \
   -o "$work/api" "${API_SOURCES[@]}" \
-  ${pq_lib[@]+"${pq_lib[@]}"} -lpq ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lssl -lcrypto -lcurl -lz -lpthread -lm
+  ${pq_lib[@]+"${pq_lib[@]}"} -lpq ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lssl -lcrypto -lcurl -lz ${sec_fw[@]+"${sec_fw[@]}"} -lpthread -lm
 if runs checks; then
 # The gate's table (auth.c): an unknown route has no rule, and /docs/limits is the API's own limits table.
 [[ "$("$work/api" --rule GET /api/no-such-route || true)" == none && "$("$work/api" --rule POST /api/auth/logout-everywhere)" == L2 ]] || { echo "api --rule: the gate's table is wrong" >&2; exit 1; }

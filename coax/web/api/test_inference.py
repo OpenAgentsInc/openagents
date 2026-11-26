@@ -20,8 +20,11 @@ class FakeVertex(http.server.BaseHTTPRequestHandler):
                       {"choices": [], "usage": {"prompt_tokens": 2000, "completion_tokens": 400, "total_tokens": 2400}}]
             out, kind = ("".join("data: " + json.dumps(c) + "\n\n" for c in chunks) + "data: [DONE]\n\n").encode(), "text/event-stream"
         else:
+            usage = {"prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200}
+            if infer_mode.get("cached_tokens"):
+                usage["prompt_tokens_details"] = {"cached_tokens": infer_mode["cached_tokens"]}
             out, kind = json.dumps({"choices": [{"index": 0, "message": {"role": "assistant", "content": "Paris."}, "finish_reason": "stop"}],
-                                    "usage": {"prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200}}).encode(), "application/json"
+                                    "usage": usage}).encode(), "application/json"
         self.send_response(infer_mode["status"])
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(out)))
@@ -67,14 +70,14 @@ s, b, h = infer(dict(infer_ask, max_tokens=100000, store=True, user="someone"))
 check("inference: a signed request gets Vertex's answer", s == 200 and json.loads(b)["choices"][0]["message"]["content"] == "Paris.", b)
 infer_sent = infer_seen[-1]
 check("inference: the service's token goes to Vertex, not the caller's signature", infer_sent["auth"] == "Bearer test-token", infer_sent["auth"])
-check("inference: Vertex gets the messages, its model name, the output capped at 8192, nothing stored",
-      infer_sent["body"]["messages"] == infer_ask["messages"] and infer_sent["body"]["model"] == "google/gemini-4-hydrogen" and infer_sent["body"]["max_tokens"] == 8192
+check("inference: Vertex gets the messages, its model name, the output capped at 65536, nothing stored",
+      infer_sent["body"]["messages"] == infer_ask["messages"] and infer_sent["body"]["model"] == "google/gemini-4-hydrogen" and infer_sent["body"]["max_tokens"] == 65536
       and "store" not in infer_sent["body"] and "user" not in infer_sent["body"], infer_sent["body"])
-check("inference: the call is kept with its tokens and its cost at the card's rates",
-      sql(f"select status||'|'||in_tokens||'|'||out_tokens||'|'||usd_micros from inference.calls where pubkey = '{infer_user}' order by id desc limit 1") == "200|1000|200|3000")
-check("inference: the old Gemini 3.8 Flash name is still served, asked of Gemini 4 Hydrogen at its price (#13479)",
+check("inference: the call is kept with its tokens and OpenAgents retail (+25%) and upstream costs",
+      sql(f"select status||'|'||in_tokens||'|'||cached_in_tokens||'|'||out_tokens||'|'||usd_micros||'|'||upstream_usd_micros from inference.calls where pubkey = '{infer_user}' order by id desc limit 1") == "200|1000|0|200|3750|3000")
+check("inference: the old Gemini 3.8 Flash name is still served, asked of Gemini 4 Hydrogen at OpenAgents retail price (#13479, #14069)",
       sql("select (inference.request('alias-check', '{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}', 5, 1000000))->'request'->>'model'") == "google/gemini-4-hydrogen"
-      and sql("select upstream||'|'||input_micros||'|'||output_micros from inference.models where name = 'google/gemini-3.8-flash'") == "google/gemini-4-hydrogen|1500000|7500000")
+      and sql("select upstream||'|'||input_micros||'|'||output_micros||'|'||upstream_input_micros||'|'||upstream_output_micros from inference.models where name = 'google/gemini-3.8-flash'") == "google/gemini-4-hydrogen|1875000|9375000|1500000|7500000")
 
 s, b, h = infer(dict(infer_ask, stream=True))
 infer_text = b.decode()
@@ -82,7 +85,7 @@ check("inference: a stream comes back as server-sent events", s == 200 and h.get
       and '"content": "Par"' in infer_text, (h, infer_text))
 check("inference: a stream asks Vertex for its usage", infer_seen[-1]["body"].get("stream_options") == {"include_usage": True}, infer_seen[-1]["body"])
 check("inference: a stream's usage, from its last chunk, is metered",
-      sql(f"select in_tokens||'|'||out_tokens||'|'||usd_micros from inference.calls where pubkey = '{infer_user}' order by id desc limit 1") == "2000|400|6000")
+      sql(f"select in_tokens||'|'||out_tokens||'|'||usd_micros||'|'||upstream_usd_micros from inference.calls where pubkey = '{infer_user}' order by id desc limit 1") == "2000|400|7500|6000")
 
 infer_mode["status"] = 429
 s, b, _ = infer(infer_ask)
@@ -96,7 +99,7 @@ check("inference: an admin's key may use the route", s == 200)
 infer_codes = [infer(infer_ask)[0] for _ in range(3)]
 check("inference: an account's day is five requests here; the sixth is a 429 and never reaches Vertex", infer_codes == [200, 200, 429], infer_codes)
 check("inference: the day's count and spend are the account's",
-      sql(f"select n||'|'||usd_micros from inference.account_day where pubkey = '{infer_user}'") == "6|15000")
+      sql(f"select n||'|'||usd_micros from inference.account_day where pubkey = '{infer_user}'") == "6|18750")
 infer_words = [sql("select coalesce(x->>'error', x->>'status') from inference.request('limit-words-check', '{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}', 2, 1000000) x") for _ in range(3)]
 check("inference: the day's request limit is said with its number", infer_words == ["200", "200", "this account's 2 requests for today are used up"], infer_words)
 infer_admin = infer_pubkey(os.environ["ADMIN_KEY"])
@@ -272,9 +275,9 @@ s, b, _ = infer(infer_ask, keyfile=other_key)
 time.sleep(0.5)
 check("drawdown: with credit and a price, the key's request is answered", s == 200 and json.loads(b)["choices"][0]["message"]["content"] == "Paris.", b)
 check("drawdown: the price was asked of our wallet and kept", sql("select usd_per_btc from inference.btc_usd") == "100000")
-check("drawdown: the call's cost ($0.0030) is taken from its credit in msat at the kept price (3000 msat at $100,000)",
-      sql(f"select msat from inference.credit where pubkey = '{other}'") == "67000"
-      and sql(f"select usd_micros||'|'||msat from inference.calls where pubkey = '{other}' order by id desc limit 1") == "3000|3000")
+check("drawdown: the call's cost ($0.00375) is taken from its credit in msat at the kept price (3750 msat at $100,000)",
+      sql(f"select msat from inference.credit where pubkey = '{other}'") == "66250"
+      and sql(f"select usd_micros||'|'||upstream_usd_micros||'|'||msat from inference.calls where pubkey = '{other}' order by id desc limit 1") == "3750|3000|3750")
 sql(f"delete from inference.account_day where pubkey = '{infer_user}'")
 s, _, _ = infer(infer_ask)
 time.sleep(0.5)
@@ -395,14 +398,14 @@ def up_close():
 
 s, b, h, took, asked = up_ask()
 check("upstream: us fast: its answer, and global is never asked", s == 200 and up_said(b) == "from us" and h.get("X-OA-Upstream") == "us" and asked == ["us"], (s, b, h, asked))
-check("upstream: us fast: the call is kept once with us's usage", up_kept() == "1|200|1000|200|3000|1", up_kept())
+check("upstream: us fast: the call is kept once with us's usage", up_kept() == "1|200|1000|200|3750|1", up_kept())
 
 s, b, h, took, asked = up_ask(us={"delay": 5})
 check("upstream: us slow: global is asked as well after the bound, and its answer is the answer",
       s == 200 and up_said(b) == "from global" and h.get("X-OA-Upstream") == "global" and asked == ["us", "global"] and 0.9 < took < 4, (s, b, h, took, asked))
 check("upstream: us slow: both endpoints got the same body and the service's token",
       up_seen[-1]["raw"] == up_seen[-2]["raw"] and json.loads(up_seen[-1]["raw"])["max_tokens"] == 8192 and {x["auth"] for x in up_seen[-2:]} == {"Bearer test-token"}, up_seen[-2:])
-check("upstream: us slow: one call kept and one request of the day, with the usage of the answer the caller got", up_kept() == "2|200|2000|400|6000|2", up_kept())
+check("upstream: us slow: one call kept and one request of the day, with the usage of the answer the caller got", up_kept() == "2|200|2000|400|7500|2", up_kept())
 
 s, b, h, took, asked = up_ask(us={"delay": 5})
 check("upstream: the breaker is open: global is asked first and us is not asked, with no wait",
@@ -416,7 +419,7 @@ check("upstream: us failing (503): global is asked once and the caller sees its 
 up_count = up_kept()
 s, b, h, took, asked = up_ask(us={}, glob={"status": 503})
 check("upstream: global first and failing: us is asked once", s == 200 and up_said(b) == "from us" and h.get("X-OA-Upstream") == "us" and asked == ["global", "us"], (s, b, asked))
-check("upstream: a failed endpoint is never a call of its own", up_count == "5|200|2000|400|6000|5" and up_kept() == "6|200|1000|200|3000|6", (up_count, up_kept()))
+check("upstream: a failed endpoint is never a call of its own", up_count == "5|200|2000|400|7500|5" and up_kept() == "6|200|1000|200|3750|6", (up_count, up_kept()))
 ok, why = up_close()
 check("upstream: the breaker closes after a failure too", ok, why)
 
@@ -443,7 +446,7 @@ up_text = b.decode()
 check("upstream: a stream whose first byte is late: the whole stream is global's, never two answers joined",
       ok and s == 200 and h.get("Content-Type") == "text/event-stream" and h.get("X-OA-Upstream") == "global" and asked == ["us", "global"]
       and up_text.count("data: ") == 4 and up_text.endswith("data: [DONE]\n\n") and '"content": "global"' in up_text and '"content": "us"' not in up_text, (why, s, h, asked, up_text))
-check("upstream: a stream's usage is the answering endpoint's, once", up_kept().split("|")[1:5] == ["200", "2000", "400", "6000"], up_kept())
+check("upstream: a stream's usage is the answering endpoint's, once", up_kept().split("|")[1:5] == ["200", "2000", "400", "7500"], up_kept())
 ok, why = up_close()
 s, b, h, took, asked = up_ask(us={"middle": 2.5}, stream=True)
 check("upstream: a stream that has begun is never left: us's stream to its end though the bound passes, global not asked",
@@ -460,7 +463,7 @@ check("upstream: a long answer: us wins the race it was first in, and global is 
 s, b, took, asked = up_next
 check("upstream: after us won a race, the next long answer starts none (a long answer is not paid for twice in a row)",
       s == 200 and up_said(b) == "from us" and asked == ["us"], (s, b, took, asked))
-check("upstream: every ask was one call, whatever was tried", up_kept().startswith(f"{up_count + 2}|200|1000|200|3000|"), up_kept())
+check("upstream: every ask was one call, whatever was tried", up_kept().startswith(f"{up_count + 2}|200|1000|200|3750|"), up_kept())
 time.sleep(1.2)   # past the race's rest
 s, b, h, took, asked = up_ask(us={"delay": 2.5}, glob={"status": 403})
 check("upstream: global's own refusal in a race is not the answer: us's answer still comes",
@@ -473,3 +476,56 @@ check("upstream: the log says which endpoint answered and how long each took, an
       and not any("test-token" in l or "Bearer" in l for l in up_log), up_lines[:6])
 up_api.kill()
 up_fake.shutdown()
+
+# OpenAgents Cloud retail pricing, Gemini 4 Neon, cached tokens, pricing/usage APIs & decision metering (#14069).
+s, b, _ = call("GET", "/api/v1/inference/pricing")
+pricing = json.loads(b) if s == 200 else {}
+p_models = {m["name"]: m for m in pricing.get("models", [])}
+check("pricing: public GET /api/v1/inference/pricing returns authoritative OpenAgents retail schedule",
+      s == 200 and pricing.get("currency") == "USD" and pricing.get("local_cost_usd_micros") == 0
+      and p_models.get("google/gemini-4-neon", {}).get("input_micros") == 3750000
+      and p_models.get("google/gemini-4-neon", {}).get("cached_input_micros") == 187500
+      and p_models.get("google/gemini-4-neon", {}).get("output_micros") == 18750000
+      and p_models.get("google/gemini-4-neon", {}).get("markup_bps") == 2500
+      and p_models.get("gemini-4-neon", {}).get("input_micros") == 3750000
+      and p_models.get("openagents/router-decision", {}).get("kind") == "decision"
+      and p_models.get("openagents/router-decision", {}).get("per_call_micros") == 250, (s, pricing))
+check("pricing: POST is 405", call("POST", "/api/v1/inference/pricing", b"{}")[0] == 405)
+
+# Gemini 4 Neon + alias + cached input tokens metering & billing (+25% retail vs upstream).
+sql(f"delete from inference.account_day where pubkey = '{infer_user}'")
+infer_mode["cached_tokens"] = 500
+s, b, _ = infer({"model": "google/gemini-4-neon", "max_tokens": 32768, "messages": infer_ask["messages"]})
+infer_mode["cached_tokens"] = 0
+time.sleep(0.4)
+# 500 uncached * 3.75 + 500 cached * 0.1875 + 200 out * 18.75 = 1875 + 93.75 + 3750 = 5718.75 -> ceil 5719 micros
+# upstream: 500 * 3.00 + 500 * 0.15 + 200 * 15.00 = 1500 + 75 + 3000 = 4575 micros
+check("neon: google/gemini-4-neon is served with high max_tokens and meters cached vs uncached input + upstream cost",
+      s == 200 and infer_seen[-1]["body"]["model"] == "google/gemini-4-neon" and infer_seen[-1]["body"]["max_tokens"] == 32768
+      and sql(f"select model||'|'||in_tokens||'|'||cached_in_tokens||'|'||out_tokens||'|'||usd_micros||'|'||upstream_usd_micros||'|'||kind from inference.calls where pubkey = '{infer_user}' order by id desc limit 1")
+          == "google/gemini-4-neon|1000|500|200|5719|4575|chat", (s, b))
+
+s, b, _ = infer({"model": "gemini-4-neon", "messages": infer_ask["messages"]})
+time.sleep(0.4)
+check("neon: short alias gemini-4-neon maps to upstream google/gemini-4-neon",
+      s == 200 and infer_seen[-1]["body"]["model"] == "google/gemini-4-neon", (s, b))
+check("neon: decision model cannot be invoked via chat completions",
+      infer({"model": "openagents/router-decision", "messages": infer_ask["messages"]})[0] == 400)
+
+# Usage API (NIP-98 authenticated) + decision-model metering.
+check("usage: unauthenticated GET /api/v1/inference/usage is 401", call("GET", "/api/v1/inference/usage")[0] == 401)
+sql(f"insert into inference.credit (pubkey, msat) values ('{other}', 20000) on conflict (pubkey) do update set msat = 20000")
+sql(f"select inference.decision_record('{other}', 200, 145, false)")
+check("decisions: inference.decision_record meters decision call and debits credit in msat",
+      sql(f"select model||'|'||kind||'|'||usd_micros||'|'||upstream_usd_micros||'|'||msat from inference.calls where pubkey = '{other}' and kind = 'decision' order by id desc limit 1")
+          == "openagents/router-decision|decision|250|200|250"
+      and sql(f"select msat from inference.credit where pubkey = '{other}'") == "19750")
+
+usage_url = API + "/api/v1/inference/usage"
+usage_sig = subprocess.run([os.environ["SIGN"], "--key", other_key, "GET", usage_url], capture_output=True, text=True, check=True).stdout.strip()
+s, b, _ = call("GET", "/api/v1/inference/usage", None, {"Authorization": "Nostr " + usage_sig})
+u = json.loads(b) if s == 200 else {}
+check("usage: authenticated GET /api/v1/inference/usage returns credit, total usage, decision usage, and $0 local",
+      s == 200 and u.get("who") == other and u.get("credit_msat") == 19750 and u.get("local_usd_micros") == 0
+      and u.get("decisions", {}).get("calls", 0) >= 1 and u.get("decisions", {}).get("usd_micros", 0) >= 250
+      and u.get("total", {}).get("calls", 0) >= 1, (s, u))

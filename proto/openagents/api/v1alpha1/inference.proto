@@ -38,3 +38,51 @@ message InferenceInferencePostRefusalRecovery {
   optional int64 now_ms = 6 [json_name = "now_ms"];
   optional int64 wait_hours = 7 [json_name = "wait_hours"];
 }
+
+// GET /api/v1/inference/pricing 200
+message InferenceInferencePricing {
+  optional string currency = 1 [json_name = "currency"];
+  optional string unit = 2 [json_name = "unit"];
+  optional int64 local_cost_usd_micros = 3 [json_name = "local_cost_usd_micros"];
+  repeated InferenceInferencePricingModel models = 4 [json_name = "models"];
+}
+
+message InferenceInferencePricingModel {
+  optional string name = 1 [json_name = "name"];
+  optional string kind = 2 [json_name = "kind"];
+  optional int64 input_micros = 3 [json_name = "input_micros"];
+  optional int64 cached_input_micros = 4 [json_name = "cached_input_micros"];
+  optional int64 output_micros = 5 [json_name = "output_micros"];
+  optional int64 per_call_micros = 6 [json_name = "per_call_micros"];
+  optional int64 markup_bps = 7 [json_name = "markup_bps"];
+}
+
+// GET /api/v1/inference/usage 200
+message InferenceInferenceUsage {
+  optional string who = 1 [json_name = "who"];
+  optional int64 credit_msat = 2 [json_name = "credit_msat"];
+  optional int64 local_usd_micros = 3 [json_name = "local_usd_micros"];
+  optional InferenceInferenceUsageToday today = 4 [json_name = "today"];
+  optional InferenceInferenceUsageTotal total = 5 [json_name = "total"];
+  optional InferenceInferenceUsageDecisions decisions = 6 [json_name = "decisions"];
+}
+
+message InferenceInferenceUsageToday {
+  optional int64 requests = 1 [json_name = "requests"];
+  optional int64 usd_micros = 2 [json_name = "usd_micros"];
+}
+
+message InferenceInferenceUsageTotal {
+  optional int64 calls = 1 [json_name = "calls"];
+  optional int64 in_tokens = 2 [json_name = "in_tokens"];
+  optional int64 cached_in_tokens = 3 [json_name = "cached_in_tokens"];
+  optional int64 out_tokens = 4 [json_name = "out_tokens"];
+  optional int64 usd_micros = 5 [json_name = "usd_micros"];
+  optional int64 msat = 6 [json_name = "msat"];
+}
+
+message InferenceInferenceUsageDecisions {
+  optional int64 calls = 1 [json_name = "calls"];
+  optional int64 usd_micros = 2 [json_name = "usd_micros"];
+  optional int64 msat = 3 [json_name = "msat"];
+}

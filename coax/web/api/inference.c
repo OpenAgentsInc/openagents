@@ -320,18 +320,71 @@ done:
   PQfinish(db);
 }
 
-// GET, signed NIP-98: the signer's credit, {"credit_msat": N}.
-static void credit_balance(const request *q) {
+// Authenticate via NIP-98 ("Authorization: Nostr ...") OR a logged-in OpenAgents account session
+// (Bearer token / Cookie resolved by auth_principal_of). Writes the billing identity into who
+// (64-char hex pubkey when present, else acct_... id) and sets *free_key when funded/listed.
+static bool inference_auth(const request *q, char who[65], bool *free_key) {
+  who[0] = 0;
+  if (free_key) *free_key = false;
   char auth[4096];
-  if (!api_header(q, "Authorization", auth, sizeof auth) || strncmp(auth, "Nostr ", 6)) { api_error(q->fd, 401, "sign the request (NIP-98)"); return; }
-  char url[4200]; snprintf(url, sizeof url, "%s%s", env_or("OA_API_ORIGIN", "https://openagents.com"), q->target);
-  nostr_event ev; char err[160];
-  if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err)) {
-    api_error(q->fd, 401, err); return;
+  if (api_header(q, "Authorization", auth, sizeof auth) && !strncmp(auth, "Nostr ", 6)) {
+    char url[4200]; snprintf(url, sizeof url, "%s%s", env_or("OA_API_ORIGIN", "https://openagents.com"), q->target);
+    nostr_event ev; char err[160];
+    if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err)) {
+      api_error(q->fd, 401, err);
+      return false;
+    }
+    snprintf(who, 65, "%s", ev.pubkey);
+    if (free_key) *free_key = admin_is(ev.pubkey) || listed(ev.pubkey);
+    return true;
   }
+  const auth_principal *p = auth_principal_of(q);
+  if (p && p->kind != AP_NOBODY && p->kind != AP_KIND_GUEST && (p->pubkey[0] || p->account[0])) {
+    snprintf(who, 65, "%s", p->pubkey[0] ? p->pubkey : p->account);
+    if (free_key) *free_key = p->admin || p->team || (p->pubkey[0] && (admin_is(p->pubkey) || listed(p->pubkey)));
+    return true;
+  }
+  api_error(q->fd, 401, "sign the request (NIP-98) or log in");
+  return false;
+}
+
+// GET /api/v1/inference/pricing: public authoritative OpenAgents retail rate schedule.
+static void pricing_route(const request *q) {
+  if (strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET pricing"); return; }
   PGconn *db = api_db();
   if (!db) { api_error(q->fd, 503, "no database"); return; }
-  const char *v[1] = {ev.pubkey};
+  PGresult *r = PQexec(db, "SELECT inference.pricing()::text");
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    PQclear(r); api_error(q->fd, 500, "pricing unavailable"); return;
+  }
+  const char *body = PQgetvalue(r, 0, 0);
+  api_respond(q->fd, 200, "application/json", "Cache-Control: public, max-age=300\r\n", body, strlen(body));
+  PQclear(r);
+}
+
+// GET /api/v1/inference/usage: authenticated user's cloud usage, decision usage, and credit balance.
+static void usage_route(const request *q) {
+  if (strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET usage"); return; }
+  char who[65];
+  if (!inference_auth(q, who, NULL)) return;
+  PGconn *db = api_db();
+  if (!db) { api_error(q->fd, 503, "no database"); return; }
+  const char *v[1] = {who};
+  PGresult *r = PQexecParams(db, "SELECT inference.usage_summary($1)::text", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    PQclear(r); api_error(q->fd, 500, "usage unavailable"); return;
+  }
+  api_json(q->fd, 200, PQgetvalue(r, 0, 0));
+  PQclear(r);
+}
+
+// GET /api/v1/inference/credit, signed NIP-98 or account session: {"credit_msat": N}.
+static void credit_balance(const request *q) {
+  char who[65];
+  if (!inference_auth(q, who, NULL)) return;
+  PGconn *db = api_db();
+  if (!db) { api_error(q->fd, 503, "no database"); return; }
+  const char *v[1] = {who};
   PGresult *r = PQexecParams(db, "SELECT coalesce((SELECT msat FROM inference.credit WHERE pubkey = $1), 0)", 1, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_error(q->fd, 500, "not read"); return; }
   char out[80]; api_num_text(out, sizeof out, "credit_msat", atoll(PQgetvalue(r, 0, 0)));
@@ -641,14 +694,15 @@ static void answer(int fd, const char *who, const char *model, const char *reque
   r.started = true;
 #endif
   if (!r.started && !r.deferred) api_error(fd, 502, "the model was not reached");
-  char http[16], in[16], out[16], taken[16];
+  char http[16], in[16], cached_in[16], out[16], taken[16];
   snprintf(http, sizeof http, "%ld", status);
   snprintf(in, sizeof in, "%d", last_int(r.all.p, "\"prompt_tokens\""));
+  snprintf(cached_in, sizeof cached_in, "%d", last_int(r.all.p, "\"cached_tokens\""));
   snprintf(out, sizeof out, "%d", last_int(r.all.p, "\"completion_tokens\""));
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
   PGconn *db = api_db_new();
-  const char *v[7] = {who, model, http, in, out, taken, free_key ? "true" : "false"};
-  PGresult *q = db ? PQexecParams(db, "SELECT inference.finish($1, $2, $3::int, $4::int, $5::int, $6::int, $7::bool)", 7, NULL, v, NULL, NULL, 0) : NULL;
+  const char *v[8] = {who, model, http, in, cached_in, out, taken, free_key ? "true" : "false"};
+  PGresult *q = db ? PQexecParams(db, "SELECT inference.finish($1, $2, $3::int, $4::int, $5::int, $6::int, $7::int, $8::bool)", 8, NULL, v, NULL, NULL, 0) : NULL;
   if (!q || PQresultStatus(q) != PGRES_TUPLES_OK) api_log("inference: not kept: %s", db ? PQerrorMessage(db) : "no database");
   if (status != 200) api_log("inference: the model answered %ld", status);
   if (q) PQclear(q);
@@ -663,19 +717,14 @@ static void answer(int fd, const char *who, const char *model, const char *reque
 }
 
 bool inference_route(const request *q) {
+  if (!strcmp(q->path, "/api/v1/inference/pricing")) { pricing_route(q); return true; }
+  if (!strcmp(q->path, "/api/v1/inference/usage")) { usage_route(q); return true; }
   if (!strcmp(q->path, "/api/v1/inference/credit")) return credit_route(q);
   if (strcmp(q->path, "/api/v1/inference")) return false;
   if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a Chat Completions request"); return true; }
-  char auth[4096];
-  if (!api_header(q, "Authorization", auth, sizeof auth) || strncmp(auth, "Nostr ", 6)) {
-    api_error(q->fd, 401, "sign the request (NIP-98)"); return true;
-  }
-  char url[4200]; snprintf(url, sizeof url, "%s%s", env_or("OA_API_ORIGIN", "https://openagents.com"), q->target);
-  nostr_event ev; char err[160];
-  if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err)) {
-    api_error(q->fd, 401, err); return true;
-  }
-  return inference_ask(q, ev.pubkey, admin_is(ev.pubkey) || listed(ev.pubkey));
+  char who[65]; bool free_key = false;
+  if (!inference_auth(q, who, &free_key)) return true;
+  return inference_ask(q, who, free_key);
 }
 
 // The request q's Chat Completions body asked of Vertex for this key, answered as it comes, under the
