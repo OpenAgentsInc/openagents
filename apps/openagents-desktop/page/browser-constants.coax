@@ -1,0 +1,72 @@
+// Reserved non-colliding IDs and constants for the expandable right-side Browser pane
+// (Spec: docs/browser/desktop-browser-pane-spec.md §9.2; GitHub #14106).
+// Phase 1 (page/browserpane.coax) builds directly on these IDs; --minimal builds
+// load page/v1-stubs.coax instead so zero browser code or WebKit/CEF symbols ship.
+
+// Non-colliding host asks (highest prior ask is CP_ASK_SIDEBAR_VIEW :: 221)
+CP_ASK_BR_FIRST          :: 230;
+CP_ASK_BR_NAVIGATE       :: 230;
+CP_ASK_BR_BACK           :: 231;
+CP_ASK_BR_FORWARD        :: 232;
+CP_ASK_BR_RELOAD         :: 233;
+CP_ASK_BR_STOP           :: 234;
+CP_ASK_BR_NEW_TAB        :: 235;
+CP_ASK_BR_CLOSE_TAB      :: 236;
+CP_ASK_BR_SELECT_TAB     :: 237;
+CP_ASK_BR_PICK_TOGGLE    :: 238;
+CP_ASK_BR_SHOT           :: 239;
+CP_ASK_BR_FIND           :: 240;
+CP_ASK_BR_MUTE           :: 241;
+CP_ASK_BR_EXTERNAL       :: 242;
+CP_ASK_BR_ZOOM           :: 243;
+CP_ASK_BR_PROFILE        :: 244;
+CP_ASK_BR_ATTACH_LOGS    :: 245;
+CP_ASK_BR_AGENT_PAUSE    :: 246;
+CP_ASK_BR_AGENT_APPROVE  :: 247;
+CP_ASK_BR_ENGINE_INSTALL :: 248;
+CP_ASK_BR_OPEN_SOURCE    :: 249;
+CP_ASK_BR_LAST           :: 249;
+
+// Non-colliding UI action IDs (highest prior action is CP_CLOUD_BYO :: 521)
+CP_BR_ACT_FIRST    :: 540;
+CP_BR_TOGGLE       :: 540;
+CP_BR_HIDE         :: 541;
+CP_BR_EXPAND       :: 542;
+CP_BR_DRAWER       :: 543;
+CP_BR_NEW_TAB      :: 544;
+CP_BR_TAB_SELECT   :: 545;
+CP_BR_TAB_CLOSE    :: 546;
+CP_BR_BACK         :: 547;
+CP_BR_FORWARD      :: 548;
+CP_BR_RELOAD       :: 549;
+CP_BR_STOP         :: 550;
+CP_BR_OMNIBOX      :: 551;
+CP_BR_PORTS        :: 552;
+CP_BR_VIEWPORT     :: 553;
+CP_BR_PICK         :: 554;
+CP_BR_SHOT         :: 555;
+CP_BR_MORE         :: 556;
+CP_BR_FIND_PREV    :: 557;
+CP_BR_FIND_NEXT    :: 558;
+CP_BR_FIND_CLOSE   :: 559;
+CP_BR_AGENT_PAUSE  :: 560;
+CP_BR_AGENT_TAKE   :: 561;
+CP_BR_APPROVE_OK   :: 562;
+CP_BR_APPROVE_DENY :: 563;
+CP_BR_DRW_TAB      :: 564;
+CP_BR_ATTACH_ERRS  :: 565;
+CP_BR_ACT_LAST     :: 579;
+
+// Non-colliding command palette codes (highest prior code is CP_PC_GB_PLAYTEST :: 45)
+CP_PC_BR_TOGGLE :: 46;
+CP_PC_BR_OPEN   :: 47;
+CP_PC_BR_NEW    :: 48;
+CP_PC_BR_EXPAND :: 49;
+CP_PC_BR_PICK   :: 50;
+CP_PC_BR_SHOT   :: 51;
+
+// Non-colliding keyboard & scroll targets (highest prior are CP_KB_GB_PANEL :: 9, CP_SCR_WALLET :: 13)
+CP_KB_BROWSER_URL     :: 10;
+CP_KB_BROWSER_FIND    :: 11;
+CP_KB_BROWSER_VIEW    :: 12;
+CP_SCR_BROWSER_DRAWER :: 14;

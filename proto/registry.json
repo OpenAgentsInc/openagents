@@ -85,6 +85,59 @@
       "note": "Persisted Metaverse Viewer & GameBuilder right-side pane tab state (#14038)."
     },
     {
+      "id": "openagents.desktop.browser-route.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/desktop-browser-route-v1.json",
+      "codec": "coax/lib/agent/desktop/browser-route.coax",
+      "check": "coax/bin/coax test coax/lib/agent/desktop/browser-route.coax --library",
+      "step": "new",
+      "files": [
+        "apps/openagents-desktop/desktop-core.coax",
+        "apps/openagents-desktop/host-core.coax"
+      ],
+      "note": "Canonical #authority embedded browser URL routing, scheme confinement, and profile isolation decision (#14106)."
+    },
+    {
+      "id": "openagents.desktop.browser-selection.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/desktop-browser-selection-v1.json",
+      "codec": "coax/lib/agent/desktop/browser-route.coax",
+      "check": "coax/bin/coax test coax/lib/agent/desktop/browser-route.coax --library",
+      "step": "new",
+      "files": [
+        "apps/openagents-desktop/desktop-core.coax"
+      ],
+      "note": "Structured DOM element picker selection chip attached to OpenAgents Desktop chat composer (#14106)."
+    },
+    {
+      "id": "openagents.desktop.browser-tab-state.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/desktop-browser-tab-state-v1.json",
+      "codec": "coax/lib/agent/desktop/browser-route.coax",
+      "check": "coax/bin/coax test coax/lib/agent/desktop/browser-route.coax --library",
+      "step": "new",
+      "files": [
+        "apps/openagents-desktop/desktop-core.coax"
+      ],
+      "note": "Persisted embedded Browser right-side pane tab session state (#14106)."
+    },
+    {
+      "id": "openagents.desktop.browser-cmd.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/desktop-browser-cmd-v1.json",
+      "codec": "coax/lib/agent/desktop/browser-route.coax",
+      "check": "coax/bin/coax test coax/lib/agent/desktop/browser-route.coax --library",
+      "step": "new",
+      "files": [
+        "apps/openagents-desktop/desktop-core.coax"
+      ],
+      "note": "Agent automation command envelope over owner-only ~/.openagents/desktop/browser.sock and MCP attach (#14106)."
+    },
+    {
       "id": "splice.run.v1",
       "kind": "local",
       "owner": "splice",

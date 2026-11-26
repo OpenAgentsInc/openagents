@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "openagents.desktop.browser-cmd.v1",
+  "title": "OpenAgents Desktop Browser Agent Automation Command Envelope",
+  "note": "Pinned profile for coax/lib/agent/desktop/browser-route.coax (GitHub #14106, docs/browser/desktop-browser-pane-spec.md). Used over owner-only ~/.openagents/desktop/browser.sock and MCP attach.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "req_id", "verb", "tab_id", "profile", "url", "target", "text", "timeout_ms"],
+  "properties": {
+    "schema": { "const": "openagents.desktop.browser-cmd.v1" },
+    "req_id": { "type": "string", "maxLength": 128 },
+    "verb": {
+      "enum": [
+        "browser.open",
+        "browser.navigate",
+        "browser.snapshot",
+        "browser.click",
+        "browser.type",
+        "browser.press",
+        "browser.scroll",
+        "browser.screenshot",
+        "browser.console",
+        "browser.network",
+        "browser.eval",
+        "browser.wait"
+      ]
+    },
+    "tab_id": { "type": "integer", "minimum": 0 },
+    "profile": { "enum": ["workspace", "personal", "ephemeral"] },
+    "url": { "type": "string", "maxLength": 4096 },
+    "target": { "type": "string", "maxLength": 512 },
+    "text": { "type": "string", "maxLength": 65536 },
+    "timeout_ms": { "type": "integer", "minimum": 0, "maximum": 300000 }
+  },
+  "golden": {
+    "schema": "openagents.desktop.browser-cmd.v1",
+    "req_id": "req-42",
+    "verb": "browser.click",
+    "tab_id": 1,
+    "profile": "ephemeral",
+    "url": "",
+    "target": "@e14",
+    "text": "",
+    "timeout_ms": 5000
+  }
+}

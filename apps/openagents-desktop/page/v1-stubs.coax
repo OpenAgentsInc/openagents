@@ -508,3 +508,17 @@ coder_page_gb_hydrate_progress :: (s: [] CoderPage, active: bool, pct: int) #exp
 coder_page_mv_focus_viewport :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
 coder_page_mv_ext_tex_ready :: (s: [] CoderPage, on: bool) #export_c #effects(all) {}
 coder_page_gb_sync_studio :: (s: [] CoderPage, metrics: [] int, ag_tsv: string, pub_tsv: string, lob_tsv: string, note: string) #export_c #effects(all) {}
+
+// ---- browser-route.coax & browserpane.coax minimal stubs (#14106, Invariant I-3) ----
+// Omitted completely from --minimal v1.0 builds (zero WebKit/CEF symbols or browser pane code).
+CP_ASK_BR_FIRST :: 230; CP_ASK_BR_NAVIGATE :: 230; CP_ASK_BR_LAST :: 249;
+CP_BR_ACT_FIRST :: 540; CP_BR_TOGGLE :: 540; CP_BR_HIDE :: 541; CP_BR_EXPAND :: 542; CP_BR_ACT_LAST :: 579;
+CP_PC_BR_TOGGLE :: 46; CP_PC_BR_OPEN :: 47; CP_PC_BR_NEW :: 48; CP_PC_BR_EXPAND :: 49; CP_PC_BR_PICK :: 50; CP_PC_BR_SHOT :: 51;
+CP_KB_BROWSER_URL :: 10; CP_KB_BROWSER_FIND :: 11; CP_KB_BROWSER_VIEW :: 12;
+CP_SCR_BROWSER_DRAWER :: 14;
+CpBrowserPane :: struct { open: bool; hidden: bool; expanded: bool; active: int; }
+cp_br_enabled :: (s: [] CoderPage) -> bool { return false; }
+cp_br_init :: (s: [] CoderPage) {}
+cp_br_shown :: (s: [] CoderPage) -> bool { return false; }
+cp_br_press :: (s: [] CoderPage, act: int, id: string) -> bool { return false; }
+cp_br_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {}

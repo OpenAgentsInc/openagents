@@ -8,6 +8,7 @@
 #load "../../coax/lib/agent/desktop/flags.coax";
 #load "../../coax/lib/agent/desktop/local-model.coax";
 #load "../../coax/lib/agent/desktop/metaverse-route.coax";
+#load "../../coax/lib/agent/desktop/browser-route.coax";
 
 OA_MAX_SUBAGENTS :: 8;
 
@@ -40,6 +41,38 @@ oa_dc_mv_route :: (path: string, flags_mask: int, out_meta: [] int, out_badge: [
   n := mv_route_write_json(r, out_json);
   if n >= 0 && n < out_json.count { out_json[n] = 0; }
   return ifx n > 0 then n else 0;
+}
+
+// The Browser pane's #authority route & SSRF policy (#14106), matching desktop-core.coax.
+oa_dc_br_route :: (
+  raw_url: string,
+  caller: int,
+  requested_profile: int,
+  flags_mask: int,
+  out_meta: [] int,
+  out_url: [] u8,
+  out_json: [] u8
+) -> int #export_c #effects(all) {
+  nb: [BR_URL_MAX] u8;
+  nl: [1] int;
+  r := br_route_classify(raw_url, caller, requested_profile, flags_mask, nb[..], nl[..]);
+  if out_meta.count >= 6 {
+    out_meta[0] = r.pane;
+    out_meta[1] = r.profile;
+    out_meta[2] = r.required_flag;
+    out_meta[3] = ifx r.secure then 1 else 0;
+    out_meta[4] = ifx r.loopback then 1 else 0;
+    out_meta[5] = ifx r.confirm_external then 1 else 0;
+  }
+  norm := cast(string) nb[0..<nl[0]];
+  _ := oa_copy_out(norm, out_url);
+  n := br_route_write_json(r, norm, out_json);
+  if n >= 0 && n < out_json.count { out_json[n] = 0; }
+  return ifx n > 0 then n else 0;
+}
+
+oa_dc_br_ssrf_allowed :: (origin_url: string, target_url: string, allow_private_net: int) -> int #export_c #effects(all) {
+  return ifx br_ssrf_allowed(origin_url, target_url, allow_private_net != 0) then 1 else 0;
 }
 
 oa_copy_out :: (s: string, out: [] u8) -> int {

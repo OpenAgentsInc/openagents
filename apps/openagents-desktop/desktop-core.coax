@@ -14,6 +14,7 @@
 #load "../../coax/lib/agent/desktop/executor-store.coax";
 #load "../../coax/lib/agent/desktop/flags.coax";
 #load "../../coax/lib/agent/desktop/metaverse-route.coax";
+#load "../../coax/lib/agent/desktop/browser-route.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
 #load "../../coax/lib/agent/custom-system-prompt.coax";
 #load "../../psionic/lib/peer/executor-release-store.coax";
@@ -787,4 +788,40 @@ oa_dc_mv_selection_json :: (
   n := mv_selection_write_json(sel, out_json);
   if n >= 0 && n < out_json.count { out_json[n] = 0; }
   return ifx n > 0 then n else 0;
+}
+
+// --- Canonical Embedded Browser URL & profile route classifier (#14106) ---
+
+// Classifies raw_url under caller (BR_CALLER_*), requested_profile (BR_PROFILE_*), and flags_mask.
+// Writes [pane, profile, required_flag, secure, loopback, confirm_external] into out_meta[0..6],
+// normalized URL into out_url, and openagents.desktop.browser-route.v1 JSON into out_json. Returns out_json len.
+oa_dc_br_route :: (
+  raw_url: string,
+  caller: int,
+  requested_profile: int,
+  flags_mask: int,
+  out_meta: [] int,
+  out_url: [] u8,
+  out_json: [] u8
+) -> int #export_c #effects(all) {
+  nb: [BR_URL_MAX] u8;
+  nl: [1] int;
+  r := br_route_classify(raw_url, caller, requested_profile, flags_mask, nb[..], nl[..]);
+  if out_meta.count >= 6 {
+    out_meta[0] = r.pane;
+    out_meta[1] = r.profile;
+    out_meta[2] = r.required_flag;
+    out_meta[3] = ifx r.secure then 1 else 0;
+    out_meta[4] = ifx r.loopback then 1 else 0;
+    out_meta[5] = ifx r.confirm_external then 1 else 0;
+  }
+  norm := cast(string) nb[0..<nl[0]];
+  _ := oa_dc_copy(norm, out_url);
+  n := br_route_write_json(r, norm, out_json);
+  if n >= 0 && n < out_json.count { out_json[n] = 0; }
+  return ifx n > 0 then n else 0;
+}
+
+oa_dc_br_ssrf_allowed :: (origin_url: string, target_url: string, allow_private_net: int) -> int #export_c #effects(all) {
+  return ifx br_ssrf_allowed(origin_url, target_url, allow_private_net != 0) then 1 else 0;
 }

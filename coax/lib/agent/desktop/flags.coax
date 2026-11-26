@@ -40,8 +40,9 @@ DC_FLAG_SCENES :: 26;
 DC_FLAG_RICH :: 27;
 DC_FLAG_METAVERSE :: 28;
 DC_FLAG_GAMEBUILDER :: 29;
+DC_FLAG_BROWSER :: 30;
 
-DC_FLAG_COUNT :: 30;
+DC_FLAG_COUNT :: 31;
 DC_FLAGS_ALL :: (1 << DC_FLAG_COUNT) - 1;
 DC_FLAGS_MODELS_MASK :: (1 << 7) - 1;
 
@@ -84,6 +85,7 @@ dc_flags_table :: () -> [DC_FLAG_COUNT] DcFlagDef #effects() {
     DcFlagDef.{bit = DC_FLAG_RICH, name = "rich", default_on = false, desc = "Prompt stash, history, side chat, and composer upgrades."},
     DcFlagDef.{bit = DC_FLAG_METAVERSE, name = "metaverse", default_on = false, desc = "Expandable right-side Metaverse 3D Viewer pane for models, packs, scenes, and realms."},
     DcFlagDef.{bit = DC_FLAG_GAMEBUILDER, name = "gamebuilder", default_on = false, desc = "GameBuilder creation, play, play-test, agents, and publish studio inside the Metaverse pane."},
+    DcFlagDef.{bit = DC_FLAG_BROWSER, name = "browser", default_on = false, desc = "Expandable multi-tab right-side Browser pane with DevTools drawer and agent automation."},
   ];
 }
 
@@ -228,9 +230,9 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
 
 // ---------------------------------------------------------------- checks
 
-#test "flag registry: all 30 flags have unique sequential bits, names, descriptions, and only account defaults on" {
+#test "flag registry: all 31 flags have unique sequential bits, names, descriptions, and only account defaults on" {
   tbl := dc_flags_table();
-  #assert tbl.count == DC_FLAG_COUNT && DC_FLAG_COUNT == 30;
+  #assert tbl.count == DC_FLAG_COUNT && DC_FLAG_COUNT == 31;
   #assert dc_flags_defaults() == dc_flag_bit(DC_FLAG_ACCOUNT);
   for i: 0..<DC_FLAG_COUNT {
     #assert tbl[i].bit == i;
@@ -261,9 +263,9 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
   #assert dc_flag_on(m, DC_FLAG_GIT) && !dc_flag_on(m, DC_FLAG_VOICE);
   #assert !dc_flags_any_extra_model(m);
   #assert dc_flag_set(m, DC_FLAG_GIT, false) == 0;
-  #assert dc_flag_set(DC_FLAGS_ALL | (1 << 30), -1, true) == DC_FLAGS_ALL;
-  #assert dc_flag_set(DC_FLAGS_ALL | (1 << 30), DC_FLAG_COUNT, true) == DC_FLAGS_ALL;
-  #assert dc_flag_set(DC_FLAGS_ALL | (1 << 30), DC_FLAG_GIT, false) == (DC_FLAGS_ALL ^ dc_flag_bit(DC_FLAG_GIT));
+  #assert dc_flag_set(DC_FLAGS_ALL | (1 << DC_FLAG_COUNT), -1, true) == DC_FLAGS_ALL;
+  #assert dc_flag_set(DC_FLAGS_ALL | (1 << DC_FLAG_COUNT), DC_FLAG_COUNT, true) == DC_FLAGS_ALL;
+  #assert dc_flag_set(DC_FLAGS_ALL | (1 << DC_FLAG_COUNT), DC_FLAG_GIT, false) == (DC_FLAGS_ALL ^ dc_flag_bit(DC_FLAG_GIT));
 
   // Extra-model mask covers bits 0..6 and nothing above
   for i: 0..<7 { #assert dc_flags_any_extra_model(dc_flag_bit(i)); }
@@ -279,9 +281,9 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
   #assert dc_flags_parse_csv(0, "*") == DC_FLAGS_ALL;
   #assert dc_flags_parse_csv(DC_FLAGS_ALL, "none") == 0;
   #assert dc_flags_parse_csv(0, " , , ") == 0;
-  #assert dc_flags_parse_csv(1 << 30, "") == 0;
-  #assert dc_flags_apply_token((1 << 30) | dc_flag_bit(DC_FLAG_GIT), "") == dc_flag_bit(DC_FLAG_GIT);
-  #assert dc_flags_apply_token((1 << 30) | dc_flag_bit(DC_FLAG_GIT), "unknown") == dc_flag_bit(DC_FLAG_GIT);
+  #assert dc_flags_parse_csv(1 << DC_FLAG_COUNT, "") == 0;
+  #assert dc_flags_apply_token((1 << DC_FLAG_COUNT) | dc_flag_bit(DC_FLAG_GIT), "") == dc_flag_bit(DC_FLAG_GIT);
+  #assert dc_flags_apply_token((1 << DC_FLAG_COUNT) | dc_flag_bit(DC_FLAG_GIT), "unknown") == dc_flag_bit(DC_FLAG_GIT);
 
   // CLI args parsing (--flag, --flag=, --no-flag, --no-flag=, --experimental)
   a1 := dc_flags_parse_args(0, "OpenAgents\n--flag\ngit,voice\n--flag=models.gemini\n--other\n");
@@ -295,7 +297,7 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
   #assert dc_flags_parse_args(DC_FLAGS_ALL, "--no-flag\nmodels.gemini\n") == (DC_FLAGS_ALL ^ dc_flag_bit(DC_FLAG_MODELS_GEMINI));
   #assert dc_flags_parse_args(DC_FLAGS_ALL, "--no-flag=models.gemini\n") == (DC_FLAGS_ALL ^ dc_flag_bit(DC_FLAG_MODELS_GEMINI));
   #assert dc_flags_parse_args(0, "\n--experimental\n") == DC_FLAGS_ALL;
-  #assert dc_flags_parse_args(1 << 30, "") == 0;
+  #assert dc_flags_parse_args(1 << DC_FLAG_COUNT, "") == 0;
 }
 
 #test "flag resolution: release default enables account only; defaults, OA_FLAGS, --flag, and experimentalFeatures compose cleanly" {

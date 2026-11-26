@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "openagents.desktop.browser-route.v1",
+  "title": "OpenAgents Desktop Embedded Browser URL Route Decision",
+  "note": "Pinned profile for coax/lib/agent/desktop/browser-route.coax (GitHub #14106, docs/browser/desktop-browser-pane-spec.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "target_pane", "profile", "normalized_url", "secure", "loopback", "confirm_external", "requires_flag", "reason"],
+  "properties": {
+    "schema": { "const": "openagents.desktop.browser-route.v1" },
+    "target_pane": { "enum": ["browser", "preview", "metaverse", "file", "external", "reject"] },
+    "profile": { "enum": ["workspace", "personal", "ephemeral"] },
+    "normalized_url": { "type": "string", "maxLength": 4096 },
+    "secure": { "type": "boolean" },
+    "loopback": { "type": "boolean" },
+    "confirm_external": { "type": "boolean" },
+    "requires_flag": { "type": "string", "maxLength": 32 },
+    "reason": { "type": "string", "maxLength": 64 }
+  },
+  "golden": {
+    "schema": "openagents.desktop.browser-route.v1",
+    "target_pane": "browser",
+    "profile": "workspace",
+    "normalized_url": "http://localhost:5173/app",
+    "secure": true,
+    "loopback": true,
+    "confirm_external": false,
+    "requires_flag": "browser",
+    "reason": "ok"
+  }
+}

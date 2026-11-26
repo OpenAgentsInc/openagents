@@ -106,3 +106,5 @@ int64_t oa_dc_mv_is_3d(coax_string path);
 int64_t oa_dc_mv_gltf_uri_safe(coax_string uri);
 int64_t oa_dc_mv_route(coax_string path, int64_t flags_mask, coax_v_s64 out_meta, coax_v_u8 out_badge, coax_v_u8 out_json);
 int64_t oa_dc_mv_selection_json(coax_string kind, coax_string path, coax_string game, coax_string level, int64_t rev, coax_string selected_id, coax_v_s64 coords_cm, coax_v_u8 out_json);
+int64_t oa_dc_br_route(coax_string raw_url, int64_t caller, int64_t requested_profile, int64_t flags_mask, coax_v_s64 out_meta, coax_v_u8 out_url, coax_v_u8 out_json);
+int64_t oa_dc_br_ssrf_allowed(coax_string origin_url, coax_string target_url, int64_t allow_private_net);

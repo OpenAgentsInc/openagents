@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "openagents.desktop.browser-tab-state.v1",
+  "title": "OpenAgents Desktop Embedded Browser Tab Persisted State",
+  "note": "Pinned profile for coax/lib/agent/desktop/browser-route.coax (GitHub #14106, docs/browser/desktop-browser-pane-spec.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "profile", "engine", "url", "title", "scroll_px", "zoom_pct", "expanded", "hidden", "drawer_open"],
+  "properties": {
+    "schema": { "const": "openagents.desktop.browser-tab-state.v1" },
+    "id": { "type": "integer", "minimum": 0 },
+    "profile": { "enum": ["workspace", "personal", "ephemeral"] },
+    "engine": { "enum": ["system", "cef"] },
+    "url": { "type": "string", "maxLength": 4096 },
+    "title": { "type": "string", "maxLength": 256 },
+    "scroll_px": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+    "zoom_pct": { "type": "integer", "minimum": 25, "maximum": 500 },
+    "expanded": { "type": "boolean" },
+    "hidden": { "type": "boolean" },
+    "drawer_open": { "type": "boolean" }
+  },
+  "golden": {
+    "schema": "openagents.desktop.browser-tab-state.v1",
+    "id": 1,
+    "profile": "workspace",
+    "engine": "system",
+    "url": "http://localhost:5173/app",
+    "title": "Local App",
+    "scroll_px": [0, 240],
+    "zoom_pct": 100,
+    "expanded": false,
+    "hidden": false,
+    "drawer_open": true
+  }
+}

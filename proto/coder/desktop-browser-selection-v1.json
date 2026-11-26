@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "openagents.desktop.browser-selection.v1",
+  "title": "OpenAgents Desktop Browser DOM Element Selection Context Chip",
+  "note": "Pinned profile for coax/lib/agent/desktop/browser-route.coax (GitHub #14106, docs/browser/desktop-browser-pane-spec.md). Attached to Desktop chat composer for bidirectional browser <-> chat workflows.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "url", "selector", "xpath", "tag", "role", "accessible_name", "text_excerpt", "bbox_px", "viewport", "computed_style", "screenshot_path"],
+  "properties": {
+    "schema": { "const": "openagents.desktop.browser-selection.v1" },
+    "url": { "type": "string", "maxLength": 4096 },
+    "selector": { "type": "string", "maxLength": 512 },
+    "xpath": { "type": "string", "maxLength": 512 },
+    "tag": { "type": "string", "maxLength": 64 },
+    "role": { "type": "string", "maxLength": 64 },
+    "accessible_name": { "type": "string", "maxLength": 256 },
+    "text_excerpt": { "type": "string", "maxLength": 1024 },
+    "bbox_px": { "type": "array", "items": { "type": "integer" }, "minItems": 4, "maxItems": 4 },
+    "viewport": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 2, "maxItems": 2 },
+    "computed_style": { "type": "string", "maxLength": 1024 },
+    "screenshot_path": { "type": "string", "maxLength": 1024 }
+  },
+  "golden": {
+    "schema": "openagents.desktop.browser-selection.v1",
+    "url": "http://localhost:5173/app",
+    "selector": "header > nav button.primary",
+    "xpath": "//header/nav/button[1]",
+    "tag": "button",
+    "role": "button",
+    "accessible_name": "Deploy",
+    "text_excerpt": "Deploy to staging",
+    "bbox_px": [120, 24, 144, 36],
+    "viewport": [1280, 800],
+    "computed_style": "display:flex;font-size:14px",
+    "screenshot_path": "/Users/u/.openagents/shots/pick-1.png"
+  }
+}

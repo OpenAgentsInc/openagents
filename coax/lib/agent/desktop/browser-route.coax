@@ -1,0 +1,1190 @@
+// Canonical embedded Browser URL routing, scheme confinement, profile isolation,
+// SSRF/private-network guardrails, and wire codecs for OpenAgents Desktop
+// (macOS, Linux, Windows).
+// Spec: docs/browser/desktop-browser-pane-spec.md (§1.4, §6, §9).
+// Issues: #14105 (master), #14106 (Phase 0).
+//
+// Wire shapes owned by this file (registered in proto/registry.json):
+//   - openagents.desktop.browser-route.v1     (proto/coder/desktop-browser-route-v1.json)
+//   - openagents.desktop.browser-selection.v1 (proto/coder/desktop-browser-selection-v1.json)
+//   - openagents.desktop.browser-tab-state.v1 (proto/coder/desktop-browser-tab-state-v1.json)
+//   - openagents.desktop.browser-cmd.v1       (proto/coder/desktop-browser-cmd-v1.json)
+//
+//   coax/bin/coax test coax/lib/agent/desktop/browser-route.coax --library
+//   coax/bin/coax mutate coax/lib/agent/desktop/browser-route.coax --library
+#authority;
+#load "flags.coax";
+#load "metaverse-route.coax";
+
+BR_ROUTE_SCHEMA     :: "openagents.desktop.browser-route.v1";
+BR_SELECTION_SCHEMA :: "openagents.desktop.browser-selection.v1";
+BR_TAB_STATE_SCHEMA :: "openagents.desktop.browser-tab-state.v1";
+BR_CMD_SCHEMA       :: "openagents.desktop.browser-cmd.v1";
+
+BR_URL_MAX :: 4096;
+
+// Target pane classification
+BR_PANE_BROWSER   :: 0; // Expandable Browser pane (page/browserpane.coax)
+BR_PANE_PREVIEW   :: 1; // Legacy Web Preview fallback (page/preview.coax when DC_FLAG_BROWSER off & DC_FLAG_PREVIEW on)
+BR_PANE_METAVERSE :: 2; // Delegated to Metaverse / GameBuilder pane (metaverse-route.coax)
+BR_PANE_FILE      :: 3; // Local .html/.htm -> File Viewer (preview requires loopback server, never file://)
+BR_PANE_EXTERNAL  :: 4; // External OS handoff (mailto:, tel:, ssh:, vscode:, cursor:, or flag_off fallback)
+BR_PANE_REJECT    :: 5; // Refused by #authority security boundary
+
+// Browser storage / cookie jar profiles (spec §6.2)
+BR_PROFILE_AUTO      :: -1; // Sentinel for "let policy pick default profile"
+BR_PROFILE_WORKSPACE :: 0;  // Per-workspace persistent jar (dev servers, project links)
+BR_PROFILE_PERSONAL  :: 1;  // User persistent jar (forbidden for silent agent access)
+BR_PROFILE_EPHEMERAL :: 2;  // Non-persistent in-memory jar (default for autonomous agents)
+
+// Caller / trigger context
+BR_CALLER_HUMAN    :: 0;
+BR_CALLER_AGENT    :: 1;
+BR_CALLER_DEEPLINK :: 2;
+
+BrRoute :: struct {
+  pane: int;              // BR_PANE_*
+  profile: int;           // BR_PROFILE_WORKSPACE | PERSONAL | EPHEMERAL
+  required_flag: int;     // DC_FLAG_* or DC_FLAG_NONE
+  secure: bool;           // true for https, loopback, or vetted internal openagents://
+  loopback: bool;         // true for localhost / 127.0.0.0/8 / ::1 / *.local
+  confirm_external: bool; // true when OS handoff requires explicit user confirmation
+  reason: string;         // diagnostic reason ("ok", "rejected_scheme", etc.)
+}
+
+BrSelection :: struct {
+  url: string;
+  selector: string;
+  xpath: string;
+  tag: string;
+  role: string;
+  accessible_name: string;
+  text_excerpt: string;
+  bbox_x: int;
+  bbox_y: int;
+  bbox_w: int;
+  bbox_h: int;
+  viewport_w: int;
+  viewport_h: int;
+  computed_style: string;
+  screenshot_path: string;
+}
+
+BrTabState :: struct {
+  id: int;
+  profile: int;      // BR_PROFILE_*
+  engine: int;       // 0 = system, 1 = cef
+  url: string;
+  title: string;
+  scroll_x: int;
+  scroll_y: int;
+  zoom_pct: int;
+  expanded: bool;
+  hidden: bool;
+  drawer_open: bool;
+}
+
+BrCmd :: struct {
+  req_id: string;
+  verb: string;      // e.g. "browser.open", "browser.click", "browser.snapshot"
+  tab_id: int;
+  profile: int;      // BR_PROFILE_*
+  url: string;
+  target: string;    // ref ("@e14") or CSS selector
+  text: string;
+  timeout_ms: int;
+}
+
+// ---- ASCII & Hex helpers ----
+
+br_is_hex :: (c: u8) -> bool #effects() {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+br_hex_val :: (c: u8) -> int #effects(traps) {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return 0;
+}
+
+br_is_digit :: (c: u8) -> bool #effects() {
+  return c >= '0' && c <= '9';
+}
+
+br_is_alpha :: (c: u8) -> bool #effects() {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+br_is_scheme_char :: (c: u8) -> bool #effects() {
+  return br_is_alpha(c) || br_is_digit(c) || c == '+' || c == '-' || c == '.';
+}
+
+br_eq_ci :: (a: string, b: string) -> bool #effects(reads, traps) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    if mv_lower(a[i]) != mv_lower(b[i]) { return false; }
+  }
+  return true;
+}
+
+br_copy_out :: (s: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  if out.count < s.count { return -1; }
+  for i: 0..<s.count { out[i] = s[i]; }
+  return s.count;
+}
+
+// ---- Raw input & scheme confinement ----
+
+// Rejects empty, > BR_URL_MAX, any ASCII control/DEL byte, internal whitespace,
+// or percent-encoded NUL/CR/LF (%00, %0A, %0D).
+br_raw_safe :: (raw: string) -> bool #effects(reads, traps) {
+  if raw.count == 0 || raw.count > BR_URL_MAX { return false; }
+  for i: 0..<raw.count {
+    c := raw[i];
+    if c <= 32 || c == 127 { return false; }
+    if c == '%' && i + 2 < raw.count && br_is_hex(raw[i + 1]) && br_is_hex(raw[i + 2]) {
+      v := (br_hex_val(raw[i + 1]) << 4) | br_hex_val(raw[i + 2]);
+      if v == 0 || v == 10 || v == 13 { return false; }
+    }
+  }
+  return true;
+}
+
+// Finds ':' terminating a scheme before any '/', '?', '#', or '\\'.
+// Returns index of ':', or -1 if no valid scheme prefix exists.
+br_find_scheme_colon :: (s: string) -> int #effects(reads, traps) {
+  if s.count == 0 || !br_is_alpha(s[0]) { return -1; }
+  for i: 1..<s.count {
+    c := s[i];
+    if c == ':' { return i; }
+    if !br_is_scheme_char(c) { return -1; }
+  }
+  return -1;
+}
+
+// Detects malformed/obfuscated scheme prefixes such as "java%73cript:", "%6aavascript:",
+// or control-free percent-encoded text before a colon that is not a normal path/host:port.
+br_has_obfuscated_scheme :: (s: string) -> bool #effects(reads, traps) {
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '/' || c == '\\' || c == '?' || c == '#' { return false; }
+    if c == ':' {
+      for j: 0..<i {
+        if s[j] == '%' { return true; }
+      }
+      return false;
+    }
+  }
+  return false;
+}
+
+// Hard-blocked schemes that MUST NEVER reach a host webview or external handoff.
+br_scheme_denied :: (scheme: string) -> bool #effects(reads, traps) {
+  return br_eq_ci(scheme, "javascript") ||
+         br_eq_ci(scheme, "vbscript") ||
+         br_eq_ci(scheme, "data") ||
+         br_eq_ci(scheme, "blob") ||
+         br_eq_ci(scheme, "file") ||
+         br_eq_ci(scheme, "about") ||
+         br_eq_ci(scheme, "chrome") ||
+         br_eq_ci(scheme, "edge") ||
+         br_eq_ci(scheme, "view-source") ||
+         br_eq_ci(scheme, "filesystem") ||
+         br_eq_ci(scheme, "ws") ||
+         br_eq_ci(scheme, "wss") ||
+         br_eq_ci(scheme, "ftp");
+}
+
+// Well-known OS schemes safe for direct OS handoff without an extra custom-scheme warning.
+br_scheme_standard_external :: (scheme: string) -> bool #effects(reads, traps) {
+  return br_eq_ci(scheme, "mailto") || br_eq_ci(scheme, "tel");
+}
+
+// ---- Host / IP / SSRF classification ----
+
+// Extracts host portion from an http:// or https:// URL into out (lowercased, brackets stripped,
+// trailing dot stripped). Rejects empty host, backslashes in authority, or invalid port.
+// Returns host byte length, or -1 if malformed.
+br_extract_http_host :: (url: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  start := 0;
+  if mv_starts_ci(url, "https://") { start = 8; }
+  else if mv_starts_ci(url, "http://") { start = 7; }
+  else { return -1; }
+
+  // Find end of authority
+  end := start;
+  while end < url.count && url[end] != '/' && url[end] != '?' && url[end] != '#' {
+    if url[end] == '\\' { return -1; } // Reject backslash authority confusion
+    end += 1;
+  }
+  if end <= start { return -1; }
+
+  // Strip optional userinfo (reject empty host after '@')
+  host_start := start;
+  for i: start..<end {
+    if url[i] == '@' { host_start = i + 1; }
+  }
+  if host_start >= end { return -1; }
+
+  host_end := end;
+  if url[host_start] == '[' {
+    // IPv6 literal: [addr] or [addr]:port
+    close := host_start + 1;
+    while close < end && url[close] != ']' { close += 1; }
+    if close >= end || close == host_start + 1 { return -1; }
+    if close + 1 < end {
+      if url[close + 1] != ':' || close + 2 >= end { return -1; }
+      for p: close + 2..<end { if !br_is_digit(url[p]) { return -1; } }
+    }
+    host_start += 1;
+    host_end = close;
+  } else {
+    // Host[:port]
+    colon := -1;
+    for i: host_start..<end {
+      if url[i] == ':' {
+        if colon >= 0 { return -1; } // Multiple colons outside IPv6 brackets
+        colon = i;
+      }
+    }
+    if colon >= 0 {
+      if colon == host_start || colon + 1 >= end { return -1; }
+      for p: colon + 1..<end { if !br_is_digit(url[p]) { return -1; } }
+      host_end = colon;
+    }
+  }
+
+  // Strip trailing DNS root dot (e.g. "localhost.")
+  while host_end > host_start && url[host_end - 1] == '.' { host_end -= 1; }
+  n := host_end - host_start;
+  if n <= 0 || n > out.count { return -1; }
+  for i: 0..<n {
+    c := mv_lower(url[host_start + i]);
+    if c == ' ' || c == '@' || c == '[' || c == ']' { return -1; }
+    out[i] = c;
+  }
+  return n;
+}
+
+// Parses dotted-decimal IPv4 into 4 octets (0..255). Returns true on strict dotted-decimal IPv4.
+br_parse_ipv4 :: (host: string, oct: [] int) -> bool #effects(reads, writes, traps) {
+  if oct.count < 4 || host.count < 7 || host.count > 15 { return false; }
+  part := 0;
+  i := 0;
+  while i < host.count && part < 4 {
+    if !br_is_digit(host[i]) { return false; }
+    val := 0;
+    digits := 0;
+    while i < host.count && br_is_digit(host[i]) {
+      val = val * 10 + cast(int) (host[i] - '0');
+      digits += 1;
+      if digits > 3 || val > 255 { return false; }
+      i += 1;
+    }
+    oct[part] = val;
+    part += 1;
+    if part < 4 {
+      if i >= host.count || host[i] != '.' { return false; }
+      i += 1;
+    }
+  }
+  return part == 4 && i == host.count;
+}
+
+// Detects obfuscated numeric/hex/octal IPv4 encodings (e.g. "2130706433", "0x7f000001", "0177.0.0.1").
+br_host_is_obfuscated_ip :: (host: string) -> bool #effects(reads, traps) {
+  if host.count == 0 { return false; }
+  // Pure decimal integer host (e.g. 2130706433)
+  all_digits := true;
+  for i: 0..<host.count {
+    if !br_is_digit(host[i]) { all_digits = false; break; }
+  }
+  if all_digits { return true; }
+  // Hex IP prefix (0x...)
+  if mv_starts_ci(host, "0x") { return true; }
+  // Dotted numeric with leading-zero octal segment or non-4-part shorthand (e.g. "127.1", "0177.0.0.1")
+  all_num_dot := true;
+  dots := 0;
+  has_leading_zero := false;
+  seg_start := true;
+  for i: 0..<host.count {
+    c := host[i];
+    if c == '.' {
+      dots += 1;
+      seg_start = true;
+      continue;
+    }
+    if seg_start && c == '0' && i + 1 < host.count && host[i + 1] != '.' {
+      has_leading_zero = true;
+    }
+    seg_start = false;
+    if !br_is_digit(c) && c != 'x' && c != 'X' && !(c >= 'a' && c <= 'f') {
+      all_num_dot = false;
+      break;
+    }
+  }
+  if all_num_dot && dots > 0 && (has_leading_zero || dots != 3) { return true; }
+  return false;
+}
+
+br_host_is_loopback :: (host: string) -> bool #effects(reads, writes, traps) {
+  if host == "localhost" || mv_ends_ci(host, ".localhost") { return true; }
+  if host == "::1" || host == "0:0:0:0:0:0:0:1" || host == "::" || host == "0.0.0.0" { return true; }
+  oct: [4] int;
+  if br_parse_ipv4(host, oct[..]) {
+    return oct[0] == 127 || (oct[0] == 0 && oct[1] == 0 && oct[2] == 0 && oct[3] == 0);
+  }
+  if mv_starts_ci(host, "::ffff:") {
+    tail := cast(string) host[7..<host.count];
+    if br_parse_ipv4(tail, oct[..]) {
+      return oct[0] == 127 || (oct[0] == 0 && oct[1] == 0 && oct[2] == 0 && oct[3] == 0);
+    }
+    if mv_starts_ci(tail, "7f") { return true; }
+  }
+  return false;
+}
+
+br_host_is_mdns_local :: (host: string) -> bool #effects(reads, traps) {
+  return mv_ends_ci(host, ".local");
+}
+
+br_host_is_metadata :: (host: string) -> bool #effects(reads, writes, traps) {
+  oct: [4] int;
+  if br_parse_ipv4(host, oct[..]) {
+    return oct[0] == 169 && oct[1] == 254 && oct[2] == 169 && oct[3] == 254;
+  }
+  if mv_starts_ci(host, "::ffff:") {
+    tail := cast(string) host[7..<host.count];
+    if br_parse_ipv4(tail, oct[..]) {
+      return oct[0] == 169 && oct[1] == 254 && oct[2] == 169 && oct[3] == 254;
+    }
+  }
+  return host == "metadata.google.internal" || host == "metadata.goog";
+}
+
+// True for loopback, *.local, RFC1918, link-local/metadata, CGNAT, IPv6 ULA/LL, or obfuscated numeric IPs.
+br_host_is_private :: (host: string) -> bool #effects(reads, writes, traps) {
+  if br_host_is_loopback(host) || br_host_is_mdns_local(host) || br_host_is_metadata(host) { return true; }
+  if br_host_is_obfuscated_ip(host) { return true; }
+  oct: [4] int;
+  if br_parse_ipv4(host, oct[..]) {
+    if oct[0] == 10 { return true; }                                    // 10.0.0.0/8
+    if oct[0] == 172 && oct[1] >= 16 && oct[1] <= 31 { return true; }   // 172.16.0.0/12
+    if oct[0] == 192 && oct[1] == 168 { return true; }                  // 192.168.0.0/16
+    if oct[0] == 169 && oct[1] == 254 { return true; }                  // 169.254.0.0/16
+    if oct[0] == 100 && oct[1] >= 64 && oct[1] <= 127 { return true; }  // 100.64.0.0/10
+    if oct[0] == 0 { return true; }                                     // 0.0.0.0/8
+    return false;
+  }
+  if mv_starts_ci(host, "::ffff:") {
+    return br_host_is_private(cast(string) host[7..<host.count]);
+  }
+  // IPv6 ULA (fc00::/7) and link-local (fe80::/10)
+  if host.count >= 3 {
+    has_colon := false;
+    for i: 0..<host.count { if host[i] == ':' { has_colon = true; break; } }
+    if has_colon {
+      if mv_starts_ci(host, "fc") || mv_starts_ci(host, "fd") { return true; }
+      if mv_starts_ci(host, "fe8") || mv_starts_ci(host, "fe9") || mv_starts_ci(host, "fea") || mv_starts_ci(host, "feb") { return true; }
+    }
+  }
+  return false;
+}
+
+// Pure SSRF / Private-Network Access guardrail (spec §6.3, #14106):
+// Blocks public remote origins from targeting localhost / 127.0.0.1 / RFC1918 / link-local / metadata
+// via agent-injected commands unless allow_private_net is explicitly true.
+// Cloud metadata endpoints (169.254.169.254, metadata.google.internal) are ALWAYS blocked without opt-in.
+br_ssrf_allowed :: (origin_url: string, target_url: string, allow_private_net: bool) -> bool #effects(reads, writes, traps) {
+  t := dc_flag_trim(target_url);
+  if !br_raw_safe(t) { return false; }
+  th_buf: [256] u8;
+  th_n := br_extract_http_host(t, th_buf[..]);
+  if th_n <= 0 { return false; }
+  th := cast(string) th_buf[0..<th_n];
+
+  if !br_host_is_private(th) { return true; }
+  if allow_private_net { return true; }
+  if br_host_is_metadata(th) { return false; }
+
+  // Without opt-in, a private/loopback target is only reachable from an already-local origin.
+  o := dc_flag_trim(origin_url);
+  if !br_raw_safe(o) { return false; }
+  oh_buf: [256] u8;
+  oh_n := br_extract_http_host(o, oh_buf[..]);
+  if oh_n <= 0 { return false; }
+  oh := cast(string) oh_buf[0..<oh_n];
+  return br_host_is_loopback(oh) || br_host_is_mdns_local(oh);
+}
+
+// ---- Query & percent-decoding helpers for openagents://browser/open ----
+
+br_percent_decode :: (src: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := 0;
+  i := 0;
+  while i < src.count {
+    c := src[i];
+    if c == '%' {
+      if i + 2 >= src.count || !br_is_hex(src[i + 1]) || !br_is_hex(src[i + 2]) { return -1; }
+      v := (br_hex_val(src[i + 1]) << 4) | br_hex_val(src[i + 2]);
+      if v <= 32 || v == 127 { return -1; }
+      if n >= out.count { return -1; }
+      out[n] = cast(u8) v;
+      n += 1;
+      i += 3;
+    } else {
+      if c <= 32 || c == 127 { return -1; }
+      if n >= out.count { return -1; }
+      out[n] = c;
+      n += 1;
+      i += 1;
+    }
+  }
+  return n;
+}
+
+br_query_param :: (url: string, key: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  q := -1;
+  for i: 0..<url.count {
+    if url[i] == '?' { q = i + 1; break; }
+  }
+  if q < 0 { return -1; }
+  i := q;
+  while i < url.count && url[i] != '#' {
+    e := i;
+    while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    eq := -1;
+    for j: i..<e { if url[j] == '=' { eq = j; break; } }
+    if eq > i {
+      k := cast(string) url[i..<eq];
+      if br_eq_ci(k, key) {
+        val := cast(string) url[eq + 1..<e];
+        return br_percent_decode(val, out);
+      }
+    }
+    i = e + 1;
+  }
+  return -1;
+}
+
+br_profile_from_name :: (name: string) -> int #effects(reads, traps) {
+  if br_eq_ci(name, "workspace") { return BR_PROFILE_WORKSPACE; }
+  if br_eq_ci(name, "personal") { return BR_PROFILE_PERSONAL; }
+  if br_eq_ci(name, "ephemeral") || br_eq_ci(name, "agent") { return BR_PROFILE_EPHEMERAL; }
+  return BR_PROFILE_AUTO;
+}
+
+br_profile_name :: (p: int) -> string #effects() {
+  if p == BR_PROFILE_PERSONAL { return "personal"; }
+  if p == BR_PROFILE_EPHEMERAL { return "ephemeral"; }
+  return "workspace";
+}
+
+br_pane_name :: (pane: int) -> string #effects() {
+  if pane == BR_PANE_BROWSER { return "browser"; }
+  if pane == BR_PANE_PREVIEW { return "preview"; }
+  if pane == BR_PANE_METAVERSE { return "metaverse"; }
+  if pane == BR_PANE_FILE { return "file"; }
+  if pane == BR_PANE_EXTERNAL { return "external"; }
+  return "reject";
+}
+
+// ---- Core #authority router ----
+
+br_select_profile :: (caller: int, requested: int, is_local: bool) -> int #effects() {
+  if caller == BR_CALLER_AGENT {
+    if requested == BR_PROFILE_WORKSPACE { return BR_PROFILE_WORKSPACE; }
+    return BR_PROFILE_EPHEMERAL;
+  }
+  if requested == BR_PROFILE_WORKSPACE || requested == BR_PROFILE_PERSONAL || requested == BR_PROFILE_EPHEMERAL {
+    return requested;
+  }
+  if is_local { return BR_PROFILE_WORKSPACE; }
+  return BR_PROFILE_PERSONAL;
+}
+
+// Internal classifier with recursion guard (depth <= 1 for openagents://browser/open?url=...).
+br_route_classify_depth :: (
+  raw_in: string,
+  caller: int,
+  requested_profile: int,
+  flags_mask: int,
+  norm_out: [] u8,
+  norm_len: [] int,
+  depth: int
+) -> BrRoute #effects(reads, writes, traps) {
+  if norm_len.count > 0 { norm_len[0] = 0; }
+  raw := dc_flag_trim(raw_in);
+  if raw.count == 0 {
+    return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "empty"};
+  }
+  if raw.count > BR_URL_MAX {
+    return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "url_too_long"};
+  }
+  if !br_raw_safe(raw) {
+    return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "unsafe_chars"};
+  }
+  if br_has_obfuscated_scheme(raw) {
+    return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "obfuscated_scheme"};
+  }
+
+  // Hard security invariant: autonomous agents may NEVER silently open Personal profile tabs.
+  if caller == BR_CALLER_AGENT && requested_profile == BR_PROFILE_PERSONAL {
+    return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "agent_personal_forbidden"};
+  }
+
+  has_browser := dc_flag_on(flags_mask, DC_FLAG_BROWSER);
+  has_preview := dc_flag_on(flags_mask, DC_FLAG_PREVIEW);
+
+  colon := br_find_scheme_colon(raw);
+  // Treat bare "localhost:PORT..." as host:port rather than a custom "localhost:" URL scheme.
+  if colon == 9 && br_eq_ci(cast(string) raw[0..<9], "localhost") && colon + 1 < raw.count && br_is_digit(raw[colon + 1]) {
+    colon = -1;
+  }
+  if colon < 0 {
+    // No scheme: check local .html/.htm files first (File Viewer, never file://)
+    clean := mv_trim_slash(mv_strip_query(raw));
+    if mv_ends_ci(clean, ".html") || mv_ends_ci(clean, ".htm") {
+      if !mv_path_safe(raw) {
+        return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_WORKSPACE, required_flag = DC_FLAG_NONE, reason = "unsafe_path"};
+      }
+      n := br_copy_out(raw, norm_out);
+      if n >= 0 && norm_len.count > 0 { norm_len[0] = n; }
+      return BrRoute.{pane = BR_PANE_FILE, profile = BR_PROFILE_WORKSPACE, required_flag = DC_FLAG_NONE, reason = "local_html_use_loopback"};
+    }
+
+    // Bare localhost / 127.0.0.1 shorthand -> prepend http://
+    if mv_starts_ci(raw, "localhost") || mv_starts_ci(raw, "127.0.0.1") {
+      ok_bound := raw.count == 9 || raw[9] == ':' || raw[9] == '/' || raw[9] == '?' || raw[9] == '#';
+      if ok_bound && depth == 0 && raw.count + 7 <= BR_URL_MAX {
+        tmp: [BR_URL_MAX] u8;
+        p := br_copy_out("http://", tmp[..]);
+        for i: 0..<raw.count { tmp[p + i] = raw[i]; }
+        return br_route_classify_depth(cast(string) tmp[0..<p + raw.count], caller, requested_profile, flags_mask, norm_out, norm_len, depth + 1);
+      }
+    }
+
+    return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "missing_scheme"};
+  }
+
+  scheme := cast(string) raw[0..<colon];
+
+  // Explicit scheme denylist (javascript:, vbscript:, data:, blob:, file:, etc.)
+  if br_scheme_denied(scheme) {
+    return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "rejected_scheme"};
+  }
+
+  // Internal vetted openagents:// deep-links
+  if br_eq_ci(scheme, "openagents") {
+    if mv_starts_ci(raw, "openagents://metaverse") || mv_starts_ci(raw, "openagents://gamebuilder") {
+      mv := mv_route_classify(raw, flags_mask);
+      if mv.pane == MV_PANE_METAVERSE {
+        n := br_copy_out(raw, norm_out);
+        if n >= 0 && norm_len.count > 0 { norm_len[0] = n; }
+        return BrRoute.{pane = BR_PANE_METAVERSE, profile = BR_PROFILE_WORKSPACE, required_flag = mv.required_flag, secure = true, reason = "delegate_metaverse"};
+      }
+      return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_WORKSPACE, required_flag = mv.required_flag, reason = mv.reason};
+    }
+
+    if mv_starts_ci(raw, "openagents://browser/open?") {
+      if depth > 0 {
+        return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "nested_deeplink"};
+      }
+      u_buf: [BR_URL_MAX] u8;
+      u_n := br_query_param(raw, "url", u_buf[..]);
+      if u_n <= 0 {
+        return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "deeplink_missing_url"};
+      }
+      p_buf: [32] u8;
+      p_n := br_query_param(raw, "profile", p_buf[..]);
+      eff_prof := requested_profile;
+      if p_n > 0 {
+        parsed_prof := br_profile_from_name(cast(string) p_buf[0..<p_n]);
+        if parsed_prof != BR_PROFILE_AUTO { eff_prof = parsed_prof; }
+      }
+      eff_caller := ifx caller == BR_CALLER_AGENT then BR_CALLER_AGENT else BR_CALLER_DEEPLINK;
+      return br_route_classify_depth(cast(string) u_buf[0..<u_n], eff_caller, eff_prof, flags_mask, norm_out, norm_len, depth + 1);
+    }
+
+    if br_eq_ci(raw, "openagents://browser/new") || br_eq_ci(raw, "openagents://browser/home") {
+      n := br_copy_out(raw, norm_out);
+      if n >= 0 && norm_len.count > 0 { norm_len[0] = n; }
+      prof := br_select_profile(caller, requested_profile, true);
+      if !has_browser {
+        return BrRoute.{pane = BR_PANE_REJECT, profile = prof, required_flag = DC_FLAG_BROWSER, secure = true, reason = "flag_off"};
+      }
+      return BrRoute.{pane = BR_PANE_BROWSER, profile = prof, required_flag = DC_FLAG_BROWSER, secure = true, reason = "ok"};
+    }
+
+    return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "unvetted_internal_route"};
+  }
+
+  // External OS schemes (mailto:, tel:, ssh:, vscode:, cursor:, other valid RFC 3986 schemes)
+  if !br_eq_ci(scheme, "http") && !br_eq_ci(scheme, "https") {
+    n := br_copy_out(raw, norm_out);
+    if n >= 0 && norm_len.count > 0 { norm_len[0] = n; }
+    need_confirm := !br_scheme_standard_external(scheme);
+    return BrRoute.{pane = BR_PANE_EXTERNAL, profile = BR_PROFILE_PERSONAL, required_flag = DC_FLAG_NONE, confirm_external = need_confirm, reason = "external_scheme"};
+  }
+
+  // http:// or https:// -> validate authority & extract host
+  host_buf: [256] u8;
+  host_n := br_extract_http_host(raw, host_buf[..]);
+  if host_n <= 0 {
+    return BrRoute.{pane = BR_PANE_REJECT, profile = BR_PROFILE_EPHEMERAL, required_flag = DC_FLAG_NONE, reason = "malformed_url"};
+  }
+  host := cast(string) host_buf[0..<host_n];
+  is_https := br_eq_ci(scheme, "https");
+  is_loop := br_host_is_loopback(host);
+  is_local := is_loop || br_host_is_mdns_local(host);
+
+  // Normalize scheme to lowercase in norm_out
+  if norm_out.count >= raw.count {
+    for i: 0..<colon { norm_out[i] = mv_lower(raw[i]); }
+    for i: colon..<raw.count { norm_out[i] = raw[i]; }
+    if norm_len.count > 0 { norm_len[0] = raw.count; }
+  }
+
+  // Delegate openagents.com/realms/... and gamebuilder.org/g/... to metaverse-route.coax first
+  if mv_starts_ci(raw, "https://openagents.com/realms/") ||
+     mv_starts_ci(raw, "http://openagents.com/realms/") ||
+     mv_starts_ci(raw, "https://gamebuilder.org/g/") ||
+     mv_starts_ci(raw, "http://gamebuilder.org/g/") {
+    mv := mv_route_classify(raw, flags_mask);
+    if mv.pane == MV_PANE_METAVERSE {
+      return BrRoute.{pane = BR_PANE_METAVERSE, profile = BR_PROFILE_WORKSPACE, required_flag = mv.required_flag, secure = is_https, loopback = false, reason = "delegate_metaverse"};
+    }
+  }
+
+  prof := br_select_profile(caller, requested_profile, is_local);
+  is_sec := is_https || is_loop;
+
+  // Feature flag precedence: DC_FLAG_BROWSER takes precedence over legacy DC_FLAG_PREVIEW
+  if has_browser {
+    return BrRoute.{pane = BR_PANE_BROWSER, profile = prof, required_flag = DC_FLAG_BROWSER, secure = is_sec, loopback = is_local, reason = "ok"};
+  }
+  if has_preview {
+    return BrRoute.{pane = BR_PANE_PREVIEW, profile = prof, required_flag = DC_FLAG_PREVIEW, secure = is_sec, loopback = is_local, reason = "preview_fallback"};
+  }
+  return BrRoute.{pane = BR_PANE_EXTERNAL, profile = prof, required_flag = DC_FLAG_BROWSER, secure = is_sec, loopback = is_local, confirm_external = false, reason = "flag_off"};
+}
+
+// Public entry point: classifies raw_in under caller, requested_profile (BR_PROFILE_*), and flags_mask.
+br_route_classify :: (raw_in: string, caller: int, requested_profile: int, flags_mask: int, norm_out: [] u8, norm_len: [] int) -> BrRoute #effects(reads, writes, traps) {
+  return br_route_classify_depth(raw_in, caller, requested_profile, flags_mask, norm_out, norm_len, 0);
+}
+
+// ---- Canonical JSON wire codecs (zero allocations, bounds-checked) ----
+
+br_route_write_json :: (r: BrRoute, normalized_url: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := mv_j_put(out, 0, "{\"schema\":");
+  n = mv_j_str(out, n, BR_ROUTE_SCHEMA);
+  n = mv_j_put(out, n, ",\"target_pane\":"); n = mv_j_str(out, n, br_pane_name(r.pane));
+  n = mv_j_put(out, n, ",\"profile\":"); n = mv_j_str(out, n, br_profile_name(r.profile));
+  n = mv_j_put(out, n, ",\"normalized_url\":"); n = mv_j_str(out, n, normalized_url);
+  n = mv_j_put(out, n, ",\"secure\":"); n = mv_j_bool(out, n, r.secure);
+  n = mv_j_put(out, n, ",\"loopback\":"); n = mv_j_bool(out, n, r.loopback);
+  n = mv_j_put(out, n, ",\"confirm_external\":"); n = mv_j_bool(out, n, r.confirm_external);
+  n = mv_j_put(out, n, ",\"requires_flag\":"); n = mv_j_str(out, n, dc_flag_name(r.required_flag));
+  n = mv_j_put(out, n, ",\"reason\":"); n = mv_j_str(out, n, r.reason);
+  return mv_j_put(out, n, "}");
+}
+
+// Minimal deterministic JSON reader helpers for openagents.desktop.browser-route.v1 round-trips.
+br_j_skip_ws :: (s: string, pos: int) -> int #effects(reads, traps) {
+  p := pos;
+  while p < s.count && (s[p] == ' ' || s[p] == '\t' || s[p] == '\r' || s[p] == '\n') { p += 1; }
+  return p;
+}
+
+br_j_read_str :: (s: string, pos: int, out: [] u8, out_n: [] int) -> int #effects(reads, writes, traps) {
+  p := br_j_skip_ws(s, pos);
+  if p >= s.count || s[p] != '"' { return -1; }
+  p += 1;
+  n := 0;
+  while p < s.count && s[p] != '"' {
+    c := s[p];
+    if c == '\\' {
+      p += 1;
+      if p >= s.count { return -1; }
+      e := s[p];
+      if e == '"' { c = '"'; }
+      else if e == '\\' { c = '\\'; }
+      else if e == '/' { c = '/'; }
+      else if e == 'n' { c = '\n'; }
+      else if e == 'r' { c = '\r'; }
+      else if e == 't' { c = '\t'; }
+      else { return -1; }
+    }
+    if n >= out.count { return -1; }
+    out[n] = c;
+    n += 1;
+    p += 1;
+  }
+  if p >= s.count || s[p] != '"' { return -1; }
+  if out_n.count > 0 { out_n[0] = n; }
+  return p + 1;
+}
+
+br_j_read_bool :: (s: string, pos: int, out_b: [] bool) -> int #effects(reads, writes, traps) {
+  p := br_j_skip_ws(s, pos);
+  if p + 4 <= s.count && cast(string) s[p..<p + 4] == "true" {
+    out_b[0] = true;
+    return p + 4;
+  }
+  if p + 5 <= s.count && cast(string) s[p..<p + 5] == "false" {
+    out_b[0] = false;
+    return p + 5;
+  }
+  return -1;
+}
+
+br_pane_from_name :: (s: string) -> int #effects(reads, traps) {
+  if s == "browser" { return BR_PANE_BROWSER; }
+  if s == "preview" { return BR_PANE_PREVIEW; }
+  if s == "metaverse" { return BR_PANE_METAVERSE; }
+  if s == "file" { return BR_PANE_FILE; }
+  if s == "external" { return BR_PANE_EXTERNAL; }
+  if s == "reject" { return BR_PANE_REJECT; }
+  return -1;
+}
+
+// Deserializes openagents.desktop.browser-route.v1 JSON into out_r, out_url, out_reason.
+br_route_read_json :: (
+  json: string,
+  out_r: [] BrRoute,
+  out_url: [] u8,
+  out_url_n: [] int,
+  out_reason: [] u8,
+  out_reason_n: [] int
+) -> bool #effects(reads, writes, traps) {
+  if out_r.count < 1 || out_url_n.count < 1 || out_reason_n.count < 1 { return false; }
+  out_r[0] = BrRoute.{required_flag = DC_FLAG_NONE};
+  out_url_n[0] = 0;
+  out_reason_n[0] = 0;
+
+  p := br_j_skip_ws(json, 0);
+  if p >= json.count || json[p] != '{' { return false; }
+  p += 1;
+
+  seen_schema := false;
+  seen_pane := false;
+  seen_profile := false;
+  seen_url := false;
+  seen_secure := false;
+  seen_loopback := false;
+  seen_confirm := false;
+  seen_flag := false;
+  seen_reason := false;
+
+  kb: [64] u8; kn: [1] int;
+  vb: [128] u8; vn: [1] int;
+  bv: [1] bool;
+
+  while true {
+    p = br_j_skip_ws(json, p);
+    if p >= json.count { return false; }
+    if json[p] == '}' { p += 1; break; }
+    p = br_j_read_str(json, p, kb[..], kn[..]);
+    if p < 0 { return false; }
+    key := cast(string) kb[0..<kn[0]];
+    p = br_j_skip_ws(json, p);
+    if p >= json.count || json[p] != ':' { return false; }
+    p += 1;
+
+    if key == "schema" {
+      p = br_j_read_str(json, p, vb[..], vn[..]);
+      if p < 0 || cast(string) vb[0..<vn[0]] != BR_ROUTE_SCHEMA { return false; }
+      seen_schema = true;
+    } else if key == "target_pane" {
+      p = br_j_read_str(json, p, vb[..], vn[..]);
+      if p < 0 { return false; }
+      pane := br_pane_from_name(cast(string) vb[0..<vn[0]]);
+      if pane < 0 { return false; }
+      out_r[0].pane = pane;
+      seen_pane = true;
+    } else if key == "profile" {
+      p = br_j_read_str(json, p, vb[..], vn[..]);
+      if p < 0 { return false; }
+      prof := br_profile_from_name(cast(string) vb[0..<vn[0]]);
+      if prof < 0 { return false; }
+      out_r[0].profile = prof;
+      seen_profile = true;
+    } else if key == "normalized_url" {
+      p = br_j_read_str(json, p, out_url, out_url_n);
+      if p < 0 { return false; }
+      seen_url = true;
+    } else if key == "secure" {
+      p = br_j_read_bool(json, p, bv[..]);
+      if p < 0 { return false; }
+      out_r[0].secure = bv[0];
+      seen_secure = true;
+    } else if key == "loopback" {
+      p = br_j_read_bool(json, p, bv[..]);
+      if p < 0 { return false; }
+      out_r[0].loopback = bv[0];
+      seen_loopback = true;
+    } else if key == "confirm_external" {
+      p = br_j_read_bool(json, p, bv[..]);
+      if p < 0 { return false; }
+      out_r[0].confirm_external = bv[0];
+      seen_confirm = true;
+    } else if key == "requires_flag" {
+      p = br_j_read_str(json, p, vb[..], vn[..]);
+      if p < 0 { return false; }
+      fn := cast(string) vb[0..<vn[0]];
+      if fn.count == 0 { out_r[0].required_flag = DC_FLAG_NONE; }
+      else {
+        f := dc_flag_find(fn);
+        if f < 0 { return false; }
+        out_r[0].required_flag = f;
+      }
+      seen_flag = true;
+    } else if key == "reason" {
+      p = br_j_read_str(json, p, out_reason, out_reason_n);
+      if p < 0 { return false; }
+      seen_reason = true;
+    } else {
+      return false; // additionalProperties: false
+    }
+
+    p = br_j_skip_ws(json, p);
+    if p >= json.count { return false; }
+    if json[p] == ',' { p += 1; continue; }
+    if json[p] == '}' { p += 1; break; }
+    return false;
+  }
+
+  p = br_j_skip_ws(json, p);
+  if p != json.count { return false; }
+  return seen_schema && seen_pane && seen_profile && seen_url &&
+         seen_secure && seen_loopback && seen_confirm && seen_flag && seen_reason;
+}
+
+br_selection_write_json :: (sel: BrSelection, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := mv_j_put(out, 0, "{\"schema\":");
+  n = mv_j_str(out, n, BR_SELECTION_SCHEMA);
+  n = mv_j_put(out, n, ",\"url\":"); n = mv_j_str(out, n, sel.url);
+  n = mv_j_put(out, n, ",\"selector\":"); n = mv_j_str(out, n, sel.selector);
+  n = mv_j_put(out, n, ",\"xpath\":"); n = mv_j_str(out, n, sel.xpath);
+  n = mv_j_put(out, n, ",\"tag\":"); n = mv_j_str(out, n, sel.tag);
+  n = mv_j_put(out, n, ",\"role\":"); n = mv_j_str(out, n, sel.role);
+  n = mv_j_put(out, n, ",\"accessible_name\":"); n = mv_j_str(out, n, sel.accessible_name);
+  n = mv_j_put(out, n, ",\"text_excerpt\":"); n = mv_j_str(out, n, sel.text_excerpt);
+  n = mv_j_put(out, n, ",\"bbox_px\":[");
+  n = mv_j_int(out, n, sel.bbox_x); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.bbox_y); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.bbox_w); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.bbox_h);
+  n = mv_j_put(out, n, "],\"viewport\":[");
+  n = mv_j_int(out, n, sel.viewport_w); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.viewport_h);
+  n = mv_j_put(out, n, "],\"computed_style\":"); n = mv_j_str(out, n, sel.computed_style);
+  n = mv_j_put(out, n, ",\"screenshot_path\":"); n = mv_j_str(out, n, sel.screenshot_path);
+  return mv_j_put(out, n, "}");
+}
+
+br_engine_name :: (engine: int) -> string #effects() {
+  if engine == 1 { return "cef"; }
+  return "system";
+}
+
+br_tab_state_write_json :: (ts: BrTabState, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := mv_j_put(out, 0, "{\"schema\":");
+  n = mv_j_str(out, n, BR_TAB_STATE_SCHEMA);
+  n = mv_j_put(out, n, ",\"id\":"); n = mv_j_int(out, n, ts.id);
+  n = mv_j_put(out, n, ",\"profile\":"); n = mv_j_str(out, n, br_profile_name(ts.profile));
+  n = mv_j_put(out, n, ",\"engine\":"); n = mv_j_str(out, n, br_engine_name(ts.engine));
+  n = mv_j_put(out, n, ",\"url\":"); n = mv_j_str(out, n, ts.url);
+  n = mv_j_put(out, n, ",\"title\":"); n = mv_j_str(out, n, ts.title);
+  n = mv_j_put(out, n, ",\"scroll_px\":[");
+  n = mv_j_int(out, n, ts.scroll_x); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, ts.scroll_y);
+  n = mv_j_put(out, n, "],\"zoom_pct\":"); n = mv_j_int(out, n, ts.zoom_pct);
+  n = mv_j_put(out, n, ",\"expanded\":"); n = mv_j_bool(out, n, ts.expanded);
+  n = mv_j_put(out, n, ",\"hidden\":"); n = mv_j_bool(out, n, ts.hidden);
+  n = mv_j_put(out, n, ",\"drawer_open\":"); n = mv_j_bool(out, n, ts.drawer_open);
+  return mv_j_put(out, n, "}");
+}
+
+br_cmd_write_json :: (cmd: BrCmd, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := mv_j_put(out, 0, "{\"schema\":");
+  n = mv_j_str(out, n, BR_CMD_SCHEMA);
+  n = mv_j_put(out, n, ",\"req_id\":"); n = mv_j_str(out, n, cmd.req_id);
+  n = mv_j_put(out, n, ",\"verb\":"); n = mv_j_str(out, n, cmd.verb);
+  n = mv_j_put(out, n, ",\"tab_id\":"); n = mv_j_int(out, n, cmd.tab_id);
+  n = mv_j_put(out, n, ",\"profile\":"); n = mv_j_str(out, n, br_profile_name(cmd.profile));
+  n = mv_j_put(out, n, ",\"url\":"); n = mv_j_str(out, n, cmd.url);
+  n = mv_j_put(out, n, ",\"target\":"); n = mv_j_str(out, n, cmd.target);
+  n = mv_j_put(out, n, ",\"text\":"); n = mv_j_str(out, n, cmd.text);
+  n = mv_j_put(out, n, ",\"timeout_ms\":"); n = mv_j_int(out, n, cmd.timeout_ms);
+  return mv_j_put(out, n, "}");
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "browser-route: scheme denylist, control-char/percent-encoded fuzz, and length cap" {
+  norm: [BR_URL_MAX] u8; nlen: [1] int;
+  all := DC_FLAGS_ALL;
+
+  // Hard-blocked schemes (lowercase, mixed-case, whitespace-padded)
+  #assert br_route_classify("javascript:alert(1)", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("JaVaScRiPt:alert(1)", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("  VBSCRIPT:msgbox(1) ", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("data:text/html,<script>alert(1)</script>", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("DATA:image/svg+xml;base64,AA==", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("blob:https://example.com/uuid", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("file:///etc/passwd", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("FILE:///Users/u/index.html", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("about:blank", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("chrome://settings", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("edge://settings", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("view-source:https://example.com", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("filesystem:https://example.com/t", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("ws://localhost:8080", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("wss://example.com/s", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("ftp://files.example.com/a", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+
+  // Percent-encoded / obfuscated scheme tricks & control-byte injection
+  #assert br_route_classify("java%73cript:alert(1)", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("%6aavascript:alert(1)", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://example.com/\r\nX-Inject: 1", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://example.com/a%00b", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://example.com/a%0Ab", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://example.com/a%0db", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://example.com/has space", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://evil.com\\@localhost/", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://example.com:abc/", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://[::1:3000/", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("https://user@/", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("   ", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("not-a-url", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+
+  // Embedded NUL byte and DEL byte
+  nul_buf: [24] u8;
+  _ := br_copy_out("https://example.com/a", nul_buf[..]);
+  nul_buf[21] = 0; nul_buf[22] = 'b';
+  #assert br_route_classify(cast(string) nul_buf[0..<23], BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  nul_buf[21] = 127;
+  #assert br_route_classify(cast(string) nul_buf[0..<23], BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+
+  // Length cap: 4096 passes, 4097 rejected
+  long_buf: [4100] u8;
+  p := br_copy_out("https://example.com/", long_buf[..]);
+  for i: p..<4100 { long_buf[i] = 'a'; }
+  r_ok := br_route_classify(cast(string) long_buf[0..<BR_URL_MAX], BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  r_over := br_route_classify(cast(string) long_buf[0..<BR_URL_MAX + 1], BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_ok.pane == BR_PANE_BROWSER;
+  #assert r_over.pane == BR_PANE_REJECT && r_over.reason == "url_too_long";
+}
+
+#test "browser-route: pane routing, profile isolation, external schemes, metaverse delegation, and deep-links" {
+  norm: [BR_URL_MAX] u8; nlen: [1] int;
+  all := DC_FLAGS_ALL;
+  br_only := dc_flag_bit(DC_FLAG_BROWSER);
+  pv_only := dc_flag_bit(DC_FLAG_PREVIEW);
+
+  // Local dev servers -> Browser pane, Workspace profile, loopback=true, secure=true
+  r_loc := br_route_classify("http://localhost:5173/app", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_loc.pane == BR_PANE_BROWSER && r_loc.profile == BR_PROFILE_WORKSPACE && r_loc.loopback && r_loc.secure;
+  #assert cast(string) norm[0..<nlen[0]] == "http://localhost:5173/app";
+
+  r_127 := br_route_classify("HTTP://127.0.0.1:3000", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_127.pane == BR_PANE_BROWSER && r_127.profile == BR_PROFILE_WORKSPACE && r_127.loopback && r_127.secure;
+  #assert cast(string) norm[0..<nlen[0]] == "http://127.0.0.1:3000";
+
+  r_bare := br_route_classify("localhost:8080/api", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_bare.pane == BR_PANE_BROWSER && r_bare.profile == BR_PROFILE_WORKSPACE && r_bare.loopback;
+  #assert cast(string) norm[0..<nlen[0]] == "http://localhost:8080/api";
+
+  r_mdns := br_route_classify("http://devbox.local:8000/", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_mdns.pane == BR_PANE_BROWSER && r_mdns.profile == BR_PROFILE_WORKSPACE && r_mdns.loopback && !r_mdns.secure;
+
+  // Public HTTPS -> Browser pane, Personal default for human, Ephemeral default for agent
+  r_pub := br_route_classify("https://github.com/OpenAgentsInc/openagents", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_pub.pane == BR_PANE_BROWSER && r_pub.profile == BR_PROFILE_PERSONAL && r_pub.secure && !r_pub.loopback;
+
+  r_ag := br_route_classify("https://example.com/docs", BR_CALLER_AGENT, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_ag.pane == BR_PANE_BROWSER && r_ag.profile == BR_PROFILE_EPHEMERAL;
+
+  r_ag_ws := br_route_classify("http://localhost:5173/", BR_CALLER_AGENT, BR_PROFILE_WORKSPACE, all, norm[..], nlen[..]);
+  #assert r_ag_ws.pane == BR_PANE_BROWSER && r_ag_ws.profile == BR_PROFILE_WORKSPACE;
+
+  // Hard security invariant: agent MUST NOT silently access Personal profile
+  r_ag_pers := br_route_classify("https://mail.example.com/", BR_CALLER_AGENT, BR_PROFILE_PERSONAL, all, norm[..], nlen[..]);
+  #assert r_ag_pers.pane == BR_PANE_REJECT && r_ag_pers.reason == "agent_personal_forbidden";
+
+  // Flag precedence: DC_FLAG_BROWSER > DC_FLAG_PREVIEW > flag_off external fallback
+  r_pv := br_route_classify("http://localhost:3000", BR_CALLER_HUMAN, BR_PROFILE_AUTO, pv_only, norm[..], nlen[..]);
+  #assert r_pv.pane == BR_PANE_PREVIEW && r_pv.required_flag == DC_FLAG_PREVIEW && r_pv.reason == "preview_fallback";
+
+  r_both := br_route_classify("http://localhost:3000", BR_CALLER_HUMAN, BR_PROFILE_AUTO, br_only | pv_only, norm[..], nlen[..]);
+  #assert r_both.pane == BR_PANE_BROWSER && r_both.required_flag == DC_FLAG_BROWSER;
+
+  r_off := br_route_classify("https://example.com", BR_CALLER_HUMAN, BR_PROFILE_AUTO, 0, norm[..], nlen[..]);
+  #assert r_off.pane == BR_PANE_EXTERNAL && r_off.required_flag == DC_FLAG_BROWSER && r_off.reason == "flag_off";
+
+  // Metaverse / GameBuilder delegation when flags on; Browser fallback when flags off
+  r_rlm := br_route_classify("https://openagents.com/realms/everglade", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_rlm.pane == BR_PANE_METAVERSE && r_rlm.reason == "delegate_metaverse";
+  r_rlm_br := br_route_classify("https://openagents.com/realms/everglade", BR_CALLER_HUMAN, BR_PROFILE_AUTO, br_only, norm[..], nlen[..]);
+  #assert r_rlm_br.pane == BR_PANE_BROWSER;
+
+  r_gb := br_route_classify("https://gamebuilder.org/g/23abxy", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_gb.pane == BR_PANE_METAVERSE && r_gb.reason == "delegate_metaverse";
+  r_gb_br := br_route_classify("https://gamebuilder.org/g/23abxy", BR_CALLER_HUMAN, BR_PROFILE_AUTO, br_only, norm[..], nlen[..]);
+  #assert r_gb_br.pane == BR_PANE_BROWSER;
+
+  // Local HTML files -> File Viewer (never file://), traversal rejected
+  r_html := br_route_classify("/work/site/index.html", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_html.pane == BR_PANE_FILE && r_html.reason == "local_html_use_loopback";
+  r_htm := br_route_classify("./demo/page.HTM", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_htm.pane == BR_PANE_FILE;
+  r_trav := br_route_classify("/work/../etc/index.html", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_trav.pane == BR_PANE_REJECT && r_trav.reason == "unsafe_path";
+
+  // External OS handoff schemes (never loaded in webview)
+  r_mail := br_route_classify("mailto:hi@openagents.com", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_mail.pane == BR_PANE_EXTERNAL && !r_mail.confirm_external;
+  r_tel := br_route_classify("tel:+15551234567", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_tel.pane == BR_PANE_EXTERNAL && !r_tel.confirm_external;
+  r_ssh := br_route_classify("ssh://dev@box", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_ssh.pane == BR_PANE_EXTERNAL && r_ssh.confirm_external;
+  r_vsc := br_route_classify("vscode://file/tmp/a.coax", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_vsc.pane == BR_PANE_EXTERNAL && r_vsc.confirm_external;
+  r_cur := br_route_classify("cursor://file/tmp/a.coax", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_cur.pane == BR_PANE_EXTERNAL && r_cur.confirm_external;
+  r_unk := br_route_classify("myapp://open/123", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_unk.pane == BR_PANE_EXTERNAL && r_unk.confirm_external;
+
+  // Internal vetted openagents:// deep-links
+  r_dl := br_route_classify("openagents://browser/open?url=https%3A%2F%2Fdocs.openagents.com%2Fguide&profile=workspace", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]);
+  #assert r_dl.pane == BR_PANE_BROWSER && r_dl.profile == BR_PROFILE_WORKSPACE && r_dl.secure;
+  #assert cast(string) norm[0..<nlen[0]] == "https://docs.openagents.com/guide";
+
+  // Malicious deep-link inner payload rejected
+  #assert br_route_classify("openagents://browser/open?url=javascript%3Aalert(1)", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("openagents://browser/open?url=file%3A%2F%2F%2Fetc%2Fpasswd", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("openagents://browser/open?url=openagents%3A%2F%2Fbrowser%2Fopen%3Furl%3Dhttps%3A%2F%2Fa.com", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("openagents://browser/open?foo=bar", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("openagents://evil/route", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+
+  // Vetted internal browser home/new routes
+  #assert br_route_classify("openagents://browser/new", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_BROWSER;
+  #assert br_route_classify("openagents://browser/home", BR_CALLER_HUMAN, BR_PROFILE_AUTO, 0, norm[..], nlen[..]).pane == BR_PANE_REJECT;
+  #assert br_route_classify("openagents://metaverse/realm/everglade", BR_CALLER_HUMAN, BR_PROFILE_AUTO, all, norm[..], nlen[..]).pane == BR_PANE_METAVERSE;
+}
+
+#test "browser-route: private-network and SSRF guardrails" {
+  // Public -> Public allowed
+  #assert br_ssrf_allowed("https://app.example.com/", "https://api.example.com/v1", false);
+
+  // Public -> Loopback / RFC1918 / Link-Local / Metadata / CGNAT / .local / IPv6 ULA / Obfuscated IPs BLOCKED
+  #assert !br_ssrf_allowed("https://evil.example/", "http://localhost:3000/secret", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://localhost.:3000/secret", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://sub.localhost:8080/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://127.0.0.1:16811/v1", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://127.255.0.1/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://[::1]:3000/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://[::ffff:127.0.0.1]:3000/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://10.0.0.5/admin", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://172.16.0.1/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://172.31.255.254/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://192.168.1.1/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://169.254.169.254/latest/meta-data/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://metadata.google.internal/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://100.64.0.1/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://printer.local/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://[fd00::1]/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://[fe80::1]/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://2130706433/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://0x7f000001/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://0177.0.0.1/", false);
+  #assert !br_ssrf_allowed("https://evil.example/", "http://127.1/", false);
+
+  // Public IPv4 outside private ranges (e.g. 172.15.x, 172.32.x, 100.63.x, 100.128.x, 8.8.8.8) allowed
+  #assert br_ssrf_allowed("https://evil.example/", "https://172.15.0.1/", false);
+  #assert br_ssrf_allowed("https://evil.example/", "https://172.32.0.1/", false);
+  #assert br_ssrf_allowed("https://evil.example/", "https://100.63.0.1/", false);
+  #assert br_ssrf_allowed("https://evil.example/", "https://100.128.0.1/", false);
+  #assert br_ssrf_allowed("https://evil.example/", "https://8.8.8.8/", false);
+
+  // Local -> Local allowed, but Local -> Cloud Metadata still blocked without opt-in
+  #assert br_ssrf_allowed("http://localhost:5173/", "http://127.0.0.1:8080/api", false);
+  #assert br_ssrf_allowed("http://devbox.local/", "http://192.168.1.50/api", false);
+  #assert !br_ssrf_allowed("http://localhost:5173/", "http://169.254.169.254/latest/meta-data/", false);
+
+  // Explicit opt-in allows private target
+  #assert br_ssrf_allowed("https://app.example.com/", "http://localhost:3000/callback", true);
+  // Malformed/non-http target always rejected even with opt-in
+  #assert !br_ssrf_allowed("http://localhost:5173/", "javascript:alert(1)", true);
+  #assert !br_ssrf_allowed("http://localhost:5173/", "file:///etc/passwd", true);
+}
+
+#test "browser-route: canonical JSON codecs and round-trip match pinned schemas" {
+  buf: [1024] u8;
+  norm: [BR_URL_MAX] u8; nlen: [1] int;
+  r := br_route_classify("http://localhost:5173/app", BR_CALLER_HUMAN, BR_PROFILE_AUTO, DC_FLAGS_ALL, norm[..], nlen[..]);
+  n1 := br_route_write_json(r, cast(string) norm[0..<nlen[0]], buf[..]);
+  #assert n1 > 0;
+  s1 := cast(string) buf[0..<n1];
+  #assert s1 == "{\"schema\":\"openagents.desktop.browser-route.v1\",\"target_pane\":\"browser\",\"profile\":\"workspace\",\"normalized_url\":\"http://localhost:5173/app\",\"secure\":true,\"loopback\":true,\"confirm_external\":false,\"requires_flag\":\"browser\",\"reason\":\"ok\"}";
+
+  // Round-trip deserialize browser-route.v1
+  rt: [1] BrRoute;
+  rt_url: [BR_URL_MAX] u8; rt_url_n: [1] int;
+  rt_rsn: [64] u8; rt_rsn_n: [1] int;
+  #assert br_route_read_json(s1, rt[..], rt_url[..], rt_url_n[..], rt_rsn[..], rt_rsn_n[..]);
+  #assert rt[0].pane == BR_PANE_BROWSER && rt[0].profile == BR_PROFILE_WORKSPACE;
+  #assert rt[0].secure && rt[0].loopback && !rt[0].confirm_external && rt[0].required_flag == DC_FLAG_BROWSER;
+  #assert cast(string) rt_url[0..<rt_url_n[0]] == "http://localhost:5173/app";
+  #assert cast(string) rt_rsn[0..<rt_rsn_n[0]] == "ok";
+
+  // Reject malformed / wrong-schema / unknown-property payloads
+  #assert !br_route_read_json("{\"schema\":\"wrong\"}", rt[..], rt_url[..], rt_url_n[..], rt_rsn[..], rt_rsn_n[..]);
+  #assert !br_route_read_json("{\"schema\":\"openagents.desktop.browser-route.v1\",\"extra\":true}", rt[..], rt_url[..], rt_url_n[..], rt_rsn[..], rt_rsn_n[..]);
+
+  // Selection golden
+  sel := BrSelection.{
+    url = "http://localhost:5173/app",
+    selector = "header > nav button.primary",
+    xpath = "//header/nav/button[1]",
+    tag = "button",
+    role = "button",
+    accessible_name = "Deploy",
+    text_excerpt = "Deploy to staging",
+    bbox_x = 120, bbox_y = 24, bbox_w = 144, bbox_h = 36,
+    viewport_w = 1280, viewport_h = 800,
+    computed_style = "display:flex;font-size:14px",
+    screenshot_path = "/Users/u/.openagents/shots/pick-1.png"
+  };
+  n2 := br_selection_write_json(sel, buf[..]);
+  #assert n2 > 0;
+  s2 := cast(string) buf[0..<n2];
+  #assert s2 == "{\"schema\":\"openagents.desktop.browser-selection.v1\",\"url\":\"http://localhost:5173/app\",\"selector\":\"header > nav button.primary\",\"xpath\":\"//header/nav/button[1]\",\"tag\":\"button\",\"role\":\"button\",\"accessible_name\":\"Deploy\",\"text_excerpt\":\"Deploy to staging\",\"bbox_px\":[120,24,144,36],\"viewport\":[1280,800],\"computed_style\":\"display:flex;font-size:14px\",\"screenshot_path\":\"/Users/u/.openagents/shots/pick-1.png\"}";
+
+  // Tab state golden
+  ts := BrTabState.{
+    id = 1, profile = BR_PROFILE_WORKSPACE, engine = 0,
+    url = "http://localhost:5173/app", title = "Local App",
+    scroll_x = 0, scroll_y = 240, zoom_pct = 100,
+    expanded = false, hidden = false, drawer_open = true
+  };
+  n3 := br_tab_state_write_json(ts, buf[..]);
+  #assert n3 > 0;
+  s3 := cast(string) buf[0..<n3];
+  #assert s3 == "{\"schema\":\"openagents.desktop.browser-tab-state.v1\",\"id\":1,\"profile\":\"workspace\",\"engine\":\"system\",\"url\":\"http://localhost:5173/app\",\"title\":\"Local App\",\"scroll_px\":[0,240],\"zoom_pct\":100,\"expanded\":false,\"hidden\":false,\"drawer_open\":true}";
+
+  // Command envelope golden
+  cmd := BrCmd.{
+    req_id = "req-42", verb = "browser.click", tab_id = 1,
+    profile = BR_PROFILE_EPHEMERAL, url = "", target = "@e14", text = "", timeout_ms = 5000
+  };
+  n4 := br_cmd_write_json(cmd, buf[..]);
+  #assert n4 > 0;
+  s4 := cast(string) buf[0..<n4];
+  #assert s4 == "{\"schema\":\"openagents.desktop.browser-cmd.v1\",\"req_id\":\"req-42\",\"verb\":\"browser.click\",\"tab_id\":1,\"profile\":\"ephemeral\",\"url\":\"\",\"target\":\"@e14\",\"text\":\"\",\"timeout_ms\":5000}";
+}

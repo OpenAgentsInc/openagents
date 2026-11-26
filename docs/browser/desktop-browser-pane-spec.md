@@ -425,11 +425,11 @@ DC_FLAG_COUNT   :: 31;
 
 ### 9.2 Non-Colliding Constant Allocations (`page/browserpane.coax`)
 
-Verified against current highest IDs in `apps/openagents-desktop/page/` (`metaversepane.coax` uses `CP_ASK_MV_*` `200..215`, actions `470..509`, palette `39..45`, `CP_KB_*` up to `9`, `CP_SCR_*` up to `13`):
+Verified against current highest IDs in `apps/openagents-desktop/page/` (`CP_ASK_SIDEBAR_VIEW :: 221`, `CP_CLOUD_BYO :: 521`, palette `39..45`, `CP_KB_*` up to `9`, `CP_SCR_*` up to `13`):
 
-- **Host Asks (`CP_ASK_BR_*`):** `220..239`
-  - `220` `CP_ASK_BR_NAVIGATE`, `221` `CP_ASK_BR_BACK`, `222` `CP_ASK_BR_FORWARD`, `223` `CP_ASK_BR_RELOAD`, `224` `CP_ASK_BR_STOP`, `225` `CP_ASK_BR_NEW_TAB`, `226` `CP_ASK_BR_CLOSE_TAB`, `227` `CP_ASK_BR_SELECT_TAB`, `228` `CP_ASK_BR_PICK_TOGGLE`, `229` `CP_ASK_BR_SHOT`, `230` `CP_ASK_BR_FIND`, `231` `CP_ASK_BR_MUTE`, `232` `CP_ASK_BR_EXTERNAL`, `233` `CP_ASK_BR_ZOOM`, `234` `CP_ASK_BR_PROFILE`, `235` `CP_ASK_BR_ATTACH_LOGS`, `236` `CP_ASK_BR_AGENT_PAUSE`, `237` `CP_ASK_BR_AGENT_APPROVE`, `238` `CP_ASK_BR_ENGINE_INSTALL`, `239` `CP_ASK_BR_OPEN_SOURCE`
-- **UI Action IDs (`CP_BR_*`):** `520..559`
+- **Host Asks (`CP_ASK_BR_*`):** `230..249`
+  - `230` `CP_ASK_BR_NAVIGATE`, `231` `CP_ASK_BR_BACK`, `232` `CP_ASK_BR_FORWARD`, `233` `CP_ASK_BR_RELOAD`, `234` `CP_ASK_BR_STOP`, `235` `CP_ASK_BR_NEW_TAB`, `236` `CP_ASK_BR_CLOSE_TAB`, `237` `CP_ASK_BR_SELECT_TAB`, `238` `CP_ASK_BR_PICK_TOGGLE`, `239` `CP_ASK_BR_SHOT`, `240` `CP_ASK_BR_FIND`, `241` `CP_ASK_BR_MUTE`, `242` `CP_ASK_BR_EXTERNAL`, `243` `CP_ASK_BR_ZOOM`, `244` `CP_ASK_BR_PROFILE`, `245` `CP_ASK_BR_ATTACH_LOGS`, `246` `CP_ASK_BR_AGENT_PAUSE`, `247` `CP_ASK_BR_AGENT_APPROVE`, `248` `CP_ASK_BR_ENGINE_INSTALL`, `249` `CP_ASK_BR_OPEN_SOURCE`
+- **UI Action IDs (`CP_BR_*`):** `540..579`
 - **Command Palette Codes (`CP_PC_BR_*`):** `46..51` (`Toggle Browser`, `Open URL in Browser`, `New Browser Tab`, `Expand Browser`, `Pick DOM Element`, `Browser Screenshot`)
 - **Keyboard & Scroll Targets:**
   - `CP_KB_BROWSER_URL :: 10`, `CP_KB_BROWSER_FIND :: 11`, `CP_KB_BROWSER_VIEW :: 12`
