@@ -61,7 +61,6 @@ fi
 # COAX_TOOL_BUILD_ONLY=1 compiles without executing workers (prevents 0-byte .ajr leaks).
 worker_pids=()
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" < /dev/null > /dev/null & worker_pids+=($!)
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX="$coax" "$repo/psionic/platform/inkling-build.sh" "$work/psionic-inkling" > /dev/null & worker_pids+=($!)
@@ -71,6 +70,7 @@ gen_pids=()
 "$coax" metal "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$res/Components/components.metal" 2> "$work/c/components.metal.bind" & gen_pids+=($!)
 "$coax" metal "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs -o "$res/Components/composition.metal" 2> "$work/c/composition.metal.bind" & gen_pids+=($!)
 "$coax" c "$here/desktop-core.coax" --library --header "$work/c/desktop-core.h.tmp" > "$work/c/desktop-core.generated.c.tmp" & gen_pids+=($!)
+"$coax" c "$repo/apps/shared/auth/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/lab-sign.h.tmp" > "$work/c/lab-sign.c.tmp" & gen_pids+=($!)
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h.tmp" > "$work/c/entropy-policy.c.tmp" & gen_pids+=($!)
 "$coax" c "$repo/pay/wallet.coax" --library --header "$work/c/pay-wallet.h.tmp" > "$work/c/pay-wallet.c.tmp" & gen_pids+=($!)
 "$coax" c "$repo/pay/wallet-backup.coax" --library --header "$work/c/pay-wallet-backup.h.tmp" > "$work/c/pay-wallet-backup.c.tmp" & gen_pids+=($!)
@@ -81,6 +81,8 @@ update_if_changed "$work/c/gallery.h.tmp" "$work/c/gallery.h"
 update_if_changed "$work/c/gallery.c.tmp" "$work/c/gallery.c"
 update_if_changed "$work/c/desktop-core.h.tmp" "$work/c/desktop-core.h"
 update_if_changed "$work/c/desktop-core.generated.c.tmp" "$work/c/desktop-core.generated.c"
+update_if_changed "$work/c/lab-sign.h.tmp" "$work/c/lab-sign.h"
+update_if_changed "$work/c/lab-sign.c.tmp" "$work/c/lab-sign.c"
 update_if_changed "$work/c/entropy-policy.h.tmp" "$work/c/entropy-policy.h"
 update_if_changed "$work/c/entropy-policy.c.tmp" "$work/c/entropy-policy.c"
 update_if_changed "$work/c/pay-wallet.h.tmp" "$work/c/pay-wallet.h"
@@ -109,6 +111,9 @@ fi
 if obj_stale "$work/c/desktop-core-all.o" "$work/c/desktop-core-unit.c" "$work/c/desktop-core.generated.c" "$work/c/desktop-core.h"; then
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$work/c/desktop-core-unit.c" -o "$work/c/desktop-core-all.o" & cc_pids+=($!)
 fi
+if obj_stale "$work/c/lab-sign-all.o" "$work/c/lab-sign.c" "$work/c/lab-sign.h"; then
+  /usr/bin/clang -std=gnu11 "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign-all.o" & cc_pids+=($!)
+fi
 if obj_stale "$work/c/entropy-policy.o" "$work/c/entropy-policy.c" "$work/c/entropy-policy.h"; then
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$work/c/entropy-policy.c" -o "$work/c/entropy-policy.o" & cc_pids+=($!)
 fi
@@ -135,6 +140,9 @@ dc_inputs=("$work/c/desktop-core-all.o" "$work/c/entropy-policy.o" "$work/c/proc
 if obj_stale "$work/c/desktop-core.o" "${dc_inputs[@]}"; then
   ld -r "${dc_inputs[@]}" -exported_symbol '_oa_dc_*' -o "$work/c/desktop-core.o"
 fi
+if obj_stale "$work/c/lab-sign.o" "$work/c/lab-sign-all.o"; then
+  ld -r "$work/c/lab-sign-all.o" -exported_symbol _coaxial_lab_nip98 -exported_symbol '_coaxial_account_*' -o "$work/c/lab-sign.o"
+fi
 if obj_stale "$work/c/pay-wallet.o" "$work/c/pay-wallet-all.o"; then
   ld -r "$work/c/pay-wallet-all.o" -exported_symbol '_metaverse_wallet_*' -o "$work/c/pay-wallet.o"
 fi
@@ -155,12 +163,13 @@ cp -R "$spark_sdk/breez_sdk_sparkFFI.framework" "$stage_app/Contents/Frameworks/
 
 c_objs=(
   "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" "$work/c/desktop-core.o"
+  "$work/c/lab-sign.o"
   "$work/c/pay-wallet.o" "$work/c/pay-wallet-backup.o" "$work/c/pay-wallet-rpc.o" "$work/c/nip06.o"
 )
 link_flags=(
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO
   -framework UniformTypeIdentifiers -framework CoreGraphics -framework CryptoKit -framework Security
-  -framework UserNotifications -framework IOKit -framework Speech -framework AVFoundation
+  -framework AuthenticationServices -framework UserNotifications -framework IOKit -framework Speech -framework AVFoundation
   -I "$spark_sdk" -F "$spark_sdk"
   "$spark_sdk/libBreezSdkSpark.a" "$spark_sdk/libBigNumber.a"
   -framework breez_sdk_sparkFFI -Xlinker -rpath -Xlinker @executable_path/../Frameworks
@@ -177,15 +186,13 @@ core_swift=(
   "$here/Window+GitDiff.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"
   "$here/AgentSettings.swift" "$here/TitleGenerator.swift" "$here/Window+Usage.swift" "$here/Window+Voice.swift"
   "$here/Window+Wallet.swift"
+  "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift"
   "$repo/apps/shared/host/apple/BreezKey.swift" "$repo/apps/shared/host/apple/BIP39.swift"
   "$repo/apps/shared/host/apple/WalletKeychain.swift" "$repo/apps/shared/host/apple/SparkWallet.swift"
 )
 swift_files=("${core_swift[@]}")
 
 if [[ "$minimal" != "1" ]]; then
-  "$coax" c "$repo/apps/shared/auth/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/lab-sign.h" > "$work/c/lab-sign.c"
-  /usr/bin/clang -std=gnu11 "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign-all.o"
-  ld -r "$work/c/lab-sign-all.o" -exported_symbol _coaxial_lab_nip98 -exported_symbol '_coaxial_account_*' -o "$work/c/lab-sign.o"
   "$coax" c "$repo/metaverse/rh-flythrough.coax" --library --header "$work/c/rh-flythrough.h" > "$work/c/rh-flythrough.c"
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/rh-flythrough.c" -o "$work/c/rh-flythrough-all.o"
   ld -r "$work/c/rh-flythrough-all.o" -exported_symbol '_oa_dc_rh3d_*' -o "$work/c/rh-flythrough.o"
@@ -206,7 +213,7 @@ if [[ "$minimal" != "1" ]]; then
     /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$here" -c "$here/gb_host.c" -o "$work/c/gb_host.o"
   fi
   c_objs+=(
-    "$work/c/lab-sign.o" "$work/c/rh-flythrough.o"
+    "$work/c/rh-flythrough.o"
     "$work/c/metaverse-viewer.o" "$work/c/mv_host.o"
     "$work/c/gamebuilder-core.o" "$work/c/gb_host.o"
   )
@@ -224,11 +231,9 @@ if [[ "$minimal" != "1" ]]; then
     "$here/Window+Rich.swift"
     "$here/Window+Scheduled.swift" "$here/Window+Preview.swift" "$here/Window+Forge.swift"
     "$here/Foreman.swift" "$here/ForemanOperator.swift"
-    "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift"
   )
   swift_files+=("${full_swift[@]}")
   link_flags+=(
-    -framework AuthenticationServices -framework Speech -framework AVFoundation
     -framework CoreMedia -framework CoreVideo -framework WebKit -framework ModelIO
   )
 fi
@@ -254,7 +259,6 @@ cp "$here/resources/OpenAgents.icns" "$res/OpenAgents.icns"
 coax_hash="$(shasum -a 256 "$coax" | cut -d " " -f 1)"
 for p in "${worker_pids[@]}"; do wait "$p"; done
 cp "$repo/coax/web/build/tools/oa-worker-$coax_hash" "$res/oa-worker"
-cp "$repo/coax/web/build/tools/agyworker-$coax_hash" "$res/agyworker"
 cp "$repo/coax/web/build/tools/gitguard-$coax_hash" "$res/gitguard"
 cp "$repo/coax/web/build/tools/host-$coax_hash" "$res/coder-host"
 cp "$work/psionic-inkling/psionic-inkling-serve" "$res/psionic-inkling-serve"
@@ -269,6 +273,7 @@ cp "$repo/metaverse/stage-resources/bip39-english.txt" "$res/bip39-english.txt"
 
 if [[ "$minimal" != "1" ]]; then
   full_pids=()
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oasim.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null & full_pids+=($!)
@@ -302,6 +307,7 @@ if [[ "$minimal" != "1" ]]; then
   [[ -f "$repo/resources/lean-checker/OpenAgentsVerify.lean" ]] && cp "$repo/resources/lean-checker/OpenAgentsVerify.lean" "$res/lean-checker/OpenAgentsVerify.lean"
   [[ -d "$repo/evals/openagents-desktop/lean/samples/add_zero_right" ]] && cp -R "$repo/evals/openagents-desktop/lean/samples/add_zero_right" "$res/fixtures/lean-samples/"
   for p in "${full_pids[@]}"; do wait "$p"; done
+  cp "$repo/coax/web/build/tools/agyworker-$coax_hash" "$res/agyworker"
   cp "$repo/coax/web/build/tools/claudeworker-$coax_hash" "$res/claudeworker"
   cp "$repo/coax/web/build/tools/oasim-$coax_hash" "$res/oasim"
   cp "$repo/coax/web/build/tools/ple-run-$coax_hash" "$res/ple-run"

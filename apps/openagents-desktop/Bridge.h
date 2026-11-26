@@ -2,8 +2,8 @@
 #include "host.h"
 #include "desktop-core-mac.h"
 #include "../shared/native/tailnet-codec.h"
-#ifdef OA_FULL
 #include "account-mac.h"
+#ifdef OA_FULL
 #include "mv_host.h"
 #include "gb_host.h"
 #endif

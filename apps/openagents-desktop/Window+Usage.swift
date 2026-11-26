@@ -215,25 +215,13 @@ enum UsageProber {
     /// Fetches authoritative OpenAgents Cloud spend & credit from `GET /api/v1/inference/usage` (#14072).
     static func fetchCloudUsage() -> UsageCloudSnapshot {
         let empty = UsageCloudSnapshot(synced: false, creditMsat: 0, todayMicros: 0, monthMicros: 0, totalMicros: 0, decisionMicros: 0, decisionCalls: 0, inTokens: 0, cachedTokens: 0, outTokens: 0, calls: 0)
-        let origin: String
+        let origin = MacAccount.origin
         var authHeader: String? = nil
-        #if OA_FULL
-        origin = MacAccount.origin
         if let tok = MacAccount.shared.store.load()?.access, !tok.isEmpty {
             authHeader = "Bearer \(tok)"
         } else if let signed = try? MacKey.signer(MacAccount.shared.keyFile)(origin + "/api/v1/inference/usage", "", Date()), !signed.isEmpty {
             authHeader = signed
         }
-        #else
-        let rawOrigin = ProcessInfo.processInfo.environment["OPENAGENTS_API_ORIGIN"] ?? ""
-        origin = (rawOrigin == "https://staging.openagents.com" || rawOrigin.hasPrefix("http://127.0.0.1:") || rawOrigin.hasPrefix("http://localhost:")) ? rawOrigin : "https://openagents.com"
-        let loginURL = homeURL.appendingPathComponent(".openagents/desktop/login.json")
-        if let data = try? Data(contentsOf: loginURL),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let tok = obj["access"] as? String, !tok.isEmpty {
-            authHeader = "Bearer \(tok)"
-        }
-        #endif
         guard let authHeader, let url = URL(string: origin + "/api/v1/inference/usage") else { return empty }
         var req = URLRequest(url: url, timeoutInterval: 6.0)
         req.httpMethod = "GET"

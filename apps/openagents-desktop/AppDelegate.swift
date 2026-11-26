@@ -7,9 +7,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     var extraWindows: [CoderWindow] = []
     private var statusItem: NSStatusItem?
     private var opened: [URL] = []   // files & openagents:// URLs the Mac asked Coder to open before its window was up
-    #if OA_FULL
     var accountStatusItem: NSMenuItem?
-    var accountItems: [NSMenuItem] = []   // OpenAgents > Log In… and the rest: gated on .account
+    var accountItems: [NSMenuItem] = []   // OpenAgents > Log In… and the rest: gated on .account (default ON; #14087)
+    #if OA_FULL
     var foremanMenuItem: NSMenuItem?      // the Foreman menu: gated on .foreman
     var gatedMenuItems: [(NSMenuItem, () -> Bool)] = []
     #endif
@@ -27,17 +27,21 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         TestLaunch.start()
-        #if OA_FULL
-        if FeatureFlags.isOn(.pairing) {
-            CoderTailnet.shared.start()   // a phone on your tailnet pairs with no code (Tailnet.swift, #13778)
-        }
         MacPush.delegateForwards = true
         MacAccount.shared.changed = { [weak self] in
             DispatchQueue.main.async { self?.refreshAccountMenu() }
         }
+        #if OA_FULL
+        if FeatureFlags.isOn(.pairing) {
+            CoderTailnet.shared.start()   // a phone on your tailnet pairs with no code (Tailnet.swift, #13778)
+        }
         applyFlags()
         #else
-        CoderTailnet.shared.start()   // zero-config mobile pairing over Tailscale in minimal Neon+Inkling build
+        CoderTailnet.shared.start()   // zero-config mobile pairing over Tailscale in minimal build
+        if FeatureFlags.isOn(.account) {
+            Task.detached { await MacAccount.shared.look() }
+        }
+        DispatchQueue.main.async { self.refreshAccountMenu() }
         #endif
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -68,11 +72,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         for url in urls where url.scheme?.lowercased() == "openagents" {
             if main == nil { opened.append(url) } else { _ = DesktopActivation.shared.handleURL(url) }
         }
-        #if OA_FULL
         for url in urls where !url.isFileURL && url.scheme?.lowercased() != "openagents" && FeatureFlags.isOn(.account) {
             _ = MacAccount.shared.handleUniversalLink(url)
         }
-        #endif
         let files = urls.filter { $0.isFileURL }
         guard !files.isEmpty else { return }
         guard let main else { opened += files; return }
@@ -103,7 +105,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         alert.informativeText = res.message
         alert.runModal()
     }
-    #if OA_FULL
     func application(_ application: NSApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
         guard FeatureFlags.isOn(.account), userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else { return false }
         return MacAccount.shared.handleUniversalLink(url)
@@ -114,7 +115,17 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         MacPush.shared.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
     }
-    /// Applies the resolved 28-flag mask to all menu items and delegate-owned background services.
+    @MainActor func refreshAccountMenu() {
+        let title = MacAccount.shared.title
+        accountStatusItem?.title = title.isEmpty ? "Log In to OpenAgents…" : title
+        main?.syncCloudAuth()
+    }
+    @objc func accountLogin(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task { @MainActor in await MacAccount.shared.showLogin() } }
+    @objc func accountSecurity(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task { @MainActor in await MacAccount.shared.showSecurity() } }
+    @objc func accountLinkDevice(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task { @MainActor in await MacAccount.shared.linkDeviceKey() } }
+    @objc func accountLogout(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task.detached { await MacAccount.shared.logout() } }
+    #if OA_FULL
+    /// Applies the resolved 30-flag mask to all menu items and delegate-owned background services.
     func applyFlags() {
         let acctOn = FeatureFlags.isOn(.account)
         for item in accountItems { item.isHidden = !acctOn }
@@ -130,15 +141,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     func applyExperimental(_ on: Bool) {
         applyFlags()
     }
-    @MainActor func refreshAccountMenu() {
-        let title = MacAccount.shared.title
-        accountStatusItem?.title = title.isEmpty ? "Log In to OpenAgents…" : title
-        main?.syncCloudAuth()
-    }
-    @objc func accountLogin(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task { @MainActor in await MacAccount.shared.showLogin() } }
-    @objc func accountSecurity(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task { @MainActor in await MacAccount.shared.showSecurity() } }
-    @objc func accountLinkDevice(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task { @MainActor in await MacAccount.shared.linkDeviceKey() } }
-    @objc func accountLogout(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task.detached { await MacAccount.shared.logout() } }
     #endif
     @objc private func showWindow() {
         NSApp.activate(ignoringOtherApps: true)
@@ -255,11 +257,11 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        #if OA_FULL
         if item.action == #selector(accountLogin(_:)) { return FeatureFlags.isOn(.account) }
         if item.action == #selector(accountSecurity(_:)) || item.action == #selector(accountLinkDevice(_:)) || item.action == #selector(accountLogout(_:)) {
             return FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn
         }
+        #if OA_FULL
         if item.action == #selector(openScene(_:)) { return FeatureFlags.isOn(.scenes) }
         if item.action == #selector(toggleSimulator(_:)) { return FeatureFlags.isOn(.simulator) }
         if item.action == #selector(toggleTerminal(_:)) { return FeatureFlags.isOn(.terminal) }
@@ -641,8 +643,6 @@ enum TestLaunch {
         view.addItem(withTitle: "Back to Chats", action: #selector(CoderDelegate.backToChats(_:)), keyEquivalent: "[").target = delegate
         viewItem.submenu = view
         appMenu.addItem(withTitle: "Settings…", action: #selector(CoderDelegate.openSettings(_:)), keyEquivalent: ",").target = delegate
-        #if OA_FULL
-        // the account's items: an experimental feature (CoderDelegate.applyExperimental shows or hides them)
         let acctSeparator = NSMenuItem.separator(); appMenu.addItem(acctSeparator)
         let acctItem = appMenu.addItem(withTitle: "Log In to OpenAgents…", action: #selector(CoderDelegate.accountLogin(_:)), keyEquivalent: "")
         acctItem.target = delegate
@@ -656,14 +656,13 @@ enum TestLaunch {
         delegate.accountItems = [acctSeparator, acctItem, security, link, logout]
         for item in delegate.accountItems { item.isHidden = !FeatureFlags.isOn(.account) }
         appMenu.addItem(.separator())
+        #if OA_FULL
         let claudeKeyItem = appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "")
         claudeKeyItem.target = delegate
         delegate.gatedMenuItems.append((claudeKeyItem, { FeatureFlags.isOn(.modelsClaude) }))
         let orItem = appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "")
         orItem.target = delegate
         delegate.gatedMenuItems.append((orItem, { FeatureFlags.isOn(.modelsOpenrouter) }))
-        #else
-        appMenu.addItem(.separator())
         #endif
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(CoderDelegate.checkForUpdates(_:)), keyEquivalent: "").target = delegate
         #if OA_FULL

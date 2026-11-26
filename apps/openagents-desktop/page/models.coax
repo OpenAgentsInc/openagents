@@ -78,7 +78,7 @@ cp_has_cloud_compute :: (s: [] CoderPage) -> bool {
   fl := s[0].flawed[..];
   if fl[0].key_label_n > 0 {
     kl := cast(string) fl[0].key_label[0..<fl[0].key_label_n];
-    if kl != "Not set" && kl != "" { return true; }
+    if kl.count > 0 && !(kl.count >= 7 && cast(string) kl[0..<7] == "Not set") { return true; }
   }
   if fl[0].auth_status_n > 0 {
     ast := cast(string) fl[0].auth_status[0..<fl[0].auth_status_n];
@@ -87,11 +87,12 @@ cp_has_cloud_compute :: (s: [] CoderPage) -> bool {
   return false;
 }
 
-// True when only local Inkling 2 Mini is available (hides the default compute picker).
+// True only when the user explicitly pinned the developer backend override to Local (Psionic Metal).
+// In cloud-first mode (#14087), local Inkling 2 Mini is an optional $0 compute tier inside cloud
+// chats rather than a separate hidden local-only mode.
 cp_local_only_compute :: (s: [] CoderPage) -> bool {
   if s.count < 1 { return false; }
-  if s[0].flawed[0].backend == 1 { return true; }
-  return s[0].inkling && !cp_has_cloud_compute(s);
+  return s[0].flawed[0].backend == 1;
 }
 
 // Builds the single canonical list of currently available entries in picker order.

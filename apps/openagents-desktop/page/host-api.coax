@@ -533,10 +533,10 @@ coder_page_agy_connect :: (s: [] CoderPage, avail: bool, state: int, msg: string
   s[0].anim = true;
 }
 
-// Experimental features (Settings > General): developer alias turning every flag on or off.
+// Experimental features (Settings > General): developer alias turning every flag on or back to release defaults.
 coder_page_experimental_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
-  coder_page_flags_set(s, ifx on then DC_FLAGS_ALL else 0);
+  coder_page_flags_set(s, ifx on then DC_FLAGS_ALL else dc_flags_defaults());
 }
 coder_page_experimental :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].experimental; }
 

@@ -290,11 +290,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         CoderNotifications.shared.onSelectChat = { [weak self] chatID in self?.openFromNotification(chatID) }
         configureTitleGenerator()
         if CoderNotifyMode.current.needsOS { CoderNotifications.shared.requestAuthorizationIfNeeded() }
-        #if OA_FULL
         cd_cloud_authed_set(page, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
+        #if OA_FULL
         cd_settings_gemini(page, FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "") : "")
         #else
-        cd_cloud_authed_set(page, 0)
         cd_settings_gemini(page, "")
         #endif
         // the agent instructions every agent is told (~/.openagents/instructions.md): the default on first run, never over a file there (#13808)
@@ -580,8 +579,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 18: if FeatureFlags.isOn(.foreman), let tier = ForemanTier(rawValue: Int(cd_settings_tier(page))) { setForemanTier(tier) }
         case 19: if FeatureFlags.isOn(.foreman) { openForemanAuditLog() }
         case 20: if FeatureFlags.isOn(.foreman) { clearForemanHistory() }
-        case 21: if FeatureFlags.isOn(.account), let url = URL(string: "https://openagents.com/login") { NSWorkspace.shared.open(url) }
         #endif
+        case 21: if FeatureFlags.isOn(.account) { Task { @MainActor in await MacAccount.shared.showLogin() } }
         case 22: checkForUpdates()
         case 23: focusSearch()
         case 24:

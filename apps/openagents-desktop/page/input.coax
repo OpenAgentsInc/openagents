@@ -66,6 +66,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_GYM_MODE_ACT && act <= CP_LEAN_JUMP_ATLAS { return cp_flag(s, DC_FLAG_GYM) && cp_lean_press(s, act, surface_id(s[0].surface[..], row)); }  // Gym mode bar & Lean · RH Workbench (gym-lean.coax; #13946)
   if act == CP_LOCAL_DL { s[0].ask = CP_ASK_LOCAL_DOWNLOAD; return true; }
   if act == CP_LOCAL_CANCEL { s[0].ask = CP_ASK_LOCAL_CANCEL; return true; }
+  if act == CP_CLOUD_LOGIN { s[0].ask = CP_ASK_LOGIN; return true; }
+  if act == CP_CLOUD_BYO { cp_settings_show(s, true, CP_PG_FLAWED); return true; }
   if act == CP_AGY_CONNECT {
     if s[0].agy_conn != CP_AGY_BUSY { s[0].agy_conn = CP_AGY_BUSY; s[0].agy_conn_msg_n = 0; s[0].agy_dl_pct = -1; s[0].ask = CP_ASK_AGY_CONNECT; }
     return true;

@@ -2611,7 +2611,11 @@ static void handle_action(DesktopApp *a, int act) {
     case 47: ask_local_models(a); break;
     case 160: local_start_download(a); break;
     case 161: local_cancel_download(a); break;
-    case 162: agy_connect_start(a); break;
+    case 162:
+#ifdef OA_FULL
+      agy_connect_start(a);
+#endif
+      break;
     case 163: oa_core_worktrees_set(cs("newChatWorktree"), cd_worktree(a->page) != 0 ? 1 : 0); break;
     case 216: refresh_dashboard(a); break;   // CP_ASK_DASHBOARD
     case 52: {
@@ -3712,7 +3716,9 @@ static int oa_main(int argc, char **argv) {
     }
   }
   cd_agy(app.page, ((dc_flags & (1LL << 3)) && app.agy_worker_bin[0]) ? 1 : 0);
-  agy_connect_sync(&app);   // the onboarding offers Connect Google Antigravity when agyworker is bundled
+#ifdef OA_FULL
+  agy_connect_sync(&app);   // developer full profile only; release uses cloud-first OpenAgents onboarding (#14087)
+#endif
   set_folder(&app, app.folder);
   cd_worktree_set(app.page, oa_core_worktrees_get(cs("newChatWorktree")) ? 1 : 0);
   refresh_settings_info(&app);

@@ -124,7 +124,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert coder_page_palette_toggle(s, APP_PAL_ALL);
   p := cp_pal(s);
   es := cp_set_entries(); expected_set := 0;
-  for e: es { if cp_set_entry_ok_flags(0, e) { expected_set += 1; } }
+  for e: es { if cp_set_entry_ok_flags(dc_flags_defaults(), e) { expected_set += 1; } }
   #assert app_palette_count(p, APP_PAL_SESSIONS) == 3 && app_palette_count(p, APP_PAL_SETTINGS) == expected_set;
   #assert app_pal_label(p, p[0].rows[1].item) == "Pinned plan";
   #assert cp_pal_test_row(s, "Open Foreman") < 0 && cp_pal_test_row(s, "Foreman permission tier") < 0 && cp_pal_test_row(s, "View Foreman audit log") < 0;

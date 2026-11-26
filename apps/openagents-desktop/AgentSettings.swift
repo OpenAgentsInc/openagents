@@ -315,7 +315,6 @@ enum AgentSettings {
     static var authStatus: String { cachedAuthStatus }
 
     private static func cloudAuthEnv() -> [String: String] {
-        #if OA_FULL
         var env: [String: String] = ["OA_CLOUD_ORIGIN": MacAccount.origin]
         if let tok = MacAccount.shared.store.load()?.access, !tok.isEmpty {
             env["OA_CLOUD_TOKEN"] = tok
@@ -325,24 +324,6 @@ enum AgentSettings {
             env["OA_CLOUD_KEY_PATH"] = keyPath
         }
         return env
-        #else
-        let rawOrigin = ProcessInfo.processInfo.environment["OPENAGENTS_API_ORIGIN"] ?? ""
-        let origin = (rawOrigin == "https://staging.openagents.com" || rawOrigin.hasPrefix("http://127.0.0.1:") || rawOrigin.hasPrefix("http://localhost:")) ? rawOrigin : "https://openagents.com"
-        var env: [String: String] = ["OA_CLOUD_ORIGIN": origin]
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let loginURL = home.appendingPathComponent(".openagents/desktop/login.json")
-        if let data = try? Data(contentsOf: loginURL),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let tok = obj["access"] as? String, !tok.isEmpty {
-            env["OA_CLOUD_TOKEN"] = tok
-        }
-        let profile = ProcessInfo.processInfo.environment["OPENAGENTS_PROFILE"].flatMap { $0.isEmpty ? nil : $0 } ?? "default"
-        let keyPath = home.appendingPathComponent(".openagents/cli/keys/\(profile)").path
-        if FileManager.default.fileExists(atPath: keyPath) {
-            env["OA_CLOUD_KEY_PATH"] = keyPath
-        }
-        return env
-        #endif
     }
 
     static func probeAuth(_ done: @escaping () -> Void) {

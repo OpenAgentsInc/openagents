@@ -815,172 +815,123 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
                          ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   }
 }
-// The onboarding's way on where Inkling 2 Mini cannot run: Google Antigravity, at (x, y), w wide,
-// under a divider. The host installs the Antigravity CLI if it is missing, runs Google's sign-in and,
-// once agy opens a session, turns on models.antigravity, so the chat runs on Antigravity
-// (CP_AGY_CONNECT; coder_page_agy_connect tells the step). Returns the y under it.
-CP_AGY_ONBOARD_HEAD :: "Use Google Antigravity instead";
-CP_AGY_ONBOARD_BODY :: "Chat with Gemini through your Google account. OpenAgents downloads Google's Antigravity CLI and opens Google's sign-in. Your prompts and code are sent to Google instead of staying on this computer.";
-cp_onboarding_agy :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -> f32 {
-  k := f[0].skin; a := k.app; sh := f[0].sheet; th := cp_theme();
-  y := y0;
-  y += app_divider(f, x, y, w) + a.gap;
-  _ := uiframe_semantic(f, "coder.onboarding.agy.head", EL_HEADING, CP_AGY_ONBOARD_HEAD, x, y, w, k.label.line, 0, 0);
-  _ := sheet_text(sh, f[0].m, -1, x, y, k.label.line, k.label.face, th.text, app_fit(f, k.label.face, CP_AGY_ONBOARD_HEAD, w));
-  y += k.label.line + a.gap_small;
-  bh := control_copy(sh, f[0].m, k.small, th.muted, x, y, w, CP_AGY_ONBOARD_BODY);
-  _ := uiframe_semantic(f, "coder.onboarding.agy.body", EL_TEXT, CP_AGY_ONBOARD_BODY, x, y, w, bh, 0, 0);
-  y += bh + a.gap;
-  msg := cast(string) s[0].agy_conn_msg[0..<s[0].agy_conn_msg_n];
-  if s[0].agy_conn == CP_AGY_BUSY && s[0].agy_dl_pct >= 0 {
-    // the Antigravity CLI's download: how far, then a bar, as the Inkling download shows it
-    pb: [128] u8; pn := el_put(pb[..], 0, "Downloading the Antigravity CLI — ");
-    if s[0].agy_dl_total_mb > 0 {
-      pn = el_put_i(pb[..], pn, s[0].agy_dl_mb); pn = el_put(pb[..], pn, " / ");
-      pn = el_put_i(pb[..], pn, s[0].agy_dl_total_mb); pn = el_put(pb[..], pn, " MB (");
-      pn = el_put_i(pb[..], pn, s[0].agy_dl_pct); pn = el_put(pb[..], pn, "%)");
-    } else {
-      pn = el_put_i(pb[..], pn, s[0].agy_dl_mb); pn = el_put(pb[..], pn, " MB");
-    }
-    y += app_meta(f, "coder.agy.progress.text", x, y, w, sheet_pool(sh, cast(string) pb[0..<pn]), false) + a.gap_small;
-    bar_h := 8.0f32;
-    share := cast(f32) s[0].agy_dl_pct / 100.0f32;
-    prow := uiframe_semantic(f, "coder.agy.progress", EL_PROGRESS, "Antigravity CLI download progress", x, y, w, bar_h, 0, 0);
-    elt_value_share(f[0].rows, prow, share);
-    sheet_fill(sh, x, y, w, bar_h, 4.0f32, th.raised);
-    if share > 0 { sheet_fill(sh, x, y, w * share, bar_h, 4.0f32, th.accent); }
-    y += bar_h;
-  } else if s[0].agy_conn == CP_AGY_BUSY {
-    s[0].anim = true;
-    label := ifx msg.count > 0 then sheet_pool(sh, msg) else "Connecting to Google Antigravity…";
-    y += app_button(f, "coder.agy.connect", x, y, w, -1, label, APP_BUTTON_DEFAULT, EL_S_BUSY, CP_AGY_CONNECT);
-  } else {
-    if s[0].agy_conn == CP_AGY_FAILED {
-      why := ifx msg.count > 0 then sheet_pool(sh, msg) else "Google Antigravity could not be connected.";
-      y += app_notice(f, "coder.agy.error", x, y, w, why, APP_NOTICE_ERROR) + a.gap_small;
-    }
-    label := ifx s[0].agy_conn == CP_AGY_FAILED then "Try again" else "Connect Google Antigravity";
-    bw := app_button_width(f, -1, label);
-    y += app_button(f, "coder.agy.connect", x, y, bw, -1, label, APP_BUTTON_PRIMARY, 0, CP_AGY_CONNECT);
-  }
-  return y;
+// True on a clean empty chat when neither OpenAgents Cloud / BYO cloud credentials nor local
+// Inkling weights are ready yet (unless the user explicitly opted into Developer -> Show other models
+// or explicitly picked Local/Inkling in the composer). Every chat is a cloud chat (#14087); local
+// Inkling 2 Mini is an optional $0 compute accelerator rather than a separate local-only mode.
+cp_needs_cloud_onboarding :: (s: [] CoderPage) -> bool {
+  if s.count < 1 || s[0].nturns != 0 || s[0].show_other_models { return false; }
+  if cp_has_cloud_compute(s) || s[0].inkling { return false; }
+  idx := cp_model_index(s);
+  if cp_is_inkling(s, idx) || cp_is_flawed_local(s, idx) { return false; }
+  return true;
 }
 
-// First-run Inkling 2 Mini onboarding / server readiness view when running in single-model release
-// mode before the local model is ready to accept messages (Audit §5.6).
-cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32) {
+CP_CLOUD_ONBOARD_TITLE :: "OpenAgents";
+CP_CLOUD_ONBOARD_SUB :: "Sign in to start chatting with OpenAgents Cloud";
+CP_CLOUD_ONBOARD_BODY :: "Frontier models on any machine with synced cloud chats and transparent usage. No local model download required.";
+CP_CLOUD_ONBOARD_LOCAL_HEAD :: "Optional · Free ($0) local compute";
+CP_CLOUD_ONBOARD_LOCAL_BODY :: "Download Inkling 2 Mini so Auto can run fast $0 on-device turns alongside OpenAgents Cloud.";
+
+// Unified cloud-first onboarding card (#14087): replaces the legacy Inkling-only + Google
+// Antigravity fallback card across macOS, Linux, and Windows.
+cp_cloud_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32) {
   k := f[0].skin; a := k.app; sh := f[0].sheet; th := cp_theme();
-  if s[0].local_os_ok && s[0].local_hw_ok && s[0].local_dl_state == CP_LOCAL_STARTING {
-    s[0].anim = true;
-    msg := "Loading model…";
-    tw := ceil(measure_width(f[0].m, k.small.face, msg));
-    row_w := a.icon + a.gap_small + tw;
-    if row_w > cw { row_w = cw; }
-    rx := x + (cw - row_w) / 2.0f32;
-    ry := (h - k.small.line) / 2.0f32;
-    min_y := cp_bar(s) + a.gap;
-    if ry < min_y { ry = min_y; }
-    _ := uiframe_semantic(f, "coder.onboarding", EL_REGION, "Loading model", rx, ry, row_w, k.small.line, 0, 0);
-    activity(sh, k, rx, ry + (k.small.line - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
-    _ := app_meta(f, "coder.onboarding.starting", rx + a.icon + a.gap_small, ry, row_w - a.icon - a.gap_small, msg, false);
-    s[0].bar_h = 0.0f32;
-    return;
-  }
-  card_w := ifx cw < 520.0f32 then cw else 520.0f32;
+  card_w := ifx cw < 540.0f32 then cw else 540.0f32;
   cx := x + (cw - card_w) / 2.0f32;
-  pad := 20.0f32;
+  pad := 22.0f32;
   iw := card_w - 2.0f32 * pad;
-  // Estimate card height so it stays centered vertically in the window.
-  est_h := ifx (!s[0].local_os_ok || !s[0].local_hw_ok) && s[0].agy_avail then 390.0f32 else 220.0f32;
+  est_h := ifx s[0].local_os_ok && s[0].local_hw_ok then 330.0f32 else 230.0f32;
   cy := (h - est_h) / 2.0f32;
   min_y := cp_bar(s) + a.gap;
   if cy < min_y { cy = min_y; }
-  // Reserve a card background box; draw inner elements and then compute final height cleanly.
+  card := sheet_box(sh, cx, cy, card_w, est_h, 16.0f32, 1.0f32, th.surface, th.border);
+  region := uiframe_semantic(f, "coder.onboarding", EL_REGION, "OpenAgents Cloud sign-in", cx, cy, card_w, est_h, 0, 0);
   y := cy + pad;
-  // Compute content first via inner layout on card box of fixed minimum height, or draw card cleanly:
-  // Title & subtitle
-  title_h := k.strong.line;
-  sub_h := k.small.line;
-  // Measure body height cleanly depending on state
-  body_h := 110.0f32;
-  if !s[0].local_os_ok || !s[0].local_hw_ok { body_h = 84.0f32; }
-  else if s[0].local_dl_state == CP_LOCAL_ERROR || s[0].local_dl_state == CP_LOCAL_SERVER_ERROR { body_h = 128.0f32; }
-  total_h := 2.0f32 * pad + title_h + a.gap_small + sub_h + a.gap + body_h;
-  card := sheet_box(sh, cx, cy, card_w, total_h, 16.0f32, 1.0f32, th.surface, th.border);
-  region := uiframe_semantic(f, "coder.onboarding", EL_REGION, "Inkling 2 Mini setup", cx, cy, card_w, total_h, 0, 0);
-  _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.strong.line, k.strong.face, th.text, app_fit(f, k.strong.face, "OpenAgents Desktop", iw));
-  y += title_h + a.gap_small;
-  _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, "Private, on-device coding powered by Inkling 2 Mini", iw));
-  y += sub_h + a.gap;
-  if !s[0].local_os_ok {
-    // The host says why in its own platform's terms; the fallback names every supported machine.
-    why: string = "Inkling 2 Mini needs an Apple Silicon Mac with 12 GB+ of memory, or an NVIDIA GPU with 8 GB of VRAM. No supported GPU was found.";
-    if s[0].local_dl_err_n > 0 { why = sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n]); }
-    y += app_notice(f, "coder.onboarding.unsupported", cx + pad, y, iw, why, APP_NOTICE_ERROR);
-    // Not a dead end: Google Antigravity runs on any computer (#13782's onboarding follow-up).
-    if s[0].agy_avail {
-      y = cp_onboarding_agy(s, f, cx + pad, y + a.gap, iw);
-      if card >= 0 { sh[0].under[card].h = y + pad - cy; }
-      if region >= 0 { f[0].rows[0].rows[region].h = y + pad - cy; }
-    }
-  } else if !s[0].local_hw_ok {
-    // The host's reason (unified memory on a Mac, VRAM on an NVIDIA GPU), then what this machine has.
-    rb: [320] u8; rn := 0;
-    if s[0].local_dl_err_n > 0 { rn = el_put(rb[..], 0, cast(string) s[0].local_dl_err[0..<(ifx s[0].local_dl_err_n < 240 then s[0].local_dl_err_n else 240)]); }
-    else { rn = el_put(rb[..], 0, "Inkling 2 Mini needs an Apple Silicon Mac with 12 GB+ of memory, or an NVIDIA GPU with 8 GB of VRAM."); }
-    if s[0].local_ram_gb > 0 {
-      rn = el_put(rb[..], rn, " This computer has "); rn = el_put_i(rb[..], rn, s[0].local_ram_gb); rn = el_put(rb[..], rn, " GB.");
-    }
-    y += app_notice(f, "coder.onboarding.ram", cx + pad, y, iw, sheet_pool(sh, cast(string) rb[0..<rn]), APP_NOTICE_ERROR);
-    if s[0].agy_avail {
-      y = cp_onboarding_agy(s, f, cx + pad, y + a.gap, iw);
-      if card >= 0 { sh[0].under[card].h = y + pad - cy; }
-      if region >= 0 { f[0].rows[0].rows[region].h = y + pad - cy; }
-    }
-  } else if s[0].local_dl_state == CP_LOCAL_DOWNLOADING {
-    pb: [128] u8; pn := el_put(pb[..], 0, "Downloading Inkling 2 Mini — ");
-    if s[0].local_dl_total_mb > 0 {
-      pn = el_put_i(pb[..], pn, s[0].local_dl_mb); pn = el_put(pb[..], pn, " / ");
-      pn = el_put_i(pb[..], pn, s[0].local_dl_total_mb); pn = el_put(pb[..], pn, " MB (");
-      pn = el_put_i(pb[..], pn, s[0].local_dl_pct); pn = el_put(pb[..], pn, "%)");
-    } else {
-      pn = el_put_i(pb[..], pn, s[0].local_dl_pct); pn = el_put(pb[..], pn, "%");
-    }
-    ptext := sheet_pool(sh, cast(string) pb[0..<pn]);
-    y += app_meta(f, "coder.onboarding.status", cx + pad, y, iw, ptext, false) + a.gap_small;
-    bar_h := 8.0f32;
-    pct_clamped := ifx s[0].local_dl_pct < 0 then 0 else ifx s[0].local_dl_pct > 100 then 100 else s[0].local_dl_pct;
-    share := cast(f32) pct_clamped / 100.0f32;
-    prow := uiframe_semantic(f, "coder.onboarding.progress", EL_PROGRESS, "Download progress", cx + pad, y, iw, bar_h, 0, 0);
-    elt_value_share(f[0].rows, prow, share);
-    sheet_fill(sh, cx + pad, y, iw, bar_h, 4.0f32, th.raised);
-    if share > 0 { sheet_fill(sh, cx + pad, y, iw * share, bar_h, 4.0f32, th.accent); }
-    y += bar_h + a.gap;
-    cw_btn := app_button_width(f, -1, "Cancel download");
-    _ := app_button(f, "coder.local.cancel", cx + pad, y, cw_btn, -1, "Cancel download", APP_BUTTON_DEFAULT, 0, CP_LOCAL_CANCEL);
-  } else if s[0].local_dl_state == CP_LOCAL_VERIFYING {
-    s[0].anim = true;
-    activity(sh, k, cx + pad, y, a.icon, f[0].clock, f[0].reduced_motion);
-    _ := app_meta(f, "coder.onboarding.verifying", cx + pad + a.icon + a.gap_small, y, iw - a.icon - a.gap_small,
-                  "Verifying SHA-256 checksum of local GGUF checkpoint…", false);
-  } else if s[0].local_dl_state == CP_LOCAL_SERVER_ERROR {
-    emsg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
-            else "Inkling 2 Mini could not start. Click Retry to try again.";
-    y += app_notice(f, "coder.onboarding.error", cx + pad, y, iw, emsg, APP_NOTICE_ERROR) + a.gap_small;
-    bw := app_button_width(f, -1, "Retry");
-    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Retry", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
-  } else if s[0].local_dl_state == CP_LOCAL_ERROR {
-    emsg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
-            else "Download failed. Check your internet connection and free disk space, then try again.";
-    y += app_notice(f, "coder.onboarding.error", cx + pad, y, iw, emsg, APP_NOTICE_ERROR) + a.gap_small;
-    bw := app_button_width(f, -1, "Retry download");
-    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Retry download", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
+  _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.strong.line, k.strong.face, th.text, app_fit(f, k.strong.face, CP_CLOUD_ONBOARD_TITLE, iw));
+  y += k.strong.line + a.gap_small;
+  _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, CP_CLOUD_ONBOARD_SUB, iw));
+  y += k.small.line + a.gap;
+  bh := control_copy(sh, f[0].m, k.small, th.muted, cx + pad, y, iw, CP_CLOUD_ONBOARD_BODY);
+  _ := uiframe_semantic(f, "coder.onboarding.body", EL_TEXT, CP_CLOUD_ONBOARD_BODY, cx + pad, y, iw, bh, 0, 0);
+  y += bh + a.gap;
+  login_lbl := "Sign in to OpenAgents";
+  byo_lbl := "Use your own API key";
+  login_w := app_button_width(f, -1, login_lbl);
+  byo_w := app_button_width(f, -1, byo_lbl);
+  if login_w + a.gap_small + byo_w <= iw {
+    bh1 := app_button(f, "coder.onboarding.login", cx + pad, y, login_w, -1, login_lbl, APP_BUTTON_PRIMARY, 0, CP_CLOUD_LOGIN);
+    _ := app_button(f, "coder.onboarding.byo", cx + pad + login_w + a.gap_small, y, byo_w, -1, byo_lbl, APP_BUTTON_DEFAULT, 0, CP_CLOUD_BYO);
+    y += bh1;
   } else {
-    y += app_meta(f, "coder.onboarding.specs", cx + pad, y, iw,
-                  "GGUF local model · Apple Silicon Metal · Free, no account required (switch variants in Settings → Models)", false) + a.gap;
-    bw := app_button_width(f, -1, "Download Inkling 2 Mini");
-    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Download Inkling 2 Mini", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
+    y += app_button(f, "coder.onboarding.login", cx + pad, y, iw, -1, login_lbl, APP_BUTTON_PRIMARY, 0, CP_CLOUD_LOGIN) + a.gap_small;
+    y += app_button(f, "coder.onboarding.byo", cx + pad, y, iw, -1, byo_lbl, APP_BUTTON_DEFAULT, 0, CP_CLOUD_BYO);
   }
+  y += a.gap;
+  y += app_divider(f, cx + pad, y, iw) + a.gap;
+  if s[0].local_os_ok && s[0].local_hw_ok {
+    _ := uiframe_semantic(f, "coder.onboarding.local.head", EL_HEADING, CP_CLOUD_ONBOARD_LOCAL_HEAD, cx + pad, y, iw, k.label.line, 0, 0);
+    _ := sheet_text(sh, f[0].m, -1, cx + pad, y, k.label.line, k.label.face, th.text, app_fit(f, k.label.face, CP_CLOUD_ONBOARD_LOCAL_HEAD, iw));
+    y += k.label.line + a.gap_small;
+    lh := control_copy(sh, f[0].m, k.small, th.muted, cx + pad, y, iw, CP_CLOUD_ONBOARD_LOCAL_BODY);
+    _ := uiframe_semantic(f, "coder.onboarding.local.body", EL_TEXT, CP_CLOUD_ONBOARD_LOCAL_BODY, cx + pad, y, iw, lh, 0, 0);
+    y += lh + a.gap;
+    if s[0].local_dl_state == CP_LOCAL_DOWNLOADING {
+      s[0].anim = true;
+      pb: [128] u8; pn := el_put(pb[..], 0, "Downloading Inkling 2 Mini — ");
+      if s[0].local_dl_total_mb > 0 {
+        pn = el_put_i(pb[..], pn, s[0].local_dl_mb); pn = el_put(pb[..], pn, " / ");
+        pn = el_put_i(pb[..], pn, s[0].local_dl_total_mb); pn = el_put(pb[..], pn, " MB (");
+        pn = el_put_i(pb[..], pn, s[0].local_dl_pct); pn = el_put(pb[..], pn, "%)");
+      } else {
+        pn = el_put_i(pb[..], pn, s[0].local_dl_pct); pn = el_put(pb[..], pn, "%");
+      }
+      ptext := sheet_pool(sh, cast(string) pb[0..<pn]);
+      y += app_meta(f, "coder.onboarding.status", cx + pad, y, iw, ptext, false) + a.gap_small;
+      bar_h := 8.0f32;
+      pct_clamped := ifx s[0].local_dl_pct < 0 then 0 else ifx s[0].local_dl_pct > 100 then 100 else s[0].local_dl_pct;
+      share := cast(f32) pct_clamped / 100.0f32;
+      prow := uiframe_semantic(f, "coder.onboarding.progress", EL_PROGRESS, "Download progress", cx + pad, y, iw, bar_h, 0, 0);
+      elt_value_share(f[0].rows, prow, share);
+      sheet_fill(sh, cx + pad, y, iw, bar_h, 4.0f32, th.raised);
+      if share > 0 { sheet_fill(sh, cx + pad, y, iw * share, bar_h, 4.0f32, th.accent); }
+      y += bar_h + a.gap;
+      cw_btn := app_button_width(f, -1, "Cancel download");
+      y += app_button(f, "coder.local.cancel", cx + pad, y, cw_btn, -1, "Cancel download", APP_BUTTON_DEFAULT, 0, CP_LOCAL_CANCEL);
+    } else if s[0].local_dl_state == CP_LOCAL_VERIFYING {
+      s[0].anim = true;
+      activity(sh, k, cx + pad, y, a.icon, f[0].clock, f[0].reduced_motion);
+      y += app_meta(f, "coder.onboarding.verifying", cx + pad + a.icon + a.gap_small, y, iw - a.icon - a.gap_small,
+                    "Verifying SHA-256 checksum of local GGUF checkpoint…", false);
+    } else if s[0].local_dl_state == CP_LOCAL_STARTING {
+      s[0].anim = true;
+      activity(sh, k, cx + pad, y, a.icon, f[0].clock, f[0].reduced_motion);
+      y += app_meta(f, "coder.onboarding.starting", cx + pad + a.icon + a.gap_small, y, iw - a.icon - a.gap_small,
+                    "Loading local Inkling 2 Mini…", false);
+    } else if s[0].local_dl_state == CP_LOCAL_SERVER_ERROR {
+      emsg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
+              else "Inkling 2 Mini could not start. Click Retry to try again.";
+      y += app_notice(f, "coder.onboarding.error", cx + pad, y, iw, emsg, APP_NOTICE_ERROR) + a.gap_small;
+      bw := app_button_width(f, -1, "Retry");
+      y += app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Retry", APP_BUTTON_DEFAULT, 0, CP_LOCAL_DL);
+    } else if s[0].local_dl_state == CP_LOCAL_ERROR {
+      emsg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
+              else "Download failed. Check your internet connection and free disk space, then try again.";
+      y += app_notice(f, "coder.onboarding.error", cx + pad, y, iw, emsg, APP_NOTICE_ERROR) + a.gap_small;
+      bw := app_button_width(f, -1, "Retry download");
+      y += app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Retry download", APP_BUTTON_DEFAULT, 0, CP_LOCAL_DL);
+    } else {
+      dl_lbl := "Download Inkling 2 Mini ($0)";
+      bw := app_button_width(f, -1, dl_lbl);
+      y += app_button(f, "coder.local.dl", cx + pad, y, bw, -1, dl_lbl, APP_BUTTON_DEFAULT, 0, CP_LOCAL_DL);
+    }
+  } else {
+    y += app_meta(f, "coder.onboarding.cloud_note", cx + pad, y, iw,
+                  "OpenAgents Cloud runs frontier models on this computer with no local model download required.", false);
+  }
+  final_h := y + pad - cy;
+  if card >= 0 { sh[0].under[card].h = final_h; }
+  if region >= 0 { f[0].rows[0].rows[region].h = final_h; }
   s[0].bar_h = 0.0f32;
 }
 
@@ -997,12 +948,10 @@ CP_COMPOSER_FOOT_CORNER :: CP_COMPOSER_FOOT_INSET + ZC_CONTROL / 2;
 cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
   k := f[0].skin; a := k.app;
   is_foreman := cp_flag(s, DC_FLAG_FOREMAN) && cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
-  // When local Inkling cannot run on this machine at all (Intel Mac, Linux without GPU, <12 GB RAM)
-  // and the user has not opted into other models, show the hardware setup / Connect Antigravity card.
-  // On supported Apple Silicon Macs, ALWAYS show the composer and its model picker (even before download)
-  // so the default local model is always visible and picking it downloads it immediately.
-  if !cp_has_model_picker(s) && !is_foreman && s[0].nturns == 0 && !s[0].inkling && (!s[0].local_os_ok || !s[0].local_hw_ok) {
-    cp_local_onboarding(s, f, x, cw, h);
+  // On a fresh profile with no cloud sign-in/credentials and no local Inkling weights ready,
+  // present unified cloud-first onboarding (no Antigravity fallback, no mandatory 17 GB wait; #14087).
+  if !is_foreman && cp_needs_cloud_onboarding(s) {
+    cp_cloud_onboarding(s, f, x, cw, h);
     return;
   }
   centred := s[0].nturns == 0 && !is_foreman;

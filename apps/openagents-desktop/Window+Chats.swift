@@ -593,7 +593,6 @@ extension CoderWindow {
             guard LocalModelServer.shared.isReady else { return nil }
             return (LocalModelServer.baseURL, LocalModelStore.entry.id)
         }
-        #if OA_FULL
         ChatTitleGenerator.shared.hostedGatewayProvider = { url, body in
             guard FeatureFlags.isOn(.account),
                   MacAccount.shared.loggedIn,
@@ -603,7 +602,6 @@ extension CoderWindow {
             defer { MacKey.wipe(&key) }
             return try? MacKey.nip98(key: key, url: url, body: body, now: Date())
         }
-        #endif
     }
 
     func forgetTitleState(for id: String) {

@@ -327,21 +327,68 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert !coder_page_file_open_scene(s, "/tmp/demo.ple-scene.json");
 }
 
-#test "flags release mode: onboarding offers Connect Google Antigravity where Inkling cannot run" {
+#test "flags release mode: unified cloud-first onboarding signs in cleanly without Antigravity fallback and offers optional $0 local Inkling" {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
-  coder_page_flags_set(s, 0);
+  coder_page_flags_set(s, dc_flags_defaults());
+  coder_page_show_other_models_set(s, false);
+  coder_page_set_cloud_authed(s, false);
+  coder_page_settings_gauth(s, "", "");
   coder_page_set_inkling(s, false);
+  coder_page_flawed_info(s, "No credentials configured", "Not set (uses OpenAgents Cloud / Local Psionic)", "Default endpoint", "", "All built-in tools", "Unlimited turns · No extra cap");
+  #assert coder_page_new(s);
 
-  // Even on an unsupported machine for local Inkling, Flawed Agent keeps the composer immediately available.
-  coder_page_local_state(s, false, false, 0, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
-  #assert cp_flag_test_frame(s, 1200, 800);
-  #assert surface_find(s[0].surface[..], "coder.composer") >= 0 && coder_page_model_flawed(s);
+  // 1. Non-qualifying hardware (Linux / Windows / Intel Mac / <12 GB RAM) with no cloud auth:
+  //    shows unified cloud sign-in card with calm cloud-only note, NO Antigravity fallback, NO local download gate.
+  coder_page_local_state(s, false, false, 8, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
+  #assert cp_needs_cloud_onboarding(s) && cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.onboarding.cloud_note") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.agy.connect") < 0;
+  #assert surface_find(s[0].surface[..], "coder.local.dl") < 0;
+  #assert surface_find(s[0].surface[..], "coder.composer") < 0;
+  login_btn := surface_find(s[0].surface[..], "coder.onboarding.login");
+  #assert login_btn >= 0 && cp_press(s, login_btn) && coder_page_action(s) == CP_ASK_LOGIN;
+  byo_btn := surface_find(s[0].surface[..], "coder.onboarding.byo");
+  #assert byo_btn >= 0 && cp_press(s, byo_btn) && coder_page_settings_page(s) == CP_PG_FLAWED;
+  coder_page_settings_open(s, -2, "");
 
-  // Once Antigravity is connected on an unsupported machine, enabling it selects Antigravity cleanly.
-  coder_page_agy_connect(s, true, CP_AGY_IDLE, "", -1, 0, 0);
-  coder_page_set_agy(s, true);
+  // 2. Qualifying Apple Silicon hardware with no cloud auth: shows Sign in + BYO key + optional $0 local Inkling section.
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
   #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.onboarding.login") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.onboarding.local.head") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.agy.connect") < 0;
+  dl_btn := surface_find(s[0].surface[..], "coder.local.dl");
+  #assert dl_btn >= 0 && cp_press(s, dl_btn) && coder_page_action(s) == CP_ASK_LOCAL_DOWNLOAD;
+
+  // Progress, verifying, and error states inside the optional $0 local section:
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_DOWNLOADING, 35, 5880, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.progress") >= 0;
+  cancel_btn := surface_find(s[0].surface[..], "coder.local.cancel");
+  #assert cancel_btn >= 0 && cp_press(s, cancel_btn) && coder_page_action(s) == CP_ASK_LOCAL_CANCEL;
+
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_VERIFYING, 100, 16811, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.onboarding.verifying") >= 0;
+
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_ERROR, 0, 0, 16811, "Network error");
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.onboarding.error") >= 0 && surface_find(s[0].surface[..], "coder.local.dl") >= 0;
+
+  // 3. Signing in to OpenAgents Cloud immediately dismisses onboarding on non-qualifying hardware (no local download required).
+  coder_page_local_state(s, false, false, 8, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
+  coder_page_set_cloud_authed(s, true);
+  #assert !cp_needs_cloud_onboarding(s) && cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding") < 0;
   #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
-  #assert coder_page_model_agy(s);
+  #assert surface_find(s[0].surface[..], "coder.model") >= 0;
+  #assert cp_models(s) == CP_COMPUTE_MODES && cp_model_id(s, cp_model_index(s)) == "oa:auto";
+
+  // 4. Optional local Inkling alone also keeps the unified Auto | Local | Cloud compute picker (no separate local-only mode).
+  coder_page_set_cloud_authed(s, false);
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
+  coder_page_set_inkling(s, true);
+  #assert !cp_needs_cloud_onboarding(s) && cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.composer") >= 0 && cp_has_model_picker(s) && cp_models(s) == CP_COMPUTE_MODES;
 }

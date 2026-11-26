@@ -1,12 +1,12 @@
 // Feature flag registry for OpenAgents Desktop (macOS, Linux, Windows).
-// Single source of truth for the Inkling-only first release and all gated
-// capabilities (docs/audits/2026-11-21-openagents-desktop-inkling-first-release-audit.md).
+// Single source of truth for the release defaults and all gated capabilities.
 //
-// Every flag defaults to off for the first release so the app runs on local
-// Inkling 2 Mini alone. Turning on `experimentalFeatures` (Settings > General,
-// `--experimental`, or `OA_EXPERIMENTAL=1`) enables every flag as a developer
-// alias; individual flags turn on via `defaults write com.openagents.desktop
-// flag.NAME -bool YES`, `OA_FLAGS=name,name`, or `--flag name`.
+// `account` defaults ON so users can sign in to OpenAgents Cloud out of the box
+// in --minimal release builds (#14087); all other flags default OFF. Turning on
+// `experimentalFeatures` (Settings > General, `--experimental`, or
+// `OA_EXPERIMENTAL=1`) enables every flag as a developer alias; individual flags
+// turn on via `defaults write com.openagents.desktop flag.NAME -bool YES`,
+// `OA_FLAGS=name,name`, or `--flag name`.
 #authority;
 
 DC_FLAG_NONE :: -1;
@@ -61,7 +61,7 @@ dc_flags_table :: () -> [DC_FLAG_COUNT] DcFlagDef #effects() {
     DcFlagDef.{bit = DC_FLAG_MODELS_EXTERNAL, name = "models.external", default_on = false, desc = "Codex, Cursor, ACP Registry providers, handoff, and multi-model fan-out."},
     DcFlagDef.{bit = DC_FLAG_MODELS_EXECUTOR, name = "models.executor", default_on = false, desc = "Hybrid Executor, compiled weight modules, Local Pylon, settled sats, and rollout."},
     DcFlagDef.{bit = DC_FLAG_MODELS_INKLING_NEON, name = "models.inklingNeon", default_on = false, desc = "Inkling + Neon hybrid routing and Inkling as a cloud sub-agent."},
-    DcFlagDef.{bit = DC_FLAG_ACCOUNT, name = "account", default_on = false, desc = "OpenAgents account login, profile page, and device key linking."},
+    DcFlagDef.{bit = DC_FLAG_ACCOUNT, name = "account", default_on = true, desc = "OpenAgents account login, profile page, and device key linking."},
     DcFlagDef.{bit = DC_FLAG_FOREMAN, name = "foreman", default_on = false, desc = "Foreman chat, sidebar row, menu, permission tiers, and local control server."},
     DcFlagDef.{bit = DC_FLAG_GYM, name = "gym", default_on = false, desc = "Gym workbench, Benchmarks, Terminal-Bench, PLE 3D, and Lean RH modes."},
     DcFlagDef.{bit = DC_FLAG_WALLET, name = "wallet", default_on = false, desc = "Spark Bitcoin/Lightning wallet, RPC, Nostr identity, and settle helper."},
@@ -228,14 +228,14 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
 
 // ---------------------------------------------------------------- checks
 
-#test "flag registry: all 30 flags have unique sequential bits, names, descriptions, and default off" {
+#test "flag registry: all 30 flags have unique sequential bits, names, descriptions, and only account defaults on" {
   tbl := dc_flags_table();
   #assert tbl.count == DC_FLAG_COUNT && DC_FLAG_COUNT == 30;
-  #assert dc_flags_defaults() == 0;
+  #assert dc_flags_defaults() == dc_flag_bit(DC_FLAG_ACCOUNT);
   for i: 0..<DC_FLAG_COUNT {
     #assert tbl[i].bit == i;
     #assert tbl[i].name.count > 0 && tbl[i].desc.count > 0;
-    #assert !tbl[i].default_on;
+    #assert tbl[i].default_on == (i == DC_FLAG_ACCOUNT);
     #assert dc_flag_find(tbl[i].name) == i;
     #assert dc_flag_name(i) == tbl[i].name;
     #assert dc_flag_desc(i) == tbl[i].desc;
@@ -298,14 +298,14 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
   #assert dc_flags_parse_args(1 << 30, "") == 0;
 }
 
-#test "flag resolution: release default is all off; defaults, OA_FLAGS, --flag, and experimentalFeatures compose cleanly" {
-  // Release default: every flag off (Inkling-only)
+#test "flag resolution: release default enables account only; defaults, OA_FLAGS, --flag, and experimentalFeatures compose cleanly" {
+  // Release default: account on for OpenAgents Cloud sign-in; extra models off
   r0 := dc_flags_resolve(false, 0, "", "", "");
-  #assert r0 == 0 && !dc_flags_any_extra_model(r0);
+  #assert r0 == dc_flag_bit(DC_FLAG_ACCOUNT) && !dc_flags_any_extra_model(r0);
 
-  // Individual defaults bitmask masked to valid bits
+  // Individual defaults bitmask masked to valid bits and combined with release defaults
   r1 := dc_flags_resolve(false, dc_flag_bit(DC_FLAG_GIT) | (1 << 35), "", "", "");
-  #assert r1 == dc_flag_bit(DC_FLAG_GIT);
+  #assert r1 == (dc_flag_bit(DC_FLAG_ACCOUNT) | dc_flag_bit(DC_FLAG_GIT));
 
   // experimentalFeatures default alias turns every flag on
   #assert dc_flags_resolve(true, 0, "", "", "") == DC_FLAGS_ALL;
@@ -313,7 +313,10 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
   // OA_EXPERIMENTAL=1 alias turns every flag on; "0" does not
   #assert dc_flags_resolve(false, 0, "", "1", "") == DC_FLAGS_ALL;
   #assert dc_flags_resolve(false, 0, "", " 1 ", "") == DC_FLAGS_ALL;
-  #assert dc_flags_resolve(false, 0, "", "0", "") == 0;
+  #assert dc_flags_resolve(false, 0, "", "0", "") == dc_flag_bit(DC_FLAG_ACCOUNT);
+
+  // Explicit --no-flag=account turns account off cleanly
+  #assert dc_flags_resolve(false, 0, "", "", "--no-flag=account\n") == 0;
 
   // --experimental turns all on; subsequent --no-flag can narrow it
   r2 := dc_flags_resolve(false, 0, "", "", "--experimental\n--no-flag=wallet\n");
@@ -321,5 +324,5 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
 
   // Env and CLI compose with defaults
   r3 := dc_flags_resolve(false, dc_flag_bit(DC_FLAG_GIT), "terminal", "", "--flag\npreview");
-  #assert r3 == (dc_flag_bit(DC_FLAG_GIT) | dc_flag_bit(DC_FLAG_TERMINAL) | dc_flag_bit(DC_FLAG_PREVIEW));
+  #assert r3 == (dc_flag_bit(DC_FLAG_ACCOUNT) | dc_flag_bit(DC_FLAG_GIT) | dc_flag_bit(DC_FLAG_TERMINAL) | dc_flag_bit(DC_FLAG_PREVIEW));
 }

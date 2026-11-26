@@ -429,6 +429,7 @@ extension CoderWindow {
             AgentSettings.apply(to: back)
             syncLocalState(on: back)
             if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
+            cd_cloud_authed_set(back, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
             #if OA_FULL
             if ComposerModelVisibility.showOtherModels {
                 if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
@@ -437,11 +438,9 @@ extension CoderWindow {
             } else {
                 cd_claude(back, 0)
             }
-            cd_cloud_authed_set(back, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
             cd_settings_gemini(back, FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "") : "")
             #else
             cd_claude(back, 0)
-            cd_cloud_authed_set(back, 0)
             cd_settings_gemini(back, "")
             #endif
             CoderProbes.apply(back)

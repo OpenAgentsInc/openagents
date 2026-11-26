@@ -116,9 +116,9 @@ enum FeatureFlags {
         DesktopCore.onCoreStack { oa_dc_flags_any_extra_model(mask) } != 0
     }
     #else
-    // Minimal release build: git diff + hidden-ref checkpoints promoted into core (#14026); other excluded features stay off.
-    static var mask: Int64 { Int64(1) << DesktopFlag.git.rawValue }
-    static func isOn(_ flag: DesktopFlag) -> Bool { flag == .git }
+    // Minimal release build: OpenAgents Account auth (#14087) + git diff/checkpoints (#14026) are core; other excluded features stay off.
+    static var mask: Int64 { (Int64(1) << DesktopFlag.account.rawValue) | (Int64(1) << DesktopFlag.git.rawValue) }
+    static func isOn(_ flag: DesktopFlag) -> Bool { flag == .account || flag == .git }
     static var anyExtraModel: Bool { false }
     #endif
 }
@@ -363,12 +363,15 @@ extension CoderWindow {
         for r in runs.values where r.page != page { CoderProbes.apply(r.page) }
         wake()
     }
-    #if OA_FULL
     /// Propagates the current flag mask, OpenAgents account login state, and Gemini API key to the shown page and background runs.
     func syncCloudAuth() {
         let m = FeatureFlags.mask
         let authed: Int32 = (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0
+        #if OA_FULL
         let gemini = FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "") : ""
+        #else
+        let gemini = ""
+        #endif
         cd_flags_set(page, m)
         cd_cloud_authed_set(page, authed)
         cd_settings_gemini(page, gemini)
@@ -377,11 +380,17 @@ extension CoderWindow {
             cd_cloud_authed_set(r.page, authed)
             cd_settings_gemini(r.page, gemini)
         }
+        configureWorkerEnv(run, isForeman: isForemanShown)
+        checkFlawedAuth(showToast: false)
+        refreshUsageDashboard()
+        #if OA_FULL
         if FeatureFlags.isOn(.modelsGemini) {
             CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
         }
+        #endif
         wake()
     }
+    #if OA_FULL
     /// Applies the resolved 28-flag mask across UI pages, host background services, and menu bar items.
     func applyFlags() {
         let m = FeatureFlags.mask
@@ -493,6 +502,7 @@ extension CoderWindow {
         let gemini = ""
         #endif
         cd_flags_set(page, FeatureFlags.mask)
+        cd_cloud_authed_set(page, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
         AgentSettings.apply(to: page)
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
