@@ -149,3 +149,43 @@
   #assert cp_contains(task, "<goal_objective>") && cp_contains(task, "ship foreman goal fix cleanly");
   #assert cp_contains(task, "Implement the fix");
 }
+
+#test "clearing a goal while a turn is running does not stop the ongoing message chain" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  // Start an active goal turn and consume its initial send action.
+  #assert coder_page_set_text(s, "/goal finish the migration") && coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_running(s) && coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+  // Clearing the goal via host call while running keeps the turn going and does not request CP_ASK_STOP.
+  #assert coder_page_goal_clear(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  obj: [128] u8;
+  #assert coder_page_goal_objective(s, obj[..]) == 0;
+  #assert coder_page_running(s) && !s[0].turns[s[0].nturns - 1].stopping;
+  #assert coder_page_action(s) == CP_ASK_NONE;
+  // The ongoing turn continues receiving output and finishes cleanly without starting another goal continuation.
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Still working on the current message.\"}") == MWW_REPLY;
+  #assert coder_page_running(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Still working on the current message.\"}") == MWW_ENDED;
+  #assert !coder_page_running(s) && s[0].turns[s[0].nturns - 1].state == CP_DONE;
+  #assert coder_page_action(s) == CP_ASK_NONE;
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  // A queued follow-up turn from the worker can still advance the ongoing message chain.
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":2,\"source\":\"queue\",\"text\":\"follow-up step\"}") == MWW_TURN;
+  #assert coder_page_running(s) && s[0].nturns == 2 && coder_page_followup_began(s);
+  // Clearing via /goal clear while a goal is active on a running turn also does not stop it.
+  #assert coder_page_goal_set(s, "second goal");
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  #assert coder_page_set_text(s, "/goal clear") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  #assert coder_page_running(s) && !s[0].turns[s[0].nturns - 1].stopping;
+  #assert coder_page_action(s) == CP_ASK_NONE;
+  // Clearing before the host consumes CP_ASK_SEND preserves the pending send action.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  #assert coder_page_set_text(s, "/goal third goal") && coder_page_submit(s);
+  #assert coder_page_goal_clear(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  #assert coder_page_running(s) && !s[0].turns[s[0].nturns - 1].stopping;
+  #assert coder_page_action(s) == CP_ASK_SEND;
+}

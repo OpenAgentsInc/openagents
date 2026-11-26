@@ -140,10 +140,6 @@ cp_goal_set_status :: (s: [] CoderPage, st: int) -> bool {
 cp_goal_clear :: (s: [] CoderPage) -> bool {
   had := s[0].goal_status != CP_GOAL_NONE;
   cp_goal_reset(s);
-  if cp_running(s) {
-    s[0].turns[s[0].nturns - 1].stopping = true;
-    s[0].ask = CP_ASK_STOP;
-  }
   cp_goal_set_notice(s, ifx had then "Goal cleared." else "No active goal to clear.");
   return true;
 }
