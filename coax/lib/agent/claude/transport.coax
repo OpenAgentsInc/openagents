@@ -124,6 +124,17 @@ cl_kill :: (p: [] ClProcess) -> int {
   return cxproc_wait(p[0].handle, 5000);
 }
 
+// End the CLI the way an owner's Stop should (GitHub #14104): SIGTERM first and up to wait_ms for it
+// to exit, because the CLI runs each shell command in a session of its own, which a SIGKILL of the
+// CLI's group leaves running; the CLI ends them itself when it is asked to stop. Then cl_kill.
+cl_stop :: (p: [] ClProcess, wait_ms: int) -> int {
+  if p[0].handle < 0 { return -1; }
+  t := cxproc_kill(p[0].handle, CL_SIGTERM);
+  st := cxproc_wait(p[0].handle, wait_ms);
+  if st >= 0 { return st; }
+  return cl_kill(p);
+}
+
 // Kill if still running, reap and free the child (the crate's Drop).
 cl_close :: (p: [] ClProcess) {
   if p[0].handle < 0 { return; }

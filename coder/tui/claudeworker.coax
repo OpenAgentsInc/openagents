@@ -92,6 +92,7 @@ CW_TASK :: 262144;          // bytes of a task
 CW_HIST :: 262144;          // bytes of the conversation so far a new session is told
 CW_ROUND :: 6;              // tasks one delegate call hands over (the owner's CP_ROUND)
 CW_RESULTS :: 400000;       // bytes of the sub-agents' replies one delegate answer carries
+CW_TERM_WAIT_MS :: 1500;   // how long Claude Code has to end its own commands after SIGTERM, before it is killed
 CW_STOP_WAIT_MS :: 8000;    // how long an interrupted turn has to end before its session is closed
 
 // A tool call that has started and not ended: its id, the words its lines carry, and any unified diff.
@@ -920,7 +921,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if !main {
         if held_n > 0 { cw_send(out[..], mww_reply(out[..], cast(string) held[0..<held_n])); held_n = 0; }   // a run that failed keeps what it said
         cw_send(out[..], mww_ended(out[..], ended, text));
-        kr := cl_kill(p[..]); cl_close(p[..]);
+        kr := cl_stop(p[..], CW_TERM_WAIT_MS); cl_close(p[..]);
         return 0;
       }
       // an orchestrator's turn ended: the session stays for the next, unless it is gone
@@ -933,7 +934,7 @@ tool_main :: () -> int #export_c #effects(all) {
       }
       stopping = false; prompt_due = false; later[0].held = false;
       for k: 0..<CW_OPEN { calls[k].used = false; }
-      if dead && alive { kr := cl_kill(p[..]); cl_close(p[..]); alive = false; ready = false; }
+      if dead && alive { kr := cl_stop(p[..], CW_TERM_WAIT_MS); cl_close(p[..]); alive = false; ready = false; }
     }
     b := cxterm_byte(ifx alive then 0 else 200);
     got_line := false;
@@ -943,7 +944,7 @@ tool_main :: () -> int #export_c #effects(all) {
       b = cxterm_byte(0);
     }
     if b == -2 && !got_line {       // stdin closed: the owner is gone
-      if alive { kr := cl_kill(p[..]); cl_close(p[..]); }
+      if alive { kr := cl_stop(p[..], CW_TERM_WAIT_MS); cl_close(p[..]); }
       return 0;
     }
     if got_line {
@@ -953,7 +954,7 @@ tool_main :: () -> int #export_c #effects(all) {
       what := mww_request(ar[..], msg, req[..]);
       if what == MWW_STOP && !main {
         if alive {
-          kr := cl_kill(p[..]); cl_close(p[..]);
+          kr := cl_stop(p[..], CW_TERM_WAIT_MS); cl_close(p[..]);
           cw_send(out[..], mww_ended(out[..], "stopped", ""));
           return 0;
         }
@@ -966,14 +967,14 @@ tool_main :: () -> int #export_c #effects(all) {
         }
       }
       else if what == MWW_FORGET {
-        if alive { kr := cl_kill(p[..]); cl_close(p[..]); alive = false; ready = false; }
+        if alive { kr := cl_stop(p[..], CW_TERM_WAIT_MS); cl_close(p[..]); alive = false; ready = false; }
         hn = 0;
         if turn_on { stop_now = true; }
       }
       else if what == MWW_RECALL {
         // the conversation is these turns now: the next turn starts a session that is told them
         if !turn_on {
-          if alive { kr := cl_kill(p[..]); cl_close(p[..]); alive = false; ready = false; }
+          if alive { kr := cl_stop(p[..], CW_TERM_WAIT_MS); cl_close(p[..]); alive = false; ready = false; }
           ra: [1] ClArena; ra[0] = ClArena.{buf = rab[..]};
           hn = cw_hist_recall(ra[..], req[0].recall, hist[..]);
         }
@@ -1030,7 +1031,7 @@ tool_main :: () -> int #export_c #effects(all) {
     // a session runs in one folder, at one thinking level, with one set of sub-agent levels: a
     // change of any starts another, which is told the conversation so far
     if alive && (cast(string) cwd[0..<cn] != req[0].cwd || cast(string) effort[0..<en] != req[0].effort || s_claude != req[0].claude || cast(string) orb[0..<orn] != req[0].openrouter) {
-      kr := cl_kill(p[..]); cl_close(p[..]); alive = false; ready = false;
+      kr := cl_stop(p[..], CW_TERM_WAIT_MS); cl_close(p[..]); alive = false; ready = false;
     }
     if alive && cast(string) model[0..<mn] != want { sr := cl_set_model(q[..], want); mn = cl_copy(model[..], want); }
     if !alive {

@@ -173,6 +173,7 @@
   s[0].turns[0].nagents = 2;
   s[0].turns[0].agents[0].level = CP_LEVEL_CLAUDE;
   s[0].turns[0].agents[1].level = CP_LEVEL_CODEX;
+  coder_page_set_claude_sub(s[..], true);
   #assert coder_page_agent_engine(s[..], 0) == 0 && coder_page_agent_engine(s[..], 1) == 0 && !coder_page_agent_claude(s[..], 0);
   #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.1");
   #assert coder_page_agent_engine(s[..], 0) == 1 && coder_page_agent_engine(s[..], 1) == 3 && coder_page_agent_claude(s[..], 0);

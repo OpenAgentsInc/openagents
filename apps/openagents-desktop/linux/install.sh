@@ -3,7 +3,7 @@
 # Builds and installs OpenAgents Desktop for Linux into ~/.openagents/ and ~/.local/share/applications/.
 #   apps/openagents-desktop/linux/install.sh [--full|--minimal]
 # --minimal (or OA_RELEASE_MINIMAL=1): build and install only the v1.0 minimal artifact set
-#   (omitting claudeworker; keeping agyworker for the onboarding's Connect Google Antigravity). Default is --full.
+#   (keeping claudeworker for Claude sub-agents and agyworker for the onboarding's Connect Google Antigravity). Default is --full.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -42,8 +42,8 @@ put_data() { install -m 0644 "$1" "$2.new" && mv -f "$2.new" "$2"; }
 put "$src_dir/OpenAgents" "$app_dir/OpenAgents"
 # the workers and the run daemon build.sh puts beside OpenAgents (host-main.c looks for them there)
 if [[ "$minimal" == 1 ]]; then
-  rm -f "$app_dir/inky" "$app_dir/mcworker" "$app_dir/claudeworker" "$app_dir/openagents-daemon"
-  helpers=(oa-worker agyworker coder-host gitguard psionic-inkling-serve)
+  rm -f "$app_dir/inky" "$app_dir/mcworker" "$app_dir/openagents-daemon"
+  helpers=(oa-worker claudeworker agyworker coder-host gitguard psionic-inkling-serve)
 else
   rm -f "$app_dir/inky" "$app_dir/mcworker"
   helpers=(oa-worker claudeworker agyworker gitguard coder-host openagents-daemon psionic-inkling-serve)

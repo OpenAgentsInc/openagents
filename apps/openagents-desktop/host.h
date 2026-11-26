@@ -249,6 +249,9 @@ int cd_recall_line(void *page, char *out, int cap);
 // cd_claude: whether Claude Code is installed here (with it, Microcoder may hand a task to a Claude
 // model). cd_agent_claude: whether this sub-agent runs in Claude Code, on the Claude worker.
 void cd_claude(void *page, int on);
+// Whether a sub-agent can run in Claude Code here: claudeworker is in the app and the claude command
+// is installed (GitHub #14104).
+void cd_claude_sub(void *page, int on);
 void cd_agy(void *page, int on);
 void cd_agy_models_clear(void *page);
 int cd_agy_models_add(void *page, const char *inst_id, const char *inst_name, const char *slug, const char *name, int efforts_mask, int default_effort, int is_default);
@@ -543,6 +546,8 @@ void cd_permit_full_auto_set(void *page, int on);
 int cd_permit_full_auto(void *page);
 int cd_permit_secret_name(void *page, char *out, int cap);
 int cd_permit_title(void *page, char *out, int cap);
+// Answers the open permission card: allow with its choice idx, or deny. For headless checks.
+int cd_permit_choose(void *page, int allow, int idx);
 int cd_permit_body(void *page, char *out, int cap);
 int cd_permit_secret_done(void *page, int saved);
 // Turn-completion & needs-input OS notifications, audio chimes, and Dock/taskbar badges (page/notify.coax, GitHub #13874).

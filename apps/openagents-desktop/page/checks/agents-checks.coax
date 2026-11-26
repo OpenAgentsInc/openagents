@@ -705,3 +705,30 @@
   #assert cp_find(res, "\"status\":\"async_launched\",\"agent_id\":\"agen-0000000000000006\"") > 0;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Summary of all 5 read-only subagents.\"}") == MWW_ENDED;
 }
+
+#test "sub-agents: a chat tells its worker it may hand a task to Claude only when Claude Code can run here and the person allowed it; without Claude Code a Claude task fails with why (#14104)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  coder_page_show_other_models_set(s, false);
+  out: [4096] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "ask Claude") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  // off (the default): the task line offers sub-agents, and not Claude
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && !back[0].claude;
+  // on, with Claude Code here: Claude is offered
+  s[0].flawed[0].allow_local_harnesses = true;
+  n = coder_page_task(s, "s", "/w", out[..]);
+  ar[0].at = 0;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].claude;
+  // on, without Claude Code: not offered, and a Claude task that arrives anyway fails; its sibling runs
+  coder_page_set_claude_sub(s, false);
+  n = coder_page_task(s, "s", "/w", out[..]);
+  ar[0].at = 0;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && !back[0].claude;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"sonnet\",\"task\":\"review\"},{\"level\":\"neon\",\"task\":\"build\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 2 && s[0].turns[0].agents[0].state == CP_FAILED && !s[0].turns[0].agents[0].start_due;
+  #assert s[0].turns[0].agents[1].state == CP_RUNNING && coder_page_agent_next(s) == 1;
+  rb: [4096] u8;
+  rn := coder_page_answer_line(s, rb[..]);
+  #assert rn > 0 && cp_contains(cast(string) rb[0..<rn], "Claude Code is not available on this computer");
+}

@@ -1135,11 +1135,78 @@ static int flawed_wanted(DesktopApp *a) {
   (void)a; return 0;
 #endif
 }
+// The folder that holds the claude command (Claude Code): on PATH, or in ~/.local/bin where its
+// installer puts it. A sub-agent on a Claude level runs in it, through claudeworker (GitHub #14104).
+static int claude_cli_dir(char *out, size_t cap) {
+#ifdef _WIN32
+  static const char *const NAMES[] = {"claude.exe", "claude.cmd"};
+  const char sep = ';', slash = '\\';
+  const char *home = getenv("USERPROFILE");
+#else
+  static const char *const NAMES[] = {"claude"};
+  const char sep = ':', slash = '/';
+  const char *home = getenv("HOME");
+#endif
+  char own[OA_PATH] = {0}, dir[OA_PATH], full[OA_PATH + 32];
+  if (home && home[0]) snprintf(own, sizeof own, "%s%c.local%cbin", home, slash, slash);
+  for (int pass = 0; pass < 2; pass++) {
+    const char *p = pass == 0 ? getenv("PATH") : own;
+    while (p && *p) {
+      const char *e = strchr(p, sep);
+      size_t n = e ? (size_t)(e - p) : strlen(p);
+      if (n > 0 && n < sizeof dir) {
+        memcpy(dir, p, n);
+        dir[n] = '\0';
+        for (size_t k = 0; k < sizeof NAMES / sizeof NAMES[0]; k++) {
+          snprintf(full, sizeof full, "%s%c%s", dir, slash, NAMES[k]);
+          if (file_exists(full)) { snprintf(out, cap, "%s", dir); return 1; }
+        }
+      }
+      p = e ? e + 1 : NULL;
+    }
+  }
+  return 0;
+}
+// Whether a sub-agent can run in Claude Code here: claudeworker is beside the app and the claude
+// command is installed. Whether Claude Code is signed in is its own to say, when a task runs.
+static int claude_sub_ready(DesktopApp *a) {
+  char dir[OA_PATH];
+  return a->claude_worker_bin[0] != '\0' && claude_cli_dir(dir, sizeof dir);
+}
+// Settings > Agent, kept across launches: the page's settings as numbers, in its order.
+static void agent_prefs_keep(DesktopApp *a) {
+  int v[32] = {0};
+  int n = cd_flawed_prefs_get(a->page, v, 32);
+  char buf[400];
+  size_t pos = 0;
+  for (int i = 0; i < n && pos + 16 < sizeof buf; i++) pos += (size_t)snprintf(buf + pos, sizeof buf - pos, "%s%d", i ? " " : "", v[i]);
+  if (n > 0) (void)oa_core_key_save(cs("agent-prefs"), cs(buf));
+}
+static void agent_prefs_load(DesktopApp *a) {
+  char buf[400] = {0};
+  int v[32] = {0};
+  int have = cd_flawed_prefs_get(a->page, v, 32);
+  if (have <= 0 || oa_core_key_read(cs("agent-prefs"), vu(buf, (int)sizeof buf - 1)) <= 0) return;
+  char *p = buf;
+  for (int i = 0; i < have && *p; i++) {
+    char *end = NULL;
+    long x = strtol(p, &end, 10);
+    if (end == p) break;
+    v[i] = (int)x;
+    p = end;
+  }
+  cd_flawed_prefs_set(a->page, v, have);
+}
 static int flawed_needs_local(DesktopApp *a) {
   if (!flawed_wanted(a)) return 0;
   int v[32] = {0};
   int backend = cd_flawed_prefs_get(a->page, v, 32) >= 3 ? v[2] : 0;
-  return backend == 1 || (backend == 0 && cd_model_flawed_local(a->page) != 0);
+  if (backend == 1 || (backend == 0 && cd_model_flawed_local(a->page) != 0)) return 1;
+  // Auto: the worker picks local or cloud per message, so the local model is served whenever its
+  // verified weights are here. Without a cloud sign-in it is the only place a message can run.
+  char id[64] = {0};
+  cd_model_id_out(a->page, id, (int)sizeof id);
+  return backend == 0 && strcmp(id, "oa:auto") == 0 && a->local.manifest_valid;
 }
 // Settings > Flawed for flawedworker, as FLAWED_* lines (the Mac's FlawedSettings.workerEnv). The
 // chat's model rides each task; these are the worker's defaults and its guards.
@@ -1166,6 +1233,8 @@ static size_t flawed_env(DesktopApp *a, char *out, size_t cap) {
     FL_PICK(CACHE, 10), v[11] ? 1 : 0, v[12] ? 1 : 0, v[13] ? 1 : 0,
     FL_PICK(STYLE, 14), FL_PICK(HOOKS, 15), v[16] ? 1 : 0, v[17] ? 1 : 0, v[18] ? 1 : 0, v[19] ? 1 : 0);
 #undef FL_PICK
+  // Settings > Agent > Allow delegating to other local harnesses (GitHub #14071): off unless the person turned it on
+  if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "OA_ALLOW_LOCAL_HARNESSES=%d\n", v[20] ? 1 : 0);
   return (n > 0 && (size_t)n < cap) ? (size_t)n : 0;
 }
 
@@ -1267,13 +1336,32 @@ static void pump_subagents(DesktopApp *a) {
     if (slot < 0) {
       cd_agent_failed(a->page, next, "sub-agent limit reached");
     } else {
-      char err[512] = {0}, extra[2200];
+      char err[512] = {0}, extra[8192];
       int eng = cd_agent_engine(a->page, next);
-      const char *sub_bin = (eng == 1 && a->claude_worker_bin[0] != '\0') ? a->claude_worker_bin
+      const char *sub_bin = eng == 1 ? a->claude_worker_bin
                           : ((eng == 2 || eng == 4) && a->agy_worker_bin[0] != '\0') ? a->agy_worker_bin
                           : (a->flawed_worker_bin[0] != '\0' ? a->flawed_worker_bin : a->worker_bin);
-      worker_extra(a, 0, extra, sizeof extra);
-      int started = oa_core_subagent_start(vc(a), slot, cs(sub_bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
+      char claude_dir[OA_PATH] = {0};
+      int started = 0;
+      if (eng == 1) {
+        // Claude Code, through claudeworker: it gets the folder of the claude command first on its
+        // PATH and none of the OpenAgents agent's settings. Without both it fails with why; a
+        // Claude task never runs on another model (GitHub #14104).
+        if (!sub_bin[0] || !claude_cli_dir(claude_dir, sizeof claude_dir)) {
+          snprintf(err, sizeof err, "%s", !sub_bin[0] ? "This build of OpenAgents does not include the Claude worker." : "Claude Code is not installed on this computer: the claude command was not found.");
+        } else {
+          const char *path = getenv("PATH");
+#ifdef _WIN32
+          snprintf(extra, sizeof extra, "PATH=%s;%s\n", claude_dir, path ? path : "");
+#else
+          snprintf(extra, sizeof extra, "PATH=%s:%s\n", claude_dir, path ? path : "");
+#endif
+          started = oa_core_subagent_start(vc(a), slot, cs(sub_bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
+        }
+      } else {
+        worker_extra(a, 0, extra, sizeof extra);
+        started = oa_core_subagent_start(vc(a), slot, cs(sub_bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
+      }
       memset(extra, 0, sizeof extra);
       if (!started) {
         cd_agent_failed(a->page, next, err[0] ? err : "could not start sub-agent worker");
@@ -2388,6 +2476,7 @@ static void handle_action(DesktopApp *a, int act) {
     // Settings > Flawed changed: flawedworker reads its settings when it starts, so an idle one
     // stops here and the next turn starts it with the new ones
     case 190: case 197:
+      agent_prefs_keep(a);
       if (a->worker_is_agy == 4 && oa_core_worker_alive(vc(a)) && !cd_running(a->page)) oa_core_worker_stop(vc(a), 0);
       break;
     case 14: cd_zoom(a->page, 1); break;
@@ -2500,6 +2589,7 @@ static void handle_action(DesktopApp *a, int act) {
       oa_core_flags_write_experimental(exp_on);
       a->flags = cd_flags(a->page);
       cd_claude(a->page, ((a->flags & (1LL << 1)) && a->claude_worker_bin[0]) ? 1 : 0);
+      cd_claude_sub(a->page, claude_sub_ready(a));
       cd_agy(a->page, ((a->flags & (1LL << 3)) && a->agy_worker_bin[0]) ? 1 : 0);
       local_sync(a);
       break;
@@ -3208,6 +3298,8 @@ static int run_flawed(DesktopApp *a) {
   local_sync(a);
   set_folder(a, a->folder);
   if (!a->local.manifest_valid) return flow_fail("weights", "no verified Inkling 2 Mini weights for the chosen variant");
+  // The page settles its starting model on its first frame, so the pick comes after one.
+  if (!cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f)) return flow_fail("page", "a frame did not render");
   if (!cd_pick_model(a->page, "flawed:inkling-2-mini") || !cd_model_flawed(a->page) || !cd_model_flawed_local(a->page))
     return flow_fail("model", "the page did not pick Flawed with Inkling 2 Mini");
   if (!flawed_wanted(a) || !flawed_needs_local(a)) return flow_fail("model", "the host does not route this chat to flawedworker and the local server");
@@ -3223,6 +3315,19 @@ static int run_flawed(DesktopApp *a) {
     return flow_fail("reply", "the chat does not hold the model's reply");
   }
   flow_ok("reply", "flawedworker answered from the local Inkling 2 Mini");
+  // Auto: the worker picks where the message runs. With no cloud sign-in it must still answer,
+  // from the local model.
+  if (!cd_pick_model(a->page, "oa:auto")) return flow_fail("auto", "the page did not pick Auto");
+  if (!cd_set_text(a->page, "Reply with exactly the word MANGO and nothing else.") || !cd_submit(a->page)) return flow_fail("auto", "the draft was not sent");
+  if (!flow_until_idle(a, 300000)) return flow_fail("auto", "the turn did not end in 5 minutes");
+  n = cd_save(a->page, a->save_buf, OA_SAVE_CAP);
+  reply = n > 0 ? strstr(a->save_buf, "MANGO and nothing else.") : NULL;
+  if (!reply || !strstr(reply + 23, "MANGO")) {
+    fprintf(stderr, "flawed-test: chat as kept:\n%.2500s\n", n > 0 ? a->save_buf : "");
+    return flow_fail("auto", "a message on Auto got no reply");
+  }
+  flow_ok("auto", "a message on Auto was answered");
+  if (!cd_pick_model(a->page, "oa:local")) return flow_fail("tool", "the page did not pick Local");
   // A turn that needs a tool: the worker's request for permission reaches the page as a card.
   if (!cd_set_text(a->page, "Use your shell tool to run `ls` in the working folder, then list the files.") || !cd_submit(a->page)) return flow_fail("tool", "the draft was not sent");
   int asked = 0;
@@ -3241,6 +3346,141 @@ static int run_flawed(DesktopApp *a) {
   cd_close(a->page);
   a->page = NULL;
   printf("openagents-desktop-%s flawed: ok\n", OA_PLATFORM);
+  return 0;
+}
+
+// --delegate-claude-test: one real turn that hands a task to Claude Code as a sub-agent (GitHub
+// #14104), offscreen, through the app's own path: the local Inkling 2 Mini calls its Agent tool, the
+// permission card is approved, the page starts the sub-agent, claudeworker runs the claude command,
+// and the result goes back to the model. It needs the installed weights, a GPU and a signed-in
+// claude command, so it is a check to run by hand. --delegate-claude-test=off runs the same message
+// with "Allow delegating to other local harnesses" off: no Claude sub-agent may start. =two asks
+// for two Claude sub-agents in one message: both must run at the same time. =stop stops the turn
+// while its Claude sub-agent runs a long command: nothing of it may be left running. =file has the
+// sub-agent write a file: it must land in the chat's working folder (--cwd).
+static int run_delegate_claude_turn(DesktopApp *a, int mode);
+// Whatever the check found, none of its workers is left running.
+static int run_delegate_claude(DesktopApp *a, int mode) {
+  int rc = run_delegate_claude_turn(a, mode);
+  stop_all_subagents(a);
+  oa_core_worker_stop(vc(a), 1);
+  return rc;
+}
+static int run_delegate_claude_turn(DesktopApp *a, int mode) {
+  int allow = mode != 2;
+  if (!oa_core_init(vc(a), cs(""), cs(""))) return flow_fail("init", "the chat store did not open");
+  if (!a->flawed_worker_bin[0]) return flow_fail("worker", "oa-worker is not beside the app");
+  if (!claude_sub_ready(a)) return flow_fail("claude", a->claude_worker_bin[0] ? "the claude command is not installed" : "claudeworker is not beside the app");
+  if (a->daemon_bin[0]) oa_core_daemon_ensure(vc(a), cs(a->daemon_bin), 1500);
+  flow_ok("service", oa_core_daemon_owns_runs(vc(a)) ? "workers start through the resident host service" : "no resident host service: workers start directly");
+  a->page = cd_open_ex(a->resources, 1, FLOW_W, FLOW_H);
+  if (!a->page) return flow_fail("page", "cd_open_ex(offscreen) failed");
+  local_init(a);
+  local_sync(a);
+  if (!a->local.manifest_valid) return flow_fail("weights", "no verified Inkling 2 Mini weights for the chosen variant");
+  if (!cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f)) return flow_fail("page", "a frame did not render");
+  int v[32] = {0};
+  int have = cd_flawed_prefs_get(a->page, v, 32);
+  if (have < 21) return flow_fail("settings", "the page has no setting for delegating to other local harnesses");
+  v[20] = allow ? 1 : 0;
+  cd_flawed_prefs_set(a->page, v, have);
+  cd_claude_sub(a->page, 1);
+  if (!cd_pick_model(a->page, "oa:local")) return flow_fail("model", "the page did not pick Local");
+  flow_ok("settings", allow ? "delegating to other local harnesses is on" : "delegating to other local harnesses is off");
+  const char *ask_text =
+      mode == 3 ? "Call your Agent tool twice in the same message, both with subagent_type claude-haiku. The first prompt: Reply with exactly the word KIWI and nothing else. The second prompt: Reply with exactly the word PLUM and nothing else. Then tell me both words the sub-agents replied with."
+    : mode == 5 ? "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Create a file named oa-delegate-check.txt in the current folder that holds the one word GUAVA. Then reply with the word DONE. Then tell me what the sub-agent replied."
+    : mode == 4 ? "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Run this exact shell command in the foreground and wait for it to end: for i in $(seq 1 120); do sleep 1; done; echo OA_STOP_MARKER. Then reply with the word DONE. Then tell me what the sub-agent replied."
+    : "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Reply with exactly the word KIWI and nothing else. Then tell me the word the sub-agent replied with.";
+  if (!cd_set_text(a->page, ask_text) || !cd_submit(a->page)) return flow_fail("send", "the draft was not sent");
+  int ran_claude = 0, approved = 0, saw_running = 0, ended = 0, most = 0, stop_at = -1, stopped = 0;
+  for (int t = 0; t < 60000 && !ended; t++) {   // ten minutes at most
+    pump_host(a);
+    if (!cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f)) return flow_fail("turn", "a frame did not render");
+    if (cd_permit_open(a->page)) {
+      char title[256] = {0};
+      cd_permit_title(a->page, title, (int)sizeof title);
+      if (!cd_permit_choose(a->page, 1, 0)) return flow_fail("permission", "the permission card took no answer");
+      approved++;
+      flow_ok("permission", title[0] ? title : "a permission card was approved");
+    }
+    int now = 0;
+    for (int i = 0; i < OA_SUBAGENTS; i++) {
+      if (a->sub_active[i] && cd_agent_engine(a->page, a->sub_agent_id[i]) == 1) {
+        now++;
+        if (!ran_claude) {
+          ran_claude = 1;
+          stop_at = t + 1500;   // =stop: fifteen seconds for Claude Code to start its command
+          flow_ok("sub-agent", "a sub-agent started in Claude Code (claudeworker)");
+        }
+      }
+    }
+    if (now > most) most = now;
+    if (mode == 4 && ran_claude && !stopped && t >= stop_at) {
+#ifndef _WIN32
+      if (system("pgrep -f 'echo OA_STOP_[M]ARKER' > /dev/null 2>&1") != 0) return flow_fail("stop", "the Claude sub-agent's command was not running when it was time to stop");
+#endif
+      handle_action(a, 3);   // the Stop button
+      stopped = 1;
+      flow_ok("stop", "the turn was stopped while the Claude sub-agent ran its command");
+    }
+    if (cd_running(a->page)) saw_running = 1;
+    else if (saw_running || t > 50) ended = 1;
+    flow_sleep_ms(10);
+  }
+  for (int k = 0; k < 5; k++) { pump_host(a); cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f); }
+  int n = cd_save(a->page, a->save_buf, OA_SAVE_CAP);
+  const char *ask = n > 0 ? strstr(a->save_buf, "Then tell me") : NULL;
+  if (!ended) { fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : ""); return flow_fail("turn", "the turn did not end in 10 minutes"); }
+  if (!allow) {
+    if (ran_claude) return flow_fail("off", "a Claude sub-agent started with delegating turned off");
+    flow_ok("off", "no Claude sub-agent started");
+    const char *rp = ask ? strstr(ask, "\"reply\":\"") : NULL;
+    if (ask && strstr(ask, "\"agents\":[{")) return flow_fail("off", "the task ran on another sub-agent in Claude's place");
+    if (!rp || !strstr(rp, "Allow delegating")) {
+      fprintf(stderr, "delegate-claude-test: the reply with delegating off: %.600s\n", rp ? rp + 9 : "(none)");
+      return flow_fail("off", "the reply does not name the setting that turns delegating on");
+    }
+    flow_ok("off", "the reply names the setting that turns delegating on");
+  } else if (mode == 4) {
+    if (!stopped) return flow_fail("stop", "no Claude sub-agent started, so nothing was stopped");
+    for (int k = 0; k < 300; k++) { pump_host(a); cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f); flow_sleep_ms(10); }
+    for (int i = 0; i < OA_SUBAGENTS; i++) if (a->sub_active[i]) return flow_fail("stop", "a sub-agent is still running after Stop");
+#ifndef _WIN32
+    if (system("pgrep -x claudeworker > /dev/null 2>&1") == 0) return flow_fail("stop", "a claudeworker process is still running after Stop");
+    // [M]: the pattern does not match the shell that runs this pgrep
+    if (system("pgrep -f 'echo OA_STOP_[M]ARKER' > /dev/null 2>&1") == 0) return flow_fail("stop", "the sub-agent's command is still running after Stop");
+#endif
+    flow_ok("stop", "no sub-agent, claudeworker or command of it is left running");
+  } else if (mode == 5) {
+    char made[OA_PATH + 64], text[64] = {0};
+    snprintf(made, sizeof made, "%s/oa-delegate-check.txt", effective_cwd(a));
+    FILE *f = fopen(made, "rb");
+    size_t got = f ? fread(text, 1, sizeof text - 1, f) : 0;
+    if (f) fclose(f);
+    if (!ran_claude || got == 0 || !strstr(text, "GUAVA")) {
+      fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : "");
+      return flow_fail("file", !ran_claude ? "no sub-agent started in Claude Code" : "the sub-agent's file is not in the chat's working folder");
+    }
+    flow_ok("file", made);
+  } else if (mode == 3) {
+    if (!ask || !strstr(ask, "\"reply\":\"KIWI") || !strstr(ask, "\"reply\":\"PLUM")) {
+      fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : "");
+      return flow_fail("two", "the chat does not hold both sub-agents' words");
+    }
+    if (most < 2) return flow_fail("two", "both sub-agents replied, but they did not run at the same time");
+    flow_ok("two", "two Claude sub-agents ran at the same time and both replied");
+  } else {
+    if (!ran_claude || !ask || !strstr(ask, "KIWI")) {
+      fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : "");
+      return flow_fail("result", !ran_claude ? "no sub-agent started in Claude Code" : "the chat does not hold the sub-agent's word");
+    }
+    flow_ok("result", "the chat holds the word the Claude sub-agent replied with");
+  }
+  oa_core_worker_stop(vc(a), 0);
+  cd_close(a->page);
+  a->page = NULL;
+  printf("openagents-desktop-%s delegate-claude%s: ok\n", OA_PLATFORM, allow ? "" : " (off)");
   return 0;
 }
 
@@ -3614,7 +3854,7 @@ static int oa_main(int argc, char **argv) {
 
   oa_working_dir(app.folder, sizeof(app.folder));
 
-  int smoke = 0, flow = 0, input = 0, flawed_test = 0;
+  int smoke = 0, flow = 0, input = 0, flawed_test = 0, delegate_test = 0;
   const char *shot = NULL;
   const char *update_file = NULL;
   const char *open_file_arg = NULL;
@@ -3622,6 +3862,11 @@ static int oa_main(int argc, char **argv) {
     if (strcmp(argv[i], "--smoke") == 0) smoke = 1;
     else if (strcmp(argv[i], "--flow-test") == 0) flow = 1;
     else if (strcmp(argv[i], "--flawed-test") == 0) flawed_test = 1;
+    else if (strcmp(argv[i], "--delegate-claude-test") == 0) delegate_test = 1;
+    else if (strcmp(argv[i], "--delegate-claude-test=off") == 0) delegate_test = 2;
+    else if (strcmp(argv[i], "--delegate-claude-test=two") == 0) delegate_test = 3;
+    else if (strcmp(argv[i], "--delegate-claude-test=stop") == 0) delegate_test = 4;
+    else if (strcmp(argv[i], "--delegate-claude-test=file") == 0) delegate_test = 5;
     else if (strcmp(argv[i], "--input-test") == 0) input = 1;
     else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     else if (strcmp(argv[i], "--resources") == 0 && i + 1 < argc) snprintf(app.resources, sizeof(app.resources), "%s", argv[++i]);
@@ -3653,8 +3898,14 @@ static int oa_main(int argc, char **argv) {
 #else
   (void)input;
 #endif
+  if (delegate_test) {
+    int rc = run_delegate_claude(&app, delegate_test);
+    free(app.core); free(app.line_buf); free(app.save_buf);
+    return rc;
+  }
   if (flawed_test) {
     int rc = run_flawed(&app);
+    oa_core_worker_stop(vc(&app), 1);   // on a failure too: no worker of the check is left running
     free(app.core); free(app.line_buf); free(app.save_buf);
     return rc;
   }
@@ -3701,6 +3952,8 @@ static int oa_main(int argc, char **argv) {
     local_sync(&app);
   }
   cd_claude(app.page, ((dc_flags & (1LL << 1)) && app.claude_worker_bin[0]) ? 1 : 0);
+  cd_claude_sub(app.page, claude_sub_ready(&app));
+  agent_prefs_load(&app);
   if (dc_flags & (1LL << 1)) {
     // each Claude model's thinking level, as Settings > Models kept it (four digits, 0 low to 4 max)
     char levels[8] = {0};

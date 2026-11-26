@@ -438,6 +438,7 @@ void cd_agent_line(void *page, int agent, const char *line) { CoderHost *c = pag
 void cd_agent_failed(void *page, int agent, const char *why) { CoderHost *c = page; if (!c) return; coder_page_agent_failed(cd_state(c), agent, cd_string(why)); cd_changed(c); }
 int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_agent_answer_line(cd_state(c), agent, (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude(cd_state(c), on != 0); }
+void cd_claude_sub(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude_sub(cd_state(c), on != 0); }
 void cd_agy(void *page, int on) { CoderHost *c = page; if (c) { coder_page_set_agy(cd_state(c), on != 0); cd_changed(c); } }
 void cd_agy_models_clear(void *page) { CoderHost *c = page; if (c) coder_page_agy_models_clear(cd_state(c)); }
 int cd_agy_models_add(void *page, const char *inst_id, const char *inst_name, const char *slug, const char *name, int efforts_mask, int default_effort, int is_default) {
@@ -1271,6 +1272,7 @@ int cd_permit_secret_name(void *page, char *out, int cap) {
   out[n] = 0;
   return n;
 }
+int cd_permit_choose(void *page, int allow, int idx) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_permit_choose(cd_state(c), allow != 0, idx); }
 int cd_permit_title(void *page, char *out, int cap) {
   CoderHost *c = page;
   if (!c || !out || cap < 2) return 0;

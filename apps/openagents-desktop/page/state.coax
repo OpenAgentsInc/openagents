@@ -343,6 +343,7 @@ CoderPage :: struct {
   reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
   claude: bool;               // Claude Code is installed here: a chat may run on it, and hand tasks to it
+  claude_sub: bool;           // a sub-agent can run in Claude Code here: claudeworker is in the app and the claude command is installed (GitHub #14104)
   claude_effort: [CP_CLAUDE_MODELS] int;   // Settings > Models: each Claude model's thinking level less CP_CLAUDE_EFFORT_START (0: high), so a new page starts at high
   orch_claude: bool; orch_model: int;   // Settings > Models: new chats start on Claude (which of CP_CLAUDE_ID), not Neon
   agy: bool;                  // Antigravity (agy) is installed here: shown in the model picker when show_other_models is on
@@ -618,6 +619,7 @@ cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
   p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;   // the checks see every feature; per-flag & release-set checks turn them off
+  p[0].claude_sub = true;     // Claude Code can run a sub-agent here; a check of a computer without it turns this off
   p[0].show_other_models = true;
   p[0].cloud_authed = true;
   p[0].local_os_ok = true;

@@ -146,8 +146,9 @@ fi
 if [[ "$want_worker" == 1 ]]; then
   coax_hash="$(sha256sum "$coax" | cut -d " " -f 1)"
   if [[ "$minimal" == 1 ]]; then
-    worker_pairs=("oa-worker:oa-worker" "gitguard:gitguard" "host:coder-host")
-    rm -f "$work/inky" "$work/mcworker" "$work/claudeworker" "$work/flawedworker" "$work/agyworker"
+    # claudeworker ships in --minimal: a chat may hand a task to Claude Code as a sub-agent (GitHub #14104)
+    worker_pairs=("oa-worker:oa-worker" "claudeworker:claudeworker" "gitguard:gitguard" "host:coder-host")
+    rm -f "$work/inky" "$work/mcworker" "$work/flawedworker" "$work/agyworker"
   else
     worker_pairs=("oa-worker:oa-worker" "claudeworker:claudeworker" "agyworker:agyworker" "gitguard:gitguard" "host:coder-host")
     rm -f "$work/inky" "$work/mcworker"
@@ -190,7 +191,7 @@ if [[ "$minimal" == 1 || -n "$stage_dir" ]]; then
   rm -rf "$out_stage"
   mkdir -p "$out_stage/resources/fonts" "$out_stage/resources/icons"
   install -m 0755 "$work/OpenAgents" "$out_stage/OpenAgents"
-  stage_bins=(oa-worker coder-host gitguard psionic-inkling-serve)
+  stage_bins=(oa-worker claudeworker coder-host gitguard psionic-inkling-serve)
   if [[ "$minimal" == 0 ]]; then stage_bins+=(agyworker); fi
   for bin in "${stage_bins[@]}"; do
     if [[ -x "$work/$bin" ]]; then
@@ -198,7 +199,7 @@ if [[ "$minimal" == 1 || -n "$stage_dir" ]]; then
     fi
   done
   if [[ "$minimal" == 1 ]] && command -v strip >/dev/null 2>&1; then
-    for bin in OpenAgents oa-worker coder-host gitguard psionic-inkling-serve; do
+    for bin in OpenAgents oa-worker claudeworker coder-host gitguard psionic-inkling-serve; do
       if [[ -x "$out_stage/$bin" ]]; then
         strip --strip-unneeded "$out_stage/$bin" 2>/dev/null || strip "$out_stage/$bin" 2>/dev/null || true
       fi

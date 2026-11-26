@@ -66,7 +66,7 @@ fixed=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto ':(glob)coax/*' 
        openagents/core
        apps/shared/auth apps/shared/host apps/shared/native components/chat components/fonts components/icons components/NOTICE apps/openagents-desktop/native psionic/platform psionic/lib/inkling)
 if [[ "$minimal" == 1 ]]; then
-  roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/gitguard.coax)
+  roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/gitguard.coax coder/tui/claudeworker.coax)
 else
   roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/agyworker.coax coder/tui/gitguard.coax coder/tui/claudeworker.coax coder/tui/oasim.coax coder/tui/lean-run.coax coder/tui/tbench-run.coax coder/tui/gbench-run.coax metaverse/rh-flythrough.coax)
 fi

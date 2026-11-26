@@ -474,8 +474,42 @@ those settings restarts an idle worker. The Gemini 4 Neon models need a Vertex A
 OpenRouter sign-in in the environment the app starts from. Windows does not bundle it yet.
 
 `OpenAgents --flawed-test --resources DIR --cwd DIR` runs one real turn offscreen on the installed
-weights and GPU, then a second turn that must raise a permission card for a tool. Run it by hand;
-it is not part of `--flow-test`.
+weights and GPU, a turn on Auto, then a turn that must raise a permission card for a tool. Run it by
+hand; it is not part of `--flow-test`.
+
+On Auto, the worker picks the local model or the cloud for each message. Without a working cloud
+sign-in, a message runs on the local model when its weights are installed. A Nostr key with an
+`openagents` command that cannot sign (`openagents nostr auth`) does not count as a sign-in.
+
+### Sub-agents and Claude Code (#14104)
+
+A chat's agent (`oa-worker`) has an `Agent` tool (#14096). Each call hands one self-contained task
+to a sub-agent and returns its final reply. Several calls in one message run at the same time.
+
+By default a sub-agent is the same agent again, on the chat's own model. To let a chat hand a task
+to Claude Code:
+
+1. Install the `claude` command and sign in to it.
+2. Turn on **Settings > Agent > Allow delegating to other local harnesses**.
+3. Ask for it, for example: "Have Claude Sonnet review the last commit."
+
+The agent then calls `Agent` with `subagent_type` set to `claude-haiku`, `claude-sonnet`,
+`claude-opus` or `claude-fable`.
+
+The sub-agent then runs in `claudeworker`, which ships in `--minimal` and drives the `claude`
+command through the Coax Claude Agent SDK (`coax/lib/agent/claude`). It runs in the chat's working
+folder with full access and asks nothing. With the setting off, or without the `claude` command, a
+request for Claude fails with the reason and never runs on another model. Stop on the chat stops its
+sub-agents and the commands they started.
+
+On Linux, Settings > Agent is kept across launches. Windows does not build `oa-worker` or bundle
+`claudeworker` in `--minimal` yet, and the macOS changes for this have not been built or run yet.
+
+`OpenAgents --delegate-claude-test --resources DIR --cwd DIR` runs one real turn offscreen in which
+the local model delegates to Claude Haiku. `=off` runs it with the setting off, `=two` asks for two
+sub-agents at once, `=stop` stops the turn while the sub-agent runs a command, and `=file` has the
+sub-agent write a file into the working folder. Each needs the installed weights, a GPU and a
+signed-in `claude` command. Run them by hand.
 
 ## Install in Applications
 

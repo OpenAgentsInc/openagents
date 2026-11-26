@@ -600,6 +600,14 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1; s[0].turns[i].agents[j].heard = s[0].clock;
     s[0].turns[i].agents[j].after = s[0].turns[i].early_cmds + s[0].turns[i].ncmds;
     s[0].turns[i].nagents = j + 1; s[0].turns[i].round_who[q] = j + 1;
+    // The person allowed delegating to other local harnesses, but Claude Code cannot run here: a
+    // Claude task fails with why. It never runs on another model under Claude's name (GitHub #14104).
+    lv := s[0].turns[i].agents[j].level;
+    if lv >= CP_LEVEL_CLAUDE && lv < CP_LEVEL_CLAUDE_END && cp_flawed_allow_local_harnesses(s) && !s[0].claude_sub {
+      s[0].turns[i].agents[j].start_due = false;
+      cp_agent_end(s, i, j, CP_FAILED, "Claude Code is not available on this computer. Install the claude command and sign in to it.");
+      continue;
+    }
     if first < 0 { first = j; }
   }
   if first >= 0 && !s[0].pane_manual && !(s[0].pane_open && s[0].pane_turn == i && s[0].pane_agent == first) {
@@ -707,6 +715,15 @@ coder_page_set_claude :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s[0].nturns == 0 && !cp_running(s) { s[0].model = cp_model_start(s); }
   s[0].model = cp_model_index(s);
 }
+// Whether a sub-agent can run in Claude Code on this computer (GitHub #14104): the host found
+// claudeworker beside the app and the claude command. Apart from Claude's place in the model
+// picker (coder_page_set_claude), which has its own flag.
+coder_page_set_claude_sub :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count > 0 { s[0].claude_sub = on; }
+}
+// Whether this chat may hand a task to Claude Code: it can run here and the user allowed
+// delegating to other local harnesses (Settings > Agent).
+cp_claude_sub_ok :: (s: [] CoderPage) -> bool { return s.count > 0 && s[0].claude_sub && cp_flawed_allow_local_harnesses(s); }
 // Sub-agent executor engine id for sub-agent j (Phase 1B, #14053; opt-in gated #14071):
 // 0 = oa-worker (OpenAgents), 1 = claudeworker (Claude), 2 = agyworker (Antigravity),
 // 3 = codex, 4 = cursor (agyworker ACP).

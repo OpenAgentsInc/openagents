@@ -2162,6 +2162,9 @@ fww_build_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, platform:
 fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: [] u8) -> int {
   platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
   n := fww_build_coding_system_prompt_core(cfg, cwd, platform, out);
+  // Claude Code as a sub-agent (GitHub #14104). Said whether or not it is allowed, so a request
+  // for Claude reaches the Agent tool and comes back with the reason, never runs on another model.
+  n = fww_cat(out, n, "\n\n# Claude Code sub-agents\nWhen the user asks for a task to be done by Claude or Claude Code, call Agent with subagent_type claude-haiku, claude-sonnet, claude-opus or claude-fable (claude-sonnet when they name no model). Use these only when the user asks for Claude. If that call fails, tell the user the reason it gives, word for word, and do not do the task another way.");
 
   if !cfg[0].bare_mode {
     // Load user instructions (~/.openagents/instructions.md), capped at 4 KiB
@@ -4799,6 +4802,7 @@ FwRun :: struct {
   // Subagent delegation & worktree runtime (#14096)
   home: [FS_PATH_MAX] u8; nhome: int;
   host_agents: bool;
+  host_claude: bool;   // this turn may hand a task to Claude Code: the app can run it and the person allowed it (GitHub #14104)
   is_subagent: bool;
   subagent_read_only: bool;
   subagent_omit_claudemd: bool;
@@ -6720,6 +6724,13 @@ tool_main :: () -> int #export_c #effects(all) {
       probe_auth: [1] FwAuth;
       fww_resolve_auth(cfg[..], home, "oa:cloud", probe_auth[..], true);
       cloud_ready := probe_auth[0].ok && probe_auth[0].backend != FLAWED_BE_LOCAL;
+      // A Nostr CLI key counts as a cloud sign-in only when the installed CLI can sign with it:
+      // an older CLI has no `nostr auth`, and the message would fail at its first request.
+      if cloud_ready && probe_auth[0].backend == FLAWED_BE_OURS && probe_auth[0].nours_cli > 0 && probe_auth[0].nkey == 0 {
+        try_hdr: [4096] u8;
+        if fww_sign_ours_nip98(probe_auth[..], "https://openagents.com/api/v1/inference", "{}", try_hdr[..]) <= 0 { cloud_ready = false; }
+        for i: 0..<try_hdr.count { try_hdr[i] = 0; }
+      }
       door_b: [64] u8;
       door_pref := fww_trim(cl_getenv("OA_AGENT_ROUTER_DOOR", door_b[..]));
       plan: [1] Rtr2Plan;
@@ -6737,7 +6748,12 @@ tool_main :: () -> int #export_c #effects(all) {
         } else if cloud_ready {
           picked_model = "oa:cloud";
           if req[0].effort.count == 0 && plan[0].effort.count > 0 { picked_effort = plan[0].effort; }
+        } else if local_ready {
+          // No cloud sign-in: the local model takes the message rather than failing it.
+          picked_model = "oa:local";
         }
+      } else if !cloud_ready && local_ready {
+        picked_model = "oa:local";
       }
     }
 
@@ -6746,6 +6762,7 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].ncwd = fww_keep(run[0].cwd[..], cd);
     run[0].nhome = fww_keep(run[0].home[..], home);
     run[0].host_agents = req[0].agents;
+    run[0].host_claude = req[0].agents && req[0].claude && cfg[0].allow_local_harnesses;
     run[0].is_subagent = req[0].is_subagent;
     run[0].subagent_read_only = req[0].read_only;
     run[0].subagent_omit_claudemd = req[0].omit_claudemd;

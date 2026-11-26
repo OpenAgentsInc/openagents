@@ -5,7 +5,7 @@ This library ports the Rust crate `claude_agent_sdk` (removed in
 to Coax. Like the crate, it ports the stream-json wire protocol of the
 `claude` CLI, not the npm package. It tracks
 `@anthropic-ai/claude-agent-sdk` **0.3.296** (`CL_UPSTREAM_SDK_VERSION` in
-`claude.coax`) and is checked against Claude Code **2.1.312**.
+`claude.coax`) and is checked against Claude Code **2.1.331** (smoke rerun 2026-11-26; first checked on 2.1.312).
 
 | File | What |
 | --- | --- |
@@ -155,6 +155,10 @@ foreign procedure, so strings cross one byte per call):
   answered "6912"; in the other the host's permission handler denied
   `Bash` (`touch smoke-denied.txt`), the result counted one permission
   denial, and the file was not made.
+  On 2026-11-26 the same smoke passed on Claude Code 2.1.331 on Linux
+  (14 models, 56 commands, `claude_code_version` 2.1.331): "pong", the
+  `mcp__calc__add` call with its hook and "6912", and the denied `Bash`,
+  with no unknown messages and no invalid lines.
 
 - `cl_poll(q, p, timeout_ms)` is `cl_next` for a host that must not block
   (the desktop app's frame loop): it writes what is queued, then returns a

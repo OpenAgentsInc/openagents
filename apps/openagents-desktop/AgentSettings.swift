@@ -520,6 +520,10 @@ enum AgentSettings {
         }
         cd_flawed_info(page, authStatus, keyLabel, baseURLLabel, customModel, toolsSummary, limitsSummary)
         cd_permit_full_auto_set(page, isFullAuto ? 1 : 0)
+        // Whether a sub-agent can run in Claude Code here: claudeworker is in the app and the
+        // claude command is installed (GitHub #14104). The opt-in above decides whether it may.
+        let claudeWorker = (Bundle.main.resourcePath ?? "") + "/claudeworker"
+        cd_claude_sub(page, (FileManager.default.isExecutableFile(atPath: claudeWorker) && CoderWorker.hasClaude) ? 1 : 0)
     }
 
     static func readBack(from page: UnsafeMutableRawPointer?) {

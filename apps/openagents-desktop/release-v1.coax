@@ -936,7 +936,7 @@ rv1_make_mac_fixture :: (app_dir: string, dirty_leak: bool) -> bool #effects(all
   if !fs_write(fs_join(contents, "Resources/OpenAgents.icns", p2[..]), "icns") { return false; }
   if !fs_write(fs_join(contents, "Resources/Components/NOTICE", p2[..]), "OpenAgents v1.0\n") { return false; }
   if dirty_leak {
-    if !fs_write(fs_join(contents, "Resources/claudeworker", p2[..]), "leaked-non-v1-worker\n") { return false; }
+    if !fs_write(fs_join(contents, "Resources/mcworker", p2[..]), "leaked-non-v1-worker\n") { return false; }
   }
   return true;
 }
@@ -1102,7 +1102,7 @@ cmd_selftest :: () -> int #effects(all) {
   }
   print("PASS [3/4] scorecard JSON + Markdown verified (SH 27/27, Tier 2 8/10, 14.85 tok/s, 5750 ms TTFT)\n");
 
-  // 4. Dirty macOS .app (with leaked claudeworker) -> package MUST reject with non-zero exit code
+  // 4. Dirty macOS .app (with leaked mcworker) -> package MUST reject with non-zero exit code
   dirty_app := fs_join(tmp, "dirty/OpenAgents.app", p1[..]);
   dirty_zip := fs_join(tmp, "OpenAgents-dirty.zip", p2[..]);
   if !rv1_make_mac_fixture(dirty_app, true) {
@@ -1112,14 +1112,14 @@ cmd_selftest :: () -> int #effects(all) {
   dirty_argv := [10] string.[self_bin, "package", "--platform", "macos", "--stage", "2", "--bundle", dirty_app, "--out", dirty_zip];
   dr := proc_run(dirty_argv[..], 120000, pout[..], perr[..]);
   if dr.started != 0 || dr.status == 0 {
-    tool_errln("selftest [4/4]: package unexpectedly accepted dirty .app with leaked claudeworker!");
+    tool_errln("selftest [4/4]: package unexpectedly accepted dirty .app with leaked mcworker!");
     return 1;
   }
   if fs_exists(dirty_zip) {
     tool_errln("selftest [4/4]: unverified dirty archive was not removed on rejection");
     return 1;
   }
-  print("PASS [4/4] package rejected dirty .app with leaked claudeworker (exit %)\n", dr.status);
+  print("PASS [4/4] package rejected dirty .app with leaked mcworker (exit %)\n", dr.status);
   print("PASS release-v1 selftest (4/4 checks passed)\n");
   return 0;
 }

@@ -107,6 +107,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
   if platform == VBC_MAC {
     return name == "coder-host"
       || name == "oa-worker"
+      || name == "claudeworker"
       || name == "inky"
       || name == "psionic-inkling-serve"
       || name == "inkling-kernels.metal"
@@ -119,6 +120,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
     return name == "OpenAgents"
       || name == "coder-host"
       || name == "oa-worker"
+      || name == "claudeworker"
       || name == "inky"
       || name == "psionic-inkling-serve"
       || name == "inkling-kernels-cuda.cu"
@@ -135,6 +137,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
     return name == "OpenAgents.exe"
       || name == "coder-host.exe"
       || name == "oa-worker.exe"
+      || name == "claudeworker.exe"
       || name == "inky.exe"
       || name == "psionic-inkling-serve.exe"
       || name == "inkling-kernels-cuda.cu"
@@ -261,7 +264,9 @@ vbc_scan_link_output :: (platform: int, stage: int, output: string, label: strin
   // All excluded macOS artifacts rejected (including deprecated mcworker & full-only agyworker)
   #assert !vbc_resource_allowed(VBC_MAC, "agyworker");
   #assert !vbc_resource_allowed(VBC_MAC, "mcworker");
-  #assert !vbc_resource_allowed(VBC_MAC, "claudeworker");
+  // claudeworker ships: a chat may hand a task to Claude Code as a sub-agent, when the person
+  // turns on "Allow delegating to other local harnesses" (GitHub #14071, #14104)
+  #assert vbc_resource_allowed(VBC_MAC, "claudeworker");
   #assert !vbc_resource_allowed(VBC_MAC, "oasim");
   #assert !vbc_resource_allowed(VBC_MAC, "lean-run");
   #assert !vbc_resource_allowed(VBC_MAC, "tbench-run");
@@ -282,12 +287,12 @@ vbc_scan_link_output :: (platform: int, stage: int, output: string, label: strin
   // Linux & Windows allowlists
   #assert vbc_resource_allowed(VBC_LINUX, "OpenAgents") && vbc_resource_allowed(VBC_LINUX, "inky") && vbc_resource_allowed(VBC_LINUX, "psionic-inkling-serve");
   #assert vbc_resource_allowed(VBC_LINUX, "inkling-kernels-cuda.cu") && vbc_resource_allowed(VBC_LINUX, "inkling-kernels-vulkan.spv");
-  #assert !vbc_resource_allowed(VBC_LINUX, "mcworker") && !vbc_resource_allowed(VBC_LINUX, "claudeworker") && !vbc_resource_allowed(VBC_LINUX, "agyworker");
+  #assert !vbc_resource_allowed(VBC_LINUX, "mcworker") && vbc_resource_allowed(VBC_LINUX, "claudeworker") && !vbc_resource_allowed(VBC_LINUX, "agyworker");
 
   #assert vbc_resource_allowed(VBC_WINDOWS, "OpenAgents.exe") && vbc_resource_allowed(VBC_WINDOWS, "inky.exe") && vbc_resource_allowed(VBC_WINDOWS, "psionic-inkling-serve.exe");
   #assert vbc_resource_allowed(VBC_WINDOWS, "gitguard.exe") && vbc_resource_allowed(VBC_WINDOWS, "inkling-kernels-cuda.cu");
   #assert vbc_resource_allowed(VBC_WINDOWS, "resources") && vbc_resource_allowed(VBC_WINDOWS, "res");
-  #assert !vbc_resource_allowed(VBC_WINDOWS, "mcworker.exe") && !vbc_resource_allowed(VBC_WINDOWS, "claudeworker.exe") && !vbc_resource_allowed(VBC_WINDOWS, "agyworker.exe");
+  #assert !vbc_resource_allowed(VBC_WINDOWS, "mcworker.exe") && vbc_resource_allowed(VBC_WINDOWS, "claudeworker.exe") && !vbc_resource_allowed(VBC_WINDOWS, "agyworker.exe");
   #assert !vbc_resource_allowed(0, "OpenAgents");
 }
 

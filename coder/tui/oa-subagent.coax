@@ -232,6 +232,20 @@ fww_find_subagent_rec :: (r: [] FwRun, id_or_name: string) -> int {
 
 // ---------------------------------------------------------------- parallel Agent batch delegation
 
+// The app's sub-agent level for a subagent_type that names Claude Code, or "" (GitHub #14104).
+fww_claude_level :: (kind: string) -> string {
+  if oa_ag_eq_ci(kind, "claude-haiku") { return "haiku"; }
+  if oa_ag_eq_ci(kind, "claude-sonnet") || oa_ag_eq_ci(kind, "claude") || oa_ag_eq_ci(kind, "claude-code") { return "sonnet"; }
+  if oa_ag_eq_ci(kind, "claude-opus") { return "opus"; }
+  if oa_ag_eq_ci(kind, "claude-fable") { return "fable"; }
+  return "";
+}
+#test "sub-agents (#14104): only a subagent_type that names Claude Code has a Claude level" {
+  #assert fww_claude_level("claude-haiku") == "haiku" && fww_claude_level("Claude-Sonnet") == "sonnet" && fww_claude_level("claude") == "sonnet";
+  #assert fww_claude_level("claude-opus") == "opus" && fww_claude_level("claude-fable") == "fable";
+  #assert fww_claude_level("Explore") == "" && fww_claude_level("general-purpose") == "" && fww_claude_level("") == "" && fww_claude_level("haiku") == "";
+}
+
 // Launches all consecutive Agent/Task tool calls [batch_start..<batch_end) in parallel via MWW_DELEGATE.
 // Returns true if waiting asynchronously for MWW_RESULTS from the host.
 fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, home: string, batch_start: int, batch_end: int, out: [] u8) -> bool {
@@ -276,6 +290,16 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, home: string, batch_
     iso_s := cast(string) iso_b[0..<ison];
     _ = modn;
 
+    // A task for Claude Code runs in Claude Code or fails with why; it never runs on another model.
+    claude_level := fww_claude_level(type_s);
+    if claude_level.count > 0 && !r[0].host_claude {
+      r[0].acc[0].tools[tidx].done = true;
+      r[0].acc[0].tools[tidx].is_error = true;
+      r[0].acc[0].tools[tidx].nres = fww_keep(r[0].acc[0].tools[tidx].res[..], ifx !cfg[0].allow_local_harnesses
+        then "Delegating to Claude is turned off. To turn it on, open Settings > Agent and turn on \"Allow delegating to other local harnesses\"."
+        else "Claude Code is not available on this computer. Install the claude command and sign in to it.");
+      continue;
+    }
     // Resolve persona from registry (defaulting to general-purpose)
     def_idx := oa_agents_find(r[0].agent_reg[..], type_s);
     if def_idx < 0 { def_idx = oa_agents_find(r[0].agent_reg[..], "general-purpose"); }
@@ -332,7 +356,7 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, home: string, batch_
 
     // Append task object to MWW_DELEGATE tasks JSON array
     jo_obj(jo[..]);
-    jo_key(jo[..], "level"); jo_str(jo[..], "neon");
+    jo_key(jo[..], "level"); jo_str(jo[..], ifx claude_level.count > 0 then claude_level else "neon");
     jo_key(jo[..], "task"); jo_str(jo[..], ifx prompt_s.count > 0 then prompt_s else desc_s);
     jo_key(jo[..], "subagent_type"); jo_str(jo[..], type_s);
     if desc_s.count > 0 { jo_key(jo[..], "description"); jo_str(jo[..], desc_s); }
@@ -363,6 +387,8 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, home: string, batch_
     }
     return false;
   }
+
+  if r[0].ndelegate_slots == 0 { return false; }   // every call of the batch was refused above
 
   r[0].next_ticket += 1;
   r[0].delegate_ticket = r[0].next_ticket;

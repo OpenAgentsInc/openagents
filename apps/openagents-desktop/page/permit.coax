@@ -579,6 +579,12 @@ coder_page_permit_secret_name :: (s: [] CoderPage, out: [] u8) -> int #export_c 
   if !s[0].permit[0].open && !(s[0].permit[0].full_auto && s[0].permit[0].kind == CP_PERMIT_KIND_SECRET) { return 0; }
   return cp_out(out, cp_permit_str(s[0].permit[0].cmd[..], s[0].permit[0].ncmd));
 }
+// Answers the open permission card as a press on one of its choices does (idx among them), or on
+// Deny: for a host's headless checks.
+coder_page_permit_choose :: (s: [] CoderPage, allow: bool, idx: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_permit_choose(s, allow, ifx allow then idx else -1);
+}
 coder_page_permit_title :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   if !s[0].permit[0].open && !(s[0].permit[0].full_auto && s[0].permit[0].kind == CP_PERMIT_KIND_SECRET) { return 0; }
