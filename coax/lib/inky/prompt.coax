@@ -104,7 +104,7 @@ ik_prompt_build_mode :: (os_name: string, cwd: string, git_info: string, user_in
     n = ik_fmt_put(out, n, "\nUser instructions:\n");
     n = ik_fmt_put(out, n, cast(string) user_instr[0..<take]);
     if take < user_instr.count { n = ik_fmt_put(out, n, "\n[... user instructions truncated ...]\n"); }
-    else if take > 0 && user_instr[take - 1] != '\n' { n = ik_fmt_byte(out, n, '\n'); }
+    else if user_instr[take - 1] != '\n' { n = ik_fmt_byte(out, n, '\n'); }
   }
 
   if !ik_prompt_blank(workspace_instr) {
@@ -112,14 +112,15 @@ ik_prompt_build_mode :: (os_name: string, cwd: string, git_info: string, user_in
     n = ik_fmt_put(out, n, "\nWorkspace instructions:\n");
     n = ik_fmt_put(out, n, cast(string) workspace_instr[0..<take]);
     if take < workspace_instr.count { n = ik_fmt_put(out, n, "\n[... workspace instructions truncated ...]\n"); }
-    else if take > 0 && workspace_instr[take - 1] != '\n' { n = ik_fmt_byte(out, n, '\n'); }
+    else if workspace_instr[take - 1] != '\n' { n = ik_fmt_byte(out, n, '\n'); }
   }
 
   if is_goal {
     n = ik_fmt_put(out, n, "\nGoal mode:\n");
     n = ik_fmt_put(out, n, "- Work systematically until the `<goal_objective>` acceptance criteria are verified by real tool output.\n");
     n = ik_fmt_put(out, n, "- Only end your final reply with `[GOAL_COMPLETE]` when every requirement is verified.\n");
-    n = ik_fmt_put(out, n, "- If genuinely blocked after exhausting alternatives, end with `[GOAL_BLOCKED]` and state the concrete blocker.\n");
+    n = ik_fmt_put(out, n, "- If genuinely blocked on user input after exhausting alternatives, end with `[GOAL_BLOCKED]` and state the concrete blocker.\n");
+    n = ik_fmt_put(out, n, "- If the goal is fundamentally impossible under hard constraints, end with `[GOAL_IMPOSSIBLE]` and state why.\n");
   }
 
   if hybrid_exec {
@@ -163,6 +164,7 @@ ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: 
   #assert ik_prompt_has_ci(p2, "Always commit with signoff.");
   #assert ik_prompt_has_ci(p2, "Use tabs.");
   #assert ik_prompt_has_ci(p2, "[GOAL_COMPLETE]");
+  #assert ik_prompt_has_ci(p2, "[GOAL_IMPOSSIBLE]");
 
   // Cross-worktree KV prefix stability: different workspaces/branches share the entire
   // static persona + How to work prefix (Environment sits at the end for SWA recency).
@@ -174,6 +176,56 @@ ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: 
   lim := ifx na < nb then na else nb;
   while shared < lim && out_a[shared] == out_b[shared] { shared += 1; }
   #assert shared > 750;
+}
+
+#test "inky prompt: exact section coverage, 4096-byte cap boundaries, hybrid mode, and environment fallbacks" {
+  out: [IK_PROMPT_MAX] u8;
+  // Empty env strings fall back to defaults; base bullets start at byte 0 and hybrid is off.
+  n0 := ik_prompt_build_mode("", "", "", "", "", false, false, out[..]);
+  p0 := cast(string) out[0..<n0];
+  #assert p0[0] == 'Y';
+  #assert ik_prompt_has_ci(p0, "plain questions or conversation");
+  #assert ik_prompt_has_ci(p0, "prefer `list_dir`, `outline`, `grep`, and `read_file`");
+  #assert ik_prompt_has_ci(p0, "Before editing a file");
+  #assert ik_prompt_has_ci(p0, "After making code changes");
+  #assert ik_prompt_has_ci(p0, "Stay inside the workspace");
+  #assert ik_prompt_has_ci(p0, "Never run global filesystem searches");
+  #assert ik_prompt_has_ci(p0, "Keep final replies clear");
+  #assert !ik_prompt_has_ci(p0, "Hybrid Executor mode");
+  #assert ik_prompt_has_ci(p0, "\nEnvironment:\n- OS: macOS\n- Workspace: .\n- Git repo: unknown\n");
+  #assert p0[n0 - 1] == '\n';
+
+  // 1-char env strings use the provided values (not fallbacks), plus goal + hybrid + 1-char instructions without trailing LF.
+  n1 := ik_prompt_build_mode("L", "/", "y", "u", "w", true, true, out[..]);
+  p1 := cast(string) out[0..<n1];
+  #assert ik_prompt_has_ci(p1, "\nUser instructions:\nu\n\nWorkspace instructions:\nw\n\nGoal mode:\n");
+  #assert ik_prompt_has_ci(p1, "\nGoal mode:\n- Work systematically");
+  #assert ik_prompt_has_ci(p1, "[GOAL_COMPLETE]");
+  #assert ik_prompt_has_ci(p1, "[GOAL_BLOCKED]");
+  #assert ik_prompt_has_ci(p1, "[GOAL_IMPOSSIBLE]");
+  #assert ik_prompt_has_ci(p1, "\nHybrid Executor mode:\n");
+  #assert ik_prompt_has_ci(p1, "Class-E weight modules");
+  #assert ik_prompt_has_ci(p1, "invoke `executor_verify`");
+  #assert ik_prompt_has_ci(p1, "\nEnvironment:\n- OS: L\n- Workspace: /\n- Git repo: y\n");
+
+  // Instructions ending with LF do not receive a duplicate LF.
+  n2 := ik_prompt_build_mode("macOS", ".", "yes", "ab\n", "cd\n", false, false, out[..]);
+  p2 := cast(string) out[0..<n2];
+  #assert ik_prompt_has_ci(p2, "\nUser instructions:\nab\n\nWorkspace instructions:\ncd\n\nEnvironment:");
+
+  // Exact 4096-byte instructions are NOT truncated; 4097-byte instructions ARE truncated.
+  buf4097: [IK_INSTR_CAP + 1] u8;
+  for i: 0..<buf4097.count { buf4097[i] = 'x'; }
+  s4096 := cast(string) buf4097[0..<IK_INSTR_CAP];
+  s4097 := cast(string) buf4097[..];
+  n3 := ik_prompt_build_mode("macOS", ".", "yes", s4096, s4096, false, false, out[..]);
+  p3 := cast(string) out[0..<n3];
+  #assert !ik_prompt_has_ci(p3, "[... user instructions truncated ...]");
+  #assert !ik_prompt_has_ci(p3, "[... workspace instructions truncated ...]");
+  n4 := ik_prompt_build_mode("macOS", ".", "yes", s4097, s4097, false, false, out[..]);
+  p4 := cast(string) out[0..<n4];
+  #assert ik_prompt_has_ci(p4, "[... user instructions truncated ...]");
+  #assert ik_prompt_has_ci(p4, "[... workspace instructions truncated ...]");
 }
 
 #test "inky prompt: native tool declarations are valid JSON arrays with expected tool counts" {

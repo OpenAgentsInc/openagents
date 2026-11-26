@@ -109,12 +109,15 @@ CP_ASK_ORCHESTRATOR :: 97;  // Settings > Models > the model new chats start on 
 
 // Default per-chat-thread max budget in microdollars ($50.00).
 CP_BUDGET_DEFAULT :: 50000000;
-// Thread goal (/goal) limits and states (ported from openai/codex).
-CP_GOAL_TEXT :: 2048;
-CP_GOAL_NOTICE :: 256;
-CP_GOAL_NONE :: 0; CP_GOAL_ACTIVE :: 1; CP_GOAL_PAUSED :: 2; CP_GOAL_COMPLETE :: 3; CP_GOAL_BLOCKED :: 4; CP_GOAL_BUDGET_LIMITED :: 5;
+// Thread goal (/goal) limits, states, and bounded continuation defaults (#14086).
+CP_GOAL_TEXT :: 4096;
+CP_GOAL_REASON :: 512;
+CP_GOAL_NOTICE :: 512;
+CP_GOAL_CONSEC_DEFAULT :: 8;
+CP_GOAL_RETRY_MAX :: 3;
+CP_GOAL_NONE :: 0; CP_GOAL_ACTIVE :: 1; CP_GOAL_PAUSED :: 2; CP_GOAL_COMPLETE :: 3; CP_GOAL_BLOCKED :: 4; CP_GOAL_BUDGET_LIMITED :: 5; CP_GOAL_FAILED :: 6;
 CP_GOAL_PROMPT_NONE :: 0; CP_GOAL_PROMPT_START :: 1; CP_GOAL_PROMPT_CONTINUE :: 2; CP_GOAL_PROMPT_UPDATED :: 3; CP_GOAL_PROMPT_BUDGET :: 4; CP_GOAL_PROMPT_AUDIT :: 5;
-CP_GOAL_USAGE :: "Usage: /goal <objective> | /goal edit | /goal pause | /goal resume | /goal complete | /goal clear";
+CP_GOAL_USAGE :: "Usage: /goal <objective> | /goal status | /goal edit | /goal pause | /goal resume | /goal complete | /goal clear (or stop/off/reset/none/cancel)";
 // What the page asks of its host (coder_page_action), once.
 CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9; CP_ASK_REORDER_PIN :: 10; CP_ASK_FOREMAN :: 11; CP_ASK_UPDATE :: 12;
 // settings (settings.coax): it opened or closed (the host moves the keyboard), the text size, the keys, Foreman's tier, its log and history, log in, an update check, the search field
@@ -348,7 +351,7 @@ CoderPage :: struct {
   pin_move_id: [CP_CHAT_ID] u8; pin_move_id_n: int; pin_move_to: int;   // completed pinned reorder owed to the host
   side: f32; side_scroll: f32; side_content: f32; side_view: f32;   // the sidebar as last drawn: its width (0: not shown), its scroll
   kept_turns: int; kept_running: bool; kept_cost: int; kept_budget: int; kept_override: bool;   // what the host last kept (coder_page_save_due)
-  kept_goal_status: int; kept_goal_n: int; kept_goal_time: int;
+  kept_goal_status: int; kept_goal_n: int; kept_goal_time: int; kept_goal_turns: int; kept_goal_reason_n: int;
   kept_pane_open: bool; kept_pane_turn: int; kept_pane_agent: int; kept_pane_manual: bool;
   effort: int; kept_effort: int; effort_menu: bool; effort_x: f32;   // the chat's thinking level (CP_EFFORT_*), its dropdown menu state and anchor x
   model: int; kept_model: int; model_menu: bool; model_x: f32;   // selected main model for this chat (0: Neon), picker popover state and anchor x
@@ -362,8 +365,16 @@ CoderPage :: struct {
   goal_status: int;                                         // CP_GOAL_*
   goal_time_seconds: int;                                   // elapsed active seconds spent on the goal
   goal_turns: int;                                          // turns executed toward this goal
+  goal_evals: int;                                          // verification/audit passes evaluated for this goal
+  goal_tokens: int;                                         // output tokens spent on turns under this goal
+  goal_cost_start: int;                                     // cost_usd_micros snapshot when the goal began
+  goal_retries: int;                                        // consecutive automatic transient-error retries
+  goal_consec_unmet: int;                                   // consecutive autonomous continuation turns since last user input
+  goal_max_consec: int;                                     // consecutive-unmet cap (0 = CP_GOAL_CONSEC_DEFAULT, -1 = unlimited)
+  goal_deferred_agents: int;                                // running subagents observed when goal turn-end was deferred
   goal_prompt_kind: int;                                    // CP_GOAL_PROMPT_* for the running turn
   goal_turn_began: f32;                                     // clock when the running goal turn began
+  goal_reason: [CP_GOAL_REASON] u8; goal_reason_n: int;     // latest pause/block/failure/audit reason
   goal_notice: [CP_GOAL_NOTICE] u8; goal_notice_n: int;     // feedback/usage notice from /goal commands
   folder: [CP_FOLDER_TEXT] u8; folder_n: int;   // the working folder as shown (~/work/app): commands start there
   branch: [CP_BRANCH_TEXT] u8; branch_n: int;   // its Git branch, "" when it has none (#13743)
@@ -671,7 +682,7 @@ cp_init :: (s: [] CoderPage) {
   start_m := cp_model_start(s);
   s[0].model = ifx start_m >= 0 then start_m else CP_MODEL_DEFAULT; s[0].kept_model = s[0].model; s[0].model_menu = false; s[0].effort_menu = false; s[0].effort_x = 0; s[0].orch_model = CP_CLAUDE_START;
   s[0].open_cargo = -1; s[0].open_show = -1; s[0].stop_agent = -1; s[0].mn[0].shut = -1;
-  s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
+  s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_evals = 0; s[0].goal_tokens = 0; s[0].goal_cost_start = 0; s[0].goal_retries = 0; s[0].goal_consec_unmet = 0; s[0].goal_max_consec = 0; s[0].goal_deferred_agents = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_reason_n = 0; s[0].goal_notice_n = 0;
   cp_git_init(s);
   cp_gd_init(s);
   cp_ckpt_init(s);

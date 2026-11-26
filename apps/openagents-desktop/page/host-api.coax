@@ -165,9 +165,9 @@ coder_page_action :: (s: [] CoderPage) -> int #export_c #effects(all) {
   return ask;
 }
 // What done means, sent with every goal turn: the real thing, not a stand-in that passes its own tests.
-CP_GOAL_DONE_TEXT :: "Done means the real thing works for the user as the goal and every requirement or acceptance criterion it names say. A toy, synthetic, miniature, stubbed, mocked, placeholder or hard-coded stand-in is not done, and neither is code that only compiles or only passes tests and fixtures written for it. If the real thing cannot be done here (missing weights, hardware, secrets, access or time), say so plainly and end with [GOAL_BLOCKED]; never swap in a smaller task and report it as the original. Do not close an issue or mark work implemented until every one of its acceptance criteria holds. Report only checks you ran, with their real result: a check that was killed, timed out or skipped did not pass.\n\n";
+CP_GOAL_DONE_TEXT :: "Done means the real thing works for the user as the goal and every requirement or acceptance criterion it names say. A toy, synthetic, miniature, stubbed, mocked, placeholder or hard-coded stand-in is not done, and neither is code that only compiles or only passes tests and fixtures written for it. If the real thing needs user input or missing secrets/access, say so plainly and end with [GOAL_BLOCKED]. If the goal itself is fundamentally impossible or contradictory under hard constraints, say so plainly and end with [GOAL_IMPOSSIBLE]; never swap in a smaller task and report it as the original. Do not close an issue or mark work implemented until every one of its acceptance criteria holds. Report only checks you ran, with their real result: a check that was killed, timed out or skipped did not pass.\n\n";
 // The turn a [GOAL_COMPLETE] starts (goal.coax): a skeptical check of the work before the goal closes.
-CP_GOAL_AUDIT_TEXT :: "You said the goal above is done. Before it closes, check the work as a skeptical reviewer who did not write it. Re-read the goal and every issue, spec or request it names (gh issue view each one) and list every requirement and acceptance criterion. For each, run the real thing end to end the way the user would use it, and quote the command and its actual output. Anything that is a stand-in (toy sizes, synthetic data, a stub, a mock, a placeholder file, a fixture you wrote) or that only compiles is not done: say so plainly, reopen any issue closed too early, and keep working on it in this turn, or end with [GOAL_BLOCKED] naming exactly what is missing if it cannot be done here. End with [GOAL_COMPLETE] only if every criterion holds for real, with the evidence above it.\n\n";
+CP_GOAL_AUDIT_TEXT :: "You said the goal above is done. Before it closes, check the work as a skeptical reviewer who did not write it. Re-read the goal and every issue, spec or request it names (gh issue view each one) and list every requirement and acceptance criterion. For each, run the real thing end to end the way the user would use it, and quote the command and its actual output. Anything that is a stand-in (toy sizes, synthetic data, a stub, a mock, a placeholder file, a fixture you wrote) or that only compiles is not done: say so plainly, reopen any issue closed too early, and keep working on it in this turn, or end with [GOAL_BLOCKED] naming exactly what user input is missing, or [GOAL_IMPOSSIBLE] if the objective cannot be satisfied. End with [GOAL_COMPLETE] only if every criterion holds for real, with the evidence above it.\n\n";
 // The newest message as the worker's task line (mcworker-wire.coax): its length in out, 0 for none.
 coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
@@ -179,21 +179,29 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
 cp_task_message :: (s: [] CoderPage, ask: string, refs: string, model: int, session: string, cwd: string, out: [] u8) -> int {
   // the note on installed skills, optional active thread goal context, then the message and the
   // note on its attachments and the files it mentions (attach.coax)
-  whole: [CP_SKILLS + CP_GOAL_TEXT + EB_TEXT + CP_REFS + 4096] u8;
+  whole: [CP_SKILLS + CP_GOAL_TEXT + CP_GOAL_REASON + EB_TEXT + CP_REFS + 4608] u8;
   // Claude Code finds its skills itself, and MCP/skills injection is gated by the mcp flag.
   n := ifx cp_is_claude(s, model) || !cp_flag(s, DC_FLAG_MCP) then 0 else cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   if s[0].goal_status == CP_GOAL_ACTIVE && s[0].goal_objective_n > 0 {
     n += cp_out(whole[n..<whole.count], "<goal_objective>\n");
     n += cp_out(whole[n..<whole.count], cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
     n += cp_out(whole[n..<whole.count], "\n</goal_objective>\n");
+    if s[0].goal_reason_n > 0 {
+      n += cp_out(whole[n..<whole.count], "<goal_feedback>\n");
+      n += cp_out(whole[n..<whole.count], cast(string) s[0].goal_reason[0..<s[0].goal_reason_n]);
+      n += cp_out(whole[n..<whole.count], "\n</goal_feedback>\n");
+    }
+    if s[0].goal_deferred_agents > 0 {
+      n += cp_out(whole[n..<whole.count], "<goal_deferral>\nSubagents were still running at the previous turn end; inspect their results before claiming completion.\n</goal_deferral>\n");
+    }
     if s[0].goal_prompt_kind == CP_GOAL_PROMPT_AUDIT {
       n += cp_out(whole[n..<whole.count], CP_GOAL_AUDIT_TEXT);
     } else if s[0].goal_prompt_kind == CP_GOAL_PROMPT_CONTINUE {
-      n += cp_out(whole[n..<whole.count], "Continue working toward the active thread goal above. Make concrete, verified progress without stopping early. Do not ask the user for permission to continue. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED] and explain what is needed.\n\n");
+      n += cp_out(whole[n..<whole.count], "Continue working toward the active thread goal above. Make concrete, verified progress without stopping early. Do not ask the user for permission to continue. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED] and explain what is needed. If the goal is fundamentally impossible under hard constraints, include [GOAL_IMPOSSIBLE] and explain why.\n\n");
     } else if s[0].goal_prompt_kind == CP_GOAL_PROMPT_UPDATED {
-      n += cp_out(whole[n..<whole.count], "The user updated the active thread goal above. Realign your work to the updated objective. When the updated goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If blocked on user input, include [GOAL_BLOCKED].\n\n");
+      n += cp_out(whole[n..<whole.count], "The user updated the active thread goal above. Realign your work to the updated objective. When the updated goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If blocked on user input, include [GOAL_BLOCKED]. If impossible, include [GOAL_IMPOSSIBLE].\n\n");
     } else {
-      n += cp_out(whole[n..<whole.count], "Work autonomously toward the active thread goal above. Make concrete, verified progress across turns until finished. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED].\n\n");
+      n += cp_out(whole[n..<whole.count], "Work autonomously toward the active thread goal above. Make concrete, verified progress across turns until finished. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED]. If the goal is fundamentally impossible, include [GOAL_IMPOSSIBLE].\n\n");
     }
     n += cp_out(whole[n..<whole.count], CP_GOAL_DONE_TEXT);
   }
@@ -277,11 +285,17 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   }
   else if kind == MWW_ATTEMPT && l[0].gateway == "antigravity" {
     s[0].turns[i].ran_n = cp_out(s[0].turns[i].ran[..], l[0].model);
-    if l[0].output_tokens.ok && l[0].output_tokens.value > 0 { s[0].turns[i].attempt_tokens += l[0].output_tokens.value; }
+    if l[0].output_tokens.ok && l[0].output_tokens.value > 0 {
+      s[0].turns[i].attempt_tokens += l[0].output_tokens.value;
+      cp_goal_add_tokens(s, l[0].output_tokens.value);
+    }
   }   // the model agy opened the session on: the reply's label
   else if kind == MWW_ATTEMPT {
     s[0].turns[i].fresh = true; cp_add_cost(s, cp_attempt_cost(l[0])); cp_ctx_take(s, l[0]);
-    if l[0].output_tokens.ok && l[0].output_tokens.value > 0 { s[0].turns[i].attempt_tokens += l[0].output_tokens.value; }
+    if l[0].output_tokens.ok && l[0].output_tokens.value > 0 {
+      s[0].turns[i].attempt_tokens += l[0].output_tokens.value;
+      cp_goal_add_tokens(s, l[0].output_tokens.value);
+    }
   }
   else if kind == MWW_STATS {
     if l[0].ttft_ms.ok && l[0].ttft_ms.value > 0 && s[0].turns[i].ttft_ms <= 0 { s[0].turns[i].ttft_ms = l[0].ttft_ms.value; }
@@ -336,6 +350,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
       s[0].live_reply = i;
       if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
     }
+    s[0].goal_deferred_agents = cp_goal_running_agents(s, i);
     cp_cmds_end(s, i);
     cp_thought_reveal_reset(s);
     cp_todos_reset(s);
@@ -388,6 +403,7 @@ coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
   cp_cmds_end(s, i);
   cp_todos_reset(s);
   cp_permit_reset(s);
+  cp_goal_on_failed(s, why);
 }
 // What the last Copy took: a code block, a person's message, a reply as its Markdown, or the whole
 // chat (each message under "You:", each command under "Ran:", each reply under "Microcoder:"). Its length in out.

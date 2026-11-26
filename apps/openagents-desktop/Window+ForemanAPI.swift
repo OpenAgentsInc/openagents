@@ -400,6 +400,7 @@ extension CoderWindow {
         case 3: return "complete"
         case 4: return "blocked"
         case 5: return "budget_limited"
+        case 6: return "failed"
         default: return "none"
         }
     }

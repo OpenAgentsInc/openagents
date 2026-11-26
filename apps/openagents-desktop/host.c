@@ -580,6 +580,10 @@ int cd_budget_exceeded(void *page) { CoderHost *c = page; return c ? (int)coder_
 int cd_budget_approve(void *page) { CoderHost *c = page; return c ? (int)coder_page_budget_approve(cd_state(c)) : 0; }
 int cd_goal_status(void *page) { CoderHost *c = page; return c ? (int)coder_page_goal_status(cd_state(c)) : 0; }
 int cd_goal_time(void *page) { CoderHost *c = page; return c ? (int)coder_page_goal_time(cd_state(c)) : 0; }
+int cd_goal_turns(void *page) { CoderHost *c = page; return c ? (int)coder_page_goal_turns(cd_state(c)) : 0; }
+int cd_goal_evals(void *page) { CoderHost *c = page; return c ? (int)coder_page_goal_evals(cd_state(c)) : 0; }
+int cd_goal_tokens(void *page) { CoderHost *c = page; return c ? (int)coder_page_goal_tokens(cd_state(c)) : 0; }
+int64_t cd_goal_cost_usd_micros(void *page) { CoderHost *c = page; return c ? coder_page_goal_cost_usd_micros(cd_state(c)) : 0; }
 int cd_goal_objective(void *page, char *out, int cap) {
   CoderHost *c = page;
   if (!c || cap < 1) return 0;
@@ -587,6 +591,15 @@ int cd_goal_objective(void *page, char *out, int cap) {
   out[n] = 0;
   return n;
 }
+int cd_goal_reason(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || cap < 1) return 0;
+  int n = (int)coder_page_goal_reason(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0;
+  return n;
+}
+int cd_goal_max_consec(void *page) { CoderHost *c = page; return c ? (int)coder_page_goal_max_consec(cd_state(c)) : 8; }
+int cd_goal_set_max_consec(void *page, int cap) { CoderHost *c = page; if (!c) return 0; int ok = (int)coder_page_goal_set_max_consec(cd_state(c), cap); cd_changed(c); return ok; }
 int cd_goal_set(void *page, const char *objective) { CoderHost *c = page; if (!c) return 0; int ok = (int)coder_page_goal_set(cd_state(c), cd_string(objective)); cd_changed(c); return ok; }
 int cd_goal_set_status(void *page, int status) { CoderHost *c = page; if (!c) return 0; int ok = (int)coder_page_goal_set_status(cd_state(c), status); cd_changed(c); return ok; }
 int cd_goal_clear(void *page) { CoderHost *c = page; if (!c) return 0; int ok = (int)coder_page_goal_clear(cd_state(c)); cd_changed(c); return ok; }

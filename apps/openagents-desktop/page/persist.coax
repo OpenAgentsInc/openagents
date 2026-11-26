@@ -7,11 +7,11 @@ coder_page_save_due :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   r := cp_running(s);
   b := cp_budget(s);
   m := cp_model_index(s);
-  if s[0].nturns == 0 && s[0].goal_status == CP_GOAL_NONE { s[0].kept_turns = 0; s[0].kept_running = false; s[0].kept_cost = 0; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; s[0].kept_model = m; s[0].kept_effort = s[0].effort; s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0; s[0].kept_pane_open = false; s[0].kept_pane_turn = 0; s[0].kept_pane_agent = 0; s[0].kept_pane_manual = false; return false; }
+  if s[0].nturns == 0 && s[0].goal_status == CP_GOAL_NONE { s[0].kept_turns = 0; s[0].kept_running = false; s[0].kept_cost = 0; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; s[0].kept_model = m; s[0].kept_effort = s[0].effort; s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0; s[0].kept_goal_turns = 0; s[0].kept_goal_reason_n = 0; s[0].kept_pane_open = false; s[0].kept_pane_turn = 0; s[0].kept_pane_agent = 0; s[0].kept_pane_manual = false; return false; }
   pane_same := r || (s[0].pane_open == s[0].kept_pane_open && s[0].pane_turn == s[0].kept_pane_turn && s[0].pane_agent == s[0].kept_pane_agent && s[0].pane_manual == s[0].kept_pane_manual);
-  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns && s[0].cost_usd_micros == s[0].kept_cost && b == s[0].kept_budget && s[0].budget_override == s[0].kept_override && m == s[0].kept_model && s[0].effort == s[0].kept_effort && s[0].goal_status == s[0].kept_goal_status && s[0].goal_objective_n == s[0].kept_goal_n && s[0].goal_time_seconds == s[0].kept_goal_time && pane_same { return false; }
+  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns && s[0].cost_usd_micros == s[0].kept_cost && b == s[0].kept_budget && s[0].budget_override == s[0].kept_override && m == s[0].kept_model && s[0].effort == s[0].kept_effort && s[0].goal_status == s[0].kept_goal_status && s[0].goal_objective_n == s[0].kept_goal_n && s[0].goal_time_seconds == s[0].kept_goal_time && s[0].goal_turns == s[0].kept_goal_turns && s[0].goal_reason_n == s[0].kept_goal_reason_n && pane_same { return false; }
   s[0].kept_running = r; s[0].kept_turns = s[0].nturns; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; s[0].kept_model = m; s[0].kept_effort = s[0].effort;
-  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds;
+  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds; s[0].kept_goal_turns = s[0].goal_turns; s[0].kept_goal_reason_n = s[0].goal_reason_n;
   s[0].kept_pane_open = s[0].pane_open; s[0].kept_pane_turn = s[0].pane_turn; s[0].kept_pane_agent = s[0].pane_agent; s[0].kept_pane_manual = s[0].pane_manual;
   return true;
 }
@@ -53,6 +53,12 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
     n = json_raw(out, n, ",\"goal_status\":"); n = json_write_int(out, n, s[0].goal_status);
     n = json_raw(out, n, ",\"goal_time\":"); n = json_write_int(out, n, s[0].goal_time_seconds);
     n = json_raw(out, n, ",\"goal_turns\":"); n = json_write_int(out, n, s[0].goal_turns);
+    if s[0].goal_evals > 0 { n = json_raw(out, n, ",\"goal_evals\":"); n = json_write_int(out, n, s[0].goal_evals); }
+    if s[0].goal_tokens > 0 { n = json_raw(out, n, ",\"goal_tokens\":"); n = json_write_int(out, n, s[0].goal_tokens); }
+    if s[0].goal_cost_start > 0 { n = json_raw(out, n, ",\"goal_cost_start\":"); n = json_write_int(out, n, s[0].goal_cost_start); }
+    if s[0].goal_max_consec != 0 { n = json_raw(out, n, ",\"goal_max_consec\":"); n = json_write_int(out, n, s[0].goal_max_consec); }
+    if s[0].goal_consec_unmet > 0 { n = json_raw(out, n, ",\"goal_consec_unmet\":"); n = json_write_int(out, n, s[0].goal_consec_unmet); }
+    if s[0].goal_reason_n > 0 { n = json_raw(out, n, ",\"goal_reason\":"); n = json_write_string(out, n, cast(string) s[0].goal_reason[0..<s[0].goal_reason_n]); }
     n = json_raw(out, n, ",\"goal_objective\":"); n = json_write_string(out, n, cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
   }
   if s[0].pane_open {
@@ -242,7 +248,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   }
   cp_goal_reset(s);
   gs := cl_int(text, "goal_status");
-  if gs.ok && gs.value >= CP_GOAL_ACTIVE && gs.value <= CP_GOAL_BUDGET_LIMITED {
+  if gs.ok && gs.value >= CP_GOAL_ACTIVE && gs.value <= CP_GOAL_FAILED {
     gar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
     go := cl_str(gar[..], text, "goal_objective");
     if go.count > 0 {
@@ -250,12 +256,20 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
       s[0].goal_objective_n = cp_out(s[0].goal_objective[..], go);
       gt := cl_int(text, "goal_time"); s[0].goal_time_seconds = ifx gt.ok && gt.value > 0 then gt.value else 0;
       gturns := cl_int(text, "goal_turns"); s[0].goal_turns = ifx gturns.ok && gturns.value > 0 then gturns.value else 0;
+      gevals := cl_int(text, "goal_evals"); s[0].goal_evals = ifx gevals.ok && gevals.value > 0 then gevals.value else 0;
+      gtoks := cl_int(text, "goal_tokens"); s[0].goal_tokens = ifx gtoks.ok && gtoks.value > 0 then gtoks.value else 0;
+      gcs := cl_int(text, "goal_cost_start"); s[0].goal_cost_start = ifx gcs.ok && gcs.value > 0 then gcs.value else 0;
+      gmc := cl_int(text, "goal_max_consec"); s[0].goal_max_consec = ifx gmc.ok && gmc.value >= -1 then gmc.value else 0;
+      gcu := cl_int(text, "goal_consec_unmet"); s[0].goal_consec_unmet = ifx gcu.ok && gcu.value > 0 then gcu.value else 0;
+      gar[0].at = 0; gar[0].full = false;
+      gr := cl_str(gar[..], text, "goal_reason");
+      if gr.count > 0 { cp_goal_set_reason(s, gr); }
     }
   }
   s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; cp_glide_reset(s); s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; cp_thought_reveal_reset(s); cp_sel_clear(s);
   s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override; s[0].kept_model = s[0].model;
-  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds;
+  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds; s[0].kept_goal_turns = s[0].goal_turns; s[0].kept_goal_reason_n = s[0].goal_reason_n;
   po := cl_bool(text, "pane_open"); pt := cl_int(text, "pane_turn"); pa := cl_int(text, "pane_agent"); pm := cl_bool(text, "pane_manual");
   s[0].pane_open = false; s[0].pane_turn = 0; s[0].pane_agent = 0; s[0].pane_manual = pm.ok && pm.value;
   if po.ok && po.value && pt.ok && pa.ok && pt.value >= 0 && pt.value < count && pa.value >= 0 && pa.value < s[0].turns[pt.value].nagents {
@@ -309,7 +323,7 @@ cp_new :: (s: [] CoderPage) -> bool {
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
   s[0].flawed[0].user_picked = false;
   s[0].model = cp_model_start(s); s[0].kept_model = s[0].model; s[0].model_menu = false; s[0].effort_menu = false; s[0].migrated_from_n = 0; s[0].effort = CP_EFFORT_DEFAULT; s[0].kept_effort = CP_EFFORT_DEFAULT;
-  cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
+  cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0; s[0].kept_goal_turns = 0; s[0].kept_goal_reason_n = 0;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; cp_thought_reveal_reset(s); cp_sel_clear(s);
   s[0].scroll = 0; s[0].stick = true; cp_glide_reset(s); s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].pane_turn = 0; s[0].pane_agent = 0; s[0].pane_manual = false; s[0].kept_pane_open = false; s[0].kept_pane_turn = 0; s[0].kept_pane_agent = 0; s[0].kept_pane_manual = false; s[0].ask = CP_ASK_NEW; return true;
 }
@@ -353,7 +367,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
   to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
   to[0].kept_budget = from[0].kept_budget; to[0].kept_override = from[0].kept_override; to[0].kept_model = from[0].kept_model; to[0].kept_effort = from[0].kept_effort;
-  to[0].kept_goal_status = from[0].kept_goal_status; to[0].kept_goal_n = from[0].kept_goal_n; to[0].kept_goal_time = from[0].kept_goal_time;
+  to[0].kept_goal_status = from[0].kept_goal_status; to[0].kept_goal_n = from[0].kept_goal_n; to[0].kept_goal_time = from[0].kept_goal_time; to[0].kept_goal_turns = from[0].kept_goal_turns; to[0].kept_goal_reason_n = from[0].kept_goal_reason_n;
   to[0].kept_pane_open = from[0].kept_pane_open; to[0].kept_pane_turn = from[0].kept_pane_turn; to[0].kept_pane_agent = from[0].kept_pane_agent; to[0].kept_pane_manual = from[0].kept_pane_manual;
   to[0].ctx_in = from[0].ctx_in; to[0].ctx_cached = from[0].ctx_cached; to[0].ctx_out = from[0].ctx_out; to[0].ctx_window = from[0].ctx_window; cp_ctx_reset(from);
   to[0].flags = from[0].flags; to[0].experimental = from[0].experimental; to[0].cloud_authed = from[0].cloud_authed;
@@ -361,8 +375,13 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].migrated_from_n = cp_out(to[0].migrated_from[..], cast(string) from[0].migrated_from[0..<from[0].migrated_from_n]);
   from[0].migrated_from_n = 0;
   to[0].cost_usd_micros = from[0].cost_usd_micros; to[0].budget_usd_micros = cp_budget(from); to[0].budget_override = from[0].budget_override; to[0].model = cp_model_index(from); to[0].model_menu = false; to[0].effort_menu = false; to[0].effort = from[0].effort;
-  to[0].goal_status = from[0].goal_status; to[0].goal_time_seconds = from[0].goal_time_seconds; to[0].goal_turns = from[0].goal_turns; to[0].goal_prompt_kind = from[0].goal_prompt_kind; to[0].goal_turn_began = ifx from[0].goal_turn_began > 0 then from[0].goal_turn_began + shift else 0;
+  to[0].goal_status = from[0].goal_status; to[0].goal_time_seconds = from[0].goal_time_seconds; to[0].goal_turns = from[0].goal_turns;
+  to[0].goal_evals = from[0].goal_evals; to[0].goal_tokens = from[0].goal_tokens; to[0].goal_cost_start = from[0].goal_cost_start;
+  to[0].goal_retries = from[0].goal_retries; to[0].goal_consec_unmet = from[0].goal_consec_unmet; to[0].goal_max_consec = from[0].goal_max_consec;
+  to[0].goal_deferred_agents = from[0].goal_deferred_agents; to[0].goal_prompt_kind = from[0].goal_prompt_kind;
+  to[0].goal_turn_began = ifx from[0].goal_turn_began > 0 then from[0].goal_turn_began + shift else 0;
   to[0].goal_objective_n = cp_out(to[0].goal_objective[..], cast(string) from[0].goal_objective[0..<from[0].goal_objective_n]);
+  to[0].goal_reason_n = cp_out(to[0].goal_reason[..], cast(string) from[0].goal_reason[0..<from[0].goal_reason_n]);
   to[0].goal_notice_n = cp_out(to[0].goal_notice[..], cast(string) from[0].goal_notice[0..<from[0].goal_notice_n]);
   to[0].answer = from[0].answer; to[0].answer_due = from[0].answer_due; to[0].results_due = from[0].results_due;
   to[0].fu[0] = from[0].fu[0]; from[0].fu[0] = CpFollow.{};     // the follow-ups go with the worker
@@ -383,7 +402,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   from[0].budget_usd_micros = CP_BUDGET_DEFAULT; from[0].budget_override = false; from[0].kept_budget = CP_BUDGET_DEFAULT; from[0].kept_override = false;
   from[0].flawed[0].user_picked = false;
   from[0].model = cp_model_start(from); from[0].kept_model = from[0].model; from[0].model_menu = false; from[0].effort_menu = false; from[0].effort = CP_EFFORT_DEFAULT; from[0].kept_effort = CP_EFFORT_DEFAULT;
-  cp_goal_reset(from); from[0].kept_goal_status = CP_GOAL_NONE; from[0].kept_goal_n = 0; from[0].kept_goal_time = 0;
+  cp_goal_reset(from); from[0].kept_goal_status = CP_GOAL_NONE; from[0].kept_goal_n = 0; from[0].kept_goal_time = 0; from[0].kept_goal_turns = 0; from[0].kept_goal_reason_n = 0;
   from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
   from[0].pane_open = false; from[0].pane_turn = 0; from[0].pane_agent = 0; from[0].pane_manual = false;
   from[0].kept_pane_open = false; from[0].kept_pane_turn = 0; from[0].kept_pane_agent = 0; from[0].kept_pane_manual = false;

@@ -1,7 +1,11 @@
 // Coder Desktop page (../page.coax): the chat's cost and budget, the thread goal and /goal, and their
 // host calls.
 
-// ---- Thread Goals (/goal), ported from openai/codex ----
+// ---- Thread Goals (/goal), with bounded evaluation, interruption recovery & reason tracking (#14086) ----
+CP_GOAL_ERR_PAUSE :: 0;
+CP_GOAL_ERR_TRANSIENT :: 1;
+CP_GOAL_ERR_UNRECOVERABLE :: 2;
+
 cp_budget :: (s: [] CoderPage) -> int {
   return ifx s[0].budget_usd_micros > 0 then s[0].budget_usd_micros else CP_BUDGET_DEFAULT;
 }
@@ -12,18 +16,184 @@ cp_add_cost :: (s: [] CoderPage, delta: int) {
   if delta <= 0 { return; }
   s[0].cost_usd_micros += delta;
   if cp_budget_exceeded(s) && cp_running(s) && !s[0].turns[s[0].nturns - 1].stopping {
-    if s[0].goal_status == CP_GOAL_ACTIVE { s[0].goal_status = CP_GOAL_BUDGET_LIMITED; }
+    if s[0].goal_status == CP_GOAL_ACTIVE {
+      s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+      cp_goal_set_reason(s, "Chat budget limit reached.");
+    }
     s[0].turns[s[0].nturns - 1].stopping = true;
     s[0].ask = CP_ASK_STOP;
   }
 }
 cp_goal_reset :: (s: [] CoderPage) {
   s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0;
-  s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_turn_began = 0;
-  s[0].goal_notice_n = 0;
+  s[0].goal_turns = 0; s[0].goal_evals = 0; s[0].goal_tokens = 0; s[0].goal_cost_start = 0;
+  s[0].goal_retries = 0; s[0].goal_consec_unmet = 0; s[0].goal_max_consec = 0;
+  s[0].goal_deferred_agents = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_turn_began = 0;
+  s[0].goal_reason_n = 0; s[0].goal_notice_n = 0;
 }
 cp_goal_set_notice :: (s: [] CoderPage, text: string) {
   s[0].goal_notice_n = cp_out(s[0].goal_notice[..], text);
+}
+cp_goal_set_reason :: (s: [] CoderPage, text: string) {
+  trimmed := cp_trim(text);
+  if trimmed.count == 0 { s[0].goal_reason_n = 0; return; }
+  n := 0;
+  prev_space := false;
+  for i: 0..<trimmed.count {
+    if n >= s[0].goal_reason.count { break; }
+    c := trimmed[i];
+    if c == 10 || c == 13 || c == 9 { c = 32; }
+    if c < 32 || c == 127 { continue; }
+    if c == 32 {
+      if prev_space { continue; }
+      prev_space = true;
+    } else {
+      prev_space = false;
+    }
+    s[0].goal_reason[n] = c;
+    n += 1;
+  }
+  while n > 0 && s[0].goal_reason[n - 1] == 32 { n -= 1; }
+  if n == s[0].goal_reason.count && n > 0 {
+    while n > 0 && (s[0].goal_reason[n - 1] & 0xC0) == 0x80 { n -= 1; }
+    if n > 0 && (s[0].goal_reason[n - 1] & 0x80) != 0 { n -= 1; }
+  }
+  s[0].goal_reason_n = n;
+}
+cp_goal_clear_reason :: (s: [] CoderPage) { s[0].goal_reason_n = 0; }
+cp_goal_cap :: (s: [] CoderPage) -> int {
+  if s[0].goal_max_consec < 0 { return 0; }
+  if s[0].goal_max_consec > 0 { return s[0].goal_max_consec; }
+  return CP_GOAL_CONSEC_DEFAULT;
+}
+cp_goal_cost_delta :: (s: [] CoderPage) -> int {
+  if s[0].goal_status == CP_GOAL_NONE { return 0; }
+  d := s[0].cost_usd_micros - s[0].goal_cost_start;
+  return ifx d > 0 then d else 0;
+}
+cp_goal_add_tokens :: (s: [] CoderPage, tokens: int) {
+  if s[0].goal_status == CP_GOAL_ACTIVE && tokens > 0 { s[0].goal_tokens += tokens; }
+}
+cp_goal_has_visible :: (text: string) -> bool {
+  for c: text {
+    if c > 32 && c != 127 { return true; }
+  }
+  return false;
+}
+cp_goal_is_clear_word :: (cmd: string) -> bool {
+  return cp_eq_ci(cmd, "clear") || cp_eq_ci(cmd, "stop") || cp_eq_ci(cmd, "off")
+      || cp_eq_ci(cmd, "reset") || cp_eq_ci(cmd, "none") || cp_eq_ci(cmd, "cancel");
+}
+cp_goal_has_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for k: 0..<needle.count {
+      a := hay[i + k]; if a >= 'A' && a <= 'Z' { a += 32; }
+      b := needle[k]; if b >= 'A' && b <= 'Z' { b += 32; }
+      if a != b { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+cp_goal_find :: (hay: string, needle: string) -> int {
+  if needle.count == 0 || needle.count > hay.count { return -1; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for k: 0..<needle.count {
+      if hay[i + k] != needle[k] { ok = false; break; }
+    }
+    if ok { return i; }
+  }
+  return -1;
+}
+cp_goal_extract_summary :: (reply: string, marker: string, fallback: string, out: [] u8) -> string {
+  at := ifx marker.count > 0 then cp_goal_find(reply, marker) else -1;
+  if at >= 0 {
+    after_at := at + marker.count;
+    while after_at < reply.count && (reply[after_at] == ' ' || reply[after_at] == ':' || reply[after_at] == '-' || reply[after_at] == '\t' || reply[after_at] == '\r' || reply[after_at] == '\n') {
+      after_at += 1;
+    }
+    if after_at < reply.count {
+      end := after_at;
+      while end < reply.count && reply[end] != 10 && reply[end] != 13 { end += 1; }
+      piece := cp_trim(cast(string) reply[after_at..<end]);
+      if piece.count > 0 && cp_goal_has_visible(piece) {
+        n := cp_out(out, piece);
+        return cast(string) out[0..<n];
+      }
+    }
+    // Nothing followed the marker: take the last non-empty line before it.
+    line_end := at;
+    while line_end > 0 && (reply[line_end - 1] == ' ' || reply[line_end - 1] == '\t' || reply[line_end - 1] == '\r' || reply[line_end - 1] == '\n') {
+      line_end -= 1;
+    }
+    if line_end > 0 {
+      line_start := line_end;
+      while line_start > 0 && reply[line_start - 1] != 10 && reply[line_start - 1] != 13 { line_start -= 1; }
+      piece := cp_trim(cast(string) reply[line_start..<line_end]);
+      if piece.count > 0 && cp_goal_has_visible(piece) {
+        n := cp_out(out, piece);
+        return cast(string) out[0..<n];
+      }
+    }
+  } else {
+    trimmed := cp_trim(reply);
+    if trimmed.count > 0 {
+      end := 0;
+      while end < trimmed.count && trimmed[end] != 10 && trimmed[end] != 13 { end += 1; }
+      piece := cp_trim(cast(string) trimmed[0..<end]);
+      if piece.count > 0 && cp_goal_has_visible(piece) {
+        n := cp_out(out, piece);
+        return cast(string) out[0..<n];
+      }
+    }
+  }
+  n := cp_out(out, fallback);
+  return cast(string) out[0..<n];
+}
+cp_goal_classify_error :: (ending: string, why: string) -> int {
+  if cp_goal_has_ci(ending, "auth") || cp_goal_has_ci(ending, "billing") || cp_goal_has_ci(ending, "context") || cp_goal_has_ci(ending, "prompt_too_long") || cp_goal_has_ci(ending, "model_unavailable") {
+    return CP_GOAL_ERR_UNRECOVERABLE;
+  }
+  if cp_goal_has_ci(why, "unauthorized") || cp_goal_has_ci(why, "401") || cp_goal_has_ci(why, "403")
+      || cp_goal_has_ci(why, "forbidden") || cp_goal_has_ci(why, "invalid api key")
+      || cp_goal_has_ci(why, "authentication") || cp_goal_has_ci(why, "billing")
+      || cp_goal_has_ci(why, "insufficient credits") || cp_goal_has_ci(why, "quota exceeded")
+      || cp_goal_has_ci(why, "payment required") || cp_goal_has_ci(why, "402")
+      || cp_goal_has_ci(why, "context length") || cp_goal_has_ci(why, "context_length")
+      || cp_goal_has_ci(why, "context window") || cp_goal_has_ci(why, "prompt too long")
+      || cp_goal_has_ci(why, "prompt_too_long") || cp_goal_has_ci(why, "model not found")
+      || cp_goal_has_ci(why, "model_not_found") || cp_goal_has_ci(why, "model unavailable")
+      || cp_goal_has_ci(why, "unsupported model") || cp_goal_has_ci(why, "account suspended") {
+    return CP_GOAL_ERR_UNRECOVERABLE;
+  }
+  if cp_goal_has_ci(ending, "timeout") || cp_goal_has_ci(ending, "rate") || cp_goal_has_ci(ending, "network") || cp_goal_has_ci(ending, "transient") {
+    return CP_GOAL_ERR_TRANSIENT;
+  }
+  if cp_goal_has_ci(why, "timeout") || cp_goal_has_ci(why, "timed out")
+      || cp_goal_has_ci(why, "rate limit") || cp_goal_has_ci(why, "rate_limit")
+      || cp_goal_has_ci(why, "429") || cp_goal_has_ci(why, "500") || cp_goal_has_ci(why, "502")
+      || cp_goal_has_ci(why, "503") || cp_goal_has_ci(why, "504") || cp_goal_has_ci(why, "529")
+      || cp_goal_has_ci(why, "overloaded") || cp_goal_has_ci(why, "connection")
+      || cp_goal_has_ci(why, "network") || cp_goal_has_ci(why, "econnreset")
+      || cp_goal_has_ci(why, "econnrefused") || cp_goal_has_ci(why, "broken pipe")
+      || cp_goal_has_ci(why, "temporary") || cp_goal_has_ci(why, "service unavailable")
+      || cp_goal_has_ci(why, "disconnected") || cp_goal_has_ci(why, "worker exited")
+      || cp_goal_has_ci(why, "worker died") || cp_goal_has_ci(why, "stream closed")
+      || cp_goal_has_ci(why, "unexpected eof") {
+    return CP_GOAL_ERR_TRANSIENT;
+  }
+  return CP_GOAL_ERR_PAUSE;
+}
+cp_goal_running_agents :: (s: [] CoderPage, i: int) -> int {
+  if i < 0 || i >= s[0].nturns { return 0; }
+  n := 0;
+  for j: 0..<s[0].turns[i].nagents {
+    if s[0].turns[i].agents[j].state == CP_RUNNING { n += 1; }
+  }
+  return n;
 }
 cp_goal_status_label :: (st: int) -> string {
   if st == CP_GOAL_ACTIVE { return "Active"; }
@@ -31,6 +201,7 @@ cp_goal_status_label :: (st: int) -> string {
   if st == CP_GOAL_COMPLETE { return "Complete"; }
   if st == CP_GOAL_BLOCKED { return "Blocked"; }
   if st == CP_GOAL_BUDGET_LIMITED { return "Budget limit"; }
+  if st == CP_GOAL_FAILED { return "Failed"; }
   return "None";
 }
 cp_goal_elapsed :: (out: [] u8, secs: int) -> string {
@@ -76,19 +247,42 @@ cp_start_turn :: (s: [] CoderPage, ask_text: string, prompt_kind: int) -> bool {
 }
 cp_goal_start_or_update :: (s: [] CoderPage, objective: string) -> bool {
   obj := cp_trim(objective);
-  if obj.count == 0 { cp_goal_set_notice(s, CP_GOAL_USAGE); return false; }
+  if obj.count == 0 || !cp_goal_has_visible(obj) { cp_goal_set_notice(s, CP_GOAL_USAGE); return false; }
+  if obj.count > CP_GOAL_TEXT {
+    nb: [CP_GOAL_NOTICE] u8;
+    nn := el_put(nb[..], 0, "Goal objective is limited to ");
+    nn = el_put_i(nb[..], nn, CP_GOAL_TEXT);
+    nn = el_put(nb[..], nn, " bytes (got ");
+    nn = el_put_i(nb[..], nn, obj.count);
+    nn = el_put(nb[..], nn, "). Shorten it and try again.");
+    cp_goal_set_notice(s, cast(string) nb[0..<nn]);
+    return false;
+  }
   had := s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0;
   s[0].goal_objective_n = cp_out(s[0].goal_objective[..], obj);
   s[0].goal_status = CP_GOAL_ACTIVE;
-  if !had { s[0].goal_time_seconds = 0; s[0].goal_turns = 0; }
+  s[0].goal_retries = 0;
+  s[0].goal_consec_unmet = 0;
+  s[0].goal_deferred_agents = 0;
+  cp_goal_clear_reason(s);
+  if !had {
+    s[0].goal_time_seconds = 0;
+    s[0].goal_turns = 0;
+    s[0].goal_evals = 0;
+    s[0].goal_tokens = 0;
+    s[0].goal_cost_start = s[0].cost_usd_micros;
+  }
   s[0].goal_notice_n = 0;
   if cp_budget_exceeded(s) {
     s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+    cp_goal_set_reason(s, "Chat budget limit reached.");
     cp_goal_set_notice(s, "Goal saved, but chat budget is reached. Approve or increase budget, then run /goal resume.");
     return true;
   }
   if cp_full(s) {
-    cp_goal_set_notice(s, "Goal saved, but this chat reached its 24-message limit. Start a new chat to run it.");
+    s[0].goal_status = CP_GOAL_PAUSED;
+    cp_goal_set_reason(s, "Chat reached its 1,000-message limit.");
+    cp_goal_set_notice(s, "Goal saved, but this chat reached its 1,000-message limit. Start a new chat to run it.");
     return true;
   }
   if !cp_running(s) {
@@ -112,7 +306,8 @@ cp_goal_set_status :: (s: [] CoderPage, st: int) -> bool {
       s[0].turns[s[0].nturns - 1].stopping = true;
       s[0].ask = CP_ASK_STOP;
     }
-    cp_goal_set_notice(s, "Goal paused. Use /goal resume to continue.");
+    if s[0].goal_reason_n == 0 { cp_goal_set_reason(s, "Paused by user."); }
+    cp_goal_set_notice(s, "Goal paused. Send a message or run /goal resume to continue.");
     return true;
   }
   if st == CP_GOAL_COMPLETE {
@@ -121,16 +316,40 @@ cp_goal_set_status :: (s: [] CoderPage, st: int) -> bool {
       s[0].turns[s[0].nturns - 1].stopping = true;
       s[0].ask = CP_ASK_STOP;
     }
+    cp_goal_clear_reason(s);
+    s[0].goal_consec_unmet = 0;
+    s[0].goal_retries = 0;
     cp_goal_set_notice(s, "Goal marked complete.");
     return true;
   }
+  if st == CP_GOAL_FAILED {
+    cp_goal_account_turn(s);
+    if cp_running(s) && !s[0].turns[s[0].nturns - 1].stopping {
+      s[0].turns[s[0].nturns - 1].stopping = true;
+      s[0].ask = CP_ASK_STOP;
+    }
+    if s[0].goal_reason_n == 0 { cp_goal_set_reason(s, "Goal marked infeasible / failed."); }
+    cp_goal_set_notice(s, "Goal marked failed. Run /goal edit to revise or /goal clear to remove.");
+    return true;
+  }
   if st == CP_GOAL_ACTIVE {
+    cp_goal_clear_reason(s);
+    s[0].goal_retries = 0;
+    s[0].goal_consec_unmet = 0;
+    s[0].goal_deferred_agents = 0;
     if cp_budget_exceeded(s) {
       s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+      cp_goal_set_reason(s, "Chat budget limit reached.");
       cp_goal_set_notice(s, "Chat budget is reached. Approve continuing above budget or increase the limit first.");
       return true;
     }
-    if !cp_running(s) && !cp_full(s) {
+    if cp_full(s) {
+      s[0].goal_status = CP_GOAL_PAUSED;
+      cp_goal_set_reason(s, "Chat reached its 1,000-message limit.");
+      cp_goal_set_notice(s, "Goal paused: this chat reached its 1,000-message limit.");
+      return true;
+    }
+    if !cp_running(s) {
       _ := cp_start_turn(s, "Continue working toward the active thread goal.", CP_GOAL_PROMPT_CONTINUE);
     }
     return true;
@@ -143,66 +362,239 @@ cp_goal_clear :: (s: [] CoderPage) -> bool {
   cp_goal_set_notice(s, ifx had then "Goal cleared." else "No active goal to clear.");
   return true;
 }
+// Normal user reply in composer: automatically resumes a paused or blocked goal and resets anti-spin counters.
+cp_goal_on_user_message :: (s: [] CoderPage) {
+  if s[0].goal_status == CP_GOAL_NONE || s[0].goal_objective_n == 0 { return; }
+  if s[0].goal_status == CP_GOAL_PAUSED || s[0].goal_status == CP_GOAL_BLOCKED {
+    if !cp_budget_exceeded(s) {
+      s[0].goal_status = CP_GOAL_ACTIVE;
+      cp_goal_clear_reason(s);
+      s[0].goal_notice_n = 0;
+      s[0].goal_retries = 0;
+      s[0].goal_consec_unmet = 0;
+      s[0].goal_deferred_agents = 0;
+    }
+  } else if s[0].goal_status == CP_GOAL_ACTIVE {
+    s[0].goal_retries = 0;
+    s[0].goal_consec_unmet = 0;
+  }
+}
+cp_goal_status_notice :: (s: [] CoderPage) {
+  if s[0].goal_status == CP_GOAL_NONE || s[0].goal_objective_n == 0 {
+    cp_goal_set_notice(s, "No active goal. Use /goal <objective> to set one.");
+    return;
+  }
+  nb: [CP_GOAL_NOTICE] u8; tb: [32] u8; cb: [32] u8; tkb: [32] u8;
+  n := el_put(nb[..], 0, "Goal (");
+  n = el_put(nb[..], n, cp_goal_status_label(s[0].goal_status));
+  n = el_put(nb[..], n, " · ");
+  n = el_put(nb[..], n, cp_goal_elapsed(tb[..], s[0].goal_time_seconds));
+  if s[0].goal_turns > 0 {
+    n = el_put(nb[..], n, " · ");
+    n = el_put_i(nb[..], n, s[0].goal_turns);
+    n = el_put(nb[..], n, ifx s[0].goal_turns == 1 then " turn" else " turns");
+  }
+  if s[0].goal_evals > 0 {
+    n = el_put(nb[..], n, " · ");
+    n = el_put_i(nb[..], n, s[0].goal_evals);
+    n = el_put(nb[..], n, ifx s[0].goal_evals == 1 then " check" else " checks");
+  }
+  cd := cp_goal_cost_delta(s);
+  if cd > 0 {
+    n = el_put(nb[..], n, " · ");
+    n = el_put(nb[..], n, cp_cost(cb[..], cd));
+  }
+  if s[0].goal_tokens > 0 {
+    n = el_put(nb[..], n, " · ");
+    n = el_put(nb[..], n, cp_tokens(tkb[..], s[0].goal_tokens));
+    n = el_put(nb[..], n, " tok");
+  }
+  n = el_put(nb[..], n, "): ");
+  obj_cut := ifx s[0].goal_objective_n > 180 then 180 else s[0].goal_objective_n;
+  n += cp_out(nb[n..<nb.count], cast(string) s[0].goal_objective[0..<obj_cut]);
+  if s[0].goal_objective_n > 180 { n = el_put(nb[..], n, "..."); }
+  if s[0].goal_reason_n > 0 {
+    n = el_put(nb[..], n, " — ");
+    n += cp_out(nb[n..<nb.count], cast(string) s[0].goal_reason[0..<s[0].goal_reason_n]);
+  }
+  cp_goal_set_notice(s, cast(string) nb[0..<n]);
+}
+cp_goal_handle_failure :: (s: [] CoderPage, ending: string, why: string) {
+  cls := cp_goal_classify_error(ending, why);
+  detail := cp_trim(why);
+  if detail.count == 0 { detail = ifx ending.count > 0 then ending else "Turn failed."; }
+  if cls == CP_GOAL_ERR_UNRECOVERABLE {
+    nb: [CP_GOAL_NOTICE] u8;
+    n := el_put(nb[..], 0, "Goal cleared due to unrecoverable error: ");
+    n += cp_out(nb[n..<nb.count], detail);
+    cp_goal_reset(s);
+    cp_goal_set_notice(s, cast(string) nb[0..<n]);
+    return;
+  }
+  if cls == CP_GOAL_ERR_TRANSIENT {
+    s[0].goal_retries += 1;
+    if s[0].goal_retries <= CP_GOAL_RETRY_MAX && !cp_budget_exceeded(s) && !cp_full(s) {
+      rb: [CP_GOAL_REASON] u8;
+      rn := el_put(rb[..], 0, "Transient error (retry ");
+      rn = el_put_i(rb[..], rn, s[0].goal_retries);
+      rn = el_put(rb[..], rn, "/");
+      rn = el_put_i(rb[..], rn, CP_GOAL_RETRY_MAX);
+      rn = el_put(rb[..], rn, "): ");
+      rn += cp_out(rb[rn..<rb.count], detail);
+      cp_goal_set_reason(s, cast(string) rb[0..<rn]);
+      nb: [CP_GOAL_NOTICE] u8;
+      nn := el_put(nb[..], 0, "Transient error; automatically retrying goal (");
+      nn = el_put_i(nb[..], nn, s[0].goal_retries);
+      nn = el_put(nb[..], nn, "/");
+      nn = el_put_i(nb[..], nn, CP_GOAL_RETRY_MAX);
+      nn = el_put(nb[..], nn, ").");
+      cp_goal_set_notice(s, cast(string) nb[0..<nn]);
+      _ := cp_start_turn(s, "Continue working toward the active thread goal after transient error.", CP_GOAL_PROMPT_CONTINUE);
+      return;
+    }
+    s[0].goal_status = CP_GOAL_PAUSED;
+    rb: [CP_GOAL_REASON] u8;
+    rn := el_put(rb[..], 0, "Paused after transient retries exhausted: ");
+    rn += cp_out(rb[rn..<rb.count], detail);
+    cp_goal_set_reason(s, cast(string) rb[0..<rn]);
+    cp_goal_set_notice(s, "Goal paused after 3 transient error retries failed. Reply or run /goal resume to retry.");
+    return;
+  }
+  s[0].goal_status = CP_GOAL_BLOCKED;
+  cp_goal_set_reason(s, detail);
+  cp_goal_set_notice(s, "Goal blocked because the turn failed. Reply or run /goal resume to retry.");
+}
+cp_goal_on_failed :: (s: [] CoderPage, why: string) {
+  cp_goal_account_turn(s);
+  if s[0].goal_status != CP_GOAL_ACTIVE || s[0].goal_objective_n == 0 { return; }
+  cp_goal_handle_failure(s, "worker_failed", why);
+}
 cp_goal_on_turn_end :: (s: [] CoderPage, i: int, ending: string, text: string) {
   cp_goal_account_turn(s);
   if s[0].goal_status != CP_GOAL_ACTIVE || s[0].goal_objective_n == 0 { return; }
-  if s[0].turns[i].stopping {
+  if s[0].turns[i].stopping || ending == "stopped" {
     if cp_budget_exceeded(s) {
       s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+      cp_goal_set_reason(s, "Chat budget limit reached.");
       cp_goal_set_notice(s, "Goal reached the chat budget. Approve or increase budget, then run /goal resume.");
     } else {
       s[0].goal_status = CP_GOAL_PAUSED;
+      cp_goal_set_reason(s, "Stopped by user.");
+      cp_goal_set_notice(s, "Goal paused. Send a message or run /goal resume to continue.");
     }
     return;
   }
   if ending == "asked" {
     s[0].goal_status = CP_GOAL_BLOCKED;
+    rb: [CP_GOAL_REASON] u8;
+    reply_a := ifx text.count > 0 then text else cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n];
+    cp_goal_set_reason(s, cp_goal_extract_summary(reply_a, "", "Waiting for user answer.", rb[..]));
     cp_goal_set_notice(s, "Goal waiting for your input. Reply or run /goal resume.");
     return;
   }
-  if ending != "finished" {
-    s[0].goal_status = CP_GOAL_BLOCKED;
-    cp_goal_set_notice(s, "Goal blocked because the turn failed. Run /goal resume to retry.");
+  if ending != "finished" || s[0].turns[i].state == CP_FAILED {
+    why := ifx s[0].turns[i].note_n > 0 then cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n] else text;
+    cp_goal_handle_failure(s, ending, why);
     return;
   }
+  s[0].goal_retries = 0;
   reply := ifx text.count > 0 then text else cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n];
+  if cp_contains(reply, "[GOAL_IMPOSSIBLE]") || cp_contains(reply, "[GOAL_FAILED]") {
+    s[0].goal_status = CP_GOAL_FAILED;
+    rb: [CP_GOAL_REASON] u8;
+    marker := ifx cp_contains(reply, "[GOAL_IMPOSSIBLE]") then "[GOAL_IMPOSSIBLE]" else "[GOAL_FAILED]";
+    cp_goal_set_reason(s, cp_goal_extract_summary(reply, marker, "Goal cannot be satisfied under current constraints.", rb[..]));
+    cp_goal_set_notice(s, "Goal failed / impossible. Review reason above, or run /goal edit or /goal clear.");
+    return;
+  }
   if cp_contains(reply, "[GOAL_COMPLETE]") {
+    if s[0].goal_deferred_agents > 0 {
+      if cp_budget_exceeded(s) {
+        s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+        cp_goal_set_reason(s, "Chat budget reached while deferring closure for active subagents.");
+        cp_goal_set_notice(s, "The agent says the goal is done, but the chat budget is reached before subagents settled. Approve or increase budget, then run /goal resume.");
+        return;
+      }
+      if cp_full(s) {
+        s[0].goal_status = CP_GOAL_PAUSED;
+        cp_goal_set_reason(s, "Chat reached its 1,000-message limit while subagents were active.");
+        cp_goal_set_notice(s, "The agent says the goal is done, but this chat reached its 1,000-message limit before subagents settled. Check it, then run /goal complete.");
+        return;
+      }
+      s[0].goal_evals += 1;
+      cp_goal_set_reason(s, "Deferred goal closure while subagents were still running.");
+      cp_goal_set_notice(s, "Subagents were still running when completion was claimed. Rechecking before closing.");
+      _ := cp_start_turn(s, "Check subagent results and verify the work against the goal before it closes.", CP_GOAL_PROMPT_AUDIT);
+      return;
+    }
     // A claim of done is checked before it closes the goal: one more turn re-reads the goal and every
     // issue it names and runs the real thing, and only a [GOAL_COMPLETE] from that check counts. A
     // model's first "done" closed seven issues on toy stand-ins (an Inkling 2 Mini with a vocabulary
     // of 4) and asked once, "can it run inference?", it said no; the check asks that every time.
     if s[0].goal_prompt_kind == CP_GOAL_PROMPT_AUDIT {
       s[0].goal_status = CP_GOAL_COMPLETE;
+      cp_goal_clear_reason(s);
+      s[0].goal_consec_unmet = 0;
       cp_goal_set_notice(s, "Goal completed and checked.");
       return;
     }
     if cp_budget_exceeded(s) {
       s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+      cp_goal_set_reason(s, "Chat budget reached before completion audit.");
       cp_goal_set_notice(s, "The agent says the goal is done, but the chat budget is reached before the work was checked. Approve or increase budget, then run /goal resume.");
       return;
     }
     if cp_full(s) {
       s[0].goal_status = CP_GOAL_PAUSED;
+      cp_goal_set_reason(s, "Chat reached its 1,000-message limit before completion audit.");
       cp_goal_set_notice(s, "The agent says the goal is done, but this chat is full, so the work was not checked. Check it, then run /goal complete.");
       return;
     }
+    s[0].goal_evals += 1;
+    cp_goal_clear_reason(s);
     cp_goal_set_notice(s, "The agent says the goal is done. Checking the work before the goal closes.");
     _ := cp_start_turn(s, "Check the work against the goal before it closes.", CP_GOAL_PROMPT_AUDIT);
     return;
   }
   if cp_contains(reply, "[GOAL_BLOCKED]") {
     s[0].goal_status = CP_GOAL_BLOCKED;
+    rb: [CP_GOAL_REASON] u8;
+    cp_goal_set_reason(s, cp_goal_extract_summary(reply, "[GOAL_BLOCKED]", "Needs user input.", rb[..]));
     cp_goal_set_notice(s, "Goal blocked: needs user input. Reply or run /goal resume.");
     return;
   }
+  if s[0].goal_prompt_kind == CP_GOAL_PROMPT_AUDIT {
+    rb: [CP_GOAL_REASON] u8;
+    cp_goal_set_reason(s, cp_goal_extract_summary(reply, "", "Audit found remaining unmet criteria.", rb[..]));
+  } else if s[0].goal_deferred_agents > 0 {
+    cp_goal_set_reason(s, "Background subagents were still active at turn end; checking progress.");
+  }
   if cp_budget_exceeded(s) {
     s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+    cp_goal_set_reason(s, "Chat budget limit reached.");
     cp_goal_set_notice(s, "Goal reached the chat budget. Approve or increase budget, then run /goal resume.");
     return;
   }
   if cp_full(s) {
     s[0].goal_status = CP_GOAL_PAUSED;
-    cp_goal_set_notice(s, "Goal paused: this chat reached its 24-message limit.");
+    cp_goal_set_reason(s, "Chat reached its 1,000-message limit.");
+    cp_goal_set_notice(s, "Goal paused: this chat reached its 1,000-message limit.");
+    return;
+  }
+  s[0].goal_consec_unmet += 1;
+  cap := cp_goal_cap(s);
+  if cap > 0 && s[0].goal_consec_unmet >= cap {
+    s[0].goal_status = CP_GOAL_PAUSED;
+    rb: [CP_GOAL_REASON] u8;
+    rn := el_put(rb[..], 0, "Paused after ");
+    rn = el_put_i(rb[..], rn, s[0].goal_consec_unmet);
+    rn = el_put(rb[..], rn, " consecutive autonomous turns without completing the goal.");
+    cp_goal_set_reason(s, cast(string) rb[0..<rn]);
+    nb: [CP_GOAL_NOTICE] u8;
+    nn := el_put(nb[..], 0, "Goal paused after ");
+    nn = el_put_i(nb[..], nn, s[0].goal_consec_unmet);
+    nn = el_put(nb[..], nn, " consecutive turns. Review progress, reply, or run /goal resume to continue.");
+    cp_goal_set_notice(s, cast(string) nb[0..<nn]);
     return;
   }
   _ := cp_start_turn(s, "Continue working toward the active thread goal.", CP_GOAL_PROMPT_CONTINUE);
@@ -231,10 +623,11 @@ cp_goal_slash :: (s: [] CoderPage, raw: string) -> bool {
       s[0].ask = CP_ASK_GOAL;
       return true;
     }
+    if cp_eq_ci(cmd, "status") { cp_goal_status_notice(s); return true; }
     if cp_eq_ci(cmd, "pause") { _ := cp_goal_set_status(s, CP_GOAL_PAUSED); return true; }
     if cp_eq_ci(cmd, "resume") { _ := cp_goal_set_status(s, CP_GOAL_ACTIVE); return true; }
     if cp_eq_ci(cmd, "complete") || cp_eq_ci(cmd, "done") { _ := cp_goal_set_status(s, CP_GOAL_COMPLETE); return true; }
-    if cp_eq_ci(cmd, "clear") { _ := cp_goal_clear(s); return true; }
+    if cp_goal_is_clear_word(cmd) { _ := cp_goal_clear(s); return true; }
     if cp_eq_ci(cmd, "help") { cp_goal_set_notice(s, CP_GOAL_USAGE); return true; }
   }
   _ := cp_goal_start_or_update(s, rest);
@@ -321,16 +714,32 @@ coder_page_budget_approve :: (s: [] CoderPage) -> bool #export_c #effects(all) {
 }
 coder_page_goal_status :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].goal_status else CP_GOAL_NONE; }
 coder_page_goal_time :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].goal_time_seconds else 0; }
+coder_page_goal_turns :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].goal_turns else 0; }
+coder_page_goal_evals :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].goal_evals else 0; }
+coder_page_goal_tokens :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].goal_tokens else 0; }
+coder_page_goal_cost_usd_micros :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_goal_cost_delta(s) else 0; }
 coder_page_goal_objective :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].goal_objective_n == 0 { return 0; }
   return cp_out(out, cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
+}
+coder_page_goal_reason :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].goal_reason_n == 0 { return 0; }
+  return cp_out(out, cast(string) s[0].goal_reason[0..<s[0].goal_reason_n]);
+}
+coder_page_goal_max_consec :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then cp_goal_cap(s) else CP_GOAL_CONSEC_DEFAULT;
+}
+coder_page_goal_set_max_consec :: (s: [] CoderPage, cap: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || cap < -1 { return false; }
+  s[0].goal_max_consec = cap;
+  return true;
 }
 coder_page_goal_set :: (s: [] CoderPage, objective: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   return cp_goal_start_or_update(s, objective);
 }
 coder_page_goal_set_status :: (s: [] CoderPage, status: int) -> bool #export_c #effects(all) {
-  if s.count < 1 || status < CP_GOAL_ACTIVE || status > CP_GOAL_BUDGET_LIMITED { return false; }
+  if s.count < 1 || status < CP_GOAL_ACTIVE || status > CP_GOAL_FAILED { return false; }
   return cp_goal_set_status(s, status);
 }
 coder_page_goal_clear :: (s: [] CoderPage) -> bool #export_c #effects(all) {

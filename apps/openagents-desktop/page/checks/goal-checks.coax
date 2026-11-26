@@ -189,3 +189,129 @@
   #assert coder_page_running(s) && !s[0].turns[s[0].nturns - 1].stopping;
   #assert coder_page_action(s) == CP_ASK_SEND;
 }
+
+#test "/goal clear aliases, status subcommand, visible-text and 4096-byte cap validation" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  // All clear aliases clear an active goal instead of starting a goal named "stop" or "cancel".
+  aliases := [6] string.["clear", "stop", "OFF", "reset", "None", "Cancel"];
+  for alias: aliases {
+    #assert coder_page_set_text(s, "/goal finish audit") && coder_page_submit(s);
+    #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+    #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\"}") == MWW_ENDED;
+    cmd_buf: [32] u8;
+    cn := el_put(cmd_buf[..], 0, "/goal ");
+    cn = el_put(cmd_buf[..], cn, alias);
+    #assert coder_page_set_text(s, cast(string) cmd_buf[0..<cn]) && coder_page_submit(s);
+    #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  }
+  // Control-only / invisible objective is rejected.
+  ctrl := [3] u8.[1, 2, 31];
+  #assert !coder_page_goal_set(s, cast(string) ctrl[..]);
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  // Over-limit (> 4096 B) objective is rejected explicitly rather than silently truncated.
+  big: [CP_GOAL_TEXT + 16] u8;
+  for k: 0..<big.count { big[k] = 'a'; }
+  #assert !coder_page_goal_set(s, cast(string) big[..]);
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  #assert cp_contains(cast(string) s[0].goal_notice[0..<s[0].goal_notice_n], "limited to 4096 bytes");
+  // Exact 4096 B objective is accepted.
+  #assert coder_page_goal_set(s, cast(string) big[0..<CP_GOAL_TEXT]);
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+  #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"usd_micros\":25000,\"output_tokens\":420}") == MWW_ATTEMPT;
+  #assert coder_page_goal_tokens(s) == 420 && coder_page_goal_cost_usd_micros(s) == 25000;
+  // /goal status prints a rich summary notice.
+  #assert coder_page_set_text(s, "/goal status") && coder_page_submit(s);
+  notice := cast(string) s[0].goal_notice[0..<s[0].goal_notice_n];
+  #assert cp_contains(notice, "Goal (Active") && cp_contains(notice, "420 tok") && cp_contains(notice, "$0.03");
+}
+
+#test "/goal [GOAL_IMPOSSIBLE] sets CP_GOAL_FAILED, extracts reason, notifies failure, and persists across save/load/take" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  q: [1] CoderPage; q_st: [1] CpCheckLean; b := cp_check_lean(q[..], q_st[..]);
+  cp_init(s); cp_init(b);
+  #assert coder_page_set_text(s, "/goal build perpetual motion engine") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Violates thermodynamics.\\n[GOAL_IMPOSSIBLE] First and second laws forbid it.\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_FAILED;
+  #assert !coder_page_running(s);
+  rb: [512] u8;
+  rn := coder_page_goal_reason(s, rb[..]);
+  #assert cp_contains(cast(string) rb[0..<rn], "First and second laws forbid it.");
+  #assert cp_notify_goal_event(CP_GOAL_ACTIVE, CP_GOAL_FAILED) == CP_NOTIFY_EV_TURN_FAILED;
+  // Save / load round-trip preserves CP_GOAL_FAILED, reason, evals, tokens, cost_start, max_consec.
+  #assert coder_page_goal_set_max_consec(s, 5);
+  kept: [8192] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_goal_status(s) == CP_GOAL_NONE;
+  #assert coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert coder_page_goal_status(s) == CP_GOAL_FAILED;
+  #assert coder_page_goal_max_consec(s) == 5;
+  rn2 := coder_page_goal_reason(s, rb[..]);
+  #assert cp_contains(cast(string) rb[0..<rn2], "First and second laws forbid it.");
+  // Transfer via coder_page_take preserves reason & status and resets source.
+  #assert coder_page_take(b, s);
+  #assert coder_page_goal_status(b) == CP_GOAL_FAILED && coder_page_goal_status(s) == CP_GOAL_NONE;
+  rn3 := coder_page_goal_reason(b, rb[..]);
+  #assert cp_contains(cast(string) rb[0..<rn3], "First and second laws forbid it.");
+}
+
+#test "/goal reply-to-resume, consecutive-unmet cap, and audit feedback injection" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_goal_set_max_consec(s, 2);
+  #assert coder_page_set_text(s, "/goal close all gaps") && coder_page_submit(s);
+  // Turn 1 ends unmet -> consec 1 -> auto-continues.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Step 1 done.\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  // Turn 2 ends unmet -> consec 2 == cap -> auto-pauses with reason!
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Step 2 done.\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_PAUSED && !coder_page_running(s);
+  rb: [512] u8; rn := coder_page_goal_reason(s, rb[..]);
+  #assert cp_contains(cast(string) rb[0..<rn], "2 consecutive autonomous turns");
+  // Sending a regular user message automatically resumes the paused goal and clears the reason!
+  #assert coder_page_set_text(s, "Keep going on step 3") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  #assert coder_page_goal_reason(s, rb[..]) == 0;
+  // Claim done -> triggers audit (evals == 1); audit rejects -> injects <goal_feedback> in next turn.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done now.\\n[GOAL_COMPLETE]\"}") == MWW_ENDED;
+  #assert coder_page_goal_evals(s) == 1 && coder_page_running(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Missing test coverage for retry exhaustion.\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  tbuf: [8192] u8; tn := coder_page_task(s, "s2", "/tmp", tbuf[..]);
+  #assert tn > 0 && cp_contains(cast(string) tbuf[0..<tn], "<goal_feedback>") && cp_contains(cast(string) tbuf[0..<tn], "Missing test coverage for retry exhaustion.");
+  // Blocked goal also resumes on normal user reply.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Need API token.\\n[GOAL_BLOCKED] Missing token.\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_BLOCKED && !coder_page_running(s);
+  #assert coder_page_set_text(s, "Added the token to env") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+}
+
+#test "/goal interruption recovery: transient auto-retry cap, unrecoverable auto-clear, and subagent deferral" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_set_text(s, "/goal recover cleanly") && coder_page_submit(s);
+  // 3 consecutive transient failures via coder_page_failed auto-retry; 4th pauses with reason.
+  coder_page_failed(s, "HTTP 503 service unavailable");
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  coder_page_failed(s, "request timed out");
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  coder_page_failed(s, "HTTP 429 rate limit exceeded");
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  coder_page_failed(s, "connection reset by peer");
+  #assert coder_page_goal_status(s) == CP_GOAL_PAUSED && !coder_page_running(s);
+  rb: [512] u8; rn := coder_page_goal_reason(s, rb[..]);
+  #assert cp_contains(cast(string) rb[0..<rn], "transient retries exhausted");
+  // Resume and hit an unrecoverable error (401 auth) -> clears goal with warning notice.
+  #assert coder_page_set_text(s, "/goal resume") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  coder_page_failed(s, "HTTP 401 invalid api key");
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE && !coder_page_running(s);
+  #assert cp_contains(cast(string) s[0].goal_notice[0..<s[0].goal_notice_n], "unrecoverable error");
+  // Subagent deferral: if a subagent is still running when [GOAL_COMPLETE] arrives, closure is deferred.
+  #assert coder_page_set_text(s, "/goal verify subagents") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":1,\"tasks\":[{\"level\":\"quick\",\"task\":\"run checks\"}]}") == MWW_DELEGATE;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"All done.\\n[GOAL_COMPLETE]\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  tbuf: [8192] u8; tn := coder_page_task(s, "s3", "/tmp", tbuf[..]);
+  #assert tn > 0 && cp_contains(cast(string) tbuf[0..<tn], "<goal_deferral>");
+}

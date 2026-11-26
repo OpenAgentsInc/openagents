@@ -38,9 +38,17 @@ extension CoderWindow {
                 let gs = cd_goal_status(p)
                 if gs != 0 {
                     item["goal_status"] = CoderWindow.goalStatusName(gs)
+                    item["goal_turns"] = Int(cd_goal_turns(p))
+                    item["goal_evals"] = Int(cd_goal_evals(p))
+                    item["goal_tokens"] = Int(cd_goal_tokens(p))
+                    item["goal_cost_usd_micros"] = Int(cd_goal_cost_usd_micros(p))
                     var buf = [CChar](repeating: 0, count: 512)
                     if cd_goal_objective(p, &buf, Int32(buf.count)) > 0 {
                         item["goal_objective"] = String(cString: buf)
+                    }
+                    var rbuf = [CChar](repeating: 0, count: 513)
+                    if cd_goal_reason(p, &rbuf, Int32(rbuf.count)) > 0 {
+                        item["goal_reason"] = String(cString: rbuf)
                     }
                 }
             }
@@ -130,6 +138,10 @@ extension CoderWindow {
         if let gs = obj["goal_status"] as? Int, gs != 0 {
             body["goal_status"] = CoderWindow.goalStatusName(Int32(gs))
             if let gobj = obj["goal_objective"] as? String { body["goal_objective"] = gobj }
+            if let gturns = obj["goal_turns"] as? Int { body["goal_turns"] = gturns }
+            if let gevals = obj["goal_evals"] as? Int { body["goal_evals"] = gevals }
+            if let gtoks = obj["goal_tokens"] as? Int { body["goal_tokens"] = gtoks }
+            if let greason = obj["goal_reason"] as? String, !greason.isEmpty { body["goal_reason"] = greason }
         }
         return ForemanResponse(status: 200, body: body)
     }
@@ -376,14 +388,20 @@ extension CoderWindow {
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "budget_usd": budgetUSD])
         case "set_goal", "goal", "pause_goal", "resume_goal", "resume", "clear_goal":
             let goalStatus = ((payload["goal_status"] as? String) ?? "").lowercased()
+            let maxConsec = payload["max_consecutive"] as? Int
+            let clearWords: Set<String> = ["clear", "none", "stop", "off", "reset", "cancel"]
             let applyGoal: (UnsafeMutableRawPointer) -> Bool = { p in
+                if let cap = maxConsec { _ = cd_goal_set_max_consec(p, Int32(cap)) }
                 switch action {
                 case "set_goal", "goal":
                     if goalStatus == "paused" || goalStatus == "pause" { return cd_goal_set_status(p, 2) != 0 }
                     if goalStatus == "active" || goalStatus == "resume" { return cd_goal_set_status(p, 1) != 0 }
-                    if goalStatus == "clear" || goalStatus == "none" { return cd_goal_clear(p) != 0 }
+                    if goalStatus == "complete" || goalStatus == "done" { return cd_goal_set_status(p, 3) != 0 }
+                    if goalStatus == "failed" || goalStatus == "impossible" { return cd_goal_set_status(p, 6) != 0 }
+                    if clearWords.contains(goalStatus) { return cd_goal_clear(p) != 0 }
                     let rawObj = (payload["objective"] as? String) ?? (payload["goal"] as? String) ?? ""
                     let obj = rawObj.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if obj.isEmpty && maxConsec != nil { return true }
                     guard !obj.isEmpty else { return false }
                     return cd_goal_set(p, obj) != 0
                 case "pause_goal": return cd_goal_set_status(p, 2) != 0

@@ -536,15 +536,32 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
     f[0].skin.motion.enter = enter0;
   }
   if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
-    gb: [640] u8; tb_el: [32] u8;
+    gb: [1024] u8; tb_el: [32] u8; gcb: [32] u8; gtkb: [32] u8;
     gn := el_put(gb[..], 0, "Goal ("); gn = el_put(gb[..], gn, cp_goal_status_label(s[0].goal_status));
     gn = el_put(gb[..], gn, " · "); gn = el_put(gb[..], gn, cp_goal_elapsed(tb_el[..], s[0].goal_time_seconds));
+    if s[0].goal_turns > 0 {
+      gn = el_put(gb[..], gn, " · "); gn = el_put_i(gb[..], gn, s[0].goal_turns);
+      gn = el_put(gb[..], gn, ifx s[0].goal_turns == 1 then " turn" else " turns");
+    }
+    if s[0].goal_evals > 0 {
+      gn = el_put(gb[..], gn, " · "); gn = el_put_i(gb[..], gn, s[0].goal_evals);
+      gn = el_put(gb[..], gn, ifx s[0].goal_evals == 1 then " check" else " checks");
+    }
+    gcost := cp_goal_cost_delta(s);
+    if gcost > 0 { gn = el_put(gb[..], gn, " · "); gn = el_put(gb[..], gn, cp_cost(gcb[..], gcost)); }
+    if s[0].goal_tokens > 0 { gn = el_put(gb[..], gn, " · "); gn = el_put(gb[..], gn, cp_tokens(gtkb[..], s[0].goal_tokens)); gn = el_put(gb[..], gn, " tok"); }
     gn = el_put(gb[..], gn, "): ");
     obj_cut := ifx s[0].goal_objective_n > 280 then 280 else s[0].goal_objective_n;
     gn += cp_out(gb[gn..<gb.count], cast(string) s[0].goal_objective[0..<obj_cut]);
     if s[0].goal_objective_n > 280 { gn = el_put(gb[..], gn, "..."); }
+    if s[0].goal_reason_n > 0 {
+      gn = el_put(gb[..], gn, " — ");
+      rcut := ifx s[0].goal_reason_n > 220 then 220 else s[0].goal_reason_n;
+      gn += cp_out(gb[gn..<gb.count], cast(string) s[0].goal_reason[0..<rcut]);
+      if s[0].goal_reason_n > 220 { gn = el_put(gb[..], gn, "..."); }
+    }
     f[0].skin.motion.enter = 0;
-    gkind := ifx s[0].goal_status == CP_GOAL_BLOCKED || s[0].goal_status == CP_GOAL_BUDGET_LIMITED then APP_NOTICE_ERROR else APP_NOTICE_INFO;
+    gkind := ifx s[0].goal_status == CP_GOAL_BLOCKED || s[0].goal_status == CP_GOAL_BUDGET_LIMITED || s[0].goal_status == CP_GOAL_FAILED then APP_NOTICE_ERROR else APP_NOTICE_INFO;
     y += app_notice(f, "coder.goal.banner", x, y, cw, sheet_pool(f[0].sheet, cast(string) gb[0..<gn]), gkind) + a.gap_small;
     f[0].skin.motion.enter = enter0;
     tlabel := ifx s[0].goal_status == CP_GOAL_ACTIVE then "Pause goal" else "Resume goal";
@@ -556,7 +573,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
     bh := app_button(f, "coder.goal.toggle", bx, y, tw, -1, tlabel, APP_BUTTON_DEFAULT, 0, CP_GOAL_TOGGLE);
     bx += tw + a.gap_small;
     if bx + ew <= x + cw { _ := app_button(f, "coder.goal.edit", bx, y, ew, -1, "Edit goal", APP_BUTTON_DEFAULT, 0, CP_GOAL_OPEN); bx += ew + a.gap_small; }
-    if s[0].goal_status != CP_GOAL_COMPLETE && bx + cw_btn <= x + cw { _ := app_button(f, "coder.goal.complete", bx, y, cw_btn, -1, "Complete", APP_BUTTON_DEFAULT, 0, CP_GOAL_COMPLETE_ACT); bx += cw_btn + a.gap_small; }
+    if s[0].goal_status != CP_GOAL_COMPLETE && s[0].goal_status != CP_GOAL_FAILED && bx + cw_btn <= x + cw { _ := app_button(f, "coder.goal.complete", bx, y, cw_btn, -1, "Complete", APP_BUTTON_DEFAULT, 0, CP_GOAL_COMPLETE_ACT); bx += cw_btn + a.gap_small; }
     if bx + xw <= x + cw { _ := app_button(f, "coder.goal.clear", bx, y, xw, -1, "Clear", APP_BUTTON_DEFAULT, 0, CP_GOAL_CLEAR_ACT); }
     y += bh + a.gap;
   }

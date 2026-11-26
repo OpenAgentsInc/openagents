@@ -71,10 +71,11 @@ cp_notify_decide :: (mode: int, event: int, app_focused: bool, is_active_chat: b
 }
 
 // Maps a /goal status transition to a notification event kind (0 when no notification is needed).
-// Blocked and budget-limited goals need user attention; completed goals announce completion.
+// Blocked and budget-limited goals need user attention; failed goals alert turn failure; completed goals announce completion.
 cp_notify_goal_event :: (old_status: int, new_status: int) -> int {
   if old_status == new_status { return CP_NOTIFY_EV_NONE; }
   if new_status == CP_GOAL_COMPLETE { return CP_NOTIFY_EV_GOAL_CHANGE; }
+  if new_status == CP_GOAL_FAILED { return CP_NOTIFY_EV_TURN_FAILED; }
   if new_status == CP_GOAL_BLOCKED || new_status == CP_GOAL_BUDGET_LIMITED { return CP_NOTIFY_EV_NEED_INPUT; }
   return CP_NOTIFY_EV_NONE;
 }

@@ -356,10 +356,17 @@ int64_t cd_budget_usd_micros(void *page);
 int cd_set_budget_usd_micros(void *page, int64_t micros);
 int cd_budget_exceeded(void *page);
 int cd_budget_approve(void *page);
-// Active thread goal (/goal): status (0=none, 1=active, 2=paused, 3=complete, 4=blocked, 5=budget_limited).
+// Active thread goal (/goal): status (0=none, 1=active, 2=paused, 3=complete, 4=blocked, 5=budget_limited, 6=failed).
 int cd_goal_status(void *page);
 int cd_goal_time(void *page);
+int cd_goal_turns(void *page);
+int cd_goal_evals(void *page);
+int cd_goal_tokens(void *page);
+int64_t cd_goal_cost_usd_micros(void *page);
 int cd_goal_objective(void *page, char *out, int cap);
+int cd_goal_reason(void *page, char *out, int cap);
+int cd_goal_max_consec(void *page);
+int cd_goal_set_max_consec(void *page, int cap);
 int cd_goal_set(void *page, const char *objective);
 int cd_goal_set_status(void *page, int status);
 int cd_goal_clear(void *page);

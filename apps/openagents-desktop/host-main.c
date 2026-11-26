@@ -1704,8 +1704,24 @@ static void ask_goal(DesktopApp *a) {
   int status = cd_goal_status(a->page);
   char current[4097] = {0};
   if (cd_goal_objective(a->page, current, (int)sizeof current) <= 0) current[0] = '\0';
-  cd_dialog_begin(a->page, 1, status == 0 ? "Set Thread Goal" : "Edit Thread Goal",
-                  "Describe a long-running objective. Coder works on it across turns until it is done, paused, or reaches the chat budget.");
+  char reason[513] = {0};
+  if (cd_goal_reason(a->page, reason, (int)sizeof reason) <= 0) reason[0] = '\0';
+  char body[1024];
+  if (status == 0) {
+    snprintf(body, sizeof body, "Describe a long-running objective. Coder works on it across turns until it is done, paused, or reaches the chat budget.");
+  } else {
+    const char *label = status == 1 ? "Active" : status == 2 ? "Paused" : status == 3 ? "Complete" : status == 4 ? "Blocked" : status == 5 ? "Budget limit" : status == 6 ? "Failed" : "None";
+    int elapsed = cd_goal_time(a->page);
+    int turns = cd_goal_turns(a->page);
+    int evals = cd_goal_evals(a->page);
+    double gcost = (double)cd_goal_cost_usd_micros(a->page) / 1e6;
+    if (reason[0]) {
+      snprintf(body, sizeof body, "Status: %s · %ds · %d turns · %d checks · $%.2f. Reason: %s", label, elapsed, turns, evals, gcost, reason);
+    } else {
+      snprintf(body, sizeof body, "Status: %s · %ds · %d turns · %d checks · $%.2f. Update the objective or change the goal state.", label, elapsed, turns, evals, gcost);
+    }
+  }
+  cd_dialog_begin(a->page, 1, status == 0 ? "Set Thread Goal" : "Edit Thread Goal", body);
   cd_dialog_field(a->page, "", current, "", 0, 5);
   int n = 0;
   if (status != 0) { cd_dialog_button(a->page, "Clear", 1, 1); cd_dialog_button(a->page, status == 1 ? "Pause" : "Resume", 1, 1); n = 2; }

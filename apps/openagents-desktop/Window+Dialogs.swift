@@ -816,10 +816,27 @@ extension CoderWindow {
             case 3: label = "Complete"
             case 4: label = "Blocked"
             case 5: label = "Budget limit"
+            case 6: label = "Failed"
             default: label = "None"
             }
             let timeStr = elapsed < 60 ? "\(elapsed)s" : "\(elapsed / 60)m"
-            d.body = "Status: \(label) · Elapsed: \(timeStr). Update the objective below or change the goal state."
+            let turns = cd_goal_turns(page)
+            let evals = cd_goal_evals(page)
+            let tokens = cd_goal_tokens(page)
+            let costMicros = cd_goal_cost_usd_micros(page)
+            var parts = ["Status: \(label)", "Elapsed: \(timeStr)"]
+            if turns > 0 { parts.append("\(turns) \(turns == 1 ? "turn" : "turns")") }
+            if evals > 0 { parts.append("\(evals) \(evals == 1 ? "check" : "checks")") }
+            if costMicros > 0 { parts.append(String(format: "$%.2f", Double(costMicros) / 1_000_000.0)) }
+            if tokens > 0 { parts.append("\(tokens) tok") }
+            var rbuf = [CChar](repeating: 0, count: 513)
+            let rn = cd_goal_reason(page, &rbuf, Int32(rbuf.count))
+            let reason = rn > 0 ? String(cString: rbuf) : ""
+            if reason.isEmpty {
+                d.body = parts.joined(separator: " · ") + ". Update the objective below or change the goal state."
+            } else {
+                d.body = parts.joined(separator: " · ") + "\nReason: \(reason)"
+            }
         }
         // a box of five lines: Return makes a new line, Command-Return saves
         d.fields = [.init(value: current, lines: 5)]

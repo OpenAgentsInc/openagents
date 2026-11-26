@@ -60,10 +60,12 @@ enum ThreadProofModel {
     static func goalVerdictLabel(_ status: Int32) -> String {
         switch status {
         case 0: return "No /goal active"
-        case 1: return "/goal: running"
-        case 2: return "/goal: verifying acceptance criteria"
+        case 1: return "/goal: active"
+        case 2: return "/goal: paused"
         case 3: return "/goal: verified complete"
         case 4: return "/goal: blocked (needs owner input)"
+        case 5: return "/goal: budget limited"
+        case 6: return "/goal: failed (impossible)"
         default: return "/goal: status \(status)"
         }
     }
