@@ -490,7 +490,7 @@ extension CoderWindow {
         if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
         #endif
         #if OA_WALLET
-        if FeatureFlags.isOn(.wallet) { syncWalletSettings() }
+        syncWalletSettings()
         #endif
         if cd_settings_page(page) == 6 { refreshUsageDashboard() }
         #if OA_FULL

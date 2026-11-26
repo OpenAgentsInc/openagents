@@ -1,0 +1,257 @@
+// Coder Desktop page (../page.coax): Bitcoin Spark + read-only Nostr key pair wallet pane.
+// Opened from the wallet icon button in the bottom-left sidebar utility bar.
+// Never stores or displays private keys / nsec / seed phrases; only shows read-only
+// public Bitcoin balance, Spark address, and NIP-06 Nostr public key metadata.
+
+CP_SCR_WALLET :: 13;
+
+CpWalletPane :: struct {
+  open: bool;
+  has_seed: bool;
+  scroll: f32; content: f32; view: f32;
+  scr: [1] UiScroll;
+  btc_balance: [64] u8; btc_balance_n: int;
+  nostr_hex: [72] u8; nostr_hex_n: int;
+  nostr_path: [64] u8; nostr_path_n: int;
+  nostr_custody: [128] u8; nostr_custody_n: int;
+  nostr_status: [128] u8; nostr_status_n: int;
+}
+
+cp_wallet_pane_init :: (s: [] CoderPage) {
+  s[0].wallet[0] = CpWalletPane.{};
+}
+
+cp_wallet_pane_open :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return false; }
+  s[0].set_open = false;
+  s[0].dash[0].open = false;
+  s[0].gym_open = false;
+  s[0].model_menu = false;
+  s[0].effort_menu = false;
+  s[0].side_drawer = false;
+  s[0].wallet[0].open = true;
+  s[0].wallet[0].scroll = 0.0f32;
+  s[0].ask = CP_ASK_WALLET_OPEN;
+  return true;
+}
+
+cp_wallet_pane_close :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  s[0].wallet[0].open = false;
+}
+
+cp_wallet_pane_toggle :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return false; }
+  if s[0].wallet[0].open {
+    s[0].wallet[0].open = false;
+    return true;
+  }
+  return cp_wallet_pane_open(s);
+}
+
+cp_wallet_pane_scroll :: (s: [] CoderPage, delta: f32) {
+  if s.count < 1 || !s[0].wallet[0].open { return; }
+  s[0].wallet[0].scroll = scroll_clamp(s[0].wallet[0].scroll + delta, s[0].wallet[0].content, s[0].wallet[0].view);
+}
+
+cp_wallet_pane_press :: (s: [] CoderPage, id: string) -> bool {
+  if s.count < 1 { return false; }
+  if id == "wallet.pane.connect" {
+    s[0].ask = ifx s[0].set_wallet_ready then CP_ASK_WALLET_REFRESH else CP_ASK_WALLET_CONNECT;
+    return true;
+  }
+  if id == "wallet.pane.refresh" {
+    s[0].ask = CP_ASK_WALLET_REFRESH;
+    return true;
+  }
+  if id == "wallet.pane.copy.npub" {
+    s[0].ask = CP_ASK_WALLET_COPY_NPUB;
+    return true;
+  }
+  if id == "wallet.pane.copy.hex" {
+    s[0].ask = CP_ASK_WALLET_COPY_HEX;
+    return true;
+  }
+  if id == "wallet.pane.copy.addr" {
+    s[0].ask = CP_ASK_WALLET_COPY_ADDR;
+    return true;
+  }
+  return false;
+}
+
+// Draw a compact read-only key/value row inside a Wallet pane card, with optional right-aligned Copy button.
+cp_wallet_kv_row :: (f: [] UiFrame, id: string, label: string, value: string, mono: bool, copy_id: string, x: f32, y_in: f32, w: f32, divider: bool) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  y := y_in;
+  if divider {
+    sheet_fill(sh, x, y, w, k.border, 0, k.hairline);
+    y += 12.0f32;
+  }
+  row_top := y;
+  val_face := ifx mono then FONT_MONO_12 else k.body.face;
+  val_line := ifx mono then 18.0f32 else k.body.line;
+  btn_w: f32 = 0.0f32;
+  btn_h: f32 = 24.0f32;
+  if copy_id.count > 0 {
+    btn_w = app_button_width(f, ICON_COPY, "Copy");
+  }
+  text_w := w - (ifx btn_w > 0.0f32 then btn_w + 12.0f32 else 0.0f32);
+  if text_w < 60.0f32 { text_w = 60.0f32; }
+  _ := sheet_text(sh, m, -1, x, y, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, label, text_w));
+  y += k.small.line + 4.0f32;
+  val_fit := app_fit(f, val_face, value, text_w);
+  _ := uiframe_semantic(f, id, EL_TEXT, value, x, row_top, text_w, k.small.line + 4.0f32 + val_line, 0, 0);
+  _ := sheet_text(sh, m, -1, x, y, val_line, val_face, k.ink, val_fit);
+  if copy_id.count > 0 {
+    by := row_top + (k.small.line + 4.0f32 + val_line - btn_h) * 0.5f32;
+    if by < row_top { by = row_top; }
+    _ := app_button(f, copy_id, x + w - btn_w, by, btn_w, ICON_COPY, "Copy", APP_BUTTON_QUIET, 0, CP_WALLET_ACT);
+  }
+  return (y + val_line) - y_in;
+}
+
+cp_wallet_pane :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32) {
+  k := f[0].skin; a := k.app; t := k.set; sh := f[0].sheet; m := f[0].m;
+  area_w := w - left;
+  if area_w <= 0.0f32 || h <= 0.0f32 { return; }
+  sheet_fill(sh, left, 0, area_w, h, 0, k.canvas);
+  cp_header_bar(s, f, left, w, "Wallet", w - CP_CORNER);
+
+  top := cp_bar(s);
+  view := h - top;
+  if view < 0.0f32 { view = 0.0f32; }
+  s[0].wallet[0].view = view;
+  s[0].wallet[0].scroll = scroll_clamp(s[0].wallet[0].scroll, s[0].wallet[0].content, view);
+  at := s[0].wallet[0].scroll;
+
+  uiframe_clip(f, left, top, w, h);
+
+  pad_x: f32 = 32.0f32;
+  max_col: f32 = 680.0f32;
+  cw := area_w - 2.0f32 * pad_x;
+  if cw > max_col { cw = max_col; }
+  if cw < 240.0f32 { cw = area_w - 24.0f32; }
+  if cw < 160.0f32 { cw = area_w; }
+  cx := left + (area_w - cw) * 0.5f32;
+  y := top + 28.0f32 - at;
+  y0 := y;
+
+  // Values synced by Swift host (DesktopWalletController)
+  status_s := ifx s[0].set_wallet_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_wallet_status[0..<s[0].set_wallet_status_n]) else "Not connected";
+  bal_s := ifx s[0].set_wallet_balance_n > 0 then sheet_pool(sh, cast(string) s[0].set_wallet_balance[0..<s[0].set_wallet_balance_n]) else "0 sats";
+  btc_s := ifx s[0].wallet[0].btc_balance_n > 0 then sheet_pool(sh, cast(string) s[0].wallet[0].btc_balance[0..<s[0].wallet[0].btc_balance_n]) else "0.00000000 BTC";
+  addr_s := ifx s[0].set_wallet_addr_n > 0 then sheet_pool(sh, cast(string) s[0].set_wallet_addr[0..<s[0].set_wallet_addr_n]) else "Connect wallet to view Spark address";
+  npub_s := ifx s[0].set_wallet_npub_n > 0 then sheet_pool(sh, cast(string) s[0].set_wallet_npub[0..<s[0].set_wallet_npub_n]) else "No Nostr key pair yet";
+  hex_s := ifx s[0].wallet[0].nostr_hex_n > 0 then sheet_pool(sh, cast(string) s[0].wallet[0].nostr_hex[0..<s[0].wallet[0].nostr_hex_n]) else "—";
+  path_s := ifx s[0].wallet[0].nostr_path_n > 0 then sheet_pool(sh, cast(string) s[0].wallet[0].nostr_path[0..<s[0].wallet[0].nostr_path_n]) else "m/44'/1237'/0'/0/0 (NIP-06)";
+  cust_s := ifx s[0].wallet[0].nostr_custody_n > 0 then sheet_pool(sh, cast(string) s[0].wallet[0].nostr_custody[0..<s[0].wallet[0].nostr_custody_n]) else "macOS Keychain (com.openagents.app.spark / seed-v1)";
+  nstat_s := ifx s[0].wallet[0].nostr_status_n > 0 then sheet_pool(sh, cast(string) s[0].wallet[0].nostr_status[0..<s[0].wallet[0].nostr_status_n]) else "Read-only · Create or connect wallet to derive key pair";
+  ready := s[0].set_wallet_ready;
+  has_seed := s[0].wallet[0].has_seed;
+  has_npub := has_seed && s[0].set_wallet_npub_n > 5 && cast(string) s[0].set_wallet_npub[0..<5] == "npub1";
+  has_hex := has_seed && s[0].wallet[0].nostr_hex_n == 64;
+  has_addr := ready && s[0].set_wallet_addr_n > 0;
+
+  // Page intro header
+  _ := uiframe_semantic(f, "wallet.pane.title", EL_TEXT, "Bitcoin & Nostr Wallet", cx, y, cw, t.title_line, 0, 0);
+  _ := sheet_text(sh, m, -1, cx, y, t.title_line, t.title_face, k.ink, app_fit(f, t.title_face, "Bitcoin & Nostr Wallet", cw));
+  y += t.title_line + 6.0f32;
+  sub := "Self-custodial Bitcoin Spark wallet paired with your read-only NIP-06 Nostr identity.";
+  _ := sheet_text(sh, m, -1, cx, y, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, sub, cw));
+  y += k.small.line + 20.0f32;
+
+  // Card 1: Bitcoin Spark Balance
+  card_pad: f32 = 20.0f32;
+  inner_w := cw - 2.0f32 * card_pad;
+  if inner_w < 120.0f32 { inner_w = 120.0f32; }
+  c1_h: f32 = card_pad + k.small.line + 12.0f32 + 30.0f32 + 4.0f32 + k.small.line + 18.0f32 + (k.small.line + 4.0f32 + 18.0f32 + 12.0f32) + card_pad;
+  _ := sheet_box(sh, cx, y, cw, c1_h, 12.0f32, k.border, k.raised, k.hairline);
+  ix := cx + card_pad;
+  iy := y + card_pad;
+
+  // Top row of Bitcoin card: label + status + Connect/Refresh button
+  act_label := ifx ready then "Refresh" else ifx has_seed then "Connect" else "Create Wallet";
+  act_icon := ifx ready then ICON_RELOAD else ICON_WALLET;
+  act_w := app_button_width(f, act_icon, act_label);
+  act_kind := ifx ready then APP_BUTTON_DEFAULT else APP_BUTTON_PRIMARY;
+  _ := app_button(f, "wallet.pane.connect", ix + inner_w - act_w, iy - 4.0f32, act_w, act_icon, act_label, act_kind, 0, CP_WALLET_ACT);
+  hdr_room := inner_w - act_w - 12.0f32;
+  if hdr_room < 60.0f32 { hdr_room = 60.0f32; }
+  _ := sheet_text(sh, m, -1, ix, iy, k.small.line, t.head_face, k.muted, app_fit(f, t.head_face, "BITCOIN BALANCE · SPARK", hdr_room));
+  iy += k.small.line + 12.0f32;
+
+  // Large Bitcoin balance in sats
+  _ := uiframe_semantic(f, "wallet.pane.balance", EL_TEXT, bal_s, ix, iy, inner_w, 30.0f32, 0, 0);
+  _ := sheet_text(sh, m, -1, ix, iy, 30.0f32, FONT_DISPLAY, k.ink, app_fit(f, FONT_DISPLAY, bal_s, inner_w));
+  iy += 30.0f32 + 4.0f32;
+
+  // Secondary line: BTC equivalent · Spark status
+  sb: [192] u8; sn := 0;
+  sn = el_put(sb[..], sn, btc_s);
+  sn = el_put(sb[..], sn, "  ·  ");
+  sn = el_put(sb[..], sn, status_s);
+  sub_line := sheet_pool(sh, cast(string) sb[0..<sn]);
+  _ := uiframe_semantic(f, "wallet.pane.status", EL_TEXT, status_s, ix, iy, inner_w, k.small.line, 0, 0);
+  _ := sheet_text(sh, m, -1, ix, iy, k.small.line, k.small.face, ifx ready then k.muted else k.faint, app_fit(f, k.small.face, sub_line, inner_w));
+  iy += k.small.line + 18.0f32;
+
+  // Spark address read-only row
+  _ := cp_wallet_kv_row(f, "wallet.pane.addr", "Spark Address", addr_s, has_addr, ifx has_addr then "wallet.pane.copy.addr" else "", ix, iy, inner_w, true);
+
+  y += c1_h + 18.0f32;
+
+  // Card 2: Nostr Key Pair (Read-Only)
+  row_h := k.small.line + 4.0f32 + 18.0f32;
+  c2_h: f32 = card_pad + k.small.line + 6.0f32 + k.small.line + 18.0f32
+            + row_h
+            + (12.0f32 + row_h)
+            + (12.0f32 + row_h)
+            + (12.0f32 + row_h)
+            + (12.0f32 + row_h)
+            + card_pad;
+  _ := sheet_box(sh, cx, y, cw, c2_h, 12.0f32, k.border, k.raised, k.hairline);
+  ix = cx + card_pad;
+  iy = y + card_pad;
+
+  _ := sheet_text(sh, m, -1, ix, iy, k.small.line, t.head_face, k.muted, app_fit(f, t.head_face, "NOSTR KEY PAIR · READ-ONLY", inner_w));
+  iy += k.small.line + 6.0f32;
+  _ := uiframe_semantic(f, "wallet.pane.nostr.status", EL_TEXT, nstat_s, ix, iy, inner_w, k.small.line, 0, 0);
+  _ := sheet_text(sh, m, -1, ix, iy, k.small.line, k.small.face, k.faint, app_fit(f, k.small.face, nstat_s, inner_w));
+  iy += k.small.line + 18.0f32;
+
+  iy += cp_wallet_kv_row(f, "wallet.pane.npub", "Public Key (npub)", npub_s, has_npub, ifx has_npub then "wallet.pane.copy.npub" else "", ix, iy, inner_w, false);
+  iy += cp_wallet_kv_row(f, "wallet.pane.hex", "Public Key (hex)", hex_s, has_hex, ifx has_hex then "wallet.pane.copy.hex" else "", ix, iy, inner_w, true);
+  iy += cp_wallet_kv_row(f, "wallet.pane.path", "Derivation Path", path_s, true, "", ix, iy, inner_w, true);
+  iy += cp_wallet_kv_row(f, "wallet.pane.custody", "Key Custody", cust_s, false, "", ix, iy, inner_w, true);
+  iy += cp_wallet_kv_row(f, "wallet.pane.readonly", "Private Key Access", "Read-only — nsec stays in macOS Keychain and is never displayed", false, "", ix, iy, inner_w, true);
+
+  y += c2_h + 32.0f32;
+
+  uiframe_unclip(f);
+  s[0].wallet[0].content = (y - y0) + 28.0f32;
+  app_scroll_rail(f, s[0].wallet[0].scr[..], w, top, s[0].wallet[0].scroll, s[0].wallet[0].content, view, view, s[0].now, s[0].reduced);
+}
+
+// Host C exports
+coder_page_wallet_open :: (s: [] CoderPage, open: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if open {
+    _ := cp_wallet_pane_open(s);
+  } else {
+    cp_wallet_pane_close(s);
+  }
+}
+
+coder_page_wallet_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].wallet[0].open;
+}
+
+coder_page_wallet_info :: (s: [] CoderPage, btc_balance: string, nostr_hex: string, nostr_path: string, nostr_custody: string, nostr_status: string, has_seed: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].wallet[0].btc_balance_n = cp_out(s[0].wallet[0].btc_balance[..], btc_balance);
+  s[0].wallet[0].nostr_hex_n = cp_out(s[0].wallet[0].nostr_hex[..], nostr_hex);
+  s[0].wallet[0].nostr_path_n = cp_out(s[0].wallet[0].nostr_path[..], nostr_path);
+  s[0].wallet[0].nostr_custody_n = cp_out(s[0].wallet[0].nostr_custody[..], nostr_custody);
+  s[0].wallet[0].nostr_status_n = cp_out(s[0].wallet[0].nostr_status[..], nostr_status);
+  s[0].wallet[0].has_seed = has_seed;
+}

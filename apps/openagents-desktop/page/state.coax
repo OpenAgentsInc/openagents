@@ -154,6 +154,10 @@ CP_ASK_WALLET_SEND :: 57;    // Settings > Wallet: paste destination -> quote ->
 CP_ASK_WALLET_LIMIT :: 58;   // Settings > Wallet: configure daily spend limit (#13900)
 CP_ASK_WALLET_BACKUP :: 59;  // Settings > Wallet: backup status & one-time words reveal (#13900)
 CP_ASK_WALLET_REFRESH :: 60; // Settings > Wallet: manual sync & refresh payments (#13900)
+CP_ASK_WALLET_OPEN :: 217;      // Sidebar Wallet pane opened: host syncs Keychain/NIP-06 pubkey & Spark balance
+CP_ASK_WALLET_COPY_NPUB :: 218; // Wallet pane: copy read-only Nostr npub to clipboard
+CP_ASK_WALLET_COPY_HEX :: 219;  // Wallet pane: copy read-only Nostr hex pubkey to clipboard
+CP_ASK_WALLET_COPY_ADDR :: 220; // Wallet pane: copy Spark receive address to clipboard
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)
@@ -200,6 +204,8 @@ CP_AGY_CONNECT :: 405;      // first-run onboarding on a machine that cannot run
 CP_WORKTREE_TOGGLE :: 406;  // new-chat composer foot checkbox: toggle sticky new-chat git worktree preference
 CP_DASHBOARD :: 407;        // sidebar Dashboard row (Cmd/Ctrl+D): open Dashboard empty home screen
 CP_DASH_CHAT :: 408;        // Dashboard active chat row: open that chat and leave Dashboard
+CP_WALLET_TOGGLE :: 409;    // sidebar footer Wallet icon: toggle Bitcoin Spark & Nostr Wallet pane
+CP_WALLET_ACT :: 410;       // Wallet pane button press (connect, refresh, copy npub/hex/addr)
 CP_AGY_IDLE :: 0; CP_AGY_BUSY :: 1; CP_AGY_FAILED :: 2;   // agy_conn: the onboarding's Antigravity connection
 CP_LOCAL_NOT_INSTALLED :: 0; CP_LOCAL_DOWNLOADING :: 1; CP_LOCAL_VERIFYING :: 2; CP_LOCAL_READY :: 3; CP_LOCAL_ERROR :: 4; CP_LOCAL_STARTING :: 5; CP_LOCAL_SERVER_ERROR :: 6;
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
@@ -513,6 +519,7 @@ CoderPage :: struct {
   forge: [1] CpForge;          // Pull Requests inbox, multi-forge source control, AI review tours & Issues view (forge.coax; #13886)
   lean: [1] CpLeanRh;          // Lean 4 & Riemann Hypothesis Proof Workbench (gym-lean*.coax; #13946)
   dash: [1] CpDash;            // Dashboard empty home screen showing active running chats (dashboard.coax)
+  wallet: [1] CpWalletPane;    // Bitcoin Spark & read-only Nostr key pair wallet pane (walletpane.coax)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them
@@ -681,6 +688,7 @@ cp_init :: (s: [] CoderPage) {
   cp_ps_init(s);
   cp_mv_init(s);
   cp_dash_init(s);
+  cp_wallet_pane_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {

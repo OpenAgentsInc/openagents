@@ -23,6 +23,19 @@ nip06_npub :: (key: [] u8, out: [] u8) -> int #export_c #effects(all) {
   r := nip19_encode_checked(N19_NPUB, cast(string) pub[1..<33], out, false);
   return ifx r.error == NC_OK then r.written else -1;
 }
+// The 64-char lowercase hex x-only public key of a private key into out; 64, or -1.
+nip06_pubkey_hex :: (key: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if out.count < 64 { return -1; }
+  pub: [33] u8;
+  if !bip32_public(key, pub[..]) { return -1; }
+  hex := "0123456789abcdef";
+  for i: 0..<32 {
+    b := pub[i + 1];
+    out[i * 2] = hex[cast(int) (b >> 4)];
+    out[i * 2 + 1] = hex[cast(int) (b & 0x0f)];
+  }
+  return 64;
+}
 
 
 #test "nip06_key refuses what bip39_entropy refuses, and zeroes the key" #steps 1000000000 {
@@ -35,7 +48,13 @@ nip06_npub :: (key: [] u8, out: [] u8) -> int #export_c #effects(all) {
   #assert key[0] == 0 && key[31] == 0;
   #assert !nip06_key("leader monkey parrot ring guide accident before fence cannon height naive xyzzy", key[..]);
   #assert !nip06_key("", key[..]);
-  // a good phrase still gives the NIP-06 vector 1 key
+  // a good phrase still gives the NIP-06 vector 1 key, npub, and hex pubkey
   #assert nip06_key("leader monkey parrot ring guide accident before fence cannon height naive bean", key[..]);
   #assert key[0] == 0x7f && key[1] == 0x7f && key[2] == 0xf0 && key[31] == 0x9a;
+  np: [96] u8;
+  nn := nip06_npub(key[..], np[..]);
+  #assert nn == 63 && cast(string) np[0..<nn] == "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
+  hx: [64] u8;
+  hn := nip06_pubkey_hex(key[..], hx[..]);
+  #assert hn == 64 && cast(string) hx[0..<64] == "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917";
 }

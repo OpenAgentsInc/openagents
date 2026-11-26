@@ -3,7 +3,7 @@
 
 cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, running: bool) -> AppSideRow {
   id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
-  is := !s[0].dash[0].open && !(cp_flag(s, DC_FLAG_GYM) && s[0].gym_open) && cur.count > 0 && id == cur;
+  is := !s[0].dash[0].open && !s[0].wallet[0].open && !(cp_flag(s, DC_FLAG_GYM) && s[0].gym_open) && cur.count > 0 && id == cur;
   sel := s[0].sb[0].sel[q];
   t_str := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
   if cp_flag(s, DC_FLAG_FOREMAN) && s[0].chats[q].managed {
@@ -364,7 +364,7 @@ cp_side_settings_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, row_
   _ := cp_side_icon_btn(f, id, "Settings", x + a.row_inset, y + (row_h - side) / 2.0f32, side, ICON_SETTINGS, open, action);
   return row_h;
 }
-// T3 Code-style horizontal icon-only sidebar footer bar: Settings, Archived toggle, and flag-gated PRs/Issues & Gym.
+// T3 Code-style horizontal icon-only sidebar footer bar: Settings, Wallet, and flag-gated PRs/Issues & Gym.
 cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, row_h: f32) -> f32 {
   k := f[0].skin; a := k.app;
   sheet_fill(f[0].sheet, x, y - 4.0f32, w, cp_px(s), 0, k.hairline);
@@ -373,9 +373,8 @@ cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, 
   bx := x + a.row_inset;
   gap := 4.0f32;
   bx += cp_side_icon_btn(f, "coder.me.settings", "Settings", bx, by, side, ICON_SETTINGS, false, CP_SET_TOGGLE) + gap;
-  is_arch := s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED;
   if bx + side <= x + w - a.row_inset {
-    bx += cp_side_icon_btn(f, "coder.sb.archived", ifx is_arch then "Active chats" else "Archived chats", bx, by, side, ICON_ARCHIVE, is_arch, ifx is_arch then CP_SB_VIEW_ACTIVE_ACT else CP_SB_VIEW_ARCHIVED_ACT) + gap;
+    bx += cp_side_icon_btn(f, "coder.wallet", "Wallet", bx, by, side, ICON_WALLET, s[0].wallet[0].open, CP_WALLET_TOGGLE) + gap;
   }
   if cp_flag(s, DC_FLAG_FORGE) && bx + side <= x + w - a.row_inset {
     bx += cp_side_icon_btn(f, "coder.forge", "PRs & Issues", bx, by, side, ICON_SHARE, cp_forge_shown(s), CP_FORGE_TOGGLE) + gap;
@@ -389,7 +388,7 @@ cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, 
 // managed chats run. Returns its height.
 cp_side_foreman :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32, cur: string, running: bool) -> f32 {
   k := f[0].skin; a := k.app;
-  f_cur := !s[0].gym_open && cur == "chat.foreman";
+  f_cur := !s[0].gym_open && !s[0].wallet[0].open && cur == "chat.foreman";
   f_busy := s[0].foreman_busy || (f_cur && running);
   f_state := (ifx f_cur then EL_S_CURRENT else 0) | (ifx f_busy then EL_S_BUSY else 0);
   fh := a.side_row;

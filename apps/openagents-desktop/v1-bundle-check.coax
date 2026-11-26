@@ -207,14 +207,16 @@ tool_main :: () -> int #export_c #effects(all) {
       violations += vbc_check_required(contents, "Resources/inkling-kernels.metal", "Contents/Resources/inkling-kernels.metal");
       violations += vbc_check_required(contents, "Resources/Components", "Contents/Resources/Components");
 
-      // Contents/Frameworks must be absent or empty
+      // Contents/Frameworks allowlist (breez_sdk_sparkFFI.framework for Bitcoin Spark wallet)
       fw_dir := fs_join(contents, "Frameworks", pbuf2[..]);
       if fs_kind(fw_dir) == FS_DIR {
         nf := fs_list(fw_dir, list[..]);
         for k: 0..<nf {
           nm := fs_entry(list[..], k);
-          print("FAIL [frameworks] disallowed framework bundled: Contents/Frameworks/%\n", nm);
-          violations += 1;
+          if !vbc_macos_framework_allowed(nm) {
+            print("FAIL [frameworks] disallowed framework bundled: Contents/Frameworks/%\n", nm);
+            violations += 1;
+          }
         }
       }
 

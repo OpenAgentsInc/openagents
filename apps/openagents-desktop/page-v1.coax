@@ -37,6 +37,7 @@
 #load "page/transcript.coax";
 #load "page/chats.coax";
 #load "page/dashboard.coax";
+#load "page/walletpane.coax";
 #load "page/sidebar_groups.coax";
 #load "page/persist.coax";
 #load "page/input.coax";
@@ -185,4 +186,31 @@
   #assert coder_page_voice_state(s[..]) == CP_VOICE_LISTENING;
   coder_page_voice_set_state(s[..], CP_VOICE_IDLE, "");
   #assert coder_page_voice_state(s[..]) == CP_VOICE_IDLE;
+
+  // Sidebar bottom-left archive button is replaced by Wallet icon that opens the Bitcoin Spark + read-only Nostr Wallet pane.
+  s[0].d = 1.0f32;
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0f32, 0.016f32, true, false);
+  cp_layout(s[..], f[..], 1280.0f32, 820.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert surface_find(s[0].surface[..], "coder.sb.archived") < 0;
+  wbtn := surface_find(s[0].surface[..], "coder.wallet");
+  #assert wbtn >= 0 && surface_action(s[0].surface[..], wbtn) == CP_WALLET_TOGGLE;
+  #assert !coder_page_wallet_shown(s[..]);
+  coder_page_settings_wallet(s[..], "Connected (Spark mainnet)", "12,345 sats", "spark1testaddr", "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu", "100,000 sats / day", "Backed up", "No payments yet.", true);
+  coder_page_wallet_info(s[..], "0.00012345 BTC", "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917", "m/44'/1237'/0'/0/0 (NIP-06)", "macOS Keychain (com.openagents.app.spark / seed-v1)", "Read-only · NIP-06 key pair paired with Spark wallet seed", true);
+  #assert cp_wallet_pane_toggle(s[..]) && coder_page_wallet_shown(s[..]) && coder_page_action(s[..]) == CP_ASK_WALLET_OPEN;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016f32, 0.016f32, true, false);
+  cp_layout(s[..], f[..], 1280.0f32, 820.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert surface_find(s[0].surface[..], "wallet.pane.balance") >= 0;
+  #assert surface_find(s[0].surface[..], "wallet.pane.npub") >= 0;
+  #assert surface_find(s[0].surface[..], "wallet.pane.hex") >= 0;
+  #assert surface_find(s[0].surface[..], "wallet.pane.path") >= 0;
+  #assert surface_find(s[0].surface[..], "wallet.pane.custody") >= 0;
+  #assert cp_wallet_pane_press(s[..], "wallet.pane.copy.npub") && coder_page_action(s[..]) == CP_ASK_WALLET_COPY_NPUB;
+  #assert cp_wallet_pane_press(s[..], "wallet.pane.copy.hex") && coder_page_action(s[..]) == CP_ASK_WALLET_COPY_HEX;
+  #assert cp_wallet_pane_press(s[..], "wallet.pane.copy.addr") && coder_page_action(s[..]) == CP_ASK_WALLET_COPY_ADDR;
+  #assert cp_wallet_pane_press(s[..], "wallet.pane.connect") && coder_page_action(s[..]) == CP_ASK_WALLET_REFRESH;
+  #assert cp_wallet_pane_toggle(s[..]) && !coder_page_wallet_shown(s[..]);
 }

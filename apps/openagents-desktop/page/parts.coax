@@ -44,6 +44,7 @@
 #load "transcript.coax";
 #load "chats.coax";
 #load "dashboard.coax";
+#load "walletpane.coax";
 #load "sidebar_groups.coax";
 #load "persist.coax";
 #load "input.coax";

@@ -55,6 +55,7 @@ cp_dash_init :: (s: [] CoderPage) {
 cp_dashboard_open :: (s: [] CoderPage) -> bool {
   if s.count < 1 { return false; }
   s[0].set_open = false;
+  s[0].wallet[0].open = false;
   s[0].model_menu = false;
   s[0].effort_menu = false;
   s[0].side_drawer = false;

@@ -49,7 +49,13 @@ coax_t_WrpcVerdict wallet_rpc_spend_admit(
 int64_t wallet_rpc_http_status(coax_t_WrpcVerdict v);
 bool wallet_rpc_writes_receipt(coax_t_WrpcVerdict v);
 typedef struct oa_wallet_string { const uint8_t *data; int64_t count; } oa_wallet_string;
+typedef struct oa_wallet_u8_slice { uint8_t *data; int64_t count; } oa_wallet_u8_slice;
 oa_wallet_string wallet_rpc_schema_version(void);
+
+/* coax/lib/nostr/nip06.coax */
+bool nip06_key(oa_wallet_string phrase, oa_wallet_u8_slice key);
+int64_t nip06_npub(oa_wallet_u8_slice key, oa_wallet_u8_slice out);
+int64_t nip06_pubkey_hex(oa_wallet_u8_slice key, oa_wallet_u8_slice out);
 
 #ifdef __cplusplus
 }

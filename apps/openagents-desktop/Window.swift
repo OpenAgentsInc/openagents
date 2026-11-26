@@ -609,12 +609,16 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 48: pump(run)
         case 54: enterRequestedSecret()
         #if OA_WALLET
-        case 55: if FeatureFlags.isOn(.wallet) { walletConnectOrCreate() }
-        case 56: if FeatureFlags.isOn(.wallet) { walletReceiveDialog() }
-        case 57: if FeatureFlags.isOn(.wallet) { walletSendDialog() }
-        case 58: if FeatureFlags.isOn(.wallet) { walletLimitDialog() }
-        case 59: if FeatureFlags.isOn(.wallet) { walletBackupDialog() }
-        case 60: if FeatureFlags.isOn(.wallet) { walletRefresh() }
+        case 55: walletConnectOrCreate()
+        case 56: walletReceiveDialog()
+        case 57: walletSendDialog()
+        case 58: walletLimitDialog()
+        case 59: walletBackupDialog()
+        case 60: walletRefresh()
+        case 217: openWalletPane()
+        case 218: walletCopyNpub()
+        case 219: walletCopyHex()
+        case 220: walletCopySparkAddress()
         #endif
         case 61: notificationModeChanged()
         case 62: sidebarAsked()

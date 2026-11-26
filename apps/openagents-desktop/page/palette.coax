@@ -149,15 +149,16 @@ cp_pal_leave_settings :: (s: [] CoderPage) { if s[0].set_open { s[0].set_open = 
 cp_pal_open_chat :: (s: [] CoderPage, q: int) -> bool {
   cur := cast(string) s[0].current[0..<s[0].current_n];
   if q < 0 && !cp_flag(s, DC_FLAG_FOREMAN) { return false; }
-  if q < 0 { if cur == "chat.foreman" && !s[0].set_open && !s[0].dash[0].open { return false; } cp_pal_leave_settings(s); s[0].dash[0].open = false; s[0].ask = CP_ASK_FOREMAN; return true; }
+  if q < 0 { if cur == "chat.foreman" && !s[0].set_open && !s[0].dash[0].open && !s[0].wallet[0].open { return false; } cp_pal_leave_settings(s); s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].ask = CP_ASK_FOREMAN; return true; }
   if q >= s[0].nchats { return false; }
   if cur == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] {
-    if s[0].set_open { cp_settings_show(s, false, -1); s[0].dash[0].open = false; return true; }
-    if s[0].dash[0].open { s[0].dash[0].open = false; return true; }
+    if s[0].set_open { cp_settings_show(s, false, -1); s[0].dash[0].open = false; s[0].wallet[0].open = false; return true; }
+    if s[0].dash[0].open || s[0].wallet[0].open { s[0].dash[0].open = false; s[0].wallet[0].open = false; return true; }
     return false;
   }
   cp_pal_leave_settings(s);
   s[0].dash[0].open = false;
+  s[0].wallet[0].open = false;
   s[0].open = q; s[0].ask = CP_ASK_OPEN;
   return true;
 }
@@ -191,6 +192,7 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
     s[0].find[0].jump_turn = h.turn;
     cp_pal_leave_settings(s);
     s[0].dash[0].open = false;
+    s[0].wallet[0].open = false;
     s[0].ask = CP_ASK_PALETTE_JUMP;
     return true;
   }

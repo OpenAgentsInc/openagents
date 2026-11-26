@@ -21,6 +21,14 @@ final class DesktopWalletController {
     private(set) var sparkAddress: String = ""
     private(set) var historySummary: String = "No payments yet."
     private(set) var busy: Bool = false
+    private(set) var hasSeed: Bool = false
+    private(set) var nostrNpub: String = ""
+    private(set) var nostrPubkeyHex: String = ""
+    private(set) var nostrCustody: String = "No seed in macOS Keychain yet"
+    private(set) var nostrStatus: String = "Read-only · Create or connect wallet to derive NIP-06 key pair"
+    private var lastDerivedEntropy: Data? = nil
+
+    static let nostrDerivationPath = "m/44'/1237'/0'/0/0 (NIP-06)"
 
     var dailyLimitSats: UInt64 {
         get {
@@ -69,6 +77,100 @@ final class DesktopWalletController {
         return (nf.string(from: NSNumber(value: sats)) ?? String(sats)) + " sats"
     }
 
+    static func formatBTC(_ sats: UInt64) -> String {
+        let whole = sats / 100_000_000
+        let frac = sats % 100_000_000
+        return String(format: "%llu.%08llu BTC", whole, frac)
+    }
+
+    /// Derives only the public read-only NIP-06 Nostr identity (`npub` + x-only hex pubkey)
+    /// from the macOS Keychain BIP-39 seed. The temporary private key buffer is zeroed before returning.
+    func refreshReadOnlyNostrInfo() {
+        switch OAWalletKeychain.readSeed() {
+        case .notFound:
+            hasSeed = false
+            lastDerivedEntropy = nil
+            nostrNpub = ""
+            nostrPubkeyHex = ""
+            nostrCustody = "No seed in macOS Keychain yet"
+            nostrStatus = "Read-only · Create or connect wallet to derive NIP-06 key pair"
+        case .unreadable:
+            hasSeed = false
+            lastDerivedEntropy = nil
+            nostrNpub = ""
+            nostrPubkeyHex = ""
+            nostrCustody = "Keychain item unreadable (com.openagents.app.spark / seed-v1)"
+            nostrStatus = "Read-only · Keychain seed could not be decoded"
+        case .unavailable(let s):
+            hasSeed = false
+            nostrNpub = ""
+            nostrPubkeyHex = ""
+            nostrCustody = "Keychain locked (OSStatus \(s))"
+            nostrStatus = "Read-only · Unlock macOS Keychain to view Nostr identity"
+        case .found(let entropy):
+            hasSeed = true
+            nostrCustody = "macOS Keychain (com.openagents.app.spark / seed-v1)"
+            if lastDerivedEntropy == entropy && !nostrNpub.isEmpty && nostrPubkeyHex.count == 64 {
+                nostrStatus = "Read-only · NIP-06 key pair paired with Spark wallet seed"
+                return
+            }
+            guard let words = OABIP39.englishWords(),
+                  let mnemonic = OABIP39.mnemonic(entropy: entropy, words: words) else {
+                nostrNpub = ""
+                nostrPubkeyHex = ""
+                nostrStatus = "Read-only · BIP-39 wordlist unavailable"
+                return
+            }
+            var priv = [UInt8](repeating: 0, count: 32)
+            defer {
+                for i in 0..<priv.count { priv[i] = 0 }
+            }
+            let phraseBytes = Array(mnemonic.utf8)
+            let ok: Bool = phraseBytes.withUnsafeBufferPointer { pBuf in
+                priv.withUnsafeMutableBufferPointer { kBuf in
+                    nip06_key(
+                        oa_wallet_string(data: pBuf.baseAddress, count: Int64(pBuf.count)),
+                        oa_wallet_u8_slice(data: kBuf.baseAddress, count: Int64(kBuf.count))
+                    )
+                }
+            }
+            guard ok else {
+                nostrNpub = ""
+                nostrPubkeyHex = ""
+                nostrStatus = "Read-only · Could not derive NIP-06 key pair"
+                return
+            }
+            var npubBuf = [UInt8](repeating: 0, count: 96)
+            var hexBuf = [UInt8](repeating: 0, count: 64)
+            let npubLen: Int64 = priv.withUnsafeMutableBufferPointer { kBuf in
+                npubBuf.withUnsafeMutableBufferPointer { oBuf in
+                    nip06_npub(
+                        oa_wallet_u8_slice(data: kBuf.baseAddress, count: Int64(kBuf.count)),
+                        oa_wallet_u8_slice(data: oBuf.baseAddress, count: Int64(oBuf.count))
+                    )
+                }
+            }
+            let hexLen: Int64 = priv.withUnsafeMutableBufferPointer { kBuf in
+                hexBuf.withUnsafeMutableBufferPointer { oBuf in
+                    nip06_pubkey_hex(
+                        oa_wallet_u8_slice(data: kBuf.baseAddress, count: Int64(kBuf.count)),
+                        oa_wallet_u8_slice(data: oBuf.baseAddress, count: Int64(oBuf.count))
+                    )
+                }
+            }
+            if npubLen > 0 && hexLen == 64 {
+                nostrNpub = String(decoding: npubBuf.prefix(Int(npubLen)), as: UTF8.self)
+                nostrPubkeyHex = String(decoding: hexBuf.prefix(64), as: UTF8.self)
+                lastDerivedEntropy = entropy
+                nostrStatus = "Read-only · NIP-06 key pair paired with Spark wallet seed"
+            } else {
+                nostrNpub = ""
+                nostrPubkeyHex = ""
+                nostrStatus = "Read-only · Could not encode Nostr public key"
+            }
+        }
+    }
+
     static func parseTypedSats(_ text: String) -> UInt64? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -101,16 +203,25 @@ final class DesktopWalletController {
     }
 
     func npubSummary() -> String {
+        if !nostrNpub.isEmpty { return nostrNpub }
         switch OAWalletKeychain.readSeed() {
         case .found: return "Keychain seed-v1 (NIP-06 paired)"
-        case .notFound: return "Create or connect wallet first"
+        case .notFound: return "No Nostr key pair yet"
         case .unreadable: return "Keychain seed unreadable"
         case .unavailable: return "Keychain locked"
         }
     }
 
+    func nostrHexDisplay() -> String {
+        nostrPubkeyHex.isEmpty ? "—" : nostrPubkeyHex
+    }
+
     func balanceDisplay() -> String {
-        ready ? Self.formatSats(balanceSats) : "—"
+        ready ? Self.formatSats(balanceSats) : (hasSeed ? "0 sats" : "—")
+    }
+
+    func btcBalanceDisplay() -> String {
+        ready ? Self.formatBTC(balanceSats) : (hasSeed ? "0.00000000 BTC" : "Not connected")
     }
 
     func addressDisplay() -> String {
@@ -174,6 +285,7 @@ final class DesktopWalletController {
 extension CoderWindow {
     func syncWalletSettings() {
         let w = DesktopWalletController.shared
+        w.refreshReadOnlyNostrInfo()
         cd_settings_wallet(
             page,
             w.statusText,
@@ -185,6 +297,57 @@ extension CoderWindow {
             w.historySummary,
             w.ready ? 1 : 0
         )
+        cd_wallet_info(
+            page,
+            w.btcBalanceDisplay(),
+            w.nostrHexDisplay(),
+            DesktopWalletController.nostrDerivationPath,
+            w.nostrCustody,
+            w.nostrStatus,
+            w.hasSeed ? 1 : 0
+        )
+    }
+
+    func openWalletPane() {
+        #if OA_FULL
+        closeGym()
+        #endif
+        syncWalletSettings()
+        let w = DesktopWalletController.shared
+        if w.hasSeed && !w.ready && !w.busy {
+            w.connectAndSync { [weak self] in
+                self?.syncWalletSettings()
+                self?.wake()
+            }
+        }
+        wake()
+    }
+
+    func walletCopyNpub() {
+        let w = DesktopWalletController.shared
+        guard !w.nostrNpub.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(w.nostrNpub, forType: .string)
+        cd_toast(page, "Copied Nostr npub", 0)
+        wake()
+    }
+
+    func walletCopyHex() {
+        let w = DesktopWalletController.shared
+        guard !w.nostrPubkeyHex.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(w.nostrPubkeyHex, forType: .string)
+        cd_toast(page, "Copied Nostr public key (hex)", 0)
+        wake()
+    }
+
+    func walletCopySparkAddress() {
+        let w = DesktopWalletController.shared
+        guard !w.sparkAddress.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(w.sparkAddress, forType: .string)
+        cd_toast(page, "Copied Spark address", 0)
+        wake()
     }
 
     func walletConnectOrCreate() {

@@ -107,6 +107,23 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     cp_title_bar(s, f, left, toggle);
     return;
   }
+  if s[0].wallet[0].open {
+    running := cp_running(s);
+    cp_wallet_pane(s, f, left, window_w, h);
+    if left > 0 {
+      from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0);
+    } else if narrow && s[0].side_drawer {
+      dw := cast(f32) CP_SIDE;
+      if dw > window_w - 48.0f32 { dw = window_w - 48.0f32; }
+      if dw < 200.0f32 { dw = window_w; }
+      sheet_fill(f[0].sheet, 0, 0, window_w, h, 0, rgba(0, 0, 0, 0.55f32));
+      srow := uiframe_semantic(f, "coder.side.scrim", EL_BUTTON, "Close sidebar", 0, 0, window_w, h, 0, CP_SIDE_DRAWER_CLOSE);
+      sheet_hit(f[0].sheet, UIFRAME_HIT, srow, 0, 0, 0, window_w, h);
+      cp_sidebar(s, f, dw, h, running);
+    }
+    cp_title_bar(s, f, ifx left > 0 then left else ifx narrow && s[0].side_drawer then cast(f32) CP_SIDE else 0.0f32, toggle);
+    return;
+  }
   if s[0].dash[0].open {
     running := cp_running(s);
     cp_dashboard(s, f, left, window_w, h);
