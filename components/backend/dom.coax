@@ -284,6 +284,126 @@ dm_flush :: (d: [] Dom, t: [] Tree, sets: [] AfSettings) -> int {
   return ifx d[0].overflow then 0 else d[0].out_n;
 }
 
+// Keeps the current command buffer open so another dm_flush_subtree appends into the same frame.
+dm_keep :: (d: [] Dom) { d[0].keep = true; }
+
+// Whether live slot `slot` is `anchor` or descends from it through parent links.
+dm_in_subtree :: (d: [] Dom, slot: int, anchor: int) -> bool {
+  cur := slot;
+  while cur >= 0 {
+    if cur == anchor { return true; }
+    cur = d[0].slots[cur].parent;
+  }
+  return false;
+}
+
+// Diffs only the mounted subtree rooted at `root_id` (t.nodes[0] must be `root_id`), leaving all
+// sibling and ancestor slots untouched. Returns -1 when `root_id` is not mounted or t does not
+// start with `root_id`, so the caller can fall back to a full dm_flush.
+dm_flush_subtree :: (d: [] Dom, root_id: string, t: [] Tree, sets: [] AfSettings) -> int {
+  if t[0].n == 0 || tr_id(t, 0) != root_id { return -1; }
+  anchor := dm_find(d, root_id);
+  if anchor < 0 { return -1; }
+  if !d[0].keep { d[0].out_n = 0; d[0].sent = 0; }
+  d[0].keep = false;
+  in_sub: [TR_NODES] bool;
+  for s: 0..<d[0].top {
+    if d[0].slots[s].live && dm_in_subtree(d, s, anchor) {
+      in_sub[s] = true;
+      d[0].slots[s].seen = false;
+    }
+  }
+  for i: 0..<t[0].n {
+    node := t[0].nodes[i];
+    id := tr_id(t, i);
+    slot := anchor;
+    fresh := false;
+    if i == 0 {
+      d[0].slots[slot].seen = true;
+      d[0].of[0] = slot; d[0].last[0] = -1;
+    } else {
+      d[0].of[i] = -1; d[0].last[i] = -1;
+      if node.parent < 0 || d[0].of[node.parent] < 0 { continue; }
+      slot = dm_find(d, id);
+      fresh = slot < 0 || d[0].slots[slot].seen;
+      if fresh {
+        slot = dm_free(d);
+        if slot < 0 { continue; }
+        blank: DomSlot;
+        blank.live = true;
+        for c: id { if blank.id_n < DM_ID { blank.id[blank.id_n] = c; blank.id_n += 1; } }
+        d[0].slots[slot] = blank;
+        tags := TG_NAMES;
+        dm_u8(d, DC_MAKE); dm_u16(d, slot); dm_str(d, tags[node.tag]); dm_str(d, id);
+        d[0].sent += 1;
+      }
+      d[0].slots[slot].seen = true;
+      d[0].of[i] = slot;
+      parent := d[0].of[node.parent];
+      after := d[0].last[node.parent];
+      d[0].last[node.parent] = slot;
+      if d[0].slots[slot].parent != parent || d[0].slots[slot].after != after {
+        dm_u8(d, DC_PLACE); dm_u16(d, slot); dm_slot_ref(d, parent); dm_slot_ref(d, after);
+        d[0].slots[slot].parent = parent; d[0].slots[slot].after = after; d[0].sent += 1;
+      }
+    }
+    cls := tr_class(t, i);
+    ch := tr_hash(cls);
+    if fresh && cls.count > 0 || !fresh && ch != d[0].slots[slot].cls_h {
+      dm_u8(d, DC_CLASS); dm_u16(d, slot); dm_str(d, cls); d[0].sent += 1;
+    }
+    d[0].slots[slot].cls_h = ch;
+    if node.has_text {
+      text := tr_text_of(t, i);
+      th := tr_hash(text);
+      if !d[0].slots[slot].has_text || th != d[0].slots[slot].text_h {
+        dm_u8(d, DC_TEXT); dm_u16(d, slot); dm_str(d, text); d[0].sent += 1;
+      }
+      d[0].slots[slot].text_h = th;
+    } else if d[0].slots[slot].has_text {
+      dm_u8(d, DC_TEXT); dm_u16(d, slot); dm_str(d, ""); d[0].sent += 1;
+    }
+    d[0].slots[slot].has_text = node.has_text;
+    names := AT_NAMES;
+    for key: 0..<AT_COUNT { // mutant: equivalent (attribute bitmasks never set bits >= AT_COUNT)
+      bit := tr_bit(key);
+      now := (node.has & bit) != 0; was := (d[0].slots[slot].has & bit) != 0;
+      if now {
+        value := tr_attr_of(t, i, key);
+        vh := tr_hash(value);
+        if !was || vh != d[0].slots[slot].attr_h[key] {
+          dm_u8(d, DC_ATTR); dm_u16(d, slot); dm_str(d, names[key]); dm_str(d, value); d[0].sent += 1;
+        }
+        d[0].slots[slot].attr_h[key] = vh;
+      } else if was {
+        dm_u8(d, DC_UNATTR); dm_u16(d, slot); dm_str(d, names[key]); d[0].sent += 1;
+      }
+    }
+    d[0].slots[slot].has = node.has;
+    if node.frame > 0 && node.frame_set < sets.count {
+      dm_frame(d, slot, node.frame - 1, sets[node.frame_set], node.progress);
+    } else { d[0].slots[slot].frame_h = 0; }
+  }
+  for s: 0..<d[0].top {
+    if in_sub[s] && d[0].slots[s].live && !d[0].slots[s].seen {
+      dm_u8(d, DC_REMOVE); dm_u16(d, s); d[0].sent += 1;
+      d[0].slots[s].live = false;
+    }
+  }
+  for k: 0..<d[0].values {
+    vid := d[0].value_id[k];
+    slot := dm_find(d, cast(string) vid[0..<d[0].value_id_n[k]]);
+    if slot >= 0 { dm_u8(d, DC_VALUE); dm_u16(d, slot); dm_str(d, cast(string) d[0].value[d[0].value_at[k]..<d[0].value_at[k] + d[0].value_len[k]]); d[0].sent += 1; }
+  }
+  d[0].values = 0; d[0].value_n = 0;
+  if d[0].focus_set {
+    slot := dm_find(d, cast(string) d[0].focus_id[0..<d[0].focus_id_n]);
+    if slot >= 0 { dm_u8(d, DC_FOCUS); dm_u16(d, slot); d[0].sent += 1; }
+    d[0].focus_set = false;
+  }
+  return ifx d[0].overflow then 0 else d[0].out_n;
+}
+
 // ---------------------------------------------------------------- checks
 
 dm_test_page :: (t: [] Tree, label: string, with_note: bool) {
@@ -462,4 +582,223 @@ dm_test_u32 :: (d: [] Dom, i: int) -> int {
   #assert d[0].values == 1 && d[0].value_len[0] == DM_VALUE && d[0].value_at[0] == 0;
   n = dm_flush(d, t, sets[..]);
   #assert dm_test_count(d, n, DC_VALUE) == 1;
+}
+
+#test "dm_flush_subtree patches only the dirty subtree, preserves siblings, and handles adds, removes, attrs, frames, values, focus and batching" {
+  t: [1] Tree; sub: [1] Tree; d: [1] Dom; sets: [1] AfSettings; sets[0] = af_settings(3);
+  // Build a full page with slot 0 = "page" and two sibling components: "row.0" and "row.1"
+  tr_begin(t[..]);
+  _ = tr_open(t[..], "page", TG_MAIN, "page");
+  r0 := tr_open(t[..], "row.0", TG_DIV, "row");
+  _ = tr_leaf(t[..], "row.0.txt", TG_P, "body", "hello");
+  _ = tr_leaf(t[..], "row.0.old", TG_SPAN, "tag", "draft");
+  tr_close(t[..]);
+  r1 := tr_open(t[..], "row.1", TG_DIV, "row");
+  _ = tr_leaf(t[..], "row.1.txt", TG_P, "body", "sibling");
+  _ = tr_leaf(t[..], "row.1.in", TG_INPUT, "", "");
+  tr_close(t[..]);
+  tr_close(t[..]);
+  #assert r0 >= 0 && r1 >= 0 && dm_flush(d[..], t[..], sets[..]) > 0;
+  row0_slot := dm_find(d[..], "row.0");
+  row1_slot := dm_find(d[..], "row.1");
+  old_slot := dm_find(d[..], "row.0.old");
+  row0_parent := d[0].slots[row0_slot].parent;
+  row0_after := d[0].slots[row0_slot].after;
+  #assert dm_in_subtree(d[..], 0, 0) && dm_in_subtree(d[..], row0_slot, 0) && !dm_in_subtree(d[..], 0, row0_slot) && !dm_in_subtree(d[..], -1, 0);
+
+  // Reject empty tree, mismatched root id, or unmounted root id (with matching tree root)
+  tr_begin(sub[..]);
+  #assert dm_flush_subtree(d[..], "row.0", sub[..], sets[..]) == -1;
+  _ = tr_leaf(sub[..], "wrong", TG_DIV, "", "");
+  #assert dm_flush_subtree(d[..], "row.0", sub[..], sets[..]) == -1;
+  tr_begin(sub[..]);
+  _ = tr_leaf(sub[..], "missing", TG_DIV, "", "");
+  #assert dm_flush_subtree(d[..], "missing", sub[..], sets[..]) == -1;
+
+  // Patch ONLY "row.0.txt" text: emits exactly 1 DC_TEXT, 0 DC_MAKE/PLACE/REMOVE
+  tr_begin(sub[..]);
+  _ = tr_open(sub[..], "row.0", TG_DIV, "row");
+  _ = tr_leaf(sub[..], "row.0.txt", TG_P, "body", "hello world");
+  _ = tr_leaf(sub[..], "row.0.old", TG_SPAN, "tag", "draft");
+  tr_close(sub[..]);
+  n := dm_flush_subtree(d[..], "row.0", sub[..], sets[..]);
+  #assert n > 0 && d[0].sent == 1 && dm_test_count(d[..], n, DC_TEXT) == 1;
+  #assert dm_test_count(d[..], n, DC_MAKE) == 0 && dm_test_count(d[..], n, DC_PLACE) == 0 && dm_test_count(d[..], n, DC_REMOVE) == 0;
+  #assert d[0].slots[row0_slot].parent == row0_parent && d[0].slots[row0_slot].after == row0_after;
+  #assert dm_find(d[..], "row.1") == row1_slot && dm_find(d[..], "row.1.txt") >= 0;
+
+  // Identical subtree patch emits 0 bytes
+  #assert dm_flush_subtree(d[..], "row.0", sub[..], sets[..]) == 0 && d[0].sent == 0;
+
+  // Mutate class, add attrs (key 0 AT_HREF & last key AT_MODAL & AT_FRAME via tr_frame), remove "row.0.old",
+  // add fresh child with empty class & fresh child with 1-char class & nested child
+  tr_begin(sub[..]);
+  s0 := tr_open(sub[..], "row.0", TG_DIV, "row active");
+  tr_attr(sub[..], s0, AT_HREF, "/a");
+  tr_attr(sub[..], s0, AT_MODAL, "true");
+  tr_frame(sub[..], s0, 3, 0, 1);
+  _ = tr_leaf(sub[..], "row.0.txt", TG_P, "body", "hello world!");
+  _ = tr_open(sub[..], "row.0.box", TG_DIV, "");
+  _ = tr_leaf(sub[..], "row.0.new", TG_SPAN, "b", "live");
+  tr_close(sub[..]);
+  tr_close(sub[..]);
+  #assert dm_size(d[..], row0_slot, 200, 40);
+  n = dm_flush_subtree(d[..], "row.0", sub[..], sets[..]);
+  // 2 MAKE, 2 PLACE, 2 CLASS (row.0 + row.0.new; row.0.box empty cls emits 0), 2 TEXT, 3 ATTR, 1 FRAME, 1 REMOVE = 13
+  #assert n > 0 && d[0].sent == 13 && dm_test_count(d[..], n, DC_MAKE) == 2 && dm_test_count(d[..], n, DC_PLACE) == 2;
+  #assert dm_test_count(d[..], n, DC_REMOVE) == 1 && dm_find(d[..], "row.0.old") < 0 && dm_find(d[..], "row.0.new") >= 0;
+  #assert dm_test_count(d[..], n, DC_CLASS) == 2 && dm_test_count(d[..], n, DC_ATTR) == 3 && dm_test_count(d[..], n, DC_FRAME) == 1;
+  // Verify exact DC_REMOVE payload carries old_slot
+  #assert d[0].out[n - 3] == DC_REMOVE && cast(int) d[0].out[n - 2] + cast(int) d[0].out[n - 1] * 256 == old_slot;
+  #assert dm_find(d[..], "row.1") == row1_slot && dm_find(d[..], "row.1.txt") >= 0;
+
+  // Reorder children + update existing attr value + verify unchanged class/attr emit 0
+  tr_begin(sub[..]);
+  s0 = tr_open(sub[..], "row.0", TG_DIV, "row active");
+  tr_attr(sub[..], s0, AT_HREF, "/b");
+  tr_attr(sub[..], s0, AT_MODAL, "true");
+  tr_frame(sub[..], s0, 3, 0, 1);
+  _ = tr_open(sub[..], "row.0.box", TG_DIV, "");
+  _ = tr_leaf(sub[..], "row.0.new", TG_SPAN, "b", "live");
+  tr_close(sub[..]);
+  _ = tr_leaf(sub[..], "row.0.txt", TG_P, "body", "hello world!");
+  tr_close(sub[..]);
+  n = dm_flush_subtree(d[..], "row.0", sub[..], sets[..]);
+  #assert n > 0 && d[0].sent == 3 && dm_test_count(d[..], n, DC_PLACE) == 2 && dm_test_count(d[..], n, DC_ATTR) == 1;
+  #assert dm_test_count(d[..], n, DC_CLASS) == 0 && dm_test_count(d[..], n, DC_FRAME) == 0;
+  // Re-flushing the same reordered tree emits 0 (proves updated `after` and `attr_h` were persisted!)
+  #assert dm_flush_subtree(d[..], "row.0", sub[..], sets[..]) == 0;
+
+  // Unattr + clear text + remove frame (frame_h = 0), checking exact byte size of DC_TEXT("") + 3 DC_UNATTR
+  tr_begin(sub[..]);
+  _ = tr_open(sub[..], "row.0", TG_DIV, "row active");
+  _ = tr_open(sub[..], "row.0.box", TG_DIV, "");
+  _ = tr_leaf(sub[..], "row.0.new", TG_SPAN, "b", "live");
+  tr_close(sub[..]);
+  _ = tr_open(sub[..], "row.0.txt", TG_P, "body"); tr_close(sub[..]);
+  tr_close(sub[..]);
+  n = dm_flush_subtree(d[..], "row.0", sub[..], sets[..]);
+  // 3 DC_UNATTR ("href"=4, "data-frame"=10, "data-modal"=10 -> 7+4 + 7+10 + 7+10 = 45) + 1 DC_TEXT("") (7) = 52 bytes
+  #assert n == 52 && d[0].sent == 4 && dm_test_count(d[..], n, DC_UNATTR) == 3 && dm_test_count(d[..], n, DC_TEXT) == 1;
+  #assert d[0].slots[row0_slot].frame_h == 0;
+
+  // Re-add identical frame (kind 3) and match exact frame_h produced by dm_flush at the same slot & 200x40
+  d_ref: [1] Dom;
+  tr_begin(t[..]); _ = tr_open(t[..], "p", TG_MAIN, ""); rf := tr_open(t[..], "ref", TG_DIV, ""); tr_frame(t[..], rf, 3, 0, 1); tr_close(t[..]); tr_close(t[..]);
+  _ = dm_flush(d_ref[..], t[..], sets[..]);
+  _ = dm_size(d_ref[..], row0_slot, 200, 40);
+  _ = dm_flush(d_ref[..], t[..], sets[..]);
+  tr_begin(sub[..]);
+  s0 = tr_open(sub[..], "row.0", TG_DIV, "row active");
+  tr_frame(sub[..], s0, 3, 0, 1);
+  b0 := tr_open(sub[..], "row.0.box", TG_DIV, "");
+  tr_frame(sub[..], b0, 3, 1, 1);
+  _ = tr_leaf(sub[..], "row.0.new", TG_SPAN, "b", "live");
+  tr_close(sub[..]);
+  _ = tr_open(sub[..], "row.0.txt", TG_P, "body"); tr_close(sub[..]);
+  tr_close(sub[..]);
+  n = dm_flush_subtree(d[..], "row.0", sub[..], sets[..]);
+  #assert n > 0 && dm_test_count(d[..], n, DC_FRAME) == 1 && dm_test_count(d[..], n, DC_ATTR) == 2;
+  #assert d[0].slots[row0_slot].frame_h == d_ref[0].slots[row0_slot].frame_h;
+
+  // Frame kind 0 (node.frame == 1) also draws a frame (kills node.frame > 0 -> > 1)
+  tr_begin(sub[..]);
+  s0 = tr_open(sub[..], "row.0", TG_DIV, "row active");
+  tr_frame(sub[..], s0, 0, 0, 1);
+  _ = tr_open(sub[..], "row.0.box", TG_DIV, "");
+  _ = tr_leaf(sub[..], "row.0.new", TG_SPAN, "b", "live");
+  tr_close(sub[..]);
+  _ = tr_open(sub[..], "row.0.txt", TG_P, "body"); tr_close(sub[..]);
+  tr_close(sub[..]);
+  n = dm_flush_subtree(d[..], "row.0", sub[..], sets[..]);
+  #assert n > 0 && dm_test_count(d[..], n, DC_FRAME) == 1 && d[0].slots[row0_slot].frame_h != d_ref[0].slots[row0_slot].frame_h;
+
+  // Batch two dirty subtrees with dm_keep + test 2 valid values (including slot 0) & 1 missing, plus focus on slot 0
+  tr_begin(sub[..]);
+  _ = tr_open(sub[..], "row.1", TG_DIV, "row");
+  _ = tr_leaf(sub[..], "row.1.txt", TG_P, "body", "sibling updated");
+  _ = tr_leaf(sub[..], "row.1.in", TG_INPUT, "", "");
+  tr_close(sub[..]);
+  n1 := dm_flush_subtree(d[..], "row.1", sub[..], sets[..]);
+  #assert n1 > 0 && d[0].sent == 1;
+  dm_keep(d[..]);
+  dm_value(d[..], "page", "root-v");
+  dm_value(d[..], "row.1.in", "v2");
+  dm_value(d[..], "missing", "skip");
+  dm_focus(d[..], "page");
+  tr_begin(sub[..]);
+  _ = tr_open(sub[..], "row.1", TG_DIV, "row");
+  _ = tr_leaf(sub[..], "row.1.txt", TG_P, "body", "sibling 2");
+  _ = tr_leaf(sub[..], "row.1.in", TG_INPUT, "", "");
+  tr_close(sub[..]);
+  n2 := dm_flush_subtree(d[..], "row.1", sub[..], sets[..]);
+  #assert n2 > n1 && d[0].sent == 5 && !d[0].keep && d[0].values == 0 && d[0].value_n == 0 && !d[0].focus_set;
+  #assert dm_test_count(d[..], n2, DC_TEXT) == 2 && dm_test_count(d[..], n2, DC_VALUE) == 2 && dm_test_count(d[..], n2, DC_FOCUS) == 1;
+  #assert d[0].out[n2 - 3] == DC_FOCUS && d[0].out[n2 - 2] == 0 && d[0].out[n2 - 1] == 0;
+  // Next flush resets out_n because d[0].keep was cleared!
+  #assert dm_flush_subtree(d[..], "row.1", sub[..], sets[..]) == 0 && d[0].sent == 0;
+
+  // Patch slot 0 ("page"): stale last[1] = 0 must be cleared to -1 so fresh0.c has after == -1 (not 0)
+  tr_begin(sub[..]);
+  _ = tr_open(sub[..], "page", TG_MAIN, "page updated");
+  _ = tr_open(sub[..], "fresh0", TG_DIV, "");
+  _ = tr_leaf(sub[..], "fresh0.c", TG_SPAN, "", "k");
+  tr_close(sub[..]);
+  _ = tr_leaf(sub[..], "row.0", TG_DIV, "row active", "");
+  _ = tr_leaf(sub[..], "row.1", TG_DIV, "row", "");
+  tr_close(sub[..]);
+  d[0].last[1] = 0;
+  n = dm_flush_subtree(d[..], "page", sub[..], sets[..]);
+  fresh_c := dm_find(d[..], "fresh0.c");
+  #assert n > 0 && fresh_c >= 0 && d[0].slots[fresh_c].after == -1;
+  #assert dm_test_count(d[..], n, DC_MAKE) == 2 && dm_test_count(d[..], n, DC_PLACE) == 3 && dm_find(d[..], "row.1.in") < 0;
+
+  // Reuse slot 0 as a child under slot 1 ("box"): add -> update -> remove slot 0 inside subtree
+  ds0: [1] Dom;
+  tr_begin(t[..]); _ = tr_leaf(t[..], "tmp", TG_DIV, "", ""); _ = tr_open(t[..], "box", TG_DIV, ""); tr_close(t[..]);
+  #assert dm_flush(ds0[..], t[..], sets[..]) > 0 && dm_find(ds0[..], "tmp") == 0 && dm_find(ds0[..], "box") == 1;
+  tr_begin(t[..]); _ = tr_open(t[..], "box", TG_DIV, ""); tr_close(t[..]);
+  #assert dm_flush(ds0[..], t[..], sets[..]) > 0 && !ds0[0].slots[0].live;
+  tr_begin(sub[..]); _ = tr_open(sub[..], "box", TG_DIV, ""); _ = tr_leaf(sub[..], "c0", TG_P, "", "a"); tr_close(sub[..]);
+  #assert dm_flush_subtree(ds0[..], "box", sub[..], sets[..]) > 0 && dm_find(ds0[..], "c0") == 0;
+  tr_begin(sub[..]); _ = tr_open(sub[..], "box", TG_DIV, ""); _ = tr_leaf(sub[..], "c0", TG_P, "", "b"); tr_close(sub[..]);
+  #assert dm_flush_subtree(ds0[..], "box", sub[..], sets[..]) > 0 && ds0[0].sent == 1 && dm_find(ds0[..], "c0") == 0;
+  tr_begin(sub[..]); _ = tr_open(sub[..], "box", TG_DIV, ""); tr_close(sub[..]);
+  #assert dm_flush_subtree(ds0[..], "box", sub[..], sets[..]) > 0 && !ds0[0].slots[0].live && dm_find(ds0[..], "c0") < 0;
+
+  // Test long id (> DM_ID) truncation, orphan node (parent < 0), and full slot table with stale of[1]
+  long_id: [DM_ID + 4] u8;
+  for k: 0..<long_id.count { long_id[k] = 'z'; }
+  tr_begin(sub[..]);
+  _ = tr_open(sub[..], "page", TG_MAIN, "page updated");
+  _ = tr_leaf(sub[..], cast(string) long_id[..], TG_SPAN, "", "clipped");
+  tr_close(sub[..]);
+  _ = tr_leaf(sub[..], "orphan", TG_SPAN, "", "ignored");
+  n = dm_flush_subtree(d[..], "page", sub[..], sets[..]);
+  #assert n > 0 && dm_find(d[..], cast(string) long_id[0..<DM_ID]) >= 0 && dm_find(d[..], "orphan") < 0;
+
+  // Full slot table skips extra fresh nodes and clears of[1] to -1 so child-of-no-room cannot update existing slot "ok"
+  d2: [1] Dom;
+  tr_begin(t[..]); _ = tr_open(t[..], "r", TG_DIV, ""); _ = tr_leaf(t[..], "ok", TG_SPAN, "", "v0"); tr_close(t[..]);
+  #assert dm_flush(d2[..], t[..], sets[..]) > 0 && dm_find(d2[..], "ok") == 1;
+  d2[0].top = TR_NODES;
+  for k: 2..<TR_NODES { d2[0].slots[k].live = true; d2[0].slots[k].parent = -1; }
+  d2[0].of[1] = 0; // stale of[1] pointing at slot 0 must be cleared to -1!
+  tr_begin(sub[..]);
+  _ = tr_open(sub[..], "r", TG_DIV, "");
+  _ = tr_open(sub[..], "no-room", TG_DIV, "");
+  _ = tr_leaf(sub[..], "ok", TG_SPAN, "", "must-not-write");
+  tr_close(sub[..]);
+  tr_close(sub[..]);
+  // "ok" wasn't seen because its parent "no-room" failed dm_free (of[1] == -1), so "ok" is removed (1 DC_REMOVE, 0 DC_TEXT)!
+  n2 = dm_flush_subtree(d2[..], "r", sub[..], sets[..]);
+  #assert n2 > 0 && dm_test_count(d2[..], n2, DC_REMOVE) == 1 && dm_test_count(d2[..], n2, DC_TEXT) == 0 && dm_find(d2[..], "no-room") < 0;
+
+  // Overflow returns 0 and flags d[0].overflow
+  d[0].out_n = DM_OUT - 2;
+  dm_keep(d[..]);
+  tr_begin(sub[..]);
+  _ = tr_open(sub[..], "page", TG_MAIN, "page overflow");
+  tr_close(sub[..]);
+  #assert dm_flush_subtree(d[..], "page", sub[..], sets[..]) == 0 && d[0].overflow;
 }

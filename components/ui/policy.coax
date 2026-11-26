@@ -1,0 +1,148 @@
+// Coax UI Core runtime scheduling, cache, subscription and flush policies (#14090).
+// Pure decision procedures under #authority, verified by #test, #forall, and coax mutate (0 survivors).
+//   coax/bin/coax test components/ui/policy.coax --library
+//   coax/bin/coax mutate components/ui/policy.coax
+#authority;
+
+// Command overlap policies (Effect UI Command overlap modes).
+UI_CMD_CONCURRENT :: 0;
+UI_CMD_SWITCH :: 1;
+UI_CMD_QUEUE :: 2;
+
+// Resulting scheduler action for a newly emitted command.
+UIP_ACT_START :: 0;
+UIP_ACT_CANCEL_AND_START :: 1;
+UIP_ACT_ENQUEUE :: 2;
+UIP_ACT_DROP :: 3;
+
+// Query AsyncResult states.
+UI_Q_INITIAL :: 0;
+UI_Q_SUCCESS :: 1;
+UI_Q_FAILURE :: 2;
+
+// Keyed subscription reconciliation decisions.
+UIP_SUB_KEEP :: 0;
+UIP_SUB_OPEN :: 1;
+UIP_SUB_CLOSE :: 2;
+UIP_SUB_RESTART :: 3;
+
+// Flush scope decisions.
+UIP_FLUSH_NONE :: 0;
+UIP_FLUSH_SUBTREE :: 1;
+UIP_FLUSH_FULL :: 2;
+
+// Decides how to schedule a command given its overlap policy and current in-flight/queued counts.
+uip_cmd_action :: (policy: int, running: int, queued: int, max_queue: int) -> int #effects() {
+  if policy == UI_CMD_CONCURRENT { return UIP_ACT_START; }
+  if policy == UI_CMD_SWITCH {
+    return ifx running > 0 then UIP_ACT_CANCEL_AND_START else UIP_ACT_START;
+  }
+  if policy == UI_CMD_QUEUE {
+    if running <= 0 { return UIP_ACT_START; }
+    if queued >= 0 && queued < max_queue { return UIP_ACT_ENQUEUE; }
+    return UIP_ACT_DROP;
+  }
+  return UIP_ACT_DROP;
+}
+
+// Whether a query cache entry is stale and requires revalidation.
+uip_query_is_stale :: (state: int, fetched_ms: int, now_ms: int, stale_ms: int, invalidated: bool) -> bool #effects(traps) {
+  if state == UI_Q_INITIAL || invalidated { return true; }
+  if stale_ms <= 0 { return true; }
+  elapsed := now_ms - fetched_ms;
+  return elapsed >= stale_ms;
+}
+
+// Whether a query cache read should start a fetch now (deduplicates in-flight fetches and enforces debounce).
+uip_query_should_fetch :: (state: int, waiting: bool, stale: bool, debounce_ms: int, since_trigger_ms: int) -> bool #effects() {
+  if waiting { return false; }
+  if state != UI_Q_INITIAL && !stale { return false; }
+  if debounce_ms <= 0 { return true; }
+  return since_trigger_ms >= debounce_ms;
+}
+
+// Reconciles an existing keyed subscription against a desired subscription for the same key.
+uip_sub_diff :: (was_active: bool, want_active: bool, old_spec_h: int, new_spec_h: int) -> int #effects() {
+  if !was_active && want_active { return UIP_SUB_OPEN; }
+  if was_active && !want_active { return UIP_SUB_CLOSE; }
+  if !was_active { return UIP_SUB_KEEP; }
+  return ifx old_spec_h == new_spec_h then UIP_SUB_KEEP else UIP_SUB_RESTART;
+}
+
+// Decides whether a frame emits nothing, patches only dirty mounted leaf subtrees, or flushes the full tree.
+uip_flush_mode :: (structural_dirty: bool, dirty_components: int, all_mounted: bool) -> int #effects() {
+  if structural_dirty { return UIP_FLUSH_FULL; }
+  if dirty_components <= 0 { return UIP_FLUSH_NONE; }
+  return ifx all_mounted then UIP_FLUSH_SUBTREE else UIP_FLUSH_FULL;
+}
+
+// Bounded ancestor step for scoped Provider lookup (guards out-of-bounds indices and cycles).
+uip_parent_step :: (parent_idx: int, max_comps: int, depth: int, max_depth: int) -> int #effects() {
+  if depth < 0 || depth >= max_depth { return -1; }
+  if parent_idx < 0 || parent_idx >= max_comps { return -1; }
+  return parent_idx;
+}
+
+// ---- tests & properties
+
+#test "command overlap policy schedules concurrent, switch, queue, and drops invalid/full" {
+  #assert uip_cmd_action(UI_CMD_CONCURRENT, 0, 0, 4) == UIP_ACT_START;
+  #assert uip_cmd_action(UI_CMD_CONCURRENT, 3, 2, 4) == UIP_ACT_START;
+  #assert uip_cmd_action(UI_CMD_SWITCH, 0, 0, 4) == UIP_ACT_START;
+  #assert uip_cmd_action(UI_CMD_SWITCH, 1, 0, 4) == UIP_ACT_CANCEL_AND_START;
+  #assert uip_cmd_action(UI_CMD_SWITCH, -1, 0, 4) == UIP_ACT_START;
+  #assert uip_cmd_action(UI_CMD_QUEUE, 0, 0, 2) == UIP_ACT_START;
+  #assert uip_cmd_action(UI_CMD_QUEUE, -1, 0, 2) == UIP_ACT_START;
+  #assert uip_cmd_action(UI_CMD_QUEUE, 1, 0, 2) == UIP_ACT_ENQUEUE;
+  #assert uip_cmd_action(UI_CMD_QUEUE, 1, 1, 2) == UIP_ACT_ENQUEUE;
+  #assert uip_cmd_action(UI_CMD_QUEUE, 1, 2, 2) == UIP_ACT_DROP;
+  #assert uip_cmd_action(UI_CMD_QUEUE, 1, -1, 2) == UIP_ACT_DROP;
+  #assert uip_cmd_action(99, 0, 0, 2) == UIP_ACT_DROP;
+  #assert uip_cmd_action(-1, 0, 0, 2) == UIP_ACT_DROP;
+}
+
+#test "query staleness and fetch deduplication enforce TTL, invalidation, and debounce" {
+  #assert uip_query_is_stale(UI_Q_INITIAL, 1000, 1000, 5000, false);
+  #assert uip_query_is_stale(UI_Q_SUCCESS, 1000, 1000, 5000, true);
+  #assert uip_query_is_stale(UI_Q_SUCCESS, 1000, 900, 0, false);
+  #assert !uip_query_is_stale(UI_Q_SUCCESS, 1000, 1000, 1, false);
+  #assert uip_query_is_stale(UI_Q_SUCCESS, 1000, 1000, -1, false);
+  #assert !uip_query_is_stale(UI_Q_SUCCESS, 1000, 5999, 5000, false);
+  #assert uip_query_is_stale(UI_Q_SUCCESS, 1000, 6000, 5000, false);
+  #assert uip_query_is_stale(UI_Q_FAILURE, 1000, 6000, 5000, false);
+  #assert !uip_query_is_stale(UI_Q_FAILURE, 1000, 5999, 5000, false);
+
+  #assert !uip_query_should_fetch(UI_Q_INITIAL, true, true, 0, 100);
+  #assert !uip_query_should_fetch(UI_Q_SUCCESS, false, false, 0, 100);
+  #assert !uip_query_should_fetch(UI_Q_FAILURE, false, false, 0, 100);
+  #assert uip_query_should_fetch(UI_Q_INITIAL, false, false, 0, 0);
+  #assert uip_query_should_fetch(UI_Q_SUCCESS, false, true, 0, -1);
+  #assert !uip_query_should_fetch(UI_Q_SUCCESS, false, true, 1, 0);
+  #assert uip_query_should_fetch(UI_Q_SUCCESS, false, true, -5, 0);
+  #assert !uip_query_should_fetch(UI_Q_SUCCESS, false, true, 250, 249);
+  #assert uip_query_should_fetch(UI_Q_SUCCESS, false, true, 250, 250);
+  #assert uip_query_should_fetch(UI_Q_INITIAL, false, true, 250, 300);
+}
+
+#test "subscription diff opens new, closes removed, keeps equal, and restarts changed specs" {
+  #assert uip_sub_diff(false, true, 0, 42) == UIP_SUB_OPEN;
+  #assert uip_sub_diff(true, false, 42, 0) == UIP_SUB_CLOSE;
+  #assert uip_sub_diff(false, false, 0, 0) == UIP_SUB_KEEP;
+  #assert uip_sub_diff(true, true, 42, 42) == UIP_SUB_KEEP;
+  #assert uip_sub_diff(true, true, 42, 43) == UIP_SUB_RESTART;
+}
+
+#test "flush mode picks none, subtree patch, or full flush accurately" {
+  #assert uip_flush_mode(true, 0, true) == UIP_FLUSH_FULL;
+  #assert uip_flush_mode(true, 2, false) == UIP_FLUSH_FULL;
+  #assert uip_flush_mode(false, 0, true) == UIP_FLUSH_NONE;
+  #assert uip_flush_mode(false, -1, true) == UIP_FLUSH_NONE;
+  #assert uip_flush_mode(false, 1, true) == UIP_FLUSH_SUBTREE;
+  #assert uip_flush_mode(false, 3, false) == UIP_FLUSH_FULL;
+}
+
+#forall "provider parent step rejects negative/out-of-bounds indices and depth limit" p: -2..<6 {
+  #assert uip_parent_step(p, 4, 0, 8) == (ifx p >= 0 && p < 4 then p else -1);
+  #assert uip_parent_step(p, 4, 8, 8) == -1;
+  #assert uip_parent_step(p, 4, -1, 8) == -1;
+}

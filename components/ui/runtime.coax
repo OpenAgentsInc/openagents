@@ -1,0 +1,1402 @@
+// Coax UI Core runtime (#14090): Effect UI-inspired per-component MVU, typed Commands as values,
+// declarative keyed Subscriptions (wired to #14089's 16 stream slots), shared Query Cache with
+// AsyncResult + optimistic updates, and lexically scoped Providers with direct parent messaging.
+// Zero dynamic allocation; compiles to native (`coax test`) and `wasm32-wasip1` (`coax/web/wasm.sh`).
+//   coax/bin/coax test components/ui/runtime.coax --library
+#load "policy.coax";
+#load "../backend/dom.coax";
+
+UI_MAX_COMPS :: 64;
+UI_MAX_MSGS :: 128;
+UI_MSG_POOL :: 4096;
+UI_MAX_CMDS :: 32;
+UI_CMD_POOL :: 4096;
+UI_CMD_QUEUE_MAX :: 8;
+UI_MAX_SUBS :: 16;          // matches coax/web/stream-client-policy.coax SC_MAX_SLOTS
+UI_MAX_QUERIES :: 24;
+UI_Q_POOL :: 8192;
+UI_MAX_Q_SUBS :: 16;
+UI_MAX_PROVIDERS :: 24;
+UI_MAX_P_READERS :: 16;
+UI_KEY_MAX :: 64;
+UI_URL_MAX :: 256;
+UI_PROV_VAL_MAX :: 128;
+UI_COMP_INTS :: 8;
+UI_MAX_DEPTH :: 16;
+
+// Command kinds.
+UI_CMD_CUSTOM :: 0;
+UI_CMD_HTTP_GET :: 1;
+UI_CMD_HTTP_POST :: 2;
+UI_CMD_TIMER :: 3;
+UI_CMD_QUERY_FETCH :: 4;
+
+// Command slot lifecycle states.
+UI_CS_FREE :: 0;
+UI_CS_PENDING :: 1;
+UI_CS_RUNNING :: 2;
+UI_CS_QUEUED :: 3;
+
+// Keyed subscription kinds.
+UI_SUB_SSE :: 1;
+UI_SUB_WS :: 2;
+UI_SUB_TIMER :: 3;
+UI_SUB_KEY :: 4;
+UI_SUB_SCROLL :: 5;
+
+// Stream event band matching coax/web/stream-client-policy.coax (#14089).
+UI_SUB_EVENT_BASE :: 1024;
+UI_SUB_PHASE_OPEN :: 0;
+UI_SUB_PHASE_CHUNK :: 1;
+UI_SUB_PHASE_END :: 2;
+UI_SUB_PHASE_ERROR :: 3;
+
+UiSpan :: struct { at: int; n: int; }
+
+UiComp :: struct {
+  live: bool;
+  id: [UI_KEY_MAX] u8; id_n: int;
+  kind: int;
+  parent: int;
+  model_idx: int;
+  generation: int;
+  dirty: bool;
+  mounted: bool;
+  ints: [UI_COMP_INTS] int;
+  flags: int;
+}
+
+UiMsg :: struct {
+  target: int;
+  generation: int;
+  tag: int;
+  arg_i: int;
+  payload_at: int;
+  payload_n: int;
+}
+
+UiCmdSlot :: struct {
+  state: int;
+  owner: int;
+  owner_gen: int;
+  run_id: int;
+  key: [UI_KEY_MAX] u8; key_n: int;
+  kind: int;
+  policy: int;
+  url_at: int; url_n: int;
+  body_at: int; body_n: int;
+  delay_ms: int;
+  due_ms: int;
+  ok_tag: int;
+  err_tag: int;
+  has_invalidate: bool;
+  invalidate_key_h: int;
+}
+
+UiSubSlot :: struct {
+  active: bool;
+  desired: bool;
+  pending_open: bool;
+  pending_close: bool;
+  owner: int;
+  owner_gen: int;
+  key: [UI_KEY_MAX] u8; key_n: int;
+  kind: int;
+  url: [UI_URL_MAX] u8; url_n: int;
+  flags: int;
+  interval_ms: int;
+  next_tick_ms: int;
+  open_tag: int;
+  data_tag: int;
+  end_tag: int;
+  err_tag: int;
+}
+
+UiQueryEntry :: struct {
+  used: bool;
+  key: [UI_KEY_MAX] u8; key_n: int; key_h: int;
+  state: int;                 // UI_Q_INITIAL | UI_Q_SUCCESS | UI_Q_FAILURE
+  stale: bool;
+  waiting: bool;
+  invalidated: bool;
+  optimistic: bool;
+  fetched_ms: int;
+  triggered_ms: int;
+  data_at: int; data_n: int;
+  prev_data_at: int; prev_data_n: int;
+  err_status: int;
+  subs: [UI_MAX_Q_SUBS] int;
+  sub_n: int;
+}
+
+UiProvider :: struct {
+  used: bool;
+  owner: int;
+  key: [UI_KEY_MAX] u8; key_n: int;
+  int_val: int;
+  str_val: [UI_PROV_VAL_MAX] u8; str_n: int;
+  readers: [UI_MAX_P_READERS] int;
+  reader_n: int;
+}
+
+UiRuntime :: struct {
+  now_ms: int;
+  next_gen: int;
+  next_run_id: int;
+  structural_dirty: bool;
+
+  comps: [UI_MAX_COMPS] UiComp;
+
+  msgs: [UI_MAX_MSGS] UiMsg;
+  msg_head: int;
+  msg_tail: int;
+  msg_count: int;
+  msg_pool: [UI_MSG_POOL] u8;
+  msg_pool_n: int;
+
+  cmds: [UI_MAX_CMDS] UiCmdSlot;
+  cmd_pool: [UI_CMD_POOL] u8;
+  cmd_pool_n: int;
+  cancelled: [UI_MAX_CMDS] int;
+  cancelled_n: int;
+
+  subs: [UI_MAX_SUBS] UiSubSlot;
+
+  queries: [UI_MAX_QUERIES] UiQueryEntry;
+  q_pool: [UI_Q_POOL] u8;
+  q_pool_n: int;
+
+  providers: [UI_MAX_PROVIDERS] UiProvider;
+}
+
+// ---- byte & pool helpers
+
+ui_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count > dst.count then dst.count else src.count; // mutant: equivalent (at boundary src.count == dst.count, both branches equal dst.count)
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+ui_eq :: (buf: [] u8, n: int, s: string) -> bool {
+  return n == s.count && cast(string) buf[0..<n] == s;
+}
+
+ui_pool_put :: (pool: [] u8, used: [] int, src: string) -> UiSpan {
+  if src.count == 0 { return UiSpan.{}; }
+  n := ifx src.count > pool.count then pool.count else src.count; // mutant: equivalent (at boundary src.count == pool.count, both branches equal pool.count)
+  if used[0] + n > pool.count { used[0] = 0; }
+  at := used[0];
+  for i: 0..<n { pool[at + i] = src[i]; }
+  used[0] = at + n;
+  return UiSpan.{at = at, n = n};
+}
+
+ui_comp_valid :: (r: [] UiRuntime, comp: int) -> bool {
+  return comp >= 0 && comp < UI_MAX_COMPS && r[0].comps[comp].live;
+}
+
+ui_comp_id :: (r: [] UiRuntime, comp: int) -> string {
+  if !ui_comp_valid(r, comp) { return ""; }
+  return cast(string) r[0].comps[comp].id[0..<r[0].comps[comp].id_n];
+}
+
+// ---- Pillar 1: Per-Component MVU Instances & Subtree Dirty Tracking
+
+ui_find :: (r: [] UiRuntime, id: string) -> int {
+  if id.count == 0 { return -1; }
+  for i: 0..<UI_MAX_COMPS {
+    if r[0].comps[i].live && ui_eq(r[0].comps[i].id[..], r[0].comps[i].id_n, id) { return i; }
+  }
+  return -1;
+}
+
+ui_mount :: (r: [] UiRuntime, id: string, kind: int, parent: int, model_idx: int) -> int {
+  if id.count == 0 { return -1; }
+  existing := ui_find(r, id);
+  if existing >= 0 { return existing; }
+  for i: 0..<UI_MAX_COMPS {
+    if !r[0].comps[i].live {
+      r[0].next_gen += 1;
+      c: UiComp;
+      c.live = true;
+      c.id_n = ui_copy(c.id[..], id);
+      c.kind = kind;
+      c.parent = ifx ui_comp_valid(r, parent) then parent else -1;
+      c.model_idx = model_idx;
+      c.generation = r[0].next_gen;
+      c.dirty = true;
+      r[0].comps[i] = c;
+      r[0].structural_dirty = true;
+      return i;
+    }
+  }
+  return -1;
+}
+
+ui_mark_dirty :: (r: [] UiRuntime, comp: int) {
+  if ui_comp_valid(r, comp) { r[0].comps[comp].dirty = true; }
+}
+
+ui_mark_structural :: (r: [] UiRuntime) {
+  r[0].structural_dirty = true;
+}
+
+ui_mark_mounted :: (r: [] UiRuntime, comp: int) {
+  if ui_comp_valid(r, comp) {
+    r[0].comps[comp].mounted = true;
+    r[0].comps[comp].dirty = false;
+  }
+}
+
+ui_after_full_flush :: (r: [] UiRuntime) {
+  r[0].structural_dirty = false;
+  for i: 0..<UI_MAX_COMPS {
+    if r[0].comps[i].live {
+      r[0].comps[i].mounted = true;
+      r[0].comps[i].dirty = false;
+    }
+  }
+}
+
+ui_flush_mode :: (r: [] UiRuntime) -> int {
+  dirty := 0;
+  all_mounted := true;
+  for i: 0..<UI_MAX_COMPS {
+    if r[0].comps[i].live && r[0].comps[i].dirty {
+      dirty = 1; // mutant: equivalent (uip_flush_mode only checks dirty > 0)
+      if !r[0].comps[i].mounted { all_mounted = false; }
+    }
+  }
+  return uip_flush_mode(r[0].structural_dirty, dirty, all_mounted);
+}
+
+ui_cancel_push :: (r: [] UiRuntime, run_id: int) {
+  if r[0].cancelled_n < UI_MAX_CMDS {
+    r[0].cancelled[r[0].cancelled_n] = run_id;
+    r[0].cancelled_n += 1;
+  }
+}
+
+// Cancels commands, closes subscriptions, and clears providers owned by `comp`.
+ui_cleanup_owner :: (r: [] UiRuntime, comp: int) {
+  for i: 0..<UI_MAX_CMDS {
+    if r[0].cmds[i].state != UI_CS_FREE && r[0].cmds[i].owner == comp {
+      if r[0].cmds[i].state == UI_CS_RUNNING { ui_cancel_push(r, r[0].cmds[i].run_id); }
+      r[0].cmds[i].state = UI_CS_FREE;
+    }
+  }
+  for s: 0..<UI_MAX_SUBS {
+    if r[0].subs[s].active && r[0].subs[s].owner == comp {
+      r[0].subs[s].active = false;
+      r[0].subs[s].desired = false;
+      r[0].subs[s].pending_open = false;
+      r[0].subs[s].pending_close = true;
+    }
+  }
+  for p: 0..<UI_MAX_PROVIDERS {
+    if r[0].providers[p].used && r[0].providers[p].owner == comp {
+      r[0].providers[p].used = false;
+    }
+  }
+}
+
+// Unmounts `comp` and every descendant component whose ancestor chain reaches `comp`.
+ui_unmount :: (r: [] UiRuntime, comp: int) {
+  if !ui_comp_valid(r, comp) { return; }
+  dead: [UI_MAX_COMPS] bool;
+  dead[comp] = true;
+  changed := true;
+  while changed {
+    changed = false;
+    for i: 0..<UI_MAX_COMPS {
+      if r[0].comps[i].live && !dead[i] && r[0].comps[i].parent >= 0 && dead[r[0].comps[i].parent] {
+        dead[i] = true;
+        changed = true;
+      }
+    }
+  }
+  for i: 0..<UI_MAX_COMPS {
+    if dead[i] {
+      ui_cleanup_owner(r, i);
+      r[0].comps[i].live = false;
+      r[0].comps[i].dirty = false;
+      r[0].comps[i].mounted = false;
+    }
+  }
+  r[0].structural_dirty = true;
+}
+
+// ---- Direct Message Routing
+
+ui_send :: (r: [] UiRuntime, target: int, tag: int, arg_i: int, payload: string) -> bool {
+  if !ui_comp_valid(r, target) || r[0].msg_count >= UI_MAX_MSGS { return false; }
+  used := [1] int.[r[0].msg_pool_n];
+  sp := ui_pool_put(r[0].msg_pool[..], used[..], payload);
+  r[0].msg_pool_n = used[0];
+  m := UiMsg.{
+    target = target,
+    generation = r[0].comps[target].generation,
+    tag = tag,
+    arg_i = arg_i,
+    payload_at = sp.at,
+    payload_n = sp.n
+  };
+  r[0].msgs[r[0].msg_tail] = m;
+  r[0].msg_tail = (r[0].msg_tail + 1) % UI_MAX_MSGS;
+  r[0].msg_count += 1;
+  return true;
+}
+
+// Routes a DOM id (e.g., "msg.4.copy") to the exact or deepest dot-prefix owner component ("msg.4").
+ui_route_dom_id :: (r: [] UiRuntime, dom_id: string) -> int {
+  if dom_id.count == 0 { return -1; }
+  best := -1;
+  best_n := 0;
+  for i: 0..<UI_MAX_COMPS {
+    if !r[0].comps[i].live { continue; }
+    cid := ui_comp_id(r, i);
+    if cid.count > dom_id.count || cid.count <= best_n { continue; } // mutant: equivalent (live component ids are unique so matching prefixes have distinct lengths)
+    if cast(string) dom_id[0..<cid.count] == cid && (cid.count == dom_id.count || dom_id[cid.count] == '.') {
+      best = i;
+      best_n = cid.count;
+    }
+  }
+  return best;
+}
+
+ui_send_by_id :: (r: [] UiRuntime, dom_id: string, tag: int, arg_i: int, payload: string) -> bool {
+  target := ui_route_dom_id(r, dom_id);
+  if target < 0 { return false; }
+  return ui_send(r, target, tag, arg_i, payload);
+}
+
+ui_take_msg :: (r: [] UiRuntime, out: [] UiMsg) -> bool {
+  while r[0].msg_count > 0 {
+    m := r[0].msgs[r[0].msg_head];
+    r[0].msg_head = (r[0].msg_head + 1) % UI_MAX_MSGS;
+    r[0].msg_count -= 1;
+    if r[0].msg_count == 0 { r[0].msg_pool_n = 0; }
+    if ui_comp_valid(r, m.target) && r[0].comps[m.target].generation == m.generation {
+      out[0] = m;
+      return true;
+    }
+  }
+  return false;
+}
+
+ui_msg_payload :: (r: [] UiRuntime, m: UiMsg) -> string {
+  if m.payload_at < 0 || m.payload_n < 0 || m.payload_at + m.payload_n > UI_MSG_POOL { return ""; } // mutant: equivalent (at payload_n == 0, msg_pool[at..<at] is "")
+  return cast(string) r[0].msg_pool[m.payload_at..<m.payload_at + m.payload_n];
+}
+
+// ---- Pillar 2: Typed Commands as Values
+
+ui_cmd_emit :: (r: [] UiRuntime, owner: int, key: string, kind: int, policy: int, url: string, body: string, delay_ms: int, ok_tag: int, err_tag: int, invalidate_key: string) -> int {
+  if !ui_comp_valid(r, owner) || key.count == 0 { return -1; }
+  running := 0;
+  queued := 0;
+  for i: 0..<UI_MAX_CMDS {
+    s := r[0].cmds[i];
+    if s.owner == owner && ui_eq(s.key[..], s.key_n, key) {
+      if s.state == UI_CS_PENDING || s.state == UI_CS_RUNNING { running += 1; } // mutant: equivalent (uip_cmd_action only checks running > 0)
+      else if s.state == UI_CS_QUEUED { queued += 1; }
+    }
+  }
+  action := uip_cmd_action(policy, running, queued, UI_CMD_QUEUE_MAX);
+  if action == UIP_ACT_DROP { return -1; }
+  if action == UIP_ACT_CANCEL_AND_START {
+    for i: 0..<UI_MAX_CMDS {
+      if (r[0].cmds[i].state == UI_CS_PENDING || r[0].cmds[i].state == UI_CS_RUNNING) &&
+         r[0].cmds[i].owner == owner && ui_eq(r[0].cmds[i].key[..], r[0].cmds[i].key_n, key) {
+        if r[0].cmds[i].state == UI_CS_RUNNING { ui_cancel_push(r, r[0].cmds[i].run_id); }
+        r[0].cmds[i].state = UI_CS_FREE;
+      }
+    }
+  }
+  slot := -1;
+  for i: 0..<UI_MAX_CMDS {
+    if r[0].cmds[i].state == UI_CS_FREE { slot = i; break; }
+  }
+  if slot < 0 { return -1; }
+  used := [1] int.[r[0].cmd_pool_n];
+  u_sp := ui_pool_put(r[0].cmd_pool[..], used[..], url);
+  b_sp := ui_pool_put(r[0].cmd_pool[..], used[..], body);
+  r[0].cmd_pool_n = used[0];
+  r[0].next_run_id += 1;
+  c: UiCmdSlot;
+  c.state = ifx action == UIP_ACT_ENQUEUE then UI_CS_QUEUED else UI_CS_PENDING;
+  c.owner = owner;
+  c.owner_gen = r[0].comps[owner].generation;
+  c.run_id = r[0].next_run_id;
+  c.key_n = ui_copy(c.key[..], key);
+  c.kind = kind;
+  c.policy = policy;
+  c.url_at = u_sp.at; c.url_n = u_sp.n;
+  c.body_at = b_sp.at; c.body_n = b_sp.n;
+  c.delay_ms = ifx delay_ms > 0 then delay_ms else 0; // mutant: equivalent (at delay_ms == 0 both branches equal 0)
+  c.due_ms = r[0].now_ms + c.delay_ms;
+  c.ok_tag = ok_tag;
+  c.err_tag = err_tag;
+  c.has_invalidate = invalidate_key.count > 0;
+  c.invalidate_key_h = tr_hash(invalidate_key);
+  r[0].cmds[slot] = c;
+  return c.run_id;
+}
+
+ui_cmd_is_running :: (r: [] UiRuntime, owner: int, key: string) -> bool {
+  for i: 0..<UI_MAX_CMDS {
+    s := r[0].cmds[i];
+    if (s.state == UI_CS_PENDING || s.state == UI_CS_RUNNING) && s.owner == owner && ui_eq(s.key[..], s.key_n, key) {
+      return true;
+    }
+  }
+  return false;
+}
+
+ui_cmd_url :: (r: [] UiRuntime, slot: int) -> string {
+  if slot < 0 || slot >= UI_MAX_CMDS { return ""; }
+  return cast(string) r[0].cmd_pool[r[0].cmds[slot].url_at..<r[0].cmds[slot].url_at + r[0].cmds[slot].url_n];
+}
+
+ui_cmd_body :: (r: [] UiRuntime, slot: int) -> string {
+  if slot < 0 || slot >= UI_MAX_CMDS { return ""; }
+  return cast(string) r[0].cmd_pool[r[0].cmds[slot].body_at..<r[0].cmds[slot].body_at + r[0].cmds[slot].body_n];
+}
+
+ui_cmd_take_pending :: (r: [] UiRuntime, out_slot: [] int) -> bool {
+  for i: 0..<UI_MAX_CMDS {
+    if r[0].cmds[i].state == UI_CS_PENDING {
+      r[0].cmds[i].state = UI_CS_RUNNING;
+      out_slot[0] = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+ui_cmd_take_cancelled :: (r: [] UiRuntime, out_run_id: [] int) -> bool {
+  if r[0].cancelled_n <= 0 { return false; }
+  out_run_id[0] = r[0].cancelled[0];
+  for i: 1..<r[0].cancelled_n { r[0].cancelled[i - 1] = r[0].cancelled[i]; }
+  r[0].cancelled_n -= 1;
+  return true;
+}
+
+ui_cmd_complete :: (r: [] UiRuntime, run_id: int, ok: bool, status: int, payload: string) -> bool {
+  slot := -1;
+  for i: 0..<UI_MAX_CMDS {
+    if (r[0].cmds[i].state == UI_CS_RUNNING || r[0].cmds[i].state == UI_CS_PENDING) && r[0].cmds[i].run_id == run_id {
+      slot = i;
+      break;
+    }
+  }
+  if slot < 0 { return false; }
+  c := r[0].cmds[slot];
+  r[0].cmds[slot].state = UI_CS_FREE;
+
+  // Promote oldest queued command for the same (owner, key) if any.
+  best_q := -1;
+  for i: 0..<UI_MAX_CMDS {
+    if r[0].cmds[i].state == UI_CS_QUEUED && r[0].cmds[i].owner == c.owner &&
+       ui_eq(r[0].cmds[i].key[..], r[0].cmds[i].key_n, cast(string) c.key[0..<c.key_n]) {
+      if best_q < 0 || r[0].cmds[i].run_id < r[0].cmds[best_q].run_id { best_q = i; } // mutant: equivalent (run_id is strictly monotonic and unique across slots)
+    }
+  }
+  if best_q >= 0 {
+    r[0].cmds[best_q].state = UI_CS_PENDING;
+    r[0].cmds[best_q].due_ms = r[0].now_ms + r[0].cmds[best_q].delay_ms;
+  }
+
+  if ok && c.has_invalidate {
+    for q: 0..<UI_MAX_QUERIES {
+      if r[0].queries[q].used && r[0].queries[q].key_h == c.invalidate_key_h {
+        r[0].queries[q].invalidated = true;
+        r[0].queries[q].stale = true;
+        for k: 0..<r[0].queries[q].sub_n { ui_mark_dirty(r, r[0].queries[q].subs[k]); }
+      }
+    }
+  }
+
+  if !ui_comp_valid(r, c.owner) || r[0].comps[c.owner].generation != c.owner_gen { return false; }
+  tag := ifx ok then c.ok_tag else c.err_tag;
+  _ = ui_send(r, c.owner, tag, status, payload);
+  return true;
+}
+
+ui_cmd_tick :: (r: [] UiRuntime, now_ms: int) -> int {
+  r[0].now_ms = now_ms;
+  fired := 0;
+  for i: 0..<UI_MAX_CMDS {
+    if (r[0].cmds[i].state == UI_CS_PENDING || r[0].cmds[i].state == UI_CS_RUNNING) &&
+       r[0].cmds[i].kind == UI_CMD_TIMER && now_ms >= r[0].cmds[i].due_ms {
+      if ui_cmd_complete(r, r[0].cmds[i].run_id, true, 0, "") { fired += 1; }
+    }
+  }
+  return fired;
+}
+
+// ---- Pillar 3: Declarative Keyed Subscriptions (16 slots, #14089 stream band)
+
+ui_sub_begin :: (r: [] UiRuntime, owner: int) {
+  for s: 0..<UI_MAX_SUBS {
+    if r[0].subs[s].active && r[0].subs[s].owner == owner {
+      r[0].subs[s].desired = false;
+    }
+  }
+}
+
+ui_sub_want :: (r: [] UiRuntime, owner: int, key: string, kind: int, url: string, flags: int, interval_ms: int, open_tag: int, data_tag: int, end_tag: int, err_tag: int) -> int {
+  if !ui_comp_valid(r, owner) || key.count == 0 { return -1; }
+  step := ifx interval_ms < 1 then 1 else interval_ms; // mutant: equivalent (at boundary interval_ms == 1, both branches equal 1)
+  for s: 0..<UI_MAX_SUBS {
+    if r[0].subs[s].active && r[0].subs[s].owner == owner && ui_eq(r[0].subs[s].key[..], r[0].subs[s].key_n, key) {
+      same := r[0].subs[s].kind == kind && r[0].subs[s].flags == flags &&
+              r[0].subs[s].interval_ms == step && ui_eq(r[0].subs[s].url[..], r[0].subs[s].url_n, url);
+      d := uip_sub_diff(true, true, 1, ifx same then 1 else 2); // mutant: equivalent (any value != 1 triggers UIP_SUB_RESTART)
+      r[0].subs[s].desired = true;
+      r[0].subs[s].open_tag = open_tag;
+      r[0].subs[s].data_tag = data_tag;
+      r[0].subs[s].end_tag = end_tag;
+      r[0].subs[s].err_tag = err_tag;
+      if d == UIP_SUB_RESTART {
+        r[0].subs[s].kind = kind;
+        r[0].subs[s].url_n = ui_copy(r[0].subs[s].url[..], url);
+        r[0].subs[s].flags = flags;
+        r[0].subs[s].interval_ms = step;
+        r[0].subs[s].next_tick_ms = r[0].now_ms + step;
+        r[0].subs[s].pending_close = true;
+        r[0].subs[s].pending_open = true;
+      }
+      return s;
+    }
+  }
+  for s: 0..<UI_MAX_SUBS {
+    if !r[0].subs[s].active && !r[0].subs[s].pending_close {
+      slot: UiSubSlot;
+      slot.active = true;
+      slot.desired = true;
+      slot.pending_open = uip_sub_diff(false, true, 0, 1) == UIP_SUB_OPEN; // mutant: equivalent (old_spec_h is unused when was_active is false)
+      slot.owner = owner;
+      slot.owner_gen = r[0].comps[owner].generation;
+      slot.key_n = ui_copy(slot.key[..], key);
+      slot.kind = kind;
+      slot.url_n = ui_copy(slot.url[..], url);
+      slot.flags = flags;
+      slot.interval_ms = step;
+      slot.next_tick_ms = r[0].now_ms + step;
+      slot.open_tag = open_tag;
+      slot.data_tag = data_tag;
+      slot.end_tag = end_tag;
+      slot.err_tag = err_tag;
+      r[0].subs[s] = slot;
+      return s;
+    }
+  }
+  return -1;
+}
+
+ui_sub_commit :: (r: [] UiRuntime, owner: int) {
+  for s: 0..<UI_MAX_SUBS {
+    if r[0].subs[s].active && r[0].subs[s].owner == owner {
+      if uip_sub_diff(true, r[0].subs[s].desired, 0, 0) == UIP_SUB_CLOSE { // mutant: equivalent (spec hashes are unused when want_active differs or matches)
+        r[0].subs[s].active = false;
+        r[0].subs[s].pending_open = false;
+        r[0].subs[s].pending_close = true;
+      }
+    }
+  }
+}
+
+ui_sub_take_close :: (r: [] UiRuntime, out_slot: [] int) -> bool {
+  for s: 0..<UI_MAX_SUBS {
+    if r[0].subs[s].pending_close {
+      r[0].subs[s].pending_close = false;
+      out_slot[0] = s;
+      return true;
+    }
+  }
+  return false;
+}
+
+ui_sub_take_open :: (r: [] UiRuntime, out_slot: [] int) -> bool {
+  for s: 0..<UI_MAX_SUBS {
+    if r[0].subs[s].active && r[0].subs[s].pending_open && !r[0].subs[s].pending_close {
+      r[0].subs[s].pending_open = false;
+      out_slot[0] = s;
+      return true;
+    }
+  }
+  return false;
+}
+
+ui_sub_url :: (r: [] UiRuntime, slot: int) -> string {
+  if slot < 0 || slot >= UI_MAX_SUBS { return ""; }
+  return cast(string) r[0].subs[slot].url[0..<r[0].subs[slot].url_n];
+}
+
+// Delivers a #14089 browser host stream event (kind = 1024 + slot*4 + phase) to its subscription owner.
+ui_sub_on_stream_event :: (r: [] UiRuntime, event_kind: int, status: int, payload: string) -> bool {
+  if event_kind < UI_SUB_EVENT_BASE { return false; }
+  off := event_kind - UI_SUB_EVENT_BASE;
+  slot := off / 4;
+  phase := off % 4;
+  if slot >= UI_MAX_SUBS || !r[0].subs[slot].active { return false; }
+  sub := r[0].subs[slot];
+  if !ui_comp_valid(r, sub.owner) || r[0].comps[sub.owner].generation != sub.owner_gen { return false; }
+  tag := ifx phase == UI_SUB_PHASE_OPEN then sub.open_tag
+         else ifx phase == UI_SUB_PHASE_CHUNK then sub.data_tag
+         else ifx phase == UI_SUB_PHASE_END then sub.end_tag
+         else sub.err_tag;
+  return ui_send(r, sub.owner, tag, status, payload);
+}
+
+ui_sub_tick :: (r: [] UiRuntime, now_ms: int) -> int {
+  r[0].now_ms = now_ms;
+  fired := 0;
+  for s: 0..<UI_MAX_SUBS {
+    if r[0].subs[s].active && r[0].subs[s].kind == UI_SUB_TIMER && now_ms >= r[0].subs[s].next_tick_ms {
+      r[0].subs[s].next_tick_ms = now_ms + r[0].subs[s].interval_ms;
+      if ui_send(r, r[0].subs[s].owner, r[0].subs[s].data_tag, now_ms, "") { fired += 1; }
+    }
+  }
+  return fired;
+}
+
+// ---- Pillar 4a: Shared Query Cache (AsyncResult)
+
+ui_query_find :: (r: [] UiRuntime, key: string) -> int {
+  if key.count == 0 { return -1; }
+  for i: 0..<UI_MAX_QUERIES {
+    if r[0].queries[i].used && ui_eq(r[0].queries[i].key[..], r[0].queries[i].key_n, key) { return i; }
+  }
+  return -1;
+}
+
+ui_query_add_sub :: (r: [] UiRuntime, qi: int, comp: int) {
+  for k: 0..<r[0].queries[qi].sub_n {
+    if r[0].queries[qi].subs[k] == comp { return; }
+  }
+  if r[0].queries[qi].sub_n < UI_MAX_Q_SUBS {
+    r[0].queries[qi].subs[r[0].queries[qi].sub_n] = comp;
+    r[0].queries[qi].sub_n += 1;
+  }
+}
+
+ui_query_read :: (r: [] UiRuntime, reader: int, key: string, url: string, stale_ms: int, debounce_ms: int, now_ms: int) -> int {
+  if !ui_comp_valid(r, reader) || key.count == 0 { return -1; }
+  r[0].now_ms = now_ms;
+  qi := ui_query_find(r, key);
+  if qi < 0 {
+    for i: 0..<UI_MAX_QUERIES {
+      if !r[0].queries[i].used { qi = i; break; }
+    }
+    if qi < 0 { return -1; }
+    e: UiQueryEntry;
+    e.used = true;
+    e.key_n = ui_copy(e.key[..], key);
+    e.key_h = tr_hash(key);
+    e.triggered_ms = now_ms;
+    r[0].queries[qi] = e;
+  }
+  ui_query_add_sub(r, qi, reader);
+  stale := uip_query_is_stale(r[0].queries[qi].state, r[0].queries[qi].fetched_ms, now_ms, stale_ms, r[0].queries[qi].invalidated);
+  r[0].queries[qi].stale = stale;
+  since := now_ms - r[0].queries[qi].triggered_ms;
+  if uip_query_should_fetch(r[0].queries[qi].state, r[0].queries[qi].waiting, stale, debounce_ms, since) {
+    rid := ui_cmd_emit(r, reader, key, UI_CMD_QUERY_FETCH, UI_CMD_SWITCH, url, "", 0, 0, 0, "");
+    if rid > 0 { r[0].queries[qi].waiting = true; } // mutant: equivalent (ui_cmd_emit returns -1 or >= 1, never 0)
+  }
+  return qi;
+}
+
+ui_query_resolve :: (r: [] UiRuntime, key: string, ok: bool, status: int, data: string, now_ms: int) -> bool {
+  qi := ui_query_find(r, key);
+  if qi < 0 { return false; }
+  r[0].now_ms = now_ms;
+  r[0].queries[qi].waiting = false;
+  r[0].queries[qi].invalidated = false;
+  r[0].queries[qi].optimistic = false;
+  r[0].queries[qi].fetched_ms = now_ms;
+  r[0].queries[qi].stale = false;
+  if ok {
+    used := [1] int.[r[0].q_pool_n];
+    sp := ui_pool_put(r[0].q_pool[..], used[..], data);
+    r[0].q_pool_n = used[0];
+    r[0].queries[qi].state = UI_Q_SUCCESS;
+    r[0].queries[qi].data_at = sp.at;
+    r[0].queries[qi].data_n = sp.n;
+    r[0].queries[qi].err_status = 0;
+  } else {
+    r[0].queries[qi].state = UI_Q_FAILURE;
+    r[0].queries[qi].err_status = status;
+  }
+  for k: 0..<r[0].queries[qi].sub_n { ui_mark_dirty(r, r[0].queries[qi].subs[k]); }
+  return true;
+}
+
+ui_query_invalidate :: (r: [] UiRuntime, key: string) {
+  qi := ui_query_find(r, key);
+  if qi < 0 { return; }
+  r[0].queries[qi].invalidated = true;
+  r[0].queries[qi].stale = true;
+  r[0].queries[qi].triggered_ms = r[0].now_ms;
+  for k: 0..<r[0].queries[qi].sub_n { ui_mark_dirty(r, r[0].queries[qi].subs[k]); }
+}
+
+ui_query_optimistic :: (r: [] UiRuntime, key: string, data: string) -> bool {
+  qi := ui_query_find(r, key);
+  if qi < 0 { return false; }
+  if !r[0].queries[qi].optimistic {
+    r[0].queries[qi].prev_data_at = r[0].queries[qi].data_at;
+    r[0].queries[qi].prev_data_n = r[0].queries[qi].data_n;
+  }
+  used := [1] int.[r[0].q_pool_n];
+  sp := ui_pool_put(r[0].q_pool[..], used[..], data);
+  r[0].q_pool_n = used[0];
+  r[0].queries[qi].data_at = sp.at;
+  r[0].queries[qi].data_n = sp.n;
+  r[0].queries[qi].state = UI_Q_SUCCESS;
+  r[0].queries[qi].optimistic = true;
+  for k: 0..<r[0].queries[qi].sub_n { ui_mark_dirty(r, r[0].queries[qi].subs[k]); }
+  return true;
+}
+
+ui_query_rollback :: (r: [] UiRuntime, key: string) -> bool {
+  qi := ui_query_find(r, key);
+  if qi < 0 || !r[0].queries[qi].optimistic { return false; }
+  r[0].queries[qi].data_at = r[0].queries[qi].prev_data_at;
+  r[0].queries[qi].data_n = r[0].queries[qi].prev_data_n;
+  r[0].queries[qi].optimistic = false;
+  for k: 0..<r[0].queries[qi].sub_n { ui_mark_dirty(r, r[0].queries[qi].subs[k]); }
+  return true;
+}
+
+ui_query_data :: (r: [] UiRuntime, qi: int) -> string {
+  if qi < 0 || qi >= UI_MAX_QUERIES || !r[0].queries[qi].used { return ""; }
+  return cast(string) r[0].q_pool[r[0].queries[qi].data_at..<r[0].queries[qi].data_at + r[0].queries[qi].data_n];
+}
+
+// ---- Pillar 4b: Scoped Providers (shares / reads / direct parent-provider messaging)
+
+ui_provider_slot :: (r: [] UiRuntime, owner: int, key: string) -> int {
+  if !ui_comp_valid(r, owner) || key.count == 0 { return -1; }
+  for i: 0..<UI_MAX_PROVIDERS {
+    if r[0].providers[i].used && r[0].providers[i].owner == owner && ui_eq(r[0].providers[i].key[..], r[0].providers[i].key_n, key) {
+      return i;
+    }
+  }
+  for i: 0..<UI_MAX_PROVIDERS {
+    if !r[0].providers[i].used {
+      p: UiProvider;
+      p.used = true;
+      p.owner = owner;
+      p.key_n = ui_copy(p.key[..], key);
+      r[0].providers[i] = p;
+      return i;
+    }
+  }
+  return -1;
+}
+
+ui_provider_lookup :: (r: [] UiRuntime, from: int, key: string) -> int {
+  if !ui_comp_valid(r, from) { return -1; }
+  cur := from;
+  depth := 0;
+  while cur >= 0 {
+    for i: 0..<UI_MAX_PROVIDERS {
+      if r[0].providers[i].used && r[0].providers[i].owner == cur && ui_eq(r[0].providers[i].key[..], r[0].providers[i].key_n, key) {
+        return i;
+      }
+    }
+    cur = uip_parent_step(r[0].comps[cur].parent, UI_MAX_COMPS, depth, UI_MAX_DEPTH); // mutant: equivalent (parent is validated < UI_MAX_COMPS at ui_mount)
+    depth += 1;
+  }
+  return -1;
+}
+
+ui_provider_track_reader :: (r: [] UiRuntime, pi: int, reader: int) {
+  for k: 0..<r[0].providers[pi].reader_n {
+    if r[0].providers[pi].readers[k] == reader { return; }
+  }
+  if r[0].providers[pi].reader_n < UI_MAX_P_READERS {
+    r[0].providers[pi].readers[r[0].providers[pi].reader_n] = reader;
+    r[0].providers[pi].reader_n += 1;
+  }
+}
+
+ui_provide_int :: (r: [] UiRuntime, owner: int, key: string, val: int) -> bool {
+  pi := ui_provider_slot(r, owner, key);
+  if pi < 0 { return false; }
+  changed := r[0].providers[pi].int_val != val;
+  r[0].providers[pi].int_val = val;
+  if changed {
+    for k: 0..<r[0].providers[pi].reader_n { ui_mark_dirty(r, r[0].providers[pi].readers[k]); }
+  }
+  return true;
+}
+
+ui_provide_str :: (r: [] UiRuntime, owner: int, key: string, val: string) -> bool {
+  pi := ui_provider_slot(r, owner, key);
+  if pi < 0 { return false; }
+  changed := !ui_eq(r[0].providers[pi].str_val[..], r[0].providers[pi].str_n, val);
+  r[0].providers[pi].str_n = ui_copy(r[0].providers[pi].str_val[..], val);
+  if changed {
+    for k: 0..<r[0].providers[pi].reader_n { ui_mark_dirty(r, r[0].providers[pi].readers[k]); }
+  }
+  return true;
+}
+
+ui_read_int :: (r: [] UiRuntime, reader: int, key: string, fallback: int) -> int {
+  pi := ui_provider_lookup(r, reader, key);
+  if pi < 0 { return fallback; }
+  ui_provider_track_reader(r, pi, reader);
+  return r[0].providers[pi].int_val;
+}
+
+ui_read_str :: (r: [] UiRuntime, reader: int, key: string, fallback: string) -> string {
+  pi := ui_provider_lookup(r, reader, key);
+  if pi < 0 { return fallback; }
+  ui_provider_track_reader(r, pi, reader);
+  return cast(string) r[0].providers[pi].str_val[0..<r[0].providers[pi].str_n];
+}
+
+ui_send_provider :: (r: [] UiRuntime, from: int, key: string, tag: int, arg_i: int, payload: string) -> bool {
+  pi := ui_provider_lookup(r, from, key);
+  if pi < 0 { return false; }
+  return ui_send(r, r[0].providers[pi].owner, tag, arg_i, payload);
+}
+
+// ---- tests
+
+#test "pool helpers clamp and wrap cleanly; component mount, dirty/structural flush modes, DOM routing and cascading unmount" {
+  buf: [4] u8; used: [1] int;
+  sp0 := ui_pool_put(buf[..], used[..], "");
+  #assert sp0.at == 0 && sp0.n == 0 && used[0] == 0;
+  sp1 := ui_pool_put(buf[..], used[..], "ab");
+  sp2 := ui_pool_put(buf[..], used[..], "cd");
+  #assert sp1.at == 0 && sp1.n == 2 && sp2.at == 2 && sp2.n == 2 && used[0] == 4;
+  // Exact overflow wraps pool cursor back to 0 and clamps overlong inputs to pool.count
+  sp3 := ui_pool_put(buf[..], used[..], "xyz");
+  #assert sp3.at == 0 && sp3.n == 3 && used[0] == 3 && cast(string) buf[0..<3] == "xyz";
+  sp4 := ui_pool_put(buf[..], used[..], "12345");
+  #assert sp4.at == 0 && sp4.n == 4 && cast(string) buf[0..<4] == "1234";
+  #assert ui_copy(buf[..], "hello") == 4 && cast(string) buf[0..<4] == "hell";
+
+  r: [1] UiRuntime;
+  t: [1] Tree; sub: [1] Tree; d: [1] Dom; sets: [1] AfSettings; sets[0] = af_settings(3);
+  #assert ui_mount(r[..], "", 0, -1, 0) == -1 && ui_find(r[..], "") == -1;
+  #assert !ui_comp_valid(r[..], -1) && !ui_comp_valid(r[..], UI_MAX_COMPS);
+
+  root := ui_mount(r[..], "chat", 7, 99, 3);
+  #assert root == 0 && r[0].comps[0].kind == 7 && r[0].comps[0].model_idx == 3 && r[0].comps[0].parent == -1;
+  #assert r[0].comps[0].generation == 1 && r[0].comps[0].dirty && r[0].structural_dirty;
+  #assert ui_mount(r[..], "chat", 7, -1, 3) == 0 && ui_find(r[..], "chat") == 0;
+  m0 := ui_mount(r[..], "chat.msg", 1, root, 0);
+  m1 := ui_mount(r[..], "chat.msg.1", 2, m0, 1);
+  m10 := ui_mount(r[..], "chat.msg.10", 2, m0, 2);
+  #assert m0 == 1 && m1 == 2 && m10 == 3 && r[0].comps[m0].generation == 2;
+  #assert ui_comp_id(r[..], m1) == "chat.msg.1" && ui_comp_id(r[..], -1) == "";
+  #assert ui_flush_mode(r[..]) == UIP_FLUSH_FULL;
+
+  // Full page render clears structural_dirty & marks all live components mounted
+  tr_begin(t[..]);
+  _ = tr_open(t[..], "chat", TG_MAIN, "chat");
+  _ = tr_open(t[..], "chat.msg", TG_DIV, "list");
+  _ = tr_open(t[..], "chat.msg.1", TG_DIV, "msg");
+  _ = tr_leaf(t[..], "chat.msg.1.body", TG_P, "", "streaming:");
+  tr_close(t[..]);
+  _ = tr_open(t[..], "chat.msg.10", TG_DIV, "msg");
+  _ = tr_leaf(t[..], "chat.msg.10.body", TG_P, "", "ten");
+  tr_close(t[..]);
+  tr_close(t[..]);
+  tr_close(t[..]);
+  #assert dm_flush(d[..], t[..], sets[..]) > 0;
+  ui_after_full_flush(r[..]);
+  #assert ui_flush_mode(r[..]) == UIP_FLUSH_NONE;
+
+  // Unmounted dirty component forces UIP_FLUSH_FULL until ui_mark_mounted is called
+  r[0].comps[m1].mounted = false;
+  ui_mark_dirty(r[..], m1);
+  #assert ui_flush_mode(r[..]) == UIP_FLUSH_FULL;
+  ui_mark_mounted(r[..], m1);
+  #assert r[0].comps[m1].mounted && !r[0].comps[m1].dirty && ui_flush_mode(r[..]) == UIP_FLUSH_NONE;
+
+  // Slot 0 dirty triggers SUBTREE; ui_mark_structural triggers FULL
+  ui_mark_dirty(r[..], root);
+  #assert ui_flush_mode(r[..]) == UIP_FLUSH_SUBTREE;
+  ui_mark_structural(r[..]);
+  #assert ui_flush_mode(r[..]) == UIP_FLUSH_FULL;
+  ui_after_full_flush(r[..]);
+
+  // Deepest dot-prefix routing: "chat.msg.1.body" -> m1, "chat.msg.10" -> m10 (not m1!), "" -> -1
+  #assert ui_route_dom_id(r[..], "") == -1 && ui_route_dom_id(r[..], "chat.msg.1.body") == m1 && ui_route_dom_id(r[..], "chat.msg.10") == m10;
+  #assert ui_send_by_id(r[..], "chat.msg.1.body", 10, 7, "hello") && !ui_send_by_id(r[..], "ghost.btn", 1, 0, "");
+  #assert !ui_send(r[..], -1, 1, 0, "");
+  msg: [1] UiMsg;
+  #assert ui_take_msg(r[..], msg[..]) && msg[0].target == m1 && msg[0].tag == 10 && msg[0].arg_i == 7;
+  #assert ui_msg_payload(r[..], msg[0]) == "hello" && r[0].msg_pool_n == 0;
+  #assert ui_msg_payload(r[..], UiMsg.{payload_at = 0, payload_n = 0}) == "" && ui_msg_payload(r[..], UiMsg.{payload_at = UI_MSG_POOL, payload_n = 1}) == "";
+  #assert !ui_take_msg(r[..], msg[..]);
+
+  // Leaf subtree patch emits exactly 1 DC_TEXT
+  ui_mark_dirty(r[..], m1);
+  #assert ui_flush_mode(r[..]) == UIP_FLUSH_SUBTREE;
+  tr_begin(sub[..]);
+  _ = tr_open(sub[..], "chat.msg.1", TG_DIV, "msg");
+  _ = tr_leaf(sub[..], "chat.msg.1.body", TG_P, "", "streaming: hello");
+  tr_close(sub[..]);
+  bytes := dm_flush_subtree(d[..], ui_comp_id(r[..], m1), sub[..], sets[..]);
+  ui_mark_mounted(r[..], m1);
+  #assert bytes > 0 && d[0].sent == 1 && dm_test_count(d[..], bytes, DC_TEXT) == 1 && ui_flush_mode(r[..]) == UIP_FLUSH_NONE;
+
+  // Attach running cmd, pending cmd, subscription, provider, and queued message to descendants, then unmount root (3-level cascade!)
+  c_run := ui_cmd_emit(r[..], root, "bg", UI_CMD_HTTP_GET, UI_CMD_CONCURRENT, "/a", "", 0, 1, 2, "");
+  slot: [1] int; #assert ui_cmd_take_pending(r[..], slot[..]) && slot[0] == 0;
+  _ = ui_cmd_emit(r[..], m1, "pnd", UI_CMD_HTTP_GET, UI_CMD_CONCURRENT, "/b", "", 0, 1, 2, "");
+  ui_sub_begin(r[..], m1);
+  _ = ui_sub_want(r[..], m1, "s", UI_SUB_SSE, "/s", 1, 0, 1, 2, 3, 4);
+  ui_sub_commit(r[..], m1);
+  #assert ui_provide_int(r[..], root, "k", 5) && ui_provide_int(r[..], m1, "k2", 6);
+  _ = ui_send(r[..], m1, 99, 0, "stale");
+  ui_unmount(r[..], -1);
+  ui_unmount(r[..], root);
+  #assert !ui_comp_valid(r[..], root) && !ui_comp_valid(r[..], m0) && !ui_comp_valid(r[..], m1) && !ui_comp_valid(r[..], m10);
+  #assert !r[0].comps[m1].dirty && !r[0].comps[m1].mounted && !r[0].providers[0].used && !r[0].providers[1].used;
+  #assert !r[0].subs[0].active && !r[0].subs[0].desired && !r[0].subs[0].pending_open && r[0].subs[0].pending_close;
+  canc: [1] int; #assert ui_cmd_take_cancelled(r[..], canc[..]) && canc[0] == c_run && !ui_cmd_take_cancelled(r[..], canc[..]);
+  #assert r[0].cmds[0].state == UI_CS_FREE && r[0].cmds[1].state == UI_CS_FREE;
+  #assert !ui_take_msg(r[..], msg[..]) && ui_flush_mode(r[..]) == UIP_FLUSH_FULL;
+
+  // Component capacity limit returns -1; message queue capacity limit returns false
+  r2: [1] UiRuntime;
+  idb: [16] u8;
+  for k: 0..<UI_MAX_COMPS { #assert ui_mount(r2[..], tr_join(idb[..], "c.", k), 0, -1, k) == k; }
+  #assert ui_mount(r2[..], "overflow", 0, -1, 0) == -1;
+  for k: 0..<UI_MAX_MSGS { #assert ui_send(r2[..], 0, 1, k, ""); }
+  #assert !ui_send(r2[..], 0, 1, 0, "");
+}
+
+#test "commands enforce concurrent, switch cancellation, queue ordering, timers, capacity, and query invalidation" {
+  r: [1] UiRuntime;
+  c := ui_mount(r[..], "composer", 0, -1, 0);
+  #assert ui_cmd_emit(r[..], -1, "x", UI_CMD_CUSTOM, UI_CMD_CONCURRENT, "", "", 0, 1, 2, "") == -1;
+  #assert ui_cmd_emit(r[..], c, "", UI_CMD_CUSTOM, UI_CMD_CONCURRENT, "", "", 0, 1, 2, "") == -1;
+  #assert ui_cmd_emit(r[..], c, "x", UI_CMD_CUSTOM, 99, "", "", 0, 1, 2, "") == -1;
+  #assert !ui_cmd_is_running(r[..], c, "search");
+  #assert ui_cmd_url(r[..], -1) == "" && ui_cmd_url(r[..], UI_MAX_CMDS) == "" && ui_cmd_url(r[..], 0) == "";
+  #assert ui_cmd_body(r[..], -1) == "" && ui_cmd_body(r[..], UI_MAX_CMDS) == "" && ui_cmd_body(r[..], 0) == "";
+
+  // SWITCH cancels RUNNING cmd, then a second SWITCH cancels a second RUNNING cmd -> cancelled queue shifts FIFO
+  r1 := ui_cmd_emit(r[..], c, "search", UI_CMD_HTTP_GET, UI_CMD_SWITCH, "/api/q?1", "", -5, 1, 2, "");
+  slot: [1] int;
+  #assert r1 == 1 && ui_cmd_is_running(r[..], c, "search") && r[0].cmds[0].policy == UI_CMD_SWITCH && r[0].cmds[0].delay_ms == 0;
+  #assert ui_cmd_take_pending(r[..], slot[..]) && slot[0] == 0 && ui_cmd_url(r[..], 0) == "/api/q?1" && ui_cmd_is_running(r[..], c, "search");
+  r2 := ui_cmd_emit(r[..], c, "search", UI_CMD_HTTP_GET, UI_CMD_SWITCH, "/api/q?2", "", 0, 1, 2, "");
+  #assert r2 == 2 && ui_cmd_take_pending(r[..], slot[..]) && ui_cmd_url(r[..], slot[0]) == "/api/q?2";
+  r3 := ui_cmd_emit(r[..], c, "search", UI_CMD_HTTP_GET, UI_CMD_SWITCH, "/api/q?3", "", 0, 1, 2, "");
+  canc: [1] int;
+  #assert r3 == 3 && ui_cmd_take_cancelled(r[..], canc[..]) && canc[0] == r1;
+  #assert ui_cmd_take_cancelled(r[..], canc[..]) && canc[0] == r2 && !ui_cmd_take_cancelled(r[..], canc[..]);
+  #assert !ui_cmd_complete(r[..], r1, true, 200, "old");
+  #assert ui_cmd_take_pending(r[..], slot[..]) && ui_cmd_url(r[..], slot[0]) == "/api/q?3";
+  #assert ui_cmd_complete(r[..], r3, true, 200, "fresh") && !ui_cmd_is_running(r[..], c, "search");
+  m: [1] UiMsg;
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 1 && ui_msg_payload(r[..], m[0]) == "fresh";
+
+  // QUEUE promotes oldest queued command first and computes due_ms from now_ms + delay_ms
+  r[0].now_ms = 1000;
+  q1 := ui_cmd_emit(r[..], c, "save", UI_CMD_HTTP_POST, UI_CMD_QUEUE, "/api/save", "a", 0, 3, 4, "");
+  q2 := ui_cmd_emit(r[..], c, "save", UI_CMD_HTTP_POST, UI_CMD_QUEUE, "/api/save", "b", 50, 3, 4, "");
+  q3 := ui_cmd_emit(r[..], c, "save", UI_CMD_HTTP_POST, UI_CMD_QUEUE, "/api/save", "c", 25, 3, 4, "");
+  #assert ui_cmd_take_pending(r[..], slot[..]) && ui_cmd_body(r[..], slot[0]) == "a" && !ui_cmd_take_pending(r[..], slot[..]);
+  #assert ui_cmd_complete(r[..], q1, true, 200, "ok-a");
+  #assert ui_cmd_take_pending(r[..], slot[..]) && ui_cmd_body(r[..], slot[0]) == "b" && r[0].cmds[slot[0]].due_ms == 1050;
+  #assert ui_cmd_complete(r[..], q2, false, 500, "err-b");
+  #assert ui_cmd_take_pending(r[..], slot[..]) && ui_cmd_body(r[..], slot[0]) == "c" && r[0].cmds[slot[0]].due_ms == 1025;
+  #assert ui_cmd_complete(r[..], q3, true, 200, "ok-c");
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 3;
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 4 && m[0].arg_i == 500;
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 3;
+
+  // CONCURRENT timers fire both PENDING and RUNNING on ui_cmd_tick and update now_ms
+  t1 := ui_cmd_emit(r[..], c, "tick", UI_CMD_TIMER, UI_CMD_CONCURRENT, "", "", 100, 5, 6, "");
+  t2 := ui_cmd_emit(r[..], c, "tick", UI_CMD_TIMER, UI_CMD_CONCURRENT, "", "", 200, 5, 6, "");
+  #assert t1 > 0 && t2 > 0 && ui_cmd_take_pending(r[..], slot[..]);   // t1 is RUNNING, t2 is PENDING
+  #assert ui_cmd_tick(r[..], 1099) == 0 && r[0].now_ms == 1099;
+  #assert ui_cmd_tick(r[..], 1100) == 1 && ui_take_msg(r[..], m[..]) && m[0].tag == 5 && m[0].arg_i == 0;
+  #assert ui_cmd_tick(r[..], 1200) == 1 && ui_take_msg(r[..], m[..]) && m[0].tag == 5;
+
+  // Completion after owner generation mismatch returns false; full UI_MAX_CMDS returns -1
+  c2 := ui_mount(r[..], "temp", 0, -1, 0);
+  stale_id := ui_cmd_emit(r[..], c2, "z", UI_CMD_HTTP_GET, UI_CMD_CONCURRENT, "/z", "", 0, 1, 2, "");
+  r[0].comps[c2].generation += 1;
+  #assert !ui_cmd_complete(r[..], stale_id, true, 200, "late");
+  r3_rt: [1] UiRuntime;
+  o := ui_mount(r3_rt[..], "o", 0, -1, 0);
+  for k: 0..<UI_MAX_CMDS { #assert ui_cmd_emit(r3_rt[..], o, "k", UI_CMD_CUSTOM, UI_CMD_CONCURRENT, "", "", 0, 1, 2, "") > 0; }
+  #assert ui_cmd_emit(r3_rt[..], o, "k", UI_CMD_CUSTOM, UI_CMD_CONCURRENT, "", "", 0, 1, 2, "") == -1;
+}
+
+#test "keyed subscriptions open, deliver #14089 SSE chunks, restart on any spec change, tick timers, isolate owners, and close cleanly" {
+  r: [1] UiRuntime;
+  c := ui_mount(r[..], "turn.1", 0, -1, 0);
+  other := ui_mount(r[..], "turn.2", 0, -1, 0);
+  #assert ui_sub_want(r[..], -1, "k", UI_SUB_SSE, "/a", 1, 0, 1, 2, 3, 4) == -1;
+  #assert ui_sub_want(r[..], c, "", UI_SUB_SSE, "/a", 1, 0, 1, 2, 3, 4) == -1;
+  #assert ui_sub_url(r[..], -1) == "" && ui_sub_url(r[..], UI_MAX_SUBS) == "";
+
+  ui_sub_begin(r[..], c);
+  s0 := ui_sub_want(r[..], c, "sse:1", UI_SUB_SSE, "/api/s?1", 1, 0, 10, 11, 12, 13);
+  s1 := ui_sub_want(r[..], c, "hb", UI_SUB_TIMER, "", 0, 500, 0, 20, 0, 0);
+  ui_sub_commit(r[..], c);
+  ui_sub_begin(r[..], other);
+  s2 := ui_sub_want(r[..], other, "sse:2", UI_SUB_SSE, "/api/s?2", 1, 0, 30, 31, 32, 33);
+  ui_sub_commit(r[..], other);
+  #assert s0 == 0 && s1 == 1 && s2 == 2 && r[0].subs[0].owner == c && r[0].subs[2].owner == other;
+
+  opened: [1] int; closed: [1] int;
+  #assert ui_sub_take_open(r[..], opened[..]) && opened[0] == 0 && ui_sub_url(r[..], 0) == "/api/s?1";
+  #assert ui_sub_take_open(r[..], opened[..]) && opened[0] == 1;
+  #assert ui_sub_take_open(r[..], opened[..]) && opened[0] == 2 && !ui_sub_take_open(r[..], opened[..]);
+
+  // Deliver #14089 host stream events: OPEN, CHUNK, END, ERROR + reject invalid/inactive/stale-gen
+  #assert ui_sub_on_stream_event(r[..], UI_SUB_EVENT_BASE + 0 * 4 + UI_SUB_PHASE_OPEN, 200, "");
+  #assert ui_sub_on_stream_event(r[..], UI_SUB_EVENT_BASE + 0 * 4 + UI_SUB_PHASE_CHUNK, 200, "delta-tok");
+  #assert ui_sub_on_stream_event(r[..], UI_SUB_EVENT_BASE + 0 * 4 + UI_SUB_PHASE_END, 200, "");
+  #assert ui_sub_on_stream_event(r[..], UI_SUB_EVENT_BASE + 0 * 4 + UI_SUB_PHASE_ERROR, 503, "retry");
+  #assert !ui_sub_on_stream_event(r[..], 1, 200, "");
+  #assert !ui_sub_on_stream_event(r[..], UI_SUB_EVENT_BASE + UI_MAX_SUBS * 4, 200, "");
+  #assert !ui_sub_on_stream_event(r[..], UI_SUB_EVENT_BASE + 5 * 4, 200, "");
+
+  m: [1] UiMsg;
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 10;
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 11 && ui_msg_payload(r[..], m[0]) == "delta-tok";
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 12;
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 13 && m[0].arg_i == 503;
+
+  // Timer subscription ticks cleanly and updates now_ms
+  #assert ui_sub_tick(r[..], 499) == 0 && r[0].now_ms == 499;
+  #assert ui_sub_tick(r[..], 500) == 1 && ui_take_msg(r[..], m[..]) && m[0].tag == 20 && m[0].arg_i == 500;
+  #assert ui_sub_tick(r[..], 999) == 0 && ui_sub_tick(r[..], 1000) == 1 && ui_take_msg(r[..], m[..]);
+
+  // Same spec -> no churn, but tag updates apply; changing kind/flags/interval/url each triggers restart; other's sub untouched!
+  ui_sub_begin(r[..], c);
+  _ = ui_sub_want(r[..], c, "sse:1", UI_SUB_SSE, "/api/s?1", 1, 0, 110, 111, 112, 113);
+  _ = ui_sub_want(r[..], c, "hb", UI_SUB_TIMER, "", 0, 500, 0, 20, 0, 0);
+  ui_sub_commit(r[..], c);
+  #assert !ui_sub_take_open(r[..], opened[..]) && !ui_sub_take_close(r[..], closed[..]);
+  #assert r[0].subs[0].open_tag == 110 && r[0].subs[0].data_tag == 111 && r[0].subs[0].end_tag == 112 && r[0].subs[0].err_tag == 113;
+
+  // Test individual spec changes: flags only, interval only, kind only, url only
+  ui_sub_begin(r[..], c);
+  _ = ui_sub_want(r[..], c, "sse:1", UI_SUB_SSE, "/api/s?1", 3, 0, 110, 111, 112, 113);
+  _ = ui_sub_want(r[..], c, "hb", UI_SUB_TIMER, "", 0, 500, 0, 20, 0, 0);
+  ui_sub_commit(r[..], c);
+  #assert ui_sub_take_close(r[..], closed[..]) && closed[0] == 0 && ui_sub_take_open(r[..], opened[..]) && opened[0] == 0 && r[0].subs[0].flags == 3;
+  ui_sub_begin(r[..], c);
+  _ = ui_sub_want(r[..], c, "sse:1", UI_SUB_SSE, "/api/s?1", 3, 50, 110, 111, 112, 113);
+  _ = ui_sub_want(r[..], c, "hb", UI_SUB_TIMER, "", 0, 500, 0, 20, 0, 0);
+  ui_sub_commit(r[..], c);
+  #assert ui_sub_take_close(r[..], closed[..]) && closed[0] == 0 && ui_sub_take_open(r[..], opened[..]) && opened[0] == 0 && r[0].subs[0].interval_ms == 50;
+  ui_sub_begin(r[..], c);
+  _ = ui_sub_want(r[..], c, "sse:1", UI_SUB_WS, "/api/s?1", 3, 50, 110, 111, 112, 113);
+  _ = ui_sub_want(r[..], c, "hb", UI_SUB_TIMER, "", 0, 500, 0, 20, 0, 0);
+  ui_sub_commit(r[..], c);
+  #assert ui_sub_take_close(r[..], closed[..]) && closed[0] == 0 && ui_sub_take_open(r[..], opened[..]) && opened[0] == 0 && r[0].subs[0].kind == UI_SUB_WS;
+
+  // Restart s0 (kind/flags/interval/url changed) & drop s1 -> s0 closes+opens, s1 closes, other's s2 stays active!
+  ui_sub_begin(r[..], c);
+  _ = ui_sub_want(r[..], c, "sse:1", UI_SUB_TIMER, "/api/s?2", 2, 250, 10, 11, 12, 13);
+  ui_sub_commit(r[..], c);
+  #assert r[0].subs[0].kind == UI_SUB_TIMER && r[0].subs[0].flags == 2 && r[0].subs[0].interval_ms == 250 && r[0].subs[0].next_tick_ms == 1250;
+  #assert ui_sub_take_close(r[..], closed[..]) && closed[0] == 0;
+  #assert ui_sub_take_close(r[..], closed[..]) && closed[0] == 1;
+  #assert ui_sub_take_open(r[..], opened[..]) && opened[0] == 0 && ui_sub_url(r[..], 0) == "/api/s?2";
+  #assert r[0].subs[2].active;
+
+  // Stale owner generation rejects stream event
+  r[0].comps[other].generation += 1;
+  #assert !ui_sub_on_stream_event(r[..], UI_SUB_EVENT_BASE + 2 * 4 + UI_SUB_PHASE_CHUNK, 200, "x");
+
+  // Unmounting c closes s0; filling all 16 slots rejects 17th with -1
+  ui_unmount(r[..], c);
+  #assert ui_sub_take_close(r[..], closed[..]) && closed[0] == 0;
+  r_full: [1] UiRuntime;
+  o := ui_mount(r_full[..], "o", 0, -1, 0);
+  kb: [16] u8;
+  for k: 0..<UI_MAX_SUBS { #assert ui_sub_want(r_full[..], o, tr_join(kb[..], "k.", k), UI_SUB_SSE, "/u", 1, 0, 1, 2, 3, 4) == k; }
+  #assert ui_sub_want(r_full[..], o, "extra", UI_SUB_SSE, "/u", 1, 0, 1, 2, 3, 4) == -1;
+}
+
+#test "query cache deduplicates, enforces debounce/stale/failure/invalidation/optimistic rollback; scoped providers shadow and track readers" {
+  r: [1] UiRuntime;
+  app := ui_mount(r[..], "app", 0, -1, 0);
+  panel := ui_mount(r[..], "panel", 1, app, 0);
+  leaf := ui_mount(r[..], "leaf", 2, panel, 0);
+  ui_after_full_flush(r[..]);
+
+  #assert ui_query_read(r[..], -1, "t", "/t", 1000, 0, 0) == -1 && ui_query_read(r[..], app, "", "/t", 1000, 0, 0) == -1;
+  #assert ui_query_find(r[..], "") == -1 && !ui_query_resolve(r[..], "nope", true, 200, "x", 0);
+  #assert !ui_query_optimistic(r[..], "nope", "x") && !ui_query_rollback(r[..], "nope");
+  #assert ui_query_data(r[..], -1) == "" && ui_query_data(r[..], UI_MAX_QUERIES) == "" && ui_query_data(r[..], 0) == "";
+
+  // Debounced query waits until elapsed >= debounce_ms before emitting fetch
+  qd := ui_query_read(r[..], app, "deb", "/api/deb", 5000, 200, 1000);
+  #assert qd == 0 && !r[0].queries[qd].waiting && r[0].now_ms == 1000;
+  _ = ui_query_read(r[..], app, "deb", "/api/deb", 5000, 200, 1199);
+  #assert !r[0].queries[qd].waiting;
+  _ = ui_query_read(r[..], app, "deb", "/api/deb", 5000, 200, 1200);
+  #assert r[0].queries[qd].waiting;
+  slot: [1] int;
+  #assert ui_cmd_take_pending(r[..], slot[..]) && r[0].cmds[slot[0]].kind == UI_CMD_QUERY_FETCH && r[0].cmds[slot[0]].policy == UI_CMD_SWITCH;
+  #assert r[0].cmds[slot[0]].delay_ms == 0 && r[0].cmds[slot[0]].ok_tag == 0 && r[0].cmds[slot[0]].err_tag == 0;
+
+  // Failure resolution sets UI_Q_FAILURE, err_status, !stale, and marks subscriber dirty
+  #assert ui_query_resolve(r[..], "deb", false, 502, "", 1250);
+  #assert r[0].queries[qd].state == UI_Q_FAILURE && r[0].queries[qd].err_status == 502 && !r[0].queries[qd].stale && r[0].now_ms == 1250 && r[0].comps[app].dirty;
+  // Subsequent success resolution clears err_status to 0
+  #assert ui_query_resolve(r[..], "deb", true, 200, "ok-deb", 1260);
+  #assert r[0].queries[qd].state == UI_Q_SUCCESS && r[0].queries[qd].err_status == 0 && r[0].queries[qd].fetched_ms == 1260 && ui_query_data(r[..], qd) == "ok-deb";
+
+  // Two readers share one query entry; duplicate sub at index 0 & 1 not double-added
+  q1 := ui_query_read(r[..], panel, "threads", "/api/chat/threads", 5000, 0, 1300);
+  q2 := ui_query_read(r[..], leaf, "threads", "/api/chat/threads", 5000, 0, 1300);
+  _ = ui_query_read(r[..], panel, "threads", "/api/chat/threads", 5000, 0, 1300);
+  _ = ui_query_read(r[..], leaf, "threads", "/api/chat/threads", 5000, 0, 1300);
+  #assert q1 == 1 && q2 == 1 && r[0].queries[q1].sub_n == 2 && r[0].queries[q1].waiting;
+  #assert ui_cmd_take_pending(r[..], slot[..]) && !ui_cmd_take_pending(r[..], slot[..]);
+  #assert ui_query_resolve(r[..], "threads", true, 200, "[t1,t2]", 1350);
+  #assert r[0].queries[q1].state == UI_Q_SUCCESS && !r[0].queries[q1].stale && ui_query_data(r[..], q1) == "[t1,t2]";
+  #assert r[0].comps[panel].dirty && r[0].comps[leaf].dirty;
+  ui_after_full_flush(r[..]);
+
+  // Rollback rejected when not optimistic; double optimistic keeps original snapshot; rollback restores & dirties both readers
+  #assert !ui_query_rollback(r[..], "threads");
+  #assert ui_query_optimistic(r[..], "threads", "[t1,t2,t3]") && r[0].comps[panel].dirty && r[0].comps[leaf].dirty;
+  ui_after_full_flush(r[..]);
+  #assert ui_query_optimistic(r[..], "threads", "[t1,t2,t3,t4]") && ui_query_data(r[..], q1) == "[t1,t2,t3,t4]";
+  ui_after_full_flush(r[..]);
+  #assert ui_query_rollback(r[..], "threads") && !r[0].queries[q1].optimistic && ui_query_data(r[..], q1) == "[t1,t2]";
+  #assert r[0].comps[panel].dirty && r[0].comps[leaf].dirty;
+  ui_after_full_flush(r[..]);
+
+  // Direct ui_query_invalidate marks invalidated/stale and dirties readers; unknown key is a no-op
+  ui_query_invalidate(r[..], "missing");
+  ui_query_invalidate(r[..], "threads");
+  #assert r[0].queries[q1].invalidated && r[0].queries[q1].stale && r[0].comps[panel].dirty && r[0].comps[leaf].dirty;
+  #assert ui_query_resolve(r[..], "threads", true, 200, "[t1,t2]", 1400) && !r[0].queries[q1].invalidated;
+  ui_after_full_flush(r[..]);
+
+  // Command failure does NOT invalidate query; command success DOES invalidate & dirty readers
+  rf := ui_cmd_emit(r[..], leaf, "m1", UI_CMD_HTTP_POST, UI_CMD_CONCURRENT, "/m", "{}", 0, 7, 8, "threads");
+  #assert ui_cmd_complete(r[..], rf, false, 500, "no") && !r[0].queries[q1].invalidated;
+  rs := ui_cmd_emit(r[..], leaf, "m2", UI_CMD_HTTP_POST, UI_CMD_CONCURRENT, "/m", "{}", 0, 7, 8, "threads");
+  #assert ui_cmd_complete(r[..], rs, true, 201, "ok") && r[0].queries[q1].invalidated && r[0].queries[q1].stale && r[0].comps[panel].dirty && r[0].comps[leaf].dirty;
+
+  // Query capacity limit returns -1
+  rq: [1] UiRuntime;
+  ro := ui_mount(rq[..], "o", 0, -1, 0);
+  kb: [16] u8;
+  for k: 0..<UI_MAX_QUERIES { #assert ui_query_read(rq[..], ro, tr_join(kb[..], "q.", k), "/q", 5000, 0, 0) == k; }
+  #assert ui_query_read(rq[..], ro, "q.overflow", "/q", 5000, 0, 0) == -1;
+
+  // Scoped providers: invalid/missing fallbacks, slot 0 provider, reader tracking, no-op on same value, dirty on change, shadowing, direct messaging
+  #assert !ui_provide_int(r[..], -1, "x", 1) && !ui_provide_int(r[..], app, "", 1) && !ui_provide_str(r[..], -1, "x", "a");
+  #assert ui_read_int(r[..], -1, "x", 77) == 77 && ui_read_int(r[..], leaf, "", 77) == 77 && ui_read_int(r[..], leaf, "missing", 77) == 77;
+  #assert ui_read_str(r[..], leaf, "missing", "fb") == "fb" && !ui_send_provider(r[..], leaf, "missing", 1, 0, "");
+  #assert ui_provide_str(r[..], app, "theme", "mono") && ui_provide_int(r[..], app, "page", 1);
+  // Updating existing slot-0 provider updates in place without consuming a new provider slot
+  #assert ui_provide_str(r[..], app, "theme", "mono") && !r[0].providers[2].used;
+  #assert ui_read_str(r[..], leaf, "theme", "") == "mono" && ui_read_str(r[..], leaf, "theme", "") == "mono" && ui_read_int(r[..], leaf, "page", -1) == 1;
+  #assert r[0].providers[0].reader_n == 1;
+  #assert ui_provide_str(r[..], panel, "theme", "cyan");
+  #assert ui_read_str(r[..], leaf, "theme", "") == "cyan" && ui_read_str(r[..], app, "theme", "") == "mono";
+  ui_after_full_flush(r[..]);
+  // Same value -> does NOT mark reader dirty; changed value -> marks reader dirty (both int and str!)
+  #assert ui_provide_int(r[..], app, "page", 1) && !r[0].comps[leaf].dirty;
+  #assert ui_provide_str(r[..], panel, "theme", "cyan") && !r[0].comps[leaf].dirty;
+  #assert ui_provide_int(r[..], app, "page", 2) && r[0].comps[leaf].dirty;
+  ui_after_full_flush(r[..]);
+  #assert ui_provide_str(r[..], panel, "theme", "amber") && r[0].comps[leaf].dirty;
+  // Direct parent-provider messaging reaches shadowing provider `panel` (and `app` for slot 0 key "page")
+  #assert ui_send_provider(r[..], leaf, "theme", 42, 0, "toggle");
+  #assert ui_send_provider(r[..], leaf, "page", 43, 0, "next");
+  m: [1] UiMsg;
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 8;
+  #assert ui_take_msg(r[..], m[..]) && m[0].tag == 7;
+  #assert ui_take_msg(r[..], m[..]) && m[0].target == panel && m[0].tag == 42 && ui_msg_payload(r[..], m[0]) == "toggle";
+  #assert ui_take_msg(r[..], m[..]) && m[0].target == app && m[0].tag == 43;
+
+  // Provider capacity limit & depth guard (chain > UI_MAX_DEPTH)
+  rp: [1] UiRuntime;
+  p0 := ui_mount(rp[..], "d.0", 0, -1, 0);
+  #assert ui_provide_int(rp[..], p0, "deep", 9);
+  cur := p0;
+  for k: 1..<UI_MAX_DEPTH + 2 { cur = ui_mount(rp[..], tr_join(kb[..], "d.", k), 0, cur, 0); }
+  #assert ui_read_int(rp[..], cur, "deep", -99) == -99;   // exceeds UI_MAX_DEPTH
+  #assert ui_read_int(rp[..], UI_MAX_DEPTH, "deep", -99) == 9;   // exact depth UI_MAX_DEPTH succeeds
+  for k: 1..<UI_MAX_PROVIDERS { #assert ui_provide_int(rp[..], p0, tr_join(kb[..], "p.", k), k); }
+  #assert !ui_provide_int(rp[..], p0, "p.overflow", 0);
+}
+
+#test "runtime boundary invariants: slot-0 ownership, ring wrap, queue limit, isolated cleanup, multi-pass unmount, sub slot-1 events and reader caps" {
+  r: [1] UiRuntime;
+  // 1-char component/key ids, slot-0 exact & prefix routing, longer-before-shorter prefix priority, non-dot rejection, msg ring wrap & exact payload bounds
+  ab := ui_mount(r[..], "a.b", 1, -1, 0);
+  a := ui_mount(r[..], "a", 1, -1, 0);
+  #assert ab == 0 && a == 1 && ui_find(r[..], "a.b") == 0 && ui_find(r[..], "a") == 1;
+  #assert ui_route_dom_id(r[..], "a") == 1 && ui_route_dom_id(r[..], "a.x") == 1 && ui_route_dom_id(r[..], "a.b.c") == 0;
+  #assert ui_route_dom_id(r[..], "ax") == -1 && ui_send_by_id(r[..], "a.b", 1, 0, "p");
+  m: [1] UiMsg; #assert ui_take_msg(r[..], m[..]) && m[0].target == 0 && ui_msg_payload(r[..], m[0]) == "p";
+  // Exact payload bounds: payload_at == -1, payload_n == -1, and payload_n == 1 at UI_MSG_POOL - 1
+  r[0].msg_pool[UI_MSG_POOL - 1] = '!';
+  #assert ui_msg_payload(r[..], UiMsg.{payload_at = -1, payload_n = 1}) == "";
+  #assert ui_msg_payload(r[..], UiMsg.{payload_at = 0, payload_n = -1}) == "";
+  #assert ui_msg_payload(r[..], UiMsg.{payload_at = UI_MSG_POOL - 1, payload_n = 1}) == "!";
+  // Message ring buffer wrap-around across UI_MAX_MSGS boundary
+  for k: 0..<UI_MAX_MSGS { #assert ui_send(r[..], a, 1, k, ""); }
+  #assert ui_take_msg(r[..], m[..]) && m[0].arg_i == 0 && ui_take_msg(r[..], m[..]) && m[0].arg_i == 1;
+  #assert ui_send(r[..], a, 1, 1000, "") && ui_send(r[..], a, 1, 1001, "");
+  last_i := -1;
+  while ui_take_msg(r[..], m[..]) { last_i = m[0].arg_i; }
+  #assert last_i == 1001 && r[0].msg_head == 3 && r[0].msg_tail == 3;
+
+  // Multi-pass unmount cascade where child is at slot 0 under parent at slot 2, while sibling `keep` keeps its cmd/sub/provider!
+  rc: [1] UiRuntime;
+  tmp := ui_mount(rc[..], "tmp", 0, -1, 0);
+  keep := ui_mount(rc[..], "keep", 0, -1, 0);
+  top := ui_mount(rc[..], "top", 0, -1, 0);
+  mid := ui_mount(rc[..], "mid", 0, top, 0);
+  ui_unmount(rc[..], tmp);
+  leaf0 := ui_mount(rc[..], "leaf0", 0, mid, 0);   // reuses slot 0 under mid (slot 3) under top (slot 2)
+  #assert leaf0 == 0 && keep == 1 && top == 2 && mid == 3;
+  ui_after_full_flush(rc[..]);
+  // Give `keep` a running cmd (slot 0), active sub (slot 0), and provider (slot 0)
+  k_cmd := ui_cmd_emit(rc[..], keep, "k", UI_CMD_HTTP_GET, UI_CMD_CONCURRENT, "/", "x", 0, 1, 2, "");
+  slot: [1] int; #assert ui_cmd_take_pending(rc[..], slot[..]) && slot[0] == 0 && ui_cmd_url(rc[..], 0) == "/" && ui_cmd_body(rc[..], 0) == "x";
+  ui_sub_begin(rc[..], keep);
+  ks := ui_sub_want(rc[..], keep, "ks", UI_SUB_TIMER, "/k", 7, 100, 1, 2, 3, 4);
+  ui_sub_commit(rc[..], keep);
+  #assert ks == 0 && rc[0].subs[0].flags == 7;
+  #assert ui_provide_int(rc[..], keep, "kp", 11);
+  // Give `leaf0` a running cmd, active sub, provider, and mark dirty before unmounting `top`
+  l_cmd := ui_cmd_emit(rc[..], leaf0, "l", UI_CMD_HTTP_GET, UI_CMD_CONCURRENT, "/l", "", 0, 1, 2, "");
+  #assert ui_cmd_take_pending(rc[..], slot[..]);
+  ui_sub_begin(rc[..], leaf0);
+  ls := ui_sub_want(rc[..], leaf0, "ls", UI_SUB_SSE, "/l", 1, 0, 10, 11, 12, 13);
+  ui_sub_commit(rc[..], leaf0);
+  #assert ls == 1 && ui_provide_int(rc[..], leaf0, "lp", 22);
+  ui_mark_dirty(rc[..], leaf0);
+  ui_unmount(rc[..], top);
+  // `top`, `mid`, AND `leaf0` (slot 0, discovered on pass 2!) are all dead & cleaned; `keep` is 100% untouched!
+  #assert !rc[0].comps[top].live && !rc[0].comps[mid].live && !rc[0].comps[leaf0].live && !rc[0].comps[leaf0].dirty;
+  #assert rc[0].comps[keep].live && rc[0].cmds[0].state == UI_CS_RUNNING && rc[0].cmds[0].run_id == k_cmd;
+  #assert rc[0].subs[0].active && rc[0].providers[0].used && ui_send_provider(rc[..], keep, "kp", 9, 0, "");
+  #assert ui_sub_tick(rc[..], 100) == 1;   // timer at slot 0 ticks!
+  canc: [1] int; #assert ui_cmd_take_cancelled(rc[..], canc[..]) && canc[0] == l_cmd && !ui_cmd_take_cancelled(rc[..], canc[..]);
+  // ui_cancel_push bounds at UI_MAX_CMDS
+  rc[0].cancelled_n = UI_MAX_CMDS - 1;
+  ui_cancel_push(rc[..], 777); ui_cancel_push(rc[..], 888);
+  #assert rc[0].cancelled_n == UI_MAX_CMDS && rc[0].cancelled[UI_MAX_CMDS - 1] == 777;
+
+  // Commands: QUEUE max limit (8), SWITCH on PENDING (no cancel push) & isolating other owner/key,
+  // queued promotion from slot 0 with updated due_ms, non-timer PENDING ignored by tick, slot-0 query invalidation
+  rq: [1] UiRuntime;
+  o1 := ui_mount(rq[..], "o1", 0, -1, 0);
+  o2 := ui_mount(rq[..], "o2", 0, -1, 0);
+  // Non-timer PENDING command is NOT fired by ui_cmd_tick
+  nt := ui_cmd_emit(rq[..], o2, "other", UI_CMD_HTTP_GET, UI_CMD_SWITCH, "/o2", "", 0, 1, 2, "");
+  #assert nt > 0 && ui_cmd_tick(rq[..], 9999) == 0 && rq[0].cmds[0].state == UI_CS_PENDING;
+  // SWITCH on o1/"s" cancels o1/"s" PENDING without touching o1/"other", o2/"other", or a QUEUED slot of o1/"s"!
+  nt_same := ui_cmd_emit(rq[..], o1, "other", UI_CMD_HTTP_GET, UI_CMD_SWITCH, "/o1", "", 0, 1, 2, "");
+  p1 := ui_cmd_emit(rq[..], o1, "s", UI_CMD_HTTP_GET, UI_CMD_QUEUE, "/1", "", 0, 1, 2, "");
+  p_q := ui_cmd_emit(rq[..], o1, "s", UI_CMD_HTTP_GET, UI_CMD_QUEUE, "/q", "", 0, 1, 2, "");
+  p2 := ui_cmd_emit(rq[..], o1, "s", UI_CMD_HTTP_GET, UI_CMD_SWITCH, "/2", "", 0, 1, 2, "");
+  #assert p2 > p_q && p_q > p1 && rq[0].cmds[0].state == UI_CS_PENDING && rq[0].cmds[1].state == UI_CS_PENDING;
+  #assert rq[0].cmds[3].state == UI_CS_QUEUED && !ui_cmd_take_cancelled(rq[..], canc[..]) && !ui_cmd_complete(rq[..], p1, true, 200, "");
+  #assert ui_cmd_complete(rq[..], nt, true, 200, "") && ui_cmd_complete(rq[..], nt_same, true, 200, "") && ui_cmd_complete(rq[..], p2, true, 200, "");
+  #assert ui_cmd_complete(rq[..], p_q, true, 200, "");
+  // Now slot 0 is free; emit active cmd at slot 0, complete it after queuing 8 items -> 9th drops (-1);
+  // put older queued item in slot 0 after freeing slot 0 so best_q == 0 promotes with now_ms + delay_ms!
+  act := ui_cmd_emit(rq[..], o1, "q", UI_CMD_TIMER, UI_CMD_QUEUE, "", "", 10, 1, 2, "");
+  for k: 0..<UI_CMD_QUEUE_MAX { #assert ui_cmd_emit(rq[..], o1, "q", UI_CMD_TIMER, UI_CMD_QUEUE, "", "", 50 + k, 1, 2, "") > 0; }
+  #assert ui_cmd_emit(rq[..], o1, "q", UI_CMD_TIMER, UI_CMD_QUEUE, "", "", 50, 1, 2, "") == -1;
+  rq[0].now_ms = 2000;
+  #assert ui_cmd_complete(rq[..], act, true, 0, "") && rq[0].cmds[1].state == UI_CS_PENDING && rq[0].cmds[1].due_ms == 2050;
+  // Move a queued cmd into slot 0 and verify slot 0 promotion works
+  rq2: [1] UiRuntime;
+  u0 := ui_mount(rq2[..], "u0", 0, -1, 0);
+  d0 := ui_cmd_emit(rq2[..], u0, "tmp", UI_CMD_CUSTOM, UI_CMD_CONCURRENT, "", "", 0, 1, 2, "");
+  qa := ui_cmd_emit(rq2[..], u0, "qq", UI_CMD_TIMER, UI_CMD_QUEUE, "", "", 10, 1, 2, "");
+  #assert ui_cmd_complete(rq2[..], d0, true, 0, "");   // frees slot 0
+  qb := ui_cmd_emit(rq2[..], u0, "qq", UI_CMD_TIMER, UI_CMD_QUEUE, "", "", 40, 1, 2, "");   // lands in slot 0!
+  rq2[0].now_ms = 3000;
+  #assert qb > qa && rq2[0].cmds[0].state == UI_CS_QUEUED && ui_cmd_complete(rq2[..], qa, true, 0, "");
+  #assert rq2[0].cmds[0].state == UI_CS_PENDING && rq2[0].cmds[0].due_ms == 3040;
+
+  // Subscriptions: slot 1 stream event (/ 4 and % 4), owner isolation on slot 0, and drop slot 0 clears active & pending_open
+  rs: [1] UiRuntime;
+  sa := ui_mount(rs[..], "sa", 0, -1, 0);
+  sb := ui_mount(rs[..], "sb", 0, -1, 0);
+  ui_sub_begin(rs[..], sa);
+  _ = ui_sub_want(rs[..], sa, "k", UI_SUB_SSE, "/sa", 1, 0, 10, 11, 12, 13);
+  ui_sub_commit(rs[..], sa);
+  ui_sub_begin(rs[..], sb);
+  _ = ui_sub_want(rs[..], sb, "k", UI_SUB_SSE, "/sb", 1, 0, 20, 21, 22, 23);
+  ui_sub_commit(rs[..], sb);
+  #assert rs[0].subs[0].active && rs[0].subs[1].active;
+  // Stream event on slot 1 phase OPEN (off == 4: 4/4 == 1 vs 4/5 == 0!) and CHUNK (off == 5)
+  #assert ui_sub_on_stream_event(rs[..], UI_SUB_EVENT_BASE + 1 * 4 + UI_SUB_PHASE_OPEN, 200, "");
+  #assert ui_sub_on_stream_event(rs[..], UI_SUB_EVENT_BASE + 1 * 4 + UI_SUB_PHASE_CHUNK, 200, "s1");
+  #assert ui_take_msg(rs[..], m[..]) && m[0].target == sb && m[0].tag == 20;
+  #assert ui_take_msg(rs[..], m[..]) && m[0].target == sb && m[0].tag == 21 && ui_msg_payload(rs[..], m[0]) == "s1";
+  // Reconciling sb without sa's key keeps sa's slot 0 active AND desired; reconciling sa empty drops slot 0
+  ui_sub_begin(rs[..], sb);
+  #assert rs[0].subs[0].desired;
+  ui_sub_commit(rs[..], sb);
+  #assert rs[0].subs[0].active && !rs[0].subs[1].active && !rs[0].subs[1].pending_open && rs[0].subs[1].pending_close;
+  ui_sub_begin(rs[..], sa); ui_sub_commit(rs[..], sa);
+  #assert !rs[0].subs[0].active && !rs[0].subs[0].pending_open && rs[0].subs[0].pending_close;
+
+  // Query slot 0: invalidate (with debounce triggered_ms), optimistic from INITIAL (state -> SUCCESS), rollback,
+  // resolve clearing waiting & optimistic, stale TTL transition, cmd invalidation on slot 0 (1-char key),
+  // cmd pool full keeps waiting == false, and subscriber/reader caps (16)!
+  rq3: [1] UiRuntime;
+  q_own := ui_mount(rq3[..], "q0", 0, -1, 0);
+  q0 := ui_query_read(rq3[..], q_own, "q", "/q", 100, 50, 1000);
+  #assert q0 == 0 && rq3[0].queries[0].state == UI_Q_INITIAL && !rq3[0].queries[0].waiting;
+  // Optimistic on INITIAL sets state = UI_Q_SUCCESS and advances q_pool_n
+  #assert ui_query_optimistic(rq3[..], "q", "x") && rq3[0].queries[0].state == UI_Q_SUCCESS && rq3[0].q_pool_n == 1 && ui_query_data(rq3[..], 0) == "x";
+  #assert ui_query_optimistic(rq3[..], "q", "y") && rq3[0].q_pool_n == 2 && ui_query_data(rq3[..], 0) == "y";
+  #assert ui_query_rollback(rq3[..], "q") && ui_query_data(rq3[..], 0) == "";
+  #assert ui_query_optimistic(rq3[..], "q", "z") && ui_query_resolve(rq3[..], "q", true, 200, "real", 1060);
+  #assert !rq3[0].queries[0].optimistic && !rq3[0].queries[0].waiting && ui_query_data(rq3[..], 0) == "real";
+  // TTL expires at 1160 -> stale becomes true and fetch starts; debounce after invalidate requires elapsed >= 50
+  _ = ui_query_read(rq3[..], q_own, "q", "/q", 100, 0, 1160);
+  #assert rq3[0].queries[0].stale && rq3[0].queries[0].waiting;
+  #assert ui_query_resolve(rq3[..], "q", true, 200, "v2", 1200) && !rq3[0].queries[0].waiting;
+  ui_query_invalidate(rq3[..], "q");
+  #assert rq3[0].queries[0].triggered_ms == 1200;
+  _ = ui_query_read(rq3[..], q_own, "q", "/q", 100, 50, 1249);
+  #assert !rq3[0].queries[0].waiting;
+  // Command success with 1-char invalidate_key "q" invalidates used slot 0 only (not unused slot 2 with matching key_h!)
+  #assert ui_query_resolve(rq3[..], "q", true, 200, "v3", 1300) && !rq3[0].queries[0].invalidated;
+  rq3[0].queries[2].key_h = tr_hash("q"); rq3[0].queries[2].used = false;
+  ci0 := ui_cmd_emit(rq3[..], q_own, "noop", UI_CMD_CUSTOM, UI_CMD_CONCURRENT, "", "", 0, 1, 2, "");
+  #assert !rq3[0].cmds[1].has_invalidate && ui_cmd_complete(rq3[..], ci0, true, 200, "") && !rq3[0].queries[0].invalidated;
+  ci1 := ui_cmd_emit(rq3[..], q_own, "inv", UI_CMD_CUSTOM, UI_CMD_CONCURRENT, "", "", 0, 1, 2, "q");
+  #assert ui_cmd_complete(rq3[..], ci1, true, 200, "") && rq3[0].queries[0].invalidated && !rq3[0].queries[2].invalidated;
+  // When UI_MAX_CMDS is full (with another key), ui_query_read on a new key leaves waiting == false
+  for k: 0..<UI_MAX_CMDS { _ = ui_cmd_emit(rq3[..], q_own, "fill", UI_CMD_CUSTOM, UI_CMD_CONCURRENT, "", "", 0, 1, 2, ""); }
+  qf := ui_query_read(rq3[..], q_own, "qf", "/qf", 100, 0, 1400);
+  #assert qf == 1 && !rq3[0].queries[qf].waiting;
+  // Subscriber & provider reader capacity caps (UI_MAX_Q_SUBS == 16, UI_MAX_P_READERS == 16)
+  #assert ui_provide_int(rq3[..], q_own, "a", 5) && ui_read_int(rq3[..], q_own, "a", 0) == 5;
+  kb: [16] u8;
+  for k: 1..<UI_MAX_Q_SUBS + 2 {
+    ch := ui_mount(rq3[..], tr_join(kb[..], "ch.", k), 0, q_own, 0);
+    _ = ui_query_read(rq3[..], ch, "q", "/q", 100, 0, 1400);
+    _ = ui_read_int(rq3[..], ch, "a", 0);
+  }
+  #assert rq3[0].queries[0].sub_n == UI_MAX_Q_SUBS && rq3[0].providers[0].reader_n == UI_MAX_P_READERS;
+}

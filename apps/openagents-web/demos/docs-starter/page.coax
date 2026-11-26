@@ -1,104 +1,115 @@
-// Minimal Hello World + Docs starter on Coax Native Web DOM backend.
+// Hello World + Docs starter powered by Coax UI Core (#14090):
+// per-component MVU, scoped Provider ("page", "name"), direct DOM id message routing,
+// and subtree-scoped patching (`dm_flush_subtree`) for leaf counter updates.
 // Run locally with hot reload:
 //   coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax --serve
 // Test natively:
 //   coax/bin/coax test apps/openagents-web/demos/docs-starter/page.coax
 #load "../../../../components/kit/settings.coax";
-#load "../../../../components/backend/dom.coax";
+#load "../../../../components/ui/runtime.coax";
 
 DS_INBOX :: 4096;
 DS_NAME :: 128;
 DS_CSS :: 40960;
 DS_CLICK :: 1; DS_INPUT :: 2; DS_SUBMIT :: 3;
 
+DS_COMP_SHELL :: 0;
+DS_COMP_COUNTER :: 1;
+
 DS_NAV_NAMES :: [3] string.["Hello World", "Getting Started", "Framework Status"];
 DS_NAV_NOTES :: [3] string.["Counter & input", "Markdown docs", "Phase 3.5 roadmap"];
 
-DS_DOC_START :: "This page is compiled from pure Coax to WebAssembly (`wasm32`) and rendered into real browser DOM by `coax/web/dom-host.js` — **no npm, no bundler, no JavaScript framework**.\n\n## Edit-to-screen loop\n\nSave `apps/openagents-web/demos/docs-starter/page.coax` while the dev server is running. `coax/web/serve.sh` watches the source, rebuilds the Wasm module in about a second, and reloads your tab over `/coaxial/live`.\n\n- **Server:** `coax/web/serve.sh` (`serve.c`) serves static assets, hot-reloads Wasm, and streams `/api/*` responses unbuffered.\n- **DOM backend:** `components/core/tree.coax` + `components/backend/dom.coax` diff keyed nodes and emit minimal DOM mutations.\n- **Markdown:** `components/core/markdown.coax` parses headings, lists, links, tables, and fenced code blocks in pure Coax.\n\n| Piece | File |\n| --- | --- |\n| Page state & view | `apps/openagents-web/demos/docs-starter/page.coax` |\n| Wasm ABI bridge | `apps/openagents-web/demos/docs-starter/face.c` |\n| Build & serve tool | `apps/openagents-web/demos/docs-starter/build.coax` |";
+DS_DOC_START :: "This page is compiled from pure Coax to WebAssembly (`wasm32`) and rendered into real browser DOM by `coax/web/dom-host.js` — **no npm, no bundler, no JavaScript framework**.\n\n## Edit-to-screen loop\n\nSave `apps/openagents-web/demos/docs-starter/page.coax` while the dev server is running. `coax/web/serve.sh` watches the source, rebuilds the Wasm module in about a second, and reloads your tab over `/coaxial/live`.\n\n- **Server:** `coax/web/serve.sh` (`serve.c`) serves static assets, hot-reloads Wasm, and streams `/api/*` responses unbuffered.\n- **Coax UI Core:** `components/ui/runtime.coax` owns per-component MVU, scoped Providers, typed Commands, keyed Subscriptions, and subtree patching.\n- **Markdown:** `components/core/markdown.coax` parses headings, lists, links, tables, and fenced code blocks in pure Coax.\n\n| Piece | File |\n| --- | --- |\n| Page state & view | `apps/openagents-web/demos/docs-starter/page.coax` |\n| Wasm ABI bridge | `apps/openagents-web/demos/docs-starter/face.c` |\n| Build & serve tool | `apps/openagents-web/demos/docs-starter/build.coax` |";
 
-DS_DOC_ROADMAP :: "The Coax Web framework evolves **in place** on top of `serve.sh`, `dom-host.js`, `tree.coax`, and `dom.coax`.\n\n## Phase 3.5 Milestones\n\n| Issue | Layer | Status |\n| --- | --- | --- |\n| `#14088` | Non-blocking SSE streaming plane (`kqueue`/`epoll`, `Last-Event-ID`, Postgres `LISTEN/NOTIFY`) | Done |\n| `#14089` | Multiplexed keyed streams, reconnect backoff, IME/caret-safe inputs & modal `<dialog>` in `dom-host.js` | Next |\n| `#14090` | Coax UI Core: Effect UI per-component MVU, `Cmd`s, keyed `Sub`s, query cache & `Provider`s | Planned |\n| `#14091` | Coax UI Kit & Streaming Markdown: headless `parts` primitives, `VirtualList` & incremental Markdown | Planned |\n| `#14092` | Native Coax SSR/Hydration & zero-browser `Story`/`Scene`/`Play` harness | Planned |\n\nEvery doc page authored here moves cleanly onto Coax UI primitives and SSR as each layer lands.";
+DS_DOC_ROADMAP :: "The Coax Web framework evolves **in place** on top of `serve.sh`, `dom-host.js`, `tree.coax`, `dom.coax`, and `components/ui/`.\n\n## Phase 3.5 Milestones\n\n| Issue | Layer | Status |\n| --- | --- | --- |\n| `#14088` | Non-blocking SSE streaming plane (`kqueue`/`epoll`, `Last-Event-ID`, Postgres `LISTEN/NOTIFY`) | Done |\n| `#14089` | Multiplexed keyed streams, reconnect backoff, IME/caret-safe inputs & modal `<dialog>` in `dom-host.js` | Done |\n| `#14090` | Coax UI Core: per-component MVU, `Cmd`s, keyed `Sub`s, query cache, `Provider`s & subtree patching | Done |\n| `#14091` | Coax UI Kit & Streaming Markdown: headless `parts` primitives, `VirtualList` & incremental Markdown | Next |\n| `#14092` | Native Coax SSR/Hydration & zero-browser `Story`/`Scene`/`Play` harness | Planned |\n\nEvery doc page authored here moves cleanly onto Coax UI primitives and SSR as each layer lands.";
 
 DS_SNIPPET :: "coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax --serve";
 
 DocsStarter :: struct {
   ready: bool;
   time: f32;
-  dirty: bool;
   animating: bool;
-  page: int;          // 0 Hello World, 1 Getting Started, 2 Framework Status
+  shell_c: int;
+  counter_c: int;
   count: int;
-  name: [DS_NAME] u8;
-  name_n: int;
-  doc_page: int = -1; // which doc page is currently parsed into `doc`
+  doc_page: int = -1;
   clip: [256] u8;
   clip_n: int;
   inbox: [DS_INBOX] u8;
   sets: [MF_COUNT] AfSettings;
   css: [DS_CSS] u8;
   ui: [1] Ui;
+  rt: [1] UiRuntime;
   doc: [1] MdDoc;
   tree: [1] Tree;
+  sub: [1] Tree;
   dom: [1] Dom;
 }
 
-ds_set_name :: (s: [] DocsStarter, text: string) {
-  n := ifx text.count > DS_NAME then DS_NAME else text.count;
-  for i: 0..<n { s[0].name[i] = text[i]; }
-  s[0].name_n = n;
-}
-
-ds_greet :: (s: [] DocsStarter, out: [] u8) -> string {
-  who := ifx s[0].name_n > 0 then cast(string) s[0].name[0..<s[0].name_n] else "World";
+ds_greet :: (who: string, out: [] u8) -> string {
+  label := ifx who.count > 0 then who else "World";
   p := "Hello, ";
   n := 0;
   for c: p { if n < out.count { out[n] = c; n += 1; } }
-  for c: who { if n < out.count { out[n] = c; n += 1; } }
+  for c: label { if n < out.count { out[n] = c; n += 1; } }
   if n < out.count { out[n] = '!'; n += 1; }
   return cast(string) out[0..<n];
 }
 
-ds_build :: (s: [] DocsStarter) {
-  t := s[0].tree[..]; u := s[0].ui[..];
+// Standalone leaf component view: renders identically inside full page build OR dm_flush_subtree!
+ds_counter_view :: (s: [] DocsStarter, t: [] Tree) {
+  u := s[0].ui[..];
   buf: [UI_ID] u8; buf2: [UI_ID] u8; gbuf: [256] u8;
+  who := ui_read_str(s[0].rt[..], s[0].counter_c, "name", "");
+  _ = tr_open(t, "ds.counter", TG_DIV, "st-c");
+  _ = tr_leaf(t, "ds.counter.greet", TG_H2, "sec-h", ds_greet(who, gbuf[..]));
+  _ = tr_leaf(t, "ds.counter.lede", TG_P, "sec-n", "Per-component MVU leaf: clicking Count +1 patches only this subtree.");
+  _ = tr_open(t, "ds.counter.row", TG_DIV, "rowf");
+  _ = k_button(t, u, "ds.counter.inc", "Count +1", BS_PRIMARY);
+  _ = k_button(t, u, "ds.counter.reset", "Reset", ifx s[0].count > 0 then BS_PLAIN else BS_DISABLED);
+  tr_close(t);
+  _ = tr_leaf(t, "ds.counter.count", TG_P, "meta", tr_cat(buf2[..], tr_join(buf[..], "Clicks: ", s[0].count), " (live Wasm state)"));
+  tr_close(t);
+}
+
+ds_build :: (s: [] DocsStarter) {
+  t := s[0].tree[..]; u := s[0].ui[..]; rt := s[0].rt[..];
+  buf: [UI_ID] u8;
   names := DS_NAV_NAMES; notes := DS_NAV_NOTES;
+  page := ui_read_int(rt, s[0].shell_c, "page", 0); // mutant: equivalent (ds_init always provides page)
 
   tr_begin(t);
-  root := k_set(t, "ds");
+  _ = k_set(t, "ds");
 
-  nav := k_set_nav(t, "ds.nav", "Coax Web Docs");
+  _ = k_set_nav(t, "ds.nav", "Coax Web Docs");
   for k: 0..<3 {
     id := tr_join(buf[..], "ds.nav.", k);
-    item := k_row(t, u, id, names[k], notes[k], k == s[0].page);
+    _ = k_row(t, u, id, names[k], notes[k], k == page);
   }
   tr_close(t);
 
-  body := k_set_body(t, u, "ds.body", "Coax Web Starter", names[s[0].page]);
+  _ = k_set_body(t, u, "ds.body", "Coax Web Starter", names[page]);
 
-  if s[0].page == 0 {
-    g := k_set_group(t, u, "ds.hello", "Interactive Hello World");
-    greet := tr_leaf(t, "ds.greet", TG_H2, "sec-h", ds_greet(s, gbuf[..]));
-    lede := tr_leaf(t, "ds.lede", TG_P, "sec-n", "Compiled from pure Coax to WebAssembly and rendered into real HTML DOM by dom-host.js.");
-    row := tr_open(t, "ds.row", TG_DIV, "rowf");
-    b_inc := k_button(t, u, "ds.inc", "Count +1", BS_PRIMARY);
-    b_rst := k_button(t, u, "ds.reset", "Reset", ifx s[0].count > 0 then BS_PLAIN else BS_DISABLED);
-    tr_close(t);
-    cnt := tr_leaf(t, "ds.count", TG_P, "meta", tr_cat(buf2[..], tr_join(buf[..], "Clicks: ", s[0].count), " (live Wasm state)"));
-    fld := k_field(t, u, "ds.name", "Your name", "Type a name to greet");
+  if page == 0 {
+    _ = k_set_group(t, u, "ds.hello", "Interactive Hello World");
+    ds_counter_view(s, t);
+    _ = k_field(t, u, "ds.name", "Your name", "Type a name to greet");
     k_set_group_end(t);
 
-    g2 := k_set_group(t, u, "ds.cmd", "Run locally");
-    cb := k_code(t, u, "ds.code", "sh", DS_SNIPPET);
+    _ = k_set_group(t, u, "ds.cmd", "Run locally");
+    _ = k_code(t, u, "ds.code", "sh", DS_SNIPPET);
     k_set_group_end(t);
   } else {
-    src := ifx s[0].page == 1 then DS_DOC_START else DS_DOC_ROADMAP;
-    if s[0].doc_page != s[0].page {
+    src := ifx page == 1 then DS_DOC_START else DS_DOC_ROADMAP;
+    if s[0].doc_page != page {
+      s[0].doc[0] = MdDoc.{};
       _ = md_parse(s[0].doc[..], src, 0);
-      s[0].doc_page = s[0].page;
+      s[0].doc_page = page;
     }
-    doc_id := tr_join(buf[..], "ds.md.", s[0].page);
-    art := k_agent(t, u, doc_id, s[0].doc[..]);
-    if s[0].page == 1 {
-      cb := k_code(t, u, "ds.start.code", "sh", DS_SNIPPET);
+    doc_id := tr_join(buf[..], "ds.md.", page);
+    _ = k_agent(t, u, doc_id, s[0].doc[..]);
+    if page == 1 {
+      _ = k_code(t, u, "ds.start.code", "sh", DS_SNIPPET);
     }
   }
 
@@ -106,60 +117,100 @@ ds_build :: (s: [] DocsStarter) {
   tr_close(t);
 }
 
+ds_init :: (s: [] DocsStarter) {
+  if s[0].ready { return; }
+  _ = mono_frames(s[0].sets[..]);
+  rt := s[0].rt[..];
+  s[0].shell_c = ui_mount(rt, "ds", DS_COMP_SHELL, -1, 0); // mutant: equivalent (slot 0 is not live yet so parent 0 maps to -1)
+  s[0].counter_c = ui_mount(rt, "ds.counter", DS_COMP_COUNTER, s[0].shell_c, 0);
+  _ = ui_provide_int(rt, s[0].shell_c, "page", 0);
+  _ = ui_provide_str(rt, s[0].shell_c, "name", "");
+  s[0].ready = true;
+}
+
+ds_drain_msgs :: (s: [] DocsStarter) {
+  rt := s[0].rt[..];
+  m: [1] UiMsg;
+  while ui_take_msg(rt, m[..]) {
+    payload := ui_msg_payload(rt, m[0]);
+    if m[0].target == s[0].counter_c {
+      if m[0].tag == DS_CLICK && payload == "ds.counter.inc" {
+        s[0].count += 1;
+        ui_mark_dirty(rt, s[0].counter_c);
+      } else if m[0].tag == DS_CLICK && payload == "ds.counter.reset" {
+        s[0].count = 0;
+        ui_mark_dirty(rt, s[0].counter_c);
+      }
+    } else if m[0].target == s[0].shell_c {
+      if m[0].tag == DS_CLICK {
+        if payload == "ds.nav.0" { _ = ui_provide_int(rt, s[0].shell_c, "page", 0); }
+        else if payload == "ds.nav.1" { _ = ui_provide_int(rt, s[0].shell_c, "page", 1); }
+        else if payload == "ds.nav.2" { _ = ui_provide_int(rt, s[0].shell_c, "page", 2); }
+        else if payload == "ds.code.copy" || payload == "ds.start.code.copy" {
+          s[0].clip_n = ui_copy(s[0].clip[..], DS_SNIPPET);
+        }
+      } else if m[0].tag == DS_INPUT {
+        _ = ui_provide_str(rt, s[0].shell_c, "name", payload);
+      } else if m[0].tag == DS_SUBMIT {
+        s[0].count += 1;
+        ui_mark_dirty(rt, s[0].counter_c);
+      }
+    }
+  }
+}
+
 coaxial_ds_frame :: (s: [] DocsStarter, dt: f32, reduced: bool) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
-  if !s[0].ready {
-    _ = mono_frames(s[0].sets[..]);
-    s[0].ready = true;
-    s[0].dirty = true;
-  }
-  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  ds_init(s);
+  ds_drain_msgs(s);
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt; // mutant: equivalent (at boundary 0.0 and 0.1 both branches equal the boundary)
   s[0].time += step;
-  if !s[0].dirty && !s[0].animating { return 0; }
+  rt := s[0].rt[..];
+  mode := ui_flush_mode(rt);
+  if mode == UIP_FLUSH_NONE && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
     n := mono_button_css(s[0].css[..], mono_page_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..]))));
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
+  if mode == UIP_FLUSH_SUBTREE && !s[0].animating && !rt[0].comps[s[0].shell_c].dirty {
+    tr_begin(s[0].sub[..]);
+    ds_counter_view(s, s[0].sub[..]);
+    bytes := dm_flush_subtree(d, "ds.counter", s[0].sub[..], s[0].sets[..]);
+    if bytes >= 0 {
+      ui_mark_mounted(rt, s[0].counter_c);
+      if d[0].overflow { dm_reset(d); ui_mark_structural(rt); return -1; }
+      return bytes;
+    }
+  }
   ui_begin(s[0].ui[..], s[0].time, reduced);
   ds_build(s);
   ui_end(s[0].ui[..]);
   s[0].animating = s[0].ui[0].busy;
-  s[0].dirty = false;
   bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
-  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  ui_after_full_flush(rt);
+  if d[0].overflow { dm_reset(d); ui_mark_structural(rt); return -1; }
   return bytes;
 }
 
 coaxial_ds_busy :: (s: [] DocsStarter) -> bool #export_c #effects(all) {
-  return s.count > 0 && (s[0].dirty || s[0].animating);
+  return s.count > 0 && (s[0].rt[0].msg_count > 0 || ui_flush_mode(s[0].rt[..]) != UIP_FLUSH_NONE || s[0].animating);
 }
 
 coaxial_ds_event :: (s: [] DocsStarter, kind: int, slot: int, length: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   id := dm_slot_id(s[0].dom[..], slot);
-  if id.count == 0 { return; }
-  if kind == DS_CLICK {
-    if id == "ds.inc" { s[0].count += 1; }
-    else if id == "ds.reset" { s[0].count = 0; }
-    else if id == "ds.nav.0" { s[0].page = 0; }
-    else if id == "ds.nav.1" { s[0].page = 1; }
-    else if id == "ds.nav.2" { s[0].page = 2; }
-    else if id == "ds.code.copy" || id == "ds.start.code.copy" {
-      s[0].clip_n = 0;
-      for c: DS_SNIPPET { if s[0].clip_n < s[0].clip.count { s[0].clip[s[0].clip_n] = c; s[0].clip_n += 1; } }
-    }
-  } else if kind == DS_INPUT && id == "ds.name" {
-    n := ifx length < 0 then 0 else ifx length > DS_INBOX then DS_INBOX else length;
-    ds_set_name(s, cast(string) s[0].inbox[0..<n]);
-  } else if kind == DS_SUBMIT && id == "ds.name" {
-    s[0].count += 1;
+  if id.count == 0 { return; } // mutant: equivalent (live slot ids are multi-char ds.* strings)
+  if kind == DS_INPUT {
+    n := ifx length < 0 then 0 else ifx length > DS_NAME then DS_NAME else length; // mutant: equivalent (at 0 and DS_NAME both branches agree; provider caps at UI_PROV_VAL_MAX == DS_NAME)
+    _ = ui_send_by_id(s[0].rt[..], id, kind, slot, cast(string) s[0].inbox[0..<n]);
+  } else {
+    _ = ui_send_by_id(s[0].rt[..], id, kind, slot, id);
   }
-  s[0].dirty = true;
 }
 
 coaxial_ds_size :: (s: [] DocsStarter, slot: int, w: f32, h: f32) #export_c #effects(all) {
-  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { ui_mark_structural(s[0].rt[..]); }
 }
 
 coaxial_ds_clip :: (s: [] DocsStarter) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].clip_n else 0; }
@@ -168,37 +219,149 @@ coaxial_ds_inbox_cap :: () -> int #export_c #effects(all) { return DS_INBOX; }
 
 DsTest :: struct { s: [1] DocsStarter; }
 
-#test "hello world renders, increments counter, updates greeting, and switches to markdown docs" {
+#test "docs starter runs on Coax UI Core, patches leaf counter subtree in place, propagates Provider name, and switches Markdown docs" {
   h: [1] DsTest; s := h[0].s[..];
+  #assert coaxial_ds_inbox_cap() == DS_INBOX && !coaxial_ds_busy(s);
   n := coaxial_ds_frame(s, 0.016, true);
   t := s[0].tree[..]; d := s[0].dom[..];
   #assert n > 500 && t[0].lost == 0 && t[0].depth == 0;
-  #assert tr_text_of(t, tr_find(t, "ds.greet")) == "Hello, World!";
-  #assert tr_text_of(t, tr_find(t, "ds.count")) == "Clicks: 0 (live Wasm state)";
-  #assert coaxial_ds_frame(s, 0.016, true) == 0;
+  #assert tr_text_of(t, tr_find(t, "ds.counter.greet")) == "Hello, World!";
+  #assert tr_text_of(t, tr_find(t, "ds.counter.count")) == "Clicks: 0 (live Wasm state)";
+  #assert coaxial_ds_frame(s, 0.016, true) == 0 && !coaxial_ds_busy(s);
 
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.inc"), 0);
+  // Leaf click routes to "ds.counter" and flushes ONLY its subtree (0 DC_MAKE, 0 DC_REMOVE, 1 DC_TEXT + 1 DC_UNATTR for Reset enabled as BS_PLAIN!)
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.counter.inc"), 0);
+  #assert coaxial_ds_busy(s);
+  n_sub := coaxial_ds_frame(s, 0.016, true);
+  #assert s[0].count == 1 && n_sub > 0 && !coaxial_ds_busy(s) && dm_test_count(d, n_sub, DC_MAKE) == 0 && dm_test_count(d, n_sub, DC_REMOVE) == 0;
+  #assert dm_test_count(d, n_sub, DC_TEXT) == 1 && dm_test_count(d, n_sub, DC_UNATTR) == 1 && !tr_has(s[0].sub[..], tr_find(s[0].sub[..], "ds.counter.reset"), AT_STATE);
+  #assert tr_text_of(s[0].sub[..], tr_find(s[0].sub[..], "ds.counter.count")) == "Clicks: 1 (live Wasm state)";
+  // Wrong event on ds.counter.reset does NOT reset count
+  coaxial_ds_event(s, DS_SUBMIT, dm_find(d, "ds.counter.reset"), 0);
   _ = coaxial_ds_frame(s, 0.016, true);
-  #assert s[0].count == 1 && tr_text_of(t, tr_find(t, "ds.count")) == "Clicks: 1 (live Wasm state)";
+  #assert s[0].count == 1;
+  // Dirty counter with no DOM change returns 0 via subtree fast-path (does NOT rebuild s[0].tree!)
+  s[0].tree[0].n = 0;
+  ui_mark_dirty(s[0].rt[..], s[0].counter_c);
+  #assert coaxial_ds_frame(s, 0.016, true) == 0 && !coaxial_ds_busy(s) && s[0].tree[0].n == 0;
 
+  // Reset routes to "ds.counter" and re-disables Reset button in place
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.counter.reset"), 0);
+  n_rst := coaxial_ds_frame(s, 0.016, true);
+  #assert s[0].count == 0 && n_rst > 0 && dm_test_count(d, n_rst, DC_TEXT) == 1 && dm_test_count(d, n_rst, DC_ATTR) == 1;
+
+  // Input updates Provider "name" on "ds", automatically dirtying descendant reader "ds.counter" -> subtree patch emits 1 DC_TEXT!
   who := "OpenAgents";
   for i: 0..<who.count { s[0].inbox[i] = who[i]; }
   coaxial_ds_event(s, DS_INPUT, dm_find(d, "ds.name"), who.count);
-  _ = coaxial_ds_frame(s, 0.016, true);
-  #assert tr_text_of(t, tr_find(t, "ds.greet")) == "Hello, OpenAgents!";
+  n_greet := coaxial_ds_frame(s, 0.016, true);
+  #assert n_greet > 0 && d[0].sent == 1 && dm_test_count(d, n_greet, DC_TEXT) == 1;
+  #assert tr_text_of(s[0].sub[..], tr_find(s[0].sub[..], "ds.counter.greet")) == "Hello, OpenAgents!";
 
+  // Submit increments counter via leaf subtree patch
+  coaxial_ds_event(s, DS_SUBMIT, dm_find(d, "ds.name"), 0);
+  #assert coaxial_ds_frame(s, 0.016, true) > 0 && s[0].count == 1;
+
+  // Resize on node outside ds.counter triggers structural full redraw (not subtree!)
+  coaxial_ds_size(s, dm_find(d, "ds.nav.0"), 120, 36);
+  n_sz := coaxial_ds_frame(s, 0.016, true);
+  #assert n_sz > 0 && dm_test_count(d, n_sz, DC_FRAME) == 1;
+
+  // Navigation switches Markdown docs via Provider "page"
   coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.1"), 0);
   _ = coaxial_ds_frame(s, 0.016, true);
-  #assert s[0].page == 1 && s[0].doc[0].nb > 0 && tr_find(t, "ds.md.1.b0") >= 0;
+  #assert s[0].doc[0].nb > 0 && tr_find(t, "ds.md.1.b0") >= 0;
 
   coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.2"), 0);
   _ = coaxial_ds_frame(s, 0.016, true);
-  #assert s[0].page == 2 && tr_find(t, "ds.md.2.b0") >= 0;
+  #assert tr_find(t, "ds.md.2.b0") >= 0;
 
   coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.0"), 0);
   _ = coaxial_ds_frame(s, 0.016, true);
   coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.code.copy"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
   #assert coaxial_ds_clip(s) == DS_SNIPPET.count;
   coaxial_ds_clip_done(s);
   #assert coaxial_ds_clip(s) == 0;
+}
+
+#test "docs starter handles empty slices, greet boundaries, tags, animation frames, input clamping, and overflow resets" {
+  h: [1] DsTest; s := h[0].s[..]; empty := h[0].s[0..<0];
+  // Empty-slice safety on every exported C ABI entry
+  #assert coaxial_ds_frame(empty, 0.016, true) == 0 && !coaxial_ds_busy(empty) && coaxial_ds_clip(empty) == 0;
+  coaxial_ds_event(empty, DS_CLICK, 0, 0);
+  coaxial_ds_size(empty, 0, 10, 10);
+  coaxial_ds_clip_done(empty);
+
+  // ds_greet exact truncation & 1-char name boundaries
+  b3: [3] u8; b9: [9] u8; b12: [12] u8; b13: [13] u8;
+  #assert ds_greet("", b3[..]) == "Hel" && ds_greet("A", b9[..]) == "Hello, A!";
+  #assert ds_greet("", b12[..]) == "Hello, World" && ds_greet("", b13[..]) == "Hello, World!";
+
+  // Non-reduced motion frame advances time (clamped to 0..0.1), sets animating, emits DC_STYLE starting at css[0]
+  n := coaxial_ds_frame(s, -1.0, false);
+  t := s[0].tree[..]; d := s[0].dom[..];
+  #assert n > 500 && s[0].ready && s[0].time == 0.0 && s[0].animating && d[0].styled && dm_test_count(d, n, DC_STYLE) == 1 && d[0].out[5] == s[0].css[0];
+  #assert s[0].rt[0].comps[s[0].shell_c].kind == DS_COMP_SHELL && s[0].rt[0].comps[s[0].shell_c].parent == -1 && s[0].rt[0].comps[s[0].shell_c].model_idx == 0;
+  #assert s[0].rt[0].comps[s[0].counter_c].kind == DS_COMP_COUNTER && s[0].rt[0].comps[s[0].counter_c].model_idx == 0;
+  #assert t[0].nodes[tr_find(t, "ds.counter")].tag == TG_DIV && t[0].nodes[tr_find(t, "ds.counter.greet")].tag == TG_H2;
+  #assert t[0].nodes[tr_find(t, "ds.counter.lede")].tag == TG_P && t[0].nodes[tr_find(t, "ds.counter.row")].tag == TG_DIV;
+  #assert t[0].nodes[tr_find(t, "ds.counter.count")].tag == TG_P && tr_attr_of(t, tr_find(t, "ds.counter.inc"), AT_STATE) == "primary";
+  #assert tr_has(t, tr_find(t, "ds.counter.reset"), AT_DISABLED);
+  #assert tr_attr_of(t, tr_find(t, "ds.nav.0"), AT_CURRENT) == "true" && !tr_has(t, tr_find(t, "ds.nav.1"), AT_CURRENT);
+  births_p0 := s[0].ui[0].nb;
+  // While animating, counter dirty still takes full frame path (not subtree); advancing time with dt > 0.1 clamps to 0.1
+  ui_mark_dirty(s[0].rt[..], s[0].counter_c);
+  _ = coaxial_ds_frame(s, 0.5, false);
+  #assert s[0].time > 0.09 && s[0].time < 0.11;
+  // Switching page while non-reduced retires page-0 births via ui_end!
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.2"), 0);
+  _ = coaxial_ds_frame(s, 0.016, false);
+  #assert s[0].ui[0].nb < births_p0;
+  // Clicking nav.0 restores page 0 and finishes animation cleanly
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.0"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert !s[0].animating;
+
+  // Clicking nav.1 renders DS_DOC_START + ds.start.code with part == 0; nav.2 renders DS_DOC_ROADMAP without ds.start.code
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.1"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert s[0].doc_page == 1 && s[0].doc[0].blocks[0].part == 0 && tr_find(t, "ds.start.code") >= 0 && md_block_text(s[0].doc[..], 1) == "Edit-to-screen loop";
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.2"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert s[0].doc_page == 2 && tr_find(t, "ds.start.code") < 0 && md_block_text(s[0].doc[..], 1) == "Phase 3.5 Milestones";
+  // Nav back to page 0, verify DS_CLICK on ds.name does NOT overwrite name, and test input clamping (-1, 1, > DS_NAME)
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.0"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert tr_find(t, "ds.counter") >= 0;
+  coaxial_ds_event(s, DS_CLICK, -1, 0);
+  s[0].inbox[0] = 'X';
+  coaxial_ds_event(s, DS_INPUT, dm_find(d, "ds.name"), 1);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert tr_text_of(s[0].sub[..], tr_find(s[0].sub[..], "ds.counter.greet")) == "Hello, X!";
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.name"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert tr_text_of(s[0].sub[..], tr_find(s[0].sub[..], "ds.counter.greet")) == "Hello, X!";
+  coaxial_ds_event(s, DS_INPUT, dm_find(d, "ds.name"), -1);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert tr_text_of(s[0].sub[..], tr_find(s[0].sub[..], "ds.counter.greet")) == "Hello, World!";
+  for i: 0..<DS_INBOX { s[0].inbox[i] = 'Y'; }
+  coaxial_ds_event(s, DS_INPUT, dm_find(d, "ds.name"), DS_INBOX + 10);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert s[0].rt[0].providers[1].str_n == DS_NAME;
+  // When shell_c is dirty alongside counter_c, full build runs (not subtree)
+  ui_mark_dirty(s[0].rt[..], s[0].shell_c);
+  #assert coaxial_ds_frame(s, 0.016, true) == 0 && !s[0].rt[0].comps[s[0].shell_c].dirty;
+
+  // Subtree overflow returns -1, resets Dom, and marks structural_dirty; full overflow also returns -1 & resets Dom
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.counter.inc"), 0);
+  d[0].out_n = DM_OUT - 1;
+  dm_keep(d);
+  #assert coaxial_ds_frame(s, 0.016, true) == -1 && !d[0].styled && s[0].rt[0].structural_dirty;
+  // Full flush recovers cleanly
+  #assert coaxial_ds_frame(s, 0.016, true) > 500 && d[0].styled && !s[0].rt[0].structural_dirty;
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.1"), 0);
+  d[0].out_n = DM_OUT - 1;
+  dm_keep(d);
+  #assert coaxial_ds_frame(s, 0.016, true) == -1 && !d[0].styled && s[0].rt[0].structural_dirty;
 }
