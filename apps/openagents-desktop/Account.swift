@@ -89,6 +89,24 @@ enum MacKey {
         return "Nostr " + String(decoding: out[0..<Int(n)], as: UTF8.self)
     }
 
+    /// NIP-98 Authorization header for a signed GET request (e.g. GET /api/v1/inference/credit).
+    static func nip98Get(key: [UInt8], url: String, now: Date) throws -> String {
+        guard let urlData = try? JSONSerialization.data(withJSONObject: [url]),
+              let urlArr = String(data: urlData, encoding: .utf8),
+              urlArr.count >= 2 else { throw AppAuth.Failure.said("That didn't work. Try again.") }
+        let escapedUrl = String(urlArr.dropFirst().dropLast())
+        let tags = "[[\"u\",\(escapedUrl)],[\"method\",\"GET\"]]"
+        var k = key, aux = [UInt8](repeating: 0, count: 32), out = [UInt8](repeating: 0, count: 2048)
+        defer { wipe(&k); wipe(&aux) }
+        guard SecRandomCopyBytes(kSecRandomDefault, 32, &aux) == errSecSuccess else { throw AppAuth.Failure.said("That didn't work. Try again.") }
+        let n = withText(tags) { t in
+            k.withUnsafeMutableBufferPointer { kb in aux.withUnsafeMutableBufferPointer { ab in out.withUnsafeMutableBufferPointer { ob in
+                coaxial_lab_nip98(coax_v_u8(data: kb.baseAddress, count: 32), coax_v_u8(data: ab.baseAddress, count: 32), Int64(now.timeIntervalSince1970),
+                                  t, coax_v_u8(data: ob.baseAddress, count: Int64(ob.count))) } } } }
+        guard n > 0 else { throw AppAuth.Failure.said("That didn't work. Try again.") }
+        return "Nostr " + String(decoding: out[0..<Int(n)], as: UTF8.self)
+    }
+
     static func wipe(_ b: inout [UInt8]) { for i in b.indices { b[i] = 0 } }
     static func withText<T>(_ s: String, _ body: (coax_string) -> T) -> T {
         var bytes = Array(s.utf8)
@@ -121,6 +139,7 @@ final class MacAccount: @unchecked Sendable {
     private let lock = NSLock()
     private var shown = ""          // what the account answered: the masked email, or "" for a key only
     private var known = false
+    private var cachedCreditMsat: Int64? = nil
     var changed: (() -> Void)?
 
     init(keyFile: URL = MacKey.file(), store: TokenStore = FileTokenStore(url: MacAccount.folder.appendingPathComponent("login.json")),
@@ -131,6 +150,7 @@ final class MacAccount: @unchecked Sendable {
     }
 
     var loggedIn: Bool { auth.loggedIn }
+    var creditMsat: Int64? { lock.lock(); defer { lock.unlock() }; return cachedCreditMsat }
     var title: String {
         guard loggedIn else { return "Log In…" }
         lock.lock(); defer { lock.unlock() }
@@ -138,18 +158,54 @@ final class MacAccount: @unchecked Sendable {
         return shown.isEmpty ? "Logged in with this Mac's key" : "Logged in as \(shown)"
     }
 
+    /// Fetches the user's actual OpenAgents account credit balance in millisatoshis:
+    /// prefers the logged-in account (GET /api/auth/life), falling back to a NIP-98 signed
+    /// GET /api/v1/inference/credit using this Mac's key if present.
+    @discardableResult
+    func fetchCreditMsat() async -> Int64? {
+        if loggedIn, let msat = try? await auth.creditMsat() {
+            setCreditMsat(msat)
+            return msat
+        }
+        if var key = MacKey.load(keyFile) {
+            defer { MacKey.wipe(&key) }
+            let urlStr = auth.origin + "/api/v1/inference/credit"
+            if let url = URL(string: urlStr),
+               let authHeader = try? MacKey.nip98Get(key: key, url: urlStr, now: Date()) {
+                var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 15)
+                req.httpMethod = "GET"
+                req.setValue(authHeader, forHTTPHeaderField: "Authorization")
+                if let (data, resp) = try? await URLSession.shared.data(for: req),
+                   (resp as? HTTPURLResponse)?.statusCode == 200,
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let msat = (obj["credit_msat"] as? NSNumber)?.int64Value {
+                    let clamped = max(0, msat)
+                    setCreditMsat(clamped)
+                    return clamped
+                }
+            }
+        }
+        return creditMsat
+    }
+
     /// Asks the server who is logged in (an authorized request: a stale access token is renewed
     /// first); a login the server ended is forgotten.
     func look() async {
-        guard loggedIn else { tell(); return }
+        guard loggedIn else {
+            _ = await fetchCreditMsat()
+            tell()
+            return
+        }
         if let a = try? await auth.account() {
             setShown(a.emails.first ?? "")
         }
+        _ = await fetchCreditMsat()
         tell()
         await registerForPush()
     }
     private func setShown(_ s: String) { lock.lock(); shown = s; known = true; lock.unlock() }
-    func forgetShown() { lock.lock(); shown = ""; known = false; lock.unlock() }
+    private func setCreditMsat(_ msat: Int64?) { lock.lock(); cachedCreditMsat = msat; lock.unlock() }
+    func forgetShown() { lock.lock(); shown = ""; known = false; cachedCreditMsat = nil; lock.unlock() }
     func tell() { DispatchQueue.main.async { self.changed?() } }
 
     func keyLogin() async throws {

@@ -335,6 +335,11 @@ final class AppAuth: @unchecked Sendable {
         }
         return Security(recovery: r["state"] as? String ?? "none", readyMs: (r["ready_ms"] as? NSNumber)?.int64Value ?? 0, notices: Array(notices))
     }
+    /// Reads the signed-in account's service credit balance in millisatoshis (GET /api/auth/life).
+    func creditMsat() async throws -> Int64 {
+        let life = try await get("/api/auth/life")
+        return max(0, (life["credit_msat"] as? NSNumber)?.int64Value ?? 0)
+    }
     /// Cancels the account's waiting recovery with this login (any login of the account may).
     func cancelRecovery() async throws {
         _ = try await said { try await self.authed("/api/auth/recovery/cancel", [:]) }

@@ -13,7 +13,8 @@ typedef struct { const char *data; int64_t count; } coax_string;
 typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
 #endif
 
-/* lab-sign.coax: the CLI key file's format, a new key's check, and a NIP-98 event for a POST. */
+/* lab-sign.coax: the CLI key file's format, a new key's check, and NIP-98 signing. */
+int64_t coaxial_lab_nip98(coax_v_u8 key, coax_v_u8 aux, int64_t now_s, coax_string tags, coax_v_u8 out);
 int64_t coaxial_account_nip98(coax_v_u8 key, coax_v_u8 aux, int64_t now_s, coax_string url, coax_string payload, coax_v_u8 out);
 bool coaxial_account_key_parse(coax_string text, coax_v_u8 key);
 int64_t coaxial_account_key_text(coax_v_u8 key, coax_v_u8 out);

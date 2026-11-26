@@ -116,6 +116,8 @@ CpUsageState :: struct {
   now_s: int;
   last_refresh_s: int;
   refreshing: bool;
+  credit_msat: int;           // OpenAgents account service credits in millisatoshis
+  credit_known: bool;         // true once fetched from OpenAgents account
 }
 
 // ---------------------------------------------------------------- pure helpers
@@ -938,4 +940,51 @@ coder_page_usage_cloud_set :: (
   in_tok: int, cached_tok: int, out_tok: int, calls: int, synced: bool
 ) #export_c #effects(all) {
   cp_usage_cloud_set(s, credit_msat, today_micros, month_micros, total_micros, decision_micros, decision_calls, in_tok, cached_tok, out_tok, calls, synced);
+}
+
+// Formats a non-negative integer with thousands comma separators (e.g. 12500 -> "12,500").
+cp_usage_format_commas :: (n_in: int, out: [] u8) -> string {
+  if out.count < 1 { return ""; }
+  n := ifx n_in < 0 then 0 else n_in;
+  if n == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  digits: [32] u8; nd := 0;
+  v := n;
+  while v > 0 && nd < digits.count {
+    digits[nd] = cast(u8) ('0' + (v % 10));
+    v /= 10;
+    nd += 1;
+  }
+  k := 0;
+  for i: 0..<nd {
+    rem := nd - i;
+    if i > 0 && (rem % 3) == 0 && k < out.count { out[k] = ','; k += 1; }
+    if k < out.count { out[k] = digits[nd - 1 - i]; k += 1; }
+  }
+  return cast(string) out[0..<k];
+}
+
+// Compact label for the sidebar bottom-right account credits pill.
+cp_usage_credits_label :: (s: [] CoderPage, out: [] u8) -> string {
+  if s.count < 1 || (!s[0].usage[0].credit_known && !s[0].usage[0].cloud_synced) {
+    n := el_put(out, 0, "Credits");
+    return cast(string) out[0..<n];
+  }
+  raw := ifx s[0].usage[0].credit_known then s[0].usage[0].credit_msat else s[0].usage[0].cloud_credit_msat;
+  msat := ifx raw > 0 then raw else 0;
+  sats := msat / 1000;
+  nb: [32] u8;
+  num := cp_usage_format_commas(sats, nb[..]);
+  n := el_put(out, 0, num);
+  n = el_put(out, n, ifx sats == 1 then " sat" else " sats");
+  return cast(string) out[0..<n];
+}
+
+coder_page_usage_credits_set :: (s: [] CoderPage, credit_msat: int, known: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].usage[0].credit_msat = ifx credit_msat > 0 then credit_msat else 0;
+  s[0].usage[0].credit_known = known;
+}
+
+coder_page_usage_credits_msat :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 && s[0].usage[0].credit_known then s[0].usage[0].credit_msat else -1;
 }

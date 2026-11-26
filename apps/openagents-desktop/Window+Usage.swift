@@ -284,6 +284,11 @@ enum UsageProber {
         }
         return out
     }
+
+    /// Fetches the signed-in OpenAgents account's actual service credit balance in millisatoshis.
+    static func fetchAccountCredits() async -> Int64? {
+        return await MacAccount.shared.fetchCreditMsat()
+    }
 }
 
 extension CoderWindow {
@@ -309,11 +314,28 @@ extension CoderWindow {
         }
     }
 
+    /// Refreshes the user's OpenAgents account credit balance in the sidebar pill.
+    func refreshAccountCredits() {
+        Task.detached(priority: .utility) { [weak self] in
+            let msat = await UsageProber.fetchAccountCredits()
+            await MainActor.run {
+                guard let self, !self.retired else { return }
+                if let msat {
+                    cd_usage_credits_set(self.page, msat, 1)
+                } else {
+                    cd_usage_credits_set(self.page, 0, 0)
+                }
+                self.wake()
+            }
+        }
+    }
+
     /// Syncs authoritative OpenAgents Cloud usage/credit, aggregates local chats, and (only when
     /// opted in via AgentSettings.allowLocalHarnesses) probes external local harness quota caches (#14072).
     func refreshUsageDashboard() {
         cd_usage_refreshing_set(page, 1)
         wake()
+        refreshAccountCredits()
         let storeRef = self.store
         let probeExternalHarnesses = AgentSettings.allowLocalHarnesses
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -364,6 +386,7 @@ extension CoderWindow {
         if cd_usage_tick(page, nowS) != 0 {
             handleUsageRecoveryEvent()
         }
+        refreshAccountCredits()
     }
 
     func handleUsagePoolChanged() {

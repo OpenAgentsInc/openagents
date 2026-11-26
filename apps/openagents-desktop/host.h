@@ -601,6 +601,8 @@ int cd_usage_is_index_db(const char *path);
 int64_t cd_usage_total_cost_micros(void *page);
 int64_t cd_usage_total_tokens(void *page);
 void cd_usage_cloud_set(void *page, int64_t credit_msat, int64_t today_micros, int64_t month_micros, int64_t total_micros, int64_t decision_micros, int64_t decision_calls, int64_t in_tok, int64_t cached_tok, int64_t out_tok, int64_t calls, int synced);
+void cd_usage_credits_set(void *page, int64_t credit_msat, int known);
+int64_t cd_usage_credits_msat(void *page);
 // MCP server management, OAuth PKCE card, and Skills catalog (page/mcpskills.coax, GitHub #13879).
 int cd_mcp_load_json(void *page, const char *json);
 int cd_mcp_save_json(void *page, char *out, int cap);

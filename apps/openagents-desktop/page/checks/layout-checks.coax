@@ -111,18 +111,18 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   cp_init(s);
   s[0].d = 1.0f32;
   h: f32 = 660.0f32;
-  // Always-On Usage strip is always present; adding an update pill grows the footer height (#14064).
+  // Footer is empty when no update is available; adding an update pill grows the footer height.
   base_h := cp_side_footer_h(s, k);
-  #assert base_h > k.cmp.chip_h;
-  // Available state renders clickable update pill stacked below usage strip.
+  #assert base_h == 0.0f32;
+  // Available state renders clickable update pill without the removed bottom-left usage pill.
   coder_page_update(s, CP_UPD_AVAILABLE, "", "v0.2.0");
   footer_h := cp_side_footer_h(s, k);
-  #assert footer_h > base_h;
+  #assert footer_h > k.cmp.chip_h;
   uiframe_begin(f[..], sf[..], ks[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
   cp_side_footer(s, f[..], 0, h - footer_h, cast(f32) CP_SIDE - k.border);
   #assert uiframe_end(f[..], sf[..]);
   u_idx := surface_find(sf[..], "coder.side.pill.update");
-  #assert u_idx >= 0 && surface_find(sf[..], "coder.side.pill.provider") < 0;
+  #assert u_idx >= 0 && surface_find(sf[..], "coder.side.pill.usage") < 0 && surface_find(sf[..], "coder.side.pill.provider") < 0;
   tb := surface_rows(sf[..]);
   u_row := tb.rows[u_idx];
   #assert u_row.action == CP_UPDATE;
@@ -135,10 +135,23 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   u_idx = surface_find(sf[..], "coder.side.pill.update");
   #assert u_idx >= 0 && surface_rows(sf[..]).rows[u_idx].action == 0;
   // Ready state is clickable through full layout and dispatches CP_ASK_UPDATE.
+  // Account credits pill lives bottom-right inside the sidebar utility bar, and wallet/archive icon is hidden.
+  coder_page_usage_credits_set(s, 12500000, true);
   coder_page_update(s, CP_UPD_READY, "", "v0.2.0");
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0.032, 0.016, true, false);
   cp_layout(s, f[..], 1200.0f32, h);
   #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert surface_find(s[0].surface[..], "coder.side.pill.usage") < 0;
+  #assert surface_find(s[0].surface[..], "coder.wallet") < 0;
+  #assert surface_find(s[0].surface[..], "coder.sb.archived") < 0;
+  cr_idx := surface_find(s[0].surface[..], "coder.side.pill.credits");
+  set_idx := surface_find(s[0].surface[..], "coder.me.settings");
+  #assert cr_idx >= 0 && set_idx >= 0;
+  cr_row := surface_rows(s[0].surface[..]).rows[cr_idx];
+  set_row := surface_rows(s[0].surface[..]).rows[set_idx];
+  #assert cr_row.action == CP_USAGE_OPEN && cr_row.x > set_row.x + set_row.w && abs(cr_row.y - set_row.y) < 1.0f32;
+  stb := [1] ElTable.[surface_rows(s[0].surface[..])];
+  #assert elt_value_of(stb[..], cr_idx) == "12,500 sats";
   r_idx := surface_find(s[0].surface[..], "coder.side.pill.update");
   #assert r_idx >= 0;
   r_row := surface_rows(s[0].surface[..]).rows[r_idx];

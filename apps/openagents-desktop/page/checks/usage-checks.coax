@@ -33,6 +33,35 @@
   #assert cp_usage_bar(0, bb[..]) == "[----------] 0%";
 }
 
+#test "usage: account credits formatting and setter/getter" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s);
+  lb: [48] u8;
+  #assert coder_page_usage_credits_msat(s) == -1;
+  #assert cp_usage_credits_label(s, lb[..]) == "Credits";
+
+  coder_page_usage_credits_set(s, 0, true);
+  #assert coder_page_usage_credits_msat(s) == 0;
+  #assert cp_usage_credits_label(s, lb[..]) == "0 sats";
+
+  coder_page_usage_credits_set(s, 1000, true);
+  #assert coder_page_usage_credits_msat(s) == 1000;
+  #assert cp_usage_credits_label(s, lb[..]) == "1 sat";
+
+  coder_page_usage_credits_set(s, 12500000, true);
+  #assert coder_page_usage_credits_msat(s) == 12500000;
+  #assert cp_usage_credits_label(s, lb[..]) == "12,500 sats";
+
+  coder_page_usage_credits_set(s, 1000000000, true);
+  #assert cp_usage_credits_label(s, lb[..]) == "1,000,000 sats";
+
+  coder_page_usage_credits_set(s, -500, true);
+  #assert coder_page_usage_credits_msat(s) == 0 && cp_usage_credits_label(s, lb[..]) == "0 sats";
+
+  coder_page_usage_credits_set(s, 0, false);
+  #assert coder_page_usage_credits_msat(s) == -1 && cp_usage_credits_label(s, lb[..]) == "Credits";
+}
+
 #test "usage: Antigravity index DBs are skipped during local spend aggregation (#13838)" {
   #assert coder_page_usage_is_index_db("index.db");
   #assert coder_page_usage_is_index_db("/Users/me/.gemini/antigravity-acp/index.db");

@@ -29,7 +29,10 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         TestLaunch.start()
         MacPush.delegateForwards = true
         MacAccount.shared.changed = { [weak self] in
-            DispatchQueue.main.async { self?.refreshAccountMenu() }
+            DispatchQueue.main.async {
+                self?.refreshAccountMenu()
+                self?.main?.refreshAccountCredits()
+            }
         }
         #if OA_FULL
         if FeatureFlags.isOn(.pairing) {

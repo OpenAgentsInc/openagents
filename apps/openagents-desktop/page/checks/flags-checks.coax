@@ -41,7 +41,10 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "coder.composer.mic") >= 0;
   #assert surface_find(s[0].surface[..], "coder.cost") < 0;
   #assert surface_find(s[0].surface[..], "coder.usage.ring") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.side.pill.usage") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.side.pill.usage") < 0;
+  #assert surface_find(s[0].surface[..], "coder.wallet") < 0;
+  #assert surface_find(s[0].surface[..], "coder.sb.archived") < 0;
+  #assert surface_find(s[0].surface[..], "coder.side.pill.credits") >= 0;
   #assert surface_find(s[0].surface[..], "coder.fresh") < 0;
   #assert surface_find(s[0].surface[..], "coder.fanout") < 0;
 

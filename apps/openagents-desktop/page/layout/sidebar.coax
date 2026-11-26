@@ -368,7 +368,29 @@ cp_side_settings_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, row_
   _ := cp_side_icon_btn(f, id, "Settings", x + a.row_inset, y + (row_h - side) / 2.0f32, side, ICON_SETTINGS, open, action);
   return row_h;
 }
-// T3 Code-style horizontal icon-only sidebar footer bar: Settings, Wallet, and flag-gated PRs/Issues & Gym.
+// Compact right-aligned account credits pill inside the sidebar utility bar.
+cp_side_credits_pill :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f32, label: string) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  r := h / 2.0f32;
+  id := "coder.side.pill.credits";
+  hv := uiframe_hover_on(f, KEYED_LAZY, id, uiframe_hovered(f, id));
+  row := uiframe_semantic(f, id, EL_BUTTON, "Account credits", x, y, w, h, 0, CP_USAGE_OPEN);
+  elt_value(f[0].rows, row, label);
+  bg := rgba_mix(k.raised, k.hover, hv);
+  _ := sheet_box(sh, x, y, w, h, r, k.border, bg, k.hairline);
+  ink := rgba_mix(k.muted, k.ink, hv);
+  pad := 10.0f32;
+  room := w - 2.0f32 * pad;
+  if room > 0 {
+    fit := app_fit(f, k.small.face, label, room);
+    tw := measure_width(m, k.small.face, fit);
+    tx := x + (w - tw) / 2.0f32;
+    if tx < x + pad { tx = x + pad; }
+    _ := sheet_text(sh, m, -1, tx, y + (h - k.small.line) / 2.0f32, k.small.line, k.small.face, ink, fit);
+  }
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+}
+// T3 Code-style horizontal sidebar footer bar: utility icon buttons on the left, account credits pill on the right.
 cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, row_h: f32) -> f32 {
   k := f[0].skin; a := k.app;
   sheet_fill(f[0].sheet, x, y - 4.0f32, w, cp_px(s), 0, k.hairline);
@@ -376,15 +398,26 @@ cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, 
   by := y + (row_h - side) / 2.0f32;
   bx := x + a.row_inset;
   gap := 4.0f32;
+  right_edge := x + w - a.row_inset;
+  // Measure the right-aligned account credits pill first so left icon buttons never overlap it.
+  cb: [48] u8;
+  credits_txt := sheet_pool(f[0].sheet, cp_usage_credits_label(s, cb[..]));
+  pill_pad := 10.0f32;
+  pill_w := ceil(measure_width(f[0].m, k.small.face, credits_txt)) + 2.0f32 * pill_pad;
+  if pill_w < side { pill_w = side; }
+  btn_limit := right_edge - pill_w - gap;
+  if btn_limit < bx + side { btn_limit = right_edge; }
   bx += cp_side_icon_btn(f, "coder.me.settings", "Settings", bx, by, side, ICON_SETTINGS, false, CP_SET_TOGGLE) + gap;
-  if bx + side <= x + w - a.row_inset {
-    bx += cp_side_icon_btn(f, "coder.wallet", "Wallet", bx, by, side, ICON_WALLET, s[0].wallet[0].open, CP_WALLET_TOGGLE) + gap;
-  }
-  if cp_flag(s, DC_FLAG_FORGE) && bx + side <= x + w - a.row_inset {
+  if cp_flag(s, DC_FLAG_FORGE) && bx + side <= btn_limit {
     bx += cp_side_icon_btn(f, "coder.forge", "PRs & Issues", bx, by, side, ICON_SHARE, cp_forge_shown(s), CP_FORGE_TOGGLE) + gap;
   }
-  if cp_flag(s, DC_FLAG_GYM) && bx + side <= x + w - a.row_inset {
+  if cp_flag(s, DC_FLAG_GYM) && bx + side <= btn_limit {
     bx += cp_side_icon_btn(f, "coder.gym", "Gym", bx, by, side, ICON_WIDGET, s[0].gym_open, CP_GYM) + gap;
+  }
+  avail_w := right_edge - bx;
+  if avail_w >= 36.0f32 {
+    pw := ifx pill_w <= avail_w then pill_w else avail_w;
+    cp_side_credits_pill(s, f, right_edge - pw, by, pw, side, credits_txt);
   }
   return row_h;
 }
@@ -451,20 +484,16 @@ cp_side_key_badge :: (f: [] UiFrame, right: f32, y: f32, row_h: f32, key: string
   _ := sheet_text(sh, m, -1, bx + (bw - tw) / 2.0f32, by + (bh - k.small.line) / 2.0f32, k.small.line, k.small.face, k.ink, key);
 }
 
-// Bottom-of-sidebar always-on Usage strip (#14064) + desktop auto-updater pill.
+// Bottom-of-sidebar desktop auto-updater pill.
 cp_side_update_h :: (s: [] CoderPage, k: UiSkin) -> f32 {
   if s.count < 1 || s[0].update_state == CP_UPD_HIDDEN { return 0.0f32; }
   if s[0].update_detail_n > 0 { return 44.0f32; }
   return k.cmp.chip_h;
 }
 cp_side_footer_h :: (s: [] CoderPage, k: UiSkin) -> f32 {
-  if s.count < 1 { return 0.0f32; }
+  if s.count < 1 || s[0].update_state == CP_UPD_HIDDEN { return 0.0f32; }
   pad_v := 8.0f32;
-  h := k.border + pad_v + k.cmp.chip_h + pad_v;
-  if s[0].update_state != CP_UPD_HIDDEN {
-    h += cp_side_update_h(s, k) + 6.0f32;
-  }
-  return h;
+  return k.border + pad_v + cp_side_update_h(s, k) + pad_v;
 }
 cp_side_update_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, detail: string, action: int, highlighted: bool) {
   if detail.count == 0 {
@@ -530,7 +559,7 @@ cp_side_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, l
   sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
 }
 cp_side_footer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
-  if s.count < 1 { return; }
+  if s.count < 1 || s[0].update_state == CP_UPD_HIDDEN { return; }
   k := f[0].skin; a := k.app;
   pad_v := 8.0f32;
   sheet_fill(f[0].sheet, x, y, w, k.border, 0, k.menu_divider);
@@ -538,42 +567,6 @@ cp_side_footer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
   pw := w - 2.0f32 * a.row_inset;
   if pw <= 0 { return; }
   py := y + k.border + pad_v;
-  // Always-On Usage Strip (#14064): live tokens / quota % + USD spend on every screen.
-  ulb: [64] u8; uln := el_put(ulb[..], 0, "Usage");
-  share := cp_usage_ring_share(s);
-  tot_tok := s[0].usage[0].total_in + s[0].usage[0].total_out;
-  if share > 0.0f32 {
-    pct := cast(int) (share * 100.0f32 + 0.5f32);
-    uln = el_put(ulb[..], uln, " · ");
-    uln = el_put_i(ulb[..], uln, pct);
-    uln = el_put(ulb[..], uln, "%");
-  } else if tot_tok > 0 {
-    tb: [24] u8;
-    uln = el_put(ulb[..], uln, " · ");
-    uln = el_put(ulb[..], uln, cp_tokens(tb[..], tot_tok));
-  }
-  udb: [32] u8; udn := 0;
-  cost_m := s[0].usage[0].total_cost_micros;
-  if cost_m > 0 {
-    cents := (cost_m + 5000) / 10000;
-    dollars := cents / 100;
-    rem := cents % 100;
-    udn = el_put(udb[..], 0, "$");
-    udn = el_put_i(udb[..], udn, dollars);
-    udn = el_put(udb[..], udn, ".");
-    if rem < 10 { udn = el_put(udb[..], udn, "0"); }
-    udn = el_put_i(udb[..], udn, rem);
-  } else if s[0].ctx_in > 0 {
-    cb: [24] u8;
-    udn = el_put(udb[..], 0, cp_tokens(cb[..], s[0].ctx_in + s[0].ctx_out));
-  } else {
-    udn = el_put(udb[..], 0, "$0.00");
-  }
-  u_label := sheet_pool(f[0].sheet, cast(string) ulb[0..<uln]);
-  u_detail := sheet_pool(f[0].sheet, cast(string) udb[0..<udn]);
-  cp_side_pill(f, "coder.side.pill.usage", px, py, pw, -1, u_label, u_detail, CP_USAGE_OPEN, share >= 0.80f32);
-  if s[0].update_state == CP_UPD_HIDDEN { return; }
-  py += k.cmp.chip_h + 6.0f32;
   st := s[0].update_state;
   icon := ICON_ARROW_UP;
   def_label := "Update available";
