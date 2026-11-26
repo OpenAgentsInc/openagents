@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openagents.capability.payout.v1",
+  "description": "Idempotent author Lightning/Spark payout record written in canonical key-sorted RFC 8785 JCS by pay/payout-policy.coax (#14060). Bitcoin networks only; real_bitcoin_moved=true requires a positive settled_at and non-zero 64-hex settlement_commitment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "amount_sat",
+    "author_pubkey",
+    "held_after_msat",
+    "network",
+    "payout_id",
+    "real_bitcoin_moved",
+    "receipts_digest",
+    "schema",
+    "settled_at",
+    "settlement_commitment"
+  ],
+  "properties": {
+    "amount_sat": { "type": "integer", "minimum": 1, "maximum": 2100000000000000 },
+    "author_pubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "held_after_msat": { "type": "integer", "minimum": 0 },
+    "network": { "type": "string", "enum": ["bitcoin", "regtest", "signet"] },
+    "payout_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "real_bitcoin_moved": { "type": "boolean" },
+    "receipts_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "schema": { "const": "openagents.capability.payout.v1" },
+    "settled_at": { "type": "integer", "minimum": 0 },
+    "settlement_commitment": { "type": "string", "pattern": "^(|[0-9a-f]{64})$" }
+  }
+}

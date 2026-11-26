@@ -1,0 +1,261 @@
+// #authority Hash-Pinned Inert Installation & Signed Defaults Rollout Policy (#14060).
+//
+// Combines NIP-EXT release/revocation/checkpoint verification (`coax/lib/nostr/ext/install.coax`),
+// exact SHA-256 artifact byte checking (`coax/lib/crypto/sha256.coax`), safe POSIX path confinement,
+// multi-key NIP-EVAL reproduction quorum (`openagents/registry/registry.coax`), active-run lock
+// immutability, and monotone defaults rollout/rollback policy (openagents/book/ch055).
+//   coax/bin/coax test openagents/registry/install.coax --library
+//   coax/bin/coax mutate openagents/registry/install.coax --library --root-only
+#load "registry.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+#authority;
+
+INST_MAX_PATH :: 256;
+
+InstStatus :: enum u8 {
+  ok;
+  bad_path;
+  bad_size;
+  digest_mismatch;
+  revoked;
+  conflict;
+  stale;
+  ext_refused;
+  repro_failed;
+  not_staged;
+  bad_lock;
+  active_run_pinned;
+  bad_signature;
+  rollback;
+}
+
+InstFileCheck :: struct {
+  path: string;
+  bytes: [] u8;
+  expected_digest: string;
+  expected_size: int;
+}
+
+INST_HEX :: "0123456789abcdef";
+
+inst_sha256_hex :: (bytes: [] u8, out_hex: [] u8) -> bool #effects(all) {
+  if out_hex.count < 64 { return false; }
+  dig: [32] u8;
+  if sha256_hash_checked(bytes, dig[..], false) != SHA_OK { return false; } // mutant: equivalent — dig is fixed 32 bytes, overlap=false
+  for i: 0..<32 {
+    b := cast(int) dig[i];
+    out_hex[2 * i] = INST_HEX[b >> 4];
+    out_hex[2 * i + 1] = INST_HEX[b & 15];
+  }
+  return true;
+}
+
+// Verify exact byte size and SHA-256 digest of a staged artifact against a pinned sha256:<64-hex> digest.
+inst_verify_artifact :: (bytes: [] u8, expected_sha256: string, expected_size: int) -> InstStatus #export_c #effects(all) {
+  if !ev_digest(expected_sha256) || expected_size < 0 { return InstStatus.digest_mismatch; }
+  if bytes.count != expected_size { return InstStatus.bad_size; }
+  got: [64] u8;
+  if !inst_sha256_hex(bytes, got[..]) { return InstStatus.digest_mismatch; }
+  if cast(string) got[..] != expected_sha256[7..<71] { return InstStatus.digest_mismatch; }
+  return InstStatus.ok;
+}
+
+// Safe normalized relative POSIX path (NIP-EXT: no absolute paths, no .., no ., no //, no backslash, no controls).
+inst_safe_rel_path :: (path: string) -> bool #export_c #effects(all) {
+  if path.count < 1 || path.count > INST_MAX_PATH { return false; }
+  seg_start := 0;
+  for i: 0..<path.count + 1 {
+    is_end := i == path.count || path[i] == '/';
+    if !is_end {
+      c := path[i];
+      if c < 32 || c == 127 || c == '\\' { return false; }
+      continue;
+    }
+    seg_len := i - seg_start;
+    if seg_len == 0 { return false; }
+    seg := path[seg_start..<i];
+    if seg == "." || seg == ".." { return false; }
+    seg_start = i + 1;
+  }
+  return true;
+}
+
+// Fail-closed hash-pinned inert installation gate:
+// 1. NIP-EXT release/revocation/checkpoint verification (`ext_install`)
+// 2. Non-empty closure of safe, distinct relative paths with exact SHA-256 byte matches
+// 3. When `min_confirmations > 0`, independent multi-key NIP-EVAL reproduction quorum (`reg_quorum_reproduced`)
+inst_admit_pinned :: (
+  r: ExtRelease,
+  releases: [] ExtRelease,
+  revocations: [] ExtRevocation,
+  cp: ExtCheckpoint,
+  have_cp: bool,
+  pol: ExtPolicy,
+  now: int,
+  files: [] InstFileCheck,
+  orig_claim: RegEvalClaim,
+  repro_checks: [] RegEvalClaim,
+  min_confirmations: int
+) -> InstStatus #export_c #effects(all) {
+  ext := ext_install(r, releases, revocations, cp, have_cp, pol, now);
+  if ext == EXT_REVOKED { return InstStatus.revoked; }
+  if ext == EXT_CONFLICT { return InstStatus.conflict; }
+  if ext == EXT_STALE { return InstStatus.stale; }
+  if ext != EXT_OK { return InstStatus.ext_refused; }
+
+  if files.count < 1 { return InstStatus.bad_path; }
+  for i: 0..<files.count {
+    if !inst_safe_rel_path(files[i].path) { return InstStatus.bad_path; }
+    for j: 0..<i {
+      if files[i].path == files[j].path { return InstStatus.bad_path; }
+    }
+    st := inst_verify_artifact(files[i].bytes, files[i].expected_digest, files[i].expected_size);
+    if st != InstStatus.ok { return st; }
+  }
+
+  if min_confirmations > 0 {
+    if reg_quorum_reproduced(orig_claim, repro_checks, min_confirmations) != QuorumStatus.admitted {
+      return InstStatus.repro_failed;
+    }
+  }
+  return InstStatus.ok;
+}
+
+// Atomic lock commit rule: staged bytes must be verified, lock SHA must be 64-hex,
+// and an active run's lock is never hot-swapped while `active_runs > 0`.
+inst_commit_lock :: (
+  active_runs: int,
+  cur_lock_sha: string,
+  next_lock_sha: string,
+  staged_ok: bool
+) -> InstStatus #export_c #effects(all) {
+  if !staged_ok { return InstStatus.not_staged; }
+  if !reg_hex64(next_lock_sha) { return InstStatus.bad_lock; }
+  if active_runs > 0 && cur_lock_sha.count > 0 && cur_lock_sha != next_lock_sha {
+    return InstStatus.active_run_pinned;
+  }
+  return InstStatus.ok;
+}
+
+// Signed defaults package rollout / rollback policy (ch055):
+// Monotone revision (even rollbacks publish a new revision pointing to a prior verified non-revoked list),
+// monotone revocations (a revoked member never re-enters), and forward adoption requires verified catalog & install.
+inst_admit_defaults_update :: (
+  cur_rev: int,
+  next_rev: int,
+  sig_ok: bool,
+  catalog_status: RegStatus,
+  member_install_status: InstStatus,
+  is_rollback: bool,
+  prior_verified: bool,
+  member_revoked: bool
+) -> InstStatus #export_c #effects(all) {
+  if !sig_ok { return InstStatus.bad_signature; }
+  if member_revoked { return InstStatus.revoked; }
+  if cur_rev < 0 || next_rev <= cur_rev { return InstStatus.rollback; }
+  if is_rollback {
+    if !prior_verified { return InstStatus.not_staged; }
+    return InstStatus.ok;
+  }
+  if catalog_status != RegStatus.ok { return InstStatus.ext_refused; }
+  if member_install_status != InstStatus.ok { return member_install_status; }
+  return InstStatus.ok;
+}
+
+// ---- checks
+
+#test "install: exact SHA-256 verification and 1-bit tamper refusal" {
+  // SHA-256("abc") = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+  abc := [3] u8.['a', 'b', 'c'];
+  dig := "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  #assert inst_verify_artifact(abc[..], dig, 3) == InstStatus.ok;
+  #assert inst_verify_artifact(abc[..], dig, 4) == InstStatus.bad_size;
+  #assert inst_verify_artifact(abc[..], dig, -1) == InstStatus.digest_mismatch;
+  #assert inst_verify_artifact(abc[..], "bad", 3) == InstStatus.digest_mismatch;
+  tampered := abc; tampered[2] ^= 1;
+  #assert inst_verify_artifact(tampered[..], dig, 3) == InstStatus.digest_mismatch;
+  // Empty file matches SHA-256("")
+  empty: [1] u8;
+  dig_empty := "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  #assert inst_verify_artifact(empty[0..<0], dig_empty, 0) == InstStatus.ok;
+  out_short: [63] u8; out_ok: [64] u8;
+  #assert !inst_sha256_hex(abc[..], out_short[..]) && inst_sha256_hex(abc[..], out_ok[..]);
+}
+
+#test "install: safe POSIX relative paths confine files" {
+  #assert inst_safe_rel_path("a") && inst_safe_rel_path("a b") && inst_safe_rel_path("SKILL.md") && inst_safe_rel_path("src/tool.wasm") && inst_safe_rel_path("a/b/c.json");
+  #assert !inst_safe_rel_path("") && !inst_safe_rel_path("/etc/passwd") && !inst_safe_rel_path("dir/");
+  #assert !inst_safe_rel_path("a//b") && !inst_safe_rel_path(".") && !inst_safe_rel_path("..") && !inst_safe_rel_path("a/../b") && !inst_safe_rel_path("a/./b");
+  del_path := [3] u8.['a', 127, 'b'];
+  ctl_path := [3] u8.['a', 31, 'b'];
+  #assert !inst_safe_rel_path("\\a") && !inst_safe_rel_path("a\\b") && !inst_safe_rel_path("a\nb") && !inst_safe_rel_path(cast(string) del_path[..]) && !inst_safe_rel_path(cast(string) ctl_path[..]);
+  p256: [257] u8; for i: 0..<257 { p256[i] = 'x'; }
+  #assert inst_safe_rel_path(cast(string) p256[0..<256]) && !inst_safe_rel_path(cast(string) p256[..]);
+}
+
+#test "install: full hash-pinned admission with EXT revocation, quorum, lock commit, and defaults rollout" {
+  rel := xt_release("r1", "1.0.0", "m1");
+  rs := [1] ExtRelease.[rel];
+  vs := [1] ExtRevocation.[xt_revocation("v1", "r1")];
+  cp: ExtCheckpoint;
+  pol: ExtPolicy;
+
+  abc := [3] u8.['a', 'b', 'c'];
+  dig_abc := "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  files := [1] InstFileCheck.[InstFileCheck.{path = "SKILL.md", bytes = abc[..], expected_digest = dig_abc, expected_size = 3}];
+
+  orig := RegEvalClaim.{
+    kind = REG_KIND_EVAL, event_id = RG_EV1, signer = RG_PK_A,
+    subject_id = XT_PACKAGE, lock_digest = RG_DIG1, suite_digest = RG_DIG2, gate_digest = RG_DIG3,
+    eval_view_code = EV_VERIFIED, verdict = EV_PASS
+  };
+  chk_b := orig; chk_b.event_id = RG_EV2; chk_b.signer = RG_PK_B;
+  chk_c := orig; chk_c.event_id = RG_EV3; chk_c.signer = RG_PK_C;
+  chks := [2] RegEvalClaim.[chk_b, chk_c];
+
+  // Happy path with 2-key quorum and without quorum (min_confirmations=0)
+  #assert inst_admit_pinned(rel, rs[..], vs[0..<0], cp, false, pol, 1000, files[..], orig, chks[..], 2) == InstStatus.ok;
+  #assert inst_admit_pinned(rel, rs[..], vs[0..<0], cp, false, pol, 1000, files[..], orig, chks[0..<0], 0) == InstStatus.ok;
+
+  // EXT refusals: revoked, conflict (equivocation), stale (strict without checkpoint), malformed
+  #assert inst_admit_pinned(rel, rs[..], vs[..], cp, false, pol, 1000, files[..], orig, chks[..], 2) == InstStatus.revoked;
+  eq := [2] ExtRelease.[rel, xt_release("r2", "1.0.0", "m2")];
+  #assert inst_admit_pinned(rel, eq[..], vs[0..<0], cp, false, pol, 1000, files[..], orig, chks[..], 2) == InstStatus.conflict;
+  #assert inst_admit_pinned(rel, rs[..], vs[0..<0], cp, false, xt_strict(), 1000, files[..], orig, chks[..], 2) == InstStatus.stale;
+  bad_rel := rel; bad_rel.signer = XT_OTHER;
+  #assert inst_admit_pinned(bad_rel, rs[..], vs[0..<0], cp, false, pol, 1000, files[..], orig, chks[..], 2) == InstStatus.ext_refused;
+
+  // File checks: empty files, bad path, duplicate path, tampered byte
+  #assert inst_admit_pinned(rel, rs[..], vs[0..<0], cp, false, pol, 1000, files[0..<0], orig, chks[..], 2) == InstStatus.bad_path;
+  bad_f := files; bad_f[0].path = "../escape";
+  #assert inst_admit_pinned(rel, rs[..], vs[0..<0], cp, false, pol, 1000, bad_f[..], orig, chks[..], 2) == InstStatus.bad_path;
+  dup_f := [2] InstFileCheck.[files[0], files[0]];
+  #assert inst_admit_pinned(rel, rs[..], vs[0..<0], cp, false, pol, 1000, dup_f[..], orig, chks[..], 2) == InstStatus.bad_path;
+  tamp := abc; tamp[0] ^= 1;
+  tf := files; tf[0].bytes = tamp[..];
+  #assert inst_admit_pinned(rel, rs[..], vs[0..<0], cp, false, pol, 1000, tf[..], orig, chks[..], 2) == InstStatus.digest_mismatch;
+
+  // Quorum failure blocks install (both min=1 and min=2)
+  #assert inst_admit_pinned(rel, rs[..], vs[0..<0], cp, false, pol, 1000, files[..], orig, chks[0..<0], 1) == InstStatus.repro_failed;
+  #assert inst_admit_pinned(rel, rs[..], vs[0..<0], cp, false, pol, 1000, files[..], orig, chks[0..<1], 2) == InstStatus.repro_failed;
+
+  // Atomic lock commit: active run keeps its pin, idle or same lock commits
+  #assert inst_commit_lock(0, RG_EV1, RG_EV2, true) == InstStatus.ok;
+  #assert inst_commit_lock(2, RG_EV1, RG_EV1, true) == InstStatus.ok;
+  #assert inst_commit_lock(2, "", RG_EV2, true) == InstStatus.ok;
+  #assert inst_commit_lock(1, "x", RG_EV2, true) == InstStatus.active_run_pinned;
+  #assert inst_commit_lock(1, RG_EV1, RG_EV2, true) == InstStatus.active_run_pinned;
+  #assert inst_commit_lock(0, RG_EV1, RG_EV2, false) == InstStatus.not_staged;
+  #assert inst_commit_lock(0, RG_EV1, "bad", true) == InstStatus.bad_lock;
+
+  // Defaults rollout & rollback
+  #assert inst_admit_defaults_update(0, 1, true, RegStatus.ok, InstStatus.ok, false, false, false) == InstStatus.ok;
+  #assert inst_admit_defaults_update(1, 2, true, RegStatus.stale, InstStatus.repro_failed, true, true, false) == InstStatus.ok;
+  #assert inst_admit_defaults_update(1, 2, false, RegStatus.ok, InstStatus.ok, false, false, false) == InstStatus.bad_signature;
+  #assert inst_admit_defaults_update(1, 2, true, RegStatus.ok, InstStatus.ok, true, true, true) == InstStatus.revoked;
+  #assert inst_admit_defaults_update(2, 2, true, RegStatus.ok, InstStatus.ok, false, false, false) == InstStatus.rollback;
+  #assert inst_admit_defaults_update(-1, 1, true, RegStatus.ok, InstStatus.ok, false, false, false) == InstStatus.rollback;
+  #assert inst_admit_defaults_update(1, 2, true, RegStatus.ok, InstStatus.ok, true, false, false) == InstStatus.not_staged;
+  #assert inst_admit_defaults_update(1, 2, true, RegStatus.conflict, InstStatus.ok, false, false, false) == InstStatus.ext_refused;
+  #assert inst_admit_defaults_update(1, 2, true, RegStatus.ok, InstStatus.repro_failed, false, false, false) == InstStatus.repro_failed;
+}

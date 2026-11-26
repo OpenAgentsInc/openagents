@@ -1,0 +1,8 @@
+nip_ext signed_release=true signed_listing=true rel_verify=true head=true head_rollback=true
+nip_reg catalog_admit=true catalog_rollback=true
+nip_eval quorum_2=true refuse_self=true refuse_dispute=true
+install admit=true refuse_tamper=true refuse_traversal=true lock_pin=true lock_swap=true defaults_fwd=true defaults_rb=true defaults_revoked=true
+x402 rail_ok=true rail_refuse=true call_ok=true call_replay=true
+meter status=true calls_public=2 calls_internal=1 refunded=1 dup=1 refused=1 gross_msat=25000 author_a_msat=19750 author_b_msat=2000 platform_msat=3250
+payout a_sat=19 a_dust_msat=750 settle=true record_rt=true a_replay=true b_hold_min=true c_hold_addr=true refuse_conservation=true
+ok=true

@@ -1,6 +1,6 @@
 # Invariants — pay/INVARIANTS.md
 
-> Scope: Payments, Spark wallet, Lightning, LNURL, tips, voice-meter (2 invariants). Indexed from root [INVARIANTS.md](../INVARIANTS.md).
+> Scope: Payments, Spark wallet, Lightning, LNURL, tips, voice-meter, capability economy payouts (3 invariants). Indexed from root [INVARIANTS.md](../INVARIANTS.md).
 
 ## The iOS wallet seed is read, never written; sends go through Coax
 
@@ -134,4 +134,39 @@ Check: `coax/web/api/test.sh` (the `credit:` and `drawdown:` checks in
 `test_inference.py`, against a fake wallet: unbound, unpaid, wrong amount,
 wrong preimage, replayed and out-of-bounds top-ups refuse; one payment
 credits once; no rate refuses paid use); `coax test coax/lib/x402/x402.coax`.
+
+## Paid capability calls and author payouts settle in Bitcoin sats with exact conservation
+
+Capability call settlement, metering, and author payouts (#14060) are gated by
+three `#authority` Coax policies in `pay/`:
+
+- `pay/price-policy.coax` admits only Bitcoin/Lightning/Spark satoshi rails
+  (`""`, `"sats"`, `"lightning"`, `"spark"`), refusing service credit, cards,
+  and altcoins. A paid capability (`fee_msat > 0`) requires a valid Lightning
+  Address, mainnet bare Spark address (`spark1...`), or 66-hex compressed node
+  pubkey, settles upfront through `x402_settle` with exact amount match and
+  replay rejection, and computes exact integer millisatoshi splits where
+  `author_msat + dep_msat + platform_msat == price_msat` (zero rounding dust
+  lost).
+- `pay/receipt-policy.coax` (`openagents.capability.receipt.v1`) verifies every
+  signed paid-call receipt against its `pr_<32-hex>` SHA-256 replay-key ID and
+  exact split conservation, never serializing request text, response text, or
+  payment preimage. Its public deterministic call meter (`rc_meter_run`)
+  deduplicates by `payment_hash`, excludes `refunded` / `failed_before_answer`
+  calls from revenue and author totals, excludes `is_internal_test` calls from
+  `public_calls`, and refuses unsigned or tampered receipts.
+- `pay/payout-policy.coax` (`openagents.capability.payout.v1`) enforces exact
+  conservation (`paid + held == earned`) on every author payout, converts owed
+  millisatoshis to whole satoshis without losing remainder dust (`held_after_msat`),
+  is idempotent by `payout_id`, holds balances when no payout address is set or
+  owed amount is below the minimum threshold, honors retry backoff and
+  `pay/executor-settlement.coax` rolling UTC caps, and never marks
+  `real_bitcoin_moved = true` without a non-zero settled commitment and
+  preimage-verified Lightning settlement.
+
+Check: `coax/bin/coax test pay/price-policy.coax --library`,
+`coax/bin/coax test pay/receipt-policy.coax --library`,
+`coax/bin/coax test pay/payout-policy.coax --library`,
+`coax/bin/coax mutate <each> --library --root-only` (0 surviving mutants on all
+three), and `coax/bin/coax run openagents/examples/capability-economy-e2e.coax`.
 

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openagents.capability.receipt.v1",
+  "description": "Verifiable paid capability call receipt written in canonical key-sorted RFC 8785 JCS by pay/receipt-policy.coax (#14060). Carries payment_hash and conservation-checked millisatoshi splits, never request text, response text, or payment preimage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "author_msat",
+    "author_pubkey",
+    "dep_author_pubkey",
+    "dep_msat",
+    "is_internal_test",
+    "outcome",
+    "payment_hash",
+    "platform_msat",
+    "price_msat",
+    "receipt_id",
+    "release_digest",
+    "schema",
+    "settled_at",
+    "utc_day"
+  ],
+  "properties": {
+    "author_msat": { "type": "integer", "minimum": 0, "maximum": 210000000000000 },
+    "author_pubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "dep_author_pubkey": { "type": "string", "pattern": "^(|[0-9a-f]{64})$" },
+    "dep_msat": { "type": "integer", "minimum": 0, "maximum": 210000000000000 },
+    "is_internal_test": { "type": "boolean" },
+    "outcome": { "type": "string", "enum": ["served", "refunded", "failed_before_answer"] },
+    "payment_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "platform_msat": { "type": "integer", "minimum": 0, "maximum": 210000000000000 },
+    "price_msat": { "type": "integer", "minimum": 1, "maximum": 210000000000000 },
+    "receipt_id": { "type": "string", "pattern": "^pr_[0-9a-f]{32}$" },
+    "release_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "schema": { "const": "openagents.capability.receipt.v1" },
+    "settled_at": { "type": "integer", "minimum": 1 },
+    "utc_day": { "type": "integer", "minimum": 1 }
+  }
+}

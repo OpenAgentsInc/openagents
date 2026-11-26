@@ -1,0 +1,461 @@
+// #authority Verifiable Paid-Call Receipts & Public Deterministic Call Meter (#14060, ch057).
+//
+// Single canonical codec for `openagents.capability.receipt.v1` and deterministic
+// public accounting meter. Every paid call emits a signed receipt binding the pinned
+// release digest, price, exact split, and payment replay commitment (`pr_<sha256[0..32]>`),
+// carrying zero private request/response text or preimage secrets. Refuses forged
+// signatures, mismatched splits, and duplicate payment hashes; marks refunded calls
+// without crediting shares; excludes internal test calls from public usage counts while
+// preserving paid author shares.
+//   coax/bin/coax test pay/receipt-policy.coax --library
+//   coax/bin/coax mutate pay/receipt-policy.coax --library --root-only
+#load "price-policy.coax";
+#load "../coax/lib/json/json.coax";
+#authority;
+
+RC_SCHEMA :: "openagents.capability.receipt.v1";
+RC_MAX_TRACKED :: 64;
+
+RcOutcome :: enum u8 {
+  served;
+  refunded;
+  failed_before_answer;
+}
+
+RcStatus :: enum u8 {
+  ok;
+  bad_signature;
+  bad_schema;
+  bad_digest;
+  bad_amount;
+  split_mismatch;
+  bad_dep;
+  bad_outcome;
+  bad_time;
+  duplicate;
+  capacity;
+}
+
+RcReceipt :: struct {
+  receipt_id: string;
+  release_digest: string;
+  author_pubkey: string;
+  dep_author_pubkey: string;
+  payment_hash: string;
+  price_msat: int;
+  author_msat: int;
+  dep_msat: int;
+  platform_msat: int;
+  utc_day: int;
+  settled_at: int;
+  outcome: RcOutcome;
+  is_internal_test: bool;
+  sig_ok: bool;
+}
+
+RcMeterTotals :: struct {
+  counted_receipts: int;
+  refused_receipts: int;
+  duplicate_receipts: int;
+  refunded_receipts: int;
+  public_calls: int;
+  internal_calls: int;
+  gross_msat: int;
+  platform_msat: int;
+  n_authors: int;
+  author_keys: [RC_MAX_TRACKED][64] u8;
+  author_owed_msat: [RC_MAX_TRACKED] int;
+}
+
+rc_outcome_name :: (o: RcOutcome) -> string #export_c #effects(all) {
+  if o == RcOutcome.served { return "served"; }
+  if o == RcOutcome.refunded { return "refunded"; }
+  return "failed_before_answer";
+}
+
+// Replay key: `lnbtc:000000000019d6689c085ae165831e93:<payment_hash>` (103 bytes).
+rc_replay_key :: (payment_hash: string, out: [] u8) -> int #export_c #effects(all) {
+  if !x402_is_hex64(payment_hash) { return -1; }
+  need := X402_MAINNET.count + 1 + 64;
+  if out.count < need { return -1; }
+  n := 0;
+  for c: X402_MAINNET { out[n] = c; n += 1; }
+  out[n] = ':'; n += 1;
+  for c: payment_hash { out[n] = c; n += 1; }
+  return n;
+}
+
+RC_HEX :: "0123456789abcdef";
+
+// Canonical receipt ID: `pr_` + first 32 lowercase hex chars of SHA-256(replay_key) (35 bytes).
+rc_compute_id :: (payment_hash: string, out: [] u8) -> int #export_c #effects(all) {
+  if out.count < 35 { return -1; }
+  rk: [128] u8;
+  rkn := rc_replay_key(payment_hash, rk[..]);
+  if rkn != 103 { return -1; }
+  dig: [32] u8;
+  if sha256_hash_checked(rk[0..<rkn], dig[..], false) != SHA_OK { return -1; } // mutant: equivalent — dig is 32 bytes, overlap=false
+  out[0] = 'p'; out[1] = 'r'; out[2] = '_';
+  for i: 0..<16 {
+    b := cast(int) dig[i];
+    out[3 + 2 * i] = RC_HEX[b >> 4];
+    out[3 + 2 * i + 1] = RC_HEX[b & 15];
+  }
+  return 35;
+}
+
+// Fail-closed paid-call receipt verification.
+rc_verify_receipt :: (r: RcReceipt) -> RcStatus #export_c #effects(all) {
+  if !r.sig_ok { return RcStatus.bad_signature; }
+  if !x402_is_hex64(r.release_digest) || !x402_is_hex64(r.author_pubkey) || !x402_is_hex64(r.payment_hash) {
+    return RcStatus.bad_digest;
+  }
+  want_id: [35] u8;
+  _ = rc_compute_id(r.payment_hash, want_id[..]);
+  if r.receipt_id != cast(string) want_id[..] { return RcStatus.bad_digest; }
+  if r.price_msat < 1 || r.price_msat > PP_MAX_PRICE_MSAT { return RcStatus.bad_amount; }
+  if r.author_msat < 0 || r.dep_msat < 0 || r.platform_msat < 0 { return RcStatus.bad_amount; }
+  if r.author_msat > PP_MAX_PRICE_MSAT || r.dep_msat > PP_MAX_PRICE_MSAT || r.platform_msat > PP_MAX_PRICE_MSAT {
+    return RcStatus.bad_amount;
+  }
+  if r.author_msat + r.dep_msat + r.platform_msat != r.price_msat {
+    return RcStatus.split_mismatch;
+  }
+  if r.dep_msat > 0 {
+    if !x402_is_hex64(r.dep_author_pubkey) || r.dep_author_pubkey == r.author_pubkey { return RcStatus.bad_dep; }
+  } else {
+    if r.dep_author_pubkey.count > 0 { return RcStatus.bad_dep; }
+  }
+  if r.utc_day < 1 || r.settled_at < 1 { return RcStatus.bad_time; }
+  return RcStatus.ok;
+}
+
+// Canonical key-sorted JCS serialization of `openagents.capability.receipt.v1`.
+// Never carries request text, response text, or payment preimage.
+rc_write_json :: (r: RcReceipt, out: [] u8) -> int #export_c #effects(all) {
+  if rc_verify_receipt(r) != RcStatus.ok { return -1; }
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "author_msat"); jo_int(o[..], r.author_msat);
+  jo_key(o[..], "author_pubkey"); jo_str(o[..], r.author_pubkey);
+  jo_key(o[..], "dep_author_pubkey"); jo_str(o[..], r.dep_author_pubkey);
+  jo_key(o[..], "dep_msat"); jo_int(o[..], r.dep_msat);
+  jo_key(o[..], "is_internal_test"); jo_bool(o[..], r.is_internal_test);
+  jo_key(o[..], "outcome"); jo_str(o[..], rc_outcome_name(r.outcome));
+  jo_key(o[..], "payment_hash"); jo_str(o[..], r.payment_hash);
+  jo_key(o[..], "platform_msat"); jo_int(o[..], r.platform_msat);
+  jo_key(o[..], "price_msat"); jo_int(o[..], r.price_msat);
+  jo_key(o[..], "receipt_id"); jo_str(o[..], r.receipt_id);
+  jo_key(o[..], "release_digest"); jo_str(o[..], r.release_digest);
+  jo_key(o[..], "schema"); jo_str(o[..], RC_SCHEMA);
+  jo_key(o[..], "settled_at"); jo_int(o[..], r.settled_at);
+  jo_key(o[..], "utc_day"); jo_int(o[..], r.utc_day);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+rc_take_arena_str :: (v: Jv, key: string, arena: [] u8, pos: [] int, ok: [] bool) -> string #effects(all) {
+  at := jv_get(v, 0, key);
+  n := jv_str(v, at, arena[pos[0]..<arena.count]);
+  if n < 0 { ok[0] = false; return ""; }
+  s := cast(string) arena[pos[0]..<pos[0] + n];
+  pos[0] += n;
+  return s;
+}
+
+// Strict closed-object reader for `openagents.capability.receipt.v1`.
+rc_read_json :: (raw: string, sig_ok: bool, out: [] RcReceipt, arena: [] u8) -> RcStatus #export_c #effects(all) {
+  if out.count < 1 { return RcStatus.capacity; }
+  d: [1] Jv; nodes: [64] JvNode;
+  _ = jv_parse(d[..], raw, nodes[..]);
+  if jv_kind(d[0], 0) != JV_OBJECT || jv_len(d[0], 0) != 14 {
+    return RcStatus.bad_schema;
+  }
+  v := d[0];
+  pos: [1] int;
+  ok := [1] bool.[true];
+  sc := rc_take_arena_str(v, "schema", arena, pos[..], ok[..]);
+  if !ok[0] { return RcStatus.capacity; }
+  if sc != RC_SCHEMA { return RcStatus.bad_schema; }
+
+  it_node := jv_get(v, 0, "is_internal_test");
+  it_k := jv_kind(v, it_node);
+  if it_k != JV_TRUE && it_k != JV_FALSE { return RcStatus.bad_schema; }
+
+  out_s := rc_take_arena_str(v, "outcome", arena, pos[..], ok[..]);
+  oc := RcOutcome.refunded;
+  if out_s == "served" { oc = RcOutcome.served; }
+  else if out_s == "refunded" { oc = RcOutcome.refunded; } // mutant: equivalent — default oc is already refunded
+  else if out_s == "failed_before_answer" { oc = RcOutcome.failed_before_answer; }
+  else { return RcStatus.bad_outcome; }
+
+  next := RcReceipt.{
+    receipt_id = rc_take_arena_str(v, "receipt_id", arena, pos[..], ok[..]),
+    release_digest = rc_take_arena_str(v, "release_digest", arena, pos[..], ok[..]),
+    author_pubkey = rc_take_arena_str(v, "author_pubkey", arena, pos[..], ok[..]),
+    dep_author_pubkey = rc_take_arena_str(v, "dep_author_pubkey", arena, pos[..], ok[..]),
+    payment_hash = rc_take_arena_str(v, "payment_hash", arena, pos[..], ok[..]),
+    price_msat = jv_int(v, jv_get(v, 0, "price_msat"), 0),
+    author_msat = jv_int(v, jv_get(v, 0, "author_msat"), -1),
+    dep_msat = jv_int(v, jv_get(v, 0, "dep_msat"), -1),
+    platform_msat = jv_int(v, jv_get(v, 0, "platform_msat"), -1),
+    utc_day = jv_int(v, jv_get(v, 0, "utc_day"), 0),
+    settled_at = jv_int(v, jv_get(v, 0, "settled_at"), 0),
+    outcome = oc,
+    is_internal_test = it_k == JV_TRUE,
+    sig_ok = sig_ok
+  };
+  if !ok[0] { return RcStatus.capacity; }
+  st := rc_verify_receipt(next);
+  if st != RcStatus.ok { return st; }
+  out[0] = next;
+  return RcStatus.ok;
+}
+
+rc_credit_author :: (m: [] RcMeterTotals, pubkey: string, amount_msat: int) -> bool #effects(all) {
+  if amount_msat == 0 { return true; }
+  for i: 0..<m[0].n_authors {
+    if cast(string) m[0].author_keys[i][..] == pubkey {
+      m[0].author_owed_msat[i] += amount_msat;
+      return true;
+    }
+  }
+  if m[0].n_authors >= RC_MAX_TRACKED { return false; }
+  idx := m[0].n_authors;
+  for k: 0..<64 { m[0].author_keys[idx][k] = pubkey[k]; }
+  m[0].author_owed_msat[idx] = amount_msat;
+  m[0].n_authors += 1;
+  return true;
+}
+
+// Find total msat owed to `pubkey` in meter totals (0 if absent).
+rc_meter_author_owed :: (m: RcMeterTotals, pubkey: string) -> int #export_c #effects(all) {
+  for i: 0..<m.n_authors {
+    k := m.author_keys[i];
+    if cast(string) k[..] == pubkey { return m.author_owed_msat[i]; }
+  }
+  return 0;
+}
+
+// Public deterministic call meter:
+// - Verifies every receipt; invalid receipts increment refused_receipts without changing totals.
+// - Deduplicates by payment_hash so one payment is never counted twice.
+// - Excludes refunded / failed_before_answer receipts from revenue & author totals.
+// - Excludes internal test calls from public_calls while still crediting paid author shares.
+rc_meter_run :: (receipts: [] RcReceipt, out: [] RcMeterTotals) -> RcStatus #export_c #effects(all) {
+  if out.count < 1 { return RcStatus.capacity; }
+  out[0] = RcMeterTotals.{};
+  seen_hashes: [RC_MAX_TRACKED][64] u8;
+  n_seen := 0;
+
+  for r: receipts {
+    if rc_verify_receipt(r) != RcStatus.ok {
+      out[0].refused_receipts += 1;
+      continue;
+    }
+    dup := false;
+    for i: 0..<n_seen {
+      if cast(string) seen_hashes[i][..] == r.payment_hash { dup = true; break; }
+    }
+    if dup {
+      out[0].duplicate_receipts += 1;
+      continue;
+    }
+    if n_seen >= RC_MAX_TRACKED { return RcStatus.capacity; }
+    for k: 0..<64 { seen_hashes[n_seen][k] = r.payment_hash[k]; }
+    n_seen += 1;
+
+    if r.outcome != RcOutcome.served {
+      out[0].refunded_receipts += 1;
+      continue;
+    }
+    if !rc_credit_author(out, r.author_pubkey, r.author_msat) { return RcStatus.capacity; }
+    if !rc_credit_author(out, r.dep_author_pubkey, r.dep_msat) { return RcStatus.capacity; }
+    out[0].counted_receipts += 1;
+    out[0].gross_msat += r.price_msat;
+    out[0].platform_msat += r.platform_msat;
+    if r.is_internal_test { out[0].internal_calls += 1; }
+    else { out[0].public_calls += 1; }
+  }
+  return RcStatus.ok;
+}
+
+// ---- checks
+
+RC_T_REL :: "1111111111111111111111111111111111111111111111111111111111111111";
+RC_T_AUT :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+RC_T_DEP :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+RC_T_H1  :: "ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";
+RC_T_H2  :: "2222222222222222222222222222222222222222222222222222222222222222";
+RC_T_H3  :: "3333333333333333333333333333333333333333333333333333333333333333";
+RC_T_H4  :: "4444444444444444444444444444444444444444444444444444444444444444";
+
+rc_make_test :: (hash: string, id_buf: [] u8, price: int, auth: int, dep: int, plat: int, dep_pk: string, oc: RcOutcome, internal: bool) -> RcReceipt #effects(all) {
+  _ = rc_compute_id(hash, id_buf);
+  return RcReceipt.{
+    receipt_id = cast(string) id_buf[0..<35],
+    release_digest = RC_T_REL,
+    author_pubkey = RC_T_AUT,
+    dep_author_pubkey = dep_pk,
+    payment_hash = hash,
+    price_msat = price,
+    author_msat = auth,
+    dep_msat = dep,
+    platform_msat = plat,
+    utc_day = 20780,
+    settled_at = 1795500000,
+    outcome = oc,
+    is_internal_test = internal,
+    sig_ok = true
+  };
+}
+
+#test "receipt-policy: replay key, pr_ receipt ID, verification, and canonical JSON round-trip" {
+  rk: [103] u8;
+  rkn := rc_replay_key(RC_T_H1, rk[..]);
+  #assert rkn == 103 && cast(string) rk[0..<rkn] == "lnbtc:000000000019d6689c085ae165831e93:ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";
+  #assert rc_replay_key("bad", rk[..]) == -1 && rc_replay_key(RC_T_H1, rk[0..<102]) == -1;
+
+  // Independent Python hashlib.sha256 golden for pr_<32-hex>
+  id1: [35] u8;
+  #assert rc_compute_id(RC_T_H1, id1[..]) == 35 && cast(string) id1[..] == "pr_f84a7d014b565c6043c8aaa67b3b7d5e";
+  #assert rc_compute_id(RC_T_H1, id1[0..<34]) == -1 && rc_compute_id("bad", id1[..]) == -1;
+  id2: [35] u8;
+  #assert rc_compute_id(RC_T_H2, id2[..]) == 35 && cast(string) id1[..] != cast(string) id2[..];
+
+  r := rc_make_test(RC_T_H1, id1[..], 50000, 42500, 0, 7500, "", RcOutcome.served, false);
+  #assert rc_verify_receipt(r) == RcStatus.ok && r.utc_day == 20780 && r.settled_at == 1795500000;
+
+  // Exact lower/upper boundaries: price=1, price=PP_MAX_PRICE_MSAT, author=0 with dep=1, utc_day=1, settled_at=1
+  r_min := r; r_min.price_msat = 1; r_min.author_msat = 1; r_min.dep_msat = 0; r_min.platform_msat = 0; r_min.utc_day = 1; r_min.settled_at = 1;
+  #assert rc_verify_receipt(r_min) == RcStatus.ok;
+  r_dep1 := r_min; r_dep1.author_msat = 0; r_dep1.dep_msat = 1; r_dep1.dep_author_pubkey = RC_T_DEP;
+  #assert rc_verify_receipt(r_dep1) == RcStatus.ok;
+  r_max := r_min; r_max.price_msat = PP_MAX_PRICE_MSAT; r_max.author_msat = PP_MAX_PRICE_MSAT;
+  #assert rc_verify_receipt(r_max) == RcStatus.ok;
+  r_max_dep := r_min; r_max_dep.price_msat = PP_MAX_PRICE_MSAT; r_max_dep.author_msat = 0; r_max_dep.dep_msat = PP_MAX_PRICE_MSAT; r_max_dep.dep_author_pubkey = RC_T_DEP;
+  #assert rc_verify_receipt(r_max_dep) == RcStatus.ok;
+  r_max_plat := r_min; r_max_plat.price_msat = PP_MAX_PRICE_MSAT; r_max_plat.author_msat = 0; r_max_plat.platform_msat = PP_MAX_PRICE_MSAT;
+  #assert rc_verify_receipt(r_max_plat) == RcStatus.ok;
+
+  // Canonical JCS JSON round-trip (all three outcome names + internal flag + exact-fit arena)
+  buf: [1024] u8;
+  n := rc_write_json(r, buf[..]);
+  #assert n > 0;
+  raw := cast(string) buf[0..<n];
+  #assert rc_write_json(r, buf[0..<16]) == -1;
+  out: [1] RcReceipt; arena: [1024] u8;
+  // Exact arena bytes for r: 32(schema) + 6(served) + 35(id) + 64(rel) + 64(aut) + 0(dep) + 64(hash) = 265 bytes
+  #assert rc_read_json(raw, true, out[..], arena[0..<265]) == RcStatus.ok;
+  #assert rc_read_json(raw, true, out[..], arena[0..<264]) == RcStatus.capacity;
+  #assert out[0].receipt_id == r.receipt_id && out[0].price_msat == 50000 && out[0].author_msat == 42500 && out[0].platform_msat == 7500 && !out[0].is_internal_test && out[0].outcome == RcOutcome.served;
+
+  buf2: [1024] u8;
+  r_ref := rc_make_test(RC_T_H2, id2[..], 1000, 850, 0, 150, "", RcOutcome.refunded, true);
+  n2 := rc_write_json(r_ref, buf2[..]);
+  #assert n2 > 0 && rc_read_json(cast(string) buf2[0..<n2], true, out[..], arena[..]) == RcStatus.ok;
+  #assert out[0].outcome == RcOutcome.refunded && out[0].is_internal_test;
+
+  r_fail := r_ref; r_fail.outcome = RcOutcome.failed_before_answer;
+  n3 := rc_write_json(r_fail, buf2[..]);
+  #assert n3 > 0 && rc_read_json(cast(string) buf2[0..<n3], true, out[..], arena[..]) == RcStatus.ok && out[0].outcome == RcOutcome.failed_before_answer;
+
+  // Every refusal path on verify & read
+  b := r; b.sig_ok = false; #assert rc_verify_receipt(b) == RcStatus.bad_signature && rc_write_json(b, buf2[..]) == -1;
+  b = r; b.release_digest = "bad"; #assert rc_verify_receipt(b) == RcStatus.bad_digest;
+  b = r; b.author_pubkey = "bad"; #assert rc_verify_receipt(b) == RcStatus.bad_digest;
+  b = r; b.payment_hash = "bad"; #assert rc_verify_receipt(b) == RcStatus.bad_digest;
+  b = r; b.receipt_id = "pr_00000000000000000000000000000000"; #assert rc_verify_receipt(b) == RcStatus.bad_digest;
+  b = r; b.price_msat = 0; #assert rc_verify_receipt(b) == RcStatus.bad_amount;
+  b = r; b.price_msat = PP_MAX_PRICE_MSAT + 1; #assert rc_verify_receipt(b) == RcStatus.bad_amount;
+  b = r; b.author_msat = -1; #assert rc_verify_receipt(b) == RcStatus.bad_amount;
+  b = r; b.dep_msat = -1; #assert rc_verify_receipt(b) == RcStatus.bad_amount;
+  b = r; b.platform_msat = -1; #assert rc_verify_receipt(b) == RcStatus.bad_amount;
+  b = r; b.author_msat = PP_MAX_PRICE_MSAT + 1; #assert rc_verify_receipt(b) == RcStatus.bad_amount;
+  b = r; b.dep_msat = PP_MAX_PRICE_MSAT + 1; #assert rc_verify_receipt(b) == RcStatus.bad_amount;
+  b = r; b.platform_msat = PP_MAX_PRICE_MSAT + 1; #assert rc_verify_receipt(b) == RcStatus.bad_amount;
+  b = r; b.author_msat = 42501; #assert rc_verify_receipt(b) == RcStatus.split_mismatch;
+  b = r; b.author_msat = 35000; b.dep_msat = 10000; b.platform_msat = 5000; b.dep_author_pubkey = ""; #assert rc_verify_receipt(b) == RcStatus.bad_dep;
+  b.dep_author_pubkey = RC_T_AUT; #assert rc_verify_receipt(b) == RcStatus.bad_dep;
+  b.dep_author_pubkey = RC_T_DEP; #assert rc_verify_receipt(b) == RcStatus.ok;
+  b = r; b.dep_author_pubkey = "x"; #assert rc_verify_receipt(b) == RcStatus.bad_dep;
+  b = r; b.utc_day = 0; #assert rc_verify_receipt(b) == RcStatus.bad_time;
+  b = r; b.settled_at = 0; #assert rc_verify_receipt(b) == RcStatus.bad_time;
+
+  // Read error paths (exact schema/field/fallback checks)
+  #assert rc_read_json(raw, true, out[0..<0], arena[..]) == RcStatus.capacity;
+  #assert rc_read_json("{", true, out[..], arena[..]) == RcStatus.bad_schema;
+  #assert rc_read_json("[]", true, out[..], arena[..]) == RcStatus.bad_schema;
+  #assert rc_read_json("{}", true, out[..], arena[..]) == RcStatus.bad_schema;
+  #assert rc_read_json(raw, true, out[..], arena[0..<10]) == RcStatus.capacity;
+  #assert rc_read_json(raw, false, out[..], arena[..]) == RcStatus.bad_signature;
+  bad_sc := "{\"author_msat\":42500,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"dep_author_pubkey\":\"\",\"dep_msat\":0,\"is_internal_test\":false,\"outcome\":\"served\",\"payment_hash\":\"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9\",\"platform_msat\":7500,\"price_msat\":50000,\"receipt_id\":\"pr_f84a7d014b565c6043c8aaa67b3b7d5e\",\"release_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"other.v1\",\"settled_at\":1795500000,\"utc_day\":20780}";
+  #assert rc_read_json(bad_sc, true, out[..], arena[..]) == RcStatus.bad_schema;
+  bad_b := "{\"author_msat\":42500,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"dep_author_pubkey\":\"\",\"dep_msat\":0,\"is_internal_test\":1,\"outcome\":\"served\",\"payment_hash\":\"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9\",\"platform_msat\":7500,\"price_msat\":50000,\"receipt_id\":\"pr_f84a7d014b565c6043c8aaa67b3b7d5e\",\"release_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.capability.receipt.v1\",\"settled_at\":1795500000,\"utc_day\":20780}";
+  #assert rc_read_json(bad_b, true, out[..], arena[..]) == RcStatus.bad_schema;
+  bad_oc := "{\"author_msat\":42500,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"dep_author_pubkey\":\"\",\"dep_msat\":0,\"is_internal_test\":false,\"outcome\":\"bogus\",\"payment_hash\":\"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9\",\"platform_msat\":7500,\"price_msat\":50000,\"receipt_id\":\"pr_f84a7d014b565c6043c8aaa67b3b7d5e\",\"release_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.capability.receipt.v1\",\"settled_at\":1795500000,\"utc_day\":20780}";
+  #assert rc_read_json(bad_oc, true, out[..], arena[..]) == RcStatus.bad_outcome;
+  // Non-integer fields must fail via -1 fallback (not silently become 0)
+  bad_i1 := "{\"author_msat\":\"x\",\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"dep_author_pubkey\":\"\",\"dep_msat\":0,\"is_internal_test\":false,\"outcome\":\"served\",\"payment_hash\":\"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9\",\"platform_msat\":50000,\"price_msat\":50000,\"receipt_id\":\"pr_f84a7d014b565c6043c8aaa67b3b7d5e\",\"release_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.capability.receipt.v1\",\"settled_at\":1795500000,\"utc_day\":20780}";
+  bad_i2 := "{\"author_msat\":50000,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"dep_author_pubkey\":\"\",\"dep_msat\":\"x\",\"is_internal_test\":false,\"outcome\":\"served\",\"payment_hash\":\"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9\",\"platform_msat\":0,\"price_msat\":50000,\"receipt_id\":\"pr_f84a7d014b565c6043c8aaa67b3b7d5e\",\"release_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.capability.receipt.v1\",\"settled_at\":1795500000,\"utc_day\":20780}";
+  bad_i3 := "{\"author_msat\":50000,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"dep_author_pubkey\":\"\",\"dep_msat\":0,\"is_internal_test\":false,\"outcome\":\"served\",\"payment_hash\":\"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9\",\"platform_msat\":\"x\",\"price_msat\":50000,\"receipt_id\":\"pr_f84a7d014b565c6043c8aaa67b3b7d5e\",\"release_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.capability.receipt.v1\",\"settled_at\":1795500000,\"utc_day\":20780}";
+  bad_i4 := "{\"author_msat\":1,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"dep_author_pubkey\":\"\",\"dep_msat\":0,\"is_internal_test\":false,\"outcome\":\"served\",\"payment_hash\":\"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9\",\"platform_msat\":0,\"price_msat\":\"x\",\"receipt_id\":\"pr_f84a7d014b565c6043c8aaa67b3b7d5e\",\"release_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.capability.receipt.v1\",\"settled_at\":1795500000,\"utc_day\":20780}";
+  bad_i5 := "{\"author_msat\":50000,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"dep_author_pubkey\":\"\",\"dep_msat\":0,\"is_internal_test\":false,\"outcome\":\"served\",\"payment_hash\":\"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9\",\"platform_msat\":0,\"price_msat\":50000,\"receipt_id\":\"pr_f84a7d014b565c6043c8aaa67b3b7d5e\",\"release_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.capability.receipt.v1\",\"settled_at\":\"x\",\"utc_day\":20780}";
+  bad_i6 := "{\"author_msat\":50000,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"dep_author_pubkey\":\"\",\"dep_msat\":0,\"is_internal_test\":false,\"outcome\":\"served\",\"payment_hash\":\"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9\",\"platform_msat\":0,\"price_msat\":50000,\"receipt_id\":\"pr_f84a7d014b565c6043c8aaa67b3b7d5e\",\"release_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.capability.receipt.v1\",\"settled_at\":1795500000,\"utc_day\":\"x\"}";
+  #assert rc_read_json(bad_i1, true, out[..], arena[..]) == RcStatus.bad_amount;
+  #assert rc_read_json(bad_i2, true, out[..], arena[..]) == RcStatus.bad_amount;
+  #assert rc_read_json(bad_i3, true, out[..], arena[..]) == RcStatus.bad_amount;
+  #assert rc_read_json(bad_i4, true, out[..], arena[..]) == RcStatus.bad_amount;
+  #assert rc_read_json(bad_i5, true, out[..], arena[..]) == RcStatus.bad_time;
+  #assert rc_read_json(bad_i6, true, out[..], arena[..]) == RcStatus.bad_time;
+}
+
+#test "receipt-policy: deterministic public meter (plain, refunded, chained dep, internal test, duplicate, forged, capacity)" {
+  id1: [35] u8; id2: [35] u8; id3: [35] u8; id4: [35] u8;
+  // 1. Plain public call: 10000 msat -> 8500 author, 1500 platform
+  r1 := rc_make_test(RC_T_H1, id1[..], 10000, 8500, 0, 1500, "", RcOutcome.served, false);
+  // 2. Failed after payment -> refunded (0 owed)
+  r2 := rc_make_test(RC_T_H2, id2[..], 20000, 17000, 0, 3000, "", RcOutcome.refunded, false);
+  // 3. Chained plugin call: 10000 msat -> 7000 author, 2000 dep_author, 1000 platform
+  r3 := rc_make_test(RC_T_H3, id3[..], 10000, 7000, 2000, 1000, RC_T_DEP, RcOutcome.served, false);
+  // 4. Internal test call: 5000 msat -> 4250 author, 750 platform (excluded from public_calls, kept in author totals)
+  r4 := rc_make_test(RC_T_H4, id4[..], 5000, 4250, 0, 750, "", RcOutcome.served, true);
+  // 5. Duplicate of r1 (same payment hash) -> ignored
+  r5 := r1;
+  // 6. Forged split (bad split) -> refused, totals unchanged
+  r6 := r1; r6.author_msat = 9999;
+
+  batch := [6] RcReceipt.[r1, r2, r3, r4, r5, r6];
+  m: [1] RcMeterTotals;
+  m[0].gross_msat = 999; // must be reset cleanly by rc_meter_run
+  #assert rc_meter_run(batch[..], m[..]) == RcStatus.ok;
+  #assert m[0].counted_receipts == 3 && m[0].refunded_receipts == 1 && m[0].duplicate_receipts == 1 && m[0].refused_receipts == 1;
+  #assert m[0].public_calls == 2 && m[0].internal_calls == 1 && m[0].n_authors == 2;
+  #assert m[0].gross_msat == 25000 && m[0].platform_msat == 3250;
+  // Conservation: author A (8500 + 7000 + 4250 = 19750) + dep B (2000) + platform (3250) == 25000!
+  #assert rc_meter_author_owed(m[0], RC_T_AUT) == 19750;
+  #assert rc_meter_author_owed(m[0], RC_T_DEP) == 2000;
+  #assert rc_meter_author_owed(m[0], RC_T_REL) == 0;
+  #assert rc_meter_author_owed(m[0], RC_T_AUT) + rc_meter_author_owed(m[0], RC_T_DEP) + m[0].platform_msat == m[0].gross_msat;
+  #assert rc_meter_run(batch[..], m[0..<0]) == RcStatus.capacity;
+
+  // Author credit exact boundary (amount=0, amount=1, full RC_MAX_TRACKED capacity)
+  #assert rc_credit_author(m[..], RC_T_AUT, 0) && rc_meter_author_owed(m[0], RC_T_AUT) == 19750;
+  #assert rc_credit_author(m[..], RC_T_AUT, 1) && rc_meter_author_owed(m[0], RC_T_AUT) == 19751;
+  m[0].n_authors = RC_MAX_TRACKED - 1;
+  #assert rc_credit_author(m[..], RC_T_REL, 1) && m[0].n_authors == RC_MAX_TRACKED;
+  #assert !rc_credit_author(m[..], RC_T_H2, 1);
+
+  // Seen-hash table exact boundary: RC_MAX_TRACKED unique valid receipts succeed, RC_MAX_TRACKED + 1 refuses capacity
+  many: [RC_MAX_TRACKED + 1] RcReceipt;
+  hashes: [RC_MAX_TRACKED + 1][64] u8;
+  ids: [RC_MAX_TRACKED + 1][35] u8;
+  for k: 0..<RC_MAX_TRACKED + 1 {
+    for j: 0..<64 { hashes[k][j] = '0'; }
+    hashes[k][62] = RC_HEX[(k >> 4) & 15];
+    hashes[k][63] = RC_HEX[k & 15];
+    many[k] = rc_make_test(cast(string) hashes[k][..], ids[k][..], 100, 100, 0, 0, "", RcOutcome.served, false);
+  }
+  #assert rc_meter_run(many[0..<RC_MAX_TRACKED], m[..]) == RcStatus.ok && m[0].counted_receipts == RC_MAX_TRACKED;
+  #assert rc_meter_run(many[..], m[..]) == RcStatus.capacity;
+}

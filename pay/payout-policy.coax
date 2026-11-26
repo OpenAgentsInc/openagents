@@ -1,0 +1,376 @@
+// #authority Idempotent Author Lightning/Spark Payout Runner Policy & Conservation Gate (#14060, ch058).
+//
+// Reads metered author shares (`pay/receipt-policy.coax`), enforces exact accounting
+// conservation (`paid + held == earned`, zero dust lost to whole-sat conversion),
+// idempotency by `payout_id`, held balances when no address or below minimum threshold,
+// retry backoff on failed attempts, rolling UTC escrow caps (`pay/executor-settlement.coax`),
+// truthful Lightning preimage / Spark settlement proof, and canonical `openagents.capability.payout.v1`
+// signed payout records.
+//   coax/bin/coax test pay/payout-policy.coax --library
+//   coax/bin/coax mutate pay/payout-policy.coax --library --root-only
+#load "receipt-policy.coax";
+#load "executor-settlement.coax";
+#authority;
+
+PO_SCHEMA :: "openagents.capability.payout.v1";
+PO_MSAT_PER_SAT :: 1000;
+PO_MIN_THRESHOLD_MSAT :: 1000;
+
+PoStatus :: enum u8 {
+  send_now;
+  already_sent;
+  hold_no_address;
+  hold_below_min;
+  wait_retry;
+  hold_cap;
+  conservation_broken;
+  bad_input;
+}
+
+PoRequest :: struct {
+  payout_id: string;
+  author_pubkey: string;
+  destination: string;
+  earned_msat: int;
+  already_paid_msat: int;
+  held_before_msat: int;
+  min_payout_msat: int;
+  utc_day: int;
+  now_s: int;
+  retry_after_s: int;
+  already_sent_id: bool;
+}
+
+PoDecision :: struct {
+  status: PoStatus;
+  payout_sat: int;
+  payout_msat: int;
+  held_after_msat: int;
+}
+
+PoRecord :: struct {
+  payout_id: string;
+  author_pubkey: string;
+  receipts_digest: string;
+  network: string;
+  amount_sat: int;
+  held_after_msat: int;
+  real_bitcoin_moved: bool;
+  settled_at: int;
+  settlement_commitment: string;
+}
+
+po_valid_network :: (net: string) -> bool #effects(all) {
+  return net == "bitcoin" || net == "regtest" || net == "signet";
+}
+
+po_nonzero_hex64 :: (s: string) -> bool #effects(all) {
+  if !x402_is_hex64(s) { return false; }
+  for c: s { if c != '0' { return true; } }
+  return false;
+}
+
+// Public conservation check: paid + held MUST equal earned (no negative or overflowing balances).
+po_check_conservation :: (earned_msat: int, paid_msat: int, held_msat: int) -> bool #export_c #effects(all) {
+  if earned_msat < 0 || paid_msat < 0 || held_msat < 0 { return false; }
+  if paid_msat > earned_msat { return false; }
+  return earned_msat - paid_msat == held_msat;
+}
+
+// Decide whether to execute an author Lightning/Spark payout now, skip as already sent,
+// hold for address/threshold/cap, wait for retry backoff, or refuse on broken conservation.
+po_decide_payout :: (req: PoRequest, es_pol: EsPolicy, es_st: EsPeriodState) -> PoDecision #export_c #effects(all) {
+  if req.payout_id.count < 1 || req.payout_id.count > 64 || !x402_is_hex64(req.author_pubkey) {
+    return PoDecision.{status = PoStatus.bad_input};
+  }
+  if req.min_payout_msat < PO_MIN_THRESHOLD_MSAT || req.utc_day < 1 || req.now_s < 0 || req.retry_after_s < 0 {
+    return PoDecision.{status = PoStatus.bad_input};
+  }
+  if !po_check_conservation(req.earned_msat, req.already_paid_msat, req.held_before_msat) {
+    return PoDecision.{status = PoStatus.conservation_broken};
+  }
+  owed := req.held_before_msat;
+  if req.already_sent_id {
+    return PoDecision.{status = PoStatus.already_sent, held_after_msat = owed};
+  }
+  if req.destination.count == 0 {
+    return PoDecision.{status = PoStatus.hold_no_address, held_after_msat = owed};
+  }
+  if !pp_valid_payout(req.destination) {
+    return PoDecision.{status = PoStatus.bad_input, held_after_msat = owed};
+  }
+  if owed < req.min_payout_msat {
+    return PoDecision.{status = PoStatus.hold_below_min, held_after_msat = owed};
+  }
+  if req.now_s < req.retry_after_s {
+    return PoDecision.{status = PoStatus.wait_retry, held_after_msat = owed};
+  }
+  sats := owed / PO_MSAT_PER_SAT;
+  rem := owed % PO_MSAT_PER_SAT;
+  es_req := EsPayoutRequest.{
+    leg = ES_LEG_AUTHOR,
+    verdict = ES_VERDICT_EXACT_REPLAY, // mutant: equivalent — es_admit_payout admits both EXACT_REPLAY (1) and TRAINING_ACCEPTED (2)
+    amount_sat = sats,
+    utc_day = req.utc_day,
+    already_paid_leg = false
+  };
+  if es_admit_payout(es_pol, es_st, es_req) != ES_RELEASE {
+    return PoDecision.{status = PoStatus.hold_cap, held_after_msat = owed};
+  }
+  return PoDecision.{
+    status = PoStatus.send_now,
+    payout_sat = sats,
+    payout_msat = sats * PO_MSAT_PER_SAT,
+    held_after_msat = rem
+  };
+}
+
+// Truthful Lightning payout settlement verification:
+// Live claims (`real_bitcoin_moved == true`) require exact sat amount AND SHA-256(preimage) == payment_hash.
+// Dry-run claims require zero settled sats and empty preimage.
+po_verify_lightning_settlement :: (
+  expected_sat: int,
+  settled_sat: int,
+  preimage: string,
+  payment_hash: string,
+  real_bitcoin_moved: bool
+) -> bool #export_c #effects(all) {
+  if !real_bitcoin_moved {
+    return settled_sat == 0 && preimage.count == 0;
+  }
+  if expected_sat < 1 || settled_sat != expected_sat { return false; }
+  return x402_preimage_matches(preimage, payment_hash) && es_receipt_truthful(true, settled_sat, true); // mutant: equivalent — settled_sat == expected_sat >= 1 and true literal
+}
+
+// Validate a canonical `openagents.capability.payout.v1` record.
+po_record_valid :: (rec: PoRecord) -> bool #export_c #effects(all) {
+  if rec.payout_id.count < 1 || rec.payout_id.count > 64 { return false; }
+  if !x402_is_hex64(rec.author_pubkey) || !x402_is_hex64(rec.receipts_digest) { return false; }
+  if !po_valid_network(rec.network) { return false; }
+  if rec.amount_sat < 1 || rec.amount_sat > ES_MAX_SAT || rec.held_after_msat < 0 { return false; }
+  if rec.real_bitcoin_moved {
+    if rec.settled_at < 1 || !po_nonzero_hex64(rec.settlement_commitment) { return false; }
+  } else {
+    if rec.settled_at != 0 || rec.settlement_commitment.count != 0 { return false; }
+  }
+  return true;
+}
+
+// Canonical key-sorted JCS serializer for `openagents.capability.payout.v1`.
+po_write_json :: (rec: PoRecord, out: [] u8) -> int #export_c #effects(all) {
+  if !po_record_valid(rec) { return -1; }
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "amount_sat"); jo_int(o[..], rec.amount_sat);
+  jo_key(o[..], "author_pubkey"); jo_str(o[..], rec.author_pubkey);
+  jo_key(o[..], "held_after_msat"); jo_int(o[..], rec.held_after_msat);
+  jo_key(o[..], "network"); jo_str(o[..], rec.network);
+  jo_key(o[..], "payout_id"); jo_str(o[..], rec.payout_id);
+  jo_key(o[..], "real_bitcoin_moved"); jo_bool(o[..], rec.real_bitcoin_moved);
+  jo_key(o[..], "receipts_digest"); jo_str(o[..], rec.receipts_digest);
+  jo_key(o[..], "schema"); jo_str(o[..], PO_SCHEMA);
+  jo_key(o[..], "settled_at"); jo_int(o[..], rec.settled_at);
+  jo_key(o[..], "settlement_commitment"); jo_str(o[..], rec.settlement_commitment);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+// Strict closed-object reader for `openagents.capability.payout.v1`.
+po_read_json :: (raw: string, out: [] PoRecord, arena: [] u8) -> bool #export_c #effects(all) {
+  if out.count < 1 { return false; }
+  d: [1] Jv; nodes: [64] JvNode;
+  _ = jv_parse(d[..], raw, nodes[..]);
+  if jv_len(d[0], 0) != 10 { return false; }
+  v := d[0];
+  pos: [1] int;
+  ok := [1] bool.[true];
+  sc := rc_take_arena_str(v, "schema", arena, pos[..], ok[..]);
+  if sc != PO_SCHEMA { return false; }
+  rm_k := jv_kind(v, jv_get(v, 0, "real_bitcoin_moved"));
+  if rm_k != JV_TRUE && rm_k != JV_FALSE { return false; }
+
+  next := PoRecord.{
+    payout_id = rc_take_arena_str(v, "payout_id", arena, pos[..], ok[..]),
+    author_pubkey = rc_take_arena_str(v, "author_pubkey", arena, pos[..], ok[..]),
+    receipts_digest = rc_take_arena_str(v, "receipts_digest", arena, pos[..], ok[..]),
+    network = rc_take_arena_str(v, "network", arena, pos[..], ok[..]),
+    amount_sat = jv_int(v, jv_get(v, 0, "amount_sat"), 0),
+    held_after_msat = jv_int(v, jv_get(v, 0, "held_after_msat"), -1),
+    real_bitcoin_moved = rm_k == JV_TRUE,
+    settled_at = jv_int(v, jv_get(v, 0, "settled_at"), -1),
+    settlement_commitment = rc_take_arena_str(v, "settlement_commitment", arena, pos[..], ok[..])
+  };
+  if !ok[0] || !po_record_valid(next) { return false; }
+  out[0] = next;
+  return true;
+}
+
+// ---- checks
+
+PO_T_AUT  :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+PO_T_RDIG :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+PO_T_COM  :: "5555555555555555555555555555555555555555555555555555555555555555";
+PO_T_ZERO :: "0000000000000000000000000000000000000000000000000000000000000000";
+
+#test "payout-policy: conservation, dust-free conversion, idempotency, holds, retry, and rolling caps" {
+  #assert po_check_conservation(19750, 0, 19750) && po_check_conservation(19750, 19000, 750) && po_check_conservation(0, 0, 0);
+  #assert !po_check_conservation(-1, 0, -1) && !po_check_conservation(100, -1, 101) && !po_check_conservation(100, 101, -1);
+  #assert !po_check_conservation(100, 101, 0) && !po_check_conservation(100, 50, 49) && !po_check_conservation(100, 50, 51);
+
+  pol := EsPolicy.{owner_armed = true, per_payout_cap_sat = 1000, per_pubkey_daily_cap_sat = 5000, global_daily_cap_sat = 20000};
+  st := EsPeriodState.{utc_day = 20780, global_spent_sat = 0, pubkey_spent_sat = 0};
+
+  // Author A: earned 19750 msat, paid 0, held 19750 -> pays 19 sats (19000 msat), retains 750 msat dust!
+  req_a := PoRequest.{
+    payout_id = "p-1", author_pubkey = PO_T_AUT, destination = "alice@openagents.com",
+    earned_msat = 19750, already_paid_msat = 0, held_before_msat = 19750,
+    min_payout_msat = 5000, utc_day = 20780, now_s = 1795500100, retry_after_s = 0, already_sent_id = false
+  };
+  dec_a := po_decide_payout(req_a, pol, st);
+  #assert dec_a.status == PoStatus.send_now && dec_a.payout_sat == 19 && dec_a.payout_msat == 19000 && dec_a.held_after_msat == 750;
+  #assert po_check_conservation(req_a.earned_msat, req_a.already_paid_msat + dec_a.payout_msat, dec_a.held_after_msat);
+
+  // Repeat of same payout_id -> already_sent (0 sats moved)
+  rep := req_a; rep.already_sent_id = true;
+  d_rep := po_decide_payout(rep, pol, st);
+  #assert d_rep.status == PoStatus.already_sent && d_rep.payout_sat == 0 && d_rep.held_after_msat == 19750;
+
+  // Exact lower boundaries: 1-char payout_id, min_payout=1000, owed=1000 -> 1 sat, utc_day=1, now_s=0
+  req_min := PoRequest.{
+    payout_id = "p", author_pubkey = PO_T_AUT, destination = "alice@openagents.com",
+    earned_msat = 1000, already_paid_msat = 0, held_before_msat = 1000,
+    min_payout_msat = 1000, utc_day = 1, now_s = 0, retry_after_s = 0, already_sent_id = false
+  };
+  d_min := po_decide_payout(req_min, pol, EsPeriodState.{utc_day = 1});
+  #assert d_min.status == PoStatus.send_now && d_min.payout_sat == 1 && d_min.payout_msat == 1000 && d_min.held_after_msat == 0;
+
+  // Author B: below minimum threshold (2000 msat < 5000 msat) -> held
+  req_b := req_a; req_b.earned_msat = 2000; req_b.held_before_msat = 2000;
+  d_b := po_decide_payout(req_b, pol, st);
+  #assert d_b.status == PoStatus.hold_below_min && d_b.payout_sat == 0 && d_b.held_after_msat == 2000;
+  // Exact minimum boundary releases
+  req_b_eq := req_a; req_b_eq.earned_msat = 5000; req_b_eq.held_before_msat = 5000;
+  #assert po_decide_payout(req_b_eq, pol, st).status == PoStatus.send_now;
+
+  // Author C: no payout address -> held safely
+  req_c := req_a; req_c.destination = "";
+  d_c := po_decide_payout(req_c, pol, st);
+  #assert d_c.status == PoStatus.hold_no_address && d_c.payout_sat == 0 && d_c.held_after_msat == 19750;
+
+  // Failed first try sets retry_after_s; before retry time -> wait_retry, at retry time -> send_now
+  req_retry := req_a; req_retry.retry_after_s = 1795500200; req_retry.now_s = 1795500199;
+  #assert po_decide_payout(req_retry, pol, st).status == PoStatus.wait_retry;
+  req_retry.now_s = 1795500200;
+  #assert po_decide_payout(req_retry, pol, st).status == PoStatus.send_now;
+
+  // Broken conservation refuses before anything moves
+  bad_cons := req_a; bad_cons.held_before_msat = 19751;
+  #assert po_decide_payout(bad_cons, pol, st).status == PoStatus.conservation_broken;
+
+  // Escrow cap / unarmed policy holds
+  unarmed := pol; unarmed.owner_armed = false;
+  #assert po_decide_payout(req_a, unarmed, st).status == PoStatus.hold_cap;
+  low_cap := pol; low_cap.per_payout_cap_sat = 18;
+  #assert po_decide_payout(req_a, low_cap, st).status == PoStatus.hold_cap;
+
+  // Bad inputs
+  bi := req_a; bi.payout_id = ""; #assert po_decide_payout(bi, pol, st).status == PoStatus.bad_input;
+  id65: [65] u8; for i: 0..<65 { id65[i] = 'a'; }
+  bi = req_a; bi.payout_id = cast(string) id65[..]; #assert po_decide_payout(bi, pol, st).status == PoStatus.bad_input;
+  bi = req_a; bi.payout_id = cast(string) id65[0..<64]; #assert po_decide_payout(bi, pol, st).status == PoStatus.send_now;
+  bi = req_a; bi.author_pubkey = "bad"; #assert po_decide_payout(bi, pol, st).status == PoStatus.bad_input;
+  bi = req_a; bi.min_payout_msat = 999; #assert po_decide_payout(bi, pol, st).status == PoStatus.bad_input;
+  bi = req_a; bi.utc_day = 0; #assert po_decide_payout(bi, pol, st).status == PoStatus.bad_input;
+  bi = req_a; bi.now_s = -1; #assert po_decide_payout(bi, pol, st).status == PoStatus.bad_input;
+  bi = req_a; bi.retry_after_s = -1; #assert po_decide_payout(bi, pol, st).status == PoStatus.bad_input;
+  bi = req_a; bi.destination = "not-an-address"; #assert po_decide_payout(bi, pol, st).status == PoStatus.bad_input;
+}
+
+#test "payout-policy: truthful Lightning preimage settlement & canonical payout record JSON" {
+  // Real Lightning settlement proof requires exact sat amount (min 1) and SHA-256(preimage) == payment_hash
+  #assert po_verify_lightning_settlement(1, 1, X402_FIX_PREIMAGE, X402_FIX_HASH, true);
+  #assert po_verify_lightning_settlement(19, 19, X402_FIX_PREIMAGE, X402_FIX_HASH, true);
+  #assert !po_verify_lightning_settlement(0, 0, X402_FIX_PREIMAGE, X402_FIX_HASH, true);
+  #assert !po_verify_lightning_settlement(19, 18, X402_FIX_PREIMAGE, X402_FIX_HASH, true);
+  #assert !po_verify_lightning_settlement(19, 19, PO_T_ZERO, X402_FIX_HASH, true);
+  // Dry-run requires zero settled sats and empty preimage
+  #assert po_verify_lightning_settlement(19, 0, "", X402_FIX_HASH, false);
+  #assert !po_verify_lightning_settlement(19, 19, "", X402_FIX_HASH, false);
+  #assert !po_verify_lightning_settlement(19, 0, X402_FIX_PREIMAGE, X402_FIX_HASH, false);
+
+  // Canonical JCS JSON round-trip (live mainnet + exact lower bounds + dry-run regtest + signet)
+  live := PoRecord.{
+    payout_id = "p-1", author_pubkey = PO_T_AUT, receipts_digest = PO_T_RDIG,
+    network = "bitcoin", amount_sat = 19, held_after_msat = 750,
+    real_bitcoin_moved = true, settled_at = 1795500205, settlement_commitment = PO_T_COM
+  };
+  min_rec := PoRecord.{
+    payout_id = "p", author_pubkey = PO_T_AUT, receipts_digest = PO_T_RDIG,
+    network = "bitcoin", amount_sat = 1, held_after_msat = 0,
+    real_bitcoin_moved = true, settled_at = 1, settlement_commitment = PO_T_COM
+  };
+  #assert po_record_valid(min_rec);
+
+  buf: [1024] u8;
+  n := po_write_json(live, buf[..]);
+  #assert n > 0;
+  raw := cast(string) buf[0..<n];
+  #assert raw == "{\"amount_sat\":19,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"held_after_msat\":750,\"network\":\"bitcoin\",\"payout_id\":\"p-1\",\"real_bitcoin_moved\":true,\"receipts_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.capability.payout.v1\",\"settled_at\":1795500205,\"settlement_commitment\":\"5555555555555555555555555555555555555555555555555555555555555555\"}";
+  #assert po_write_json(live, buf[0..<20]) == -1;
+
+  // Exact arena bytes for live: 31(schema) + 3(p-1) + 64(aut) + 64(rdig) + 7(bitcoin) + 64(com) = 233
+  out: [1] PoRecord; arena: [1024] u8;
+  #assert po_read_json(raw, out[..], arena[0..<233]);
+  #assert !po_read_json(raw, out[..], arena[0..<232]);
+  #assert out[0].payout_id == "p-1" && out[0].amount_sat == 19 && out[0].held_after_msat == 750 && out[0].real_bitcoin_moved && out[0].settlement_commitment == PO_T_COM;
+
+  buf2: [1024] u8;
+  dry := live; dry.network = "regtest"; dry.real_bitcoin_moved = false; dry.settled_at = 0; dry.settlement_commitment = "";
+  n2 := po_write_json(dry, buf2[..]);
+  #assert n2 > 0 && po_read_json(cast(string) buf2[0..<n2], out[..], arena[..]) && !out[0].real_bitcoin_moved;
+  sig_r := dry; sig_r.network = "signet";
+  #assert po_record_valid(sig_r);
+
+  // Refusals: non-Bitcoin network, bad fields, lying real_bitcoin_moved, zero commitment, overflow, bad JSON
+  b := live; b.payout_id = ""; #assert !po_record_valid(b) && po_write_json(b, buf2[..]) == -1;
+  id65: [65] u8; for i: 0..<65 { id65[i] = 'a'; }
+  b = live; b.payout_id = cast(string) id65[..]; #assert !po_record_valid(b);
+  b = live; b.payout_id = cast(string) id65[0..<64]; #assert po_record_valid(b);
+  b = live; b.author_pubkey = "bad"; #assert !po_record_valid(b);
+  b = live; b.receipts_digest = "bad"; #assert !po_record_valid(b);
+  b = live; b.network = "usdc"; #assert !po_record_valid(b);
+  b = live; b.amount_sat = 0; #assert !po_record_valid(b);
+  b = live; b.amount_sat = ES_MAX_SAT; #assert po_record_valid(b);
+  b = live; b.amount_sat = ES_MAX_SAT + 1; #assert !po_record_valid(b);
+  b = live; b.held_after_msat = -1; #assert !po_record_valid(b);
+  b = live; b.settled_at = 0; #assert !po_record_valid(b);
+  b = live; b.settlement_commitment = PO_T_ZERO; #assert !po_record_valid(b);
+  b = live; b.settlement_commitment = "short"; #assert !po_record_valid(b);
+  b = dry; b.settled_at = 1; #assert !po_record_valid(b);
+  b = dry; b.settlement_commitment = PO_T_COM; #assert !po_record_valid(b);
+
+  #assert !po_read_json(raw, out[0..<0], arena[..]);
+  #assert !po_read_json("{", out[..], arena[..]);
+  #assert !po_read_json("[]", out[..], arena[..]);
+  #assert !po_read_json("{}", out[..], arena[..]);
+  #assert !po_read_json(raw, out[..], arena[0..<10]);
+  #assert !po_read_json(raw, out[..], arena[0..<50]);
+  bad_sc := "{\"amount_sat\":19,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"held_after_msat\":750,\"network\":\"bitcoin\",\"payout_id\":\"p-1\",\"real_bitcoin_moved\":true,\"receipts_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"other.v1\",\"settled_at\":1795500205,\"settlement_commitment\":\"5555555555555555555555555555555555555555555555555555555555555555\"}";
+  #assert !po_read_json(bad_sc, out[..], arena[..]);
+  bad_rm := "{\"amount_sat\":19,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"held_after_msat\":750,\"network\":\"bitcoin\",\"payout_id\":\"p-1\",\"real_bitcoin_moved\":1,\"receipts_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.capability.payout.v1\",\"settled_at\":1795500205,\"settlement_commitment\":\"5555555555555555555555555555555555555555555555555555555555555555\"}";
+  #assert !po_read_json(bad_rm, out[..], arena[..]);
+  bad_amt0 := "{\"amount_sat\":0,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"held_after_msat\":750,\"network\":\"bitcoin\",\"payout_id\":\"p-1\",\"real_bitcoin_moved\":true,\"receipts_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.capability.payout.v1\",\"settled_at\":1795500205,\"settlement_commitment\":\"5555555555555555555555555555555555555555555555555555555555555555\"}";
+  bad_amtx := "{\"amount_sat\":\"x\",\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"held_after_msat\":750,\"network\":\"bitcoin\",\"payout_id\":\"p-1\",\"real_bitcoin_moved\":true,\"receipts_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.capability.payout.v1\",\"settled_at\":1795500205,\"settlement_commitment\":\"5555555555555555555555555555555555555555555555555555555555555555\"}";
+  bad_hldx := "{\"amount_sat\":19,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"held_after_msat\":\"x\",\"network\":\"bitcoin\",\"payout_id\":\"p-1\",\"real_bitcoin_moved\":true,\"receipts_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.capability.payout.v1\",\"settled_at\":1795500205,\"settlement_commitment\":\"5555555555555555555555555555555555555555555555555555555555555555\"}";
+  bad_setx := "{\"amount_sat\":19,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"held_after_msat\":0,\"network\":\"regtest\",\"payout_id\":\"p-1\",\"real_bitcoin_moved\":false,\"receipts_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.capability.payout.v1\",\"settled_at\":\"x\",\"settlement_commitment\":\"\"}";
+  #assert !po_read_json(bad_amt0, out[..], arena[..]);
+  #assert !po_read_json(bad_amtx, out[..], arena[..]);
+  #assert !po_read_json(bad_hldx, out[..], arena[..]);
+  #assert !po_read_json(bad_setx, out[..], arena[..]);
+  // Closed object check + non-string empty commitment check on dry-run record
+  bad_ext := "{\"amount_sat\":19,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"extra\":1,\"held_after_msat\":750,\"network\":\"bitcoin\",\"payout_id\":\"p-1\",\"real_bitcoin_moved\":true,\"receipts_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.capability.payout.v1\",\"settled_at\":1795500205,\"settlement_commitment\":\"5555555555555555555555555555555555555555555555555555555555555555\"}";
+  bad_comx := "{\"amount_sat\":19,\"author_pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"held_after_msat\":0,\"network\":\"regtest\",\"payout_id\":\"p-1\",\"real_bitcoin_moved\":false,\"receipts_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"schema\":\"openagents.capability.payout.v1\",\"settled_at\":0,\"settlement_commitment\":123}";
+  #assert !po_read_json(bad_ext, out[..], arena[..]);
+  #assert !po_read_json(bad_comx, out[..], arena[..]);
+  #assert !po_read_json("[1,2,3,4,5,6,7,8,9,0]", out[..], arena[..]);
+}

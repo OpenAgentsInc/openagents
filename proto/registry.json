@@ -7470,6 +7470,35 @@
         "coax/lib/workos/verify.sh"
       ],
       "note": "WorkOS User Management, Magic Auth, OAuth/PKCE, Enterprise SSO, Events API, Webhooks, and AuthKit Actions external wire format (#14100). Anticorruption layer: coax/lib/workos/ builds requests and verifies signatures/JWTs through the #authority Coax SDK; coax/web/api/workos.c routes /api/auth/workos/* through workos-sdk-unit.c."
+    },
+    {
+      "id": "openagents.capability.receipt.v1",
+      "kind": "profile",
+      "owner": "payments",
+      "schema": "proto/coax-native/capability-receipt-v1.json",
+      "codec": "pay/receipt-policy.coax",
+      "check": "coax/bin/coax test pay/receipt-policy.coax --library",
+      "step": "new",
+      "tests": [
+        "pay/receipt-policy.coax",
+        "pay/payout-policy.coax",
+        "openagents/examples/capability-economy-e2e.coax"
+      ],
+      "note": "Verifiable paid capability call receipt and public deterministic meter input (#14060); canonical key-sorted JCS carrying payment_hash and conservation-checked millisatoshi splits without prompt/response text or preimage."
+    },
+    {
+      "id": "openagents.capability.payout.v1",
+      "kind": "profile",
+      "owner": "payments",
+      "schema": "proto/coax-native/capability-payout-v1.json",
+      "codec": "pay/payout-policy.coax",
+      "check": "coax/bin/coax test pay/payout-policy.coax --library",
+      "step": "new",
+      "tests": [
+        "pay/payout-policy.coax",
+        "openagents/examples/capability-economy-e2e.coax"
+      ],
+      "note": "Idempotent Bitcoin/Lightning/Spark author payout settlement record (#14060); canonical key-sorted JCS enforcing paid + held == earned conservation and truthful real_bitcoin_moved proof."
     }
   ]
 }

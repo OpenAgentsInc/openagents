@@ -7,7 +7,7 @@ The repository's invariants are partitioned by context (#13845) so agents and hu
 | Context File | Invariants | Scope |
 | --- | ---: | --- |
 | [bitcoin/INVARIANTS.md](bitcoin/INVARIANTS.md) | 11 | Bitcoin protocol, explorer, P2P, chainstate, script, PSBT |
-| [pay/INVARIANTS.md](pay/INVARIANTS.md) | 2 | Payments, Spark wallet, Lightning, LNURL, tips, voice-meter |
+| [pay/INVARIANTS.md](pay/INVARIANTS.md) | 3 | Payments, Spark wallet, Lightning, LNURL, tips, voice-meter, capability economy payouts |
 | [nostr/INVARIANTS.md](nostr/INVARIANTS.md) | 5 | Nostr relays, NIPs, events, signing, NIP-44 |
 | [psionic/INVARIANTS.md](psionic/INVARIANTS.md) | 82 | Psionic ML, tensors, kernels, models, serving, Pylon, robotics, ASR |
 | [everglade/INVARIANTS.md](everglade/INVARIANTS.md) | 63 | Everglade realm, SRD 5.2.1 combat, NPCs, mounts, world edits |

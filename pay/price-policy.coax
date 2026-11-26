@@ -1,0 +1,233 @@
+// #authority Paid Capability Pricing, x402 Settlement & Revenue Split Policy (#14060, ch056).
+//
+// Bitcoin / Lightning / Spark satoshis only. Connects NIP-EXT release pricing to
+// NIP-X402 upfront Lightning settlement (`coax/lib/x402/settle.coax`) and exact,
+// conservation-preserving integer revenue splits across author, dependency author,
+// and platform (with zero dust lost to rounding).
+//   coax/bin/coax test pay/price-policy.coax --library
+//   coax/bin/coax mutate pay/price-policy.coax --library --root-only
+#load "../coax/lib/x402/settle.coax";
+#authority;
+
+PP_BPS_DENOM :: 10000;
+// Bounds price_msat * bps <= 2.1e18 < 2^63 - 1 (exact overflow-free 64-bit integer math).
+PP_MAX_PRICE_MSAT :: X402_MAX_MSAT / PP_BPS_DENOM;
+
+PpStatus :: enum u8 {
+  ok;
+  bad_rail;
+  bad_price;
+  missing_payout;
+  bad_split;
+  price_mismatch;
+  replayed;
+  settle_failed;
+}
+
+PpSplitPolicy :: struct {
+  author_bps: int;
+  dep_bps: int;
+  platform_bps: int;
+}
+
+PpSplit :: struct {
+  ok: bool;
+  author_msat: int;
+  dep_msat: int;
+  platform_msat: int;
+}
+
+pp_is_hex :: (c: u8) -> bool #effects(all) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+PP_BECH32 :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+
+pp_is_bech32 :: (c: u8) -> bool #effects(all) {
+  for x: PP_BECH32 { if x == c { return true; } }
+  return false;
+}
+
+// Valid Bitcoin/Lightning/Spark author payout target:
+// - 66-hex compressed secp256k1 node pubkey (`02...` / `03...`)
+// - Mainnet bare Spark address (`spark1...`, >=20 chars, lowercase bech32)
+// - Lightning Address (`<local>@<domain.tld>`, <=256 printable ASCII bytes)
+pp_valid_payout :: (payout: string) -> bool #export_c #effects(all) {
+  if payout.count > 256 { return false; }
+  if payout.count == 66 && payout[0] == '0' && (payout[1] == '2' || payout[1] == '3') {
+    ok := true;
+    for i: 2..<66 { if !pp_is_hex(payout[i]) { ok = false; break; } }
+    if ok { return true; }
+  }
+  if payout.count >= 20 && payout[0..<6] == "spark1" {
+    for i: 6..<payout.count {
+      if !pp_is_bech32(payout[i]) { return false; }
+    }
+    return true;
+  }
+  at := -1;
+  for i: 0..<payout.count {
+    c := payout[i];
+    if c <= 32 || c >= 127 { return false; }
+    if c == '@' {
+      if at >= 0 { return false; }
+      at = i;
+    }
+  }
+  if at < 1 || at + 4 >= payout.count { return false; }
+  if payout[at + 1] == '.' || payout[payout.count - 1] == '.' { return false; }
+  has_dot := false;
+  for i: at + 2..<payout.count - 1 {
+    if payout[i] == '.' { has_dot = true; }
+  }
+  return has_dot;
+}
+
+// Bitcoin/Lightning/Spark sats only (D6): service credit and fiat/altcoins are refused.
+pp_admit_rail :: (rail: string) -> PpStatus #export_c #effects(all) {
+  if rail == "" || rail == "sats" || rail == "lightning" || rail == "spark" { return PpStatus.ok; }
+  return PpStatus.bad_rail;
+}
+
+// Admit a release's declared per-call price and payout target.
+pp_admit_price :: (fee_msat: int, payout: string) -> PpStatus #export_c #effects(all) {
+  if fee_msat < 0 || fee_msat > PP_MAX_PRICE_MSAT { return PpStatus.bad_price; }
+  if fee_msat == 0 { return PpStatus.ok; }
+  if !pp_valid_payout(payout) { return PpStatus.missing_payout; }
+  return PpStatus.ok;
+}
+
+// Revenue split policy invariant: non-negative basis points summing to exactly 10000.
+pp_valid_split_policy :: (pol: PpSplitPolicy) -> bool #export_c #effects(all) {
+  if pol.author_bps < 0 || pol.dep_bps < 0 || pol.platform_bps < 0 { return false; }
+  return pol.author_bps + pol.dep_bps + pol.platform_bps == PP_BPS_DENOM;
+}
+
+// Exact conservation-preserving revenue split in millisatoshis:
+// author_msat + dep_msat + platform_msat == price_msat (any integer truncation remainder
+// stays with the primary author so zero millisatoshis are ever created or lost).
+pp_compute_split :: (price_msat: int, pol: PpSplitPolicy, has_dep: bool) -> PpSplit #export_c #effects(all) {
+  bad: PpSplit;
+  if price_msat < 1 || price_msat > PP_MAX_PRICE_MSAT || !pp_valid_split_policy(pol) { return bad; }
+  if !has_dep && pol.dep_bps > 0 { return bad; }
+  dep := (price_msat * pol.dep_bps) / PP_BPS_DENOM;
+  plat := (price_msat * pol.platform_bps) / PP_BPS_DENOM;
+  auth := price_msat - dep - plat;
+  return PpSplit.{ok = true, author_msat = auth, dep_msat = dep, platform_msat = plat};
+}
+
+// Gate a paid capability call end-to-end through x402 upfront Lightning settlement.
+pp_admit_paid_call :: (
+  price_msat: int,
+  rail: string,
+  payout: string,
+  o: [] X402Offer,
+  rec: [] X402Record,
+  payer_preimage: string,
+  issued_s: int,
+  now_s: int,
+  already_settled: bool
+) -> PpStatus #export_c #effects(all) {
+  if pp_admit_rail(rail) != PpStatus.ok { return PpStatus.bad_rail; }
+  if price_msat < 1 || price_msat > PP_MAX_PRICE_MSAT { return PpStatus.bad_price; }
+  if !pp_valid_payout(payout) { return PpStatus.missing_payout; }
+  if already_settled { return PpStatus.replayed; }
+  if o.count < 1 || rec.count < 1 || o[0].msat != price_msat { return PpStatus.price_mismatch; }
+  if x402_settle(o, rec, payer_preimage, issued_s, now_s) != "" { return PpStatus.settle_failed; }
+  return PpStatus.ok;
+}
+
+// ---- checks
+
+#test "price-policy: Bitcoin-only rails, payout targets, and release price admission" {
+  #assert pp_admit_rail("") == PpStatus.ok && pp_admit_rail("sats") == PpStatus.ok;
+  #assert pp_admit_rail("lightning") == PpStatus.ok && pp_admit_rail("spark") == PpStatus.ok;
+  #assert pp_admit_rail("credit") == PpStatus.bad_rail && pp_admit_rail("card") == PpStatus.bad_rail && pp_admit_rail("usdc") == PpStatus.bad_rail;
+
+  #assert pp_valid_payout("alice@openagents.com") && pp_valid_payout("a!@b.co") && pp_valid_payout("a@b.c/") && pp_valid_payout("a.@b.co") && pp_valid_payout("a@/b.co");
+  #assert !pp_valid_payout("a@.b.co") && !pp_valid_payout("a@b.c.");
+  #assert pp_valid_payout("spark1qpzry9x8gf2tvd") && !pp_valid_payout("spark1qpzry9x8gf2tv");
+  #assert pp_valid_payout("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert pp_valid_payout("03c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5");
+  #assert !pp_valid_payout("0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert !pp_valid_payout("1279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert !pp_valid_payout("02g9be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert !pp_valid_payout("02:9be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert !pp_valid_payout("spark1bqpzry9x8gf2tvdw") && !pp_valid_payout("spark1pgss9q0x7w2y8r3k4m5n6b");
+  #assert !pp_valid_payout("") && !pp_valid_payout("alice") && !pp_valid_payout("@openagents.com");
+  #assert !pp_valid_payout("@@b.co") && !pp_valid_payout("@a@b.co") && !pp_valid_payout("a@b@c.com");
+  #assert !pp_valid_payout("a@.com") && !pp_valid_payout("a@b.") && !pp_valid_payout("a@b.c") && !pp_valid_payout("a@bcde") && !pp_valid_payout("a.b@cdef");
+  del_p := [8] u8.['a', '@', 'c', '.', 'c', 'o', 'm', 127];
+  #assert !pp_valid_payout(" a@b.co") && !pp_valid_payout("a b@c.com") && !pp_valid_payout(cast(string) del_p[..]);
+  p257: [257] u8; p257[0] = 'a'; p257[1] = '@'; for i: 2..<255 { p257[i] = 'b'; } p257[255] = '.'; p257[256] = 'c';
+  #assert !pp_valid_payout(cast(string) p257[..]);
+  p257[254] = '.'; p257[255] = 'c';
+  #assert pp_valid_payout(cast(string) p257[0..<256]);
+
+  #assert pp_admit_price(0, "") == PpStatus.ok;
+  #assert pp_admit_price(1, "alice@openagents.com") == PpStatus.ok;
+  #assert pp_admit_price(PP_MAX_PRICE_MSAT, "alice@openagents.com") == PpStatus.ok;
+  #assert pp_admit_price(-1, "alice@openagents.com") == PpStatus.bad_price;
+  #assert pp_admit_price(PP_MAX_PRICE_MSAT + 1, "alice@openagents.com") == PpStatus.bad_price;
+  #assert pp_admit_price(1000, "") == PpStatus.missing_payout;
+}
+
+#test "price-policy: exact conservation-preserving revenue splits" {
+  // 85% author, 0% dep, 15% platform
+  pol1 := PpSplitPolicy.{author_bps = 8500, dep_bps = 0, platform_bps = 1500};
+  s1 := pp_compute_split(50000, pol1, false);
+  #assert s1.ok && s1.author_msat == 42500 && s1.dep_msat == 0 && s1.platform_msat == 7500;
+  #assert s1.author_msat + s1.dep_msat + s1.platform_msat == 50000;
+
+  // Chained plugin call: 70% author, 20% dependency author, 10% platform on odd price (1003 msat)
+  pol2 := PpSplitPolicy.{author_bps = 7000, dep_bps = 2000, platform_bps = 1000};
+  s2 := pp_compute_split(1003, pol2, true);
+  #assert s2.ok && s2.dep_msat == 200 && s2.platform_msat == 100 && s2.author_msat == 703;
+  #assert s2.author_msat + s2.dep_msat + s2.platform_msat == 1003;
+
+  // Exact 1-bps boundary at 10000 msat (kills 10000 -> 10001) & 0-bps author/platform endpoints
+  pol_1bps := PpSplitPolicy.{author_bps = 9998, dep_bps = 1, platform_bps = 1};
+  s_1b := pp_compute_split(10000, pol_1bps, true);
+  #assert s_1b.ok && s_1b.dep_msat == 1 && s_1b.platform_msat == 1 && s_1b.author_msat == 9998;
+  #assert pp_valid_split_policy(PpSplitPolicy.{author_bps = 0, dep_bps = 5000, platform_bps = 5000});
+  #assert pp_valid_split_policy(PpSplitPolicy.{author_bps = 10000, dep_bps = 0, platform_bps = 0});
+
+  // Max price boundary (no overflow) and min price boundary (1 msat)
+  s_max := pp_compute_split(PP_MAX_PRICE_MSAT, pol2, true);
+  #assert s_max.ok && s_max.author_msat + s_max.dep_msat + s_max.platform_msat == PP_MAX_PRICE_MSAT;
+  s_min := pp_compute_split(1, pol1, false);
+  #assert s_min.ok && s_min.author_msat == 1 && s_min.dep_msat == 0 && s_min.platform_msat == 0;
+
+  // Refusals: dep_bps > 0 without dependency (including dep_bps == 1), bad sum, negative bps, bad price
+  #assert !pp_compute_split(50000, pol_1bps, false).ok;
+  #assert !pp_compute_split(0, pol1, false).ok && !pp_compute_split(PP_MAX_PRICE_MSAT + 1, pol1, false).ok;
+  #assert !pp_valid_split_policy(PpSplitPolicy.{author_bps = -1, dep_bps = 1, platform_bps = 10000});
+  #assert !pp_valid_split_policy(PpSplitPolicy.{author_bps = 10000, dep_bps = -1, platform_bps = 1});
+  #assert !pp_valid_split_policy(PpSplitPolicy.{author_bps = 10001, dep_bps = 0, platform_bps = -1});
+  #assert !pp_valid_split_policy(PpSplitPolicy.{author_bps = 8500, dep_bps = 0, platform_bps = 1499});
+}
+
+#test "price-policy: upfront x402 paid capability call admission & refusals" {
+  o: [1] X402Offer;
+  x402_fix_offer(o[..], X402_FIX_INVOICE, 50000);
+  g: [1] X402Record;
+  good := x402_fix_record(g[..], true, 50000, X402_FIX_PREIMAGE);
+  t := 1790000000;
+
+  #assert pp_admit_paid_call(50000, "lightning", "alice@openagents.com", o[..], good, X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.ok;
+  // Min (1 msat) and max (PP_MAX_PRICE_MSAT) price bounds pass price check and reach price_mismatch/settle
+  o1: [1] X402Offer; x402_fix_offer(o1[..], "lnbc10p1x", 1);
+  g1: [1] X402Record; r1 := x402_fix_record(g1[..], true, 1, X402_FIX_PREIMAGE);
+  #assert pp_admit_paid_call(1, "lightning", "alice@openagents.com", o1[..], r1, X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.ok;
+  #assert pp_admit_paid_call(PP_MAX_PRICE_MSAT, "lightning", "alice@openagents.com", o[..], good, X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.price_mismatch;
+  #assert pp_admit_paid_call(50000, "credit", "alice@openagents.com", o[..], good, X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.bad_rail;
+  #assert pp_admit_paid_call(0, "lightning", "alice@openagents.com", o[..], good, X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.bad_price;
+  #assert pp_admit_paid_call(PP_MAX_PRICE_MSAT + 1, "lightning", "alice@openagents.com", o[..], good, X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.bad_price;
+  #assert pp_admit_paid_call(50000, "lightning", "", o[..], good, X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.missing_payout;
+  #assert pp_admit_paid_call(50000, "lightning", "alice@openagents.com", o[..], good, X402_FIX_PREIMAGE, t, t + 10, true) == PpStatus.replayed;
+  #assert pp_admit_paid_call(50000, "lightning", "alice@openagents.com", o[0..<0], good, X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.price_mismatch;
+  #assert pp_admit_paid_call(50000, "lightning", "alice@openagents.com", o[..], good[0..<0], X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.price_mismatch;
+  #assert pp_admit_paid_call(49999, "lightning", "alice@openagents.com", o[..], good, X402_FIX_PREIMAGE, t, t + 10, false) == PpStatus.price_mismatch;
+  // Expired invoice (past timeout 600 + skew 60) fails x402 settlement
+  #assert pp_admit_paid_call(50000, "lightning", "alice@openagents.com", o[..], good, X402_FIX_PREIMAGE, t, t + 661, false) == PpStatus.settle_failed;
+}

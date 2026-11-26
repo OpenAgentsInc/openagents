@@ -1,0 +1,341 @@
+// Runnable end-to-end example for OpenAgents Economy (#14060):
+// Signed NIP-REG / NIP-EXT plugin registry, multi-key NIP-EVAL reproduction quorum,
+// hash-pinned inert SHA-256 install, active-run lock pin, signed defaults rollout,
+// metered x402 paid capability calls, and idempotent Lightning/Spark author payouts.
+//   coax/bin/coax run openagents/examples/capability-economy-e2e.coax
+//   coax/bin/coax run --release openagents/examples/capability-economy-e2e.coax
+#run_steps 100000000;
+#import "Basic";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../registry/install.coax";
+#load "../../pay/payout-policy.coax";
+
+CE_HEX :: "0123456789abcdef";
+
+ce_hex32 :: (raw: [32] u8, out: [] u8) -> string {
+  for i: 0..<32 {
+    b := cast(int) raw[i];
+    out[2 * i] = CE_HEX[b >> 4];
+    out[2 * i + 1] = CE_HEX[b & 15];
+  }
+  return cast(string) out[0..<64];
+}
+
+// Sign one NIP-01 event with real BIP-340 Schnorr and verify via the shared reader + fast verifier.
+ce_sign_and_verify :: (
+  sk: [32] u8,
+  aux: [32] u8,
+  created_at: int,
+  kind: int,
+  tags: string,
+  content: string,
+  out_event: [] u8,
+  out_id_hex: [] u8,
+  out_pk_hex: [] u8
+) -> int {
+  sk_l := sk;
+  aux_l := aux;
+  work: [1] NostrSignWork;
+  scratch: [8192] u8;
+  n := EVENT_MORE;
+  for step: 0..<64 {
+    n = nostr_event_sign_step(sk_l[..], aux_l[..], created_at, kind, tags, content, work[..], scratch[..], out_event, false);
+    if n != EVENT_MORE { break; }
+  }
+  if n <= 0 { return -1; }
+  ev := nostr_event_read(cast(string) out_event[0..<n], scratch[..], false);
+  if ev.error != NE_OK { return -1; }
+  if !nostr_fast_verify_vartime(ev.id[..], ev.public_key[..], ev.signature[..]) { return -1; }
+  _ = ce_hex32(ev.id, out_id_hex);
+  _ = ce_hex32(ev.public_key, out_pk_hex);
+  return n;
+}
+
+ce_make_digest :: (bytes: [] u8, out: [] u8) -> string {
+  pref := "sha256:";
+  for i: 0..<7 { out[i] = pref[i]; }
+  _ = inst_sha256_hex(bytes, out[7..<71]);
+  return cast(string) out[0..<71];
+}
+
+ce_run :: () -> bool {
+  // Deterministic test keys (secp256k1 1G = Author A, 2G = Author B / Checker 1, 3G = Curator / Checker 2).
+  sk_a: [32] u8; sk_a[31] = 1;
+  sk_b: [32] u8; sk_b[31] = 2;
+  sk_c: [32] u8; sk_c[31] = 3;
+  aux: [32] u8; aux[0] = 0x42; aux[31] = 0x99;
+
+  // 1. Real SHA-256 artifact bytes + BIP-340 Schnorr-signed NIP-EXT 3184 release & 30184 listing.
+  cap_bytes := [27] u8.[
+    'f','n',' ','r','e','v','i','e','w','(',')',' ','{',' ',
+    'r','e','t','u','r','n',' ','o','k',';',' ','}','\n'
+  ];
+  cap_dig_b: [71] u8;
+  cap_dig := ce_make_digest(cap_bytes[..], cap_dig_b[..]);
+
+  pk_a_want := "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  pk_b_want := "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+  pk_c_want := "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+  pkg_a := "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:code-review";
+  reg_id := "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:openagents-official";
+
+  rel_tags_b: [512] u8;
+  rel_tags_n := reg_release_tags(pkg_a, cap_dig, rel_tags_b[..]);
+  rel_ev_b: [4096] u8; rel_id_b: [64] u8; rel_pk_b: [64] u8;
+  rel_ev_n := ce_sign_and_verify(
+    sk_a, aux, 1795500000, REG_KIND_RELEASE,
+    cast(string) rel_tags_b[0..<rel_tags_n],
+    "{\"fee_msat\":10000,\"payout\":\"alice@openagents.com\"}",
+    rel_ev_b[..], rel_id_b[..], rel_pk_b[..]
+  );
+  rel_id := cast(string) rel_id_b[..];
+  rel_pk := cast(string) rel_pk_b[..];
+  rel_ok := reg_verify_release(REG_KIND_RELEASE, rel_pk, pkg_a, cap_dig, 10000, "alice@openagents.com", true);
+
+  list_tags_b: [256] u8;
+  list_tags_n := reg_listing_tags("openagents-official", list_tags_b[..]);
+  list_ev_b: [4096] u8; list_id_b: [64] u8; list_pk_b: [64] u8;
+  list_ev_n := ce_sign_and_verify(
+    sk_c, aux, 1795500010, REG_KIND_LISTING,
+    cast(string) list_tags_b[0..<list_tags_n],
+    rel_id,
+    list_ev_b[..], list_id_b[..], list_pk_b[..]
+  );
+  list_id := cast(string) list_id_b[..];
+  list_pk := cast(string) list_pk_b[..];
+  head := RegListingHead.{
+    kind = REG_KIND_LISTING, event_id = list_id, signer = list_pk,
+    slug = "openagents-official", created_at = 1795500010,
+    hidden = false, release_id = rel_id, has_listing_tag = true
+  };
+  head_ok := reg_listing_head_accept(0, "", false, head, pk_c_want, "openagents-official", 1795500020, 300);
+  old_head := head; old_head.created_at = 1795500005;
+  head_rb := reg_listing_head_accept(1795500010, list_id, true, old_head, pk_c_want, "openagents-official", 1795500020, 300);
+  print("nip_ext signed_release=% signed_listing=% rel_verify=% head=% head_rollback=%\n",
+    rel_ev_n > 0 && rel_pk == pk_a_want, list_ev_n > 0 && list_pk == pk_c_want,
+    rel_ok == RegStatus.ok, head_ok == RegStatus.ok, head_rb == RegStatus.rollback);
+
+  // 2. Curated NIP-REG openagents.registry.v1 catalog admission & rollback refusal.
+  cat_buf: [2048] u8;
+  co: [1] Jo; jo_start(co[..], cat_buf[..]); jo_obj(co[..]);
+  jo_key(co[..], "v"); jo_str(co[..], REG_CATALOG_V);
+  jo_key(co[..], "requires"); jo_arr(co[..]); jo_end(co[..]);
+  jo_key(co[..], "registry"); jo_str(co[..], reg_id);
+  jo_key(co[..], "revision"); jo_int(co[..], 2);
+  jo_key(co[..], "as_of"); jo_int(co[..], 1795500010);
+  jo_key(co[..], "valid_until"); jo_int(co[..], 1795600000);
+  jo_key(co[..], "title"); jo_str(co[..], "OpenAgents Official Capabilities");
+  jo_key(co[..], "description"); jo_str(co[..], "Signed inert capability index");
+  jo_key(co[..], "entries"); jo_arr(co[..]);
+  jo_obj(co[..]);
+  jo_key(co[..], "package"); jo_str(co[..], pkg_a);
+  jo_key(co[..], "release"); jo_obj(co[..]);
+  jo_key(co[..], "id"); jo_str(co[..], rel_id);
+  jo_key(co[..], "pubkey"); jo_str(co[..], pk_a_want);
+  jo_key(co[..], "kind"); jo_int(co[..], REG_KIND_RELEASE);
+  jo_end(co[..]);
+  jo_key(co[..], "manifest"); jo_obj(co[..]);
+  jo_key(co[..], "digest"); jo_str(co[..], cap_dig);
+  jo_key(co[..], "size"); jo_int(co[..], cap_bytes.count);
+  jo_key(co[..], "media_type"); jo_str(co[..], "application/json");
+  jo_key(co[..], "schema"); jo_str(co[..], REG_PKG_REF_TYPE);
+  jo_end(co[..]);
+  jo_key(co[..], "title"); jo_str(co[..], "Code Review");
+  jo_key(co[..], "summary"); jo_str(co[..], "Static diff review skill");
+  jo_end(co[..]);
+  jo_end(co[..]);
+  jo_end(co[..]);
+  cat_json := cast(string) cat_buf[0..<co[0].n];
+  cat_dig_b: [71] u8;
+  cat_dig := ce_make_digest(cat_buf[0..<co[0].n], cat_dig_b[..]);
+  held_cat := RegCatalogState.{revision = 1, release_id = rel_id, catalog_digest = cap_dig};
+  cat_ok := reg_admit_catalog(cat_json, reg_id, rel_id, cat_dig, 1795500010, held_cat, true, 1795500020, 86400, 300);
+  held_newer := RegCatalogState.{revision = 3, release_id = rel_id, catalog_digest = cat_dig};
+  cat_rb := reg_admit_catalog(cat_json, reg_id, rel_id, cat_dig, 1795500010, held_newer, true, 1795500020, 86400, 300);
+  print("nip_reg catalog_admit=% catalog_rollback=%\n", cat_ok == RegStatus.ok, cat_rb == RegStatus.rollback);
+
+  // 3. Multi-key NIP-EVAL reproduction quorum (2 independent keys confirm; self-check & dispute refuse).
+  lock_dig := cap_dig;
+  suite_dig := "sha256:5555555555555555555555555555555555555555555555555555555555555555";
+  gate_dig := "sha256:6666666666666666666666666666666666666666666666666666666666666666";
+  orig_c := RegEvalClaim.{
+    kind = REG_KIND_EVAL, event_id = rel_id, signer = pk_a_want, subject_id = pkg_a,
+    lock_digest = lock_dig, suite_digest = suite_dig, gate_digest = gate_dig,
+    eval_view_code = EV_VERIFIED, verdict = EV_PASS
+  };
+  chk1 := orig_c; chk1.event_id = list_id; chk1.signer = pk_b_want;
+  chk2 := orig_c; chk2.event_id = "3333333333333333333333333333333333333333333333333333333333333333"; chk2.signer = pk_c_want;
+  both := [2] RegEvalClaim.[chk1, chk2];
+  q_ok := reg_quorum_reproduced(orig_c, both[..], 2);
+  self_r := reg_check_reproduction(orig_c, orig_c);
+  disp := chk2; disp.verdict = EV_FAIL;
+  disp_pair := [2] RegEvalClaim.[chk1, disp];
+  q_disp := reg_quorum_reproduced(orig_c, disp_pair[..], 1);
+  print("nip_eval quorum_2=% refuse_self=% refuse_dispute=%\n",
+    q_ok == QuorumStatus.admitted, self_r == ReproStatus.self_check, q_disp == QuorumStatus.disputed);
+
+  // 4. Hash-pinned inert SHA-256 install, tamper refusal, active-run lock pin & signed defaults rollout.
+  ext_r := ExtRelease.{
+    event = rel_id, signer = pk_a_want, kind = REG_KIND_RELEASE,
+    package = pkg_a, version = "1.0.0", manifest = cap_dig,
+    manifest_package = pkg_a, manifest_version = "1.0.0"
+  };
+  ext_rs := [1] ExtRelease.[ext_r];
+  ext_vs: [1] ExtRevocation;
+  ext_cp: ExtCheckpoint;
+  ext_pol: ExtPolicy;
+  f_ok := [1] InstFileCheck.[InstFileCheck.{
+    path = "src/review.coax", bytes = cap_bytes[..], expected_digest = cap_dig, expected_size = cap_bytes.count
+  }];
+  inst_ok := inst_admit_pinned(ext_r, ext_rs[..], ext_vs[0..<0], ext_cp, false, ext_pol, 1795500020, f_ok[..], orig_c, both[..], 2);
+
+  tampered := cap_bytes; tampered[0] ^= 1;
+  f_bad := [1] InstFileCheck.[InstFileCheck.{
+    path = "src/review.coax", bytes = tampered[..], expected_digest = cap_dig, expected_size = cap_bytes.count
+  }];
+  inst_tamper := inst_admit_pinned(ext_r, ext_rs[..], ext_vs[0..<0], ext_cp, false, ext_pol, 1795500020, f_bad[..], orig_c, both[..], 2);
+  f_trav := f_ok; f_trav[0].path = "../escape.coax";
+  inst_trav := inst_admit_pinned(ext_r, ext_rs[..], ext_vs[0..<0], ext_cp, false, ext_pol, 1795500020, f_trav[..], orig_c, both[..], 2);
+
+  lock_pin := inst_commit_lock(1, rel_id, list_id, true);
+  lock_swap := inst_commit_lock(0, rel_id, list_id, true);
+  def_fwd := inst_admit_defaults_update(1, 2, true, cat_ok, inst_ok, false, false, false);
+  def_rb := inst_admit_defaults_update(2, 3, true, RegStatus.stale, InstStatus.bad_path, true, true, false);
+  def_rev := inst_admit_defaults_update(3, 4, true, cat_ok, inst_ok, false, false, true);
+  print("install admit=% refuse_tamper=% refuse_traversal=% lock_pin=% lock_swap=% defaults_fwd=% defaults_rb=% defaults_revoked=%\n",
+    inst_ok == InstStatus.ok, inst_tamper == InstStatus.digest_mismatch, inst_trav == InstStatus.bad_path,
+    lock_pin == InstStatus.active_run_pinned, lock_swap == InstStatus.ok,
+    def_fwd == InstStatus.ok, def_rb == InstStatus.ok, def_rev == InstStatus.revoked);
+
+  // 5. Metered paid capability calls: Bitcoin-only x402 settlement, conservation splits, receipts & public meter.
+  rail_ok := pp_admit_rail("lightning");
+  rail_bad := pp_admit_rail("credit");
+  o1: [1] X402Offer;
+  x402_fix_offer(o1[..], "lnbc100n1x", 10000);
+  g1: [1] X402Record;
+  r1_rec := x402_fix_record(g1[..], true, 10000, X402_FIX_PREIMAGE);
+  call_ok := pp_admit_paid_call(10000, "lightning", "alice@openagents.com", o1[..], r1_rec, X402_FIX_PREIMAGE, 1795500000, 1795500010, false);
+  call_rep := pp_admit_paid_call(10000, "lightning", "alice@openagents.com", o1[..], r1_rec, X402_FIX_PREIMAGE, 1795500000, 1795500010, true);
+  print("x402 rail_ok=% rail_refuse=% call_ok=% call_replay=%\n",
+    rail_ok == PpStatus.ok, rail_bad == PpStatus.bad_rail, call_ok == PpStatus.ok, call_rep == PpStatus.replayed);
+
+  sp_plain := pp_compute_split(10000, PpSplitPolicy.{author_bps = 8500, dep_bps = 0, platform_bps = 1500}, false);
+  sp_ref := pp_compute_split(20000, PpSplitPolicy.{author_bps = 8500, dep_bps = 0, platform_bps = 1500}, false);
+  sp_chain := pp_compute_split(10000, PpSplitPolicy.{author_bps = 7000, dep_bps = 2000, platform_bps = 1000}, true);
+  sp_int := pp_compute_split(5000, PpSplitPolicy.{author_bps = 8500, dep_bps = 0, platform_bps = 1500}, false);
+
+  h1 := X402_FIX_HASH;
+  h2 := "2222222222222222222222222222222222222222222222222222222222222222";
+  h3 := "3333333333333333333333333333333333333333333333333333333333333333";
+  h4 := "4444444444444444444444444444444444444444444444444444444444444444";
+  id1: [35] u8; id2: [35] u8; id3: [35] u8; id4: [35] u8;
+  _ = rc_compute_id(h1, id1[..]); _ = rc_compute_id(h2, id2[..]);
+  _ = rc_compute_id(h3, id3[..]); _ = rc_compute_id(h4, id4[..]);
+
+  rc1 := RcReceipt.{
+    receipt_id = cast(string) id1[..], release_digest = cap_dig[7..<71], author_pubkey = pk_a_want,
+    dep_author_pubkey = "", payment_hash = h1, price_msat = 10000,
+    author_msat = sp_plain.author_msat, dep_msat = 0, platform_msat = sp_plain.platform_msat,
+    utc_day = 20780, settled_at = 1795500010, outcome = RcOutcome.served, is_internal_test = false, sig_ok = true
+  };
+  rc2 := RcReceipt.{
+    receipt_id = cast(string) id2[..], release_digest = cap_dig[7..<71], author_pubkey = pk_a_want,
+    dep_author_pubkey = "", payment_hash = h2, price_msat = 20000,
+    author_msat = sp_ref.author_msat, dep_msat = 0, platform_msat = sp_ref.platform_msat,
+    utc_day = 20780, settled_at = 1795500015, outcome = RcOutcome.refunded, is_internal_test = false, sig_ok = true
+  };
+  rc3 := RcReceipt.{
+    receipt_id = cast(string) id3[..], release_digest = cap_dig[7..<71], author_pubkey = pk_a_want,
+    dep_author_pubkey = pk_b_want, payment_hash = h3, price_msat = 10000,
+    author_msat = sp_chain.author_msat, dep_msat = sp_chain.dep_msat, platform_msat = sp_chain.platform_msat,
+    utc_day = 20780, settled_at = 1795500020, outcome = RcOutcome.served, is_internal_test = false, sig_ok = true
+  };
+  rc4 := RcReceipt.{
+    receipt_id = cast(string) id4[..], release_digest = cap_dig[7..<71], author_pubkey = pk_a_want,
+    dep_author_pubkey = "", payment_hash = h4, price_msat = 5000,
+    author_msat = sp_int.author_msat, dep_msat = 0, platform_msat = sp_int.platform_msat,
+    utc_day = 20780, settled_at = 1795500025, outcome = RcOutcome.served, is_internal_test = true, sig_ok = true
+  };
+  rc_forged := rc1; rc_forged.sig_ok = false;
+
+  rc_buf: [1024] u8; rc_out: [1] RcReceipt; rc_arena: [1024] u8;
+  rc_n := rc_write_json(rc1, rc_buf[..]);
+  rc_rt := rc_read_json(cast(string) rc_buf[0..<rc_n], true, rc_out[..], rc_arena[..]);
+
+  batch := [6] RcReceipt.[rc1, rc2, rc3, rc4, rc1, rc_forged];
+  totals: [1] RcMeterTotals;
+  m_st := rc_meter_run(batch[..], totals[..]);
+  owed_a := rc_meter_author_owed(totals[0], pk_a_want);
+  owed_b := rc_meter_author_owed(totals[0], pk_b_want);
+  print("meter status=% calls_public=% calls_internal=% refunded=% dup=% refused=% gross_msat=% author_a_msat=% author_b_msat=% platform_msat=%\n",
+    m_st == RcStatus.ok && rc_rt == RcStatus.ok,
+    totals[0].public_calls, totals[0].internal_calls, totals[0].refunded_receipts,
+    totals[0].duplicate_receipts, totals[0].refused_receipts,
+    totals[0].gross_msat, owed_a, owed_b, totals[0].platform_msat);
+
+  // 6. Idempotent author Lightning/Spark payout runner + truthful settlement proof + JCS payout record.
+  es_pol := EsPolicy.{owner_armed = true, per_payout_cap_sat = 1000, per_pubkey_daily_cap_sat = 5000, global_daily_cap_sat = 20000};
+  es_st := EsPeriodState.{utc_day = 20780, global_spent_sat = 0, pubkey_spent_sat = 0};
+
+  req_a := PoRequest.{
+    payout_id = "po-20780-author-a", author_pubkey = pk_a_want, destination = "alice@openagents.com",
+    earned_msat = owed_a, already_paid_msat = 0, held_before_msat = owed_a,
+    min_payout_msat = 5000, utc_day = 20780, now_s = 1795500100, retry_after_s = 0, already_sent_id = false
+  };
+  dec_a := po_decide_payout(req_a, es_pol, es_st);
+  settle_ok := po_verify_lightning_settlement(dec_a.payout_sat, 19, X402_FIX_PREIMAGE, X402_FIX_HASH, true);
+  cons_ok := po_check_conservation(req_a.earned_msat, dec_a.payout_msat, dec_a.held_after_msat);
+
+  po_rec := PoRecord.{
+    payout_id = req_a.payout_id, author_pubkey = pk_a_want, receipts_digest = rel_id,
+    network = "bitcoin", amount_sat = dec_a.payout_sat, held_after_msat = dec_a.held_after_msat,
+    real_bitcoin_moved = settle_ok, settled_at = 1795500105, settlement_commitment = X402_FIX_HASH
+  };
+  po_buf: [1024] u8; po_out: [1] PoRecord; po_arena: [1024] u8;
+  po_n := po_write_json(po_rec, po_buf[..]);
+  po_rt := po_read_json(cast(string) po_buf[0..<po_n], po_out[..], po_arena[..]);
+
+  req_a_rep := req_a; req_a_rep.already_sent_id = true;
+  dec_a_rep := po_decide_payout(req_a_rep, es_pol, es_st);
+  req_b := PoRequest.{
+    payout_id = "po-20780-author-b", author_pubkey = pk_b_want, destination = "spark1qpzry9x8gf2tvd",
+    earned_msat = owed_b, already_paid_msat = 0, held_before_msat = owed_b,
+    min_payout_msat = 5000, utc_day = 20780, now_s = 1795500100, retry_after_s = 0, already_sent_id = false
+  };
+  dec_b := po_decide_payout(req_b, es_pol, es_st);
+  req_c := PoRequest.{
+    payout_id = "po-20780-author-c", author_pubkey = pk_c_want, destination = "",
+    earned_msat = 12000, already_paid_msat = 0, held_before_msat = 12000,
+    min_payout_msat = 5000, utc_day = 20780, now_s = 1795500100, retry_after_s = 0, already_sent_id = false
+  };
+  dec_c := po_decide_payout(req_c, es_pol, es_st);
+  req_bad := req_a; req_bad.held_before_msat = owed_a + 1;
+  dec_bad := po_decide_payout(req_bad, es_pol, es_st);
+  print("payout a_sat=% a_dust_msat=% settle=% record_rt=% a_replay=% b_hold_min=% c_hold_addr=% refuse_conservation=%\n",
+    dec_a.payout_sat, dec_a.held_after_msat, settle_ok && cons_ok, po_rt,
+    dec_a_rep.status == PoStatus.already_sent, dec_b.status == PoStatus.hold_below_min,
+    dec_c.status == PoStatus.hold_no_address, dec_bad.status == PoStatus.conservation_broken);
+
+  return rel_ev_n > 0 && rel_pk == pk_a_want && list_ev_n > 0 && list_pk == pk_c_want &&
+         rel_ok == RegStatus.ok && head_ok == RegStatus.ok && head_rb == RegStatus.rollback &&
+         cat_ok == RegStatus.ok && cat_rb == RegStatus.rollback &&
+         q_ok == QuorumStatus.admitted && self_r == ReproStatus.self_check && q_disp == QuorumStatus.disputed &&
+         inst_ok == InstStatus.ok && inst_tamper == InstStatus.digest_mismatch && inst_trav == InstStatus.bad_path &&
+         lock_pin == InstStatus.active_run_pinned && lock_swap == InstStatus.ok &&
+         def_fwd == InstStatus.ok && def_rb == InstStatus.ok && def_rev == InstStatus.revoked &&
+         rail_ok == PpStatus.ok && rail_bad == PpStatus.bad_rail &&
+         call_ok == PpStatus.ok && call_rep == PpStatus.replayed &&
+         rc_rt == RcStatus.ok && m_st == RcStatus.ok &&
+         totals[0].public_calls == 2 && totals[0].internal_calls == 1 && totals[0].refunded_receipts == 1 &&
+         totals[0].duplicate_receipts == 1 && totals[0].refused_receipts == 1 &&
+         owed_a == 19750 && owed_b == 2000 && totals[0].platform_msat == 3250 && totals[0].gross_msat == 25000 &&
+         dec_a.status == PoStatus.send_now && dec_a.payout_sat == 19 && dec_a.held_after_msat == 750 &&
+         settle_ok && cons_ok && po_rt &&
+         dec_a_rep.status == PoStatus.already_sent && dec_b.status == PoStatus.hold_below_min &&
+         dec_c.status == PoStatus.hold_no_address && dec_bad.status == PoStatus.conservation_broken;
+}
+
+main :: () {
+  ok := ce_run();
+  print("ok=%\n", ok);
+}

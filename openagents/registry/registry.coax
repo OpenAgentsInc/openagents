@@ -1,0 +1,659 @@
+// #authority Signed NIP-REG / NIP-EXT Plugin Registry & Multi-Key NIP-EVAL Reproduction Policy (#14060).
+//
+// Enforces curator-signed inert catalogs (nostr/nips/openagents/NIP-REG.md,
+// schemas/registry.v1.json), NIP-EXT release/listing identity & fee/payout rules
+// (nostr/nips/openagents/NIP-EXT.md), multi-registry deduplication without silent
+// conflict resolution, and independent multi-key NIP-EVAL reproduction quorum
+// (openagents/book/ch047, ch054, ch055).
+//   coax/bin/coax test openagents/registry/registry.coax --library
+//   coax/bin/coax mutate openagents/registry/registry.coax --library --root-only
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/ext/install.coax";
+#load "../../coax/lib/nostr/eval/report.coax";
+#authority;
+
+REG_KIND_RELEASE :: 3184;
+REG_KIND_LISTING :: 30184;
+REG_KIND_EVAL :: 3189;
+REG_TAG_RELEASE :: "oa:ext:release:v1";
+REG_TAG_LISTING :: "oa:ext:listing:v1";
+REG_CATALOG_V :: "openagents.registry.v1";
+REG_PKG_REF_TYPE :: "openagents.package.v1";
+REG_MAX_ENTRIES :: 16; // bounded client catalog limit matching fixed stack JvNode budget (NIP-REG allows lower documented limits)
+REG_MAX_FEE_MSAT :: 2_100_000_000_000_000_000;
+REG_MAX_TITLE :: 128;
+REG_MAX_DESC :: 2048;
+
+RegStatus :: enum u8 {
+  ok;
+  bad_kind;
+  bad_signer;
+  bad_tags;
+  bad_body;
+  bad_payout;
+  rollback;
+  conflict;
+  stale;
+  hidden;
+  duplicate_entry;
+  unsorted_entries;
+  bad_entry;
+}
+
+ReproStatus :: enum u8 {
+  confirms;
+  disputes;
+  self_check;
+  lock_mismatch;
+  unverified;
+  bad_claim;
+}
+
+QuorumStatus :: enum u8 {
+  admitted;
+  insufficient;
+  disputed;
+  dup_checker;
+  bad_input;
+}
+
+RegListingHead :: struct {
+  kind: int;
+  event_id: string;
+  signer: string;
+  slug: string;
+  created_at: int;
+  hidden: bool;
+  release_id: string;
+  has_listing_tag: bool;
+}
+
+RegCatalogState :: struct {
+  revision: int;
+  release_id: string;
+  catalog_digest: string;
+}
+
+RegEvalClaim :: struct {
+  kind: int;
+  event_id: string;
+  signer: string;
+  subject_id: string;
+  lock_digest: string;
+  suite_digest: string;
+  gate_digest: string;
+  eval_view_code: u32;
+  verdict: int;
+}
+
+// ---- lexical & identity helpers
+
+reg_is_hex :: (c: u8) -> bool #effects(all) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+reg_hex64 :: (s: string) -> bool #effects(all) {
+  if s.count != 64 { return false; }
+  for c: s { if !reg_is_hex(c) { return false; } }
+  return true;
+}
+
+reg_hex66_pubkey :: (s: string) -> bool #effects(all) {
+  if s.count != 66 { return false; }
+  if s[0] != '0' || (s[1] != '2' && s[1] != '3') { return false; }
+  for i: 2..<66 { if !reg_is_hex(s[i]) { return false; } }
+  return true;
+}
+
+reg_is_alnum_lower :: (c: u8) -> bool #effects(all) {
+  return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+}
+
+reg_valid_slug :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > 64 { return false; }
+  if !reg_is_alnum_lower(s[0]) || !reg_is_alnum_lower(s[s.count - 1]) { return false; }
+  for c: s {
+    if !reg_is_alnum_lower(c) && c != '-' { return false; }
+  }
+  return true;
+}
+
+reg_valid_package_id :: (pkg: string) -> bool #effects(all) {
+  if pkg.count < 66 || pkg[64] != ':' { return false; }
+  return reg_hex64(pkg[0..<64]) && reg_valid_slug(pkg[65..<pkg.count]);
+}
+
+REG_BECH32 :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+
+reg_is_bech32_char :: (c: u8) -> bool #effects(all) {
+  for x: REG_BECH32 { if x == c { return true; } }
+  return false;
+}
+
+// NIP-EXT payout target: mainnet bare Spark address (`spark1...`), Lightning Address (`local@domain`),
+// or 66-hex compressed secp256k1 node key (`02...`/`03...`).
+reg_valid_payout_target :: (payout: string) -> bool #export_c #effects(all) {
+  if payout.count > 256 { return false; }
+  if reg_hex66_pubkey(payout) { return true; }
+  if payout.count >= 20 && payout[0..<6] == "spark1" {
+    for i: 6..<payout.count {
+      if !reg_is_bech32_char(payout[i]) { return false; }
+    }
+    return true;
+  }
+  // Lightning address: <local>@<domain> with one '@', non-empty local, domain with '.' and no spaces/controls
+  at := -1;
+  for i: 0..<payout.count {
+    c := payout[i];
+    if c <= 32 || c >= 127 { return false; }
+    if c == '@' {
+      if at >= 0 { return false; }
+      at = i;
+    }
+  }
+  if at < 1 || at + 4 >= payout.count { return false; }
+  if payout[at + 1] == '.' || payout[payout.count - 1] == '.' { return false; }
+  has_dot := false;
+  for i: at + 2..<payout.count - 1 {
+    if payout[i] == '.' { has_dot = true; }
+  }
+  return has_dot;
+}
+
+// Bytewise comparison: <0, 0, >0.
+reg_str_cmp :: (a: string, b: string) -> int #effects(all) {
+  n := ifx a.count < b.count then a.count else b.count; // mutant: equivalent — equal lengths pick the same bound
+  for i: 0..<n {
+    if a[i] != b[i] { return cast(int) a[i] - cast(int) b[i]; }
+  }
+  return a.count - b.count;
+}
+
+// ---- NIP-EXT release (3184) & listing (30184) tags and verification
+
+reg_release_tags :: (package_id: string, manifest_digest: string, out: [] u8) -> int #export_c #effects(all) {
+  if !reg_valid_package_id(package_id) || !ev_digest(manifest_digest) { return -1; }
+  o: [1] Jo; jo_start(o[..], out); jo_arr(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "t"); jo_str(o[..], REG_TAG_RELEASE); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "d"); jo_str(o[..], package_id); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "x"); jo_str(o[..], manifest_digest[7..<71]); jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+reg_listing_tags :: (slug: string, out: [] u8) -> int #export_c #effects(all) {
+  if !reg_valid_slug(slug) { return -1; }
+  o: [1] Jo; jo_start(o[..], out); jo_arr(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "d"); jo_str(o[..], slug); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "t"); jo_str(o[..], REG_TAG_LISTING); jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+// Verify a signature-checked NIP-EXT 3184 capability release.
+// Enforces kind, marker tag, namespace ownership, manifest digest, and fee_msat/payout binding.
+reg_verify_release :: (
+  kind: int,
+  signer: string,
+  package_id: string,
+  manifest_digest: string,
+  fee_msat: int,
+  payout: string,
+  has_release_tag: bool
+) -> RegStatus #export_c #effects(all) {
+  if kind != REG_KIND_RELEASE { return RegStatus.bad_kind; }
+  if !has_release_tag { return RegStatus.bad_tags; }
+  if !reg_valid_package_id(package_id) || !ev_digest(manifest_digest) { return RegStatus.bad_body; }
+  if signer != package_id[0..<64] { return RegStatus.bad_signer; }
+  if fee_msat < 0 || fee_msat > REG_MAX_FEE_MSAT { return RegStatus.bad_payout; }
+  if fee_msat > 0 && !reg_valid_payout_target(payout) { return RegStatus.bad_payout; }
+  if payout.count > 0 && !reg_valid_payout_target(payout) { return RegStatus.bad_payout; }
+  return RegStatus.ok;
+}
+
+// NIP-REG listing head watermark admission (30184): rejects key/slug substitution,
+// future-dated heads beyond skew, rollback/tie-break replays, and marks hidden heads.
+reg_listing_head_accept :: (
+  held_created: int,
+  held_id: string,
+  have_held: bool,
+  cand: RegListingHead,
+  enrolled_curator: string,
+  enrolled_slug: string,
+  now: int,
+  skew: int
+) -> RegStatus #export_c #effects(all) {
+  if cand.kind != REG_KIND_LISTING { return RegStatus.bad_kind; }
+  if !cand.has_listing_tag { return RegStatus.bad_tags; }
+  if !reg_hex64(cand.event_id) { return RegStatus.bad_body; }
+  if cand.signer != enrolled_curator || !reg_hex64(enrolled_curator) { return RegStatus.bad_signer; }
+  if cand.slug != enrolled_slug || !reg_valid_slug(enrolled_slug) { return RegStatus.bad_tags; }
+  if cand.created_at < 0 || cand.created_at > now + skew { return RegStatus.stale; }
+  if have_held {
+    if cand.created_at < held_created { return RegStatus.rollback; }
+    if cand.created_at == held_created && reg_str_cmp(cand.event_id, held_id) > 0 {
+      return RegStatus.rollback;
+    }
+  }
+  if cand.hidden { return RegStatus.hidden; }
+  if !reg_hex64(cand.release_id) { return RegStatus.bad_body; }
+  return RegStatus.ok;
+}
+
+// ---- NIP-REG curated catalog admission (openagents.registry.v1)
+
+reg_jv_str :: (v: Jv, obj: int, key: string, out: [] u8) -> int #effects(all) {
+  at := jv_get(v, obj, key);
+  if jv_kind(v, at) != JV_STRING { return -1; }
+  return jv_str(v, at, out);
+}
+
+reg_admit_catalog :: (
+  json_text: string,
+  enrolled_registry_id: string,
+  cand_release_id: string,
+  cand_catalog_digest: string,
+  release_created_at: int,
+  held: RegCatalogState,
+  have_held: bool,
+  now: int,
+  max_age: int,
+  skew: int
+) -> RegStatus #export_c #effects(all) {
+  if !reg_valid_package_id(enrolled_registry_id) || !reg_hex64(cand_release_id) || !ev_digest(cand_catalog_digest) {
+    return RegStatus.bad_body;
+  }
+  d: [1] Jv; nodes: [512] JvNode;
+  _ = jv_parse(d[..], json_text, nodes[..]);
+  if jv_kind(d[0], 0) != JV_OBJECT { return RegStatus.bad_body; }
+  v := d[0];
+  vb: [64] u8; vn := reg_jv_str(v, 0, "v", vb[..]);
+  if vn != REG_CATALOG_V.count || cast(string) vb[0..<vn] != REG_CATALOG_V { return RegStatus.bad_body; }
+  req := jv_get(v, 0, "requires");
+  if jv_kind(v, req) != JV_ARRAY || jv_len(v, req) != 0 { return RegStatus.bad_body; }
+  rb: [140] u8; rn := reg_jv_str(v, 0, "registry", rb[..]);
+  if rn != enrolled_registry_id.count || cast(string) rb[0..<rn] != enrolled_registry_id { return RegStatus.bad_signer; }
+
+  rev := jv_int(v, jv_get(v, 0, "revision"), 0);
+  if rev < 1 { return RegStatus.bad_body; }
+  if have_held {
+    if rev < held.revision { return RegStatus.rollback; }
+    if rev == held.revision && (cand_release_id != held.release_id || cand_catalog_digest != held.catalog_digest) {
+      return RegStatus.conflict;
+    }
+  }
+
+  as_of := jv_int(v, jv_get(v, 0, "as_of"), -1);
+  valid_until := jv_int(v, jv_get(v, 0, "valid_until"), 0);
+  if as_of < 0 || valid_until <= as_of { return RegStatus.stale; }
+  if as_of > release_created_at + skew || as_of > now + skew { return RegStatus.stale; }
+  if now - as_of > max_age || now >= valid_until { return RegStatus.stale; }
+
+  tb: [REG_MAX_TITLE] u8; tn := reg_jv_str(v, 0, "title", tb[..]);
+  if tn < 1 { return RegStatus.bad_body; }
+  db: [REG_MAX_DESC] u8; dn := reg_jv_str(v, 0, "description", db[..]);
+  if dn < 0 { return RegStatus.bad_body; }
+
+  ents := jv_get(v, 0, "entries");
+  if jv_kind(v, ents) != JV_ARRAY { return RegStatus.bad_body; }
+  n_ents := jv_len(v, ents);
+  if n_ents > REG_MAX_ENTRIES { return RegStatus.bad_body; }
+
+  prev_pkg: [140] u8; prev_len: int;
+  for i: 0..<n_ents {
+    e := jv_at(v, ents, i);
+    if jv_kind(v, e) != JV_OBJECT { return RegStatus.bad_entry; }
+    pb: [140] u8; pn := reg_jv_str(v, e, "package", pb[..]);
+    if pn < 0 { return RegStatus.bad_entry; } // mutant: equivalent — pn in 0..1 fails reg_valid_package_id below
+    pkg := cast(string) pb[0..<pn];
+    if !reg_valid_package_id(pkg) { return RegStatus.bad_entry; }
+    cmp := reg_str_cmp(cast(string) prev_pkg[0..<prev_len], pkg);
+    if cmp == 0 { return RegStatus.duplicate_entry; }
+    if cmp > 0 { return RegStatus.unsorted_entries; } // mutant: equivalent — cmp == 0 already returned above
+    for k: 0..<pn { prev_pkg[k] = pb[k]; }
+    prev_len = pn;
+
+    // release: EventRef with kind 3184, 64-hex id, signer == package root
+    rel := jv_get(v, e, "release");
+    if jv_kind(v, rel) != JV_OBJECT { return RegStatus.bad_entry; }
+    idb: [80] u8; idn := reg_jv_str(v, rel, "id", idb[..]);
+    pkb: [80] u8; pkn := reg_jv_str(v, rel, "pubkey", pkb[..]);
+    rk := jv_int(v, jv_get(v, rel, "kind"), REG_KIND_RELEASE - 1);
+    if rk != REG_KIND_RELEASE || idn != 64 || !reg_hex64(cast(string) idb[0..<64]) { return RegStatus.bad_entry; }
+    if pkn != 64 || cast(string) pkb[0..<64] != pkg[0..<64] { return RegStatus.bad_signer; }
+
+    // manifest: ArtifactRef with sha256 digest, size >= 0, media_type, openagents.package.v1
+    man := jv_get(v, e, "manifest");
+    if jv_kind(v, man) != JV_OBJECT { return RegStatus.bad_entry; }
+    md: [80] u8; mdn := reg_jv_str(v, man, "digest", md[..]);
+    msz := jv_int(v, jv_get(v, man, "size"), -1);
+    mt: [128] u8; mtn := reg_jv_str(v, man, "media_type", mt[..]);
+    sc: [64] u8; scn := reg_jv_str(v, man, "schema", sc[..]);
+    if mdn != 71 || !ev_digest(cast(string) md[0..<71]) || msz < 0 || mtn < 1 { return RegStatus.bad_entry; }
+    if scn != REG_PKG_REF_TYPE.count || cast(string) sc[0..<scn] != REG_PKG_REF_TYPE { return RegStatus.bad_entry; }
+
+    et: [REG_MAX_TITLE] u8; etn := reg_jv_str(v, e, "title", et[..]);
+    es: [REG_MAX_DESC] u8; esn := reg_jv_str(v, e, "summary", es[..]);
+    if etn < 1 || esn < 0 { return RegStatus.bad_entry; }
+  }
+  return RegStatus.ok;
+}
+
+// Multi-registry deduplication without silent conflict resolution (NIP-REG lines 289-295).
+reg_resolve_multi_registry :: (
+  pkg_a: string, rel_a: string, man_a: string,
+  pkg_b: string, rel_b: string, man_b: string
+) -> RegStatus #export_c #effects(all) {
+  if !reg_valid_package_id(pkg_a) || !reg_valid_package_id(pkg_b) { return RegStatus.bad_entry; }
+  if !reg_hex64(rel_a) || !reg_hex64(rel_b) || !ev_digest(man_a) || !ev_digest(man_b) { return RegStatus.bad_entry; }
+  if pkg_a != pkg_b { return RegStatus.ok; }
+  if rel_a == rel_b && man_a == man_b { return RegStatus.ok; }
+  return RegStatus.conflict;
+}
+
+// ---- Multi-key NIP-EVAL reproduction claims (ch047, #14060)
+
+reg_claim_valid :: (c: RegEvalClaim) -> bool #effects(all) {
+  if c.kind != REG_KIND_EVAL { return false; }
+  if !reg_hex64(c.event_id) || !reg_hex64(c.signer) { return false; }
+  if c.subject_id.count == 0 { return false; }
+  if !ev_digest(c.lock_digest) || !ev_digest(c.suite_digest) || !ev_digest(c.gate_digest) { return false; }
+  return c.verdict == EV_PASS || c.verdict == EV_FAIL || c.verdict == EV_INCONCLUSIVE;
+}
+
+// Decide whether `check` independently reproduces `orig`: refuses self-check,
+// lock/suite/gate mismatch, or unverified reports; returns confirms or disputes.
+reg_check_reproduction :: (orig: RegEvalClaim, check: RegEvalClaim) -> ReproStatus #export_c #effects(all) {
+  if !reg_claim_valid(orig) || !reg_claim_valid(check) { return ReproStatus.bad_claim; }
+  if orig.eval_view_code != EV_VERIFIED || check.eval_view_code != EV_VERIFIED { return ReproStatus.unverified; }
+  if orig.signer == check.signer { return ReproStatus.self_check; }
+  if orig.subject_id != check.subject_id || orig.lock_digest != check.lock_digest ||
+     orig.suite_digest != check.suite_digest || orig.gate_digest != check.gate_digest {
+    return ReproStatus.lock_mismatch;
+  }
+  if orig.verdict == EV_PASS && check.verdict == EV_PASS { return ReproStatus.confirms; }
+  return ReproStatus.disputes;
+}
+
+// Quorum check across multiple independent checker claims: requires >= min_confirmations
+// distinct non-author confirming keys and zero disputes.
+reg_quorum_reproduced :: (
+  orig: RegEvalClaim,
+  checks: [] RegEvalClaim,
+  min_confirmations: int
+) -> QuorumStatus #export_c #effects(all) {
+  if min_confirmations < 1 || !reg_claim_valid(orig) || orig.eval_view_code != EV_VERIFIED || orig.verdict != EV_PASS {
+    return QuorumStatus.bad_input;
+  }
+  confirmed := 0;
+  for i: 0..<checks.count {
+    for j: 0..<i {
+      if checks[i].signer == checks[j].signer { return QuorumStatus.dup_checker; }
+    }
+    st := reg_check_reproduction(orig, checks[i]);
+    if st == ReproStatus.disputes { return QuorumStatus.disputed; }
+    if st != ReproStatus.confirms { return QuorumStatus.bad_input; }
+    confirmed += 1;
+  }
+  if confirmed < min_confirmations { return QuorumStatus.insufficient; }
+  return QuorumStatus.admitted;
+}
+
+// ---- checks
+
+RG_PK_A :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+RG_PK_B :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+RG_PK_C :: "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13";
+RG_CUR  :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+RG_EV1  :: "1111111111111111111111111111111111111111111111111111111111111111";
+RG_EV2  :: "2222222222222222222222222222222222222222222222222222222222222222";
+RG_EV3  :: "3333333333333333333333333333333333333333333333333333333333333333";
+RG_DIG1 :: "sha256:4444444444444444444444444444444444444444444444444444444444444444";
+RG_DIG2 :: "sha256:5555555555555555555555555555555555555555555555555555555555555555";
+RG_DIG3 :: "sha256:6666666666666666666666666666666666666666666666666666666666666666";
+RG_PKG_A :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:code-review";
+RG_PKG_B :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:lint-fast";
+RG_REG_ID :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents-official";
+
+#test "registry: hex, slugs, package IDs, and payout targets (Spark, LNURL, compressed pubkey)" {
+  #assert reg_hex64(RG_PK_A) && !reg_hex64(RG_PK_A[0..<63]);
+  #assert !reg_hex64("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179g");
+  #assert !reg_hex64("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179:");
+  #assert reg_hex66_pubkey("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert reg_hex66_pubkey("03c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5");
+  #assert !reg_hex66_pubkey("0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert !reg_hex66_pubkey("1279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert !reg_hex66_pubkey("02g9be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert !reg_hex66_pubkey("0279be");
+
+  #assert reg_valid_slug("a") && reg_valid_slug("0-9") && reg_valid_slug("code-review-2");
+  #assert !reg_valid_slug("") && !reg_valid_slug("-abc") && !reg_valid_slug("abc-") && !reg_valid_slug("Abc") && !reg_valid_slug("a_b");
+  #assert !reg_valid_slug("a{b") && !reg_valid_slug("a/b") && !reg_valid_slug("a:b");
+  s64: [65] u8; for i: 0..<65 { s64[i] = 'a'; }
+  #assert reg_valid_slug(cast(string) s64[0..<64]) && !reg_valid_slug(cast(string) s64[0..<65]);
+  #assert reg_valid_package_id(RG_PKG_A) && reg_valid_package_id("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:a");
+  #assert !reg_valid_package_id(RG_PK_A) && !reg_valid_package_id("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:");
+  #assert !reg_valid_package_id("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798/slug");
+  #assert !reg_valid_package_id("GGGG667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:slug");
+  #assert !reg_valid_package_id("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:Bad");
+
+  // Payout targets: Spark mainnet, Lightning address, compressed pubkey; refuse testnet/malformed/long
+  #assert reg_valid_payout_target("spark1qpzry9x8gf2tvd") && !reg_valid_payout_target("spark1qpzry9x8gf2tv");
+  #assert !reg_valid_payout_target("spark1bqpzry9x8gf2tvdw") && !reg_valid_payout_target("spark1pgss9q0x7w2y8r3k4m5n6b");
+  #assert reg_valid_payout_target("alice@openagents.com") && reg_valid_payout_target("a!@b.co") && reg_valid_payout_target("a@b.c/") && reg_valid_payout_target("a.@b.co") && reg_valid_payout_target("a@/b.co");
+  #assert !reg_valid_payout_target("a@.b.co") && !reg_valid_payout_target("a@b.c.");
+  #assert reg_valid_payout_target("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  #assert !reg_valid_payout_target("") && !reg_valid_payout_target("alice") && !reg_valid_payout_target("@openagents.com");
+  #assert !reg_valid_payout_target("@@b.co") && !reg_valid_payout_target("@a@b.co") && !reg_valid_payout_target("a@b@c.com");
+  #assert !reg_valid_payout_target("a@.com") && !reg_valid_payout_target("a@b.") && !reg_valid_payout_target("a@bcde") && !reg_valid_payout_target("a.b@cdef");
+  del_p := [10] u8.['a', '@', 'b', '.', 'c', 'o', 127, 'x', 'y', 'z'];
+  #assert !reg_valid_payout_target(" a@b.co") && !reg_valid_payout_target("a@b.c") && !reg_valid_payout_target("alice @openagents.com") && !reg_valid_payout_target(cast(string) del_p[..]);
+  long_p: [257] u8; long_p[0] = 'a'; long_p[1] = '@'; for i: 2..<255 { long_p[i] = 'b'; } long_p[255] = '.'; long_p[256] = 'c';
+  #assert !reg_valid_payout_target(cast(string) long_p[..]);
+  long_p[254] = '.'; long_p[255] = 'c';
+  #assert reg_valid_payout_target(cast(string) long_p[0..<256]);
+}
+
+#test "registry: release/listing tag builders and NIP-EXT 3184 release verification" {
+  tb: [512] u8;
+  rn := reg_release_tags(RG_PKG_A, RG_DIG1, tb[..]);
+  #assert rn > 0 && cast(string) tb[0..<rn] == "[[\"t\",\"oa:ext:release:v1\"],[\"d\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:code-review\"],[\"x\",\"4444444444444444444444444444444444444444444444444444444444444444\"]]";
+  #assert reg_release_tags("bad", RG_DIG1, tb[..]) == -1 && reg_release_tags(RG_PKG_A, "bad", tb[..]) == -1 && reg_release_tags(RG_PKG_A, RG_DIG1, tb[0..<10]) == -1;
+
+  ln := reg_listing_tags("code-review", tb[..]);
+  #assert ln > 0 && cast(string) tb[0..<ln] == "[[\"d\",\"code-review\"],[\"t\",\"oa:ext:listing:v1\"]]";
+  #assert reg_listing_tags("Bad", tb[..]) == -1 && reg_listing_tags("code-review", tb[0..<5]) == -1;
+
+  // Release verification: free, paid with Spark/LNURL, and every refusal
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, RG_DIG1, 0, "", true) == RegStatus.ok;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, RG_DIG1, 5000, "alice@openagents.com", true) == RegStatus.ok;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, RG_DIG1, REG_MAX_FEE_MSAT, "spark1pgss9q0x7w2y8r3k4m5n6p", true) == RegStatus.ok;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, RG_DIG1, 0, "alice@openagents.com", true) == RegStatus.ok;
+  #assert reg_verify_release(30184, RG_PK_A, RG_PKG_A, RG_DIG1, 0, "", true) == RegStatus.bad_kind;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, RG_DIG1, 0, "", false) == RegStatus.bad_tags;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, "bad", RG_DIG1, 0, "", true) == RegStatus.bad_body;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, "bad", 0, "", true) == RegStatus.bad_body;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_B, RG_PKG_A, RG_DIG1, 0, "", true) == RegStatus.bad_signer;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, RG_DIG1, -1, "", true) == RegStatus.bad_payout;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, RG_DIG1, REG_MAX_FEE_MSAT + 1, "alice@openagents.com", true) == RegStatus.bad_payout;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, RG_DIG1, 1, "", true) == RegStatus.bad_payout;
+  #assert reg_verify_release(REG_KIND_RELEASE, RG_PK_A, RG_PKG_A, RG_DIG1, 0, "x", true) == RegStatus.bad_payout;
+}
+
+#test "registry: listing head watermark, rollback, tie-break, skew, and hidden heads" {
+  h := RegListingHead.{
+    kind = REG_KIND_LISTING, event_id = RG_EV2, signer = RG_CUR, slug = "openagents-official",
+    created_at = 1000, hidden = false, release_id = RG_EV1, has_listing_tag = true
+  };
+  #assert reg_listing_head_accept(0, "", false, h, RG_CUR, "openagents-official", 1000, 60) == RegStatus.ok;
+  h_zero := h; h_zero.created_at = 0;
+  #assert reg_listing_head_accept(0, "", false, h_zero, RG_CUR, "openagents-official", 0, 0) == RegStatus.ok;
+  #assert reg_listing_head_accept(1000, RG_EV2, true, h, RG_CUR, "openagents-official", 1000, 60) == RegStatus.ok;
+  #assert reg_listing_head_accept(999, RG_EV3, true, h, RG_CUR, "openagents-official", 1000, 60) == RegStatus.ok;
+  // Equal timestamp tie-break: lower lexicographic ID wins, higher ID is rollback
+  h_lo := h; h_lo.event_id = RG_EV1;
+  #assert reg_listing_head_accept(1000, RG_EV2, true, h_lo, RG_CUR, "openagents-official", 1000, 60) == RegStatus.ok;
+  h_hi := h; h_hi.event_id = RG_EV3;
+  #assert reg_listing_head_accept(1000, RG_EV2, true, h_hi, RG_CUR, "openagents-official", 1000, 60) == RegStatus.rollback;
+  // Earlier timestamp is rollback
+  h_old := h; h_old.created_at = 999;
+  #assert reg_listing_head_accept(1000, RG_EV2, true, h_old, RG_CUR, "openagents-official", 1000, 60) == RegStatus.rollback;
+  // Skew boundary: created_at == now + skew passes, +1 refuses stale; negative created_at refuses stale
+  h_sk := h; h_sk.created_at = 1060;
+  #assert reg_listing_head_accept(0, "", false, h_sk, RG_CUR, "openagents-official", 1000, 60) == RegStatus.ok;
+  h_sk.created_at = 1061;
+  #assert reg_listing_head_accept(0, "", false, h_sk, RG_CUR, "openagents-official", 1000, 60) == RegStatus.stale;
+  h_sk.created_at = -1;
+  #assert reg_listing_head_accept(0, "", false, h_sk, RG_CUR, "openagents-official", 1000, 60) == RegStatus.stale;
+  // Hidden head withdraws membership (even without release_id); non-hidden needs release_id
+  h_hid := h; h_hid.hidden = true; h_hid.release_id = "";
+  #assert reg_listing_head_accept(0, "", false, h_hid, RG_CUR, "openagents-official", 1000, 60) == RegStatus.hidden;
+  h_norel := h; h_norel.release_id = "";
+  #assert reg_listing_head_accept(0, "", false, h_norel, RG_CUR, "openagents-official", 1000, 60) == RegStatus.bad_body;
+  // Substituted curator key, wrong kind, missing tag, bad event_id, wrong slug
+  b := h; b.kind = 3184; #assert reg_listing_head_accept(0, "", false, b, RG_CUR, "openagents-official", 1000, 60) == RegStatus.bad_kind;
+  b = h; b.has_listing_tag = false; #assert reg_listing_head_accept(0, "", false, b, RG_CUR, "openagents-official", 1000, 60) == RegStatus.bad_tags;
+  b = h; b.event_id = "bad"; #assert reg_listing_head_accept(0, "", false, b, RG_CUR, "openagents-official", 1000, 60) == RegStatus.bad_body;
+  b = h; b.signer = RG_PK_B; #assert reg_listing_head_accept(0, "", false, b, RG_CUR, "openagents-official", 1000, 60) == RegStatus.bad_signer;
+  #assert reg_listing_head_accept(0, "", false, h, "bad", "openagents-official", 1000, 60) == RegStatus.bad_signer;
+  b = h; b.slug = "other"; #assert reg_listing_head_accept(0, "", false, b, RG_CUR, "openagents-official", 1000, 60) == RegStatus.bad_tags;
+  b = h; b.slug = "Bad"; #assert reg_listing_head_accept(0, "", false, b, RG_CUR, "Bad", 1000, 60) == RegStatus.bad_tags;
+}
+
+#test "registry: curated catalog admission, rollback, equal-revision conflict, freshness, ordering, and multi-registry" {
+  cat_good := "{\"v\":\"openagents.registry.v1\",\"requires\":[],\"registry\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents-official\",\"revision\":2,\"as_of\":1000,\"valid_until\":5000,\"title\":\"Official\",\"description\":\"Curated\",\"entries\":[{\"package\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:code-review\",\"release\":{\"id\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind\":3184},\"manifest\":{\"digest\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"size\":1024,\"media_type\":\"application/json\",\"schema\":\"openagents.package.v1\"},\"title\":\"Code Review\",\"summary\":\"Reviews diffs\"},{\"package\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:lint-fast\",\"release\":{\"id\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"kind\":3184},\"manifest\":{\"digest\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"size\":0,\"media_type\":\"application/json\",\"schema\":\"openagents.package.v1\"},\"title\":\"Lint Fast\",\"summary\":\"\"}]}";
+  held := RegCatalogState.{revision = 2, release_id = RG_EV1, catalog_digest = RG_DIG1};
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.ok;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, true, 1000, 3600, 60) == RegStatus.ok;
+  // Higher revision passes; lower revision is rollback; equal revision with different release or digest is conflict
+  held1 := RegCatalogState.{revision = 1, release_id = RG_EV2, catalog_digest = RG_DIG2};
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held1, true, 1000, 3600, 60) == RegStatus.ok;
+  held3 := RegCatalogState.{revision = 3, release_id = RG_EV1, catalog_digest = RG_DIG1};
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held3, true, 1000, 3600, 60) == RegStatus.rollback;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV2, RG_DIG1, 1000, held, true, 1000, 3600, 60) == RegStatus.conflict;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG2, 1000, held, true, 1000, 3600, 60) == RegStatus.conflict;
+  // Freshness boundaries: release_created_at+skew, now+skew, max_age, valid_until
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 940, held, false, 1000, 3600, 60) == RegStatus.ok;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 939, held, false, 1000, 3600, 60) == RegStatus.stale;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 940, 3600, 60) == RegStatus.ok;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 939, 3600, 60) == RegStatus.stale;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 4600, 3600, 60) == RegStatus.ok;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 4601, 3600, 60) == RegStatus.stale;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 4999, 5000, 60) == RegStatus.ok;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 5000, 5000, 60) == RegStatus.stale;
+  // Outer parameter and envelope refusals
+  #assert reg_admit_catalog(cat_good, "bad", RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, "bad", RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(cat_good, RG_REG_ID, RG_EV1, "bad", 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog("[]", RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog("{", RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(cat_good, RG_PKG_A, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_signer;
+  #assert reg_admit_catalog(cat_good, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:openagents-official", RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_signer;
+
+  // Malformed catalog variations: version, requires, missing/bad revision/as_of/valid_until, title, entries, duplicate, unsorted, member signer, manifest
+  o: [4096] u8;
+  #assert reg_admit_catalog(ts_swap(cat_good, "openagents.registry.v1", "openagents.registry.v2", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"requires\":[]", "\"requires\":[\"x\"]", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"revision\":2", "\"revision\":0", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"revision\":2,", "", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"as_of\":1000,", "", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.stale;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"as_of\":1000,\"valid_until\":5000,", "\"as_of\":0,", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 0, held, false, 0, 3600, 0) == RegStatus.stale;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"as_of\":1000", "\"as_of\":-1", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.stale;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"as_of\":1000,\"valid_until\":5000", "\"as_of\":0,\"valid_until\":1", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 0, held, false, 0, 3600, 0) == RegStatus.ok;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"valid_until\":5000", "\"valid_until\":1000", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 999, 3600, 60) == RegStatus.stale;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"title\":\"Official\"", "\"title\":\"\"", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"description\":\"Curated\"", "\"description\":7", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"entries\":[", "\"entries\":{},\"x\":[", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  #assert reg_admit_catalog(ts_swap(cat_good, RG_PKG_B, RG_PKG_A, o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.duplicate_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, ":code-review", ":z-review", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.ok;
+  // Unsorted entries differing by 1 byte ('b' > 'a' -> cmp == 1)
+  u_cat := "{\"v\":\"openagents.registry.v1\",\"requires\":[],\"registry\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents-official\",\"revision\":1,\"as_of\":1000,\"valid_until\":5000,\"title\":\"T\",\"description\":\"\",\"entries\":[{\"package\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:b\",\"release\":{\"id\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind\":3184},\"manifest\":{\"digest\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"size\":1,\"media_type\":\"a\",\"schema\":\"openagents.package.v1\"},\"title\":\"B\",\"summary\":\"\"},{\"package\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:a\",\"release\":{\"id\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind\":3184},\"manifest\":{\"digest\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"size\":1,\"media_type\":\"a\",\"schema\":\"openagents.package.v1\"},\"title\":\"A\",\"summary\":\"\"}]}";
+  #assert reg_admit_catalog(u_cat, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.unsorted_entries;
+  // Exact entry limit boundary: 16 entries (first is bad_entry, passes count check) vs 17 entries (bad_body)
+  c16 := "{\"v\":\"openagents.registry.v1\",\"requires\":[],\"registry\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents-official\",\"revision\":1,\"as_of\":1000,\"valid_until\":5000,\"title\":\"T\",\"description\":\"\",\"entries\":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]}";
+  c17 := "{\"v\":\"openagents.registry.v1\",\"requires\":[],\"registry\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents-official\",\"revision\":1,\"as_of\":1000,\"valid_until\":5000,\"title\":\"T\",\"description\":\"\",\"entries\":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]}";
+  #assert reg_admit_catalog(c16, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(c17, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_body;
+  // Member entry validation failures
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"kind\":3184", "\"kind\":30184", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, ",\"kind\":3184", "", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"", "\"pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_signer;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"size\":1024", "\"size\":-1", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"size\":1024,", "", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"digest\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\"", "\"digest\":\"sha256:GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG\"", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"media_type\":\"application/json\"", "\"media_type\":\"a\"", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.ok;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"media_type\":\"application/json\"", "\"media_type\":\"\"", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"schema\":\"openagents.package.v1\"", "\"schema\":\"openagents.package.v2\"", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"schema\":\"openagents.package.v1\"", "\"schema\":\"other.v1\"", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"title\":\"Code Review\"", "\"title\":\"\"", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"summary\":\"Reviews diffs\"", "\"summary\":7", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"package\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:code-review\"", "\"package\":\"bad\"", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"package\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:code-review\"", "\"package\":7", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"entries\":[{", "\"entries\":[1,{", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"release\":{", "\"release\":1,\"r\":{", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  #assert reg_admit_catalog(ts_swap(cat_good, "\"manifest\":{", "\"manifest\":1,\"m\":{", o[..]), RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.bad_entry;
+  // Empty entries array is valid
+  empty_cat := "{\"v\":\"openagents.registry.v1\",\"requires\":[],\"registry\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents-official\",\"revision\":1,\"as_of\":1000,\"valid_until\":5000,\"title\":\"Empty\",\"description\":\"\",\"entries\":[]}";
+  #assert reg_admit_catalog(empty_cat, RG_REG_ID, RG_EV1, RG_DIG1, 1000, held, false, 1000, 3600, 60) == RegStatus.ok;
+
+  // Multi-registry deduplication & conflict detection
+  #assert reg_resolve_multi_registry(RG_PKG_A, RG_EV1, RG_DIG1, RG_PKG_A, RG_EV1, RG_DIG1) == RegStatus.ok;
+  #assert reg_resolve_multi_registry(RG_PKG_A, RG_EV1, RG_DIG1, RG_PKG_B, RG_EV2, RG_DIG2) == RegStatus.ok;
+  #assert reg_resolve_multi_registry(RG_PKG_A, RG_EV1, RG_DIG1, RG_PKG_A, RG_EV2, RG_DIG1) == RegStatus.conflict;
+  #assert reg_resolve_multi_registry(RG_PKG_A, RG_EV1, RG_DIG1, RG_PKG_A, RG_EV1, RG_DIG2) == RegStatus.conflict;
+  #assert reg_resolve_multi_registry("bad", RG_EV1, RG_DIG1, RG_PKG_A, RG_EV1, RG_DIG1) == RegStatus.bad_entry;
+  #assert reg_resolve_multi_registry(RG_PKG_A, "bad", RG_DIG1, RG_PKG_A, RG_EV1, RG_DIG1) == RegStatus.bad_entry;
+}
+
+#test "registry: multi-key NIP-EVAL reproduction & quorum admission" {
+  orig := RegEvalClaim.{
+    kind = REG_KIND_EVAL, event_id = RG_EV1, signer = RG_PK_A,
+    subject_id = RG_PKG_A, lock_digest = RG_DIG1, suite_digest = RG_DIG2, gate_digest = RG_DIG3,
+    eval_view_code = EV_VERIFIED, verdict = EV_PASS
+  };
+  chk_b := orig; chk_b.event_id = RG_EV2; chk_b.signer = RG_PK_B;
+  chk_c := orig; chk_c.event_id = RG_EV3; chk_c.signer = RG_PK_C;
+
+  // Independent confirmation & dispute
+  #assert reg_check_reproduction(orig, chk_b) == ReproStatus.confirms;
+  disp := chk_b; disp.verdict = EV_FAIL;
+  #assert reg_check_reproduction(orig, disp) == ReproStatus.disputes;
+  inc := chk_b; inc.verdict = EV_INCONCLUSIVE;
+  #assert reg_check_reproduction(orig, inc) == ReproStatus.disputes;
+  orig_f := orig; orig_f.verdict = EV_FAIL;
+  #assert reg_check_reproduction(orig_f, disp) == ReproStatus.disputes;
+
+  // Self-check refused; lock/suite/gate/subject mismatch refused; unverified refused; bad claim refused
+  #assert reg_check_reproduction(orig, orig) == ReproStatus.self_check;
+  ml := chk_b; ml.lock_digest = RG_DIG2; #assert reg_check_reproduction(orig, ml) == ReproStatus.lock_mismatch;
+  ms := chk_b; ms.suite_digest = RG_DIG1; #assert reg_check_reproduction(orig, ms) == ReproStatus.lock_mismatch;
+  mg := chk_b; mg.gate_digest = RG_DIG1; #assert reg_check_reproduction(orig, mg) == ReproStatus.lock_mismatch;
+  msub := chk_b; msub.subject_id = RG_PKG_B; #assert reg_check_reproduction(orig, msub) == ReproStatus.lock_mismatch;
+  unv := chk_b; unv.eval_view_code = EV_UNVERIFIABLE; #assert reg_check_reproduction(orig, unv) == ReproStatus.unverified;
+  unvo := orig; unvo.eval_view_code = EV_UNTRUSTED; #assert reg_check_reproduction(unvo, chk_b) == ReproStatus.unverified;
+  bc := chk_b; bc.kind = 3184; #assert reg_check_reproduction(orig, bc) == ReproStatus.bad_claim;
+  bc = chk_b; bc.event_id = "bad"; #assert reg_check_reproduction(orig, bc) == ReproStatus.bad_claim;
+  bc = chk_b; bc.signer = "bad"; #assert reg_check_reproduction(orig, bc) == ReproStatus.bad_claim;
+  bc = chk_b; bc.lock_digest = "bad"; #assert reg_check_reproduction(orig, bc) == ReproStatus.bad_claim;
+  bc = chk_b; bc.suite_digest = "bad"; #assert reg_check_reproduction(orig, bc) == ReproStatus.bad_claim;
+  bc = chk_b; bc.gate_digest = "bad"; #assert reg_check_reproduction(orig, bc) == ReproStatus.bad_claim;
+  bc = chk_b; bc.verdict = 9; #assert reg_check_reproduction(orig, bc) == ReproStatus.bad_claim;
+  bc = chk_b; bc.subject_id = ""; #assert reg_check_reproduction(orig, bc) == ReproStatus.bad_claim;
+
+  // Quorum: 2 distinct checkers pass quorum 2; 1 is insufficient; duplicate checker refuses; any dispute blocks quorum
+  two := [2] RegEvalClaim.[chk_b, chk_c];
+  #assert reg_quorum_reproduced(orig, two[..], 2) == QuorumStatus.admitted;
+  #assert reg_quorum_reproduced(orig, two[0..<1], 2) == QuorumStatus.insufficient;
+  #assert reg_quorum_reproduced(orig, two[0..<1], 1) == QuorumStatus.admitted;
+  #assert reg_quorum_reproduced(orig, two[..], 0) == QuorumStatus.bad_input;
+  #assert reg_quorum_reproduced(orig_f, two[..], 1) == QuorumStatus.bad_input;
+  dups := [2] RegEvalClaim.[chk_b, chk_b];
+  #assert reg_quorum_reproduced(orig, dups[..], 2) == QuorumStatus.dup_checker;
+  with_disp := [2] RegEvalClaim.[chk_b, disp];
+  with_disp[1].signer = RG_PK_C;
+  #assert reg_quorum_reproduced(orig, with_disp[..], 1) == QuorumStatus.disputed;
+  with_self := [1] RegEvalClaim.[orig];
+  #assert reg_quorum_reproduced(orig, with_self[..], 1) == QuorumStatus.bad_input;
+}
