@@ -13,6 +13,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/encoding/base64.coax";
 #load "../../coax/lib/net/socket_foreign.coax";
 #load "../../coax/lib/gateway/transport.coax";
 #load "../../coax/lib/gateway/card.coax";
@@ -49,6 +50,11 @@ FWW_TURN_TOOLS_BUDGET_CLOUD :: 65536;
 FWW_TURN_TOOLS_BUDGET_LOCAL :: 16384;
 FWW_CMD_HEAD_MAX :: 8192;
 FWW_CMD_TAIL_MAX :: 16384;
+FWW_IMG_RAW_TARGET :: 380000;
+FWW_IMG_B64_MAX :: 524288;
+FWW_IMG_MAX_DIM :: 2000;
+FWW_IMG_AGGRESSIVE_DIM :: 1000;
+FWW_IMG_SLAB :: 1572864;
 
 FWW_SRC_MESSAGE :: 0;
 FWW_SRC_QUEUE :: 1;
@@ -737,6 +743,8 @@ FwBlock :: struct {
   name_at: int; name_n: int;
   text_at: int; text_n: int;
   sig_at: int; sig_n: int;
+  img_mime_at: int; img_mime_n: int;
+  img_at: int; img_n: int;
   is_error: bool;
 }
 
@@ -937,17 +945,37 @@ fww_estimate_prompt_bytes :: (h: [] FwHist, sys_n: int, is_local: bool, no_tools
         if !is_local || i + 2 < h[0].nmsgs { continue; }
       }
       total += bk.id_n + bk.name_n + bk.text_n + 48;
-      if !is_local { total += bk.sig_n; }
+      if !is_local {
+        total += bk.sig_n;
+        if bk.img_n > 0 { total += bk.img_mime_n + bk.img_n + 128; }
+      }
     }
   }
   return total;
 }
 
-// Conservative token estimate (~3 B/tok for code/JSON/paths), calibrated upward against server-reported prompt_tokens.
+// Conservative token estimate (~3 B/tok for text/code, ~1600 tok per attached image), calibrated upward against server-reported prompt_tokens.
 fww_estimate_prompt_tokens :: (h: [] FwHist, sys_n: int, is_local: bool, no_tools: bool) -> int {
-  bytes := fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools);
-  est := (bytes + 2) / 3;
+  text_bytes := sys_n + (ifx no_tools then 256 else 5600);
+  img_tokens := 0;
+  for i: 0..<h[0].nmsgs {
+    msg := h[0].msgs[i];
+    text_bytes += 96;
+    for b: 0..<msg.nblocks {
+      bk := msg.blocks[b];
+      if bk.kind == FWW_MB_THINK {
+        if !is_local || i + 2 < h[0].nmsgs { continue; }
+      }
+      text_bytes += bk.id_n + bk.name_n + bk.text_n + 48;
+      if !is_local {
+        text_bytes += bk.sig_n;
+        if bk.img_n > 0 { img_tokens += 1600; }
+      }
+    }
+  }
+  est := (text_bytes + 2) / 3 + img_tokens;
   if h[0].last_in_tok > 0 {
+    bytes := fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools);
     delta := bytes - h[0].last_in_bytes;
     cal := h[0].last_in_tok + (ifx delta > 0 then (delta + 2) / 3 else delta / 4);
     if cal > est { est = cal; }
@@ -1101,7 +1129,13 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
     fixed_kept := 0;
     shrink_kept := 0;
     shrink_blks := 0;
+    tr_pre := 0;
     for k: 0..<nkept {
+      is_old_pre := false;
+      if kept_msgs[k].role == FWW_MROLE_TOOL_RESULTS {
+        is_old_pre = tr_pre < recent_tr_from;
+        tr_pre += 1;
+      }
       for b: 0..<kept_msgs[k].nblocks {
         bk := kept_msgs[k].blocks[b];
         fixed_kept += bk.id_n + bk.name_n + bk.sig_n;
@@ -1110,6 +1144,9 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
         } else {
           shrink_kept += bk.text_n;
           if bk.text_n > 0 { shrink_blks += 1; }
+          if bk.kind == FWW_MB_TOOL_RES && bk.img_n > 0 && !(is_old_pre && old_tool_cap > 0) && eff_recent_cap == 0 {
+            fixed_kept += bk.img_mime_n + bk.img_n;
+          }
         }
       }
     }
@@ -1147,9 +1184,10 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
       tx_s := fww_slab_str(h, bk.text_at, bk.text_n);
       tx_new := reloc_at;
       cap_b := 0;
+      drop_img := false;
       if bk.kind == FWW_MB_TOOL_RES {
-        if is_old_tr && old_tool_cap > 0 { cap_b = old_tool_cap; }
-        if eff_recent_cap > 0 && (cap_b == 0 || eff_recent_cap < cap_b) { cap_b = eff_recent_cap; }
+        if is_old_tr && old_tool_cap > 0 { cap_b = old_tool_cap; drop_img = true; }
+        if eff_recent_cap > 0 && (cap_b == 0 || eff_recent_cap < cap_b) { cap_b = eff_recent_cap; drop_img = true; }
       } else if bk.kind == FWW_MB_TEXT || bk.kind == FWW_MB_THINK {
         if eff_recent_cap > 0 { cap_b = eff_recent_cap; }
       }
@@ -1162,10 +1200,22 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
       if reloc_at + sg_s.count > tmp_buf.count { overflowed = true; break; }
       sg_new := reloc_at; sg_n := fww_cat(tmp_buf, reloc_at, sg_s) - reloc_at; reloc_at += sg_n;
       if sg_n != sg_s.count { overflowed = true; break; }
+      im_new := 0; im_n := 0;
+      idb_new := 0; idb_n := 0;
+      if bk.img_n > 0 && !drop_img {
+        im_s := fww_slab_str(h, bk.img_mime_at, bk.img_mime_n);
+        idb_s := fww_slab_str(h, bk.img_at, bk.img_n);
+        if reloc_at + im_s.count + idb_s.count <= tmp_buf.count {
+          im_new = reloc_at; im_n = fww_cat(tmp_buf, reloc_at, im_s) - reloc_at; reloc_at += im_n;
+          idb_new = reloc_at; idb_n = fww_cat(tmp_buf, reloc_at, idb_s) - reloc_at; reloc_at += idb_n;
+        }
+      }
       kept_msgs[k].blocks[b].id_at = id_new; kept_msgs[k].blocks[b].id_n = id_n;
       kept_msgs[k].blocks[b].name_at = nm_new; kept_msgs[k].blocks[b].name_n = nm_n;
       kept_msgs[k].blocks[b].text_at = tx_new; kept_msgs[k].blocks[b].text_n = tx_n;
       kept_msgs[k].blocks[b].sig_at = sg_new; kept_msgs[k].blocks[b].sig_n = sg_n;
+      kept_msgs[k].blocks[b].img_mime_at = im_new; kept_msgs[k].blocks[b].img_mime_n = im_n;
+      kept_msgs[k].blocks[b].img_at = idb_new; kept_msgs[k].blocks[b].img_n = idb_n;
     }
     if overflowed { break; }
   }
@@ -1205,6 +1255,10 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
       nb.name_n = fww_slab_put(h, cast(string) tmp_buf[bk.name_at..<bk.name_at + bk.name_n], a0[..]); nb.name_at = a0[0];
       nb.text_n = fww_slab_put(h, cast(string) tmp_buf[bk.text_at..<bk.text_at + bk.text_n], a0[..]); nb.text_at = a0[0];
       nb.sig_n = fww_slab_put(h, cast(string) tmp_buf[bk.sig_at..<bk.sig_at + bk.sig_n], a0[..]); nb.sig_at = a0[0];
+      if bk.img_n > 0 && bk.img_mime_n > 0 {
+        nb.img_mime_n = fww_slab_put(h, cast(string) tmp_buf[bk.img_mime_at..<bk.img_mime_at + bk.img_mime_n], a0[..]); nb.img_mime_at = a0[0];
+        nb.img_n = fww_slab_put(h, cast(string) tmp_buf[bk.img_at..<bk.img_at + bk.img_n], a0[..]); nb.img_at = a0[0];
+      }
       h[0].msgs[mi].blocks[b] = nb;
     }
     h[0].msgs[mi].nblocks = kept_msgs[k].nblocks;
@@ -1616,7 +1670,7 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   n = fww_cat(out, n, "\n\n# Working Efficiently & Using Tools\n");
   n = fww_cat(out, n, "- Go straight to the point. Try the simplest direct implementation first without going in circles — avoid speculative abstractions, unrelated refactors, or extra configurability.\n");
   n = fww_cat(out, n, "- Maximize parallel tool calls: emit ALL independent Read, Grep, Glob, or Edit calls together in a single response instead of one call per turn.\n");
-  n = fww_cat(out, n, "- Prefer dedicated tools over Bash: Read (not cat/head/tail/sed), Edit (not sed/awk), Write (not heredoc), Glob (not find/ls), Grep (not rg/grep). Reserve Bash for builds, tests, git, and scripts.\n");
+  n = fww_cat(out, n, "- Prefer dedicated tools over Bash: Read (not cat/head/tail/sed — Read also natively reads PNG/JPEG/GIF/WebP/BMP/TIFF/HEIC images and screenshots directly without scripts), Edit (not sed/awk), Write (not heredoc), Glob (not find/ls), Grep (not rg/grep). Reserve Bash for builds, tests, git, and scripts.\n");
   n = fww_cat(out, n, "- Keep exploration tightly bounded: read only the target file(s) and direct callers/tests needed for the task (typically 2-4 turns). Do not read peripheral docs, unrelated modules, or deep git history once you know enough to write your first working change.\n");
   n = fww_cat(out, n, "- Derive root causes and general invariants thoroughly before patching: fix the underlying invariant across multiple sequential, concurrent, or interleaved operations and edge cases (never just a single repro symptom). Batch independent edits cleanly, run targeted build/test checks right after editing, and fuzz boundary/malformed/stress inputs before finishing.\n");
   n = fww_cat(out, n, "- Think concisely and iterate from real execution: do not spend long blocks mentally simulating every case in isolation before running code. Once you have the core model, write your deliverable implementation and a comprehensive test script early so real execution exposes subtle edge cases with plenty of time left to fix them. For search or optimization tasks, write the first valid working output to the target path immediately before running slower refinement passes, and keep scripts fast (<30s).\n");
@@ -1808,6 +1862,18 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
           }
           if bk.is_error { jo_key(o[..], "is_error"); jo_bool(o[..], true); }
           jo_end(o[..]);
+          if bk.img_n > 0 && bk.img_mime_n > 0 {
+            jo_key(o[..], "parts");
+            jo_arr(o[..]);
+            jo_obj(o[..]);
+            jo_key(o[..], "inlineData");
+            jo_obj(o[..]);
+            jo_key(o[..], "mimeType"); jo_str(o[..], fww_slab_str(h, bk.img_mime_at, bk.img_mime_n));
+            jo_key(o[..], "data"); jo_str(o[..], fww_slab_str(h, bk.img_at, bk.img_n));
+            jo_end(o[..]);
+            jo_end(o[..]);
+            jo_end(o[..]);
+          }
           jo_end(o[..]);
           jo_end(o[..]);
         }
@@ -1964,6 +2030,8 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
       jo_end(o[..]);
       last_oai_role = 2;
     } else if msg.role == FWW_MROLE_TOOL_RESULTS {
+      has_tr_imgs := false;
+      has_tr_txt := false;
       for b: 0..<msg.nblocks {
         bk := msg.blocks[b];
         if bk.kind == FWW_MB_TOOL_RES {
@@ -1975,12 +2043,62 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
           if is_local && bk.is_error { jo_key(o[..], "is_error"); jo_bool(o[..], true); }
           jo_end(o[..]);
           last_oai_role = 1;
+          if !is_local && bk.img_n > 0 && bk.img_mime_n > 0 { has_tr_imgs = true; }
         } else if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
-          jo_obj(o[..]);
-          jo_key(o[..], "role"); jo_str(o[..], "user");
-          jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
-          jo_end(o[..]);
-          last_oai_role = 1;
+          has_tr_txt = true;
+        }
+      }
+      if has_tr_imgs {
+        jo_obj(o[..]);
+        jo_key(o[..], "role"); jo_str(o[..], "user");
+        jo_key(o[..], "content");
+        jo_arr(o[..]);
+        for b: 0..<msg.nblocks {
+          bk := msg.blocks[b];
+          if bk.kind == FWW_MB_TOOL_RES && bk.img_n > 0 && bk.img_mime_n > 0 {
+            jo_obj(o[..]);
+            jo_key(o[..], "type"); jo_str(o[..], "text");
+            jo_key(o[..], "text"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+            jo_end(o[..]);
+            jo_obj(o[..]);
+            jo_key(o[..], "type"); jo_str(o[..], "image_url");
+            jo_key(o[..], "image_url");
+            jo_obj(o[..]);
+            jo_key(o[..], "url");
+            jo_value(o[..]);
+            jo_put(o[..], "\"data:");
+            jo_put(o[..], fww_slab_str(h, bk.img_mime_at, bk.img_mime_n));
+            jo_put(o[..], ";base64,");
+            jo_put(o[..], fww_slab_str(h, bk.img_at, bk.img_n));
+            jo_put(o[..], "\"");
+            jo_end(o[..]);
+            jo_end(o[..]);
+          }
+        }
+        if has_tr_txt {
+          for b: 0..<msg.nblocks {
+            bk := msg.blocks[b];
+            if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
+              jo_obj(o[..]);
+              jo_key(o[..], "type"); jo_str(o[..], "text");
+              jo_key(o[..], "text"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+              jo_end(o[..]);
+            }
+          }
+        }
+        jo_end(o[..]);
+        jo_end(o[..]);
+        last_oai_role = 1;
+      } else if has_tr_txt {
+        for b: 0..<msg.nblocks {
+          bk := msg.blocks[b];
+          if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
+            jo_obj(o[..]);
+            jo_key(o[..], "role"); jo_str(o[..], "user");
+            jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+            jo_end(o[..]);
+            last_oai_role = 1;
+          }
         }
       }
     }
@@ -2384,8 +2502,399 @@ fww_sanitize_text_line :: (src: string, dst: [] u8) -> int {
   return n;
 }
 
-fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: [] FwReadDedup, dedup_cur: [] int, compact_epoch: int, is_local: bool, fbuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+// ---------------------------------------------------------------- native image reading (Claude Code FileReadTool + imageResizer parity)
+
+fww_path_ext_lower :: (path: string, out: [] u8) -> string {
+  dot := -1;
+  i := path.count - 1;
+  while i >= 0 {
+    if path[i] == '/' || path[i] == '\\' { break; }
+    if path[i] == '.' { dot = i; break; }
+    i -= 1;
+  }
+  if dot < 0 || dot + 1 >= path.count { return ""; }
+  n := 0;
+  for k: (dot + 1)..<path.count {
+    if n >= out.count { break; }
+    c := path[k];
+    if c >= 'A' && c <= 'Z' { c += 32; }
+    out[n] = c; n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+fww_is_image_ext :: (ext: string) -> bool {
+  return ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif"
+      || ext == "webp" || ext == "bmp" || ext == "tif" || ext == "tiff" || ext == "heic";
+}
+
+fww_is_web_image_mime :: (mime: string) -> bool {
+  return mime == "image/png" || mime == "image/jpeg" || mime == "image/gif" || mime == "image/webp";
+}
+
+// Claude Code FileReadTool getAlternateScreenshotPath: macOS uses either ASCII space (0x20)
+// or narrow no-break space U+202F (UTF-8 E2 80 AF) before AM/PM in screenshot filenames.
+fww_alt_screenshot_path :: (path: string, out: [] u8) -> string {
+  // Match suffix: (<space> | \xE2\x80\xAF) (AM|PM) (.png|.jpg|.jpeg)
+  ext_b: [16] u8;
+  ext := fww_path_ext_lower(path, ext_b[..]);
+  if ext != "png" && ext != "jpg" && ext != "jpeg" { return ""; }
+  ext_len := ext.count + 1; // includes '.'
+  if path.count < ext_len + 4 { return ""; }
+  ampm_pos := path.count - ext_len - 2;
+  c0 := path[ampm_pos]; c1 := path[ampm_pos + 1];
+  if !((c0 == 'A' || c0 == 'P') && c1 == 'M') { return ""; }
+  if ampm_pos >= 1 && path[ampm_pos - 1] == ' ' {
+    // Replace ' ' with UTF-8 U+202F (0xE2 0x80 0xAF)
+    n := fww_cat(out, 0, cast(string) path[0..<ampm_pos - 1]);
+    if n + 3 >= out.count { return ""; }
+    out[n] = 0xE2; out[n + 1] = 0x80; out[n + 2] = 0xAF; n += 3;
+    n = fww_cat(out, n, cast(string) path[ampm_pos..<path.count]);
+    return cast(string) out[0..<n];
+  }
+  if ampm_pos >= 3 && path[ampm_pos - 3] == 0xE2 && path[ampm_pos - 2] == 0x80 && path[ampm_pos - 1] == 0xAF {
+    // Replace UTF-8 U+202F with regular space ' '
+    n := fww_cat(out, 0, cast(string) path[0..<ampm_pos - 3]);
+    if n + 1 >= out.count { return ""; }
+    out[n] = ' '; n += 1;
+    n = fww_cat(out, n, cast(string) path[ampm_pos..<path.count]);
+    return cast(string) out[0..<n];
+  }
+  return "";
+}
+
+// Claude Code imageResizer detectImageFormatFromBuffer: inspect real magic bytes (not extension).
+fww_detect_image_mime :: (data: string) -> string {
+  if data.count >= 8 && data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47
+     && data[4] == 0x0D && data[5] == 0x0A && data[6] == 0x1A && data[7] == 0x0A {
+    return "image/png";
+  }
+  if data.count >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+    return "image/jpeg";
+  }
+  if data.count >= 6 && data[0] == 'G' && data[1] == 'I' && data[2] == 'F' && data[3] == '8'
+     && (data[4] == '7' || data[4] == '9') && data[5] == 'a' {
+    return "image/gif";
+  }
+  if data.count >= 12 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F'
+     && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P' {
+    return "image/webp";
+  }
+  if data.count >= 2 && data[0] == 'B' && data[1] == 'M' {
+    return "image/bmp";
+  }
+  if data.count >= 4 && ((data[0] == 'I' && data[1] == 'I' && data[2] == 42 && data[3] == 0)
+                      || (data[0] == 'M' && data[1] == 'M' && data[2] == 0 && data[3] == 42)) {
+    return "image/tiff";
+  }
+  if data.count >= 12 && data[4] == 'f' && data[5] == 't' && data[6] == 'y' && data[7] == 'p' {
+    b0 := data[8]; b1 := data[9]; b2 := data[10]; b3 := data[11];
+    if (b0 == 'h' && b1 == 'e' && b2 == 'i' && (b3 == 'c' || b3 == 'x'))
+       || (b0 == 'm' && b1 == 'i' && b2 == 'f' && b3 == '1')
+       || (b0 == 'm' && b1 == 's' && b2 == 'f' && b3 == '1')
+       || (b0 == 'h' && b1 == 'e' && b2 == 'v' && b3 == 'c') {
+      return "image/heic";
+    }
+  }
+  return "";
+}
+
+// Pure-Coax image header dimension parser (PNG, GIF, JPEG, WebP) — zero subprocess overhead.
+fww_image_dims :: (data: string, mime: string, out_w: [] int, out_h: [] int) -> bool {
+  out_w[0] = 0; out_h[0] = 0;
+  if mime == "image/png" && data.count >= 24 {
+    w := (cast(int) data[16] << 24) | (cast(int) data[17] << 16) | (cast(int) data[18] << 8) | cast(int) data[19];
+    h := (cast(int) data[20] << 24) | (cast(int) data[21] << 16) | (cast(int) data[22] << 8) | cast(int) data[23];
+    if w > 0 && h > 0 { out_w[0] = w; out_h[0] = h; return true; }
+    return false;
+  }
+  if mime == "image/gif" && data.count >= 10 {
+    w := cast(int) data[6] | (cast(int) data[7] << 8);
+    h := cast(int) data[8] | (cast(int) data[9] << 8);
+    if w > 0 && h > 0 { out_w[0] = w; out_h[0] = h; return true; }
+    return false;
+  }
+  if mime == "image/jpeg" && data.count >= 4 {
+    i := 2;
+    while i + 4 < data.count {
+      if data[i] != 0xFF { i += 1; continue; }
+      while i < data.count && data[i] == 0xFF { i += 1; }
+      if i >= data.count { break; }
+      m := data[i]; i += 1;
+      if m == 0xD9 || m == 0xDA { break; } // EOI / SOS
+      if m == 0x01 || (m >= 0xD0 && m <= 0xD8) { continue; } // standalone markers
+      if i + 2 > data.count { break; }
+      seg_len := (cast(int) data[i] << 8) | cast(int) data[i + 1];
+      if seg_len < 2 || i + seg_len > data.count { break; }
+      is_sof := (m >= 0xC0 && m <= 0xC3) || (m >= 0xC5 && m <= 0xC7) || (m >= 0xC9 && m <= 0xCB) || (m >= 0xCD && m <= 0xCF);
+      if is_sof && seg_len >= 7 {
+        h := (cast(int) data[i + 3] << 8) | cast(int) data[i + 4];
+        w := (cast(int) data[i + 5] << 8) | cast(int) data[i + 6];
+        if w > 0 && h > 0 { out_w[0] = w; out_h[0] = h; return true; }
+        return false;
+      }
+      i += seg_len;
+    }
+    return false;
+  }
+  if mime == "image/webp" && data.count >= 30 {
+    if data[12] == 'V' && data[13] == 'P' && data[14] == '8' && data[15] == 'X' {
+      w := 1 + (cast(int) data[24] | (cast(int) data[25] << 8) | (cast(int) data[26] << 16));
+      h := 1 + (cast(int) data[27] | (cast(int) data[28] << 8) | (cast(int) data[29] << 16));
+      if w > 0 && h > 0 { out_w[0] = w; out_h[0] = h; return true; }
+    } else if data[12] == 'V' && data[13] == 'P' && data[14] == '8' && data[15] == 'L' && data.count >= 25 {
+      b0 := cast(int) data[21]; b1 := cast(int) data[22]; b2 := cast(int) data[23]; b3 := cast(int) data[24];
+      w := 1 + (b0 | ((b1 & 0x3F) << 8));
+      h := 1 + ((b1 >> 6) | (b2 << 2) | ((b3 & 0x0F) << 10));
+      if w > 0 && h > 0 { out_w[0] = w; out_h[0] = h; return true; }
+    } else if data[12] == 'V' && data[13] == 'P' && data[14] == '8' && data[15] == ' ' && data.count >= 30 {
+      w := (cast(int) data[26] | (cast(int) data[27] << 8)) & 0x3FFF;
+      h := (cast(int) data[28] | (cast(int) data[29] << 8)) & 0x3FFF;
+      if w > 0 && h > 0 { out_w[0] = w; out_h[0] = h; return true; }
+    }
+  }
+  return false;
+}
+
+// Run macOS native /usr/bin/sips (argv-safe, zero shell) to resize/re-encode an image to dst_path.
+fww_sips_convert :: (src_path: string, dst_path: string, fmt: string, max_dim: int, jpeg_q: int) -> bool {
+  if tool_os() == TOOL_LINUX { return false; }
+  h := proc_new();
+  if h < 0 { return false; }
+  ok := proc_arg(h, "/usr/bin/sips");
+  if max_dim > 0 {
+    db: [24] u8; dn := fww_put_int(db[..], 0, max_dim);
+    ok = ok && proc_arg(h, "-Z") && proc_arg(h, cast(string) db[0..<dn]);
+  }
+  ok = ok && proc_arg(h, "-s") && proc_arg(h, "format") && proc_arg(h, fmt);
+  if fmt == "jpeg" && jpeg_q > 0 {
+    qb: [24] u8; qn := fww_put_int(qb[..], 0, jpeg_q);
+    ok = ok && proc_arg(h, "-s") && proc_arg(h, "formatOptions") && proc_arg(h, cast(string) qb[0..<qn]);
+  }
+  ok = ok && proc_arg(h, src_path) && proc_arg(h, "-o") && proc_arg(h, dst_path);
+  ran_ok := false;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    ec := proc_wait(h, 15000);
+    ran_ok = ec == 0 && fs_exists(dst_path);
+  }
+  _ = proc_release(h);
+  return ran_ok;
+}
+
+// Linux fallback image resizer via python3 PIL (argv-safe, zero shell).
+fww_py_convert :: (src_path: string, dst_path: string, max_dim: int, jpeg_q: int) -> bool {
+  h := proc_new();
+  if h < 0 { return false; }
+  db: [24] u8; dn := fww_put_int(db[..], 0, max_dim);
+  qb: [24] u8; qn := fww_put_int(qb[..], 0, jpeg_q);
+  py := "import sys; from PIL import Image; im=Image.open(sys.argv[1]); d=int(sys.argv[3]); (d>0 and im.thumbnail((d,d))); im=im.convert('RGB'); im.save(sys.argv[2], format='JPEG', quality=int(sys.argv[4]), optimize=True)";
+  ok := proc_arg(h, "python3") && proc_arg(h, "-c") && proc_arg(h, py)
+     && proc_arg(h, src_path) && proc_arg(h, dst_path)
+     && proc_arg(h, cast(string) db[0..<dn]) && proc_arg(h, cast(string) qb[0..<qn]);
+  ran_ok := false;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    ec := proc_wait(h, 15000);
+    ran_ok = ec == 0 && fs_exists(dst_path);
+  }
+  _ = proc_release(h);
+  return ran_ok;
+}
+
+// Read, validate, optionally resize/compress, and base64-encode an image file (Claude Code imageResizer parity).
+// Writes human/model metadata text into out_meta, MIME into out_mime, and base64 into out_b64.
+fww_load_image_file :: (
+  raw_path: string, full_path: string, is_local: bool,
+  raw_buf: [] u8, out_meta: [] u8,
+  out_mime: [] u8, out_mime_n: [] int,
+  out_b64: [] u8, out_b64_n: [] int,
+  is_err: [] bool
+) -> int {
+  out_mime_n[0] = 0;
+  out_b64_n[0] = 0;
+  orig_sz := fs_size(full_path);
+  if orig_sz < 0 {
+    is_err[0] = true;
+    return fww_keep(out_meta, "Failed to inspect image file.");
+  }
+  if orig_sz == 0 {
+    is_err[0] = true;
+    return fww_keep(out_meta, "Image file is empty (0 bytes).");
+  }
+  // Read header (or whole file when it fits in raw_buf) to detect real magic bytes & original dimensions.
+  hdr_n := ifx orig_sz <= raw_buf.count then fs_read(full_path, raw_buf) else fs_read_at(full_path, 0, raw_buf[0..<65536]);
+  if hdr_n <= 0 {
+    is_err[0] = true;
+    return fww_keep(out_meta, "Failed to read image file.");
+  }
+  hdr_s := cast(string) raw_buf[0..<hdr_n];
+  orig_mime := fww_detect_image_mime(hdr_s);
+  if orig_mime.count == 0 {
+    is_err[0] = true;
+    return fww_keep(out_meta, "File does not have a valid image header (supported: PNG, JPEG, GIF, WebP, BMP, TIFF, HEIC).");
+  }
+  ow := [1] int.[0]; oh := [1] int.[0];
+  _ = fww_image_dims(hdr_s, orig_mime, ow[..], oh[..]);
+
+  final_mime := orig_mime;
+  final_sz := 0;
+  final_w := ow[0]; final_h := oh[0];
+  resized := false;
+
+  // Fast path: already web-safe format, within raw size target, and within 2000x2000 dimension cap -> zero subprocesses!
+  dims_ok := (ow[0] == 0 && oh[0] == 0) || (ow[0] <= FWW_IMG_MAX_DIM && oh[0] <= FWW_IMG_MAX_DIM);
+  if fww_is_web_image_mime(orig_mime) && orig_sz <= FWW_IMG_RAW_TARGET && orig_sz <= raw_buf.count && dims_ok {
+    final_sz = hdr_n;
+  } else {
+    // Resize / compress into a temp file following Claude Code imageResizer.ts strategy:
+    //   1) If PNG/BMP/TIFF and resize needed or format conversion needed: try PNG at <=2000px first (only if it fits target).
+    //   2) Progressive JPEG at q=80, 60, 40, 20 (max dim 2000px only when orig exceeds 2000px or unknown oversized).
+    //   3) Aggressive fallback: 1000px q=20, then 768px q=15.
+    tmp_png_b: [128] u8; tmp_jpg_b: [128] u8;
+    ts_us := cxproc_wall_us();
+    pn := fww_cat(tmp_png_b[..], 0, "/tmp/oa-read-img-");
+    pn = fww_put_int(tmp_png_b[..], pn, ts_us);
+    pn = fww_cat(tmp_png_b[..], pn, ".png");
+    tmp_png := cast(string) tmp_png_b[0..<pn];
+
+    jn := fww_cat(tmp_jpg_b[..], 0, "/tmp/oa-read-img-");
+    jn = fww_put_int(tmp_jpg_b[..], jn, ts_us);
+    jn = fww_cat(tmp_jpg_b[..], jn, ".jpg");
+    tmp_jpg := cast(string) tmp_jpg_b[0..<jn];
+
+    need_cap := ow[0] > FWW_IMG_MAX_DIM || oh[0] > FWW_IMG_MAX_DIM;
+    cap_dim := ifx need_cap then FWW_IMG_MAX_DIM else 0;
+
+    // Step 1: Try PNG preservation for PNG/BMP/TIFF when output fits target
+    if (orig_mime == "image/png" || orig_mime == "image/bmp" || orig_mime == "image/tiff") && fww_sips_convert(full_path, tmp_png, "png", cap_dim, 0) {
+      psz := fs_size(tmp_png);
+      if psz > 0 && psz <= FWW_IMG_RAW_TARGET && psz <= raw_buf.count {
+        rn := fs_read(tmp_png, raw_buf);
+        if rn > 0 {
+          final_sz = rn;
+          final_mime = "image/png";
+          fw := [1] int.[0]; fh := [1] int.[0];
+          if fww_image_dims(cast(string) raw_buf[0..<rn], final_mime, fw[..], fh[..]) {
+            final_w = fw[0]; final_h = fh[0];
+          }
+          resized = true;
+        }
+      }
+      _ = fs_remove(tmp_png);
+    }
+
+    // Step 2: Progressive JPEG compression (q=80, 60, 40, 20)
+    if final_sz == 0 {
+      quals := [4] int.[80, 60, 40, 20];
+      for qi: 0..<4 {
+        q := quals[qi];
+        ok_c := fww_sips_convert(full_path, tmp_jpg, "jpeg", cap_dim, q);
+        if !ok_c { ok_c = fww_py_convert(full_path, tmp_jpg, cap_dim, q); }
+        if ok_c {
+          jsz := fs_size(tmp_jpg);
+          if jsz > 0 && jsz <= FWW_IMG_RAW_TARGET && jsz <= raw_buf.count {
+            rn := fs_read(tmp_jpg, raw_buf);
+            if rn > 0 {
+              final_sz = rn;
+              final_mime = "image/jpeg";
+              fw := [1] int.[0]; fh := [1] int.[0];
+              if fww_image_dims(cast(string) raw_buf[0..<rn], final_mime, fw[..], fh[..]) {
+                final_w = fw[0]; final_h = fh[0];
+              }
+              resized = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Step 3: Aggressive fallback (<=1000px q=20, then <=768px q=15)
+    if final_sz == 0 {
+      fb_dims := [2] int.[FWW_IMG_AGGRESSIVE_DIM, 768];
+      fb_qs := [2] int.[20, 15];
+      for fi: 0..<2 {
+        ok_c := fww_sips_convert(full_path, tmp_jpg, "jpeg", fb_dims[fi], fb_qs[fi]);
+        if !ok_c { ok_c = fww_py_convert(full_path, tmp_jpg, fb_dims[fi], fb_qs[fi]); }
+        if ok_c {
+          jsz := fs_size(tmp_jpg);
+          if jsz > 0 && jsz <= FWW_IMG_RAW_TARGET && jsz <= raw_buf.count {
+            rn := fs_read(tmp_jpg, raw_buf);
+            if rn > 0 {
+              final_sz = rn;
+              final_mime = "image/jpeg";
+              fw := [1] int.[0]; fh := [1] int.[0];
+              if fww_image_dims(cast(string) raw_buf[0..<rn], final_mime, fw[..], fh[..]) {
+                final_w = fw[0]; final_h = fh[0];
+              }
+              resized = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+    _ = fs_remove(tmp_jpg);
+
+    // Final fallback: if conversion unavailable on host, pass through raw bytes if web-safe and within hard base64 capacity.
+    if final_sz == 0 && fww_is_web_image_mime(orig_mime) && orig_sz <= FWW_IMG_RAW_TARGET && orig_sz <= raw_buf.count {
+      rn := fs_read(full_path, raw_buf);
+      if rn > 0 { final_sz = rn; final_mime = orig_mime; }
+    }
+    if final_sz == 0 {
+      is_err[0] = true;
+      return fww_keep(out_meta, "Image exceeds size limit and could not be resized/compressed to fit. Resize or crop the image and retry.");
+    }
+  }
+
+  // Base64-encode into out_b64 (if caller has capacity in tool_img_slab).
+  enc_need := base64_encode_size(final_sz);
+  if enc_need <= 0 || enc_need > out_b64.count || enc_need > FWW_IMG_B64_MAX {
+    is_err[0] = true;
+    return fww_keep(out_meta, "Encoded image exceeds tool result buffer capacity.");
+  }
+  b64_r := base64_encode_checked(cast(string) raw_buf[0..<final_sz], out_b64, false);
+  if b64_r.error != NC_OK || b64_r.written <= 0 {
+    is_err[0] = true;
+    return fww_keep(out_meta, "Failed to base64-encode image.");
+  }
+  out_mime_n[0] = fww_keep(out_mime, final_mime);
+  out_b64_n[0] = b64_r.written;
+
+  // Format Claude Code-style image metadata text (with coordinate scale info when resized).
+  n := fww_cat(out_meta, 0, "[Image: ");
+  n = fww_cat(out_meta, n, raw_path);
+  n = fww_cat(out_meta, n, " | ");
+  n = fww_cat(out_meta, n, final_mime);
+  if final_w > 0 && final_h > 0 {
+    n = fww_cat(out_meta, n, " | ");
+    n = fww_put_int(out_meta, n, final_w);
+    n = fww_cat(out_meta, n, "x");
+    n = fww_put_int(out_meta, n, final_h);
+  }
+  n = fww_cat(out_meta, n, " | ");
+  n = fww_put_int(out_meta, n, final_sz);
+  n = fww_cat(out_meta, n, " bytes");
+  if resized && ow[0] > 0 && oh[0] > 0 && (ow[0] != final_w || oh[0] != final_h) {
+    n = fww_cat(out_meta, n, " (resized from ");
+    n = fww_put_int(out_meta, n, ow[0]);
+    n = fww_cat(out_meta, n, "x");
+    n = fww_put_int(out_meta, n, oh[0]);
+    n = fww_cat(out_meta, n, ")");
+  }
+  if is_local {
+    n = fww_cat(out_meta, n, "] Image decoded, but the active local text-only model cannot inspect image pixels directly. Switch to a vision-capable cloud model (e.g. Gemini) to inspect this image visually.");
+  } else {
+    n = fww_cat(out_meta, n, "] Image attached natively in this tool result.");
+  }
+  return n;
+}
+
+fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: [] FwReadDedup, dedup_cur: [] int, compact_epoch: int, is_local: bool, fbuf: [] u8, out_res: [] u8, out_img_mime: [] u8, out_img_mime_n: [] int, out_img_b64: [] u8, out_img_b64_n: [] int, is_err: [] bool, wire_out: [] u8) -> int {
   is_err[0] = false;
+  out_img_mime_n[0] = 0;
+  out_img_b64_n[0] = 0;
   nodes: [128] JvNode; d: [1] Jv;
   if !jv_parse(d[..], args_json, nodes[..]) {
     is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for Read.");
@@ -2408,13 +2917,31 @@ fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: []
   }
 
   full_b: [FS_PATH_MAX] u8;
+  alt_b: [FS_PATH_MAX] u8;
   full := fww_resolve_path(cwd, raw_path, full_b[..]);
+  if full.count > 0 && !fs_exists(full) {
+    alt := fww_alt_screenshot_path(full, alt_b[..]);
+    if alt.count > 0 && fs_exists(alt) {
+      full = alt;
+    }
+  }
   if full.count == 0 || !fs_exists(full) {
     fww_send(wire_out, mww_view(wire_out, raw_path, false));
     is_err[0] = true;
     n := fww_cat(out_res, 0, "File not found: ");
     return fww_cat(out_res, n, raw_path);
   }
+
+  // Native image handling (Claude Code FileReadTool parity): check image extensions BEFORE text fs_read
+  // so multi-megabyte Retina screenshots never hit FWW_FILE_MAX or the binary rejection path!
+  ext_b: [16] u8;
+  ext := fww_path_ext_lower(full, ext_b[..]);
+  if fww_is_image_ext(ext) {
+    mn := fww_load_image_file(raw_path, full, is_local, fbuf, out_res, out_img_mime, out_img_mime_n, out_img_b64, out_img_b64_n, is_err);
+    fww_send(wire_out, mww_view(wire_out, raw_path, !is_err[0]));
+    return mn;
+  }
+
   sz := fs_read(full, fbuf);
   if sz < 0 {
     fww_send(wire_out, mww_view(wire_out, raw_path, false));
@@ -2423,6 +2950,12 @@ fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: []
   }
   content := cast(string) fbuf[0..<sz];
   if fww_is_binary_bytes(content) {
+    // Magic-byte sniff: even extensionless / misnamed image files are handled natively as images!
+    if fww_detect_image_mime(content).count > 0 {
+      mn := fww_load_image_file(raw_path, full, is_local, fbuf, out_res, out_img_mime, out_img_mime_n, out_img_b64, out_img_b64_n, is_err);
+      fww_send(wire_out, mww_view(wire_out, raw_path, !is_err[0]));
+      return mn;
+    }
     fww_send(wire_out, mww_view(wire_out, raw_path, true));
     bn := fww_cat(out_res, 0, "[Binary file: ");
     bn = fww_cat(out_res, bn, raw_path);
@@ -3060,6 +3593,8 @@ FwPendingTool :: struct {
   done: bool;
   is_error: bool;
   res: [FWW_TOOL_OUT_MAX] u8; nres: int;
+  img_mime: [32] u8; nimg_mime: int;
+  img_at: int; nimg: int;
 }
 
 FwAsyncCmd :: struct {
@@ -3162,6 +3697,7 @@ FwStreamAccum :: struct {
   think: [65536] u8; nthink: int;
   sig: [131072] u8; nsig: int;
   tool_sig_slab: [262144] u8; ntool_sig_slab: int;
+  tool_img_slab: [FWW_IMG_SLAB] u8; ntool_img_slab: int;
   tools: [FWW_MAX_TOOLS_CALL] FwPendingTool;
   ntools: int;
   cur_block_kind: int;
@@ -3581,7 +4117,26 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
 
   rn := 0;
   is_local := auth[0].backend == FLAWED_BE_LOCAL;
-  if name == "Read" { rn = fww_tool_read(cwd, args, fww_fc(b), r[0].read_dedup[..], r[0].read_dedup_cur[..], h[0].compact_count, is_local, b[0].file_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  if name == "Read" {
+    img_at := r[0].acc[0].ntool_img_slab;
+    img_avail := r[0].acc[0].tool_img_slab.count - img_at;
+    if img_avail < 0 { img_avail = 0; }
+    img_mime_n := [1] int.[0];
+    img_b64_n := [1] int.[0];
+    rn = fww_tool_read(
+      cwd, args, fww_fc(b), r[0].read_dedup[..], r[0].read_dedup_cur[..], h[0].compact_count, is_local,
+      b[0].file_buf[..], r[0].acc[0].tools[idx].res[..],
+      r[0].acc[0].tools[idx].img_mime[..], img_mime_n[..],
+      r[0].acc[0].tool_img_slab[img_at..<img_at + img_avail], img_b64_n[..],
+      is_err[..], out
+    );
+    if img_b64_n[0] > 0 && img_mime_n[0] > 0 {
+      r[0].acc[0].tools[idx].nimg_mime = img_mime_n[0];
+      r[0].acc[0].tools[idx].img_at = img_at;
+      r[0].acc[0].tools[idx].nimg = img_b64_n[0];
+      r[0].acc[0].ntool_img_slab = img_at + img_b64_n[0];
+    }
+  }
   else if name == "Edit" {
     rn = fww_tool_edit(cwd, args, fww_fc(b), r[0].read_dedup[..], b[0].file_buf[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out);
     if !is_err[0] { for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; } }
@@ -3723,10 +4278,11 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   if r[0].has_edited { r[0].post_edit_steps += 1; }
   r[0].turn_tool_bytes += step_tot_bytes;
 
-  // All tool calls finished! Compute exact slab bytes needed so TOOL_RESULTS NEVER truncates id/name/output.
+  // All tool calls finished! Compute exact slab bytes needed so TOOL_RESULTS NEVER truncates id/name/output/image.
   tr_need := 16384;
   for ti: 0..<r[0].acc[0].ntools {
-    tr_need += r[0].acc[0].tools[ti].nid + r[0].acc[0].tools[ti].nname + r[0].acc[0].tools[ti].nres;
+    tr_need += r[0].acc[0].tools[ti].nid + r[0].acc[0].tools[ti].nname + r[0].acc[0].tools[ti].nres
+             + r[0].acc[0].tools[ti].nimg_mime + r[0].acc[0].tools[ti].nimg;
   }
   if h[0].nmsgs >= FWW_MAX_MSGS - 1 || h[0].nslab + tr_need >= FWW_SLAB {
     _ = fww_hist_compact(h, b[0].compact_buf[..]);
@@ -3772,6 +4328,14 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       bk.id_n = fww_slab_put(h, id_s, a0[..]); bk.id_at = a0[0];
       bk.name_n = fww_slab_put(h, nm_s, a0[..]); bk.name_at = a0[0];
       bk.text_n = fww_slab_put(h, res_s, a0[..]); bk.text_at = a0[0];
+      if r[0].acc[0].tools[i].nimg > 0 && r[0].acc[0].tools[i].nimg_mime > 0 {
+        im_s := cast(string) r[0].acc[0].tools[i].img_mime[0..<r[0].acc[0].tools[i].nimg_mime];
+        idb_s := cast(string) r[0].acc[0].tool_img_slab[r[0].acc[0].tools[i].img_at..<r[0].acc[0].tools[i].img_at + r[0].acc[0].tools[i].nimg];
+        if h[0].nslab + im_s.count + idb_s.count + reserve < FWW_SLAB {
+          bk.img_mime_n = fww_slab_put(h, im_s, a0[..]); bk.img_mime_at = a0[0];
+          bk.img_n = fww_slab_put(h, idb_s, a0[..]); bk.img_at = a0[0];
+        }
+      }
       h[0].msgs[mi].blocks[nb] = bk;
       nb += 1;
     }
@@ -5480,4 +6044,124 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert !fww_msg_tools_valid(h[..], h[0].msgs[1], h[0].msgs[2]);
   fww_hist_sanitize(h[..], small_tmp[..]);
   #assert h[0].nmsgs == 3 && fww_msg_count_tool_use(h[0].msgs[1]) == 0 && h[0].msgs[2].role == FWW_MROLE_USER;
+}
+
+#test "flawedworker: native Read image detection, macOS screenshot thin-space fallback, dims, multimodal wire, and compaction" {
+  // 1. Extension extraction & classification
+  eb: [16] u8;
+  #assert fww_path_ext_lower("/Users/a/Shot.PNG", eb[..]) == "png" && fww_is_image_ext("png");
+  #assert fww_path_ext_lower("foo/bar.JPEG", eb[..]) == "jpeg" && fww_is_image_ext("jpeg");
+  #assert fww_path_ext_lower("a.webp", eb[..]) == "webp" && fww_is_image_ext("webp");
+  #assert fww_path_ext_lower("a.heic", eb[..]) == "heic" && fww_is_image_ext("heic");
+  #assert !fww_is_image_ext(fww_path_ext_lower("dir.png/readme.md", eb[..]));
+
+  // 2. macOS screenshot AM/PM space <-> U+202F narrow no-break space fallback
+  ab: [256] u8; ab2: [256] u8;
+  alt1 := fww_alt_screenshot_path("/Users/a/Desktop/Screenshot 2026-04-01 at 10.30.00 AM.png", ab[..]);
+  #assert alt1.count > 0 && alt1 != "/Users/a/Desktop/Screenshot 2026-04-01 at 10.30.00 AM.png";
+  // Round-trip back from U+202F to regular ASCII space
+  alt2 := fww_alt_screenshot_path(alt1, ab2[..]);
+  #assert alt2 == "/Users/a/Desktop/Screenshot 2026-04-01 at 10.30.00 AM.png";
+  #assert fww_alt_screenshot_path("/Users/a/Desktop/plain.png", ab[..]).count == 0;
+
+  // 3. Magic-byte MIME detection & pure-Coax dimension parsing (PNG, GIF, JPEG, WebP)
+  png_hdr := [24] u8.[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, 'I', 'H', 'D', 'R', 0, 0, 0x05, 0xA0, 0, 0, 0x03, 0x84];
+  #assert fww_detect_image_mime(cast(string) png_hdr[..]) == "image/png";
+  w := [1] int.[0]; hh := [1] int.[0];
+  #assert fww_image_dims(cast(string) png_hdr[..], "image/png", w[..], hh[..]) && w[0] == 1440 && hh[0] == 900;
+
+  gif_hdr := [10] u8.['G', 'I', 'F', '8', '9', 'a', 0x40, 0x01, 0xF0, 0x00];
+  #assert fww_detect_image_mime(cast(string) gif_hdr[..]) == "image/gif";
+  #assert fww_image_dims(cast(string) gif_hdr[..], "image/gif", w[..], hh[..]) && w[0] == 320 && hh[0] == 240;
+
+  jpg_hdr := [11] u8.[0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x07, 0x08, 0x04, 0x38, 0x07, 0x80];
+  #assert fww_detect_image_mime(cast(string) jpg_hdr[..]) == "image/jpeg";
+  #assert fww_image_dims(cast(string) jpg_hdr[..], "image/jpeg", w[..], hh[..]) && w[0] == 1920 && hh[0] == 1080;
+
+  webp_hdr := [30] u8.['R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P', 'V', 'P', '8', 'X', 0, 0, 0, 0, 0, 0, 0, 0, 0x3F, 0x03, 0x00, 0x57, 0x02, 0x00];
+  #assert fww_detect_image_mime(cast(string) webp_hdr[..]) == "image/webp";
+  #assert fww_image_dims(cast(string) webp_hdr[..], "image/webp", w[..], hh[..]) && w[0] == 832 && hh[0] == 600;
+
+  // 4. Gemini multimodal functionResponse.parts[].inlineData & OpenAI multimodal user image_url serialization
+  cfg: [1] FwConfig;
+  h: [1] FwHist;
+  fww_hist_push_user(h[..], "Inspect screenshot.png");
+  a0 := [1] int.[0];
+  h[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+  tu := FwBlock.{kind = FWW_MB_TOOL_USE};
+  tu.id_n = fww_slab_put(h[..], "call_img_1", a0[..]); tu.id_at = a0[0];
+  tu.name_n = fww_slab_put(h[..], "Read", a0[..]); tu.name_at = a0[0];
+  tu.text_n = fww_slab_put(h[..], "{\"file_path\":\"screenshot.png\"}", a0[..]); tu.text_at = a0[0];
+  h[0].msgs[1].blocks[0] = tu;
+  h[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+  tr := FwBlock.{kind = FWW_MB_TOOL_RES};
+  tr.id_n = fww_slab_put(h[..], "call_img_1", a0[..]); tr.id_at = a0[0];
+  tr.name_n = fww_slab_put(h[..], "Read", a0[..]); tr.name_at = a0[0];
+  tr.text_n = fww_slab_put(h[..], "[Image: screenshot.png | image/png | 1440x900 | 1024 bytes] Image attached natively in this tool result.", a0[..]); tr.text_at = a0[0];
+  tr.img_mime_n = fww_slab_put(h[..], "image/png", a0[..]); tr.img_mime_at = a0[0];
+  tr.img_n = fww_slab_put(h[..], "iVBORw0KGgo=", a0[..]); tr.img_at = a0[0];
+  h[0].msgs[2].blocks[0] = tr;
+  h[0].nmsgs = 3;
+
+  // Token estimate counts image as ~1600 tok (NOT base64_bytes/3)
+  tok_est := fww_estimate_prompt_tokens(h[..], 100, false, false);
+  #assert tok_est > 1600 && tok_est < 6000;
+
+  body: [32768] u8;
+  gn := fww_build_gemini_body(cfg[..], h[..], "low", "sys", false, body[..]);
+  #assert gn > 0;
+  nodes: [512] JvNode; d: [1] Jv; sb: [128] u8;
+  #assert jv_parse(d[..], cast(string) body[0..<gn], nodes[..]);
+  cts := jv_get(d[0], 0, "contents");
+  tr_parts := jv_get(d[0], jv_at(d[0], cts, 2), "parts");
+  #assert jv_len(d[0], tr_parts) == 1;
+  fr := jv_get(d[0], jv_at(d[0], tr_parts, 0), "functionResponse");
+  fr_parts := jv_get(d[0], fr, "parts");
+  #assert jv_len(d[0], fr_parts) == 1;
+  inl := jv_get(d[0], jv_at(d[0], fr_parts, 0), "inlineData");
+  mn := jv_str(d[0], jv_get(d[0], inl, "mimeType"), sb[..]);
+  #assert cast(string) sb[0..<mn] == "image/png";
+  dn := jv_str(d[0], jv_get(d[0], inl, "data"), sb[..]);
+  #assert cast(string) sb[0..<dn] == "iVBORw0KGgo=";
+
+  // OpenAI cloud body emits role:tool text followed by multimodal role:user image_url
+  on := fww_build_openai_body(cfg[..], h[..], "google/gemini-4-neon", "low", "sys", false, 0, false, false, body[..]);
+  #assert on > 0 && jv_parse(d[..], cast(string) body[0..<on], nodes[..]);
+  omsgs := jv_get(d[0], 0, "messages");
+  #assert jv_len(d[0], omsgs) == 5; // system, user, assistant, tool, multimodal user
+  mm_msg := jv_at(d[0], omsgs, 4);
+  rn := jv_str(d[0], jv_get(d[0], mm_msg, "role"), sb[..]);
+  #assert cast(string) sb[0..<rn] == "user";
+  mc := jv_get(d[0], mm_msg, "content");
+  #assert jv_len(d[0], mc) == 2;
+  url_n := jv_str(d[0], jv_get(d[0], jv_get(d[0], jv_at(d[0], mc, 1), "image_url"), "url"), sb[..]);
+  #assert cast(string) sb[0..<url_n] == "data:image/png;base64,iVBORw0KGgo=";
+
+  // Local text-only body omits image_url
+  ln := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini", "low", "sys", true, 32768, false, false, body[..]);
+  #assert ln > 0 && jv_parse(d[..], cast(string) body[0..<ln], nodes[..]);
+  #assert jv_len(d[0], jv_get(d[0], 0, "messages")) == 4;
+
+  // 5. Compaction preserves recent image blocks and drops old image blocks
+  tmp: [65536] u8;
+  // Add a second tool turn so turn 1 becomes "old" when keep_recent_tools = 1
+  h[0].msgs[3] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+  tu2 := FwBlock.{kind = FWW_MB_TOOL_USE};
+  tu2.id_n = fww_slab_put(h[..], "call_2", a0[..]); tu2.id_at = a0[0];
+  tu2.name_n = fww_slab_put(h[..], "Read", a0[..]); tu2.name_at = a0[0];
+  tu2.text_n = fww_slab_put(h[..], "{\"file_path\":\"shot2.png\"}", a0[..]); tu2.text_at = a0[0];
+  h[0].msgs[3].blocks[0] = tu2;
+  h[0].msgs[4] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+  tr2 := FwBlock.{kind = FWW_MB_TOOL_RES};
+  tr2.id_n = fww_slab_put(h[..], "call_2", a0[..]); tr2.id_at = a0[0];
+  tr2.name_n = fww_slab_put(h[..], "Read", a0[..]); tr2.name_at = a0[0];
+  tr2.text_n = fww_slab_put(h[..], "[Image: shot2.png]", a0[..]); tr2.text_at = a0[0];
+  tr2.img_mime_n = fww_slab_put(h[..], "image/jpeg", a0[..]); tr2.img_mime_at = a0[0];
+  tr2.img_n = fww_slab_put(h[..], "/9j/4AAQ", a0[..]); tr2.img_at = a0[0];
+  h[0].msgs[4].blocks[0] = tr2;
+  h[0].nmsgs = 5;
+
+  #assert fww_hist_compact_ex(h[..], 0, 1, 512, 0, 0, tmp[..]);
+  #assert h[0].msgs[2].blocks[0].img_n == 0; // older screenshot base64 stripped
+  #assert h[0].msgs[4].blocks[0].img_n == 8 && fww_slab_str(h[..], h[0].msgs[4].blocks[0].img_at, h[0].msgs[4].blocks[0].img_n) == "/9j/4AAQ"; // recent screenshot preserved!
 }
