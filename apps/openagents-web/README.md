@@ -1,10 +1,11 @@
-# openagents.com on Coax Native Web
+# openagents.com on Coax Web
 
-The website runs on Coax Native Web (formerly Coaxial), the browser target
-of [Coax Native](../../coax/native.md). Worlds use WebGPU and text surfaces
-can use the shared DOM backend. The web target is specified in
-[coax/web.md](../../coax/web.md); the proposed signed OTA delivery path is
-[Coax Native Updates](../../coax/native-updates.md).
+The website runs on **Coax Web** (formerly Coax Native Web / Coaxial), Coax's
+full-stack web framework alongside [Coax Native](../../coax/native.md). Worlds
+use WebGPU and text surfaces can use the shared DOM backend. The web framework
+is specified in [coax/web.md](../../coax/web.md) and
+[coax/web/SKELETON.md](../../coax/web/SKELETON.md); the proposed signed OTA
+delivery path is [Coax Native Updates](../../coax/native-updates.md).
 
 The homepage at `/` is `newland.coax`: six featured projects, their signed task
 claims and real Pylons on an interactive Grid. `/new-land` is an alias. Shared

@@ -1,10 +1,17 @@
-# Coax Native Web
+# Coax Web
 
-Naming decision, 2026-11-13: **Coax Native Web** is the browser target of
-[Coax Native](native.md). **Coaxial** is the former public name, retained
+Naming decision, 2026-11-26: **Coax Web** is Coax's full-stack web framework
+(browser Wasm/WebGPU/DOM target plus the C/Coax HTTP API, queues, migrations,
+and deploy pipeline), sitting beside [Coax Native](native.md) (macOS, iOS, and
+Linux desktop) and sharing Coax and `components/`. **Coax Native Web**
+(2026-11-13) and **Coaxial** (2026-10-28) are former public names, retained
 below in historical decisions and technical compatibility spellings.
-Existing `coax/web/` paths, commands, `coaxial_*` exports and published
-contracts keep their identity; this is not a wire or ABI rename.
+Existing `coax/web/` paths, `coaxial_*` Wasm ABI exports, `/coaxial/live`,
+`/coaxial/code`, and published contracts/GCP resource names keep their identity;
+this is not a wire or ABI rename. See [coax/web/SKELETON.md](web/SKELETON.md)
+for the canonical Coax Web app skeleton and
+[docs/audits/2026-11-26-laravel-to-coax-web-audit.md](../docs/audits/2026-11-26-laravel-to-coax-web-audit.md)
+for the architecture audit.
 
 [Coax Native Updates](native-updates.md) defines the proposed signed delivery
 path for compatible Coax-generated Wasm code, assets and embedded web
