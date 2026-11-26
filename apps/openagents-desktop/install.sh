@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around git, build.sh, PlistBuddy, codesign and launchctl; holds no logic)
 # Keeps /Applications/OpenAgents.app at the newest origin/main.
-#   apps/openagents-desktop/install.sh [--minimal|--full]          build origin/main and install it now (defaults to --minimal); an OpenAgents
-#                                                                  (or legacy Coder) open from /Applications is quit first and opened again after.
+#   apps/openagents-desktop/install.sh [--minimal|--full] [--force] [--local]
+#                                                                  build origin/main (or current checkout with --local) and install it now
+#                                                                  (defaults to --minimal); --force bypasses skip/up-to-date caches and active-reply deferral.
+#                                                                  An OpenAgents (or legacy Coder) open from /Applications is quit first and opened again after.
 #                                                                  Exits 4 when deferred (active reply, inside app, or lock held).
 #   apps/openagents-desktop/install.sh [--minimal|--full] --agent  also check every 15 minutes (a LaunchAgent), and run once now
 #   apps/openagents-desktop/install.sh --remove-agent              stop the checks
@@ -38,10 +40,14 @@ legacy_agent_plist="$HOME/Library/LaunchAgents/$legacy_label.plist"
 minimal=1
 if [[ "${OA_RELEASE_MINIMAL:-1}" == "0" ]]; then minimal=0; fi
 mode="now"
+force_build=0
+use_local=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --minimal) minimal=1 ;;
     --full) minimal=0 ;;
+    --force) export OA_INSTALL_FORCE=1; force_build=1 ;;
+    --local) use_local=1 ;;
     now|--agent|--remove-agent|--check|--status) mode="$1" ;;
     *) echo "install.sh: unknown argument $1" >&2; exit 2 ;;
   esac
@@ -49,16 +55,19 @@ while [[ $# -gt 0 ]]; do
 done
 want_profile="full"
 [[ "$minimal" == 1 ]] && want_profile="minimal"
+# Bump whenever fixed/roots tracking changes so stale $state/inputs files never skip a needed rebuild.
+inputs_schema="2"
 # What every build reads besides the Coax sources coax deps lists: the compiler's inputs (as
 # coax/provenance.sh lists them), what coax/web/tool.sh links into the workers, and the app's
 # hosts and assets.
 fixed=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto ':(glob)coax/*' scripts/coax-release.sh coax/lib/crypto/sha256-kernel.coax
        coax/platform coax/web/tool.sh coax/lib/crypto/entropy.coax coax/lib/sys coax/lib/net
+       openagents/core
        apps/shared/host apps/shared/native components/chat components/fonts components/icons components/NOTICE apps/openagents-desktop/native psionic/platform psionic/lib/inkling)
 if [[ "$minimal" == 1 ]]; then
-  roots=(components/backend/gpu-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/inky.coax coder/tui/agyworker.coax coder/tui/gitguard.coax)
+  roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/agyworker.coax coder/tui/gitguard.coax)
 else
-  roots=(components/backend/gpu-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/inky.coax coder/tui/mcworker.coax coder/tui/claudeworker.coax coder/tui/agyworker.coax coder/tui/gitguard.coax coder/tui/lean-run.coax metaverse/rh-flythrough.coax)
+  roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/agyworker.coax coder/tui/gitguard.coax coder/tui/claudeworker.coax coder/tui/oasim.coax coder/tui/lean-run.coax coder/tui/tbench-run.coax coder/tui/gbench-run.coax metaverse/rh-flythrough.coax)
 fi
 mkdir -p "$state"
 
@@ -226,7 +235,8 @@ PLIST
 
 verify_minimal_bundle() {
   local bundle="$1"
-  local check_repo="$src"
+  local check_repo="${build_src:-$src}"
+  [[ -f "$check_repo/apps/openagents-desktop/v1-bundle-check.coax" ]] || check_repo="$repo_here"
   [[ -f "$check_repo/apps/openagents-desktop/v1-bundle-check.coax" ]] || check_repo="$clone"
   local v1_stage="${OA_V1_STAGE:-1}"
   if ! (cd "$check_repo" && coax/web/tool.sh apps/openagents-desktop/v1-bundle-check.coax --platform macos --stage "$v1_stage" "$bundle") >> "$state/build.log" 2>&1; then
@@ -260,7 +270,9 @@ if [[ "$mode" == --status ]]; then
   echo "profile:   $want_profile"
   inst_c="$(commit_of "$app" | cut -c1-10)"
   inst_p="$(profile_of "$app")"
-  echo "installed: ${inst_c}${inst_c:+ [$inst_p]} ($app)"
+  inst_v="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist" 2>/dev/null || true)"
+  inst_d="$(/usr/libexec/PlistBuddy -c 'Print :OABuildDate' "$app/Contents/Info.plist" 2>/dev/null || true)"
+  echo "installed: ${inst_c}${inst_c:+ [$inst_p${inst_v:+, build $inst_v}${inst_d:+, $inst_d}]} ($app)"
   wait_c="$(commit_of "$stage/OpenAgents.app" | cut -c1-10)"
   wait_p="$(profile_of "$stage/OpenAgents.app")"
   echo "waiting:   ${wait_c}${wait_c:+ [$wait_p]}"
@@ -296,15 +308,20 @@ printf '%s\n' "$$" > "$state/lock/pid"
 trap 'rm -rf "$state/lock"' EXIT
 
 if [[ "$mode" == --check ]]; then
-  # A background check gives way to a busy Mac (a build is heavy) and to a nearly full disk.
+  # A background check gives way to a severely overloaded Mac and to a nearly full disk.
   load="$(sysctl -n vm.loadavg | awk '{print int($2)}')"; cpus="$(sysctl -n hw.ncpu)"
-  if (( load * 4 > cpus * 3 )); then say "load $load on $cpus cores: next check"; exit 0; fi
+  if (( load > cpus * 2 )); then say "load $load on $cpus cores: next check"; exit 0; fi
   free_gb="$(df -g "$state" | awk 'NR==2 {print $4}')"
   if (( free_gb < 10 )); then say "only ${free_gb} GB free: next check"; exit 0; fi
 fi
 
-git -C "$clone" fetch -q origin main
-target="$(git -C "$clone" rev-parse origin/main)"
+repo_here="$(cd "$here/../.." && pwd)"
+if [[ "$use_local" == 1 ]]; then
+  target="$(git -C "$repo_here" rev-parse HEAD)"
+else
+  git -C "$clone" fetch -q origin main
+  target="$(git -C "$clone" rev-parse origin/main)"
+fi
 installed="$(commit_of "$app")"
 installed_profile="$(profile_of "$app")"
 staged="$(commit_of "$stage/OpenAgents.app")"
@@ -318,7 +335,8 @@ elif [[ -n "$installed" && "$installed_profile" == "$want_profile" ]]; then
   have="$installed"
 fi
 cached_profile="$(cat "$state/profile" 2>/dev/null || echo full)"
-if [[ "$have" != "$target" && -n "$have" && "$cached_profile" == "$want_profile" && -s "$state/inputs" ]] \
+cached_inputs_schema="$(cat "$state/inputs.version" 2>/dev/null || true)"
+if [[ "$use_local" == 0 && "$force_build" == 0 && "$have" != "$target" && -n "$have" && "$cached_profile" == "$want_profile" && "$cached_inputs_schema" == "$inputs_schema" && -s "$state/inputs" ]] \
    && git -C "$clone" cat-file -e "$have^{commit}" 2>/dev/null \
    && xargs git -C "$clone" diff --quiet "$have" "$target" -- < "$state/inputs"; then
   echo "$target" > "$state/current"
@@ -326,40 +344,55 @@ if [[ "$have" != "$target" && -n "$have" && "$cached_profile" == "$want_profile"
 fi
 
 need_build=1
-if [[ "$staged" == "$target" && "$staged_profile" == "$want_profile" ]]; then need_build=0; fi
-if [[ "$installed" == "$target" && "$installed_profile" == "$want_profile" ]]; then need_build=0; fi
+if [[ "$use_local" == 0 && "$force_build" == 0 ]]; then
+  if [[ "$staged" == "$target" && "$staged_profile" == "$want_profile" ]]; then need_build=0; fi
+  if [[ "$installed" == "$target" && "$installed_profile" == "$want_profile" ]]; then need_build=0; fi
+fi
 
 if [[ "$need_build" == 1 ]]; then
-  say "building ${target:0:10} ($want_profile)"
-  if [[ ! -e "$src/.git" ]]; then
-    git -C "$clone" worktree prune
-    git -C "$clone" worktree add -q --no-checkout --detach "$src" "$target"
+  if [[ "$use_local" == 1 ]]; then
+    build_src="$repo_here"
+    say "building local ${target:0:10} ($want_profile) from $build_src"
+  else
+    say "building ${target:0:10} ($want_profile)"
+    if [[ ! -e "$src/.git" ]]; then
+      git -C "$clone" worktree prune
+      git -C "$clone" worktree add -q --no-checkout --detach "$src" "$target"
+    fi
+    git -C "$src" checkout -q --force --detach "$target"
+    git -C "$src" clean -q -fd -e coax/bin -e coax/web/build/tools || true
+    build_src="$src"
   fi
-  git -C "$src" checkout -q --force --detach "$target"
-  appdir="$(app_dir "$src")"
+  appdir="$(app_dir "$build_src")"
   fixed+=("$appdir")
-  if [[ "$minimal" == 1 && -f "$src/$appdir/app-v1.coax" ]]; then
+  if [[ -f "$build_src/$appdir/desktop-core.coax" ]]; then
+    roots+=("$appdir/desktop-core.coax")
+  fi
+  if [[ "$minimal" == 1 && -f "$build_src/$appdir/app-v1.coax" ]]; then
     roots+=("$appdir/app-v1.coax")
   else
     roots+=("$appdir/app.coax")
   fi
-  (cd "$src" && coax/build.sh) > "$state/build.log" 2>&1 || { say "coax build failed: $state/build.log"; exit 1; }
+  (cd "$build_src" && coax/build.sh) > "$state/build.log" 2>&1 || { say "coax build failed: $state/build.log"; exit 1; }
+  # Always remove any prior staged .app bundle before building so stale workers/resources from older
+  # commits can never leak across builds even if building a commit with an older build.sh.
+  rm -rf "$stage/OpenAgents.app"
   build_env=(CODER_BUILD="$stage")
   build_args=()
   if [[ "$minimal" == 1 ]]; then
     build_env+=(OA_RELEASE_MINIMAL=1)
-    if grep -q -- '--minimal' "$src/$appdir/build.sh" 2>/dev/null; then
+    if grep -q -- '--minimal' "$build_src/$appdir/build.sh" 2>/dev/null; then
       build_args+=(--minimal)
     fi
   else
     build_env+=(OA_RELEASE_MINIMAL=0)
-    if grep -q -- '--full' "$src/$appdir/build.sh" 2>/dev/null; then
+    if grep -q -- '--full' "$build_src/$appdir/build.sh" 2>/dev/null; then
       build_args+=(--full)
     fi
   fi
-  env "${build_env[@]}" "$src/$appdir/build.sh" ${build_args[@]+"${build_args[@]}"} >> "$state/build.log" 2>&1 || { say "OpenAgents build failed: $state/build.log"; exit 1; }
+  env "${build_env[@]}" "$build_src/$appdir/build.sh" ${build_args[@]+"${build_args[@]}"} >> "$state/build.log" 2>&1 || { say "OpenAgents build failed: $state/build.log"; exit 1; }
   plist="$stage/OpenAgents.app/Contents/Info.plist"
-  rev_count="$((28830 + $(git -C "$src" rev-list --count HEAD)))"
+  rev_count="$((28830 + $(git -C "$build_src" rev-list --count HEAD)))"
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $rev_count" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OACommit" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :OACommit string $target" "$plist"
@@ -367,7 +400,7 @@ if [[ "$need_build" == 1 ]]; then
   /usr/libexec/PlistBuddy -c "Add :OAProfile string $want_profile" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OABuildDate" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :OABuildDate string $(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$plist"
-  codesign --force --sign - "$stage/OpenAgents.app" 2> /dev/null
+  codesign --force --sign - "$stage/OpenAgents.app" >> "$state/build.log" 2>&1
   if [[ "$minimal" == 1 ]]; then
     if ! verify_minimal_bundle "$stage/OpenAgents.app"; then
       rm -rf "$stage/OpenAgents.app"
@@ -375,29 +408,32 @@ if [[ "$need_build" == 1 ]]; then
     fi
   fi
   # What this build read, relative to the checkout, for the next check.
-  { printf '%s\n' "${fixed[@]}"
-    for r in "${roots[@]}"; do "$src/coax/bin/coax" deps "$src/$r"; done \
-      | python3 -I -c 'import json, sys, os
+  if [[ "$use_local" == 0 ]]; then
+    { printf '%s\n' "${fixed[@]}"
+      for r in "${roots[@]}"; do [[ -f "$build_src/$r" ]] && "$build_src/coax/bin/coax" deps "$build_src/$r"; done \
+        | python3 -I -c 'import json, sys, os
 root = os.path.realpath(sys.argv[1]) + "/"
 for line in sys.stdin:
     for f in json.loads(line).get("sources", []):
         f = os.path.realpath(f)
-        if f.startswith(root): print(f[len(root):])' "$src"
-  } | sort -u > "$state/inputs.new" && mv "$state/inputs.new" "$state/inputs"
-  echo "$target" > "$state/current"
-  echo "$want_profile" > "$state/profile"
+        if f.startswith(root): print(f[len(root):])' "$build_src"
+    } | sort -u > "$state/inputs.new" && mv "$state/inputs.new" "$state/inputs"
+    printf '%s\n' "$inputs_schema" > "$state/inputs.version"
+    echo "$target" > "$state/current"
+    echo "$want_profile" > "$state/profile"
+  fi
   # The LaunchAgent runs the newest copy of this script from here on.
-  [[ ! -f "$src/$appdir/install.sh" ]] || { cp "$src/$appdir/install.sh" "$state/install.sh.new" && mv "$state/install.sh.new" "$state/install.sh"; }
+  [[ ! -f "$build_src/$appdir/install.sh" ]] || { cp "$build_src/$appdir/install.sh" "$state/install.sh.new" && mv "$state/install.sh.new" "$state/install.sh"; }
   staged="$target"
   staged_profile="$want_profile"
 fi
 
-[[ "$installed" == "$target" && "$installed_profile" == "$want_profile" && ! -e "$legacy_app" ]] && { say "up to date at ${target:0:10} ($want_profile)"; sync_resident; retire_legacy_agent; exit 0; }
+[[ "$use_local" == 0 && "$force_build" == 0 && "$installed" == "$target" && "$installed_profile" == "$want_profile" && ! -e "$legacy_app" ]] && { say "up to date at ${target:0:10} ($want_profile)"; sync_resident; retire_legacy_agent; exit 0; }
 
 pids="$(coder_pids)"
 if [[ -n "$pids" ]]; then
   if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit OpenAgents"; sync_resident "$stage/OpenAgents.app"; retire_legacy_agent; exit 0; fi
-  if inside_app $pids; then say "DEFERRED: ${target:0:10} is built, but this run is inside OpenAgents; quit OpenAgents and re-run install.sh (or wait for the next check)"; retire_legacy_agent; exit 4; fi
+  if inside_app $pids; then say "DEFERRED: ${target:0:10} is built and staged at $stage/OpenAgents.app (click 'Restart to update' in OpenAgents, or quit OpenAgents and re-run install.sh)"; sync_resident "$stage/OpenAgents.app"; retire_legacy_agent; exit 4; fi
   if [[ -z "${OA_INSTALL_FORCE:-}" ]] && replies_running; then say "DEFERRED: ${target:0:10} is built, but a reply is running in OpenAgents; re-run with OA_INSTALL_FORCE=1 to quit and install now"; retire_legacy_agent; exit 4; fi
   kill $pids 2>/dev/null || true
   for _ in $(seq 1 40); do [[ -z "$(coder_pids)" ]] && break; sleep 0.25; done
@@ -411,20 +447,23 @@ if [[ "$minimal" == 1 ]]; then
   verify_minimal_bundle "$stage/OpenAgents.app" || exit 1
 fi
 
-# Swap it in whole: the new copy lands beside the old one, then takes its name.
+# Swap it in whole: always clean any leftover staging/backup paths first so ditto never merges into stale files.
+rm -rf "$dest/OpenAgents.app.new" "$dest/.OpenAgents.app.old"
 ditto "$stage/OpenAgents.app" "$dest/OpenAgents.app.new"
 [[ -e "$app" ]] && mv "$app" "$dest/.OpenAgents.app.old"
 mv "$dest/OpenAgents.app.new" "$app"
 rm -rf "$dest/.OpenAgents.app.old"
 # Cleanly remove legacy /Applications/Coder.app after OpenAgents.app is in place.
 if [[ -e "$legacy_app" ]]; then
+  rm -rf "$dest/.Coder.app.old"
   mv "$legacy_app" "$dest/.Coder.app.old"
   rm -rf "$dest/.Coder.app.old"
 fi
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" 2>/dev/null || true
 installed_now="$(commit_of "$app")"
-if [[ "$installed_now" != "$target" ]]; then
-  say "ERROR: post-install OACommit mismatch (got ${installed_now:-none}, expected $target)"
+installed_profile_now="$(profile_of "$app")"
+if [[ "$installed_now" != "$target" || "$installed_profile_now" != "$want_profile" ]]; then
+  say "ERROR: post-install metadata mismatch (got ${installed_now:-none} [${installed_profile_now:-none}], expected $target [$want_profile])"
   exit 1
 fi
 say "installed ${target:0:10} ($want_profile, build $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist" 2>/dev/null || echo ?)) at $app"

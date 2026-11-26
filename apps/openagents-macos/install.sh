@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Firm reason: 5 (thin wrapper: builds Release OpenAgents.app + coder-host + agyworker, runs check.sh, and installs over /Applications/OpenAgents.app; holds no logic).
-# Builds and installs OpenAgents (/Applications/OpenAgents.app), overwriting the existing binary with the same name and icon,
+# Firm reason: 5 (thin wrapper: builds Release OpenAgentsMac.app + coder-host + agyworker, runs check.sh, and installs to /Applications/OpenAgentsMac.app by default; holds no logic).
+# Builds and installs the SwiftUI macOS companion (/Applications/OpenAgentsMac.app by default, or /Applications/OpenAgents.app with --replace-desktop),
 # plus ~/.openagents/bin/coder-host and ~/.openagents/bin/agyworker (GitHub #13993).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -47,21 +47,24 @@ codesign --force --deep --sign - "$app"
 
 ./check.sh "$app"
 
-# Disable legacy desktop auto-updater so it does not overwrite /Applications/OpenAgents.app back.
-legacy_plist="$HOME/Library/LaunchAgents/com.openagents.desktop-update.plist"
-if [[ -f "$legacy_plist" ]]; then
-  launchctl bootout "gui/$(id -u)" "$legacy_plist" 2>/dev/null || true
-  rm -f "$legacy_plist"
-fi
+# Install to /Applications/OpenAgentsMac.app by default so this SwiftUI companion never clobbers
+# OpenAgents Desktop (/Applications/OpenAgents.app) or kills its com.openagents.desktop-update LaunchAgent.
+# Pass --replace-desktop only if you explicitly want to replace /Applications/OpenAgents.app.
+replace_desktop=0
+for arg in "$@"; do
+  case "$arg" in
+    --replace-desktop) replace_desktop=1 ;;
+    *) echo "install.sh: unknown argument $arg (usage: install.sh [--replace-desktop])" >&2; exit 2 ;;
+  esac
+done
 
-# Remove any separate /Applications/OpenAgentsMac.app from earlier installs.
-if [[ -d "/Applications/OpenAgentsMac.app" ]]; then
-  rm -rf "/Applications/OpenAgentsMac.app"
+if [[ "$replace_desktop" == 1 ]]; then
+  dest="/Applications/OpenAgents.app"
+else
+  dest="/Applications/OpenAgentsMac.app"
 fi
-
-dest="/Applications/OpenAgents.app"
-echo "==> Installing $dest (overwriting existing binary)"
-# Gracefully quit running OpenAgents.app unless this script is running inside it.
+echo "==> Installing $dest"
+# Gracefully quit running target app unless this script is running inside it.
 running_pids="$(pgrep -f "^$dest/Contents/MacOS/OpenAgents$" || true)"
 if [[ -n "$running_pids" ]]; then
   in_app=0

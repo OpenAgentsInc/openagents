@@ -24,8 +24,12 @@ for arg in "$@"; do
 done
 work="${CODER_BUILD:-$here/build}"   # CODER_BUILD=DIR builds a second copy and leaves a running OpenAgents's files alone
 app="$work/OpenAgents.app"
-res="$app/Contents/Resources"
-mkdir -p "$work/c" "$app/Contents/MacOS" "$res/Components"
+stage_app="$work/OpenAgents.app.staging"
+res="$stage_app/Contents/Resources"
+# Always assemble into a fresh .app bundle so removed/renamed workers, shaders, or frameworks
+# from older commits (e.g. flawedworker, inky, mcworker) can never leak into a new build.
+rm -rf "$stage_app"
+mkdir -p "$work/c" "$stage_app/Contents/MacOS" "$res/Components"
 update_if_changed() {
   if [[ -f "$2" ]] && cmp -s "$1" "$2"; then rm -f "$1"; else mv -f "$1" "$2"; fi
 }
@@ -36,14 +40,11 @@ obj_stale() {
   for dep in "$@"; do [[ -e "$dep" && "$dep" -nt "$obj" ]] && return 0; done
   return 1
 }
-if [[ "$minimal" == "1" ]]; then
-  rm -rf "$app/Contents/Frameworks" \
-    "$res/bip39-english.txt" "$res/mcworker" "$res/claudeworker" "$res/oasim" \
-    "$res/gym-evals" "$res/ple-run" "$res/lean-run" "$res/tbench-run" "$res/gbench-run" \
-    "$res/tbench-harbor" "$res/tbench-policies" "$res/lean-checker" "$res/fixtures" \
-    "$res/proof-export" "$res/capability-eval" "$res/agents-catalog" "$res/tester-cli" \
-    "$res/foreman-ctl" "$res/gamebuilder" "$res/Metaverse" \
-    "$res/Components/metaverse-model.metal" "$res/Components/metaverse-ple.metal" "$res/Components/gb-instances.metal" "$res/Components/splat-sort.metal"
+build_sig="$minimal|$swift_opt|$(/usr/bin/clang --version | head -n 1)"
+if [[ "${OA_CLEAN_BUILD:-0}" == "1" || "$(cat "$work/c/.build-sig" 2>/dev/null || true)" != "$build_sig" ]]; then
+  rm -rf "$work/c"
+  mkdir -p "$work/c"
+  printf '%s\n' "$build_sig" > "$work/c/.build-sig"
 fi
 source "$here/sign.sh"
 sign_prepare "$work"
@@ -164,9 +165,9 @@ if [[ "$minimal" != "1" ]]; then
     /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$here" -c "$here/gb_host.c" -o "$work/c/gb_host.o"
   fi
   spark_sdk="$("$repo/apps/shared/host/apple/spark-sdk.sh")"
-  mkdir -p "$app/Contents/Frameworks"
-  rm -rf "$app/Contents/Frameworks/breez_sdk_sparkFFI.framework"
-  cp -R "$spark_sdk/breez_sdk_sparkFFI.framework" "$app/Contents/Frameworks/breez_sdk_sparkFFI.framework"
+  mkdir -p "$stage_app/Contents/Frameworks"
+  rm -rf "$stage_app/Contents/Frameworks/breez_sdk_sparkFFI.framework"
+  cp -R "$spark_sdk/breez_sdk_sparkFFI.framework" "$stage_app/Contents/Frameworks/breez_sdk_sparkFFI.framework"
   c_objs+=(
     "$work/c/lab-sign.o" "$work/c/pay-wallet.o" "$work/c/pay-wallet-backup.o"
     "$work/c/pay-wallet-rpc.o" "$work/c/rh-flythrough.o"
@@ -204,19 +205,18 @@ xcrun -sdk macosx swiftc "$swift_opt" -swift-version 5 -suppress-warnings -parse
   "${swift_files[@]}" \
   "${c_objs[@]}" \
   "${link_flags[@]}" \
-  -o "$app/Contents/MacOS/OpenAgents.new"
-mv "$app/Contents/MacOS/OpenAgents.new" "$app/Contents/MacOS/OpenAgents"
-cp "$here/Info.plist" "$app/Contents/Info.plist"
+  -o "$stage_app/Contents/MacOS/OpenAgents"
+cp "$here/Info.plist" "$stage_app/Contents/Info.plist"
 build_profile="full"; [[ "$minimal" == "1" ]] && build_profile="minimal"
-/usr/libexec/PlistBuddy -c "Delete :OAProfile" "$app/Contents/Info.plist" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :OAProfile string $build_profile" "$app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Delete :OABuildDate" "$app/Contents/Info.plist" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :OABuildDate string $(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Delete :OAProfile" "$stage_app/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :OAProfile string $build_profile" "$stage_app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Delete :OABuildDate" "$stage_app/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :OABuildDate string $(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$stage_app/Contents/Info.plist"
 if build_sha="$(git -C "$repo" rev-parse HEAD 2>/dev/null)"; then
   build_rev="$(git -C "$repo" rev-list --count HEAD 2>/dev/null || echo 0)"
-  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((28830 + build_rev))" "$app/Contents/Info.plist"
-  /usr/libexec/PlistBuddy -c "Delete :OACommit" "$app/Contents/Info.plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :OACommit string $build_sha" "$app/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((28830 + build_rev))" "$stage_app/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Delete :OACommit" "$stage_app/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :OACommit string $build_sha" "$stage_app/Contents/Info.plist"
 fi
 cp "$here/resources/OpenAgents.icns" "$res/OpenAgents.icns"
 coax_hash="$(shasum -a 256 "$coax" | cut -d " " -f 1)"
@@ -225,7 +225,6 @@ cp "$repo/coax/web/build/tools/oa-worker-$coax_hash" "$res/oa-worker"
 cp "$repo/coax/web/build/tools/agyworker-$coax_hash" "$res/agyworker"
 cp "$repo/coax/web/build/tools/gitguard-$coax_hash" "$res/gitguard"
 cp "$repo/coax/web/build/tools/host-$coax_hash" "$res/coder-host"
-rm -f "$res/inky" "$res/mcworker"
 cp "$work/psionic-inkling/psionic-inkling-serve" "$res/psionic-inkling-serve"
 chmod +x "$res/psionic-inkling-serve"
 cp "$work/psionic-inkling/inkling-kernels.metal" "$res/inkling-kernels.metal"
@@ -291,7 +290,11 @@ if [[ "$minimal" != "1" ]]; then
   [[ -f "$repo/metaverse-engine/fixtures/ple-data-hall-sample.ple-scene.json" ]] && cp "$repo/metaverse-engine/fixtures/ple-data-hall-sample.ple-scene.json" "$res/fixtures/ple-data-hall-sample.ple-scene.json"
 fi
 
-sign_bundle "$app" "$work"
+sign_bundle "$stage_app" "$work"
+rm -rf "$work/OpenAgents.app.old"
+[[ -e "$app" ]] && mv "$app" "$work/OpenAgents.app.old"
+mv "$stage_app" "$app"
+rm -rf "$work/OpenAgents.app.old"
 echo "built $app"
 [[ "$open_app" == "1" ]] && open "$app"
 exit 0
