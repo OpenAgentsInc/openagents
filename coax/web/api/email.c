@@ -17,8 +17,8 @@
 //   OA_EMAIL_ALLOW      staging: the only addresses mail may go to
 #include "api.h"
 #include "email-wire.generated.h"
+#include "http_client.h"
 
-#include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,39 +26,34 @@
 
 static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
 
-typedef struct { char *data; size_t n; } buf;
-static size_t keep(char *p, size_t size, size_t count, void *u) {
-  buf *b = u; size_t k = size * count;
-  if (b->n + k > 65536) return 0;
-  char *g = realloc(b->data, b->n + k + 1); if (!g) return 0;
-  b->data = g; memcpy(b->data + b->n, p, k); b->n += k; b->data[b->n] = 0;
-  return k;
-}
-
-// One POST to Resend: its HTTP status (0 unreached), Resend's id into id.
+// One POST to Resend via the unified bounded http_client: its HTTP status (0 unreached), Resend's id into id.
 static long post_once(const char *key, const char *idem, const char *payload, char id[128]) {
-  CURL *h = curl_easy_init(); if (!h) return 0;
   char auth[600], ik[400];
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", key);
   snprintf(ik, sizeof ik, "Idempotency-Key: %s", idem);
-  struct curl_slist *headers = curl_slist_append(NULL, "Content-Type: application/json");
-  headers = curl_slist_append(headers, auth); headers = curl_slist_append(headers, ik);
-  buf b = {0};
-  curl_easy_setopt(h, CURLOPT_URL, env_or("OA_RESEND_URL", "https://api.resend.com/emails"));
-  curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(h, CURLOPT_POSTFIELDS, payload);
-  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, keep); curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, 20L); curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
-  long status = 0;
-  if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+  const char *hdrs[] = {"Content-Type: application/json", auth, ik, NULL};
+  http_client_req req = {
+      .method = "POST",
+      .url = env_or("OA_RESEND_URL", "https://api.resend.com/emails"),
+      .body = payload,
+      .body_len = strlen(payload),
+      .headers = hdrs,
+      .connect_timeout_ms = 5000,
+      .total_timeout_ms = 20000,
+      .max_response_bytes = 65536,
+      .allow_http_local = getenv("OA_RESEND_URL") != NULL,
+  };
+  http_client_res res;
+  http_client_send(&req, &res);
   id[0] = 0;
-  const char *at = b.data ? strstr(b.data, "\"id\"") : NULL;
+  const char *at = res.body ? strstr(res.body, "\"id\"") : NULL;
   if (at && (at = strchr(at + 4, '"'))) {
     size_t n = 0; at++;
     while (n < 127 && at[n] && at[n] != '"' && at[n] != '\\') { id[n] = at[n]; n++; }
     id[n] = 0;
   }
-  free(b.data); curl_slist_free_all(headers); curl_easy_cleanup(h);
+  long status = res.status;
+  http_client_res_free(&res);
   return status;
 }
 

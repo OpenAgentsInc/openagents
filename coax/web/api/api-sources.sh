@@ -11,13 +11,13 @@
 # from the repository root when it starts with pay/ or metaverse/), which makes WORK/NAME.generated.{c,h}. A unit
 # whose C is wrapped by a NAME-unit.c (it includes the generated C under names of its own) is
 # listed in API_COAX_WRAPPED instead, so its generated C is made but not linked twice.
-API_C="api.c config.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c villa.c chat.c chat-history.c account-chat-library.c account-chat.c account-chat-turns.c account-chat-wire-unit.c projects.c projects-wire-unit.c environment.c environment-wire-unit.c realms.c
+API_C="api.c config.c http_client.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c villa.c chat.c chat-history.c account-chat-library.c account-chat.c account-chat-turns.c account-chat-wire-unit.c projects.c projects-wire-unit.c environment.c environment-wire-unit.c realms.c
   access.c makers.c inference.c mesh.c mesh-gemini-unit.c router.c router-wire-unit.c
   anime.c seats.c nostr.c email.c jobs.c relay.c verse_packs.c worldbuilder.c auth.c auth-identity.c account-settings.c nostr-messaging.c nostr-messaging-unit.c auth-seal-unit.c
   lnaddr.c lnaddr-unit.c agents.c agent-wire-unit.c agent-attest-unit.c auth-recover.c auth-life.c
   auth-recover-crypto-unit.c auth-device.c auth-device-crypto-unit.c push.c passkeys.c passkey-verify-unit.c
   wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c worlds.c splice-world-unit.c scripts.c script-job-run.c script-store-unit.c"
-API_COAX="mesh-policy caller-policy route-policy config-policy log-context maintenance-policy nip98 npc-personas anime-director-policy seat-policy progress-policy item-policy moderation-policy
+API_COAX="mesh-policy caller-policy route-policy config-policy log-context maintenance-policy http-client-policy nip98 npc-personas anime-director-policy seat-policy progress-policy item-policy moderation-policy
   character-policy worldbuilder-policy auth-policy chat-history-wire auth-recover-policy auth-life-policy
   auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push seat-wire jobs-wire email-wire packs-wire world-policy error-wire mesh-wire inference-upstream-policy
   account-chat-library-wire auth-identity-policy auth-identity-wire account-settings-wire auth-wire auth-recover-wire auth-life-wire auth-device-wire passkeys-wire chat-wire player-wire rooms-wire lnaddr-wire makers-wire worldbuilder-wire"
