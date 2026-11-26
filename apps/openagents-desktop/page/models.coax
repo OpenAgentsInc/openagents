@@ -154,24 +154,24 @@ cp_flawed_slot :: (s: [] CoderPage, idx: int) -> int {
 cp_is_flawed :: (s: [] CoderPage, idx: int) -> bool { return cp_flawed_slot(s, idx) >= 0; }
 cp_is_flawed_local :: (s: [] CoderPage, idx: int) -> bool { return cp_flawed_slot(s, idx) == CP_FLAWED_START_LOCAL; }
 cp_flawed_idx :: (s: [] CoderPage) -> int {
-  slot := ifx s.count > 0 && s[0].flawed[0].model_slot >= 0 && s[0].flawed[0].model_slot < CP_FLAWED_MODELS then s[0].flawed[0].model_slot else CP_FLAWED_START_LOCAL;
-  // Default to Inkling 2 Mini when installed; automatically fall back to Gemini 4 Neon when not installed.
+  slot := ifx s.count > 0 && s[0].flawed[0].model_slot >= 0 && s[0].flawed[0].model_slot < CP_FLAWED_MODELS then s[0].flawed[0].model_slot else CP_FLAWED_START;
+  // If user explicitly chose local Inkling as default but weights are not installed, fall back to Gemini 4 Neon.
   if slot == CP_FLAWED_START_LOCAL && (s.count < 1 || !s[0].inkling) { slot = CP_FLAWED_START_CLOUD; }
   return cp_model_idx_of(s, CP_MK_FLAWED, slot);
 }
 cp_flawed_find :: (name: string) -> int {
-  if name == "flawed" || name == "Flawed" { return CP_FLAWED_START_LOCAL; }
+  if name == "flawed" || name == "Flawed" { return CP_FLAWED_START; }
   ids := CP_FLAWED_ID; labels := CP_FLAWED_LABEL;
   for i: 0..<CP_FLAWED_MODELS {
     if name == ids[i] || name == labels[i] { return i; }
   }
   if name.count > CP_FLAWED_PREFIX.count && cast(string) name[0..<CP_FLAWED_PREFIX.count] == CP_FLAWED_PREFIX {
     bare := cast(string) name[CP_FLAWED_PREFIX.count..<name.count];
-    if cp_is_inkling_id(bare) || bare == "local" { return 0; }
-    if bare == "gemini-4-neon" || bare == "neon" { return 1; }
-    if bare == "gemini-4-carbon" || bare == "carbon" { return 2; }
-    if bare == "gemini-4-hydrogen" || bare == "hydrogen" { return 3; }
-    if bare == "gemini-4-argon" || bare == "argon" { return 4; }
+    if bare == "gemini-4-neon" || bare == "neon" { return 0; }
+    if bare == "gemini-4-carbon" || bare == "carbon" { return 1; }
+    if bare == "gemini-4-hydrogen" || bare == "hydrogen" { return 2; }
+    if bare == "gemini-4-argon" || bare == "argon" { return 3; }
+    if cp_is_inkling_id(bare) || bare == "local" { return CP_FLAWED_START_LOCAL; }
     return CP_FLAWED_START_CLOUD;
   }
   return -1;
@@ -386,7 +386,7 @@ cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
 cp_model_known_label :: (name: string) -> string {
   fids := CP_FLAWED_ID; flabels := CP_FLAWED_LABEL;
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return flabels[i]; } }
-  if name == "flawed" { return "Flawed · Inkling 2 Mini"; }
+  if name == "flawed" { return "Flawed · Gemini 4 Neon"; }
   if name == "flawed:inkling-2-mini-uncensored-lora" { return "Flawed · Inkling 2 Mini Uncensored (LoRA)"; }
   if name == "flawed:inkling-2-mini-uncensored-maple" { return "Flawed · Inkling 2 Mini Uncensored (Maple)"; }
   if name == "flawed:inkling-2-mini-uncensored-q4k" { return "Flawed · Inkling 2 Mini Uncensored (AD-Q4_K)"; }
@@ -435,7 +435,7 @@ cp_model_known_label :: (name: string) -> string {
 cp_model_known_meta :: (name: string) -> string {
   fids := CP_FLAWED_ID; fmetas := CP_FLAWED_META;
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return fmetas[i]; } }
-  if name == "flawed" { return "Flawed Agent · Inkling 2 Mini"; }
+  if name == "flawed" { return "Flawed Agent · Gemini 4 Neon"; }
   if name == "flawed:inkling-2-mini-uncensored-lora" { return "Flawed Agent · Inkling 2 Mini Uncensored (LoRA)"; }
   if name == "flawed:inkling-2-mini-uncensored-maple" { return "Flawed Agent · Inkling 2 Mini Uncensored (Maple)"; }
   if name == "flawed:inkling-2-mini-uncensored-q4k" { return "Flawed Agent · Inkling 2 Mini Uncensored (AD-Q4_K)"; }

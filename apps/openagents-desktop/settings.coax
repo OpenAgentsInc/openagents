@@ -1210,7 +1210,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   // Switching default agent to Inkling moves an empty chat to Inkling; switching back moves to Flawed.
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_inkling(s);
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.0") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_flawed(s);
-  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.model.2") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && cp_model_id(s, cp_model_index(s)) == "flawed:gemini-4-carbon";
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.model.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && cp_model_id(s, cp_model_index(s)) == "flawed:gemini-4-carbon";
   // Dialog actions dispatch cleanly.
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.key.a") && coder_page_action(s) == CP_ASK_FLAWED_KEY;
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.url.a") && coder_page_action(s) == CP_ASK_FLAWED_BASE_URL;

@@ -74,13 +74,13 @@
   s[0].inkling = true;
   cp_init(s[..]);
 
-  // Default: Flawed Agent (5 models: Inkling 2 Mini + 4 Gemini 4 Neon models) + local Inkling (1 model) = 6 selectable models.
-  // Because s[0].inkling == true, starts on Flawed · Inkling 2 Mini!
+  // Default: Flawed Agent (5 models: 4 Gemini 4 Neon models + Inkling 2 Mini) + local Inkling (1 model) = 6 selectable models.
+  // Always starts on Flawed · Gemini 4 Neon (even when s[0].inkling == true).
   #assert cp_has_model_picker(s[..]) && cp_models(s[..]) == CP_FLAWED_MODELS + 1;
-  #assert coder_page_model_flawed(s[..]) && coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
+  #assert coder_page_model_flawed(s[..]) && !coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
   mid: [64] u8;
   mn := coder_page_model_id_out(s[..], mid[..]);
-  #assert cast(string) mid[0..<mn] == "flawed:inkling-2-mini";
+  #assert cast(string) mid[0..<mn] == "flawed:gemini-4-neon";
   #assert cp_effort_count(s[..], cp_model_index(s[..])) == 5 && cp_effort_label(s[..], cp_model_index(s[..])) == "High";
   #assert cp_tr(CP_LOCALE_EN, "new_chat") == "New chat";
   #assert cp_tr(CP_LOCALE_EN, "send") == "Send";

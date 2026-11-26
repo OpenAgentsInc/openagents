@@ -37,7 +37,7 @@ enum FlawedSettings {
     private static let kMaxBudgetMicros = "flawed.maxBudgetMicros"
 
     private static let kSchemaVersion = "flawed.schemaVersion"
-    private static let currentSchemaVersion = 3
+    private static let currentSchemaVersion = 4
     private static var didMigrate = false
 
     private static func migrateIfNeeded() {
@@ -45,7 +45,7 @@ enum FlawedSettings {
         didMigrate = true
         let v = d.integer(forKey: kSchemaVersion)
         if v < 2 {
-            // Reset legacy Anthropic model slot / backend prefs to Auto + Inkling 2 Mini (fallback Gemini 4 Neon).
+            // Reset legacy Anthropic model slot / backend prefs to Auto + default Flawed slot.
             d.set(0, forKey: kModelSlot)
             d.set(0, forKey: kBackend)
         }
@@ -54,6 +54,12 @@ enum FlawedSettings {
             d.set(0, forKey: kPermissionMode)
             d.set(false, forKey: kBypassDanger)
             d.set(false, forKey: kGitGuard)
+        }
+        if v < 4 {
+            // Always start new chats on Flawed · Gemini 4 Neon (slot 0) with Auto backend.
+            d.set(0, forKey: kDefaultAgent)
+            d.set(0, forKey: kModelSlot)
+            d.set(0, forKey: kBackend)
             d.set(currentSchemaVersion, forKey: kSchemaVersion)
         }
     }
@@ -296,11 +302,12 @@ enum FlawedSettings {
 
     private static func modelWireName(_ slot: Int) -> String {
         switch slot {
-        case 1: return "gemini-4-neon"
-        case 2: return "gemini-4-carbon"
-        case 3: return "gemini-4-hydrogen"
-        case 4: return "gemini-4-argon"
-        default: return "inkling-2-mini"
+        case 0: return "gemini-4-neon"
+        case 1: return "gemini-4-carbon"
+        case 2: return "gemini-4-hydrogen"
+        case 3: return "gemini-4-argon"
+        case 4: return "inkling-2-mini"
+        default: return "gemini-4-neon"
         }
     }
 

@@ -1145,7 +1145,7 @@ static int flawed_needs_local(DesktopApp *a) {
 // chat's model rides each task; these are the worker's defaults and its guards.
 static size_t flawed_env(DesktopApp *a, char *out, size_t cap) {
   static const char *const BACKEND[] = {"auto", "local", "vertex", "gemini", "openrouter"};
-  static const char *const MODEL[] = {"inkling-2-mini", "gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"};
+  static const char *const MODEL[] = {"gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon", "inkling-2-mini"};
   static const char *const EFFORT[] = {"low", "medium", "high", "xhigh", "max"};
   static const char *const THINK[] = {"adaptive", "extended", "off"};
   static const char *const PERMIT[] = {"default", "accept_edits", "plan", "auto", "dont_ask"};

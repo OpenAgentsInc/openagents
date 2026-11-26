@@ -197,15 +197,15 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert coder_page_agy_models_add(s, "antigravity-work", "Work", "gemini-4-carbon", "Gemini 4 Carbon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_HIGH, true) == 1;
   coder_page_set_agy(s, true);
   #assert cp_has_model_picker(s) && cp_models(s) == CP_FLAWED_MODELS + 3;
-  #assert cp_model_label(s, 0) == "Flawed · Inkling 2 Mini" && cp_model_id(s, 0) == "flawed:inkling-2-mini";
-  #assert cp_model_label(s, 1) == "Flawed · Gemini 4 Neon" && cp_model_id(s, 1) == "flawed:gemini-4-neon";
+  #assert cp_model_label(s, 0) == "Flawed · Gemini 4 Neon" && cp_model_id(s, 0) == "flawed:gemini-4-neon";
+  #assert cp_model_label(s, CP_FLAWED_START_LOCAL) == "Flawed · Inkling 2 Mini" && cp_model_id(s, CP_FLAWED_START_LOCAL) == "flawed:inkling-2-mini";
   #assert cp_model_label(s, CP_FLAWED_MODELS) == "Inkling 2 Mini" && cp_model_id(s, CP_FLAWED_MODELS) == "inkling-2-mini";
   neon_i := CP_FLAWED_MODELS + 1;
   carb_i := CP_FLAWED_MODELS + 2;
   #assert cp_model_label(s, neon_i) == "Gemini 4 Neon" && cp_model_id(s, neon_i) == "agy:gemini-4-neon";
   #assert cp_model_label(s, carb_i) == "Gemini 4 Carbon" && cp_model_id(s, carb_i) == "agy:gemini-4-carbon";
-  // Empty new chat stays on default Flawed · Inkling 2 Mini (Antigravity never hijacks it).
-  #assert !coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "flawed:inkling-2-mini";
+  // Empty new chat stays on default Flawed · Gemini 4 Neon (Antigravity never hijacks it).
+  #assert !coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "flawed:gemini-4-neon";
   #assert cp_model_start(s) == 0;
 
   // Neon supports 4 thinking levels (including X-High); Carbon supports 3.
@@ -248,12 +248,12 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert cast(string) mt[0].rows[m1].value[0..<mt[0].rows[m1].value_n] == "Antigravity · gemini-4-neon";
   #assert cast(string) mt[0].rows[m2].value[0..<mt[0].rows[m2].value_n] == "Work · gemini-4-carbon";
 
-  // Starting a new chat defaults to Flawed · Inkling 2 Mini (since s[0].inkling is true here).
-  #assert coder_page_new(s) && !coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "flawed:inkling-2-mini";
+  // Starting a new chat always defaults to Flawed · Gemini 4 Neon (even when s[0].inkling is true).
+  #assert coder_page_new(s) && !coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "flawed:gemini-4-neon";
 
   // Hiding other models collapses right back to Flawed + Inkling.
   coder_page_show_other_models_set(s, false);
-  #assert cp_has_model_picker(s) && cp_models(s) == CP_FLAWED_MODELS + 1 && cp_model_id(s, cp_model_index(s)) == "flawed:inkling-2-mini";
+  #assert cp_has_model_picker(s) && cp_models(s) == CP_FLAWED_MODELS + 1 && cp_model_id(s, cp_model_index(s)) == "flawed:gemini-4-neon";
 }
 
 cp_model_agy_test :: (s: [] CoderPage) -> bool { return coder_page_model_agy(s); }

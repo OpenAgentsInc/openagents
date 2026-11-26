@@ -1,46 +1,46 @@
 // Coder Desktop page (../page.coax & ../page-v1.coax): Flawed Agent model table,
 // Claude-Code-parity Settings -> Flawed screen, state, press handlers, and host C exports.
-// Uses Local Inkling 2 Mini (default when installed) and Gemini 4 Neon family models — zero Anthropic.
+// Uses Gemini 4 Neon (always first & default) and Local Inkling 2 Mini (Psionic Metal) — zero Anthropic.
 
 CP_FLAWED_MODELS :: 5;
 CP_FLAWED_PREFIX :: "flawed:";
 CP_FLAWED_ID :: [CP_FLAWED_MODELS] string.[
-  "flawed:inkling-2-mini",
   "flawed:gemini-4-neon",
   "flawed:gemini-4-carbon",
   "flawed:gemini-4-hydrogen",
   "flawed:gemini-4-argon",
+  "flawed:inkling-2-mini",
 ];
 CP_FLAWED_LABEL :: [CP_FLAWED_MODELS] string.[
-  "Flawed · Inkling 2 Mini",
   "Flawed · Gemini 4 Neon",
   "Flawed · Gemini 4 Carbon",
   "Flawed · Gemini 4 Hydrogen",
   "Flawed · Gemini 4 Argon",
+  "Flawed · Inkling 2 Mini",
 ];
 CP_FLAWED_SHORT :: [CP_FLAWED_MODELS] string.[
-  "Inkling 2 Mini",
   "Neon",
   "Carbon",
   "Hydrogen",
   "Argon",
+  "Inkling 2 Mini",
 ];
 CP_FLAWED_DESC :: [CP_FLAWED_MODELS] string.[
-  "Local Psionic Metal · Flawed Agent",
   "Frontier reasoning · 1M context · Vertex / Gemini",
   "Deep coding · 1M context · Vertex / Gemini",
   "Fast & light · 1M context · Vertex / Gemini",
   "High precision · 1M context · Vertex / Gemini",
+  "Local Psionic Metal · Flawed Agent",
 ];
 CP_FLAWED_META :: [CP_FLAWED_MODELS] string.[
-  "Flawed Agent · Inkling 2 Mini",
   "Flawed Agent · Gemini 4 Neon",
   "Flawed Agent · Gemini 4 Carbon",
   "Flawed Agent · Gemini 4 Hydrogen",
   "Flawed Agent · Gemini 4 Argon",
+  "Flawed Agent · Inkling 2 Mini",
 ];
-CP_FLAWED_START_LOCAL :: 0;    // Inkling 2 Mini (default when installed)
-CP_FLAWED_START_CLOUD :: 1;    // Gemini 4 Neon (automatic fallback when Inkling is not installed)
+CP_FLAWED_START_CLOUD :: 0;    // Gemini 4 Neon (always first & default for every new chat)
+CP_FLAWED_START_LOCAL :: 4;    // Inkling 2 Mini (opt-in local Psionic Metal slot)
 CP_FLAWED_START :: 0;
 CP_FLAWED_EFFORTS :: 5;        // Low, Medium, High, X-High, Max
 CP_FLAWED_EFFORT_START :: 2;   // High
@@ -60,8 +60,8 @@ CP_ASK_FLAWED_RESET :: 197;
 CP_MODEL_FLAWED :: 398;
 
 // Zero-initialized defaults:
-// default_agent=0 (Flawed), model_slot=0 (Inkling 2 Mini if installed, else Gemini 4 Neon),
-// backend=0 (Auto: Local Psionic for Inkling, Vertex AI -> Gemini API -> OpenRouter for Neon),
+// default_agent=0 (Flawed), model_slot=0 (Gemini 4 Neon),
+// backend=0 (Auto: Vertex AI -> Gemini API -> OpenRouter for Neon, Local Psionic for Inkling),
 // thinking_mode=0 (Adaptive), effort_off=0 (High), thinking_display=0 (Summarized),
 // permission_mode=0 (Allow All — no permission checks whatsoever), bypass_danger=false, sandbox_mode=0 (Off),
 // git_guard_on=false (Off, opt-in), prompt_cache=0 (Global), auto_compact_off=false (On),
@@ -70,7 +70,7 @@ CP_MODEL_FLAWED :: 398;
 // extended_ctx=false, remote_bridge=false.
 CpFlawedSettings :: struct {
   default_agent: int;      // 0: Flawed, 1: Inky (legacy local)
-  model_slot: int;         // 0..4 into CP_FLAWED_ID (0 = Inkling 2 Mini -> fallback Neon)
+  model_slot: int;         // 0..4 into CP_FLAWED_ID (0 = Gemini 4 Neon default)
   backend: int;            // 0 Auto, 1 Local Psionic, 2 Vertex AI, 3 Gemini API, 4 OpenRouter
   thinking_mode: int;      // 0 Adaptive, 1 Extended, 2 Off
   effort_off: int;         // level - CP_FLAWED_EFFORT_START (0 -> High)
@@ -205,7 +205,7 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
 
   // 1. Default Agent & Model
   y += set_section_head(f, "set.flawed.model.head", x, y, w, "Default Agent & Model",
-    "Defaults to local Inkling 2 Mini when installed (or Gemini 4 Neon otherwise). Switch freely between Inkling 2 Mini and Neon models in the composer.") + t.section_gap;
+    "Defaults to Flawed · Gemini 4 Neon on every new chat. Switch freely between Gemini 4 models and local Inkling 2 Mini in the composer.") + t.section_gap;
   mrows: [5] SetRow;
   mrows[0] = SetRow.{id = "set.flawed.agent", name = "Default agent",
     desc = ifx fl[0].default_agent == 0
