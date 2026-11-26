@@ -140,7 +140,7 @@ cp_set_page_ok_flags :: (flags: int, page: int) -> bool {
   if page == CP_PG_FOREMAN { return dc_flag_on(flags, DC_FLAG_FOREMAN); }
   if page == CP_PG_ACCOUNT { return dc_flag_on(flags, DC_FLAG_ACCOUNT); }
   if page == CP_PG_WALLET { return dc_flag_on(flags, DC_FLAG_WALLET); }
-  if page == CP_PG_USAGE { return dc_flag_on(flags, DC_FLAG_USAGE); }
+  if page == CP_PG_USAGE { return true; }
   if page == CP_PG_MCP || page == CP_PG_SKILLS { return dc_flag_on(flags, DC_FLAG_MCP); }
   if page == CP_PG_VOICE { return dc_flag_on(flags, DC_FLAG_VOICE); }
   if page == CP_PG_CONNECTIONS { return dc_flag_on(flags, DC_FLAG_ENVIRONMENTS) || dc_flag_on(flags, DC_FLAG_PAIRING); }
@@ -259,14 +259,12 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if id == "set.wallet.send.a" { if !cp_flag(s, DC_FLAG_WALLET) { return false; } s[0].ask = CP_ASK_WALLET_SEND; return true; }
   if id == "set.wallet.limit.a" { if !cp_flag(s, DC_FLAG_WALLET) { return false; } s[0].ask = CP_ASK_WALLET_LIMIT; return true; }
   if id == "set.wallet.backup.a" { if !cp_flag(s, DC_FLAG_WALLET) { return false; } s[0].ask = CP_ASK_WALLET_BACKUP; return true; }
-  if cp_flag(s, DC_FLAG_USAGE) {
-    if id == "set.usage.refresh.a" { s[0].ask = CP_ASK_USAGE_REFRESH; return true; }
-    if id == "set.usage.prices.a" { s[0].ask = CP_ASK_USAGE_PRICES; return true; }
-    upool := cp_number(id, "set.usage.pool.");
-    if upool == 0 || upool == 1 { s[0].usage[0].pool_enabled = (upool == 1); s[0].ask = CP_ASK_USAGE_POOL; return true; }
-    urec := cp_number(id, "set.usage.recovery.");
-    if urec == 0 || urec == 1 { s[0].usage[0].recovery_enabled = (urec == 1); s[0].ask = CP_ASK_USAGE_RECOVERY; return true; }
-  }
+  if id == "set.usage.refresh.a" { s[0].ask = CP_ASK_USAGE_REFRESH; return true; }
+  if id == "set.usage.prices.a" { s[0].ask = CP_ASK_USAGE_PRICES; return true; }
+  upool := cp_number(id, "set.usage.pool.");
+  if upool == 0 || upool == 1 { s[0].usage[0].pool_enabled = (upool == 1); s[0].ask = CP_ASK_USAGE_POOL; return true; }
+  urec := cp_number(id, "set.usage.recovery.");
+  if urec == 0 || urec == 1 { s[0].usage[0].recovery_enabled = (urec == 1); s[0].ask = CP_ASK_USAGE_RECOVERY; return true; }
   if cp_flag(s, DC_FLAG_MODELS_CLAUDE) {
     if id == "set.claude.a" { s[0].ask = CP_ASK_CLAUDE_KEY; return true; }
     eslot := cp_number(id, "set.claude.effort.");

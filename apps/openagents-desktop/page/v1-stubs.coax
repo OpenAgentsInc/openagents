@@ -145,42 +145,7 @@ coder_page_term_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) { ret
 coder_page_term_tab_cwd :: (s: [] CoderPage, tab_id: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
 coder_page_term_toggle :: (s: [] CoderPage) #export_c #effects(all) {}
 
-// ---- usage.coax stubs ----
-CP_ASK_USAGE_REFRESH :: 66;
-CP_ASK_USAGE_PRICES :: 67;
-CP_ASK_USAGE_POOL :: 68;
-CP_ASK_USAGE_RECOVERY :: 69;
-CP_USAGE_POPOVER :: 240;
-CP_USAGE_OPEN :: 241;
-CP_USAGE_REFRESH :: 242;
-CpUsageState :: struct {
-  popover_open: bool;
-  naccts: int;
-  pool_enabled: bool;
-  recovery_enabled: bool;
-}
-cp_settings_usage :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -> f32 { return 0.0f32; }
-cp_usage_init :: (s: [] CoderPage) {}
-cp_usage_popover :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, box_y: f32, foot_y: f32, h: f32) {}
-cp_usage_ring :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32) {}
-coder_page_usage_add_window :: (s: [] CoderPage, acct_idx: int, label: string, used_bp: int, reset_s: int) -> bool #export_c #effects(all) { return false; }
-coder_page_usage_clear :: (s: [] CoderPage) #export_c #effects(all) {}
-coder_page_usage_is_index_db :: (path: string) -> bool #export_c #effects(all) { return false; }
-coder_page_usage_pool_enabled :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
-coder_page_usage_pool_select :: (s: [] CoderPage, provider: int) -> int #export_c #effects(all) { return -1; }
-coder_page_usage_pool_set :: (s: [] CoderPage, enabled: bool) #export_c #effects(all) {}
-coder_page_usage_price_clear :: (s: [] CoderPage) #export_c #effects(all) {}
-coder_page_usage_price_set :: (s: [] CoderPage, model: string, in_micros_per_m: int, out_micros_per_m: int, cached_micros_per_m: int) -> bool #export_c #effects(all) { return false; }
-coder_page_usage_recovery_enabled :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
-coder_page_usage_recovery_msg :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_usage_recovery_set :: (s: [] CoderPage, enabled: bool) #export_c #effects(all) {}
-coder_page_usage_refreshing_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {}
-coder_page_usage_set_account :: (s: [] CoderPage, provider: int, profile: string, plan: string, status: int, why: string, got_ms: int, limited: bool, limit_reset_s: int) -> int #export_c #effects(all) { return -1; }
-coder_page_usage_spend_add :: (s: [] CoderPage, path: string, provider: int, model: string, in_tok: int, cached_tok: int, out_tok: int, fallback_micros: int) -> bool #export_c #effects(all) { return false; }
-coder_page_usage_spend_reset :: (s: [] CoderPage) #export_c #effects(all) {}
-coder_page_usage_tick :: (s: [] CoderPage, now_s: int) -> bool #export_c #effects(all) { return false; }
-coder_page_usage_total_cost_micros :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_usage_total_tokens :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
+// (usage.coax promoted into --minimal; #14064)
 
 // ---- mcpskills.coax stubs ----
 CP_ASK_MCP_ADD :: 70;

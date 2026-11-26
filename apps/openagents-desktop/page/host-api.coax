@@ -485,7 +485,6 @@ coder_page_flags_set :: (s: [] CoderPage, mask: int) #export_c #effects(all) {
   if !cp_flag(s, DC_FLAG_GIT) { s[0].review = false; }
   if !cp_flag(s, DC_FLAG_SCENES) && s[0].fp[0].mode == CP_FP_SCENE { s[0].fp[0].open = false; }
   if !cp_flag(s, DC_FLAG_RICH) { s[0].rich[0].side_open = false; }
-  if !cp_flag(s, DC_FLAG_USAGE) { s[0].usage[0].popover_open = false; }
   if !cp_set_page_ok_flags(s[0].flags, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }
 }
 coder_page_flags :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].flags else 0; }

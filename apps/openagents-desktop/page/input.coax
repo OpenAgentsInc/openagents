@@ -295,20 +295,17 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return true;
   }
   if act == CP_USAGE_POPOVER {
-    if !cp_flag(s, DC_FLAG_USAGE) { return false; }
     s[0].model_menu = false;
     s[0].effort_menu = false;
     s[0].usage[0].popover_open = !s[0].usage[0].popover_open;
     return true;
   }
   if act == CP_USAGE_OPEN {
-    if !cp_flag(s, DC_FLAG_USAGE) { return false; }
     s[0].usage[0].popover_open = false;
     cp_settings_show(s, true, CP_PG_USAGE);
     return true;
   }
   if act == CP_USAGE_REFRESH {
-    if !cp_flag(s, DC_FLAG_USAGE) { return false; }
     s[0].ask = CP_ASK_USAGE_REFRESH;
     return true;
   }

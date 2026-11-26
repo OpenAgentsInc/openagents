@@ -200,8 +200,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var previewScriptHandler: PreviewScriptHandler?
     var previewNavDelegate: PreviewNavigationDelegate?
     var previewLoadedURL = ""
-    var usageTimer: Timer?               // periodic limit-recovery check (Window+Usage.swift, #13877)
     #endif
+    var usageTimer: Timer?               // periodic always-on usage & limit-recovery refresh (Window+Usage.swift, #14064)
     var localModelsDialogState: LocalModelState? = nil // tracks open Local Models dialog for live progress updates (#13826)
     var localModelsDialogGen = 0
     #if OA_FULL
@@ -314,8 +314,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         syncSettingsInfo()
         checkFlawedAuth(showToast: false)
         setupProvidersSettings()
+        setupUsageDashboard()
         #if OA_FULL
-        if FeatureFlags.isOn(.usage) { setupUsageDashboard() }
         if FeatureFlags.isOn(.voice) { setupVoiceDictation() }
         if FeatureFlags.isOn(.customize) { setupCustomize() }
         #endif
@@ -631,11 +631,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 64: searchPaletteContent()
         case 65: jumpToPaletteHit()
         case 86...89: fileTreeAsked(what)
+        case 66: refreshUsageDashboard()
+        case 67: editUsagePriceOverrides()
+        case 68: handleUsagePoolChanged()
+        case 69: handleUsageRecoveryAction()
         #if OA_FULL
-        case 66: if FeatureFlags.isOn(.usage) { refreshUsageDashboard() }
-        case 67: if FeatureFlags.isOn(.usage) { editUsagePriceOverrides() }
-        case 68: if FeatureFlags.isOn(.usage) { handleUsagePoolChanged() }
-        case 69: if FeatureFlags.isOn(.usage) { handleUsageRecoveryAction() }
         case 70: if FeatureFlags.isOn(.mcp) { mcpAddDialog() }
         case 71: if FeatureFlags.isOn(.mcp) { mcpToggleSelected() }
         case 72: if FeatureFlags.isOn(.mcp) { mcpRemoveSelected() }
@@ -898,8 +898,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         saveRichPersistence()
         #endif
         updater.stop()
-        #if OA_FULL
         usageTimer?.invalidate(); usageTimer = nil
+        #if OA_FULL
         stopAllTerminals()
         retirePreview()
         retireEnvironments()

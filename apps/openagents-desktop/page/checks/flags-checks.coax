@@ -40,7 +40,8 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "coder.review") < 0;
   #assert surface_find(s[0].surface[..], "coder.composer.mic") < 0;
   #assert surface_find(s[0].surface[..], "coder.cost") < 0;
-  #assert surface_find(s[0].surface[..], "coder.usage.ring") < 0;
+  #assert surface_find(s[0].surface[..], "coder.usage.ring") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.side.pill.usage") >= 0;
   #assert surface_find(s[0].surface[..], "coder.fresh") < 0;
   #assert surface_find(s[0].surface[..], "coder.fanout") < 0;
 
@@ -86,7 +87,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "set.page.2") < 0;
   #assert surface_find(s[0].surface[..], "set.page.3") < 0;
   #assert surface_find(s[0].surface[..], "set.page.5") < 0;
-  #assert surface_find(s[0].surface[..], "set.page.6") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.6") >= 0;
   #assert surface_find(s[0].surface[..], "set.page.7") < 0;
   #assert surface_find(s[0].surface[..], "set.page.8") < 0;
   #assert surface_find(s[0].surface[..], "set.page.9") < 0;
@@ -105,14 +106,15 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
 
   // Settings search returns 0 hits for every disabled feature keyword, while keeping core settings (including Providers) searchable.
   hits: [CP_SET_HITS] int;
-  disabled_q := [17] string.[
-    "foreman", "account", "wallet", "bitcoin", "usage", "mcp", "skills",
+  disabled_q := [16] string.[
+    "foreman", "account", "wallet", "bitcoin", "mcp", "skills",
     "voice", "whisper", "tailscale", "ssh", "cron", "update everything",
     "appearance", "keybindings", "openrouter", "pylon"
   ];
   for q: disabled_q {
     #assert cp_set_hits_flags(q, hits[..], 0) == 0;
   }
+  #assert cp_set_hits_flags("usage", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("providers", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("antigravity", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("inkling", hits[..], 0) >= 1;

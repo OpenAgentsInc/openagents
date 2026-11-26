@@ -145,7 +145,8 @@
 
 #test "usage: Settings -> Usage renders, searches, dispatches actions, and composer popover works" {
   hits: [CP_SET_HITS] int; es := cp_set_entries();
-  #assert cp_set_hits_flags("usage", hits[..], 0) == 0 && !cp_set_page_ok(false, CP_PG_USAGE);
+  // Usage is unconditionally enabled in --minimal (#14064).
+  #assert cp_set_hits_flags("usage", hits[..], 0) >= 1 && cp_set_page_ok_flags(0, CP_PG_USAGE);
   uf := dc_flag_bit(DC_FLAG_USAGE);
   hn := cp_set_hits_flags("usage", hits[..], uf);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_USAGE;

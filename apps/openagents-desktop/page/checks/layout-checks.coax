@@ -111,12 +111,13 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   cp_init(s);
   s[0].d = 1.0f32;
   h: f32 = 660.0f32;
-  // Hidden by default: footer takes zero height and emits no placeholder pills.
-  #assert cp_side_footer_h(s, k) == 0.0f32;
-  // Available state renders clickable update pill with detail.
+  // Always-On Usage strip is always present; adding an update pill grows the footer height (#14064).
+  base_h := cp_side_footer_h(s, k);
+  #assert base_h > k.cmp.chip_h;
+  // Available state renders clickable update pill stacked below usage strip.
   coder_page_update(s, CP_UPD_AVAILABLE, "", "v0.2.0");
   footer_h := cp_side_footer_h(s, k);
-  #assert footer_h > k.cmp.chip_h;
+  #assert footer_h > base_h;
   uiframe_begin(f[..], sf[..], ks[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
   cp_side_footer(s, f[..], 0, h - footer_h, cast(f32) CP_SIDE - k.border);
   #assert uiframe_end(f[..], sf[..]);

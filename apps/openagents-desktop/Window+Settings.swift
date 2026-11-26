@@ -492,8 +492,8 @@ extension CoderWindow {
         #if OA_WALLET
         if FeatureFlags.isOn(.wallet) { syncWalletSettings() }
         #endif
+        if cd_settings_page(page) == 6 { refreshUsageDashboard() }
         #if OA_FULL
-        if FeatureFlags.isOn(.usage) && cd_settings_page(page) == 6 { refreshUsageDashboard() }
         if FeatureFlags.isOn(.mcp) { syncMcpSkills() }
         if FeatureFlags.isOn(.environments) || FeatureFlags.isOn(.pairing) { syncEnvironments() }
         if FeatureFlags.isOn(.scheduled) { syncScheduledSettings() }

@@ -128,7 +128,7 @@ core_swift=(
   "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Update.swift"
   "$here/Window+Worktrees.swift" "$here/Worker.swift" "$here/Worktree.swift" "$here/KeepAwake.swift"
   "$here/Window+GitDiff.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"
-  "$here/AgentSettings.swift" "$here/TitleGenerator.swift"
+  "$here/AgentSettings.swift" "$here/TitleGenerator.swift" "$here/Window+Usage.swift"
 )
 swift_files=("${core_swift[@]}")
 
@@ -185,7 +185,7 @@ if [[ "$minimal" != "1" ]]; then
     "$here/RhFlythroughView.swift" "$here/GymWorkbenchView.swift" "$here/GymWorkbenchView+Plan.swift" "$here/Window+Gym.swift"
     "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift"
     "$here/Window+Wallet.swift" "$here/Window+WalletRPC.swift"
-    "$here/Window+Usage.swift" "$here/Window+Voice.swift" "$here/Window+Rich.swift"
+    "$here/Window+Voice.swift" "$here/Window+Rich.swift"
     "$here/Window+Scheduled.swift" "$here/Window+Preview.swift" "$here/Window+Forge.swift"
     "$here/Foreman.swift" "$here/ForemanOperator.swift"
     "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift"

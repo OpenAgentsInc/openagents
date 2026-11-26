@@ -1128,10 +1128,10 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   if cp_models(s) > 0 && s[0].model_menu { cp_model_menu(s, f, x, cw, s[0].model_x, box_y, foot_y, h); }
   if s[0].effort_menu { cp_effort_menu(s, f, x, cw, s[0].effort_x, box_y, foot_y, h); }
   _ = m_x;
-  if cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open { cp_usage_popover(s, f, x, cw, box_y, foot_y, h); }
+  if s[0].usage[0].popover_open { cp_usage_popover(s, f, x, cw, box_y, foot_y, h); }
   // the @ and / popover at the draft's token (mention.coax, #13699)
   cp_mn_sync(s); cp_mn_due(s);
-  if !(cp_models(s) > 0 && s[0].model_menu) && !s[0].effort_menu && !(cp_flag(s, DC_FLAG_USAGE) && s[0].usage[0].popover_open) { cp_mn_paint(s, f, x, cw); }
+  if !(cp_models(s) > 0 && s[0].model_menu) && !s[0].effort_menu && !s[0].usage[0].popover_open { cp_mn_paint(s, f, x, cw); }
 }
 // The pill's shape this frame for a column cw wide: the draft's width on one line and its rows at
 // the expanded text width, the shape that makes, and the run toward it (220 ms, none with reduced
@@ -1380,9 +1380,9 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   w_cost := cp_foot_chip_width(f, -1, cost, false);
   w_goal := ifx has_goal then cp_foot_chip_width(f, -1, goal, false) else 0.0f32;
   show_goal := has_goal;
-  show_cost := cp_flag(s, DC_FLAG_USAGE) && !home;
+  show_cost := !home;
   show_ring := s[0].ctx_in > 0;
-  show_usage := cp_flag(s, DC_FLAG_USAGE) && (s[0].usage[0].naccts > 0 || s[0].usage[0].popover_open);
+  show_usage := true;
   show_branch := cp_flag(s, DC_FLAG_GIT) && show_folder && s[0].branch_n > 0 && !running;
   room := cw - 2 * side;
   for step: 0..<6 {
