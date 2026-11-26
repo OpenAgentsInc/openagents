@@ -296,3 +296,258 @@ rtr_ask_read :: (q: [] RtrRequest, body: string, ar: [] ClArena, d: [] RtrDecisi
   a = rtr_ask_read(q[..], "{\"answers\":{\"station_codex\":{\"type\":\"choice\",\"choice\":\"moon\",\"confidence\":1.0,\"probabilities\":{\"moon\":1.0}},\"engine\":{\"type\":\"choice\",\"choice\":\"antigravity\",\"confidence\":1.0,\"probabilities\":{\"antigravity\":1.0}}}}", ar[..], d[..]);
   #assert a.has && a.station_for[1] == -1 && a.engine == -1 && a.difficulty == -1 && a.effort == -1 && a.weight == -1 && a.needs == -1 && a.named_station == -1 && a.continue_milli == -1 && d[0].nanswers == 0;
 }
+
+// ---- v2alpha1 System One Front questions (gemini-decision-1 + elephant-1) (#14056)
+
+RTR2_PACK_LABELS :: [RTR2_PACKS] string.[
+  "General conversation, Q&A, writing, brainstorming, or everyday help with no workspace tools needed",
+  "Searching or citing documentation, books, transcripts, notes, or the shared knowledge base (NIP-KB)",
+  "Software engineering: reading, editing, debugging, testing, reviewing, or refactoring code in a repository",
+  "Bitcoin or Lightning wallet: checking balances, paying/creating BOLT11 invoices, sats, or spending approvals",
+  "OpenAgents Metaverse, 3D scenes, realms, Everglade, or GameBuilder authoring",
+  "Terminal, shell, CLI commands, tmux sessions, or host process inspection",
+  "Model evaluation, gBench, Terminal-Bench, LoRA training, or harness hillclimbing in the Gym",
+  "Authoring, creating, or extending a new OpenAgents capability, skill, tool, or plugin"
+];
+
+RTR2_TIER_LABELS :: [RTR2_TIERS] string.[
+  "Local Inkling 2 Mini ($0, fast on-device): greetings, everyday Q&A, quick lookups, or small simple edits",
+  "Cloud Fast (Gemini 4 Neon medium): standard coding, multi-file lookups, knowledge synthesis, or moderate tasks",
+  "Cloud Deep (Gemini 4 Neon high): hard debugging, architecture, multi-file refactors, or complex reasoning",
+  "Remote Station: work that specifically requires a connected remote machine (GPU, Linux build box, or remote repo)"
+];
+
+RTR2_DELEGATE_LABELS :: [RTR2_DELEGATES] string.[
+  "No external CLI requested: OpenAgents handles the task natively",
+  "The user explicitly asks to delegate to Claude Code / Claude (Opus, Sonnet, Haiku)",
+  "The user explicitly asks to delegate to Codex / OpenAI GPT",
+  "The user explicitly asks to delegate to Antigravity / AGY",
+  "The user explicitly asks to delegate to Cursor"
+];
+
+RTR2_MISS_LABELS :: [RTR2_MISS_KINDS] string.[
+  "None: the installed OpenAgents capability packs can handle this request",
+  "Messaging integration not built in (e.g. Slack, Discord, Telegram, WhatsApp, SMS)",
+  "Calendar or email integration not built in (e.g. Google Calendar, Gmail, Outlook)",
+  "Media or smart-home control not built in (e.g. Spotify, Apple Music, HomeKit, Philips Hue)",
+  "External web app / SaaS automation not built in (e.g. Notion, Linear, Jira, Salesforce, Stripe)",
+  "Custom external API or bespoke tool not covered by built-in packs"
+];
+
+rtr2_ask_state :: (q: [] Rtr2PlanRequest, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"task\":"); n = json_write_string(out, n, q[0].text);
+  if q[0].summary.count > 0 { n = json_raw(out, n, ",\"conversation_so_far\":"); n = json_write_string(out, n, q[0].summary); }
+  if q[0].repo.count > 0 { n = json_raw(out, n, ",\"repository\":"); n = json_write_string(out, n, q[0].repo); }
+  if q[0].nactive_packs > 0 {
+    n = json_raw(out, n, ",\"active_packs\":[");
+    for i: 0..<q[0].nactive_packs {
+      if i > 0 { n = json_raw(out, n, ","); }
+      n = json_write_string(out, n, q[0].active_packs[i]);
+    }
+    n = json_raw(out, n, "]");
+  }
+  if q[0].active_compute_tier.count > 0 {
+    n = json_raw(out, n, ",\"active_compute_tier\":"); n = json_write_string(out, n, q[0].active_compute_tier);
+  }
+  if q[0].active_delegate.count > 0 && q[0].active_delegate != "none" {
+    n = json_raw(out, n, ",\"active_delegate\":"); n = json_write_string(out, n, q[0].active_delegate);
+  }
+  n = json_raw(out, n, "}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// Writes the v2 Gemini Decision 1 request into b (over buf). "" on success.
+rtr2_ask_body :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, b: [] GdBody, buf: [] u8, state: [] u8) -> string {
+  if q[0].text.count == 0 { return "no task"; }
+  input := rtr2_ask_state(q, state);
+  if input.count == 0 { return "the task does not fit the request"; }
+  pnames := RTR2_PACK_NAMES; plabels := RTR2_PACK_LABELS;
+  tnames := RTR2_TIER_NAMES; tlabels := RTR2_TIER_LABELS;
+  dnames := RTR2_DELEGATE_NAMES; dlabels := RTR2_DELEGATE_LABELS;
+  mnames := RTR2_MISS_NAMES; mlabels := RTR2_MISS_LABELS;
+  levels := AGR_LEVELS; efforts := AGR_EFFORTS; effort_labels := AGR_EFFORT_LABELS;
+
+  gd_begin(b, buf, GD_MODEL);
+  gd_text(b, input);
+
+  if e[0].npacks >= 2 {
+    pk: [RTR2_PACKS] string; ps: [RTR2_PACKS] string; np := 0;
+    for i: 0..<RTR2_PACKS { if e[0].pack[i] { pk[np] = pnames[i]; ps[np] = plabels[i]; np += 1; } }
+    gd_choice(b, "primary_pack", "Which OpenAgents capability pack is the primary fit for this user request?", pk[0..<np], ps[0..<np]);
+  }
+  if e[0].ntiers >= 2 {
+    tk: [RTR2_TIERS] string; ts: [RTR2_TIERS] string; nt := 0;
+    for i: 0..<RTR2_TIERS { if e[0].tier[i] { tk[nt] = tnames[i]; ts[nt] = tlabels[i]; nt += 1; } }
+    gd_choice(b, "compute_tier", "Which compute tier should run this turn?", tk[0..<nt], ts[0..<nt]);
+  }
+  gd_choice(b, "explicit_delegate", "Did the user explicitly instruct delegating this task to an external coding CLI (Claude Code, Codex, Antigravity, Cursor)? Only a direct instruction counts.", dnames[..], dlabels[..]);
+  gd_score(b, "difficulty", "How hard is the task to do well?", levels[..]);
+  gd_choice(b, "effort", "How much reasoning effort should the model spend?", efforts[..], effort_labels[..]);
+  if q[0].nactive_packs > 0 {
+    gd_noul(b, "continue_active", "Does this message continue the active conversation thread and its mounted capability packs?", "It follows up on, refines, or extends the active work", "It switches to a different unrelated topic or capability");
+  }
+  gd_noul(b, "missing_capability", "Does the user ask to interact with a third-party external app, SaaS service, or smart-home integration (such as Slack, Discord, Gmail, Google Calendar, Spotify, Notion, Linear, Jira, HomeKit, Philips Hue) that is NOT covered by OpenAgents' 8 built-in capability packs (general chat, knowledge base/docs/books/transcripts, software coding/git/delegates, Bitcoin/Lightning wallet/sats/invoices, Metaverse/Everglade/GameBuilder 3D realms, CLI/terminal/tmux/host, Gym/gBench/LoRA/evals, and authoring new OpenAgents skills/plugins)?", "Yes, it requires a third-party external app or integration outside the 8 built-in packs", "No, one of the 8 built-in OpenAgents capability packs (including wallet, metaverse, coder, knowledge, cli, gym, capability_author, general) handles it");
+  gd_choice(b, "missing_capability_kind", "Only if missing_capability is yes (a third-party external app outside the 8 built-in OpenAgents packs), what kind of external integration is requested? Choose none whenever any built-in pack (general, knowledge, coder, wallet, metaverse, cli, gym, capability_author) covers it.", mnames[..], mlabels[..]);
+  return ifx b[0].at < 0 then b[0].problem else "";
+}
+
+// Writes the v2 local elephant-1 System One request into b (over buf). "" on success.
+rtr2_ask_so_body :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, b: [] SoBody, buf: [] u8, state: [] u8) -> string {
+  if q[0].text.count == 0 { return "no task"; }
+  input := rtr2_ask_state(q, state);
+  if input.count == 0 { return "the task does not fit the request"; }
+  pnames := RTR2_PACK_NAMES; plabels := RTR2_PACK_LABELS;
+  tnames := RTR2_TIER_NAMES; tlabels := RTR2_TIER_LABELS;
+  dnames := RTR2_DELEGATE_NAMES; dlabels := RTR2_DELEGATE_LABELS;
+  mnames := RTR2_MISS_NAMES; mlabels := RTR2_MISS_LABELS;
+  levels := AGR_LEVELS; efforts := AGR_EFFORTS; effort_labels := AGR_EFFORT_LABELS;
+
+  so_begin(b, buf, "elephant-1", "");
+  so_state_json(b, input);
+
+  if e[0].npacks >= 2 {
+    pk: [RTR2_PACKS] string; ps: [RTR2_PACKS] string; np := 0;
+    for i: 0..<RTR2_PACKS { if e[0].pack[i] { pk[np] = pnames[i]; ps[np] = plabels[i]; np += 1; } }
+    so_choice(b, "primary_pack", "Which OpenAgents capability pack is the primary fit for this user request?", pk[0..<np], ps[0..<np]);
+  }
+  if e[0].ntiers >= 2 {
+    tk: [RTR2_TIERS] string; ts: [RTR2_TIERS] string; nt := 0;
+    for i: 0..<RTR2_TIERS { if e[0].tier[i] { tk[nt] = tnames[i]; ts[nt] = tlabels[i]; nt += 1; } }
+    so_choice(b, "compute_tier", "Which compute tier should run this turn?", tk[0..<nt], ts[0..<nt]);
+  }
+  so_choice(b, "explicit_delegate", "Did the user explicitly instruct delegating this task to an external coding CLI?", dnames[..], dlabels[..]);
+  so_score(b, "difficulty", "How hard is the task to do well?", levels[..]);
+  so_choice(b, "effort", "How much reasoning effort should the model spend?", efforts[..], effort_labels[..]);
+  if q[0].nactive_packs > 0 {
+    so_noul(b, "continue_active", "Does this message continue the active conversation thread and its mounted capability packs?");
+  }
+  so_noul(b, "missing_capability", "Does the user ask for a third-party external app or service (Slack, Discord, Gmail, Calendar, Spotify, Notion, Linear, HomeKit) NOT covered by OpenAgents' 8 built-in packs (general, knowledge, coder, Bitcoin/Lightning wallet, Metaverse/GameBuilder, cli, gym, capability_author)?");
+  so_choice(b, "missing_capability_kind", "Only if missing_capability is yes, what kind of external integration is requested? Choose none if any built-in pack covers it.", mnames[..], mlabels[..]);
+  return ifx b[0].at < 0 then b[0].problem else "";
+}
+
+// Reads a checked Gemini Decision 1 answer into Rtr2Answers and p's answers list.
+rtr2_ask_read :: (body: string, ar: [] ClArena, p: [] Rtr2Plan) -> Rtr2Answers {
+  a := rtr2_no_answers(); a.has = true;
+  pnames := RTR2_PACK_NAMES; tnames := RTR2_TIER_NAMES; dnames := RTR2_DELEGATE_NAMES;
+  efforts := RTR_EFFORT_NAMES; levels := RTR_LEVEL_NAMES; mnames := RTR2_MISS_NAMES;
+
+  pp := gd_choice_of(ar, body, "primary_pack");
+  if pp.ok {
+    k := rtr2_pack_index(pp.choice);
+    a.primary_pack = k; a.primary_pack_milli = rtr_milli(pp.probability);
+    if k >= 0 { rtr2_plan_answer(p, "primary_pack", pnames[k], -1, a.primary_pack_milli); }
+  }
+  ct := gd_choice_of(ar, body, "compute_tier");
+  if ct.ok {
+    k := rtr2_tier_index(ct.choice);
+    a.compute_tier = k; a.compute_tier_milli = rtr_milli(ct.probability);
+    if k >= 0 { rtr2_plan_answer(p, "compute_tier", tnames[k], -1, a.compute_tier_milli); }
+  }
+  ed := gd_choice_of(ar, body, "explicit_delegate");
+  if ed.ok {
+    k := rtr2_delegate_index(ed.choice);
+    a.explicit_delegate = k; a.explicit_delegate_milli = rtr_milli(ed.probability);
+    if k >= 0 { rtr2_plan_answer(p, "explicit_delegate", dnames[k], -1, a.explicit_delegate_milli); }
+  }
+  df := gd_score_of(body, "difficulty");
+  if df.ok && df.level >= 0 && df.level < 5 {
+    a.difficulty = df.level;
+    rtr2_plan_answer(p, "difficulty", levels[df.level], df.level, rtr_milli(df.confidence));
+  }
+  ef := gd_choice_of(ar, body, "effort");
+  if ef.ok {
+    for i: 0..<3 { if efforts[i] == ef.choice { a.effort = i; } }
+    if a.effort >= 0 { rtr2_plan_answer(p, "effort", efforts[a.effort], -1, rtr_milli(ef.probability)); }
+  }
+  ca := gd_noul_of(body, "continue_active");
+  if ca.ok {
+    a.continue_milli = rtr_milli(ca.noul);
+    rtr2_plan_answer(p, "continue_active", ifx a.continue_milli >= RTR_SURE_MILLI then "yes" else "no", -1, a.continue_milli);
+  }
+  mc := gd_noul_of(body, "missing_capability");
+  if mc.ok {
+    a.missing_cap_milli = rtr_milli(mc.noul);
+    rtr2_plan_answer(p, "missing_capability", ifx a.missing_cap_milli >= RTR_SURE_MILLI then "yes" else "no", -1, a.missing_cap_milli);
+  }
+  mk := gd_choice_of(ar, body, "missing_capability_kind");
+  if mk.ok {
+    for i: 0..<RTR2_MISS_KINDS { if mnames[i] == mk.choice { a.missing_cap_kind = i; } }
+    a.missing_cap_kind_milli = rtr_milli(mk.probability);
+    if a.missing_cap_kind >= 0 { rtr2_plan_answer(p, "missing_capability_kind", mnames[a.missing_cap_kind], -1, a.missing_cap_kind_milli); }
+  }
+  return a;
+}
+
+// Reads a checked System One (elephant-1) answer into Rtr2Answers and p's answers list.
+rtr2_ask_so_read :: (body: string, ar: [] ClArena, p: [] Rtr2Plan) -> Rtr2Answers {
+  a := rtr2_no_answers(); a.has = true;
+  pnames := RTR2_PACK_NAMES; tnames := RTR2_TIER_NAMES; dnames := RTR2_DELEGATE_NAMES;
+  efforts := RTR_EFFORT_NAMES; levels := RTR_LEVEL_NAMES; mnames := RTR2_MISS_NAMES;
+
+  pp := so_choice_of(ar, body, "primary_pack");
+  if pp.ok {
+    k := rtr2_pack_index(pp.choice);
+    a.primary_pack = k; a.primary_pack_milli = rtr_milli(pp.probability);
+    if k >= 0 { rtr2_plan_answer(p, "primary_pack", pnames[k], -1, a.primary_pack_milli); }
+  }
+  ct := so_choice_of(ar, body, "compute_tier");
+  if ct.ok {
+    k := rtr2_tier_index(ct.choice);
+    a.compute_tier = k; a.compute_tier_milli = rtr_milli(ct.probability);
+    if k >= 0 { rtr2_plan_answer(p, "compute_tier", tnames[k], -1, a.compute_tier_milli); }
+  }
+  ed := so_choice_of(ar, body, "explicit_delegate");
+  if ed.ok {
+    k := rtr2_delegate_index(ed.choice);
+    a.explicit_delegate = k; a.explicit_delegate_milli = rtr_milli(ed.probability);
+    if k >= 0 { rtr2_plan_answer(p, "explicit_delegate", dnames[k], -1, a.explicit_delegate_milli); }
+  }
+  df := so_score_of(body, "difficulty");
+  if df.ok && df.level >= 0 && df.level < 5 {
+    a.difficulty = df.level;
+    rtr2_plan_answer(p, "difficulty", levels[df.level], df.level, rtr_milli(df.confidence));
+  }
+  ef := so_choice_of(ar, body, "effort");
+  if ef.ok {
+    for i: 0..<3 { if efforts[i] == ef.choice { a.effort = i; } }
+    if a.effort >= 0 { rtr2_plan_answer(p, "effort", efforts[a.effort], -1, rtr_milli(ef.probability)); }
+  }
+  ca := so_noul_of(body, "continue_active");
+  if ca.ok {
+    a.continue_milli = rtr_milli(ca.value);
+    rtr2_plan_answer(p, "continue_active", ifx a.continue_milli >= RTR_SURE_MILLI then "yes" else "no", -1, a.continue_milli);
+  }
+  mc := so_noul_of(body, "missing_capability");
+  if mc.ok {
+    a.missing_cap_milli = rtr_milli(mc.value);
+    rtr2_plan_answer(p, "missing_capability", ifx a.missing_cap_milli >= RTR_SURE_MILLI then "yes" else "no", -1, a.missing_cap_milli);
+  }
+  mk := so_choice_of(ar, body, "missing_capability_kind");
+  if mk.ok {
+    for i: 0..<RTR2_MISS_KINDS { if mnames[i] == mk.choice { a.missing_cap_kind = i; } }
+    a.missing_cap_kind_milli = rtr_milli(mk.probability);
+    if a.missing_cap_kind >= 0 { rtr2_plan_answer(p, "missing_capability_kind", mnames[a.missing_cap_kind], -1, a.missing_cap_kind_milli); }
+  }
+  return a;
+}
+
+#test "v2 ask: builds Gemini Decision 1 and elephant-1 System One requests and reads answers" {
+  q: [1] Rtr2PlanRequest; e: [1] Rtr2Eligible; p: [1] Rtr2Plan;
+  q[0] = Rtr2PlanRequest.{text = "Pay 500 sats to this Lightning invoice", local_inkling_ready = true, cloud_ready = true};
+  q[0].active_packs[0] = "coder"; q[0].nactive_packs = 1;
+  rtr2_eligible(q[..], e[..]);
+  b: [1] GdBody; buf: [16384] u8; state: [4096] u8;
+  #assert rtr2_ask_body(q[..], e[..], b[..], buf[..], state[..]) == "";
+  body := gd_body(b[..]);
+  #assert b[0].questions == 8 && cl_raw(body, "questions.primary_pack.criteria.wallet").count > 0 && cl_raw(body, "questions.continue_active.type") == "\"noul\"";
+  sb: [1] SoBody; sbuf: [16384] u8;
+  #assert rtr2_ask_so_body(q[..], e[..], sb[..], sbuf[..], state[..]) == "";
+  sbody := so_body(sb[..]);
+  #assert sbody.count > 0 && cl_raw(sbody, "model") == "\"elephant-1\"";
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  rtr2_plan_clear(p[..]);
+  ans := "{\"answers\":{\"primary_pack\":{\"type\":\"choice\",\"choice\":\"wallet\",\"confidence\":0.95,\"probabilities\":{\"wallet\":0.95}},\"compute_tier\":{\"type\":\"choice\",\"choice\":\"cloud_fast\",\"confidence\":0.85,\"probabilities\":{\"cloud_fast\":0.85}},\"explicit_delegate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.99,\"probabilities\":{\"none\":0.99}},\"difficulty\":{\"type\":\"score\",\"score\":1.0,\"confidence\":0.8,\"probabilities\":{\"0\":0.1,\"1\":0.8,\"2\":0.1,\"3\":0.0,\"4\":0.0}},\"effort\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.7,\"probabilities\":{\"low\":0.7}},\"continue_active\":{\"type\":\"noul\",\"noul\":0.1,\"confidence\":0.9},\"missing_capability\":{\"type\":\"noul\",\"noul\":0.05,\"confidence\":0.95},\"missing_capability_kind\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.95,\"probabilities\":{\"none\":0.95}}}}";
+  a := rtr2_ask_read(ans, ar[..], p[..]);
+  #assert a.has && a.primary_pack == RTR2_PACK_WALLET && a.compute_tier == RTR2_TIER_CLOUD_FAST && a.explicit_delegate == RTR2_DEL_NONE && a.continue_milli == 100 && a.missing_cap_milli == 50 && p[0].nanswers == 8;
+}

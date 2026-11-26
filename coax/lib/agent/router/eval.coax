@@ -167,3 +167,89 @@ rtrev_replay :: (dir: string, q: [] RtrRequest, e: [] RtrEligible, r: RtrevRow, 
   #assert s.right == 0 && cast(string) miss[0..<nm[0]] == "continue=yes (got nothing)";
   #assert rtrev_match("a|b", "b") && rtrev_match("a", "a") && !rtrev_match("a|b", "c") && !rtrev_match("a|b", "");
 }
+
+// ---- v2alpha1 System One Front labelled eval & replay (#14056)
+
+// Apply a labels-v2 row to a default full-capability RoutePlanRequest.
+// current format: "-" or "pack/tier" (e.g. "coder/cloud_deep", "wallet/local_inkling").
+rtrev2_apply :: (q: [] Rtr2PlanRequest, r: RtrevRow) {
+  q[0] = Rtr2PlanRequest.{
+    text = r.task,
+    summary = ifx r.summary == "-" then "" else r.summary,
+    local_inkling_ready = true,
+    cloud_ready = true,
+    remote_station_ready = true,
+    user_compute_pref = "auto"
+  };
+  q[0].available_delegates[0] = "claude";
+  q[0].available_delegates[1] = "codex";
+  q[0].available_delegates[2] = "antigravity";
+  q[0].available_delegates[3] = "cursor";
+  q[0].navailable_delegates = 4;
+  if r.current != "-" {
+    slash := 0; while slash < r.current.count && r.current[slash] != '/' { slash += 1; }
+    pk := cast(string) r.current[0..<slash];
+    if pk.count > 0 { q[0].active_packs[0] = pk; q[0].nactive_packs = 1; }
+    if slash < r.current.count { q[0].active_compute_tier = cast(string) r.current[slash + 1..<r.current.count]; }
+  }
+}
+
+rtrev2_got :: (p: [] Rtr2Plan, key: string) -> string {
+  if key == "pack" { return ifx p[0].npacks > 0 then p[0].capability_packs[0] else ""; }
+  if key == "tier" { return p[0].compute_tier; }
+  if key == "delegate" { return p[0].explicit_delegate; }
+  if key == "continue" { return ifx p[0].continue_active then "yes" else "no"; }
+  if key == "missing" { return ifx p[0].missing_capability_hint.count > 0 then "yes" else "no"; }
+  if key == "missing_hint" { return p[0].missing_capability_hint; }
+  if key == "effort" { return p[0].effort; }
+  for i: 0..<p[0].nanswers { if p[0].answers[i].key == key { return p[0].answers[i].choice; } }
+  return "";
+}
+
+rtrev2_score :: (p: [] Rtr2Plan, want: string, miss: [] u8, nmiss: [] int) -> RtrevScore {
+  s: RtrevScore; nmiss[0] = 0;
+  at := 0;
+  while at < want.count {
+    e := at; while e < want.count && want[e] != ',' { e += 1; }
+    eq := at; while eq < e && want[eq] != '=' { eq += 1; }
+    if eq < e {
+      key := cast(string) want[at..<eq]; value := cast(string) want[eq + 1..<e];
+      got := rtrev2_got(p, key);
+      s.wants += 1;
+      if rtrev_match(value, got) { s.right += 1; }
+      else if nmiss[0] == 0 {
+        n := rtr_put(miss, 0, key); n = rtr_put(miss, n, "="); n = rtr_put(miss, n, value); n = rtr_put(miss, n, " (got ");
+        n = rtr_put(miss, n, ifx got.count > 0 then got else "nothing"); n = rtr_put(miss, n, ")");
+        nmiss[0] = n;
+      }
+    }
+    at = e + 1;
+  }
+  return s;
+}
+
+rtrev2_replay :: (dir: string, q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, r: RtrevRow, p: [] Rtr2Plan, w: [] Rtr2Work, sent: [] u8, got: [] u8, ar: [] ClArena) -> string {
+  rtrev2_apply(q, r);
+  request := rtr2_begin(q, e, p, w, "replay");
+  if request.count == 0 { return "the request can't be written"; }
+  recorded := rtrev_file(dir, r.id, ".request.json", sent);
+  if recorded.count == 0 { return "no recorded request"; }
+  if request != recorded { return "the request is not the one that was sent"; }
+  answer := rtrev_file(dir, r.id, ".answer.json", got);
+  if answer.count == 0 { return "no recorded answer"; }
+  gr := gd_result(w[0].body[..], ar, 200, answer);
+  if gr.problem.count > 0 { return "the recorded answer does not hold to its request"; }
+  rtr2_finish(q, e, gr, p, w);
+  return "";
+}
+
+#test "v2 eval: applies rows and scores RoutePlan wants" {
+  q: [1] Rtr2PlanRequest; p: [1] Rtr2Plan; miss: [128] u8; nm: [1] int;
+  row := RtrevRow.{id = "w1", current = "coder/cloud_deep", summary = "Fixing tests", want = "pack=coder,tier=cloud_deep,delegate=none,continue=yes,missing=no", task = "Now run the test suite"};
+  rtrev2_apply(q[..], row);
+  #assert q[0].nactive_packs == 1 && q[0].active_packs[0] == "coder" && q[0].active_compute_tier == "cloud_deep";
+  rtr2_plan_clear(p[..]);
+  p[0].ok = true; rtr2_plan_add_pack(p[..], "coder"); p[0].compute_tier = "cloud_deep"; p[0].explicit_delegate = "none"; p[0].continue_active = true;
+  s := rtrev2_score(p[..], row.want, miss[..], nm[..]);
+  #assert s.wants == 5 && s.right == 5 && nm[0] == 0;
+}

@@ -26,9 +26,10 @@
 //   - With no answer, the conversation's agent and computer are kept, else
 //     the defaults run, and the work is taken to be heavy.
 //
-// Not here yet (docs/router/README.md): another account when one runs out,
-// and #authority with its mutation pass.
-#load "wire.coax";
+// #authority policy for both v1alpha1 station routing and v2alpha1 System One
+// Front RoutePlan routing (#14056).
+#authority;
+#load "test-fixtures.coax";
 #load "../engine/route-policy.coax";   // cr_model: the model profile for a difficulty
 
 RTR_FRESH_MS :: 120000;     // a report older than two minutes: the computer is not reachable
@@ -71,7 +72,7 @@ RtrAnswers :: struct {
   continue_milli: int;                     // P(the message continues the conversation's work); -1 when not asked
 }
 
-rtr_no_answers :: () -> RtrAnswers {
+rtr_no_answers :: () -> RtrAnswers #effects(all) {
   a := RtrAnswers.{engine = -1, difficulty = -1, effort = -1, weight = -1, needs = -1, named_station = -1, named_engine = -1, depth = -1, continue_milli = -1};
   for k: 0..<RTR_ENGINES { a.station_for[k] = -1; }
   return a;
@@ -79,7 +80,7 @@ rtr_no_answers :: () -> RtrAnswers {
 
 // "" when the computer in row i may take new work, else the one fact that
 // rules it out.
-rtr_station_fact :: (q: [] RtrRequest, i: int) -> string {
+rtr_station_fact :: (q: [] RtrRequest, i: int) -> string #effects(all) {
   at := q[0].stations[i].reported_at_ms; now := q[0].now_ms;
   if at <= 0 || now < at || now - at > RTR_FRESH_MS { return "not_reachable"; }
   if q[0].stations[i].keep_clear { return "keep_clear"; }
@@ -89,7 +90,7 @@ rtr_station_fact :: (q: [] RtrRequest, i: int) -> string {
 }
 
 // "" when the agent can take work, else the one fact that rules it out.
-rtr_agent_fact :: (a: RtrAgent) -> string {
+rtr_agent_fact :: (a: RtrAgent) -> string #effects(all) {
   if !a.reported || !a.installed { return "not_installed"; }
   if !a.logged_in { return "logged_out"; }
   if a.quota_used_up { return "quota_used_up"; }
@@ -98,12 +99,12 @@ rtr_agent_fact :: (a: RtrAgent) -> string {
 }
 
 // Fills e, and d's eligible lists and blocked list.
-rtr_eligible :: (q: [] RtrRequest, e: [] RtrEligible, d: [] RtrDecision) {
+rtr_eligible :: (q: [] RtrRequest, e: [] RtrEligible, d: [] RtrDecision) #effects(all) {
   e[0] = RtrEligible.{};
   names := RTR_ENGINE_NAMES;
   for i: 0..<q[0].n {
     fact := rtr_station_fact(q, i);
-    if fact.count > 0 { rtr_block(d, q[0].stations[i].id, "", fact); continue; }
+    if fact.count > 0 { rtr_block(d, q[0].stations[i].id, "", fact); continue; } // mutant: equivalent (every non-empty fact string has count >= 9)
     any := false;
     for k: 0..<RTR_ENGINES {
       why := rtr_agent_fact(q[0].stations[i].agents[k]);
@@ -124,18 +125,18 @@ rtr_eligible :: (q: [] RtrRequest, e: [] RtrEligible, d: [] RtrDecision) {
 }
 
 // Whether the person's rules for the computer in row i allow work of this weight.
-rtr_weight_ok :: (q: [] RtrRequest, i: int, weight: int) -> bool {
+rtr_weight_ok :: (q: [] RtrRequest, i: int, weight: int) -> bool #effects(all) {
   return !(q[0].stations[i].nothing_heavy && weight >= RTR_HEAVY);
 }
 
 // Whether the computer in row i reports what it is: its OS. One that doesn't
 // (its resident service is older than station reports) is known by name only.
-rtr_facts_known :: (q: [] RtrRequest, i: int) -> bool { return q[0].stations[i].os.count > 0; }
+rtr_facts_known :: (q: [] RtrRequest, i: int) -> bool #effects(all) { return q[0].stations[i].os.count > 0; }
 
 // Whether the computer in row i has what the task needs. A computer that
 // reports no facts is not ruled out by a need it can't be asked about: the
 // model chose it by name, and an older computer must stay usable.
-rtr_need_ok :: (q: [] RtrRequest, i: int, needs: int) -> bool {
+rtr_need_ok :: (q: [] RtrRequest, i: int, needs: int) -> bool #effects(all) {
   if needs == RTR_NEED_APPLE { return q[0].stations[i].apple_builds || !rtr_facts_known(q, i); }
   if needs == RTR_NEED_GPU { return q[0].stations[i].gpu.count > 0 || !rtr_facts_known(q, i); }
   if needs == RTR_NEED_THIS { return q[0].current_station.count == 0 || q[0].stations[i].id == q[0].current_station; }
@@ -143,7 +144,7 @@ rtr_need_ok :: (q: [] RtrRequest, i: int, needs: int) -> bool {
 }
 
 // Why row i can't run engine for this task, as a reason code; "" when it can.
-rtr_why_not :: (q: [] RtrRequest, e: [] RtrEligible, i: int, engine: int, weight: int, needs: int) -> string {
+rtr_why_not :: (q: [] RtrRequest, e: [] RtrEligible, i: int, engine: int, weight: int, needs: int) -> string #effects(all) {
   if i < 0 || i >= q[0].n || engine < 0 || engine >= RTR_ENGINES || !e[0].station[i] { return "station_not_eligible"; }
   if !e[0].pair[i * RTR_ENGINES + engine] { return "station_lacks_engine"; }
   if !rtr_need_ok(q, i, needs) { return "station_lacks_need"; }
@@ -151,20 +152,20 @@ rtr_why_not :: (q: [] RtrRequest, e: [] RtrEligible, i: int, engine: int, weight
   return "";
 }
 
-rtr_can :: (q: [] RtrRequest, e: [] RtrEligible, i: int, engine: int, weight: int, needs: int) -> bool {
+rtr_can :: (q: [] RtrRequest, e: [] RtrEligible, i: int, engine: int, weight: int, needs: int) -> bool #effects(all) {
   return rtr_why_not(q, e, i, engine, weight, needs).count == 0;
 }
 
 // Whether row a has more room than row b: less work running, then more free
 // memory, then more free disk. Equal rows keep the earlier one.
-rtr_more_room :: (q: [] RtrRequest, a: int, b: int) -> bool {
-  if q[0].stations[a].work != q[0].stations[b].work { return q[0].stations[a].work < q[0].stations[b].work; }
-  if q[0].stations[a].memory_free_mb != q[0].stations[b].memory_free_mb { return q[0].stations[a].memory_free_mb > q[0].stations[b].memory_free_mb; }
+rtr_more_room :: (q: [] RtrRequest, a: int, b: int) -> bool #effects(all) {
+  if q[0].stations[a].work != q[0].stations[b].work { return q[0].stations[a].work < q[0].stations[b].work; } // mutant: equivalent (work != work already excludes equality)
+  if q[0].stations[a].memory_free_mb != q[0].stations[b].memory_free_mb { return q[0].stations[a].memory_free_mb > q[0].stations[b].memory_free_mb; } // mutant: equivalent (memory_free_mb != memory_free_mb already excludes equality)
   return q[0].stations[a].disk_free_mb > q[0].stations[b].disk_free_mb;
 }
 
 // The computer with the most room that can run engine for this task, or -1.
-rtr_roomiest :: (q: [] RtrRequest, e: [] RtrEligible, engine: int, weight: int, needs: int) -> int {
+rtr_roomiest :: (q: [] RtrRequest, e: [] RtrEligible, engine: int, weight: int, needs: int) -> int #effects(all) {
   best := -1;
   for i: 0..<q[0].n {
     if !rtr_can(q, e, i, engine, weight, needs) { continue; }
@@ -175,7 +176,7 @@ rtr_roomiest :: (q: [] RtrRequest, e: [] RtrEligible, engine: int, weight: int, 
 
 // Whether the conversation's agent and computer are kept: the model says the
 // message continues its work, or no door answered and there is a conversation.
-rtr_continues :: (q: [] RtrRequest, a: RtrAnswers) -> bool {
+rtr_continues :: (q: [] RtrRequest, a: RtrAnswers) -> bool #effects(all) {
   if a.has { return a.continue_milli >= RTR_SURE_MILLI; }
   return q[0].current_station.count > 0 || q[0].current_engine.count > 0;
 }
@@ -184,7 +185,7 @@ rtr_continues :: (q: [] RtrRequest, a: RtrAnswers) -> bool {
 // named, then the conversation's, then the model's answer for this agent,
 // then the one with the most room. With explain, d's reasons say which, and
 // why an earlier one was passed over.
-rtr_place :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, engine: int, weight: int, needs: int, d: [] RtrDecision, explain: bool) -> int {
+rtr_place :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, engine: int, weight: int, needs: int, d: [] RtrDecision, explain: bool) -> int #effects(all) {
   if a.has && a.named_station >= 0 && a.named_station < q[0].n && a.named_station_milli >= RTR_SURE_MILLI {
     if rtr_can(q, e, a.named_station, engine, weight, needs) { if explain { rtr_reason(d, "named_station"); } return a.named_station; }
     if explain { rtr_reason(d, "named_station_cannot"); rtr_reason(d, rtr_why_not(q, e, a.named_station, engine, weight, needs)); }
@@ -210,15 +211,15 @@ rtr_place :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, engine: int, w
 
 // What runs. d already holds rtr_eligible's lists; this sets ok, station,
 // engine, model, effort, difficulty, weight, needs, reasons and error.
-rtr_pick :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, d: [] RtrDecision) {
+rtr_pick :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, d: [] RtrDecision) #effects(all) {
   names := RTR_ENGINE_NAMES; efforts := RTR_EFFORT_NAMES; need_names := RTR_NEED_NAMES;
   d[0].ok = false;
   if e[0].nstations == 0 { d[0].error = "no_station"; return; }
   if !a.has { rtr_reason(d, "door_unavailable"); }
   // without an answer the work is taken to be heavy, so a "nothing heavy" computer stays clear
-  weight := ifx a.has && a.weight >= 0 && a.weight <= 2 then a.weight else RTR_HEAVY;
+  weight := ifx a.has && a.weight >= 0 && a.weight <= 2 then a.weight else RTR_HEAVY; // mutant: equivalent (RTR_HEAVY == 2, so a.weight == 2 yields 2 on both branches)
   difficulty := ifx a.has && a.difficulty >= 0 && a.difficulty <= 4 then a.difficulty else -1;
-  effort := ifx a.has && a.effort >= 0 && a.effort <= 2 then a.effort else 2;
+  effort := ifx a.has && a.effort >= 0 && a.effort <= 2 then a.effort else 2; // mutant: equivalent (fallback == 2, so a.effort == 2 yields 2 on both branches)
   needs := ifx a.has && a.needs >= 1 && a.needs <= 3 then a.needs else RTR_NEED_NONE;
   // the agent: named, the conversation's, the answer when it is sure, the most capable
   engine := -1;
@@ -228,7 +229,7 @@ rtr_pick :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, d: [] RtrDecisi
   }
   if engine < 0 && rtr_continues(q, a) {
     cur := ca_index(q[0].current_engine);
-    if cur >= 0 && cur < RTR_ENGINES {
+    if cur >= 0 && cur < RTR_ENGINES { // mutant: equivalent (ca_index returns -1..3, always < RTR_ENGINES)
       if e[0].engine[cur] { engine = cur; rtr_reason(d, "continued"); }
       else { rtr_reason(d, "current_cannot"); rtr_reason(d, "engine_not_eligible"); }
     }
@@ -236,7 +237,7 @@ rtr_pick :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, d: [] RtrDecisi
   if engine < 0 {
     if a.has && a.engine >= 0 && a.engine < RTR_ENGINES && e[0].engine[a.engine] && a.engine_milli >= RTR_SURE_MILLI { engine = a.engine; }
     else {
-      for k: 0..<RTR_ENGINES { if engine < 0 && e[0].engine[k] { engine = k; } }
+      for k: 0..<RTR_ENGINES { if engine < 0 && e[0].engine[k] { engine = k; } } // mutant: equivalent (e.nstations > 0 guarantees at least one eligible engine in 0..<4)
       if a.has {
         if e[0].nengines == 1 { }     // that question was not asked
         else if a.engine >= 0 && a.engine < RTR_ENGINES && !e[0].engine[a.engine] { rtr_reason(d, "engine_not_eligible"); }
@@ -248,9 +249,9 @@ rtr_pick :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, d: [] RtrDecisi
   if station < 0 {
     // no computer runs that agent for this task: the most capable agent one does
     for k: 0..<RTR_ENGINES {
-      if station < 0 && k != engine && e[0].engine[k] {
+      if k != engine && e[0].engine[k] { // mutant: equivalent (rtr_place already returns -1 for k == engine and for any ineligible engine)
         s := rtr_place(q, e, a, k, weight, needs, d, false);
-        if s >= 0 { station = s; engine = k; rtr_reason(d, "engine_moved"); }
+        if s >= 0 { station = s; engine = k; rtr_reason(d, "engine_moved"); break; }
       }
     }
   }
@@ -275,25 +276,7 @@ rtr_pick :: (q: [] RtrRequest, e: [] RtrEligible, a: RtrAnswers, d: [] RtrDecisi
   d[0].model = cr_model(names[engine], ifx difficulty >= 0 then difficulty else 4);
 }
 
-// ---- checks
-
-// Two computers and their agents, for the checks here and in the files that load this one.
-// mac: claude and codex ready, one piece of work, nothing heavy. coderos: codex ready, claude logged out, no work.
-rtr_fx_two :: (q: [] RtrRequest) {
-  q[0] = RtrRequest.{};
-  q[0].text = "fix the typo in the README"; q[0].now_ms = 1000000; q[0].n = 2;
-  q[0].stations[0].id = "mac"; q[0].stations[0].name = "MacBook Pro"; q[0].stations[0].os = "macos"; q[0].stations[0].reported_at_ms = 990000;
-  q[0].stations[0].cores = 12; q[0].stations[0].memory_total_mb = 65536; q[0].stations[0].memory_free_mb = 22000;
-  q[0].stations[0].disk_free_mb = 180000; q[0].stations[0].disk_floor_mb = 20000; q[0].stations[0].load_1m_milli = 1200;
-  q[0].stations[0].work = 1; q[0].stations[0].nothing_heavy = true; q[0].stations[0].apple_builds = true;
-  q[0].stations[0].agents[0] = RtrAgent.{reported = true, installed = true, logged_in = true};
-  q[0].stations[0].agents[1] = RtrAgent.{reported = true, installed = true, logged_in = true};
-  q[0].stations[1].id = "coderos"; q[0].stations[1].name = "coderos"; q[0].stations[1].os = "linux"; q[0].stations[1].reported_at_ms = 995000;
-  q[0].stations[1].cores = 32; q[0].stations[1].memory_total_mb = 131072; q[0].stations[1].memory_free_mb = 90000;
-  q[0].stations[1].disk_free_mb = 400000; q[0].stations[1].disk_floor_mb = 20000; q[0].stations[1].load_1m_milli = 300;
-  q[0].stations[1].agents[0] = RtrAgent.{reported = true, installed = true, logged_in = false};
-  q[0].stations[1].agents[1] = RtrAgent.{reported = true, installed = true, logged_in = true};
-}
+// ---- checks (rtr_fx_two and rtr_fx_draw live in test-fixtures.coax)
 
 #test "a computer is ruled out by one fact: its report's age, the person's rule, its disk, its agent limit" {
   q: [1] RtrRequest; rtr_fx_two(q[..]);
@@ -335,7 +318,7 @@ rtr_fx_two :: (q: [] RtrRequest) {
 }
 
 // Answers with the agent and the computer for it, both sure, and the rest plain.
-rtr_fx_answer :: (engine: int, station: int) -> RtrAnswers {
+rtr_fx_answer :: (engine: int, station: int) -> RtrAnswers #effects(all) {
   a := rtr_no_answers(); a.has = true;
   a.engine = engine; a.engine_milli = 900;
   for k: 0..<RTR_ENGINES { a.station_for[k] = station; a.station_for_milli[k] = 900; }
@@ -343,7 +326,7 @@ rtr_fx_answer :: (engine: int, station: int) -> RtrAnswers {
   return a;
 }
 // One pick on the two computers, from a clean decision.
-rtr_fx_pick :: (q: [] RtrRequest, a: RtrAnswers, d: [] RtrDecision) {
+rtr_fx_pick :: (q: [] RtrRequest, a: RtrAnswers, d: [] RtrDecision) #effects(all) {
   e: [1] RtrEligible;
   rtr_decision_clear(d); rtr_eligible(q, e[..], d); rtr_pick(q, e[..], a, d);
 }
@@ -490,17 +473,12 @@ rtr_fx_pick :: (q: [] RtrRequest, a: RtrAnswers, d: [] RtrDecision) {
   #assert !d[0].ok && d[0].error == "no_station" && d[0].reasons[1] == "too_heavy_for_station";
 }
 
-// Draw k of case v: 0 to n - 1.
-rtr_fx_draw :: (v: int, k: int, n: int) -> int {
-  x := ((v % 65521) * 31 + k * 7919 + 17) % 65521;
-  x = (x * 1103 + 12345) % 65521;
-  x = (x * 1103 + 12345) % 65521;
-  return x % n;
-}
-// Case v of the pick's fuzz: the two computers under a mix of rules, logins
-// and a conversation, and answers drawn from v, past the tables too.
-rtr_fx_case :: (q: [] RtrRequest, v: int) -> RtrAnswers {
-  rtr_fx_two(q);
+// Whatever the model answers: what runs is a computer code allows, running
+// an agent that can run there, at a weight its rules take, with what the
+// task needs. What the person named runs whenever it can.
+#forall "whatever the model answers, what runs is allowed, and what was named runs when it can" v:0..<30000 {
+  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision;
+  rtr_fx_two(q[..]);
   q[0].stations[1].gpu = "RTX 4080";
   q[0].stations[0].keep_clear = rtr_fx_draw(v, 1, 4) == 0; q[0].stations[1].nothing_heavy = rtr_fx_draw(v, 2, 2) == 0;
   q[0].stations[0].agents[0].logged_in = rtr_fx_draw(v, 3, 3) != 0; q[0].stations[1].agents[0].logged_in = rtr_fx_draw(v, 4, 2) == 0;
@@ -518,15 +496,6 @@ rtr_fx_case :: (q: [] RtrRequest, v: int) -> RtrAnswers {
   a.named_engine = rtr_fx_draw(v, 25, 9) - 4; a.named_engine_milli = ifx rtr_fx_draw(v, 26, 2) == 0 then 100 else 900;
   a.depth = rtr_fx_draw(v, 27, 4) - 1; a.depth_milli = ifx rtr_fx_draw(v, 28, 2) == 0 then 100 else 900;
   a.continue_milli = ifx rtr_fx_draw(v, 29, 3) == 0 then -1 else ifx rtr_fx_draw(v, 30, 2) == 0 then 100 else 900;
-  return a;
-}
-
-// Whatever the model answers: what runs is a computer code allows, running
-// an agent that can run there, at a weight its rules take, with what the
-// task needs. What the person named runs whenever it can.
-#forall "whatever the model answers, what runs is allowed, and what was named runs when it can" v:0..<30000 {
-  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision;
-  a := rtr_fx_case(q[..], v);
   rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]); rtr_pick(q[..], e[..], a, d[..]);
   weight := ifx a.has && a.weight >= 0 && a.weight <= 2 then a.weight else RTR_HEAVY;
   needs := ifx a.has && a.needs >= 1 && a.needs <= 3 then a.needs else RTR_NEED_NONE;
@@ -548,4 +517,717 @@ rtr_fx_case :: (q: [] RtrRequest, v: int) -> RtrAnswers {
     // nothing ran only because nothing could: no eligible agent has a computer for this task
     for k: 0..<RTR_ENGINES { #assert rtr_roomiest(q[..], e[..], k, weight, needs) == -1; }
   }
+}
+
+// ---- v2alpha1 System One Front RoutePlan #authority policy (#14056)
+
+RTR2_MISS_KINDS :: 6;
+RTR2_MISS_NAMES :: [RTR2_MISS_KINDS] string.[
+  "none", "messaging_integration", "calendar_email", "media_smart_home", "web_automation", "custom_api_tool"
+];
+
+Rtr2Eligible :: struct {
+  pack: [RTR2_PACKS] bool;
+  npacks: int;
+  tier: [RTR2_TIERS] bool;
+  ntiers: int;
+  delegate: [RTR2_DELEGATES] bool; // index 0 ("none") is always true
+  ndelegates: int;                 // count of external delegates (1..4)
+}
+
+Rtr2Answers :: struct {
+  has: bool;
+  primary_pack: int;               // 0..7 or -1
+  primary_pack_milli: int;
+  secondary_pack: int;             // 0..7 or -1 (none)
+  secondary_pack_milli: int;
+  compute_tier: int;               // 0..3 or -1
+  compute_tier_milli: int;
+  explicit_delegate: int;          // 0..4 or -1
+  explicit_delegate_milli: int;
+  difficulty: int;                 // 0..4 or -1
+  effort: int;                     // 0..2 or -1
+  continue_milli: int;             // -1 when not asked
+  missing_cap_milli: int;          // -1 when not asked
+  missing_cap_kind: int;           // 0..5 or -1
+  missing_cap_kind_milli: int;
+}
+
+rtr2_no_answers :: () -> Rtr2Answers #effects(all) {
+  return Rtr2Answers.{
+    primary_pack = -1, secondary_pack = -1, compute_tier = -1,
+    explicit_delegate = -1, difficulty = -1, effort = -1,
+    continue_milli = -1, missing_cap_milli = -1, missing_cap_kind = -1
+  };
+}
+
+rtr2_lower :: (c: u8) -> u8 #effects(all) {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+rtr2_has_ci :: (hay: string, needle: string) -> bool #effects(all) {
+  if needle.count == 0 || hay.count < needle.count { return false; }
+  for i: 0..<(hay.count - needle.count + 1) {
+    ok := true;
+    for j: 0..<needle.count {
+      if rtr2_lower(hay[i + j]) != rtr2_lower(needle[j]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+// Pure deterministic offline capability pack classifier when no System One door is available.
+rtr2_fallback_pack :: (text: string, repo: string) -> int #effects(all) {
+  if rtr2_has_ci(text, "new capability") || rtr2_has_ci(text, "create a skill") || rtr2_has_ci(text, "build a plugin") || rtr2_has_ci(text, "author a capability") {
+    return RTR2_PACK_AUTHOR;
+  }
+  if rtr2_has_ci(text, "lightning") || rtr2_has_ci(text, "wallet") || rtr2_has_ci(text, "bitcoin") || rtr2_has_ci(text, "sats") || rtr2_has_ci(text, "invoice") || rtr2_has_ci(text, "bolt11") {
+    return RTR2_PACK_WALLET;
+  }
+  if rtr2_has_ci(text, "metaverse") || rtr2_has_ci(text, "gamebuilder") || rtr2_has_ci(text, "realm") || rtr2_has_ci(text, "3d scene") || rtr2_has_ci(text, "everglade") {
+    return RTR2_PACK_METAVERSE;
+  }
+  if rtr2_has_ci(text, "gbench") || rtr2_has_ci(text, "benchmark") || rtr2_has_ci(text, "eval suite") || rtr2_has_ci(text, "lora") || rtr2_has_ci(text, "hillclimb") {
+    return RTR2_PACK_GYM;
+  }
+  if rtr2_has_ci(text, "book") || rtr2_has_ci(text, "transcript") || rtr2_has_ci(text, "knowledge base") || rtr2_has_ci(text, "nip-kb") || rtr2_has_ci(text, "documentation") {
+    return RTR2_PACK_KNOWLEDGE;
+  }
+  if rtr2_has_ci(text, "terminal") || rtr2_has_ci(text, "shell command") || rtr2_has_ci(text, "cli ") || rtr2_has_ci(text, "tmux") {
+    return RTR2_PACK_CLI;
+  }
+  if repo.count > 0 || rtr2_has_ci(text, ".coax") || rtr2_has_ci(text, ".swift") || rtr2_has_ci(text, ".py") ||
+     rtr2_has_ci(text, "fix ") || rtr2_has_ci(text, "bug") || rtr2_has_ci(text, "refactor") || rtr2_has_ci(text, "compile") ||
+     rtr2_has_ci(text, "unittest") || rtr2_has_ci(text, "pull request") || rtr2_has_ci(text, "code") {
+    return RTR2_PACK_CODER;
+  }
+  return RTR2_PACK_GENERAL;
+}
+
+// Compute eligible packs, compute tiers, and external delegates from request facts and user preference.
+rtr2_eligible :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible) #effects(all) {
+  e[0] = Rtr2Eligible.{};
+  // Packs: empty available_packs means all 8 built-in packs are installed
+  if q[0].navailable_packs == 0 {
+    for i: 0..<RTR2_PACKS { e[0].pack[i] = true; }
+    e[0].npacks = RTR2_PACKS;
+  } else {
+    for i: 0..<q[0].navailable_packs {
+      k := rtr2_pack_index(q[0].available_packs[i]);
+      if k >= 0 && !e[0].pack[k] { e[0].pack[k] = true; e[0].npacks += 1; }
+    }
+  }
+  // Compute tiers: enforce hardware readiness + user_compute_pref (local / cloud / auto)
+  pref := q[0].user_compute_pref;
+  allow_local := pref != "cloud";
+  allow_cloud := pref != "local";
+  if allow_local && q[0].local_inkling_ready { e[0].tier[RTR2_TIER_LOCAL] = true; e[0].ntiers += 1; }
+  if allow_cloud && q[0].cloud_ready {
+    e[0].tier[RTR2_TIER_CLOUD_FAST] = true; e[0].ntiers += 1;
+    e[0].tier[RTR2_TIER_CLOUD_DEEP] = true; e[0].ntiers += 1;
+  }
+  if allow_cloud && q[0].remote_station_ready { e[0].tier[RTR2_TIER_REMOTE] = true; e[0].ntiers += 1; }
+  // Delegates: index 0 ("none") is always allowed
+  e[0].delegate[RTR2_DEL_NONE] = true;
+  for i: 0..<q[0].navailable_delegates {
+    k := rtr2_delegate_index(q[0].available_delegates[i]);
+    if k > 0 && !e[0].delegate[k] { e[0].delegate[k] = true; e[0].ndelegates += 1; } // mutant: equivalent (delegate[0] is already true, so !delegate[0] is false)
+  }
+}
+
+rtr2_continues :: (q: [] Rtr2PlanRequest, a: Rtr2Answers) -> bool #effects(all) {
+  if q[0].nactive_packs == 0 { return false; }
+  if a.has && a.continue_milli >= 0 { return a.continue_milli >= RTR_SURE_MILLI; }
+  return true;
+}
+
+rtr2_first_pack :: (e: [] Rtr2Eligible) -> int #effects(all) {
+  if e[0].pack[RTR2_PACK_GENERAL] { return RTR2_PACK_GENERAL; }
+  for i: 1..<RTR2_PACKS { if e[0].pack[i] { return i; } }
+  return -1;
+}
+
+rtr2_fallback_tier :: (e: [] Rtr2Eligible, primary_pack: int, difficulty: int) -> int #effects(all) {
+  light := (primary_pack == RTR2_PACK_GENERAL || primary_pack == RTR2_PACK_KNOWLEDGE) && difficulty <= 1;
+  if light && e[0].tier[RTR2_TIER_LOCAL] { return RTR2_TIER_LOCAL; }
+  if difficulty >= 3 && e[0].tier[RTR2_TIER_CLOUD_DEEP] { return RTR2_TIER_CLOUD_DEEP; }
+  if e[0].tier[RTR2_TIER_CLOUD_FAST] { return RTR2_TIER_CLOUD_FAST; }
+  if e[0].tier[RTR2_TIER_CLOUD_DEEP] { return RTR2_TIER_CLOUD_DEEP; }
+  if e[0].tier[RTR2_TIER_LOCAL] { return RTR2_TIER_LOCAL; }
+  if e[0].tier[RTR2_TIER_REMOTE] { return RTR2_TIER_REMOTE; }
+  return -1;
+}
+
+// Pure #authority v2 RoutePlan decision from request facts, eligible sets, and door answers.
+rtr2_pick :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, a: Rtr2Answers, p: [] Rtr2Plan) #effects(all) {
+  pack_names := RTR2_PACK_NAMES;
+  tier_names := RTR2_TIER_NAMES;
+  del_names := RTR2_DELEGATE_NAMES;
+  efforts := RTR_EFFORT_NAMES;
+  miss_names := RTR2_MISS_NAMES;
+
+  p[0].ok = false;
+  if q[0].text.count == 0 { p[0].error = "no_task"; return; }
+  if e[0].ntiers == 0 || e[0].npacks == 0 { p[0].error = "no_compute"; return; }
+  if !a.has { rtr2_plan_reason(p, "door_unavailable"); }
+
+  if q[0].user_compute_pref == "local" { rtr2_plan_reason(p, "user_pref_local"); }
+  else if q[0].user_compute_pref == "cloud" { rtr2_plan_reason(p, "user_pref_cloud"); }
+
+  difficulty := ifx a.has && a.difficulty >= 0 && a.difficulty <= 4 then a.difficulty else -1;
+  cont := rtr2_continues(q, a);
+  p[0].continue_active = cont;
+
+  // 1. Missing-capability detection (Episode 289 P9 trigger)
+  missing := a.has && a.missing_cap_milli >= RTR_SURE_MILLI;
+  if missing {
+    hint := "custom_capability";
+    if a.missing_cap_kind > 0 && a.missing_cap_kind < RTR2_MISS_KINDS && a.missing_cap_kind_milli >= RTR_SURE_MILLI {
+      hint = miss_names[a.missing_cap_kind];
+    }
+    p[0].missing_capability_hint = hint;
+    rtr2_plan_reason(p, "missing_capability");
+    if e[0].pack[RTR2_PACK_AUTHOR] { rtr2_plan_add_pack(p, pack_names[RTR2_PACK_AUTHOR]); }
+    else { rtr2_plan_reason(p, "pack_unavailable"); }
+    if e[0].pack[RTR2_PACK_GENERAL] { rtr2_plan_add_pack(p, pack_names[RTR2_PACK_GENERAL]); }
+  }
+
+  // 2. Capability packs (preserve active packs on continuation for prompt cache stability)
+  if cont {
+    rtr2_plan_reason(p, "continued");
+    for i: 0..<q[0].nactive_packs {
+      k := rtr2_pack_index(q[0].active_packs[i]);
+      if k >= 0 && e[0].pack[k] { rtr2_plan_add_pack(p, pack_names[k]); }
+    }
+  }
+  if !missing {
+    if a.has && a.primary_pack >= 0 && a.primary_pack < RTR2_PACKS && a.primary_pack_milli >= RTR_SURE_MILLI {
+      if e[0].pack[a.primary_pack] { rtr2_plan_add_pack(p, pack_names[a.primary_pack]); }
+      else { rtr2_plan_reason(p, "pack_unavailable"); }
+    } else if !cont {
+      if a.has { rtr2_plan_reason(p, "unsure_pack"); }
+      fb := rtr2_fallback_pack(q[0].text, q[0].repo);
+      if e[0].pack[fb] { rtr2_plan_add_pack(p, pack_names[fb]); }
+    }
+    if a.has && a.secondary_pack >= 0 && a.secondary_pack < RTR2_PACKS && a.secondary_pack_milli >= RTR_SURE_MILLI && e[0].pack[a.secondary_pack] {
+      rtr2_plan_add_pack(p, pack_names[a.secondary_pack]);
+    }
+  }
+  if p[0].npacks == 0 { rtr2_plan_add_pack(p, pack_names[rtr2_first_pack(e)]); }
+  primary := rtr2_pack_index(p[0].capability_packs[0]);
+
+  // 3. Explicit external delegate (demoted subagent harness)
+  del := RTR2_DEL_NONE;
+  if a.has && a.explicit_delegate > 0 && a.explicit_delegate < RTR2_DELEGATES && a.explicit_delegate_milli >= RTR_SURE_MILLI {
+    if e[0].delegate[a.explicit_delegate] {
+      del = a.explicit_delegate;
+      rtr2_plan_reason(p, "delegate_requested");
+    } else {
+      rtr2_plan_reason(p, "delegate_unavailable");
+    }
+  } else if cont {
+    ad := rtr2_delegate_index(q[0].active_delegate);
+    if ad > 0 && e[0].delegate[ad] { del = ad; } // mutant: equivalent (del is already 0, so ad == 0 setting del = 0 is a no-op)
+  }
+  p[0].explicit_delegate = del_names[del];
+
+  // 4. Compute tier (local_inkling, cloud_fast, cloud_deep, remote_station)
+  tier := -1;
+  if a.has && a.compute_tier >= 0 && a.compute_tier < RTR2_TIERS && a.compute_tier_milli >= RTR_SURE_MILLI {
+    if e[0].tier[a.compute_tier] {
+      tier = a.compute_tier;
+    } else if a.compute_tier == RTR2_TIER_LOCAL {
+      rtr2_plan_reason(p, "tier_fallback_cloud");
+    } else {
+      rtr2_plan_reason(p, "tier_fallback_local");
+    }
+  } else if a.has && e[0].ntiers > 1 && !cont {
+    rtr2_plan_reason(p, "unsure_tier");
+  }
+  if tier < 0 && cont {
+    at := rtr2_tier_index(q[0].active_compute_tier);
+    if at >= 0 && e[0].tier[at] { tier = at; }
+  }
+  if tier < 0 {
+    def_diff := ifx primary == RTR2_PACK_GENERAL then 0 else 2; // mutant: equivalent (rtr2_fallback_tier treats 0 and 1 identically as light <= 1)
+    eff_diff := ifx difficulty >= 0 then difficulty else def_diff;
+    tier = rtr2_fallback_tier(e, primary, eff_diff);
+  }
+  p[0].compute_tier = tier_names[tier];
+
+  // 5. Effort
+  eff := ifx a.has && a.effort >= 0 && a.effort <= 2 then a.effort
+         else ifx tier == RTR2_TIER_LOCAL then 0
+         else ifx tier == RTR2_TIER_CLOUD_DEEP || difficulty >= 3 then 2
+         else 1;
+  p[0].effort = efforts[eff];
+  p[0].difficulty = difficulty;
+  p[0].ok = true;
+}
+
+#test "v2 policy: eligibility, fallback classification, user pref, delegation, continuation, and missing capability" {
+  q: [1] Rtr2PlanRequest; e: [1] Rtr2Eligible; p: [1] Rtr2Plan;
+  // Empty task fails closed
+  q[0] = Rtr2PlanRequest.{local_inkling_ready = true, cloud_ready = true};
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], rtr2_no_answers(), p[..]);
+  #assert !p[0].ok && p[0].error == "no_task";
+
+  // No compute available fails closed
+  q[0] = Rtr2PlanRequest.{text = "hi"};
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], rtr2_no_answers(), p[..]);
+  #assert !p[0].ok && p[0].error == "no_compute";
+
+  // Deterministic offline fallback across all 8 packs
+  #assert rtr2_fallback_pack("author a capability for Slack", "") == RTR2_PACK_AUTHOR;
+  #assert rtr2_fallback_pack("create a skill for Notion", "") == RTR2_PACK_AUTHOR;
+  #assert rtr2_fallback_pack("build a plugin for Linear", "") == RTR2_PACK_AUTHOR;
+  #assert rtr2_fallback_pack("add a new capability", "") == RTR2_PACK_AUTHOR;
+  #assert rtr2_fallback_pack("pay this bolt11 lightning invoice of 500 sats from my bitcoin wallet", "") == RTR2_PACK_WALLET;
+  #assert rtr2_fallback_pack("check wallet balance", "") == RTR2_PACK_WALLET;
+  #assert rtr2_fallback_pack("send bitcoin", "") == RTR2_PACK_WALLET;
+  #assert rtr2_fallback_pack("pay 100 sats", "") == RTR2_PACK_WALLET;
+  #assert rtr2_fallback_pack("decode invoice", "") == RTR2_PACK_WALLET;
+  #assert rtr2_fallback_pack("pay bolt11", "") == RTR2_PACK_WALLET;
+  #assert rtr2_fallback_pack("open the metaverse realm in gamebuilder", "") == RTR2_PACK_METAVERSE;
+  #assert rtr2_fallback_pack("open gamebuilder", "") == RTR2_PACK_METAVERSE;
+  #assert rtr2_fallback_pack("enter realm", "") == RTR2_PACK_METAVERSE;
+  #assert rtr2_fallback_pack("edit 3d scene", "") == RTR2_PACK_METAVERSE;
+  #assert rtr2_fallback_pack("launch everglade", "") == RTR2_PACK_METAVERSE;
+  #assert rtr2_fallback_pack("run gbench eval suite", "") == RTR2_PACK_GYM;
+  #assert rtr2_fallback_pack("run benchmark", "") == RTR2_PACK_GYM;
+  #assert rtr2_fallback_pack("run eval suite", "") == RTR2_PACK_GYM;
+  #assert rtr2_fallback_pack("train lora", "") == RTR2_PACK_GYM;
+  #assert rtr2_fallback_pack("run hillclimb", "") == RTR2_PACK_GYM;
+  #assert rtr2_fallback_pack("search the book and transcript in the knowledge base", "") == RTR2_PACK_KNOWLEDGE;
+  #assert rtr2_fallback_pack("find transcript", "") == RTR2_PACK_KNOWLEDGE;
+  #assert rtr2_fallback_pack("query knowledge base", "") == RTR2_PACK_KNOWLEDGE;
+  #assert rtr2_fallback_pack("search nip-kb", "") == RTR2_PACK_KNOWLEDGE;
+  #assert rtr2_fallback_pack("read documentation", "") == RTR2_PACK_KNOWLEDGE;
+  #assert rtr2_fallback_pack("run this terminal command", "") == RTR2_PACK_CLI;
+  #assert rtr2_fallback_pack("run shell command", "") == RTR2_PACK_CLI;
+  #assert rtr2_fallback_pack("open cli tool", "") == RTR2_PACK_CLI;
+  #assert rtr2_fallback_pack("attach tmux", "") == RTR2_PACK_CLI;
+  #assert rtr2_fallback_pack("fix the bug in app.coax", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("edit app.swift", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("edit main.py", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("fix typo", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("found a bug", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("refactor module", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("compile it", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("run unittest", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("open pull request", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("review code", "") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("explain this", "openagents") == RTR2_PACK_CODER;
+  #assert rtr2_fallback_pack("hello how are you", "") == RTR2_PACK_GENERAL;
+  #assert !rtr2_has_ci("abc", "") && !rtr2_has_ci("a", "ab") && rtr2_has_ci("AbC", "abc") && !rtr2_has_ci("abc", "xyz");
+
+  // User pref local forces local_inkling even if door chose cloud_deep
+  q[0] = Rtr2PlanRequest.{text = "fix bug", local_inkling_ready = true, cloud_ready = true, user_compute_pref = "local"};
+  a := rtr2_no_answers(); a.has = true; a.primary_pack = RTR2_PACK_CODER; a.primary_pack_milli = 950;
+  a.compute_tier = RTR2_TIER_CLOUD_DEEP; a.compute_tier_milli = 900; a.difficulty = 3; a.effort = 2;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].compute_tier == "local_inkling" && p[0].capability_packs[0] == "coder" && p[0].effort == "high" && p[0].difficulty == 3;
+  #assert p[0].reasons[0] == "user_pref_local" && p[0].reasons[1] == "tier_fallback_local";
+
+  // User pref cloud blocks local_inkling and falls back to cloud
+  q[0] = Rtr2PlanRequest.{text = "hello", local_inkling_ready = true, cloud_ready = true, user_compute_pref = "cloud"};
+  a = rtr2_no_answers(); a.has = true; a.primary_pack = RTR2_PACK_GENERAL; a.primary_pack_milli = 950;
+  a.compute_tier = RTR2_TIER_LOCAL; a.compute_tier_milli = 900; a.difficulty = 0;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].compute_tier == "cloud_fast" && p[0].effort == "medium" && p[0].reasons[0] == "user_pref_cloud" && p[0].reasons[1] == "tier_fallback_cloud";
+
+  // Explicit delegate available vs unavailable
+  q[0] = Rtr2PlanRequest.{text = "use claude to fix this", local_inkling_ready = true, cloud_ready = true};
+  q[0].available_delegates[0] = "claude"; q[0].available_delegates[1] = "claude"; q[0].navailable_delegates = 2;
+  a = rtr2_no_answers(); a.has = true; a.primary_pack = RTR2_PACK_CODER; a.primary_pack_milli = 900;
+  a.explicit_delegate = RTR2_DEL_CLAUDE; a.explicit_delegate_milli = 900;
+  a.secondary_pack = RTR2_PACK_CLI; a.secondary_pack_milli = 800;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].explicit_delegate == "claude" && p[0].npacks == 2 && p[0].capability_packs[1] == "cli" && p[0].reasons[0] == "delegate_requested";
+  a.explicit_delegate = RTR2_DEL_CODEX;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].explicit_delegate == "none" && p[0].reasons[0] == "delegate_unavailable";
+
+  // Multi-turn continuation preserves active packs, compute tier, and delegate
+  q[0] = Rtr2PlanRequest.{text = "now run the tests", local_inkling_ready = true, cloud_ready = true, active_compute_tier = "cloud_deep", active_delegate = "claude"};
+  q[0].active_packs[0] = "coder"; q[0].nactive_packs = 1;
+  q[0].available_delegates[0] = "claude"; q[0].navailable_delegates = 1;
+  a = rtr2_no_answers(); a.has = true; a.continue_milli = 850;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].continue_active && p[0].capability_packs[0] == "coder" && p[0].compute_tier == "cloud_deep" && p[0].explicit_delegate == "claude" && p[0].effort == "high";
+
+  // Missing capability triggers Episode 289 P9 authoring hint + capability_author pack
+  q[0] = Rtr2PlanRequest.{text = "post a summary to our Slack channel", local_inkling_ready = true, cloud_ready = true};
+  a = rtr2_no_answers(); a.has = true; a.missing_cap_milli = 920; a.missing_cap_kind = 1; a.missing_cap_kind_milli = 880;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].missing_capability_hint == "messaging_integration" && p[0].capability_packs[0] == "capability_author" && p[0].capability_packs[1] == "general";
+
+  // Restricted available_packs + remote_station fallback
+  q[0] = Rtr2PlanRequest.{text = "check this", remote_station_ready = true};
+  q[0].available_packs[0] = "wallet"; q[0].available_packs[1] = "wallet"; q[0].navailable_packs = 2;
+  a = rtr2_no_answers(); a.has = true; a.missing_cap_milli = 900; a.missing_cap_kind = 0; a.missing_cap_kind_milli = 900;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "wallet" && p[0].compute_tier == "remote_station" && p[0].missing_capability_hint == "custom_capability";
+
+  // Restricted available_packs with ineligible primary pack
+  a = rtr2_no_answers(); a.has = true; a.primary_pack = RTR2_PACK_CODER; a.primary_pack_milli = 900;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "wallet" && p[0].reasons[0] == "pack_unavailable";
+
+  // Offline general turn prefers local_inkling at low effort
+  q[0] = Rtr2PlanRequest.{text = "hello", local_inkling_ready = true, cloud_ready = true};
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], rtr2_no_answers(), p[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "general" && p[0].compute_tier == "local_inkling" && p[0].effort == "low" && p[0].reasons[0] == "door_unavailable";
+
+  // Unsure pack & unsure tier reasons
+  a = rtr2_no_answers(); a.has = true; a.primary_pack = RTR2_PACK_CODER; a.primary_pack_milli = 300; a.compute_tier = RTR2_TIER_CLOUD_DEEP; a.compute_tier_milli = 300;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].reasons[0] == "unsure_pack" && p[0].reasons[1] == "unsure_tier";
+
+  // Boundary: exact RTR_SURE_MILLI = 500
+  q[0] = Rtr2PlanRequest.{text = "build a plugin", local_inkling_ready = true, cloud_ready = true, remote_station_ready = true};
+  q[0].active_packs[0] = "coder"; q[0].nactive_packs = 1;
+  q[0].available_delegates[0] = "codex"; q[0].navailable_delegates = 1;
+  a = rtr2_no_answers(); a.has = true; a.continue_milli = 500; a.primary_pack = RTR2_PACK_WALLET; a.primary_pack_milli = 500;
+  a.secondary_pack = RTR2_PACK_GYM; a.secondary_pack_milli = 500; a.explicit_delegate = RTR2_DEL_CODEX; a.explicit_delegate_milli = 500;
+  a.compute_tier = RTR2_TIER_REMOTE; a.compute_tier_milli = 500; a.difficulty = 4; a.effort = 0;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && p[0].continue_active && p[0].npacks == 3 && p[0].explicit_delegate == "codex" && p[0].compute_tier == "remote_station" && p[0].effort == "low" && p[0].difficulty == 4;
+  // Just below RTR_SURE_MILLI = 499
+  a.continue_milli = 499; a.missing_cap_milli = 499; a.explicit_delegate_milli = 499; a.primary_pack_milli = 499; a.secondary_pack_milli = 499; a.compute_tier_milli = 499;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && !p[0].continue_active && p[0].missing_capability_hint == "" && p[0].explicit_delegate == "none" && p[0].compute_tier == "cloud_deep";
+}
+
+#forall "v2 policy: whatever the model answers, chosen packs, compute tier and delegate are always eligible" v:0..<4096 {
+  q: [1] Rtr2PlanRequest; e: [1] Rtr2Eligible; p: [1] Rtr2Plan;
+  q[0] = Rtr2PlanRequest.{
+    text = ifx rtr_fx_draw(v, 0, 16) == 0 then "" else "handle this task",
+    local_inkling_ready = rtr_fx_draw(v, 1, 2) != 0,
+    cloud_ready = rtr_fx_draw(v, 2, 2) != 0,
+    remote_station_ready = rtr_fx_draw(v, 3, 3) == 0,
+    user_compute_pref = ifx rtr_fx_draw(v, 4, 4) == 0 then "local" else ifx rtr_fx_draw(v, 4, 4) == 1 then "cloud" else "auto"
+  };
+  if rtr_fx_draw(v, 5, 2) == 0 { q[0].active_packs[0] = "coder"; q[0].nactive_packs = 1; q[0].active_compute_tier = "cloud_deep"; }
+  if rtr_fx_draw(v, 6, 2) == 0 { q[0].available_delegates[0] = "claude"; q[0].navailable_delegates = 1; }
+  if rtr_fx_draw(v, 7, 3) == 0 { q[0].available_packs[0] = "general"; q[0].available_packs[1] = "coder"; q[0].navailable_packs = 2; }
+  a := rtr2_no_answers();
+  a.has = rtr_fx_draw(v, 8, 4) != 0;
+  a.primary_pack = rtr_fx_draw(v, 9, 10) - 1; a.primary_pack_milli = ifx rtr_fx_draw(v, 10, 2) == 0 then 200 else 850;
+  a.secondary_pack = rtr_fx_draw(v, 11, 10) - 1; a.secondary_pack_milli = ifx rtr_fx_draw(v, 12, 2) == 0 then 200 else 850;
+  a.compute_tier = rtr_fx_draw(v, 13, 6) - 1; a.compute_tier_milli = ifx rtr_fx_draw(v, 14, 2) == 0 then 200 else 850;
+  a.explicit_delegate = rtr_fx_draw(v, 15, 7) - 1; a.explicit_delegate_milli = ifx rtr_fx_draw(v, 16, 2) == 0 then 200 else 850;
+  a.difficulty = rtr_fx_draw(v, 17, 7) - 1; a.effort = rtr_fx_draw(v, 18, 5) - 1;
+  a.continue_milli = ifx rtr_fx_draw(v, 19, 3) == 0 then -1 else ifx rtr_fx_draw(v, 20, 2) == 0 then 200 else 850;
+  a.missing_cap_milli = ifx rtr_fx_draw(v, 21, 4) == 0 then 850 else 100;
+  a.missing_cap_kind = rtr_fx_draw(v, 22, 8) - 1; a.missing_cap_kind_milli = ifx rtr_fx_draw(v, 23, 2) == 0 then 200 else 850;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  if p[0].ok {
+    #assert q[0].text.count > 0 && p[0].npacks >= 1;
+    for i: 0..<p[0].npacks {
+      pk := rtr2_pack_index(p[0].capability_packs[i]);
+      #assert pk >= 0 && e[0].pack[pk];
+    }
+    tk := rtr2_tier_index(p[0].compute_tier);
+    #assert tk >= 0 && e[0].tier[tk];
+    if q[0].user_compute_pref == "local" { #assert tk == RTR2_TIER_LOCAL; }
+    if q[0].user_compute_pref == "cloud" { #assert tk != RTR2_TIER_LOCAL; }
+    dk := rtr2_delegate_index(p[0].explicit_delegate);
+    #assert dk >= 0 && e[0].delegate[dk];
+    #assert p[0].effort == "low" || p[0].effort == "medium" || p[0].effort == "high";
+  } else {
+    #assert p[0].error == "no_task" || p[0].error == "no_compute";
+  }
+}
+
+#test "policy mutation coverage: v1 and v2 exact boundaries" {
+  // v1 rtr_no_answers fields
+  na := rtr_no_answers();
+  #assert !na.has && na.engine == -1 && na.difficulty == -1 && na.effort == -1 && na.weight == -1 && na.needs == -1;
+  #assert na.named_station == -1 && na.named_engine == -1 && na.depth == -1 && na.continue_milli == -1;
+  for k: 0..<RTR_ENGINES { #assert na.station_for[k] == -1; }
+
+  // v1 rtr_station_fact, rtr_facts_known, rtr_need_ok, rtr_why_not, rtr_more_room, rtr_roomiest
+  q: [1] RtrRequest; e: [1] RtrEligible; d: [1] RtrDecision;
+  rtr_fx_two(q[..]);
+  q[0].stations[0].reported_at_ms = -1; #assert rtr_station_fact(q[..], 0) == "not_reachable";
+  q[0].stations[0].reported_at_ms = 1; q[0].now_ms = 1; #assert rtr_station_fact(q[..], 0) == "";
+  q[0].stations[0].reported_at_ms = 990000; q[0].now_ms = 1000000;
+  q[0].stations[0].os = "x"; #assert rtr_facts_known(q[..], 0);
+  q[0].stations[0].os = ""; #assert !rtr_facts_known(q[..], 0);
+  q[0].stations[0].os = "macos";
+  q[0].stations[1].gpu = "g"; #assert rtr_need_ok(q[..], 1, RTR_NEED_GPU);
+  q[0].stations[1].gpu = ""; #assert !rtr_need_ok(q[..], 1, RTR_NEED_GPU);
+
+  rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
+  #assert rtr_why_not(q[..], e[..], -1, 0, 0, 0) == "station_not_eligible";
+  #assert rtr_why_not(q[..], e[..], 2, 0, 0, 0) == "station_not_eligible";
+  #assert rtr_why_not(q[..], e[..], 0, -1, 0, 0) == "station_not_eligible";
+  #assert rtr_why_not(q[..], e[..], 0, 4, 0, 0) == "station_not_eligible";
+
+  // rtr_more_room tie-breakers: work -> memory_free_mb -> disk_free_mb -> equal false
+  q[0].stations[0].work = 1; q[0].stations[1].work = 1;
+  q[0].stations[0].memory_free_mb = 500; q[0].stations[1].memory_free_mb = 500;
+  q[0].stations[0].disk_free_mb = 500; q[0].stations[1].disk_free_mb = 500;
+  #assert !rtr_more_room(q[..], 0, 1) && !rtr_more_room(q[..], 1, 0);
+  q[0].stations[0].disk_free_mb = 501; #assert rtr_more_room(q[..], 0, 1) && !rtr_more_room(q[..], 1, 0);
+  q[0].stations[1].memory_free_mb = 501; #assert rtr_more_room(q[..], 1, 0) && !rtr_more_room(q[..], 0, 1);
+  q[0].stations[0].work = 0; #assert rtr_more_room(q[..], 0, 1) && !rtr_more_room(q[..], 1, 0);
+
+  // rtr_continues exact boundary 500 vs 499 and offline current_station / current_engine
+  a := rtr_no_answers(); a.has = true; a.continue_milli = 500; #assert rtr_continues(q[..], a);
+  a.continue_milli = 499; #assert !rtr_continues(q[..], a);
+  a.has = false; q[0].current_station = ""; q[0].current_engine = ""; #assert !rtr_continues(q[..], a);
+  q[0].current_station = "a"; #assert rtr_continues(q[..], a);
+  q[0].current_station = ""; q[0].current_engine = "a"; #assert rtr_continues(q[..], a);
+
+  // v1 rtr_pick exact boundaries: ok reset, named_station/engine/station_for/depth at 500, difficulty 4, weight 2, effort 2
+  rtr_fx_two(q[..]); q[0].stations[0].nothing_heavy = false;
+  d[0].ok = true; e[0].nstations = 0; rtr_pick(q[..], e[..], rtr_no_answers(), d[..]); #assert !d[0].ok;
+  a = rtr_fx_answer(1, 0); a.engine_milli = 500; a.station_for_milli[1] = 500; a.difficulty = 4; a.weight = 2; a.effort = 2;
+  a.named_station = 0; a.named_station_milli = 500; a.named_engine = 0; a.named_engine_milli = 500;
+  a.depth = RTR_DEPTH_FASTER; a.depth_milli = 500;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].station == "mac" && d[0].engine == "claude" && d[0].difficulty == 4 && d[0].weight == 2 && d[0].effort == "medium";
+  a.difficulty = 5; a.weight = 3; a.effort = 3; a.named_station = 2; a.named_engine = -1;
+  rtr_fx_pick(q[..], a, d[..]);
+  #assert d[0].ok && d[0].difficulty == -1 && d[0].weight == 2 && d[0].effort == "medium";
+
+  // v2 rtr2_no_answers + rtr2_eligible exact counts + rtr2_first_pack + rtr2_fallback_tier
+  na2 := rtr2_no_answers();
+  #assert !na2.has && na2.primary_pack == -1 && na2.secondary_pack == -1 && na2.compute_tier == -1;
+  #assert na2.explicit_delegate == -1 && na2.difficulty == -1 && na2.effort == -1;
+  #assert na2.continue_milli == -1 && na2.missing_cap_milli == -1 && na2.missing_cap_kind == -1;
+
+  q2: [1] Rtr2PlanRequest; e2: [1] Rtr2Eligible; p2: [1] Rtr2Plan;
+  q2[0] = Rtr2PlanRequest.{text = "hi", local_inkling_ready = true, cloud_ready = true, remote_station_ready = true};
+  q2[0].available_delegates[0] = "none"; q2[0].available_delegates[1] = "claude"; q2[0].available_delegates[2] = "codex"; q2[0].navailable_delegates = 3;
+  rtr2_eligible(q2[..], e2[..]);
+  #assert e2[0].npacks == 8 && e2[0].ntiers == 4 && e2[0].ndelegates == 2;
+  #assert rtr2_first_pack(e2[..]) == RTR2_PACK_GENERAL;
+  e2[0].pack[RTR2_PACK_GENERAL] = false; #assert rtr2_first_pack(e2[..]) == RTR2_PACK_KNOWLEDGE;
+  for i: 0..<RTR2_PACKS { e2[0].pack[i] = false; }
+  #assert rtr2_first_pack(e2[..]) == -1;
+
+  // rtr2_fallback_tier exact boundaries
+  rtr2_eligible(q2[..], e2[..]);
+  #assert rtr2_fallback_tier(e2[..], RTR2_PACK_KNOWLEDGE, 1) == RTR2_TIER_LOCAL;
+  #assert rtr2_fallback_tier(e2[..], RTR2_PACK_KNOWLEDGE, 2) == RTR2_TIER_CLOUD_FAST;
+  #assert rtr2_fallback_tier(e2[..], RTR2_PACK_CODER, 2) == RTR2_TIER_CLOUD_FAST;
+  #assert rtr2_fallback_tier(e2[..], RTR2_PACK_CODER, 3) == RTR2_TIER_CLOUD_DEEP;
+  e2[0].tier[RTR2_TIER_CLOUD_FAST] = false;
+  #assert rtr2_fallback_tier(e2[..], RTR2_PACK_CODER, 2) == RTR2_TIER_CLOUD_DEEP;
+  e2[0].tier[RTR2_TIER_CLOUD_DEEP] = false;
+  #assert rtr2_fallback_tier(e2[..], RTR2_PACK_CODER, 3) == RTR2_TIER_LOCAL;
+  e2[0].tier[RTR2_TIER_LOCAL] = false;
+  #assert rtr2_fallback_tier(e2[..], RTR2_PACK_CODER, 3) == RTR2_TIER_REMOTE;
+  e2[0].tier[RTR2_TIER_REMOTE] = false;
+  #assert rtr2_fallback_tier(e2[..], RTR2_PACK_CODER, 3) == -1;
+
+  // rtr2_continues exact boundary: continue_milli == 0 vs -1 vs 500
+  q2[0].active_packs[0] = "coder"; q2[0].nactive_packs = 1;
+  a2 := rtr2_no_answers(); a2.has = true; a2.continue_milli = 0; #assert !rtr2_continues(q2[..], a2);
+  a2.continue_milli = -1; #assert rtr2_continues(q2[..], a2);
+  a2.has = false; #assert rtr2_continues(q2[..], a2);
+
+  // rtr2_pick exact ok reset, difficulty 0/4/5, missing_cap_milli == 500, missing_cap_kind 5/6 & 500
+  p2[0].ok = true; q2[0].text = ""; rtr2_eligible(q2[..], e2[..]); rtr2_pick(q2[..], e2[..], rtr2_no_answers(), p2[..]); #assert !p2[0].ok;
+  q2[0].text = "test"; q2[0].nactive_packs = 0;
+  a2 = rtr2_no_answers(); a2.has = true; a2.difficulty = 0; a2.missing_cap_milli = 500; a2.missing_cap_kind = 5; a2.missing_cap_kind_milli = 500;
+  rtr2_plan_clear(p2[..]); rtr2_eligible(q2[..], e2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].difficulty == 0 && p2[0].missing_capability_hint == "custom_api_tool" && p2[0].reasons[0] == "missing_capability";
+  a2.difficulty = 5; a2.missing_cap_kind = 6;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].difficulty == -1 && p2[0].missing_capability_hint == "custom_capability";
+  // Effort from difficulty == 3 when tier is cloud_fast
+  a2 = rtr2_no_answers(); a2.has = true; a2.primary_pack = RTR2_PACK_CODER; a2.primary_pack_milli = 900;
+  a2.compute_tier = RTR2_TIER_CLOUD_FAST; a2.compute_tier_milli = 900; a2.difficulty = 3;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].effort == "high";
+
+  // Kill remaining v1 boundary mutants
+  q[0].stations[0].reported_at_ms = 0; q[0].now_ms = 0;
+  #assert rtr_station_fact(q[..], 0) == "not_reachable";
+  rtr_fx_two(q[..]); q[0].stations[0].nothing_heavy = false;
+  rtr_decision_clear(d[..]); rtr_eligible(q[..], e[..], d[..]);
+  e[0].station[2] = true;
+  #assert rtr_why_not(q[..], e[..], 2, 0, 0, 0) == "station_not_eligible";
+  e[0].station[2] = false;
+  // rtr_roomiest keeps index 0 when station 0 has more room than station 1
+  q[0].stations[0].work = 0; q[0].stations[1].work = 2;
+  #assert rtr_roomiest(q[..], e[..], 1, 0, 0) == 0;
+  // rtr_place: named_station == 0 overrides roomiest == 1 at milli == 500, fails at 499; -1/out-of-bounds ignored
+  rtr_fx_two(q[..]); q[0].stations[0].nothing_heavy = false;
+  a = rtr_fx_answer(1, 1);
+  #assert a.engine_milli == 900 && a.station_for[0] == 1 && a.station_for_milli[0] == 900 && a.difficulty == 1 && a.effort == 1 && a.weight == 0 && a.needs == 0 && a.depth == 0 && a.depth_milli == 900;
+  a.named_station = 0; a.named_station_milli = 500;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "mac" && d[0].reasons[0] == "named_station";
+  a.named_station_milli = 499;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "coderos";
+  a.named_station = -1; a.named_station_milli = 900;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "coderos";
+  a.named_station = 2; a.named_station_milli = 900;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "coderos";
+  // rtr_place: station_for[1] == 0 overrides roomiest == 1 at milli == 500, fails at 499 -> unsure_station; out-of-range -> unsure_station; runs == 1 -> no unsure_station
+  a = rtr_fx_answer(1, 0); a.station_for_milli[1] = 500;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "mac" && d[0].nreasons == 0;
+  a.station_for_milli[1] = 499;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "coderos" && d[0].reasons[0] == "unsure_station";
+  a.station_for[1] = 2; a.station_for_milli[1] = 900;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "coderos" && d[0].reasons[0] == "unsure_station";
+  a.station_for[1] = -1;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "coderos" && d[0].reasons[0] == "unsure_station";
+  a = rtr_fx_answer(0, -1); a.station_for_milli[0] = 100;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "mac" && d[0].nreasons == 0;
+  // rtr_pick: a.has == false ignores nonzero difficulty/station_for; named_engine == 0 not overwritten by continuation; engine_milli == 500; engine_not_eligible for engine == 0; engine_moved to engine 0 on station 0; difficulty == 0 model
+  a = rtr_fx_answer(1, 0); a.has = false; a.difficulty = 1; a.weight = 0; a.effort = 0;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].difficulty == -1 && d[0].weight == -1 && d[0].effort == "high" && d[0].engine == "claude" && d[0].station == "mac";
+  q[0].current_engine = "codex"; q[0].current_station = "coderos";
+  a = rtr_fx_answer(1, 1); a.named_engine = 0; a.named_engine_milli = 900; a.continue_milli = 900; a.difficulty = 0;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].engine == "claude" && d[0].model == cr_model("claude", 0);
+  q[0].current_engine = ""; q[0].current_station = "";
+  a = rtr_fx_answer(1, 1); a.engine_milli = 500;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].engine == "codex" && d[0].nreasons == 0;
+  a.engine_milli = 499;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].engine == "claude" && d[0].reasons[0] == "unsure_engine";
+  // engine_not_eligible when engine == 0 (claude) is logged out everywhere
+  q[0].stations[0].agents[0].logged_in = false; q[0].stations[0].agents[2] = RtrAgent.{reported = true, installed = true, logged_in = true};
+  a = rtr_fx_answer(0, 0);
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].engine == "codex" && d[0].reasons[0] == "engine_not_eligible";
+  // engine_moved from codex (1) -> claude (0) on station 0 when apple need can only be met on mac without codex
+  rtr_fx_two(q[..]); q[0].stations[0].nothing_heavy = false; q[0].stations[0].agents[1].logged_in = false;
+  a = rtr_fx_answer(1, 1); a.needs = RTR_NEED_APPLE;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].reasons[0] == "engine_moved";
+
+  // Kill remaining v2 boundary mutants
+  #assert rtr2_lower('Z') == 'z' && rtr2_lower('[') == '[' && rtr2_has_ci("abZ", "z") && rtr2_has_ci("Z", "z");
+  #assert rtr2_fallback_pack("hi", "x") == RTR2_PACK_CODER;
+  // rtr2_eligible: general (index 0) and bogus (-1) in available_packs; bogus (-1) in available_delegates
+  q2[0] = Rtr2PlanRequest.{text = "hi", local_inkling_ready = true, cloud_ready = true};
+  q2[0].available_packs[0] = "general"; q2[0].available_packs[1] = "bogus"; q2[0].navailable_packs = 2;
+  q2[0].available_delegates[0] = "bogus"; q2[0].available_delegates[1] = "claude"; q2[0].navailable_delegates = 2;
+  rtr2_eligible(q2[..], e2[..]);
+  #assert e2[0].npacks == 1 && e2[0].pack[0] && e2[0].ndelegates == 1 && e2[0].delegate[1];
+  // rtr2_pick: a.has == false ignores a.difficulty; missing with author unavailable -> pack_unavailable & general absent; cont with active_packs[0]="general" + "bogus"; secondary_pack=0; explicit_delegate=0; active_delegate="none"; unsure_tier only when ntiers > 1 && !cont; active_compute_tier="local_inkling" (0); eff_diff when difficulty==0 vs -1 and general vs coder
+  a2 = rtr2_no_answers(); a2.difficulty = 3;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].difficulty == -1 && p2[0].compute_tier == "local_inkling";
+  q2[0].available_packs[0] = "wallet"; q2[0].navailable_packs = 1;
+  rtr2_eligible(q2[..], e2[..]);
+  a2 = rtr2_no_answers(); a2.has = true; a2.missing_cap_milli = 900;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].npacks == 1 && p2[0].capability_packs[0] == "wallet" && p2[0].reasons[0] == "missing_capability" && p2[0].reasons[1] == "pack_unavailable";
+  // cont with general (0) + bogus (-1), active_compute_tier = local_inkling (0), active_delegate = none (0)
+  q2[0] = Rtr2PlanRequest.{text = "more", local_inkling_ready = true, cloud_ready = true, active_compute_tier = "local_inkling", active_delegate = "none"};
+  q2[0].active_packs[0] = "general"; q2[0].active_packs[1] = "bogus"; q2[0].nactive_packs = 2;
+  rtr2_eligible(q2[..], e2[..]);
+  a2 = rtr2_no_answers(); a2.has = true; a2.continue_milli = 900; a2.explicit_delegate = 0; a2.explicit_delegate_milli = 900;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].npacks == 1 && p2[0].capability_packs[0] == "general" && p2[0].compute_tier == "local_inkling" && p2[0].explicit_delegate == "none" && p2[0].nreasons == 1 && p2[0].reasons[0] == "continued";
+  // secondary_pack == 0 (general) added alongside primary coder; explicit tier == 0 (local_inkling) NOT overwritten by active_compute_tier == cloud_deep
+  q2[0] = Rtr2PlanRequest.{text = "hi", local_inkling_ready = true, cloud_ready = true, active_compute_tier = "cloud_deep"};
+  q2[0].active_packs[0] = "coder"; q2[0].nactive_packs = 1;
+  rtr2_eligible(q2[..], e2[..]);
+  a2 = rtr2_no_answers(); a2.has = true; a2.continue_milli = 900; a2.primary_pack = RTR2_PACK_CODER; a2.primary_pack_milli = 900;
+  a2.secondary_pack = RTR2_PACK_GENERAL; a2.secondary_pack_milli = 900;
+  a2.compute_tier = RTR2_TIER_LOCAL; a2.compute_tier_milli = 900;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].npacks == 2 && p2[0].capability_packs[1] == "general" && p2[0].compute_tier == "local_inkling";
+  // ntiers == 1 (only local) does NOT emit unsure_tier; ntiers == 2 with unsure tier DOES emit unsure_tier
+  q2[0] = Rtr2PlanRequest.{text = "fix bug", local_inkling_ready = true, cloud_ready = false};
+  rtr2_eligible(q2[..], e2[..]);
+  a2 = rtr2_no_answers(); a2.has = true; a2.primary_pack = RTR2_PACK_CODER; a2.primary_pack_milli = 900;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].nreasons == 0;
+  // difficulty == 0 on coder vs difficulty == -1 on coder (eff_diff == 2 -> cloud_fast, not cloud_deep!)
+  q2[0] = Rtr2PlanRequest.{text = "fix bug", local_inkling_ready = true, cloud_ready = true};
+  rtr2_eligible(q2[..], e2[..]);
+  a2 = rtr2_no_answers(); a2.has = true; a2.primary_pack = RTR2_PACK_CODER; a2.primary_pack_milli = 900; a2.difficulty = 0;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].compute_tier == "cloud_fast" && p2[0].effort == "medium";
+  a2.difficulty = -1;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].compute_tier == "cloud_fast" && p2[0].effort == "medium";
+  a2.primary_pack = RTR2_PACK_GENERAL;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].compute_tier == "local_inkling" && p2[0].effort == "low";
+
+  // Final 20 boundary kills across v1 & v2
+  // Line 189: !a.has ignores named_station even with milli=900; named_station==2 emits 0 reasons (not named_station_cannot)
+  rtr_fx_two(q[..]); q[0].stations[0].nothing_heavy = false;
+  a = rtr_fx_answer(1, 0); a.has = false; a.named_station = 0; a.named_station_milli = 900; a.station_for[1] = 0; a.station_for_milli[1] = 900;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "mac" && d[0].reasons[0] == "door_unavailable" && d[0].nreasons == 1;
+  // Line 200: !a.has with station_for[1] == 0 and station_for_milli[1] == 900 on coderos-only claude -> must pick roomiest coderos (1), not mac (0)
+  q[0].stations[0].agents[0].logged_in = false;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].engine == "codex" && d[0].station == "coderos" && d[0].nreasons == 1;
+  rtr_fx_two(q[..]); q[0].stations[0].nothing_heavy = false;
+  a = rtr_fx_answer(1, 1); a.named_station = 2; a.named_station_milli = 900;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "coderos" && d[0].nreasons == 0;
+  // Line 204: 3 stations where 2 run codex and 1 does not -> runs==2 (not 1), emits unsure_station
+  q[0].n = 3; q[0].stations[2] = q[0].stations[0]; q[0].stations[2].id = "box3"; q[0].stations[2].agents[1].logged_in = false;
+  a = rtr_fx_answer(1, 1); a.station_for_milli[1] = 100;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].reasons[0] == "unsure_station";
+  // Line 206: answer == 0 on a nothing_heavy station with weight == 2 -> emits too_heavy_for_station (not unsure_station)
+  rtr_fx_two(q[..]);
+  a = rtr_fx_answer(1, 0); a.weight = 2;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].station == "coderos" && d[0].reasons[0] == "too_heavy_for_station";
+  // Line 249 & 252: station == 0 (mac) with claude does NOT enter engine_moved loop; and when codex moves to claude on mac (station 0), micro (2) does NOT overwrite it!
+  rtr_fx_two(q[..]); q[0].stations[0].nothing_heavy = false;
+  a = rtr_fx_answer(0, 0);
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].nreasons == 0;
+  q[0].stations[0].agents[1].logged_in = false;
+  q[0].stations[0].agents[2] = RtrAgent.{reported = true, installed = true, logged_in = true};
+  a = rtr_fx_answer(1, 1); a.needs = RTR_NEED_APPLE;
+  rtr_fx_pick(q[..], a, d[..]); #assert d[0].ok && d[0].engine == "claude" && d[0].station == "mac" && d[0].reasons[0] == "engine_moved";
+
+  // Line 570 & 572: rtr2_has_ci index 0 mismatch and end-of-string non-match
+  #assert !rtr2_has_ci("ab", "xb") && !rtr2_has_ci("ab", "bc");
+  // Line 693: missing capability when available_packs = ["capability_author", "knowledge"] (no general) -> mounts only capability_author
+  q2[0] = Rtr2PlanRequest.{text = "post to slack", local_inkling_ready = true};
+  q2[0].available_packs[0] = "capability_author"; q2[0].available_packs[1] = "knowledge"; q2[0].navailable_packs = 2;
+  rtr2_eligible(q2[..], e2[..]);
+  a2 = rtr2_no_answers(); a2.has = true; a2.missing_cap_milli = 900;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].npacks == 1 && p2[0].capability_packs[0] == "capability_author";
+  // Line 701: cont preserves active_packs[0] == "general" (k == 0) ahead of primary_pack == "coder"
+  q2[0] = Rtr2PlanRequest.{text = "next", local_inkling_ready = true, cloud_ready = true};
+  q2[0].active_packs[0] = "general"; q2[0].nactive_packs = 1;
+  rtr2_eligible(q2[..], e2[..]);
+  a2 = rtr2_no_answers(); a2.has = true; a2.continue_milli = 900; a2.primary_pack = RTR2_PACK_CODER; a2.primary_pack_milli = 900;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].capability_packs[0] == "general" && p2[0].capability_packs[1] == "coder";
+  // Line 711: offline fallback picks wallet when available, falls back to general when wallet unavailable
+  q2[0] = Rtr2PlanRequest.{text = "check wallet", local_inkling_ready = true};
+  q2[0].available_packs[0] = "general"; q2[0].available_packs[1] = "wallet"; q2[0].navailable_packs = 2;
+  rtr2_eligible(q2[..], e2[..]);
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], rtr2_no_answers(), p2[..]);
+  #assert p2[0].ok && p2[0].capability_packs[0] == "wallet";
+  q2[0].navailable_packs = 1;
+  rtr2_eligible(q2[..], e2[..]);
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], rtr2_no_answers(), p2[..]);
+  #assert p2[0].ok && p2[0].capability_packs[0] == "general";
+  // Line 745: ntiers == 2 (local + remote, no cloud) emits unsure_tier when tier is unsure
+  q2[0] = Rtr2PlanRequest.{text = "hi", local_inkling_ready = true, cloud_ready = false, remote_station_ready = true};
+  rtr2_eligible(q2[..], e2[..]);
+  #assert e2[0].ntiers == 2;
+  a2 = rtr2_no_answers(); a2.has = true; a2.primary_pack = RTR2_PACK_GENERAL; a2.primary_pack_milli = 900;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].reasons[0] == "unsure_tier";
+  // Line 750: cont with active_compute_tier == "local_inkling" (at == 0) on coder pack keeps local_inkling (not cloud_fast!)
+  q2[0] = Rtr2PlanRequest.{text = "continue", local_inkling_ready = true, cloud_ready = true, active_compute_tier = "local_inkling"};
+  q2[0].active_packs[0] = "coder"; q2[0].nactive_packs = 1;
+  rtr2_eligible(q2[..], e2[..]);
+  a2 = rtr2_no_answers(); a2.has = true; a2.continue_milli = 900;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].compute_tier == "local_inkling";
+  // Line 753: knowledge pack with difficulty == 0 -> local_inkling, whereas difficulty == -1 -> def_diff == 2 -> cloud_fast!
+  q2[0] = Rtr2PlanRequest.{text = "docs", local_inkling_ready = true, cloud_ready = true};
+  rtr2_eligible(q2[..], e2[..]);
+  a2 = rtr2_no_answers(); a2.has = true; a2.primary_pack = RTR2_PACK_KNOWLEDGE; a2.primary_pack_milli = 900; a2.difficulty = 0;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].compute_tier == "local_inkling";
+  a2.difficulty = -1;
+  rtr2_plan_clear(p2[..]); rtr2_pick(q2[..], e2[..], a2, p2[..]);
+  #assert p2[0].ok && p2[0].compute_tier == "cloud_fast";
 }

@@ -1,0 +1,30 @@
+// Test fixture builders shared by policy.coax, ask.coax, and decide.coax.
+// Kept separate from #authority policy.coax so mutation testing targets only
+// production routing policy code.
+#load "wire.coax";
+
+// Two computers and their agents, for the checks in policy.coax, ask.coax, and decide.coax.
+// mac: claude and codex ready, one piece of work, nothing heavy. coderos: codex ready, claude logged out, no work.
+rtr_fx_two :: (q: [] RtrRequest) #effects(all) {
+  q[0] = RtrRequest.{};
+  q[0].text = "fix the typo in the README"; q[0].now_ms = 1000000; q[0].n = 2;
+  q[0].stations[0].id = "mac"; q[0].stations[0].name = "MacBook Pro"; q[0].stations[0].os = "macos"; q[0].stations[0].reported_at_ms = 990000;
+  q[0].stations[0].cores = 12; q[0].stations[0].memory_total_mb = 65536; q[0].stations[0].memory_free_mb = 22000;
+  q[0].stations[0].disk_free_mb = 180000; q[0].stations[0].disk_floor_mb = 20000; q[0].stations[0].load_1m_milli = 1200;
+  q[0].stations[0].work = 1; q[0].stations[0].nothing_heavy = true; q[0].stations[0].apple_builds = true;
+  q[0].stations[0].agents[0] = RtrAgent.{reported = true, installed = true, logged_in = true};
+  q[0].stations[0].agents[1] = RtrAgent.{reported = true, installed = true, logged_in = true};
+  q[0].stations[1].id = "coderos"; q[0].stations[1].name = "coderos"; q[0].stations[1].os = "linux"; q[0].stations[1].reported_at_ms = 995000;
+  q[0].stations[1].cores = 32; q[0].stations[1].memory_total_mb = 131072; q[0].stations[1].memory_free_mb = 90000;
+  q[0].stations[1].disk_free_mb = 400000; q[0].stations[1].disk_floor_mb = 20000; q[0].stations[1].load_1m_milli = 300;
+  q[0].stations[1].agents[0] = RtrAgent.{reported = true, installed = true, logged_in = false};
+  q[0].stations[1].agents[1] = RtrAgent.{reported = true, installed = true, logged_in = true};
+}
+
+// Draw k of case v: 0 to n - 1.
+rtr_fx_draw :: (v: int, k: int, n: int) -> int #effects(all) {
+  x := ((v % 65521) * 31 + k * 7919 + 17) % 65521;
+  x = (x * 1103 + 12345) % 65521;
+  x = (x * 1103 + 12345) % 65521;
+  return x % n;
+}

@@ -17,6 +17,7 @@
 // Goldens: proto/coder/router-v1alpha1.json, held by wire-goldens.coax:
 //   coax/web/tool.sh coax/lib/agent/router/wire-goldens.coax
 #import_proto "../../../../proto/descriptors/router.pb" as RTP;
+#import_proto "../../../../proto/descriptors/router-v2.pb" as RTP2;
 #load "../../proto/json.coax";
 #load "../engine/availability-policy.coax";   // ca_index: an engine's place in claude, codex, micro, psionic
 
@@ -556,4 +557,307 @@ rtr_decision_write :: (d: [] RtrDecision, out: [] u8) -> int {
 #test "a computer's id: 1 to 32 of a-z, 0-9 and -" {
   #assert rtr_id_ok("oa-build-1") && rtr_id_ok("a") && rtr_id_ok("01234567890123456789012345678901");
   #assert !rtr_id_ok("none") && !rtr_id_ok("") && !rtr_id_ok("A") && !rtr_id_ok("a/b") && !rtr_id_ok("my mac") && !rtr_id_ok("012345678901234567890123456789012");
+}
+
+// ---- openagents.router.v2alpha1 (System One Front RoutePlan) (#14056)
+
+RTR2_PLAN_REQ_SCHEMA :: "openagents.router.plan_request.v2alpha1";
+RTR2_PLAN_SCHEMA :: "openagents.router.plan.v2alpha1";
+RTR2_PACKS :: 8;
+RTR2_TIERS :: 4;
+RTR2_DELEGATES :: 5;
+RTR2_PLAN_MAX :: 32768;
+
+RTR2_PACK_GENERAL :: 0;
+RTR2_PACK_KNOWLEDGE :: 1;
+RTR2_PACK_CODER :: 2;
+RTR2_PACK_WALLET :: 3;
+RTR2_PACK_METAVERSE :: 4;
+RTR2_PACK_CLI :: 5;
+RTR2_PACK_GYM :: 6;
+RTR2_PACK_AUTHOR :: 7;
+
+RTR2_PACK_NAMES :: [RTR2_PACKS] string.[
+  "general", "knowledge", "coder", "wallet", "metaverse", "cli", "gym", "capability_author"
+];
+
+RTR2_TIER_LOCAL :: 0;
+RTR2_TIER_CLOUD_FAST :: 1;
+RTR2_TIER_CLOUD_DEEP :: 2;
+RTR2_TIER_REMOTE :: 3;
+
+RTR2_TIER_NAMES :: [RTR2_TIERS] string.[
+  "local_inkling", "cloud_fast", "cloud_deep", "remote_station"
+];
+
+RTR2_DEL_NONE :: 0;
+RTR2_DEL_CLAUDE :: 1;
+RTR2_DEL_CODEX :: 2;
+RTR2_DEL_ANTIGRAVITY :: 3;
+RTR2_DEL_CURSOR :: 4;
+
+RTR2_DELEGATE_NAMES :: [RTR2_DELEGATES] string.[
+  "none", "claude", "codex", "antigravity", "cursor"
+];
+
+rtr2_pack_index :: (name: string) -> int {
+  names := RTR2_PACK_NAMES;
+  for i: 0..<RTR2_PACKS { if names[i] == name { return i; } }
+  return -1;
+}
+
+rtr2_tier_index :: (name: string) -> int {
+  names := RTR2_TIER_NAMES;
+  for i: 0..<RTR2_TIERS { if names[i] == name { return i; } }
+  return -1;
+}
+
+rtr2_delegate_index :: (name: string) -> int {
+  names := RTR2_DELEGATE_NAMES;
+  for i: 0..<RTR2_DELEGATES { if names[i] == name { return i; } }
+  return -1;
+}
+
+Rtr2PlanRequest :: struct {
+  text: string;
+  summary: string;
+  repo: string;
+  active_packs: [RTR2_PACKS] string;
+  nactive_packs: int;
+  active_compute_tier: string;
+  active_delegate: string;
+  local_inkling_ready: bool;
+  cloud_ready: bool;
+  remote_station_ready: bool;
+  available_delegates: [RTR2_DELEGATES] string;
+  navailable_delegates: int;
+  available_packs: [RTR2_PACKS] string;
+  navailable_packs: int;
+  user_compute_pref: string; // "", "auto", "local", "cloud"
+  now_ms: int;
+}
+
+Rtr2Plan :: struct {
+  ok: bool;
+  capability_packs: [RTR2_PACKS] string;
+  npacks: int;
+  compute_tier: string;
+  explicit_delegate: string;
+  continue_active: bool;
+  missing_capability_hint: string;
+  effort: string;
+  difficulty: int;          // -1: not decided
+  door: string;
+  door_problem: string;
+  reasons: [RTR_REASONS] string;
+  nreasons: int;
+  answers: [RTR_ANSWERS] RtrAnswer;
+  nanswers: int;
+  input_tokens: int;
+  latency_ms: int;
+  error: string;
+}
+
+rtr2_plan_clear :: (p: [] Rtr2Plan) {
+  p[0] = Rtr2Plan.{};
+  p[0].difficulty = -1;
+}
+
+rtr2_plan_reason :: (p: [] Rtr2Plan, code: string) {
+  for i: 0..<p[0].nreasons { if p[0].reasons[i] == code { return; } }
+  if p[0].nreasons < RTR_REASONS { p[0].reasons[p[0].nreasons] = code; p[0].nreasons += 1; }
+}
+
+rtr2_plan_answer :: (p: [] Rtr2Plan, key: string, choice: string, level: int, milli: int) {
+  if p[0].nanswers >= RTR_ANSWERS { return; }
+  p[0].answers[p[0].nanswers] = RtrAnswer.{key = key, choice = choice, level = level, milli = milli};
+  p[0].nanswers += 1;
+}
+
+rtr2_plan_add_pack :: (p: [] Rtr2Plan, pack: string) {
+  if pack.count == 0 { return; }
+  for i: 0..<p[0].npacks { if p[0].capability_packs[i] == pack { return; } }
+  if p[0].npacks < RTR2_PACKS { p[0].capability_packs[p[0].npacks] = pack; p[0].npacks += 1; }
+}
+
+rtr2_plan_request_read :: (text: string, nodes: [] JvNode, wire: [] u8, q: [] Rtr2PlanRequest) -> bool {
+  m := RTP2_RoutePlanRequest_from_json(text, nodes, wire);
+  if m.error != 0 { return false; }
+  task := RTP2_RoutePlanRequest_get_text(m);
+  if task.value.count > RTR_TEXT_MAX { return false; }
+  q[0] = Rtr2PlanRequest.{};
+  q[0].text = task.value;
+  q[0].summary = RTP2_RoutePlanRequest_get_summary(m).value;
+  q[0].repo = RTP2_RoutePlanRequest_get_repo(m).value;
+  q[0].active_compute_tier = RTP2_RoutePlanRequest_get_active_compute_tier(m).value;
+  q[0].active_delegate = RTP2_RoutePlanRequest_get_active_delegate(m).value;
+  q[0].local_inkling_ready = RTP2_RoutePlanRequest_get_local_inkling_ready(m).value;
+  q[0].cloud_ready = RTP2_RoutePlanRequest_get_cloud_ready(m).value;
+  q[0].remote_station_ready = RTP2_RoutePlanRequest_get_remote_station_ready(m).value;
+  q[0].user_compute_pref = RTP2_RoutePlanRequest_get_user_compute_pref(m).value;
+  q[0].now_ms = cast(int) RTP2_RoutePlanRequest_get_now_ms(m).value;
+  ai := RTP2_RoutePlanRequest_iter_active_packs(m);
+  while ai.has_value {
+    if q[0].nactive_packs == RTR2_PACKS { return false; }
+    if rtr2_pack_index(ai.value) < 0 { return false; }
+    q[0].active_packs[q[0].nactive_packs] = ai.value; q[0].nactive_packs += 1;
+    ai = RTP2_RoutePlanRequest_next_active_packs(ai);
+  }
+  di := RTP2_RoutePlanRequest_iter_available_delegates(m);
+  while di.has_value {
+    if q[0].navailable_delegates == RTR2_DELEGATES { return false; }
+    if rtr2_delegate_index(di.value) <= 0 { return false; }
+    q[0].available_delegates[q[0].navailable_delegates] = di.value; q[0].navailable_delegates += 1;
+    di = RTP2_RoutePlanRequest_next_available_delegates(di);
+  }
+  pi := RTP2_RoutePlanRequest_iter_available_packs(m);
+  while pi.has_value {
+    if q[0].navailable_packs == RTR2_PACKS { return false; }
+    if rtr2_pack_index(pi.value) < 0 { return false; }
+    q[0].available_packs[q[0].navailable_packs] = pi.value; q[0].navailable_packs += 1;
+    pi = RTP2_RoutePlanRequest_next_available_packs(pi);
+  }
+  return true;
+}
+
+rtr2_plan_request_write :: (q: [] Rtr2PlanRequest, out: [] u8) -> int {
+  x: [RTR2_PLAN_MAX] u8; y: [RTR2_PLAN_MAX] u8;
+  m := RTP2_RoutePlanRequest_new();
+  m = RTP2_RoutePlanRequest_set_text(m, q[0].text, x[..]);
+  m = RTP2_RoutePlanRequest_set_summary(m, q[0].summary, y[..]);
+  m = RTP2_RoutePlanRequest_set_repo(m, q[0].repo, x[..]);
+  to_x := false;
+  for i: 0..<q[0].nactive_packs {
+    if to_x { m = RTP2_RoutePlanRequest_append_active_packs(m, q[0].active_packs[i], x[..]); }
+    else { m = RTP2_RoutePlanRequest_append_active_packs(m, q[0].active_packs[i], y[..]); }
+    to_x = !to_x;
+  }
+  if to_x { m = RTP2_RoutePlanRequest_set_active_compute_tier(m, q[0].active_compute_tier, x[..]); } else { m = RTP2_RoutePlanRequest_set_active_compute_tier(m, q[0].active_compute_tier, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlanRequest_set_active_delegate(m, q[0].active_delegate, x[..]); } else { m = RTP2_RoutePlanRequest_set_active_delegate(m, q[0].active_delegate, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlanRequest_set_local_inkling_ready(m, q[0].local_inkling_ready, x[..]); } else { m = RTP2_RoutePlanRequest_set_local_inkling_ready(m, q[0].local_inkling_ready, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlanRequest_set_cloud_ready(m, q[0].cloud_ready, x[..]); } else { m = RTP2_RoutePlanRequest_set_cloud_ready(m, q[0].cloud_ready, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlanRequest_set_remote_station_ready(m, q[0].remote_station_ready, x[..]); } else { m = RTP2_RoutePlanRequest_set_remote_station_ready(m, q[0].remote_station_ready, y[..]); }
+  to_x = !to_x;
+  for i: 0..<q[0].navailable_delegates {
+    if to_x { m = RTP2_RoutePlanRequest_append_available_delegates(m, q[0].available_delegates[i], x[..]); }
+    else { m = RTP2_RoutePlanRequest_append_available_delegates(m, q[0].available_delegates[i], y[..]); }
+    to_x = !to_x;
+  }
+  for i: 0..<q[0].navailable_packs {
+    if to_x { m = RTP2_RoutePlanRequest_append_available_packs(m, q[0].available_packs[i], x[..]); }
+    else { m = RTP2_RoutePlanRequest_append_available_packs(m, q[0].available_packs[i], y[..]); }
+    to_x = !to_x;
+  }
+  if to_x { m = RTP2_RoutePlanRequest_set_user_compute_pref(m, q[0].user_compute_pref, x[..]); } else { m = RTP2_RoutePlanRequest_set_user_compute_pref(m, q[0].user_compute_pref, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlanRequest_set_now_ms(m, cast(s64) q[0].now_ms, x[..]); } else { m = RTP2_RoutePlanRequest_set_now_ms(m, cast(s64) q[0].now_ms, y[..]); }
+  v := RTP2_RoutePlanRequest_to_json(m, out);
+  return ifx v.error != 0 then 0 else v.wire.count;
+}
+
+rtr2_plan_read :: (text: string, nodes: [] JvNode, wire: [] u8, p: [] Rtr2Plan) -> bool {
+  m := RTP2_RoutePlan_from_json(text, nodes, wire);
+  if m.error != 0 { return false; }
+  rtr2_plan_clear(p);
+  p[0].ok = RTP2_RoutePlan_get_ok(m).value;
+  pi := RTP2_RoutePlan_iter_capability_packs(m);
+  while pi.has_value {
+    if p[0].npacks == RTR2_PACKS { return false; }
+    p[0].capability_packs[p[0].npacks] = pi.value; p[0].npacks += 1;
+    pi = RTP2_RoutePlan_next_capability_packs(pi);
+  }
+  p[0].compute_tier = RTP2_RoutePlan_get_compute_tier(m).value;
+  p[0].explicit_delegate = RTP2_RoutePlan_get_explicit_delegate(m).value;
+  p[0].continue_active = RTP2_RoutePlan_get_continue_active(m).value;
+  p[0].missing_capability_hint = RTP2_RoutePlan_get_missing_capability_hint(m).value;
+  p[0].effort = RTP2_RoutePlan_get_effort(m).value;
+  df := RTP2_RoutePlan_get_difficulty(m);
+  if df.present { p[0].difficulty = cast(int) df.value; }
+  p[0].door = RTP2_RoutePlan_get_door(m).value;
+  p[0].door_problem = RTP2_RoutePlan_get_door_problem(m).value;
+  ri := RTP2_RoutePlan_iter_reasons(m);
+  while ri.has_value {
+    if p[0].nreasons == RTR_REASONS { return false; }
+    p[0].reasons[p[0].nreasons] = ri.value; p[0].nreasons += 1;
+    ri = RTP2_RoutePlan_next_reasons(ri);
+  }
+  ai := RTP2_RoutePlan_iter_answers(m);
+  while ai.has_value {
+    if p[0].nanswers == RTR_ANSWERS { return false; }
+    k := RTP2_RoutePlanAnswer_get_key(ai.value);
+    c := RTP2_RoutePlanAnswer_get_choice(ai.value);
+    lv := RTP2_RoutePlanAnswer_get_level(ai.value);
+    pm := RTP2_RoutePlanAnswer_get_probability_milli(ai.value);
+    p[0].answers[p[0].nanswers] = RtrAnswer.{
+      key = k.value, choice = c.value,
+      level = ifx lv.present then cast(int) lv.value else -1,
+      milli = ifx pm.present then cast(int) pm.value else -1
+    };
+    p[0].nanswers += 1;
+    ai = RTP2_RoutePlan_next_answers(ai);
+  }
+  p[0].input_tokens = cast(int) RTP2_RoutePlan_get_input_tokens(m).value;
+  p[0].latency_ms = cast(int) RTP2_RoutePlan_get_latency_ms(m).value;
+  p[0].error = RTP2_RoutePlan_get_error(m).value;
+  return true;
+}
+
+rtr2_plan_write :: (p: [] Rtr2Plan, out: [] u8) -> int {
+  x: [RTR2_PLAN_MAX] u8; y: [RTR2_PLAN_MAX] u8; c1: [1024] u8; c2: [1024] u8;
+  m := RTP2_RoutePlan_new();
+  m = RTP2_RoutePlan_set_ok(m, p[0].ok, x[..]);
+  to_x := false;
+  for i: 0..<p[0].npacks {
+    if to_x { m = RTP2_RoutePlan_append_capability_packs(m, p[0].capability_packs[i], x[..]); }
+    else { m = RTP2_RoutePlan_append_capability_packs(m, p[0].capability_packs[i], y[..]); }
+    to_x = !to_x;
+  }
+  if to_x { m = RTP2_RoutePlan_set_compute_tier(m, p[0].compute_tier, x[..]); } else { m = RTP2_RoutePlan_set_compute_tier(m, p[0].compute_tier, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlan_set_explicit_delegate(m, p[0].explicit_delegate, x[..]); } else { m = RTP2_RoutePlan_set_explicit_delegate(m, p[0].explicit_delegate, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlan_set_continue_active(m, p[0].continue_active, x[..]); } else { m = RTP2_RoutePlan_set_continue_active(m, p[0].continue_active, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlan_set_missing_capability_hint(m, p[0].missing_capability_hint, x[..]); } else { m = RTP2_RoutePlan_set_missing_capability_hint(m, p[0].missing_capability_hint, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlan_set_effort(m, p[0].effort, x[..]); } else { m = RTP2_RoutePlan_set_effort(m, p[0].effort, y[..]); }
+  to_x = !to_x;
+  if p[0].difficulty >= 0 {
+    if to_x { m = RTP2_RoutePlan_set_difficulty(m, cast(s32) p[0].difficulty, x[..]); } else { m = RTP2_RoutePlan_set_difficulty(m, cast(s32) p[0].difficulty, y[..]); }
+    to_x = !to_x;
+  }
+  if to_x { m = RTP2_RoutePlan_set_door(m, p[0].door, x[..]); } else { m = RTP2_RoutePlan_set_door(m, p[0].door, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlan_set_door_problem(m, p[0].door_problem, x[..]); } else { m = RTP2_RoutePlan_set_door_problem(m, p[0].door_problem, y[..]); }
+  to_x = !to_x;
+  for i: 0..<p[0].nreasons {
+    if to_x { m = RTP2_RoutePlan_append_reasons(m, p[0].reasons[i], x[..]); } else { m = RTP2_RoutePlan_append_reasons(m, p[0].reasons[i], y[..]); }
+    to_x = !to_x;
+  }
+  for i: 0..<p[0].nanswers {
+    a := RTP2_RoutePlanAnswer_new();
+    a = RTP2_RoutePlanAnswer_set_key(a, p[0].answers[i].key, c1[..]);
+    a = RTP2_RoutePlanAnswer_set_choice(a, p[0].answers[i].choice, c2[..]);
+    if p[0].answers[i].level >= 0 && p[0].answers[i].milli >= 0 {
+      a = RTP2_RoutePlanAnswer_set_level(a, cast(s32) p[0].answers[i].level, c1[..]);
+      a = RTP2_RoutePlanAnswer_set_probability_milli(a, cast(s32) p[0].answers[i].milli, c2[..]);
+    } else if p[0].answers[i].level >= 0 {
+      a = RTP2_RoutePlanAnswer_set_level(a, cast(s32) p[0].answers[i].level, c1[..]);
+    } else if p[0].answers[i].milli >= 0 {
+      a = RTP2_RoutePlanAnswer_set_probability_milli(a, cast(s32) p[0].answers[i].milli, c1[..]);
+    }
+    if to_x { m = RTP2_RoutePlan_append_answers(m, a, x[..]); } else { m = RTP2_RoutePlan_append_answers(m, a, y[..]); }
+    to_x = !to_x;
+  }
+  if to_x { m = RTP2_RoutePlan_set_input_tokens(m, cast(s32) p[0].input_tokens, x[..]); } else { m = RTP2_RoutePlan_set_input_tokens(m, cast(s32) p[0].input_tokens, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlan_set_latency_ms(m, cast(s32) p[0].latency_ms, x[..]); } else { m = RTP2_RoutePlan_set_latency_ms(m, cast(s32) p[0].latency_ms, y[..]); }
+  to_x = !to_x;
+  if to_x { m = RTP2_RoutePlan_set_error(m, p[0].error, x[..]); } else { m = RTP2_RoutePlan_set_error(m, p[0].error, y[..]); }
+  v := RTP2_RoutePlan_to_json(m, out);
+  return ifx v.error != 0 then 0 else v.wire.count;
 }

@@ -1,0 +1,25 @@
+id	current	summary	want	task
+v2_greeting	-	-	pack=general,tier=local_inkling,delegate=none,missing=no	Hey there, how is your day going?
+v2_quick_qa	-	-	pack=general,tier=local_inkling|cloud_fast,delegate=none,missing=no	What is the difference between TCP and UDP in two sentences?
+v2_kb_book	-	-	pack=knowledge,delegate=none,missing=no	Search the OpenAgents Book and documentation for how NIP-KB indexing works.
+v2_kb_transcript	-	-	pack=knowledge,delegate=none,missing=no	Find what our past meeting transcripts said about the relay migration.
+v2_code_bug	-	-	pack=coder,tier=cloud_fast|cloud_deep,delegate=none,missing=no	Fix the null pointer crash in coax/lib/agent/router/policy.coax and run the unit tests.
+v2_code_arch	-	-	pack=coder,tier=cloud_deep|cloud_fast,delegate=none,missing=no	Design and refactor the multi-threaded compaction pipeline across openagents/core/ and coder/tui/oa-worker.coax.
+v2_wallet_bal	-	-	pack=wallet,delegate=none,missing=no	What is my current Lightning wallet balance in sats?
+v2_wallet_pay	-	-	pack=wallet,delegate=none,missing=no	Pay this BOLT11 Lightning invoice of 2500 sats after showing me the approval card.
+v2_meta_realm	-	-	pack=metaverse,delegate=none,missing=no	Open the Everglade 3D realm in GameBuilder and move the spawn beacon north.
+v2_meta_scene	-	-	pack=metaverse,delegate=none,missing=no	Inspect the lighting and camera rig on our 3D metaverse scene.
+v2_cli_tmux	-	-	pack=cli,delegate=none,missing=no	List my active tmux sessions and check which port psionic-serve is listening on.
+v2_cli_disk	-	-	pack=cli,delegate=none,missing=no	Run a shell command to check disk usage and top CPU processes on this host.
+v2_gym_gbench	-	-	pack=gym,delegate=none,missing=no	Run the gBench evaluation suite on our local Inkling 2 Mini checkpoint and compare against baseline.
+v2_gym_lora	-	-	pack=gym,delegate=none,missing=no	Start a LoRA hillclimbing round in the Gym and report the pass rate delta.
+v2_author_skill	-	-	pack=capability_author,delegate=none,missing=no	Create a new OpenAgents capability skill that summarizes daily git commits.
+v2_del_claude	-	-	pack=coder,delegate=claude,missing=no	Use Claude Code to review the diff in openagents/core/wire.coax.
+v2_del_codex	-	-	pack=coder,delegate=codex,missing=no	Have Codex write the migration script for the new SQLite table.
+v2_del_agy	-	-	pack=coder,delegate=antigravity,missing=no	Delegate this UI layout fix to Antigravity.
+v2_del_cursor	-	-	pack=coder,delegate=cursor,missing=no	Ask Cursor to refactor the Swift sidebar component.
+v2_cont_yes	coder/cloud_deep	We just edited wire.coax to add the new field.	pack=coder,continue=yes,delegate=none,missing=no	Now run the mutation tests on it and fix any survivors.
+v2_cont_no	coder/cloud_deep	We just edited wire.coax to add the new field.	pack=wallet,continue=no,delegate=none,missing=no	Actually, switch gears: how many sats are in my Lightning wallet?
+v2_miss_slack	-	-	missing=yes,pack=capability_author	Post today's release notes directly to our #engineering Slack channel.
+v2_miss_gcal	-	-	missing=yes,pack=capability_author	Check my Google Calendar for tomorrow and email the team via Gmail.
+v2_miss_spotify	-	-	missing=yes,pack=capability_author	Play my focus playlist on Spotify and dim the Philips Hue office lights.

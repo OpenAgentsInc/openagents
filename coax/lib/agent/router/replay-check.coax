@@ -25,6 +25,8 @@
 RTRR_STATIONS :: "coax/lib/agent/router/fixtures/stations.json";
 RTRR_TUNED_RIGHT :: 66;     // of 66 wants, 33 tasks, on 2026-11-14
 RTRR_HELD_RIGHT :: 30;      // of 31 wants, 20 tasks, on 2026-11-14
+RTRR_V2_TUNED_RIGHT :: 75;  // of 75 wants, 24 tasks, on 2026-11-26 (#14056)
+RTRR_V2_HELD_RIGHT :: 60;   // >=95% of 63 wants, 20 tasks (63/63 recorded on 2026-11-26, #14056)
 
 // One labelled set against its recorded exchanges: true when every exchange holds and at least floor wants are right.
 rtrr_set :: (name: string, labels: string, dir: string, needed: int, q: [] RtrRequest) -> bool {
@@ -47,12 +49,34 @@ rtrr_set :: (name: string, labels: string, dir: string, needed: int, q: [] RtrRe
   return bad == 0 && right >= needed;
 }
 
+rtrr_set_v2 :: (name: string, labels: string, dir: string, needed: int) -> bool {
+  lraw: [131072] u8; rows: [RTREV_ROWS] RtrevRow;
+  ln := fs_read(labels, lraw[..]);
+  n := ifx ln > 0 && ln < lraw.count then rtrev_rows(cast(string) lraw[0..<ln], rows[..]) else -1;
+  if n <= 0 { print("FAIL %: the labels do not read\n", name); return false; }
+  q: [1] Rtr2PlanRequest; p: [1] Rtr2Plan; w: [1] Rtr2Work; e: [1] Rtr2Eligible;
+  sent: [32768] u8; got: [65536] u8; ab: [4096] u8; ar: [1] ClArena; miss: [256] u8; nm: [1] int;
+  wants := 0; right := 0; bad := 0;
+  for i: 0..<n {
+    ar[0] = ClArena.{buf = ab[..]};
+    problem := rtrev2_replay(dir, q[..], e[..], rows[i], p[..], w[..], sent[..], got[..], ar[..]);
+    if problem.count > 0 { print("FAIL %, %: %\n", name, rows[i].id, problem); bad += 1; continue; }
+    s := rtrev2_score(p[..], rows[i].want, miss[..], nm[..]);
+    wants += s.wants; right += s.right;
+    if s.right < s.wants { print("miss  %, %: %\n", name, rows[i].id, cast(string) miss[0..<nm[0]]); }
+  }
+  print("%: % tasks, % of % wants right (% needed), % exchanges that no longer hold\n", name, n, right, wants, needed, bad);
+  return bad == 0 && right >= needed;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   raw: [RTR_REQUEST_MAX] u8; nodes: [16384] JvNode; wire: [RTR_REQUEST_MAX] u8; q: [1] RtrRequest;
   sn := fs_read(RTRR_STATIONS, raw[..]);
   if sn <= 0 || !rtr_request_read(cast(string) raw[0..<sn], nodes[..], wire[..], q[..]) { print("FAIL the sample computers do not read\n"); return 1; }
   good := rtrr_set("tuned", "coax/lib/agent/router/fixtures/labels.tsv", "coax/lib/agent/router/fixtures/google", RTRR_TUNED_RIGHT, q[..]);
   good = rtrr_set("held out", "coax/lib/agent/router/fixtures/labels-held.tsv", "coax/lib/agent/router/fixtures/google-held", RTRR_HELD_RIGHT, q[..]) && good;
+  good = rtrr_set_v2("v2 tuned", "coax/lib/agent/router/fixtures/labels-v2.tsv", "coax/lib/agent/router/fixtures/google-v2", RTRR_V2_TUNED_RIGHT) && good;
+  good = rtrr_set_v2("v2 held out", "coax/lib/agent/router/fixtures/labels-v2-held.tsv", "coax/lib/agent/router/fixtures/google-v2-held", RTRR_V2_HELD_RIGHT) && good;
   if !good { print("router replay fails\n"); return 1; }
   print("router replay holds\n");
   return 0;

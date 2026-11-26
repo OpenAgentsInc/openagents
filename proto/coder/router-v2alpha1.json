@@ -1,0 +1,42 @@
+{
+ "profile": "openagents.router.v2",
+ "version": 1,
+ "package": "openagents.router.v2alpha1",
+ "proto": "proto/openagents/router/v2alpha1/router.proto",
+ "codec": "coax/lib/agent/router/wire.coax",
+ "check": "coax/web/tool.sh coax/lib/agent/router/wire-goldens.coax proto/coder/router-v2alpha1.json",
+ "transport": "JSON, one compact object: keys in field-number order after the schema, a zero, empty or false field without presence left out. System One Front v2alpha1 RoutePlanRequest and RoutePlan.",
+ "about": "Each body goes through the generated JSON mapper (router-v2.pb) and wire.coax's rtr2_plan_request_read/write and rtr2_plan_read/write and comes back byte for byte.",
+ "records": [
+  {
+   "id": "openagents.router.plan_request.v2alpha1",
+   "message": "RoutePlanRequest",
+   "name": "coding turn with active thread and delegates",
+   "json": "{\"schema\":\"openagents.router.plan_request.v2alpha1\",\"text\":\"Fix the panic in policy.coax and run the tests\",\"summary\":\"We added v2 router policy\",\"repo\":\"openagents\",\"active_packs\":[\"coder\"],\"active_compute_tier\":\"cloud_deep\",\"active_delegate\":\"none\",\"local_inkling_ready\":true,\"cloud_ready\":true,\"remote_station_ready\":true,\"available_delegates\":[\"claude\",\"codex\"],\"user_compute_pref\":\"auto\",\"now_ms\":1795000000000}"
+  },
+  {
+   "id": "openagents.router.plan_request.v2alpha1",
+   "message": "RoutePlanRequest",
+   "name": "minimal greeting request",
+   "json": "{\"schema\":\"openagents.router.plan_request.v2alpha1\",\"text\":\"Hello!\",\"local_inkling_ready\":true}"
+  },
+  {
+   "id": "openagents.router.plan.v2alpha1",
+   "message": "RoutePlan",
+   "name": "coder pack on cloud_deep with continuation",
+   "json": "{\"schema\":\"openagents.router.plan.v2alpha1\",\"ok\":true,\"capability_packs\":[\"coder\"],\"compute_tier\":\"cloud_deep\",\"explicit_delegate\":\"none\",\"continue_active\":true,\"effort\":\"high\",\"difficulty\":3,\"door\":\"gemini-decision-1\",\"reasons\":[\"continued\"],\"answers\":[{\"key\":\"primary_pack\",\"choice\":\"coder\",\"probability_milli\":960},{\"key\":\"compute_tier\",\"choice\":\"cloud_deep\",\"probability_milli\":910},{\"key\":\"difficulty\",\"choice\":\"hard\",\"level\":3,\"probability_milli\":840}],\"input_tokens\":420,\"latency_ms\":145}"
+  },
+  {
+   "id": "openagents.router.plan.v2alpha1",
+   "message": "RoutePlan",
+   "name": "missing capability triggers authoring interview",
+   "json": "{\"schema\":\"openagents.router.plan.v2alpha1\",\"ok\":true,\"capability_packs\":[\"capability_author\",\"general\"],\"compute_tier\":\"cloud_fast\",\"explicit_delegate\":\"none\",\"missing_capability_hint\":\"messaging_integration\",\"effort\":\"medium\",\"difficulty\":2,\"door\":\"elephant-1\",\"reasons\":[\"missing_capability\"],\"input_tokens\":380,\"latency_ms\":42}"
+  },
+  {
+   "id": "openagents.router.plan.v2alpha1",
+   "message": "RoutePlan",
+   "name": "no compute available fails closed",
+   "json": "{\"schema\":\"openagents.router.plan.v2alpha1\",\"door\":\"fallback\",\"error\":\"no_compute\"}"
+  }
+ ]
+}

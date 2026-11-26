@@ -72,6 +72,32 @@ rtrg_record :: (message: string, name: string, line: string) -> bool {
     refresh := rtr_describe_read(line); again: [256] u8;
     an := ifx refresh >= 0 then rtr_describe_write(refresh == 1, again[..]) else 0;
     if an <= 0 || cast(string) again[0..<an] != line { return rtrg_fail("the params are not read and written back by wire.coax", name); }
+  } else if message == "RoutePlanRequest" {
+    m := RTP2_RoutePlanRequest_from_json(line, nodes[..], wire[..]);
+    if m.error != 0 { return rtrg_fail("the v2 plan request does not read through the mapper", name); }
+    v := RTP2_RoutePlanRequest_to_json(m, out[..]);
+    if v.error != 0 { return rtrg_fail("the v2 plan request is not written", name); }
+    got = cast(string) v.wire;
+    q: [1] Rtr2PlanRequest; wire2: [RTR2_PLAN_MAX] u8; again: [RTR2_PLAN_MAX] u8;
+    if !rtr2_plan_request_read(line, nodes[..], wire2[..], q[..]) { return rtrg_fail("the v2 plan request does not read through wire.coax", name); }
+    an := rtr2_plan_request_write(q[..], again[..]);
+    if an <= 0 || cast(string) again[0..<an] != line {
+      print("FAIL % is not written back by wire.coax byte for byte\n  want %\n  got  %\n", name, line, ifx an > 0 then cast(string) again[0..<an] else "(nothing)");
+      return false;
+    }
+  } else if message == "RoutePlan" {
+    m := RTP2_RoutePlan_from_json(line, nodes[..], wire[..]);
+    if m.error != 0 { return rtrg_fail("the v2 plan does not read through the mapper", name); }
+    v := RTP2_RoutePlan_to_json(m, out[..]);
+    if v.error != 0 { return rtrg_fail("the v2 plan is not written", name); }
+    got = cast(string) v.wire;
+    p: [1] Rtr2Plan; wire2: [RTR2_PLAN_MAX] u8; again: [RTR2_PLAN_MAX] u8;
+    if !rtr2_plan_read(line, nodes[..], wire2[..], p[..]) { return rtrg_fail("the v2 plan does not read through wire.coax", name); }
+    an := rtr2_plan_write(p[..], again[..]);
+    if an <= 0 || cast(string) again[0..<an] != line {
+      print("FAIL % is not written back by wire.coax byte for byte\n  want %\n  got  %\n", name, line, ifx an > 0 then cast(string) again[0..<an] else "(nothing)");
+      return false;
+    }
   } else { return rtrg_fail("unknown message", message); }
   if got != line {
     print("FAIL % is not written back byte for byte\n  want %\n  got  %\n", name, line, got);
@@ -194,13 +220,28 @@ rtrg_fixture :: (path: string) -> bool {
     if ml <= 0 || nl <= 0 || ll <= 0 { good = rtrg_fail("a record without message, name or json", path); continue; }
     message := cast(string) mb[0..<ml];
     if rtrg_record(message, cast(string) nb[0..<nl], cast(string) lb[0..<ll]) { print("ok  % %\n", message, cast(string) nb[0..<nl]); } else { good = false; }
-    if message == "RouteRequest" { requests += 1; } else { decisions += 1; }
+    if message == "RouteRequest" || message == "RoutePlanRequest" { requests += 1; } else { decisions += 1; }
   }
   if requests < 1 || decisions < 1 { good = rtrg_fail("the fixture needs a body of each message", path); }
   if rtrg_reader() { print("ok  the reader: every field, a task alone, another schema, bad ids, one id twice, one agent twice, seventeen computers\n"); } else { good = false; }
   if rtrg_report_refusals() { print("ok  the report reader: another schema, a short or uppercase host key, no station, a bad id; DescribeStation's params: another schema, another field, a form it does not write\n"); } else { good = false; }
   if rtrg_writer() { print("ok  the writer: a full decision, a short buffer, a decision of nothing\n"); } else { good = false; }
   if !rtrg_fuzz() { good = false; }
+  // v2alpha1 RoutePlan fuzz round-trip through wire.coax & RTP2 JSON mapper
+  q2: [1] Rtr2PlanRequest; p2: [1] Rtr2Plan; w2: [1] Rtr2Work;
+  out2: [RTR2_PLAN_MAX] u8; wire2: [RTR2_PLAN_MAX] u8; back2: [RTR2_PLAN_MAX] u8;
+  v2_ran := 0;
+  for v: 0..<512 {
+    rtr2_fx_mix(q2[..], v, p2[..], w2[..]);
+    n2 := rtr2_plan_write(p2[..], out2[..]);
+    if n2 <= 0 { print("FAIL v2 plan % of the fuzz is not written\n", v); good = false; break; }
+    m2 := RTP2_RoutePlan_from_json(cast(string) out2[0..<n2], nodes[..], wire2[..]);
+    if m2.error != 0 { print("FAIL v2 plan % does not read back\n", v); good = false; break; }
+    vv := RTP2_RoutePlan_to_json(m2, back2[..]);
+    if vv.error != 0 || cast(string) vv.wire != cast(string) out2[0..<n2] { print("FAIL v2 plan % round-trip mismatch\n", v); good = false; break; }
+    if p2[0].ok { v2_ran += 1; }
+  }
+  if good { print("ok  512 fuzzed v2 RoutePlans (% ran), each written and read back through RTP2 byte for byte\n", v2_ran); }
   return good;
 }
 

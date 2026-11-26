@@ -1,0 +1,21 @@
+id	current	summary	want	task
+h2_hello	-	-	pack=general,tier=local_inkling,delegate=none,missing=no	Good morning! Ready to get started?
+h2_write	-	-	pack=general,tier=local_inkling|cloud_fast,delegate=none,missing=no	Draft a short thank-you note to a colleague who helped with a release.
+h2_kb_docs	-	-	pack=knowledge,delegate=none,missing=no	Look up in our docs and OpenAgents Book how wire-check validates schemas.
+h2_kb_notes	-	-	pack=knowledge,delegate=none,missing=no	Search the knowledge base transcripts for our decision on prompt caching.
+h2_code_fix	-	-	pack=coder,tier=cloud_fast|cloud_deep,delegate=none,missing=no	Debug why coax test fails on coax/lib/agent/router/ask.coax and patch it.
+h2_code_deep	-	-	pack=coder,tier=cloud_deep|cloud_fast,delegate=none,missing=no	Architect a zero-copy streaming parser for the new binary protocol across four modules.
+h2_wallet_inv	-	-	pack=wallet,delegate=none,missing=no	Generate a 1000 sat Lightning invoice so I can receive a payment.
+h2_wallet_hist	-	-	pack=wallet,delegate=none,missing=no	Show my recent Bitcoin Lightning payouts and spending approvals.
+h2_meta_world	-	-	pack=metaverse,delegate=none,missing=no	Build a floating island arena in GameBuilder for our metaverse realm.
+h2_cli_proc	-	-	pack=cli,delegate=none,missing=no	Check which processes are bound to port 8793 in the terminal.
+h2_gym_tb	-	-	pack=gym,delegate=none,missing=no	Benchmark our worker on Terminal-Bench 4.1 and log the subtest pass rate.
+h2_author_tool	-	-	pack=capability_author,delegate=none,missing=no	Author a new OpenAgents plugin capability for formatting changelogs.
+h2_del_claude	-	-	pack=coder,delegate=claude,missing=no	Have Claude Opus audit the memory safety of host.c.
+h2_del_codex	-	-	pack=coder,delegate=codex,missing=no	Use Codex to implement the JSON round-trip test.
+h2_cont_yes	wallet/cloud_fast	We checked the Lightning balance (42,000 sats).	pack=wallet,continue=yes,delegate=none,missing=no	Great, now pay 500 sats to that invoice.
+h2_cont_no	wallet/cloud_fast	We checked the Lightning balance (42,000 sats).	pack=coder,continue=no,delegate=none,missing=no	Unrelated question: fix the compiler warning in coder/tui/oa-worker.coax.
+h2_miss_discord	-	-	missing=yes,pack=capability_author	Send a message to our Discord server announcing the maintenance window.
+h2_miss_notion	-	-	missing=yes,pack=capability_author	Create a new project page in my Notion workspace and assign tasks in Linear.
+h2_miss_homekit	-	-	missing=yes,pack=capability_author	Turn off the living room HomeKit thermostat at 10pm.
+h2_remote_gpu	-	-	tier=remote_station|cloud_deep,delegate=none,missing=no	Train the 7B model on our connected remote Linux GPU build box.

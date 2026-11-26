@@ -1,0 +1,76 @@
+syntax = "proto3";
+package openagents.router.v2alpha1;
+import "openagents/options/v1alpha1/json.proto";
+
+// OpenAgents System One Front router v2alpha1 (#14056): generalizes routing
+// from coding-only stations to all OpenAgents capability packs, compute tiers,
+// explicit external delegation, multi-turn pack/cache continuation, and
+// missing-capability detection (Episode 289 P9 authoring trigger).
+//
+// The JSON form uses this schema's JSON mapping (coax/proto.md, "JSON mapper"):
+// keys in field-number order after schema, zero/empty/false fields without
+// presence omitted. One codec: coax/lib/agent/router/wire.coax. Goldens:
+// proto/coder/router-v2alpha1.json, checked by wire-goldens.coax.
+
+// One typed answer of the System One decision model, as the router read it.
+message RoutePlanAnswer {
+  option (openagents.options.v1alpha1.json) = "";
+  // primary_pack, secondary_pack, compute_tier, explicit_delegate, difficulty,
+  // effort, continue_active, missing_capability, missing_capability_kind
+  string key = 1 [json_name = "key"];
+  string choice = 2 [json_name = "choice"];
+  optional int32 level = 3 [json_name = "level"];
+  optional int32 probability_milli = 4 [json_name = "probability_milli"];
+}
+
+// The v2 System One Front's input: user turn, active thread context, and
+// currently available packs, compute tiers, and external delegates.
+message RoutePlanRequest {
+  option (openagents.options.v1alpha1.json) = "schema=openagents.router.plan_request.v2alpha1";
+  option (openagents.options.v1alpha1.json_int64_numbers) = true;
+  string text = 1 [json_name = "text"];                                   // user message, at most 16,384 bytes
+  string summary = 2 [json_name = "summary"];                             // bounded conversation summary
+  string repo = 3 [json_name = "repo"];                                   // active repository name, if any
+  repeated string active_packs = 4 [json_name = "active_packs"];          // currently mounted packs in thread
+  string active_compute_tier = 5 [json_name = "active_compute_tier"];     // local_inkling, cloud_fast, cloud_deep, remote_station
+  string active_delegate = 6 [json_name = "active_delegate"];             // none, claude, codex, antigravity, cursor
+  bool local_inkling_ready = 7 [json_name = "local_inkling_ready"];       // local Psionic Metal Inkling ready
+  bool cloud_ready = 8 [json_name = "cloud_ready"];                       // cloud inference (Neon / OpenRouter) ready
+  bool remote_station_ready = 9 [json_name = "remote_station_ready"];     // eligible remote station connected
+  repeated string available_delegates = 10 [json_name = "available_delegates"]; // installed/ready external CLIs
+  repeated string available_packs = 11 [json_name = "available_packs"];   // installed packs; empty means all 8 built-in packs
+  string user_compute_pref = 12 [json_name = "user_compute_pref"];        // auto, local, cloud
+  int64 now_ms = 13 [json_name = "now_ms"];
+}
+
+// The v2 System One Front's typed decision: which capability packs to mount,
+// which compute tier runs the turn, whether an explicit external delegate was
+// requested, whether to preserve active thread packs/cache, and whether a
+// missing capability should trigger the authoring interview.
+message RoutePlan {
+  option (openagents.options.v1alpha1.json) = "schema=openagents.router.plan.v2alpha1";
+  bool ok = 1 [json_name = "ok"];
+  // Ordered subset of: general, knowledge, coder, wallet, metaverse, cli, gym, capability_author
+  repeated string capability_packs = 2 [json_name = "capability_packs"];
+  // local_inkling, cloud_fast, cloud_deep, remote_station
+  string compute_tier = 3 [json_name = "compute_tier"];
+  // none, claude, codex, antigravity, cursor
+  string explicit_delegate = 4 [json_name = "explicit_delegate"];
+  bool continue_active = 5 [json_name = "continue_active"];
+  // Non-empty when user requests a capability not covered by installed packs.
+  string missing_capability_hint = 6 [json_name = "missing_capability_hint"];
+  string effort = 7 [json_name = "effort"];                               // low, medium, high
+  optional int32 difficulty = 8 [json_name = "difficulty"];               // 0 trivial to 4 very hard
+  string door = 9 [json_name = "door"];                                   // elephant-1, gemini-decision-1, mock, replay, fallback, none
+  string door_problem = 10 [json_name = "door_problem"];
+  // Closed reason codes: door_unavailable, continued, user_pref_local,
+  // user_pref_cloud, tier_fallback_local, tier_fallback_cloud,
+  // delegate_requested, delegate_unavailable, missing_capability,
+  // pack_unavailable, unsure_pack, unsure_tier
+  repeated string reasons = 11 [json_name = "reasons"];
+  repeated RoutePlanAnswer answers = 12 [json_name = "answers"];
+  int32 input_tokens = 13 [json_name = "input_tokens"];
+  int32 latency_ms = 14 [json_name = "latency_ms"];
+  // When not ok: no_task, no_compute, bad_request, refused_by_door
+  string error = 15 [json_name = "error"];
+}

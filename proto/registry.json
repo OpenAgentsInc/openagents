@@ -4673,6 +4673,42 @@
       "note": "DescribeStation's params, an environment RPC under an observe right on the computer's live HOST grant and its enrolled device and grant: refresh reads the computer again instead of its last report (30 seconds). The broker (coder host station-rpc) builds them; nothing else is accepted."
     },
     {
+      "id": "openagents.router.plan_request.v2alpha1",
+      "kind": "proto",
+      "owner": "coder",
+      "schema": "proto/openagents/router/v2alpha1/router.proto#RoutePlanRequest",
+      "codec": "coax/lib/agent/router/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/agent/router/wire-goldens.coax proto/coder/router-v2alpha1.json",
+      "step": "new",
+      "files": [
+        "proto/coder/router-v2alpha1.json",
+        "coder/tui/oa-worker.coax"
+      ],
+      "tests": [
+        "proto/coder/router-v2alpha1.json",
+        "coax/lib/agent/router/wire-goldens.coax"
+      ],
+      "note": "System One Front v2alpha1 RoutePlanRequest (#14056): user turn, active thread packs/tier, compute readiness, and user compute preference."
+    },
+    {
+      "id": "openagents.router.plan.v2alpha1",
+      "kind": "proto",
+      "owner": "coder",
+      "schema": "proto/openagents/router/v2alpha1/router.proto#RoutePlan",
+      "codec": "coax/lib/agent/router/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/agent/router/wire-goldens.coax proto/coder/router-v2alpha1.json",
+      "step": "new",
+      "files": [
+        "proto/coder/router-v2alpha1.json",
+        "coder/tui/oa-worker.coax"
+      ],
+      "tests": [
+        "proto/coder/router-v2alpha1.json",
+        "coax/lib/agent/router/wire-goldens.coax"
+      ],
+      "note": "System One Front v2alpha1 RoutePlan (#14056): capability_packs, compute_tier, explicit_delegate, continue_active, missing_capability_hint, effort, and door telemetry."
+    },
+    {
       "id": "coder.seal.v1",
       "kind": "proto",
       "owner": "coder",

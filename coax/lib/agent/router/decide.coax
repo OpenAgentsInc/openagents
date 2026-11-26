@@ -155,3 +155,133 @@ rtr_fx_mix :: (q: [] RtrRequest, v: int, d: [] RtrDecision, w: [] RtrWork) {
     #assert d[0].error == "no_station" && d[0].station == "";
   }
 }
+
+// ---- v2alpha1 System One Front RoutePlan end-to-end decision (#14056)
+
+RTR2_DOOR_ELEPHANT :: "elephant-1";
+RTR2_DOOR_FALLBACK :: "fallback";
+RTR2_ELEPHANT_URL :: "http://127.0.0.1:8793/v1/systemone";
+
+Rtr2Work :: struct {
+  buf: [32768] u8;
+  state: [24576] u8;
+  out: [32768] u8;
+  nodes: [1024] JvNode;
+  arena: [4096] u8;
+  body: [1] GdBody;
+  so_body: [1] SoBody;
+  request: string;
+}
+
+rtr2_begin :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, p: [] Rtr2Plan, w: [] Rtr2Work, door: string) -> string {
+  rtr2_plan_clear(p);
+  p[0].door = door;
+  w[0].request = "";
+  rtr2_eligible(q, e);
+  if q[0].text.count == 0 { p[0].error = "no_task"; return ""; }
+  if e[0].ntiers == 0 || e[0].npacks == 0 { p[0].error = "no_compute"; return ""; }
+  why := rtr2_ask_body(q, e, w[0].body[..], w[0].buf[..], w[0].state[..]);
+  body := ifx why.count == 0 then gd_body(w[0].body[..]) else "";
+  if body.count == 0 { p[0].error = "bad_request"; p[0].door_problem = ifx why.count > 0 then why else w[0].body[0].problem; return ""; }
+  w[0].request = body;
+  return body;
+}
+
+rtr2_mock :: (w: [] Rtr2Work, script: string, seed: int) -> GdResult {
+  reply := rtrm_answer(w[0].request, script, seed, w[0].nodes[..], w[0].out[..]);
+  if reply.status == 0 { return GdResult.{error = GdError.{kind = GdErrorKind.transport}, problem = gd_problem_of(GdErrorKind.transport)}; }
+  ar: [1] ClArena; ar[0] = ClArena.{buf = w[0].arena[..]};
+  return gd_result(w[0].body[..], ar[..], reply.status, reply.body);
+}
+
+rtr2_finish :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, gr: GdResult, p: [] Rtr2Plan, w: [] Rtr2Work) {
+  if gr.problem.count > 0 {
+    p[0].door_problem = gr.problem;
+    if gr.error.kind == GdErrorKind.invalid_request || gr.error.kind == GdErrorKind.safety { p[0].error = "refused_by_door"; return; }
+    rtr2_pick(q, e, rtr2_no_answers(), p);
+    return;
+  }
+  p[0].input_tokens = gr.usage.input_tokens;
+  ar: [1] ClArena; ar[0] = ClArena.{buf = w[0].arena[..]};
+  rtr2_pick(q, e, rtr2_ask_read(gr.body, ar[..], p), p);
+}
+
+rtr2_decide_mock :: (q: [] Rtr2PlanRequest, script: string, seed: int, p: [] Rtr2Plan, w: [] Rtr2Work) {
+  e: [1] Rtr2Eligible;
+  if rtr2_begin(q, e[..], p, w, RTR_DOOR_MOCK).count == 0 { return; }
+  rtr2_finish(q, e[..], rtr2_mock(w, script, seed), p, w);
+}
+
+rtr2_decide_offline :: (q: [] Rtr2PlanRequest, p: [] Rtr2Plan) {
+  e: [1] Rtr2Eligible;
+  rtr2_plan_clear(p);
+  p[0].door = RTR2_DOOR_FALLBACK;
+  rtr2_eligible(q, e[..]);
+  rtr2_pick(q, e[..], rtr2_no_answers(), p);
+}
+
+// Local elephant-1 System One door (POST http://127.0.0.1:8793/v1/systemone).
+rtr2_begin_elephant :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, p: [] Rtr2Plan, w: [] Rtr2Work) -> string {
+  rtr2_plan_clear(p);
+  p[0].door = RTR2_DOOR_ELEPHANT;
+  w[0].request = "";
+  rtr2_eligible(q, e);
+  if q[0].text.count == 0 { p[0].error = "no_task"; return ""; }
+  if e[0].ntiers == 0 || e[0].npacks == 0 { p[0].error = "no_compute"; return ""; }
+  why := rtr2_ask_so_body(q, e, w[0].so_body[..], w[0].buf[..], w[0].state[..]);
+  body := ifx why.count == 0 then so_body(w[0].so_body[..]) else "";
+  if body.count == 0 { p[0].error = "bad_request"; p[0].door_problem = ifx why.count > 0 then why else w[0].so_body[0].problem; return ""; }
+  w[0].request = body;
+  return body;
+}
+
+rtr2_finish_elephant :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, sr: SoResult, p: [] Rtr2Plan, w: [] Rtr2Work) {
+  if sr.problem.count > 0 {
+    p[0].door_problem = sr.problem;
+    rtr2_pick(q, e, rtr2_no_answers(), p);
+    return;
+  }
+  p[0].input_tokens = sr.usage.input_tokens;
+  ar: [1] ClArena; ar[0] = ClArena.{buf = w[0].arena[..]};
+  rtr2_pick(q, e, rtr2_ask_so_read(sr.body, ar[..], p), p);
+}
+
+rtr2_fx_mix :: (q: [] Rtr2PlanRequest, v: int, p: [] Rtr2Plan, w: [] Rtr2Work) {
+  q[0] = Rtr2PlanRequest.{
+    text = "inspect wallet and fix bug",
+    local_inkling_ready = (v & 1) != 0,
+    cloud_ready = (v & 2) != 0,
+    remote_station_ready = (v & 4) != 0,
+    user_compute_pref = ifx (v & 8) != 0 then "local" else ifx (v & 16) != 0 then "cloud" else "auto"
+  };
+  if (v & 32) != 0 { q[0].active_packs[0] = "coder"; q[0].nactive_packs = 1; q[0].active_compute_tier = "cloud_fast"; }
+  if (v & 64) != 0 { q[0].available_delegates[0] = "claude"; q[0].navailable_delegates = 1; }
+  rtr2_decide_mock(q, ifx (v & 128) != 0 then "p=340" else "", v >> 8, p, w);
+}
+
+#test "v2 decide: scripted mock, elephant-1 fallback, and deterministic offline fallback" {
+  q: [1] Rtr2PlanRequest; p: [1] Rtr2Plan; w: [1] Rtr2Work;
+  q[0] = Rtr2PlanRequest.{text = "Pay 1000 sats invoice", local_inkling_ready = true, cloud_ready = true};
+  rtr2_decide_mock(q[..], "primary_pack=wallet,compute_tier=cloud_fast,explicit_delegate=none,difficulty=1,effort=low,missing_capability=50,missing_capability_kind=none", 0, p[..], w[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "wallet" && p[0].compute_tier == "cloud_fast" && p[0].explicit_delegate == "none" && p[0].effort == "low" && p[0].difficulty == 1 && p[0].missing_capability_hint == "";
+  rtr2_decide_mock(q[..], "fail=rate", 0, p[..], w[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "wallet" && p[0].reasons[0] == "door_unavailable";
+  rtr2_decide_mock(q[..], "fail=safety", 0, p[..], w[..]);
+  #assert !p[0].ok && p[0].error == "refused_by_door";
+  rtr2_decide_offline(q[..], p[..]);
+  #assert p[0].ok && p[0].door == "fallback" && p[0].capability_packs[0] == "wallet";
+}
+
+#forall "v2 decide fuzz: for every seed and mix of readiness/prefs, chosen plan is eligible" v:0..<512 {
+  q: [1] Rtr2PlanRequest; p: [1] Rtr2Plan; w: [1] Rtr2Work;
+  rtr2_fx_mix(q[..], v, p[..], w[..]);
+  if p[0].ok {
+    e: [1] Rtr2Eligible; rtr2_eligible(q[..], e[..]);
+    #assert p[0].npacks >= 1;
+    for i: 0..<p[0].npacks { #assert e[0].pack[rtr2_pack_index(p[0].capability_packs[i])]; }
+    #assert e[0].tier[rtr2_tier_index(p[0].compute_tier)];
+    #assert e[0].delegate[rtr2_delegate_index(p[0].explicit_delegate)];
+  } else {
+    #assert p[0].error == "no_compute";
+  }
+}

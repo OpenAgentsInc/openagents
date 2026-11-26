@@ -22,10 +22,10 @@
 #load "../../coax/lib/agent/engine/cache-policy.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
 #load "../../coax/lib/agent/custom-system-prompt.coax";
+#load "../../coax/lib/agent/router/decide.coax";
 #load "../../coax/lib/microcoder/steer.coax";
 #load "../../openagents/core/core.coax";
 
-cxproc_wall_us :: () -> int #foreign #effects(all);
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
@@ -4068,6 +4068,9 @@ FwRun :: struct {
   time_warn_stage: int;
   calm_steps: int;
   force_low_once: bool;
+  active_pack: [32] u8; nactive_pack: int;
+  active_tier: [32] u8; nactive_tier: int;
+  missing_cap_hint: [64] u8; nmissing_cap_hint: int;
   query_dedup: [16] int;
   query_dedup_cur: int;
   read_dedup: [FWW_READ_DEDUP_SLOTS] FwReadDedup;
@@ -4194,6 +4197,55 @@ fww_think_spiral :: (streaming: bool, is_local: bool, recoveries: int, ntext: in
     if dyn_ms < cap_ms { cap_ms = dyn_ms; }
   }
   return first_tok_ms > 0 && now_ms - first_tok_ms >= cap_ms;
+}
+
+// System One Front v2alpha1 routing for Auto mode (#14056):
+// Calls elephant-1 or gemini-decision-1 when configured via OA_AGENT_ROUTER_DOOR,
+// with deterministic offline #authority policy.coax fallback.
+fww_route_auto_plan :: (
+  tk: string, repo: string, active_pack: string, active_tier: string,
+  local_ready: bool, cloud_ready: bool, door_pref: string, out_plan: [] Rtr2Plan
+) {
+  q: [1] Rtr2PlanRequest;
+  q[0] = Rtr2PlanRequest.{
+    text = tk,
+    repo = repo,
+    local_inkling_ready = local_ready,
+    cloud_ready = cloud_ready,
+    user_compute_pref = "auto"
+  };
+  if active_pack.count > 0 {
+    q[0].active_packs[0] = active_pack;
+    q[0].nactive_packs = 1;
+  }
+  q[0].active_compute_tier = active_tier;
+
+  if door_pref == "elephant" {
+    e: [1] Rtr2Eligible; w: [1] Rtr2Work;
+    if rtr2_begin_elephant(q[..], e[..], out_plan, w[..]).count > 0 {
+      gout: [32768] u8; err: [2048] u8;
+      c := SoClient.{url = RTR2_ELEPHANT_URL, key_env = "", timeout_s = 3};
+      sr := so_post(c, w[0].request, gout[..], err[..]);
+      if sr.problem.count == 0 && sr.status == 200 { sr.problem = so_check(w[0].so_body[..], sr.body); sr.usage = so_usage(sr.body); }
+      rtr2_finish_elephant(q[..], e[..], sr, out_plan, w[..]);
+      return;
+    }
+  } else if door_pref == "google" {
+    e: [1] Rtr2Eligible; w: [1] Rtr2Work;
+    if rtr2_begin(q[..], e[..], out_plan, w[..], GD_MODEL).count > 0 {
+      c: [1] SoClient; kb: [512] u8;
+      why := agr_gemini_keyed(c[..], kb[..]);
+      if why.count == 0 {
+        gout: [32768] u8; err: [2048] u8; ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+        gr := gd_send(c[0], w[0].body[..], w[0].request, gout[..], err[..], ar[..]);
+        for i: 0..<kb.count { kb[i] = 0; }
+        rtr2_finish(q[..], e[..], gr, out_plan, w[..]);
+        return;
+      }
+      for i: 0..<kb.count { kb[i] = 0; }
+    }
+  }
+  rtr2_decide_offline(q[..], out_plan);
 }
 
 // Pure check: scratch files under /tmp or /var/tmp do not count as deliverable workspace edits.
@@ -5740,6 +5792,36 @@ tool_main :: () -> int #export_c #effects(all) {
                     else cast(string) cfg[0].model[0..<cfg[0].nmodel];
     picked_effort := ifx req[0].effort.count > 0 then req[0].effort else cast(string) cfg[0].effort[0..<cfg[0].neffort];
 
+    // System One Front v2alpha1 routing in Auto mode (#14056)
+    run[0].nmissing_cap_hint = 0;
+    if (picked_model == "oa:auto" || picked_model == "auto") && cfg[0].ncustom_model == 0 && !(tk.count > 0 && tk[0] == '/') {
+      lbase_b: [512] u8;
+      lbase := fww_trim(cl_getenv("PSIONIC_BASE_URL", lbase_b[..]));
+      local_ready := fww_local_reachable(lbase);
+      probe_auth: [1] FwAuth;
+      fww_resolve_auth(cfg[..], home, "oa:cloud", probe_auth[..], true);
+      cloud_ready := probe_auth[0].ok && probe_auth[0].backend != FLAWED_BE_LOCAL;
+      door_b: [64] u8;
+      door_pref := fww_trim(cl_getenv("OA_AGENT_ROUTER_DOOR", door_b[..]));
+      plan: [1] Rtr2Plan;
+      ap := cast(string) run[0].active_pack[0..<run[0].nactive_pack];
+      at := cast(string) run[0].active_tier[0..<run[0].nactive_tier];
+      fww_route_auto_plan(tk, "", ap, at, local_ready, cloud_ready, door_pref, plan[..]);
+      if plan[0].ok {
+        if plan[0].npacks > 0 { run[0].nactive_pack = fww_keep(run[0].active_pack[..], plan[0].capability_packs[0]); }
+        run[0].nactive_tier = fww_keep(run[0].active_tier[..], plan[0].compute_tier);
+        if plan[0].missing_capability_hint.count > 0 {
+          run[0].nmissing_cap_hint = fww_keep(run[0].missing_cap_hint[..], plan[0].missing_capability_hint);
+        }
+        if plan[0].compute_tier == "local_inkling" && local_ready {
+          picked_model = "oa:local";
+        } else if cloud_ready {
+          picked_model = "oa:cloud";
+          if req[0].effort.count == 0 && plan[0].effort.count > 0 { picked_effort = plan[0].effort; }
+        }
+      }
+    }
+
     fww_resolve_auth(cfg[..], home, picked_model, auth[..], false);
 
     run[0].ncwd = fww_keep(run[0].cwd[..], cd);
@@ -5813,6 +5895,11 @@ tool_main :: () -> int #export_c #effects(all) {
       }
     } else {
       run[0].nsys = fww_build_base_system_prompt(cfg[..], run[0].sys_prompt[..]);
+    }
+    if run[0].nmissing_cap_hint > 0 {
+      run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n[Missing Capability Detected: ");
+      run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].missing_cap_hint[0..<run[0].nmissing_cap_hint]);
+      run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "] This request needs an integration not currently mounted. Offer to author a new OpenAgents capability/skill with the user.\n");
     }
     if auth[0].backend != FLAWED_BE_LOCAL && cfg[0].auto_compact && hist[0].nmsgs >= 6 {
       est_tok := fww_estimate_prompt_tokens(hist[..], run[0].nsys, false, !fww_is_coding_turn(cfg[..], hist[..]));
@@ -6633,4 +6720,15 @@ tool_main :: () -> int #export_c #effects(all) {
   loc_sys := cast(string) loc_b[0..<loc_n];
   #assert loc_n > 200 && loc_n < 1024 && loc_n * 3 < full_n;
   #assert fww_contains_ci(loc_sys, "rm -rf ..") && fww_contains_ci(loc_sys, "git push");
+
+  // 5) Auto mode calls System One Front v2alpha1 policy with continuation & compute tier selection (#14056)
+  p: [1] Rtr2Plan;
+  fww_route_auto_plan("Hello there!", "", "", "", true, true, "", p[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "general" && p[0].compute_tier == "local_inkling" && p[0].effort == "low";
+  fww_route_auto_plan("Fix the bug in policy.coax", "", "", "", true, true, "", p[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "coder" && p[0].compute_tier == "cloud_fast";
+  fww_route_auto_plan("Now run the tests", "", "coder", "cloud_deep", true, true, "", p[..]);
+  #assert p[0].ok && p[0].continue_active && p[0].capability_packs[0] == "coder" && p[0].compute_tier == "cloud_deep";
+  fww_route_auto_plan("Check my Lightning wallet sats", "", "", "", true, true, "", p[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "wallet";
 }
