@@ -1,0 +1,349 @@
+// Coax Web keyset cursor pagination wire codec (Issue #14080):
+//   - Opaque URL-safe base64 (RFC 4648 §5, unpadded) encoding of (ts_ms, id, direction)
+//   - Binary layout: [version:1][direction:1][ts_ms:8 BE][id_len:1][id:1..64]
+//   - Strict length, alphabet, canonical trailing-bit, and field validation.
+#authority;
+
+CW_VERSION :: 1;
+CW_DIR_NEXT :: 0;
+CW_DIR_PREV :: 1;
+
+CW_HEADER_BYTES :: 11;
+CW_MAX_ID :: 64;
+CW_MIN_RAW :: 12;
+CW_MAX_RAW :: 75;
+CW_MIN_ENCODED :: 16;
+CW_MAX_ENCODED :: 100;
+
+CW_OK :: 0;
+CW_ERR_LENGTH :: 1;
+CW_ERR_ALPHABET :: 2;
+CW_ERR_PADDING :: 3;
+CW_ERR_FORMAT :: 4;
+CW_ERR_DIRECTION :: 5;
+CW_ERR_ID :: 6;
+
+CwCursor :: struct {
+  ok: bool;
+  error: int;
+  ts_ms: int;
+  direction: int;
+  id_len: int;
+  id: [CW_MAX_ID] u8;
+}
+
+CwRaw :: struct {
+  error: int;
+  count: int;
+  data: [CW_MAX_RAW] u8;
+}
+
+cw_b64_char :: (v: u8) -> u8 #effects(all) {
+  if v < 26 { return cast(u8) ('A' + v); }
+  if v < 52 { return cast(u8) ('a' + (v - 26)); }
+  if v < 62 { return cast(u8) ('0' + (v - 52)); }
+  if v == 62 { return '-'; }
+  return '_';
+}
+
+cw_b64_val :: (c: u8) -> int #effects(all) {
+  if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A'); }
+  if c >= 'a' && c <= 'z' { return cast(int) (c - 'a') + 26; }
+  if c >= '0' && c <= '9' { return cast(int) (c - '0') + 52; }
+  if c == '-' { return 62; }
+  if c == '_' { return 63; }
+  return -1;
+}
+
+// Allowed ID characters: A-Z, a-z, 0-9, ':', '_', '-', '.'.
+// Note ':' is ASCII 58 (immediately following '9' = 57).
+cw_id_char_valid :: (c: u8) -> bool #effects(all) {
+  return (c >= 'A' && c <= 'Z')
+      || (c >= 'a' && c <= 'z')
+      || (c >= '0' && c <= ':')
+      || c == '_' || c == '-' || c == '.';
+}
+
+cw_id_valid :: (id: string) -> bool #export_c #effects(all) {
+  if id.count < 1 || id.count > CW_MAX_ID { return false; }
+  for i: 0..<id.count {
+    if !cw_id_char_valid(id[i]) { return false; }
+  }
+  return true;
+}
+
+cw_encoded_len :: (raw_len: int) -> int #export_c #effects(all) {
+  if raw_len < 0 { return -1; }
+  full := raw_len / 3;
+  rem := raw_len % 3;
+  if rem == 0 { return full * 4; }
+  return full * 4 + rem + 1;
+}
+
+cw_decoded_len :: (enc_len: int) -> int #effects(all) {
+  if enc_len < 0 || enc_len % 4 == 1 { return -1; }
+  full := enc_len / 4;
+  rem := enc_len % 4;
+  if rem == 0 { return full * 3; }
+  return full * 3 + rem - 1;
+}
+
+cw_b64url_encode :: (src: [] u8, out: [] u8) -> int #effects(all) {
+  need := cw_encoded_len(src.count);
+  if need > out.count { return -1; }
+  si := 0;
+  oi := 0;
+  while si + 3 <= src.count {
+    b0 := src[si]; b1 := src[si + 1]; b2 := src[si + 2];
+    out[oi]     = cw_b64_char(b0 >> 2);
+    out[oi + 1] = cw_b64_char(((b0 & 3) << 4) | (b1 >> 4));
+    out[oi + 2] = cw_b64_char(((b1 & 15) << 2) | (b2 >> 6));
+    out[oi + 3] = cw_b64_char(b2 & 63);
+    si += 3;
+    oi += 4;
+  }
+  rem := src.count - si;
+  if rem == 1 {
+    b0 := src[si];
+    out[oi]     = cw_b64_char(b0 >> 2);
+    out[oi + 1] = cw_b64_char((b0 & 3) << 4);
+    oi += 2;
+  } else if rem == 2 {
+    b0 := src[si]; b1 := src[si + 1];
+    out[oi]     = cw_b64_char(b0 >> 2);
+    out[oi + 1] = cw_b64_char(((b0 & 3) << 4) | (b1 >> 4));
+    out[oi + 2] = cw_b64_char((b1 & 15) << 2);
+    oi += 3;
+  }
+  return oi;
+}
+
+cw_b64url_decode :: (token: string) -> CwRaw #effects(all) {
+  dec_len := cw_decoded_len(token.count);
+  if dec_len < 0 || dec_len > CW_MAX_RAW { return CwRaw.{error = CW_ERR_LENGTH}; }
+  out := CwRaw.{error = CW_OK};
+  ri := 0;
+  ti := 0;
+  while ti + 4 <= token.count {
+    v0 := cw_b64_val(token[ti]);
+    v1 := cw_b64_val(token[ti + 1]);
+    v2 := cw_b64_val(token[ti + 2]);
+    v3 := cw_b64_val(token[ti + 3]);
+    if v0 < 0 || v1 < 0 || v2 < 0 || v3 < 0 { return CwRaw.{error = CW_ERR_ALPHABET}; }
+    out.data[ri]     = cast(u8) ((v0 << 2) | (v1 >> 4));
+    out.data[ri + 1] = cast(u8) (((v1 & 15) << 4) | (v2 >> 2));
+    out.data[ri + 2] = cast(u8) (((v2 & 3) << 6) | v3);
+    ti += 4;
+    ri += 3;
+  }
+  rem := token.count - ti;
+  if rem == 2 {
+    v0 := cw_b64_val(token[ti]);
+    v1 := cw_b64_val(token[ti + 1]);
+    if v0 < 0 || v1 < 0 { return CwRaw.{error = CW_ERR_ALPHABET}; }
+    if (v1 & 15) != 0 { return CwRaw.{error = CW_ERR_PADDING}; }
+    out.data[ri] = cast(u8) ((v0 << 2) | (v1 >> 4));
+    ri += 1;
+  } else if rem == 3 {
+    v0 := cw_b64_val(token[ti]);
+    v1 := cw_b64_val(token[ti + 1]);
+    v2 := cw_b64_val(token[ti + 2]);
+    if v0 < 0 || v1 < 0 || v2 < 0 { return CwRaw.{error = CW_ERR_ALPHABET}; }
+    if (v2 & 3) != 0 { return CwRaw.{error = CW_ERR_PADDING}; }
+    out.data[ri]     = cast(u8) ((v0 << 2) | (v1 >> 4));
+    out.data[ri + 1] = cast(u8) (((v1 & 15) << 4) | (v2 >> 2));
+    ri += 2;
+  }
+  out.count = ri;
+  return out;
+}
+
+// Encodes (ts_ms, id, direction) into an opaque unpadded URL-safe base64 cursor.
+// Returns encoded length, or -1 on invalid input or insufficient output buffer.
+cw_encode :: (ts_ms: int, id: string, direction: int, out: [] u8) -> int #export_c #effects(all) {
+  if ts_ms < 0 { return -1; }
+  if direction != CW_DIR_NEXT && direction != CW_DIR_PREV { return -1; }
+  if !cw_id_valid(id) { return -1; }
+
+  raw: [CW_MAX_RAW] u8;
+  raw[0] = CW_VERSION;
+  raw[1] = cast(u8) direction;
+  t := cast(u64) ts_ms;
+  for i: 0..<8 {
+    raw[9 - i] = cast(u8) (t & 255);
+    t = t >> 8;
+  }
+  raw[10] = cast(u8) id.count;
+  for i: 0..<id.count { raw[CW_HEADER_BYTES + i] = id[i]; }
+  return cw_b64url_encode(raw[0..<(CW_HEADER_BYTES + id.count)], out);
+}
+
+// Decodes an opaque unpadded URL-safe base64 keyset cursor with strict validation.
+cw_decode :: (token: string) -> CwCursor #export_c #effects(all) {
+  if token.count < CW_MIN_ENCODED { return CwCursor.{error = CW_ERR_LENGTH}; }
+  raw := cw_b64url_decode(token);
+  if raw.error != CW_OK { return CwCursor.{error = raw.error}; }
+
+  if raw.data[0] != CW_VERSION { return CwCursor.{error = CW_ERR_FORMAT}; }
+  dir := cast(int) raw.data[1];
+  if dir != CW_DIR_NEXT && dir != CW_DIR_PREV {
+    return CwCursor.{error = CW_ERR_DIRECTION};
+  }
+  if (raw.data[2] & 128) != 0 { return CwCursor.{error = CW_ERR_FORMAT}; }
+  ts: u64;
+  for i: 0..<8 {
+    ts = (ts << 8) | cast(u64) raw.data[2 + i];
+  }
+  id_len := cast(int) raw.data[10];
+  if raw.count != CW_HEADER_BYTES + id_len {
+    return CwCursor.{error = CW_ERR_FORMAT};
+  }
+  res := CwCursor.{ok = true, error = CW_OK, ts_ms = cast(int) ts, direction = dir, id_len = id_len};
+  for i: 0..<id_len {
+    c := raw.data[CW_HEADER_BYTES + i];
+    if !cw_id_char_valid(c) { return CwCursor.{error = CW_ERR_ID}; }
+    res.id[i] = c;
+  }
+  return res;
+}
+
+// ---- tests
+
+#test "cursor round-trips across all base64 remainders, directions, timestamps, and id characters" {
+  out: [CW_MAX_ENCODED] u8;
+  // rem == 0 (11 + 1 = 12 raw -> 16 b64)
+  n := cw_encode(0, "a", CW_DIR_NEXT, out[..]);
+  #assert n == 16;
+  c := cw_decode(cast(string) out[0..<n]);
+  #assert c.ok && c.error == CW_OK && c.ts_ms == 0 && c.direction == CW_DIR_NEXT && c.id_len == 1 && cast(string) c.id[0..<1] == "a";
+
+  // rem == 1 (11 + 2 = 13 raw -> 18 b64)
+  n = cw_encode(1700000000123, "Z9", CW_DIR_PREV, out[..]);
+  #assert n == 18;
+  c = cw_decode(cast(string) out[0..<n]);
+  #assert c.ok && c.ts_ms == 1700000000123 && c.direction == CW_DIR_PREV && c.id_len == 2 && cast(string) c.id[0..<2] == "Z9";
+
+  // rem == 2 (11 + 3 = 14 raw -> 19 b64)
+  n = cw_encode(9223372036854775807, "a-_", CW_DIR_NEXT, out[..]);
+  #assert n == 19;
+  c = cw_decode(cast(string) out[0..<n]);
+  #assert c.ok && c.ts_ms == 9223372036854775807 && c.direction == CW_DIR_NEXT && c.id_len == 3 && cast(string) c.id[0..<3] == "a-_";
+
+  // Full 64-byte ID covering all allowed punctuation ('.', ':', '-', '_') and uppercase/lowercase/digits
+  full_id := "msg_01HV.9:AZ-az0123456789_.-:ABCDEFGHIJKLMNOPQRSTUVWXYZ01234567";
+  #assert full_id.count == CW_MAX_ID;
+  n = cw_encode(42, full_id, CW_DIR_PREV, out[..]);
+  #assert n == CW_MAX_ENCODED;
+  c = cw_decode(cast(string) out[0..<n]);
+  #assert c.ok && c.ts_ms == 42 && c.direction == CW_DIR_PREV && c.id_len == CW_MAX_ID && cast(string) c.id[0..<c.id_len] == full_id;
+}
+
+#test "base64url alphabet and low-level codec cover zero-valued tails and all 64 symbols" {
+  for v: 0..<64 {
+    ch := cw_b64_char(cast(u8) v);
+    #assert cw_b64_val(ch) == v;
+  }
+  #assert cw_b64_char(0) == 'A' && cw_b64_char(25) == 'Z';
+  #assert cw_b64_char(26) == 'a' && cw_b64_char(51) == 'z';
+  #assert cw_b64_char(52) == '0' && cw_b64_char(61) == '9';
+  #assert cw_b64_char(62) == '-' && cw_b64_char(63) == '_';
+  #assert cw_b64_val('+') == -1 && cw_b64_val('/') == -1 && cw_b64_val('=') == -1;
+  #assert cw_b64_val('@') == -1 && cw_b64_val('[') == -1 && cw_b64_val('`') == -1 && cw_b64_val('{') == -1;
+  #assert cw_b64_val(' ') == -1 && cw_b64_val(':') == -1;
+  #assert cw_encoded_len(-1) == -1 && cw_encoded_len(0) == 0 && cw_encoded_len(1) == 2 && cw_encoded_len(2) == 3;
+  #assert cw_encoded_len(3) == 4 && cw_encoded_len(4) == 6 && cw_encoded_len(5) == 7 && cw_encoded_len(6) == 8;
+  #assert cw_decoded_len(-1) == -1 && cw_decoded_len(0) == 0 && cw_decoded_len(1) == -1 && cw_decoded_len(2) == 1;
+  #assert cw_decoded_len(3) == 2 && cw_decoded_len(4) == 3 && cw_decoded_len(5) == -1 && cw_decoded_len(6) == 4 && cw_decoded_len(7) == 5;
+
+  // Decode zero bytes in 2-char and 3-char tails so v0==0, v1==0, v2==0 are exercised directly.
+  r0 := cw_b64url_decode(""); #assert r0.error == CW_OK && r0.count == 0;
+  r1 := cw_b64url_decode("A"); #assert r1.error == CW_ERR_LENGTH;
+  r2 := cw_b64url_decode("AA"); #assert r2.error == CW_OK && r2.count == 1 && r2.data[0] == 0;
+  r3 := cw_b64url_decode("AAA"); #assert r3.error == CW_OK && r3.count == 2 && r3.data[0] == 0 && r3.data[1] == 0;
+}
+
+#test "encode rejects negative ts, invalid direction, invalid id boundaries, and small buffer" {
+  out: [CW_MAX_ENCODED] u8;
+  #assert cw_encode(-1, "abc", CW_DIR_NEXT, out[..]) == -1;
+  #assert cw_encode(10, "abc", -1, out[..]) == -1;
+  #assert cw_encode(10, "abc", 2, out[..]) == -1;
+  #assert cw_encode(10, "", CW_DIR_NEXT, out[..]) == -1;
+  // Invalid characters at index 0 and at range boundaries ('[', '{', ';', '/', '@', '`')
+  #assert cw_encode(10, " a", CW_DIR_NEXT, out[..]) == -1;
+  #assert cw_encode(10, "a[b", CW_DIR_NEXT, out[..]) == -1;
+  #assert cw_encode(10, "a{b", CW_DIR_NEXT, out[..]) == -1;
+  #assert cw_encode(10, "a;b", CW_DIR_NEXT, out[..]) == -1;
+  #assert cw_encode(10, "a/b", CW_DIR_NEXT, out[..]) == -1;
+  #assert cw_encode(10, "a@b", CW_DIR_NEXT, out[..]) == -1;
+  #assert cw_encode(10, "a`b", CW_DIR_NEXT, out[..]) == -1;
+  over_id: [CW_MAX_ID + 1] u8;
+  for i: 0..<(CW_MAX_ID + 1) { over_id[i] = 'x'; }
+  #assert cw_encode(10, cast(string) over_id[..], CW_DIR_NEXT, out[..]) == -1;
+  #assert cw_encode(10, "a", CW_DIR_NEXT, out[0..<15]) == -1;
+  #assert cw_encode(10, "a", CW_DIR_NEXT, out[0..<16]) == 16;
+}
+
+#test "decode rejects invalid length, alphabet, padding bits, version, direction, negative ts, and bad id" {
+  // Length rejections (including 102 -> dec_len=76 > CW_MAX_RAW=75)
+  r := cw_decode(""); #assert !r.ok && r.error == CW_ERR_LENGTH;
+  r = cw_decode("AAAAAAAAAAAAAAA"); #assert !r.ok && r.error == CW_ERR_LENGTH;
+  r = cw_decode("AAAAAAAAAAAAAAAAA"); #assert !r.ok && r.error == CW_ERR_LENGTH;
+  too_long: [CW_MAX_ENCODED + 2] u8;
+  for i: 0..<(CW_MAX_ENCODED + 2) { too_long[i] = 'A'; }
+  r = cw_decode(cast(string) too_long[..]); #assert !r.ok && r.error == CW_ERR_LENGTH;
+
+  // Alphabet rejections in 4-char group, 2-char tail, and 3-char tail
+  r = cw_decode("!AAAAAAAAAAAAAAA"); #assert !r.ok && r.error == CW_ERR_ALPHABET;
+  r = cw_decode("A+AAAAAAAAAAAAAA"); #assert !r.ok && r.error == CW_ERR_ALPHABET;
+  r = cw_decode("AA/AAAAAAAAAAAAA"); #assert !r.ok && r.error == CW_ERR_ALPHABET;
+  r = cw_decode("AAA=AAAAAAAAAAAA"); #assert !r.ok && r.error == CW_ERR_ALPHABET;
+  r = cw_decode("AAAAAAAAAAAAAAAA!A"); #assert !r.ok && r.error == CW_ERR_ALPHABET;
+  r = cw_decode("AAAAAAAAAAAAAAAAA!"); #assert !r.ok && r.error == CW_ERR_ALPHABET;
+  r = cw_decode("AAAAAAAAAAAAAAAA!AA"); #assert !r.ok && r.error == CW_ERR_ALPHABET;
+  r = cw_decode("AAAAAAAAAAAAAAAAA!A"); #assert !r.ok && r.error == CW_ERR_ALPHABET;
+  r = cw_decode("AAAAAAAAAAAAAAAAAA!"); #assert !r.ok && r.error == CW_ERR_ALPHABET;
+
+  // Non-zero trailing padding bits rejected for 2-char tail (rem=2) and 3-char tail (rem=3)
+  out: [CW_MAX_ENCODED] u8;
+  n2 := cw_encode(1, "ab", CW_DIR_NEXT, out[..]);
+  #assert n2 == 18;
+  bad2 := out;
+  bad2[17] = cw_b64_char(cast(u8) (cw_b64_val(out[17]) ^ 1));
+  r = cw_decode(cast(string) bad2[0..<18]); #assert !r.ok && r.error == CW_ERR_PADDING;
+
+  n3 := cw_encode(1, "abc", CW_DIR_NEXT, out[..]);
+  #assert n3 == 19;
+  bad3 := out;
+  bad3[18] = cw_b64_char(cast(u8) (cw_b64_val(out[18]) ^ 1));
+  r = cw_decode(cast(string) bad3[0..<19]); #assert !r.ok && r.error == CW_ERR_PADDING;
+
+  // Craft raw payloads with invalid version, direction, negative ts (sign bit), id_len mismatch, and invalid id char
+  raw: [16] u8;
+  raw[0] = 2; raw[1] = 0; raw[10] = 1; raw[11] = 'a';
+  n := cw_b64url_encode(raw[0..<12], out[..]);
+  r = cw_decode(cast(string) out[0..<n]); #assert !r.ok && r.error == CW_ERR_FORMAT;
+
+  raw[0] = CW_VERSION; raw[1] = 2;
+  n = cw_b64url_encode(raw[0..<12], out[..]);
+  r = cw_decode(cast(string) out[0..<n]); #assert !r.ok && r.error == CW_ERR_DIRECTION;
+
+  raw[1] = CW_DIR_NEXT; raw[2] = 0x80;
+  n = cw_b64url_encode(raw[0..<12], out[..]);
+  r = cw_decode(cast(string) out[0..<n]); #assert !r.ok && r.error == CW_ERR_FORMAT;
+
+  raw[2] = 0; raw[10] = 0;
+  n = cw_b64url_encode(raw[0..<12], out[..]);
+  r = cw_decode(cast(string) out[0..<n]); #assert !r.ok && r.error == CW_ERR_FORMAT;
+
+  raw[10] = 2;
+  n = cw_b64url_encode(raw[0..<12], out[..]);
+  r = cw_decode(cast(string) out[0..<n]); #assert !r.ok && r.error == CW_ERR_FORMAT;
+
+  raw[10] = 65;
+  n = cw_b64url_encode(raw[0..<12], out[..]);
+  r = cw_decode(cast(string) out[0..<n]); #assert !r.ok && r.error == CW_ERR_FORMAT;
+
+  raw[10] = 1; raw[11] = ' ';
+  n = cw_b64url_encode(raw[0..<12], out[..]);
+  r = cw_decode(cast(string) out[0..<n]); #assert !r.ok && r.error == CW_ERR_ID;
+}

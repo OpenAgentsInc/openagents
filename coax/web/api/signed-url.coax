@@ -1,0 +1,524 @@
+// Coax Web stateless HMAC-SHA256 temporary signed URLs (Issue #14080):
+//   - Canonical query parameter sorting & reserved-key protection
+//   - Versioned key-id rotation (active + previous key ring)
+//   - Constant-time HMAC-SHA256 signature verification (cb_ct_equal)
+//   - Explicit expiry enforcement (distinguishes tampered vs expired URLs).
+#load "../../lib/crypto/hmac.coax";
+#authority;
+
+SU_OK :: 0;
+SU_ERR_INVALID :: 1;
+SU_ERR_EXPIRED :: 2;
+SU_ERR_UNKNOWN_KEY :: 3;
+SU_ERR_BAD_SIG :: 4;
+
+SU_KEY_BYTES :: 32;
+SU_SIG_HEX :: 64;
+SU_MAX_PATH :: 512;
+SU_MAX_QUERY :: 1024;
+SU_MAX_PARAMS :: 24;
+SU_MAX_KID :: 9999;
+SU_MAX_PAYLOAD :: 1600;
+
+SuSpan :: struct { start: int; count: int; }
+
+su_starts_with_at :: (s: string, at: int, n: int, prefix: string) -> bool #effects(all) {
+  if n < prefix.count { return false; }
+  for i: 0..<prefix.count {
+    if s[at + i] != prefix[i] { return false; }
+  }
+  return true;
+}
+
+su_span_less :: (s: string, a: SuSpan, b: SuSpan) -> bool #effects(all) {
+  i := 0;
+  while i < a.count && i < b.count {
+    ca := s[a.start + i];
+    cb := s[b.start + i];
+    if ca < cb { return true; }
+    if ca > cb { return false; }
+    i += 1;
+  }
+  return a.count < b.count;
+}
+
+su_is_url_char :: (c: u8) -> bool #effects(all) {
+  return c >= 33 && c <= 126 && c != '?' && c != '#';
+}
+
+su_path_valid :: (path: string) -> bool #export_c #effects(all) {
+  if path.count < 1 || path.count > SU_MAX_PATH { return false; }
+  if path[0] != '/' { return false; }
+  for i: 1..<path.count {
+    if !su_is_url_char(path[i]) { return false; }
+  }
+  return true;
+}
+
+su_is_reserved_param :: (s: string, at: int, n: int) -> bool #effects(all) {
+  return su_starts_with_at(s, at, n, "expires=")
+      || su_starts_with_at(s, at, n, "kid=")
+      || su_starts_with_at(s, at, n, "sig=");
+}
+
+su_pos_int_digits :: (val: int) -> int #effects(all) {
+  n := 0;
+  v := val;
+  while v > 0 {
+    v = v / 10;
+    n += 1;
+  }
+  return n;
+}
+
+su_write_pos_int :: (val: int, out: [] u8, pos: int) -> int #effects(all) {
+  tmp: [20] u8;
+  n := 0;
+  v := val;
+  while v > 0 {
+    tmp[n] = cast(u8) ('0' + (v % 10));
+    v = v / 10;
+    n += 1;
+  }
+  for i: 0..<n {
+    out[pos + i] = tmp[n - 1 - i];
+  }
+  return pos + n;
+}
+
+su_parse_pos_int :: (s: string, at: int, n: int) -> int #effects(all) {
+  if n < 1 || n > 18 { return -1; }
+  if s[at] == '0' { return -1; }
+  acc := 0;
+  for i: 0..<n {
+    c := s[at + i];
+    if c < '0' || c > '9' { return -1; }
+    acc = acc * 10 + cast(int) (c - '0');
+  }
+  return acc;
+}
+
+su_hex_nibble :: (c: u8) -> int #effects(all) {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+
+su_hex_char :: (v: u8) -> u8 #effects(all) {
+  if v < 10 { return cast(u8) ('0' + v); }
+  return cast(u8) ('a' + (v - 10));
+}
+
+su_decode_hex32 :: (s: string, at: int, n: int, out: [] u8) -> bool #effects(all) {
+  if n != SU_SIG_HEX { return false; }
+  for i: 0..<32 {
+    hi := su_hex_nibble(s[at + i * 2]);
+    lo := su_hex_nibble(s[at + i * 2 + 1]);
+    if hi < 0 || lo < 0 { return false; }
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return true;
+}
+
+su_copy_unchecked :: (src: string, at: int, n: int, out: [] u8, pos: int) -> int #effects(all) {
+  for i: 0..<n { out[pos + i] = src[at + i]; }
+  return pos + n;
+}
+
+su_sort_and_write_spans :: (s: string, spans: [] SuSpan, count: int, out: [] u8) -> int #effects(all) {
+  for i: 1..<count {
+    key := spans[i];
+    j := i;
+    while j > 0 && su_span_less(s, key, spans[j - 1]) {
+      spans[j] = spans[j - 1];
+      j -= 1;
+    }
+    spans[j] = key;
+  }
+  total := 0;
+  for i: 0..<count {
+    if i > 0 { total += 1; }
+    total += spans[i].count;
+  }
+  if total > out.count { return -1; }
+  pos := 0;
+  for i: 0..<count {
+    if i > 0 {
+      out[pos] = '&';
+      pos += 1;
+    }
+    pos = su_copy_unchecked(s, spans[i].start, spans[i].count, out, pos);
+  }
+  return pos;
+}
+
+// Canonicalizes a user query string (no leading '?', no reserved params) by sorting '&' segments.
+// Returns written byte count, or -1 on malformed query / overflow.
+su_canonical_query :: (query: string, out: [] u8) -> int #export_c #effects(all) {
+  if query.count == 0 { return 0; }
+  if query.count > SU_MAX_QUERY { return -1; }
+  for i: 0..<query.count {
+    if !su_is_url_char(query[i]) { return -1; }
+  }
+  spans: [SU_MAX_PARAMS] SuSpan;
+  count := 0;
+  seg_start := 0;
+  i := 0;
+  while i <= query.count {
+    if i == query.count || query[i] == '&' {
+      seg_len := i - seg_start;
+      if seg_len == 0 || count >= SU_MAX_PARAMS { return -1; }
+      if su_is_reserved_param(query, seg_start, seg_len) { return -1; }
+      spans[count] = SuSpan.{start = seg_start, count = seg_len};
+      count += 1;
+      seg_start = i + 1;
+    }
+    i += 1;
+  }
+  return su_sort_and_write_spans(query, spans[..], count, out);
+}
+
+// Caller invariants guarantee: kid <= 9999 (4), expires <= 18 digits, path <= 512, canon_query <= 1024;
+// max payload = 4 + 1 + 18 + 1 + 512 + 1 + 1024 = 1561 <= SU_MAX_PAYLOAD (1600).
+su_compute_mac :: (kid: int, expires_ms: int, path: string, canon_query: [] u8, key: [] u8, mac_out: [] u8) #effects(all) {
+  payload: [SU_MAX_PAYLOAD] u8;
+  pos := su_write_pos_int(kid, payload[..], 0);
+  payload[pos] = '\n'; pos += 1;
+  pos = su_write_pos_int(expires_ms, payload[..], pos);
+  payload[pos] = '\n'; pos += 1;
+  pos = su_copy_unchecked(path, 0, path.count, payload[..], pos);
+  payload[pos] = '\n'; pos += 1;
+  for i: 0..<canon_query.count { payload[pos + i] = canon_query[i]; }
+  pos += canon_query.count;
+  _ := hmac_sha256_checked(key, payload[0..<pos], mac_out, false);
+}
+
+// Produces a stateless HMAC-SHA256 temporary signed URL:
+//   "<path>?[<canonical_query>&]expires=<expires_ms>&kid=<kid>&sig=<64 lowercase hex>"
+// Returns written length, or -1 if inputs are invalid or out is too small.
+su_sign_url :: (path: string, query: string, kid: int, key: [] u8, expires_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  if kid < 1 || kid > SU_MAX_KID || key.count != SU_KEY_BYTES || expires_ms < 1 { return -1; }
+  if !su_path_valid(path) { return -1; }
+  canon: [SU_MAX_QUERY] u8;
+  canon_len := su_canonical_query(query, canon[..]);
+  if canon_len < 0 { return -1; }
+
+  q_extra := ifx canon_len > 0 then canon_len + 1 else 0;
+  need := path.count + 1 + q_extra + 8 + su_pos_int_digits(expires_ms) + 5 + su_pos_int_digits(kid) + 5 + SU_SIG_HEX;
+  if need > out.count { return -1; }
+
+  mac: [32] u8;
+  su_compute_mac(kid, expires_ms, path, canon[0..<canon_len], key, mac[..]);
+
+  pos := su_copy_unchecked(path, 0, path.count, out, 0);
+  out[pos] = '?'; pos += 1;
+  if canon_len > 0 {
+    for i: 0..<canon_len { out[pos + i] = canon[i]; }
+    pos += canon_len;
+    out[pos] = '&'; pos += 1;
+  }
+  pos = su_copy_unchecked("expires=", 0, 8, out, pos);
+  pos = su_write_pos_int(expires_ms, out, pos);
+  pos = su_copy_unchecked("&kid=", 0, 5, out, pos);
+  pos = su_write_pos_int(kid, out, pos);
+  pos = su_copy_unchecked("&sig=", 0, 5, out, pos);
+  for i: 0..<32 {
+    out[pos + i * 2] = su_hex_char(mac[i] >> 4);
+    out[pos + i * 2 + 1] = su_hex_char(mac[i] & 15);
+  }
+  return pos + SU_SIG_HEX;
+}
+
+// Verifies a temporary signed URL against an active key and an optional previous key (pass prev_kid = 0 to disable rotation).
+// Checks signature in constant time before checking expiry so forged timestamps report SU_ERR_BAD_SIG.
+su_verify_url :: (url: string, now_ms: int,
+                  active_kid: int, active_key: [] u8,
+                  prev_kid: int, prev_key: [] u8) -> int #export_c #effects(all) {
+  if now_ms < 0 { return SU_ERR_INVALID; }
+  if url.count == 0 || url[0] != '/' { return SU_ERR_INVALID; }
+  qmark := 0;
+  for i: 1..<url.count {
+    c := url[i];
+    if c == '?' {
+      if qmark != 0 { return SU_ERR_INVALID; }
+      qmark = i;
+    } else if !su_is_url_char(c) {
+      return SU_ERR_INVALID;
+    }
+  }
+  if qmark < 1 || qmark > SU_MAX_PATH { return SU_ERR_INVALID; }
+  path := url[0..<qmark];
+
+  spans: [SU_MAX_PARAMS] SuSpan;
+  param_count := 0;
+  expires_ms := 0;
+  kid := 0;
+  sig_start := 0;
+  sig_len: int;
+
+  seg_start := qmark + 1;
+  i := seg_start;
+  while i <= url.count {
+    if i == url.count || url[i] == '&' {
+      seg_len := i - seg_start;
+      if seg_len == 0 { return SU_ERR_INVALID; }
+      if su_starts_with_at(url, seg_start, seg_len, "expires=") {
+        if expires_ms != 0 { return SU_ERR_INVALID; }
+        expires_ms = su_parse_pos_int(url, seg_start + 8, seg_len - 8);
+        if expires_ms < 1 { return SU_ERR_INVALID; }
+      } else if su_starts_with_at(url, seg_start, seg_len, "kid=") {
+        if kid != 0 { return SU_ERR_INVALID; }
+        kid = su_parse_pos_int(url, seg_start + 4, seg_len - 4);
+        if kid < 1 || kid > SU_MAX_KID { return SU_ERR_INVALID; }
+      } else if su_starts_with_at(url, seg_start, seg_len, "sig=") {
+        if sig_start != 0 { return SU_ERR_INVALID; }
+        sig_start = seg_start + 4;
+        sig_len = seg_len - 4;
+      } else {
+        if param_count >= SU_MAX_PARAMS { return SU_ERR_INVALID; }
+        spans[param_count] = SuSpan.{start = seg_start, count = seg_len};
+        param_count += 1;
+      }
+      seg_start = i + 1;
+    }
+    i += 1;
+  }
+
+  if expires_ms == 0 || kid == 0 { return SU_ERR_INVALID; }
+  got_mac: [32] u8;
+  if !su_decode_hex32(url, sig_start, sig_len, got_mac[..]) { return SU_ERR_INVALID; }
+
+  canon: [SU_MAX_QUERY] u8;
+  canon_len := su_sort_and_write_spans(url, spans[..], param_count, canon[..]);
+  if canon_len < 0 { return SU_ERR_INVALID; }
+
+  use_active := active_kid >= 1 && active_key.count == SU_KEY_BYTES && kid == active_kid;
+  use_prev := prev_kid >= 1 && prev_key.count == SU_KEY_BYTES && kid == prev_kid;
+  if !use_active && !use_prev { return SU_ERR_UNKNOWN_KEY; }
+
+  expected_mac: [32] u8;
+  key := ifx use_active then active_key else prev_key;
+  su_compute_mac(kid, expires_ms, path, canon[0..<canon_len], key, expected_mac[..]);
+  if cb_ct_equal(expected_mac[..], got_mac[..]) != CB_MAX64 { return SU_ERR_BAD_SIG; }
+  if now_ms > expires_ms { return SU_ERR_EXPIRED; }
+  return SU_OK;
+}
+
+su_verify_url_single :: (url: string, now_ms: int, kid: int, key: [] u8) -> int #export_c #effects(all) {
+  empty: [SU_KEY_BYTES] u8;
+  return su_verify_url(url, now_ms, kid, key, 0, empty[..]);
+}
+
+// ---- tests
+
+#test "golden HMAC-SHA256 vector matches independent Python hmac.new(sha256)" {
+  k1: [32] u8;
+  for i: 0..<32 { k1[i] = cast(u8) ((31 + i * 17 + 5) & 255); }
+  buf: [256] u8;
+  n := su_sign_url("/api/downloads/pack.bin", "b=2&a=1", 1, k1[..], 1700000000000, buf[..]);
+  want := "/api/downloads/pack.bin?a=1&b=2&expires=1700000000000&kid=1&sig=4bfc9bcb2fb4f7d8a241211ad7eedac1f3db100ee84d2962fd4fc31cbfa0153b";
+  #assert n == want.count && cast(string) buf[0..<n] == want;
+  #assert su_verify_url_single(want, 1700000000000, 1, k1[..]) == SU_OK;
+  #assert su_verify_url_single(want, 0, 1, k1[..]) == SU_OK;
+  #assert su_verify_url_single(want, 1700000000001, 1, k1[..]) == SU_ERR_EXPIRED;
+  // Reordered query params in incoming URL still verify identically because query is canonicalized.
+  reordered := "/api/downloads/pack.bin?b=2&a=1&expires=1700000000000&kid=1&sig=4bfc9bcb2fb4f7d8a241211ad7eedac1f3db100ee84d2962fd4fc31cbfa0153b";
+  #assert su_verify_url_single(reordered, 1000, 1, k1[..]) == SU_OK;
+  // Query-less round-trip also verifies at exact boundary and expires at +1ms.
+  n0 := su_sign_url("/", "", 1, k1[..], 1, buf[..]);
+  #assert n0 > 0;
+  #assert su_verify_url_single(cast(string) buf[0..<n0], 1, 1, k1[..]) == SU_OK;
+  #assert su_verify_url_single(cast(string) buf[0..<n0], 2, 1, k1[..]) == SU_ERR_EXPIRED;
+}
+
+#test "key-id rotation verifies active and previous keys and rejects unknown or wrong keys" {
+  k1: [32] u8; k2: [32] u8; wrong: [32] u8;
+  for i: 0..<32 {
+    k1[i] = cast(u8) ((31 + i * 17 + 5) & 255);
+    k2[i] = cast(u8) ((62 + i * 17 + 5) & 255);
+    wrong[i] = cast(u8) ((93 + i * 17 + 5) & 255);
+  }
+  u1: [256] u8; u2: [256] u8;
+  n1 := su_sign_url("/assets/preview", "v=1", 1, k1[..], 5000, u1[..]);
+  n2 := su_sign_url("/assets/preview", "v=1", 2, k2[..], 5000, u2[..]);
+  #assert n1 > 0 && n2 > 0;
+  s1 := cast(string) u1[0..<n1];
+  s2 := cast(string) u2[0..<n2];
+  // Active=2, prev=1 accepts both v2 and v1 URLs.
+  #assert su_verify_url(s2, 1000, 2, k2[..], 1, k1[..]) == SU_OK;
+  #assert su_verify_url(s1, 1000, 2, k2[..], 1, k1[..]) == SU_OK;
+  // Once key 1 is retired (prev_kid = 0), v1 URL reports UNKNOWN_KEY; single-key wrapper also rejects kid=1 when active=2.
+  #assert su_verify_url(s1, 1000, 2, k2[..], 0, k1[..]) == SU_ERR_UNKNOWN_KEY;
+  #assert su_verify_url_single(s1, 1000, 2, k2[..]) == SU_ERR_UNKNOWN_KEY;
+  // Wrong key material for the same kid reports BAD_SIG.
+  #assert su_verify_url(s2, 1000, 2, wrong[..], 1, k1[..]) == SU_ERR_BAD_SIG;
+  #assert su_verify_url(s1, 1000, 2, k2[..], 1, wrong[..]) == SU_ERR_BAD_SIG;
+  // Invalid key length for matching kid reports UNKNOWN_KEY.
+  #assert su_verify_url(s2, 1000, 2, k2[0..<31], 1, k1[..]) == SU_ERR_UNKNOWN_KEY;
+  #assert su_verify_url(s1, 1000, 2, k2[..], 1, k1[0..<31]) == SU_ERR_UNKNOWN_KEY;
+  // Active key takes precedence over prev_key when both share the same kid.
+  #assert su_verify_url(s2, 1000, 2, k2[..], 2, wrong[..]) == SU_OK;
+}
+
+#test "tampering path, query, expires, kid, or signature fails verification" {
+  k1: [32] u8;
+  for i: 0..<32 { k1[i] = cast(u8) ((99 + i * 7) & 255); }
+  buf: [256] u8;
+  n := su_sign_url("/api/dl/a", "id=42", 1, k1[..], 5000, buf[..]);
+  #assert n > 0;
+  // Tamper path byte ('a' -> 'b')
+  t := buf; t[8] = 'b';
+  #assert su_verify_url_single(cast(string) t[0..<n], 1000, 1, k1[..]) == SU_ERR_BAD_SIG;
+  // Tamper query value ('2' -> '3')
+  t = buf; t[14] = '3';
+  #assert su_verify_url_single(cast(string) t[0..<n], 1000, 1, k1[..]) == SU_ERR_BAD_SIG;
+  // Tamper expires ('5' -> '6') -> BAD_SIG, not OK or EXPIRED
+  t = buf; t[24] = '6';
+  #assert su_verify_url_single(cast(string) t[0..<n], 5500, 1, k1[..]) == SU_ERR_BAD_SIG;
+  // Tamper last signature hex char
+  t = buf;
+  t[n - 1] = ifx t[n - 1] == 'a' then cast(u8) 'b' else cast(u8) 'a';
+  #assert su_verify_url_single(cast(string) t[0..<n], 1000, 1, k1[..]) == SU_ERR_BAD_SIG;
+  // Non-hex / boundary chars in signature ('A', ':', 'g', '/') rejected as invalid
+  t = buf; t[n - 1] = 'A'; #assert su_verify_url_single(cast(string) t[0..<n], 1000, 1, k1[..]) == SU_ERR_INVALID;
+  t = buf; t[n - 1] = ':'; #assert su_verify_url_single(cast(string) t[0..<n], 1000, 1, k1[..]) == SU_ERR_INVALID;
+  t = buf; t[n - 1] = 'g'; #assert su_verify_url_single(cast(string) t[0..<n], 1000, 1, k1[..]) == SU_ERR_INVALID;
+  t = buf; t[n - 2] = '/'; #assert su_verify_url_single(cast(string) t[0..<n], 1000, 1, k1[..]) == SU_ERR_INVALID;
+}
+
+#test "sign and verify reject invalid paths, queries, kids, timestamps, and buffers" {
+  k1: [32] u8;
+  for i: 0..<32 { k1[i] = cast(u8) (i + 1); }
+  buf: [1400] u8;
+  // Direct positive integer parser boundaries
+  #assert su_parse_pos_int("", 0, 0) == -1;
+  #assert su_parse_pos_int("0", 0, 1) == -1;
+  #assert su_parse_pos_int("01", 0, 2) == -1;
+  #assert su_parse_pos_int("1:", 0, 2) == -1;
+  #assert su_parse_pos_int("1/", 0, 2) == -1;
+  #assert su_parse_pos_int("123456789012345678", 0, 18) == 123456789012345678;
+  #assert su_parse_pos_int("1234567890123456789", 0, 19) == -1;
+
+  // Path validation boundaries (including '!'=33, '~'=126, ' '=32 at index 1, 127=DEL)
+  #assert su_path_valid("/");
+  #assert su_path_valid("/!~");
+  #assert !su_path_valid("");
+  #assert !su_path_valid("api/x");
+  #assert !su_path_valid("/ ");
+  #assert !su_path_valid("/a?b");
+  #assert !su_path_valid("/a#b");
+  #assert !su_path_valid("/a b");
+  del_path := [3] u8.['/', 'a', 127];
+  #assert !su_path_valid(cast(string) del_path[..]);
+  long_path: [SU_MAX_PATH + 1] u8;
+  long_path[0] = '/';
+  for i: 1..<(SU_MAX_PATH + 1) { long_path[i] = 'a'; }
+  #assert su_path_valid(cast(string) long_path[0..<SU_MAX_PATH]);
+  #assert !su_path_valid(cast(string) long_path[..]);
+
+  // Sign argument boundaries
+  #assert su_sign_url("/x", "", 0, k1[..], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", "", SU_MAX_KID + 1, k1[..], 100, buf[..]) == -1;
+  n_max_kid := su_sign_url("/x", "a", SU_MAX_KID, k1[..], 999999999999999999, buf[..]);
+  #assert n_max_kid > 0 && su_verify_url_single(cast(string) buf[0..<n_max_kid], 1, SU_MAX_KID, k1[..]) == SU_OK;
+  #assert su_sign_url("/x", "", 1, k1[0..<31], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", "", 1, k1[..], 0, buf[..]) == -1;
+  #assert su_sign_url("noslash", "", 1, k1[..], 100, buf[..]) == -1;
+  // Reserved parameters and malformed queries rejected (including exact prefix lengths and first-char mismatch)
+  #assert su_sign_url("/x", "expires=", 1, k1[..], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", "kid=", 1, k1[..], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", "sig=", 1, k1[..], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", "xpires=1&xid=1&xig=1", 1, k1[..], 100, buf[..]) > 0;
+  #assert su_sign_url("/x", "a=1&&b=2", 1, k1[..], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", "&a=1", 1, k1[..], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", "a=1&", 1, k1[..], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", "a=1#frag", 1, k1[..], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", "a=1?b=2", 1, k1[..], 100, buf[..]) == -1;
+  #assert su_sign_url("/x", " a=1", 1, k1[..], 100, buf[..]) == -1;
+  // Buffer overflow rejected at exact -1 boundary (0-byte, 1-byte, and 3-byte query)
+  #assert su_sign_url("/x", "", 1, k1[..], 100, buf[0..<88]) == -1;
+  #assert su_sign_url("/x", "", 1, k1[..], 100, buf[0..<89]) == 89;
+  #assert su_sign_url("/x", "a", 1, k1[..], 100, buf[0..<90]) == -1;
+  #assert su_sign_url("/x", "a", 1, k1[..], 100, buf[0..<91]) == 91;
+  #assert su_sign_url("/x", "a=1", 1, k1[..], 100, buf[0..<92]) == -1;
+  #assert su_sign_url("/x", "a=1", 1, k1[..], 100, buf[0..<93]) == 93;
+
+  // Verify malformed URLs using valid 64-hex sig and kid=99 (so any missed guard returns UNKNOWN_KEY, not INVALID)
+  z64 := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert z64.count == 64;
+  #assert su_verify_url_single("", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1&kid=1&sig=00", -1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1&kid=99&sig=00", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("?expires=1&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("x?expires=1&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/?a=1?expires=1&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?a=1#frag", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?a= 1", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1&expires=2&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=01&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=0&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1&kid=1&kid=2&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1&kid=0&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1&kid=10000&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=2&kid=99", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=2&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1&&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1234567890123456789&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1:&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+  #assert su_verify_url_single("/x?expires=1/&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+
+  // Exact SU_MAX_PATH passes verify, SU_MAX_PATH + 1 rejected as INVALID (not UNKNOWN_KEY)
+  n_lp := su_sign_url(cast(string) long_path[0..<SU_MAX_PATH], "", 1, k1[..], 100, buf[..]);
+  #assert n_lp > 0 && su_verify_url_single(cast(string) buf[0..<n_lp], 50, 1, k1[..]) == SU_OK;
+  too_long_url: [SU_MAX_PATH + 100] u8;
+  for i: 0..<(SU_MAX_PATH + 1) { too_long_url[i] = long_path[i]; }
+  tail := "?expires=1&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000";
+  for i: 0..<tail.count { too_long_url[SU_MAX_PATH + 1 + i] = tail[i]; }
+  #assert su_verify_url_single(cast(string) too_long_url[0..<(SU_MAX_PATH + 1 + tail.count)], 1, 1, k1[..]) == SU_ERR_INVALID;
+
+  // Exact SU_MAX_PARAMS (24) passes verify; 25 user params rejected
+  q24 := "a&b&c&d&e&f&g&h&i&j&k&l&m&n&o&p&q&r&s&t&u&v&w&x";
+  n24 := su_sign_url("/x", q24, 1, k1[..], 100, buf[..]);
+  #assert n24 > 0 && su_verify_url_single(cast(string) buf[0..<n24], 50, 1, k1[..]) == SU_OK;
+  #assert su_verify_url_single("/x?a&b&c&d&e&f&g&h&i&j&k&l&m&n&o&p&q&r&s&t&u&v&w&x&y&expires=1&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000", 1, 1, k1[..]) == SU_ERR_INVALID;
+
+  // Incoming URL whose user query exceeds SU_MAX_QUERY (1024) is rejected during canonicalization
+  over_q_url: [SU_MAX_QUERY + 128] u8;
+  over_q_url[0] = '/'; over_q_url[1] = 'x'; over_q_url[2] = '?';
+  for i: 0..<(SU_MAX_QUERY + 1) { over_q_url[3 + i] = 'z'; }
+  sfx := "&expires=1&kid=99&sig=0000000000000000000000000000000000000000000000000000000000000000";
+  for i: 0..<sfx.count { over_q_url[3 + SU_MAX_QUERY + 1 + i] = sfx[i]; }
+  #assert su_verify_url_single(cast(string) over_q_url[0..<(3 + SU_MAX_QUERY + 1 + sfx.count)], 1, 1, k1[..]) == SU_ERR_INVALID;
+}
+
+#test "canonical query handles empty, comparator edges, bounds, and max params" {
+  out: [64] u8;
+  #assert su_canonical_query("", out[..]) == 0;
+  #assert su_canonical_query("a=1", out[0..<3]) == 3 && cast(string) out[0..<3] == "a=1";
+  #assert su_canonical_query("b=2&a=1", out[0..<6]) == -1;
+  #assert su_canonical_query("b=2&a=1", out[0..<7]) == 7 && cast(string) out[0..<7] == "a=1&b=2";
+  // Exercise equal spans, prefix-shorter vs longer, and non-zero start + index 1 difference in su_span_less
+  #assert su_canonical_query("a=12&a=1&a=1&b=1&a=0", out[..]) == 20 && cast(string) out[0..<20] == "a=0&a=1&a=1&a=12&b=1";
+  #assert su_span_less("xxabxxac", SuSpan.{start = 2, count = 2}, SuSpan.{start = 6, count = 2}) == true;
+  #assert su_span_less("xxacxxab", SuSpan.{start = 2, count = 2}, SuSpan.{start = 6, count = 2}) == false;
+  #assert su_span_less("ab", SuSpan.{start = 0, count = 1}, SuSpan.{start = 0, count = 1}) == false;
+  #assert su_span_less("a&ab", SuSpan.{start = 0, count = 1}, SuSpan.{start = 2, count = 2}) == true;
+  #assert su_span_less("ab&a", SuSpan.{start = 0, count = 2}, SuSpan.{start = 3, count = 1}) == false;
+  #assert su_span_less("a~ab", SuSpan.{start = 0, count = 1}, SuSpan.{start = 2, count = 2}) == true;
+  #assert su_span_less("ab~a", SuSpan.{start = 0, count = 2}, SuSpan.{start = 3, count = 1}) == false;
+  // Too many params (> SU_MAX_PARAMS = 24) rejected
+  many := "a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a&a";
+  #assert su_canonical_query(many, out[..]) == -1;
+  // Query exceeding SU_MAX_QUERY rejected
+  big: [SU_MAX_QUERY + 1] u8;
+  for i: 0..<(SU_MAX_QUERY + 1) { big[i] = 'x'; }
+  big_out: [SU_MAX_QUERY + 1] u8;
+  #assert su_canonical_query(cast(string) big[0..<SU_MAX_QUERY], big_out[..]) == SU_MAX_QUERY;
+  #assert su_canonical_query(cast(string) big[..], big_out[..]) == -1;
+}
