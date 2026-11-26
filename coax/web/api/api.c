@@ -49,6 +49,7 @@
 //   realm invites                  /api/playtest/access, /api/admin/access (access.c, flag off)
 //   private human packs            /api/metaverse/packs/<name>, /api/metaverse/packs/fetch/<sid>, per-session keys; /api/verse/packs/ kept (verse_packs.c)
 #include "api.h"
+#include "config.h"
 #include "error-wire.generated.h"
 #include "route-policy.generated.h"
 
@@ -552,6 +553,14 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--rules")) { auth_print_rules(stdout); return 0; }    // every route's rule
     else if (!strcmp(argv[i], "--routes-json")) { auth_print_routes_json(stdout); return 0; }
     else if (!strcmp(argv[i], "--openapi")) { auth_print_openapi(stdout); return 0; }
+    else if (!strcmp(argv[i], "--config-schema")) { api_config_print_schema_json(stdout); return 0; }
+    else if (!strcmp(argv[i], "--config-check")) {
+      api_config cfg; char err[256];
+      api_config_load(&cfg);
+      int rc = api_config_check(&cfg, err, sizeof err);
+      fprintf(rc == 0 ? stdout : stderr, "config: %s\n", err);
+      return rc == 0 ? 0 : 2;
+    }
     else if (!strcmp(argv[i], "--limits")) { auth_print_limits(stdout); lnaddr_print_limits(stdout); makers_print_limits(stdout); npc_print_limits(stdout); rooms_print_limits(stdout); return 0; }  // docs/limits/index.md
     else if (!strcmp(argv[i], "--rule") && i + 2 < argc) { const char *r = auth_rule_of(argv[i + 1], argv[i + 2]); printf("%s\n", r ? r : "none"); return r ? 0 : 1; }
   }

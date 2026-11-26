@@ -1,0 +1,204 @@
+// Coax Web centralized configuration policy (Issue #14076):
+//   - Typed environment/driver parsing with strict defaults
+//   - Versioned key-rotation ring validation ("1:<64 hex>[,2:<64 hex>...]")
+//   - Production fail-fast boot assertions (refuses OA_LOCAL_SERVE, mail=log,
+//     missing seal/pepper keys, missing Resend key when mail=resend).
+#authority;
+
+CFG_ENV_INVALID :: -1; CFG_ENV_LOCAL :: 0; CFG_ENV_TEST :: 1; CFG_ENV_STAGING :: 2; CFG_ENV_PROD :: 3;
+CFG_MAIL_INVALID :: -1; CFG_MAIL_LOG :: 0; CFG_MAIL_CAPTURE :: 1; CFG_MAIL_RESEND :: 2;
+CFG_QUEUE_INVALID :: -1; CFG_QUEUE_SYNC :: 0; CFG_QUEUE_POSTGRES :: 1;
+CFG_STORAGE_INVALID :: -1; CFG_STORAGE_LOCAL :: 0; CFG_STORAGE_GCS :: 1;
+CFG_LOG_INVALID :: -1; CFG_LOG_TEXT :: 0; CFG_LOG_JSON :: 1;
+
+CFG_OK :: 0;
+CFG_ERR_ENV :: 1;
+CFG_ERR_MAIL :: 2;
+CFG_ERR_QUEUE :: 3;
+CFG_ERR_STORAGE :: 4;
+CFG_ERR_LOG_FMT :: 5;
+CFG_ERR_NO_DB :: 6;
+CFG_ERR_PROD_LOCAL_SERVE :: 7;
+CFG_ERR_PROD_MAIL_LOG :: 8;
+CFG_ERR_PROD_KEYS :: 9;
+CFG_ERR_RESEND_KEY :: 10;
+
+cfg_parse_env :: (s: string) -> int #export_c #effects(all) {
+  if s == "" || s == "local" { return CFG_ENV_LOCAL; }
+  if s == "test" { return CFG_ENV_TEST; }
+  if s == "staging" { return CFG_ENV_STAGING; }
+  if s == "production" { return CFG_ENV_PROD; }
+  return CFG_ENV_INVALID;
+}
+
+cfg_parse_mail :: (s: string) -> int #export_c #effects(all) {
+  if s == "" || s == "resend" { return CFG_MAIL_RESEND; }
+  if s == "log" { return CFG_MAIL_LOG; }
+  if s == "capture" { return CFG_MAIL_CAPTURE; }
+  return CFG_MAIL_INVALID;
+}
+
+cfg_parse_queue :: (s: string) -> int #export_c #effects(all) {
+  if s == "" || s == "postgres" { return CFG_QUEUE_POSTGRES; }
+  if s == "sync" { return CFG_QUEUE_SYNC; }
+  return CFG_QUEUE_INVALID;
+}
+
+cfg_parse_storage :: (s: string) -> int #export_c #effects(all) {
+  if s == "" || s == "gcs" { return CFG_STORAGE_GCS; }
+  if s == "local" { return CFG_STORAGE_LOCAL; }
+  return CFG_STORAGE_INVALID;
+}
+
+cfg_parse_log_format :: (s: string) -> int #export_c #effects(all) {
+  if s == "" || s == "text" { return CFG_LOG_TEXT; }
+  if s == "json" { return CFG_LOG_JSON; }
+  return CFG_LOG_INVALID;
+}
+
+cfg_is_hex :: (c: u8) -> bool #effects(all) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+cfg_is_digit :: (c: u8) -> bool #effects(all) {
+  return c >= '0' && c <= '9';
+}
+
+// Validates comma-separated versioned 32-byte lowercase hex keys: "1:<64 hex>[,2:<64 hex>...]".
+cfg_valid_key_ring :: (s: string) -> bool #export_c #effects(all) {
+  if s.count == 0 { return false; }
+  i := 0;
+  while i < s.count {
+    // Version prefix: 1..4 digits
+    v_start := i;
+    while i < s.count && cfg_is_digit(s[i]) { i += 1; }
+    if i == v_start || i - v_start > 4 { return false; }
+    if i >= s.count || s[i] != ':' { return false; }
+    i += 1;
+    // Exactly 64 lowercase hex digits
+    if i + 64 > s.count { return false; }
+    for k: 0..<64 {
+      if !cfg_is_hex(s[i + k]) { return false; }
+    }
+    i += 64;
+    if i < s.count {
+      if s[i] != ',' { return false; }
+      i += 1;
+      if i == s.count { return false; }
+    }
+  }
+  return true;
+}
+
+cfg_validate_boot :: (env: int, mail: int, queue: int, storage: int, log_fmt: int,
+                      has_db: bool, seal_ok: bool, pepper_ok: bool,
+                      local_serve: bool, has_resend_key: bool) -> int #export_c #effects(all) {
+  if env < CFG_ENV_LOCAL || env > CFG_ENV_PROD { return CFG_ERR_ENV; }
+  if mail < CFG_MAIL_LOG || mail > CFG_MAIL_RESEND { return CFG_ERR_MAIL; }
+  if queue < CFG_QUEUE_SYNC || queue > CFG_QUEUE_POSTGRES { return CFG_ERR_QUEUE; }
+  if storage < CFG_STORAGE_LOCAL || storage > CFG_STORAGE_GCS { return CFG_ERR_STORAGE; }
+  if log_fmt < CFG_LOG_TEXT || log_fmt > CFG_LOG_JSON { return CFG_ERR_LOG_FMT; }
+  if !has_db { return CFG_ERR_NO_DB; }
+  if env == CFG_ENV_PROD {
+    if local_serve { return CFG_ERR_PROD_LOCAL_SERVE; }
+    if mail != CFG_MAIL_RESEND { return CFG_ERR_PROD_MAIL_LOG; }
+    if !seal_ok || !pepper_ok { return CFG_ERR_PROD_KEYS; }
+    if !has_resend_key { return CFG_ERR_RESEND_KEY; }
+  }
+  return CFG_OK;
+}
+
+cfg_error_text :: (code: int) -> string #export_c #effects(all) {
+  if code == CFG_OK { return "ok"; }
+  if code == CFG_ERR_ENV { return "invalid OA_ENV (expected local, test, staging, production)"; }
+  if code == CFG_ERR_MAIL { return "invalid OA_MAIL_DRIVER (expected log, capture, resend)"; }
+  if code == CFG_ERR_QUEUE { return "invalid OA_QUEUE_DRIVER (expected sync, postgres)"; }
+  if code == CFG_ERR_STORAGE { return "invalid OA_STORAGE_DRIVER (expected local, gcs)"; }
+  if code == CFG_ERR_LOG_FMT { return "invalid OA_LOG_FORMAT (expected text, json)"; }
+  if code == CFG_ERR_NO_DB { return "OA_API_DATABASE is required"; }
+  if code == CFG_ERR_PROD_LOCAL_SERVE { return "OA_LOCAL_SERVE is forbidden in production"; }
+  if code == CFG_ERR_PROD_MAIL_LOG { return "production requires OA_MAIL_DRIVER=resend"; }
+  if code == CFG_ERR_PROD_KEYS { return "production requires valid OA_AUTH_SEAL_KEY and OA_AUTH_LOOKUP_PEPPER"; }
+  if code == CFG_ERR_RESEND_KEY { return "production requires OA_RESEND_API_KEY"; }
+  return "unknown config error";
+}
+
+#test "enum parsers accept defaults, valid values, and reject unknown values" {
+  #assert cfg_parse_env("") == CFG_ENV_LOCAL && cfg_parse_env("local") == CFG_ENV_LOCAL;
+  #assert cfg_parse_env("test") == CFG_ENV_TEST && cfg_parse_env("staging") == CFG_ENV_STAGING && cfg_parse_env("production") == CFG_ENV_PROD;
+  #assert cfg_parse_env("prod") == CFG_ENV_INVALID;
+
+  #assert cfg_parse_mail("") == CFG_MAIL_RESEND && cfg_parse_mail("resend") == CFG_MAIL_RESEND;
+  #assert cfg_parse_mail("log") == CFG_MAIL_LOG && cfg_parse_mail("capture") == CFG_MAIL_CAPTURE;
+  #assert cfg_parse_mail("smtp") == CFG_MAIL_INVALID;
+
+  #assert cfg_parse_queue("") == CFG_QUEUE_POSTGRES && cfg_parse_queue("postgres") == CFG_QUEUE_POSTGRES;
+  #assert cfg_parse_queue("sync") == CFG_QUEUE_SYNC && cfg_parse_queue("redis") == CFG_QUEUE_INVALID;
+
+  #assert cfg_parse_storage("") == CFG_STORAGE_GCS && cfg_parse_storage("gcs") == CFG_STORAGE_GCS;
+  #assert cfg_parse_storage("local") == CFG_STORAGE_LOCAL && cfg_parse_storage("s3") == CFG_STORAGE_INVALID;
+
+  #assert cfg_parse_log_format("") == CFG_LOG_TEXT && cfg_parse_log_format("text") == CFG_LOG_TEXT;
+  #assert cfg_parse_log_format("json") == CFG_LOG_JSON && cfg_parse_log_format("xml") == CFG_LOG_INVALID;
+}
+
+#test "key ring validates single and rotated versioned 64-hex keys and rejects malformed inputs" {
+  #assert cfg_valid_key_ring("0:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert cfg_valid_key_ring("9:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert cfg_valid_key_ring("1234:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert cfg_valid_key_ring("1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef,2:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210");
+  #assert !cfg_valid_key_ring("");
+  #assert !cfg_valid_key_ring("a");
+  #assert !cfg_valid_key_ring(":0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !cfg_valid_key_ring("/1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !cfg_valid_key_ring("12345:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !cfg_valid_key_ring("1");
+  #assert !cfg_valid_key_ring("1;0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !cfg_valid_key_ring("1:0123456789abcdef");
+  #assert !cfg_valid_key_ring("1::123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !cfg_valid_key_ring("1:g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !cfg_valid_key_ring("1:A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !cfg_valid_key_ring("1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef,");
+  #assert !cfg_valid_key_ring("1:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;2:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+}
+
+#test "boot validation enforces drivers, DB, and strict production invariants" {
+  // Local dev passes with mail=log, no keys, local_serve=true
+  #assert cfg_validate_boot(CFG_ENV_LOCAL, CFG_MAIL_LOG, CFG_QUEUE_SYNC, CFG_STORAGE_LOCAL, CFG_LOG_TEXT, true, false, false, true, false) == CFG_OK;
+  // Production passes only when all invariants hold
+  #assert cfg_validate_boot(CFG_ENV_PROD, CFG_MAIL_RESEND, CFG_QUEUE_POSTGRES, CFG_STORAGE_GCS, CFG_LOG_JSON, true, true, true, false, true) == CFG_OK;
+  // Invalid enums
+  #assert cfg_validate_boot(-1, 0, 0, 0, 0, true, true, true, false, true) == CFG_ERR_ENV;
+  #assert cfg_validate_boot(4, 0, 0, 0, 0, true, true, true, false, true) == CFG_ERR_ENV;
+  #assert cfg_validate_boot(0, -1, 0, 0, 0, true, true, true, false, true) == CFG_ERR_MAIL;
+  #assert cfg_validate_boot(0, 3, 0, 0, 0, true, true, true, false, true) == CFG_ERR_MAIL;
+  #assert cfg_validate_boot(0, 0, -1, 0, 0, true, true, true, false, true) == CFG_ERR_QUEUE;
+  #assert cfg_validate_boot(0, 0, 2, 0, 0, true, true, true, false, true) == CFG_ERR_QUEUE;
+  #assert cfg_validate_boot(0, 0, 0, -1, 0, true, true, true, false, true) == CFG_ERR_STORAGE;
+  #assert cfg_validate_boot(0, 0, 0, 2, 0, true, true, true, false, true) == CFG_ERR_STORAGE;
+  #assert cfg_validate_boot(0, 0, 0, 0, -1, true, true, true, false, true) == CFG_ERR_LOG_FMT;
+  #assert cfg_validate_boot(0, 0, 0, 0, 2, true, true, true, false, true) == CFG_ERR_LOG_FMT;
+  // Missing DB
+  #assert cfg_validate_boot(CFG_ENV_LOCAL, CFG_MAIL_LOG, CFG_QUEUE_SYNC, CFG_STORAGE_LOCAL, CFG_LOG_TEXT, false, false, false, false, false) == CFG_ERR_NO_DB;
+  // Production refusals
+  #assert cfg_validate_boot(CFG_ENV_PROD, CFG_MAIL_RESEND, CFG_QUEUE_POSTGRES, CFG_STORAGE_GCS, CFG_LOG_JSON, true, true, true, true, true) == CFG_ERR_PROD_LOCAL_SERVE;
+  #assert cfg_validate_boot(CFG_ENV_PROD, CFG_MAIL_LOG, CFG_QUEUE_POSTGRES, CFG_STORAGE_GCS, CFG_LOG_JSON, true, true, true, false, true) == CFG_ERR_PROD_MAIL_LOG;
+  #assert cfg_validate_boot(CFG_ENV_PROD, CFG_MAIL_RESEND, CFG_QUEUE_POSTGRES, CFG_STORAGE_GCS, CFG_LOG_JSON, true, false, true, false, true) == CFG_ERR_PROD_KEYS;
+  #assert cfg_validate_boot(CFG_ENV_PROD, CFG_MAIL_RESEND, CFG_QUEUE_POSTGRES, CFG_STORAGE_GCS, CFG_LOG_JSON, true, true, false, false, true) == CFG_ERR_PROD_KEYS;
+  #assert cfg_validate_boot(CFG_ENV_PROD, CFG_MAIL_RESEND, CFG_QUEUE_POSTGRES, CFG_STORAGE_GCS, CFG_LOG_JSON, true, true, true, false, false) == CFG_ERR_RESEND_KEY;
+}
+
+#test "error text covers every code" {
+  #assert cfg_error_text(CFG_OK) == "ok";
+  #assert cfg_error_text(CFG_ERR_ENV) == "invalid OA_ENV (expected local, test, staging, production)";
+  #assert cfg_error_text(CFG_ERR_MAIL) == "invalid OA_MAIL_DRIVER (expected log, capture, resend)";
+  #assert cfg_error_text(CFG_ERR_QUEUE) == "invalid OA_QUEUE_DRIVER (expected sync, postgres)";
+  #assert cfg_error_text(CFG_ERR_STORAGE) == "invalid OA_STORAGE_DRIVER (expected local, gcs)";
+  #assert cfg_error_text(CFG_ERR_LOG_FMT) == "invalid OA_LOG_FORMAT (expected text, json)";
+  #assert cfg_error_text(CFG_ERR_NO_DB) == "OA_API_DATABASE is required";
+  #assert cfg_error_text(CFG_ERR_PROD_LOCAL_SERVE) == "OA_LOCAL_SERVE is forbidden in production";
+  #assert cfg_error_text(CFG_ERR_PROD_MAIL_LOG) == "production requires OA_MAIL_DRIVER=resend";
+  #assert cfg_error_text(CFG_ERR_PROD_KEYS) == "production requires valid OA_AUTH_SEAL_KEY and OA_AUTH_LOOKUP_PEPPER";
+  #assert cfg_error_text(CFG_ERR_RESEND_KEY) == "production requires OA_RESEND_API_KEY";
+  #assert cfg_error_text(99) == "unknown config error";
+}
