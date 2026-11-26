@@ -1028,6 +1028,8 @@ registered single-codec protobuf schemas in
 `TrainingWindowClaim`, `TrainingWindowVerdict`, and `CheckpointLineageRecord`),
 binding every promoted checkpoint and compiled weight module to its exact
 verification lineage ([Psionic chapters 272–274](../../psionic/book/ch274-the-quarantine-optimizer.md)).
+Live network publication of `NIP-EVAL` scorecards alongside `NIP-REG` and
+`NIP-PAY` is tracked in open issue `#14060`.
 
 ## Dependencies
 

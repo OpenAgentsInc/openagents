@@ -60,10 +60,13 @@ The work to implement every chapter is tracked in [issue #12612](https://github.
 
 ## Status
 
-Of the 89 chapters in this book, 87 are implemented and 2 are partly
-implemented; 15 more numbers are marked moved. All 89 have runnable examples. Chapters 103 and 104 have teaching text and
-checked components, but their stated exits still require the relay migration
-and a treasury spend broadcast on the public signet, respectively.
+Of the 89 chapters in this book, 88 are implemented and 1 is partly
+implemented; 15 more numbers are marked moved. All 89 have runnable examples.
+Chapter 103's production cutover to the Coax relay completed on 2026-11-12
+(`#13361`) and the Rust fallback was retired on 2026-11-13 (`#13382`). Chapter
+104 has teaching text, checked signing/recovery components in regtest and
+private signet, and still requires a treasury spend broadcast on the public
+signet.
 
 An *implemented* chapter meets the promotion standard below for its stated
 scope. It does not establish full support for every feature of a cited NIP.
@@ -103,7 +106,7 @@ current registry.
 | `coax/web/project/landing-nostr.coax` | Public event verification, messages, filters, names and beacon checks | Complete relay history or trust in provider declarations |
 | `apps/openagents-cli/main.coax`, `relay.coax`, `api.coax` | Identity derivation, event signing, relay and NIP-98 requests | The hosted runner's migration and rollback |
 | `psionic/lib/pylon/run.coax` | NIP-42, signed events, NIP-44 and the Pylon queue | Production key custody and every deployment target |
-| `apps/openagents-ios/OpenAgents/Wallet/SparkHost.swift` | Chapter 101's existing wallet rules | NIP-MV presence, Metaverse zaps and Spark-backed Wallet Connect |
+| `apps/shared/host/apple/SparkWallet.swift`, `apps/openagents-desktop/Window+Wallet.swift` | Chapter 101's existing wallet rules and desktop Bitcoin Spark + NIP-06 wallet pane | NIP-MV presence, Metaverse zaps and Spark-backed Wallet Connect |
 
 ### What remains
 
@@ -333,5 +336,5 @@ stack, and the cutover of relay.openagents.com.
 | [100. Pylons and the mesh](ch100-pylons-and-the-mesh.md) | Runnable: native C | Pylons authenticate to the relay with NIP-42, announce beacons, and answer sealed NIP-44 decision requests; the mesh opens encrypted channels with this book's primitives. |
 | [101. The Metaverse and the wallet](ch101-the-verse-and-the-wallet.md) | Runnable: native C | Two players' NIP-MV presence through a Coax relay within the latency budget, and one in-world zap from request to counted receipt, paid only when the Spark wallet's rules in `pay/wallet.coax` pass, with Wallet Connect as a second path; what runs in production today and what is only in this book. |
 | [102. Agents on Nostr](ch102-agents-on-nostr.md) | Runnable: native C | One attested agent end to end, offline: NIP-42 and NIP-AA login, a NIP-MKT order, a sealed NIP-CJ job claimed once and journaled with NIP-RUN, the answer, and payment against a Lightning preimage; what runs in production today and what is only in this book. |
-| [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) | Runnable: native C | An export format, an import that verifies every id and signature again, event-set equality (a sorted-id digest, with Negentropy naming the difference), a shadow comparer, and the cutover and rollback runbook. The export, shadow period, DNS cutover and rollback rehearsal wait for the owner. |
+| [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) | Runnable: native C | An export format, an import that verifies every id and signature again, event-set equality (a sorted-id digest, with Negentropy naming the difference), a shadow comparer, and the cutover and rollback runbook. The production cutover completed 2026-11-12 (`#13361`), and the follow-up hardening and Rust fallback retirement completed 2026-11-13 (`#13382`). |
 | [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) | Partly implemented: native C | NIP-KEYS wallets, enrollments, independence declarations and signing requests read under closed schemas; a wallet admitted by recomputing its BIP-380 descriptor, applying composition rules 1 to 4 and verifying each enrollment's BIP-322 possession proof; P2WSH scripts from BIP-32 public derivation; a signer that recomputes every output, the change and the fee from a PSBT v0 and refuses a PSBT whose outputs differ from its request; nonce idempotency, recovery timelocks, retired wallets, the co-signer's delay and the hot ceiling; RFC 6979 ECDSA partial signatures over BIP-143 digests, the PSBT with them and the coordinator's 2-of-3 transaction; BIP-341 Taproot key-path digests and signatures; requests and receipts as 3188 artifacts over a Coax relay, with Bitcoin Core confirming the spend and recovering the coins from the descriptor in regtest and on a private signet. Open: the spend has not been broadcast on the public signet. `tr` wallets, PSBT v2 and miniscript spends are not built. |

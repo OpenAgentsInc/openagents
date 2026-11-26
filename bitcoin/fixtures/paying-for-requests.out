@@ -1,5 +1,8 @@
 worker 200 sat: release
 validator 50 sat: release
+author 25 sat: release
+three-leg split 200/50/25 (<=25%): release
+three-leg split 200/50/100 (>25% cap): refuse_bad_input
 unarmed mainnet: hold_owner
 duplicate leg: refuse_duplicate
 failed verdict: withhold_failed

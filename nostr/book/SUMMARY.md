@@ -16,7 +16,17 @@ first. Their numbers here are kept and marked moved.
 
 **0. Cryptography prerequisites (in Bitcoin From Scratch)**
 
-- [Bitcoin Parts I–V (Chapters 1–13, 15, 18): bytes, big integers, constant-time rules, SHA-256, HMAC, HKDF, ChaCha20, secp256k1, BIP-340 Schnorr, Bech32](../../bitcoin/book/README.md)
+- [Bitcoin 1. Bytes, hex and base64](../../bitcoin/book/ch001-bytes-hex-and-base64.md)
+- [Bitcoin 2. Big integers in fixed limbs](../../bitcoin/book/ch002-big-integers-in-fixed-limbs.md)
+- [Bitcoin 3. Constant-time rules and secrets](../../bitcoin/book/ch003-constant-time-rules.md)
+- [Bitcoin 4. SHA-256](../../bitcoin/book/ch004-sha-256.md)
+- [Bitcoin 8. HMAC-SHA256](../../bitcoin/book/ch008-hmac-sha256.md)
+- [Bitcoin 9. HKDF](../../bitcoin/book/ch009-hkdf.md)
+- [Bitcoin 11. ChaCha20](../../bitcoin/book/ch011-chacha20.md)
+- [Bitcoin 13–16. secp256k1 field, scalars, group law and multiplication](../../bitcoin/book/ch013-field-arithmetic-mod-p.md)
+- [Bitcoin 18. Keys and randomness](../../bitcoin/book/ch018-keys-and-randomness.md)
+- [Bitcoin 23–24. Verify and sign with BIP-340 Schnorr](../../bitcoin/book/ch023-verify-a-schnorr-signature.md)
+- [Bitcoin 27. Bech32](../../bitcoin/book/ch027-bech32.md)
 
 **I. Shared secrets, encodings and encryption**
 
@@ -119,7 +129,7 @@ first. Their numbers here are kept and marked moved.
 - [94. Differential tests](ch094-differential-tests.md) — implemented
 - [95. Fuzzing](ch095-fuzzing.md) — implemented
 - [96. Formal properties](ch096-formal-properties.md) — implemented
-- [97. A conformance report](ch097-a-conformance-report.md)
+- [97. A conformance report](ch097-a-conformance-report.md) — implemented
 
 **VIII. Nostr in OpenAgents**
 

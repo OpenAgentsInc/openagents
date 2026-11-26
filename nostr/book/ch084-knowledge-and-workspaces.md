@@ -951,6 +951,8 @@ On 2026-11-01, each file's checks passed (`coax test` runs the loaded files' che
   version refuses, a stale writer merges by hand, a retransmission returns
   the retained result, and only a grant, not membership, lets a change
   through.
+- Live multi-agent `NIP-KB` knowledge bus integration in the unified agent
+  runtime is tracked in open issue `#14058`.
 
 ## Dependencies
 

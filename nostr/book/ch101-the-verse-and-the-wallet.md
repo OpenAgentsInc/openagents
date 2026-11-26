@@ -10,10 +10,11 @@ invoices and a fixed clock, by composing units that earlier chapters built.
 It also says plainly which parts OpenAgents runs in production today and
 which exist only in this book.
 
-The registry's `adopted_by` entry names `SparkHost.swift`, which directly
-calls the existing wallet rules. It records adoption of that component,
-not adoption of the offline NIP-MV, zap or Wallet Connect exchange. Live
-integration depends on [the Metaverse Engine's rooms and presence](../../metaverse-engine/book/ch049-rooms-and-presence.md)
+The registry's `adopted_by` entry names `apps/shared/host/apple/SparkWallet.swift`
+and `apps/openagents-desktop/Window+Wallet.swift`, which directly call the
+existing wallet rules. It records adoption of that component, not adoption of
+the offline NIP-MV, zap or Wallet Connect exchange. Live integration depends
+on [the Metaverse Engine's rooms and presence](../../metaverse-engine/book/ch049-rooms-and-presence.md)
 and the [application exits](COMPLETION.md#4-connect-the-offline-integrations-to-applications).
 
 ## What this chapter teaches
@@ -57,10 +58,11 @@ times, and it answers with verdicts.
 
 In production today:
 
-- **The Spark wallet.** Since 2026-10-28 the iOS app
-  (`apps/openagents-ios`) sends and receives on Breez's Spark SDK on
-  mainnet through `Wallet/SparkHost.swift`, and every payment rule is
-  `pay/wallet.coax`: the keypad, LNURL-pay bounds through
+- **The Spark wallet.** The iOS app (`apps/openagents-ios`) and macOS desktop
+  app (`apps/openagents-desktop`, including the sidebar Wallet pane in
+  `page/walletpane.coax` and `Window+Wallet.swift`) send and receive on Breez's
+  Spark SDK on mainnet through `apps/shared/host/apple/SparkWallet.swift`, and
+  every payment rule is `pay/wallet.coax`: the keypad, LNURL-pay bounds through
   `metaverse_wallet_amount_ok`, the high-fee and expiry warnings,
   `metaverse_wallet_may_send` and the state machine `metaverse_wallet_step`
   ([docs/lightning/](../../docs/lightning/README.md)). It pays BOLT11
@@ -68,16 +70,21 @@ In production today:
   MoonPay and Cash App pages that `wallet.coax` checks. The 12 words that
   restore the wallet are the same words that derive the NIP-06 Nostr key,
   so one backup covers both.
-- **Presence.** Realms on the web post their position over HTTP to
+- **Presence and Lobby.** Realms on the web post their position over HTTP to
   [coax/web/api/room.c](../../coax/web/api/room.c), which answers with the
   others from SQL. Fairy Forest
   ([fairyroom.coax](../../apps/openagents-web/fairy/fairyroom.coax)) posts every
   0.25 seconds and draws the ten nearest others.
   [coax/web/presence-pair.coax](../../coax/web/presence-pair.coax) runs
   two headless Chromes and fails when either sees the other move later
-  than its millisecond budget.
-- **The Coax relay** runs as a tailnet preview (R1); `relay.openagents.com`
-  is not yet the Coax relay (chapter 103).
+  than its millisecond budget. In addition, the **GameBuilder Nostr Lobby**
+  (`#14045`, [`gamebuilder/core/lobby.coax`](../../gamebuilder/core/lobby.coax))
+  runs live over `wss://relay.openagents.com` using NIP-42 AUTH, NIP-38 kind
+  `30315` presence (`150 s` expiration), kind `42` lobby chat (`6 h`
+  expiration), and NIP-56 kind `1984` reports.
+- **The Coax relay** is live in production at `relay.openagents.com` (cut over
+  2026-11-12 `#13361`, hardened and Rust fallback retired 2026-11-13 `#13382`,
+  chapter 103).
 
 Only in this book, today:
 
@@ -392,7 +399,7 @@ draw_x :: (x1: f64, t1: int, x2: f64, t2: int, now_ms: int) -> f64 {
 ```
 
 The zap glue hands the wallet's rules plain numbers in whole sats, as
-`SparkHost.swift` does, and charges the NWC path to its budget:
+`SparkWallet.swift` does, and charges the NWC path to its budget:
 
 <!-- source: nostr/examples/verse-and-wallet.coax zap -->
 ```jai
@@ -745,7 +752,7 @@ equivalent:
 - Presence measured over real sockets: the example's 40 ms hops are an
   assumption. `presence-pair.coax` measures the HTTP path today; it was
   not run for this chapter.
-- Zaps in the app: `SparkHost.swift` sending the zap request with an
+- Zaps in the app: `SparkWallet.swift` sending the zap request with an
   LNURL payment, reading receipts, and `zap_check`'s rule moving into
   `pay/wallet.coax` with its own checks and mutation run.
 - A Spark-backed Wallet Connect service, and NWC in a realm.

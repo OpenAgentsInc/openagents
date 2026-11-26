@@ -1,10 +1,12 @@
 # Completion route
 
-The book has 102 implemented teaching profiles and two partly implemented
-chapters. That count is not a count of complete NIPs or deployed applications.
-This route separates those exits and orders the remaining work. The current
-source baseline is `6f4c722640`; dated verification records retain the scope
-and source identities of the runs they describe.
+The book has 88 implemented teaching profiles and one partly implemented
+chapter (89 chapters in this book; 15 cryptographic foundations moved to
+[Bitcoin From Scratch](../../bitcoin/book/README.md)). That count is not a
+count of complete NIPs or deployed applications. This route separates those
+exits and orders the remaining work. The current source baseline is
+`6f4c722640` (updated through `#13382` and `#14103`); dated verification
+records retain the scope and source identities of the runs they describe.
 
 ## Keep the four claims separate
 
@@ -15,8 +17,9 @@ and source identities of the runs they describe.
 | Source component adopted | A reviewed direct consumer in `chapters.json` | Adoption of the whole chapter or production approval |
 | Production exit passed | Consumer-specific integration, operational evidence and the required owner decisions | Approval for unrelated consumers, keys or deployments |
 
-The registry currently claims CPU qualification for all 104 chapter profiles
-and Wasm qualification for 21. Do not infer Wasm support for the other 83.
+The registry currently claims CPU qualification for all 89 chapter profiles
+in this book and Wasm qualification for 8. Do not infer Wasm support for the
+other 81.
 The result column in [README](README.md#chapters) and each chapter's omissions
 define the protocol subset taught. Chapter 97's report is a frozen example
 from `73966b6359`, not a report generated from the current registry.
@@ -136,10 +139,16 @@ owner's cutover approval. Keep the Rust relay available until those exits
 pass. Configurable capacity does not authorize reading production data or
 changing DNS.
 
-The owner asked for the cutover on 2026-11-12 (#13361) and it ran that day,
-from restored backups: relay.openagents.com is the Coax relay, with the Rust
-relay as the fallback
-([record](../../docs/verification/2026-11-12-coax-relay-cutover/README.md)).
+The owner asked for the cutover on 2026-11-12 (`#13361`) and it ran that day
+from restored backups: `relay.openagents.com` is the Coax relay
+([cutover record](../../docs/verification/2026-11-12-coax-relay-cutover/README.md)).
+On 2026-11-13 (`#13382`), the hardening rollout restored NIP-29 (with a
+file-backed relay identity), NIP-65/67/94, all eleven Block extension roles,
+TLS `SIGHUP` reload, per-address connection limits, and weekly checked store
+compaction; NIP-86/98 admin remained intentionally disabled by owner decision;
+and the Rust fallback service (`openagents-nostr-relay`), `nostr_relay_v2`
+database, and cutover backups were permanently retired
+([follow-up record](../../docs/verification/2026-11-13-relay-followups/README.md)).
 
 ## 4. Connect the offline integrations to applications
 
@@ -166,14 +175,15 @@ market disputes, full attestation verification, FI fetch/session binding,
 and the remaining Block channel and private-state records. Preserve the
 explicit Bitcoin-only exclusions in chapter 74.
 
-## 5. Finish treasury signing and independent recovery
+## 5. Finish public-signet broadcast and NIP-KEYS pin review
 
 [Chapter 104](ch104-agent-treasuries-and-a-network-of-keys.md#not-built)
-currently admits descriptors and signing requests and refuses mismatched
-PSBTs. It produces no partial signature. Add the required ECDSA/BIP-143
-signing and possession proofs, wire the private request transport and
-coordinator, and run the stated three-agent 2-of-3 signet spend. Then recover
-from a coordinator outage with an independent wallet tool using one agent's
-descriptor copy. Miniscript spending, Taproot, PSBT v2 and other declared
-omissions need their own scope and evidence; the policy checks alone do not
-complete them.
+already implements descriptor admission, BIP-322 possession proofs, deterministic
+RFC 6979 ECDSA partial signing over BIP-143 digests, 3188 artifact carriage
+over a Coax relay, and end-to-end 2-of-3 spend confirmation plus independent
+Bitcoin Core wallet recovery in regtest and on a private signet. Two exits
+remain before promoting chapter 104 from *partly implemented* to *implemented*:
+claiming public signet faucet coins to run the rehearsed `CHAIN=public-signet`
+spend and recovery, and owner review of `NIP-KEYS.md` before re-pinning
+`coax/lib/nostr/profiles.coax`. Miniscript spending, `tr(...)` wallets, PSBT v2
+and other declared omissions remain separate scope.

@@ -2665,7 +2665,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-desktop/Window+Wallet.swift"
+      ]
     },
     {
       "number": 122,
@@ -2697,7 +2699,7 @@
       "title": "Paying for requests and verified work",
       "file": "ch123-paying-for-requests.md",
       "status": "implemented",
-      "profile": "native C, #authority two-leg Spark/Lightning settlement policy",
+      "profile": "native C, #authority three-leg Spark/Lightning settlement policy",
       "depends_on": [
         113,
         114,
@@ -2711,7 +2713,9 @@
         "cpu"
       ],
       "adopted_by": [
-        "apps/openagents-cli/pylon-settle.coax"
+        "apps/openagents-cli/pylon-settle.coax",
+        "apps/openagents-desktop/Window+Wallet.swift",
+        "openagents/core/members.coax"
       ]
     },
     {

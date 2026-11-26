@@ -676,14 +676,38 @@ faster. Wasm has no 128-bit multiply, so each `mul_wide` is four 32-bit
 products there, and `#inline` keeps the call there so that modules don't
 grow.
 
-Signing doesn't change. ECDSA signing takes 303 µs against
-11.7 µs for libsecp256k1, and BIP-340 signing 1,552 µs against
-15.9 µs: about 26 and 98 times slower. Signing stays on
-the 26-bit field and fixed-work multiplication, and BIP-340 signing also
-verifies its own signature on that path before it releases it.
+In the initial 2026-11-13 fast-path cut, signing stayed on the 26-bit field
+(303 µs ECDSA and 1,552 µs BIP-340 on Apple M5 Max). The follow-up series
+([#13454](https://github.com/OpenAgentsInc/openagents/issues/13454),
+[verification record](../../docs/verification/2026-11-13-secp-followups/README.md))
+landed four further pieces:
 
-These timings are from one machine with other work running; they are a
-comparison, not a benchmark claim.
+- **Fixed-work 5×52 signing and ECDH (`secp_ct_group.coax`, `secp_fe_ct.coax`):**
+  `k·G` uses an 8-block, 4-tooth comb over `secp_ct_table.coax` with masked
+  scans and complete affine addition; `k·P` and the BIP-340 fixed-work
+  self-verifier run on the same 5×52 field without reaching any `_vartime`
+  helper. On a Linux x86-64 GCC 12.2 `-O2` release host, ECDSA signing dropped
+  from `562.15 µs` to `126.11 µs` (4.5×, vs `25.41 µs` libsecp256k1) and
+  BIP-340 signing dropped from `2,569.66 µs` to `320.47 µs` (8.0×, vs
+  `36.54 µs` libsecp256k1). In Node v22.11.0 Wasm, ECDSA signing dropped from
+  `873.39 µs` to `235.23 µs` and BIP-340 signing from `4,213.33 µs` to
+  `974.41 µs` (while the benchmark module shrank from 226,872 to 203,069 bytes).
+- **Bernstein–Yang public inverse (`secp_modinv.coax`):** signed 62-bit
+  divsteps (`3.96 µs` field inverse vs `6.37 µs` Fermat; `4.03 µs` scalar
+  inverse vs `23.99 µs` binary Euclidean on the Linux host).
+- **Width-10 public `G` table:** 256 packed affine points indexed directly
+  without a 16 KiB stack copy per lookup, plus folded 512-bit public scalar
+  products and BIP-340 tagged SHA-256 midstates.
+- **Fast-group callers expanded:** batch verification (chapter 25), public-key
+  recovery (chapter 22), public BIP-32 derivation (chapter 32), Taproot
+  (chapter 41), MuSig2 (chapter 101), and FROST (chapter 102) public
+  operations now run on the fast group while keeping the earlier 26-bit
+  field/group as independent `#forall` references.
+
+These timings are from single hosts with other work running; they are a
+comparison, not a benchmark claim, and the fixed-work source schedule does not
+by itself prove target timing or register erasure (see the qualification limits
+in the record).
 
 ```shell
 CC=/usr/bin/clang python3 -I tools/coax-nostr/fuzz/build_oracle.py --fetch --reviewed
@@ -692,26 +716,22 @@ coax/tests/bitcoin/secp_bench.sh --checked
 coax/tests/bitcoin/secp_bench.sh --release --wasm
 ```
 
-## What this chapter leaves out
+## What remains
 
-- The largest tables for `G`. libsecp256k1 splits the `G` scalar into two
-  128-bit halves at bit 128, not by `λ`, and uses window 15: 8,192 points
-  for each half. The fast path uses window 8, 64 points, and splits both
-  scalars by `λ`.
-- libsecp256k1's inverse. Its `modinv64` divides in about half the time
-  of the Fermat inverse and the binary Euclidean inverse used here.
-- Batch verification of many BIP-340 signatures at once, and the
-  multi-scalar algorithms that serve it.
-- Signing, key generation and ECDH, which must not depend on secret data.
-  The endomorphism can speed up fixed-work multiplication too, as
-  libsecp256k1's `ecmult_const_impl.h` does, but this chapter does not touch the
-  constant-time paths.
-- Other callers of `ecmult_vartime`, such as public-key recovery (chapter
-  22) and key derivation (chapter 32). They keep chapter 16's path.
-
-[Issue #13454](https://github.com/OpenAgentsInc/openagents/issues/13454)
-lists what remains between the fast path and libsecp256k1, with the
-measured or estimated size of each part.
+- **Largest `G` tables:** libsecp256k1 splits the `G` scalar at bit 128 and
+  uses window 15 (8,192 points per half); Coax uses width 10 (256 packed
+  affine points) to stay within Wasm and native binary budgets.
+- **GLV for fixed-work `k·P` and constant-time divsteps for `1/k`:** BIP-340
+  signing's fixed-work self-verification spends `151 µs` in `k·P` (halving
+  doublings with GLV remains future work), and ECDSA's `1/k mod n` (`28.2 µs`
+  fixed-window exponentiation) would drop to a few microseconds with a
+  constant-time divsteps inverse.
+- **Handwritten Wasm SIMD field:** compiler `-msimd128` gave no speedup on
+  5×52 columns because Wasm SIMD lacks 64×64→128-bit multiplies; a SIMD field
+  would require a dedicated 26-bit `i64x2.extmul_low_i32x4_u` layout.
+- **Target security qualification:** Valgrind CT probes pass on Linux/Nix, but
+  production-secret approval gates and target-level erasure audits remain
+  separate from the numerical/mutation suites.
 
 ## Summary
 

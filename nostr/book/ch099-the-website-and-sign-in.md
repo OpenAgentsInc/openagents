@@ -1039,6 +1039,31 @@ and logging out first when a session is there.
 The API's NIP-98 check and its comparison with the former C check are
 chapter 49's.
 
+## Hybrid WorkOS authentication (decided 2026-11-26)
+
+On 2026-11-26, OpenAgents locked a **hybrid `acct_` authentication
+architecture** integrating WorkOS alongside the Nostr and passkey sign-in flows
+taught in this chapter (`#14097`–`#14103`,
+[`docs/auth/2026-11-26-workos-coax-sdk.md`](../../docs/auth/2026-11-26-workos-coax-sdk.md)):
+
+- **Canonical `acct_` spine and Nostr-only accounts stay intact:** WorkOS
+  handles human Email Magic Auth, Google/GitHub/Apple OAuth, Enterprise SSO,
+  and optional Organizations (mapped via `external_id = acct_...` and
+  `auth.workos_identities`). Nostr-only accounts (D8), NIP-98/07 logins,
+  self-custodial Bitcoin Spark wallets, and `NIP-VAULT` backups stay anchored
+  to `acct_...` in Postgres.
+- **Custom Coax UI and opaque sessions everywhere:** All logins run inside
+  OpenAgents' own Custom Coax UI (no Hosted AuthKit redirect), and `oa-api`
+  continues minting `__Host-oa_session` (`oas_`) on web and device-bound
+  `oa_at_`/`oa_rt_` (`OA-Device-Proof`) on mobile and desktop.
+- **Assurance boundary preserved:** Every WorkOS login enters at `L1`; wallet
+  backups, key removal, spend limits, and agent grants still require first-party
+  Coax WebAuthn Passkey or Nostr `L2`/`L2-fresh` step-up. The CLI adds WorkOS
+  RFC 8628 device authorization alongside its NIP-98 key login.
+- **In-repo Sans-I/O Coax WorkOS SDK:** Pure `#authority` Coax helpers live in
+  `coax/lib/workos/` alongside the `tools/oagen-coax/` OpenAPI emitter
+  generating checked-in Sans-I/O codecs for all 269 endpoints.
+
 ## Summary
 
 - A request carries one credential. A NIP-98 signature is its key's account
@@ -1067,8 +1092,9 @@ chapter 49's.
 - [NIP-98](../nips/official/98.md)
 - [NIP-06](../nips/official/06.md)
 - [NIP-07](../nips/official/07.md)
-- [docs/auth](../../docs/auth/README.md), the design of OpenAgents' own
-  authentication.
+- [docs/auth](../../docs/auth/README.md) and
+  [docs/auth/2026-11-26-workos-coax-sdk.md](../../docs/auth/2026-11-26-workos-coax-sdk.md),
+  OpenAgents' authentication design and hybrid WorkOS Coax SDK specification.
 - [docs/cli/2026-11-01-openagents-cli-v1.md](../../docs/cli/2026-11-01-openagents-cli-v1.md),
   the CLI's plan.
 - The Coax Nostr plan: [coax/nostr.md](../../coax/nostr.md).

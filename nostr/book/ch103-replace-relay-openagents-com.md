@@ -762,7 +762,28 @@ profile, not the relay's 131,072-byte message limit, and no event the relay
 serves needs more. A restart replays the store and checks every signature
 again, about 2 minutes on the e2-small VM and up to 4.5.
 
-## What the relay doesn't use yet
+### Post-cutover hardening and Rust fallback retirement (`#13382`, 2026-11-13)
+
+On 2026-11-13, the follow-up rollout ([record](../../docs/verification/2026-11-13-relay-followups/README.md))
+closed the remaining cutover items and permanently retired the Rust fallback:
+
+- **Hardened Coax relay in production (`abceb6d324`):** Production
+  `relay.openagents.com` restored NIP-29 with the owner-approved file-backed
+  relay identity, NIP-65/67/94, all eleven Block extension roles, Rust
+  private-kind write checks, checkpoint-verified startup, live TLS reload on
+  `SIGHUP`, per-address connection limits, and weekly checked store compaction
+  with generation rollback.
+- **NIP-86/98 admin intentionally disabled (`dfea423828`):** The owner elected
+  to leave NIP-86/98 remote admin disabled in production rather than exposing an
+  admin HTTP surface.
+- **Rust fallback permanently retired (`7068b485c7`, `dfea423828`):** After a
+  quiet-period check confirmed zero post-cutover writes, the Cloud Run service
+  `openagents-nostr-relay`, Postgres database `nostr_relay_v2`, and the three
+  cutover backups were deleted. Production rollback now operates across checked
+  Coax store generations (`--checkpoint` / `--export`) rather than returning to
+  Rust.
+
+## What the relay wires and leaves off
 
 `nostr/relay/relay.coax` loads `relay_store.coax` (the store, `store_saved.coax`,
 with chapter 36's index beside it), `nip42-event.coax`, `relay_route.coax`
@@ -875,10 +896,12 @@ keeps that qualification separate from the owner-approved migration.
 - In the example, a forged status is refused at BIP-340, and the one event
   the shadow store missed is named, explains the one answer it changes,
   and is put back.
-- The cutover ran on 2026-11-12: relay.openagents.com is the Coax relay,
-  and the Rust relay is the fallback. The R2 wiring the owner dropped from
-  NIP-11 (29, 65, 67, 94, 98 and the extensions) is still to do. The
-  store's size is `--store-capacity`.
+- The cutover ran on 2026-11-12 (`#13361`): `relay.openagents.com` runs the
+  hardened Coax relay. On 2026-11-13 (`#13382`), NIP-29, 65, 67, 94, all 11
+  Block extension roles, TLS `SIGHUP` reload, and weekly checked compaction
+  landed in production, NIP-86/98 admin remained intentionally disabled by owner
+  decision, and the Rust relay service, database, and cutover backups were
+  permanently retired. The store's size is `--store-capacity`.
 
 ## Dependencies
 

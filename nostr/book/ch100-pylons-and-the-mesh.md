@@ -865,25 +865,32 @@ rerun for this chapter on 2026-11-01.
 - The mesh's opening keys prove what one ciphertext held without giving out
   the conversation key.
 
-## Two-device Executor Network flow (W4.1–W4.3)
+## Two-device Executor Network flow (W4.1–W4.3 & Agentic npm)
 
 The same Nostr relay and signing machinery carries the live **OpenAgents
 Executor Network** across distinct physical devices:
 
 1. A worker Pylon passes a digest-checked local self-test before advertising
    `cj-executor` on its signed kind `30200` beacon, executes a pinned
-   `exec-vm-v1` / `wasm-exec-v1` workload, and publishes a signed
+   `exec-vm-v1` / `wasm-exec-v1` workload (including Agentic npm Class-E weight
+   modules published as signed kind `30212` `CompiledModuleManifest` events,
+   `#13955`/`#13960`/`#13962`), and publishes a signed kind `30210`
    `ExecutionTraceReceipt`.
 2. A second distinct machine (`validator_pubkey != worker_pubkey`,
    `validator_device_ref != worker_device_ref`) claims the receipt on the
    `cj-validate` lane, replays it bit-for-bit via
    [Psionic chapter 234](../../psionic/book/ch234-exact-replay-as-a-verification-class.md),
-   and publishes a signed NIP-32 kind `1985` `ReplayVerdict`.
-3. `#authority` settlement policy ([Bitcoin chapter 123](../../bitcoin/book/ch123-paying-for-requests.md),
+   and publishes a signed `ReplayVerdict` (`kind 30211` in the one-command
+   pre-mainnet rehearsal `openagents pylon verify-relay` in
+   `apps/openagents-cli/pylon-onboard.coax`, `#13963`; or NIP-32 `kind 1985`
+   label form).
+3. `#authority` three-leg settlement policy (`#13961`,
+   [Bitcoin chapter 123](../../bitcoin/book/ch123-paying-for-requests.md),
    [Psionic chapter 238](../../psionic/book/ch238-pay-for-verified-work.md))
-   releases both worker (`200 sats`) and validator (`50 sats`) legs on live
-   Bitcoin mainnet via Breez Spark (`0` sat fee, zero double-spend on restart)
-   and publishes a reconciled signed kind `30201` `PoolAggregate` event
+   releases worker (`200 sats`), validator (`50 sats`), and module-author
+   royalty (up to `25%` cap) legs on live Bitcoin mainnet via Breez Spark
+   (`0` sat fee, zero double-spend on restart) and publishes a reconciled
+   signed kind `30201` `PoolAggregate` event
    ([W4.3 mainnet verification record](../../docs/verification/executor-w43-mainnet-settlement.md)).
 
 ## Dependencies

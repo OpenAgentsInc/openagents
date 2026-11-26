@@ -16,10 +16,18 @@ effects**:
   caps, default-OFF owner arming (`NEEDS_OWNER.md`), and truthful receipt
   invariants—zero keys, zero sockets, zero surviving mutants.
 - **Payment effects live in the host wallet adapter** (`apps/shared/host/apple/SparkWallet.swift`,
-  `apps/openagents-desktop/Window+WalletRPC.swift`, and
+  `apps/openagents-desktop/Window+Wallet.swift`,
+  `apps/openagents-desktop/Window+WalletRPC.swift`,
+  `apps/openagents-desktop/page/walletpane.coax`, and
   `apps/openagents-cli/pylon-settle.coax` talking to the Breez Spark SDK): once
   policy returns `ES_RELEASE`, the host settles the Lightning invoice or Spark
-  transfer and writes back the payment ID.
+  transfer and writes back the payment ID. On desktop (`--minimal` and `--full`),
+  the sidebar Wallet pane displays live Spark balance and receive address
+  alongside read-only NIP-06 Nostr key metadata (`m/44'/1237'/0'/0/0`), while
+  agent-initiated spending through `WalletPay` in
+  [`openagents/core/members.coax`](../../openagents/core/members.coax) is
+  `#forall`-proven bypass-immune: even in Allow All / BYPASS / AUTO mode,
+  `WalletPay` always requires explicit interactive owner approval.
 
 ```shell
 coax/bin/coax run bitcoin/examples/paying-for-requests.coax
@@ -27,7 +35,7 @@ coax/bin/coax test pay/executor-settlement.coax
 coax/bin/coax mutate pay/executor-settlement.coax --root-only
 ```
 
-## By hand: two-leg settlement, rolling UTC caps, and refusal order
+## By hand: three-leg settlement, rolling UTC caps, and refusal order
 
 Suppose the owner arms the settlement policy with `per_payout_cap_sat = 500`,
 `per_pubkey_daily_cap_sat = 1000`, and `global_daily_cap_sat = 1200`. On UTC
@@ -39,19 +47,26 @@ worker pubkey:
    → `ES_RELEASE`.
 2. **Validator leg (`50 sats`, `EXACT_REPLAY`):** Independent second-device
    validator passes the exact same cap checks → `ES_RELEASE`.
-3. **Default-OFF mainnet arming:** If `owner_armed == false`, any valid payout
+3. **Author royalty leg (`25 sats`, `EXACT_REPLAY`, `#13961`):** Module-author
+   royalty leg passes per-leg caps (`ES_RELEASE`), and
+   `es_admit_three_leg_split(200, 50, 25, 2500)` checks
+   `25 * 10000 = 250,000 <= (200 + 50 + 25) * 2500 = 687,500` (`9.09% <= 25%`)
+   → `ES_RELEASE`. Asking for a `100 sat` royalty on `(200, 50, 100)` gives
+   `100 * 10000 = 1,000,000 > 350 * 2500 = 875,000` (`28.57% > 25%`) →
+   `ES_REFUSE_BAD_INPUT`.
+4. **Default-OFF mainnet arming:** If `owner_armed == false`, any valid payout
    returns `ES_HOLD_OWNER` before touching the Spark wallet.
-4. **Duplicate delivery after restart:** If `already_paid_leg == true` for a
+5. **Duplicate delivery after restart:** If `already_paid_leg == true` for a
    `(receipt_id, leg)` pair, policy returns `ES_REFUSE_DUPLICATE` (zero
    double-spend).
-5. **Failed or unverified verdicts:** `ES_VERDICT_FAILED` returns
+6. **Failed or unverified verdicts:** `ES_VERDICT_FAILED` returns
    `ES_WITHHOLD_FAILED`; `ES_VERDICT_UNVERIFIED` returns `ES_HOLD_OWNER`.
-6. **Rolling 24-hour UTC cap reset:** Requesting `350 sats` on day `20778`
+7. **Rolling 24-hour UTC cap reset:** Requesting `350 sats` on day `20778`
    gives `900 + 350 = 1250 > 1200` → `ES_HOLD_OWNER`. On the next UTC day
    (`20779 > 20778`), `es_roll_period` resets both daily counters to `0`, so
    `350 <= 500` releases (`ES_RELEASE`). A stale or older day (`20777 < 20778`)
    never resets counters backwards.
-7. **Truthful receipts:** `es_receipt_truthful(real_bitcoin_moved, settled_sat,
+8. **Truthful receipts:** `es_receipt_truthful(real_bitcoin_moved, settled_sat,
    has_payment_id)` returns `false` if a caller claims `real_bitcoin_moved =
    true` without both `settled_sat > 0` and a real Spark/Lightning payment ID.
 
@@ -178,14 +193,18 @@ es_receipt_truthful :: (real_bitcoin_moved: bool, settled_sat: int, has_payment_
 ## Runnable example and expected transcript
 
 [`bitcoin/examples/paying-for-requests.coax`](../examples/paying-for-requests.coax)
-runs the two-leg settlement trace, all guarded refusals, the rolling UTC day
-reset, and the truthful receipt gate, matching
+runs the three-leg settlement trace (worker, validator, and module author with
+the 25% royalty cap check), all guarded refusals, the rolling UTC day reset,
+and the truthful receipt gate, matching
 [`bitcoin/fixtures/paying-for-requests.out`](../fixtures/paying-for-requests.out)
 byte for byte in debug and release builds:
 
 ```text
 worker 200 sat: release
 validator 50 sat: release
+author 25 sat: release
+three-leg split 200/50/25 (<=25%): release
+three-leg split 200/50/100 (>25% cap): refuse_bad_input
 unarmed mainnet: hold_owner
 duplicate leg: refuse_duplicate
 failed verdict: withhold_failed
@@ -200,15 +219,18 @@ receipt real+id: true real+no_id: false dry_run: true
 - **Unit & mutation checks:** `coax/bin/coax test pay/executor-settlement.coax`
   and `coax/bin/coax mutate pay/executor-settlement.coax --root-only` (`101/101`
   mutants killed, `0` survived).
-- **Live two-device Bitcoin mainnet qualification (W4.3, `#13922`):** Verified
-  end-to-end across two distinct physical machines (Apple M5 Max worker +
-  `coderos-4080` RTX 4080 Linux validator over a live Coax Nostr relay)
-  settling both legs on **Bitcoin mainnet via Breez Spark (`0.27.2`)**—`200
-  sats` to the worker + `50 sats` to the validator, `0` sat fee, verified
-  recipient mainnet balances, zero double-spend on restart, and a reconciled
-  signed `NIP-PYLON` kind `30201` pool aggregate reporting
-  `paid_msat.bitcoin = 250000`. See
-  [the W4.3 mainnet settlement verification record](../../docs/verification/executor-w43-mainnet-settlement.md),
+- **Live two-device Bitcoin mainnet qualification (W4.3, `#13922`) and three-leg
+  extension (`#13961`):** Verified end-to-end across two distinct physical
+  machines (Apple M5 Max worker + `coderos-4080` RTX 4080 Linux validator over
+  a live Coax Nostr relay) settling on **Bitcoin mainnet via Breez Spark
+  (`0.27.2`)**—`200 sats` to the worker + `50 sats` to the validator, `0` sat
+  fee, verified recipient mainnet balances, zero double-spend on restart, and a
+  reconciled signed `NIP-PYLON` kind `30201` pool aggregate reporting
+  `paid_msat.bitcoin = 250000`. `#13961` extended `pay/executor-settlement.coax`
+  and `apps/openagents-cli/pylon-settle.coax` to a third `ES_LEG_AUTHOR`
+  royalty leg capped at `25%` (`2500 bps`); broader agent-economy `NIP-REG` /
+  `NIP-EVAL` / `NIP-PAY` live payout wiring is tracked in open issue `#14060`.
+  See [the W4.3 mainnet settlement verification record](../../docs/verification/executor-w43-mainnet-settlement.md),
   [Psionic chapter 238](../../psionic/book/ch238-pay-for-verified-work.md), and
   [Nostr chapter 82](../../nostr/book/ch082-pylons-environments-and-deploys.md).
 - **Protocol schema:** `VerifiedPayoutIntent` and `SettlementReceipt` in

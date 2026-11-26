@@ -665,6 +665,12 @@ moved to the standard library's `Kept(8)` (#12696), `xp_ledger.coax` passed
 - An XP award counts only when it binds to its exact, unrewritten quest,
   matches its key, season and XP table, passed its rule, and is alone on
   its key; a revoked award is removed and frees the key.
+- Beyond this chapter's offline NIP-MV profile, the **GameBuilder Nostr Lobby**
+  (`#14045`, [`gamebuilder/core/lobby.coax`](../../gamebuilder/core/lobby.coax),
+  [`docs/gamebuilder/lobby.md`](../../docs/gamebuilder/lobby.md)) runs live
+  over `wss://relay.openagents.com` using NIP-42 AUTH, NIP-38 kind `30315`
+  presence (`150 s` NIP-40 expiration), kind `42` lobby chat (`6 h`
+  expiration), and NIP-56 kind `1984` reports.
 
 ## Dependencies
 

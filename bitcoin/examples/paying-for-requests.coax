@@ -18,7 +18,7 @@ main :: () {
   };
   st := EsPeriodState.{utc_day = 20778, global_spent_sat = 900, pubkey_spent_sat = 750};
 
-  // Live two-leg Executor Network payout: 200 sat worker + 50 sat validator
+  // Live three-leg Executor Network payout: 200 sat worker + 50 sat validator + 25 sat module author (#13961)
   worker := EsPayoutRequest.{
     leg = ES_LEG_WORKER, verdict = ES_VERDICT_EXACT_REPLAY,
     amount_sat = 200, utc_day = 20778, already_paid_leg = false,
@@ -27,8 +27,15 @@ main :: () {
     leg = ES_LEG_VALIDATOR, verdict = ES_VERDICT_EXACT_REPLAY,
     amount_sat = 50, utc_day = 20778, already_paid_leg = false,
   };
+  author := EsPayoutRequest.{
+    leg = ES_LEG_AUTHOR, verdict = ES_VERDICT_EXACT_REPLAY,
+    amount_sat = 25, utc_day = 20778, already_paid_leg = false,
+  };
   print("worker 200 sat: %\n", es_name(es_admit_payout(pol, st, worker)));
   print("validator 50 sat: %\n", es_name(es_admit_payout(pol, st, validator)));
+  print("author 25 sat: %\n", es_name(es_admit_payout(pol, st, author)));
+  print("three-leg split 200/50/25 (<=25%%): %\n", es_name(es_admit_three_leg_split(200, 50, 25, 2500)));
+  print("three-leg split 200/50/100 (>25%% cap): %\n", es_name(es_admit_three_leg_split(200, 50, 100, 2500)));
 
   // Broken / guarded cases
   unarmed := pol; unarmed.owner_armed = false;

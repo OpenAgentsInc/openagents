@@ -4,7 +4,7 @@
 - [Plan and prerequisites](PLAN.md)
 
 The contents list the chapters written so far. The [plan](PLAN.md) lists all
-124, with what each one needs and what "done" means.
+125, with what each one needs and what "done" means.
 
 **I. Foundations**
 
@@ -91,7 +91,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [57. Validate a block: every consensus rule](ch057-validate-a-block-every-consensus-rule.md) — implemented
 - [58. Connect and disconnect a block](ch058-connect-and-disconnect-a-block.md) — implemented
 - [59. The block index and the most-work chain](ch059-the-block-index-and-the-most-work-chain.md) — implemented
-- [60. Reorganizations and invalid chains](ch060-reorganizations-and-invalid-chains.md)
+- [60. Reorganizations and invalid chains](ch060-reorganizations-and-invalid-chains.md) — implemented
 - [61. Block files and undo files](ch061-block-files-and-undo-files.md) — implemented
 - [62. A key-value store for the chainstate](ch062-a-key-value-store-for-the-chainstate.md) — implemented
 - [63. The coins cache and crash-safe flushes](ch063-the-coins-cache-and-crash-safe-flushes.md) — implemented
@@ -163,6 +163,6 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [122. Agent treasuries](ch122-agent-treasuries.md) — implemented
 - [123. Paying for requests and verified work](ch123-paying-for-requests.md) — implemented
 
-## Explorer extensions
+**XX. Explorer extensions**
 
-- [125. Address history, balances and spends](ch125-address-history-balances-and-spends.md)
+- [125. Address history, balances and spends](ch125-address-history-balances-and-spends.md) — implemented

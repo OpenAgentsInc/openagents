@@ -2181,7 +2181,8 @@
         "cpu"
       ],
       "adopted_by": [
-        "apps/shared/host/apple/SparkWallet.swift"
+        "apps/shared/host/apple/SparkWallet.swift",
+        "apps/openagents-desktop/Window+Wallet.swift"
       ]
     },
     {

@@ -880,6 +880,8 @@ and none is marked equivalent. The full mutation run
   unknown feature or kind, under equivocation, or with a verified
   revocation; under strict policy it also needs a current, complete
   checkpoint. A revoked release never installs.
+- Live runtime wiring of `NIP-REG` package registry publication alongside
+  `NIP-EVAL` and `NIP-PAY` is tracked in open issue `#14060`.
 
 ## Dependencies
 

@@ -833,6 +833,10 @@ full mutation run (`COAX_MUTATION_FULL=1`).
 - `reach_presence_accept` keeps the newest presence sample by the reader's
   clock and never rolls a host back; `reach_hints_usable` uses hints only
   for the generation of fresh presence.
+- For mobile and remote desktop clients, `#authority`
+  [`coax/lib/agent/environment/route-policy.coax`](../../coax/lib/agent/environment/route-policy.coax)
+  (`#14030`) builds deterministic **Tailnet → LAN → Nostr** route failover with
+  strict credential-audience isolation on top of these reachability rules.
 
 ## Dependencies
 
