@@ -98,7 +98,7 @@
   #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"3\"}") == MWW_ENDED;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
   s[0].copied_turn = 0; s[0].copied_kind = CP_COPIED_ALL;
-  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nlook\n\nMicrocoder:\nDone.";
+  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nlook\n\nOpenAgents:\nDone.";
   kept: [65536] u8; kn := coder_page_save(s, kept[..]);
   #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]);
   #assert s[0].turns[0].agents[0].nrows == 2 && s[0].calls[cp_nth(s, 0, 0, 0)].said && !s[0].calls[cp_nth(s, 0, 0, 1)].said;

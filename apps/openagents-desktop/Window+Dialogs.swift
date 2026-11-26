@@ -849,7 +849,7 @@ extension CoderWindow {
     #if OA_FULL
     /// Settings > Models > Gemini API key: sets, replaces or removes the user's Gemini API key.
     func chooseGeminiKey() {
-        var about = "Use your own Gemini API key (from Google AI Studio) to run Microcoder on Gemini models. Coder keeps it in a file only you can read."
+        var about = "Use your own Gemini API key (from Google AI Studio) to run OpenAgents on Gemini models. OpenAgents keeps it in a file only you can read."
         if let kept = CoderGemini.saved { about += "\n\nThe key set now ends " + CoderKey.tail(kept) + "." }
         else { about += "\n\nNo key is set now." }
         var d = CoderDialog(size: .md, title: "Gemini API Key", body: about)
@@ -1496,7 +1496,7 @@ extension CoderWindow {
     /// model for sub-agents (level openrouter). An empty model removes it. Each model is checked against
     /// OpenRouter's list first: it must take a strict JSON schema.
     func chooseOpenRouter() {
-        var about = "Run Microcoder or its sub-agents on any OpenRouter model that takes a strict JSON schema. Use OpenRouter ids such as deepseek/deepseek-v4.1-flash-1017. The main model joins the composer's model picker. The sub-agent model is one more level Microcoder can hand tasks to: ask for OpenRouter by name."
+        var about = "Run OpenAgents or its sub-agents on any OpenRouter model that takes a strict JSON schema. Use OpenRouter ids such as deepseek/deepseek-v4.1-flash-1017. The main model joins the developer model picker. The sub-agent model is one more level OpenAgents can hand tasks to: ask for OpenRouter by name."
         if let kept = CoderOpenRouter.saved { about += "\n\nThe key set now ends " + CoderKey.tail(kept) + ". Leave the key empty to keep it." }
         else if CoderOpenRouter.hasKey { about += "\n\nNo key is set here: Coder uses ~/work/.secrets/openrouter.env." }
         else { about += "\n\nNo key is set. Paste one from openrouter.ai/settings/keys." }
@@ -1504,7 +1504,7 @@ extension CoderWindow {
         var d = CoderDialog(size: .md, title: "OpenRouter Models", body: about)
         d.fields = [
             .init(label: "Key", hint: hadKey ? "Leave empty to keep the key set now" : "sk-or-…", secure: true),
-            .init(label: "Model for Microcoder", value: CoderOpenRouter.main, hint: "deepseek/deepseek-v4.1-flash-1017 (empty: none)"),
+            .init(label: "Model for OpenAgents", value: CoderOpenRouter.main, hint: "deepseek/deepseek-v4.1-flash-1017 (empty: none)"),
             .init(label: "Model for sub-agents", value: CoderOpenRouter.sub, hint: "deepseek/deepseek-v4.1-flash-1017 (empty: none)"),
         ]
         d.focus = hadKey ? 1 : 0
@@ -1526,7 +1526,7 @@ extension CoderWindow {
             CoderOpenRouter.unfit([m, s]) { bad in
                 if let bad, !bad.isEmpty {
                     self.present(.notice("OpenRouter has no model " + bad.joined(separator: " or ") + " that takes a strict JSON schema.",
-                                         "Microcoder sends one on every step. Check the id on openrouter.ai/models. The models were not changed."))
+                                         "OpenAgents sends one on every step. Check the id on openrouter.ai/models. The models were not changed."))
                     return
                 }
                 CoderOpenRouter.setModels(main: m, sub: s)

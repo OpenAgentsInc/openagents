@@ -75,24 +75,28 @@
   s[0].inkling = true;
   cp_init(s[..]);
 
-  // Default: Flawed Agent (5 models: 4 Gemini 4 Neon models + Inkling 2 Mini) + local Inkling (1 model) = 6 selectable models.
-  // Always starts on Flawed · Gemini 4 Neon (even when s[0].inkling == true).
-  #assert cp_has_model_picker(s[..]) && cp_models(s[..]) == CP_FLAWED_MODELS + 1;
+  // Local-only boot (inkling == true, no cloud auth): compute picker is hidden automatically (1 entry: "oa:local").
+  #assert !cp_has_model_picker(s[..]) && cp_models(s[..]) == 1 && coder_page_model_flawed(s[..]) && coder_page_model_flawed_local(s[..]);
+  // Once cloud compute is configured: clean OpenAgents compute control (Auto | Local | Cloud), starting on Auto ("oa:auto").
+  coder_page_settings_gauth(s[..], "vertex", "Vertex AI");
+  #assert coder_page_new(s[..]);
+  #assert cp_has_model_picker(s[..]) && cp_models(s[..]) == CP_COMPUTE_MODES;
   #assert coder_page_model_flawed(s[..]) && !coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
   mid: [64] u8;
   mn := coder_page_model_id_out(s[..], mid[..]);
-  #assert cast(string) mid[0..<mn] == "oa:gemini-4-neon";
+  #assert cast(string) mid[0..<mn] == "oa:auto";
   #assert cp_effort_count(s[..], cp_model_index(s[..])) == 5 && cp_effort_label(s[..], cp_model_index(s[..])) == "High";
   #assert cp_tr(CP_LOCALE_EN, "new_chat") == "New chat";
   #assert cp_tr(CP_LOCALE_EN, "send") == "Send";
   #assert cp_tr(CP_LOCALE_EN, "stop") == "Stop";
 
-  // Switching to Inkling, Gemini 4 Neon (canonical oa: and legacy flawed:), and back to OpenAgents Inkling works cleanly.
-  #assert coder_page_pick_model(s[..], "inkling-2-mini") && !coder_page_model_flawed(s[..]) && coder_page_model_provider(s[..]) == 2;
+  // Switching compute modes and legacy saved model IDs (oa:, flawed:, inkling-2-mini) works cleanly.
+  #assert coder_page_pick_model(s[..], "oa:local") && coder_page_model_flawed(s[..]) && coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
   #assert coder_page_pick_model(s[..], "flawed:gemini-4-neon") && coder_page_model_flawed(s[..]) && !coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
   #assert coder_page_pick_model(s[..], "oa:gemini-4-neon") && coder_page_model_flawed(s[..]) && !coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
+  #assert coder_page_pick_model(s[..], "inkling-2-mini") && coder_page_model_flawed(s[..]) && coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
 
-  // Core v1.0 Settings pages are allowed (General, Flawed, Providers, Models, About & updates).
+  // Core v1.0 Settings pages are allowed (General, Agent, Providers, Models, About & updates).
   #assert cp_set_page_ok_flags(0, CP_PG_GENERAL);
   #assert cp_set_page_ok_flags(0, CP_PG_FLAWED);
   #assert cp_set_page_ok_flags(0, CP_PG_PROVIDERS);
@@ -105,18 +109,22 @@
   #assert !cp_set_page_ok_flags(0, CP_PG_VOICE);
   #assert !cp_set_page_ok_flags(0, CP_PG_SCHED);
 
-  // Enabling Antigravity does NOT expose other models until the user explicitly opts in via show_other_models.
+  // Enabling Antigravity does NOT expose other models until the user opts in via Settings -> Agent -> Developer.
   coder_page_set_agy(s[..], true);
-  #assert cp_models(s[..]) == CP_FLAWED_MODELS + 1 && coder_page_model_flawed(s[..]);
-  // Once the user opts into seeing other models, Antigravity joins the picker and switches cleanly.
+  #assert cp_models(s[..]) == CP_COMPUTE_MODES && coder_page_model_flawed(s[..]);
+  // Once the user opts into Developer -> Show other models, Antigravity joins the picker and switches cleanly.
   coder_page_show_other_models_set(s[..], true);
   #assert cp_has_model_picker(s[..]) && cp_models(s[..]) == CP_FLAWED_MODELS + 2;
   #assert coder_page_pick_model(s[..], "antigravity") && coder_page_model_agy(s[..]) && coder_page_model_provider(s[..]) == 1;
   #assert coder_page_pick_model(s[..], "flawed:inkling-2-mini") && coder_page_model_flawed(s[..]) && coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
   coder_page_show_other_models_set(s[..], false);
-  #assert cp_models(s[..]) == CP_FLAWED_MODELS + 1 && coder_page_model_provider(s[..]) == 8;
+  #assert cp_models(s[..]) == CP_COMPUTE_MODES && coder_page_model_provider(s[..]) == 8;
   coder_page_set_agy(s[..], false);
   #assert cp_has_model_picker(s[..]) && coder_page_model_provider(s[..]) == 8;
+  // When cloud auth is cleared and only local Inkling 2 Mini is available, compute picker hides automatically.
+  coder_page_settings_gauth(s[..], "", "");
+  coder_page_set_inkling(s[..], true);
+  #assert !cp_has_model_picker(s[..]) && cp_models(s[..]) == 1 && coder_page_model_flawed_local(s[..]);
 
   // Settings -> Flawed & Settings -> Providers open directly on the slim v1.0 page without any feature flag.
   coder_page_settings_open(s[..], CP_PG_FLAWED, "");

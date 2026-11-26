@@ -967,9 +967,9 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   } else if kind != MWW_ATTEMPT { s[0].turns[i].agents[j].again_n = 0; }
   if kind != MWW_NONE && kind != MWW_THOUGHT && kind != MWW_TODOS { s[0].turns[i].agents[j].thought_open = false; }
   if kind == MWW_ASK && !claude && s[0].turns[i].agents[j].quiet >= CP_QUIET {
-    // 100 tool calls in a row with no file changed: this command waits, and Microcoder decides (GitHub #13676)
+    // 100 tool calls in a row with no file changed: this command waits, and OpenAgents decides (GitHub #13676)
     s[0].turns[i].agents[j].answer = l[0].ticket.value; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].paused = true;
-    s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], "paused: Microcoder decides whether it goes on"); s[0].turns[i].agents[j].now_running = false;
+    s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], "paused: OpenAgents decides whether it goes on"); s[0].turns[i].agents[j].now_running = false;
     s[0].turns[i].h = 0;
     cp_round_check(s, i);
   } else if kind == MWW_ASK {
@@ -1058,9 +1058,9 @@ coder_page_agent_answer_line :: (s: [] CoderPage, j: int, out: [] u8) -> int #ex
   }
   rest := out[at..<out.count];
   if s[0].turns[i].agents[j].deny_due {
-    // the command that waited through the pause is not run: its answer carries Microcoder's note
+    // the command that waited through the pause is not run: its answer carries OpenAgents's note
     s[0].turns[i].agents[j].deny_due = false;
-    wb: [CP_AGENT_TASK + 256] u8; wn := cp_out(wb[..], "This command was not run. You were paused after 100 tool calls in a row with no file changed, and Microcoder let you go on. Its note: ");
+    wb: [CP_AGENT_TASK + 256] u8; wn := cp_out(wb[..], "This command was not run. You were paused after 100 tool calls in a row with no file changed, and OpenAgents let you go on. Its note: ");
     wn += cp_out(wb[wn..<wb.count], cast(string) s[0].turns[i].agents[j].say[0..<s[0].turns[i].agents[j].say_n]);
     w := mww_answer(rest, false, s[0].turns[i].agents[j].answer, cast(string) wb[0..<wn]);
     return ifx w > 0 then at + w else at;

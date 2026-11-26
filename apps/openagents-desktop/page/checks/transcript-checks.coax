@@ -164,7 +164,7 @@
   s[0].copied_kind = CP_COPIED_REPLY;
   n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "One file: **a**.";
   s[0].copied_kind = CP_COPIED_ALL;
-  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nList files\n\nRan: ls\n\nMicrocoder:\nOne file: **a**.";
+  n = coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nList files\n\nRan: ls\n\nOpenAgents:\nOne file: **a**.";
   #assert coder_page_new(s) && s[0].copied_kind == CP_COPIED_NONE;
 }
 
@@ -185,7 +185,7 @@
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
   out: [512] u8;
   s[0].copied_turn = 0; s[0].copied_kind = CP_COPIED_ALL;
-  n := coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nlook\n\nRan: ls\n\nMicrocoder:\nDone.";
+  n := coder_page_copied(s, out[..]); #assert cast(string) out[0..<n] == "You:\nlook\n\nRan: ls\n\nOpenAgents:\nDone.";
   // a kept chat has it, in its place
   kept: [65536] u8; kn := coder_page_save(s, kept[..]);
   #assert kn > 0 && coder_page_new(s) && s[0].calls_n == 0 && coder_page_load(s, cast(string) kept[0..<kn]);

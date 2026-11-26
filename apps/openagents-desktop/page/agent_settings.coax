@@ -1,6 +1,31 @@
-// Coder Desktop page (../page.coax & ../page-v1.coax): Flawed Agent model table,
-// Claude-Code-parity Settings -> Flawed screen, state, press handlers, and host C exports.
-// Uses Gemini 4 Neon (always first & default) and Local Inkling 2 Mini (Psionic Metal) — zero Anthropic.
+// Coder Desktop page (../page.coax & ../page-v1.coax): OpenAgents compute modes,
+// developer model table, Settings -> Agent screen (4 clean groups), state, press handlers,
+// and host C exports.
+
+CP_COMPUTE_MODES :: 3;
+CP_COMPUTE_AUTO :: 0;
+CP_COMPUTE_LOCAL :: 1;
+CP_COMPUTE_CLOUD :: 2;
+CP_COMPUTE_ID :: [CP_COMPUTE_MODES] string.[
+  "oa:auto",
+  "oa:local",
+  "oa:cloud",
+];
+CP_COMPUTE_LABEL :: [CP_COMPUTE_MODES] string.[
+  "Auto",
+  "Local",
+  "Cloud",
+];
+CP_COMPUTE_DESC :: [CP_COMPUTE_MODES] string.[
+  "Cloud & local · Best available",
+  "On-device Inkling 2 Mini · Psionic Metal",
+  "Cloud · Gemini 4 Neon · 1M context",
+];
+CP_COMPUTE_META :: [CP_COMPUTE_MODES] string.[
+  "OpenAgents · Auto",
+  "OpenAgents · Local",
+  "OpenAgents · Cloud",
+];
 
 CP_FLAWED_MODELS :: 5;
 CP_FLAWED_PREFIX :: "oa:";
@@ -185,6 +210,27 @@ cp_flawed_desc_for :: (s: [] CoderPage, slot: int) -> string {
   return cast(string) fl[0].desc_buf[0..<n];
 }
 
+cp_compute_id_for :: (slot: int) -> string {
+  ids := CP_COMPUTE_ID;
+  return ifx slot >= 0 && slot < CP_COMPUTE_MODES then ids[slot] else ids[CP_COMPUTE_AUTO];
+}
+
+cp_compute_label_for :: (slot: int) -> string {
+  labels := CP_COMPUTE_LABEL;
+  return ifx slot >= 0 && slot < CP_COMPUTE_MODES then labels[slot] else labels[CP_COMPUTE_AUTO];
+}
+
+cp_compute_meta_for :: (slot: int) -> string {
+  metas := CP_COMPUTE_META;
+  return ifx slot >= 0 && slot < CP_COMPUTE_MODES then metas[slot] else metas[CP_COMPUTE_AUTO];
+}
+
+cp_compute_desc_for :: (s: [] CoderPage, slot: int) -> string {
+  descs := CP_COMPUTE_DESC;
+  if slot == CP_COMPUTE_LOCAL && s.count > 0 { return cp_inkling_desc(s); }
+  return ifx slot >= 0 && slot < CP_COMPUTE_MODES then descs[slot] else descs[CP_COMPUTE_AUTO];
+}
+
 cp_flawed_sync_empty_chat :: (s: [] CoderPage) {
   if s.count < 1 { return; }
   if s[0].nturns == 0 && !cp_running(s) {
@@ -194,7 +240,7 @@ cp_flawed_sync_empty_chat :: (s: [] CoderPage) {
   }
 }
 
-// ---------------------------------------------------------------- Settings -> Flawed drawing
+// ---------------------------------------------------------------- Settings -> Agent drawing (4 clean groups)
 
 cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -> f32 {
   t := f[0].skin.set; sh := f[0].sheet;
@@ -202,114 +248,57 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   y := y0;
 
   y += set_page_head(f, "set.title", x, y, w, "Agent",
-    "Native pure-Coax autonomous coding agent powered by local Inkling 2 Mini (Psionic Metal) and Gemini 4 Neon models, with streaming, thinking, permissions, sandboxing, compaction, memory, and hooks.") + t.block_gap;
+    "Configure OpenAgents compute, reasoning effort, safety permissions, memory, and developer overrides.") + t.block_gap;
 
-  // 1. Default Agent & Model
-  y += set_section_head(f, "set.flawed.model.head", x, y, w, "Default Agent & Model",
-    "Defaults to OpenAgents · Gemini 4 Neon on every new chat. Switch freely between Gemini 4 models and local Inkling 2 Mini in the composer.") + t.section_gap;
+  // 1. Compute & Local Model
+  y += set_section_head(f, "set.flawed.compute.head", x, y, w, "Compute & Local Model",
+    "Auto uses cloud compute when available and falls back to on-device Inkling 2 Mini. Switch anytime in the composer.") + t.section_gap;
   mrows: [5] SetRow;
-  mrows[0] = SetRow.{id = "set.flawed.agent", name = "Default agent",
-    desc = ifx fl[0].default_agent == 0
-           then "New chats start on OpenAgents. Switch models anytime in the composer."
-           else "New chats start on standalone Inkling 2 Mini (Inky). Pick OpenAgents anytime in the composer.",
-    kind = SET_ROW_CHOICE, noptions = 2, chosen = cp_flawed_clamp(fl[0].default_agent, 0, 1), action = CP_SET_ACT};
-  mrows[0].options[0] = "OpenAgents";
-  mrows[0].options[1] = "Inky";
+  cmode := cp_flawed_clamp(fl[0].default_agent, 0, CP_COMPUTE_MODES - 1);
+  mrows[0] = SetRow.{id = "set.flawed.agent", name = "Default compute",
+    desc = ifx cmode == CP_COMPUTE_LOCAL
+           then "New chats run on-device via Inkling 2 Mini (Psionic Metal) when installed."
+           else ifx cmode == CP_COMPUTE_CLOUD
+           then "New chats run on cloud compute (Gemini 4 Neon · 1M context)."
+           else "New chats use cloud compute when configured and local Inkling 2 Mini otherwise.",
+    kind = SET_ROW_CHOICE, noptions = CP_COMPUTE_MODES, chosen = cmode, action = CP_SET_ACT};
+  mrows[0].options[0] = "Auto";
+  mrows[0].options[1] = "Local";
+  mrows[0].options[2] = "Cloud";
 
-  shorts := CP_FLAWED_SHORT;
-  mslot := cp_flawed_clamp(fl[0].model_slot, 0, CP_FLAWED_MODELS - 1);
-  mrows[1] = SetRow.{id = "set.flawed.model", name = "Default model",
-    desc = ifx mslot == CP_FLAWED_START_LOCAL
-           then "Starts on local Inkling 2 Mini when installed, automatically falling back to Gemini 4 Neon otherwise."
-           else "New OpenAgents chats start on this Gemini 4 Neon family model.",
-    kind = SET_ROW_CHOICE, noptions = CP_FLAWED_MODELS, chosen = mslot, action = CP_SET_ACT};
-  for i: 0..<CP_FLAWED_MODELS { mrows[1].options[i] = shorts[i]; }
+  elabels := CP_CLAUDE_EFFORT_LABEL;
+  mrows[1] = SetRow.{id = "set.flawed.effort", name = "Reasoning effort",
+    desc = "Default reasoning depth for new chats. Override per chat from the composer effort control.",
+    kind = SET_ROW_CHOICE, noptions = CP_FLAWED_EFFORTS, chosen = cp_flawed_effort(s), action = CP_SET_ACT};
+  for ei: 0..<CP_FLAWED_EFFORTS { mrows[1].options[ei] = elabels[ei]; }
 
-  cmod := ifx fl[0].custom_model_n > 0 then sheet_pool(sh, cast(string) fl[0].custom_model[0..<fl[0].custom_model_n]) else "Default (from picker)";
-  mrows[2] = SetRow.{id = "set.flawed.custom", name = "Custom model override",
-    desc = "Override the wire model slug for Vertex AI, Gemini API, OpenRouter, or custom local Psionic models.",
-    value = cmod, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
-
-  mrows[3] = SetRow.{id = "set.flawed.ctx1m", name = "Extended 1M context",
-    desc = "Gemini 4 Neon models natively support 1,048,576 input tokens (32K on local Inkling 2 Mini).",
-    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].extended_ctx then 1 else 0, action = CP_SET_ACT};
-  mrows[3].options[0] = "Auto"; mrows[3].options[1] = "1M";
-
-  mrows[4] = SetRow.{id = "set.flawed.fast", name = "Fast mode",
-    desc = "Prefer lower-latency output when supported by the active backend.",
-    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].fast_mode then 1 else 0, action = CP_SET_ACT};
-  mrows[4].options[0] = "Off"; mrows[4].options[1] = "On";
-  y += cp_set_group(s, f, "set.flawed.model.group", x, y, w, mrows[..]) + t.block_gap;
-
-  // 2. Authentication & Backend
-  y += set_section_head(f, "set.flawed.auth.head", x, y, w, "Authentication & Backend",
-    "Auto routes Inkling 2 Mini to Local Psionic Metal and Neon models to Vertex AI, Gemini API, or OpenRouter.") + t.section_gap;
-  arows: [4] SetRow;
-  be := cp_flawed_clamp(fl[0].backend, 0, 4);
-  arows[0] = SetRow.{id = "set.flawed.backend", name = "Inference backend",
-    desc = ifx be == 1 then "Force Local Psionic Metal server (on-device Inkling 2 Mini; nothing leaves this Mac)."
-           else ifx be == 2 then "Force Google Cloud Vertex AI (us multi-region service account / ADC)."
-           else ifx be == 3 then "Force Gemini Developer API (x-goog-api-key)."
-           else ifx be == 4 then "Force OpenRouter Chat Completions API (google/gemini-4-* slugs)."
-           else "Auto-route by model: Local Psionic for Inkling 2 Mini; Vertex AI -> Gemini API -> OpenRouter for Neon.",
-    kind = SET_ROW_CHOICE, noptions = 5, chosen = be, action = CP_SET_ACT};
-  arows[0].options[0] = "Auto";
-  arows[0].options[1] = "Local";
-  arows[0].options[2] = "Vertex";
-  arows[0].options[3] = "Gemini";
-  arows[0].options[4] = "OpenRouter";
+  mrows[2] = SetRow.{id = "set.flawed.tdisp", name = "Thinking display",
+    desc = "Show live streamed thought summaries in the activity timeline, or keep them hidden.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = cp_flawed_clamp(fl[0].thinking_display, 0, 1), action = CP_SET_ACT};
+  mrows[2].options[0] = "Summarized"; mrows[2].options[1] = "Hidden";
 
   auth_val := ifx fl[0].auth_status_n > 0 then sheet_pool(sh, cast(string) fl[0].auth_status[0..<fl[0].auth_status_n]) else "Not checked yet";
-  arows[1] = SetRow.{id = "set.flawed.auth", name = "Active credentials",
-    desc = "Live probe from oa-worker --auth showing Local Psionic and Vertex AI / Gemini readiness.",
+  mrows[3] = SetRow.{id = "set.flawed.auth", name = "Active credentials",
+    desc = "Live probe showing local Inkling 2 Mini and cloud compute readiness.",
     value = auth_val, kind = SET_ROW_BUTTON, button = "Check", action = CP_SET_ACT};
 
   key_val := ifx fl[0].key_label_n > 0 then sheet_pool(sh, cast(string) fl[0].key_label[0..<fl[0].key_label_n]) else "Not set";
-  arows[2] = SetRow.{id = "set.flawed.key", name = "Gemini / OpenRouter API key",
-    desc = "Optional key stored in ~/Library/Application Support/Coder/agent-key (0600, never logged). Not needed for Local Psionic or Vertex SA.",
+  mrows[4] = SetRow.{id = "set.flawed.key", name = "Gemini / OpenRouter API key",
+    desc = "Optional key stored locally (0600, never logged). Not needed for on-device Inkling or Vertex AI service accounts.",
     value = key_val, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
+  y += cp_set_group(s, f, "set.flawed.compute.group", x, y, w, mrows[..]) + t.block_gap;
 
-  url_val := ifx fl[0].base_url_n > 0 then sheet_pool(sh, cast(string) fl[0].base_url[0..<fl[0].base_url_n]) else "Default endpoint";
-  arows[3] = SetRow.{id = "set.flawed.url", name = "Custom API base URL",
-    desc = "Optional endpoint override for Vertex/Gemini proxies, OpenRouter mirrors, or remote Psionic servers.",
-    value = url_val, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
-  y += cp_set_group(s, f, "set.flawed.auth.group", x, y, w, arows[..]) + t.block_gap;
-
-  // 3. Reasoning & Thinking
-  y += set_section_head(f, "set.flawed.think.head", x, y, w, "Reasoning & Thinking",
-    "Controls live streamed thinking summaries, default reasoning effort, and lossless thought-signature replay across tool turns.") + t.section_gap;
-  trows: [3] SetRow;
-  tm := cp_flawed_clamp(fl[0].thinking_mode, 0, 2);
-  trows[0] = SetRow.{id = "set.flawed.tmode", name = "Thinking mode",
-    desc = ifx tm == 0 then "Adaptive — stream native reasoning thoughts scaled by effort level (recommended)."
-           else ifx tm == 1 then "Extended — deeper reasoning budget scaled by effort level."
-           else "Off — hide thoughts and minimize reasoning latency.",
-    kind = SET_ROW_CHOICE, noptions = 3, chosen = tm, action = CP_SET_ACT};
-  trows[0].options[0] = "Adaptive"; trows[0].options[1] = "Extended"; trows[0].options[2] = "Off";
-
-  elabels := CP_CLAUDE_EFFORT_LABEL;
-  trows[1] = SetRow.{id = "set.flawed.effort", name = "Default effort",
-    desc = "Default reasoning depth for new OpenAgents chats. Override per chat from the composer effort menu.",
-    kind = SET_ROW_CHOICE, noptions = CP_FLAWED_EFFORTS, chosen = cp_flawed_effort(s), action = CP_SET_ACT};
-  for ei: 0..<CP_FLAWED_EFFORTS { trows[1].options[ei] = elabels[ei]; }
-
-  trows[2] = SetRow.{id = "set.flawed.tdisp", name = "Thinking display",
-    desc = "Show live streamed thought rows in the activity timeline, or omit them from the UI while still preserving tool thought signatures.",
-    kind = SET_ROW_CHOICE, noptions = 2, chosen = cp_flawed_clamp(fl[0].thinking_display, 0, 1), action = CP_SET_ACT};
-  trows[2].options[0] = "Summarized"; trows[2].options[1] = "Hidden";
-  y += cp_set_group(s, f, "set.flawed.think.group", x, y, w, trows[..]) + t.block_gap;
-
-  // 4. Permissions & Sandbox (Opt-In; Default = Allow All)
-  y += set_section_head(f, "set.flawed.perm.head", x, y, w, "Permissions & Sandbox",
-    "Default is Allow All (approve every tool with no permission checks or prompts). Permission prompts, OS sandbox, and git guard are opt-in below.") + t.section_gap;
-  prows: [5] SetRow;
+  // 2. Safety & Permissions
+  y += set_section_head(f, "set.flawed.perm.head", x, y, w, "Safety & Permissions",
+    "Default is Allow All. Permission prompts, OS shell confinement, and destructive-git guards are opt-in below.") + t.section_gap;
+  prows: [4] SetRow;
   pm := cp_flawed_clamp(fl[0].permission_mode, 0, 4);
   prows[0] = SetRow.{id = "set.flawed.pmode", name = "Permission mode",
     desc = ifx pm == 1 then "Ask (opt-in) — read-only tools run freely; prompt before edits, writes, and shell commands."
-           else ifx pm == 2 then "Accept Edits (opt-in) — auto-approve file edits & writes; prompt before Bash commands."
+           else ifx pm == 2 then "Accept Edits (opt-in) — auto-approve file edits & writes; prompt before shell commands."
            else ifx pm == 3 then "Plan (opt-in) — read-only exploration and planning; block mutating tools."
            else ifx pm == 4 then "Don't Ask (opt-in) — auto-deny any tool that would prompt instead of pausing."
-           else "Allow All (default) — approve every tool automatically with no permission checks or prompts.",
+           else "Allow All (default) — approve every tool automatically with no prompts.",
     kind = SET_ROW_CHOICE, noptions = 5, chosen = pm, action = CP_SET_ACT};
   prows[0].options[0] = "Allow All";
   prows[0].options[1] = "Ask";
@@ -317,100 +306,150 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   prows[0].options[3] = "Plan";
   prows[0].options[4] = "Don't Ask";
 
-  prows[1] = SetRow.{id = "set.flawed.bypass", name = "Bypass opt-in mode",
-    desc = "Override any opt-in permission mode above and approve all tools with zero checks.",
-    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].bypass_danger then 1 else 0, action = CP_SET_ACT, danger = true};
-  prows[1].options[0] = "Off"; prows[1].options[1] = "On";
-
   sb := cp_flawed_clamp(fl[0].sandbox_mode, 0, 2);
-  prows[2] = SetRow.{id = "set.flawed.sandbox", name = "OS shell sandbox",
-    desc = ifx sb == 1 then "Auto — wrap Bash commands in macOS sandbox-exec (Seatbelt) restricting writes to workspace and /tmp."
-           else ifx sb == 2 then "Enforced — require OS sandbox on every Bash command and fail closed if unavailable."
-           else "Off — run Bash commands directly without Seatbelt confinement.",
+  prows[1] = SetRow.{id = "set.flawed.sandbox", name = "OS shell sandbox",
+    desc = ifx sb == 1 then "Auto — wrap shell commands in macOS sandbox-exec restricting writes to workspace and /tmp."
+           else ifx sb == 2 then "Enforced — require OS sandbox on every shell command and fail closed if unavailable."
+           else "Off — run shell commands directly without sandbox confinement.",
     kind = SET_ROW_CHOICE, noptions = 3, chosen = sb, action = CP_SET_ACT};
-  prows[2].options[0] = "Off"; prows[2].options[1] = "Auto"; prows[2].options[2] = "Enforced";
+  prows[1].options[0] = "Off"; prows[1].options[1] = "Auto"; prows[1].options[2] = "Enforced";
 
-  prows[3] = SetRow.{id = "set.flawed.gitguard", name = "Git safety guard",
+  prows[2] = SetRow.{id = "set.flawed.gitguard", name = "Git safety guard",
     desc = "Opt-in: block destructive git commands (force push to main, hard reset, clean -fd) before execution.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx cp_flawed_git_guard(s) then 1 else 0, action = CP_SET_ACT};
-  prows[3].options[0] = "Off"; prows[3].options[1] = "On";
+  prows[2].options[0] = "Off"; prows[2].options[1] = "On";
 
   tval := ifx fl[0].tools_summary_n > 0 then sheet_pool(sh, cast(string) fl[0].tools_summary[0..<fl[0].tools_summary_n]) else "All built-in tools";
-  prows[4] = SetRow.{id = "set.flawed.tools", name = "Tool rules & directories",
+  prows[3] = SetRow.{id = "set.flawed.tools", name = "Tool rules & directories",
     desc = "Configure allowedTools, disallowedTools (CSV), and additionalDirs accessible outside the working folder.",
     value = tval, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
   y += cp_set_group(s, f, "set.flawed.perm.group", x, y, w, prows[..]) + t.block_gap;
 
-  // 5. Context, Compaction & Memory (Chapters 04, 09–10)
-  y += set_section_head(f, "set.flawed.ctx.head", x, y, w, "Context, Compaction & Memory",
-    "Prefix KV/context caching, automatic context compaction before overflow, CLAUDE.md / AGENTS.md discovery, and global custom system prompt.") + t.section_gap;
-  crows: [5] SetRow;
-  pc := cp_flawed_clamp(fl[0].prompt_cache, 0, 2);
-  crows[0] = SetRow.{id = "set.flawed.cache", name = "Prompt caching",
-    desc = "Maintain stable system prompt, tool definitions, and conversation prefix ordering for maximum cache hit rates.",
-    kind = SET_ROW_CHOICE, noptions = 3, chosen = pc, action = CP_SET_ACT};
-  crows[0].options[0] = "Global"; crows[0].options[1] = "Org"; crows[0].options[2] = "Off";
-
-  crows[1] = SetRow.{id = "set.flawed.compact", name = "Auto-compaction",
+  // 3. Memory
+  y += set_section_head(f, "set.flawed.ctx.head", x, y, w, "Memory",
+    "Automatic context compaction, AGENTS.md discovery, custom system prompt, and response style.") + t.section_gap;
+  crows: [4] SetRow;
+  crows[0] = SetRow.{id = "set.flawed.compact", name = "Auto-compaction",
     desc = "Automatically compact older messages before hitting the context window limit (also available via /compact).",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx cp_flawed_auto_compact(s) then 0 else 1, action = CP_SET_ACT};
+  crows[0].options[0] = "On"; crows[0].options[1] = "Off";
+
+  crows[1] = SetRow.{id = "set.flawed.memory", name = "Auto-memory & AGENTS.md",
+    desc = "Load AGENTS.md, CLAUDE.md, and ~/.openagents/instructions.md into the system prompt.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx cp_flawed_auto_memory(s) then 0 else 1, action = CP_SET_ACT};
   crows[1].options[0] = "On"; crows[1].options[1] = "Off";
 
-  crows[2] = SetRow.{id = "set.flawed.memory", name = "Auto-memory & AGENTS.md",
-    desc = "Load AGENTS.md, CLAUDE.md, and ~/.openagents/instructions.md into the dynamic system prompt.",
-    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx cp_flawed_auto_memory(s) then 0 else 1, action = CP_SET_ACT};
-  crows[2].options[0] = "On"; crows[2].options[1] = "Off";
-
-  crows[3] = SetRow.{id = "set.flawed.bare", name = "Bare / simple mode",
-    desc = "Minimal prompt mode (equivalent to --bare): skips AGENTS.md, CLAUDE.md, auto-memory, and hooks (still appends Custom system prompt).",
-    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].bare_mode then 1 else 0, action = CP_SET_ACT};
-  crows[3].options[0] = "Off"; crows[3].options[1] = "On";
-
   sp_val := ifx s[0].set_sysprompt_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt[0..<s[0].set_sysprompt_n]) else "Off";
-  sp_desc := ifx s[0].set_sysprompt_preview_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt_preview[0..<s[0].set_sysprompt_preview_n]) else "Instructions in ~/.openagents/system-prompt.md appended to every single system prompt across all agents.";
-  crows[4] = SetRow.{id = "set.flawed.sysprompt", name = "Custom system prompt",
+  sp_desc := ifx s[0].set_sysprompt_preview_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt_preview[0..<s[0].set_sysprompt_preview_n]) else "Instructions in ~/.openagents/system-prompt.md appended to every system prompt.";
+  crows[2] = SetRow.{id = "set.flawed.sysprompt", name = "Custom system prompt",
     desc = sp_desc,
     value = sp_val, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
-  y += cp_set_group(s, f, "set.flawed.ctx.group", x, y, w, crows[..]) + t.block_gap;
 
-  // 6. Behavior, Extensions & Limits (Chapters 08, 13–19, 24)
-  y += set_section_head(f, "set.flawed.ext.head", x, y, w, "Behavior, Extensions & Limits",
-    "Response style, lifecycle hooks, deferred MCP tool loading, turn/budget guardrails, and remote session bridge.") + t.section_gap;
-  erows: [6] SetRow;
   ost := cp_flawed_clamp(fl[0].output_style, 0, 3);
-  erows[0] = SetRow.{id = "set.flawed.style", name = "Output style",
+  crows[3] = SetRow.{id = "set.flawed.style", name = "Output style",
     desc = ifx ost == 1 then "Concise — terse answers, minimal prose, code and diffs first."
            else ifx ost == 2 then "Explanatory — walk through design trade-offs and architectural rationale."
            else ifx ost == 3 then "Learning — collaborative coaching with explanations of why each change works."
            else "Default — balanced autonomous engineering style.",
     kind = SET_ROW_CHOICE, noptions = 4, chosen = ost, action = CP_SET_ACT};
-  erows[0].options[0] = "Default"; erows[0].options[1] = "Concise"; erows[0].options[2] = "Explanatory"; erows[0].options[3] = "Learning";
+  crows[3].options[0] = "Default"; crows[3].options[1] = "Concise"; crows[3].options[2] = "Explanatory"; crows[3].options[3] = "Learning";
+  y += cp_set_group(s, f, "set.flawed.ctx.group", x, y, w, crows[..]) + t.block_gap;
+
+  // 4. Developer
+  y += set_section_head(f, "set.flawed.dev.head", x, y, w, "Developer",
+    "Advanced model picker, backend overrides, custom endpoints, caching, hooks, and session limits.") + t.section_gap;
+  drows: [16] SetRow;
+  drows[0] = SetRow.{id = "set.flawed.others", name = "Show other models & harnesses",
+    desc = "Expose individual cloud models, Antigravity, OpenRouter, Claude Code, Codex, Cursor, and ACP entries in the composer.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].show_other_models then 1 else 0, action = CP_SET_ACT};
+  drows[0].options[0] = "Off"; drows[0].options[1] = "On";
+
+  shorts := CP_FLAWED_SHORT;
+  mslot := cp_flawed_clamp(fl[0].model_slot, 0, CP_FLAWED_MODELS - 1);
+  drows[1] = SetRow.{id = "set.flawed.model", name = "Developer default model",
+    desc = "Default model slot when Show other models & harnesses is enabled.",
+    kind = SET_ROW_CHOICE, noptions = CP_FLAWED_MODELS, chosen = mslot, action = CP_SET_ACT};
+  for i: 0..<CP_FLAWED_MODELS { drows[1].options[i] = shorts[i]; }
+
+  be := cp_flawed_clamp(fl[0].backend, 0, 4);
+  drows[2] = SetRow.{id = "set.flawed.backend", name = "Inference backend",
+    desc = ifx be == 1 then "Force Local Psionic Metal server (on-device Inkling 2 Mini)."
+           else ifx be == 2 then "Force Google Cloud Vertex AI (service account / ADC)."
+           else ifx be == 3 then "Force Gemini Developer API."
+           else ifx be == 4 then "Force OpenRouter Chat Completions API."
+           else "Auto-route by compute mode: Vertex AI -> Gemini API -> OpenRouter -> Local Psionic.",
+    kind = SET_ROW_CHOICE, noptions = 5, chosen = be, action = CP_SET_ACT};
+  drows[2].options[0] = "Auto"; drows[2].options[1] = "Local"; drows[2].options[2] = "Vertex"; drows[2].options[3] = "Gemini"; drows[2].options[4] = "OpenRouter";
+
+  cmod := ifx fl[0].custom_model_n > 0 then sheet_pool(sh, cast(string) fl[0].custom_model[0..<fl[0].custom_model_n]) else "Default (from picker)";
+  drows[3] = SetRow.{id = "set.flawed.custom", name = "Custom model override",
+    desc = "Override the wire model slug for Vertex AI, Gemini API, OpenRouter, or custom local Psionic models.",
+    value = cmod, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
+
+  url_val := ifx fl[0].base_url_n > 0 then sheet_pool(sh, cast(string) fl[0].base_url[0..<fl[0].base_url_n]) else "Default endpoint";
+  drows[4] = SetRow.{id = "set.flawed.url", name = "Custom API base URL",
+    desc = "Optional endpoint override for Vertex/Gemini proxies, OpenRouter mirrors, or remote Psionic servers.",
+    value = url_val, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
+
+  tm := cp_flawed_clamp(fl[0].thinking_mode, 0, 2);
+  drows[5] = SetRow.{id = "set.flawed.tmode", name = "Thinking mode",
+    desc = ifx tm == 0 then "Adaptive — stream native reasoning thoughts scaled by effort level."
+           else ifx tm == 1 then "Extended — deeper reasoning budget scaled by effort level."
+           else "Off — hide thoughts and minimize reasoning latency.",
+    kind = SET_ROW_CHOICE, noptions = 3, chosen = tm, action = CP_SET_ACT};
+  drows[5].options[0] = "Adaptive"; drows[5].options[1] = "Extended"; drows[5].options[2] = "Off";
+
+  pc := cp_flawed_clamp(fl[0].prompt_cache, 0, 2);
+  drows[6] = SetRow.{id = "set.flawed.cache", name = "Prompt caching",
+    desc = "Maintain stable system prompt, tool definitions, and conversation prefix ordering.",
+    kind = SET_ROW_CHOICE, noptions = 3, chosen = pc, action = CP_SET_ACT};
+  drows[6].options[0] = "Global"; drows[6].options[1] = "Org"; drows[6].options[2] = "Off";
 
   hm := cp_flawed_clamp(fl[0].hooks_mode, 0, 2);
-  erows[1] = SetRow.{id = "set.flawed.hooks", name = "Lifecycle hooks",
+  drows[7] = SetRow.{id = "set.flawed.hooks", name = "Lifecycle hooks",
     desc = "Control PreToolUse / PostToolUse / Stop / Notification hook execution policy.",
     kind = SET_ROW_CHOICE, noptions = 3, chosen = hm, action = CP_SET_ACT};
-  erows[1].options[0] = "All"; erows[1].options[1] = "Managed"; erows[1].options[2] = "Off";
+  drows[7].options[0] = "All"; drows[7].options[1] = "Managed"; drows[7].options[2] = "Off";
 
-  erows[2] = SetRow.{id = "set.flawed.mcpdefer", name = "Deferred MCP ToolSearch",
+  drows[8] = SetRow.{id = "set.flawed.bare", name = "Bare / simple mode",
+    desc = "Minimal prompt mode: skips AGENTS.md, CLAUDE.md, auto-memory, and hooks.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].bare_mode then 1 else 0, action = CP_SET_ACT};
+  drows[8].options[0] = "Off"; drows[8].options[1] = "On";
+
+  drows[9] = SetRow.{id = "set.flawed.mcpdefer", name = "Deferred MCP ToolSearch",
     desc = "Defer MCP tool schemas behind ToolSearch when token usage exceeds 10% of the context window.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx cp_flawed_mcp_defer(s) then 0 else 1, action = CP_SET_ACT};
-  erows[2].options[0] = "On"; erows[2].options[1] = "Off";
+  drows[9].options[0] = "On"; drows[9].options[1] = "Off";
+
+  drows[10] = SetRow.{id = "set.flawed.fast", name = "Fast mode",
+    desc = "Prefer lower-latency output when supported by the active backend.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].fast_mode then 1 else 0, action = CP_SET_ACT};
+  drows[10].options[0] = "Off"; drows[10].options[1] = "On";
+
+  drows[11] = SetRow.{id = "set.flawed.ctx1m", name = "Extended 1M context",
+    desc = "Gemini 4 Neon models natively support 1,048,576 input tokens (32K on local Inkling 2 Mini).",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].extended_ctx then 1 else 0, action = CP_SET_ACT};
+  drows[11].options[0] = "Auto"; drows[11].options[1] = "1M";
+
+  drows[12] = SetRow.{id = "set.flawed.bypass", name = "Bypass opt-in mode",
+    desc = "Override any opt-in permission mode above and approve all tools with zero checks.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].bypass_danger then 1 else 0, action = CP_SET_ACT, danger = true};
+  drows[12].options[0] = "Off"; drows[12].options[1] = "On";
 
   lval := ifx fl[0].limits_summary_n > 0 then sheet_pool(sh, cast(string) fl[0].limits_summary[0..<fl[0].limits_summary_n]) else "Unlimited turns · No extra cap";
-  erows[3] = SetRow.{id = "set.flawed.limits", name = "Turn & budget limits",
+  drows[13] = SetRow.{id = "set.flawed.limits", name = "Turn & budget limits",
     desc = "Set maximum agentic tool turns per request (--max-turns) and per-turn USD spend cap (--max-budget-usd).",
     value = lval, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
 
-  erows[4] = SetRow.{id = "set.flawed.remote", name = "Remote Control bridge",
-    desc = "Allow signed mobile / companion bridge control sessions (Chapter 24 remote bridge protocol).",
+  drows[14] = SetRow.{id = "set.flawed.remote", name = "Remote Control bridge",
+    desc = "Allow signed mobile / companion bridge control sessions.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].remote_bridge then 1 else 0, action = CP_SET_ACT};
-  erows[4].options[0] = "Off"; erows[4].options[1] = "On";
+  drows[14].options[0] = "Off"; drows[14].options[1] = "On";
 
-  erows[5] = SetRow.{id = "set.flawed.reset", name = "Reset Agent settings",
-    desc = "Restore all Agent settings (default model, thinking, permissions, sandbox, limits) to defaults.",
+  drows[15] = SetRow.{id = "set.flawed.reset", name = "Reset Agent settings",
+    desc = "Restore all Agent settings (compute, effort, permissions, sandbox, limits) to defaults.",
     kind = SET_ROW_BUTTON, button = "Reset…", action = CP_SET_ACT, danger = true};
-  y += cp_set_group(s, f, "set.flawed.ext.group", x, y, w, erows[..]);
+  y += cp_set_group(s, f, "set.flawed.dev.group", x, y, w, drows[..]);
 
   return y - y0;
 }
@@ -431,9 +470,17 @@ cp_flawed_settings_press :: (s: [] CoderPage, id: string) -> bool {
   if id == "set.flawed.reset.a" || id == "set.flawed.reset" { s[0].ask = CP_ASK_FLAWED_RESET; return true; }
   if id == "set.flawed.sysprompt.a" || id == "set.flawed.sysprompt" { s[0].ask = CP_ASK_CUSTOM_PROMPT; return true; }
 
-  // Segmented choices
-  v := cp_number(id, "set.flawed.agent.");
+  // Developer toggle: Show other models & harnesses
+  v := cp_number(id, "set.flawed.others.");
   if v == 0 || v == 1 {
+    coder_page_show_other_models_set(s, v == 1);
+    s[0].ask = CP_ASK_SHOW_OTHER_MODELS;
+    return true;
+  }
+
+  // Segmented choices
+  v = cp_number(id, "set.flawed.agent.");
+  if v >= 0 && v < CP_COMPUTE_MODES {
     fl[0].default_agent = v;
     cp_flawed_sync_empty_chat(s);
     s[0].ask = CP_ASK_FLAWED_PREFS;
@@ -500,7 +547,8 @@ coder_page_flawed_prefs_set :: (s: [] CoderPage, vals: [] int) #export_c #effect
   fl := s[0].flawed[..];
   prev_agent := fl[0].default_agent;
   prev_slot := fl[0].model_slot;
-  fl[0].default_agent = cp_flawed_clamp(vals[0], 0, 1);
+  prev_be := fl[0].backend;
+  fl[0].default_agent = cp_flawed_clamp(vals[0], 0, CP_COMPUTE_MODES - 1);
   fl[0].model_slot = cp_flawed_clamp(vals[1], 0, CP_FLAWED_MODELS - 1);
   fl[0].backend = cp_flawed_clamp(vals[2], 0, 4);
   fl[0].thinking_mode = cp_flawed_clamp(vals[3], 0, 2);
@@ -520,7 +568,7 @@ coder_page_flawed_prefs_set :: (s: [] CoderPage, vals: [] int) #export_c #effect
   fl[0].fast_mode = vals[17] != 0;
   fl[0].extended_ctx = vals[18] != 0;
   fl[0].remote_bridge = vals[19] != 0;
-  if prev_agent != fl[0].default_agent || prev_slot != fl[0].model_slot {
+  if prev_agent != fl[0].default_agent || prev_slot != fl[0].model_slot || prev_be != fl[0].backend {
     cp_flawed_sync_empty_chat(s);
   }
 }
@@ -528,7 +576,7 @@ coder_page_flawed_prefs_set :: (s: [] CoderPage, vals: [] int) #export_c #effect
 coder_page_flawed_prefs_get :: (s: [] CoderPage, out: [] int) -> int #export_c #effects(all) {
   if s.count < 1 || out.count < CP_FLAWED_PREFS_COUNT { return 0; }
   fl := s[0].flawed[..];
-  out[0] = cp_flawed_clamp(fl[0].default_agent, 0, 1);
+  out[0] = cp_flawed_clamp(fl[0].default_agent, 0, CP_COMPUTE_MODES - 1);
   out[1] = cp_flawed_clamp(fl[0].model_slot, 0, CP_FLAWED_MODELS - 1);
   out[2] = cp_flawed_clamp(fl[0].backend, 0, 4);
   out[3] = cp_flawed_clamp(fl[0].thinking_mode, 0, 2);
@@ -553,6 +601,7 @@ coder_page_flawed_prefs_get :: (s: [] CoderPage, out: [] int) -> int #export_c #
 
 coder_page_flawed_info :: (s: [] CoderPage, auth_status: string, key_label: string, base_url: string, custom_model: string, tools_summary: string, limits_summary: string) #export_c #effects(all) {
   if s.count < 1 { return; }
+  pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   fl := s[0].flawed[..];
   fl[0].auth_status_n = cp_out(fl[0].auth_status[..], auth_status);
   fl[0].key_label_n = cp_out(fl[0].key_label[..], key_label);
@@ -560,4 +609,5 @@ coder_page_flawed_info :: (s: [] CoderPage, auth_status: string, key_label: stri
   fl[0].custom_model_n = cp_out(fl[0].custom_model[..], custom_model);
   fl[0].tools_summary_n = cp_out(fl[0].tools_summary[..], tools_summary);
   fl[0].limits_summary_n = cp_out(fl[0].limits_summary[..], limits_summary);
+  cp_model_restore_id(s, prev);
 }

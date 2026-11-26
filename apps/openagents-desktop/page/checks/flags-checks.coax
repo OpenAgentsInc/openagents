@@ -56,14 +56,15 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert coder_page_palette_mode(s) == CP_PAL_MODE_FILES;
   coder_page_palette_set_mode(s, CP_PAL_MODE_COMMANDS);
 
-  // Model menu opens with Flawed (0..3) + Inkling 2 Mini (4) plus Flawed Settings, Manage Local Models, and Show other models…
+  // Model menu opens with clean compute modes (Auto | Local | Cloud) plus Agent Settings & Manage Local Models (no Show other models in default popover).
   coder_page_show_other_models_set(s, false);
   coder_page_toggle_models(s);
   #assert s[0].model_menu && cp_flag_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.model.menu") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.model.0") >= 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.model.0")) == "OpenAgents · Gemini 4 Neon";
-  #assert surface_find(s[0].surface[..], "coder.model.5") >= 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.model.5")) == "Inkling 2 Mini";
-  #assert surface_find(s[0].surface[..], "coder.model.6") < 0 && surface_find(s[0].surface[..], "coder.model.flawed") >= 0 && surface_find(s[0].surface[..], "coder.model.local") >= 0 && surface_find(s[0].surface[..], "coder.model.others") >= 0 && surface_find(s[0].surface[..], "coder.model.providers") < 0;
+  #assert surface_find(s[0].surface[..], "coder.model.0") >= 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.model.0")) == "Auto";
+  #assert surface_find(s[0].surface[..], "coder.model.1") >= 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.model.1")) == "Local";
+  #assert surface_find(s[0].surface[..], "coder.model.2") >= 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.model.2")) == "Cloud";
+  #assert surface_find(s[0].surface[..], "coder.model.3") < 0 && surface_find(s[0].surface[..], "coder.model.flawed") >= 0 && surface_find(s[0].surface[..], "coder.model.local") >= 0 && surface_find(s[0].surface[..], "coder.model.others") < 0 && surface_find(s[0].surface[..], "coder.model.providers") < 0;
   coder_page_toggle_models(s);
   #assert !s[0].model_menu;
 
@@ -222,6 +223,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
   coder_page_flags_set(s, 0);
+  coder_page_show_other_models_set(s, false);
   coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
   coder_page_set_inkling(s, true);
   // Set Inkling as default agent to verify local Inkling migration & starting gate.
@@ -233,7 +235,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert s[0].nturns == 1;
   #assert s[0].migrated_from_n > 0 && cast(string) s[0].migrated_from[0..<s[0].migrated_from_n] == "gemini-4-carbon";
   // Turn 0 keeps its original model byline read-only.
-  #assert cp_turn_meta(s, 0) == "Microcoder · Gemini 4 Carbon";
+  #assert cp_turn_meta(s, 0) == "OpenAgents · Gemini 4 Carbon";
   // Migration notice renders as quiet caption above the composer (no notice box), and copy button is visible because nturns > 0.
   #assert cp_flag_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.migrated") >= 0;
@@ -254,11 +256,11 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   n := coder_page_task(s, "sess-mig", "/w", out[..]);
   #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]);
-  #assert back[0].model == "inkling-2-mini" && back[0].local && !back[0].agents;
+  #assert back[0].model == "oa:local";
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
-  // Original turn 0 still reports Gemini 4 Carbon; new turn 1 reports Inkling 2 Mini.
-  #assert cp_turn_meta(s, 0) == "Microcoder · Gemini 4 Carbon";
-  #assert cp_turn_meta(s, 1) == "Psionic Metal · Inkling 2 Mini";
+  // Original turn 0 still reports Gemini 4 Carbon; new turn 1 reports OpenAgents · Local.
+  #assert cp_turn_meta(s, 0) == "OpenAgents · Gemini 4 Carbon";
+  #assert cp_turn_meta(s, 1) == "OpenAgents · Local";
 }
 
 #test "flags per-flag gating: enabling each of the 29 flags independently exposes only its own surface" {

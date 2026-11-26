@@ -19,6 +19,7 @@ CP_MK_CURSOR :: 7;
 CP_MK_ACP :: 8;
 CP_MK_CLAUDE :: 9;
 CP_MK_CORE :: 10;
+CP_MK_COMPUTE :: 11;
 CP_MODEL_LIST_MAX :: 48;
 
 CpModelEntry :: struct {
@@ -70,17 +71,51 @@ cp_local_unavailable :: (s: [] CoderPage) -> bool {
   return cp_is_inkling(s, idx) || cp_is_flawed_local(s, idx);
 }
 
-// Builds the single canonical list of currently available models in picker order.
-// Flawed Agent models (0..3) and the active local Inkling variant (4) are ALWAYS available
-// by default; extra cloud/CLI models join below them when show_other_models is enabled.
+// True when any cloud compute credential is configured for OpenAgents.
+cp_has_cloud_compute :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return false; }
+  if s[0].cloud_authed || s[0].set_gemini_n > 0 || s[0].set_gauth_n > 0 { return true; }
+  fl := s[0].flawed[..];
+  if fl[0].key_label_n > 0 {
+    kl := cast(string) fl[0].key_label[0..<fl[0].key_label_n];
+    if kl != "Not set" && kl != "" { return true; }
+  }
+  if fl[0].auth_status_n > 0 {
+    ast := cast(string) fl[0].auth_status[0..<fl[0].auth_status_n];
+    if cp_contains(ast, "Vertex") || cp_contains(ast, "Gemini") || cp_contains(ast, "OpenRouter") { return true; }
+  }
+  return false;
+}
+
+// True when only local Inkling 2 Mini is available (hides the default compute picker).
+cp_local_only_compute :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return false; }
+  if s[0].flawed[0].backend == 1 { return true; }
+  return s[0].inkling && !cp_has_cloud_compute(s);
+}
+
+// Builds the single canonical list of currently available entries in picker order.
+// Default UX (show_other_models == false) exposes ONLY a clean OpenAgents compute control
+// (Auto | Local | Cloud), automatically collapsing to a single Local entry (hidden picker)
+// when only local Inkling 2 Mini is available.
+// Developer mode (show_other_models == true) exposes individual OpenAgents models & external harnesses.
 cp_model_list :: (s: [] CoderPage, out: [] CpModelEntry) -> int {
   if s.count < 1 { return 0; }
   n := 0;
+  if !s[0].show_other_models {
+    if cp_local_only_compute(s) {
+      if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_COMPUTE, slot = CP_COMPUTE_LOCAL}; n += 1; }
+      return n;
+    }
+    for i: 0..<CP_COMPUTE_MODES {
+      if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_COMPUTE, slot = i}; n += 1; }
+    }
+    return n;
+  }
   for i: 0..<CP_FLAWED_MODELS {
     if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_CORE, slot = i}; n += 1; }
   }
   if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_INKLING, slot = 0}; n += 1; }
-  if !s[0].show_other_models { return n; }
   if cp_cloud_ok(s) {
     for i: 0..<CP_MODELS {
       if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_GEMINI, slot = i}; n += 1; }
@@ -147,20 +182,51 @@ cp_model_idx_of :: (s: [] CoderPage, kind: int, slot: int) -> int {
 }
 
 // Single-list accessors (zero duplicate counting arithmetic).
+cp_compute_slot :: (s: [] CoderPage, idx: int) -> int {
+  e := cp_model_entry(s, idx);
+  return ifx e.kind == CP_MK_COMPUTE then e.slot else -1;
+}
 cp_flawed_slot :: (s: [] CoderPage, idx: int) -> int {
   e := cp_model_entry(s, idx);
   return ifx e.kind == CP_MK_CORE then e.slot else -1;
 }
-cp_is_flawed :: (s: [] CoderPage, idx: int) -> bool { return cp_flawed_slot(s, idx) >= 0; }
-cp_is_flawed_local :: (s: [] CoderPage, idx: int) -> bool { return cp_flawed_slot(s, idx) == CP_FLAWED_START_LOCAL; }
+cp_is_flawed :: (s: [] CoderPage, idx: int) -> bool {
+  e := cp_model_entry(s, idx);
+  return e.kind == CP_MK_COMPUTE || e.kind == CP_MK_CORE;
+}
+cp_is_flawed_local :: (s: [] CoderPage, idx: int) -> bool {
+  e := cp_model_entry(s, idx);
+  if e.kind == CP_MK_COMPUTE { return e.slot == CP_COMPUTE_LOCAL; }
+  return e.kind == CP_MK_CORE && e.slot == CP_FLAWED_START_LOCAL;
+}
 cp_flawed_idx :: (s: [] CoderPage) -> int {
-  slot := ifx s.count > 0 && s[0].flawed[0].model_slot >= 0 && s[0].flawed[0].model_slot < CP_FLAWED_MODELS then s[0].flawed[0].model_slot else CP_FLAWED_START;
-  // If user explicitly chose local Inkling as default but weights are not installed, fall back to Gemini 4 Neon.
-  if slot == CP_FLAWED_START_LOCAL && (s.count < 1 || !s[0].inkling) { slot = CP_FLAWED_START_CLOUD; }
+  if s.count < 1 { return -1; }
+  if !s[0].show_other_models {
+    if cp_local_only_compute(s) { return cp_model_idx_of(s, CP_MK_COMPUTE, CP_COMPUTE_LOCAL); }
+    cm := s[0].flawed[0].default_agent;
+    if cm == CP_COMPUTE_LOCAL {
+      slot := ifx s[0].inkling then CP_COMPUTE_LOCAL else CP_COMPUTE_AUTO;
+      return cp_model_idx_of(s, CP_MK_COMPUTE, slot);
+    }
+    if cm == CP_COMPUTE_CLOUD || s[0].flawed[0].backend >= 2 {
+      return cp_model_idx_of(s, CP_MK_COMPUTE, CP_COMPUTE_CLOUD);
+    }
+    return cp_model_idx_of(s, CP_MK_COMPUTE, CP_COMPUTE_AUTO);
+  }
+  slot := ifx s[0].flawed[0].model_slot >= 0 && s[0].flawed[0].model_slot < CP_FLAWED_MODELS then s[0].flawed[0].model_slot else CP_FLAWED_START;
+  if s[0].flawed[0].default_agent == CP_COMPUTE_LOCAL { slot = CP_FLAWED_START_LOCAL; }
+  if slot == CP_FLAWED_START_LOCAL && !s[0].inkling { slot = CP_FLAWED_START_CLOUD; }
   return cp_model_idx_of(s, CP_MK_CORE, slot);
 }
+cp_compute_find :: (name: string) -> int {
+  if name == "oa:auto" || name == "auto" || name == "Auto" { return CP_COMPUTE_AUTO; }
+  if name == "oa:local" || name == "local" || name == "Local" { return CP_COMPUTE_LOCAL; }
+  if name == "oa:cloud" || name == "cloud" || name == "Cloud" { return CP_COMPUTE_CLOUD; }
+  return -1;
+}
 cp_flawed_find :: (name: string) -> int {
-  if name == "oa" || name == "openagents" || name == "OpenAgents" || name == "flawed" || name == "Flawed" { return CP_FLAWED_START; }
+  if name == "oa" || name == "openagents" || name == "OpenAgents" || name == "flawed" || name == "Flawed" || name == "oa:auto" || name == "oa:cloud" { return CP_FLAWED_START; }
+  if name == "oa:local" || name == "local" { return CP_FLAWED_START_LOCAL; }
   ids := CP_FLAWED_ID; labels := CP_FLAWED_LABEL;
   for i: 0..<CP_FLAWED_MODELS {
     if name == ids[i] || name == labels[i] { return i; }
@@ -276,19 +342,14 @@ cp_model_restore_id :: (s: [] CoderPage, prev: string) {
 }
 
 // The entry a new chat starts on:
-// - Claude Code orchestrator if the user explicitly opted into show_other_models and set orch_claude;
-// - Local Inkling if Settings -> Flawed set Default agent = Inkling (default_agent == 1);
-// - Otherwise Flawed Agent on its configured default model slot (Opus 4.7 by default).
+// - Claude Code orchestrator if the user explicitly opted into Developer -> Show other models and set orch_claude;
+// - Otherwise OpenAgents compute mode (Auto / Local / Cloud) or Developer default model.
 cp_model_start :: (s: [] CoderPage) -> int {
   if s.count < 1 { return -1; }
   if s[0].show_other_models && cp_flag(s, DC_FLAG_MODELS_CLAUDE) && s[0].orch_claude && s[0].claude {
     k := ifx s[0].orch_model >= 0 && s[0].orch_model < CP_CLAUDE_MODELS then s[0].orch_model else CP_CLAUDE_START;
     idx := cp_model_idx_of(s, CP_MK_CLAUDE, k);
     if idx >= 0 { return idx; }
-  }
-  if s[0].flawed[0].default_agent == 1 {
-    ink := cp_inkling_idx(s);
-    if ink >= 0 { return ink; }
   }
   fi := cp_flawed_idx(s);
   if fi >= 0 { return fi; }
@@ -329,6 +390,25 @@ cp_model_find :: (name: string) -> int {
 // Exact lookup of `name` against the currently enabled model list. Returns -1 when not present.
 cp_model_find_exact :: (s: [] CoderPage, name: string) -> int {
   if s.count < 1 || name.count == 0 { return -1; }
+  if !s[0].show_other_models {
+    cslot := cp_compute_find(name);
+    if cslot >= 0 { return cp_model_idx_of(s, CP_MK_COMPUTE, cslot); }
+    fslot := cp_flawed_find(name);
+    if fslot >= 0 {
+      if fslot == CP_FLAWED_START_LOCAL { return cp_model_idx_of(s, CP_MK_COMPUTE, CP_COMPUTE_LOCAL); }
+      if name == "oa" || name == "openagents" || name == "OpenAgents" || name == "flawed" || name == "Flawed" {
+        ai := cp_model_idx_of(s, CP_MK_COMPUTE, CP_COMPUTE_AUTO);
+        if ai >= 0 { return ai; }
+      }
+      ci := cp_model_idx_of(s, CP_MK_COMPUTE, CP_COMPUTE_CLOUD);
+      if ci >= 0 { return ci; }
+      return cp_model_idx_of(s, CP_MK_COMPUTE, CP_COMPUTE_LOCAL);
+    }
+    if name == cp_inkling_id(s) || name == cp_inkling_label(s) || cp_is_inkling_id(name) {
+      return cp_model_idx_of(s, CP_MK_COMPUTE, CP_COMPUTE_LOCAL);
+    }
+    return -1;
+  }
   fslot := cp_flawed_find(name);
   if fslot >= 0 { return cp_model_idx_of(s, CP_MK_CORE, fslot); }
   if name.count > CP_AGY_PREFIX.count && cast(string) name[0..<CP_AGY_PREFIX.count] == CP_AGY_PREFIX {
@@ -389,9 +469,11 @@ cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
 // Human-readable display name for any saved model id (including models whose flag is off,
 // for kept-chat turn bylines and migration notices).
 cp_model_known_label :: (name: string) -> string {
+  cslot := cp_compute_find(name);
+  if cslot >= 0 { return cp_compute_label_for(cslot); }
   fids := CP_FLAWED_ID; flabels := CP_FLAWED_LABEL;
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return flabels[i]; } }
-  if name == "oa" || name == "openagents" || name == "flawed" { return "OpenAgents · Gemini 4 Neon"; }
+  if name == "oa" || name == "openagents" || name == "flawed" { return "OpenAgents"; }
   bare := "";
   if name.count > CP_FLAWED_PREFIX.count && cast(string) name[0..<CP_FLAWED_PREFIX.count] == CP_FLAWED_PREFIX {
     bare = cast(string) name[CP_FLAWED_PREFIX.count..<name.count];
@@ -449,9 +531,11 @@ cp_model_known_label :: (name: string) -> string {
 }
 
 cp_model_known_meta :: (name: string) -> string {
+  cslot := cp_compute_find(name);
+  if cslot >= 0 { return cp_compute_meta_for(cslot); }
   fids := CP_FLAWED_ID; fmetas := CP_FLAWED_META;
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return fmetas[i]; } }
-  if name == "oa" || name == "openagents" || name == "flawed" { return "OpenAgents · Gemini 4 Neon"; }
+  if name == "oa" || name == "openagents" || name == "flawed" { return "OpenAgents"; }
   bare := "";
   if name.count > CP_FLAWED_PREFIX.count && cast(string) name[0..<CP_FLAWED_PREFIX.count] == CP_FLAWED_PREFIX {
     bare = cast(string) name[CP_FLAWED_PREFIX.count..<name.count];
@@ -521,6 +605,7 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
     return cast(string) s[0].prov[0].acp_id_buf[0..<n];
   }
   if e.kind == CP_MK_CLAUDE { cids := CP_CLAUDE_ID; return cids[e.slot]; }
+  if e.kind == CP_MK_COMPUTE { return cp_compute_id_for(e.slot); }
   if e.kind == CP_MK_CORE { return cp_flawed_id_for(s, e.slot); }
   st := cp_model_start(s);
   if st >= 0 && st != idx { return cp_model_id(s, st); }
@@ -548,6 +633,7 @@ cp_model_label :: (s: [] CoderPage, idx: int) -> string {
   if e.kind == CP_MK_CURSOR { return "Cursor"; }
   if e.kind == CP_MK_ACP { return cast(string) s[0].prov[0].acp[e.slot].name[0..<s[0].prov[0].acp[e.slot].name_n]; }
   if e.kind == CP_MK_CLAUDE { clabels := CP_CLAUDE_LABEL; return clabels[e.slot]; }
+  if e.kind == CP_MK_COMPUTE { return cp_compute_label_for(e.slot); }
   if e.kind == CP_MK_CORE { return cp_flawed_label_for(s, e.slot); }
   return "No model";
 }
@@ -596,6 +682,7 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     return cast(string) s[0].prov[0].acp_desc_buf[0..<n];
   }
   if e.kind == CP_MK_CLAUDE { cdescs := CP_CLAUDE_DESC; return cdescs[e.slot]; }
+  if e.kind == CP_MK_COMPUTE { return cp_compute_desc_for(s, e.slot); }
   if e.kind == CP_MK_CORE { return cp_flawed_desc_for(s, e.slot); }
   return "Download Inkling 2 Mini in Settings → Models";
 }
@@ -713,7 +800,7 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
   e := cp_model_entry(s, idx);
   if e.kind == CP_MK_GEMINI { metas := CP_MODEL_META; return metas[e.slot]; }
   if e.kind == CP_MK_OPENROUTER {
-    n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
+    n := cp_out(s[0].or_meta[..], "OpenAgents · OpenRouter · ");
     n += cp_out(s[0].or_meta[n..<s[0].or_meta.count], cp_or_main(s));
     return cast(string) s[0].or_meta[0..<n];
   }
@@ -743,6 +830,7 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
     return cast(string) s[0].prov[0].acp_meta_buf[0..<n];
   }
   if e.kind == CP_MK_CLAUDE { cmetas := CP_CLAUDE_META; return cmetas[e.slot]; }
+  if e.kind == CP_MK_COMPUTE { return cp_compute_meta_for(e.slot); }
   if e.kind == CP_MK_CORE { return cp_flawed_meta_for(s, e.slot); }
   return "No model";
 }
@@ -872,7 +960,7 @@ cp_backend_label :: (s: [] CoderPage) -> string {
   if e.kind == CP_MK_CURSOR { return "Cursor ACP"; }
   if e.kind == CP_MK_ACP { return "ACP Registry"; }
   if e.kind == CP_MK_CLAUDE { return "Claude Code"; }
-  if e.kind == CP_MK_CORE { return "OpenAgents"; }
+  if e.kind == CP_MK_CORE || e.kind == CP_MK_COMPUTE { return "OpenAgents"; }
   if e.kind == CP_MK_OPENROUTER { return "OpenRouter"; }
   if s[0].gauth_vertex { return "Vertex AI"; }
   return "Gemini API";

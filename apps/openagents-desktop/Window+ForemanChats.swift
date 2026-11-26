@@ -187,7 +187,7 @@ extension CoderWindow {
                 moved.worker.write(out, count: Int(n))
                 beginTurn(moved, from: 0)
             } else {
-                cd_failed(moved.page, moved.worker.failure ?? "Microcoder could not start.")
+                cd_failed(moved.page, moved.worker.failure ?? "OpenAgents could not start.")
             }
         }
         if cd_action(back) == 1 && !holdRunForWorktree(moved, then: start) { start() }
@@ -290,7 +290,7 @@ extension CoderWindow {
                 moved.worker.write(out, count: Int(tn))
                 beginTurn(moved, from: 0)
             } else {
-                cd_failed(back, moved.worker.failure ?? (moved.worker.program == "inky" ? "Local agent worker could not start." : "Microcoder could not start."))
+                cd_failed(back, moved.worker.failure ?? (moved.worker.program == "inky" ? "Local agent worker could not start." : "OpenAgents could not start."))
             }
         }
         runs[id] = moved

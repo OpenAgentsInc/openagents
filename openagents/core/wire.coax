@@ -110,7 +110,8 @@ flawed_aw_trim_slash :: (s: string) -> string #effects(all) {
 
 flawed_wire_strip_model :: (raw: string) -> string #effects(all) {
   s := raw;
-  if flawed_aw_starts(s, "flawed:") { s = cast(string) s[7..<s.count]; }
+  if flawed_aw_starts(s, "oa:") { s = cast(string) s[3..<s.count]; }
+  else if flawed_aw_starts(s, "flawed:") { s = cast(string) s[7..<s.count]; }
   if flawed_aw_ends(s, "[1m]") { s = cast(string) s[0..<s.count - 4]; }
   return s;
 }
@@ -127,13 +128,13 @@ flawed_wire_is_gemini :: (backend: int) -> bool #effects(all) {
 flawed_wire_gemini_model :: (raw: string, out: [] u8) -> int #effects(all) {
   m := flawed_wire_strip_model(raw);
   if flawed_aw_starts(m, "google/") { m = cast(string) m[7..<m.count]; }
-  if m.count == 0 || flawed_wire_is_local_model(m) { return flawed_aw_copy(out, "gemini-4-neon"); }
+  if m.count == 0 || m == "auto" || m == "cloud" || flawed_wire_is_local_model(m) { return flawed_aw_copy(out, "gemini-4-neon"); }
   return flawed_aw_copy(out, m);
 }
 
 flawed_wire_openrouter_model :: (raw: string, out: [] u8) -> int #effects(all) {
   m := flawed_wire_strip_model(raw);
-  if m.count == 0 || flawed_wire_is_local_model(m) { return flawed_aw_copy(out, "google/gemini-4-neon"); }
+  if m.count == 0 || m == "auto" || m == "cloud" || flawed_wire_is_local_model(m) { return flawed_aw_copy(out, "google/gemini-4-neon"); }
   for c: m { if c == '/' { return flawed_aw_copy(out, m); } }
   n := flawed_aw_cat(out, 0, "google/");
   return flawed_aw_cat(out, n, m);

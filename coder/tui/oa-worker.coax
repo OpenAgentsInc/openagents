@@ -653,7 +653,7 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
       return;
     }
     auth[0].nsource = fww_keep(auth[0].source[..], "none");
-    auth[0].nlabel = fww_keep(auth[0].label[..], "No Gemini API key configured (add in Settings → Flawed)");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "No Gemini API key configured (add in Settings → Agent)");
     return;
   }
 
@@ -703,7 +703,18 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
     auth[0].nlabel = fww_key_suffix_label("OpenRouter", cast(string) auth[0].key[0..<kn], auth[0].label[..]);
     return;
   }
-  // 4. Replay fallback
+  // 4. Auto compute fallback to local Psionic Metal when no cloud credentials are configured
+  rm := flawed_wire_strip_model(req_model);
+  if pref == FLAWED_BE_AUTO && (rm == "auto" || rm.count == 0) {
+    if (probe_only && fww_local_installed(home)) || fww_local_reachable(lbase) {
+      auth[0].ok = true;
+      auth[0].backend = FLAWED_BE_LOCAL;
+      auth[0].nsource = fww_keep(auth[0].source[..], "local");
+      auth[0].nlabel = fww_cat_local_label(auth[0].label[..], 0);
+      return;
+    }
+  }
+  // 5. Replay fallback
   if replaying {
     auth[0].ok = true;
     auth[0].backend = FLAWED_BE_VERTEX;
@@ -712,7 +723,7 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
     return;
   }
   auth[0].nsource = fww_keep(auth[0].source[..], "none");
-  auth[0].nlabel = fww_keep(auth[0].label[..], "No Vertex AI or Gemini API credentials configured (open Settings → Flawed)");
+  auth[0].nlabel = fww_keep(auth[0].label[..], "No Vertex AI or Gemini API credentials configured (open Settings → Agent)");
 }
 
 // ---------------------------------------------------------------- conversation history (zero-heap slab)

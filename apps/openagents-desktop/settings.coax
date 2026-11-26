@@ -52,7 +52,7 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_MODELS, id = "set.claude.effort.1", name = "Claude thinking level", terms = "claude effort reasoning thinking level low medium high xhigh max fable opus sonnet haiku"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.claude", name = "Claude key", terms = "anthropic api token login sub-agents"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.or", name = "OpenRouter key", terms = "openrouter api"},
-    CpSetEntry.{page = CP_PG_MODELS, id = "set.or.main", name = "Model for Microcoder", terms = "openrouter model main"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.or.main", name = "Model for OpenAgents", terms = "openrouter model main"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.or.sub", name = "Model for sub-agents", terms = "openrouter model level"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.agy.status", name = "Antigravity CLI", terms = "antigravity agy binary path version cli status"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.agy.mode", name = "Antigravity review mode", terms = "antigravity agy mode auto default plan review"},
@@ -451,7 +451,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     y += set_page_head(f, "set.title", x, y, w, names[page], "How Coder works on this computer.") + t.block_gap;
     rows: [4] SetRow;
     folder := ifx s[0].folder_n > 0 then sheet_pool(sh, cast(string) s[0].folder[0..<s[0].folder_n]) else "Home folder";
-    rows[0] = SetRow.{id = "set.folder", name = "Working folder", desc = "Where Microcoder runs its commands. New chats start here too.",
+    rows[0] = SetRow.{id = "set.folder", name = "Working folder", desc = "Where OpenAgents runs its commands. New chats start here too.",
       value = folder, kind = SET_ROW_BUTTON, button = "Choose…", action = CP_SET_ACT, state = ifx cp_running(s) then EL_S_DISABLED else 0};
     rows[1] = SetRow.{id = "set.zoom", name = "Text size", desc = "Bigger and smaller words everywhere in Coder.",
       value = sheet_pool(sh, cp_zoom_text(s, nb[..])), kind = SET_ROW_STEPPER, button = "−", button2 = "+", action = CP_SET_ACT, action2 = CP_SET_ACT};
@@ -468,7 +468,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     rows[3].options[0] = "Off"; rows[3].options[1] = "On";
     y += cp_set_group(s, f, "set.general.group", x, y, w, rows[..]) + t.block_gap;
     // Custom system prompt appended to every single system prompt (~/.openagents/system-prompt.md)
-    y += set_section_head(f, "set.sysprompt.head", x, y, w, "Custom system prompt", "Extra instructions appended to every single system prompt across all agents (OpenAgents, Inky, Microcoder, Claude, and Antigravity) in every chat and folder.") + t.section_gap;
+    y += set_section_head(f, "set.sysprompt.head", x, y, w, "Custom system prompt", "Extra instructions appended to every system prompt across OpenAgents and any connected external harnesses in every chat and folder.") + t.section_gap;
     sysp_val := ifx s[0].set_sysprompt_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt[0..<s[0].set_sysprompt_n]) else "Off";
     sysp_desc := ifx s[0].set_sysprompt_preview_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt_preview[0..<s[0].set_sysprompt_preview_n]) else "Kept in ~/.openagents/system-prompt.md. Leave empty to disable; edits apply from the very next message.";
     sprows: [2] SetRow;
@@ -478,7 +478,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       kind = SET_ROW_BUTTON, button = "Clear…", action = CP_SET_ACT, danger = true};
     y += cp_set_group(s, f, "set.sysprompt.group", x, y, w, sprows[..]) + t.block_gap;
     // what every agent is told in every chat (~/.openagents/instructions.md, GitHub #13808)
-    y += set_section_head(f, "set.instr.head", x, y, w, "Agent instructions", "What OpenAgents, Inky, Microcoder, Claude and Antigravity are told in every chat, in every folder. A repository's own AGENTS.md wins where they differ.") + t.section_gap;
+    y += set_section_head(f, "set.instr.head", x, y, w, "Agent instructions", "What OpenAgents and any connected external harnesses are told in every chat, in every folder. A repository's own AGENTS.md wins where they differ.") + t.section_gap;
     instr := ifx s[0].set_instr_n > 0 then sheet_pool(sh, cast(string) s[0].set_instr[0..<s[0].set_instr_n]) else "Default";
     irows: [2] SetRow;
     irows[0] = SetRow.{id = "set.instr", name = "Agent instructions", desc = "Kept in ~/.openagents/instructions.md. The default: commit finished work and push it in a git repository.",
@@ -500,7 +500,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     y += cp_set_group(s, f, "set.local.group", x, y, w, lrows[..]) + t.block_gap;
     if cp_flag(s, DC_FLAG_MODELS_GEMINI) {
       gemini := ifx s[0].set_gemini_n > 0 then sheet_pool(sh, cast(string) s[0].set_gemini[0..<s[0].set_gemini_n]) else "Not set";
-      y += set_section_head(f, "set.gemini.head", x, y, w, "Gemini", "Microcoder runs Gemini models on Vertex AI when this Mac has a Google Cloud service account, else on a Gemini API key.") + t.section_gap;
+      y += set_section_head(f, "set.gemini.head", x, y, w, "Gemini", "OpenAgents runs Gemini models on Vertex AI when this Mac has a Google Cloud service account, else on a Gemini API key.") + t.section_gap;
       gauth := ifx s[0].set_gauth_n > 0 then sheet_pool(sh, cast(string) s[0].set_gauth[0..<s[0].set_gauth_n]) else "None found";
       gone: [2] SetRow;
       gone[0] = SetRow.{id = "set.gemini.auth", name = "Signed in with",
@@ -548,11 +548,11 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     }
     if cp_flag(s, DC_FLAG_MODELS_OPENROUTER) {
       orkey := ifx s[0].set_orkey_n > 0 then sheet_pool(sh, cast(string) s[0].set_orkey[0..<s[0].set_orkey_n]) else "Not set";
-      y += set_section_head(f, "set.or.head", x, y, w, "OpenRouter", "Run Microcoder or its sub-agents on an OpenRouter model that takes a strict JSON schema.") + t.section_gap;
+      y += set_section_head(f, "set.or.head", x, y, w, "OpenRouter", "Run OpenAgents or its sub-agents on an OpenRouter model that takes a strict JSON schema.") + t.section_gap;
       rows: [3] SetRow;
       rows[0] = SetRow.{id = "set.or", name = "OpenRouter key", desc = "Kept in a file only you can read.", value = orkey, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
-      rows[1] = SetRow.{id = "set.or.main", name = "Model for Microcoder", desc = "Joins the composer's model picker.", value = sheet_pool(sh, cp_or_shown(cp_or_main(s))), kind = SET_ROW_LINK, action = CP_SET_ACT};
-      rows[2] = SetRow.{id = "set.or.sub", name = "Model for sub-agents", desc = "One more level Microcoder can hand tasks to.", value = sheet_pool(sh, cp_or_shown(cp_or_sub(s))), kind = SET_ROW_LINK, action = CP_SET_ACT};
+      rows[1] = SetRow.{id = "set.or.main", name = "Model for OpenAgents", desc = "Joins the developer model picker.", value = sheet_pool(sh, cp_or_shown(cp_or_main(s))), kind = SET_ROW_LINK, action = CP_SET_ACT};
+      rows[2] = SetRow.{id = "set.or.sub", name = "Model for sub-agents", desc = "One more level OpenAgents can hand tasks to.", value = sheet_pool(sh, cp_or_shown(cp_or_sub(s))), kind = SET_ROW_LINK, action = CP_SET_ACT};
       y += cp_set_group(s, f, "set.or.group", x, y, w, rows[..]) + t.block_gap;
     }
     if cp_flag(s, DC_FLAG_MODELS_ANTIGRAVITY) {
@@ -698,7 +698,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   } else if page == CP_PG_SCHED {
     y += cp_settings_scheduled(s, f, x, y, w);
   } else if page == CP_PG_MCP {
-    y += set_page_head(f, "set.title", x, y, w, names[page], "Configure HTTP and stdio Model Context Protocol servers for Microcoder, Claude, and Antigravity. Bearer tokens are stored in 0600 files and never logged.") + t.block_gap;
+    y += set_page_head(f, "set.title", x, y, w, names[page], "Configure HTTP and stdio Model Context Protocol servers for OpenAgents and connected external harnesses. Bearer tokens are stored in 0600 files and never logged.") + t.block_gap;
     add_one: [1] SetRow;
     add_one[0] = SetRow.{id = "set.mcp.add", name = "Add MCP server", desc = "Connect an HTTP URL or local stdio command. Enabled servers are injected into active workers.",
       kind = SET_ROW_BUTTON, button = "Add server…", action = CP_SET_ACT};
@@ -910,7 +910,7 @@ coder_page_search_submit :: (s: [] CoderPage) -> bool #export_c #effects(all) {
 #test "settings: the search ranks a name's start, then a word's start, then any match; terms count too" {
   hits: [CP_SET_HITS] int; es := cp_set_entries();
   n := cp_set_hits("model", hits[..]);
-  #assert n >= 3 && es[hits[0]].name == "Models" && (es[hits[1]].name == "Model for Microcoder" || es[hits[1]].name == "Model for sub-agents");
+  #assert n >= 3 && es[hits[0]].name == "Models" && (es[hits[1]].name == "Model for OpenAgents" || es[hits[1]].name == "Model for sub-agents");
   n = cp_set_hits("KEY", hits[..]);
   #assert n >= 3 && (es[hits[0]].name == "Keybindings" || es[hits[0]].name == "Gemini API key" || es[hits[0]].name == "Claude key" || es[hits[0]].name == "OpenRouter key");
   n = cp_set_hits("zoom", hits[..]);
@@ -1205,9 +1205,11 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert surface_find(s[0].surface[..], "set.flawed.cache") >= 0;
   #assert surface_find(s[0].surface[..], "set.flawed.style") >= 0;
   #assert surface_find(s[0].surface[..], "set.flawed.reset") >= 0;
-  // Switching default agent to Inkling moves an empty chat to Inkling; switching back moves to Flawed.
-  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_inkling(s);
+  // Switching default compute between Local, Auto, and Cloud updates an empty chat cleanly.
+  coder_page_set_inkling(s, true);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_flawed_local(s);
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.0") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_flawed(s);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.others.1") && coder_page_action(s) == CP_ASK_SHOW_OTHER_MODELS && coder_page_show_other_models(s);
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.model.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && cp_model_id(s, cp_model_index(s)) == "oa:gemini-4-carbon";
   // Dialog actions dispatch cleanly.
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.key.a") && coder_page_action(s) == CP_ASK_FLAWED_KEY;

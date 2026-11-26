@@ -164,19 +164,20 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
   coder_page_set_inkling(s, true);
 
-  // 1. Default (show_other_models == false): Flawed (4 models) + Inkling (1) = 5 models are shown,
-  //    Flawed Settings + Manage Local Models + Show other models… appear in the footer,
-  //    and Providers shortcut appears once the user clicks Show other models…
+  // 1. Default (show_other_models == false) with cloud auth: clean compute modes (Auto | Local | Cloud),
+  //    Agent Settings + Manage Local Models in footer, NO "Show other models…" in composer popover
+  //    (moved strictly under Settings -> Agent -> Developer).
+  coder_page_settings_gauth(s, "vertex", "Vertex AI");
   coder_page_show_other_models_set(s, false);
-  #assert cp_models(s) == CP_FLAWED_MODELS + 1 && coder_page_model_flawed(s) && !cp_model_agy_test(s);
+  #assert cp_models(s) == CP_COMPUTE_MODES && coder_page_model_flawed(s) && !cp_model_agy_test(s);
   coder_page_toggle_models(s);
   #assert cp_ps_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.model.flawed") >= 0;
   #assert surface_find(s[0].surface[..], "coder.model.providers") < 0;
-  others_row := surface_find(s[0].surface[..], "coder.model.others");
-  #assert others_row >= 0 && surface_say(s[0].surface[..], others_row) == "Show other models…";
-  // Pressing Show other models… opts in, keeps the menu open, and reveals Connect Antigravity…
-  #assert cp_press(s, others_row) && coder_page_show_other_models(s) && coder_page_action(s) == CP_ASK_SHOW_OTHER_MODELS && s[0].model_menu;
+  #assert surface_find(s[0].surface[..], "coder.model.others") < 0;
+  // Enabling Developer -> Show other models reveals Connect Antigravity…
+  coder_page_show_other_models_set(s, true);
+  #assert coder_page_show_other_models(s) && s[0].model_menu;
   #assert cp_ps_test_frame(s, 1200, 800);
   prov_row := surface_find(s[0].surface[..], "coder.model.providers");
   #assert prov_row >= 0 && surface_say(s[0].surface[..], prov_row) == "Connect Antigravity…";
@@ -251,9 +252,9 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   // Starting a new chat always defaults to Flawed · Gemini 4 Neon (even when s[0].inkling is true).
   #assert coder_page_new(s) && !coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "oa:gemini-4-neon";
 
-  // Hiding other models collapses right back to Flawed + Inkling.
+  // Hiding other models collapses right back to the clean 3-mode compute picker.
   coder_page_show_other_models_set(s, false);
-  #assert cp_has_model_picker(s) && cp_models(s) == CP_FLAWED_MODELS + 1 && cp_model_id(s, cp_model_index(s)) == "oa:gemini-4-neon";
+  #assert cp_has_model_picker(s) && cp_models(s) == CP_COMPUTE_MODES && coder_page_model_flawed(s);
 }
 
 cp_model_agy_test :: (s: [] CoderPage) -> bool { return coder_page_model_agy(s); }

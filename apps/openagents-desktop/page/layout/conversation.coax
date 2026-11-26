@@ -1517,7 +1517,7 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   orh := ifx compact || nm > 5 then 24.0f32 else 30.0f32;
   show_flawed_row := true;
   show_local_row := true;
-  show_others_row := true;
+  show_others_row := s[0].show_other_models;
   show_prov_row := s[0].show_other_models;
   footer_h := div_h
             + (ifx show_flawed_row then frh else 0.0f32)

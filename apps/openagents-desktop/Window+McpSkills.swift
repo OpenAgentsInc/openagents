@@ -393,7 +393,7 @@ extension CoderWindow {
     }
 
     func mcpAddDialog() {
-        var d = CoderDialog(size: .md, title: "Add MCP Server", body: "Configure an HTTP or stdio Model Context Protocol server. Enabled servers are injected into Microcoder, Claude, and Antigravity. Optional bearer tokens are saved in a 0600 file and never logged.")
+        var d = CoderDialog(size: .md, title: "Add MCP Server", body: "Configure an HTTP or stdio Model Context Protocol server. Enabled servers are injected into OpenAgents and connected external harnesses. Optional bearer tokens are saved in a 0600 file and never logged.")
         d.fields = [
             .init(label: "Name", value: "", hint: "e.g. github or local-fs"),
             .init(label: "Transport (http or stdio)", value: "http", hint: "http or stdio"),

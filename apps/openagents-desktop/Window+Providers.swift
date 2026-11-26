@@ -99,7 +99,7 @@ enum ExternalProviders {
         case providerAcp: return "ACP Agent"
         case providerClaude: return "Claude"
         case providerFlawed: return "OpenAgents"
-        default: return "Microcoder"
+        default: return "OpenAgents"
         }
     }
 }

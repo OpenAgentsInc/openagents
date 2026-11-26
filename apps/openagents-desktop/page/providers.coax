@@ -302,7 +302,7 @@ cp_model_provider_kind :: (s: [] CoderPage, idx: int) -> int {
   if e.kind == CP_MK_CURSOR { return CP_PROV_CURSOR; }
   if e.kind == CP_MK_ACP { return CP_PROV_ACP; }
   if e.kind == CP_MK_CLAUDE { return CP_PROV_CLAUDE; }
-  if e.kind == CP_MK_CORE { return CP_PROV_FLAWED; }
+  if e.kind == CP_MK_CORE || e.kind == CP_MK_COMPUTE { return CP_PROV_FLAWED; }
   return CP_PROV_CLOUD;
 }
 

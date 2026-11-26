@@ -427,7 +427,7 @@ coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all
     }
     if s[0].turns[j].ncmds > 0 { n += cp_out(out[n..<out.count], "\n"); }
     if s[0].turns[j].reply_n > 0 {
-      n += cp_out(out[n..<out.count], "Microcoder:\n"); n += cp_out(out[n..<out.count], cast(string) s[0].turns[j].reply[0..<s[0].turns[j].reply_n]); n += cp_out(out[n..<out.count], "\n\n");
+      n += cp_out(out[n..<out.count], "OpenAgents:\n"); n += cp_out(out[n..<out.count], cast(string) s[0].turns[j].reply[0..<s[0].turns[j].reply_n]); n += cp_out(out[n..<out.count], "\n\n");
     }
   }
   while n > 0 && out[n - 1] == 10 { n -= 1; }

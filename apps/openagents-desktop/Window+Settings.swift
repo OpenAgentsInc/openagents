@@ -203,7 +203,7 @@ extension CoderWindow {
             }
             return
         }
-        var d = CoderDialog(size: .lg, title: "Agent Instructions", body: "Microcoder, Claude and Antigravity are told these in every chat, in every folder; a repository's own AGENTS.md wins where they differ. Edits apply from the next message. Empty the box to turn them off. Kept in ~/.openagents/instructions.md.")
+        var d = CoderDialog(size: .lg, title: "Agent Instructions", body: "OpenAgents and connected external harnesses are told these in every chat, in every folder; a repository's own AGENTS.md wins where they differ. Edits apply from the next message. Empty the box to turn them off. Kept in ~/.openagents/instructions.md.")
         // a box of fourteen lines: Return makes a new line, Command-Return saves
         d.fields = [.init(value: current, lines: 14)]
         d.buttons = [.init(title: "Reset to Default", kind: .danger, aside: true)]
@@ -261,7 +261,7 @@ extension CoderWindow {
             }
             return
         }
-        var d = CoderDialog(size: .lg, title: "Custom System Prompt", body: "Added to every single system prompt across OpenAgents, Inky, Microcoder, Claude, and Antigravity in every chat and folder. Edits apply from the next message. Leave empty to turn off. Kept in ~/.openagents/system-prompt.md.")
+        var d = CoderDialog(size: .lg, title: "Custom System Prompt", body: "Added to every system prompt across OpenAgents and connected external harnesses in every chat and folder. Edits apply from the next message. Leave empty to turn off. Kept in ~/.openagents/system-prompt.md.")
         d.fields = [.init(value: current, hint: "e.g., Always be concise, show exact commands, and explain architectural trade-offs.", lines: 14)]
         d.buttons = [.init(title: "Clear", kind: .danger, aside: true)]
         let clearBtn = 0
