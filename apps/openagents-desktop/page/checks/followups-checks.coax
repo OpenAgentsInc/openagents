@@ -111,26 +111,41 @@
   #assert coder_page_key(s, KEY_ENTER, MOD_SHIFT) && coder_page_action(s) == CP_ASK_FOLLOWUP && coder_page_followup_op(s) == CP_FUO_QUEUE;
 }
 
-#test "follow-ups: the tray shows the waiting steer and the queue over the composer, its presses reach the host, and a steer taken in shows in its message" {
+#test "follow-ups: pending steers go straight into the chat with Send now (never the tray); the tray holds the queue and refused steers" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); f: [1] UiFrame;
   out: [1024] u8;
   #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
   #assert coder_page_steer_line(s, "s1", "also b", out[..]) > 0 && coder_page_steer_line(s, "s2", "and c", out[..]) > 0;
-  #assert coder_page_line(s, "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"then d\"},{\"id\":\"q2\",\"text\":\"and e\"}]}") == MWW_QUEUED;
+  // with only pending steers (no queue, no rejected steers): NO tray above the composer, steers are already in the chat with Send now
   #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
   sf := s[0].surface[..];
-  #assert surface_find(sf, "coder.fu.s0.now") >= 0 && surface_find(sf, "coder.fu.q1.up") >= 0 && surface_find(sf, "coder.fu.q0.send") >= 0 && surface_find(sf, "coder.fu.mode") < 0;
-  #assert s[0].fu[0].tray_h > 0;
+  #assert surface_find(sf, "coder.fu") < 0 && s[0].fu[0].tray_h == 0;
+  #assert surface_find(sf, "t0.st0") >= 0 && surface_find(sf, "t0.st1") >= 0;
+  #assert surface_find(sf, "coder.fu.s0.now") >= 0 && surface_find(sf, "coder.fu.s1.now") >= 0;
+  {
+    sh := surface_sheet(sf);
+    for oi: 0..<sh.no { #assert !(sh.over[oi].kind == PRIM_TEXT && sh.over[oi].text == "Steer"); }
+    tb := [1] ElTable.[surface_rows(sf)];
+    mb := el_box(tb[0].rows[elt_find(tb[..], "t0.st0")]);
+    bb := el_box(tb[0].rows[elt_find(tb[..], "coder.fu.s0.now")]);
+    #assert bb.x + bb.w <= mb.x && bb.y >= mb.y && bb.y + bb.h <= mb.y + mb.h + 1;
+  }
+  // now add queued items: the tray appears for the queue, while pending steers remain in the chat
+  #assert coder_page_line(s, "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"then d\"},{\"id\":\"q2\",\"text\":\"and e\"}]}") == MWW_QUEUED;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert surface_find(sf, "coder.fu") >= 0 && s[0].fu[0].tray_h > 0;
+  #assert surface_find(sf, "coder.fu.s0") < 0 && surface_find(sf, "coder.fu.s0.now") >= 0 && surface_find(sf, "t0.st0") >= 0;
+  #assert surface_find(sf, "coder.fu.q1.up") >= 0 && surface_find(sf, "coder.fu.q0.send") >= 0 && surface_find(sf, "coder.fu.mode") < 0;
   #assert cp_press(s, surface_find(sf, "coder.fu.q1.up")) && coder_page_action(s) == CP_ASK_FOLLOWUP && coder_page_followup_op(s) == APP_FU_OP_UP && coder_page_followup_item(s) == 1;
   #assert !cp_press(s, surface_find(sf, "coder.fu.q0.up"));               // the head has no Move up
   #assert cp_press(s, surface_find(sf, "coder.fu.s1.now")) && coder_page_followup_op(s) == APP_FU_OP_NOW && coder_page_followup_item(s) == 1;
   #assert cp_press(s, surface_find(sf, "coder.fu.clear")) && coder_page_followup_op(s) == APP_FU_OP_CLEAR;
-  // a steer taken in leaves the tray and reads in its message; one refused waits to be queued or dismissed
+  // a steer taken in stays in the chat without its Send now button; one refused moves to the tray to be queued or dismissed
   #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"s1\",\"status\":\"applied\",\"turn\":1,\"step\":2}") == MWW_STEERED;
   #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"s2\",\"status\":\"rejected\",\"turn\":1,\"reason\":\"full\"}") == MWW_STEERED;
   #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
-  #assert surface_find(sf, "t0.st0") >= 0 && surface_find(sf, "coder.fu.s0.now") < 0 && surface_find(sf, "coder.fu.s1.queue") >= 0;
+  #assert surface_find(sf, "t0.st0") >= 0 && surface_find(sf, "t0.st1") < 0 && surface_find(sf, "coder.fu.s0.now") < 0 && surface_find(sf, "coder.fu.s1.now") < 0 && surface_find(sf, "coder.fu.s1.queue") >= 0;
   #assert cp_press(s, surface_find(sf, "coder.fu.s1.queue")) && coder_page_followup_op(s) == APP_FU_OP_REQUEUE && coder_page_followup_item(s) == 1;
   #assert cp_press(s, surface_find(sf, "coder.fu.s1.dismiss")) && coder_page_steer_count(s) == 1;
   // the reply ends and the queue pauses: the tray says why, with Resume, and a row's primary is Send now
@@ -221,7 +236,8 @@
   r0 := elt_find(t[..], "t0.x0"); st := elt_find(t[..], "t0.st0"); r1 := elt_find(t[..], "t0.x1");
   #assert r0 >= 0 && st >= 0 && r1 >= 0;
   #assert el_box(t[0].rows[r0]).y < el_box(t[0].rows[st]).y && el_box(t[0].rows[st]).y < el_box(t[0].rows[r1]).y;
-  // its badge is a small "Steer", not the old footer
+  // no "Steer" label over the bubble
+  { sh := surface_sheet(s[0].surface[..]); for oi: 0..<sh.no { #assert !(sh.over[oi].kind == PRIM_TEXT && sh.over[oi].text == "Steer"); } }
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
   kept: [16384] u8; n := coder_page_save(s, kept[..]);
   #assert n > 0 && cp_find(cast(string) kept[0..<n], "\"steer_rows\":[1]") >= 0;

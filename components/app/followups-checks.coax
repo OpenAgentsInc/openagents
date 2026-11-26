@@ -50,5 +50,28 @@
   #assert app_test_end(t[..]);
   #assert app_test_pressable(t[..], "fu.s0.queue") && app_test_pressable(t[..], "fu.s0.dismiss") && app_test_texts(t[..], "Not taken") == 1;
   #assert app_test_find(t[..], "fu.q0.send") < 0 && app_test_texts(t[..], "Editing · Return saves · Esc cancels") == 1 && app_test_texts(t[..], "3 more queued") == 1;
-  #assert h > 0 && app_test_texts(t[..], "Steer") == 1 && app_test_texts(t[..], "Steered into the reply") == 0;
+  #assert h > 0 && app_test_texts(t[..], "Steer") == 0 && app_test_texts(t[..], "Steered into the reply") == 0;
+}
+
+#test "app follow-ups: a pending steer renders in the chat with a Send now button beside it and no Steer label" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  h := app_message_steer_pending(f, "t0.st0", "coder.fu.s0.now", 20, 40, 600, "check the open issues", 0, 45);
+  #assert app_test_end(t[..]);
+  #assert h > 0 && app_test_pressable(t[..], "coder.fu.s0.now") && app_test_label(t[..], "coder.fu.s0.now") == "Send now";
+  #assert app_test_texts(t[..], "Steer") == 0 && app_test_texts(t[..], "check the open issues") == 1;
+  mb := el_box(app_test_row(t[..], "t0.st0")); bb := el_box(app_test_row(t[..], "coder.fu.s0.now"));
+  #assert bb.x >= 20 && bb.x + bb.w <= mb.x && bb.y >= mb.y && bb.y + bb.h <= mb.y + mb.h + 1;
+  // disabled state while stopping
+  app_test_begin(t[..], "", "", true);
+  _ := app_message_steer_pending(f, "t0.st0", "coder.fu.s0.now", 20, 40, 600, "check the open issues", EL_S_DISABLED, 45);
+  #assert app_test_end(t[..]);
+  #assert !app_test_pressable(t[..], "coder.fu.s0.now");
+  // narrow column falls back cleanly below the bubble without overflowing left
+  app_test_begin(t[..], "", "", true);
+  hn := app_message_steer_pending(f, "t0.st0", "coder.fu.s0.now", 20, 40, 120, "check the open issues", 0, 45);
+  #assert app_test_end(t[..]);
+  #assert hn > 0 && app_test_pressable(t[..], "coder.fu.s0.now");
+  bn := el_box(app_test_row(t[..], "coder.fu.s0.now"));
+  #assert bn.x >= 20;
 }

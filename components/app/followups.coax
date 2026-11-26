@@ -169,15 +169,44 @@ app_fu_tray :: (f: [] UiFrame, id: string, x: f32, bottom: f32, w: f32, t: AppFu
   return h;
 }
 
-// A steer the reply took in, in the timeline at (x, y), w wide, where it was taken (#13809): the
-// person's words at the column's right edge, as their message is, under a small "Steer" badge.
-// Returns its height.
+// A steer in the timeline at (x, y), w wide, where it was taken (#13809): the person's words at
+// the column's right edge, as their message is, without a "Steer" label. Returns its height.
 app_message_steer :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string) -> f32 {
+  return app_message_user(f, id, x, y, w, ifx text.count > 0 then text else "(steer)");
+}
+
+// A steer waiting to be taken in by the running reply, shown immediately in the chat at (x, y),
+// w wide: the person's message bubble at the column's right edge with a small "Send now" button
+// beside it (id `now_id`, dispatching `action`). Returns its height.
+app_message_steer_pending :: (f: [] UiFrame, id: string, now_id: string, x: f32, y: f32, w: f32, text: string, state: int, action: int) -> f32 {
   s := f[0].skin; a := s.app; m := f[0].m;
-  label := "Steer";
-  _ := sheet_text(f[0].sheet, m, -1, x + w - measure_width(m, s.small.face, label), y, s.small.line, s.small.face, s.faint, label);
-  h := s.small.line + a.gap_small;
-  return h + app_message_user(f, id, x, y + h, w, ifx text.count > 0 then text else "(steer)");
+  shown := ifx text.count > 0 then text else "(steer)";
+  btn_w := app_chip_width(f, -1, "Send now", 0);
+  gap := a.gap_small;
+  avail := w - btn_w - gap - 1.0f32;
+  beside := avail >= 2 * a.bubble_pad_x + 48.0f32;
+  w_col := w;
+  if beside && a.bubble_share > 0 && w * a.bubble_share > avail { w_col = avail / a.bubble_share; }
+  x_b := x + (w - w_col);
+  // Match app_message_user's bubble width so "Send now" sits flush beside the bubble's left edge.
+  room := w_col * a.bubble_share - 2 * a.bubble_pad_x;
+  rows: [APP_USER_LINES] TextLine;
+  n := text_wrap_lines(m, uiskin_faces(s), shown, ifx room > 1 then room else 1.0f32, rows[..]);
+  widest: f32 = 0;
+  for i: 0..<n { rw := measure_width(m, s.body.face, cast(string) shown[rows[i].from..<rows[i].to]); if rw > widest { widest = rw; } }
+  bw := ceil(widest) + 2 * a.bubble_pad_x;
+  bx := x + w - bw;
+  bh := app_message_user(f, id, x_b, y, w_col, shown);
+  ch := s.cmp.chip_h;
+  btn_x := bx - gap - btn_w;
+  if beside && btn_x >= x {
+    by := y + (bh - ch) / 2.0f32;
+    if by < y { by = y; }
+    _ := app_chip(f, now_id, btn_x, by, 0, -1, "Send now", "Send now", state, action);
+    return ifx ch > bh then ch else bh;
+  }
+  _ := app_chip(f, now_id, x + w - btn_w, y + bh + gap, 0, -1, "Send now", "Send now", state, action);
+  return bh + gap + ch;
 }
 
 #load "followups-checks.coax" #test;

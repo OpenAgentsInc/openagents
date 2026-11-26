@@ -503,6 +503,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       }
       st := s[0].turns[i].state;
       if st == CP_RUNNING {
+        y += cp_fu_pending_steers(s, f, i, x, y, cw);
         // before its worker's first line (or while loading the local model) the turn has not begun: no clock
         no_clock := (s[0].turns[i].loading_model || !s[0].turns[i].heard) && !s[0].turns[i].stopping;
         y += app_working(f, cp_id(ib[..], i, ".t"), x, y, ifx no_clock then -1 else cast(int) (s[0].clock - s[0].turns[i].began),

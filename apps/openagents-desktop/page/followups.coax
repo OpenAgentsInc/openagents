@@ -172,6 +172,8 @@ coder_page_steer_line :: (s: [] CoderPage, id: string, text: string, out: [] u8)
   if s.count < 1 || !cp_running(s) || id.count == 0 || id.count > CP_FU_ID || text.count == 0 { return 0; }
   f := s[0].fu[..];
   if cp_fu_steer_put(f, id, text, CP_STEER_SENT, s[0].nturns - 1) < 0 { return 0; }
+  s[0].turns[s[0].nturns - 1].h = 0;
+  s[0].stick = true; cp_glide_reset(s);
   n := mww_steer(out, id, text, f[0].turn);
   return ifx n < 0 then 0 else n;
 }
@@ -273,7 +275,7 @@ cp_fu_press :: (s: [] CoderPage, id: string) -> bool {
       f[0].nsteers -= 1;
       return true;
     }
-    if op == APP_FU_OP_NOW && (!cp_running(s) || !cp_fu_pending(f[0].steers[steer].status)) { return false; }
+    if op == APP_FU_OP_NOW && (!cp_running(s) || s[0].turns[s[0].nturns - 1].stopping || !cp_fu_pending(f[0].steers[steer].status)) { return false; }
     if op != APP_FU_OP_NOW && op != APP_FU_OP_REQUEUE { return false; }
     return cp_fu_ask(s, op, steer);
   }
@@ -336,19 +338,19 @@ cp_fu_why :: (reason: string) -> string {
   if reason == "restored" { return "Paused: Coder closed while these waited"; }
   return "Paused";
 }
-// The tray over the composer (app_fu_tray), docked at bottom: the waiting and refused steers of
-// the running reply, then the queue. Keeps its height for the conversation's end.
+// The tray over the composer (app_fu_tray), docked at bottom: refused steers (so their text is
+// never lost) and the queue. Waiting steers render directly in the chat with a "Send now" button.
+// Keeps its height for the conversation's end.
 cp_fu_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, cw: f32, running: bool) {
   fu := s[0].fu[..]; sh := f[0].sheet;
   rows: [APP_FU_SHOWN] AppFuRow; n := 0; more := 0;
   ib: [EL_ID] u8;
   for k: 0..<fu[0].nsteers {
     st := fu[0].steers[k].status;
-    show := (cp_fu_pending(st) && running) || st == CP_STEER_REJECTED;
-    if !show { continue; }
+    if st != CP_STEER_REJECTED { continue; }
     if n >= APP_FU_SHOWN { more += 1; continue; }
     nn := el_put(ib[..], 0, "coder.fu.s"); nn = el_put_i(ib[..], nn, k);
-    rows[n] = AppFuRow.{id = sheet_pool(sh, cast(string) ib[0..<nn]), kind = ifx st == CP_STEER_REJECTED then APP_FU_REJECTED else APP_FU_STEER,
+    rows[n] = AppFuRow.{id = sheet_pool(sh, cast(string) ib[0..<nn]), kind = APP_FU_REJECTED,
                         text = cp_fu_str(fu[0].steers[k].text[..], fu[0].steers[k].ntext), note = cp_fu_str(fu[0].steers[k].reason[..], fu[0].steers[k].nreason)};
     n += 1;
   }
@@ -399,6 +401,25 @@ cp_fu_steered :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f3
       done[0] = k + 1;
     }
     from = at + 1; k += 1;
+  }
+  return h;
+}
+// Turn i's pending steers (sent or accepted, not yet applied), shown immediately in the chat at
+// (x, y) with a small "Send now" button beside each bubble. Returns their total height.
+cp_fu_pending_steers :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f32) -> f32 {
+  fu := s[0].fu[..]; sh := f[0].sheet;
+  applied := cp_fu_steers_in(s, i);
+  btn_state := ifx s[0].turns[i].stopping then EL_S_DISABLED else 0;
+  h: f32 = 0; p := 0;
+  ib: [EL_ID] u8; nb: [EL_ID] u8;
+  for k: 0..<fu[0].nsteers {
+    if fu[0].steers[k].at != i || !cp_fu_pending(fu[0].steers[k].status) { continue; }
+    nn := cp_id(ib[..], i, ".st").count; nn = el_put_i(ib[..], nn, applied + p);
+    bn := el_put(nb[..], 0, "coder.fu.s"); bn = el_put_i(nb[..], bn, k); bn = el_put(nb[..], bn, ".now");
+    text := cp_fu_str(fu[0].steers[k].text[..], fu[0].steers[k].ntext);
+    h += app_message_steer_pending(f, sheet_pool(sh, cast(string) ib[0..<nn]), sheet_pool(sh, cast(string) nb[0..<bn]),
+                                   x, y + h, cw, text, btn_state, CP_FU) + f[0].skin.app.gap;
+    p += 1;
   }
   return h;
 }
