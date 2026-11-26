@@ -1,0 +1,1016 @@
+// OpenAgents Desktop page (../page.coax): Expandable multi-tab right-side Browser Pane
+// (Spec: docs/browser/desktop-browser-pane-spec.md; GitHub #14105, #14107, #14108, #14109, #14110).
+//
+// Features:
+// - Up to 12 tabs with 3 isolated storage profiles (Workspace, Personal, Agent Ephemeral)
+// - Row 1 (38pt, flush with titlebar): tab strip with RGB-exempt badges, +, Drawer, Expand, Hide
+// - Row 2 (30pt): Back, Forward, Reload/Stop, Omnibox (CP_KB_BROWSER_URL), Security/Profile pill,
+//   Dev-Server Port chip, Viewport Preset cycle, DOM Picker, Screenshot to Chat, More menu
+// - Row 3 (26pt, contextual): Approval banner, Agent Lease banner (Human Supremacy), Find bar, Download tray
+// - Collapsible right DevTools/Agent Drawer (300pt, CP_SCR_BROWSER_DRAWER): Console, Network, DOM/A11y, Agent Log, Bookmarks
+// - Session restore (excluding Agent Ephemeral), 4-renderer LRU hibernation, quarantined downloads, @e* hints
+// - Engine-neutral: never calls WKWebView/WebKitGTK/WebView2/CEF directly (Invariant I-2)
+
+CP_BR_TABS       :: 12;
+CP_BR_BAR_H      :: 38;
+CP_BR_SUB_H      :: 30;
+CP_BR_CTX_H      :: 26;
+CP_BR_DRAWER_W   :: 300;
+CP_BR_RING_MAX   :: 24;
+CP_BR_PORTS_MAX  :: 8;
+CP_BR_BM_MAX     :: 16;
+
+// Viewport presets
+CP_BR_VP_DESKTOP :: 0;
+CP_BR_VP_TABLET  :: 1;
+CP_BR_VP_MOBILE  :: 2;
+
+// Drawer tabs
+CP_BR_DRW_CONSOLE   :: 0;
+CP_BR_DRW_NETWORK   :: 1;
+CP_BR_DRW_DOM       :: 2;
+CP_BR_DRW_AGENT     :: 3;
+CP_BR_DRW_BOOKMARKS :: 4;
+
+// Engine backends
+CP_BR_ENG_SYSTEM   :: 0;
+CP_BR_ENG_CEF_OSR  :: 1;
+CP_BR_ENG_SERVO    :: 2;
+CP_BR_ENG_LADYBIRD :: 3;
+
+CpBrowserConsoleRow :: struct {
+  level: int;      // 0 log, 1 warn, 2 error
+  line: int;
+  text: [192] u8;  text_n: int;
+  source: [96] u8; source_n: int;
+}
+
+CpBrowserNetRow :: struct {
+  status: int;
+  ms: int;
+  method: [8] u8;  method_n: int;
+  url: [192] u8;   url_n: int;
+}
+
+CpBrowserAgentRow :: struct {
+  verb: [24] u8;   verb_n: int;
+  summary: [128] u8; summary_n: int;
+  ok: bool;
+}
+
+CpBrowserBookmark :: struct {
+  title: [64] u8;  title_n: int;
+  url: [256] u8;   url_n: int;
+}
+
+CpBrowserTab :: struct {
+  id: int;
+  profile: int;        // BR_PROFILE_WORKSPACE | PERSONAL | EPHEMERAL
+  engine: int;         // CP_BR_ENG_*
+  url: [512] u8;       url_n: int;
+  title: [96] u8;      title_n: int;
+  loading: bool;
+  progress: f32;
+  can_back: bool;
+  can_fwd: bool;
+  secure: bool;
+  loopback: bool;
+  muted: bool;
+  audio_playing: bool;
+  hibernated: bool;
+  crashed: bool;
+  ext_tex_ready: bool;
+  zoom_pct: int;
+  scroll_x: int;
+  scroll_y: int;
+  last_used_tick: int;
+  console_errs: int;
+  console_warns: int;
+  lease: [1] BrLease;
+  err: [160] u8;       err_n: int;
+}
+
+CpBrowserPane :: struct {
+  open: bool;
+  hidden: bool;
+  expanded: bool;
+  drawer_open: bool;
+  drawer_tab: int;
+  more_menu: bool;
+  port_menu: bool;
+  picking: bool;
+  hints_active: bool;
+  hints_count: int;
+  viewport_mode: int;  // CP_BR_VP_*
+  engine: int;         // CP_BR_ENG_*
+  cef_installed: bool;
+  cef_hydrating: bool;
+  cef_pct: int;
+  attach_clients: int;
+
+  tabs: [CP_BR_TABS] CpBrowserTab;
+  ntabs: int;
+  active: int;
+  next_tab_id: int;
+  tick_seq: int;
+
+  // Omnibox & Find-in-page text buffers
+  url_buf: [512] u8;   url_n: int;
+  url_editing: bool;
+  find_open: bool;
+  find_buf: [128] u8;  find_n: int;
+  find_idx: int;
+  find_total: int;
+
+  // Contextual Row 3: Approval banner & Download quarantine tray
+  approval_pending: bool;
+  approval_req_id: [64] u8;  approval_req_n: int;
+  approval_label: [128] u8;  approval_label_n: int;
+  approval_target: [128] u8; approval_target_n: int;
+
+  dl_active: bool;
+  dl_name: [128] u8;   dl_name_n: int;
+  dl_bytes: int;
+  dl_total: int;
+  dl_status: [64] u8;  dl_status_n: int;
+
+  // Detected localhost dev-server ports
+  ports: [CP_BR_PORTS_MAX] int;
+  nports: int;
+
+  // Drawer rings (Console, Network, DOM/A11y, Agent Log, Bookmarks)
+  console_rows: [CP_BR_RING_MAX] CpBrowserConsoleRow;
+  nconsole: int;
+  net_rows: [CP_BR_RING_MAX] CpBrowserNetRow;
+  nnet: int;
+  dom_summary: [256] u8; dom_summary_n: int;
+  dom_selector: [128] u8; dom_selector_n: int;
+  agent_rows: [CP_BR_RING_MAX] CpBrowserAgentRow;
+  nagent: int;
+  bookmarks: [CP_BR_BM_MAX] CpBrowserBookmark;
+  nbookmarks: int;
+
+  // Last computed native viewport rect in points (top-left origin)
+  vp_x: f32; vp_y: f32; vp_w: f32; vp_h: f32;
+
+  // Pending host command metadata
+  pending_tab: int;
+  pending_val: int;
+  pending_str: [512] u8; pending_str_n: int;
+}
+
+// ---- Enable / Init / Visibility ----
+
+cp_br_enabled :: (s: [] CoderPage) -> bool {
+  return cp_flag(s, DC_FLAG_BROWSER);
+}
+
+cp_br_init :: (s: [] CoderPage) {
+  br := s[0].br[..];
+  br[0].open = false;
+  br[0].hidden = false;
+  br[0].expanded = false;
+  br[0].drawer_open = false;
+  br[0].drawer_tab = CP_BR_DRW_CONSOLE;
+  br[0].ntabs = 0;
+  br[0].active = -1;
+  br[0].next_tab_id = 1;
+  br[0].tick_seq = 1;
+  br[0].viewport_mode = CP_BR_VP_DESKTOP;
+  br[0].engine = CP_BR_ENG_SYSTEM;
+  // Seed default workspace bookmarks
+  br[0].nbookmarks = 2;
+  br[0].bookmarks[0].title_n = cp_out(br[0].bookmarks[0].title[..], "Localhost :5173");
+  br[0].bookmarks[0].url_n = cp_out(br[0].bookmarks[0].url[..], "http://localhost:5173");
+  br[0].bookmarks[1].title_n = cp_out(br[0].bookmarks[1].title[..], "Localhost :3000");
+  br[0].bookmarks[1].url_n = cp_out(br[0].bookmarks[1].url[..], "http://localhost:3000");
+}
+
+cp_br_shown :: (s: [] CoderPage) -> bool {
+  if !cp_br_enabled(s) { return false; }
+  return s[0].br[0].open && !s[0].br[0].hidden;
+}
+
+cp_br_bring_front :: (s: [] CoderPage) {
+  s[0].fp[0].open = false;
+  s[0].ft[0].open = false;
+  s[0].mv[0].hidden = true;
+  s[0].mv[0].expanded = false;
+  s[0].sim[0].open = false;
+  s[0].term[0].open = false;
+  s[0].preview[0].open = false;
+  s[0].forge[0].open = false;
+  s[0].rich[0].side_open = false;
+  s[0].review = false;
+  s[0].pane_open = false;
+  s[0].br[0].open = true;
+  s[0].br[0].hidden = false;
+}
+
+cp_br_sync_omnibox :: (s: [] CoderPage) {
+  br := s[0].br[..];
+  if br[0].active < 0 || br[0].active >= br[0].ntabs {
+    br[0].url_n = 0;
+    return;
+  }
+  t := br[0].tabs[br[0].active..<br[0].active + 1];
+  br[0].url_n = cp_out(br[0].url_buf[..], cast(string) t[0].url[0..<t[0].url_n]);
+}
+
+// Enforces 4-renderer LRU hibernation cap across up to 12 open tabs (#14110, §7.3).
+cp_br_enforce_lru :: (s: [] CoderPage) -> int {
+  br := s[0].br[..];
+  if br[0].ntabs <= 0 { return 0; }
+  ticks: [CP_BR_TABS] int;
+  hibs: [CP_BR_TABS] bool;
+  for i: 0..<br[0].ntabs {
+    ticks[i] = br[0].tabs[i].last_used_tick;
+    hibs[i] = br[0].tabs[i].hibernated;
+  }
+  moved := br_plan_lru_hibernation(br[0].ntabs, br[0].active, BR_MAX_ACTIVE_RENDERERS, ticks[..], hibs[..]);
+  for i: 0..<br[0].ntabs {
+    br[0].tabs[i].hibernated = hibs[i];
+  }
+  return moved;
+}
+
+cp_br_open_tab :: (s: [] CoderPage, raw_url: string, caller: int, req_profile: int) -> int {
+  if !cp_br_enabled(s) { return -1; }
+  br := s[0].br[..];
+  nb: [BR_URL_MAX] u8; nl: [1] int;
+  url_in := ifx raw_url.count > 0 then raw_url else "openagents://browser/new";
+  r := br_route_classify(url_in, caller, req_profile, s[0].flags, nb[..], nl[..]);
+  if r.pane == BR_PANE_REJECT {
+    return -1;
+  }
+  norm := cast(string) nb[0..<nl[0]];
+  if br[0].ntabs >= CP_BR_TABS {
+    // Reuse oldest background tab if full
+    victim := ifx br[0].active == 0 then 1 else 0;
+    for i: 0..<br[0].ntabs {
+      if i != br[0].active && br[0].tabs[i].last_used_tick < br[0].tabs[victim].last_used_tick {
+        victim = i;
+      }
+    }
+    _ = cp_br_close_tab(s, victim);
+  }
+  idx := br[0].ntabs;
+  br[0].ntabs += 1;
+  t := br[0].tabs[idx..<idx + 1];
+  t[0] = CpBrowserTab.{};
+  t[0].id = br[0].next_tab_id;
+  br[0].next_tab_id += 1;
+  t[0].profile = r.profile;
+  t[0].engine = br[0].engine;
+  t[0].url_n = cp_out(t[0].url[..], norm);
+  t[0].title_n = cp_out(t[0].title[..], ifx norm == "openagents://browser/new" then "New Tab" else norm);
+  t[0].secure = r.secure;
+  t[0].loopback = r.loopback;
+  t[0].zoom_pct = 100;
+  br[0].tick_seq += 1;
+  t[0].last_used_tick = br[0].tick_seq;
+
+  br[0].active = idx;
+  cp_br_bring_front(s);
+  cp_br_sync_omnibox(s);
+  _ := cp_br_enforce_lru(s);
+  br[0].pending_tab = t[0].id;
+  br[0].pending_val = t[0].profile;
+  br[0].pending_str_n = cp_out(br[0].pending_str[..], norm);
+  s[0].ask = CP_ASK_BR_NEW_TAB;
+  return idx;
+}
+
+cp_br_select_tab :: (s: [] CoderPage, idx: int) -> bool {
+  br := s[0].br[..];
+  if idx < 0 || idx >= br[0].ntabs { return false; }
+  br[0].active = idx;
+  br[0].tick_seq += 1;
+  br[0].tabs[idx].last_used_tick = br[0].tick_seq;
+  br[0].tabs[idx].hibernated = false;
+  _ := cp_br_enforce_lru(s);
+  cp_br_sync_omnibox(s);
+  br[0].pending_tab = br[0].tabs[idx].id;
+  s[0].ask = CP_ASK_BR_SELECT_TAB;
+  return true;
+}
+
+cp_br_close_tab :: (s: [] CoderPage, idx: int) -> bool {
+  br := s[0].br[..];
+  if idx < 0 || idx >= br[0].ntabs { return false; }
+  closed_id := br[0].tabs[idx].id;
+  for i: idx..<br[0].ntabs - 1 {
+    br[0].tabs[i] = br[0].tabs[i + 1];
+  }
+  br[0].ntabs -= 1;
+  if br[0].ntabs == 0 {
+    br[0].active = -1;
+    br[0].open = false;
+    br[0].expanded = false;
+    br[0].url_n = 0;
+  } else {
+    if br[0].active >= br[0].ntabs { br[0].active = br[0].ntabs - 1; }
+    br[0].tick_seq += 1;
+    br[0].tabs[br[0].active].last_used_tick = br[0].tick_seq;
+    br[0].tabs[br[0].active].hibernated = false;
+    cp_br_sync_omnibox(s);
+  }
+  br[0].pending_tab = closed_id;
+  s[0].ask = CP_ASK_BR_CLOSE_TAB;
+  return true;
+}
+
+cp_br_navigate_active :: (s: [] CoderPage, raw_url: string, caller: int) -> bool {
+  br := s[0].br[..];
+  if br[0].active < 0 || br[0].active >= br[0].ntabs {
+    return cp_br_open_tab(s, raw_url, caller, BR_PROFILE_AUTO) >= 0;
+  }
+  t := br[0].tabs[br[0].active..<br[0].active + 1];
+  nb: [BR_URL_MAX] u8; nl: [1] int;
+  r := br_route_classify(raw_url, caller, t[0].profile, s[0].flags, nb[..], nl[..]);
+  if r.pane == BR_PANE_REJECT {
+    t[0].err_n = cp_out(t[0].err[..], r.reason);
+    return false;
+  }
+  norm := cast(string) nb[0..<nl[0]];
+  if r.pane == BR_PANE_EXTERNAL {
+    br[0].pending_tab = t[0].id;
+    br[0].pending_str_n = cp_out(br[0].pending_str[..], norm);
+    s[0].ask = CP_ASK_BR_EXTERNAL;
+    return true;
+  }
+  t[0].url_n = cp_out(t[0].url[..], norm);
+  t[0].secure = r.secure;
+  t[0].loopback = r.loopback;
+  t[0].loading = true;
+  t[0].crashed = false;
+  t[0].err_n = 0;
+  cp_br_sync_omnibox(s);
+  br[0].pending_tab = t[0].id;
+  br[0].pending_str_n = cp_out(br[0].pending_str[..], norm);
+  s[0].ask = CP_ASK_BR_NAVIGATE;
+  return true;
+}
+
+// ---- Drawer Rings (Console, Network, Agent Log) ----
+
+cp_br_push_console :: (s: [] CoderPage, level: int, text: string, source: string, line: int) {
+  br := s[0].br[..];
+  if br[0].nconsole >= CP_BR_RING_MAX {
+    for i: 0..<CP_BR_RING_MAX - 1 { br[0].console_rows[i] = br[0].console_rows[i + 1]; }
+    br[0].nconsole = CP_BR_RING_MAX - 1;
+  }
+  idx := br[0].nconsole;
+  br[0].nconsole += 1;
+  r := br[0].console_rows[idx..<idx + 1];
+  r[0].level = level;
+  r[0].line = line;
+  r[0].text_n = cp_out(r[0].text[..], text);
+  r[0].source_n = cp_out(r[0].source[..], source);
+  if br[0].active >= 0 && br[0].active < br[0].ntabs {
+    if level == 2 { br[0].tabs[br[0].active].console_errs += 1; }
+    else if level == 1 { br[0].tabs[br[0].active].console_warns += 1; }
+  }
+}
+
+cp_br_push_network :: (s: [] CoderPage, method: string, status: int, url: string, ms: int) {
+  br := s[0].br[..];
+  if br[0].nnet >= CP_BR_RING_MAX {
+    for i: 0..<CP_BR_RING_MAX - 1 { br[0].net_rows[i] = br[0].net_rows[i + 1]; }
+    br[0].nnet = CP_BR_RING_MAX - 1;
+  }
+  idx := br[0].nnet;
+  br[0].nnet += 1;
+  r := br[0].net_rows[idx..<idx + 1];
+  r[0].status = status;
+  r[0].ms = ms;
+  r[0].method_n = cp_out(r[0].method[..], method);
+  // Redact any secrets in URL/query before storing
+  red: [192] u8;
+  rn := br_redact_secrets(url, red[..]);
+  r[0].url_n = cp_out(r[0].url[..], cast(string) red[0..<rn]);
+}
+
+cp_br_push_agent_log :: (s: [] CoderPage, verb: string, summary: string, ok: bool) {
+  br := s[0].br[..];
+  if br[0].nagent >= CP_BR_RING_MAX {
+    for i: 0..<CP_BR_RING_MAX - 1 { br[0].agent_rows[i] = br[0].agent_rows[i + 1]; }
+    br[0].nagent = CP_BR_RING_MAX - 1;
+  }
+  idx := br[0].nagent;
+  br[0].nagent += 1;
+  r := br[0].agent_rows[idx..<idx + 1];
+  r[0].verb_n = cp_out(r[0].verb[..], verb);
+  r[0].summary_n = cp_out(r[0].summary[..], summary);
+  r[0].ok = ok;
+}
+
+// ---- Session Persistence (Phase 4, #14110 — NEVER persists Agent Ephemeral tabs!) ----
+
+cp_br_save_session_json :: (s: [] CoderPage, out: [] u8) -> int {
+  br := s[0].br[..];
+  n := json_raw(out, 0, "{\"v\":1,\"expanded\":");
+  n = json_raw(out, n, ifx br[0].expanded then "true" else "false");
+  n = json_raw(out, n, ",\"hidden\":");
+  n = json_raw(out, n, ifx br[0].hidden then "true" else "false");
+  n = json_raw(out, n, ",\"active\":");
+  n = json_write_int(out, n, br[0].active);
+  n = json_raw(out, n, ",\"tabs\":[");
+  written := 0;
+  for i: 0..<br[0].ntabs {
+    t := br[0].tabs[i];
+    // Invariant I-4: Agent Ephemeral tabs MUST NOT persist across restarts!
+    if t.profile == BR_PROFILE_EPHEMERAL { continue; }
+    ts := BrTabState.{
+      id = t.id, profile = t.profile, engine = t.engine,
+      url = cast(string) t.url[0..<t.url_n],
+      title = cast(string) t.title[0..<t.title_n],
+      scroll_x = t.scroll_x, scroll_y = t.scroll_y,
+      zoom_pct = ifx t.zoom_pct > 0 then t.zoom_pct else 100,
+      expanded = br[0].expanded, hidden = br[0].hidden, drawer_open = br[0].drawer_open
+    };
+    if written > 0 { n = json_raw(out, n, ","); }
+    tb: [1024] u8;
+    tn := br_tab_state_write_json(ts, tb[..]);
+    if tn > 0 {
+      n = json_raw(out, n, cast(string) tb[0..<tn]);
+      written += 1;
+    }
+  }
+  n = json_raw(out, n, "]}");
+  return ifx n < 0 then 0 else n;
+}
+
+cp_br_load_session_json :: (s: [] CoderPage, text: string) -> int {
+  if !cp_br_enabled(s) || cl_at(text, "tabs").tok != JSON_ARRAY { return 0; }
+  br := s[0].br[..];
+  br[0].ntabs = 0;
+  br[0].active = -1;
+  tabs_raw := cl_raw(text, "tabs");
+  cnt := cl_count(tabs_raw);
+  ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
+  restored := 0;
+  for i: 0..<cnt {
+    if br[0].ntabs >= CP_BR_TABS { break; }
+    ent := cl_item(tabs_raw, i);
+    if !ent.ok { continue; }
+    item := tabs_raw[ent.from..<ent.to];
+    prof_str := cl_str(ar[..], item, "profile");
+    prof := br_profile_from_name(prof_str);
+    // Hard guard: never restore ephemeral tabs even if injected into persisted JSON
+    if prof == BR_PROFILE_EPHEMERAL { continue; }
+    if prof == BR_PROFILE_AUTO { prof = BR_PROFILE_WORKSPACE; }
+    url := cl_str(ar[..], item, "url");
+    title := cl_str(ar[..], item, "title");
+    nb: [BR_URL_MAX] u8; nl: [1] int;
+    r := br_route_classify(url, BR_CALLER_HUMAN, prof, s[0].flags, nb[..], nl[..]);
+    if r.pane == BR_PANE_REJECT { continue; }
+    idx := br[0].ntabs;
+    br[0].ntabs += 1;
+    t := br[0].tabs[idx..<idx + 1];
+    t[0] = CpBrowserTab.{};
+    t[0].id = br[0].next_tab_id;
+    br[0].next_tab_id += 1;
+    t[0].profile = prof;
+    t[0].url_n = cp_out(t[0].url[..], cast(string) nb[0..<nl[0]]);
+    t[0].title_n = cp_out(t[0].title[..], ifx title.count > 0 then title else url);
+    t[0].secure = r.secure;
+    t[0].loopback = r.loopback;
+    z := cl_int(item, "zoom_pct");
+    t[0].zoom_pct = ifx z.ok && z.value >= 25 && z.value <= 500 then z.value else 100;
+    br[0].tick_seq += 1;
+    t[0].last_used_tick = br[0].tick_seq;
+    restored += 1;
+  }
+  if restored > 0 {
+    act := cl_int(text, "active");
+    br[0].active = ifx act.ok && act.value >= 0 && act.value < br[0].ntabs then act.value else 0;
+    exp_b := cl_bool(text, "expanded");
+    hid_b := cl_bool(text, "hidden");
+    br[0].expanded = exp_b.ok && exp_b.value;
+    br[0].hidden = hid_b.ok && hid_b.value;
+    br[0].open = true;
+    _ := cp_br_enforce_lru(s);
+    cp_br_sync_omnibox(s);
+  }
+  return restored;
+}
+
+// ---- Actions & Keyboard ----
+
+cp_br_escape :: (s: [] CoderPage) -> bool {
+  br := s[0].br[..];
+  if br[0].more_menu { br[0].more_menu = false; return true; }
+  if br[0].port_menu { br[0].port_menu = false; return true; }
+  if br[0].picking {
+    br[0].picking = false;
+    s[0].ask = CP_ASK_BR_PICK_TOGGLE;
+    return true;
+  }
+  if br[0].hints_active { br[0].hints_active = false; return true; }
+  if br[0].find_open { br[0].find_open = false; return true; }
+  if br[0].url_editing {
+    br[0].url_editing = false;
+    cp_br_sync_omnibox(s);
+    return true;
+  }
+  return false;
+}
+
+cp_br_key :: (s: [] CoderPage, key: int, mods: int) -> bool {
+  if !cp_br_shown(s) { return false; }
+  br := s[0].br[..];
+  // Omnibox Enter submits, Escape reverts
+  if s[0].fld[0].kb == CP_KB_BROWSER_URL {
+    if key == KEY_ESCAPE {
+      br[0].url_editing = false;
+      cp_br_sync_omnibox(s);
+      return true;
+    }
+    if key == KEY_ENTER {
+      br[0].url_editing = false;
+      raw := cast(string) br[0].url_buf[0..<br[0].url_n];
+      _ := cp_br_navigate_active(s, raw, BR_CALLER_HUMAN);
+      return true;
+    }
+  }
+  // Find bar Enter -> next match
+  if s[0].fld[0].kb == CP_KB_BROWSER_FIND {
+    if key == KEY_ESCAPE { br[0].find_open = false; return true; }
+    if key == KEY_ENTER {
+      s[0].ask = CP_ASK_BR_FIND;
+      return true;
+    }
+  }
+  // Reserved shell chords while browser is shown
+  if mods == MOD_CMD {
+    if key == 'l' || key == 'L' { s[0].fld[0].kb = CP_KB_BROWSER_URL; br[0].url_editing = true; return true; }
+    if key == 't' || key == 'T' { _ := cp_br_open_tab(s, "openagents://browser/new", BR_CALLER_HUMAN, BR_PROFILE_WORKSPACE); return true; }
+    if key == 'w' || key == 'W' { return cp_br_close_tab(s, br[0].active); }
+    if key == 'r' || key == 'R' { s[0].ask = CP_ASK_BR_RELOAD; return true; }
+    if key == '[' { s[0].ask = CP_ASK_BR_BACK; return true; }
+    if key == ']' { s[0].ask = CP_ASK_BR_FORWARD; return true; }
+    if key == 'f' || key == 'F' { br[0].find_open = true; s[0].fld[0].kb = CP_KB_BROWSER_FIND; return true; }
+    if key >= '1' && key <= '9' {
+      idx := cast(int) (key - '1');
+      if idx < br[0].ntabs { return cp_br_select_tab(s, idx); }
+    }
+  }
+  // Vimium-style 'f' toggles @e* keyboard link hints when viewport is focused
+  if mods == 0 && key == 'f' && s[0].fld[0].kb == CP_KB_BROWSER_VIEW {
+    br[0].hints_active = !br[0].hints_active;
+    return true;
+  }
+  return false;
+}
+
+cp_br_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  if !cp_br_enabled(s) { return false; }
+  br := s[0].br[..];
+  if act == CP_BR_TOGGLE {
+    if cp_br_shown(s) {
+      br[0].hidden = true;
+      br[0].expanded = false;
+    } else {
+      if br[0].ntabs == 0 { _ := cp_br_open_tab(s, "openagents://browser/new", BR_CALLER_HUMAN, BR_PROFILE_WORKSPACE); }
+      else { cp_br_bring_front(s); }
+    }
+    return true;
+  }
+  if act == CP_BR_HIDE {
+    br[0].hidden = true;
+    br[0].expanded = false;
+    br[0].more_menu = false;
+    return true;
+  }
+  if act == CP_BR_EXPAND {
+    br[0].expanded = !br[0].expanded;
+    return true;
+  }
+  if act == CP_BR_DRAWER {
+    br[0].drawer_open = !br[0].drawer_open;
+    return true;
+  }
+  if act == CP_BR_NEW_TAB {
+    _ := cp_br_open_tab(s, "openagents://browser/new", BR_CALLER_HUMAN, BR_PROFILE_WORKSPACE);
+    return true;
+  }
+  if act == CP_BR_TAB_SELECT {
+    idx := cp_number(id, "coder.br.tab.");
+    return cp_br_select_tab(s, idx);
+  }
+  if act == CP_BR_TAB_CLOSE {
+    idx := cp_number(id, "coder.br.tab.x.");
+    return cp_br_close_tab(s, idx);
+  }
+  if act == CP_BR_BACK { s[0].ask = CP_ASK_BR_BACK; return true; }
+  if act == CP_BR_FORWARD { s[0].ask = CP_ASK_BR_FORWARD; return true; }
+  if act == CP_BR_RELOAD {
+    if br[0].active >= 0 && br[0].tabs[br[0].active].loading { s[0].ask = CP_ASK_BR_STOP; }
+    else { s[0].ask = CP_ASK_BR_RELOAD; }
+    return true;
+  }
+  if act == CP_BR_STOP { s[0].ask = CP_ASK_BR_STOP; return true; }
+  if act == CP_BR_OMNIBOX {
+    s[0].fld[0].kb = CP_KB_BROWSER_URL;
+    br[0].url_editing = true;
+    return true;
+  }
+  if act == CP_BR_PORTS {
+    br[0].port_menu = !br[0].port_menu;
+    br[0].more_menu = false;
+    return true;
+  }
+  if act == CP_BR_VIEWPORT {
+    br[0].viewport_mode = (br[0].viewport_mode + 1) % 3;
+    return true;
+  }
+  if act == CP_BR_PICK {
+    br[0].picking = !br[0].picking;
+    s[0].ask = CP_ASK_BR_PICK_TOGGLE;
+    return true;
+  }
+  if act == CP_BR_SHOT { s[0].ask = CP_ASK_BR_SHOT; return true; }
+  if act == CP_BR_MORE {
+    br[0].more_menu = !br[0].more_menu;
+    br[0].port_menu = false;
+    return true;
+  }
+  if act == CP_BR_FIND_CLOSE { br[0].find_open = false; return true; }
+  if act == CP_BR_FIND_PREV || act == CP_BR_FIND_NEXT { s[0].ask = CP_ASK_BR_FIND; return true; }
+  if act == CP_BR_AGENT_PAUSE || act == CP_BR_AGENT_TAKE {
+    if br[0].active >= 0 && br[0].active < br[0].ntabs {
+      _ := br_lease_human_takeover(br[0].tabs[br[0].active].lease[..]);
+    }
+    s[0].ask = CP_ASK_BR_AGENT_PAUSE;
+    return true;
+  }
+  if act == CP_BR_APPROVE_OK || act == CP_BR_APPROVE_DENY {
+    br[0].approval_pending = false;
+    br[0].pending_val = ifx act == CP_BR_APPROVE_OK then 1 else 0;
+    if act == CP_BR_APPROVE_OK && br[0].active >= 0 && br[0].active < br[0].ntabs {
+      _ := br_lease_resume(br[0].tabs[br[0].active].lease[..]);
+    }
+    s[0].ask = CP_ASK_BR_AGENT_APPROVE;
+    return true;
+  }
+  if act == CP_BR_DRW_TAB {
+    dt := cp_number(id, "coder.br.drw.");
+    if dt >= 0 && dt <= CP_BR_DRW_BOOKMARKS { br[0].drawer_tab = dt; }
+    return true;
+  }
+  if act == CP_BR_ATTACH_ERRS {
+    s[0].ask = CP_ASK_BR_ATTACH_LOGS;
+    return true;
+  }
+  return false;
+}
+
+// ---- Chrome Rendering (Row 1 + Row 2 + Contextual Row 3 + Collapsible 5-Tab Drawer) ----
+
+cp_br_profile_color :: (profile: int) -> Rgba {
+  if profile == BR_PROFILE_PERSONAL { return rgba(0.24f32, 0.52f32, 0.96f32, 1.0f32); } // Blue
+  if profile == BR_PROFILE_EPHEMERAL { return rgba(0.68f32, 0.38f32, 0.96f32, 1.0f32); } // Purple
+  return rgba(0.20f32, 0.78f32, 0.48f32, 1.0f32);                                       // Emerald Workspace
+}
+
+cp_br_txt :: (sh: [] Sheet, f: [] UiFrame, x: f32, y: f32, txt: string, col: Rgba) {
+  k := f[0].skin;
+  _ := sheet_text(sh, f[0].m, -1, x, y, k.small.line, k.small.face, col, txt);
+}
+
+cp_br_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; sh := f[0].sheet;
+  br := s[0].br[..];
+
+  // Pane background & left split divider
+  sheet_fill(sh, px, 0, pw, h, 0, k.canvas);
+  if px > 0 { cp_side_border_left(s, sh, px, 0, h, k.menu_divider); }
+
+  // Narrow-window APP_PANE_FULL clearance below titlebar
+  y0: f32 = ifx px <= 0.5f32 && !br[0].expanded then cp_bar(s) else 0.0f32;
+
+  // --- Row 1 (38pt): Tab strip + trailing controls (+, Drawer, Expand, Hide) ---
+  row1_h := cast(f32) CP_BR_BAR_H;
+  sheet_fill(sh, px, y0, pw, row1_h, 0, k.surface);
+  sheet_fill(sh, px, y0 + row1_h - k.border, pw, k.border, 0, k.menu_divider);
+
+  // Trailing control buttons on the right of Row 1
+  btn_w: f32 = 28.0f32;
+  ctrl_x := px + pw - 4.0f32 - btn_w * 4.0f32;
+  r_new := uiframe_semantic(f, "coder.br.new", EL_BUTTON, "New browser tab", ctrl_x, y0 + 5, btn_w, 28, 0, CP_BR_NEW_TAB);
+  sheet_hit(sh, UIFRAME_HIT, r_new, 0, ctrl_x, y0 + 5, btn_w, 28);
+  cp_br_txt(sh, f, ctrl_x + 9, y0 + 11, "+", k.ink);
+  r_drw := uiframe_semantic(f, "coder.br.drawer", EL_BUTTON, "Toggle DevTools drawer", ctrl_x + btn_w, y0 + 5, btn_w, 28, 0, CP_BR_DRAWER);
+  sheet_hit(sh, UIFRAME_HIT, r_drw, 0, ctrl_x + btn_w, y0 + 5, btn_w, 28);
+  cp_br_txt(sh, f, ctrl_x + btn_w + 7, y0 + 11, "◧", ifx br[0].drawer_open then k.accent else k.muted);
+  r_exp := uiframe_semantic(f, "coder.br.expand", EL_BUTTON, ifx br[0].expanded then "Restore browser split" else "Expand browser pane", ctrl_x + btn_w * 2, y0 + 5, btn_w, 28, 0, CP_BR_EXPAND);
+  sheet_hit(sh, UIFRAME_HIT, r_exp, 0, ctrl_x + btn_w * 2, y0 + 5, btn_w, 28);
+  cp_br_txt(sh, f, ctrl_x + btn_w * 2 + 7, y0 + 11, "⛶", ifx br[0].expanded then k.accent else k.muted);
+  r_hid := uiframe_semantic(f, "coder.br.hide", EL_BUTTON, "Hide browser pane", ctrl_x + btn_w * 3, y0 + 5, btn_w, 28, 0, CP_BR_HIDE);
+  sheet_hit(sh, UIFRAME_HIT, r_hid, 0, ctrl_x + btn_w * 3, y0 + 5, btn_w, 28);
+  cp_br_txt(sh, f, ctrl_x + btn_w * 3 + 7, y0 + 11, "◫", k.muted);
+
+  // Tab pills (RGB-exempt range so profile dots remain full-color in Noir theme)
+  avail_tabs_w := ctrl_x - (px + 8.0f32);
+  if br[0].ntabs > 0 && avail_tabs_w > 40.0f32 {
+    tw := avail_tabs_w / cast(f32) br[0].ntabs;
+    if tw > 168.0f32 { tw = 168.0f32; }
+    if tw < 52.0f32 { tw = 52.0f32; }
+    s[0].fp_color_u0 = sh[0].nu;
+    tx := px + 6.0f32;
+    id_buf: [32] u8;
+    for i: 0..<br[0].ntabs {
+      if tx + tw > ctrl_x { break; }
+      is_act := i == br[0].active;
+      bg_c := ifx is_act then k.canvas else k.surface;
+      sheet_fill(sh, tx, y0 + 5, tw - 4, 28, 6, bg_c);
+      sheet_fill(sh, tx + 7, y0 + 16, 6, 6, 3, cp_br_profile_color(br[0].tabs[i].profile));
+      tid := cp_id(id_buf[..], i, "coder.br.tab.");
+      rt := uiframe_semantic(f, tid, EL_BUTTON, cast(string) br[0].tabs[i].title[0..<br[0].tabs[i].title_n], tx, y0 + 5, tw - 22, 28, 0, CP_BR_TAB_SELECT);
+      sheet_hit(sh, UIFRAME_HIT, rt, 0, tx, y0 + 5, tw - 22, 28);
+      lbl := app_fit(f, k.small.face, cast(string) br[0].tabs[i].title[0..<br[0].tabs[i].title_n], tw - 38.0f32);
+      cp_br_txt(sh, f, tx + 18, y0 + 12, lbl, ifx br[0].tabs[i].hibernated then k.muted else k.ink);
+      xid := cp_id(id_buf[..], i, "coder.br.tab.x.");
+      rx := uiframe_semantic(f, xid, EL_BUTTON, "Close tab", tx + tw - 20, y0 + 7, 14, 22, 0, CP_BR_TAB_CLOSE);
+      sheet_hit(sh, UIFRAME_HIT, rx, 0, tx + tw - 20, y0 + 7, 14, 22);
+      cp_br_txt(sh, f, tx + tw - 17, y0 + 12, "×", k.muted);
+      tx += tw;
+    }
+    s[0].fp_color_u1 = sh[0].nu;
+  }
+
+  // --- Row 2 (30pt): Nav controls + Omnibox + Viewport/Pick/Shot/More ---
+  y1 := y0 + row1_h;
+  row2_h := cast(f32) CP_BR_SUB_H;
+  sheet_fill(sh, px, y1, pw, row2_h, 0, k.canvas);
+  sheet_fill(sh, px, y1 + row2_h - k.border, pw, k.border, 0, k.menu_divider);
+
+  nx := px + 6.0f32;
+  r_bk := uiframe_semantic(f, "coder.br.back", EL_BUTTON, "Back", nx, y1 + 3, 24, 24, 0, CP_BR_BACK);
+  sheet_hit(sh, UIFRAME_HIT, r_bk, 0, nx, y1 + 3, 24, 24);
+  cp_br_txt(sh, f, nx + 6, y1 + 8, "←", k.ink);
+  nx += 26.0f32;
+
+  r_fw := uiframe_semantic(f, "coder.br.fwd", EL_BUTTON, "Forward", nx, y1 + 3, 24, 24, 0, CP_BR_FORWARD);
+  sheet_hit(sh, UIFRAME_HIT, r_fw, 0, nx, y1 + 3, 24, 24);
+  cp_br_txt(sh, f, nx + 6, y1 + 8, "→", k.ink);
+  nx += 26.0f32;
+
+  r_rl := uiframe_semantic(f, "coder.br.reload", EL_BUTTON, "Reload", nx, y1 + 3, 24, 24, 0, CP_BR_RELOAD);
+  sheet_hit(sh, UIFRAME_HIT, r_rl, 0, nx, y1 + 3, 24, 24);
+  cp_br_txt(sh, f, nx + 6, y1 + 8, "↻", k.ink);
+  nx += 28.0f32;
+
+  r2_right_w: f32 = 112.0f32;
+  omni_w := (px + pw - r2_right_w) - nx - 6.0f32;
+  if omni_w > 60.0f32 {
+    sheet_fill(sh, nx, y1 + 3, omni_w, 24, 5, k.surface);
+    r_om := uiframe_semantic(f, "coder.br.omnibox", EL_FIELD, "Browser address bar", nx, y1 + 3, omni_w, 24, 0, CP_BR_OMNIBOX);
+    sheet_hit(sh, UIFRAME_HIT, r_om, 0, nx, y1 + 3, omni_w, 24);
+    url_txt := ifx br[0].url_n > 0 then cast(string) br[0].url_buf[0..<br[0].url_n] else "Enter URL or localhost:port…";
+    cp_br_txt(sh, f, nx + 8, y1 + 8, app_fit(f, k.small.face, url_txt, omni_w - 14.0f32), ifx br[0].url_n > 0 then k.ink else k.muted);
+  }
+
+  tx2 := px + pw - r2_right_w;
+  r_vp := uiframe_semantic(f, "coder.br.vp", EL_BUTTON, "Cycle viewport preset", tx2, y1 + 3, 26, 24, 0, CP_BR_VIEWPORT);
+  sheet_hit(sh, UIFRAME_HIT, r_vp, 0, tx2, y1 + 3, 26, 24);
+  vp_lbl := ifx br[0].viewport_mode == CP_BR_VP_MOBILE then "M" else ifx br[0].viewport_mode == CP_BR_VP_TABLET then "T" else "D";
+  cp_br_txt(sh, f, tx2 + 8, y1 + 8, vp_lbl, k.muted);
+
+  r_pk := uiframe_semantic(f, "coder.br.pick", EL_BUTTON, "Pick DOM element", tx2 + 28, y1 + 3, 26, 24, 0, CP_BR_PICK);
+  sheet_hit(sh, UIFRAME_HIT, r_pk, 0, tx2 + 28, y1 + 3, 26, 24);
+  cp_br_txt(sh, f, tx2 + 34, y1 + 8, "⌖", ifx br[0].picking then k.accent else k.muted);
+
+  r_sh := uiframe_semantic(f, "coder.br.shot", EL_BUTTON, "Screenshot to chat", tx2 + 56, y1 + 3, 26, 24, 0, CP_BR_SHOT);
+  sheet_hit(sh, UIFRAME_HIT, r_sh, 0, tx2 + 56, y1 + 3, 26, 24);
+  cp_br_txt(sh, f, tx2 + 62, y1 + 8, "📷", k.muted);
+
+  r_mr := uiframe_semantic(f, "coder.br.more", EL_BUTTON, "Browser menu", tx2 + 84, y1 + 3, 24, 24, 0, CP_BR_MORE);
+  sheet_hit(sh, UIFRAME_HIT, r_mr, 0, tx2 + 84, y1 + 3, 24, 24);
+  cp_br_txt(sh, f, tx2 + 92, y1 + 8, "⋮", k.muted);
+
+  // --- Row 3 (26pt, contextual): Approval > Agent Lease > Find > Download tray ---
+  y2 := y1 + row2_h;
+  ctx_h: f32 = 0.0f32;
+  has_lease := br[0].active >= 0 && br[0].active < br[0].ntabs && br[0].tabs[br[0].active].lease[0].state != BR_LEASE_NONE;
+  if br[0].approval_pending || has_lease || br[0].find_open || br[0].dl_active {
+    ctx_h = cast(f32) CP_BR_CTX_H;
+    sheet_fill(sh, px, y2, pw, ctx_h, 0, k.surface);
+    sheet_fill(sh, px, y2 + ctx_h - k.border, pw, k.border, 0, k.menu_divider);
+    if br[0].approval_pending {
+      lbl := cast(string) br[0].approval_label[0..<br[0].approval_label_n];
+      cp_br_txt(sh, f, px + 8, y2 + 6, ifx lbl.count > 0 then lbl else "Agent requests sensitive action", k.accent);
+      r_ok := uiframe_semantic(f, "coder.br.approve.ok", EL_BUTTON, "Allow Once", px + pw - 132, y2 + 3, 72, 20, 0, CP_BR_APPROVE_OK);
+      sheet_hit(sh, UIFRAME_HIT, r_ok, 0, px + pw - 132, y2 + 3, 72, 20);
+      cp_br_txt(sh, f, px + pw - 126, y2 + 6, "Allow Once", k.ink);
+      r_dn := uiframe_semantic(f, "coder.br.approve.deny", EL_BUTTON, "Deny", px + pw - 54, y2 + 3, 46, 20, 0, CP_BR_APPROVE_DENY);
+      sheet_hit(sh, UIFRAME_HIT, r_dn, 0, px + pw - 54, y2 + 3, 46, 20);
+      cp_br_txt(sh, f, px + pw - 46, y2 + 6, "Deny", k.muted);
+    } else if has_lease {
+      lst := br[0].tabs[br[0].active].lease[0].state;
+      banner := ifx lst == BR_LEASE_PAUSED_BY_HUMAN then "Agent paused by human" else "Agent is driving this tab";
+      cp_br_txt(sh, f, px + 8, y2 + 6, banner, k.accent);
+      r_tk := uiframe_semantic(f, "coder.br.takeover", EL_BUTTON, "Take Over", px + pw - 78, y2 + 3, 70, 20, 0, CP_BR_AGENT_TAKE);
+      sheet_hit(sh, UIFRAME_HIT, r_tk, 0, px + pw - 78, y2 + 3, 70, 20);
+      cp_br_txt(sh, f, px + pw - 72, y2 + 6, "Take Over", k.ink);
+    } else if br[0].find_open {
+      cp_br_txt(sh, f, px + 8, y2 + 6, "Find:", k.muted);
+      if br[0].find_n > 0 {
+        cp_br_txt(sh, f, px + 44, y2 + 6, cast(string) br[0].find_buf[0..<br[0].find_n], k.ink);
+      }
+      r_fc := uiframe_semantic(f, "coder.br.find.close", EL_BUTTON, "Close find", px + pw - 26, y2 + 3, 20, 20, 0, CP_BR_FIND_CLOSE);
+      sheet_hit(sh, UIFRAME_HIT, r_fc, 0, px + pw - 26, y2 + 3, 20, 20);
+      cp_br_txt(sh, f, px + pw - 20, y2 + 6, "×", k.muted);
+    } else if br[0].dl_active {
+      dname := cast(string) br[0].dl_name[0..<br[0].dl_name_n];
+      cp_br_txt(sh, f, px + 8, y2 + 6, dname, k.ink);
+    }
+  }
+
+  // --- Viewport body + optional 300pt DevTools / Agent Drawer ---
+  body_y := y2 + ctx_h;
+  body_h := h - body_y;
+  drw_w: f32 = ifx br[0].drawer_open && pw >= 560.0f32 then cast(f32) CP_BR_DRAWER_W else 0.0f32;
+  vp_w := pw - drw_w;
+  if vp_w < 0 { vp_w = 0; }
+  if body_h < 0 { body_h = 0; }
+
+  draw_vp_w := vp_w;
+  draw_vp_x := px;
+  if br[0].viewport_mode == CP_BR_VP_MOBILE && draw_vp_w > 390.0f32 {
+    draw_vp_x = px + (vp_w - 390.0f32) * 0.5f32;
+    draw_vp_w = 390.0f32;
+  } else if br[0].viewport_mode == CP_BR_VP_TABLET && draw_vp_w > 768.0f32 {
+    draw_vp_x = px + (vp_w - 768.0f32) * 0.5f32;
+    draw_vp_w = 768.0f32;
+  }
+  br[0].vp_x = draw_vp_x;
+  br[0].vp_y = body_y;
+  br[0].vp_w = draw_vp_w;
+  br[0].vp_h = body_h;
+
+  // Collapsible 5-tab DevTools / Agent Drawer
+  if drw_w > 0 && body_h > 20.0f32 {
+    dx := px + vp_w;
+    sheet_fill(sh, dx, body_y, drw_w, body_h, 0, k.surface);
+    sheet_fill(sh, dx, body_y, k.border, body_h, 0, k.menu_divider);
+    labels := [5] string.["Console", "Net", "DOM", "Agent", "Marks"];
+    tab_w := drw_w / 5.0f32;
+    id_b: [32] u8;
+    for i: 0..<5 {
+      tid := cp_id(id_b[..], i, "coder.br.drw.");
+      rd := uiframe_semantic(f, tid, EL_BUTTON, labels[i], dx + cast(f32) i * tab_w, body_y, tab_w, 26, 0, CP_BR_DRW_TAB);
+      sheet_hit(sh, UIFRAME_HIT, rd, 0, dx + cast(f32) i * tab_w, body_y, tab_w, 26);
+      cp_br_txt(sh, f, dx + cast(f32) i * tab_w + 6, body_y + 6, labels[i], ifx br[0].drawer_tab == i then k.accent else k.muted);
+    }
+    sheet_fill(sh, dx, body_y + 26, drw_w, k.border, 0, k.menu_divider);
+    ry := body_y + 32.0f32;
+    if br[0].drawer_tab == CP_BR_DRW_CONSOLE {
+      r_ae := uiframe_semantic(f, "coder.br.attach.errs", EL_BUTTON, "Attach errors to chat", dx + 8, ry, drw_w - 16, 22, 0, CP_BR_ATTACH_ERRS);
+      sheet_hit(sh, UIFRAME_HIT, r_ae, 0, dx + 8, ry, drw_w - 16, 22);
+      cp_br_txt(sh, f, dx + 12, ry + 4, "Attach console errors to chat", k.accent);
+      ry += 26.0f32;
+      for i: 0..<br[0].nconsole {
+        if ry > body_y + body_h - 16 { break; }
+        cp_br_txt(sh, f, dx + 8, ry, app_fit(f, k.small.face, cast(string) br[0].console_rows[i].text[0..<br[0].console_rows[i].text_n], drw_w - 16.0f32), k.ink);
+        ry += 18.0f32;
+      }
+    } else if br[0].drawer_tab == CP_BR_DRW_NETWORK {
+      for i: 0..<br[0].nnet {
+        if ry > body_y + body_h - 16 { break; }
+        cp_br_txt(sh, f, dx + 8, ry, app_fit(f, k.small.face, cast(string) br[0].net_rows[i].url[0..<br[0].net_rows[i].url_n], drw_w - 16.0f32), k.ink);
+        ry += 18.0f32;
+      }
+    } else if br[0].drawer_tab == CP_BR_DRW_DOM {
+      txt := ifx br[0].dom_selector_n > 0 then cast(string) br[0].dom_selector[0..<br[0].dom_selector_n] else "Use ⌖ DOM Picker to inspect an element.";
+      cp_br_txt(sh, f, dx + 8, ry, app_fit(f, k.small.face, txt, drw_w - 16.0f32), k.ink);
+    } else if br[0].drawer_tab == CP_BR_DRW_AGENT {
+      for i: 0..<br[0].nagent {
+        if ry > body_y + body_h - 16 { break; }
+        cp_br_txt(sh, f, dx + 8, ry, app_fit(f, k.small.face, cast(string) br[0].agent_rows[i].summary[0..<br[0].agent_rows[i].summary_n], drw_w - 16.0f32), k.ink);
+        ry += 18.0f32;
+      }
+    } else {
+      for i: 0..<br[0].nbookmarks {
+        if ry > body_y + body_h - 16 { break; }
+        cp_br_txt(sh, f, dx + 8, ry, app_fit(f, k.small.face, cast(string) br[0].bookmarks[i].title[0..<br[0].bookmarks[i].title_n], drw_w - 16.0f32), k.ink);
+        ry += 18.0f32;
+      }
+    }
+  }
+}
+
+// ---- C-Exported Host Bridge Entrypoints (coder_page_br_*) ----
+
+coder_page_br_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_br_shown(s); }
+coder_page_br_expanded :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_br_shown(s) && s[0].br[0].expanded; }
+coder_page_br_hidden :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].br[0].hidden; }
+coder_page_br_tab_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].br[0].ntabs else 0; }
+coder_page_br_active_tab :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].br[0].active else -1; }
+
+coder_page_br_open_tab :: (s: [] CoderPage, url: string, caller: int, profile: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  return cp_br_open_tab(s, url, caller, profile);
+}
+
+coder_page_br_show :: (s: [] CoderPage, open: bool, expand: bool) #export_c #effects(all) {
+  if s.count < 1 || !cp_br_enabled(s) { return; }
+  if open {
+    if s[0].br[0].ntabs == 0 { _ := cp_br_open_tab(s, "openagents://browser/new", BR_CALLER_HUMAN, BR_PROFILE_WORKSPACE); }
+    else { cp_br_bring_front(s); }
+    s[0].br[0].expanded = expand;
+  } else {
+    s[0].br[0].hidden = true;
+    s[0].br[0].expanded = false;
+  }
+}
+
+coder_page_br_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 4 || s[0].set_open || !cp_br_shown(s) { return false; }
+  br := s[0].br[..];
+  if br[0].vp_w <= 1.0f32 || br[0].vp_h <= 1.0f32 { return false; }
+  out[0] = br[0].vp_x; out[1] = br[0].vp_y; out[2] = br[0].vp_w; out[3] = br[0].vp_h;
+  return true;
+}
+
+coder_page_br_tab_url :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].br[0].ntabs { return 0; }
+  return cp_out(out, cast(string) s[0].br[0].tabs[idx].url[0..<s[0].br[0].tabs[idx].url_n]);
+}
+
+coder_page_br_sync_tab :: (s: [] CoderPage, idx: int, url: string, title: string, loading: bool, can_back: bool, can_fwd: bool, progress: f32) #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].br[0].ntabs { return; }
+  t := s[0].br[0].tabs[idx..<idx + 1];
+  if url.count > 0 { t[0].url_n = cp_out(t[0].url[..], url); }
+  if title.count > 0 { t[0].title_n = cp_out(t[0].title[..], title); }
+  t[0].loading = loading;
+  t[0].can_back = can_back;
+  t[0].can_fwd = can_fwd;
+  t[0].progress = progress;
+  if idx == s[0].br[0].active && !s[0].br[0].url_editing { cp_br_sync_omnibox(s); }
+}
+
+coder_page_br_push_console :: (s: [] CoderPage, level: int, text: string, source: string, line: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_br_push_console(s, level, text, source, line);
+}
+
+coder_page_br_push_network :: (s: [] CoderPage, method: string, status: int, url: string, ms: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_br_push_network(s, method, status, url, ms);
+}
+
+coder_page_br_push_agent :: (s: [] CoderPage, verb: string, summary: string, ok: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  cp_br_push_agent_log(s, verb, summary, ok);
+}
+
+coder_page_br_human_takeover :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 || s[0].br[0].active < 0 { return false; }
+  return br_lease_human_takeover(s[0].br[0].tabs[s[0].br[0].active].lease[..]);
+}
+
+coder_page_br_set_approval :: (s: [] CoderPage, pending: bool, req_id: string, label: string, target: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  br := s[0].br[..];
+  br[0].approval_pending = pending;
+  br[0].approval_req_n = cp_out(br[0].approval_req_id[..], req_id);
+  br[0].approval_label_n = cp_out(br[0].approval_label[..], label);
+  br[0].approval_target_n = cp_out(br[0].approval_target[..], target);
+}
+
+coder_page_br_set_download :: (s: [] CoderPage, active: bool, raw_name: string, bytes: int, total: int, status: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  br := s[0].br[..];
+  br[0].dl_active = active;
+  if active {
+    sn: [128] u8; sn_len: [1] int;
+    prof := ifx br[0].active >= 0 then br[0].tabs[br[0].active].profile else BR_PROFILE_WORKSPACE;
+    rc := br_download_validate(raw_name, total, prof, false, sn[..], sn_len[..]);
+    if rc == BR_DL_OK {
+      br[0].dl_name_n = cp_out(br[0].dl_name[..], cast(string) sn[0..<sn_len[0]]);
+      br[0].dl_status_n = cp_out(br[0].dl_status[..], status);
+    } else {
+      br[0].dl_name_n = cp_out(br[0].dl_name[..], "blocked-download");
+      br[0].dl_status_n = cp_out(br[0].dl_status[..], "quarantined");
+    }
+    br[0].dl_bytes = bytes;
+    br[0].dl_total = total;
+  }
+}
+
+coder_page_br_ext_tex_ready :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 || s[0].br[0].active < 0 { return; }
+  s[0].br[0].tabs[s[0].br[0].active].ext_tex_ready = on;
+}
+
+coder_page_br_save_session :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_br_save_session_json(s, out);
+}
+
+coder_page_br_load_session :: (s: [] CoderPage, json: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_br_load_session_json(s, json);
+}

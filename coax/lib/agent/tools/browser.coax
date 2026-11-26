@@ -1,0 +1,91 @@
+// Agent Browser Tool (coax/lib/agent/tools/browser.coax; Phase 2, #14108).
+// Exposes the 12 canonical browser automation verbs to oa-worker, Inkling, and sub-agents
+// while enforcing #authority browser-route.coax + browser-policy.coax (SSRF, profile isolation,
+// Human Supremacy, sensitive-action approvals, and automatic secret redaction).
+//
+//   coax/bin/coax test coax/lib/agent/tools/browser.coax --library
+#load "../desktop/browser-policy.coax";
+
+BR_TOOL_NAME :: "Browser";
+
+br_tool_verb_valid :: (verb: string) -> bool #effects(reads, traps) {
+  return verb == "browser.open" || verb == "browser.navigate" ||
+         verb == "browser.snapshot" || verb == "browser.click" ||
+         verb == "browser.type" || verb == "browser.press" ||
+         verb == "browser.scroll" || verb == "browser.screenshot" ||
+         verb == "browser.console" || verb == "browser.network" ||
+         verb == "browser.eval" || verb == "browser.wait";
+}
+
+// Validates and encodes an agent Browser tool invocation into openagents.desktop.browser-cmd.v1 JSON.
+// Refuses rejected URLs, Personal profile silent access, invalid verbs, or SSRF violations.
+br_tool_prepare_cmd :: (
+  req_id: string,
+  verb: string,
+  tab_id: int,
+  requested_profile: int,
+  origin_url: string,
+  url: string,
+  target: string,
+  text: string,
+  timeout_ms: int,
+  flags_mask: int,
+  out_json: [] u8
+) -> int #effects(reads, writes, traps) {
+  if !br_tool_verb_valid(verb) { return -1; }
+  if req_id.count == 0 || tab_id < 0 { return -2; }
+  if timeout_ms < 0 || timeout_ms > 300000 { return -3; }
+
+  eff_prof := ifx requested_profile == BR_PROFILE_WORKSPACE then BR_PROFILE_WORKSPACE else BR_PROFILE_EPHEMERAL;
+  // Agents may NEVER silently target Personal profile
+  if requested_profile == BR_PROFILE_PERSONAL { return -4; }
+
+  norm_buf: [BR_URL_MAX] u8; norm_len: [1] int;
+  eff_url := url;
+  if verb == "browser.open" || verb == "browser.navigate" {
+    r := br_route_classify(url, BR_CALLER_AGENT, requested_profile, flags_mask, norm_buf[..], norm_len[..]);
+    if r.pane != BR_PANE_BROWSER { return -5; }
+    eff_prof = r.profile;
+    eff_url = cast(string) norm_buf[0..<norm_len[0]];
+    if origin_url.count > 0 && !br_ssrf_allowed(origin_url, eff_url, false) { return -6; }
+  }
+
+  cmd := BrCmd.{
+    req_id = req_id,
+    verb = verb,
+    tab_id = tab_id,
+    profile = eff_prof,
+    url = eff_url,
+    target = target,
+    text = text,
+    timeout_ms = timeout_ms
+  };
+  return br_cmd_write_json(cmd, out_json);
+}
+
+// Redacts any secrets from a raw browser.sock response before handing back to the LLM.
+br_tool_sanitize_response :: (raw_resp: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  return br_redact_secrets(raw_resp, out);
+}
+
+#test "browser tool: validates all 12 verbs, blocks Personal/SSRF/malicious URLs, and redacts secrets" {
+  buf: [2048] u8;
+  all := DC_FLAGS_ALL;
+  // Valid open -> Agent Ephemeral
+  n1 := br_tool_prepare_cmd("r1", "browser.open", 0, BR_PROFILE_AUTO, "", "https://docs.openagents.com/", "", "", 5000, all, buf[..]);
+  #assert n1 > 0 && br_contains_ci(cast(string) buf[0..<n1], "\"profile\":\"ephemeral\"");
+  // Valid click on @e14
+  n2 := br_tool_prepare_cmd("r2", "browser.click", 1, BR_PROFILE_EPHEMERAL, "", "", "@e14", "", 5000, all, buf[..]);
+  #assert n2 > 0 && br_contains_ci(cast(string) buf[0..<n2], "\"verb\":\"browser.click\"");
+  // Reject unknown verb
+  #assert br_tool_prepare_cmd("r3", "browser.shell", 1, BR_PROFILE_EPHEMERAL, "", "", "", "", 1000, all, buf[..]) == -1;
+  // Reject Personal profile
+  #assert br_tool_prepare_cmd("r4", "browser.open", 0, BR_PROFILE_PERSONAL, "", "https://mail.example.com/", "", "", 5000, all, buf[..]) == -4;
+  // Reject javascript: scheme
+  #assert br_tool_prepare_cmd("r5", "browser.navigate", 1, BR_PROFILE_EPHEMERAL, "", "javascript:alert(1)", "", "", 5000, all, buf[..]) == -5;
+  // Reject SSRF from public origin to localhost
+  #assert br_tool_prepare_cmd("r6", "browser.navigate", 1, BR_PROFILE_EPHEMERAL, "https://evil.example/", "http://127.0.0.1:16811/v1", "", "", 5000, all, buf[..]) == -6;
+  // Sanitize secret response
+  rn := br_tool_sanitize_response("{\"headers\":\"Authorization: Bearer tok_999\"}", buf[..]);
+  #assert rn > 0 && !br_contains_ci(cast(string) buf[0..<rn], "tok_999");
+}

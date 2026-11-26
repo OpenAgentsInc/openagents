@@ -27,6 +27,7 @@
 #load "../../../coax/lib/agent/desktop/flags.coax";
 #load "../../../coax/lib/agent/desktop/metaverse-route.coax";
 #load "../../../coax/lib/agent/desktop/browser-route.coax";
+#load "../../../coax/lib/agent/desktop/browser-policy.coax";
 #load "../../../coax/lib/lean/wire.coax";
 #load "../../../coax/lib/lean/rh-tour.coax";
 #load "../../../coax/lib/lean/rh-math.coax";
@@ -60,6 +61,7 @@
 #load "simpane.coax";
 #load "metaversepane.coax";
 #load "browser-constants.coax";
+#load "browserpane.coax";
 #load "termpane.coax";
 #load "layout/conversation.coax";
 #load "host-api.coax";

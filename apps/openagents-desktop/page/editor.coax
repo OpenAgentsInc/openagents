@@ -296,6 +296,12 @@ cp_key_in :: (s: [] CoderPage, key: int, mods: int) -> bool {
   if !cp_overlay_open(s) && !s[0].set_open && (key == 'b' || key == 'B') && mods == MOD_CTRL && cp_has_fg_running_agents(s) {
     return coder_page_background_agents(s) > 0;
   }
+  if !cp_overlay_open(s) && !s[0].set_open && cp_br_shown(s) && key == KEY_ESCAPE && mods == 0 {
+    if cp_br_escape(s) { return true; }
+  }
+  if !cp_overlay_open(s) && !s[0].set_open && cp_br_shown(s) {
+    if cp_br_key(s, key, mods) { return true; }
+  }
   if !cp_overlay_open(s) && !s[0].set_open && key == 'g' && mods == MOD_CTRL && cp_fp_shown(s) && s[0].fp[0].open {
     cp_find_file_open(s, true);
     return true;

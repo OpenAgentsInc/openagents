@@ -51,6 +51,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if (act >= CP_FP_CLOSE && act <= CP_FP_COPY_PATH) || (act >= CP_FP_FOLD_TOGGLE && act <= CP_FP_EXT_LAST) { return cp_fp_press(s, act, surface_id(s[0].surface[..], row)); }   // the file in the pane (filepane.coax)
   if act >= CP_FT_TOGGLE && act <= CP_FT_LAST { _ = cp_mv_yield(s, act); return cp_ft_press(s, act, surface_id(s[0].surface[..], row)); }   // File Explorer tree, tabs & Open-in-Editor (filetree.coax; #13881, #13992)
   if act >= CP_MV_ACT_FIRST && act <= CP_MV_ACT_LAST { return cp_mv_press(s, act, surface_id(s[0].surface[..], row)); }   // Expandable Metaverse Viewer & GameBuilder pane (metaversepane.coax; #14040)
+  if act >= CP_BR_ACT_FIRST && act <= CP_BR_ACT_LAST { return cp_br_press(s, act, surface_id(s[0].surface[..], row)); }   // Expandable Browser pane (browserpane.coax; #14107)
   if act >= CP_SIM_CLOSE && act < CP_SIM_TAB + CP_SIM_DEVICES && act != 100 { return cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_press(s, act); }   // the simulator in the pane (simpane.coax)
   if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_flag(s, DC_FLAG_GIT) && cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
   if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_flag(s, DC_FLAG_TERMINAL) && cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
@@ -637,6 +638,7 @@ cp_scroll_under :: (s: [] CoderPage) -> int {
   if cp_forge_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_FORGE; }
   if cp_side_chat_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_SIDE_CHAT; }
   if cp_term_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_TERM; }
+  if cp_br_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_BROWSER_DRAWER; }
   if cp_mv_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_MV_TREE; }
   if cp_fp_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x {
     if s[0].ft[0].tree_w > 0 && s[0].px >= s[0].ft[0].tree_x && s[0].px < s[0].ft[0].tree_x + s[0].ft[0].tree_w { return CP_SCR_FILETREE; }

@@ -79,6 +79,15 @@ cp_palette_fill :: (s: [] CoderPage) {
     cp_pal_cmd(p, "GameBuilder: Play / Stop", "play test stop gamebuilder", "⌘ Return", ICON_WIDGET, CP_PC_GB_PLAY, 0);
     cp_pal_cmd(p, "GameBuilder: Run Play-Test", "playtest bots automated test gamebuilder", "⇧ ⌘ T", ICON_CHECKLIST, CP_PC_GB_PLAYTEST, 0);
   }
+  if cp_br_enabled(s) {
+    cp_pal_cmd(p, ifx cp_br_shown(s) then "Hide Browser Pane" else "Toggle Browser Pane", "browser web tabs devtools localhost omnibox", "⌥ ⌘ B", ICON_GLOBAL, CP_PC_BR_TOGGLE, 0);
+    cp_pal_cmd(p, "New Browser Tab", "browser new tab url open", "⌘ T", ICON_PLUS, CP_PC_BR_NEW, 0);
+    if cp_br_shown(s) {
+      cp_pal_cmd(p, ifx s[0].br[0].expanded then "Restore Browser Split View" else "Expand Browser Pane", "expand fullscreen restore browser pane", "⇧ ⌘ E", ICON_SIM_FIT, CP_PC_BR_EXPAND, 0);
+      cp_pal_cmd(p, "Browser: Pick DOM Element", "browser dom element picker inspect attach chat", "", ICON_WIDGET, CP_PC_BR_PICK, 0);
+      cp_pal_cmd(p, "Browser: Screenshot to Chat", "browser screenshot capture viewport attach", "", ICON_SIM_CAMERA, CP_PC_BR_SHOT, 0);
+    }
+  }
   if cp_flag(s, DC_FLAG_PREVIEW) {
     cp_pal_cmd(p, ifx cp_preview_shown(s) then "Hide Web Preview" else "Toggle Web Preview", "web preview browser wkwebview dom picker localhost", "⌥ ⌘ P", ICON_GLOBAL, CP_PC_PREVIEW, 0);
     cp_pal_cmd(p, "SnapShot region", "snapshot screenshot capture screen region attach", "⇧ ⌘ 6", ICON_SIM_CAMERA, CP_PC_SNAPSHOT, 0);
@@ -240,6 +249,12 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
     return cp_mv_press(s, CP_MV_MODE, ifx t.mode == CP_MV_MODE_PLAY then "coder.mv.mode.1" else "coder.mv.mode.2");
   }
   if c == CP_PC_GB_PLAYTEST { if !cp_flag(s, DC_FLAG_GAMEBUILDER) { return false; } cp_pal_leave_settings(s); cp_mv_bring_front(s); return cp_mv_press(s, CP_GB_PLAYTEST, ""); }
+  if c == CP_PC_BR_TOGGLE { if !cp_br_enabled(s) { return false; } cp_pal_leave_settings(s); return cp_br_press(s, CP_BR_TOGGLE, ""); }
+  if c == CP_PC_BR_OPEN { if !cp_br_enabled(s) { return false; } cp_pal_leave_settings(s); return cp_br_press(s, CP_BR_OMNIBOX, ""); }
+  if c == CP_PC_BR_NEW { if !cp_br_enabled(s) { return false; } cp_pal_leave_settings(s); return cp_br_press(s, CP_BR_NEW_TAB, ""); }
+  if c == CP_PC_BR_EXPAND { if !cp_br_enabled(s) { return false; } cp_pal_leave_settings(s); return cp_br_press(s, CP_BR_EXPAND, ""); }
+  if c == CP_PC_BR_PICK { if !cp_br_enabled(s) { return false; } cp_pal_leave_settings(s); return cp_br_press(s, CP_BR_PICK, ""); }
+  if c == CP_PC_BR_SHOT { if !cp_br_enabled(s) { return false; } cp_pal_leave_settings(s); return cp_br_press(s, CP_BR_SHOT, ""); }
   if c == CP_PC_PREVIEW { if !cp_flag(s, DC_FLAG_PREVIEW) { return false; } cp_preview_toggle(s); return true; }
   if c == CP_PC_SNAPSHOT { if !cp_flag(s, DC_FLAG_PREVIEW) { return false; } cp_preview_trigger_snapshot(s); return true; }
   if c == CP_PC_TERM { if !cp_flag(s, DC_FLAG_TERMINAL) { return false; } cp_term_toggle(s); return true; }

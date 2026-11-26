@@ -138,6 +138,19 @@
       "note": "Agent automation command envelope over owner-only ~/.openagents/desktop/browser.sock and MCP attach (#14106)."
     },
     {
+      "id": "openagents.desktop.browser-helper.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/desktop-browser-helper-v1.json",
+      "codec": "coax/lib/agent/desktop/browser-policy.coax",
+      "check": "coax/bin/coax test coax/lib/agent/desktop/browser-policy.coax --library",
+      "step": "new",
+      "files": [
+        "apps/oa-browser-helper/main.c"
+      ],
+      "note": "Signed Ed25519+SHA-256 manifest for on-demand out-of-process oa-browser-helper CEF OSR engine (#14109)."
+    },
+    {
       "id": "splice.run.v1",
       "kind": "local",
       "owner": "splice",

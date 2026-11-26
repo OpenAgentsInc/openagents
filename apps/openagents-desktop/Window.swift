@@ -177,6 +177,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var scenePanel: PleScenePanelView?   // the embedded Metal 3D PLE scene viewport (SceneView.swift)
     var mvViewport: MetaverseViewportView? // unified right-side Metaverse Viewer & GameBuilder Metal viewport (#14041)
     var mvState: MetaverseWindowState?     // per-window Metaverse tabs & file watcher state (#14041)
+    var brViewport: BrowserViewportView?   // expandable multi-tab Browser pane WKWebView/OSR viewport (#14107)
+    var brState: BrowserWindowState?       // per-window Browser tabs, browser.sock attach server & CEF helper (#14107-#14109)
     var liveSceneBox: NSView?            // the live 3D card in the transcript: the conversation's clip (Window+Files.swift, #13812)
     var liveScenePanel: PleScenePanelView?   // its viewport, within the clip at the card's rect
     var liveScenePath = ""               // the scene it shows, and that file's size and time as loaded (nil: it failed)
@@ -702,6 +704,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 147: if FeatureFlags.isOn(.modelsExecutor) { managePylonExecutorNetwork() }
         case 150...158: if FeatureFlags.isOn(.gym) { leanGymAsked(what) }
         case 200...215: if FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) { metaverseAsked(what) }
+        case 230...249: if FeatureFlags.isOn(.browser) { browserAsked(what) }
         #endif
         case 170...187: providersSettingsAsked(what)
         case 188: focusProvidersField()
@@ -861,6 +864,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if FeatureFlags.isOn(.simulator) { syncSimulatorFrame() }
         if FeatureFlags.isOn(.terminal) { syncTerminalFrame() }
         if FeatureFlags.isOn(.preview) { syncPreviewFrame() }
+        if FeatureFlags.isOn(.browser) { placeBrowserViewport() }
         if FeatureFlags.isOn(.pairing) { syncKeepAwake() }
         #endif
     }

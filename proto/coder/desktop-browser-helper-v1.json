@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "openagents.desktop.browser-helper.v1",
+  "title": "OpenAgents Desktop Signed Chromium Pro Helper Manifest",
+  "note": "Pinned profile for coax/lib/agent/desktop/browser-policy.coax (GitHub #14109, docs/browser/desktop-browser-pane-spec.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "platform", "binary", "sha256", "sig_hex"],
+  "properties": {
+    "schema": { "const": "openagents.desktop.browser-helper.v1" },
+    "version": { "type": "string", "maxLength": 32 },
+    "platform": { "enum": ["macos-arm64", "macos-x64", "linux-x64", "linux-arm64", "windows-x64", "windows-arm64"] },
+    "binary": { "type": "string", "maxLength": 64 },
+    "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
+    "sig_hex": { "type": "string", "minLength": 128, "maxLength": 128 }
+  },
+  "golden": {
+    "schema": "openagents.desktop.browser-helper.v1",
+    "version": "1.0.0",
+    "platform": "macos-arm64",
+    "binary": "oa-browser-helper",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "sig_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+}

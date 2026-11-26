@@ -2398,3 +2398,81 @@ int cd_mv_focus_viewport(void *page) {
   cd_woke(c);
   return r;
 }
+// Expandable multi-tab right-side Browser pane (page/browserpane.coax; #14107-#14110).
+int cd_br_shown(void *page) { CoderHost *c = page; return c && coder_page_br_shown(cd_state(c)) ? 1 : 0; }
+int cd_br_expanded(void *page) { CoderHost *c = page; return c && coder_page_br_expanded(cd_state(c)) ? 1 : 0; }
+int cd_br_hidden(void *page) { CoderHost *c = page; return c && coder_page_br_hidden(cd_state(c)) ? 1 : 0; }
+int cd_br_tab_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_br_tab_count(cd_state(c)) : 0; }
+int cd_br_active_tab(void *page) { CoderHost *c = page; return c ? (int)coder_page_br_active_tab(cd_state(c)) : -1; }
+int cd_br_open_tab(void *page, const char *url, int caller, int profile) {
+  CoderHost *c = page; if (!c) return -1;
+  int r = (int)coder_page_br_open_tab(cd_state(c), cd_string(url), caller, profile);
+  cd_woke(c);
+  return r;
+}
+void cd_br_show(void *page, int open, int expand) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_br_show(cd_state(c), open != 0, expand != 0);
+  cd_woke(c);
+}
+int cd_br_rect(void *page, float out[4]) {
+  CoderHost *c = page; if (!c || !out) return 0;
+  return coder_page_br_rect(cd_state(c), (coax_v_f32){out, 4}) ? 1 : 0;
+}
+int cd_br_tab_url(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_br_tab_url(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+void cd_br_sync_tab(void *page, int idx, const char *url, const char *title, int loading, int can_back, int can_fwd, float progress) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_br_sync_tab(cd_state(c), idx, cd_string(url), cd_string(title), loading != 0, can_back != 0, can_fwd != 0, progress);
+  cd_woke(c);
+}
+void cd_br_push_console(void *page, int level, const char *text, const char *source, int line) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_br_push_console(cd_state(c), level, cd_string(text), cd_string(source), line);
+  cd_woke(c);
+}
+void cd_br_push_network(void *page, const char *method, int status, const char *url, int ms) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_br_push_network(cd_state(c), cd_string(method), status, cd_string(url), ms);
+  cd_woke(c);
+}
+void cd_br_push_agent(void *page, const char *verb, const char *summary, int ok) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_br_push_agent(cd_state(c), cd_string(verb), cd_string(summary), ok != 0);
+  cd_woke(c);
+}
+int cd_br_human_takeover(void *page) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = coder_page_br_human_takeover(cd_state(c)) ? 1 : 0;
+  cd_woke(c);
+  return r;
+}
+void cd_br_set_approval(void *page, int pending, const char *req_id, const char *label, const char *target) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_br_set_approval(cd_state(c), pending != 0, cd_string(req_id), cd_string(label), cd_string(target));
+  cd_woke(c);
+}
+void cd_br_set_download(void *page, int active, const char *raw_name, int bytes, int total, const char *status) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_br_set_download(cd_state(c), active != 0, cd_string(raw_name), bytes, total, cd_string(status));
+  cd_woke(c);
+}
+void cd_br_set_ext_texture(void *page, int slot, void *native_tex) {
+  CoderHost *c = page;
+  if (!c || !c->app.host) return;
+  ui_host_set_ext_texture(c->app.host, slot, native_tex);
+  coder_page_br_ext_tex_ready(cd_state(c), native_tex != NULL);
+  cd_woke(c);
+}
+int cd_br_save_session(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_br_save_session(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_br_load_session(void *page, const char *json) {
+  CoderHost *c = page; if (!c || !json) return 0;
+  int r = (int)coder_page_br_load_session(cd_state(c), cd_string(json));
+  cd_woke(c);
+  return r;
+}

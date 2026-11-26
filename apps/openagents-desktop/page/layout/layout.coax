@@ -14,7 +14,8 @@ cp_todos_pane_spec :: () -> AppPaneSpec {
 cp_other_pane_open :: (s: [] CoderPage) -> bool {
   fp_vis := !s[0].fp[0].hidden && ((s[0].fp[0].open && (s[0].fp[0].mode != CP_FP_SCENE || cp_flag(s, DC_FLAG_SCENES))) || s[0].ft[0].open);
   mv_vis := cp_mv_enabled(s) && s[0].mv[0].open && !s[0].mv[0].hidden;
-  return s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || fp_vis || mv_vis || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open);
+  br_vis := cp_br_shown(s);
+  return s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || fp_vis || mv_vis || br_vis || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open);
 }
 // Dynamic split-pane spec allowing wide monitors to drag the File Viewer wider while keeping CP_PANE_MAIN (#13992).
 cp_pane_spec_for :: (window_w: f32, left: f32) -> AppPaneSpec {
@@ -28,6 +29,7 @@ cp_pane_spec_for :: (window_w: f32, left: f32) -> AppPaneSpec {
 cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   if cp_flag(s, DC_FLAG_FORGE) && cp_forge_shown(s) { cp_forge_pane(s, f, px, pw, h); return; }
   if cp_flag(s, DC_FLAG_RICH) && cp_side_chat_shown(s) { cp_side_chat_pane(s, f, px, pw, h); return; }
+  if cp_br_shown(s) { cp_br_pane(s, f, px, pw, h); return; }
   if cp_flag(s, DC_FLAG_PREVIEW) && cp_preview_shown(s) { cp_previewpane(s, f, px, pw, h); return; }
   if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_shown(s) { cp_termpane(s, f, px, pw, h); return; }
   if cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_shown(s) { cp_simpane(s, f, px, pw, h); return; }
@@ -141,8 +143,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     cp_title_bar(s, f, ifx left > 0 then left else ifx narrow && s[0].side_drawer then cast(f32) CP_SIDE else 0.0f32, toggle);
     return;
   }
-  // User-expanded File Viewer (#13992) or Metaverse/GameBuilder pane (#14040): takes the full main area beside the sidebar.
-  if (cp_fp_shown(s) && s[0].fp[0].expanded) || (cp_mv_shown(s) && s[0].mv[0].expanded) {
+  // User-expanded File Viewer (#13992), Metaverse/GameBuilder pane (#14040), or Browser pane (#14107): takes the full main area beside the sidebar.
+  if (cp_fp_shown(s) && s[0].fp[0].expanded) || (cp_mv_shown(s) && s[0].mv[0].expanded) || (cp_br_shown(s) && s[0].br[0].expanded) {
     running := cp_running(s);
     s[0].pane_x = left; s[0].pane_w = window_w - left; s[0].col_w = 0;
     cp_side_pane(s, f, left, window_w - left, h);

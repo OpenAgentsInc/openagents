@@ -214,10 +214,17 @@ if [[ "$minimal" != "1" ]]; then
   if obj_stale "$work/c/gb_host.o" "$here/gb_host.c" "$here/gb_host.h" "$work/c/gamebuilder-core.h"; then
     /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$here" -c "$here/gb_host.c" -o "$work/c/gb_host.o"
   fi
+  if obj_stale "$work/c/br_host.o" "$here/br_host.c" "$here/br_host.h"; then
+    /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$here" -c "$here/br_host.c" -o "$work/c/br_host.o"
+  fi
+  if obj_stale "$work/c/br_attach.o" "$here/br_attach.c" "$here/br_attach.h"; then
+    /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$here" -c "$here/br_attach.c" -o "$work/c/br_attach.o"
+  fi
   c_objs+=(
     "$work/c/rh-flythrough.o"
     "$work/c/metaverse-viewer.o" "$work/c/mv_host.o"
     "$work/c/gamebuilder-core.o" "$work/c/gb_host.o"
+    "$work/c/br_host.o" "$work/c/br_attach.o"
   )
   full_swift=(
     "$here/ScheduledTasks.swift" "$here/ThreadProof.swift" "$here/CapabilityStudio.swift" "$here/AgentsPage.swift"
@@ -232,6 +239,7 @@ if [[ "$minimal" != "1" ]]; then
     "$here/Window+WalletRPC.swift"
     "$here/Window+Rich.swift"
     "$here/Window+Scheduled.swift" "$here/Window+Preview.swift" "$here/Window+Forge.swift"
+    "$here/BrowserViewportView.swift" "$here/Window+Browser.swift"
     "$here/Foreman.swift" "$here/ForemanOperator.swift"
   )
   swift_files+=("${full_swift[@]}")

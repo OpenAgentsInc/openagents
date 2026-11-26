@@ -843,4 +843,24 @@ void cd_gb_hydrate_progress(void *page, int active, int pct);
 void cd_gb_sync_studio(void *page, const int64_t metrics16[16], const char *ag_tsv, const char *pub_tsv, const char *lob_tsv, const char *note);
 void cd_mv_set_ext_texture(void *page, int slot, void *native_tex);
 int cd_mv_focus_viewport(void *page);
+// Expandable multi-tab right-side Browser pane (page/browserpane.coax; #14107-#14110).
+int cd_br_shown(void *page);
+int cd_br_expanded(void *page);
+int cd_br_hidden(void *page);
+int cd_br_tab_count(void *page);
+int cd_br_active_tab(void *page);
+int cd_br_open_tab(void *page, const char *url, int caller, int profile);
+void cd_br_show(void *page, int open, int expand);
+int cd_br_rect(void *page, float out[4]);
+int cd_br_tab_url(void *page, int idx, char *out, int cap);
+void cd_br_sync_tab(void *page, int idx, const char *url, const char *title, int loading, int can_back, int can_fwd, float progress);
+void cd_br_push_console(void *page, int level, const char *text, const char *source, int line);
+void cd_br_push_network(void *page, const char *method, int status, const char *url, int ms);
+void cd_br_push_agent(void *page, const char *verb, const char *summary, int ok);
+int cd_br_human_takeover(void *page);
+void cd_br_set_approval(void *page, int pending, const char *req_id, const char *label, const char *target);
+void cd_br_set_download(void *page, int active, const char *raw_name, int bytes, int total, const char *status);
+void cd_br_set_ext_texture(void *page, int slot, void *native_tex);
+int cd_br_save_session(void *page, char *out, int cap);
+int cd_br_load_session(void *page, const char *json);
 #endif

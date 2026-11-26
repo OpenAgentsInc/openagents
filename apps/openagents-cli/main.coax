@@ -51,6 +51,7 @@
 #load "wallet.coax";
 #load "models.coax";
 #load "desktop.coax";
+#load "browser.coax";
 #load "contribute.coax";
 #load "module.coax";
 #load "executor-mcp.coax";
@@ -95,6 +96,7 @@ usage :: () {
   labs_usage();
   coder_usage();
   desktop_usage();
+  browser_usage();
   contribute_usage();
   module_usage();
   executor_usage();
@@ -167,6 +169,7 @@ cli_dispatch :: (a: [] Args, r: [] Rep, profile: string, domain: string, verb: s
   if domain == "dictate" { return dictate_launch(a, r); }
   if domain == "coder" { return coder_main(a, r); }
   if domain == "desktop" { return desktop_main(a, r); }
+  if domain == "browser" { return browser_main(a, r, profile, verb); }
   if domain == "contribute" { return contribute_main(a, r); }
   if domain == "module" { return module_main(a, r, profile, verb); }
   if domain == "executor" { return executor_main(a, r, profile, verb); }

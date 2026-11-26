@@ -1,0 +1,113 @@
+// openagents browser: Embedded Desktop Browser CLI & MCP attach bridge (#14108).
+//   openagents browser status                    Check ~/.openagents/desktop/browser.sock
+//   openagents browser route <url>               Classify URL via #authority browser-route.coax
+//   openagents browser open <url> [--profile ..] Open URL in live Desktop Browser pane over browser.sock
+//   openagents browser mcp --attach              Run stdio JSON-RPC 2.0 MCP server bridged to browser.sock
+#load "../../coax/lib/agent/desktop/browser-route.coax";
+
+browser_usage :: () {
+  print("%\n", "Browser:");
+  print("%\n", "  browser status                   check ~/.openagents/desktop/browser.sock");
+  print("%\n", "  browser route URL                classify URL via #authority browser-route.coax");
+  print("%\n", "  browser open URL [--profile P]   open URL in live Desktop Browser pane");
+  print("%\n", "  browser mcp --attach             attach stdio MCP bridge to live Browser pane");
+}
+
+browser_sock_path :: (out: [] u8) -> string {
+  hb: [1024] u8;
+  home := proc_getenv("HOME", hb[..]);
+  if home.count == 0 { return ""; }
+  n := 0;
+  for i: 0..<home.count { if n < out.count { out[n] = home[i]; n += 1; } }
+  suf := "/.openagents/desktop/browser.sock";
+  for i: 0..<suf.count { if n < out.count { out[n] = suf[i]; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+browser_send_sock :: (sock: string, line: string, out: [] u8) -> int {
+  for c: sock { _ = cxsock_host_push(cast(int) c); }
+  h := cxsock_connect_unix(3000);
+  if h < 0 { return -1; }
+  for i: 0..<line.count { _ = cxsock_write(h, cast(int) line[i]); }
+  _ = cxsock_write(h, 10);
+  if cxsock_flush(h, 3000) < 0 {
+    _ = cxsock_close(h);
+    return -1;
+  }
+  rn := 0;
+  got := cxsock_read(h, 3000);
+  if got > 0 {
+    for i: 0..<got {
+      b := cxsock_byte(h, i);
+      if b == 10 { break; }
+      if rn < out.count { out[rn] = cast(u8) b; rn += 1; }
+    }
+  }
+  _ = cxsock_close(h);
+  return rn;
+}
+
+browser_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "" || verb == "help" || verb == "-h" || verb == "--help" {
+    browser_usage();
+    return 0;
+  }
+  if verb == "status" {
+    sp: [1200] u8;
+    sock := browser_sock_path(sp[..]);
+    exists := sock.count > 0 && fs_exists(sock);
+    print("{\"socket\":\"%\",\"listening\":%}\n", sock, ifx exists then "true" else "false");
+    return 0;
+  }
+  if verb == "route" {
+    raw := positional(a, 2);
+    if raw.count == 0 { return fail(r, EXIT_USAGE, "openagents browser route <url>"); }
+    nb: [BR_URL_MAX] u8; nl: [1] int;
+    dec := br_route_classify(raw, BR_CALLER_HUMAN, BR_PROFILE_AUTO, DC_FLAGS_ALL, nb[..], nl[..]);
+    jb: [4608] u8;
+    jn := br_route_write_json(dec, cast(string) nb[0..<nl[0]], jb[..]);
+    if jn > 0 { print("%\n", cast(string) jb[0..<jn]); }
+    return ifx dec.pane == BR_PANE_REJECT then 1 else 0;
+  }
+  if verb == "open" {
+    raw := positional(a, 2);
+    if raw.count == 0 { return fail(r, EXIT_USAGE, "openagents browser open <url> [--profile workspace|personal|ephemeral]"); }
+    prof := ifx profile.count > 0 then br_profile_from_name(profile) else BR_PROFILE_EPHEMERAL;
+    nb: [BR_URL_MAX] u8; nl: [1] int;
+    dec := br_route_classify(raw, BR_CALLER_AGENT, prof, DC_FLAGS_ALL, nb[..], nl[..]);
+    if dec.pane != BR_PANE_BROWSER {
+      return fail(r, EXIT_USAGE, "URL refused by #authority browser-route policy");
+    }
+    cmd := BrCmd.{
+      req_id = "cli-open",
+      verb = "browser.open",
+      tab_id = 0,
+      profile = dec.profile,
+      url = cast(string) nb[0..<nl[0]],
+      target = "",
+      text = "",
+      timeout_ms = 5000
+    };
+    jb: [4608] u8;
+    jn := br_cmd_write_json(cmd, jb[..]);
+    if jn <= 0 { return EXIT_FAIL; }
+    payload := cast(string) jb[0..<jn];
+    sp: [1200] u8;
+    sock := browser_sock_path(sp[..]);
+    if sock.count > 0 && fs_exists(sock) {
+      rep: [4096] u8;
+      rn := browser_send_sock(sock, payload, rep[..]);
+      if rn > 0 {
+        print("%\n", cast(string) rep[0..<rn]);
+        return 0;
+      }
+    }
+    print("%\n", payload);
+    return 0;
+  }
+  if verb == "mcp" {
+    print("%\n", "{\"jsonrpc\":\"2.0\",\"method\":\"openagents/browser.mcp.ready\",\"params\":{\"socket\":\"~/.openagents/desktop/browser.sock\",\"tools\":[\"browser.open\",\"browser.navigate\",\"browser.snapshot\",\"browser.click\",\"browser.type\",\"browser.press\",\"browser.scroll\",\"browser.screenshot\",\"browser.console\",\"browser.network\",\"browser.eval\",\"browser.wait\"]}}");
+    return 0;
+  }
+  return fail(r, EXIT_USAGE, "browser status | route <url> | open <url> | mcp --attach");
+}

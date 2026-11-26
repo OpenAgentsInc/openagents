@@ -1,0 +1,143 @@
+// Checks for the expandable multi-tab Browser Pane (page/browserpane.coax; #14107-#14110).
+//   coax/bin/coax test apps/openagents-desktop/page/checks/browserpane-checks.coax --library
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_br_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin_for(s), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], w, h);
+  return uiframe_end(f[..], s[0].surface[..]);
+}
+
+#test "browserpane: 12-tab lifecycle, 4-renderer LRU hibernation, Expand/Restore geometry, and Hide preservation" {
+  p: [1] CoderPage; st: [1] CpCheckStore;
+  s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  s[0].flags = DC_FLAGS_ALL;
+  #assert cp_br_enabled(s);
+  #assert !cp_br_shown(s);
+
+  // Open 12 tabs -> verify cap and <= 4 active non-hibernated renderers
+  for i: 0..<12 {
+    idx := cp_br_open_tab(s, "http://localhost:5173/app", BR_CALLER_HUMAN, BR_PROFILE_WORKSPACE);
+    #assert idx == i;
+    awake := 0;
+    for k: 0..<s[0].br[0].ntabs {
+      if !s[0].br[0].tabs[k].hibernated { awake += 1; }
+    }
+    #assert awake <= BR_MAX_ACTIVE_RENDERERS;
+  }
+  #assert s[0].br[0].ntabs == 12;
+  #assert s[0].br[0].tabs[0].hibernated;
+  #assert !s[0].br[0].tabs[11].hibernated;
+
+  // Selecting hibernated tab 0 wakes it transparently while maintaining <= 4 active renderers
+  #assert cp_br_select_tab(s, 0);
+  #assert !s[0].br[0].tabs[0].hibernated;
+
+  // Split layout vs Expand / Restore geometry
+  #assert cp_br_test_frame(s, 1400, 900);
+  #assert s[0].col_w > 0;
+  split_w := s[0].pane_w;
+  #assert split_w > 0 && split_w < 1200;
+
+  #assert cp_br_press(s, CP_BR_EXPAND, "");
+  #assert s[0].br[0].expanded;
+  #assert cp_br_test_frame(s, 1400, 900);
+  #assert s[0].col_w == 0;
+  #assert s[0].pane_w > split_w;
+
+  // Hide preserves all 12 tabs
+  #assert cp_br_press(s, CP_BR_HIDE, "");
+  #assert !cp_br_shown(s) && s[0].br[0].hidden && !s[0].br[0].expanded;
+  #assert s[0].br[0].ntabs == 12;
+
+  // Toggle restores pane with all 12 tabs intact
+  #assert cp_br_press(s, CP_BR_TOGGLE, "");
+  #assert cp_br_shown(s) && s[0].br[0].ntabs == 12;
+}
+
+#test "browserpane: omnibox, Find bar, viewport presets, 5-tab drawer, Row 3 banners, and secret redaction" {
+  p: [1] CoderPage; st: [1] CpCheckStore;
+  s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  s[0].flags = DC_FLAGS_ALL;
+  _ := cp_br_open_tab(s, "http://localhost:3000/home", BR_CALLER_HUMAN, BR_PROFILE_WORKSPACE);
+
+  // Viewport presets cycle Desktop -> Tablet (768) -> Mobile (390) -> Desktop
+  #assert cp_br_test_frame(s, 1600, 900);
+  #assert cp_br_press(s, CP_BR_EXPAND, "");
+  #assert cp_br_press(s, CP_BR_VIEWPORT, ""); // Tablet
+  #assert cp_br_test_frame(s, 1600, 900);
+  #assert s[0].br[0].vp_w == 768.0f32;
+  #assert cp_br_press(s, CP_BR_VIEWPORT, ""); // Mobile
+  #assert cp_br_test_frame(s, 1600, 900);
+  #assert s[0].br[0].vp_w == 390.0f32;
+  #assert cp_br_press(s, CP_BR_VIEWPORT, ""); // Desktop
+
+  // Omnibox focus & Escape revert
+  #assert cp_br_press(s, CP_BR_OMNIBOX, "");
+  #assert s[0].br[0].url_editing && s[0].fld[0].kb == CP_KB_BROWSER_URL;
+  #assert cp_br_escape(s) && !s[0].br[0].url_editing;
+
+  // Find bar via Cmd+F and Escape close
+  #assert cp_br_key(s, 'f', MOD_CMD);
+  #assert s[0].br[0].find_open;
+  #assert cp_br_escape(s) && !s[0].br[0].find_open;
+
+  // 5-tab DevTools / Agent Drawer + secret redaction on Network entries
+  #assert cp_br_press(s, CP_BR_DRAWER, "");
+  #assert s[0].br[0].drawer_open;
+  cp_br_push_console(s, 2, "TypeError: undefined", "app.js", 42);
+  cp_br_push_network(s, "GET", 401, "https://api.example.com/v1?Authorization: Bearer secret_tok", 85);
+  cp_br_push_agent_log(s, "browser.click", "Clicked @e14 Deploy", true);
+  #assert s[0].br[0].tabs[0].console_errs == 1;
+  #assert !br_contains_ci(cast(string) s[0].br[0].net_rows[0].url[0..<s[0].br[0].net_rows[0].url_n], "secret_tok");
+  for dt: 0..<5 {
+    s[0].br[0].drawer_tab = dt;
+    #assert cp_br_test_frame(s, 1600, 900);
+  }
+
+  // Row 3: Approval banner & Human Supremacy lease takeover & Quarantined Download
+  coder_page_br_set_approval(s, true, "req-9", "Agent requests password entry", "input[type=password]");
+  #assert cp_br_test_frame(s, 1600, 900);
+  #assert cp_br_press(s, CP_BR_APPROVE_DENY, "");
+  #assert !s[0].br[0].approval_pending;
+
+  #assert br_lease_acquire(s[0].br[0].tabs[0].lease[..], "worker-1", BR_PROFILE_WORKSPACE) == BR_LEASE_OK;
+  #assert coder_page_br_human_takeover(s);
+  #assert s[0].br[0].tabs[0].lease[0].state == BR_LEASE_PAUSED_BY_HUMAN;
+
+  coder_page_br_set_download(s, true, "../../evil.sh", 100, 100, "done");
+  #assert cast(string) s[0].br[0].dl_status[0..<s[0].br[0].dl_status_n] == "quarantined";
+}
+
+#test "browserpane: session restore preserves Workspace/Personal tabs and purges Agent Ephemeral tabs" {
+  p1: [1] CoderPage; st1: [1] CpCheckStore;
+  s1 := cp_check_page(p1[..], st1[..]);
+  s1[0].flags = DC_FLAGS_ALL;
+
+  // Open 6 persistent tabs (Workspace + Personal) and 2 Agent Ephemeral tabs
+  for i: 0..<3 { _ := cp_br_open_tab(s1, "http://localhost:5173/w", BR_CALLER_HUMAN, BR_PROFILE_WORKSPACE); }
+  for i: 0..<3 { _ := cp_br_open_tab(s1, "https://github.com/OpenAgentsInc/openagents", BR_CALLER_HUMAN, BR_PROFILE_PERSONAL); }
+  for i: 0..<2 { _ := cp_br_open_tab(s1, "https://ephemeral.example.com/", BR_CALLER_AGENT, BR_PROFILE_EPHEMERAL); }
+  #assert s1[0].br[0].ntabs == 8;
+
+  saved: [16384] u8;
+  sn := coder_page_br_save_session(s1, saved[..]);
+  #assert sn > 0;
+  json := cast(string) saved[0..<sn];
+  #assert !br_contains_ci(json, "ephemeral.example.com");
+
+  // Restore into a fresh Desktop instance
+  p2: [1] CoderPage; st2: [1] CpCheckStore;
+  s2 := cp_check_page(p2[..], st2[..]);
+  s2[0].flags = DC_FLAGS_ALL;
+  restored := coder_page_br_load_session(s2, json);
+  #assert restored == 6;
+  #assert s2[0].br[0].ntabs == 6;
+  for i: 0..<6 {
+    #assert s2[0].br[0].tabs[i].profile != BR_PROFILE_EPHEMERAL;
+  }
+}
