@@ -1332,6 +1332,7 @@ extension CoderWindow {
         keep(touchUpdated: false)
         guard let id = chat, let back = cd_headless() else { return false }
         cd_flags_set(back, FeatureFlags.mask)
+        cd_sb_condensed_set(back, SidebarViewMode.condensed ? 1 : 0)
         AgentSettings.apply(to: back)
         syncLocalState(on: back)
         if ComposerModelVisibility.showOtherModels {

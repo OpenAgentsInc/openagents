@@ -73,7 +73,7 @@ app_pal_out4 :: (t: f32) -> f32 { x := ifx t < 0 then 0.0f32 else ifx t > 1 then
 
 // ---------------------------------------------------------------- the list
 
-APP_PAL_ITEMS :: 160; APP_PAL_ROWS :: 184; APP_PAL_DEPTH :: 4; APP_PAL_RECENT :: 8;
+APP_PAL_ITEMS :: 176; APP_PAL_ROWS :: 200; APP_PAL_DEPTH :: 4; APP_PAL_RECENT :: 8;
 APP_PAL_POOL :: 1024;    // words a caller makes up for its items (app_palette_keep)
 APP_PAL_KEY :: 48; APP_PAL_QUERY :: 256;
 // The scopes, in Tab's order.

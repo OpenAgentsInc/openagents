@@ -562,6 +562,8 @@ void cd_sb_undo_dismiss(void *page);
 void cd_sb_set_view(void *page, int mode);
 int cd_sb_view(void *page);
 int cd_sb_sel_count(void *page);
+void cd_sb_condensed_set(void *page, int condensed);
+int cd_sb_condensed(void *page);
 // In-thread Find (⌘F), Transcript Minimap, and 3-mode Command Palette (page/find.coax, GitHub #13876).
 void cd_find_open(void *page);
 void cd_find_close(void *page);

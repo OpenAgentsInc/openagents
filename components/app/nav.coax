@@ -159,13 +159,16 @@ AppSideRow :: struct {
   head_btn_label: string;     // accessible label for the heading's trailing icon button
   head_btn_action: int;       // action dispatched when the heading's trailing icon button is pressed
   card: bool;                 // Compact 2-line card layout (Line 1: title + status/time, Line 2: repo · branch + harness)
+  card_condensed: bool;       // Condensed 1-line card layout: top line only (title + status/time), hiding repo/branch/harness
   repo: string;               // Line 2 project/folder name
   branch: string;             // Line 2 git branch name (appended after repo)
   harness_icon: int = -1;     // Line 2 trailing harness/provider icon
   status_kind: int;           // APP_SIDE_STATUS_* subtle semantic cue on 2-line card (#14025)
   selected: bool;             // multi-selected row (distinct fill from EL_S_CURRENT; #14029)
+  quiet: bool;                // subdued/darker text color for secondary rows like "Load more"
 }
 APP_SIDE_CARD_H :: 54.0f32;
+APP_SIDE_CARD_CONDENSED_H :: 34.0f32;
 APP_SIDE_CARD_ICON :: 11.0f32;
 APP_SIDE_CARD_HARNESS_ICON :: 12.0f32;
 APP_SIDE_CARD_FOLDER_ICON :: 11.0f32;
@@ -188,7 +191,7 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   current := (r.state & EL_S_CURRENT) != 0; off := (r.state & EL_S_DISABLED) != 0;
   busy := (r.state & EL_S_BUSY) != 0 && !(r.attention && r.status.count > 0);
   mark_unread := r.unread && !busy && !current && !off;
-  h := APP_SIDE_CARD_H;
+  h := ifx r.card_condensed then APP_SIDE_CARD_CONDENSED_H else APP_SIDE_CARD_H;
   k := uiframe_key(f, r.id);
   p := ifx off then 0.0f32 else uiframe_press(f, k, r.id);
   hovered := !off && uiframe_hovered(f, r.id);
@@ -224,7 +227,7 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   irx := pill_x + pill_w - pad_x;
   // Line 1: chat title (left) | spinner / Done / relative time (right)
   tf := ifx a.side_text.line > 0 then a.side_text else s.body;
-  y1 := pill_y + pad_y;
+  y1 := ifx r.card_condensed then pill_y + (pill_h - tf.line) / 2.0f32 else pill_y + pad_y;
   sy1 := y1 + (tf.line - s.small.line) / 2.0f32;
   r1_right := irx;
   if !off && r.status_kind != APP_SIDE_STATUS_NONE {
@@ -265,38 +268,40 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   if title_room > 0 {
     _ := sheet_text(sh, m, -1, ix0, y1, tf.line, tf.face, t_ink, app_fit(f, tf.face, title, title_room));
   }
-  // Line 2: small folder icon + repo (· branch) (left) | small harness icon (right)
-  y2 := y1 + tf.line + 2.0f32;
-  r2_right := irx;
-  if r.harness_icon >= 0 {
-    hi := APP_SIDE_CARD_HARNESS_ICON;
-    sheet_icon(sh, app_side_card_harness_icon(r.harness_icon), r2_right - hi, y2 + (s.small.line - hi) / 2.0f32, hi, opacity(s.muted, 0.46f32));
-    r2_right -= hi + 6.0f32;
-  }
-  lx2 := ix0;
-  if r.icon >= 0 {
-    is_folder := r.icon == ICON_FOLDER_11 || r.icon == ICON_FOLDER;
-    ic := ifx is_folder then APP_SIDE_CARD_FOLDER_ICON else APP_SIDE_CARD_ICON;
-    ig := ifx is_folder then APP_SIDE_CARD_FOLDER_GAP else 4.0f32;
-    sheet_icon(sh, r.icon, lx2, y2 + (s.small.line - ic) / 2.0f32, ic, s.muted);
-    lx2 += ic + ig;
-  }
-  meta_room := r2_right - lx2;
-  if r.repo.count > 0 && meta_room > 0 {
-    fit_repo := app_fit(f, s.small.face, r.repo, meta_room);
-    _ := sheet_text(sh, m, -1, lx2, y2, s.small.line, s.small.face, s.muted, fit_repo);
-    lx2 += measure_width(m, s.small.face, fit_repo);
-    if r.branch.count > 0 {
-      sep := " · ";
-      sep_w := measure_width(m, s.small.face, sep);
-      br_room := r2_right - lx2 - sep_w;
-      if br_room >= 18.0f32 {
-        _ := sheet_text(sh, m, -1, lx2, y2, s.small.line, s.small.face, s.faint, sep);
-        _ := sheet_text(sh, m, -1, lx2 + sep_w, y2, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, r.branch, br_room));
-      }
+  if !r.card_condensed {
+    // Line 2: small folder icon + repo (· branch) (left) | small harness icon (right)
+    y2 := y1 + tf.line + 2.0f32;
+    r2_right := irx;
+    if r.harness_icon >= 0 {
+      hi := APP_SIDE_CARD_HARNESS_ICON;
+      sheet_icon(sh, app_side_card_harness_icon(r.harness_icon), r2_right - hi, y2 + (s.small.line - hi) / 2.0f32, hi, opacity(s.muted, 0.46f32));
+      r2_right -= hi + 6.0f32;
     }
-  } else if r.branch.count > 0 && meta_room > 0 {
-    _ := sheet_text(sh, m, -1, lx2, y2, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, r.branch, meta_room));
+    lx2 := ix0;
+    if r.icon >= 0 {
+      is_folder := r.icon == ICON_FOLDER_11 || r.icon == ICON_FOLDER;
+      ic := ifx is_folder then APP_SIDE_CARD_FOLDER_ICON else APP_SIDE_CARD_ICON;
+      ig := ifx is_folder then APP_SIDE_CARD_FOLDER_GAP else 4.0f32;
+      sheet_icon(sh, r.icon, lx2, y2 + (s.small.line - ic) / 2.0f32, ic, s.muted);
+      lx2 += ic + ig;
+    }
+    meta_room := r2_right - lx2;
+    if r.repo.count > 0 && meta_room > 0 {
+      fit_repo := app_fit(f, s.small.face, r.repo, meta_room);
+      _ := sheet_text(sh, m, -1, lx2, y2, s.small.line, s.small.face, s.muted, fit_repo);
+      lx2 += measure_width(m, s.small.face, fit_repo);
+      if r.branch.count > 0 {
+        sep := " · ";
+        sep_w := measure_width(m, s.small.face, sep);
+        br_room := r2_right - lx2 - sep_w;
+        if br_room >= 18.0f32 {
+          _ := sheet_text(sh, m, -1, lx2, y2, s.small.line, s.small.face, s.faint, sep);
+          _ := sheet_text(sh, m, -1, lx2 + sep_w, y2, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, r.branch, br_room));
+        }
+      }
+    } else if r.branch.count > 0 && meta_room > 0 {
+      _ := sheet_text(sh, m, -1, lx2, y2, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, r.branch, meta_room));
+    }
   }
   if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
   return h;
@@ -305,7 +310,7 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
 app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, title: string, detail: string, list_action: int) -> f32 {
   if r.card { return app_side_row_card(f, r, x, y, w, title, list_action); }
   act := ifx r.action >= 0 then r.action else list_action;
-  if r.icon < 0 && r.trail_icon < 0 && r.indent == 0.0f32 && !r.tree_line {
+  if r.icon < 0 && r.trail_icon < 0 && r.indent == 0.0f32 && !r.tree_line && !r.quiet {
     return app_side_row_status(f, r.id, x, y, w, title, detail, r.status, r.attention, r.state, r.unread, act);
   }
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
@@ -378,7 +383,7 @@ app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
     }
   }
   room := rx - tx;
-  ink := ifx off then s.faint else ifx current || mark_unread then s.ink else rgba_mix(opacity(s.ink, 0.95f32), s.ink, hv);
+  ink := ifx off then s.faint else ifx r.quiet then rgba_mix(s.faint, s.muted, hv) else ifx current || mark_unread then s.ink else rgba_mix(opacity(s.ink, 0.95f32), s.ink, hv);
   if room > 0 {
     _ := sheet_text(sh, m, -1, tx, ty, tf.line, tf.face, ink, app_fit(f, tf.face, title, room));
     if detail.count > 0 { _ := sheet_text(sh, m, -1, tx, ty + tf.line, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, detail, room)); }
@@ -421,7 +426,7 @@ app_side_list :: (f: [] UiFrame, head_id: string, x: f32, y: f32, w: f32, head: 
 }
 
 // A bounded history window: one-line rows, two-line where a row has a detail (Zeron's SessionCell subline). Realize only visible rows; the caller owns the offset.
-app_side_height :: (f:[]UiFrame,r:AppSideRow)->f32 {a:=f[0].skin.app;if r.card {return APP_SIDE_CARD_H;}return ifx r.heading then a.side_head else ifx r.detail.count>0 then a.side_row_two else a.side_row;}
+app_side_height :: (f:[]UiFrame,r:AppSideRow)->f32 {a:=f[0].skin.app;if r.card {return ifx r.card_condensed then APP_SIDE_CARD_CONDENSED_H else APP_SIDE_CARD_H;}return ifx r.heading then a.side_head else ifx r.detail.count>0 then a.side_row_two else a.side_row;}
 app_side_content :: (f:[]UiFrame,rows:[]AppSideRow)->f32 {n:f32=0;for r:rows {n+=app_side_height(f,r);}return n;}
 app_side_window :: (f:[]UiFrame,x:f32,top:f32,w:f32,viewport:f32,rows:[]AppSideRow,offset:f32,tail:f32,action:int)->f32 {return app_side_window_at(f,x,top,w,viewport,rows,offset,0,tail,action);}
 // The same, its rows moved `stretch` further (a rubber band past an end: components/core/scroll.coax's UiScroll.stretch).

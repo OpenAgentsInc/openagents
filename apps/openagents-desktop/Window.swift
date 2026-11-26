@@ -285,6 +285,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         #endif
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
+        cd_sb_condensed_set(page, SidebarViewMode.condensed ? 1 : 0)
         CoderNotifications.shared.install()
         CoderNotifications.shared.onSelectChat = { [weak self] chatID in self?.openFromNotification(chatID) }
         configureTitleGenerator()
@@ -640,6 +641,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         #endif
         case 61: notificationModeChanged()
         case 62: sidebarAsked()
+        case 221: sidebarViewChanged()
         case 216:   // CP_ASK_DASHBOARD (190 is CP_ASK_FLAWED_PREFS, which this case used to shadow)
             #if OA_FULL
             closeGym()

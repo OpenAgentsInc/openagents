@@ -123,6 +123,16 @@ enum FeatureFlags {
     #endif
 }
 
+/// Settings > General > Sidebar view (UserDefaults `sidebarCondensed`):
+/// false = Expanded (2-line chat card), true = Condensed (top line only).
+enum SidebarViewMode {
+    static let key = "sidebarCondensed"
+    static var condensed: Bool {
+        get { UserDefaults.standard.bool(forKey: key) }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+}
+
 /// Settings > General > Experimental features, off unless set (UserDefaults `experimentalFeatures`):
 /// enables all 28 developer/experimental flags as an alias for OA_FLAGS=all.
 enum Experimental {
@@ -328,6 +338,15 @@ extension CoderWindow {
         applyFlags()
     }
     #endif
+    /// Settings > General > Sidebar view row was pressed (CP_ASK_SIDEBAR_VIEW): persist and sync pages.
+    func sidebarViewChanged() {
+        let condensed = cd_sb_condensed(page) != 0
+        SidebarViewMode.condensed = condensed
+        for r in runs.values where r.page != page {
+            cd_sb_condensed_set(r.page, condensed ? 1 : 0)
+        }
+        wake()
+    }
     /// Settings > General > Notifications row was pressed (CP_ASK_NOTIFY): persist and request OS permission if needed.
     func notificationModeChanged() {
         let mode = CoderNotifyMode(clamping: cd_notify_mode(page))
@@ -480,6 +499,7 @@ extension CoderWindow {
         cd_settings_instructions(page, AgentInstructions.words)
         cd_settings_custom_prompt(page, CustomSystemPrompt.words, CustomSystemPrompt.preview)
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
+        cd_sb_condensed_set(page, SidebarViewMode.condensed ? 1 : 0)
         syncLocalModels()
         syncProvidersSettingsPage()
         applyProbes()

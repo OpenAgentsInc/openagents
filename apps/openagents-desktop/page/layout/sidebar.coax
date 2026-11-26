@@ -38,6 +38,7 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
                      attention = sel,
                      icon = ifx rn > 0 then ICON_FOLDER_11 else -1,
                      card = true,
+                     card_condensed = s[0].sb[0].condensed,
                      repo = repo_str,
                      branch = br_str,
                      harness_icon = h_icon,
@@ -166,7 +167,9 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   limit := cp_sb_chat_limit(s);
   pin_start_y := a.side_head;
   if is_arch {
-    rows[nrows] = AppSideRow.{id = "coder.archived", title = "Archived", heading = true};
+    rows[nrows] = AppSideRow.{id = "coder.archived", title = "Archived", heading = true,
+                              head_btn_id = "coder.archived.back", head_btn_label = "Back to active chats",
+                              trail_icon = ICON_CLOSE, head_btn_action = CP_SB_VIEW_ACTIVE_ACT};
     nrows += 1;
     for q: 0..<s[0].nchats {
       if !s[0].chats[q].archived { continue; }
@@ -267,12 +270,13 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   s[0].sb[0].shift_init = true;
   s[0].sb[0].shift_suppress = false;
   if hidden_chats > 0 {
-    lmb: [24] u8;
-    lmn := el_put_i(lmb[..], 0, hidden_chats);
-    lmn = el_put(lmb[..], lmn, " more");
+    lmb: [32] u8;
+    lmn := el_put(lmb[..], 0, "Load more (");
+    lmn = el_put_i(lmb[..], lmn, hidden_chats);
+    lmn = el_put(lmb[..], lmn, ")");
     rows[nrows] = AppSideRow.{id = "coder.sb.load_more",
-                              title = "Load more",
-                              status = sheet_pool(f[0].sheet, cast(string) lmb[0..<lmn]),
+                              title = sheet_pool(f[0].sheet, cast(string) lmb[0..<lmn]),
+                              quiet = true,
                               action = CP_SB_LOAD_MORE_ACT};
     nrows += 1;
   }
@@ -307,7 +311,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
     uiframe_unclip(f);
   }
   app_scroll_rail(f, s[0].side_scr[..], sw, stop, scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), s[0].side_content, s[0].side_view, s[0].side_view, s[0].now, s[0].reduced);
-  s[0].pin_row_h = APP_SIDE_CARD_H;
+  s[0].pin_row_h = ifx s[0].sb[0].condensed then APP_SIDE_CARD_CONDENSED_H else APP_SIDE_CARD_H;
   s[0].pin_top = stop + pin_start_y - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view) - s[0].side_scr[0].stretch;
   if s[0].pin_dragging && s[0].pin_drag > 0 && npinned > 1 {
     from := cp_pin_index(s, s[0].pin_drag - 1);

@@ -35,8 +35,9 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert surface_find(s[0].surface[..], "coder.sb.add_project") < 0;
   #assert surface_find(s[0].surface[..], "coder.proj.0") < 0;
   #assert surface_find(s[0].surface[..], "coder.proj.1") < 0;
-  // Footer retains unified icon-only Settings button; no legacy Active/Archived tabs.
+  // Footer retains unified icon-only Settings button; no legacy Active/Archived tabs or footer archive button.
   #assert surface_find(s[0].surface[..], "coder.sb.tab.active") < 0 && surface_find(s[0].surface[..], "coder.sb.tab.archived") < 0;
+  #assert surface_find(s[0].surface[..], "coder.sb.archived") < 0;
   #assert surface_find(s[0].surface[..], "coder.me") < 0 && surface_find(s[0].surface[..], "coder.me.settings") >= 0;
   // All chats are visible immediately in one list without expanding any folder.
   i_p1 := surface_find(s[0].surface[..], "chat.p1");
@@ -232,13 +233,25 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
     if sh.over[i].kind == PRIM_TEXT && sh.over[i].text == "N" { has_n_key = true; }
   }
   #assert has_cmd_icon && has_n_key;
-  // Initially only the 5 most recent chats (c11..c7) are shown, plus Load more ("7 more").
+  // Initially only the 5 most recent chats (c11..c7) are shown, plus quiet "Load more (7)".
   #assert s[0].sb[0].vis_n == 5;
   #assert surface_find(s[0].surface[..], "chat.c11") >= 0;
   #assert surface_find(s[0].surface[..], "chat.c7") >= 0;
   #assert surface_find(s[0].surface[..], "chat.c6") < 0;
   lm_idx := surface_find(s[0].surface[..], "coder.sb.load_more");
   #assert lm_idx >= 0 && surface_action(s[0].surface[..], lm_idx) == CP_SB_LOAD_MORE_ACT;
+  saw_lm_inline := false; saw_lm_right := false; lm_faint := false;
+  sk := cp_skin();
+  for i: 0..<sh.no {
+    if sh.over[i].kind == PRIM_TEXT {
+      if sh.over[i].text == "Load more (7)" {
+        saw_lm_inline = true;
+        lm_faint = sh.over[i].fill.r == sk.faint.r && sh.over[i].fill.g == sk.faint.g && sh.over[i].fill.b == sk.faint.b && sh.over[i].fill.a == sk.faint.a;
+      }
+      if sh.over[i].text == "7 more" { saw_lm_right = true; }
+    }
+  }
+  #assert saw_lm_inline && !saw_lm_right && lm_faint;
   // Click Load more -> shows 10 chats (c11..c2) and Load more ("2 more").
   #assert cp_sb_click_id(s, "coder.sb.load_more", 0);
   #assert cp_sb_test_frame(s, f[..], 0.02f32);
@@ -320,4 +333,93 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert coder_page_action(s) == CP_ASK_OPEN;
   on = coder_page_open_id(s, oid[..]);
   #assert cast(string) oid[0..<on] == "c2";
+}
+
+#test "sidebar view setting toggles between Expanded (2-line card) and Condensed (top line only)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  coder_page_sb_now_ms(s, 600000);
+  coder_page_chats(s, "c1\tFirst chat\t0\t0\t0\t0\t0\t0\t/Users/dev/work/openagents\t540000\tmain\n");
+  #assert !coder_page_sb_condensed(s);
+
+  // Expanded (default): 2-line card renders both title and repo/branch line.
+  f: [1] UiFrame;
+  #assert cp_sb_test_frame(s, f[..], 0.0f32);
+  r_exp := surface_find(s[0].surface[..], "chat.c1");
+  #assert r_exp >= 0;
+  #assert surface_rows(s[0].surface[..]).rows[r_exp].h == APP_SIDE_CARD_H;
+  #assert s[0].pin_row_h == APP_SIDE_CARD_H;
+  sh := surface_sheet(s[0].surface[..]);
+  saw_title := false; saw_repo := false; saw_age := false;
+  for i: 0..<sh.no {
+    if sh.over[i].kind == PRIM_TEXT {
+      if sh.over[i].text == "First chat" { saw_title = true; }
+      if sh.over[i].text == "openagents" { saw_repo = true; }
+      if sh.over[i].text == "1m" { saw_age = true; }
+    }
+  }
+  #assert saw_title && saw_repo && saw_age;
+
+  // Settings > General > Sidebar view -> Condensed.
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sidebar.view.1");
+  #assert coder_page_action(s) == CP_ASK_SIDEBAR_VIEW;
+  #assert coder_page_sb_condensed(s);
+  #assert cp_sb_test_frame(s, f[..], 0.02f32);
+  r_cond := surface_find(s[0].surface[..], "chat.c1");
+  #assert r_cond >= 0;
+  #assert surface_rows(s[0].surface[..]).rows[r_cond].h == APP_SIDE_CARD_CONDENSED_H;
+  #assert s[0].pin_row_h == APP_SIDE_CARD_CONDENSED_H;
+  sh2 := surface_sheet(s[0].surface[..]);
+  saw_title = false; saw_repo = false; saw_age = false;
+  for i: 0..<sh2.no {
+    if sh2.over[i].kind == PRIM_TEXT {
+      if sh2.over[i].text == "First chat" { saw_title = true; }
+      if sh2.over[i].text == "openagents" { saw_repo = true; }
+      if sh2.over[i].text == "1m" { saw_age = true; }
+    }
+  }
+  #assert saw_title && saw_age && !saw_repo;
+
+  // Settings > General > Sidebar view -> Expanded restores 2-line card.
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sidebar.view.0");
+  #assert coder_page_action(s) == CP_ASK_SIDEBAR_VIEW;
+  #assert !coder_page_sb_condensed(s);
+  #assert cp_sb_test_frame(s, f[..], 0.04f32);
+  r_back := surface_find(s[0].surface[..], "chat.c1");
+  #assert r_back >= 0 && surface_rows(s[0].surface[..]).rows[r_back].h == APP_SIDE_CARD_H;
+
+  // Settings search discovers Sidebar view via "condensed".
+  hits: [CP_SET_HITS] int;
+  hn := cp_set_hits_flags("condensed", hits[..], 0);
+  #assert hn >= 1 && cp_set_entries()[hits[0]].id == "set.sidebar.view";
+}
+
+#test "archived chats entry moves out of footer into Settings > General and returns via Archived heading back button" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  coder_page_chats(s, "c1\tActive thread\t0\t0\t0\t0\t0\t0\t/tmp/repo\nc2\tArchived thread\t0\t0\t0\t0\t1\t0\t/tmp/repo\n");
+  f: [1] UiFrame;
+  #assert cp_sb_test_frame(s, f[..], 0.0f32);
+  // Footer has no archive button.
+  #assert surface_find(s[0].surface[..], "coder.sb.archived") < 0;
+  // Settings search finds Archived chats under General.
+  hits: [CP_SET_HITS] int;
+  hn := cp_set_hits_flags("archived", hits[..], 0);
+  #assert hn >= 1 && cp_set_entries()[hits[0]].id == "set.sidebar.archived";
+  // Open Settings > General and verify the Archived chats button row renders.
+  cp_settings_show(s, true, CP_PG_GENERAL);
+  #assert cp_sb_test_frame(s, f[..], 0.02f32);
+  #assert surface_find(s[0].surface[..], "set.sidebar.archived.a") >= 0;
+  // Clicking Archived chats View button switches sidebar to Archived view and closes Settings.
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sidebar.archived.a");
+  #assert !s[0].set_open;
+  #assert coder_page_sb_view(s) == CP_SB_VIEW_ARCHIVED;
+  #assert cp_sb_test_frame(s, f[..], 0.04f32);
+  #assert surface_find(s[0].surface[..], "chat.c2") >= 0 && surface_find(s[0].surface[..], "chat.c1") < 0;
+  // Clicking the Archived heading close/back button returns to Active chats.
+  #assert surface_find(s[0].surface[..], "coder.archived.back") >= 0;
+  #assert cp_sb_click_id(s, "coder.archived.back", 0);
+  #assert coder_page_sb_view(s) == CP_SB_VIEW_ACTIVE;
+  #assert cp_sb_test_frame(s, f[..], 0.06f32);
+  #assert surface_find(s[0].surface[..], "chat.c1") >= 0 && surface_find(s[0].surface[..], "chat.c2") < 0;
 }

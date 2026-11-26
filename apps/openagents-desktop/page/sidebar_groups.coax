@@ -24,6 +24,7 @@ CP_SB_UNDO_DELETE :: 2;
 
 // Host ask code (coder_page_action).
 CP_ASK_SIDEBAR :: 62;
+CP_ASK_SIDEBAR_VIEW :: 221;   // Settings > General > Sidebar view changed (Expanded vs Condensed)
 
 // Sidebar host operations (coder_page_sb_op).
 CP_SB_OP_NONE :: 0;
@@ -59,6 +60,7 @@ CpSbUndo :: struct {
 
 CpSidebar :: struct {
   view_mode: int;             // CP_SB_VIEW_ACTIVE or CP_SB_VIEW_ARCHIVED
+  condensed: bool;            // false = Expanded (2-line card), true = Condensed (top line only)
   now_ms: int;                // current wall-clock epoch ms for snooze wake comparison
   working_collapsed: bool;    // Working shelf collapse state (false = expanded by default)
   snoozed_collapsed: bool;    // Snoozed shelf collapse state (true = collapsed by default; #14025)
@@ -555,6 +557,18 @@ coder_page_sb_set_view :: (s: [] CoderPage, mode: int) #export_c #effects(all) {
 coder_page_sb_view :: (s: [] CoderPage) -> int #export_c #effects(all) {
   if s.count < 1 { return CP_SB_VIEW_ACTIVE; }
   return s[0].sb[0].view_mode;
+}
+
+// Set sidebar chat row density (false = Expanded 2-line card, true = Condensed 1-line top row only).
+coder_page_sb_condensed_set :: (s: [] CoderPage, condensed: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].sb[0].condensed = condensed;
+}
+
+// Return whether sidebar chat rows are in Condensed view.
+coder_page_sb_condensed :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return s[0].sb[0].condensed;
 }
 
 // Return the number of currently multi-selected chats.

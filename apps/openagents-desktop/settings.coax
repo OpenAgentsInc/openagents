@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 99;
+CP_SET_ENTRIES :: 101;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -131,7 +131,9 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.style", name = "Output style & hooks", terms = "openagents concise explanatory learning hooks defer toolsearch"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.limits", name = "Turn & budget limits", terms = "openagents max turns budget usd cap remote bridge"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.sysprompt", name = "Custom system prompt", terms = "custom system prompt global rules persona tone prepend append every chat"},
-    CpSetEntry.{page = CP_PG_GENERAL, id = "set.sysprompt.clear", name = "Clear custom system prompt", terms = "clear remove reset custom system prompt"}];
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.sysprompt.clear", name = "Clear custom system prompt", terms = "clear remove reset custom system prompt"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.sidebar.view", name = "Sidebar view", terms = "sidebar expanded condensed compact density rows single line"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.sidebar.archived", name = "Archived chats", terms = "archive archived chats hidden history restore view"}];
 }
 // Whether a settings page is visible for the active flag bitmask.
 // Core release pages (flags == 0): General, Flawed, Providers, Models (Local), and About & updates.
@@ -242,6 +244,14 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if id == "set.folder.a" { if cp_running(s) { return false; } s[0].ask = CP_ASK_FOLDER; return true; }
   if id == "set.zoom.a" { s[0].ask = CP_ASK_ZOOM_OUT; return true; }
   if id == "set.zoom.b" { s[0].ask = CP_ASK_ZOOM_IN; return true; }
+  sbv := cp_number(id, "set.sidebar.view.");
+  if sbv == 0 || sbv == 1 { coder_page_sb_condensed_set(s, sbv == 1); s[0].ask = CP_ASK_SIDEBAR_VIEW; return true; }
+  if id == "set.sidebar.archived.a" {
+    next_act := ifx s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED then CP_SB_VIEW_ACTIVE_ACT else CP_SB_VIEW_ARCHIVED_ACT;
+    _ = cp_sb_press(s, next_act, id);
+    cp_settings_show(s, false, -1);
+    return true;
+  }
   nmode := cp_number(id, "set.notify.");
   if nmode >= CP_NOTIFY_OFF && nmode <= CP_NOTIFY_BOTH { s[0].notify_mode = nmode; s[0].ask = CP_ASK_NOTIFY; return true; }
   ex := cp_number(id, "set.exp.");
@@ -447,23 +457,39 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   nb: [CP_SET_QUERY + 16] u8;
   if page == CP_PG_GENERAL {
     y += set_page_head(f, "set.title", x, y, w, names[page], "How Coder works on this computer.") + t.block_gap;
-    rows: [4] SetRow;
+    rows: [6] SetRow;
     folder := ifx s[0].folder_n > 0 then sheet_pool(sh, cast(string) s[0].folder[0..<s[0].folder_n]) else "Home folder";
     rows[0] = SetRow.{id = "set.folder", name = "Working folder", desc = "Where OpenAgents runs its commands. New chats start here too.",
       value = folder, kind = SET_ROW_BUTTON, button = "Choose…", action = CP_SET_ACT, state = ifx cp_running(s) then EL_S_DISABLED else 0};
     rows[1] = SetRow.{id = "set.zoom", name = "Text size", desc = "Bigger and smaller words everywhere in Coder.",
       value = sheet_pool(sh, cp_zoom_text(s, nb[..])), kind = SET_ROW_STEPPER, button = "−", button2 = "+", action = CP_SET_ACT, action2 = CP_SET_ACT};
+    rows[2] = SetRow.{id = "set.sidebar.view", name = "Sidebar view",
+      desc = ifx s[0].sb[0].condensed then "Condensed — show only the chat title and status line." else "Expanded — show chat title, repository, branch, and model icon.",
+      kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].sb[0].condensed then 1 else 0, action = CP_SET_ACT};
+    rows[2].options[0] = "Expanded"; rows[2].options[1] = "Condensed";
+    narch := cp_sb_archived_count(s);
+    is_arch := s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED;
+    ab: [24] u8;
+    arch_val := "None";
+    if narch > 0 {
+      an := el_put_i(ab[..], 0, narch);
+      an = el_put(ab[..], an, ifx narch == 1 then " chat" else " chats");
+      arch_val = sheet_pool(sh, cast(string) ab[0..<an]);
+    }
+    rows[3] = SetRow.{id = "set.sidebar.archived", name = "Archived chats",
+      desc = ifx is_arch then "Currently showing archived chats in the sidebar." else "View and restore chats you have archived.",
+      value = arch_val, kind = SET_ROW_BUTTON, button = ifx is_arch then "Show active" else "View", action = CP_SET_ACT};
     nmode := cp_notify_clamp_mode(s[0].notify_mode);
-    rows[2] = SetRow.{id = "set.notify", name = "Notifications",
+    rows[4] = SetRow.{id = "set.notify", name = "Notifications",
       desc = ifx nmode == CP_NOTIFY_OFF then "Off — no OS notifications or audio chimes."
              else ifx nmode == CP_NOTIFY_OS then "Notifications — OS alerts when unfocused or in background chats."
              else ifx nmode == CP_NOTIFY_SOUND then "Sound — subtle chimes when turns finish or need input."
              else "Notifications & Sound — OS alerts and subtle chimes when turns finish or need input.",
       kind = SET_ROW_CHOICE, noptions = 4, chosen = nmode, action = CP_SET_ACT};
-    rows[2].options[0] = "Off"; rows[2].options[1] = "Notify"; rows[2].options[2] = "Sound"; rows[2].options[3] = "Both";
-    rows[3] = SetRow.{id = "set.exp", name = "Experimental features", desc = "Log in, account, Gym and Foreman.",
+    rows[4].options[0] = "Off"; rows[4].options[1] = "Notify"; rows[4].options[2] = "Sound"; rows[4].options[3] = "Both";
+    rows[5] = SetRow.{id = "set.exp", name = "Experimental features", desc = "Log in, account, Gym and Foreman.",
       kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].experimental then 1 else 0, action = CP_SET_ACT};
-    rows[3].options[0] = "Off"; rows[3].options[1] = "On";
+    rows[5].options[0] = "Off"; rows[5].options[1] = "On";
     y += cp_set_group(s, f, "set.general.group", x, y, w, rows[..]) + t.block_gap;
     // Custom system prompt appended to every single system prompt (~/.openagents/system-prompt.md)
     y += set_section_head(f, "set.sysprompt.head", x, y, w, "Custom system prompt", "Extra instructions appended to every system prompt across OpenAgents and any connected external harnesses in every chat and folder.") + t.section_gap;

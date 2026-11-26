@@ -1334,6 +1334,8 @@ void cd_sb_undo_show(void *page, const char *text, int kind, float duration) { C
 void cd_sb_undo_dismiss(void *page) { CoderHost *c = page; if (!c) return; coder_page_sb_undo_dismiss(cd_state(c)); cd_woke(c); }
 void cd_sb_set_view(void *page, int mode) { CoderHost *c = page; if (!c) return; coder_page_sb_set_view(cd_state(c), mode); cd_woke(c); }
 int cd_sb_view(void *page) { CoderHost *c = page; return c ? (int)coder_page_sb_view(cd_state(c)) : 0; }
+void cd_sb_condensed_set(void *page, int condensed) { CoderHost *c = page; if (!c) return; coder_page_sb_condensed_set(cd_state(c), condensed != 0); cd_woke(c); }
+int cd_sb_condensed(void *page) { CoderHost *c = page; return c && coder_page_sb_condensed(cd_state(c)) ? 1 : 0; }
 int cd_sb_sel_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_sb_sel_count(cd_state(c)) : 0; }
 // In-thread Find (⌘F), Transcript Minimap, and 3-mode Command Palette (page/find.coax, GitHub #13876).
 void cd_find_open(void *page) { CoderHost *c = page; if (c) { coder_page_find_open(cd_state(c)); cd_woke(c); } }
