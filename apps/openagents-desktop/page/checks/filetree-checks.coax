@@ -169,3 +169,46 @@ cp_ft_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   #assert cp_ft_test_press(s, "coder.ft.ed.2") && coder_page_action(s) == CP_ASK_OPEN_EDITOR;
   #assert coder_page_editor_pick_id(s) == CP_ED_ID_ZED && !s[0].ft[0].editor_menu;
 }
+
+#test "file sidebar stays closed by default when opening files and collapses via Row 1 toggle or sidebar close button" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_ft_test_page(s, f[..]);
+  // 1. Opening File Explorer with no file open shows full-width tree without arming tree_visible for later files
+  #assert cp_ft_test_press(s, "coder.ft.toggle") && coder_page_filetree_shown(s) && !s[0].ft[0].tree_visible;
+  _ = coder_page_filetree_set(s, "README.md\nsrc/main.coax\n");
+  #assert cp_test_draw_side(s, f[..]) && s[0].ft[0].tree_w > 0;
+  #assert cp_ft_test_find(s, "coder.ft.filter") >= 0 && cp_ft_test_find(s, "coder.ft.tree.close") < 0 && cp_ft_test_find(s, "coder.ft.tree.bar") < 0;
+  // Filter input works in full-width explorer even though tree_visible is false
+  #assert cp_ft_test_press(s, "coder.ft.filter") && cp_ed_which(s) == CP_ED_FT_FILTER;
+
+  // 2. Clicking a file in the explorer and opening it shows the file editor cleanly WITHOUT the file sidebar
+  #assert cp_ft_test_press(s, "coder.ft.row.0") && coder_page_action(s) == CP_ASK_FILETREE_OPEN;
+  b: [64] u8; src := "# Hello\n";
+  #assert coder_page_file_open(s, "~/proj/README.md", b[0..<cp_out(b[..], src)], src.count);
+  #assert !s[0].ft[0].tree_visible && cp_test_draw_side(s, f[..]);
+  #assert s[0].ft[0].tree_w == 0 && cp_ft_test_find(s, "coder.ft.filter") < 0 && cp_ft_test_find(s, "coder.ft.tree.close") < 0;
+  #assert cp_ft_test_find(s, "coder.ft.tree.bar") >= 0;
+
+  // 3. Clicking the Row 1 sidebar toggle opens the collapsible file sidebar with an explicit close button
+  #assert cp_ft_test_press(s, "coder.ft.tree.bar") && s[0].ft[0].tree_visible;
+  #assert cp_test_draw_side(s, f[..]) && s[0].ft[0].tree_w > 0;
+  #assert cp_ft_test_find(s, "coder.ft.filter") >= 0 && cp_ft_test_find(s, "coder.ft.tree.close") >= 0;
+  // Focusing filter then clicking the sidebar close button collapses it and returns focus to composer
+  #assert cp_ft_test_press(s, "coder.ft.filter") && cp_ed_which(s) == CP_ED_FT_FILTER;
+  #assert cp_ft_test_press(s, "coder.ft.tree.close") && !s[0].ft[0].tree_visible && s[0].fld[0].kb == CP_KB_COMPOSER;
+  #assert cp_test_draw_side(s, f[..]) && s[0].ft[0].tree_w == 0 && cp_ft_test_find(s, "coder.ft.tree.close") < 0;
+
+  // 4. Real pointer hit-testing on Row 1 toggle and sidebar close button (not just cp_press)
+  box: [4] f32;
+  #assert coder_page_box(s, "coder.ft.tree.bar", box[..]) && box[2] > 0 && box[3] > 0;
+  cx := box[0] + box[2] / 2.0f32; cy := box[1] + box[3] / 2.0f32;
+  _ = coder_page_press(s, cx, cy, 0, 1, 0);
+  _ = coder_page_press(s, cx, cy, 2, 1, 0);
+  #assert s[0].ft[0].tree_visible && coder_page_filetree_shown(s);
+  #assert cp_test_draw_side(s, f[..]) && s[0].ft[0].tree_w > 0;
+  #assert coder_page_box(s, "coder.ft.tree.close", box[..]) && box[2] > 0 && box[3] > 0;
+  cx = box[0] + box[2] / 2.0f32; cy = box[1] + box[3] / 2.0f32;
+  _ = coder_page_press(s, cx, cy, 0, 1, 0);
+  _ = coder_page_press(s, cx, cy, 2, 1, 0);
+  #assert !s[0].ft[0].tree_visible && !coder_page_filetree_shown(s);
+  #assert cp_test_draw_side(s, f[..]) && s[0].ft[0].tree_w == 0;
+}

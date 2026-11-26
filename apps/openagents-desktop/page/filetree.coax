@@ -890,6 +890,12 @@ cp_ft_shown :: (s: [] CoderPage) -> bool {
   return ft[0].open && !cp_sim_front(s) && !cp_term_front(s) && (ft[0].front || !(s[0].pane_open || s[0].review));
 }
 
+// Whether the File Explorer tree is currently shown (full-width when no file is open,
+// or as the optional collapsible sidebar column beside an open file).
+cp_ft_tree_shown :: (s: [] CoderPage) -> bool {
+  return cp_fp_shown(s) && (!s[0].fp[0].open || s[0].ft[0].tree_visible);
+}
+
 cp_ft_yield :: (s: [] CoderPage, act: int) -> bool {
   if !s[0].ft[0].open || !s[0].ft[0].front { return false; }
   if act == CP_REVIEW || act == CP_AGENT || act == CP_TERM_TOGGLE {
@@ -924,7 +930,7 @@ cp_ft_press :: (s: [] CoderPage, act: int, id: string) -> bool {
       if s[0].fld[0].kb == CP_KB_FILE || s[0].fld[0].kb == CP_KB_FT_FILTER { s[0].fld[0].kb = CP_KB_COMPOSER; }
       return true;
     }
-    ft[0].open = true; ft[0].front = true; ft[0].tree_visible = true;
+    ft[0].open = true; ft[0].front = true;
     s[0].fp[0].hidden = false;
     s[0].sim[0].front = false; s[0].term[0].front = false;
     if !ft[0].loaded { s[0].ask = CP_ASK_FILETREE_LIST; }
@@ -940,6 +946,7 @@ cp_ft_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     ft[0].editor_menu = false;
     ft[0].tree_visible = !ft[0].tree_visible;
     if ft[0].tree_visible && !ft[0].loaded { s[0].ask = CP_ASK_FILETREE_LIST; }
+    if !ft[0].tree_visible && s[0].fld[0].kb == CP_KB_FT_FILTER { s[0].fld[0].kb = CP_KB_COMPOSER; }
     return true;
   }
   if act == CP_FT_CRUMB_DIR {
@@ -1075,18 +1082,30 @@ cp_ft_draw_tree :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f
   k := f[0].skin; a := k.app; sh := f[0].sheet;
   ft[0].tree_x = x; ft[0].tree_w = w;
   sheet_fill(sh, x + w - k.border, y, k.border, h, 0, k.menu_divider);
-  // Quick filter input bar
+  // Quick filter input bar + refresh + close button when shown as sidebar beside an open file
   pad := a.gap_small;
-  fw := w - 2 * pad - a.icon_button - 4.0f32;
   fy := y + pad;
   fh := k.control_h;
+  bside := 24.0f32;
+  by := fy + (fh - bside) / 2.0f32;
+  right_x := x + w - pad;
+  keep := f[0].skin;
+  f[0].skin.app.icon_button = bside; f[0].skin.app.icon_well = bside;
+  if s[0].fp[0].open {
+    right_x -= bside;
+    _ := app_icon_button(f, "coder.ft.tree.close", right_x, by, ICON_CLOSE, "Hide file sidebar", APP_BUTTON_QUIET, 0, CP_FT_TREE_TOGGLE);
+    right_x -= 2.0f32;
+  }
+  right_x -= bside;
+  _ := app_icon_button(f, "coder.ft.refresh", right_x, by, ICON_RELOAD, "Refresh files", APP_BUTTON_QUIET, 0, CP_FT_REFRESH);
+  f[0].skin = keep;
+  fw := right_x - (x + pad) - 4.0f32;
   if fw > 40.0f32 {
     sheet_fill(sh, x + pad, fy, fw, fh, k.radius_control, k.surface);
     focused := cp_ed_which(s) == CP_ED_FT_FILTER;
     _ := uiframe_semantic(f, "coder.ft.filter", EL_FIELD, "Filter files", x + pad, fy, fw, fh, ifx focused then EL_S_FOCUSED else 0, CP_FT_FILTER_FIELD);
     cp_ed_draw(s, f, CP_ED_FT_FILTER, x + pad + 6, fy + (fh - k.label.line) / 2, fw - 12, k.label.line, "Filter files…");
   }
-  _ := app_icon_button(f, "coder.ft.refresh", x + w - pad - a.icon_button, fy, ICON_FOLDER, "Refresh files", APP_BUTTON_QUIET, 0, CP_FT_REFRESH);
   list_y := fy + fh + pad;
   list_h := y + h - list_y;
   if list_h <= 0 { return; }
@@ -1217,7 +1236,7 @@ cp_ft_draw_editor_menu :: (s: [] CoderPage, f: [] UiFrame) {
       cp_ft_menu_item(f, "coder.file.md_preview", mlbl, mx, ry, mw, rh, CP_FP_MD_PREVIEW);
       ry += rh;
     }
-    tlbl := ifx ft[0].tree_visible then "Hide File Tree" else "Show File Tree";
+    tlbl := ifx ft[0].tree_visible then "Hide File Sidebar" else "Show File Sidebar";
     cp_ft_menu_item(f, "coder.ft.tree_toggle", tlbl, mx, ry, mw, rh, CP_FT_TREE_TOGGLE);
     ry += rh;
     cp_ft_menu_item(f, "coder.file.goto", "Go to Line… (⌃G)", mx, ry, mw, rh, CP_FP_GOTO_LINE);
@@ -1294,13 +1313,12 @@ coder_page_filetree_open :: (s: [] CoderPage, on: bool) #export_c #effects(all) 
   s[0].ft[0].front = on;
   if on {
     s[0].fp[0].hidden = false;
-    s[0].ft[0].tree_visible = true;
     s[0].sim[0].front = false; s[0].term[0].front = false;
   }
 }
 
 coder_page_filetree_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) {
-  return s.count > 0 && cp_ft_shown(s);
+  return s.count > 0 && cp_ft_tree_shown(s);
 }
 
 coder_page_filetree_req_path :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {

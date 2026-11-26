@@ -33,7 +33,7 @@ cp_ed_which :: (s: [] CoderPage) -> int {
     return ifx k == CP_KB_SEARCH then CP_ED_SEARCH else -1;
   }
   if k == CP_KB_FIND { return ifx s[0].find[0].open then CP_ED_FIND else -1; }
-  if k == CP_KB_FT_FILTER { return ifx cp_fp_shown(s) && s[0].ft[0].tree_visible then CP_ED_FT_FILTER else -1; }
+  if k == CP_KB_FT_FILTER { return ifx cp_ft_tree_shown(s) then CP_ED_FT_FILTER else -1; }
   if k == CP_KB_FILE { return ifx cp_fp_editing(s) then CP_ED_FILE else -1; }
   return ifx k == CP_KB_COMPOSER then CP_ED_COMPOSER else -1;
 }
@@ -165,7 +165,7 @@ cp_ed_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods
       if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu || s[0].effort_menu) { continue; }
       if i == CP_ED_FILE && (over || !cp_fp_editing(s) || s[0].fp[0].large_edit) { continue; }
       if i == CP_ED_FIND && (over || s[0].set_open || !s[0].find[0].open) { continue; }
-      if i == CP_ED_FT_FILTER && (over || s[0].set_open || !cp_fp_shown(s) || !s[0].ft[0].tree_visible) { continue; }
+      if i == CP_ED_FT_FILTER && (over || s[0].set_open || !cp_ft_tree_shown(s) || !(s[0].ft[0].tree_w > 0)) { continue; }
       if i == CP_ED_PROV && (over || !cp_ps_ed_can_hit(s) || (!cp_ps_ed_is_over(s) && (y < s[0].ps[0].card_y || y >= s[0].ps[0].card_y + s[0].ps[0].card_h))) { continue; }
       c := fl[0].ed[i].body[..];
       if ue_owner(fl[0].ed[i..<i + 1]) == 0 || !(c[0].text_w > 0) { continue; }

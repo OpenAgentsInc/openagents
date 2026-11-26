@@ -1045,6 +1045,12 @@ cp_fp_draw_bar1 :: (s: [] CoderPage, f: [] UiFrame, px: f32, top: f32, pw: f32) 
   _ := app_icon_button(f, "coder.file.hide", hide_x, by, ICON_SIDEBAR_RIGHT, "Hide file pane", APP_BUTTON_QUIET, 0, CP_FP_HIDE);
 
   cx := px + 8.0f32;
+  if fp[0].open && pw >= 420.0f32 {
+    _ := app_icon_button(f, "coder.ft.tree.bar", cx, by, ICON_SIDEBAR,
+                         ifx ft[0].tree_visible then "Hide file sidebar" else "Show file sidebar", APP_BUTTON_QUIET,
+                         ifx ft[0].tree_visible then EL_S_CURRENT else 0, CP_FT_TREE_TOGGLE);
+    cx += side + 4.0f32;
+  }
   tabs_end := exp_x - 8.0f32;
   add_w := 26.0f32;
   ov_w := 20.0f32;
