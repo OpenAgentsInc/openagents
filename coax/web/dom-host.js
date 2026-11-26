@@ -46,6 +46,7 @@
 import "./tree-commands.js";
 import { rememberAsset } from "./loader.js";
 import { shellTakes, shellHost, shellHeld, shellGo, shellDrawn } from "./shell.js";
+import { createStreamPool, createInputController, DOM_DIALOG_CANCEL } from "./dom-stream.js";
 const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
 if (shellTakes(script)) await new Promise(() => {});   // this page is the shell's now: its own module never starts
@@ -106,7 +107,13 @@ function apply(at, length) {
       if (tag === "iframe") el.allow = "fullscreen";
     } else if (op === 2) {
       const el = els[slot];
-      if (el) { for (const f of el.querySelectorAll("[data-frame]")) unframe(f); unframe(el); el.remove(); }
+      if (el) {
+        inputCtrl.onDialogRemoved(el);
+        for (const d of el.querySelectorAll("dialog")) inputCtrl.onDialogRemoved(d);
+        for (const f of el.querySelectorAll("[data-frame]")) unframe(f);
+        unframe(el);
+        el.remove();
+      }
       els[slot] = null;
     } else if (op === 3) {
       const el = els[slot], p = c[2], a = c[3], parent = p === NONE ? root : els[p];
@@ -122,8 +129,9 @@ function apply(at, length) {
       el.setAttribute(key, key === "src" || key === "href" || key === "poster" ? mounted(value) : value);
       // A user edit sets the browser's dirty-value flag. Updating the value
       // attribute then changes only defaultValue; an explicit Coax update owns
-      // the live control too (notably a slider's reset). File inputs stay OS-owned.
-      if (key === "value" && el.tagName === "INPUT" && el.type !== "file") el.value = value;
+      // the live control too (preserving focus selection and IME composition).
+      if (key === "value" && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && el.type !== "file") inputCtrl.setValue(el, value);
+      if (key === "data-modal" && el.tagName === "DIALOG") queueMicrotask(() => inputCtrl.syncDialog(el, value !== "false"));
       if (key === "data-frame") frameOf(el);
       if (key === "autofocus") queueMicrotask(() => el.focus());
       if (key === "data-lang" && el.tagName === "TEXTAREA") { el.spellcheck = false; el.wrap = "off"; el.autocapitalize = "off"; }
@@ -131,6 +139,7 @@ function apply(at, length) {
     } else if (op === 7) {
       const el = els[slot], key = c[2]; el.removeAttribute(key);
       if (key === "data-frame") unframe(el);
+      if (key === "data-modal" && el.tagName === "DIALOG") inputCtrl.syncDialog(el, false);
     } else if (op === 8) {
       const el = els[slot], svg = el ? frameOf(el) : null;
       for (const [r, run] of c[2].entries()) {
@@ -150,7 +159,7 @@ function apply(at, length) {
       let style = document.getElementById(sheet);
       if (!style) { style = document.createElement("style"); style.id = sheet; document.head.appendChild(style); }
       style.textContent = mount ? c[1].replace(/url\(([\'"]?)\/(?!\/|api\/)/g, (_, quote) => `url(${quote}${mount}/`) : c[1];
-    } else if (op === 10) { els[slot].value = c[2]; fit(els[slot]); }
+    } else if (op === 10) { inputCtrl.setValue(els[slot], c[2]); }
     else if (op === 11) els[slot].focus();
   }
 }
@@ -158,8 +167,9 @@ function apply(at, length) {
 // A field as tall as its text, where the browser can't do it itself (CSS field-sizing). The most is the stylesheet's.
 const grows = CSS.supports("field-sizing", "content");
 function fit(el) { if (!grows && el.tagName === "TEXTAREA" && !el.dataset.lang) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }
+const inputCtrl = createInputController({ fit });
 
-function clear() { root.replaceChildren(); els = []; for (const el of [...frames.keys()]) unframe(el); }
+function clear() { for (const d of root.querySelectorAll("dialog")) inputCtrl.onDialogRemoved(d); root.replaceChildren(); els = []; for (const el of [...frames.keys()]) unframe(el); }
 
 // A module held in a node (k_module): a copy of this host opens it there, once for each node, after the commands
 // that made the node are applied (so it is on the page). Its app is a module's name and its path one of this site's.
@@ -184,7 +194,7 @@ function ours(el) { const m = el?.closest?.("[data-module]"); return !m || m ===
 function alive() {
   if (gone) return false;
   if (!nested || root.isConnected) return true;
-  gone = true; wire?.stop(); streamStop();
+  gone = true; wire?.stop(); streamStop(); streamPool.stopAll();
   return false;
 }
 
@@ -258,6 +268,32 @@ const own = { still: false, ask, send, now: () => { if (!clipping) frame(perform
 // one says nothing more.
 let stream = null;
 function streamStop() { if (stream) { stream.abort(); stream = null; } }
+// Multiplexed keyed concurrent stream slots (0..15) with Last-Event-ID and backoff reconnect (#14089).
+const streamPool = createStreamPool({
+  headersForUrl: (url) => (url.startsWith("/api/playtest/realms/") ? playerHeaders({}) : {}),
+  inboxCap: () => (x ? x.dom_inbox_cap() : 0),
+  isAlive: alive,
+  onEvent(kind, status, payloadBytes) {
+    let n = 0;
+    if (payloadBytes && payloadBytes.length > 0) {
+      n = Math.min(payloadBytes.length, x.dom_inbox_cap());
+      new Uint8Array(memory.buffer, x.dom_inbox(state), n).set(payloadBytes.subarray(0, n));
+    }
+    x.dom_event(state, kind, status, n);
+  },
+  onFlush() {
+    shown();
+    own.after?.();
+  },
+});
+function streamSlotOpen(slot, urlAt, urlLen, bodyAt, bodyLen, lastIdAt, lastIdLen, flags) {
+  const url = text.decode(new Uint8Array(memory.buffer, urlAt, urlLen));
+  const body = bodyLen ? new Uint8Array(memory.buffer, bodyAt, bodyLen).slice() : null;
+  const lastId = lastIdLen ? text.decode(new Uint8Array(memory.buffer, lastIdAt, lastIdLen)) : "";
+  return streamPool.open(slot, url, body, lastId, flags);
+}
+function streamSlotClose(slot) { streamPool.close(slot); }
+function streamSlotCloseAll() { streamPool.stopAll(); }
 function streamOpen(urlAt, urlLen, bodyAt, bodyLen) {
   streamStop();
   const url = text.decode(new Uint8Array(memory.buffer, urlAt, urlLen));
@@ -388,7 +424,7 @@ async function start() {
     pushed = true;
     if (url !== location.pathname + location.search) history.pushState(null, "", url);
   };
-  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_file_send: fileSend, dom_file_step: fileStep, dom_keep: keep, dom_go: go } };
+  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_stream_open: streamSlotOpen, dom_stream_close: streamSlotClose, dom_stream_close_all: streamSlotCloseAll, dom_file_send: fileSend, dom_file_step: fileStep, dom_keep: keep, dom_go: go } };
   // sockets, byte storage, random bytes and the clock, for a module that imports them (dom-wire.js); each reply goes
   // into its inbox as an event of that kind, and is drawn
   const wired = WebAssembly.Module.imports(module).some((i) => /^coaxial_(socket_|storage_|random$|now_seconds$)/.test(i.name)) ? await import("./dom-wire.js") : null;
@@ -445,7 +481,24 @@ async function start() {
   addEventListener("dragover", (e) => { const el = dropOn(e); if (el === undefined) return; e.preventDefault(); overNow(el); });
   addEventListener("dragleave", (e) => { if (!e.relatedTarget) overNow(null); });
   addEventListener("drop", (e) => { const el = dropOn(e); if (el === undefined) return; e.preventDefault(); overNow(null); offer(el, e.dataTransfer.files?.[0]); });
-  root.addEventListener("input", (e) => { const slot = slotOf(e.target, "textarea[data-slot],input[data-slot]"); if (slot >= 0) { fit(e.target); send(2, slot, e.target.value); } });
+  root.addEventListener("compositionstart", (e) => { if (ours(e.target)) inputCtrl.onCompositionStart(e.target); });
+  root.addEventListener("compositionend", (e) => {
+    if (!ours(e.target)) return;
+    const slot = slotOf(e.target, "textarea[data-slot],input[data-slot]");
+    inputCtrl.onCompositionEnd(e.target, (el) => { if (slot >= 0) send(2, slot, el.value); });
+  });
+  root.addEventListener("input", (e) => {
+    if (inputCtrl.isComposing(e.target, e)) return;
+    const slot = slotOf(e.target, "textarea[data-slot],input[data-slot]");
+    if (slot >= 0) { fit(e.target); send(2, slot, e.target.value); }
+  });
+  root.addEventListener("cancel", (e) => {
+    if (e.target?.tagName !== "DIALOG" || !ours(e.target)) return;
+    const slot = slotOf(e.target, "dialog[data-slot]");
+    if (slot >= 0) { e.preventDefault(); send(DOM_DIALOG_CANCEL, slot); }
+  }, true);
+  addEventListener("pagehide", () => { streamStop(); streamPool.stopAll(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && alive()) streamPool.onVisible(); });
   root.addEventListener("keydown", (e) => {
     if (!ours(e.target)) return;
     // a code field (k_code_field): Enter makes a line, as the browser has it, and Tab indents two spaces

@@ -1,0 +1,116 @@
+// Build and serve tool for the Hello World + Docs Coax Web starter.
+// Run from the repository root:
+//   coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax [--serve] [--listen HOST:PORT]
+#import "Basic";
+#load "../../../../coax/lib/sys/tool.coax";
+#load "../../../../coax/lib/sys/fs.coax";
+#load "../../../../coax/lib/sys/proc.coax";
+
+DS_APP_DIR :: "apps/openagents-web/build/docs-starter";
+DS_BUILD_SRC :: "apps/openagents-web/demos/docs-starter/build.coax";
+
+DS_INDEX_HTML :: "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>Coax Web Starter · OpenAgents</title>\n<meta name=\"description\" content=\"Minimal Hello World and Markdown docs starter running on Coax Native Web DOM backend.\">\n<meta name=\"theme-color\" content=\"#000000\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<style>\nhtml,body{margin:0;background:#000;color:#f2f2f2}\nbody{font-family:ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",sans-serif;font-size:14px;line-height:1.6}\n</style>\n</head>\n<body>\n<main id=\"coaxial-root\"></main>\n<script type=\"module\" src=\"/coaxial/dom-host.js\" data-app=\"docs-starter\" data-root=\"coaxial-root\"></script>\n</body>\n</html>\n";
+
+DS_INDEX_MD :: "# Coax Web Starter\n\nMinimal Hello World and Markdown docs starter running on `coax/web/dom-host.js` and `coax/web/serve.sh`.\n\nRun locally:\n\n```sh\ncoax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax --serve\n```\n";
+
+ds_quote :: (text: string, out: [] u8) -> string {
+  need := 2;
+  for c: text { need += ifx c == '\'' then 4 else 1; }
+  if need > out.count { return ""; }
+  n := 0; out[n] = '\''; n += 1;
+  for c: text {
+    if c == '\'' { out[n] = '\''; out[n + 1] = '\\'; out[n + 2] = '\''; out[n + 3] = '\''; n += 4; }
+    else { out[n] = c; n += 1; }
+  }
+  out[n] = '\''; n += 1;
+  return cast(string) out[0..<n];
+}
+
+ds_run :: (argv: [] string) -> bool {
+  out: [65536] u8; err: [65536] u8;
+  r := proc_run(argv, 600000, out[..], err[..]);
+  if r.out_n > 0 { tool_errln(cast(string) out[0..<r.out_n]); }
+  if r.err_n > 0 { tool_errln(cast(string) err[0..<r.err_n]); }
+  return r.started == 0 && r.status == 0 && !r.timed_out && !r.cut;
+}
+
+ds_write :: (path: string, text: string) -> bool {
+  prior: [65536] u8; n := fs_read(path, prior[..]);
+  if n >= 0 && cast(string) prior[0..<n] == text { return true; }
+  return fs_write(path, text);
+}
+
+ds_watch :: (root: string, src: string, name: string) -> bool {
+  a: [4096] u8; b: [4096] u8; c: [4096] u8;
+  from := fs_join(root, src, a[..]);
+  app := fs_join(root, DS_APP_DIR, b[..]);
+  into := fs_join(app, name, c[..]);
+  if from == "" || into == "" { return false; }
+  argv := [4] string.["ln", "-sfn", from, into];
+  return ds_run(argv[..]);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { tool_errln("usage: docs-starter [--serve] [--listen HOST:PORT]"); return 2; }
+  serve := false;
+  listen := "127.0.0.1:8820";
+  i := 0;
+  while i < args_count(args[..]) {
+    a := args_at(args[..], i);
+    if a == "--serve" { serve = true; i += 1; }
+    else if a == "--listen" && i + 1 < args_count(args[..]) { listen = args_at(args[..], i + 1); i += 2; }
+    else { tool_errln("usage: docs-starter [--serve] [--listen HOST:PORT]"); return 2; }
+  }
+  if fs_kind("apps/openagents-web/demos/docs-starter/page.coax") != FS_FILE {
+    tool_errln("docs-starter: run from the repository root");
+    return 2;
+  }
+  root_buf: [4096] u8; root := fs_cwd(root_buf[..]);
+  if root == "" || !fs_mkdir("apps/openagents-web/build/docs-starter/build") {
+    tool_errln("docs-starter: cannot create output directory");
+    return 1;
+  }
+  wasm := [4] string.["coax/web/wasm.sh",
+                      "apps/openagents-web/demos/docs-starter/page.coax",
+                      "apps/openagents-web/demos/docs-starter/face.c",
+                      "apps/openagents-web/build/docs-starter/build/docs-starter.wasm"];
+  if !ds_run(wasm[..]) { return 1; }
+  if !ds_write("apps/openagents-web/build/docs-starter/index.html", DS_INDEX_HTML) ||
+     !ds_write("apps/openagents-web/build/docs-starter/index.md", DS_INDEX_MD) {
+    tool_errln("docs-starter: cannot write index.html or index.md");
+    return 1;
+  }
+  if !ds_watch(root, "apps/openagents-web/demos/docs-starter/page.coax", "page.coax") ||
+     !ds_watch(root, "apps/openagents-web/demos/docs-starter/face.c", "face.c") ||
+     !ds_watch(root, DS_BUILD_SRC, "build.coax") ||
+     !ds_watch(root, "components/icons/apps-sdk", "build/icons") {
+    tool_errln("docs-starter: cannot link watched sources");
+    return 1;
+  }
+  if !serve {
+    tool_errln("docs-starter: built apps/openagents-web/build/docs-starter/build/docs-starter.wasm");
+    return 0;
+  }
+  sa: [4096] u8; sb: [4096] u8; q1: [8192] u8; q2: [8192] u8; cmd_buf: [16384] u8;
+  script := fs_join(root, "coax/web/tool.sh", sa[..]);
+  source := fs_join(root, DS_BUILD_SRC, sb[..]);
+  qs := ds_quote(script, q1[..]); qt := ds_quote(source, q2[..]);
+  if qs == "" || qt == "" || qs.count + qt.count + 1 > cmd_buf.count { return 1; }
+  for k: 0..<qs.count { cmd_buf[k] = qs[k]; }
+  cmd_buf[qs.count] = ' ';
+  for k: 0..<qt.count { cmd_buf[qs.count + 1 + k] = qt[k]; }
+  cmd := cast(string) cmd_buf[0..<qs.count + qt.count + 1];
+
+  h := proc_new();
+  if h < 0 { return 1; }
+  ok := proc_arg(h, "coax/web/serve.sh") && proc_arg(h, DS_APP_DIR) &&
+        proc_arg(h, "--listen") && proc_arg(h, listen) &&
+        proc_arg(h, "--build") && proc_arg(h, cmd) &&
+        proc_cwd(h, root) && proc_detach(h);
+  if !ok || proc_start(h) != 0 { _ = proc_release(h); return 1; }
+  pid := proc_pid(h); _ = proc_release(h);
+  tool_err("docs-starter server PID "); print("%\n", pid);
+  tool_err("docs-starter: http://"); tool_err(listen); tool_errln("/");
+  return 0;
+}

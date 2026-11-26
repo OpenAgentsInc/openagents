@@ -1,0 +1,174 @@
+// Coax Web browser host stream & controlled-input policy (#14089):
+//   - Keyed concurrent stream slot bounds and non-colliding event kind layout
+//   - Same-origin stream URL admission
+//   - GET SSE auto-reconnect eligibility and exponential backoff with server retry floor
+//   - Controlled input caret/selection clamping and IME composition write guards.
+#authority;
+
+SC_MAX_SLOTS :: 16;
+SC_FLAG_SSE :: 1;
+SC_FLAG_NO_RECONNECT :: 2;
+SC_EVENT_BASE :: 1024;
+SC_PHASE_OPEN :: 0;
+SC_PHASE_CHUNK :: 1;
+SC_PHASE_END :: 2;
+SC_PHASE_ERROR :: 3;
+SC_EVENT_DIALOG_CANCEL :: 17;
+
+SC_BASE_BACKOFF_MS :: 500;
+SC_MAX_BACKOFF_MS :: 30000;
+SC_MAX_RETRIES :: 8;
+SC_URL_MAX :: 2048;
+
+sc_slot_valid :: (slot: int) -> bool #export_c #effects(all) {
+  return slot >= 0 && slot < SC_MAX_SLOTS;
+}
+
+sc_event_kind :: (slot: int, phase: int) -> int #export_c #effects(all) {
+  if !sc_slot_valid(slot) || phase < SC_PHASE_OPEN || phase > SC_PHASE_ERROR { return -1; }
+  return SC_EVENT_BASE + slot * 4 + phase;
+}
+
+// Same-origin relative path only: starts with '/', never '//' or '/\', no control bytes.
+sc_url_allowed :: (url: string) -> bool #export_c #effects(all) {
+  if url.count < 1 || url.count > SC_URL_MAX { return false; }
+  if url[0] != '/' { return false; }
+  if url.count >= 2 && (url[1] == '/' || url[1] == '\\') { return false; }
+  for c: url {
+    if c == 0 || c == '\r' || c == '\n' { return false; }
+  }
+  return true;
+}
+
+// Transient statuses eligible for automatic SSE reconnect: network drop (0), 408, 429, 5xx.
+sc_status_retryable :: (status: int) -> bool #export_c #effects(all) {
+  return status == 0 || status == 408 || status == 429 || (status >= 500 && status <= 599);
+}
+
+sc_should_reconnect :: (is_get: bool, flags: int, status: int, eof: bool, attempts: int) -> bool #export_c #effects(all) {
+  if !is_get { return false; }
+  if (flags & SC_FLAG_SSE) == 0 || (flags & SC_FLAG_NO_RECONNECT) != 0 { return false; }
+  if attempts < 0 || attempts >= SC_MAX_RETRIES { return false; }
+  if eof { return status == 200; }
+  return sc_status_retryable(status);
+}
+
+// Exponential backoff starting at 500ms, capped at 30_000ms, honoring a larger server retry hint.
+sc_backoff_ms :: (attempt: int, retry_hint_ms: int) -> int #export_c #effects(all) {
+  delay := SC_BASE_BACKOFF_MS;
+  steps := ifx attempt < 0 then 0 else ifx attempt > 6 then 6 else attempt; // mutant: equivalent (at step 6, 500 * 64 = 32000 already exceeds SC_MAX_BACKOFF_MS = 30000)
+  for i: 0..<steps {
+    delay = delay * 2;
+  }
+  if delay > SC_MAX_BACKOFF_MS { delay = SC_MAX_BACKOFF_MS; } // mutant: equivalent (at boundary delay == SC_MAX_BACKOFF_MS, value is unchanged)
+  if retry_hint_ms > delay { // mutant: equivalent (at boundary retry_hint_ms == delay, value is unchanged)
+    delay = ifx retry_hint_ms > SC_MAX_BACKOFF_MS then SC_MAX_BACKOFF_MS else retry_hint_ms; // mutant: equivalent (at boundary retry_hint_ms == SC_MAX_BACKOFF_MS, value is unchanged)
+  }
+  return delay;
+}
+
+sc_caret_clamp :: (pos: int, next_len: int) -> int #export_c #effects(all) {
+  if next_len <= 0 || pos <= 0 { return 0; } // mutant: equivalent (at boundary pos == 0, returning 0 equals returning pos)
+  if pos > next_len { return next_len; } // mutant: equivalent (at boundary pos == next_len, returning next_len equals returning pos)
+  return pos;
+}
+
+sc_allow_controlled_write :: (is_composing: bool, same_value: bool) -> bool #export_c #effects(all) {
+  return !is_composing && !same_value;
+}
+
+// ---- tests & properties
+
+#forall "slot validation matches 0..<SC_MAX_SLOTS" slot: -2..<20 {
+  #assert sc_slot_valid(slot) == (slot >= 0 && slot < SC_MAX_SLOTS);
+}
+
+#test "event kinds map slots and phases without collision and reject invalid inputs" {
+  #assert sc_event_kind(0, SC_PHASE_OPEN) == 1024;
+  #assert sc_event_kind(0, SC_PHASE_ERROR) == 1027;
+  #assert sc_event_kind(1, SC_PHASE_OPEN) == 1028;
+  #assert sc_event_kind(15, SC_PHASE_ERROR) == 1087;
+  #assert sc_event_kind(-1, SC_PHASE_OPEN) == -1;
+  #assert sc_event_kind(16, SC_PHASE_OPEN) == -1;
+  #assert sc_event_kind(0, -1) == -1;
+  #assert sc_event_kind(0, 4) == -1;
+}
+
+#test "stream URL admission allows same-origin relative paths and rejects protocol-relative or control bytes" {
+  #assert sc_url_allowed("/");
+  #assert sc_url_allowed("/api/chat/events/stream/v2alpha1?id=trn_1");
+  #assert !sc_url_allowed("");
+  #assert !sc_url_allowed("https://evil.example/x");
+  #assert !sc_url_allowed("//");
+  #assert !sc_url_allowed("/\\");
+  #assert !sc_url_allowed("//evil.example/x");
+  #assert !sc_url_allowed("/\\evil.example/x");
+  #assert !sc_url_allowed("/api/a\nb");
+  #assert !sc_url_allowed("/api/a\rb");
+  #assert !sc_url_allowed("/api/a\0b");
+  long_ok: [SC_URL_MAX] u8;
+  for i: 0..<SC_URL_MAX { long_ok[i] = 'a'; }
+  long_ok[0] = '/';
+  #assert sc_url_allowed(cast(string) long_ok[..]);
+  too_long: [SC_URL_MAX + 1] u8;
+  for i: 0..<SC_URL_MAX + 1 { too_long[i] = 'a'; }
+  too_long[0] = '/';
+  #assert !sc_url_allowed(cast(string) too_long[..]);
+}
+
+#test "reconnect policy retries transient GET SSE errors and unexpected 200 EOF up to SC_MAX_RETRIES" {
+  #assert sc_should_reconnect(true, SC_FLAG_SSE, 0, false, 0);
+  #assert sc_should_reconnect(true, SC_FLAG_SSE, 408, false, 0);
+  #assert sc_should_reconnect(true, SC_FLAG_SSE, 429, false, 0);
+  #assert sc_should_reconnect(true, SC_FLAG_SSE, 500, false, 0);
+  #assert sc_should_reconnect(true, SC_FLAG_SSE, 503, false, 7);
+  #assert sc_should_reconnect(true, SC_FLAG_SSE, 599, false, 0);
+  #assert sc_should_reconnect(true, SC_FLAG_SSE, 200, true, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 204, true, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 600, false, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 499, false, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 200, false, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 400, false, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 401, false, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 404, false, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 409, false, 0);
+  #assert !sc_should_reconnect(false, SC_FLAG_SSE, 0, false, 0);
+  #assert !sc_should_reconnect(false, SC_FLAG_SSE, 200, true, 0);
+  #assert !sc_should_reconnect(true, 0, 0, false, 0);
+  #assert !sc_should_reconnect(true, 0, 200, true, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE | SC_FLAG_NO_RECONNECT, 0, false, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE | SC_FLAG_NO_RECONNECT, 200, true, 0);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 0, false, -1);
+  #assert !sc_should_reconnect(true, SC_FLAG_SSE, 0, false, SC_MAX_RETRIES);
+}
+
+#test "exponential backoff doubles from 500ms to 30000ms and respects server retry hint" {
+  #assert sc_backoff_ms(-1, 0) == 500;
+  #assert sc_backoff_ms(0, 0) == 500;
+  #assert sc_backoff_ms(1, 0) == 1000;
+  #assert sc_backoff_ms(2, 0) == 2000;
+  #assert sc_backoff_ms(3, 0) == 4000;
+  #assert sc_backoff_ms(4, 0) == 8000;
+  #assert sc_backoff_ms(5, 0) == 16000;
+  #assert sc_backoff_ms(6, 0) == 30000;
+  #assert sc_backoff_ms(7, 0) == 30000;
+  #assert sc_backoff_ms(0, 3000) == 3000;
+  #assert sc_backoff_ms(3, 3000) == 4000;
+  #assert sc_backoff_ms(0, 60000) == 30000;
+}
+
+#test "caret clamp bounds selection positions into 0..next_len" {
+  #assert sc_caret_clamp(-1, 10) == 0;
+  #assert sc_caret_clamp(5, 0) == 0;
+  #assert sc_caret_clamp(5, -3) == 0;
+  #assert sc_caret_clamp(0, 10) == 0;
+  #assert sc_caret_clamp(4, 10) == 4;
+  #assert sc_caret_clamp(10, 10) == 10;
+  #assert sc_caret_clamp(12, 10) == 10;
+}
+
+#forall "controlled write runs only when not composing and value changed" bits: 0..<4 {
+  comp := (bits & 1) != 0;
+  same := (bits & 2) != 0;
+  #assert sc_allow_controlled_write(comp, same) == (!comp && !same);
+}

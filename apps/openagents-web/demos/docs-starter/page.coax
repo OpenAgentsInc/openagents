@@ -1,0 +1,204 @@
+// Minimal Hello World + Docs starter on Coax Native Web DOM backend.
+// Run locally with hot reload:
+//   coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax --serve
+// Test natively:
+//   coax/bin/coax test apps/openagents-web/demos/docs-starter/page.coax
+#load "../../../../components/kit/settings.coax";
+#load "../../../../components/backend/dom.coax";
+
+DS_INBOX :: 4096;
+DS_NAME :: 128;
+DS_CSS :: 40960;
+DS_CLICK :: 1; DS_INPUT :: 2; DS_SUBMIT :: 3;
+
+DS_NAV_NAMES :: [3] string.["Hello World", "Getting Started", "Framework Status"];
+DS_NAV_NOTES :: [3] string.["Counter & input", "Markdown docs", "Phase 3.5 roadmap"];
+
+DS_DOC_START :: "This page is compiled from pure Coax to WebAssembly (`wasm32`) and rendered into real browser DOM by `coax/web/dom-host.js` — **no npm, no bundler, no JavaScript framework**.\n\n## Edit-to-screen loop\n\nSave `apps/openagents-web/demos/docs-starter/page.coax` while the dev server is running. `coax/web/serve.sh` watches the source, rebuilds the Wasm module in about a second, and reloads your tab over `/coaxial/live`.\n\n- **Server:** `coax/web/serve.sh` (`serve.c`) serves static assets, hot-reloads Wasm, and streams `/api/*` responses unbuffered.\n- **DOM backend:** `components/core/tree.coax` + `components/backend/dom.coax` diff keyed nodes and emit minimal DOM mutations.\n- **Markdown:** `components/core/markdown.coax` parses headings, lists, links, tables, and fenced code blocks in pure Coax.\n\n| Piece | File |\n| --- | --- |\n| Page state & view | `apps/openagents-web/demos/docs-starter/page.coax` |\n| Wasm ABI bridge | `apps/openagents-web/demos/docs-starter/face.c` |\n| Build & serve tool | `apps/openagents-web/demos/docs-starter/build.coax` |";
+
+DS_DOC_ROADMAP :: "The Coax Web framework evolves **in place** on top of `serve.sh`, `dom-host.js`, `tree.coax`, and `dom.coax`.\n\n## Phase 3.5 Milestones\n\n| Issue | Layer | Status |\n| --- | --- | --- |\n| `#14088` | Non-blocking SSE streaming plane (`kqueue`/`epoll`, `Last-Event-ID`, Postgres `LISTEN/NOTIFY`) | Done |\n| `#14089` | Multiplexed keyed streams, reconnect backoff, IME/caret-safe inputs & modal `<dialog>` in `dom-host.js` | Next |\n| `#14090` | Coax UI Core: Effect UI per-component MVU, `Cmd`s, keyed `Sub`s, query cache & `Provider`s | Planned |\n| `#14091` | Coax UI Kit & Streaming Markdown: headless `parts` primitives, `VirtualList` & incremental Markdown | Planned |\n| `#14092` | Native Coax SSR/Hydration & zero-browser `Story`/`Scene`/`Play` harness | Planned |\n\nEvery doc page authored here moves cleanly onto Coax UI primitives and SSR as each layer lands.";
+
+DS_SNIPPET :: "coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax --serve";
+
+DocsStarter :: struct {
+  ready: bool;
+  time: f32;
+  dirty: bool;
+  animating: bool;
+  page: int;          // 0 Hello World, 1 Getting Started, 2 Framework Status
+  count: int;
+  name: [DS_NAME] u8;
+  name_n: int;
+  doc_page: int = -1; // which doc page is currently parsed into `doc`
+  clip: [256] u8;
+  clip_n: int;
+  inbox: [DS_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [DS_CSS] u8;
+  ui: [1] Ui;
+  doc: [1] MdDoc;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+ds_set_name :: (s: [] DocsStarter, text: string) {
+  n := ifx text.count > DS_NAME then DS_NAME else text.count;
+  for i: 0..<n { s[0].name[i] = text[i]; }
+  s[0].name_n = n;
+}
+
+ds_greet :: (s: [] DocsStarter, out: [] u8) -> string {
+  who := ifx s[0].name_n > 0 then cast(string) s[0].name[0..<s[0].name_n] else "World";
+  p := "Hello, ";
+  n := 0;
+  for c: p { if n < out.count { out[n] = c; n += 1; } }
+  for c: who { if n < out.count { out[n] = c; n += 1; } }
+  if n < out.count { out[n] = '!'; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+ds_build :: (s: [] DocsStarter) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  buf: [UI_ID] u8; buf2: [UI_ID] u8; gbuf: [256] u8;
+  names := DS_NAV_NAMES; notes := DS_NAV_NOTES;
+
+  tr_begin(t);
+  root := k_set(t, "ds");
+
+  nav := k_set_nav(t, "ds.nav", "Coax Web Docs");
+  for k: 0..<3 {
+    id := tr_join(buf[..], "ds.nav.", k);
+    item := k_row(t, u, id, names[k], notes[k], k == s[0].page);
+  }
+  tr_close(t);
+
+  body := k_set_body(t, u, "ds.body", "Coax Web Starter", names[s[0].page]);
+
+  if s[0].page == 0 {
+    g := k_set_group(t, u, "ds.hello", "Interactive Hello World");
+    greet := tr_leaf(t, "ds.greet", TG_H2, "sec-h", ds_greet(s, gbuf[..]));
+    lede := tr_leaf(t, "ds.lede", TG_P, "sec-n", "Compiled from pure Coax to WebAssembly and rendered into real HTML DOM by dom-host.js.");
+    row := tr_open(t, "ds.row", TG_DIV, "rowf");
+    b_inc := k_button(t, u, "ds.inc", "Count +1", BS_PRIMARY);
+    b_rst := k_button(t, u, "ds.reset", "Reset", ifx s[0].count > 0 then BS_PLAIN else BS_DISABLED);
+    tr_close(t);
+    cnt := tr_leaf(t, "ds.count", TG_P, "meta", tr_cat(buf2[..], tr_join(buf[..], "Clicks: ", s[0].count), " (live Wasm state)"));
+    fld := k_field(t, u, "ds.name", "Your name", "Type a name to greet");
+    k_set_group_end(t);
+
+    g2 := k_set_group(t, u, "ds.cmd", "Run locally");
+    cb := k_code(t, u, "ds.code", "sh", DS_SNIPPET);
+    k_set_group_end(t);
+  } else {
+    src := ifx s[0].page == 1 then DS_DOC_START else DS_DOC_ROADMAP;
+    if s[0].doc_page != s[0].page {
+      _ = md_parse(s[0].doc[..], src, 0);
+      s[0].doc_page = s[0].page;
+    }
+    doc_id := tr_join(buf[..], "ds.md.", s[0].page);
+    art := k_agent(t, u, doc_id, s[0].doc[..]);
+    if s[0].page == 1 {
+      cb := k_code(t, u, "ds.start.code", "sh", DS_SNIPPET);
+    }
+  }
+
+  tr_close(t);
+  tr_close(t);
+}
+
+coaxial_ds_frame :: (s: [] DocsStarter, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    _ = mono_frames(s[0].sets[..]);
+    s[0].ready = true;
+    s[0].dirty = true;
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_button_css(s[0].css[..], mono_page_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..]))));
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  ds_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+
+coaxial_ds_busy :: (s: [] DocsStarter) -> bool #export_c #effects(all) {
+  return s.count > 0 && (s[0].dirty || s[0].animating);
+}
+
+coaxial_ds_event :: (s: [] DocsStarter, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if id.count == 0 { return; }
+  if kind == DS_CLICK {
+    if id == "ds.inc" { s[0].count += 1; }
+    else if id == "ds.reset" { s[0].count = 0; }
+    else if id == "ds.nav.0" { s[0].page = 0; }
+    else if id == "ds.nav.1" { s[0].page = 1; }
+    else if id == "ds.nav.2" { s[0].page = 2; }
+    else if id == "ds.code.copy" || id == "ds.start.code.copy" {
+      s[0].clip_n = 0;
+      for c: DS_SNIPPET { if s[0].clip_n < s[0].clip.count { s[0].clip[s[0].clip_n] = c; s[0].clip_n += 1; } }
+    }
+  } else if kind == DS_INPUT && id == "ds.name" {
+    n := ifx length < 0 then 0 else ifx length > DS_INBOX then DS_INBOX else length;
+    ds_set_name(s, cast(string) s[0].inbox[0..<n]);
+  } else if kind == DS_SUBMIT && id == "ds.name" {
+    s[0].count += 1;
+  }
+  s[0].dirty = true;
+}
+
+coaxial_ds_size :: (s: [] DocsStarter, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+
+coaxial_ds_clip :: (s: [] DocsStarter) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].clip_n else 0; }
+coaxial_ds_clip_done :: (s: [] DocsStarter) #export_c #effects(all) { if s.count > 0 { s[0].clip_n = 0; } }
+coaxial_ds_inbox_cap :: () -> int #export_c #effects(all) { return DS_INBOX; }
+
+DsTest :: struct { s: [1] DocsStarter; }
+
+#test "hello world renders, increments counter, updates greeting, and switches to markdown docs" {
+  h: [1] DsTest; s := h[0].s[..];
+  n := coaxial_ds_frame(s, 0.016, true);
+  t := s[0].tree[..]; d := s[0].dom[..];
+  #assert n > 500 && t[0].lost == 0 && t[0].depth == 0;
+  #assert tr_text_of(t, tr_find(t, "ds.greet")) == "Hello, World!";
+  #assert tr_text_of(t, tr_find(t, "ds.count")) == "Clicks: 0 (live Wasm state)";
+  #assert coaxial_ds_frame(s, 0.016, true) == 0;
+
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.inc"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert s[0].count == 1 && tr_text_of(t, tr_find(t, "ds.count")) == "Clicks: 1 (live Wasm state)";
+
+  who := "OpenAgents";
+  for i: 0..<who.count { s[0].inbox[i] = who[i]; }
+  coaxial_ds_event(s, DS_INPUT, dm_find(d, "ds.name"), who.count);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert tr_text_of(t, tr_find(t, "ds.greet")) == "Hello, OpenAgents!";
+
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.1"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert s[0].page == 1 && s[0].doc[0].nb > 0 && tr_find(t, "ds.md.1.b0") >= 0;
+
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.2"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert s[0].page == 2 && tr_find(t, "ds.md.2.b0") >= 0;
+
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.0"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.code.copy"), 0);
+  #assert coaxial_ds_clip(s) == DS_SNIPPET.count;
+  coaxial_ds_clip_done(s);
+  #assert coaxial_ds_clip(s) == 0;
+}
