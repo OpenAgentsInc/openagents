@@ -19,6 +19,15 @@ FLAWED_BETA_FAST_MODE :: cast(u8) 2;
 FLAWED_BETA_CACHE_EDITING :: cast(u8) 4;
 FLAWED_BETA_THINKING_CLEAR :: cast(u8) 8;
 
+// Modular OpenAgents capability-pack flags mounted lazily onto the compact base profile (<2 KiB; #14054).
+OA_CAP_NONE :: cast(u8) 0;
+OA_CAP_CODER :: cast(u8) 1;
+OA_CAP_WALLET :: cast(u8) 2;
+OA_CAP_METAVERSE :: cast(u8) 4;
+OA_CAP_CLI :: cast(u8) 8;
+OA_CAP_KB :: cast(u8) 16;
+OA_BASE_PROMPT_MAX_BYTES :: 2048;
+
 FlawedPromptSectionEntry :: struct {
   occupied: bool;
   is_null: bool; // negative null caching: prevents mid-session flag flip from injecting new section
@@ -40,10 +49,11 @@ FlawedContextCache :: struct {
   session_date: [FLAWED_DATE_MAX] u8; session_date_n: int;
   last_emitted_date: [FLAWED_DATE_MAX] u8; last_emitted_date_n: int;
 
-  // Memoized dynamic system prompt sections + 4 sticky-on beta latches
+  // Memoized dynamic system prompt sections + 4 sticky-on beta latches + mounted capability packs
   sections: [FLAWED_SECTION_SLOTS_MAX] FlawedPromptSectionEntry;
   section_count: int;
   beta_latches: u8;
+  mounted_packs: u8;
 }
 
 // Memoize git status once per conversation (context.ts:36-111).
@@ -170,6 +180,75 @@ flawed_ctx_clear_session :: (c: [] FlawedContextCache) #effects(writes, traps) {
   c[0] = FlawedContextCache.{};
 }
 
+// Capability-pack helpers (#14054): non-coding turns skip git snapshot capture and mount only needed addenda
+// in canonical bit order so prompt-cache prefixes remain stable across turns.
+oa_ctx_needs_git_snapshot :: (caps: u8) -> bool #effects(traps) {
+  return (caps & OA_CAP_CODER) != 0;
+}
+
+oa_ctx_snapshot_git_for_caps :: (
+  c: [] FlawedContextCache,
+  caps: u8,
+  raw_status: string,
+  trust_accepted: bool,
+  is_remote: bool,
+  include_git: bool
+) -> bool #effects(reads, writes, traps) {
+  if !oa_ctx_needs_git_snapshot(caps) { return false; }
+  return flawed_ctx_snapshot_git(c, raw_status, trust_accepted, is_remote, include_git);
+}
+
+oa_ctx_pack_section_name :: (bit: u8) -> string #effects(traps) {
+  if bit == OA_CAP_CODER { return "cap_coder"; }
+  if bit == OA_CAP_WALLET { return "cap_wallet"; }
+  if bit == OA_CAP_METAVERSE { return "cap_metaverse"; }
+  if bit == OA_CAP_CLI { return "cap_cli"; }
+  if bit == OA_CAP_KB { return "cap_kb"; }
+  return "";
+}
+
+oa_ctx_mount_pack :: (c: [] FlawedContextCache, bit: u8, summary: string) -> int #effects(reads, writes, traps) {
+  name := oa_ctx_pack_section_name(bit);
+  if name.count == 0 { return -1; }
+  c[0].mounted_packs = c[0].mounted_packs | bit;
+  return flawed_ctx_resolve_section(c, name, summary, summary.count == 0, false);
+}
+
+oa_prompt_cat :: (out: [] u8, at: int, s: string) -> int #effects(reads, writes, traps) {
+  n := at;
+  for i: 0..<s.count {
+    if n >= out.count { break; }
+    out[n] = s[i];
+    n += 1;
+  }
+  return n;
+}
+
+// Build the compact OpenAgents base general prompt (<2 KiB) plus modular capability-pack addenda
+// (Coder, Wallet, Metaverse, CLI, KB) in deterministic canonical order for prompt-cache stability.
+oa_build_prompt_profile :: (platform: string, caps: u8, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := 0;
+  n = oa_prompt_cat(out, n, "You are OpenAgents, an AI assistant running natively inside OpenAgents Desktop.\nPlatform: ");
+  n = oa_prompt_cat(out, n, platform);
+  n = oa_prompt_cat(out, n, "\nBe helpful, accurate, concise, and direct. Use clear Markdown when helpful.\n");
+  if (caps & OA_CAP_CODER) != 0 {
+    n = oa_prompt_cat(out, n, "\n# Capability Pack: Coder\nInspect files with Read/Glob/Grep or Coax* compiler tools before editing, apply minimal surgical edits, and verify with targeted tests.\n");
+  }
+  if (caps & OA_CAP_WALLET) != 0 {
+    n = oa_prompt_cat(out, n, "\n# Capability Pack: Wallet\nUse pay/ balance and invoice tools; never execute outbound spends without explicit user confirmation.\n");
+  }
+  if (caps & OA_CAP_METAVERSE) != 0 {
+    n = oa_prompt_cat(out, n, "\n# Capability Pack: Metaverse\nAuthor and inspect scene graphs, entities, and assets via workspace tools and verify rendering checks.\n");
+  }
+  if (caps & OA_CAP_CLI) != 0 {
+    n = oa_prompt_cat(out, n, "\n# Capability Pack: CLI\nPrefer concise deterministic shell commands and avoid destructive operations without confirmation.\n");
+  }
+  if (caps & OA_CAP_KB) != 0 {
+    n = oa_prompt_cat(out, n, "\n# Capability Pack: Knowledge Base\nCite retrieved docs, transcripts, or notes concisely and distinguish verified facts from inference.\n");
+  }
+  return n;
+}
+
 // prependUserContext (utils/api.ts:449-474):
 // Prepends frozen userContext as an is_meta=true USER <system-reminder> at messages[0].
 flawed_prepend_user_context :: (
@@ -251,4 +330,22 @@ flawed_prepend_user_context :: (
   // Full /clear wipes everything including git_status
   flawed_ctx_clear_session(c[..]);
   #assert !c[0].git_cached && !c[0].user_ctx_cached;
+
+  // Compact base OpenAgents profile (<2 KiB), lazy git-snapshot skip for non-coding turns, and capability-pack addenda (#14054)
+  #assert !oa_ctx_needs_git_snapshot(OA_CAP_NONE) && !oa_ctx_needs_git_snapshot(OA_CAP_WALLET | OA_CAP_KB);
+  #assert oa_ctx_needs_git_snapshot(OA_CAP_CODER) && oa_ctx_needs_git_snapshot(OA_CAP_CODER | OA_CAP_CLI);
+  #assert !oa_ctx_snapshot_git_for_caps(c[..], OA_CAP_NONE, "M a.coax", true, false, true) && !c[0].git_cached;
+  #assert oa_ctx_snapshot_git_for_caps(c[..], OA_CAP_CODER, "M a.coax", true, false, true) && c[0].git_cached;
+
+  p_base: [OA_BASE_PROMPT_MAX_BYTES] u8;
+  p_full: [4096] u8;
+  nb := oa_build_prompt_profile("macOS", OA_CAP_NONE, p_base[..]);
+  nf := oa_build_prompt_profile("macOS", OA_CAP_CODER | OA_CAP_WALLET | OA_CAP_METAVERSE | OA_CAP_CLI | OA_CAP_KB, p_full[..]);
+  #assert nb > 80 && nb < OA_BASE_PROMPT_MAX_BYTES && nf > nb;
+  // Prompt-cache prefix stability: base prefix is byte-identical at the start of the full profile
+  for bi: 0..<nb { #assert p_base[bi] == p_full[bi]; }
+  #assert oa_ctx_mount_pack(c[..], OA_CAP_CODER, "coax+workspace") >= 0;
+  #assert oa_ctx_mount_pack(c[..], OA_CAP_WALLET, "pay/") >= 0;
+  #assert (c[0].mounted_packs & OA_CAP_CODER) != 0 && (c[0].mounted_packs & OA_CAP_WALLET) != 0;
+  #assert oa_ctx_mount_pack(c[..], OA_CAP_NONE, "bad") == -1;
 }

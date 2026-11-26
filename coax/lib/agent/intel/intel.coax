@@ -402,10 +402,10 @@ it_real :: (t: [] It, repo: string, coax: string) {
   it_check(t, r.ok && r.file == "coax/lib/microcoder/tools.coax" && it_has(r.text, "\tmc_edit_file :: (cwd: string, e: McEdit, profile: string, b: [] McToolBuffers) -> McEditResult {\n") && r.hash.count == IX_HASH && r.to > r.from + 20, "show mc_edit_file: its text from coax/lib/microcoder/tools.coax");
   a = ix_check(s, "coax/lib/repo/lines.coax", t[0].diags[..]);
   it_check(t, a.ok && a.status == 0 && a.n == 0, "check coax/lib/repo/lines.coax: clean");
-  a = ix_effects_of(s, "coax/lib/microcoder/tools.coax", "mc_edit_file", t[0].effects[..]);
-  f := it_effect(t[0].effects[0..<a.n], "mc_edit_file", "foreign_call");
-  if f >= 0 { print("       effects mc_edit_file: foreign_call by %\n", t[0].effects[f].path); }
-  it_check(t, a.ok && f >= 0 && it_has(t[0].effects[ifx f < 0 then 0 else f].path, "mc_edit_file -> "), "effects mc_edit_file: a foreign call and the path to it");
+  a = ix_effects_of(s, "coax/lib/repo/repo.coax", "rp_git", t[0].effects[..]);
+  f := it_effect(t[0].effects[0..<a.n], "rp_git", "foreign_call");
+  if f >= 0 { print("       effects rp_git: foreign_call by %\n", t[0].effects[f].path); }
+  it_check(t, a.ok && f >= 0 && it_has(t[0].effects[ifx f < 0 then 0 else f].path, "rp_git -> "), "effects rp_git: a foreign call and the path to it");
   a = ix_effects_of(s, "coax/lib/repo/lines.coax", "rp_lines", t[0].effects[..]);
   it_check(t, a.ok && it_effect(t[0].effects[0..<a.n], "rp_lines", "foreign_call") < 0, "effects rp_lines: no foreign call");
   a = ix_depends_on(s, "coax/lib/microcoder/tools.coax", t[0].decls[..]);

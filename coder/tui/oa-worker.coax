@@ -1659,17 +1659,136 @@ fww_append_instr_capped :: (out: [] u8, at: int, heading: string, path: string, 
   return n;
 }
 
-fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: [] u8) -> int {
+// Pure core of compact base conversational prompt (<25% of full coding prompt; #14054).
+fww_build_base_system_prompt_core :: (cfg: [] FwConfig, platform: string, out: [] u8) -> int {
+  n := 0;
+  n = fww_cat(out, n, "You are OpenAgents, an AI assistant running natively inside OpenAgents Desktop.\nPlatform: ");
+  n = fww_cat(out, n, platform);
+  n = fww_cat(out, n, "\nBe helpful, accurate, concise, and direct. Use clear Markdown when helpful.\n");
+  if cfg[0].output_style == FLAWED_STYLE_CONCISE {
+    n = fww_cat(out, n, "\n[Output Style: Concise]: Be brief and direct. Avoid unnecessary filler.\n");
+  } else if cfg[0].output_style == FLAWED_STYLE_EXPLANATORY {
+    n = fww_cat(out, n, "\n[Output Style: Explanatory]: Explain the reasoning and tradeoffs clearly.\n");
+  } else if cfg[0].output_style == FLAWED_STYLE_LEARNING {
+    n = fww_cat(out, n, "\n[Output Style: Learning]: Explain key concepts clearly and invite collaborative decisions.\n");
+  }
+  return n;
+}
+
+fww_build_base_system_prompt :: (cfg: [] FwConfig, out: [] u8) -> int {
+  platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
+  n := fww_build_base_system_prompt_core(cfg, platform, out);
+  cspb: [FS_PATH_MAX] u8;
+  cspath := csys_path(cspb[..]);
+  csbuf: [CSYS_MAX_BYTES + 1] u8;
+  csblk: [CSYS_BLOCK_BYTES] u8;
+  cs := csys_block("\n\n# ", csys_read(cspath, csbuf[..]), csblk[..]);
+  if cs.count > 0 {
+    n = fww_cat(out, n, cs);
+  }
+  return n;
+}
+
+fww_hist_has_tools :: (h: [] FwHist) -> bool {
+  for i: 0..<h[0].nmsgs {
+    m := h[0].msgs[i];
+    if fww_msg_count_tool_use(m) > 0 || fww_msg_count_tool_res(m) > 0 { return true; }
+  }
+  return false;
+}
+
+fww_is_ident_byte :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+fww_has_word_ci :: (text: string, word: string) -> bool {
+  if word.count == 0 || text.count < word.count { return false; }
+  for i: 0..<text.count - word.count + 1 {
+    if i > 0 && fww_is_ident_byte(text[i - 1]) { continue; }
+    end := i + word.count;
+    if end < text.count && fww_is_ident_byte(text[end]) { continue; }
+    matched := true;
+    for j: 0..<word.count {
+      if flawed_aw_lower(text[i + j]) != flawed_aw_lower(word[j]) { matched = false; break; }
+    }
+    if matched { return true; }
+  }
+  return false;
+}
+
+// Classify whether a turn needs the coding/workspace/tool-use addendum (#14054).
+// Pure conversational greetings & general knowledge turns stay on the compact base prompt with no tool schemas.
+fww_is_coding_turn :: (cfg: [] FwConfig, h: [] FwHist) -> bool {
+  if cfg[0].permission_mode == FLAWED_PMODE_PLAN && !cfg[0].bypass_danger { return true; }
+  if fww_hist_has_tools(h) { return true; }
+  // Inspect the latest user message (and any prior user message in the thread)
+  for ri: 0..<h[0].nmsgs {
+    idx := h[0].nmsgs - 1 - ri;
+    m := h[0].msgs[idx];
+    if m.role != FWW_MROLE_USER { continue; }
+    for bi: 0..<m.nblocks {
+      if m.blocks[bi].kind != FWW_MB_TEXT { continue; }
+      t := fww_slab_str(h, m.blocks[bi].text_at, m.blocks[bi].text_n);
+      if t.count == 0 { continue; }
+      // Code fences, inline code, file paths, or URLs
+      for ci: 0..<t.count {
+        if t[ci] == '`' { return true; }
+      }
+      if fww_contains_ci(t, ".coax") || fww_contains_ci(t, ".rs") || fww_contains_ci(t, ".py") ||
+         fww_contains_ci(t, ".ts") || fww_contains_ci(t, ".js") || fww_contains_ci(t, ".swift") ||
+         fww_contains_ci(t, ".json") || fww_contains_ci(t, ".md") || fww_contains_ci(t, ".sh") ||
+         fww_contains_ci(t, ".c") || fww_contains_ci(t, ".h") || fww_contains_ci(t, "http://") ||
+         fww_contains_ci(t, "https://") || fww_contains_ci(t, "::") || fww_contains_ci(t, "->") ||
+         fww_contains_ci(t, "./") || fww_contains_ci(t, "~/") || fww_contains_ci(t, "src/") ||
+         fww_contains_ci(t, "coax/") || fww_contains_ci(t, "openagents/") || fww_contains_ci(t, "apps/") ||
+         fww_contains_ci(t, "coder/") || fww_contains_ci(t, ".png") || fww_contains_ci(t, ".jpg") ||
+         fww_contains_ci(t, ".jpeg") || fww_contains_ci(t, ".webp") || fww_contains_ci(t, ".heic") ||
+         fww_contains_ci(t, ".gif") || fww_contains_ci(t, "/Users/") || fww_contains_ci(t, "/tmp/") {
+        return true;
+      }
+      // Coding, workspace, git, build, or symbol keywords (whole-word case-insensitive)
+      kws := [42] string.[
+        "file", "files", "repo", "repository", "workspace", "directory", "folder", "path",
+        "code", "codebase", "bug", "fix", "edit", "write", "read", "search", "grep", "glob",
+        "test", "tests", "build", "compile", "compiler", "check", "error", "crash", "debug",
+        "git", "commit", "diff", "branch", "push", "pull", "issue", "pr", "patch",
+        "bash", "shell", "command", "run", "refactor", "implement",
+      ];
+      for k: kws {
+        if fww_has_word_ci(t, k) { return true; }
+      }
+      kws2 := [12] string.[
+        "function", "proc", "struct", "symbol", "defines", "uses", "exports", "coax",
+        "cargo", "npm", "pytest", "selftest",
+      ];
+      for k: kws2 {
+        if fww_has_word_ci(t, k) { return true; }
+      }
+    }
+  }
+  return false;
+}
+
+fww_is_coax_repo :: (cwd: string) -> bool {
+  if cwd.count == 0 { return false; }
+  p1: [FS_PATH_MAX] u8;
+  p2: [FS_PATH_MAX] u8;
+  return fs_exists(fs_join(cwd, "coax/lib/agent/intel/intel.coax", p1[..])) &&
+         fs_exists(fs_join(cwd, "coax/web/tool.sh", p2[..]));
+}
+
+fww_build_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, platform: string, out: [] u8) -> int {
   n := 0;
   n = fww_cat(out, n, "You are OpenAgents, an autonomous software engineering coding agent running natively inside OpenAgents Desktop.\n");
   n = fww_cat(out, n, "Working directory: ");
   n = fww_cat(out, n, cwd);
   n = fww_cat(out, n, "\nPlatform: ");
-  n = fww_cat(out, n, ifx tool_os() == TOOL_LINUX then "Linux" else "macOS");
+  n = fww_cat(out, n, platform);
 
   n = fww_cat(out, n, "\n\n# Working Efficiently & Using Tools\n");
   n = fww_cat(out, n, "- Go straight to the point. Try the simplest direct implementation first without going in circles — avoid speculative abstractions, unrelated refactors, or extra configurability.\n");
-  n = fww_cat(out, n, "- Maximize parallel tool calls: emit ALL independent Read, Grep, Glob, or Edit calls together in a single response instead of one call per turn.\n");
+  n = fww_cat(out, n, "- Maximize parallel tool calls: emit ALL independent Read, Grep, Glob, Coax*, or Edit calls together in a single response instead of one call per turn.\n");
+  n = fww_cat(out, n, "- Prefer compiler-backed Coax intelligence tools (`CoaxDefines`, `CoaxUses`, `CoaxShow`, `CoaxCheck`, `CoaxChecks`, `CoaxExports`, `CoaxEffects`, `CoaxDepends`, `CoaxLoaders`, `CoaxExplain`, `CoaxVocab`, `CoaxReplace`) over raw `Grep`/`Read` whenever querying or checking Coax symbols in a Coax repo.\n");
   n = fww_cat(out, n, "- Prefer dedicated tools over Bash: Read (not cat/head/tail/sed — Read also natively reads PNG/JPEG/GIF/WebP/BMP/TIFF/HEIC images and screenshots directly without scripts), Edit (not sed/awk), Write (not heredoc), Glob (not find/ls), Grep (not rg/grep). Reserve Bash for builds, tests, git, and scripts.\n");
   n = fww_cat(out, n, "- Keep exploration tightly bounded: read only the target file(s) and direct callers/tests needed for the task (typically 2-4 turns). Do not read peripheral docs, unrelated modules, or deep git history once you know enough to write your first working change.\n");
   n = fww_cat(out, n, "- Derive root causes and general invariants thoroughly before patching: fix the underlying invariant across multiple sequential, concurrent, or interleaved operations and edge cases (never just a single repro symptom). Batch independent edits cleanly, run targeted build/test checks right after editing, and fuzz boundary/malformed/stress inputs before finishing.\n");
@@ -1696,6 +1815,12 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   } else if cfg[0].output_style == FLAWED_STYLE_LEARNING {
     n = fww_cat(out, n, "\n[Output Style: Learning]: Explain key concepts clearly and invite collaborative decisions on non-trivial tradeoffs.\n");
   }
+  return n;
+}
+
+fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: [] u8) -> int {
+  platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
+  n := fww_build_coding_system_prompt_core(cfg, cwd, platform, out);
 
   if !cfg[0].bare_mode {
     // Load user instructions (~/.openagents/instructions.md), capped at 4 KiB
@@ -1733,7 +1858,7 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
 
 // ---------------------------------------------------------------- request JSON builders (Gemini Native & OpenAI/Psionic)
 
-fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, out: [] u8) -> int {
+fww_build_gemini_body_ex :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, include_coax_intel: bool, out: [] u8) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
@@ -1751,14 +1876,17 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
     jo_end(o[..]);
   }
 
-  // Tools (Gemini functionDeclarations; keep declarations when history has tool calls and enforce NONE on wrap-up turns)
-  allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
-  disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
-  jo_key(o[..], "tools");
-  _ = flawed_wire_write_tools(o[..], true, allowed, disallowed);
-  if no_tools {
-    jo_key(o[..], "toolConfig");
-    jo_raw(o[..], "{\"functionCallingConfig\":{\"mode\":\"NONE\"}}");
+  // Tools (Gemini functionDeclarations; omit completely on non-coding turns with no prior tool history,
+  // and keep declarations with toolConfig NONE on wrap-up turns that already contain tool history)
+  if !no_tools || fww_hist_has_tools(h) {
+    allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
+    disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
+    jo_key(o[..], "tools");
+    _ = flawed_wire_write_tools_ex(o[..], true, allowed, disallowed, include_coax_intel);
+    if no_tools {
+      jo_key(o[..], "toolConfig");
+      jo_raw(o[..], "{\"functionCallingConfig\":{\"mode\":\"NONE\"}}");
+    }
   }
 
   // Contents (enforce strict non-empty user-started, user-terminated sequence on the wire too!)
@@ -1925,7 +2053,11 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
   return ifx o[0].bad then -1 else o[0].n;
 }
 
-fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, out: [] u8) -> int {
+fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, out: [] u8) -> int {
+  return fww_build_gemini_body_ex(cfg, h, effort, sys_prompt, no_tools, false, out);
+}
+
+fww_build_openai_body_ex :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, include_coax_intel: bool, out: [] u8) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
@@ -1955,7 +2087,7 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
     allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
     disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
     jo_key(o[..], "tools");
-    _ = flawed_wire_write_tools(o[..], false, allowed, disallowed);
+    _ = flawed_wire_write_tools_ex(o[..], false, allowed, disallowed, include_coax_intel);
   }
 
   jo_key(o[..], "messages");
@@ -2112,6 +2244,10 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
   jo_end(o[..]);
   jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
+}
+
+fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, out: [] u8) -> int {
+  return fww_build_openai_body_ex(cfg, h, model, effort, sys_prompt, is_local, local_ctx, no_tools, force_no_think, false, out);
 }
 
 // ---------------------------------------------------------------- workspace tools implementation (8 Claude-Code-parity tools)
@@ -3583,6 +3719,155 @@ fww_tool_webfetch :: (args_json: string, out_res: [] u8, is_err: [] bool, wire_o
   return n;
 }
 
+fww_coax_intel_subcmd :: (name: string) -> string {
+  if name == "CoaxDefines" { return "defines"; }
+  if name == "CoaxUses" { return "uses"; }
+  if name == "CoaxChecks" { return "checks"; }
+  if name == "CoaxExports" { return "exports"; }
+  if name == "CoaxShow" { return "show"; }
+  if name == "CoaxCheck" { return "check"; }
+  if name == "CoaxExplain" { return "explain"; }
+  if name == "CoaxVocab" { return "vocab"; }
+  if name == "CoaxEffects" { return "effects"; }
+  if name == "CoaxDepends" { return "depends"; }
+  if name == "CoaxLoaders" { return "loaders"; }
+  if name == "CoaxReplace" { return "replace"; }
+  return "";
+}
+
+fww_is_coax_intel_tool :: (name: string) -> bool {
+  return fww_coax_intel_subcmd(name).count > 0;
+}
+
+// Execute one of the 12 compiler-backed Coax intelligence tools via coax/lib/agent/intel/intel.coax (#14054).
+fww_tool_coax_intel :: (cwd: string, name: string, args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  sub := fww_coax_intel_subcmd(name);
+  if sub.count == 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "Unknown Coax intelligence tool.");
+  }
+  if !fww_is_coax_repo(cwd) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Coax intelligence tools require a Coax repository with coax/lib/agent/intel/intel.coax.");
+  }
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Invalid JSON arguments for Coax intelligence tool.");
+  }
+
+  arg1_b: [1024] u8; arg2_b: [1024] u8; seen_b: [128] u8; check_b: [1024] u8; text_b: [16384] u8; num_b: [32] u8;
+  tool_pb: [FS_PATH_MAX] u8; intel_pb: [FS_PATH_MAX] u8;
+  tool_sh := fs_join(cwd, "coax/web/tool.sh", tool_pb[..]);
+  intel_coax := fs_join(cwd, "coax/lib/agent/intel/intel.coax", intel_pb[..]);
+
+  h := proc_new();
+  if h < 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "Failed to allocate process for Coax intelligence tool.");
+  }
+  ok := proc_arg(h, tool_sh) && proc_arg(h, intel_coax) && proc_arg(h, sub) && proc_cwd(h, cwd);
+  lbl_b: [512] u8;
+  ln := fww_cat(lbl_b[..], 0, name);
+  ln = fww_cat(lbl_b[..], ln, " ");
+
+  if sub == "defines" || sub == "vocab" {
+    n1 := jv_str(d[0], jv_get(d[0], 0, "name"), arg1_b[..]);
+    if n1 <= 0 { _ = proc_release(h); is_err[0] = true; return fww_keep(out_res, "Missing required argument: name."); }
+    s1 := cast(string) arg1_b[0..<n1];
+    ok = ok && proc_arg(h, s1);
+    ln = fww_cat(lbl_b[..], ln, s1);
+  } else if sub == "uses" || sub == "checks" {
+    n1 := jv_str(d[0], jv_get(d[0], 0, "name"), arg1_b[..]);
+    if n1 <= 0 { _ = proc_release(h); is_err[0] = true; return fww_keep(out_res, "Missing required argument: name."); }
+    s1 := cast(string) arg1_b[0..<n1];
+    ok = ok && proc_arg(h, s1);
+    ln = fww_cat(lbl_b[..], ln, s1);
+    n2 := jv_str(d[0], jv_get(d[0], 0, "file"), arg2_b[..]);
+    if n2 > 0 { ok = ok && proc_arg(h, "--file") && proc_arg(h, cast(string) arg2_b[0..<n2]); }
+    if sub == "checks" {
+      dep := jv_int(d[0], jv_get(d[0], 0, "depth"), -1);
+      if dep >= 0 {
+        nn := fww_put_int(num_b[..], 0, dep);
+        ok = ok && proc_arg(h, "--depth") && proc_arg(h, cast(string) num_b[0..<nn]);
+      }
+    }
+  } else if sub == "exports" || sub == "check" || sub == "depends" || sub == "loaders" {
+    n1 := jv_str(d[0], jv_get(d[0], 0, "file"), arg1_b[..]);
+    if n1 <= 0 { _ = proc_release(h); is_err[0] = true; return fww_keep(out_res, "Missing required argument: file."); }
+    s1 := cast(string) arg1_b[0..<n1];
+    ok = ok && proc_arg(h, s1);
+    ln = fww_cat(lbl_b[..], ln, s1);
+  } else if sub == "show" {
+    n1 := jv_str(d[0], jv_get(d[0], 0, "target"), arg1_b[..]);
+    if n1 <= 0 { n1 = jv_str(d[0], jv_get(d[0], 0, "name"), arg1_b[..]); }
+    if n1 <= 0 { _ = proc_release(h); is_err[0] = true; return fww_keep(out_res, "Missing required argument: target."); }
+    s1 := cast(string) arg1_b[0..<n1];
+    ok = ok && proc_arg(h, s1);
+    ln = fww_cat(lbl_b[..], ln, s1);
+    n2 := jv_str(d[0], jv_get(d[0], 0, "file"), arg2_b[..]);
+    if n2 > 0 { ok = ok && proc_arg(h, "--file") && proc_arg(h, cast(string) arg2_b[0..<n2]); }
+  } else if sub == "explain" {
+    n1 := jv_str(d[0], jv_get(d[0], 0, "code"), arg1_b[..]);
+    if n1 <= 0 { _ = proc_release(h); is_err[0] = true; return fww_keep(out_res, "Missing required argument: code."); }
+    s1 := cast(string) arg1_b[0..<n1];
+    ok = ok && proc_arg(h, s1);
+    ln = fww_cat(lbl_b[..], ln, s1);
+  } else if sub == "effects" {
+    n1 := jv_str(d[0], jv_get(d[0], 0, "file"), arg1_b[..]);
+    if n1 <= 0 { _ = proc_release(h); is_err[0] = true; return fww_keep(out_res, "Missing required argument: file."); }
+    s1 := cast(string) arg1_b[0..<n1];
+    ok = ok && proc_arg(h, s1);
+    ln = fww_cat(lbl_b[..], ln, s1);
+    n2 := jv_str(d[0], jv_get(d[0], 0, "proc"), arg2_b[..]);
+    if n2 > 0 { ok = ok && proc_arg(h, cast(string) arg2_b[0..<n2]); }
+  } else if sub == "replace" {
+    n1 := jv_str(d[0], jv_get(d[0], 0, "target"), arg1_b[..]);
+    ns := jv_str(d[0], jv_get(d[0], 0, "seen"), seen_b[..]);
+    nt := jv_str(d[0], jv_get(d[0], 0, "text"), text_b[..]);
+    if n1 <= 0 || ns <= 0 || jv_get(d[0], 0, "text") < 0 {
+      _ = proc_release(h); is_err[0] = true;
+      return fww_keep(out_res, "CoaxReplace requires target, seen, and text.");
+    }
+    s1 := cast(string) arg1_b[0..<n1];
+    ok = ok && proc_arg(h, s1);
+    ln = fww_cat(lbl_b[..], ln, s1);
+    n2 := jv_str(d[0], jv_get(d[0], 0, "file"), arg2_b[..]);
+    if n2 > 0 { ok = ok && proc_arg(h, "--file") && proc_arg(h, cast(string) arg2_b[0..<n2]); }
+    ok = ok && proc_arg(h, "--seen") && proc_arg(h, cast(string) seen_b[0..<ns]);
+    ok = ok && proc_arg(h, "--text") && proc_arg(h, cast(string) text_b[0..<nt]);
+    nc := jv_str(d[0], jv_get(d[0], 0, "check"), check_b[..]);
+    if nc > 0 { ok = ok && proc_arg(h, "--check") && proc_arg(h, cast(string) check_b[0..<nc]); }
+  }
+
+  ok = ok && proc_arg(h, "--root") && proc_arg(h, cwd) && proc_err_to_out(h);
+  n := 0;
+  exit_code := -1;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    lbuf: [4096] u8;
+    deadline := proc_now_ms() + 30000;
+    while proc_now_ms() < deadline {
+      r := proc_line(h, 250, lbuf[..]);
+      if r == PROC_EOF { break; }
+      if r == PROC_TIMEOUT { continue; }
+      if r < 0 { break; }
+      if n + r + 2 >= out_res.count { break; }
+      n = fww_cat(out_res, n, cast(string) lbuf[0..<r]);
+      n = fww_cat(out_res, n, "\n");
+    }
+    exit_code = proc_wait(h, 2000);
+  }
+  _ = proc_release(h);
+  is_err[0] = exit_code != 0;
+  if n == 0 { n = fww_keep(out_res, ifx exit_code == 0 then "(ok)" else "Coax intelligence tool failed."); }
+  if wire_out.count > 0 {
+    fww_send(wire_out, mww_command(wire_out, cast(string) lbl_b[0..<ln], exit_code, false, cast(string) out_res[0..<n]));
+  }
+  return n;
+}
+
 // ---------------------------------------------------------------- active streaming turn & tool loop state
 
 FwPendingTool :: struct {
@@ -3943,8 +4228,14 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   r[0].force_low_once = false;
   if r[0].calm_steps > 0 { r[0].calm_steps -= 1; }
+  coding_turn := fww_is_coding_turn(cfg, h);
+  base_sys_b: [4096] u8;
   full_sys := cast(string) r[0].sys_prompt[0..<r[0].nsys];
   sys := full_sys;
+  if !coding_turn {
+    bn_sys := fww_build_base_system_prompt(cfg, base_sys_b[..]);
+    sys = cast(string) base_sys_b[0..<bn_sys];
+  }
   if is_local && ctx_win <= 32768 {
     max_sys := ifx r[0].ctx_recoveries >= 2 then 2048 else 8192;
     if sys.count > max_sys {
@@ -3952,7 +4243,8 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       sys = cast(string) sys[0..<sc];
     }
   }
-  no_tools := r[0].force_wrapup_once;
+  no_tools := r[0].force_wrapup_once || !coding_turn;
+  include_coax_intel := coding_turn && !no_tools && fww_is_coax_repo(cast(string) r[0].cwd[0..<r[0].ncwd]);
   no_think := r[0].force_no_think_once;
   r[0].force_no_think_once = false;
 
@@ -3962,23 +4254,23 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
 
   bn := ifx is_gem
-        then fww_build_gemini_body(cfg, h, eff, sys, no_tools, b[0].req_body[..])
-        else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, b[0].req_body[..]);
+        then fww_build_gemini_body_ex(cfg, h, eff, sys, no_tools, include_coax_intel, b[0].req_body[..])
+        else fww_build_openai_body_ex(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, include_coax_intel, b[0].req_body[..]);
   if bn <= 0 {
     _ = fww_emergency_compact(h, 2, ctx_win, b[0].compact_buf[..]);
     fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
-         then fww_build_gemini_body(cfg, h, eff, sys, no_tools, b[0].req_body[..])
-         else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, b[0].req_body[..]);
+         then fww_build_gemini_body_ex(cfg, h, eff, sys, no_tools, include_coax_intel, b[0].req_body[..])
+         else fww_build_openai_body_ex(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, include_coax_intel, b[0].req_body[..]);
   }
   if bn <= 0 {
     _ = fww_emergency_compact(h, 3, ctx_win, b[0].compact_buf[..]);
     fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
-         then fww_build_gemini_body(cfg, h, eff, sys, no_tools, b[0].req_body[..])
-         else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, b[0].req_body[..]);
+         then fww_build_gemini_body_ex(cfg, h, eff, sys, no_tools, include_coax_intel, b[0].req_body[..])
+         else fww_build_openai_body_ex(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, include_coax_intel, b[0].req_body[..]);
   }
   if bn <= 0 { return "Request body exceeded buffer capacity (try /compact)."; }
 
@@ -4079,7 +4371,9 @@ fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
   else if name == "WebFetch" { n = jv_str(d[0], jv_get(d[0], 0, "url"), out); }
   else {
     n = jv_str(d[0], jv_get(d[0], 0, "file_path"), out);
+    if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "file"), out); }
     if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "path"), out); }
+    if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "target"), out); }
   }
   return ifx n > 0 then cast(string) out[0..<n] else "";
 }
@@ -4165,6 +4459,12 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   else if name == "TodoWrite" { rn = fww_tool_todos(args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
   else if name == "WebFetch" { rn = fww_tool_webfetch(args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if fww_is_coax_intel_tool(name) {
+    rn = fww_tool_coax_intel(cwd, name, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
+    if name == "CoaxReplace" && !is_err[0] {
+      for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; }
+    }
+  }
   else {
     is_err[0] = true;
     rn = fww_keep(r[0].acc[0].tools[idx].res[..], "Unknown tool.");
@@ -5208,11 +5508,15 @@ fww_queue_op :: (running: bool, req: [] MwwRequest, q: [] MwQueue, f: [] FwFollo
   return stop;
 }
 
-fww_auth_asked :: () -> bool {
+fww_flag_asked :: (flag: string) -> bool {
   a: [1] Args;
   if !args_load(a[..]) { return false; }
-  for i: 0..<args_count(a[..]) { if args_at(a[..], i) == "--auth" { return true; } }
+  for i: 0..<args_count(a[..]) { if args_at(a[..], i) == flag { return true; } }
   return false;
+}
+
+fww_auth_asked :: () -> bool {
+  return fww_flag_asked("--auth");
 }
 
 #load "oa-serve.coax";
@@ -5220,6 +5524,40 @@ fww_auth_asked :: () -> bool {
 // ---------------------------------------------------------------- main event loop
 
 tool_main :: () -> int #export_c #effects(all) {
+  if fww_flag_asked("--selftest-coax-intel") {
+    cwd_b: [FS_PATH_MAX] u8;
+    cwd := fs_cwd(cwd_b[..]);
+    if !fww_is_coax_repo(cwd) {
+      print("FAIL: not a Coax repo: %\n", cwd);
+      return 1;
+    }
+    res_b: [32768] u8;
+    empty_wire: [1] u8;
+    is_err := [1] bool.[false];
+
+    n1 := fww_tool_coax_intel(cwd, "CoaxDefines", "{\"name\":\"rp_put\"}", res_b[..], is_err[..], empty_wire[0..<0]);
+    if is_err[0] || !fww_contains_ci(cast(string) res_b[0..<n1], "coax/lib/repo/lines.coax") {
+      print("FAIL: CoaxDefines rp_put: %\n", cast(string) res_b[0..<n1]);
+      return 1;
+    }
+    print("OK CoaxDefines rp_put (% bytes)\n", n1);
+
+    n2 := fww_tool_coax_intel(cwd, "CoaxUses", "{\"name\":\"rp_put\",\"file\":\"coax/lib/repo/lines.coax\"}", res_b[..], is_err[..], empty_wire[0..<0]);
+    if is_err[0] || !fww_contains_ci(cast(string) res_b[0..<n2], "coax/lib/repo/lines.coax") {
+      print("FAIL: CoaxUses rp_put: %\n", cast(string) res_b[0..<n2]);
+      return 1;
+    }
+    print("OK CoaxUses rp_put (% bytes)\n", n2);
+
+    n3 := fww_tool_coax_intel(cwd, "CoaxCheck", "{\"file\":\"coax/lib/repo/lines.coax\"}", res_b[..], is_err[..], empty_wire[0..<0]);
+    if is_err[0] || n3 <= 0 {
+      print("FAIL: CoaxCheck lines.coax: %\n", cast(string) res_b[0..<n3]);
+      return 1;
+    }
+    print("OK CoaxCheck coax/lib/repo/lines.coax (% bytes)\n", n3);
+    return 0;
+  }
+
   homebuf: [4096] u8;
   home := cl_getenv("CODER_HOME", homebuf[..]);
   if home.count == 0 { home = cl_getenv("HOME", homebuf[..]); }
@@ -5423,22 +5761,6 @@ tool_main :: () -> int #export_c #effects(all) {
       continue;
     }
 
-    run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
-    if !cfg[0].bare_mode {
-      if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
-        run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
-        run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
-      }
-      if run[0].ngit_snap > 0 {
-        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].git_snap[0..<run[0].ngit_snap]);
-      }
-    }
-    if auth[0].backend != FLAWED_BE_LOCAL && cfg[0].auto_compact && hist[0].nmsgs >= 6 {
-      est_tok := fww_estimate_prompt_tokens(hist[..], run[0].nsys, false, false);
-      if cp_cache_status(hist[0].last_cloud_turn_ms, proc_now_ms(), 0, hist[0].last_cached_tok, est_tok, true) == CP_CACHE_EXPIRED_COMPACT {
-        _ = fww_hist_compact_ex(hist[..], 0, 2, 512, 0, 0, bufs[0].compact_buf[..]);
-      }
-    }
     if hist[0].nmsgs >= FWW_MAX_MSGS - 4 || hist[0].nslab + tk.count + 8192 >= FWW_SLAB {
       _ = fww_hist_compact(hist[..], bufs[0].compact_buf[..]);
     }
@@ -5448,6 +5770,28 @@ tool_main :: () -> int #export_c #effects(all) {
     fww_hist_push_user(hist[..], tk);
     fww_hist_sanitize(hist[..], bufs[0].compact_buf[..]);
     mc_steer_clear(st[..]); st[0].nd = 0;
+
+    // Non-coding turns skip git-snapshot capture and full coding prompt assembly (#14054).
+    if fww_is_coding_turn(cfg[..], hist[..]) {
+      run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
+      if !cfg[0].bare_mode {
+        if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
+          run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
+          run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
+        }
+        if run[0].ngit_snap > 0 {
+          run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].git_snap[0..<run[0].ngit_snap]);
+        }
+      }
+    } else {
+      run[0].nsys = fww_build_base_system_prompt(cfg[..], run[0].sys_prompt[..]);
+    }
+    if auth[0].backend != FLAWED_BE_LOCAL && cfg[0].auto_compact && hist[0].nmsgs >= 6 {
+      est_tok := fww_estimate_prompt_tokens(hist[..], run[0].nsys, false, !fww_is_coding_turn(cfg[..], hist[..]));
+      if cp_cache_status(hist[0].last_cloud_turn_ms, proc_now_ms(), 0, hist[0].last_cached_tok, est_tok, true) == CP_CACHE_EXPIRED_COMPACT {
+        _ = fww_hist_compact_ex(hist[..], 0, 2, 512, 0, 0, bufs[0].compact_buf[..]);
+      }
+    }
 
     err := fww_start_request(run[..], cfg[..], auth[..], hist[..], bufs[..], out[..]);
     if err.count > 0 {
@@ -5520,7 +5864,29 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert n4 > 0 && jv_parse(d[..], cast(string) body[0..<n4], nodes[..]);
   #assert jv_raw(d[0], jv_get(d[0], 0, "enable_thinking")) == "false" && jv_get(d[0], 0, "tools") < 0;
 
-  ng := fww_build_gemini_body(cfg[..], h[..], "low", "sys", true, body[..]);
+  // Non-coding Gemini turn (no prior tool history) omits tools + toolConfig completely;
+  // wrap-up turn with prior tool history keeps tools + toolConfig NONE so Gemini accepts functionResponse history.
+  ng0 := fww_build_gemini_body(cfg[..], h[..], "low", "sys", true, body[..]);
+  #assert ng0 > 0 && jv_parse(d[..], cast(string) body[0..<ng0], nodes[..]);
+  #assert jv_get(d[0], 0, "tools") < 0 && jv_get(d[0], 0, "toolConfig") < 0;
+
+  hw: [1] FwHist;
+  fww_hist_push_user(hw[..], "check repo");
+  a0 := [1] int.[0];
+  hw[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+  ub := FwBlock.{kind = FWW_MB_TOOL_USE};
+  ub.id_n = fww_slab_put(hw[..], "c1", a0[..]); ub.id_at = a0[0];
+  ub.name_n = fww_slab_put(hw[..], "Read", a0[..]); ub.name_at = a0[0];
+  ub.text_n = fww_slab_put(hw[..], "{}", a0[..]); ub.text_at = a0[0];
+  hw[0].msgs[1].blocks[0] = ub;
+  hw[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+  rb := FwBlock.{kind = FWW_MB_TOOL_RES};
+  rb.id_n = fww_slab_put(hw[..], "c1", a0[..]); rb.id_at = a0[0];
+  rb.name_n = fww_slab_put(hw[..], "Read", a0[..]); rb.name_at = a0[0];
+  rb.text_n = fww_slab_put(hw[..], "ok", a0[..]); rb.text_at = a0[0];
+  hw[0].msgs[2].blocks[0] = rb;
+  hw[0].nmsgs = 3;
+  ng := fww_build_gemini_body(cfg[..], hw[..], "low", "sys", true, body[..]);
   #assert ng > 0 && jv_parse(d[..], cast(string) body[0..<ng], nodes[..]);
   #assert jv_kind(d[0], jv_get(d[0], 0, "toolConfig")) == JV_OBJECT;
   #assert fww_tool_sig_hash("Bash", "{\"command\":\"python3 a.py\"}") == fww_tool_sig_hash("Bash", "{\"command\":\"python3 a.py\"}");
@@ -6164,4 +6530,72 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_hist_compact_ex(h[..], 0, 1, 512, 0, 0, tmp[..]);
   #assert h[0].msgs[2].blocks[0].img_n == 0; // older screenshot base64 stripped
   #assert h[0].msgs[4].blocks[0].img_n == 8 && fww_slab_str(h[..], h[0].msgs[4].blocks[0].img_at, h[0].msgs[4].blocks[0].img_n) == "/9j/4AAQ"; // recent screenshot preserved!
+}
+
+#test "flawedworker: split system prompt <25% on non-coding turns (Inkling 2 Mini & Neon) and Coax intel tools (#14054)" {
+  cfg: [1] FwConfig;
+  cfg[0].bare_mode = true;
+  cfg[0].permission_mode = FLAWED_PMODE_BYPASS;
+  cfg[0].thinking_mode = FLAWED_THINK_ADAPTIVE;
+
+  base_b: [4096] u8;
+  full_b: [16384] u8;
+  base_n := fww_build_base_system_prompt_core(cfg[..], "macOS", base_b[..]);
+  full_n := fww_build_coding_system_prompt_core(cfg[..], "/repo/openagents", "macOS", full_b[..]);
+  base_sys := cast(string) base_b[0..<base_n];
+  full_sys := cast(string) full_b[0..<full_n];
+  // Base conversational prompt alone is <25% of full coding system prompt
+  #assert base_n > 80 && full_n > 1500 && base_n * 4 < full_n;
+  #assert fww_contains_ci(full_sys, "CoaxDefines") && fww_contains_ci(full_sys, "CoaxUses") && fww_contains_ci(full_sys, "CoaxCheck");
+
+  // Turn classifier: conversational vs coding
+  h_chat: [1] FwHist;
+  fww_hist_push_user(h_chat[..], "Hello! Can you explain the difference between TCP and UDP?");
+  #assert !fww_is_coding_turn(cfg[..], h_chat[..]);
+
+  h_code: [1] FwHist;
+  fww_hist_push_user(h_code[..], "Find where rp_put is defined in coax/lib/repo/lines.coax and check it.");
+  #assert fww_is_coding_turn(cfg[..], h_code[..]);
+
+  // Verify non-coding turn prompt token/byte count is <25% of full coding prompt on BOTH Inkling 2 Mini and Neon
+  b_chat: [32768] u8;
+  b_code: [32768] u8;
+
+  // 1) Inkling 2 Mini (local OpenAI/Psionic wire body)
+  ink_chat_n := fww_build_openai_body_ex(cfg[..], h_chat[..], "inkling-2-mini", "high", base_sys, true, 32768, true, false, false, b_chat[..]);
+  ink_code_n := fww_build_openai_body_ex(cfg[..], h_code[..], "inkling-2-mini", "high", full_sys, true, 32768, false, false, true, b_code[..]);
+  ink_chat_tok := fww_estimate_prompt_tokens(h_chat[..], base_n, true, true);
+  ink_code_tok := fww_estimate_prompt_tokens(h_code[..], full_n, true, false);
+  #assert ink_chat_n > 0 && ink_code_n > 0 && ink_chat_n * 4 < ink_code_n;
+  #assert ink_chat_tok > 0 && ink_chat_tok * 4 < ink_code_tok;
+  #assert !fww_contains_ci(cast(string) b_chat[0..<ink_chat_n], "CoaxDefines");
+  #assert fww_contains_ci(cast(string) b_code[0..<ink_code_n], "CoaxDefines");
+
+  // 2) Neon (Gemini native wire body)
+  neon_chat_n := fww_build_gemini_body_ex(cfg[..], h_chat[..], "high", base_sys, true, false, b_chat[..]);
+  neon_code_n := fww_build_gemini_body_ex(cfg[..], h_code[..], "high", full_sys, false, true, b_code[..]);
+  neon_chat_tok := fww_estimate_prompt_tokens(h_chat[..], base_n, false, true);
+  neon_code_tok := fww_estimate_prompt_tokens(h_code[..], full_n, false, false);
+  #assert neon_chat_n > 0 && neon_code_n > 0 && neon_chat_n * 4 < neon_code_n;
+  #assert neon_chat_tok > 0 && neon_chat_tok * 4 < neon_code_tok;
+  #assert !fww_contains_ci(cast(string) b_chat[0..<neon_chat_n], "functionDeclarations");
+  #assert fww_contains_ci(cast(string) b_code[0..<neon_code_n], "CoaxDefines");
+
+  // 3) All 12 Coax compiler-backed intelligence tools map cleanly & have proper permission tiers
+  #assert fww_is_coax_intel_tool("CoaxDefines") && fww_coax_intel_subcmd("CoaxDefines") == "defines";
+  #assert fww_is_coax_intel_tool("CoaxUses") && fww_coax_intel_subcmd("CoaxUses") == "uses";
+  #assert fww_is_coax_intel_tool("CoaxChecks") && fww_coax_intel_subcmd("CoaxChecks") == "checks";
+  #assert fww_is_coax_intel_tool("CoaxExports") && fww_coax_intel_subcmd("CoaxExports") == "exports";
+  #assert fww_is_coax_intel_tool("CoaxShow") && fww_coax_intel_subcmd("CoaxShow") == "show";
+  #assert fww_is_coax_intel_tool("CoaxCheck") && fww_coax_intel_subcmd("CoaxCheck") == "check";
+  #assert fww_is_coax_intel_tool("CoaxExplain") && fww_coax_intel_subcmd("CoaxExplain") == "explain";
+  #assert fww_is_coax_intel_tool("CoaxVocab") && fww_coax_intel_subcmd("CoaxVocab") == "vocab";
+  #assert fww_is_coax_intel_tool("CoaxEffects") && fww_coax_intel_subcmd("CoaxEffects") == "effects";
+  #assert fww_is_coax_intel_tool("CoaxDepends") && fww_coax_intel_subcmd("CoaxDepends") == "depends";
+  #assert fww_is_coax_intel_tool("CoaxLoaders") && fww_coax_intel_subcmd("CoaxLoaders") == "loaders";
+  #assert fww_is_coax_intel_tool("CoaxReplace") && fww_coax_intel_subcmd("CoaxReplace") == "replace";
+  #assert !fww_is_coax_intel_tool("Read");
+  #assert flawed_wire_tool_permission("CoaxDefines", "rp_put", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("CoaxReplace", "coax/lib/repo/lines.coax", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_DENY;
+  #assert flawed_wire_tool_permission("CoaxReplace", "coax/lib/repo/lines.coax", FLAWED_PMODE_ACCEPT_EDITS, false, false) == FLAWED_PBEH_ALLOW;
 }

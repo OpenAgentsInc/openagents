@@ -240,7 +240,10 @@ flawed_wire_tool_allowed :: (tool_name: string, allowed_csv: string, disallowed_
 flawed_wire_tool_permission :: (tool_name: string, target: string, pmode: int, bypass_danger: bool, session_allow: bool) -> int #effects(all) {
   // Default Allow All (FLAWED_PMODE_BYPASS) and explicit bypass approve everything with zero permission checks.
   if bypass_danger || pmode == FLAWED_PMODE_BYPASS { return FLAWED_PBEH_ALLOW; }
-  if tool_name == "Read" || tool_name == "Glob" || tool_name == "Grep" || tool_name == "TodoWrite" {
+  if tool_name == "Read" || tool_name == "Glob" || tool_name == "Grep" || tool_name == "TodoWrite" ||
+     tool_name == "CoaxDefines" || tool_name == "CoaxUses" || tool_name == "CoaxChecks" || tool_name == "CoaxExports" ||
+     tool_name == "CoaxShow" || tool_name == "CoaxCheck" || tool_name == "CoaxExplain" || tool_name == "CoaxVocab" ||
+     tool_name == "CoaxEffects" || tool_name == "CoaxDepends" || tool_name == "CoaxLoaders" {
     return FLAWED_PBEH_ALLOW;
   }
   if tool_name == "WebFetch" {
@@ -249,7 +252,7 @@ flawed_wire_tool_permission :: (tool_name: string, target: string, pmode: int, b
     }
     return FLAWED_PBEH_ASK;
   }
-  if tool_name == "Edit" || tool_name == "Write" {
+  if tool_name == "Edit" || tool_name == "Write" || tool_name == "CoaxReplace" {
     ps := flawed_check_path_safety_for_auto_edit(target);
     if !ps.safe {
       return ifx pmode == FLAWED_PMODE_DONT_ASK then FLAWED_PBEH_DENY else FLAWED_PBEH_ASK;
@@ -439,8 +442,9 @@ flawed_wire_write_tool_one :: (o: [] Jo, gemini_fmt: bool, name: string, desc: s
 }
 
 FLAWED_WIRE_NTOOLS :: 8;
+FLAWED_WIRE_NINTEL :: 12;
 
-flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, disallowed_csv: string) -> int #effects(all) {
+flawed_wire_write_tools_ex :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, disallowed_csv: string, include_coax_intel: bool) -> int #effects(all) {
   names := [FLAWED_WIRE_NTOOLS] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch"];
   descs := [FLAWED_WIRE_NTOOLS] string.[
     "Read a file with 1-based line numbers (default 600 lines on cloud, 300 local), or read an image/screenshot natively (PNG, JPEG, GIF, WebP, BMP, TIFF, HEIC — automatically resized and returned visually). Pass offset and limit for larger text files. Prefer Read over cat/head/tail/sed.",
@@ -462,6 +466,39 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
     "{\"type\":\"object\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"},\"activeForm\":{\"type\":\"string\"}},\"required\":[\"content\",\"status\"]}}},\"required\":[\"todos\"]}",
     "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}},\"required\":[\"url\"]}",
   ];
+  intel_names := [FLAWED_WIRE_NINTEL] string.[
+    "CoaxDefines", "CoaxUses", "CoaxChecks", "CoaxExports",
+    "CoaxShow", "CoaxCheck", "CoaxExplain", "CoaxVocab",
+    "CoaxEffects", "CoaxDepends", "CoaxLoaders", "CoaxReplace",
+  ];
+  intel_descs := [FLAWED_WIRE_NINTEL] string.[
+    "Compiler-backed Coax query: find where a symbol is declared (kind, file, lines, hash). Prefer over Grep for Coax symbols.",
+    "Compiler-backed Coax query: find every resolved reference to a symbol across the repo. Pass optional file to disambiguate.",
+    "Compiler-backed Coax query: find #test/#forall checks that reach a procedure, walking upward through callers.",
+    "Compiler-backed Coax query: list all declarations exported by a Coax file.",
+    "Compiler-backed Coax query: show numbered source lines and hash for a declaration NAME or range FILE:A-B.",
+    "Compiler-backed Coax query: type-check a Coax file and return structured diagnostics.",
+    "Compiler-backed Coax query: explain a Coax compiler error code (e.g. E0325).",
+    "Compiler-backed Coax query: look up a Coax library procedure, type, keyword, or error code in vocabulary.",
+    "Compiler-backed Coax query: inspect transitive effects and witness paths for a file or specific procedure.",
+    "Compiler-backed Coax query: list external declarations a Coax file depends on.",
+    "Compiler-backed Coax query: list files that directly #load a given Coax file.",
+    "Compiler-backed Coax edit: hash-verified replacement of a declaration NAME or range FILE:A-B, with immediate type-check.",
+  ];
+  intel_schemas := [FLAWED_WIRE_NINTEL] string.[
+    "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}",
+    "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"file\":{\"type\":\"string\"}},\"required\":[\"name\"]}",
+    "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"file\":{\"type\":\"string\"},\"depth\":{\"type\":\"integer\"}},\"required\":[\"name\"]}",
+    "{\"type\":\"object\",\"properties\":{\"file\":{\"type\":\"string\"}},\"required\":[\"file\"]}",
+    "{\"type\":\"object\",\"properties\":{\"target\":{\"type\":\"string\"},\"file\":{\"type\":\"string\"}},\"required\":[\"target\"]}",
+    "{\"type\":\"object\",\"properties\":{\"file\":{\"type\":\"string\"}},\"required\":[\"file\"]}",
+    "{\"type\":\"object\",\"properties\":{\"code\":{\"type\":\"string\"}},\"required\":[\"code\"]}",
+    "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}",
+    "{\"type\":\"object\",\"properties\":{\"file\":{\"type\":\"string\"},\"proc\":{\"type\":\"string\"}},\"required\":[\"file\"]}",
+    "{\"type\":\"object\",\"properties\":{\"file\":{\"type\":\"string\"}},\"required\":[\"file\"]}",
+    "{\"type\":\"object\",\"properties\":{\"file\":{\"type\":\"string\"}},\"required\":[\"file\"]}",
+    "{\"type\":\"object\",\"properties\":{\"target\":{\"type\":\"string\"},\"seen\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"file\":{\"type\":\"string\"},\"check\":{\"type\":\"string\"}},\"required\":[\"target\",\"seen\",\"text\"]}",
+  ];
   if gemini_fmt {
     jo_arr(o);
     jo_obj(o);
@@ -476,6 +513,13 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
     flawed_wire_write_tool_one(o, gemini_fmt, names[i], descs[i], schemas[i]);
     emitted += 1;
   }
+  if include_coax_intel {
+    for i: 0..<FLAWED_WIRE_NINTEL {
+      if !flawed_wire_tool_allowed(intel_names[i], allowed_csv, disallowed_csv) { continue; }
+      flawed_wire_write_tool_one(o, gemini_fmt, intel_names[i], intel_descs[i], intel_schemas[i]);
+      emitted += 1;
+    }
+  }
   if gemini_fmt {
     jo_end(o);
     jo_end(o);
@@ -484,6 +528,10 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
     jo_end(o);
   }
   return emitted;
+}
+
+flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, disallowed_csv: string) -> int #effects(all) {
+  return flawed_wire_write_tools_ex(o, gemini_fmt, allowed_csv, disallowed_csv, false);
 }
 
 // ============================================================================
@@ -741,4 +789,21 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   // Empty allow result -> valid empty JSON
   jo_start(o[..], buf[..]);
   #assert flawed_wire_write_tools(o[..], false, "NoSuch", "") == 0 && !o[0].bad && jo_text(o[..]) == "[]";
+
+  // Coax compiler-backed intelligence tools (#14054): 8 base + 12 Coax intel = 20 tools
+  intel_buf: [24576] u8;
+  intel_nodes: [1024] JvNode;
+  jo_start(o[..], intel_buf[..]);
+  n3 := flawed_wire_write_tools_ex(o[..], true, "", "", true);
+  #assert !o[0].bad && n3 == 20 && jv_parse(d[..], jo_text(o[..]), intel_nodes[..]);
+  decls3 := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
+  #assert jv_len(d[0], decls3) == 20;
+  t8 := jv_at(d[0], decls3, 8);
+  #assert jv_str(d[0], jv_get(d[0], t8, "name"), sb[..]) == 11 && cast(string) sb[0..<11] == "CoaxDefines";
+  t19 := jv_at(d[0], decls3, 19);
+  #assert jv_str(d[0], jv_get(d[0], t19, "name"), sb[..]) == 11 && cast(string) sb[0..<11] == "CoaxReplace";
+
+  jo_start(o[..], intel_buf[..]);
+  n4 := flawed_wire_write_tools_ex(o[..], false, "CoaxDefines,CoaxUses,CoaxCheck", "", true);
+  #assert !o[0].bad && n4 == 3 && jv_parse(d[..], jo_text(o[..]), intel_nodes[..]) && jv_len(d[0], 0) == 3;
 }
