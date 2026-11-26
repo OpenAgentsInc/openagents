@@ -61,6 +61,16 @@ static long post_once(const char *key, const char *idem, const char *payload, ch
 // that send's), else an HTTP status for the caller, with err.
 int email_send(PGconn *db, const char *message, char id[128], char *err, size_t errcap) {
   id[0] = 0; err[0] = 0;
+  const char *driver = env_or("OA_MAIL_DRIVER", "resend");
+  if (!strcmp(driver, "log")) {
+    snprintf(id, 128, "log-%lld", (long long)api_now_ms());
+    api_log("email(log): accepted %zu bytes as %s", message ? strlen(message) : 0, id);
+    return 0;
+  }
+  if (!strcmp(driver, "capture")) {
+    snprintf(id, 128, "cap-%lld", (long long)api_now_ms());
+    return 0;
+  }
   const char *key = getenv("OA_RESEND_API_KEY");
   if (!key || !*key) { snprintf(err, errcap, "email is not set up here"); return 503; }
   char ms[32]; snprintf(ms, sizeof ms, "%lld", (long long)api_now_ms());

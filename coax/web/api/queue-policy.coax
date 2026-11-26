@@ -1,0 +1,79 @@
+// Coax Web Postgres job queue & middleware policy (Issue #14079):
+//   - Enqueue bounds validation
+//   - Retry/dead-letter transitions + Laravel Queue\Middleware semantics
+//     (WithoutOverlapping, ThrottlesExceptions, RateLimited)
+//   - Exponential retry backoff & batch completion check.
+#authority;
+
+QP_ACT_RETRY :: 0;
+QP_ACT_RELEASE :: 1;
+QP_ACT_DEAD :: 2;
+
+QP_MAX_QUEUE_NAME :: 64;
+QP_MAX_PAYLOAD :: 262144;
+QP_MAX_ATTEMPTS :: 25;
+QP_MAX_BACKOFF_SEC :: 3600;
+
+qp_enqueue_valid :: (queue_len: int, payload_len: int, max_attempts: int) -> bool #export_c #effects(all) {
+  if queue_len < 1 || queue_len > QP_MAX_QUEUE_NAME { return false; }
+  if payload_len < 1 || payload_len > QP_MAX_PAYLOAD { return false; }
+  return max_attempts >= 1 && max_attempts <= QP_MAX_ATTEMPTS;
+}
+
+qp_next_action :: (attempts: int, max_attempts: int, overlap_locked: bool,
+                   exception_throttled: bool, rate_limited: bool) -> int #export_c #effects(all) {
+  if overlap_locked || exception_throttled || rate_limited { return QP_ACT_RELEASE; }
+  if attempts >= max_attempts { return QP_ACT_DEAD; }
+  return QP_ACT_RETRY;
+}
+
+qp_retry_delay_sec :: (attempts: int) -> int #export_c #effects(all) {
+  if attempts < 1 { return -1; }
+  if attempts > 8 { return QP_MAX_BACKOFF_SEC; }
+  delay := 5;
+  for i: 1..<attempts {
+    delay = delay * 2;
+  }
+  return delay;
+}
+
+qp_batch_finished :: (pending_jobs: int, cancelled: bool) -> bool #export_c #effects(all) {
+  return cancelled || pending_jobs <= 0;
+}
+
+#test "enqueue validation enforces queue name, payload, and max_attempts bounds" {
+  #assert qp_enqueue_valid(1, 1, 1);
+  #assert qp_enqueue_valid(64, 262144, 25);
+  #assert !qp_enqueue_valid(0, 10, 3);
+  #assert !qp_enqueue_valid(65, 10, 3);
+  #assert !qp_enqueue_valid(4, 0, 3);
+  #assert !qp_enqueue_valid(4, 262145, 3);
+  #assert !qp_enqueue_valid(4, 10, 0);
+  #assert !qp_enqueue_valid(4, 10, 26);
+}
+
+#test "next action honors overlap, exception throttle, rate limit, and dead-letter threshold" {
+  #assert qp_next_action(1, 3, true, false, false) == QP_ACT_RELEASE;
+  #assert qp_next_action(1, 3, false, true, false) == QP_ACT_RELEASE;
+  #assert qp_next_action(1, 3, false, false, true) == QP_ACT_RELEASE;
+  #assert qp_next_action(1, 3, false, false, false) == QP_ACT_RETRY;
+  #assert qp_next_action(3, 3, false, false, false) == QP_ACT_DEAD;
+  #assert qp_next_action(4, 3, false, false, false) == QP_ACT_DEAD;
+}
+
+#test "retry delay doubles from 5s up to attempt 8 and caps at 3600s" {
+  #assert qp_retry_delay_sec(0) == -1;
+  #assert qp_retry_delay_sec(-1) == -1;
+  #assert qp_retry_delay_sec(1) == 5;
+  #assert qp_retry_delay_sec(2) == 10;
+  #assert qp_retry_delay_sec(3) == 20;
+  #assert qp_retry_delay_sec(8) == 640;
+  #assert qp_retry_delay_sec(9) == 3600;
+}
+
+#test "batch finishes when cancelled or pending_jobs reaches zero" {
+  #assert qp_batch_finished(0, false);
+  #assert qp_batch_finished(-1, false);
+  #assert qp_batch_finished(5, true);
+  #assert !qp_batch_finished(1, false);
+}

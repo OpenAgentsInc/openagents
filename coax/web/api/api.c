@@ -50,6 +50,7 @@
 //   private human packs            /api/metaverse/packs/<name>, /api/metaverse/packs/fetch/<sid>, per-session keys; /api/verse/packs/ kept (verse_packs.c)
 #include "api.h"
 #include "config.h"
+#include "queue.h"
 #include "error-wire.generated.h"
 #include "log-context.generated.h"
 #include "maintenance-policy.generated.h"
@@ -553,6 +554,7 @@ static void serve_one(client *c) {
     break;
   }
   close(c->fd); c->fd = -1;
+  api_defer_run_all();
 }
 
 // A worker (or, with one worker, the only process): connections off the shared socket, one at a
@@ -610,11 +612,15 @@ static int supervise(int lfd, int count) {
 
 int main(int argc, char **argv) {
   const char *listen_at = NULL;
-  bool migrations = false, migrate_only = false;
+  bool migrations = false, migrate_only = false, work_mode = false, work_once = false;
+  const char *work_queue = "default";
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) listen_at = argv[++i];
     else if (!strcmp(argv[i], "--migrations") && i + 1 < argc) { snprintf(migrations_dir, sizeof migrations_dir, "%s", argv[++i]); migrations = true; }
     else if (!strcmp(argv[i], "--migrate-only")) migrate_only = true;
+    else if (!strcmp(argv[i], "--work")) work_mode = true;
+    else if (!strcmp(argv[i], "--work-once")) { work_mode = true; work_once = true; }
+    else if (!strcmp(argv[i], "--queue") && i + 1 < argc) work_queue = argv[++i];
     else if (!strcmp(argv[i], "--rules")) { auth_print_rules(stdout); return 0; }    // every route's rule
     else if (!strcmp(argv[i], "--routes-json")) { auth_print_routes_json(stdout); return 0; }
     else if (!strcmp(argv[i], "--openapi")) { auth_print_openapi(stdout); return 0; }
@@ -640,6 +646,20 @@ int main(int argc, char **argv) {
     bool ok = migrations && migrate();
     api_log("migrations: %s", ok ? "all applied" : "FAILED");
     return ok ? 0 : 1;
+  }
+  if (work_mode) {
+    char wid[64];
+    snprintf(wid, sizeof wid, "worker-%d", (int)getpid());
+    struct sigaction sa = {0}; sa.sa_handler = on_term;
+    sigaction(SIGTERM, &sa, NULL); sigaction(SIGINT, &sa, NULL);
+    api_log("queue worker %s started on queue '%s'", wid, work_queue);
+    while (!stopping) {
+      PGconn *c = api_db();
+      int processed = c ? queue_work_once(c, work_queue, wid) : -1;
+      if (work_once) return processed < 0 ? 1 : 0;
+      if (processed <= 0) usleep(250000);
+    }
+    return 0;
   }
   admin_init();
   if (migrations && !migrate()) api_log("migrations did not all apply; serving anyway (health shows the last applied)");

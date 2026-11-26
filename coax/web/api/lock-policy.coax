@@ -1,0 +1,56 @@
+// Coax Web Postgres atomic lease lock & SWR cache policy (Issue #14079):
+//   - Lease lock acquire/renew/conflict/stale-takeover decisions (sys.locks)
+//   - Owner-gated release check
+//   - Stale-While-Revalidate (Laravel Cache::flexible) state classification.
+#authority;
+
+LP_ACQUIRE :: 0;
+LP_CONFLICT :: 1;
+LP_RENEW :: 2;
+
+LP_CACHE_MISS :: 0;
+LP_CACHE_FRESH :: 1;
+LP_CACHE_STALE :: 2;
+
+lp_acquire_decision :: (has_owner: bool, same_owner: bool, expires_ms: int, now_ms: int) -> int #export_c #effects(all) {
+  if !has_owner || expires_ms <= now_ms { return LP_ACQUIRE; }
+  if same_owner { return LP_RENEW; }
+  return LP_CONFLICT;
+}
+
+lp_release_allowed :: (has_owner: bool, same_owner: bool) -> bool #export_c #effects(all) {
+  return has_owner && same_owner;
+}
+
+lp_swr_state :: (present: bool, created_ms: int, fresh_ms: int, stale_ms: int, now_ms: int) -> int #export_c #effects(all) {
+  if !present { return LP_CACHE_MISS; }
+  age := now_ms - created_ms;
+  if age >= stale_ms { return LP_CACHE_MISS; }
+  if age < fresh_ms { return LP_CACHE_FRESH; }
+  return LP_CACHE_STALE;
+}
+
+#test "lease lock acquires unowned or expired, renews same owner, conflicts otherwise" {
+  #assert lp_acquire_decision(false, false, 9999, 1000) == LP_ACQUIRE;
+  #assert lp_acquire_decision(true, false, 1000, 1000) == LP_ACQUIRE;
+  #assert lp_acquire_decision(true, false, 999, 1000) == LP_ACQUIRE;
+  #assert lp_acquire_decision(true, true, 5000, 1000) == LP_RENEW;
+  #assert lp_acquire_decision(true, false, 5000, 1000) == LP_CONFLICT;
+}
+
+#test "release requires an owned lock by the same owner" {
+  #assert lp_release_allowed(true, true);
+  #assert !lp_release_allowed(true, false);
+  #assert !lp_release_allowed(false, true);
+  #assert !lp_release_allowed(false, false);
+}
+
+#test "SWR cache classifies miss, fresh, and stale windows accurately" {
+  #assert lp_swr_state(false, 1000, 5000, 15000, 1100) == LP_CACHE_MISS;
+  #assert lp_swr_state(true, 1000, 5000, 15000, 1000) == LP_CACHE_FRESH;
+  #assert lp_swr_state(true, 1000, 5000, 15000, 5999) == LP_CACHE_FRESH;
+  #assert lp_swr_state(true, 1000, 5000, 15000, 6000) == LP_CACHE_STALE;
+  #assert lp_swr_state(true, 1000, 5000, 15000, 15999) == LP_CACHE_STALE;
+  #assert lp_swr_state(true, 1000, 5000, 15000, 16000) == LP_CACHE_MISS;
+  #assert lp_swr_state(true, 1000, 5000, 15000, 20000) == LP_CACHE_MISS;
+}
