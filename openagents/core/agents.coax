@@ -1,0 +1,742 @@
+// OpenAgents Core — Subagent Registry, Built-in Personas, Custom Frontmatter Loader,
+// Tool Isolation, Read-Only Bash Guard, Context Forking, and CC-Parity Result Formatting.
+// Wires openagents/core/subagent.coax #authority invariants into live runtime execution (#14096).
+//   coax/bin/coax test openagents/core/agents.coax --library
+#module "flawed.agents";
+#authority;
+#load "subagent.coax";
+
+OA_AGENT_TYPE_GENERAL :: 0;
+OA_AGENT_TYPE_EXPLORE :: 1;
+OA_AGENT_TYPE_PLAN    :: 2;
+OA_AGENT_TYPE_VERIFY  :: 3;
+OA_AGENT_TYPE_CUSTOM  :: 4;
+OA_AGENT_TYPE_FORK    :: 5;
+
+OA_AGENT_MEM_NONE    :: 0;
+OA_AGENT_MEM_USER    :: 1;
+OA_AGENT_MEM_PROJECT :: 2;
+OA_AGENT_MEM_LOCAL   :: 3;
+
+OA_AGENT_MAX_DEFS   :: 32;
+OA_AGENT_NAME_MAX   :: 64;
+OA_AGENT_DESC_MAX   :: 256;
+OA_AGENT_PROMPT_MAX :: 2048;
+OA_AGENT_TOOLS_MAX  :: 256;
+OA_AGENT_MODEL_MAX  :: 64;
+OA_AGENT_COLOR_MAX  :: 24;
+
+// Compaction-resistant recursive fork sentinel (matches cc/tools/AgentTool/forkSubagent.ts).
+OA_AGENT_FORK_BOILERPLATE :: "STOP. READ THIS FIRST.";
+
+OaAgentDef :: struct {
+  active: bool;
+  kind: int;
+  source: u8;
+  name: [OA_AGENT_NAME_MAX] u8; nname: int;
+  desc: [OA_AGENT_DESC_MAX] u8; ndesc: int;
+  prompt: [OA_AGENT_PROMPT_MAX] u8; nprompt: int;
+  allowed_tools: [OA_AGENT_TOOLS_MAX] u8; nallowed: int;
+  disallowed_tools: [OA_AGENT_TOOLS_MAX] u8; ndisallowed: int;
+  model: [OA_AGENT_MODEL_MAX] u8; nmodel: int;
+  permission_mode: int; // 0 = inherit parent, else FLAWED_PMODE_*
+  color: [OA_AGENT_COLOR_MAX] u8; ncolor: int;
+  memory_scope: int;
+  isolation_worktree: bool;
+  background: bool;
+  omit_claudemd: bool;
+  one_shot: bool;
+  read_only: bool;
+}
+
+OaAgentRegistry :: struct {
+  defs: [OA_AGENT_MAX_DEFS] OaAgentDef;
+  count: int;
+}
+
+// ---------------------------------------------------------------- pure string helpers
+
+oa_ag_lower :: (c: u8) -> u8 #effects(traps) {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+oa_ag_eq_ci :: (a: string, b: string) -> bool #effects(reads, traps) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    if oa_ag_lower(a[i]) != oa_ag_lower(b[i]) { return false; }
+  }
+  return true;
+}
+
+oa_ag_contains_ci :: (hay: string, needle: string) -> bool #effects(reads, traps) {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  for i: 0..<(hay.count - needle.count + 1) {
+    ok := true;
+    for j: 0..<needle.count {
+      if oa_ag_lower(hay[i + j]) != oa_ag_lower(needle[j]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+oa_ag_trim :: (s: string) -> string #effects(reads, traps) {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+oa_ag_unquote :: (s: string) -> string #effects(reads, traps) {
+  t := oa_ag_trim(s);
+  if t.count >= 2 && ((t[0] == '"' && t[t.count - 1] == '"') || (t[0] == '\'' && t[t.count - 1] == '\'')) {
+    return cast(string) t[1..<(t.count - 1)];
+  }
+  return t;
+}
+
+oa_ag_copy :: (dst: [] u8, src: string) -> int #effects(reads, writes, traps) {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+oa_ag_cat :: (dst: [] u8, at: int, src: string) -> int #effects(reads, writes, traps) {
+  n := at;
+  if n < 0 { return 0; }
+  for i: 0..<src.count {
+    if n >= dst.count { return n; }
+    dst[n] = src[i]; n += 1;
+  }
+  return n;
+}
+
+oa_ag_put_int :: (dst: [] u8, at: int, v: int) -> int #effects(writes, traps) {
+  n := at;
+  if n < 0 || n >= dst.count { return n; }
+  x := v;
+  if x < 0 {
+    dst[n] = '-'; n += 1;
+    x = -x;
+  }
+  if x == 0 {
+    if n < dst.count { dst[n] = '0'; n += 1; }
+    return n;
+  }
+  tmp: [24] u8; k := 0;
+  while x > 0 && k < 24 { tmp[k] = cast(u8) ('0' + (x % 10)); x /= 10; k += 1; }
+  while k > 0 && n < dst.count { k -= 1; dst[n] = tmp[k]; n += 1; }
+  return n;
+}
+
+oa_ag_csv_has :: (csv: string, name: string) -> bool #effects(reads, traps) {
+  if csv.count == 0 || name.count == 0 { return false; }
+  i := 0;
+  while i < csv.count {
+    while i < csv.count && (csv[i] == ',' || csv[i] == ' ' || csv[i] == '\t' || csv[i] == '[' || csv[i] == ']' || csv[i] == '"' || csv[i] == '\'') { i += 1; }
+    start := i;
+    while i < csv.count && csv[i] != ',' && csv[i] != ']' { i += 1; }
+    end := i;
+    while end > start && (csv[end - 1] == ' ' || csv[end - 1] == '\t' || csv[end - 1] == '"' || csv[end - 1] == '\'') { end -= 1; }
+    if end > start && oa_ag_eq_ci(cast(string) csv[start..<end], name) { return true; }
+    if i < csv.count { i += 1; }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- built-in personas
+
+oa_agent_make_def :: (
+  kind: int,
+  source: u8,
+  name: string,
+  desc: string,
+  prompt: string,
+  allowed: string,
+  disallowed: string,
+  model: string,
+  color: string,
+  read_only: bool,
+  omit_claudemd: bool,
+  one_shot: bool,
+  background: bool
+) -> OaAgentDef #effects(reads, writes, traps) {
+  d := OaAgentDef.{
+    active = true,
+    kind = kind,
+    source = source,
+    read_only = read_only,
+    omit_claudemd = omit_claudemd,
+    one_shot = one_shot,
+    background = background,
+  };
+  d.nname = oa_ag_copy(d.name[..], name);
+  d.ndesc = oa_ag_copy(d.desc[..], desc);
+  d.nprompt = oa_ag_copy(d.prompt[..], prompt);
+  d.nallowed = oa_ag_copy(d.allowed_tools[..], allowed);
+  d.ndisallowed = oa_ag_copy(d.disallowed_tools[..], disallowed);
+  d.nmodel = oa_ag_copy(d.model[..], model);
+  d.ncolor = oa_ag_copy(d.color[..], color);
+  return d;
+}
+
+OA_EXPLORE_DISALLOWED :: "Agent,Task,Edit,Write,CoaxReplace,WalletPay,WalletReceive,EnterWorktree,ExitWorktree";
+OA_GENERAL_DISALLOWED :: "Agent,Task,EnterWorktree,ExitWorktree";
+OA_VERIFY_DISALLOWED  :: "Agent,Task,WalletPay,WalletReceive,EnterWorktree,ExitWorktree";
+
+oa_agents_init_builtins :: (reg: [] OaAgentRegistry) #effects(reads, writes, traps) {
+  if reg.count < 1 { return; }
+  reg[0] = OaAgentRegistry.{};
+
+  _ = oa_agents_upsert(reg, oa_agent_make_def(
+    OA_AGENT_TYPE_GENERAL, FLAWED_ASRC_BUILTIN, "general-purpose",
+    "General-purpose agent for researching complex questions, searching for code, and executing multi-step coding tasks.",
+    "You are an autonomous OpenAgents subagent. Complete the assigned task thoroughly and concisely using your tools, verify your work, and return a clear final report with exact file paths and findings.",
+    "", OA_GENERAL_DISALLOWED, "", "blue", false, false, false, false
+  ));
+
+  _ = oa_agents_upsert(reg, oa_agent_make_def(
+    OA_AGENT_TYPE_EXPLORE, FLAWED_ASRC_BUILTIN, "Explore",
+    "Fast read-only agent specialized for exploring codebases, finding files by glob, searching code with grep, and answering questions without modifying any files.",
+    "You are a fast, strictly READ-ONLY codebase exploration subagent. You MUST NOT create, edit, delete, or modify any files. Use Glob, Grep, Read, Coax* query tools, and strictly read-only shell commands (ls, git status, git log, wc) to inspect the workspace in parallel and return a concise, factual summary citing exact file paths and line numbers.",
+    "", OA_EXPLORE_DISALLOWED, "", "cyan", true, true, true, false
+  ));
+
+  _ = oa_agents_upsert(reg, oa_agent_make_def(
+    OA_AGENT_TYPE_PLAN, FLAWED_ASRC_BUILTIN, "Plan",
+    "Software architect read-only agent for designing step-by-step implementation plans, identifying critical files, and weighing architectural tradeoffs.",
+    "You are a strictly READ-ONLY software architect subagent. Do NOT edit or create files. Inspect the codebase, identify critical files and invariants, evaluate tradeoffs, and return a crisp, concrete implementation plan.",
+    "", OA_EXPLORE_DISALLOWED, "", "purple", true, true, true, false
+  ));
+
+  _ = oa_agents_upsert(reg, oa_agent_make_def(
+    OA_AGENT_TYPE_VERIFY, FLAWED_ASRC_BUILTIN, "verification",
+    "Adversarial verification agent for running builds/tests, checking edge cases, and auditing claims against real execution.",
+    "You are an adversarial verification subagent. Do not trust assumptions — run real builds, tests, and boundary checks, inspect exact outputs, and report pass/fail evidence clearly.",
+    "", OA_VERIFY_DISALLOWED, "", "amber", false, false, false, false
+  ));
+}
+
+oa_agents_find :: (reg: [] OaAgentRegistry, name: string) -> int #effects(reads, traps) {
+  if reg.count < 1 || name.count == 0 { return -1; }
+  for i: 0..<reg[0].count {
+    if !reg[0].defs[i].active { continue; }
+    if oa_ag_eq_ci(cast(string) reg[0].defs[i].name[0..<reg[0].defs[i].nname], name) { return i; }
+  }
+  return -1;
+}
+
+// Upsert agent definition enforcing 6-tier precedence via flawed_agent_source_overrides (#authority).
+oa_agents_upsert :: (reg: [] OaAgentRegistry, cand: OaAgentDef) -> bool #effects(reads, writes, traps) {
+  if reg.count < 1 || !cand.active || cand.nname <= 0 { return false; }
+  c := cand;
+  cname := cast(string) c.name[0..<c.nname];
+  idx := oa_agents_find(reg, cname);
+  if idx >= 0 {
+    if !flawed_agent_source_overrides(c.source, reg[0].defs[idx].source) { return false; }
+    reg[0].defs[idx] = c;
+    return true;
+  }
+  if reg[0].count >= OA_AGENT_MAX_DEFS { return false; }
+  reg[0].defs[reg[0].count] = c;
+  reg[0].count += 1;
+  return true;
+}
+
+// ---------------------------------------------------------------- custom Markdown + YAML frontmatter parser
+
+oa_parse_perm_mode_name :: (s: string) -> int #effects(reads, traps) {
+  t := oa_ag_unquote(s);
+  if oa_ag_eq_ci(t, "default") || oa_ag_eq_ci(t, "ask") { return FLAWED_PMODE_DEFAULT; }
+  if oa_ag_eq_ci(t, "acceptEdits") || oa_ag_eq_ci(t, "accept_edits") { return FLAWED_PMODE_ACCEPT_EDITS; }
+  if oa_ag_eq_ci(t, "plan") { return FLAWED_PMODE_PLAN; }
+  if oa_ag_eq_ci(t, "dontAsk") || oa_ag_eq_ci(t, "dont_ask") { return FLAWED_PMODE_DONT_ASK; }
+  if oa_ag_eq_ci(t, "bypassPermissions") || oa_ag_eq_ci(t, "bypass") || oa_ag_eq_ci(t, "allow_all") { return FLAWED_PMODE_BYPASS; }
+  if oa_ag_eq_ci(t, "auto") { return FLAWED_PMODE_AUTO; }
+  return 0;
+}
+
+oa_parse_bool_word :: (s: string) -> bool #effects(reads, traps) {
+  t := oa_ag_unquote(s);
+  return oa_ag_eq_ci(t, "true") || t == "1" || oa_ag_eq_ci(t, "yes");
+}
+
+// Parses .openagents/agents/*.md or .claude/agents/*.md frontmatter + body prompt.
+oa_agents_parse_markdown :: (src: string, fallback_name: string, source_tier: u8, out_def: [] OaAgentDef) -> bool #effects(reads, writes, traps) {
+  if out_def.count < 1 || src.count == 0 { return false; }
+  d := OaAgentDef.{
+    active = true,
+    kind = OA_AGENT_TYPE_CUSTOM,
+    source = source_tier,
+  };
+  d.nname = oa_ag_copy(d.name[..], fallback_name);
+  d.ndisallowed = oa_ag_copy(d.disallowed_tools[..], OA_GENERAL_DISALLOWED);
+  d.ncolor = oa_ag_copy(d.color[..], "green");
+
+  pos := 0;
+  // Skip UTF-8 BOM if present
+  if src.count >= 3 && src[0] == 0xEF && src[1] == 0xBB && src[2] == 0xBF { pos = 3; }
+  while pos < src.count && (src[pos] == ' ' || src[pos] == '\t' || src[pos] == '\r' || src[pos] == '\n') { pos += 1; }
+
+  // Optional YAML frontmatter delimited by --- ... ---
+  if pos + 3 <= src.count && cast(string) src[pos..<pos + 3] == "---" {
+    pos += 3;
+    while pos < src.count && src[pos] != '\n' { pos += 1; }
+    if pos < src.count && src[pos] == '\n' { pos += 1; }
+    while pos < src.count {
+      ls := pos;
+      while pos < src.count && src[pos] != '\n' { pos += 1; }
+      le := pos;
+      if le > ls && src[le - 1] == '\r' { le -= 1; }
+      if pos < src.count && src[pos] == '\n' { pos += 1; }
+      line := oa_ag_trim(cast(string) src[ls..<le]);
+      if line == "---" || line == "..." { break; }
+      if line.count == 0 || line[0] == '#' { continue; }
+      colon := -1;
+      for ci: 0..<line.count { if line[ci] == ':' { colon = ci; break; } }
+      if colon <= 0 { continue; }
+      key := oa_ag_trim(cast(string) line[0..<colon]);
+      val := oa_ag_unquote(cast(string) line[colon + 1..<line.count]);
+      if oa_ag_eq_ci(key, "name") && val.count > 0 {
+        d.nname = oa_ag_copy(d.name[..], val);
+      } else if oa_ag_eq_ci(key, "description") {
+        d.ndesc = oa_ag_copy(d.desc[..], val);
+      } else if oa_ag_eq_ci(key, "tools") || oa_ag_eq_ci(key, "allowedTools") {
+        d.nallowed = oa_ag_copy(d.allowed_tools[..], val);
+      } else if oa_ag_eq_ci(key, "disallowedTools") {
+        d.ndisallowed = oa_ag_copy(d.disallowed_tools[..], val);
+        if !oa_ag_csv_has(val, "Agent") {
+          if d.ndisallowed > 0 { d.ndisallowed = oa_ag_cat(d.disallowed_tools[..], d.ndisallowed, ","); }
+          d.ndisallowed = oa_ag_cat(d.disallowed_tools[..], d.ndisallowed, "Agent,Task");
+        }
+      } else if oa_ag_eq_ci(key, "model") {
+        d.nmodel = oa_ag_copy(d.model[..], val);
+      } else if oa_ag_eq_ci(key, "permissionMode") || oa_ag_eq_ci(key, "mode") {
+        d.permission_mode = oa_parse_perm_mode_name(val);
+      } else if oa_ag_eq_ci(key, "background") {
+        d.background = oa_parse_bool_word(val);
+      } else if oa_ag_eq_ci(key, "isolation") {
+        d.isolation_worktree = oa_ag_eq_ci(val, "worktree");
+      } else if oa_ag_eq_ci(key, "color") {
+        d.ncolor = oa_ag_copy(d.color[..], val);
+      } else if oa_ag_eq_ci(key, "memory") {
+        if oa_ag_eq_ci(val, "user") { d.memory_scope = OA_AGENT_MEM_USER; }
+        else if oa_ag_eq_ci(val, "project") { d.memory_scope = OA_AGENT_MEM_PROJECT; }
+        else if oa_ag_eq_ci(val, "local") { d.memory_scope = OA_AGENT_MEM_LOCAL; }
+      } else if oa_ag_eq_ci(key, "readOnly") || oa_ag_eq_ci(key, "read_only") {
+        d.read_only = oa_parse_bool_word(val);
+      } else if oa_ag_eq_ci(key, "omitClaudeMd") {
+        d.omit_claudemd = oa_parse_bool_word(val);
+      }
+    }
+  }
+
+  body := oa_ag_trim(cast(string) src[pos..<src.count]);
+  d.nprompt = oa_ag_copy(d.prompt[..], body);
+  if d.nname <= 0 { return false; }
+  if d.ndesc <= 0 {
+    d.ndesc = oa_ag_copy(d.desc[..], "Custom subagent definition.");
+  }
+  // Auto-detect read-only if Edit/Write are explicitly excluded or allowlist contains only read tools
+  if !d.read_only && d.nallowed > 0 {
+    al := cast(string) d.allowed_tools[0..<d.nallowed];
+    if !oa_ag_csv_has(al, "Edit") && !oa_ag_csv_has(al, "Write") && !oa_ag_csv_has(al, "CoaxReplace") && !oa_ag_csv_has(al, "Bash") {
+      d.read_only = true;
+    }
+  }
+  out_def[0] = d;
+  return true;
+}
+
+// ---------------------------------------------------------------- #authority tool filtering & read-only enforcement
+
+// Tools globally disallowed on non-fork subagents (matches cc/constants/tools.ts ALL_AGENT_DISALLOWED_TOOLS).
+oa_agent_tool_is_all_disallowed :: (tool_name: string) -> bool #effects(reads, traps) {
+  return tool_name == "Agent" || tool_name == "Task" ||
+         tool_name == "EnterWorktree" || tool_name == "ExitWorktree" ||
+         tool_name == "WalletPay";
+}
+
+// Tools permitted for async background subagents (matches cc/constants/tools.ts ASYNC_AGENT_ALLOWED_TOOLS).
+oa_agent_tool_in_async_allowlist :: (tool_name: string) -> bool #effects(reads, traps) {
+  return tool_name == "Read" || tool_name == "Edit" || tool_name == "Write" ||
+         tool_name == "Bash" || tool_name == "Glob" || tool_name == "Grep" ||
+         tool_name == "WebFetch" || tool_name == "TodoWrite" ||
+         tool_name == "CoaxDefines" || tool_name == "CoaxUses" || tool_name == "CoaxChecks" ||
+         tool_name == "CoaxExports" || tool_name == "CoaxShow" || tool_name == "CoaxCheck" ||
+         tool_name == "CoaxExplain" || tool_name == "CoaxVocab" || tool_name == "CoaxEffects" ||
+         tool_name == "CoaxDepends" || tool_name == "CoaxLoaders" || tool_name == "CoaxReplace" ||
+         tool_name == "OpenAgentsCli" || tool_name == "MetaverseRoute" || tool_name == "GameBuilder" ||
+         tool_name == "WalletStatus" || tool_name == "WalletQuote";
+}
+
+// Runtime gate wired directly to flawed_agent_tool_allowed (#authority in subagent.coax).
+oa_agent_tool_allowed_for_def :: (def: OaAgentDef, tool_name: string, is_async: bool, is_fork: bool) -> bool #effects(reads, traps) {
+  if tool_name.count == 0 { return false; }
+  // Read-only personas strictly forbid write/edit/worktree/payment tools regardless of mode.
+  if def.read_only {
+    if tool_name == "Edit" || tool_name == "Write" || tool_name == "CoaxReplace" ||
+       tool_name == "WalletPay" || tool_name == "WalletReceive" ||
+       tool_name == "EnterWorktree" || tool_name == "ExitWorktree" {
+      return false;
+    }
+  }
+  d := def;
+  all_dis := !is_fork && oa_agent_tool_is_all_disallowed(tool_name);
+  in_async := oa_agent_tool_in_async_allowlist(tool_name);
+  dis_csv := cast(string) d.disallowed_tools[0..<d.ndisallowed];
+  all_csv := cast(string) d.allowed_tools[0..<d.nallowed];
+  in_dis := oa_ag_csv_has(dis_csv, tool_name);
+  has_allow := d.nallowed > 0;
+  in_allow := ifx has_allow then oa_ag_csv_has(all_csv, tool_name) else false;
+  return flawed_agent_tool_allowed(
+    false,
+    false,
+    all_dis,
+    is_async,
+    in_async,
+    false,
+    in_dis,
+    has_allow,
+    in_allow
+  );
+}
+
+// Runtime wrapper over flawed_agent_should_trim_claudemd (#authority).
+oa_agent_should_trim_claudemd :: (def: OaAgentDef) -> bool #effects(traps) {
+  return flawed_agent_should_trim_claudemd(def.omit_claudemd, true);
+}
+
+// Runtime wrapper over flawed_agent_should_run_async (#authority).
+oa_agent_should_run_async :: (disable_bg: bool, req_bg: bool, def: OaAgentDef, is_coordinator: bool, is_fork: bool) -> bool #effects(traps) {
+  return flawed_agent_should_run_async(disable_bg, req_bg, def.background, is_coordinator, is_fork, false);
+}
+
+// Compaction-resistant 2-tier recursive fork guard wired to flawed_fork_is_recursive_blocked (#authority).
+oa_agent_fork_blocked :: (is_fork_child: bool, text_to_scan: string) -> bool #effects(reads, traps) {
+  has_marker := oa_ag_contains_ci(text_to_scan, OA_AGENT_FORK_BOILERPLATE);
+  return flawed_fork_is_recursive_blocked(is_fork_child, has_marker);
+}
+
+// Read-only shell command gate for Explore / Plan / read_only subagents:
+// Rejects redirections and mutating file/git/process commands fail-closed.
+oa_agent_bash_readonly_safe :: (cmd: string) -> bool #effects(reads, traps) {
+  t := oa_ag_trim(cmd);
+  if t.count == 0 { return false; }
+  // Reject file redirection (> or >>), backticks, or subshell command substitution with write risk
+  in_sq := false; in_dq := false;
+  for i: 0..<t.count {
+    c := t[i];
+    if c == '\'' && !in_dq { in_sq = !in_sq; continue; }
+    if c == '"' && !in_sq { in_dq = !in_dq; continue; }
+    if !in_sq && !in_dq {
+      if c == '>' {
+        // Allow harmless stderr redirection 2>/dev/null
+        is_devnull := i >= 1 && t[i - 1] == '2' && i + 10 <= t.count && cast(string) t[i + 1..<i + 10] == "/dev/null";
+        is_fd21 := i >= 1 && t[i - 1] == '2' && i + 3 <= t.count && cast(string) t[i + 1..<i + 3] == "&1";
+        if !is_devnull && !is_fd21 { return false; }
+      }
+    }
+  }
+  // Reject common mutating binaries & git write subcommands
+  bad := [30] string.[
+    "rm ", "rm\t", "mv ", "cp ", "mkdir ", "rmdir ", "touch ", "chmod ", "chown ",
+    "tee ", "truncate ", "dd ", "ln ", "unlink ", "install ", "patch ",
+    "sed -i", "perl -i", "perl -pi",
+    "git commit", "git push", "git reset", "git checkout", "git switch", "git clean",
+    "git apply", "git merge", "git rebase", "git cherry-pick", "git stash",
+  ];
+  for b: bad {
+    if oa_ag_contains_ci(t, b) { return false; }
+  }
+  // Reject python/node/ruby inline file writes
+  if oa_ag_contains_ci(t, "write_text(") || oa_ag_contains_ci(t, "write_bytes(") ||
+     oa_ag_contains_ci(t, "writeFileSync") || oa_ag_contains_ci(t, "open(") && (oa_ag_contains_ci(t, "'w'") || oa_ag_contains_ci(t, "\"w\"")) {
+    return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- agentId generation (matches flawed_parse_agent_id)
+
+OA_HEX :: "0123456789abcdef";
+
+// Generates a valid agent ID matching /^a(?:.+-)?[0-9a-f]{16}$/ (verified by flawed_parse_agent_id).
+oa_agent_make_id :: (prefix: string, seed_a: int, seed_b: int, out: [] u8) -> int #effects(reads, writes, traps) {
+  if out.count < 18 { return 0; }
+  n := 0;
+  out[n] = 'a'; n += 1;
+  if prefix.count > 0 {
+    pmax := ifx prefix.count < 12 then prefix.count else 12;
+    wrote := 0;
+    for i: 0..<pmax {
+      c := oa_ag_lower(prefix[i]);
+      if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+        if n + 18 >= out.count { break; }
+        out[n] = c; n += 1; wrote += 1;
+      }
+    }
+    if wrote > 0 && n + 17 < out.count { out[n] = '-'; n += 1; }
+  }
+  // Overflow-free modular mixing -> 16 lowercase hex digits
+  mod := 2147483647;
+  a := seed_a % mod; if a < 0 { a = -a; }
+  b := seed_b % mod; if b < 0 { b = -b; }
+  s1 := (a * 1103515 + b * 12345 + 98765) % mod;
+  s2 := (b * 1103515 + a * 54321 + 31337) % mod;
+  for i: 0..<8 {
+    if n >= out.count { break; }
+    out[n] = OA_HEX[s1 % 16]; n += 1;
+    s1 = ((s1 / 16) + i * 7919 + b * 17 + 3) % mod;
+  }
+  for i: 0..<8 {
+    if n >= out.count { break; }
+    out[n] = OA_HEX[s2 % 16]; n += 1;
+    s2 = ((s2 / 16) + i * 6997 + a * 23 + 5) % mod;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- prompt & CC-parity result formatting
+
+oa_agent_build_catalog_prompt :: (reg: [] OaAgentRegistry, out: [] u8) -> int #effects(reads, writes, traps) {
+  if reg.count < 1 || out.count == 0 { return 0; }
+  n := 0;
+  n = oa_ag_cat(out, n, "\n# Subagent Delegation (`Agent` tool)\n");
+  n = oa_ag_cat(out, n, "- Use the `Agent` tool to delegate research, exploration, planning, verification, or independent subtasks to subagents.\n");
+  n = oa_ag_cat(out, n, "- Launch multiple independent `Agent` calls in parallel in a SINGLE assistant response whenever tasks do not depend on each other.\n");
+  n = oa_ag_cat(out, n, "- Set `run_in_background: true` for long-running work you do not need immediately; you will be notified automatically via `<task-notification>` when it completes (do not poll or sleep).\n");
+  n = oa_ag_cat(out, n, "- Use `SendMessage` with `to: <agentId>` to resume or steer an existing subagent, `TaskStop` to stop a running background subagent, and `isolation: \"worktree\"` when parallel subagents must edit files without conflicts.\n");
+  n = oa_ag_cat(out, n, "- Available `subagent_type` values:\n");
+  for i: 0..<reg[0].count {
+    d := reg[0].defs[i];
+    if !d.active { continue; }
+    n = oa_ag_cat(out, n, "  - `");
+    n = oa_ag_cat(out, n, cast(string) d.name[0..<d.nname]);
+    n = oa_ag_cat(out, n, "`");
+    if d.read_only { n = oa_ag_cat(out, n, " [read-only]"); }
+    n = oa_ag_cat(out, n, ": ");
+    n = oa_ag_cat(out, n, cast(string) d.desc[0..<d.ndesc]);
+    n = oa_ag_cat(out, n, "\n");
+  }
+  return n;
+}
+
+// Formats synchronous Agent tool result matching CC AgentTool.tsx:1327-1374:
+// - One-shot built-ins (Explore, Plan) omit agentId and <usage> trailer unless a worktree was preserved.
+// - Continuable agents include agentId (for SendMessage resume), optional worktreePath/worktreeBranch, and <usage>.
+oa_agent_format_sync_result :: (
+  def: OaAgentDef,
+  agent_id: string,
+  reply: string,
+  total_tokens: int,
+  tool_uses: int,
+  duration_ms: int,
+  wt_path: string,
+  wt_branch: string,
+  out: [] u8
+) -> int #effects(reads, writes, traps) {
+  n := 0;
+  if reply.count > 0 {
+    n = oa_ag_cat(out, n, reply);
+  } else {
+    n = oa_ag_cat(out, n, "(Subagent completed with no text output.)");
+  }
+  has_wt := wt_path.count > 0;
+  if has_wt {
+    n = oa_ag_cat(out, n, "\n\nworktreePath: ");
+    n = oa_ag_cat(out, n, wt_path);
+    if wt_branch.count > 0 {
+      n = oa_ag_cat(out, n, "\nworktreeBranch: ");
+      n = oa_ag_cat(out, n, wt_branch);
+    }
+  }
+  if def.one_shot && !has_wt {
+    return n;
+  }
+  if agent_id.count > 0 {
+    n = oa_ag_cat(out, n, "\n\nagentId: ");
+    n = oa_ag_cat(out, n, agent_id);
+    n = oa_ag_cat(out, n, " (for resuming to continue this agent's work via SendMessage if needed)");
+  }
+  n = oa_ag_cat(out, n, "\n<usage>total_tokens: ");
+  n = oa_ag_put_int(out, n, total_tokens);
+  n = oa_ag_cat(out, n, "\ntool_uses: ");
+  n = oa_ag_put_int(out, n, tool_uses);
+  n = oa_ag_cat(out, n, "\nduration_ms: ");
+  n = oa_ag_put_int(out, n, duration_ms);
+  n = oa_ag_cat(out, n, "</usage>");
+  return n;
+}
+
+// Formats immediate async_launched return payload for run_in_background: true.
+oa_agent_format_async_result :: (agent_id: string, desc: string, output_file: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := 0;
+  n = oa_ag_cat(out, n, "Async agent launched successfully.\nagentId: ");
+  n = oa_ag_cat(out, n, agent_id);
+  if desc.count > 0 {
+    n = oa_ag_cat(out, n, "\ndescription: ");
+    n = oa_ag_cat(out, n, desc);
+  }
+  if output_file.count > 0 {
+    n = oa_ag_cat(out, n, "\noutput_file: ");
+    n = oa_ag_cat(out, n, output_file);
+  }
+  n = oa_ag_cat(out, n, "\nThe agent is working in the background. You will be automatically notified via <task-notification> when it finishes — do not sleep or poll for it. You can use SendMessage to steer it or TaskStop to cancel it.");
+  return n;
+}
+
+// Formats automatic <task-notification> XML delivered to parent session on background completion.
+oa_agent_format_task_notification :: (
+  agent_id: string,
+  status: string,
+  desc: string,
+  result_text: string,
+  output_file: string,
+  total_tokens: int,
+  tool_uses: int,
+  duration_ms: int,
+  out: [] u8
+) -> int #effects(reads, writes, traps) {
+  n := 0;
+  n = oa_ag_cat(out, n, "<task-notification>\n<task-id>");
+  n = oa_ag_cat(out, n, agent_id);
+  n = oa_ag_cat(out, n, "</task-id>\n<status>");
+  n = oa_ag_cat(out, n, status);
+  n = oa_ag_cat(out, n, "</status>\n<summary>Agent \"");
+  n = oa_ag_cat(out, n, desc);
+  n = oa_ag_cat(out, n, "\" ");
+  n = oa_ag_cat(out, n, status);
+  n = oa_ag_cat(out, n, "</summary>\n");
+  if output_file.count > 0 {
+    n = oa_ag_cat(out, n, "<output-file>");
+    n = oa_ag_cat(out, n, output_file);
+    n = oa_ag_cat(out, n, "</output-file>\n");
+  }
+  n = oa_ag_cat(out, n, "<result>");
+  n = oa_ag_cat(out, n, result_text);
+  n = oa_ag_cat(out, n, "</result>\n<usage>total_tokens: ");
+  n = oa_ag_put_int(out, n, total_tokens);
+  n = oa_ag_cat(out, n, "\ntool_uses: ");
+  n = oa_ag_put_int(out, n, tool_uses);
+  n = oa_ag_cat(out, n, "\nduration_ms: ");
+  n = oa_ag_put_int(out, n, duration_ms);
+  n = oa_ag_cat(out, n, "</usage>\n</task-notification>");
+  return n;
+}
+
+// Formats fork child directive including the compaction-resistant sentinel boilerplate.
+oa_agent_format_fork_directive :: (directive: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := 0;
+  n = oa_ag_cat(out, n, OA_AGENT_FORK_BOILERPLATE);
+  n = oa_ag_cat(out, n, " You are a forked subagent sharing the parent's cached context. Do NOT spawn further forked subagents. Complete only this scoped directive concisely:\n\n");
+  n = oa_ag_cat(out, n, directive);
+  return n;
+}
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#test "agents: built-in personas, 6-tier precedence override, and custom Markdown frontmatter loader" {
+  reg: [1] OaAgentRegistry;
+  oa_agents_init_builtins(reg[..]);
+  #assert reg[0].count == 4;
+  i_gen := oa_agents_find(reg[..], "general-purpose");
+  i_exp := oa_agents_find(reg[..], "explore");
+  i_pln := oa_agents_find(reg[..], "PLAN");
+  i_ver := oa_agents_find(reg[..], "verification");
+  #assert i_gen >= 0 && i_exp >= 0 && i_pln >= 0 && i_ver >= 0;
+  #assert !reg[0].defs[i_gen].read_only && reg[0].defs[i_exp].read_only && reg[0].defs[i_pln].read_only;
+  #assert reg[0].defs[i_exp].omit_claudemd && reg[0].defs[i_exp].one_shot;
+  #assert oa_agent_should_trim_claudemd(reg[0].defs[i_exp]) && !oa_agent_should_trim_claudemd(reg[0].defs[i_gen]);
+
+  // Custom Markdown agent with frontmatter
+  md := "---\nname: auditor\ndescription: Security auditor\ntools: Read, Glob, Grep\nmodel: gemini-4-carbon\npermissionMode: plan\nbackground: true\nisolation: worktree\nmemory: project\ncolor: red\n---\nAudit files strictly without modifying code.\n";
+  cdef: [1] OaAgentDef;
+  #assert oa_agents_parse_markdown(md, "fallback", FLAWED_ASRC_PROJECT, cdef[..]);
+  #assert cast(string) cdef[0].name[0..<cdef[0].nname] == "auditor";
+  #assert cast(string) cdef[0].desc[0..<cdef[0].ndesc] == "Security auditor";
+  #assert cast(string) cdef[0].model[0..<cdef[0].nmodel] == "gemini-4-carbon";
+  #assert cdef[0].permission_mode == FLAWED_PMODE_PLAN && cdef[0].background && cdef[0].isolation_worktree;
+  #assert cdef[0].memory_scope == OA_AGENT_MEM_PROJECT && cdef[0].read_only;
+  #assert oa_agents_upsert(reg[..], cdef[0]);
+  #assert reg[0].count == 5;
+
+  // 6-tier precedence: user (3) CANNOT override project (4), policy (6) CAN override project (4)
+  low := cdef[0]; low.source = FLAWED_ASRC_USER;
+  low.ndesc = oa_ag_copy(low.desc[..], "lower tier");
+  #assert !oa_agents_upsert(reg[..], low);
+  hi := cdef[0]; hi.source = FLAWED_ASRC_POLICY;
+  hi.ndesc = oa_ag_copy(hi.desc[..], "policy override");
+  #assert oa_agents_upsert(reg[..], hi);
+  ia := oa_agents_find(reg[..], "auditor");
+  #assert ia >= 0 && cast(string) reg[0].defs[ia].desc[0..<reg[0].defs[ia].ndesc] == "policy override";
+}
+
+#test "agents: #authority tool filtering, read-only Bash guard, fork guard, agentId & CC result formatting" {
+  reg: [1] OaAgentRegistry;
+  oa_agents_init_builtins(reg[..]);
+  ex := reg[0].defs[oa_agents_find(reg[..], "Explore")];
+  gen := reg[0].defs[oa_agents_find(reg[..], "general-purpose")];
+
+  // Explore allows Read/Glob/Grep/Bash/CoaxDefines, denies Edit/Write/Agent/CoaxReplace/WalletPay
+  #assert oa_agent_tool_allowed_for_def(ex, "Read", false, false);
+  #assert oa_agent_tool_allowed_for_def(ex, "Glob", true, false);
+  #assert oa_agent_tool_allowed_for_def(ex, "Grep", false, false);
+  #assert oa_agent_tool_allowed_for_def(ex, "CoaxDefines", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ex, "Edit", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ex, "Write", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ex, "Agent", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ex, "CoaxReplace", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ex, "WalletPay", false, false);
+
+  // general-purpose allows Edit/Write/Bash, denies Agent/EnterWorktree/WalletPay
+  #assert oa_agent_tool_allowed_for_def(gen, "Edit", false, false);
+  #assert oa_agent_tool_allowed_for_def(gen, "Write", true, false);
+  #assert !oa_agent_tool_allowed_for_def(gen, "Agent", false, false);
+  #assert !oa_agent_tool_allowed_for_def(gen, "EnterWorktree", false, false);
+  #assert !oa_agent_tool_allowed_for_def(gen, "WalletPay", false, false);
+
+  // Read-only Bash guard
+  #assert oa_agent_bash_readonly_safe("ls -la && git status && wc -l README.md");
+  #assert oa_agent_bash_readonly_safe("git log -n 5 2>/dev/null");
+  #assert !oa_agent_bash_readonly_safe("echo hi > out.txt");
+  #assert !oa_agent_bash_readonly_safe("rm -rf tmp/");
+  #assert !oa_agent_bash_readonly_safe("sed -i '' 's/a/b/' foo.txt");
+  #assert !oa_agent_bash_readonly_safe("git commit -m test");
+
+  // Compaction-resistant recursive fork guard
+  fb: [512] u8;
+  fn := oa_agent_format_fork_directive("inspect wire.coax", fb[..]);
+  #assert oa_agent_fork_blocked(false, cast(string) fb[0..<fn]);
+  #assert oa_agent_fork_blocked(true, "normal prompt");
+  #assert !oa_agent_fork_blocked(false, "normal prompt");
+
+  // Valid agent ID matching flawed_parse_agent_id
+  idb: [64] u8;
+  idn := oa_agent_make_id("Explore", 1700000123, 7, idb[..]);
+  id_s := cast(string) idb[0..<idn];
+  #assert flawed_parse_agent_id(id_s).len > 0;
+
+  // One-shot Explore omits agentId & <usage> when no worktree; preserves them when worktree present
+  out: [1024] u8;
+  n1 := oa_agent_format_sync_result(ex, id_s, "Found 5 files.", 1200, 3, 450, "", "", out[..]);
+  #assert cast(string) out[0..<n1] == "Found 5 files.";
+  n2 := oa_agent_format_sync_result(gen, id_s, "Done.", 2400, 4, 900, "/wt/a", "worktree-a", out[..]);
+  s2 := cast(string) out[0..<n2];
+  #assert oa_ag_contains_ci(s2, "worktreePath: /wt/a") && oa_ag_contains_ci(s2, "agentId: ") && oa_ag_contains_ci(s2, "<usage>total_tokens: 2400");
+
+  // Async launch & <task-notification>
+  #assert oa_agent_should_run_async(false, true, ex, false, false);
+  #assert !oa_agent_should_run_async(true, true, ex, true, true);
+  #assert !oa_agent_should_run_async(false, false, ex, false, false);
+  cbuf: [2048] u8;
+  cn := oa_agent_build_catalog_prompt(reg[..], cbuf[..]);
+  #assert cn > 100 && oa_ag_contains_ci(cast(string) cbuf[0..<cn], "`Explore` [read-only]") && oa_ag_contains_ci(cast(string) cbuf[0..<cn], "`general-purpose`");
+  n3 := oa_agent_format_async_result(id_s, "scan repo", "/tmp/a.jsonl", out[..]);
+  #assert oa_ag_contains_ci(cast(string) out[0..<n3], "Async agent launched") && oa_ag_contains_ci(cast(string) out[0..<n3], "<task-notification>");
+  n4 := oa_agent_format_task_notification(id_s, "completed", "scan repo", "ok", "/tmp/a.jsonl", 500, 2, 300, out[..]);
+  #assert oa_ag_contains_ci(cast(string) out[0..<n4], "<task-notification>") && oa_ag_contains_ci(cast(string) out[0..<n4], "<status>completed</status>");
+}

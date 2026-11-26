@@ -260,10 +260,18 @@ flawed_wire_tool_permission :: (tool_name: string, target: string, pmode: int, b
   // Default Allow All (FLAWED_PMODE_BYPASS) and explicit bypass approve non-member tools with zero permission checks.
   if bypass_danger || pmode == FLAWED_PMODE_BYPASS { return FLAWED_PBEH_ALLOW; }
   if tool_name == "Read" || tool_name == "Glob" || tool_name == "Grep" || tool_name == "TodoWrite" ||
+     tool_name == "Agent" || tool_name == "Task" || tool_name == "SendMessage" ||
+     tool_name == "TaskStop" || tool_name == "TaskOutput" ||
      tool_name == "CoaxDefines" || tool_name == "CoaxUses" || tool_name == "CoaxChecks" || tool_name == "CoaxExports" ||
      tool_name == "CoaxShow" || tool_name == "CoaxCheck" || tool_name == "CoaxExplain" || tool_name == "CoaxVocab" ||
      tool_name == "CoaxEffects" || tool_name == "CoaxDepends" || tool_name == "CoaxLoaders" {
     return FLAWED_PBEH_ALLOW;
+  }
+  if tool_name == "EnterWorktree" || tool_name == "ExitWorktree" {
+    if pmode == FLAWED_PMODE_AUTO || pmode == FLAWED_PMODE_ACCEPT_EDITS || pmode == FLAWED_PMODE_DONT_ASK || session_allow {
+      return FLAWED_PBEH_ALLOW;
+    }
+    return FLAWED_PBEH_ASK;
   }
   if tool_name == "WebFetch" {
     if pmode == FLAWED_PMODE_AUTO || pmode == FLAWED_PMODE_ACCEPT_EDITS || pmode == FLAWED_PMODE_DONT_ASK || session_allow {
@@ -441,6 +449,15 @@ flawed_wire_parse_openai_sse :: (data_json: string, out_ev: [] FlawedWireSseEven
   return true;
 }
 
+flawed_wire_tool_is_concurrency_safe :: (name: string) -> bool #effects(reads, traps) {
+  return name == "Read" || name == "Glob" || name == "Grep" || name == "WebFetch" ||
+         name == "Agent" || name == "Task" || name == "TaskOutput" ||
+         name == "CoaxDefines" || name == "CoaxUses" || name == "CoaxChecks" || name == "CoaxExports" ||
+         name == "CoaxShow" || name == "CoaxCheck" || name == "CoaxExplain" || name == "CoaxVocab" ||
+         name == "CoaxEffects" || name == "CoaxDepends" || name == "CoaxLoaders" ||
+         name == "WalletStatus" || name == "MetaverseRoute";
+}
+
 flawed_wire_write_tool_one :: (o: [] Jo, gemini_fmt: bool, name: string, desc: string, schema_raw: string) #effects(all) {
   if gemini_fmt {
     jo_obj(o);
@@ -547,6 +564,23 @@ flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: strin
     "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"flags_mask\":{\"type\":\"integer\"}},\"required\":[\"path\"]}",
     "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"status\",\"list\",\"inspect\",\"validate\",\"route\",\"check-lease\",\"build\",\"playtest\",\"screenshot\",\"edit\",\"open\"]},\"target\":{\"type\":\"string\"},\"args\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"required\":[\"action\"]}",
   ];
+  ag_names := [OA_MEMBER_NAGENTS] string.["Agent", "SendMessage", "TaskStop", "TaskOutput", "EnterWorktree", "ExitWorktree"];
+  ag_descs := [OA_MEMBER_NAGENTS] string.[
+    "Launch a specialized subagent to handle a scoped task autonomously. Launch multiple independent Agent calls in parallel in a single response whenever tasks can run concurrently. Built-in subagent_type personas: Explore (fast, strictly read-only codebase search/inspection), Plan (read-only software architect), general-purpose (full read/edit/bash execution), verification (adversarial build/test verifier), or any custom agent defined in .openagents/agents/*.md or .claude/agents/*.md. Set run_in_background: true to launch asynchronously (automatic <task-notification> delivered on completion — never poll). Set isolation: \"worktree\" to isolate parallel file edits in a temporary git worktree.",
+    "Send a follow-up message to an existing subagent by agentId or name. If the subagent is still running, queues the message as a steer; if finished, resumes it from its saved sidechain transcript with full retained context.",
+    "Stop a running background subagent by task_id / agentId without stopping the parent turn or sibling subagents.",
+    "Inspect the current status and recent output of a running or completed background subagent by task_id / agentId.",
+    "Create and switch into an isolated git worktree for the current session so edits do not disturb the main working tree.",
+    "Exit the active session git worktree, either keeping it (action: \"keep\") or removing it fail-closed (action: \"remove\", requires clean state unless discard_changes: true).",
+  ];
+  ag_schemas := [OA_MEMBER_NAGENTS] string.[
+    "{\"type\":\"object\",\"properties\":{\"description\":{\"type\":\"string\",\"description\":\"Short 3-5 word summary of the subagent task\"},\"prompt\":{\"type\":\"string\",\"description\":\"Self-contained instructions and context for the subagent\"},\"subagent_type\":{\"type\":\"string\",\"description\":\"Persona to run: Explore, Plan, general-purpose, verification, or a custom agent name\"},\"model\":{\"type\":\"string\",\"description\":\"Optional model override\"},\"run_in_background\":{\"type\":\"boolean\",\"description\":\"Run asynchronously without blocking the parent turn\"},\"name\":{\"type\":\"string\",\"description\":\"Optional friendly name for SendMessage addressing\"},\"isolation\":{\"type\":\"string\",\"enum\":[\"worktree\"],\"description\":\"Run in an isolated temporary git worktree\"},\"mode\":{\"type\":\"string\",\"enum\":[\"default\",\"acceptEdits\",\"plan\",\"dontAsk\",\"bypassPermissions\",\"auto\"],\"description\":\"Optional permission mode override\"}},\"required\":[\"description\",\"prompt\"]}",
+    "{\"type\":\"object\",\"properties\":{\"to\":{\"type\":\"string\",\"description\":\"Target subagent agentId or name\"},\"message\":{\"type\":\"string\",\"description\":\"Follow-up instructions or question for the subagent\"}},\"required\":[\"to\",\"message\"]}",
+    "{\"type\":\"object\",\"properties\":{\"task_id\":{\"type\":\"string\",\"description\":\"Background subagent agentId or task id to stop\"}},\"required\":[\"task_id\"]}",
+    "{\"type\":\"object\",\"properties\":{\"task_id\":{\"type\":\"string\",\"description\":\"Subagent agentId or task id to inspect\"},\"block\":{\"type\":\"boolean\"},\"timeout\":{\"type\":\"integer\"}},\"required\":[\"task_id\"]}",
+    "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"description\":\"Optional worktree slug name\"}}}",
+    "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"keep\",\"remove\"]},\"discard_changes\":{\"type\":\"boolean\"}},\"required\":[\"action\"]}",
+  ];
   if gemini_fmt {
     jo_arr(o);
     jo_obj(o);
@@ -586,6 +620,13 @@ flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: strin
     for i: 0..<OA_MEMBER_NMETAVERSE {
       if !flawed_wire_tool_allowed(mv_names[i], allowed_csv, disallowed_csv) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, mv_names[i], mv_descs[i], mv_schemas[i]);
+      emitted += 1;
+    }
+  }
+  if (packs_mask & OA_PACK_AGENTS) != 0 {
+    for i: 0..<OA_MEMBER_NAGENTS {
+      if !flawed_wire_tool_allowed(ag_names[i], allowed_csv, disallowed_csv) { continue; }
+      flawed_wire_write_tool_one(o, gemini_fmt, ag_names[i], ag_descs[i], ag_schemas[i]);
       emitted += 1;
     }
   }
@@ -936,4 +977,30 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert flawed_wire_tool_permission("GameBuilder", "status", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("GameBuilder", "build lvl1", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ASK;
   #assert flawed_wire_tool_permission("GameBuilder", "badact", FLAWED_PMODE_BYPASS, true, true) == FLAWED_PBEH_DENY;
+
+  // Subagent delegation pack (OA_PACK_AGENTS): Agent, SendMessage, TaskStop, TaskOutput, EnterWorktree, ExitWorktree (#14096)
+  jo_start(o[..], all_buf[..]);
+  n7 := flawed_wire_write_tools_packs(o[..], true, "", "", OA_PACK_AGENTS);
+  #assert !o[0].bad && n7 == 14 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
+  decls7 := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
+  #assert jv_len(d[0], decls7) == 14;
+  t_ag := jv_at(d[0], decls7, 8);
+  #assert jv_str(d[0], jv_get(d[0], t_ag, "name"), sb[..]) == 5 && cast(string) sb[0..<5] == "Agent";
+  t_ex := jv_at(d[0], decls7, 13);
+  #assert jv_str(d[0], jv_get(d[0], t_ex, "name"), sb[..]) == 12 && cast(string) sb[0..<12] == "ExitWorktree";
+
+  // OpenAI format + disallow filtering strips Agent on child subagents
+  jo_start(o[..], all_buf[..]);
+  n8 := flawed_wire_write_tools_packs(o[..], false, "", "Agent,EnterWorktree,ExitWorktree", OA_PACK_AGENTS);
+  #assert !o[0].bad && n8 == 11 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]) && jv_len(d[0], 0) == 11;
+
+  // Concurrency safety & permissions for subagent + worktree tools
+  #assert flawed_wire_tool_is_concurrency_safe("Agent") && flawed_wire_tool_is_concurrency_safe("Read");
+  #assert flawed_wire_tool_is_concurrency_safe("TaskOutput") && !flawed_wire_tool_is_concurrency_safe("Edit");
+  #assert !flawed_wire_tool_is_concurrency_safe("Bash") && !flawed_wire_tool_is_concurrency_safe("EnterWorktree");
+  #assert flawed_wire_tool_permission("Agent", "Explore", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("SendMessage", "a1", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("TaskStop", "a1", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("EnterWorktree", "feat", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ASK;
+  #assert flawed_wire_tool_permission("ExitWorktree", "keep", FLAWED_PMODE_AUTO, false, false) == FLAWED_PBEH_ALLOW;
 }

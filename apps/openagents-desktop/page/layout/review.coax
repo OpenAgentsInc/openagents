@@ -36,7 +36,13 @@ cp_pane_head :: (s: [] CoderPage, f: [] UiFrame, px: f32, py: f32, pw: f32, h: f
   changes := cp_review_shown(s);
   // on the title bar's line beside the conversation; taking the whole window, under the bar, clear of its controls
   top := ifx py > 0 then py else ifx px > 0 then 0.0f32 else cp_bar(s);
-  agent := ifx s[0].pane_open then CP_LEVEL_NAME[s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].level] else "";
+  agent := "";
+  if s[0].pane_open {
+    pt := s[0].pane_turn; pa := s[0].pane_agent;
+    agent = ifx s[0].turns[pt].agents[pa].subagent_type_n > 0
+            then sheet_pool(f[0].sheet, cast(string) s[0].turns[pt].agents[pa].subagent_type[0..<s[0].turns[pt].agents[pa].subagent_type_n])
+            else CP_LEVEL_NAME[s[0].turns[pt].agents[pa].level];
+  }
   if s[0].review && s[0].pane_open {
     tabs := [2] string.[agent, "Changes"]; icons := [2] int.[ICON_BOT, ICON_PEN];
     return app_pane_tabs(f, px, top, pw, h, icons[..], tabs[..], ifx changes then 1 else 0, "coder.pane.tab.", CP_PANE_TAB, "coder.pane.took", ifx changes then "" else meta,

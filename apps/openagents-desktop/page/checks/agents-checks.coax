@@ -665,3 +665,43 @@
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"All external reviews merged.\"}") == MWW_ENDED;
   #assert coder_page_model_flawed(s) && !coder_page_running(s);
 }
+
+#test "sub-agents (#14096): 5 parallel Explore subagents with wait_all, read_only metadata, and background async_launched" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_set_text(s, "delegate to 5 subagents very simple readonly tasks and summarize at the end") && coder_page_submit(s);
+
+  // 5 parallel Explore subagents with wait_all: true + 1 background subagent in the same batch!
+  del := "{\"kind\":\"delegate\",\"wait_all\":true,\"ticket\":1,\"tasks\":[{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"description\":\"Scan core\",\"agent_id\":\"aexp-0000000000000001\",\"read_only\":true,\"omit_claudemd\":true,\"disallowed_tools\":\"Edit,Write,Agent\",\"task\":\"Inspect core\"},{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"description\":\"Scan tui\",\"agent_id\":\"aexp-0000000000000002\",\"read_only\":true,\"omit_claudemd\":true,\"disallowed_tools\":\"Edit,Write,Agent\",\"task\":\"Inspect tui\"},{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"description\":\"Scan page\",\"agent_id\":\"aexp-0000000000000003\",\"read_only\":true,\"omit_claudemd\":true,\"disallowed_tools\":\"Edit,Write,Agent\",\"task\":\"Inspect page\"},{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"description\":\"Scan evals\",\"agent_id\":\"aexp-0000000000000004\",\"read_only\":true,\"omit_claudemd\":true,\"disallowed_tools\":\"Edit,Write,Agent\",\"task\":\"Inspect evals\"},{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"description\":\"Scan docs\",\"agent_id\":\"aexp-0000000000000005\",\"read_only\":true,\"omit_claudemd\":true,\"disallowed_tools\":\"Edit,Write,Agent\",\"task\":\"Inspect docs\"},{\"level\":\"neon\",\"subagent_type\":\"general-purpose\",\"description\":\"Bg audit\",\"agent_id\":\"agen-0000000000000006\",\"run_in_background\":true,\"task\":\"Run background check\"}]}";
+  #assert coder_page_line(s, del) == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 6 && s[0].turns[0].round_wait_all && !s[0].results_due;
+
+  // Verify all 6 subagent workers are scheduled immediately and carry CC metadata on task lines
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  for j: 0..<6 {
+    #assert coder_page_agent_next(s) == j;
+    ar[0].at = 0;
+    n := coder_page_agent_task(s, j, "s-cc", "/repo", out[..]);
+    #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].is_subagent;
+    if j < 5 {
+      #assert back[0].subagent_type == "Explore" && back[0].read_only && back[0].omit_claudemd && !back[0].edits;
+    } else {
+      #assert back[0].subagent_type == "general-purpose" && !back[0].read_only && back[0].edits;
+    }
+  }
+  #assert coder_page_agent_next(s) == -1;
+
+  // With wait_all: true, finishing 1..4 does NOT wake parent early!
+  for j: 0..<4 {
+    #assert coder_page_agent_line(s, j, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+    #assert !s[0].results_due;
+  }
+  // Finishing the 5th sync Explore agent wakes parent even though the 6th background agent is still running!
+  #assert coder_page_agent_line(s, 4, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"docs ok\"}") == MWW_ENDED;
+  #assert s[0].results_due && coder_page_agent_running(s, 5);
+  rn := coder_page_answer_line(s, out[..]);
+  res := cast(string) out[0..<rn];
+  #assert rn > 0 && cp_find(res, "\"agent_id\":\"aexp-0000000000000005\"") > 0;
+  #assert cp_find(res, "\"status\":\"async_launched\",\"agent_id\":\"agen-0000000000000006\"") > 0;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Summary of all 5 read-only subagents.\"}") == MWW_ENDED;
+}

@@ -25,7 +25,7 @@ CP_AGENT_TASK :: 1500;      // bytes of a sub-agent's task kept (a longer task i
 CP_AGENT_POOL :: 33554432;  // bytes of sub-agent replies a chat keeps in all: each reply whole, shown and handed back to Microcoder (never cut on its own)
 CP_AGENT_CALLS :: 6000;     // commands, tool calls and thoughts a chat keeps in all (#13670, #13671). Past it the oldest in the chat goes, and its message or transcript says how many went
 CP_QUIET :: 100;            // tool calls a sub-agent makes in a row with no file changed before it pauses and Microcoder decides (#13676)
-CP_ROUND :: 6;              // tasks Microcoder hands over in one step
+CP_ROUND :: 12;             // tasks handed over in one step (lifted from 6 to 12 for parallel Agent tool batching, #14096)
 CP_PANE :: 520;             // the sub-agent transcript's width, on the window's right (Zeron's panel), in points as every measure here
 CP_PANE_MAIN :: 456;        // the conversation's least width beside it: under that the chats' sidebar goes, then the transcript takes the window
 CP_SCRATCH :: 1048448;      // the sub-agents' results as one line for the worker: its line (MW_LINE, 1,048,576 bytes) less the results line's frame
@@ -271,6 +271,17 @@ CpAgent :: struct {
   said_open: bool;            // its newest row is what it says in the model call still streaming: the next piece joins it
   thought_open: bool;         // its newest row is a thought still streaming: the next piece joins it
   fold: int;                  // its pane's activity group as the person left it: APP_ACT_UNCHOSEN, _OPENED or _FOLDED (#13744)
+  subagent_type: [32] u8; subagent_type_n: int;       // CC-parity persona ("Explore", "Plan", "general-purpose", custom; #14096)
+  desc: [160] u8; desc_n: int;                        // short 3-5 word description from Agent tool (#14096)
+  agent_id: [48] u8; agent_id_n: int;                 // stable agentId (a<prefix>-<16hex>; #14096)
+  model_ovr: [64] u8; model_ovr_n: int;               // optional model override from Agent tool (#14096)
+  wt_path: [256] u8; wt_path_n: int;                  // isolated worktree cwd when isolation=="worktree" (#14096)
+  wt_branch: [96] u8; wt_branch_n: int;               // isolated worktree branch name (#14096)
+  allowed_tools: [192] u8; allowed_tools_n: int;      // CSV tool allowlist (#14096)
+  disallowed_tools: [192] u8; disallowed_tools_n: int;// CSV tool denylist (#14096)
+  task_long_at: int; task_long_n: int;                // full prompt in CoderPage.long_buf when > CP_AGENT_TASK (#14096)
+  is_background: bool; omit_claudemd: bool; read_only: bool; is_cc_agent: bool;
+  tokens_in: int; tokens_out: int;
 }
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
 CpTurn :: struct {
@@ -280,7 +291,7 @@ CpTurn :: struct {
   agents: [] CpAgent; nagents: int;   // its CP_AGENTS places in the page's store (cp_store_bind)
   began: f32;                 // the clock when it was sent: the working line counts from it
   fold: int;                  // its activity group as the person left it: APP_ACT_UNCHOSEN, _OPENED or _FOLDED
-  round_who: [CP_ROUND] int; round_asked: int; ticket: int; waiting: bool;   // the sub-agents Microcoder waits for: each task's sub-agent as its number (0: not run, -1: no such paused one), how many it asked for, its ticket
+  round_who: [CP_ROUND] int; round_asked: int; ticket: int; waiting: bool; round_wait_all: bool;   // the sub-agents waited for (#14096: round_wait_all waits for all sync agents)
   ask: [] u8; ask_n: int;     // EB_TEXT bytes in the page's store
   reply: [] u8; reply_n: int; cut: bool;   // CP_REPLY bytes in the page's store
   blocks: int; rev: int;      // its reply's Markdown blocks; which reply that is (cp_doc parses it when drawn)

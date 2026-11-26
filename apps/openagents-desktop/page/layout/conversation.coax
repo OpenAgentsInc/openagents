@@ -151,11 +151,15 @@ cp_call_took :: (s: [] CoderPage, q: int) -> f32 {
 // task's first line; a press opens its transcript beside the conversation.
 cp_act_agent :: (s: [] CoderPage, f: [] UiFrame, i: int, j: int) -> AppActRow {
   g := s[0].turns[i].agents[j];
-  task := sheet_single_line(f[0].sheet, cast(string) g.task[0..<g.task_n]);
-  tb: [CP_AGENT_TASK + 32] u8; n := el_put(tb[..], 0, CP_LEVEL_NAME[g.level]);
-  if task.count > 0 { n = el_put(tb[..], n, " · "); n = el_put(tb[..], n, task); }
+  lbl := ifx g.desc_n > 0 then sheet_single_line(f[0].sheet, cast(string) g.desc[0..<g.desc_n]) else sheet_single_line(f[0].sheet, cast(string) g.task[0..<g.task_n]);
+  badge := ifx g.subagent_type_n > 0 then cast(string) g.subagent_type[0..<g.subagent_type_n] else CP_LEVEL_NAME[g.level];
+  tb: [CP_AGENT_TASK + 160] u8; n := el_put(tb[..], 0, badge);
+  if g.wt_branch_n > 0 {
+    n = el_put(tb[..], n, " ["); n = el_put(tb[..], n, cast(string) g.wt_branch[0..<g.wt_branch_n]); n = el_put(tb[..], n, "]");
+  }
+  if lbl.count > 0 { n = el_put(tb[..], n, " · "); n = el_put(tb[..], n, lbl); }
   waiting_permit := g.state == CP_RUNNING && cp_permit_agent_waiting(s, j);
-  verb := ifx waiting_permit then "Waiting for approval" else "Ran a subagent";
+  verb := ifx waiting_permit then "Waiting for approval" else ifx g.is_background && g.state == CP_RUNNING then "Background subagent" else "Ran a subagent";
   return AppActRow.{kind = APP_ACT_AGENT, verb = verb, target = sheet_pool(f[0].sheet, cast(string) tb[0..<n]),
                     failed = g.state == CP_FAILED, running = g.state == CP_RUNNING && !g.paused, opens = true};
 }

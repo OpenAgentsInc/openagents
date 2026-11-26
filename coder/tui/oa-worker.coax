@@ -4796,6 +4796,27 @@ FwRun :: struct {
   read_dedup_cur: [1] int;
   git_snap: [2560] u8; ngit_snap: int;
   git_snap_cwd: [FS_PATH_MAX] u8; ngit_snap_cwd: int;
+  // Subagent delegation & worktree runtime (#14096)
+  home: [FS_PATH_MAX] u8; nhome: int;
+  host_agents: bool;
+  is_subagent: bool;
+  subagent_read_only: bool;
+  subagent_omit_claudemd: bool;
+  subagent_type: [32] u8; nsubagent_type: int;
+  subagent_allowed: [256] u8; nsubagent_allowed: int;
+  subagent_disallowed: [256] u8; nsubagent_disallowed: int;
+  agent_reg: [1] OaAgentRegistry;
+  waiting_delegate: bool;
+  delegate_ticket: int;
+  delegate_slots: [FWW_MAX_DELEGATE_BATCH] FwDelegateSlot;
+  ndelegate_slots: int;
+  subagents: [FWW_MAX_SUBAGENT_RECS] FwSubagentRec;
+  nsubagents: int;
+  agent_seq: int;
+  orig_cwd: [FS_PATH_MAX] u8; norig_cwd: int;
+  session_wt_active: bool;
+  session_wt_branch: [96] u8; nsession_wt_branch: int;
+  session_wt_orig_head: [64] u8; nsession_wt_orig_head: int;
 }
 
 fww_tool_sig_hash :: (name: string, args: string) -> int {
@@ -5071,6 +5092,20 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   no_tools := fww_turn_no_tools(r[0].force_wrapup_once);
   include_coax_intel := !no_tools && !(is_local && ctx_win <= 32768) && fww_is_coax_repo(cwd_now);
   packs_mask := ifx no_tools then 0 else fww_active_packs(cwd_now, include_coax_intel);
+  if !no_tools && !r[0].is_subagent { packs_mask |= OA_PACK_AGENTS; }
+  eff_cfg: [1] FwConfig;
+  eff_cfg[0] = cfg[0];
+  if r[0].is_subagent {
+    if r[0].nsubagent_allowed > 0 {
+      eff_cfg[0].nallowed = fww_keep(eff_cfg[0].allowed_tools[..], cast(string) r[0].subagent_allowed[0..<r[0].nsubagent_allowed]);
+    }
+    if r[0].nsubagent_disallowed > 0 {
+      if eff_cfg[0].ndisallowed > 0 {
+        eff_cfg[0].ndisallowed = fww_cat(eff_cfg[0].disallowed_tools[..], eff_cfg[0].ndisallowed, ",");
+      }
+      eff_cfg[0].ndisallowed = fww_cat(eff_cfg[0].disallowed_tools[..], eff_cfg[0].ndisallowed, cast(string) r[0].subagent_disallowed[0..<r[0].nsubagent_disallowed]);
+    }
+  }
   no_think := r[0].force_no_think_once;
   r[0].force_no_think_once = false;
 
@@ -5080,23 +5115,23 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
 
   bn := ifx is_gem
-        then fww_build_gemini_body_packs(cfg, h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
-        else fww_build_openai_body_packs(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
+        then fww_build_gemini_body_packs(eff_cfg[..], h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
+        else fww_build_openai_body_packs(eff_cfg[..], h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
   if bn <= 0 {
     _ = fww_emergency_compact(h, 2, ctx_win, b[0].compact_buf[..]);
     fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
-         then fww_build_gemini_body_packs(cfg, h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
-         else fww_build_openai_body_packs(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
+         then fww_build_gemini_body_packs(eff_cfg[..], h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
+         else fww_build_openai_body_packs(eff_cfg[..], h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
   }
   if bn <= 0 {
     _ = fww_emergency_compact(h, 3, ctx_win, b[0].compact_buf[..]);
     fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
-         then fww_build_gemini_body_packs(cfg, h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
-         else fww_build_openai_body_packs(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
+         then fww_build_gemini_body_packs(eff_cfg[..], h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
+         else fww_build_openai_body_packs(eff_cfg[..], h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
   }
   if bn <= 0 { return "Request body exceeded buffer capacity (try /compact)."; }
 
@@ -5263,6 +5298,19 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   cwd := cast(string) r[0].cwd[0..<r[0].ncwd];
   is_err := [1] bool.[false];
 
+  if r[0].subagent_read_only {
+    if name == "Edit" || name == "Write" || name == "CoaxReplace" || name == "WalletPay" || name == "EnterWorktree" || name == "ExitWorktree" {
+      r[0].acc[0].tools[idx].done = true;
+      r[0].acc[0].tools[idx].is_error = true;
+      r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Tool denied: this subagent is strictly read-only.");
+      return false;
+    }
+  }
+
+  if name == "SendMessage" {
+    return fww_tool_send_message(r, idx, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
+  }
+
   if name == "Bash" {
     nodes: [128] JvNode; d: [1] Jv;
     cb: [FWW_CMD_MAX] u8;
@@ -5276,6 +5324,12 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       r[0].acc[0].tools[idx].done = true;
       r[0].acc[0].tools[idx].is_error = true;
       r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Bash requires command.");
+      return false;
+    }
+    if r[0].subagent_read_only && !oa_agent_bash_readonly_safe(cast(string) cb[0..<cn]) {
+      r[0].acc[0].tools[idx].done = true;
+      r[0].acc[0].tools[idx].is_error = true;
+      r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Bash command denied: this subagent is strictly read-only.");
       return false;
     }
     if fww_start_bash(r, cfg, idx, cast(string) cb[0..<cn], timeout_s, out) {
@@ -5352,6 +5406,18 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   else if oa_member_is_metaverse_tool(name) {
     rn = fww_tool_metaverse(cwd, name, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
   }
+  else if name == "TaskStop" {
+    rn = fww_tool_task_stop(r, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
+  }
+  else if name == "TaskOutput" {
+    rn = fww_tool_task_output(r, args, r[0].acc[0].tools[idx].res[..], is_err[..]);
+  }
+  else if name == "EnterWorktree" {
+    rn = fww_tool_enter_worktree(r, args, r[0].acc[0].tools[idx].res[..], is_err[..]);
+  }
+  else if name == "ExitWorktree" {
+    rn = fww_tool_exit_worktree(r, args, r[0].acc[0].tools[idx].res[..], is_err[..]);
+  }
   else {
     is_err[0] = true;
     rn = fww_keep(r[0].acc[0].tools[idx].res[..], "Unknown tool.");
@@ -5370,6 +5436,31 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
 
     name := cast(string) r[0].acc[0].tools[idx].name[0..<r[0].acc[0].tools[idx].nname];
     args := cast(string) r[0].acc[0].tools[idx].args[0..<r[0].acc[0].tools[idx].nargs];
+
+    // Parallel Agent/Task delegation batching (#14096): collect consecutive Agent calls & launch simultaneously
+    if name == "Agent" || name == "Task" {
+      if r[0].is_subagent {
+        r[0].acc[0].tools[idx].done = true;
+        r[0].acc[0].tools[idx].is_error = true;
+        r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Nested subagent delegation is disabled inside subagents to prevent unbounded recursion.");
+        r[0].next_tool_idx += 1;
+        continue;
+      }
+      batch_end := idx + 1;
+      while batch_end < r[0].acc[0].ntools && (batch_end - idx) < FWW_MAX_DELEGATE_BATCH {
+        if r[0].acc[0].tools[batch_end].done { break; }
+        nm_next := cast(string) r[0].acc[0].tools[batch_end].name[0..<r[0].acc[0].tools[batch_end].nname];
+        if nm_next != "Agent" && nm_next != "Task" { break; }
+        batch_end += 1;
+      }
+      home_s := cast(string) r[0].home[0..<r[0].nhome];
+      if fww_start_delegate_batch(r, cfg, home_s, idx, batch_end, out) {
+        return ""; // waiting asynchronously for MWW_RESULTS from host
+      }
+      r[0].next_tool_idx = batch_end;
+      continue;
+    }
+
     tb: [2048] u8;
     target := fww_tool_target(name, args, tb[..]);
     full_b: [FS_PATH_MAX] u8;
@@ -5925,8 +6016,8 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
     return "";
   }
 
-  // 2. Waiting for interactive permission card answer
-  if r[0].waiting_permit { return ""; }
+  // 2. Waiting for interactive permission card answer or delegated subagent results
+  if r[0].waiting_permit || r[0].waiting_delegate { return ""; }
 
   // 3. Active async Bash subprocess
   if r[0].cmd[0].active {
@@ -6408,6 +6499,7 @@ fww_auth_asked :: () -> bool {
   return fww_flag_asked("--auth");
 }
 
+#load "oa-subagent.coax";
 #load "oa-serve.coax";
 
 // ---------------------------------------------------------------- main event loop
@@ -6550,6 +6642,16 @@ tool_main :: () -> int #export_c #effects(all) {
       fww_send(out[..], mww_embedding_error(out[..], "embeddings are not served by flawedworker"));
       continue;
     }
+    if what == MWW_RESULTS {
+      if run[0].active && run[0].waiting_delegate {
+        tk_ok := !req[0].ticket.ok || req[0].ticket.value == run[0].delegate_ticket;
+        if tk_ok {
+          e := fww_finish_delegate_results(run[..], cfg[..], auth[..], hist[..], bufs[..], st[..], req[0].results, out[..]);
+          if e.count > 0 { fww_turn_end(e, st[..], q[..], f[..], out[..]); }
+        }
+      }
+      continue;
+    }
     if what == MWW_ANSWER {
       if run[0].active && run[0].waiting_permit {
         tk_ok := !req[0].ticket.ok || req[0].ticket.value == run[0].permit_ticket;
@@ -6642,6 +6744,17 @@ tool_main :: () -> int #export_c #effects(all) {
     fww_resolve_auth(cfg[..], home, picked_model, auth[..], false);
 
     run[0].ncwd = fww_keep(run[0].cwd[..], cd);
+    run[0].nhome = fww_keep(run[0].home[..], home);
+    run[0].host_agents = req[0].agents;
+    run[0].is_subagent = req[0].is_subagent;
+    run[0].subagent_read_only = req[0].read_only;
+    run[0].subagent_omit_claudemd = req[0].omit_claudemd;
+    run[0].nsubagent_type = fww_keep(run[0].subagent_type[..], req[0].subagent_type);
+    run[0].nsubagent_allowed = fww_keep(run[0].subagent_allowed[..], req[0].allowed_tools);
+    run[0].nsubagent_disallowed = fww_keep(run[0].subagent_disallowed[..], req[0].disallowed_tools);
+    run[0].waiting_delegate = false;
+    run[0].ndelegate_slots = 0;
+    fww_load_agent_registry(run[0].agent_reg[..], cd, home);
     run[0].nmodel = fww_keep(run[0].model[..], picked_model);
     run[0].neffort = fww_keep(run[0].effort[..], picked_effort);
     run[0].step_num = 1;
@@ -6699,16 +6812,35 @@ tool_main :: () -> int #export_c #effects(all) {
     mc_steer_clear(st[..]); st[0].nd = 0;
 
     // Always assemble the workspace-aware system prompt (cwd, tool guidance, instructions, and
-    // cached git snapshot when inside a git repo). Never strip tools or workspace awareness via
-    // keyword heuristics on user messages.
-    run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
-    if !cfg[0].bare_mode && repo_name.count > 0 {
-      if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
-        run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
-        run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
+    // cached git snapshot when inside a git repo). One-shot Explore/Plan subagents trim CLAUDE.md
+    // and git snapshot via subagent_omit_claudemd; parent turns mount the active subagent catalog (#14096).
+    if run[0].is_subagent && run[0].subagent_omit_claudemd {
+      platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
+      run[0].nsys = fww_build_coding_system_prompt_core(cfg[..], cd, platform, run[0].sys_prompt[..]);
+    } else {
+      run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
+      if !cfg[0].bare_mode && repo_name.count > 0 {
+        if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
+          run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
+          run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
+        }
+        if run[0].ngit_snap > 0 {
+          run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].git_snap[0..<run[0].ngit_snap]);
+        }
       }
-      if run[0].ngit_snap > 0 {
-        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].git_snap[0..<run[0].ngit_snap]);
+    }
+    if run[0].is_subagent && run[0].nsubagent_type > 0 {
+      pi := oa_agents_find(run[0].agent_reg[..], cast(string) run[0].subagent_type[0..<run[0].nsubagent_type]);
+      if pi >= 0 && run[0].agent_reg[0].defs[pi].nprompt > 0 {
+        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n# Subagent Persona Instructions\n");
+        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].agent_reg[0].defs[pi].prompt[0..<run[0].agent_reg[0].defs[pi].nprompt]);
+        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n");
+      }
+    } else if !run[0].is_subagent {
+      cat_b: [4096] u8;
+      cn_cat := oa_agent_build_catalog_prompt(run[0].agent_reg[..], cat_b[..]);
+      if cn_cat > 0 {
+        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) cat_b[0..<cn_cat]);
       }
     }
     if run[0].nmissing_cap_hint > 0 {
@@ -7700,4 +7832,52 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert !fww_ours_should_reload_login(false, 24, false, false);
   #assert !fww_ours_should_reload_login(true, 24, true, true);
   #assert !fww_ours_should_reload_login(false, 0, true, true);
+}
+
+#test "flawedworker: subagent delegation (#14096) Agent tool pack, 5x parallel Explore batch, read-only guard, and TaskOutput/TaskStop" {
+  // 1) Parent turn exposes OA_PACK_AGENTS tools unconditionally; child subagent suppresses them
+  cfg: [1] FwConfig;
+  h: [1] FwHist;
+  fww_hist_push_user(h[..], "delegate to 5 subagents very simple readonly tasks and summarize at the end");
+  body: [24576] u8;
+  n_par := fww_build_gemini_body_packs(cfg[..], h[..], "high", "sys", false, OA_PACK_AGENTS, body[..]);
+  #assert n_par > 0 && fww_contains_ci(cast(string) body[0..<n_par], "\"name\":\"Agent\"");
+  #assert fww_contains_ci(cast(string) body[0..<n_par], "\"name\":\"SendMessage\"");
+  #assert fww_contains_ci(cast(string) body[0..<n_par], "\"name\":\"TaskStop\"");
+  #assert fww_contains_ci(cast(string) body[0..<n_par], "\"name\":\"EnterWorktree\"");
+
+  sub_cfg: [1] FwConfig;
+  sub_cfg[0].ndisallowed = fww_keep(sub_cfg[0].disallowed_tools[..], OA_EXPLORE_DISALLOWED);
+  n_sub := fww_build_gemini_body_packs(sub_cfg[..], h[..], "low", "sys", false, 0, body[..]);
+  #assert n_sub > 0 && !fww_contains_ci(cast(string) body[0..<n_sub], "\"name\":\"Edit\"");
+  #assert !fww_contains_ci(cast(string) body[0..<n_sub], "\"name\":\"Write\"");
+  #assert !fww_contains_ci(cast(string) body[0..<n_sub], "\"name\":\"Agent\"");
+  #assert fww_contains_ci(cast(string) body[0..<n_sub], "\"name\":\"Read\"");
+
+  // 3) Read-only subagent runtime denies Edit, Write, and mutating Bash even in BYPASS mode
+  r: [1] FwRun;
+  r[0].subagent_read_only = true;
+  r[0].ncwd = fww_keep(r[0].cwd[..], "/tmp");
+  r[0].acc[0].ntools = 2;
+  r[0].acc[0].tools[0].nname = fww_keep(r[0].acc[0].tools[0].name[..], "Edit");
+  r[0].acc[0].tools[0].nargs = fww_keep(r[0].acc[0].tools[0].args[..], "{\"file_path\":\"a.txt\",\"old_string\":\"a\",\"new_string\":\"b\"}");
+  r[0].acc[0].tools[1].nname = fww_keep(r[0].acc[0].tools[1].name[..], "Bash");
+  r[0].acc[0].tools[1].nargs = fww_keep(r[0].acc[0].tools[1].args[..], "{\"command\":\"echo hi > a.txt\"}");
+  auth: [1] FwAuth;
+  bufs: [1] FwBufs;
+  wire_out: [4096] u8;
+  #assert !fww_exec_tool_now(r[..], cfg[..], auth[..], h[..], bufs[..], 0, wire_out[..]);
+  #assert r[0].acc[0].tools[0].done && r[0].acc[0].tools[0].is_error;
+  #assert !fww_exec_tool_now(r[..], cfg[..], auth[..], h[..], bufs[..], 1, wire_out[..]);
+  #assert r[0].acc[0].tools[1].done && r[0].acc[0].tools[1].is_error;
+
+  // 4) TaskOutput lookup & status reporting on registered subagent
+  r[0].nsubagents = 1;
+  r[0].subagents[0] = FwSubagentRec.{active = true, running = false, host_num = 1};
+  r[0].subagents[0].nagent_id = fww_keep(r[0].subagents[0].agent_id[..], "aexplore-0123456789abcdef");
+  r[0].subagents[0].nlast_reply = fww_keep(r[0].subagents[0].last_reply[..], "5 files inspected");
+  is_err := [1] bool.[false];
+  ob: [1024] u8;
+  on := fww_tool_task_output(r[..], "{\"task_id\":\"aexplore-0123456789abcdef\"}", ob[..], is_err[..]);
+  #assert !is_err[0] && on > 0 && fww_contains_ci(cast(string) ob[0..<on], "5 files inspected");
 }

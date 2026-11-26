@@ -308,7 +308,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   }
   else if kind == MWW_ASK { cp_reply_to_said(s, i); cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
   else if kind == MWW_PERMIT { cp_permit_take_line(s, -1, "", l[0], line); }
-  else if kind == MWW_DELEGATE { cp_reply_to_said(s, i); cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
+  else if kind == MWW_DELEGATE { cp_reply_to_said(s, i); cp_delegate_ex(s, i, l[0].tasks, l[0].ticket.value, l[0].wait_all.ok && l[0].wait_all.value); }
   else if kind == MWW_STOP_AGENT { if l[0].agent.ok { cp_agent_stopped_by_run(s, i, l[0].agent.value); } }
   else if kind == MWW_COMMAND { cp_reply_to_said(s, i); cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
   else if kind == MWW_THOUGHT {

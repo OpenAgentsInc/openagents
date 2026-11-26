@@ -23,10 +23,12 @@ OA_PACK_COAX_INTEL :: 1;
 OA_PACK_WALLET     :: 2;
 OA_PACK_CLI        :: 4;
 OA_PACK_METAVERSE  :: 8;
+OA_PACK_AGENTS     :: 16;
 
 OA_MEMBER_NWALLET    :: 4;
 OA_MEMBER_NCLI       :: 1;
 OA_MEMBER_NMETAVERSE :: 2;
+OA_MEMBER_NAGENTS    :: 6;
 
 // Permission modes & behaviors (exact numeric values of openagents/core/permissions.coax;
 // lockstep-asserted in openagents/core/wire.coax).
@@ -60,6 +62,12 @@ oa_member_is_cli_tool :: (name: string) -> bool #effects(reads, traps) {
 
 oa_member_is_metaverse_tool :: (name: string) -> bool #effects(reads, traps) {
   return name == "MetaverseRoute" || name == "GameBuilder";
+}
+
+oa_member_is_agent_tool :: (name: string) -> bool #effects(reads, traps) {
+  return name == "Agent" || name == "Task" || name == "SendMessage" ||
+         name == "TaskStop" || name == "TaskOutput" ||
+         name == "EnterWorktree" || name == "ExitWorktree";
 }
 
 oa_member_is_member_tool :: (name: string) -> bool #effects(reads, traps) {
@@ -340,6 +348,11 @@ oa_member_tool_permission :: (tool_name: string, target: string, pmode: int, byp
   #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_DEFAULT, true, false) == OA_MP_PBEH_ALLOW;
   #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_DENY;
   #assert oa_member_tool_permission("GameBuilder", "build level-1", OA_MP_PMODE_DONT_ASK, false, true) == OA_MP_PBEH_DENY;
+
+  // Agent delegation pack helper
+  #assert oa_member_is_agent_tool("Agent") && oa_member_is_agent_tool("SendMessage") && oa_member_is_agent_tool("TaskStop");
+  #assert oa_member_is_agent_tool("TaskOutput") && oa_member_is_agent_tool("EnterWorktree") && oa_member_is_agent_tool("ExitWorktree");
+  #assert !oa_member_is_agent_tool("Read");
 
   // Unknown non-member fallback
   #assert oa_member_tool_permission("SomethingElse", "", OA_MP_PMODE_BYPASS, true, true) == OA_MP_PBEH_ASK;

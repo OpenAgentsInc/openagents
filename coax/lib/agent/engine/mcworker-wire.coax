@@ -105,6 +105,13 @@ McTask :: struct {
   device: bool;                  // the iOS Simulator is there: a step may hold device ops (coax/lib/microcoder/device.coax, GitHub #13811)
   mode: string;                  // optional review mode ("auto"|"default"|"plan"|"accept-edits"|"turbo", #13996)
   attachments: string;           // optional JSON array of attachment objects ([{"name":...,"mime_type":...,"data":...}], #14002)
+  subagent_type: string;         // optional subagent persona ("Explore"|"Plan"|"general-purpose"|"verification"|custom, #14096)
+  agent_id: string;              // optional stable subagent id (a<prefix>-<16hex>, #14096)
+  allowed_tools: string;         // optional CSV allowlist for subagent (#14096)
+  disallowed_tools: string;      // optional CSV denylist for subagent (#14096)
+  omit_claudemd: bool;           // skip CLAUDE.md/AGENTS.md & git status for one-shot Explore/Plan (#14096)
+  read_only: bool;               // strictly read-only tool & Bash guard (#14096)
+  is_subagent: bool;             // marks child worker as a subagent (disables recursive Agent tool, #14096)
 }
 mww_task :: (o: [] u8, t: McTask) -> int {
   n := json_raw(o, 0, "{\"task\":"); n = json_write_string(o, n, t.task);
@@ -129,6 +136,13 @@ mww_task :: (o: [] u8, t: McTask) -> int {
   if t.device { n = json_raw(o, n, ",\"device\":true"); }
   if t.mode.count > 0 { n = json_raw(o, n, ",\"mode\":"); n = json_write_string(o, n, t.mode); }
   if t.attachments.count > 0 { n = json_raw(o, n, ",\"attachments\":"); n = json_raw(o, n, t.attachments); }
+  if t.subagent_type.count > 0 { n = json_raw(o, n, ",\"subagent_type\":"); n = json_write_string(o, n, t.subagent_type); }
+  if t.agent_id.count > 0 { n = json_raw(o, n, ",\"agent_id\":"); n = json_write_string(o, n, t.agent_id); }
+  if t.allowed_tools.count > 0 { n = json_raw(o, n, ",\"allowed_tools\":"); n = json_write_string(o, n, t.allowed_tools); }
+  if t.disallowed_tools.count > 0 { n = json_raw(o, n, ",\"disallowed_tools\":"); n = json_write_string(o, n, t.disallowed_tools); }
+  if t.omit_claudemd { n = json_raw(o, n, ",\"omit_claudemd\":true"); }
+  if t.read_only { n = json_raw(o, n, ",\"read_only\":true"); }
+  if t.is_subagent { n = json_raw(o, n, ",\"is_subagent\":true"); }
   n = json_raw(o, n, "}\n");
   return n;
 }
@@ -230,6 +244,8 @@ MwwRequest :: struct {
   policy: string;                // the policy member's JSON text, "" when there is none
   policy_on: bool;               // policy.enabled is true
   ceiling: JsonInt;              // policy.ceiling
+  subagent_type: string; agent_id: string; allowed_tools: string; disallowed_tools: string;
+  omit_claudemd: bool; read_only: bool; is_subagent: bool;
 }
 // The strings are in msg or in ar; they hold until either changes. model is read only for a task
 // that is not local, as the worker always did.
@@ -297,6 +313,13 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
   r[0].openrouter = cl_str(ar, msg, "openrouter");
   r[0].mode = cl_str(ar, msg, "mode");
   if cl_at(msg, "attachments").tok == JSON_ARRAY { r[0].attachments = cl_raw(msg, "attachments"); }
+  r[0].subagent_type = cl_str(ar, msg, "subagent_type");
+  r[0].agent_id = cl_str(ar, msg, "agent_id");
+  r[0].allowed_tools = cl_str(ar, msg, "allowed_tools");
+  r[0].disallowed_tools = cl_str(ar, msg, "disallowed_tools");
+  oc := cl_bool(msg, "omit_claudemd"); r[0].omit_claudemd = oc.ok && oc.value;
+  ro := cl_bool(msg, "read_only"); r[0].read_only = ro.ok && ro.value;
+  isub := cl_bool(msg, "is_subagent"); r[0].is_subagent = isub.ok && isub.value;
   r[0].kind = MWW_TASK; return MWW_TASK;
 }
 
@@ -322,6 +345,13 @@ mww_task_read :: (ar: [] ClArena, msg: string, t: [] McTask) -> bool {
   device := cl_bool(msg, "device"); t[0].device = device.ok && device.value;
   t[0].mode = cl_str(ar, msg, "mode");
   if cl_at(msg, "attachments").tok == JSON_ARRAY { t[0].attachments = cl_raw(msg, "attachments"); }
+  t[0].subagent_type = cl_str(ar, msg, "subagent_type");
+  t[0].agent_id = cl_str(ar, msg, "agent_id");
+  t[0].allowed_tools = cl_str(ar, msg, "allowed_tools");
+  t[0].disallowed_tools = cl_str(ar, msg, "disallowed_tools");
+  oc := cl_bool(msg, "omit_claudemd"); t[0].omit_claudemd = oc.ok && oc.value;
+  ro := cl_bool(msg, "read_only"); t[0].read_only = ro.ok && ro.value;
+  isub := cl_bool(msg, "is_subagent"); t[0].is_subagent = isub.ok && isub.value;
   return !ar[0].full;
 }
 
@@ -443,6 +473,12 @@ mww_delegate :: (o: [] u8, tasks: string, ticket: int) -> int {
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
   return json_raw(o, n, "}");
 }
+mww_delegate_ex :: (o: [] u8, tasks: string, ticket: int, wait_all: bool) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"delegate\",\"tasks\":"); n = json_raw(o, n, tasks);
+  n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
+  if wait_all { n = json_raw(o, n, ",\"wait_all\":true"); }
+  return json_raw(o, n, "}");
+}
 // Stop sub-agent number agent (its place among the turn's sub-agents, from 1), and only it.
 mww_stop_agent :: (o: [] u8, agent: int) -> int {
   n := json_raw(o, 0, "{\"kind\":\"stop_agent\",\"agent\":"); n = json_write_int(o, n, agent);
@@ -549,6 +585,7 @@ MwwLine :: struct {
   question: ClBool; title: string; options: string; warning: string; // permit: interactive permission or user-input question; meta: title
   ttft_ms: JsonInt; decode_ms: JsonInt;               // stats: time-to-first-token and decode duration in ms
   tool: string; diff: string; commands: string;       // ask/command: real tool kind & diff; meta: available commands JSON (#14010)
+  wait_all: ClBool;                                   // delegate: wait for all sync tasks in batch before returning MWW_RESULTS (#14096)
 }
 // The line's kind, MWW_NONE for a kind that is not a worker's. The strings are in line or in ar;
 // they hold until either changes. A string that does not fit in ar reads as "".
@@ -583,7 +620,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
     l[0].diff = cl_str(ar, line, "diff");
   }
   else if kind == "view" { k = MWW_VIEW; l[0].path = cl_str(ar, line, "path"); l[0].found = cl_bool(line, "found"); }
-  else if kind == "delegate" { k = MWW_DELEGATE; l[0].ticket = cl_int(line, "ticket"); l[0].tasks = cl_raw(line, "tasks"); }
+  else if kind == "delegate" { k = MWW_DELEGATE; l[0].ticket = cl_int(line, "ticket"); l[0].tasks = cl_raw(line, "tasks"); l[0].wait_all = cl_bool(line, "wait_all"); }
   else if kind == "ask" {
     k = MWW_ASK;
     l[0].ticket = cl_int(line, "ticket");
@@ -948,4 +985,29 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   // clearing stale fields on failed mww_task_read
   back[0] = McTask.{task = "stale", local = true};
   #assert !mww_task_read(ar[..], "{}", back[..]) && !back[0].local;
+}
+
+#test "subagents (#14096): extended McTask metadata and mww_delegate_ex wait_all round-trip" {
+  ab: [4096] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  o: [2048] u8; r: [1] MwwRequest; back: [1] McTask; l: [1] MwwLine;
+  t := McTask.{
+    task = "inspect files", session = "s1", cwd = "/w", sandbox = "danger-full-access",
+    policy = true, allow = 1, ceiling = 3, roots = "/w",
+    subagent_type = "Explore", agent_id = "aexplore-0123456789abcdef",
+    allowed_tools = "Read,Glob,Grep", disallowed_tools = "Edit,Write,Agent",
+    omit_claudemd = true, read_only = true, is_subagent = true,
+  };
+  n := mww_task(o[..], t);
+  #assert n > 0 && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK;
+  #assert r[0].subagent_type == "Explore" && r[0].agent_id == "aexplore-0123456789abcdef";
+  #assert r[0].allowed_tools == "Read,Glob,Grep" && r[0].disallowed_tools == "Edit,Write,Agent";
+  #assert r[0].omit_claudemd && r[0].read_only && r[0].is_subagent;
+  ar[0].at = 0;
+  #assert mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]);
+  #assert back[0].subagent_type == "Explore" && back[0].agent_id == "aexplore-0123456789abcdef";
+  #assert back[0].omit_claudemd && back[0].read_only && back[0].is_subagent;
+
+  dn := mww_delegate_ex(o[..], "[{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"task\":\"scan\"}]", 7, true);
+  #assert dn > 0 && mww_read(ar[..], cast(string) o[0..<dn], l[..]) == MWW_DELEGATE;
+  #assert l[0].ticket.ok && l[0].ticket.value == 7 && l[0].wait_all.ok && l[0].wait_all.value;
 }

@@ -32,6 +32,7 @@
 #load "extensions.coax";
 #load "tasks.coax";
 #load "subagent.coax";
+#load "agents.coax";
 #load "swarm.coax";
 #load "screen.coax";
 #load "repl.coax";
