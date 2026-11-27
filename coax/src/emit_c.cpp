@@ -2523,8 +2523,10 @@ struct Emitter {
               if (i < 64 && ((rmask >> i) & 1u)) {
                 const bool is_temp = v.size() > 6 && v.compare(0, 6, "coax_t") == 0 &&
                                      v.find_first_not_of("0123456789", 6) == std::string::npos;
+                const std::string ty = c_type(e->args[i]->type);
                 if (is_temp) s += "(&" + v + ")";
-                else s += "((const " + c_type(e->args[i]->type) + "[1]){" + v + "})";
+                else if (v == "((" + ty + "){0})") s += "((const " + ty + "[1]){0})";
+                else s += "((const " + ty + "[1]){" + v + "})";
               } else {
                 s += v;
               }

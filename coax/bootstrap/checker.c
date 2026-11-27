@@ -5948,7 +5948,7 @@ static int64_t coax_p_CK_fold_binary(coax_t_CK_Context l_c, int64_t l_id) {
   {
     if (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 2020))).unevaluated != INT64_C(0))
     {
-      coax_pr_CK_set_int(l_c, l_id, ((const coax_t_CM_Int[1]){((coax_t_CM_Int){0})}));
+      coax_pr_CK_set_int(l_c, l_id, ((const coax_t_CM_Int[1]){0}));
       return ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 2020))).type;
     }
     coax_p_CK_error(l_c, (l_e).loc, COAX_STR("E0407", 5), COAX_STR("division by zero in a constant expression", 41), COAX_STR("", 0));
