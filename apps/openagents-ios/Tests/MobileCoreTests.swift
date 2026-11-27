@@ -184,19 +184,41 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertEqual(projs[0].revision, 4)
 
         let usageRoot: [String: Any] = [
-            "today": ["usd_micros": 420_000, "tokens": 50_000, "requests": 12],
-            "month": ["usd_micros": 12_800_000],
+            "today": ["usd_micros": 420_000, "requests": 12],
+            "total": ["calls": 28, "in_tokens": 35_000, "out_tokens": 15_000, "usd_micros": 12_800_000],
             "credit_msat": 5_000_000,
+            "promo_micros": 15_000_000,
+            "promo_expires_at": "2027-02-25T00:00:00Z",
             "sandbox": ["turns": 2, "seconds": 180, "msat": 1125],
-            "local_turns": 9,
+            "local": ["turns": 9, "msat": 0],
         ]
         let usage = MobileCloudChat.parseUsageSnapshot(usageRoot)
         XCTAssertEqual(usage.todayUsdMicros, 420_000)
-        XCTAssertEqual(usage.monthUsdMicros, 12_800_000)
+        XCTAssertEqual(usage.totalUsdMicros, 12_800_000)
+        XCTAssertEqual(usage.totalTokens, 50_000)
+        XCTAssertEqual(usage.totalCalls, 28)
         XCTAssertEqual(usage.creditMsat, 5_000_000)
+        XCTAssertEqual(usage.promoMicros, 15_000_000)
+        XCTAssertEqual(usage.promoExpiresAt, "2027-02-25T00:00:00Z")
         XCTAssertEqual(usage.localTurns, 9)
         XCTAssertEqual(CloudUsageSnapshot.formatUsd(micros: 420_000), "$0.42")
         XCTAssertEqual(CloudUsageSnapshot.formatTokens(50_000), "50.0k")
+
+        // Paid + Promo credit parsing from /api/auth/life.
+        let credits = MobileAccountController.parseCreditFields([
+            "credit_msat": 25_000_000,
+            "promo_micros": 5_000_000,
+            "promo_expires_at": "2027-02-25T00:00:00Z",
+        ])
+        XCTAssertEqual(credits.creditMsat, 25_000_000)
+        XCTAssertEqual(credits.promoMicros, 5_000_000)
+        XCTAssertEqual(credits.promoExpiresAt, "2027-02-25T00:00:00Z")
+
+        // Canonical Cloud model catalog includes OpenAgents Auto first and routes cleanly.
+        XCTAssertEqual(CloudModelOption.catalog.first?.id, "openagents/auto")
+        XCTAssertEqual(CloudModelOption.catalog.first?.label, "OpenAgents Auto")
+        XCTAssertEqual(CloudModelOption.catalog.first?.wireModel, "google/gemini-4-neon")
+        XCTAssertEqual(CloudModelOption.catalog.count, 5)
 
         // Execution target round-trip persistence.
         let targets: [CloudExecutionTarget] = [
@@ -274,5 +296,16 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertTrue(att.isImage)
         XCTAssertEqual(att.name, "test_shot.png")
         XCTAssertEqual(att.mimeType, "image/jpeg")
+
+        // Multimodal user message preserves text + base64 JPEG image_url part.
+        let plainMsg = MobileCloudChat.encodeUserMessage(prompt: "Hello", imageAttachments: [])
+        XCTAssertEqual(plainMsg["content"] as? String, "Hello")
+        let mmMsg = MobileCloudChat.encodeUserMessage(prompt: "Describe this", imageAttachments: [att])
+        let parts = try XCTUnwrap(mmMsg["content"] as? [[String: Any]])
+        XCTAssertEqual(parts.count, 2)
+        XCTAssertEqual(parts[0]["type"] as? String, "text")
+        XCTAssertEqual(parts[1]["type"] as? String, "image_url")
+        let imgObj = try XCTUnwrap(parts[1]["image_url"] as? [String: Any])
+        XCTAssertTrue((imgObj["url"] as? String)?.hasPrefix("data:image/jpeg;base64,") == true)
     }
 }

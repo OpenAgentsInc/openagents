@@ -4,9 +4,24 @@ import Foundation
 import SwiftUI
 import UIKit
 
+private final class EphemeralTokenStore: TokenStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var tokens: AppAuth.Tokens?
+    func load() -> AppAuth.Tokens? { lock.lock(); defer { lock.unlock() }; return tokens }
+    func save(_ tokens: AppAuth.Tokens) { lock.lock(); defer { lock.unlock() }; self.tokens = tokens }
+    func clear() { lock.lock(); defer { lock.unlock() }; tokens = nil }
+}
+
 @MainActor
 final class MobileAccountController: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     static let shared = MobileAccountController()
+
+    private static func defaultAuth() -> AppAuth {
+        if ProcessInfo.processInfo.arguments.contains("-OAResetStateForTests") {
+            return AppAuth(origin: CloudAPIBase.origin, store: EphemeralTokenStore(), device: nil)
+        }
+        return AppAuth(origin: CloudAPIBase.origin)
+    }
 
     let auth: AppAuth
     let account: AppAccount
@@ -15,6 +30,8 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
     @Published var email: String = ""
     @Published var accountID: String = ""
     @Published var creditMsat: Int64?
+    @Published var promoMicros: Int64 = 0
+    @Published var promoExpiresAt: String = ""
     @Published var workosEnabled: Bool = false
     @Published var workosClientID: String = ""
     @Published var pendingOrgs: [AppAuth.WorkOSOrg] = []
@@ -28,12 +45,13 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
 
     private var webAuthSession: ASWebAuthenticationSession?
 
-    init(auth: AppAuth = AppAuth(origin: CloudAPIBase.origin)) {
-        self.auth = auth
-        self.account = AppAccount(auth: auth)
+    init(auth: AppAuth? = nil) {
+        let resolvedAuth = auth ?? Self.defaultAuth()
+        self.auth = resolvedAuth
+        self.account = AppAccount(auth: resolvedAuth)
         super.init()
-        self.isLoggedIn = auth.loggedIn
-        self.accountID = auth.tokens?.account ?? ""
+        self.isLoggedIn = resolvedAuth.loggedIn
+        self.accountID = resolvedAuth.tokens?.account ?? ""
         self.account.changed = { [weak self] in
             guard let self else { return }
             let nowLoggedIn = self.auth.loggedIn
@@ -42,6 +60,8 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
             if !nowLoggedIn {
                 self.email = ""
                 self.creditMsat = nil
+                self.promoMicros = 0
+                self.promoExpiresAt = ""
                 self.pendingOrgs = []
             }
             self.onAuthChanged?(nowLoggedIn)
@@ -54,7 +74,9 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         return "Account · Cloud"
     }
 
-    var formattedCredits: String {
+    var formattedCredits: String { formattedPaidCredits }
+
+    var formattedPaidCredits: String {
         guard let msat = creditMsat else { return "—" }
         let sats = max(0, msat / 1000)
         let nf = NumberFormatter()
@@ -62,7 +84,29 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         return (nf.string(from: NSNumber(value: sats)) ?? "\(sats)") + " sats"
     }
 
+    var formattedPromoCredits: String {
+        CloudUsageSnapshot.formatUsd(micros: max(0, promoMicros))
+    }
+
+    var formattedPromoExpiry: String {
+        let trimmed = promoExpiresAt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 10, trimmed != "-" else { return "" }
+        return String(trimmed.prefix(10))
+    }
+
+    static func parseCreditFields(_ obj: [String: Any]) -> (creditMsat: Int64?, promoMicros: Int64?, promoExpiresAt: String?) {
+        let msat = (obj["credit_msat"] as? NSNumber).map { max(0, $0.int64Value) }
+        let promo = (obj["promo_micros"] as? NSNumber).map { max(0, $0.int64Value) }
+        let exp = (obj["promo_expires_at"] as? String).flatMap { $0.isEmpty || $0 == "-" ? nil : $0 }
+        return (msat, promo, exp)
+    }
+
     func refresh() async {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "OADemoPreview") && !auth.loggedIn && isLoggedIn {
+            return
+        }
+        #endif
         let cfg = await account.loadWorkOSConfig()
         workosEnabled = cfg.enabled
         workosClientID = cfg.clientID
@@ -71,6 +115,8 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         guard isLoggedIn else {
             email = ""
             creditMsat = nil
+            promoMicros = 0
+            promoExpiresAt = ""
             return
         }
         _ = await account.refresh()
@@ -80,7 +126,22 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
             email = info.emails.first ?? ""
             if !info.account.isEmpty { accountID = info.account }
         }
-        if let msat = try? await auth.creditMsat() {
+        var loadedLife = false
+        if let url = URL(string: auth.origin + "/api/auth/life") {
+            var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 15)
+            req.httpMethod = "GET"
+            if let authed = try? await auth.authorize(req),
+               let (data, resp) = try? await URLSession.shared.data(for: authed),
+               (resp as? HTTPURLResponse)?.statusCode == 200,
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let parsed = Self.parseCreditFields(obj)
+                if let msat = parsed.creditMsat { creditMsat = msat }
+                if let promo = parsed.promoMicros { promoMicros = promo }
+                promoExpiresAt = parsed.promoExpiresAt ?? ""
+                loadedLife = true
+            }
+        }
+        if !loadedLife, let msat = try? await auth.creditMsat() {
             creditMsat = max(0, msat)
         }
     }
@@ -263,6 +324,8 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         email = ""
         accountID = ""
         creditMsat = nil
+        promoMicros = 0
+        promoExpiresAt = ""
         awaitingEmailCode = false
         pendingEmailAddress = ""
         pendingOrgs = []

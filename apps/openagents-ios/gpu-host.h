@@ -27,7 +27,6 @@
 #define OA_IOS_ACT_OPEN_COMPUTERS 6
 #define OA_IOS_ACT_OPEN_WORKSPACE 7
 #define OA_IOS_ACT_OPEN_SUBAGENT 8
-#define OA_IOS_ACT_OPEN_HUB 9
 #define OA_IOS_ACT_OPEN_ATTACH 10
 #define OA_IOS_ACT_CLEAR_ATTACH 11
 #define OA_IOS_ACT_CHOSE_MODEL 12
@@ -111,7 +110,7 @@ int oa_ios_dashboard_open(void *surface);
 void oa_ios_scroll_top(void *surface);
 void oa_ios_scroll_bottom(void *surface);
 
-void oa_ios_set_header(void *surface, const char *computer, const char *session_title, const char *workspace, int reachability, int paired_count, int has_active, int has_older, int has_more_sessions);
+void oa_ios_set_header(void *surface, const char *computer, const char *session_title, const char *workspace, int reachability, int has_active, int has_older, int has_more_sessions);
 void oa_ios_set_account_wallet(void *surface, const char *account_label, int account_logged_in, const char *wallet_label, int wallet_ready);
 void oa_ios_set_banners(void *surface, const char *error, int outbox_count, const char *toast);
 void oa_ios_set_approval(void *surface, int active, const char *prompt, const char *warning);

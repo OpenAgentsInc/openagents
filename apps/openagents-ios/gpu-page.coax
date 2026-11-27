@@ -69,7 +69,6 @@ IOS_HIT_SCRIM :: 2;
 IOS_HIT_COMPUTERS :: 3;
 IOS_HIT_WORKSPACE :: 4;
 IOS_HIT_NEW_CHAT :: 5;
-IOS_HIT_HUB :: 6;
 IOS_HIT_COMPOSER :: 7;
 IOS_HIT_SEND :: 8;
 IOS_HIT_ATTACH :: 9;
@@ -122,7 +121,6 @@ IOS_ACT_SELECT_SESSION :: 5;
 IOS_ACT_OPEN_COMPUTERS :: 6;
 IOS_ACT_OPEN_WORKSPACE :: 7;
 IOS_ACT_OPEN_SUBAGENT :: 8;
-IOS_ACT_OPEN_HUB :: 9;
 IOS_ACT_OPEN_ATTACH :: 10;
 IOS_ACT_CLEAR_ATTACH :: 11;
 IOS_ACT_CHOSE_MODEL :: 12;
@@ -287,7 +285,6 @@ IosPhonePage :: struct {
   session_title: [128] u8; session_title_n: int;
   workspace_name: [96] u8; workspace_name_n: int;
   reachability: int;
-  paired_count: int;
   has_active_session: bool;
   has_older_messages: bool;
   has_more_sessions: bool;
@@ -315,7 +312,7 @@ IosPhonePage :: struct {
   full_auto_off: bool; // false by default => Full Auto ON by default (#14068)
   voice_duplex: int;   // IOS_VOICE_*
   voice_level: f32;    // 0..1 live microphone RMS level
-  sec_collapsed: [5] bool; // Universal Introspection sidebar section collapse toggles
+  sec_collapsed: [5] bool; // Cloud sidebar section collapse toggles
   queued_text: [256] u8; queued_n: int;
 
   suggestions_is_mention: bool;
@@ -477,12 +474,9 @@ ios_tool_verb :: (kind: int, name: string) -> string {
   return ifx name.count > 0 then name else "Tool";
 }
 ios_harness_icon :: (name: string) -> int {
-  if ios_str_has_ci(name, "inkling") || ios_str_has_ci(name, "oa ") || ios_str_has_ci(name, "oa:") || ios_str_has_ci(name, "openagents") || ios_str_has_ci(name, "flawed") { return ICON_PSIONIC; }
-  if ios_str_has_ci(name, "claude") { return ICON_CLAUDE; }
-  if ios_str_has_ci(name, "codex") || ios_str_has_ci(name, "gpt") || ios_str_has_ci(name, "openai") { return ICON_OPENAI; }
-  if ios_str_has_ci(name, "gemini") || ios_str_has_ci(name, "antigravity") || ios_str_has_ci(name, "agy") { return ICON_ANTIGRAVITY; }
-  if ios_str_has_ci(name, "tmux") || ios_str_has_ci(name, "tui") || ios_str_has_ci(name, "shell") { return ICON_TERMINAL; }
-  return ICON_BOT;
+  if ios_str_has_ci(name, "openagents") || ios_str_has_ci(name, "oa ") || ios_str_has_ci(name, "oa:") || ios_str_has_ci(name, "auto") || ios_str_has_ci(name, "gemini") || ios_str_has_ci(name, "inkling") || ios_str_has_ci(name, "cloud") { return ICON_PSIONIC; }
+  if ios_str_has_ci(name, "sandbox") || ios_str_has_ci(name, "shell") { return ICON_TERMINAL; }
+  return ICON_PSIONIC;
 }
 
 // ---------------------------------------------------------------- top bar & banners
@@ -1190,7 +1184,7 @@ ios_draw_empty_state :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, top: f32, w:
   est_h := mark + 16.0f32 + sk.title.line + 8.0f32 + sk.small.line + (ifx need_btn then 18.0f32 + sk.control_h else 0.0f32);
   cy := top + (h - est_h) * 0.44f32;
   if cy < top + 16.0f32 { cy = top + 16.0f32; }
-  sheet_icon(sh, ICON_ANTIGRAVITY, x + (w - mark) / 2.0f32, cy, mark, sk.ink);
+  sheet_icon(sh, ICON_PSIONIC, x + (w - mark) / 2.0f32, cy, mark, sk.ink);
   cy += mark + 16.0f32;
   th := app_centred(f, sk.title, sk.ink, col_x, cy, col_w, title);
   _ := uiframe_semantic(f, "chat.empty.title", EL_HEADING, title, col_x, cy, col_w, th, 0, 0);
@@ -1566,7 +1560,7 @@ ios_draw_dashboard :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, top: f32, w: f
 
 // ---------------------------------------------------------------- sidebar content
 
-// Collapsible Universal Introspection section header with count badge ("TUI & TERMINAL (2)").
+// Collapsible Cloud sidebar section header with count badge ("PROJECTS (2)").
 ios_push_sec_header :: (s: [] IosPhonePage, sh: [] Sheet, n_in: int, sec_idx: int, label: string, count: int, any_busy: bool) -> int {
   if n_in >= IOS_SIDE_CAP { return n_in; }
   id_n := el_put(s[0].side_ids[n_in][..], 0, "side.sec.");
@@ -1598,14 +1592,14 @@ ios_push_intro_row :: (s: [] IosPhonePage, sh: [] Sheet, n_in: int, idx: int) ->
   har := cast(string) s[0].intro_items[idx].harness[0..<ent.harness_n];
   s[0].side_rows[n_in] = AppSideRow.{
     id = sheet_pool(sh, cast(string) s[0].side_ids[n_in][0..<id_n]),
-    title = sheet_pool(sh, ifx ent.title_n > 0 then cast(string) s[0].intro_items[idx].title[0..<ent.title_n] else "Session"),
+    title = sheet_pool(sh, ifx ent.title_n > 0 then cast(string) s[0].intro_items[idx].title[0..<ent.title_n] else "Project"),
     status = sheet_pool(sh, cast(string) s[0].intro_items[idx].status[0..<ent.status_n]),
     repo = sheet_pool(sh, cast(string) s[0].intro_items[idx].cwd[0..<ent.cwd_n]),
     branch = sheet_pool(sh, har),
     state = (ifx ent.current then EL_S_CURRENT else 0) | (ifx ent.busy then EL_S_BUSY else 0),
     card = true,
-    icon = ifx ent.kind == IOS_INTRO_TUI then ICON_TERMINAL else ICON_BOT,
-    harness_icon = ios_harness_icon(har),
+    icon = ICON_FOLDER_11,
+    harness_icon = -1,
     action = IOS_HIT_SELECT_INTRO,
   };
   return n_in + 1;
@@ -1618,7 +1612,7 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
   bar_h := 4.0f32 + a.nav + 6.0f32;
   mark: f32 = 18.0f32;
   head_mid := y + (bar_h - sk.title.line) / 2.0f32;
-  sheet_icon(sh, ICON_ANTIGRAVITY, x + 4.0f32, y + (bar_h - mark) / 2.0f32, mark, sk.ink);
+  sheet_icon(sh, ICON_PSIONIC, x + 4.0f32, y + (bar_h - mark) / 2.0f32, mark, sk.ink);
   _ := sheet_text(sh, m, -1, x + 4.0f32 + mark + 8.0f32, head_mid, sk.title.line, sk.title.face, sk.ink, "OpenAgents");
   _ := uiframe_semantic(f, "drawer.brand", EL_HEADING, "OpenAgents", x, y, w, bar_h, 0, 0);
   dot_d: f32 = 7.0f32;
@@ -1798,9 +1792,8 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
     else ifx s[0].account_logged_in then "Account · Cloud" else "Sign In & Cloud";
   fy += app_side_action(f, "sidebar.account", x - 4.0f32, fy, w + 8.0f32, ICON_SET_ACCOUNT, acct_lbl, 0, IOS_HIT_ACCOUNT);
   wal_lbl := ifx s[0].wallet_label_n > 0 then cast(string) s[0].wallet_label[0..<s[0].wallet_label_n] else "Spark Wallet";
-  fy += app_side_action(f, "sidebar.wallet", x - 4.0f32, fy, w + 8.0f32, ICON_PSIONIC, wal_lbl, 0, IOS_HIT_WALLET);
-  env_lbl := ifx s[0].account_logged_in && s[0].computer_name_n > 0 then cast(string) s[0].computer_name[0..<s[0].computer_name_n] else "Environments & Projects";
-  _ := app_side_action(f, "sidebar.computers", x - 4.0f32, fy, w + 8.0f32, ICON_SETTINGS, env_lbl, 0, IOS_HIT_COMPUTERS);
+  fy += app_side_action(f, "sidebar.wallet", x - 4.0f32, fy, w + 8.0f32, ICON_WALLET, wal_lbl, 0, IOS_HIT_WALLET);
+  _ := app_side_action(f, "sidebar.computers", x - 4.0f32, fy, w + 8.0f32, ICON_SETTINGS, "Environments & Projects", 0, IOS_HIT_COMPUTERS);
   _ := keyed_layer;
 }
 
@@ -1980,7 +1973,6 @@ ios_press :: (s: [] IosPhonePage, row: int) -> bool {
   if act == IOS_HIT_PICKER_CLOSE { s[0].picker = 0; return true; }
   if act == IOS_HIT_COMPUTERS { s[0].drawer = false; s[0].picker = 0; s[0].focus_n = 0; ios_emit(s, IOS_ACT_OPEN_COMPUTERS, ""); return true; }
   if act == IOS_HIT_WORKSPACE { s[0].drawer = false; s[0].picker = 0; s[0].focus_n = 0; ios_emit(s, IOS_ACT_OPEN_WORKSPACE, ""); return true; }
-  if act == IOS_HIT_HUB { s[0].drawer = false; s[0].picker = 0; s[0].focus_n = 0; ios_emit(s, IOS_ACT_OPEN_HUB, ""); return true; }
   if act == IOS_HIT_ACCOUNT { s[0].drawer = false; s[0].picker = 0; s[0].focus_n = 0; ios_emit(s, IOS_ACT_OPEN_ACCOUNT, ""); return true; }
   if act == IOS_HIT_WALLET { s[0].drawer = false; s[0].picker = 0; s[0].focus_n = 0; ios_emit(s, IOS_ACT_OPEN_WALLET, ""); return true; }
   if act == IOS_HIT_NEW_CHAT {
@@ -2527,13 +2519,12 @@ ios_scroll_bottom :: (s: [] IosPhonePage) #export_c #effects(all) {
 }
 
 // State pushers called from Swift MobileCloudChat
-ios_set_header :: (s: [] IosPhonePage, computer: string, session_title: string, workspace: string, reachability: int, paired_count: int, has_active: bool, has_older: bool, has_more_sessions: bool) #export_c #effects(all) {
+ios_set_header :: (s: [] IosPhonePage, computer: string, session_title: string, workspace: string, reachability: int, has_active: bool, has_older: bool, has_more_sessions: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].computer_name_n = ios_copy(s[0].computer_name[..], computer);
   s[0].session_title_n = ios_copy(s[0].session_title[..], session_title);
   s[0].workspace_name_n = ios_copy(s[0].workspace_name[..], workspace);
   s[0].reachability = reachability;
-  s[0].paired_count = paired_count;
   s[0].has_active_session = has_active;
   s[0].has_older_messages = has_older;
   s[0].has_more_sessions = has_more_sessions;
@@ -2765,10 +2756,10 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
 
   // Signed-in Cloud state
   ios_set_account_wallet(s[..], "dev@openagents.com", true, "Spark Wallet", true);
-  ios_set_header(s[..], "OpenAgents Cloud", "", "OpenAgents Core", IOS_REACH_OK, 1, false, false, false);
-  ios_set_composer(s[..], "Gemini 4 Neon", "Medium", "Auto", 0, false);
-  ios_models_push(s[..], "google/gemini-4-neon", "Gemini 4 Neon", "Flagship OpenAgents Cloud model", true);
-  ios_models_push(s[..], "google/gemini-4-carbon", "Gemini 4 Carbon", "High-throughput OpenAgents Cloud model", false);
+  ios_set_header(s[..], "OpenAgents Cloud", "", "OpenAgents Core", IOS_REACH_OK, false, false, false);
+  ios_set_composer(s[..], "OA Auto", "Medium", "Auto", 0, false);
+  ios_models_push(s[..], "openagents/auto", "OpenAgents Auto", "Automatic cloud routing on OpenAgents Core", true);
+  ios_models_push(s[..], "google/gemini-4-neon", "Gemini 4 Neon", "Flagship OpenAgents Cloud model", false);
   ios_efforts_push(s[..], "medium", "Medium", "Balanced", true);
   ios_modes_push(s[..], "target:auto", "Auto", "Cloud Tools + Enrolled Computer + Sandbox", true);
   ios_sessions_push(s[..], "s1", "Fix Metal shader", "Cloud", "google/gemini-4-neon", "2m", false, true, false, false);
@@ -2800,7 +2791,7 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
   #assert ios_test_has(s[..], "pick.1");
   #assert ios_activate(s[..], "pick.1") && s[0].picker == 0;
   #assert ios_take_action(s[..]) == IOS_ACT_CHOSE_MODEL;
-  #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "google/gemini-4-carbon";
+  #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "google/gemini-4-neon";
 
   // Push conversation items (user, thought, tool, assistant markdown with code block)
   ios_items_clear(s[..], true);
@@ -2839,7 +2830,7 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
   ios_todos_push(s[..], "Verify Simulator tests", IOS_TODO_IN_PROGRESS);
   ios_set_queued(s[..], "Then push to main");
   ios_set_usage(s[..], "Auto · Today $0.42 · 5000 sats", 12);
-  ios_set_header(s[..], "OpenAgents Cloud", "Build Cloud Mode iOS", "OpenAgents Core", IOS_REACH_OK, 1, true, false, false);
+  ios_set_header(s[..], "OpenAgents Cloud", "Build Cloud Mode iOS", "OpenAgents Core", IOS_REACH_OK, true, false, false);
   ios_set_approval(s[..], true, "Allow running xcodebuild?", "");
   ios_approval_options_clear(s[..]);
   ios_approval_options_push(s[..], "allow_once", "Allow once", "allow");

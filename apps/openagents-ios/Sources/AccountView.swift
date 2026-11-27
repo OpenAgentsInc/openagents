@@ -83,13 +83,31 @@ struct AccountView: View {
             .listRowBackground(OATheme.surface)
 
             HStack {
-                Text("Cloud Credits")
+                Text("Paid Credits")
                     .font(.system(size: 14))
                     .foregroundStyle(OATheme.textSecondary)
                 Spacer()
-                Text(account.formattedCredits)
+                Text(account.formattedPaidCredits)
                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
                     .foregroundStyle(OATheme.textPrimary)
+            }
+            .listRowBackground(OATheme.surface)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Promo Credits")
+                        .font(.system(size: 14))
+                        .foregroundStyle(OATheme.textSecondary)
+                    if !account.formattedPromoExpiry.isEmpty {
+                        Text("Expires \(account.formattedPromoExpiry)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(OATheme.textMuted)
+                    }
+                }
+                Spacer()
+                Text(account.formattedPromoCredits)
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(account.promoMicros > 0 ? OATheme.statusReady : OATheme.textSecondary)
             }
             .listRowBackground(OATheme.surface)
 
@@ -98,7 +116,9 @@ struct AccountView: View {
                     .font(.system(size: 14))
                     .foregroundStyle(OATheme.textSecondary)
                 Spacer()
-                Text(cloudChat.isStreamConnected ? "Live · \(cloudChat.conversations.count) chats" : "\(cloudChat.conversations.count) synced chats")
+                let count = cloudChat.conversations.count
+                let noun = count == 1 ? "chat" : "chats"
+                Text(cloudChat.isStreamConnected ? "Live · \(count) \(noun)" : "\(count) synced \(noun)")
                     .font(.system(size: 13))
                     .foregroundStyle(cloudChat.isStreamConnected ? OATheme.statusReady : OATheme.textSecondary)
             }
@@ -113,7 +133,7 @@ struct AccountView: View {
             } label: {
                 HStack {
                     Image(systemName: "person.badge.key.fill")
-                    Text("Add Passkey on This iPhone")
+                    Text("Add Passkey on This Device")
                     Spacer()
                     if account.isBusy { ProgressView().controlSize(.small) }
                 }
@@ -177,8 +197,11 @@ struct AccountView: View {
         }
 
         Section {
-            TextField("you@example.com", text: $emailDraft)
+            TextField(text: $emailDraft, prompt: Text(verbatim: "you@example.com").foregroundStyle(OATheme.textMuted)) {
+                EmptyView()
+            }
                 .font(.system(size: 14))
+                .foregroundStyle(OATheme.textPrimary)
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)
                 .autocorrectionDisabled()

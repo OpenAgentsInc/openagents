@@ -161,6 +161,10 @@ final class MobileCloudChat: ObservableObject {
     var usageStripSummary: String {
         let spend = CloudUsageSnapshot.formatUsd(micros: usageSnapshot.todayUsdMicros)
         let target = selectedTarget.shortChipLabel
+        if usageSnapshot.promoMicros > 0 {
+            let promo = CloudUsageSnapshot.formatUsd(micros: usageSnapshot.promoMicros)
+            return "\(target) · Today \(spend) · \(promo) promo"
+        }
         if usageSnapshot.creditMsat > 0 {
             let sats = usageSnapshot.creditMsat / 1000
             return "\(target) · Today \(spend) · \(sats) sats"
@@ -659,13 +663,26 @@ final class MobileCloudChat: ObservableObject {
         if let month = root["month"] as? [String: Any] {
             snap.monthUsdMicros = (month["usd_micros"] as? NSNumber)?.int64Value ?? 0
         }
-        snap.creditMsat = (root["credit_msat"] as? NSNumber)?.int64Value ?? 0
+        if let total = root["total"] as? [String: Any] {
+            snap.totalUsdMicros = (total["usd_micros"] as? NSNumber)?.int64Value ?? 0
+            snap.totalCalls = (total["calls"] as? NSNumber)?.int64Value ?? 0
+            let inTok = (total["in_tokens"] as? NSNumber)?.int64Value ?? 0
+            let outTok = (total["out_tokens"] as? NSNumber)?.int64Value ?? 0
+            snap.totalTokens = inTok + outTok
+        }
+        snap.creditMsat = max(0, (root["credit_msat"] as? NSNumber)?.int64Value ?? 0)
+        snap.promoMicros = max(0, (root["promo_micros"] as? NSNumber)?.int64Value ?? 0)
+        snap.promoExpiresAt = (root["promo_expires_at"] as? String) ?? ""
         if let sb = root["sandbox"] as? [String: Any] {
             snap.sandboxTurns = (sb["turns"] as? NSNumber)?.int64Value ?? 0
             snap.sandboxSeconds = (sb["seconds"] as? NSNumber)?.int64Value ?? 0
             snap.sandboxMsat = (sb["msat"] as? NSNumber)?.int64Value ?? 0
         }
-        snap.localTurns = (root["local_turns"] as? NSNumber)?.int64Value ?? 0
+        if let localObj = root["local"] as? [String: Any] {
+            snap.localTurns = (localObj["turns"] as? NSNumber)?.int64Value ?? 0
+        } else {
+            snap.localTurns = (root["local_turns"] as? NSNumber)?.int64Value ?? 0
+        }
         return snap
     }
 
@@ -706,10 +723,15 @@ final class MobileCloudChat: ObservableObject {
     func sendMessage(overrideText: String? = nil) {
         let rawText = overrideText ?? draftText
         let attachments = overrideText == nil ? pendingAttachments : []
+        let textAttachments = attachments.filter { !$0.isImage }
+        let imageAttachments = attachments.filter { $0.isImage }
         var prompt = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !attachments.isEmpty {
-            let notes = attachments.map { $0.promptNote() }.joined()
+        if !textAttachments.isEmpty {
+            let notes = textAttachments.map { $0.promptNote() }.joined()
             prompt = prompt.isEmpty ? "Please analyze the attached file(s)." + notes : prompt + notes
+        }
+        if prompt.isEmpty && !imageAttachments.isEmpty {
+            prompt = "Please analyze the attached image(s)."
         }
         guard !prompt.isEmpty else { return }
 
@@ -734,7 +756,7 @@ final class MobileCloudChat: ObservableObject {
 
         activeSendTask?.cancel()
         activeSendTask = Task { [weak self] in
-            await self?.executeTurn(prompt: prompt)
+            await self?.executeTurn(prompt: prompt, imageAttachments: imageAttachments)
         }
     }
 
@@ -751,7 +773,7 @@ final class MobileCloudChat: ObservableObject {
                     conversationID: cid,
                     turnID: tid,
                     title: activeConversation?.title ?? "",
-                    model: selectedModelID,
+                    model: selectedModelOption.wireModel,
                     userText: "",
                     output: partial,
                     state: Self.stateCancelled,
@@ -770,7 +792,7 @@ final class MobileCloudChat: ObservableObject {
         onConversationsUpdated?()
     }
 
-    private func executeTurn(prompt: String) async {
+    private func executeTurn(prompt: String, imageAttachments: [CloudAttachment] = []) async {
         isSending = true
         activeTurnStartedAt = Date()
         activePhaseLabel = "Routing…"
@@ -808,7 +830,7 @@ final class MobileCloudChat: ObservableObject {
             await executeDurableTurn(prompt: prompt, hostPubkey: nil, sandboxSize: size, targetLabel: "Cloud Sandbox")
         case .cloud, .auto:
             activePhaseLabel = "Streaming from Cloud…"
-            await executeStreamingCloudTurn(prompt: prompt)
+            await executeStreamingCloudTurn(prompt: prompt, imageAttachments: imageAttachments)
         }
     }
 
@@ -832,8 +854,27 @@ final class MobileCloudChat: ObservableObject {
         return parts.joined(separator: "\n")
     }
 
-    private func executeStreamingCloudTurn(prompt: String) async {
-        let model = selectedModelID
+    static func encodeUserMessage(prompt: String, imageAttachments: [CloudAttachment]) -> [String: Any] {
+        let images = imageAttachments.compactMap { att -> [String: Any]? in
+            guard let data = att.imageData, !data.isEmpty else { return nil }
+            let b64 = data.base64EncodedString()
+            return [
+                "type": "image_url",
+                "image_url": ["url": "data:\(att.mimeType);base64,\(b64)"],
+            ]
+        }
+        guard !images.isEmpty else {
+            return ["role": "user", "content": prompt]
+        }
+        var parts: [[String: Any]] = [["type": "text", "text": prompt]]
+        parts.append(contentsOf: images)
+        return ["role": "user", "content": parts]
+    }
+
+    private func executeStreamingCloudTurn(prompt: String, imageAttachments: [CloudAttachment] = []) async {
+        let modelOpt = selectedModelOption
+        let model = modelOpt.wireModel
+        let effort = modelOpt.supportsThinking ? selectedEffort.rawValue : nil
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let isFresh = activeConversationID == nil
         let convID = activeConversationID ?? Self.newConversationID()
@@ -875,7 +916,7 @@ final class MobileCloudChat: ObservableObject {
                 wireMessages.append(["role": "assistant", "content": turn.output])
             }
         }
-        wireMessages.append(["role": "user", "content": prompt])
+        wireMessages.append(Self.encodeUserMessage(prompt: prompt, imageAttachments: imageAttachments))
 
         let userItem = CloudTranscriptItem(id: "\(tid)-u", role: .user, text: prompt, complete: true, startedAtMs: nowMs)
         let assistantItemID = "\(tid)-a"
@@ -921,6 +962,7 @@ final class MobileCloudChat: ObservableObject {
             let allowTools = round < maxToolRounds && !toolsJSON.isEmpty
             let step = await runStreamingInferenceStep(
                 model: model,
+                reasoningEffort: effort,
                 messages: wireMessages,
                 tools: allowTools ? toolsJSON : nil,
                 assistantItemID: round == 0 ? assistantItemID : "\(tid)-a-\(round)",
@@ -1056,6 +1098,7 @@ final class MobileCloudChat: ObservableObject {
 
     private func runStreamingInferenceStep(
         model: String,
+        reasoningEffort: String?,
         messages: [[String: Any]],
         tools: [[String: Any]]?,
         assistantItemID: String,
@@ -1072,6 +1115,9 @@ final class MobileCloudChat: ObservableObject {
             "stream": true,
             "stream_options": ["include_usage": true],
         ]
+        if let reasoningEffort, !reasoningEffort.isEmpty {
+            bodyObj["reasoning_effort"] = reasoningEffort
+        }
         if let tools, !tools.isEmpty {
             bodyObj["tools"] = tools
         }
@@ -1097,7 +1143,7 @@ final class MobileCloudChat: ObservableObject {
                 if status == 401 {
                     result.error = "Sign in to OpenAgents to continue."
                 } else if status == 402 {
-                    result.error = "Insufficient Cloud credits (0 sats). Top up in Account & Cloud."
+                    result.error = "Insufficient Cloud credits. Add credit at openagents.com to continue."
                 } else {
                     result.error = parsedErr ?? "OpenAgents Cloud error (HTTP \(status))."
                 }
@@ -1344,7 +1390,7 @@ final class MobileCloudChat: ObservableObject {
             let conv = MobileCloudConversation(
                 id: retConvID,
                 title: existingConv?.title ?? String(prompt.prefix(64)),
-                model: selectedModelID,
+                model: selectedModelOption.wireModel,
                 workspace: targetLabel,
                 revision: newRev,
                 updatedAtMs: nowMs,

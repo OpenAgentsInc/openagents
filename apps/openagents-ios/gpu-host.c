@@ -223,10 +223,10 @@ int oa_ios_dashboard_open(void *surface) { IosGpuHost *c = surface; return c ? (
 void oa_ios_scroll_top(void *surface) { IosGpuHost *c = surface; if (c) { ios_scroll_top(oa_state(c)); oa_woke(c); } }
 void oa_ios_scroll_bottom(void *surface) { IosGpuHost *c = surface; if (c) { ios_scroll_bottom(oa_state(c)); oa_woke(c); } }
 
-void oa_ios_set_header(void *surface, const char *computer, const char *session_title, const char *workspace, int reachability, int paired_count, int has_active, int has_older, int has_more_sessions) {
+void oa_ios_set_header(void *surface, const char *computer, const char *session_title, const char *workspace, int reachability, int has_active, int has_older, int has_more_sessions) {
   IosGpuHost *c = surface;
   if (!c) return;
-  ios_set_header(oa_state(c), oa_str(computer), oa_str(session_title), oa_str(workspace), reachability, paired_count, has_active != 0, has_older != 0, has_more_sessions != 0);
+  ios_set_header(oa_state(c), oa_str(computer), oa_str(session_title), oa_str(workspace), reachability, has_active != 0, has_older != 0, has_more_sessions != 0);
   oa_changed(c);
 }
 void oa_ios_set_account_wallet(void *surface, const char *account_label, int account_logged_in, const char *wallet_label, int wallet_ready) {

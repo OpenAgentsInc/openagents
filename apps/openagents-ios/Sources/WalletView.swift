@@ -66,7 +66,7 @@ struct WalletView: View {
                 Text("Self-Custodial Bitcoin & Lightning")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(OATheme.textPrimary)
-                Text("Powered by Breez Spark mainnet. Your 12-word recovery phrase is stored exclusively in this iPhone's Keychain and never leaves your device.")
+                Text("Powered by Breez Spark mainnet. Your 12-word recovery phrase is stored exclusively in this device's Keychain and never leaves your device.")
                     .font(.system(size: 13))
                     .foregroundStyle(OATheme.textSecondary)
             }

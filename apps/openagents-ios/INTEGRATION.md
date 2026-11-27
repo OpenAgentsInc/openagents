@@ -1,44 +1,24 @@
-# Integrating with the iOS host
+# OpenAgents iOS Host Integration
 
-The iOS app runs the shared app core (`apps/shared/app/core/core.coax`) and
-performs every effect it asks for with native services. Views, the login flow
-and the environment picker never call the host: they read the core and
-dispatch actions into it.
+OpenAgents iOS runs **100% in OpenAgents Cloud mode** on the shared **Coax / Metal GPU** engine (`ios-app.coax` → `gpu-page.coax`) with pure-black OLED SwiftUI modal sheets for Account, Spark Wallet, Environments & Projects, and Usage.
 
-## What the host does
+## Architecture
 
-| Piece | File | What it does |
+| Layer | Files | Responsibility |
 | --- | --- | --- |
-| Root | `app.coax` | Loads the page, the core, the atlas tables and the cases adapter; `oa_root_guest` lets a guest result go when no page took it; `oa_drive_*` run coax drive's cases (debug builds) |
-| Core in C | `core-host.c`, `core-host.h` | `oa_core_*`: each `app_host_*` entry point as plain C; a call that answers `APP_GUEST` hands the done event's text to the page's hook (`oa_core_on_guest`, set by `oc_attach` to `chat_guest`: the environment picker's reads) at once |
-| Page in C | `host.c`, `host.h` | `oc_*`: the chat page's frame, pointer, rows and editor text; `oc_env_save` / `oc_env_restore` (the chips' choices, kept in app preferences by `App.swift`); `oc_drive_start` (`-OADrive`, debug builds) |
-| Core in Swift | `AppCore.swift` | `AppCoreC` (the ABI), `AppServices` (launch with rejoin, services, lifecycle) |
-| Bridge | `apps/shared/native/AppCoreBridge.swift` | Takes or refuses each queued request, tells cancellations, returns results with the service table's fields, one timer for `app_host_wake` |
-| Services | `apps/shared/native/AppHTTP.swift`, `AppAccount.swift`, `AppWake.swift`, `AppDevice.swift`, `AppEffects.swift` | HTTP (one origin, the core's `up_http` policy, no cookies or redirects, per-request limit and timeout), the account (tokens and the email attempt stay native), IDs and clocks, clipboard, links, lifecycle |
-| Editing | `apps/shared/native/KitEditor.swift` | The platform editors over GPU fields. Which field holds the keyboard is the page's (`uiframe_focus`, kit/frame.coax); the host shows that field's editor and hides the keyboard when there is none. Each frame the composer's editor takes the page's draft (`oc_text`), so a sent, chosen or driven draft shows |
-| Cases | `apps/shared/host/apple/phone-drive.c` | Debug builds on `-OADrive SOCKET`: each operation runs through the shared driver (`apps/shared/app/cases`) on the main thread, then the host takes its turn (`oc_on_drive_op`: the keyboard a tap asked for); while the driver holds the clock a display frame gets only what it grants |
+| Coax root & `#authority` policies | `ios-app.coax`, `gpu-page.coax` | Compiles Spark wallet & NIP-06 policies, Cloud Chat v2 wire codec, Tier 1 Cloud Tools allowlist, Auto placement policy, Full Auto, Voice Duplex VAD/speech sanitizer, atlas tables, and the iOS Metal GPU surface into `Generated/gallery.{c,h}` |
+| Metal GPU host & C bridge | `gpu-host.{c,h}`, `gpu-carrier.c`, `ComponentsHost.m`, `cloud-chat-bridge.{c,h}`, `Bridge.h` | Exposes `oa_ios_*` (Metal rendering, pointer/scroll, VoiceOver semantics, action queue) and `oa_cc_*` (`#authority` Cloud Chat v2, durable turns, Tier 1 tools, Full Auto, Voice Duplex) to Swift |
+| UIKit / SwiftUI Cloud shell | `Sources/OpenAgentsApp.swift`, `Sources/RootView.swift`, `Sources/GpuRootViewController.swift` | Full-screen `CADisplayLink` Metal loop, native `UIScrollView` scroll driver, `ComposerEditor` text overlay, `KitAccess` VoiceOver bridge, Photos/Files pickers, and OLED modal sheets |
+| Cloud Chat & Sync | `Sources/CloudCore.swift`, `Sources/MobileCloudChat.swift` | `/api/v1/inference` streaming (with `reasoning_effort`, multimodal images, Tier 1 `/api/tools/cloud/v1` tool loop, and `thought_signature` preservation), dual live SSE sync (`/api/chat/v2/stream`, `/api/chat/v2/conversations/:id/stream`), durable turns (`/api/chat/submit/v2alpha1`), placement (`/api/chat/placement/v1`), environments & projects (`/api/chat/environments/v1`, `/api/projects/v1`), and usage (`/api/v1/inference/usage`) |
+| Account, Wallet & Voice | `Sources/MobileAccountController.swift`, `Sources/AccountView.swift`, `Sources/MobileWalletController.swift`, `Sources/WalletView.swift`, `Sources/EnvironmentsView.swift`, `Sources/UsageDashboardView.swift`, `Sources/VoiceDictationController.swift`, `Sources/TurnNotifications.swift` | Passkey / WorkOS Magic Auth / Email + Password / Apple-Google-GitHub SSO with Paid + Promo credit display, self-custodial Breez Spark mainnet wallet + NIP-06 identity, execution target & project selection, and bi-directional Live Voice duplex |
 
-## What a screen gives the host
-
-To be integrated, a screen module leaves an `INTEGRATION.md` that names:
-
-1. The file the root loads.
-2. Its surface procedures with `#export_c`: frame, pointer, the semantic rows,
-   the focused field's box and kind, and the editor's text in and out (the
-   shape of `chat_*` in `chat.coax` and `oc_*` in `host.h`).
-3. The core actions a platform event becomes (`app_host_action` codes), if
-   any. A screen dispatches its own taps.
-4. For a guest (the environment picker): the procedure that takes the done
-   event's text on `APP_GUEST` (the chat page's is `chat_guest`; with none,
-   the root calls `app_guest_done`).
-
-The host does not change a screen's state. It reads `app_host_dirty_take` and
-redraws.
-
-## Checks
+## Build & Verification
 
 ```sh
-coax/remote/remote.sh run --local -- bash apps/shared/native/app-services-check.sh
-apps/openagents-ios/dev.sh
+coax/bin/coax test apps/openagents-ios/ios-app.coax
+coax/bin/coax test apps/openagents-ios/gpu-page.coax --library
+coax/bin/coax test apps/openagents-ios/Tests/tester/catalog.coax --library
+apps/openagents-ios/build.sh
 apps/openagents-ios/check.sh
+bash apps/openagents-ios/e2e-sim-test.sh
 ```

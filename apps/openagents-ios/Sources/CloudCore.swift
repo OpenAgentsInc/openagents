@@ -59,32 +59,50 @@ struct CloudTranscriptItem: Identifiable, Equatable {
 
 struct CloudModelOption: Identifiable, Equatable {
     let id: String
+    let wireModel: String
     let label: String
+    let chipLabel: String
     let detail: String
     let supportsThinking: Bool
 
     static let catalog: [CloudModelOption] = [
         CloudModelOption(
+            id: "openagents/auto",
+            wireModel: "google/gemini-4-neon",
+            label: "OpenAgents Auto",
+            chipLabel: "OA Auto",
+            detail: "Automatic cloud routing on OpenAgents Core",
+            supportsThinking: true
+        ),
+        CloudModelOption(
             id: "google/gemini-4-neon",
+            wireModel: "google/gemini-4-neon",
             label: "Gemini 4 Neon",
+            chipLabel: "Gemini 4 Neon",
             detail: "Flagship OpenAgents Cloud model",
             supportsThinking: true
         ),
         CloudModelOption(
             id: "google/gemini-4-hydrogen",
+            wireModel: "google/gemini-4-hydrogen",
             label: "Gemini 4 Hydrogen",
+            chipLabel: "Gemini 4 Hydrogen",
             detail: "Fast OpenAgents Cloud model",
             supportsThinking: true
         ),
         CloudModelOption(
             id: "google/gemini-4-argon",
+            wireModel: "google/gemini-4-argon",
             label: "Gemini 4 Argon",
+            chipLabel: "Gemini 4 Argon",
             detail: "Reasoning OpenAgents Cloud model",
             supportsThinking: true
         ),
         CloudModelOption(
             id: "google/gemini-4-carbon",
+            wireModel: "google/gemini-4-carbon",
             label: "Gemini 4 Carbon",
+            chipLabel: "Gemini 4 Carbon",
             detail: "High-throughput OpenAgents Cloud model",
             supportsThinking: true
         ),
@@ -236,9 +254,14 @@ struct CloudPlacementDecision: Equatable {
 struct CloudUsageSnapshot: Equatable {
     var todayUsdMicros: Int64 = 0
     var monthUsdMicros: Int64 = 0
+    var totalUsdMicros: Int64 = 0
     var todayTokens: Int64 = 0
+    var totalTokens: Int64 = 0
     var todayRequests: Int64 = 0
+    var totalCalls: Int64 = 0
     var creditMsat: Int64 = 0
+    var promoMicros: Int64 = 0
+    var promoExpiresAt: String = ""
     var sandboxTurns: Int64 = 0
     var sandboxSeconds: Int64 = 0
     var sandboxMsat: Int64 = 0

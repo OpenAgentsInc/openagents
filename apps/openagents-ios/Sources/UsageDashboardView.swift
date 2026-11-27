@@ -24,14 +24,18 @@ struct UsageDashboardView: View {
                 Section {
                     let snap = cloudChat.usageSnapshot
                     metricRow(label: "Today Spend", value: CloudUsageSnapshot.formatUsd(micros: snap.todayUsdMicros), accent: OATheme.textPrimary)
-                    metricRow(label: "Month Spend", value: CloudUsageSnapshot.formatUsd(micros: snap.monthUsdMicros), accent: OATheme.textSecondary)
-                    metricRow(label: "Today Tokens", value: CloudUsageSnapshot.formatTokens(snap.todayTokens), accent: OATheme.textSecondary)
+                    let totalSpendMicros = snap.totalUsdMicros > 0 ? snap.totalUsdMicros : snap.monthUsdMicros
+                    metricRow(label: "Total Spend", value: CloudUsageSnapshot.formatUsd(micros: totalSpendMicros), accent: OATheme.textSecondary)
+                    let tokenCount = snap.totalTokens > 0 ? snap.totalTokens : snap.todayTokens
+                    metricRow(label: "Cloud Tokens", value: CloudUsageSnapshot.formatTokens(tokenCount), accent: OATheme.textSecondary)
                     metricRow(label: "Enrolled Computer Turns ($0)", value: "\(snap.localTurns)", accent: OATheme.statusReady)
                     if snap.sandboxTurns > 0 {
                         metricRow(label: "Cloud Sandbox Turns", value: "\(snap.sandboxTurns) (\(snap.sandboxSeconds)s)", accent: OATheme.textSecondary)
                     }
                     if account.isLoggedIn {
-                        metricRow(label: "Account Credits", value: account.formattedCredits, accent: OATheme.statusReady)
+                        metricRow(label: "Paid Credits", value: account.formattedPaidCredits, accent: OATheme.textPrimary)
+                        let promoMicros = max(account.promoMicros, snap.promoMicros)
+                        metricRow(label: "Promo Credits", value: CloudUsageSnapshot.formatUsd(micros: promoMicros), accent: promoMicros > 0 ? OATheme.statusReady : OATheme.textSecondary)
                     }
 
                     Button {

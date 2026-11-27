@@ -322,7 +322,6 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         let headerTarget = signedIn ? cloudChat.selectedTarget.displayLabel : "OpenAgents Cloud"
         let sessionTitle = activeConv?.title ?? ""
         let projectName = cloudChat.selectedProject?.name ?? (activeConv?.workspace ?? "")
-        let onlineEnvCount = Int32(cloudChat.environments.filter { $0.online }.count)
 
         oa_ios_set_header(
             surface,
@@ -330,7 +329,6 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             sessionTitle,
             projectName,
             reachCode,
-            onlineEnvCount,
             activeConv != nil ? 1 : 0,
             0,
             0
@@ -369,7 +367,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         let effortLabel = modelOpt.supportsThinking ? cloudChat.selectedEffort.label : ""
         oa_ios_set_composer(
             surface,
-            modelOpt.label,
+            modelOpt.chipLabel,
             effortLabel,
             cloudChat.selectedTarget.shortChipLabel,
             Int32(cloudChat.pendingAttachments.count),
@@ -439,7 +437,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
                 "Auto Placement",
                 "Cloud Tools + Enrolled ($0)",
                 cloudChat.isStreamConnected ? OA_IOS_REACH_OK : OA_IOS_REACH_CHECKING,
-                Int32(cloudChat.conversations.count),
+                0,
                 cloudChat.selectedTarget == .auto ? 1 : 0
             )
             oa_ios_machines_push(
@@ -1058,7 +1056,26 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         account.isLoggedIn = true
         account.email = "demo@openagents.com"
+        account.creditMsat = 25_000_000
+        account.promoMicros = 5_000_000
+        account.promoExpiresAt = "2027-02-25T00:00:00Z"
         cloudChat.isStreamConnected = true
+        cloudChat.usageSnapshot = CloudUsageSnapshot(
+            todayUsdMicros: 420_000,
+            monthUsdMicros: 2_850_000,
+            totalUsdMicros: 2_850_000,
+            todayTokens: 48_200,
+            totalTokens: 320_000,
+            todayRequests: 9,
+            totalCalls: 42,
+            creditMsat: 25_000_000,
+            promoMicros: 5_000_000,
+            promoExpiresAt: "2027-02-25T00:00:00Z",
+            sandboxTurns: 0,
+            sandboxSeconds: 0,
+            sandboxMsat: 0,
+            localTurns: 6
+        )
         cloudChat.environments = [
             CloudEnvironment(
                 hostPubkey: String(repeating: "a", count: 64),
