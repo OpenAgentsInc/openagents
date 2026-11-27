@@ -30,7 +30,7 @@
 #else
 #define CD_FLAT_PICTURES 0
 #endif
-#define CD_IMAGE_MAX_SIDE 1024   // a picture a command shows inline is up to 560 points wide (page/shows.coax)
+#define CD_IMAGE_MAX_SIDE 2048   // crisp Retina decoding for inline pictures and the right-pane image viewer
 
 typedef struct {
   uint8_t *rgba;
@@ -85,8 +85,16 @@ static double cd_uptime(void) {
 
 static int cd_decode_image(const char *path, CdImage *slot, uint64_t gen) {
   free(slot->rgba); slot->rgba = NULL; slot->w = 0; slot->h = 0; slot->gen = 0;
-#ifdef __APPLE__
   if (!path || !*path) return 0;
+  char expanded[PATH_MAX];
+  if (path[0] == '~' && path[1] == '/') {
+    const char *home = getenv("HOME");
+    if (home && *home) {
+      int n = snprintf(expanded, sizeof expanded, "%s%s", home, path + 1);
+      if (n > 0 && (size_t)n < sizeof expanded) path = expanded;
+    }
+  }
+#ifdef __APPLE__
   CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8 *)path, (CFIndex)strlen(path), false);
   if (!url) return 0;
   CGImageSourceRef src = CGImageSourceCreateWithURL(url, NULL);

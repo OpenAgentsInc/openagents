@@ -151,14 +151,24 @@ extension CoderWindow {
         let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
         let mtime = attrs?[.modificationDate] as? Date
         let most = Int64(cd_file_most())
-        if size > most {
+        let isImg = Self.isImageExtension(url.pathExtension)
+        let maxBytes: Int64 = isImg ? 32 * 1024 * 1024 : most
+        if size > maxBytes {
             let f = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-            let capLabel = most >= 1024 * 1024 ? "\(most / (1024 * 1024)) MB" : "\(most / 1024) KB"
+            let capLabel = maxBytes >= 1024 * 1024 ? "\(maxBytes / (1024 * 1024)) MB" : "\(maxBytes / 1024) KB"
             cd_file_failed(page, shown, "\(name) is \(f). Coder shows files up to \(capLabel) here; open it in its own app with the button above.")
             wake(); return
         }
         let data: Data
-        do { data = try Data(contentsOf: url) } catch {
+        do {
+            if isImg && size > most {
+                let fh = try FileHandle(forReadingFrom: url)
+                defer { try? fh.close() }
+                data = try fh.read(upToCount: 4096) ?? Data()
+            } else {
+                data = try Data(contentsOf: url)
+            }
+        } catch {
             cd_file_failed(page, shown, "Coder couldn't read \(name): \(error.localizedDescription)"); wake(); return
         }
         let ok = data.withUnsafeBytes { raw in
@@ -234,13 +244,31 @@ extension CoderWindow {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
+    private static func isImageExtension(_ ext: String) -> Bool {
+        switch ext.lowercased() {
+        case "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "heic", "tiff", "tif", "avif": return true
+        default: return false
+        }
+    }
+
     /// Re-reads url into the open File Viewer via cd_file_reload, preserving scroll offset and code folds (#13992).
     private func reloadFileFromDisk(_ url: URL) {
         guard fileURL == url else { return }
         let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
         let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
         let most = Int64(cd_file_most())
-        guard size <= most, let data = try? Data(contentsOf: url) else { return }
+        let isImg = Self.isImageExtension(url.pathExtension)
+        let maxBytes: Int64 = isImg ? 32 * 1024 * 1024 : most
+        guard size <= maxBytes else { return }
+        let data: Data
+        if isImg && size > most {
+            guard let fh = try? FileHandle(forReadingFrom: url) else { return }
+            defer { try? fh.close() }
+            data = (try? fh.read(upToCount: 4096)) ?? Data()
+        } else {
+            guard let full = try? Data(contentsOf: url) else { return }
+            data = full
+        }
         fileWatchMtime = attrs?[.modificationDate] as? Date
         fileWatchSize = size
         _ = data.withUnsafeBytes { raw in

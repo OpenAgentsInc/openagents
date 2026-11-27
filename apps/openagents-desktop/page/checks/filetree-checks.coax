@@ -212,3 +212,41 @@ cp_ft_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   #assert !s[0].ft[0].tree_visible && !coder_page_filetree_shown(s);
   #assert cp_test_draw_side(s, f[..]) && s[0].ft[0].tree_w == 0;
 }
+
+#test "image files render actual PRIM_IMAGE in the side pane (not metadata text) and invalidate on reload" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_ft_test_page(s, f[..]);
+  s[0].cmp_gpu[0].w = 1600; s[0].cmp_gpu[0].h = 1000;
+  coder_page_compose(s, true);
+  png: [24] u8;
+  png[0] = 0x89; png[1] = 'P'; png[2] = 'N'; png[3] = 'G';
+  png[18] = 0x09; png[19] = 0x60;   // 2400
+  png[22] = 0x06; png[23] = 0x40;   // 1600
+  path := "/tmp/atlas-15-settings-desktop.png";
+  #assert coder_page_file_open(s, path, png[..], 412477);
+  #assert s[0].ft[0].preview_kind == CP_FT_PREV_IMAGE;
+  // First draw queues image decode; no readonly metadata banner and no word-wrap toggle
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_ft_test_find(s, "coder.file.readonly") < 0 && cp_ft_test_find(s, "coder.file.wrap") < 0;
+  #assert cp_image_status(s, path) == CP_IMG_PENDING;
+  pbuf: [256] u8;
+  pn := coder_page_image_pending(s, 0, pbuf[..]);
+  #assert cast(string) pbuf[0..<pn] == path;
+  // Simulate host decode completion (2048x1365) and redraw
+  coder_page_image_loaded(s, 0, 2048, 1365, true);
+  #assert cp_test_draw_side(s, f[..]);
+  sh := surface_sheet(s[0].surface[..]);
+  found_img := false;
+  img_w := 0.0f32; img_h := 0.0f32;
+  for i: 0..<sh.nu {
+    if sh.under[i].kind == PRIM_IMAGE && sh.under[i].id == 1 {
+      found_img = true;
+      img_w = sh.under[i].w;
+      img_h = sh.under[i].h;
+    }
+  }
+  #assert found_img && img_w > 100.0f32 && img_h > 50.0f32 && img_w <= s[0].fp[0].body_w && img_h <= s[0].fp[0].body_h;
+  // Reloading from disk invalidates the cached image so the host re-decodes fresh bytes
+  #assert coder_page_file_reload(s, png[..], 412477);
+  #assert cp_image_status(s, path) == CP_IMG_EMPTY;
+  #assert cp_test_draw_side(s, f[..]) && cp_image_status(s, path) == CP_IMG_PENDING;
+}

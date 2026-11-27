@@ -76,6 +76,35 @@ cp_image_request :: (s: [] CoderPage, path: string) -> UcImage {
   img := cp_image_slot(s, path);
   return ifx cp_composes(s) || cp_flat_ok(s) then img else UcImage.{};
 }
+// Current decode state for path in the image slot table (CP_IMG_EMPTY if not queued).
+cp_image_status :: (s: [] CoderPage, path: string) -> int {
+  if path.count == 0 || path.count > CP_IMG_PATH { return CP_IMG_EMPTY; }
+  c := s[0].cmp_gpu[..];
+  for i: 0..<CP_IMAGES {
+    if c[0].img_state[i] != CP_IMG_EMPTY && c[0].img_path_n[i] == path.count {
+      same := true;
+      for j: 0..<path.count { if c[0].img_path[i][j] != path[j] { same = false; break; } }
+      if same { return c[0].img_state[i]; }
+    }
+  }
+  return CP_IMG_EMPTY;
+}
+// Drops any cached decode for path so the next cp_image_request reloads it from disk.
+cp_image_invalidate :: (s: [] CoderPage, path: string) {
+  if path.count == 0 || path.count > CP_IMG_PATH { return; }
+  c := s[0].cmp_gpu[..];
+  for i: 0..<CP_IMAGES {
+    if c[0].img_state[i] != CP_IMG_EMPTY && c[0].img_path_n[i] == path.count {
+      same := true;
+      for j: 0..<path.count { if c[0].img_path[i][j] != path[j] { same = false; break; } }
+      if same {
+        c[0].img_state[i] = CP_IMG_EMPTY;
+        c[0].img_path_n[i] = 0;
+        c[0].images[i] = UcImage.{};
+      }
+    }
+  }
+}
 // Whether a flat frame can hold pictures: the host draws them and has not refused one.
 cp_flat_ok :: (s: [] CoderPage) -> bool { return s[0].cmp_gpu[0].flat_pics && !s[0].cmp_gpu[0].flat_off; }
 // The decoded pictures, packed for the host (active, active_slot: coder_page_image_slot maps an

@@ -494,7 +494,8 @@ cp_ft_is_binary :: (bytes: [] u8) -> bool {
 cp_ft_detect_preview :: (path: string, bytes: [] u8) -> int {
   if cp_ft_ends_ci(path, ".png") || cp_ft_ends_ci(path, ".jpg") || cp_ft_ends_ci(path, ".jpeg") ||
      cp_ft_ends_ci(path, ".gif") || cp_ft_ends_ci(path, ".webp") || cp_ft_ends_ci(path, ".bmp") ||
-     cp_ft_ends_ci(path, ".ico") || cp_ft_ends_ci(path, ".heic") {
+     cp_ft_ends_ci(path, ".ico") || cp_ft_ends_ci(path, ".heic") || cp_ft_ends_ci(path, ".tiff") ||
+     cp_ft_ends_ci(path, ".tif") || cp_ft_ends_ci(path, ".avif") {
     return CP_FT_PREV_IMAGE;
   }
   if cp_ft_ends_ci(path, ".pdf") { return CP_FT_PREV_PDF; }

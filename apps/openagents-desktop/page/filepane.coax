@@ -1123,11 +1123,12 @@ cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -
   sheet_fill(sh, fx, y2 + bh - k.border, fw, k.border, 0, k.menu_divider);
   ft[0].crumb_y = y2 + bh;
 
-  // Compact 24pt action buttons on the right: ≡ Wrap, ↻ Reload, ⋮ More/Editors, plus Save & state when active
+  // Compact 24pt action buttons on the right: ≡ Wrap (text files), ↻ Reload, ⋮ More/Editors, plus Save & state when active
+  is_img := fp[0].mode == CP_FP_READ && ft[0].preview_kind == CP_FT_PREV_IMAGE;
   bside := 24.0f32;
   by := y2 + (bh - bside) / 2.0f32;
   wrap_x := fx + fw - CP_CORNER - bside;
-  reload_x := wrap_x - 2.0f32 - bside;
+  reload_x := ifx is_img then wrap_x else wrap_x - 2.0f32 - bside;
   more_x := reload_x - 2.0f32 - bside;
   right := more_x - 6.0f32;
 
@@ -1136,7 +1137,9 @@ cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -
   ft[0].editor_btn_x = more_x; ft[0].editor_btn_y = by;
   _ := app_icon_button(f, "coder.ft.editors", more_x, by, ICON_MORE_V, "File actions", APP_BUTTON_QUIET, ifx ft[0].editor_menu then EL_S_CURRENT else 0, CP_FT_EDITOR_MENU);
   _ := app_icon_button(f, "coder.file.reload", reload_x, by, ICON_RELOAD, "Reload from disk", APP_BUTTON_QUIET, 0, CP_FP_RELOAD);
-  _ := app_icon_button(f, "coder.file.wrap", wrap_x, by, ICON_WRAP, ifx fp[0].wrap then "Disable word wrap" else "Enable word wrap", APP_BUTTON_QUIET, ifx fp[0].wrap then EL_S_CURRENT else 0, CP_FP_WRAP);
+  if !is_img {
+    _ := app_icon_button(f, "coder.file.wrap", wrap_x, by, ICON_WRAP, ifx fp[0].wrap then "Disable word wrap" else "Enable word wrap", APP_BUTTON_QUIET, ifx fp[0].wrap then EL_S_CURRENT else 0, CP_FP_WRAP);
+  }
   f[0].skin = keep;
 
   if fp[0].mode == CP_FP_EDIT && fp[0].dirty {
@@ -1329,12 +1332,24 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   if fp[0].save_failed { y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap_small; }
   if fp[0].disk_changed { y += cp_fp_draw_disk_banner(s, f, x, y, cw); }
   pk := ft[0].preview_kind;
+  // Render actual decoded images directly in the side pane (no metadata text dump).
+  if fp[0].mode == CP_FP_READ && pk == CP_FT_PREV_IMAGE {
+    ibh := h - a.gap_small - y;
+    if ibh > 0 && fw > 0 {
+      fp[0].body_x = fx; fp[0].body_y = y; fp[0].body_w = fw; fp[0].body_h = ibh;
+      _ := uiframe_semantic(f, "coder.file.body", EL_REGION, cp_fp_name(s), fx, y, fw, ibh, 0, 0);
+      cp_fp_image_view(s, f, fx, y, fw, ibh);
+    }
+    s[0].fp_color_u1 = sh[0].nu;
+    s[0].fp_color_o1 = sh[0].no;
+    cp_ft_draw_editor_menu(s, f);
+    return;
+  }
   if fp[0].mode == CP_FP_READ {
     if pk != CP_FT_PREV_NONE && !ft[0].preview_raw {
       pmsg := ifx pk == CP_FT_PREV_CSV then "CSV/TSV table preview (read-only)."
               else ifx pk == CP_FT_PREV_IPYNB then "Jupyter notebook cell preview (read-only)."
               else ifx pk == CP_FT_PREV_HEX then "Binary hex dump preview (read-only)."
-              else ifx pk == CP_FT_PREV_IMAGE then "Image metadata preview (read-only)."
               else "PDF document metadata preview (read-only).";
       y += app_meta(f, "coder.file.readonly", x, y, cw, pmsg, false) + a.gap_small;
     } else if fp[0].src.count > CP_FP_EDIT_MOST || fp[0].nlines > CP_FP_EDIT_LINES {
@@ -1394,6 +1409,93 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   s[0].fp_color_o1 = sh[0].no;
   cp_find_file_bar(s, f, fx, body, fw);
   cp_ft_draw_editor_menu(s, f);
+}
+
+// Renders the actual decoded image centered & aspect-fit inside the right-pane File Viewer.
+cp_fp_image_view :: (s: [] CoderPage, f: [] UiFrame, fx: f32, body: f32, fw: f32, bh: f32) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; th := cp_theme();
+  fp := s[0].fp[..];
+  path := cast(string) fp[0].path[0..<fp[0].path_n];
+  img := cp_image_request(s, path);
+  ready := img.id > 0 && img.w > 0 && img.h > 0;
+
+  pad := 16.0f32;
+  show_footer := bh >= 72.0f32;
+  footer_h := ifx show_footer then k.small.line + 12.0f32 else 0.0f32;
+  avail_w := fw - 2.0f32 * pad;
+  avail_h := bh - 2.0f32 * pad - footer_h;
+  if avail_w < 1.0f32 { avail_w = 1.0f32; }
+  if avail_h < 1.0f32 { avail_h = 1.0f32; }
+
+  uiframe_clip(f, fx, body, fx + fw, body + bh);
+  if ready {
+    iw := cast(f32) img.w; ih := cast(f32) img.h;
+    sc_w := avail_w / iw; sc_h := avail_h / ih;
+    sc := ifx sc_w < sc_h then sc_w else sc_h;
+    if sc > 1.0f32 { sc = 1.0f32; }
+    dw := iw * sc; dh := ih * sc;
+    if dw < 1.0f32 { dw = 1.0f32; }
+    if dh < 1.0f32 { dh = 1.0f32; }
+    dx := fx + (fw - dw) * 0.5f32;
+    dy := body + pad + (avail_h - dh) * 0.5f32;
+    r := 6.0f32;
+    sheet_under(sh, prim_box(sh[0].under, sh[0].nu, dx, dy, dw, dh, r, 1.0f32, th.surface, th.border));
+    sheet_under(sh, prim_clip(sh[0].under, sh[0].nu, dx + 1.0f32, dy + 1.0f32, dx + dw - 1.0f32, dy + dh - 1.0f32));
+    sheet_under(sh, prim_image(sh[0].under, sh[0].nu, img.id, dx, dy, dw, dh));
+    sheet_under(sh, prim_unclip(sh[0].under, sh[0].nu));
+    sheet_under(sh, prim_box(sh[0].under, sh[0].nu, dx, dy, dw, dh, r, 1.0f32, Rgba.{}, th.border));
+  } else {
+    st := cp_image_status(s, path);
+    msg := ifx st == CP_IMG_PENDING then "Loading image…" else "Could not decode image";
+    ic := 28.0f32;
+    cy := body + pad + (avail_h - (ic + 8.0f32 + k.small.line)) * 0.5f32;
+    sheet_icon(sh, ICON_GALLERY, fx + (fw - ic) * 0.5f32, cy, ic, th.muted);
+    mw := measure_width(m, k.small.face, msg);
+    _ := sheet_text(sh, m, -1, fx + (fw - mw) * 0.5f32, cy + ic + 8.0f32, k.small.line, k.small.face, k.muted, msg);
+  }
+
+  if show_footer {
+    // Original pixel dimensions from PNG/GIF header when present, else decoded texture dimensions.
+    dim_w := img.w; dim_h := img.h;
+    bytes := fp[0].src;
+    if bytes.count >= 24 && bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G' {
+      dim_w = (cast(int) bytes[16] << 24) | (cast(int) bytes[17] << 16) | (cast(int) bytes[18] << 8) | cast(int) bytes[19];
+      dim_h = (cast(int) bytes[20] << 24) | (cast(int) bytes[21] << 16) | (cast(int) bytes[22] << 8) | cast(int) bytes[23];
+    } else if bytes.count >= 10 && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F' {
+      dim_w = cast(int) bytes[6] | (cast(int) bytes[7] << 8);
+      dim_h = cast(int) bytes[8] | (cast(int) bytes[9] << 8);
+    }
+    fb: [96] u8; fn := 0;
+    if dim_w > 0 && dim_h > 0 {
+      fn = el_put_i(fb[..], fn, dim_w);
+      fn = el_put(fb[..], fn, " × ");
+      fn = el_put_i(fb[..], fn, dim_h);
+    }
+    if fp[0].size > 0 {
+      if fn > 0 { fn = el_put(fb[..], fn, " · "); }
+      if fp[0].size >= 1048576 {
+        mb10 := (fp[0].size * 10 + 524288) / 1048576;
+        fn = el_put_i(fb[..], fn, mb10 / 10);
+        fn = cp_ft_put_ch(fb[..], fn, '.');
+        fn = el_put_i(fb[..], fn, mb10 % 10);
+        fn = el_put(fb[..], fn, " MB");
+      } else if fp[0].size >= 1024 {
+        fn = el_put_i(fb[..], fn, (fp[0].size + 512) / 1024);
+        fn = el_put(fb[..], fn, " KB");
+      } else {
+        fn = el_put_i(fb[..], fn, fp[0].size);
+        fn = el_put(fb[..], fn, " B");
+      }
+    }
+    if fn > 0 {
+      flbl := sheet_pool(sh, cast(string) fb[0..<fn]);
+      ffit := app_fit(f, k.small.face, flbl, fw - 2.0f32 * pad);
+      flw := measure_width(m, k.small.face, ffit);
+      fy := body + bh - k.small.line - 6.0f32;
+      _ := sheet_text(sh, m, -1, fx + (fw - flw) * 0.5f32, fy, k.small.line, k.small.face, k.faint, ffit);
+    }
+  }
+  uiframe_unclip(f);
 }
 
 // Collapsible bottom Lean 4 Goal Strip inside the File Pane whenever a .lean file is open (#13947).
@@ -2133,6 +2235,9 @@ coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int)
   if pk != CP_FT_PREV_NONE {
     fp[0].mode = CP_FP_READ;
     fp[0].wrap = ifx saved_wrap_set then saved_wrap else true;
+    if pk == CP_FT_PREV_IMAGE && cp_image_status(s, path) == CP_IMG_FAILED {
+      cp_image_invalidate(s, path);
+    }
     cp_fp_build_index(s, cp_fp_view_src(s), SYN_LANG_PLAIN);
     return true;
   }
@@ -2165,6 +2270,7 @@ coder_page_file_reload :: (s: [] CoderPage, bytes: [] u8, size: int) -> bool #ex
   pk := cp_ft_prepare_preview(s, path, bytes, size);
   if pk != CP_FT_PREV_NONE {
     fp[0].mode = CP_FP_READ;
+    if pk == CP_FT_PREV_IMAGE { cp_image_invalidate(s, path); }
     cp_fp_build_index(s, cp_fp_view_src(s), SYN_LANG_PLAIN);
   } else {
     if fp[0].md_preview && cp_fp_is_markdown(s) {
