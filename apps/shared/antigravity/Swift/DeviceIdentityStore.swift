@@ -254,11 +254,12 @@ final class MobileDeviceStore {
 
     func selectedModel(for host: String) -> String {
         let saved = defaults.string(forKey: "oa.agy.model.\(host)") ?? ""
-        return MobileCore.normalizeAntigravityModel(saved)
+        if saved.isEmpty { return "oa:auto" }
+        return MobileCore.normalizeCoreModel(saved)
     }
 
     func setSelectedModel(_ model: String, for host: String) {
-        defaults.set(MobileCore.normalizeAntigravityModel(model), forKey: "oa.agy.model.\(host)")
+        defaults.set(MobileCore.normalizeCoreModel(model), forKey: "oa.agy.model.\(host)")
     }
 
     func selectedEffort(for host: String, model: String) -> String {
@@ -277,6 +278,39 @@ final class MobileDeviceStore {
 
     func setSelectedReviewMode(_ mode: ReviewMode, for host: String) {
         defaults.set(mode.rawValue, forKey: "oa.agy.review.\(host)")
+    }
+
+    /// Global Full Auto kill-switch (default ON, matching Desktop #14063 / #14068).
+    var fullAutoEnabled: Bool {
+        get {
+            if defaults.object(forKey: "oa.agy.fullAuto") == nil { return true }
+            return defaults.bool(forKey: "oa.agy.fullAuto")
+        }
+        set { defaults.set(newValue, forKey: "oa.agy.fullAuto") }
+    }
+
+    var autoAnswerQuestions: Bool {
+        get {
+            if defaults.object(forKey: "oa.agy.autoAnswerQuestions") == nil { return true }
+            return defaults.bool(forKey: "oa.agy.autoAnswerQuestions")
+        }
+        set { defaults.set(newValue, forKey: "oa.agy.autoAnswerQuestions") }
+    }
+
+    var voiceSpeechRate: Float {
+        get {
+            let val = defaults.float(forKey: "oa.agy.voice.rate")
+            return val > 0 ? val : 0.52
+        }
+        set { defaults.set(newValue, forKey: "oa.agy.voice.rate") }
+    }
+
+    var voiceVadSilenceMs: Int {
+        get {
+            let val = defaults.integer(forKey: "oa.agy.voice.vadSilenceMs")
+            return val >= 400 ? val : 1200
+        }
+        set { defaults.set(newValue, forKey: "oa.agy.voice.vadSilenceMs") }
     }
 
     var lastActiveHost: String? {

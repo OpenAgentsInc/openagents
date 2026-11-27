@@ -141,6 +141,14 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             }
             .store(in: &cancellables)
 
+        dictation.speechRate = store.store.voiceSpeechRate
+        dictation.vadSilenceCommitMs = Int64(store.store.voiceVadSilenceMs)
+        store.onAssistantStreamUpdate = { [weak self] _, itemID, text, complete in
+            guard let self, self.dictation.isDuplexActive else { return }
+            self.dictation.feedAssistantStream(itemID: itemID, fullText: text, complete: complete)
+            self.markDirtyAndWake()
+        }
+
         dictation.objectWillChange
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in
@@ -283,7 +291,13 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         }()
 
         let activeSession = store.activeSession
-        let sessionTitle = activeSession.map { store.displayTitle(for: $0) } ?? ""
+        let activeIntro = store.activeIntrospectSession
+        let sessionTitle: String = {
+            if let intro = activeIntro {
+                return "\(intro.title) · \(intro.harness)"
+            }
+            return activeSession.map { store.displayTitle(for: $0) } ?? ""
+        }()
         let computerName = computer?.name ?? ""
         let pairedCount = Int32(store.computers.filter { $0.paired != nil || $0.isLocalMac }.count)
         let workspaceName = store.workspaceName
@@ -295,7 +309,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             workspaceName,
             reachCode,
             pairedCount,
-            activeSession != nil ? 1 : 0,
+            (activeSession != nil || activeIntro != nil) ? 1 : 0,
             store.hasOlderMessages ? 1 : 0,
             store.hasMoreSessions ? 1 : 0
         )
@@ -303,6 +317,11 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         let bannerErr = dictation.errorMessage ?? store.bannerError ?? store.rateLimitBanner?.message ?? ""
         let toast = store.statusToast ?? ""
         oa_ios_set_banners(surface, bannerErr, Int32(store.pendingOutbox.count), toast)
+
+        // Full Auto policy chip (default ON) + Always-On Usage HUD strip + Bi-Directional Voice state (#14068)
+        oa_ios_set_full_auto(surface, store.fullAutoEnabled ? 1 : 0)
+        oa_ios_set_usage(surface, store.usageStripSummary, Int32(store.usageStripPercent))
+        oa_ios_set_voice_duplex(surface, dictation.duplexState.rawValue, dictation.audioLevel)
 
         if let pending = store.pendingInteraction {
             oa_ios_set_approval(surface, 1, pending.prompt, pending.warning)
@@ -313,13 +332,6 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         } else {
             oa_ios_set_approval(surface, 0, "", "")
             oa_ios_approval_options_clear(surface)
-        }
-
-        if let usage = store.activeUsage, usage.totalTokens > 0 {
-            let pct = Int32(max(0, min(100, Int(usage.contextPercent.rounded()))))
-            oa_ios_set_usage(surface, "\(pct)% · \(usage.summaryLabel)", pct)
-        } else {
-            oa_ios_set_usage(surface, "", 0)
         }
         oa_ios_set_queued(surface, store.queuedDraft ?? "")
 
@@ -412,9 +424,52 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             }
         }
 
+        // Universal Introspection sidebar rows: TUI & Terminal + Other Harnesses + Machines (#14068)
+        oa_ios_intro_clear(surface)
+        for intro in store.introspectSessions.prefix(48) {
+            let kindCode: Int32 = intro.kind == .tui ? OA_IOS_INTRO_TUI : OA_IOS_INTRO_HARNESS
+            let statusText = intro.status.isEmpty ? Self.relativeAge(nowMs: nowMs, atMs: intro.updatedAtMs) : intro.status
+            let shortCwd = intro.cwd.split(separator: "/").last.map(String.init) ?? intro.cwd
+            oa_ios_intro_push(
+                surface,
+                kindCode,
+                intro.id,
+                intro.title,
+                intro.harness,
+                shortCwd,
+                statusText,
+                intro.busy ? 1 : 0,
+                intro.id == store.activeIntrospectSession?.id ? 1 : 0
+            )
+        }
+
+        oa_ios_machines_clear(surface)
+        for comp in store.computers.prefix(16) {
+            let compReach: Int32 = {
+                switch comp.reachability {
+                case .reachable: return OA_IOS_REACH_OK
+                case .checking: return OA_IOS_REACH_CHECKING
+                case .refused, .unreachable: return OA_IOS_REACH_BAD
+                case .unknown: return comp.canSendRPC ? OA_IOS_REACH_CHECKING : OA_IOS_REACH_UNKNOWN
+                }
+            }()
+            let detail = comp.dns.isEmpty ? comp.ip : comp.dns
+            let sessCnt = Int32(store.machineSessionCounts[comp.id] ?? (comp.id == store.activeComputerID ? store.sessions.count : 0))
+            oa_ios_machines_push(
+                surface,
+                comp.id,
+                comp.name,
+                detail,
+                compReach,
+                sessCnt,
+                comp.id == store.activeComputerID ? 1 : 0
+            )
+        }
+
         // Transcript items
-        let sessionChanged = store.activeSessionID != lastSyncedSessionID
-        lastSyncedSessionID = store.activeSessionID
+        let currentViewKey = activeIntro.map { "intro:\($0.id)" } ?? store.activeSessionID
+        let sessionChanged = currentViewKey != lastSyncedSessionID
+        lastSyncedSessionID = currentViewKey
         oa_ios_items_clear(surface, sessionChanged ? 1 : 0)
         for item in store.items.suffix(192) {
             let roleCode: Int32
@@ -473,7 +528,8 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         // Picker catalogs: Models, Efforts, Modes
         oa_ios_models_clear(surface)
         for m in store.availableModels.prefix(24) {
-            let detail = m.supportsThinking ? "\(m.family) · Reasoning" : m.family
+            var detail = m.isLocalFreeCompute ? "\(m.family) · $0 Local" : m.family
+            if m.supportsThinking { detail += " · Reasoning" }
             oa_ios_models_push(surface, m.id, m.label, detail, m.id == store.selectedModelID ? 1 : 0)
         }
 
@@ -544,6 +600,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             oa_ios_blur(surface)
             Task { await store.sendMessage() }
         case OA_IOS_ACT_STOP:
+            dictation.stopSpeakingImmediate()
             Task { await store.stopActiveTurn() }
         case OA_IOS_ACT_NEW_CHAT:
             store.startNewChat()
@@ -633,6 +690,37 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             if arg == "1" {
                 dismissKeyboard(surface)
             }
+        case OA_IOS_ACT_TOGGLE_FULL_AUTO:
+            store.toggleFullAuto()
+        case OA_IOS_ACT_OPEN_USAGE:
+            dismissKeyboard(surface)
+            store.isUsagePresented = true
+            Task { await store.refreshUsage() }
+        case OA_IOS_ACT_TOGGLE_LIVE_VOICE:
+            dismissKeyboard(surface)
+            dictation.speechRate = store.store.voiceSpeechRate
+            dictation.vadSilenceCommitMs = Int64(store.store.voiceVadSilenceMs)
+            dictation.toggleLiveVoice(
+                onPartial: { [weak self] spoken in
+                    self?.store.draftText = spoken
+                    self?.markDirtyAndWake()
+                },
+                onAutoSend: { [weak self] spoken in
+                    guard let self else { return }
+                    self.store.draftText = ""
+                    self.markDirtyAndWake()
+                    Task { await self.store.sendMessage(overrideText: spoken, overrideAttachments: []) }
+                },
+                onBargeIn: { [weak self] in
+                    guard let self else { return }
+                    self.markDirtyAndWake()
+                    Task { await self.store.stopActiveTurn() }
+                }
+            )
+        case OA_IOS_ACT_SELECT_INTRO:
+            store.selectIntrospectSessionByID(arg)
+        case OA_IOS_ACT_SELECT_MACHINE:
+            store.selectMachineByID(arg)
         default:
             break
         }

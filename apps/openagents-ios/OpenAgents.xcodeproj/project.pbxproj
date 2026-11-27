@@ -26,6 +26,7 @@
 		7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0368202C3F17310FAA5C61 /* KitEditor.swift */; };
 		7A8A2263317533EB39DA3239 /* TailscaleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 726690D9A677800DC6CF816E /* TailscaleClient.swift */; };
 		860FDD09B1FAC4A337F20EE0 /* gpu-carrier.c in Sources */ = {isa = PBXBuildFile; fileRef = B54FA4F3CD334853AD93403E /* gpu-carrier.c */; settings = {COMPILER_FLAGS = "-IGenerated -I../shared/host/linux -I../shared/host/apple -Wno-unused-function"; }; };
+		8AC17B8699E0E506A46A2B2E /* UsageDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DC268B267684D5B3F9F304A /* UsageDashboardView.swift */; };
 		93651B6C5140A76D2BA49D75 /* ComputersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6B44D6D148FD2FE7114EDA7 /* ComputersView.swift */; };
 		9ACF93FBF39B83D0E6C83A4E /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2055820A908A3ED4ED7700E /* RootView.swift */; };
 		9B0F2297177548B9AB906CAE /* TranscriptComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3910F4F2AED640680442F26E /* TranscriptComponents.swift */; };
@@ -68,6 +69,7 @@
 		346439B2CDF1C4DE6F844825 /* Components */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Components; path = Generated/Components; sourceTree = SOURCE_ROOT; };
 		3518305F3A8357FA6408C662 /* AntigravityAuthController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityAuthController.swift; sourceTree = "<group>"; };
 		3910F4F2AED640680442F26E /* TranscriptComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptComponents.swift; sourceTree = "<group>"; };
+		3DC268B267684D5B3F9F304A /* UsageDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageDashboardView.swift; sourceTree = "<group>"; };
 		416EC9E05EB2CFA4018DC3FD /* GpuRootViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpuRootViewController.swift; sourceTree = "<group>"; };
 		4302BB64CF0054147A815C77 /* AntigravityUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityUITests.swift; sourceTree = "<group>"; };
 		4816780D18116F36BC64FAB4 /* client-core-bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "client-core-bridge.c"; sourceTree = "<group>"; };
@@ -184,6 +186,7 @@
 				B2055820A908A3ED4ED7700E /* RootView.swift */,
 				D03EC037264A73F6485FB7E0 /* SubagentSheetView.swift */,
 				EF75972EB91F08AA7258E690 /* TurnNotifications.swift */,
+				3DC268B267684D5B3F9F304A /* UsageDashboardView.swift */,
 				EA582415B707553CC69B42D0 /* VoiceDictationController.swift */,
 				CE9AB74571A2D644A737D80A /* WorkspaceView.swift */,
 			);
@@ -358,6 +361,7 @@
 				5C96DB10B6CD92128B9C2742 /* Theme.swift in Sources */,
 				9B0F2297177548B9AB906CAE /* TranscriptComponents.swift in Sources */,
 				1310BBEABAF2BF245999C552 /* TurnNotifications.swift in Sources */,
+				8AC17B8699E0E506A46A2B2E /* UsageDashboardView.swift in Sources */,
 				0ACE2BBE3D3C6C261E063A77 /* VoiceDictationController.swift in Sources */,
 				EB803950CFB8551A0C17A7B2 /* WorkspaceInspectorView.swift in Sources */,
 				D978BD4A07012F57FEB48628 /* WorkspaceView.swift in Sources */,

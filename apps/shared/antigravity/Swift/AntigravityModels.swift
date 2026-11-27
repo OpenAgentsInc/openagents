@@ -127,16 +127,26 @@ struct AntigravityModelOption: Identifiable, Equatable, Codable {
 
     var family: String {
         let lower = id.lowercased()
+        if lower == "oa:local" || lower.hasPrefix("oa:inkling") || lower.hasPrefix("flawed:inkling") { return "OpenAgents Local ($0)" }
+        if lower.hasPrefix("oa:") || lower.hasPrefix("flawed:") || lower == "openagents" { return "OpenAgents Core" }
         if lower.contains("orchestrator") { return "Orchestrator" }
         if lower.hasPrefix("gemini-4") { return "Gemini 4" }
         if lower.hasPrefix("gemini-3") { return "Gemini 3.8" }
         if lower.hasPrefix("gemini-") { return "Gemini" }
-        if lower.hasPrefix("claude-") { return "Claude (ACP)" }
-        if lower.hasPrefix("gpt-") { return "GPT-OSS" }
+        if lower.hasPrefix("claude-") { return "Claude (Sub-Agent / ACP)" }
+        if lower.hasPrefix("codex:") || lower.hasPrefix("gpt-") { return "Codex / GPT" }
         return "Custom / Gateway"
     }
 
+    var isLocalFreeCompute: Bool {
+        let lower = id.lowercased()
+        return lower == "oa:local" || lower == "oa:inkling-2-mini" || lower == "inkling-2-mini" || lower == "inkling" || lower == "flawed:inkling-2-mini"
+    }
+
     static let fallbackCatalog: [AntigravityModelOption] = [
+        AntigravityModelOption(id: "oa:auto", label: "OpenAgents Auto", supportedEfforts: ThinkingEffort.standardLevels),
+        AntigravityModelOption(id: "oa:gemini-4-neon", label: "OpenAgents Cloud · Gemini 4 Neon", supportedEfforts: ThinkingEffort.standardLevels),
+        AntigravityModelOption(id: "oa:inkling-2-mini", label: "OpenAgents Local · Inkling 2 Mini", supportedEfforts: [.low, .medium, .high]),
         AntigravityModelOption(id: "gemini-4-neon", label: "Gemini 4 Neon", supportedEfforts: ThinkingEffort.standardLevels),
         AntigravityModelOption(id: "gemini-4-carbon", label: "Gemini 4 Carbon", supportedEfforts: ThinkingEffort.standardLevels),
         AntigravityModelOption(id: "gemini-4-hydrogen", label: "Gemini 4 Hydrogen", supportedEfforts: ThinkingEffort.standardLevels),
@@ -153,6 +163,7 @@ struct HostRuntimeMeta: Equatable, Codable {
     let agySignedIn: Bool?
     let capabilities: Set<String>
 
+    var supportsCoreEngine: Bool { capabilities.contains("oa.core.v1") }
     var supportsV2Wire: Bool { capabilities.contains("wire.v2") }
     var supportsRemoteUpdate: Bool { capabilities.contains("agy.update") }
     var supportsDynamicModels: Bool { capabilities.contains("agy.dynamic_models") }
@@ -199,6 +210,28 @@ struct SessionUsageStats: Equatable, Codable {
         if cachedTokens > 0 { parts.append("cache \(fmt(cachedTokens))") }
         if thoughtTokens > 0 { parts.append("think \(fmt(thoughtTokens))") }
         return parts.joined(separator: " · ")
+    }
+
+    /// Estimates turn spend in USD microdollars: $0.00 for local Inkling compute (#14072),
+    /// OpenAgents Cloud retail rate for Gemini 4 Neon turns.
+    func estimatedCostMicros(model: String) -> Int64 {
+        let lower = model.lowercased()
+        if lower == "oa:local" || lower == "oa:inkling-2-mini" || lower == "inkling-2-mini" || lower == "inkling" || lower == "flawed:inkling-2-mini" {
+            return 0
+        }
+        // OpenAgents Cloud retail baseline: $1.50/M in, $0.38/M cached, $12.00/M out+thought
+        let inCost = Double(max(0, inputTokens)) * 1.50
+        let cacheCost = Double(max(0, cachedTokens)) * 0.38
+        let outCost = Double(max(0, outputTokens + thoughtTokens)) * 12.00
+        return Int64((inCost + cacheCost + outCost).rounded())
+    }
+
+    func formattedCost(model: String) -> String {
+        let lower = model.lowercased()
+        if lower == "oa:local" || lower == "oa:inkling-2-mini" || lower == "inkling-2-mini" || lower == "inkling" {
+            return "$0.00 local"
+        }
+        return UsageDashboardSnapshot.formatUsd(micros: estimatedCostMicros(model: model))
     }
 }
 
@@ -1545,6 +1578,7 @@ struct MentionCandidate: Identifiable, Equatable {
         case folder
         case rule
         case conversation
+        case session
     }
 
     let id: String
@@ -1559,6 +1593,7 @@ struct MentionCandidate: Identifiable, Equatable {
         case .folder: return "folder"
         case .rule: return "checklist"
         case .conversation: return "bubble.left.and.bubble.right"
+        case .session: return "terminal"
         }
     }
 }
@@ -1807,4 +1842,191 @@ struct ActiveTurnLiveStatus: Equatable {
     let phaseLabel: String
     let startedAt: Date
     let needsApproval: Bool
+}
+
+// MARK: - Desktop Parity Models: Always-On Usage Dashboard & Universal Introspection (#14068)
+
+struct ProviderQuotaRow: Identifiable, Equatable, Codable {
+    let id: String
+    let provider: String
+    let plan: String
+    let status: String // observed, stale, unavailable, signed_out
+    let usedBp: Int // 0..10000
+    let resetSeconds: Int64
+    let windowLabel: String
+    let limited: Bool
+    let updatedAt: Int64
+
+    var usedPercent: Int {
+        max(0, min(100, usedBp / 100))
+    }
+
+    var formattedReset: String {
+        guard resetSeconds > 0 else { return "" }
+        let now = Int64(Date().timeIntervalSince1970)
+        let rem = max(0, resetSeconds - now)
+        if rem <= 0 { return "resetting" }
+        if rem < 3600 { return "resets in \(max(1, rem / 60))m" }
+        let hrs = rem / 3600
+        let mins = (rem % 3600) / 60
+        if hrs < 48 { return "resets in \(hrs)h \(mins)m" }
+        return "resets in \(hrs / 24)d"
+    }
+}
+
+struct UsageDashboardSnapshot: Equatable, Codable {
+    let synced: Bool
+    let todayUsdMicros: Int64
+    let monthUsdMicros: Int64
+    let todayTokens: Int64
+    let localUsdMicros: Int64
+    let creditMsat: Int64
+    let bindingPercent: Int
+    let bindingLabel: String
+    let localReady: Bool
+    let allowLocalHarnesses: Bool
+    let quotas: [ProviderQuotaRow]
+
+    static let empty = UsageDashboardSnapshot(
+        synced: false,
+        todayUsdMicros: 0,
+        monthUsdMicros: 0,
+        todayTokens: 0,
+        localUsdMicros: 0,
+        creditMsat: 0,
+        bindingPercent: 0,
+        bindingLabel: "",
+        localReady: false,
+        allowLocalHarnesses: false,
+        quotas: []
+    )
+
+    static func formatUsd(micros: Int64) -> String {
+        if micros <= 0 { return "$0.00" }
+        let usd = Double(micros) / 1_000_000.0
+        if usd < 0.01 { return String(format: "$%.4f", usd) }
+        return String(format: "$%.2f", usd)
+    }
+
+    static func formatTokens(_ n: Int64) -> String {
+        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000.0) }
+        if n >= 1_000 { return String(format: "%.1fk", Double(n) / 1_000.0) }
+        return "\(n)"
+    }
+
+    static func fromDaemonView(_ view: ParsedDaemonView) -> UsageDashboardSnapshot {
+        var todayMicros: Int64 = 0
+        var monthMicros: Int64 = 0
+        var todayTokens: Int64 = 0
+        var localMicros: Int64 = 0
+        var creditMsat: Int64 = 0
+        var bindingPct = 0
+        var bindingLbl = ""
+        var localReady = false
+        var allowHarnesses = false
+
+        if let data = view.foremanPrompt.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            todayMicros = (obj["today_usd_micros"] as? NSNumber)?.int64Value ?? 0
+            monthMicros = (obj["month_usd_micros"] as? NSNumber)?.int64Value ?? 0
+            todayTokens = (obj["today_tokens"] as? NSNumber)?.int64Value ?? 0
+            localMicros = (obj["local_usd_micros"] as? NSNumber)?.int64Value ?? 0
+            creditMsat = (obj["credit_msat"] as? NSNumber)?.int64Value ?? 0
+            bindingPct = (obj["binding_pct"] as? NSNumber)?.intValue ?? 0
+            bindingLbl = (obj["binding_label"] as? String) ?? ""
+            localReady = (obj["local_ready"] as? Bool) ?? false
+            allowHarnesses = (obj["allow_local_harnesses"] as? Bool) ?? false
+        }
+
+        let quotas: [ProviderQuotaRow] = view.sessions.compactMap { row in
+            guard row.id.hasPrefix("quota:") else { return nil }
+            let tParts = row.title.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            let prov = tParts.count > 0 && !tParts[0].isEmpty ? tParts[0] : row.id
+            let plan = tParts.count > 1 ? tParts[1] : ""
+            let status = tParts.count > 2 ? tParts[2] : "observed"
+            let usedBp = tParts.count > 3 ? (Int(tParts[3]) ?? 0) : 0
+            let resetS = tParts.count > 4 ? (Int64(tParts[4]) ?? 0) : 0
+            return ProviderQuotaRow(
+                id: row.id,
+                provider: prov,
+                plan: plan,
+                status: status,
+                usedBp: max(0, min(10_000, usedBp)),
+                resetSeconds: resetS,
+                windowLabel: row.folder,
+                limited: row.pinned,
+                updatedAt: row.updatedAt
+            )
+        }
+        return UsageDashboardSnapshot(
+            synced: true,
+            todayUsdMicros: todayMicros,
+            monthUsdMicros: monthMicros,
+            todayTokens: todayTokens,
+            localUsdMicros: localMicros,
+            creditMsat: creditMsat,
+            bindingPercent: max(0, min(100, bindingPct)),
+            bindingLabel: bindingLbl,
+            localReady: localReady,
+            allowLocalHarnesses: allowHarnesses,
+            quotas: quotas
+        )
+    }
+}
+
+enum IntrospectKind: String, Equatable, Codable {
+    case tui
+    case harness
+    case remote
+}
+
+struct IntrospectSession: Identifiable, Equatable, Codable {
+    let id: String
+    let kind: IntrospectKind
+    let harness: String // tmux, tui, claude, codex, agy, openagents
+    let machineID: String
+    let machineLabel: String
+    let title: String
+    let cwd: String
+    let status: String // running, idle, waiting, error
+    let busy: Bool
+    let commandable: Bool
+    let updatedAtMs: Int64
+    let preview: String
+
+    static func listFromDaemonView(_ view: ParsedDaemonView, machineID: String, machineLabel: String) -> [IntrospectSession] {
+        view.sessions.compactMap { row in
+            let kind: IntrospectKind
+            if row.id.hasPrefix("tui:") {
+                kind = .tui
+            } else if row.id.hasPrefix("harness:") {
+                kind = .harness
+            } else if row.id.hasPrefix("remote:") {
+                kind = .remote
+            } else {
+                return nil
+            }
+            let tParts = row.title.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            let fParts = row.folder.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            let title = tParts.first.flatMap { $0.isEmpty ? nil : $0 } ?? row.id
+            let harness = tParts.count > 1 && !tParts[1].isEmpty ? tParts[1] : (kind == .tui ? "tmux" : "harness")
+            let status = tParts.count > 2 && !tParts[2].isEmpty ? tParts[2] : (row.pinned ? "running" : "idle")
+            let cwd = fParts.first ?? ""
+            let preview = fParts.count > 1 ? fParts[1] : ""
+            return IntrospectSession(
+                id: row.id,
+                kind: kind,
+                harness: harness,
+                machineID: machineID,
+                machineLabel: machineLabel,
+                title: title,
+                cwd: cwd,
+                status: status,
+                busy: row.pinned || status == "running",
+                commandable: row.archived || kind == .tui || kind == .harness,
+                updatedAtMs: row.updatedAt * 1000,
+                preview: preview
+            )
+        }
+    }
 }

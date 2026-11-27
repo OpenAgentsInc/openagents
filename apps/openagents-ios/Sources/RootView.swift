@@ -28,5 +28,9 @@ struct RootView: View {
                 SideQuestionSheetView(store: store)
                     .preferredColorScheme(.dark)
             }
+            .sheet(isPresented: $store.isUsagePresented) {
+                UsageDashboardView(store: store)
+                    .preferredColorScheme(.dark)
+            }
     }
 }

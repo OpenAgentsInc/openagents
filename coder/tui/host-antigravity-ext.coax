@@ -522,6 +522,442 @@ dm_ext_update_agy_config :: (h: [] HsHost, q: [] DmRequest, v: [] DmView) {
   v[0].nst = ea_copy(v[0].status[..], "updated");
 }
 
+dm_ext_tmux_target_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > 96 { return false; }
+  if s[0] == '-' { return false; }
+  for c: s {
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+      || c == '_' || c == '.' || c == ':' || c == '-';
+    if !ok { return false; }
+  }
+  return true;
+}
+
+dm_ext_parse_int :: (s: string, fallback: int) -> int {
+  if s.count == 0 { return fallback; }
+  i := 0; neg := false;
+  if s[0] == '-' { neg = true; i = 1; }
+  if i >= s.count { return fallback; }
+  v := 0;
+  while i < s.count {
+    c := s[i];
+    if c < '0' || c > '9' { return fallback; }
+    v = v * 10 + cast(int) (c - '0');
+    i += 1;
+  }
+  return ifx neg then -v else v;
+}
+
+dm_ext_read_usage_file :: (path: string, provider: string, profile: string, v: [] DmView, max_bp: [] int, max_lbl: [] u8, max_lbl_n: [] int) {
+  raw: [8192] u8;
+  rn := fs_read(path, raw[..]);
+  if rn < 1 { return; }
+  text := cast(string) raw[0..<rn];
+  // Format written by coder/tui/usage.coax:
+  // line 0: got_ms
+  // line 1: plan
+  // line 2+: <label> <used_bp> <reset_s>
+  at := 0; line_no := 0;
+  got_ms := 0;
+  plan: [64] u8; pn := 0;
+  best_bp := -1; best_reset := 0;
+  best_win: [64] u8; bwn := 0;
+  while at < text.count {
+    end := at;
+    while end < text.count && text[end] != 10 && text[end] != 13 { end += 1; }
+    line := cast(string) text[at..<end];
+    if line_no == 0 {
+      got_ms = dm_ext_parse_int(line, 0);
+    } else if line_no == 1 {
+      pn = ea_copy(plan[..], hs_cut(line, 64));
+      if pn < 0 { pn = 0; }
+    } else if line.count > 0 {
+      // Split on spaces: label bp reset_s
+      sp1 := -1; sp2 := -1;
+      for k: 0..<line.count {
+        if line[k] == ' ' {
+          if sp1 < 0 { sp1 = k; } else if sp2 < 0 { sp2 = k; break; }
+        }
+      }
+      if sp1 > 0 && sp2 > sp1 + 1 && sp2 + 1 < line.count {
+        wlbl := cast(string) line[0..<sp1];
+        wbp := dm_ext_parse_int(cast(string) line[sp1 + 1..<sp2], -1);
+        wrs := dm_ext_parse_int(cast(string) line[sp2 + 1..<line.count], 0);
+        if wbp >= 0 {
+          if wbp > 10000 { wbp = 10000; }
+          if wbp > best_bp {
+            best_bp = wbp; best_reset = wrs;
+            bwn = ea_copy(best_win[..], hs_cut(wlbl, 64));
+            if bwn < 0 { bwn = 0; }
+          }
+        }
+      }
+    }
+    line_no += 1;
+    while end < text.count && (text[end] == 10 || text[end] == 13) { end += 1; }
+    at = end;
+  }
+  if best_bp < 0 { return; }
+  idb: [128] u8; in_ := hs_cat(idb[..], 0, "quota:"); in_ = hs_cat(idb[..], in_, provider);
+  in_ = hs_cat(idb[..], in_, ":"); in_ = hs_cat(idb[..], in_, profile);
+  tb: [256] u8; tn := hs_cat(tb[..], 0, provider);
+  tn = hs_cat(tb[..], tn, "|"); tn = hs_cat(tb[..], tn, ifx pn > 0 then cast(string) plan[0..<pn] else "Default");
+  tn = hs_cat(tb[..], tn, "|observed|");
+  nb: [32] u8;
+  tn = hs_cat(tb[..], tn, hs_itoa(best_bp, nb[..]));
+  tn = hs_cat(tb[..], tn, "|");
+  tn = hs_cat(tb[..], tn, hs_itoa(best_reset, nb[..]));
+  fb: [256] u8; fn := hs_cat(fb[..], 0, cast(string) best_win[0..<bwn]);
+  dm_ext_push_meta(v, cast(string) idb[0..<in_], cast(string) tb[0..<tn], cast(string) fb[0..<fn], best_bp >= 10000, false, got_ms / 1000);
+  if best_bp > max_bp[0] {
+    max_bp[0] = best_bp;
+    n := hs_cat(max_lbl, 0, provider);
+    max_lbl_n[0] = n;
+  }
+}
+
+// #14068: GetUsage — live OpenAgents Cloud/daily spend, $0 local compute status, and provider quotas.
+dm_ext_get_usage :: (h: [] HsHost, v: [] DmView) {
+  hb: [1024] u8; home := ph_home(hb[..]);
+  today_micros := 0;
+  today_tokens := 0;
+  month_micros := 0;
+  credit_msat := 0;
+  allow_env: [16] u8;
+  allow_harnesses := proc_getenv("OA_ALLOW_LOCAL_HARNESSES", allow_env[..]) == "1";
+  wb: [1400] u8;
+  local_ready := ph_inkling_weights(wb[..]).count > 0 && fs_exists(ph_inkling_weights(wb[..]));
+  max_bp := [1] int.[0];
+  max_lbl: [64] u8; max_lbl_n := [1] int.[0];
+
+  if home.count > 0 {
+    // 1. Optional ~/.openagents/coder/usage-daily.json written by Desktop turn telemetry
+    dp: [1400] u8; dn := hs_cat(dp[..], 0, home); dn = hs_cat(dp[..], dn, "/.openagents/coder/usage-daily.json");
+    if fs_exists(cast(string) dp[0..<dn]) {
+      db: [16384] u8; dlen := fs_read(cast(string) dp[0..<dn], db[..]);
+      if dlen > 2 {
+        nodes: [256] JvNode; d: [1] Jv;
+        if jv_parse(d[..], cast(string) db[0..<dlen], nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
+          today_micros = jv_int(d[0], jv_get(d[0], 0, "today_usd_micros"), 0);
+          today_tokens = jv_int(d[0], jv_get(d[0], 0, "today_tokens"), 0);
+          month_micros = jv_int(d[0], jv_get(d[0], 0, "month_usd_micros"), 0);
+          credit_msat = jv_int(d[0], jv_get(d[0], 0, "credit_msat"), 0);
+        }
+      }
+    }
+    // 2. Always include Local Inkling $0.00 compute row
+    dm_ext_push_meta(v, "quota:local:inkling-2-mini",
+      ifx local_ready then "OpenAgents Local|Inkling 2 Mini ($0.00)|observed|0|0" else "OpenAgents Local|Inkling 2 Mini ($0.00)|unavailable|0|0",
+      ifx local_ready then "On-device Metal GPU · $0.00" else "Weights not installed",
+      false, false, hs_now());
+    // 3. Cached provider quota windows (~/.openagents/coder/usage-*.txt)
+    if allow_harnesses {
+      provs := [3] string.["antigravity", "claude", "codex"];
+      for pr: provs {
+        up: [1400] u8; un := hs_cat(up[..], 0, home);
+        un = hs_cat(up[..], un, "/.openagents/coder/usage-");
+        un = hs_cat(up[..], un, pr);
+        un = hs_cat(up[..], un, ".txt");
+        if fs_exists(cast(string) up[0..<un]) {
+          dm_ext_read_usage_file(cast(string) up[0..<un], pr, "Default", v, max_bp[..], max_lbl[..], max_lbl_n[..]);
+        }
+      }
+    } else {
+      // Check antigravity cache if present for legacy hosts
+      up: [1400] u8; un := hs_cat(up[..], 0, home); un = hs_cat(up[..], un, "/.openagents/coder/usage-antigravity.txt");
+      if fs_exists(cast(string) up[0..<un]) {
+        dm_ext_read_usage_file(cast(string) up[0..<un], "antigravity", "Default", v, max_bp[..], max_lbl[..], max_lbl_n[..]);
+      }
+    }
+  }
+  o: [1] Jo; jb: [1024] u8; jo_start(o[..], jb[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "today_usd_micros"); jo_int(o[..], today_micros);
+  jo_key(o[..], "month_usd_micros"); jo_int(o[..], month_micros);
+  jo_key(o[..], "today_tokens"); jo_int(o[..], today_tokens);
+  jo_key(o[..], "local_usd_micros"); jo_int(o[..], 0);
+  jo_key(o[..], "credit_msat"); jo_int(o[..], credit_msat);
+  jo_key(o[..], "binding_pct"); jo_int(o[..], max_bp[0] / 100);
+  jo_key(o[..], "binding_label"); jo_str(o[..], cast(string) max_lbl[0..<max_lbl_n[0]]);
+  jo_key(o[..], "local_ready"); jo_bool(o[..], local_ready);
+  jo_key(o[..], "allow_local_harnesses"); jo_bool(o[..], allow_harnesses);
+  jo_end(o[..]);
+  if !o[0].bad { v[0].foreman[0].np = ea_copy(v[0].foreman[0].prompt[..], cast(string) jb[0..<o[0].n]); }
+  v[0].nst = ea_copy(v[0].status[..], "ready");
+}
+
+// #14068: ListIntrospection — discover local TUI/tmux panes and recent external harness sessions (explicit known paths only).
+dm_ext_list_introspection :: (h: [] HsHost, v: [] DmView) {
+  tui_count := 0;
+  harness_count := 0;
+  now_s := hs_now();
+
+  // 1. Live tmux panes (TUI & Terminal)
+  tb: [1024] u8;
+  tmux := ph_find_on_path("tmux", tb[..]);
+  if tmux.count > 0 {
+    p := proc_new();
+    if p >= 0 {
+      defer { _ = proc_release(p); }
+      ok := proc_arg(p, tmux) && proc_arg(p, "list-panes") && proc_arg(p, "-a")
+        && proc_arg(p, "-F") && proc_arg(p, "#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_pid}");
+      if ok && proc_start(p) == 0 {
+        _ = proc_close_stdin(p);
+        deadline := proc_now_ms() + 1500;
+        while proc_now_ms() < deadline && v[0].nmeta < DM_META_MAX {
+          left := proc_left(deadline, proc_now_ms());
+          ln := cxproc_read_line(p, ifx left > 200 then 200 else left);
+          if ln == PROC_TIMEOUT { continue; }
+          if ln < 0 { break; }
+          if ln == 0 { continue; }
+          linebuf: [1024] u8;
+          take := ifx ln > linebuf.count then linebuf.count else ln;
+          for i: 0..<take { linebuf[i] = cast(u8) cxproc_line_byte(p, i); }
+          line := cast(string) linebuf[0..<take];
+          // Split by tab: target \t cmd \t cwd \t pid
+          t1 := -1; t2 := -1; t3 := -1;
+          for i: 0..<line.count {
+            if line[i] == 9 {
+              if t1 < 0 { t1 = i; } else if t2 < 0 { t2 = i; } else if t3 < 0 { t3 = i; break; }
+            }
+          }
+          if t1 > 0 && t2 > t1 {
+            target := cast(string) line[0..<t1];
+            cmd := cast(string) line[t1 + 1..<t2];
+            cwd := ifx t3 > t2 then cast(string) line[t2 + 1..<t3] else cast(string) line[t2 + 1..<line.count];
+            pid := ifx t3 > t2 && t3 + 1 < line.count then cast(string) line[t3 + 1..<line.count] else "";
+            if dm_ext_tmux_target_ok(target) {
+              idb: [128] u8; in_ := hs_cat(idb[..], 0, "tui:tmux:"); in_ = hs_cat(idb[..], in_, target);
+              tit: [256] u8; tn := hs_cat(tit[..], 0, ifx cmd.count > 0 then cmd else "tmux");
+              tn = hs_cat(tit[..], tn, " ("); tn = hs_cat(tit[..], tn, target); tn = hs_cat(tit[..], tn, ")");
+              tn = hs_cat(tit[..], tn, "|tmux|running|"); tn = hs_cat(tit[..], tn, pid);
+              fb: [1024] u8; fn := hs_cat(fb[..], 0, cwd); fn = hs_cat(fb[..], fn, "|Live tmux pane");
+              dm_ext_push_meta(v, cast(string) idb[0..<in_], cast(string) tit[0..<tn], cast(string) fb[0..<fn], true, true, now_s);
+              tui_count += 1;
+            }
+          }
+        }
+        _ = proc_wait(p, 250);
+      }
+    }
+  }
+
+  // 2. Local OpenAgents TUI heartbeat registry (~/.openagents/tui/sessions/*.json)
+  hb: [1024] u8; home := ph_home(hb[..]);
+  if home.count > 0 {
+    tp: [1400] u8; tn := hs_cat(tp[..], 0, home); tn = hs_cat(tp[..], tn, "/.openagents/tui/sessions");
+    tdir := cast(string) tp[0..<tn];
+    if fs_exists(tdir) {
+      names: [1] FsList;
+      k := fs_list(tdir, names[..]);
+      for i: 0..<k {
+        if v[0].nmeta >= DM_META_MAX { break; }
+        ent := fs_entry(names[..], i);
+        if ent.count < 6 || ent[0] == '.' || !dm_ext_ends_with(ent, ".json") { continue; }
+        fp: [1600] u8; fn := hs_cat(fp[..], 0, tdir); fn = hs_cat(fp[..], fn, "/"); fn = hs_cat(fp[..], fn, ent);
+        mt := fs_mtime_ns(cast(string) fp[0..<fn]) / 1000000000;
+        raw: [4096] u8; rn := fs_read(cast(string) fp[0..<fn], raw[..]);
+        title_b: [128] u8; tbn := 0;
+        cwd_b: [512] u8; cbn := 0;
+        if rn > 2 {
+          s := cast(string) raw[0..<rn];
+          tbn = sched_jstr(s, "title", title_b[..]); if tbn < 0 { tbn = 0; }
+          cbn = sched_jstr(s, "cwd", cwd_b[..]); if cbn < 0 { cbn = 0; }
+        }
+        stem := cast(string) ent[0..<ent.count - 5];
+        idb: [128] u8; in_ := hs_cat(idb[..], 0, "tui:oa:"); in_ = hs_cat(idb[..], in_, stem);
+        tit: [256] u8; ttn := hs_cat(tit[..], 0, ifx tbn > 0 then cast(string) title_b[0..<tbn] else stem);
+        ttn = hs_cat(tit[..], ttn, "|tui|running|");
+        fb: [1024] u8; fbn := hs_cat(fb[..], 0, cast(string) cwd_b[0..<cbn]); fbn = hs_cat(fb[..], fbn, "|OpenAgents TUI");
+        dm_ext_push_meta(v, cast(string) idb[0..<in_], cast(string) tit[0..<ttn], cast(string) fb[0..<fbn], true, true, mt);
+        tui_count += 1;
+      }
+    }
+
+    // 3. Other local harnesses from explicit known session roots (bounded; never global walks)
+    roots := [3] string.["/.claude/projects", "/.codex/sessions", "/.gemini/antigravity/conversations"];
+    hnames := [3] string.["claude", "codex", "agy"];
+    hlabels := [3] string.["Claude Code", "Codex CLI", "Antigravity"];
+    for ri: 0..<3 {
+      rp: [1400] u8; rlen := hs_cat(rp[..], 0, home); rlen = hs_cat(rp[..], rlen, roots[ri]);
+      rdir := cast(string) rp[0..<rlen];
+      if !fs_exists(rdir) { continue; }
+      names: [1] FsList;
+      k := fs_list(rdir, names[..]);
+      added := 0;
+      for i: 0..<k {
+        if v[0].nmeta >= DM_META_MAX || added >= 8 { break; }
+        ent := fs_entry(names[..], i);
+        if ent.count == 0 || ent[0] == '.' || !dm_ext_safe_id(ent) { continue; }
+        fp: [1600] u8; fn := hs_cat(fp[..], 0, rdir); fn = hs_cat(fp[..], fn, "/"); fn = hs_cat(fp[..], fn, ent);
+        mt := fs_mtime_ns(cast(string) fp[0..<fn]) / 1000000000;
+        idb: [128] u8; in_ := hs_cat(idb[..], 0, "harness:"); in_ = hs_cat(idb[..], in_, hnames[ri]);
+        in_ = hs_cat(idb[..], in_, ":"); in_ = hs_cat(idb[..], in_, ent);
+        tit: [256] u8; ttn := hs_cat(tit[..], 0, ent);
+        ttn = hs_cat(tit[..], ttn, "|"); ttn = hs_cat(tit[..], ttn, hnames[ri]);
+        ttn = hs_cat(tit[..], ttn, "|idle|");
+        fb: [1024] u8; fbn := hs_cat(fb[..], 0, rdir); fbn = hs_cat(fb[..], fbn, "|"); fbn = hs_cat(fb[..], fbn, hlabels[ri]);
+        dm_ext_push_meta(v, cast(string) idb[0..<in_], cast(string) tit[0..<ttn], cast(string) fb[0..<fbn], false, true, mt);
+        harness_count += 1;
+        added += 1;
+      }
+    }
+  }
+
+  o: [1] Jo; jb: [512] u8; jo_start(o[..], jb[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "tui_count"); jo_int(o[..], tui_count);
+  jo_key(o[..], "harness_count"); jo_int(o[..], harness_count);
+  jo_end(o[..]);
+  if !o[0].bad { v[0].foreman[0].np = ea_copy(v[0].foreman[0].prompt[..], cast(string) jb[0..<o[0].n]); }
+  v[0].nst = ea_copy(v[0].status[..], "ready");
+}
+
+// #14068: ReadIntrospection — capture tmux pane scrollback or TUI/harness tail safely.
+dm_ext_read_introspection :: (q: [] DmRequest, v: [] DmView) {
+  sid := cast(string) q[0].session[0..<q[0].ns];
+  if sid.count < 5 { dm_fail(v, "malformed"); return; }
+  content_buf: [24576] u8;
+  cn := 0;
+
+  if ws_has_prefix(sid, "tui:tmux:") {
+    target := cast(string) sid[9..<sid.count];
+    if !dm_ext_tmux_target_ok(target) { dm_fail(v, "malformed"); return; }
+    tb: [1024] u8;
+    tmux := ph_find_on_path("tmux", tb[..]);
+    if tmux.count == 0 { dm_fail(v, "not_found"); return; }
+    p := proc_new();
+    if p < 0 { dm_fail(v, "unavailable"); return; }
+    defer { _ = proc_release(p); }
+    ok := proc_arg(p, tmux) && proc_arg(p, "capture-pane") && proc_arg(p, "-p")
+      && proc_arg(p, "-t") && proc_arg(p, target) && proc_arg(p, "-S") && proc_arg(p, "-120");
+    if !ok || proc_start(p) != 0 { dm_fail(v, "operation_failed"); return; }
+    _ = proc_close_stdin(p);
+    deadline := proc_now_ms() + 2000;
+    while proc_now_ms() < deadline && cn < content_buf.count - 2 {
+      left := proc_left(deadline, proc_now_ms());
+      ln := cxproc_read_line(p, ifx left > 200 then 200 else left);
+      if ln == PROC_TIMEOUT { continue; }
+      if ln < 0 { break; }
+      for i: 0..<ln {
+        if cn < content_buf.count - 2 { content_buf[cn] = cast(u8) cxproc_line_byte(p, i); cn += 1; }
+      }
+      if cn < content_buf.count - 1 { content_buf[cn] = 10; cn += 1; }
+    }
+    _ = proc_wait(p, 300);
+  } else if ws_has_prefix(sid, "tui:oa:") {
+    stem := cast(string) sid[7..<sid.count];
+    if !dm_ext_safe_id(stem) { dm_fail(v, "malformed"); return; }
+    hb: [1024] u8; home := ph_home(hb[..]);
+    if home.count == 0 { dm_fail(v, "unavailable"); return; }
+    fp: [1600] u8; fn := hs_cat(fp[..], 0, home); fn = hs_cat(fp[..], fn, "/.openagents/tui/sessions/");
+    fn = hs_cat(fp[..], fn, stem); fn = hs_cat(fp[..], fn, ".json");
+    rn := fs_read(cast(string) fp[0..<fn], content_buf[..]);
+    if rn > 0 { cn = rn; }
+  } else if ws_has_prefix(sid, "harness:") {
+    cn = hs_cat(content_buf[..], 0, "External local harness session: ");
+    cn = hs_cat(content_buf[..], cn, sid);
+    cn = hs_cat(content_buf[..], cn, "\nType a prompt below to dispatch a command to this session over Tailscale.");
+  } else {
+    dm_fail(v, "not_found");
+    return;
+  }
+
+  first := ifx cn > 4000 then 4000 else cn;
+  v[0].foreman[0].np = ea_copy(v[0].foreman[0].prompt[..], cast(string) content_buf[0..<first]);
+  off := first;
+  chunk_idx := 1;
+  while off < cn && v[0].nmeta < DM_META_MAX {
+    take := ifx cn - off > 1000 then 1000 else cn - off;
+    cb: [32] u8; ci := hs_cat(cb[..], 0, "chunk:"); ci = hs_cat(cb[..], ci, hs_itoa(chunk_idx, cb[ci..<cb.count]));
+    dm_ext_push_meta(v, cast(string) cb[0..<ci], "chunk", cast(string) content_buf[off..<off + take], false, false, off);
+    off += take;
+    chunk_idx += 1;
+  }
+  v[0].nst = ea_copy(v[0].status[..], "ready");
+}
+
+// #14068: SendSessionCommand — borderless direct command dispatch over Tailscale to tmux/TUI/harness sessions.
+dm_ext_send_session_command :: (h: [] HsHost, q: [] DmRequest, v: [] DmView) {
+  sid := cast(string) q[0].session[0..<q[0].ns];
+  prompt := cast(string) q[0].text[0..<q[0].nt];
+  mode := ifx q[0].ntl > 0 then cast(string) q[0].title[0..<q[0].ntl] else "send";
+  if sid.count < 5 { dm_fail(v, "malformed"); return; }
+  if mode != "stop" && prompt.count == 0 { dm_fail(v, "malformed"); return; }
+
+  if ws_has_prefix(sid, "tui:tmux:") {
+    target := cast(string) sid[9..<sid.count];
+    if !dm_ext_tmux_target_ok(target) { dm_fail(v, "malformed"); return; }
+    tb: [1024] u8;
+    tmux := ph_find_on_path("tmux", tb[..]);
+    if tmux.count == 0 { dm_fail(v, "not_found"); return; }
+    if mode == "stop" {
+      p := proc_new();
+      if p < 0 { dm_fail(v, "unavailable"); return; }
+      defer { _ = proc_release(p); }
+      ok := proc_arg(p, tmux) && proc_arg(p, "send-keys") && proc_arg(p, "-t") && proc_arg(p, target) && proc_arg(p, "C-c");
+      if !ok || proc_start(p) != 0 { dm_fail(v, "operation_failed"); return; }
+      _ = proc_wait(p, 1500);
+      v[0].nst = ea_copy(v[0].status[..], "stopped");
+      return;
+    }
+    p := proc_new();
+    if p < 0 { dm_fail(v, "unavailable"); return; }
+    defer { _ = proc_release(p); }
+    ok := proc_arg(p, tmux) && proc_arg(p, "send-keys") && proc_arg(p, "-t") && proc_arg(p, target);
+    if mode != "keys" { ok = ok && proc_arg(p, "-l"); }
+    ok = ok && proc_arg(p, prompt);
+    if !ok || proc_start(p) != 0 { dm_fail(v, "operation_failed"); return; }
+    _ = proc_wait(p, 1500);
+    if mode != "keys" {
+      p2 := proc_new();
+      if p2 >= 0 {
+        defer { _ = proc_release(p2); }
+        ok2 := proc_arg(p2, tmux) && proc_arg(p2, "send-keys") && proc_arg(p2, "-t") && proc_arg(p2, target) && proc_arg(p2, "Enter");
+        if ok2 && proc_start(p2) == 0 { _ = proc_wait(p2, 1500); }
+      }
+    }
+    v[0].nst = ea_copy(v[0].status[..], "dispatched");
+    return;
+  }
+
+  if ws_has_prefix(sid, "harness:claude:") {
+    cid := cast(string) sid[15..<sid.count];
+    if !dm_ext_safe_id(cid) { dm_fail(v, "malformed"); return; }
+    cb: [1024] u8;
+    cbin := ph_find_on_path("claude", cb[..]);
+    if cbin.count == 0 { dm_fail(v, "not_found"); return; }
+    p := proc_new();
+    if p < 0 { dm_fail(v, "unavailable"); return; }
+    defer { _ = proc_release(p); }
+    ok := proc_arg(p, cbin) && proc_arg(p, "--resume") && proc_arg(p, cid) && proc_arg(p, "-p") && proc_arg(p, prompt) && proc_arg(p, "--dangerously-skip-permissions");
+    if !ok || proc_start(p) != 0 { dm_fail(v, "operation_failed"); return; }
+    _ = proc_close_stdin(p);
+    _ = proc_wait(p, 2000);
+    v[0].nst = ea_copy(v[0].status[..], "dispatched");
+    return;
+  }
+
+  if ws_has_prefix(sid, "harness:codex:") {
+    cid := cast(string) sid[14..<sid.count];
+    if !dm_ext_safe_id(cid) { dm_fail(v, "malformed"); return; }
+    cb: [1024] u8;
+    cbin := ph_find_on_path("codex", cb[..]);
+    if cbin.count == 0 { dm_fail(v, "not_found"); return; }
+    p := proc_new();
+    if p < 0 { dm_fail(v, "unavailable"); return; }
+    defer { _ = proc_release(p); }
+    ok := proc_arg(p, cbin) && proc_arg(p, "exec") && proc_arg(p, "resume") && proc_arg(p, cid) && proc_arg(p, prompt);
+    if !ok || proc_start(p) != 0 { dm_fail(v, "operation_failed"); return; }
+    _ = proc_close_stdin(p);
+    _ = proc_wait(p, 2000);
+    v[0].nst = ea_copy(v[0].status[..], "dispatched");
+    return;
+  }
+
+  dm_fail(v, "not_found");
+}
+
 dm_agy_execute :: (h: [] HsHost, q: [] DmRequest, v: [] DmView) -> bool {
   m := cast(string) q[0].method[0..<q[0].nm];
   if m == "ListArtifacts" { dm_ext_list_artifacts(q, v); return true; }
@@ -532,6 +968,10 @@ dm_agy_execute :: (h: [] HsHost, q: [] DmRequest, v: [] DmView) -> bool {
   if m == "RunAutomation" { dm_ext_run_automation(h, q, v); return true; }
   if m == "ReadAntigravityConfig" { dm_ext_read_agy_config(h, v); return true; }
   if m == "UpdateAntigravityConfig" { dm_ext_update_agy_config(h, q, v); return true; }
+  if m == "GetUsage" { dm_ext_get_usage(h, v); return true; }
+  if m == "ListIntrospection" { dm_ext_list_introspection(h, v); return true; }
+  if m == "ReadIntrospection" { dm_ext_read_introspection(q, v); return true; }
+  if m == "SendSessionCommand" { dm_ext_send_session_command(h, q, v); return true; }
   return false;
 }
 
@@ -633,8 +1073,10 @@ dm_cmd_pair_url :: (args: [] Args) -> int {
   return 0;
 }
 
-#test "antigravity control-plane helper guards refuse path traversal and classify artifacts (#14014)" {
+#test "antigravity control-plane helper guards refuse path traversal and classify artifacts (#14014, #14068)" {
   #assert dm_ext_safe_id("implementation_plan.md") && !dm_ext_safe_id("../secret") && !dm_ext_safe_id("a/b") && !dm_ext_safe_id("");
+  #assert dm_ext_tmux_target_ok("main:0.1") && dm_ext_tmux_target_ok("dev_1:2.0") && !dm_ext_tmux_target_ok("-rf") && !dm_ext_tmux_target_ok("a;rm") && !dm_ext_tmux_target_ok("");
+  #assert dm_ext_parse_int("4200", -1) == 4200 && dm_ext_parse_int("-5", 0) == -5 && dm_ext_parse_int("bad", 9) == 9;
   #assert dm_ext_artifact_kind("implementation_plan.md") == "plan|Implementation Plan";
   #assert dm_ext_artifact_kind("widget.html") == "html|Generative UI Widget";
   #assert dm_ext_artifact_kind("shot.png") == "image|Screenshot Artifact";

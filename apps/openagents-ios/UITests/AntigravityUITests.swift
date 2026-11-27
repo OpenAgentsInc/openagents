@@ -109,12 +109,22 @@ final class AntigravityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["nav.newChat"].exists)
         XCTAssertTrue(app.buttons["chat.connectTailscale"].waitForExistence(timeout: 5))
 
-        // Composer exposes Attachment (+), Antigravity Model, Thinking Effort, Review Mode, and Voice Dictation controls.
+        // Composer exposes Attachment (+), Model, Effort, Review Mode, Live Voice, and Dictation controls,
+        // plus Always-On Usage HUD & Full Auto toggle chip (default ON; #14068).
         XCTAssertTrue(app.buttons["chat.attachButton"].exists)
         XCTAssertTrue(app.buttons["chat.modelPicker"].exists)
         XCTAssertTrue(app.buttons["chat.effortPicker"].exists)
         XCTAssertTrue(app.buttons["chat.reviewMode"].exists)
+        XCTAssertTrue(app.buttons["chat.liveVoiceButton"].exists)
         XCTAssertTrue(app.buttons["chat.micButton"].exists)
+        XCTAssertTrue(app.buttons["chat.fullAuto"].exists)
+        XCTAssertTrue(app.buttons["chat.usageBar"].exists)
+
+        // Open Always-On Usage Dashboard sheet from the persistent usage strip and dismiss cleanly.
+        app.buttons["chat.usageBar"].tap()
+        XCTAssertTrue(app.buttons["usage.done"].waitForExistence(timeout: 5))
+        app.buttons["usage.done"].tap()
+        XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
 
         // Open Workspace Diff / Branch / PR sheet and dismiss cleanly.
         app.buttons["nav.workspace"].tap()
@@ -122,11 +132,17 @@ final class AntigravityUITests: XCTestCase {
         app.buttons["workspace.done"].tap()
         XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
 
-        // Open sidebar and verify Dashboard + zero legacy Login / Projects / Foreman controls exist.
+        // Open sidebar and verify Dashboard + Universal Introspection sections + zero legacy Login / Projects / Foreman controls exist.
         sidebarButton.tap()
         XCTAssertTrue(app.buttons["sidebar.newChat"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["sidebar.dashboard"].exists)
         XCTAssertTrue(app.buttons["sidebar.computers"].exists)
+        for secID in ["side.sec.1", "side.sec.2", "side.sec.3", "side.sec.4"] {
+            XCTAssertTrue(
+                app.otherElements[secID].exists || app.buttons[secID].exists || app.cells[secID].exists || app.staticTexts[secID].exists,
+                "Expected Universal Introspection sidebar section \(secID)"
+            )
+        }
         for removed in ["drawer.projects", "drawer.foreman", "drawer.login", "settings.login", "usage.open"] {
             XCTAssertFalse(app.buttons[removed].exists, "Legacy control \(removed) must not exist")
         }
@@ -229,6 +245,11 @@ final class AntigravityUITests: XCTestCase {
         pairHost(app: app, port: v2Port, displayName: "E2E Studio Mac", expectedPairedCount: 2)
         XCTAssertTrue(app.staticTexts["Workspace: openagents"].waitForExistence(timeout: 10))
         assertNoErrorBanner(app, context: "v2 connect")
+
+        // Full Auto defaults ON; toggle Full Auto OFF via chip to verify manual Approval Requested banner flow (#14068).
+        let fullAutoBtn = app.buttons["chat.fullAuto"]
+        XCTAssertTrue(fullAutoBtn.waitForExistence(timeout: 5))
+        fullAutoBtn.tap()
 
         // Send a prompt that triggers an interactive Approval Requested banner + Subagent tool row.
         sendPrompt(app, text: "Run tests and approve")

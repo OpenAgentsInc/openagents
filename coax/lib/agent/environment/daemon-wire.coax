@@ -74,11 +74,12 @@ dm_method_valid :: (m:string)->bool #effects(all) {
     || m=="ListArtifacts" || m=="ReadArtifact" || m=="ReadSwarm"
     || m=="ListAutomations" || m=="ToggleAutomation" || m=="RunAutomation"
     || m=="ReadAntigravityConfig" || m=="UpdateAntigravityConfig"
+    || m=="GetUsage" || m=="ListIntrospection" || m=="ReadIntrospection" || m=="SendSessionCommand"
     || dm_is_run(m);
 }
 
 dm_is_write :: (m:string)->bool #effects(all) {
-  return m=="UpdateForeman" || m=="UpdateSessionMeta" || m=="ToggleAutomation" || m=="RunAutomation" || m=="UpdateAntigravityConfig" || m=="StartRun" || m=="StopRun" || m=="ForgetRun";
+  return m=="UpdateForeman" || m=="UpdateSessionMeta" || m=="ToggleAutomation" || m=="RunAutomation" || m=="UpdateAntigravityConfig" || m=="SendSessionCommand" || m=="StartRun" || m=="StopRun" || m=="ForgetRun";
 }
 
 // The run methods: served on the local socket only, never over the relay.
@@ -358,14 +359,14 @@ dm_view_read :: (raw:string,v:[]DmView)->bool #effects(all) {
   #assert rv[0].nruns==2 && rv[0].runs[0].pid==77 && rv[0].runs[0].out==1234 && cast(string)rv[0].runs[1].state[0..<rv[0].runs[1].ns]=="exited" && rv[0].runs[1].ended==99;
 }
 
-#test "antigravity control-plane read and write methods are explicitly classified (#14014-#14018)" {
-  for m:[10]string.["DaemonHealth","ReadForeman","ListSessionMeta","ListRuns","ListArtifacts","ReadArtifact","ReadSwarm","ListAutomations","ReadAntigravityConfig","StartRun"] {
+#test "antigravity control-plane read and write methods are explicitly classified (#14014-#14018, #14068)" {
+  for m:[13]string.["DaemonHealth","ReadForeman","ListSessionMeta","ListRuns","ListArtifacts","ReadArtifact","ReadSwarm","ListAutomations","ReadAntigravityConfig","GetUsage","ListIntrospection","ReadIntrospection","StartRun"] {
     #assert dm_method_valid(m);
   }
-  for m:[5]string.["ListArtifacts","ReadArtifact","ReadSwarm","ListAutomations","ReadAntigravityConfig"] {
+  for m:[8]string.["ListArtifacts","ReadArtifact","ReadSwarm","ListAutomations","ReadAntigravityConfig","GetUsage","ListIntrospection","ReadIntrospection"] {
     #assert !dm_is_write(m);
   }
-  for m:[3]string.["ToggleAutomation","RunAutomation","UpdateAntigravityConfig"] {
+  for m:[4]string.["ToggleAutomation","RunAutomation","UpdateAntigravityConfig","SendSessionCommand"] {
     #assert dm_method_valid(m) && dm_is_write(m);
   }
   #assert !dm_method_valid("NoSuchMethod") && !dm_is_write("NoSuchMethod");

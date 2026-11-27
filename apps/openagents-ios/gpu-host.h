@@ -47,6 +47,21 @@
 #define OA_IOS_ACT_CLEAR_QUEUED 26
 #define OA_IOS_ACT_CHOSE_FOLDER 27
 #define OA_IOS_ACT_DASHBOARD_CHANGED 28
+#define OA_IOS_ACT_TOGGLE_FULL_AUTO 29
+#define OA_IOS_ACT_OPEN_USAGE 30
+#define OA_IOS_ACT_TOGGLE_LIVE_VOICE 31
+#define OA_IOS_ACT_SELECT_INTRO 32
+#define OA_IOS_ACT_SELECT_MACHINE 33
+
+// Introspection item kinds matching gpu-page.coax IOS_INTRO_*
+#define OA_IOS_INTRO_TUI 0
+#define OA_IOS_INTRO_HARNESS 1
+
+// Bi-directional voice duplex states matching gpu-page.coax IOS_VOICE_*
+#define OA_IOS_VOICE_OFF 0
+#define OA_IOS_VOICE_LISTENING 1
+#define OA_IOS_VOICE_THINKING 2
+#define OA_IOS_VOICE_SPEAKING 3
 
 // Todo item status matching gpu-page.coax IOS_TODO_*
 #define OA_IOS_TODO_PENDING 0
@@ -102,7 +117,14 @@ void oa_ios_approval_options_push(void *surface, const char *id, const char *lab
 void oa_ios_set_composer(void *surface, const char *model_label, const char *effort_label, const char *mode_label, int attachments, int mic_active);
 void oa_ios_set_working(void *surface, int busy, int awaiting, int secs, const char *label);
 void oa_ios_set_usage(void *surface, const char *summary, int context_pct);
+void oa_ios_set_full_auto(void *surface, int on);
+void oa_ios_set_voice_duplex(void *surface, int state, float level);
 void oa_ios_set_queued(void *surface, const char *text);
+
+void oa_ios_intro_clear(void *surface);
+void oa_ios_intro_push(void *surface, int kind, const char *id, const char *title, const char *harness, const char *cwd, const char *status, int busy, int current);
+void oa_ios_machines_clear(void *surface);
+void oa_ios_machines_push(void *surface, const char *id, const char *name, const char *detail, int reachability, int session_count, int current);
 
 void oa_ios_suggestions_clear(void *surface, int is_mention);
 void oa_ios_suggestions_push(void *surface, const char *id, const char *label, const char *detail);

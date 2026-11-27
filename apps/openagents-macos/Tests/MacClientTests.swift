@@ -202,6 +202,9 @@ final class MacClientTests: XCTestCase {
         store.chooseReviewMode(.auto)
         let v2Img = FileAttachment.prepareImage(data: try makeRedTestPNG(width: 128, height: 128), name: "v2-shot.png")
         store.addAttachment(v2Img)
+        // Full Auto defaults ON (#14068); disable temporarily to verify interactive Approval banner & options.
+        XCTAssertTrue(store.fullAutoEnabled)
+        store.setFullAuto(false)
         store.draftText = "Run macOS build and approve"
         await store.sendMessage()
         XCTAssertNil(store.bannerError)

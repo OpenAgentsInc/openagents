@@ -185,6 +185,38 @@ enum MobileCore {
         oa_mobile_mode_ok(mode) != 0
     }
 
+    /// Coax `#authority` Full Auto policy (`coax/lib/agent/desktop/full-auto.coax`).
+    /// Returns `0` = prompt user, `1` = auto-allow, `2` = auto-vault.
+    static func fullAutoDecidePrompt(fullAuto: Bool, autoAnswerQuestions: Bool = true, kind: Int64) -> Int64 {
+        oa_mobile_fa_decide_prompt(fullAuto ? 1 : 0, autoAnswerQuestions ? 1 : 0, kind)
+    }
+
+    static func fullAutoShouldGate(fullAuto: Bool, approvalMode: Bool, agyMode: Int64 = 0, sessionAllow: Bool = false) -> Bool {
+        oa_mobile_fa_should_gate(fullAuto ? 1 : 0, approvalMode ? 1 : 0, agyMode, sessionAllow ? 1 : 0) != 0
+    }
+
+    /// Coax `#authority` Bi-Directional Voice Duplex VAD & barge-in (`coax/lib/agent/desktop/voice-duplex.coax`).
+    /// Returns `0` = none, `1` = auto-send, `2` = barge-in.
+    static func voiceDuplexVadStep(state: inout [Int64], rmsBp: Int64, dtMs: Int64) -> Int64 {
+        guard state.count >= 7 else { return 0 }
+        return state.withUnsafeMutableBufferPointer { buf in
+            guard let ptr = buf.baseAddress else { return 0 }
+            return oa_mobile_vd_vad_step(ptr, rmsBp, dtMs)
+        }
+    }
+
+    static func voiceDuplexSanitizeSpeech(_ raw: String) -> String {
+        let cap = max(64, raw.utf8.count + 16)
+        var out = [UInt8](repeating: 0, count: cap)
+        let n = oa_mobile_vd_sanitize_speech(raw, &out, Int64(out.count))
+        guard n > 0 else { return "" }
+        return String(decoding: out[0..<Int(n)], as: UTF8.self)
+    }
+
+    static func voiceDuplexSentenceEnd(_ raw: String) -> Int {
+        Int(oa_mobile_vd_sentence_end(raw))
+    }
+
     static func isV1WireCompatible(_ raw: Data) -> Bool {
         raw.withUnsafeBytes { buf in
             guard let ptr = buf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return false }
