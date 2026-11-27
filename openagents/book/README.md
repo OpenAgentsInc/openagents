@@ -4,31 +4,39 @@ Building the OpenAgents apps, and the general agent behind them, in
 [Coax](../../coax/book/README.md) on [Coax Native](../../coax/native.md),
 one small step at a time.
 
-> **Status: 23 chapters partly implemented on CPU (`1–9`, `11–13`, `15`, `17`, `26`, `28`, `32–33`, `54–55`, `58`, `69–70`); 52 design drafts and 3 planned outlines (`35`, `65`, `66`).**
-> Chapters 1–9, 54–55, and 69–70 each ship a runnable Coax example in [`openagents/examples/`](../examples/opening-case-runner.coax)
+> **Status: 31 chapters partly implemented on CPU (`1–9`, `11–15`, `17`, `21–22`, `24`, `26`, `28`, `32–33`, `42–45`, `54–55`, `58`, `69–70`); 44 design drafts and 3 planned outlines (`35`, `65`, `66`).**
+> Chapters 1–9, 14, 21–22, 24, 42–45, 54–55, 58, and 69–70 each ship a runnable Coax example in [`openagents/examples/`](../examples/opening-case-runner.coax)
 > with verified debug/release transcripts grounded in
 > [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
 > [`apps/shared/app/history/index.coax`](../../apps/shared/app/history/index.coax),
 > [`apps/shared/app/environment/select.coax`](../../apps/shared/app/environment/select.coax),
 > [`apps/shared/app/settings/identity.coax`](../../apps/shared/app/settings/identity.coax),
+> [`coax/lib/agent/router/decide.coax`](../../coax/lib/agent/router/decide.coax),
+> [`openagents/knowledge/nipkb.coax`](../../openagents/knowledge/nipkb.coax),
+> [`openagents/knowledge/embed.coax`](../../openagents/knowledge/embed.coax),
+> [`openagents/core/members.coax`](../../openagents/core/members.coax),
+> [`coax/lib/agent/desktop/capability-author.coax`](../../coax/lib/agent/desktop/capability-author.coax),
+> [`coax/lib/agent/desktop/capability-gate.coax`](../../coax/lib/agent/desktop/capability-gate.coax),
+> [`coax/lib/nostr/eval/report.coax`](../../coax/lib/nostr/eval/report.coax),
 > [`psionic/lib/peer/module-registry.coax`](../../psionic/lib/peer/module-registry.coax),
 > [`psionic/lib/peer/release-promote.coax`](../../psionic/lib/peer/release-promote.coax),
 > [`psionic/lib/hybrid-exec.coax`](../../psionic/lib/hybrid-exec.coax),
 > [`psionic/lib/pylon/onboard.coax`](../../psionic/lib/pylon/onboard.coax), and
 > [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax).
-> Chapters 11–13, 15, 17, 26, 28, 32–33, and 58 are additionally backed by
+> Chapters 11–13, 15, 17, 26, 28, and 32–33 are additionally backed by
 > shipped, CPU-tested Coax modules across **Coax Web / Coax UI**
 > ([`components/ui/`](../../components/ui), [`apps/openagents-web/demos/docs-starter/`](../../apps/openagents-web/demos/docs-starter)),
 > the unified 24-layer pure-Coax agent core ([`openagents/core/`](../../openagents/core),
 > [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax),
 > [`coder/tui/oa-subagent.coax`](../../coder/tui/oa-subagent.coax)),
 > the typed router ([`coax/lib/agent/router/`](../../coax/lib/agent/router)),
+> the shared knowledge base ([`openagents/knowledge/`](../../openagents/knowledge)),
 > the Desktop + Apple Breez Spark wallet and `#authority` money rules
 > ([`pay/`](../../pay), [`apps/openagents-desktop/page/walletpane.coax`](../../apps/openagents-desktop/page/walletpane.coax)),
 > and 3-leg Executor Network author-royalty settlement ([`pay/executor-settlement.coax`](../../pay/executor-settlement.coax)).
 > Native host accessibility UI tests (`macos-arm64`, `ios-simulator`, `ios-device`),
-> mobile feature parity (`#14068`), shared `NIP-KB` knowledge (`#14058`),
-> OpenAgents Studio / plugin sandboxing (`#14059`), and general public plugin
+> mobile feature parity (`#14068`), multi-relay `NIP-KB` sync and neural gateway
+> embeddings, general sandboxed third-party plugin SDKs, and public plugin
 > economy scale (`#14060`) remain open per [CONTRACT.md](CONTRACT.md).
 > Where a piece already runs in the repository, the chapter cites its real paths
 > and separates what runs today from what remains. [CONTRACT.md](CONTRACT.md)
@@ -223,22 +231,22 @@ NIPs, old crates and protocol packages.
 | --- | --- |
 | [12. The simplest agent](ch012-the-simplest-agent.md) | Partly implemented: cpu |
 | [13. Members](ch013-members.md) | Partly implemented: cpu |
-| [14. A typed plan](ch014-a-typed-plan.md) | Unimplemented: design draft |
+| [14. A typed plan](ch014-a-typed-plan.md) | Partly implemented: cpu |
 | [15. Decide before you generate](ch015-decide-before-you-generate.md) | Partly implemented: cpu |
 | [16. Measure the front](ch016-measure-the-front.md) | Unimplemented: design draft |
 | [17. Grants and approvals](ch017-grants-and-approvals.md) | Partly implemented: cpu |
 | [18. On the record](ch018-on-the-record.md) | Unimplemented: design draft |
 | [19. Conversation](ch019-conversation.md) | Unimplemented: design draft |
 | [20. Prepared answers](ch020-prepared-answers.md) | Unimplemented: design draft |
-| [21. A knowledge base](ch021-a-knowledge-base.md) | Unimplemented: design draft |
-| [22. Retrieval by meaning](ch022-retrieval-by-meaning.md) | Unimplemented: design draft |
+| [21. A knowledge base](ch021-a-knowledge-base.md) | Partly implemented: cpu |
+| [22. Retrieval by meaning](ch022-retrieval-by-meaning.md) | Partly implemented: cpu |
 | [23. Memory and consent](ch023-memory-and-consent.md) | Unimplemented: design draft |
 
 ### IV. Capabilities on your devices
 
 | Chapter | Status |
 | --- | --- |
-| [24. Coder as a member](ch024-coder-as-a-member.md) | Unimplemented: design draft |
+| [24. Coder as a member](ch024-coder-as-a-member.md) | Partly implemented: cpu |
 | [25. Other engines](ch025-other-engines.md) | Unimplemented: design draft |
 | [26. Subagents you can see](ch026-subagents-you-can-see.md) | Partly implemented: cpu |
 | [27. Programs](ch027-programs.md) | Unimplemented: design draft |
@@ -266,10 +274,10 @@ NIPs, old crates and protocol packages.
 | [39. The sandbox](ch039-the-sandbox.md) | Unimplemented: design draft |
 | [40. Installing grants nothing](ch040-installing-grants-nothing.md) | Unimplemented: design draft |
 | [41. Write a plugin](ch041-write-a-plugin.md) | Unimplemented: design draft |
-| [42. The authoring interview](ch042-the-authoring-interview.md) | Unimplemented: design draft |
-| [43. Test-time capabilities](ch043-test-time-capabilities.md) | Unimplemented: design draft |
-| [44. Cases and graders](ch044-cases-and-graders.md) | Unimplemented: design draft |
-| [45. A two-arm run](ch045-a-two-arm-run.md) | Unimplemented: design draft |
+| [42. The authoring interview](ch042-the-authoring-interview.md) | Partly implemented: cpu |
+| [43. Test-time capabilities](ch043-test-time-capabilities.md) | Partly implemented: cpu |
+| [44. Cases and graders](ch044-cases-and-graders.md) | Partly implemented: cpu |
+| [45. A two-arm run](ch045-a-two-arm-run.md) | Partly implemented: cpu |
 | [46. A claim's key](ch046-a-claims-key.md) | Unimplemented: design draft |
 | [47. Reproduction by another key](ch047-reproduction-by-another-key.md) | Unimplemented: design draft |
 | [48. External validation](ch048-external-validation.md) | Unimplemented: design draft |

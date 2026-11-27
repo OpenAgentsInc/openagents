@@ -1,0 +1,4 @@
+suite total=6 heldout=2 base=2 cand=5 code=0 label=PROMOTED: candidate passed two-arm eval and held-out gate
+refuse empty=1 no_heldout=2 heldout_regressed=4 zero_pass=5 cost=6 latency=7
+slugs valid=true reject_path=true reject_double_dash=true
+ok=true

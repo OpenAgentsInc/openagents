@@ -1,0 +1,87 @@
+// Runnable example for The OpenAgents Book Chapter 42: The authoring interview.
+// Exercises the production missing-capability trigger in the v2 router
+// (coax/lib/agent/router/decide.coax), the #authority `OA_PACK_CAPABILITY`
+// permission & slug policy (openagents/core/members.coax), and the SKILL.md
+// metadata parser + promotion verdict card renderer
+// (coax/lib/agent/desktop/capability-author.coax):
+//   - Detecting a missing Linear capability and activating `capability_author`.
+//   - Gating `CapabilityDraft` behind interactive approval in `DEFAULT`, denying
+//     path-traversal / newline-injected slugs even in `BYPASS`, and denying writes in `PLAN`.
+//   - Parsing drafted SKILL.md frontmatter and rendering promoted vs rejected verdict cards.
+//   coax/bin/coax run openagents/examples/capability-authoring-interview.coax
+#import "Basic";
+#load "../../coax/lib/agent/router/decide.coax";
+#load "../../openagents/core/members.coax";
+#load "../../coax/lib/agent/desktop/capability-author.coax";
+
+cai_beh_name :: (b: int) -> string {
+  if b == OA_MP_PBEH_ALLOW { return "allow"; }
+  if b == OA_MP_PBEH_ASK { return "ask"; }
+  if b == OA_MP_PBEH_DENY { return "deny"; }
+  return "unknown";
+}
+
+// book:begin capability-authoring-interview
+cai_run :: () -> bool {
+  // 1. Router detects missing capability and activates `capability_author`.
+  q: [1] Rtr2PlanRequest;
+  p: [1] Rtr2Plan;
+  w: [1] Rtr2Work;
+  q[0] = Rtr2PlanRequest.{
+    text = "Turn my meeting notes into Linear tickets.",
+    local_inkling_ready = true,
+    cloud_ready = true
+  };
+  rtr2_decide_mock(
+    q[..],
+    "primary_pack=general,compute_tier=cloud_fast,explicit_delegate=none,difficulty=2,effort=medium,missing_capability=950,missing_capability_kind=custom_api_tool",
+    0, p[..], w[..]
+  );
+  print("detect ok=% pack0=% pack1=% hint=% reason=%\n",
+    p[0].ok, p[0].capability_packs[0], p[0].capability_packs[1],
+    p[0].missing_capability_hint, p[0].reasons[0]);
+
+  // 2. #authority capability-pack permissions and slug safety refusals.
+  b_list := oa_member_tool_permission("CapabilityList", "", OA_MP_PMODE_PLAN, false, false);
+  b_draft_ask := oa_member_tool_permission("CapabilityDraft", "linear-meeting-tickets", OA_MP_PMODE_DEFAULT, false, false);
+  b_draft_ok := oa_member_tool_permission("CapabilityDraft", "linear-meeting-tickets", OA_MP_PMODE_DEFAULT, false, true);
+  b_eval_plan := oa_member_tool_permission("CapabilityEval", "linear-meeting-tickets", OA_MP_PMODE_PLAN, false, false);
+  b_traversal := oa_member_tool_permission("CapabilityDraft", "../escape", OA_MP_PMODE_BYPASS, true, true);
+  b_newline := oa_member_tool_permission("CapabilityEval", "linear-tickets\nbad", OA_MP_PMODE_BYPASS, true, true);
+  print("perms list_plan=% draft_unapproved=% draft_approved=% eval_plan=% refuse_traversal=% refuse_newline=%\n",
+    cai_beh_name(b_list), cai_beh_name(b_draft_ask), cai_beh_name(b_draft_ok),
+    cai_beh_name(b_eval_plan), cai_beh_name(b_traversal), cai_beh_name(b_newline));
+
+  // 3. Parse drafted SKILL.md frontmatter and render #authority promotion verdict cards.
+  md := "---\nname: linear-meeting-tickets\ndescription: Turn meeting notes into Linear tickets\n---\n\n# linear-meeting-tickets\n";
+  nb: [64] u8; nn: [1] int;
+  db: [256] u8; dn: [1] int;
+  ce_parse_skill_meta(md, nb[..], nn[..], db[..], dn[..]);
+  sname := cast(string) nb[0..<nn[0]];
+  sdesc := cast(string) db[0..<dn[0]];
+
+  v_pass := "{\"slug\":\"linear-meeting-tickets\",\"promoted\":true,\"verdict_code\":0,\"verdict\":\"PROMOTED: candidate passed two-arm eval and held-out gate\",\"baseline_passed\":1,\"candidate_passed\":2,\"baseline_heldout_passed\":1,\"candidate_heldout_passed\":1,\"candidate_latency_ms\":42,\"atif_verified\":true,\"steps_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"evidence_path\":\"/skills/linear-meeting-tickets/evidence.json\"}";
+  v_fail := "{\"slug\":\"broken-skill\",\"promoted\":false,\"verdict_code\":3,\"verdict\":\"REJECTED: candidate regressed below baseline\",\"baseline_passed\":2,\"candidate_passed\":1,\"baseline_heldout_passed\":1,\"candidate_heldout_passed\":0,\"candidate_latency_ms\":19,\"atif_verified\":true,\"steps_digest\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"evidence_path\":\"/exp/broken-skill-rejected.json\"}";
+  card: [2048] u8;
+  cn1 := ce_format_verdict_card(v_pass, card[..]);
+  c1 := cast(string) card[0..<cn1];
+  pass_card_ok := cn1 > 0 && ce_contains_ci(c1, "PROMOTED") && ce_contains_ci(c1, "next turn") && ce_contains_ci(c1, "0123456789abcdef");
+
+  cn2 := ce_format_verdict_card(v_fail, card[..]);
+  c2 := cast(string) card[0..<cn2];
+  fail_card_ok := cn2 > 0 && ce_contains_ci(c2, "REJECTED") && ce_contains_ci(c2, "not installed") && ce_contains_ci(c2, "fedcba9876543210");
+  print("draft name=% desc=% pass_card=% fail_card=%\n", sname, sdesc, pass_card_ok, fail_card_ok);
+
+  return p[0].ok && p[0].capability_packs[0] == "capability_author" &&
+         p[0].missing_capability_hint == "custom_api_tool" &&
+         b_list == OA_MP_PBEH_ALLOW && b_draft_ask == OA_MP_PBEH_ASK && b_draft_ok == OA_MP_PBEH_ALLOW &&
+         b_eval_plan == OA_MP_PBEH_DENY && b_traversal == OA_MP_PBEH_DENY && b_newline == OA_MP_PBEH_DENY &&
+         sname == "linear-meeting-tickets" && sdesc == "Turn meeting notes into Linear tickets" &&
+         pass_card_ok && fail_card_ok;
+}
+// book:end capability-authoring-interview
+
+main :: () {
+  ok := cai_run();
+  print("ok=%\n", ok);
+}

@@ -65,6 +65,62 @@
       "modes": ["debug", "release"]
     },
     {
+      "source": "openagents/examples/typed-route-plan.coax",
+      "chapter": "openagents/book/ch014-a-typed-plan.md",
+      "stdout": "openagents/examples/typed-route-plan.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/knowledge-base-records.coax",
+      "chapter": "openagents/book/ch021-a-knowledge-base.md",
+      "stdout": "openagents/examples/knowledge-base-records.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/knowledge-semantic-retrieval.coax",
+      "chapter": "openagents/book/ch022-retrieval-by-meaning.md",
+      "stdout": "openagents/examples/knowledge-semantic-retrieval.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/coder-member-dispatch.coax",
+      "chapter": "openagents/book/ch024-coder-as-a-member.md",
+      "stdout": "openagents/examples/coder-member-dispatch.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/capability-authoring-interview.coax",
+      "chapter": "openagents/book/ch042-the-authoring-interview.md",
+      "stdout": "openagents/examples/capability-authoring-interview.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/test-time-capability-claims.coax",
+      "chapter": "openagents/book/ch043-test-time-capabilities.md",
+      "stdout": "openagents/examples/test-time-capability-claims.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/capability-cases-gate.coax",
+      "chapter": "openagents/book/ch044-cases-and-graders.md",
+      "stdout": "openagents/examples/capability-cases-gate.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "openagents/examples/two-arm-atif-eval.coax",
+      "chapter": "openagents/book/ch045-a-two-arm-run.md",
+      "stdout": "openagents/examples/two-arm-atif-eval.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
       "source": "openagents/examples/signed-module-registry.coax",
       "chapter": "openagents/book/ch054-releases-as-signed-events.md",
       "stdout": "openagents/examples/signed-module-registry.out",

@@ -1,7 +1,15 @@
 # 44. Cases and graders
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` reach-and-restraint promotion
+> gate ([`coax/lib/agent/desktop/capability-gate.coax`](../../coax/lib/agent/desktop/capability-gate.coax),
+> `#13896`, `#14059`) and positive/held-out case harness
+> ([`coax/lib/agent/desktop/capability-author.coax`](../../coax/lib/agent/desktop/capability-author.coax))
+> run on `cpu`, grounded by [`openagents/examples/capability-cases-gate.coax`](../examples/capability-cases-gate.coax)
+> and [`openagents/examples/capability-cases-gate.out`](../examples/capability-cases-gate.out),
+> and are consumed by [`coax/lib/agent/desktop/capability-eval.coax`](../../coax/lib/agent/desktop/capability-eval.coax)
+> and [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax). Remaining:
+> signed standalone NIP-EVAL suite packaging, typed-decision graders, and
+> cross-case state-leakage linting in `openagents/eval/suite.coax`.
 
 ## Premise
 
@@ -51,6 +59,8 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`coax/lib/agent/desktop/capability-gate.coax`](../../coax/lib/agent/desktop/capability-gate.coax) (`#authority` reach/restraint held-out case gate, cost/latency budgets, and slug hygiene, `#13896`, `#14059`)
+- [`coax/lib/agent/desktop/capability-author.coax`](../../coax/lib/agent/desktop/capability-author.coax) (positive + held-out two-arm shell case runner)
 - [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval)
 - [`coax/lib/systemone`](../../coax/lib/systemone)
 - [`coder/tui/filter_eval.py`](../../coder/tui/filter_eval.py)
@@ -63,18 +73,25 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the test-set format and graders in
-  `openagents/eval/suite.coax`, and the linter.
-- **Trace:** a fixture test set of six cases, four should-fire and two
-  should-not-fire, each with a deterministic grader. The trace prints each
-  case's kind, grader and result, then `6 cases: 4 should-fire, 2
-  should-not-fire`.
-- **Refusal:** a test set with no should-not-fire case is refused by the
-  linter with the reason named. So is a case whose check passes only on its
-  given example, or that depends on state left by an earlier case.
-- **Independent check:** each grader's expected result is written by hand
-  for the fixture, and the old tree's repository map test set at
-  `coder-v1.0.0` reads with the same case count and kinds.
+- **Source:** [`coax/lib/agent/desktop/capability-gate.coax`](../../coax/lib/agent/desktop/capability-gate.coax),
+  [`openagents/examples/capability-cases-gate.coax`](../examples/capability-cases-gate.coax),
+  and [`openagents/examples/capability-cases-gate.out`](../examples/capability-cases-gate.out)
+  (remaining: standalone signed suite format and state-leakage linter in
+  `openagents/eval/suite.coax`).
+- **Trace:** evaluates a 6-case fixture (`4` should-fire positive cases + `2`
+  should-not-fire held-out restraint cases) where baseline passes `2/6` and
+  candidate passes `5/6` while preserving `2/2` on held-out within cost and
+  latency budgets (`code=0`, `PROMOTED: candidate passed two-arm eval and held-out gate`).
+- **Refusal:** an empty suite refuses with `CAP_FAIL_NO_CASES` (`1`); a suite
+  with zero should-not-fire held-out cases refuses with `CAP_FAIL_NO_HELDOUT`
+  (`2`); a held-out restraint regression refuses with `CAP_FAIL_HELDOUT_REGRESSED`
+  (`4`) even when overall passes rise; zero candidate passes refuse with
+  `CAP_FAIL_ZERO_PASS` (`5`); cost/latency overruns refuse with `6`/`7`; and
+  unsafe capability slugs (`../escape`, `repo--map`) are rejected.
+- **Independent check:** `coax/bin/coax run openagents/examples/capability-cases-gate.coax`
+  and `--release` match [`openagents/examples/capability-cases-gate.out`](../examples/capability-cases-gate.out),
+  alongside the boundary test table and `#authority` mutation suite in
+  [`coax/lib/agent/desktop/capability-gate.coax`](../../coax/lib/agent/desktop/capability-gate.coax).
 
 Planned paths: `openagents/eval/suite.coax`.
 
@@ -92,3 +109,71 @@ Planned paths: `openagents/eval/suite.coax`.
   - *Test-Time Capabilities* (`git show coder-v1.0.0:docs/essays/2026-09-29-test-time-capabilities.md`), "Reach and restraint"
   - `knowledge/slip.*.md` at `coder-v1.0.0`
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P5, P15
+
+## Source listing
+
+Run the Chapter 44 example in [`openagents/examples/capability-cases-gate.coax`](../examples/capability-cases-gate.coax) (committed transcript [`openagents/examples/capability-cases-gate.out`](../examples/capability-cases-gate.out)):
+
+<!-- source: openagents/examples/capability-cases-gate.coax capability-cases-gate -->
+```jai
+ccg_run :: () -> bool {
+  // 1. 6-case suite: 4 should-fire positive cases + 2 should-not-fire held-out cases.
+  suite := CapEvalSummary.{
+    total_cases = 6,
+    heldout_cases = 2,
+    baseline_passed = 2,
+    candidate_passed = 5,
+    baseline_heldout_passed = 2,
+    candidate_heldout_passed = 2,
+    candidate_cost_micros = 400,
+    max_cost_micros = 500,
+    candidate_latency_ms = 850,
+    max_latency_ms = 1200,
+    atif_verified = true
+  };
+  v_ok := cap_admit_promotion(suite);
+  print("suite total=% heldout=% base=% cand=% code=% label=%\n",
+    suite.total_cases, suite.heldout_cases, suite.baseline_passed, suite.candidate_passed,
+    v_ok, cap_verdict_label(v_ok));
+
+  // 2. Fail-closed suite & grader refusals.
+  s_empty := suite; s_empty.total_cases = 0;
+  s_no_ho := suite; s_no_ho.heldout_cases = 0;
+  s_ho_reg := suite; s_ho_reg.candidate_heldout_passed = 1; // total still 5 > 2, but restraint regressed!
+  s_zero := suite; s_zero.baseline_passed = 0; s_zero.candidate_passed = 0; s_zero.baseline_heldout_passed = 0; s_zero.candidate_heldout_passed = 0;
+  s_cost := suite; s_cost.candidate_cost_micros = 501;
+  s_lat := suite; s_lat.candidate_latency_ms = 1201;
+
+  v_empty := cap_admit_promotion(s_empty);
+  v_no_ho := cap_admit_promotion(s_no_ho);
+  v_ho_reg := cap_admit_promotion(s_ho_reg);
+  v_zero := cap_admit_promotion(s_zero);
+  v_cost := cap_admit_promotion(s_cost);
+  v_lat := cap_admit_promotion(s_lat);
+
+  print("refuse empty=% no_heldout=% heldout_regressed=% zero_pass=% cost=% latency=%\n",
+    v_empty, v_no_ho, v_ho_reg, v_zero, v_cost, v_lat);
+
+  // 3. Capability slug hygiene.
+  slug_good := cap_valid_slug("repo-map-v1");
+  slug_bad_path := cap_valid_slug("../escape");
+  slug_bad_dash := cap_valid_slug("repo--map");
+  print("slugs valid=% reject_path=% reject_double_dash=%\n",
+    slug_good, !slug_bad_path, !slug_bad_dash);
+
+  return v_ok == CAP_PASS &&
+         v_empty == CAP_FAIL_NO_CASES && v_no_ho == CAP_FAIL_NO_HELDOUT &&
+         v_ho_reg == CAP_FAIL_HELDOUT_REGRESSED && v_zero == CAP_FAIL_ZERO_PASS &&
+         v_cost == CAP_FAIL_COST_BUDGET && v_lat == CAP_FAIL_LATENCY_BUDGET &&
+         slug_good && !slug_bad_path && !slug_bad_dash;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/capability-cases-gate.coax`, identical in `--release`):
+
+```text
+suite total=6 heldout=2 base=2 cand=5 code=0 label=PROMOTED: candidate passed two-arm eval and held-out gate
+refuse empty=1 no_heldout=2 heldout_regressed=4 zero_pass=5 cost=6 latency=7
+slugs valid=true reject_path=true reject_double_dash=true
+ok=true
+```

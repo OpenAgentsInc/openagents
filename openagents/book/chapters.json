@@ -288,14 +288,26 @@
       "number": 14,
       "title": "A typed plan",
       "file": "ch014-a-typed-plan.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         13
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/router/wire.coax",
+        "coax/lib/agent/router/policy.coax",
+        "coax/lib/agent/router/decide.coax",
+        "coax/lib/agent/router/router.coax",
+        "openagents/examples/typed-route-plan.coax",
+        "openagents/examples/typed-route-plan.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coder/tui/oa-worker.coax",
+        "apps/openagents-desktop/page/agent_settings.coax"
+      ]
     },
     {
       "number": 15,
@@ -403,28 +415,50 @@
       "number": 21,
       "title": "A knowledge base",
       "file": "ch021-a-knowledge-base.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         18,
         20
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "openagents/knowledge/record.coax",
+        "openagents/knowledge/nipkb.coax",
+        "openagents/knowledge/index.coax",
+        "openagents/knowledge/kb-tool.coax",
+        "openagents/examples/knowledge-base-records.coax",
+        "openagents/examples/knowledge-base-records.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 22,
       "title": "Retrieval by meaning",
       "file": "ch022-retrieval-by-meaning.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         21
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "openagents/knowledge/embed.coax",
+        "openagents/knowledge/record.coax",
+        "openagents/knowledge/index.coax",
+        "openagents/knowledge/kb-tool.coax",
+        "openagents/examples/knowledge-semantic-retrieval.coax",
+        "openagents/examples/knowledge-semantic-retrieval.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 23,
@@ -444,15 +478,27 @@
       "number": 24,
       "title": "Coder as a member",
       "file": "ch024-coder-as-a-member.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         13,
         17
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "openagents/core/members.coax",
+        "openagents/core/core.coax",
+        "openagents/core/query_loop.coax",
+        "openagents/core/wire.coax",
+        "coder/tui/oa-worker.coax",
+        "openagents/examples/coder-member-dispatch.coax",
+        "openagents/examples/coder-member-dispatch.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-desktop/Window+Runs.swift"
+      ]
     },
     {
       "number": 25,
@@ -739,55 +785,102 @@
       "number": 42,
       "title": "The authoring interview",
       "file": "ch042-the-authoring-interview.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         27,
         41
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/desktop/capability-author.coax",
+        "coax/lib/agent/desktop/capability-gate.coax",
+        "openagents/core/members.coax",
+        "coax/lib/agent/router/policy.coax",
+        "openagents/examples/capability-authoring-interview.coax",
+        "openagents/examples/capability-authoring-interview.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coder/tui/oa-worker.coax",
+        "openagents/core/wire.coax",
+        "coax/lib/agent/desktop/capability-eval.coax"
+      ]
     },
     {
       "number": 43,
       "title": "Test-time capabilities",
       "file": "ch043-test-time-capabilities.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         40
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/nostr/eval/report.coax",
+        "coax/lib/agent/desktop/capability-gate.coax",
+        "openagents/examples/test-time-capability-claims.coax",
+        "openagents/examples/test-time-capability-claims.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "openagents/registry/registry.coax",
+        "coax/lib/agent/desktop/capability-author.coax",
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 44,
       "title": "Cases and graders",
       "file": "ch044-cases-and-graders.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         43
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/desktop/capability-gate.coax",
+        "coax/lib/agent/desktop/capability-author.coax",
+        "openagents/examples/capability-cases-gate.coax",
+        "openagents/examples/capability-cases-gate.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/agent/desktop/capability-eval.coax",
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 45,
       "title": "A two-arm run",
       "file": "ch045-a-two-arm-run.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         18,
         44
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/desktop/capability-author.coax",
+        "coax/lib/agent/desktop/capability-eval.coax",
+        "coax/lib/agent/desktop/capability-gate.coax",
+        "coax/lib/nostr/atif/log.coax",
+        "coax/lib/nostr/eval/report.coax",
+        "openagents/examples/two-arm-atif-eval.coax",
+        "openagents/examples/two-arm-atif-eval.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coder/tui/oa-worker.coax",
+        "apps/openagents-desktop/CapabilityStudio.swift"
+      ]
     },
     {
       "number": 46,

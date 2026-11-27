@@ -26,20 +26,20 @@
 
 - [12. The simplest agent](ch012-the-simplest-agent.md) — partly implemented
 - [13. Members](ch013-members.md) — partly implemented
-- [14. A typed plan](ch014-a-typed-plan.md) — design draft
+- [14. A typed plan](ch014-a-typed-plan.md) — partly implemented
 - [15. Decide before you generate](ch015-decide-before-you-generate.md) — partly implemented
 - [16. Measure the front](ch016-measure-the-front.md) — design draft
 - [17. Grants and approvals](ch017-grants-and-approvals.md) — partly implemented
 - [18. On the record](ch018-on-the-record.md) — design draft
 - [19. Conversation](ch019-conversation.md) — design draft
 - [20. Prepared answers](ch020-prepared-answers.md) — design draft
-- [21. A knowledge base](ch021-a-knowledge-base.md) — design draft
-- [22. Retrieval by meaning](ch022-retrieval-by-meaning.md) — design draft
+- [21. A knowledge base](ch021-a-knowledge-base.md) — partly implemented
+- [22. Retrieval by meaning](ch022-retrieval-by-meaning.md) — partly implemented
 - [23. Memory and consent](ch023-memory-and-consent.md) — design draft
 
 ## IV. Capabilities on your devices
 
-- [24. Coder as a member](ch024-coder-as-a-member.md) — design draft
+- [24. Coder as a member](ch024-coder-as-a-member.md) — partly implemented
 - [25. Other engines](ch025-other-engines.md) — design draft
 - [26. Subagents you can see](ch026-subagents-you-can-see.md) — partly implemented
 - [27. Programs](ch027-programs.md) — design draft
@@ -63,10 +63,10 @@
 - [39. The sandbox](ch039-the-sandbox.md) — design draft
 - [40. Installing grants nothing](ch040-installing-grants-nothing.md) — design draft
 - [41. Write a plugin](ch041-write-a-plugin.md) — design draft
-- [42. The authoring interview](ch042-the-authoring-interview.md) — design draft
-- [43. Test-time capabilities](ch043-test-time-capabilities.md) — design draft
-- [44. Cases and graders](ch044-cases-and-graders.md) — design draft
-- [45. A two-arm run](ch045-a-two-arm-run.md) — design draft
+- [42. The authoring interview](ch042-the-authoring-interview.md) — partly implemented
+- [43. Test-time capabilities](ch043-test-time-capabilities.md) — partly implemented
+- [44. Cases and graders](ch044-cases-and-graders.md) — partly implemented
+- [45. A two-arm run](ch045-a-two-arm-run.md) — partly implemented
 - [46. A claim's key](ch046-a-claims-key.md) — design draft
 - [47. Reproduction by another key](ch047-reproduction-by-another-key.md) — design draft
 - [48. External validation](ch048-external-validation.md) — design draft

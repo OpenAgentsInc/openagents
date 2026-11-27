@@ -1,0 +1,4 @@
+plan1 ok=true pack=knowledge tier=local_inkling delegate=none effort=low difficulty=1 replay_exact=true
+offline ok=true door=fallback pack=coder tier=local_inkling reasons=door_unavailable,user_pref_local
+refuse_empty=no_task refuse_compute=no_compute refuse_safety=refused_by_door refuse_delegate=none/delegate_unavailable refuse_bad_pack=true
+ok=true

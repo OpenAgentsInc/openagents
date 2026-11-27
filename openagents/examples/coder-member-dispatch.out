@@ -1,0 +1,5 @@
+route ok=true pack=coder tier=cloud_fast delegate=none packs_mask=127 agent_wt=true
+reads wallet_status=allow kb_search=allow cli_list=allow cli_create_def=ask cli_create_plan=deny
+wallet_pay immune=true bypass=ask plan=deny dont_ask=deny
+cli_guards vault_bypass=ask nostr_plan=deny bad_sub=deny bad_newline=deny
+ok=true

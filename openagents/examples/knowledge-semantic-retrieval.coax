@@ -1,0 +1,104 @@
+// Runnable example for The OpenAgents Book Chapter 22: Retrieval by meaning.
+// Exercises the production reader-side 64-dim dense semantic encoder
+// (openagents/knowledge/embed.coax) and #authority hybrid BM25 + dense RRF fusion
+// and relevance refusal gate (openagents/knowledge/record.coax, reusing
+// psionic/lib/book-search/rank.coax):
+//   - Reader-computed unit-normalized 64-dim dense embeddings (never trusting
+//     author vectors) and cosine ranking across three fixture passages.
+//   - Reciprocal Rank Fusion (`kb_rec_hybrid_fuse`) combining lexical BM25 and
+//     dense cosine scores into deterministic milli-units.
+//   - Refusal when a query is stopword-only or scores below the relevance cutoff,
+//     returning zero citations and `We don't have an entry for that.`.
+//   coax/bin/coax run openagents/examples/knowledge-semantic-retrieval.coax
+#import "Basic";
+#load "../../openagents/knowledge/embed.coax";
+
+// book:begin knowledge-semantic-retrieval
+ksr_run :: () -> bool {
+  // 1. Encode three passages with reader-side 64-dim unit-normalized vectors.
+  paths := [3] string.[
+    "coax/book/ch11-writing-checks.md",
+    "docs/transcripts/289.md",
+    "food/pizza.md"
+  ];
+  heads := [3] string.[
+    "Authority and Mutation Checks",
+    "Episode 289 OpenAgents",
+    "Sourdough Pizza Recipe"
+  ];
+  bodies := [3] string.[
+    "Files marked #authority require zero surviving mutants under coax mutate.",
+    "We decided to build System One Front and a shared knowledge base.",
+    "Bake dough at 500 degrees with mozzarella and basil."
+  ];
+
+  v0: [KB_VEC_DIM] f32;
+  v1: [KB_VEC_DIM] f32;
+  v2: [KB_VEC_DIM] f32;
+  e0 := kb_embed(heads[0], paths[0], bodies[0], v0[..]);
+  e1 := kb_embed(heads[1], paths[1], bodies[1], v1[..]);
+  e2 := kb_embed(heads[2], paths[2], bodies[2], v2[..]);
+  unit_ok := e0 && e1 && e2 && abs(bs_dot(v0[..], v0[..]) - 1.0) < 1e-4;
+
+  // 2. Semantic cosine ranking for two distinct natural-language queries.
+  vq1: [KB_VEC_DIM] f32;
+  q1_ok := kb_embed("", "", "how does Coax #authority mutation checking work?", vq1[..]);
+  d1 := [3] f64.[bs_dot(vq1[..], v0[..]), bs_dot(vq1[..], v1[..]), bs_dot(vq1[..], v2[..])];
+  den1: [3] BsHit;
+  nd1 := bs_top(d1[..], 0.0, den1[..]);
+
+  // Combine dense semantic hits with BM25 lexical hits via #authority RRF fusion.
+  bm0 := bs_bm25(3, 1, 3, 12, 12.0);
+  bm1 := bs_bm25(1, 2, 3, 12, 12.0);
+  lex1 := [2] BsHit.[BsHit.{passage = 0, score = bm0}, BsHit.{passage = 1, score = bm1}];
+  fbuf: [3] f64;
+  fused: [3] BsHit;
+  nf1 := kb_rec_hybrid_fuse(lex1[..], den1[0..<nd1], fbuf[..], fused[..]);
+  print("q1_top=% sem_milli=%,%,% fused_top=% fused_hits=%\n",
+    paths[den1[0].passage],
+    kb_rec_to_milli(d1[0]), kb_rec_to_milli(d1[1]), kb_rec_to_milli(d1[2]),
+    paths[fused[0].passage], nf1);
+
+  vq2: [KB_VEC_DIM] f32;
+  q2_ok := kb_embed("", "", "what did we decide in episode 289 about System One Front?", vq2[..]);
+  d2 := [3] f64.[bs_dot(vq2[..], v0[..]), bs_dot(vq2[..], v1[..]), bs_dot(vq2[..], v2[..])];
+  den2: [3] BsHit;
+  nd2 := bs_top(d2[..], 0.0, den2[..]);
+  print("q2_top=% sem_milli=%,%,% unit_norm=%\n",
+    paths[den2[0].passage],
+    kb_rec_to_milli(d2[0]), kb_rec_to_milli(d2[1]), kb_rec_to_milli(d2[2]), unit_ok);
+
+  // 3. Fail-closed refusals: stopword-only query and below-cutoff out-of-corpus query.
+  vstop: [KB_VEC_DIM] f32;
+  stop_ok := kb_embed("the and", "what", "in of", vstop[..]);
+
+  weak_lex := [1] BsHit.[BsHit.{passage = 2, score = 0.2}];
+  weak_den := [1] BsHit.[BsHit.{passage = 2, score = 0.1}];
+  nf_ref := kb_rec_hybrid_fuse(weak_lex[..], weak_den[..], fbuf[..], fused[..]);
+
+  no_hits: [1] KbRecHit;
+  jb: [1024] u8;
+  o: [1] Jo;
+  jo_start(o[..], jb[..]);
+  kb_rec_write_reply_json(o[..], "neapolitan gelato recipe", 2, 3, 3, no_hits[0..<0]);
+  nodes: [64] JvNode;
+  doc: [1] Jv;
+  mb: [64] u8;
+  ref_parsed := !o[0].bad && jv_parse(doc[..], jo_text(o[..]), nodes[..]);
+  ref_flag := ref_parsed && jv_bool(doc[0], jv_get(doc[0], 0, "refused"));
+  mn := ifx ref_parsed then jv_str(doc[0], jv_get(doc[0], 0, "message"), mb[..]) else 0;
+  ref_msg := cast(string) mb[0..<mn];
+  print("stopword_rejected=% cutoff_hits=% refused=% message=%\n",
+    !stop_ok, nf_ref, ref_flag, ref_msg);
+
+  return unit_ok && q1_ok && q2_ok &&
+         den1[0].passage == 0 && fused[0].passage == 0 && nf1 >= 2 &&
+         den2[0].passage == 1 && !stop_ok && nf_ref == 0 &&
+         ref_flag && ref_msg == KB_REFUSE_MSG;
+}
+// book:end knowledge-semantic-retrieval
+
+main :: () {
+  ok := ksr_run();
+  print("ok=%\n", ok);
+}
