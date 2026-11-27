@@ -60,7 +60,7 @@ Calling `https://api.exa.ai/search` and `https://api.exa.ai/contents` directly f
 
 ---
 
-## 3. Billing & Database Specification (`migrations/0220_exa_search_billing.sql`)
+## 3. Billing & Database Specification (`migrations/0222_exa_search_billing.sql`)
 
 ### 3.1 Catalog Rows in `inference.models`
 

@@ -5945,6 +5945,122 @@ END $$;
 
 
 --
+-- Name: search_admit(text, text, integer, bigint, boolean); Type: FUNCTION; Schema: inference; Owner: -
+--
+
+CREATE FUNCTION inference.search_admit(who text, model_name text, cap_n integer, cap_usd_micros bigint, free boolean) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $_$
+DECLARE
+  m inference.models;
+  d inference.account_day;
+  c bigint;
+  age double precision;
+BEGIN
+  SELECT * INTO m FROM inference.models WHERE name = model_name AND kind = 'search';
+  IF NOT FOUND THEN
+    RETURN '{"status":400,"error":"unknown search service"}';
+  END IF;
+  IF NOT free THEN
+    SELECT msat INTO c FROM inference.credit WHERE pubkey = who;
+    IF coalesce(c, 0) <= 0 THEN
+      RETURN jsonb_build_object(
+        'status', 402,
+        'error', 'add credit: POST /api/v1/inference/credit',
+        'credit', '/api/v1/inference/credit',
+        'credit_msat', coalesce(c, 0)
+      );
+    END IF;
+    age := inference.rate_age();
+    IF age IS NULL OR age > 3600 THEN
+      RETURN '{"status":503,"error":"no bitcoin price to charge at; try again soon"}';
+    END IF;
+  END IF;
+  INSERT INTO inference.account_day AS a (pubkey, day, n)
+  VALUES (who, current_date, 1)
+  ON CONFLICT (pubkey, day) DO UPDATE SET n = a.n + 1
+  RETURNING * INTO d;
+  IF d.n > cap_n THEN
+    RETURN jsonb_build_object(
+      'status', 429,
+      'error', format('this account''s %s requests for today are used up', cap_n)
+    );
+  END IF;
+  IF d.usd_micros >= cap_usd_micros THEN
+    RETURN jsonb_build_object(
+      'status', 429,
+      'error', format('this account''s $%s spend for today is used up', to_char(cap_usd_micros / 1000000.0, 'FM999999999990.00'))
+    );
+  END IF;
+  RETURN jsonb_build_object(
+    'status', 200,
+    'model', m.name,
+    'markup_bps', m.markup_bps,
+    'per_call_micros', m.per_call_micros,
+    'free', free
+  );
+END $_$;
+
+
+--
+-- Name: search_finish(text, text, integer, bigint, integer, boolean); Type: FUNCTION; Schema: inference; Owner: -
+--
+
+CREATE FUNCTION inference.search_finish(who text, model_name text, http integer, upstream_usd_micros bigint, ms_taken integer, free boolean) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  m inference.models;
+  up_cost bigint := 0;
+  cost bigint := 0;
+  rate bigint;
+  msat_due bigint := 0;
+  call_id bigint;
+BEGIN
+  SELECT * INTO m FROM inference.models WHERE name = model_name AND kind = 'search';
+  IF FOUND AND http = 200 THEN
+    IF coalesce(upstream_usd_micros, 0) > 0 THEN
+      up_cost := upstream_usd_micros;
+      cost := (up_cost * (10000 + greatest(m.markup_bps, 0)) + 9999) / 10000;
+    ELSE
+      cost := m.per_call_micros;
+      up_cost := (m.per_call_micros * 10000) / (10000 + greatest(m.markup_bps, 0));
+    END IF;
+  END IF;
+  INSERT INTO inference.calls
+    (ms, pubkey, model, status, in_tokens, cached_in_tokens, out_tokens, usd_micros, upstream_usd_micros, ms_taken, kind)
+  VALUES
+    ((extract(epoch FROM clock_timestamp()) * 1000)::bigint, who, model_name, http, 0, 0, 0, cost, up_cost, greatest(coalesce(ms_taken, 0), 0), 'search')
+  RETURNING id INTO call_id;
+  IF cost > 0 THEN
+    UPDATE inference.account_day SET usd_micros = usd_micros + cost WHERE pubkey = who AND day = current_date;
+  END IF;
+  IF NOT free AND cost > 0 THEN
+    SELECT usd_per_btc INTO rate FROM inference.btc_usd;
+    msat_due := CASE WHEN coalesce(rate, 0) > 0 THEN (cost * 100000 + rate - 1) / rate ELSE 0 END;
+    UPDATE inference.credit SET msat = msat - msat_due, updated = now() WHERE pubkey = who;
+    UPDATE inference.calls SET msat = msat_due WHERE id = call_id;
+    IF msat_due > 0 THEN
+      INSERT INTO auth.credit_spends AS c (account, hour, msat)
+      SELECT a.id, date_trunc('hour', now()), msat_due
+        FROM auth.accounts a
+        LEFT JOIN auth.nostr_keys k ON k.account = a.id
+       WHERE a.kind = 'person' AND (k.pubkey = who OR a.id = who)
+       GROUP BY a.id
+      ON CONFLICT (account, hour) DO UPDATE SET msat = c.msat + EXCLUDED.msat;
+    END IF;
+  END IF;
+  RETURN jsonb_build_object(
+    'model', model_name,
+    'upstream_usd_micros', up_cost,
+    'usd_micros', cost,
+    'msat', msat_due,
+    'free', free
+  );
+END $$;
+
+
+--
 -- Name: topup_issue(text, bigint, text, text, text, text, text, bigint); Type: FUNCTION; Schema: inference; Owner: -
 --
 
@@ -6128,6 +6244,13 @@ CREATE FUNCTION inference.usage_summary(who text) RETURNS jsonb
         'usd_micros', coalesce(sum(usd_micros), 0)::bigint,
         'msat', coalesce(sum(msat), 0)::bigint
       ) FROM inference.calls WHERE pubkey = who AND kind = 'decision'
+    ),
+    'search', (
+      SELECT jsonb_build_object(
+        'calls', count(*)::bigint,
+        'usd_micros', coalesce(sum(usd_micros), 0)::bigint,
+        'msat', coalesce(sum(msat), 0)::bigint
+      ) FROM inference.calls WHERE pubkey = who AND kind = 'search'
     )
   )
 $$;
@@ -21508,7 +21631,7 @@ CREATE TABLE chat.turns_v2 (
     attachments_json text DEFAULT '[]'::text NOT NULL,
     CONSTRAINT turns_v2_admitted_for_check CHECK ((admitted_for = ANY (ARRAY[''::text, 'gamebuilder-agent'::text]))),
     CONSTRAINT turns_v2_check CHECK (((cost_msat >= 0) AND ((compute <> 'local'::text) OR (cost_msat = 0)))),
-    CONSTRAINT turns_v2_compute_check CHECK ((compute = ANY (ARRAY['cloud'::text, 'local'::text])))
+    CONSTRAINT turns_v2_compute_check CHECK ((compute = ANY (ARRAY['cloud'::text, 'local'::text, 'sandbox'::text])))
 );
 
 

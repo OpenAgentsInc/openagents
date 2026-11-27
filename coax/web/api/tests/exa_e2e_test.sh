@@ -52,7 +52,7 @@ pg_pid="running"
 "$pgbin/createdb" -h "$work" -p "$pg_port" -U oa_analytics oa_analytics
 export OA_API_DATABASE="host=$work port=$pg_port user=oa_analytics dbname=oa_analytics"
 
-# 3. Run all migrations (including 0220_exa_search_billing.sql)
+# 3. Run all migrations (including 0222_exa_search_billing.sql)
 "$work/api" --migrations "$here/migrations" --migrate-only
 
 # 4. Generate test Nostr keys
@@ -248,10 +248,17 @@ assert j["result"]["protocolVersion"] == "2025-03-26" and j["result"]["serverInf
 st, _ = req("POST", "/api/v1/mcp/exa", {"jsonrpc": "2.0", "method": "notifications/initialized"}, keyfile=PAID_KEY)
 assert st == 204, st
 
+st, b = req("POST", "/api/v1/mcp/exa", {"jsonrpc": "2.0", "id": "ping-1", "method": "ping"}, keyfile=PAID_KEY)
+assert st == 200 and json.loads(b)["result"] == {}, (st, b)
+
 st, b = req("POST", "/api/v1/mcp/exa", {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, keyfile=PAID_KEY)
 assert st == 200, (st, b)
-tool_names = [t["name"] for t in json.loads(b)["result"]["tools"]]
+tools_list = json.loads(b)["result"]["tools"]
+tool_names = [t["name"] for t in tools_list]
 assert tool_names == ["web_search_exa", "web_fetch_exa"], tool_names
+for t in tools_list:
+    ann = t["annotations"]
+    assert ann["readOnlyHint"] is True and ann["openWorldHint"] is True and ann["idempotentHint"] is True, t
 
 mode["cost"] = 0.004
 st, b = req("POST", "/api/v1/mcp/exa", {
@@ -262,7 +269,28 @@ assert st == 200, (st, b)
 j = json.loads(b)
 assert j["result"]["isError"] is False
 assert "Title: Coax Compiler Guide" in j["result"]["content"][0]["text"]
+assert j["result"]["_meta"]["searchTime"] == 123.4
 assert j["result"]["_meta"]["billing"]["usd_micros"] == 5000
+
+mode["cost"] = 0.001
+st, b = req("POST", "/api/v1/mcp/exa", {
+    "jsonrpc": "2.0", "id": 35, "method": "tools/call",
+    "params": {"name": "web_fetch_exa", "arguments": {"urls": ["https://docs.exa.ai/reference/contents"], "maxCharacters": 2000}}
+}, keyfile=PAID_KEY)
+assert st == 200, (st, b)
+j = json.loads(b)
+assert j["result"]["isError"] is False
+assert "# Exa Reference" in j["result"]["content"][0]["text"]
+assert "Clean extracted markdown content from Exa /contents." in j["result"]["content"][0]["text"]
+assert j["result"]["_meta"]["searchTime"] == 88.2
+assert j["result"]["_meta"]["billing"]["model"] == "exa/contents"
+assert j["result"]["_meta"]["billing"]["usd_micros"] == 1250
+
+st, b = req("POST", "/api/v1/mcp/exa", {
+    "jsonrpc": "2.0", "id": 36, "method": "tools/call",
+    "params": {"name": "web_fetch_exa", "arguments": {"urls": ["http://127.0.0.1/private"]}}
+}, keyfile=PAID_KEY)
+assert st == 200 and json.loads(b)["error"]["code"] == -32602, (st, b)
 
 st, b = req("POST", "/api/v1/mcp/exa", {
     "jsonrpc": "2.0", "id": 4, "method": "tools/call",
@@ -280,8 +308,8 @@ assert "exa/contents" in models and models["exa/contents"]["kind"] == "search"
 st, b = req("GET", "/api/v1/inference/usage", None, keyfile=PAID_KEY)
 assert st == 200, (st, b)
 u = json.loads(b)
-expected_spend = 15625 + 6250 + 2500 + 5000
-assert u["search"]["calls"] == 5, u["search"]  # includes the 502 logged at $0
+expected_spend = 15625 + 6250 + 2500 + 5000 + 1250
+assert u["search"]["calls"] == 6, u["search"]  # includes the 502 logged at $0
 assert u["search"]["usd_micros"] == expected_spend, u["search"]
 assert u["search"]["msat"] == expected_spend, u["search"]
 assert u["credit_msat"] == 100000 - expected_spend, u

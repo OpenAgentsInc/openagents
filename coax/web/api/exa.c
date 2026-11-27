@@ -842,7 +842,7 @@ static const char EXA_MCP_TOOLS_LIST[] =
     "        \"type\": \"object\","
     "        \"properties\": {"
     "          \"urls\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}, \"description\": \"Public http(s) URLs to fetch (1-5)\"},"
-    "          \"maxCharacters\": {\"type\": \"integer\", \"description\": \"Max characters per page (200-12000, default 3000)\"}"
+    "          \"maxCharacters\": {\"type\": \"integer\", \"description\": \"Max characters per page (200-24000, default 3000)\"}"
     "        },"
     "        \"required\": [\"urls\"]"
     "      },"
