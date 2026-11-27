@@ -205,6 +205,134 @@ cw_options :: (o: [] ClOptions, model: string, cwd: string) {
   if cwd.count > 0 { o[0].cwd = cwd; }
 }
 
+// Map the parent chat's permission mode (McTask.mode / read_only / sandbox) to Claude Code's
+// permission mode and tool restrictions for a sub-agent (GitHub #14104).
+//   - read_only, "plan", or sandbox "read-only": plan mode + mutating file tools disallowed
+//   - "accept-edits" / "accept_edits": acceptEdits (edits allowed, unapproved shell denied)
+//   - "dont-ask" / "dont_ask" / "ask" / "default": dontAsk (read-only allowed, unapproved tools denied)
+//   - "" / "bypass" / "allow_all" / "auto" / "turbo": bypassPermissions (full auto, guarded by gitguard)
+cw_subagent_permission_mode :: (mode: string, read_only: bool, sandbox: string) -> ClPermissionMode {
+  if read_only || mode == "plan" || sandbox == "read-only" { return ClPermissionMode.plan; }
+  if mode == "accept-edits" || mode == "accept_edits" { return ClPermissionMode.accept_edits; }
+  if mode == "dont-ask" || mode == "dont_ask" || mode == "ask" || mode == "default" { return ClPermissionMode.dont_ask; }
+  return ClPermissionMode.bypass_permissions;
+}
+
+cw_apply_subagent_permissions :: (o: [] ClOptions, mode: string, read_only: bool, sandbox: string) {
+  pm := cw_subagent_permission_mode(mode, read_only, sandbox);
+  o[0].permission_mode = pm;
+  if pm == ClPermissionMode.plan {
+    cl_add_disallowed(o, "Edit");
+    cl_add_disallowed(o, "Write");
+    cl_add_disallowed(o, "MultiEdit");
+    cl_add_disallowed(o, "NotebookEdit");
+  }
+}
+
+// Formats one JSON line for `claudeworker --auth` (Settings > Agent availability & sign-in probe, #14104).
+cw_auth_json :: (installed: bool, logged_in: bool, ready: bool, label: string, out: [] u8) -> int {
+  n := json_raw(out, 0, "{\"installed\":");
+  n = json_raw(out, n, ifx installed then "true" else "false");
+  n = json_raw(out, n, ",\"logged_in\":");
+  n = json_raw(out, n, ifx logged_in then "true" else "false");
+  n = json_raw(out, n, ",\"ready\":");
+  n = json_raw(out, n, ifx ready then "true" else "false");
+  n = json_raw(out, n, ",\"label\":");
+  n = json_write_string(out, n, label);
+  return json_raw(out, n, "}");
+}
+
+// Parses stdout of `claude auth status` into a single `claudeworker --auth` JSON object.
+cw_auth_parse :: (ar: [] ClArena, status_json: string, exit_ok: bool, keyed: bool, out: [] u8) -> int {
+  li := cl_bool(status_json, "loggedIn");
+  method := cl_str(ar, status_json, "authMethod");
+  email := cl_str(ar, status_json, "email");
+  lb: [256] u8;
+  if li.ok && li.value {
+    n := json_raw(lb[..], 0, "Signed in");
+    if email.count > 0 {
+      n = json_raw(lb[..], n, " (");
+      n = json_raw(lb[..], n, email);
+      n = json_raw(lb[..], n, ")");
+    } else if method.count > 0 && method != "none" {
+      n = json_raw(lb[..], n, " (");
+      n = json_raw(lb[..], n, method);
+      n = json_raw(lb[..], n, ")");
+    }
+    return cw_auth_json(true, true, true, ifx n > 0 then cast(string) lb[0..<n] else "Signed in", out);
+  }
+  if keyed {
+    return cw_auth_json(true, true, true, "Signed in (configured key)", out);
+  }
+  if li.ok && !li.value {
+    return cw_auth_json(true, false, false, "Installed · Not signed in (run `claude` in a terminal)", out);
+  }
+  if exit_ok {
+    return cw_auth_json(true, true, true, "Installed", out);
+  }
+  return cw_auth_json(true, false, false, "Installed · Sign-in status unknown (run `claude` in a terminal)", out);
+}
+
+// Runs `claude auth status` non-interactively with a hard 5s deadline (never opens a browser).
+cw_run_auth_probe :: () -> int #effects(all) {
+  out: [2048] u8;
+  keyb: [4096] u8; kentry: [4200] u8;
+  kn := cw_key_entry(cl_getenv("CODER_CLAUDE_KEY", keyb[..]), kentry[..]);
+  keyed := kn > 0;
+  h := cxproc_new();
+  if h < 0 {
+    cw_send(out[..], cw_auth_json(false, false, false, "Unavailable (process table full)", out[..]));
+    return 0;
+  }
+  ok := cl_push(h, CL_FIELD_ARG, "claude")
+     && cl_push(h, CL_FIELD_ARG, "auth")
+     && cl_push(h, CL_FIELD_ARG, "status")
+     && cl_push(h, CL_FIELD_UNSET, "ANTHROPIC_API_KEY")
+     && cl_push(h, CL_FIELD_UNSET, "ANTHROPIC_AUTH_TOKEN")
+     && cl_push(h, CL_FIELD_UNSET, "ANTHROPIC_BASE_URL")
+     && cl_push(h, CL_FIELD_UNSET, "CLAUDECODE")
+     && cl_push(h, CL_FIELD_UNSET, "CLAUDE_CODE_ENTRYPOINT")
+     && cl_push(h, CL_FIELD_UNSET, "CLAUDE_CODE_OAUTH_TOKEN")
+     && cl_push(h, CL_FIELD_UNSET, "CODER_CLAUDE_KEY")
+     && cl_push(h, CL_FIELD_ENV, "BROWSER=true")
+     && cl_push(h, CL_FIELD_ENV, "NO_OPEN_BROWSER=1")
+     && cl_push(h, CL_FIELD_ENV, "SSH_CONNECTION=1");
+  if keyed { ok = ok && cl_push(h, CL_FIELD_ENV, cast(string) kentry[0..<kn]); }
+  if !ok {
+    _ = cxproc_release(h);
+    cw_send(out[..], cw_auth_json(false, false, false, "Unavailable (probe setup failed)", out[..]));
+    return 0;
+  }
+  e := cxproc_spawn(h);
+  if e != 0 {
+    _ = cxproc_release(h);
+    msg := ifx e == 2 then "Not installed (`claude` command not found)" else "Unavailable (could not start `claude`)";
+    cw_send(out[..], cw_auth_json(false, false, false, msg, out[..]));
+    return 0;
+  }
+  _ = cxproc_close_stdin(h);
+  buf: [8192] u8; bn := 0;
+  deadline := cxproc_now_ms() + 5000;
+  while true {
+    rem := deadline - cxproc_now_ms();
+    if rem <= 0 { break; }
+    rn := cxproc_read_line(h, rem);
+    if rn == CL_EOF || rn == CL_TIMEOUT { break; }
+    if rn < 0 { continue; }
+    for i: 0..<rn {
+      if bn + 1 < buf.count { buf[bn] = cast,trunc(u8) cxproc_line_byte(h, i); bn += 1; }
+    }
+    if bn < buf.count { buf[bn] = 10; bn += 1; }
+  }
+  st := cxproc_wait(h, 500);
+  if st < 0 { _ = cxproc_kill(h, CL_SIGKILL); st = cxproc_wait(h, 500); }
+  _ = cxproc_release(h);
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  n := cw_auth_parse(ar[..], cast(string) buf[0..<bn], st == 0, keyed, out[..]);
+  cw_send(out[..], n);
+  return 0;
+}
+
 // The person's own instructions (~/.openagents/instructions.md, GitHub #13808) added to Claude
 // Code's system prompt (--append-system-prompt), as Microcoder gets them: text is the file's
 // (uinstr_read, read again for each run: coax/lib/agent/user-instructions.coax). out holds them.
@@ -341,6 +469,44 @@ cw_guard_settings :: (path: string, out: [] u8) -> string {
     if i + 1 < a[0].count && arg == "--permission-mode" && cl_arg_at(a[..], i + 1) == "bypassPermissions" { found_mode = true; }
   }
   #assert found_mode && found_disallow;
+}
+
+#test "claude sub-agent permission modes enforce plan, accept-edits, dont-ask, and bypass (#14104)" {
+  #assert cw_subagent_permission_mode("bypass", false, "danger-full-access") == ClPermissionMode.bypass_permissions;
+  #assert cw_subagent_permission_mode("", false, "danger-full-access") == ClPermissionMode.bypass_permissions;
+  #assert cw_subagent_permission_mode("plan", false, "read-only") == ClPermissionMode.plan;
+  #assert cw_subagent_permission_mode("bypass", true, "danger-full-access") == ClPermissionMode.plan;
+  #assert cw_subagent_permission_mode("accept-edits", false, "workspace-write") == ClPermissionMode.accept_edits;
+  #assert cw_subagent_permission_mode("dont-ask", false, "workspace-write") == ClPermissionMode.dont_ask;
+  #assert cw_subagent_permission_mode("ask", false, "workspace-write") == ClPermissionMode.dont_ask;
+
+  o: [1] ClOptions;
+  cw_options(o[..], "claude-sonnet-5-5", "/tmp/work");
+  cw_apply_subagent_permissions(o[..], "plan", true, "read-only");
+  #assert o[0].permission_mode == ClPermissionMode.plan && o[0].disallowed_count == 5;
+  #assert o[0].disallowed_tools[0] == "AskUserQuestion" && o[0].disallowed_tools[1] == "Edit" && o[0].disallowed_tools[2] == "Write";
+}
+
+#test "claudeworker --auth parser classifies signed-in, logged-out, and keyed responses (#14104)" {
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  out: [1024] u8;
+  in_json := "{\n  \"loggedIn\": true,\n  \"authMethod\": \"claude.ai\",\n  \"email\": \"dev@openagents.com\"\n}\n";
+  n := cw_auth_parse(ar[..], in_json, true, false, out[..]);
+  s := cast(string) out[0..<n];
+  #assert cl_bool(s, "installed").value && cl_bool(s, "logged_in").value && cl_bool(s, "ready").value;
+  #assert cl_str(ar[..], s, "label") == "Signed in (dev@openagents.com)";
+
+  ar[0].at = 0;
+  out_json := "{\n  \"loggedIn\": false,\n  \"authMethod\": \"none\"\n}\n";
+  n = cw_auth_parse(ar[..], out_json, false, false, out[..]);
+  s = cast(string) out[0..<n];
+  #assert cl_bool(s, "installed").value && !cl_bool(s, "logged_in").value && !cl_bool(s, "ready").value;
+  #assert cl_str(ar[..], s, "label") == "Installed · Not signed in (run `claude` in a terminal)";
+
+  ar[0].at = 0;
+  n = cw_auth_parse(ar[..], out_json, false, true, out[..]);
+  s = cast(string) out[0..<n];
+  #assert cl_bool(s, "installed").value && cl_bool(s, "logged_in").value && cl_bool(s, "ready").value;
 }
 
 #test "the user instructions go to Claude Code as --append-system-prompt" {
@@ -751,6 +917,10 @@ cw_main_options :: (o: [] ClOptions, effort: string, schema: string) {
 }
 
 tool_main :: () -> int #export_c #effects(all) {
+  cli_args: [1] Args;
+  if args_load(cli_args[..]) && args_has(cli_args[..], "--auth") {
+    return cw_run_auth_probe();
+  }
   line: [CW_LINE] u8; nl := 0;
   out: [CW_LINE] u8;
   ab: [CW_LINE] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
@@ -872,8 +1042,8 @@ tool_main :: () -> int #export_c #effects(all) {
           e := cl_assistant_error(l, cl_at(l, "error"));
           if e == ClAssistantError.authentication_failed || e == ClAssistantError.oauth_org_not_allowed {
             ended = "failed"; dead = true;
-            text = ifx keyed then "Claude refused the key Coder has. Set another with Coder > Claude Key, then send the message again."
-                   else "Claude Code is not logged in on this computer. Run `claude` in a terminal and log in, or set a key with Coder > Claude Key, then send the message again.";
+            text = ifx keyed then "Claude refused the configured key. Update your Claude key or run `claude` in a terminal to sign in, then try again."
+                   else "Claude Code is not signed in on this computer. Run `claude` in a terminal to sign in, then try again.";
           }
         } else if m.kind == ClKind.user {
           content := cl_raw(l, "message.content");
@@ -1040,6 +1210,7 @@ tool_main :: () -> int #export_c #effects(all) {
       cl_init(q[..], cline[..], carena[..], cout[..]);
       o: [1] ClOptions;
       cw_options(o[..], cast(string) model[0..<mn], cast(string) cwd[0..<cn]);
+      if !main { cw_apply_subagent_permissions(o[..], req[0].mode, req[0].read_only, req[0].sandbox); }
       if en > 0 { o[0].effort = cast(string) effort[0..<en]; }   // the thinking level the task line names, a sub-agent's too
       cl_remove_env(o[..], "ANTHROPIC_API_KEY");
       cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
@@ -1056,7 +1227,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if guard.count == 0 { guard = cw_guard_beside(tool_self(selfb[..]), gpath[..]); }
       hooks := ifx guard.count > 0 && fs_kind(guard) == FS_FILE then cw_guard_settings(guard, gsettings[..]) else "";
       if hooks.count == 0 {
-        cw_send(out[..], mww_ended(out[..], "failed", "Coder's git guard (gitguard) is not beside its Claude worker, so Claude can't run commands safely here. Reinstall or rebuild Coder."));
+        cw_send(out[..], mww_ended(out[..], "failed", "OpenAgents' git guard (gitguard) is not beside its Claude worker, so Claude can't run commands safely here. Reinstall or rebuild OpenAgents."));
         if !main { return 0; }
         cw_turn_end("failed", qq[..], f[..], out[..]);
         continue;

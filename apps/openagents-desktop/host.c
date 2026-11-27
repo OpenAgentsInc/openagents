@@ -439,6 +439,7 @@ void cd_agent_failed(void *page, int agent, const char *why) { CoderHost *c = pa
 int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_agent_answer_line(cd_state(c), agent, (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude(cd_state(c), on != 0); }
 void cd_claude_sub(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude_sub(cd_state(c), on != 0); }
+void cd_claude_status(void *page, const char *status) { CoderHost *c = page; if (c) { coder_page_set_claude_status(cd_state(c), cd_string(status)); cd_changed(c); } }
 void cd_agy(void *page, int on) { CoderHost *c = page; if (c) { coder_page_set_agy(cd_state(c), on != 0); cd_changed(c); } }
 void cd_agy_models_clear(void *page) { CoderHost *c = page; if (c) coder_page_agy_models_clear(cd_state(c)); }
 int cd_agy_models_add(void *page, const char *inst_id, const char *inst_name, const char *slug, const char *name, int efforts_mask, int default_effort, int is_default) {

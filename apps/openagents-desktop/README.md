@@ -496,20 +496,26 @@ to Claude Code:
 The agent then calls `Agent` with `subagent_type` set to `claude-haiku`, `claude-sonnet`,
 `claude-opus` or `claude-fable`.
 
-The sub-agent then runs in `claudeworker`, which ships in `--minimal` and drives the `claude`
-command through the Coax Claude Agent SDK (`coax/lib/agent/claude`). It runs in the chat's working
-folder with full access and asks nothing. With the setting off, or without the `claude` command, a
-request for Claude fails with the reason and never runs on another model. Stop on the chat stops its
-sub-agents and the commands they started.
+The sub-agent then runs in `claudeworker`, which ships in `--minimal` on macOS and Linux and drives
+the `claude` command through the Coax Claude Agent SDK (`coax/lib/agent/claude`). Settings > Agent
+probes `claudeworker --auth` to show live Claude Code installation and sign-in status next to the
+toggle. Parent permission modes apply to Claude sub-agents (`Allow All` -> `bypassPermissions`,
+`Accept Edits` -> `acceptEdits`, `Plan` / read-only -> `plan` with mutating tools disallowed,
+`Ask` / `Don't Ask` -> `dontAsk`). When the System One router explicitly selects `claude`,
+`oa-worker` honors the delegate plan through the same pipeline. With the setting off, or without an
+installed signed-in `claude` command, a request for Claude fails with the specific reason and never
+runs on another model. Stop on the chat stops its sub-agents and the commands they started.
 
 On Linux, Settings > Agent is kept across launches. Windows does not build `oa-worker` or bundle
-`claudeworker` in `--minimal` yet, and the macOS changes for this have not been built or run yet.
+`claudeworker` in `--minimal` yet.
 
-`OpenAgents --delegate-claude-test --resources DIR --cwd DIR` runs one real turn offscreen in which
-the local model delegates to Claude Haiku. `=off` runs it with the setting off, `=two` asks for two
-sub-agents at once, `=stop` stops the turn while the sub-agent runs a command, and `=file` has the
-sub-agent write a file into the working folder. Each needs the installed weights, a GPU and a
-signed-in `claude` command. Run them by hand.
+`OpenAgents --delegate-claude-test --resources DIR --cwd DIR` (Linux) or
+`OpenAgents.app/Contents/MacOS/OpenAgents --delegate-claude-test[=off|=two|=stop|=file|=missing|=unauthed|=plan] --cwd DIR`
+(macOS `--minimal`) runs the real offscreen end-to-end flow: `=off` runs with the setting off,
+`=two` runs two concurrent Claude sub-agents in one turn, `=stop` stops the turn while the sub-agent
+runs a command and verifies zero leftover processes, `=file` has the sub-agent write a file into the
+working folder, `=missing` and `=unauthed` verify plain specific errors with zero fallback, and
+`=plan` verifies Plan mode blocks file creation. Run them by hand.
 
 ## Install in Applications
 

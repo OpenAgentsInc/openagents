@@ -546,7 +546,457 @@ enum TestLaunch {
         return ok == 7 ? 0 : 1
     }
 
+    /// Headless offscreen end-to-end Claude Code sub-agent test on the real `--minimal` macOS app (#14104).
+    /// Modes: "" (default read-only Sonnet), "off", "two", "stop", "file", "missing", "unauthed", "plan".
+    /// Never opens a visible window or mutates UserDefaults; cleans up all workers & sub-agents on exit.
+    static func runDelegateClaudeTest(mode: String, cwdArg: String?, modelArg: String?) -> Int32 {
+        func fail(_ step: String, _ why: String) -> Int32 {
+            fputs("FAIL [\(step)] \(why)\n", stderr)
+            return 1
+        }
+        func ok(_ step: String, _ msg: String) {
+            print("ok   [\(step)] \(msg)")
+            fflush(stdout)
+        }
+        guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path else {
+            return fail("bundle", "missing Components resources")
+        }
+        guard let claudeWorkerPath = Bundle.main.path(forResource: "claudeworker", ofType: nil),
+              FileManager.default.isExecutableFile(atPath: claudeWorkerPath) else {
+            return fail("bundle", "claudeworker is missing from Contents/Resources")
+        }
+        guard let oaWorkerPath = Bundle.main.path(forResource: "oa-worker", ofType: nil),
+              FileManager.default.isExecutableFile(atPath: oaWorkerPath) else {
+            return fail("bundle", "oa-worker is missing from Contents/Resources")
+        }
+        guard let gitguardPath = Bundle.main.path(forResource: "gitguard", ofType: nil),
+              FileManager.default.isExecutableFile(atPath: gitguardPath) else {
+            return fail("bundle", "gitguard is missing from Contents/Resources")
+        }
+        ok("bundle", "oa-worker, claudeworker, and gitguard bundled in --minimal app")
+
+        func runClaudeWorkerOnce(env extra: [String: String], taskLine: String, timeout: TimeInterval) -> [String] {
+            let p = Process(), into = Pipe(), out = Pipe()
+            p.executableURL = URL(fileURLWithPath: claudeWorkerPath)
+            var env = ProcessInfo.processInfo.environment
+            env["SSH_CONNECTION"] = "1"
+            env["BROWSER"] = "/usr/bin/true"
+            env["NO_OPEN_BROWSER"] = "1"
+            for (k, v) in extra { env[k] = v }
+            p.environment = env
+            p.standardInput = into
+            p.standardOutput = out
+            p.standardError = FileHandle.nullDevice
+            do { try p.run() } catch { return [] }
+            if let d = (taskLine + "\n").data(using: .utf8) {
+                try? into.fileHandleForWriting.write(contentsOf: d)
+            }
+            let deadline = Date().addingTimeInterval(timeout)
+            var buf = Data()
+            var lines: [String] = []
+            let fh = out.fileHandleForReading
+            let fd = fh.fileDescriptor
+            let flags = fcntl(fd, F_GETFL)
+            _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+            var tmp = [UInt8](repeating: 0, count: 8192)
+            while Date() < deadline {
+                let n = Darwin.read(fd, &tmp, tmp.count)
+                if n > 0 {
+                    buf.append(contentsOf: tmp[0..<n])
+                    while let nl = buf.firstIndex(of: 0x0a) {
+                        let one = buf.subdata(in: buf.startIndex..<nl)
+                        buf.removeSubrange(buf.startIndex...nl)
+                        if let s = String(data: one, encoding: .utf8), !s.isEmpty {
+                            lines.append(s)
+                            if s.contains("\"kind\":\"ended\"") {
+                                try? into.fileHandleForWriting.close()
+                                p.waitUntilExit()
+                                return lines
+                            }
+                        }
+                    }
+                } else if !p.isRunning {
+                    break
+                } else {
+                    Thread.sleep(forTimeInterval: 0.02)
+                }
+            }
+            try? into.fileHandleForWriting.close()
+            if p.isRunning { p.terminate(); Thread.sleep(forTimeInterval: 0.2) }
+            return lines
+        }
+
+        // Direct live probes for missing CLI & not-signed-in error cases (never falls back to another model).
+        if mode == "missing" {
+            let fakeHome = FileManager.default.temporaryDirectory.appendingPathComponent("oa-claude-missing-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: fakeHome, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: fakeHome) }
+            let missingEnv = ["PATH": "/usr/bin:/bin", "HOME": fakeHome.path, "SSH_CONNECTION": "1", "BROWSER": "/usr/bin/true", "NO_OPEN_BROWSER": "1"]
+            let authLine = CoderProbes.ask("claudeworker", ["--auth"], env: missingEnv, timeout: 6)
+            guard authLine.contains("\"installed\":false") && authLine.contains("\"ready\":false") else {
+                return fail("missing-probe", "unexpected --auth output: \(authLine)")
+            }
+            ok("missing-probe", authLine)
+            let lines = runClaudeWorkerOnce(
+                env: missingEnv,
+                taskLine: "{\"task\":\"say hi\",\"session\":\"s1\",\"cwd\":\"\(fakeHome.path)\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"no_ask\":true,\"model\":\"haiku\",\"steerable\":false}",
+                timeout: 15
+            )
+            guard let ended = lines.last(where: { $0.contains("\"kind\":\"ended\"") }),
+                  ended.contains("\"ending\":\"failed\""),
+                  ended.lowercased().contains("not installed") || ended.lowercased().contains("not found") else {
+                return fail("missing-worker", "expected specific not-installed failure, got: \(lines)")
+            }
+            ok("missing-worker", ended)
+            print("openagents-desktop-macos delegate-claude (missing): ok")
+            return 0
+        }
+
+        if mode == "unauthed" {
+            let emptyCfg = FileManager.default.temporaryDirectory.appendingPathComponent("oa-claude-unauthed-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: emptyCfg, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: emptyCfg) }
+            let unauthedEnv = [
+                "PATH": CoderWorker.path,
+                "CLAUDE_CONFIG_DIR": emptyCfg.path,
+                "SSH_CONNECTION": "1",
+                "BROWSER": "/usr/bin/true",
+                "NO_OPEN_BROWSER": "1",
+            ]
+            let authLine = CoderProbes.ask("claudeworker", ["--auth"], env: unauthedEnv, timeout: 8)
+            guard authLine.contains("\"installed\":true") && authLine.contains("\"logged_in\":false") && authLine.contains("\"ready\":false") else {
+                return fail("unauthed-probe", "unexpected --auth output: \(authLine)")
+            }
+            ok("unauthed-probe", authLine)
+            let lines = runClaudeWorkerOnce(
+                env: unauthedEnv,
+                taskLine: "{\"task\":\"Reply with HI\",\"session\":\"s2\",\"cwd\":\"\(emptyCfg.path)\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"no_ask\":true,\"model\":\"haiku\",\"steerable\":false}",
+                timeout: 30
+            )
+            guard let ended = lines.last(where: { $0.contains("\"kind\":\"ended\"") }),
+                  ended.contains("\"ending\":\"failed\""),
+                  ended.lowercased().contains("not signed in") || ended.lowercased().contains("not logged in") || ended.lowercased().contains("login") || ended.lowercased().contains("auth") else {
+                return fail("unauthed-worker", "expected specific not-signed-in failure, got: \(lines)")
+            }
+            ok("unauthed-worker", ended)
+            print("openagents-desktop-macos delegate-claude (unauthed): ok")
+            return 0
+        }
+
+        // Verify live `claudeworker --auth` probe on this Mac first.
+        let authLine = CoderProbes.ask("claudeworker", ["--auth"], env: ["SSH_CONNECTION": "1", "BROWSER": "/usr/bin/true", "NO_OPEN_BROWSER": "1"], timeout: 8)
+        guard let authData = authLine.data(using: .utf8),
+              let authObj = try? JSONSerialization.jsonObject(with: authData) as? [String: Any],
+              (authObj["ready"] as? Bool) == true else {
+            return fail("claude-auth", "claudeworker --auth not ready: \(authLine)")
+        }
+        let claudeLabel = (authObj["label"] as? String) ?? "Signed in"
+        ok("claude-auth", claudeLabel)
+
+        // Prepare clean temp git repo cwd if none supplied.
+        let ownedTmp: URL?
+        let workDir: String
+        if let c = cwdArg, !c.isEmpty {
+            ownedTmp = nil
+            workDir = c
+        } else {
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("oa-delegate-mac-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+            let gi = Process()
+            gi.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            gi.arguments = ["init", "-q", tmp.path]
+            try? gi.run(); gi.waitUntilExit()
+            try? "OpenAgents Claude sub-agent test fixture\nSECRET_TOKEN=CEDAR_4291\n".write(
+                to: tmp.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+            ownedTmp = tmp
+            workDir = tmp.path
+        }
+        defer { if let u = ownedTmp { try? FileManager.default.removeItem(at: u) } }
+
+        guard let page = cd_open_ex(resources, 1, 1340, 880) else {
+            return fail("page", "cd_open_ex(offscreen) failed")
+        }
+        defer { cd_close(page) }
+
+        // Attach resident daemon if already running (exercises Worker.swift gitguard materialization too!).
+        let daemon = CoderDaemonClient()
+        if daemon.isDaemonAvailable {
+            CoderWorker.daemon = daemon
+            ok("daemon", "using resident coder-host daemon (verifies versioned gitguard materialization)")
+        } else {
+            CoderWorker.daemon = nil
+            ok("daemon", "running workers directly (no resident daemon)")
+        }
+
+        // Determine parent model: explicit --model > cloud (if signed in / env key) > local Inkling.
+        var workerEnv = AgentSettings.workerEnv()
+        workerEnv["OA_ALLOW_LOCAL_HARNESSES"] = (mode == "off") ? "0" : "1"
+        workerEnv["OA_AGENT_PERMISSION_MODE"] = (mode == "plan") ? "plan" : "allow_all"
+        workerEnv["OA_AGENT_BYPASS_PERMISSIONS"] = "0"
+        workerEnv["OA_FULL_AUTO"] = (mode == "plan") ? "0" : "1"
+        let pickedModel: String
+        if let m = modelArg, !m.isEmpty {
+            pickedModel = m
+        } else {
+            let oaAuth = CoderProbes.ask("oa-worker", ["--auth"], env: workerEnv, timeout: 8)
+            if oaAuth.contains("\"ready\":true") && (oaAuth.contains("Vertex") || oaAuth.contains("Gemini") || oaAuth.contains("OpenAgents Cloud") || oaAuth.contains("OpenRouter") || !oaAuth.contains("Local Psionic")) {
+                pickedModel = "oa:cloud"
+            } else {
+                pickedModel = "oa:local"
+            }
+        }
+        if pickedModel == "oa:local" {
+            guard LocalModelStore.isSelectable else {
+                return fail("local-model", "no cloud auth and Inkling 2 Mini weights are not installed")
+            }
+            var srvDone = false
+            var srvErr: String? = nil
+            LocalModelServer.shared.ensureRunning { err in
+                srvErr = err
+                srvDone = true
+            }
+            let srvDeadline = Date().addingTimeInterval(90)
+            while !srvDone && Date() < srvDeadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
+            if !srvDone {
+                return fail("local-model", "psionic-inkling-serve timed out starting")
+            }
+            if let srvErr { return fail("local-model", srvErr) }
+            workerEnv["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
+            workerEnv["PSIONIC_MODEL"] = LocalModelStore.entry.id
+            workerEnv["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
+        }
+        ok("parent-model", pickedModel)
+
+        // Configure page state without touching UserDefaults.
+        _ = cd_shot_frame(page, 1340, 880, 1.0 / 60.0)
+        var prefs = [Int32](repeating: 0, count: 32)
+        let prefN = prefs.withUnsafeMutableBufferPointer { cd_flawed_prefs_get(page, $0.baseAddress, Int32($0.count)) }
+        guard prefN >= 21 else { return fail("prefs", "page prefs vector < 21") }
+        prefs[6] = (mode == "plan") ? 3 : 0
+        prefs[7] = 0
+        prefs[20] = (mode == "off") ? 0 : 1
+        prefs.withUnsafeBufferPointer { cd_flawed_prefs_set(page, $0.baseAddress, prefN) }
+        cd_claude_sub(page, 1)
+        cd_claude_status(page, claudeLabel)
+        cd_folder(page, workDir)
+        guard cd_pick_model(page, pickedModel) != 0 else {
+            return fail("model", "cd_pick_model(\(pickedModel)) failed")
+        }
+
+        let prompt: String
+        switch mode {
+        case "off":
+            prompt = "Delegate this to Claude: reply with the word KIWI."
+        case "two":
+            prompt = "Call your Agent tool twice in the same message, both with subagent_type claude-haiku. The first prompt: Reply with exactly the word KIWI and nothing else. The second prompt: Reply with exactly the word PLUM and nothing else. Then tell me both words the sub-agents replied with."
+        case "stop":
+            prompt = "Use your Agent tool once with subagent_type claude-haiku and this prompt: Run this exact shell command in the foreground and wait for it to finish: for i in $(seq 1 120); do sleep 1; done; echo OA_MAC_STOP_MARKER. Then reply DONE."
+        case "file":
+            prompt = "Use your Agent tool once with subagent_type claude-haiku and this prompt: Use the Write tool to create a file named oa-delegate-check.txt in the current folder containing the single word GUAVA. Then reply DONE. Then tell me what the sub-agent replied."
+        case "plan":
+            prompt = "Use your Agent tool once with subagent_type claude-haiku and this prompt: Try to create a file named oa-plan-forbidden.txt in the current folder containing BLOCKED. If you are in plan/read-only mode or cannot write files, reply PLAN_BLOCKED. Then tell me what the sub-agent replied."
+        default:
+            prompt = "Use your Agent tool once with subagent_type claude-sonnet and this prompt: Use your Read tool to read README.md in the current folder and reply with the exact value after SECRET_TOKEN= and nothing else. Then tell me the exact value the sub-agent replied with."
+        }
+
+        let parent = CoderWorker()
+        parent.program = "oa-worker"
+        parent.folder = workDir
+        parent.extraEnv = workerEnv
+        var subWorkers: [Int32: CoderWorker] = [:]
+        var subEngines: [Int32: Int32] = [:]
+        var ranClaude = false
+        var anyNonClaude = false
+        var maxConcurrentClaude = 0
+        var claudeToolCalls = 0
+        var capturedClaudeTask = ""
+        var parentGone = false
+
+        defer {
+            for (_, w) in subWorkers { w.line = nil; w.gone = nil; w.stop(forget: true) }
+            parent.line = nil; parent.gone = nil; parent.stop(forget: true)
+        }
+
+        var lineOut = [CChar](repeating: 0, count: 1_048_576)
+        func pumpSubagents() {
+            while true {
+                let j = cd_agent_next(page)
+                if j < 0 { break }
+                let eng = (mode == "off") ? Int32(0) : cd_agent_engine(page, j)
+                let w = CoderWorker()
+                w.folder = workDir
+                if eng == 1 {
+                    w.program = "claudeworker"
+                    ranClaude = true
+                } else {
+                    w.program = "oa-worker"
+                    w.extraEnv = workerEnv
+                    anyNonClaude = true
+                }
+                w.line = { text in
+                    if eng == 1 && (text.contains("\"kind\":\"ask\"") || text.contains("\"kind\":\"command\"")) {
+                        claudeToolCalls += 1
+                    }
+                    cd_agent_line(page, j, text)
+                    pumpSubagents()
+                }
+                w.gone = {
+                    if subWorkers[j] === w {
+                        subWorkers[j] = nil
+                        subEngines[j] = nil
+                        cd_agent_failed(page, j, "The sub-agent's worker stopped running.")
+                        pumpSubagents()
+                    }
+                }
+                guard w.start() else {
+                    cd_agent_failed(page, j, w.failure ?? "The sub-agent's worker could not start.")
+                    continue
+                }
+                subWorkers[j] = w
+                subEngines[j] = eng
+                let conc = subEngines.values.filter { $0 == 1 }.count
+                if conc > maxConcurrentClaude { maxConcurrentClaude = conc }
+                let tn = cd_agent_task(page, j, "mac-test-agent-\(j)-\(UUID().uuidString.prefix(8))", workDir, &lineOut, Int32(lineOut.count))
+                if eng == 1 && capturedClaudeTask.isEmpty && tn > 0 {
+                    capturedClaudeTask = String(decoding: lineOut.prefix(Int(tn)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+                }
+                w.write(lineOut, count: Int(tn))
+            }
+            for (j, w) in Array(subWorkers) {
+                let an = cd_agent_answer_line(page, j, &lineOut, Int32(lineOut.count))
+                if an > 0 { w.write(lineOut, count: Int(an)) }
+                if cd_agent_running(page, j) == 0 {
+                    subWorkers[j] = nil
+                    subEngines[j] = nil
+                    w.line = nil; w.gone = nil; w.stop(forget: true)
+                }
+            }
+            let rn = cd_answer_line(page, &lineOut, Int32(lineOut.count))
+            if rn > 0 { parent.write(lineOut, count: Int(rn)) }
+        }
+
+        parent.line = { text in
+            cd_line(page, text)
+            pumpSubagents()
+        }
+        parent.gone = { parentGone = true }
+
+        guard parent.start() else { return fail("worker", parent.failure ?? "oa-worker failed to start") }
+        guard cd_set_text(page, prompt) != 0 && cd_submit(page) != 0 else { return fail("send", "cd_submit failed") }
+        let tn = cd_task(page, "mac-delegate-\(UUID().uuidString.prefix(8))", workDir, &lineOut, Int32(lineOut.count))
+        guard tn > 0 else { return fail("task", "cd_task returned 0") }
+        parent.write(lineOut, count: Int(tn))
+
+        func pgrepMatches(_ pattern: String, exact: Bool = false) -> Bool {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+            p.arguments = exact ? ["-x", pattern] : ["-f", pattern]
+            p.standardOutput = FileHandle.nullDevice
+            p.standardError = FileHandle.nullDevice
+            do { try p.run(); p.waitUntilExit(); return p.terminationStatus == 0 } catch { return false }
+        }
+
+        let deadline = Date().addingTimeInterval(180)
+        var sawRunning = false
+        var stopped = false
+        var stopDeadline: Date? = nil
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            _ = cd_shot_frame(page, 1340, 880, 1.0 / 60.0)
+            if cd_permit_open(page) != 0 {
+                _ = cd_permit_choose(page, 1, 0)
+            }
+            pumpSubagents()
+            if mode == "stop" && ranClaude && !stopped {
+                if stopDeadline == nil { stopDeadline = Date().addingTimeInterval(35) }
+                if pgrepMatches("OA_MAC_STOP_[M]ARKER") {
+                    ok("stop-armed", "Claude sub-agent child command is running; issuing Stop")
+                    var sb = [CChar](repeating: 0, count: 1024)
+                    let sn = cd_stop_line(&sb, Int32(sb.count))
+                    parent.write(sb, count: Int(sn))
+                    for (_, w) in subWorkers { w.write(sb, count: Int(sn)) }
+                    let waitStop = Date().addingTimeInterval(4.0)
+                    while Date() < waitStop && (pgrepMatches("OA_MAC_STOP_[M]ARKER") || !subWorkers.isEmpty) {
+                        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                        pumpSubagents()
+                    }
+                    for (_, w) in subWorkers { w.line = nil; w.gone = nil; w.stop(forget: true) }
+                    subWorkers = [:]
+                    parent.line = nil; parent.gone = nil; parent.stop(forget: true)
+                    Thread.sleep(forTimeInterval: 1.0)
+                    stopped = true
+                    break
+                } else if let sd = stopDeadline, Date() > sd {
+                    return fail("stop", "timed out waiting for OA_MAC_STOP_MARKER child command to start")
+                }
+            }
+            if cd_running(page) != 0 { sawRunning = true }
+            else if sawRunning || parentGone { break }
+        }
+
+        var saveBuf = [CChar](repeating: 0, count: 1_048_576)
+        let savedN = cd_save(page, &saveBuf, Int32(saveBuf.count))
+        let saved = savedN > 0 ? String(decoding: saveBuf.prefix(Int(savedN)).map { UInt8(bitPattern: $0) }, as: UTF8.self) : ""
+
+        switch mode {
+        case "off":
+            if ranClaude { return fail("off", "claudeworker started with opt-in off") }
+            if anyNonClaude { return fail("off", "another sub-agent ran in Claude's place") }
+            guard saved.contains("Allow delegating") else {
+                return fail("off", "reply did not name Allow delegating setting: \(saved.suffix(600))")
+            }
+            ok("off", "no claudeworker started; reply explained opt-in setting")
+        case "stop":
+            guard stopped else { return fail("stop", "never reached stop trigger") }
+            if pgrepMatches("OA_MAC_STOP_[M]ARKER") { return fail("stop", "child shell command survived Stop") }
+            if pgrepMatches("claudeworker", exact: true) { return fail("stop", "claudeworker survived Stop") }
+            ok("stop", "Stop terminated claudeworker and child command with zero leftovers")
+        case "two":
+            guard ranClaude && maxConcurrentClaude >= 2 else {
+                return fail("two", "expected >=2 concurrent Claude sub-agents, saw \(maxConcurrentClaude)")
+            }
+            guard saved.contains("KIWI") && saved.contains("PLUM") else {
+                return fail("two", "chat missing KIWI/PLUM: \(saved.suffix(800))")
+            }
+            ok("two", "2 concurrent Claude sub-agents ran and returned KIWI + PLUM")
+        case "file":
+            let fileURL = URL(fileURLWithPath: workDir).appendingPathComponent("oa-delegate-check.txt")
+            let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+            guard ranClaude && content.contains("GUAVA") else {
+                return fail("file", "expected GUAVA in \(fileURL.path), ranClaude=\(ranClaude), content=\(content)")
+            }
+            ok("file", "Claude sub-agent wrote GUAVA to \(fileURL.path)")
+        case "plan":
+            let fileURL = URL(fileURLWithPath: workDir).appendingPathComponent("oa-plan-forbidden.txt")
+            guard ranClaude else { return fail("plan", "Claude sub-agent did not start") }
+            guard capturedClaudeTask.contains("\"mode\":\"plan\"") && capturedClaudeTask.contains("\"read_only\":true") else {
+                return fail("plan", "Claude task line missing plan/read_only: \(capturedClaudeTask.prefix(400))")
+            }
+            guard !FileManager.default.fileExists(atPath: fileURL.path) else {
+                return fail("plan", "forbidden file was created despite Plan mode!")
+            }
+            ok("plan", "Plan mode forwarded mode=plan + read_only=true and prevented file creation")
+        default:
+            guard ranClaude else { return fail("default", "claudeworker did not start") }
+            guard claudeToolCalls >= 1 else { return fail("default", "expected Claude tool calls in sub-agent pane, saw 0") }
+            guard saved.contains("CEDAR_4291") else {
+                return fail("default", "parent final reply missing CEDAR_4291: \(saved.suffix(800))")
+            }
+            ok("default", "Claude Sonnet ran via claudeworker (\(claudeToolCalls) tool call events) and returned CEDAR_4291")
+        }
+        print("openagents-desktop-macos delegate-claude\(mode.isEmpty ? "" : " (\(mode))"): ok")
+        return 0
+    }
+
     static func main() {
+        if let arg = CommandLine.arguments.first(where: { $0 == "--delegate-claude-test" || $0.hasPrefix("--delegate-claude-test=") }) {
+            let mode = arg.hasPrefix("--delegate-claude-test=") ? String(arg.dropFirst("--delegate-claude-test=".count)) : ""
+            let cwdArg: String? = CommandLine.arguments.firstIndex(of: "--cwd").flatMap { $0 + 1 < CommandLine.arguments.count ? CommandLine.arguments[$0 + 1] : nil }
+            let modelArg: String? = CommandLine.arguments.firstIndex(of: "--model").flatMap { $0 + 1 < CommandLine.arguments.count ? CommandLine.arguments[$0 + 1] : nil }
+            exit(runDelegateClaudeTest(mode: mode, cwdArg: cwdArg, modelArg: modelArg))
+        }
         if let at = CommandLine.arguments.firstIndex(of: "--shot-providers"), at + 1 < CommandLine.arguments.count {
             exit(runProvidersShots(outDir: CommandLine.arguments[at + 1]))
         }

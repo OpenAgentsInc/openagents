@@ -42,7 +42,14 @@ final class CoderWorker {
             }
         }
     }
-    static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
+    static var hasClaude: Bool {
+        let fm = FileManager.default
+        if path.split(separator: ":").contains(where: { fm.isExecutableFile(atPath: $0 + "/claude") }) {
+            return true
+        }
+        let localFallback = fm.homeDirectoryForCurrentUser.path + "/.claude/local/claude"
+        return fm.isExecutableFile(atPath: localFallback)
+    }
     static var hasAntigravity: Bool { CoderAntigravity.resolvedBinaryPath() != nil }
 
     private var defaultAgentID: String {
@@ -80,18 +87,14 @@ final class CoderWorker {
         return (env, ["CODER_CLAUDE_KEY"])
     }
 
-    /// Resolves the executable path for `program`. For daemon-owned runs, prefers an immutable
-    /// versioned copy under `~/.openagents/environment/bin/<versionID>/<program>` (materializing
-    /// atomically from `Bundle.main` if needed) so replacing `/Applications/OpenAgents.app` never
-    /// pulls binaries out from under active workers (#14095).
-    private func resolvedProgramPath(forDaemon: Bool) -> String? {
-        guard let bundled = Bundle.main.path(forResource: program, ofType: nil) else { return nil }
-        guard forDaemon else { return bundled }
+    /// Atomically materializes one bundled executable into the immutable versioned daemon bin folder.
+    private func materializeForDaemon(_ binName: String) -> String? {
+        guard let bundled = Bundle.main.path(forResource: binName, ofType: nil) else { return nil }
         let fm = FileManager.default
         let verID = BundleMetadata.currentUpdateIdentifier
         let dir = fm.homeDirectoryForCurrentUser
             .appendingPathComponent(".openagents/environment/bin/\(verID)", isDirectory: true)
-        let dst = dir.appendingPathComponent(program)
+        let dst = dir.appendingPathComponent(binName)
         if fm.isExecutableFile(atPath: dst.path) {
             let srcSize = (try? fm.attributesOfItem(atPath: bundled)[.size] as? NSNumber)?.int64Value
             let dstSize = (try? fm.attributesOfItem(atPath: dst.path)[.size] as? NSNumber)?.int64Value
@@ -100,7 +103,7 @@ final class CoderWorker {
             }
         }
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        let tmp = dir.appendingPathComponent(".\(program).new.\(getpid()).\(UUID().uuidString.prefix(6))")
+        let tmp = dir.appendingPathComponent(".\(binName).new.\(getpid()).\(UUID().uuidString.prefix(6))")
         try? fm.removeItem(at: tmp)
         do {
             try fm.copyItem(at: URL(fileURLWithPath: bundled), to: tmp)
@@ -113,6 +116,20 @@ final class CoderWorker {
             try? fm.removeItem(at: tmp)
         }
         return bundled
+    }
+
+    /// Resolves the executable path for `program`. For daemon-owned runs, prefers an immutable
+    /// versioned copy under `~/.openagents/environment/bin/<versionID>/<program>` (materializing
+    /// atomically from `Bundle.main` if needed) so replacing `/Applications/OpenAgents.app` never
+    /// pulls binaries out from under active workers (#14095). For `claudeworker`, also materializes
+    /// sibling `gitguard` beside it so its PreToolUse Bash guard resolves cleanly (#14104).
+    private func resolvedProgramPath(forDaemon: Bool) -> String? {
+        guard let bundled = Bundle.main.path(forResource: program, ofType: nil) else { return nil }
+        guard forDaemon else { return bundled }
+        if program == "claudeworker" {
+            _ = materializeForDaemon("gitguard")
+        }
+        return materializeForDaemon(program) ?? bundled
     }
 
     func start() -> Bool {

@@ -614,7 +614,15 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     lv := s[0].turns[i].agents[j].level;
     if lv >= CP_LEVEL_CLAUDE && lv < CP_LEVEL_CLAUDE_END && cp_flawed_allow_local_harnesses(s) && !s[0].claude_sub {
       s[0].turns[i].agents[j].start_due = false;
-      cp_agent_end(s, i, j, CP_FAILED, "Claude Code is not available on this computer. Install the claude command and sign in to it.");
+      why_b: [256] u8;
+      why_s := "Claude Code is not available on this computer. Install the claude command and sign in to it.";
+      if s[0].flawed[0].claude_status_n > 0 {
+        wn := cp_out(why_b[..], "Claude Code is not available on this computer: ");
+        wn += cp_out(why_b[wn..<why_b.count], cast(string) s[0].flawed[0].claude_status[0..<s[0].flawed[0].claude_status_n]);
+        wn += cp_out(why_b[wn..<why_b.count], ".");
+        why_s = cast(string) why_b[0..<wn];
+      }
+      cp_agent_end(s, i, j, CP_FAILED, why_s);
       continue;
     }
     if first < 0 { first = j; }
@@ -817,6 +825,25 @@ coder_page_agent_engine :: (s: [] CoderPage, j: int) -> int #export_c #effects(a
 coder_page_agent_claude :: (s: [] CoderPage, j: int) -> bool #export_c #effects(all) {
   return coder_page_agent_engine(s, j) == 1;
 }
+// Permission mode & sandbox forwarded from the parent chat's Settings > Agent > Permission mode
+// (and any per-subagent read_only flag) to a Claude Code sub-agent (GitHub #14104).
+// Explicit read_only always stays read-only ("plan"); otherwise Allow All (0) or bypass_danger
+// runs "bypass", Plan (3) runs "plan", Accept Edits (2) runs "accept-edits", and Ask (1) /
+// Don't Ask (4) run "dont-ask" (non-interactive sub-agents never block on hidden prompts).
+cp_claude_sub_mode :: (s: [] CoderPage, read_only: bool) -> string {
+  if read_only { return "plan"; }
+  if s.count < 1 { return "bypass"; }
+  fl := s[0].flawed[..];
+  if fl[0].bypass_danger || fl[0].permission_mode == 0 { return "bypass"; }
+  if fl[0].permission_mode == 3 { return "plan"; }
+  if fl[0].permission_mode == 2 { return "accept-edits"; }
+  return "dont-ask";
+}
+cp_claude_sub_sandbox :: (mode: string) -> string {
+  if mode == "plan" { return "read-only"; }
+  if mode == "bypass" { return "danger-full-access"; }
+  return "workspace-write";
+}
 // Sub-agent j's task line for its worker: a simple task on Hydrogen, a complex one on Carbon, a
 // neon one on Gemini 4 Neon, an openrouter one on the OpenRouter model set for sub-agents, a Claude level's on that Claude model,
 // or an explicit delegated external CLI subagent (Antigravity, Codex, Cursor).
@@ -829,7 +856,9 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   eff_cwd := ifx s[0].turns[i].agents[j].wt_path_n > 0 then cast(string) s[0].turns[i].agents[j].wt_path[0..<s[0].turns[i].agents[j].wt_path_n] else cwd;
   level := s[0].turns[i].agents[j].level;
   if level >= CP_LEVEL_CLAUDE && level < CP_LEVEL_CLAUDE_END {
-    return mww_task(out, McTask.{task = full_task, session = session, cwd = eff_cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level], effort = CP_CLAUDE_EFFORT_WORD[cp_claude_effort(s, CP_LEVEL_CLAUDE_END - 1 - level)], no_steer = true});
+    cmode := cp_claude_sub_mode(s, s[0].turns[i].agents[j].read_only);
+    csandbox := cp_claude_sub_sandbox(cmode);
+    return mww_task(out, McTask.{task = full_task, session = session, cwd = eff_cwd, sandbox = csandbox, ceiling = 3, no_ask = true, model = CP_LEVEL[level], effort = CP_CLAUDE_EFFORT_WORD[cp_claude_effort(s, CP_LEVEL_CLAUDE_END - 1 - level)], no_steer = true, mode = cmode, read_only = cmode == "plan"});
   }
   if level >= CP_LEVEL_AGY && level < CP_LEVELS {
     return mww_task(out, McTask.{task = full_task, session = session, cwd = eff_cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level], no_steer = true});

@@ -780,3 +780,60 @@
   rn := coder_page_answer_line(s, rb[..]);
   #assert rn > 0 && cp_contains(cast(string) rb[0..<rn], "Claude Code is not available on this computer");
 }
+
+#test "sub-agents (#14104): parent permission mode and read_only govern Claude sub-agent task line; host Claude status surfaces in refusal" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  s[0].flawed[0].allow_local_harnesses = true;
+  coder_page_set_claude_sub(s, true);
+  #assert coder_page_set_text(s, "ask Claude") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"sonnet\",\"task\":\"inspect\"},{\"level\":\"haiku\",\"task\":\"scan\",\"read_only\":true}],\"ticket\":1}") == MWW_DELEGATE;
+
+  out: [4096] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; req: [1] MwwRequest;
+  // Default Allow All (0): normal Claude sub-agent gets bypass / danger-full-access; read_only child stays plan / read-only
+  n := coder_page_agent_task(s, 0, "s", "/w", out[..]);
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_TASK && req[0].mode == "bypass" && req[0].sandbox == "danger-full-access" && !req[0].read_only;
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 1, "s", "/w", out[..]);
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_TASK && req[0].mode == "plan" && req[0].sandbox == "read-only" && req[0].read_only;
+
+  // Parent Plan mode (3): non-read-only Claude sub-agent also forced to plan / read-only
+  s[0].flawed[0].permission_mode = 3;
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 0, "s", "/w", out[..]);
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_TASK && req[0].mode == "plan" && req[0].sandbox == "read-only" && req[0].read_only;
+
+  // Parent Accept Edits (2) -> accept-edits / workspace-write
+  s[0].flawed[0].permission_mode = 2;
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 0, "s", "/w", out[..]);
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_TASK && req[0].mode == "accept-edits" && req[0].sandbox == "workspace-write" && !req[0].read_only;
+
+  // Parent Ask (1) and Don't Ask (4) -> dont-ask / workspace-write (never silently bypasses permissions)
+  s[0].flawed[0].permission_mode = 1;
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 0, "s", "/w", out[..]);
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_TASK && req[0].mode == "dont-ask" && req[0].sandbox == "workspace-write";
+  s[0].flawed[0].permission_mode = 4;
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 0, "s", "/w", out[..]);
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_TASK && req[0].mode == "dont-ask" && req[0].sandbox == "workspace-write";
+
+  // bypass_danger overrides parent permission_mode (except explicit read_only child stays plan)
+  s[0].flawed[0].bypass_danger = true;
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 0, "s", "/w", out[..]);
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_TASK && req[0].mode == "bypass" && req[0].sandbox == "danger-full-access";
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 1, "s", "/w", out[..]);
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_TASK && req[0].mode == "plan" && req[0].sandbox == "read-only" && req[0].read_only;
+
+  // Host-probed not-signed-in status surfaces cleanly in refusal when claude_sub is false
+  coder_page_set_claude_sub(s, false);
+  coder_page_set_claude_status(s, "Installed · Not signed in (run `claude` in a terminal)");
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"sonnet\",\"task\":\"check\"}],\"ticket\":2}") == MWW_DELEGATE;
+  #assert s[0].turns[0].agents[2].state == CP_FAILED;
+  rb: [4096] u8;
+  rn := coder_page_answer_line(s, rb[..]);
+  #assert rn > 0 && cp_contains(cast(string) rb[0..<rn], "Not signed in");
+}

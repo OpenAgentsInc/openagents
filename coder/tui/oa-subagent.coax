@@ -361,10 +361,74 @@ fww_claude_level :: (kind: string) -> string {
   if oa_ag_eq_ci(kind, "claude-fable") { return "fable"; }
   return "";
 }
+fww_claude_has_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || hay.count < needle.count { return false; }
+  for i: 0..<(hay.count - needle.count + 1) {
+    ok := true;
+    for j: 0..<needle.count {
+      a := hay[i + j]; b := needle[j];
+      if a >= 'A' && a <= 'Z' { a = cast(u8) (a + 32); }
+      if b >= 'A' && b <= 'Z' { b = cast(u8) (b + 32); }
+      if a != b { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+// Selects the Claude sub-agent type for a router-delegated prompt (#14104).
+fww_claude_subagent_type_for_text :: (tk: string) -> string {
+  if fww_claude_has_ci(tk, "fable") { return "claude-fable"; }
+  if fww_claude_has_ci(tk, "opus") { return "claude-opus"; }
+  if fww_claude_has_ci(tk, "haiku") { return "claude-haiku"; }
+  return "claude-sonnet";
+}
+// Pure preparation for a System One router plan that explicitly chose `claude` (#14104):
+// synthesizes an Agent tool call targeting the requested Claude model and appends the
+// matching assistant TOOL_USE block to history so MWW_RESULTS pairs cleanly for the parent reply.
+fww_prepare_routed_claude_delegate :: (r: [] FwRun, h: [] FwHist, tk: string) -> bool {
+  if r[0].is_subagent || !r[0].host_agents || !r[0].host_claude { return false; }
+  if r[0].nrouted_delegate <= 0 || cast(string) r[0].routed_delegate[0..<r[0].nrouted_delegate] != "claude" { return false; }
+  if tk.count == 0 || h[0].nmsgs >= FWW_MAX_MSGS { return false; }
+  sub_type := fww_claude_subagent_type_for_text(tk);
+  ab: [16896] u8;
+  jo: [1] Jo;
+  jo_start(jo[..], ab[..]);
+  jo_obj(jo[..]);
+  jo_key(jo[..], "description"); jo_str(jo[..], "Delegate to Claude Code");
+  jo_key(jo[..], "prompt"); jo_str(jo[..], tk);
+  jo_key(jo[..], "subagent_type"); jo_str(jo[..], sub_type);
+  jo_end(jo[..]);
+  if jo[0].bad { return false; }
+  args_s := jo_text(jo[..]);
+  r[0].acc[0] = FwStreamAccum.{ntools = 1, cur_tool_idx = -1};
+  r[0].acc[0].tools[0].nid = fww_keep(r[0].acc[0].tools[0].id[..], "router_delegate_1");
+  r[0].acc[0].tools[0].nname = fww_keep(r[0].acc[0].tools[0].name[..], "Agent");
+  r[0].acc[0].tools[0].nargs = fww_keep(r[0].acc[0].tools[0].args[..], args_s);
+  mi := h[0].nmsgs;
+  h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+  a0 := [1] int.[0];
+  ub := FwBlock.{kind = FWW_MB_TOOL_USE};
+  ub.id_n = fww_slab_put(h, "router_delegate_1", a0[..]); ub.id_at = a0[0];
+  ub.name_n = fww_slab_put(h, "Agent", a0[..]); ub.name_at = a0[0];
+  ub.text_n = fww_slab_put(h, args_s, a0[..]); ub.text_at = a0[0];
+  h[0].msgs[mi].blocks[0] = ub;
+  h[0].nmsgs += 1;
+  r[0].next_tool_idx = 0;
+  return true;
+}
+// Launches a router-selected Claude delegation through the standard MWW_DELEGATE pipeline (#14104).
+fww_start_routed_claude_delegate :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: string, tk: string, out: [] u8) -> bool {
+  if !fww_prepare_routed_claude_delegate(r, h, tk) { return false; }
+  return fww_start_delegate_batch(r, cfg, h, home, 0, 1, out);
+}
 #test "sub-agents (#14104): only a subagent_type that names Claude Code has a Claude level" {
   #assert fww_claude_level("claude-haiku") == "haiku" && fww_claude_level("Claude-Sonnet") == "sonnet" && fww_claude_level("claude") == "sonnet";
   #assert fww_claude_level("claude-opus") == "opus" && fww_claude_level("claude-fable") == "fable";
   #assert fww_claude_level("Explore") == "" && fww_claude_level("general-purpose") == "" && fww_claude_level("") == "" && fww_claude_level("haiku") == "";
+  #assert fww_claude_subagent_type_for_text("Use Claude Haiku to count lines") == "claude-haiku";
+  #assert fww_claude_subagent_type_for_text("Ask Claude Opus to review") == "claude-opus";
+  #assert fww_claude_subagent_type_for_text("Use Claude Fable on this proof") == "claude-fable";
+  #assert fww_claude_subagent_type_for_text("Use Claude to fix this") == "claude-sonnet";
 }
 
 // Launches all consecutive Agent/Task tool calls [batch_start..<batch_end) in parallel.

@@ -931,6 +931,7 @@ rv1_make_mac_fixture :: (app_dir: string, dirty_leak: bool) -> bool #effects(all
   if !fs_write(fs_join(contents, "Info.plist", p2[..]), plist) { return false; }
   if !fs_write(fs_join(contents, "Resources/coder-host", p2[..]), "stub-coder-host\n") { return false; }
   if !fs_write(fs_join(contents, "Resources/oa-worker", p2[..]), "stub-oa-worker\n") { return false; }
+  if !fs_write(fs_join(contents, "Resources/claudeworker", p2[..]), "stub-claudeworker\n") { return false; }
   if !fs_write(fs_join(contents, "Resources/inkling-kernels.metal", p2[..]), "// metal kernels\n") { return false; }
   if !fs_write(fs_join(contents, "Resources/gitguard", p2[..]), "stub-gitguard\n") { return false; }
   if !fs_write(fs_join(contents, "Resources/OpenAgents.icns", p2[..]), "icns") { return false; }

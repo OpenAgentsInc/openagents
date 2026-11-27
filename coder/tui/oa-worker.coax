@@ -5079,6 +5079,7 @@ FwRun :: struct {
   home: [FS_PATH_MAX] u8; nhome: int;
   host_agents: bool;
   host_claude: bool;   // this turn may hand a task to Claude Code: the app can run it and the person allowed it (GitHub #14104)
+  routed_delegate: [32] u8; nrouted_delegate: int; // System One router explicit_delegate choice (e.g. "claude", #14104)
   is_subagent: bool;
   is_fork_child: bool;
   subagent_read_only: bool;
@@ -5241,9 +5242,10 @@ fww_think_spiral :: (streaming: bool, is_local: bool, recoveries: int, ntext: in
 // System One Front v2alpha1 routing for Auto mode (#14056):
 // Calls elephant-1 or gemini-decision-1 when configured via OA_AGENT_ROUTER_DOOR,
 // with deterministic offline #authority policy.coax fallback.
-fww_route_auto_plan_ex :: (
+fww_route_auto_plan_v2 :: (
   tk: string, repo: string, active_pack: string, active_tier: string,
-  local_ready: bool, cloud_ready: bool, door_pref: string, allow_local_harnesses: bool, out_plan: [] Rtr2Plan
+  local_ready: bool, cloud_ready: bool, door_pref: string,
+  allow_local_harnesses: bool, claude_ready: bool, out_plan: [] Rtr2Plan
 ) {
   q: [1] Rtr2PlanRequest;
   q[0] = Rtr2PlanRequest.{
@@ -5254,6 +5256,10 @@ fww_route_auto_plan_ex :: (
     user_compute_pref = "auto",
     allow_local_harnesses = allow_local_harnesses
   };
+  if claude_ready {
+    q[0].available_delegates[0] = "claude";
+    q[0].navailable_delegates = 1;
+  }
   if active_pack.count > 0 {
     q[0].active_packs[0] = active_pack;
     q[0].nactive_packs = 1;
@@ -5286,6 +5292,13 @@ fww_route_auto_plan_ex :: (
     }
   }
   rtr2_decide_offline(q[..], out_plan);
+}
+
+fww_route_auto_plan_ex :: (
+  tk: string, repo: string, active_pack: string, active_tier: string,
+  local_ready: bool, cloud_ready: bool, door_pref: string, allow_local_harnesses: bool, out_plan: [] Rtr2Plan
+) {
+  fww_route_auto_plan_v2(tk, repo, active_pack, active_tier, local_ready, cloud_ready, door_pref, allow_local_harnesses, false, out_plan);
 }
 
 fww_route_auto_plan :: (
@@ -7173,6 +7186,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
     // System One Front v2alpha1 routing in Auto mode (#14056)
     run[0].nmissing_cap_hint = 0;
+    run[0].nrouted_delegate = 0;
     if (picked_model == "oa:auto" || picked_model == "auto") && cfg[0].ncustom_model == 0 && !(tk.count > 0 && tk[0] == '/') {
       lbase_b: [512] u8;
       lbase := fww_trim(cl_getenv("PSIONIC_BASE_URL", lbase_b[..]));
@@ -7192,10 +7206,13 @@ tool_main :: () -> int #export_c #effects(all) {
       plan: [1] Rtr2Plan;
       ap := cast(string) run[0].active_pack[0..<run[0].nactive_pack];
       at := cast(string) run[0].active_tier[0..<run[0].nactive_tier];
-      fww_route_auto_plan_ex(tk, repo_name, ap, at, local_ready, cloud_ready, door_pref, cfg[0].allow_local_harnesses, plan[..]);
+      fww_route_auto_plan_v2(tk, repo_name, ap, at, local_ready, cloud_ready, door_pref, cfg[0].allow_local_harnesses, req[0].agents && req[0].claude, plan[..]);
       if plan[0].ok {
         if plan[0].npacks > 0 { run[0].nactive_pack = fww_keep(run[0].active_pack[..], plan[0].capability_packs[0]); }
         run[0].nactive_tier = fww_keep(run[0].active_tier[..], plan[0].compute_tier);
+        if plan[0].explicit_delegate.count > 0 && plan[0].explicit_delegate != "none" {
+          run[0].nrouted_delegate = fww_keep(run[0].routed_delegate[..], plan[0].explicit_delegate);
+        }
         if plan[0].missing_capability_hint.count > 0 {
           run[0].nmissing_cap_hint = fww_keep(run[0].missing_cap_hint[..], plan[0].missing_capability_hint);
         } else if !plan[0].continue_active {
@@ -7347,6 +7364,13 @@ tool_main :: () -> int #export_c #effects(all) {
       if cp_cache_status(hist[0].last_cloud_turn_ms, proc_now_ms(), 0, hist[0].last_cached_tok, est_tok, true) == CP_CACHE_EXPIRED_COMPACT {
         _ = fww_hist_compact_ex(hist[..], 0, 2, 512, 0, 0, bufs[0].compact_buf[..]);
       }
+    }
+
+    // Honor a System One router plan that explicitly delegated this turn to Claude Code (#14104).
+    if fww_start_routed_claude_delegate(run[..], cfg[..], hist[..], home, tk, out[..]) {
+      run[0].active = true;
+      f[0].starting = false;
+      continue;
     }
 
     err := fww_start_request(run[..], cfg[..], auth[..], hist[..], bufs[..], out[..]);
@@ -8251,6 +8275,19 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert p[0].ok && p[0].continue_active && p[0].capability_packs[0] == "coder" && p[0].compute_tier == "cloud_deep";
   fww_route_auto_plan("Check my Lightning wallet sats", "", "", "", true, true, "", p[..]);
   #assert p[0].ok && p[0].capability_packs[0] == "wallet";
+
+  // System One router explicit Claude delegate preparation (#14104)
+  r_del: [1] FwRun; h_del: [1] FwHist;
+  fww_hist_push_user(h_del[..], "Use Claude Opus to audit this file");
+  r_del[0].host_agents = true;
+  r_del[0].host_claude = false;
+  r_del[0].nrouted_delegate = fww_keep(r_del[0].routed_delegate[..], "claude");
+  #assert !fww_prepare_routed_claude_delegate(r_del[..], h_del[..], "Use Claude Opus to audit this file");
+  r_del[0].host_claude = true;
+  #assert fww_prepare_routed_claude_delegate(r_del[..], h_del[..], "Use Claude Opus to audit this file");
+  #assert r_del[0].acc[0].ntools == 1 && cast(string) r_del[0].acc[0].tools[0].name[0..<r_del[0].acc[0].tools[0].nname] == "Agent";
+  #assert fww_contains_ci(cast(string) r_del[0].acc[0].tools[0].args[0..<r_del[0].acc[0].tools[0].nargs], "claude-opus");
+  #assert h_del[0].nmsgs == 2 && h_del[0].msgs[1].role == FWW_MROLE_ASSISTANT && h_del[0].msgs[1].blocks[0].kind == FWW_MB_TOOL_USE;
 
   // Member tool packs (#14057): Wallet, CLI, Metaverse/GameBuilder target extraction, schema mounting, & non-bypassable policy
   tb: [512] u8;

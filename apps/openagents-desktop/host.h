@@ -251,8 +251,10 @@ int cd_recall_line(void *page, char *out, int cap);
 // model). cd_agent_claude: whether this sub-agent runs in Claude Code, on the Claude worker.
 void cd_claude(void *page, int on);
 // Whether a sub-agent can run in Claude Code here: claudeworker is in the app and the claude command
-// is installed (GitHub #14104).
+// is installed and signed in (GitHub #14104).
 void cd_claude_sub(void *page, int on);
+// Live Claude Code availability & sign-in summary shown next to the toggle in Settings > Agent (#14104).
+void cd_claude_status(void *page, const char *status);
 void cd_agy(void *page, int on);
 void cd_agy_models_clear(void *page);
 int cd_agy_models_add(void *page, const char *inst_id, const char *inst_name, const char *slug, const char *name, int efforts_mask, int default_effort, int is_default);

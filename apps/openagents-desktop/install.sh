@@ -56,7 +56,7 @@ done
 want_profile="full"
 [[ "$minimal" == 1 ]] && want_profile="minimal"
 # Bump whenever fixed/roots tracking changes so stale $state/inputs files never skip a needed rebuild.
-inputs_schema="5"
+inputs_schema="6"
 # What every build reads besides the Coax sources coax deps lists: the compiler's inputs (as
 # coax/provenance.sh lists them), what coax/web/tool.sh links into the workers, and the app's
 # hosts and assets.

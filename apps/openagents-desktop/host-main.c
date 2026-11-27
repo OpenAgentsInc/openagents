@@ -169,6 +169,9 @@ typedef struct {
   char agy_worker_bin[OA_PATH];
   char flawed_worker_bin[OA_PATH];   // the Flawed agent's worker ("" when this build has none)
   char daemon_bin[OA_PATH];
+  int claude_probed;
+  int claude_ready;
+  char claude_status[160];
   char agy_bin[OA_PATH];
   char agy_model[128];
   int agy_mode;
@@ -1135,22 +1138,31 @@ static int flawed_wanted(DesktopApp *a) {
   (void)a; return 0;
 #endif
 }
-// The folder that holds the claude command (Claude Code): on PATH, or in ~/.local/bin where its
-// installer puts it. A sub-agent on a Claude level runs in it, through claudeworker (GitHub #14104).
+// The folder that holds the claude command (Claude Code): on PATH, or where its installers put it.
+// A sub-agent on a Claude level runs in it, through claudeworker (GitHub #14104).
 static int claude_cli_dir(char *out, size_t cap) {
 #ifdef _WIN32
   static const char *const NAMES[] = {"claude.exe", "claude.cmd"};
   const char sep = ';', slash = '\\';
   const char *home = getenv("USERPROFILE");
+  char own[OA_PATH] = {0}, dir[OA_PATH], full[OA_PATH + 32];
+  if (home && home[0]) snprintf(own, sizeof own, "%s%c.local%cbin", home, slash, slash);
+  const char *passes[2] = { getenv("PATH"), own };
+  int npasses = 2;
 #else
   static const char *const NAMES[] = {"claude"};
   const char sep = ':', slash = '/';
   const char *home = getenv("HOME");
+  char own1[OA_PATH] = {0}, own2[OA_PATH] = {0}, dir[OA_PATH], full[OA_PATH + 32];
+  if (home && home[0]) {
+    snprintf(own1, sizeof own1, "%s/.local/bin", home);
+    snprintf(own2, sizeof own2, "%s/.claude/local", home);
+  }
+  const char *passes[5] = { getenv("PATH"), own1, own2, "/opt/homebrew/bin", "/usr/local/bin" };
+  int npasses = 5;
 #endif
-  char own[OA_PATH] = {0}, dir[OA_PATH], full[OA_PATH + 32];
-  if (home && home[0]) snprintf(own, sizeof own, "%s%c.local%cbin", home, slash, slash);
-  for (int pass = 0; pass < 2; pass++) {
-    const char *p = pass == 0 ? getenv("PATH") : own;
+  for (int pass = 0; pass < npasses; pass++) {
+    const char *p = passes[pass];
     while (p && *p) {
       const char *e = strchr(p, sep);
       size_t n = e ? (size_t)(e - p) : strlen(p);
@@ -1168,10 +1180,99 @@ static int claude_cli_dir(char *out, size_t cap) {
   return 0;
 }
 // Whether a sub-agent can run in Claude Code here: claudeworker is beside the app and the claude
-// command is installed. Whether Claude Code is signed in is its own to say, when a task runs.
+// command is installed (and signed in once probed).
 static int claude_sub_ready(DesktopApp *a) {
+  if (a->claude_probed) return a->claude_ready;
   char dir[OA_PATH];
   return a->claude_worker_bin[0] != '\0' && claude_cli_dir(dir, sizeof dir);
+}
+// Probes `claudeworker --auth` (never opens a browser, hard 5s deadline) and updates
+// Settings > Agent's Claude availability & sign-in status (#14104).
+static void claude_probe_auth(DesktopApp *a) {
+  a->claude_probed = 1;
+  a->claude_ready = 0;
+  if (!a->claude_worker_bin[0]) {
+    snprintf(a->claude_status, sizeof a->claude_status, "Not bundled in this build");
+    if (a->page) { cd_claude_sub(a->page, 0); cd_claude_status(a->page, a->claude_status); }
+    return;
+  }
+#ifndef _WIN32
+  int pfd[2];
+  char buf[1024] = {0};
+  size_t bn = 0;
+  if (pipe(pfd) == 0) {
+    pid_t pid = fork();
+    if (pid == 0) {
+      int devnull = open("/dev/null", O_RDWR);
+      if (devnull >= 0) { dup2(devnull, 0); dup2(devnull, 2); if (devnull > 2) close(devnull); }
+      dup2(pfd[1], 1);
+      close(pfd[0]); close(pfd[1]);
+      setenv("SSH_CONNECTION", "1", 1);
+      setenv("BROWSER", "/usr/bin/true", 1);
+      setenv("NO_OPEN_BROWSER", "1", 1);
+      char cdir[OA_PATH] = {0};
+      if (claude_cli_dir(cdir, sizeof cdir)) {
+        const char *oldp = getenv("PATH");
+        char newp[OA_PATH * 2];
+        snprintf(newp, sizeof newp, "%s:%s", cdir, oldp ? oldp : "/usr/bin:/bin");
+        setenv("PATH", newp, 1);
+      }
+      char *argv[] = { a->claude_worker_bin, "--auth", NULL };
+      execv(a->claude_worker_bin, argv);
+      _exit(127);
+    }
+    close(pfd[1]);
+    if (pid > 0) {
+      struct timespec t0, now;
+      clock_gettime(CLOCK_MONOTONIC, &t0);
+      while (bn + 1 < sizeof buf) {
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long elapsed = (now.tv_sec - t0.tv_sec) * 1000L + (now.tv_nsec - t0.tv_nsec) / 1000000L;
+        if (elapsed >= 5000) break;
+        struct pollfd fds = { .fd = pfd[0], .events = POLLIN };
+        int r = poll(&fds, 1, (int)(5000 - elapsed));
+        if (r <= 0) break;
+        ssize_t got = read(pfd[0], buf + bn, sizeof buf - 1 - bn);
+        if (got <= 0) break;
+        bn += (size_t)got;
+        if (memchr(buf, '\n', bn)) break;
+      }
+      int st = 0;
+      if (waitpid(pid, &st, WNOHANG) == 0) {
+        kill(pid, SIGKILL);
+        waitpid(pid, &st, 0);
+      }
+    }
+    close(pfd[0]);
+  }
+  buf[bn] = '\0';
+  if (strstr(buf, "\"ready\":true")) a->claude_ready = 1;
+  const char *lp = strstr(buf, "\"label\":\"");
+  if (lp) {
+    lp += 9;
+    size_t out_i = 0;
+    while (*lp && *lp != '"' && out_i + 1 < sizeof a->claude_status) {
+      if (*lp == '\\' && lp[1]) { lp++; }
+      a->claude_status[out_i++] = *lp++;
+    }
+    a->claude_status[out_i] = '\0';
+  } else {
+    char dir[OA_PATH];
+    int has_cli = claude_cli_dir(dir, sizeof dir);
+    a->claude_ready = has_cli;
+    snprintf(a->claude_status, sizeof a->claude_status, "%s",
+      has_cli ? "Installed · Sign-in status unknown" : "Not installed (`claude` command not found)");
+  }
+#else
+  char dir[OA_PATH];
+  a->claude_ready = claude_cli_dir(dir, sizeof dir);
+  snprintf(a->claude_status, sizeof a->claude_status, "%s",
+    a->claude_ready ? "Installed" : "Not installed (`claude` command not found)");
+#endif
+  if (a->page) {
+    cd_claude_sub(a->page, a->claude_ready);
+    cd_claude_status(a->page, a->claude_status);
+  }
 }
 // Settings > Agent, kept across launches: the page's settings as numbers, in its order.
 static void agent_prefs_keep(DesktopApp *a) {
@@ -2478,6 +2579,10 @@ static void handle_action(DesktopApp *a, int act) {
     case 190: case 197:
       agent_prefs_keep(a);
       if (a->worker_is_agy == 4 && oa_core_worker_alive(vc(a)) && !cd_running(a->page)) oa_core_worker_stop(vc(a), 0);
+      if (!a->test_mode) claude_probe_auth(a);
+      break;
+    case 196:
+      if (!a->test_mode) claude_probe_auth(a);
       break;
     case 14: cd_zoom(a->page, 1); break;
     case 15: cd_zoom(a->page, -1); break;
@@ -3952,7 +4057,7 @@ static int oa_main(int argc, char **argv) {
     local_sync(&app);
   }
   cd_claude(app.page, ((dc_flags & (1LL << 1)) && app.claude_worker_bin[0]) ? 1 : 0);
-  cd_claude_sub(app.page, claude_sub_ready(&app));
+  claude_probe_auth(&app);
   agent_prefs_load(&app);
   if (dc_flags & (1LL << 1)) {
     // each Claude model's thinking level, as Settings > Models kept it (four digits, 0 low to 4 max)

@@ -124,6 +124,8 @@ CpFlawedSettings :: struct {
   custom_model: [128] u8; custom_model_n: int;
   tools_summary: [192] u8; tools_summary_n: int;
   limits_summary: [128] u8; limits_summary_n: int;
+  claude_status: [160] u8; claude_status_n: int;
+  claude_desc_buf: [384] u8;
   desc_buf: [192] u8;
   id_buf: [96] u8;
   label_buf: [128] u8;
@@ -290,8 +292,19 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
     desc = "Optional key stored locally (0600, never logged). Not needed for on-device Inkling or OpenAgents Cloud.",
     value = key_val, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
 
+  // Show live Claude Code availability & sign-in state next to the opt-in toggle (#14104).
+  hd_n := el_put(fl[0].claude_desc_buf[..], 0, "Claude Code: ");
+  if fl[0].claude_status_n > 0 {
+    hd_n = el_put(fl[0].claude_desc_buf[..], hd_n, cast(string) fl[0].claude_status[0..<fl[0].claude_status_n]);
+  } else if s[0].claude_sub {
+    hd_n = el_put(fl[0].claude_desc_buf[..], hd_n, "Ready");
+  } else {
+    hd_n = el_put(fl[0].claude_desc_buf[..], hd_n, "Not detected");
+  }
+  hd_n = el_put(fl[0].claude_desc_buf[..], hd_n, " · Opt-in: allow OpenAgents Core to delegate sub-agent tasks to installed local harnesses (Claude Code, Codex, Antigravity, Cursor).");
+  harnesses_desc := sheet_pool(sh, cast(string) fl[0].claude_desc_buf[0..<hd_n]);
   mrows[5] = SetRow.{id = "set.flawed.harnesses", name = "Allow delegating to other local harnesses",
-    desc = "Opt-in: allow OpenAgents Core to delegate sub-agent tasks to installed local harnesses (Claude Code, Codex, Antigravity, Cursor). Core chat always runs on OpenAgents.",
+    desc = harnesses_desc,
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].allow_local_harnesses then 1 else 0, action = CP_SET_ACT};
   mrows[5].options[0] = "Off"; mrows[5].options[1] = "On";
   y += cp_set_group(s, f, "set.flawed.compute.group", x, y, w, mrows[..]) + t.block_gap;
@@ -623,4 +636,10 @@ coder_page_flawed_info :: (s: [] CoderPage, auth_status: string, key_label: stri
   fl[0].tools_summary_n = cp_out(fl[0].tools_summary[..], tools_summary);
   fl[0].limits_summary_n = cp_out(fl[0].limits_summary[..], limits_summary);
   cp_model_restore_id(s, prev);
+}
+
+// Host-supplied Claude Code CLI & sign-in probe summary shown in Settings > Agent (#14104).
+coder_page_set_claude_status :: (s: [] CoderPage, status: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].flawed[0].claude_status_n = cp_out(s[0].flawed[0].claude_status[..], status);
 }
