@@ -150,12 +150,20 @@ grader still fails any run that changes the files beside the workspace.
 | `apps/openagents-desktop/linux/build.sh --minimal --smoke` | ok |
 | `OpenAgents --delegate-claude-test` on that build | ok |
 
+## Added after this report (2026-11-26)
+
+- **Settings > Agent > Most a sub-agent may do with git** (Commit and push, Commit only, Neither)
+  sets the limit on Linux and Windows. The macOS app does not show the row yet; there the limit is
+  still the `OA_SUBAGENT_GIT_MAX` variable. `OpenAgents --delegate-claude-test=gitcap` sets it to
+  Neither and asks a Claude sub-agent to commit: no commit is made.
+- A custom agent file (`.openagents/agents/*.md`) can set `git: none|commit|push` as its default.
+  What a delegation asks for still wins, under the limit. Unit checks only.
+- A sub-agent the chat resumes with `SendMessage` keeps its first rule and runs where it first
+  ran. No check runs this path.
+
 ## Not done
 
-- No switch in Settings for the limit yet; it is the `OA_SUBAGENT_GIT_MAX` variable.
-- A custom agent file (`.openagents/agents/*.md`) cannot set its own default rule.
 - Sub-agents in Antigravity, Codex or Cursor get no rule and nothing enforces one for them.
-- A sub-agent the chat resumes with `SendMessage` gets `none`, whatever its first delegation said.
 - macOS and Windows builds were not run with this change.
 - The rule covers `git commit` and `git push` only: not `gh pr create`, tags or `git commit-tree`.
 - Two trials per arm. `sb1` to `sb6` of `evals/subagent-bench` were not rerun.

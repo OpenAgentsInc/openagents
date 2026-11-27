@@ -1336,6 +1336,8 @@ static size_t flawed_env(DesktopApp *a, char *out, size_t cap) {
 #undef FL_PICK
   // Settings > Agent > Allow delegating to other local harnesses (GitHub #14071): off unless the person turned it on
   if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "OA_ALLOW_LOCAL_HARNESSES=%d\n", v[20] ? 1 : 0);
+  // Settings > Agent > Most a sub-agent may do with git (GitHub #14104)
+  if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "OA_SUBAGENT_GIT_MAX=%s\n", v[21] == 2 ? "none" : v[21] == 1 ? "commit" : "push");
   return (n > 0 && (size_t)n < cap) ? (size_t)n : 0;
 }
 
@@ -3460,6 +3462,8 @@ static int run_flawed(DesktopApp *a) {
 // the probe must say which, no Claude sub-agent may start, and the chat must say why. =routed sends
 // "Use Claude to ..." on Auto with no word about tools: the router's plan must start the sub-agent.
 // =own asks for a general-purpose sub-agent on Local: it must run in oa-worker on the local model.
+// =gitcap sets Settings > Agent > Most a sub-agent may do with git to Neither and asks a Claude
+// sub-agent to commit, in a --cwd that is a git repository with one commit: no commit may be made.
 static int run_delegate_claude_turn(DesktopApp *a, int mode);
 // Whatever the check found, none of its workers is left running.
 static int run_delegate_claude(DesktopApp *a, int mode) {
@@ -3488,6 +3492,10 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
   int have = cd_flawed_prefs_get(a->page, v, 32);
   if (have < 21) return flow_fail("settings", "the page has no setting for delegating to other local harnesses");
   v[20] = allow ? 1 : 0;
+  if (mode == 10) {
+    if (have < 22) return flow_fail("settings", "the page has no setting for the most a sub-agent may do with git");
+    v[21] = 2;   // Neither
+  }
   cd_flawed_prefs_set(a->page, v, have);
   if (unavailable) {
     claude_probe_auth(a);
@@ -3505,7 +3513,8 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
   if (!cd_pick_model(a->page, mode == 8 ? "oa:auto" : "oa:local")) return flow_fail("model", "the page did not pick its model");
   flow_ok("settings", allow ? "delegating to other local harnesses is on" : "delegating to other local harnesses is off");
   const char *ask_text =
-      mode == 9 ? "Use your Agent tool once, with subagent_type general-purpose and this prompt: Reply with exactly the word KIWI and nothing else. Then tell me the word the sub-agent replied with."
+      mode == 10 ? "Use your Agent tool once, with subagent_type claude-haiku, git set to commit, and this prompt: Create a file named oa-git-check.txt that holds the one word GUAVA, then commit it with git. Then tell me whether the sub-agent made the commit. Do not run git yourself and do not commit anything yourself."
+    : mode == 9 ? "Use your Agent tool once, with subagent_type general-purpose and this prompt: Reply with exactly the word KIWI and nothing else. Then tell me the word the sub-agent replied with."
     : mode == 8 ? "Use Claude to reply with exactly the word KIWI and nothing else. Then tell me the word it replied with."
     : mode == 3 ? "Call your Agent tool twice in the same message, both with subagent_type claude-haiku. The first prompt: Reply with exactly the word KIWI and nothing else. The second prompt: Reply with exactly the word PLUM and nothing else. Then tell me both words the sub-agents replied with."
     : mode == 5 ? "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Create a file named oa-delegate-check.txt in the current folder that holds the one word GUAVA. Then reply with the word DONE. Then tell me what the sub-agent replied."
@@ -3563,6 +3572,15 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
       return flow_fail("off", "the reply does not name the setting that turns delegating on");
     }
     flow_ok("off", "the reply names the setting that turns delegating on");
+  } else if (mode == 10) {
+    // =gitcap: Settings says a sub-agent may neither commit nor push; the delegation asks for a commit.
+    // --cwd is a git repository with one commit: it must still have exactly one.
+    char cmd[OA_PATH + 96];
+    snprintf(cmd, sizeof cmd, "test \"$(git -C '%s' rev-list --count HEAD 2>/dev/null)\" = 1", effective_cwd(a));
+    if (!ran_claude) { fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : ""); return flow_fail("gitcap", "no sub-agent started in Claude Code"); }
+    if (system(cmd) != 0) fprintf(stderr, "delegate-claude-test: chat as kept:\n%.6000s\n", n > 0 ? a->save_buf : "");
+    if (system(cmd) != 0) return flow_fail("gitcap", "a commit was made though Settings allows a sub-agent neither a commit nor a push (see the chat above for who made it; --cwd must be a repository with one commit)");
+    flow_ok("gitcap", "the sub-agent made no commit: Settings allows it neither a commit nor a push");
   } else if (mode == 9) {
     // =own: a chat on the local model hands a task to a sub-agent of its own kind, with no cloud sign-in needed
     if (ran_claude) return flow_fail("own", "the sub-agent ran in Claude Code, which nobody asked for");
@@ -4008,6 +4026,7 @@ static int oa_main(int argc, char **argv) {
     else if (strcmp(argv[i], "--delegate-claude-test=unauthed") == 0) delegate_test = 7;
     else if (strcmp(argv[i], "--delegate-claude-test=routed") == 0) delegate_test = 8;
     else if (strcmp(argv[i], "--delegate-claude-test=own") == 0) delegate_test = 9;
+    else if (strcmp(argv[i], "--delegate-claude-test=gitcap") == 0) delegate_test = 10;
     else if (strcmp(argv[i], "--input-test") == 0) input = 1;
     else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     else if (strcmp(argv[i], "--resources") == 0 && i + 1 < argc) snprintf(app.resources, sizeof(app.resources), "%s", argv[++i]);

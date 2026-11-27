@@ -18,6 +18,8 @@ FwSubagentRec :: struct {
   one_shot: bool;
   read_only: bool;
   host_num: int;                          // 1-based host subagent index (for MWW_STOP_AGENT / resume)
+  git: [8] u8; ngit: int;                 // its git rule, kept for when the chat resumes it (#14104)
+  level: [12] u8; nlevel: int;            // where it ran (neon, inkling, or a Claude level), kept for the same reason
   start_ms: int;
   agent_id: [48] u8; nagent_id: int;
   name: [64] u8; nname: int;
@@ -570,7 +572,8 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
 
     is_bg := oa_agent_should_run_async(false, req_bg, def, false, false);
     want_wt := oa_ag_eq_ci(iso_s, "worktree") || def.isolation_worktree;
-    git_s := fww_subagent_git(ifx gitn > 0 then cast(string) git_b[0..<gitn] else "", want_wt, cast(string) cfg[0].subagent_git_max[0..<cfg[0].nsubagent_git_max]);
+    // What the delegation asks for wins; a custom agent file's own `git:` is the default under it.
+    git_s := fww_subagent_git(ifx gitn > 0 then cast(string) git_b[0..<gitn] else cast(string) def.git[0..<def.ngit], want_wt, cast(string) cfg[0].subagent_git_max[0..<cfg[0].nsubagent_git_max]);
 
     rec_idx := r[0].nsubagents;
     if rec_idx < FWW_MAX_SUBAGENT_RECS {
@@ -587,6 +590,8 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
     r[0].subagents[rec_idx].nname = fww_keep(r[0].subagents[rec_idx].name[..], name_s);
     r[0].subagents[rec_idx].nsubagent_type = fww_keep(r[0].subagents[rec_idx].subagent_type[..], ifx is_fork then "fork" else type_s);
     r[0].subagents[rec_idx].ndesc = fww_keep(r[0].subagents[rec_idx].desc[..], desc_s);
+    r[0].subagents[rec_idx].ngit = fww_keep(r[0].subagents[rec_idx].git[..], git_s);
+    r[0].subagents[rec_idx].nlevel = fww_keep(r[0].subagents[rec_idx].level[..], ifx claude_level.count > 0 then claude_level else ifx fww_run_is_local(r) then "inkling" else "neon");
 
     // Optional git worktree isolation
     if want_wt {
@@ -1187,7 +1192,9 @@ fww_tool_send_message :: (r: [] FwRun, tidx: int, args_json: string, out_res: []
   jo_start(jo[..], tasks_buf[..]);
   jo_arr(jo[..]);
   jo_obj(jo[..]);
-  jo_key(jo[..], "level"); jo_str(jo[..], "neon");
+  // A resumed sub-agent runs where it first ran, under the git rule it first had.
+  jo_key(jo[..], "level"); jo_str(jo[..], ifx r[0].subagents[ri].nlevel > 0 then cast(string) r[0].subagents[ri].level[0..<r[0].subagents[ri].nlevel] else "neon");
+  jo_key(jo[..], "git"); jo_str(jo[..], mc_gg_publish_rule(cast(string) r[0].subagents[ri].git[0..<r[0].subagents[ri].ngit]));   // already under the owner's limit
   if r[0].subagents[ri].running && r[0].subagents[ri].host_num > 0 {
     jo_key(jo[..], "resume"); jo_int(jo[..], r[0].subagents[ri].host_num);
     jo_key(jo[..], "task"); jo_str(jo[..], msg_s);

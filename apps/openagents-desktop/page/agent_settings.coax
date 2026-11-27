@@ -116,6 +116,8 @@ CpFlawedSettings :: struct {
   extended_ctx: bool;      // 1M context window preference
   remote_bridge: bool;     // Remote Control session bridge
   allow_local_harnesses: bool; // Opt-in (default Off): allow delegating sub-agents to other local harnesses (#14071)
+  subagent_git_most: int;      // The most a sub-agent may do with git: 0 commit and push (default), 1 commit only, 2 neither (#14104)
+  subagent_git_host: bool;     // The host keeps and applies that setting (it passes the optional 22nd number); the row shows only then
   user_picked: bool;       // true after explicit user model pick or loaded chat
   // Host-supplied display strings for Settings -> Flawed.
   auth_status: [128] u8; auth_status_n: int;
@@ -258,7 +260,7 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   // 1. Compute & Local Model
   y += set_section_head(f, "set.flawed.compute.head", x, y, w, "Compute & Local Model",
     "Auto uses cloud compute when available and falls back to on-device Inkling 2 Mini. Switch anytime in the composer.") + t.section_gap;
-  mrows: [6] SetRow;
+  mrows: [7] SetRow;
   cmode := cp_flawed_clamp(fl[0].default_agent, 0, CP_COMPUTE_MODES - 1);
   mrows[0] = SetRow.{id = "set.flawed.agent", name = "Default compute",
     desc = ifx cmode == CP_COMPUTE_LOCAL
@@ -307,7 +309,12 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
     desc = harnesses_desc,
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].allow_local_harnesses then 1 else 0, action = CP_SET_ACT};
   mrows[5].options[0] = "Off"; mrows[5].options[1] = "On";
-  y += cp_set_group(s, f, "set.flawed.compute.group", x, y, w, mrows[..]) + t.block_gap;
+  mrows[6] = SetRow.{id = "set.flawed.subgit", name = "Most a sub-agent may do with git",
+    desc = "A sub-agent commits or pushes only when the chat that delegates to it asks. This sets the most it can be allowed.",
+    kind = SET_ROW_CHOICE, noptions = 3, chosen = cp_flawed_clamp(fl[0].subagent_git_most, 0, 2), action = CP_SET_ACT};
+  mrows[6].options[0] = "Commit and push"; mrows[6].options[1] = "Commit only"; mrows[6].options[2] = "Neither";
+  nmrows := ifx fl[0].subagent_git_host then 7 else 6;
+  y += cp_set_group(s, f, "set.flawed.compute.group", x, y, w, mrows[0..<nmrows]) + t.block_gap;
 
   // 2. Safety & Permissions
   y += set_section_head(f, "set.flawed.perm.head", x, y, w, "Safety & Permissions",
@@ -553,6 +560,8 @@ cp_flawed_settings_press :: (s: [] CoderPage, id: string) -> bool {
   if v == 0 || v == 1 { fl[0].remote_bridge = (v == 1); s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
   v = cp_number(id, "set.flawed.harnesses.");
   if v == 0 || v == 1 { fl[0].allow_local_harnesses = (v == 1); s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
+  v = cp_number(id, "set.flawed.subgit.");
+  if v >= 0 && v <= 2 { fl[0].subagent_git_most = v; s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
   return false;
 }
 
@@ -593,6 +602,8 @@ coder_page_flawed_prefs_set :: (s: [] CoderPage, vals: [] int) #export_c #effect
   fl[0].extended_ctx = vals[18] != 0;
   fl[0].remote_bridge = vals[19] != 0;
   fl[0].allow_local_harnesses = vals[20] != 0;
+  // Optional 22nd number: a host that passes it keeps and applies the sub-agent git limit.
+  if vals.count > CP_FLAWED_PREFS_COUNT { fl[0].subagent_git_most = cp_flawed_clamp(vals[21], 0, 2); fl[0].subagent_git_host = true; }
   if prev_agent != fl[0].default_agent || prev_slot != fl[0].model_slot || prev_be != fl[0].backend {
     cp_flawed_sync_empty_chat(s);
   }
@@ -622,6 +633,11 @@ coder_page_flawed_prefs_get :: (s: [] CoderPage, out: [] int) -> int #export_c #
   out[18] = ifx fl[0].extended_ctx then 1 else 0;
   out[19] = ifx fl[0].remote_bridge then 1 else 0;
   out[20] = ifx fl[0].allow_local_harnesses then 1 else 0;
+  if out.count > CP_FLAWED_PREFS_COUNT {
+    out[21] = cp_flawed_clamp(fl[0].subagent_git_most, 0, 2);
+    fl[0].subagent_git_host = true;
+    return CP_FLAWED_PREFS_COUNT + 1;
+  }
   return CP_FLAWED_PREFS_COUNT;
 }
 

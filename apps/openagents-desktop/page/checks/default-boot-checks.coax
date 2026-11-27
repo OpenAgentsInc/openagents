@@ -106,6 +106,17 @@
   #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[20] == 1;
   #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.0") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
   #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[20] == 0;
+  // The sub-agent git limit (#14104) is an optional 22nd number: only a host that passes it gets the row's value.
+  #assert !s[0].flawed[0].subagent_git_host;
+  pw: [CP_FLAWED_PREFS_COUNT + 1] int;
+  #assert coder_page_flawed_prefs_get(s[..], pw[..]) == CP_FLAWED_PREFS_COUNT + 1 && pw[21] == 0 && s[0].flawed[0].subagent_git_host;
+  #assert cp_flawed_settings_press(s[..], "set.flawed.subgit.2") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
+  #assert coder_page_flawed_prefs_get(s[..], pw[..]) == CP_FLAWED_PREFS_COUNT + 1 && pw[21] == 2;
+  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT;
+  pw[21] = 1; coder_page_flawed_prefs_set(s[..], pw[..]);
+  #assert s[0].flawed[0].subagent_git_most == 1;
+  coder_page_flawed_prefs_set(s[..], pv[..]);
+  #assert s[0].flawed[0].subagent_git_most == 1;   // a host that passes 21 numbers leaves it alone
   s[0].nturns = 1;
   s[0].turns[0].nagents = 2;
   s[0].turns[0].agents[0].level = CP_LEVEL_CLAUDE;
