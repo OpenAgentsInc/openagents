@@ -29,9 +29,19 @@ site_under :: (path:string,root:string)->bool #effects(all) {
   return path.count==root.count || path[root.count]=='/';
 }
 
-// Whether `seg` is a canonical cloud chat conversation ID ("cnv_" + 32 lowercase hex chars).
+// Whether `seg` is a canonical cloud chat conversation ID: lowercase 36-char UUID
+// (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) or legacy "cnv_" + 32 lowercase hex chars.
 site_chat_conv_id :: (seg:string)->bool #effects(all) {
-  if seg.count!=36 || seg[0]!='c' || seg[1]!='n' || seg[2]!='v' || seg[3]!='_' {return false;}
+  if seg.count!=36 {return false;}
+  if seg[8]=='-' && seg[13]=='-' && seg[18]=='-' && seg[23]=='-' {
+    for i:0..<36 {
+      if i==8 || i==13 || i==18 || i==23 {continue;}
+      c:=seg[i];
+      if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}
+    }
+    return true;
+  }
+  if seg[0]!='c' || seg[1]!='n' || seg[2]!='v' || seg[3]!='_' {return false;}
   for i:4..<36 {
     c:=seg[i];
     if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}
@@ -138,8 +148,14 @@ site_goes :: (path:string,out:[]u8)->string #effects(all) {
   old:=[12]string.["/verse","/verse/","/verse/index.md","/verse/galaxy","/metaverse/galaxy","/projects/verse","/projects/verse/","/projects/verse/index.md","/forge","/forge/my-realm","/worlds/splice","/worlds/splice/index.md"];
   for p:old {to:=site_goes(p,b[..]);#assert site_route(p).status==301 && site_route(to).status==0;}
 }
-#test "/chat/cnv_<32hex> serves /chat/index.html without affecting /chat/index.md or malformed paths" {
+#test "/chat/<uuid> and /chat/cnv_<32hex> serve /chat/index.html without affecting /chat/index.md or malformed paths" {
   b:[256]u8;
+  ru:=site_route("/chat/019370a4-7b1c-7e82-9a3f-4c2e1b8d6f05");
+  #assert ru.status==0 && !ru.query && site_goes("/chat/019370a4-7b1c-7e82-9a3f-4c2e1b8d6f05",b[..])=="/chat/index.html";
+  ru2:=site_route("/chat/019370a4-7b1c-7e82-9a3f-4c2e1b8d6f05/");
+  #assert ru2.status==0 && !ru2.query && site_goes("/chat/019370a4-7b1c-7e82-9a3f-4c2e1b8d6f05/",b[..])=="/chat/index.html";
+  #assert site_route("/chat/019370A4-7b1c-7e82-9a3f-4c2e1b8d6f05").to.count==0;
+  #assert site_route("/chat/019370a4x7b1c-7e82-9a3f-4c2e1b8d6f05").to.count==0;
   r:=site_route("/chat/cnv_0123456789abcdef0123456789abcdef");
   #assert r.status==0 && !r.query && site_goes("/chat/cnv_0123456789abcdef0123456789abcdef",b[..])=="/chat/index.html";
   r2:=site_route("/chat/cnv_0123456789abcdef0123456789abcdef/");

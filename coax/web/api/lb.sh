@@ -154,9 +154,9 @@ for pm in m["pathMatchers"]:
         have = {r.get("fullPathMatch") or r.get("prefixMatch") for r in rule.get("matchRules", [])}
         for match in ({"fullPathMatch": "/admin/analytics"}, {"prefixMatch": "/admin/analytics/"},
                       {"fullPathMatch": "/login"}, {"prefixMatch": "/login/"},
-                      {"fullPathMatch": "/chat"}, {"prefixMatch": "/chat/"},
+                      {"fullPathMatch": "/chat"},
                       {"fullPathMatch": "/chat-gpu"}, {"prefixMatch": "/chat-gpu/"},   # the page before the rebuilt /chat
-                      {"fullPathMatch": "/r"}, {"prefixMatch": "/r/"},
+                      {"fullPathMatch": "/r"},
                       {"fullPathMatch": "/referrals"}, {"prefixMatch": "/referrals/"},
                       {"fullPathMatch": "/.well-known/apple-app-site-association"}):
             if next(iter(match.values())) not in have:
@@ -365,6 +365,30 @@ for pm in m["pathMatchers"]:
             changed = want(match, action, after=galaxy, before=first("/verse", "/verse/")) or changed
     else:
         print(f"url map: {pm['name']} /verse stays as it is: https://{host}/metaverse doesn't answer yet. Run lb.sh again after the release that has it.")
+# Unified cloud chat (/chat/<uuid> or /chat/cnv_<32hex>) and referral (/r/<code>) SPA deep links:
+# real files (/chat/index.html, /chat/index.md, /r/index.html) serve as-is; any dynamic sub-path
+# that 404s in GCS serves the SPA entrypoint with HTTP 200 so browser refreshes hydrate cleanly.
+for pm in m["pathMatchers"]:
+    if pm["name"] not in ("production", "staging"): continue
+    rules = pm.setdefault("routeRules", [])
+    bucket = f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendBuckets/" + ("coaxial-openagents-web" if pm["name"] == "production" else "coaxial-openagents-web-staging")
+    for prefix, entry in (("/chat/", "/chat/index.html"), ("/r/", "/r/index.html")):
+        match = [{"prefixMatch": prefix}]
+        policy = {"errorService": bucket, "errorResponseRules": [
+            {"matchResponseCodes": ["404"], "path": entry, "overrideResponseCode": 200}]}
+        # Keep any existing /chat/ or /r/ prefix out of the generic multi-match bucket rule so this
+        # dedicated SPA rule matches deterministically.
+        for r in rules:
+            if r.get("service") == bucket and not r.get("customErrorResponsePolicy") and len(r.get("matchRules", [])) > 1:
+                keep = [x for x in r.get("matchRules", []) if x.get("prefixMatch") != prefix]
+                if keep != r.get("matchRules", []) and keep:
+                    r["matchRules"] = keep; changed = True
+        rule = next((r for r in rules if r.get("matchRules") == match), None)
+        if rule and rule.get("service") == bucket and rule.get("customErrorResponsePolicy") == policy: continue
+        if rule: rules.remove(rule)
+        place(rules, {"matchRules": match, "service": bucket, "customErrorResponsePolicy": policy})
+        changed = True
+        print(f"url map: {pm['name']} {prefix}* SPA rewrite to {entry} (200)")
 # The coder service is retired (docs/2026-10-28-coder-service-deprecation.md): whatever no rule
 # names is the site's bucket, so an unknown path gets the Coax 404.
 for pm in m["pathMatchers"]:
