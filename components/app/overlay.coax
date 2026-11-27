@@ -400,7 +400,7 @@ app_dialog_pointer :: (d: [] AppDialog, x: f32, y: f32, phase: int) -> bool {
 
 // ---------------------------------------------------------------- context menu
 
-APP_MENU_ITEMS :: 16; APP_MENU_LABEL :: 64;
+APP_MENU_ITEMS :: 24; APP_MENU_LABEL :: 64;
 APP_MENU_ROW :: 0; APP_MENU_HEADING :: 1; APP_MENU_RULE :: 2;
 APP_MENU_NONE :: -1;    // closed with nothing chosen
 APP_MENU_WAIT :: -2;    // not answered (or the answer was taken)

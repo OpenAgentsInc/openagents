@@ -170,6 +170,12 @@ final class CoderStore {
     func isPinned(_ id: String) -> Bool { list.first { $0.id == id }?.pinned != nil }
     func isManagedByForeman(_ id: String) -> Bool { list.first { $0.id == id }?.managedBy == Foreman.managedTag }
 
+    /// Absolute filesystem path to a persisted chat's JSON transcript on disk.
+    func chatFilePath(_ id: String) -> String? {
+        guard !id.isEmpty, !id.contains("/"), !id.contains("\\"), id != ".", id != ".." else { return nil }
+        return dir.appendingPathComponent(id + ".json").path
+    }
+
     func togglePin(_ id: String) {
         _ = core { d in
             DesktopCore.withCoaxString(id) { cid in

@@ -216,6 +216,26 @@ extension CoderWindow {
     /// The chat that is shown, when it is kept: File > Rename Chat acts on it.
     var canRename: Bool { chat != nil && chat != Foreman.chatID }
     func renameShown() { if let id = chat, id != Foreman.chatID { rename(id) } }
+    /// Whether the shown chat has a kept ID/path that can be copied for another agent to reference.
+    var canCopyChatReference: Bool { chat != nil }
+    func copyShownChatID() { if let id = chat { copyChatID(id) } }
+    func copyShownChatPath() { if let id = chat { copyChatPath(id) } }
+    func copyChatID(_ id: String) {
+        guard !id.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(id, forType: .string)
+        cd_toast(page, "Copied chat ID", 0)
+        wake()
+    }
+    func copyChatPath(_ id: String) {
+        guard let path = store.chatFilePath(id) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(path, forType: .string)
+        cd_toast(page, "Copied chat path", 0)
+        wake()
+    }
     var canFork: Bool { chat != Foreman.chatID && (chat != nil || savedText(of: page) != nil) }
     func forkShown() { guard canFork else { return }; fork(chat) }
     /// Forks a chat (the shown chat when `id == nil` or `id == chat`, or a sidebar chat by id) into a

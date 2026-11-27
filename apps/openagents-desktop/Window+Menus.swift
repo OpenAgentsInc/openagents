@@ -40,6 +40,9 @@ extension CoderWindow {
             items.append(Item(label: "View Audit Log…")); acts.append { [weak self] in self?.openForemanAuditLog() }
             items.append(Item(label: "Stop All Running Chats", disabled: runningCount == 0)); acts.append { [weak self] in self?.stopAllChats() }
             items.append(Item(kind: 2)); acts.append {}
+            items.append(Item(label: "Copy Chat ID")); acts.append { [weak self] in self?.copyChatID(Foreman.chatID) }
+            items.append(Item(label: "Copy Chat Path")); acts.append { [weak self] in self?.copyChatPath(Foreman.chatID) }
+            items.append(Item(kind: 2)); acts.append {}
             items.append(Item(label: "Clear Foreman History…", danger: true)); acts.append { [weak self] in self?.clearForemanHistory() }
             overlay.presentMenu(items, x: px, y: py) { chosen in if chosen >= 0 && chosen < acts.count { acts[chosen]() } }
             return true
@@ -92,6 +95,11 @@ extension CoderWindow {
             items.append(Item(label: "Open in Side Pane"))
             acts.append { [weak self] in self?.openSideChat(id) }
         }
+        items.append(Item(kind: 2)); acts.append {}
+        items.append(Item(label: "Copy Chat ID"))
+        acts.append { [weak self] in self?.copyChatID(id) }
+        items.append(Item(label: "Copy Chat Path"))
+        acts.append { [weak self] in self?.copyChatPath(id) }
         items.append(Item(kind: 2)); acts.append {}
         items.append(Item(label: isArchived ? "Unarchive Chat" : "Archive Chat", disabled: !isArchived && busy(id)))
         acts.append { [weak self] in if isArchived { self?.unarchiveChat(id) } else { self?.archiveChat(id) } }
