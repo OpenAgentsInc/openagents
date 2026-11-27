@@ -10,6 +10,9 @@
 #load "tasks.coax";
 
 FLAWED_WT_MAX_SLUG_LEN :: 64;
+FLAWED_WT_MAX_PAT_LEN  :: 256;
+FLAWED_WT_STALE_DAYS   :: 30;
+FLAWED_WT_STALE_MS     :: 30 * 24 * 60 * 60 * 1000;
 
 // Agent definition source precedence (loadAgentsDir.ts:193-221: lowest -> highest).
 FLAWED_ASRC_BUILTIN :: 1;
@@ -181,6 +184,228 @@ flawed_wt_stale_sweep_can_remove :: (
 ) -> bool #effects(traps) {
   return is_ephemeral_slug && !is_active_session_wt && is_older_than_cutoff &&
          status_clean && unpushed_empty;
+}
+
+// Ephemeral worktree directory/branch prefix classifier ("agent-<id>" or "worktree-<slug>").
+flawed_wt_is_ephemeral_name :: (name: string) -> bool #effects(reads, traps) {
+  if name.count > 6 && cast(string) name[0..<6] == "agent-" { return true; }
+  if name.count > 9 && cast(string) name[0..<9] == "worktree-" { return true; }
+  return false;
+}
+
+// Fail-closed age cutoff gate for stale worktree sweeping (unknown mtime or invalid cutoff => false).
+flawed_wt_is_older_than_cutoff :: (mtime_ms: int, now_ms: int, cutoff_ms: int) -> bool #effects(traps) {
+  if mtime_ms <= 0 || cutoff_ms <= 0 { return false; }
+  return (now_ms - mtime_ms) >= cutoff_ms;
+}
+
+// Trim trailing '/' down to min length 1 (so "/" stays "/").
+flawed_wt_trim_slash_len :: (s: string) -> int #effects(reads, traps) {
+  n := s.count;
+  while n > 1 && s[n - 1] == 47 { n -= 1; }
+  return n;
+}
+
+// Relative subdirectory of canonical `cwd` under canonical `toplevel`.
+// Returns -1 if outside `toplevel` or result does not fit in `out`, 0 if equal, >0 if nested.
+flawed_wt_rel_subdir :: (toplevel: string, cwd: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  tl := flawed_wt_trim_slash_len(toplevel);
+  cl := flawed_wt_trim_slash_len(cwd);
+  if tl == 0 || cl < tl { return -1; }
+  for i: 0..<tl {
+    if toplevel[i] != cwd[i] { return -1; }
+  }
+  if cl == tl { return 0; }
+  rel_start := tl;
+  if !(tl == 1 && toplevel[0] == 47) {
+    if cwd[tl] != 47 { return -1; }
+    rel_start = tl + 1;
+  }
+  rel_len := cl - rel_start;
+  if rel_len > out.count { return -1; }
+  for i: 0..<rel_len { out[i] = cwd[rel_start + i]; }
+  return rel_len;
+}
+
+// Verify symlink-resolved `canonical_target` stays strictly inside `canonical_root` (blocks root escapes).
+flawed_wt_path_within_root :: (canonical_root: string, canonical_target: string) -> bool #effects(reads, traps) {
+  rl := flawed_wt_trim_slash_len(canonical_root);
+  tl := flawed_wt_trim_slash_len(canonical_target);
+  if rl == 0 || tl <= rl { return false; }
+  for i: 0..<rl {
+    if canonical_root[i] != canonical_target[i] { return false; }
+  }
+  if rl == 1 && canonical_root[0] == 47 { return true; }
+  return canonical_target[rl] == 47;
+}
+
+// Validates a slash-separated relative path or pattern body: no empty/leading/trailing '/', no '//',
+// no '.'/'..'/'.git' segments, no NUL/control chars, no '\\', and no drive prefix 'X:'.
+flawed_wt_include_body_safe :: (s: string) -> bool #effects(reads, traps) {
+  n := s.count;
+  if n == 0 { return false; }
+  if n >= 2 && s[1] == 58 { return false; }
+  seg_start := 0;
+  for i: 0..<(n + 1) {
+    if i == n || s[i] == 47 {
+      seg_len := i - seg_start;
+      if seg_len == 0 { return false; }
+      if seg_len == 1 && s[seg_start] == 46 { return false; }
+      if seg_len == 2 && s[seg_start] == 46 && s[seg_start + 1] == 46 { return false; }
+      if seg_len == 4 && s[seg_start] == 46 && s[seg_start + 1] == 103 && s[seg_start + 2] == 105 && s[seg_start + 3] == 116 {
+        return false;
+      }
+      seg_start = i + 1;
+    } else {
+      c := s[i];
+      if c < 32 || c == 127 || c == 92 { return false; }
+    }
+  }
+  return true;
+}
+
+flawed_wt_include_rel_path_safe :: (rel: string) -> bool #effects(reads, traps) {
+  return flawed_wt_include_body_safe(rel);
+}
+
+flawed_wt_include_pattern_safe :: (pat: string) -> bool #effects(reads, traps) {
+  if pat.count == 0 || pat.count > FLAWED_WT_MAX_PAT_LEN { return false; }
+  body := ifx pat[pat.count - 1] == 47 then cast(string) pat[0..<(pat.count - 1)] else pat;
+  return flawed_wt_include_body_safe(body);
+}
+
+// Single-segment wildcard matcher ('*' = 0+ bytes, '?' = 1 byte). Iterative O(n*m).
+flawed_wt_seg_match :: (pat: string, s: string) -> bool #effects(reads, traps) {
+  pi := 0;
+  si := 0;
+  star_p := -1;
+  star_s: int;
+  while si < s.count {
+    if pi < pat.count && (pat[pi] == 63 || pat[pi] == s[si]) {
+      pi += 1;
+      si += 1;
+    } else if pi < pat.count && pat[pi] == 42 {
+      star_p = pi;
+      star_s = si;
+      pi += 1;
+    } else if star_p >= 0 {
+      pi = star_p + 1;
+      star_s += 1;
+      si = star_s;
+    } else {
+      return false;
+    }
+  }
+  while pi < pat.count && pat[pi] == 42 { pi += 1; }
+  return pi == pat.count;
+}
+
+flawed_wt_next_slash :: (s: string, from: int, end: int) -> int #effects(reads, traps) {
+  i := from;
+  while i < end && s[i] != 47 { i += 1; }
+  return i;
+}
+
+// Segment-level glob matcher: "**" matches 0+ whole path segments; other segments use flawed_wt_seg_match.
+flawed_wt_segs_match :: (pat: string, pat_end: int, path: string, path_end: int) -> bool #effects(reads, traps) {
+  pi := 0;
+  si := 0;
+  star_p := -1;
+  star_s: int;
+  while si < path_end {
+    if pi < pat_end { // mutant: equivalent // path segments are non-empty so empty pseg at pi == pat_end never matches
+      pe := flawed_wt_next_slash(pat, pi, pat_end);
+      pseg := cast(string) pat[pi..<pe];
+      if pseg == "**" {
+        star_p = pi;
+        star_s = si;
+        pi = pe + 1;
+        continue;
+      }
+      se := flawed_wt_next_slash(path, si, path_end);
+      if flawed_wt_seg_match(pseg, cast(string) path[si..<se]) {
+        pi = pe + 1;
+        si = se + 1;
+        continue;
+      }
+    }
+    if star_p >= 0 {
+      se := flawed_wt_next_slash(path, star_s, path_end);
+      star_s = se + 1;
+      si = star_s;
+      pi = star_p + 3;
+    } else {
+      return false;
+    }
+  }
+  while pi < pat_end {
+    pe := flawed_wt_next_slash(pat, pi, pat_end);
+    if cast(string) pat[pi..<pe] != "**" { return false; }
+    pi = pe + 1;
+  }
+  return true;
+}
+
+// Gitignore-style pattern matcher for validated .worktreeinclude patterns and relative paths.
+flawed_wt_glob_match :: (pat: string, path: string) -> bool #effects(reads, traps) {
+  if pat.count == 0 || path.count == 0 { return false; }
+  dir_only := pat[pat.count - 1] == 47;
+  pat_end := ifx dir_only then pat.count - 1 else pat.count;
+  has_slash := flawed_wt_next_slash(pat, 0, pat_end) < pat_end;
+  if dir_only {
+    if has_slash {
+      for i: 0..<path.count {
+        if path[i] == 47 && flawed_wt_segs_match(pat, pat_end, path, i) { return true; }
+      }
+      return false;
+    }
+    body := cast(string) pat[0..<pat_end];
+    seg_start := 0;
+    for i: 0..<path.count {
+      if path[i] == 47 {
+        if flawed_wt_seg_match(body, cast(string) path[seg_start..<i]) { return true; }
+        seg_start = i + 1;
+      }
+    }
+    return false;
+  }
+  if has_slash {
+    return flawed_wt_segs_match(pat, pat_end, path, path.count);
+  }
+  last := 0;
+  for i: 0..<path.count {
+    if path[i] == 47 { last = i + 1; }
+  }
+  return flawed_wt_seg_match(pat, cast(string) path[last..<path.count]);
+}
+
+// Evaluates a .worktreeinclude document against `rel_path` (last matching rule wins, '#' comments,
+// '!' negation, and strict fail-closed refusal of unsafe paths/patterns).
+flawed_wt_include_matches :: (include_content: string, rel_path: string) -> bool #effects(reads, traps) {
+  if !flawed_wt_include_rel_path_safe(rel_path) { return false; }
+  matched := false;
+  pos := 0;
+  while pos < include_content.count { // mutant: equivalent // pos == count yields s == e == count which hits s >= e and exits
+    eol := pos;
+    while eol < include_content.count && include_content[eol] != 10 { eol += 1; }
+    s := pos;
+    e := eol;
+    while s < e && (include_content[s] == 32 || include_content[s] == 9) { s += 1; }
+    while e > s && (include_content[e - 1] == 32 || include_content[e - 1] == 9 || include_content[e - 1] == 13) { e -= 1; }
+    pos = eol + 1;
+    if s >= e || include_content[s] == 35 { continue; }
+    neg := false;
+    if include_content[s] == 33 {
+      neg = true;
+      s += 1;
+    }
+    pat := cast(string) include_content[s..<e];
+    if !flawed_wt_include_pattern_safe(pat) { continue; }
+    if flawed_wt_glob_match(pat, rel_path) {
+      matched = !neg;
+    }
+  }
+  return matched;
 }
 
 // External delegatable subagent executor engines (Phase 1B, #14053).
@@ -369,4 +594,140 @@ flawed_subagent_resolve_engine :: (requested_engine: int, allow_local_harnesses:
   #assert !flawed_wt_stale_sweep_can_remove(true, false, false, true, true);
   #assert !flawed_wt_stale_sweep_can_remove(true, false, true, false, true);
   #assert !flawed_wt_stale_sweep_can_remove(true, false, true, true, false);
+}
+
+#test "subagent: canonical root subdir mapping, root containment, .worktreeinclude safety/matching, and stale age/name gating (#14121)" {
+  // 1. Ephemeral name classifier & stale age cutoff boundaries
+  #assert flawed_wt_is_ephemeral_name("agent-1") && flawed_wt_is_ephemeral_name("agent-aexp-01");
+  #assert !flawed_wt_is_ephemeral_name("agent-") && !flawed_wt_is_ephemeral_name("agxnt-1");
+  #assert flawed_wt_is_ephemeral_name("worktree-a") && flawed_wt_is_ephemeral_name("worktree-feat");
+  #assert !flawed_wt_is_ephemeral_name("worktree-") && !flawed_wt_is_ephemeral_name("worktreX-a");
+  #assert !flawed_wt_is_ephemeral_name("my-feature") && !flawed_wt_is_ephemeral_name("");
+
+  #assert !flawed_wt_is_older_than_cutoff(0, FLAWED_WT_STALE_MS + 1, FLAWED_WT_STALE_MS);
+  #assert !flawed_wt_is_older_than_cutoff(-1, FLAWED_WT_STALE_MS + 1, FLAWED_WT_STALE_MS);
+  #assert !flawed_wt_is_older_than_cutoff(1000, 1000 + FLAWED_WT_STALE_MS, 0);
+  #assert flawed_wt_is_older_than_cutoff(1, 2, 1);
+  #assert !flawed_wt_is_older_than_cutoff(1000, 1000, 1);
+  #assert !flawed_wt_is_older_than_cutoff(1000, 999, 1);
+  #assert !flawed_wt_is_older_than_cutoff(1000, 1000 + FLAWED_WT_STALE_MS - 1, FLAWED_WT_STALE_MS);
+  #assert flawed_wt_is_older_than_cutoff(1000, 1000 + FLAWED_WT_STALE_MS, FLAWED_WT_STALE_MS);
+  #assert flawed_wt_is_older_than_cutoff(1000, 1000 + FLAWED_WT_STALE_MS + 5, FLAWED_WT_STALE_MS);
+
+  // 2. Canonical git-root relative subdirectory mapping
+  rel: [64] u8;
+  #assert flawed_wt_rel_subdir("/repo", "/repo", rel[..]) == 0;
+  #assert flawed_wt_rel_subdir("/repo/", "/repo///", rel[..]) == 0;
+  n1 := flawed_wt_rel_subdir("/repo", "/repo/sub/dir", rel[..]);
+  #assert n1 == 7 && cast(string) rel[0..<n1] == "sub/dir";
+  n2 := flawed_wt_rel_subdir("/repo/", "/repo/sub/dir/", rel[..]);
+  #assert n2 == 7 && cast(string) rel[0..<n2] == "sub/dir";
+  n3 := flawed_wt_rel_subdir("/", "/a/b", rel[..]);
+  #assert n3 == 3 && cast(string) rel[0..<n3] == "a/b";
+  n3b := flawed_wt_rel_subdir("//", "/a", rel[..]);
+  #assert n3b == 1 && cast(string) rel[0..<n3b] == "a";
+  #assert flawed_wt_rel_subdir("/", "/", rel[..]) == 0;
+  #assert flawed_wt_rel_subdir("", "/repo", rel[..]) == -1;
+  #assert flawed_wt_rel_subdir("/repo", "/rep", rel[..]) == -1;
+  #assert flawed_wt_rel_subdir("/repo", "/other/dir", rel[..]) == -1;
+  #assert flawed_wt_rel_subdir("a/b", "x/b/c", rel[..]) == -1;
+  #assert flawed_wt_rel_subdir("/repo", "/repo2/sub", rel[..]) == -1;
+  #assert flawed_wt_rel_subdir("a", "ab", rel[..]) == -1;
+  n4 := flawed_wt_rel_subdir("a", "a/b", rel[..]);
+  #assert n4 == 1 && cast(string) rel[0..<n4] == "b";
+  small_rel: [3] u8;
+  #assert flawed_wt_rel_subdir("/repo", "/repo/abc", small_rel[..]) == 3;
+  #assert flawed_wt_rel_subdir("/repo", "/repo/abcd", small_rel[..]) == -1;
+
+  // 3. Symlink-resolved root containment check
+  #assert flawed_wt_path_within_root("/repo", "/repo/.env.local");
+  #assert flawed_wt_path_within_root("/repo/", "/repo/a/b/");
+  #assert flawed_wt_path_within_root("/", "/etc/x");
+  #assert flawed_wt_path_within_root("a", "a/b");
+  #assert !flawed_wt_path_within_root("a/b", "x/b/c");
+  #assert !flawed_wt_path_within_root("a", "ab");
+  #assert !flawed_wt_path_within_root("", "/repo/a");
+  #assert !flawed_wt_path_within_root("/repo", "/repo");
+  #assert !flawed_wt_path_within_root("/repo", "/rep");
+  #assert !flawed_wt_path_within_root("/repo", "/repo2/.env.local");
+  #assert !flawed_wt_path_within_root("/repo", "/etc/passwd");
+
+  // 4. .worktreeinclude path & pattern safety (traversal, absolute, control/NUL, backslash, drive, .git)
+  #assert flawed_wt_include_rel_path_safe("a");
+  #assert flawed_wt_include_rel_path_safe(".env.local");
+  #assert flawed_wt_include_rel_path_safe("config/local.json");
+  #assert flawed_wt_include_rel_path_safe(".github/workflows/local.yml");
+  #assert flawed_wt_include_rel_path_safe(".gix/a") && flawed_wt_include_rel_path_safe(".giX/a") && flawed_wt_include_rel_path_safe("xgit/a");
+  #assert flawed_wt_include_rel_path_safe("a/.b") && flawed_wt_include_rel_path_safe("a/..b") && flawed_wt_include_rel_path_safe("a/b..");
+  #assert !flawed_wt_include_rel_path_safe("");
+  #assert !flawed_wt_include_rel_path_safe("/etc/passwd");
+  #assert !flawed_wt_include_rel_path_safe("dir/");
+  #assert !flawed_wt_include_rel_path_safe("a//b");
+  #assert !flawed_wt_include_rel_path_safe(".") && !flawed_wt_include_rel_path_safe("./a") && !flawed_wt_include_rel_path_safe("a/.");
+  #assert !flawed_wt_include_rel_path_safe("..") && !flawed_wt_include_rel_path_safe("../secret") && !flawed_wt_include_rel_path_safe("a/../b");
+  #assert !flawed_wt_include_rel_path_safe(".git") && !flawed_wt_include_rel_path_safe(".git/config") && !flawed_wt_include_rel_path_safe("sub/.git/HEAD");
+  #assert !flawed_wt_include_rel_path_safe("C:") && !flawed_wt_include_rel_path_safe("C:foo") && !flawed_wt_include_rel_path_safe("c:/foo");
+  #assert !flawed_wt_include_rel_path_safe("a\\b");
+  c_sp := [3] u8.[97, 32, 98];
+  c_31 := [3] u8.[97, 31, 98];
+  c_00 := [3] u8.[97, 0, 98];
+  c_126 := [3] u8.[97, 126, 98];
+  c_127 := [3] u8.[97, 127, 98];
+  #assert flawed_wt_include_rel_path_safe(cast(string) c_sp[..]);
+  #assert !flawed_wt_include_rel_path_safe(cast(string) c_31[..]);
+  #assert !flawed_wt_include_rel_path_safe(cast(string) c_00[..]);
+  #assert flawed_wt_include_rel_path_safe(cast(string) c_126[..]);
+  #assert !flawed_wt_include_rel_path_safe(cast(string) c_127[..]);
+
+  // Pattern safety allows single trailing '/' for directory patterns, rejects empty/oversized/unsafe
+  #assert flawed_wt_include_pattern_safe("certs/") && flawed_wt_include_pattern_safe("config/local/");
+  #assert !flawed_wt_include_pattern_safe("") && !flawed_wt_include_pattern_safe("/") && !flawed_wt_include_pattern_safe("certs//");
+  #assert !flawed_wt_include_pattern_safe("/etc/passwd") && !flawed_wt_include_pattern_safe("../secret");
+  p257: [257] u8;
+  for i: 0..<257 { p257[i] = 97; }
+  #assert flawed_wt_include_pattern_safe(cast(string) p257[0..<256]);
+  #assert !flawed_wt_include_pattern_safe(cast(string) p257[..]);
+
+  // 5. Wildcard & gitignore-style glob matching (*, ?, **, anchored vs unanchored, dir patterns)
+  #assert !flawed_wt_glob_match("", "a") && !flawed_wt_glob_match("a", "");
+  #assert flawed_wt_glob_match("a", "a") && flawed_wt_glob_match("a", "/a") && flawed_wt_glob_match("/a", "/a");
+  #assert flawed_wt_glob_match("*/", "/a") && flawed_wt_glob_match("**/**/", "/a") && !flawed_wt_glob_match("*/**/", "/a");
+  #assert flawed_wt_segs_match("", 0, "", 0);
+  #assert flawed_wt_seg_match("*", "") && flawed_wt_seg_match("a*", "a") && flawed_wt_seg_match("a*b", "ab") && flawed_wt_seg_match("a*b", "axxxb");
+  #assert flawed_wt_seg_match("a*b", "axbxb") && !flawed_wt_seg_match("a*b", "axbxc") && !flawed_wt_seg_match("ab*bc", "abc");
+  #assert flawed_wt_seg_match("*b", "abcb") && !flawed_wt_seg_match("*b", "abca");
+  #assert flawed_wt_seg_match("a?c", "abc") && !flawed_wt_seg_match("a?c", "ac");
+  #assert flawed_wt_glob_match(".env.local", ".env.local") && flawed_wt_glob_match(".env.local", "apps/web/.env.local");
+  #assert !flawed_wt_glob_match(".env.local", ".env.local.bak");
+  #assert flawed_wt_glob_match("*.local", ".env.local") && flawed_wt_glob_match("*.local", "sub/a.local");
+  #assert flawed_wt_glob_match("config/*.json", "config/local.json") && !flawed_wt_glob_match("config/*.json", "config/sub/local.json");
+  #assert !flawed_wt_glob_match("config/*.json", "x/config/local.json");
+  #assert flawed_wt_glob_match("a/**/b", "a/b") && flawed_wt_glob_match("a/**/b", "a/x/y/b") && !flawed_wt_glob_match("a/**/b", "a/x/y");
+  #assert !flawed_wt_glob_match("a/b/**/b/c", "a/b/c") && flawed_wt_glob_match("**/a/b", "a/x/a/b") && !flawed_wt_glob_match("**/a/b", "a/x/b");
+  #assert flawed_wt_glob_match("a/**/**", "a") && !flawed_wt_glob_match("a/**/b", "a");
+  #assert flawed_wt_glob_match("**/foo/*.txt", "x/foo/bar/foo/a.txt") && flawed_wt_glob_match("**/foo/*.txt", "foo/a.txt");
+  #assert flawed_wt_glob_match("docs/**", "docs/a/b.md") && flawed_wt_glob_match("docs/**", "docs") && !flawed_wt_glob_match("docs/**", "doc/a");
+  #assert flawed_wt_glob_match("a/b", "a/b") && !flawed_wt_glob_match("a/b", "a/b/c") && !flawed_wt_glob_match("a/b/c", "a/b");
+  #assert flawed_wt_glob_match("certs/", "certs/dev.pem") && flawed_wt_glob_match("certs/", "apps/certs/sub/dev.pem");
+  #assert !flawed_wt_glob_match("certs/", "certs") && !flawed_wt_glob_match("certs/", "certs2/dev.pem");
+  #assert flawed_wt_glob_match("config/local/", "config/local/a.json") && flawed_wt_glob_match("config/local/", "config/local/sub/a.json");
+  #assert !flawed_wt_glob_match("config/local/", "x/config/local/a.json") && !flawed_wt_glob_match("config/local/", "config/local") && !flawed_wt_glob_match("config/local/", "config/local2/a.json");
+
+  // 6. Full .worktreeinclude document evaluation (comments, CRLF, whitespace, negation, unsafe rule rejection, EOF w/o newline)
+  #assert !flawed_wt_include_matches("", "a") && !flawed_wt_include_matches("   ", "a") && !flawed_wt_include_matches("\r\n.env", "x");
+  #assert flawed_wt_include_matches(".env.local", ".env.local");
+  #assert !flawed_wt_include_matches("#.env.local\n$cost", "#.env.local");
+  #assert flawed_wt_include_matches("#.env.local\n$cost", "$cost");
+  #assert flawed_wt_include_matches("\t.env.tab\n .env.sp\n   ", ".env.tab");
+  #assert flawed_wt_include_matches("\t.env.tab\n .env.sp\n   ", ".env.sp");
+  doc := "# local overrides\r\n  .env.*\t \r\n!\n!*.example\ncerts/\n../escape\n/etc/passwd\nconfig/local/*.json";
+  #assert flawed_wt_include_matches(doc, ".env.local");
+  #assert flawed_wt_include_matches(doc, "apps/.env.dev");
+  #assert !flawed_wt_include_matches(doc, ".env.example"); // negated!
+  #assert flawed_wt_include_matches(doc, "certs/dev.pem");
+  #assert flawed_wt_include_matches(doc, "config/local/db.json");
+  #assert !flawed_wt_include_matches(doc, "config/prod/db.json");
+  #assert !flawed_wt_include_matches(doc, "../escape");
+  #assert !flawed_wt_include_matches(doc, "/etc/passwd");
+  #assert !flawed_wt_include_matches(doc, ".git/config");
 }

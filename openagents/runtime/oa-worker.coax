@@ -13,6 +13,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/clock.coax";
 #load "../../coax/lib/encoding/base64.coax";
 #load "../../coax/lib/net/socket_foreign.coax";
 #load "../../coax/lib/gateway/transport.coax";
@@ -5345,6 +5346,7 @@ FwRun :: struct {
   agent_seq: int;
   orig_cwd: [FS_PATH_MAX] u8; norig_cwd: int;
   session_wt_active: bool;
+  session_wt_root: [FS_PATH_MAX] u8; nsession_wt_root: int;
   session_wt_branch: [96] u8; nsession_wt_branch: int;
   session_wt_orig_head: [64] u8; nsession_wt_orig_head: int;
 }
@@ -5996,9 +5998,11 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   else if name == "EnterWorktree" {
     rn = fww_tool_enter_worktree(r, args, r[0].acc[0].tools[idx].res[..], is_err[..]);
+    if !is_err[0] { flawed_fc_reset(fww_fc(b)); }
   }
   else if name == "ExitWorktree" {
     rn = fww_tool_exit_worktree(r, args, r[0].acc[0].tools[idx].res[..], is_err[..]);
+    if !is_err[0] { flawed_fc_reset(fww_fc(b)); }
   }
   else {
     is_err[0] = true;
@@ -7271,6 +7275,213 @@ tool_main :: () -> int #export_c #effects(all) {
       return 1;
     }
     print("OK 5/5 Regressed candidate REJECTED with preserved ATIF-v1.8 digest\n");
+    return 0;
+  }
+
+  if fww_flag_asked("--selftest-worktree") {
+    tmp_b: [FS_PATH_MAX] u8;
+    tmp := fs_temp("oa-wt-e2e-", tmp_b[..]);
+    if tmp.count == 0 { print("FAIL: fs_temp failed\n"); return 1; }
+    defer { _ = fs_remove(tmp); }
+
+    repo_b: [FS_PATH_MAX] u8; repo := fs_join(tmp, "repo", repo_b[..]);
+    home_b: [FS_PATH_MAX] u8; home_d := fs_join(tmp, "home", home_b[..]);
+    sub_b: [FS_PATH_MAX] u8; sub := fs_join(repo, "sub/dir", sub_b[..]);
+    certs_b: [FS_PATH_MAX] u8; certs := fs_join(repo, "certs", certs_b[..]);
+    out_sec_b: [FS_PATH_MAX] u8; out_sec := fs_join(tmp, "outside.secret", out_sec_b[..]);
+    _ = fs_mkdir_all(sub);
+    _ = fs_mkdir_all(home_d);
+    _ = fs_mkdir_all(certs);
+    if !fs_write(out_sec, "TOP_SECRET_OUTSIDE\n") { print("FAIL: write outside.secret\n"); return 1; }
+
+    // Init temp git repo
+    if !fww_git_exec(repo, "init", "-q", "", "", "") { print("FAIL: git init\n"); return 1; }
+    _ = fww_git_exec(repo, "config", "user.email", "test@openagents.com", "", "");
+    _ = fww_git_exec(repo, "config", "user.name", "OA Test", "", "");
+    p1_b: [FS_PATH_MAX] u8;
+    _ = fs_write(fs_join(sub, "nested.txt", p1_b[..]), "hello nested\n");
+    _ = fs_write(fs_join(repo, ".gitignore", p1_b[..]), ".env.*\ncerts/\nignored.skip\n");
+    _ = fs_write(fs_join(repo, ".worktreeinclude", p1_b[..]), "# local overrides\n.env.*\n!*.example\ncerts/\n../outside.secret\n/etc/passwd\n");
+    if !fww_git_exec(repo, "add", ".", "", "", "") { print("FAIL: git add\n"); return 1; }
+    if !fww_git_exec(repo, "commit", "-q", "-m", "init", "") { print("FAIL: git commit\n"); return 1; }
+
+    // Create gitignored local files + an escaping symlink `.env.evil -> outside.secret`
+    _ = fs_write(fs_join(repo, ".env.local", p1_b[..]), "API_KEY=local123\n");
+    _ = fs_write(fs_join(repo, ".env.example", p1_b[..]), "API_KEY=example\n");
+    _ = fs_write(fs_join(certs, "dev.pem", p1_b[..]), "CERT_DATA\n");
+    _ = fs_write(fs_join(repo, "ignored.skip", p1_b[..]), "SKIP_ME\n");
+    evil_b: [FS_PATH_MAX] u8; evil_p := fs_join(repo, ".env.evil", evil_b[..]);
+    lh := proc_new();
+    if lh >= 0 && proc_arg(lh, "/bin/ln") && proc_arg(lh, "-s") && proc_arg(lh, out_sec) && proc_arg(lh, evil_p) && proc_start(lh) == 0 {
+      _ = proc_wait(lh, 2000);
+    }
+    if lh >= 0 { _ = proc_release(lh); }
+
+    // 1. Canonical git-root resolution, subdir mapping, and .worktreeinclude safe copy
+    wp1: [FS_PATH_MAX] u8; wb1: [96] u8; wh1: [64] u8;
+    if !fww_wt_create(sub, home_d, "agent-inc1", wp1[..], wb1[..], wh1[..]) {
+      print("FAIL 1: fww_wt_create from nested subdir failed\n"); return 1;
+    }
+    wp1n := 0; while wp1n < wp1.count && wp1[wp1n] != 0 { wp1n += 1; }
+    wb1n := 0; while wb1n < wb1.count && wb1[wb1n] != 0 { wb1n += 1; }
+    wh1n := 0; while wh1n < wh1.count && wh1[wh1n] != 0 { wh1n += 1; }
+    wt1_eff := cast(string) wp1[0..<wp1n];
+    wt1_br := cast(string) wb1[0..<wb1n];
+    wt1_hd := cast(string) wh1[0..<wh1n];
+    if !flawed_aw_ends(wt1_eff, "/sub/dir") || fs_kind(wt1_eff) != FS_DIR {
+      print("FAIL 1: expected subdir-mapped wt path ending in /sub/dir, got %\n", wt1_eff); return 1;
+    }
+    wt1_root_b: [FS_PATH_MAX] u8; wt1_rel_b: [256] u8; wt1_rel_n := [1] int.[0];
+    if !fww_wt_resolve_git_root(wt1_eff, wt1_root_b[..], wt1_rel_b[..], wt1_rel_n[..]) {
+      print("FAIL 1: fww_wt_resolve_git_root failed on wt1_eff\n"); return 1;
+    }
+    wr1n := 0; while wr1n < wt1_root_b.count && wt1_root_b[wr1n] != 0 { wr1n += 1; }
+    wt1_root := cast(string) wt1_root_b[0..<wr1n];
+    if cast(string) wt1_rel_b[0..<wt1_rel_n[0]] != "sub/dir" {
+      print("FAIL 1: expected rel sub/dir, got %\n", cast(string) wt1_rel_b[0..<wt1_rel_n[0]]); return 1;
+    }
+    chk_buf: [256] u8;
+    env_rd := fs_read(fs_join(wt1_root, ".env.local", p1_b[..]), chk_buf[..]);
+    if env_rd <= 0 || cast(string) chk_buf[0..<env_rd] != "API_KEY=local123\n" {
+      print("FAIL 1: .env.local not copied into worktree\n"); return 1;
+    }
+    cert_rd := fs_read(fs_join(wt1_root, "certs/dev.pem", p1_b[..]), chk_buf[..]);
+    if cert_rd <= 0 || cast(string) chk_buf[0..<cert_rd] != "CERT_DATA\n" {
+      print("FAIL 1: certs/dev.pem not copied into worktree\n"); return 1;
+    }
+    if fs_kind(fs_join(wt1_root, ".env.example", p1_b[..])) != FS_NONE {
+      print("FAIL 1: negated .env.example was copied\n"); return 1;
+    }
+    if fs_kind(fs_join(wt1_root, "ignored.skip", p1_b[..])) != FS_NONE {
+      print("FAIL 1: unmatched ignored.skip was copied\n"); return 1;
+    }
+    if fs_kind(fs_join(wt1_root, ".env.evil", p1_b[..])) != FS_NONE {
+      print("FAIL 1: escaping symlink .env.evil was copied\n"); return 1;
+    }
+    print("OK 1/4 canonical git-root subdir mapping + .worktreeinclude safe copy & symlink escape refusal\n");
+
+    // 2. Fail-closed cleanup from nested subdir (dirty preserved, committed preserved, clean removed + branch deleted)
+    _ = fs_write(fs_join(wt1_root, "dirty.txt", p1_b[..]), "dirty\n");
+    if fww_wt_cleanup_fail_closed(sub, wt1_eff, wt1_br, wt1_hd) {
+      print("FAIL 2: dirty worktree should not be removed\n"); return 1;
+    }
+    _ = fww_git_exec(wt1_root, "add", "dirty.txt", "", "", "");
+    _ = fww_git_exec(wt1_root, "commit", "-q", "-m", "wt commit", "");
+    if fww_wt_cleanup_fail_closed(sub, wt1_eff, wt1_br, wt1_hd) {
+      print("FAIL 2: committed worktree should not be removed\n"); return 1;
+    }
+    wp2: [FS_PATH_MAX] u8; wb2: [96] u8; wh2: [64] u8;
+    if !fww_wt_create(sub, home_d, "agent-clean1", wp2[..], wb2[..], wh2[..]) {
+      print("FAIL 2: create agent-clean1 failed\n"); return 1;
+    }
+    wp2n := 0; while wp2n < wp2.count && wp2[wp2n] != 0 { wp2n += 1; }
+    wb2n := 0; while wb2n < wb2.count && wb2[wb2n] != 0 { wb2n += 1; }
+    wh2n := 0; while wh2n < wh2.count && wh2[wh2n] != 0 { wh2n += 1; }
+    if !fww_wt_cleanup_fail_closed(sub, cast(string) wp2[0..<wp2n], cast(string) wb2[0..<wb2n], cast(string) wh2[0..<wh2n]) {
+      print("FAIL 2: clean worktree from nested subdir should be removed\n"); return 1;
+    }
+    if fs_kind(cast(string) wp2[0..<wp2n]) != FS_NONE {
+      print("FAIL 2: clean worktree dir still exists\n"); return 1;
+    }
+    ref_b: [128] u8; ref_ok := [1] bool.[false];
+    ref_n := fww_cat(ref_b[..], 0, "refs/heads/"); ref_n = fww_cat(ref_b[..], ref_n, cast(string) wb2[0..<wb2n]);
+    ver_argv := [3] string.["rev-parse", "--verify", cast(string) ref_b[0..<ref_n]];
+    _ = fww_git_quick_argv(repo, ver_argv[..], 1500, chk_buf[..], ref_ok[..]);
+    if ref_ok[0] { print("FAIL 2: ephemeral branch still exists after clean cleanup\n"); return 1; }
+    print("OK 2/4 fail-closed subagent cleanup from nested subdir\n");
+
+    // 3. EnterWorktree / ExitWorktree cache invalidation, fail-closed refusal, and branch deletion
+    r_wt: [1] FwRun;
+    r_wt[0].ncwd = fww_keep(r_wt[0].cwd[..], sub);
+    r_wt[0].nhome = fww_keep(r_wt[0].home[..], home_d);
+    r_wt[0].ngit_snap = fww_keep(r_wt[0].git_snap[..], "stale-snap");
+    r_wt[0].ngit_snap_cwd = fww_keep(r_wt[0].git_snap_cwd[..], sub);
+    r_wt[0].query_dedup[0] = 12345; r_wt[0].query_dedup_cur = 1;
+    r_wt[0].read_dedup[0] = FwReadDedup.{path_hash = 999, offset = 1, end_line = 10};
+    r_wt[0].read_dedup_cur[0] = 1;
+    res_b: [1024] u8; is_err := [1] bool.[false];
+    // Failed EnterWorktree must NOT clobber caches
+    _ = fww_tool_enter_worktree(r_wt[..], "{\"name\":\"../bad\"}", res_b[..], is_err[..]);
+    if !is_err[0] || r_wt[0].ngit_snap == 0 || r_wt[0].query_dedup[0] != 12345 || r_wt[0].read_dedup[0].path_hash != 999 {
+      print("FAIL 3: failed EnterWorktree should fail without invalidating caches\n"); return 1;
+    }
+    // Successful EnterWorktree switches to subdir-mapped cwd AND invalidates all caches
+    _ = fww_tool_enter_worktree(r_wt[..], "{\"name\":\"sess-a\"}", res_b[..], is_err[..]);
+    if is_err[0] || !r_wt[0].session_wt_active || !flawed_aw_ends(cast(string) r_wt[0].cwd[0..<r_wt[0].ncwd], "/sub/dir") {
+      print("FAIL 3: EnterWorktree failed or bad cwd: %\n", cast(string) r_wt[0].cwd[0..<r_wt[0].ncwd]); return 1;
+    }
+    if r_wt[0].ngit_snap != 0 || r_wt[0].ngit_snap_cwd != 0 || r_wt[0].query_dedup[0] != 0 || r_wt[0].read_dedup[0].path_hash != 0 {
+      print("FAIL 3: EnterWorktree did not invalidate caches\n"); return 1;
+    }
+    // Dirty worktree -> ExitWorktree(action="remove") without discard_changes must refuse fail-closed
+    sess_root_b: [FS_PATH_MAX] u8;
+    srn := fww_keep(sess_root_b[..], cast(string) r_wt[0].session_wt_root[0..<r_wt[0].nsession_wt_root]);
+    sess_root := cast(string) sess_root_b[0..<srn];
+    _ = fs_write(fs_join(sess_root, "untracked.tmp", p1_b[..]), "x\n");
+    r_wt[0].ngit_snap = fww_keep(r_wt[0].git_snap[..], "wt-snap");
+    r_wt[0].ngit_snap_cwd = fww_keep(r_wt[0].git_snap_cwd[..], sess_root);
+    r_wt[0].query_dedup[0] = 54321;
+    r_wt[0].read_dedup[0] = FwReadDedup.{path_hash = 777, offset = 1, end_line = 20};
+    _ = fww_tool_exit_worktree(r_wt[..], "{\"action\":\"remove\"}", res_b[..], is_err[..]);
+    if !is_err[0] || !r_wt[0].session_wt_active || r_wt[0].ngit_snap == 0 {
+      print("FAIL 3: ExitWorktree should fail closed on dirty tree without discard_changes\n"); return 1;
+    }
+    // ExitWorktree(action="remove", discard_changes=true) restores cwd, invalidates caches, removes dir AND branch!
+    _ = fww_tool_exit_worktree(r_wt[..], "{\"action\":\"remove\",\"discard_changes\":true}", res_b[..], is_err[..]);
+    if is_err[0] || r_wt[0].session_wt_active || cast(string) r_wt[0].cwd[0..<r_wt[0].ncwd] != sub {
+      print("FAIL 3: ExitWorktree(remove, discard) failed\n"); return 1;
+    }
+    if r_wt[0].ngit_snap != 0 || r_wt[0].ngit_snap_cwd != 0 || r_wt[0].query_dedup[0] != 0 || r_wt[0].read_dedup[0].path_hash != 0 {
+      print("FAIL 3: ExitWorktree did not invalidate caches\n"); return 1;
+    }
+    if fs_kind(sess_root) != FS_NONE {
+      print("FAIL 3: session worktree dir still exists after remove\n"); return 1;
+    }
+    ver_sess := [3] string.["rev-parse", "--verify", "refs/heads/worktree-sess-a"];
+    _ = fww_git_quick_argv(repo, ver_sess[..], 1500, chk_buf[..], ref_ok[..]);
+    if ref_ok[0] { print("FAIL 3: session branch worktree-sess-a still exists after ExitWorktree(remove)\n"); return 1; }
+    print("OK 3/4 EnterWorktree/ExitWorktree cache invalidation + fail-closed exit + ephemeral branch deletion\n");
+
+    // 4. 30-day stale worktree sweeper
+    wt_root_b: [FS_PATH_MAX] u8; wt_root := fs_join(home_d, ".openagents/worktrees", wt_root_b[..]);
+    _ = fs_mkdir_all(wt_root);
+    s_old_a: [FS_PATH_MAX] u8; s_old_w: [FS_PATH_MAX] u8; s_act: [FS_PATH_MAX] u8; s_feat: [FS_PATH_MAX] u8; s_dirty: [FS_PATH_MAX] u8; s_nongit: [FS_PATH_MAX] u8;
+    tb_br: [96] u8; tb_hd: [64] u8;
+    _ = fww_wt_create(repo, home_d, "agent-old1", s_old_a[..], tb_br[..], tb_hd[..]);
+    _ = fww_wt_create(repo, home_d, "worktree-old2", s_old_w[..], tb_br[..], tb_hd[..]);
+    _ = fww_wt_create(repo, home_d, "agent-active1", s_act[..], tb_br[..], tb_hd[..]);
+    _ = fww_wt_create(repo, home_d, "my-feature", s_feat[..], tb_br[..], tb_hd[..]);
+    _ = fww_wt_create(repo, home_d, "agent-dirty1", s_dirty[..], tb_br[..], tb_hd[..]);
+    _ = fs_write(fs_join(wt_root, "agent-dirty1/dirty.txt", p1_b[..]), "dirty\n");
+    _ = fs_mkdir_all(fs_join(wt_root, "agent-nongit", s_nongit[..]));
+
+    // Real current wall time: age < 30 days -> 0 removed
+    wall_now_ms := cxproc_wall_us() / 1000;
+    if fww_wt_sweep_stale_in(wt_root, fs_join(wt_root, "agent-active1", p1_b[..]), wall_now_ms, FLAWED_WT_STALE_MS) != 0 {
+      print("FAIL 4: fresh worktrees should not be swept\n"); return 1;
+    }
+    // Simulated wall now = real_now + 30 days + 10s:
+    // agent-old1 + worktree-old2 removed (2); agent-inc1 (committed), agent-active1 (active),
+    // my-feature (non-ephemeral), agent-dirty1 (dirty), agent-nongit (non-git) all preserved!
+    future_ms := wall_now_ms + FLAWED_WT_STALE_MS + 10000;
+    sw := fww_wt_sweep_stale_in(wt_root, fs_join(wt_root, "agent-active1", p1_b[..]), future_ms, FLAWED_WT_STALE_MS);
+    if sw != 2 {
+      print("FAIL 4: expected 2 stale worktrees removed, got %\n", sw); return 1;
+    }
+    if fs_kind(fs_join(wt_root, "agent-old1", p1_b[..])) != FS_NONE || fs_kind(fs_join(wt_root, "worktree-old2", p1_b[..])) != FS_NONE {
+      print("FAIL 4: stale clean ephemeral worktrees still on disk\n"); return 1;
+    }
+    if fs_kind(fs_join(wt_root, "agent-active1", p1_b[..])) != FS_DIR ||
+       fs_kind(fs_join(wt_root, "my-feature", p1_b[..])) != FS_DIR ||
+       fs_kind(fs_join(wt_root, "agent-dirty1", p1_b[..])) != FS_DIR ||
+       fs_kind(fs_join(wt_root, "agent-inc1", p1_b[..])) != FS_DIR ||
+       fs_kind(fs_join(wt_root, "agent-nongit", p1_b[..])) != FS_DIR {
+      print("FAIL 4: sweeper deleted a worktree or non-git dir it should have preserved\n"); return 1;
+    }
+    ver_old := [3] string.["rev-parse", "--verify", "refs/heads/worktree-agent-old1"];
+    _ = fww_git_quick_argv(repo, ver_old[..], 1500, chk_buf[..], ref_ok[..]);
+    if ref_ok[0] { print("FAIL 4: swept branch worktree-agent-old1 still exists\n"); return 1; }
+    print("OK 4/4 30-day stale worktree sweeper pruned 2 clean ephemeral worktrees and preserved active/fresh/dirty/committed/named/non-git dirs\n");
     return 0;
   }
 
@@ -8754,4 +8965,41 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_coax_replace_parse(d[0], a1[..], sb[..], tb[..], o1[..], os[..], ot[..]) && ot[0] == 0;
   #assert jv_parse(d[..], "{\"target\":\"foo\",\"seen\":\"abc\",\"text\":\"hi\"}", nodes[..]);
   #assert fww_coax_replace_parse(d[0], a1[..], sb[..], tb[..], o1[..], os[..], ot[..]) && cast(string) tb[0..<ot[0]] == "hi";
+}
+
+#test "flawedworker: worktree cache invalidation, gitdir parent repo parsing, and NUL-safe buffer writes (#14121)" {
+  // 1. fww_invalidate_cwd_caches clears git snapshot, query_dedup, and read_dedup atomically
+  r: [1] FwRun;
+  r[0].ngit_snap = fww_keep(r[0].git_snap[..], "Branch: main");
+  r[0].ngit_snap_cwd = fww_keep(r[0].git_snap_cwd[..], "/repo/sub");
+  r[0].query_dedup[0] = 111;
+  r[0].query_dedup[3] = 222;
+  r[0].query_dedup_cur = 4;
+  r[0].read_dedup[0] = FwReadDedup.{path_hash = 42, offset = 1, end_line = 50, file_sz = 100, content_hash = 77};
+  r[0].read_dedup_cur[0] = 1;
+  fww_invalidate_cwd_caches(r[..]);
+  #assert r[0].ngit_snap == 0 && r[0].ngit_snap_cwd == 0 && r[0].query_dedup_cur == 0 && r[0].read_dedup_cur[0] == 0;
+  for qi: 0..<r[0].query_dedup.count { #assert r[0].query_dedup[qi] == 0; }
+  for di: 0..<r[0].read_dedup.count { #assert r[0].read_dedup[di].path_hash == 0; }
+
+  // 2. fww_wt_parent_repo_from_gitdir extracts canonical parent repo from linked worktree pointer file
+  pb: [256] u8;
+  #assert fww_wt_parent_repo_from_gitdir("gitdir: /Users/dev/work/openagents/.git/worktrees/agent-1\n", pb[..]) == "/Users/dev/work/openagents";
+  #assert fww_wt_parent_repo_from_gitdir("gitdir: /repo/.git/worktrees/wt\r\n", pb[..]) == "/repo";
+  #assert fww_wt_parent_repo_from_gitdir("not-a-gitdir", pb[..]) == "";
+  #assert fww_wt_parent_repo_from_gitdir("gitdir: /repo/.git/modules/sub", pb[..]) == "";
+
+  // 3. fww_keep_z NUL-terminates shorter overwrites so callers never read stale suffixes
+  buf: [32] u8;
+  _ = fww_keep_z(buf[..], "worktree-long-branch-name");
+  n := fww_keep_z(buf[..], "worktree-a");
+  #assert n == 10 && buf[10] == 0 && cast(string) buf[0..<n] == "worktree-a";
+
+  // 4. Pure #authority integration check from oa-worker
+  rel_b: [64] u8;
+  rn := flawed_wt_rel_subdir("/repo", "/repo/apps/desktop", rel_b[..]);
+  #assert rn == 12 && cast(string) rel_b[0..<rn] == "apps/desktop";
+  #assert flawed_wt_include_matches(".env.local\n!*.bak\n../escape\n", ".env.local");
+  #assert !flawed_wt_include_matches(".env.local\n!*.bak\n../escape\n", "../escape");
+  #assert flawed_wt_stale_sweep_can_remove(flawed_wt_is_ephemeral_name("agent-1"), false, flawed_wt_is_older_than_cutoff(100, 100 + FLAWED_WT_STALE_MS, FLAWED_WT_STALE_MS), true, true);
 }

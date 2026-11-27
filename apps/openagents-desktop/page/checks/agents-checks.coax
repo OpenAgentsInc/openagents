@@ -754,6 +754,49 @@
   #assert coder_page_agent_cancel(s, 1) && !coder_page_agent_running(s, 1);
 }
 
+#test "sub-agents (#14121): background isolated worktree cleanup queues on finish/cancel/Ctrl+B promotion while foreground delegates cleanup to parent" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].ready = true;
+  #assert coder_page_set_text(s, "run isolated subagents") && coder_page_submit(s);
+
+  // Delegate 1 foreground isolated agent + 1 background isolated agent + 1 foreground promoted to background via Ctrl+B
+  del := "{\"kind\":\"delegate\",\"wait_all\":true,\"ticket\":11,\"tasks\":[{\"level\":\"neon\",\"subagent_type\":\"general-purpose\",\"description\":\"Fg wt\",\"agent_id\":\"agen-1111111111111111\",\"worktree_path\":\"/tmp/wt/fg\",\"worktree_branch\":\"worktree-fg\",\"worktree_orig_head\":\"aaaaaaa1111111\",\"task\":\"fg\"},{\"level\":\"neon\",\"subagent_type\":\"general-purpose\",\"description\":\"Bg wt\",\"agent_id\":\"agen-2222222222222222\",\"run_in_background\":true,\"worktree_path\":\"/tmp/wt/bg\",\"worktree_branch\":\"worktree-bg\",\"worktree_orig_head\":\"bbbbbbb2222222\",\"task\":\"bg\"},{\"level\":\"neon\",\"subagent_type\":\"general-purpose\",\"description\":\"Promo wt\",\"agent_id\":\"agen-3333333333333333\",\"worktree_path\":\"/tmp/wt/promo\",\"worktree_branch\":\"worktree-promo\",\"worktree_orig_head\":\"ccccccc3333333\",\"task\":\"promo\"}]}";
+  #assert coder_page_line(s, del) == MWW_DELEGATE;
+  #assert coder_page_agent_next(s) == 0 && coder_page_agent_next(s) == 1 && coder_page_agent_next(s) == 2 && coder_page_agent_next(s) == -1;
+
+  pb: [256] u8; bb: [96] u8; hb: [64] u8;
+  // Finishing foreground agent 0 does NOT queue host cleanup (parent oa-worker handles it on MWW_RESULTS)
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"fg done\"}") == MWW_ENDED;
+  #assert !coder_page_agent_wt_cleanup_take(s, pb[..], bb[..], hb[..]);
+
+  // Promote remaining foreground agent 2 to background via Ctrl+B
+  #assert coder_page_key(s, 'b', MOD_CTRL);
+  #assert s[0].turns[0].agents[2].is_background;
+
+  // Finishing background agent 1 queues fail-closed host worktree cleanup with exact path, branch, and orig_head!
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"bg done\"}") == MWW_ENDED;
+  #assert coder_page_agent_wt_cleanup_take(s, pb[..], bb[..], hb[..]);
+  pn := 0; while pn < pb.count && pb[pn] != 0 { pn += 1; }
+  bn := 0; while bn < bb.count && bb[bn] != 0 { bn += 1; }
+  hn := 0; while hn < hb.count && hb[hn] != 0 { hn += 1; }
+  #assert cast(string) pb[0..<pn] == "/tmp/wt/bg";
+  #assert cast(string) bb[0..<bn] == "worktree-bg";
+  #assert cast(string) hb[0..<hn] == "bbbbbbb2222222";
+  // Queue is now empty (popped once)
+  #assert !coder_page_agent_wt_cleanup_take(s, pb[..], bb[..], hb[..]);
+
+  // Cancelling Ctrl+B-promoted background agent 2 ALSO queues fail-closed host cleanup
+  #assert coder_page_agent_cancel(s, 2);
+  #assert coder_page_agent_wt_cleanup_take(s, pb[..], bb[..], hb[..]);
+  pn = 0; while pn < pb.count && pb[pn] != 0 { pn += 1; }
+  bn = 0; while bn < bb.count && bb[bn] != 0 { bn += 1; }
+  hn = 0; while hn < hb.count && hb[hn] != 0 { hn += 1; }
+  #assert cast(string) pb[0..<pn] == "/tmp/wt/promo";
+  #assert cast(string) bb[0..<bn] == "worktree-promo";
+  #assert cast(string) hb[0..<hn] == "ccccccc3333333";
+  #assert !coder_page_agent_wt_cleanup_take(s, pb[..], bb[..], hb[..]);
+}
+
 #test "sub-agents: a chat tells its worker it may hand a task to Claude only when Claude Code can run here and the person allowed it; without Claude Code a Claude task fails with why (#14104)" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);

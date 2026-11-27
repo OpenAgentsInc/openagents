@@ -262,6 +262,12 @@ fww_subagent_write_jsonl :: (jsonl_path: string, prompt: string, reply: string) 
 
 // ---------------------------------------------------------------- git worktree isolation (fail-closed)
 
+fww_keep_z :: (dst: [] u8, src: string) -> int {
+  n := fww_keep(dst, src);
+  if n < dst.count { dst[n] = 0; }
+  return n;
+}
+
 fww_git_exec :: (cwd: string, a1: string, a2: string, a3: string, a4: string, a5: string) -> bool {
   h := proc_new();
   if h < 0 { return false; }
@@ -281,6 +287,289 @@ fww_git_exec :: (cwd: string, a1: string, a2: string, a3: string, a4: string, a5
   return ran;
 }
 
+// Fail-closed read-only git probe returning both output length and exact exit==0 status.
+fww_git_quick_argv :: (cwd: string, args: [] string, timeout_ms: int, out: [] u8, out_ok: [] bool) -> int {
+  out_ok[0] = false;
+  if cwd.count == 0 { return 0; }
+  h := proc_new();
+  if h < 0 { return 0; }
+  ok := proc_arg(h, "git") && proc_arg(h, "--no-optional-locks");
+  for a: args {
+    if a.count > 0 { ok = ok && proc_arg(h, a); }
+  }
+  ok = ok && proc_cwd(h, cwd);
+  n := 0;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    lbuf: [1024] u8;
+    deadline := proc_now_ms() + timeout_ms;
+    while proc_now_ms() < deadline {
+      r := proc_line(h, 100, lbuf[..]);
+      if r == PROC_EOF || r < 0 { break; }
+      if r == PROC_TIMEOUT { continue; }
+      if n + 1 < out.count {
+        n = fww_cat(out, n, cast(string) lbuf[0..<r]);
+        n = fww_cat(out, n, "\n");
+      }
+    }
+    ec := proc_wait(h, 400);
+    if ec == 0 { out_ok[0] = true; } else { n = 0; }
+  }
+  _ = proc_release(h);
+  return n;
+}
+
+// Resolves canonical git toplevel (`git rev-parse --show-toplevel`) and relative subdirectory from `cwd`.
+fww_wt_resolve_git_root :: (cwd: string, out_root: [] u8, out_rel: [] u8, out_rel_n: [] int) -> bool {
+  if out_rel_n.count > 0 { out_rel_n[0] = 0; }
+  if cwd.count == 0 || fs_kind(cwd) != FS_DIR { return false; }
+  argv := [2] string.["rev-parse", "--show-toplevel"];
+  tb: [FS_PATH_MAX] u8;
+  ok := [1] bool.[false];
+  tn := fww_git_quick_argv(cwd, argv[..], 1500, tb[..], ok[..]);
+  if !ok[0] || tn <= 0 { return false; }
+  top_raw := fww_trim(cast(string) tb[0..<tn]);
+  if top_raw.count == 0 { return false; }
+  rt_b: [FS_PATH_MAX] u8;
+  rc_b: [FS_PATH_MAX] u8;
+  real_top := fs_realpath(top_raw, rt_b[..]);
+  if real_top.count == 0 { real_top = top_raw; }
+  real_cwd := fs_realpath(cwd, rc_b[..]);
+  if real_cwd.count == 0 { real_cwd = cwd; }
+  rn := fww_keep_z(out_root, real_top);
+  if rn != real_top.count { return false; }
+  if out_rel.count > 0 && out_rel_n.count > 0 {
+    sub_n := flawed_wt_rel_subdir(real_top, real_cwd, out_rel);
+    if sub_n > 0 {
+      out_rel_n[0] = sub_n;
+      if sub_n < out_rel.count { out_rel[sub_n] = 0; }
+    }
+  }
+  return true;
+}
+
+fww_wt_copy_file :: (src: string, dst: string) -> bool {
+  sz := fs_size(src);
+  if sz < 0 || sz > 16 * 1024 * 1024 { return false; }
+  if sz == 0 { return fs_write(dst, ""); }
+  cbuf: [32768] u8;
+  off := 0;
+  while off < sz {
+    n := fs_read_at(src, off, cbuf[..]);
+    if n <= 0 { return false; }
+    ok := ifx off == 0 then fs_write(dst, cast(string) cbuf[0..<n]) else fs_append(dst, cast(string) cbuf[0..<n]);
+    if !ok { return false; }
+    off += n;
+  }
+  return true;
+}
+
+// Copies gitignored local files matched by <git_root>/.worktreeinclude into <wt_dir>.
+// Enforces #authority path safety, pattern matching, and symlink containment inside repo root.
+fww_wt_copy_worktreeinclude :: (git_root: string, wt_dir: string) -> int {
+  if git_root.count == 0 || wt_dir.count == 0 { return 0; }
+  inc_pb: [FS_PATH_MAX] u8;
+  inc_path := fs_join(git_root, ".worktreeinclude", inc_pb[..]);
+  if inc_path.count == 0 || fs_kind(inc_path) != FS_FILE { return 0; }
+  rr_b: [FS_PATH_MAX] u8;
+  rw_b: [FS_PATH_MAX] u8;
+  ri_b: [FS_PATH_MAX] u8;
+  real_root := fs_realpath(git_root, rr_b[..]);
+  real_wt := fs_realpath(wt_dir, rw_b[..]);
+  real_inc := fs_realpath(inc_path, ri_b[..]);
+  if real_root.count == 0 || real_wt.count == 0 || real_inc.count == 0 { return 0; }
+  if !flawed_wt_path_within_root(real_root, real_inc) { return 0; }
+
+  inc_buf: [16384] u8;
+  inc_n := fs_read(real_inc, inc_buf[..]);
+  if inc_n <= 0 { return 0; }
+  inc_s := cast(string) inc_buf[0..<inc_n];
+
+  h := proc_new();
+  if h < 0 { return 0; }
+  ok := proc_arg(h, "git")
+     && proc_arg(h, "--no-optional-locks")
+     && proc_arg(h, "-c")
+     && proc_arg(h, "core.quotepath=false")
+     && proc_arg(h, "ls-files")
+     && proc_arg(h, "--others")
+     && proc_arg(h, "--ignored")
+     && proc_arg(h, "--exclude-standard")
+     && proc_cwd(h, real_root);
+  copied := 0;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    lbuf: [FS_PATH_MAX] u8;
+    src_b: [FS_PATH_MAX] u8;
+    sr_b: [FS_PATH_MAX] u8;
+    dst_b: [FS_PATH_MAX] u8;
+    dp_b: [FS_PATH_MAX] u8;
+    deadline := proc_now_ms() + 5000;
+    while proc_now_ms() < deadline && copied < 256 {
+      r := proc_line(h, 150, lbuf[..]);
+      if r == PROC_EOF || r < 0 { break; }
+      if r == PROC_TIMEOUT { continue; }
+      if r > 0 && lbuf[r - 1] == '\r' { r -= 1; }
+      rel := cast(string) lbuf[0..<r];
+      if !flawed_wt_include_matches(inc_s, rel) { continue; }
+      src_p := fs_join(real_root, rel, src_b[..]);
+      if src_p.count == 0 || fs_kind(src_p) != FS_FILE { continue; }
+      src_real := fs_realpath(src_p, sr_b[..]);
+      if src_real.count == 0 || !flawed_wt_path_within_root(real_root, src_real) { continue; }
+      dst_p := fs_join(real_wt, rel, dst_b[..]);
+      if dst_p.count == 0 || fs_kind(dst_p) != FS_NONE { continue; }
+      dst_dir := fs_dir(dst_p);
+      if dst_dir.count > 0 && dst_dir != "." { _ = fs_mkdir_all(dst_dir); }
+      real_dst_dir := fs_realpath(dst_dir, dp_b[..]);
+      if real_dst_dir.count == 0 { continue; }
+      if real_dst_dir != real_wt && !flawed_wt_path_within_root(real_wt, real_dst_dir) { continue; }
+      if fww_wt_copy_file(src_real, dst_p) {
+        copied += 1;
+      }
+    }
+    _ = proc_wait(h, 400);
+  }
+  _ = proc_release(h);
+  return copied;
+}
+
+// Extracts the parent repository root from a linked worktree `.git` pointer file.
+fww_wt_parent_repo_from_gitdir :: (git_file_body: string, out: [] u8) -> string {
+  line_end := 0;
+  while line_end < git_file_body.count && git_file_body[line_end] != '\n' && git_file_body[line_end] != '\r' {
+    line_end += 1;
+  }
+  line := fww_trim(cast(string) git_file_body[0..<line_end]);
+  if !flawed_aw_starts(line, "gitdir:") { return ""; }
+  gd := fww_trim(cast(string) line[7..<line.count]);
+  marker := "/.git/worktrees/";
+  if gd.count <= marker.count { return ""; }
+  for i: 0..<(gd.count - marker.count + 1) {
+    if cast(string) gd[i..<(i + marker.count)] == marker {
+      n := fww_keep_z(out, cast(string) gd[0..<i]);
+      return cast(string) out[0..<n];
+    }
+  }
+  return "";
+}
+
+// Fail-closed check that HEAD has no commits missing from other branches, remotes, or tags.
+fww_wt_unpushed_empty :: (wt_path: string, branch: string) -> bool {
+  out: [512] u8;
+  ok := [1] bool.[false];
+  n := 0;
+  if branch.count > 0 && branch != "HEAD" {
+    ex_b: [128] u8;
+    en := fww_cat(ex_b[..], 0, "--exclude=");
+    en = fww_cat(ex_b[..], en, branch);
+    argv7 := [7] string.["rev-list", "HEAD", "--not", cast(string) ex_b[0..<en], "--branches", "--remotes", "--tags"];
+    n = fww_git_quick_argv(wt_path, argv7[..], 1500, out[..], ok[..]);
+  } else {
+    argv6 := [6] string.["rev-list", "HEAD", "--not", "--branches", "--remotes", "--tags"];
+    n = fww_git_quick_argv(wt_path, argv6[..], 1500, out[..], ok[..]);
+  }
+  return ok[0] && fww_trim(cast(string) out[0..<n]).count == 0;
+}
+
+// Prunes abandoned ephemeral agent-*/worktree-* worktrees older than cutoff_ms with clean git status
+// and no unpushed commits, strictly gated by #authority flawed_wt_stale_sweep_can_remove.
+fww_wt_sweep_stale_in :: (wt_root: string, active_wt_path: string, now_ms: int, cutoff_ms: int) -> int {
+  if wt_root.count == 0 || fs_kind(wt_root) != FS_DIR { return 0; }
+  ar_b: [FS_PATH_MAX] u8;
+  active_real := ifx active_wt_path.count > 0 then fs_realpath(active_wt_path, ar_b[..]) else "";
+  if active_real.count == 0 { active_real = active_wt_path; }
+
+  lst: [1] FsList;
+  n := fs_list(wt_root, lst[..]);
+  if n <= 0 { return 0; }
+
+  removed := 0;
+  git_checks := 0;
+  ep_b: [FS_PATH_MAX] u8;
+  re_b: [FS_PATH_MAX] u8;
+  dg_b: [FS_PATH_MAX] u8;
+  dg_body: [512] u8;
+  rr_b: [FS_PATH_MAX] u8;
+  sb: [1024] u8;
+  br_b: [128] u8;
+  st_argv := [2] string.["status", "--porcelain"];
+  br_argv := [3] string.["rev-parse", "--abbrev-ref", "HEAD"];
+
+  for i: 0..<n {
+    name := fs_entry(lst[..], i);
+    is_eph := flawed_wt_is_ephemeral_name(name);
+    if !is_eph { continue; }
+    entry_path := fs_join(wt_root, name, ep_b[..]);
+    if entry_path.count == 0 || fs_kind(entry_path) != FS_DIR { continue; }
+    real_entry := fs_realpath(entry_path, re_b[..]);
+    if real_entry.count == 0 { real_entry = entry_path; }
+    is_active := active_real.count > 0 && (real_entry == active_real || flawed_wt_path_within_root(real_entry, active_real));
+    if is_active { continue; }
+
+    mtime_ns := fs_mtime_ns(real_entry);
+    mtime_ms := ifx mtime_ns > 0 then mtime_ns / 1000000 else 0;
+    is_old := flawed_wt_is_older_than_cutoff(mtime_ms, now_ms, cutoff_ms);
+    if !is_old { continue; }
+
+    // Must be a linked git worktree (`.git` pointer file -> parent repo); skip non-git dirs safely.
+    dg_path := fs_join(real_entry, ".git", dg_b[..]);
+    if dg_path.count == 0 || fs_kind(dg_path) != FS_FILE { continue; }
+    dgn := fs_read(dg_path, dg_body[..]);
+    if dgn <= 0 { continue; }
+    repo_root := fww_wt_parent_repo_from_gitdir(cast(string) dg_body[0..<dgn], rr_b[..]);
+    if repo_root.count == 0 || fs_kind(repo_root) != FS_DIR { continue; }
+
+    if git_checks >= 16 { break; }
+    git_checks += 1;
+
+    st_ok := [1] bool.[false];
+    sn := fww_git_quick_argv(real_entry, st_argv[..], 1500, sb[..], st_ok[..]);
+    status_clean := st_ok[0] && fww_trim(cast(string) sb[0..<sn]).count == 0;
+
+    br_ok := [1] bool.[false];
+    bn := fww_git_quick_argv(real_entry, br_argv[..], 1500, br_b[..], br_ok[..]);
+    br := ifx br_ok[0] then fww_trim(cast(string) br_b[0..<bn]) else "";
+    unpushed_empty := br_ok[0] && fww_wt_unpushed_empty(real_entry, br);
+
+    if !flawed_wt_stale_sweep_can_remove(is_eph, is_active, is_old, status_clean, unpushed_empty) {
+      continue;
+    }
+    _ = fww_git_exec(repo_root, "worktree", "remove", real_entry, "", "");
+    _ = fww_git_exec(repo_root, "worktree", "prune", "", "", "");
+    if br.count > 0 && br != "HEAD" && flawed_wt_is_ephemeral_name(br) {
+      _ = fww_git_exec(repo_root, "branch", "-D", br, "", "");
+    }
+    if fs_kind(real_entry) == FS_NONE {
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
+fww_wt_sweep_stale :: (home: string, active_wt_path: string) -> int {
+  d1: [FS_PATH_MAX] u8;
+  d2: [FS_PATH_MAX] u8;
+  wt_root := "";
+  if home.count > 0 {
+    oa_d := fs_join(home, ".openagents", d1[..]);
+    wt_root = fs_join(oa_d, "worktrees", d2[..]);
+  } else {
+    wt_root = fs_join("/tmp", "oa-worktrees", d2[..]);
+  }
+  wall_ms := cxproc_wall_us() / 1000;
+  return fww_wt_sweep_stale_in(wt_root, active_wt_path, wall_ms, FLAWED_WT_STALE_MS);
+}
+
+// Invalidates cached git snapshot, Glob/Grep query dedup, and Read file-dedup state when cwd switches.
+fww_invalidate_cwd_caches :: (r: [] FwRun) {
+  r[0].ngit_snap = 0;
+  r[0].ngit_snap_cwd = 0;
+  for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; }
+  r[0].query_dedup_cur = 0;
+  for di: 0..<r[0].read_dedup.count { r[0].read_dedup[di] = FwReadDedup.{}; }
+  r[0].read_dedup_cur[0] = 0;
+}
+
 fww_wt_create :: (cwd: string, home: string, slug: string, out_path: [] u8, out_branch: [] u8, out_head: [] u8) -> bool {
   if cwd.count == 0 || !flawed_wt_validate_slug(slug) { return false; }
   flat_b: [FLAWED_WT_MAX_SLUG_LEN + 4] u8;
@@ -288,12 +577,27 @@ fww_wt_create :: (cwd: string, home: string, slug: string, out_path: [] u8, out_
   if fn <= 0 { return false; }
   flat := cast(string) flat_b[0..<fn];
 
-  // Capture current HEAD commit for fail-closed commit detection
+  // Resolve canonical git toplevel and preserve relative subdirectory mapping (#14121).
+  root_b: [FS_PATH_MAX] u8;
+  rel_b: [FS_PATH_MAX] u8;
+  rel_n := [1] int.[0];
+  if !fww_wt_resolve_git_root(cwd, root_b[..], rel_b[..], rel_n[..]) { return false; }
+  git_root_n := 0;
+  while git_root_n < root_b.count && root_b[git_root_n] != 0 { git_root_n += 1; }
+  git_root := cast(string) root_b[0..<git_root_n];
+  rel_sub := cast(string) rel_b[0..<rel_n[0]];
+
+  // Capture current HEAD commit against canonical toplevel for fail-closed commit detection.
   hb: [128] u8;
-  hn := fww_git_quick(cwd, "rev-parse", "HEAD", "", "", hb[..]);
+  head_argv := [2] string.["rev-parse", "HEAD"];
+  head_ok := [1] bool.[false];
+  hn := fww_git_quick_argv(git_root, head_argv[..], 1500, hb[..], head_ok[..]);
   head_s := fww_trim(cast(string) hb[0..<hn]);
-  if head_s.count < 7 { return false; }
-  _ = fww_keep(out_head, head_s);
+  if !head_ok[0] || head_s.count < 7 { return false; }
+  _ = fww_keep_z(out_head, head_s);
+
+  // Opportunistically prune abandoned 30-day stale ephemeral worktrees without blocking or failing.
+  _ = fww_wt_sweep_stale(home, cwd);
 
   // Place isolated worktrees outside the git repo under <home>/.openagents/worktrees/<flat>
   // (fallback: /tmp/oa-worktrees/<flat>) so the parent git working tree is never dirtied.
@@ -305,38 +609,77 @@ fww_wt_create :: (cwd: string, home: string, slug: string, out_path: [] u8, out_
   } else {
     wt_root = fs_join("/tmp", "oa-worktrees", d2[..]); _ = fs_mkdir(wt_root);
   }
-  wt_dir := fs_join(wt_root, flat, out_path);
+  wt_dir_b: [FS_PATH_MAX] u8;
+  wt_dir := fs_join(wt_root, flat, wt_dir_b[..]);
+  if wt_dir.count == 0 { return false; }
+
   bn := fww_cat(out_branch, 0, "worktree-");
   bn = fww_cat(out_branch, bn, flat);
+  if bn < out_branch.count { out_branch[bn] = 0; }
   branch := cast(string) out_branch[0..<bn];
 
-  _ = fww_git_exec(cwd, "worktree", "add", "-b", branch, wt_dir);
-  return fs_kind(wt_dir) == FS_DIR;
+  if !fww_git_exec(git_root, "worktree", "add", "-b", branch, wt_dir) || fs_kind(wt_dir) != FS_DIR {
+    return false;
+  }
+
+  // Copy matching gitignored local files listed in <git_root>/.worktreeinclude (#14121).
+  _ = fww_wt_copy_worktreeinclude(git_root, wt_dir);
+
+  // Preserve relative subdirectory mapping when cwd was nested inside the repo (#14121).
+  eff_b: [FS_PATH_MAX] u8;
+  eff_path := wt_dir;
+  if rel_sub.count > 0 {
+    mapped := fs_join(wt_dir, rel_sub, eff_b[..]);
+    if mapped.count > 0 && fs_kind(mapped) == FS_DIR && mapped.count <= out_path.count {
+      eff_path = mapped;
+    }
+  }
+  if fww_keep_z(out_path, eff_path) != eff_path.count { return false; }
+  return true;
 }
 
 // Fail-closed cleanup wired directly to flawed_wt_subagent_can_delete (#authority in subagent.coax).
+// Resolves canonical git toplevels for both `cwd` and `wt_path` so nested subdirectories work cleanly.
 // Returns true iff worktree was clean and deleted; false if preserved (dirty, committed, or git error).
 fww_wt_cleanup_fail_closed :: (cwd: string, wt_path: string, wt_branch: string, orig_head: string) -> bool {
   if cwd.count == 0 || wt_path.count == 0 || fs_kind(wt_path) != FS_DIR { return false; }
+  repo_b: [FS_PATH_MAX] u8;
+  wt_b: [FS_PATH_MAX] u8;
+  dummy_rel: [1] u8;
+  dummy_n := [1] int.[0];
+  if !fww_wt_resolve_git_root(cwd, repo_b[..], dummy_rel[0..<0], dummy_n[..]) { return false; }
+  if !fww_wt_resolve_git_root(wt_path, wt_b[..], dummy_rel[0..<0], dummy_n[..]) { return false; }
+  repo_len := 0; while repo_len < repo_b.count && repo_b[repo_len] != 0 { repo_len += 1; }
+  wt_len := 0; while wt_len < wt_b.count && wt_b[wt_len] != 0 { wt_len += 1; }
+  repo_top := cast(string) repo_b[0..<repo_len];
+  wt_top := cast(string) wt_b[0..<wt_len];
+  if repo_top.count == 0 || wt_top.count == 0 || repo_top == wt_top { return false; }
+
   sb: [2048] u8;
-  sn := fww_git_quick(wt_path, "status", "--porcelain", "", "", sb[..]);
+  st_argv := [2] string.["status", "--porcelain"];
+  st_ok := [1] bool.[false];
+  sn := fww_git_quick_argv(wt_top, st_argv[..], 1500, sb[..], st_ok[..]);
   st_out := fww_trim(cast(string) sb[0..<sn]);
+
   // Check commits since orig_head
   cb: [256] u8;
   range_b: [160] u8;
   rn := fww_cat(range_b[..], 0, orig_head);
   rn = fww_cat(range_b[..], rn, "..HEAD");
-  cn := fww_git_quick(wt_path, "rev-list", "--count", cast(string) range_b[0..<rn], "", cb[..]);
+  rev_argv := [3] string.["rev-list", "--count", cast(string) range_b[0..<rn]];
+  rev_ok := [1] bool.[false];
+  cn := fww_git_quick_argv(wt_top, rev_argv[..], 1500, cb[..], rev_ok[..]);
   cnt_s := fww_trim(cast(string) cb[0..<cn]);
-  git_ok := orig_head.count >= 7 && cnt_s.count > 0;
+  git_ok := st_ok[0] && rev_ok[0] && orig_head.count >= 7 && cnt_s.count > 0;
   commits := fww_parse_int(cnt_s, 1);
   has_changes := st_out.count > 0 || commits > 0;
   if !flawed_wt_subagent_can_delete(false, git_ok, has_changes) {
     return false;
   }
-  _ = fww_git_exec(cwd, "worktree", "remove", wt_path, "", "");
+  _ = fww_git_exec(repo_top, "worktree", "remove", wt_top, "", "");
+  _ = fww_git_exec(repo_top, "worktree", "prune", "", "", "");
   if wt_branch.count > 0 {
-    _ = fww_git_exec(cwd, "branch", "-D", wt_branch, "", "");
+    _ = fww_git_exec(repo_top, "branch", "-D", wt_branch, "", "");
   }
   return true;
 }
@@ -708,6 +1051,9 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
     if r[0].subagents[rec_idx].nwt_path > 0 {
       jo_key(jo[..], "worktree_path"); jo_str(jo[..], cast(string) r[0].subagents[rec_idx].wt_path[0..<r[0].subagents[rec_idx].nwt_path]);
       jo_key(jo[..], "worktree_branch"); jo_str(jo[..], cast(string) r[0].subagents[rec_idx].wt_branch[0..<r[0].subagents[rec_idx].nwt_branch]);
+      if r[0].subagents[rec_idx].norig_head > 0 {
+        jo_key(jo[..], "worktree_orig_head"); jo_str(jo[..], cast(string) r[0].subagents[rec_idx].orig_head[0..<r[0].subagents[rec_idx].norig_head]);
+      }
     }
     jo_end(jo[..]);
 
@@ -1242,23 +1588,37 @@ fww_tool_enter_worktree :: (r: [] FwRun, args_json: string, out_res: [] u8, is_e
   }
   cwd := cast(string) r[0].cwd[0..<r[0].ncwd];
   home_s := cast(string) r[0].home[0..<r[0].nhome];
-  r[0].norig_cwd = fww_keep(r[0].orig_cwd[..], cwd);
   wt_p: [FS_PATH_MAX] u8;
-  if !fww_wt_create(cwd, home_s, slug, wt_p[..], r[0].session_wt_branch[..], r[0].session_wt_orig_head[..]) {
+  wt_br: [96] u8;
+  wt_hd: [64] u8;
+  if !fww_wt_create(cwd, home_s, slug, wt_p[..], wt_br[..], wt_hd[..]) {
     is_err[0] = true;
     return fww_keep(out_res, "Failed to create git worktree.");
   }
   wpn := 0; while wpn < wt_p.count && wt_p[wpn] != 0 { wpn += 1; }
-  wbn := 0; while wbn < r[0].session_wt_branch.count && r[0].session_wt_branch[wbn] != 0 { wbn += 1; }
-  ohn := 0; while ohn < r[0].session_wt_orig_head.count && r[0].session_wt_orig_head[ohn] != 0 { ohn += 1; }
-  r[0].ncwd = fww_keep(r[0].cwd[..], cast(string) wt_p[0..<wpn]);
-  r[0].nsession_wt_branch = wbn;
-  r[0].nsession_wt_orig_head = ohn;
+  wbn := 0; while wbn < wt_br.count && wt_br[wbn] != 0 { wbn += 1; }
+  ohn := 0; while ohn < wt_hd.count && wt_hd[ohn] != 0 { ohn += 1; }
+  entered_path := cast(string) wt_p[0..<wpn];
+
+  r[0].norig_cwd = fww_keep(r[0].orig_cwd[..], cwd);
+  r[0].ncwd = fww_keep(r[0].cwd[..], entered_path);
+  r[0].nsession_wt_branch = fww_keep_z(r[0].session_wt_branch[..], cast(string) wt_br[0..<wbn]);
+  r[0].nsession_wt_orig_head = fww_keep_z(r[0].session_wt_orig_head[..], cast(string) wt_hd[0..<ohn]);
+  wt_root_b: [FS_PATH_MAX] u8;
+  dummy_rel: [1] u8;
+  dummy_n := [1] int.[0];
+  if fww_wt_resolve_git_root(entered_path, wt_root_b[..], dummy_rel[0..<0], dummy_n[..]) {
+    wrn := 0; while wrn < wt_root_b.count && wt_root_b[wrn] != 0 { wrn += 1; }
+    r[0].nsession_wt_root = fww_keep_z(r[0].session_wt_root[..], cast(string) wt_root_b[0..<wrn]);
+  } else {
+    r[0].nsession_wt_root = fww_keep_z(r[0].session_wt_root[..], entered_path);
+  }
   r[0].session_wt_active = true;
+  fww_invalidate_cwd_caches(r);
   n := fww_cat(out_res, 0, "Entered isolated git worktree at ");
-  n = fww_cat(out_res, n, cast(string) wt_p[0..<wpn]);
+  n = fww_cat(out_res, n, entered_path);
   n = fww_cat(out_res, n, " (branch ");
-  n = fww_cat(out_res, n, cast(string) r[0].session_wt_branch[0..<wbn]);
+  n = fww_cat(out_res, n, cast(string) r[0].session_wt_branch[0..<r[0].nsession_wt_branch]);
   return fww_cat(out_res, n, ").");
 }
 
@@ -1276,13 +1636,36 @@ fww_tool_exit_worktree :: (r: [] FwRun, args_json: string, out_res: [] u8, is_er
   orig_cwd := cast(string) r[0].orig_cwd[0..<r[0].norig_cwd];
   orig_head := cast(string) r[0].session_wt_orig_head[0..<r[0].nsession_wt_orig_head];
 
+  wt_top_b: [FS_PATH_MAX] u8;
+  repo_top_b: [FS_PATH_MAX] u8;
+  dummy_rel: [1] u8;
+  dummy_n := [1] int.[0];
+  wt_top := "";
+  if fww_wt_resolve_git_root(wt_path, wt_top_b[..], dummy_rel[0..<0], dummy_n[..]) {
+    wn := 0; while wn < wt_top_b.count && wt_top_b[wn] != 0 { wn += 1; }
+    wt_top = cast(string) wt_top_b[0..<wn];
+  } else if r[0].nsession_wt_root > 0 {
+    wt_top = cast(string) r[0].session_wt_root[0..<r[0].nsession_wt_root];
+  } else {
+    wt_top = wt_path;
+  }
+  repo_top := orig_cwd;
+  if fww_wt_resolve_git_root(orig_cwd, repo_top_b[..], dummy_rel[0..<0], dummy_n[..]) {
+    rn0 := 0; while rn0 < repo_top_b.count && repo_top_b[rn0] != 0 { rn0 += 1; }
+    repo_top = cast(string) repo_top_b[0..<rn0];
+  }
+
   sb: [2048] u8; cb: [256] u8; rb: [160] u8;
-  sn := fww_git_quick(wt_path, "status", "--porcelain", "", "", sb[..]);
+  st_argv := [2] string.["status", "--porcelain"];
+  st_ok := [1] bool.[false];
+  sn := fww_git_quick_argv(wt_top, st_argv[..], 1500, sb[..], st_ok[..]);
   st_out := fww_trim(cast(string) sb[0..<sn]);
   rn := fww_cat(rb[..], 0, orig_head); rn = fww_cat(rb[..], rn, "..HEAD");
-  cn := fww_git_quick(wt_path, "rev-list", "--count", cast(string) rb[0..<rn], "", cb[..]);
+  rev_argv := [3] string.["rev-list", "--count", cast(string) rb[0..<rn]];
+  rev_ok := [1] bool.[false];
+  cn := fww_git_quick_argv(wt_top, rev_argv[..], 1500, cb[..], rev_ok[..]);
   cnt_s := fww_trim(cast(string) cb[0..<cn]);
-  git_ok := orig_head.count >= 7 && cnt_s.count > 0;
+  git_ok := st_ok[0] && rev_ok[0] && orig_head.count >= 7 && cnt_s.count > 0;
   changed_files := ifx st_out.count > 0 then 1 else 0;
   commits := fww_parse_int(cnt_s, 1);
 
@@ -1290,10 +1673,24 @@ fww_tool_exit_worktree :: (r: [] FwRun, args_json: string, out_res: [] u8, is_er
     is_err[0] = true;
     return fww_keep(out_res, "ExitWorktree refused (fail-closed): no active worktree or uncommitted/committed changes exist without discard_changes: true.");
   }
+  br_b: [96] u8;
+  br_n := fww_keep_z(br_b[..], cast(string) r[0].session_wt_branch[0..<r[0].nsession_wt_branch]);
+  wt_branch := cast(string) br_b[0..<br_n];
+
   r[0].ncwd = fww_keep(r[0].cwd[..], orig_cwd);
   r[0].session_wt_active = false;
+  r[0].nsession_wt_branch = 0;
+  r[0].nsession_wt_orig_head = 0;
+  r[0].nsession_wt_root = 0;
+  fww_invalidate_cwd_caches(r);
   if is_remove {
-    _ = fww_git_exec(orig_cwd, "worktree", "remove", "--force", wt_path, "");
+    if wt_top.count > 0 && repo_top.count > 0 && wt_top != repo_top {
+      _ = fww_git_exec(repo_top, "worktree", "remove", "--force", wt_top, "");
+      _ = fww_git_exec(repo_top, "worktree", "prune", "", "", "");
+      if wt_branch.count > 0 {
+        _ = fww_git_exec(repo_top, "branch", "-D", wt_branch, "", "");
+      }
+    }
     return fww_keep(out_res, "Exited and removed session worktree.");
   }
   return fww_keep(out_res, "Exited session worktree (kept on disk).");

@@ -331,6 +331,10 @@ oa_core_subagent_stop :: (c: [] OaCore, slot: int, forget: int) #export_c #effec
   dc_worker_stop(c[0].subagents[slot..<slot + 1], c[0].daemon[..], forget != 0);
 }
 
+oa_core_subagent_wt_cleanup :: (repo_cwd: string, wt_path: string, wt_branch: string, orig_head: string) -> int #export_c #effects(all) {
+  return dc_subagent_wt_cleanup(repo_cwd, wt_path, wt_branch, orig_head);
+}
+
 oa_core_update_verify :: (envelope: string, current: string, current_build: int, allow_file: int, version_out: [] u8, url_out: [] u8, notes_out: [] u8, err_out: [] u8) -> int #export_c #effects(all) {
   keys: [1] DcKey;
   _ := dc_update_default_keys(keys[..]);

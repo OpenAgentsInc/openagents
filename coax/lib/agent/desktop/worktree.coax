@@ -177,11 +177,95 @@ dc_wt_remove :: (w: [] DcWorktree) -> DcRemoval {
   return DcRemoval.{result = DC_WT_REMOVED};
 }
 
+dc_wt_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+dc_wt_toplevel :: (dir: string, out: [] u8) -> string {
+  if dir.count == 0 { return ""; }
+  raw: [DC_PATH] u8;
+  args := [2] string.["rev-parse", "--show-toplevel"];
+  r := dc_git(dir, args[..], raw[..]);
+  if r.started != 0 || r.status != 0 || r.n <= 0 { return ""; }
+  top := dc_wt_trim(cast(string) raw[0..<r.n]);
+  if top.count == 0 { return ""; }
+  rb: [DC_PATH] u8;
+  real := dcos_real(top, rb[..]);
+  chosen := ifx real.count > 0 then real else top;
+  return dc_fits(out, dc_copy(out, chosen));
+}
+// Fail-closed worktree cleanup for finished background subagents (#14121).
+// Resolves canonical git toplevels for both repo_cwd and wt_path, refuses removal on any git
+// error, dirty/untracked file, or commit/unpushed work, and deletes both the worktree directory
+// and ephemeral branch only when verified completely clean.
+dc_subagent_wt_cleanup :: (repo_cwd: string, wt_path: string, wt_branch: string, orig_head: string) -> int {
+  if repo_cwd.count == 0 || wt_path.count == 0 { return DC_WT_KEPT; }
+  rb: [DC_PATH] u8;
+  repo_top := dc_wt_toplevel(repo_cwd, rb[..]);
+  if repo_top.count == 0 { return DC_WT_KEPT; }
+  prune := [2] string.["worktree", "prune"];
+  if dcos_kind(wt_path) == FS_NONE {
+    _ := dc_git_ok(repo_top, prune[..]);
+    return DC_WT_GONE;
+  }
+  wb: [DC_PATH] u8;
+  wt_top := dc_wt_toplevel(wt_path, wb[..]);
+  if wt_top.count == 0 || wt_top == repo_top { return DC_WT_KEPT; }
+
+  // 1. Fail-closed dirty/untracked file check
+  out: [65536] u8;
+  st := [2] string.["status", "--porcelain"];
+  r_st := dc_git(wt_top, st[..], out[..]);
+  if r_st.started != 0 || r_st.status != 0 { return DC_WT_KEPT; }
+  if dc_wt_trim(cast(string) out[0..<r_st.n]).count > 0 { return DC_WT_KEPT; }
+
+  // 2. Fail-closed commit / unpushed check
+  if orig_head.count >= 7 {
+    rng_b: [160] u8;
+    rn := dc_cat(rng_b[..], dc_copy(rng_b[..], orig_head), "..HEAD");
+    rev := [3] string.["rev-list", "--count", dc_fits(rng_b[..], rn)];
+    r_rev := dc_git(wt_top, rev[..], out[..]);
+    if r_rev.started != 0 || r_rev.status != 0 { return DC_WT_KEPT; }
+    if dc_wt_trim(cast(string) out[0..<r_rev.n]) != "0" { return DC_WT_KEPT; }
+  } else {
+    br_args := [3] string.["rev-parse", "--abbrev-ref", "HEAD"];
+    r_br := dc_git(wt_top, br_args[..], out[..]);
+    if r_br.started != 0 || r_br.status != 0 { return DC_WT_KEPT; }
+    br_b: [128] u8;
+    br := dc_fits(br_b[..], dc_copy(br_b[..], dc_wt_trim(cast(string) out[0..<r_br.n])));
+    r_up: DcRun;
+    if br.count > 0 && br != "HEAD" {
+      ex_b: [160] u8;
+      en := dc_cat(ex_b[..], dc_copy(ex_b[..], "--exclude="), br);
+      up7 := [7] string.["rev-list", "HEAD", "--not", dc_fits(ex_b[..], en), "--branches", "--remotes", "--tags"];
+      r_up = dc_git(wt_top, up7[..], out[..]);
+    } else {
+      up6 := [6] string.["rev-list", "HEAD", "--not", "--branches", "--remotes", "--tags"];
+      r_up = dc_git(wt_top, up6[..], out[..]);
+    }
+    if r_up.started != 0 || r_up.status != 0 { return DC_WT_KEPT; }
+    if dc_wt_trim(cast(string) out[0..<r_up.n]).count > 0 { return DC_WT_KEPT; }
+  }
+
+  // 3. Clean: remove worktree directory, prune metadata, and delete ephemeral branch
+  rm := [3] string.["worktree", "remove", wt_top];
+  if !dc_git_ok(repo_top, rm[..]) { return DC_WT_KEPT; }
+  _ := dc_git_ok(repo_top, prune[..]);
+  if wt_branch.count > 0 {
+    del := [4] string.["branch", "-D", "--quiet", wt_branch];
+    _ := dc_git_ok(repo_top, del[..]);
+  }
+  return DC_WT_REMOVED;
+}
+
 #test "desktop core worktree: the clone list keeps only paths inside the repository" {
   b: [1024] u8;
   #assert dc_clone_list("{\"clone\":[\"coax/bin\",\"/etc\",\"a/../b\",7,\"build\"]}", b[..]) == "coax/bin\nbuild";
   #assert dc_clone_list("{\"clone\":\"x\"}", b[..]) == "" && dc_clone_list("[]", b[..]) == "" && dc_clone_list("nope", b[..]) == "";
   #assert dc_lines(" M a\n?? b\n") == 2 && dc_lines("") == 0;
+  #assert dc_wt_trim(" \t0\r\n ") == "0" && dc_wt_trim("  \n") == "" && dc_wt_trim("abc") == "abc";
   w: [1] DcWorktree; dc_wt_set(w[..], "c1", "/w/r-1/c1", "/r", "coder/c1");
   #assert dc_wt_path(w[..]) == "/w/r-1/c1" && dc_wt_source(w[..]) == "/r" && dc_wt_branch(w[..]) == "coder/c1" && dc_wt_chat(w[..]) == "c1";
 }

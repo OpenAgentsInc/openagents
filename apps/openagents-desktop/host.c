@@ -503,6 +503,17 @@ int cd_agent_running(void *page, int agent) { CoderHost *c = page; return c && c
 int cd_background_agents(void *page) { CoderHost *c = page; if (!c) return 0; int n = (int)coder_page_background_agents(cd_state(c)); if (n > 0) cd_changed(c); return n; }
 int cd_agent_cancel(void *page, int agent) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_agent_cancel(cd_state(c), agent); }
 int cd_stop_agent(void *page) { CoderHost *c = page; return c ? (int)coder_page_stop_agent(cd_state(c)) : -1; }
+int cd_agent_wt_cleanup_next(void *page, char *path_out, int path_cap, char *branch_out, int branch_cap, char *head_out, int head_cap) {
+  CoderHost *c = page;
+  if (!c || !path_out || path_cap <= 1 || !branch_out || branch_cap <= 1 || !head_out || head_cap <= 1) return 0;
+  path_out[0] = 0; branch_out[0] = 0; head_out[0] = 0;
+  return coder_page_agent_wt_cleanup_take(
+    cd_state(c),
+    (coax_v_u8){(uint8_t *)path_out, path_cap},
+    (coax_v_u8){(uint8_t *)branch_out, branch_cap},
+    (coax_v_u8){(uint8_t *)head_out, head_cap}
+  ) ? 1 : 0;
+}
 // Kept chats (page.coax): the list, the chat that is shown, and a chat's text each way.
 static int cd_text_out(int n, char *out, int cap) { if (n < 0 || n >= cap) n = 0; out[n] = 0; return n; }
 void cd_chats(void *page, const char *list) { CoderHost *c = page; if (c) { coder_page_chats(cd_state(c), cd_string(list)); cd_changed(c); } }

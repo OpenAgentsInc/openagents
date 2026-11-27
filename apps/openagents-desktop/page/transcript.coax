@@ -591,6 +591,8 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     if wp_s.count > 0 { s[0].turns[i].agents[j].wt_path_n = cp_out(s[0].turns[i].agents[j].wt_path[..], wp_s); }
     wb_s := cl_str(ar[..], one, "worktree_branch");
     if wb_s.count > 0 { s[0].turns[i].agents[j].wt_branch_n = cp_out(s[0].turns[i].agents[j].wt_branch[..], wb_s); }
+    wh_s := cl_str(ar[..], one, "worktree_orig_head");
+    if wh_s.count > 0 { s[0].turns[i].agents[j].wt_orig_head_n = cp_out(s[0].turns[i].agents[j].wt_orig_head[..], wh_s); }
     at_s := cl_str(ar[..], one, "allowed_tools");
     if at_s.count > 0 { s[0].turns[i].agents[j].allowed_tools_n = cp_out(s[0].turns[i].agents[j].allowed_tools[..], at_s); }
     dt_s := cl_str(ar[..], one, "disallowed_tools");
@@ -720,6 +722,9 @@ cp_agent_finish :: (s: [] CoderPage, i: int, j: int, state: int) {
   cp_calls_end(s, i, j, state != CP_DONE);
   n := s[0].turns[i].agents[j].reply_n; if n > 0 && s[0].pane_open && s[0].pane_turn == i && s[0].pane_agent == j { s[0].live_pane = i * CP_AGENTS + j; } s[0].turns[i].h = 0;
   if was_bg {
+    if s[0].turns[i].agents[j].wt_path_n > 0 {
+      s[0].turns[i].agents[j].wt_cleanup_due = true;
+    }
     st_s := ifx state == CP_DONE then "completed" else ifx state == CP_STOPPED then "killed" else "failed";
     aid_s := ifx s[0].turns[i].agents[j].agent_id_n > 0 then cast(string) s[0].turns[i].agents[j].agent_id[0..<s[0].turns[i].agents[j].agent_id_n] else "bg-agent";
     desc_s := ifx s[0].turns[i].agents[j].desc_n > 0 then cast(string) s[0].turns[i].agents[j].desc[0..<s[0].turns[i].agents[j].desc_n] else "background subagent";
@@ -1413,4 +1418,29 @@ coder_page_stop_agent :: (s: [] CoderPage) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
   j := s[0].stop_agent; s[0].stop_agent = -1;
   return j;
+}
+// Pops the next finished background subagent's isolated worktree metadata for fail-closed host cleanup (#14121).
+// Writes NUL-terminated strings into out_path, out_branch, and out_head; returns true if one was popped.
+coder_page_agent_wt_cleanup_take :: (s: [] CoderPage, out_path: [] u8, out_branch: [] u8, out_head: [] u8) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  for ti: 0..<s[0].nturns {
+    for tj: 0..<s[0].turns[ti].nagents {
+      if !s[0].turns[ti].agents[tj].wt_cleanup_due { continue; }
+      s[0].turns[ti].agents[tj].wt_cleanup_due = false;
+      if out_path.count > 0 {
+        pn := cp_out(out_path[0..<out_path.count - 1], cast(string) s[0].turns[ti].agents[tj].wt_path[0..<s[0].turns[ti].agents[tj].wt_path_n]);
+        out_path[pn] = 0;
+      }
+      if out_branch.count > 0 {
+        bn := cp_out(out_branch[0..<out_branch.count - 1], cast(string) s[0].turns[ti].agents[tj].wt_branch[0..<s[0].turns[ti].agents[tj].wt_branch_n]);
+        out_branch[bn] = 0;
+      }
+      if out_head.count > 0 {
+        hn := cp_out(out_head[0..<out_head.count - 1], cast(string) s[0].turns[ti].agents[tj].wt_orig_head[0..<s[0].turns[ti].agents[tj].wt_orig_head_n]);
+        out_head[hn] = 0;
+      }
+      return true;
+    }
+  }
+  return false;
 }

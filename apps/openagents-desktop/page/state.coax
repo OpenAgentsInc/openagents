@@ -277,6 +277,8 @@ CpAgent :: struct {
   model_ovr: [64] u8; model_ovr_n: int;               // optional model override from Agent tool (#14096)
   wt_path: [256] u8; wt_path_n: int;                  // isolated worktree cwd when isolation=="worktree" (#14096)
   wt_branch: [96] u8; wt_branch_n: int;               // isolated worktree branch name (#14096)
+  wt_orig_head: [64] u8; wt_orig_head_n: int;         // base HEAD commit at isolated worktree creation (#14121)
+  wt_cleanup_due: bool;                               // finished background isolated subagent awaits fail-closed worktree cleanup (#14121)
   allowed_tools: [192] u8; allowed_tools_n: int;      // CSV tool allowlist (#14096)
   disallowed_tools: [192] u8; disallowed_tools_n: int;// CSV tool denylist (#14096)
   task_long_at: int; task_long_n: int;                // full prompt in CoderPage.long_buf when > CP_AGENT_TASK (#14096)

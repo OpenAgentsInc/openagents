@@ -225,9 +225,26 @@ extension CoderWindow {
             // an ended sub-agent's run is kept until the message ends: a reopened Coder reads it again
             if cd_agent_running(page, j) == 0 { r.agents[j] = nil; one.gone = nil; one.line = nil; one.stop(forget: false) }
         }
+        drainSubagentWorktreeCleanups(r, cwd: cwd)
         let n = cd_answer_line(page, &out, Int32(out.count)); r.worker.write(out, count: Int(n))
         checkRunNotifications(r)
         wake()
+    }
+    /// Drains finished background subagents that ran in isolated git worktrees and performs
+    /// fail-closed worktree + ephemeral branch cleanup off the main thread (#14121).
+    private func drainSubagentWorktreeCleanups(_ r: CoderRun, cwd: String) {
+        var pBuf = [CChar](repeating: 0, count: 1024)
+        var bBuf = [CChar](repeating: 0, count: 256)
+        var hBuf = [CChar](repeating: 0, count: 128)
+        while cd_agent_wt_cleanup_next(r.page, &pBuf, Int32(pBuf.count), &bBuf, Int32(bBuf.count), &hBuf, Int32(hBuf.count)) != 0 {
+            let wtPath = String(cString: pBuf)
+            let wtBranch = String(cString: bBuf)
+            let wtHead = String(cString: hBuf)
+            guard !wtPath.isEmpty else { continue }
+            DispatchQueue.global(qos: .utility).async {
+                _ = ChatWorktree.cleanupSubagent(repoCwd: cwd, path: wtPath, branch: wtBranch, origHead: wtHead)
+            }
+        }
     }
     /// Configures a delegated sub-agent worker based on cd_agent_engine (#14053, opt-in gated #14071):
     /// 0 = oa-worker (default), 1 = claudeworker, 2 = agyworker, 3 = codex, 4 = cursor (agyworker ACP).
@@ -1025,6 +1042,7 @@ extension CoderWindow {
             if cd_agent_running(page, j) == 0 { r.agents[j] = nil; one.gone = nil; one.line = nil; one.stop(forget: false) }
             else { one.follow() }
         }
+        drainSubagentWorktreeCleanups(r, cwd: r.folder.path)
     }
     /// True when `name` is an auto-generated internal worktree branch (e.g. `coder/<uuid>`).
     private static func isAutoWorktreeBranch(_ name: String) -> Bool {

@@ -1508,6 +1508,12 @@ static void pump_subagents(DesktopApp *a) {
       a->sub_agent_id[i] = -1;
     }
   }
+  char wt_path[OA_PATH] = {0}, wt_branch[256] = {0}, wt_head[128] = {0};
+  while (cd_agent_wt_cleanup_next(a->page, wt_path, (int)sizeof(wt_path), wt_branch, (int)sizeof(wt_branch), wt_head, (int)sizeof(wt_head))) {
+    if (wt_path[0]) {
+      oa_core_subagent_wt_cleanup(cs(effective_cwd(a)), cs(wt_path), cs(wt_branch), cs(wt_head));
+    }
+  }
 }
 
 static void check_update_from_file(DesktopApp *a, const char *path) {

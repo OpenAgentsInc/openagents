@@ -228,6 +228,10 @@ oa_dc_wt_remove :: (chat: string, path: string, source: string, branch: string, 
   return r.result;
 }
 
+oa_dc_subagent_wt_cleanup :: (repo_cwd: string, wt_path: string, wt_branch: string, orig_head: string) -> int #export_c #effects(all) {
+  return dc_subagent_wt_cleanup(repo_cwd, wt_path, wt_branch, orig_head);
+}
+
 // --- Daemon ---
 
 oa_dc_new_id :: (out: [] u8) -> int #export_c #effects(all) {

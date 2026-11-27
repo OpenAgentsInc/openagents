@@ -128,6 +128,23 @@ struct WorktreeTest {
         bg.wait()
         check(bgMade && bgClean && bgRemoved, "a worktree is made, counted and removed from a dispatch queue")
 
+        // Background subagent fail-closed worktree cleanup (#14121):
+        // preserves dirty/committed worktrees, removes clean ones + ephemeral branch even from nested subdirs.
+        let subDir = repo + "/sub"
+        try? fm.createDirectory(atPath: subDir, withIntermediateDirectories: true)
+        let origHead = ChatWorktree.git(["rev-parse", "HEAD"], in: repo).output
+        let saDirty = root + "/agent-dirty-bg"
+        _ = ChatWorktree.git(["worktree", "add", "-q", "-b", "worktree-agent-dirty-bg", saDirty], in: repo)
+        try? "wip\n".write(toFile: saDirty + "/wip.txt", atomically: true, encoding: .utf8)
+        check(ChatWorktree.cleanupSubagent(repoCwd: subDir, path: saDirty, branch: "worktree-agent-dirty-bg", origHead: origHead) == .kept(changes: -1) && fm.fileExists(atPath: saDirty), "dirty background subagent worktree is kept")
+        _ = sh("git add wip.txt && git commit -q -m 'bg work'", in: saDirty)
+        check(ChatWorktree.cleanupSubagent(repoCwd: subDir, path: saDirty, branch: "worktree-agent-dirty-bg", origHead: origHead) == .kept(changes: -1) && fm.fileExists(atPath: saDirty), "committed background subagent worktree is kept")
+        let saClean = root + "/agent-clean-bg"
+        _ = ChatWorktree.git(["worktree", "add", "-q", "-b", "worktree-agent-clean-bg", saClean], in: repo)
+        check(ChatWorktree.cleanupSubagent(repoCwd: subDir, path: saClean, branch: "worktree-agent-clean-bg", origHead: origHead) == .removed && !fm.fileExists(atPath: saClean), "clean background subagent worktree is removed")
+        check(ChatWorktree.git(["rev-parse", "--verify", "--quiet", "refs/heads/worktree-agent-clean-bg"], in: repo).status != 0, "clean background subagent ephemeral branch is deleted")
+        check(ChatWorktree.cleanupSubagent(repoCwd: subDir, path: saClean, branch: "worktree-agent-clean-bg", origHead: origHead) == .gone, "already-gone background subagent worktree prunes cleanly")
+
         print(failed == 0 ? "worktree checks: ok" : "worktree checks: \(failed) FAILED")
         exit(failed == 0 ? 0 : 1)
     }
