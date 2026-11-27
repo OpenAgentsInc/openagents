@@ -381,7 +381,7 @@ arw_unlink_id :: (body: string, out: [] u8) -> int #export_c #effects(all) {
   at := arw_find(body, 0, end, "\"id\"");
   if at < 0 { return 0; }
   i := arw_find(body, at + 4, end, ":");
-  if i < 0 { return 0; }
+  if i < 0 { return 0; } // mutant: equivalent — arw_find starts at at + 4 >= 4, so i is -1 or >= 4
   i += 1; n := 0;
   while i < end && (body[i] == ' ' || body[i] == '"') { i += 1; }
   while i < end && n < ARW_ID && n < out.count && body[i] >= '0' && body[i] <= '9' { out[n] = body[i]; n += 1; i += 1; }
@@ -407,6 +407,8 @@ arw_event_id :: (event: string, out: [] u8) -> int #export_c #effects(all) {
   #assert cast(string) b[0..<n] == "{\"state\":\"cancelled\",\"asked_ms\":1762900000000,\"ready_ms\":1763159200000,\"cancelled_ms\":1762900500000,\"done_ms\":0,\"now_ms\":1762900600000,\"wait_hours\":72,\"cancelled_via\":\"link\"}";
   n = arw_recovery_write("pending", -1, 2, 0, 0, 3, "", b[..]);
   #assert cast(string) b[0..<n] == "{\"state\":\"pending\",\"asked_ms\":-1,\"ready_ms\":2,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":3,\"wait_hours\":72}";
+  n = arw_recovery_write("cancelled", 0, 0, 0, 0, 0, "x", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"cancelled\",\"asked_ms\":0,\"ready_ms\":0,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":0,\"wait_hours\":72,\"cancelled_via\":\"x\"}";
   n = arw_recovery_lines("pending", 1, 2, 3, b[..]);
   #assert cast(string) b[0..<n] == "state pending\nasked_ms 1\nready_ms 2\nnow_ms 3\n" && arw_recovery_lines("pending", 1, 2, 3, b[0..<n - 1]) == -1;
   n = arw_recovery_lines("none", 0, 0, 0, b[..]);
@@ -450,10 +452,14 @@ arw_event_id :: (event: string, out: [] u8) -> int #export_c #effects(all) {
   #assert cast(string) b[0..<n] == "{\"state\":\"stepped-up\",\"level\":\"L2\"}" && arw_stepped_write("", b[0..<n - 1]) == -1;
   n = arw_stepped_write("abandon ability able", b[..]);
   #assert cast(string) b[0..<n] == "{\"state\":\"stepped-up\",\"level\":\"L2\",\"recovery_code\":\"abandon ability able\"}";
+  n = arw_stepped_write("x", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"stepped-up\",\"level\":\"L2\",\"recovery_code\":\"x\"}";
   n = arw_stepped_lines("", b[..]);
   #assert cast(string) b[0..<n] == "state stepped-up\nlevel L2\n" && arw_stepped_lines("", b[0..<n - 1]) == -1;
   n = arw_stepped_lines("abandon ability able", b[..]);
   #assert cast(string) b[0..<n] == "state stepped-up\nlevel L2\nrecovery_code abandon ability able\n";
+  n = arw_stepped_lines("x", b[..]);
+  #assert cast(string) b[0..<n] == "state stepped-up\nlevel L2\nrecovery_code x\n";
   n = arw_linked_write("7", "79be667e", b[..]);
   #assert cast(string) b[0..<n] == "{\"state\":\"linked\",\"id\":7,\"pubkey\":\"79be667e\"}" && arw_linked_write("7", "79be667e", b[0..<n - 1]) == -1;
   n = arw_linked_write("", "", b[..]);
@@ -510,6 +516,9 @@ arw_event_id :: (event: string, out: [] u8) -> int #export_c #effects(all) {
   // a label with a quote keeps json_esc's form; a piece that does not fit, a piece after one that did not, a value that is no number
   n = arw_ways_key_write(true, "3", "79", "my \"own\"", "5", b[..], 0);
   #assert cast(string) b[0..<n] == "{\"id\":3,\"pubkey\":\"79\",\"label\":\"my \\\"own\\\"\",\"added_ms\":5}";
+  longl: [110] u8; for i: 0..<110 { longl[i] = 'a'; }
+  n = arw_ways_key_write(true, "3", "79", cast(string) longl[..], "5", b[..], 0);
+  #assert n == arw_ways_key_write(true, "3", "79", cast(string) longl[0..<93], "5", b[..], 0) && n == 1 + arw_ways_key_write(true, "3", "79", cast(string) longl[0..<92], "5", b[..], 0);
   #assert arw_ways_key_write(true, "3", "79", "", "5", b[0..<20], 0) == -1 && arw_ways_key_write(true, "3", "79", "", "5", b[..], -1) == -1;
   #assert arw_ways_email_write(true, "1", "a", "5", b[..], 1195) == -1 && arw_ways_keys_write(b[..], 1195) == -1 && arw_ways_passkeys_write(b[..], -1) == -1;
   // an empty value from the database goes out as it came, as %s wrote it
@@ -519,6 +528,8 @@ arw_event_id :: (event: string, out: [] u8) -> int #export_c #effects(all) {
   #assert cast(string) b[0..<n] == ",{\"id\":,\"email\":\"a\",\"added_ms\":}";
   n = arw_ways_tail_write("", "", "", b[..], 0);
   #assert cast(string) b[0..<n] == "],\"methods\":,\"recovery\":,\"counts\":{}}";
+  n = arw_ways_tail_write("[]", "{}", "0", b[..], 0);
+  #assert cast(string) b[0..<n] == "],\"methods\":[],\"recovery\":{},\"counts\":0}";
   m := arw_ways_head_lines("acct_1", 1, "email", 0, false, l[..]);
   #assert cast(string) l[0..<m] == "account acct_1\nlevel L1\nvia email\nl2_age_ms 0\nlimited 0\n" && arw_ways_head_lines("acct_1", 1, "email", 0, false, l[0..<m - 1]) == -1;
   m = arw_ways_email_line("1", "a•••@example.com", l[..], m);
@@ -560,6 +571,16 @@ arw_event_id :: (event: string, out: [] u8) -> int #export_c #effects(all) {
   for i: 0..<300 { long[i] = '"'; }
   n = arw_mail_write("a", cast(string) long[..], "x", 1, 1, "t", b[..]);
   #assert n == 194 + 88;
+  // control byte >= 0x10 tests high nibble shift (c >> 4) and k += 6 budget accounting (33 * 6 = 198 bytes fit in cap 200)
+  ctrl: [40] u8; for i: 0..<40 { ctrl[i] = 31; }
+  n = arw_mail_write("a", cast(string) ctrl[..], "x", 1, 1, "t", b[..]);
+  #assert n == 198 + 88 && cast(string) b[42..<48] == "\\u001f";
+  // address (cap 600 -> 593 plain bytes) and body text (cap 2400 -> 2393 plain bytes) cuts
+  long2: [2500] u8; for i: 0..<2500 { long2[i] = 'm'; }
+  n = arw_mail_write(cast(string) long2[0..<610], "s", "x", 1, 1, "t", b[..]);
+  #assert n == arw_mail_write(cast(string) long2[0..<593], "s", "x", 1, 1, "t", b[..]) && n == 1 + arw_mail_write(cast(string) long2[0..<592], "s", "x", 1, 1, "t", b[..]);
+  n = arw_mail_write("a", "s", "x", 1, 1, cast(string) long2[0..<2410], b[..]);
+  #assert n == arw_mail_write("a", "s", "x", 1, 1, cast(string) long2[0..<2393], b[..]) && n == 1 + arw_mail_write("a", "s", "x", 1, 1, cast(string) long2[0..<2392], b[..]);
   n = arw_sent_write(1, 2, 0, 0, b[..]);
   #assert cast(string) b[0..<n] == "{\"email\":1,\"nostr\":2,\"push\":0,\"failed\":0}" && arw_sent_write(1, 2, 0, 0, b[0..<n - 1]) == -1;
   n = arw_notice_detail_write("link.nostr", 0, 0, 3, 11, b[..]);
@@ -570,12 +591,16 @@ arw_event_id :: (event: string, out: [] u8) -> int #export_c #effects(all) {
   #assert cast(string) b[0..<n] == "{\"why\":\"another account's key\"}";
   n = arw_via_write("nostr", "", b[..]);
   #assert cast(string) b[0..<n] == "{\"via\":\"nostr\"}" && arw_via_write("nostr", "", b[0..<n - 1]) == -1;
+  n = arw_via_write("nostr", "x", b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"nostr\",\"why\":\"x\"}";
   n = arw_via_write("recovery_code", "wrong code", b[..]);
   #assert cast(string) b[0..<n] == "{\"via\":\"recovery_code\",\"why\":\"wrong code\"}";
   n = arw_via_write("nostr", "not this account's key", b[..]);
   #assert cast(string) b[0..<n] == "{\"via\":\"nostr\",\"why\":\"not this account's key\"}";
   n = arw_kind_write("nostr", "", b[..]);
   #assert cast(string) b[0..<n] == "{\"kind\":\"nostr\"}" && arw_kind_write("nostr", "", b[0..<n - 1]) == -1;
+  n = arw_kind_write("nostr", "x", b[..]);
+  #assert cast(string) b[0..<n] == "{\"kind\":\"nostr\",\"why\":\"x\"}";
   n = arw_kind_write("nostr", "another account's", b[..]);
   #assert cast(string) b[0..<n] == "{\"kind\":\"nostr\",\"why\":\"another account's\"}";
   n = arw_unlinked_write("passkey", 2, b[..]);
@@ -621,16 +646,24 @@ arw_event_id :: (event: string, out: [] u8) -> int #export_c #effects(all) {
   #assert arw_unlink_id("{\"kind\":\"nostr\"}", o[..]) == 0 && arw_unlink_id("{\"id\":-1}", o[..]) == 0 && arw_unlink_id("{\"id\":\"x1\"}", o[..]) == 0;
   #assert arw_unlink_id("{\"id\":null}", o[..]) == 0 && arw_unlink_id("{\"id\":true}", o[..]) == 0 && arw_unlink_id("{\"id\":[1]}", o[..]) == 0 && arw_unlink_id("{\"id\":\"\"}", o[..]) == 0;
   #assert arw_unlink_id("", o[..]) == 0 && arw_unlink_id("\"id\"", o[..]) == 0 && arw_unlink_id("\"id\":", o[..]) == 0 && arw_unlink_id("{id:1}", o[..]) == 0 && arw_unlink_id("{\"id\":\t1}", o[..]) == 0;
-  // a 0 byte ends the text, as it ended the C string
+  // a 0 byte ends the text, as it ended the C string; exact end match, out cap < ARW_ID, ':' after '9'
+  #assert arw_find("ab", 0, 2, "b") == 1 && arw_find("ab", 0, 1, "b") == -1;
+  #assert arw_unlink_id("{\"id\":12345}", o[0..<3]) == 3 && cast(string) o[0..<3] == "123";
+  #assert arw_unlink_id("{\"id\":12:3}", o[..]) == 2 && cast(string) o[0..<2] == "12";
   z: [12] u8; zt := "{\"id\":4"; for i: 0..<zt.count { z[i] = zt[i]; } z[7] = 0; z[8] = '5';
   n = arw_unlink_id(cast(string) z[0..<9], o[..]);
   #assert cast(string) o[0..<n] == "4";
   z[2] = 0;
   #assert arw_unlink_id(cast(string) z[0..<9], o[..]) == 0;
+  z[0] = 0; z[2] = 'i';
+  #assert arw_unlink_id(cast(string) z[0..<9], o[..]) == 0;
 }
 #test "a signed event's id: the 64 bytes after the first \"id\":\", as the old read took them" {
   id: [64] u8; e: [300] u8; eo: [1] Jo;
   hex := "4a5b6c7d8e9f00112233445566778899aabbccddeeff00112233445566778899";
+  jo_start(eo[..], e[..]);
+  jo_put(eo[..], "\"id\":\""); jo_put(eo[..], hex);
+  #assert arw_event_id(jo_text(eo[..]), id[..]) == 64 && cast(string) id[..] == hex;
   jo_start(eo[..], e[..]);
   jo_put(eo[..], "{\"id\":\""); jo_put(eo[..], hex); jo_put(eo[..], "\",\"pubkey\":\"79be\",\"created_at\":1762900000,\"kind\":1059,\"tags\":[[\"p\",\"c604\"]],\"content\":\"AgB\",\"sig\":\"00\"}");
   #assert arw_event_id(jo_text(eo[..]), id[..]) == 64 && cast(string) id[..] == hex && arw_event_id(jo_text(eo[..]), id[0..<63]) == 0;

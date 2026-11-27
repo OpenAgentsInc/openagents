@@ -48,7 +48,7 @@
 //   coax/bin/coax test coax/web/api/auth-wire.coax --library
 #load "api-wire.coax";
 
-auw_cut :: (s: string, n: int) -> string #effects(all) { return ifx s.count > n then s[0..<n] else s; }
+auw_cut :: (s: string, n: int) -> string #effects(all) { return ifx s.count > n then s[0..<n] else s; } // mutant: equivalent — when s.count == n, s[0..<n] equals s
 auw_bit :: (b: bool) -> string #effects(all) { return ifx b then "1" else "0"; }
 auw_bool :: (b: bool) -> string #effects(all) { return ifx b then "true" else "false"; }
 
@@ -198,7 +198,7 @@ auw_elsewhere_lines :: (code: string, out: [] u8) -> int #export_c #effects(all)
 auw_challenge_write :: (challenge: string, origin: string, out: [] u8) -> int #export_c #effects(all) {
   inner: [256] u8; i: [1] Jo; aw_at(i[..], inner[..], 0);
   jo_put(i[..], "{\"challenge\":"); jo_quoted(i[..], challenge); jo_put(i[..], "}");
-  if aw_len(i[..]) < 0 { return -1; }
+  if aw_len(i[..]) < 0 { return -1; } // mutant: equivalent — {"challenge":""} is 16 bytes, so aw_len is -1 or >= 16, never 0
   o: [1] Jo; aw_at(o[..], out, 0);
   jo_put(o[..], "{\"challenge\":"); jo_quoted(o[..], challenge);
   jo_put(o[..], ",\"url\":\""); jo_escape_bytes(o[..], origin); jo_put(o[..], "/api/auth/nostr\",\"method\":\"POST\",\"body\":");
@@ -369,13 +369,13 @@ auw_find :: (hay: string, from: int, pat: string) -> int #effects(all) {
 auw_find_key :: (body: string, from: int, key: string) -> int #effects(all) {
   if from < 0 { return -1; }
   i := from + 1;   // the key's own first byte: one past its opening quote
-  while i >= 0 {
+  while i >= 0 { // mutant: equivalent — from >= 0 so i starts at >= 1 and only grows after line 374
     i = auw_find(body, i, key);
-    if i < 0 { return -1; }
-    if i > 0 && body[i - 1] == '"' && i + key.count < body.count && body[i + key.count] == '"' { return i - 1; }
+    if i < 0 { return -1; } // mutant: equivalent — auw_find starts at i >= 1 so returns -1 or >= 1
+    if i > 0 && body[i - 1] == '"' && i + key.count < body.count && body[i + key.count] == '"' { return i - 1; } // mutant: equivalent — i starts at from + 1 >= 1 and never decreases, so i > 0 and i >= 0 are identical
     i += 1;
   }
-  return -1;
+  return -1; // mutant: equivalent — unreachable because every loop exit returns on line 374 or 375
 }
 auw_space :: (c: u8) -> bool #effects(all) { return c == ' ' || c == 9 || c == 10 || c == 13; }
 // A body's string member as auth.c has always read it: the first "KEY" followed by a colon,
@@ -387,7 +387,7 @@ auw_scan :: (body: string, key: string, out: [] u8) -> int #effects(all) {
   end := body.count; cap := out.count;
   if cap < 1 { return -2; }
   p := 0;
-  while p < end {
+  while p < end { // mutant: equivalent — when p == end, auw_find_key returns -1 and breaks immediately
     p = auw_find_key(body, p, key);
     if p < 0 { break; }
     v := p + key.count + 2;
@@ -494,6 +494,8 @@ auw_me_sealed_len :: (emails: string, at: int) -> int #export_c #effects(all) {
           && auw_login_detail_write("email", "web", true, false, "https://gamebuilder.org", b[0..<n - 1]) == -1;
   n = auw_login_detail_write("nostr", "app", true, true, "", b[..]);
   #assert cast(string) b[0..<n] == "{\"via\":\"nostr\",\"client\":\"app\",\"new\":true,\"device\":true}";
+  n = auw_login_detail_write("email", "web", false, false, "x", b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"email\",\"client\":\"web\",\"new\":false,\"device\":false,\"site\":\"x\"}";
 }
 
 #test "logged in: an app's pair and a browser's, the player null or an object, more members or none" {
@@ -528,10 +530,14 @@ auw_me_sealed_len :: (emails: string, at: int) -> int #export_c #effects(all) {
   #assert cast(string) b[0..<n] == "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5}" && auw_sent_write("", b[0..<n - 1]) == -1;
   n = auw_sent_write("ab12", b[..]);
   #assert cast(string) b[0..<n] == "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5,\"pending\":\"ab12\"}";
+  n = auw_sent_write("p", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5,\"pending\":\"p\"}";
   n = auw_sent_lines("", b[..]);
   #assert cast(string) b[0..<n] == "state sent\nexpires_in 600\ntries 5\n";
   n = auw_sent_lines("ab12", b[..]);
   #assert cast(string) b[0..<n] == "state sent\nexpires_in 600\ntries 5\npending ab12\n" && auw_sent_lines("ab12", b[0..<n - 1]) == -1;
+  n = auw_sent_lines("p", b[..]);
+  #assert cast(string) b[0..<n] == "state sent\nexpires_in 600\ntries 5\npending p\n";
   n = auw_state_write("linked", b[..]);
   #assert cast(string) b[0..<n] == "{\"state\":\"linked\"}" && auw_state_write("linked", b[0..<n - 1]) == -1;
   n = auw_state_write("logged-out", b[..]);
@@ -546,6 +552,8 @@ auw_me_sealed_len :: (emails: string, at: int) -> int #export_c #effects(all) {
   #assert cast(string) b[0..<n] == "{\"state\":\"elsewhere\",\"code\":\"000000\",\"error\":\"Type this code in the window where you asked: 000000\"}";
   n = auw_elsewhere_lines("482913", b[..]);
   #assert cast(string) b[0..<n] == "state elsewhere\ncode 482913\n" && auw_elsewhere_lines("482913", b[0..<n - 1]) == -1;
+  n = auw_elsewhere_lines("4829137", b[..]);
+  #assert cast(string) b[0..<n] == "state elsewhere\ncode 482913\n";
 }
 
 #test "challenges, the phone, a new pair, logging out everywhere, the sessions" {
@@ -553,6 +561,8 @@ auw_me_sealed_len :: (emails: string, at: int) -> int #export_c #effects(all) {
   n := auw_challenge_write("c0ffee", "https://openagents.com", b[..]);
   #assert cast(string) b[0..<n] == "{\"challenge\":\"c0ffee\",\"url\":\"https://openagents.com/api/auth/nostr\",\"method\":\"POST\",\"body\":\"{\\\"challenge\\\":\\\"c0ffee\\\"}\",\"expires_in\":300}";
   #assert auw_challenge_write("c0ffee", "https://openagents.com", b[0..<n - 1]) == -1;
+  longc: [250] u8; for i: 0..<250 { longc[i] = 'c'; }
+  #assert auw_challenge_write(cast(string) longc[..], "https://openagents.com", b[..]) == -1;
   n = auw_challenge_lines("c0ffee", "https://openagents.com", b[..]);
   #assert cast(string) b[0..<n] == "challenge c0ffee\nurl https://openagents.com/api/auth/nostr\nexpires_in 300\n" && auw_challenge_lines("c0ffee", "o", b[0..<20]) == -1;
   n = auw_phone_write("c0ffee", "beef", "http://localhost:8080", b[..]);
@@ -589,6 +599,8 @@ auw_me_sealed_len :: (emails: string, at: int) -> int #export_c #effects(all) {
   n = auw_me_email_write("•••", false, b[..], n);
   n = auw_me_tail_write("ada@example.com", "[{\"label\": \"app\", \"pubkey\": \"ab\"}]", b[..], n);
   #assert cast(string) b[0..<n] == "{\"logged_in\":true,\"account\":\"acct_1\",\"kind\":\"\",\"level\":\"L1\",\"via\":\"email\",\"session\":\"\",\"admin\":false,\"emails\":[\"a•••@example.com\",\"•••\"],\"primary\":\"ada@example.com\",\"keys\":[{\"label\": \"app\", \"pubkey\": \"ab\"}]}";
+  n = auw_me_tail_write("a", "[]", b[..], 0);
+  #assert cast(string) b[0..<n] == "],\"primary\":\"a\",\"keys\":[]}";
   #assert auw_me_head_write("acct_1", "person", 2, "nostr", "s1", true, b[0..<40]) == -1 && auw_me_email_write("x", true, b[..], -1) == -1 && auw_me_tail_write("", "[]", b[..], -1) == -1 && auw_me_email_write("x", true, b[0..<12], 10) == -1 && auw_me_tail_write("", "[]", b[0..<12], 10) == -1;
   n = auw_me_head_lines("acct_1", "person", 2, "nostr", true, b[..]);
   n = auw_me_email_lines("a•••@example.com", b[..], n);
@@ -663,10 +675,17 @@ auw_test_left :: (out: [] u8) -> string #effects(all) {
   #assert auw_ask_refresh_token("{\"refresh_token\":\"oa_rt_1\"}", o[..]) == 7 && auw_test_left(o[..]) == "oa_rt_1";
   #assert auw_body_str("{\"name\":\"n1\"}", "name", o[..]) == 2 && auw_test_left(o[..]) == "n1" && auw_body_str("{\"name\":\"n1\"}", "nam", o[..]) == -1;
   #assert auw_ask_t("{\"t\":\"ab\"}", o[0..<0]) == -2;
+  // boundary cases: cap 1 fits empty value, negative from, partial quotes/end-of-body, 1-space colon, trailing escape, adjacent empty-key matches
+  #assert auw_ask_t("{\"t\":\"\"}", o[0..<1]) == 0 && o[0] == 0;
+  #assert auw_find_key("{\"a\":1}", -1, "a") == -1 && auw_find_key("{\"clients\":\"app\"}", 0, "client") == -1 && auw_find_key("a\"\":\"ok\"", 0, "") == 1;
+  #assert auw_ask_client("{client\":\"app\"}", o[..]) == -1 && auw_ask_client("{\"client", o[..]) == -1 && auw_ask_client("{\"clientX:\"app\"}", o[..]) == -1;
+  #assert auw_ask_t("{\"t\"", o[..]) == -1 && auw_ask_t("{\"t\" ", o[..]) == -1 && auw_ask_t("{\"t\" :\"a\"}", o[..]) == 1 && auw_test_left(o[..]) == "a";
+  #assert auw_ask_t("{\"t\":\"\\\"", o[..]) == -2 && auw_body_str("\"\"\":\"ok\"", "", o[..]) == 2 && auw_test_left(o[..]) == "ok";
 }
 
 #test "a body's true member, and where auth.me_of's sealed emails and keys stand" {
   #assert auw_ask_link("{\"link\":true}") && auw_ask_link("{\"email\":\"a\", \"link\" : true}") && auw_ask_link("{\"link\":::  true") && auw_ask_link("{\"link\":trueish}");
+  #assert auw_ask_link("\"link\":true") && !auw_ask_link("\"link\"Xtrue");
   #assert !auw_ask_link("{\"link\":false}") && !auw_ask_link("{\"link\":\"true\"}") && !auw_ask_link("{\"link\":\ttrue}") && !auw_ask_link("{}") && !auw_ask_link("") && !auw_ask_link("{\"link\":tru") && !auw_ask_link("{\"link\"");
   // the first "link" alone is looked at
   #assert !auw_ask_link("{\"x\":\"link\",\"link\":true}") && auw_ask_merge("{\"merge\":true}") && !auw_ask_merge("{\"link\":true}") && auw_ask_agents("{\"agents\": true}") && !auw_ask_agents("{\"agent\": true}");
@@ -676,6 +695,7 @@ auw_test_left :: (out: [] u8) -> string #effects(all) {
   c := auw_me_sealed_at(emails, a + 1);
   #assert c == 51 && auw_me_sealed_len(emails, c) == 4 && emails[c..<c + 4] == "02cd" && auw_me_sealed_at(emails, c + 1) == -1;
   #assert auw_me_sealed_at("[]", 0) == -1 && auw_me_sealed_at("", 0) == -1 && auw_me_sealed_at(emails, 500) == -1 && auw_me_sealed_at(emails, -1) == -1;
+  #assert auw_me_sealed_at("\"sealed\": \"ab\"", 0) == 11 && auw_me_sealed_len("\"", 0) == 0;
   #assert auw_me_sealed_len("\"sealed\": \"01ab", 11) == -1 && auw_me_sealed_len("\"sealed\": \"\"", 11) == 0;
   keys := "[{\"label\": \"app\", \"pubkey\": \"ab12\"}]";
   k := auw_me_pubkey_at(keys, 0);

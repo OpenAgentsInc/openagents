@@ -66,8 +66,8 @@ x402_b64_decode :: (in: string, out: [] u8) -> int {
   while i < in.count {
     a := x402_b64_value(in[i]); b := x402_b64_value(in[i + 1]);
     pad3 := in[i + 2] == '='; pad4 := in[i + 3] == '=';
-    c := ifx pad3 then 0 else x402_b64_value(in[i + 2]);
-    d := ifx pad4 then 0 else x402_b64_value(in[i + 3]);
+    c := ifx pad3 then 0 else x402_b64_value(in[i + 2]); // mutant: equivalent — pad3 sets k=1, so bits 6..11 of v are never written
+    d := ifx pad4 then 0 else x402_b64_value(in[i + 3]); // mutant: equivalent — pad4 sets k<=2, so bits 0..5 of v are never written
     last := i + 4 == in.count;
     if a < 0 || b < 0 || c < 0 || d < 0 || (pad3 && !pad4) || ((pad3 || pad4) && !last) { return -1; }
     v := (a << 18) | (b << 12) | (c << 6) | d;
@@ -83,7 +83,7 @@ x402_b64_decode :: (in: string, out: [] u8) -> int {
 
 // A decimal msat string: its value, or -1 (empty, a sign, a leading zero, not digits, too large).
 x402_msat :: (s: string) -> int {
-  if s.count == 0 || s.count > 19 || s[0] == '0' { return -1; }
+  if s.count == 0 || s.count > 19 || s[0] == '0' { return -1; } // mutant: equivalent — any 20-digit positive number exceeds X402_MAX_MSAT on line 91
   v := 0;
   for c: s {
     if c < '0' || c > '9' { return -1; }
@@ -115,32 +115,32 @@ x402_entry :: (j: [] Json, o: [] X402Offer) -> string {
   while true {
     t := json_next(j);
     if t == JSON_OBJECT_END { break; }
-    if t != JSON_STRING || !j[0].key { return "the terms are not JSON"; }
+    if t != JSON_STRING || !j[0].key { return "the terms are not JSON"; } // mutant: equivalent — in object-key state json_next returns (JSON_STRING, key=true) or (JSON_ERROR, key=false)
     k := json_text(j);
     t = json_next(j);
-    if k == "scheme" { n := x402_take(j, v[..]); scheme_ok = n > 0 && cast(string) v[0..<n] == "exact"; }
-    else if k == "network" { n := x402_take(j, v[..]); network_ok = n > 0 && cast(string) v[0..<n] == X402_MAINNET; }
-    else if k == "asset" { n := x402_take(j, v[..]); asset_ok = n > 0 && cast(string) v[0..<n] == "BTC"; }
-    else if k == "amount" { n := x402_take(j, v[..]); o[0].msat = ifx n > 0 then x402_msat(cast(string) v[0..<n]) else -1; }
+    if k == "scheme" { n := x402_take(j, v[..]); scheme_ok = n > 0 && cast(string) v[0..<n] == "exact"; } // mutant: equivalent — "exact" has length 5, so n>=0 and n>1 yield the same result
+    else if k == "network" { n := x402_take(j, v[..]); network_ok = n > 0 && cast(string) v[0..<n] == X402_MAINNET; } // mutant: equivalent — X402_MAINNET has length 38, so n>=0 and n>1 yield the same result
+    else if k == "asset" { n := x402_take(j, v[..]); asset_ok = n > 0 && cast(string) v[0..<n] == "BTC"; } // mutant: equivalent — "BTC" has length 3, so n>=0 and n>1 yield the same result
+    else if k == "amount" { n := x402_take(j, v[..]); o[0].msat = ifx n > 0 then x402_msat(cast(string) v[0..<n]) else -1; } // mutant: equivalent — x402_msat("") returns -1, so n>=0 yields the same value
     else if k == "maxTimeoutSeconds" { if t != JSON_NUMBER { return "maxTimeoutSeconds is not a number"; } x := json_int(json_text(j)); o[0].timeout_s = ifx x.ok then x.value else 0; }
     else if k == "extra" {
       if t != JSON_OBJECT { return "extra is not an object"; }
       while true {
         u := json_next(j);
         if u == JSON_OBJECT_END { break; }
-        if u != JSON_STRING || !j[0].key { return "the terms are not JSON"; }
+        if u != JSON_STRING || !j[0].key { return "the terms are not JSON"; } // mutant: equivalent — in object-key state json_next returns (JSON_STRING, key=true) or (JSON_ERROR, key=false)
         e := json_text(j);
         u = json_next(j);
-        if e == "invoice" { n := x402_take(j, o[0].invoice[..]); o[0].ni = ifx n > 0 then n else 0; }
+        if e == "invoice" { n := x402_take(j, o[0].invoice[..]); o[0].ni = ifx n > 0 then n else 0; } // mutant: equivalent — when n==0 both branches yield 0
         else if e == "paymentHash" { n := x402_take(j, v[..]); if n == 64 { for i: 0..<64 { o[0].hash[i] = v[i]; } o[0].nh = 64; } }
-        else if e == "receiverProfile" { n := x402_take(j, v[..]); profile_ok = n > 0 && cast(string) v[0..<n] == X402_SPARK_PROFILE; }
-        else if e == "method" { n := x402_take(j, v[..]); method_ok = n > 0 && cast(string) v[0..<n] == "bolt11"; }
-        else if e == "paymentFlow" { n := x402_take(j, v[..]); flow_ok = n > 0 && cast(string) v[0..<n] == "upfront"; }
+        else if e == "receiverProfile" { n := x402_take(j, v[..]); profile_ok = n > 0 && cast(string) v[0..<n] == X402_SPARK_PROFILE; } // mutant: equivalent — X402_SPARK_PROFILE has length 27, so n>=0 and n>1 yield the same result
+        else if e == "method" { n := x402_take(j, v[..]); method_ok = n > 0 && cast(string) v[0..<n] == "bolt11"; } // mutant: equivalent — "bolt11" has length 6, so n>=0 and n>1 yield the same result
+        else if e == "paymentFlow" { n := x402_take(j, v[..]); flow_ok = n > 0 && cast(string) v[0..<n] == "upfront"; } // mutant: equivalent — "upfront" has length 7, so n>=0 and n>1 yield the same result
         else if !json_skip(j) { return "the terms are not JSON"; }
       }
     }
     else if !json_skip(j) { return "the terms are not JSON"; }
-    if j[0].tok == JSON_ERROR { return "the terms are not JSON"; }
+    if j[0].tok == JSON_ERROR { return "the terms are not JSON"; } // mutant: equivalent — inside an object tok is never JSON_END, and on JSON_ERROR line 116+118 returns the same refusal
   }
   end := j[0].to;
   if !scheme_ok { return "not the exact scheme"; }
@@ -148,11 +148,11 @@ x402_entry :: (j: [] Json, o: [] X402Offer) -> string {
   if !asset_ok || !method_ok { return "not a bolt11 payment in BTC"; }
   if !flow_ok { return "not an upfront payment"; }
   if !profile_ok { return "not a receiver profile this client takes"; }
-  if o[0].msat <= 0 { return "the amount is not a msat string"; }
+  if o[0].msat <= 0 { return "the amount is not a msat string"; } // mutant: equivalent — o[0].msat is initialized to -1 and x402_msat returns -1 or >= 1, never 0
   inv := cast(string) o[0].invoice[0..<o[0].ni];
   if o[0].ni < 8 || inv[0..<4] != "lnbc" { return "no mainnet invoice"; }
   if o[0].nh != 64 || !x402_is_hex64(cast(string) o[0].hash[0..<64]) { return "no payment hash"; }
-  if end - start > o[0].accepted.count { return "the terms are too long"; }
+  if end - start > o[0].accepted.count { return "the terms are too long"; } // mutant: equivalent — accepted is a fixed [4096] u8 array so .count is compile-time constant 4096 regardless of index
   for i: start..<end { o[0].accepted[i - start] = j[0].text[i]; }
   o[0].na = end - start;
   return "";
@@ -168,20 +168,20 @@ x402_read_required :: (header: string, o: [] X402Offer, scratch: [] u8) -> strin
   while b > a && header[b - 1] <= 32 { b -= 1; }
   if b > a && header[a] != '{' {
     n := x402_b64_decode(header[a..<b], scratch);
-    if n < 0 { return "PAYMENT-REQUIRED is not base64"; }
+    if n < 0 { return "PAYMENT-REQUIRED is not base64"; } // mutant: equivalent — b > a so valid base64 decodes >= 1 byte; n is -1 or >= 1
     text = cast(string) scratch[0..<n];
   } else { text = header[a..<b]; }
   j: [1] Json;
   json_start(j[..], text);
   if json_next(j[..]) != JSON_OBJECT { return "PAYMENT-REQUIRED is not a JSON object"; }
-  version := 0; got := false;
+  version := 0; got := false; // mutant: equivalent — version is only compared against 2 on line 200
   while true {
     t := json_next(j[..]);
     if t == JSON_OBJECT_END { break; }
-    if t != JSON_STRING || !j[0].key { return "PAYMENT-REQUIRED is not JSON"; }
+    if t != JSON_STRING || !j[0].key { return "PAYMENT-REQUIRED is not JSON"; } // mutant: equivalent — in object-key state json_next returns (JSON_STRING, key=true) or (JSON_ERROR, key=false)
     k := json_text(j[..]);
     t = json_next(j[..]);
-    if k == "x402Version" { x := json_int(json_text(j[..])); version = ifx t == JSON_NUMBER && x.ok then x.value else 0; }
+    if k == "x402Version" { x := json_int(json_text(j[..])); version = ifx t == JSON_NUMBER && x.ok then x.value else 0; } // mutant: equivalent — version is only compared against 2 on line 200
     else if k == "accepts" {
       if t != JSON_ARRAY { return "accepts is not a list"; }
       while true {
@@ -190,7 +190,7 @@ x402_read_required :: (header: string, o: [] X402Offer, scratch: [] u8) -> strin
         if u != JSON_OBJECT { return "an accepts entry is not an object"; }
         if got { if !json_skip(j[..]) { return "PAYMENT-REQUIRED is not JSON"; } continue; }   // one option per challenge: the first
         why := x402_entry(j[..], o);
-        if why.count > 0 { return why; }
+        if why.count > 0 { return why; } // mutant: equivalent — every non-empty refusal from x402_entry has length >= 15
         got = true;
       }
     }
@@ -213,16 +213,16 @@ x402_signature :: (o: [] X402Offer, preimage: string, out: [] u8) -> int {
   n = json_raw(j[..], n, cast(string) o[0].accepted[0..<o[0].na]);
   n = json_raw(j[..], n, ",\"payload\":{\"paymentHash\":");
   n = json_write_string(j[..], n, cast(string) o[0].hash[0..<64]);
-  if preimage.count > 0 { n = json_raw(j[..], n, ",\"preimage\":"); n = json_write_string(j[..], n, preimage); }
+  if preimage.count > 0 { n = json_raw(j[..], n, ",\"preimage\":"); n = json_write_string(j[..], n, preimage); } // mutant: equivalent — line 210 requires preimage.count == 0 or 64
   n = json_raw(j[..], n, "}}");
-  if n < 0 { return -1; }
+  if n < 0 { return -1; } // mutant: equivalent — accepted<=4096 and fixed fields total <=4616 inside 5000-byte j, so n >= 123
   return x402_b64_encode(cast(string) j[0..<n], out);
 }
 
 // A PAYMENT-RESPONSE: whether it says success for o's payment hash.
 x402_read_response :: (header: string, o: [] X402Offer, scratch: [] u8) -> bool {
   n := x402_b64_decode(header, scratch);
-  if n < 0 { return false; }
+  if n < 0 { return false; } // mutant: equivalent — n==0 or n==1 cannot form a JSON object so line 228 returns false
   j: [1] Json;
   json_start(j[..], cast(string) scratch[0..<n]);
   if json_next(j[..]) != JSON_OBJECT { return false; }
@@ -231,7 +231,7 @@ x402_read_response :: (header: string, o: [] X402Offer, scratch: [] u8) -> bool 
   while true {
     t := json_next(j[..]);
     if t == JSON_OBJECT_END { break; }
-    if t != JSON_STRING || !j[0].key { return false; }
+    if t != JSON_STRING || !j[0].key { return false; } // mutant: equivalent — in object-key state json_next returns (JSON_STRING, key=true) or (JSON_ERROR, key=false)
     k := json_text(j[..]);
     t = json_next(j[..]);
     if k == "success" { ok = t == JSON_TRUE; }
@@ -277,17 +277,32 @@ x402_test_swap :: (from: string, to: string, out: [] u8) -> string {
     #assert m == plain[i].count && cast(string) d[0..<m] == plain[i];
   }
   d: [16] u8;
-  bad := [7] string.["Zg", "Zg=", "Z=g=", "Zg==Zg==", "Zm9v!A==", "-_==", "Zm9vYmFy\n"];
+  bad := [12] string.["Zg", "Zg=", "Z=g=", "Zg==Zg==", "Zm8=Zg==", "Zm9v!A==", "-_==", "Zm9vYmFy\n", "[AAA", "{AAA", ":AAA", ",AAA"];
   for s: bad { #assert x402_b64_decode(s, d[..]) == -1; }
-  e: [3] u8;
-  #assert x402_b64_encode("f", e[..]) == -1 && x402_b64_decode("Zm9v", d[0..<2]) == -1;
+  // alphabet edges ('A'=0, '+'=62, '/'=63) and exact buffer fits for encode and decode
+  e: [16] u8;
+  raw3 := [3] u8.[0x03, 0xef, 0xc0];
+  #assert x402_b64_encode(cast(string) raw3[..], e[0..<4]) == 4 && cast(string) e[0..<4] == "A+/A";
+  #assert x402_b64_decode("A+/A", d[0..<3]) == 3 && d[0] == 0x03 && d[1] == 0xef && d[2] == 0xc0;
+  #assert x402_b64_decode("AAAA", d[0..<3]) == 3 && d[0] == 0 && d[1] == 0 && d[2] == 0;
+  #assert x402_b64_encode("f", e[0..<3]) == -1 && x402_b64_encode("f", e[0..<4]) == 4 && x402_b64_encode("foo", e[0..<4]) == 4 && x402_b64_encode("foob", e[0..<7]) == -1;
+  #assert x402_b64_decode("Zm9v", d[0..<2]) == -1 && x402_b64_decode("Zm9v", d[0..<3]) == 3 && x402_b64_decode("Zg==", d[0..<1]) == 1 && x402_b64_decode("Zm8=", d[0..<2]) == 2;
 }
 
 #test "msat strings: positive decimals only" {
-  #assert x402_msat("1000") == 1000 && x402_msat("50000") == 50000 && x402_msat("1") == 1;
-  #assert x402_msat("") == -1 && x402_msat("0") == -1 && x402_msat("050") == -1 && x402_msat("-5") == -1;
+  #assert x402_msat("1000") == 1000 && x402_msat("50000") == 50000 && x402_msat("1") == 1 && x402_msat("9") == 9;
+  #assert x402_msat("") == -1 && x402_msat("0") == -1 && x402_msat("050") == -1 && x402_msat("-5") == -1 && x402_msat("1:") == -1;
   #assert x402_msat("5.0") == -1 && x402_msat("1e3") == -1 && x402_msat("99999999999999999999") == -1;
   #assert x402_msat("2100000000000000000") == X402_MAX_MSAT && x402_msat("2100000000000000001") == -1;
+  // hex64 character range boundaries ('/', ':', '`', 'g') and x402_take non-string refusal
+  h: [64] u8; for i: 0..<64 { h[i] = '0'; }
+  #assert x402_is_hex64(cast(string) h[..]);
+  h[0] = '/'; #assert !x402_is_hex64(cast(string) h[..]);
+  h[0] = ':'; #assert !x402_is_hex64(cast(string) h[..]);
+  h[0] = '`'; #assert !x402_is_hex64(cast(string) h[..]);
+  h[0] = 'g'; #assert !x402_is_hex64(cast(string) h[..]);
+  jp: [1] Json; json_start(jp[..], "5"); _ = json_next(jp[..]);
+  #assert x402_take(jp[..], h[..]) == -1;
 }
 
 #test "a challenge: the terms, the invoice and hash read; the accepted entry kept byte for byte" {
@@ -301,21 +316,66 @@ x402_test_swap :: (from: string, to: string, out: [] u8) -> string {
   n := x402_b64_encode(req, e[..]);
   o2: [1] X402Offer;
   #assert x402_read_required(cast(string) e[0..<n], o2[..], s[..]).count == 0 && o2[0].msat == 50000;   // the header form
+  // leading/trailing single space on base64, control byte before JSON, omitted method/timeout, 1 msat, 8-byte invoice, float timeout, second accepts entry, exact 4096-byte terms
+  sp: [9004] u8; sp[0] = ' '; for i: 0..<n { sp[i + 1] = e[i]; } sp[n + 1] = ' ';
+  #assert x402_read_required(cast(string) sp[0..<n + 2], o2[..], s[..]).count == 0 && o2[0].msat == 50000;
+  vt: [6004] u8; vt[0] = 11; for i: 0..<req.count { vt[i + 1] = req[i]; }
+  #assert x402_read_required(cast(string) vt[0..<req.count + 1], o2[..], s[..]).count == 0;
+  t: [6000] u8;
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"method\":\"bolt11\",", "", t[..]), "2", j[..]), o2[..], s[..]).count == 0;
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"maxTimeoutSeconds\":600,", "", t[..]), "2", j[..]), o2[..], s[..]).count == 0 && o2[0].timeout_s == 0;
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"maxTimeoutSeconds\":600,", "\"maxTimeoutSeconds\":600.5,", t[..]), "2", j[..]), o2[..], s[..]).count == 0 && o2[0].timeout_s == 0;
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"50000\"", "\"1\"", t[..]), "2", j[..]), o2[..], s[..]).count == 0 && o2[0].msat == 1;
+  #assert x402_read_required(x402_test_required(x402_test_swap(X402_TEST_INVOICE, "lnbc10p1", t[..]), "2", j[..]), o2[..], s[..]).count == 0 && o2[0].ni == 8;
+  two: [6000] u8; tn := json_raw(two[..], 0, X402_TEST_TERMS); tn = json_raw(two[..], tn, ",{\"scheme\":\"other\"}");
+  #assert x402_read_required(x402_test_required(cast(string) two[0..<tn], "2", j[..]), o2[..], s[..]).count == 0 && o2[0].msat == 50000;
+  tn = json_raw(two[..], 0, X402_TEST_TERMS); tn = json_raw(two[..], tn, ",{\"broken\":");
+  #assert x402_read_required(x402_test_required(cast(string) two[0..<tn], "2", j[..]), o2[..], s[..]) == "PAYMENT-REQUIRED is not JSON";
+  // exact 4096-byte accepted entry fits; 4097 bytes refuses
+  big: [4200] u8; bn := json_raw(big[..], 0, X402_TEST_TERMS[0..<X402_TEST_TERMS.count - 1]);
+  bn = json_raw(big[..], bn, ",\"p\":\"");
+  while bn < 4094 { big[bn] = 'x'; bn += 1; }
+  bn = json_raw(big[..], bn, "\"}");
+  #assert bn == 4096 && x402_read_required(x402_test_required(cast(string) big[0..<4096], "2", j[..]), o2[..], s[..]).count == 0 && o2[0].na == 4096;
+  big[4094] = 'x'; big[4095] = '"'; big[4096] = '}';
+  #assert x402_read_required(x402_test_required(cast(string) big[0..<4097], "2", j[..]), o2[..], s[..]) == "the terms are too long";
+  // x402_test_swap matches at the very end of X402_TEST_TERMS
+  sw := x402_test_swap("\"}}", "!}}", t[..]);
+  #assert sw[sw.count - 3..<sw.count] == "!}}";
 }
 
 #test "a challenge with other terms refuses, naming why" {
   j: [6000] u8; t: [6000] u8; s: [6000] u8; o: [1] X402Offer;
   #assert x402_read_required(x402_test_required(X402_TEST_TERMS, "1", j[..]), o[..], s[..]) == "not x402 version 2";
+  #assert x402_read_required(x402_test_required(X402_TEST_TERMS, "\"2\"", j[..]), o[..], s[..]) == "not x402 version 2";
   #assert x402_read_required(x402_test_required(x402_test_swap("\"exact\"", "\"upto\"", t[..]), "2", j[..]), o[..], s[..]) == "not the exact scheme";
   #assert x402_read_required(x402_test_required(x402_test_swap("lnbtc:000000000019d6689c085ae165831e93", "lnbtc:000000000933ea01ad0ee984209779ba", t[..]), "2", j[..]), o[..], s[..]) == "not Bitcoin mainnet Lightning";
   #assert x402_read_required(x402_test_required(x402_test_swap("\"BTC\"", "\"USDC\"", t[..]), "2", j[..]), o[..], s[..]) == "not a bolt11 payment in BTC";
-  #assert x402_read_required(x402_test_required(x402_test_swap("\"50000\"", "50000", t[..]), "2", j[..]), o[..], s[..]) == "the amount is not a msat string";
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"bolt11\"", "\"onchain\"", t[..]), "2", j[..]), o[..], s[..]) == "not a bolt11 payment in BTC";
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"50000\"", "50000", t[..]), "2", j[..]), o[..], s[..]) == "the amount is not a msat string" && o[0].msat == -1;
   #assert x402_read_required(x402_test_required(x402_test_swap("\"50000\"", "\"50.5\"", t[..]), "2", j[..]), o[..], s[..]) == "the amount is not a msat string";
   #assert x402_read_required(x402_test_required(x402_test_swap("openagents:spark-receiver:1", "other:1", t[..]), "2", j[..]), o[..], s[..]) == "not a receiver profile this client takes";
   #assert x402_read_required(x402_test_required(x402_test_swap("\"lnbc500n1", "\"lntb500n1", t[..]), "2", j[..]), o[..], s[..]) == "no mainnet invoice";
+  #assert x402_read_required(x402_test_required(x402_test_swap(X402_TEST_INVOICE, "lnbc10p", t[..]), "2", j[..]), o[..], s[..]) == "no mainnet invoice";
+  #assert x402_read_required(x402_test_required(x402_test_swap(X402_TEST_INVOICE, "x", t[..]), "2", j[..]), o[..], s[..]) == "no mainnet invoice" && o[0].ni == 1;
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"lnbc500n1p4wfve5pp57aglnny6x6dmfavycacm5pkc2uawryjn8te7y5wt02qcpsja0svs\"", "123", t[..]), "2", j[..]), o[..], s[..]) == "no mainnet invoice" && o[0].ni == 0;
   #assert x402_read_required(x402_test_required(x402_test_swap("\"upfront\"", "\"deferred\"", t[..]), "2", j[..]), o[..], s[..]) == "not an upfront payment";
   #assert x402_read_required(x402_test_required(x402_test_swap(X402_TEST_HASH, "f751", t[..]), "2", j[..]), o[..], s[..]) == "no payment hash";
+  // missing required fields on a reused offer reset prior state and fail closed
+  #assert x402_read_required(x402_test_required(X402_TEST_TERMS, "2", j[..]), o[..], s[..]).count == 0;
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"scheme\":\"exact\",", "", t[..]), "2", j[..]), o[..], s[..]) == "not the exact scheme";
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"network\":\"lnbtc:000000000019d6689c085ae165831e93\",", "", t[..]), "2", j[..]), o[..], s[..]) == "not Bitcoin mainnet Lightning";
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"asset\":\"BTC\",", "", t[..]), "2", j[..]), o[..], s[..]) == "not a bolt11 payment in BTC";
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"paymentFlow\":\"upfront\",", "", t[..]), "2", j[..]), o[..], s[..]) == "not an upfront payment";
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"receiverProfile\":\"openagents:spark-receiver:1\",", "", t[..]), "2", j[..]), o[..], s[..]) == "not a receiver profile this client takes";
+  #assert x402_read_required(x402_test_required(X402_TEST_TERMS, "2", j[..]), o[..], s[..]).count == 0;
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"amount\":\"50000\",", "", t[..]), "2", j[..]), o[..], s[..]) == "the amount is not a msat string" && o[0].msat == -1;
+  #assert x402_read_required(x402_test_required(X402_TEST_TERMS, "2", j[..]), o[..], s[..]).count == 0;
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"invoice\":\"lnbc500n1p4wfve5pp57aglnny6x6dmfavycacm5pkc2uawryjn8te7y5wt02qcpsja0svs\",", "", t[..]), "2", j[..]), o[..], s[..]) == "no mainnet invoice" && o[0].ni == 0;
+  #assert x402_read_required(x402_test_required(X402_TEST_TERMS, "2", j[..]), o[..], s[..]).count == 0;
+  #assert x402_read_required(x402_test_required(x402_test_swap("\"paymentHash\":\"f751f9cc9a369bb4f584c771ba06d8573ae192533af3e251cb7a8180c25d7c19\",", "", t[..]), "2", j[..]), o[..], s[..]) == "no payment hash" && o[0].nh == 0;
   #assert x402_read_required(x402_test_required("", "2", j[..]), o[..], s[..]) == "no terms to pay";
+  #assert x402_read_required("", o[..], s[..]) == "PAYMENT-REQUIRED is not a JSON object" && x402_read_required("   ", o[..], s[..]) == "PAYMENT-REQUIRED is not a JSON object";
   #assert x402_read_required("!!!!", o[..], s[..]) == "PAYMENT-REQUIRED is not base64";
   #assert x402_read_required("{\"x402Version\":2,\"accepts\":[", o[..], s[..]).count > 0;
   #assert o[0].na == 0;
@@ -335,7 +395,8 @@ x402_test_swap :: (from: string, to: string, out: [] u8) -> string {
   n = x402_signature(o[..], pre, sig[..]);
   m = x402_b64_decode(cast(string) sig[0..<n], back[..]);
   #assert json_valid(cast(string) back[0..<m]) && json_has_text(cast(string) back[0..<m], "\"preimage\":\"11111111111111111111111111111111111111111111111111111111111111aa\"");
-  #assert x402_signature(o[..], "abc", sig[..]) == -1;
+  #assert json_has_text("ab", "ab") && json_has_text("ab", "a") && json_has_text("ab", "b") && !json_has_text("ab", "abc") && !json_has_text("ab", "cd");
+  #assert x402_signature(o[..], "a", sig[..]) == -1 && x402_signature(o[..], "abc", sig[..]) == -1;
   o[0].na = 0;
   #assert x402_signature(o[..], "", sig[..]) == -1;
 }
@@ -345,9 +406,21 @@ x402_test_swap :: (from: string, to: string, out: [] u8) -> string {
   #assert x402_read_required(x402_test_required(X402_TEST_TERMS, "2", j[..]), o[..], s[..]).count == 0;
   n := x402_b64_encode("{\"success\":true,\"transaction\":\"f751f9cc9a369bb4f584c771ba06d8573ae192533af3e251cb7a8180c25d7c19\",\"network\":\"lnbtc:000000000019d6689c085ae165831e93\"}", r[..]);
   #assert x402_read_response(cast(string) r[0..<n], o[..], s[..]);
+  o_nohash := o[0]; o_nohash.nh = 0; o2 := [1] X402Offer.[o_nohash];
+  #assert !x402_read_response(cast(string) r[0..<n], o2[..], s[..]);
   n = x402_b64_encode("{\"success\":false,\"transaction\":\"f751f9cc9a369bb4f584c771ba06d8573ae192533af3e251cb7a8180c25d7c19\"}", r[..]);
   #assert !x402_read_response(cast(string) r[0..<n], o[..], s[..]);
   n = x402_b64_encode("{\"success\":true,\"transaction\":\"0051f9cc9a369bb4f584c771ba06d8573ae192533af3e251cb7a8180c25d7c19\"}", r[..]);
+  #assert !x402_read_response(cast(string) r[0..<n], o[..], s[..]);
+  n = x402_b64_encode("{\"transaction\":\"f751f9cc9a369bb4f584c771ba06d8573ae192533af3e251cb7a8180c25d7c19\"}", r[..]);
+  #assert !x402_read_response(cast(string) r[0..<n], o[..], s[..]);
+  n = x402_b64_encode("{\"success\":true}", r[..]);
+  #assert !x402_read_response(cast(string) r[0..<n], o[..], s[..]);
+  n = x402_b64_encode("[]", r[..]);
+  #assert !x402_read_response(cast(string) r[0..<n], o[..], s[..]);
+  n = x402_b64_encode("{\"success\":true,1}", r[..]);
+  #assert !x402_read_response(cast(string) r[0..<n], o[..], s[..]);
+  n = x402_b64_encode("{\"extra\":[1}", r[..]);
   #assert !x402_read_response(cast(string) r[0..<n], o[..], s[..]);
   #assert !x402_read_response("e30", o[..], s[..]);
 }

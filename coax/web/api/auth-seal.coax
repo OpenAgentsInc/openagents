@@ -34,27 +34,60 @@ as_same :: (a: [] u8, s: string) -> bool {
   #assert n == 6 && as_same(out[0..<n], "a@b.co");
   n = as_email_normalize(as_text("\tx+tag@Mail.Example.org", inb[..]), out[..]);
   #assert n == 22 && as_same(out[0..<n], "x+tag@mail.example.org");
+  n = as_email_normalize(as_text("\na@b.co\t", inb[..]), out[..]);
+  #assert n == 6 && as_same(out[0..<n], "a@b.co") && !as_same(out[0..<5], "a@b.co") && !as_same(out[0..<6], "b@b.co") && !as_same(out[0..<6], "a@b.cx");
+  n = as_email_normalize(as_text("\ra@b.co\r", inb[..]), out[..]);
+  #assert n == 6 && as_same(out[0..<n], "a@b.co");
+  n = as_email_normalize(as_text("a@b.co ", inb[..]), out[..]);
+  #assert n == 6 && as_same(out[0..<n], "a@b.co");
+  n = as_email_normalize(as_text("a!-=?*]Z[@b.co", inb[..]), out[..]);
+  #assert n == 14 && as_same(out[0..<n], "a!-=?*]z[@b.co");
+  n = as_email_normalize(as_text("a.@b.co", inb[..]), out[..]);
+  #assert n == 7 && as_same(out[0..<n], "a.@b.co");
+  n = as_email_normalize(as_text("a@/b.c/", inb[..]), out[..]);
+  #assert n == 7 && as_same(out[0..<n], "a@/b.c/");
+  n = as_email_normalize(as_text("a@b/.c", inb[..]), out[..]);
+  #assert n == 6 && as_same(out[0..<n], "a@b/.c");
+  n = as_email_normalize(as_text("aa@b.c", inb[..]), out[..]);
+  #assert n == 6 && as_same(out[0..<n], "aa@b.c");
 }
 #test "anything that isn't one address is refused" {
-  inb: [300] u8; out: [AS_EMAIL_MAX] u8;
+  inb: [300] u8; out: [AS_EMAIL_MAX] u8; big_out: [300] u8;
   #assert as_email_normalize(as_text("", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("   ", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a@b.c", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("no-at.example.com", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("@example.com", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("a@", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("aaaaa@", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("a@b", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("aa@bcd", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a.@bcd", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("a@b.", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("aa@bc.", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("a@.b", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("aa@.bc", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a@b..c", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("a@@b.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("@@b.co", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("a b@c.co", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("a@c.co, d@e.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a,b@c.co", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("<a@c.co>", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a<b@c.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a>b@c.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a(b@c.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a)b@c.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a;b@c.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a\\b@c.co", inb[..]), out[..]) == -1;
+  del_e := [6] u8.['a', 127, '@', 'b', '.', 'c'];
+  #assert as_email_normalize(del_e[..], out[..]) == -1;
   #assert as_email_normalize(as_text("a\"@c.co", inb[..]), out[..]) == -1;
   #assert as_email_normalize(as_text("a@c.co\0", inb[..]), out[..]) == -1;
   long: [300] u8;
   for i: 0..<300 { long[i] = 'a'; }
   long[200] = '@'; long[250] = '.';
-  #assert as_email_normalize(long[0..<255], out[..]) == -1;
+  #assert as_email_normalize(long[0..<255], big_out[..]) == -1;
   #assert as_email_normalize(long[0..<254], out[..]) == 254;
   small: [5] u8;
   #assert as_email_normalize(as_text("a@b.co", inb[..]), small[..]) == -1;
@@ -86,7 +119,17 @@ as_same :: (a: [] u8, s: string) -> bool {
   #assert !as_open(key[..], nonce[..], as_text(ad, adb[..]), box[..], plain[..]);
   box[3] ^= 1;
   #assert !as_seal(key[0..<31], nonce[..], as_text(ad, adb[..]), as_text(msg, mb[..]), box[..]);
+  #assert !as_seal(key[..], nonce[0..<23], as_text(ad, adb[..]), as_text(msg, mb[..]), box[..]);
   #assert !as_seal(key[..], nonce[..], as_text(ad, adb[..]), as_text(msg, mb[..]), box[0..<30]);
+  box_big: [32] u8; plain_big: [16] u8;
+  #assert !as_seal(key[..], nonce[..], as_text(ad, adb[..]), as_text(msg, mb[..]), box_big[..]);
+  #assert !as_open(key[0..<31], nonce[..], as_text(ad, adb[..]), box[..], plain[..]);
+  #assert !as_open(key[..], nonce[0..<23], as_text(ad, adb[..]), box[..], plain[..]);
+  #assert !as_open(key[..], nonce[..], as_text(ad, adb[..]), box[0..<15], plain[0..<0]);
+  #assert !as_open(key[..], nonce[..], as_text(ad, adb[..]), box[..], plain_big[..]);
+  box0: [16] u8;
+  #assert as_seal(key[..], nonce[..], as_text(ad, adb[..]), mb[0..<0], box0[..]);
+  #assert as_open(key[..], nonce[..], as_text(ad, adb[..]), box0[..], plain[0..<0]);
 }
 
 #test "SHA-256 of abc (FIPS 180-2)" {
@@ -119,14 +162,14 @@ as_email_normalize :: (text: [] u8, out: [] u8) -> int #export_c #effects(all) {
       at = i;
     }
   }
-  if at <= a || at >= b - 1 { return -1; }
+  if at <= a || at >= b - 1 { return -1; } // mutant: equivalent — at == b - 2 has a 1-byte domain which always fails the dot checks below
   // the domain: a dot inside it, not at either end, never two together
   dot := false;
   if text[at + 1] == '.' || text[b - 1] == '.' { return -1; }
-  for i: at + 1..<b {
+  for i: at + 1..<b { // mutant: equivalent — line above already verified text[at + 1] != '.'
     if text[i] == '.' {
       dot = true;
-      if text[i - 1] == '.' { return -1; }
+      if text[i - 1] == '.' { return -1; } // mutant: equivalent — text[at + 1] != '.' and text[b - 1] != '.', so checking i - 1 or i + 1 catches every adjacent dot pair
     }
   }
   if !dot { return -1; }
@@ -145,11 +188,11 @@ as_lookup :: (pepper: [] u8, text: [] u8, out: [] u8) -> bool #export_c #effects
 
 // out: the box, msg.count + 16 bytes.
 as_seal :: (key: [] u8, nonce: [] u8, ad: [] u8, msg: [] u8, out: [] u8) -> bool #export_c #effects(all) {
-  if key.count != 32 || nonce.count != 24 || out.count != msg.count + 16 { return false; }
+  if key.count != 32 || nonce.count != 24 || out.count != msg.count + 16 { return false; } // mutant: equivalent — xcp_seal (xcp_admit) also enforces key.count == 32 && nonce.count == 24
   return xcp_seal(key, nonce, ad, msg, out, false);
 }
 // out: the message, box.count - 16 bytes.
 as_open :: (key: [] u8, nonce: [] u8, ad: [] u8, box: [] u8, out: [] u8) -> bool #export_c #effects(all) {
-  if key.count != 32 || nonce.count != 24 || box.count < 16 || out.count != box.count - 16 { return false; }
+  if key.count != 32 || nonce.count != 24 || box.count < 16 || out.count != box.count - 16 { return false; } // mutant: equivalent — xcp_open (xcp_admit) also enforces key.count == 32 && nonce.count == 24 && box.count >= 16
   return xcp_open(key, nonce, ad, box, out, false);
 }
