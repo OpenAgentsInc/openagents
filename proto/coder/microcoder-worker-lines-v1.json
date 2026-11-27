@@ -140,6 +140,21 @@
      "name": "transcript_path",
      "type": "string",
      "note": "optional sidechain DAG JSONL transcript path where a subagent appends live structured turns (#14122)"
+    },
+    {
+     "name": "max_turns",
+     "type": "integer",
+     "note": "optional per-subagent maxTurns ceiling written only when > 0 (#14123)"
+    },
+    {
+     "name": "is_async",
+     "type": "true",
+     "note": "written only when true: marks a child worker as an async background subagent subject to ASYNC_AGENT_ALLOWED_TOOLS (#14123)"
+    },
+    {
+     "name": "memory_scope",
+     "type": "integer",
+     "note": "optional subagent persistent memory scope (1=user, 2=project, 3=local) written only when > 0 (#14123)"
     }
    ]
   },

@@ -13,6 +13,7 @@
 #load "shell_sandbox.coax";
 #load "api_policy.coax";
 #load "members.coax";
+#load "agents.coax";
 #authority;
 
 FLAWED_BE_AUTO :: 0;
@@ -251,6 +252,21 @@ flawed_wire_tool_allowed :: (tool_name: string, allowed_csv: string, disallowed_
   return true;
 }
 
+// Combined host CSV + #authority subagent tool filter (#14123).
+flawed_wire_tool_allowed_for_agent :: (
+  tool_name: string,
+  allowed_csv: string,
+  disallowed_csv: string,
+  use_agent_def: bool,
+  agent_def: OaAgentDef,
+  is_async: bool,
+  is_fork: bool
+) -> bool #effects(all) {
+  if !flawed_wire_tool_allowed(tool_name, allowed_csv, disallowed_csv) { return false; }
+  if use_agent_def && !oa_agent_tool_allowed_for_def(agent_def, tool_name, is_async, is_fork) { return false; }
+  return true;
+}
+
 flawed_wire_tool_permission :: (tool_name: string, target: string, pmode: int, bypass_danger: bool, session_allow: bool) -> int #effects(all) {
   // Member-pack tools enforce #authority policies BEFORE bypass so WalletPay (satoshi spend),
   // secret-bearing vault/nostr signing, and closed CLI/GameBuilder allowlists can NEVER be bypassed.
@@ -483,7 +499,17 @@ flawed_wire_write_tool_one :: (o: [] Jo, gemini_fmt: bool, name: string, desc: s
 FLAWED_WIRE_NTOOLS :: 9;
 FLAWED_WIRE_NINTEL :: 12;
 
-flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, disallowed_csv: string, packs_mask: int) -> int #effects(all) {
+flawed_wire_write_tools_packs_for_agent :: (
+  o: [] Jo,
+  gemini_fmt: bool,
+  allowed_csv: string,
+  disallowed_csv: string,
+  packs_mask: int,
+  use_agent_def: bool,
+  agent_def: OaAgentDef,
+  is_async: bool,
+  is_fork: bool
+) -> int #effects(all) {
   names := [FLAWED_WIRE_NTOOLS] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch", "WebSearch"];
   descs := [FLAWED_WIRE_NTOOLS] string.[
     "Read a file with 1-based line numbers (default 600 lines on cloud, 300 local), or read an image/screenshot natively (PNG, JPEG, GIF, WebP, BMP, TIFF, HEIC — automatically resized and returned visually). Pass offset and limit for larger text files. Prefer Read over cat/head/tail/sed.",
@@ -631,62 +657,62 @@ flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: strin
   }
   emitted := 0;
   for i: 0..<FLAWED_WIRE_NTOOLS {
-    if !flawed_wire_tool_allowed(names[i], allowed_csv, disallowed_csv) { continue; }
+    if !flawed_wire_tool_allowed_for_agent(names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
     flawed_wire_write_tool_one(o, gemini_fmt, names[i], descs[i], schemas[i]);
     emitted += 1;
   }
   if (packs_mask & OA_PACK_COAX_INTEL) != 0 {
     for i: 0..<FLAWED_WIRE_NINTEL {
-      if !flawed_wire_tool_allowed(intel_names[i], allowed_csv, disallowed_csv) { continue; }
+      if !flawed_wire_tool_allowed_for_agent(intel_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, intel_names[i], intel_descs[i], intel_schemas[i]);
       emitted += 1;
     }
   }
   if (packs_mask & OA_PACK_WALLET) != 0 {
     for i: 0..<OA_MEMBER_NWALLET {
-      if !flawed_wire_tool_allowed(wallet_names[i], allowed_csv, disallowed_csv) { continue; }
+      if !flawed_wire_tool_allowed_for_agent(wallet_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, wallet_names[i], wallet_descs[i], wallet_schemas[i]);
       emitted += 1;
     }
   }
   if (packs_mask & OA_PACK_CLI) != 0 {
     for i: 0..<OA_MEMBER_NCLI {
-      if !flawed_wire_tool_allowed(cli_names[i], allowed_csv, disallowed_csv) { continue; }
+      if !flawed_wire_tool_allowed_for_agent(cli_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, cli_names[i], cli_descs[i], cli_schemas[i]);
       emitted += 1;
     }
   }
   if (packs_mask & OA_PACK_METAVERSE) != 0 {
     for i: 0..<OA_MEMBER_NMETAVERSE {
-      if !flawed_wire_tool_allowed(mv_names[i], allowed_csv, disallowed_csv) { continue; }
+      if !flawed_wire_tool_allowed_for_agent(mv_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, mv_names[i], mv_descs[i], mv_schemas[i]);
       emitted += 1;
     }
   }
   if (packs_mask & OA_PACK_AGENTS) != 0 {
     for i: 0..<OA_MEMBER_NAGENTS {
-      if !flawed_wire_tool_allowed(ag_names[i], allowed_csv, disallowed_csv) { continue; }
+      if !flawed_wire_tool_allowed_for_agent(ag_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, ag_names[i], ag_descs[i], ag_schemas[i]);
       emitted += 1;
     }
   }
   if (packs_mask & OA_PACK_KNOWLEDGE) != 0 {
     for i: 0..<OA_MEMBER_NKNOWLEDGE {
-      if !flawed_wire_tool_allowed(kb_names[i], allowed_csv, disallowed_csv) { continue; }
+      if !flawed_wire_tool_allowed_for_agent(kb_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, kb_names[i], kb_descs[i], kb_schemas[i]);
       emitted += 1;
     }
   }
   if (packs_mask & OA_PACK_CAPABILITY) != 0 {
     for i: 0..<OA_MEMBER_NCAPABILITY {
-      if !flawed_wire_tool_allowed(cap_names[i], allowed_csv, disallowed_csv) { continue; }
+      if !flawed_wire_tool_allowed_for_agent(cap_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, cap_names[i], cap_descs[i], cap_schemas[i]);
       emitted += 1;
     }
   }
   if (packs_mask & OA_PACK_SESSIONS) != 0 {
     for i: 0..<OA_MEMBER_NSESSIONS {
-      if !flawed_wire_tool_allowed(sess_names[i], allowed_csv, disallowed_csv) { continue; }
+      if !flawed_wire_tool_allowed_for_agent(sess_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, sess_names[i], sess_descs[i], sess_schemas[i]);
       emitted += 1;
     }
@@ -699,6 +725,10 @@ flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: strin
     jo_end(o);
   }
   return emitted;
+}
+
+flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, disallowed_csv: string, packs_mask: int) -> int #effects(all) {
+  return flawed_wire_write_tools_packs_for_agent(o, gemini_fmt, allowed_csv, disallowed_csv, packs_mask, false, OaAgentDef.{}, false, false); // mutant: equivalent // is_async and is_fork are ignored when use_agent_def is false
 }
 
 flawed_wire_write_tools_ex :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, disallowed_csv: string, include_coax_intel: bool) -> int #effects(all) {
@@ -1127,4 +1157,44 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert !flawed_wire_tool_is_concurrency_safe("session_send") && !flawed_wire_tool_is_concurrency_safe("session_spawn") && !flawed_wire_tool_is_concurrency_safe("session_stop");
   #assert flawed_wire_tool_permission("session_list", "", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("session_send", "local:tmux:dev:0.0", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ALLOW;
+
+  // Subagent #authority schema filtering via oa_agent_tool_allowed_for_def (#14123):
+  // - read_only strips Edit/Write/CoaxReplace/WalletPay/WalletReceive/EnterWorktree/ExitWorktree/CapabilityDraft/CapabilityEval
+  // - is_async restricts to ASYNC_AGENT_ALLOWED_TOOLS across all packs
+  // - non-fork strips global disallowed (Agent/EnterWorktree/ExitWorktree/WalletPay); is_fork retains Agent
+  reg: [1] OaAgentRegistry;
+  oa_agents_init_builtins(reg[..]);
+  ex_def := reg[0].defs[oa_agents_find(reg[..], "Explore")];
+  gen_def := reg[0].defs[oa_agents_find(reg[..], "general-purpose")];
+  fork_def := OaAgentDef.{active = true};
+  #assert !flawed_wire_tool_allowed_for_agent("Edit", "", "", true, ex_def, false, false);
+  #assert flawed_wire_tool_allowed_for_agent("Edit", "", "", false, ex_def, false, false);
+  #assert !flawed_wire_tool_allowed_for_agent("Read", "", "Read", true, ex_def, false, false);
+  #assert !flawed_wire_tool_allowed_for_agent("WebSearch", "", "", true, gen_def, true, false);
+  #assert flawed_wire_tool_allowed_for_agent("WebSearch", "", "", true, gen_def, false, false);
+  #assert !flawed_wire_tool_allowed_for_agent("Agent", "", "", true, fork_def, false, false);
+  #assert flawed_wire_tool_allowed_for_agent("Agent", "", "", true, fork_def, false, true);
+
+  sub_buf: [65536] u8;
+  sub_nodes: [2048] JvNode;
+  all_packs := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE | OA_PACK_AGENTS | OA_PACK_KNOWLEDGE | OA_PACK_CAPABILITY | OA_PACK_SESSIONS;
+  // Async general-purpose subagent across all packs -> strictly async allowlist (8 base + 12 coax + 2 wallet + 1 cli + 2 mv = 25)
+  jo_start(o[..], sub_buf[..]);
+  na := flawed_wire_write_tools_packs_for_agent(o[..], false, "", "", all_packs, true, gen_def, true, false);
+  #assert !o[0].bad && na == 25 && jv_parse(d[..], jo_text(o[..]), sub_nodes[..]) && jv_len(d[0], 0) == 25;
+  // Read-only async Explore subagent across all packs -> strips Edit/Write/CoaxReplace (25 - 3 = 22)
+  jo_start(o[..], sub_buf[..]);
+  ne := flawed_wire_write_tools_packs_for_agent(o[..], false, "", "", all_packs, true, ex_def, true, false);
+  #assert !o[0].bad && ne == 22 && jv_parse(d[..], jo_text(o[..]), sub_nodes[..]) && jv_len(d[0], 0) == 22;
+  // Non-async read-only Explore across Capability + Knowledge + Sessions + Agents + Wallet: strips WalletPay/WalletReceive/Agent/EnterWorktree/ExitWorktree/CapabilityDraft/CapabilityEval
+  jo_start(o[..], sub_buf[..]);
+  nr := flawed_wire_write_tools_packs_for_agent(o[..], false, "", "", OA_PACK_WALLET | OA_PACK_AGENTS | OA_PACK_KNOWLEDGE | OA_PACK_CAPABILITY | OA_PACK_SESSIONS, true, ex_def, false, false);
+  #assert !o[0].bad && nr == 20 && jv_parse(d[..], jo_text(o[..]), sub_nodes[..]) && jv_len(d[0], 0) == 20;
+  // Fork with empty disallowed keeps Agent when OA_PACK_AGENTS mounted (9 base + 6 agents = 15) vs non-fork (9 + 3 = 12)
+  jo_start(o[..], sub_buf[..]);
+  nfk := flawed_wire_write_tools_packs_for_agent(o[..], false, "", "", OA_PACK_AGENTS, true, fork_def, false, true);
+  #assert !o[0].bad && nfk == 15;
+  jo_start(o[..], sub_buf[..]);
+  nnf := flawed_wire_write_tools_packs_for_agent(o[..], false, "", "", OA_PACK_AGENTS, true, fork_def, false, false);
+  #assert !o[0].bad && nnf == 12;
 }

@@ -51,6 +51,7 @@ OaAgentDef :: struct {
   omit_claudemd: bool;
   one_shot: bool;
   read_only: bool;
+  max_turns: int;           // 0 = default/inherit (#14123)
 }
 
 OaAgentRegistry :: struct {
@@ -253,12 +254,122 @@ oa_agents_upsert :: (reg: [] OaAgentRegistry, cand: OaAgentDef) -> bool #effects
 oa_parse_perm_mode_name :: (s: string) -> int #effects(reads, traps) {
   t := oa_ag_unquote(s);
   if oa_ag_eq_ci(t, "default") || oa_ag_eq_ci(t, "ask") { return FLAWED_PMODE_DEFAULT; }
-  if oa_ag_eq_ci(t, "acceptEdits") || oa_ag_eq_ci(t, "accept_edits") { return FLAWED_PMODE_ACCEPT_EDITS; }
+  if oa_ag_eq_ci(t, "acceptEdits") || oa_ag_eq_ci(t, "accept_edits") || oa_ag_eq_ci(t, "accept-edits") { return FLAWED_PMODE_ACCEPT_EDITS; }
   if oa_ag_eq_ci(t, "plan") { return FLAWED_PMODE_PLAN; }
-  if oa_ag_eq_ci(t, "dontAsk") || oa_ag_eq_ci(t, "dont_ask") { return FLAWED_PMODE_DONT_ASK; }
+  if oa_ag_eq_ci(t, "dontAsk") || oa_ag_eq_ci(t, "dont_ask") || oa_ag_eq_ci(t, "dont-ask") { return FLAWED_PMODE_DONT_ASK; }
   if oa_ag_eq_ci(t, "bypassPermissions") || oa_ag_eq_ci(t, "bypass") || oa_ag_eq_ci(t, "allow_all") { return FLAWED_PMODE_BYPASS; }
   if oa_ag_eq_ci(t, "auto") { return FLAWED_PMODE_AUTO; }
   return 0;
+}
+
+// Canonical name for FLAWED_PMODE_* (paired with oa_parse_perm_mode_name; #14123).
+oa_perm_mode_to_name :: (pm: int) -> string #effects(traps) {
+  if pm == FLAWED_PMODE_DEFAULT { return "default"; }
+  if pm == FLAWED_PMODE_ACCEPT_EDITS { return "acceptEdits"; }
+  if pm == FLAWED_PMODE_PLAN { return "plan"; }
+  if pm == FLAWED_PMODE_DONT_ASK { return "dontAsk"; }
+  if pm == FLAWED_PMODE_BYPASS { return "bypassPermissions"; }
+  if pm == FLAWED_PMODE_AUTO { return "auto"; }
+  return "";
+}
+
+// Effective subagent permissionMode (#14123):
+// explicit Agent tool `mode` override > frontmatter `def.permission_mode` (honoring flawed_parent_mode_floor) > inherit parent.
+oa_agent_resolve_perm_mode :: (parent_mode: int, explicit_mode: int, def_mode: int) -> int #effects(traps) {
+  if explicit_mode > 0 { return explicit_mode; }
+  if def_mode > 0 {
+    if parent_mode > 0 { // mutant: equivalent // flawed_parent_mode_floor returns def_mode for 0 and 1
+      return cast(int) flawed_parent_mode_floor(cast(u8) parent_mode, cast(u8) def_mode, true);
+    }
+    return def_mode;
+  }
+  return ifx parent_mode > 0 then parent_mode else 0; // mutant: equivalent // parent_mode == 0 returns 0 in both branches
+}
+
+oa_parse_nonneg_int :: (s: string) -> int #effects(reads, traps) {
+  t := oa_ag_unquote(s);
+  v := 0;
+  for i: 0..<t.count {
+    c := t[i];
+    if c < '0' || c > '9' { return 0; }
+    v = v * 10 + cast(int) (c - '0');
+    if v > 100000 { return 100000; } // mutant: equivalent // v == 100000 returns 100000 either immediately or on loop exit/overflow
+  }
+  return v;
+}
+
+// Effective turn ceiling (#14123): uses subagent_max when > 0, capped by cfg_max if also set.
+oa_agent_effective_max_turns :: (subagent_max: int, cfg_max: int, default_max: int) -> int #effects(traps) {
+  if subagent_max > 0 {
+    if cfg_max > 0 && cfg_max < subagent_max { return cfg_max; } // mutant: equivalent // when cfg_max == subagent_max both branches return identical value
+    return subagent_max;
+  }
+  return ifx cfg_max > 0 then cfg_max else default_max;
+}
+
+// Resolves a subagent's persistent memory directory for `memory: user|project|local` (#14123).
+// Sanitizes the agent slug, rejects path-traversal/separator inputs, and validates the resolved
+// path via #authority `flawed_validate_memory_path`. Returns bytes written, or 0 if invalid.
+oa_agent_memory_dir :: (scope: int, agent_name: string, home: string, cwd: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  base := "";
+  sub := "";
+  if scope == OA_AGENT_MEM_USER {
+    base = home;
+    sub = "/.openagents/agent-memory/";
+  } else if scope == OA_AGENT_MEM_PROJECT {
+    base = cwd;
+    sub = "/.openagents/agent-memory/";
+  } else if scope == OA_AGENT_MEM_LOCAL {
+    base = cwd;
+    sub = "/.openagents/agent-memory-local/";
+  } else {
+    return 0;
+  }
+  if base.count == 0 { return 0; }
+  base_n := base.count;
+  while base_n > 1 && base[base_n - 1] == '/' { base_n -= 1; } // mutant: equivalent // base_n == 2 with trailing '/' is "//", which fails flawed_validate_memory_path either way
+  base_clean := cast(string) base[0..<base_n];
+
+  for i: 0..<agent_name.count {
+    c := agent_name[i];
+    if c == '/' || c == '\\' || c == 0 { return 0; }
+    if c == '.' && i + 1 < agent_name.count && agent_name[i + 1] == '.' { return 0; }
+  }
+
+  slug: [OA_AGENT_NAME_MAX] u8;
+  sn := 0;
+  for i: 0..<agent_name.count {
+    c := oa_ag_lower(agent_name[i]);
+    ok_ch := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+    out_c := ifx ok_ch then c else cast(u8) '-';
+    if out_c == '-' && (sn == 0 || slug[sn - 1] == '-') { continue; }
+    if sn >= OA_AGENT_NAME_MAX { break; }
+    slug[sn] = out_c;
+    sn += 1;
+  }
+  while sn > 0 && slug[sn - 1] == '-' { sn -= 1; } // mutant: equivalent // slug[0] is never '-' so sn == 1 never matches
+  if sn == 0 { return 0; }
+
+  need := base_n + sub.count + sn;
+  if need > out.count { return 0; }
+  n := oa_ag_cat(out, 0, base_clean);
+  n = oa_ag_cat(out, n, sub);
+  n = oa_ag_cat(out, n, cast(string) slug[0..<sn]);
+  if !flawed_validate_memory_path(cast(string) out[0..<n]) { return 0; }
+  return n;
+}
+
+// Returns true iff `target_path` is a valid absolute memory path equal to or inside `mem_dir` (#14123).
+oa_agent_path_in_memory_dir :: (mem_dir: string, target_path: string) -> bool #effects(reads, traps) {
+  if !flawed_validate_memory_path(mem_dir) || !flawed_validate_memory_path(target_path) { return false; }
+  ml := mem_dir.count;
+  while ml > 2 && mem_dir[ml - 1] == '/' { ml -= 1; } // mutant: equivalent // valid memory paths start with "/x" where byte 1 != '/'
+  if target_path.count < ml { return false; }
+  // Byte 0 is guaranteed '/' for both valid memory paths.
+  for i: 1..<ml {
+    if target_path[i] != mem_dir[i] { return false; }
+  }
+  return target_path.count == ml || target_path[ml] == '/';
 }
 
 oa_parse_bool_word :: (s: string) -> bool #effects(reads, traps) {
@@ -285,21 +396,21 @@ oa_agents_parse_markdown :: (src: string, fallback_name: string, source_tier: u8
 
   // Optional YAML frontmatter delimited by --- ... ---
   if pos + 3 <= src.count && cast(string) src[pos..<pos + 3] == "---" {
-    pos += 3;
+    pos += 3; // mutant: equivalent // src[pos..<pos+3] is "---" (no '\n'), so the next while loop reaches the same '\n'
     while pos < src.count && src[pos] != '\n' { pos += 1; }
-    if pos < src.count && src[pos] == '\n' { pos += 1; }
+    if pos < src.count && src[pos] == '\n' { pos += 1; } // mutant: equivalent // leaving pos on '\n' (or pos-1, a 1-byte line) is consumed and skipped by the loop below
     while pos < src.count {
       ls := pos;
       while pos < src.count && src[pos] != '\n' { pos += 1; }
       le := pos;
-      if le > ls && src[le - 1] == '\r' { le -= 1; }
+      if le > ls && src[le - 1] == '\r' { le -= 1; } // mutant: equivalent // oa_ag_trim on line 408 already strips trailing '\r' and src[ls-1] is '\n'
       if pos < src.count && src[pos] == '\n' { pos += 1; }
       line := oa_ag_trim(cast(string) src[ls..<le]);
       if line == "---" || line == "..." { break; }
-      if line.count == 0 || line[0] == '#' { continue; }
-      colon := -1;
-      for ci: 0..<line.count { if line[ci] == ':' { colon = ci; break; } }
-      if colon <= 0 { continue; }
+      if line.count == 0 || line[0] == '#' { continue; } // mutant: equivalent // line is trimmed and every recognized key starts with an ASCII letter
+      colon := -1; // mutant: equivalent // -1 and 0 both satisfy colon <= 0 below
+      for ci: 0..<line.count { if line[ci] == ':' { colon = ci; break; } } // mutant: equivalent // a key starting with ':' matches no recognized ASCII-letter key
+      if colon <= 0 { continue; } // mutant: equivalent // keys of length 0 or 1 match no recognized key (shortest is "git")
       key := oa_ag_trim(cast(string) line[0..<colon]);
       val := oa_ag_unquote(cast(string) line[colon + 1..<line.count]);
       if oa_ag_eq_ci(key, "name") && val.count > 0 {
@@ -336,6 +447,8 @@ oa_agents_parse_markdown :: (src: string, fallback_name: string, source_tier: u8
         d.read_only = oa_parse_bool_word(val);
       } else if oa_ag_eq_ci(key, "omitClaudeMd") {
         d.omit_claudemd = oa_parse_bool_word(val);
+      } else if oa_ag_eq_ci(key, "maxTurns") || oa_ag_eq_ci(key, "max_turns") {
+        d.max_turns = oa_parse_nonneg_int(val);
       }
     }
   }
@@ -386,7 +499,8 @@ oa_agent_tool_allowed_for_def :: (def: OaAgentDef, tool_name: string, is_async: 
   if def.read_only {
     if tool_name == "Edit" || tool_name == "Write" || tool_name == "CoaxReplace" ||
        tool_name == "WalletPay" || tool_name == "WalletReceive" ||
-       tool_name == "EnterWorktree" || tool_name == "ExitWorktree" {
+       tool_name == "EnterWorktree" || tool_name == "ExitWorktree" ||
+       tool_name == "CapabilityDraft" || tool_name == "CapabilityEval" {
       return false;
     }
   }
@@ -397,7 +511,7 @@ oa_agent_tool_allowed_for_def :: (def: OaAgentDef, tool_name: string, is_async: 
   all_csv := cast(string) d.allowed_tools[0..<d.nallowed];
   in_dis := oa_ag_csv_has(dis_csv, tool_name);
   has_allow := d.nallowed > 0;
-  in_allow := ifx has_allow then oa_ag_csv_has(all_csv, tool_name) else false;
+  in_allow := ifx has_allow then oa_ag_csv_has(all_csv, tool_name) else false; // mutant: equivalent // flawed_agent_tool_allowed ignores in_allow when has_allow is false
   return flawed_agent_tool_allowed(
     false,
     false,
@@ -873,4 +987,194 @@ oa_agent_build_fork_user_turn :: (tool_ids: [] string, directive: string, out: [
   #assert !oa_ag_contains_ci(sp, "[Worktree Path Translation]");
   #assert cast(string) sw[0..<np] == sp && cast(string) sw[np..<nw] == want_notice;
   #assert oa_agent_fork_blocked(false, sw);
+}
+
+#test "agents (#14123): perm mode round-trip/precedence, maxTurns parsing/ceiling, memory dir & containment, and read-only capability guard" {
+  // 1. oa_perm_mode_to_name + oa_parse_perm_mode_name round-trip (including hyphenated Desktop names)
+  #assert oa_perm_mode_to_name(FLAWED_PMODE_DEFAULT) == "default";
+  #assert oa_perm_mode_to_name(FLAWED_PMODE_ACCEPT_EDITS) == "acceptEdits";
+  #assert oa_perm_mode_to_name(FLAWED_PMODE_PLAN) == "plan";
+  #assert oa_perm_mode_to_name(FLAWED_PMODE_DONT_ASK) == "dontAsk";
+  #assert oa_perm_mode_to_name(FLAWED_PMODE_BYPASS) == "bypassPermissions";
+  #assert oa_perm_mode_to_name(FLAWED_PMODE_AUTO) == "auto";
+  #assert oa_perm_mode_to_name(0) == "" && oa_perm_mode_to_name(FLAWED_PMODE_BUBBLE) == "";
+  #assert oa_parse_perm_mode_name("accept-edits") == FLAWED_PMODE_ACCEPT_EDITS;
+  #assert oa_parse_perm_mode_name("dont-ask") == FLAWED_PMODE_DONT_ASK;
+  #assert oa_parse_perm_mode_name("unknown_mode") == 0;
+  for pm: 1..<7 {
+    #assert oa_parse_perm_mode_name(oa_perm_mode_to_name(pm)) == pm;
+  }
+
+  // 2. oa_agent_resolve_perm_mode: explicit > frontmatter (with flawed_parent_mode_floor) > inherit parent
+  #assert oa_agent_resolve_perm_mode(FLAWED_PMODE_BYPASS, FLAWED_PMODE_PLAN, FLAWED_PMODE_ACCEPT_EDITS) == FLAWED_PMODE_PLAN;
+  #assert oa_agent_resolve_perm_mode(FLAWED_PMODE_BYPASS, FLAWED_PMODE_DEFAULT, FLAWED_PMODE_PLAN) == FLAWED_PMODE_DEFAULT;
+  #assert oa_agent_resolve_perm_mode(FLAWED_PMODE_DEFAULT, 0, FLAWED_PMODE_PLAN) == FLAWED_PMODE_PLAN;
+  #assert oa_agent_resolve_perm_mode(0, 0, FLAWED_PMODE_DEFAULT) == FLAWED_PMODE_DEFAULT;
+  #assert oa_agent_resolve_perm_mode(FLAWED_PMODE_DEFAULT, -1, FLAWED_PMODE_DEFAULT) == FLAWED_PMODE_DEFAULT;
+  #assert oa_agent_resolve_perm_mode(FLAWED_PMODE_BYPASS, 0, FLAWED_PMODE_DEFAULT) == FLAWED_PMODE_BYPASS;
+  #assert oa_agent_resolve_perm_mode(FLAWED_PMODE_ACCEPT_EDITS, 0, FLAWED_PMODE_DEFAULT) == FLAWED_PMODE_ACCEPT_EDITS;
+  #assert oa_agent_resolve_perm_mode(FLAWED_PMODE_AUTO, 0, FLAWED_PMODE_DEFAULT) == FLAWED_PMODE_AUTO;
+  #assert oa_agent_resolve_perm_mode(0, 0, FLAWED_PMODE_PLAN) == FLAWED_PMODE_PLAN;
+  #assert oa_agent_resolve_perm_mode(-1, 0, FLAWED_PMODE_PLAN) == FLAWED_PMODE_PLAN;
+  #assert oa_agent_resolve_perm_mode(FLAWED_PMODE_DEFAULT, 0, 0) == FLAWED_PMODE_DEFAULT;
+  #assert oa_agent_resolve_perm_mode(FLAWED_PMODE_PLAN, 0, -1) == FLAWED_PMODE_PLAN;
+  #assert oa_agent_resolve_perm_mode(0, 0, 0) == 0;
+  #assert oa_agent_resolve_perm_mode(-1, 0, 0) == 0;
+
+  // 3. maxTurns / max_turns parsing & oa_agent_effective_max_turns ceiling
+  #assert oa_parse_nonneg_int("") == 0 && oa_parse_nonneg_int("-5") == 0 && oa_parse_nonneg_int("/") == 0 && oa_parse_nonneg_int(":") == 0;
+  #assert oa_parse_nonneg_int("0") == 0 && oa_parse_nonneg_int("1") == 1 && oa_parse_nonneg_int("\"19\"") == 19 && oa_parse_nonneg_int("12a") == 0;
+  #assert oa_parse_nonneg_int("100000") == 100000 && oa_parse_nonneg_int("100001") == 100000 && oa_parse_nonneg_int("999999999999") == 100000;
+  d1: [1] OaAgentDef;
+  #assert oa_agents_parse_markdown("---\nname: capped\nmaxTurns: 7\n---\nbody", "fb", FLAWED_ASRC_PROJECT, d1[..]) && d1[0].max_turns == 7;
+  #assert oa_agents_parse_markdown("---\nname: capped2\nmax_turns: 12\n---\nbody", "fb", FLAWED_ASRC_PROJECT, d1[..]) && d1[0].max_turns == 12;
+  #assert oa_agents_parse_markdown("---\nname: neg\nmaxTurns: -3\n---\nbody", "fb", FLAWED_ASRC_PROJECT, d1[..]) && d1[0].max_turns == 0;
+  #assert oa_agent_effective_max_turns(0, 0, 64) == 64 && oa_agent_effective_max_turns(-1, 0, 64) == 64;
+  #assert oa_agent_effective_max_turns(0, 1, 64) == 1 && oa_agent_effective_max_turns(0, -2, 64) == 64;
+  #assert oa_agent_effective_max_turns(1, 0, 64) == 1 && oa_agent_effective_max_turns(1, -2, 64) == 1;
+  #assert oa_agent_effective_max_turns(5, 1, 64) == 1;
+  #assert oa_agent_effective_max_turns(5, 10, 64) == 5 && oa_agent_effective_max_turns(10, 5, 64) == 5 && oa_agent_effective_max_turns(5, 5, 64) == 5;
+
+  // 4. oa_agent_memory_dir: user / project / local + slug sanitization + traversal/bounds rejection
+  mb: [256] u8;
+  nu := oa_agent_memory_dir(OA_AGENT_MEM_USER, "Code Reviewer_09", "/Users/dev/", "/repo", mb[..]);
+  #assert cast(string) mb[0..<nu] == "/Users/dev/.openagents/agent-memory/code-reviewer_09";
+  np := oa_agent_memory_dir(OA_AGENT_MEM_PROJECT, "A-z09--Test!!", "/Users/dev", "/repo/app//", mb[..]);
+  #assert cast(string) mb[0..<np] == "/repo/app/.openagents/agent-memory/a-z09-test";
+  nl := oa_agent_memory_dir(OA_AGENT_MEM_LOCAL, "--Aud.itor--", "/Users/dev", "/repo", mb[..]);
+  #assert cast(string) mb[0..<nl] == "/repo/.openagents/agent-memory-local/aud-itor";
+  // Exact-fit buffer succeeds; 1 byte short fails cleanly
+  exact: [42] u8;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "ab", "/home/u", "/repo", exact[..]) == 35;
+  exact35: [35] u8;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "ab", "/home/u", "/repo", exact35[..]) == 35;
+  short34: [34] u8;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "ab", "/home/u", "/repo", short34[..]) == 0;
+  // Long agent name caps cleanly at OA_AGENT_NAME_MAX (64)
+  long_nm := "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+  nlong := oa_agent_memory_dir(OA_AGENT_MEM_USER, long_nm, "/h", "/r", mb[..]);
+  #assert nlong == 2 + 26 + OA_AGENT_NAME_MAX;
+  // Invalid scope, empty/relative/UNC/traversal base, empty/punctuation-only/separator/traversal agent names -> 0
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_NONE, "a", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(99, "a", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "a", "", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "a", "rel/home", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "a", "//unc/share", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "a", "/", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_PROJECT, "a", "/h", "/r/../etc", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "...", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "---", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, ".", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "..", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "../etc", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "a..", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "a..b", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "/abc", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "\\abc", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "\0abc", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "a/b", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "a\\b", "/h", "/r", mb[..]) == 0;
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "a\0b", "/h", "/r", mb[..]) == 0;
+  // Boundary ASCII chars around 'a'-'z' and '0'-'9' ('`', '{', '/', ':') become '-' and trim
+  #assert oa_agent_memory_dir(OA_AGENT_MEM_USER, "`a{0:z", "/h", "/r", mb[..]) > 0;
+  #assert cast(string) mb[0..<oa_agent_memory_dir(OA_AGENT_MEM_USER, "`a{0:z", "/h", "/r", mb[..])] == "/h/.openagents/agent-memory/a-0-z";
+
+  // 5. oa_agent_path_in_memory_dir containment & prefix-collision rejection
+  #assert oa_agent_path_in_memory_dir("/h/.openagents/agent-memory/scout", "/h/.openagents/agent-memory/scout");
+  #assert oa_agent_path_in_memory_dir("/h/.openagents/agent-memory/scout/", "/h/.openagents/agent-memory/scout/MEMORY.md");
+  #assert oa_agent_path_in_memory_dir("/h/.openagents/agent-memory/scout//", "/h/.openagents/agent-memory/scout/notes/a.md");
+  #assert !oa_agent_path_in_memory_dir("/h/.openagents/agent-memory/scout", "/h/.openagents/agent-memory/scout2/MEMORY.md");
+  #assert !oa_agent_path_in_memory_dir("/h/.openagents/agent-memory/scout", "/h/.openagents/agent-memory/scou");
+  #assert !oa_agent_path_in_memory_dir("/h/.openagents/agent-memory/scout", "/x/.openagents/agent-memory/scout/MEMORY.md");
+  #assert !oa_agent_path_in_memory_dir("/h/.openagents/agent-memory/scout", "/h/.openagents/agent-memory/scout/../other/MEMORY.md");
+  #assert !oa_agent_path_in_memory_dir("rel/mem", "/h/mem/a.md");
+  #assert !oa_agent_path_in_memory_dir("/h/mem", "rel/a.md");
+  #assert !oa_agent_path_in_memory_dir("/", "/a");
+
+  // 6. Exhaustive oa_agents_parse_markdown & oa_agent_tool_allowed_for_def branch coverage
+  #assert !oa_agents_parse_markdown("x", "fb", FLAWED_ASRC_USER, d1[0..<0]);
+  #assert !oa_agents_parse_markdown("", "fb", FLAWED_ASRC_USER, d1[..]);
+  #assert !oa_agents_parse_markdown("x", "", FLAWED_ASRC_USER, d1[..]);
+  #assert oa_agents_parse_markdown("x", "a", FLAWED_ASRC_USER, d1[..]);
+  #assert d1[0].kind == OA_AGENT_TYPE_CUSTOM && cast(string) d1[0].name[0..<d1[0].nname] == "a";
+  #assert cast(string) d1[0].desc[0..<d1[0].ndesc] == "Custom subagent definition.";
+  #assert cast(string) d1[0].color[0..<d1[0].ncolor] == "green";
+  #assert cast(string) d1[0].disallowed_tools[0..<d1[0].ndisallowed] == OA_GENERAL_DISALLOWED;
+  #assert cast(string) d1[0].prompt[0..<d1[0].nprompt] == "x" && !d1[0].read_only;
+
+  // UTF-8 BOM (exact 3-byte BOM + BOM before frontmatter + near-miss 3-byte non-BOM prefixes)
+  bom_only: [3] u8;
+  bom_only[0] = 0xEF; bom_only[1] = 0xBB; bom_only[2] = 0xBF;
+  #assert oa_agents_parse_markdown(cast(string) bom_only[..], "b", FLAWED_ASRC_USER, d1[..]) && d1[0].nprompt == 0;
+  bom_fm: [34] u8;
+  bom_fm[0] = 0xEF; bom_fm[1] = 0xBB; bom_fm[2] = 0xBF;
+  bf_n := oa_ag_cat(bom_fm[..], 3, "---\nname: bom\n---\nhi");
+  #assert oa_agents_parse_markdown(cast(string) bom_fm[0..<bf_n], "fb", FLAWED_ASRC_USER, d1[..]) && cast(string) d1[0].name[0..<d1[0].nname] == "bom" && cast(string) d1[0].prompt[0..<d1[0].nprompt] == "hi";
+  bad_b1: [3] u8; bad_b1[0] = 0xEE; bad_b1[1] = 0xBB; bad_b1[2] = 0xBF;
+  #assert oa_agents_parse_markdown(cast(string) bad_b1[..], "b", FLAWED_ASRC_USER, d1[..]) && d1[0].nprompt == 3;
+  bad_b2: [3] u8; bad_b2[0] = 0xEF; bad_b2[1] = 0xBA; bad_b2[2] = 0xBF;
+  #assert oa_agents_parse_markdown(cast(string) bad_b2[..], "b", FLAWED_ASRC_USER, d1[..]) && d1[0].nprompt == 3;
+  bad_b3: [3] u8; bad_b3[0] = 0xEF; bad_b3[1] = 0xBB; bad_b3[2] = 0xBE;
+  #assert oa_agents_parse_markdown(cast(string) bad_b3[..], "b", FLAWED_ASRC_USER, d1[..]) && d1[0].nprompt == 3;
+
+  // Leading whitespace, CRLF, comments, empty/1-byte/malformed frontmatter lines, "..." delimiter, empty name after valid name, disallowedTools/git/color/memory/readOnly/omitClaudeMd
+  ws_fm := " \t\r\n---   \r\n# comment\r\n\r\nx\r\nnocolon\r\n:emptykey\r\nname: z\r\nname:\r\ndescription: d\r\ndisallowedTools: X\r\ngit: none\r\ncolor: amber\r\nmemory: user\r\nreadOnly: true\r\nomitClaudeMd: true\r\n...\r\nBody text";
+  #assert oa_agents_parse_markdown(ws_fm, "fb", FLAWED_ASRC_PROJECT, d1[..]);
+  #assert cast(string) d1[0].name[0..<d1[0].nname] == "z" && cast(string) d1[0].desc[0..<d1[0].ndesc] == "d";
+  #assert cast(string) d1[0].disallowed_tools[0..<d1[0].ndisallowed] == "X,Agent,Task";
+  #assert cast(string) d1[0].git[0..<d1[0].ngit] == "none" && cast(string) d1[0].color[0..<d1[0].ncolor] == "amber";
+  #assert d1[0].memory_scope == OA_AGENT_MEM_USER && d1[0].read_only && d1[0].omit_claudemd;
+  #assert cast(string) d1[0].prompt[0..<d1[0].nprompt] == "Body text";
+  // Opening "---" line trailing text must be skipped cleanly without skipping the next line's first byte
+  #assert oa_agents_parse_markdown("---description: bad\nname: ok\n---\nbody", "fb", FLAWED_ASRC_PROJECT, d1[..]);
+  #assert cast(string) d1[0].name[0..<d1[0].nname] == "ok" && cast(string) d1[0].desc[0..<d1[0].ndesc] == "Custom subagent definition.";
+  #assert oa_agents_parse_markdown("---x\nname: ok\n---\nbody", "fb", FLAWED_ASRC_PROJECT, d1[..]);
+  #assert cast(string) d1[0].name[0..<d1[0].nname] == "ok";
+
+  // Edge frontmatter forms: exact 3-byte "---", unclosed frontmatter without trailing newline, empty disallowedTools, disallowedTools already containing Agent, git=push, memory=local, read_only=true, 1-char name/desc
+  #assert oa_agents_parse_markdown("---", "fb", FLAWED_ASRC_PROJECT, d1[..]) && d1[0].nprompt == 0;
+  #assert oa_agents_parse_markdown("---\ndisallowedTools: \ngit: push\nmemory: local\nread_only: true", "fb", FLAWED_ASRC_PROJECT, d1[..]);
+  #assert cast(string) d1[0].disallowed_tools[0..<d1[0].ndisallowed] == "Agent,Task";
+  #assert cast(string) d1[0].git[0..<d1[0].ngit] == "push" && d1[0].memory_scope == OA_AGENT_MEM_LOCAL && d1[0].read_only;
+  #assert oa_agents_parse_markdown("---\nname: m\ndisallowedTools: Agent,Bash\n---\nok", "fb", FLAWED_ASRC_PROJECT, d1[..]);
+  #assert cast(string) d1[0].disallowed_tools[0..<d1[0].ndisallowed] == "Agent,Bash";
+  #assert oa_agents_parse_markdown("  \t\r\n", "fb", FLAWED_ASRC_PROJECT, d1[..]) && d1[0].nprompt == 0;
+  #assert oa_agents_parse_markdown("--", "fb", FLAWED_ASRC_PROJECT, d1[..]) && cast(string) d1[0].prompt[0..<d1[0].nprompt] == "--";
+
+  // Auto-detect read_only from allowedTools allowlist
+  #assert oa_agents_parse_markdown("---\nname: r1\ntools: R\n---\np", "fb", FLAWED_ASRC_PROJECT, d1[..]) && d1[0].read_only;
+  #assert oa_agents_parse_markdown("---\nname: w1\ntools: Edit\n---\np", "fb", FLAWED_ASRC_PROJECT, d1[..]) && !d1[0].read_only;
+  #assert oa_agents_parse_markdown("---\nname: w2\ntools: Write\n---\np", "fb", FLAWED_ASRC_PROJECT, d1[..]) && !d1[0].read_only;
+  #assert oa_agents_parse_markdown("---\nname: w3\ntools: CoaxReplace\n---\np", "fb", FLAWED_ASRC_PROJECT, d1[..]) && !d1[0].read_only;
+  #assert oa_agents_parse_markdown("---\nname: w4\ntools: Bash\n---\np", "fb", FLAWED_ASRC_PROJECT, d1[..]) && !d1[0].read_only;
+  #assert oa_agents_parse_markdown("---\nname: w5\nreadOnly: false\n---\np", "fb", FLAWED_ASRC_PROJECT, d1[..]) && !d1[0].read_only;
+
+  // Bare read_only def (empty disallowed_tools) verifies EVERY read-only branch independently + empty/1-byte tool names
+  ro_bare := OaAgentDef.{active = true, read_only = true};
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "", false, false);
+  #assert oa_agent_tool_allowed_for_def(ro_bare, "x", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "Edit", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "Write", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "CoaxReplace", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "WalletPay", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "WalletReceive", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "EnterWorktree", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "ExitWorktree", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "CapabilityDraft", false, false);
+  #assert !oa_agent_tool_allowed_for_def(ro_bare, "CapabilityEval", false, false);
+
+  one_d := OaAgentDef.{active = true};
+  one_d.ndisallowed = oa_ag_copy(one_d.disallowed_tools[..], "X");
+  one_d.nallowed = oa_ag_copy(one_d.allowed_tools[..], "R");
+  #assert !oa_agent_tool_allowed_for_def(one_d, "X", false, false);
+  #assert oa_agent_tool_allowed_for_def(one_d, "R", false, false);
+  #assert !oa_agent_tool_allowed_for_def(one_d, "Read", false, false);
+
+  reg: [1] OaAgentRegistry;
+  oa_agents_init_builtins(reg[..]);
+  gen := reg[0].defs[oa_agents_find(reg[..], "general-purpose")];
+  #assert oa_agent_tool_allowed_for_def(gen, "WebSearch", false, false);
+  #assert !oa_agent_tool_allowed_for_def(gen, "WebSearch", true, false);
+  #assert oa_agent_tool_allowed_for_def(gen, "WebFetch", true, false);
 }

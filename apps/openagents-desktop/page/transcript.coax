@@ -612,7 +612,16 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     dt_s := cl_str(ar[..], one, "disallowed_tools");
     if dt_s.count > 0 { s[0].turns[i].agents[j].disallowed_tools_n = cp_out(s[0].turns[i].agents[j].disallowed_tools[..], dt_s); }
     bg_b := cl_bool(one, "run_in_background");
-    if bg_b.ok && bg_b.value { s[0].turns[i].agents[j].is_background = true; }
+    if bg_b.ok && bg_b.value {
+      s[0].turns[i].agents[j].is_background = true;
+      s[0].turns[i].agents[j].is_async = true;
+    }
+    as_b := cl_bool(one, "is_async");
+    if as_b.ok && as_b.value { s[0].turns[i].agents[j].is_async = true; }
+    mt_i := cl_int(one, "max_turns");
+    if mt_i.ok && mt_i.value > 0 { s[0].turns[i].agents[j].max_turns = mt_i.value; }
+    ms_i := cl_int(one, "memory_scope");
+    if ms_i.ok && ms_i.value > 0 { s[0].turns[i].agents[j].memory_scope = ms_i.value; }
     oc_b := cl_bool(one, "omit_claudemd");
     if oc_b.ok && oc_b.value { s[0].turns[i].agents[j].omit_claudemd = true; }
     ro_b := cl_bool(one, "read_only");
@@ -922,6 +931,9 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
       resume_transcript_path = cp_long_str(s, s[0].turns[i].agents[j].resume_tx_at, s[0].turns[i].agents[j].resume_tx_n),
       transcript_path = cp_long_str(s, s[0].turns[i].agents[j].tx_path_at, s[0].turns[i].agents[j].tx_path_n),
       mode = cast(string) s[0].turns[i].agents[j].perm_mode[0..<s[0].turns[i].agents[j].perm_mode_n],
+      max_turns = s[0].turns[i].agents[j].max_turns,
+      is_async = s[0].turns[i].agents[j].is_async || s[0].turns[i].agents[j].is_background,
+      memory_scope = s[0].turns[i].agents[j].memory_scope,
     };
     if s[0].turns[i].agents[j].is_fork {
       // Cache-exact FORK_AGENT (#14120): preserve exact parent model, effort, and local/cloud parity

@@ -2724,7 +2724,19 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
 
 // ---------------------------------------------------------------- request JSON builders (Gemini Native & OpenAI/Psionic)
 
-fww_build_gemini_body_packs :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, packs_mask: int, out: [] u8) -> int {
+fww_build_gemini_body_for_agent :: (
+  cfg: [] FwConfig,
+  h: [] FwHist,
+  effort: string,
+  sys_prompt: string,
+  no_tools: bool,
+  packs_mask: int,
+  use_agent_def: bool,
+  agent_def: OaAgentDef,
+  is_async: bool,
+  is_fork: bool,
+  out: [] u8
+) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
@@ -2748,7 +2760,7 @@ fww_build_gemini_body_packs :: (cfg: [] FwConfig, h: [] FwHist, effort: string, 
     allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
     disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
     jo_key(o[..], "tools");
-    _ = flawed_wire_write_tools_packs(o[..], true, allowed, disallowed, packs_mask);
+    _ = flawed_wire_write_tools_packs_for_agent(o[..], true, allowed, disallowed, packs_mask, use_agent_def, agent_def, is_async, is_fork);
     if no_tools {
       jo_key(o[..], "toolConfig");
       jo_raw(o[..], "{\"functionCallingConfig\":{\"mode\":\"NONE\"}}");
@@ -2919,6 +2931,10 @@ fww_build_gemini_body_packs :: (cfg: [] FwConfig, h: [] FwHist, effort: string, 
   return ifx o[0].bad then -1 else o[0].n;
 }
 
+fww_build_gemini_body_packs :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, packs_mask: int, out: [] u8) -> int {
+  return fww_build_gemini_body_for_agent(cfg, h, effort, sys_prompt, no_tools, packs_mask, false, OaAgentDef.{}, false, false, out);
+}
+
 fww_build_gemini_body_ex :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, include_coax_intel: bool, out: [] u8) -> int {
   return fww_build_gemini_body_packs(cfg, h, effort, sys_prompt, no_tools, ifx include_coax_intel then OA_PACK_COAX_INTEL else 0, out);
 }
@@ -2927,7 +2943,23 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
   return fww_build_gemini_body_packs(cfg, h, effort, sys_prompt, no_tools, 0, out);
 }
 
-fww_build_openai_body_packs :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, packs_mask: int, out: [] u8) -> int {
+fww_build_openai_body_for_agent :: (
+  cfg: [] FwConfig,
+  h: [] FwHist,
+  model: string,
+  effort: string,
+  sys_prompt: string,
+  is_local: bool,
+  local_ctx: int,
+  no_tools: bool,
+  force_no_think: bool,
+  packs_mask: int,
+  use_agent_def: bool,
+  agent_def: OaAgentDef,
+  is_async: bool,
+  is_fork: bool,
+  out: [] u8
+) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
@@ -2957,7 +2989,7 @@ fww_build_openai_body_packs :: (cfg: [] FwConfig, h: [] FwHist, model: string, e
     allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
     disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
     jo_key(o[..], "tools");
-    _ = flawed_wire_write_tools_packs(o[..], false, allowed, disallowed, packs_mask);
+    _ = flawed_wire_write_tools_packs_for_agent(o[..], false, allowed, disallowed, packs_mask, use_agent_def, agent_def, is_async, is_fork);
   }
 
   jo_key(o[..], "messages");
@@ -3114,6 +3146,10 @@ fww_build_openai_body_packs :: (cfg: [] FwConfig, h: [] FwHist, model: string, e
   jo_end(o[..]);
   jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
+}
+
+fww_build_openai_body_packs :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, packs_mask: int, out: [] u8) -> int {
+  return fww_build_openai_body_for_agent(cfg, h, model, effort, sys_prompt, is_local, local_ctx, no_tools, force_no_think, packs_mask, false, OaAgentDef.{}, false, false, out);
 }
 
 fww_build_openai_body_ex :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, include_coax_intel: bool, out: [] u8) -> int {
@@ -6409,6 +6445,13 @@ FwRun :: struct {
   last_sent_local_max_tokens: int;
   last_sent_has_snapshot: bool;
   subagent_read_only: bool;
+  subagent_is_async: bool;
+  subagent_max_turns: int;
+  subagent_perm_mode: int;            // 0 = inherit cfg[0].permission_mode, else FLAWED_PMODE_* (#14123)
+  subagent_mem_scope: int;            // OA_AGENT_MEM_* (#14123)
+  subagent_mem_dir: [FS_PATH_MAX] u8; nsubagent_mem_dir: int;
+  denial: [1] FlawedDenialTracker;    // Subagent denial circuit breaker (3 consecutive / 20 total; #14123)
+  denial_tripped: bool;
   subagent_git: [8] u8; nsubagent_git: int;   // "" for a chat's own run; none, commit or push for a sub-agent (mc_gg_refuse_publish)
   subagent_omit_claudemd: bool;
   subagent_type: [32] u8; nsubagent_type: int;
@@ -6709,6 +6752,89 @@ fww_resolve_request_params :: (
   out_packs_mask[0] = packs_mask;
 }
 
+// Resolves the active subagent OaAgentDef for #authority oa_agent_tool_allowed_for_def filtering (#14123).
+fww_active_subagent_def :: (r: [] FwRun) -> OaAgentDef {
+  d := OaAgentDef.{active = true, read_only = r[0].subagent_read_only};
+  if r[0].nsubagent_type > 0 {
+    pi := oa_agents_find(r[0].agent_reg[..], cast(string) r[0].subagent_type[0..<r[0].nsubagent_type]);
+    if pi >= 0 {
+      d = r[0].agent_reg[0].defs[pi];
+      if r[0].subagent_read_only { d.read_only = true; }
+    }
+  }
+  if r[0].nsubagent_allowed > 0 {
+    d.nallowed = oa_ag_copy(d.allowed_tools[..], cast(string) r[0].subagent_allowed[0..<r[0].nsubagent_allowed]);
+  }
+  if r[0].nsubagent_disallowed > 0 {
+    d.ndisallowed = oa_ag_copy(d.disallowed_tools[..], cast(string) r[0].subagent_disallowed[0..<r[0].nsubagent_disallowed]);
+  }
+  return d;
+}
+
+// Pure subagent/parent tool permission evaluator (#14123):
+// - Enforces #authority oa_agent_tool_allowed_for_def for subagents
+// - Applies #authority memory-dir silent Read/Edit/Write carve-out (respecting !read_only & cowork override)
+// - Evaluates effective permissionMode (subagent_perm_mode > cfg.permission_mode)
+// - Fails closed on ASK for async background subagents via #authority flawed_subagent_avoid_prompts
+fww_eval_tool_permission :: (
+  r: [] FwRun,
+  cfg: [] FwConfig,
+  name: string,
+  check_target: string,
+  has_cowork_override: bool,
+  out_eff_pmode: [] int
+) -> int {
+  eff_pmode := ifx r[0].is_subagent && r[0].subagent_perm_mode > 0
+               then r[0].subagent_perm_mode
+               else cfg[0].permission_mode;
+  if out_eff_pmode.count > 0 { out_eff_pmode[0] = eff_pmode; }
+
+  if r[0].is_subagent || r[0].subagent_read_only {
+    sub_def := fww_active_subagent_def(r);
+    if !oa_agent_tool_allowed_for_def(sub_def, name, r[0].subagent_is_async, r[0].is_fork_child) {
+      return FLAWED_PBEH_DENY;
+    }
+  }
+
+  // Silent Read/Edit/Write carve-out inside the subagent's validated persistent memory directory (#14123).
+  if r[0].is_subagent && r[0].nsubagent_mem_dir > 0 && check_target.count > 0 {
+    mem_dir := cast(string) r[0].subagent_mem_dir[0..<r[0].nsubagent_mem_dir];
+    in_mem := oa_agent_path_in_memory_dir(mem_dir, check_target);
+    if name == "Read" && in_mem {
+      return FLAWED_PBEH_ALLOW;
+    }
+    if (name == "Edit" || name == "Write") && !r[0].subagent_read_only &&
+       flawed_mem_silent_write_carveout(in_mem, has_cowork_override) {
+      return FLAWED_PBEH_ALLOW;
+    }
+  }
+
+  beh := flawed_wire_tool_permission(name, check_target, eff_pmode, cfg[0].bypass_danger, r[0].session_allow);
+  if beh == FLAWED_PBEH_ASK && r[0].is_subagent && r[0].subagent_is_async &&
+     flawed_subagent_avoid_prompts(false, false, false) {
+    return FLAWED_PBEH_DENY;
+  }
+  return beh;
+}
+
+// Records a tool permission decision into #authority FlawedDenialTracker for non-bypass subagents (#14123).
+// Returns true iff the denial circuit breaker (3 consecutive / 20 total) has tripped.
+fww_denial_record_decision :: (r: [] FwRun, cfg: [] FwConfig, eff_pmode: int, allowed: bool) -> bool {
+  if !r[0].is_subagent || eff_pmode == FLAWED_PMODE_BYPASS || cfg[0].bypass_danger {
+    return false;
+  }
+  if allowed {
+    _ = flawed_denial_record_success(r[0].denial[..]);
+    return false;
+  }
+  flawed_denial_record_block(r[0].denial[..]);
+  if flawed_denial_should_fallback(r[0].denial[..]) {
+    r[0].denial_tripped = true;
+    return true;
+  }
+  return false;
+}
+
 // Launch one streaming LLM request for the current history. Returns "" on success or error reason.
 fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, out: [] u8) -> string {
   r[0].acc[0] = FwStreamAccum.{cur_tool_idx = -1};
@@ -6794,24 +6920,30 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   fww_hist_sanitize(h, b[0].compact_buf[..]);
   r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
 
+  // Frozen FORK_AGENT children preserve exact parent tool schema bytes (#14120);
+  // non-fork subagents filter serialized schemas through #authority oa_agent_tool_allowed_for_def (#14123).
+  frozen_fork := r[0].is_fork_child && r[0].fork_frozen;
+  use_sub_filter := r[0].is_subagent && !frozen_fork;
+  sub_def := ifx use_sub_filter then fww_active_subagent_def(r) else OaAgentDef.{};
+
   bn := ifx is_gem
-        then fww_build_gemini_body_packs(eff_cfg[..], h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
-        else fww_build_openai_body_packs(eff_cfg[..], h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
+        then fww_build_gemini_body_for_agent(eff_cfg[..], h, eff, sys, no_tools, packs_mask, use_sub_filter, sub_def, r[0].subagent_is_async, r[0].is_fork_child, b[0].req_body[..])
+        else fww_build_openai_body_for_agent(eff_cfg[..], h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, use_sub_filter, sub_def, r[0].subagent_is_async, r[0].is_fork_child, b[0].req_body[..]);
   if bn <= 0 {
     _ = fww_emergency_compact(h, 2, ctx_win, b[0].compact_buf[..]);
     fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
-         then fww_build_gemini_body_packs(eff_cfg[..], h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
-         else fww_build_openai_body_packs(eff_cfg[..], h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
+         then fww_build_gemini_body_for_agent(eff_cfg[..], h, eff, sys, no_tools, packs_mask, use_sub_filter, sub_def, r[0].subagent_is_async, r[0].is_fork_child, b[0].req_body[..])
+         else fww_build_openai_body_for_agent(eff_cfg[..], h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, use_sub_filter, sub_def, r[0].subagent_is_async, r[0].is_fork_child, b[0].req_body[..]);
   }
   if bn <= 0 {
     _ = fww_emergency_compact(h, 3, ctx_win, b[0].compact_buf[..]);
     fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
-         then fww_build_gemini_body_packs(eff_cfg[..], h, eff, sys, no_tools, packs_mask, b[0].req_body[..])
-         else fww_build_openai_body_packs(eff_cfg[..], h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, b[0].req_body[..]);
+         then fww_build_gemini_body_for_agent(eff_cfg[..], h, eff, sys, no_tools, packs_mask, use_sub_filter, sub_def, r[0].subagent_is_async, r[0].is_fork_child, b[0].req_body[..])
+         else fww_build_openai_body_for_agent(eff_cfg[..], h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, packs_mask, use_sub_filter, sub_def, r[0].subagent_is_async, r[0].is_fork_child, b[0].req_body[..]);
   }
   if bn <= 0 { return "Request body exceeded buffer capacity (try /compact)."; }
 
@@ -7360,11 +7492,17 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   cwd := cast(string) r[0].cwd[0..<r[0].ncwd];
   is_err := [1] bool.[false];
 
-  if r[0].subagent_read_only {
-    if name == "Edit" || name == "Write" || name == "CoaxReplace" || name == "WalletPay" || name == "EnterWorktree" || name == "ExitWorktree" || name == "CapabilityDraft" || name == "CapabilityEval" {
+  if r[0].is_subagent || r[0].subagent_read_only {
+    sub_def := fww_active_subagent_def(r);
+    if !oa_agent_tool_allowed_for_def(sub_def, name, r[0].subagent_is_async, r[0].is_fork_child) {
       r[0].acc[0].tools[idx].done = true;
       r[0].acc[0].tools[idx].is_error = true;
-      r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Tool denied: this subagent is strictly read-only.");
+      r[0].acc[0].tools[idx].nres = fww_keep(
+        r[0].acc[0].tools[idx].res[..],
+        ifx sub_def.read_only then "Tool denied: this subagent is strictly read-only."
+        else ifx r[0].subagent_is_async then "Tool denied: not permitted for async background subagents."
+        else "Tool denied by subagent tool policy."
+      );
       return false;
     }
   }
@@ -7388,7 +7526,7 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Bash requires command.");
       return false;
     }
-    if r[0].subagent_read_only && !oa_agent_bash_readonly_safe(cast(string) cb[0..<cn]) {
+    if (r[0].subagent_read_only || (r[0].is_subagent && fww_active_subagent_def(r).read_only)) && !oa_agent_bash_readonly_safe(cast(string) cb[0..<cn]) {
       r[0].acc[0].tools[idx].done = true;
       r[0].acc[0].tools[idx].is_error = true;
       r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Bash command denied: this subagent is strictly read-only.");
@@ -7601,12 +7739,42 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     tb: [2048] u8;
     target := fww_tool_target(name, args, tb[..]);
     full_b: [FS_PATH_MAX] u8;
-    check_target := ifx (name == "Edit" || name == "Write") && target.count > 0 then fww_resolve_path(cast(string) r[0].cwd[0..<r[0].ncwd], target, full_b[..]) else target;
-    beh := flawed_wire_tool_permission(name, check_target, cfg[0].permission_mode, cfg[0].bypass_danger, r[0].session_allow);
+    check_target := ifx (name == "Read" || name == "Edit" || name == "Write") && target.count > 0 then fww_resolve_path(cast(string) r[0].cwd[0..<r[0].ncwd], target, full_b[..]) else target;
+    cow_b: [64] u8;
+    has_cowork_ovr := fww_trim(cl_getenv("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", cow_b[..])).count > 0;
+    eff_pm := [1] int.[0];
+    beh := fww_eval_tool_permission(r, cfg, name, check_target, has_cowork_ovr, eff_pm[..]);
     if beh == FLAWED_PBEH_DENY {
       r[0].acc[0].tools[idx].done = true;
       r[0].acc[0].tools[idx].is_error = true;
-      r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Permission denied by active OpenAgents permission mode.");
+      why_deny := "Permission denied by active OpenAgents permission mode.";
+      if r[0].is_subagent || r[0].subagent_read_only {
+        sub_def := fww_active_subagent_def(r);
+        if !oa_agent_tool_allowed_for_def(sub_def, name, r[0].subagent_is_async, r[0].is_fork_child) {
+          why_deny = ifx sub_def.read_only then "Tool denied: this subagent is strictly read-only."
+                     else ifx r[0].subagent_is_async then "Tool denied: not permitted for async background subagents."
+                     else "Tool denied by subagent tool policy.";
+        } else if r[0].subagent_is_async {
+          why_deny = "Permission denied: async background subagent cannot prompt interactively.";
+        }
+      }
+      r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], why_deny);
+      if fww_denial_record_decision(r, cfg, eff_pm[0], false) {
+        r[0].acc[0].tools[idx].nres = fww_cat(
+          r[0].acc[0].tools[idx].res[..],
+          r[0].acc[0].tools[idx].nres,
+          "\n[Subagent denial circuit breaker tripped (3 consecutive or 20 total denials); stopping tool execution to wrap up cleanly.]"
+        );
+        for rem_i: (idx + 1)..<r[0].acc[0].ntools {
+          if !r[0].acc[0].tools[rem_i].done {
+            r[0].acc[0].tools[rem_i].done = true;
+            r[0].acc[0].tools[rem_i].is_error = true;
+            r[0].acc[0].tools[rem_i].nres = fww_keep(r[0].acc[0].tools[rem_i].res[..], "Skipped: subagent denial circuit breaker tripped.");
+          }
+        }
+        r[0].next_tool_idx = r[0].acc[0].ntools;
+        break;
+      }
       r[0].next_tool_idx += 1;
       continue;
     }
@@ -7625,6 +7793,7 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       fww_send(out, mww_permit(out, r[0].permit_ticket, false, cast(string) ttl_b[0..<tn], target, opts));
       return "";
     }
+    _ = fww_denial_record_decision(r, cfg, eff_pm[0], true);
     r[0].next_tool_idx += 1;
     if fww_exec_tool_now(r, cfg, auth, h, b, idx, out) {
       return ""; // async Bash running
@@ -7649,13 +7818,14 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     r[0].dup_tool_streak = 0;
   }
 
-  // Decide before appending tool results whether the next step must be a graceful final wrap-up (H2 + H3 + H8)
+  // Decide before appending tool results whether the next step must be a graceful final wrap-up (H2 + H3 + H8 + #14123)
   r[0].step_num += 1;
-  max_t := ifx cfg[0].max_turns > 0 then cfg[0].max_turns else 64;
+  max_t := oa_agent_effective_max_turns(ifx r[0].is_subagent then r[0].subagent_max_turns else 0, cfg[0].max_turns, 64);
   hit_last_turn := r[0].step_num >= max_t;
   hit_soft_time := r[0].soft_deadline_ms > 0 && proc_now_ms() >= r[0].soft_deadline_ms;
   hit_dup_limit := r[0].dup_tool_streak >= 2;
-  need_wrapup := hit_last_turn || hit_soft_time || hit_dup_limit;
+  hit_denial_limit := r[0].denial_tripped;
+  need_wrapup := hit_last_turn || hit_soft_time || hit_dup_limit || hit_denial_limit;
 
   // Track edit progress, bash verification status, & Stage-B per-turn aggregate tool-result budget
   // (Claude Code toolResultStorage.ts pattern: Read ALWAYS opts out — maxResultSizeChars: Infinity!)
@@ -7933,11 +8103,13 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
         _ = mc_steer_take(st, r[0].step_num);
       }
     }
-    // Inject graceful wrap-up instruction on final turn / soft deadline / duplicate-loop cap
+    // Inject graceful wrap-up instruction on final turn / soft deadline / duplicate-loop cap / denial circuit breaker
     if need_wrapup && !r[0].force_wrapup_once && nb < FWW_MAX_BLOCKS {
       a0 := [1] int.[0];
       wb := FwBlock.{kind = FWW_MB_TEXT};
-      wmsg := "Wrap-up turn: do not call any more tools. Using all computations and tool outputs above, write your complete, concise final answer now in the exact format requested by the user.";
+      wmsg := ifx hit_denial_limit
+              then "Denial circuit breaker triggered: do not call any more tools. Summarize what was completed, what permissions were denied, and return your concise final report now."
+              else "Wrap-up turn: do not call any more tools. Using all computations and tool outputs above, write your complete, concise final answer now in the exact format requested by the user.";
       wb.text_n = fww_slab_put(h, wmsg, a0[..]); wb.text_at = a0[0];
       h[0].msgs[mi].blocks[nb] = wb;
       nb += 1;
@@ -7950,7 +8122,10 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   if need_wrapup {
     if r[0].force_wrapup_once {
       r[0].active = false;
-      fww_send(out, mww_ended(out, "finished", "Reached Flawed max turns limit."));
+      end_msg := ifx hit_denial_limit
+                 then "Subagent halted: permission denial circuit breaker triggered."
+                 else "Reached Flawed max turns limit.";
+      fww_send(out, mww_ended(out, "finished", end_msg));
       return "finished";
     }
     r[0].force_wrapup_once = true;
@@ -8533,19 +8708,9 @@ fww_stop_active :: (r: [] FwRun, out: [] u8) {
     r[0].cmd[0].h = -1;
     r[0].cmd[0].active = false;
   }
-  // Stop foreground standalone subagents; background subagents have unlinked abort (#14096)
-  for si: 0..<FWW_MAX_DELEGATE_BATCH {
-    if r[0].local_subs[si].active && !r[0].local_subs[si].is_bg {
-      if r[0].local_subs[si].h >= 0 {
-        _ = proc_kill(r[0].local_subs[si].h, PROC_SIGTERM);
-        _ = proc_wait(r[0].local_subs[si].h, 400);
-        _ = proc_release(r[0].local_subs[si].h);
-        r[0].local_subs[si].h = -1;
-      }
-      r[0].local_subs[si].active = false;
-      r[0].local_subs[si].done = true;
-    }
-  }
+  // Stop foreground standalone subagents with SIGTERM -> SIGKILL escalation;
+  // background subagents have unlinked abort during live turns (#14096, #14123).
+  fww_kill_all_local_subs(r, false);
   r[0].waiting_permit = false;
   r[0].waiting_delegate = false;
   r[0].waiting_local_delegate = false;
@@ -9356,6 +9521,121 @@ tool_main :: () -> int #export_c #effects(all) {
       print("FAIL 4: TaskOutput disk fallback after eviction failed: %\n", cast(string) ob[0..<n_disk]); return 1;
     }
     print("OK 4/4 TaskOutput disk-backed lookup after in-memory eviction\n");
+
+    // 5. 6-tier fww_load_agent_registry_ex precedence on real disk dirs (#14123):
+    //    builtin (1) < plugin (2) < user (3) < project (4) < flag (5) < policy (6)
+    cwd_b: [FS_PATH_MAX] u8; cwd_d := fs_join(tmp, "repo", cwd_b[..]);
+    plug1_b: [FS_PATH_MAX] u8; plug1_d := fs_join(home_d, ".openagents/plugins/alpha/agents", plug1_b[..]);
+    plug2_b: [FS_PATH_MAX] u8; plug2_d := fs_join(tmp, "extra-plug-agents", plug2_b[..]);
+    user_b: [FS_PATH_MAX] u8; user_d := fs_join(home_d, ".openagents/agents", user_b[..]);
+    proj_b: [FS_PATH_MAX] u8; proj_d := fs_join(cwd_d, ".openagents/agents", proj_b[..]);
+    flg1_b: [FS_PATH_MAX] u8; flg1_d := fs_join(tmp, "flag-a", flg1_b[..]);
+    flg2_b: [FS_PATH_MAX] u8; flg2_d := fs_join(tmp, "flag-b", flg2_b[..]);
+    pol_b: [FS_PATH_MAX] u8; pol_d := fs_join(tmp, "policy-agents", pol_b[..]);
+    _ = fs_mkdir_all(plug1_d); _ = fs_mkdir_all(plug2_d);
+    _ = fs_mkdir_all(user_d); _ = fs_mkdir_all(proj_d);
+    _ = fs_mkdir_all(flg1_d); _ = fs_mkdir_all(flg2_d); _ = fs_mkdir_all(pol_d);
+
+    fp_tmp: [FS_PATH_MAX] u8;
+    _ = fs_write(fs_join(plug1_d, "plugonly.md", fp_tmp[..]), "---\nname: plugonly\ndescription: from plugin\nmaxTurns: 4\nmemory: user\n---\nPlugin body");
+    _ = fs_write(fs_join(plug2_d, "tiered.md", fp_tmp[..]), "---\nname: tiered\ndescription: tier-plugin\nmaxTurns: 2\n---\nP");
+    _ = fs_write(fs_join(user_d, "tiered.md", fp_tmp[..]), "---\nname: tiered\ndescription: tier-user\nmaxTurns: 3\n---\nU");
+    _ = fs_write(fs_join(proj_d, "tiered.md", fp_tmp[..]), "---\nname: tiered\ndescription: tier-project\nmaxTurns: 4\n---\nJ");
+    _ = fs_write(fs_join(flg1_d, "flagonly.md", fp_tmp[..]), "---\nname: flagonly\ndescription: from flag1\npermissionMode: plan\nmemory: project\nmaxTurns: 6\n---\nF1");
+    _ = fs_write(fs_join(flg2_d, "tiered.md", fp_tmp[..]), "---\nname: tiered\ndescription: tier-flag\nmaxTurns: 5\n---\nF");
+    _ = fs_write(fs_join(pol_d, "tiered.md", fp_tmp[..]), "---\nname: tiered\ndescription: tier-policy\nmaxTurns: 9\nmemory: local\n---\nPol");
+
+    colon_flags_b: [FS_PATH_MAX * 2] u8;
+    cfn := fww_cat(colon_flags_b[..], 0, flg1_d);
+    cfn = fww_cat(colon_flags_b[..], cfn, ":");
+    cfn = fww_cat(colon_flags_b[..], cfn, flg2_d);
+    colon_flags := cast(string) colon_flags_b[0..<cfn];
+
+    reg6: [1] OaAgentRegistry;
+    // Step through ascending precedence tiers to prove each higher tier overrides the previous one
+    fww_load_agent_registry_ex(reg6[..], "", "", plug2_d, "", "");
+    ti := oa_agents_find(reg6[..], "tiered");
+    if ti < 0 || cast(string) reg6[0].defs[ti].desc[0..<reg6[0].defs[ti].ndesc] != "tier-plugin" { print("FAIL 5: plugin tier failed\n"); return 1; }
+    fww_load_agent_registry_ex(reg6[..], "", home_d, plug2_d, "", "");
+    ti = oa_agents_find(reg6[..], "tiered");
+    ip := oa_agents_find(reg6[..], "plugonly");
+    if ti < 0 || ip < 0 || cast(string) reg6[0].defs[ti].desc[0..<reg6[0].defs[ti].ndesc] != "tier-user" || reg6[0].defs[ip].source != FLAWED_ASRC_PLUGIN { print("FAIL 5: user/plugin tier failed\n"); return 1; }
+    fww_load_agent_registry_ex(reg6[..], cwd_d, home_d, plug2_d, "", "");
+    ti = oa_agents_find(reg6[..], "tiered");
+    if ti < 0 || cast(string) reg6[0].defs[ti].desc[0..<reg6[0].defs[ti].ndesc] != "tier-project" { print("FAIL 5: project tier failed\n"); return 1; }
+    fww_load_agent_registry_ex(reg6[..], cwd_d, home_d, plug2_d, colon_flags, "");
+    ti = oa_agents_find(reg6[..], "tiered");
+    ifo := oa_agents_find(reg6[..], "flagonly");
+    if ti < 0 || ifo < 0 || cast(string) reg6[0].defs[ti].desc[0..<reg6[0].defs[ti].ndesc] != "tier-flag" || reg6[0].defs[ifo].max_turns != 6 { print("FAIL 5: flag tier failed\n"); return 1; }
+    fww_load_agent_registry_ex(reg6[..], cwd_d, home_d, plug2_d, colon_flags, pol_d);
+    ti = oa_agents_find(reg6[..], "tiered");
+    if ti < 0 || cast(string) reg6[0].defs[ti].desc[0..<reg6[0].defs[ti].ndesc] != "tier-policy" || reg6[0].defs[ti].max_turns != 9 || reg6[0].defs[ti].memory_scope != OA_AGENT_MEM_LOCAL {
+      print("FAIL 5: policy tier failed\n"); return 1;
+    }
+    print("OK 5/7 6-tier fww_load_agent_registry_ex precedence (builtin < plugin < user < project < flag < policy)\n");
+
+    // 6. Real agent memory dir creation, MEMORY.md read+injection, and MWW_DELEGATE propagation of mode/max_turns/is_async/memory_scope (#14123)
+    mem_b: [FS_PATH_MAX] u8;
+    mem_n := oa_agent_memory_dir(OA_AGENT_MEM_PROJECT, "flagonly", home_d, cwd_d, mem_b[..]);
+    if mem_n <= 0 { print("FAIL 6: oa_agent_memory_dir failed\n"); return 1; }
+    mem_dir := cast(string) mem_b[0..<mem_n];
+    _ = fs_mkdir_all(mem_dir);
+    _ = fs_write(fs_join(mem_dir, "MEMORY.md", fp_tmp[..]), "# Notes\n- Always verify invariants.\n");
+    sys_b: [8192] u8;
+    sn_m := fww_inject_agent_memory_prompt(mem_dir, false, sys_b[..], 0);
+    sys_m := cast(string) sys_b[0..<sn_m];
+    if !fww_contains_ci(sys_m, "# Agent Memory (") || !fww_contains_ci(sys_m, "Always verify invariants.") {
+      print("FAIL 6: MEMORY.md prompt injection failed\n"); return 1;
+    }
+    r_del: [1] FwRun; cfg_del: [1] FwConfig; h_del: [1] FwHist;
+    cfg_del[0].permission_mode = FLAWED_PMODE_DEFAULT;
+    r_del[0].host_agents = true;
+    r_del[0].nhome = fww_keep(r_del[0].home[..], home_d);
+    r_del[0].ncwd = fww_keep(r_del[0].cwd[..], cwd_d);
+    r_del[0].agent_reg[0] = reg6[0];
+    r_del[0].acc[0] = FwStreamAccum.{ntools = 1, cur_tool_idx = -1};
+    r_del[0].acc[0].tools[0].nid = fww_keep(r_del[0].acc[0].tools[0].id[..], "ag_14123");
+    r_del[0].acc[0].tools[0].nname = fww_keep(r_del[0].acc[0].tools[0].name[..], "Agent");
+    r_del[0].acc[0].tools[0].nargs = fww_keep(r_del[0].acc[0].tools[0].args[..], "{\"description\":\"Run flagonly\",\"prompt\":\"Audit\",\"subagent_type\":\"flagonly\",\"run_in_background\":true,\"mode\":\"dontAsk\"}");
+    del_o: [16384] u8;
+    if !fww_start_delegate_batch(r_del[..], cfg_del[..], h_del[..], b1[..], home_d, 0, 1, del_o[..]) {
+      print("FAIL 6: fww_start_delegate_batch failed\n"); return 1;
+    }
+    dl_n := 0; while dl_n < del_o.count && del_o[dl_n] != 10 && del_o[dl_n] != 0 { dl_n += 1; }
+    dl_s := cast(string) del_o[0..<dl_n];
+    if !fww_contains_ci(dl_s, "\"mode\":\"dontAsk\"") || !fww_contains_ci(dl_s, "\"max_turns\":6") ||
+       !fww_contains_ci(dl_s, "\"is_async\":true") || !fww_contains_ci(dl_s, "\"memory_scope\":2") {
+      print("FAIL 6: MWW_DELEGATE missing mode/max_turns/is_async/memory_scope: %\n", dl_s); return 1;
+    }
+    print("OK 6/7 agent memory dir + MEMORY.md injection + MWW_DELEGATE mode/max_turns/is_async/memory_scope propagation\n");
+
+    // 7. Hardened child-process SIGTERM -> SIGKILL escalation on abort & EOF (#14123)
+    ph_fg := proc_new();
+    ph_bg := proc_new();
+    if ph_fg < 0 || !proc_arg(ph_fg, "/bin/sh") || !proc_arg(ph_fg, "-c") || !proc_arg(ph_fg, "trap '' TERM; sleep 30") || proc_start(ph_fg) != 0 ||
+       ph_bg < 0 || !proc_arg(ph_bg, "/bin/sh") || !proc_arg(ph_bg, "-c") || !proc_arg(ph_bg, "trap '' TERM; sleep 30") || proc_start(ph_bg) != 0 {
+      if ph_fg >= 0 { _ = proc_kill(ph_fg, PROC_SIGKILL); _ = proc_release(ph_fg); }
+      if ph_bg >= 0 { _ = proc_kill(ph_bg, PROC_SIGKILL); _ = proc_release(ph_bg); }
+      print("FAIL 7: could not spawn SIGTERM-ignoring child processes\n"); return 1;
+    }
+    r_kill: [1] FwRun;
+    r_kill[0].active = true;
+    r_kill[0].local_subs[0] = FwLocalSubProc.{active = true, done = false, is_bg = false, h = ph_fg, rec_idx = 0};
+    r_kill[0].local_subs[1] = FwLocalSubProc.{active = true, done = false, is_bg = true, h = ph_bg, rec_idx = 1};
+    t_kill0 := proc_now_ms();
+    // fww_stop_active kills foreground child via SIGTERM->SIGKILL while leaving background child unlinked
+    fww_stop_active(r_kill[..], del_o[..]);
+    if r_kill[0].local_subs[0].active || r_kill[0].local_subs[0].h >= 0 || !r_kill[0].local_subs[1].active {
+      fww_kill_all_local_subs(r_kill[..], true);
+      print("FAIL 7: fww_stop_active did not reap fg child or wrongly killed bg child\n"); return 1;
+    }
+    // EOF teardown kills remaining background child via SIGTERM->SIGKILL without hanging 30s
+    fww_kill_all_local_subs(r_kill[..], true);
+    kill_elapsed := proc_now_ms() - t_kill0;
+    if r_kill[0].local_subs[1].active || r_kill[0].local_subs[1].h >= 0 || kill_elapsed > 5000 {
+      print("FAIL 7: EOF teardown failed or hung (%ms)\n", kill_elapsed); return 1;
+    }
+    print("OK 7/7 SIGTERM -> SIGKILL child process escalation on abort & EOF (%ms)\n", kill_elapsed);
     return 0;
   }
 
@@ -9503,7 +9783,10 @@ tool_main :: () -> int #export_c #effects(all) {
       fww_poll_idle_local_bg(run[..], q[..], f[..], out[..], polled[..]);
     }
     if !run[0].active && f[0].starting && ended.count == 0 { ended = "failed"; }
-    if ended.count > 0 { fww_turn_end(ended, st[..], q[..], f[..], out[..]); }
+    if ended.count > 0 {
+      if ended == "stopped" || ended == "failed" { fww_kill_all_local_subs(run[..], false); }
+      fww_turn_end(ended, st[..], q[..], f[..], out[..]);
+    }
 
     fed := false;
     if !run[0].active && nl == 0 { nl = fww_dispatch(q[..], f[..], line[..], out[..]); fed = nl > 0; }
@@ -9574,7 +9857,9 @@ tool_main :: () -> int #export_c #effects(all) {
         if tk_ok {
           run[0].waiting_permit = false;
           ti := run[0].permit_tool_idx;
+          eff_pm_ans := ifx run[0].is_subagent && run[0].subagent_perm_mode > 0 then run[0].subagent_perm_mode else cfg[0].permission_mode;
           if req[0].allow {
+            _ = fww_denial_record_decision(run[..], cfg[..], eff_pm_ans, true);
             tnm := cast(string) run[0].acc[0].tools[ti].name[0..<run[0].acc[0].tools[ti].nname];
             tar := cast(string) run[0].acc[0].tools[ti].args[0..<run[0].acc[0].tools[ti].nargs];
             ttb: [512] u8;
@@ -9590,7 +9875,23 @@ tool_main :: () -> int #export_c #effects(all) {
             run[0].acc[0].tools[ti].is_error = true;
             why := ifx req[0].why.count > 0 then req[0].why else "User denied tool permission.";
             run[0].acc[0].tools[ti].nres = fww_keep(run[0].acc[0].tools[ti].res[..], why);
-            run[0].next_tool_idx = ti + 1;
+            if fww_denial_record_decision(run[..], cfg[..], eff_pm_ans, false) {
+              run[0].acc[0].tools[ti].nres = fww_cat(
+                run[0].acc[0].tools[ti].res[..],
+                run[0].acc[0].tools[ti].nres,
+                "\n[Subagent denial circuit breaker tripped (3 consecutive or 20 total denials); stopping tool execution to wrap up cleanly.]"
+              );
+              for rem_i: (ti + 1)..<run[0].acc[0].ntools {
+                if !run[0].acc[0].tools[rem_i].done {
+                  run[0].acc[0].tools[rem_i].done = true;
+                  run[0].acc[0].tools[rem_i].is_error = true;
+                  run[0].acc[0].tools[rem_i].nres = fww_keep(run[0].acc[0].tools[rem_i].res[..], "Skipped: subagent denial circuit breaker tripped.");
+                }
+              }
+              run[0].next_tool_idx = run[0].acc[0].ntools;
+            } else {
+              run[0].next_tool_idx = ti + 1;
+            }
             e := fww_advance_tools(run[..], cfg[..], auth[..], hist[..], bufs[..], st[..], out[..]);
             if e.count > 0 { fww_turn_end(e, st[..], q[..], f[..], out[..]); }
           }
@@ -9717,6 +10018,13 @@ tool_main :: () -> int #export_c #effects(all) {
       run[0].fork_parity_ok = false;
     }
     run[0].subagent_read_only = req[0].read_only;
+    run[0].subagent_is_async = req[0].is_async;
+    run[0].subagent_max_turns = req[0].max_turns;
+    run[0].subagent_perm_mode = ifx req[0].is_subagent then oa_parse_perm_mode_name(req[0].mode) else 0;
+    run[0].subagent_mem_scope = req[0].memory_scope;
+    run[0].nsubagent_mem_dir = 0;
+    run[0].denial[0] = FlawedDenialTracker.{};
+    run[0].denial_tripped = false;
     // A sub-agent's git rule; one whose task line names none may not commit or push (#14104).
     run[0].nsubagent_git = fww_keep(run[0].subagent_git[..], ifx !req[0].is_subagent then "" else mc_gg_publish_rule(req[0].git));
     run[0].subagent_omit_claudemd = req[0].omit_claudemd;
@@ -9727,6 +10035,29 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].waiting_local_delegate = false;
     run[0].ndelegate_slots = 0;
     fww_load_agent_registry(run[0].agent_reg[..], cd, home);
+    if run[0].is_subagent {
+      if run[0].nsubagent_type > 0 {
+        pi_def := oa_agents_find(run[0].agent_reg[..], cast(string) run[0].subagent_type[0..<run[0].nsubagent_type]);
+        if pi_def >= 0 {
+          def_loaded := run[0].agent_reg[0].defs[pi_def];
+          if run[0].subagent_max_turns <= 0 && def_loaded.max_turns > 0 {
+            run[0].subagent_max_turns = def_loaded.max_turns;
+          }
+          if run[0].subagent_mem_scope <= 0 && def_loaded.memory_scope > 0 {
+            run[0].subagent_mem_scope = def_loaded.memory_scope;
+          }
+          if run[0].subagent_perm_mode <= 0 && def_loaded.permission_mode > 0 {
+            run[0].subagent_perm_mode = oa_agent_resolve_perm_mode(cfg[0].permission_mode, 0, def_loaded.permission_mode);
+          }
+        }
+      }
+      if run[0].subagent_mem_scope > 0 && !run[0].is_fork_child {
+        mem_nm := ifx run[0].nsubagent_type > 0 then cast(string) run[0].subagent_type[0..<run[0].nsubagent_type] else "general-purpose";
+        mcwd_b: [FS_PATH_MAX] u8;
+        mem_cwd := fww_resolve_mem_cwd(cd, mcwd_b[..]);
+        run[0].nsubagent_mem_dir = oa_agent_memory_dir(run[0].subagent_mem_scope, mem_nm, home, mem_cwd, run[0].subagent_mem_dir[..]);
+      }
+    }
     if run[0].is_subagent && !run[0].is_fork_child && cfg[0].nsubagent_effort > 0 {
       picked_effort = cast(string) cfg[0].subagent_effort[0..<cfg[0].nsubagent_effort];
     }
@@ -9861,6 +10192,10 @@ tool_main :: () -> int #export_c #effects(all) {
           run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) cat_b[0..<cn_cat]);
         }
       }
+      if run[0].is_subagent && run[0].nsubagent_mem_dir > 0 {
+        mem_dir_s := cast(string) run[0].subagent_mem_dir[0..<run[0].nsubagent_mem_dir];
+        run[0].nsys = fww_inject_agent_memory_prompt(mem_dir_s, run[0].subagent_read_only, run[0].sys_prompt[..], run[0].nsys);
+      }
       if run[0].nactive_pack > 0 && cast(string) run[0].active_pack[0..<run[0].nactive_pack] == "knowledge" {
         run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n[Knowledge Pack Active] Answer questions about docs, books, transcripts, or past decisions using KnowledgeSearch (and KnowledgeGet for exact excerpts) in one fast turn with file:line citations instead of running repo-wide Grep/Bash loops.\n");
       }
@@ -9892,6 +10227,8 @@ tool_main :: () -> int #export_c #effects(all) {
   }
 
   if run[0].active { fww_stop_active(run[..], out[..]); }
+  // On parent EOF/exit, terminate any remaining child subagents (foreground + background) cleanly so zero orphans leak (#14123).
+  fww_kill_all_local_subs(run[..], true);
   return 0;
 }
 
@@ -11611,4 +11948,118 @@ fww_find_bytes :: (hay: string, needle: string) -> int {
   #assert fww_parse_task_output_args("{\"task_id\":\"a1\",\"block\":true,\"timeout\":0}", tid_b[..], tid_n[..], w_ms[..]) && w_ms[0] == 0;
   #assert fww_parse_task_output_args("{\"task_id\":\"a1\",\"block\":true,\"timeout\":2500}", tid_b[..], tid_n[..], w_ms[..]) && w_ms[0] == 2500;
   #assert fww_parse_task_output_args("{\"task_id\":\"a1\",\"block\":true,\"timeout\":999999}", tid_b[..], tid_n[..], w_ms[..]) && w_ms[0] == FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS;
+}
+
+#test "flawedworker (#14123): oa_agent_tool_allowed_for_def schema+runtime gates, permissionMode+memory carve-out, maxTurns, and FlawedDenialTracker breaker" #steps 200000000 {
+  // 1. Schema filtering via oa_agent_tool_allowed_for_def (Gemini & OpenAI) vs frozen fork parity
+  cfg: [1] FwConfig;
+  h: [1] FwHist;
+  fww_hist_push_user(h[..], "Inspect workspace");
+  r: [1] FwRun;
+  oa_agents_init_builtins(r[0].agent_reg[..]);
+  r[0].is_subagent = true;
+  r[0].nsubagent_type = fww_keep(r[0].subagent_type[..], "Explore");
+  r[0].subagent_read_only = true;
+  ex_def := fww_active_subagent_def(r[..]);
+
+  body: [65536] u8;
+  packs := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_AGENTS | OA_PACK_CAPABILITY;
+  ng := fww_build_gemini_body_for_agent(cfg[..], h[..], "low", "sys", false, packs, true, ex_def, false, false, body[..]);
+  gs := cast(string) body[0..<ng];
+  #assert ng > 0 && fww_contains_ci(gs, "\"name\":\"Read\"") && fww_contains_ci(gs, "\"name\":\"WalletStatus\"");
+  #assert !fww_contains_ci(gs, "\"name\":\"Edit\"") && !fww_contains_ci(gs, "\"name\":\"Write\"");
+  #assert !fww_contains_ci(gs, "\"name\":\"Agent\"") && !fww_contains_ci(gs, "\"name\":\"WalletPay\"");
+  #assert !fww_contains_ci(gs, "\"name\":\"CapabilityDraft\"") && !fww_contains_ci(gs, "\"name\":\"CapabilityEval\"");
+
+  // Async general-purpose subagent strips WebSearch & Agent & WalletPay, keeps Read/Edit/WebFetch/WalletStatus
+  r[0].nsubagent_type = fww_keep(r[0].subagent_type[..], "general-purpose");
+  r[0].subagent_read_only = false;
+  r[0].subagent_is_async = true;
+  gen_def := fww_active_subagent_def(r[..]);
+  no := fww_build_openai_body_for_agent(cfg[..], h[..], "inkling-2-mini", "low", "sys", true, 32768, false, false, packs, true, gen_def, true, false, body[..]);
+  os := cast(string) body[0..<no];
+  #assert no > 0 && fww_contains_ci(os, "\"name\":\"Read\"") && fww_contains_ci(os, "\"name\":\"Edit\"") && fww_contains_ci(os, "\"name\":\"WebFetch\"");
+  #assert !fww_contains_ci(os, "\"name\":\"WebSearch\"") && !fww_contains_ci(os, "\"name\":\"Agent\"") && !fww_contains_ci(os, "\"name\":\"WalletPay\"");
+
+  // 2. Runtime fww_exec_tool_now denies async-disallowed & custom-disallowed tools via oa_agent_tool_allowed_for_def
+  auth: [1] FwAuth;
+  bufs: [1] FwBufs;
+  wire_out: [4096] u8;
+  r[0].ncwd = fww_keep(r[0].cwd[..], "/tmp");
+  r[0].acc[0].ntools = 2;
+  r[0].acc[0].tools[0].nname = fww_keep(r[0].acc[0].tools[0].name[..], "WebSearch");
+  r[0].acc[0].tools[0].nargs = fww_keep(r[0].acc[0].tools[0].args[..], "{\"query\":\"test\"}");
+  r[0].acc[0].tools[1].nname = fww_keep(r[0].acc[0].tools[1].name[..], "WalletPay");
+  r[0].acc[0].tools[1].nargs = fww_keep(r[0].acc[0].tools[1].args[..], "{\"destination\":\"lnbc1\",\"reason\":\"x\"}");
+  #assert !fww_exec_tool_now(r[..], cfg[..], auth[..], h[..], bufs[..], 0, wire_out[..]);
+  #assert r[0].acc[0].tools[0].done && r[0].acc[0].tools[0].is_error && fww_contains_ci(cast(string) r[0].acc[0].tools[0].res[0..<r[0].acc[0].tools[0].nres], "async");
+  #assert !fww_exec_tool_now(r[..], cfg[..], auth[..], h[..], bufs[..], 1, wire_out[..]);
+  #assert r[0].acc[0].tools[1].done && r[0].acc[0].tools[1].is_error;
+
+  // 3. permissionMode override, memory-dir silent Read/Edit/Write carve-out, cowork override, and read_only enforcement
+  rp: [1] FwRun;
+  oa_agents_init_builtins(rp[0].agent_reg[..]);
+  cfg[0].permission_mode = FLAWED_PMODE_BYPASS;
+  cfg[0].bypass_danger = false;
+  rp[0].is_subagent = true;
+  rp[0].nsubagent_type = fww_keep(rp[0].subagent_type[..], "general-purpose");
+  rp[0].subagent_perm_mode = FLAWED_PMODE_PLAN;
+  rp[0].nsubagent_mem_dir = oa_agent_memory_dir(OA_AGENT_MEM_PROJECT, "general-purpose", "/home/u", "/repo", rp[0].subagent_mem_dir[..]);
+  eff_pm := [1] int.[0];
+  // Outside memory dir in PLAN mode -> Edit denied
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Edit", "/repo/src/app.coax", false, eff_pm[..]) == FLAWED_PBEH_DENY && eff_pm[0] == FLAWED_PMODE_PLAN;
+  // Inside memory dir -> silent Read/Edit/Write carve-out allowed!
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Read", "/repo/.openagents/agent-memory/general-purpose/MEMORY.md", false, eff_pm[..]) == FLAWED_PBEH_ALLOW;
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Write", "/repo/.openagents/agent-memory/general-purpose/MEMORY.md", false, eff_pm[..]) == FLAWED_PBEH_ALLOW;
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Edit", "/repo/.openagents/agent-memory/general-purpose/patterns.md", false, eff_pm[..]) == FLAWED_PBEH_ALLOW;
+  // Cowork override withholds silent write carve-out; traversal & sibling prefix rejected!
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Write", "/repo/.openagents/agent-memory/general-purpose/MEMORY.md", true, eff_pm[..]) == FLAWED_PBEH_DENY;
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Write", "/repo/.openagents/agent-memory/general-purpose/../escape.md", false, eff_pm[..]) == FLAWED_PBEH_DENY;
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Write", "/repo/.openagents/agent-memory/general-purpose2/MEMORY.md", false, eff_pm[..]) == FLAWED_PBEH_DENY;
+  // Read-only subagent allows Read in memory dir but STILL denies Write in memory dir!
+  rp[0].subagent_read_only = true;
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Read", "/repo/.openagents/agent-memory/general-purpose/MEMORY.md", false, eff_pm[..]) == FLAWED_PBEH_ALLOW;
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Write", "/repo/.openagents/agent-memory/general-purpose/MEMORY.md", false, eff_pm[..]) == FLAWED_PBEH_DENY;
+  // Async subagent converts interactive ASK (Bash in DEFAULT mode) -> DENY fail-closed
+  rp[0].subagent_read_only = false;
+  rp[0].subagent_is_async = true;
+  rp[0].subagent_perm_mode = FLAWED_PMODE_DEFAULT;
+  #assert fww_eval_tool_permission(rp[..], cfg[..], "Bash", "git status", false, eff_pm[..]) == FLAWED_PBEH_DENY;
+
+  // 4. Memory prompt formatter truncates >200-line MEMORY.md via #authority flawed_truncate_memory_entrypoint
+  big_md: [4096] u8; bm := 0;
+  for ln_i: 0..<210 { bm = fww_cat(big_md[..], bm, "- line\n"); }
+  mbuf: [8192] u8;
+  mn := fww_format_agent_memory_section("/repo/.openagents/agent-memory/auditor", false, cast(string) big_md[0..<bm], mbuf[..], 0);
+  ms := cast(string) mbuf[0..<mn];
+  #assert mn > 0 && fww_contains_ci(ms, "# Agent Memory (/repo/.openagents/agent-memory/auditor)") && fww_contains_ci(ms, "[MEMORY.md truncated at 200 lines / 25000 bytes]");
+
+  // 5. FlawedDenialTracker circuit breaker (3 consecutive / 20 total) for non-bypass subagents only
+  rd: [1] FwRun;
+  rd[0].is_subagent = true;
+  // Bypass mode never trips denial breaker
+  #assert !fww_denial_record_decision(rd[..], cfg[..], FLAWED_PMODE_BYPASS, false);
+  #assert !fww_denial_record_decision(rd[..], cfg[..], FLAWED_PMODE_BYPASS, false);
+  #assert !fww_denial_record_decision(rd[..], cfg[..], FLAWED_PMODE_BYPASS, false);
+  #assert !rd[0].denial_tripped && rd[0].denial[0].total == 0;
+  // Non-bypass mode: 2 blocks + 1 allow resets consecutive; next 3 consecutive blocks trip breaker!
+  #assert !fww_denial_record_decision(rd[..], cfg[..], FLAWED_PMODE_DONT_ASK, false);
+  #assert !fww_denial_record_decision(rd[..], cfg[..], FLAWED_PMODE_DONT_ASK, false);
+  #assert rd[0].denial[0].consecutive == 2 && rd[0].denial[0].total == 2 && !rd[0].denial_tripped;
+  #assert !fww_denial_record_decision(rd[..], cfg[..], FLAWED_PMODE_DONT_ASK, true);
+  #assert rd[0].denial[0].consecutive == 0 && rd[0].denial[0].total == 2;
+  #assert !fww_denial_record_decision(rd[..], cfg[..], FLAWED_PMODE_DONT_ASK, false);
+  #assert !fww_denial_record_decision(rd[..], cfg[..], FLAWED_PMODE_DONT_ASK, false);
+  #assert fww_denial_record_decision(rd[..], cfg[..], FLAWED_PMODE_DONT_ASK, false);
+  #assert rd[0].denial_tripped && rd[0].denial[0].consecutive == 3 && rd[0].denial[0].total == 5;
+
+  // 6. Total-20 denial breaker trips even when interspersed with successes
+  rd2: [1] FwRun;
+  rd2[0].is_subagent = true;
+  for k: 0..<19 {
+    #assert !fww_denial_record_decision(rd2[..], cfg[..], FLAWED_PMODE_PLAN, false);
+    #assert !fww_denial_record_decision(rd2[..], cfg[..], FLAWED_PMODE_PLAN, true);
+  }
+  #assert !rd2[0].denial_tripped && rd2[0].denial[0].total == 19;
+  #assert fww_denial_record_decision(rd2[..], cfg[..], FLAWED_PMODE_PLAN, false) && rd2[0].denial_tripped;
 }

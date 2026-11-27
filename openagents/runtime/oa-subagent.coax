@@ -22,6 +22,8 @@ FwSubagentRec :: struct {
   git: [8] u8; ngit: int;                 // its git rule, kept for when the chat resumes it (#14104)
   level: [12] u8; nlevel: int;            // where it ran (neon, inkling, or a Claude level), kept for the same reason
   perm_mode: [24] u8; nperm_mode: int;    // effective permissionMode persisted for disk-backed resume (#14122)
+  max_turns: int;                         // frontmatter maxTurns ceiling persisted for resume (#14123)
+  memory_scope: int;                      // frontmatter OA_AGENT_MEM_* scope persisted for resume (#14123)
   session_id: [128] u8; nsession_id: int; // owning session ID for session-scoped sidechain persistence (#14122)
   parent_uuid: [64] u8; nparent_uuid: int;// latest DAG leaf uuid for append-only chaining (#14122)
   output_file_size_before: int;           // file size before child launch so parent only appends fallback if child didn't (#14122)
@@ -531,29 +533,190 @@ fww_load_agent_dir :: (reg: [] OaAgentRegistry, dir: string, source_tier: u8) {
   }
 }
 
-fww_load_agent_registry :: (reg: [] OaAgentRegistry, cwd: string, home: string) {
+// Splits a colon-separated directory list (e.g. OA_AGENTS_DIR / OA_PLUGIN_AGENTS_DIR / OA_POLICY_AGENTS_DIR)
+// and loads *.md agent definitions from each existing directory under `source_tier` (#14123).
+fww_load_agent_dirs_colon :: (reg: [] OaAgentRegistry, colon_list: string, source_tier: u8) {
+  if colon_list.count == 0 { return; }
+  pos := 0;
+  while pos < colon_list.count {
+    end := pos;
+    while end < colon_list.count && colon_list[end] != ':' { end += 1; }
+    seg := fww_trim(cast(string) colon_list[pos..<end]);
+    if seg.count > 0 {
+      fww_load_agent_dir(reg, seg, source_tier);
+    }
+    pos = end + 1;
+  }
+}
+
+// Scans `<home>/.openagents/plugins/*/agents` for plugin-provided agent definitions (#14123).
+fww_load_plugin_agent_dirs :: (reg: [] OaAgentRegistry, home: string) {
+  if home.count == 0 { return; }
+  p1: [FS_PATH_MAX] u8;
+  plugins_dir := fs_join(home, ".openagents/plugins", p1[..]);
+  if plugins_dir.count == 0 || fs_kind(plugins_dir) != FS_DIR { return; }
+  lst: [1] FsList;
+  n := fs_list(plugins_dir, lst[..]);
+  one_b: [FS_PATH_MAX] u8;
+  ag_b: [FS_PATH_MAX] u8;
+  for i: 0..<n {
+    en := fs_entry(lst[..], i);
+    if en.count == 0 || en[0] == '.' { continue; }
+    one := fs_join(plugins_dir, en, one_b[..]);
+    if one.count == 0 || fs_kind(one) != FS_DIR { continue; }
+    adir := fs_join(one, "agents", ag_b[..]);
+    if adir.count > 0 && fs_kind(adir) == FS_DIR {
+      fww_load_agent_dir(reg, adir, FLAWED_ASRC_PLUGIN);
+    }
+  }
+}
+
+// 6-tier agent registry loader in ascending precedence honoring #authority flawed_agent_source_overrides (#14123):
+//   1. FLAWED_ASRC_BUILTIN (1): built-in personas
+//   2. FLAWED_ASRC_PLUGIN  (2): <home>/.openagents/plugins/*/agents + plugin_dirs (OA_PLUGIN_AGENTS_DIR)
+//   3. FLAWED_ASRC_USER    (3): <home>/.claude/agents, <home>/.openagents/agents
+//   4. FLAWED_ASRC_PROJECT (4): <cwd>/.claude/agents, <cwd>/.openagents/agents
+//   5. FLAWED_ASRC_FLAG    (5): flag_dirs (OA_AGENTS_DIR)
+//   6. FLAWED_ASRC_POLICY  (6): /etc/openagents/agents + policy_dirs (OA_POLICY_AGENTS_DIR)
+fww_load_agent_registry_ex :: (
+  reg: [] OaAgentRegistry,
+  cwd: string,
+  home: string,
+  plugin_dirs: string,
+  flag_dirs: string,
+  policy_dirs: string
+) {
   oa_agents_init_builtins(reg);
   pb: [FS_PATH_MAX] u8;
+  // Tier 2: Plugin
+  fww_load_plugin_agent_dirs(reg, home);
+  fww_load_agent_dirs_colon(reg, plugin_dirs, FLAWED_ASRC_PLUGIN);
+  // Tier 3: User
   if home.count > 0 {
     fww_load_agent_dir(reg, fs_join(home, ".claude/agents", pb[..]), FLAWED_ASRC_USER);
     fww_load_agent_dir(reg, fs_join(home, ".openagents/agents", pb[..]), FLAWED_ASRC_USER);
   }
+  // Tier 4: Project
   if cwd.count > 0 {
     fww_load_agent_dir(reg, fs_join(cwd, ".claude/agents", pb[..]), FLAWED_ASRC_PROJECT);
     fww_load_agent_dir(reg, fs_join(cwd, ".openagents/agents", pb[..]), FLAWED_ASRC_PROJECT);
+  }
+  // Tier 5: CLI / env flag
+  fww_load_agent_dirs_colon(reg, flag_dirs, FLAWED_ASRC_FLAG);
+  // Tier 6: Managed policy
+  fww_load_agent_dir(reg, "/etc/openagents/agents", FLAWED_ASRC_POLICY);
+  fww_load_agent_dirs_colon(reg, policy_dirs, FLAWED_ASRC_POLICY);
+}
+
+fww_load_agent_registry :: (reg: [] OaAgentRegistry, cwd: string, home: string) {
+  pl_b: [2048] u8;
+  fl_b: [2048] u8;
+  po_b: [2048] u8;
+  plugin_dirs := fww_trim(cl_getenv("OA_PLUGIN_AGENTS_DIR", pl_b[..]));
+  flag_dirs := fww_trim(cl_getenv("OA_AGENTS_DIR", fl_b[..]));
+  policy_dirs := fww_trim(cl_getenv("OA_POLICY_AGENTS_DIR", po_b[..]));
+  fww_load_agent_registry_ex(reg, cwd, home, plugin_dirs, flag_dirs, policy_dirs);
+}
+
+// ---------------------------------------------------------------- agent memory prompt formatting & injection (#14123)
+
+// Pure formatter for `# Agent Memory (<mem_dir>)` + existing `MEMORY.md` truncated via #authority
+// `flawed_truncate_memory_entrypoint(..., FLAWED_MAX_ENTRYPOINT_LINES, FLAWED_MAX_ENTRYPOINT_BYTES)`.
+fww_format_agent_memory_section :: (mem_dir: string, read_only: bool, existing_md: string, out: [] u8, at: int) -> int {
+  if mem_dir.count == 0 || !flawed_validate_memory_path(mem_dir) { return at; }
+  n := fww_cat(out, at, "\n\n# Agent Memory (");
+  n = fww_cat(out, n, mem_dir);
+  n = fww_cat(out, n, ")\n");
+  if read_only {
+    n = fww_cat(out, n, "You have read-only access to this agent's persistent memory directory at `");
+    n = fww_cat(out, n, mem_dir);
+    n = fww_cat(out, n, "`. Consult `MEMORY.md` and topic files inside this directory for prior context.\n");
+  } else {
+    n = fww_cat(out, n, "You have a persistent agent memory directory at `");
+    n = fww_cat(out, n, mem_dir);
+    n = fww_cat(out, n, "`. You may Read, Edit, and Write `MEMORY.md` and topic files inside this directory to persist durable findings, patterns, and architectural notes across sessions. Keep `MEMORY.md` concise (under 200 lines / 25 KB) as an index.\n");
+  }
+  if existing_md.count > 0 {
+    cut := flawed_truncate_memory_entrypoint(existing_md, FLAWED_MAX_ENTRYPOINT_LINES, FLAWED_MAX_ENTRYPOINT_BYTES);
+    n = fww_cat(out, n, "\n## Existing MEMORY.md\n");
+    if cut.keep_bytes > 0 {
+      n = fww_cat(out, n, cast(string) existing_md[0..<cut.keep_bytes]);
+    }
+    if cut.truncated {
+      n = fww_cat(out, n, "\n[MEMORY.md truncated at 200 lines / 25000 bytes]");
+    }
+    n = fww_cat(out, n, "\n");
+  }
+  return n;
+}
+
+// Ensures `<mem_dir>` exists on disk, reads `<mem_dir>/MEMORY.md` if present, and appends the
+// formatted `# Agent Memory` section to `out[at..]` (#14123).
+fww_inject_agent_memory_prompt :: (mem_dir: string, read_only: bool, out: [] u8, at: int) -> int {
+  if mem_dir.count == 0 || !flawed_validate_memory_path(mem_dir) { return at; }
+  _ = fs_mkdir_all(mem_dir);
+  mp_b: [FS_PATH_MAX] u8;
+  mp := fs_join(mem_dir, "MEMORY.md", mp_b[..]);
+  md_buf: [32768] u8;
+  existing := "";
+  if mp.count > 0 && fs_kind(mp) == FS_FILE {
+    rd := fs_read(mp, md_buf[..]);
+    if rd > 0 { existing = cast(string) md_buf[0..<rd]; }
+  }
+  return fww_format_agent_memory_section(mem_dir, read_only, existing, out, at);
+}
+
+// Resolves canonical repository root for project/local memory scopes when running inside a linked git worktree.
+fww_resolve_mem_cwd :: (cwd: string, out: [] u8) -> string {
+  if cwd.count == 0 { return ""; }
+  gp_b: [FS_PATH_MAX] u8;
+  gp := fs_join(cwd, ".git", gp_b[..]);
+  if gp.count > 0 && fs_kind(gp) == FS_FILE {
+    gb: [512] u8;
+    gn := fs_read(gp, gb[..]);
+    if gn > 0 {
+      par := fww_wt_parent_repo_from_gitdir(cast(string) gb[0..<gn], out);
+      if par.count > 0 { return par; }
+    }
+  }
+  n := fww_keep(out, cwd);
+  return cast(string) out[0..<n];
+}
+
+// Hardened child-process teardown with SIGTERM -> SIGKILL escalation so subagents never leak orphans (#14123).
+fww_kill_local_sub :: (r: [] FwRun, si: int) {
+  if si < 0 || si >= FWW_MAX_DELEGATE_BATCH { return; }
+  ph := r[0].local_subs[si].h;
+  if ph >= 0 {
+    _ = proc_close_stdin(ph);
+    _ = proc_kill(ph, PROC_SIGTERM);
+    if proc_wait(ph, 400) < 0 {
+      _ = proc_kill(ph, PROC_SIGKILL);
+      _ = proc_wait(ph, 400);
+    }
+    _ = proc_release(ph);
+    r[0].local_subs[si].h = -1;
+  }
+  ri := r[0].local_subs[si].rec_idx;
+  if r[0].local_subs[si].active && ri >= 0 && ri < r[0].nsubagents {
+    r[0].subagents[ri].running = false;
+  }
+  r[0].local_subs[si].active = false;
+  r[0].local_subs[si].done = true;
+}
+
+fww_kill_all_local_subs :: (r: [] FwRun, include_bg: bool) {
+  for si: 0..<FWW_MAX_DELEGATE_BATCH {
+    if !r[0].local_subs[si].active && r[0].local_subs[si].h < 0 { continue; }
+    if !include_bg && r[0].local_subs[si].is_bg { continue; }
+    fww_kill_local_sub(r, si);
   }
 }
 
 // ---------------------------------------------------------------- sidechain persistence (session-scoped + append-only DAG JSONL, #14122)
 
 fww_subagent_perm_mode_name :: (pm: int) -> string {
-  if pm == FLAWED_PMODE_DEFAULT { return "default"; }
-  if pm == FLAWED_PMODE_ACCEPT_EDITS { return "acceptEdits"; }
-  if pm == FLAWED_PMODE_PLAN { return "plan"; }
-  if pm == FLAWED_PMODE_DONT_ASK { return "dontAsk"; }
-  if pm == FLAWED_PMODE_BYPASS { return "bypassPermissions"; }
-  if pm == FLAWED_PMODE_AUTO { return "auto"; }
-  return "";
+  return oa_perm_mode_to_name(pm);
 }
 
 fww_subagent_dir :: (home: string, out: [] u8) -> string {
@@ -601,6 +764,8 @@ fww_subagent_format_meta_json :: (rec: [] FwSubagentRec, session_id: string, out
   jo_key(o[..], "createdAt"); jo_int(o[..], rec[0].start_ms);
   jo_key(o[..], "readOnly"); jo_bool(o[..], rec[0].read_only);
   jo_key(o[..], "permissionMode"); jo_str(o[..], cast(string) rec[0].perm_mode[0..<rec[0].nperm_mode]);
+  if rec[0].max_turns > 0 { jo_key(o[..], "maxTurns"); jo_int(o[..], rec[0].max_turns); }
+  if rec[0].memory_scope > 0 { jo_key(o[..], "memoryScope"); jo_int(o[..], rec[0].memory_scope); }
   jo_key(o[..], "git"); jo_str(o[..], ifx rec[0].ngit > 0 then cast(string) rec[0].git[0..<rec[0].ngit] else "none");
   jo_key(o[..], "level"); jo_str(o[..], ifx rec[0].nlevel > 0 then cast(string) rec[0].level[0..<rec[0].nlevel] else "neon");
   eff_sid := ifx session_id.count > 0 then session_id else cast(string) rec[0].session_id[0..<rec[0].nsession_id];
@@ -630,6 +795,8 @@ fww_subagent_parse_meta_json :: (raw: string, jsonl_path: string, out_rec: [] Fw
   ro := jv_bool(d[0], jv_get(d[0], 0, "readOnly"));
   if !ro && (oa_ag_eq_ci(atype, "Explore") || oa_ag_eq_ci(atype, "Plan")) { ro = true; }
   created := jv_int(d[0], jv_get(d[0], 0, "createdAt"), 0);
+  mt := jv_int(d[0], jv_get(d[0], 0, "maxTurns"), 0);
+  ms := jv_int(d[0], jv_get(d[0], 0, "memoryScope"), 0);
 
   rec := FwSubagentRec.{
     active = true,
@@ -637,6 +804,8 @@ fww_subagent_parse_meta_json :: (raw: string, jsonl_path: string, out_rec: [] Fw
     failed = false,
     one_shot = oa_ag_eq_ci(atype, "Explore") || oa_ag_eq_ci(atype, "Plan"),
     read_only = ro,
+    max_turns = ifx mt > 0 then mt else 0,
+    memory_scope = ifx ms > 0 then ms else 0,
     start_ms = created,
   };
   rec.nagent_id = fww_keep(rec.agent_id[..], aid);
@@ -1907,14 +2076,16 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, b: [] 
     git_s := fww_subagent_git(ifx gitn > 0 then cast(string) git_b[0..<gitn] else cast(string) def.git[0..<def.ngit], want_wt, cast(string) cfg[0].subagent_git_max[0..<cfg[0].nsubagent_git_max]);
 
     rec_idx := fww_alloc_subagent_slot(r);
-    eff_perm_mode := ifx mode_req_s.count > 0 then mode_req_s
-                     else ifx def.permission_mode > 0 then fww_subagent_perm_mode_name(def.permission_mode)
-                     else ifx (def.read_only && !is_fork) then "plan"
-                     else fww_subagent_perm_mode_name(cfg[0].permission_mode);
+    req_pm := oa_parse_perm_mode_name(mode_req_s);
+    eff_pm := oa_agent_resolve_perm_mode(cfg[0].permission_mode, req_pm, def.permission_mode);
+    eff_perm_mode := oa_perm_mode_to_name(eff_pm);
+    child_max_turns := ifx is_fork then 0 else def.max_turns;
+    child_mem_scope := ifx is_fork then OA_AGENT_MEM_NONE else def.memory_scope;
     sid_s := cast(string) r[0].session_id[0..<r[0].nsession_id];
     r[0].subagents[rec_idx] = FwSubagentRec.{
       active = true, running = true, is_bg = is_bg,
       one_shot = def.one_shot && !is_fork, read_only = def.read_only && !is_fork,
+      max_turns = child_max_turns, memory_scope = child_mem_scope,
       host_num = r[0].agent_seq, start_ms = now_ms,
     };
     r[0].subagents[rec_idx].nagent_id = fww_keep(r[0].subagents[rec_idx].agent_id[..], aid_s);
@@ -2010,6 +2181,9 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, b: [] 
             is_fork = is_fork,
             fork_context_path = fork_path_s,
             transcript_path = of_s_init,
+            max_turns = child_max_turns,
+            is_async = is_bg,
+            memory_scope = child_mem_scope,
             git = git_s,
           };
           tn_w := mww_task(tb[..], mt);
@@ -2056,13 +2230,18 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, b: [] 
     } else if model_s.count > 0 {
       jo_key(jo[..], "model"); jo_str(jo[..], model_s);
     }
-    if is_bg { jo_key(jo[..], "run_in_background"); jo_bool(jo[..], true); }
+    if is_bg {
+      jo_key(jo[..], "run_in_background"); jo_bool(jo[..], true);
+      jo_key(jo[..], "is_async"); jo_bool(jo[..], true);
+    }
     if child_allowed.count > 0 { jo_key(jo[..], "allowed_tools"); jo_str(jo[..], child_allowed); }
     if child_disallowed.count > 0 { jo_key(jo[..], "disallowed_tools"); jo_str(jo[..], child_disallowed); }
     if !is_fork && oa_agent_should_trim_claudemd(def) { jo_key(jo[..], "omit_claudemd"); jo_bool(jo[..], true); }
     if def.read_only && !is_fork { jo_key(jo[..], "read_only"); jo_bool(jo[..], true); }
     jo_key(jo[..], "git"); jo_str(jo[..], git_s);
     if eff_perm_mode.count > 0 { jo_key(jo[..], "mode"); jo_str(jo[..], eff_perm_mode); }
+    if child_max_turns > 0 { jo_key(jo[..], "max_turns"); jo_int(jo[..], child_max_turns); }
+    if child_mem_scope > 0 { jo_key(jo[..], "memory_scope"); jo_int(jo[..], child_mem_scope); }
     if of_s_init.count > 0 { jo_key(jo[..], "transcript_path"); jo_str(jo[..], of_s_init); }
     if is_fork { jo_key(jo[..], "is_fork"); jo_bool(jo[..], true); }
     if fork_path_s.count > 0 { jo_key(jo[..], "fork_context_path"); jo_str(jo[..], fork_path_s); }
@@ -2143,6 +2322,10 @@ fww_local_sub_step :: (r: [] FwRun, si: int, timeout_ms: int, active_io: [] bool
   kind := mww_read(ar[..], cast(string) lbuf[0..<ln], l[..]);
   if kind == MWW_ASK && l[0].ticket.ok {
     an := mww_answer(ans_b[..], true, l[0].ticket.value, "");
+    if an > 0 { _ = proc_send(ph, cast(string) ans_b[0..<an]); }
+  } else if kind == MWW_PERMIT && l[0].ticket.ok {
+    // Standalone headless subagents cannot prompt interactively; fail closed so child never deadlocks (#14123).
+    an := mww_answer(ans_b[..], false, l[0].ticket.value, "Standalone subagent cannot prompt interactively.");
     if an > 0 { _ = proc_send(ph, cast(string) ans_b[0..<an]); }
   } else if kind == MWW_COMMAND || kind == MWW_VIEW {
     r[0].local_subs[si].calls += 1;
@@ -2389,14 +2572,7 @@ fww_tool_task_stop :: (r: [] FwRun, args_json: string, out_res: [] u8, is_err: [
   r[0].subagents[ri].running = false;
   for si: 0..<FWW_MAX_DELEGATE_BATCH {
     if r[0].local_subs[si].active && r[0].local_subs[si].rec_idx == ri {
-      if r[0].local_subs[si].h >= 0 {
-        _ = proc_kill(r[0].local_subs[si].h, PROC_SIGTERM);
-        _ = proc_wait(r[0].local_subs[si].h, 400);
-        _ = proc_release(r[0].local_subs[si].h);
-        r[0].local_subs[si].h = -1;
-      }
-      r[0].local_subs[si].done = true;
-      r[0].local_subs[si].active = false;
+      fww_kill_local_sub(r, si);
     }
   }
   if r[0].host_agents && r[0].subagents[ri].host_num > 0 {
@@ -2527,10 +2703,12 @@ fww_tool_send_message :: (r: [] FwRun, tidx: int, args_json: string, out_res: []
   r[0].subagents[ri].nlast_prompt = fww_keep(r[0].subagents[ri].last_prompt[..], msg_s);
   r[0].subagents[ri].output_file_size_before = ifx has_jsonl then fs_size(of_s) else 0;
 
-  // Lookup persona definition to restore tool filters on resume
+  // Lookup persona definition to restore tool filters, maxTurns, and memoryScope on resume
   def_idx := oa_agents_find(r[0].agent_reg[..], stype_s);
   allowed_s := ifx def_idx >= 0 then cast(string) r[0].agent_reg[0].defs[def_idx].allowed_tools[0..<r[0].agent_reg[0].defs[def_idx].nallowed] else "";
   disallowed_s := ifx def_idx >= 0 then cast(string) r[0].agent_reg[0].defs[def_idx].disallowed_tools[0..<r[0].agent_reg[0].defs[def_idx].ndisallowed] else "";
+  res_max_turns := ifx r[0].subagents[ri].max_turns > 0 then r[0].subagents[ri].max_turns else ifx def_idx >= 0 then r[0].agent_reg[0].defs[def_idx].max_turns else 0;
+  res_mem_scope := ifx r[0].subagents[ri].memory_scope > 0 then r[0].subagents[ri].memory_scope else ifx def_idx >= 0 then r[0].agent_reg[0].defs[def_idx].memory_scope else 0;
 
   if !r[0].host_agents {
     // Standalone headless mode: steer running local child if active, else respawn hydrating DAG JSONL.
@@ -2579,6 +2757,8 @@ fww_tool_send_message :: (r: [] FwRun, tidx: int, args_json: string, out_res: []
           git = git_s,
           resume_transcript_path = ifx has_jsonl then of_s else "",
           transcript_path = of_s,
+          max_turns = res_max_turns,
+          memory_scope = res_mem_scope,
         };
         tn_w := mww_task(tb[..], mt);
         if tn_w > 0 && proc_send(ph, cast(string) tb[0..<tn_w]) {
@@ -2637,6 +2817,8 @@ fww_tool_send_message :: (r: [] FwRun, tidx: int, args_json: string, out_res: []
     jo_key(jo[..], "agent_id"); jo_str(jo[..], aid_s);
     if r[0].subagents[ri].read_only { jo_key(jo[..], "read_only"); jo_bool(jo[..], true); }
     if pm_s.count > 0 { jo_key(jo[..], "mode"); jo_str(jo[..], pm_s); }
+    if res_max_turns > 0 { jo_key(jo[..], "max_turns"); jo_int(jo[..], res_max_turns); }
+    if res_mem_scope > 0 { jo_key(jo[..], "memory_scope"); jo_int(jo[..], res_mem_scope); }
     if allowed_s.count > 0 { jo_key(jo[..], "allowed_tools"); jo_str(jo[..], allowed_s); }
     if disallowed_s.count > 0 { jo_key(jo[..], "disallowed_tools"); jo_str(jo[..], disallowed_s); }
     if r[0].subagents[ri].nwt_path > 0 {

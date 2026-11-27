@@ -287,6 +287,9 @@ CpAgent :: struct {
   resume_tx_at: int; resume_tx_n: int;                // sidechain DAG JSONL path in long_buf for SendMessage resume (#14122)
   tx_path_at: int; tx_path_n: int;                    // sidechain DAG JSONL path in long_buf for live append (#14122)
   perm_mode: [24] u8; perm_mode_n: int;               // permissionMode override propagated on MWW_DELEGATE (#14122)
+  max_turns: int;                                     // frontmatter maxTurns ceiling propagated on MWW_DELEGATE (#14123)
+  memory_scope: int;                                  // OA_AGENT_MEM_* (0=none, 1=user, 2=project, 3=local; #14123)
+  is_async: bool;                                     // async background subagent flag for tool allowlist (#14123)
   is_background: bool; omit_claudemd: bool; read_only: bool; is_cc_agent: bool; is_fork: bool;
   git: int;                                           // what it may do with git: 0 none, 1 commit, 2 push (CP_AGENT_GIT; #14104)
   tokens_in: int; tokens_out: int;

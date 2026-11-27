@@ -959,3 +959,24 @@
   #assert n3 > 0 && mww_task_read(ar[..], cast(string) out[0..<n3 - 1], back[..]);
   #assert back[0].is_fork && back[0].local && back[0].model == "oa:local" && back[0].effort == "medium";
 }
+
+#test "sub-agents (#14123): MWW_DELEGATE propagates mode, max_turns, is_async, and memory_scope through CpAgent into McTask" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_set_text(s, "run custom auditor") && coder_page_submit(s);
+  del := "{\"kind\":\"delegate\",\"wait_all\":true,\"ticket\":31,\"tasks\":[{\"level\":\"neon\",\"subagent_type\":\"auditor\",\"agent_id\":\"aaud-1111222233334444\",\"read_only\":true,\"mode\":\"dontAsk\",\"max_turns\":7,\"memory_scope\":2,\"run_in_background\":true,\"is_async\":true,\"allowed_tools\":\"Read,Glob,Grep\",\"disallowed_tools\":\"Edit,Write,Agent\",\"task\":\"Audit repo\"},{\"level\":\"neon\",\"subagent_type\":\"general-purpose\",\"agent_id\":\"agen-5555666677778888\",\"mode\":\"acceptEdits\",\"max_turns\":15,\"memory_scope\":1,\"task\":\"Fix bug\"}]}";
+  #assert coder_page_line(s, del) == MWW_DELEGATE && s[0].turns[0].nagents == 2;
+
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  n0 := coder_page_agent_task(s, 0, "s-14123", "/repo", out[..]);
+  #assert n0 > 0 && mww_task_read(ar[..], cast(string) out[0..<n0 - 1], back[..]);
+  #assert back[0].is_subagent && back[0].read_only && back[0].mode == "dontAsk";
+  #assert back[0].max_turns == 7 && back[0].is_async && back[0].memory_scope == 2;
+  #assert back[0].allowed_tools == "Read,Glob,Grep" && back[0].disallowed_tools == "Edit,Write,Agent";
+
+  ar[0].at = 0;
+  n1 := coder_page_agent_task(s, 1, "s-14123", "/repo", out[..]);
+  #assert n1 > 0 && mww_task_read(ar[..], cast(string) out[0..<n1 - 1], back[..]);
+  #assert back[0].is_subagent && !back[0].read_only && back[0].mode == "acceptEdits";
+  #assert back[0].max_turns == 15 && !back[0].is_async && back[0].memory_scope == 1;
+}
