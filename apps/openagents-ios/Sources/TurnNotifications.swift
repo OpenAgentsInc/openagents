@@ -11,10 +11,10 @@ final class TurnNotifications {
     private var requestedAuthorization = false
 
     private var isUITestEnvironment: Bool {
+        let env = ProcessInfo.processInfo.environment
         let args = ProcessInfo.processInfo.arguments
         return args.contains("-OAResetStateForTests")
-            || args.contains("-OAE2ELoopbackAllowed")
-            || args.contains("-OANoLocalNetworkBrowse")
+            || env["XCTestConfigurationFilePath"] != nil
     }
 
     func requestAuthorizationIfNeeded() {

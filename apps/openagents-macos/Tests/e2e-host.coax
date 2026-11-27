@@ -11,7 +11,7 @@
 //                 Workspace Git Diff / Branch / Worktree / PR state.
 //
 // Usage:
-//   coax/web/tool.sh apps/openagents-ios/Tests/e2e-host.coax --port-file /tmp/port.txt [--legacy-v1] [--idle-ms 60000]
+//   coax/web/tool.sh apps/openagents-macos/Tests/e2e-host.coax --port-file /tmp/port.txt [--legacy-v1] [--idle-ms 60000]
 #run_steps 250000000;
 #import "Basic";
 #load "../../../coax/lib/sys/tool.coax";

@@ -6,16 +6,12 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.openagents.pair</string>
+			<string>com.openagents.app</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>openagents</string>
 			</array>
 		</dict>
-	</array>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_openagents-coder._tcp</string>
 	</array>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>

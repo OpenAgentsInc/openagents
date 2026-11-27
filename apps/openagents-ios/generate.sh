@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper: compiles apps/openagents-ios/ios-app.coax to C, emits Metal shader + atlas assets, enforces 512 KB stack-frame budget).
-# Generates apps/openagents-ios/Generated/gallery.{c,h}, Generated/client_core.h, Generated/SparkSDK, and Generated/Components/.
+# Generates apps/openagents-ios/Generated/gallery.{c,h}, Generated/SparkSDK, and Generated/Components/.
 # Zero JavaScript, zero WebKit, zero WebAssembly.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 repo="$(pwd -P)"
 gen="$repo/apps/openagents-ios/Generated"
 mkdir -p "$gen/Components/fonts" "$gen/Components/icons"
-rm -f "$gen/client_core.c" "$gen/mobile_core.c" "$gen/mobile_core.h"
+rm -f "$gen/client_core.c" "$gen/client_core.h" "$gen/mobile_core.c" "$gen/mobile_core.h"
 
 # Stage pinned Breez Spark SDK local SwiftPM package (breez_sdk_sparkFFI.xcframework + BigNumber + BreezSdkSpark).
 "$repo/apps/shared/host/apple/spark-sdk.sh" --ios-package "$gen/SparkSDK" > /dev/null
@@ -25,9 +25,6 @@ else
   '
 fi
 
-# Forward Generated/client_core.h to Generated/gallery.h so apps/shared/antigravity/client-core-bridge.c compiles untouched.
-printf '/* Generated shim forwarding to unified ios-app gallery.h */\n#include "gallery.h"\n' > "$gen/client_core.h"
-
 rm -rf "$gen/Components/fonts" "$gen/Components/icons"
 mkdir -p "$gen/Components/fonts" "$gen/Components/icons"
 cp "$repo/components/fonts/Geist"* "$gen/Components/fonts/"
@@ -39,7 +36,7 @@ cp "$repo/components/NOTICE" "$gen/Components/NOTICE"
 if command -v xcrun > /dev/null && sdk="$(xcrun --sdk iphoneos --show-sdk-path 2> /dev/null)"; then
   for inline in "" -fno-inline; do
     xcrun clang -target arm64-apple-ios18.0 -isysroot "$sdk" -Os $inline -c "$gen/gallery.c" \
-      -I "$gen" -I "$repo/apps/shared/antigravity" -o /dev/null -Wframe-larger-than=524288 -Werror=frame-larger-than \
+      -I "$gen" -o /dev/null -Wframe-larger-than=524288 -Werror=frame-larger-than \
       || { echo "generate.sh: a stack frame is over the 512 KB budget${inline:+ ($inline)}; move the large local into caller-owned state (#13747)" >&2; exit 1; }
   done
 fi

@@ -1,4 +1,4 @@
-// Firm reason: 6 (UIKit Metal view host, CADisplayLink loop, UIScrollView native scroll driver, ComposerEditor text overlay, VoiceOver KitAccess bridge, and Photos/Files pickers over the compiled Coax GPU surface).
+// Firm reason: 6 (UIKit Metal view host, CADisplayLink loop, UIScrollView native scroll driver, ComposerEditor text overlay, VoiceOver KitAccess bridge, and Photos/Files pickers over the compiled Coax GPU surface in 100% OpenAgents Cloud mode).
 import Combine
 import PhotosUI
 import SwiftUI
@@ -6,7 +6,6 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct GpuRootHostView: UIViewControllerRepresentable {
-    @ObservedObject var store: AppStore
     @ObservedObject var account: MobileAccountController
     @ObservedObject var cloudChat: MobileCloudChat
     @ObservedObject var wallet: MobileWalletController
@@ -14,7 +13,6 @@ struct GpuRootHostView: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> GpuRootViewController {
         GpuRootViewController(
-            store: store,
             account: account,
             cloudChat: cloudChat,
             wallet: wallet,
@@ -29,7 +27,6 @@ struct GpuRootHostView: UIViewControllerRepresentable {
 
 @MainActor
 final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrollViewDelegate, KitAccessSource, PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
-    private let store: AppStore
     private let account: MobileAccountController
     private let cloudChat: MobileCloudChat
     private let wallet: MobileWalletController
@@ -46,7 +43,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
     private var keyboardHeight: CGFloat = 0
     private var zoom: Float = 1.0
     private var needsStateSync = true
-    private var lastSyncedSessionID: String?
+    private var lastSyncedViewKey: String?
     private var lastFocusNonce: UInt64 = 0
     private var access: KitAccess?
     private var pressedAtLaunch = false
@@ -54,22 +51,16 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
     private lazy var editor: ComposerEditor = ComposerEditor(style: editorStyle())
 
     init(
-        store: AppStore,
         account: MobileAccountController,
         cloudChat: MobileCloudChat,
         wallet: MobileWalletController,
         shell: MobileShellState
     ) {
-        self.store = store
         self.account = account
         self.cloudChat = cloudChat
         self.wallet = wallet
         self.shell = shell
         super.init(nibName: nil, bundle: nil)
-    }
-
-    private var isCloudActive: Bool {
-        account.isLoggedIn && (shell.preferCloudMode || store.activeComputer == nil)
     }
 
     required init?(coder: NSCoder) {
@@ -161,17 +152,9 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         }
         #endif
 
-        store.objectWillChange
-            .sink { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.markDirtyAndWake()
-                }
-            }
-            .store(in: &cancellables)
-
-        dictation.speechRate = store.store.voiceSpeechRate
-        dictation.vadSilenceCommitMs = Int64(store.store.voiceVadSilenceMs)
-        store.onAssistantStreamUpdate = { [weak self] _, itemID, text, complete in
+        dictation.speechRate = cloudChat.voiceSpeechRate
+        dictation.vadSilenceCommitMs = Int64(cloudChat.voiceVadSilenceMs)
+        cloudChat.onAssistantStreamUpdate = { [weak self] itemID, text, complete in
             guard let self, self.dictation.isDuplexActive else { return }
             self.dictation.feedAssistantStream(itemID: itemID, fullText: text, complete: complete)
             self.markDirtyAndWake()
@@ -179,9 +162,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
 
         dictation.objectWillChange
             .sink { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.markDirtyAndWake()
-                }
+                Task { @MainActor [weak self] in self?.markDirtyAndWake() }
             }
             .store(in: &cancellables)
 
@@ -293,11 +274,11 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
 
         if needsStateSync {
             needsStateSync = false
-            syncStoreToGpu(surface)
+            syncCloudToGpu(surface)
         }
 
-        if store.composerFocusNonce != lastFocusNonce {
-            lastFocusNonce = store.composerFocusNonce
+        if cloudChat.composerFocusNonce != lastFocusNonce {
+            lastFocusNonce = cloudChat.composerFocusNonce
             oa_ios_set_focus(surface, "chat.composer")
             _ = focusComposer()
         }
@@ -328,353 +309,247 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         }
     }
 
-    // MARK: - AppStore + Account + CloudChat + Wallet -> Coax GPU Surface Sync
+    // MARK: - OpenAgents Cloud + Account + Wallet -> Coax GPU Surface Sync
 
-    private func syncStoreToGpu(_ surface: UnsafeMutableRawPointer) {
-        let cloudMode = isCloudActive
-        let computer = cloudMode ? nil : store.activeComputer
+    private func syncCloudToGpu(_ surface: UnsafeMutableRawPointer) {
+        let signedIn = account.isLoggedIn
         let reachCode: Int32 = {
-            if cloudMode {
-                return cloudChat.isStreamConnected ? OA_IOS_REACH_OK : OA_IOS_REACH_CHECKING
-            }
-            guard let computer else { return OA_IOS_REACH_UNKNOWN }
-            switch computer.reachability {
-            case .reachable: return OA_IOS_REACH_OK
-            case .checking: return OA_IOS_REACH_CHECKING
-            case .refused, .unreachable: return OA_IOS_REACH_BAD
-            case .unknown: return computer.canSendRPC ? OA_IOS_REACH_CHECKING : OA_IOS_REACH_UNKNOWN
-            }
+            if !signedIn { return OA_IOS_REACH_UNKNOWN }
+            return cloudChat.isStreamConnected ? OA_IOS_REACH_OK : OA_IOS_REACH_CHECKING
         }()
 
-        let activeSession = cloudMode ? nil : store.activeSession
-        let activeIntro = cloudMode ? nil : store.activeIntrospectSession
-        let activeCloud = cloudMode ? cloudChat.activeConversation : nil
-        let sessionTitle: String = {
-            if let activeCloud {
-                return activeCloud.title
-            }
-            if let intro = activeIntro {
-                return "\(intro.title) · \(intro.harness)"
-            }
-            return activeSession.map { store.displayTitle(for: $0) } ?? ""
-        }()
-        let computerName = cloudMode ? "OpenAgents Cloud" : (computer?.name ?? "")
-        let pairedCount = Int32(store.computers.filter { $0.paired != nil || $0.isLocalMac }.count)
-        let workspaceName = cloudMode ? (activeCloud?.workspace ?? "") : store.workspaceName
+        let activeConv = cloudChat.activeConversation
+        let headerTarget = signedIn ? cloudChat.selectedTarget.displayLabel : "OpenAgents Cloud"
+        let sessionTitle = activeConv?.title ?? ""
+        let projectName = cloudChat.selectedProject?.name ?? (activeConv?.workspace ?? "")
+        let onlineEnvCount = Int32(cloudChat.environments.filter { $0.online }.count)
 
         oa_ios_set_header(
             surface,
-            computerName,
+            headerTarget,
             sessionTitle,
-            workspaceName,
+            projectName,
             reachCode,
-            pairedCount,
-            (activeSession != nil || activeIntro != nil || activeCloud != nil) ? 1 : 0,
-            (!cloudMode && store.hasOlderMessages) ? 1 : 0,
-            (!cloudMode && store.hasMoreSessions) ? 1 : 0
+            onlineEnvCount,
+            activeConv != nil ? 1 : 0,
+            0,
+            0
         )
 
         oa_ios_set_account_wallet(
             surface,
             account.sidebarLabel,
-            account.isLoggedIn ? 1 : 0,
+            signedIn ? 1 : 0,
             wallet.sidebarLabel,
             wallet.ready ? 1 : 0
         )
 
-        let bannerErr = dictation.errorMessage ?? (cloudMode ? cloudChat.lastError : nil) ?? store.bannerError ?? store.rateLimitBanner?.message ?? ""
-        let toast = store.statusToast ?? ""
-        oa_ios_set_banners(surface, bannerErr, Int32(store.pendingOutbox.count), toast)
+        let bannerErr = dictation.errorMessage ?? cloudChat.lastError ?? ""
+        let toast = cloudChat.statusToast ?? ""
+        oa_ios_set_banners(surface, bannerErr, 0, toast)
 
-        // Full Auto policy chip (default ON) + Always-On Usage HUD strip + Bi-Directional Voice state (#14068)
-        oa_ios_set_full_auto(surface, store.fullAutoEnabled ? 1 : 0)
-        oa_ios_set_usage(surface, store.usageStripSummary, Int32(store.usageStripPercent))
+        oa_ios_set_full_auto(surface, cloudChat.fullAutoEnabled ? 1 : 0)
+        oa_ios_set_usage(surface, cloudChat.usageStripSummary, 0)
         oa_ios_set_voice_duplex(surface, dictation.duplexState.rawValue, dictation.audioLevel)
+        oa_ios_set_approval(surface, 0, "", "")
+        oa_ios_approval_options_clear(surface)
+        oa_ios_set_queued(surface, "")
 
-        if let pending = store.pendingInteraction {
-            oa_ios_set_approval(surface, 1, pending.prompt, pending.warning)
-            oa_ios_approval_options_clear(surface)
-            for opt in pending.options.prefix(6) {
-                oa_ios_approval_options_push(surface, opt.id, opt.label, opt.kind)
-            }
-        } else {
-            oa_ios_set_approval(surface, 0, "", "")
-            oa_ios_approval_options_clear(surface)
-        }
-        oa_ios_set_queued(surface, store.queuedDraft ?? "")
-
-        // Slash (/) and @ mention autocomplete suggestions above composer
-        let mentions = store.matchingMentions
-        let slashes = mentions.isEmpty ? store.matchingSlashCommands : []
-        if !mentions.isEmpty {
-            oa_ios_suggestions_clear(surface, 1)
-            for m in mentions.prefix(8) {
-                oa_ios_suggestions_push(surface, m.id, m.label, m.subtitle)
-            }
-        } else if !slashes.isEmpty {
-            oa_ios_suggestions_clear(surface, 0)
-            for cmd in slashes.prefix(8) {
-                oa_ios_suggestions_push(surface, cmd.id, cmd.command, cmd.subtitle)
-            }
-        } else {
-            oa_ios_suggestions_clear(surface, 0)
+        // Slash command autocomplete suggestions
+        let slashes = cloudChat.matchingSlashCommands
+        oa_ios_suggestions_clear(surface, 0)
+        for cmd in slashes.prefix(8) {
+            oa_ios_suggestions_push(surface, cmd.id, cmd.command, cmd.subtitle)
         }
 
-        // Inline Todos / Task Progress card
         oa_ios_todos_clear(surface)
-        for todo in store.activeTodos.prefix(16) {
-            let st: Int32 = todo.isCompleted ? OA_IOS_TODO_COMPLETED : (todo.isInProgress ? OA_IOS_TODO_IN_PROGRESS : OA_IOS_TODO_PENDING)
-            oa_ios_todos_push(surface, todo.content, st)
-        }
-
-        // Workspace folders picker catalog
         oa_ios_folders_clear(surface)
-        for folder in store.folders.prefix(32) {
-            let lbl = folder.isEmpty ? (workspaceName.isEmpty ? "Workspace root" : workspaceName) : folder
-            oa_ios_folders_push(surface, folder, lbl, folder == store.selectedFolder ? 1 : 0)
-        }
 
-        let modelOpt = store.selectedModelOption
-        let effortLabel = store.selectedModelSupportsThinking ? store.selectedEffort.label : ""
+        let modelOpt = cloudChat.selectedModelOption
+        let effortLabel = modelOpt.supportsThinking ? cloudChat.selectedEffort.label : ""
         oa_ios_set_composer(
             surface,
             modelOpt.label,
             effortLabel,
-            store.reviewMode.label,
-            Int32(store.pendingAttachments.count),
+            cloudChat.selectedTarget.shortChipLabel,
+            Int32(cloudChat.pendingAttachments.count),
             dictation.isListening ? 1 : 0
         )
 
-        let isBusy = cloudMode ? cloudChat.isSending : (activeSession?.busy == true)
-        let isAwaiting = cloudMode ? cloudChat.isSending : (store.isAwaitingTurnStart || store.isSending)
-        let liveStatus = cloudMode ? nil : store.activeTurnLiveStatus
         let elapsedSecs: Int32 = {
-            if let started = liveStatus?.startedAt {
+            if let started = cloudChat.activeTurnStartedAt {
                 return Int32(max(0, Date().timeIntervalSince(started)))
             }
             return 0
         }()
-        let workLabel = liveStatus?.phaseLabel ?? (isAwaiting && !isBusy ? "Sending…" : "Working")
-        oa_ios_set_working(surface, isBusy ? 1 : 0, isAwaiting ? 1 : 0, elapsedSecs, workLabel)
+        oa_ios_set_working(
+            surface,
+            cloudChat.isSending ? 1 : 0,
+            cloudChat.isSending ? 1 : 0,
+            elapsedSecs,
+            cloudChat.activePhaseLabel
+        )
 
-        // Sessions list for GPU sidebar (Working + Recents + Synced Cloud Chats)
+        // Sidebar: Synced OpenAgents Cloud conversations
         oa_ios_sessions_clear(surface)
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        var pushedCount = 0
-        if account.isLoggedIn {
-            for conv in cloudChat.conversations.prefix(32) where !conv.archived {
-                let sid = "cloud:\(conv.id)"
-                let age = Self.relativeAge(nowMs: nowMs, atMs: conv.updatedAtMs)
-                let isCurrent = cloudMode && cloudChat.activeConversationID == conv.id
-                oa_ios_sessions_push(
-                    surface,
-                    sid,
-                    conv.title,
-                    conv.workspace.isEmpty ? "Cloud" : conv.workspace,
-                    conv.model,
-                    age,
-                    (isCurrent && cloudChat.isSending) ? 1 : 0,
-                    isCurrent ? 1 : 0,
-                    0,
-                    0
-                )
-                if let last = conv.turns.last {
-                    oa_ios_session_set_preview(surface, sid, last.userText, "", last.output)
-                }
-                pushedCount += 1
-            }
-        }
-        let orderedSessions = store.workingSessions + store.recentSessions
-        for session in orderedSessions.prefix(max(0, 64 - pushedCount)) {
-            let title = store.displayTitle(for: session)
-            let repo = store.sessionMetaByID[session.id]?.folder ?? store.workspaceName
-            let branch = session.model.isEmpty ? "openagents" : session.model
-            let attention = !session.interactionID.isEmpty
-            let statusText = attention ? "Needs you" : Self.relativeAge(nowMs: nowMs, atMs: session.updatedAtMs)
+        for conv in cloudChat.conversations.prefix(64) where !conv.archived {
+            let isCurrent = cloudChat.activeConversationID == conv.id
+            let isWorking = !conv.activeTurnID.isEmpty || (isCurrent && cloudChat.isSending)
+            let age = Self.relativeAge(nowMs: nowMs, atMs: conv.updatedAtMs)
             oa_ios_sessions_push(
                 surface,
-                session.id,
-                title,
-                repo,
-                branch,
-                statusText,
-                session.busy ? 1 : 0,
-                (!cloudMode && session.id == store.activeSessionID) ? 1 : 0,
-                attention ? 1 : 0,
+                conv.id,
+                conv.title,
+                conv.workspace.isEmpty ? "Cloud" : conv.workspace,
+                conv.model,
+                age,
+                isWorking ? 1 : 0,
+                isCurrent ? 1 : 0,
+                0,
                 0
             )
-            if !cloudMode && session.id == store.activeSessionID {
-                let lastAsk = store.items.last(where: { $0.role == .user }).map { ParsedUserMessage.parse($0.text).text } ?? ""
-                let lastTool = store.items.last(where: { $0.role == .tool }).map {
-                    let target = $0.path.isEmpty ? $0.text : $0.path
-                    return "\($0.toolName.isEmpty ? "Tool" : $0.toolName) \(target)"
-                } ?? ""
-                let lastReply = store.items.last(where: { $0.role == .assistant })?.text ?? ""
-                oa_ios_session_set_preview(surface, session.id, lastAsk, lastTool, lastReply)
-            } else if !session.note.isEmpty {
-                oa_ios_session_set_preview(surface, session.id, "", "", session.note)
+            if let last = conv.turns.last {
+                oa_ios_session_set_preview(surface, conv.id, last.userText, "", last.output)
             }
         }
 
-        // Universal Introspection sidebar rows: TUI & Terminal + Other Harnesses + Machines (#14068)
+        // Sidebar: Cloud Projects (pushed into section 2 via intro_items)
         oa_ios_intro_clear(surface)
-        for intro in store.introspectSessions.prefix(48) {
-            let kindCode: Int32 = intro.kind == .tui ? OA_IOS_INTRO_TUI : OA_IOS_INTRO_HARNESS
-            let statusText = intro.status.isEmpty ? Self.relativeAge(nowMs: nowMs, atMs: intro.updatedAtMs) : intro.status
-            let shortCwd = intro.cwd.split(separator: "/").last.map(String.init) ?? intro.cwd
+        for project in cloudChat.projects.prefix(24) {
             oa_ios_intro_push(
                 surface,
-                kindCode,
-                intro.id,
-                intro.title,
-                intro.harness,
-                shortCwd,
-                statusText,
-                intro.busy ? 1 : 0,
-                intro.id == store.activeIntrospectSession?.id ? 1 : 0
+                OA_IOS_INTRO_TUI,
+                project.id,
+                project.name,
+                project.repoCanonical.isEmpty ? "Cloud Project" : project.repoCanonical,
+                "",
+                Self.relativeAge(nowMs: nowMs, atMs: project.updatedAtMs),
+                0,
+                cloudChat.selectedProjectID == project.id ? 1 : 0
             )
         }
 
+        // Sidebar: Execution Targets & Enrolled Computers (section 3 via machines)
         oa_ios_machines_clear(surface)
-        if account.isLoggedIn {
+        if signedIn {
             oa_ios_machines_push(
                 surface,
-                MobileCloudChat.cloudMachineID,
+                CloudExecutionTarget.autoMachineID,
+                "Auto Placement",
+                "Cloud Tools + Enrolled ($0)",
+                cloudChat.isStreamConnected ? OA_IOS_REACH_OK : OA_IOS_REACH_CHECKING,
+                Int32(cloudChat.conversations.count),
+                cloudChat.selectedTarget == .auto ? 1 : 0
+            )
+            oa_ios_machines_push(
+                surface,
+                CloudExecutionTarget.cloudMachineID,
                 "OpenAgents Cloud",
                 account.email.isEmpty ? "openagents.com" : account.email,
                 cloudChat.isStreamConnected ? OA_IOS_REACH_OK : OA_IOS_REACH_CHECKING,
-                Int32(cloudChat.conversations.count),
-                cloudMode ? 1 : 0
+                0,
+                cloudChat.selectedTarget == .cloud ? 1 : 0
             )
-        }
-        for comp in store.computers.prefix(15) {
-            let compReach: Int32 = {
-                switch comp.reachability {
-                case .reachable: return OA_IOS_REACH_OK
-                case .checking: return OA_IOS_REACH_CHECKING
-                case .refused, .unreachable: return OA_IOS_REACH_BAD
-                case .unknown: return comp.canSendRPC ? OA_IOS_REACH_CHECKING : OA_IOS_REACH_UNKNOWN
-                }
+            let isSandboxSelected: Bool = {
+                if case .sandbox = cloudChat.selectedTarget { return true }
+                return false
             }()
-            let detail = comp.dns.isEmpty ? comp.ip : comp.dns
-            let sessCnt = Int32(store.machineSessionCounts[comp.id] ?? (comp.id == store.activeComputerID ? store.sessions.count : 0))
             oa_ios_machines_push(
                 surface,
-                comp.id,
-                comp.name,
-                detail,
-                compReach,
-                sessCnt,
-                (!cloudMode && comp.id == store.activeComputerID) ? 1 : 0
+                CloudExecutionTarget.sandboxMachineID,
+                "Cloud Sandbox",
+                "Linux container",
+                OA_IOS_REACH_OK,
+                0,
+                isSandboxSelected ? 1 : 0
             )
+            for env in cloudChat.environments.prefix(12) {
+                let isSelected: Bool = {
+                    if case .computer(let host, _) = cloudChat.selectedTarget {
+                        return host == env.hostPubkey
+                    }
+                    return false
+                }()
+                let wsDetail = env.workspaces.first?.name ?? env.osLabel
+                oa_ios_machines_push(
+                    surface,
+                    "host:\(env.hostPubkey)",
+                    env.displayName,
+                    wsDetail,
+                    env.online ? OA_IOS_REACH_OK : OA_IOS_REACH_BAD,
+                    Int32(env.workspaces.count),
+                    isSelected ? 1 : 0
+                )
+            }
         }
 
         // Transcript items
-        let currentViewKey: String? = {
-            if cloudMode {
-                return activeCloud.map { "cloud:\($0.id)" } ?? "cloud:new"
-            }
-            return activeIntro.map { "intro:\($0.id)" } ?? store.activeSessionID
-        }()
-        let sessionChanged = currentViewKey != lastSyncedSessionID
-        lastSyncedSessionID = currentViewKey
+        let viewKey = cloudChat.activeConversationID ?? "cloud:new"
+        let sessionChanged = viewKey != lastSyncedViewKey
+        lastSyncedViewKey = viewKey
         oa_ios_items_clear(surface, sessionChanged ? 1 : 0)
-        let displayItems: [TranscriptItem] = {
-            if cloudMode {
-                return activeCloud.map { cloudChat.transcriptItems(for: $0) } ?? []
-            }
-            return store.items
-        }()
-        for item in displayItems.suffix(192) {
-            let roleCode: Int32
-            let displayText: String
-            switch item.role {
-            case .user:
-                roleCode = OA_IOS_ROLE_USER
-                let parsed = ParsedUserMessage.parse(item.text)
-                if parsed.images.isEmpty {
-                    displayText = parsed.text
-                } else {
-                    let imgTag = parsed.images.map { "[\($0.name)]" }.joined(separator: " ")
-                    displayText = parsed.text.isEmpty ? imgTag : "\(parsed.text)\n\(imgTag)"
+        for item in cloudChat.activeItems.suffix(192) {
+            let roleCode: Int32 = {
+                switch item.role {
+                case .user: return OA_IOS_ROLE_USER
+                case .assistant: return OA_IOS_ROLE_ASSISTANT
+                case .thought: return OA_IOS_ROLE_THOUGHT
+                case .tool: return OA_IOS_ROLE_TOOL
+                case .notice: return OA_IOS_ROLE_NOTICE
                 }
-            case .assistant:
-                roleCode = OA_IOS_ROLE_ASSISTANT
-                displayText = item.text
-            case .thought:
-                roleCode = OA_IOS_ROLE_THOUGHT
-                displayText = item.text
-            case .tool:
-                roleCode = OA_IOS_ROLE_TOOL
-                displayText = item.text
-            case .notice, .unknown:
-                roleCode = OA_IOS_ROLE_NOTICE
-                displayText = item.text
-            }
-            let failed = item.noticeKind == "error" || item.noticeKind == "failed"
+            }()
             let elapsed: Int32 = item.startedAtMs > 0 ? Int32(max(0, (nowMs - item.startedAtMs) / 1000)) : 0
-            let toolLabel: String
-            if item.isSubagent && !item.subagentType.isEmpty {
-                var parts = [item.subagentType]
-                if item.isBackground { parts.append("bg") }
-                if !item.worktreeBranch.isEmpty { parts.append(item.worktreeBranch) }
-                toolLabel = parts.joined(separator: " · ")
-            } else {
-                toolLabel = item.toolName
-            }
             oa_ios_items_push(
                 surface,
                 roleCode,
                 item.id,
-                displayText,
-                toolLabel,
+                item.text,
+                item.toolName,
                 item.path,
                 item.diff,
                 item.complete ? 1 : 0,
-                failed ? 1 : 0,
-                item.isSubagent ? 1 : 0,
+                item.failed ? 1 : 0,
+                0,
                 item.diffCut ? 1 : 0,
-                Int32(item.subagentCalls),
+                0,
                 elapsed
             )
         }
 
-        // Picker catalogs: Models, Efforts, Modes
+        // Picker catalogs: Models, Efforts, Execution Targets (Modes chip)
         oa_ios_models_clear(surface)
-        for m in store.availableModels.prefix(24) {
-            var detail = m.isLocalFreeCompute ? "\(m.family) · $0 Local" : m.family
-            if m.supportsThinking { detail += " · Reasoning" }
-            oa_ios_models_push(surface, m.id, m.label, detail, m.id == store.selectedModelID ? 1 : 0)
+        for m in CloudModelOption.catalog {
+            oa_ios_models_push(surface, m.id, m.label, m.detail, m.id == cloudChat.selectedModelID ? 1 : 0)
         }
 
         oa_ios_efforts_clear(surface)
-        for e in store.selectedModelOption.supportedEfforts.prefix(8) {
-            oa_ios_efforts_push(surface, e.rawValue, e.label, Self.effortDetail(e), e == store.selectedEffort ? 1 : 0)
+        for e in CloudThinkingEffort.allCases {
+            oa_ios_efforts_push(surface, e.rawValue, e.label, e.detail, e == cloudChat.selectedEffort ? 1 : 0)
         }
 
         oa_ios_modes_clear(surface)
-        for mode in ReviewMode.allCases.prefix(6) {
-            oa_ios_modes_push(surface, mode.rawValue, mode.label, mode.description, mode == store.reviewMode ? 1 : 0)
+        oa_ios_modes_push(surface, CloudExecutionTarget.autoMachineID, "Auto", "Cloud Tools + Enrolled Computer ($0) + Sandbox", cloudChat.selectedTarget == .auto ? 1 : 0)
+        oa_ios_modes_push(surface, CloudExecutionTarget.cloudMachineID, "Cloud", "Instant streaming + Web & GitHub tools", cloudChat.selectedTarget == .cloud ? 1 : 0)
+        let sandboxSel: Int32 = {
+            if case .sandbox = cloudChat.selectedTarget { return 1 }
+            return 0
+        }()
+        oa_ios_modes_push(surface, CloudExecutionTarget.sandboxMachineID, "Sandbox", "Isolated Cloud Linux sandbox", sandboxSel)
+        for env in cloudChat.environments.prefix(3) {
+            let sel: Int32 = {
+                if case .computer(let h, _) = cloudChat.selectedTarget, h == env.hostPubkey { return 1 }
+                return 0
+            }()
+            oa_ios_modes_push(surface, "host:\(env.hostPubkey)", env.displayName, env.online ? "Online · $0 local" : "Offline", sel)
         }
 
-        // Sync draft from store (e.g. voice dictation or slash command or cleared after send)
+        // Sync draft from cloudChat (e.g. voice dictation, slash command, or cleared after send)
         if editor.markedTextRange == nil {
             let gpuDraft = currentGpuDraft(surface)
-            if gpuDraft != store.draftText {
-                _ = oa_ios_draft_set(surface, store.draftText)
+            if gpuDraft != cloudChat.draftText {
+                _ = oa_ios_draft_set(surface, cloudChat.draftText)
             }
-        }
-    }
-
-    private static func effortDetail(_ e: ThinkingEffort) -> String {
-        switch e {
-        case .none: return "No reasoning tokens"
-        case .minimal: return "Minimal thinking overhead"
-        case .low: return "Fastest replies"
-        case .medium: return "Balanced speed and reasoning"
-        case .high: return "Deeper multi-step reasoning"
-        case .xhigh: return "Maximum thinking depth"
-        case .max: return "Full reasoning budget"
         }
     }
 
@@ -707,86 +582,53 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             _ = focusComposer()
         case OA_IOS_ACT_SEND:
             let text = currentGpuDraft(surface)
-            store.draftText = text
+            cloudChat.draftText = text
             if editor.isFirstResponder {
                 _ = editor.resignFirstResponder()
             }
             oa_ios_blur(surface)
-            if isCloudActive {
-                let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !prompt.isEmpty {
-                    store.draftText = ""
-                    _ = oa_ios_draft_set(surface, "")
-                    editor.set("")
-                    Task { await cloudChat.sendCloudMessage(prompt) }
-                }
-            } else {
-                Task { await store.sendMessage() }
+            if !account.isLoggedIn {
+                shell.isAccountPresented = true
+                break
+            }
+            let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !prompt.isEmpty || !cloudChat.pendingAttachments.isEmpty {
+                _ = oa_ios_draft_set(surface, "")
+                editor.set("")
+                cloudChat.sendMessage()
             }
         case OA_IOS_ACT_STOP:
             dictation.stopSpeakingImmediate()
-            if !isCloudActive {
-                Task { await store.stopActiveTurn() }
-            }
+            Task { await cloudChat.stopActiveTurn() }
         case OA_IOS_ACT_NEW_CHAT:
-            if isCloudActive {
-                cloudChat.startNewCloudChat()
-            } else {
-                store.startNewChat()
-            }
+            cloudChat.startNewChat()
             _ = focusComposer()
         case OA_IOS_ACT_SELECT_SESSION:
-            if arg.hasPrefix("cloud:") {
-                let cid = String(arg.dropFirst("cloud:".count))
-                shell.preferCloudMode = true
-                cloudChat.selectConversation(cid)
-            } else if let session = store.sessions.first(where: { $0.id == arg }) {
-                shell.preferCloudMode = false
-                store.selectSession(session)
-            }
-        case OA_IOS_ACT_OPEN_COMPUTERS:
+            cloudChat.selectConversation(arg)
+        case OA_IOS_ACT_OPEN_COMPUTERS, OA_IOS_ACT_OPEN_WORKSPACE:
             dismissKeyboard(surface)
-            store.isComputersPresented = true
-        case OA_IOS_ACT_OPEN_WORKSPACE:
-            dismissKeyboard(surface)
-            store.isWorkspacePresented = true
-        case OA_IOS_ACT_OPEN_SUBAGENT:
-            dismissKeyboard(surface)
-            if let item = store.items.first(where: { $0.id == arg }) {
-                store.openSubagent(item)
-            }
-        case OA_IOS_ACT_OPEN_HUB:
-            dismissKeyboard(surface)
-            store.isHubPresented = true
+            shell.isEnvironmentsPresented = true
         case OA_IOS_ACT_OPEN_ATTACH:
             dismissKeyboard(surface)
             presentAttachActionSheet()
         case OA_IOS_ACT_CLEAR_ATTACH:
-            store.pendingAttachments.removeAll()
+            cloudChat.pendingAttachments.removeAll()
         case OA_IOS_ACT_CHOSE_MODEL:
-            store.chooseModel(arg)
+            cloudChat.chooseModel(arg)
         case OA_IOS_ACT_CHOSE_EFFORT:
-            if let eff = ThinkingEffort(rawValue: arg) {
-                store.chooseEffort(eff)
+            if let eff = CloudThinkingEffort(rawValue: arg) {
+                cloudChat.chooseEffort(eff)
             }
         case OA_IOS_ACT_CHOSE_MODE:
-            if let mode = ReviewMode(rawValue: arg) {
-                store.chooseReviewMode(mode)
-            }
+            cloudChat.selectTargetByMachineID(arg)
         case OA_IOS_ACT_TOGGLE_MIC:
-            dictation.toggle(existingText: store.draftText) { [weak self] spoken in
-                self?.store.draftText = spoken
+            dictation.toggle(existingText: cloudChat.draftText) { [weak self] spoken in
+                self?.cloudChat.draftText = spoken
                 self?.markDirtyAndWake()
             }
-        case OA_IOS_ACT_APPROVE:
-            Task { await store.respondToInteraction(allow: true) }
-        case OA_IOS_ACT_DENY:
-            Task { await store.respondToInteraction(allow: false) }
         case OA_IOS_ACT_DISMISS_ERROR:
-            store.bannerError = nil
+            cloudChat.lastError = nil
             dictation.errorMessage = nil
-        case OA_IOS_ACT_RETRY_OUTBOX:
-            Task { await store.flushPendingOutbox(interactive: true) }
         case OA_IOS_ACT_COPY_TEXT:
             var buf = [CChar](repeating: 0, count: 16385)
             _ = oa_ios_copy_get(surface, &buf, Int32(buf.count))
@@ -796,73 +638,54 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
                 let gen = UIImpactFeedbackGenerator(style: .light)
                 gen.impactOccurred()
             }
-        case OA_IOS_ACT_OPEN_FILE:
-            dismissKeyboard(surface)
-            store.openFileFromLink(arg)
-        case OA_IOS_ACT_LOAD_OLDER:
-            Task { await store.loadOlderMessages() }
-        case OA_IOS_ACT_LOAD_MORE_SESSIONS:
-            Task { await store.loadMoreSessions() }
         case OA_IOS_ACT_APPLY_SUGGESTION:
-            if let mention = store.matchingMentions.first(where: { $0.id == arg }) {
-                applyMentionInsertion(mention.insertion, surface: surface)
-            } else if let cmd = store.matchingSlashCommands.first(where: { $0.id == arg }) {
-                store.applySlashCommand(cmd)
-                _ = oa_ios_draft_set(surface, store.draftText)
-                editor.set(store.draftText)
+            if let cmd = cloudChat.matchingSlashCommands.first(where: { $0.id == arg }) {
+                cloudChat.applySlashCommand(cmd)
+                _ = oa_ios_draft_set(surface, cloudChat.draftText)
+                editor.set(cloudChat.draftText)
                 _ = focusComposer()
             }
-        case OA_IOS_ACT_APPROVAL_OPTION:
-            let opt = store.pendingInteraction?.options.first(where: { $0.id == arg })
-            let kindLower = (opt?.kind ?? arg).lowercased()
-            let allow = !kindLower.contains("reject") && !kindLower.contains("deny")
-            Task { await store.respondToInteraction(allow: allow, optionID: arg) }
-        case OA_IOS_ACT_CLEAR_QUEUED:
-            store.clearQueuedDraft()
-        case OA_IOS_ACT_CHOSE_FOLDER:
-            store.selectedFolder = arg
         case OA_IOS_ACT_DASHBOARD_CHANGED:
             if arg == "1" {
                 dismissKeyboard(surface)
             }
         case OA_IOS_ACT_TOGGLE_FULL_AUTO:
-            store.toggleFullAuto()
+            cloudChat.toggleFullAuto()
         case OA_IOS_ACT_OPEN_USAGE:
             dismissKeyboard(surface)
-            store.isUsagePresented = true
-            Task { await store.refreshUsage() }
+            shell.isUsagePresented = true
+            if account.isLoggedIn {
+                Task { await cloudChat.refreshUsage() }
+            }
         case OA_IOS_ACT_TOGGLE_LIVE_VOICE:
             dismissKeyboard(surface)
-            dictation.speechRate = store.store.voiceSpeechRate
-            dictation.vadSilenceCommitMs = Int64(store.store.voiceVadSilenceMs)
+            dictation.speechRate = cloudChat.voiceSpeechRate
+            dictation.vadSilenceCommitMs = Int64(cloudChat.voiceVadSilenceMs)
             dictation.toggleLiveVoice(
                 onPartial: { [weak self] spoken in
-                    self?.store.draftText = spoken
+                    self?.cloudChat.draftText = spoken
                     self?.markDirtyAndWake()
                 },
                 onAutoSend: { [weak self] spoken in
                     guard let self else { return }
-                    self.store.draftText = ""
+                    self.cloudChat.draftText = ""
                     self.markDirtyAndWake()
-                    Task { await self.store.sendMessage(overrideText: spoken, overrideAttachments: []) }
+                    self.cloudChat.sendMessage(overrideText: spoken)
                 },
                 onBargeIn: { [weak self] in
                     guard let self else { return }
                     self.markDirtyAndWake()
-                    Task { await self.store.stopActiveTurn() }
+                    Task { await self.cloudChat.stopActiveTurn() }
                 }
             )
         case OA_IOS_ACT_SELECT_INTRO:
-            shell.preferCloudMode = false
-            store.selectIntrospectSessionByID(arg)
-        case OA_IOS_ACT_SELECT_MACHINE:
-            if arg == MobileCloudChat.cloudMachineID {
-                shell.preferCloudMode = true
-                Task { await cloudChat.refreshConversations() }
+            if cloudChat.selectedProjectID == arg {
+                cloudChat.selectProject(nil)
             } else {
-                shell.preferCloudMode = false
-                store.selectMachineByID(arg)
+                cloudChat.selectProject(arg)
             }
+        case OA_IOS_ACT_SELECT_MACHINE:
+            cloudChat.selectTargetByMachineID(arg)
         case OA_IOS_ACT_OPEN_ACCOUNT:
             dismissKeyboard(surface)
             shell.isAccountPresented = true
@@ -875,19 +698,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         markDirtyAndWake()
     }
 
-    private func applyMentionInsertion(_ insertion: String, surface: UnsafeMutableRawPointer) {
-        let current = store.draftText
-        if let range = current.range(of: "@[^\\s]*$", options: .regularExpression) {
-            store.draftText = current.replacingCharacters(in: range, with: "\(insertion) ")
-        } else {
-            store.draftText = current.isEmpty ? "\(insertion) " : "\(current) \(insertion) "
-        }
-        _ = oa_ios_draft_set(surface, store.draftText)
-        editor.set(store.draftText)
-        _ = focusComposer()
-    }
-
-    // MARK: - Hardware Keyboard Shortcuts (Desktop Parity: Cmd+D, Cmd+N, Cmd+Up/Down, Cmd+1..9)
+    // MARK: - Hardware Keyboard Shortcuts (Cmd+D, Cmd+N, Cmd+\, Cmd+Up/Down, Cmd+1..9)
 
     override var keyCommands: [UIKeyCommand]? {
         var cmds: [UIKeyCommand] = [
@@ -915,7 +726,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         guard let surface else { return }
         oa_ios_dashboard_set(surface, 0)
         oa_ios_drawer_set(surface, 0)
-        store.startNewChat()
+        cloudChat.startNewChat()
         _ = focusComposer()
         markDirtyAndWake()
     }
@@ -942,11 +753,11 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
 
     @objc private func cmdSelectChatByIndex(_ sender: UIKeyCommand) {
         guard let surface, let input = sender.input, let idx = Int(input), idx >= 1 else { return }
-        let ordered = store.workingSessions + store.recentSessions
-        guard idx - 1 < ordered.count else { return }
+        let active = cloudChat.conversations.filter { !$0.archived }
+        guard idx - 1 < active.count else { return }
         oa_ios_dashboard_set(surface, 0)
         oa_ios_drawer_set(surface, 0)
-        store.selectSession(ordered[idx - 1])
+        cloudChat.selectConversation(active[idx - 1].id)
         markDirtyAndWake()
     }
 
@@ -969,17 +780,8 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         sheet.addAction(UIAlertAction(title: "Attach File", style: .default) { [weak self] _ in
             self?.presentDocumentPicker()
         })
-        sheet.addAction(UIAlertAction(title: "Side Question (/btw)", style: .default) { [weak self] _ in
-            self?.store.isSideQuestionPresented = true
-        })
-        if (store.activeSession?.busy == true || store.isAwaitingTurnStart), !store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            sheet.addAction(UIAlertAction(title: "Queue Follow-Up", style: .default) { [weak self] _ in
-                self?.store.queueCurrentDraft()
-                self?.markDirtyAndWake()
-            })
-        }
-        sheet.addAction(UIAlertAction(title: "Agent Hub", style: .default) { [weak self] _ in
-            self?.store.isHubPresented = true
+        sheet.addAction(UIAlertAction(title: "Environments & Projects", style: .default) { [weak self] _ in
+            self?.shell.isEnvironmentsPresented = true
         })
         sheet.addAction(UIAlertAction(title: "Account & Cloud", style: .default) { [weak self] _ in
             self?.shell.isAccountPresented = true
@@ -1011,9 +813,9 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         if provider.canLoadObject(ofClass: UIImage.self) {
             provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] data, _ in
                 guard let data else { return }
-                let att = FileAttachment.prepareImage(data: data, name: "photo.jpg")
+                let att = CloudAttachment.prepareImage(data: data, name: "photo.jpg")
                 Task { @MainActor [weak self] in
-                    self?.store.addAttachment(att)
+                    self?.cloudChat.addAttachment(att)
                     self?.markDirtyAndWake()
                 }
             }
@@ -1032,22 +834,22 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         guard let url = urls.first, let data = try? Data(contentsOf: url) else { return }
         let ext = url.pathExtension.lowercased()
         if ["png", "jpg", "jpeg", "heic", "webp", "gif"].contains(ext) {
-            store.addAttachment(FileAttachment.prepareImage(data: data, name: url.lastPathComponent))
+            cloudChat.addAttachment(CloudAttachment.prepareImage(data: data, name: url.lastPathComponent))
         } else if let text = String(data: data, encoding: .utf8)?.nilIfContainsBinaryNUL() {
-            store.addAttachment(FileAttachment(
+            cloudChat.addAttachment(CloudAttachment(
                 name: url.lastPathComponent,
                 mimeType: "text/plain",
                 textPreview: text.truncatedToUTF8Bytes(4_000),
+                imageData: nil,
                 byteCount: data.count
             ))
         } else {
-            let b64 = data.count <= 24_000 ? data.base64EncodedString() : nil
-            store.addAttachment(FileAttachment(
+            cloudChat.addAttachment(CloudAttachment(
                 name: url.lastPathComponent,
                 mimeType: UTType(filenameExtension: ext)?.preferredMIMEType ?? "application/octet-stream",
                 textPreview: nil,
-                byteCount: data.count,
-                binaryBase64: b64
+                imageData: nil,
+                byteCount: data.count
             ))
         }
         markDirtyAndWake()
@@ -1177,8 +979,8 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         guard let surface, textView.markedTextRange == nil else { return }
         let txt = textView.text ?? ""
         _ = oa_ios_draft_set(surface, txt)
-        if store.draftText != txt {
-            store.draftText = txt
+        if cloudChat.draftText != txt {
+            cloudChat.draftText = txt
         }
         markDirtyAndWake()
     }
@@ -1254,83 +1056,51 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
     private func applyDebugDemoStateIfRequested() {
         guard UserDefaults.standard.bool(forKey: "OADemoPreview") else { return }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let hostID = "demo-macbook-pro"
-        let demoComputer = ComputerEntry(
-            id: hostID,
-            hostKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-            name: "Christopher's MacBook Pro",
-            ip: "100.127.107.31",
-            dns: "macbook-pro-m5.ts.net",
-            port: 47109,
-            paired: nil,
-            reachability: .reachable,
-            isLocalMac: true
-        )
-        store.computers = [demoComputer]
-        store.activeComputerID = hostID
-        store.workspaceName = "openagents"
-        store.sessions = [
-            ChatSessionSummary(
-                id: "s-live-1", workspaceID: "openagents",
-                title: "Port iOS UI to shared Metal GPU components",
-                managed: true, control: "available", generation: 1, revision: 4,
-                busy: true, interactionID: "", updatedAtMs: nowMs - 30_000,
-                model: "gemini-4-neon", effort: "medium", mode: "auto",
-                desktopSurface: false, note: ""
-            ),
-            ChatSessionSummary(
-                id: "s-recent-1", workspaceID: "openagents",
-                title: "Verify Direct Tailscale push & grants",
-                managed: true, control: "available", generation: 1, revision: 9,
-                busy: false, interactionID: "", updatedAtMs: nowMs - 1_200_000,
-                model: "gemini-4-neon", effort: "high", mode: "auto",
-                desktopSurface: false, note: ""
-            ),
-            ChatSessionSummary(
-                id: "s-recent-2", workspaceID: "openagents",
-                title: "Publish signed macOS GPU build to DMG",
-                managed: true, control: "available", generation: 1, revision: 6,
-                busy: false, interactionID: "", updatedAtMs: nowMs - 7_200_000,
-                model: "gemini-4-carbon", effort: "medium", mode: "plan",
-                desktopSurface: false, note: ""
-            ),
+        account.isLoggedIn = true
+        account.email = "demo@openagents.com"
+        cloudChat.isStreamConnected = true
+        cloudChat.environments = [
+            CloudEnvironment(
+                hostPubkey: String(repeating: "a", count: 64),
+                displayName: "Studio Mac",
+                os: "macos",
+                online: true,
+                lastSeenMs: nowMs,
+                workspaces: [
+                    CloudWorkspace(workspaceID: "default", name: "openagents", localPath: "/Users/dev/openagents", repoRemote: "https://github.com/OpenAgentsInc/openagents", repoCanonical: "github.com/openagentsinc/openagents", branch: "main")
+                ]
+            )
+        ]
+        cloudChat.projects = [
+            CloudProject(id: "prj_0123456789abcdef0123456789abcdef", revision: 1, name: "OpenAgents Core", description: "Coax + Cloud platform", repoCanonical: "github.com/openagentsinc/openagents", updatedAtMs: nowMs - 60_000)
+        ]
+        let demoConvID = "cnv_0123456789abcdef0123456789abcdef"
+        cloudChat.conversations = [
+            MobileCloudConversation(
+                id: demoConvID,
+                title: "Verify OpenAgents Cloud Mode on iOS",
+                model: "google/gemini-4-neon",
+                workspace: "OpenAgents Core",
+                revision: 2,
+                updatedAtMs: nowMs - 30_000,
+                pinned: false,
+                archived: false,
+                activeTurnID: "",
+                compute: "cloud",
+                sourceDevice: "ios-mobile",
+                turns: [
+                    MobileCloudTurn(id: "trn_01", userText: "Inspect Cloud Chat v2 sync and Tier 1 tools.", output: "OpenAgents Cloud streaming, Tier 1 tools, and enrolled computer placement are active.", complete: true)
+                ],
+                items: []
+            )
         ]
         if UserDefaults.standard.bool(forKey: "OADemoConversation") {
-            store.activeSessionID = "s-recent-1"
-            store.items = [
-                TranscriptItem(
-                    id: "u1", role: .user,
-                    text: "Check the iOS Metal GPU shader and confirm zero stack frames exceed 512 KB.",
-                    toolName: "", complete: true, startedAtMs: nowMs - 90_000,
-                    subagentCalls: 0, subagentNow: "", path: "", diff: "", diffCut: false, noticeKind: ""
-                ),
-                TranscriptItem(
-                    id: "t1", role: .thought,
-                    text: "Inspecting `apps/openagents-ios/gpu-page.coax` and verifying `-Wframe-larger-than=524288` on `arm64-apple-ios18.0`.",
-                    toolName: "", complete: true, startedAtMs: nowMs - 85_000,
-                    subagentCalls: 0, subagentNow: "", path: "", diff: "", diffCut: false, noticeKind: ""
-                ),
-                TranscriptItem(
-                    id: "tl1", role: .tool,
-                    text: "apps/openagents-ios/generate.sh",
-                    toolName: "Bash", complete: true, startedAtMs: nowMs - 82_000,
-                    subagentCalls: 0, subagentNow: "", path: "apps/openagents-ios/generate.sh",
-                    diff: "", diffCut: false, noticeKind: ""
-                ),
-                TranscriptItem(
-                    id: "tl2", role: .tool,
-                    text: "Updated gpu-page.coax",
-                    toolName: "Edit", complete: true, startedAtMs: nowMs - 78_000,
-                    subagentCalls: 0, subagentNow: "", path: "apps/openagents-ios/gpu-page.coax",
-                    diff: "@@ -1,2 +1,3 @@\n-let old = SwiftUI()\n+let ui = MetalGpuSurface()\n+ui.render(noirPhoneSkin)",
-                    diffCut: false, noticeKind: ""
-                ),
-                TranscriptItem(
-                    id: "a1", role: .assistant,
-                    text: "Everything is compiled and verified on `feat/gpu-ios-tailscale`:\n\n- **Metal shader**: `Components/components.metal` (27 KB) with Geist & 70 SVG icons\n- **Stack frame budget**: Passed `-Os` and `-Os -fno-inline` under 512 KB\n- **Transport**: Direct Tailscale grants + live push active (`100.127.107.31:47109`)\n\n```swift\nlet surface = oa_ios_open(resourcesPath)\noa_ios_frame(surface)\n```",
-                    toolName: "", complete: true, startedAtMs: nowMs - 70_000,
-                    subagentCalls: 0, subagentNow: "", path: "", diff: "", diffCut: false, noticeKind: ""
-                ),
+            cloudChat.activeConversationID = demoConvID
+            cloudChat.activeItems = [
+                CloudTranscriptItem(id: "u1", role: .user, text: "Check the OpenAgents Cloud pipeline on iOS.", complete: true, startedAtMs: nowMs - 90_000),
+                CloudTranscriptItem(id: "t1", role: .thought, text: "Verifying streaming `/api/v1/inference`, Tier 1 `/api/tools/cloud/v1`, and `/api/chat/v2/*` SSE sync.", complete: true, startedAtMs: nowMs - 85_000),
+                CloudTranscriptItem(id: "tl1", role: .tool, text: "f apps/openagents-ios/Sources/MobileCloudChat.swift\nf apps/openagents-ios/Sources/EnvironmentsView.swift", toolName: "github_tree", complete: true, startedAtMs: nowMs - 82_000),
+                CloudTranscriptItem(id: "a1", role: .assistant, text: "OpenAgents iOS is running 100% on OpenAgents Cloud:\n\n- **Metal shader**: `Components/components.metal` with Geist & SVG icons\n- **Cloud Sync**: Live SSE over `/api/chat/v2/stream`\n- **Tools & Placement**: Tier 1 Cloud Tools + Enrolled Computers ($0) + Cloud Sandbox\n\n```swift\nlet surface = oa_ios_open(resourcesPath)\noa_ios_frame(surface)\n```", complete: true, startedAtMs: nowMs - 70_000),
             ]
         }
     }

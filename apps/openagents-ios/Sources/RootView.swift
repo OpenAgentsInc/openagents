@@ -1,8 +1,7 @@
-// Firm reason: 6 (iOS root container hosting the full-screen Coax/Metal GPU surface with pure-black native modal sheets for Account, Spark Wallet, Computers, Workspace, Subagent, Agent Hub, Usage, and Side Question).
+// Firm reason: 6 (iOS root container hosting the full-screen Coax/Metal GPU surface with pure-black native modal sheets for Account, Spark Wallet, Environments & Projects, and Usage).
 import SwiftUI
 
 struct RootView: View {
-    @ObservedObject var store: AppStore
     @ObservedObject var account: MobileAccountController
     @ObservedObject var cloudChat: MobileCloudChat
     @ObservedObject var wallet: MobileWalletController
@@ -10,7 +9,6 @@ struct RootView: View {
 
     var body: some View {
         GpuRootHostView(
-            store: store,
             account: account,
             cloudChat: cloudChat,
             wallet: wallet,
@@ -26,28 +24,12 @@ struct RootView: View {
             WalletView(wallet: wallet)
                 .preferredColorScheme(.dark)
         }
-        .sheet(isPresented: $store.isComputersPresented) {
-            ComputersView(store: store)
+        .sheet(isPresented: $shell.isEnvironmentsPresented) {
+            EnvironmentsView(account: account, cloudChat: cloudChat)
                 .preferredColorScheme(.dark)
         }
-        .sheet(isPresented: $store.isWorkspacePresented) {
-            WorkspaceView(store: store)
-                .preferredColorScheme(.dark)
-        }
-        .sheet(item: $store.activeSubagentItem) { sub in
-            SubagentSheetView(store: store, subagent: sub)
-                .preferredColorScheme(.dark)
-        }
-        .sheet(isPresented: $store.isHubPresented) {
-            AntigravityHubView(store: store)
-                .preferredColorScheme(.dark)
-        }
-        .sheet(isPresented: $store.isSideQuestionPresented) {
-            SideQuestionSheetView(store: store)
-                .preferredColorScheme(.dark)
-        }
-        .sheet(isPresented: $store.isUsagePresented) {
-            UsageDashboardView(store: store)
+        .sheet(isPresented: $shell.isUsagePresented) {
+            UsageDashboardView(account: account, cloudChat: cloudChat)
                 .preferredColorScheme(.dark)
         }
     }

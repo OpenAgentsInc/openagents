@@ -14,10 +14,10 @@ if [[ -z "${ASC_API_KEY_ID:-}" ]]; then
 fi
 : "${ASC_API_KEY_ID:?}" "${ASC_API_ISSUER_ID:?}" "${ASC_API_PRIVATE_KEY_PATH:?}"
 mkdir -p "$out"
-# Pre-release Coax wire-compatibility & fuzz gate (blocks legacy wire regressions from shipping).
+# Pre-release Coax Cloud wire & GPU surface gate.
 coax_bin="${COAX:-../../coax/bin/coax}"
 if [[ -x "$coax_bin" ]]; then
-  "$coax_bin" test ../shared/antigravity/client-core.coax
+  "$coax_bin" test ios-app.coax
 fi
 ./generate.sh
 xcodegen generate

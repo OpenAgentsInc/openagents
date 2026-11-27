@@ -10,7 +10,7 @@ settings:
   base:
     DEVELOPMENT_TEAM: HQWSG26L43
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1431"
+    CURRENT_PROJECT_VERSION: "1432"
     OA_IOS_BUNDLE_ID: com.openagents.app
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "18.0"
@@ -22,10 +22,10 @@ targets:
     type: application
     platform: iOS
     sources:
-      # iOS GPU surface controller + pure-black native modal sheets (Account, Wallet, Cloud, Computers, Workspace, Usage).
+      # iOS Cloud Mode GPU surface controller + pure-black native modal sheets (Account, Wallet, Environments & Projects, Usage).
       - Sources
-      # Shared cross-Apple client engine & modal inspector sheets.
-      - ../shared/antigravity/Swift
+      # Shared pure-black OLED SwiftUI design tokens & clipboard helper.
+      - ../shared/antigravity/Swift/Theme.swift
       # Shared Apple Account, Passkey, DeviceKey & Spark Wallet hosts (shared 1:1 with Desktop).
       - ../shared/host/apple/AppAuth.swift
       - ../shared/host/apple/DeviceKey.swift
@@ -36,16 +36,12 @@ targets:
       - ../shared/native/AppAccount.swift
       - ../shared/native/AppHTTP.swift
       - ../shared/native/KitPasskey.swift
-      # Shared Tailscale IP/MagicDNS/TXT/direct-grant/push wire rules (Foundation-only).
-      - ../shared/native/AppTailnet.swift
       # Shared UIKit text editor overlay & VoiceOver bridge over the Metal GPU surface.
       - ../shared/native/KitEditor.swift
       - ../shared/native/KitAccess.swift
-      # Unified compiled Coax C library (client-core + wallet + nip06 + cloud-chat-wire + host-tables + gpu-page -> Generated/gallery.c).
+      # Unified compiled Coax C library (wallet + nip06 + cloud-chat-wire + tool-wire + placement + full-auto + voice-duplex + host-tables + gpu-page -> Generated/gallery.c).
       - path: Generated/gallery.c
         compilerFlags: "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"
-      - path: ../shared/antigravity/client-core-bridge.c
-        compilerFlags: "-IGenerated -I../shared/native -I../shared/antigravity"
       - path: cloud-chat-bridge.c
         compilerFlags: "-IGenerated"
       # Shared Coax GPU component carrier, glyph/SVG atlas setup, and Apple Metal UIKit host.
@@ -73,16 +69,14 @@ targets:
         CODE_SIGN_ENTITLEMENTS: OpenAgents/OpenAgents.entitlements
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_CFBundleDisplayName: OpenAgents
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "OpenAgents discovers your Mac nearby so it can connect to OpenAgents Desktop over Tailscale."
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "OpenAgents uses the microphone when you tap Voice Dictation or Live Voice to speak prompts to OpenAgents."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "OpenAgents transcribes spoken prompts into the OpenAgents composer when you use Voice Dictation."
-        INFOPLIST_KEY_NSCameraUsageDescription: "OpenAgents uses the camera to scan Tailscale pairing QR codes from your Mac."
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIUserInterfaceStyle: Dark
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_OBJC_BRIDGING_HEADER: Bridge.h
-        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../shared/native", "$(SRCROOT)/../shared/antigravity", "$(SRCROOT)/../shared/host/linux", "$(SRCROOT)/../shared/host/apple"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../shared/host/linux", "$(SRCROOT)/../shared/host/apple"]
         GCC_OPTIMIZATION_LEVEL: "2"
         # Frame budget (#13747): no C function in the app may hold a stack frame over 512 KB.
         OTHER_CFLAGS: ["$(inherited)", "-Wframe-larger-than=524288", "-Werror=frame-larger-than"]

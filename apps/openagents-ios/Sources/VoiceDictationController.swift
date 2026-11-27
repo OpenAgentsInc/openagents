@@ -140,7 +140,7 @@ final class VoiceDictationController: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    /// Feeds live streaming assistant text from `AntigravityStore`; immediately speaks completed sentences via `AVSpeechSynthesizer`.
+    /// Feeds live streaming assistant text from `MobileCloudChat`; immediately speaks completed sentences via `AVSpeechSynthesizer`.
     func feedAssistantStream(itemID: String, fullText: String, complete: Bool) {
         guard isDuplexActive else { return }
         if itemID != activeSpeechItemID {
@@ -194,7 +194,7 @@ final class VoiceDictationController: ObservableObject {
         if let urlRx = try? NSRegularExpression(pattern: "https?://\\S+", options: []) {
             text = urlRx.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "link")
         }
-        return MobileCore.voiceDuplexSanitizeSpeech(text)
+        return CloudCore.voiceDuplexSanitizeSpeech(text)
     }
 
     /// Extracts speakable complete sentences incrementally using Coax `vd_sentence_end`, preserving incomplete code fences.
@@ -207,7 +207,7 @@ final class VoiceDictationController: ObservableObject {
         }
 
         while !buffer.isEmpty {
-            let byteEnd = MobileCore.voiceDuplexSentenceEnd(buffer)
+            let byteEnd = CloudCore.voiceDuplexSentenceEnd(buffer)
             if byteEnd > 0, byteEnd <= buffer.utf8.count {
                 let idx = buffer.utf8.index(buffer.utf8.startIndex, offsetBy: byteEnd)
                 let rawChunk = String(buffer[..<idx])
@@ -434,7 +434,7 @@ final class VoiceDictationController: ObservableObject {
         let rmsBp = max(0, min(10_000, Int64((rms * 10_000.0).rounded())))
 
         // Drive Coax #authority voice-duplex.coax VAD & barge-in state machine!
-        let ev = MobileCore.voiceDuplexVadStep(state: &vadState, rmsBp: rmsBp, dtMs: dtMs)
+        let ev = CloudCore.voiceDuplexVadStep(state: &vadState, rmsBp: rmsBp, dtMs: dtMs)
         if ev == 1 { // VD_EV_AUTO_SEND
             let spoken = liveSpokenText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !spoken.isEmpty {

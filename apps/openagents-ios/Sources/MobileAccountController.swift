@@ -28,7 +28,7 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
 
     private var webAuthSession: ASWebAuthenticationSession?
 
-    init(auth: AppAuth = AppAuth.shared) {
+    init(auth: AppAuth = AppAuth(origin: CloudAPIBase.origin)) {
         self.auth = auth
         self.account = AppAccount(auth: auth)
         super.init()

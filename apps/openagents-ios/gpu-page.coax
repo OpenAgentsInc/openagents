@@ -1,5 +1,5 @@
-// OpenAgents iOS GPU surface: pure-black Coder Noir GPU chat,
-// slide-out sidebar (Universal Introspection, Account, Spark Wallet, Tailscale),
+// OpenAgents iOS GPU surface: pure-black Coder Noir GPU chat (100% OpenAgents Cloud mode),
+// slide-out sidebar (Cloud Chats, Projects, Environments, Account, Spark Wallet),
 // activity trees, Markdown replies, composer & floating pickers.
 //   coax/bin/coax test apps/openagents-ios/gpu-page.coax
 
@@ -49,7 +49,7 @@ IOS_EDGE :: 20.0f32;
 IOS_ZOOM_MAX :: 2.5f32;
 IOS_WIDE_BREAKPOINT :: 700.0f32;
 
-// Transcript item roles pushed from Swift AntigravityStore.
+// Transcript item roles pushed from Swift MobileCloudChat.
 IOS_ROLE_USER :: 0;
 IOS_ROLE_ASSISTANT :: 1;
 IOS_ROLE_THOUGHT :: 2;
@@ -282,7 +282,7 @@ IosPhonePage :: struct {
   // Unfolded long user messages ring.
   unfolded: [IOS_FOLDS][EL_ID] u8; unfolded_n: [IOS_FOLDS] int; unfolded_next: int;
 
-  // Snapshot state pushed from Swift AppStore.
+  // Snapshot state pushed from Swift MobileCloudChat.
   computer_name: [96] u8; computer_name_n: int;
   session_title: [128] u8; session_title_n: int;
   workspace_name: [96] u8; workspace_name_n: int;
@@ -504,7 +504,7 @@ ios_draw_topbar :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: f32, s
   sheet_icon(sh, ICON_COMPOSE, new_x + (side - a.nav_icon) / 2.0f32, ny + (side - a.nav_icon) / 2.0f32, a.nav_icon, sk.ink);
 
   ws_x := new_x - 6.0f32 - side;
-  app_glass_button(f, "nav.workspace", ws_x, ny, side, "Workspace", IOS_HIT_WORKSPACE);
+  app_glass_button(f, "nav.workspace", ws_x, ny, side, "Projects", IOS_HIT_WORKSPACE);
   sheet_icon(sh, ICON_FOLDER, ws_x + (side - a.icon) / 2.0f32, ny + (side - a.icon) / 2.0f32, a.icon, sk.muted);
 
   // Center computer / session / dashboard pill
@@ -1174,22 +1174,20 @@ ios_draw_empty_state :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, top: f32, w:
   col_x := x + 20.0f32; col_w := w - 40.0f32;
   if col_w < 80.0f32 { col_w = 80.0f32; }
   mark: f32 = 34.0f32;
-  title := ifx s[0].computer_name_n > 0 then cast(string) s[0].computer_name[0..<s[0].computer_name_n]
-    else ifx s[0].account_logged_in then "OpenAgents Cloud" else "OpenAgents";
+  title := ifx s[0].account_logged_in && s[0].computer_name_n > 0 then cast(string) s[0].computer_name[0..<s[0].computer_name_n]
+    else "OpenAgents Cloud";
   sub_buf: [140] u8; sub := "";
-  if s[0].workspace_name_n > 0 {
-    sn := el_put(sub_buf[..], 0, "Workspace: ");
+  if !s[0].account_logged_in {
+    sub = "Sign in to chat in OpenAgents Cloud and sync across devices";
+  } else if s[0].workspace_name_n > 0 {
+    sn := el_put(sub_buf[..], 0, "Project: ");
     sn = el_put(sub_buf[..], sn, cast(string) s[0].workspace_name[0..<s[0].workspace_name_n]);
     sub = sheet_pool(sh, cast(string) sub_buf[0..<sn]);
-  } else if s[0].paired_count == 0 && !s[0].account_logged_in {
-    sub = "Sign in for Cloud Chat or connect your Mac over Tailscale";
-  } else if s[0].paired_count == 0 && s[0].account_logged_in {
-    sub = "Cloud chat & cross-device sync ready";
   } else {
-    sub = "Ask OpenAgents anything";
+    sub = "Cloud chat, Tier 1 tools, and enrolled computers ready";
   }
-  need_btn := s[0].paired_count == 0 && !s[0].account_logged_in;
-  est_h := mark + 16.0f32 + sk.title.line + 8.0f32 + sk.small.line + (ifx need_btn then 18.0f32 + sk.control_h * 2.0f32 + 10.0f32 else 0.0f32);
+  need_btn := !s[0].account_logged_in;
+  est_h := mark + 16.0f32 + sk.title.line + 8.0f32 + sk.small.line + (ifx need_btn then 18.0f32 + sk.control_h else 0.0f32);
   cy := top + (h - est_h) * 0.44f32;
   if cy < top + 16.0f32 { cy = top + 16.0f32; }
   sheet_icon(sh, ICON_ANTIGRAVITY, x + (w - mark) / 2.0f32, cy, mark, sk.ink);
@@ -1204,13 +1202,9 @@ ios_draw_empty_state :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, top: f32, w:
   }
   if need_btn {
     cy += 18.0f32;
-    bw1 := app_button_width(f, -1, "Sign In for Cloud Chat");
+    bw1 := app_button_width(f, -1, "Sign In to OpenAgents");
     if bw1 > col_w { bw1 = col_w; }
-    _ := app_button(f, "chat.signIn", x + (w - bw1) / 2.0f32, cy, bw1, -1, "Sign In for Cloud Chat", APP_BUTTON_PRIMARY, 0, IOS_HIT_ACCOUNT);
-    cy += sk.control_h + 10.0f32;
-    bw2 := app_button_width(f, -1, "Connect Mac");
-    if bw2 > col_w { bw2 = col_w; }
-    _ := app_button(f, "chat.connectTailscale", x + (w - bw2) / 2.0f32, cy, bw2, -1, "Connect Mac", APP_BUTTON_DEFAULT, 0, IOS_HIT_COMPUTERS);
+    _ := app_button(f, "chat.signIn", x + (w - bw1) / 2.0f32, cy, bw1, -1, "Sign In to OpenAgents", APP_BUTTON_PRIMARY, 0, IOS_HIT_ACCOUNT);
   }
 }
 
@@ -1364,7 +1358,7 @@ ios_draw_transcript :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, top: f32, w: 
     i += 1;
   }
 
-  // Live working indicator while Antigravity is streaming or starting a turn
+  // Live working indicator while OpenAgents Cloud is streaming or starting a turn
   if s[0].session_busy || s[0].awaiting_turn {
     wlbl := ifx s[0].working_label_n > 0 then cast(string) s[0].working_label[0..<s[0].working_label_n]
       else ifx s[0].awaiting_turn then "Sending…" else "Working";
@@ -1653,27 +1647,23 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
   cur += app_side_action(f, "sidebar.dashboard", x - 4.0f32, cur, w + 8.0f32, ICON_WIDGET, dash_lbl, ifx s[0].dashboard then EL_S_CURRENT else 0, IOS_HIT_DASHBOARD) + 4.0f32;
   cur += app_divider(f, x, cur, w) + 4.0f32;
 
-  // Footer reserved height (Optional Folder + Account + Wallet + Agent Hub + Computers & Tailscale)
-  foot_rows := ifx s[0].folders_n > 1 then 5.0f32 else 4.0f32;
+  // Footer reserved height (Account + Spark Wallet + Environments & Projects)
+  foot_rows: f32 = 3.0f32;
   foot_h := foot_rows * sk.app.side_row + 16.0f32;
   list_bottom := bottom - foot_h;
   if list_bottom < cur + 40.0f32 { list_bottom = cur + 40.0f32; }
 
-  // Universal Introspection Sidebar (#14068):
-  // 0: WORKING | 1: CHATS | 2: TUI & TERMINAL | 3: OTHER HARNESSES | 4: MACHINES
+  // OpenAgents Cloud Sidebar:
+  // 0: WORKING | 1: CHATS | 2: PROJECTS | 3: ENVIRONMENTS
   n := 0;
   working_ses := 0; recents_cnt := 0;
   for i: 0..<s[0].sessions_n {
     if s[0].sessions[i].busy { working_ses += 1; } else { recents_cnt += 1; }
   }
-  tui_cnt := 0; har_cnt := 0; working_intro := 0;
-  for i: 0..<s[0].intro_n {
-    if s[0].intro_items[i].busy { working_intro += 1; }
-    if s[0].intro_items[i].kind == IOS_INTRO_TUI { tui_cnt += 1; } else { har_cnt += 1; }
-  }
-  working_total := working_ses + working_intro;
+  proj_cnt := s[0].intro_n;
+  working_total := working_ses;
 
-  // Section 0: WORKING (active across Chats + TUI + Harnesses)
+  // Section 0: WORKING (active Cloud / Sandbox / Enrolled Computer chats)
   if working_total > 0 {
     n = ios_push_sec_header(s, sh, n, 0, "WORKING", working_total, true);
     if !s[0].sec_collapsed[0] {
@@ -1699,10 +1689,6 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
           action = IOS_HIT_SELECT_SESSION,
         };
         n += 1;
-      }
-      for i: 0..<s[0].intro_n {
-        if !s[0].intro_items[i].busy || n >= IOS_SIDE_CAP { continue; }
-        n = ios_push_intro_row(s, sh, n, i);
       }
     }
   }
@@ -1736,7 +1722,7 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
     if recents_cnt == 0 && working_ses == 0 && n < IOS_SIDE_CAP {
       s[0].side_rows[n] = AppSideRow.{
         id = "side.empty",
-        title = ifx s[0].paired_count == 0 then "Pair a Mac to see chats" else "No chats yet",
+        title = ifx !s[0].account_logged_in then "Sign in to see Cloud chats" else "No chats yet",
         state = EL_S_DISABLED, action = 0,
       };
       n += 1;
@@ -1747,39 +1733,25 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
     }
   }
 
-  // Section 2: TUI & TERMINAL (live tmux / OpenAgents TUI sessions)
-  n = ios_push_sec_header(s, sh, n, 2, "TUI & TERMINAL", tui_cnt, false);
+  // Section 2: PROJECTS (OpenAgents Cloud Projects)
+  n = ios_push_sec_header(s, sh, n, 2, "PROJECTS", proj_cnt, false);
   if !s[0].sec_collapsed[2] {
-    if tui_cnt == 0 && n < IOS_SIDE_CAP {
-      s[0].side_rows[n] = AppSideRow.{id = "side.tui.empty", title = "No active terminal sessions", quiet = true, state = EL_S_DISABLED, action = 0};
+    if proj_cnt == 0 && n < IOS_SIDE_CAP {
+      s[0].side_rows[n] = AppSideRow.{id = "side.proj.empty", title = ifx !s[0].account_logged_in then "Sign in for Projects" else "No Cloud Projects yet", quiet = true, state = EL_S_DISABLED, action = 0};
       n += 1;
     } else {
       for i: 0..<s[0].intro_n {
-        if s[0].intro_items[i].kind != IOS_INTRO_TUI || n >= IOS_SIDE_CAP { continue; }
+        if n >= IOS_SIDE_CAP { break; }
         n = ios_push_intro_row(s, sh, n, i);
       }
     }
   }
 
-  // Section 3: OTHER HARNESSES (Claude Code, Codex CLI, Antigravity CLI)
-  n = ios_push_sec_header(s, sh, n, 3, "OTHER HARNESSES", har_cnt, false);
+  // Section 3: ENVIRONMENTS (Cloud, Sandbox & Enrolled Computers)
+  n = ios_push_sec_header(s, sh, n, 3, "ENVIRONMENTS", s[0].machines_n, false);
   if !s[0].sec_collapsed[3] {
-    if har_cnt == 0 && n < IOS_SIDE_CAP {
-      s[0].side_rows[n] = AppSideRow.{id = "side.har.empty", title = "No external harness sessions", quiet = true, state = EL_S_DISABLED, action = 0};
-      n += 1;
-    } else {
-      for i: 0..<s[0].intro_n {
-        if s[0].intro_items[i].kind != IOS_INTRO_HARNESS || n >= IOS_SIDE_CAP { continue; }
-        n = ios_push_intro_row(s, sh, n, i);
-      }
-    }
-  }
-
-  // Section 4: MACHINES (paired & discovered Tailscale Macs)
-  n = ios_push_sec_header(s, sh, n, 4, "MACHINES", s[0].machines_n, false);
-  if !s[0].sec_collapsed[4] {
     if s[0].machines_n == 0 && n < IOS_SIDE_CAP {
-      s[0].side_rows[n] = AppSideRow.{id = "side.mach.empty", title = "No machines paired", quiet = true, state = EL_S_DISABLED, action = 0};
+      s[0].side_rows[n] = AppSideRow.{id = "side.env.empty", title = "Sign in to view targets", quiet = true, state = EL_S_DISABLED, action = 0};
       n += 1;
     } else {
       for i: 0..<s[0].machines_n {
@@ -1790,16 +1762,16 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
         s[0].side_id_ns[n] = id_n;
         sb: [32] u8; sn := 0;
         if mc.reachability == IOS_REACH_OK { sn = el_put(sb[..], sn, "Online"); }
-        else if mc.reachability == IOS_REACH_CHECKING { sn = el_put(sb[..], sn, "Checking"); }
+        else if mc.reachability == IOS_REACH_CHECKING { sn = el_put(sb[..], sn, "Connecting"); }
         else if mc.reachability == IOS_REACH_BAD { sn = el_put(sb[..], sn, "Offline"); }
-        else { sn = el_put(sb[..], sn, "Paired"); }
+        else { sn = el_put(sb[..], sn, "Ready"); }
         if mc.session_count > 0 {
           sn = el_put(sb[..], sn, " · ");
           sn = el_put_i(sb[..], sn, mc.session_count);
         }
         s[0].side_rows[n] = AppSideRow.{
           id = sheet_pool(sh, cast(string) s[0].side_ids[n][0..<id_n]),
-          title = sheet_pool(sh, ifx mc.name_n > 0 then cast(string) s[0].machines[i].name[0..<mc.name_n] else "Mac"),
+          title = sheet_pool(sh, ifx mc.name_n > 0 then cast(string) s[0].machines[i].name[0..<mc.name_n] else "Cloud"),
           detail = sheet_pool(sh, cast(string) s[0].machines[i].detail[0..<mc.detail_n]),
           status = sheet_pool(sh, cast(string) sb[0..<sn]),
           state = ifx mc.current then EL_S_CURRENT else 0,
@@ -1819,21 +1791,16 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
   _ := app_side_window(f, x - 4.0f32, cur, w + 8.0f32, s[0].side_viewport, s[0].side_rows[0..<n], soff, 0, IOS_HIT_SELECT_SESSION);
   if working_total > 0 && !f[0].reduced_motion { uiframe_tick(f); }
 
-  // Pinned footer: divider + optional Folder + Account + Spark Wallet + Agent Hub + Computers & Tailscale
+  // Pinned footer: divider + Account + Spark Wallet + Environments & Projects
   fy := list_bottom + 4.0f32;
   fy += app_divider(f, x, fy, w) + 4.0f32;
-  if s[0].folders_n > 1 {
-    flbl := ifx s[0].workspace_name_n > 0 then cast(string) s[0].workspace_name[0..<s[0].workspace_name_n] else "Workspace folder";
-    fy += app_side_action(f, "sidebar.folder", x - 4.0f32, fy, w + 8.0f32, ICON_FOLDER, flbl, 0, IOS_HIT_FOLDER);
-  }
   acct_lbl := ifx s[0].account_label_n > 0 then cast(string) s[0].account_label[0..<s[0].account_label_n]
     else ifx s[0].account_logged_in then "Account · Cloud" else "Sign In & Cloud";
   fy += app_side_action(f, "sidebar.account", x - 4.0f32, fy, w + 8.0f32, ICON_SET_ACCOUNT, acct_lbl, 0, IOS_HIT_ACCOUNT);
   wal_lbl := ifx s[0].wallet_label_n > 0 then cast(string) s[0].wallet_label[0..<s[0].wallet_label_n] else "Spark Wallet";
   fy += app_side_action(f, "sidebar.wallet", x - 4.0f32, fy, w + 8.0f32, ICON_PSIONIC, wal_lbl, 0, IOS_HIT_WALLET);
-  fy += app_side_action(f, "sidebar.hub", x - 4.0f32, fy, w + 8.0f32, ICON_WIDGET, "Agent Hub", 0, IOS_HIT_HUB);
-  comp_lbl := ifx s[0].computer_name_n > 0 then cast(string) s[0].computer_name[0..<s[0].computer_name_n] else "Computers & Tailscale";
-  _ := app_side_action(f, "sidebar.computers", x - 4.0f32, fy, w + 8.0f32, ICON_SETTINGS, comp_lbl, 0, IOS_HIT_COMPUTERS);
+  env_lbl := ifx s[0].account_logged_in && s[0].computer_name_n > 0 then cast(string) s[0].computer_name[0..<s[0].computer_name_n] else "Environments & Projects";
+  _ := app_side_action(f, "sidebar.computers", x - 4.0f32, fy, w + 8.0f32, ICON_SETTINGS, env_lbl, 0, IOS_HIT_COMPUTERS);
   _ := keyed_layer;
 }
 
@@ -1847,7 +1814,7 @@ ios_draw_picker :: (s: [] IosPhonePage, f: [] UiFrame, w: f32, h: f32) {
   srow := uiframe_semantic(f, "picker.scrim", EL_BUTTON, "Close picker", 0, 0, w, h, 0, IOS_HIT_PICKER_CLOSE);
   sheet_hit(sh, UIFRAME_HIT, srow, 0, 0, 0, w, h);
 
-  title := ifx s[0].picker == 1 then "Model" else ifx s[0].picker == 2 then "Thinking Effort" else ifx s[0].picker == 3 then "Review Mode" else "Workspace Folder";
+  title := ifx s[0].picker == 1 then "Model" else ifx s[0].picker == 2 then "Thinking Effort" else ifx s[0].picker == 3 then "Execution Target" else "Workspace Folder";
   count := ifx s[0].picker == 1 then s[0].models_n else ifx s[0].picker == 2 then s[0].efforts_n else ifx s[0].picker == 3 then s[0].modes_n else s[0].folders_n;
   row_act := ifx s[0].picker == 1 then IOS_HIT_PICK_MODEL else ifx s[0].picker == 2 then IOS_HIT_PICK_EFFORT else ifx s[0].picker == 3 then IOS_HIT_PICK_MODE else IOS_HIT_PICK_FOLDER;
 
@@ -2559,7 +2526,7 @@ ios_scroll_bottom :: (s: [] IosPhonePage) #export_c #effects(all) {
   s[0].again = true;
 }
 
-// State pushers called from Swift AntigravityStore
+// State pushers called from Swift MobileCloudChat
 ios_set_header :: (s: [] IosPhonePage, computer: string, session_title: string, workspace: string, reachability: int, paired_count: int, has_active: bool, has_older: bool, has_more_sessions: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].computer_name_n = ios_copy(s[0].computer_name[..], computer);
@@ -2786,25 +2753,34 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
   return surface_find(ios_sf(s, 0), id) >= 0 || surface_find(ios_sf(s, 1), id) >= 0;
 }
 
-#test "GPU iOS page renders pure-black empty state, drawer cards, picker, and transcript activity" #steps 2000000000 {
+#test "GPU iOS page renders pure-black Cloud empty state, drawer cards, picker, and transcript activity" #steps 2000000000 {
   s: [1] IosPhonePage; o: [1] IosTestOut;
   ios_test_atlas(s[0].atlas[..]);
-  ios_set_header(s[..], "Christopher's MacBook Pro", "", "openagents", IOS_REACH_OK, 1, false, false, false);
+
+  // Signed-out empty state shows Cloud Sign In CTA
+  ios_set_account_wallet(s[..], "Sign In & Cloud", false, "Spark Wallet", false);
+  v0 := ios_test_frame(s[..], o[..]);
+  #assert v0 > 0 && s[0].refused == 0;
+  #assert ios_test_has(s[..], "chat.signIn");
+
+  // Signed-in Cloud state
+  ios_set_account_wallet(s[..], "dev@openagents.com", true, "Spark Wallet", true);
+  ios_set_header(s[..], "OpenAgents Cloud", "", "OpenAgents Core", IOS_REACH_OK, 1, false, false, false);
   ios_set_composer(s[..], "Gemini 4 Neon", "Medium", "Auto", 0, false);
-  ios_models_push(s[..], "gemini-4-neon", "Gemini 4 Neon", "Gemini 4 · Default", true);
-  ios_models_push(s[..], "gemini-4-carbon", "Gemini 4 Carbon", "Gemini 4 · Coding", false);
+  ios_models_push(s[..], "google/gemini-4-neon", "Gemini 4 Neon", "Flagship OpenAgents Cloud model", true);
+  ios_models_push(s[..], "google/gemini-4-carbon", "Gemini 4 Carbon", "High-throughput OpenAgents Cloud model", false);
   ios_efforts_push(s[..], "medium", "Medium", "Balanced", true);
-  ios_modes_push(s[..], "auto", "Auto", "Approve workspace tools automatically", true);
-  ios_sessions_push(s[..], "s1", "Fix Metal shader", "openagents", "main", "2m", false, true, false, false);
+  ios_modes_push(s[..], "target:auto", "Auto", "Cloud Tools + Enrolled Computer + Sandbox", true);
+  ios_sessions_push(s[..], "s1", "Fix Metal shader", "Cloud", "google/gemini-4-neon", "2m", false, true, false, false);
 
   v := ios_test_frame(s[..], o[..]);
   #assert v > 0 && s[0].refused == 0;
   #assert ios_test_has(s[..], "nav.sidebar") && ios_test_has(s[..], "nav.computerPill") && ios_test_has(s[..], "chat.composer") && ios_test_has(s[..], "chat.modelPicker");
 
-  // Open drawer via sidebar button and verify Account, Wallet, Hub, and session card
+  // Open drawer via sidebar button and verify Account, Wallet, Environments, and session card
   #assert ios_activate(s[..], "nav.sidebar") && s[0].drawer;
   _ = ios_test_frame(s[..], o[..]);
-  #assert ios_test_has(s[..], "drawer") && ios_test_has(s[..], "ses.s1") && ios_test_has(s[..], "sidebar.account") && ios_test_has(s[..], "sidebar.wallet") && ios_test_has(s[..], "sidebar.hub");
+  #assert ios_test_has(s[..], "drawer") && ios_test_has(s[..], "ses.s1") && ios_test_has(s[..], "sidebar.account") && ios_test_has(s[..], "sidebar.wallet") && ios_test_has(s[..], "sidebar.computers");
   #assert ios_activate(s[..], "sidebar.account") && !s[0].drawer && ios_take_action(s[..]) == IOS_ACT_OPEN_ACCOUNT;
   _ = ios_test_frame(s[..], o[..]);
   #assert ios_activate(s[..], "nav.sidebar") && s[0].drawer;
@@ -2824,13 +2800,13 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
   #assert ios_test_has(s[..], "pick.1");
   #assert ios_activate(s[..], "pick.1") && s[0].picker == 0;
   #assert ios_take_action(s[..]) == IOS_ACT_CHOSE_MODEL;
-  #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "gemini-4-carbon";
+  #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "google/gemini-4-carbon";
 
   // Push conversation items (user, thought, tool, assistant markdown with code block)
   ios_items_clear(s[..], true);
   ios_items_push(s[..], IOS_ROLE_USER, "u1", "Check the shader", "", "", "", true, false, false, false, 0, 0);
   ios_items_push(s[..], IOS_ROLE_THOUGHT, "t1", "Inspecting gpu-shader.coax", "", "", "", true, false, false, false, 0, 0);
-  ios_items_push(s[..], IOS_ROLE_TOOL, "tl1", "rg chat_fx_fs components/", "Bash", "", "", true, false, false, false, 0, 2);
+  ios_items_push(s[..], IOS_ROLE_TOOL, "tl1", "f components/backend/gpu-shader.coax", "github_tree", "", "", true, false, false, false, 0, 2);
   ios_items_push(s[..], IOS_ROLE_ASSISTANT, "a1", "Here is the code:\n```swift\nlet x = 1\n```", "", "", "", true, false, false, false, 0, 0);
   _ = ios_test_frame(s[..], o[..]);
   #assert ios_test_has(s[..], "m.u1") && ios_test_has(s[..], "act.t1") && ios_test_has(s[..], "m.a1");
@@ -2842,8 +2818,8 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
 
   // Verify Dashboard home screen, active mini-window card, and tap-to-open
   ios_sessions_clear(s[..]);
-  ios_sessions_push(s[..], "live-1", "Build iOS parity", "openagents", "gemini-4-neon", "now", true, false, false, false);
-  ios_session_set_preview(s[..], "live-1", "Bring mobile app up to parity", "Edited gpu-page.coax", "Added Dashboard and autocomplete.");
+  ios_sessions_push(s[..], "live-1", "Build Cloud Mode iOS", "OpenAgents Core", "google/gemini-4-neon", "now", true, false, false, false);
+  ios_session_set_preview(s[..], "live-1", "Verify Cloud mode on iOS", "Edited gpu-page.coax", "Cloud Chat v2 and Tier 1 tools wired.");
   #assert ios_activate(s[..], "nav.sidebar") && s[0].drawer;
   _ = ios_test_frame(s[..], o[..]);
   #assert ios_test_has(s[..], "sidebar.dashboard");
@@ -2855,37 +2831,32 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
   #assert ios_take_action(s[..]) == IOS_ACT_SELECT_SESSION;
   #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "live-1";
 
-  // Verify @ mention autocomplete, Todos card, Queued follow-up, and Multi-option approval
+  // Verify autocomplete, Todos card, Queued follow-up, Usage HUD, Live Voice, and Full Auto
   ios_suggestions_clear(s[..], true);
   ios_suggestions_push(s[..], "dir-apps/openagents-ios", "@apps/openagents-ios", "Folder");
   ios_todos_clear(s[..]);
-  ios_todos_push(s[..], "Add Dashboard grid", IOS_TODO_COMPLETED);
+  ios_todos_push(s[..], "Wire Cloud mode", IOS_TODO_COMPLETED);
   ios_todos_push(s[..], "Verify Simulator tests", IOS_TODO_IN_PROGRESS);
-  ios_set_queued(s[..], "Then push to TestFlight");
-  ios_set_usage(s[..], "ctx 12% · Today $0.42 · Quota 68%", 12);
-  ios_set_header(s[..], "Christopher's MacBook Pro", "Build iOS parity", "openagents", IOS_REACH_OK, 1, true, false, false);
+  ios_set_queued(s[..], "Then push to main");
+  ios_set_usage(s[..], "Auto · Today $0.42 · 5000 sats", 12);
+  ios_set_header(s[..], "OpenAgents Cloud", "Build Cloud Mode iOS", "OpenAgents Core", IOS_REACH_OK, 1, true, false, false);
   ios_set_approval(s[..], true, "Allow running xcodebuild?", "");
   ios_approval_options_clear(s[..]);
   ios_approval_options_push(s[..], "allow_once", "Allow once", "allow");
   ios_approval_options_push(s[..], "reject_once", "Reject", "reject");
 
-  // Full Auto defaults ON and suppresses the approval card while Always-On Usage & Live Voice render (#14068)
   _ = ios_test_frame(s[..], o[..]);
   #assert ios_full_auto(s[..]);
   #assert ios_test_has(s[..], "chat.fullAuto") && ios_test_has(s[..], "chat.usageBar") && ios_test_has(s[..], "chat.liveVoiceButton");
   #assert !ios_test_has(s[..], "approval.opt.0");
 
-  // Tapping Always-On Usage strip emits IOS_ACT_OPEN_USAGE
   #assert ios_activate(s[..], "chat.usageBar") && ios_take_action(s[..]) == IOS_ACT_OPEN_USAGE;
-
-  // Tapping Live Voice button emits IOS_ACT_TOGGLE_LIVE_VOICE and renders active duplex pill when speaking
   #assert ios_activate(s[..], "chat.liveVoiceButton") && ios_take_action(s[..]) == IOS_ACT_TOGGLE_LIVE_VOICE;
   ios_set_voice_duplex(s[..], IOS_VOICE_SPEAKING, 0.72f32);
   _ = ios_test_frame(s[..], o[..]);
   #assert ios_test_has(s[..], "chat.liveVoicePill") && ios_test_has(s[..], "chat.liveVoiceEnd");
   ios_set_voice_duplex(s[..], IOS_VOICE_OFF, 0.0f32);
 
-  // Toggling Full Auto OFF reveals the interactive approval card
   #assert ios_activate(s[..], "chat.fullAuto") && !ios_full_auto(s[..]);
   #assert ios_take_action(s[..]) == IOS_ACT_TOGGLE_FULL_AUTO;
   #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "0";
@@ -2898,30 +2869,29 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
   #assert ios_activate(s[..], "chat.todos") && s[0].todos_expanded;
   #assert ios_activate(s[..], "composer.queued.clear") && ios_take_action(s[..]) == IOS_ACT_CLEAR_QUEUED;
 
-  // Verify Universal Introspection sidebar: Working, Chats, TUI & Terminal, Other Harnesses, Machines (#14068)
+  // Verify Cloud sidebar sections: Working, Chats, Projects, Environments
   ios_intro_clear(s[..]);
-  ios_intro_push(s[..], IOS_INTRO_TUI, "tmux:dev:0.0", "dev:0.0", "tmux", "/repo/openagents", "zsh", false, false);
-  ios_intro_push(s[..], IOS_INTRO_HARNESS, "claude:abc", "Claude Refactor", "claude", "/repo/openagents", "idle", false, false);
+  ios_intro_push(s[..], IOS_INTRO_TUI, "prj_01", "OpenAgents Core", "github.com/openagentsinc/openagents", "", "2m", false, false);
   ios_machines_clear(s[..]);
-  ios_machines_push(s[..], "mac-studio", "Studio Mac", "studio.ts.net", IOS_REACH_OK, 3, true);
+  ios_machines_push(s[..], "target:auto", "Auto Placement", "Cloud Tools + Enrolled", IOS_REACH_OK, 3, true);
   ios_drawer_set(s[..], true);
   _ = ios_test_frame(s[..], o[..]);
-  #assert ios_test_has(s[..], "side.sec.0") && ios_test_has(s[..], "side.sec.1") && ios_test_has(s[..], "side.sec.2") && ios_test_has(s[..], "side.sec.3") && ios_test_has(s[..], "side.sec.4");
-  #assert ios_test_has(s[..], "intro.tmux:dev:0.0") && ios_test_has(s[..], "intro.claude:abc") && ios_test_has(s[..], "mach.mac-studio");
+  #assert ios_test_has(s[..], "side.sec.0") && ios_test_has(s[..], "side.sec.1") && ios_test_has(s[..], "side.sec.2") && ios_test_has(s[..], "side.sec.3");
+  #assert ios_test_has(s[..], "intro.prj_01") && ios_test_has(s[..], "mach.target:auto");
 
-  // Collapse TUI section and verify its row hides, then re-expand and tap it
+  // Collapse Projects section and verify its row hides, then re-expand and tap it
   #assert ios_activate(s[..], "side.sec.2") && s[0].sec_collapsed[2];
   _ = ios_test_frame(s[..], o[..]);
-  #assert !ios_test_has(s[..], "intro.tmux:dev:0.0");
+  #assert !ios_test_has(s[..], "intro.prj_01");
   #assert ios_activate(s[..], "side.sec.2") && !s[0].sec_collapsed[2];
   _ = ios_test_frame(s[..], o[..]);
-  #assert ios_activate(s[..], "intro.tmux:dev:0.0") && ios_take_action(s[..]) == IOS_ACT_SELECT_INTRO;
-  #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "tmux:dev:0.0";
+  #assert ios_activate(s[..], "intro.prj_01") && ios_take_action(s[..]) == IOS_ACT_SELECT_INTRO;
+  #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "prj_01";
 
-  // Select machine from Machines section
+  // Select target from Environments section
   ios_drawer_set(s[..], true);
   _ = ios_test_frame(s[..], o[..]);
-  #assert ios_activate(s[..], "mach.mac-studio") && ios_take_action(s[..]) == IOS_ACT_SELECT_MACHINE;
-  #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "mac-studio";
+  #assert ios_activate(s[..], "mach.target:auto") && ios_take_action(s[..]) == IOS_ACT_SELECT_MACHINE;
+  #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "target:auto";
   #assert s[0].refused == 0;
 }

@@ -43,11 +43,11 @@ xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Debug
 
 echo "==> [2/4] Starting live dual Coax NIP-44 TCP hosts (legacy v1 + modern v2)"
 cd "$repo"
-COAX="$coax" bash "$repo/coax/web/tool.sh" "$repo/apps/openagents-ios/Tests/e2e-host.coax" --idle-ms 1 </dev/null >/dev/null 2>&1 || true
+COAX="$coax" bash "$repo/coax/web/tool.sh" "$repo/apps/openagents-macos/Tests/e2e-host.coax" --idle-ms 1 </dev/null >/dev/null 2>&1 || true
 
-COAX="$coax" bash "$repo/coax/web/tool.sh" "$repo/apps/openagents-ios/Tests/e2e-host.coax" --legacy-v1 --port-file "$tmp/legacy.port" --idle-ms 120000 &
+COAX="$coax" bash "$repo/coax/web/tool.sh" "$repo/apps/openagents-macos/Tests/e2e-host.coax" --legacy-v1 --port-file "$tmp/legacy.port" --idle-ms 120000 &
 legacy_pid=$!
-COAX="$coax" bash "$repo/coax/web/tool.sh" "$repo/apps/openagents-ios/Tests/e2e-host.coax" --port-file "$tmp/v2.port" --idle-ms 120000 &
+COAX="$coax" bash "$repo/coax/web/tool.sh" "$repo/apps/openagents-macos/Tests/e2e-host.coax" --port-file "$tmp/v2.port" --idle-ms 120000 &
 v2_pid=$!
 
 for _ in $(seq 1 80); do
