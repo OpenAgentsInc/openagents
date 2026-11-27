@@ -38,7 +38,9 @@
     margin: 0;
     padding: 0;
     width: 100%;
-    overflow-x: hidden;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
     background: var(--bg);
     color: var(--fg);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
@@ -46,12 +48,17 @@
     text-rendering: optimizeLegibility;
   }
   body {
-    min-height: 100svh;
+    position: fixed;
+    inset: 0;
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: clamp(32px, 5vh, 64px) clamp(18px, 4vw, 40px) clamp(40px, 6vh, 72px);
+    padding: 24px clamp(18px, 4vw, 40px) 56px;
   }
   body > main {
     width: 100%;
@@ -183,7 +190,7 @@
     .launch-card { width: 100%; padding: 18px 16px 20px; }
     .sep { transform: translateY(-7px); }
   }
-  .inside body { overflow: auto; display: block; padding: 0; }
+  .inside, .inside body { position: static; height: auto; overflow: auto; overscroll-behavior: auto; touch-action: auto; display: block; padding: 0; }
   .inside body > main, .inside body > footer { display: none; }
   .inside #home-root { position: fixed; inset: 0; overflow-y: auto; background: #000; z-index: 30; text-align: left; }
 </style>
