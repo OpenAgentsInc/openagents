@@ -132,6 +132,22 @@ All 25 numbered chapters are complete (`written` status in [`chapters.json`](cha
 
 ---
 
+## Cross-Reference to OpenAgents Coax Counterparts
+
+While this book reverse-engineers Claude Code's TypeScript architecture in full, [Coder: Coding Agents From Scratch](../../coder/book/README.md) builds OpenAgents' own pure-Coax harness (`openagents/core/`, `coder/tui/`, `apps/openagents-desktop/`) and summarizes what it borrows and leaves in [Chapter 25: Claude Code](../../coder/book/ch025-claude-code.md) (plus driving the `claude` CLI directly in [Chapter 10: Drive Claude Code](../../coder/book/ch010-drive-claude-code.md)). Use the table below to jump from a Claude Code subsystem to its OpenAgents Coax counterpart:
+
+| Subsystem | Reverse Engineering Claude Code | OpenAgents Coax Counterpart (`coder/book/`) |
+| --- | --- | --- |
+| Agentic turn & query loop | [Ch 7: The Heartbeat (`query.ts`)](ch007-the-heartbeat-query-loop.md) | [Ch 1: The simplest loop](../../coder/book/ch001-the-simplest-loop.md) |
+| Tool contract, validation & batching | [Ch 2: The Tool Contract](ch002-the-tool-contract.md), [Ch 6: Executing Tools](ch006-executing-tools.md) | [Ch 4: Tools as typed capabilities](../../coder/book/ch004-tools-as-typed-capabilities.md) |
+| Permission engine & OS sandboxing | [Ch 11: The Permission Engine](ch011-the-permission-engine.md), [Ch 12: Shell Execution & Sandboxing](ch012-shell-execution-sandboxing-and-workspace-tools.md) | [Ch 5: A sandbox and approvals](../../coder/book/ch005-a-sandbox-and-approvals.md) |
+| History condensation & compaction | [Ch 9: The Five-Layer Compaction Pipeline](ch009-five-layer-compaction-pipeline.md) | [Ch 7: Condense the history](../../coder/book/ch007-condense-the-history.md) |
+| Subagents, context forking & worktrees | [Ch 18: Subagents, Context Forking, and Git Worktrees](ch018-subagents-context-forking-and-worktrees.md) | [Ch 14: Forks, subagents and jobs](../../coder/book/ch014-forks-subagents-and-jobs.md), [Ch 41: Worker protocol and sub-agents](../../coder/book/ch041-worker-protocol-and-sub-agents.md) |
+| Terminal rendering & interactive UI | [Ch 20: Inside `ink/`](ch020-inside-ink-terminal-react-renderer.md), [Ch 21: The Interactive REPL](ch021-the-interactive-repl-screens-keybindings-and-vim.md) | [Ch 36: A terminal UI](../../coder/book/ch036-a-terminal-ui.md), [Ch 40: The desktop app](../../coder/book/ch040-the-desktop-app.md) |
+| Headless SDK & worker control protocol | [Ch 23: Machine-Readable Modes](ch023-machine-readable-modes-headless-sdk-and-control-protocols.md), [Ch 25: 2.1.88 to 2.1.331](ch025-bringing-it-to-the-present.md) | [Ch 10: Drive Claude Code](../../coder/book/ch010-drive-claude-code.md), [Ch 41: Worker protocol and sub-agents](../../coder/book/ch041-worker-protocol-and-sub-agents.md) |
+
+---
+
 ## Where to Start Reading
 
 1. Start with [**ARCHITECTURE_MAP.md**](ARCHITECTURE_MAP.md) to get the visual 9-layer map in your head.

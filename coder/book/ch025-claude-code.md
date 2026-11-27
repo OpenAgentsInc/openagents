@@ -1,6 +1,18 @@
 # 25. Claude Code
 
 > **Status: written.** Read at AtlantisPleb/cc@abcc00908c056a6fb2bfaa4ba8933bb65daaf5f7 on 2026-11-02.
+>
+> **Companion book:** This Part VII chapter is Coder's concise architectural
+> comparison—what Coder borrows from Claude Code and what it leaves behind.
+> For the complete 25-chapter, bottom-up reverse-engineering teardown of
+> Claude Code (2.1.88 through 2.1.331), see the ninth OpenAgents book,
+> [**Reverse Engineering Claude Code**](../../claude-code/book/README.md),
+> especially
+> [Chapter 7 (Query Loop)](../../claude-code/book/ch007-the-heartbeat-query-loop.md),
+> [Chapter 9 (Five-Layer Compaction)](../../claude-code/book/ch009-five-layer-compaction-pipeline.md),
+> [Chapter 11 (Permission Engine)](../../claude-code/book/ch011-the-permission-engine.md),
+> [Chapter 18 (Subagents, Forking & Worktrees)](../../claude-code/book/ch018-subagents-context-forking-and-worktrees.md),
+> and [Chapter 25 (2.1.88 to 2.1.331)](../../claude-code/book/ch025-bringing-it-to-the-present.md).
 
 Claude Code is Anthropic's coding agent: a terminal program, `claude`, that
 also runs headless and behind the Claude Agent SDK. Coder already drives it.
@@ -225,5 +237,13 @@ are the frames Coder's client classifies and answers
   [headless](https://code.claude.com/docs/en/headless),
   [settings](https://code.claude.com/docs/en/settings).
 - Coder's client: [PARITY.md](../../coax/lib/agent/claude/PARITY.md); the TUI
-  engine in `coder/tui/coder.coax`.
+  engine in `coder/tui/coder.coax` and desktop delegated worker in
+  `coder/tui/claudeworker.coax`.
+- Full 25-chapter architecture teardown:
+  [Reverse Engineering Claude Code](../../claude-code/book/README.md)
+  ([Ch 7: Query Loop](../../claude-code/book/ch007-the-heartbeat-query-loop.md),
+  [Ch 9: Five-Layer Compaction](../../claude-code/book/ch009-five-layer-compaction-pipeline.md),
+  [Ch 11: Permission Engine](../../claude-code/book/ch011-the-permission-engine.md),
+  [Ch 18: Subagents, Context Forking & Worktrees](../../claude-code/book/ch018-subagents-context-forking-and-worktrees.md),
+  [Ch 25: Bringing It to the Present](../../claude-code/book/ch025-bringing-it-to-the-present.md)).
 - [Chapter plan](PLAN.md), Part VII.

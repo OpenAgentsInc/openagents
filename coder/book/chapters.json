@@ -1053,8 +1053,8 @@
       "number": 42,
       "title": "Beyond the desktop app",
       "file": "ch042-beyond-the-desktop-app.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "Linux/Windows Vulkan, resident coder-host (oa-worker), Universal Introspection (#14066), Claude delegation (#14104), Full Auto (#14063), capability authoring (#14059), Metaverse/Browser panes (#14040, #14105), and iOS parity (#14068); #14067 borderless control, Android parity, and UI consent/memory open",
       "depends_on": [
         2,
         5,
@@ -1069,9 +1069,39 @@
         40,
         41
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/desktop/introspect.coax",
+        "apps/openagents-desktop/page/introspect.coax",
+        "apps/openagents-desktop/page/environments.coax",
+        "apps/openagents-desktop/Window+Introspect.swift",
+        "apps/openagents-desktop/DaemonClient.swift",
+        "coder/tui/host.coax",
+        "coder/tui/host-phone.coax",
+        "coder/tui/claudeworker.coax",
+        "coder/tui/oa-subagent.coax",
+        "coax/lib/agent/desktop/full-auto.coax",
+        "coax/lib/agent/desktop/operator-vault.coax",
+        "coax/lib/agent/desktop/capability-author.coax",
+        "coax/lib/agent/environment/phone-agent-policy.coax",
+        "apps/openagents-desktop/page/browserpane.coax",
+        "apps/openagents-desktop/page/metaversepane.coax",
+        "apps/openagents-desktop/page/permit.coax",
+        "apps/openagents-desktop/linux/main.c",
+        "apps/openagents-desktop/windows/main.c",
+        "apps/openagents-ios/gpu-page.coax",
+        "apps/openagents-desktop/page/checks/introspect-checks.coax",
+        "apps/openagents-desktop/page/checks/agents-checks.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "macos-arm64"
+      ],
+      "adopted_by": [
+        "apps/openagents-desktop/Window.swift",
+        "apps/openagents-desktop/page.coax",
+        "coder/tui/oa-worker.coax",
+        "coder/tui/host-antigravity-ext.coax"
+      ]
     },
     {
       "number": 43,

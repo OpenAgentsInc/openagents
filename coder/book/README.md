@@ -51,15 +51,23 @@ checks from measurements of real coding outcomes.
 - **Two books in one.** Parts I–VI, VIII and IX build Coder. Part VII is a
   field guide: it reads other coding agents' source at a pinned revision
   and records what Coder takes from each. Those chapters describe the other
-  tool as it was at that revision.
+  tool as it was at that revision. For a full 25-chapter bottom-up teardown of
+  Claude Code (expanding [Chapter 25](ch025-claude-code.md)'s concise
+  comparison), read the ninth book,
+  [Reverse Engineering Claude Code](../../claude-code/book/README.md)—including
+  deep dives on its [query loop](../../claude-code/book/ch007-the-heartbeat-query-loop.md),
+  [five-layer compaction pipeline](../../claude-code/book/ch009-five-layer-compaction-pipeline.md),
+  [permission engine](../../claude-code/book/ch011-the-permission-engine.md),
+  [subagents, context forking and worktrees](../../claude-code/book/ch018-subagents-context-forking-and-worktrees.md),
+  and [2.1.88-to-2.1.331 epilogue](../../claude-code/book/ch025-bringing-it-to-the-present.md).
 - **Where this book sits.** Coder is the agent that reads the other books.
   See [the OpenAgents books](../../docs/books/README.md) for the whole library.
 
 ## Status
 
-Written 2026-11-01; updated 2026-11-26. Of the 43 chapters, 11 are
-implemented, 19 are partly implemented, 12 are written surveys and 1 is a
-design draft. The
+Written 2026-11-01; updated 2026-11-27. Of the 43 chapters, 11 are
+implemented, 20 are partly implemented, 12 are written surveys, and 0 are
+design drafts. The
 opening native profile composes the owned worker, durable journal and Linux
 confinement; the finite teaching examples remain under `psionic/lib/harness/`.
 The [registry](chapters.json) names each chapter’s sources and qualified targets.
@@ -117,7 +125,7 @@ The [registry](chapters.json) names each chapter’s sources and qualified targe
 | [39. Drive Antigravity](ch039-drive-antigravity.md) | Implemented: `agy` ACP + `coder/tui/agyworker.coax` with T3 quirk fixes, prompt-cache expiry/idle compaction, and opt-in subagent delegation |
 | [40. The desktop app](ch040-the-desktop-app.md) | Implemented: unified `apps/openagents-desktop/` (`OpenAgents.app`, `--minimal`/`--full`, macOS Metal + Linux/Windows Vulkan, modular `page/*.coax`) |
 | [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) | Implemented: `mcworker-wire.coax` JSON-lines protocol driving `oa-worker`, `oa-subagent`, `inky`, `agyworker`, `claudeworker`, and legacy `mcworker` |
-| [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) | Unimplemented: design draft |
+| [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) | Partly implemented: Linux/Windows Vulkan, resident coder-host (oa-worker), Universal Introspection (#14066), Claude delegation (#14104), Full Auto (#14063), capability authoring (#14059), Metaverse/Browser panes (#14040, #14105), and iOS parity (#14068); #14067 borderless control, Android parity, and UI consent/memory open |
 | [43. The Foreman](ch043-the-foreman.md) | Partly implemented: Foreman supervisory chat in `apps/openagents-desktop/` (`Foreman.swift`, `Window+Foreman.swift`, `Window+ForemanAPI.swift`), feature-flagged under `foreman` |
 
 ## Contents
