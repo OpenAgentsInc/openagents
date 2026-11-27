@@ -93,3 +93,42 @@ else
 fi
 
 echo "ALL PHASE 2 STDIO INTEROP CHECKS PASSED"
+
+echo "==> Building Coax MCP Streamable HTTP conformance server (Phase 3)"
+COAX_TOOL_BUILD_ONLY=1 "$tool" "$here/everything-server.coax"
+http_srv_bin="$repo/coax/web/build/tools/everything-server-$chash"
+http_port="${MCP_HTTP_PORT:-18421}"
+"$http_srv_bin" --port "$http_port" >/tmp/coax-mcp-http-srv.log 2>&1 &
+http_pid=$!
+trap 'kill "$http_pid" 2>/dev/null || true' EXIT
+sleep 1
+
+echo "==> [5/6] Coax Streamable HTTP server 2026-07-28 stateless & Origin/Host checks"
+curl -fsS -X POST "http://127.0.0.1:$http_port/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}' | grep -q '"supportedVersions":\["2026-07-28"'
+curl -fsS -X POST "http://127.0.0.1:$http_port/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Mcp-Method: tools/call" \
+  -H "Mcp-Name: test_simple_text" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"test_simple_text","arguments":{}}}' | grep -q 'This is a simple text response for testing\.'
+bad_origin_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$http_port/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Origin: https://evil.example.com" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"ping"}')"
+[[ "$bad_origin_code" == "403" ]]
+echo "HTTP_2026_STATELESS ok=true"
+
+echo "==> [6/6] @modelcontextprotocol/conformance server --suite all <-> Coax Streamable HTTP server"
+if command -v npx >/dev/null 2>&1 && [[ "${MCP_ALLOW_NPX:-0}" == "1" ]]; then
+  npx -y @modelcontextprotocol/conformance server --url "http://127.0.0.1:$http_port/mcp" --suite all
+else
+  echo "SKIP: set MCP_ALLOW_NPX=1 to run @modelcontextprotocol/conformance server --suite all"
+fi
+
+echo "ALL PHASE 2 + PHASE 3 CONFORMANCE CHECKS PASSED"

@@ -1,0 +1,702 @@
+// tool.sh: server
+// Phase 3 Coax Streamable HTTP MCP Conformance Server (2025-11-25 + 2026-07-28).
+// Implements the MCP Everything conformance fixtures over coax/lib/mcp/http_server.coax.
+// Usage: everything-server [--port N]
+#load "../../coax/lib/mcp/http_server.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+
+// Tiny 1x1 red PNG (base64)
+TEST_PNG_B64 :: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+// Tiny valid WAV header (base64)
+TEST_WAV_B64 :: "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+ES_MAX_PENDING :: 8;
+
+EsPendingReq :: struct {
+  active: bool;
+  conn_idx: int;
+  h: int;
+  srv_req_id: int;
+  modern: bool;
+  tool_name: string;
+  orig_id_len: int;
+  orig_id_buf: [64] u8;
+}
+
+EsState :: struct {
+  next_srv_req_id: int;
+  pending: [ES_MAX_PENDING] EsPendingReq;
+}
+
+es_parse_port :: (s: string) -> int {
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int)(c - '0');
+  }
+  return v;
+}
+
+es_register_fixtures :: (srv: [] McpServerCore) {
+  // --- Tools ---
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_simple_text",
+    description = "Returns simple text content",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_image_content",
+    description = "Returns image content",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_audio_content",
+    description = "Returns audio content",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_embedded_resource",
+    description = "Returns embedded resource content",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_multiple_content_types",
+    description = "Returns text, image, and embedded resource content",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_tool_with_logging",
+    description = "Emits logging notifications during execution",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_error_handling",
+    description = "Returns an isError=true tool result",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_tool_with_progress",
+    description = "Reports progress notifications during execution",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_sampling",
+    description = "Requests sampling/createMessage from client",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{\"prompt\":{\"type\":\"string\"}},\"required\":[\"prompt\"]}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_elicitation",
+    description = "Requests elicitation/create from client",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{\"message\":{\"type\":\"string\"}},\"required\":[\"message\"]}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_elicitation_sep1034_defaults",
+    description = "Requests elicitation with SEP-1034 default values",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_elicitation_sep1330_enums",
+    description = "Requests elicitation with SEP-1330 enum schemas",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "json_schema_2020_12_tool",
+    description = "Tool using JSON Schema 2020-12 $defs and $ref",
+    input_schema_json = "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"$defs\":{\"address\":{\"type\":\"object\",\"properties\":{\"street\":{\"type\":\"string\"},\"city\":{\"type\":\"string\"}},\"required\":[\"street\",\"city\"]}},\"properties\":{\"name\":{\"type\":\"string\"},\"address\":{\"$ref\":\"#/$defs/address\"}},\"required\":[\"name\"],\"additionalProperties\":false}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "test_reconnection",
+    description = "Tests SEP-1699 SSE polling and reconnection",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+
+  // --- Resources ---
+  _ = mcp_server_add_resource(srv, McpResourceDef.{
+    uri = "test://static-text",
+    name = "Static Text Resource",
+    description = "A static text resource",
+    mime_type = "text/plain"
+  });
+  _ = mcp_server_add_resource(srv, McpResourceDef.{
+    uri = "test://static-binary",
+    name = "Static Binary Resource",
+    description = "A static binary PNG resource",
+    mime_type = "image/png"
+  });
+  _ = mcp_server_add_resource(srv, McpResourceDef.{
+    uri = "test://watched-resource",
+    name = "Watched Resource",
+    description = "A subscribable resource",
+    mime_type = "text/plain"
+  });
+
+  // --- Resource Templates ---
+  _ = mcp_server_add_template(srv, McpResourceTemplateDef.{
+    uri_template = "test://template/{id}/data",
+    name = "Template Resource",
+    description = "Dynamic template resource",
+    mime_type = "application/json"
+  });
+
+  // --- Prompts ---
+  _ = mcp_server_add_prompt(srv, McpPromptDef.{
+    name = "test_simple_prompt",
+    description = "A simple prompt with no arguments"
+  });
+  p_with_args := McpPromptDef.{
+    name = "test_prompt_with_arguments",
+    description = "A prompt with required arguments",
+    arg_count = 2
+  };
+  p_with_args.args[0] = McpPromptArg.{ name = "arg1", description = "First argument", required = true };
+  p_with_args.args[1] = McpPromptArg.{ name = "arg2", description = "Second argument", required = true };
+  _ = mcp_server_add_prompt(srv, p_with_args);
+  _ = mcp_server_add_prompt(srv, McpPromptDef.{
+    name = "test_prompt_with_embedded_resource",
+    description = "A prompt returning an embedded resource"
+  });
+  _ = mcp_server_add_prompt(srv, McpPromptDef.{
+    name = "test_prompt_with_image",
+    description = "A prompt returning an image"
+  });
+}
+
+es_build_tool_result :: (srv: McpServerCore, d: Jv, dp: McpDispatch, out: [] u8) -> int {
+  tname := srv.tools[dp.tool_idx].name;
+  req := jrpc_classify(d);
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jrpc_write_result_head(o[..], d, req);
+
+  blocks: [4] McpContent;
+  bc := 0;
+  is_err := false;
+
+  if tname == "test_simple_text" {
+    blocks[0] = McpContent.{ kind = MCP_CONTENT_TEXT, text = "This is a simple text response for testing." };
+    bc = 1;
+  } else if tname == "test_image_content" {
+    blocks[0] = McpContent.{ kind = MCP_CONTENT_IMAGE, data = TEST_PNG_B64, mime_type = "image/png" };
+    bc = 1;
+  } else if tname == "test_audio_content" {
+    blocks[0] = McpContent.{ kind = MCP_CONTENT_AUDIO, data = TEST_WAV_B64, mime_type = "audio/wav" };
+    bc = 1;
+  } else if tname == "test_embedded_resource" {
+    blocks[0] = McpContent.{
+      kind = MCP_CONTENT_RESOURCE,
+      resource = McpResourceContents.{
+        kind = MCP_RES_TEXT,
+        uri = "test://embedded-resource",
+        mime_type = "text/plain",
+        text = "This is an embedded resource content."
+      }
+    };
+    bc = 1;
+  } else if tname == "test_multiple_content_types" {
+    blocks[0] = McpContent.{ kind = MCP_CONTENT_TEXT, text = "Multiple content types test:" };
+    blocks[1] = McpContent.{ kind = MCP_CONTENT_IMAGE, data = TEST_PNG_B64, mime_type = "image/png" };
+    blocks[2] = McpContent.{
+      kind = MCP_CONTENT_RESOURCE,
+      resource = McpResourceContents.{
+        kind = MCP_RES_TEXT,
+        uri = "test://mixed-content-resource",
+        mime_type = "application/json",
+        text = "{\"test\":\"data\",\"value\":123}"
+      }
+    };
+    bc = 3;
+  } else if tname == "test_error_handling" {
+    blocks[0] = McpContent.{ kind = MCP_CONTENT_TEXT, text = "This tool intentionally returns an error for testing" };
+    bc = 1;
+    is_err = true;
+  } else if tname == "test_tool_with_logging" {
+    blocks[0] = McpContent.{ kind = MCP_CONTENT_TEXT, text = "Tool execution completed with logging" };
+    bc = 1;
+  } else if tname == "test_tool_with_progress" {
+    blocks[0] = McpContent.{ kind = MCP_CONTENT_TEXT, text = "Tool execution completed with progress" };
+    bc = 1;
+  } else if tname == "json_schema_2020_12_tool" {
+    blocks[0] = McpContent.{ kind = MCP_CONTENT_TEXT, text = "Validated JSON Schema 2020-12 arguments successfully" };
+    bc = 1;
+  } else {
+    blocks[0] = McpContent.{ kind = MCP_CONTENT_TEXT, text = "OK" };
+    bc = 1;
+  }
+
+  mcp_write_call_tool_result(o[..], dp.modern, blocks[0..<bc], is_err, "");
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+es_build_resource_result :: (d: Jv, dp: McpDispatch, out: [] u8) -> int {
+  req := jrpc_classify(d);
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jrpc_write_result_head(o[..], d, req);
+
+  res: [1] McpResourceContents;
+  body_buf: [256] u8;
+  if dp.uri == "test://static-text" {
+    res[0] = McpResourceContents.{
+      kind = MCP_RES_TEXT,
+      uri = "test://static-text",
+      mime_type = "text/plain",
+      text = "This is the content of the static text resource."
+    };
+  } else if dp.uri == "test://static-binary" {
+    res[0] = McpResourceContents.{
+      kind = MCP_RES_BLOB,
+      uri = "test://static-binary",
+      mime_type = "image/png",
+      blob = TEST_PNG_B64
+    };
+  } else if dp.uri == "test://watched-resource" {
+    res[0] = McpResourceContents.{
+      kind = MCP_RES_TEXT,
+      uri = "test://watched-resource",
+      mime_type = "text/plain",
+      text = "Watched resource content."
+    };
+  } else {
+    // Template match: test://template/{id}/data
+    // Extract id between "test://template/" and "/data"
+    id_val := "unknown";
+    pref := "test://template/";
+    suff := "/data";
+    if dp.uri.count > pref.count + suff.count {
+      id_val = dp.uri[pref.count..<dp.uri.count - suff.count];
+    }
+    bo: [1] Jo;
+    jo_start(bo[..], body_buf[..]);
+    jo_obj(bo[..]);
+    jo_key(bo[..], "id"); jo_str(bo[..], id_val);
+    jo_key(bo[..], "templateTest"); jo_bool(bo[..], true);
+    jo_key(bo[..], "data"); jo_str(bo[..], "Data for ID");
+    jo_end(bo[..]);
+    res[0] = McpResourceContents.{
+      kind = MCP_RES_TEXT,
+      uri = dp.uri,
+      mime_type = "application/json",
+      text = cast(string) body_buf[0..<bo[0].n]
+    };
+  }
+
+  mcp_write_read_resource_result(o[..], dp.modern, res[..], McpCacheHint.{});
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+es_build_prompt_result :: (srv: McpServerCore, d: Jv, dp: McpDispatch, out: [] u8) -> int {
+  pname := srv.prompts[dp.prompt_idx].name;
+  req := jrpc_classify(d);
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jrpc_write_result_head(o[..], d, req);
+
+  msgs: [1] McpPromptMessage;
+  a1: [128] u8; a2: [128] u8; msg_buf: [512] u8;
+
+  if pname == "test_simple_prompt" {
+    msgs[0] = McpPromptMessage.{
+      is_assistant = false,
+      content = McpContent.{ kind = MCP_CONTENT_TEXT, text = "This is a simple prompt for testing." }
+    };
+  } else if pname == "test_prompt_with_arguments" {
+    s1 := ""; s2 := "";
+    if dp.arguments_node >= 0 {
+      n1 := jv_get(d, dp.arguments_node, "arg1");
+      l1 := jv_str(d, n1, a1[..]);
+      if l1 >= 0 { s1 = cast(string) a1[0..<l1]; }
+      n2 := jv_get(d, dp.arguments_node, "arg2");
+      l2 := jv_str(d, n2, a2[..]);
+      if l2 >= 0 { s2 = cast(string) a2[0..<l2]; }
+    }
+    mn := mcp_http_append(msg_buf[..], 0, "Prompt with arguments: arg1='");
+    mn = mcp_http_append(msg_buf[..], mn, s1);
+    mn = mcp_http_append(msg_buf[..], mn, "', arg2='");
+    mn = mcp_http_append(msg_buf[..], mn, s2);
+    mn = mcp_http_append(msg_buf[..], mn, "'");
+    msgs[0] = McpPromptMessage.{
+      is_assistant = false,
+      content = McpContent.{ kind = MCP_CONTENT_TEXT, text = cast(string) msg_buf[0..<mn] }
+    };
+  } else if pname == "test_prompt_with_embedded_resource" {
+    msgs[0] = McpPromptMessage.{
+      is_assistant = false,
+      content = McpContent.{
+        kind = MCP_CONTENT_RESOURCE,
+        resource = McpResourceContents.{
+          kind = MCP_RES_TEXT,
+          uri = "test://static-text",
+          mime_type = "text/plain",
+          text = "This is the content of the static text resource."
+        }
+      }
+    };
+  } else if pname == "test_prompt_with_image" {
+    msgs[0] = McpPromptMessage.{
+      is_assistant = false,
+      content = McpContent.{ kind = MCP_CONTENT_IMAGE, data = TEST_PNG_B64, mime_type = "image/png" }
+    };
+  }
+
+  mcp_write_get_prompt_result(o[..], dp.modern, pname, msgs[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+es_build_complete_result :: (d: Jv, dp: McpDispatch, out: [] u8) -> int {
+  req := jrpc_classify(d);
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jrpc_write_result_head(o[..], d, req);
+  vals := [2] string.["value1", "value2"];
+  mcp_write_complete_result(o[..], dp.modern, vals[..], true, 2, false);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+es_handle_client_response :: (s: [] McpHttpServer, st: [] EsState, d: Jv, req_cls: JrpcMessage) {
+  if req_cls.id_node < 0 { return; }
+  rid: [1] int;
+  if !jrpc_exact_int(d, req_cls.id_node, rid[..]) { return; }
+  for i: 0..<ES_MAX_PENDING {
+    if !st[0].pending[i].active || st[0].pending[i].srv_req_id != rid[0] { continue; }
+    p := st[0].pending[i];
+    st[0].pending[i].active = false;
+    orig_id := cast(string) p.orig_id_buf[0..<p.orig_id_len];
+
+    // Build final tools/call response on the held SSE stream
+    txt_buf: [1024] u8;
+    tn := 0;
+    if p.tool_name == "test_sampling" {
+      tn = mcp_http_append(txt_buf[..], 0, "LLM response: ");
+      res_node := jv_get(d, 0, "result");
+      ct_node := jv_get(d, res_node, "content");
+      tx_node := jv_get(d, ct_node, "text");
+      tmp: [512] u8;
+      tl := jv_str(d, tx_node, tmp[..]);
+      if tl > 0 { tn = mcp_http_append(txt_buf[..], tn, cast(string) tmp[0..<tl]); }
+      else { tn = mcp_http_append(txt_buf[..], tn, "ok"); }
+    } else if p.tool_name == "test_elicitation" {
+      tn = mcp_http_append(txt_buf[..], 0, "User response: ");
+      res_node := jv_get(d, 0, "result");
+      if res_node >= 0 { tn = mcp_http_append(txt_buf[..], tn, jv_raw(d, res_node)); }
+    } else {
+      tn = mcp_http_append(txt_buf[..], 0, "Elicitation completed: ");
+      res_node := jv_get(d, 0, "result");
+      if res_node >= 0 { tn = mcp_http_append(txt_buf[..], tn, jv_raw(d, res_node)); }
+    }
+
+    resp_buf: [4096] u8;
+    o: [1] Jo;
+    jo_start(o[..], resp_buf[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0");
+    jo_key(o[..], "id"); jo_raw(o[..], orig_id);
+    jo_key(o[..], "result");
+    blocks := [1] McpContent.[McpContent.{ kind = MCP_CONTENT_TEXT, text = cast(string) txt_buf[0..<tn] }];
+    mcp_write_call_tool_result(o[..], p.modern, blocks[..], false, "");
+    jo_end(o[..]);
+    if !o[0].bad {
+      _ = mcp_http_send_sse_event(s, p.h, "", "message", -1, jo_text(o[..]));
+    }
+    _ = mcp_http_send_sse_end(s, p.h);
+    mcp_http_conn_close(s, p.conn_idx);
+    return;
+  }
+}
+
+es_start_server_req :: (s: [] McpHttpServer, st: [] EsState, ev: McpHttpEvent, d: Jv, req_cls: JrpcMessage, dp: McpDispatch, tname: string, extra: string) {
+  h := ev.h;
+  slot := -1;
+  for i: 0..<ES_MAX_PENDING {
+    if !st[0].pending[i].active { slot = i; break; }
+  }
+  if slot < 0 {
+    _ = mcp_http_send_response(s, h, 503, "Service Unavailable", "text/plain", "", "Too many pending requests");
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+  srid := st[0].next_srv_req_id;
+  st[0].next_srv_req_id += 1;
+
+  orig_id := jv_raw(d, req_cls.id_node);
+  ol := ifx orig_id.count < 64 then orig_id.count else 64;
+  st[0].pending[slot] = EsPendingReq.{
+    active = true,
+    conn_idx = ev.conn_idx,
+    h = h,
+    srv_req_id = srid,
+    modern = dp.modern,
+    tool_name = tname,
+    orig_id_len = ol
+  };
+  for k: 0..<ol { st[0].pending[slot].orig_id_buf[k] = orig_id[k]; }
+
+  // Mark connection as SSE so poll loop keeps it open without re-parsing as HTTP
+  s[0].conns[ev.conn_idx].is_sse = true;
+  s[0].conns[ev.conn_idx].in_len = 0;
+
+  if !mcp_http_send_sse_start(s, h, extra) {
+    st[0].pending[slot].active = false;
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+
+  req_buf: [4096] u8;
+  o: [1] Jo;
+  jo_start(o[..], req_buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0");
+  jo_key(o[..], "id"); jo_int(o[..], srid);
+  if tname == "test_sampling" {
+    p_tmp: [256] u8;
+    pn := jv_get(d, dp.arguments_node, "prompt");
+    pl := jv_str(d, pn, p_tmp[..]);
+    prompt_txt := ifx pl > 0 then cast(string) p_tmp[0..<pl] else "Hello";
+    jo_key(o[..], "method"); jo_str(o[..], "sampling/createMessage");
+    jo_key(o[..], "params");
+    jo_obj(o[..]);
+    jo_key(o[..], "messages");
+    jo_arr(o[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "role"); jo_str(o[..], "user");
+    jo_key(o[..], "content");
+    jo_obj(o[..]);
+    jo_key(o[..], "type"); jo_str(o[..], "text");
+    jo_key(o[..], "text"); jo_str(o[..], prompt_txt);
+    jo_end(o[..]);
+    jo_end(o[..]);
+    jo_end(o[..]);
+    jo_key(o[..], "maxTokens"); jo_int(o[..], 100);
+    jo_end(o[..]);
+  } else if tname == "test_elicitation" {
+    m_tmp: [256] u8;
+    mn := jv_get(d, dp.arguments_node, "message");
+    ml := jv_str(d, mn, m_tmp[..]);
+    msg_txt := ifx ml > 0 then cast(string) m_tmp[0..<ml] else "Please provide your details";
+    jo_key(o[..], "method"); jo_str(o[..], "elicitation/create");
+    jo_key(o[..], "params");
+    jo_obj(o[..]);
+    jo_key(o[..], "message"); jo_str(o[..], msg_txt);
+    jo_key(o[..], "requestedSchema");
+    jo_raw(o[..], "{\"type\":\"object\",\"properties\":{\"username\":{\"type\":\"string\",\"description\":\"User's response\"},\"email\":{\"type\":\"string\",\"description\":\"User's email address\"}},\"required\":[\"username\",\"email\"]}");
+    jo_end(o[..]);
+  } else if tname == "test_elicitation_sep1034_defaults" {
+    jo_key(o[..], "method"); jo_str(o[..], "elicitation/create");
+    jo_key(o[..], "params");
+    jo_obj(o[..]);
+    jo_key(o[..], "message"); jo_str(o[..], "Please confirm default values");
+    jo_key(o[..], "requestedSchema");
+    jo_raw(o[..], "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"default\":\"John Doe\"},\"age\":{\"type\":\"integer\",\"default\":30},\"score\":{\"type\":\"number\",\"default\":95.5},\"status\":{\"type\":\"string\",\"enum\":[\"active\",\"inactive\",\"pending\"],\"default\":\"active\"},\"verified\":{\"type\":\"boolean\",\"default\":true}}}");
+    jo_end(o[..]);
+  } else {
+    // test_elicitation_sep1330_enums
+    jo_key(o[..], "method"); jo_str(o[..], "elicitation/create");
+    jo_key(o[..], "params");
+    jo_obj(o[..]);
+    jo_key(o[..], "message"); jo_str(o[..], "Please select enum options");
+    jo_key(o[..], "requestedSchema");
+    jo_raw(o[..], "{\"type\":\"object\",\"properties\":{\"untitledSingle\":{\"type\":\"string\",\"enum\":[\"option1\",\"option2\",\"option3\"]},\"titledSingle\":{\"type\":\"string\",\"oneOf\":[{\"const\":\"value1\",\"title\":\"First Option\"},{\"const\":\"value2\",\"title\":\"Second Option\"},{\"const\":\"value3\",\"title\":\"Third Option\"}]},\"legacyEnum\":{\"type\":\"string\",\"enum\":[\"opt1\",\"opt2\",\"opt3\"],\"enumNames\":[\"Option One\",\"Option Two\",\"Option Three\"]},\"untitledMulti\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"enum\":[\"option1\",\"option2\",\"option3\"]}},\"titledMulti\":{\"type\":\"array\",\"items\":{\"anyOf\":[{\"const\":\"value1\",\"title\":\"First Choice\"},{\"const\":\"value2\",\"title\":\"Second Choice\"},{\"const\":\"value3\",\"title\":\"Third Choice\"}]}}}}");
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  if !o[0].bad {
+    _ = mcp_http_send_sse_event(s, h, "", "message", -1, jo_text(o[..]));
+  }
+}
+
+es_handle_post :: (s: [] McpHttpServer, st: [] EsState, ev: McpHttpEvent) {
+  h := ev.h;
+  ct := mcp_http_header_get(ev.req, "Content-Type");
+  if !mcp_http_is_json_ct(ct) {
+    _ = mcp_http_send_response(s, h, 415, "Unsupported Media Type", "text/plain", "", "Expected application/json");
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+
+  nodes: [4096] JvNode;
+  d: [1] Jv;
+  if !jv_parse(d[..], ev.req.body, nodes[..]) {
+    _ = mcp_http_send_response(s, h, 400, "Bad Request", "application/json", "", "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}");
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+
+  // Detect JSON-RPC responses (from client replying to server->client sampling/elicitation)
+  req_cls := jrpc_classify(d[0]);
+  if req_cls.ok && (req_cls.kind == JRPC_RESPONSE_OK || req_cls.kind == JRPC_RESPONSE_ERR) {
+    _ = mcp_http_send_response(s, h, 202, "Accepted", "", "", "");
+    mcp_http_conn_close(s, ev.conn_idx);
+    es_handle_client_response(s, st, d[0], req_cls);
+    return;
+  }
+
+  resp_buf: [65536] u8;
+  dp := mcp_server_dispatch(s[0].core[..], d[0], resp_buf[..]);
+
+  if dp.action == MCP_DISP_NO_RESPONSE {
+    _ = mcp_http_send_response(s, h, 202, "Accepted", "", "", "");
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+
+  // Attach Mcp-Session-Id on initialize
+  extra_buf: [128] u8;
+  extra := "";
+  if req_cls.ok && req_cls.kind == JRPC_REQUEST && jv_raw(d[0], req_cls.method_node) == "initialize" && dp.action == MCP_DISP_DONE {
+    sid := mcp_http_session_create(s, s[0].core[0].negotiated_version);
+    en := mcp_http_append(extra_buf[..], 0, "Mcp-Session-Id: ");
+    en = mcp_http_append(extra_buf[..], en, sid);
+    en = mcp_http_append(extra_buf[..], en, "\r\n");
+    if en > 0 { extra = cast(string) extra_buf[0..<en]; }
+  }
+
+  if dp.action == MCP_DISP_DONE {
+    _ = mcp_http_send_response(s, h, 200, "OK", "application/json", extra, cast(string) resp_buf[0..<dp.written]);
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+
+  if dp.action == MCP_DISP_CALL_TOOL {
+    tname := s[0].core[0].tools[dp.tool_idx].name;
+    if tname == "test_sampling" || tname == "test_elicitation" || tname == "test_elicitation_sep1034_defaults" || tname == "test_elicitation_sep1330_enums" {
+      es_start_server_req(s, st, ev, d[0], req_cls, dp, tname, extra);
+      return;
+    }
+    accept := mcp_http_header_get(ev.req, "Accept");
+    wants_sse := mcp_http_accepts(accept, "text/event-stream");
+    if wants_sse && (tname == "test_tool_with_logging" || tname == "test_tool_with_progress") {
+      if mcp_http_send_sse_start(s, h, extra) {
+        nbuf: [512] u8;
+        if tname == "test_tool_with_logging" {
+          msgs := [3] string.["\"Tool execution started\"", "\"Tool processing data\"", "\"Tool execution completed\""];
+          for mi: 0..<3 {
+            lo: [1] Jo;
+            jo_start(lo[..], nbuf[..]);
+            mcp_write_log_notification(lo[..], MCP_LOG_INFO, "conformance", msgs[mi]);
+            if !lo[0].bad {
+              _ = mcp_http_send_sse_event(s, h, "", "message", -1, jo_text(lo[..]));
+            }
+          }
+        } else if tname == "test_tool_with_progress" {
+          if dp.meta.progress_token_kind != MCP_PTOK_NONE {
+            steps := [3] string.["0", "50", "100"];
+            for si: 0..<3 {
+              po: [1] Jo;
+              jo_start(po[..], nbuf[..]);
+              mcp_write_progress_notification(po[..], dp.meta.progress_token_kind, dp.meta.progress_token_int, dp.meta.progress_token_str, steps[si], "100", "Processing");
+              if !po[0].bad {
+                _ = mcp_http_send_sse_event(s, h, "", "message", -1, jo_text(po[..]));
+              }
+            }
+          }
+        }
+        rn := es_build_tool_result(s[0].core[0], d[0], dp, resp_buf[..]);
+        if rn > 0 {
+          _ = mcp_http_send_sse_event(s, h, "", "message", -1, cast(string) resp_buf[0..<rn]);
+        }
+        _ = mcp_http_send_sse_end(s, h);
+      }
+      mcp_http_conn_close(s, ev.conn_idx);
+      return;
+    }
+
+    rn := es_build_tool_result(s[0].core[0], d[0], dp, resp_buf[..]);
+    if rn > 0 {
+      _ = mcp_http_send_response(s, h, 200, "OK", "application/json", extra, cast(string) resp_buf[0..<rn]);
+    } else {
+      _ = mcp_http_send_response(s, h, 500, "Internal Server Error", "text/plain", "", "Response overflow");
+    }
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+
+  if dp.action == MCP_DISP_READ_RESOURCE {
+    rn := es_build_resource_result(d[0], dp, resp_buf[..]);
+    if rn > 0 {
+      _ = mcp_http_send_response(s, h, 200, "OK", "application/json", extra, cast(string) resp_buf[0..<rn]);
+    }
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+
+  if dp.action == MCP_DISP_GET_PROMPT {
+    rn := es_build_prompt_result(s[0].core[0], d[0], dp, resp_buf[..]);
+    if rn > 0 {
+      _ = mcp_http_send_response(s, h, 200, "OK", "application/json", extra, cast(string) resp_buf[0..<rn]);
+    }
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+
+  if dp.action == MCP_DISP_COMPLETE {
+    rn := es_build_complete_result(d[0], dp, resp_buf[..]);
+    if rn > 0 {
+      _ = mcp_http_send_response(s, h, 200, "OK", "application/json", extra, cast(string) resp_buf[0..<rn]);
+    }
+    mcp_http_conn_close(s, ev.conn_idx);
+    return;
+  }
+
+  _ = mcp_http_send_response(s, h, 400, "Bad Request", "text/plain", "", "Unhandled dispatch");
+  mcp_http_conn_close(s, ev.conn_idx);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  port := 3333;
+  pstr := args_value(a[..], "--port", "");
+  if pstr.count > 0 {
+    pv := es_parse_port(pstr);
+    if pv >= 0 { port = pv; }
+  }
+
+  srv: [1] McpHttpServer;
+  caps := McpServerCaps.{
+    tools = true,
+    resources = true,
+    resources_subscribe = true,
+    prompts = true,
+    logging = true,
+    completions = true
+  };
+  mcp_http_server_init(srv[..], McpImplInfo.{ name = "coax-mcp-conformance-server", version = "0.3.0" }, caps, "Coax MCP Streamable HTTP conformance server");
+  srv[0].core[0].page_size = 64;
+  es_register_fixtures(srv[0].core[..]);
+
+  st: [1] EsState;
+  st[0].next_srv_req_id = 1000;
+
+  if mcp_http_server_listen(srv[..], port) != 0 {
+    tool_errln("failed to listen");
+    return 1;
+  }
+
+  pbuf: [64] u8;
+  pn := mcp_http_append(pbuf[..], 0, "READY http://127.0.0.1:");
+  pn = mcp_http_append_int(pbuf[..], pn, srv[0].port);
+  pn = mcp_http_append(pbuf[..], pn, "/mcp");
+  tool_errln(cast(string) pbuf[0..<pn]);
+
+  while true {
+    ev := mcp_http_server_step(srv[..], 50);
+    if ev.kind == MCP_HTTP_EV_GET_SSE {
+      if !mcp_http_send_sse_start(srv[..], ev.h, "") {
+        mcp_http_conn_close(srv[..], ev.conn_idx);
+      } else {
+        _ = mcp_http_send_sse_keepalive(srv[..], ev.h);
+      }
+    } else if ev.kind == MCP_HTTP_EV_POST {
+      es_handle_post(srv[..], st[..], ev);
+    }
+  }
+  return 0;
+}

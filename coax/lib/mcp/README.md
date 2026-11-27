@@ -30,18 +30,27 @@ Pure `#authority` Sans-I/O MCP protocol library supporting both **`2025-11-25`**
 
 | File | Responsibility |
 | --- | --- |
-| `stdio_server.coax` | Newline-delimited stdin/stdout MCP server transport (strict LF framing, embedded CR/LF rejection, oversized-line drain + `-32600`, parse-error `-32700`, `stderr`-only `mcp_stdio_log`, host reply & progress/log helpers) |
+| `stdio_frame.coax` | Pure `#authority` newline-delimited JSON-RPC framing & embedded CR/LF refusal |
+| `stdio_server.coax` | Newline-delimited stdin/stdout MCP server transport (strict LF framing, oversized-line drain + `-32600`, parse-error `-32700`, `stderr`-only `mcp_stdio_log`, host reply & progress/log helpers) |
 | `stdio_client.coax` | Child-process MCP stdio client over `coax/lib/sys/proc.coax` (owned handshake string stabilization, `server/discover` → `initialize` backward-compat probe, `notifications/cancelled`, graceful stdin-close → `SIGTERM` → `SIGKILL` shutdown) |
 
-Phase 2 interop harnesses live in [`tools/mcp-conformance/`](../../tools/mcp-conformance/) (`stdio-server.coax`, `stdio-client.coax`, `run.sh`).
+## Phase 3 Modules — Streamable HTTP Server (`#authority` wire + `#effects` transport)
+
+| File | Responsibility |
+| --- | --- |
+| `http_wire.coax` | Pure `#authority` HTTP/1.1 request parser, `Content-Length` & `Transfer-Encoding: chunked` decoder, `Accept`/`Content-Type` negotiation, response & SSE `id`/`event`/`retry`/keep-alive/chunk writers |
+| `http_server.coax` | Non-blocking `poll` Streamable HTTP MCP server over `coax/platform/socket-server-native.c` (`cxsrv_*`), concurrent SSE streams, `Origin` + `Host` DNS-rebinding `403` guard, session tracking, `GET`/`POST`/`DELETE /mcp` |
+
+Phase 2–3 interop & conformance harnesses live in [`tools/mcp-conformance/`](../../tools/mcp-conformance/) (`stdio-server.coax`, `stdio-client.coax`, `everything-server.coax`, `run.sh`).
 
 ## Verification
 
-Run unit/property tests and mutation checks on every module:
+Run unit/property tests and mutation checks on every pure `#authority` module:
 
 ```bash
 for f in version jsonrpc uri_template headers json_schema auth_policy \
-         types event_store mrtr subscriptions primitives server_core client_core memory_transport; do
+         types event_store mrtr subscriptions primitives server_core client_core memory_transport \
+         stdio_frame http_wire; do
   ./coax/bin/coax test coax/lib/mcp/$f.coax --library
   ./coax/bin/coax mutate coax/lib/mcp/$f.coax --root-only --native --jobs 8
 done

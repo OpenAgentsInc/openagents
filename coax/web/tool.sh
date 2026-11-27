@@ -72,6 +72,11 @@ if [[ -n "$why" ]]; then
     # shellcheck source=/dev/null
     source "$p/tls-env.sh"; tls=("$p/tls-native.c" $CXTLS_CFLAGS); libs+=($CXTLS_LIBS)
   fi
+  if grep -qs '^// tool.sh: server' "${near[@]}"; then
+    # shellcheck source=/dev/null
+    [[ ${#tls[@]} -gt 0 ]] || { source "$p/tls-env.sh"; tls=("$p/tls-native.c" $CXTLS_CFLAGS); libs+=($CXTLS_LIBS); }
+    tls+=("$p/socket-server-native.c")
+  fi
   steps=(); n="$(sed -n 's|^// tool.sh: run-steps \([0-9][0-9]*\)$|\1|p' "$src" | head -n 1)"; [[ -z "$n" ]] || steps=(--run-steps "$n")
   release=(); ! grep -qs '^// tool.sh: release$' "$src" || release=(--release)
   stack=(); n="$(sed -n 's|^// tool.sh: stack-gib \([0-9][0-9]*\)$|\1|p' "$src" | head -n 1)"; [[ -z "$n" ]] || stack=("-DCOAX_TOOL_STACK=((size_t)$n<<30)")
