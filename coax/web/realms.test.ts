@@ -12,7 +12,7 @@ const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
 const dir = mkdtempSync(join(tmpdir(), "realms-test-"))
 let n = 0
 /** The real table with one realm changed, checked; opts as worlds() takes them. */
-function check(change: (realm: any) => void, opts: { site?: string; styleBlock?: boolean; packs?: string } = { styleBlock: false }, id = "everglade") {
+function check(change: (realm: any) => void, opts: { site?: string; styleBlock?: boolean; packs?: string } = { styleBlock: false }, id = "stair") {
   const t = table()
   // the fixture's pack is the drop realm's and the built realm's too: a change to the fixture's is made to all three
   for (const w of t.worlds) if (w.id === id || (id === "fixture" && (w.id === "drop" || w.id === "built"))) change(w.realm)
@@ -61,9 +61,9 @@ test("the retained Galaxy fixture binds the compiled base renderer profile", () 
     expect(html).toContain(`data-render-profile="${renderProfile(slug)}"`)
   }
 })
-test("Everglade is painterly, Hecate's Cemetery and Fairy Forest flat; the rest lowpoly", () => {
+test("Everglade II is painterly, Hecate's Cemetery and Fairy Forest flat; the rest lowpoly", () => {
   const by = Object.fromEntries(worlds().filter((w) => w.realm).map((w) => [w.realm!.slug, w.realm!]))
-  expect(by["everglade"].style).toBe("painterly"); expect(by["everglade"].clock).toBe("cycle")
+  expect(by["everglade2"].style).toBe("painterly"); expect(by["everglade2"].clock).toBe("fixed:0.5")
   expect(by["hecates-cemetery"].style).toBe("flat"); expect(by["hecates-cemetery"].clock).toBe("fixed:0.0")
   expect(by["fairy-forest"].style).toBe("flat")
   for (const s of ["haunted-house", "the-grid", "dead-gears", "fixture", "drop", "sandbox", "ice-cream-man"]) expect(by[s].style).toBe("lowpoly")
@@ -84,22 +84,21 @@ test("refuses a missing or bad clock", () => {
 })
 test("refuses a painterly realm whose WGSL has no style block", () => {
   const site = mkdtempSync(join(tmpdir(), "realms-site-"))
-  const module = worlds().find(w => w.id === "everglade")!.realm!.module
+  const module = worlds().find(w => w.id === "everglade2")!.realm!.module
   for (const w of worlds()) if (w.realm) writeFileSync(join(site, `${w.realm.module}.wgsl`), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, "charactercreator.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, `${module}.wgsl`), "// no block\n")
-  writeFileSync(join(site, "everglade.wgsl"), "// no block\n")
   writeFileSync(join(site, "villa.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "waterlab.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "orbitleague.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "animelab.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
-  expect(check(() => {}, { site, styleBlock: true })).toThrow(new RegExp(`${module}.wgsl has no style block`))
+  expect(check(() => {}, { site, styleBlock: true }, "everglade2")).toThrow(new RegExp(`${module}.wgsl has no style block`))
   writeFileSync(join(site, `${module}.wgsl`), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
-  writeFileSync(join(site, "everglade.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
-  expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
+  expect(check(() => {}, { site, styleBlock: true }, "everglade2")).not.toThrow()
   // or a whole module from Coax, the style its own functions
   writeFileSync(join(site, `${module}.wgsl`), `// ---- generated: apps/openagents-web/gpu/everglade-v1/gpu.coax (the module) by coax wgsl; do not edit\n${STYLE_MODULE}tone(p_c: f32) -> f32 {\n  return p_c;\n}\n`)
-  expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
+  expect(check(() => {}, { site, styleBlock: true }, "everglade2")).not.toThrow()
   // or a module whose Coax source loads the presets, though it calls none of them
   const root = mkdtempSync(join(tmpdir(), "realms-root-"))
   mkdirSync(join(root, "gpu"))
@@ -113,11 +112,11 @@ test("refuses a painterly realm whose WGSL has no style block", () => {
   expect(styled("fn x() {}\n", root)).toBe(false)
   // a flat realm needs it as well
   writeFileSync(join(site, "fairy.wgsl"), "// no block\n")
-  expect(check(() => {}, { site, styleBlock: true })).toThrow(/fairy.wgsl has no style block/)
+  expect(check(() => {}, { site, styleBlock: true }, "everglade2")).toThrow(/fairy.wgsl has no style block/)
   writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   // a lowpoly realm with a painterly zone needs it too
-  writeFileSync(join(site, `${module}.wgsl`), "// no block\n")
-  expect(check((r) => { r.style = "lowpoly"; r.zones = [{ id: "glade", style: "painterly" }] }, { site, styleBlock: true })).toThrow(/partly painterly/)
+  writeFileSync(join(site, "fixture.wgsl"), "// no block\n")
+  expect(check((r) => { r.style = "lowpoly"; r.zones = [{ id: "glade", style: "painterly" }] }, { site, styleBlock: true }, "fixture")).toThrow(/partly painterly/)
 })
 // anime (docs/metaverse/art-styles.md, Anime): a style with variants, named by the realm or a zone
 test("takes an anime realm with or without a variant, and anime zones with their own", () => {
@@ -145,6 +144,7 @@ test("an anime realm, or an anime zone, needs the style block in its WGSL", () =
   const packs = mkdtempSync(join(tmpdir(), "realms-packs-"))
   const block = `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`
   for (const w of worlds()) if (w.realm) writeFileSync(join(site, `${w.realm.module}.wgsl`), block)
+  writeFileSync(join(site, "charactercreator.wgsl"), block)
   const t = table()
   const fixture = t.worlds.find((w: any) => w.id === "fixture").realm.module
   writeFileSync(join(site, `${fixture}.wgsl`), "// no block\n")
@@ -155,9 +155,9 @@ test("an anime realm, or an anime zone, needs the style block in its WGSL", () =
   expect(check((r) => { r.style = "anime"; r.variant = "action" }, { site, styleBlock: true, packs }, "fixture")).not.toThrow()
 })
 test("an anime page carries data-variant (pastoral when none) and its zones' variants; other pages none", () => {
-  const r = worlds().find((w) => w.id === "everglade")!.realm!
-  expect(page({ ...r, style: "anime" })).toContain(`data-style="anime" data-variant="pastoral" data-clock="cycle"`)
-  expect(page({ ...r, style: "anime", variant: "neon" })).toContain(`data-style="anime" data-variant="neon" data-clock="cycle"`)
+  const r = worlds().find((w) => w.id === "everglade2")!.realm!
+  expect(page({ ...r, style: "anime" })).toContain(`data-style="anime" data-variant="pastoral" data-clock="fixed:0.5"`)
+  expect(page({ ...r, style: "anime", variant: "neon" })).toContain(`data-style="anime" data-variant="neon" data-clock="fixed:0.5"`)
   const zoned = page({ ...r, style: "anime", variant: "action", zones: [{ id: "street", variant: "dusk" }, { id: "yard" }, { id: "hall", style: "flat" }] })
   expect(zoned).toContain(`data-zones="street:anime:dusk yard:anime:action hall:flat"`)
   expect(page({ ...r, zones: [{ id: "lab", style: "anime" }] })).toContain(`data-zones="lab:anime:pastoral"`)
@@ -165,9 +165,9 @@ test("an anime page carries data-variant (pastoral when none) and its zones' var
   expect(zoneFact({ ...r, style: "painterly" })({ id: "crypt" })).toBe("crypt:painterly")
 })
 test("the page carries data-style, data-clock and data-zones", () => {
-  const r = worlds().find((w) => w.id === "everglade")!.realm!
+  const r = worlds().find((w) => w.id === "everglade2")!.realm!
   const html = page({ ...r, zones: [{ id: "crypt" }] })
-  expect(html).toContain(`data-style="painterly" data-clock="cycle" data-zones="crypt:painterly"`)
+  expect(html).toContain(`data-style="painterly" data-clock="fixed:0.5" data-zones="crypt:painterly"`)
 })
 test("refuses a painterly realm with a lowpoly pack, and a pack of another style", () => {
   const packs = mkdtempSync(join(tmpdir(), "realms-packs-"))
@@ -181,18 +181,18 @@ test("refuses a painterly realm with a lowpoly pack, and a pack of another style
   expect(check(() => {}, { styleBlock: false, packs }, "fixture")).toThrow(/drawn lowpoly but its pack fixture is painterly/)
   // a lowpoly realm with a painterly zone may carry a painterly pack
   expect(check((r) => (r.zones = [{ id: "glade", style: "painterly" }]), { styleBlock: false, packs }, "fixture")).not.toThrow()
-  // Other consumers of Everglade's pack do not inherit its pending-style exception.
+  // Everglade II's painterly realm refuses a lowpoly pack.
   writeFileSync(join(packs, "fixture.json"), JSON.stringify({ pack: "fixture" }))
-  writeFileSync(join(packs, "everglade.json"), JSON.stringify({ pack: "everglade" }))
-  expect(check(() => {}, { styleBlock: false, packs })).toThrow(/its pack everglade is lowpoly/)
-  writeFileSync(join(packs, "everglade.json"), JSON.stringify({ pack: "everglade", style: "lowpoly" }))
-  expect(check(() => {}, { styleBlock: false, packs })).toThrow(/its pack everglade is lowpoly/)
+  writeFileSync(join(packs, "everglade2.json"), JSON.stringify({ pack: "everglade2" }))
+  expect(check(() => {}, { styleBlock: false, packs }, "everglade2")).toThrow(/its pack everglade2 is lowpoly/)
+  writeFileSync(join(packs, "everglade2.json"), JSON.stringify({ pack: "everglade2", style: "lowpoly" }))
+  expect(check(() => {}, { styleBlock: false, packs }, "everglade2")).toThrow(/its pack everglade2 is lowpoly/)
 })
 test("the SRD worlds carry their ruleset into their generated pages", () => {
   const all = worlds().filter((w) => w.realm)
-  const srd = ["everglade", "stair", "fivelab", "fivemmo", "evergladeclassic", "oneshot"]
+  const srd = ["stair", "oneshot"]
   for (const w of all) expect(w.realm!.ruleset).toBe(srd.includes(w.id) ? "srd5" : undefined)
-  expect(page(all.find((w) => w.id === "everglade")!.realm!)).toContain(`data-ruleset="srd5"`)
+  expect(page(all.find((w) => w.id === "stair")!.realm!)).toContain(`data-ruleset="srd5"`)
   expect(page(all.find((w) => w.id === "haunted")?.realm ?? all.find((w) => !srd.includes(w.id))!.realm!)).not.toContain("data-ruleset")
 })
 test("unlisted realms keep direct routes and noindex, outside the public catalogs", () => {
@@ -267,7 +267,7 @@ test("/worlds lists the listed realms: its rows, its text and its links", () => 
 test("only a realm with a tip page asks who made it (data-maker): the rest log no 404", () => {
   const by = Object.fromEntries(worlds().filter((w) => w.realm).map((w) => [w.realm!.slug, w.realm!]))
   for (const slug of ["orbit-league", "belt-2200", "hold-the-stair"]) { expect(hasMaker(slug)).toBe(true); expect(page(by[slug])).toContain('data-maker="1"') }
-  for (const slug of ["everglade", "haunted-house", "the-grid", "dead-gears"]) { expect(hasMaker(slug)).toBe(false); expect(page(by[slug])).not.toContain("data-maker") }
+  for (const slug of ["everglade2", "haunted-house", "the-grid", "dead-gears"]) { expect(hasMaker(slug)).toBe(false); expect(page(by[slug])).not.toContain("data-maker") }
 })
 
 test("a realm's own domain: a plain host, no openagents.com, and pages under the domain's name", () => {
@@ -281,6 +281,6 @@ test("a realm's own domain: a plain host, no openagents.com, and pages under the
     expect(html).toContain(`<link rel="icon" type="image/svg+xml" href="/worlds/${r.slug}/domain/icon.svg">`)
     expect(html).toContain(`content="https://${r.domain!.host}/worlds/${r.slug}/domain/card.jpg"`)
     if (file === "index.html") { expect(html).toContain(`href="${r.domain!.entry}" data-play>PLAY NOW</a>`); expect(html).toContain(`history.pushState(null, "", ENTRY)`); expect(html).toContain("Hosted by OpenAgents</footer>") }
-    if (file === "play/index.html") { expect(html).not.toContain("data-shell"); expect(html).toContain(`data-app="${r.module}"`); expect(html).toContain(`data-ui-font-family="CharacterCreateARKaiC"`); expect(html).toContain("cull:/everglade2-cull.wgsl"); expect(html).toContain(`<title>${r.domain!.title}</title>`) }
+    if (file === "play/index.html") { expect(html).not.toContain("data-shell"); expect(html).toContain(`data-app="${r.module}"`); expect(html).toContain(`data-ui-font-family="EvergladeSpectral"`); expect(html).toContain("cull:/everglade2-cull.wgsl"); expect(html).toContain(`<title>${r.domain!.title}</title>`) }
   }
 })

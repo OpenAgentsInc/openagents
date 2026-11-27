@@ -275,7 +275,8 @@ oneshot 410000
 # 292,500 final Linux release bytes at #12845; 2.5% room in this 300,000-byte bound.
 orbitleague 300000
 private 280000
-project 2450000
+# Carries live baked Nostr project tables (2,299,030 B data + 250,952 B code = 2,526,420 B measured 2026-11-27 on oa-build-1); ~15% room per header rule.
+project 2900000
 # #13604: the draft review rows the apps share (coax/lib/project/draft.coax and the JSON field walk) move
 # here from drop.js: 92,453 -> 113,505 bytes measured 2026-11-14 (macOS build); about 15% room.
 projects 130000

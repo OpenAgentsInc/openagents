@@ -46,6 +46,12 @@ else
   (cd "$here/../.." && "$here/../remote/remote.sh" run -- env COAXIAL_MODE=release COAXIAL_PAGES=all "$app/build.sh")
 fi
 lap build "$t"
+# Generated gitignored NIP/Pylon shaders are not synced back when build.sh offloads to a remote host.
+if [[ -f "$app/gpu/nip.coax" && ( ! -f "$app/nip01.wgsl" || ! -f "$app/nip-guide.wgsl" || ! -f "$app/pylon.wgsl" ) ]]; then
+  (cd "$here/../.." && "$here/tool.sh" "$here/wgsl-module.coax" "$app/gpu/nip.coax" "$app/nip01.wgsl" "$app/gpu/nip.module")
+  cmp -s "$app/nip01.wgsl" "$app/nip-guide.wgsl" || cp "$app/nip01.wgsl" "$app/nip-guide.wgsl"
+  cmp -s "$app/nip01.wgsl" "$app/pylon.wgsl" || cp "$app/nip01.wgsl" "$app/pylon.wgsl"
+fi
 
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 # Bundle host modules before content naming; deployed pages need one immutable
@@ -245,7 +251,7 @@ books_src = os.path.join(app, "build", "books")
 if not only_page and os.path.isdir(books_src):
     books_dst = os.path.join(site, "books")
     os.makedirs(books_dst, exist_ok=True)
-    for name in ("mono.css", "search.json", "index.html", "index.md"):
+    for name in ("mono.css", "search.json", "search.js", "index.html", "index.md"):
         src = os.path.join(books_src, name)
         if os.path.isfile(src):
             shutil.copy(src, os.path.join(books_dst, name))

@@ -32,6 +32,18 @@ bk_emit_mono_css :: (out_dir: string) -> bool {
   return fs_write(css_path, cast(string) css_buf[0..<n]);
 }
 
+// Writes `<out_dir>/search.js` (progressive-enhancement search UI for `/books/index.html` only).
+bk_emit_search_js :: (out_dir: string) -> bool {
+  if !fs_mkdir(out_dir) { return false; }
+  js_buf: [8192] u8;
+  n := bk_write_search_js(js_buf[..]);
+  if n <= 0 { return false; }
+  pbuf: [FS_PATH_MAX] u8;
+  js_path := fs_join(out_dir, "search.js", pbuf[..]);
+  if js_path == "" { return false; }
+  return fs_write(js_path, cast(string) js_buf[0..<n]);
+}
+
 // Streams one chapter HTML document to disk (head + meta bar + On-this-page TOC + block-chunked Markdown HTML + foot) plus raw index.md.
 bk_emit_book_chapter :: (w: [] BkWork, book_idx: int, active: int, meta_idx: int, out_dir: string, md_src: string, mid_href: string, mid_label: string) -> bool {
   if !fs_mkdir(out_dir) { return false; }
@@ -73,10 +85,10 @@ bk_emit_book_chapter :: (w: [] BkWork, book_idx: int, active: int, meta_idx: int
   return true;
 }
 
-// Discovers and renders all 9 repository books under `out_dir` with 0 KB JS / 0 KB Wasm, plus `search.json`.
+// Discovers and renders all 9 repository books under `out_dir` with 0 KB JS on every chapter, plus `search.json` and `search.js` for `/books/index.html`.
 // Returns total chapters rendered, or -1 on error.
 bk_emit_books :: (out_dir: string, mid_href: string, mid_label: string) -> int {
-  if out_dir.count == 0 || !bk_emit_mono_css(out_dir) { return -1; }
+  if out_dir.count == 0 || !bk_emit_mono_css(out_dir) || !bk_emit_search_js(out_dir) { return -1; }
   w: [1] BkWork;
   slugs := BK_SLUGS;
   dirs := BK_DIRS;

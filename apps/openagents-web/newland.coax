@@ -2287,12 +2287,12 @@ coaxial_land_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
   drawn := coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
   #assert drawn > 0 && s[0].gal_sel == -1;
   for q: 0..<PLANETS { #assert (s[0].gal_r[q] > 0) == galaxy_public(q); }
-  #assert s[0].gal_r[6] > 0 && s[0].gal_r[15] == 0 && s[0].gal_r[7] == 0;   // Everglade shown; Planetary Villa and Fairy Forest not
-  down := coaxial_land_pointer(s[..], s[0].gal_x[6], s[0].gal_y[6], POINTER_DOWN, 0, 1);
-  #assert coaxial_land_pointer(s[..], s[0].gal_x[6], s[0].gal_y[6], POINTER_UP, 0, 1);
-  #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "https://openagents.com/worlds/everglade") && s[0].gal_sel == 6;
+  #assert s[0].gal_r[8] > 0 && s[0].gal_r[6] == 0 && s[0].gal_r[7] == 0;   // Dead Gears shown; Archery Range and Fairy Forest not
+  down := coaxial_land_pointer(s[..], s[0].gal_x[8], s[0].gal_y[8], POINTER_DOWN, 0, 1);
+  #assert coaxial_land_pointer(s[..], s[0].gal_x[8], s[0].gal_y[8], POINTER_UP, 0, 1);
+  #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "https://openagents.com/worlds/dead-gears") && s[0].gal_sel == 8;
   coaxial_land_action_done(s[..]);
-  #assert coaxial_land_key(s[..], KEY_RIGHT, 0) && s[0].gal_sel != 6 && galaxy_public(s[0].gal_sel);
+  #assert coaxial_land_key(s[..], KEY_RIGHT, 0) && s[0].gal_sel != 8 && galaxy_public(s[0].gal_sel);
   #assert coaxial_land_key(s[..], KEY_ENTER, 0) && s[0].action == ACT_NAVIGATE;
 }
 
