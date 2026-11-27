@@ -1,0 +1,560 @@
+// Sans-I/O MCP Client state machine supporting both 2026-07-28 (stateless
+// server/discover, _meta injection, SEP-2243 x-mcp-header tool filtering,
+// SEP-2322 MRTR round-trip continuation) and 2025-11-25 (initialize fallback,
+// notifications/initialized, ping, server-initiated requests).
+// Pure zero-heap #authority module.
+#load "primitives.coax";
+#load "mrtr.coax";
+#load "subscriptions.coax";
+#load "headers.coax";
+#authority;
+
+MCP_CLI_MAX_PENDING :: 16;
+
+// Client lifecycle states.
+MCP_CLI_DISCONNECTED :: 0;
+MCP_CLI_PROBING_DISCOVER :: 1;
+MCP_CLI_INITIALIZING :: 2;
+MCP_CLI_READY :: 3;
+
+// Events returned by mcp_client_on_message.
+MCP_CLI_EV_NONE :: 0;
+MCP_CLI_EV_READY :: 1;          // server/discover succeeded -> client ready (2026-07-28)
+MCP_CLI_EV_FALLBACK_INIT :: 2;  // server/discover unsupported -> caller should send initialize
+MCP_CLI_EV_SEND_INIT_ACK :: 3;  // initialize succeeded -> caller should send notifications/initialized
+MCP_CLI_EV_RESPONSE_OK :: 4;    // Normal complete response matched a pending request
+MCP_CLI_EV_INPUT_REQUIRED :: 5; // 2026-07-28 MRTR InputRequiredResult matched a pending request
+MCP_CLI_EV_RESPONSE_ERR :: 6;   // JSON-RPC error response matched a pending request
+MCP_CLI_EV_SERVER_REQ :: 7;     // 2025-11-25 server->client request (elicitation/sampling/roots)
+MCP_CLI_EV_NOTIFICATION :: 8;   // Server notification (progress/log/list_changed/resource_updated/ack)
+MCP_CLI_EV_PROTOCOL_ERR :: 9;   // Malformed or protocol-violating incoming message
+
+McpPendingReq :: struct {
+  active: bool;
+  id: int;
+  method: string;
+  cancelled: bool;
+}
+
+McpClientCore :: struct {
+  state: int;
+  modern: bool;
+  protocol_version: string;
+  client_info: McpImplInfo;
+  client_caps: McpClientCaps;
+  server_info: McpImplInfo;
+  server_caps: McpServerCaps;
+  next_id: int;
+  pending_count: int;
+  pending: [MCP_CLI_MAX_PENDING] McpPendingReq;
+}
+
+McpClientEvent :: struct {
+  kind: int;
+  req_id: int;
+  req_method: string;
+  error_code: int;
+  result_node: int = -1;
+  params_node: int = -1;
+  method_node: int = -1;
+  mrtr: McpInputRequiredParsed;
+}
+
+#test "client_core 2026-07-28 discover, request builders, MRTR follow-up, and x-mcp-header filter" {
+  cli: [1] McpClientCore;
+  cli[0].state = MCP_CLI_READY; // verify init resets dirty state
+  mcp_client_init(cli[..], McpImplInfo.{ name = "C", version = "1" }, McpClientCaps.{ elicitation = true, elicitation_form = true });
+  #assert cli[0].state == MCP_CLI_DISCONNECTED && cli[0].next_id == 1 && cli[0].client_info.name == "C" && cli[0].client_caps.elicitation;
+
+  buf: [1024] u8; tiny: [8] u8; nodes: [128] JvNode; d: [1] Jv;
+
+  // 1. server/discover probe exact wire output + buffer overflow refusal leaves state DISCONNECTED.
+  #assert mcp_client_start_discover(cli[..], tiny[..]) == -1 && cli[0].state == MCP_CLI_DISCONNECTED;
+  mcp_client_init(cli[..], McpImplInfo.{ name = "C", version = "1" }, McpClientCaps.{ elicitation = true, elicitation_form = true });
+  n := mcp_client_start_discover(cli[..], buf[..]);
+  #assert n > 0 && cli[0].state == MCP_CLI_PROBING_DISCOVER && cli[0].pending_count == 1;
+  #assert cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"server/discover\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"C\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{\"elicitation\":{\"form\":{}}}}}}";
+
+  // DiscoverResult -> READY (modern=true) and pending_count decrements to 0.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\",\"supportedVersions\":[\"2026-07-28\"],\"capabilities\":{\"tools\":{},\"resources\":{}},\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"Srv\",\"version\":\"2\"}}}}", nodes[..]);
+  ev := mcp_client_on_message(cli[..], d[0]);
+  #assert ev.kind == MCP_CLI_EV_READY && cli[0].state == MCP_CLI_READY && cli[0].modern && cli[0].pending_count == 0;
+  #assert cli[0].protocol_version == "2026-07-28" && cli[0].server_caps.tools && cli[0].server_info.name == "Srv";
+
+  // 2. Modern request writers: simple_req (with & without cursor), tools/call (with ptok & MRTR), resources/read, prompts/get.
+  id_out: [1] int;
+  n = mcp_client_write_simple_req(cli[..], "tools/list", "c", id_out[..], buf[..]);
+  #assert id_out[0] == 2 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"C\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{\"elicitation\":{\"form\":{}}}},\"cursor\":\"c\"}}";
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"resultType\":\"complete\",\"tools\":[]}}", nodes[..]);
+  ev = mcp_client_on_message(cli[..], d[0]);
+  #assert ev.kind == MCP_CLI_EV_RESPONSE_OK && ev.req_id == 2 && ev.req_method == "tools/list" && ev.result_node != -1;
+
+  // Verify modern protocolVersion override (1-char custom string) is used by mcp_client_write_modern_meta.
+  cli[0].protocol_version = "V";
+  n = mcp_client_write_simple_req(cli[..], "tools/list", "", id_out[..], buf[..]);
+  #assert id_out[0] == 3 && jv_parse(d[..], cast(string) buf[0..<n], nodes[..]);
+  #assert jv_raw(d[0], jv_get(d[0], jv_get(d[0], jrpc_classify(d[0]).params_node, "_meta"), MCP_META_PROTOCOL_VERSION)) == "V";
+  cli[0].protocol_version = MCP_V_2026_07_28;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"resultType\":\"complete\",\"tools\":[]}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_RESPONSE_OK;
+
+  // tools/call with 1-char ptok, args, requestState, inputResponses.
+  n = mcp_client_write_tools_call(cli[..], "deploy", "{}", "p", "s", "{}", id_out[..], buf[..]);
+  #assert id_out[0] == 4 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"C\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{\"elicitation\":{\"form\":{}}},\"progressToken\":\"p\"},\"name\":\"deploy\",\"arguments\":{},\"requestState\":\"s\",\"inputResponses\":{}}}";
+
+  // Simulate MRTR InputRequiredResult on id=4.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"resultType\":\"input_required\",\"inputRequests\":{\"k\":{\"method\":\"elicitation/create\",\"params\":{\"message\":\"OK?\",\"requestedSchema\":{\"type\":\"object\"}}}},\"requestState\":\"mrtr1.tok\"}}", nodes[..]);
+  ev = mcp_client_on_message(cli[..], d[0]);
+  #assert ev.kind == MCP_CLI_EV_INPUT_REQUIRED && ev.req_id == 4 && ev.mrtr.request_state == "mrtr1.tok";
+
+  // resources/read (modern, with 1-char req_state & input_resps) and prompts/get (modern, with 1-char args/state/resps).
+  n = mcp_client_write_resources_read(cli[..], "u", "s", "{}", id_out[..], buf[..]);
+  #assert id_out[0] == 5 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"resources/read\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"C\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{\"elicitation\":{\"form\":{}}}},\"uri\":\"u\",\"requestState\":\"s\",\"inputResponses\":{}}}";
+  n = mcp_client_write_prompts_get(cli[..], "g", "{}", "s", "{}", id_out[..], buf[..]);
+  #assert id_out[0] == 6 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"prompts/get\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"C\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{\"elicitation\":{\"form\":{}}}},\"name\":\"g\",\"arguments\":{},\"requestState\":\"s\",\"inputResponses\":{}}}";
+
+  // Minimal resources/read and prompts/get without optional fields.
+  n = mcp_client_write_resources_read(cli[..], "u", "", "", id_out[..], buf[..]);
+  #assert id_out[0] == 7 && jv_parse(d[..], cast(string) buf[0..<n], nodes[..]) && jv_get(d[0], jrpc_classify(d[0]).params_node, "requestState") == -1;
+  n = mcp_client_write_prompts_get(cli[..], "g", "", "", "", id_out[..], buf[..]);
+  #assert id_out[0] == 8 && jv_parse(d[..], cast(string) buf[0..<n], nodes[..]) && jv_get(d[0], jrpc_classify(d[0]).params_node, "arguments") == -1;
+
+  // Normal JSON-RPC error response surfaces MCP_CLI_EV_RESPONSE_ERR with error_code.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":-32602,\"message\":\"bad\"}}", nodes[..]);
+  ev = mcp_client_on_message(cli[..], d[0]);
+  #assert ev.kind == MCP_CLI_EV_RESPONSE_ERR && ev.error_code == MCP_ERR_INVALID_PARAMS;
+
+  // Malformed InputRequiredResult -> PROTOCOL_ERR; InputRequiredResult on disallowed method (tools/list) -> PROTOCOL_ERR.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":6,\"result\":{\"resultType\":\"input_required\"}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+  #assert mcp_client_write_simple_req(cli[..], "tools/list", "", id_out[..], buf[..]) > 0;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"resultType\":\"input_required\",\"requestState\":\"x\"}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+
+  // Server->client request forbidden in 2026-07-28; bad JSON, string response id, unknown response id, non-object result -> PROTOCOL_ERR.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":99,\"method\":\"elicitation/create\",\"params\":{}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+  #assert jv_parse(d[..], "[]", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":\"str\",\"result\":{}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":999,\"result\":{}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":123}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+  // Re-answering already-popped id=7 returns PROTOCOL_ERR (verifies active=false).
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+
+  // Tiny buffer returns -1 cleanly via mcp_client_finish_jo.
+  #assert mcp_client_write_initialized(tiny[..]) == -1;
+
+  // x-mcp-header tool filter edge cases: valid, absent inputSchema, non-object tool, non-object inputSchema, invalid header.
+  #assert jv_parse(d[..], "{\"name\":\"good\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"t\":{\"type\":\"string\",\"x-mcp-header\":\"T\"}}}}", nodes[..]);
+  #assert mcp_client_tool_headers_valid(d[0], 0);
+  #assert jv_parse(d[..], "{\"name\":\"noschema\"}", nodes[..]);
+  #assert mcp_client_tool_headers_valid(d[0], 0);
+  #assert jv_parse(d[..], "[]", nodes[..]);
+  #assert !mcp_client_tool_headers_valid(d[0], 0);
+  #assert jv_parse(d[..], "{\"name\":\"b\",\"inputSchema\":[]}", nodes[..]);
+  #assert !mcp_client_tool_headers_valid(d[0], 0);
+  #assert jv_parse(d[..], "{\"name\":\"bad\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"p\":{\"type\":\"number\",\"x-mcp-header\":\"P\"}}}}", nodes[..]);
+  #assert !mcp_client_tool_headers_valid(d[0], 0);
+}
+
+#test "client_core 2025-11-25 fallback, legacy writers, cancel, pending capacity, and protocol error checks" {
+  cli: [1] McpClientCore;
+  mcp_client_init(cli[..], McpImplInfo.{ name = "C", version = "1" }, McpClientCaps.{ roots = true });
+  buf: [1024] u8; nodes: [128] JvNode; d: [1] Jv;
+
+  // Discover fails with -32601 -> FALLBACK_INIT and state returns to DISCONNECTED.
+  #assert mcp_client_start_discover(cli[..], buf[..]) > 0;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}", nodes[..]);
+  ev := mcp_client_on_message(cli[..], d[0]);
+  #assert ev.kind == MCP_CLI_EV_FALLBACK_INIT && cli[0].state == MCP_CLI_DISCONNECTED;
+
+  // Bad DiscoverResult (missing capabilities), DiscoverResult without _meta, and _meta without serverInfo.
+  #assert mcp_client_start_discover(cli[..], buf[..]) > 0;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+  #assert mcp_client_start_discover(cli[..], buf[..]) > 0;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"capabilities\":{}}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_READY && cli[0].modern;
+  #assert mcp_client_start_discover(cli[..], buf[..]) > 0;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"capabilities\":{},\"_meta\":{}}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_READY && cli[0].modern;
+
+  // Legacy initialize buffer overflow leaves state DISCONNECTED + exact wire output + malformed InitializeResult checks.
+  tiny: [8] u8;
+  mcp_client_init(cli[..], McpImplInfo.{ name = "C", version = "1" }, McpClientCaps.{ roots = true });
+  #assert mcp_client_start_initialize(cli[..], tiny[..]) == -1 && cli[0].state == MCP_CLI_DISCONNECTED;
+  mcp_client_init(cli[..], McpImplInfo.{ name = "C", version = "1" }, McpClientCaps.{ roots = true });
+  n := mcp_client_start_initialize(cli[..], buf[..]);
+  #assert n > 0 && cli[0].state == MCP_CLI_INITIALIZING;
+  #assert cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"roots\":{}},\"clientInfo\":{\"name\":\"C\",\"version\":\"1\"}}}";
+
+  // Malformed InitializeResult cases (missing protocolVersion, missing caps, bad caps, missing serverInfo, bad serverInfo).
+  bad_init := [5] string.[
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{},\"serverInfo\":{\"name\":\"S\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"serverInfo\":{\"name\":\"S\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":1,\"serverInfo\":{\"name\":\"S\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"serverInfo\":{}}}"
+  ];
+  for s: bad_init {
+    mcp_client_init(cli[..], McpImplInfo.{ name = "C", version = "1" }, McpClientCaps.{ roots = true });
+    #assert mcp_client_start_initialize(cli[..], buf[..]) > 0;
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+  }
+
+  // Valid InitializeResult -> SEND_INIT_ACK, modern=false, server_caps & server_info populated.
+  mcp_client_init(cli[..], McpImplInfo.{ name = "C", version = "1" }, McpClientCaps.{ roots = true });
+  cli[0].modern = true; // verify initialize clears modern to false
+  #assert mcp_client_start_initialize(cli[..], buf[..]) > 0;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"L\",\"version\":\"9\"}}}", nodes[..]);
+  ev = mcp_client_on_message(cli[..], d[0]);
+  #assert ev.kind == MCP_CLI_EV_SEND_INIT_ACK && cli[0].state == MCP_CLI_READY && !cli[0].modern;
+  #assert cli[0].server_caps.tools && cli[0].server_info.name == "L" && cli[0].protocol_version == "2025-11-25";
+
+  n = mcp_client_write_initialized(buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}";
+
+  // Server->client request & notification in 2025-11-25 mode.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":50,\"method\":\"roots/list\",\"params\":{}}", nodes[..]);
+  ev = mcp_client_on_message(cli[..], d[0]);
+  #assert ev.kind == MCP_CLI_EV_SERVER_REQ && ev.req_id == 50 && jv_raw(d[0], ev.method_node) == "roots/list" && ev.params_node != -1;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{\"progressToken\":1,\"progress\":1}}", nodes[..]);
+  ev = mcp_client_on_message(cli[..], d[0]);
+  #assert ev.kind == MCP_CLI_EV_NOTIFICATION && jv_raw(d[0], ev.method_node) == "notifications/progress" && ev.params_node != -1;
+
+  // Legacy writers exact JSON checks (no 2026 _meta).
+  id_out: [1] int;
+  n = mcp_client_write_simple_req(cli[..], "tools/list", "", id_out[..], buf[..]);
+  #assert id_out[0] == 2 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}";
+  n = mcp_client_write_simple_req(cli[..], "tools/list", "c", id_out[..], buf[..]);
+  #assert id_out[0] == 3 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\",\"params\":{\"cursor\":\"c\"}}";
+  n = mcp_client_write_tools_call(cli[..], "t", "", "p", "", "", id_out[..], buf[..]);
+  #assert id_out[0] == 4 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"_meta\":{\"progressToken\":\"p\"},\"name\":\"t\"}}";
+  n = mcp_client_write_tools_call(cli[..], "t", "", "", "", "", id_out[..], buf[..]);
+  #assert id_out[0] == 5 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"t\"}}";
+  n = mcp_client_write_resources_read(cli[..], "u", "", "", id_out[..], buf[..]);
+  #assert id_out[0] == 6 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"resources/read\",\"params\":{\"uri\":\"u\"}}";
+  n = mcp_client_write_prompts_get(cli[..], "p", "", "", "", id_out[..], buf[..]);
+  #assert id_out[0] == 7 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"prompts/get\",\"params\":{\"name\":\"p\"}}";
+  n = mcp_client_write_ping(cli[..], id_out[..], buf[..]);
+  #assert id_out[0] == 8 && cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"ping\"}";
+
+  // MRTR InputRequiredResult rejected in legacy mode!
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"resultType\":\"input_required\",\"requestState\":\"s\"}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+
+  // Cancel marks ONLY matching active pending slot cancelled (slot 1 != slot 0), ignores inactive/unknown ids, and emits notifications/cancelled.
+  n = mcp_client_cancel(cli[..], 3, "stop", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":3,\"reason\":\"stop\"}}";
+  #assert !cli[0].pending[0].cancelled && cli[0].pending[1].cancelled;
+  #assert mcp_client_cancel(cli[..], 999, "", buf[..]) > 0 && !cli[0].pending[0].cancelled && !cli[0].pending[15].cancelled;
+  #assert mcp_client_cancel(cli[..], 2, "", buf[..]) > 0 && cli[0].pending[0].cancelled;
+
+  // Pending table capacity: fill all 16 slots, verify 17th refuses (-1) on every writer!
+  mcp_client_init(cli[..], McpImplInfo.{ name = "C", version = "1" }, McpClientCaps.{});
+  for i: 0..<MCP_CLI_MAX_PENDING {
+    #assert mcp_client_write_ping(cli[..], id_out[..], buf[..]) > 0;
+  }
+  #assert cli[0].pending_count == MCP_CLI_MAX_PENDING;
+  #assert mcp_client_start_discover(cli[..], buf[..]) == -1;
+  #assert mcp_client_start_initialize(cli[..], buf[..]) == -1;
+  #assert mcp_client_write_simple_req(cli[..], "tools/list", "", id_out[..], buf[..]) == -1;
+  #assert mcp_client_write_tools_call(cli[..], "t", "", "", "", "", id_out[..], buf[..]) == -1;
+  #assert mcp_client_write_resources_read(cli[..], "u", "", "", id_out[..], buf[..]) == -1;
+  #assert mcp_client_write_prompts_get(cli[..], "p", "", "", "", id_out[..], buf[..]) == -1;
+  #assert mcp_client_write_ping(cli[..], id_out[..], buf[..]) == -1;
+  // Pop slot 0 then verify pop doesn't match inactive slot 0.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_RESPONSE_OK;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}", nodes[..]);
+  #assert mcp_client_on_message(cli[..], d[0]).kind == MCP_CLI_EV_PROTOCOL_ERR;
+}
+
+mcp_client_init :: (cli: [] McpClientCore, info: McpImplInfo, caps: McpClientCaps) #effects(all) {
+  cli[0] = McpClientCore.{};
+  cli[0].client_info = info;
+  cli[0].client_caps = caps;
+  cli[0].next_id = 1;
+}
+
+mcp_client_finish_jo :: (o: [] Jo) -> int #effects(all) {
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+mcp_client_alloc_req :: (cli: [] McpClientCore, method: string) -> int #effects(all) {
+  for i: 0..<MCP_CLI_MAX_PENDING {
+    if !cli[0].pending[i].active {
+      id := cli[0].next_id;
+      cli[0].next_id += 1;
+      cli[0].pending[i] = McpPendingReq.{ active = true, id = id, method = method };
+      cli[0].pending_count += 1;
+      return id;
+    }
+  }
+  return -1;
+}
+
+mcp_client_pop_req :: (cli: [] McpClientCore, id: int, out_req: [] McpPendingReq) -> bool #effects(all) {
+  for i: 0..<MCP_CLI_MAX_PENDING {
+    if cli[0].pending[i].active && cli[0].pending[i].id == id {
+      out_req[0] = cli[0].pending[i];
+      cli[0].pending[i].active = false;
+      cli[0].pending_count -= 1;
+      return true;
+    }
+  }
+  return false;
+}
+
+mcp_client_write_modern_meta :: (o: [] Jo, cli: McpClientCore, ptok_str: string) #effects(all) {
+  m := McpRequestMeta.{
+    has_protocol_version = true,
+    protocol_version = ifx cli.protocol_version.count != 0 then cli.protocol_version else MCP_V_2026_07_28,
+    has_client_info = true,
+    client_info = cli.client_info,
+    has_client_caps = true,
+    client_caps = cli.client_caps
+  };
+  if ptok_str.count != 0 {
+    m.progress_token_kind = MCP_PTOK_STR;
+    m.progress_token_str = ptok_str;
+  }
+  jo_key(o, "_meta");
+  mcp_write_request_meta(o, m);
+}
+
+mcp_client_start_discover :: (cli: [] McpClientCore, out: [] u8) -> int #effects(all) {
+  id := mcp_client_alloc_req(cli, "server/discover");
+  if id == -1 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jrpc_write_request_int(o[..], id, "server/discover");
+  jo_key(o[..], "params"); jo_obj(o[..]);
+  mcp_client_write_modern_meta(o[..], cli[0], "");
+  jo_end(o[..]);
+  jo_end(o[..]);
+  n := mcp_client_finish_jo(o[..]);
+  if n != -1 { cli[0].state = MCP_CLI_PROBING_DISCOVER; }
+  return n;
+}
+
+mcp_client_start_initialize :: (cli: [] McpClientCore, out: [] u8) -> int #effects(all) {
+  id := mcp_client_alloc_req(cli, "initialize");
+  if id == -1 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jrpc_write_request_int(o[..], id, "initialize");
+  jo_key(o[..], "params"); jo_obj(o[..]);
+  jo_key(o[..], "protocolVersion"); jo_str(o[..], MCP_V_2025_11_25);
+  jo_key(o[..], "capabilities"); mcp_write_client_caps(o[..], cli[0].client_caps);
+  jo_key(o[..], "clientInfo"); mcp_write_impl_info(o[..], cli[0].client_info);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  n := mcp_client_finish_jo(o[..]);
+  if n != -1 { cli[0].state = MCP_CLI_INITIALIZING; }
+  return n;
+}
+
+mcp_client_write_initialized :: (out: [] u8) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jrpc_write_notification(o[..], "notifications/initialized");
+  jo_end(o[..]);
+  return mcp_client_finish_jo(o[..]);
+}
+
+mcp_client_write_simple_req :: (cli: [] McpClientCore, method: string, cursor: string, id_out: [] int, out: [] u8) -> int #effects(all) {
+  id := mcp_client_alloc_req(cli, method);
+  if id == -1 { return -1; }
+  id_out[0] = id;
+  o: [1] Jo; jo_start(o[..], out);
+  jrpc_write_request_int(o[..], id, method);
+  if cli[0].modern || cursor.count != 0 {
+    jo_key(o[..], "params"); jo_obj(o[..]);
+    if cli[0].modern { mcp_client_write_modern_meta(o[..], cli[0], ""); }
+    if cursor.count != 0 { jo_key(o[..], "cursor"); jo_str(o[..], cursor); }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  return mcp_client_finish_jo(o[..]);
+}
+
+mcp_client_write_tools_call :: (cli: [] McpClientCore, name: string, args_json: string, ptok_str: string, req_state: string, input_resps_json: string, id_out: [] int, out: [] u8) -> int #effects(all) {
+  id := mcp_client_alloc_req(cli, "tools/call");
+  if id == -1 { return -1; }
+  id_out[0] = id;
+  o: [1] Jo; jo_start(o[..], out);
+  jrpc_write_request_int(o[..], id, "tools/call");
+  jo_key(o[..], "params"); jo_obj(o[..]);
+  if cli[0].modern {
+    mcp_client_write_modern_meta(o[..], cli[0], ptok_str);
+  } else if ptok_str.count != 0 {
+    jo_key(o[..], "_meta"); jo_obj(o[..]); jo_key(o[..], "progressToken"); jo_str(o[..], ptok_str); jo_end(o[..]);
+  }
+  jo_key(o[..], "name"); jo_str(o[..], name);
+  if args_json.count != 0 { jo_key(o[..], "arguments"); jo_raw(o[..], args_json); }
+  if req_state.count != 0 { jo_key(o[..], "requestState"); jo_str(o[..], req_state); }
+  if input_resps_json.count != 0 { jo_key(o[..], "inputResponses"); jo_raw(o[..], input_resps_json); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return mcp_client_finish_jo(o[..]);
+}
+
+mcp_client_write_resources_read :: (cli: [] McpClientCore, uri: string, req_state: string, input_resps_json: string, id_out: [] int, out: [] u8) -> int #effects(all) {
+  id := mcp_client_alloc_req(cli, "resources/read");
+  if id == -1 { return -1; }
+  id_out[0] = id;
+  o: [1] Jo; jo_start(o[..], out);
+  jrpc_write_request_int(o[..], id, "resources/read");
+  jo_key(o[..], "params"); jo_obj(o[..]);
+  if cli[0].modern { mcp_client_write_modern_meta(o[..], cli[0], ""); }
+  jo_key(o[..], "uri"); jo_str(o[..], uri);
+  if req_state.count != 0 { jo_key(o[..], "requestState"); jo_str(o[..], req_state); }
+  if input_resps_json.count != 0 { jo_key(o[..], "inputResponses"); jo_raw(o[..], input_resps_json); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return mcp_client_finish_jo(o[..]);
+}
+
+mcp_client_write_prompts_get :: (cli: [] McpClientCore, name: string, args_json: string, req_state: string, input_resps_json: string, id_out: [] int, out: [] u8) -> int #effects(all) {
+  id := mcp_client_alloc_req(cli, "prompts/get");
+  if id == -1 { return -1; }
+  id_out[0] = id;
+  o: [1] Jo; jo_start(o[..], out);
+  jrpc_write_request_int(o[..], id, "prompts/get");
+  jo_key(o[..], "params"); jo_obj(o[..]);
+  if cli[0].modern { mcp_client_write_modern_meta(o[..], cli[0], ""); }
+  jo_key(o[..], "name"); jo_str(o[..], name);
+  if args_json.count != 0 { jo_key(o[..], "arguments"); jo_raw(o[..], args_json); }
+  if req_state.count != 0 { jo_key(o[..], "requestState"); jo_str(o[..], req_state); }
+  if input_resps_json.count != 0 { jo_key(o[..], "inputResponses"); jo_raw(o[..], input_resps_json); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return mcp_client_finish_jo(o[..]);
+}
+
+mcp_client_write_ping :: (cli: [] McpClientCore, id_out: [] int, out: [] u8) -> int #effects(all) {
+  id := mcp_client_alloc_req(cli, "ping");
+  if id == -1 { return -1; }
+  id_out[0] = id;
+  o: [1] Jo; jo_start(o[..], out);
+  jrpc_write_request_int(o[..], id, "ping");
+  jo_end(o[..]);
+  return mcp_client_finish_jo(o[..]);
+}
+
+mcp_client_cancel :: (cli: [] McpClientCore, req_id: int, reason: string, out: [] u8) -> int #effects(all) {
+  for i: 0..<MCP_CLI_MAX_PENDING {
+    if cli[0].pending[i].active && cli[0].pending[i].id == req_id {
+      cli[0].pending[i].cancelled = true;
+      break;
+    }
+  }
+  o: [1] Jo; jo_start(o[..], out);
+  mcp_write_cancelled_notification(o[..], false, req_id, "", reason);
+  return mcp_client_finish_jo(o[..]);
+}
+
+// SEP-2243 client rule: tools with invalid x-mcp-header schemas MUST be excluded from tools/list.
+mcp_client_tool_headers_valid :: (d: Jv, tool_node: int) -> bool #effects(all) {
+  if jv_kind(d, tool_node) != JV_OBJECT { return false; }
+  sn := jv_get(d, tool_node, "inputSchema");
+  if sn == -1 { return true; }
+  if jv_kind(d, sn) != JV_OBJECT { return false; }
+  scan := mcp_schema_scan_headers(d, sn);
+  return scan.ok;
+}
+
+mcp_client_on_message :: (cli: [] McpClientCore, d: Jv) -> McpClientEvent #effects(all) {
+  ev: McpClientEvent;
+  ev.kind = MCP_CLI_EV_PROTOCOL_ERR;
+  m := jrpc_classify(d);
+  if !m.ok { return ev; }
+
+  if m.kind == JRPC_NOTIFICATION {
+    ev.kind = MCP_CLI_EV_NOTIFICATION;
+    ev.method_node = m.method_node;
+    ev.params_node = m.params_node;
+    return ev;
+  }
+
+  if m.kind == JRPC_REQUEST {
+    if cli[0].modern { return ev; }
+    ev.kind = MCP_CLI_EV_SERVER_REQ;
+    ev.req_id = m.id_int;
+    ev.method_node = m.method_node;
+    ev.params_node = m.params_node;
+    return ev;
+  }
+
+  if m.id_kind != JRPC_ID_INT { return ev; }
+
+  pend: [1] McpPendingReq;
+  if !mcp_client_pop_req(cli, m.id_int, pend[..]) { return ev; }
+  ev.req_id = pend[0].id;
+  ev.req_method = pend[0].method;
+
+  if m.kind == JRPC_RESPONSE_ERR {
+    ev.error_code = m.error_code;
+    if pend[0].method == "server/discover" {
+      cli[0].state = MCP_CLI_DISCONNECTED;
+      ev.kind = MCP_CLI_EV_FALLBACK_INIT;
+      return ev;
+    }
+    ev.kind = MCP_CLI_EV_RESPONSE_ERR;
+    return ev;
+  }
+
+  ev.result_node = m.result_node;
+  if jv_kind(d, m.result_node) != JV_OBJECT { return ev; }
+
+  if pend[0].method == "server/discover" {
+    sc: [1] McpServerCaps;
+    cn := jv_get(d, m.result_node, "capabilities");
+    if !mcp_parse_server_caps(d, cn, sc[..]) { return ev; }
+    sinfo_n := jv_get(d, jv_get(d, m.result_node, "_meta"), MCP_META_SERVER_INFO);
+    si: [1] McpImplInfo;
+    if mcp_parse_impl_info(d, sinfo_n, si[..]) { cli[0].server_info = si[0]; }
+    cli[0].server_caps = sc[0];
+    cli[0].modern = true;
+    cli[0].protocol_version = MCP_V_2026_07_28;
+    cli[0].state = MCP_CLI_READY;
+    ev.kind = MCP_CLI_EV_READY;
+    return ev;
+  }
+
+  if pend[0].method == "initialize" {
+    pvn := jv_get(d, m.result_node, "protocolVersion");
+    cn := jv_get(d, m.result_node, "capabilities");
+    sinfo_n := jv_get(d, m.result_node, "serverInfo");
+    sc: [1] McpServerCaps;
+    si: [1] McpImplInfo;
+    if jv_kind(d, pvn) != JV_STRING || !mcp_parse_server_caps(d, cn, sc[..]) || !mcp_parse_impl_info(d, sinfo_n, si[..]) {
+      return ev;
+    }
+    cli[0].protocol_version = jv_raw(d, pvn);
+    cli[0].server_caps = sc[0];
+    cli[0].server_info = si[0];
+    cli[0].modern = false;
+    cli[0].state = MCP_CLI_READY;
+    ev.kind = MCP_CLI_EV_SEND_INIT_ACK;
+    return ev;
+  }
+
+  rt := jv_get(d, m.result_node, "resultType");
+  if jv_kind(d, rt) == JV_STRING && jv_raw(d, rt) == MCP_RESULT_INPUT_REQUIRED {
+    if !cli[0].modern || !mcp_mrtr_method_allowed(pend[0].method) { return ev; }
+    parsed := mcp_mrtr_parse_input_required(d, m.result_node);
+    if !parsed.ok { return ev; }
+    ev.mrtr = parsed;
+    ev.kind = MCP_CLI_EV_INPUT_REQUIRED;
+    return ev;
+  }
+
+  ev.kind = MCP_CLI_EV_RESPONSE_OK;
+  return ev;
+}

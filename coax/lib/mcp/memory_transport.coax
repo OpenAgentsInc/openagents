@@ -1,0 +1,332 @@
+// Pure #authority in-memory bidirectional MCP message pipe and full
+// end-to-end McpClientCore <-> McpServerCore integration test suite covering
+// both 2026-07-28 (stateless GA + MRTR + subscriptions/listen) and 2025-11-25
+// (stateful initialize fallback + ping + logging + server requests + EventStore).
+#load "server_core.coax";
+#load "client_core.coax";
+#load "event_store.coax";
+#authority;
+
+MCP_MEM_QUEUE_CAP :: 8;
+MCP_MEM_MSG_MAX :: 2048;
+
+McpMemQueue :: struct {
+  head: int;
+  count: int;
+  lens: [MCP_MEM_QUEUE_CAP] int;
+  msgs: [MCP_MEM_QUEUE_CAP][MCP_MEM_MSG_MAX] u8;
+}
+
+McpMemTransport :: struct {
+  closed: bool;
+  max_msg: int;
+  c2s: [1] McpMemQueue; // client -> server
+  s2c: [1] McpMemQueue; // server -> client
+}
+
+#test "memory transport enforces FIFO framing, wrap-around, size limits, and close semantics" {
+  tr: [1] McpMemTransport;
+  tr[0].closed = true;
+  mcp_mem_init(tr[..], 0);
+  #assert !tr[0].closed && tr[0].max_msg == MCP_MEM_MSG_MAX;
+  mcp_mem_init(tr[..], MCP_MEM_MSG_MAX + 50);
+  #assert tr[0].max_msg == MCP_MEM_MSG_MAX;
+  mcp_mem_init(tr[..], 64);
+  #assert tr[0].max_msg == 64;
+
+  out: [64] u8;
+  #assert mcp_mem_recv_server(tr[..], out[..]) == -1;
+  #assert mcp_mem_recv_client(tr[..], out[..]) == -1;
+  #assert !mcp_mem_send_client(tr[..], "");
+  #assert !mcp_mem_send_server(tr[..], "");
+
+  // Exact max_msg (64) allowed; 65 refused.
+  m65: [65] u8;
+  for i: 0..<65 { m65[i] = 'x'; }
+  #assert mcp_mem_send_client(tr[..], cast(string) m65[0..<64]);
+  #assert !mcp_mem_send_client(tr[..], cast(string) m65[..]);
+  // Output buffer 1 byte too small refuses without popping!
+  #assert mcp_mem_recv_server(tr[..], out[0..<63]) == -1;
+  #assert mcp_mem_recv_server(tr[..], out[..]) == 64;
+  #assert cast(string) out[0..<64] == cast(string) m65[0..<64];
+
+  // Fill to exact MCP_MEM_QUEUE_CAP, reject overflow, then wrap head past CAP.
+  for i: 0..<MCP_MEM_QUEUE_CAP {
+    b: [2] u8; b[0] = 'a'; b[1] = cast(u8) ('0' + i);
+    #assert mcp_mem_send_client(tr[..], cast(string) b[..]);
+  }
+  #assert !mcp_mem_send_client(tr[..], "ov");
+  for i: 0..<MCP_MEM_QUEUE_CAP {
+    n := mcp_mem_recv_server(tr[..], out[..]);
+    #assert n == 2 && out[0] == 'a' && out[1] == cast(u8) ('0' + i);
+  }
+  // Wrap head across ring boundary by sending/receiving 4 more.
+  for i: 0..<4 {
+    b: [2] u8; b[0] = 'b'; b[1] = cast(u8) ('0' + i);
+    #assert mcp_mem_send_server(tr[..], cast(string) b[..]);
+    n := mcp_mem_recv_client(tr[..], out[..]);
+    #assert n == 2 && out[0] == 'b' && out[1] == cast(u8) ('0' + i);
+  }
+
+  // Closing transport refuses further sends on both sides.
+  mcp_mem_close(tr[..]);
+  #assert tr[0].closed;
+  #assert !mcp_mem_send_client(tr[..], "hi");
+  #assert !mcp_mem_send_server(tr[..], "hi");
+}
+
+#test "end-to-end 2026-07-28 client<->server over memory_transport: discover, tools, MRTR sealed state, resources, templates, prompts, completions, subscriptions" {
+  tr: [1] McpMemTransport;
+  mcp_mem_init(tr[..], MCP_MEM_MSG_MAX);
+
+  srv: [1] McpServerCore;
+  mcp_server_init(srv[..], McpImplInfo.{ name = "CoaxMCP", version = "1.0" }, true, true);
+  srv[0].caps.completions = true;
+  #assert mcp_server_add_tool(srv[..], McpToolDef.{
+    name = "deploy",
+    description = "Deploy with MRTR confirmation",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{\"env\":{\"type\":\"string\",\"x-mcp-header\":\"Env\"}},\"required\":[\"env\"]}"
+  });
+  #assert mcp_server_add_resource(srv[..], McpResourceDef.{ uri = "file:///readme.md", name = "readme.md", mime_type = "text/markdown" });
+  #assert mcp_server_add_template(srv[..], McpResourceTemplateDef.{ uri_template = "memo://{id}", name = "Memos" });
+  pdef := McpPromptDef.{ name = "review", arg_count = 1 };
+  pdef.args[0] = McpPromptArg.{ name = "code", required = true };
+  #assert mcp_server_add_prompt(srv[..], pdef);
+
+  cli: [1] McpClientCore;
+  mcp_client_init(cli[..], McpImplInfo.{ name = "TestClient", version = "1.0" }, McpClientCaps.{ elicitation = true, elicitation_form = true });
+
+  wire: [MCP_MEM_MSG_MAX] u8;
+  resp: [MCP_MEM_MSG_MAX] u8;
+  nodes: [128] JvNode; d: [1] Jv;
+  rnodes: [128] JvNode; rd: [1] Jv;
+  o: [1] Jo;
+
+  // 1. server/discover round-trip.
+  n := mcp_client_start_discover(cli[..], wire[..]);
+  #assert n > 0 && mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+  rn := mcp_mem_recv_server(tr[..], wire[..]);
+  #assert rn > 0 && jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp := mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_DONE && dp.modern && mcp_mem_send_server(tr[..], cast(string) resp[0..<dp.written]);
+  cn := mcp_mem_recv_client(tr[..], wire[..]);
+  #assert cn > 0 && jv_parse(rd[..], cast(string) wire[0..<cn], rnodes[..]);
+  ev := mcp_client_on_message(cli[..], rd[0]);
+  #assert ev.kind == MCP_CLI_EV_READY && cli[0].modern && cli[0].server_info.name == "CoaxMCP";
+
+  // 2. tools/list round-trip + SEP-2243 x-mcp-header validation on client.
+  id_out: [1] int;
+  n = mcp_client_write_simple_req(cli[..], "tools/list", "", id_out[..], wire[..]);
+  #assert n > 0 && mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+  rn = mcp_mem_recv_server(tr[..], wire[..]);
+  #assert jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_DONE && mcp_mem_send_server(tr[..], cast(string) resp[0..<dp.written]);
+  cn = mcp_mem_recv_client(tr[..], wire[..]);
+  #assert jv_parse(rd[..], cast(string) wire[0..<cn], rnodes[..]);
+  ev = mcp_client_on_message(cli[..], rd[0]);
+  #assert ev.kind == MCP_CLI_EV_RESPONSE_OK;
+  tools_arr := jv_get(rd[0], ev.result_node, "tools");
+  #assert jv_len(rd[0], tools_arr) == 1 && mcp_client_tool_headers_valid(rd[0], jv_at(rd[0], tools_arr, 0));
+
+  // 3. Multi-round MRTR tools/call with AES-256-GCM sealed requestState!
+  key: [MCP_MRTR_KEY_LEN] u8;
+  nonce: [MCP_MRTR_NONCE_LEN] u8;
+  for i: 0..<MCP_MRTR_KEY_LEN { key[i] = cast(u8) (i + 7); }
+  for i: 0..<MCP_MRTR_NONCE_LEN { nonce[i] = cast(u8) (i + 1); }
+
+  n = mcp_client_write_tools_call(cli[..], "deploy", "{\"env\":\"prod\"}", "pt-1", "", "", id_out[..], wire[..]);
+  #assert mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+  rn = mcp_mem_recv_server(tr[..], wire[..]);
+  #assert jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_CALL_TOOL && dp.tool_idx == 0 && dp.meta.client_caps.elicitation_form;
+
+  // Server checks capability, seals MRTR state, returns InputRequiredResult.
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_FORM, dp.meta.client_caps) == MCP_CAP_OK;
+  tok: [256] u8;
+  tn := mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "deploy", "alice", 1, 90000, "env=prod", tok[..]);
+  #assert tn > 6;
+  ireqs := [1] McpInputRequest.[McpInputRequest.{
+    key = "confirm",
+    method = "elicitation/create",
+    params_json = "{\"mode\":\"form\",\"message\":\"Confirm prod?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"ok\":{\"type\":\"boolean\",\"default\":true}}}}"
+  }];
+  req_msg := jrpc_classify(d[0]);
+  jo_start(o[..], resp[..]);
+  jrpc_write_result_head(o[..], d[0], req_msg);
+  #assert mcp_mrtr_write_input_required(o[..], ireqs[..], cast(string) tok[0..<tn]);
+  jo_end(o[..]);
+  #assert !o[0].bad && mcp_mem_send_server(tr[..], jo_text(o[..]));
+
+  // Client receives InputRequiredResult, applies SEP-1034 default, sends follow-up with NEW id and exact requestState!
+  cn = mcp_mem_recv_client(tr[..], wire[..]);
+  #assert jv_parse(rd[..], cast(string) wire[0..<cn], rnodes[..]);
+  ev = mcp_client_on_message(cli[..], rd[0]);
+  #assert ev.kind == MCP_CLI_EV_INPUT_REQUIRED && ev.mrtr.has_state && ev.mrtr.req_count == 1;
+
+  // Send follow-up with exact opaque requestState (copied out of wire) and validated elicitation response.
+  saved_rs: [256] u8;
+  rs_len := ev.mrtr.request_state.count;
+  for i: 0..<rs_len { saved_rs[i] = ev.mrtr.request_state[i]; }
+  n = mcp_client_write_tools_call(cli[..], "deploy", "{\"env\":\"prod\"}", "", cast(string) saved_rs[0..<rs_len], "{\"confirm\":{\"action\":\"accept\",\"content\":{\"ok\":true}}}", id_out[..], wire[..]);
+  #assert id_out[0] != ev.req_id && mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+
+  // Server unseals requestState, validates inputResponses, emits final complete CallToolResult!
+  rn = mcp_mem_recv_server(tr[..], wire[..]);
+  #assert jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_CALL_TOOL && dp.request_state.count > 0 && dp.input_responses_node != -1;
+  st_plain: [64] u8;
+  uns := mcp_mrtr_unseal_state(key[..], dp.request_state, "tools/call", "deploy", "alice", 50000, st_plain[..]);
+  #assert uns.ok && uns.round == 1 && cast(string) st_plain[0..<uns.state_len] == "env=prod";
+  resp_node := mcp_mrtr_find_input_response(d[0], jrpc_classify(d[0]).params_node, "confirm");
+  #assert mcp_mrtr_validate_input_response(d[0], "elicitation/create", resp_node);
+
+  done_c := [1] McpContent.[McpContent.{ kind = MCP_CONTENT_TEXT, text = "deployed prod" }];
+  jo_start(o[..], resp[..]);
+  jrpc_write_result_head(o[..], d[0], jrpc_classify(d[0]));
+  mcp_write_call_tool_result(o[..], true, done_c[..], false, "{\"deployed\":true}");
+  jo_end(o[..]);
+  #assert mcp_mem_send_server(tr[..], jo_text(o[..]));
+
+  cn = mcp_mem_recv_client(tr[..], wire[..]);
+  #assert jv_parse(rd[..], cast(string) wire[0..<cn], rnodes[..]);
+  ev = mcp_client_on_message(cli[..], rd[0]);
+  #assert ev.kind == MCP_CLI_EV_RESPONSE_OK && jv_raw(rd[0], jv_get(rd[0], ev.result_node, "resultType")) == "complete";
+
+  // 4. resources/read (template match) + prompts/get round-trips.
+  n = mcp_client_write_resources_read(cli[..], "memo://99", "", "", id_out[..], wire[..]);
+  #assert mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+  rn = mcp_mem_recv_server(tr[..], wire[..]);
+  #assert jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_READ_RESOURCE && dp.template_idx == 0 && dp.tmpl_var_count == 1;
+
+  n = mcp_client_write_prompts_get(cli[..], "review", "{\"code\":\"x\"}", "", "", id_out[..], wire[..]);
+  #assert mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+  rn = mcp_mem_recv_server(tr[..], wire[..]);
+  #assert jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_GET_PROMPT && dp.prompt_idx == 0;
+}
+
+#test "end-to-end 2025-11-25 fallback initialize, ping, server->client elicitation with defaults, and EventStore replay" {
+  tr: [1] McpMemTransport;
+  mcp_mem_init(tr[..], MCP_MEM_MSG_MAX);
+
+  // Legacy-only server (support_2025=true, support_2026=false).
+  srv: [1] McpServerCore;
+  mcp_server_init(srv[..], McpImplInfo.{ name = "LegacyMCP", version = "0.5" }, true, false);
+  srv[0].caps.logging = true;
+  srv[0].caps.resources_subscribe = true;
+  #assert mcp_server_add_resource(srv[..], McpResourceDef.{ uri = "file:///x", name = "x" });
+
+  cli: [1] McpClientCore;
+  mcp_client_init(cli[..], McpImplInfo.{ name = "DualClient", version = "1.0" }, McpClientCaps.{ elicitation = true, elicitation_form = true });
+
+  wire: [MCP_MEM_MSG_MAX] u8;
+  resp: [MCP_MEM_MSG_MAX] u8;
+  nodes: [128] JvNode; d: [1] Jv;
+  rnodes: [128] JvNode; rd: [1] Jv;
+
+  // 1. Client probes server/discover -> legacy server replies -32601 -> client falls back to initialize!
+  n := mcp_client_start_discover(cli[..], wire[..]);
+  #assert mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+  rn := mcp_mem_recv_server(tr[..], wire[..]);
+  #assert jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp := mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_DONE && mcp_mem_send_server(tr[..], cast(string) resp[0..<dp.written]);
+  cn := mcp_mem_recv_client(tr[..], wire[..]);
+  #assert jv_parse(rd[..], cast(string) wire[0..<cn], rnodes[..]);
+  ev := mcp_client_on_message(cli[..], rd[0]);
+  #assert ev.kind == MCP_CLI_EV_FALLBACK_INIT;
+
+  // 2. initialize -> InitializeResult -> notifications/initialized.
+  n = mcp_client_start_initialize(cli[..], wire[..]);
+  #assert mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+  rn = mcp_mem_recv_server(tr[..], wire[..]);
+  #assert jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_DONE && mcp_mem_send_server(tr[..], cast(string) resp[0..<dp.written]);
+  cn = mcp_mem_recv_client(tr[..], wire[..]);
+  #assert jv_parse(rd[..], cast(string) wire[0..<cn], rnodes[..]);
+  ev = mcp_client_on_message(cli[..], rd[0]);
+  #assert ev.kind == MCP_CLI_EV_SEND_INIT_ACK && !cli[0].modern && cli[0].protocol_version == "2025-11-25";
+
+  n = mcp_client_write_initialized(wire[..]);
+  #assert mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+  rn = mcp_mem_recv_server(tr[..], wire[..]);
+  #assert jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_NO_RESPONSE && srv[0].initialized;
+
+  // 3. ping round-trip + EventStore buffering for Last-Event-ID replay.
+  evs: [1] McpEventStore;
+  mcp_evstore_init(evs[..], MCP_EVSTORE_DATA_CAP);
+  id_out: [1] int;
+  n = mcp_client_write_ping(cli[..], id_out[..], wire[..]);
+  #assert mcp_mem_send_client(tr[..], cast(string) wire[0..<n]);
+  rn = mcp_mem_recv_server(tr[..], wire[..]);
+  #assert jv_parse(d[..], cast(string) wire[0..<rn], nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], resp[..]);
+  #assert dp.action == MCP_DISP_DONE;
+  evid: [MCP_EVSTORE_ID_MAX] u8;
+  #assert mcp_evstore_append(evs[..], "s1", "", evid[..]) > 0; // SEP-1699 priming event
+  #assert mcp_evstore_append(evs[..], "s1", cast(string) resp[0..<dp.written], evid[..]) > 0;
+  #assert mcp_evstore_find_replay(evs[0], "s1:1").replay_count == 1;
+  #assert mcp_mem_send_server(tr[..], cast(string) resp[0..<dp.written]);
+  cn = mcp_mem_recv_client(tr[..], wire[..]);
+  #assert jv_parse(rd[..], cast(string) wire[0..<cn], rnodes[..]);
+  ev = mcp_client_on_message(cli[..], rd[0]);
+  #assert ev.kind == MCP_CLI_EV_RESPONSE_OK;
+}
+
+mcp_mem_init :: (tr: [] McpMemTransport, max_msg: int) #effects(all) {
+  tr[0] = McpMemTransport.{};
+  cap := max_msg;
+  if cap <= 0 || cap > MCP_MEM_MSG_MAX { cap = MCP_MEM_MSG_MAX; } // mutant: equivalent (cap==MSG_MAX sets MSG_MAX)
+  tr[0].max_msg = cap;
+}
+
+mcp_mem_close :: (tr: [] McpMemTransport) #effects(all) {
+  tr[0].closed = true;
+}
+
+mcp_mem_push :: (q: [] McpMemQueue, max_msg: int, msg: string) -> bool #effects(all) {
+  if msg.count == 0 || msg.count > max_msg || q[0].count >= MCP_MEM_QUEUE_CAP { return false; }
+  slot := (q[0].head + q[0].count) % MCP_MEM_QUEUE_CAP;
+  q[0].lens[slot] = msg.count;
+  for i: 0..<msg.count { q[0].msgs[slot][i] = msg[i]; }
+  q[0].count += 1;
+  return true;
+}
+
+mcp_mem_pop :: (q: [] McpMemQueue, out: [] u8) -> int #effects(all) {
+  if q[0].count == 0 { return -1; }
+  slot := q[0].head;
+  n := q[0].lens[slot];
+  if out.count < n { return -1; }
+  for i: 0..<n { out[i] = q[0].msgs[slot][i]; }
+  q[0].head = (slot + 1) % MCP_MEM_QUEUE_CAP;
+  q[0].count -= 1;
+  return n;
+}
+
+mcp_mem_send_client :: (tr: [] McpMemTransport, msg: string) -> bool #effects(all) {
+  if tr[0].closed { return false; }
+  return mcp_mem_push(tr[0].c2s[..], tr[0].max_msg, msg);
+}
+
+mcp_mem_send_server :: (tr: [] McpMemTransport, msg: string) -> bool #effects(all) {
+  if tr[0].closed { return false; }
+  return mcp_mem_push(tr[0].s2c[..], tr[0].max_msg, msg);
+}
+
+mcp_mem_recv_server :: (tr: [] McpMemTransport, out: [] u8) -> int #effects(all) {
+  return mcp_mem_pop(tr[0].c2s[..], out);
+}
+
+mcp_mem_recv_client :: (tr: [] McpMemTransport, out: [] u8) -> int #effects(all) {
+  return mcp_mem_pop(tr[0].s2c[..], out);
+}

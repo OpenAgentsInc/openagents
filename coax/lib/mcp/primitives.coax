@@ -1,0 +1,840 @@
+// MCP domain primitives for both 2025-11-25 and 2026-07-28:
+// Tools, Resources, ResourceTemplates, Prompts, Completions, Elicitation
+// (form + URL + SEP-1034 client defaults), Roots, Discovery, Initialize,
+// Progress/Cancellation/Logging notifications, and pagination cursor codecs.
+// Pure zero-heap #authority module.
+#load "types.coax";
+#load "jsonrpc.coax";
+#load "json_schema.coax";
+#load "uri_template.coax";
+#authority;
+
+MCP_PROMPT_MAX_ARGS :: 8;
+MCP_COMPLETION_MAX_VALUES :: 100;
+
+MCP_REF_PROMPT :: 1;
+MCP_REF_RESOURCE :: 2;
+
+MCP_ELICIT_ACCEPT :: 1;
+MCP_ELICIT_DECLINE :: 2;
+MCP_ELICIT_CANCEL :: 3;
+
+McpToolAnnotations :: struct {
+  present: bool;
+  title: string;
+  has_read_only: bool;
+  read_only_hint: bool;
+  has_destructive: bool;
+  destructive_hint: bool;
+  has_idempotent: bool;
+  idempotent_hint: bool;
+  has_open_world: bool;
+  open_world_hint: bool;
+}
+
+McpToolDef :: struct {
+  name: string;
+  title: string;
+  description: string;
+  input_schema_json: string;  // Raw JSON Schema object (preserved verbatim; default "{\"type\":\"object\"}")
+  output_schema_json: string; // Optional raw JSON Schema object
+  annotations: McpToolAnnotations;
+}
+
+McpResourceDef :: struct {
+  uri: string;
+  name: string;
+  title: string;
+  description: string;
+  mime_type: string;
+  has_size: bool;
+  size: int;
+  annotations: McpAnnotations;
+}
+
+McpResourceTemplateDef :: struct {
+  uri_template: string;
+  name: string;
+  title: string;
+  description: string;
+  mime_type: string;
+  annotations: McpAnnotations;
+}
+
+McpPromptArg :: struct {
+  name: string;
+  description: string;
+  required: bool;
+}
+
+McpPromptDef :: struct {
+  name: string;
+  title: string;
+  description: string;
+  arg_count: int;
+  args: [MCP_PROMPT_MAX_ARGS] McpPromptArg;
+}
+
+McpPromptMessage :: struct {
+  is_assistant: bool;
+  content: McpContent;
+}
+
+McpRoot :: struct {
+  uri: string;
+  name: string;
+}
+
+McpCallToolReq :: struct {
+  ok: bool;
+  name: string;
+  arguments_node: int = -1;
+  meta: McpRequestMeta;
+  request_state: string;
+  input_responses_node: int = -1;
+}
+
+McpReadResourceReq :: struct {
+  ok: bool;
+  uri: string;
+  meta: McpRequestMeta;
+  request_state: string;
+  input_responses_node: int = -1;
+}
+
+McpGetPromptReq :: struct {
+  ok: bool;
+  name: string;
+  arguments_node: int = -1;
+  meta: McpRequestMeta;
+  request_state: string;
+  input_responses_node: int = -1;
+}
+
+McpCompleteReq :: struct {
+  ok: bool;
+  ref_kind: int;
+  ref_target: string; // prompt name or resource uri
+  arg_name: string;
+  arg_value: string;
+  context_args_node: int = -1;
+  meta: McpRequestMeta;
+}
+
+#test "pagination cursor encoder/decoder enforces strict non-negative integer format" {
+  buf: [32] u8;
+  n0 := mcp_cursor_encode(0, buf[..]);
+  #assert n0 == 3 && cast(string) buf[0..<n0] == "p:0";
+  #assert mcp_cursor_decode("p:0") == 0;
+
+  n1 := mcp_cursor_encode(12345, buf[0..<7]);
+  #assert n1 == 7 && cast(string) buf[0..<n1] == "p:12345";
+  #assert mcp_cursor_decode("p:12345") == 12345;
+
+  #assert mcp_cursor_encode(-1, buf[..]) == -1;
+  #assert mcp_cursor_encode(12345, buf[0..<6]) == -1;
+
+  bad := [9] string.["", "p:", "x:1", "p:1a", "p::", "p:-1", "p: 1", "p:01", "p:9999999999999999999"];
+  for s: bad { #assert mcp_cursor_decode(s) == -1; }
+  // Exact '9' digit and 1000000 ceiling check.
+  #assert mcp_cursor_decode("p:9") == 9;
+  #assert mcp_cursor_decode("p:1000000") == 1000000;
+  #assert mcp_cursor_decode("p:1000001") == -1;
+}
+
+#test "tool, resource, template, and prompt definitions and requests serialize and parse cleanly" {
+  buf: [1024] u8; o: [1] Jo; nodes: [64] JvNode; d: [1] Jv;
+
+  // Tool definition with annotations & outputSchema + minimal tool def.
+  t := McpToolDef.{
+    name = "add",
+    title = "A",
+    description = "D",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\"}}}",
+    output_schema_json = "{\"type\":\"object\"}",
+    annotations = McpToolAnnotations.{
+      present = true,
+      title = "T",
+      has_read_only = true,
+      read_only_hint = true,
+      has_destructive = true,
+      destructive_hint = false,
+      has_idempotent = true,
+      idempotent_hint = true,
+      has_open_world = true,
+      open_world_hint = false
+    }
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_tool_def(o[..], t);
+  #assert !o[0].bad;
+  #assert jo_text(o[..]) == "{\"name\":\"add\",\"title\":\"A\",\"description\":\"D\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\"}}},\"outputSchema\":{\"type\":\"object\"},\"annotations\":{\"title\":\"T\",\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}}";
+
+  t_min := McpToolDef.{ name = "ping" };
+  jo_start(o[..], buf[..]);
+  mcp_write_tool_def(o[..], t_min);
+  #assert jo_text(o[..]) == "{\"name\":\"ping\",\"inputSchema\":{\"type\":\"object\"}}";
+
+  t_ann0 := McpToolDef.{ name = "p", annotations = McpToolAnnotations.{ present = true } };
+  jo_start(o[..], buf[..]);
+  mcp_write_tool_def(o[..], t_ann0);
+  #assert jo_text(o[..]) == "{\"name\":\"p\",\"inputSchema\":{\"type\":\"object\"},\"annotations\":{}}";
+
+  // CallToolRequest parsing (with _meta, arguments, requestState, inputResponses).
+  #assert jv_parse(d[..], "{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"name\":\"add\",\"arguments\":{\"a\":1},\"requestState\":\"s\",\"inputResponses\":{\"k\":{\"action\":\"accept\"}}}", nodes[..]);
+  ctr := mcp_parse_call_tool_req(d[0], 0);
+  #assert ctr.ok && ctr.name == "add" && ctr.arguments_node != -1 && ctr.meta.protocol_version == "2026-07-28";
+  #assert ctr.request_state == "s" && ctr.input_responses_node != -1;
+
+  // Minimal CallToolRequest (name only).
+  #assert jv_parse(d[..], "{\"name\":\"ping\"}", nodes[..]);
+  ctr = mcp_parse_call_tool_req(d[0], 0);
+  #assert ctr.ok && ctr.name == "ping" && ctr.arguments_node == -1 && ctr.request_state == "" && ctr.input_responses_node == -1;
+
+  bad_ctr := [8] string.[
+    "[]",
+    "{}",
+    "{\"name\":\"\"}",
+    "{\"name\":1}",
+    "{\"name\":\"a\",\"arguments\":[]}",
+    "{\"name\":\"a\",\"_meta\":[]}",
+    "{\"name\":\"a\",\"requestState\":1}",
+    "{\"name\":\"a\",\"inputResponses\":[]}"
+  ];
+  for s: bad_ctr {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_parse_call_tool_req(d[0], 0).ok;
+  }
+
+  // CallToolResult (modern with structuredContent + error, and legacy).
+  items := [1] McpContent.[McpContent.{ kind = MCP_CONTENT_TEXT, text = "ok" }];
+  jo_start(o[..], buf[..]);
+  mcp_write_call_tool_result(o[..], true, items[..], true, "0");
+  #assert jo_text(o[..]) == "{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],\"isError\":true,\"structuredContent\":0}";
+
+  jo_start(o[..], buf[..]);
+  mcp_write_call_tool_result(o[..], false, items[..], false, "");
+  #assert jo_text(o[..]) == "{\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}";
+
+  // ResourceDef & ResourceTemplateDef & ReadResourceReq & Result.
+  rdef := McpResourceDef.{
+    uri = "file:///a.txt",
+    name = "a.txt",
+    title = "T",
+    description = "D",
+    mime_type = "m",
+    has_size = true,
+    size = 12,
+    annotations = McpAnnotations.{ audience_mask = MCP_AUDIENCE_USER }
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_resource_def(o[..], rdef);
+  #assert jo_text(o[..]) == "{\"uri\":\"file:///a.txt\",\"name\":\"a.txt\",\"title\":\"T\",\"description\":\"D\",\"mimeType\":\"m\",\"size\":12,\"annotations\":{\"audience\":[\"user\"]}}";
+
+  rdef_min := McpResourceDef.{ uri = "memo://1", name = "1" };
+  jo_start(o[..], buf[..]);
+  mcp_write_resource_def(o[..], rdef_min);
+  #assert jo_text(o[..]) == "{\"uri\":\"memo://1\",\"name\":\"1\"}";
+
+  rtdef := McpResourceTemplateDef.{
+    uri_template = "file:///{path}",
+    name = "files",
+    title = "T",
+    description = "D",
+    mime_type = "m",
+    annotations = McpAnnotations.{ audience_mask = MCP_AUDIENCE_ASSISTANT }
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_resource_template_def(o[..], rtdef);
+  #assert jo_text(o[..]) == "{\"uriTemplate\":\"file:///{path}\",\"name\":\"files\",\"title\":\"T\",\"description\":\"D\",\"mimeType\":\"m\",\"annotations\":{\"audience\":[\"assistant\"]}}";
+
+  rtdef_min := McpResourceTemplateDef.{ uri_template = "memo://{id}", name = "m" };
+  jo_start(o[..], buf[..]);
+  mcp_write_resource_template_def(o[..], rtdef_min);
+  #assert jo_text(o[..]) == "{\"uriTemplate\":\"memo://{id}\",\"name\":\"m\"}";
+
+  #assert jv_parse(d[..], "{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"uri\":\"file:///a.txt\",\"requestState\":\"r\",\"inputResponses\":{}}", nodes[..]);
+  rrr := mcp_parse_read_resource_req(d[0], 0);
+  #assert rrr.ok && rrr.uri == "file:///a.txt" && rrr.request_state == "r" && rrr.input_responses_node != -1 && rrr.meta.protocol_version == "2026-07-28";
+  #assert jv_parse(d[..], "{\"uri\":\"file:///a.txt\"}", nodes[..]);
+  rrr = mcp_parse_read_resource_req(d[0], 0);
+  #assert rrr.ok && rrr.request_state == "" && rrr.input_responses_node == -1;
+  bad_rrr := [7] string.["[]", "{}", "{\"uri\":\"\"}", "{\"uri\":1}", "{\"uri\":\"u\",\"_meta\":1}", "{\"uri\":\"u\",\"requestState\":1}", "{\"uri\":\"u\",\"inputResponses\":1}"];
+  for s: bad_rrr { #assert jv_parse(d[..], s, nodes[..]); #assert !mcp_parse_read_resource_req(d[0], 0).ok; }
+
+  rcs := [1] McpResourceContents.[McpResourceContents.{ kind = MCP_RES_TEXT, uri = "file:///a.txt", text = "hi" }];
+  jo_start(o[..], buf[..]);
+  mcp_write_read_resource_result(o[..], true, rcs[..], McpCacheHint.{ has_ttl = true, ttl_ms = 5000, scope = MCP_CACHE_PUBLIC });
+  #assert jo_text(o[..]) == "{\"resultType\":\"complete\",\"contents\":[{\"uri\":\"file:///a.txt\",\"text\":\"hi\"}],\"ttlMs\":5000,\"cacheScope\":\"public\"}";
+
+  // PromptDef, GetPromptReq, GetPromptResult.
+  pdef := McpPromptDef.{ name = "rev", title = "T", description = "D", arg_count = 2 };
+  pdef.args[0] = McpPromptArg.{ name = "code", description = "C", required = true };
+  pdef.args[1] = McpPromptArg.{ name = "lang", description = "", required = false };
+  jo_start(o[..], buf[..]);
+  mcp_write_prompt_def(o[..], pdef);
+  #assert jo_text(o[..]) == "{\"name\":\"rev\",\"title\":\"T\",\"description\":\"D\",\"arguments\":[{\"name\":\"code\",\"description\":\"C\",\"required\":true},{\"name\":\"lang\"}]}";
+
+  pdef_min := McpPromptDef.{ name = "simple" };
+  jo_start(o[..], buf[..]);
+  mcp_write_prompt_def(o[..], pdef_min);
+  #assert jo_text(o[..]) == "{\"name\":\"simple\"}";
+
+  #assert jv_parse(d[..], "{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"name\":\"rev\",\"arguments\":{\"code\":\"x\"},\"requestState\":\"s\",\"inputResponses\":{}}", nodes[..]);
+  gpr := mcp_parse_get_prompt_req(d[0], 0);
+  #assert gpr.ok && gpr.name == "rev" && gpr.arguments_node != -1 && gpr.request_state == "s" && gpr.input_responses_node != -1 && gpr.meta.protocol_version == "2026-07-28";
+  #assert jv_parse(d[..], "{\"name\":\"rev\"}", nodes[..]);
+  gpr = mcp_parse_get_prompt_req(d[0], 0);
+  #assert gpr.ok && gpr.arguments_node == -1 && gpr.input_responses_node == -1;
+  bad_gpr := [8] string.["[]", "{}", "{\"name\":\"\"}", "{\"name\":1}", "{\"name\":\"p\",\"arguments\":[]}", "{\"name\":\"p\",\"_meta\":1}", "{\"name\":\"p\",\"requestState\":1}", "{\"name\":\"p\",\"inputResponses\":1}"];
+  for s: bad_gpr { #assert jv_parse(d[..], s, nodes[..]); #assert !mcp_parse_get_prompt_req(d[0], 0).ok; }
+
+  msgs := [2] McpPromptMessage.[
+    McpPromptMessage.{ is_assistant = false, content = McpContent.{ kind = MCP_CONTENT_TEXT, text = "u" } },
+    McpPromptMessage.{ is_assistant = true, content = McpContent.{ kind = MCP_CONTENT_TEXT, text = "a" } }
+  ];
+  jo_start(o[..], buf[..]);
+  mcp_write_get_prompt_result(o[..], true, "D", msgs[..]);
+  #assert jo_text(o[..]) == "{\"resultType\":\"complete\",\"description\":\"D\",\"messages\":[{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"u\"}},{\"role\":\"assistant\",\"content\":{\"type\":\"text\",\"text\":\"a\"}}]}";
+  jo_start(o[..], buf[..]);
+  mcp_write_get_prompt_result(o[..], false, "", msgs[0..<1]);
+  #assert jo_text(o[..]) == "{\"messages\":[{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"u\"}}]}";
+}
+
+#test "completions, elicitation SEP-1034 defaults, discovery, initialize, and notifications" {
+  buf: [1024] u8; o: [1] Jo; nodes: [64] JvNode; d: [1] Jv;
+
+  // Completion request parsing (ref/prompt & ref/resource + optional context).
+  #assert jv_parse(d[..], "{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"ref\":{\"type\":\"ref/prompt\",\"name\":\"code_review\"},\"argument\":{\"name\":\"lang\",\"value\":\"py\"},\"context\":{\"arguments\":{\"k\":\"v\"}}}", nodes[..]);
+  cr := mcp_parse_complete_req(d[0], 0);
+  #assert cr.ok && cr.ref_kind == MCP_REF_PROMPT && cr.ref_target == "code_review" && cr.arg_name == "lang" && cr.arg_value == "py" && cr.context_args_node != -1 && cr.meta.protocol_version == "2026-07-28";
+
+  #assert jv_parse(d[..], "{\"ref\":{\"type\":\"ref/resource\",\"uri\":\"file:///{p}\"},\"argument\":{\"name\":\"p\",\"value\":\"\"},\"context\":{}}", nodes[..]);
+  cr = mcp_parse_complete_req(d[0], 0);
+  #assert cr.ok && cr.ref_kind == MCP_REF_RESOURCE && cr.ref_target == "file:///{p}" && cr.arg_name == "p" && cr.arg_value == "" && cr.context_args_node == -1;
+  #assert jv_parse(d[..], "{\"ref\":{\"type\":\"ref/resource\",\"uri\":\"file:///{p}\"},\"argument\":{\"name\":\"p\",\"value\":\"\"}}", nodes[..]);
+  #assert mcp_parse_complete_req(d[0], 0).ok;
+
+  bad_cr := [12] string.[
+    "[]",
+    "{}",
+    "{\"ref\":1,\"argument\":{\"name\":\"a\",\"value\":\"\"}}",
+    "{\"ref\":{\"type\":\"ref/other\"},\"argument\":{\"name\":\"a\",\"value\":\"\"}}",
+    "{\"ref\":{\"type\":\"ref/prompt\",\"name\":\"\"},\"argument\":{\"name\":\"a\",\"value\":\"\"}}",
+    "{\"ref\":{\"type\":\"ref/resource\",\"uri\":\"\"},\"argument\":{\"name\":\"a\",\"value\":\"\"}}",
+    "{\"ref\":{\"type\":\"ref/prompt\",\"name\":\"p\"}}",
+    "{\"ref\":{\"type\":\"ref/prompt\",\"name\":\"p\"},\"argument\":{\"name\":\"\",\"value\":\"\"}}",
+    "{\"ref\":{\"type\":\"ref/prompt\",\"name\":\"p\"},\"argument\":{\"name\":\"a\",\"value\":1}}",
+    "{\"ref\":{\"type\":\"ref/prompt\",\"name\":\"p\"},\"argument\":{\"name\":\"a\",\"value\":\"\"},\"context\":1}",
+    "{\"ref\":{\"type\":\"ref/prompt\",\"name\":\"p\"},\"argument\":{\"name\":\"a\",\"value\":\"\"},\"context\":{\"arguments\":[]}}",
+    "{\"_meta\":1,\"ref\":{\"type\":\"ref/prompt\",\"name\":\"p\"},\"argument\":{\"name\":\"a\",\"value\":\"\"}}"
+  ];
+  for s: bad_cr { #assert jv_parse(d[..], s, nodes[..]); #assert !mcp_parse_complete_req(d[0], 0).ok; }
+
+  vals := [2] string.["python", "pytorch"];
+  jo_start(o[..], buf[..]);
+  mcp_write_complete_result(o[..], true, vals[..], true, 10, true);
+  #assert jo_text(o[..]) == "{\"resultType\":\"complete\",\"completion\":{\"values\":[\"python\",\"pytorch\"],\"total\":10,\"hasMore\":true}}";
+  jo_start(o[..], buf[..]);
+  mcp_write_complete_result(o[..], false, vals[0..<1], false, 0, false);
+  #assert jo_text(o[..]) == "{\"completion\":{\"values\":[\"python\"]}}";
+
+  // Elicitation form/URL params, result action codec, and SEP-1034 client defaults application!
+  jo_start(o[..], buf[..]);
+  mcp_write_elicit_form_params(o[..], "Enter info", "{\"type\":\"object\"}");
+  #assert jo_text(o[..]) == "{\"mode\":\"form\",\"message\":\"Enter info\",\"requestedSchema\":{\"type\":\"object\"}}";
+
+  jo_start(o[..], buf[..]);
+  mcp_write_elicit_url_params(o[..], "Auth", "https://example.com/auth", "el-1");
+  #assert jo_text(o[..]) == "{\"mode\":\"url\",\"message\":\"Auth\",\"url\":\"https://example.com/auth\",\"elicitationId\":\"el-1\"}";
+
+  #assert mcp_parse_elicit_action("accept") == MCP_ELICIT_ACCEPT;
+  #assert mcp_parse_elicit_action("decline") == MCP_ELICIT_DECLINE;
+  #assert mcp_parse_elicit_action("cancel") == MCP_ELICIT_CANCEL;
+  #assert mcp_parse_elicit_action("other") == 0;
+
+  jo_start(o[..], buf[..]);
+  mcp_write_elicit_result(o[..], MCP_ELICIT_ACCEPT, "{\"a\":1}");
+  #assert jo_text(o[..]) == "{\"action\":\"accept\",\"content\":{\"a\":1}}";
+  jo_start(o[..], buf[..]);
+  mcp_write_elicit_result(o[..], MCP_ELICIT_DECLINE, "");
+  #assert jo_text(o[..]) == "{\"action\":\"decline\"}";
+  jo_start(o[..], buf[..]);
+  mcp_write_elicit_result(o[..], MCP_ELICIT_CANCEL, "");
+  #assert jo_text(o[..]) == "{\"action\":\"cancel\"}";
+
+  // SEP-1034 defaults: preserves user-provided values and fills missing primitive defaults.
+  schema_s := "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"default\":\"anon\"},\"retries\":{\"type\":\"integer\",\"default\":3},\"verbose\":{\"type\":\"boolean\",\"default\":false},\"opt\":{\"type\":\"string\"}}}";
+  snodes: [64] JvNode; sd: [1] Jv;
+  #assert jv_parse(sd[..], schema_s, snodes[..]);
+  #assert jv_parse(d[..], "{\"name\":\"alice\"}", nodes[..]);
+  jo_start(o[..], buf[..]);
+  mcp_apply_elicit_defaults(sd[0], 0, d[0], 0, o[..]);
+  #assert jo_text(o[..]) == "{\"name\":\"alice\",\"retries\":3,\"verbose\":false}";
+
+  // SEP-1034 with absent content_node (-1) emits all defaults; absent properties emits content unchanged.
+  jo_start(o[..], buf[..]);
+  mcp_apply_elicit_defaults(sd[0], 0, d[0], -1, o[..]);
+  #assert jo_text(o[..]) == "{\"name\":\"anon\",\"retries\":3,\"verbose\":false}";
+  #assert jv_parse(sd[..], "{\"type\":\"object\"}", snodes[..]);
+  jo_start(o[..], buf[..]);
+  mcp_apply_elicit_defaults(sd[0], 0, d[0], 0, o[..]);
+  #assert jo_text(o[..]) == "{\"name\":\"alice\"}";
+
+  // Roots result.
+  roots := [2] McpRoot.[McpRoot.{ uri = "file:///a", name = "A" }, McpRoot.{ uri = "file:///b" }];
+  jo_start(o[..], buf[..]);
+  mcp_write_roots_result(o[..], roots[..]);
+  #assert jo_text(o[..]) == "{\"roots\":[{\"uri\":\"file:///a\",\"name\":\"A\"},{\"uri\":\"file:///b\"}]}";
+
+  // DiscoverResult (2026-07-28) and InitializeResult (2025-11-25).
+  vers := [2] string.["2026-07-28", "2025-11-25"];
+  sinfo := McpImplInfo.{ name = "Srv", version = "1.0" };
+  scaps := McpServerCaps.{ tools = true };
+  jo_start(o[..], buf[..]);
+  mcp_write_discover_result(o[..], vers[..], scaps, sinfo, "I", McpCacheHint.{ has_ttl = true, ttl_ms = 1000, scope = MCP_CACHE_PUBLIC });
+  #assert jo_text(o[..]) == "{\"resultType\":\"complete\",\"supportedVersions\":[\"2026-07-28\",\"2025-11-25\"],\"capabilities\":{\"tools\":{}},\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"Srv\",\"version\":\"1.0\"}},\"instructions\":\"I\",\"ttlMs\":1000,\"cacheScope\":\"public\"}";
+
+  jo_start(o[..], buf[..]);
+  mcp_write_discover_result(o[..], vers[0..<1], scaps, sinfo, "", McpCacheHint.{});
+  #assert jo_text(o[..]) == "{\"resultType\":\"complete\",\"supportedVersions\":[\"2026-07-28\"],\"capabilities\":{\"tools\":{}},\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"Srv\",\"version\":\"1.0\"}}}";
+
+  jo_start(o[..], buf[..]);
+  mcp_write_initialize_result(o[..], MCP_V_2025_11_25, scaps, sinfo, "I");
+  #assert jo_text(o[..]) == "{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"Srv\",\"version\":\"1.0\"},\"instructions\":\"I\"}";
+  jo_start(o[..], buf[..]);
+  mcp_write_initialize_result(o[..], MCP_V_2025_11_25, scaps, sinfo, "");
+  #assert jo_text(o[..]) == "{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"Srv\",\"version\":\"1.0\"}}";
+
+  // Progress, Cancelled, and Log notifications.
+  jo_start(o[..], buf[..]);
+  mcp_write_progress_notification(o[..], MCP_PTOK_STR, 0, "p1", "50", "100", "M");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{\"progressToken\":\"p1\",\"progress\":50,\"total\":100,\"message\":\"M\"}}";
+  jo_start(o[..], buf[..]);
+  mcp_write_progress_notification(o[..], MCP_PTOK_INT, 7, "", "1", "", "");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{\"progressToken\":7,\"progress\":1}}";
+
+  jo_start(o[..], buf[..]);
+  mcp_write_cancelled_notification(o[..], true, 0, "r1", "R");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":\"r1\",\"reason\":\"R\"}}";
+  jo_start(o[..], buf[..]);
+  mcp_write_cancelled_notification(o[..], false, 9, "", "");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":9}}";
+
+  jo_start(o[..], buf[..]);
+  mcp_write_log_notification(o[..], MCP_LOG_ERROR, "L", "\"boom\"");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"level\":\"error\",\"logger\":\"L\",\"data\":\"boom\"}}";
+  jo_start(o[..], buf[..]);
+  mcp_write_log_notification(o[..], MCP_LOG_INFO, "", "{\"ok\":true}");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"level\":\"info\",\"data\":{\"ok\":true}}}";
+}
+
+mcp_cursor_encode :: (offset: int, out: [] u8) -> int #effects(all) {
+  if offset < 0 { return -1; }
+  digits: [16] u8;
+  dn := 0;
+  if offset == 0 {
+    digits[0] = '0';
+    dn = 1;
+  } else {
+    v := offset;
+    while v > 0 {
+      digits[dn] = cast(u8) ('0' + (v % 10));
+      dn += 1;
+      v = v / 10;
+    }
+  }
+  need := 2 + dn;
+  if out.count < need { return -1; }
+  out[0] = 'p';
+  out[1] = ':';
+  for i: 0..<dn { out[2 + i] = digits[dn - 1 - i]; }
+  return need;
+}
+
+mcp_cursor_decode :: (cursor: string) -> int #effects(all) {
+  if cursor.count < 3 || cursor[0] != 'p' || cursor[1] != ':' { return -1; }
+  if cursor.count > 3 && cursor[2] == '0' { return -1; }
+  val := 0;
+  for i: 2..<cursor.count {
+    c := cursor[i];
+    if c < '0' || c > '9' { return -1; }
+    val = val * 10 + cast(int) (c - '0');
+    if val > 1000000 { return -1; }
+  }
+  return val;
+}
+
+mcp_write_tool_def :: (o: [] Jo, t: McpToolDef) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "name"); jo_str(o, t.name);
+  if t.title.count != 0 { jo_key(o, "title"); jo_str(o, t.title); }
+  if t.description.count != 0 { jo_key(o, "description"); jo_str(o, t.description); }
+  jo_key(o, "inputSchema");
+  if t.input_schema_json.count != 0 { jo_raw(o, t.input_schema_json); } else { jo_raw(o, "{\"type\":\"object\"}"); }
+  if t.output_schema_json.count != 0 { jo_key(o, "outputSchema"); jo_raw(o, t.output_schema_json); }
+  if t.annotations.present {
+    jo_key(o, "annotations"); jo_obj(o);
+    if t.annotations.title.count != 0 { jo_key(o, "title"); jo_str(o, t.annotations.title); }
+    if t.annotations.has_read_only { jo_key(o, "readOnlyHint"); jo_bool(o, t.annotations.read_only_hint); }
+    if t.annotations.has_destructive { jo_key(o, "destructiveHint"); jo_bool(o, t.annotations.destructive_hint); }
+    if t.annotations.has_idempotent { jo_key(o, "idempotentHint"); jo_bool(o, t.annotations.idempotent_hint); }
+    if t.annotations.has_open_world { jo_key(o, "openWorldHint"); jo_bool(o, t.annotations.open_world_hint); }
+    jo_end(o);
+  }
+  jo_end(o);
+}
+
+mcp_parse_mrtr_common :: (d: Jv, params_node: int, meta_out: [] McpRequestMeta, state_out: [] string, ir_out: [] int) -> bool #effects(all) {
+  meta := mcp_parse_request_meta(d, jv_get(d, params_node, "_meta"));
+  if !meta.ok { return false; }
+  meta_out[0] = meta;
+  rs := jv_get(d, params_node, "requestState");
+  if rs != -1 {
+    if jv_kind(d, rs) != JV_STRING { return false; }
+    state_out[0] = jv_raw(d, rs);
+  }
+  ir := jv_get(d, params_node, "inputResponses");
+  if ir != -1 {
+    if jv_kind(d, ir) != JV_OBJECT { return false; }
+    ir_out[0] = ir;
+  }
+  return true;
+}
+
+mcp_parse_call_tool_req :: (d: Jv, params_node: int) -> McpCallToolReq #effects(all) {
+  r: McpCallToolReq;
+  if jv_kind(d, params_node) != JV_OBJECT { return r; }
+  nn := jv_get(d, params_node, "name");
+  if jv_kind(d, nn) != JV_STRING { return r; }
+  name := jv_raw(d, nn);
+  if name.count == 0 { return r; }
+  an := jv_get(d, params_node, "arguments");
+  if an != -1 && jv_kind(d, an) != JV_OBJECT { return r; }
+  meta: [1] McpRequestMeta; st: [1] string; ir: [1] int; ir[0] = -1;
+  if !mcp_parse_mrtr_common(d, params_node, meta[..], st[..], ir[..]) { return r; }
+  r.ok = true;
+  r.name = name;
+  r.arguments_node = an;
+  r.meta = meta[0];
+  r.request_state = st[0];
+  r.input_responses_node = ir[0];
+  return r;
+}
+
+mcp_write_call_tool_result :: (o: [] Jo, modern: bool, content: [] McpContent, is_error: bool, structured_json: string) #effects(all) {
+  jo_obj(o);
+  mcp_write_result_type(o, modern, false);
+  jo_key(o, "content"); jo_arr(o);
+  for c: content { mcp_write_content(o, c); }
+  jo_end(o);
+  if is_error { jo_key(o, "isError"); jo_bool(o, true); }
+  if structured_json.count != 0 { jo_key(o, "structuredContent"); jo_raw(o, structured_json); }
+  jo_end(o);
+}
+
+mcp_write_resource_def :: (o: [] Jo, r: McpResourceDef) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "uri"); jo_str(o, r.uri);
+  jo_key(o, "name"); jo_str(o, r.name);
+  if r.title.count != 0 { jo_key(o, "title"); jo_str(o, r.title); }
+  if r.description.count != 0 { jo_key(o, "description"); jo_str(o, r.description); }
+  if r.mime_type.count != 0 { jo_key(o, "mimeType"); jo_str(o, r.mime_type); }
+  if r.has_size { jo_key(o, "size"); jo_int(o, r.size); }
+  if mcp_annotations_present(r.annotations) {
+    jo_key(o, "annotations"); mcp_write_annotations(o, r.annotations);
+  }
+  jo_end(o);
+}
+
+mcp_write_resource_template_def :: (o: [] Jo, rt: McpResourceTemplateDef) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "uriTemplate"); jo_str(o, rt.uri_template);
+  jo_key(o, "name"); jo_str(o, rt.name);
+  if rt.title.count != 0 { jo_key(o, "title"); jo_str(o, rt.title); }
+  if rt.description.count != 0 { jo_key(o, "description"); jo_str(o, rt.description); }
+  if rt.mime_type.count != 0 { jo_key(o, "mimeType"); jo_str(o, rt.mime_type); }
+  if mcp_annotations_present(rt.annotations) {
+    jo_key(o, "annotations"); mcp_write_annotations(o, rt.annotations);
+  }
+  jo_end(o);
+}
+
+mcp_parse_read_resource_req :: (d: Jv, params_node: int) -> McpReadResourceReq #effects(all) {
+  r: McpReadResourceReq;
+  if jv_kind(d, params_node) != JV_OBJECT { return r; }
+  un := jv_get(d, params_node, "uri");
+  if jv_kind(d, un) != JV_STRING { return r; }
+  uri := jv_raw(d, un);
+  if uri.count == 0 { return r; }
+  meta: [1] McpRequestMeta; st: [1] string; ir: [1] int; ir[0] = -1;
+  if !mcp_parse_mrtr_common(d, params_node, meta[..], st[..], ir[..]) { return r; }
+  r.ok = true;
+  r.uri = uri;
+  r.meta = meta[0];
+  r.request_state = st[0];
+  r.input_responses_node = ir[0];
+  return r;
+}
+
+mcp_write_read_resource_result :: (o: [] Jo, modern: bool, contents: [] McpResourceContents, cache: McpCacheHint) #effects(all) {
+  jo_obj(o);
+  mcp_write_result_type(o, modern, false);
+  jo_key(o, "contents"); jo_arr(o);
+  for c: contents { mcp_write_resource_contents(o, c); }
+  jo_end(o);
+  mcp_write_cache_hint(o, cache);
+  jo_end(o);
+}
+
+mcp_write_prompt_def :: (o: [] Jo, p: McpPromptDef) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "name"); jo_str(o, p.name);
+  if p.title.count != 0 { jo_key(o, "title"); jo_str(o, p.title); }
+  if p.description.count != 0 { jo_key(o, "description"); jo_str(o, p.description); }
+  if p.arg_count != 0 {
+    jo_key(o, "arguments"); jo_arr(o);
+    for i: 0..<p.arg_count {
+      a := p.args[i];
+      jo_obj(o);
+      jo_key(o, "name"); jo_str(o, a.name);
+      if a.description.count != 0 { jo_key(o, "description"); jo_str(o, a.description); }
+      if a.required { jo_key(o, "required"); jo_bool(o, true); }
+      jo_end(o);
+    }
+    jo_end(o);
+  }
+  jo_end(o);
+}
+
+mcp_parse_get_prompt_req :: (d: Jv, params_node: int) -> McpGetPromptReq #effects(all) {
+  r: McpGetPromptReq;
+  if jv_kind(d, params_node) != JV_OBJECT { return r; }
+  nn := jv_get(d, params_node, "name");
+  if jv_kind(d, nn) != JV_STRING { return r; }
+  name := jv_raw(d, nn);
+  if name.count == 0 { return r; }
+  an := jv_get(d, params_node, "arguments");
+  if an != -1 && jv_kind(d, an) != JV_OBJECT { return r; }
+  meta: [1] McpRequestMeta; st: [1] string; ir: [1] int; ir[0] = -1;
+  if !mcp_parse_mrtr_common(d, params_node, meta[..], st[..], ir[..]) { return r; }
+  r.ok = true;
+  r.name = name;
+  r.arguments_node = an;
+  r.meta = meta[0];
+  r.request_state = st[0];
+  r.input_responses_node = ir[0];
+  return r;
+}
+
+mcp_write_get_prompt_result :: (o: [] Jo, modern: bool, description: string, messages: [] McpPromptMessage) #effects(all) {
+  jo_obj(o);
+  mcp_write_result_type(o, modern, false);
+  if description.count != 0 { jo_key(o, "description"); jo_str(o, description); }
+  jo_key(o, "messages"); jo_arr(o);
+  for m: messages {
+    jo_obj(o);
+    jo_key(o, "role");
+    if m.is_assistant { jo_str(o, "assistant"); } else { jo_str(o, "user"); }
+    jo_key(o, "content"); mcp_write_content(o, m.content);
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_end(o);
+}
+
+mcp_parse_complete_req :: (d: Jv, params_node: int) -> McpCompleteReq #effects(all) {
+  r: McpCompleteReq;
+  if jv_kind(d, params_node) != JV_OBJECT { return r; }
+  meta := mcp_parse_request_meta(d, jv_get(d, params_node, "_meta"));
+  if !meta.ok { return r; }
+
+  rn := jv_get(d, params_node, "ref");
+  if jv_kind(d, rn) != JV_OBJECT { return r; }
+  tn := jv_get(d, rn, "type");
+  if jv_kind(d, tn) != JV_STRING { return r; }
+  rt := jv_raw(d, tn);
+  if rt == "ref/prompt" {
+    pn := jv_get(d, rn, "name");
+    if jv_kind(d, pn) != JV_STRING || jv_raw(d, pn).count == 0 { return r; }
+    r.ref_kind = MCP_REF_PROMPT;
+    r.ref_target = jv_raw(d, pn);
+  } else if rt == "ref/resource" {
+    un := jv_get(d, rn, "uri");
+    if jv_kind(d, un) != JV_STRING || jv_raw(d, un).count == 0 { return r; }
+    r.ref_kind = MCP_REF_RESOURCE;
+    r.ref_target = jv_raw(d, un);
+  } else {
+    return r;
+  }
+
+  an := jv_get(d, params_node, "argument");
+  if jv_kind(d, an) != JV_OBJECT { return r; }
+  ann := jv_get(d, an, "name");
+  avn := jv_get(d, an, "value");
+  if jv_kind(d, ann) != JV_STRING || jv_raw(d, ann).count == 0 || jv_kind(d, avn) != JV_STRING { return r; }
+  r.arg_name = jv_raw(d, ann);
+  r.arg_value = jv_raw(d, avn);
+
+  cn := jv_get(d, params_node, "context");
+  if cn != -1 {
+    if jv_kind(d, cn) != JV_OBJECT { return r; }
+    can := jv_get(d, cn, "arguments");
+    if can != -1 && jv_kind(d, can) != JV_OBJECT { return r; }
+    r.context_args_node = can;
+  }
+
+  r.meta = meta;
+  r.ok = true;
+  return r;
+}
+
+mcp_write_complete_result :: (o: [] Jo, modern: bool, values: [] string, has_total: bool, total: int, has_more: bool) #effects(all) {
+  jo_obj(o);
+  mcp_write_result_type(o, modern, false);
+  jo_key(o, "completion"); jo_obj(o);
+  jo_key(o, "values"); jo_arr(o);
+  for v: values { jo_str(o, v); }
+  jo_end(o);
+  if has_total { jo_key(o, "total"); jo_int(o, total); }
+  if has_more { jo_key(o, "hasMore"); jo_bool(o, true); }
+  jo_end(o);
+  jo_end(o);
+}
+
+mcp_write_elicit_form_params :: (o: [] Jo, message: string, schema_json: string) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "mode"); jo_str(o, "form");
+  jo_key(o, "message"); jo_str(o, message);
+  jo_key(o, "requestedSchema"); jo_raw(o, schema_json);
+  jo_end(o);
+}
+
+mcp_write_elicit_url_params :: (o: [] Jo, message: string, url: string, elicitation_id: string) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "mode"); jo_str(o, "url");
+  jo_key(o, "message"); jo_str(o, message);
+  jo_key(o, "url"); jo_str(o, url);
+  jo_key(o, "elicitationId"); jo_str(o, elicitation_id);
+  jo_end(o);
+}
+
+mcp_parse_elicit_action :: (s: string) -> int #effects(all) {
+  if s == "accept" { return MCP_ELICIT_ACCEPT; }
+  if s == "decline" { return MCP_ELICIT_DECLINE; }
+  if s == "cancel" { return MCP_ELICIT_CANCEL; }
+  return 0;
+}
+
+mcp_write_elicit_result :: (o: [] Jo, action: int, content_json: string) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "action");
+  if action == MCP_ELICIT_ACCEPT {
+    jo_str(o, "accept");
+  } else if action == MCP_ELICIT_DECLINE {
+    jo_str(o, "decline");
+  } else {
+    jo_str(o, "cancel");
+  }
+  if content_json.count != 0 { jo_key(o, "content"); jo_raw(o, content_json); }
+  jo_end(o);
+}
+
+// SEP-1034 client defaults: writes merged object containing existing content
+// fields plus any missing property's "default" from requestedSchema.properties.
+mcp_apply_elicit_defaults :: (sd: Jv, schema_node: int, cd: Jv, content_node: int, o: [] Jo) #effects(all) {
+  jo_obj(o);
+  has_content := jv_kind(cd, content_node) == JV_OBJECT;
+  if has_content {
+    cn := jv_len(cd, content_node);
+    for i: 0..<cn {
+      ch := jv_at(cd, content_node, i);
+      jo_key(o, jv_key(cd, ch));
+      jv_write(cd, ch, o);
+    }
+  }
+  props := jv_get(sd, schema_node, "properties");
+  if jv_kind(sd, props) == JV_OBJECT {
+    pn := jv_len(sd, props);
+    for i: 0..<pn {
+      prop := jv_at(sd, props, i);
+      pk := jv_key(sd, prop);
+      if has_content && jv_get(cd, content_node, pk) != -1 { continue; }
+      def_n := jv_get(sd, prop, "default");
+      if def_n != -1 {
+        jo_key(o, pk);
+        jv_write(sd, def_n, o);
+      }
+    }
+  }
+  jo_end(o);
+}
+
+mcp_write_roots_result :: (o: [] Jo, roots: [] McpRoot) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "roots"); jo_arr(o);
+  for r: roots {
+    jo_obj(o);
+    jo_key(o, "uri"); jo_str(o, r.uri);
+    if r.name.count != 0 { jo_key(o, "name"); jo_str(o, r.name); }
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_end(o);
+}
+
+mcp_write_discover_result :: (o: [] Jo, supported_versions: [] string, caps: McpServerCaps, server_info: McpImplInfo, instructions: string, cache: McpCacheHint) #effects(all) {
+  jo_obj(o);
+  mcp_write_result_type(o, true, false);
+  jo_key(o, "supportedVersions"); jo_arr(o);
+  for v: supported_versions { jo_str(o, v); }
+  jo_end(o);
+  jo_key(o, "capabilities"); mcp_write_server_caps(o, caps);
+  jo_key(o, "_meta"); jo_obj(o);
+  jo_key(o, MCP_META_SERVER_INFO); mcp_write_impl_info(o, server_info);
+  jo_end(o);
+  if instructions.count != 0 { jo_key(o, "instructions"); jo_str(o, instructions); }
+  mcp_write_cache_hint(o, cache);
+  jo_end(o);
+}
+
+mcp_write_initialize_result :: (o: [] Jo, protocol_version: string, caps: McpServerCaps, server_info: McpImplInfo, instructions: string) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "protocolVersion"); jo_str(o, protocol_version);
+  jo_key(o, "capabilities"); mcp_write_server_caps(o, caps);
+  jo_key(o, "serverInfo"); mcp_write_impl_info(o, server_info);
+  if instructions.count != 0 { jo_key(o, "instructions"); jo_str(o, instructions); }
+  jo_end(o);
+}
+
+mcp_write_progress_notification :: (o: [] Jo, ptok_kind: int, ptok_int: int, ptok_str: string, progress_raw: string, total_raw: string, message: string) #effects(all) {
+  jrpc_write_notification(o, "notifications/progress");
+  jo_key(o, "params"); jo_obj(o);
+  jo_key(o, "progressToken");
+  if ptok_kind == MCP_PTOK_INT { jo_int(o, ptok_int); } else { jo_str(o, ptok_str); }
+  jo_key(o, "progress"); jo_raw(o, progress_raw);
+  if total_raw.count != 0 { jo_key(o, "total"); jo_raw(o, total_raw); }
+  if message.count != 0 { jo_key(o, "message"); jo_str(o, message); }
+  jo_end(o);
+  jo_end(o);
+}
+
+mcp_write_cancelled_notification :: (o: [] Jo, req_id_is_str: bool, req_id_int: int, req_id_str: string, reason: string) #effects(all) {
+  jrpc_write_notification(o, "notifications/cancelled");
+  jo_key(o, "params"); jo_obj(o);
+  jo_key(o, "requestId");
+  if req_id_is_str { jo_str(o, req_id_str); } else { jo_int(o, req_id_int); }
+  if reason.count != 0 { jo_key(o, "reason"); jo_str(o, reason); }
+  jo_end(o);
+  jo_end(o);
+}
+
+mcp_write_log_notification :: (o: [] Jo, level: int, logger: string, data_json: string) #effects(all) {
+  jrpc_write_notification(o, "notifications/message");
+  jo_key(o, "params"); jo_obj(o);
+  jo_key(o, "level"); jo_str(o, mcp_log_level_name(level));
+  if logger.count != 0 { jo_key(o, "logger"); jo_str(o, logger); }
+  jo_key(o, "data"); jo_raw(o, data_json);
+  jo_end(o);
+  jo_end(o);
+}

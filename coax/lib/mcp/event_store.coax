@@ -1,0 +1,427 @@
+// Bounded byte-capped SSE EventStore ring buffer and replay deduplicator
+// for MCP 2025-11-25 Last-Event-ID resumability and SEP-1699 retry polling.
+// Pure zero-heap #authority module.
+#authority;
+
+MCP_EVSTORE_MAX_SLOTS :: 32;
+MCP_EVSTORE_DATA_CAP :: 4096;
+MCP_EVSTORE_ID_MAX :: 48;
+MCP_EVSTORE_STREAM_MAX :: 32;
+MCP_EVSTORE_DEDUP_CAP :: 32;
+
+McpEventSlot :: struct {
+  seq: int;
+  id_len: int;
+  id: [MCP_EVSTORE_ID_MAX] u8;
+  stream_len: int;
+  stream: [MCP_EVSTORE_STREAM_MAX] u8;
+  data_off: int;
+  data_len: int;
+}
+
+McpEventStore :: struct {
+  next_seq: int;
+  count: int;
+  head: int; // index of oldest active slot in ring
+  used_bytes: int;
+  max_bytes: int;
+  write_pos: int;
+  slots: [MCP_EVSTORE_MAX_SLOTS] McpEventSlot;
+  data: [MCP_EVSTORE_DATA_CAP] u8;
+}
+
+McpReplayDedup :: struct {
+  count: int;
+  head: int;
+  lens: [MCP_EVSTORE_DEDUP_CAP] int;
+  ids: [MCP_EVSTORE_DEDUP_CAP][MCP_EVSTORE_ID_MAX] u8;
+}
+
+McpReplayView :: struct {
+  ok: bool;
+  stream_len: int;
+  stream: [MCP_EVSTORE_STREAM_MAX] u8;
+  start_index: int; // offset into active slots (0..<count) of first event AFTER last_event_id
+  replay_count: int;
+}
+
+#test "event store appends, formats monotonic event ids, and replays strictly after Last-Event-ID" {
+  st: [1] McpEventStore;
+  mcp_evstore_init(st[..], MCP_EVSTORE_DATA_CAP);
+  #assert st[0].max_bytes == MCP_EVSTORE_DATA_CAP && st[0].count == 0;
+
+  // Direct mcp_ev_format_id boundary checks.
+  idbuf: [MCP_EVSTORE_ID_MAX] u8;
+  #assert mcp_ev_format_id("", 1, idbuf[..]) == -1;
+  #assert mcp_ev_format_id("a", 0, idbuf[..]) == -1;
+  #assert mcp_ev_format_id("012345678901234567890123456789012", 1, idbuf[..]) == -1; // 33 > 32
+  #assert mcp_ev_format_id("01234567890123456789012345678901", 1, idbuf[..]) == 34; // exact 32
+  #assert mcp_ev_format_id("a", 1, idbuf[0..<3]) == 3; // exact out.count
+  #assert mcp_ev_format_id("a", 1, idbuf[0..<2]) == -1;
+  // Exact MCP_EVSTORE_ID_MAX (48) vs 49 using a 64-byte out buffer so ID_MAX triggers independently.
+  id64: [64] u8;
+  s32 := "01234567890123456789012345678901";
+  #assert mcp_ev_format_id(s32, 123456789012345, id64[..]) == 48; // 32 + 1 + 15 = 48
+  #assert mcp_ev_format_id(s32, 1234567890123456, id64[..]) == -1; // 49 > 48
+
+  id1: [MCP_EVSTORE_ID_MAX] u8;
+  id2: [MCP_EVSTORE_ID_MAX] u8;
+  id3: [MCP_EVSTORE_ID_MAX] u8;
+  id4: [MCP_EVSTORE_ID_MAX] u8;
+
+  n1 := mcp_evstore_append(st[..], "s1", "{\"n\":1}", id1[..]);
+  n2 := mcp_evstore_append(st[..], "s2", "{\"n\":2}", id2[..]);
+  n3 := mcp_evstore_append(st[..], "s1", "{\"n\":3}", id3[..]);
+  n4 := mcp_evstore_append(st[..], "s1", "{\"n\":4}", id4[..]);
+  #assert n1 == 4 && n2 == 4 && n3 == 4 && n4 == 4;
+  s_id1 := cast(string) id1[0..<n1];
+  s_id2 := cast(string) id2[0..<n2];
+  s_id3 := cast(string) id3[0..<n3];
+  #assert s_id1 == "s1:1" && s_id2 == "s2:2" && s_id3 == "s1:3";
+
+  // First-byte difference check in bytes comparison (a1 vs s1, s1:1 vs x1:1).
+  #assert !mcp_evstore_find_replay(st[0], "x1:1").ok;
+  #assert mcp_evstore_append(st[..], "a1", "z", idbuf[..]) > 0;
+  #assert mcp_evstore_append(st[..], "s10", "w", idbuf[..]) > 0; // different stream_len
+
+  // Replay after s1:1 yields only s1 events strictly after seq 1 (s1:3 and s1:4).
+  rv := mcp_evstore_find_replay(st[0], s_id1);
+  #assert rv.ok && cast(string) rv.stream[0..<rv.stream_len] == "s1" && rv.replay_count == 2;
+
+  pbuf: [128] u8;
+  ebuf: [MCP_EVSTORE_ID_MAX] u8;
+  el: [1] int;
+  pl := mcp_evstore_replay_at(st[0], rv, 0, ebuf[0..<4], el[..], pbuf[0..<7]); // exact fit
+  #assert pl == 7 && cast(string) pbuf[0..<pl] == "{\"n\":3}" && cast(string) ebuf[0..<el[0]] == "s1:3";
+  pl = mcp_evstore_replay_at(st[0], rv, 1, ebuf[..], el[..], pbuf[..]);
+  #assert pl == 7 && cast(string) pbuf[0..<pl] == "{\"n\":4}" && cast(string) ebuf[0..<el[0]] == "s1:4";
+  #assert mcp_evstore_replay_at(st[0], rv, 2, ebuf[..], el[..], pbuf[..]) == -1;
+  #assert mcp_evstore_replay_at(st[0], rv, -1, ebuf[..], el[..], pbuf[..]) == -1;
+
+  // Replay after latest event on stream s1 yields 0 events (still ok).
+  rv_end := mcp_evstore_find_replay(st[0], cast(string) id4[0..<n4]);
+  #assert rv_end.ok && rv_end.replay_count == 0;
+  #assert mcp_evstore_replay_at(st[0], rv_end, 0, ebuf[..], el[..], pbuf[..]) == -1;
+
+  // Unknown or bad Last-Event-ID returns ok=false; replay_at with !rv.ok and non-zero replay_count returns -1.
+  bad_rv := mcp_evstore_find_replay(st[0], "s1:999");
+  #assert !bad_rv.ok;
+  fake_bad := rv;
+  fake_bad.ok = false;
+  #assert mcp_evstore_replay_at(st[0], fake_bad, 0, ebuf[..], el[..], pbuf[..]) == -1;
+  #assert !mcp_evstore_find_replay(st[0], "").ok;
+  #assert !mcp_evstore_find_replay(st[0], "x").ok;
+
+  // Buffer too small for payload or event id returns -1.
+  #assert mcp_evstore_replay_at(st[0], rv, 0, ebuf[..], el[..], pbuf[0..<6]) == -1;
+  #assert mcp_evstore_replay_at(st[0], rv, 0, ebuf[0..<3], el[..], pbuf[..]) == -1;
+}
+
+#test "event store enforces byte cap, slot cap, wrap-around, and rejects invalid inputs" {
+  st: [1] McpEventStore;
+  // Boundary checks for max_bytes: 0, 1, DATA_CAP, DATA_CAP+1.
+  mcp_evstore_init(st[..], 0);
+  #assert st[0].max_bytes == MCP_EVSTORE_DATA_CAP;
+  mcp_evstore_init(st[..], 1);
+  #assert st[0].max_bytes == 1;
+  mcp_evstore_init(st[..], MCP_EVSTORE_DATA_CAP);
+  #assert st[0].max_bytes == MCP_EVSTORE_DATA_CAP;
+  mcp_evstore_init(st[..], MCP_EVSTORE_DATA_CAP + 1);
+  #assert st[0].max_bytes == MCP_EVSTORE_DATA_CAP;
+
+  // Evict on empty store is a no-op; evict with 1 element clears to 0.
+  mcp_evstore_evict_oldest(st[..]);
+  #assert st[0].count == 0;
+
+  // Small byte cap triggers oldest eviction while keeping newest payloads intact.
+  mcp_evstore_init(st[..], 20);
+  id: [MCP_EVSTORE_ID_MAX] u8;
+  #assert mcp_evstore_append(st[..], "a", "01234567890123456789", id[..]) > 0; // exact max_bytes (20)
+  #assert st[0].count == 1 && st[0].used_bytes == 20;
+  mcp_evstore_evict_oldest(st[..]);
+  #assert st[0].count == 0 && st[0].used_bytes == 0;
+
+  mcp_evstore_init(st[..], 20);
+  #assert mcp_evstore_append(st[..], "a", "0123456789", id[..]) > 0; // 10 bytes
+  #assert mcp_evstore_append(st[..], "a", "abcdefghij", id[..]) > 0; // 20 bytes
+  #assert st[0].count == 2 && st[0].used_bytes == 20;
+  #assert mcp_evstore_append(st[..], "a", "KLMNOPQRST", id[..]) > 0; // evicts first -> 20 bytes
+  #assert st[0].count == 2 && st[0].used_bytes == 20;
+  #assert !mcp_evstore_find_replay(st[0], "a:1").ok; // evicted!
+  rv := mcp_evstore_find_replay(st[0], "a:2");
+  #assert rv.ok && rv.replay_count == 1;
+  pbuf: [32] u8; ebuf: [MCP_EVSTORE_ID_MAX] u8; el: [1] int;
+  #assert mcp_evstore_replay_at(st[0], rv, 0, ebuf[..], el[..], pbuf[..]) == 10;
+  #assert cast(string) pbuf[0..<10] == "KLMNOPQRST";
+
+  // Payload larger than max_bytes, empty/oversize stream name, exact-32 stream, short id_out.
+  #assert mcp_evstore_append(st[..], "a", "012345678901234567890", id[..]) == -1;
+  #assert mcp_evstore_append(st[..], "", "x", id[..]) == -1;
+  #assert mcp_evstore_append(st[..], "012345678901234567890123456789012", "x", id[..]) == -1;
+  #assert mcp_evstore_append(st[..], "01234567890123456789012345678901", "x", id[..]) == 34;
+  #assert mcp_evstore_append(st[..], "a", "x", id[0..<2]) == -1;
+  // Empty priming event payload (SEP-1699 priming event with id + empty data) is valid!
+  #assert mcp_evstore_append(st[..], "a", "", id[..]) > 0;
+
+  // Exact slot cap wrap-around (MCP_EVSTORE_MAX_SLOTS + 40 events) and ring data wrap-around across 4096 boundary.
+  mcp_evstore_init(st[..], MCP_EVSTORE_DATA_CAP);
+  for i: 0..<MCP_EVSTORE_MAX_SLOTS {
+    #assert mcp_evstore_append(st[..], "s", "x", id[..]) > 0;
+  }
+  #assert st[0].count == MCP_EVSTORE_MAX_SLOTS && st[0].head == 0;
+  #assert mcp_evstore_append(st[..], "s", "y", id[..]) > 0; // evicts s:1 -> head=1, count=32
+  #assert st[0].count == MCP_EVSTORE_MAX_SLOTS && st[0].head == 1;
+  #assert !mcp_evstore_find_replay(st[0], "s:1").ok;
+  #assert mcp_evstore_find_replay(st[0], "s:2").ok;
+  #assert mcp_evstore_find_replay(st[0], "s:2").replay_count == MCP_EVSTORE_MAX_SLOTS - 1;
+
+  // Wrap head all the way past MCP_EVSTORE_MAX_SLOTS (31 -> 0) and verify exact data ring wrap at 4096 bytes.
+  mcp_evstore_init(st[..], MCP_EVSTORE_DATA_CAP);
+  p256: [256] u8;
+  for i: 0..<256 { p256[i] = cast(u8) ('A' + (i % 26)); }
+  for i: 0..<16 {
+    #assert mcp_evstore_append(st[..], "w", cast(string) p256[..], id[..]) > 0;
+  }
+  #assert st[0].write_pos == 0; // exact wrap at 4096
+  // Push 48 small events across two streams so head wraps past 31 -> 0 -> 16, and head+found >= 32!
+  for i: 0..<48 {
+    sname := ifx (i % 2) == 0 then "w" else "z";
+    #assert mcp_evstore_append(st[..], sname, "xy", id[..]) > 0;
+  }
+  #assert st[0].count == MCP_EVSTORE_MAX_SLOTS && st[0].head == 0;
+  // Push 10 more so head = 10, then look up z:72 at (10+29)%32 = 7 (stream z) vs (10+29)/32 = 1 (make slot 1 stream w!)
+  // Use unique stream names "a".."z" or check replay_at on wrapped slot!
+  for i: 0..<10 {
+    sname := ifx i == 7 || i == 9 then "z" else "w";
+    #assert mcp_evstore_append(st[..], sname, ifx i == 9 then "ZZ" else "xy", id[..]) > 0;
+  }
+  #assert st[0].head == 10;
+  rv_wrap_slot := mcp_evstore_find_replay(st[0], "z:72"); // logical k=29 -> (10+29)%32 = 7 (stream z), (10+29)/32 = 1 (stream w!)
+  #assert rv_wrap_slot.ok && cast(string) rv_wrap_slot.stream[0..<rv_wrap_slot.stream_len] == "z" && rv_wrap_slot.replay_count == 1;
+  #assert mcp_evstore_replay_at(st[0], rv_wrap_slot, 0, ebuf[..], el[..], pbuf[..]) == 2 && cast(string) pbuf[0..<2] == "ZZ";
+
+  // Test replay of a payload that physically straddles index 4095 -> 0 with distinct bytes at every offset!
+  mcp_evstore_init(st[..], MCP_EVSTORE_DATA_CAP);
+  p300: [300] u8;
+  for i: 0..<300 { p300[i] = cast(u8) ((i * 7 + 3) % 90 + 33); }
+  for i: 0..<14 {
+    // 14 * 300 = 4200 -> 14th event starts at 3900, straddles 4095->0, ends at 104!
+    #assert mcp_evstore_append(st[..], "r", cast(string) p300[..], id[..]) > 0;
+  }
+  rv_data_wrap := mcp_evstore_find_replay(st[0], "r:13");
+  #assert rv_data_wrap.ok && rv_data_wrap.replay_count == 1;
+  out300: [300] u8;
+  #assert mcp_evstore_replay_at(st[0], rv_data_wrap, 0, ebuf[..], el[..], out300[..]) == 300;
+  #assert cast(string) out300[..] == cast(string) p300[..];
+}
+
+#test "replay deduplicator detects duplicates and evicts oldest on capacity" {
+  dd: [1] McpReplayDedup;
+  mcp_dedup_init(dd[..]);
+  #assert !mcp_dedup_seen(dd[0], "s1:1");
+  #assert mcp_dedup_mark(dd[..], "s1:1");
+  #assert mcp_dedup_seen(dd[0], "s1:1");
+  #assert !mcp_dedup_mark(dd[..], "s1:1"); // already present
+  #assert !mcp_dedup_mark(dd[..], "");
+  over: [MCP_EVSTORE_ID_MAX + 1] u8;
+  for i: 0..<over.count { over[i] = 'x'; }
+  #assert mcp_dedup_mark(dd[..], cast(string) over[0..<MCP_EVSTORE_ID_MAX]); // exact max
+  #assert !mcp_dedup_mark(dd[..], cast(string) over[..]); // max + 1
+
+  // Re-init clears dirty dedup table.
+  mcp_dedup_init(dd[..]);
+  #assert dd[0].count == 0 && !mcp_dedup_seen(dd[0], "s1:1");
+
+  // Fill exact MCP_EVSTORE_DEDUP_CAP then wrap around past 2*CAP to verify FIFO eviction order.
+  idbuf: [16] u8;
+  for i: 1..<(MCP_EVSTORE_DEDUP_CAP + 1) {
+    n := mcp_ev_format_id("s", i, idbuf[..]);
+    #assert n > 0 && mcp_dedup_mark(dd[..], cast(string) idbuf[0..<n]);
+  }
+  #assert dd[0].count == MCP_EVSTORE_DEDUP_CAP && dd[0].head == 0;
+  #assert mcp_dedup_seen(dd[0], "s:1") && mcp_dedup_seen(dd[0], "s:32");
+
+  // One more evicts s:1, retains s:2..s:33.
+  #assert mcp_dedup_mark(dd[..], "s:33");
+  #assert dd[0].count == MCP_EVSTORE_DEDUP_CAP && dd[0].head == 1;
+  #assert !mcp_dedup_seen(dd[0], "s:1") && mcp_dedup_seen(dd[0], "s:2") && mcp_dedup_seen(dd[0], "s:33");
+
+  // Push 32 more so head wraps back to 1.
+  for i: 34..<(34 + MCP_EVSTORE_DEDUP_CAP) {
+    n := mcp_ev_format_id("s", i, idbuf[..]);
+    #assert n > 0 && mcp_dedup_mark(dd[..], cast(string) idbuf[0..<n]);
+  }
+  #assert !mcp_dedup_seen(dd[0], "s:33") && mcp_dedup_seen(dd[0], "s:34") && mcp_dedup_seen(dd[0], "s:65");
+}
+
+#test "SEP-1699 retry delay clamps within safe bounds" {
+  #assert mcp_sse_retry_delay_ms(99) == 100;
+  #assert mcp_sse_retry_delay_ms(100) == 100;
+  #assert mcp_sse_retry_delay_ms(101) == 101;
+  #assert mcp_sse_retry_delay_ms(29999) == 29999;
+  #assert mcp_sse_retry_delay_ms(30000) == 30000;
+  #assert mcp_sse_retry_delay_ms(30001) == 30000;
+}
+
+mcp_evstore_init :: (st: [] McpEventStore, max_bytes: int) #effects(all) {
+  st[0] = McpEventStore.{};
+  cap := max_bytes;
+  if cap <= 0 || cap > MCP_EVSTORE_DATA_CAP { cap = MCP_EVSTORE_DATA_CAP; } // mutant: equivalent (cap==DATA_CAP sets DATA_CAP)
+  st[0].max_bytes = cap;
+}
+
+mcp_ev_format_id :: (stream: string, seq: int, out: [] u8) -> int #effects(all) {
+  if stream.count == 0 || stream.count > MCP_EVSTORE_STREAM_MAX || seq <= 0 { return -1; }
+  digits: [20] u8;
+  dn := 0;
+  v := seq;
+  while v > 0 {
+    digits[dn] = cast(u8) ('0' + (v % 10));
+    dn += 1;
+    v = v / 10;
+  }
+  need := stream.count + 1 + dn;
+  if need > MCP_EVSTORE_ID_MAX || need > out.count { return -1; }
+  for i: 0..<stream.count { out[i] = stream[i]; }
+  out[stream.count] = ':';
+  for i: 0..<dn { out[stream.count + 1 + i] = digits[dn - 1 - i]; }
+  return need;
+}
+
+mcp_evstore_evict_oldest :: (st: [] McpEventStore) #effects(all) {
+  if st[0].count == 0 { return; }
+  idx := st[0].head;
+  st[0].used_bytes -= st[0].slots[idx].data_len;
+  st[0].head = (idx + 1) % MCP_EVSTORE_MAX_SLOTS;
+  st[0].count -= 1;
+}
+
+mcp_evstore_append :: (st: [] McpEventStore, stream: string, payload: string, id_out: [] u8) -> int #effects(all) {
+  if payload.count > st[0].max_bytes { return -1; }
+  next_seq := st[0].next_seq + 1;
+  id_len := mcp_ev_format_id(stream, next_seq, id_out);
+  if id_len < 0 { return -1; } // mutant: equivalent (id_len is -1 or >=3)
+
+  while st[0].count >= MCP_EVSTORE_MAX_SLOTS || st[0].used_bytes + payload.count > st[0].max_bytes {
+    mcp_evstore_evict_oldest(st);
+  }
+
+  slot_idx := (st[0].head + st[0].count) % MCP_EVSTORE_MAX_SLOTS;
+  data_off := st[0].write_pos;
+  for i: 0..<payload.count {
+    st[0].data[(data_off + i) % MCP_EVSTORE_DATA_CAP] = payload[i];
+  }
+  st[0].write_pos = (data_off + payload.count) % MCP_EVSTORE_DATA_CAP;
+
+  st[0].next_seq = next_seq;
+  st[0].slots[slot_idx] = McpEventSlot.{
+    seq = next_seq,
+    id_len = id_len,
+    stream_len = stream.count,
+    data_off = data_off,
+    data_len = payload.count
+  };
+  for i: 0..<id_len { st[0].slots[slot_idx].id[i] = id_out[i]; }
+  for i: 0..<stream.count { st[0].slots[slot_idx].stream[i] = stream[i]; }
+  st[0].count += 1;
+  st[0].used_bytes += payload.count;
+  return id_len;
+}
+
+mcp_ev_bytes_eq :: (buf: [] const u8, n: int, s: string) -> bool #effects(all) {
+  if n != s.count { return false; }
+  for i: 0..<n {
+    if buf[i] != s[i] { return false; }
+  }
+  return true;
+}
+
+mcp_ev_bytes_eq_buf :: (a: [] const u8, an: int, b: [] const u8, bn: int) -> bool #effects(all) {
+  if an != bn { return false; }
+  for i: 0..<an {
+    if a[i] != b[i] { return false; }
+  }
+  return true;
+}
+
+mcp_evstore_find_replay :: (st: McpEventStore, last_event_id: string) -> McpReplayView #effects(all) {
+  r: McpReplayView;
+  found := -1;
+  for k: 0..<st.count {
+    idx := (st.head + k) % MCP_EVSTORE_MAX_SLOTS;
+    if mcp_ev_bytes_eq(st.slots[idx].id[..], st.slots[idx].id_len, last_event_id) {
+      found = k;
+      break;
+    }
+  }
+  if found < 0 { return r; }
+
+  fidx := (st.head + found) % MCP_EVSTORE_MAX_SLOTS;
+  r.ok = true;
+  r.stream_len = st.slots[fidx].stream_len;
+  for i: 0..<r.stream_len { r.stream[i] = st.slots[fidx].stream[i]; }
+  r.start_index = found + 1;
+  cnt := 0;
+  for k: r.start_index..<st.count {
+    idx := (st.head + k) % MCP_EVSTORE_MAX_SLOTS;
+    if mcp_ev_bytes_eq_buf(st.slots[idx].stream[..], st.slots[idx].stream_len, r.stream[..], r.stream_len) {
+      cnt += 1;
+    }
+  }
+  r.replay_count = cnt;
+  return r;
+}
+
+mcp_evstore_replay_at :: (st: McpEventStore, rv: McpReplayView, nth: int, id_out: [] u8, id_len_out: [] int, payload_out: [] u8) -> int #effects(all) {
+  if !rv.ok || nth < 0 { return -1; }
+  seen := 0;
+  for k: rv.start_index..<st.count {
+    idx := (st.head + k) % MCP_EVSTORE_MAX_SLOTS;
+    if !mcp_ev_bytes_eq_buf(st.slots[idx].stream[..], st.slots[idx].stream_len, rv.stream[..], rv.stream_len) { continue; }
+    if seen == nth {
+      sl := st.slots[idx];
+      if id_out.count < sl.id_len || payload_out.count < sl.data_len { return -1; }
+      for i: 0..<sl.id_len { id_out[i] = sl.id[i]; }
+      id_len_out[0] = sl.id_len;
+      for i: 0..<sl.data_len {
+        payload_out[i] = st.data[(sl.data_off + i) % MCP_EVSTORE_DATA_CAP];
+      }
+      return sl.data_len;
+    }
+    seen += 1;
+  }
+  return -1;
+}
+
+mcp_dedup_init :: (dd: [] McpReplayDedup) #effects(all) {
+  dd[0] = McpReplayDedup.{};
+}
+
+mcp_dedup_seen :: (dd: McpReplayDedup, id: string) -> bool #effects(all) {
+  for i: 0..<dd.count {
+    idx := (dd.head + i) % MCP_EVSTORE_DEDUP_CAP;
+    if mcp_ev_bytes_eq(dd.ids[idx][..], dd.lens[idx], id) { return true; }
+  }
+  return false;
+}
+
+mcp_dedup_mark :: (dd: [] McpReplayDedup, id: string) -> bool #effects(all) {
+  if id.count == 0 || id.count > MCP_EVSTORE_ID_MAX { return false; }
+  if mcp_dedup_seen(dd[0], id) { return false; }
+  slot := dd[0].head;
+  if dd[0].count < MCP_EVSTORE_DEDUP_CAP {
+    slot = dd[0].count;
+    dd[0].count += 1;
+  } else {
+    dd[0].head = (dd[0].head + 1) % MCP_EVSTORE_DEDUP_CAP;
+  }
+  dd[0].lens[slot] = id.count;
+  for i: 0..<id.count { dd[0].ids[slot][i] = id[i]; }
+  return true;
+}
+
+mcp_sse_retry_delay_ms :: (requested_ms: int) -> int #effects(all) {
+  if requested_ms < 100 { return 100; } // mutant: equivalent (100 returns 100)
+  if requested_ms > 30000 { return 30000; } // mutant: equivalent (30000 returns 30000)
+  return requested_ms;
+}

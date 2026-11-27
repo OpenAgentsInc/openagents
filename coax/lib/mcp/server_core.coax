@@ -1,0 +1,915 @@
+// Sans-I/O MCP Server state machine & dual-era JSON-RPC dispatcher.
+// Supports both 2025-11-25 (stateful initialize/ping/logging/resources_subscribe)
+// and 2026-07-28 (stateless server/discover, _meta version gating, SEP-2243
+// header mirroring, SEP-1303 schema validation, SEP-2164 -32602 resource errors,
+// SEP-2322 MRTR, SEP-2549 CacheableResult, and subscriptions/listen).
+// Pure zero-heap #authority module.
+#load "primitives.coax";
+#load "mrtr.coax";
+#load "subscriptions.coax";
+#load "headers.coax";
+#authority;
+
+MCP_SRV_MAX_TOOLS :: 16;
+MCP_SRV_MAX_RESOURCES :: 16;
+MCP_SRV_MAX_TEMPLATES :: 8;
+MCP_SRV_MAX_PROMPTS :: 16;
+MCP_SRV_DEFAULT_PAGE :: 8;
+
+// Dispatch outcomes returned by mcp_server_dispatch.
+MCP_DISP_DONE :: 1;          // Complete JSON-RPC response already written to out
+MCP_DISP_NO_RESPONSE :: 2;   // Notification handled; emit no response
+MCP_DISP_CALL_TOOL :: 3;     // Validated tools/call ready for host execution
+MCP_DISP_READ_RESOURCE :: 4; // Validated resources/read (static or template match)
+MCP_DISP_GET_PROMPT :: 5;    // Validated prompts/get ready for host execution
+MCP_DISP_COMPLETE :: 6;      // Validated completion/complete ready for host execution
+MCP_DISP_SUB_LISTEN :: 7;    // subscriptions/listen registered; ack written to out
+
+McpServerCore :: struct {
+  server_info: McpImplInfo;
+  instructions: string;
+  support_2025: bool;
+  support_2026: bool;
+  caps: McpServerCaps;
+  cache: McpCacheHint;
+  page_size: int;
+
+  // 2025-11-25 session state
+  initialized: bool;
+  negotiated_version: string;
+  log_level: int = MCP_LOG_INFO;
+
+  // Registries
+  tool_count: int;
+  tools: [MCP_SRV_MAX_TOOLS] McpToolDef;
+  resource_count: int;
+  resources: [MCP_SRV_MAX_RESOURCES] McpResourceDef;
+  template_count: int;
+  templates: [MCP_SRV_MAX_TEMPLATES] McpResourceTemplateDef;
+  prompt_count: int;
+  prompts: [MCP_SRV_MAX_PROMPTS] McpPromptDef;
+
+  // Subscriptions (dual-era)
+  subs: [1] McpSubTable;
+  legacy_subs: [1] McpLegacyResSubs;
+}
+
+McpDispatch :: struct {
+  action: int;
+  modern: bool;
+  written: int;
+  tool_idx: int = -1;
+  resource_idx: int = -1;
+  template_idx: int = -1;
+  prompt_idx: int = -1;
+  arguments_node: int = -1;
+  input_responses_node: int = -1;
+  request_state: string;
+  uri: string;
+  meta: McpRequestMeta;
+  complete_req: McpCompleteReq;
+  tmpl_var_count: int;
+}
+
+#test "server_core handles 2026-07-28 stateless discover, pagination, schema validation, templates, and errors" {
+  srv: [1] McpServerCore;
+  srv[0].initialized = true;
+  mcp_server_init(srv[..], McpImplInfo.{ name = "TestSrv", version = "1.0" }, true, true);
+  #assert !srv[0].initialized && srv[0].server_info.name == "TestSrv" && srv[0].page_size == MCP_SRV_DEFAULT_PAGE && srv[0].log_level == MCP_LOG_INFO;
+  srv[0].instructions = "Use echo";
+  srv[0].cache = McpCacheHint.{ has_ttl = true, ttl_ms = 30000, scope = MCP_CACHE_PUBLIC };
+  srv[0].page_size = 1;
+
+  // Registry validation + 1-char names + capability auto-enabling.
+  #assert !mcp_server_add_tool(srv[..], McpToolDef.{ name = "" });
+  #assert mcp_server_add_tool(srv[..], McpToolDef.{
+    name = "e",
+    description = "Echo",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{\"msg\":{\"type\":\"string\"}},\"required\":[\"msg\"]}"
+  });
+  #assert srv[0].caps.tools && srv[0].tool_count == 1;
+  #assert mcp_server_add_tool(srv[..], McpToolDef.{ name = "second" });
+
+  #assert !mcp_server_add_resource(srv[..], McpResourceDef.{ uri = "", name = "a" });
+  #assert !mcp_server_add_resource(srv[..], McpResourceDef.{ uri = "u", name = "" });
+  #assert mcp_server_add_resource(srv[..], McpResourceDef.{ uri = "u", name = "a" });
+  #assert srv[0].caps.resources && srv[0].resource_count == 1;
+  #assert mcp_server_add_resource(srv[..], McpResourceDef.{ uri = "file:///b.txt", name = "b" });
+  #assert srv[0].resource_count == 2;
+
+  #assert !mcp_server_add_template(srv[..], McpResourceTemplateDef.{ uri_template = "memo://{id}", name = "" });
+  #assert !mcp_server_add_template(srv[..], McpResourceTemplateDef.{ uri_template = "bad://{unclosed", name = "bad" });
+  #assert mcp_server_add_template(srv[..], McpResourceTemplateDef.{ uri_template = "memo://{id}", name = "m" });
+  #assert mcp_server_add_template(srv[..], McpResourceTemplateDef.{ uri_template = "static://fixed", name = "f" });
+  #assert srv[0].template_count == 2;
+
+  #assert !mcp_server_add_prompt(srv[..], McpPromptDef.{ name = "" });
+  pdef := McpPromptDef.{ name = "g", arg_count = 1 };
+  pdef.args[0] = McpPromptArg.{ name = "who", required = true };
+  #assert mcp_server_add_prompt(srv[..], pdef);
+  #assert srv[0].caps.prompts && srv[0].prompt_count == 1;
+  #assert mcp_server_add_prompt(srv[..], McpPromptDef.{ name = "bye" });
+  #assert srv[0].prompt_count == 2;
+  srv[0].caps.completions = true;
+
+  nodes: [128] JvNode; d: [1] Jv; out: [2048] u8; tiny: [4] u8;
+  rnodes: [128] JvNode; rd: [1] Jv;
+
+  // Malformed JSON-RPC, response-as-request, invalid _meta, unknown method, tiny output buffer.
+  #assert jv_parse(d[..], "[]", nodes[..]);
+  dp := mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_REQUEST;
+  #assert mcp_server_dispatch(srv[..], d[0], tiny[..]).written == -1;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_REQUEST;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":123}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"unknown/op\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_METHOD_NOT_FOUND;
+
+  // 1. server/discover (2026-07-28, with and without _meta)
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"server/discover\"}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && dp.modern && dp.written > 0;
+  #assert jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]);
+  rm := jrpc_classify(rd[0]);
+  sv := jv_get(rd[0], rm.result_node, "supportedVersions");
+  #assert rm.ok && rm.kind == JRPC_RESPONSE_OK && jv_raw(rd[0], jv_get(rd[0], rm.result_node, "resultType")) == "complete";
+  #assert jv_len(rd[0], sv) == 2 && jv_raw(rd[0], jv_at(rd[0], sv, 0)) == "2026-07-28" && jv_raw(rd[0], jv_at(rd[0], sv, 1)) == "2025-11-25";
+  #assert mcp_server_dispatch(srv[..], d[0], tiny[..]).written == -1;
+
+  // 2. Unsupported modern protocol version -> -32022 with exact supported[] array.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2099-01-01\"}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]);
+  rm = jrpc_classify(rd[0]);
+  sup_e := jv_get(rd[0], rm.error_data_node, "supported");
+  #assert rm.error_code == MCP_ERR_UNSUPPORTED_VERSION && jv_len(rd[0], sup_e) == 2 && jv_raw(rd[0], jv_at(rd[0], sup_e, 0)) == "2026-07-28" && jv_raw(rd[0], jv_at(rd[0], sup_e, 1)) == "2025-11-25";
+
+  // 3. tools/list, resources/list, resources/templates/list, prompts/list pagination (page 1 has nextCursor & cacheScope, page 2 has no nextCursor, bad cursor -> -32602).
+  list_methods := [4] string.["tools/list", "resources/list", "resources/templates/list", "prompts/list"];
+  list_keys := [4] string.["tools", "resources", "resourceTemplates", "prompts"];
+  for mi: 0..<4 {
+    req_p1: [256] u8; o: [1] Jo;
+    jo_start(o[..], req_p1[..]);
+    jrpc_write_request_int(o[..], 10 + mi, list_methods[mi]);
+    jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "_meta"); jo_obj(o[..]);
+    jo_key(o[..], MCP_META_PROTOCOL_VERSION); jo_str(o[..], MCP_V_2026_07_28);
+    jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+    #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+    dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+    #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]);
+    rm = jrpc_classify(rd[0]);
+    #assert jv_raw(rd[0], jv_get(rd[0], rm.result_node, "resultType")) == "complete";
+    #assert jv_len(rd[0], jv_get(rd[0], rm.result_node, list_keys[mi])) == 1;
+    #assert jv_raw(rd[0], jv_get(rd[0], rm.result_node, "nextCursor")) == "p:1";
+    #assert jv_raw(rd[0], jv_get(rd[0], rm.result_node, "cacheScope")) == "public";
+
+    // Page 2 with cursor "p:1" (ends cleanly without nextCursor).
+    jo_start(o[..], req_p1[..]);
+    jrpc_write_request_int(o[..], 20 + mi, list_methods[mi]);
+    jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "_meta"); jo_obj(o[..]);
+    jo_key(o[..], MCP_META_PROTOCOL_VERSION); jo_str(o[..], MCP_V_2026_07_28);
+    jo_end(o[..]); jo_key(o[..], "cursor"); jo_str(o[..], "p:1"); jo_end(o[..]); jo_end(o[..]);
+    #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+    dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+    #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]);
+    rm = jrpc_classify(rd[0]);
+    #assert jv_len(rd[0], jv_get(rd[0], rm.result_node, list_keys[mi])) == 1 && jv_get(rd[0], rm.result_node, "nextCursor") == -1;
+
+    // Bad cursor -> -32602.
+    jo_start(o[..], req_p1[..]);
+    jrpc_write_request_int(o[..], 30 + mi, list_methods[mi]);
+    jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "cursor"); jo_str(o[..], "p:99"); jo_end(o[..]); jo_end(o[..]);
+    #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+    dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+    #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+  }
+
+  // Cursor edge cases: dirty start_out reset, p:0, p:2 (== total, OK response!), non-string cursor, and page_size > count clamping.
+  dirty_start := [1] int.[7];
+  #assert mcp_server_parse_cursor(d[0], -1, 2, dirty_start[..]) && dirty_start[0] == 0;
+  srv[0].page_size = 0; // falls back to MCP_SRV_DEFAULT_PAGE (8 > 2)
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":40,\"method\":\"tools/list\",\"params\":{\"cursor\":\"p:0\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jv_len(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "tools")) == 2 && jv_get(rd[0], jrpc_classify(rd[0]).result_node, "cacheScope") == -1;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":41,\"method\":\"tools/list\",\"params\":{\"cursor\":\"p:2\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).kind == JRPC_RESPONSE_OK && jv_len(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "tools")) == 0;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":42,\"method\":\"tools/list\",\"params\":{\"cursor\":123}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":43,\"method\":\"tools/list\"}", nodes[..]); // no params at all
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jv_len(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "tools")) == 2;
+  // Hit end > count clamping on resources, templates, prompts and assert exact counts.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":44,\"method\":\"resources/list\"}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jv_len(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "resources")) == 2;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":45,\"method\":\"resources/templates/list\"}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jv_len(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "resourceTemplates")) == 2;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":46,\"method\":\"prompts/list\"}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jv_len(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "prompts")) == 2;
+
+  // 4. tools/call: malformed params, missing arg -> SEP-1303 isError:true text block, absent args on strict empty-object schema, valid call + meta + MRTR, unknown tool.
+  #assert mcp_server_add_tool(srv[..], McpToolDef.{ name = "opt", input_schema_json = "{\"type\":\"object\",\"additionalProperties\":false}" });
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":49,\"method\":\"tools/call\",\"params\":{\"name\":\"opt\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_CALL_TOOL && dp.tool_idx == 2;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":50,\"method\":\"tools/call\",\"params\":{}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":51,\"method\":\"tools/call\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"name\":\"e\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]);
+  rm = jrpc_classify(rd[0]);
+  #assert jv_kind(rd[0], jv_get(rd[0], rm.result_node, "isError")) == JV_TRUE;
+  #assert jv_raw(rd[0], jv_get(rd[0], jv_at(rd[0], jv_get(rd[0], rm.result_node, "content"), 0), "type")) == "text";
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":52,\"method\":\"tools/call\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"name\":\"e\",\"arguments\":{\"msg\":\"hi\"},\"requestState\":\"rs\",\"inputResponses\":{}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_CALL_TOOL && dp.modern && dp.meta.protocol_version == "2026-07-28" && dp.tool_idx == 0 && dp.arguments_node != -1 && dp.request_state == "rs" && dp.input_responses_node != -1;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":53,\"method\":\"tools/call\",\"params\":{\"name\":\"second\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_CALL_TOOL && dp.tool_idx == 1;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":54,\"method\":\"tools/call\",\"params\":{\"name\":\"nope\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  // 5. resources/read: bad params, static hit, template hit (1 var & 0 vars), 2026 not-found (-32602).
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"resources/read\",\"params\":{}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":61,\"method\":\"resources/read\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"uri\":\"u\",\"requestState\":\"s\",\"inputResponses\":{}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_READ_RESOURCE && dp.resource_idx == 0 && dp.uri == "u" && dp.request_state == "s" && dp.input_responses_node != -1;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":62,\"method\":\"resources/read\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"uri\":\"memo://42\",\"requestState\":\"s2\",\"inputResponses\":{}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_READ_RESOURCE && dp.template_idx == 0 && dp.tmpl_var_count == 1 && dp.uri == "memo://42" && dp.request_state == "s2" && dp.input_responses_node != -1;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":63,\"method\":\"resources/read\",\"params\":{\"uri\":\"static://fixed\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_READ_RESOURCE && dp.template_idx == 1 && dp.tmpl_var_count == 0;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":64,\"method\":\"resources/read\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"uri\":\"file:///missing\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  // 6. prompts/get: bad params, unknown prompt, missing required arg (no args & wrong args), valid prompt.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":70,\"method\":\"prompts/get\",\"params\":{}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":71,\"method\":\"prompts/get\",\"params\":{\"name\":\"nope\",\"arguments\":{\"who\":\"w\"}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":72,\"method\":\"prompts/get\",\"params\":{\"name\":\"g\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":73,\"method\":\"prompts/get\",\"params\":{\"name\":\"g\",\"arguments\":{}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":74,\"method\":\"prompts/get\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"name\":\"g\",\"arguments\":{\"who\":\"w\"},\"requestState\":\"ps\",\"inputResponses\":{}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_GET_PROMPT && dp.prompt_idx == 0 && dp.arguments_node != -1 && dp.request_state == "ps" && dp.input_responses_node != -1;
+
+  // 7. completion/complete: valid, invalid params, and disabled completions.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":80,\"method\":\"completion/complete\",\"params\":{\"ref\":{\"type\":\"ref/prompt\",\"name\":\"g\"},\"argument\":{\"name\":\"who\",\"value\":\"w\"}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_COMPLETE && dp.complete_req.ref_target == "g";
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":81,\"method\":\"completion/complete\",\"params\":{}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+  srv[0].caps.completions = false;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":82,\"method\":\"completion/complete\",\"params\":{}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_METHOD_NOT_FOUND;
+
+  // 8. subscriptions/listen: string id, integer id, duplicate id -> -32603, bad params -> -32602, legacy -> -32601.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":\"sub-1\",\"method\":\"subscriptions/listen\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"notifications\":{\"toolsListChanged\":true}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_SUB_LISTEN && srv[0].subs[0].count == 1;
+  #assert jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jv_raw(rd[0], jrpc_classify(rd[0]).method_node) == "notifications/subscriptions/acknowledged";
+  // Duplicate id -> -32603.
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INTERNAL;
+  // Integer id -> subscriptionId "90".
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":90,\"method\":\"subscriptions/listen\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"notifications\":{}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_SUB_LISTEN && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]);
+  #assert jv_raw(rd[0], jv_get(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).params_node, "_meta"), MCP_META_SUBSCRIPTION_ID)) == "90";
+  // Bad params -> -32602.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":91,\"method\":\"subscriptions/listen\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+  // Legacy mode rejects subscriptions/listen with -32601.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":92,\"method\":\"subscriptions/listen\",\"params\":{\"notifications\":{}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_METHOD_NOT_FOUND;
+
+  // 9. 2026-07-28 removed methods (ping, logging/setLevel, resources/subscribe) return -32601!
+  srv[0].caps.logging = true;
+  srv[0].caps.resources_subscribe = true;
+  removed := [3] string.["ping", "logging/setLevel", "resources/subscribe"];
+  for rm_m: removed {
+    rb: [256] u8; o: [1] Jo;
+    jo_start(o[..], rb[..]);
+    jrpc_write_request_int(o[..], 95, rm_m);
+    jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "_meta"); jo_obj(o[..]);
+    jo_key(o[..], MCP_META_PROTOCOL_VERSION); jo_str(o[..], MCP_V_2026_07_28);
+    jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+    #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+    dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+    #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_METHOD_NOT_FOUND;
+  }
+}
+
+#test "server_core handles 2025-11-25 initialize, capacity bounds, mode flags, and HTTP header validation" {
+  srv: [1] McpServerCore;
+  mcp_server_init(srv[..], McpImplInfo.{ name = "LegacySrv", version = "1.0" }, true, false);
+  srv[0].caps.logging = true;
+  srv[0].caps.resources_subscribe = true;
+  #assert mcp_server_add_resource(srv[..], McpResourceDef.{ uri = "x", name = "x" });
+
+  nodes: [128] JvNode; d: [1] Jv; out: [2048] u8; rnodes: [128] JvNode; rd: [1] Jv;
+
+  // Legacy-only server rejects server/discover with -32601 and 2026 _meta with -32022.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"server/discover\"}", nodes[..]);
+  dp := mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_METHOD_NOT_FOUND;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_UNSUPPORTED_VERSION;
+
+  // Modern-only server defaults to modern without _meta (verified via tools/list resultType), rejects initialize with -32601, and advertises only 1 version in discover.
+  msrv: [1] McpServerCore;
+  mcp_server_init(msrv[..], McpImplInfo.{ name = "Mod", version = "1" }, false, true);
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", nodes[..]);
+  dp = mcp_server_dispatch(msrv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && dp.modern && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jv_raw(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "resultType")) == "complete";
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"server/discover\"}", nodes[..]);
+  dp = mcp_server_dispatch(msrv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && dp.modern && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jv_len(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "supportedVersions")) == 1;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}", nodes[..]);
+  dp = mcp_server_dispatch(msrv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_METHOD_NOT_FOUND;
+
+  // Initialize on dual server with 2026 _meta still returns dp.modern == false!
+  dsrv: [1] McpServerCore;
+  mcp_server_init(dsrv[..], McpImplInfo.{ name = "Dual", version = "1" }, true, true);
+  #assert mcp_server_add_template(dsrv[..], McpResourceTemplateDef.{ uri_template = "u://{x}", name = "t" });
+  #assert dsrv[0].caps.resources; // adding template alone enables resources capability
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"protocolVersion\":\"2025-11-25\"}}", nodes[..]);
+  dp = mcp_server_dispatch(dsrv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && !dp.modern;
+
+  // Legacy initialize error cases (no params, missing protocolVersion) + valid initialize clamping 2026->2025.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2026-07-28\",\"capabilities\":{},\"clientInfo\":{\"name\":\"C\",\"version\":\"1\"}}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && !dp.modern && srv[0].negotiated_version == "2025-11-25";
+  #assert jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]);
+  #assert jv_raw(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "protocolVersion")) == "2025-11-25";
+
+  // Other notifications don't set initialized; notifications/initialized does.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":1}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_NO_RESPONSE && !srv[0].initialized;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_NO_RESPONSE && srv[0].initialized;
+
+  // ping -> {}
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && cast(string) out[0..<dp.written] == "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}";
+
+  // logging/setLevel: bad/missing params -> -32602, valid -> {}, disabled -> -32601.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"logging/setLevel\"}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"logging/setLevel\",\"params\":{\"level\":\"error\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && cast(string) out[0..<dp.written] == "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{}}" && srv[0].log_level == MCP_LOG_ERROR;
+  srv[0].caps.logging = false;
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_METHOD_NOT_FOUND;
+
+  // resources/subscribe & unsubscribe: missing/empty uri -> -32602, valid -> {}, disabled -> -32601, overflow -> -32603.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/subscribe\"}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/subscribe\",\"params\":{\"uri\":\"\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INVALID_PARAMS;
+
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/subscribe\",\"params\":{\"uri\":\"x\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && cast(string) out[0..<dp.written] == "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{}}" && mcp_legacy_sub_has(srv[0].legacy_subs[0], "x");
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"resources/unsubscribe\",\"params\":{\"uri\":\"x\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && cast(string) out[0..<dp.written] == "{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{}}" && !mcp_legacy_sub_has(srv[0].legacy_subs[0], "x");
+
+  // Fill legacy_subs to MCP_LEGACY_SUB_MAX then verify next subscribe returns -32603.
+  for i: 0..<MCP_LEGACY_SUB_MAX {
+    ub: [4] u8; ub[0] = 'u'; ub[1] = cast(u8) ('A' + (i / 10)); ub[2] = cast(u8) ('0' + (i % 10));
+    #assert mcp_legacy_sub_add(srv[0].legacy_subs[..], cast(string) ub[0..<3]);
+  }
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":55,\"method\":\"resources/subscribe\",\"params\":{\"uri\":\"overflow\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_INTERNAL;
+  srv[0].caps.resources_subscribe = false;
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_METHOD_NOT_FOUND;
+
+  // Resource not found in 2025-11-25 returns -32002 (legacy) instead of -32602!
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"resources/read\",\"params\":{\"uri\":\"file:///missing\"}}", nodes[..]);
+  dp = mcp_server_dispatch(srv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jrpc_classify(rd[0]).error_code == MCP_ERR_RESOURCE_NOT_FOUND_LEGACY;
+
+  // Registry capacity ceilings (16 tools, 16 resources, 8 templates, 16 prompts) + default page_size == 8 check.
+  csrv: [1] McpServerCore;
+  mcp_server_init(csrv[..], McpImplInfo.{ name = "Cap", version = "1" }, true, true);
+  for i: 0..<MCP_SRV_MAX_TOOLS { #assert mcp_server_add_tool(csrv[..], McpToolDef.{ name = "t" }); }
+  #assert !mcp_server_add_tool(csrv[..], McpToolDef.{ name = "t" });
+  csrv[0].page_size = 0;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", nodes[..]);
+  dp = mcp_server_dispatch(csrv[..], d[0], out[..]);
+  #assert dp.action == MCP_DISP_DONE && jv_parse(rd[..], cast(string) out[0..<dp.written], rnodes[..]) && jv_len(rd[0], jv_get(rd[0], jrpc_classify(rd[0]).result_node, "tools")) == MCP_SRV_DEFAULT_PAGE;
+  for i: 0..<MCP_SRV_MAX_RESOURCES { #assert mcp_server_add_resource(csrv[..], McpResourceDef.{ uri = "u", name = "r" }); }
+  #assert !mcp_server_add_resource(csrv[..], McpResourceDef.{ uri = "u", name = "r" });
+  for i: 0..<MCP_SRV_MAX_TEMPLATES { #assert mcp_server_add_template(csrv[..], McpResourceTemplateDef.{ uri_template = "u://{x}", name = "t" }); }
+  #assert !mcp_server_add_template(csrv[..], McpResourceTemplateDef.{ uri_template = "u://{x}", name = "t" });
+  for i: 0..<MCP_SRV_MAX_PROMPTS { #assert mcp_server_add_prompt(csrv[..], McpPromptDef.{ name = "p" }); }
+  #assert !mcp_server_add_prompt(csrv[..], McpPromptDef.{ name = "p" });
+
+  // SEP-2243 HTTP header mirroring validation for 2026-07-28 requests.
+  #assert jv_parse(d[..], "[]", nodes[..]);
+  #assert !mcp_server_validate_http_headers(d[0], jrpc_classify(d[0]), "2026-07-28", "tools/list", "");
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", nodes[..]);
+  #assert !mcp_server_validate_http_headers(d[0], jrpc_classify(d[0]), "2026-07-28", "notifications/initialized", "");
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/logLevel\":\"bogus\"},\"name\":\"e\"}}", nodes[..]);
+  #assert !mcp_server_validate_http_headers(d[0], jrpc_classify(d[0]), "2026-07-28", "tools/call", "e");
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"name\":\"e\"}}", nodes[..]);
+  req := jrpc_classify(d[0]);
+  #assert mcp_server_validate_http_headers(d[0], req, "2026-07-28", "tools/call", "e");
+  #assert !mcp_server_validate_http_headers(d[0], req, "2025-11-25", "tools/call", "e");
+  #assert !mcp_server_validate_http_headers(d[0], req, "2026-07-28", "tools/list", "e");
+  #assert !mcp_server_validate_http_headers(d[0], req, "2026-07-28", "tools/call", "wrong");
+  #assert !mcp_server_validate_http_headers(d[0], req, "2026-07-28", "tools/call", "");
+  #assert !mcp_server_validate_http_headers(d[0], req, "2026-07-28", "tools/call", "=?base64?@@@?=");
+  #assert !mcp_server_validate_http_headers(d[0], req, "2026-07-28", "tools/call", "=?base64??=");
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"resources/read\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"uri\":\"file:///a b\"}}", nodes[..]);
+  #assert mcp_server_validate_http_headers(d[0], jrpc_classify(d[0]), "2026-07-28", "resources/read", "file:///a b");
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}", nodes[..]);
+  #assert !mcp_server_validate_http_headers(d[0], jrpc_classify(d[0]), "2026-07-28", "tools/call", "e");
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}", nodes[..]);
+  #assert mcp_server_validate_http_headers(d[0], jrpc_classify(d[0]), "2026-07-28", "tools/list", "");
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/list\"}", nodes[..]);
+  #assert !mcp_server_validate_http_headers(d[0], jrpc_classify(d[0]), "2026-07-28", "tools/list", "");
+}
+
+mcp_server_init :: (srv: [] McpServerCore, info: McpImplInfo, support_2025: bool, support_2026: bool) #effects(all) {
+  srv[0] = McpServerCore.{};
+  srv[0].server_info = info;
+  srv[0].support_2025 = support_2025;
+  srv[0].support_2026 = support_2026;
+  srv[0].page_size = MCP_SRV_DEFAULT_PAGE;
+}
+
+mcp_server_add_tool :: (srv: [] McpServerCore, t: McpToolDef) -> bool #effects(all) {
+  if t.name.count == 0 || srv[0].tool_count >= MCP_SRV_MAX_TOOLS { return false; }
+  srv[0].tools[srv[0].tool_count] = t;
+  srv[0].tool_count += 1;
+  srv[0].caps.tools = true;
+  return true;
+}
+
+mcp_server_add_resource :: (srv: [] McpServerCore, r: McpResourceDef) -> bool #effects(all) {
+  if r.uri.count == 0 || r.name.count == 0 || srv[0].resource_count >= MCP_SRV_MAX_RESOURCES { return false; }
+  srv[0].resources[srv[0].resource_count] = r;
+  srv[0].resource_count += 1;
+  srv[0].caps.resources = true;
+  return true;
+}
+
+mcp_server_add_template :: (srv: [] McpServerCore, rt: McpResourceTemplateDef) -> bool #effects(all) {
+  if rt.name.count == 0 || !mcp_uri_template_valid(rt.uri_template) || srv[0].template_count >= MCP_SRV_MAX_TEMPLATES { return false; }
+  srv[0].templates[srv[0].template_count] = rt;
+  srv[0].template_count += 1;
+  srv[0].caps.resources = true;
+  return true;
+}
+
+mcp_server_add_prompt :: (srv: [] McpServerCore, p: McpPromptDef) -> bool #effects(all) {
+  if p.name.count == 0 || srv[0].prompt_count >= MCP_SRV_MAX_PROMPTS { return false; }
+  srv[0].prompts[srv[0].prompt_count] = p;
+  srv[0].prompt_count += 1;
+  srv[0].caps.prompts = true;
+  return true;
+}
+
+mcp_server_done_err :: (dp: McpDispatch, d: Jv, req: JrpcMessage, code: int, msg: string, out: [] u8) -> McpDispatch #effects(all) {
+  res := dp;
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jrpc_write_error(o[..], d, req, code, msg);
+  res.action = MCP_DISP_DONE;
+  res.written = ifx o[0].bad then -1 else o[0].n;
+  return res;
+}
+
+mcp_server_done_jo :: (dp: McpDispatch, action: int, o: [] Jo) -> McpDispatch #effects(all) {
+  res := dp;
+  res.action = action;
+  res.written = ifx o[0].bad then -1 else o[0].n;
+  return res;
+}
+
+mcp_server_parse_cursor :: (d: Jv, params_node: int, total: int, start_out: [] int) -> bool #effects(all) {
+  start_out[0] = 0;
+  cn := jv_get(d, params_node, "cursor");
+  if cn == -1 { return true; }
+  if jv_kind(d, cn) != JV_STRING { return false; }
+  off := mcp_cursor_decode(jv_raw(d, cn));
+  if off < 0 || off > total { return false; }
+  start_out[0] = off;
+  return true;
+}
+
+// Validates 2026-07-28 HTTP header mirroring (MCP-Protocol-Version, Mcp-Method, Mcp-Name).
+mcp_server_validate_http_headers :: (d: Jv, req: JrpcMessage, hdr_version: string, hdr_method: string, hdr_name: string) -> bool #effects(all) {
+  if req.kind != JRPC_REQUEST { return false; }
+  method := jv_raw(d, req.method_node);
+  if hdr_method != method { return false; }
+
+  meta_node := jv_get(d, req.params_node, "_meta");
+  meta := mcp_parse_request_meta(d, meta_node);
+  if !meta.ok || !meta.has_protocol_version || hdr_version != meta.protocol_version { return false; }
+
+  if mcp_header_requires_name(method) {
+    if hdr_name.count == 0 { return false; }
+    dec: [MCP_HDR_VAL_MAX] u8;
+    dn := mcp_header_decode_value(hdr_name, dec[..]);
+    if dn <= 0 { return false; } // mutant: equivalent (dn==0 fails jv_raw_eq against non-empty body)
+    dec_s := cast(string) dec[0..<dn];
+    key := ifx method == "resources/read" then "uri" else "name";
+    bn := jv_get(d, req.params_node, key);
+    if jv_kind(d, bn) != JV_STRING { return false; }
+    if !jv_raw_eq(jv_raw(d, bn), dec_s) { return false; }
+  }
+  return true;
+}
+
+mcp_server_dispatch :: (srv: [] McpServerCore, d: Jv, out: [] u8) -> McpDispatch #effects(all) {
+  dp: McpDispatch;
+  req := jrpc_classify(d);
+  if !req.ok { return mcp_server_done_err(dp, d, req, req.err_code, "Invalid JSON-RPC message", out); }
+
+  if req.kind == JRPC_NOTIFICATION {
+    if jv_raw(d, req.method_node) == "notifications/initialized" { srv[0].initialized = true; }
+    dp.action = MCP_DISP_NO_RESPONSE;
+    return dp;
+  }
+
+  if req.kind != JRPC_REQUEST {
+    return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_REQUEST, "Expected JSON-RPC request", out);
+  }
+
+  method := jv_raw(d, req.method_node);
+  meta_node := jv_get(d, req.params_node, "_meta");
+  meta := mcp_parse_request_meta(d, meta_node);
+  if !meta.ok {
+    return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid _meta object", out);
+  }
+  dp.meta = meta;
+
+  modern := false;
+  if meta.has_protocol_version {
+    if mcp_version_is_modern(meta.protocol_version) {
+      if !srv[0].support_2026 || meta.protocol_version != MCP_V_2026_07_28 {
+        o: [1] Jo; jo_start(o[..], out);
+        sup: [2] string; sn := 0;
+        if srv[0].support_2026 { sup[sn] = MCP_V_2026_07_28; sn += 1; }
+        if srv[0].support_2025 { sup[sn] = MCP_V_2025_11_25; sn += 1; }
+        jrpc_write_unsupported_version(o[..], d, req, meta.protocol_version, sup[0..<sn]);
+        return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+      }
+      modern = true;
+    }
+  } else if !srv[0].support_2025 && srv[0].support_2026 {
+    modern = true;
+  }
+  dp.modern = modern;
+
+  o: [1] Jo;
+  page_sz := ifx srv[0].page_size > 0 then srv[0].page_size else MCP_SRV_DEFAULT_PAGE;
+
+  if method == "server/discover" {
+    if !srv[0].support_2026 { return mcp_server_done_err(dp, d, req, MCP_ERR_METHOD_NOT_FOUND, "Method not found", out); }
+    sup: [2] string; sn := 0;
+    sup[sn] = MCP_V_2026_07_28; sn += 1;
+    if srv[0].support_2025 { sup[sn] = MCP_V_2025_11_25; sn += 1; }
+    jo_start(o[..], out);
+    jrpc_write_result_head(o[..], d, req);
+    mcp_write_discover_result(o[..], sup[0..<sn], srv[0].caps, srv[0].server_info, srv[0].instructions, srv[0].cache);
+    jo_end(o[..]);
+    dp.modern = true;
+    return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+  }
+
+  if method == "initialize" {
+    if !srv[0].support_2025 { return mcp_server_done_err(dp, d, req, MCP_ERR_METHOD_NOT_FOUND, "Method not found", out); }
+    if jv_kind(d, req.params_node) != JV_OBJECT { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid initialize params", out); }
+    pvn := jv_get(d, req.params_node, "protocolVersion");
+    if jv_kind(d, pvn) != JV_STRING { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Missing protocolVersion", out); }
+    legacy_sup := [2] string.[MCP_V_2025_11_25, MCP_V_2025_06_18];
+    neg := mcp_version_negotiate_legacy(jv_raw(d, pvn), legacy_sup[..]);
+    srv[0].negotiated_version = neg;
+    jo_start(o[..], out);
+    jrpc_write_result_head(o[..], d, req);
+    mcp_write_initialize_result(o[..], neg, srv[0].caps, srv[0].server_info, srv[0].instructions);
+    jo_end(o[..]);
+    dp.modern = false;
+    return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+  }
+
+  if method == "ping" {
+    if modern { return mcp_server_done_err(dp, d, req, MCP_ERR_METHOD_NOT_FOUND, "ping removed in 2026-07-28", out); }
+    jo_start(o[..], out);
+    jrpc_write_result_head(o[..], d, req);
+    jo_obj(o[..]); jo_end(o[..]);
+    jo_end(o[..]);
+    return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+  }
+
+  if method == "logging/setLevel" {
+    if modern || !srv[0].caps.logging { return mcp_server_done_err(dp, d, req, MCP_ERR_METHOD_NOT_FOUND, "Method not found", out); }
+    ln := jv_get(d, req.params_node, "level");
+    lvl := ifx jv_kind(d, ln) == JV_STRING then mcp_log_level_parse(jv_raw(d, ln)) else MCP_LOG_NONE;
+    if lvl == MCP_LOG_NONE { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid log level", out); }
+    srv[0].log_level = lvl;
+    jo_start(o[..], out);
+    jrpc_write_result_head(o[..], d, req);
+    jo_obj(o[..]); jo_end(o[..]);
+    jo_end(o[..]);
+    return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+  }
+
+  if method == "tools/list" {
+    start: [1] int;
+    if !mcp_server_parse_cursor(d, req.params_node, srv[0].tool_count, start[..]) {
+      return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid cursor", out);
+    }
+    end := start[0] + page_sz;
+    if end > srv[0].tool_count { end = srv[0].tool_count; } // mutant: equivalent (equal assigns same value)
+    jo_start(o[..], out);
+    jrpc_write_result_head(o[..], d, req);
+    jo_obj(o[..]);
+    mcp_write_result_type(o[..], modern, false);
+    jo_key(o[..], "tools"); jo_arr(o[..]);
+    for i: start[0]..<end { mcp_write_tool_def(o[..], srv[0].tools[i]); }
+    jo_end(o[..]);
+    if end < srv[0].tool_count {
+      cbuf: [16] u8; cn := mcp_cursor_encode(end, cbuf[..]);
+      jo_key(o[..], "nextCursor"); jo_str(o[..], cast(string) cbuf[0..<cn]);
+    }
+    if modern { mcp_write_cache_hint(o[..], srv[0].cache); }
+    jo_end(o[..]); jo_end(o[..]);
+    return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+  }
+
+  if method == "tools/call" {
+    ctr := mcp_parse_call_tool_req(d, req.params_node);
+    if !ctr.ok { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid tools/call params", out); }
+    tidx := -1;
+    for i: 0..<srv[0].tool_count {
+      if srv[0].tools[i].name == ctr.name { tidx = i; break; }
+    }
+    if tidx == -1 { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Unknown tool", out); }
+    schema_s := srv[0].tools[tidx].input_schema_json;
+    if schema_s.count != 0 { // mutant: equivalent (valid JSON schema is >= 2 bytes)
+      snodes: [64] JvNode; sd: [1] Jv;
+      if jv_parse(sd[..], schema_s, snodes[..]) {
+        arg_d := d;
+        arg_n := ctr.arguments_node;
+        enodes: [4] JvNode; ed: [1] Jv;
+        if arg_n == -1 {
+          #assert jv_parse(ed[..], "{}", enodes[..]);
+          arg_d = ed[0];
+          arg_n = 0;
+        }
+        if !mcp_schema_validate(sd[0], 0, arg_d, arg_n) {
+          err_c := [1] McpContent.[McpContent.{ kind = MCP_CONTENT_TEXT, text = "Invalid arguments for tool" }];
+          jo_start(o[..], out);
+          jrpc_write_result_head(o[..], d, req);
+          mcp_write_call_tool_result(o[..], modern, err_c[..], true, "");
+          jo_end(o[..]);
+          return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+        }
+      }
+    }
+    dp.action = MCP_DISP_CALL_TOOL;
+    dp.tool_idx = tidx;
+    dp.arguments_node = ctr.arguments_node;
+    dp.request_state = ctr.request_state;
+    dp.input_responses_node = ctr.input_responses_node;
+    return dp;
+  }
+
+  if method == "resources/list" {
+    start: [1] int;
+    if !mcp_server_parse_cursor(d, req.params_node, srv[0].resource_count, start[..]) {
+      return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid cursor", out);
+    }
+    end := start[0] + page_sz;
+    if end > srv[0].resource_count { end = srv[0].resource_count; } // mutant: equivalent (equal assigns same value)
+    jo_start(o[..], out);
+    jrpc_write_result_head(o[..], d, req);
+    jo_obj(o[..]);
+    mcp_write_result_type(o[..], modern, false);
+    jo_key(o[..], "resources"); jo_arr(o[..]);
+    for i: start[0]..<end { mcp_write_resource_def(o[..], srv[0].resources[i]); }
+    jo_end(o[..]);
+    if end < srv[0].resource_count {
+      cbuf: [16] u8; cn := mcp_cursor_encode(end, cbuf[..]);
+      jo_key(o[..], "nextCursor"); jo_str(o[..], cast(string) cbuf[0..<cn]);
+    }
+    if modern { mcp_write_cache_hint(o[..], srv[0].cache); }
+    jo_end(o[..]); jo_end(o[..]);
+    return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+  }
+
+  if method == "resources/templates/list" {
+    start: [1] int;
+    if !mcp_server_parse_cursor(d, req.params_node, srv[0].template_count, start[..]) {
+      return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid cursor", out);
+    }
+    end := start[0] + page_sz;
+    if end > srv[0].template_count { end = srv[0].template_count; } // mutant: equivalent (equal assigns same value)
+    jo_start(o[..], out);
+    jrpc_write_result_head(o[..], d, req);
+    jo_obj(o[..]);
+    mcp_write_result_type(o[..], modern, false);
+    jo_key(o[..], "resourceTemplates"); jo_arr(o[..]);
+    for i: start[0]..<end { mcp_write_resource_template_def(o[..], srv[0].templates[i]); }
+    jo_end(o[..]);
+    if end < srv[0].template_count {
+      cbuf: [16] u8; cn := mcp_cursor_encode(end, cbuf[..]);
+      jo_key(o[..], "nextCursor"); jo_str(o[..], cast(string) cbuf[0..<cn]);
+    }
+    if modern { mcp_write_cache_hint(o[..], srv[0].cache); }
+    jo_end(o[..]); jo_end(o[..]);
+    return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+  }
+
+  if method == "resources/read" {
+    rrr := mcp_parse_read_resource_req(d, req.params_node);
+    if !rrr.ok { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid resources/read params", out); }
+    for i: 0..<srv[0].resource_count {
+      if srv[0].resources[i].uri == rrr.uri {
+        dp.action = MCP_DISP_READ_RESOURCE;
+        dp.resource_idx = i;
+        dp.uri = rrr.uri;
+        dp.request_state = rrr.request_state;
+        dp.input_responses_node = rrr.input_responses_node;
+        return dp;
+      }
+    }
+    for i: 0..<srv[0].template_count {
+      vbuf: [256] u8;
+      matches: [8] McpTemplateMatch;
+      tm_n := mcp_uri_template_match(srv[0].templates[i].uri_template, rrr.uri, matches[..], vbuf[..]);
+      if tm_n >= 0 {
+        dp.action = MCP_DISP_READ_RESOURCE;
+        dp.template_idx = i;
+        dp.uri = rrr.uri;
+        dp.tmpl_var_count = tm_n;
+        dp.request_state = rrr.request_state;
+        dp.input_responses_node = rrr.input_responses_node;
+        return dp;
+      }
+    }
+    not_found_code := ifx modern then MCP_ERR_INVALID_PARAMS else MCP_ERR_RESOURCE_NOT_FOUND_LEGACY;
+    return mcp_server_done_err(dp, d, req, not_found_code, "Resource not found", out);
+  }
+
+  if method == "prompts/list" {
+    start: [1] int;
+    if !mcp_server_parse_cursor(d, req.params_node, srv[0].prompt_count, start[..]) {
+      return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid cursor", out);
+    }
+    end := start[0] + page_sz;
+    if end > srv[0].prompt_count { end = srv[0].prompt_count; } // mutant: equivalent (equal assigns same value)
+    jo_start(o[..], out);
+    jrpc_write_result_head(o[..], d, req);
+    jo_obj(o[..]);
+    mcp_write_result_type(o[..], modern, false);
+    jo_key(o[..], "prompts"); jo_arr(o[..]);
+    for i: start[0]..<end { mcp_write_prompt_def(o[..], srv[0].prompts[i]); }
+    jo_end(o[..]);
+    if end < srv[0].prompt_count {
+      cbuf: [16] u8; cn := mcp_cursor_encode(end, cbuf[..]);
+      jo_key(o[..], "nextCursor"); jo_str(o[..], cast(string) cbuf[0..<cn]);
+    }
+    if modern { mcp_write_cache_hint(o[..], srv[0].cache); }
+    jo_end(o[..]); jo_end(o[..]);
+    return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+  }
+
+  if method == "prompts/get" {
+    gpr := mcp_parse_get_prompt_req(d, req.params_node);
+    if !gpr.ok { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid prompts/get params", out); }
+    pidx := -1;
+    for i: 0..<srv[0].prompt_count {
+      if srv[0].prompts[i].name == gpr.name { pidx = i; break; }
+    }
+    if pidx == -1 { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Unknown prompt", out); }
+    pdef := srv[0].prompts[pidx];
+    for i: 0..<pdef.arg_count {
+      if pdef.args[i].required && jv_get(d, gpr.arguments_node, pdef.args[i].name) == -1 {
+        return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Missing required prompt argument", out);
+      }
+    }
+    dp.action = MCP_DISP_GET_PROMPT;
+    dp.prompt_idx = pidx;
+    dp.arguments_node = gpr.arguments_node;
+    dp.request_state = gpr.request_state;
+    dp.input_responses_node = gpr.input_responses_node;
+    return dp;
+  }
+
+  if method == "completion/complete" {
+    if !srv[0].caps.completions { return mcp_server_done_err(dp, d, req, MCP_ERR_METHOD_NOT_FOUND, "Completions not supported", out); }
+    cr := mcp_parse_complete_req(d, req.params_node);
+    if !cr.ok { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid completion/complete params", out); }
+    dp.action = MCP_DISP_COMPLETE;
+    dp.complete_req = cr;
+    return dp;
+  }
+
+  if method == "subscriptions/listen" {
+    if !modern { return mcp_server_done_err(dp, d, req, MCP_ERR_METHOD_NOT_FOUND, "subscriptions/listen requires 2026-07-28", out); }
+    flt := mcp_sub_parse_listen_params(d, req.params_node);
+    if !flt.ok { return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Invalid subscriptions/listen params", out); }
+    sub_id := ifx req.id_kind == JRPC_ID_STR then jv_raw(d, req.id_node) else "";
+    ibuf: [24] u8;
+    if req.id_kind == JRPC_ID_INT {
+      in_n := mcp_schema_format_int(req.id_int, ibuf[..]);
+      sub_id = cast(string) ibuf[0..<in_n];
+    }
+    if !mcp_sub_add_listener(srv[0].subs[..], sub_id, flt) {
+      return mcp_server_done_err(dp, d, req, MCP_ERR_INTERNAL, "Subscription table full or duplicate id", out);
+    }
+    jo_start(o[..], out);
+    mcp_sub_write_acknowledged(o[..], sub_id, flt);
+    return mcp_server_done_jo(dp, MCP_DISP_SUB_LISTEN, o[..]);
+  }
+
+  if method == "resources/subscribe" || method == "resources/unsubscribe" {
+    if modern || !srv[0].caps.resources_subscribe { return mcp_server_done_err(dp, d, req, MCP_ERR_METHOD_NOT_FOUND, "Method not found", out); }
+    un := jv_get(d, req.params_node, "uri");
+    if jv_kind(d, un) != JV_STRING || jv_raw(d, un).count == 0 {
+      return mcp_server_done_err(dp, d, req, MCP_ERR_INVALID_PARAMS, "Missing uri", out);
+    }
+    uri := jv_raw(d, un);
+    if method == "resources/subscribe" {
+      if !mcp_legacy_sub_add(srv[0].legacy_subs[..], uri) {
+        return mcp_server_done_err(dp, d, req, MCP_ERR_INTERNAL, "Subscription limit reached", out);
+      }
+    } else {
+      _ = mcp_legacy_sub_remove(srv[0].legacy_subs[..], uri);
+    }
+    jo_start(o[..], out);
+    jrpc_write_result_head(o[..], d, req);
+    jo_obj(o[..]); jo_end(o[..]);
+    jo_end(o[..]);
+    return mcp_server_done_jo(dp, MCP_DISP_DONE, o[..]);
+  }
+
+  return mcp_server_done_err(dp, d, req, MCP_ERR_METHOD_NOT_FOUND, "Method not found", out);
+}
