@@ -1,0 +1,360 @@
+{
+  "schema_version": 1,
+  "kind": "book-route-qualification-record",
+  "route": {
+    "id": "executor-network-flywheel",
+    "book": "psionic",
+    "title": "Executor Network: exact replay, 3-leg settlement, and quarantined decentralized training",
+    "scope": "Run the CPU #authority chain behind the OpenAgents Executor Network capstone in debug and release: Ch 234 exact replay verification, Bitcoin Ch 123 3-leg Spark/Lightning author-royalty settlement policy (#13961, worker + validator + module author <= 25%) under rolling 24h UTC caps, Ch 272 Dataset Shard Authority & bounded DiLoCo leases, Ch 273 6-tier Byzantine verification blocking 7/7 attacks, and Ch 274 Quarantine Optimizer blocking 3/3 regressions with atomic rollback.",
+    "limitations": [
+      "This offline CPU route runs the #authority policy, replay, Byzantine verification, quarantine promotion and settlement admission rules with no network, GPU, Nostr relay or live Bitcoin wallet.",
+      "Live Apple M5 Max Metal 4, NVIDIA RTX 4080 CUDA, 16.38 GB Inkling-2-Mini hybrid execution, and live Bitcoin mainnet Breez Spark settlement retain their own dated verification records under docs/verification/executor-*.md.",
+      "Passing this bounded CPU route does not re-execute GPU kernels or move mainnet satoshis."
+    ]
+  },
+  "status": "passed",
+  "observed_revision": "da6ab05135e414fb2736a1e9f9744463548288b8",
+  "started_at": "2026-11-27T04:42:03.187545+00:00",
+  "finished_at": "2026-11-27T04:42:08.756013+00:00",
+  "wall_seconds": 5.568,
+  "executed_runs": 10,
+  "retained_runs": 0,
+  "route_definition_sha256": "84346b4d7962b152ad0cabf4e53dff39cd4160926cde70f1d0322e37fd39cfe2",
+  "runner_sha256": "36ff17103b29a508e536431f65b14c34ea99aae980e77a6416960aa2408d4a06",
+  "tools": {
+    "coax": {
+      "sha256": "8a8bcc05b49468bf40c17400ab7eb677e41bfe24549617d60f3ca9a54fbfd7aa",
+      "version": "coax0 0.52.0"
+    },
+    "cc": {
+      "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+      "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+    },
+    "python": {
+      "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+      "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+    }
+  },
+  "target": {
+    "system": "Darwin",
+    "release": "25.4.0",
+    "machine": "arm64",
+    "SDKROOT": "",
+    "MACOSX_DEPLOYMENT_TARGET": ""
+  },
+  "raw_receipt": {
+    "file_sha256": "eb1c53225be823fb525b440ba566d33d18a7c2e991d711b455959d88b93abbf5",
+    "integrity_sha256": "aaf622e47e377e1b7d6ae593ac3ca72e1e8d4df9a474a0abc8b741d5f8c7b442"
+  },
+  "retention_verification": {
+    "status": "passed",
+    "started_at": "2026-11-27T04:45:05.481660+00:00",
+    "finished_at": "2026-11-27T04:45:06.611278+00:00",
+    "wall_seconds": 1.13,
+    "executed_runs": 0,
+    "retained_runs": 10,
+    "raw_receipt_file_sha256": "374ee44b22ea73e0fa893dbfe63324a4648ad3dddd11d877c976f611d6bf3921",
+    "raw_receipt_integrity_sha256": "17263bd098980533653e5f355e6faa8a112965f783471881157aa1b74cfdcebe"
+  },
+  "steps": [
+    {
+      "key": "exact-replay:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.761,
+      "recipe_sha256": "d2fcf671b022c135cbe4d4205dfe9491434639097f7cea5be4be483da92205ef",
+      "closure_sha256": "2206dd2b4244a7cd0c2499232e506ef052521b120a0e4def6873dffd214560f9",
+      "input_count": 11,
+      "inputs": {
+        "coax/lib/crypto/bytes.coax": "5ee76718607fa09566096cdb049ecfeca875f0ace09e19de72688f2dad9be48b",
+        "coax/lib/crypto/erasure.coax": "909aeb459bea46080aa1a33d403d0b7aae5b00d7189672621f6c1d2dafcd211f",
+        "coax/lib/crypto/sha256-kernel.coax": "91f3b14038c2c474e5753a65132c370189fa44094f0af1333c8849129a2abc2a",
+        "coax/lib/crypto/sha256.coax": "1357479d43c38f6017a064ef824300c313c3ad53a40baee3f3c07b510b7bf312",
+        "psionic/examples/exact-replay.coax": "99a30616f50892a5615f63645c30dd616cf5a6b349dc3747719ea84c886d1fde",
+        "psionic/fixtures/exact-replay.out": "8eded7da4a05e08023b7f692a73dda8a0aea40afb39cba4d0b37d1ba42a99048",
+        "psionic/fixtures/memory-vectors.coax": "660d82ac830be67bd16c8b2f7cba702e592a55797eda159f1817c18805341b05",
+        "psionic/fixtures/trace-vectors.coax": "217294ac81d0ddb25067dea5ee7db5f72931547d5da10219122a277a9c1f6a0a",
+        "psionic/lib/exact-memory.coax": "95f64687b975227b80c97b0679e92fc0839d921db8921d80230564f7b5c11ca0",
+        "psionic/lib/replay.coax": "67194a4c60d70c4d40eb15d3725da91294a001a61ace29ba92db22ea39bc151f",
+        "psionic/lib/trace-machine.coax": "7c45d0a1a6593794e616ffd7cd96b9c0ffe06caaeeb6e92db91030a265cf08de"
+      },
+      "expected": {
+        "stdout": "psionic/fixtures/exact-replay.out",
+        "sha256": "8eded7da4a05e08023b7f692a73dda8a0aea40afb39cba4d0b37d1ba42a99048",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "8eded7da4a05e08023b7f692a73dda8a0aea40afb39cba4d0b37d1ba42a99048",
+        "bytes": 726
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "exact-replay:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.84,
+      "recipe_sha256": "4cba3a68fe614e9282c24d0b66a73c944fd30fe0924c1da52b9eddd0249becd6",
+      "closure_sha256": "2206dd2b4244a7cd0c2499232e506ef052521b120a0e4def6873dffd214560f9",
+      "input_count": 11,
+      "inputs": {
+        "coax/lib/crypto/bytes.coax": "5ee76718607fa09566096cdb049ecfeca875f0ace09e19de72688f2dad9be48b",
+        "coax/lib/crypto/erasure.coax": "909aeb459bea46080aa1a33d403d0b7aae5b00d7189672621f6c1d2dafcd211f",
+        "coax/lib/crypto/sha256-kernel.coax": "91f3b14038c2c474e5753a65132c370189fa44094f0af1333c8849129a2abc2a",
+        "coax/lib/crypto/sha256.coax": "1357479d43c38f6017a064ef824300c313c3ad53a40baee3f3c07b510b7bf312",
+        "psionic/examples/exact-replay.coax": "99a30616f50892a5615f63645c30dd616cf5a6b349dc3747719ea84c886d1fde",
+        "psionic/fixtures/exact-replay.out": "8eded7da4a05e08023b7f692a73dda8a0aea40afb39cba4d0b37d1ba42a99048",
+        "psionic/fixtures/memory-vectors.coax": "660d82ac830be67bd16c8b2f7cba702e592a55797eda159f1817c18805341b05",
+        "psionic/fixtures/trace-vectors.coax": "217294ac81d0ddb25067dea5ee7db5f72931547d5da10219122a277a9c1f6a0a",
+        "psionic/lib/exact-memory.coax": "95f64687b975227b80c97b0679e92fc0839d921db8921d80230564f7b5c11ca0",
+        "psionic/lib/replay.coax": "67194a4c60d70c4d40eb15d3725da91294a001a61ace29ba92db22ea39bc151f",
+        "psionic/lib/trace-machine.coax": "7c45d0a1a6593794e616ffd7cd96b9c0ffe06caaeeb6e92db91030a265cf08de"
+      },
+      "expected": {
+        "stdout": "psionic/fixtures/exact-replay.out",
+        "sha256": "8eded7da4a05e08023b7f692a73dda8a0aea40afb39cba4d0b37d1ba42a99048",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "8eded7da4a05e08023b7f692a73dda8a0aea40afb39cba4d0b37d1ba42a99048",
+        "bytes": 726
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "two-leg-settlement:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.244,
+      "recipe_sha256": "7212be3c410bc06559da5e6d0bde44d6370d6314cfba223a12cbc5c4ec58dd06",
+      "closure_sha256": "1d0487dffc469a7b5524d6d4c4590ccb48bd81ff6c12be587f80b11002198b39",
+      "input_count": 3,
+      "inputs": {
+        "bitcoin/examples/paying-for-requests.coax": "2c2386102466b104acf693792c4b45ff97e8b71b9e0cdc40264ca105790a351c",
+        "bitcoin/fixtures/paying-for-requests.out": "a1bdfae39e74b7cd78b326fab1266c7c1c5457217203c309fb6c6c3465366001",
+        "pay/executor-settlement.coax": "786452002f670767349d55b712852bccd67eeee35ba1b6d77eef3b4b860cf84e"
+      },
+      "expected": {
+        "stdout": "bitcoin/fixtures/paying-for-requests.out",
+        "sha256": "a1bdfae39e74b7cd78b326fab1266c7c1c5457217203c309fb6c6c3465366001",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "a1bdfae39e74b7cd78b326fab1266c7c1c5457217203c309fb6c6c3465366001",
+        "bytes": 411
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "two-leg-settlement:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.282,
+      "recipe_sha256": "5006852cfd826815bcd778aaad69ab5cd155a87888f73404a885801fe4e1cfad",
+      "closure_sha256": "1d0487dffc469a7b5524d6d4c4590ccb48bd81ff6c12be587f80b11002198b39",
+      "input_count": 3,
+      "inputs": {
+        "bitcoin/examples/paying-for-requests.coax": "2c2386102466b104acf693792c4b45ff97e8b71b9e0cdc40264ca105790a351c",
+        "bitcoin/fixtures/paying-for-requests.out": "a1bdfae39e74b7cd78b326fab1266c7c1c5457217203c309fb6c6c3465366001",
+        "pay/executor-settlement.coax": "786452002f670767349d55b712852bccd67eeee35ba1b6d77eef3b4b860cf84e"
+      },
+      "expected": {
+        "stdout": "bitcoin/fixtures/paying-for-requests.out",
+        "sha256": "a1bdfae39e74b7cd78b326fab1266c7c1c5457217203c309fb6c6c3465366001",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "a1bdfae39e74b7cd78b326fab1266c7c1c5457217203c309fb6c6c3465366001",
+        "bytes": 411
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "training-window:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.232,
+      "recipe_sha256": "dee2820ab7d685179f4bffeb7c81310489db92804a368d90936ce70950f6b50a",
+      "closure_sha256": "32c794dc691d89aae2c6b17a0da72a73ff52eb1dd8ddc759a808c32cdd4afbef",
+      "input_count": 3,
+      "inputs": {
+        "psionic/examples/training-window.coax": "14df7dfac124e7314b57ccef9437e0c775bb0e91d0a293053909e5724a955183",
+        "psionic/fixtures/training-window.out": "b61edcb8a25bc56cc5d30e5653e46195b9241d7276a116cca28d6e821b2e2a8f",
+        "psionic/lib/peer/training-window.coax": "13e01b0a2822c80fbb049e34892379906c07244a88971407d36a9c820ec7a6e6"
+      },
+      "expected": {
+        "stdout": "psionic/fixtures/training-window.out",
+        "sha256": "b61edcb8a25bc56cc5d30e5653e46195b9241d7276a116cca28d6e821b2e2a8f",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "b61edcb8a25bc56cc5d30e5653e46195b9241d7276a116cca28d6e821b2e2a8f",
+        "bytes": 345
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "training-window:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.268,
+      "recipe_sha256": "e1c0022cf36cf903ef2f792dd4570f5308a81126336d3aa7a12c93a7927f08ab",
+      "closure_sha256": "32c794dc691d89aae2c6b17a0da72a73ff52eb1dd8ddc759a808c32cdd4afbef",
+      "input_count": 3,
+      "inputs": {
+        "psionic/examples/training-window.coax": "14df7dfac124e7314b57ccef9437e0c775bb0e91d0a293053909e5724a955183",
+        "psionic/fixtures/training-window.out": "b61edcb8a25bc56cc5d30e5653e46195b9241d7276a116cca28d6e821b2e2a8f",
+        "psionic/lib/peer/training-window.coax": "13e01b0a2822c80fbb049e34892379906c07244a88971407d36a9c820ec7a6e6"
+      },
+      "expected": {
+        "stdout": "psionic/fixtures/training-window.out",
+        "sha256": "b61edcb8a25bc56cc5d30e5653e46195b9241d7276a116cca28d6e821b2e2a8f",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "b61edcb8a25bc56cc5d30e5653e46195b9241d7276a116cca28d6e821b2e2a8f",
+        "bytes": 345
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "byzantine-verify:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.275,
+      "recipe_sha256": "6308e75c7d35ef0d3ebbd82ebd7b7ea70d09ed1c7970b3c89899a55843f91a2c",
+      "closure_sha256": "2d4a5826540d62281ed801974b664c288b147cd423a55199f9e2de44ca9061ba",
+      "input_count": 3,
+      "inputs": {
+        "psionic/examples/train-verify.coax": "697dd82547d66fbff2c40924b3a94b6495183e43f80d1acd5fdb1f792ea70222",
+        "psionic/fixtures/train-verify.out": "891b8307a5d991d7f0d9bddb1afcf531cb95560d0e24861791d831807bcdad23",
+        "psionic/lib/peer/train-verify.coax": "f986766813fbe2006d25cdf055e1fb3d3afc475d69034efc558c3a0a41ee9e89"
+      },
+      "expected": {
+        "stdout": "psionic/fixtures/train-verify.out",
+        "sha256": "891b8307a5d991d7f0d9bddb1afcf531cb95560d0e24861791d831807bcdad23",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "891b8307a5d991d7f0d9bddb1afcf531cb95560d0e24861791d831807bcdad23",
+        "bytes": 296
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "byzantine-verify:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.27,
+      "recipe_sha256": "76b45089b0df3aa9be22fe8f394710e9004ee05758e91e909505958c37106ec2",
+      "closure_sha256": "2d4a5826540d62281ed801974b664c288b147cd423a55199f9e2de44ca9061ba",
+      "input_count": 3,
+      "inputs": {
+        "psionic/examples/train-verify.coax": "697dd82547d66fbff2c40924b3a94b6495183e43f80d1acd5fdb1f792ea70222",
+        "psionic/fixtures/train-verify.out": "891b8307a5d991d7f0d9bddb1afcf531cb95560d0e24861791d831807bcdad23",
+        "psionic/lib/peer/train-verify.coax": "f986766813fbe2006d25cdf055e1fb3d3afc475d69034efc558c3a0a41ee9e89"
+      },
+      "expected": {
+        "stdout": "psionic/fixtures/train-verify.out",
+        "sha256": "891b8307a5d991d7f0d9bddb1afcf531cb95560d0e24861791d831807bcdad23",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "891b8307a5d991d7f0d9bddb1afcf531cb95560d0e24861791d831807bcdad23",
+        "bytes": 296
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "quarantine-promote:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.255,
+      "recipe_sha256": "9cfc4f50d6f56100cf36f271c4014db1fea586b5d079ca4c946e246f65208c4a",
+      "closure_sha256": "b442b23f7c16693b1e78040605a50befdc4e079fc0fd5264500daa6d438e61cf",
+      "input_count": 3,
+      "inputs": {
+        "psionic/examples/quarantine-opt.coax": "cecfa25c51f62ea97cb6c36a00250e8a6fceab4a07cca67dc0f7d2d6b04fa7a2",
+        "psionic/fixtures/quarantine-opt.out": "38c4ae3f1e0e781657fca231de3c5a9e7c45ac6c517c7f92e35206d7a5000ce9",
+        "psionic/lib/peer/quarantine-opt.coax": "2c995b407ed84dcb3e0e99dc388537e82a817e2987a5af2ba53fde8ac10c8e6f"
+      },
+      "expected": {
+        "stdout": "psionic/fixtures/quarantine-opt.out",
+        "sha256": "38c4ae3f1e0e781657fca231de3c5a9e7c45ac6c517c7f92e35206d7a5000ce9",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "38c4ae3f1e0e781657fca231de3c5a9e7c45ac6c517c7f92e35206d7a5000ce9",
+        "bytes": 317
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "quarantine-promote:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.407,
+      "recipe_sha256": "63c6f7169b53d6e38d0d325e976f8b1fb056afa25c056ef0bb8d757d8d6c1326",
+      "closure_sha256": "b442b23f7c16693b1e78040605a50befdc4e079fc0fd5264500daa6d438e61cf",
+      "input_count": 3,
+      "inputs": {
+        "psionic/examples/quarantine-opt.coax": "cecfa25c51f62ea97cb6c36a00250e8a6fceab4a07cca67dc0f7d2d6b04fa7a2",
+        "psionic/fixtures/quarantine-opt.out": "38c4ae3f1e0e781657fca231de3c5a9e7c45ac6c517c7f92e35206d7a5000ce9",
+        "psionic/lib/peer/quarantine-opt.coax": "2c995b407ed84dcb3e0e99dc388537e82a817e2987a5af2ba53fde8ac10c8e6f"
+      },
+      "expected": {
+        "stdout": "psionic/fixtures/quarantine-opt.out",
+        "sha256": "38c4ae3f1e0e781657fca231de3c5a9e7c45ac6c517c7f92e35206d7a5000ce9",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "38c4ae3f1e0e781657fca231de3c5a9e7c45ac6c517c7f92e35206d7a5000ce9",
+        "bytes": 317
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    }
+  ],
+  "revision_scope": "Git HEAD at observation; source hashes, not a claim that the worktree is clean or published.",
+  "scope": "Exact selected native examples and declared workflow, not all book capabilities, product adoption, live transport, browser rendering or production deployment.",
+  "integrity_sha256": "70579a4585868f75cf21b2e66522999f2b9b78a484676f66a7b32ec02ac2680c"
+}

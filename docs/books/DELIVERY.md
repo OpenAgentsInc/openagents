@@ -40,6 +40,11 @@ The Metaverse Engine route proves CPU scheduling/input/replay, and the Nostr cli
 uses scripted transport bytes. Browser rendering and live relay transport need
 their own evidence.
 
+### Retained route qualification records
+
+- [2026-11-26 route qualification record](../verification/book-routes-2026-11-26/README.md) ([index.json](../verification/book-routes-2026-11-26/index.json)): 8 of 9 routes (all non-Coder routes, 53/53 fresh and retained step/mode runs) plus all 119 units of `coax/book/check-examples.sh` passed on `coax0 0.52.0` (`coder-harness-memory` verified separately by the parallel Coder book sync).
+- [2026-11-01 route qualification record](../verification/book-routes-2026-11-01/README.md): initial 4-route baseline on `coax0 0.47.0`.
+
 ## Check only what changed
 
 Use a new receipt filename even after a failure:
