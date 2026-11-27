@@ -1,0 +1,69 @@
+// Runnable example for Everglade Book Chapter 30: Accounts and persistence.
+// Exercises Nostr account identity provisioning (coax/web/api/auth-identity-policy.coax),
+// hardware-bound multi-device refresh proofs (coax/web/api/auth-device-policy.coax),
+// durable Character aggregate rules (coax/web/api/character-policy.coax,
+// everglade/model/character.coax), and fenced checkpoint admission
+// (coax/web/api/checkpoint-policy.coax).
+//   coax/bin/coax run everglade/examples/accounts-character-persistence.coax
+#import "Basic";
+#load "../../coax/web/api/character-policy.coax";
+#load "../../coax/web/api/checkpoint-policy.coax";
+#load "../../coax/web/api/auth-identity-policy.coax";
+#load "../../coax/web/api/auth-device-policy.coax";
+
+// book:begin accounts-character-persistence
+accounts_run :: () -> bool {
+  // 1. Account identity provisioning and hardware-bound multi-device login/refresh.
+  p_new := ai_plan(true, false, false, false);
+  p_linked := ai_plan(true, false, false, true);
+  p_frozen := ai_plan(true, true, false, true);
+  reg_ios := dk_register(true, true, true, DK_IOS, DK_ENCLAVE);
+  reg_mac := dk_register(true, true, true, DK_MAC, DK_ENCLAVE);
+  now := 1800000000000;
+  ref_ok := dk_refresh(true, false, true, true, now, now, true, false);
+  ref_stolen := dk_refresh(true, false, false, false, 0, now, false, false);
+  ref_replay := dk_refresh(true, false, true, true, now, now, true, true);
+  ref_clock := dk_refresh(true, false, true, true, now - 60001, now, true, false);
+  ref_revoked := dk_refresh(true, true, true, true, now, now, true, false);
+  print("id_new=% id_linked=% id_frozen=% bind_ok=% refresh_ok=% refuse_stolen=% replay=% clock=% revoked=%\n",
+    p_new == AI_CREATE, p_linked == AI_LINKED, p_frozen == AI_SKIP,
+    reg_ios == DK_OK && reg_mac == DK_OK, ref_ok == DK_OK,
+    ref_stolen == DK_NEEDED, ref_replay == DK_REPLAY, ref_clock == DK_CLOCK, ref_revoked == DK_REVOKED);
+
+  // 2. Durable Character aggregate across devices: class is set once, XP never falls, bag follows ledger.
+  b1: [CHAR_BODY] u8; b2: [CHAR_BODY] u8; b3: [CHAR_BODY] u8; b4: [CHAR_BODY] u8;
+  kw: [16] u8;
+  rec1 := character_ticket("", "p-a", "srd-ranger", 950, 2, "[4,9,12]", 5, b1[..]);
+  // Second device signs in with stale lower XP (100) and attempts a class change -> both ignored/kept.
+  rec2 := character_ticket(rec1, "p-a", "srd-wizard", 100, 1, "[4,9,12,15]", 6, b2[..]);
+  cls := character_class_word(rec2, kw[..]);
+  // Accepted checkpoint raises XP from 950 -> 2700 (level 4); regression to 800 returns empty (keep).
+  rec3 := character_checkpoint(rec2, 2700, b3[..]);
+  reg_ck := character_checkpoint(rec3, 800, b4[..]);
+  print("cls=% xp=% lvl=% ck_xp=% ck_lvl=% refuse_xp_drop=%\n",
+    cls, character_xp(rec2), character_level_of(rec2),
+    character_xp(rec3), character_level_of(rec3), reg_ck.count == 0);
+
+  // 3. Fenced checkpoint admission: owner generation, process identity, revision & XP monotonicity.
+  d_ok := room_checkpoint_decide(true, true, OwnerGeneration.{value = 4}, OwnerGeneration.{value = 4}, 101, 2, 2700, OwnerGeneration.{value = 4}, 101, 1, 950, false);
+  d_dup := room_checkpoint_decide(true, true, OwnerGeneration.{value = 4}, OwnerGeneration.{value = 4}, 101, 2, 2700, OwnerGeneration.{value = 4}, 101, 2, 2700, true);
+  d_fence := room_checkpoint_decide(true, true, OwnerGeneration.{value = 3}, OwnerGeneration.{value = 4}, 101, 3, 2800, OwnerGeneration.{value = 4}, 101, 2, 2700, false);
+  d_conf := room_checkpoint_decide(true, true, OwnerGeneration.{value = 4}, OwnerGeneration.{value = 4}, 101, 2, 2700, OwnerGeneration.{value = 4}, 101, 2, 2700, false);
+  d_reg := room_checkpoint_decide(true, true, OwnerGeneration.{value = 4}, OwnerGeneration.{value = 4}, 101, 3, 2600, OwnerGeneration.{value = 4}, 101, 2, 2700, false);
+  print("ck=% dup=% fence=% conflict=% regression=%\n",
+    room_checkpoint_status(d_ok), room_checkpoint_status(d_dup),
+    room_checkpoint_status(d_fence), room_checkpoint_status(d_conf), room_checkpoint_status(d_reg));
+
+  return p_new == AI_CREATE && p_linked == AI_LINKED && p_frozen == AI_SKIP &&
+         reg_ios == DK_OK && reg_mac == DK_OK && ref_ok == DK_OK &&
+         ref_stolen == DK_NEEDED && ref_replay == DK_REPLAY && ref_clock == DK_CLOCK && ref_revoked == DK_REVOKED &&
+         cls == "srd-ranger" && character_xp(rec2) == 950 && character_level_of(rec2) == 3 &&
+         character_xp(rec3) == 2700 && character_level_of(rec3) == 4 && reg_ck.count == 0 &&
+         d_ok == 0 && d_dup == 1 && d_fence == 3 && d_conf == 4 && d_reg == 8;
+}
+// book:end accounts-character-persistence
+
+main :: () {
+  ok := accounts_run();
+  print("ok=%\n", ok);
+}

@@ -1,0 +1,5 @@
+order_ok=true skip_refused=true rollback_order_ok=true
+pins_all=true lag_refused=true prev_pins_beside=true
+promote_ok=true refuse_moved=true refuse_seeded=true soak_yields=true release_blocks=true
+canary_good=true canary_bad_why=crashed,slower-tick,refuses-the-build qual_fail_closed=true
+ok=true

@@ -1,0 +1,76 @@
+// Runnable example for Everglade Book Chapter 27: Townspeople.
+// Exercises Everglade's shared 28-person roster & server-owned personas
+// (everglade/npc/people-words.coax), Pansopher's authored dialogue tree
+// (everglade/world/pansopher.coax, metaverse-engine/talk/tree.coax), and the
+// bounded dual-door guard-guide contract (everglade/npc/guard-guide.coax,
+// everglade/npc/guard-guide-game.coax, everglade/npc/guard-door.coax).
+//   coax/bin/coax run everglade/examples/townspeople-roster-guide.coax
+#import "Basic";
+#load "../../everglade/npc/people-words.coax";
+#load "../../metaverse-engine/talk/tree.coax";
+#load "../../everglade/world/pansopher.coax" as pan;
+#load "../../everglade/npc/guard-guide.coax";
+#load "../../everglade/npc/guard-guide-game.coax";
+
+// book:begin townspeople-roster-guide
+townspeople_run :: () -> bool {
+  // 1. Shared 28-person city roster: client and server resolve identical slug IDs & roles.
+  marta := eg_person_of("marta");
+  anselm := eg_person_of("brother-anselm");
+  cat := eg_person_of("pebble");
+  nobody := eg_person_of("nobody");
+  cat_is_cat := eg_words_role(cat) == EG_CAT_ROLE;
+  print("people=% marta=% anselm=% pebble=% cat_role=% unknown_refused=%\n",
+    EG_PEOPLE, marta, anselm, cat, cat_is_cat, nobody == -1);
+
+  // 2. Authored talk tree (Pansopher): every branch closes cleanly without dangling nodes.
+  choices := pan.PANSOPHER_CHOICES;
+  tree_ok := talk_tree_whole(pan.PANSOPHER_LINES, choices[..]);
+  offered: [TALK_TREE_CHOICES] int;
+  n0 := talk_tree_offered(choices[..], 0, offered[..]);
+  to1 := talk_tree_pick(choices[..], 0, 0);
+  to_end := talk_tree_pick(choices[..], 0, 3);
+  print("tree_whole=% root_choices=% pick0_line=% pick3_end=%\n",
+    tree_ok, n0, to1, to_end == TALK_TREE_END);
+
+  // 3. Bounded guard-guide observation projection and dual-door verification (Elephant + Gemini).
+  f := GgpFacts.{
+    followed = 0, stage = 1, guard = 0, help_requested = true,
+    gameplay = true, foreground = true, player_alive = true,
+    guard_calm = true, guard_alive = true, guard_full_health = true,
+    guard_visible = true, guard_near = true,
+    world_known = true, target_present = true, destination_present = true
+  };
+  obs := ggp_project(f);
+  base := gg_baseline(obs);
+  legal := gg_legal(obs);
+  el := gg_decode(GG_RESPONSE);
+  gm := gg_decode(GG_GEMINI_RESPONSE);
+  ad_el := gg_admit(obs, el, 420);
+  ad_gm := gg_admit(obs, gm, 610);
+  print("eligible=% goal=% base=% legal=% elephant_door=% gemini_door=% admit_el=% admit_gm=%\n",
+    obs.eligible, obs.goal, base, legal, el.door, gm.door,
+    ad_el.ok && ad_el.action == 2, ad_gm.ok && ad_gm.action == 2);
+
+  // 4. Refusals: player in combat blocks offer; edited world blocks route; 8000 ms deadline
+  //    and illegal out-of-mask actions are refused by gg_admit.
+  f_combat := f; f_combat.combat = true;
+  f_edited := f; f_edited.edit_count = 1;
+  late := gg_admit(obs, el, GG_TIMEOUT);
+  wrong := gg_admit(obs, GgAnswer.{ok = true, action = 4, door = GDR_ELEPHANT}, 100);
+  print("refuse_combat=% refuse_edited=% refuse_timeout=% refuse_illegal=%\n",
+    !ggp_eligible(f_combat), !ggp_route(f_edited), !late.ok, !wrong.ok);
+
+  return EG_PEOPLE == 28 && marta == 5 && anselm == 17 && cat == 4 && cat_is_cat &&
+         nobody == -1 && tree_ok && n0 == 4 && to1 == 1 && to_end == TALK_TREE_END &&
+         obs.eligible && base == 2 && legal == 5 &&
+         el.ok && el.door == GDR_ELEPHANT && gm.ok && gm.door == GDR_GEMINI &&
+         ad_el.ok && ad_gm.ok && !ggp_eligible(f_combat) && !ggp_route(f_edited) &&
+         !late.ok && !wrong.ok;
+}
+// book:end townspeople-roster-guide
+
+main :: () {
+  ok := townspeople_run();
+  print("ok=%\n", ok);
+}

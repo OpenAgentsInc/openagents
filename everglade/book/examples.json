@@ -16,6 +16,55 @@
       "modes": ["debug", "release"]
     },
     {
+      "source": "everglade/examples/city-town-plots.coax",
+      "chapter": "everglade/book/ch026-walk-into-a-city.md",
+      "stdout": "everglade/examples/city-town-plots.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "everglade/examples/townspeople-roster-guide.coax",
+      "chapter": "everglade/book/ch027-townspeople.md",
+      "stdout": "everglade/examples/townspeople-roster-guide.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "everglade/examples/interactions-quests-ledger.coax",
+      "chapter": "everglade/book/ch028-interactions.md",
+      "stdout": "everglade/examples/interactions-quests-ledger.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "everglade/examples/many-rooms-travel.coax",
+      "chapter": "everglade/book/ch029-many-rooms.md",
+      "stdout": "everglade/examples/many-rooms-travel.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "everglade/examples/accounts-character-persistence.coax",
+      "chapter": "everglade/book/ch030-accounts-and-persistence.md",
+      "stdout": "everglade/examples/accounts-character-persistence.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "everglade/examples/release-set-gates.coax",
+      "chapter": "everglade/book/ch031-ship-it.md",
+      "stdout": "everglade/examples/release-set-gates.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
+      "source": "everglade/examples/live-world-ops.coax",
+      "chapter": "everglade/book/ch032-run-a-live-world.md",
+      "stdout": "everglade/examples/live-world-ops.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"]
+    },
+    {
       "source": "everglade/examples/dragon-flight-breath.coax",
       "chapter": "everglade/book/ch033-lets-build-a-dragon.md",
       "stdout": "everglade/examples/dragon-flight-breath.out",

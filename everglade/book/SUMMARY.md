@@ -49,6 +49,19 @@
 - [24. The longbow](ch024-the-longbow.md) — partly implemented
 - [25. Cast while you run](ch025-cast-while-you-run.md) — partly implemented
 
+## Part VIII: The city
+
+- [26. Walk into a city](ch026-walk-into-a-city.md) — partly implemented
+- [27. Townspeople](ch027-townspeople.md) — partly implemented
+- [28. Interactions](ch028-interactions.md) — partly implemented
+
+## Part IX: Run an MMORPG
+
+- [29. Many rooms](ch029-many-rooms.md) — partly implemented
+- [30. Accounts and persistence](ch030-accounts-and-persistence.md) — partly implemented
+- [31. Ship it](ch031-ship-it.md) — partly implemented
+- [32. Run a live world](ch032-run-a-live-world.md) — partly implemented
+
 ## Part X: Beasts and mounts
 
 - [33. Let's build a dragon](ch033-lets-build-a-dragon.md)

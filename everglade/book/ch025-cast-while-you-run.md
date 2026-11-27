@@ -87,6 +87,6 @@ coax/bin/coax test --library metaverse-engine/anim/layers-checks.coax
 
 ## What comes next
 
-Parts VIII and IX (planned chapters 26–32) expand from the forest clearing into
-a city, multi-shard rooms, and live operations. Part X jumps straight into
-beasts and mounts in [chapter 33](ch033-lets-build-a-dragon.md).
+Part VIII steps out of the woods into the city. [Chapter 26](ch026-walk-into-a-city.md)
+carves the city clearing, lays out the 16-plot town grid and staged Housewright
+buildings, and pins every gate and landmark to one coordinate table.

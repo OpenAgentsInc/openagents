@@ -1,0 +1,5 @@
+people=28 marta=5 anselm=17 pebble=4 cat_role=true unknown_refused=true
+tree_whole=true root_choices=4 pick0_line=1 pick3_end=true
+eligible=true goal=2 base=2 legal=5 elephant_door=1 gemini_door=2 admit_el=true admit_gm=true
+refuse_combat=true refuse_edited=true refuse_timeout=true refuse_illegal=true
+ok=true

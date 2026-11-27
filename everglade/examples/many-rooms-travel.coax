@@ -1,0 +1,70 @@
+// Runnable example for Everglade Book Chapter 29: Many rooms.
+// Exercises single-owner room leases & fencing (metaverse-engine/session/control.coax)
+// and crash-safe five-step travel between authoritative room owners
+// (metaverse-engine/session/travel.coax: reserve, prepare, commit, activate, route,
+// recover, and capacity refusal).
+//   coax/bin/coax run everglade/examples/many-rooms-travel.coax
+#import "Basic";
+#load "../../metaverse-engine/session/travel.coax";
+
+// book:begin many-rooms-travel
+travel_run :: () -> bool {
+  w: [1] TravelWorld;
+  travel_world(w[..]);
+  w[0].now = 1000;
+
+  // 1. Character 1 joins Room 0 (id 10) at gen=1; Room 1 (id 20) cannot hijack the live lease.
+  joined := travel_join(w[..], 0, 1, TravelBody.{hp = 18, xp = 0});
+  cmd1 := travel_command(w[..], 0, 1, 1, 50);
+  hijack := control_acquire(w[0].dir[..], CharacterId.{value = 1}, w[0].rooms[1].id);
+  print("joined=% gen=% xp=% refuse_elsewhere=%\n",
+    joined, w[0].rooms[0].bodies[1].gen, w[0].rooms[0].bodies[1].xp, hijack.status == CONTROL_ELSEWHERE);
+
+  // 2. Five-step travel Room 0 -> Room 1: cutover drops commands, commit advances gen to 2,
+  //    old owner is fenced at the store, destination activates and continues from seq=2.
+  s1 := travel_reserve(w[..], 1, 0, 1);
+  s2 := travel_prepare(w[..]);
+  cut_refused := !travel_command(w[..], 0, 1, 2, 10);
+  s3 := travel_commit(w[..]);
+  s4 := travel_activate(w[..]);
+  s5 := travel_route(w[..]);
+  old_fenced := control_fence(w[0].store[..], CharacterId.{value = 1}, 1) == CONTROL_STALE;
+  cmd2 := travel_command(w[..], 1, 1, 2, 75);
+  print("steps_ok=% cut_refused=% new_gen=% old_fenced=% route=% xp=%\n",
+    s1 == TRAVEL_OK && s2 == TRAVEL_OK && s3 == TRAVEL_OK && s4 == TRAVEL_OK && s5 == TRAVEL_OK,
+    cut_refused, w[0].rooms[1].bodies[1].gen, old_fenced, w[0].route[1], w[0].rooms[1].bodies[1].xp);
+
+  // 3. Crash before commit aborts cleanly back to source; crash after commit rolls forward.
+  _ := travel_reserve(w[..], 1, 1, 0);
+  _ = travel_prepare(w[..]);
+  travel_crash(w[..], 1);
+  pre_steps := travel_recover(w[..], 1);
+  pre_aborted := w[0].rec[0].status == TRAVEL_ABORTED && w[0].route[1] == 1;
+
+  _ = travel_reserve(w[..], 1, 1, 0);
+  _ = travel_prepare(w[..]);
+  _ = travel_commit(w[..]);
+  travel_crash(w[..], 0);
+  post_steps := travel_recover(w[..], 0);
+  post_done := w[0].rec[0].status == TRAVEL_DONE && w[0].route[1] == 0 && w[0].rooms[0].bodies[1].gen == 3;
+  print("pre_crash_aborted=% steps=% post_crash_forward=% steps=% final_gen=%\n",
+    pre_aborted, pre_steps, post_done, post_steps, w[0].rooms[0].bodies[1].gen);
+
+  // 4. Capacity refusal: a full destination refuses reserve while the player keeps playing.
+  w[0].rooms[1].used = w[0].rooms[1].capacity;
+  full_res := travel_reserve(w[..], 1, 0, 1);
+  still_plays := travel_command(w[..], 0, 1, 3, 25);
+  print("refuse_full=% still_plays=% final_xp=%\n",
+    full_res == TRAVEL_FULL, still_plays, w[0].rooms[0].bodies[1].xp);
+
+  return joined && cmd1 && hijack.status == CONTROL_ELSEWHERE &&
+         s1 == TRAVEL_OK && s2 == TRAVEL_OK && s3 == TRAVEL_OK && s4 == TRAVEL_OK && s5 == TRAVEL_OK &&
+         cut_refused && old_fenced && cmd2 && pre_aborted && post_done &&
+         full_res == TRAVEL_FULL && still_plays && w[0].rooms[0].bodies[1].xp == 150;
+}
+// book:end many-rooms-travel
+
+main :: () {
+  ok := travel_run();
+  print("ok=%\n", ok);
+}

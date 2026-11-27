@@ -1,0 +1,84 @@
+// Runnable example for Everglade Book Chapter 28: Interactions.
+// Exercises Everglade's shipped content tables, quest chains, and loot weights
+// (everglade/model/content.coax, everglade/content/shipped.coax), compare-and-set
+// quest claims & equipment rules (everglade/model/character.coax), and the
+// idempotent item & escrow trade ledger (metaverse-engine/session/ledger.coax,
+// everglade/model/item-op.coax).
+//   coax/bin/coax run everglade/examples/interactions-quests-ledger.coax
+#import "Basic";
+#load "../../everglade/content/shipped.coax";
+#load "../../everglade/model/content.coax";
+#load "../../everglade/model/item-op.coax";
+
+// book:begin interactions-quests-ledger
+interactions_run :: () -> bool {
+  // 1. Load and validate Everglade's shipped content tables (14 tables, rev 3) and walk Quest 1.
+  doc: [1] ContentDoc;
+  loaded := ct_read(doc[..], EC_SHIPPED) && ec_ok(doc[..]);
+  q0 := eq_next(doc[..], 1, 0);   // EQ_TAKE dialogue 1 (Warden)
+  q1 := eq_next(doc[..], 1, 1);   // EQ_KILL creature 1 (Wolf)
+  q2 := eq_next(doc[..], 1, 2);   // EQ_TALK dialogue 3 (hands Quest 1 in, unlocks Quest 3)
+  q3 := eq_next(doc[..], 1, 3);   // EQ_REWARD (Warden's cloak, 25 coin, 250 XP)
+  q4 := eq_next(doc[..], 1, 4);   // EQ_DONE
+  // Quest chain gate: dialogue 3 offers Quest 3 only once Quest 1 reaches stage 2.
+  early_stages := [5] int.[1, 0, 0, 0, 0];
+  ready_stages := [5] int.[2, 0, 0, 0, 0];
+  chain_locked := !eq_offer_open(doc[..], 3, 3, early_stages[..]);
+  chain_open := eq_offer_open(doc[..], 3, 3, ready_stages[..]);
+  drop_hit := ec_drop(doc[..], 1, 59);
+  drop_miss := ec_drop(doc[..], 1, 60);
+  print("tables_ok=% rev=% q1_kinds=%,%,%,%,% chain_locked=% chain_open=% wolf_drop=%,%\n",
+    loaded, doc[0].rev, q0.kind, q1.kind, q2.kind, q3.kind, q4.kind,
+    chain_locked, chain_open, drop_hit, drop_miss);
+
+  // 2. Compare-and-set quest claims, coin, XP, and wearing a reward item in Character.
+  c := char_new("p-a", 1);
+  c.bag[0] = 3; c.bag_n = 1; c.inv = 1;   // item 3 (Warden's cloak) granted into bag
+  c = char_claim(c, CharClaim.{quest = 1, from = 0, to = 1});
+  c = char_claim(c, CharClaim.{quest = 1, from = 1, to = 2});
+  c = char_claim(c, CharClaim.{quest = 1, from = 2, to = 3, coin = 25, xp = 250, slot = 1, item = 3});
+  stale_claim := char_claim(c, CharClaim.{quest = 1, from = 1, to = 2});
+  missing_wear := char_claim(c, CharClaim.{slot = 6, item = 99});
+  print("claim_ok=% stage=% coin=% xp=% worn_body=% refuse_stale=% refuse_unowned=%\n",
+    c.ok, char_stage(c, 1), c.coin, c.xp, c.worn[1], !stale_claim.ok, !missing_wear.ok);
+
+  // 3. Idempotent item & trade ledger: grant -> replay -> escrow -> double-spend refusal -> settle.
+  l: [1] ItemLedger;
+  alice := CharacterId.{value = 1};
+  bob := CharacterId.{value = 2};
+  g1 := OwnerGeneration.{value = 1};
+  g2 := OwnerGeneration.{value = 2};
+  _ := ledger_fence(l[..], alice, g1);
+  _ = ledger_fence(l[..], bob, g1);
+  grant_ask := LedgerAsk.{id = OperationId.{value = 10}, op = LOP_GRANT, c = alice, gen = g1, ver = 0, kind = ItemKindId.{value = 3}, sent = 1000};
+  r_grant := ledger_apply(l[..], grant_ask, 1000);
+  r_replay := ledger_apply(l[..], grant_ask, 1005);
+  // Same OperationId with a different kind is refused as LEDGER_CONFLICT.
+  bad_reuse := grant_ask; bad_reuse.kind = ItemKindId.{value = 4};
+  r_conflict := ledger_apply(l[..], bad_reuse, 1010);
+  // Escrow item to Bob; trying to transfer the escrowed item fails with LEDGER_HELD.
+  esc := ledger_apply(l[..], LedgerAsk.{id = OperationId.{value = 11}, op = LOP_ESCROW, c = alice, gen = g1, ver = 1, item = r_grant.item, to = bob, sent = 1020}, 1020);
+  dbl := ledger_apply(l[..], LedgerAsk.{id = OperationId.{value = 12}, op = LOP_TRANSFER, c = alice, gen = g1, ver = 2, item = r_grant.item, to = bob, sent = 1030}, 1030);
+  set := ledger_apply(l[..], LedgerAsk.{id = OperationId.{value = 13}, op = LOP_SETTLE, c = alice, gen = g1, ver = 2, item = r_grant.item, sent = 1040}, 1040);
+  // Advance Bob's owner generation to 2; a stale write under gen=1 is refused with LEDGER_STALE.
+  _ = ledger_fence(l[..], bob, g2);
+  stale_op := ledger_apply(l[..], LedgerAsk.{id = OperationId.{value = 14}, op = LOP_CONSUME, c = bob, gen = g1, ver = 1, item = r_grant.item, sent = 1050}, 1050);
+  print("grant=% replay=% conflict=% escrow=% held=% settle=% owner=% stale=% outbox=%\n",
+    io_word(r_grant.status), r_replay.replay, io_word(r_conflict.status),
+    io_word(esc.status), io_word(dbl.status), io_word(set.status),
+    l[0].items[r_grant.item.value].owner.value, io_word(stale_op.status), l[0].out_n);
+
+  return loaded && q0.kind == EQ_TAKE && q1.kind == EQ_KILL && q2.kind == EQ_TALK &&
+         q3.kind == EQ_REWARD && q4.kind == EQ_DONE && chain_locked && chain_open &&
+         drop_hit == 1 && drop_miss == 0 && c.ok && char_stage(c, 1) == 3 &&
+         c.coin == 25 && c.xp == 250 && c.worn[1] == 3 && !stale_claim.ok && !missing_wear.ok &&
+         r_grant.status == LEDGER_OK && r_replay.replay && r_conflict.status == LEDGER_CONFLICT &&
+         esc.status == LEDGER_OK && dbl.status == LEDGER_HELD && set.status == LEDGER_OK &&
+         l[0].items[r_grant.item.value].owner == bob && stale_op.status == LEDGER_STALE && l[0].out_n == 3;
+}
+// book:end interactions-quests-ledger
+
+main :: () {
+  ok := interactions_run();
+  print("ok=%\n", ok);
+}

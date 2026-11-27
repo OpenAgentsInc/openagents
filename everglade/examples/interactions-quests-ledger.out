@@ -1,0 +1,4 @@
+tables_ok=true rev=3 q1_kinds=1,2,5,6,7 chain_locked=true chain_open=true wolf_drop=1,0
+claim_ok=true stage=3 coin=25 xp=250 worn_body=3 refuse_stale=true refuse_unowned=true
+grant=ok replay=true conflict=conflict escrow=ok held=held settle=ok owner=2 stale=stale outbox=3
+ok=true

@@ -1,0 +1,59 @@
+// Runnable example for Everglade Book Chapter 32: Run a live world.
+// Exercises 30-day service levels, shard/DB/crash alerts, and deploy-free runtime flags
+// (coax/web/api/service-policy.coax), fail-closed live moderation rules
+// (metaverse-engine/session/moderation.coax), and the nightly full-fleet soak verdict
+// (coax/web/room/soak-policy.coax).
+//   coax/bin/coax run everglade/examples/live-world-ops.coax
+#import "Basic";
+#load "../../coax/web/room/soak-policy.coax";
+#load "../../metaverse-engine/session/moderation.coax";
+
+// book:begin live-world-ops
+ops_run :: () -> bool {
+  // 1. Service levels: tick p99 <= 10 ms (99.9%), join <= 5 s (95%), checkpoint <= 15 s (99.9%), ticket p95 <= 300 ms.
+  slo_pass := sv_met(SV_TICK, 999, 1000) == 1 && sv_met(SV_JOIN, 95, 100) == 1 && sv_met(SV_CHECKPOINT, 1000, 1000) == 1 && sv_ticket_ok(240);
+  slo_miss := sv_met(SV_TICK, 998, 1000) == 0 && !sv_ticket_ok(301);
+  print("slo_pass=% slo_miss_caught=%\n", slo_pass, slo_miss);
+
+  // 2. Live shard/DB/crash alerts and deploy-free runtime flags (maintenance, closed-s3).
+  a_silent := sv_shard_alerts(true, false, 45000, 0, 0, 0, 0);
+  a_drain := sv_shard_alerts(true, true, 60000, 0, 0, 0, 0);
+  a_sick := sv_shard_alerts(true, false, 0, 2, 1, 0, 30000);
+  db_hi := sv_db_alert(80, 100);
+  crash_live := sv_crash_alert(1200000) && !sv_crash_alert(3600000);
+  maint_on := sv_flag_name_ok("maintenance") && sv_flag_name_ok("closed-s3") && sv_maintenance(1, 0, 1000);
+  print("alert_silent=% drain_quiet=% sick_bits=% db_alert=% crash_1h=% maint_on=%\n",
+    a_silent == SV_A_SILENT, a_drain == 0, a_sick, db_hi, crash_live, maint_on);
+
+  // 3. Live moderation: requires moderator bit, non-self target, and explicit reason.
+  m_ok := moderation_judge(MOD_MUTE, true, false, 60, "spam in commons");
+  m_nonmod := moderation_judge(MOD_KICK, false, false, 0, "griefing");
+  m_self := moderation_judge(MOD_UNBAN, true, true, 0, "-");
+  m_noreason := moderation_judge(MOD_BAN, true, false, 0, "-");
+  until_ms := moderation_until(MOD_MUTE, 60, 1000000);
+  stopped_speak := moderation_speak(false, true) == MOD_KIND_MUTE;
+  stopped_ticket := moderation_ticket(true, false) == MOD_KIND_BAN;
+  print("mod_ok=% refuse_nonmod=% refuse_self=% refuse_noreason=% mute_ms=% speak_muted=% ticket_banned=%\n",
+    m_ok == MOD_OK, m_nonmod == MOD_NOT_MODERATOR, m_self == MOD_SELF, m_noreason == MOD_BAD,
+    until_ms - 1000000, stopped_speak, stopped_ticket);
+
+  // 4. Nightly full-fleet soak verdict: healthy 96-bot fleet passes; slow ticks + 64 MiB leak + astray creature fail.
+  ok_soak := SkFacts.{seated_most = 96, seated_end = 96, memory_early_kb = 700000, memory_late_kb = 700100, ticket_p95_ms = 40, windows_read = 700, windows_due = 720, astray = 0};
+  bad_soak := ok_soak; bad_soak.slow_windows = 2; bad_soak.memory_late_kb = 700000 + SK_LEAK_KB; bad_soak.astray = 1;
+  wb: [96] u8;
+  soak_pass := sk_verdict(ok_soak) == 0;
+  soak_why := sk_words(sk_verdict(bad_soak), wb[..]);
+  print("soak_pass=% soak_bad_why=%\n", soak_pass, soak_why);
+
+  return slo_pass && slo_miss && a_silent == SV_A_SILENT && a_drain == 0 &&
+         a_sick == SV_A_TICK + SV_A_FAILURES + SV_A_UNSAVED && db_hi && crash_live && maint_on &&
+         m_ok == MOD_OK && m_nonmod == MOD_NOT_MODERATOR && m_self == MOD_SELF && m_noreason == MOD_BAD &&
+         until_ms == 4600000 && stopped_speak && stopped_ticket &&
+         soak_pass && soak_why == "slow-tick,leak,astray";
+}
+// book:end live-world-ops
+
+main :: () {
+  ok := ops_run();
+  print("ok=%\n", ok);
+}
