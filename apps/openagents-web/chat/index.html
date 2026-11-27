@@ -10,19 +10,17 @@
 <meta name="color-scheme" content="dark">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/chat/index.md">
-<link rel="preload" href="/fonts/CommitMono-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <style>
-@font-face{font-family:'Commit Mono';src:url('/fonts/CommitMono-Variable.woff2') format('woff2');font-weight:200 700;font-style:normal;font-display:swap}
 *,*::before,*::after{box-sizing:border-box;border-radius:0}
 :root{color-scheme:dark}
-html,body{margin:0;background:#000000;color:#f1efe8;font-family:'Commit Mono',ui-monospace,monospace;font-size:14px;line-height:1.55;letter-spacing:.02em;-webkit-font-smoothing:antialiased}
+html,body{margin:0;background:#000000;color:#f1efe8;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Inter",system-ui,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 #chat{display:flex;flex-direction:column;min-height:100dvh;background:#000000}
 .log:focus,.log:focus-visible,.vl-scroll:focus,.vl-scroll:focus-visible{outline:none;box-shadow:none}
 .cc-hud{display:flex;align-items:stretch;justify-content:space-between;height:48px;padding:0 0 0 20px;border-bottom:1px solid #222222;background:#000000}
-.cc-pill{display:inline-flex;align-items:center;height:100%;padding:0 16px;background:#000000;border-left:1px solid #222222;color:rgba(255,255,255,.60);font:500 11px/1 'Commit Mono',ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase}
+.cc-pill{display:inline-flex;align-items:center;height:100%;padding:0 16px;background:#000000;border-left:1px solid #222222;color:rgba(255,255,255,.60);font:500 11.5px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase}
 .comp{margin:auto auto 20px;width:calc(100% - 32px);max-width:740px;padding:12px 14px;border:1px solid #222222;background:#000000;display:flex;gap:10px;align-items:flex-end}
-#composer{flex:1;background:transparent;color:#f1efe8;border:0;outline:0;padding:4px 0;font:400 14px/1.55 inherit;resize:none}
-#composer\.send{height:36px;padding:0 16px;background:#f1efe8;color:#000000;border:0;font:600 11.5px/1 inherit;letter-spacing:.14em;text-transform:uppercase}
+#composer{flex:1;background:transparent;color:#f1efe8;border:0;outline:0;padding:4px 0;font:400 14px/1.5 inherit;resize:none}
+#composer\.send{height:36px;padding:0 16px;background:#f1efe8;color:#000000;border:0;font:600 12px/1 inherit;letter-spacing:.08em;text-transform:uppercase}
 #composer\.send[disabled]{background:#000000;border:1px solid #222222;color:rgba(255,255,255,.30)}
 </style>
 </head>
