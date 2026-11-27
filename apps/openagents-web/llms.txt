@@ -43,6 +43,21 @@ Open projects with tasks any person or agent can pick up.
 - [Components](https://openagents.com/components/index.md): the components the chat is being rebuilt from, each a frame around content in black, white and grey, drawn by the browser.
 - [Components (GPU)](https://openagents.com/components-gpu/index.md): the earlier components, drawn on the GPU in four skins, which OpenAgents for desktop still uses.
 
+## Books
+
+All nine OpenAgents books, prerendered as 0-KB-JS HTML with raw Markdown twins at `/books/<slug>/<chapter>/index.md`.
+
+- [Books library](https://openagents.com/books/index.md): catalog of all nine books.
+- [The Coax Programming Language](https://openagents.com/books/coax/index.md)
+- [The OpenAgents Book](https://openagents.com/books/openagents/index.md)
+- [Bitcoin From Scratch](https://openagents.com/books/bitcoin/index.md)
+- [Nostr From Scratch](https://openagents.com/books/nostr/index.md)
+- [Coder: Coding Agents From Scratch](https://openagents.com/books/coder/index.md)
+- [Psionic: ML From Scratch](https://openagents.com/books/psionic/index.md)
+- [Building the OpenAgents Metaverse Engine](https://openagents.com/books/metaverse-engine/index.md)
+- [Building Everglade](https://openagents.com/books/everglade/index.md)
+- [Reverse Engineering Claude Code](https://openagents.com/books/claude-code/index.md)
+
 ## Source
 
 - [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents): this site (`apps/openagents-web`), Coax (`coax/`) and the Metaverse (`metaverse/`).

@@ -238,6 +238,30 @@ for rel in sorted(set(re.findall(r"new URL\(\"(\.\.?/[A-Za-z0-9/_.-]+)\", import
 for f in sorted(os.listdir(os.path.join(app, "well-known"))) if os.path.isdir(os.path.join(app, "well-known")) else []:
     os.makedirs(os.path.join(site, ".well-known"), exist_ok=True)
     shutil.copy(os.path.join(app, "well-known", f), os.path.join(site, ".well-known", f[:-5] + ".wellknown" if f == "apple-app-site-association.json" else f))
+# Static SSR books (apps/openagents-web/books-build.coax -> build/books/): stage /books, /books/mono.css,
+# and the 9 book roots before og.ts so og.ts validates them while /og stays within its row/byte cap;
+# chapter subdirectories stage right after og.ts below so they still pass strip.ts and private-guard.
+books_src = os.path.join(app, "build", "books")
+if not only_page and os.path.isdir(books_src):
+    books_dst = os.path.join(site, "books")
+    os.makedirs(books_dst, exist_ok=True)
+    for name in ("mono.css", "index.html", "index.md"):
+        src = os.path.join(books_src, name)
+        if os.path.isfile(src):
+            shutil.copy(src, os.path.join(books_dst, name))
+            if name == "index.html":
+                shutil.copy(src, os.path.join(site, "books.page"))
+    for slug in sorted(os.listdir(books_src)):
+        sdir = os.path.join(books_src, slug)
+        if not os.path.isdir(sdir): continue
+        ddir = os.path.join(books_dst, slug)
+        os.makedirs(ddir, exist_ok=True)
+        for name in ("index.html", "index.md"):
+            src = os.path.join(sdir, name)
+            if os.path.isfile(src):
+                shutil.copy(src, os.path.join(ddir, name))
+                if name == "index.html":
+                    shutil.copy(src, os.path.join(books_dst, slug + ".page"))
 # For agents: llms-full.txt is every public page's Markdown twin in one file, and sitemap.xml lists those pages.
 # Coax projects the registry's hidden directories. Direct realm pages ship;
 # neither those pages nor their child pages enter agent/search discovery.
@@ -250,12 +274,25 @@ def unlisted(f):
     return f.startswith("projects" + os.sep) and os.path.exists(j) and json.load(open(j, encoding="utf-8")).get("visibility") in ("unlisted", "private")
 public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "settings", "og" + os.sep, "projects" + os.sep + "private")) and not unlisted(f))
 def url(f): return "https://openagents.com/" + os.path.dirname(f).replace(os.sep, "/")
+books_dir = "" if os.environ.get("COAXIAL_ONLY_PAGE") else os.path.join(app, "build", "books")
+book_urls = []
+if books_dir and os.path.isdir(books_dir):
+    for b_root, b_dirs, b_files in os.walk(books_dir):
+        b_dirs[:] = sorted(b_dirs)
+        if "index.html" in b_files:
+            rel_b = os.path.relpath(b_root, books_dir).replace(os.sep, "/")
+            book_urls.append("https://openagents.com/books" if rel_b == "." else "https://openagents.com/books/" + rel_b)
+    book_urls.sort()
 with open(os.path.join(site, "llms-full.txt"), "w", encoding="utf-8") as out:
     out.write(open(os.path.join(app, "llms.txt"), encoding="utf-8").read())
     for f in public: out.write(f"\n\n---\n\nSource: {url(f)}\n\n" + open(os.path.join(app, f), encoding="utf-8").read())
+    books_md = os.path.join(books_dir, "index.md") if books_dir else ""
+    if books_md and os.path.isfile(books_md):
+        out.write("\n\n---\n\nSource: https://openagents.com/books\n\n" + open(books_md, encoding="utf-8").read())
 with open(os.path.join(site, "sitemap.xml"), "w", encoding="utf-8") as out:
     out.write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
-    out.write("".join(f"<url><loc>{url(f)}</loc></url>\n" for f in public) + "</urlset>\n")
+    out.write("".join(f"<url><loc>{url(f)}</loc></url>\n" for f in public))
+    out.write("".join(f"<url><loc>{u}</loc></url>\n" for u in book_urls) + "</urlset>\n")
 PY
 
 # Link previews (docs/web/og-tags.md): every page gets the Open Graph and Twitter tags it lacks, and
@@ -263,6 +300,32 @@ PY
 # image, or a realm or project without its own card refuses the release (COAXIAL_OG_DRAFT=1 stages anyway).
 lap stage "$t"
 t=$(now); bun "$here/og.ts" "$stage/site${COAXIAL_ASSET_PREFIX:+/$COAXIAL_ASSET_PREFIX}" "$app"; lap og "$t"
+
+# Stage static SSR book chapter pages (complete canonical + OG/Twitter tags emitted by books.coax)
+# after og.ts so og/pages.txt stays bounded while every chapter still runs through strip.ts and private-guard.
+if [[ -z "${COAXIAL_ONLY_PAGE:-}" && -d "$app/build/books" ]]; then
+  t=$(now)
+  python3 - "$app/build/books" "$stage/site${COAXIAL_ASSET_PREFIX:+/$COAXIAL_ASSET_PREFIX}/books" <<'PY_BOOKS'
+import os, shutil, sys
+src_root, dst_root = sys.argv[1:]
+os.makedirs(dst_root, exist_ok=True)
+for slug in sorted(os.listdir(src_root)):
+    sdir = os.path.join(src_root, slug)
+    if not os.path.isdir(sdir): continue
+    for ch in sorted(os.listdir(sdir)):
+        cdir = os.path.join(sdir, ch)
+        if not os.path.isdir(cdir): continue
+        ddir = os.path.join(dst_root, slug, ch)
+        os.makedirs(ddir, exist_ok=True)
+        for name in ("index.html", "index.md"):
+            src = os.path.join(cdir, name)
+            if os.path.isfile(src):
+                shutil.copy(src, os.path.join(ddir, name))
+                if name == "index.html":
+                    shutil.copy(src, os.path.join(dst_root, slug, ch + ".page"))
+PY_BOOKS
+  lap books "$t"
+fi
 
 # Hidden presentations (unlock/), when COAXIAL_UNLOCKS names any: from the
 # environment, or this machine's secrets file. The phrases stay here.

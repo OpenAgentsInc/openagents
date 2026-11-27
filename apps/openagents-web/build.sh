@@ -159,6 +159,9 @@ timed nip-pages python3 "$here/../../coax/web/nip-pages.py" --check
 timed connect-pylon-page bun "$here/../../coax/web/connect-pylon-page.ts" --check
 # The public Coax release history is always built from the canonical Markdown.
 timed changelog-page in_repo coax/web/tool.sh coax/web/changelog-page.coax --write
+# /books and /books/<slug>/<chapter>: all 9 repository books prerendered with 0 KB JS / 0 KB Wasm.
+timed books in_repo coax/web/tool.sh apps/openagents-web/books-build.coax &
+books_pages=$!
 timed check-visuals "$here/../../coax/web/check-visuals.sh" "$here" &
 visuals=$!
 # Guard the shared-library/output race of parallel world builds (in its own temporary trees).
@@ -562,6 +565,7 @@ nostr_chat=$!
 timed agents "$here/../../coax/web/wasm.sh" "$here/agents.coax" "$here/agents-face.c" "$here/build/agents.wasm" &
 agents_page=$!
 wait "$visuals"
+wait "$books_pages"
 wait "$isolation"
 wait "$vpk3"
 wait "$render"

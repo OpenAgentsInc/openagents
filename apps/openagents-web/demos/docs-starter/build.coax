@@ -8,28 +8,15 @@
 // Run from the repository root:
 //   coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax [--serve] [--listen HOST:PORT]
 #import "Basic";
-#load "../../../../coax/lib/sys/tool.coax";
-#load "../../../../coax/lib/sys/fs.coax";
 #load "../../../../coax/lib/sys/proc.coax";
 #load "page.coax";
-#load "books.coax";
+#load "../../books-emit.coax";
 
 DS_APP_DIR :: "apps/openagents-web/build/docs-starter";
-DS_BOOKS_DIR :: "apps/openagents-web/build/docs-starter/books";
+DS_BOOKS_DIR :: "apps/openagents-web/build/docs-starter/build/books";
 DS_BUILD_SRC :: "apps/openagents-web/demos/docs-starter/build.coax";
 
 DS_INDEX_MD :: "# Coax Web Starter\n\nHybrid starter: hydrated Coax Wasm on `/` and 0-KB-Wasm static SSR docs & books on `/docs/*` and `/books/*` reusing `components/skin/mono.coax`.\n\nRoutes:\n- `/` (hydrated Wasm)\n- `/docs/introduction` (0 KB Wasm)\n- `/docs/getting-started` (0 KB Wasm)\n- `/docs/roadmap` (0 KB Wasm)\n- `/books` (0 KB Wasm — all 9 OpenAgents books)\n- `/books/coax` (0 KB Wasm — The Coax Programming Language)\n";
-
-BK_RAW_CAP :: 524288;
-BK_OUT_CAP :: 1048576;
-
-BkWork :: struct {
-  raw: [BK_RAW_CAP] u8;
-  out: [BK_OUT_CAP] u8;
-  toc: [1] BkToc;
-  doc: [1] MdDoc;
-  tree: [1] Tree;
-}
 
 ds_quote :: (text: string, out: [] u8) -> string {
   need := 2;
@@ -77,134 +64,10 @@ ds_emit_route :: (dir: string, file: string, page: int, hydrate: bool) -> bool {
   return true;
 }
 
-// Writes the shared external stylesheet `/books/mono.css` once for all book pages.
-ds_emit_books_css :: () -> bool {
-  if !fs_mkdir(DS_BOOKS_DIR) { return false; }
-  h: [1] DsTest;
-  css_buf: [65536] u8;
-  n := ds_write_css(h[0].s[..]);
-  if n <= 0 || n + BK_CSS.count > css_buf.count { return false; }
-  for k: 0..<n { css_buf[k] = h[0].s[0].css[k]; }
-  n2 := bk_copy_str(css_buf[..], n, BK_CSS);
-  return ds_write("apps/openagents-web/build/docs-starter/books/mono.css", cast(string) css_buf[0..<n2]);
-}
-
-// Streams one chapter HTML document to disk (head + block-chunked Markdown HTML + foot) plus raw index.md.
-ds_emit_book_chapter :: (w: [] BkWork, book_idx: int, active: int, out_dir: string, md_src: string) -> bool {
-  if !fs_mkdir(out_dir) { return false; }
-  slugs := BK_SLUGS;
-  book_slug := slugs[book_idx];
-  p1: [4096] u8; p2: [4096] u8;
-  html_path := fs_join(out_dir, "index.html", p1[..]);
-  md_path := fs_join(out_dir, "index.md", p2[..]);
-  if html_path == "" || md_path == "" { return false; }
-
-  hn := bk_write_chapter_head(book_idx, w[0].toc[..], active, w[0].out[..]);
-  if hn <= 0 || !fs_write(html_path, cast(string) w[0].out[0..<hn]) { return false; }
-
-  pos := 0;
-  seq := 0;
-  while pos < md_src.count {
-    cut := bk_next_cut(md_src, pos, BK_MD_CHUNK, BK_MD_FALLBACK);
-    seg := cast(string) md_src[pos..<cut];
-    pos = cut;
-    w[0].doc[0] = MdDoc.{};
-    w[0].doc[0].keep_rules = true;
-    _ = md_parse(w[0].doc[..], seg, 0);
-    hb := [1] HtBuf.[HtBuf.{bytes = w[0].out[..]}];
-    for b: 0..<w[0].doc[0].nb {
-      seq = bk_render_block_html(hb[..], w[0].doc[..], b, w[0].tree[..], book_slug, seq);
-      if hb[0].overflow { tool_err("docs-starter: HTML overflow on "); tool_errln(html_path); return false; }
-      if hb[0].n >= BK_OUT_CAP / 2 {
-        if !fs_append(html_path, cast(string) w[0].out[0..<hb[0].n]) { return false; }
-        hb[0].n = 0;
-      }
-    }
-    if hb[0].n > 0 && !fs_append(html_path, cast(string) w[0].out[0..<hb[0].n]) { return false; }
-  }
-
-  fn := bk_write_chapter_foot(w[0].toc[..], active, w[0].out[..]);
-  if fn <= 0 || !fs_append(html_path, cast(string) w[0].out[0..<fn]) { return false; }
-  if !fs_write(md_path, md_src) { return false; }
-  return true;
-}
-
 // Discovers and renders all 9 repository books under /books/<slug>/<chapter> with 0 KB JS/Wasm.
 ds_emit_all_books :: () -> bool {
-  if !ds_emit_books_css() { return false; }
-  w: [1] BkWork;
-  slugs := BK_SLUGS;
-  dirs := BK_DIRS;
-  counts: [BK_BOOK_COUNT] int;
-  total_rendered := 0;
-
-  for bi: 0..<BK_BOOK_COUNT {
-    book_slug := slugs[bi];
-    book_dir := dirs[bi];
-    sp: [4096] u8;
-    sum_path := fs_join(book_dir, "SUMMARY.md", sp[..]);
-    if sum_path == "" || fs_kind(sum_path) != FS_FILE { continue; }
-    sn := fs_read(sum_path, w[0].raw[..]);
-    if sn <= 0 { return false; }
-    _ = bk_parse_summary(w[0].toc[..], book_slug, cast(string) w[0].raw[0..<sn], w[0].doc[..]);
-    if w[0].toc[0].overflow {
-      tool_err("docs-starter: TOC capacity overflow on ");
-      tool_errln(sum_path);
-      return false;
-    }
-
-    bdir_buf: [4096] u8;
-    book_out := fs_join(DS_BOOKS_DIR, book_slug, bdir_buf[..]);
-    if book_out == "" || !fs_mkdir(book_out) { return false; }
-
-    has_root := false;
-    rendered := 0;
-    for ei: 0..<w[0].toc[0].n {
-      ent := w[0].toc[0].entries[ei];
-      if ent.is_part || ent.is_external { continue; }
-      file := bk_entry_file(w[0].toc[..], ei);
-      slug := bk_entry_slug(w[0].toc[..], ei);
-      if slug.count == 0 { has_root = true; }
-
-      fbuf: [4096] u8; obuf: [4096] u8;
-      src_path := fs_join(book_dir, file, fbuf[..]);
-      out_dir := ifx slug.count == 0 then book_out else fs_join(book_out, slug, obuf[..]);
-      if src_path == "" || out_dir == "" { return false; }
-
-      md_text := "";
-      if fs_kind(src_path) == FS_FILE {
-        rn := fs_read(src_path, w[0].raw[..]);
-        if rn < 0 { return false; }
-        md_text = cast(string) w[0].raw[0..<rn];
-      } else {
-        md_text = "# Planned Chapter\n\nThis chapter is listed in `SUMMARY.md` and has not been drafted yet.\n";
-      }
-      if !ds_emit_book_chapter(w[..], bi, ei, out_dir, md_text) { return false; }
-      rendered += 1;
-    }
-
-    if !has_root {
-      rbuf: [4096] u8;
-      rm_path := fs_join(book_dir, "README.md", rbuf[..]);
-      if rm_path != "" && fs_kind(rm_path) == FS_FILE {
-        rn := fs_read(rm_path, w[0].raw[..]);
-        if rn >= 0 {
-          if !ds_emit_book_chapter(w[..], bi, -1, book_out, cast(string) w[0].raw[0..<rn]) { return false; }
-        }
-      }
-    }
-    counts[bi] = rendered;
-    total_rendered += rendered;
-  }
-
-  idx_n := bk_render_books_index(counts[..], w[0].out[..]);
-  if idx_n <= 0 || !fs_write("apps/openagents-web/build/docs-starter/books/index.html", cast(string) w[0].out[0..<idx_n]) {
-    return false;
-  }
-  if fs_kind("docs/books/README.md") == FS_FILE {
-    rn := fs_read("docs/books/README.md", w[0].raw[..]);
-    if rn > 0 { _ = fs_write("apps/openagents-web/build/docs-starter/books/index.md", cast(string) w[0].raw[0..<rn]); }
-  }
+  total_rendered := bk_emit_books(DS_BOOKS_DIR, "/docs/introduction", "Docs");
+  if total_rendered <= 0 { return false; }
   cbuf: [32] u8;
   tool_err("docs-starter: prerendered ");
   tool_err(tr_join(cbuf[..], "", total_rendered));

@@ -43,7 +43,40 @@ BK_DESCS :: [9] string.[
   "Bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase.",
 ];
 
+BK_INDEX_DESC :: "All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.";
+
+BK_HYBRID_CSS :: "a.row{text-decoration:none}a.row[aria-current=true]{border:1px solid var(--line-bright);background:var(--surface)}[data-frame]:not(:has(>svg.fr)){border:1px solid var(--line-dim);background:var(--surface)}.md .md-h{margin:10px 0 0;font:600 16px/1.35 var(--sans);color:#fff}.md .md-code-block{border:1px solid var(--line-dim);background:var(--surface);max-width:100%}.md .md-code-hdr{display:flex;justify-content:space-between;align-items:center;padding:5px 12px;border-bottom:1px solid var(--line-dim);font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}.md .md-code-copy{display:none}.md .md-pre{padding:12px 14px;overflow-x:auto;white-space:pre}.md .md-code-body{background:none;padding:0}.md .md-code-line{display:block;min-height:1.5em}.syn-com{color:var(--ink-faint);font-style:italic}.syn-kw{color:#fff;font-weight:600}.syn-fn{color:#e6e6e6}.syn-ty{color:#d4d4d4;text-decoration:underline;text-decoration-color:var(--line-dim);text-underline-offset:3px}.syn-str{color:#c8c8c8}.syn-num{color:#b8b8b8}.syn-attr{color:var(--ink-muted)}.syn-punc{color:var(--ink-faint)}.md-island-callout{border:1px solid var(--line);border-left:3px solid #fff;background:var(--surface);padding:12px 16px;display:flex;flex-direction:column;gap:4px}.md-island-title{margin:0;font:600 11px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:#fff}.md-island-body{margin:0;color:var(--ink-muted);font-size:13px}";
+
 BK_CSS :: ".bk-nav{width:280px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}.bk-top{display:flex;flex-wrap:wrap;gap:6px 12px;padding:4px 10px 10px;margin-bottom:4px;border-bottom:1px solid var(--line-dim)}.bk-head{padding:8px 10px 10px;border-bottom:1px solid var(--line-dim);display:flex;flex-direction:column;gap:3px}.bk-head-t{margin:0;font:600 14px/1.35 var(--sans);color:#fff}.bk-part{margin:14px 0 4px;padding:0 10px;font:500 10px/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint)}.bk-body{max-width:860px}.bk-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding-bottom:12px;border-bottom:1px solid var(--line-dim)}.bk-crumb{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}.bk-crumb a{color:var(--ink-muted);text-decoration:none}.bk-crumb a:hover{color:#fff}.bk-pager{display:flex;justify-content:space-between;gap:16px;padding-top:24px;margin-top:8px;border-top:1px solid var(--line-dim)}.bk-pg{display:flex;flex-direction:column;gap:3px;padding:10px 14px;border:1px solid var(--line-dim);text-decoration:none;color:var(--ink);max-width:48%;transition:border-color .15s,background .15s}.bk-pg:hover{border-color:var(--line-bright);background:var(--surface)}.bk-pg-next{margin-left:auto;text-align:right}.bk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}.bk-card{display:flex;flex-direction:column;gap:8px;padding:16px 18px;border:1px solid var(--line-dim);background:var(--surface);text-decoration:none;color:var(--ink);transition:border-color .15s}.bk-card:hover{border-color:var(--line-bright)}.bk-card-t{margin:0;font:600 15px/1.35 var(--sans);color:#fff}.bk-card-d{margin:0;color:var(--ink-muted);font-size:13px;line-height:1.5}.md h1.md-h{font-size:26px;line-height:1.25;margin:2px 0 8px}.md h2.md-h{font-size:19px;margin:18px 0 4px;padding-top:10px;border-top:1px solid var(--line-dim)}.md h3.md-h{font-size:15px;margin:12px 0 2px}.md hr.md-hr{border:0;border-top:1px solid var(--line-dim);margin:14px 0}.md table{display:block;overflow-x:auto;max-width:100%}@media (max-width:1060px){.bk-nav{width:auto;max-height:42vh;flex-direction:column;flex-wrap:nowrap;overflow-y:auto}}";
+
+// Joins a directory and non-empty child segment with '/', or returns `dir` when `child` is empty.
+// Returns "" if the combined path does not fit in `out`.
+bk_join_path :: (dir: string, child: string, out: [] u8) -> string {
+  if child.count == 0 { return dir; }
+  need := dir.count + child.count + 1;
+  if need > out.count { return ""; }
+  n := bk_copy_str(out, 0, dir);
+  out[n] = '/';
+  n += 1;
+  n = bk_copy_str(out, n, child);
+  return cast(string) out[0..<n];
+}
+
+// Parses CLI arguments for books-build: empty selects `def_out`, `--out DIR` overrides it, else "".
+bk_resolve_out :: (argv: [] string, def_out: string) -> string {
+  if argv.count == 0 { return def_out; }
+  if argv.count == 2 && argv[0] == "--out" { return argv[1]; }
+  return "";
+}
+
+// Writes the shared `/books/mono.css` stylesheet (components/skin/mono.coax + syntax + book layout).
+// Returns total bytes written, or -1 if `out` is too small for the full stylesheet.
+bk_write_mono_css :: (out: [] u8) -> int {
+  n := mono_button_css(out, mono_page_css(out, mono_set_css(out, mono_css(out))));
+  if n + BK_HYBRID_CSS.count + BK_CSS.count > out.count { return -1; }
+  n = mc(out, n, BK_HYBRID_CSS);
+  return mc(out, n, BK_CSS);
+}
 
 BkEntry :: struct {
   is_part: bool;
@@ -567,14 +600,49 @@ bk_next_chapter :: (toc: [] BkToc, cur: int) -> int {
   return -1;
 }
 
+// Emits canonical, raw-Markdown alternate, and Open Graph / Twitter metadata into `<head>`.
+// Trailing newline guarantees coax/web/og.ts finds a safe insertion boundary if ever run.
+bk_emit_meta :: (hb: [] HtBuf, title: string, desc: string, path: string) {
+  ht_put(hb, "<meta name=\"description\" content=\"");
+  ht_escape_attr(hb, desc);
+  ht_put(hb, "\"><link rel=\"canonical\" href=\"https://openagents.com");
+  ht_escape_attr(hb, path);
+  ht_put(hb, "\"><link rel=\"alternate\" type=\"text/markdown\" href=\"");
+  ht_escape_attr(hb, path);
+  ht_put(hb, "/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">");
+  ht_put(hb, "<meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"");
+  ht_escape_attr(hb, title);
+  ht_put(hb, "\"><meta property=\"og:description\" content=\"");
+  ht_escape_attr(hb, desc);
+  ht_put(hb, "\"><meta property=\"og:url\" content=\"https://openagents.com");
+  ht_escape_attr(hb, path);
+  ht_put(hb, "\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\">");
+  ht_put(hb, "<meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"");
+  ht_escape_attr(hb, title);
+  ht_put(hb, "\"><meta name=\"twitter:description\" content=\"");
+  ht_escape_attr(hb, desc);
+  ht_put(hb, "\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n");
+}
+
 // Writes the HTML5 document header + sticky book TOC sidebar + article opening `<div class="md">`.
 // Uses external `/books/mono.css` and emits ZERO <script> tags.
-bk_write_chapter_head :: (book_idx: int, toc: [] BkToc, active: int, out: [] u8) -> int {
+bk_write_chapter_head_nav :: (book_idx: int, toc: [] BkToc, active: int, mid_href: string, mid_label: string, out: [] u8) -> int {
   titles := BK_TITLES;
   slugs := BK_SLUGS;
+  descs := BK_DESCS;
   book_title := titles[book_idx];
   book_slug := slugs[book_idx];
+  book_desc := descs[book_idx];
   ch_title := ifx active >= 0 && active < toc[0].n then bk_entry_title(toc, active) else book_title;
+  pbuf: [256] u8;
+  page_path := "";
+  if active >= 0 && active < toc[0].n {
+    page_path = bk_entry_href(toc, active);
+  } else {
+    pn := bk_copy_str(pbuf[..], 0, "/books/");
+    pn = bk_copy_str(pbuf[..], pn, book_slug);
+    page_path = cast(string) pbuf[0..<pn];
+  }
 
   hb := [1] HtBuf.[HtBuf.{bytes = out}];
   ht_put(hb[..], "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>");
@@ -583,11 +651,17 @@ bk_write_chapter_head :: (book_idx: int, toc: [] BkToc, active: int, out: [] u8)
     ht_put(hb[..], " — ");
     ht_escape_text(hb[..], book_title);
   }
-  ht_put(hb[..], "</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\">");
+  ht_put(hb[..], "</title>");
+  bk_emit_meta(hb[..], ch_title, book_desc, page_path);
+  ht_put(hb[..], "<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\">");
 
   // Sticky book TOC sidebar
   ht_put(hb[..], "<nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\">");
-  ht_put(hb[..], "<div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div>");
+  ht_put(hb[..], "<div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"");
+  ht_escape_attr(hb[..], mid_href);
+  ht_put(hb[..], "\">");
+  ht_escape_text(hb[..], mid_label);
+  ht_put(hb[..], "</a><a class=\"lk\" href=\"/\">Home</a></div>");
   ht_put(hb[..], "<div class=\"bk-head\"><p class=\"bk-head-t\">");
   ht_escape_text(hb[..], book_title);
   ht_put(hb[..], "</p><span class=\"meta\">");
@@ -626,14 +700,13 @@ bk_write_chapter_head :: (book_idx: int, toc: [] BkToc, active: int, out: [] u8)
   ht_put(hb[..], "\">");
   ht_escape_text(hb[..], book_title);
   ht_put(hb[..], "</a></div><a class=\"lk\" href=\"");
-  if active >= 0 && active < toc[0].n {
-    ht_escape_attr(hb[..], bk_entry_href(toc, active));
-  } else {
-    ht_put(hb[..], "/books/");
-    ht_escape_attr(hb[..], book_slug);
-  }
+  ht_escape_attr(hb[..], page_path);
   ht_put(hb[..], "/index.md\">Raw Markdown</a></div><div class=\"md\">");
   return ifx hb[0].overflow then -1 else hb[0].n;
+}
+
+bk_write_chapter_head :: (book_idx: int, toc: [] BkToc, active: int, out: [] u8) -> int {
+  return bk_write_chapter_head_nav(book_idx, toc, active, "/docs/introduction", "Docs", out);
 }
 
 // Writes the article closing tags + Previous/Next chapter pager + `</main></body></html>`.
@@ -665,7 +738,7 @@ bk_write_chapter_foot :: (toc: [] BkToc, active: int, out: [] u8) -> int {
 }
 
 // Renders the `/books` library index page listing all 9 books with live chapter counts (0 KB JS).
-bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
+bk_render_books_index_nav :: (counts: [] int, mid_href: string, mid_label: string, out: [] u8) -> int {
   slugs := BK_SLUGS;
   dirs := BK_DIRS;
   titles := BK_TITLES;
@@ -676,10 +749,16 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   }
 
   hb := [1] HtBuf.[HtBuf.{bytes = out}];
-  ht_put(hb[..], "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\">");
+  ht_put(hb[..], "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title>");
+  bk_emit_meta(hb[..], "Books", BK_INDEX_DESC, "/books");
+  ht_put(hb[..], "<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\">");
 
   ht_put(hb[..], "<nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\">");
-  ht_put(hb[..], "<div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/books\">Books</a></div>");
+  ht_put(hb[..], "<div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"");
+  ht_escape_attr(hb[..], mid_href);
+  ht_put(hb[..], "\">");
+  ht_escape_text(hb[..], mid_label);
+  ht_put(hb[..], "</a><a class=\"lk\" href=\"/books\">Books</a></div>");
   ht_put(hb[..], "<div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">");
   bk_put_int(hb[..], total);
   ht_put(hb[..], " chapters · 0 KB JS</span></div>");
@@ -716,6 +795,10 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   }
   ht_put(hb[..], "</div></article></div></main></body></html>");
   return ifx hb[0].overflow then -1 else hb[0].n;
+}
+
+bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
+  return bk_render_books_index_nav(counts, "/docs/introduction", "Docs", out);
 }
 
 // ---- checks
@@ -903,7 +986,37 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   #assert bk_render_block_html(hb_ov[..], doc[..], 0, t[..], "coax", 5) == 5;
 }
 
-#test "bk_write_chapter_head, bk_write_chapter_foot, and bk_render_books_index match exact HTML" {
+#test "bk_write_chapter_head, bk_write_chapter_foot, bk_render_books_index, and bk_write_mono_css match exact output" {
+  // Path join and CLI --out parser helpers
+  jp: [16] u8;
+  #assert bk_join_path("a/b", "", jp[..]) == "a/b";
+  #assert bk_join_path("a/b", "c", jp[..]) == "a/b/c";
+  #assert bk_join_path("a/b", "c", jp[0..<5]) == "a/b/c";
+  #assert bk_join_path("a/b", "c", jp[0..<4]) == "";
+  empty_av: [1] string;
+  #assert bk_resolve_out(empty_av[0..<0], "def") == "def";
+  good_av := [2] string.["--out", "/tmp/books"];
+  #assert bk_resolve_out(good_av[..], "def") == "/tmp/books";
+  short_av := [2] string.["--out", "x"];
+  #assert bk_resolve_out(short_av[..], "def") == "x";
+  one_av := [1] string.["--out"];
+  #assert bk_resolve_out(one_av[..], "def") == "";
+  bad_av := [2] string.["--dir", "/tmp/books"];
+  #assert bk_resolve_out(bad_av[..], "def") == "";
+  empty_dir_av := [2] string.["--out", ""];
+  #assert bk_resolve_out(empty_dir_av[..], "def") == "";
+  extra_av := [3] string.["--out", "/tmp/books", "--extra"];
+  #assert bk_resolve_out(extra_av[..], "def") == "";
+
+  // Shared mono.coax + hybrid + book CSS stylesheet fits cleanly and refuses short buffers
+  css: [65536] u8;
+  cn := bk_write_mono_css(css[..]);
+  #assert cn > BK_HYBRID_CSS.count + BK_CSS.count;
+  #assert cast(string) css[cn - BK_CSS.count..<cn] == BK_CSS;
+  #assert cast(string) css[cn - BK_CSS.count - BK_HYBRID_CSS.count..<cn - BK_CSS.count] == BK_HYBRID_CSS;
+  #assert bk_write_mono_css(css[0..<cn]) == cn;
+  #assert bk_write_mono_css(css[0..<cn - 1]) == -1;
+
   doc: [1] MdDoc;
   toc: [1] BkToc;
   out: [32768] u8;
@@ -914,18 +1027,23 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
 
   // active == 0 (distinct title & href at index 0 -> kills active>=0->active>0 and 0->1!)
   h0 := bk_write_chapter_head(0, toc[..], 0, out[..]);
-  w0 := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Intro — The Coax Programming Language</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\" aria-current=\"true\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/intro/index.md\">Raw Markdown</a></div><div class=\"md\">";
+  w0 := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Intro — The Coax Programming Language</title><meta name=\"description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><link rel=\"canonical\" href=\"https://openagents.com/books/coax/intro\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/coax/intro/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"Intro\"><meta property=\"og:description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><meta property=\"og:url\" content=\"https://openagents.com/books/coax/intro\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"Intro\"><meta name=\"twitter:description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\" aria-current=\"true\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/intro/index.md\">Raw Markdown</a></div><div class=\"md\">";
   #assert h0 > 0 && cast(string) out[0..<h0] == w0;
+
+  // Custom production site nav links (/projects, "Projects")
+  h0p := bk_write_chapter_head_nav(0, toc[..], 0, "/projects", "Projects", out[..]);
+  w0p := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Intro — The Coax Programming Language</title><meta name=\"description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><link rel=\"canonical\" href=\"https://openagents.com/books/coax/intro\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/coax/intro/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"Intro\"><meta property=\"og:description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><meta property=\"og:url\" content=\"https://openagents.com/books/coax/intro\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"Intro\"><meta name=\"twitter:description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/projects\">Projects</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\" aria-current=\"true\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/intro/index.md\">Raw Markdown</a></div><div class=\"md\">";
+  #assert h0p > 0 && cast(string) out[0..<h0p] == w0p;
 
   // active == 2 (title equals book_title: omits " — book_title" suffix)
   h2 := bk_write_chapter_head(0, toc[..], 2, out[..]);
-  w2 := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>The Coax Programming Language</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\" aria-current=\"true\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/index.md\">Raw Markdown</a></div><div class=\"md\">";
+  w2 := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>The Coax Programming Language</title><meta name=\"description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><link rel=\"canonical\" href=\"https://openagents.com/books/coax\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/coax/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"The Coax Programming Language\"><meta property=\"og:description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><meta property=\"og:url\" content=\"https://openagents.com/books/coax\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"The Coax Programming Language\"><meta name=\"twitter:description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\" aria-current=\"true\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/index.md\">Raw Markdown</a></div><div class=\"md\">";
   #assert h2 > 0 && cast(string) out[0..<h2] == w2;
 
   // active out of range (-1 and toc[0].n) falls back to book_title and /books/<slug>/index.md
   h_neg := bk_write_chapter_head(0, toc[..], -1, out[..]);
   h_end := bk_write_chapter_head(0, toc[..], toc[0].n, out[..]);
-  w_fb := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>The Coax Programming Language</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/index.md\">Raw Markdown</a></div><div class=\"md\">";
+  w_fb := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>The Coax Programming Language</title><meta name=\"description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><link rel=\"canonical\" href=\"https://openagents.com/books/coax\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/coax/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"The Coax Programming Language\"><meta property=\"og:description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><meta property=\"og:url\" content=\"https://openagents.com/books/coax\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"The Coax Programming Language\"><meta name=\"twitter:description\" content=\"Programs in Coax, the language every other OpenAgents book uses.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/index.md\">Raw Markdown</a></div><div class=\"md\">";
   #assert h_neg > 0 && cast(string) out[0..<h_neg] == w_fb && h_end == h_neg;
   #assert bk_write_chapter_head(0, toc[..], 0, tiny[..]) == -1;
 
@@ -944,11 +1062,14 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   #assert cast(string) out[0..<fl] == "</div></article></div></main></body></html>";
   #assert bk_write_chapter_foot(toc[..], 0, tiny[..]) == -1;
 
-  // Books catalog index: exact full HTML with short counts slice + 10-element counts slice (kills 9->10!)
+  // Books catalog index: exact full HTML with short counts slice + 10-element counts slice + custom nav
   short_c := [1] int.[57];
   in_n := bk_render_books_index(short_c[..], out[..]);
-  w_idx := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\"><div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/books\">Books</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">57 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">coax/book · 57 chapters</span></a><a class=\"row\" href=\"/books/openagents\"><span class=\"row-t\">The OpenAgents Book</span><span class=\"meta\">openagents/book · 0 chapters</span></a><a class=\"row\" href=\"/books/bitcoin\"><span class=\"row-t\">Bitcoin From Scratch</span><span class=\"meta\">bitcoin/book · 0 chapters</span></a><a class=\"row\" href=\"/books/nostr\"><span class=\"row-t\">Nostr From Scratch</span><span class=\"meta\">nostr/book · 0 chapters</span></a><a class=\"row\" href=\"/books/coder\"><span class=\"row-t\">Coder: Coding Agents From Scratch</span><span class=\"meta\">coder/book · 0 chapters</span></a><a class=\"row\" href=\"/books/psionic\"><span class=\"row-t\">Psionic: ML From Scratch</span><span class=\"meta\">psionic/book · 0 chapters</span></a><a class=\"row\" href=\"/books/metaverse-engine\"><span class=\"row-t\">Building the OpenAgents Metaverse Engine</span><span class=\"meta\">metaverse-engine/book · 0 chapters</span></a><a class=\"row\" href=\"/books/everglade\"><span class=\"row-t\">Building Everglade</span><span class=\"meta\">everglade/book · 0 chapters</span></a><a class=\"row\" href=\"/books/claude-code\"><span class=\"row-t\">Reverse Engineering Claude Code</span><span class=\"meta\">claude-code/book · 0 chapters</span></a></nav><article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header><p class=\"sec-n\">All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p><div class=\"bk-grid\"><a class=\"bk-card\" href=\"/books/coax\"><span class=\"meta\">coax/book · 57 chapters</span><h2 class=\"bk-card-t\">The Coax Programming Language</h2><p class=\"bk-card-d\">Programs in Coax, the language every other OpenAgents book uses.</p></a><a class=\"bk-card\" href=\"/books/openagents\"><span class=\"meta\">openagents/book · 0 chapters</span><h2 class=\"bk-card-t\">The OpenAgents Book</h2><p class=\"bk-card-d\">The OpenAgents apps, Bitcoin/Lightning wallet, and composable general agent.</p></a><a class=\"bk-card\" href=\"/books/bitcoin\"><span class=\"meta\">bitcoin/book · 0 chapters</span><h2 class=\"bk-card-t\">Bitcoin From Scratch</h2><p class=\"bk-card-d\">Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to channels.</p></a><a class=\"bk-card\" href=\"/books/nostr\"><span class=\"meta\">nostr/book · 0 chapters</span><h2 class=\"bk-card-t\">Nostr From Scratch</h2><p class=\"bk-card-d\">A Nostr client, a relay, and the NIPs OpenAgents uses, built from scratch.</p></a><a class=\"bk-card\" href=\"/books/coder\"><span class=\"meta\">coder/book · 0 chapters</span><h2 class=\"bk-card-t\">Coder: Coding Agents From Scratch</h2><p class=\"bk-card-d\">OpenAgents' coding agent, sandbox, harness, and lessons from other agents.</p></a><a class=\"bk-card\" href=\"/books/psionic\"><span class=\"meta\">psionic/book · 0 chapters</span><h2 class=\"bk-card-t\">Psionic: ML From Scratch</h2><p class=\"bk-card-d\">A machine-learning library in Coax that runs, serves, and trains models.</p></a><a class=\"bk-card\" href=\"/books/metaverse-engine\"><span class=\"meta\">metaverse-engine/book · 0 chapters</span><h2 class=\"bk-card-t\">Building the OpenAgents Metaverse Engine</h2><p class=\"bk-card-d\">A real-time engine: frame loop, world, renderer, physics, realms, and multiplayer.</p></a><a class=\"bk-card\" href=\"/books/everglade\"><span class=\"meta\">everglade/book · 0 chapters</span><h2 class=\"bk-card-t\">Building Everglade</h2><p class=\"bk-card-d\">An MMORPG on the D&amp;D 5E SRD, built on the OpenAgents Metaverse Engine.</p></a><a class=\"bk-card\" href=\"/books/claude-code\"><span class=\"meta\">claude-code/book · 0 chapters</span><h2 class=\"bk-card-t\">Reverse Engineering Claude Code</h2><p class=\"bk-card-d\">Bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase.</p></a></div></article></div></main></body></html>";
+  w_idx := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><meta name=\"description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><link rel=\"canonical\" href=\"https://openagents.com/books\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"Books\"><meta property=\"og:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta property=\"og:url\" content=\"https://openagents.com/books\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"Books\"><meta name=\"twitter:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\"><div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/books\">Books</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">57 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">coax/book · 57 chapters</span></a><a class=\"row\" href=\"/books/openagents\"><span class=\"row-t\">The OpenAgents Book</span><span class=\"meta\">openagents/book · 0 chapters</span></a><a class=\"row\" href=\"/books/bitcoin\"><span class=\"row-t\">Bitcoin From Scratch</span><span class=\"meta\">bitcoin/book · 0 chapters</span></a><a class=\"row\" href=\"/books/nostr\"><span class=\"row-t\">Nostr From Scratch</span><span class=\"meta\">nostr/book · 0 chapters</span></a><a class=\"row\" href=\"/books/coder\"><span class=\"row-t\">Coder: Coding Agents From Scratch</span><span class=\"meta\">coder/book · 0 chapters</span></a><a class=\"row\" href=\"/books/psionic\"><span class=\"row-t\">Psionic: ML From Scratch</span><span class=\"meta\">psionic/book · 0 chapters</span></a><a class=\"row\" href=\"/books/metaverse-engine\"><span class=\"row-t\">Building the OpenAgents Metaverse Engine</span><span class=\"meta\">metaverse-engine/book · 0 chapters</span></a><a class=\"row\" href=\"/books/everglade\"><span class=\"row-t\">Building Everglade</span><span class=\"meta\">everglade/book · 0 chapters</span></a><a class=\"row\" href=\"/books/claude-code\"><span class=\"row-t\">Reverse Engineering Claude Code</span><span class=\"meta\">claude-code/book · 0 chapters</span></a></nav><article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header><p class=\"sec-n\">All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p><div class=\"bk-grid\"><a class=\"bk-card\" href=\"/books/coax\"><span class=\"meta\">coax/book · 57 chapters</span><h2 class=\"bk-card-t\">The Coax Programming Language</h2><p class=\"bk-card-d\">Programs in Coax, the language every other OpenAgents book uses.</p></a><a class=\"bk-card\" href=\"/books/openagents\"><span class=\"meta\">openagents/book · 0 chapters</span><h2 class=\"bk-card-t\">The OpenAgents Book</h2><p class=\"bk-card-d\">The OpenAgents apps, Bitcoin/Lightning wallet, and composable general agent.</p></a><a class=\"bk-card\" href=\"/books/bitcoin\"><span class=\"meta\">bitcoin/book · 0 chapters</span><h2 class=\"bk-card-t\">Bitcoin From Scratch</h2><p class=\"bk-card-d\">Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to channels.</p></a><a class=\"bk-card\" href=\"/books/nostr\"><span class=\"meta\">nostr/book · 0 chapters</span><h2 class=\"bk-card-t\">Nostr From Scratch</h2><p class=\"bk-card-d\">A Nostr client, a relay, and the NIPs OpenAgents uses, built from scratch.</p></a><a class=\"bk-card\" href=\"/books/coder\"><span class=\"meta\">coder/book · 0 chapters</span><h2 class=\"bk-card-t\">Coder: Coding Agents From Scratch</h2><p class=\"bk-card-d\">OpenAgents' coding agent, sandbox, harness, and lessons from other agents.</p></a><a class=\"bk-card\" href=\"/books/psionic\"><span class=\"meta\">psionic/book · 0 chapters</span><h2 class=\"bk-card-t\">Psionic: ML From Scratch</h2><p class=\"bk-card-d\">A machine-learning library in Coax that runs, serves, and trains models.</p></a><a class=\"bk-card\" href=\"/books/metaverse-engine\"><span class=\"meta\">metaverse-engine/book · 0 chapters</span><h2 class=\"bk-card-t\">Building the OpenAgents Metaverse Engine</h2><p class=\"bk-card-d\">A real-time engine: frame loop, world, renderer, physics, realms, and multiplayer.</p></a><a class=\"bk-card\" href=\"/books/everglade\"><span class=\"meta\">everglade/book · 0 chapters</span><h2 class=\"bk-card-t\">Building Everglade</h2><p class=\"bk-card-d\">An MMORPG on the D&amp;D 5E SRD, built on the OpenAgents Metaverse Engine.</p></a><a class=\"bk-card\" href=\"/books/claude-code\"><span class=\"meta\">claude-code/book · 0 chapters</span><h2 class=\"bk-card-t\">Reverse Engineering Claude Code</h2><p class=\"bk-card-d\">Bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase.</p></a></div></article></div></main></body></html>";
   #assert in_n > 0 && cast(string) out[0..<in_n] == w_idx;
+  in_np := bk_render_books_index_nav(short_c[..], "/projects", "Projects", out[..]);
+  w_idxp := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><meta name=\"description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><link rel=\"canonical\" href=\"https://openagents.com/books\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"Books\"><meta property=\"og:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta property=\"og:url\" content=\"https://openagents.com/books\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"Books\"><meta name=\"twitter:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\"><div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/projects\">Projects</a><a class=\"lk\" href=\"/books\">Books</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">57 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">coax/book · 57 chapters</span></a><a class=\"row\" href=\"/books/openagents\"><span class=\"row-t\">The OpenAgents Book</span><span class=\"meta\">openagents/book · 0 chapters</span></a><a class=\"row\" href=\"/books/bitcoin\"><span class=\"row-t\">Bitcoin From Scratch</span><span class=\"meta\">bitcoin/book · 0 chapters</span></a><a class=\"row\" href=\"/books/nostr\"><span class=\"row-t\">Nostr From Scratch</span><span class=\"meta\">nostr/book · 0 chapters</span></a><a class=\"row\" href=\"/books/coder\"><span class=\"row-t\">Coder: Coding Agents From Scratch</span><span class=\"meta\">coder/book · 0 chapters</span></a><a class=\"row\" href=\"/books/psionic\"><span class=\"row-t\">Psionic: ML From Scratch</span><span class=\"meta\">psionic/book · 0 chapters</span></a><a class=\"row\" href=\"/books/metaverse-engine\"><span class=\"row-t\">Building the OpenAgents Metaverse Engine</span><span class=\"meta\">metaverse-engine/book · 0 chapters</span></a><a class=\"row\" href=\"/books/everglade\"><span class=\"row-t\">Building Everglade</span><span class=\"meta\">everglade/book · 0 chapters</span></a><a class=\"row\" href=\"/books/claude-code\"><span class=\"row-t\">Reverse Engineering Claude Code</span><span class=\"meta\">claude-code/book · 0 chapters</span></a></nav><article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header><p class=\"sec-n\">All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p><div class=\"bk-grid\"><a class=\"bk-card\" href=\"/books/coax\"><span class=\"meta\">coax/book · 57 chapters</span><h2 class=\"bk-card-t\">The Coax Programming Language</h2><p class=\"bk-card-d\">Programs in Coax, the language every other OpenAgents book uses.</p></a><a class=\"bk-card\" href=\"/books/openagents\"><span class=\"meta\">openagents/book · 0 chapters</span><h2 class=\"bk-card-t\">The OpenAgents Book</h2><p class=\"bk-card-d\">The OpenAgents apps, Bitcoin/Lightning wallet, and composable general agent.</p></a><a class=\"bk-card\" href=\"/books/bitcoin\"><span class=\"meta\">bitcoin/book · 0 chapters</span><h2 class=\"bk-card-t\">Bitcoin From Scratch</h2><p class=\"bk-card-d\">Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to channels.</p></a><a class=\"bk-card\" href=\"/books/nostr\"><span class=\"meta\">nostr/book · 0 chapters</span><h2 class=\"bk-card-t\">Nostr From Scratch</h2><p class=\"bk-card-d\">A Nostr client, a relay, and the NIPs OpenAgents uses, built from scratch.</p></a><a class=\"bk-card\" href=\"/books/coder\"><span class=\"meta\">coder/book · 0 chapters</span><h2 class=\"bk-card-t\">Coder: Coding Agents From Scratch</h2><p class=\"bk-card-d\">OpenAgents' coding agent, sandbox, harness, and lessons from other agents.</p></a><a class=\"bk-card\" href=\"/books/psionic\"><span class=\"meta\">psionic/book · 0 chapters</span><h2 class=\"bk-card-t\">Psionic: ML From Scratch</h2><p class=\"bk-card-d\">A machine-learning library in Coax that runs, serves, and trains models.</p></a><a class=\"bk-card\" href=\"/books/metaverse-engine\"><span class=\"meta\">metaverse-engine/book · 0 chapters</span><h2 class=\"bk-card-t\">Building the OpenAgents Metaverse Engine</h2><p class=\"bk-card-d\">A real-time engine: frame loop, world, renderer, physics, realms, and multiplayer.</p></a><a class=\"bk-card\" href=\"/books/everglade\"><span class=\"meta\">everglade/book · 0 chapters</span><h2 class=\"bk-card-t\">Building Everglade</h2><p class=\"bk-card-d\">An MMORPG on the D&amp;D 5E SRD, built on the OpenAgents Metaverse Engine.</p></a><a class=\"bk-card\" href=\"/books/claude-code\"><span class=\"meta\">claude-code/book · 0 chapters</span><h2 class=\"bk-card-t\">Reverse Engineering Claude Code</h2><p class=\"bk-card-d\">Bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase.</p></a></div></article></div></main></body></html>";
+  #assert in_np > 0 && cast(string) out[0..<in_np] == w_idxp;
   ten_c := [10] int.[57, 0, 0, 0, 0, 0, 0, 0, 0, 999];
   in_n10 := bk_render_books_index(ten_c[..], out[..]);
   #assert in_n10 == in_n && cast(string) out[0..<in_n10] == w_idx;

@@ -47,10 +47,12 @@ site_route :: (path:string)->SiteRoute #export_c #effects(all) {
   if site_under(path,"/verse") {return SiteRoute.{status=301,to="/metaverse",skip=6,query=true};}
   if site_under(path,"/projects/verse") {return SiteRoute.{status=301,to="/projects/metaverse",skip=15,query=true};}
   if site_under(path,"/projects/metaverse") {return SiteRoute.{status=0,to="/projects/verse",skip=19,query=false};}
+  // Static SSR books generated into build/books/ by apps/openagents-web/books-build.coax (deploy.sh stages them at site/books/).
+  if site_under(path,"/books") {return SiteRoute.{status=0,to="/build/books",skip=6,query=false};}
   // Unified cloud chat SPA routes (/chat/cnv_<32hex>, #14094): serve /chat/index.html so reloads hydrate cleanly.
   if path.count>=42 && cast(string)path[0..<6]=="/chat/" {
     end:=path.count;
-    if end>6 && path[end-1]=='/' {end-=1;}
+    if path[end-1]=='/' {end-=1;}
     if site_chat_conv_id(cast(string)path[6..<end]) {return SiteRoute.{status=0,to="/chat/index.html",skip=path.count,query=false};}
   }
   return SiteRoute.{status=0,to="",skip=0,query=false};
@@ -90,8 +92,8 @@ site_goes :: (path:string,out:[]u8)->string #effects(all) {
 }
 #test "/projects/metaverse is the project whose slug is verse" {
   b:[256]u8;
-  r:=site_route("/projects/metaverse");#assert r.status==0 && site_goes("/projects/metaverse",b[..])=="/projects/verse";
-  r=site_route("/projects/metaverse/index.md");#assert r.status==0 && site_goes("/projects/metaverse/index.md",b[..])=="/projects/verse/index.md";
+  r:=site_route("/projects/metaverse");#assert r.status==0 && !r.query && site_goes("/projects/metaverse",b[..])=="/projects/verse";
+  r=site_route("/projects/metaverse/index.md");#assert r.status==0 && !r.query && site_goes("/projects/metaverse/index.md",b[..])=="/projects/verse/index.md";
 }
 #test "the retired galaxy moves to /worlds under both names, its query dropped" {
   b:[256]u8;
@@ -114,7 +116,7 @@ site_goes :: (path:string,out:[]u8)->string #effects(all) {
 #test "every other path is served as it is" {
   b:[256]u8;
   same:=[12]string.["/","/metaverse","/metaverse/","/metaverse/index.md","/metaverse/og-verse.jpg","/verse-os/","/verses","/projects","/projects/verses","/projects/metaverse-x","/worlds/haunted-house","/forged"];
-  for p:same {r:=site_route(p);#assert r.status==0 && r.skip==0 && r.to.count==0 && site_goes(p,b[..])==p;}
+  for p:same {r:=site_route(p);#assert r.status==0 && !r.query && r.skip==0 && r.to.count==0 && site_goes(p,b[..])==p;}
 }
 #test "a moved address never leads to another moved address" {
   b:[256]u8;c:[256]u8;
@@ -124,8 +126,20 @@ site_goes :: (path:string,out:[]u8)->string #effects(all) {
 #test "/chat/cnv_<32hex> serves /chat/index.html without affecting /chat/index.md or malformed paths" {
   b:[256]u8;
   r:=site_route("/chat/cnv_0123456789abcdef0123456789abcdef");
-  #assert r.status==0 && site_goes("/chat/cnv_0123456789abcdef0123456789abcdef",b[..])=="/chat/index.html";
+  #assert r.status==0 && !r.query && site_goes("/chat/cnv_0123456789abcdef0123456789abcdef",b[..])=="/chat/index.html";
   r2:=site_route("/chat/cnv_0123456789abcdef0123456789abcdef/");
-  #assert r2.status==0 && site_goes("/chat/cnv_0123456789abcdef0123456789abcdef/",b[..])=="/chat/index.html";
+  #assert r2.status==0 && !r2.query && site_goes("/chat/cnv_0123456789abcdef0123456789abcdef/",b[..])=="/chat/index.html";
   #assert site_route("/chat").to.count==0 && site_route("/chat/index.md").to.count==0 && site_route("/chat/cnv_short").to.count==0 && site_route("/chat/cnv_0123456789ABCDEF0123456789abcdef").to.count==0;
+}
+#test "/books and /books/* map to /build/books without affecting sibling prefixes" {
+  b:[256]u8;
+  r:=site_route("/books");
+  #assert r.status==0 && !r.query && site_goes("/books",b[..])=="/build/books";
+  r2:=site_route("/books/");
+  #assert r2.status==0 && !r2.query && site_goes("/books/",b[..])=="/build/books/";
+  r3:=site_route("/books/mono.css");
+  #assert r3.status==0 && !r3.query && site_goes("/books/mono.css",b[..])=="/build/books/mono.css";
+  r4:=site_route("/books/coax/ch01-getting-started/index.md");
+  #assert r4.status==0 && !r4.query && site_goes("/books/coax/ch01-getting-started/index.md",b[..])=="/build/books/coax/ch01-getting-started/index.md";
+  #assert site_route("/book").to.count==0 && site_route("/bookshop").to.count==0 && site_route("/books-old").to.count==0;
 }

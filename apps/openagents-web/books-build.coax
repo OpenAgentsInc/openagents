@@ -1,0 +1,38 @@
+// Pure-Coax static SSR books build tool for apps/openagents-web.
+// Renders all 9 repository books into apps/openagents-web/build/books/ with 0 KB JS / 0 KB Wasm,
+// reusing apps/openagents-web/demos/docs-starter/books.coax via books-emit.coax.
+// Run from the repository root:
+//   coax/web/tool.sh apps/openagents-web/books-build.coax [--out DIR]
+#import "Basic";
+#load "books-emit.coax";
+
+BB_DEFAULT_OUT :: "apps/openagents-web/build/books";
+BB_MID_HREF :: "/projects";
+BB_MID_LABEL :: "Projects";
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { tool_errln("usage: books-build [--out DIR]"); return 2; }
+  n := args_count(args[..]);
+  if n > 2 { tool_errln("usage: books-build [--out DIR]"); return 2; }
+  av: [2] string;
+  for i: 0..<n { av[i] = args_at(args[..], i); }
+  out_dir := bk_resolve_out(av[0..<n], BB_DEFAULT_OUT);
+  if out_dir == "" { tool_errln("usage: books-build [--out DIR]"); return 2; }
+  if fs_kind("coax/book/SUMMARY.md") != FS_FILE {
+    tool_errln("books-build: run from the repository root");
+    return 2;
+  }
+  rendered := bk_emit_books(out_dir, BB_MID_HREF, BB_MID_LABEL);
+  if rendered <= 0 {
+    tool_errln("books-build: failed to render repository books");
+    return 1;
+  }
+  cbuf: [32] u8;
+  tool_err("books-build: prerendered ");
+  tool_err(tr_join(cbuf[..], "", rendered));
+  tool_err(" book chapters across 9 books into ");
+  tool_err(out_dir);
+  tool_errln(" (0 KB JS/Wasm)");
+  return 0;
+}

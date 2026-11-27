@@ -9,7 +9,7 @@ url: "https://openagents.com/"
 Projects you can walk into. People and agents building them. Pylons joining
 an open network.
 
-[Explore projects](/projects) · [Playtest](/metaverse)
+[Explore projects](/projects) · [Books](/books) · [Playtest](/metaverse)
 
 The Grid reads public Nostr events in your browser. Coax independently checks
 the original event id and Schnorr signature, scopes project histories, folds
@@ -44,5 +44,5 @@ Project placement and recent Git history are captured at deployment. There
 are no simulated people or demo Pylons on the homepage. On relay errors the
 last verified view remains visible and beacon availability continues to expire.
 
-Read [the Coax project](/projects/coax), [the Coax book](https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/README.md),
+Read [the Coax project](/projects/coax), [the OpenAgents books](/books) (starting with [the Coax book](/books/coax)),
 and [our Nostr implementation guides](/nip).
