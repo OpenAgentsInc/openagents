@@ -137,7 +137,6 @@ extension CoderWindow {
     /// File > Dashboard (Command-D / Control-D): empty home screen listing active running chats.
     func openDashboard() {
         if settingsOpen { closeSettings() }
-        closeGym()
         cd_dashboard_open(page, 1)
         syncDashboard()
         wake()
@@ -157,17 +156,11 @@ extension CoderWindow {
     /// with its run.
     func open(_ id: String) {
         cd_dashboard_open(page, 0)
-        if id == Foreman.chatID {
-            openForeman()
-            return
-        }
         if id == chat {
-            closeGym()
             clearViewedChatBadges(id); focusComposer(); wake(); return
         }
         let prevKey = chat ?? ""
         chatDrafts[prevKey] = draft
-        closeGym()
         guard detach() else { return }
         if let back = runs[id] {
             guard cd_take(page, back.page) != 0 else { return }
@@ -185,7 +178,6 @@ extension CoderWindow {
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
             cd_chats(page, chatLines)
-            syncForemanUI()
             updateDockBadge()
             focusComposer(); wake()
             return
@@ -202,7 +194,6 @@ extension CoderWindow {
         _ = cd_set_text(page, chatDrafts[id] ?? "")
         configureWorkerEnv(run, isForeman: false)
         syncSkillsNote(for: page, isForeman: false)
-        syncForemanUI()
         if clearedUnread { cd_chats(page, chatLines) }
         updateDockBadge()
         var isFolder: ObjCBool = false
@@ -214,8 +205,8 @@ extension CoderWindow {
         wake()
     }
     /// The chat that is shown, when it is kept: File > Rename Chat acts on it.
-    var canRename: Bool { chat != nil && chat != Foreman.chatID }
-    func renameShown() { if let id = chat, id != Foreman.chatID { rename(id) } }
+    var canRename: Bool { chat != nil }
+    func renameShown() { if let id = chat { rename(id) } }
     /// Whether the shown chat has a kept ID/path that can be copied for another agent to reference.
     var canCopyChatReference: Bool { chat != nil }
     func copyShownChatID() { if let id = chat { copyChatID(id) } }
@@ -236,12 +227,11 @@ extension CoderWindow {
         cd_toast(page, "Copied chat path", 0)
         wake()
     }
-    var canFork: Bool { chat != Foreman.chatID && (chat != nil || savedText(of: page) != nil) }
+    var canFork: Bool { chat != nil || savedText(of: page) != nil }
     func forkShown() { guard canFork else { return }; fork(chat) }
     /// Forks a chat (the shown chat when `id == nil` or `id == chat`, or a sidebar chat by id) into a
     /// new independent chat with the same transcript and working folder, then opens it.
     func fork(_ id: String?) {
-        if let id, id == Foreman.chatID { return }
         let text: String
         let baseTitle: String
         let baseFolder: String
@@ -289,7 +279,7 @@ extension CoderWindow {
         return first
     }
     /// The chat that is shown, when it is kept and no reply is running: File > Delete Chat acts on it.
-    var canDelete: Bool { chat != nil && chat != Foreman.chatID && cd_running(page) == 0 }
+    var canDelete: Bool { chat != nil && cd_running(page) == 0 }
     func deleteShown() { if let id = chat { delete(id) } }
     /// Asks for a new title, then renames a kept chat.
     func rename(_ id: String) {
@@ -310,7 +300,7 @@ extension CoderWindow {
             self.titleGenVersion[id, default: 0] += 1
             self.store.rename(id, to: title)
             self.daemonClient.updateSessionMeta(sessionID: id, title: title)
-            if id != Foreman.chatID { self.cloudSync.syncMeta(chatID: id, title: title) }
+            self.cloudSync.syncMeta(chatID: id, title: title)
             cd_chats(self.page, self.chatLines)
             self.wake()
         }
@@ -332,7 +322,6 @@ extension CoderWindow {
             if id == self.chat {
                 guard cd_running(self.page) == 0 else { return }
                 self.chat = nil; _ = cd_new(self.page); cd_current(self.page, "")
-                self.syncForemanUI()
             }
             guard !self.busy(id) else { return }
             let snapMeta = self.store.meta(id)
@@ -359,12 +348,11 @@ extension CoderWindow {
     // ---- Sidebar grouping, archiving, snoozing, bulk actions & undo (#13875)
 
     func archiveChat(_ id: String) {
-        guard id != Foreman.chatID, !busy(id) else { return }
+        guard !busy(id) else { return }
         let title = store.title(id) ?? "Chat"
         if id == chat {
             guard cd_running(page) == 0 else { return }
             chat = nil; _ = cd_new(page); cd_current(page, "")
-            syncForemanUI()
         }
         store.setArchived(id, true)
         daemonClient.updateSessionMeta(sessionID: id, archived: true)
@@ -378,20 +366,19 @@ extension CoderWindow {
     func unarchiveChat(_ id: String) {
         store.setArchived(id, false)
         daemonClient.updateSessionMeta(sessionID: id, archived: false)
-        if id != Foreman.chatID { cloudSync.syncMeta(chatID: id, archived: false) }
+        cloudSync.syncMeta(chatID: id, archived: false)
         cd_chats(page, chatLines)
         wake()
     }
 
     func snoozeChat(_ id: String, durationSeconds: TimeInterval) {
-        guard id != Foreman.chatID, durationSeconds > 0 else { return }
+        guard durationSeconds > 0 else { return }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let wakeMs = nowMs + Int64(durationSeconds * 1000)
         store.setSnoozed(id, untilMs: wakeMs)
         cd_sb_now_ms(page, nowMs)
         if id == chat && cd_running(page) == 0 {
             chat = nil; _ = cd_new(page); cd_current(page, "")
-            syncForemanUI()
         }
         cd_chats(page, chatLines)
         cd_toast(page, "Snoozed “" + (store.title(id) ?? "Chat") + "”", 0)
@@ -470,12 +457,11 @@ extension CoderWindow {
         let op = cd_sb_op(page)
         switch op {
         case 3: // CP_SB_OP_BULK_ARCHIVE
-            let ids = readSelectedSidebarIDs().filter { $0 != Foreman.chatID && !busy($0) }
+            let ids = readSelectedSidebarIDs().filter { !busy($0) }
             guard !ids.isEmpty else { return }
             for id in ids {
                 if id == chat && cd_running(page) == 0 {
                     chat = nil; _ = cd_new(page); cd_current(page, "")
-                    syncForemanUI()
                 }
                 store.setArchived(id, true)
                 daemonClient.updateSessionMeta(sessionID: id, archived: true)
@@ -495,13 +481,12 @@ extension CoderWindow {
             cd_chats(page, chatLines)
             wake()
         case 5: // CP_SB_OP_BULK_DELETE
-            let ids = readSelectedSidebarIDs().filter { $0 != Foreman.chatID && !busy($0) }
+            let ids = readSelectedSidebarIDs().filter { !busy($0) }
             guard !ids.isEmpty else { return }
             var snaps: [(meta: CoderChat, text: String)] = []
             for id in ids {
                 if id == chat && cd_running(page) == 0 {
                     chat = nil; _ = cd_new(page); cd_current(page, "")
-                    syncForemanUI()
                 }
                 if let m = store.meta(id), let t = store.text(id) { snaps.append((meta: m, text: t)) }
                 unread.remove(id)
@@ -521,7 +506,7 @@ extension CoderWindow {
             cd_chats(page, chatLines)
             wake()
         case 6: // CP_SB_OP_BULK_PIN
-            let ids = readSelectedSidebarIDs().filter { $0 != Foreman.chatID }
+            let ids = readSelectedSidebarIDs()
             guard !ids.isEmpty else { return }
             for id in ids {
                 store.togglePin(id)
@@ -558,23 +543,20 @@ extension CoderWindow {
         var name = [CChar](repeating: 0, count: 256)
         let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
         store.keep(id: id, title: title, folder: chatFolder, text: text, worktree: madeWorktree(r, for: id), touchUpdated: touchUpdated && !closing)
-        if id != Foreman.chatID {
-            cloudSync.syncSavedChat(
-                chatID: id,
+        cloudSync.syncSavedChat(
+            chatID: id,
                 title: title,
                 folder: chatFolder,
                 chatJSON: text,
                 pinned: store.isPinned(id),
                 archived: store.isArchived(id)
             )
-        }
         if shown { chat = id; cd_current(page, id) } else { r.chat = id; if id != chat { unread.insert(id) } }
         // the worker's queue binds to the chat once it is kept, so its run names the chat: a new
         // chat's first message and a Foreman chat start before they have an id (#13755)
         if r.bound != id { r.bound = id; bindQueue(r) }
         cd_chats(page, chatLines)
-        syncForemanUI()
-        if !closing && id != Foreman.chatID {
+        if !closing {
             if existingMeta == nil && !autoTitledChats.contains(id) {
                 let firstAsk = ThreadTitlePrompts.extractConversation(fromChatJSON: text)?.firstAsk ?? title
                 maybeGenerateInitialTitle(chatID: id, firstMessage: firstAsk, folderPath: chatFolder)
@@ -600,14 +582,13 @@ extension CoderWindow {
             guard LocalModelServer.shared.isReady else { return nil }
             return (LocalModelServer.baseURL, LocalModelStore.entry.id)
         }
-        ChatTitleGenerator.shared.hostedGatewayProvider = { url, body in
+        ChatTitleGenerator.shared.hostedGatewayProvider = { _, _ in
             guard FeatureFlags.isOn(.account),
                   MacAccount.shared.loggedIn,
-                  var key = MacKey.load(MacKey.file()) else {
+                  let tok = MacAccount.shared.store.load()?.access, !tok.isEmpty else {
                 return nil
             }
-            defer { MacKey.wipe(&key) }
-            return try? MacKey.nip98(key: key, url: url, body: body, now: Date())
+            return "Bearer " + tok
         }
     }
 
@@ -626,8 +607,7 @@ extension CoderWindow {
         forkSource: ThreadTitleForkSource? = nil,
         allowOverwriteRenamed: Bool = false
     ) {
-        guard chatID != Foreman.chatID,
-              !manuallyRenamedChats.contains(chatID),
+        guard !manuallyRenamedChats.contains(chatID),
               !firstMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
@@ -654,8 +634,7 @@ extension CoderWindow {
     }
 
     func maybeRefineTitleAfterTurn(chatID: String) {
-        guard chatID != Foreman.chatID,
-              !manuallyRenamedChats.contains(chatID),
+        guard !manuallyRenamedChats.contains(chatID),
               let previousAutoTitle = titleNeedsRefinement.removeValue(forKey: chatID),
               let meta = store.meta(chatID),
               meta.title == previousAutoTitle,
@@ -682,8 +661,7 @@ extension CoderWindow {
 
     /// Sidebar right-click > Regenerate Title: regenerates the title from the full conversation.
     func regenerateTitle(_ id: String) {
-        guard id != Foreman.chatID,
-              let meta = store.meta(id),
+        guard let meta = store.meta(id),
               let chatJSON = store.text(id) else {
             return
         }
@@ -741,9 +719,8 @@ extension CoderWindow {
         if cleaned != meta.title {
             store.rename(chatID, to: cleaned)
             daemonClient.updateSessionMeta(sessionID: chatID, title: cleaned)
-            if chatID != Foreman.chatID { cloudSync.syncMeta(chatID: chatID, title: cleaned) }
+            cloudSync.syncMeta(chatID: chatID, title: cleaned)
             cd_chats(page, chatLines)
-            syncForemanUI()
             wake()
         }
     }

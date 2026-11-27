@@ -13,11 +13,12 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
 
-  // Always available in core basic flow (flags == 0) as well as with feature flags enabled.
-  #assert cp_set_page_ok_flags(0, CP_PG_PROVIDERS);
-  #assert cp_set_page_ok_flags(DC_FLAG_MODELS_ANTIGRAVITY, CP_PG_PROVIDERS);
+  // Providers page is gated behind DC_FLAG_MODELS_EXTERNAL (off in v1 defaults).
+  #assert !cp_set_page_ok_flags(0, CP_PG_PROVIDERS);
+  #assert !cp_set_page_ok_flags(dc_flags_defaults(), CP_PG_PROVIDERS);
+  #assert cp_set_page_ok_flags(dc_flag_bit(DC_FLAG_MODELS_EXTERNAL), CP_PG_PROVIDERS);
   #assert cp_set_page_ok_flags(DC_FLAGS_ALL, CP_PG_PROVIDERS);
-  coder_page_flags_set(s, 0);
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_MODELS_EXTERNAL));
 
   // Default seed shows only Antigravity (Claude and Codex hidden).
   #assert s[0].ps[0].ninst == 1 && s[0].ps[0].selected == 0 && s[0].ps[0].insts[0].driver == CP_PS_DRV_ANTIGRAVITY;
@@ -175,7 +176,8 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "coder.model.flawed") >= 0;
   #assert surface_find(s[0].surface[..], "coder.model.providers") < 0;
   #assert surface_find(s[0].surface[..], "coder.model.others") < 0;
-  // Enabling Developer -> Show other models reveals Connect Antigravity…
+  // Enabling Developer -> Show other models with external + antigravity flags reveals Connect Antigravity…
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_MODELS_EXTERNAL) | dc_flag_bit(DC_FLAG_MODELS_ANTIGRAVITY));
   coder_page_show_other_models_set(s, true);
   #assert coder_page_show_other_models(s) && s[0].model_menu;
   #assert cp_ps_test_frame(s, 1200, 800);

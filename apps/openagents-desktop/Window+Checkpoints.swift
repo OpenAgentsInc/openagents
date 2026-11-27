@@ -99,7 +99,7 @@ extension CoderWindow {
     func captureBaseCheckpointIfNeeded(for r: CoderRun) {
         let shown = r === run
         if shown && chat == nil && !r.preparingWorktree { keep() }
-        guard let chatID = shown ? chat : r.chat, !chatID.isEmpty, chatID != Foreman.chatID else { return }
+        guard let chatID = shown ? chat : r.chat, !chatID.isEmpty else { return }
         let dir = (shown ? folder : r.folder).path
         let baseRef = checkpointBaseRef(chatID)
         guard !baseRef.isEmpty else { return }
@@ -125,7 +125,7 @@ extension CoderWindow {
     /// Records a checkpoint ref for the just-completed turn covering tracked and untracked files.
     func captureTurnCheckpoint(for r: CoderRun) {
         let shown = r === run
-        guard let chatID = shown ? chat : r.chat, !chatID.isEmpty, chatID != Foreman.chatID else { return }
+        guard let chatID = shown ? chat : r.chat, !chatID.isEmpty else { return }
         let turnIdx = Int(cd_ckpt_nturns(r.page)) - 1
         guard turnIdx >= 0 else { return }
         let dir = (shown ? folder : r.folder).path
@@ -145,7 +145,7 @@ extension CoderWindow {
 
     /// Loads existing checkpoint refs for `chatID` in `dir` and syncs the page's per-turn badges.
     func refreshCheckpoints(for chatID: String, in dir: String) {
-        guard !chatID.isEmpty, chatID != Foreman.chatID else { return }
+        guard !chatID.isEmpty else { return }
         let prefix = checkpointPrefix(chatID)
         guard !prefix.isEmpty else { return }
 
@@ -163,7 +163,7 @@ extension CoderWindow {
 
     /// Deletes all checkpoint refs under `refs/openagents/checkpoints/<chat>/` when a chat is deleted.
     func cleanupCheckpoints(for chatID: String, in dir: String?) {
-        guard let dir, !dir.isEmpty, !chatID.isEmpty, chatID != Foreman.chatID else { return }
+        guard let dir, !dir.isEmpty, !chatID.isEmpty else { return }
         let prefix = checkpointPrefix(chatID)
         guard !prefix.isEmpty else { return }
 
@@ -231,7 +231,7 @@ extension CoderWindow {
     /// Preflight #authority CheckpointRestoreSafety check before touching files (#14026).
     private func verifyCheckpointRestoreSafety(chatID: String, turn: Int, in dir: String) -> Bool {
         let shared = sharedActiveCheckoutCount(for: dir, excluding: chatID)
-        let canRollback = chatID != Foreman.chatID && store.text(chatID) != nil
+        let canRollback = store.text(chatID) != nil
         let verdict = cd_ckpt_restore_safety(page, Int32(turn), Int32(shared), canRollback ? 1 : 0)
         switch verdict {
         case 0:

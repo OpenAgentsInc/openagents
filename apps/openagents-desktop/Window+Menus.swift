@@ -7,16 +7,11 @@ extension CoderWindow {
         store.togglePin(id)
         let pinned = store.isPinned(id)
         daemonClient.updateSessionMeta(sessionID: id, pinned: pinned)
-        if id != Foreman.chatID { cloudSync.syncMeta(chatID: id, pinned: pinned) }
+        cloudSync.syncMeta(chatID: id, pinned: pinned)
         cd_chats(page, chatLines)
         wake()
     }
-    private func toggleOperatorTierRaise() {
-        let on = !UserDefaults.standard.bool(forKey: ForemanAPI.operatorTierRaiseKey)
-        UserDefaults.standard.set(on, forKey: ForemanAPI.operatorTierRaiseKey)
-        foremanAudit.record(action: "operator_tier_raise", tier: foremanTier, detail: ["allowed": on, "principal": "user"])
-    }
-    /// A right-click on the Foreman row or a chat in the sidebar opens its menu at the pointer. While
+    /// A right-click on a chat in the sidebar opens its menu at the pointer. While
     /// a dialog is up the click is the dialog's; while a menu is up another opens where it was made.
     func rightClick(_ event: NSEvent) -> Bool {
         guard event.window === window else { return false }
@@ -27,26 +22,6 @@ extension CoderWindow {
         let y = canvas.isFlipped ? at.y : canvas.bounds.height - at.y
         let px = Float(at.x * scale), py = Float(y * scale)
         typealias Item = CoderOverlay.MenuItem
-        if FeatureFlags.isOn(.foreman) && cd_foreman_at(page, px, py) != 0 {
-            let raise = UserDefaults.standard.bool(forKey: ForemanAPI.operatorTierRaiseKey)
-            var items = [Item(label: "Open Foreman"), Item(kind: 2)]
-            var acts: [() -> Void] = [{ [weak self] in self?.openForeman() }, {}]
-            for (tag, label) in [(0, "Tier 0: Observe (Read-Only)"), (1, "Tier 1: Managed (Default)"), (2, "Tier 2: Autonomous")] {
-                items.append(Item(label: label, checked: foremanTier.rawValue == tag))
-                acts.append { [weak self] in if let tier = ForemanTier(rawValue: tag) { self?.setForemanTier(tier) } }
-            }
-            items.append(Item(label: "Let Programs Raise the Tier", checked: raise)); acts.append { [weak self] in self?.toggleOperatorTierRaise() }
-            items.append(Item(kind: 2)); acts.append {}
-            items.append(Item(label: "View Audit Log…")); acts.append { [weak self] in self?.openForemanAuditLog() }
-            items.append(Item(label: "Stop All Running Chats", disabled: runningCount == 0)); acts.append { [weak self] in self?.stopAllChats() }
-            items.append(Item(kind: 2)); acts.append {}
-            items.append(Item(label: "Copy Chat ID")); acts.append { [weak self] in self?.copyChatID(Foreman.chatID) }
-            items.append(Item(label: "Copy Chat Path")); acts.append { [weak self] in self?.copyChatPath(Foreman.chatID) }
-            items.append(Item(kind: 2)); acts.append {}
-            items.append(Item(label: "Clear Foreman History…", danger: true)); acts.append { [weak self] in self?.clearForemanHistory() }
-            overlay.presentMenu(items, x: px, y: py) { chosen in if chosen >= 0 && chosen < acts.count { acts[chosen]() } }
-            return true
-        }
         var out = [CChar](repeating: 0, count: 128)
         guard cd_chat_at(page, px, py, &out, Int32(out.count)) > 0 else {
             // Right-click with an active GPU transcript or File Viewer selection offers Copy (+ Copy with Path:Line in File Viewer, #13992).
@@ -91,10 +66,6 @@ extension CoderWindow {
             { [weak self] in self?.regenerateTitle(id) },
             { [weak self] in self?.fork(id) },
         ]
-        if FeatureFlags.isOn(.rich) {
-            items.append(Item(label: "Open in Side Pane"))
-            acts.append { [weak self] in self?.openSideChat(id) }
-        }
         items.append(Item(kind: 2)); acts.append {}
         items.append(Item(label: "Copy Chat ID"))
         acts.append { [weak self] in self?.copyChatID(id) }

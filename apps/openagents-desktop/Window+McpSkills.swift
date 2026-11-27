@@ -374,11 +374,11 @@ extension CoderWindow {
             _ = cd_mcp_load_json(r.page, mcpJSON)
             _ = cd_skills_load(r.page, skillsPayload)
         }
-        syncSkillsNote(for: page, isForeman: isForemanShown)
-        configureWorkerEnv(run, isForeman: isForemanShown)
-        for (id, r) in runs {
-            syncSkillsNote(for: r.page, isForeman: id == Foreman.chatID)
-            configureWorkerEnv(r, isForeman: id == Foreman.chatID)
+        syncSkillsNote(for: page, isForeman: false)
+        configureWorkerEnv(run, isForeman: false)
+        for (_, r) in runs {
+            syncSkillsNote(for: r.page, isForeman: false)
+            configureWorkerEnv(r, isForeman: false)
         }
         wake()
     }

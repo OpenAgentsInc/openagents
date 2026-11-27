@@ -109,7 +109,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     cp_title_bar(s, f, left, toggle);
     return;
   }
-  if s[0].wallet[0].open {
+  if cp_flag(s, DC_FLAG_WALLET) && s[0].wallet[0].open {
     running := cp_running(s);
     cp_wallet_pane(s, f, left, window_w, h);
     if left > 0 {
@@ -143,7 +143,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     cp_title_bar(s, f, ifx left > 0 then left else ifx narrow && s[0].side_drawer then cast(f32) CP_SIDE else 0.0f32, toggle);
     return;
   }
-  if s[0].introspect[0].open {
+  if cp_flag(s, DC_FLAG_ENVIRONMENTS) && s[0].introspect[0].open {
     running := cp_running(s);
     cp_introspect_pane(s, f, left, window_w, h);
     if left > 0 {

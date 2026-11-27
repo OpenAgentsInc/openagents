@@ -149,9 +149,10 @@ cp_ms_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   _ = coder_page_mcp_add(s, "context7", CP_MCP_HTTP, "https://mcp.context7.com/mcp", true);
   _ = coder_page_skills_load(s, "rust-audit\tproject\t1\tAudit unsafe Rust blocks\t/repo/.claude/skills/rust-audit/SKILL.md\n");
 
-  // Search hides MCP and Skills when mcp flag is off, and finds them when on.
+  // Search hides MCP and Skills when mcp flag is 0, and finds them in v1 defaults (mcp default_on = true).
   hits: [CP_SET_HITS] int; es := cp_set_entries();
-  #assert cp_set_hits_in("mcp", hits[..], false) == 0 && cp_set_hits_in("skills", hits[..], false) == 0;
+  #assert cp_set_hits_flags("mcp", hits[..], 0) == 0 && cp_set_hits_flags("skills", hits[..], 0) == 0;
+  #assert cp_set_hits_in("mcp", hits[..], false) >= 2 && cp_set_hits_in("skills", hits[..], false) >= 2;
   mf := dc_flag_bit(DC_FLAG_MCP);
   n := cp_set_hits_flags("mcp", hits[..], mf);
   #assert n >= 2 && es[hits[0]].page == CP_PG_MCP;

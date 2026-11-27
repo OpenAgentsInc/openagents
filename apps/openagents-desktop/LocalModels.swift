@@ -225,13 +225,16 @@ struct LocalModelCatalogEntry: Equatable {
     ]
 }
 
-/// Controls whether non-Inkling models (Antigravity, cloud, external CLIs) appear in the composer
-/// model picker and are probed at launch. Defaults to false so ONLY the active local Inkling model
-/// is shown and loaded unless the user explicitly asks to see other models.
+/// Controls whether Cloud & BYOK models appear in the composer model picker alongside Local Inkling.
+/// Defaults to true in v1.0.0 so OpenAgents Cloud (Gemini 4 Neon) and BYOK (Gemini/Claude/OpenRouter)
+/// work out of the box alongside local Inkling 2 Mini.
 enum ComposerModelVisibility {
     private static let key = "composer.showOtherModels"
     static var showOtherModels: Bool {
-        get { UserDefaults.standard.bool(forKey: key) }
+        get {
+            if UserDefaults.standard.object(forKey: key) == nil { return true }
+            return UserDefaults.standard.bool(forKey: key)
+        }
         set { UserDefaults.standard.set(newValue, forKey: key) }
     }
 }

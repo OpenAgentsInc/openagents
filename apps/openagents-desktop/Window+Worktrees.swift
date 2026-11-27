@@ -146,7 +146,7 @@ final class StandbyWorktreePool {
 extension CoderWindow {
     /// Pre-warms a standby worktree in the background for `url` when it is inside a Git repository.
     func prewarmWorktree(for url: URL) {
-        guard ChatWorktree.enabled, !isForemanShown else { return }
+        guard ChatWorktree.enabled else { return }
         StandbyWorktreePool.shared.warm(folder: url.path)
     }
 
@@ -156,7 +156,7 @@ extension CoderWindow {
     func holdForWorktree() -> Bool {
         let r = run
         if r.worktreeSkip { r.worktreeSkip = false; return false }
-        guard ChatWorktree.enabled, !isForemanShown, chat == nil else { return false }
+        guard ChatWorktree.enabled, chat == nil else { return false }
         if r.preparingWorktree { return true }
         // already assigned a worktree for this unsaved chat
         if let w = r.worktree, store.meta(w.chat) == nil, folder.path == URL(fileURLWithPath: w.path).standardizedFileURL.path { return false }
@@ -218,7 +218,7 @@ extension CoderWindow {
     /// Worktree claim for background chats (e.g. Foreman): uses a ready standby worktree immediately,
     /// or creates one asynchronously instead of silently falling back to the shared main checkout.
     func holdRunForWorktree(_ r: CoderRun, then: @escaping () -> Void) -> Bool {
-        guard ChatWorktree.enabled, let id = r.chat, id != Foreman.chatID, r.worktree == nil,
+        guard ChatWorktree.enabled, let id = r.chat, r.worktree == nil,
               let repo = ChatWorktree.mainCheckout(of: worktreeSource(r.folder.path) ?? r.folder.path) else { return false }
         if var made = StandbyWorktreePool.shared.claimIfReady(repo: repo) {
             made.chat = id

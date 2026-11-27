@@ -22,16 +22,6 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>OpenAgents lets OpenAgents on your iPhone find this Mac nearby, so you can pair them without a code.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>OpenAgents uses the microphone for offline voice dictation directly into the chat composer.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>OpenAgents uses on-device Apple Speech recognition to transcribe your voice into the chat composer.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_openagents-coder._tcp</string>
-	</array>
 	<key>CFBundleIconFile</key>
 	<string>OpenAgents</string>
 	<key>CFBundleURLTypes</key>
@@ -65,26 +55,6 @@
 				</array>
 			</dict>
 		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.openagents.gamebuilder.world</string>
-			<key>UTTypeDescription</key>
-			<string>OpenAgents GameBuilder World</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>world</string>
-					<string>game</string>
-					<string>gbm</string>
-					<string>pack</string>
-				</array>
-			</dict>
-		</dict>
 	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
@@ -98,33 +68,6 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.openagents.coax</string>
-			</array>
-		</dict>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>3D Scene and Model</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Alternate</string>
-			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>glb</string>
-				<string>gltf</string>
-				<string>obj</string>
-				<string>stl</string>
-				<string>usdz</string>
-				<string>usd</string>
-				<string>ifc</string>
-				<string>pack</string>
-				<string>gbm</string>
-				<string>world</string>
-				<string>game</string>
-			</array>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.openagents.gamebuilder.world</string>
-				<string>public.3d-content</string>
 			</array>
 		</dict>
 		<dict>

@@ -131,12 +131,12 @@
   cp_init(s);
   coder_page_voice_status_set(s, "MacBook Pro Microphone", "ggml-base.en.bin (ready)", true, true);
 
-  // Settings search hides Voice when voice flag is off and discovers it when on.
+  // Settings search hides Voice when voice flag is off (v1 default) and discovers it when on.
   hits: [CP_SET_HITS] int;
   es := cp_set_entries();
-  // Voice is unconditionally enabled in --minimal (#14065).
-  #assert cp_set_hits_in("voice", hits[..], false) >= 1 && cp_set_hits_in("whisper", hits[..], false) >= 1;
+  #assert cp_set_hits_in("voice", hits[..], false) == 0 && cp_set_hits_in("whisper", hits[..], false) == 0;
   vf := dc_flag_bit(DC_FLAG_VOICE);
+  coder_page_flags_set(s, vf);
   hn := cp_set_hits_flags("voice", hits[..], vf);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_VOICE;
   hn = cp_set_hits_flags("whisper", hits[..], vf);

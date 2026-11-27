@@ -29,79 +29,39 @@ final class Fake: @unchecked Sendable {
 }
 
 func account(_ dir: URL, origin: String, send: @escaping AppAuth.Send = AppAuth.network) -> MacAccount {
-    MacAccount(keyFile: dir.appendingPathComponent("cli/keys/default"),
-               store: FileTokenStore(url: dir.appendingPathComponent("desktop/login.json")),
+    MacAccount(store: FileTokenStore(url: dir.appendingPathComponent("desktop/login.json")),
                device: DeviceKeys(store: FileDeviceKeyStore(url: dir.appendingPathComponent("desktop/device-key"))),
                origin: origin, send: send)
 }
 
 func offline(_ dir: URL) async {
-    // The key file: the CLI's format, 0600 in a 0700 folder, never made over one that is there.
-    let keyFile = dir.appendingPathComponent("cli/keys/default")
-    guard var key = try? MacKey.make(keyFile) else { fail("no key made") }
-    guard mode(keyFile) == 0o600, mode(keyFile.deletingLastPathComponent()) == 0o700 else { fail("the key file isn't 0600 in a 0700 folder") }
-    let text = (try? Data(contentsOf: keyFile)) ?? Data()
-    guard text.count == 81, String(decoding: text.prefix(16), as: UTF8.self) == "nostr-secret-v1 ", text.last == 10 else { fail("the key file isn't the CLI's format") }
-    guard MacKey.load(keyFile) == key else { fail("the key didn't read back") }
-    if (try? MacKey.make(keyFile)) != nil { fail("a key was made over the one there") }
-    guard MacKey.load(keyFile) == key else { fail("the key changed") }
-    MacKey.wipe(&key)
-
-    // A NIP-98 event for a POST: kind 27235, the URL, the method and the body's hash, its id over its fields.
-    let url = "https://example.test/api/auth/nostr", body = "{\"challenge\":\"c1\",\"label\":\"app\"}"
-    guard let header = try? MacKey.signer(keyFile)(url, body, Date(timeIntervalSince1970: 1_800_000_000)), header.hasPrefix("Nostr "),
-          let raw = Data(base64Encoded: String(header.dropFirst(6))),
-          let e = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] else { fail("no NIP-98 header") }
-    let tags = e["tags"] as? [[String]] ?? []
-    let payload = hex(Data(SHA256.hash(data: Data(body.utf8))))
-    guard (e["kind"] as? Int) == 27235, (e["created_at"] as? Int) == 1_800_000_000,
-          tags == [["u", url], ["method", "POST"], ["payload", payload]] else { fail("the event's fields: \(e)") }
-    let pubkey = e["pubkey"] as? String ?? ""
-    let fields: [Any] = [0, pubkey, 1_800_000_000, 27235, tags, ""]
-    guard let serial = try? JSONSerialization.data(withJSONObject: fields, options: [.withoutEscapingSlashes]),
-          hex(Data(SHA256.hash(data: serial))) == (e["id"] as? String), (e["sig"] as? String)?.count == 128 else { fail("the event's id isn't over its fields") }
-
-    // A key login: the challenge, then /api/auth/nostr signed over its body, with the device key's headers.
     let fake = Fake()
-    fake.answers["/api/auth/nostr/challenge"] = [(200, "{\"challenge\":\"c1\"}")]
-    fake.answers["/api/auth/nostr"] = [(200, "{\"account\":\"acct_a\",\"access_token\":\"oa_at_A1\",\"refresh_token\":\"oa_rt_R1\",\"expires_in\":3600,\"device_bound\":true}")]
-    fake.answers["/api/auth/account"] = [(200, "{\"logged_in\":true,\"account\":\"acct_a\",\"emails\":[],\"keys\":[{}]}"),
-                                         (200, "{\"logged_in\":true,\"account\":\"acct_a\",\"emails\":[\"a•••@example.com\"],\"keys\":[]}")]
     let me = account(dir, origin: "https://example.test", send: { try await fake.send($0) })
     guard me.title == "Log In…", !me.loggedIn else { fail("logged in before logging in") }
-    do { try await me.keyLogin() } catch { fail("key login: \(error)") }
-    let login = fake.asked.first { $0.url?.path == "/api/auth/nostr" }
-    guard let login, String(decoding: login.httpBody ?? Data(), as: UTF8.self) == body,
-          login.value(forHTTPHeaderField: "OA-Device-Platform") == "mac", login.value(forHTTPHeaderField: "OA-Device-Name")?.hasPrefix("Mac") == true,
-          login.value(forHTTPHeaderField: "OA-Device-Key")?.count == 130, login.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Nostr ") == true
-    else { fail("the login request: \(String(describing: login?.allHTTPHeaderFields))") }
-    guard me.title == "Logged in with this Mac's key" else { fail("the title: \(me.title)") }
-    let account = fake.asked.last { $0.url?.path == "/api/auth/account" }
-    guard account?.value(forHTTPHeaderField: "Authorization") == "Bearer oa_at_A1" else { fail("who is logged in wasn't asked with the access token") }
-    await me.look()
-    guard me.title == "Logged in as a•••@example.com" else { fail("the title: \(me.title)") }
-
-    // The tokens: 0600, read back, and gone at logout with the device key.
-    let tokens = dir.appendingPathComponent("desktop/login.json")
-    guard mode(tokens) == 0o600, mode(tokens.deletingLastPathComponent()) == 0o700, me.store.load()?.deviceBound == true else { fail("the token file isn't 0600, or lost the binding") }
-    fake.answers["/api/auth/logout"] = [(200, "{}")]
-    await me.logout()
-    guard !FileManager.default.fileExists(atPath: tokens.path), !FileManager.default.fileExists(atPath: dir.appendingPathComponent("desktop/device-key").path),
-          me.title == "Log In…" else { fail("logout left the tokens or the device key") }
 
     // An email code: the code goes with the pending value; a wrong one is the server's own words.
+    let tokens = dir.appendingPathComponent("desktop/login.json")
     fake.answers["/api/auth/email/start"] = [(200, "{\"state\":\"sent\",\"pending\":\"p1\"}")]
     fake.answers["/api/auth/email/verify"] = [(401, "{\"error\":\"That code isn't right. 4 tries left.\"}"),
                                               (200, "{\"account\":\"acct_b\",\"access_token\":\"oa_at_B1\",\"refresh_token\":\"oa_rt_B1\",\"expires_in\":3600,\"device_bound\":true}")]
     fake.answers["/api/auth/account"] = [(200, "{\"logged_in\":true,\"account\":\"acct_b\",\"emails\":[\"a•••@example.com\"],\"keys\":[]}")]
+    fake.answers["/api/auth/life"] = [(200, "{\"credit_msat\":42000,\"promo_micros\":15000000,\"promo_expires_at\":\"2027-02-25\"}")]
+    fake.answers["/api/integrations/github/status"] = [(200, "{\"connected\":true,\"login\":\"ada\"}")]
+    fake.answers["/api/projects/v1"] = [(200, "{\"projects\":[{\"name\":\"openagents\",\"repo\":\"OpenAgentsInc/openagents\"}]}")]
     guard let pending = try? await me.auth.emailStart("ada@example.com"), pending == "p1" else { fail("email start") }
     do { try await me.auth.emailVerify(code: "000000", pending: pending); fail("a wrong code logged in") }
     catch { guard error.localizedDescription == "That code isn't right. 4 tries left." else { fail("the wrong code's words: \(error.localizedDescription)") } }
     do { try await me.auth.emailVerify(code: "482913", pending: pending) } catch { fail("email verify: \(error)") }
     await me.look()
+    guard me.paidCreditLabel == "42 sats", me.promoCreditLabel == "$15.00 USD", me.promoExpiresAt == "2027-02-25",
+          me.githubStatus == "Connected (@ada)", me.projectsSummary == "1 project" else {
+        fail("v1 account credits/pipes/projects: paid=\(me.paidCreditLabel) promo=\(me.promoCreditLabel) gh=\(me.githubStatus) proj=\(me.projectsSummary)")
+    }
     let verify = fake.asked.last { $0.url?.path == "/api/auth/email/verify" }
     guard me.title == "Logged in as a•••@example.com", String(decoding: verify?.httpBody ?? Data(), as: UTF8.self) == "{\"code\":\"482913\",\"pending\":\"p1\"}",
           verify?.value(forHTTPHeaderField: "OA-Device-Platform") == "mac" else { fail("the email login") }
+    // The tokens: 0600 in a 0700 folder, device-bound.
+    guard mode(tokens) == 0o600, mode(tokens.deletingLastPathComponent()) == 0o700, me.store.load()?.deviceBound == true else { fail("the token file isn't 0600, or lost the binding") }
     // Security (#13233): the sheet's words from the recovery and the notices; this login cancels
     // the recovery; and the push target is Apple's token as hex.
     fake.answers["/api/auth/recovery"] = [(200, "{\"state\":\"pending\",\"ready_ms\":1800259200000}")]
@@ -204,52 +164,17 @@ func offline(_ dir: URL) async {
     do { _ = try await me.auth.refreshed(); fail("401 refreshed") } catch {}
     guard !me.loggedIn, !FileManager.default.fileExists(atPath: tokens.path) else { fail("401 left tokens") }
 
-    print("account-check: offline ok (key file, NIP-98, key login, email code, title, tokens 0600, security, push target, freeze, WorkOS magic/PKCE/SSO/orgs/transient-refresh, logout)")
-}
-
-func live(_ dir: URL, origin: String) async {
-    let me = account(dir, origin: origin)
-    if MacKey.load(me.keyFile) == nil { guard var k = try? MacKey.make(me.keyFile) else { fail("no key made") }; MacKey.wipe(&k) }
-    do { try await me.keyLogin() } catch { fail("key login against \(origin): \(error.localizedDescription)") }
-    guard let first = me.store.load(), first.deviceBound == true else { fail("the login isn't bound to the device key") }
-    guard let who = try? await me.auth.account() else { fail("who is logged in") }
-    print("account-check: logged in to \(origin) as \(who.account) (device bound), menu: \(me.title)")
-
-    // A stale access token: the next request refreshes first, with the device key's proof.
-    var stale = first; stale.accessUntil = Date(timeIntervalSince1970: 0); me.store.save(stale)
-    guard let again = try? await me.auth.account(), again.account == who.account, let second = me.store.load(), second.refresh != first.refresh else { fail("the refresh") }
-    print("account-check: refreshed with the device key's proof")
-
-    // The first refresh token again: the server ends the whole login, and the app forgets it.
-    var reused = second; reused.refresh = first.refresh; reused.accessUntil = Date(timeIntervalSince1970: 0); me.store.save(reused)
-    do { _ = try await me.auth.account(); fail("a reused refresh token still worked") } catch {}
-    guard !me.loggedIn else { fail("the app kept a login the server ended") }
-    var ended = second; ended.accessUntil = Date(timeIntervalSince1970: 0); me.store.save(ended)
-    do { _ = try await me.auth.account(); fail("the newer refresh token still worked after the reuse") } catch {}
-    print("account-check: a reused refresh token ended the login")
-
-    do { try await me.keyLogin() } catch { fail("logging in again: \(error.localizedDescription)") }
-    // Security notices (#13233): this login's device takes a push target, the Security sheet reads
-    // the account (a new account: no recovery waiting), and there is nothing to cancel.
-    do { try await me.auth.pushTarget(Data((0..<32).map { UInt8(truncatingIfNeeded: $0 &* 7 &+ 3) })) } catch { fail("the push target: \(error.localizedDescription)") }
-    guard let sec = try? await me.auth.security(), !sec.recoveryOpen else { fail("the Security sheet's read") }
-    do { try await me.auth.cancelRecovery(); fail("a recovery was cancelled on an account with none") }
-    catch { guard error.localizedDescription == "There is no recovery waiting." else { fail("cancel with none waiting: \(error.localizedDescription)") } }
-    print("account-check: the device took a push target; Security reads \(sec.notices.count) notice(s) and no recovery")
-    await me.logout()
-    guard !me.loggedIn else { fail("logout") }
-    print("account-check: live ok")
+    print("account-check: offline ok (email code, title, tokens 0600, security, push target, freeze, WorkOS magic/PKCE/SSO/orgs/transient-refresh, logout)")
 }
 
 @main enum AccountCheck {
     static func main() async {
         let args = CommandLine.arguments
-        guard args.count >= 3 else { fail("usage: offline DIR | live DIR ORIGIN") }
+        guard args.count >= 3 else { fail("usage: offline DIR") }
         let dir = URL(fileURLWithPath: args[2], isDirectory: true)
         switch args[1] {
         case "offline": await offline(dir)
-        case "live" where args.count == 4: await live(dir, origin: args[3])
-        default: fail("usage: offline DIR | live DIR ORIGIN")
+        default: fail("usage: offline DIR")
         }
     }
 }

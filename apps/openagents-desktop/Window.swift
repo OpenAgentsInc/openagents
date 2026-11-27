@@ -140,9 +140,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var recallDue = false      // a chat was opened: the worker is told its turns ahead of the next message
     var choosingFolder = false // prevents stacking folder sheets while one is opening or open
     let launchBinary = CoderWindow.currentBinaryIdentity()
-    let foremanServer = ForemanControlServer()
-    let foremanEvents = ForemanEventBus()
-    let foremanAudit = ForemanAuditLog()
     let daemonClient = CoderDaemonClient()
     lazy var cloudSync: CloudChatSync = CloudChatSync(
         stateDir: MacAccount.folder.appendingPathComponent("cloud-sync", isDirectory: true),
@@ -165,7 +162,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var phoneBusyChats: Set<String> = []
     var phoneSyncing = false
     var phoneSyncedAt: CFTimeInterval = 0
-    var foremanTier: ForemanTier = ForemanTier.load()
     let updater = CoderUpdater()
     /// The working folder: commands start there. The corner shows it with ~ for the home folder.
     var folder = FileManager.default.homeDirectoryForCurrentUser
@@ -174,34 +170,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var fileWatchWork: DispatchWorkItem?
     var fileWatchMtime: Date?
     var fileWatchSize: Int64 = -1
-    var scenePanel: PleScenePanelView?   // the embedded Metal 3D PLE scene viewport (SceneView.swift)
-    var mvViewport: MetaverseViewportView? // unified right-side Metaverse Viewer & GameBuilder Metal viewport (#14041)
-    var mvState: MetaverseWindowState?     // per-window Metaverse tabs & file watcher state (#14041)
     var brViewport: BrowserViewportView?   // expandable multi-tab Browser pane WKWebView/OSR viewport (#14107)
     var brState: BrowserWindowState?       // per-window Browser tabs, browser.sock attach server & CEF helper (#14107-#14109)
-    var liveSceneBox: NSView?            // the live 3D card in the transcript: the conversation's clip (Window+Files.swift, #13812)
-    var liveScenePanel: PleScenePanelView?   // its viewport, within the clip at the card's rect
-    var liveScenePath = ""               // the scene it shows, and that file's size and time as loaded (nil: it failed)
-    var liveSceneStamp: [Double]? = nil
-    var liveSceneCheckedAt: CFTimeInterval = 0
-    var liveSceneFailedAt: [Double] = []
-    var gymView: GymWorkbenchView?       // the Gym / 3D PLE Workbench view (GymWorkbenchView.swift, #13792)
-    var rhFlythroughView: RhFlythroughView? // Metaverse Engine 3D RH Flythrough view (RhFlythroughView.swift)
-    var gymRequestTimer: Timer?          // takes ple-run gym's requests (Window+Gym.swift, #13812)
-    var leanHydrated = false             // whether Lean · RH Workbench initial doctor/audit/Main hydration ran (#13946)
-    // the iOS Simulator in the pane (Window+Simulator.swift, #13811): the screen's view, the helper's socket, the pane's clock
-    var simView: SimulatorPaneView?
-    var simFrame: SimulatorFrameView?    // the device's frame behind it, its chrome for simChromeUdid
-    var simChromeUdid = ""
-    var simMaskKey = ""
-    let simTips = SimTipOwner()           // the pane's icon buttons' tooltips (cd_sim_tips)
-    var simTipsText = ""
-    let simClient = SimHostClient()
-    var simConnectedPage: UnsafeMutableRawPointer?
-    var simTimer: Timer?
-    var simGen = 0
-    var simStarting = false
-    var simRetryAt: Date?
     var gitProcess: Process?             // active Git Actions command (Window+GitActions.swift; #13871, #14026)
     var sidebarUndo: SidebarUndoSnapshot? // last archive/delete for Undo toast restore (#13875)
     var autoTitledChats: Set<String> = []
@@ -211,31 +181,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var pendingForkSource: [String: (source: ThreadTitleForkSource, baseTurns: Int)] = [:]
     private var lastSnoozeCheckAt: CFTimeInterval = 0
     private var lastTimestampMinute: Int64 = 0
-    // integrated multi-tab terminal pane (Window+Terminal.swift, #13869)
-    var termSessions: [Int32: TerminalSession] = [:]
-    var termPortTimer: Timer?
-    // embedded Web Preview Pane (Window+Preview.swift, #13888)
-    var previewWebView: WKWebView?
-    var previewScriptHandler: PreviewScriptHandler?
-    var previewNavDelegate: PreviewNavigationDelegate?
-    var previewLoadedURL = ""
-    var usageTimer: Timer?               // periodic always-on usage & limit-recovery refresh (Window+Usage.swift, #14064)
-    var introspectLocalTimer: Timer?     // reserved local introspection timer (Window+Introspect.swift, #14066)
-    var introspectRemoteTimer: Timer?    // reserved remote introspection timer (Window+Introspect.swift, #14066)
-    var introspectLocalBusy = false
-    var introspectRemoteBusy = false
-    var introspectOutputBusy = false
-    var introspectPathIndex: [String: String] = [:]
-    var introspectLocalSnap: IntrospectScanner.LocalScanResult? = nil
-    var introspectRemoteSnap: IntrospectScanner.RemoteScanResult? = nil
     var localModelsDialogState: LocalModelState? = nil // tracks open Local Models dialog for live progress updates (#13826)
     var localModelsDialogGen = 0
-    let voice = CoderVoiceController()   // native & local voice dictation + bi-directional TTS (Window+Voice.swift, #14065)
-    let speech = CoderSpeechSynthesizer() // streaming sentence-chunked TTS & barge-in (#14065)
-    var appearanceObservation: NSKeyValueObservation? // live macOS Light/Dark appearance watcher (Window+Customize.swift, #13887)
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
-    private var keyUpMonitor: Any? // Push-to-talk release for ⌥Space voice dictation (#13882, #14065)
     private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
     private var cmdHoldTimer: Timer?
     private var cmdHintsShown = false
@@ -255,37 +204,25 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1500, (screen.width * 0.86).rounded()), height: min(1000, (screen.height * 0.88).rounded())),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
-        window.title = "Coder"; window.titleVisibility = .hidden; window.backgroundColor = .black; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false; window.delegate = self
+        window.title = "OpenAgents"; window.titleVisibility = .hidden; window.backgroundColor = .black; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false; window.delegate = self
         // the page fills the window, under its transparent title bar; a file shows in the page's own pane (page/filepane.coax)
         canvas.frame = NSRect(origin: .zero, size: window.contentRect(forFrameRect: window.frame).size); canvas.autoresizingMask = [.width, .height]
         window.contentView = canvas
         titleBar = CoderTitleBar(window: window, canvas: canvas, page: page)
         cd_on_change(page, { raw in guard let raw else { return }; Unmanaged<CoderWindow>.fromOpaque(raw).takeUnretainedValue().wake() },
                      Unmanaged.passUnretained(self).toOpaque())
-        // Push the resolved 28-flag mask first; all gated probes, services, and UI stay off when their flag is off.
+        // Push the resolved v1 flag mask first; all non-v1 surfaces stay off.
         cd_flags_set(page, FeatureFlags.mask)
         cd_show_other_models_set(page, ComposerModelVisibility.showOtherModels ? 1 : 0)
-        if ComposerModelVisibility.showOtherModels {
-            syncAntigravityModels(on: page)
-        }
         if FeatureFlags.isOn(.mcp) { cd_skills(page, coderSkillsNote()) } else { cd_skills(page, "") }
         if ComposerModelVisibility.showOtherModels {
             if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(page) } else { cd_claude(page, 0) }
-            if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
             if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(page) }
         } else {
             cd_claude(page, 0)
         }
         cd_sb_now_ms(page, Int64(Date().timeIntervalSince1970 * 1000))
         cd_chats(page, chatLines)
-        if FeatureFlags.isOn(.foreman) { syncForemanUI() }
-        foremanServer.handler = { [weak self] request, done in
-            guard let self else {
-                done(ForemanResponse(status: 503, body: ["error": "window unavailable"]))
-                return
-            }
-            self.handleForemanAsyncRequest(request, done: done)
-        }
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         cd_sb_condensed_set(page, SidebarViewMode.condensed ? 1 : 0)
         CoderNotifications.shared.install()
@@ -299,12 +236,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_settings_instructions(page, AgentInstructions.words)
         cd_settings_custom_prompt(page, CustomSystemPrompt.words, CustomSystemPrompt.preview)
         CoderProbes.apply(page)
-        // ProviderInstancesStore.shared.refreshAll() in setupProvidersSettings() probes enabled
-        // Antigravity instances and updates both loaded models and legacy CoderProbes cache.
-        // Borderless Session Control Bus starts automatically without DC_FLAG_FOREMAN (#14067).
-        startSessionBus()
         if ComposerModelVisibility.showOtherModels && FeatureFlags.isOn(.modelsGemini) { CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() } }
-        if FeatureFlags.isOn(.gym) { startGymRequests() }
         // Keep ~/.openagents/bin workers and the resident coder-host daemon strictly synced with this app's version.
         let workerSyncReport = WorkerVersionSync.syncAll(from: Bundle.main.bundleURL, socketPath: daemonClient.socketPath)
         pendingWorkerDaemonSync = workerSyncReport.daemonPendingBusy
@@ -312,7 +244,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         CoderWorker.daemon = daemonClient
         daemonClient.ensureDaemon()
         syncFromDaemon()
-        if FeatureFlags.isOn(.scheduled) { startScheduledAutomation() }
         // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
         var isFolder: ObjCBool = false
         if let at = CommandLine.arguments.firstIndex(of: "--folder"), at + 1 < CommandLine.arguments.count,
@@ -325,36 +256,16 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         AgentSettings.apply(to: page)
         syncSettingsInfo()
         checkFlawedAuth(showToast: false)
-        setupProvidersSettings()
-        setupUsageDashboard()
-        setupVoiceDictation()
         setupCloudChatSync()
         syncEnvironments()
-        setupIntrospection()
-        if FeatureFlags.isOn(.customize) { setupCustomize() }
         detectInstalledEditors()
-        if FeatureFlags.isOn(.rich) { setupRichComposer() }
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.handleModifierFlags(event.modifierFlags)
             return event
         }
-        keyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
-            guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
-            return self.handleVoiceKeyUp(event) ? nil : event
-        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.cancelCmdHold()
             guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
-            if !self.overlay.dialogOpen && self.handleVoiceKeyDown(event) { return nil }
-            // Command-` opens Foreman when enabled (heard before macOS window cycling).
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if FeatureFlags.isOn(.foreman) && flags.contains(.command) && !flags.contains(.shift) && !flags.contains(.option) && !flags.contains(.control) && event.charactersIgnoringModifiers == "`" && (!self.overlay.dialogOpen || self.overlay.paletteUp) {
-                if self.isForemanEnabled {
-                    if cd_palette_open(self.page) != 0 { _ = cd_palette_toggle(self.page, 0) }
-                    self.openForeman()
-                }
-                return nil
-            }
             // the editing chords go to the field with the keyboard (or active transcript selection) before the menu bar sees them
             if self.window.firstResponder === self.canvas && (cd_wants_text(self.page) != 0 || cd_has_selection(self.page) != 0), let key = self.editingChord(event) {
                 if cd_key(self.page, key.code, key.mods) != 0 { self.wake(); return nil }
@@ -404,7 +315,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         link.add(to: .main, forMode: .common); self.link = link
         let watchdog = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             guard let self else { return }
-            if FeatureFlags.isOn(.simulator) { self.pollSimulatorReconnect() }
             guard CACurrentMediaTime() - self.ticked > 0.25 else { return }
             self.tick()
         }
@@ -415,14 +325,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             window.center()
         }
         window.makeKeyAndOrderFront(nil); focusComposer()
-        // Passively subscribe to oasim serve so programmatic `oasim attach` / agent `ask` events open the pane live.
-        if FeatureFlags.isOn(.simulator) { listenSimulator() }
-        // Coder --foreman / --gym / --gym-lean / --simulator only honor their flags when enabled.
-        if FeatureFlags.isOn(.foreman) && CommandLine.arguments.contains("--foreman") { openForeman() }
-        if FeatureFlags.isOn(.gym) && CommandLine.arguments.contains("--gym") { openGym() }
-        if FeatureFlags.isOn(.gym) && CommandLine.arguments.contains("--gym-lean") { openGym(mode: 2) }
-        if FeatureFlags.isOn(.simulator) && CommandLine.arguments.contains("--simulator") { openSimulator() }
-        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills, voice, connections, scheduled, appearance, keybindings, providers, agent).
+        // OpenAgents --settings PAGE opens settings at launch on a v1 page (general, models, account, about, mcp, skills, agent).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count {
             let arg = CommandLine.arguments[at + 1]
             let pages = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings", "providers", "agent"]
@@ -467,9 +370,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                         manageLocalModels()
                     }
                 }
-            } else if FeatureFlags.anyExtraModel || requested.hasPrefix("agy:") || requested == "antigravity" || requested == "agy" {
+            } else if FeatureFlags.anyExtraModel {
                 cd_show_other_models_set(page, 1)
-                syncAntigravityModels(on: page)
                 _ = cd_pick_model(page, requested)
             }
         }
@@ -522,14 +424,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 3: stopRun(run)
         case 4:
             // a new chat: one whose reply is running goes on out of view
-            closeGym()
             guard detach() else { return }
             chat = nil; recallDue = false; cd_current(page, "")
             cd_worktree_set(page, ChatWorktree.enabled ? 1 : 0)
             leaveWorktreeFolder()
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
-            syncForemanUI()
             let n = cd_forget_line(&out, Int32(out.count)); run.worker.write(out, count: Int(n))
             focusComposer()
         case 5:
@@ -548,23 +448,21 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             // a press on a chat in the sidebar: its kept text becomes the chat that is shown
             guard cd_open_id(page, &out, Int32(out.count)) > 0 else { return }
             open(String(cString: out))
-        case 8: if FeatureFlags.isOn(.usage) { editBudget() }
+        case 8: break
         case 9: editGoal()
         case 10:
             var to: Int32 = -1
             guard cd_pin_move(page, &out, Int32(out.count), &to) > 0, to >= 0 else { return }
             store.movePinned(String(cString: out), to: Int(to))
             cd_chats(page, chatLines)
-        case 11: if FeatureFlags.isOn(.foreman) { openForeman() }
+        case 11: break
         case 12: handleUpdatePillClick()
         case 13: settingsMoved()
         case 14: zoom(1)
         case 15: zoom(-1)
         case 16: if FeatureFlags.isOn(.modelsClaude) { chooseKey() }
         case 17: if FeatureFlags.isOn(.modelsOpenrouter) { chooseOpenRouter() }
-        case 18: if FeatureFlags.isOn(.foreman), let tier = ForemanTier(rawValue: Int(cd_settings_tier(page))) { setForemanTier(tier) }
-        case 19: if FeatureFlags.isOn(.foreman) { openForemanAuditLog() }
-        case 20: if FeatureFlags.isOn(.foreman) { clearForemanHistory() }
+        case 18, 19, 20: break
         case 21: if FeatureFlags.isOn(.account) { Task { @MainActor in await MacAccount.shared.showLogin() } }
         case 22: checkForUpdates()
         case 23: focusSearch()
@@ -589,16 +487,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             } else {
                 openFileLink(raw)
             }
-        case 32: if FeatureFlags.isOn(.gym) { openGym() }
-        case 33: if FeatureFlags.isOn(.modelsAgy) { chooseAntigravity() }
-        case 34: if FeatureFlags.isOn(.modelsAgy) { setAntigravityMode(Int(cd_settings_agy_mode(page))) }
-        case 35: if FeatureFlags.isOn(.modelsAgy) { chooseAntigravityAuth() }
+        case 32, 33, 34, 35: break
         case 36: experimentalChanged()
         case 97: if FeatureFlags.isOn(.modelsClaude) { orchestratorChanged() }
         case 98: if FeatureFlags.isOn(.modelsClaude) { claudeEffortChanged() }
         case 38: if FeatureFlags.isOn(.modelsGemini) { chooseGeminiKey() }
-        case 46: if FeatureFlags.isOn(.simulator) { simAsked() }
-        case 52: if FeatureFlags.isOn(.terminal) { termAsked() }
+        case 46, 52: break
         case 49: if FeatureFlags.isOn(.git) { gitAsked() }
         case 50: if FeatureFlags.isOn(.git) { refreshGitDiff() }
         case 51: if FeatureFlags.isOn(.git) { openReviewCommentDialog() }
@@ -609,39 +503,16 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 47: manageLocalModels()
         case 48: pump(run)
         case 54: enterRequestedSecret()
-        #if OA_WALLET
-        case 55: walletConnectOrCreate()
-        case 56: walletReceiveDialog()
-        case 57: walletSendDialog()
-        case 58: walletLimitDialog()
-        case 59: walletBackupDialog()
-        case 60: walletRefresh()
-        case 217: openWalletPane()
-        case 218: walletCopyNpub()
-        case 219: walletCopyHex()
-        case 220: walletCopySparkAddress()
-        #endif
         case 61: notificationModeChanged()
         case 62: sidebarAsked()
         case 221: sidebarViewChanged()
-        case 216:   // CP_ASK_DASHBOARD (190 is CP_ASK_FLAWED_PREFS, which this case used to shadow)
-            closeGym()
+        case 216:
             syncDashboard()
             wake()
         case 63: focusFind()
         case 64: searchPaletteContent()
         case 65: jumpToPaletteHit()
         case 86...89: fileTreeAsked(what)
-        case 66: refreshUsageDashboard()
-        case 67: editUsagePriceOverrides()
-        case 68: handleUsagePoolChanged()
-        case 69: handleUsageRecoveryAction()
-        case 80: toggleVoiceDictation()
-        case 81: cancelVoiceDictation()
-        case 82: voiceBackendChanged()
-        case 83: editVoiceDictionary()
-        case 84: chooseVoiceMicrophone()
-        case 85: voicePrefsChanged()
         case 90: envSelectChanged()
         case 91: syncEnvironments()
         case 92: envConnectOrFolder()
@@ -649,40 +520,18 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 94: envPairMobileDevice()
         case 95: envRevokeDevice()
         case 96: envKeepAwakeChanged()
-        case 250...255: introspectAsked(what)
         case 70: if FeatureFlags.isOn(.mcp) { mcpAddDialog() }
         case 71: if FeatureFlags.isOn(.mcp) { mcpToggleSelected() }
         case 72: if FeatureFlags.isOn(.mcp) { mcpRemoveSelected() }
         case 73: if FeatureFlags.isOn(.mcp) { mcpStartOAuth() }
         case 74: if FeatureFlags.isOn(.mcp) { skillToggleSelected() }
-        case 75: if FeatureFlags.isOn(.modelsExternal) { showCodexSettings() }
-        case 76: if FeatureFlags.isOn(.modelsExternal) { showCursorSettings() }
-        case 77: if FeatureFlags.isOn(.modelsExternal) { manageAcpRegistry() }
-        case 78: if FeatureFlags.isOn(.modelsExternal) { runMultiModelFanout() }
-        case 79: if FeatureFlags.isOn(.modelsExternal) { openFanoutPicker() }
-        case 100: if FeatureFlags.isOn(.rich) { handleRichCompact() }
-        case 101: if FeatureFlags.isOn(.rich) { handleRichClear() }
-        case 102: if FeatureFlags.isOn(.rich) { handleRichReview() }
-        case 103: if FeatureFlags.isOn(.rich) { handleRichUsage() }
-        case 104: if FeatureFlags.isOn(.rich) { saveRichPersistence() }
-        case 105: if FeatureFlags.isOn(.rich) { handleRichSideOpenMain() }
-        case 110: if FeatureFlags.isOn(.scheduled) { schedAddDialog() }
-        case 111: if FeatureFlags.isOn(.scheduled) { schedToggleSelected() }
-        case 112: if FeatureFlags.isOn(.scheduled) { schedRunSelectedNow() }
-        case 113: if FeatureFlags.isOn(.scheduled) { schedDeleteSelected() }
-        case 114: if FeatureFlags.isOn(.scheduled) { schedWebhookDialog() }
-        case 115: if FeatureFlags.isOn(.scheduled) { applyUpdateEverything() }
-        case 116: if FeatureFlags.isOn(.scheduled) { checkUpdateEverything() }
-        case 120...125: if FeatureFlags.isOn(.customize) { customizeAsked(what) }
-        case 130...137: if FeatureFlags.isOn(.preview) { previewAsked(what) }
-        case 140...145: if FeatureFlags.isOn(.forge) { forgeAsked(what) }
-        case 146: if FeatureFlags.isOn(.modelsExecutor) { manageExecutorModels() }
-        case 147: if FeatureFlags.isOn(.modelsExecutor) { managePylonExecutorNetwork() }
-        case 150...158: if FeatureFlags.isOn(.gym) { leanGymAsked(what) }
-        case 200...215: if FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) { metaverseAsked(what) }
         case 230...249: if FeatureFlags.isOn(.browser) { browserAsked(what) }
-        case 170...187: providersSettingsAsked(what)
-        case 188: focusProvidersField()
+        case 260: if FeatureFlags.isOn(.account) { Task { @MainActor in await MacAccount.shared.switchOrganization() } }
+        case 261: if FeatureFlags.isOn(.account) { Task { @MainActor in await MacAccount.shared.connectGitHubPipes() } }
+        case 262: if FeatureFlags.isOn(.account) { manageCloudEnrollment() }
+        case 263: if FeatureFlags.isOn(.account) { chooseExecutionTarget() }
+        case 264: if FeatureFlags.isOn(.account) { manageCloudProjects() }
+        case 265: if FeatureFlags.isOn(.account) { Task.detached { await MacAccount.shared.logout() } }
         case 190...197, 222: flawedAsked(what)
         case 198: editCustomSystemPrompt()
         case 199: clearCustomSystemPrompt()
@@ -693,12 +542,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 cd_show_other_models_set(r.page, on ? 1 : 0)
             }
             if on {
-                syncAntigravityModels(on: page)
-                for r in runs.values where r.page != page { syncAntigravityModels(on: r.page) }
-                if ProviderInstancesStore.shared.hasEnabledAntigravityBinary {
-                    AntigravityRuntimeManager.shared.checkLatestRelease()
-                    ProviderInstancesStore.shared.refreshAll()
-                }
                 if FeatureFlags.isOn(.modelsClaude) {
                     coderApplyClaude(page)
                     for r in runs.values where r.page != page { coderApplyClaude(r.page) }
@@ -707,7 +550,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                     coderApplyOpenRouter(page)
                     for r in runs.values where r.page != page { coderApplyOpenRouter(r.page) }
                 }
-                if FeatureFlags.isOn(.modelsExternal) { syncExternalProvidersAll() }
                 if FeatureFlags.isOn(.modelsGemini) {
                     CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
                 }
@@ -731,8 +573,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     }
     @objc private func refresh(_ link: CADisplayLink) {
         let blinkDue = blinkAt > 0 && CACurrentMediaTime() >= blinkAt
-        let mvLive = mvViewport?.wantsContinuousFrame ?? false
-        if owed == 0 && !blinkDue && !mvLive && cd_moving(page) == 0 && CACurrentMediaTime() - ticked < 1.0 / 61.0 { return }
+        if owed == 0 && !blinkDue && cd_moving(page) == 0 && CACurrentMediaTime() - ticked < 1.0 / 61.0 { return }
         if blinkDue { owed = max(owed, 1) }
         tick()
     }
@@ -790,13 +631,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 if let cid = chat { maybeRefineTitleAfterTurn(chatID: cid) }
             }
             if cd_dashboard_shown(page) != 0 { syncDashboard() }
-            if let cid = chat {
-                _ = foremanEvents.emit(type: fgRunning ? "chat.started" : "chat.finished", chatID: cid, data: [
-                    "title": store.title(cid) ?? (cid == Foreman.chatID ? Foreman.title : "Chat"),
-                    "cost_usd_micros": Int(cd_cost_usd_micros(page))
-                ])
-            }
-            if FeatureFlags.isOn(.foreman) { syncForemanUI() }
         }
         if let text = also, chat != nil, cd_running(page) != 0 { also = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
         if let n = showAgent, cd_pane(page, Int32(n)) != 0 { showAgent = nil; wake() }
@@ -810,22 +644,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let active = window.isKeyWindow && window.firstResponder === canvas
         let ws = NSWorkspace.shared
         cd_env(page, active ? 1 : 0, (ws.accessibilityDisplayShouldReduceMotion ? 1 : 0) | (ws.accessibilityDisplayShouldReduceTransparency ? 2 : 0))
-        if FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) {
-            syncMetaverseFrame(dt: dt)
-        }
         if cd_moving(page) != 0 || owed > 0 {
             cd_frame(page); if owed > 0 { owed -= 1 }
             // the caret's next phase: one frame then (the page's clock is the system's uptime, as CACurrentMediaTime)
             let b = cd_blink(page); blinkAt = b >= 0 ? CACurrentMediaTime() + Double(b) + 0.002 : 0
         }
-        if FeatureFlags.isOn(.scenes) {
-            syncScenePanelFrame()
-            syncLiveScene()
-        }
-        if FeatureFlags.isOn(.gym) { syncGymPanelFrame() }
-        if FeatureFlags.isOn(.simulator) { syncSimulatorFrame() }
-        if FeatureFlags.isOn(.terminal) { syncTerminalFrame() }
-        if FeatureFlags.isOn(.preview) { syncPreviewFrame() }
         if FeatureFlags.isOn(.browser) { placeBrowserViewport() }
         syncKeepAwake()
     }
@@ -881,19 +704,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         guard !retired else { return }
         retired = true
         gitProcess?.terminate(); gitProcess = nil
-        voice.stop(cancel: true)
-        speech.stopImmediate()
-        saveRichPersistence()
         updater.stop()
-        usageTimer?.invalidate(); usageTimer = nil
-        retireIntrospection()
         retireEnvironments()
-        stopAllTerminals()
-        retirePreview()
-        foremanServer.stop()
-        SessionBusDescriptor.remove()
-        ForemanControlDescriptor.remove()
-        AntigravityProfileManager.retireTempDirs()
         stopFileWatcher()
         if chat != nil && (cd_save_due(page) != 0 || cd_running(page) != 0) { keep(closing: true) }
         // the daemon's runs go on after Coder quits; a reopened Coder attaches to them (GitHub #13694)
@@ -904,7 +716,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cmdHoldTimer?.invalidate(); cmdHoldTimer = nil
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }; flagsMonitor = nil
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }; keyMonitor = nil
-        if let keyUpMonitor { NSEvent.removeMonitor(keyUpMonitor) }; keyUpMonitor = nil
         titleBar?.stop(); titleBar = nil
         cd_on_change(page, nil, nil); cd_close(page)
     }

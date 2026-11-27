@@ -48,31 +48,19 @@ build_no="$(sed -n 's/^#define OA_APP_BUILD \([0-9]*\)$/\1/p' "$app_dir/host-mai
 if [[ "$check" == 1 ]]; then work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT; else work="$here/build"; fi
 mkdir -p "$work/c" "$work/res"
 
-# 1. The page, the desktop core, the entropy policy, wallet units, workers and daemon, in C (the same C for both arches).
+# 1. The page, the desktop core, the entropy policy, v1 workers and daemon, in C (the same C for both arches).
 app_src="$app_dir/app.coax"
 "$coax" c "$app_src" --library --header "$work/c/gallery.h" > "$work/c/gallery.c"
 "$coax" c "$app_dir/host-core.coax" --library --header "$work/c/core.h" > "$work/c/core.c"
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h" > "$work/c/entropy.c"
-"$coax" c "$repo/pay/wallet.coax" --library --header "$work/c/pay-wallet.h" > "$work/c/pay-wallet.c"
-"$coax" c "$repo/pay/wallet-backup.coax" --library --header "$work/c/pay-wallet-backup.h" > "$work/c/pay-wallet-backup.c"
-"$coax" c "$repo/pay/wallet-rpc.coax" --library --header "$work/c/pay-wallet-rpc.h" > "$work/c/pay-wallet-rpc.c"
-wallet_srcs=("$work/c/pay-wallet.c" "$work/c/pay-wallet-backup.c" "$work/c/pay-wallet-rpc.c")
-"$coax" c "$repo/openagents/workers/legacy/inky.coax" --library > "$work/c/inky.c"
-"$coax" c "$repo/openagents/workers/legacy/mcworker.coax" --library > "$work/c/mcworker.c"
+"$coax" c "$repo/openagents/runtime/oa-worker.coax" --run-steps 250000000 --library > "$work/c/oa-worker.c"
 "$coax" c "$repo/openagents/workers/claudeworker.coax" --library > "$work/c/claudeworker.c"
-"$coax" c "$repo/openagents/workers/agyworker.coax" --library > "$work/c/agyworker.c"
 "$coax" c "$repo/openagents/workers/gitguard.coax" --library > "$work/c/gitguard.c"
 "$coax" c "$repo/openagents/daemon/host.coax" --run-steps 250000000 --library > "$work/c/coder-host.c"
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs \
   -o "$work/res/components.spv" 2> "$work/res/components.spv.bindings"
 "$coax" spirv "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs \
   -o "$work/res/composition.spv" 2> "$work/res/composition.spv.bindings"
-"$coax" spirv "$repo/metaverse-engine/gpu/model-view-shader.coax" --vertex mv_vs --fragment mv_fs \
-  -o "$work/res/metaverse-model.spv" 2> "$work/res/metaverse-model.spv.bindings"
-"$coax" spirv "$repo/metaverse-engine/gpu/ple-shader.coax" --vertex ple_vs --fragment ple_fs \
-  -o "$work/res/metaverse-ple.spv" 2> "$work/res/metaverse-ple.spv.bindings"
-"$coax" spirv "$repo/gamebuilder/core/gpu/gb-instances.coax" --vertex gb_vs --fragment gb_fs \
-  -o "$work/res/gb-instances.spv" 2> "$work/res/gb-instances.spv.bindings"
 
 # 2. The icon (from the Mac app's), the manifest and the version, as Windows resources.
 iconset="$work/res/OpenAgents.iconset"
@@ -151,28 +139,19 @@ for arch in "${arches[@]}"; do
     -include "$h/vk-load.h" -I"$work/c" -I"$app_dir" -I"$h" -I"$repo/metaverse/gpu" -I"$p" -I"$vk_include" \
     "$here/main.c" "$app_dir/carrier.c" "$h/ui-host.c" "$h/portal.c" "$h/vk-load.c" \
     "$work/c/gallery.c" "$work/c/core-$arch.o" "$work/c/entropy.c" \
-    ${wallet_srcs[@]+"${wallet_srcs[@]}"} \
     "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" "$repo/metaverse/gpu/vkp.c" \
     "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" "$p/entropy-native.c" "$p/entropy-foreign.c" \
     "$work/res/app.rc" \
     -Wl,--stack,67108864 -lole32 -luuid -lshell32 -limm32 -lbcrypt -lws2_32 -luser32 -lgdi32 -ladvapi32 \
     -o "$out/OpenAgents.exe"
   zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
-    "$work/c/inky.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
-    "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
-    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/inky.exe"
-  zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
-    "$work/c/mcworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
-    "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
-    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/mcworker.exe"
+    "$work/c/oa-worker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
+    "$p/tls-win32.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
+    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/oa-worker.exe"
   zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
     "$work/c/claudeworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
     "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
     -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/claudeworker.exe"
-  zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
-    "$work/c/agyworker.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
-    "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
-    -lbcrypt -lws2_32 -lshell32 -ladvapi32 -o "$out/agyworker.exe"
   zig cc -target "$target" "${common[@]}" -include "$p/win32-stdio.h" -I"$work/c" -I"$p" \
     "$work/c/gitguard.c" "$p/tool-win32.c" "$p/process-win32.c" "$p/store-file-win32.c" "$p/socket-win32.c" \
     "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c" "$work/c/entropy.c" \
@@ -194,9 +173,6 @@ for arch in "${arches[@]}"; do
     fi
   done
   cp "$work/res/components.spv" "$work/res/composition.spv" "$out/resources/"
-  for spv in metaverse-model.spv metaverse-ple.spv gb-instances.spv; do
-    [[ -f "$work/res/$spv" ]] && cp "$work/res/$spv" "$out/resources/"
-  done
   mkdir -p "$out/resources/fonts" "$out/resources/icons"
   cp "$repo/components/fonts/"Geist* "$out/resources/fonts/"
   cp "$repo/components/icons/"*.svg "$out/resources/icons/"

@@ -143,8 +143,8 @@ final class CoderStore {
         }
     }
 
-    var pinnedList: [CoderChat] { list.filter { $0.id != Foreman.chatID && $0.pinned != nil }.sorted { ($0.pinned ?? 0) < ($1.pinned ?? 0) } }
-    var recentList: [CoderChat] { list.filter { $0.id != Foreman.chatID && $0.pinned == nil } }
+    var pinnedList: [CoderChat] { list.filter { $0.pinned != nil }.sorted { ($0.pinned ?? 0) < ($1.pinned ?? 0) } }
+    var recentList: [CoderChat] { list.filter { $0.pinned == nil } }
     var orderedList: [CoderChat] { pinnedList + recentList }
     var lines: String { orderedList.map { $0.id + "\t" + $0.title }.joined(separator: "\n") }
 
@@ -168,7 +168,7 @@ final class CoderStore {
     func title(_ id: String) -> String? { list.first { $0.id == id }?.title }
     func meta(_ id: String) -> CoderChat? { list.first { $0.id == id } }
     func isPinned(_ id: String) -> Bool { list.first { $0.id == id }?.pinned != nil }
-    func isManagedByForeman(_ id: String) -> Bool { list.first { $0.id == id }?.managedBy == Foreman.managedTag }
+    func isManagedByForeman(_ id: String) -> Bool { false }
 
     /// Absolute filesystem path to a persisted chat's JSON transcript on disk.
     func chatFilePath(_ id: String) -> String? {
