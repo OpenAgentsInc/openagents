@@ -1,3 +1,12 @@
 #load "../../lib/project/api-wire.coax";
+#load "../../lib/project/bindings-wire.coax";
 #load "projects-chat-wire.coax";
 #load "projects-policy.coax";
+
+pr_repo_normalize_c :: (raw: string, out: [] u8) -> int #export_c #effects(all) { return pr_repo_normalize(raw, out); }
+pr_repo_short_c :: (raw: string, out: [] u8) -> int #export_c #effects(all) { return pr_repo_short(raw, out); }
+pr_bind_request_read_c :: (raw: string, req: [] PrBindRequest) -> bool #export_c #effects(all) { return pr_bind_request_read(raw, req); }
+pr_binding_exists_c :: (rows: [] PrBindingRow, n: int, host: string, workspace: string) -> bool #export_c #effects(all) { return pr_binding_exists(rows, n, host, workspace); }
+pr_env_auto_match_c :: (host: string, label: string, os: string, last_seen_ms: int, now_ms: int, workspaces_json: string, project_repo_canonical: string, rows: [] PrBindingRow, cur_n: int) -> int #export_c #effects(all) { return pr_env_auto_match(host, label, os, last_seen_ms, now_ms, workspaces_json, project_repo_canonical, rows, cur_n); }
+pr_bindings_write_c :: (project_id: string, revision: int, repo_url: string, repo_canonical: string, rows: [] PrBindingRow, nrows: int, out: [] u8) -> int #export_c #effects(all) { return pr_bindings_write(project_id, revision, repo_url, repo_canonical, rows, nrows, out); }
+pr_project_line_write_c :: (id: string, revision: int, name: string, repo_canonical: string, matched_envs: int, out: [] u8) -> int #export_c #effects(all) { return pr_project_line_write(id, revision, name, repo_canonical, matched_envs, out); }

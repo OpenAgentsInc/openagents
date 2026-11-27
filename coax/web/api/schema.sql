@@ -21243,6 +21243,9 @@ CREATE TABLE chat.environment_connections_v1 (
     grant_id text NOT NULL,
     epoch bigint NOT NULL,
     relay text NOT NULL,
+    os text DEFAULT ''::text NOT NULL,
+    workspaces_json text DEFAULT '[]'::text NOT NULL,
+    last_seen_ms bigint DEFAULT 0 NOT NULL,
     CONSTRAINT environment_connections_v1_display_name_check CHECK (((octet_length(display_name) >= 1) AND (octet_length(display_name) <= 80))),
     CONSTRAINT environment_connections_v1_epoch_check CHECK ((epoch >= 0)),
     CONSTRAINT environment_connections_v1_grant_id_check CHECK ((grant_id ~ '^[0-9a-f]{64}$'::text)),
@@ -22164,6 +22167,24 @@ CREATE TABLE projects.docs (
 
 
 --
+-- Name: environment_bindings_v1; Type: TABLE; Schema: projects; Owner: -
+--
+
+CREATE TABLE projects.environment_bindings_v1 (
+    account text NOT NULL,
+    project text NOT NULL,
+    host_pubkey text NOT NULL,
+    workspace_id text NOT NULL,
+    local_path text DEFAULT ''::text NOT NULL,
+    repo_remote text DEFAULT ''::text NOT NULL,
+    repo_canonical text DEFAULT ''::text NOT NULL,
+    updated_ms bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT environment_bindings_v1_host_pubkey_check CHECK ((host_pubkey ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT environment_bindings_v1_workspace_id_check CHECK (((octet_length(workspace_id) >= 1) AND (octet_length(workspace_id) <= 64)))
+);
+
+
+--
 -- Name: events; Type: TABLE; Schema: projects; Owner: -
 --
 
@@ -22319,7 +22340,9 @@ CREATE TABLE projects.private_v1 (
     instructions_revision bigint NOT NULL,
     instructions_updated_ms bigint NOT NULL,
     created_ms bigint NOT NULL,
-    updated_ms bigint NOT NULL
+    updated_ms bigint NOT NULL,
+    repo_url text DEFAULT ''::text NOT NULL,
+    repo_canonical text DEFAULT ''::text NOT NULL
 );
 
 
@@ -25913,6 +25936,14 @@ ALTER TABLE ONLY projects.docs
 
 
 --
+-- Name: environment_bindings_v1 environment_bindings_v1_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.environment_bindings_v1
+    ADD CONSTRAINT environment_bindings_v1_pkey PRIMARY KEY (account, project, host_pubkey, workspace_id);
+
+
+--
 -- Name: events events_pkey; Type: CONSTRAINT; Schema: projects; Owner: -
 --
 
@@ -27525,6 +27556,13 @@ CREATE INDEX private_project_owner_v1 ON projects.private_v1 USING btree (accoun
 
 
 --
+-- Name: project_env_bindings_repo_v1; Type: INDEX; Schema: projects; Owner: -
+--
+
+CREATE INDEX project_env_bindings_repo_v1 ON projects.environment_bindings_v1 USING btree (account, repo_canonical);
+
+
+--
 -- Name: project_knowledge_v1; Type: INDEX; Schema: projects; Owner: -
 --
 
@@ -28797,6 +28835,22 @@ ALTER TABLE ONLY projects.contexts_v1
 
 ALTER TABLE ONLY projects.contexts_v1
     ADD CONSTRAINT contexts_v1_account_thread_fkey FOREIGN KEY (account, thread) REFERENCES chat.account_threads_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: environment_bindings_v1 environment_bindings_v1_account_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.environment_bindings_v1
+    ADD CONSTRAINT environment_bindings_v1_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: environment_bindings_v1 environment_bindings_v1_account_project_fkey; Type: FK CONSTRAINT; Schema: projects; Owner: -
+--
+
+ALTER TABLE ONLY projects.environment_bindings_v1
+    ADD CONSTRAINT environment_bindings_v1_account_project_fkey FOREIGN KEY (account, project) REFERENCES projects.private_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

@@ -7640,6 +7640,73 @@
         "openagents/knowledge/nipkb.coax"
       ],
       "note": "Shared Knowledge Base record and hybrid lexical+semantic retrieval envelope aligned with NIP-KB (#14058)."
+    },
+    {
+      "id": "openagents.environment.enroll.v1alpha1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/environment-enroll-v1alpha1.json",
+      "codec": "coax/lib/agent/environment/enroll-wire.coax",
+      "check": "coax/bin/coax test coax/lib/agent/environment/enroll-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/lib/agent/environment/enroll-policy.coax",
+        "coax/web/api/environment-wire.coax",
+        "coax/web/api/environment.c",
+        "apps/openagents-cli/environments.coax"
+      ],
+      "tests": [
+        "coax/lib/agent/environment/enroll-policy.coax",
+        "coax/lib/agent/environment/enroll-wire.coax",
+        "coax/web/api/tests/projects_checks.coax"
+      ],
+      "sql": [
+        "coax/web/api/migrations/0220_cloud_projects_environments.sql"
+      ],
+      "note": "WorkOS-compatible computer enrollment/removal and workspace catalog sync (POST /api/chat/environments/v1, /remove; #14125)."
+    },
+    {
+      "id": "openagents.environment.catalog.v2alpha1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/environment-enroll-v1alpha1.json",
+      "codec": "coax/lib/agent/environment/enroll-wire.coax",
+      "check": "coax/bin/coax test coax/lib/agent/environment/enroll-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/environment-wire.coax",
+        "coax/web/api/environment.c",
+        "apps/openagents-web/settings-web.coax",
+        "apps/openagents-web/chat-web.coax"
+      ],
+      "tests": [
+        "coax/lib/agent/environment/enroll-wire.coax",
+        "coax/web/api/tests/projects_checks.coax"
+      ],
+      "note": "Detailed enrolled computer catalog with OS, online status, and discovered git workspaces (GET /api/chat/environments/v1?detail=1; #14125)."
+    },
+    {
+      "id": "openagents.projects.bindings.v1alpha1",
+      "kind": "profile",
+      "owner": "projects",
+      "schema": "proto/openagents/project/v1alpha1/bindings-v1alpha1.json",
+      "codec": "coax/lib/project/bindings-wire.coax",
+      "check": "coax/bin/coax test coax/lib/project/bindings-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/lib/project/repo-match.coax",
+        "coax/web/api/projects-wire.coax",
+        "coax/web/api/projects.c"
+      ],
+      "tests": [
+        "coax/lib/project/repo-match.coax",
+        "coax/lib/project/bindings-wire.coax",
+        "coax/web/api/tests/projects_checks.coax"
+      ],
+      "sql": [
+        "coax/web/api/migrations/0220_cloud_projects_environments.sql"
+      ],
+      "note": "Project-to-repository normalization and explicit + auto-matched computer workspace bindings (GET/POST /api/projects/v1/{id}/bindings; #14125)."
     }
   ]
 }

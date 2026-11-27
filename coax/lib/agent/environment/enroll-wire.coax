@@ -1,0 +1,339 @@
+// WorkOS-compatible computer enrollment workspace catalog wire codec,
+// and rich v2/lines environment responses. No grant_id or broker secret is ever
+// written to any catalog or enrollment response. Policy lives in enroll-policy.coax.
+#load "policy.coax";
+#load "enroll-policy.coax";
+#load "../../json/shape.coax";
+#load "../../project/repo-match.coax";
+
+EA_ENROLL :: "openagents.environment.enroll.v1alpha1";
+EA_CATALOG_V2 :: "openagents.environment.catalog.v2alpha1";
+EA_ENROLL_WS_MAX :: 16;
+
+EaWorkspaceEntry :: struct {
+  id: [64] u8; ni: int;
+  name: [80] u8; nn: int;
+  path: [512] u8; np: int;
+  remote: [256] u8; nr: int;
+  canonical: [256] u8; nc: int;
+  branch: [96] u8; nb: int;
+}
+
+EaEnrollRequest :: struct {
+  host: [64] u8;
+  label: [80] u8; nl: int;
+  grant: [64] u8;
+  epoch: int;
+  relay: [256] u8; nrelay: int;
+  os: [16] u8; nos: int;
+  workspaces: [EA_ENROLL_WS_MAX] EaWorkspaceEntry;
+  nws: int;
+}
+
+eae_line_safe :: (s: string, out: [] u8) -> int #effects(all) {
+  n := 0;
+  for c: s {
+    if n >= out.count { break; }
+    out[n] = ifx c == '|' || c == '\n' || c == '\r' || c == 0 then ' ' else c;
+    n += 1;
+  }
+  return n;
+}
+
+eae_read_ws_array :: (v: Jv, arr: int, out: [] EaWorkspaceEntry) -> int #effects(all) {
+  if jv_kind(v, arr) != JV_ARRAY { return -1; }
+  cnt := jv_len(v, arr);
+  if cnt > EA_ENROLL_WS_MAX || cnt > out.count { return -1; }
+  wkeys := [6] string.["workspace_id", "name", "local_path", "repo_remote", "repo_canonical", "branch"];
+  for i: 0..<cnt {
+    item := jv_at(v, arr, i);
+    if !js_fields(v, item, wkeys[..]) { return -1; }
+    w := EaWorkspaceEntry.{};
+    w.ni = js_string(v, jv_get(v, item, "workspace_id"), w.id[..]);
+    if w.ni < 1 || !eae_ws_id_ok(cast(string) w.id[0..<w.ni]) { return -1; }
+    w.nn = js_string(v, jv_get(v, item, "name"), w.name[..]);
+    if w.nn < 1 || !ea_text(cast(string) w.name[0..<w.nn]) { return -1; }
+    pn := jv_get(v, item, "local_path");
+    if pn >= 0 { w.np = js_string(v, pn, w.path[..]); if w.np < 0 { return -1; } }
+    rn := jv_get(v, item, "repo_remote");
+    if rn >= 0 {
+      w.nr = js_string(v, rn, w.remote[..]);
+      if w.nr < 0 { return -1; }
+      if w.nr > 0 {
+        w.nc = pr_repo_normalize(cast(string) w.remote[0..<w.nr], w.canonical[..]);
+        if w.nc < 1 { w.nc = 0; }
+      }
+    }
+    cn := jv_get(v, item, "repo_canonical");
+    if cn >= 0 && w.nc == 0 {
+      tmp: [256] u8;
+      tn := js_string(v, cn, tmp[..]);
+      if tn < 0 { return -1; }
+      if tn > 0 {
+        w.nc = pr_repo_normalize(cast(string) tmp[0..<tn], w.canonical[..]);
+        if w.nc < 1 { w.nc = 0; }
+      }
+    }
+    bn := jv_get(v, item, "branch");
+    if bn >= 0 { w.nb = js_string(v, bn, w.branch[..]); if w.nb < 0 { return -1; } }
+    out[i] = w;
+  }
+  return cnt;
+}
+
+// Parse closed POST /api/chat/environments/v1 enrollment/heartbeat request.
+ea_enroll_read :: (raw: string, req: [] EaEnrollRequest) -> bool #effects(all) {
+  if raw.count < 2 || raw.count > 32768 || req.count < 1 { return false; }
+  d: [1] Jv;
+  nodes: [512] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  keys := [8] string.["schema", "host_pubkey", "display_name", "grant_id", "epoch", "relay", "os", "workspaces"];
+  if !js_fields(v, 0, keys[..]) { return false; }
+  if jv_raw(v, jv_get(v, 0, "schema")) != EA_ENROLL { return false; }
+  next: [1] EaEnrollRequest;
+  hn := js_string(v, jv_get(v, 0, "host_pubkey"), next[0].host[..]);
+  if hn != 64 || !ea_id(cast(string) next[0].host[..], 64) { return false; }
+  next[0].nl = js_string(v, jv_get(v, 0, "display_name"), next[0].label[..]);
+  if next[0].nl < 1 || !ea_text(cast(string) next[0].label[0..<next[0].nl]) { return false; }
+  gn := js_string(v, jv_get(v, 0, "grant_id"), next[0].grant[..]);
+  if gn != 64 || !ea_id(cast(string) next[0].grant[..], 64) { return false; }
+  ep := jv_get(v, 0, "epoch");
+  if ep >= 0 {
+    next[0].epoch = js_number(v, ep);
+    if next[0].epoch < 0 { return false; }
+  }
+  next[0].nrelay = js_string(v, jv_get(v, 0, "relay"), next[0].relay[..]);
+  if next[0].nrelay < 1 || !ea_enroll_relay_ok(cast(string) next[0].relay[0..<next[0].nrelay]) { return false; }
+  osn := jv_get(v, 0, "os");
+  if osn >= 0 {
+    next[0].nos = js_string(v, osn, next[0].os[..]);
+    if next[0].nos < 0 || !ea_enroll_os_ok(cast(string) next[0].os[0..<next[0].nos]) { return false; }
+  }
+  wsn := jv_get(v, 0, "workspaces");
+  if wsn >= 0 {
+    cnt := eae_read_ws_array(v, wsn, next[0].workspaces[..]);
+    if cnt < 0 { return false; }
+    next[0].nws = cnt;
+  }
+  req[0] = next[0];
+  return true;
+}
+
+// Parse closed POST /api/chat/environments/v1/remove request.
+ea_enroll_remove_read :: (raw: string, host_out: [] u8) -> bool #effects(all) {
+  if raw.count < 2 || raw.count > 1024 || host_out.count < 64 { return false; }
+  d: [1] Jv;
+  nodes: [32] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  keys := [2] string.["schema", "host_pubkey"];
+  if !js_fields(v, 0, keys[..]) { return false; }
+  if jv_raw(v, jv_get(v, 0, "schema")) != EA_ENROLL { return false; }
+  tmp: [64] u8;
+  if js_string(v, jv_get(v, 0, "host_pubkey"), tmp[..]) != 64 || !ea_id(cast(string) tmp[..], 64) { return false; }
+  for i: 0..<64 { host_out[i] = tmp[i]; }
+  return true;
+}
+
+// Write canonical workspaces JSON array for persistence and v2 responses.
+ea_enroll_workspaces_write :: (ws: [] EaWorkspaceEntry, nws: int, out: [] u8) -> int #effects(all) {
+  if nws < 0 || nws > ws.count || nws > EA_ENROLL_WS_MAX { return -1; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_arr(o[..]);
+  for i: 0..<nws {
+    w := ws[i];
+    jo_obj(o[..]);
+    jo_key(o[..], "workspace_id"); jo_str(o[..], cast(string) w.id[0..<w.ni]);
+    jo_key(o[..], "name"); jo_str(o[..], cast(string) w.name[0..<w.nn]);
+    jo_key(o[..], "local_path"); jo_str(o[..], cast(string) w.path[0..<w.np]);
+    jo_key(o[..], "repo_remote"); jo_str(o[..], cast(string) w.remote[0..<w.nr]);
+    jo_key(o[..], "repo_canonical"); jo_str(o[..], cast(string) w.canonical[0..<w.nc]);
+    jo_key(o[..], "branch"); jo_str(o[..], cast(string) w.branch[0..<w.nb]);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Parse persisted workspaces_json column back into typed entries.
+ea_enroll_workspaces_parse :: (raw: string, out: [] EaWorkspaceEntry) -> int #effects(all) {
+  if raw.count < 2 || raw.count > 32768 { return 0; }
+  d: [1] Jv;
+  nodes: [512] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return 0; }
+  cnt := eae_read_ws_array(d[0], 0, out);
+  return ifx cnt < 0 then 0 else cnt;
+}
+
+// Write POST /api/chat/environments/v1 reply (never includes grant_id).
+ea_enroll_reply_write :: (req: [] EaEnrollRequest, last_seen_ms: int, out: [] u8) -> int #effects(all) {
+  if req.count < 1 || last_seen_ms < 0 { return -1; }
+  ws_buf: [16384] u8;
+  wn := ea_enroll_workspaces_write(req[0].workspaces[..], req[0].nws, ws_buf[..]);
+  if wn < 2 { return -1; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], EA_ENROLL);
+  jo_key(o[..], "host_pubkey"); jo_str(o[..], cast(string) req[0].host[..]);
+  jo_key(o[..], "display_name"); jo_str(o[..], cast(string) req[0].label[0..<req[0].nl]);
+  jo_key(o[..], "relay"); jo_str(o[..], cast(string) req[0].relay[0..<req[0].nrelay]);
+  jo_key(o[..], "os"); jo_str(o[..], cast(string) req[0].os[0..<req[0].nos]);
+  jo_key(o[..], "last_seen_ms"); jo_int(o[..], last_seen_ms);
+  jo_key(o[..], "online"); jo_bool(o[..], true);
+  jo_key(o[..], "workspaces"); jo_raw(o[..], cast(string) ws_buf[0..<wn]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Write one environment object for GET /api/chat/environments/v1?detail=1.
+ea_catalog_v2_entry_write :: (host: string, label: string, os: string, relay: string, last_seen_ms: int, now_ms: int, workspaces_json: string, out: [] u8) -> int #effects(all) {
+  if !ea_id(host, 64) || label.count < 1 || label.count > 80 { return -1; }
+  ws: [EA_ENROLL_WS_MAX] EaWorkspaceEntry;
+  nws := ea_enroll_workspaces_parse(workspaces_json, ws[..]);
+  ws_buf: [16384] u8;
+  wn := ea_enroll_workspaces_write(ws[..], nws, ws_buf[..]);
+  if wn < 2 { return -1; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "host_pubkey"); jo_str(o[..], host);
+  jo_key(o[..], "display_name"); jo_str(o[..], label);
+  jo_key(o[..], "os"); jo_str(o[..], ifx ea_enroll_os_ok(os) then os else "");
+  jo_key(o[..], "relay"); jo_str(o[..], relay);
+  jo_key(o[..], "last_seen_ms"); jo_int(o[..], last_seen_ms);
+  jo_key(o[..], "online"); jo_bool(o[..], ea_enroll_online(last_seen_ms, now_ms));
+  jo_key(o[..], "workspaces"); jo_raw(o[..], cast(string) ws_buf[0..<wn]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Write GET /api/chat/environments/v1?detail=1 envelope around pre-formatted entries.
+ea_catalog_v2_wrap :: (entries: [] string, out: [] u8) -> int #effects(all) {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], EA_CATALOG_V2);
+  jo_key(o[..], "environments");
+  jo_arr(o[..]);
+  for e: entries { jo_raw(o[..], e); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Write one computer + its workspaces in ?as=lines format for zero-alloc Web parsing:
+//   env <host>|<label>|<os>|<online>|<last_seen_ms>|<nws>|<first_repo_short>
+//   ws <host>|<workspace_id>|<name>|<repo_short>|<local_path>
+ea_catalog_lines_entry_write :: (host: string, label: string, os: string, last_seen_ms: int, now_ms: int, workspaces_json: string, out: [] u8) -> int #effects(all) {
+  if !ea_id(host, 64) || label.count < 1 || label.count > 80 { return -1; }
+  ws: [EA_ENROLL_WS_MAX] EaWorkspaceEntry;
+  nws := ea_enroll_workspaces_parse(workspaces_json, ws[..]);
+  safe_label: [80] u8;
+  sln := eae_line_safe(label, safe_label[..]);
+  first_repo: [256] u8;
+  frn := 0;
+  for i: 0..<nws {
+    if ws[i].nc > 0 {
+      frn = pr_repo_short(cast(string) ws[i].canonical[0..<ws[i].nc], first_repo[..]);
+      if frn < 0 { frn = 0; }
+      break;
+    }
+  }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_put(o[..], "env "); jo_put(o[..], host);
+  jo_put(o[..], "|"); jo_put(o[..], cast(string) safe_label[0..<sln]);
+  jo_put(o[..], "|"); jo_put(o[..], ifx ea_enroll_os_ok(os) then os else "");
+  jo_put(o[..], "|"); jo_put(o[..], ifx ea_enroll_online(last_seen_ms, now_ms) then "1" else "0");
+  jo_put(o[..], "|"); jo_int(o[..], last_seen_ms);
+  jo_put(o[..], "|"); jo_int(o[..], nws);
+  jo_put(o[..], "|"); jo_put(o[..], cast(string) first_repo[0..<frn]);
+  jo_put(o[..], "\n");
+  for i: 0..<nws {
+    sn: [80] u8; snn := eae_line_safe(cast(string) ws[i].name[0..<ws[i].nn], sn[..]);
+    sp: [512] u8; spn := eae_line_safe(cast(string) ws[i].path[0..<ws[i].np], sp[..]);
+    sr: [256] u8; srn := 0;
+    if ws[i].nc > 0 {
+      srn = pr_repo_short(cast(string) ws[i].canonical[0..<ws[i].nc], sr[..]);
+      if srn < 0 { srn = 0; }
+    }
+    jo_put(o[..], "ws "); jo_put(o[..], host);
+    jo_put(o[..], "|"); jo_put(o[..], cast(string) ws[i].id[0..<ws[i].ni]);
+    jo_put(o[..], "|"); jo_put(o[..], cast(string) sn[0..<snn]);
+    jo_put(o[..], "|"); jo_put(o[..], cast(string) sr[0..<srn]);
+    jo_put(o[..], "|"); jo_put(o[..], cast(string) sp[0..<spn]);
+    jo_put(o[..], "\n");
+  }
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "enrollment admission requires verified non-limited non-frozen person account" {
+  #assert ea_enroll_admit(2, true, "acct_1", false, false);
+  #assert !ea_enroll_admit(2, false, "acct_1", false, false);
+  #assert !ea_enroll_admit(2, true, "", false, false);
+  #assert !ea_enroll_admit(2, true, "acct_1", true, false);
+  #assert !ea_enroll_admit(2, true, "acct_1", false, true);
+  for k: 0..<6 { if k != 2 { #assert !ea_enroll_admit(k, true, "acct_1", false, false); } }
+}
+
+#test "enrollment OS, relay, and online window boundaries hold strictly" {
+  #assert ea_enroll_os_ok("") && ea_enroll_os_ok("macos") && ea_enroll_os_ok("linux") && ea_enroll_os_ok("windows");
+  #assert !ea_enroll_os_ok("darwin") && !ea_enroll_os_ok("plan9");
+  #assert ea_enroll_relay_ok("wss://relay.openagents.com");
+  #assert ea_enroll_relay_ok("ws://127.0.0.1:7777") && ea_enroll_relay_ok("ws://localhost:7777");
+  #assert !ea_enroll_relay_ok("ws://evil.example.com") && !ea_enroll_relay_ok("wss://a b") && !ea_enroll_relay_ok("wss://a");
+  #assert ea_enroll_online(1000, 1000) && ea_enroll_online(1000, 121000);
+  #assert !ea_enroll_online(0, 1000) && !ea_enroll_online(1001, 1000) && !ea_enroll_online(1000, 121001);
+}
+
+#test "enrollment request canonicalizes workspace remotes and reply never leaks grant_id" {
+  host := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  grant := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  raw := "{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Chris MacBook\",\"grant_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"epoch\":3,\"relay\":\"wss://relay.openagents.com\",\"os\":\"macos\",\"workspaces\":[{\"workspace_id\":\"openagents\",\"name\":\"openagents\",\"local_path\":\"/Users/chris/work/openagents\",\"repo_remote\":\"git@github.com:OpenAgentsInc/openagents.git\",\"branch\":\"main\"}]}";
+  req: [1] EaEnrollRequest;
+  #assert ea_enroll_read(raw, req[..]);
+  #assert cast(string) req[0].host[..] == host && cast(string) req[0].grant[..] == grant;
+  #assert req[0].epoch == 3 && req[0].nws == 1;
+  #assert cast(string) req[0].workspaces[0].canonical[0..<req[0].workspaces[0].nc] == "github.com/openagentsinc/openagents";
+  rep: [4096] u8;
+  rn := ea_enroll_reply_write(req[..], 5000, rep[..]);
+  #assert rn > 0;
+  d: [1] Jv; nodes: [128] JvNode;
+  #assert jv_parse(d[..], cast(string) rep[0..<rn], nodes[..]);
+  #assert jv_get(d[0], 0, "grant_id") < 0;
+  #assert jv_raw(d[0], jv_get(d[0], 0, "display_name")) == "Chris MacBook";
+  #assert jv_raw(d[0], jv_path(d[0], 0, "workspaces[0].repo_canonical")) == "github.com/openagentsinc/openagents";
+  // Catalog v2 + lines format round-trip stored workspaces_json
+  wsj: [4096] u8;
+  wn := ea_enroll_workspaces_write(req[0].workspaces[..], req[0].nws, wsj[..]);
+  #assert wn > 2;
+  ent: [4096] u8;
+  en := ea_catalog_v2_entry_write(host, "Chris MacBook", "macos", "wss://relay.openagents.com", 5000, 10000, cast(string) wsj[0..<wn], ent[..]);
+  #assert en > 0;
+  list := [1] string.[cast(string) ent[0..<en]];
+  cat: [4096] u8;
+  cn := ea_catalog_v2_wrap(list[..], cat[..]);
+  #assert cn > 0 && jv_parse(d[..], cast(string) cat[0..<cn], nodes[..]) && jv_raw(d[0], jv_get(d[0], 0, "schema")) == EA_CATALOG_V2;
+  lines: [4096] u8;
+  ln := ea_catalog_lines_entry_write(host, "Chris|Mac", "macos", 5000, 10000, cast(string) wsj[0..<wn], lines[..]);
+  #assert ln > 0 && cast(string) lines[0..<ln] == "env aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|Chris Mac|macos|1|5000|1|openagentsinc/openagents\nws aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|openagents|openagents|openagentsinc/openagents|/Users/chris/work/openagents\n";
+}
+
+#test "enrollment parser refuses unknown fields, bad keys, bad OS, bad relay and remove parses host only" {
+  req: [1] EaEnrollRequest;
+  #assert !ea_enroll_read("{}", req[..]);
+  #assert !ea_enroll_read("{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"grant_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"relay\":\"wss://relay.openagents.com\",\"extra\":1}", req[..]);
+  #assert !ea_enroll_read("{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\",\"display_name\":\"Mac\",\"grant_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"relay\":\"wss://relay.openagents.com\"}", req[..]);
+  #assert !ea_enroll_read("{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"grant_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"relay\":\"ws://evil.com\"}", req[..]);
+  #assert !ea_enroll_read("{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"grant_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"relay\":\"wss://relay.openagents.com\",\"os\":\"freebsd\"}", req[..]);
+  #assert !ea_enroll_read("{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"grant_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"relay\":\"wss://relay.openagents.com\",\"epoch\":-1}", req[..]);
+  #assert !ea_enroll_read("{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"grant_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"relay\":\"wss://relay.openagents.com\",\"workspaces\":[{\"workspace_id\":\"bad/id\",\"name\":\"ok\"}]}", req[..]);
+  h: [64] u8;
+  #assert ea_enroll_remove_read("{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}", h[..]);
+  #assert cast(string) h[..] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  #assert !ea_enroll_remove_read("{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"short\"}", h[..]);
+  #assert !ea_enroll_remove_read("{\"schema\":\"wrong\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}", h[..]);
+}

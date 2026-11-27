@@ -201,6 +201,9 @@ ChatCloud :: struct {
   active_cost_msat: int;
   conv_loading: bool;
   conv_persisted: bool;
+  // Optional selected account Project (?project=prj_...) & enrolled computer (?host=<64hex>) context.
+  sel_project: [36] u8; sel_project_n: int;
+  sel_host: [64] u8; sel_host_n: int;
 
   // Navigation push request for host (e.g., /chat/cnv_<32hex>).
   push_url: [80] u8; push_url_n: int;
@@ -698,8 +701,31 @@ cwc_open_conversation :: (c: [] ChatCloud, cid: string, push: bool) {
 }
 
 // Handles URL navigation via components/ui/router.coax ("/chat" or "/chat/:id").
+cwc_query_param :: (raw_path: string, key: string, out: [] u8) -> int {
+  q := -1;
+  for i: 0..<raw_path.count { if raw_path[i] == '?' { q = i + 1; break; } }
+  if q < 0 { return 0; }
+  at := q;
+  while at < raw_path.count {
+    e := at;
+    while e < raw_path.count && raw_path[e] != '&' && raw_path[e] != '#' { e += 1; }
+    if e - at > key.count + 1 && cast(string) raw_path[at..<at + key.count] == key && raw_path[at + key.count] == '=' {
+      return cwc_put(out, 0, cast(string) raw_path[at + key.count + 1..<e]);
+    }
+    if e < raw_path.count && raw_path[e] == '#' { break; }
+    at = e + 1;
+  }
+  return 0;
+}
+
 cwc_route_path :: (c: [] ChatCloud, raw_path: string) -> bool {
   cwc_init(c);
+  pbuf: [40] u8; pn := cwc_query_param(raw_path, "project", pbuf[..]);
+  if pn == 36 && cast(string) pbuf[0..<4] == "prj_" { c[0].sel_project_n = cwc_put(c[0].sel_project[..], 0, cast(string) pbuf[0..<36]); }
+  else if pn == 0 && cwc_query_param(raw_path, "host", pbuf[0..<1]) > 0 { c[0].sel_project_n = 0; }
+  hbuf: [68] u8; hn := cwc_query_param(raw_path, "host", hbuf[..]);
+  if hn == 64 { c[0].sel_host_n = cwc_put(c[0].sel_host[..], 0, cast(string) hbuf[0..<64]); }
+  else if pn == 36 { c[0].sel_host_n = 0; }
   m := ui_route_match("/chat/:id", raw_path);
   if m.matched {
     cid := ui_route_param("/chat/:id", raw_path, m, "id");
@@ -2091,6 +2117,17 @@ cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
     pn = cwc_put(pill[..], pn, ifx c[0].active_model_n > 0 then cast(string) c[0].active_model[0..<c[0].active_model_n] else cwc_model_name(c));
   }
   _ = tr_leaf(t, "cc.hud.tier", TG_SPAN, ifx is_local then "cc-pill cc-pill-local" else "cc-pill", cast(string) pill[0..<pn]);
+
+  if c[0].sel_project_n > 0 {
+    pb: [64] u8; pbn := cwc_put(pb[..], 0, "Project · ");
+    pbn = cwc_put(pb[..], pbn, cast(string) c[0].sel_project[0..<ifx c[0].sel_project_n > 12 then 12 else c[0].sel_project_n]);
+    _ = tr_leaf(t, "cc.hud.project", TG_SPAN, "cc-pill", cast(string) pb[0..<pbn]);
+  }
+  if c[0].sel_host_n == 64 {
+    hb: [48] u8; hbn := cwc_put(hb[..], 0, "Computer · ");
+    hbn = cwc_put(hb[..], hbn, cast(string) c[0].sel_host[0..<8]);
+    _ = tr_leaf(t, "cc.hud.host", TG_SPAN, "cc-pill cc-pill-local", cast(string) hb[0..<hbn]);
+  }
 
   // Usage & Billing HUD (#14072 parity)
   if c[0].usage[0].loaded {

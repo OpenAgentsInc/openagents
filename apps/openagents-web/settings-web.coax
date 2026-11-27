@@ -24,6 +24,8 @@ SW_PAGE :: 9;          // the shell's page value for Settings (beside site-side'
 SW_EMAILS :: 4; SW_EMAIL :: 96;
 SW_KEYS :: 4;
 SW_ORGS :: 8; SW_ORG_ID :: 64; SW_ORG_NAME :: 80;
+SW_ENVS :: 16; SW_ENV_NAME :: 80; SW_ENV_REPO :: 96;
+SW_APROJS :: 24; SW_APROJ_NAME :: 80;
 SW_LIMITS :: 16; SW_LIMIT_WHAT :: 96; SW_LIMIT_PER :: 24;
 SW_REPO :: "https://github.com/OpenAgentsInc/openagents";
 
@@ -52,6 +54,27 @@ SettingsWeb :: struct {
   org_name: [SW_ORGS] [SW_ORG_NAME] u8; org_name_n: [SW_ORGS] int;
   norgs: int; total_orgs: int;
   org_note: [96] u8; org_note_n: int;
+  // Enrolled computers (/api/chat/environments/v1?as=lines)
+  envs_asked: bool; envs_state: int;   // 0 pending, 1 read, -1 unavailable
+  env_host: [SW_ENVS] [64] u8;
+  env_name: [SW_ENVS] [SW_ENV_NAME] u8; env_name_n: [SW_ENVS] int;
+  env_os: [SW_ENVS] [16] u8; env_os_n: [SW_ENVS] int;
+  env_online: [SW_ENVS] bool; env_nws: [SW_ENVS] int;
+  env_repo: [SW_ENVS] [SW_ENV_REPO] u8; env_repo_n: [SW_ENVS] int;
+  nenvs: int;
+  // Account-owned private Projects (/api/projects/v1?as=lines)
+  aprojs_asked: bool; aprojs_state: int;
+  aproj_id: [SW_APROJS] [36] u8; aproj_id_n: [SW_APROJS] int;
+  aproj_rev: [SW_APROJS] int;
+  aproj_name: [SW_APROJS] [SW_APROJ_NAME] u8; aproj_name_n: [SW_APROJS] int;
+  aproj_repo: [SW_APROJS] [SW_ENV_REPO] u8; aproj_repo_n: [SW_APROJS] int;
+  aproj_envs: [SW_APROJS] int;
+  naprojs: int;
+  // Inline New Project form on Home Dashboard
+  new_proj_open: bool; new_proj_busy: bool;
+  new_proj_name: [80] u8; new_proj_name_n: int;
+  new_proj_repo: [160] u8; new_proj_repo_n: int;
+  new_proj_note: [128] u8; new_proj_note_n: int;
   // the limits we enforce on logging in
   limits_asked: bool; limits_state: int;   // 0 not back yet, 1 read, -1 not to be had
   nl: int;
@@ -226,6 +249,65 @@ sw_org_switch_read :: (s: [] SettingsWeb, status: int, body: string) {
     if line.count > 6 && cast(string) line[0..<6] == "error " { err = cast(string) line[6..<line.count]; break; }
   }
   s[0].org_note_n = sw_put(s[0].org_note[..], 0, ifx err.count > 0 then err else "Could not switch organization.");
+}
+// Enrolled computers lines (/api/chat/environments/v1?as=lines):
+//   env <host64>|<display_name>|<os>|<online_0_1>|<last_seen_ms>|<nws>|<first_repo_short>
+sw_envs_read :: (s: [] SettingsWeb, status: int, body: string) {
+  s[0].envs_state = ifx status == 200 then 1 else -1;
+  s[0].nenvs = 0;
+  if status != 200 { return; }
+  at := 0;
+  while at < body.count && s[0].nenvs < SW_ENVS {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count < 70 || cast(string) line[0..<4] != "env " { continue; }
+    f: [7] int; g: [7] int; nf := 0; p := 4;
+    while nf < 7 && p <= line.count {
+      q := p;
+      while q < line.count && (line[q] != '|' || nf == 6) { q += 1; }
+      f[nf] = p; g[nf] = q; nf += 1; p = q + 1;
+    }
+    if nf < 6 || g[0] - f[0] != 64 || g[1] <= f[1] { continue; }
+    k := s[0].nenvs;
+    for i: 0..<64 { s[0].env_host[k][i] = line[f[0] + i]; }
+    s[0].env_name_n[k] = sw_put(s[0].env_name[k][..], 0, cast(string) line[f[1]..<g[1]]);
+    s[0].env_os_n[k] = sw_put(s[0].env_os[k][..], 0, cast(string) line[f[2]..<g[2]]);
+    s[0].env_online[k] = cast(string) line[f[3]..<g[3]] == "1";
+    s[0].env_nws[k] = sw_parse_int(cast(string) line[f[5]..<g[5]], 0);
+    s[0].env_repo_n[k] = ifx nf >= 7 then sw_put(s[0].env_repo[k][..], 0, cast(string) line[f[6]..<g[6]]) else 0;
+    s[0].nenvs += 1;
+  }
+}
+// Account-owned private Projects lines (/api/projects/v1?as=lines):
+//   project <prj_id36>|<revision>|<name>|<repo_short>|<matched_envs>
+sw_acct_projects_read :: (s: [] SettingsWeb, status: int, body: string) {
+  s[0].aprojs_state = ifx status == 200 then 1 else -1;
+  s[0].naprojs = 0;
+  if status != 200 { return; }
+  at := 0;
+  while at < body.count && s[0].naprojs < SW_APROJS {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count < 48 || cast(string) line[0..<8] != "project " { continue; }
+    f: [5] int; g: [5] int; nf := 0; p := 8;
+    while nf < 5 && p <= line.count {
+      q := p;
+      while q < line.count && (line[q] != '|' || nf == 4) { q += 1; }
+      f[nf] = p; g[nf] = q; nf += 1; p = q + 1;
+    }
+    if nf < 5 || g[0] - f[0] != 36 || g[2] <= f[2] { continue; }
+    k := s[0].naprojs;
+    s[0].aproj_id_n[k] = sw_put(s[0].aproj_id[k][..], 0, cast(string) line[f[0]..<g[0]]);
+    s[0].aproj_rev[k] = sw_parse_int(cast(string) line[f[1]..<g[1]], 1);
+    s[0].aproj_name_n[k] = sw_put(s[0].aproj_name[k][..], 0, cast(string) line[f[2]..<g[2]]);
+    s[0].aproj_repo_n[k] = sw_put(s[0].aproj_repo[k][..], 0, cast(string) line[f[3]..<g[3]]);
+    s[0].aproj_envs[k] = sw_parse_int(cast(string) line[f[4]..<g[4]], 0);
+    s[0].naprojs += 1;
+  }
 }
 // The limits' lines: "limit NAME|MAX|PER|WHAT" each. A line that isn't one is passed over.
 sw_limits_read :: (s: [] SettingsWeb, status: int, body: string) {
@@ -403,6 +485,83 @@ sw_orgs_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
   sw_group_end(s, t);
 }
 
+sw_envs_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
+  if s[0].envs_state == 0 && s[0].nenvs == 0 { return; }
+  sw_group(s, t, u, id, "Enrolled computers");
+  if s[0].nenvs == 0 {
+    ide: [UI_ID] u8;
+    sw_fact(s, t, u, tr_cat(ide[..], id, ".empty"), "No computers enrolled yet",
+      "Enroll your Mac or Linux workstation with openagents environments enroll or OpenAgents Desktop.");
+    sw_group_end(s, t);
+    return;
+  }
+  for k: 0..<s[0].nenvs {
+    ename := cast(string) s[0].env_name[k][0..<s[0].env_name_n[k]];
+    eos := cast(string) s[0].env_os[k][0..<s[0].env_os_n[k]];
+    erepo := cast(string) s[0].env_repo[k][0..<s[0].env_repo_n[k]];
+    about: [220] u8; num: [24] u8; n := 0;
+    n = sw_put(about[..], n, ifx s[0].env_online[k] then "Online" else "Offline");
+    if eos.count > 0 { n = sw_put(about[..], n, " · "); n = sw_put(about[..], n, eos); }
+    if s[0].env_nws[k] > 0 {
+      n = sw_put(about[..], n, " · "); n = sw_put(about[..], n, tr_join(num[..], "", s[0].env_nws[k]));
+      n = sw_put(about[..], n, ifx s[0].env_nws[k] == 1 then " workspace" else " workspaces");
+    }
+    if erepo.count > 0 { n = sw_put(about[..], n, " · "); n = sw_put(about[..], n, erepo); }
+    href: [96] u8; hn := sw_put(href[..], 0, "/chat?host="); hn = sw_put(href[..], hn, cast(string) s[0].env_host[k][..]);
+    rid: [UI_ID] u8; gid: [UI_ID] u8; rp: [UI_ID] u8;
+    if sw_row(s, t, u, tr_join(rid[..], tr_cat(rp[..], id, ".r."), k), ename, cast(string) about[0..<n]) {
+      g := k_go(t, tr_join(gid[..], tr_cat(rp[..], id, ".go."), k), "Open in Chat", cast(string) href[0..<hn]);
+      k_set_row_end(t);
+    }
+  }
+  sw_group_end(s, t);
+}
+
+sw_projects_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
+  if s[0].aprojs_state == 0 && s[0].naprojs == 0 && !s[0].new_proj_open { return; }
+  sw_group(s, t, u, id, "Projects");
+  for k: 0..<s[0].naprojs {
+    pid := cast(string) s[0].aproj_id[k][0..<s[0].aproj_id_n[k]];
+    pname := cast(string) s[0].aproj_name[k][0..<s[0].aproj_name_n[k]];
+    prepo := cast(string) s[0].aproj_repo[k][0..<s[0].aproj_repo_n[k]];
+    about: [200] u8; num: [24] u8; n := 0;
+    if prepo.count > 0 { n = sw_put(about[..], n, prepo); }
+    else { n = sw_put(about[..], n, "Private account project"); }
+    if s[0].aproj_envs[k] > 0 {
+      n = sw_put(about[..], n, " · "); n = sw_put(about[..], n, tr_join(num[..], "", s[0].aproj_envs[k]));
+      n = sw_put(about[..], n, ifx s[0].aproj_envs[k] == 1 then " computer" else " computers");
+    }
+    href: [64] u8; hn := sw_put(href[..], 0, "/chat?project="); hn = sw_put(href[..], hn, pid);
+    rid: [UI_ID] u8; gid: [UI_ID] u8; rp: [UI_ID] u8;
+    if sw_row(s, t, u, tr_join(rid[..], tr_cat(rp[..], id, ".r."), k), pname, cast(string) about[0..<n]) {
+      g := k_go(t, tr_join(gid[..], tr_cat(rp[..], id, ".go."), k), "Open in Chat", cast(string) href[0..<hn]);
+      k_set_row_end(t);
+    }
+  }
+  if !s[0].new_proj_open {
+    idn: [UI_ID] u8;
+    if sw_row(s, t, u, tr_cat(idn[..], id, ".add"), "New project", "Create a private account project and optionally link a GitHub repository to auto-match enrolled computers.") {
+      b := k_button(t, u, "sw.proj.toggle", "New project", BS_PLAIN);
+      k_set_row_end(t);
+    }
+  } else {
+    idf: [UI_ID] u8;
+    if sw_row(s, t, u, tr_cat(idf[..], id, ".form"), "Create project", "Enter a project name and optional GitHub repository (owner/repo or URL).") {
+      fn := k_input(t, u, "sw.proj.name", "Project name (e.g. OpenAgents)", "Project name", "text", "off");
+      fr := k_input(t, u, "sw.proj.repo", "GitHub repo (optional, e.g. OpenAgentsInc/openagents)", "GitHub repository", "text", "off");
+      bc := k_button(t, u, "sw.proj.create", ifx s[0].new_proj_busy then "Creating" else "Create",
+        ifx s[0].new_proj_name_n > 0 && !s[0].new_proj_busy then BS_PRIMARY else BS_DISABLED);
+      bx := k_button(t, u, "sw.proj.toggle", "Cancel", BS_PLAIN);
+      k_set_row_end(t);
+    }
+  }
+  if s[0].new_proj_note_n > 0 {
+    idst: [UI_ID] u8;
+    sw_fact(s, t, u, tr_cat(idst[..], id, ".note"), "Status", cast(string) s[0].new_proj_note[0..<s[0].new_proj_note_n]);
+  }
+  sw_group_end(s, t);
+}
+
 // Home Dashboard (/): login status, full identity & account overview, WorkOS organizations, and settings shortcuts.
 sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: int, worlds_n: int) {
   p := k_set(t, "home");
@@ -454,16 +613,20 @@ sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: in
       k_set_row_end(t);
     }
   }
-  if s[0].life_state == 1 || projects_n > 0 || worlds_n > 0 {
-    ov: [160] u8; num: [24] u8; n := 0;
+  if s[0].life_state == 1 || projects_n > 0 || s[0].naprojs > 0 || worlds_n > 0 || s[0].nenvs > 0 {
+    ov: [200] u8; num: [24] u8; n := 0;
+    pc := projects_n + s[0].naprojs;
     wc := ifx worlds_n > s[0].life_worlds then worlds_n else s[0].life_worlds;
-    n = sw_put(ov[..], n, tr_join(num[..], "", projects_n)); n = sw_put(ov[..], n, ifx projects_n == 1 then " project · " else " projects · ");
+    n = sw_put(ov[..], n, tr_join(num[..], "", pc)); n = sw_put(ov[..], n, ifx pc == 1 then " project · " else " projects · ");
     n = sw_put(ov[..], n, tr_join(num[..], "", wc)); n = sw_put(ov[..], n, ifx wc == 1 then " world · " else " worlds · ");
     n = sw_put(ov[..], n, tr_join(num[..], "", s[0].life_agents)); n = sw_put(ov[..], n, ifx s[0].life_agents == 1 then " agent" else " agents");
     if s[0].life_agents_paused > 0 { n = sw_put(ov[..], n, " ("); n = sw_put(ov[..], n, tr_join(num[..], "", s[0].life_agents_paused)); n = sw_put(ov[..], n, " paused)"); }
+    if s[0].nenvs > 0 { n = sw_put(ov[..], n, " · "); n = sw_put(ov[..], n, tr_join(num[..], "", s[0].nenvs)); n = sw_put(ov[..], n, ifx s[0].nenvs == 1 then " computer" else " computers"); }
     sw_fact(s, t, u, "home.status.overview", "Workspace", cast(string) ov[0..<n]);
   }
   sw_group_end(s, t);
+  sw_envs_group(s, t, u, "home.envs");
+  sw_projects_group(s, t, u, "home.projects");
   sw_orgs_group(s, t, u, "home.orgs");
   sw_group(s, t, u, "home.quick", "Quick actions & settings");
   sw_link(s, t, u, "home.go.chat", "Cloud Chat", "Start a new conversation or resume your synced chats.", "Open Chat", "/chat");
@@ -524,6 +687,7 @@ sw_account :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string) {
   if s[0].admin { sw_fact(s, t, u, "acct.admin", "Admin", "You are an admin of this site."); }
   if sw_row(s, t, u, "acct.out", "Log out", "Log out of this browser.") { b := k_button(t, u, "set.out", "Log out", BS_PLAIN); k_set_row_end(t); }
   sw_group_end(s, t);
+  sw_envs_group(s, t, u, "acct.envs");
   sw_orgs_group(s, t, u, "acct.orgs");
   sw_group(s, t, u, "acct.more", "More of your account");
   sw_link(s, t, u, "acct.security", "Security", "How you log in: your email, keys and passkeys.", "Open", "/settings/security");
@@ -706,4 +870,27 @@ sw_test_build :: (x: [] SwTest, who: string) {
   sw_test_build(x[..], "chris@openagents.com");
   #assert tr_text_of(t, tr_find(t, "acct.id.v")) == "acct_42" && tr_text_of(t, tr_find(t, "acct.primary.a")) == "chris@openagents.com";
   #assert tr_text_of(t, tr_find(t, "acct.credit.v")) == "250 sats" && tr_find(t, "acct.orgs") > 0;
+}
+
+#test "home dashboard renders enrolled computers, account projects, and inline create project form" {
+  x: [1] SwTest; s := x[0].s[..]; t := x[0].t[..]; u := x[0].u[..];
+  sw_account_read(s, "logged_in 1\naccount acct_42\nkind person\nlevel L1\nvia workos\nprimary chris@openagents.com\n");
+  sw_envs_read(s, 200, "env 1111111111111111111111111111111111111111111111111111111111111111|Chris MacBook|macos|1|5000|2|openagentsinc/openagents\nws 1111111111111111111111111111111111111111111111111111111111111111|openagents|openagents|openagentsinc/openagents|/Users/chris/work/openagents\n");
+  sw_acct_projects_read(s, 200, "project prj_0123456789abcdef0123456789abcdef|2|OpenAgents Cloud|openagentsinc/openagents|1\n");
+  #assert s[0].envs_state == 1 && s[0].nenvs == 1 && s[0].env_online[0] && s[0].env_nws[0] == 2;
+  #assert s[0].aprojs_state == 1 && s[0].naprojs == 1 && s[0].aproj_envs[0] == 1;
+  tr_begin(t); ui_begin(u, 0, true);
+  sw_home(s, t, u, "chris@openagents.com", 0, 0);
+  #assert t[0].depth == 0 && t[0].lost == 0;
+  #assert tr_text_of(t, tr_find(t, "home.envs.r.0.n")) == "Chris MacBook";
+  #assert tr_text_of(t, tr_find(t, "home.envs.r.0.a")) == "Online · macos · 2 workspaces · openagentsinc/openagents";
+  #assert tr_attr_of(t, tr_find(t, "home.envs.go.0"), AT_HREF) == "/chat?host=1111111111111111111111111111111111111111111111111111111111111111";
+  #assert tr_text_of(t, tr_find(t, "home.projects.r.0.n")) == "OpenAgents Cloud";
+  #assert tr_text_of(t, tr_find(t, "home.projects.r.0.a")) == "openagentsinc/openagents · 1 computer";
+  #assert tr_attr_of(t, tr_find(t, "home.projects.go.0"), AT_HREF) == "/chat?project=prj_0123456789abcdef0123456789abcdef";
+  #assert tr_find(t, "sw.proj.toggle") > 0;
+  s[0].new_proj_open = true;
+  tr_begin(t); ui_begin(u, 0, true);
+  sw_home(s, t, u, "chris@openagents.com", 0, 0);
+  #assert tr_find(t, "sw.proj.name") > 0 && tr_find(t, "sw.proj.repo") > 0 && tr_find(t, "sw.proj.create") > 0;
 }

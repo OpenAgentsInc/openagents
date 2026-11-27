@@ -1,0 +1,250 @@
+// Project-to-repository and Project-to-computer workspace bindings codec.
+// Merges explicit bindings (projects.environment_bindings_v1) with automatic
+// repo-normalized workspace matches from enrolled computers.
+#load "../json/shape.coax";
+#load "repo-match.coax";
+
+PR_BINDINGS_SCHEMA :: "openagents.projects.bindings.v1alpha1";
+PR_BIND_MAX :: 32;
+
+PrBindRequest :: struct {
+  operation: [80] u8; no: int;
+  revision: int;
+  action: [16] u8; na: int;        // "bind" or "unbind"
+  host: [64] u8;
+  workspace: [64] u8; nw: int;
+  local_path: [512] u8; np: int;
+  repo_remote: [256] u8; nr: int;
+  repo_canonical: [256] u8; nc: int;
+}
+
+PrBindingRow :: struct {
+  host: [64] u8;
+  host_label: [80] u8; nhl: int;
+  host_os: [16] u8; nos: int;
+  online: bool;
+  workspace: [64] u8; nw: int;
+  local_path: [512] u8; np: int;
+  repo_remote: [256] u8; nr: int;
+  repo_canonical: [256] u8; nc: int;
+  auto_matched: bool;              // false = explicit, true = auto_repo
+  updated_ms: int;
+}
+
+prb_hex64 :: (s: string) -> bool #effects(all) {
+  if s.count != 64 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+
+prb_ws_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > 64 { return false; }
+  for c: s {
+    if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+  }
+  return true;
+}
+
+// Parse closed POST /api/projects/v1/{id}/bindings mutation request.
+pr_bind_request_read :: (raw: string, req: [] PrBindRequest) -> bool #effects(all) {
+  if raw.count < 2 || raw.count > 8192 || req.count < 1 { return false; }
+  d: [1] Jv;
+  nodes: [64] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  top := [3] string.["operation_id", "expected_revision", "value"];
+  if !js_fields(v, 0, top[..]) { return false; }
+  next: [1] PrBindRequest;
+  next[0].no = js_string(v, jv_get(v, 0, "operation_id"), next[0].operation[..]);
+  if next[0].no < 1 { return false; }
+  next[0].revision = js_number(v, jv_get(v, 0, "expected_revision"));
+  if next[0].revision < 0 || next[0].revision >= 2147483646 { return false; }
+  val := jv_get(v, 0, "value");
+  vkeys := [5] string.["action", "host_pubkey", "workspace_id", "local_path", "repo_remote"];
+  if !js_fields(v, val, vkeys[..]) { return false; }
+  next[0].na = js_string(v, jv_get(v, val, "action"), next[0].action[..]);
+  act := cast(string) next[0].action[0..<next[0].na];
+  if act != "bind" && act != "unbind" { return false; }
+  hn := js_string(v, jv_get(v, val, "host_pubkey"), next[0].host[..]);
+  if hn != 64 || !prb_hex64(cast(string) next[0].host[..]) { return false; }
+  next[0].nw = js_string(v, jv_get(v, val, "workspace_id"), next[0].workspace[..]);
+  if next[0].nw < 1 || !prb_ws_ok(cast(string) next[0].workspace[0..<next[0].nw]) { return false; }
+  pn := jv_get(v, val, "local_path");
+  if pn >= 0 { next[0].np = js_string(v, pn, next[0].local_path[..]); if next[0].np < 0 { return false; } }
+  rn := jv_get(v, val, "repo_remote");
+  if rn >= 0 {
+    next[0].nr = js_string(v, rn, next[0].repo_remote[..]);
+    if next[0].nr < 0 { return false; }
+    if next[0].nr > 0 {
+      next[0].nc = pr_repo_normalize(cast(string) next[0].repo_remote[0..<next[0].nr], next[0].repo_canonical[..]);
+      if next[0].nc < 1 { return false; }
+    }
+  }
+  req[0] = next[0];
+  return true;
+}
+
+// Check whether a candidate (host, workspace) is already present in rows[0..<n].
+pr_binding_exists :: (rows: [] PrBindingRow, n: int, host: string, workspace: string) -> bool #effects(all) {
+  for i: 0..<n {
+    if cast(string) rows[i].host[..] == host && cast(string) rows[i].workspace[0..<rows[i].nw] == workspace {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Append auto-matched workspaces from an enrolled computer's workspaces_json
+// whose normalized repo matches project_repo_canonical (deduplicated against rows[0..<n]).
+pr_env_auto_match :: (host: string, label: string, os: string, last_seen_ms: int, now_ms: int, workspaces_json: string, project_repo_canonical: string, rows: [] PrBindingRow, cur_n: int) -> int #effects(all) {
+  n := cur_n;
+  if project_repo_canonical.count < 1 || !prb_hex64(host) || workspaces_json.count < 2 || workspaces_json.count > 32768 { return n; }
+  d: [1] Jv;
+  nodes: [512] JvNode;
+  if !jv_parse(d[..], workspaces_json, nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return n; }
+  cnt := jv_len(d[0], 0);
+  online := last_seen_ms > 0 && now_ms >= last_seen_ms && now_ms - last_seen_ms <= 120000;
+  for i: 0..<cnt {
+    if n >= rows.count || n >= PR_BIND_MAX { break; }
+    item := jv_at(d[0], 0, i);
+    rc_buf: [256] u8;
+    rc_n := js_string(d[0], jv_get(d[0], item, "repo_canonical"), rc_buf[..]);
+    if rc_n < 1 {
+      rr_buf: [256] u8;
+      rr_n := js_string(d[0], jv_get(d[0], item, "repo_remote"), rr_buf[..]);
+      if rr_n > 0 { rc_n = pr_repo_normalize(cast(string) rr_buf[0..<rr_n], rc_buf[..]); }
+    }
+    if rc_n < 1 || cast(string) rc_buf[0..<rc_n] != project_repo_canonical { continue; }
+    ws_buf: [64] u8;
+    ws_n := js_string(d[0], jv_get(d[0], item, "workspace_id"), ws_buf[..]);
+    if ws_n < 1 || !prb_ws_ok(cast(string) ws_buf[0..<ws_n]) { continue; }
+    if pr_binding_exists(rows, n, host, cast(string) ws_buf[0..<ws_n]) { continue; }
+    row := PrBindingRow.{};
+    for j: 0..<64 { row.host[j] = host[j]; }
+    row.nhl = js_copy(row.host_label[..], label);
+    row.nos = js_copy(row.host_os[..], os);
+    row.online = online;
+    row.nw = js_copy(row.workspace[..], cast(string) ws_buf[0..<ws_n]);
+    pn := jv_get(d[0], item, "local_path");
+    if pn >= 0 { p_len := js_string(d[0], pn, row.local_path[..]); if p_len > 0 { row.np = p_len; } }
+    rn := jv_get(d[0], item, "repo_remote");
+    if rn >= 0 { r_len := js_string(d[0], rn, row.repo_remote[..]); if r_len > 0 { row.nr = r_len; } }
+    row.nc = js_copy(row.repo_canonical[..], cast(string) rc_buf[0..<rc_n]);
+    row.auto_matched = true;
+    row.updated_ms = last_seen_ms;
+    rows[n] = row;
+    n += 1;
+  }
+  return n;
+}
+
+// Serialize GET/POST /api/projects/v1/{id}/bindings reply.
+pr_bindings_write :: (project_id: string, revision: int, repo_url: string, repo_canonical: string, rows: [] PrBindingRow, nrows: int, out: [] u8) -> int #effects(all) {
+  if nrows < 0 || nrows > rows.count || nrows > PR_BIND_MAX { return -1; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], PR_BINDINGS_SCHEMA);
+  jo_key(o[..], "data");
+  jo_obj(o[..]);
+  jo_key(o[..], "project_id"); jo_str(o[..], project_id);
+  jo_key(o[..], "revision"); jo_int(o[..], revision);
+  jo_key(o[..], "repo_url"); jo_str(o[..], repo_url);
+  jo_key(o[..], "repo_canonical"); jo_str(o[..], repo_canonical);
+  jo_key(o[..], "bindings");
+  jo_arr(o[..]);
+  for i: 0..<nrows {
+    r := rows[i];
+    jo_obj(o[..]);
+    jo_key(o[..], "host_pubkey"); jo_str(o[..], cast(string) r.host[..]);
+    jo_key(o[..], "display_name"); jo_str(o[..], cast(string) r.host_label[0..<r.nhl]);
+    jo_key(o[..], "os"); jo_str(o[..], cast(string) r.host_os[0..<r.nos]);
+    jo_key(o[..], "online"); jo_bool(o[..], r.online);
+    jo_key(o[..], "workspace_id"); jo_str(o[..], cast(string) r.workspace[0..<r.nw]);
+    jo_key(o[..], "local_path"); jo_str(o[..], cast(string) r.local_path[0..<r.np]);
+    jo_key(o[..], "repo_remote"); jo_str(o[..], cast(string) r.repo_remote[0..<r.nr]);
+    jo_key(o[..], "repo_canonical"); jo_str(o[..], cast(string) r.repo_canonical[0..<r.nc]);
+    jo_key(o[..], "match_source"); jo_str(o[..], ifx r.auto_matched then "auto_repo" else "explicit");
+    jo_key(o[..], "updated_at_ms"); jo_int(o[..], r.updated_ms);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Write one ?as=lines project summary line for Web UI:
+//   project <id>|<revision>|<name>|<repo_short>|<matched_envs>
+pr_project_line_write :: (id: string, revision: int, name: string, repo_canonical: string, matched_envs: int, out: [] u8) -> int #effects(all) {
+  if id.count != 36 || name.count < 1 || name.count > 160 || revision < 1 || matched_envs < 0 { return -1; }
+  sname: [160] u8;
+  sn := 0;
+  for c: name {
+    sname[sn] = ifx c == '|' || c == '\n' || c == '\r' || c == 0 then ' ' else c;
+    sn += 1;
+  }
+  srepo: [256] u8;
+  srn := 0;
+  if repo_canonical.count > 0 {
+    srn = pr_repo_short(repo_canonical, srepo[..]);
+    if srn < 0 { srn = 0; }
+  }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_put(o[..], "project "); jo_put(o[..], id);
+  jo_put(o[..], "|"); jo_int(o[..], revision);
+  jo_put(o[..], "|"); jo_put(o[..], cast(string) sname[0..<sn]);
+  jo_put(o[..], "|"); jo_put(o[..], cast(string) srepo[0..<srn]);
+  jo_put(o[..], "|"); jo_int(o[..], matched_envs);
+  jo_put(o[..], "\n");
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "project binding requests validate action, host key, workspace ID, and remote normalization" {
+  req: [1] PrBindRequest;
+  ok_bind := "{\"operation_id\":\"op1\",\"expected_revision\":1,\"value\":{\"action\":\"bind\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"workspace_id\":\"openagents\",\"local_path\":\"/Users/chris/work/openagents\",\"repo_remote\":\"git@github.com:OpenAgentsInc/openagents.git\"}}";
+  #assert pr_bind_request_read(ok_bind, req[..]);
+  #assert cast(string) req[0].action[0..<req[0].na] == "bind";
+  #assert cast(string) req[0].repo_canonical[0..<req[0].nc] == "github.com/openagentsinc/openagents";
+  ok_unbind := "{\"operation_id\":\"op2\",\"expected_revision\":2,\"value\":{\"action\":\"unbind\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"workspace_id\":\"openagents\"}}";
+  #assert pr_bind_request_read(ok_unbind, req[..]) && cast(string) req[0].action[0..<req[0].na] == "unbind" && req[0].nc == 0;
+  #assert !pr_bind_request_read("{\"operation_id\":\"op3\",\"expected_revision\":1,\"value\":{\"action\":\"delete\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"workspace_id\":\"openagents\"}}", req[..]);
+  #assert !pr_bind_request_read("{\"operation_id\":\"op3\",\"expected_revision\":1,\"value\":{\"action\":\"bind\",\"host_pubkey\":\"short\",\"workspace_id\":\"openagents\"}}", req[..]);
+  #assert !pr_bind_request_read("{\"operation_id\":\"op3\",\"expected_revision\":1,\"value\":{\"action\":\"bind\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"workspace_id\":\"bad/ws\"}}", req[..]);
+  #assert !pr_bind_request_read("{\"operation_id\":\"op3\",\"expected_revision\":1,\"value\":{\"action\":\"bind\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"workspace_id\":\"openagents\",\"repo_remote\":\"not a repo\"}}", req[..]);
+  #assert !pr_bind_request_read("{\"operation_id\":\"op3\",\"expected_revision\":-1,\"value\":{\"action\":\"unbind\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"workspace_id\":\"openagents\"}}", req[..]);
+}
+
+#test "bindings reply writes explicit and auto_repo sources and deduplicates host+workspace" {
+  rows: [2] PrBindingRow;
+  host := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  for i: 0..<64 { rows[0].host[i] = host[i]; rows[1].host[i] = host[i]; }
+  rows[0].nhl = js_copy(rows[0].host_label[..], "Chris Mac");
+  rows[0].nos = js_copy(rows[0].host_os[..], "macos");
+  rows[0].online = true;
+  rows[0].nw = js_copy(rows[0].workspace[..], "openagents");
+  rows[0].np = js_copy(rows[0].local_path[..], "/Users/chris/work/openagents");
+  rows[0].nr = js_copy(rows[0].repo_remote[..], "git@github.com:OpenAgentsInc/openagents.git");
+  rows[0].nc = js_copy(rows[0].repo_canonical[..], "github.com/openagentsinc/openagents");
+  rows[0].auto_matched = false;
+  rows[0].updated_ms = 100;
+  rows[1].nhl = js_copy(rows[1].host_label[..], "Linux Box");
+  rows[1].nos = js_copy(rows[1].host_os[..], "linux");
+  rows[1].nw = js_copy(rows[1].workspace[..], "oa-clone");
+  rows[1].auto_matched = true;
+  #assert pr_binding_exists(rows[..], 1, host, "openagents");
+  #assert !pr_binding_exists(rows[..], 1, host, "other");
+  out: [4096] u8;
+  n := pr_bindings_write("prj_0123456789abcdef0123456789abcdef", 2, "https://github.com/OpenAgentsInc/openagents", "github.com/openagentsinc/openagents", rows[..], 2, out[..]);
+  #assert n > 0;
+  d: [1] Jv; nodes: [128] JvNode;
+  #assert jv_parse(d[..], cast(string) out[0..<n], nodes[..]);
+  #assert jv_raw(d[0], jv_get(d[0], 0, "schema")) == PR_BINDINGS_SCHEMA;
+  #assert jv_raw(d[0], jv_path(d[0], 0, "data.bindings[0].match_source")) == "explicit";
+  #assert jv_raw(d[0], jv_path(d[0], 0, "data.bindings[1].match_source")) == "auto_repo";
+  line: [512] u8;
+  ln := pr_project_line_write("prj_0123456789abcdef0123456789abcdef", 2, "OpenAgents|Main", "github.com/openagentsinc/openagents", 2, line[..]);
+  #assert ln > 0 && cast(string) line[0..<ln] == "project prj_0123456789abcdef0123456789abcdef|2|OpenAgents Main|openagentsinc/openagents|2\n";
+  #assert pr_project_line_write("short", 1, "X", "", 0, line[..]) < 0;
+}

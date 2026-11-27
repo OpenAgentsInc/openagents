@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenAgents Project Environment Bindings v1alpha1",
+  "description": "Explicit and repo-normalized auto-matched computer workspace bindings for an account-owned private Project (GET/POST /api/projects/v1/{id}/bindings).",
+  "type": "object",
+  "required": ["schema", "data"],
+  "properties": {
+    "schema": { "const": "openagents.projects.bindings.v1alpha1" },
+    "data": {
+      "type": "object",
+      "required": ["project_id", "revision", "repo_url", "repo_canonical", "bindings"],
+      "properties": {
+        "project_id": { "type": "string", "pattern": "^prj_[0-9a-f]{32}$" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "repo_url": { "type": "string", "maxLength": 256 },
+        "repo_canonical": { "type": "string", "maxLength": 256 },
+        "bindings": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "required": ["host_pubkey", "display_name", "os", "online", "workspace_id", "local_path", "repo_remote", "repo_canonical", "match_source", "updated_at_ms"],
+            "properties": {
+              "host_pubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "display_name": { "type": "string", "maxLength": 80 },
+              "os": { "type": "string", "maxLength": 16 },
+              "online": { "type": "boolean" },
+              "workspace_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+              "local_path": { "type": "string", "maxLength": 512 },
+              "repo_remote": { "type": "string", "maxLength": 256 },
+              "repo_canonical": { "type": "string", "maxLength": 256 },
+              "match_source": { "enum": ["explicit", "auto_repo"] },
+              "updated_at_ms": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

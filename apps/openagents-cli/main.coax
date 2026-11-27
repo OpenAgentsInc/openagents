@@ -34,6 +34,7 @@
 #load "agent.coax";
 #load "project.coax";
 #load "projects.coax";
+#load "environments.coax";
 #load "chat.coax";
 #load "tasks.coax";
 #load "realm.coax";
@@ -85,6 +86,7 @@ usage :: () {
   pylon_usage();
   project_usage();
   projects_usage();
+  environments_usage();
   chat_usage();
   tasks_usage();
   account_usage();
@@ -161,6 +163,7 @@ cli_dispatch :: (a: [] Args, r: [] Rep, profile: string, domain: string, verb: s
   if domain == "http" { return cli_http(a, r); }   // hidden: one request through coax/lib/net/http.coax
   if domain == "project" { return project_main(a, r, verb); }
   if domain == "projects" { return projects_main(a, r, profile, verb); }
+  if domain == "environments" { return environments_main(a, r, profile, verb); }
   if domain == "chat" { return chat_main(a,r,profile,verb); }
   if domain == "tasks" { return tasks_main(a,r,profile,verb); }
   if domain == "realm" { return realm_main(a, r, profile, verb); }

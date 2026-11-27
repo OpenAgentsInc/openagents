@@ -22,13 +22,44 @@ bool api_object_id(char out[37],const char *prefix) {unsigned char r[16];if(RAND
 static void integer(char out[32],long long value) {snprintf(out,32,"%lld",value);}
 static PGresult *project_rows(PGconn *db,const char *account,const char *id,bool lock) {
  const char *v[]={account,id};return PQexecParams(db,lock?
- "SELECT id,account,name,description,instructions,revision,instructions_revision,created_ms,updated_ms,(SELECT count(*) FROM projects.knowledge_v1 k WHERE k.project=p.id),(SELECT count(*) FROM projects.thread_links_v1 l WHERE l.project=p.id AND l.account=p.account)+(SELECT count(*) FROM chat.conversations_v2 c WHERE c.project=p.id AND c.account=p.account),instructions_updated_ms FROM projects.private_v1 p WHERE account=$1 AND id=$2 FOR UPDATE OF p":
- "SELECT id,account,name,description,instructions,revision,instructions_revision,created_ms,updated_ms,(SELECT count(*) FROM projects.knowledge_v1 k WHERE k.project=p.id),(SELECT count(*) FROM projects.thread_links_v1 l WHERE l.project=p.id AND l.account=p.account)+(SELECT count(*) FROM chat.conversations_v2 c WHERE c.project=p.id AND c.account=p.account),instructions_updated_ms FROM projects.private_v1 p WHERE account=$1 AND id=$2",2,NULL,v,NULL,NULL,0);
+ "SELECT id,account,name,description,instructions,revision,instructions_revision,created_ms,updated_ms,(SELECT count(*) FROM projects.knowledge_v1 k WHERE k.project=p.id),(SELECT count(*) FROM projects.thread_links_v1 l WHERE l.project=p.id AND l.account=p.account)+(SELECT count(*) FROM chat.conversations_v2 c WHERE c.project=p.id AND c.account=p.account),instructions_updated_ms,repo_url,repo_canonical,(SELECT count(*) FROM projects.environment_bindings_v1 b WHERE b.account=p.account AND b.project=p.id) FROM projects.private_v1 p WHERE account=$1 AND id=$2 FOR UPDATE OF p":
+ "SELECT id,account,name,description,instructions,revision,instructions_revision,created_ms,updated_ms,(SELECT count(*) FROM projects.knowledge_v1 k WHERE k.project=p.id),(SELECT count(*) FROM projects.thread_links_v1 l WHERE l.project=p.id AND l.account=p.account)+(SELECT count(*) FROM chat.conversations_v2 c WHERE c.project=p.id AND c.account=p.account),instructions_updated_ms,repo_url,repo_canonical,(SELECT count(*) FROM projects.environment_bindings_v1 b WHERE b.account=p.account AND b.project=p.id) FROM projects.private_v1 p WHERE account=$1 AND id=$2",2,NULL,v,NULL,NULL,0);
 }
 static bool load_project(PGresult *r,int row,coax_t_PrProject *p) {
  if(!rows(r) || row>=PQntuples(r))return false;
- if(!PF(p,id,ni,PQgetvalue(r,row,0)) || !PF(p,owner,no,PQgetvalue(r,row,1)) || !PF(p,name,nn,PQgetvalue(r,row,2)) || !PF(p,description,nd,PQgetvalue(r,row,3)) || !PF(p,instructions,nt,PQgetvalue(r,row,4)))return false;
- p->revision=atoll(PQgetvalue(r,row,5));p->instructions_revision=atoll(PQgetvalue(r,row,6));p->created=atoll(PQgetvalue(r,row,7));p->updated=atoll(PQgetvalue(r,row,8));p->knowledge=atoll(PQgetvalue(r,row,9));p->chats=atoll(PQgetvalue(r,row,10));p->instructions_updated=atoll(PQgetvalue(r,row,11));return true;
+ if(!PF(p,id,ni,PQgetvalue(r,row,0)) || !PF(p,owner,no,PQgetvalue(r,row,1)) || !PF(p,name,nn,PQgetvalue(r,row,2)) || !PF(p,description,nd,PQgetvalue(r,row,3)) || !PF(p,instructions,nt,PQgetvalue(r,row,4)) || !PF(p,repo_url,nru,PQgetvalue(r,row,12)) || !PF(p,repo_canonical,nrc,PQgetvalue(r,row,13)))return false;
+ p->revision=atoll(PQgetvalue(r,row,5));p->instructions_revision=atoll(PQgetvalue(r,row,6));p->created=atoll(PQgetvalue(r,row,7));p->updated=atoll(PQgetvalue(r,row,8));p->knowledge=atoll(PQgetvalue(r,row,9));p->chats=atoll(PQgetvalue(r,row,10));p->instructions_updated=atoll(PQgetvalue(r,row,11));p->repos_count=p->nrc>0?1:0;p->envs_count=atoll(PQgetvalue(r,row,14));return true;
+}
+static int collect_project_bindings(PGconn *db,const char *account,const char *project_id,const char *repo_canonical,long long now_ms,coax_t_PrBindingRow *brows,int cap) {
+ int n=0;
+ const char *v[]={account,project_id};
+ PGresult *er=PQexecParams(db,
+  "SELECT b.host_pubkey,coalesce(e.display_name,''),coalesce(e.os,''),coalesce(e.last_seen_ms,0),b.workspace_id,b.local_path,b.repo_remote,b.repo_canonical,b.updated_ms "
+  "FROM projects.environment_bindings_v1 b LEFT JOIN chat.environment_connections_v1 e ON e.account=b.account AND e.host_pubkey=b.host_pubkey "
+  "WHERE b.account=$1 AND b.project=$2 ORDER BY b.updated_ms DESC,b.host_pubkey,b.workspace_id LIMIT 32",2,NULL,v,NULL,NULL,0);
+ if(rows(er)){
+  for(int i=0;i<PQntuples(er) && n<cap;i++){
+   coax_t_PrBindingRow *b=&brows[n];memset(b,0,sizeof *b);
+   const char *hp=PQgetvalue(er,i,0);if(strlen(hp)!=64)continue;
+   memcpy(b->host.e,hp,64);
+   (void)PF(b,host_label,nhl,PQgetvalue(er,i,1));(void)PF(b,host_os,nos,PQgetvalue(er,i,2));
+   long long seen=atoll(PQgetvalue(er,i,3));b->online=seen>0 && now_ms>=seen && now_ms-seen<=120000;
+   (void)PF(b,workspace,nw,PQgetvalue(er,i,4));(void)PF(b,local_path,np,PQgetvalue(er,i,5));
+   (void)PF(b,repo_remote,nr,PQgetvalue(er,i,6));(void)PF(b,repo_canonical,nc,PQgetvalue(er,i,7));
+   b->auto_matched=false;b->updated_ms=atoll(PQgetvalue(er,i,8));n++;
+  }
+ }
+ PQclear(er);
+ if(repo_canonical && *repo_canonical && n<cap){
+  PGresult *cr=PQexecParams(db,"SELECT host_pubkey,display_name,os,last_seen_ms,workspaces_json FROM chat.environment_connections_v1 WHERE account=$1 ORDER BY display_name LIMIT 64",1,NULL,&account,NULL,NULL,0);
+  if(rows(cr)){
+   for(int i=0;i<PQntuples(cr) && n<cap;i++){
+    n=(int)pr_env_auto_match_c(prs(PQgetvalue(cr,i,0)),prs(PQgetvalue(cr,i,1)),prs(PQgetvalue(cr,i,2)),atoll(PQgetvalue(cr,i,3)),now_ms,prs(PQgetvalue(cr,i,4)),prs(repo_canonical),(coax_v_t_PrBindingRow){brows,(int64_t)cap},n);
+   }
+  }
+  PQclear(cr);
+ }
+ return n;
 }
 static bool load_knowledge(PGresult *r,int row,const char *account,coax_t_PrKnowledge *k) {
  if(!rows(r) || row>=PQntuples(r))return false;
@@ -116,26 +147,58 @@ bool projects_route(const request *q) {
  unsigned char *out=calloc(1,PR_BUF);coax_t_PrProject *p=calloc(1,sizeof *p);coax_t_PrRequest *req=calloc(1,sizeof *req);coax_t_PrKnowledge *k=calloc(1,sizeof *k);
  if(!out || !p || !req || !k){free(out);free(p);free(req);free(k);problem(q,503,"unavailable","Memory unavailable.",-1,"");return true;}
  const char *err="";int status=200;int64_t used=-1;bool transaction=false,handled=false;char operation[81]={0},hash[65]={0};
- int kind=!*id?1:!strcmp(op,"update")?2:!strcmp(op,"instructions")?3:!strcmp(op,"knowledge")?4:!strncmp(op,"knowledge/",10)?5:!strcmp(op,"chats")?6:!strcmp(op,"complete")?7:0;
+ int kind=!*id?1:!strcmp(op,"update")?2:!strcmp(op,"instructions")?3:!strcmp(op,"knowledge")?4:!strncmp(op,"knowledge/",10)?5:!strcmp(op,"chats")?6:!strcmp(op,"complete")?7:!strcmp(op,"bindings")?10:0;
  if(!strcmp(op,"chats/new"))kind=8;
  if(!strncmp(op,"chats/",6) && strlen(op+6)>=22){memcpy(tid,op+6,22);if(strlen(op+6)==31 && !strcmp(op+28,"/messages"))kind=9;}
  if(kind==5){const char *start=op+10;if(strlen(start)==43 && !strcmp(start+36,"/remove"))memcpy(kid,start,36);else kind=0;}
- if(post){coax_string raw={(const char *)q->body,(int64_t)q->body_len};if(!kind || !(kind>=8?pr_chat_request(raw,kind==8,(coax_v_t_PrRequest){req,1}):pr_request(raw,kind,(coax_v_t_PrRequest){req,1}))){status=400;err="Invalid Project request.";goto done;}memcpy(operation,req->operation.e,(size_t)req->no);digest(q->body,q->body_len,hash);
-  if(!prp_change(true,actor->limited,actor->frozen!=0,false)){status=403;err="This account cannot change Projects.";goto done;}
-  transaction=run(db,"BEGIN",0,NULL);if(!transaction){status=503;err="Storage unavailable.";goto done;}
-  const char *lock[]={actor->account,operation};if(!run(db,"SELECT pg_advisory_xact_lock(hashtextextended($1||':'||$2,0))",2,lock)){status=503;err="Storage unavailable.";goto done;}
+ coax_t_PrBindRequest *breq=NULL;
+ if(post){coax_string raw={(const char *)q->body,(int64_t)q->body_len};
+  if(kind==10){breq=calloc(1,sizeof *breq);if(!breq || !pr_bind_request_read_c(raw,(coax_v_t_PrBindRequest){breq,1})){free(breq);status=400;err="Invalid Project binding request.";goto done;}memcpy(operation,breq->operation.e,(size_t)breq->no);req->revision=breq->revision;}
+  else if(!kind || !(kind>=8?pr_chat_request(raw,kind==8,(coax_v_t_PrRequest){req,1}):pr_request(raw,kind,(coax_v_t_PrRequest){req,1}))){status=400;err="Invalid Project request.";goto done;}
+  else {memcpy(operation,req->operation.e,(size_t)req->no);}
+  digest(q->body,q->body_len,hash);
+  if(!prp_change(true,actor->limited,actor->frozen!=0,false)){free(breq);status=403;err="This account cannot change Projects.";goto done;}
+  transaction=run(db,"BEGIN",0,NULL);if(!transaction){free(breq);status=503;err="Storage unavailable.";goto done;}
+  const char *lock[]={actor->account,operation};if(!run(db,"SELECT pg_advisory_xact_lock(hashtextextended($1||':'||$2,0))",2,lock)){free(breq);status=503;err="Storage unavailable.";goto done;}
  }
- if(*id){PGresult *r=project_rows(db,actor->account,id,post);bool ok=load_project(r,0,p);if(ok)ok=prp_access(actor->kind,true,prs(actor->account),(coax_string){(const char *)p->owner.e,p->no});PQclear(r);if(!ok){status=404;err="not found";goto done;}}
- if(post){const char *v[]={actor->account,operation};PGresult *r=PQexecParams(db,"SELECT path,digest,state,status,reply FROM projects.operations_v1 WHERE account=$1 AND operation=$2",2,NULL,v,NULL,NULL,0);if(!rows(r)){PQclear(r);status=503;err="Storage unavailable.";goto done;}
-  if(PQntuples(r)){if(strcmp(PQgetvalue(r,0,0),q->path) || strcmp(PQgetvalue(r,0,1),hash)){status=409;err="Operation ID already has different contents.";}else if(!strcmp(PQgetvalue(r,0,2),"done")){status=atoi(PQgetvalue(r,0,3));used=(int64_t)strlen(PQgetvalue(r,0,4));if(used<PR_BUF)memcpy(out,PQgetvalue(r,0,4),(size_t)used);else{status=503;used=-1;err="Stored reply too large.";}}else{status=409;err="This model attempt is pending or failed. Reopen the conversation; it will not be dispatched twice.";}PQclear(r);goto done;}PQclear(r);
-  if(*id && !prp_revision(req->revision,p->revision)){status=409;err="Project changed. Reopen it before saving.";goto done;}
+ if(*id){PGresult *r=project_rows(db,actor->account,id,post);bool ok=load_project(r,0,p);if(ok)ok=prp_access(actor->kind,true,prs(actor->account),(coax_string){(const char *)p->owner.e,p->no});PQclear(r);if(!ok){free(breq);status=404;err="not found";goto done;}}
+ if(post){const char *v[]={actor->account,operation};PGresult *r=PQexecParams(db,"SELECT path,digest,state,status,reply FROM projects.operations_v1 WHERE account=$1 AND operation=$2",2,NULL,v,NULL,NULL,0);if(!rows(r)){PQclear(r);free(breq);status=503;err="Storage unavailable.";goto done;}
+  if(PQntuples(r)){if(strcmp(PQgetvalue(r,0,0),q->path) || strcmp(PQgetvalue(r,0,1),hash)){status=409;err="Operation ID already has different contents.";}else if(!strcmp(PQgetvalue(r,0,2),"done")){status=atoi(PQgetvalue(r,0,3));used=(int64_t)strlen(PQgetvalue(r,0,4));if(used<PR_BUF)memcpy(out,PQgetvalue(r,0,4),(size_t)used);else{status=503;used=-1;err="Stored reply too large.";}}else{status=409;err="This model attempt is pending or failed. Reopen the conversation; it will not be dispatched twice.";}PQclear(r);free(breq);goto done;}PQclear(r);
+  if(*id && !prp_revision(req->revision,p->revision)){free(breq);status=409;err="Project changed. Reopen it before saving.";goto done;}
  }
- if(!post && !*id){char cursor[37]={0};api_query(q,"cursor",cursor,sizeof cursor);const char *v[]={actor->account,cursor};PGresult *r=PQexecParams(db,"SELECT id FROM projects.private_v1 WHERE account=$1 AND id>$2 ORDER BY id LIMIT 33",2,NULL,v,NULL,NULL,0);coax_string records[32];char *owned[32]={0};int count=0;bool ok=rows(r);char next[37]={0};
+ if(!post && !*id){char cursor[37]={0},as_q[16]={0};api_query(q,"cursor",cursor,sizeof cursor);api_query(q,"as",as_q,sizeof as_q);
+  const char *v[]={actor->account,cursor};PGresult *r=PQexecParams(db,"SELECT id FROM projects.private_v1 WHERE account=$1 AND id>$2 ORDER BY id LIMIT 33",2,NULL,v,NULL,NULL,0);
+  if(!strcmp(as_q,"lines")){
+   bool ok=rows(r);size_t lused=0;long long now_ms=(long long)api_now_ms();coax_t_PrBindingRow *brows=calloc(32,sizeof *brows);
+   if(!brows)ok=false;
+   for(int i=0;ok && i<PQntuples(r) && i<32;i++){
+    PGresult *one=project_rows(db,actor->account,PQgetvalue(r,i,0),false);ok=load_project(one,0,p);PQclear(one);if(!ok)break;
+    char pid_s[37]={0},pname_s[161]={0},rc_s[257]={0};memcpy(pid_s,p->id.e,(size_t)p->ni);memcpy(pname_s,p->name.e,(size_t)p->nn);memcpy(rc_s,p->repo_canonical.e,(size_t)p->nrc);
+    int matched=collect_project_bindings(db,actor->account,pid_s,rc_s,now_ms,brows,32);
+    unsigned char line[512];int64_t ln=pr_project_line_write_c(prs(pid_s),p->revision,prs(pname_s),prs(rc_s),matched,prb(line,sizeof line));
+    if(ln>0 && lused+(size_t)ln<PR_BUF){memcpy(out+lused,line,(size_t)ln);lused+=(size_t)ln;}
+   }
+   free(brows);PQclear(r);
+   if(ok){api_respond(q->fd,200,"text/plain; charset=utf-8","Cache-Control: private, no-store\r\nVary: Cookie, Authorization\r\n",out,lused);handled=true;}
+   goto done;
+  }
+  coax_string records[32];char *owned[32]={0};int count=0;bool ok=rows(r);char next[37]={0};
   for(int i=0;ok && i<PQntuples(r) && i<32;i++){PGresult *one=project_rows(db,actor->account,PQgetvalue(r,i,0),false);ok=load_project(one,0,p);PQclear(one);int64_t n=ok?pr_summary((coax_v_t_PrProject){p,1},prb(out,PR_BUF-1)):-1;if(n<1){ok=false;break;}out[n]=0;owned[count]=strdup((const char *)out);ok=owned[count]!=NULL;if(ok){records[count]=prs(owned[count]);count++;}}
   if(ok && PQntuples(r)>32 && count>0)snprintf(next,sizeof next,"%s",PQgetvalue(r,31,0));PQclear(r);used=ok?pr_records((coax_v_string){records,count},-1,prs(next),prb(out,PR_BUF-1)):-1;for(int i=0;i<count;i++)free(owned[i]);goto done;
  }
+ if(!post && !strcmp(op,"bindings")){
+  coax_t_PrBindingRow *brows=calloc(32,sizeof *brows);if(!brows){status=503;err="Memory unavailable.";goto done;}
+  char ru_s[257]={0},rc_s[257]={0};memcpy(ru_s,p->repo_url.e,(size_t)p->nru);memcpy(rc_s,p->repo_canonical.e,(size_t)p->nrc);
+  int nb=collect_project_bindings(db,actor->account,id,rc_s,(long long)api_now_ms(),brows,32);
+  used=pr_bindings_write_c(prs(id),p->revision,prs(ru_s),prs(rc_s),(coax_v_t_PrBindingRow){brows,32},nb,prb(out,PR_BUF-1));
+  free(brows);goto done;
+ }
  if(!post && !strcmp(op,"instructions")){used=pr_instructions_write((coax_v_t_PrProject){p,1},prb(out,PR_BUF-1));goto done;}
- if(!post && !*op){used=pr_project_write((coax_v_t_PrProject){p,1},prb(out,PR_BUF-1));goto done;}
+ if(!post && !*op){
+  coax_t_PrBindingRow *brows=calloc(32,sizeof *brows);
+  if(brows){char rc_s[257]={0};memcpy(rc_s,p->repo_canonical.e,(size_t)p->nrc);p->envs_count=collect_project_bindings(db,actor->account,id,rc_s,(long long)api_now_ms(),brows,32);free(brows);}
+  used=pr_project_write((coax_v_t_PrProject){p,1},prb(out,PR_BUF-1));goto done;
+ }
  if(!post && *tid && strlen(op+6)==22){const char *v[]={actor->account,id,tid};PGresult *r=PQexecParams(db,"SELECT t.record FROM chat.account_threads_v1 t JOIN projects.thread_links_v1 l ON l.account=t.account AND l.thread=t.id WHERE l.account=$1 AND l.project=$2 AND l.thread=$3",3,NULL,v,NULL,NULL,0);if(rows(r) && PQntuples(r)==1){used=(int64_t)strlen(PQgetvalue(r,0,0));memcpy(out,PQgetvalue(r,0,0),(size_t)used);}else{status=404;err="Chat not found in this Project.";}PQclear(r);goto done;}
  if(!post && !strcmp(op,"chats")){const char *v[]={actor->account,id};PGresult *r=PQexecParams(db,"SELECT t.account,t.id,t.title,'google/gemini-4-hydrogen',l.project,t.updated_ms::text,'false' FROM chat.account_threads_v1 t JOIN projects.thread_links_v1 l ON l.account=t.account AND l.thread=t.id WHERE l.account=$1 AND l.project=$2 ORDER BY t.updated_ms DESC,t.id LIMIT 60",2,NULL,v,NULL,NULL,0);if(!rows(r)){PQclear(r);status=503;err="Chats unavailable.";goto done;}handled=chat_history_rows(q,r);goto done;}
  if(!post && !strcmp(op,"context")){char key[81]={0};api_query(q,"operation_id",key,sizeof key);const char *v[]={actor->account,id,key};PGresult *r=PQexecParams(db,"SELECT snapshot FROM projects.contexts_v1 WHERE account=$1 AND project=$2 AND operation=$3",3,NULL,v,NULL,NULL,0);if(rows(r) && PQntuples(r)==1){used=(int64_t)strlen(PQgetvalue(r,0,0));if(used<PR_BUF)memcpy(out,PQgetvalue(r,0,0),(size_t)used);else used=-1;}else{status=404;err="not found";}PQclear(r);goto done;}
@@ -145,9 +208,23 @@ bool projects_route(const request *q) {
  }
  if(!post){status=404;err="not found";goto done;}
  long long now=(long long)api_now_ms();char ms[32],rev[32];integer(ms,now);integer(rev,p->revision+1);
- if(kind==1){if(!api_object_id(id,"prj_")){status=503;err="ID unavailable.";goto done;}PF(p,id,ni,id);PF(p,owner,no,actor->account);memcpy(p->name.e,req->name.e,(size_t)req->nn);p->nn=req->nn;memcpy(p->description.e,req->description.e,(size_t)req->nd);p->nd=req->nd;memcpy(p->instructions.e,req->text.e,(size_t)req->nt);p->nt=req->nt;p->revision=1;p->instructions_revision=1;p->instructions_updated=now;p->created=now;p->updated=now;
-  char name[161]={0},desc[4097]={0},text[65537]={0};memcpy(name,p->name.e,(size_t)p->nn);memcpy(desc,p->description.e,(size_t)p->nd);memcpy(text,p->instructions.e,(size_t)p->nt);const char *v[]={id,actor->account,name,desc,text,ms};if(!run(db,"INSERT INTO projects.private_v1(id,account,name,description,instructions,revision,instructions_revision,instructions_updated_ms,created_ms,updated_ms) VALUES($1,$2,$3,$4,$5,1,1,$6::bigint,$6::bigint,$6::bigint)",6,v)){status=503;err="Project could not be saved.";goto done;}status=201;
- }else if(kind==2 || kind==3){char name[161]={0},desc[4097]={0},text[65537]={0};if(req->nn>=0){memcpy(p->name.e,req->name.e,(size_t)req->nn);p->nn=req->nn;}if(req->nd>=0){memcpy(p->description.e,req->description.e,(size_t)req->nd);p->nd=req->nd;}if(kind==3){memcpy(p->instructions.e,req->text.e,(size_t)req->nt);p->nt=req->nt;p->instructions_revision=p->revision+1;p->instructions_updated=now;}memcpy(name,p->name.e,(size_t)p->nn);memcpy(desc,p->description.e,(size_t)p->nd);memcpy(text,p->instructions.e,(size_t)p->nt);char ir[32];integer(ir,p->instructions_revision);const char *v[]={id,name,desc,text,rev,ir,ms};if(!run(db,"UPDATE projects.private_v1 SET name=$2,description=$3,instructions=$4,revision=$5::bigint,instructions_revision=$6::bigint,updated_ms=$7::bigint,instructions_updated_ms=CASE WHEN instructions_revision=$6::bigint THEN instructions_updated_ms ELSE $7::bigint END WHERE id=$1",7,v)){status=503;err="Project could not be saved.";goto done;}p->revision++;p->updated=now;
+ if(kind==1){if(!api_object_id(id,"prj_")){status=503;err="ID unavailable.";goto done;}PF(p,id,ni,id);PF(p,owner,no,actor->account);memcpy(p->name.e,req->name.e,(size_t)req->nn);p->nn=req->nn;memcpy(p->description.e,req->description.e,(size_t)req->nd);p->nd=req->nd;memcpy(p->instructions.e,req->text.e,(size_t)req->nt);p->nt=req->nt;if(req->nru>0){memcpy(p->repo_url.e,req->repo_url.e,(size_t)req->nru);p->nru=req->nru;memcpy(p->repo_canonical.e,req->repo_canonical.e,(size_t)req->nrc);p->nrc=req->nrc;}else{p->nru=0;p->nrc=0;}p->repos_count=p->nrc>0?1:0;p->revision=1;p->instructions_revision=1;p->instructions_updated=now;p->created=now;p->updated=now;
+  char name[161]={0},desc[4097]={0},text[65537]={0},rurl[257]={0},rcanon[257]={0};memcpy(name,p->name.e,(size_t)p->nn);memcpy(desc,p->description.e,(size_t)p->nd);memcpy(text,p->instructions.e,(size_t)p->nt);memcpy(rurl,p->repo_url.e,(size_t)p->nru);memcpy(rcanon,p->repo_canonical.e,(size_t)p->nrc);const char *v[]={id,actor->account,name,desc,text,ms,rurl,rcanon};if(!run(db,"INSERT INTO projects.private_v1(id,account,name,description,instructions,revision,instructions_revision,instructions_updated_ms,created_ms,updated_ms,repo_url,repo_canonical) VALUES($1,$2,$3,$4,$5,1,1,$6::bigint,$6::bigint,$6::bigint,$7,$8)",8,v)){status=503;err="Project could not be saved.";goto done;}status=201;
+ }else if(kind==2 || kind==3){char name[161]={0},desc[4097]={0},text[65537]={0},rurl[257]={0},rcanon[257]={0};if(req->nn>=0){memcpy(p->name.e,req->name.e,(size_t)req->nn);p->nn=req->nn;}if(req->nd>=0){memcpy(p->description.e,req->description.e,(size_t)req->nd);p->nd=req->nd;}if(kind==2 && req->nru>=0){memcpy(p->repo_url.e,req->repo_url.e,(size_t)req->nru);p->nru=req->nru;memcpy(p->repo_canonical.e,req->repo_canonical.e,(size_t)req->nrc);p->nrc=req->nrc;p->repos_count=p->nrc>0?1:0;}if(kind==3){memcpy(p->instructions.e,req->text.e,(size_t)req->nt);p->nt=req->nt;p->instructions_revision=p->revision+1;p->instructions_updated=now;}memcpy(name,p->name.e,(size_t)p->nn);memcpy(desc,p->description.e,(size_t)p->nd);memcpy(text,p->instructions.e,(size_t)p->nt);memcpy(rurl,p->repo_url.e,(size_t)p->nru);memcpy(rcanon,p->repo_canonical.e,(size_t)p->nrc);char ir[32];integer(ir,p->instructions_revision);const char *v[]={id,name,desc,text,rev,ir,ms,rurl,rcanon};if(!run(db,"UPDATE projects.private_v1 SET name=$2,description=$3,instructions=$4,revision=$5::bigint,instructions_revision=$6::bigint,updated_ms=$7::bigint,instructions_updated_ms=CASE WHEN instructions_revision=$6::bigint THEN instructions_updated_ms ELSE $7::bigint END,repo_url=$8,repo_canonical=$9 WHERE id=$1",9,v)){status=503;err="Project could not be saved.";goto done;}p->revision++;p->updated=now;
+ }else if(kind==10){
+  char hp[65]={0},ws[65]={0},lp[513]={0},rr[257]={0},rc[257]={0},act[17]={0};
+  memcpy(hp,breq->host.e,64);memcpy(ws,breq->workspace.e,(size_t)breq->nw);memcpy(lp,breq->local_path.e,(size_t)breq->np);memcpy(rr,breq->repo_remote.e,(size_t)breq->nr);memcpy(rc,breq->repo_canonical.e,(size_t)breq->nc);memcpy(act,breq->action.e,(size_t)breq->na);
+  free(breq);breq=NULL;
+  if(!strcmp(act,"bind")){
+   const char *ev[]={actor->account,hp};PGresult *er=PQexecParams(db,"SELECT 1 FROM chat.environment_connections_v1 WHERE account=$1 AND host_pubkey=$2",2,NULL,ev,NULL,NULL,0);
+   bool owned_env=rows(er) && PQntuples(er)==1;PQclear(er);
+   if(!owned_env){status=404;err="Enrolled computer not found.";goto done;}
+   const char *bv[]={actor->account,id,hp,ws,lp,rr,rc,ms};
+   if(!run(db,"INSERT INTO projects.environment_bindings_v1(account,project,host_pubkey,workspace_id,local_path,repo_remote,repo_canonical,updated_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8::bigint) ON CONFLICT(account,project,host_pubkey,workspace_id) DO UPDATE SET local_path=EXCLUDED.local_path,repo_remote=EXCLUDED.repo_remote,repo_canonical=EXCLUDED.repo_canonical,updated_ms=EXCLUDED.updated_ms",8,bv)){status=503;err="Binding could not be saved.";goto done;}
+  }else{
+   const char *bv[]={actor->account,id,hp,ws};
+   if(!run(db,"DELETE FROM projects.environment_bindings_v1 WHERE account=$1 AND project=$2 AND host_pubkey=$3 AND workspace_id=$4",4,bv)){status=503;err="Binding could not be removed.";goto done;}
+  }
  }else if(kind==4){if(req->nf>0){char fid[25]={0},subject[65]={0};memcpy(fid,req->file.e,(size_t)req->nf);if(!project_subject(q,db,subject)){status=503;err="Upload identity unavailable.";goto done;}
    const char *v[]={fid,subject,actor->pubkey};PGresult *r=PQexecParams(db,"SELECT d.owner,f.status,f.ext,f.bytes,f.object FROM drops.files f JOIN drops.drops d ON d.id=f.drop_id WHERE f.id=$1 AND d.owner IN($2,$3)",3,NULL,v,NULL,NULL,0);
    bool ok=rows(r) && PQntuples(r)==1 && prp_file(true,!strcmp(PQgetvalue(r,0,1),"scanned"),prs(PQgetvalue(r,0,2)),atoll(PQgetvalue(r,0,3)));size_t n=0;unsigned char *bytes=ok?drops_fetch(PQgetvalue(r,0,4),65536,&n):NULL;ok=ok && bytes && n==(size_t)atoll(PQgetvalue(r,0,3)) && pr_text_valid((coax_string){(const char *)bytes,(int64_t)n});if(ok){memcpy(req->text.e,bytes,n);req->nt=(int64_t)n;}free(bytes);PQclear(r);if(!ok){status=422;err="Choose an owned scanned UTF-8 text or Markdown file up to 64 KiB.";goto done;}}
@@ -161,8 +238,14 @@ bool projects_route(const request *q) {
   if(kind==8){if(!account_thread_id(tid)){status=503;err="ID unavailable.";goto done;}used=act_project_start(prs(tid),prs(text),prb(out,65536));if(used<1){status=413;err="Chat does not fit.";goto done;}out[used]=0;const char *v[]={actor->account,tid,(const char *)out,text,ms};const char *link[]={actor->account,tid,id};if(!run(db,"INSERT INTO chat.account_threads_v1(account,id,record,revision,title,updated_ms) VALUES($1,$2,$3,1,left($4,80),$5::bigint)",5,v) || !run(db,"INSERT INTO projects.thread_links_v1(account,thread,project) VALUES($1,$2,$3)",3,link)){status=503;used=-1;err="Chat could not be saved.";goto done;}p->chats++;status=201;
   }else{const char *v[]={actor->account,tid,id};PGresult *r=PQexecParams(db,"SELECT t.record,t.revision FROM chat.account_threads_v1 t JOIN projects.thread_links_v1 l ON l.account=t.account AND l.thread=t.id WHERE l.account=$1 AND l.project=$3 AND l.thread=$2 FOR UPDATE OF t",3,NULL,v,NULL,NULL,0);if(!rows(r) || PQntuples(r)!=1){PQclear(r);status=404;err="Chat not found in this Project.";goto done;}if(!prp_revision(req->thread_revision,atoll(PQgetvalue(r,0,1)))){PQclear(r);status=409;err="Chat changed. Reopen it before sending.";goto done;}used=act_project_user(prs(PQgetvalue(r,0,0)),prs(text),prb(out,65536));PQclear(r);if(used<1){status=409;err="Chat needs an assistant answer first, or is full.";goto done;}out[used]=0;char tr[32];integer(tr,req->thread_revision+1);const char *sv[]={actor->account,tid,(const char *)out,tr,ms};if(!run(db,"UPDATE chat.account_threads_v1 SET record=$3,revision=$4::bigint,updated_ms=$5::bigint WHERE account=$1 AND id=$2",5,sv)){status=503;used=-1;err="Chat could not be saved.";goto done;}}
  }
- if((kind>=4 && kind<=6) || kind==8){const char *v[]={id,rev,ms};if(!run(db,"UPDATE projects.private_v1 SET revision=$2::bigint,updated_ms=$3::bigint WHERE id=$1",3,v)){status=503;used=-1;err="Project revision unavailable.";goto done;}p->revision++;p->updated=now;}
- if(kind<8)used=kind==3?pr_instructions_write((coax_v_t_PrProject){p,1},prb(out,PR_BUF-1)):kind==4?pr_knowledge_write((coax_v_t_PrKnowledge){k,1},prb(out,PR_BUF-1)):kind==5?pr_action(prs(kid),p->revision,now,prb(out,PR_BUF-1)):pr_project_write((coax_v_t_PrProject){p,1},prb(out,PR_BUF-1));
+ if((kind>=4 && kind<=6) || kind==8 || kind==10){const char *v[]={id,rev,ms};if(!run(db,"UPDATE projects.private_v1 SET revision=$2::bigint,updated_ms=$3::bigint WHERE id=$1",3,v)){status=503;used=-1;err="Project revision unavailable.";goto done;}p->revision++;p->updated=now;}
+ if(kind==10){
+  coax_t_PrBindingRow *brows=calloc(32,sizeof *brows);
+  if(brows){char ru_s[257]={0},rc_s[257]={0};memcpy(ru_s,p->repo_url.e,(size_t)p->nru);memcpy(rc_s,p->repo_canonical.e,(size_t)p->nrc);int nb=collect_project_bindings(db,actor->account,id,rc_s,now,brows,32);used=pr_bindings_write_c(prs(id),p->revision,prs(ru_s),prs(rc_s),(coax_v_t_PrBindingRow){brows,32},nb,prb(out,PR_BUF-1));free(brows);}
+ }else if(kind<8){
+  if(kind==1 || kind==2){coax_t_PrBindingRow *brows=calloc(32,sizeof *brows);if(brows){char rc_s[257]={0};memcpy(rc_s,p->repo_canonical.e,(size_t)p->nrc);p->envs_count=collect_project_bindings(db,actor->account,id,rc_s,now,brows,32);free(brows);}}
+  used=kind==3?pr_instructions_write((coax_v_t_PrProject){p,1},prb(out,PR_BUF-1)):kind==4?pr_knowledge_write((coax_v_t_PrKnowledge){k,1},prb(out,PR_BUF-1)):kind==5?pr_action(prs(kid),p->revision,now,prb(out,PR_BUF-1)):pr_project_write((coax_v_t_PrProject){p,1},prb(out,PR_BUF-1));
+ }
  if(used>0)out[used]=0;
  if(used>0 && !receipt(db,actor->account,operation,q->path,hash,"done",status,(const char *)out,now)){used=-1;status=503;err="Mutation receipt unavailable.";}
  if(used>0){if(!run(db,"COMMIT",0,NULL)){used=-1;status=503;err="Save result unknown. Retry the same operation ID.";}transaction=false;}

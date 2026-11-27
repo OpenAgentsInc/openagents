@@ -256,6 +256,8 @@ static const auth_rule RULES[] = {
   R("POST", "/api/chat/environment/workspace/v1", false, AP_HUMAN, "typed workspace controls under the exact current computer grant"),
   R("GET",  "/api/chat/history/v1", false, AP_ACCOUNT, "the account's own saved chat list, including an email session"),
   R("GET",  "/api/chat/environments/v1", false, AP_ACCOUNT, "the account's enrolled computers"),
+  R("POST", "/api/chat/environments/v1", false, AP_HUMAN, "enroll or heartbeat an account's computer and discovered workspaces"),
+  R("POST", "/api/chat/environments/v1/remove", false, AP_HUMAN, "remove an enrolled computer from the account"),
   R("GET",  "/api/chat/environment/v1", false, AP_ACCOUNT, "read-only admitted environment methods"),
   R("POST", "/api/chat/environment/v1", false, AP_HUMAN, "supervised environment commands under the current HOST grant"),
   R("GET",  "/api/chat/environment/station/v1", false, AP_ACCOUNT, "an enrolled computer's own report for the delegation router: read-only, under its HOST grant"),

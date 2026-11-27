@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenAgents Environment Enrollment and Rich Catalog v1alpha1/v2alpha1",
+  "description": "Account-owned computer enrollment request/response (openagents.environment.enroll.v1alpha1) and detailed workspace catalog (openagents.environment.catalog.v2alpha1). Broker secrets (grant_id) are accepted on enrollment only and never returned in responses.",
+  "type": "object",
+  "required": ["schema"],
+  "properties": {
+    "schema": {
+      "enum": [
+        "openagents.environment.enroll.v1alpha1",
+        "openagents.environment.catalog.v2alpha1"
+      ]
+    },
+    "host_pubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "display_name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "grant_id": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "epoch": { "type": "integer", "minimum": 0 },
+    "relay": { "type": "string", "minLength": 8, "maxLength": 256 },
+    "os": { "enum": ["", "macos", "linux", "windows"] },
+    "last_seen_ms": { "type": "integer", "minimum": 0 },
+    "online": { "type": "boolean" },
+    "removed": { "type": "boolean" },
+    "workspaces": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["workspace_id", "name"],
+        "properties": {
+          "workspace_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "local_path": { "type": "string", "maxLength": 512 },
+          "repo_remote": { "type": "string", "maxLength": 256 },
+          "repo_canonical": { "type": "string", "maxLength": 256 },
+          "branch": { "type": "string", "maxLength": 96 }
+        }
+      }
+    },
+    "environments": { "type": "array", "maxItems": 64 }
+  }
+}
