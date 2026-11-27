@@ -654,7 +654,7 @@ def verbs(check):
               and any(n.startswith(rid) for n in os.listdir(os.path.join(rhome, ".openagents", "coder", "sessions"))) and rid in rs.stdout and "finished" in rs.stdout)
         # replay (chapter 9): a Microcoder run recorded from Vertex replays through the loop with no credentials, the same each time
         import re, shutil
-        fx = os.path.join(HERE, "fixtures", "micro-replay")
+        fx = os.path.join(TUI_DIR, "fixtures", "micro-replay")
         rw = tempfile.mkdtemp(prefix="coder-replay-")
         renv = dict(env, OPENAGENTS_SECRETS="/nonexistent")
         for k in ("VERTEX_ACCESS_TOKEN", "GOOGLE_APPLICATION_CREDENTIALS", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
@@ -685,7 +685,7 @@ def verbs(check):
         evs = open(os.path.join(mdir, "events.jsonl")).read()
         mfx = tempfile.mkdtemp(prefix="coder-memory-replay-")
         for n in ("1.http", "2.http", "3.http"):
-            shutil.copy(os.path.join(HERE, "fixtures", "memory-replay", n), mfx)
+            shutil.copy(os.path.join(TUI_DIR, "fixtures", "memory-replay", n), mfx)
         mr = mq("recall", "how do I put the website live?", "--json", e=dict(menv, GW_REPLAY=mfx))
         mj = json.loads(mr.stdout or "{}")
         vlines = open(os.path.join(mdir, "vectors.jsonl")).read().count("\n")
@@ -837,7 +837,7 @@ def verbs(check):
               and len(cr2) == 1 and "[credential]" in clog and str(len(cv) + 1) in clog and cv not in clog)
         # Wasm plugins: built from Coax, run in the bounded host; a module importing more than it was admitted is refused
         if os.path.exists("/opt/homebrew/opt/llvm/bin/clang") and os.path.isdir("/opt/homebrew/opt/wasi-libc/share/wasi-sysroot"):
-            wsrc = os.path.join(REPO, "coder", "plugins", "hello", "hello.coax"); wsh = os.path.join(HERE, "wasm_plugin.sh")
+            wsrc = os.path.join(REPO, "coder", "plugins", "hello", "hello.coax"); wsh = os.path.join(TUI_DIR, "wasm_plugin.sh")
             subprocess.run([wsh, wsrc, os.path.join(plugdir, "hello.wasm"), "hello", "spin"], check=True, capture_output=True, timeout=300)
             subprocess.run([wsh, wsrc, os.path.join(plugdir, "clocky.wasm"), "hello", "clock"], check=True, capture_output=True, timeout=300)
             with open(os.path.join(plugdir, "hello.json"), "w") as f:
@@ -1492,7 +1492,7 @@ def main():
                    CODER_HOME=tempfile.mkdtemp(prefix="coder-smoke-tui-"), CODER_USAGE_KEYCHAIN="0")      # its sessions stay out of the person's own
         for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
             env.pop(k, None)
-        os.execve(os.path.join(HERE, "coder.sh"), [os.path.join(HERE, "coder.sh"), "--engine", "echo"], env)
+        os.execve(os.path.join(TUI_DIR, "coder.sh"), [os.path.join(TUI_DIR, "coder.sh"), "--engine", "echo"], env)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
     out = bytearray()
 
@@ -1569,7 +1569,7 @@ def main():
     check("recap: the status bar shows the model's line, cleaned", read_until("Waiting on the sleep command ·", 12))
     read_until("$ sleep 7 · exit 0", 10)
     # a background job shows in the hint line while it runs
-    send(("$ " + os.path.join(HERE, "coder.sh") + " run '$ sleep 8' --engine echo --detach\r").encode())
+    send(("$ " + os.path.join(TUI_DIR, "coder.sh") + " run '$ sleep 8' --engine echo --detach\r").encode())
     check("a running job shows in the hint line", read_until("running · Enter send", 15))
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 60, 0, 0))   # the kernel sends SIGWINCH
     mark = len(out)
