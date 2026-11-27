@@ -1,0 +1,219 @@
+// tool.sh: tls
+// Phase 4 Coax Streamable HTTP MCP Conformance Client (2025-11-25 + 2026-07-28).
+// Implements the @modelcontextprotocol/conformance client CLI contract:
+//   everything-client [--2026-suite] <serverUrl>
+// Reads MCP_CONFORMANCE_SCENARIO from environment:
+//   - initialize
+//   - tools_call
+//   - elicitation-sep1034-client-defaults
+//   - sse-retry
+//   - (default / --2026-suite): dual-era discovery, schema 2020-12 preservation, tools/resources/prompts
+#load "../../coax/lib/mcp/http_client.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+
+ec_find_tool :: (d: Jv, name: string) -> int {
+  res := jv_get(d, 0, "result");
+  if res == -1 { return -1; }
+  tools := jv_get(d, res, "tools");
+  if jv_kind(d, tools) != JV_ARRAY { return -1; }
+  n := jv_len(d, tools);
+  for i: 0..<n {
+    t := jv_at(d, tools, i);
+    tn := jv_get(d, t, "name");
+    if tn != -1 && jv_raw(d, tn) == name { return t; }
+  }
+  return -1;
+}
+
+ec_first_tool_name :: (d: Jv, out: [] u8) -> string {
+  res := jv_get(d, 0, "result");
+  if res == -1 { return ""; }
+  tools := jv_get(d, res, "tools");
+  if jv_kind(d, tools) != JV_ARRAY || jv_len(d, tools) == 0 { return ""; }
+  t := jv_at(d, tools, 0);
+  tn := jv_get(d, t, "name");
+  if tn == -1 { return ""; }
+  s := jv_raw(d, tn);
+  n := mcp_hc_copy_str(out, s);
+  return cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) {
+    tool_errln("everything-client: failed to load args");
+    return 2;
+  }
+
+  suite_2026 := false;
+  url := "";
+  for i: 0..<a[0].n {
+    arg := args_at(a[..], i);
+    if arg == "--2026-suite" { suite_2026 = true; }
+    else if arg.count > 0 && arg[0] != '-' { url = arg; }
+  }
+  if url.count == 0 {
+    tool_errln("usage: everything-client [--2026-suite] <serverUrl>");
+    return 2;
+  }
+
+  scen_buf: [128] u8;
+  scenario := proc_getenv("MCP_CONFORMANCE_SCENARIO", scen_buf[..]);
+
+  cli: [1] McpHttpClient;
+  caps := McpClientCaps.{
+    elicitation = true,
+    elicitation_form = true,
+    sampling = true,
+    roots = true
+  };
+  if !mcp_hc_init(cli[..], url, McpImplInfo.{ name = "coax-mcp-conformance-client", version = "0.4.0" }, caps) {
+    tool_errln("everything-client: invalid URL");
+    return 2;
+  }
+
+  // Known 2025-11-25 conformance scenarios expect direct initialize without an extra server/discover POST
+  if !suite_2026 && (scenario == "initialize" || scenario == "tools_call" || scenario == "elicitation-sep1034-client-defaults" || scenario == "sse-retry") {
+    cli[0].prefer_legacy_2025 = true;
+  }
+
+  rc := mcp_hc_connect(cli[..]);
+  if rc != MCP_HC_OK {
+    tool_errln("everything-client: connect failed");
+    return 1;
+  }
+
+  print("CONNECTED mode=% version=% server=%/%\n",
+    ifx cli[0].core[0].modern then "2026-07-28" else "2025-11-25",
+    mcp_hc_proto(cli[..]),
+    mcp_hc_server_name(cli[..]),
+    mcp_hc_server_version(cli[..]));
+
+  if scenario == "initialize" {
+    _ = mcp_hc_tools_list(cli[..], "");
+    mcp_hc_close(cli[..]);
+    return 0;
+  }
+
+  if scenario == "tools_call" {
+    rc_l := mcp_hc_tools_list(cli[..], "");
+    if rc_l != MCP_HC_OK {
+      tool_errln("everything-client: tools/list failed");
+      return 1;
+    }
+    rc_c := mcp_hc_tools_call(cli[..], "add_numbers", "{\"a\":5,\"b\":3}", "");
+    if rc_c != MCP_HC_OK {
+      tool_errln("everything-client: add_numbers call failed");
+      return 1;
+    }
+    print("TOOL_RESULT %\n", mcp_hc_resp_body(cli[..]));
+    mcp_hc_close(cli[..]);
+    return 0;
+  }
+
+  if scenario == "elicitation-sep1034-client-defaults" {
+    _ = mcp_hc_open_get_sse(cli[..]);
+    rc_l := mcp_hc_tools_list(cli[..], "");
+    if rc_l != MCP_HC_OK {
+      tool_errln("everything-client: tools/list failed");
+      return 1;
+    }
+    rc_c := mcp_hc_tools_call(cli[..], "test_client_elicitation_defaults", "{}", "");
+    if rc_c != MCP_HC_OK {
+      tool_errln("everything-client: test_client_elicitation_defaults failed");
+      return 1;
+    }
+    print("ELICIT_DEFAULTS_RESULT %\n", mcp_hc_resp_body(cli[..]));
+    mcp_hc_close(cli[..]);
+    return 0;
+  }
+
+  if scenario == "sse-retry" {
+    rc_l := mcp_hc_tools_list(cli[..], "");
+    if rc_l != MCP_HC_OK {
+      tool_errln("everything-client: tools/list failed");
+      return 1;
+    }
+    d: [1] Jv;
+    nodes: [1024] JvNode;
+    tname_buf: [128] u8;
+    tname := "test_reconnection";
+    if jv_parse(d[..], mcp_hc_resp_body(cli[..]), nodes[..]) {
+      if ec_find_tool(d[0], "test_reconnection") == -1 {
+        first := ec_first_tool_name(d[0], tname_buf[..]);
+        if first.count > 0 { tname = first; }
+      }
+    }
+    rc_c := mcp_hc_tools_call(cli[..], tname, "{}", "");
+    if rc_c != MCP_HC_OK {
+      tool_errln("everything-client: sse-retry tool call failed");
+      return 1;
+    }
+    print("SSE_RETRY_RESULT %\n", mcp_hc_resp_body(cli[..]));
+    mcp_hc_close(cli[..]);
+    return 0;
+  }
+
+  // Default / --2026-suite self-test against Coax everything-server (2026-07-28 stateless)
+  rc_l := mcp_hc_tools_list(cli[..], "");
+  if rc_l != MCP_HC_OK {
+    tool_errln("everything-client: tools/list failed");
+    return 1;
+  }
+  d: [1] Jv;
+  nodes: [2048] JvNode;
+  if !jv_parse(d[..], mcp_hc_resp_body(cli[..]), nodes[..]) {
+    tool_errln("everything-client: tools/list JSON parse failed");
+    return 1;
+  }
+  res := jv_get(d[0], 0, "result");
+  tools := jv_get(d[0], res, "tools");
+  tcount := jv_len(d[0], tools);
+  valid_hdrs := 0;
+  for i: 0..<tcount {
+    if mcp_client_tool_headers_valid(d[0], jv_at(d[0], tools, i)) { valid_hdrs += 1; }
+  }
+  // Verify JSON Schema 2020-12 $schema/$defs/$ref preserved verbatim without dereferencing
+  js_tool := ec_find_tool(d[0], "json_schema_2020_12_tool");
+  schema_preserved := false;
+  if js_tool != -1 {
+    inp := jv_get(d[0], js_tool, "inputSchema");
+    sc := jv_get(d[0], inp, "$schema");
+    defs := jv_get(d[0], inp, "$defs");
+    props := jv_get(d[0], inp, "properties");
+    addr := jv_get(d[0], props, "address");
+    ref := jv_get(d[0], addr, "$ref");
+    if sc != -1 && defs != -1 && ref != -1 && jv_raw(d[0], ref) == "#/$defs/address" {
+      schema_preserved = true;
+    }
+  }
+  print("TOOLS count=% valid_headers=% schema_2020_12_preserved=%\n", tcount, valid_hdrs, schema_preserved);
+  if !schema_preserved {
+    tool_errln("everything-client: JSON Schema 2020-12 $defs/$ref not preserved");
+    return 1;
+  }
+
+  // Call test_simple_text with 2026-07-28 Mcp-Method / Mcp-Name headers
+  if mcp_hc_tools_call(cli[..], "test_simple_text", "{}", "") != MCP_HC_OK {
+    tool_errln("everything-client: test_simple_text failed");
+    return 1;
+  }
+  print("CALL_SIMPLE_TEXT ok=true\n");
+
+  // Call resources/read and prompts/get
+  if mcp_hc_resources_read(cli[..], "test://static-text") != MCP_HC_OK {
+    tool_errln("everything-client: resources/read failed");
+    return 1;
+  }
+  print("RESOURCE_READ ok=true\n");
+
+  if mcp_hc_prompts_get(cli[..], "test_simple_prompt", "") != MCP_HC_OK {
+    tool_errln("everything-client: prompts/get failed");
+    return 1;
+  }
+  print("PROMPT_GET ok=true\n");
+
+  mcp_hc_close(cli[..]);
+  return 0;
+}

@@ -1,0 +1,703 @@
+// Pure #authority HTTP/1.1 client wire codec, incremental chunked transfer decoder,
+// and incremental SSE (Server-Sent Events) parser for MCP Streamable HTTP clients
+// (2025-11-25 stateful + 2026-07-28 stateless).
+// Zero heap allocation; all state lives in caller-owned fixed buffers.
+#authority;
+#load "http_wire.coax";
+
+MCP_HTTP_URL_MAX :: 2048;
+
+// Chunked stream decoder statuses
+MCP_CS_NEED_MORE :: 0;
+MCP_CS_DONE :: 1;
+MCP_CS_ERROR :: -1;
+
+// Chunked stream states
+MCP_CS_ST_SIZE :: 0;
+MCP_CS_ST_DATA :: 1;
+MCP_CS_ST_DATA_CR :: 2;
+MCP_CS_ST_DATA_LF :: 3;
+MCP_CS_ST_TRAILER :: 4;
+MCP_CS_ST_DONE :: 5;
+
+// SSE parser statuses
+MCP_SSE_NONE :: 0;
+MCP_SSE_EVENT :: 1;
+MCP_SSE_OVERFLOW :: -1;
+
+MCP_SSE_LINE_CAP :: 65536;
+MCP_SSE_DATA_CAP :: 65536;
+MCP_SSE_ID_CAP :: 256;
+MCP_SSE_EVENT_CAP :: 64;
+
+McpHttpUrl :: struct {
+  ok: bool;
+  tls: bool;
+  host: string;
+  port: int;
+  target: string; // path + optional ?query, always starts with '/'
+}
+
+McpHttpRespHead :: struct {
+  status: int;
+  headers: [MCP_HTTP_MAX_HEADERS] McpHttpHeader;
+  header_count: int;
+  header_end: int;
+  has_content_length: bool;
+  content_length: int;
+  is_chunked: bool;
+  is_json: bool;
+  is_sse: bool;
+  session_id: string;
+  www_authenticate: string;
+}
+
+McpChunkStream :: struct {
+  state: int;
+  remaining: int;
+  line_len: int;
+  line_buf: [128] u8;
+}
+
+McpSseEvent :: struct {
+  has_id: bool;
+  id_len: int;
+  id_buf: [MCP_SSE_ID_CAP] u8;
+  event_len: int;
+  event_buf: [MCP_SSE_EVENT_CAP] u8;
+  has_retry: bool;
+  retry_ms: int;
+  data_len: int;
+  data_buf: [MCP_SSE_DATA_CAP] u8;
+}
+
+McpSseParser :: struct {
+  line_len: int;
+  line_buf: [MCP_SSE_LINE_CAP] u8;
+  skip_lf: bool;
+  has_data: bool;
+  cur_data_len: int;
+  cur_data_buf: [MCP_SSE_DATA_CAP] u8;
+  cur_event_len: int;
+  cur_event_buf: [MCP_SSE_EVENT_CAP] u8;
+  has_id: bool;
+  last_id_len: int;
+  last_id_buf: [MCP_SSE_ID_CAP] u8;
+  has_retry: bool;
+  retry_ms: int;
+}
+
+#test "http_client_wire URL parser, request writer, and response head parser" {
+  // Valid HTTP and HTTPS URLs
+  u := mcp_http_parse_url("http://localhost:8080/mcp?x=1");
+  #assert u.ok && !u.tls && u.host == "localhost" && u.port == 8080 && u.target == "/mcp?x=1";
+  u2 := mcp_http_parse_url("https://api.example.com/v1/mcp");
+  #assert u2.ok && u2.tls && u2.host == "api.example.com" && u2.port == 443 && u2.target == "/v1/mcp";
+  u3 := mcp_http_parse_url("http://127.0.0.1");
+  #assert u3.ok && !u3.tls && u3.host == "127.0.0.1" && u3.port == 80 && u3.target == "/";
+  u4 := mcp_http_parse_url("http://127.0.0.1:1/?a=b");
+  #assert u4.ok && u4.port == 1 && u4.target == "/?a=b";
+  u5 := mcp_http_parse_url("https://example.com:65535");
+  #assert u5.ok && u5.tls && u5.port == 65535 && u5.target == "/";
+  u6 := mcp_http_parse_url("http://a");
+  #assert u6.ok && !u6.tls && u6.host == "a" && u6.port == 80 && u6.target == "/";
+  u7 := mcp_http_parse_url("http://a:80/!~");
+  #assert u7.ok && u7.host == "a" && u7.port == 80 && u7.target == "/!~";
+  u8 := mcp_http_parse_url("http://a!~");
+  #assert u8.ok && u8.host == "a!~";
+  u9 := mcp_http_parse_url("https://a");
+  #assert u9.ok && u9.tls && u9.host == "a" && u9.port == 443;
+  #assert mcp_http_has_prefix("ab", "ab") && !mcp_http_has_prefix("a", "ab") && !mcp_http_has_prefix("ac", "ab");
+
+  // Invalid URLs
+  #assert !mcp_http_parse_url("").ok;
+  #assert !mcp_http_parse_url("ftp://example.com/mcp").ok;
+  #assert !mcp_http_parse_url("http://").ok;
+  #assert !mcp_http_parse_url("https://").ok;
+  #assert !mcp_http_parse_url("http:///mcp").ok;
+  #assert !mcp_http_parse_url("http://:80/mcp").ok;
+  #assert !mcp_http_parse_url("http://host:/mcp").ok;
+  #assert !mcp_http_parse_url("http://host:0/mcp").ok;
+  #assert !mcp_http_parse_url("http://host:65536/mcp").ok;
+  #assert !mcp_http_parse_url("http://host:abc/mcp").ok;
+  #assert !mcp_http_parse_url("http://user@host/mcp").ok;
+  #assert !mcp_http_parse_url("http://a#b").ok;
+  #assert !mcp_http_parse_url("http://a b").ok;
+  #assert !mcp_http_parse_url("http://host/mcp#frag").ok;
+  #assert !mcp_http_parse_url("http://host/bad path").ok;
+  del_auth: [10] u8;
+  for i: 0..<8 { del_auth[i] = "http://a"[i]; }
+  del_auth[8] = 127;
+  #assert !mcp_http_parse_url(cast(string) del_auth[0..<9]).ok;
+  del_path: [11] u8;
+  for i: 0..<9 { del_path[i] = "http://a/"[i]; }
+  del_path[9] = 127;
+  #assert !mcp_http_parse_url(cast(string) del_path[0..<10]).ok;
+  long_url: [MCP_HTTP_URL_MAX + 1] u8;
+  for i: 0..<MCP_HTTP_URL_MAX + 1 { long_url[i] = 'a'; }
+  for i: 0..<7 { long_url[i] = "http://"[i]; }
+  #assert mcp_http_parse_url(cast(string) long_url[0..<MCP_HTTP_URL_MAX]).ok;
+  #assert !mcp_http_parse_url(cast(string) long_url[..]).ok;
+
+  // Request writer
+  out: [512] u8;
+  tiny: [8] u8;
+  n := mcp_http_write_req("POST", "/mcp", "127.0.0.1:8080", "Accept: application/json\r\n", "{\"a\":1}", out[..]);
+  #assert n > 0;
+  #assert cast(string) out[0..<n] == "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nConnection: close\r\nContent-Length: 7\r\nAccept: application/json\r\n\r\n{\"a\":1}";
+  ng := mcp_http_write_req("GET", "/mcp", "localhost", "Accept: text/event-stream\r\n", "", out[..]);
+  #assert ng > 0;
+  #assert cast(string) out[0..<ng] == "GET /mcp HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nAccept: text/event-stream\r\n\r\n";
+  np0 := mcp_http_write_req("POST", "/mcp", "h", "", "", out[..]);
+  #assert np0 > 0 && cast(string) out[0..<np0] == "POST /mcp HTTP/1.1\r\nHost: h\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+  nput := mcp_http_write_req("PUT", "/mcp", "h", "", "x", out[..]);
+  #assert nput > 0 && cast(string) out[0..<nput] == "PUT /mcp HTTP/1.1\r\nHost: h\r\nConnection: close\r\nContent-Length: 1\r\n\r\nx";
+  #assert mcp_http_write_req("GET", "/mcp", "h", "", "", tiny[..]) == -1;
+  #assert mcp_http_write_req("GET\r\n", "/mcp", "h", "", "", out[..]) == -1;
+  #assert mcp_http_write_req("GET", "/mcp\n", "h", "", "", out[..]) == -1;
+  #assert mcp_http_write_req("GET", "/mcp", "h\r", "", "", out[..]) == -1;
+
+  // Response head parser
+  rh: [1] McpHttpRespHead;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\r\n", rh[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_parse_resp_head("\r\n\r", rh[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\n\r\n", rh[..]) == MCP_HTTP_NEED_MORE;
+
+  raw_json := "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 2\r\nMcp-Session-Id: sess-42\r\n\r\n{}";
+  #assert mcp_http_parse_resp_head(raw_json, rh[..]) == MCP_HTTP_OK;
+  #assert rh[0].status == 200 && rh[0].is_json && !rh[0].is_sse && !rh[0].is_chunked;
+  #assert rh[0].has_content_length && rh[0].content_length == 2;
+  #assert rh[0].session_id == "sess-42" && rh[0].header_end == raw_json.count - 2;
+  #assert mcp_http_resp_header_get(rh[0], "Content-Type") == "application/json; charset=utf-8";
+  #assert mcp_http_resp_header_get(rh[0], "MCP-SESSION-ID") == "sess-42";
+  #assert mcp_http_resp_header_get(rh[0], "Missing") == "";
+
+  raw_sse := "HTTP/1.0 200\r\nContent-Type: text/event-stream; charset=utf-8\r\nTransfer-Encoding: chunked\r\nWWW-Authenticate: Bearer scope=\"read\"\r\n\r\n";
+  #assert mcp_http_parse_resp_head(raw_sse, rh[..]) == MCP_HTTP_OK;
+  #assert rh[0].status == 200 && rh[0].is_sse && !rh[0].is_json && rh[0].is_chunked;
+  #assert rh[0].www_authenticate == "Bearer scope=\"read\"";
+
+  // Malformed response heads
+  #assert mcp_http_parse_resp_head("\r\nHTTP/1.1 200 OK\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("BAD\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/2.0 200 OK\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200X\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 99 OK\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 600 OK\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 abc OK\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\r\nBadHeader\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\r\n:bad\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\r\n:a:b\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\r\nX:v\r\nContent-Length: 0\r\n\r\n", rh[..]) == MCP_HTTP_OK;
+  #assert mcp_http_resp_header_get(rh[0], "X") == "v" && rh[0].content_length == 0;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\n", rh[..]) == MCP_HTTP_OK;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200 OK\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\n", rh[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 200\r\n\r\n", rh[..]) == MCP_HTTP_OK && rh[0].status == 200 && rh[0].header_end == 16;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 100 Continue\r\n\r\n", rh[..]) == MCP_HTTP_OK && rh[0].status == 100;
+  #assert mcp_http_parse_resp_head("HTTP/1.1 599 End\r\n\r\n", rh[..]) == MCP_HTTP_OK && rh[0].status == 599;
+
+  // Max headers boundary
+  hbuf: [512] u8;
+  hp := mcp_http_append(hbuf[..], 0, "HTTP/1.1 200 OK\r\n");
+  for i: 0..<MCP_HTTP_MAX_HEADERS { hp = mcp_http_append(hbuf[..], hp, "a:1\r\n"); }
+  hp48 := mcp_http_append(hbuf[..], hp, "\r\n");
+  #assert mcp_http_parse_resp_head(cast(string) hbuf[0..<hp48], rh[..]) == MCP_HTTP_OK && rh[0].header_count == MCP_HTTP_MAX_HEADERS;
+  hp49 := mcp_http_append(hbuf[..], hp, "b:2\r\n\r\n");
+  #assert mcp_http_parse_resp_head(cast(string) hbuf[0..<hp49], rh[..]) == MCP_HTTP_TOO_LARGE;
+}
+
+#test "http_client_wire incremental chunked decoder handles byte-by-byte, extensions, trailers, and errors" {
+  cs: [1] McpChunkStream;
+  mcp_chunk_stream_init(cs[..]);
+  wire := "5;ext=1\r\nhello\r\n6\r\n world\r\n0\r\nX-Tr: ok\r\n\r\n";
+  acc: [64] u8;
+  acc_n := 0;
+  out_n: [1] int;
+  done := false;
+  // Feed 1 byte at a time to verify all state transitions
+  for i: 0..<wire.count {
+    rc := mcp_chunk_stream_feed(cs[..], wire[i..<i + 1], acc[acc_n..<acc.count], out_n[..]);
+    #assert rc != MCP_CS_ERROR;
+    acc_n += out_n[0];
+    if rc == MCP_CS_DONE { done = true; }
+  }
+  #assert done && cast(string) acc[0..<acc_n] == "hello world";
+  // Feeding after DONE stays DONE with 0 bytes
+  #assert mcp_chunk_stream_feed(cs[..], "x", acc[..], out_n[..]) == MCP_CS_DONE && out_n[0] == 0;
+
+  // Error cases: bad hex, missing LF after CR, bad CR after data, oversized chunk line, output overflow
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "ZZ\r\n", acc[..], out_n[..]) == MCP_CS_ERROR;
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "1\r\naX", acc[..], out_n[..]) == MCP_CS_ERROR;
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "1\r\na\rX", acc[..], out_n[..]) == MCP_CS_ERROR;
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "5\r\nabcde\r\n", acc[0..<3], out_n[..]) == MCP_CS_ERROR;
+  // Chunk size line > 128 bytes
+  long_line: [130] u8;
+  for i: 0..<130 { long_line[i] = 'a'; }
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], cast(string) long_line[..], acc[..], out_n[..]) == MCP_CS_ERROR;
+  // Trailer line > 128 bytes
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "0\r\n", acc[..], out_n[..]) == MCP_CS_NEED_MORE;
+  #assert mcp_chunk_stream_feed(cs[..], cast(string) long_line[..], acc[..], out_n[..]) == MCP_CS_ERROR;
+  // Bare LF without CR in size line or trailer line rejected
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "\n", acc[..], out_n[..]) == MCP_CS_ERROR;
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "0\n", acc[..], out_n[..]) == MCP_CS_ERROR;
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "0\r\n\n", acc[..], out_n[..]) == MCP_CS_ERROR;
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "0\r\nX\n", acc[..], out_n[..]) == MCP_CS_ERROR;
+  mcp_chunk_stream_init(cs[..]);
+  #assert mcp_chunk_stream_feed(cs[..], "0\r\n\r\n", acc[..], out_n[..]) == MCP_CS_DONE && cs[0].line_len == 0;
+}
+
+#test "http_client_wire incremental SSE parser handles priming events, multi-line data, CRLF, comments, and retry" {
+  p: [1] McpSseParser;
+  ev: [1] McpSseEvent;
+  mcp_sse_init(p[..]);
+
+  // 1. Priming event with id + retry + empty data (SEP-1699)
+  stream1 := ": keep-alive\n\nid: ev-1\nretry: 500\ndata: \n\n";
+  consumed: [1] int;
+  pos := 0;
+  got := false;
+  while pos < stream1.count {
+    rc := mcp_sse_feed(p[..], stream1[pos..<stream1.count], consumed[..], ev[..]);
+    pos += consumed[0];
+    if rc == MCP_SSE_EVENT {
+      got = true;
+      #assert ev[0].has_id && cast(string) ev[0].id_buf[0..<ev[0].id_len] == "ev-1";
+      #assert ev[0].has_retry && ev[0].retry_ms == 500;
+      #assert ev[0].data_len == 0;
+    }
+  }
+  #assert got && mcp_sse_last_id(p[..]) == "ev-1" && p[0].has_retry && p[0].retry_ms == 500;
+
+  // 2. Multi-line data event with CRLF and byte-by-byte feeding, plus event name and no-colon field
+  stream2 := "event: message\r\nid:ev-2\r\ndata: line1\r\ndata:line2\r\nretry: bad\r\nunknown\r\n\r\n";
+  got2 := false;
+  for i: 0..<stream2.count {
+    rc := mcp_sse_feed(p[..], stream2[i..<i + 1], consumed[..], ev[..]);
+    #assert consumed[0] == 1;
+    if rc == MCP_SSE_EVENT {
+      got2 = true;
+      #assert cast(string) ev[0].event_buf[0..<ev[0].event_len] == "message";
+      #assert cast(string) ev[0].id_buf[0..<ev[0].id_len] == "ev-2";
+      #assert cast(string) ev[0].data_buf[0..<ev[0].data_len] == "line1\nline2";
+      #assert ev[0].retry_ms == 500; // invalid retry ignored
+    }
+  }
+  #assert got2 && mcp_sse_last_id(p[..]) == "ev-2";
+
+  // 3. Bare CR line endings and NUL in id ignored (SSE spec)
+  mcp_sse_init(p[..]);
+  nul_id: [32] u8;
+  s_pref := "id: a";
+  for i: 0..<s_pref.count { nul_id[i] = s_pref[i]; }
+  nul_id[5] = 0;
+  s_suf := "\rdata: hi\r\r";
+  for i: 0..<s_suf.count { nul_id[6 + i] = s_suf[i]; }
+  rc3 := mcp_sse_feed(p[..], cast(string) nul_id[0..<6 + s_suf.count], consumed[..], ev[..]);
+  #assert rc3 == MCP_SSE_EVENT && !ev[0].has_id && cast(string) ev[0].data_buf[0..<ev[0].data_len] == "hi";
+
+  // 4. Subsequent event resets cur_data_len/cur_event_len, blank line clears dangling event, retry: 0, data:, no-colon data, skip_lf reset
+  mcp_sse_init(p[..]);
+  s4 := "event: stale\n\ndata: a\n\nevent: e1\nretry: 0\ndata:\n\ndata\n\ndata: b\rX\n\n";
+  pos = 0;
+  ev_cnt := 0;
+  while pos < s4.count {
+    rc := mcp_sse_feed(p[..], s4[pos..<s4.count], consumed[..], ev[..]);
+    pos += consumed[0];
+    if rc == MCP_SSE_EVENT {
+      ev_cnt += 1;
+      if ev_cnt == 1 {
+        #assert ev[0].event_len == 0 && cast(string) ev[0].data_buf[0..<ev[0].data_len] == "a";
+      } else if ev_cnt == 2 {
+        #assert cast(string) ev[0].event_buf[0..<ev[0].event_len] == "e1";
+        #assert ev[0].has_retry && ev[0].retry_ms == 0 && ev[0].data_len == 0;
+      } else if ev_cnt == 3 {
+        #assert ev[0].event_len == 0 && ev[0].data_len == 0;
+      } else if ev_cnt == 4 {
+        #assert cast(string) ev[0].data_buf[0..<ev[0].data_len] == "b";
+      }
+    }
+  }
+  #assert ev_cnt == 4;
+
+  // 5. Event & ID capacity clamping + line/data overflow
+  mcp_sse_init(p[..]);
+  big_hdr: [512] u8;
+  eh := mcp_http_append(big_hdr[..], 0, "event: ");
+  for i: 0..<MCP_SSE_EVENT_CAP + 5 { big_hdr[eh + i] = 'e'; }
+  eh += MCP_SSE_EVENT_CAP + 5;
+  eh = mcp_http_append(big_hdr[..], eh, "\nid: ");
+  for i: 0..<MCP_SSE_ID_CAP + 5 { big_hdr[eh + i] = 'i'; }
+  eh += MCP_SSE_ID_CAP + 5;
+  eh = mcp_http_append(big_hdr[..], eh, "\ndata: ok\n\n");
+  rc5 := mcp_sse_feed(p[..], cast(string) big_hdr[0..<eh], consumed[..], ev[..]);
+  #assert rc5 == MCP_SSE_EVENT && ev[0].event_len == MCP_SSE_EVENT_CAP && ev[0].id_len == MCP_SSE_ID_CAP;
+
+  // Line overflow at exact MCP_SSE_LINE_CAP + 1
+  mcp_sse_init(p[..]);
+  big_line: [MCP_SSE_LINE_CAP + 1] u8;
+  for i: 0..<MCP_SSE_LINE_CAP + 1 { big_line[i] = 'x'; }
+  #assert mcp_sse_feed(p[..], cast(string) big_line[0..<MCP_SSE_LINE_CAP], consumed[..], ev[..]) == MCP_SSE_NONE;
+  #assert mcp_sse_feed(p[..], "y", consumed[..], ev[..]) == MCP_SSE_OVERFLOW && consumed[0] == 1;
+
+  // Data overflow on append and on newline separator
+  mcp_sse_init(p[..]);
+  big_data: [MCP_SSE_DATA_CAP + 10] u8;
+  bd := mcp_http_append(big_data[..], 0, "data: ");
+  for i: 0..<MCP_SSE_DATA_CAP - 10 { big_data[bd + i] = 'a'; }
+  bd += MCP_SSE_DATA_CAP - 10;
+  big_data[bd] = '\n'; bd += 1;
+  #assert mcp_sse_feed(p[..], cast(string) big_data[0..<bd], consumed[..], ev[..]) == MCP_SSE_NONE;
+  #assert mcp_sse_feed(p[..], "data: 0123456789\n", consumed[..], ev[..]) == MCP_SSE_OVERFLOW;
+  mcp_sse_init(p[..]);
+  #assert mcp_sse_feed(p[..], cast(string) big_data[0..<bd], consumed[..], ev[..]) == MCP_SSE_NONE;
+  #assert mcp_sse_feed(p[..], "data: 012345678\n", consumed[..], ev[..]) == MCP_SSE_NONE;
+  #assert mcp_sse_feed(p[..], "data: z\n", consumed[..], ev[..]) == MCP_SSE_OVERFLOW;
+}
+
+// --- URL Parser ---
+
+mcp_http_has_prefix :: (s: string, p: string) -> bool #effects(reads, traps) {
+  return s.count >= p.count && s[0..<p.count] == p;
+}
+
+mcp_http_copy_clamped :: (dst: [] u8, src: string) -> int #effects(reads, writes, traps) {
+  n := 0;
+  while n < src.count && n < dst.count {
+    dst[n] = src[n];
+    n += 1;
+  }
+  return n;
+}
+
+mcp_http_parse_url :: (url: string) -> McpHttpUrl #effects(reads, traps) {
+  bad: McpHttpUrl;
+  if url.count > MCP_HTTP_URL_MAX { return bad; }
+  u: McpHttpUrl;
+  pos: int;
+  if mcp_http_has_prefix(url, "https://") {
+    u.tls = true;
+    u.port = 443;
+    pos = 8;
+  } else if mcp_http_has_prefix(url, "http://") {
+    u.port = 80;
+    pos = 7;
+  } else {
+    return bad;
+  }
+
+  // Split authority from path
+  path_at := url.count;
+  for i: pos..<url.count {
+    c := url[i];
+    if c == '/' || c == '?' { path_at = i; break; }
+    if c == '@' || c == '#' || c <= 32 || c >= 127 { return bad; }
+  }
+  auth := url[pos..<path_at];
+  if auth.count == 0 { return bad; }
+
+  // Optional :port
+  colon := -1;
+  for i: 0..<auth.count {
+    if auth[i] == ':' { colon = i; break; }
+  }
+  if colon >= 0 {
+    u.host = auth[0..<colon];
+    pstr := auth[colon + 1..<auth.count];
+    pv := mcp_http_parse_uint(pstr);
+    if pv < 1 || pv > 65535 { return bad; }
+    u.port = pv;
+  } else {
+    u.host = auth;
+  }
+  if u.host.count == 0 { return bad; }
+
+  // Validate target (no spaces, control chars, or '#' fragment)
+  if path_at == url.count {
+    u.target = "/";
+  } else {
+    for i: path_at..<url.count {
+      c := url[i];
+      if c == '#' || c <= 32 || c >= 127 { return bad; }
+    }
+    u.target = url[path_at..<url.count];
+  }
+  u.ok = true;
+  return u;
+}
+
+// --- HTTP/1.1 Request Serializer ---
+
+mcp_http_write_req :: (method: string, target: string, host_hdr: string, extra_headers: string, body: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  if mcp_http_has_ctrl(method) || mcp_http_has_ctrl(target) || mcp_http_has_ctrl(host_hdr) { return -1; }
+  n := mcp_http_append(out, 0, method);
+  n = mcp_http_append(out, n, " ");
+  n = mcp_http_append(out, n, target);
+  n = mcp_http_append(out, n, " HTTP/1.1\r\nHost: ");
+  n = mcp_http_append(out, n, host_hdr);
+  n = mcp_http_append(out, n, "\r\nConnection: close\r\n");
+  if body.count > 0 || method == "POST" {
+    n = mcp_http_append(out, n, "Content-Length: ");
+    n = mcp_http_append_int(out, n, body.count);
+    n = mcp_http_append(out, n, "\r\n");
+  }
+  n = mcp_http_append(out, n, extra_headers);
+  n = mcp_http_append(out, n, "\r\n");
+  n = mcp_http_append(out, n, body);
+  return n;
+}
+
+// --- HTTP/1.1 Response Head Parser ---
+
+mcp_http_is_sse_ct :: (ct: string) -> bool #effects(reads, traps) {
+  return mcp_http_eq_ci(mcp_http_trim_ows(mcp_http_before_semi(ct)), "text/event-stream");
+}
+
+mcp_http_resp_header_get :: (rh: McpHttpRespHead, name: string) -> string #effects(reads, traps) {
+  for i: 0..<rh.header_count {
+    if mcp_http_eq_ci(rh.headers[i].name, name) { return rh.headers[i].value; }
+  }
+  return "";
+}
+
+mcp_http_parse_resp_head :: (raw: string, out: [] McpHttpRespHead) -> int #effects(reads, writes, traps) {
+  out[0] = McpHttpRespHead.{};
+  hend := -1;
+  i: int;
+  while i + 3 < raw.count {
+    if raw[i] == '\r' && raw[i + 1] == '\n' && raw[i + 2] == '\r' && raw[i + 3] == '\n' {
+      hend = i + 4;
+      break;
+    }
+    i += 1;
+  }
+  if hend == -1 { return MCP_HTTP_NEED_MORE; }
+  if hend < 16 { return MCP_HTTP_BAD_REQ; }
+
+  // Status line: HTTP/1.x NNN[ reason]
+  sl_end := mcp_http_find_crlf(raw, 12);
+  sline := raw[0..<sl_end];
+  ver := sline[0..<8];
+  if (ver != "HTTP/1.1" && ver != "HTTP/1.0") || sline[8] != ' ' { return MCP_HTTP_BAD_REQ; }
+  code := mcp_http_parse_uint(sline[9..<12]);
+  if code < 100 || code > 599 { return MCP_HTTP_BAD_REQ; }
+  if sline.count > 12 && sline[12] != ' ' { return MCP_HTTP_BAD_REQ; }
+  out[0].status = code;
+
+  // Headers
+  pos := sl_end + 2;
+  while pos != hend - 2 {
+    eol := mcp_http_find_crlf(raw, pos);
+    hline := raw[pos..<eol];
+    colon := 0;
+    for k: 0..<hline.count { if hline[k] == ':' { colon = k; break; } }
+    if colon == 0 { return MCP_HTTP_BAD_REQ; }
+    hname := hline[0..<colon];
+    hval := mcp_http_trim_ows(hline[colon + 1..<hline.count]);
+    if out[0].header_count >= MCP_HTTP_MAX_HEADERS { return MCP_HTTP_TOO_LARGE; }
+    out[0].headers[out[0].header_count] = McpHttpHeader.{ name = hname, value = hval };
+    out[0].header_count += 1;
+
+    if mcp_http_eq_ci(hname, "Content-Length") {
+      cl := mcp_http_parse_uint(hval);
+      if cl < 0 { return MCP_HTTP_BAD_REQ; }
+      if out[0].has_content_length && out[0].content_length != cl { return MCP_HTTP_BAD_REQ; }
+      out[0].has_content_length = true;
+      out[0].content_length = cl;
+    } else if mcp_http_eq_ci(hname, "Transfer-Encoding") {
+      if mcp_http_eq_ci(hval, "chunked") { out[0].is_chunked = true; }
+    } else if mcp_http_eq_ci(hname, "Content-Type") {
+      if mcp_http_is_json_ct(hval) { out[0].is_json = true; }
+      else if mcp_http_is_sse_ct(hval) { out[0].is_sse = true; }
+    } else if mcp_http_eq_ci(hname, "Mcp-Session-Id") {
+      out[0].session_id = hval;
+    } else if mcp_http_eq_ci(hname, "WWW-Authenticate") {
+      out[0].www_authenticate = hval;
+    }
+    pos = eol + 2;
+  }
+
+  if out[0].has_content_length && out[0].is_chunked { return MCP_HTTP_BAD_REQ; }
+  out[0].header_end = hend;
+  return MCP_HTTP_OK;
+}
+
+// --- Incremental Chunked Stream Decoder ---
+
+mcp_chunk_stream_init :: (st: [] McpChunkStream) #effects(writes, traps) {
+  st[0] = McpChunkStream.{};
+}
+
+mcp_chunk_stream_feed :: (st: [] McpChunkStream, data: string, out: [] u8, out_n: [] int) -> int #effects(reads, writes, traps) {
+  out_n[0] = 0;
+  if st[0].state == MCP_CS_ST_DONE { return MCP_CS_DONE; }
+  pos := 0;
+  while pos < data.count {
+    c := data[pos];
+    pos += 1;
+    if st[0].state == MCP_CS_ST_SIZE {
+      if c == '\n' {
+        if st[0].line_len == 0 || st[0].line_buf[st[0].line_len - 1] != '\r' { return MCP_CS_ERROR; }
+        line := cast(string) st[0].line_buf[0..<st[0].line_len - 1];
+        sz := mcp_http_parse_hex(mcp_http_trim_ows(mcp_http_before_semi(line)));
+        st[0].line_len = 0;
+        if sz < 0 { return MCP_CS_ERROR; }
+        if sz == 0 {
+          st[0].state = MCP_CS_ST_TRAILER;
+        } else {
+          st[0].remaining = sz;
+          st[0].state = MCP_CS_ST_DATA;
+        }
+      } else {
+        if st[0].line_len >= 128 { return MCP_CS_ERROR; }
+        st[0].line_buf[st[0].line_len] = c;
+        st[0].line_len += 1;
+      }
+    } else if st[0].state == MCP_CS_ST_DATA {
+      if out_n[0] >= out.count { return MCP_CS_ERROR; }
+      out[out_n[0]] = c;
+      out_n[0] += 1;
+      st[0].remaining -= 1;
+      if st[0].remaining == 0 { st[0].state = MCP_CS_ST_DATA_CR; }
+    } else if st[0].state == MCP_CS_ST_DATA_CR {
+      if c != '\r' { return MCP_CS_ERROR; }
+      st[0].state = MCP_CS_ST_DATA_LF;
+    } else if st[0].state == MCP_CS_ST_DATA_LF {
+      if c != '\n' { return MCP_CS_ERROR; }
+      st[0].state = MCP_CS_ST_SIZE;
+    } else if st[0].state == MCP_CS_ST_TRAILER {
+      if c == '\n' {
+        if st[0].line_len == 0 || st[0].line_buf[st[0].line_len - 1] != '\r' { return MCP_CS_ERROR; }
+        if st[0].line_len == 1 {
+          st[0].line_len = 0;
+          st[0].state = MCP_CS_ST_DONE;
+          return MCP_CS_DONE;
+        }
+        st[0].line_len = 0;
+      } else {
+        if st[0].line_len >= 128 { return MCP_CS_ERROR; }
+        st[0].line_buf[st[0].line_len] = c;
+        st[0].line_len += 1;
+      }
+    }
+  }
+  return MCP_CS_NEED_MORE;
+}
+
+// --- Incremental SSE Parser (WHATWG EventSource spec) ---
+
+mcp_sse_init :: (p: [] McpSseParser) #effects(writes, traps) {
+  p[0] = McpSseParser.{};
+}
+
+mcp_sse_last_id :: (p: [] McpSseParser) -> string #effects(reads, traps) {
+  return cast(string) p[0].last_id_buf[0..<p[0].last_id_len];
+}
+
+mcp_sse_process_line :: (p: [] McpSseParser, line: string, ev_out: [] McpSseEvent) -> int #effects(reads, writes, traps) {
+  // Blank line -> dispatch event if any data line was seen
+  if line.count == 0 {
+    if !p[0].has_data {
+      p[0].cur_event_len = 0;
+      return MCP_SSE_NONE;
+    }
+    ev_out[0].has_id = p[0].has_id;
+    ev_out[0].id_len = p[0].last_id_len;
+    for i: 0..<p[0].last_id_len { ev_out[0].id_buf[i] = p[0].last_id_buf[i]; }
+    ev_out[0].event_len = p[0].cur_event_len;
+    for i: 0..<p[0].cur_event_len { ev_out[0].event_buf[i] = p[0].cur_event_buf[i]; }
+    ev_out[0].has_retry = p[0].has_retry;
+    ev_out[0].retry_ms = p[0].retry_ms;
+    ev_out[0].data_len = p[0].cur_data_len;
+    for i: 0..<p[0].cur_data_len { ev_out[0].data_buf[i] = p[0].cur_data_buf[i]; }
+    p[0].has_data = false;
+    p[0].cur_data_len = 0;
+    p[0].cur_event_len = 0;
+    return MCP_SSE_EVENT;
+  }
+
+  // Split field: value (shortest valid SSE field is "id", len 2; leading ':' comments never match)
+  colon: int;
+  for i: 2..<line.count { if line[i] == ':' { colon = i; break; } }
+  field := line;
+  val := "";
+  if colon != 0 {
+    field = line[0..<colon];
+    vs := colon + 1;
+    if vs < line.count && line[vs] == ' ' { vs += 1; }
+    val = line[vs..<line.count];
+  }
+
+  if field == "data" {
+    if p[0].has_data {
+      if p[0].cur_data_len >= MCP_SSE_DATA_CAP { return MCP_SSE_OVERFLOW; }
+      p[0].cur_data_buf[p[0].cur_data_len] = '\n';
+      p[0].cur_data_len += 1;
+    }
+    if p[0].cur_data_len + val.count > MCP_SSE_DATA_CAP { return MCP_SSE_OVERFLOW; }
+    for i: 0..<val.count { p[0].cur_data_buf[p[0].cur_data_len + i] = val[i]; }
+    p[0].cur_data_len += val.count;
+    p[0].has_data = true;
+  } else if field == "event" {
+    p[0].cur_event_len = mcp_http_copy_clamped(p[0].cur_event_buf[..], val);
+  } else if field == "id" {
+    // Spec: ignore id containing NUL
+    has_nul := false;
+    for c: val { if c == 0 { has_nul = true; break; } }
+    if !has_nul {
+      p[0].last_id_len = mcp_http_copy_clamped(p[0].last_id_buf[..], val);
+      p[0].has_id = true;
+    }
+  } else if field == "retry" {
+    ms := mcp_http_parse_uint(val);
+    if ms >= 0 {
+      p[0].has_retry = true;
+      p[0].retry_ms = ms;
+    }
+  }
+  return MCP_SSE_NONE;
+}
+
+// Feeds up to `chunk.count` bytes, stopping immediately if a complete event is dispatched.
+// Writes number of bytes consumed from `chunk` into `consumed_out[0]`.
+mcp_sse_feed :: (p: [] McpSseParser, chunk: string, consumed_out: [] int, ev_out: [] McpSseEvent) -> int #effects(reads, writes, traps) {
+  pos := 0;
+  while pos < chunk.count {
+    c := chunk[pos];
+    pos += 1;
+    if p[0].skip_lf {
+      p[0].skip_lf = false;
+      if c == '\n' { continue; }
+    }
+    if c == '\r' || c == '\n' {
+      if c == '\r' { p[0].skip_lf = true; }
+      line := cast(string) p[0].line_buf[0..<p[0].line_len];
+      p[0].line_len = 0;
+      rc := mcp_sse_process_line(p, line, ev_out);
+      if rc != MCP_SSE_NONE {
+        consumed_out[0] = pos;
+        return rc;
+      }
+    } else {
+      if p[0].line_len >= MCP_SSE_LINE_CAP {
+        consumed_out[0] = pos;
+        return MCP_SSE_OVERFLOW;
+      }
+      p[0].line_buf[p[0].line_len] = c;
+      p[0].line_len += 1;
+    }
+  }
+  consumed_out[0] = pos;
+  return MCP_SSE_NONE;
+}

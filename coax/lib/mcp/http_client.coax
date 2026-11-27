@@ -1,0 +1,844 @@
+// Streamable HTTP/1.1 + SSE MCP Client transport (2025-11-25 stateful + 2026-07-28 stateless).
+// Thin #effects adapter over coax/lib/net/transport.coax (TCP + TLS),
+// coax/lib/mcp/http_client_wire.coax, client_core.coax, and headers.coax.
+// Supports:
+//   - Dual-era handshake (server/discover -> initialize fallback + notifications/initialized)
+//   - Direct application/json AND streaming text/event-stream POST responses
+//   - Bidirectional 2025-11-25 server->client requests on POST SSE streams (with SEP-1034 elicitation defaults)
+//   - SEP-1699 SSE polling reconnection (respecting retry: ms and Last-Event-ID on GET)
+//   - 2026-07-28 SEP-2243 Mcp-Method / Mcp-Name / Mcp-Param-* headers & session teardown (DELETE)
+#load "http_client_wire.coax";
+#load "client_core.coax";
+#load "../net/transport.coax";
+#load "../sys/proc.coax";
+
+MCP_HC_OK :: 0;
+MCP_HC_ERR_URL :: -1;
+MCP_HC_ERR_CONNECT :: -2;
+MCP_HC_ERR_IO :: -3;
+MCP_HC_ERR_HTTP :: -4;
+MCP_HC_ERR_PROTO :: -5;
+MCP_HC_ERR_BUF :: -6;
+MCP_HC_ERR_RPC :: -7;
+
+MCP_HC_MAX_RECONNECTS :: 6;
+
+McpHttpClient :: struct {
+  connected: bool;
+  prefer_legacy_2025: bool;
+  auto_accept_elicit_defaults: bool;
+  auto_accept_sampling: bool;
+  timeout_ms: int;
+
+  url_len: int;
+  url_buf: [MCP_HTTP_URL_MAX] u8;
+  tls: bool;
+  host_len: int;
+  host_buf: [256] u8;
+  port: int;
+  target_len: int;
+  target_buf: [1024] u8;
+  host_hdr_len: int;
+  host_hdr_buf: [280] u8;
+
+  session_len: int;
+  session_buf: [128] u8;
+  proto_len: int;
+  proto_buf: [32] u8;
+  server_name_len: int;
+  server_name_buf: [128] u8;
+  server_ver_len: int;
+  server_ver_buf: [64] u8;
+  auth_token_len: int;
+  auth_token_buf: [1024] u8;
+
+  last_http_status: int;
+  last_www_auth_len: int;
+  last_www_auth_buf: [512] u8;
+  last_sse_id_len: int;
+  last_sse_id_buf: [MCP_SSE_ID_CAP] u8;
+  has_sse_retry: bool;
+  last_sse_retry_ms: int;
+
+  core: [1] McpClientCore;
+
+  // Response payload for caller inspection after any RPC call
+  resp_len: int;
+  resp_buf: [131072] u8;
+  last_event: McpClientEvent;
+
+  // Internal wire scratch buffers
+  req_buf: [65536] u8;
+  wire_buf: [65536] u8;
+  hdr_buf: [4096] u8;
+  head_raw: [16384] u8;
+  read_tmp: [16384] u8;
+  dechunk_tmp: [16384] u8;
+
+  // Auxiliary connection scratch buffers (used for server->client replies during open SSE)
+  aux_json_buf: [16384] u8;
+  aux_hdr_buf: [2048] u8;
+  aux_wire_buf: [20480] u8;
+  aux_read_buf: [4096] u8;
+
+  sse_parser: [1] McpSseParser;
+  sse_ev: [1] McpSseEvent;
+  chunk_stream: [1] McpChunkStream;
+  get_h: int;
+  get_chunked: bool;
+  get_sse_parser: [1] McpSseParser;
+  get_chunk_stream: [1] McpChunkStream;
+  nodes: [2048] JvNode;
+  aux_nodes: [512] JvNode;
+}
+
+mcp_hc_copy_str :: (dst: [] u8, src: string) -> int {
+  n := src.count;
+  if n > dst.count { n = dst.count; }
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+mcp_hc_host :: (c: [] McpHttpClient) -> string { return cast(string) c[0].host_buf[0..<c[0].host_len]; }
+mcp_hc_target :: (c: [] McpHttpClient) -> string { return cast(string) c[0].target_buf[0..<c[0].target_len]; }
+mcp_hc_host_hdr :: (c: [] McpHttpClient) -> string { return cast(string) c[0].host_hdr_buf[0..<c[0].host_hdr_len]; }
+mcp_hc_session_id :: (c: [] McpHttpClient) -> string { return cast(string) c[0].session_buf[0..<c[0].session_len]; }
+mcp_hc_proto :: (c: [] McpHttpClient) -> string { return cast(string) c[0].proto_buf[0..<c[0].proto_len]; }
+mcp_hc_resp_body :: (c: [] McpHttpClient) -> string { return cast(string) c[0].resp_buf[0..<c[0].resp_len]; }
+mcp_hc_server_name :: (c: [] McpHttpClient) -> string { return cast(string) c[0].server_name_buf[0..<c[0].server_name_len]; }
+mcp_hc_server_version :: (c: [] McpHttpClient) -> string { return cast(string) c[0].server_ver_buf[0..<c[0].server_ver_len]; }
+mcp_hc_www_auth :: (c: [] McpHttpClient) -> string { return cast(string) c[0].last_www_auth_buf[0..<c[0].last_www_auth_len]; }
+
+mcp_hc_init :: (c: [] McpHttpClient, url: string, info: McpImplInfo, caps: McpClientCaps) -> bool {
+  c[0] = McpHttpClient.{};
+  c[0].get_h = -1;
+  c[0].timeout_ms = 15000;
+  c[0].auto_accept_elicit_defaults = true;
+  c[0].auto_accept_sampling = true;
+  u := mcp_http_parse_url(url);
+  if !u.ok { return false; }
+  c[0].url_len = mcp_hc_copy_str(c[0].url_buf[..], url);
+  c[0].tls = u.tls;
+  c[0].host_len = mcp_hc_copy_str(c[0].host_buf[..], u.host);
+  c[0].port = u.port;
+  c[0].target_len = mcp_hc_copy_str(c[0].target_buf[..], u.target);
+
+  // Format Host header (include :port when non-default)
+  hn := mcp_http_append(c[0].host_hdr_buf[..], 0, u.host);
+  default_port := ifx u.tls then 443 else 80;
+  if u.port != default_port {
+    hn = mcp_http_append(c[0].host_hdr_buf[..], hn, ":");
+    hn = mcp_http_append_int(c[0].host_hdr_buf[..], hn, u.port);
+  }
+  if hn < 0 { return false; }
+  c[0].host_hdr_len = hn;
+
+  mcp_client_init(c[0].core[..], info, caps);
+  return true;
+}
+
+mcp_hc_set_bearer :: (c: [] McpHttpClient, token: string) {
+  c[0].auth_token_len = mcp_hc_copy_str(c[0].auth_token_buf[..], token);
+}
+
+// --- Low-level TCP / TLS helpers ---
+
+mcp_hc_sock_open :: (c: [] McpHttpClient, timeout_ms: int) -> int {
+  host := mcp_hc_host(c);
+  for b: host {
+    r := ifx c[0].tls then cxtls_host_push(cast(int) b) else cxsock_host_push(cast(int) b);
+    if r != 0 { return -1; }
+  }
+  return ifx c[0].tls then cxtls_connect(c[0].port, timeout_ms) else cxsock_connect(c[0].port, timeout_ms);
+}
+
+mcp_hc_sock_close :: (tls: bool, h: int) {
+  if h >= 0 {
+    r := ifx tls then cxtls_close(h) else cxsock_close(h);
+  }
+}
+
+mcp_hc_sock_send_all :: (tls: bool, h: int, bytes: string, timeout_ms: int) -> bool {
+  for b: bytes {
+    e := ifx tls then cxtls_write(h, cast(int) b) else cxsock_write(h, cast(int) b);
+    if e != 0 { return false; }
+  }
+  fe := ifx tls then cxtls_flush(h, timeout_ms) else cxsock_flush(h, timeout_ms);
+  return fe == 0;
+}
+
+// Reads up to dst.count bytes. Returns >0 bytes read, 0 on EOF, -2 on timeout, -1 on error.
+mcp_hc_sock_read_some :: (tls: bool, h: int, dst: [] u8, timeout_ms: int) -> int {
+  n := ifx tls then cxtls_read(h, timeout_ms) else cxsock_read(h, timeout_ms);
+  if n == -2 { return -2; }
+  if n == -1 || n == -12 { return 0; }
+  if n < 0 { return -1; }
+  take := n;
+  if take > dst.count { take = dst.count; }
+  for i: 0..<take {
+    b := ifx tls then cxtls_byte(h, i) else cxsock_byte(h, i);
+    dst[i] = cast,trunc(u8) b;
+  }
+  return take;
+}
+
+// --- Header builders ---
+
+mcp_hc_append_common_headers :: (c: [] McpHttpClient, out: [] u8, at: int, accept: string, content_type: string, include_session: bool, include_proto: bool) -> int {
+  n := at;
+  if content_type.count > 0 {
+    n = mcp_http_append(out, n, "Content-Type: ");
+    n = mcp_http_append(out, n, content_type);
+    n = mcp_http_append(out, n, "\r\n");
+  }
+  if accept.count > 0 {
+    n = mcp_http_append(out, n, "Accept: ");
+    n = mcp_http_append(out, n, accept);
+    n = mcp_http_append(out, n, "\r\n");
+  }
+  if c[0].auth_token_len > 0 {
+    n = mcp_http_append(out, n, "Authorization: Bearer ");
+    n = mcp_http_append(out, n, cast(string) c[0].auth_token_buf[0..<c[0].auth_token_len]);
+    n = mcp_http_append(out, n, "\r\n");
+  }
+  if include_session && c[0].session_len > 0 {
+    n = mcp_http_append(out, n, "Mcp-Session-Id: ");
+    n = mcp_http_append(out, n, mcp_hc_session_id(c));
+    n = mcp_http_append(out, n, "\r\n");
+  }
+  if include_proto && c[0].proto_len > 0 {
+    n = mcp_http_append(out, n, "MCP-Protocol-Version: ");
+    n = mcp_http_append(out, n, mcp_hc_proto(c));
+    n = mcp_http_append(out, n, "\r\n");
+  }
+  return n;
+}
+
+// Fire-and-forget / short POST on an auxiliary connection (used for notifications/initialized
+// and for answering server->client requests while the primary POST SSE stream remains open).
+mcp_hc_post_aux :: (c: [] McpHttpClient, json_body: string) -> int {
+  hn := mcp_hc_append_common_headers(c, c[0].aux_hdr_buf[..], 0, "application/json, text/event-stream", "application/json", true, true);
+  if hn < 0 { return MCP_HC_ERR_BUF; }
+  wn := mcp_http_write_req("POST", mcp_hc_target(c), mcp_hc_host_hdr(c), cast(string) c[0].aux_hdr_buf[0..<hn], json_body, c[0].aux_wire_buf[..]);
+  if wn < 0 { return MCP_HC_ERR_BUF; }
+  h := mcp_hc_sock_open(c, c[0].timeout_ms);
+  if h < 0 { return MCP_HC_ERR_CONNECT; }
+  if !mcp_hc_sock_send_all(c[0].tls, h, cast(string) c[0].aux_wire_buf[0..<wn], c[0].timeout_ms) {
+    mcp_hc_sock_close(c[0].tls, h);
+    return MCP_HC_ERR_IO;
+  }
+  // Read response head so the server finishes processing the POST cleanly
+  used := 0;
+  rh: [1] McpHttpRespHead;
+  deadline := cxsock_now_ms() + c[0].timeout_ms;
+  status := 0;
+  while true {
+    left := deadline - cxsock_now_ms();
+    if left <= 0 { break; }
+    got := mcp_hc_sock_read_some(c[0].tls, h, c[0].aux_read_buf[used..<c[0].aux_read_buf.count], left);
+    if got <= 0 { break; }
+    used += got;
+    rc := mcp_http_parse_resp_head(cast(string) c[0].aux_read_buf[0..<used], rh[..]);
+    if rc == MCP_HTTP_OK {
+      status = rh[0].status;
+      if rh[0].session_id.count > 0 {
+        c[0].session_len = mcp_hc_copy_str(c[0].session_buf[..], rh[0].session_id);
+      }
+      break;
+    }
+    if rc != MCP_HTTP_NEED_MORE { break; }
+  }
+  mcp_hc_sock_close(c[0].tls, h);
+  if status >= 200 && status < 300 { return MCP_HC_OK; }
+  return MCP_HC_ERR_HTTP;
+}
+
+// Handles a 2025-11-25 server->client JSON-RPC request arriving on an SSE stream
+// (elicitation/create with SEP-1034 defaults, sampling/createMessage, roots/list, ping)
+// and POSTs the JSON-RPC response back on an auxiliary connection.
+mcp_hc_handle_server_req :: (c: [] McpHttpClient, d: Jv, ev: McpClientEvent) {
+  env := jrpc_classify(d);
+  method := jv_raw(d, ev.method_node);
+  o: [1] Jo;
+  jo_start(o[..], c[0].aux_json_buf[..]);
+
+  if method == "elicitation/create" && c[0].auto_accept_elicit_defaults {
+    // Build SEP-1034 merged content object from requestedSchema.properties[*].default
+    schema_n := ifx ev.params_node != -1 then jv_get(d, ev.params_node, "requestedSchema") else -1;
+    empty_d: [1] Jv;
+    _ = jv_parse(empty_d[..], "{}", c[0].aux_nodes[..]);
+    content_buf: [8192] u8;
+    co: [1] Jo;
+    jo_start(co[..], content_buf[..]);
+    if schema_n != -1 {
+      mcp_apply_elicit_defaults(d, schema_n, empty_d[0], 0, co[..]);
+    } else {
+      jo_obj(co[..]); jo_end(co[..]);
+    }
+    jrpc_write_result_head(o[..], d, env);
+    mcp_write_elicit_result(o[..], MCP_ELICIT_ACCEPT, jo_text(co[..]));
+    jo_end(o[..]);
+  } else if method == "sampling/createMessage" && c[0].auto_accept_sampling {
+    jrpc_write_result_head(o[..], d, env);
+    jo_obj(o[..]);
+    jo_key(o[..], "role"); jo_str(o[..], "assistant");
+    jo_key(o[..], "content"); jo_obj(o[..]);
+    jo_key(o[..], "type"); jo_str(o[..], "text");
+    jo_key(o[..], "text"); jo_str(o[..], "Coax client sampling response");
+    jo_end(o[..]);
+    jo_key(o[..], "model"); jo_str(o[..], "coax-test-model");
+    jo_key(o[..], "stopReason"); jo_str(o[..], "endTurn");
+    jo_end(o[..]);
+    jo_end(o[..]);
+  } else if method == "roots/list" {
+    jrpc_write_result_head(o[..], d, env);
+    empty_roots: [1] McpRoot;
+    mcp_write_roots_result(o[..], empty_roots[0..<0]);
+    jo_end(o[..]);
+  } else if method == "ping" {
+    jrpc_write_result_head(o[..], d, env);
+    jo_obj(o[..]); jo_end(o[..]);
+    jo_end(o[..]);
+  } else {
+    jrpc_write_error(o[..], d, env, MCP_ERR_METHOD_NOT_FOUND, "Client does not handle method");
+  }
+
+  if !o[0].bad {
+    _ = mcp_hc_post_aux(c, jo_text(o[..]));
+  }
+}
+
+// Processes a single decoded SSE event. Returns true if it completed the awaited RPC response.
+mcp_hc_process_sse_event :: (c: [] McpHttpClient, expected_id: int, out_ev: [] McpClientEvent) -> bool {
+  if c[0].sse_ev[0].has_id {
+    c[0].last_sse_id_len = mcp_hc_copy_str(c[0].last_sse_id_buf[..], cast(string) c[0].sse_ev[0].id_buf[0..<c[0].sse_ev[0].id_len]);
+  }
+  if c[0].sse_ev[0].has_retry {
+    c[0].has_sse_retry = true;
+    c[0].last_sse_retry_ms = c[0].sse_ev[0].retry_ms;
+  }
+  if c[0].sse_ev[0].data_len == 0 {
+    // Priming event (empty data)
+    return false;
+  }
+  payload := cast(string) c[0].sse_ev[0].data_buf[0..<c[0].sse_ev[0].data_len];
+  // Copy into resp_buf so caller/jv_parse owns stable bytes
+  c[0].resp_len = mcp_hc_copy_str(c[0].resp_buf[..], payload);
+  d: [1] Jv;
+  if !jv_parse(d[..], mcp_hc_resp_body(c), c[0].nodes[..]) { return false; }
+  ev := mcp_client_on_message(c[0].core[..], d[0]);
+  if ev.kind == MCP_CLI_EV_SERVER_REQ {
+    mcp_hc_handle_server_req(c, d[0], ev);
+    return false;
+  }
+  if ev.kind == MCP_CLI_EV_NOTIFICATION || ev.kind == MCP_CLI_EV_NONE {
+    return false;
+  }
+  // Check if this matches the expected response or handshake completion
+  if expected_id < 0 || ev.req_id == expected_id || ev.kind == MCP_CLI_EV_READY || ev.kind == MCP_CLI_EV_FALLBACK_INIT || ev.kind == MCP_CLI_EV_SEND_INIT_ACK || ev.kind == MCP_CLI_EV_PROTOCOL_ERR {
+    out_ev[0] = ev;
+    return true;
+  }
+  return false;
+}
+
+// Feeds raw SSE bytes into a specific SSE parser. Returns true if expected response arrived.
+mcp_hc_feed_sse_bytes_on :: (c: [] McpHttpClient, parser: [] McpSseParser, bytes: string, expected_id: int, out_ev: [] McpClientEvent) -> bool {
+  pos := 0;
+  consumed: [1] int;
+  while pos < bytes.count {
+    rc := mcp_sse_feed(parser, bytes[pos..<bytes.count], consumed[..], c[0].sse_ev[..]);
+    pos += consumed[0];
+    if rc == MCP_SSE_EVENT {
+      if mcp_hc_process_sse_event(c, expected_id, out_ev) { return true; }
+    } else if rc == MCP_SSE_OVERFLOW {
+      mcp_sse_init(parser);
+    }
+    if consumed[0] <= 0 { break; }
+  }
+  return false;
+}
+
+mcp_hc_feed_sse_bytes :: (c: [] McpHttpClient, bytes: string, expected_id: int, out_ev: [] McpClientEvent) -> bool {
+  return mcp_hc_feed_sse_bytes_on(c, c[0].sse_parser[..], bytes, expected_id, out_ev);
+}
+
+// Opens a standalone 2025-11-25 GET SSE stream for receiving server->client requests
+// (e.g. elicitation/create, sampling/createMessage) concurrently with POST requests.
+mcp_hc_open_get_sse :: (c: [] McpHttpClient) -> bool {
+  if c[0].get_h >= 0 { return true; }
+  hn := mcp_hc_append_common_headers(c, c[0].aux_hdr_buf[..], 0, "text/event-stream", "", true, true);
+  if hn < 0 { return false; }
+  wn := mcp_http_write_req("GET", mcp_hc_target(c), mcp_hc_host_hdr(c), cast(string) c[0].aux_hdr_buf[0..<hn], "", c[0].aux_wire_buf[..]);
+  if wn < 0 { return false; }
+  h := mcp_hc_sock_open(c, 5000);
+  if h < 0 { return false; }
+  if !mcp_hc_sock_send_all(c[0].tls, h, cast(string) c[0].aux_wire_buf[0..<wn], 5000) {
+    mcp_hc_sock_close(c[0].tls, h);
+    return false;
+  }
+  used := 0;
+  rh: [1] McpHttpRespHead;
+  head_ok := false;
+  deadline := cxsock_now_ms() + 5000;
+  while true {
+    left := deadline - cxsock_now_ms();
+    if left <= 0 { break; }
+    got := mcp_hc_sock_read_some(c[0].tls, h, c[0].aux_read_buf[used..<c[0].aux_read_buf.count], left);
+    if got == -2 { continue; }
+    if got <= 0 { break; }
+    used += got;
+    rc := mcp_http_parse_resp_head(cast(string) c[0].aux_read_buf[0..<used], rh[..]);
+    if rc == MCP_HTTP_OK { head_ok = true; break; }
+    if rc != MCP_HTTP_NEED_MORE { break; }
+  }
+  if !head_ok || rh[0].status != 200 || !rh[0].is_sse {
+    mcp_hc_sock_close(c[0].tls, h);
+    return false;
+  }
+  c[0].get_h = h;
+  c[0].get_chunked = rh[0].is_chunked;
+  mcp_sse_init(c[0].get_sse_parser[..]);
+  mcp_chunk_stream_init(c[0].get_chunk_stream[..]);
+  if used > rh[0].header_end {
+    init_b := cast(string) c[0].aux_read_buf[rh[0].header_end..<used];
+    dummy_ev: [1] McpClientEvent;
+    if c[0].get_chunked {
+      out_n: [1] int;
+      _ = mcp_chunk_stream_feed(c[0].get_chunk_stream[..], init_b, c[0].dechunk_tmp[..], out_n[..]);
+      if out_n[0] > 0 { _ = mcp_hc_feed_sse_bytes_on(c, c[0].get_sse_parser[..], cast(string) c[0].dechunk_tmp[0..<out_n[0]], -2, dummy_ev[..]); }
+    } else {
+      _ = mcp_hc_feed_sse_bytes_on(c, c[0].get_sse_parser[..], init_b, -2, dummy_ev[..]);
+    }
+  }
+  return true;
+}
+
+mcp_hc_poll_get_sse :: (c: [] McpHttpClient, timeout_ms: int) {
+  if c[0].get_h < 0 { return; }
+  got := mcp_hc_sock_read_some(c[0].tls, c[0].get_h, c[0].read_tmp[..], timeout_ms);
+  if got == -2 { return; }
+  if got <= 0 {
+    mcp_hc_sock_close(c[0].tls, c[0].get_h);
+    c[0].get_h = -1;
+    return;
+  }
+  chunk := cast(string) c[0].read_tmp[0..<got];
+  dummy_ev: [1] McpClientEvent;
+  if c[0].get_chunked {
+    out_n: [1] int;
+    crc := mcp_chunk_stream_feed(c[0].get_chunk_stream[..], chunk, c[0].dechunk_tmp[..], out_n[..]);
+    if out_n[0] > 0 {
+      _ = mcp_hc_feed_sse_bytes_on(c, c[0].get_sse_parser[..], cast(string) c[0].dechunk_tmp[0..<out_n[0]], -2, dummy_ev[..]);
+    }
+    if crc == MCP_CS_DONE || crc == MCP_CS_ERROR {
+      mcp_hc_sock_close(c[0].tls, c[0].get_h);
+      c[0].get_h = -1;
+    }
+  } else {
+    _ = mcp_hc_feed_sse_bytes_on(c, c[0].get_sse_parser[..], chunk, -2, dummy_ev[..]);
+  }
+}
+
+// Streams an open HTTP SSE response until either the awaited RPC response arrives (returns 1)
+// or the stream ends without delivering the response (returns 0 on clean EOF, -1 on error/timeout).
+mcp_hc_read_sse_stream :: (c: [] McpHttpClient, h: int, rh: McpHttpRespHead, initial_body: string, expected_id: int, deadline: int, out_ev: [] McpClientEvent) -> int {
+  mcp_sse_init(c[0].sse_parser[..]);
+  mcp_chunk_stream_init(c[0].chunk_stream[..]);
+
+  // Feed any leftover bytes already read past header_end
+  if initial_body.count > 0 {
+    if rh.is_chunked {
+      out_n: [1] int;
+      crc := mcp_chunk_stream_feed(c[0].chunk_stream[..], initial_body, c[0].dechunk_tmp[..], out_n[..]);
+      if crc == MCP_CS_ERROR { return -1; }
+      if out_n[0] > 0 {
+        if mcp_hc_feed_sse_bytes(c, cast(string) c[0].dechunk_tmp[0..<out_n[0]], expected_id, out_ev) { return 1; }
+      }
+      if crc == MCP_CS_DONE { return 0; }
+    } else {
+      if mcp_hc_feed_sse_bytes(c, initial_body, expected_id, out_ev) { return 1; }
+    }
+  }
+
+  while true {
+    left := deadline - cxsock_now_ms();
+    if left <= 0 { return -1; }
+    slice_ms := ifx c[0].get_h >= 0 && left > 50 then 50 else left;
+    got := mcp_hc_sock_read_some(c[0].tls, h, c[0].read_tmp[..], slice_ms);
+    if got == -2 {
+      if c[0].get_h >= 0 { mcp_hc_poll_get_sse(c, 50); }
+      continue;
+    }
+    if got < 0 { return -1; }
+    if got == 0 { return 0; }
+    chunk := cast(string) c[0].read_tmp[0..<got];
+    if rh.is_chunked {
+      out_n: [1] int;
+      crc := mcp_chunk_stream_feed(c[0].chunk_stream[..], chunk, c[0].dechunk_tmp[..], out_n[..]);
+      if crc == MCP_CS_ERROR { return -1; }
+      if out_n[0] > 0 {
+        if mcp_hc_feed_sse_bytes(c, cast(string) c[0].dechunk_tmp[0..<out_n[0]], expected_id, out_ev) { return 1; }
+      }
+      if crc == MCP_CS_DONE { return 0; }
+    } else {
+      if mcp_hc_feed_sse_bytes(c, chunk, expected_id, out_ev) { return 1; }
+    }
+  }
+  return 0;
+}
+
+// Opens a GET SSE stream (with Last-Event-ID for SEP-1699 resumption) and waits for expected_id.
+mcp_hc_reconnect_get_sse :: (c: [] McpHttpClient, expected_id: int, deadline: int, out_ev: [] McpClientEvent) -> int {
+  hn := mcp_hc_append_common_headers(c, c[0].hdr_buf[..], 0, "text/event-stream", "", true, true);
+  if c[0].last_sse_id_len > 0 {
+    hn = mcp_http_append(c[0].hdr_buf[..], hn, "Last-Event-ID: ");
+    hn = mcp_http_append(c[0].hdr_buf[..], hn, cast(string) c[0].last_sse_id_buf[0..<c[0].last_sse_id_len]);
+    hn = mcp_http_append(c[0].hdr_buf[..], hn, "\r\n");
+  }
+  if hn < 0 { return -1; }
+  wn := mcp_http_write_req("GET", mcp_hc_target(c), mcp_hc_host_hdr(c), cast(string) c[0].hdr_buf[0..<hn], "", c[0].wire_buf[..]);
+  if wn < 0 { return -1; }
+  left := deadline - cxsock_now_ms();
+  if left <= 0 { return -1; }
+  h := mcp_hc_sock_open(c, left);
+  if h < 0 { return -1; }
+  if !mcp_hc_sock_send_all(c[0].tls, h, cast(string) c[0].wire_buf[0..<wn], left) {
+    mcp_hc_sock_close(c[0].tls, h);
+    return -1;
+  }
+
+  // Read GET response head
+  used := 0;
+  rh: [1] McpHttpRespHead;
+  head_ok := false;
+  while true {
+    left = deadline - cxsock_now_ms();
+    if left <= 0 { break; }
+    got := mcp_hc_sock_read_some(c[0].tls, h, c[0].head_raw[used..<c[0].head_raw.count], left);
+    if got == -2 { continue; }
+    if got <= 0 { break; }
+    used += got;
+    rc := mcp_http_parse_resp_head(cast(string) c[0].head_raw[0..<used], rh[..]);
+    if rc == MCP_HTTP_OK { head_ok = true; break; }
+    if rc != MCP_HTTP_NEED_MORE { break; }
+  }
+  if !head_ok || rh[0].status != 200 || !rh[0].is_sse {
+    mcp_hc_sock_close(c[0].tls, h);
+    return -1;
+  }
+  if rh[0].session_id.count > 0 {
+    c[0].session_len = mcp_hc_copy_str(c[0].session_buf[..], rh[0].session_id);
+  }
+  init_body := cast(string) c[0].head_raw[rh[0].header_end..<used];
+  r := mcp_hc_read_sse_stream(c, h, rh[0], init_body, expected_id, deadline, out_ev);
+  mcp_hc_sock_close(c[0].tls, h);
+  return r;
+}
+
+// Sends a JSON-RPC POST request and handles both JSON and SSE responses (including
+// bidirectional server->client requests and SEP-1699 SSE polling reconnection).
+// Returns MCP_HC_OK on success (with c[0].last_event and c[0].resp_buf populated), or negative MCP_HC_ERR_*.
+mcp_hc_post_rpc :: (c: [] McpHttpClient, mcp_method: string, mcp_name: string, extra_hdrs: string, json_body: string, expected_id: int) -> int {
+  c[0].resp_len = 0;
+  c[0].last_event = McpClientEvent.{};
+  c[0].last_http_status = 0;
+  c[0].last_www_auth_len = 0;
+  c[0].last_sse_id_len = 0;
+  c[0].has_sse_retry = false;
+  c[0].last_sse_retry_ms = 0;
+
+  hn := mcp_hc_append_common_headers(c, c[0].hdr_buf[..], 0, "application/json, text/event-stream", "application/json", true, true);
+  if c[0].core[0].modern && mcp_method.count > 0 {
+    hn = mcp_http_append(c[0].hdr_buf[..], hn, "Mcp-Method: ");
+    hn = mcp_http_append(c[0].hdr_buf[..], hn, mcp_method);
+    hn = mcp_http_append(c[0].hdr_buf[..], hn, "\r\n");
+    if mcp_name.count > 0 {
+      hn = mcp_http_append(c[0].hdr_buf[..], hn, "Mcp-Name: ");
+      hn = mcp_http_append(c[0].hdr_buf[..], hn, mcp_name);
+      hn = mcp_http_append(c[0].hdr_buf[..], hn, "\r\n");
+    }
+  }
+  if extra_hdrs.count > 0 {
+    hn = mcp_http_append(c[0].hdr_buf[..], hn, extra_hdrs);
+  }
+  if hn < 0 { return MCP_HC_ERR_BUF; }
+
+  wn := mcp_http_write_req("POST", mcp_hc_target(c), mcp_hc_host_hdr(c), cast(string) c[0].hdr_buf[0..<hn], json_body, c[0].wire_buf[..]);
+  if wn < 0 { return MCP_HC_ERR_BUF; }
+
+  deadline := cxsock_now_ms() + c[0].timeout_ms;
+  h := mcp_hc_sock_open(c, c[0].timeout_ms);
+  if h < 0 { return MCP_HC_ERR_CONNECT; }
+  if !mcp_hc_sock_send_all(c[0].tls, h, cast(string) c[0].wire_buf[0..<wn], c[0].timeout_ms) {
+    mcp_hc_sock_close(c[0].tls, h);
+    return MCP_HC_ERR_IO;
+  }
+
+  // Read HTTP response head
+  used := 0;
+  rh: [1] McpHttpRespHead;
+  head_ok := false;
+  while true {
+    left := deadline - cxsock_now_ms();
+    if left <= 0 { break; }
+    slice_ms := ifx c[0].get_h >= 0 && left > 50 then 50 else left;
+    got := mcp_hc_sock_read_some(c[0].tls, h, c[0].head_raw[used..<c[0].head_raw.count], slice_ms);
+    if got == -2 {
+      if c[0].get_h >= 0 { mcp_hc_poll_get_sse(c, 50); }
+      continue;
+    }
+    if got <= 0 { break; }
+    used += got;
+    rc := mcp_http_parse_resp_head(cast(string) c[0].head_raw[0..<used], rh[..]);
+    if rc == MCP_HTTP_OK { head_ok = true; break; }
+    if rc != MCP_HTTP_NEED_MORE { break; }
+  }
+  if !head_ok {
+    mcp_hc_sock_close(c[0].tls, h);
+    return MCP_HC_ERR_HTTP;
+  }
+
+  c[0].last_http_status = rh[0].status;
+  if rh[0].session_id.count > 0 {
+    c[0].session_len = mcp_hc_copy_str(c[0].session_buf[..], rh[0].session_id);
+  }
+  if rh[0].www_authenticate.count > 0 {
+    c[0].last_www_auth_len = mcp_hc_copy_str(c[0].last_www_auth_buf[..], rh[0].www_authenticate);
+  }
+
+  if rh[0].status == 202 || rh[0].status == 204 {
+    mcp_hc_sock_close(c[0].tls, h);
+    return MCP_HC_OK;
+  }
+
+  init_body := cast(string) c[0].head_raw[rh[0].header_end..<used];
+
+  // SSE streaming response
+  if rh[0].status == 200 && rh[0].is_sse {
+    out_ev: [1] McpClientEvent;
+    sr := mcp_hc_read_sse_stream(c, h, rh[0], init_body, expected_id, deadline, out_ev[..]);
+    mcp_hc_sock_close(c[0].tls, h);
+    if sr == 1 {
+      c[0].last_event = out_ev[0];
+      return MCP_HC_OK;
+    }
+    if sr < 0 { return MCP_HC_ERR_IO; }
+
+    // SEP-1699: server closed the POST SSE stream before sending the final response!
+    // Respect retry: ms delay and reconnect via GET with Last-Event-ID.
+    reconn := 0;
+    while reconn < MCP_HC_MAX_RECONNECTS && c[0].last_sse_id_len > 0 {
+      delay := ifx c[0].has_sse_retry then c[0].last_sse_retry_ms else 500;
+      if delay < 0 { delay = 0; }
+      if delay > 10000 { delay = 10000; }
+      if delay > 0 { proc_sleep(delay); }
+      reconn += 1;
+      gr := mcp_hc_reconnect_get_sse(c, expected_id, deadline, out_ev[..]);
+      if gr == 1 {
+        c[0].last_event = out_ev[0];
+        return MCP_HC_OK;
+      }
+      if gr < 0 { return MCP_HC_ERR_IO; }
+    }
+    return MCP_HC_ERR_PROTO;
+  }
+
+  // Non-SSE response (application/json or HTTP error body)
+  body_len := 0;
+  if rh[0].is_chunked {
+    mcp_chunk_stream_init(c[0].chunk_stream[..]);
+    done := false;
+    if init_body.count > 0 {
+      out_n: [1] int;
+      crc := mcp_chunk_stream_feed(c[0].chunk_stream[..], init_body, c[0].resp_buf[body_len..<c[0].resp_buf.count], out_n[..]);
+      if crc == MCP_CS_ERROR { mcp_hc_sock_close(c[0].tls, h); return MCP_HC_ERR_HTTP; }
+      body_len += out_n[0];
+      if crc == MCP_CS_DONE { done = true; }
+    }
+    while !done {
+      left := deadline - cxsock_now_ms();
+      if left <= 0 { break; }
+      got := mcp_hc_sock_read_some(c[0].tls, h, c[0].read_tmp[..], left);
+      if got == -2 { continue; }
+      if got <= 0 { break; }
+      out_n: [1] int;
+      crc := mcp_chunk_stream_feed(c[0].chunk_stream[..], cast(string) c[0].read_tmp[0..<got], c[0].resp_buf[body_len..<c[0].resp_buf.count], out_n[..]);
+      if crc == MCP_CS_ERROR { mcp_hc_sock_close(c[0].tls, h); return MCP_HC_ERR_HTTP; }
+      body_len += out_n[0];
+      if crc == MCP_CS_DONE { done = true; }
+    }
+  } else {
+    body_len = mcp_hc_copy_str(c[0].resp_buf[..], init_body);
+    while true {
+      if rh[0].has_content_length && body_len >= rh[0].content_length { break; }
+      left := deadline - cxsock_now_ms();
+      if left <= 0 { break; }
+      got := mcp_hc_sock_read_some(c[0].tls, h, c[0].resp_buf[body_len..<c[0].resp_buf.count], left);
+      if got == -2 { continue; }
+      if got <= 0 { break; }
+      body_len += got;
+    }
+    if rh[0].has_content_length && body_len > rh[0].content_length {
+      body_len = rh[0].content_length;
+    }
+  }
+  mcp_hc_sock_close(c[0].tls, h);
+  c[0].resp_len = body_len;
+
+  if rh[0].status < 200 || rh[0].status >= 300 {
+    return MCP_HC_ERR_HTTP;
+  }
+
+  d: [1] Jv;
+  if !jv_parse(d[..], mcp_hc_resp_body(c), c[0].nodes[..]) {
+    return MCP_HC_ERR_PROTO;
+  }
+  c[0].last_event = mcp_client_on_message(c[0].core[..], d[0]);
+  return MCP_HC_OK;
+}
+
+mcp_hc_stabilize_handshake :: (c: [] McpHttpClient) {
+  c[0].proto_len = mcp_hc_copy_str(c[0].proto_buf[..], c[0].core[0].protocol_version);
+  c[0].core[0].protocol_version = mcp_hc_proto(c);
+  c[0].server_name_len = mcp_hc_copy_str(c[0].server_name_buf[..], c[0].core[0].server_info.name);
+  c[0].server_ver_len = mcp_hc_copy_str(c[0].server_ver_buf[..], c[0].core[0].server_info.version);
+  c[0].core[0].server_info.name = mcp_hc_server_name(c);
+  c[0].core[0].server_info.version = mcp_hc_server_version(c);
+}
+
+// --- High-level MCP Client operations ---
+
+mcp_hc_connect :: (c: [] McpHttpClient) -> int {
+  if !c[0].prefer_legacy_2025 {
+    // 1. Try 2026-07-28 stateless server/discover first
+    n := mcp_client_start_discover(c[0].core[..], c[0].req_buf[..]);
+    if n < 0 { return MCP_HC_ERR_BUF; }
+    rc := mcp_hc_post_rpc(c, "server/discover", "", "", cast(string) c[0].req_buf[0..<n], 1);
+    if rc == MCP_HC_OK && c[0].last_event.kind == MCP_CLI_EV_READY {
+      mcp_hc_stabilize_handshake(c);
+      c[0].connected = true;
+      return MCP_HC_OK;
+    }
+    // If server returned HTTP 401/403, surface auth failure directly
+    if c[0].last_http_status == 401 || c[0].last_http_status == 403 {
+      return MCP_HC_ERR_HTTP;
+    }
+    // Reset client state for 2025-11-25 initialize fallback
+    info := c[0].core[0].client_info;
+    caps := c[0].core[0].client_caps;
+    mcp_client_init(c[0].core[..], info, caps);
+    c[0].session_len = 0;
+    c[0].proto_len = 0;
+  }
+
+  // 2. 2025-11-25 stateful initialize + notifications/initialized
+  ni := mcp_client_start_initialize(c[0].core[..], c[0].req_buf[..]);
+  if ni < 0 { return MCP_HC_ERR_BUF; }
+  rc2 := mcp_hc_post_rpc(c, "initialize", "", "", cast(string) c[0].req_buf[0..<ni], 1);
+  if rc2 != MCP_HC_OK { return rc2; }
+  if c[0].last_event.kind != MCP_CLI_EV_SEND_INIT_ACK { return MCP_HC_ERR_PROTO; }
+  mcp_hc_stabilize_handshake(c);
+
+  // Send notifications/initialized
+  na := mcp_client_write_initialized(c[0].req_buf[..]);
+  if na < 0 { return MCP_HC_ERR_BUF; }
+  _ = mcp_hc_post_aux(c, cast(string) c[0].req_buf[0..<na]);
+  c[0].connected = true;
+  return MCP_HC_OK;
+}
+
+mcp_hc_tools_list :: (c: [] McpHttpClient, cursor: string) -> int {
+  id_out: [1] int;
+  n := mcp_client_write_simple_req(c[0].core[..], "tools/list", cursor, id_out[..], c[0].req_buf[..]);
+  if n < 0 { return MCP_HC_ERR_BUF; }
+  rc := mcp_hc_post_rpc(c, "tools/list", "", "", cast(string) c[0].req_buf[0..<n], id_out[0]);
+  if rc != MCP_HC_OK { return rc; }
+  if c[0].last_event.kind == MCP_CLI_EV_RESPONSE_OK { return MCP_HC_OK; }
+  if c[0].last_event.kind == MCP_CLI_EV_RESPONSE_ERR { return MCP_HC_ERR_RPC; }
+  return MCP_HC_ERR_PROTO;
+}
+
+mcp_hc_tools_call :: (c: [] McpHttpClient, name: string, args_json: string, extra_hdrs: string) -> int {
+  id_out: [1] int;
+  n := mcp_client_write_tools_call(c[0].core[..], name, args_json, "", "", "", id_out[..], c[0].req_buf[..]);
+  if n < 0 { return MCP_HC_ERR_BUF; }
+  rc := mcp_hc_post_rpc(c, "tools/call", name, extra_hdrs, cast(string) c[0].req_buf[0..<n], id_out[0]);
+  if rc != MCP_HC_OK { return rc; }
+  if c[0].last_event.kind == MCP_CLI_EV_RESPONSE_OK || c[0].last_event.kind == MCP_CLI_EV_INPUT_REQUIRED { return MCP_HC_OK; }
+  if c[0].last_event.kind == MCP_CLI_EV_RESPONSE_ERR { return MCP_HC_ERR_RPC; }
+  return MCP_HC_ERR_PROTO;
+}
+
+mcp_hc_resources_list :: (c: [] McpHttpClient, cursor: string) -> int {
+  id_out: [1] int;
+  n := mcp_client_write_simple_req(c[0].core[..], "resources/list", cursor, id_out[..], c[0].req_buf[..]);
+  if n < 0 { return MCP_HC_ERR_BUF; }
+  rc := mcp_hc_post_rpc(c, "resources/list", "", "", cast(string) c[0].req_buf[0..<n], id_out[0]);
+  if rc != MCP_HC_OK { return rc; }
+  if c[0].last_event.kind == MCP_CLI_EV_RESPONSE_OK { return MCP_HC_OK; }
+  return MCP_HC_ERR_PROTO;
+}
+
+mcp_hc_resources_read :: (c: [] McpHttpClient, uri: string) -> int {
+  id_out: [1] int;
+  n := mcp_client_write_resources_read(c[0].core[..], uri, "", "", id_out[..], c[0].req_buf[..]);
+  if n < 0 { return MCP_HC_ERR_BUF; }
+  rc := mcp_hc_post_rpc(c, "resources/read", uri, "", cast(string) c[0].req_buf[0..<n], id_out[0]);
+  if rc != MCP_HC_OK { return rc; }
+  if c[0].last_event.kind == MCP_CLI_EV_RESPONSE_OK { return MCP_HC_OK; }
+  return MCP_HC_ERR_PROTO;
+}
+
+mcp_hc_prompts_list :: (c: [] McpHttpClient, cursor: string) -> int {
+  id_out: [1] int;
+  n := mcp_client_write_simple_req(c[0].core[..], "prompts/list", cursor, id_out[..], c[0].req_buf[..]);
+  if n < 0 { return MCP_HC_ERR_BUF; }
+  rc := mcp_hc_post_rpc(c, "prompts/list", "", "", cast(string) c[0].req_buf[0..<n], id_out[0]);
+  if rc != MCP_HC_OK { return rc; }
+  if c[0].last_event.kind == MCP_CLI_EV_RESPONSE_OK { return MCP_HC_OK; }
+  return MCP_HC_ERR_PROTO;
+}
+
+mcp_hc_prompts_get :: (c: [] McpHttpClient, name: string, args_json: string) -> int {
+  id_out: [1] int;
+  n := mcp_client_write_prompts_get(c[0].core[..], name, args_json, "", "", id_out[..], c[0].req_buf[..]);
+  if n < 0 { return MCP_HC_ERR_BUF; }
+  rc := mcp_hc_post_rpc(c, "prompts/get", name, "", cast(string) c[0].req_buf[0..<n], id_out[0]);
+  if rc != MCP_HC_OK { return rc; }
+  if c[0].last_event.kind == MCP_CLI_EV_RESPONSE_OK { return MCP_HC_OK; }
+  return MCP_HC_ERR_PROTO;
+}
+
+mcp_hc_ping :: (c: [] McpHttpClient) -> int {
+  id_out: [1] int;
+  n := mcp_client_write_ping(c[0].core[..], id_out[..], c[0].req_buf[..]);
+  if n < 0 { return MCP_HC_ERR_BUF; }
+  rc := mcp_hc_post_rpc(c, "ping", "", "", cast(string) c[0].req_buf[0..<n], id_out[0]);
+  if rc != MCP_HC_OK { return rc; }
+  if c[0].last_event.kind == MCP_CLI_EV_RESPONSE_OK { return MCP_HC_OK; }
+  return MCP_HC_ERR_PROTO;
+}
+
+// Terminates a stateful 2025-11-25 session via HTTP DELETE (best-effort).
+mcp_hc_close :: (c: [] McpHttpClient) {
+  if c[0].get_h >= 0 {
+    mcp_hc_sock_close(c[0].tls, c[0].get_h);
+    c[0].get_h = -1;
+  }
+  if c[0].connected && c[0].session_len > 0 {
+    hn := mcp_hc_append_common_headers(c, c[0].aux_hdr_buf[..], 0, "", "", true, true);
+    if hn >= 0 {
+      wn := mcp_http_write_req("DELETE", mcp_hc_target(c), mcp_hc_host_hdr(c), cast(string) c[0].aux_hdr_buf[0..<hn], "", c[0].aux_wire_buf[..]);
+      if wn > 0 {
+        h := mcp_hc_sock_open(c, 3000);
+        if h >= 0 {
+          _ = mcp_hc_sock_send_all(c[0].tls, h, cast(string) c[0].aux_wire_buf[0..<wn], 3000);
+          _ = mcp_hc_sock_read_some(c[0].tls, h, c[0].aux_read_buf[..], 1000);
+          mcp_hc_sock_close(c[0].tls, h);
+        }
+      }
+    }
+  }
+  c[0].connected = false;
+}

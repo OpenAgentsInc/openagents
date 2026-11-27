@@ -41,7 +41,14 @@ Pure `#authority` Sans-I/O MCP protocol library supporting both **`2025-11-25`**
 | `http_wire.coax` | Pure `#authority` HTTP/1.1 request parser, `Content-Length` & `Transfer-Encoding: chunked` decoder, `Accept`/`Content-Type` negotiation, response & SSE `id`/`event`/`retry`/keep-alive/chunk writers |
 | `http_server.coax` | Non-blocking `poll` Streamable HTTP MCP server over `coax/platform/socket-server-native.c` (`cxsrv_*`), concurrent SSE streams, `Origin` + `Host` DNS-rebinding `403` guard, session tracking, `GET`/`POST`/`DELETE /mcp` |
 
-Phase 2–3 interop & conformance harnesses live in [`tools/mcp-conformance/`](../../tools/mcp-conformance/) (`stdio-server.coax`, `stdio-client.coax`, `everything-server.coax`, `run.sh`).
+## Phase 4 Modules — Streamable HTTP + SSE Client (`#authority` wire + `#effects` transport)
+
+| File | Responsibility |
+| --- | --- |
+| `http_client_wire.coax` | Pure `#authority` HTTP/1.1 URL parser, request serializer, response head parser, incremental chunked stream decoder (`McpChunkStream`), and incremental WHATWG SSE parser (`McpSseParser`) |
+| `http_client.coax` | Streamable HTTP/1.1 + SSE MCP client over `coax/lib/net/transport.coax` (TCP + TLS): dual-era `server/discover` → `initialize` fallback, direct JSON & streaming SSE POST responses, standalone `GET` SSE stream for bidirectional `2025-11-25` server→client requests (with SEP-1034 elicitation defaults), SEP-1699 `retry:` + `Last-Event-ID` polling reconnect, and `2026-07-28` SEP-2243 `Mcp-Method`/`Mcp-Name` headers |
+
+Phase 2–4 interop & conformance harnesses live in [`tools/mcp-conformance/`](../../tools/mcp-conformance/) (`stdio-server.coax`, `stdio-client.coax`, `everything-server.coax`, `everything-client.coax`, `run.sh`).
 
 ## Verification
 
@@ -50,7 +57,7 @@ Run unit/property tests and mutation checks on every pure `#authority` module:
 ```bash
 for f in version jsonrpc uri_template headers json_schema auth_policy \
          types event_store mrtr subscriptions primitives server_core client_core memory_transport \
-         stdio_frame http_wire; do
+         stdio_frame http_wire http_client_wire; do
   ./coax/bin/coax test coax/lib/mcp/$f.coax --library
   ./coax/bin/coax mutate coax/lib/mcp/$f.coax --root-only --native --jobs 8
 done

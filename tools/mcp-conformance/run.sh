@@ -131,4 +131,27 @@ else
   echo "SKIP: set MCP_ALLOW_NPX=1 to run @modelcontextprotocol/conformance server --suite all"
 fi
 
-echo "ALL PHASE 2 + PHASE 3 CONFORMANCE CHECKS PASSED"
+echo "==> Building Coax MCP Streamable HTTP conformance client (Phase 4)"
+COAX_TOOL_BUILD_ONLY=1 "$tool" "$here/everything-client.coax"
+http_cli_bin="$repo/coax/web/build/tools/everything-client-$chash"
+
+echo "==> [7/8] Coax Streamable HTTP client <-> Coax Streamable HTTP server (2026-07-28 stateless)"
+out_hc_2026="$("$http_cli_bin" --2026-suite "http://127.0.0.1:$http_port/mcp")"
+echo "$out_hc_2026"
+grep -q "CONNECTED mode=2026-07-28 version=2026-07-28 server=coax-mcp-conformance-server/0.3.0" <<<"$out_hc_2026"
+grep -q "TOOLS count=14 valid_headers=14 schema_2020_12_preserved=true" <<<"$out_hc_2026"
+grep -q "CALL_SIMPLE_TEXT ok=true" <<<"$out_hc_2026"
+grep -q "RESOURCE_READ ok=true" <<<"$out_hc_2026"
+grep -q "PROMPT_GET ok=true" <<<"$out_hc_2026"
+
+echo "==> [8/8] @modelcontextprotocol/conformance client (non-auth suite) <-> Coax Streamable HTTP client"
+if command -v npx >/dev/null 2>&1 && [[ "${MCP_ALLOW_NPX:-0}" == "1" ]]; then
+  for scen in initialize tools_call elicitation-sep1034-client-defaults sse-retry; do
+    echo "--> client scenario: $scen"
+    npx -y @modelcontextprotocol/conformance client --command "$http_cli_bin" --scenario "$scen"
+  done
+else
+  echo "SKIP: set MCP_ALLOW_NPX=1 to run @modelcontextprotocol/conformance client scenarios"
+fi
+
+echo "ALL PHASE 2 + PHASE 3 + PHASE 4 CONFORMANCE CHECKS PASSED"
