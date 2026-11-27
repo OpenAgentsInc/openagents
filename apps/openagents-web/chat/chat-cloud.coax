@@ -1745,8 +1745,8 @@ cwc_on_tool_reply :: (c: [] ChatCloud, http_ok: bool, status: int, body: string)
   cwc_dispatch_next_tool(c);
 }
 
-cwc_send_computer :: (c: [] ChatCloud, prompt: string) -> bool {
-  if c[0].sel_host_n != 64 { return false; }
+cwc_send_durable :: (c: [] ChatCloud, prompt: string, sandbox: bool) -> bool {
+  if !sandbox && c[0].sel_host_n != 64 { return false; }
   op_b: [64] u8; op_n := cwc_make_op(c, "sub", op_b[..]);
   cid := ifx c[0].conv_persisted && c[0].active_id_n == 36 then cwc_active_id(c) else "";
   rev := ifx cid.count == 36 then c[0].active_revision else 0;
@@ -1755,32 +1755,38 @@ cwc_send_computer :: (c: [] ChatCloud, prompt: string) -> bool {
   texts := [1] string.[prompt];
   bn := ct_submit_write(cast(string) op_b[0..<op_n], cid, rev, prj, prev, "", -1, texts[..], c[0].scratch_a[..]);
   if bn <= 0 {
-    c[0].error_n = cwc_put(c[0].error[..], 0, "Computer turn request could not be encoded.");
+    c[0].error_n = cwc_put(c[0].error[..], 0, ifx sandbox then "Sandbox turn request could not be encoded." else "Computer turn request could not be encoded.");
     c[0].dirty = true;
     return false;
   }
-  dev := ifx c[0].host_name_n > 0 then cast(string) c[0].host_name[0..<c[0].host_name_n]
+  cmp := ifx sandbox then "sandbox" else "local";
+  dev := ifx sandbox then "Cloud Sandbox"
+         else ifx c[0].host_name_n > 0 then cast(string) c[0].host_name[0..<c[0].host_name_n]
          else cast(string) c[0].sel_host[0..<8];
   usp := cwc_pool_put(c, prompt);
   um := CwcMsg.{kind = CWC_M_USER, text_at = usp.at, text_n = usp.n, sequence = 1};
   um.dev_n = cwc_put(um.device[..], 0, "web");
   _ = cwc_append_msg(c, um);
   am := CwcMsg.{kind = CWC_M_ASSISTANT, text_at = 0, text_n = 0, running = true, sequence = 2};
-  am.compute_n = cwc_put(am.compute[..], 0, "local");
+  am.compute_n = cwc_put(am.compute[..], 0, cmp);
   am.dev_n = cwc_put(am.device[..], 0, dev);
   c[0].web_msg_idx = cwc_append_msg(c, am);
   vl_scroll_to_bottom(c[0].vl[..]);
 
   c[0].remote_running = true;
   c[0].remote_device_n = cwc_put(c[0].remote_device[..], 0, dev);
-  c[0].remote_compute_n = cwc_put(c[0].remote_compute[..], 0, "local");
-  c[0].active_compute_n = cwc_put(c[0].active_compute[..], 0, "local");
+  c[0].remote_compute_n = cwc_put(c[0].remote_compute[..], 0, cmp);
+  c[0].active_compute_n = cwc_put(c[0].active_compute[..], 0, cmp);
   c[0].active_device_n = cwc_put(c[0].active_device[..], 0, dev);
   c[0].error_n = 0;
 
-  url: [128] u8;
-  un := cwc_put(url[..], 0, "/api/chat/submit/v2alpha1?host=");
-  un = cwc_put(url[..], un, cast(string) c[0].sel_host[0..<64]);
+  url: [128] u8; un := 0;
+  if sandbox {
+    un = cwc_put(url[..], 0, "/api/chat/submit/v2alpha1?target=sandbox&size=small");
+  } else {
+    un = cwc_put(url[..], 0, "/api/chat/submit/v2alpha1?host=");
+    un = cwc_put(url[..], un, cast(string) c[0].sel_host[0..<64]);
+  }
   _ = ui_cmd_emit(c[0].rt[..], c[0].comp_composer, cast(string) op_b[0..<op_n], UI_CMD_HTTP_POST, UI_CMD_QUEUE,
                   cast(string) url[0..<un], cast(string) c[0].scratch_a[0..<bn], 0, CWC_MSG_SUBMIT_OK, CWC_MSG_SUBMIT_ERR, "");
   cwc_flush_effects(c);
@@ -1861,9 +1867,12 @@ cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
   prompt := cast(string) raw_prompt[lo..<hi];
   c[0].target_menu = false;
 
-  // Tier 2: explicit enrolled computer execution via durable turns_v2 + host pinning.
+  // Tier 2 / Tier 3: explicit enrolled computer or Cloud Sandbox via durable turns_v2.
   if c[0].target_kind == CLD_TARGET_COMPUTER && c[0].sel_host_n == 64 {
-    return cwc_send_computer(c, prompt);
+    return cwc_send_durable(c, prompt, false);
+  }
+  if c[0].target_kind == CLD_TARGET_SANDBOX {
+    return cwc_send_durable(c, prompt, true);
   }
 
   // Allocate conversation ID on first message and push /chat/<cid>.
@@ -2662,13 +2671,18 @@ cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
 
   // Compute / model pill
   pill: [128] u8; pn := 0;
-  is_local := cast(string) c[0].active_compute[0..<c[0].active_compute_n] == "local";
+  cmp_s := cast(string) c[0].active_compute[0..<c[0].active_compute_n];
+  is_local := cmp_s == "local";
+  is_sandbox := cmp_s == "sandbox";
   if is_local {
     pn = cwc_put(pill[..], pn, "Local · $0.00");
     if c[0].active_model_n > 0 {
       pn = cwc_put(pill[..], pn, " · ");
       pn = cwc_put(pill[..], pn, cast(string) c[0].active_model[0..<c[0].active_model_n]);
     }
+  } else if is_sandbox {
+    pn = cwc_put(pill[..], pn, "Sandbox · ");
+    pn = cwc_put(pill[..], pn, ifx c[0].active_model_n > 0 then cast(string) c[0].active_model[0..<c[0].active_model_n] else cwc_model_name(c));
   } else {
     pn = cwc_put(pill[..], pn, "Cloud · ");
     pn = cwc_put(pill[..], pn, ifx c[0].active_model_n > 0 then cast(string) c[0].active_model[0..<c[0].active_model_n] else cwc_model_name(c));
@@ -2880,8 +2894,11 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
 
       // Provenance & usage footer
       mb: [160] u8; mn := 0;
-      if cast(string) m.compute[0..<m.compute_n] == "local" {
+      mcmp := cast(string) m.compute[0..<m.compute_n];
+      if mcmp == "local" {
         mn = cwc_put(mb[..], mn, "Local · $0.00");
+      } else if mcmp == "sandbox" {
+        mn = cwc_put(mb[..], mn, "Sandbox");
       } else {
         mn = cwc_put(mb[..], mn, "Cloud");
       }

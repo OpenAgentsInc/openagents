@@ -1,0 +1,260 @@
+// Durable Cloud Sandbox execution policy (Phase 4, #14128):
+// - Multi-tenant per-account and global sandbox concurrency, size, TTL, and daily cap admission
+// - Strict validation for repo slugs, git refs, turn IDs, model IDs, and ephemeral env paths
+// - Safe oa-worker detached command composition with 0600 /tmp/oa-run.env immediate unlink
+//
+//   ./coax/bin/coax test coax/lib/boat/sandbox-policy.coax --library
+//   ./coax/bin/coax mutate coax/lib/boat/sandbox-policy.coax
+#load "policy.coax";
+#authority;
+
+SB_MAX_PER_ACCT :: 2;
+SB_MAX_GLOBAL   :: 16;
+SB_TTL_MIN_S    :: 900;
+SB_TTL_DEF_S    :: 3600;
+SB_TTL_MAX_S    :: 43200;
+
+SB_OK           :: 0;
+SB_UNAUTH       :: 1;
+SB_SIZE         :: 2;
+SB_ACCT_LIMIT   :: 3;
+SB_GLOBAL_LIMIT :: 4;
+SB_CAP          :: 5;
+SB_UNAVAILABLE  :: 6;
+
+// Clamps requested sandbox TTL (0 -> default 1h, otherwise 15m..12h); returns -1 if out of bounds.
+sb_ttl_valid :: (asked_s: int) -> int #effects(all) {
+  if asked_s == 0 { return SB_TTL_DEF_S; }
+  if asked_s < SB_TTL_MIN_S || asked_s > SB_TTL_MAX_S { return -1; }
+  return asked_s;
+}
+
+// Multi-tenant admission for starting/resuming a Cloud Sandbox turn.
+// kind: 2 = authenticated person account; acct_up: this account's running sandboxes;
+// global_up: total running sandboxes across the fleet.
+sb_admit_turn :: (kind: int, acct_up: int, global_up: int, can_start: bool, size: string, ttl_s: int, spent_mc: int, committed_mc: int) -> int #effects(all) {
+  if kind != 2 { return SB_UNAUTH; }
+  if bp_rate_mc(size) == -1 { return SB_SIZE; }
+  if acct_up < 0 || acct_up >= SB_MAX_PER_ACCT { return SB_ACCT_LIMIT; }
+  if global_up < 0 || global_up >= SB_MAX_GLOBAL { return SB_GLOBAL_LIMIT; }
+  eff_ttl := sb_ttl_valid(ttl_s);
+  if eff_ttl < 0 { return SB_CAP; } // mutant: equivalent (sb_ttl_valid returns -1 or >= 900; <=0 and <1 behave identically)
+  if bp_run(size, eff_ttl, spent_mc, committed_mc).ttl_s == 0 { return SB_CAP; }
+  if !can_start { return SB_UNAVAILABLE; }
+  return SB_OK;
+}
+
+sb_admit_words :: (code: int) -> string #effects(all) {
+  if code == SB_UNAUTH { return "Sign in with a verified person account to use Cloud Sandboxes."; }
+  if code == SB_SIZE { return "Sandbox size must be small, default, or large."; }
+  if code == SB_ACCT_LIMIT { return "Account sandbox concurrency limit reached (max 2 running)."; }
+  if code == SB_GLOBAL_LIMIT { return "Cloud sandbox fleet is at capacity; retry shortly."; }
+  if code == SB_CAP { return "Daily sandbox compute cap reached."; }
+  if code == SB_UNAVAILABLE { return "Cloud sandbox service is currently unavailable."; }
+  return "";
+}
+
+sb_alnum :: (c: u8) -> bool #effects(all) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+}
+
+sb_plain_ok :: (s: string, max_len: int) -> bool #effects(all) {
+  if s.count < 1 || s.count > max_len { return false; }
+  for c: s {
+    if !sb_alnum(c) && c != '-' && c != '_' && c != '.' && c != '/' { return false; }
+  }
+  return true;
+}
+
+sb_turn_id_ok :: (id: string) -> bool #effects(all) {
+  if id.count != 36 || cast(string) id[0..<4] != "trn_" { return false; }
+  for i: 4..<36 {
+    c := id[i];
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+  }
+  return true;
+}
+
+// Strict GitHub owner/repo slug (prevents shell/URL injection).
+sb_repo_ok :: (repo: string) -> bool #effects(all) {
+  if repo.count < 3 || repo.count > 128 { return false; }
+  slash := -1;
+  for i: 0..<repo.count {
+    c := repo[i];
+    if c == '/' {
+      if slash >= 0 { return false; }
+      slash = i;
+    } else if !sb_alnum(c) && c != '-' && c != '_' && c != '.' {
+      return false;
+    }
+  }
+  if slash < 1 || slash >= repo.count - 1 { return false; }
+  if repo[0] == '.' || repo[slash + 1] == '.' { return false; }
+  return true;
+}
+
+sb_ref_ok :: (ref: string) -> bool #effects(all) {
+  if ref.count == 0 { return true; }
+  if ref.count > 128 || ref[0] == '-' || ref[0] == '/' || ref[ref.count - 1] == '/' { return false; }
+  for i: 0..<ref.count {
+    c := ref[i];
+    if !sb_alnum(c) && c != '-' && c != '_' && c != '.' && c != '/' { return false; }
+    if c == '.' && i + 1 < ref.count && ref[i + 1] == '.' { return false; }
+  }
+  return true;
+}
+
+// Ephemeral env file MUST live under /tmp/ (never /home/user which snapshots preserve).
+sb_env_path_ok :: (path: string) -> bool #effects(all) {
+  prefix := "/tmp/oa-run-";
+  if path.count <= prefix.count + 4 || path.count > 96 { return false; }
+  if cast(string) path[0..<prefix.count] != prefix { return false; }
+  if cast(string) path[path.count - 4..<path.count] != ".env" { return false; }
+  for i: prefix.count..<path.count - 4 {
+    c := path[i];
+    if !sb_alnum(c) && c != '-' && c != '_' { return false; }
+  }
+  return true;
+}
+
+sb_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+
+// Builds the detached oa-worker shell command for a durable sandbox turn:
+// 1. Sources ephemeral 0600 /tmp/oa-run-<turn>.env if present and IMMEDIATELY unlinks it
+//    before running any user/repo code or oa-worker (zero secret persistence on disk/snapshot).
+// 2. Clones/fetches repo (if provided) into /tmp/oa-wt-<turn>.
+// 3. Runs oa-worker --json --model <model> --prompt-file /tmp/oa-prompt-<turn>.txt.
+// 4. Cleans up prompt + ephemeral env in EXIT trap.
+sb_worker_command :: (turn_id: string, model: string, repo: string, ref: string, has_env: bool, out: [] u8) -> int #effects(all) {
+  if !sb_turn_id_ok(turn_id) { return -1; }
+  if model.count > 0 && !sb_plain_ok(model, 64) { return -1; }
+  if repo.count > 0 && !sb_repo_ok(repo) { return -1; } // mutant: equivalent (sb_repo_ok requires count >= 3; a 1-byte repo like "a" fails sb_repo_ok too, handled by the test below)
+  if !sb_ref_ok(ref) { return -1; }
+
+  n := sb_put(out, 0, "set -eu; ENVF=/tmp/oa-run-");
+  n = sb_put(out, n, turn_id);
+  n = sb_put(out, n, ".env; PROMPTF=/tmp/oa-prompt-");
+  n = sb_put(out, n, turn_id);
+  n = sb_put(out, n, ".txt; WDIR=/tmp/oa-wt-");
+  n = sb_put(out, n, turn_id);
+  n = sb_put(out, n, "; trap 'rm -f \"$ENVF\" \"$PROMPTF\"' EXIT; ");
+  if has_env {
+    n = sb_put(out, n, "chmod 600 \"$ENVF\" && set -a && . \"$ENVF\" && set +a && rm -f \"$ENVF\"; ");
+  } else {
+    n = sb_put(out, n, "rm -f \"$ENVF\"; ");
+  }
+  if repo.count > 0 { // mutant: equivalent (validated nonempty repo has count >= 3)
+    n = sb_put(out, n, "mkdir -p \"$WDIR\" && git clone --depth 1 ");
+    if ref.count > 0 {
+      n = sb_put(out, n, "--branch ");
+      n = sb_put(out, n, ref);
+      n = sb_put(out, n, " ");
+    }
+    n = sb_put(out, n, "https://github.com/");
+    n = sb_put(out, n, repo);
+    n = sb_put(out, n, ".git \"$WDIR\" && cd \"$WDIR\"; ");
+  }
+  n = sb_put(out, n, "oa-worker --json");
+  if model.count > 0 {
+    n = sb_put(out, n, " --model ");
+    n = sb_put(out, n, model);
+  }
+  n = sb_put(out, n, " --prompt-file \"$PROMPTF\"");
+  return n;
+}
+
+#test "sandbox policy enforces multi-tenant concurrency, size, TTL, and daily cap bounds" {
+  #assert sb_ttl_valid(0) == 3600 && sb_ttl_valid(900) == 900 && sb_ttl_valid(43200) == 43200;
+  #assert sb_ttl_valid(899) == -1 && sb_ttl_valid(43201) == -1 && sb_ttl_valid(-1) == -1;
+
+  #assert sb_admit_turn(2, 0, 0, true, "small", 0, 0, 0) == SB_OK;
+  #assert sb_admit_turn(2, 1, 15, true, "large", 900, 0, 0) == SB_OK;
+  #assert sb_admit_turn(1, 0, 0, true, "small", 0, 0, 0) == SB_UNAUTH;
+  #assert sb_admit_turn(0, 0, 0, true, "small", 0, 0, 0) == SB_UNAUTH;
+  #assert sb_admit_turn(2, 0, 0, true, "xlarge", 0, 0, 0) == SB_SIZE;
+  #assert sb_admit_turn(2, -1, 0, true, "small", 0, 0, 0) == SB_ACCT_LIMIT;
+  #assert sb_admit_turn(2, 2, 0, true, "small", 0, 0, 0) == SB_ACCT_LIMIT;
+  #assert sb_admit_turn(2, 0, -1, true, "small", 0, 0, 0) == SB_GLOBAL_LIMIT;
+  #assert sb_admit_turn(2, 0, 16, true, "small", 0, 0, 0) == SB_GLOBAL_LIMIT;
+  #assert sb_admit_turn(2, 0, 0, true, "small", 10, 0, 0) == SB_CAP;
+  #assert sb_admit_turn(2, 0, 0, true, "large", 3600, 499000, 0) == SB_CAP;
+  #assert sb_admit_turn(2, 0, 0, false, "small", 0, 0, 0) == SB_UNAVAILABLE;
+
+  #assert sb_admit_words(SB_OK) == "";
+  #assert sb_admit_words(SB_UNAUTH).count > 0 && sb_admit_words(SB_SIZE).count > 0;
+  #assert sb_admit_words(SB_ACCT_LIMIT).count > 0 && sb_admit_words(SB_GLOBAL_LIMIT).count > 0;
+  #assert sb_admit_words(SB_CAP).count > 0 && sb_admit_words(SB_UNAVAILABLE).count > 0;
+}
+
+#test "sandbox validators block injection and snapshot-persisted env paths" {
+  tid := "trn_0123456789abcdef0123456789abcdef";
+  #assert sb_turn_id_ok(tid);
+  #assert !sb_turn_id_ok("trn_g123456789abcdef0123456789abcdef"); // bad at index 4
+  #assert !sb_turn_id_ok("trn_:123456789abcdef0123456789abcdef"); // ':' == '9'+1
+  #assert !sb_turn_id_ok("trn_0123456789abcdef0123456789abcde") && !sb_turn_id_ok("cnv_0123456789abcdef0123456789abcdef");
+  #assert !sb_turn_id_ok("trn_0123456789ABCDEF0123456789abcdef") && !sb_turn_id_ok("trn_0123456789abcdef0123456789abcdeg");
+
+  // Character boundary checks for sb_alnum and sb_plain_ok
+  #assert sb_alnum('a') && sb_alnum('z') && !sb_alnum('{') && sb_alnum('A') && sb_alnum('Z') && !sb_alnum('[') && sb_alnum('0') && sb_alnum('9') && !sb_alnum(':');
+  #assert sb_plain_ok("a", 1) && sb_plain_ok("a_b.c/d-9", 9) && !sb_plain_ok("a`b", 8) && !sb_plain_ok("", 64) && !sb_plain_ok("a;b", 64) && !sb_plain_ok("abcd", 3);
+
+  #assert sb_repo_ok("OpenAgentsInc/openagents") && sb_repo_ok("a/b") && sb_repo_ok("org_1/repo-2.js") && sb_repo_ok("a/bc");
+  #assert !sb_repo_ok("") && !sb_repo_ok("a/") && !sb_repo_ok("ab/") && !sb_repo_ok("/ab") && !sb_repo_ok("/b") && !sb_repo_ok("//b") && !sb_repo_ok("abc") && !sb_repo_ok("a/b/c");
+  #assert !sb_repo_ok(";a/b") && !sb_repo_ok(".a/b") && !sb_repo_ok("a/.b") && !sb_repo_ok("a/b;rm");
+  long_repo: [129] u8; for i: 0..<129 { long_repo[i] = 'a'; } long_repo[1] = '/';
+  #assert sb_repo_ok(cast(string) long_repo[0..<128]) && !sb_repo_ok(cast(string) long_repo[..]);
+
+  #assert sb_ref_ok("") && sb_ref_ok("v") && sb_ref_ok("main") && sb_ref_ok("a.b.") && sb_ref_ok("a.b.c") && sb_ref_ok("feat/cloud-p4_1.0");
+  #assert !sb_ref_ok(";main") && !sb_ref_ok("-main") && !sb_ref_ok("/main") && !sb_ref_ok("main/") && !sb_ref_ok("a..b") && !sb_ref_ok("..a") && !sb_ref_ok("a..") && !sb_ref_ok("main;id");
+  long_ref: [129] u8; for i: 0..<129 { long_ref[i] = 'a'; }
+  #assert sb_ref_ok(cast(string) long_ref[0..<128]) && !sb_ref_ok(cast(string) long_ref[..]);
+
+  #assert sb_env_path_ok("/tmp/oa-run-a.env") && sb_env_path_ok("/tmp/oa-run-a-b_1.env") && sb_env_path_ok("/tmp/oa-run-trn_0123456789abcdef0123456789abcdef.env");
+  #assert !sb_env_path_ok("/tmp/oa-run-a.b.env") && !sb_env_path_ok("/tmp/oa-run-a;.env") && !sb_env_path_ok("/home/user/oa-run-1.env") && !sb_env_path_ok("/tmp/oa-run-.env") && !sb_env_path_ok("/tmp/oa-run-1.txt") && !sb_env_path_ok("/tmp/oa-run-a/b.env");
+  long_env: [97] u8;
+  p := sb_put(long_env[..], 0, "/tmp/oa-run-");
+  for i: p..<92 { long_env[i] = 'a'; }
+  _ = sb_put(long_env[..], 92, ".env");
+  #assert sb_env_path_ok(cast(string) long_env[0..<96]);
+  for i: p..<93 { long_env[i] = 'a'; }
+  _ = sb_put(long_env[..], 93, ".env");
+  #assert !sb_env_path_ok(cast(string) long_env[..]);
+}
+
+#test "sandbox worker command unlinks ephemeral 0600 env before execution and validates every argument" {
+  tid := "trn_0123456789abcdef0123456789abcdef";
+  out: [1024] u8;
+  n := sb_worker_command(tid, "google/gemini-4-neon", "OpenAgentsInc/openagents", "main", true, out[..]);
+  #assert n > 0;
+  cmd := cast(string) out[0..<n];
+  #assert cmd == "set -eu; ENVF=/tmp/oa-run-trn_0123456789abcdef0123456789abcdef.env; PROMPTF=/tmp/oa-prompt-trn_0123456789abcdef0123456789abcdef.txt; WDIR=/tmp/oa-wt-trn_0123456789abcdef0123456789abcdef; trap 'rm -f \"$ENVF\" \"$PROMPTF\"' EXIT; chmod 600 \"$ENVF\" && set -a && . \"$ENVF\" && set +a && rm -f \"$ENVF\"; mkdir -p \"$WDIR\" && git clone --depth 1 --branch main https://github.com/OpenAgentsInc/openagents.git \"$WDIR\" && cd \"$WDIR\"; oa-worker --json --model google/gemini-4-neon --prompt-file \"$PROMPTF\"";
+  // Exact buffer boundary for sb_put
+  #assert sb_worker_command(tid, "google/gemini-4-neon", "OpenAgentsInc/openagents", "main", true, out[0..<n]) == n;
+  #assert sb_worker_command(tid, "google/gemini-4-neon", "OpenAgentsInc/openagents", "main", true, out[0..<n - 1]) == -1;
+
+  // 1-byte model, 1-byte ref, 64-byte vs 65-byte model, and bad 1-byte model/repo
+  n1 := sb_worker_command(tid, "m", "a/b", "v", false, out[..]);
+  #assert n1 > 0 && cast(string) out[0..<n1] == "set -eu; ENVF=/tmp/oa-run-trn_0123456789abcdef0123456789abcdef.env; PROMPTF=/tmp/oa-prompt-trn_0123456789abcdef0123456789abcdef.txt; WDIR=/tmp/oa-wt-trn_0123456789abcdef0123456789abcdef; trap 'rm -f \"$ENVF\" \"$PROMPTF\"' EXIT; rm -f \"$ENVF\"; mkdir -p \"$WDIR\" && git clone --depth 1 --branch v https://github.com/a/b.git \"$WDIR\" && cd \"$WDIR\"; oa-worker --json --model m --prompt-file \"$PROMPTF\"";
+  #assert sb_worker_command(tid, ";", "", "", false, out[..]) == -1;
+  #assert sb_worker_command(tid, "", ";", "", false, out[..]) == -1;
+  long_m: [65] u8; for i: 0..<65 { long_m[i] = 'a'; }
+  #assert sb_worker_command(tid, cast(string) long_m[0..<64], "", "", false, out[..]) > 0;
+  #assert sb_worker_command(tid, cast(string) long_m[..], "", "", false, out[..]) == -1;
+
+  n2 := sb_worker_command(tid, "", "", "", false, out[..]);
+  #assert n2 > 0;
+  cmd2 := cast(string) out[0..<n2];
+  #assert cmd2 == "set -eu; ENVF=/tmp/oa-run-trn_0123456789abcdef0123456789abcdef.env; PROMPTF=/tmp/oa-prompt-trn_0123456789abcdef0123456789abcdef.txt; WDIR=/tmp/oa-wt-trn_0123456789abcdef0123456789abcdef; trap 'rm -f \"$ENVF\" \"$PROMPTF\"' EXIT; rm -f \"$ENVF\"; oa-worker --json --prompt-file \"$PROMPTF\"";
+
+  n3 := sb_worker_command(tid, "", "OpenAgentsInc/openagents", "", false, out[..]);
+  #assert n3 > 0 && cast(string) out[0..<n3] == "set -eu; ENVF=/tmp/oa-run-trn_0123456789abcdef0123456789abcdef.env; PROMPTF=/tmp/oa-prompt-trn_0123456789abcdef0123456789abcdef.txt; WDIR=/tmp/oa-wt-trn_0123456789abcdef0123456789abcdef; trap 'rm -f \"$ENVF\" \"$PROMPTF\"' EXIT; rm -f \"$ENVF\"; mkdir -p \"$WDIR\" && git clone --depth 1 https://github.com/OpenAgentsInc/openagents.git \"$WDIR\" && cd \"$WDIR\"; oa-worker --json --prompt-file \"$PROMPTF\"";
+  #assert sb_worker_command(tid, "", "", "", false, out[0..<10]) == -1;
+  #assert sb_worker_command("bad", "", "", "", false, out[..]) == -1;
+  #assert sb_worker_command(tid, "bad;cmd", "", "", false, out[..]) == -1;
+  #assert sb_worker_command(tid, "", "bad;repo", "", false, out[..]) == -1;
+  #assert sb_worker_command(tid, "", "OpenAgentsInc/openagents", "bad..ref", false, out[..]) == -1;
+}

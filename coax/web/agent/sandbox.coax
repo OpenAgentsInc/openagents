@@ -1,0 +1,579 @@
+// Generalized Cloud Sandbox execution engine on durable turns_v2 (Phase 4, #14128):
+// - Runs oa-worker (OpenAgents Core) inside an isolated Linux sandbox via Boat v1 SDK
+// - Enforces #authority multi-tenant admission & caps (coax/lib/boat/sandbox-policy.coax)
+// - Ephemeral secret injection: writes 0600 /tmp/oa-run-<turn>.env (never /home/user),
+//   clones/fetches Project repo into /tmp/oa-wt-<turn>, unlinks env immediately before oa-worker
+// - Streams openagents.session.v1 JSON lines over Boat byte-offset NDJSON attach stream into
+//   typed SbEvent records (thinking_delta, tool_call, tool_result+diff, text_delta,
+//   completed/failed/cancelled) with compute="sandbox"
+// - Honors STOP via DELETE /sandboxes/{id}/commands/{pid} (process-group kill)
+//
+//   ./coax/bin/coax test coax/web/agent/sandbox.coax
+#import "Basic";
+#load "../../lib/boat/local.coax";
+#load "../../lib/boat/sandbox-policy.coax";
+
+SB_LINE_CAP :: 65536;
+SB_ANS_CAP  :: 65536;
+SB_EV_CAP   :: 64;
+
+SbEvent :: struct {
+  sequence: int;
+  kind: [24] u8; kind_n: int;
+  state: [16] u8; state_n: int;
+  text: [256] u8; text_n: int;
+  tool_id: [64] u8; tool_id_n: int;
+  tool_name: [64] u8; tool_name_n: int;
+  tool_args: [256] u8; tool_args_n: int;
+  diff: [256] u8; diff_n: int;
+  failed: bool;
+  compute: [16] u8; compute_n: int;
+  model: [64] u8; model_n: int;
+  source_device: [32] u8; dev_n: int;
+  stop_reason: [32] u8; stop_n: int;
+  created_at_ms: int;
+}
+
+SbTurnReq :: struct {
+  account_kind: int;
+  conversation: string;
+  turn: string;
+  box_id: string;
+  size: string;
+  ttl_s: int;
+  model: string;
+  repo: string;
+  ref: string;
+  prompt: string;
+  ephemeral_env: string; // written only to /tmp/oa-run-<turn>.env and unlinked on start
+}
+
+SbLines :: struct { buf: [SB_LINE_CAP] u8; n: int; cut: bool; }
+
+sb_lines_feed :: (l: [] SbLines, data: string) {
+  for c: data {
+    if l[0].cut {
+      if c == '\n' { l[0].cut = false; }
+    } else if l[0].n < SB_LINE_CAP {
+      l[0].buf[l[0].n] = c;
+      l[0].n += 1;
+    } else if c == '\n' {
+      l[0].n = 0;
+    } else {
+      l[0].n = 0;
+      l[0].cut = true;
+    }
+  }
+}
+
+sb_lines_take :: (l: [] SbLines, out: [] u8) -> string {
+  e := 0;
+  while e < l[0].n && l[0].buf[e] != '\n' { e += 1; }
+  if e >= l[0].n { return ""; } // mutant: equivalent (e <= l[0].n is a loop invariant, so e >= l[0].n iff e == l[0].n)
+  k := ifx e < out.count then e else out.count; // mutant: equivalent (e == out.count gives same value on both sides)
+  for i: 0..<k { out[i] = l[0].buf[i]; }
+  rest := l[0].n - e - 1;
+  for i: 0..<rest { l[0].buf[i] = l[0].buf[e + 1 + i]; }
+  l[0].n = rest;
+  return cast(string) out[0..<k];
+}
+
+sb_copy_into :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count > dst.count then dst.count else src.count; // mutant: equivalent (equal counts yield same n)
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+// Maps one openagents.session.v1 JSON line from oa-worker into a typed SbEvent.
+sb_session_line_to_ev :: (ar: [] ClArena, line: string, box_id: string, model: string, seq: int, now_ms: int, out: [] SbEvent) -> bool {
+  out[0] = SbEvent.{};
+  r: [1] SlReader; r[0] = SlReader.{text = line};
+  l: [1] SlLine;
+  if !sl_next(r[..], l[..]) { return false; }
+  sl_read(ar, l[..]);
+  k := l[0].kind;
+  ev: SbEvent;
+  ev.sequence = seq;
+  ev.state_n = sb_copy_into(ev.state[..], "running");
+  ev.compute_n = sb_copy_into(ev.compute[..], "sandbox");
+  ev.model_n = sb_copy_into(ev.model[..], model);
+  ev.dev_n = sb_copy_into(ev.source_device[..], box_id);
+  ev.created_at_ms = now_ms;
+  if k == SK_THINKING {
+    ev.kind_n = sb_copy_into(ev.kind[..], "thinking_delta");
+    ev.text_n = sb_copy_into(ev.text[..], l[0].text);
+    out[0] = ev;
+    return true;
+  }
+  if k == SK_TOOL {
+    ev.kind_n = sb_copy_into(ev.kind[..], "tool_call");
+    ev.tool_id_n = sb_copy_into(ev.tool_id[..], ifx l[0].id.count > 0 then l[0].id else l[0].label);
+    ev.tool_name_n = sb_copy_into(ev.tool_name[..], ifx l[0].tool.count > 0 then l[0].tool else l[0].label);
+    ev.tool_args_n = sb_copy_into(ev.tool_args[..], l[0].label);
+    out[0] = ev;
+    return true;
+  }
+  if k == SK_RESULT {
+    ev.kind_n = sb_copy_into(ev.kind[..], "tool_result");
+    ev.tool_id_n = sb_copy_into(ev.tool_id[..], l[0].id);
+    ev.tool_name_n = sb_copy_into(ev.tool_name[..], ifx l[0].id.count > 0 then l[0].id else "tool");
+    ev.text_n = sb_copy_into(ev.text[..], l[0].text);
+    ev.failed = l[0].error;
+    out[0] = ev;
+    return true;
+  }
+  if k == SK_DIFF {
+    ev.kind_n = sb_copy_into(ev.kind[..], "tool_result");
+    ev.tool_id_n = sb_copy_into(ev.tool_id[..], l[0].path);
+    ev.tool_name_n = sb_copy_into(ev.tool_name[..], "edit_file");
+    ev.diff_n = sb_copy_into(ev.diff[..], l[0].path);
+    out[0] = ev;
+    return true;
+  }
+  if k == SK_REPLY {
+    ev.kind_n = sb_copy_into(ev.kind[..], "text_delta");
+    ev.text_n = sb_copy_into(ev.text[..], l[0].text);
+    out[0] = ev;
+    return true;
+  }
+  if k == SK_END {
+    if l[0].ending == "finished" {
+      ev.kind_n = sb_copy_into(ev.kind[..], "completed");
+      ev.state_n = sb_copy_into(ev.state[..], "completed");
+      ev.stop_n = sb_copy_into(ev.stop_reason[..], "end_turn");
+    } else if l[0].ending == "stopped" {
+      ev.kind_n = sb_copy_into(ev.kind[..], "cancelled");
+      ev.state_n = sb_copy_into(ev.state[..], "cancelled");
+      ev.stop_n = sb_copy_into(ev.stop_reason[..], "user_stop");
+    } else {
+      ev.kind_n = sb_copy_into(ev.kind[..], "failed");
+      ev.state_n = sb_copy_into(ev.state[..], "failed");
+      ev.stop_n = sb_copy_into(ev.stop_reason[..], "error");
+      ev.text_n = sb_copy_into(ev.text[..], l[0].text);
+    }
+    out[0] = ev;
+    return true;
+  }
+  return false;
+}
+
+SB_RUN_ACTIVE   :: 0;
+SB_RUN_FINISHED :: 1;
+
+SbRun :: struct {
+  c: BoatClient;
+  box: [16] u8; box_n: int;
+  model: [64] u8; model_n: int;
+  pid: int;
+  seq: int;
+  f: [1] BtFollow;
+  fline: [65536] u8;
+  lines: [1] SbLines;
+  line: [SB_LINE_CAP] u8;
+  answer: [SB_ANS_CAP] u8; ans_n: int;
+  events: [SB_EV_CAP] SbEvent; ev_n: int;
+  status: string;
+  error: [256] u8; err_n: int;
+}
+
+sb_run_fail :: (r: [] SbRun, why: string) -> int {
+  r[0].status = "failed";
+  r[0].err_n = sb_copy_into(r[0].error[..], why);
+  return SB_RUN_FINISHED;
+}
+
+sb_run_record_ev :: (r: [] SbRun, ev: [] SbEvent) {
+  if r[0].ev_n >= SB_EV_CAP { return; }
+  r[0].events[r[0].ev_n] = ev[0];
+  r[0].ev_n += 1;
+}
+
+sb_run_append_ans :: (r: [] SbRun, text: string) {
+  rem := SB_ANS_CAP - r[0].ans_n;
+  add := ifx text.count > rem then rem else text.count; // mutant: equivalent (equal counts yield same add)
+  for i: 0..<add { r[0].answer[r[0].ans_n + i] = text[i]; }
+  r[0].ans_n += add;
+}
+
+sb_ar_reset :: (ar: [] ClArena) {
+  ar[0].at = 0;
+  ar[0].full = false;
+}
+
+sb_on_no_frame :: (r: [] SbRun, done: bool) -> int {
+  if !done { return SB_RUN_ACTIVE; }
+  return sb_run_fail(r, "sandbox stream ended unexpectedly");
+}
+
+// Boots/resumes the sandbox under #authority sb_admit_turn, writes ephemeral /tmp/oa-run-<turn>.env
+// & /tmp/oa-prompt-<turn>.txt, starts detached oa-worker, and attaches to byte-offset NDJSON stream.
+sb_run_start :: (r: [] SbRun, req: SbTurnReq, acct_up: int, out: [] u8, ar: [] ClArena) -> int {
+  if !bt_id_ok(req.box_id) { return sb_run_fail(r, "invalid sandbox id"); }
+  if !sb_turn_id_ok(req.turn) { return sb_run_fail(r, "invalid turn id"); }
+  r[0].box_n = sb_copy_into(r[0].box[..], req.box_id);
+  r[0].model_n = sb_copy_into(r[0].model[..], req.model);
+  r[0].seq = 0;
+
+  lb: [262144] u8;
+  d: [1] BtDay;
+  bt_day(r[0].c, d[..], lb[..], out, ar);
+  if bt_failed(d[0].error) { return sb_run_fail(r, "sandbox service unreachable"); }
+  sz := ifx req.size.count > 0 then req.size else "small"; // mutant: equivalent (1-byte size fails sb_admit_turn identically)
+  code := sb_admit_turn(req.account_kind, acct_up, d[0].up, d[0].limits.can_start, sz, req.ttl_s, d[0].spent_mc, d[0].committed_mc);
+  if code != SB_OK { return sb_run_fail(r, sb_admit_words(code)); }
+
+  ttl := ifx req.ttl_s > 0 then req.ttl_s else SB_TTL_DEF_S; // mutant: equivalent (sb_admit_turn only allows ttl_s == 0 or >= 900)
+  up := bt_bring_up(r[0].c, req.box_id, true, ttl, sz, lb[..], out, ar);
+  if up.refused != BP_OK { return sb_run_fail(r, bp_words(up.refused)); }
+  if bt_failed(up.error) { return sb_run_fail(r, "sandbox failed to come up"); }
+
+  // Write prompt to /tmp/oa-prompt-<turn>.txt (never /home/user).
+  pp: [96] u8;
+  pn := sb_put(pp[..], sb_put(pp[..], sb_put(pp[..], 0, "/tmp/oa-prompt-"), req.turn), ".txt");
+  wp := bt_write_file(r[0].c, req.box_id, cast(string) pp[0..<pn], req.prompt, false, out, ar);
+  if bt_failed(wp.error) { return sb_run_fail(r, "failed to write sandbox prompt file"); }
+
+  // Write ephemeral env (e.g. WorkOS Pipes GitHub token) ONLY to /tmp/oa-run-<turn>.env.
+  // The worker command chmods 0600, sources it, and unlinks it immediately before running oa-worker.
+  has_env := req.ephemeral_env.count > 0;
+  if has_env {
+    ep: [96] u8;
+    en := sb_put(ep[..], sb_put(ep[..], sb_put(ep[..], 0, "/tmp/oa-run-"), req.turn), ".env");
+    we := bt_write_file(r[0].c, req.box_id, cast(string) ep[0..<en], req.ephemeral_env, false, out, ar);
+    if bt_failed(we.error) { return sb_run_fail(r, "failed to stage ephemeral env"); }
+  }
+
+  cmd_b: [1024] u8;
+  cn := sb_worker_command(req.turn, req.model, req.repo, req.ref, has_env, cmd_b[..]);
+  if cn <= 0 { return sb_run_fail(r, "invalid sandbox worker command parameters"); } // mutant: equivalent (sb_worker_command returns -1 or > 50)
+
+  st := bt_detach(r[0].c, req.box_id, cast(string) cmd_b[0..<cn], "", out, ar);
+  if bt_failed(st.error) { return sb_run_fail(r, "failed to launch oa-worker in sandbox"); }
+  started := bt_read_started(ar, st.body);
+  if !started.ok { return sb_run_fail(r, "sandbox did not return worker process id"); }
+  r[0].pid = started.pid;
+
+  _ = bt_attach(r[0].c, r[0].f[..], req.box_id, r[0].pid, BtCursor.{}, r[0].fline[..]);
+  r[0].status = "running";
+  return SB_RUN_ACTIVE;
+}
+
+sb_run_step :: (r: [] SbRun, ar: [] ClArena, wait_ms: int, now_ms: int) -> int {
+  box := cast(string) r[0].box[0..<r[0].box_n];
+  mod := cast(string) r[0].model[0..<r[0].model_n];
+
+  while true {
+    sb_ar_reset(ar);
+    nx := bt_frame_next(r[0].f[..], ar, wait_ms);
+    if !nx.got { return sb_on_no_frame(r, r[0].f[0].done); }
+    fr := nx.frame;
+    if fr.kind == BtFrameKind.stdout { sb_lines_feed(r[0].lines[..], fr.data); }
+    while true {
+      ln := sb_lines_take(r[0].lines[..], r[0].line[..]);
+      if ln.count == 0 { break; }
+      ev: [1] SbEvent;
+      if sb_session_line_to_ev(ar, ln, box, mod, r[0].seq + 1, now_ms, ev[..]) {
+        r[0].seq += 1;
+        sb_run_record_ev(r, ev[..]);
+        ks := cast(string) ev[0].kind[0..<ev[0].kind_n];
+        ts := cast(string) ev[0].text[0..<ev[0].text_n];
+        if ks == "text_delta" { sb_run_append_ans(r, ts); }
+        if ks == "completed" { r[0].status = "completed"; }
+        else if ks == "cancelled" { r[0].status = "cancelled"; }
+        else if ks == "failed" { r[0].status = "failed"; r[0].err_n = sb_copy_into(r[0].error[..], ts); }
+      }
+    }
+    if fr.kind == BtFrameKind.reconnect {
+      _ = bt_attach(r[0].c, r[0].f[..], box, r[0].pid, r[0].f[0].at, r[0].fline[..]);
+      return SB_RUN_ACTIVE;
+    }
+    if fr.kind == BtFrameKind.exit {
+      if r[0].status == "running" {
+        r[0].status = ifx fr.exit_code == 0 then "completed" else "failed";
+      }
+      return SB_RUN_FINISHED;
+    }
+  }
+  return SB_RUN_ACTIVE; // mutant: equivalent (unreachable after infinite loop returning on !nx.got/reconnect/exit)
+}
+
+sb_run_stop :: (r: [] SbRun, out: [] u8, ar: [] ClArena) {
+  box := cast(string) r[0].box[0..<r[0].box_n];
+  _ = bt_kill(r[0].c, box, r[0].pid, out, ar);
+  r[0].status = "cancelled";
+}
+
+#test "sandbox line splitter, copy cap, and event/answer caps handle exact boundaries" {
+  l: [1] SbLines;
+  out: [4] u8;
+  sb_lines_feed(l[..], "ab\ncdefg\n");
+  #assert sb_lines_take(l[..], out[..]) == "ab";
+  #assert sb_lines_take(l[..], out[..]) == "cdef"; // truncated to out.count == 4
+  #assert sb_lines_take(l[..], out[..]) == "";
+  #assert l[0].n == 0;
+
+  // Empty line at index 0 followed by next line + stale newline at buf[l.n] must not be read
+  sb_lines_feed(l[..], "\nx\n");
+  #assert sb_lines_take(l[..], out[..]) == "";
+  #assert sb_lines_take(l[..], out[..]) == "x";
+  sb_lines_feed(l[..], "p");
+  #assert sb_lines_take(l[..], out[..]) == "";
+  sb_lines_feed(l[..], "\n");
+  #assert sb_lines_take(l[..], out[..]) == "p";
+
+  // sb_ar_reset & sb_on_no_frame helpers
+  ar_b: [16] u8; ar_t: [1] ClArena; ar_t[0] = ClArena.{buf = ar_b[..], at = 9, full = true};
+  sb_ar_reset(ar_t[..]);
+  #assert ar_t[0].at == 0 && !ar_t[0].full;
+  r_nf: [1] SbRun;
+  #assert sb_on_no_frame(r_nf[..], false) == SB_RUN_ACTIVE;
+  #assert sb_on_no_frame(r_nf[..], true) == SB_RUN_FINISHED && r_nf[0].status == "failed";
+
+  // Full buffer with no newline must stop strictly before SB_LINE_CAP without OOB read
+  l[0].n = SB_LINE_CAP;
+  for i: 0..<SB_LINE_CAP { l[0].buf[i] = 'a'; }
+  #assert sb_lines_take(l[..], out[..]) == "";
+  // Overflow beyond SB_LINE_CAP drops oversized line and recovers after '\n'
+  l[0].n = SB_LINE_CAP;
+  sb_lines_feed(l[..], "z");
+  #assert l[0].cut && l[0].n == 0;
+  sb_lines_feed(l[..], "q\nok\n");
+  #assert !l[0].cut && sb_lines_take(l[..], out[..]) == "ok";
+  // Exact full buffer followed immediately by '\n' resets cleanly without setting cut
+  l[0].n = SB_LINE_CAP;
+  sb_lines_feed(l[..], "\ny\n");
+  #assert !l[0].cut && sb_lines_take(l[..], out[..]) == "y";
+
+  // sb_copy_into boundary & cap
+  dst: [3] u8;
+  #assert sb_copy_into(dst[..], "ab") == 2 && cast(string) dst[0..<2] == "ab";
+  #assert sb_copy_into(dst[..], "abcd") == 3 && cast(string) dst[0..<3] == "abc";
+
+  // sb_run_record_ev & sb_run_append_ans caps
+  r: [1] SbRun;
+  ev: [1] SbEvent; ev[0].sequence = 9;
+  r[0].ev_n = SB_EV_CAP - 1;
+  sb_run_record_ev(r[..], ev[..]);
+  #assert r[0].ev_n == SB_EV_CAP && r[0].events[SB_EV_CAP - 1].sequence == 9;
+  sb_run_record_ev(r[..], ev[..]);
+  #assert r[0].ev_n == SB_EV_CAP;
+
+  r[0].ans_n = SB_ANS_CAP - 2;
+  sb_run_append_ans(r[..], "xyz");
+  #assert r[0].ans_n == SB_ANS_CAP && r[0].answer[SB_ANS_CAP - 2] == 'x' && r[0].answer[SB_ANS_CAP - 1] == 'y';
+}
+
+#test "sb_session_line_to_ev maps every openagents.session.v1 event kind and fallback accurately" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  ev: [1] SbEvent;
+
+  // Invalid / unknown lines reset out[0] and return false
+  ev[0].sequence = 99;
+  #assert !sb_session_line_to_ev(ar[..], "", "bx_23456789", "m", 1, 100, ev[..]) && ev[0].sequence == 0;
+  #assert !sb_session_line_to_ev(ar[..], "{\"kind\":\"meta\"}\n", "bx_23456789", "m", 1, 100, ev[..]);
+
+  // SK_THINKING
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"thinking\",\"text\":\"plan\"}\n", "bx_23456789", "g4", 1, 101, ev[..]);
+  #assert ev[0].sequence == 1 && ev[0].created_at_ms == 101;
+  #assert cast(string) ev[0].state[0..<ev[0].state_n] == "running" && cast(string) ev[0].compute[0..<ev[0].compute_n] == "sandbox";
+  #assert cast(string) ev[0].model[0..<ev[0].model_n] == "g4" && cast(string) ev[0].source_device[0..<ev[0].dev_n] == "bx_23456789";
+  #assert cast(string) ev[0].kind[0..<ev[0].kind_n] == "thinking_delta" && cast(string) ev[0].text[0..<ev[0].text_n] == "plan";
+
+  // SK_TOOL with explicit id/tool (1-byte edge) and fallback to label
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"tool\",\"id\":\"a\",\"tool\":\"b\",\"label\":\"lbl\"}\n", "bx_23456789", "g4", 2, 102, ev[..]);
+  #assert cast(string) ev[0].kind[0..<ev[0].kind_n] == "tool_call" && cast(string) ev[0].tool_id[0..<ev[0].tool_id_n] == "a" && cast(string) ev[0].tool_name[0..<ev[0].tool_name_n] == "b" && cast(string) ev[0].tool_args[0..<ev[0].tool_args_n] == "lbl";
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"tool\",\"label\":\"lbl\"}\n", "bx_23456789", "g4", 3, 103, ev[..]);
+  #assert cast(string) ev[0].tool_id[0..<ev[0].tool_id_n] == "lbl" && cast(string) ev[0].tool_name[0..<ev[0].tool_name_n] == "lbl";
+
+  // SK_RESULT: id fallback (1-byte), failed flag, and default "tool"
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"result\",\"id\":\"i\",\"text\":\"bad\",\"error\":true}\n", "bx_23456789", "g4", 4, 104, ev[..]);
+  #assert cast(string) ev[0].kind[0..<ev[0].kind_n] == "tool_result" && cast(string) ev[0].tool_id[0..<ev[0].tool_id_n] == "i" && cast(string) ev[0].tool_name[0..<ev[0].tool_name_n] == "i" && cast(string) ev[0].text[0..<ev[0].text_n] == "bad" && ev[0].failed;
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"result\",\"text\":\"ok\",\"error\":false}\n", "bx_23456789", "g4", 5, 105, ev[..]);
+  #assert cast(string) ev[0].tool_name[0..<ev[0].tool_name_n] == "tool" && !ev[0].failed;
+
+  // SK_DIFF
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"diff\",\"path\":\"a.coax\"}\n", "bx_23456789", "g4", 7, 107, ev[..]);
+  #assert cast(string) ev[0].kind[0..<ev[0].kind_n] == "tool_result" && cast(string) ev[0].tool_id[0..<ev[0].tool_id_n] == "a.coax" && cast(string) ev[0].tool_name[0..<ev[0].tool_name_n] == "edit_file" && cast(string) ev[0].diff[0..<ev[0].diff_n] == "a.coax";
+
+  // SK_REPLY
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"reply\",\"text\":\"hi\"}\n", "bx_23456789", "g4", 8, 108, ev[..]);
+  #assert cast(string) ev[0].kind[0..<ev[0].kind_n] == "text_delta" && cast(string) ev[0].text[0..<ev[0].text_n] == "hi";
+
+  // SK_END: finished, stopped, failed
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"end\",\"ending\":\"finished\"}\n", "bx_23456789", "g4", 9, 109, ev[..]);
+  #assert cast(string) ev[0].kind[0..<ev[0].kind_n] == "completed" && cast(string) ev[0].state[0..<ev[0].state_n] == "completed" && cast(string) ev[0].stop_reason[0..<ev[0].stop_n] == "end_turn";
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"end\",\"ending\":\"stopped\"}\n", "bx_23456789", "g4", 10, 110, ev[..]);
+  #assert cast(string) ev[0].kind[0..<ev[0].kind_n] == "cancelled" && cast(string) ev[0].state[0..<ev[0].state_n] == "cancelled" && cast(string) ev[0].stop_reason[0..<ev[0].stop_n] == "user_stop";
+  ar[0].at = 0;
+  #assert sb_session_line_to_ev(ar[..], "{\"kind\":\"end\",\"ending\":\"failed\",\"text\":\"boom\"}\n", "bx_23456789", "g4", 11, 111, ev[..]);
+  #assert cast(string) ev[0].kind[0..<ev[0].kind_n] == "failed" && cast(string) ev[0].state[0..<ev[0].state_n] == "failed" && cast(string) ev[0].stop_reason[0..<ev[0].stop_n] == "error" && cast(string) ev[0].text[0..<ev[0].text_n] == "boom";
+}
+
+#test "sandbox durable engine runs oa-worker with ephemeral 0600 env unlink, handles failures/reconnect/exit/STOP" #steps 250000000 {
+  // 1) Happy path with ephemeral env + reconnect + events + STOP
+  k: [1] BtCheck;
+  att1 := "HTTP/2 200 \r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"attached\",\"processId\":4242,\"stdoutOffset\":0,\"stderrOffset\":0}\n{\"type\":\"stderr\",\"data\":\"warn\\n\",\"nextOffset\":5}\n{\"type\":\"reconnect\",\"stdoutOffset\":0,\"stderrOffset\":5}\n";
+  att2 := "HTTP/2 200 \r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"attached\",\"processId\":4242,\"stdoutOffset\":0,\"stderrOffset\":5}\n{\"type\":\"stdout\",\"data\":\"{\\\"kind\\\":\\\"thinking\\\",\\\"text\\\":\\\"Cloning\\\"}\\n{\\\"kind\\\":\\\"tool\\\",\\\"id\\\":\\\"t1\\\",\\\"tool\\\":\\\"bash\\\",\\\"label\\\":\\\"coax test\\\"}\\n{\\\"kind\\\":\\\"result\\\",\\\"id\\\":\\\"t1\\\",\\\"text\\\":\\\"ok\\\",\\\"error\\\":false}\\n{\\\"kind\\\":\\\"reply\\\",\\\"text\\\":\\\"Fixed\\\\tnow.\\\"}\\n{\\\"kind\\\":\\\"end\\\",\\\"ending\\\":\\\"finished\\\"}\\n\",\"nextOffset\":220}\n{\"type\":\"exit\",\"status\":\"exited\",\"exitCode\":1,\"stdoutOffset\":220,\"stderrOffset\":5}\n";
+  answers := [12] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_WRITE, BT_FX_WRITE, BT_FX_STARTED, att1, att2, BT_FX_KILL];
+  c := bt_check_init(k[..], answers[..]);
+  r: [1] SbRun; r[0].c = c;
+  r[0].seq = 7; // verify sb_run_start resets seq to 0
+  req := SbTurnReq.{
+    account_kind = 2,
+    conversation = "cnv_11111111111111111111111111111111",
+    turn = "trn_22222222222222222222222222222222",
+    box_id = "bx_fwh3xnws",
+    size = "",
+    ttl_s = 0,
+    model = "google/gemini-4-neon",
+    repo = "OpenAgentsInc/openagents",
+    ref = "main",
+    prompt = "Run coax test",
+    ephemeral_env = "A"
+  };
+  st := sb_run_start(r[..], req, 0, k[0].out[..], k[0].ar[..]);
+  #assert st == SB_RUN_ACTIVE && r[0].status == "running" && r[0].pid == 4242 && r[0].seq == 0;
+  // First step hits reconnect frame -> stays SB_RUN_ACTIVE and reattaches
+  st = sb_run_step(r[..], k[0].ar[..], 0, 1000);
+  #assert st == SB_RUN_ACTIVE;
+  // Second step drains all 5 events using a tight 218-byte arena pre-filled to capacity (requires both per-frame and per-line reset)
+  tight_b: [226] u8; tight_ar: [1] ClArena; tight_ar[0] = ClArena.{buf = tight_b[..], at = 226};
+  st = sb_run_step(r[..], tight_ar[..], 0, 1001);
+  #assert st == SB_RUN_FINISHED && r[0].status == "completed" && r[0].seq == 5 && r[0].ev_n == 5;
+  #assert cast(string) r[0].answer[0..<r[0].ans_n] == "Fixed\tnow.";
+  #assert cast(string) r[0].events[0].source_device[0..<r[0].events[0].dev_n] == "bx_fwh3xnws";
+  #assert cast(string) r[0].events[0].model[0..<r[0].events[0].model_n] == "google/gemini-4-neon";
+  #assert r[0].events[0].sequence == 1 && r[0].events[4].sequence == 5 && r[0].events[4].created_at_ms == 1001;
+
+  sent := bt_check_log(k[..]);
+  has_env_f := false; has_pr_f := false; has_cmd0 := false; has_b64 := false;
+  for i: 0..<sent.count {
+    if i + 52 <= sent.count && cast(string) sent[i..<i + 52] == "/tmp/oa-run-trn_22222222222222222222222222222222.env" { has_env_f = true; }
+    if i + 55 <= sent.count && cast(string) sent[i..<i + 55] == "/tmp/oa-prompt-trn_22222222222222222222222222222222.txt" { has_pr_f = true; }
+    if i + 20 <= sent.count && cast(string) sent[i..<i + 20] == "\"command\":\"set -eu; " { has_cmd0 = true; }
+    if i + 8 <= sent.count && cast(string) sent[i..<i + 8] == "\"base64\"" { has_b64 = true; }
+  }
+  #assert has_env_f && has_pr_f && has_cmd0 && !has_b64;
+
+  sb_run_stop(r[..], k[0].out[..], k[0].ar[..]);
+  #assert r[0].status == "cancelled";
+  sent2 := bt_check_log(k[..]);
+  has_kill := false;
+  for i: 0..<sent2.count {
+    if i + 39 <= sent2.count && cast(string) sent2[i..<i + 39] == "DELETE /sandboxes/bx_fwh3xnws/commands/" { has_kill = true; }
+  }
+  #assert has_kill;
+
+  // sb_run_stop boundary: pid == 1 + valid box kills; pid == 0 or invalid box skips kill
+  k0: [1] BtCheck; e0 := [1] string.[BT_FX_KILL];
+  r0: [1] SbRun; r0[0].c = bt_check_init(k0[..], e0[..]);
+  r0[0].pid = 0; r0[0].box_n = sb_copy_into(r0[0].box[..], "bx_fwh3xnws");
+  sb_run_stop(r0[..], k0[0].out[..], k0[0].ar[..]);
+  #assert r0[0].status == "cancelled" && bt_check_log(k0[..]).count == 0;
+  r0[0].pid = 1; r0[0].box_n = 0;
+  sb_run_stop(r0[..], k0[0].out[..], k0[0].ar[..]);
+  #assert r0[0].status == "cancelled" && bt_check_log(k0[..]).count == 0;
+  r0[0].pid = 1; r0[0].box_n = sb_copy_into(r0[0].box[..], "bx_fwh3xnws");
+  sb_run_stop(r0[..], k0[0].out[..], k0[0].ar[..]);
+  #assert bt_check_log(k0[..]).count > 0;
+
+  // 2) Validation & failure paths in sb_run_start
+  bad := req; bad.box_id = "bad";
+  #assert sb_run_start(r0[..], bad, 0, k0[0].out[..], k0[0].ar[..]) == SB_RUN_FINISHED && r0[0].status == "failed" && cast(string) r0[0].error[0..<r0[0].err_n] == "invalid sandbox id";
+  bad = req; bad.turn = "bad";
+  #assert sb_run_start(r0[..], bad, 0, k0[0].out[..], k0[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == "invalid turn id";
+
+  // bt_day error -> sandbox service unreachable
+  kf: [1] BtCheck; ef := [1] string.["HTTP/2 503 \r\n\r\n{\"code\":\"down\",\"message\":\"down\"}"];
+  r0[0].c = bt_check_init(kf[..], ef[..]);
+  #assert sb_run_start(r0[..], req, 0, kf[0].out[..], kf[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == "sandbox service unreachable";
+
+  // sb_admit_turn refused (acct_up == 2)
+  ka: [1] BtCheck; ea := [3] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE];
+  r0[0].c = bt_check_init(ka[..], ea[..]);
+  #assert sb_run_start(r0[..], req, 2, ka[0].out[..], ka[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == sb_admit_words(SB_ACCT_LIMIT);
+
+  // bt_bring_up refused (archived box + second limits has canStart:false -> BP_BOAT) & error (500 on bring_up)
+  no_lim := "HTTP/2 200 \r\n\r\n{\"ok\":true,\"canStart\":false,\"activeSandboxes\":0,\"maxActiveSandboxes\":2,\"starts\":{\"minute\":{\"limit\":10,\"used\":0,\"remaining\":10},\"hour\":{\"limit\":60,\"used\":0,\"remaining\":60},\"day\":{\"limit\":200,\"used\":0,\"remaining\":200}}}";
+  arch_list := "HTTP/2 200 \r\n\r\n{\"ok\":true,\"sandboxes\":[{\"id\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-1\",\"state\":\"archived\",\"type\":\"small\"}]}";
+  kb1: [1] BtCheck; eb1 := [6] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, no_lim, arch_list, BT_FX_USAGE];
+  r0[0].c = bt_check_init(kb1[..], eb1[..]);
+  #assert sb_run_start(r0[..], req, 0, kb1[0].out[..], kb1[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == bp_words(BP_BOAT);
+
+  err500 := "HTTP/2 500 \r\n\r\n{\"code\":\"err\",\"message\":\"fail\"}";
+  kb2: [1] BtCheck; eb2 := [4] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, err500];
+  r0[0].c = bt_check_init(kb2[..], eb2[..]);
+  #assert sb_run_start(r0[..], req, 0, kb2[0].out[..], kb2[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == "sandbox failed to come up";
+
+  // prompt write fail
+  kw1: [1] BtCheck; ew1 := [7] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, err500];
+  r0[0].c = bt_check_init(kw1[..], ew1[..]);
+  #assert sb_run_start(r0[..], req, 0, kw1[0].out[..], kw1[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == "failed to write sandbox prompt file";
+
+  // env write fail
+  kw2: [1] BtCheck; ew2 := [8] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_WRITE, err500];
+  r0[0].c = bt_check_init(kw2[..], ew2[..]);
+  #assert sb_run_start(r0[..], req, 0, kw2[0].out[..], kw2[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == "failed to stage ephemeral env";
+
+  // invalid worker command (bad ref) + no ephemeral_env path
+  kw3: [1] BtCheck; ew3 := [7] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_WRITE];
+  r0[0].c = bt_check_init(kw3[..], ew3[..]);
+  noenv := req; noenv.ephemeral_env = ""; noenv.ref = "bad ref!"; noenv.size = "default"; noenv.ttl_s = 1800;
+  #assert sb_run_start(r0[..], noenv, 0, kw3[0].out[..], kw3[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == "invalid sandbox worker command parameters";
+
+  // detach error, bad started body, attach error
+  noenv.ref = "main";
+  kw4: [1] BtCheck; ew4 := [8] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_WRITE, err500];
+  r0[0].c = bt_check_init(kw4[..], ew4[..]);
+  #assert sb_run_start(r0[..], noenv, 0, kw4[0].out[..], kw4[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == "failed to launch oa-worker in sandbox";
+
+  kw5: [1] BtCheck; ew5 := [8] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_WRITE, "HTTP/2 200 \r\n\r\n{}"];
+  r0[0].c = bt_check_init(kw5[..], ew5[..]);
+  #assert sb_run_start(r0[..], noenv, 0, kw5[0].out[..], kw5[0].ar[..]) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == "sandbox did not return worker process id";
+
+  // attach stream with immediate transport EOF fails cleanly in sb_run_step
+  kw6: [1] BtCheck; ew6 := [8] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_WRITE, BT_FX_STARTED];
+  r0[0].c = bt_check_init(kw6[..], ew6[..]);
+  #assert sb_run_start(r0[..], noenv, 0, kw6[0].out[..], kw6[0].ar[..]) == SB_RUN_ACTIVE;
+  #assert sb_run_step(r0[..], kw6[0].ar[..], 0, 1) == SB_RUN_FINISHED && cast(string) r0[0].error[0..<r0[0].err_n] == "sandbox stream ended unexpectedly";
+
+  // 3) sb_run_step: cancelled/failed events, exit 0/non-zero while still running, unexpected EOF
+  att_c := "HTTP/2 200 \r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"stdout\",\"data\":\"{\\\"kind\\\":\\\"end\\\",\\\"ending\\\":\\\"stopped\\\"}\\n\",\"nextOffset\":40}\n{\"type\":\"exit\",\"status\":\"exited\",\"exitCode\":1,\"stdoutOffset\":40,\"stderrOffset\":0}\n";
+  ks1: [1] BtCheck; es1 := [1] string.[att_c];
+  r0[0] = SbRun.{c = bt_check_init(ks1[..], es1[..]), status = "running", pid = 9};
+  _ = bt_attach(r0[0].c, r0[0].f[..], "bx_fwh3xnws", 9, BtCursor.{}, r0[0].fline[..]);
+  #assert sb_run_step(r0[..], ks1[0].ar[..], 0, 1) == SB_RUN_FINISHED && r0[0].status == "cancelled";
+
+  att_f := "HTTP/2 200 \r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"stdout\",\"data\":\"{\\\"kind\\\":\\\"end\\\",\\\"ending\\\":\\\"failed\\\",\\\"text\\\":\\\"oops\\\"}\\n\",\"nextOffset\":50}\n{\"type\":\"exit\",\"status\":\"exited\",\"exitCode\":0,\"stdoutOffset\":50,\"stderrOffset\":0}\n";
+  ks2: [1] BtCheck; es2 := [1] string.[att_f];
+  r0[0] = SbRun.{c = bt_check_init(ks2[..], es2[..]), status = "running", pid = 9};
+  _ = bt_attach(r0[0].c, r0[0].f[..], "bx_fwh3xnws", 9, BtCursor.{}, r0[0].fline[..]);
+  #assert sb_run_step(r0[..], ks2[0].ar[..], 0, 1) == SB_RUN_FINISHED && r0[0].status == "failed" && cast(string) r0[0].error[0..<r0[0].err_n] == "oops";
+
+  att_e0 := "HTTP/2 200 \r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"exit\",\"status\":\"exited\",\"exitCode\":0,\"stdoutOffset\":0,\"stderrOffset\":0}\n";
+  ks3: [1] BtCheck; es3 := [1] string.[att_e0];
+  r0[0] = SbRun.{c = bt_check_init(ks3[..], es3[..]), status = "running", pid = 9};
+  _ = bt_attach(r0[0].c, r0[0].f[..], "bx_fwh3xnws", 9, BtCursor.{}, r0[0].fline[..]);
+  #assert sb_run_step(r0[..], ks3[0].ar[..], 0, 1) == SB_RUN_FINISHED && r0[0].status == "completed";
+
+  att_e1 := "HTTP/2 200 \r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"exit\",\"status\":\"exited\",\"exitCode\":1,\"stdoutOffset\":0,\"stderrOffset\":0}\n";
+  ks4: [1] BtCheck; es4 := [1] string.[att_e1];
+  r0[0] = SbRun.{c = bt_check_init(ks4[..], es4[..]), status = "running", pid = 9};
+  _ = bt_attach(r0[0].c, r0[0].f[..], "bx_fwh3xnws", 9, BtCursor.{}, r0[0].fline[..]);
+  #assert sb_run_step(r0[..], ks4[0].ar[..], 0, 1) == SB_RUN_FINISHED && r0[0].status == "failed";
+
+  att_eof := "HTTP/2 200 \r\ncontent-type: application/x-ndjson\r\n\r\n";
+  ks5: [1] BtCheck; es5 := [1] string.[att_eof];
+  r0[0] = SbRun.{c = bt_check_init(ks5[..], es5[..]), status = "running", pid = 9};
+  _ = bt_attach(r0[0].c, r0[0].f[..], "bx_fwh3xnws", 9, BtCursor.{}, r0[0].fline[..]);
+  #assert sb_run_step(r0[..], ks5[0].ar[..], 0, 1) == SB_RUN_FINISHED && r0[0].status == "failed" && cast(string) r0[0].error[0..<r0[0].err_n] == "sandbox stream ended unexpectedly";
+}

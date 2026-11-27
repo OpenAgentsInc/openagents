@@ -158,7 +158,7 @@ CcTurnSummary :: struct {
 
 cc_compute_valid :: (compute: string, cost_msat: int) -> bool #export_c #effects(all) {
   if compute == "local" { return cost_msat == 0; }
-  if compute == "cloud" { return cost_msat >= 0 && cost_msat <= CC_TIME_MAX; }
+  if compute == "cloud" || compute == "sandbox" { return cost_msat >= 0 && cost_msat <= CC_TIME_MAX; }
   return false;
 }
 
@@ -753,6 +753,11 @@ cc_v2_route :: (method: string, path: string, id_out: [] u8) -> int #export_c #e
   #assert cc_compute_valid("cloud", CC_TIME_MAX);
   #assert !cc_compute_valid("cloud", -1);
   #assert !cc_compute_valid("cloud", CC_TIME_MAX + 1);
+  #assert cc_compute_valid("sandbox", 0);
+  #assert cc_compute_valid("sandbox", 42500);
+  #assert cc_compute_valid("sandbox", CC_TIME_MAX);
+  #assert !cc_compute_valid("sandbox", -1);
+  #assert !cc_compute_valid("sandbox", CC_TIME_MAX + 1);
   #assert !cc_compute_valid("", 0);
   #assert !cc_compute_valid("hybrid", 0);
   #assert cc_opt_compute_valid("", 0);
@@ -760,6 +765,7 @@ cc_v2_route :: (method: string, path: string, id_out: [] u8) -> int #export_c #e
   #assert cc_opt_compute_valid("local", 0);
   #assert !cc_opt_compute_valid("local", 1);
   #assert cc_opt_compute_valid("cloud", 99);
+  #assert cc_opt_compute_valid("sandbox", 99);
   #assert cc_text_ok("", 1) && cc_text_ok("a", 1) && !cc_text_ok("\0", 1) && !cc_text_ok("ab", 1);
 }
 

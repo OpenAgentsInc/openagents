@@ -235,8 +235,28 @@ assert st == 202 and j.get("turn_id", "").startswith("trn_"), (st, j)
 row = subprocess.check_output([psql, pgurl, "-tAc", f"SELECT compute||'|'||source_device||'|'||workspace FROM chat.turns_v2 WHERE id='{j['turn_id']}'"]).decode().strip()
 assert row == f"local|Mac Studio Lab|host:{'a'*64}", row
 
+# 5. Tier 3 Cloud Sandbox submit on POST /api/chat/submit/v2alpha1?target=sandbox&size=small
+def submit_qs(op_id, qs):
+    hdrs = {"Content-Type": "application/json", "Cookie": f"__Host-oa_session={tok}", "Origin": api}
+    payload = {"schema": "openagents.chat.submit.v2alpha1", "operation_id": op_id, "conversation_id": "", "expected_revision": 0, "project_id": None, "expected_project_revision": None, "legacy_thread_id": None, "legacy_thread_revision": None, "content": [{"type": "text", "text": "Run tests in cloud sandbox"}]}
+    r = urllib.request.Request(f"{api}/api/chat/submit/v2alpha1?{qs}", data=json.dumps(payload).encode(), headers=hdrs, method="POST")
+    try:
+        with urllib.request.urlopen(r, timeout=10) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode()
+
+st, _ = submit_qs("op_sb_bad_tgt", "target=bogus")
+assert st == 400, st
+st, _ = submit_qs("op_sb_bad_sz", "target=sandbox&size=huge")
+assert st == 400, st
+st, j = submit_qs("op_sb_ok", "target=sandbox&size=small")
+assert st == 202 and j.get("turn_id", "").startswith("trn_"), (st, j)
+srow = subprocess.check_output([psql, pgurl, "-tAc", f"SELECT compute||'|'||source_device||'|'||workspace FROM chat.turns_v2 WHERE id='{j['turn_id']}'"]).decode().strip()
+assert srow == "sandbox|cloud-sandbox|sandbox:small", srow
+
 with open(api_log, "r", encoding="utf-8", errors="replace") as f:
     log = f.read()
 assert s_gh not in log and s_exa not in log, "LEAK in api.log!"
-print("cloud_tools_e2e_test: ALL 7 TIER 1 TOOLS + TIER 2 HOST PINNING + SECURITY GATES PASSED (ASan/UBSan clean, zero token leaks)")
+print("cloud_tools_e2e_test: ALL 7 TIER 1 TOOLS + TIER 2 HOST PINNING + TIER 3 SANDBOX + SECURITY GATES PASSED (ASan/UBSan clean, zero token leaks)")
 PY

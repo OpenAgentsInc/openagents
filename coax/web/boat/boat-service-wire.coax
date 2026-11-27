@@ -1,0 +1,342 @@
+// Pure-Coax C ABI wire codecs for first-party GCP oa-boat (Phase 4, #14128).
+// Encodes/decodes every Boat v1 JSON shape consumed by coax/lib/boat/wire.coax
+// and coax/web/tool.sh boat conform (--lifecycle).
+//
+//   ./coax/bin/coax test coax/web/boat/boat-service-wire.coax --library
+#load "boat-service-policy.coax";
+#load "../../lib/json/json.coax";
+
+bs_c_auth_ok :: (expected: string, provided: string) -> bool #export_c #effects(all) { return bs_auth_ok(expected, provided); }
+bs_c_id_valid :: (id: string) -> bool #export_c #effects(all) { return bs_id_valid(id); }
+bs_c_name_valid :: (name: string) -> bool #export_c #effects(all) { return bs_name_valid(name); }
+bs_c_confirm_delete_ok :: (id: string, confirm: string) -> bool #export_c #effects(all) { return bs_confirm_delete_ok(id, confirm); }
+bs_c_admit_create :: (size: string, ttl_s: int, active: int, max_active: int, min_u: int, hr_u: int, day_u: int) -> int #export_c #effects(all) {
+  return bs_admit_create(size, ttl_s, active, max_active, min_u, hr_u, day_u);
+}
+bs_c_admit_command :: (st: int, cmd_len: int, timeout_s: int, detached: bool) -> int #export_c #effects(all) {
+  return bs_admit_command(st, cmd_len, timeout_s, detached);
+}
+bs_c_admit_file :: (st: int, path: string, size_bytes: int) -> int #export_c #effects(all) {
+  return bs_admit_file(st, path, size_bytes);
+}
+bs_c_ttl_expired :: (st: int, started_s: int, ttl_s: int, now_s: int) -> bool #export_c #effects(all) {
+  return bs_ttl_expired(st, started_s, ttl_s, now_s);
+}
+bs_c_usage_mc :: (size: string, seconds: int) -> int #export_c #effects(all) { return bs_usage_mc(size, seconds); }
+bs_c_state_up :: (st: int) -> bool #export_c #effects(all) { return bs_state_up(st); }
+
+bs_w_error :: (status: int, code: string, message: string, req_id: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], false);
+  jo_key(o[..], "status"); jo_int(o[..], status);
+  jo_key(o[..], "code"); jo_str(o[..], code);
+  jo_key(o[..], "message"); jo_str(o[..], message);
+  jo_key(o[..], "requestId"); jo_str(o[..], req_id);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+bs_rem :: (lim: int, used: int) -> int #effects(all) {
+  return ifx lim > used then lim - used else 0; // mutant: equivalent (lim - used equals 0 when lim == used)
+}
+
+bs_w_limits :: (active: int, max_active: int, min_u: int, hr_u: int, day_u: int, out: [] u8) -> int #export_c #effects(all) {
+  can_start := active < max_active && min_u < BS_MIN_START_LIM && hr_u < BS_HOUR_START_LIM && day_u < BS_DAY_START_LIM;
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "canStart"); jo_bool(o[..], can_start);
+  jo_key(o[..], "activeSandboxes"); jo_int(o[..], active);
+  jo_key(o[..], "maxActiveSandboxes"); jo_int(o[..], max_active);
+  jo_key(o[..], "sandboxPlanKey"); jo_str(o[..], "oa_gcp_v1");
+  jo_key(o[..], "billingStatus"); jo_str(o[..], "active");
+  jo_key(o[..], "subscriptionRemainingSeconds"); jo_int(o[..], 360000);
+  jo_key(o[..], "starts"); jo_obj(o[..]);
+  jo_key(o[..], "minute"); jo_obj(o[..]);
+  jo_key(o[..], "limit"); jo_int(o[..], BS_MIN_START_LIM);
+  jo_key(o[..], "used"); jo_int(o[..], min_u);
+  jo_key(o[..], "remaining"); jo_int(o[..], bs_rem(BS_MIN_START_LIM, min_u));
+  jo_end(o[..]);
+  jo_key(o[..], "hour"); jo_obj(o[..]);
+  jo_key(o[..], "limit"); jo_int(o[..], BS_HOUR_START_LIM);
+  jo_key(o[..], "used"); jo_int(o[..], hr_u);
+  jo_key(o[..], "remaining"); jo_int(o[..], bs_rem(BS_HOUR_START_LIM, hr_u));
+  jo_end(o[..]);
+  jo_key(o[..], "day"); jo_obj(o[..]);
+  jo_key(o[..], "limit"); jo_int(o[..], BS_DAY_START_LIM);
+  jo_key(o[..], "used"); jo_int(o[..], day_u);
+  jo_key(o[..], "remaining"); jo_int(o[..], bs_rem(BS_DAY_START_LIM, day_u));
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+bs_w_sandbox_obj :: (o: [] Jo, id: string, name: string, st: int, size: string, ip: string, env_name: string, ttl_s: int, archive_after: string, created: string) #effects(all) {
+  sp := bs_size_spec(size);
+  jo_obj(o);
+  jo_key(o, "id"); jo_str(o, id);
+  jo_key(o, "name"); jo_str(o, name);
+  jo_key(o, "state"); jo_str(o, bs_state_name(st));
+  jo_key(o, "type"); jo_str(o, ifx sp.ok then sp.name else "default");
+  jo_key(o, "vcpu"); jo_int(o, ifx sp.ok then sp.vcpu else 4);
+  jo_key(o, "memoryGB"); jo_int(o, ifx sp.ok then sp.memory_gb else 16);
+  jo_key(o, "ip"); jo_str(o, ip);
+  if ip.count > 0 {
+    jo_key(o, "sshEndpoint"); jo_str(o, ip);
+  }
+  if env_name.count > 0 {
+    jo_key(o, "environment"); jo_str(o, env_name);
+  }
+  if ttl_s > 0 {
+    jo_key(o, "ttlSeconds"); jo_int(o, ttl_s);
+  }
+  if archive_after.count > 0 {
+    jo_key(o, "archiveAfter"); jo_str(o, archive_after);
+  }
+  jo_key(o, "createdAt"); jo_str(o, created);
+  jo_end(o);
+}
+
+bs_w_sandbox_env :: (id: string, name: string, st: int, size: string, ip: string, env_name: string, ttl_s: int, archive_after: string, created: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "sandbox");
+  bs_w_sandbox_obj(o[..], id, name, st, size, ip, env_name, ttl_s, archive_after, created);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+bs_w_command_res :: (cmd_id: string, exit_code: int, timed_out: bool, stdout_s: string, stderr_s: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "commandId"); jo_str(o[..], cmd_id);
+  jo_key(o[..], "success"); jo_bool(o[..], !timed_out && exit_code == 0);
+  jo_key(o[..], "exitCode"); jo_int(o[..], exit_code);
+  jo_key(o[..], "timedOut"); jo_bool(o[..], timed_out);
+  jo_key(o[..], "stdout"); jo_str(o[..], stdout_s);
+  jo_key(o[..], "stderr"); jo_str(o[..], stderr_s);
+  jo_key(o[..], "stdoutTruncated"); jo_bool(o[..], false);
+  jo_key(o[..], "stderrTruncated"); jo_bool(o[..], false);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+bs_w_detached :: (pid: int, cmd_id: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "processId"); jo_int(o[..], pid);
+  jo_key(o[..], "commandId"); jo_str(o[..], cmd_id);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+bs_w_proc_status :: (status: string, running: bool, exit_code: int, out_off: int, err_off: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "status"); jo_str(o[..], status);
+  jo_key(o[..], "running"); jo_bool(o[..], running);
+  if !running { jo_key(o[..], "exitCode"); jo_int(o[..], exit_code); }
+  jo_key(o[..], "stdoutNextOffset"); jo_int(o[..], out_off);
+  jo_key(o[..], "stderrNextOffset"); jo_int(o[..], err_off);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+bs_w_frame_data :: (kind: string, data: string, next_off: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], kind);
+  jo_key(o[..], "data"); jo_str(o[..], data);
+  jo_key(o[..], "nextOffset"); jo_int(o[..], next_off);
+  jo_end(o[..]);
+  jo_put(o[..], "\n");
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+bs_w_file :: (path: string, content: string, is_b64: bool, size: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "path"); jo_str(o[..], path);
+  jo_key(o[..], "content"); jo_str(o[..], content);
+  jo_key(o[..], "encoding"); jo_str(o[..], ifx is_b64 then "base64" else "utf-8");
+  jo_key(o[..], "size"); jo_int(o[..], size);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+bs_w_usage :: (size: string, seconds: int, running: bool, out: [] u8) -> int #export_c #effects(all) {
+  mc := bs_usage_mc(size, seconds);
+  if mc < 0 { return -1; }
+  whole := mc / 100000;
+  frac := mc % 100000;
+  db: [32] u8;
+  do: [1] Jo; jo_start(do[..], db[..]);
+  jo_int(do[..], whole); jo_put(do[..], ".");
+  if frac < 10000 { jo_put(do[..], "0"); }
+  if frac < 1000 { jo_put(do[..], "0"); }
+  if frac < 100 { jo_put(do[..], "0"); }
+  if frac < 10 { jo_put(do[..], "0"); }
+  jo_int(do[..], frac);
+
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "sandboxType"); jo_str(o[..], size);
+  jo_key(o[..], "seconds"); jo_int(o[..], seconds);
+  jo_key(o[..], "dollars"); jo_raw(o[..], cast(string) db[0..<do[0].n]);
+  jo_key(o[..], "running"); jo_bool(o[..], running);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Parse JSON request fields safely (returns >= 0 string length, or -1 if absent/invalid).
+bs_r_str :: (raw: string, key: string, out: [] u8) -> int #export_c #effects(all) {
+  d: [1] Jv; nodes: [64] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return -1; }
+  if jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  at := jv_get(d[0], 0, key);
+  if jv_kind(d[0], at) != JV_STRING { return -1; }
+  return jv_str(d[0], at, out);
+}
+
+bs_r_int :: (raw: string, key: string, def_v: int) -> int #export_c #effects(all) {
+  d: [1] Jv; nodes: [64] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return def_v; }
+  if jv_kind(d[0], 0) != JV_OBJECT { return def_v; }
+  return jv_int(d[0], jv_get(d[0], 0, key), def_v);
+}
+
+bs_r_bool :: (raw: string, key: string) -> bool #export_c #effects(all) {
+  d: [1] Jv; nodes: [64] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  if jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  return jv_kind(d[0], jv_get(d[0], 0, key)) == JV_TRUE;
+}
+
+#test "oa-boat wire encoders emit exact Boat v1 envelopes, handle boundaries, and decode request fields" {
+  out: [4096] u8;
+  tiny: [1] u8;
+
+  // Exported policy C wrappers
+  #assert bs_c_auth_ok("secret123", "secret123") && !bs_c_auth_ok("secret123", "secret124");
+  #assert bs_c_id_valid("bx_23456789") && !bs_c_id_valid("bx_00000000");
+  #assert bs_c_name_valid("oa-devbox-1") && !bs_c_name_valid("");
+  #assert bs_c_confirm_delete_ok("bx_23456789", "bx_23456789") && !bs_c_confirm_delete_ok("bx_23456789", "other");
+  #assert bs_c_admit_create("small", 900, 0, 8, 0, 0, 0) == 200 && bs_c_admit_create("bad", 900, 0, 8, 0, 0, 0) != 200;
+  #assert bs_c_admit_command(BS_STATE_READY, 4, 30, false) == 200 && bs_c_admit_command(BS_STATE_ARCHIVED, 4, 30, false) != 200;
+  #assert bs_c_admit_file(BS_STATE_READY, "/tmp/a", 10) == 200 && bs_c_admit_file(BS_STATE_READY, "/tmp/../a", 10) != 200;
+  #assert !bs_c_ttl_expired(BS_STATE_READY, 100, 900, 999) && bs_c_ttl_expired(BS_STATE_READY, 100, 900, 1000);
+  #assert bs_c_usage_mc("small", 3600) == 1800 && bs_c_usage_mc("bogus", 10) == -1;
+  #assert bs_c_state_up(BS_STATE_READY) && !bs_c_state_up(BS_STATE_ARCHIVED);
+
+  // bs_rem + bs_w_limits exact output and canStart boundary edges
+  #assert bs_rem(10, 9) == 1 && bs_rem(10, 10) == 0 && bs_rem(10, 11) == 0;
+  n := bs_w_limits(1, 8, 2, 5, 12, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"ok\":true,\"canStart\":true,\"activeSandboxes\":1,\"maxActiveSandboxes\":8,\"sandboxPlanKey\":\"oa_gcp_v1\",\"billingStatus\":\"active\",\"subscriptionRemainingSeconds\":360000,\"starts\":{\"minute\":{\"limit\":10,\"used\":2,\"remaining\":8},\"hour\":{\"limit\":60,\"used\":5,\"remaining\":55},\"day\":{\"limit\":200,\"used\":12,\"remaining\":188}}}";
+  #assert bs_w_limits(1, 8, 2, 5, 12, tiny[..]) == -1;
+  n = bs_w_limits(8, 8, 0, 0, 0, out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"canStart\":false,\"activeSandboxes\":8,\"maxActiveSandboxes\":8,\"sandboxPlanKey\":\"oa_gcp_v1\",\"billingStatus\":\"active\",\"subscriptionRemainingSeconds\":360000,\"starts\":{\"minute\":{\"limit\":10,\"used\":0,\"remaining\":10},\"hour\":{\"limit\":60,\"used\":0,\"remaining\":60},\"day\":{\"limit\":200,\"used\":0,\"remaining\":200}}}";
+  n = bs_w_limits(0, 8, BS_MIN_START_LIM, 0, 0, out[..]);
+  #assert bs_r_bool(cast(string) out[0..<n], "canStart") == false;
+  n = bs_w_limits(0, 8, BS_MIN_START_LIM - 1, BS_HOUR_START_LIM - 1, BS_DAY_START_LIM - 1, out[..]);
+  #assert bs_r_bool(cast(string) out[0..<n], "canStart") == true;
+  n = bs_w_limits(0, 8, 0, BS_HOUR_START_LIM, 0, out[..]);
+  #assert bs_r_bool(cast(string) out[0..<n], "canStart") == false;
+  n = bs_w_limits(0, 8, 0, 0, BS_DAY_START_LIM, out[..]);
+  #assert bs_r_bool(cast(string) out[0..<n], "canStart") == false;
+
+  // bs_w_sandbox_env: all optional fields present vs omitted, plus unknown-size fallback
+  n = bs_w_sandbox_env("bx_23456789", "oa-devbox-1", BS_STATE_READY, "small", "10.0.0.5", "prod", 900, "2026-11-27T12:00:00Z", "2026-11-27T11:45:00Z", out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandbox\":{\"id\":\"bx_23456789\",\"name\":\"oa-devbox-1\",\"state\":\"ready\",\"type\":\"small\",\"vcpu\":2,\"memoryGB\":8,\"ip\":\"10.0.0.5\",\"sshEndpoint\":\"10.0.0.5\",\"environment\":\"prod\",\"ttlSeconds\":900,\"archiveAfter\":\"2026-11-27T12:00:00Z\",\"createdAt\":\"2026-11-27T11:45:00Z\"}}";
+  n = bs_w_sandbox_env("bx_23456789", "oa-devbox-1", BS_STATE_READY, "small", "1", "e", 1, "a", "t", out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandbox\":{\"id\":\"bx_23456789\",\"name\":\"oa-devbox-1\",\"state\":\"ready\",\"type\":\"small\",\"vcpu\":2,\"memoryGB\":8,\"ip\":\"1\",\"sshEndpoint\":\"1\",\"environment\":\"e\",\"ttlSeconds\":1,\"archiveAfter\":\"a\",\"createdAt\":\"t\"}}";
+  n = bs_w_sandbox_env("bx_23456789", "oa-devbox-1", BS_STATE_ARCHIVED, "bogus", "", "", 0, "", "2026-11-27T11:45:00Z", out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandbox\":{\"id\":\"bx_23456789\",\"name\":\"oa-devbox-1\",\"state\":\"archived\",\"type\":\"default\",\"vcpu\":4,\"memoryGB\":16,\"ip\":\"\",\"createdAt\":\"2026-11-27T11:45:00Z\"}}";
+  #assert bs_w_sandbox_env("bx_23456789", "n", BS_STATE_READY, "small", "", "", 0, "", "t", tiny[..]) == -1;
+
+  // bs_w_usage: invalid size, 0-padding boundaries (<10, <100, <1000, <10000, >=10000), whole >= 1
+  #assert bs_w_usage("bogus", 10, false, out[..]) == -1;
+  #assert bs_w_usage("small", -1, false, out[..]) == -1;
+  #assert bs_w_usage("small", 0, false, tiny[..]) == -1;
+  n = bs_w_usage("small", 0, false, out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"small\",\"seconds\":0,\"dollars\":0.00000,\"running\":false}";
+  n = bs_w_usage("small", 18, true, out[..]); // 9 mc
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"small\",\"seconds\":18,\"dollars\":0.00009,\"running\":true}";
+  n = bs_w_usage("small", 20, true, out[..]); // 10 mc
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"small\",\"seconds\":20,\"dollars\":0.00010,\"running\":true}";
+  n = bs_w_usage("small", 198, true, out[..]); // 99 mc
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"small\",\"seconds\":198,\"dollars\":0.00099,\"running\":true}";
+  n = bs_w_usage("small", 200, true, out[..]); // 100 mc
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"small\",\"seconds\":200,\"dollars\":0.00100,\"running\":true}";
+  n = bs_w_usage("small", 1998, true, out[..]); // 999 mc
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"small\",\"seconds\":1998,\"dollars\":0.00999,\"running\":true}";
+  n = bs_w_usage("small", 2000, true, out[..]); // 1000 mc
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"small\",\"seconds\":2000,\"dollars\":0.01000,\"running\":true}";
+  n = bs_w_usage("small", 19998, true, out[..]); // 9999 mc
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"small\",\"seconds\":19998,\"dollars\":0.09999,\"running\":true}";
+  n = bs_w_usage("small", 20000, true, out[..]); // 10000 mc
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"small\",\"seconds\":20000,\"dollars\":0.10000,\"running\":true}";
+  n = bs_w_usage("large", 50000, true, out[..]); // 100000 mc = 1.00000 exact boundary
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"large\",\"seconds\":50000,\"dollars\":1.00000,\"running\":true}";
+  n = bs_w_usage("large", 72000, true, out[..]); // 144000 mc = 1.44000
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"sandboxType\":\"large\",\"seconds\":72000,\"dollars\":1.44000,\"running\":true}";
+
+  // bs_w_command_res, bs_w_detached, bs_w_proc_status, bs_w_frame_data, bs_w_file, bs_w_error
+  n = bs_w_command_res("cmd_1", 0, false, "conform\n", "", out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"commandId\":\"cmd_1\",\"success\":true,\"exitCode\":0,\"timedOut\":false,\"stdout\":\"conform\\n\",\"stderr\":\"\",\"stdoutTruncated\":false,\"stderrTruncated\":false}";
+  n = bs_w_command_res("cmd_2", 1, false, "", "err", out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"commandId\":\"cmd_2\",\"success\":false,\"exitCode\":1,\"timedOut\":false,\"stdout\":\"\",\"stderr\":\"err\",\"stdoutTruncated\":false,\"stderrTruncated\":false}";
+  n = bs_w_command_res("cmd_3", 0, true, "", "", out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"commandId\":\"cmd_3\",\"success\":false,\"exitCode\":0,\"timedOut\":true,\"stdout\":\"\",\"stderr\":\"\",\"stdoutTruncated\":false,\"stderrTruncated\":false}";
+  #assert bs_w_command_res("cmd_1", 0, false, "", "", tiny[..]) == -1;
+
+  n = bs_w_detached(42, "cmd_2", out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"processId\":42,\"commandId\":\"cmd_2\"}";
+  #assert bs_w_detached(42, "cmd_2", tiny[..]) == -1;
+
+  n = bs_w_proc_status("running", true, 0, 5, 1, out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"status\":\"running\",\"running\":true,\"stdoutNextOffset\":5,\"stderrNextOffset\":1}";
+  n = bs_w_proc_status("exited", false, 7, 12, 0, out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"status\":\"exited\",\"running\":false,\"exitCode\":7,\"stdoutNextOffset\":12,\"stderrNextOffset\":0}";
+  #assert bs_w_proc_status("exited", false, 0, 0, 0, tiny[..]) == -1;
+
+  n = bs_w_frame_data("stdout", "hi\n", 3, out[..]);
+  #assert cast(string) out[0..<n] == "{\"type\":\"stdout\",\"data\":\"hi\\n\",\"nextOffset\":3}\n";
+  #assert bs_w_frame_data("stdout", "hi", 2, tiny[..]) == -1;
+
+  n = bs_w_file("/tmp/conform.txt", "one\ntwo\n", false, 8, out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"path\":\"/tmp/conform.txt\",\"content\":\"one\\ntwo\\n\",\"encoding\":\"utf-8\",\"size\":8}";
+  n = bs_w_file("/tmp/bin", "AQID", true, 3, out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":true,\"path\":\"/tmp/bin\",\"content\":\"AQID\",\"encoding\":\"base64\",\"size\":3}";
+  #assert bs_w_file("/tmp/a", "x", false, 1, tiny[..]) == -1;
+
+  n = bs_w_error(404, "not_found", "sandbox not found", "req_1", out[..]);
+  #assert cast(string) out[0..<n] == "{\"ok\":false,\"status\":404,\"code\":\"not_found\",\"message\":\"sandbox not found\",\"requestId\":\"req_1\"}";
+  #assert bs_w_error(404, "not_found", "x", "r", tiny[..]) == -1;
+
+  // Decoders: valid, missing, wrong type, non-object, invalid JSON
+  val: [64] u8;
+  #assert bs_r_str("{\"name\":\"oa-devbox-1\"}", "name", val[..]) == 11 && cast(string) val[0..<11] == "oa-devbox-1";
+  #assert bs_r_str("{\"name\":123}", "name", val[..]) == -1;
+  #assert bs_r_str("{}", "name", val[..]) == -1;
+  #assert bs_r_str("[]", "name", val[..]) == -1;
+  #assert bs_r_str("bad", "name", val[..]) == -1;
+
+  #assert bs_r_int("{\"ttlSeconds\":900}", "ttlSeconds", 7) == 900;
+  #assert bs_r_int("{}", "ttlSeconds", 7) == 7;
+  #assert bs_r_int("[]", "ttlSeconds", 7) == 7;
+  #assert bs_r_int("bad", "ttlSeconds", 7) == 7;
+
+  #assert bs_r_bool("{\"detached\":true}", "detached");
+  #assert !bs_r_bool("{\"detached\":false}", "detached");
+  #assert !bs_r_bool("{}", "detached");
+  #assert !bs_r_bool("[]", "detached");
+  #assert !bs_r_bool("bad", "detached");
+}

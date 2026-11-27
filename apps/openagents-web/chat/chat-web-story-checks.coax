@@ -743,3 +743,60 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   abody := cast(string) ops[0].opens[ap].body[0..<ops[0].opens[ap].body_n];
   #assert sc_contains(abody, "\"method\":\"RespondTask\"") && sc_contains(abody, "\"allow\":true") && sc_contains(abody, "\"interaction_id\":\"int_shell_1\"");
 }
+
+#test "14128 Story+Scene+Play: Cloud Sandbox target submits durable sandbox turn and renders sandbox tool events" #steps 120000000 {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_path(s, "/chat");
+  cwc_t_drain(s, ops[..]);
+
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  lb: [256] u8;
+  cwc_t_http_reply(s, ops[0].opens[li].slot, 200, cwc_t_list_json(lb[..], ""));
+  cwc_t_drain(s, ops[..]);
+  ops[0].open_n = 0;
+
+  // Select Cloud Sandbox from Target menu.
+  cw_test_press(s, "cc.target");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_press(s, "cc.tgt.sandbox");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert s[0].cc[0].target_kind == CLD_TARGET_SANDBOX && sc_by_text(t, "Target: Sandbox") >= 0;
+
+  // Sending a prompt dispatches to POST /api/chat/submit/v2alpha1?target=sandbox&size=small.
+  cw_test_type(s, "composer", "Run coax test in cloud sandbox");
+  cw_test_enter(s, "composer");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  sub := cwc_t_find_open(ops[..], "/api/chat/submit/v2alpha1?target=sandbox&size=small");
+  #assert sub >= 0 && s[0].cc[0].remote_running;
+  #assert cast(string) s[0].cc[0].active_compute[0..<s[0].cc[0].active_compute_n] == "sandbox";
+
+  // 202 reply -> live sandbox tool call, result, text, and completion render cleanly.
+  sub_slot := ops[0].opens[sub].slot;
+  ops[0].open_n = 0;
+  cwc_t_http_reply(s, sub_slot, 202, "{\"conversation_id\":\"cnv_99999999999999999999999999999999\",\"turn_id\":\"trn_99999999999999999999999999999999\",\"revision\":1}");
+  cwc_t_drain(s, ops[..]);
+
+  cwc_apply_event(s[0].cc[..], CcEvent.{
+    conversation = "cnv_99999999999999999999999999999999", turn = "trn_99999999999999999999999999999999",
+    sequence = 2, kind = CC_EV_TOOL_CALL, tool_id = "sb_1", tool_name = "bash", tool_args = "coax test",
+    compute = "sandbox", source_device = "bx_fwh3xnws"
+  }, true);
+  cwc_apply_event(s[0].cc[..], CcEvent.{
+    conversation = "cnv_99999999999999999999999999999999", turn = "trn_99999999999999999999999999999999",
+    sequence = 3, kind = CC_EV_TEXT_DELTA, text = "All checks passed in cloud sandbox.",
+    compute = "sandbox", source_device = "bx_fwh3xnws"
+  }, true);
+  cwc_apply_event(s[0].cc[..], CcEvent.{
+    conversation = "cnv_99999999999999999999999999999999", turn = "trn_99999999999999999999999999999999",
+    sequence = 4, kind = CC_EV_COMPLETED, state = CT_COMPLETED,
+    compute = "sandbox", model = "google/gemini-4-neon", source_device = "bx_fwh3xnws"
+  }, true);
+  s[0].cc[0].dirty = true;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert !s[0].cc[0].remote_running && sc_by_text(t, "Sandbox · google/gemini-4-neon") >= 0;
+  #assert sc_by_text(t, "All checks passed in cloud sandbox.") >= 0;
+}

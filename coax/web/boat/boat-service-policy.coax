@@ -1,0 +1,212 @@
+// First-party GCP oa-boat control-plane policy (Phase 4, #14128):
+// Pure #authority rules for machine sizing, GCE specs, Boat v1 state transitions,
+// delete confirmation, rate-limit windows, TTL/idle reaping, and usage billing.
+//
+//   ./coax/bin/coax test coax/web/boat/boat-service-policy.coax --library
+//   ./coax/bin/coax mutate coax/web/boat/boat-service-policy.coax
+#authority;
+
+BS_FILE_MAX        :: 5242880; // 5 MiB file read/write limit (Boat v1 contract)
+BS_SYNC_TIMEOUT_MX :: 600;     // 600s max synchronous command timeout
+BS_MAX_ACTIVE_DEF  :: 8;
+BS_MIN_START_LIM   :: 10;
+BS_HOUR_START_LIM  :: 60;
+BS_DAY_START_LIM   :: 200;
+
+BS_STATE_PROV      :: 1; // provisioning
+BS_STATE_READY     :: 2; // ready
+BS_STATE_RUNNING   :: 3; // running
+BS_STATE_IDLE      :: 4; // idle
+BS_STATE_ARCHIVING :: 5; // archiving
+BS_STATE_ARCHIVED  :: 6; // archived
+BS_STATE_ERROR     :: 7; // error
+
+BsSizeSpec :: struct {
+  ok: bool;
+  name: string;
+  gce_machine: string;
+  vcpu: int;
+  memory_gb: int;
+  rate_mc_hr: int; // millicents per hour (matches coax/lib/boat/policy.coax)
+}
+
+bs_size_spec :: (size: string) -> BsSizeSpec #effects(all) {
+  if size == "small" {
+    return BsSizeSpec.{ok = true, name = "small", gce_machine = "e2-standard-2", vcpu = 2, memory_gb = 8, rate_mc_hr = 1800};
+  }
+  if size == "default" {
+    return BsSizeSpec.{ok = true, name = "default", gce_machine = "e2-standard-4", vcpu = 4, memory_gb = 16, rate_mc_hr = 3600};
+  }
+  if size == "large" {
+    return BsSizeSpec.{ok = true, name = "large", gce_machine = "c3d-highcpu-8", vcpu = 8, memory_gb = 16, rate_mc_hr = 7200};
+  }
+  return BsSizeSpec.{};
+}
+
+bs_state_name :: (st: int) -> string #effects(all) {
+  if st == BS_STATE_PROV { return "provisioning"; }
+  if st == BS_STATE_READY { return "ready"; }
+  if st == BS_STATE_RUNNING { return "running"; }
+  if st == BS_STATE_IDLE { return "idle"; }
+  if st == BS_STATE_ARCHIVING { return "archiving"; }
+  if st == BS_STATE_ARCHIVED { return "archived"; }
+  if st == BS_STATE_ERROR { return "error"; }
+  return "";
+}
+
+bs_state_up :: (st: int) -> bool #effects(all) {
+  return st == BS_STATE_READY || st == BS_STATE_RUNNING || st == BS_STATE_IDLE;
+}
+
+bs_state_down :: (st: int) -> bool #effects(all) {
+  return st == BS_STATE_ARCHIVING || st == BS_STATE_ARCHIVED;
+}
+
+bs_id_valid :: (id: string) -> bool #effects(all) {
+  if id.count != 11 || id[0] != 'b' || id[1] != 'x' || id[2] != '_' { return false; }
+  for i: 3..<11 {
+    c := id[i];
+    if !((c >= '2' && c <= '9') || (c >= 'a' && c <= 'z' && c != 'i' && c != 'l' && c != 'o')) { return false; }
+  }
+  return true;
+}
+
+bs_name_valid :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > 64 || s[0] == '-' || s[0] == '.' { return false; }
+  for c: s {
+    if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+  }
+  return true;
+}
+
+// Constant-time API bearer token equality (prevents timing side-channels).
+bs_auth_ok :: (expected: string, provided: string) -> bool #effects(all) {
+  if expected.count < 8 || expected.count != provided.count { return false; }
+  diff: u8 = 0;
+  for i: 0..<expected.count { diff |= expected[i] ^ provided[i]; }
+  return diff == 0;
+}
+
+// Delete requires exact X-Ascii-Confirm-Delete header equal to sandbox id.
+bs_confirm_delete_ok :: (id: string, confirm_hdr: string) -> bool #effects(all) {
+  return bs_id_valid(id) && confirm_hdr == id;
+}
+
+// Create admission: active count & start-rate windows.
+// Returns 200 if admitted, 400 on bad size/ttl, 429 on quota/rate exhaustion.
+bs_admit_create :: (size: string, ttl_s: int, active: int, max_active: int, min_used: int, hour_used: int, day_used: int) -> int #effects(all) {
+  if !bs_size_spec(size).ok { return 400; }
+  if ttl_s < 0 || ttl_s > 86400 { return 400; }
+  if max_active < 1 || active < 0 || active >= max_active { return 429; }
+  if min_used < 0 || min_used >= BS_MIN_START_LIM { return 429; }
+  if hour_used < 0 || hour_used >= BS_HOUR_START_LIM { return 429; }
+  if day_used < 0 || day_used >= BS_DAY_START_LIM { return 429; }
+  return 200;
+}
+
+// Command execution admission: sandbox must be up, command nonempty, timeout 0..600 (0 for detached).
+bs_admit_command :: (st: int, cmd_len: int, timeout_s: int, detached: bool) -> int #effects(all) {
+  if !bs_state_up(st) { return 409; }
+  if cmd_len < 1 || cmd_len > 65536 { return 400; }
+  if detached && timeout_s > 0 { return 400; }
+  if timeout_s < 0 || timeout_s > BS_SYNC_TIMEOUT_MX { return 400; }
+  return 200;
+}
+
+// File path & byte-size admission: absolute path without traversal or NUL, size <= 5 MiB.
+bs_admit_file :: (st: int, path: string, size_bytes: int) -> int #effects(all) {
+  if !bs_state_up(st) { return 409; }
+  if path.count < 2 || path.count > 1024 || path[0] != '/' { return 400; }
+  for i: 1..<path.count {
+    c := path[i];
+    if c == 0 || c == '\r' || c == '\n' { return 400; }
+    if c == '.' && i + 1 < path.count && path[i + 1] == '.' {
+      prev_sep := path[i - 1] == '/';
+      next_sep := i + 2 == path.count || path[i + 2] == '/';
+      if prev_sep && next_sep { return 400; }
+    }
+  }
+  if size_bytes < 0 { return 400; }
+  if size_bytes > BS_FILE_MAX { return 413; }
+  return 200;
+}
+
+// Whether a running sandbox has passed its TTL auto-stop deadline.
+bs_ttl_expired :: (st: int, started_s: int, ttl_s: int, now_s: int) -> bool #effects(all) {
+  if !bs_state_up(st) || ttl_s <= 0 || started_s <= 0 { return false; }
+  return now_s >= started_s + ttl_s;
+}
+
+// Whole millicents accrued for `seconds` of a size class (rounded up, matching policy.coax).
+bs_usage_mc :: (size: string, seconds: int) -> int #effects(all) {
+  sp := bs_size_spec(size);
+  if !sp.ok || seconds < 0 { return -1; }
+  return (sp.rate_mc_hr * seconds + 3599) / 3600;
+}
+
+#test "oa-boat policy maps GCE sizes, validates IDs/names/auth/delete, and meters millicents" {
+  s := bs_size_spec("small"); #assert s.ok && s.gce_machine == "e2-standard-2" && s.vcpu == 2 && s.memory_gb == 8 && s.rate_mc_hr == 1800;
+  d := bs_size_spec("default"); #assert d.ok && d.gce_machine == "e2-standard-4" && d.vcpu == 4 && d.memory_gb == 16 && d.rate_mc_hr == 3600;
+  l := bs_size_spec("large"); #assert l.ok && l.gce_machine == "c3d-highcpu-8" && l.vcpu == 8 && l.memory_gb == 16 && l.rate_mc_hr == 7200;
+  #assert !bs_size_spec("xlarge").ok && !bs_size_spec("").ok;
+
+  #assert bs_state_name(BS_STATE_PROV) == "provisioning" && bs_state_name(BS_STATE_READY) == "ready";
+  #assert bs_state_name(BS_STATE_RUNNING) == "running" && bs_state_name(BS_STATE_IDLE) == "idle";
+  #assert bs_state_name(BS_STATE_ARCHIVING) == "archiving" && bs_state_name(BS_STATE_ARCHIVED) == "archived";
+  #assert bs_state_name(BS_STATE_ERROR) == "error" && bs_state_name(0) == "";
+  #assert bs_state_up(BS_STATE_READY) && bs_state_up(BS_STATE_RUNNING) && bs_state_up(BS_STATE_IDLE);
+  #assert !bs_state_up(BS_STATE_PROV) && !bs_state_up(BS_STATE_ARCHIVED) && !bs_state_up(BS_STATE_ERROR);
+  #assert bs_state_down(BS_STATE_ARCHIVING) && bs_state_down(BS_STATE_ARCHIVED) && !bs_state_down(BS_STATE_READY);
+
+  #assert bs_id_valid("bx_23456789") && bs_id_valid("bx_abcdefgh");
+}
+
+#test "oa-boat policy ID alphabet, auth, confirm-delete, create/cmd/file admission, TTL reaper" {
+  #assert bs_id_valid("bx_23456789") && bs_id_valid("bx_abcdefgh") && bs_id_valid("bx_z9y8x7w6");
+  #assert !bs_id_valid("bx_2345678") && !bs_id_valid("bx_234567890") && !bs_id_valid("ax_23456789");
+  #assert !bs_id_valid("bx_i2345678") && !bs_id_valid("bx_l2345678") && !bs_id_valid("bx_o2345678") && !bs_id_valid("bx_12345678") && !bs_id_valid("bx_02345678") && !bs_id_valid("bx_:2345678") && !bs_id_valid("bx_{2345678");
+
+  #assert bs_name_valid("a") && bs_name_valid("oa-devbox-1") && bs_name_valid("A_Z.09az") && !bs_name_valid("a{b") && !bs_name_valid("a[b") && !bs_name_valid("a:b") && !bs_name_valid("") && !bs_name_valid("-a") && !bs_name_valid(".a") && !bs_name_valid("a/b");
+  long_n: [65] u8; for i: 0..<65 { long_n[i] = 'a'; }
+  #assert bs_name_valid(cast(string) long_n[0..<64]) && !bs_name_valid(cast(string) long_n[..]);
+
+  #assert bs_auth_ok("12345678", "12345678") && !bs_auth_ok("1234567", "1234567");
+  #assert !bs_auth_ok("12345678", "x2345678"); // mismatch at index 0
+  #assert bs_auth_ok("boat_secret_1234", "boat_secret_1234");
+  #assert !bs_auth_ok("short", "short") && !bs_auth_ok("boat_secret_1234", "boat_secret_1235") && !bs_auth_ok("boat_secret_1234", "boat_secret_123");
+
+  #assert bs_confirm_delete_ok("bx_23456789", "bx_23456789");
+  #assert !bs_confirm_delete_ok("bx_23456789", "bx_99999999") && !bs_confirm_delete_ok("bad", "bad");
+
+  #assert bs_admit_create("small", 0, 0, 1, 0, 0, 0) == 200 && bs_admit_create("large", 86400, 7, 8, 9, 59, 199) == 200;
+  #assert bs_admit_create("xlarge", 900, 0, 8, 0, 0, 0) == 400 && bs_admit_create("small", -1, 0, 8, 0, 0, 0) == 400 && bs_admit_create("small", 86401, 0, 8, 0, 0, 0) == 400;
+  #assert bs_admit_create("small", 900, 8, 8, 0, 0, 0) == 429 && bs_admit_create("small", 900, -1, 8, 0, 0, 0) == 429 && bs_admit_create("small", 900, 0, 0, 0, 0, 0) == 429;
+  #assert bs_admit_create("small", 900, 0, 8, 10, 0, 0) == 429 && bs_admit_create("small", 900, 0, 8, -1, 0, 0) == 429;
+  #assert bs_admit_create("small", 900, 0, 8, 0, 60, 0) == 429 && bs_admit_create("small", 900, 0, 8, 0, -1, 0) == 429;
+  #assert bs_admit_create("small", 900, 0, 8, 0, 0, 200) == 429 && bs_admit_create("small", 900, 0, 8, 0, 0, -1) == 429;
+
+  #assert bs_admit_command(BS_STATE_READY, 1, 0, false) == 200 && bs_admit_command(BS_STATE_RUNNING, 65536, 600, false) == 200 && bs_admit_command(BS_STATE_IDLE, 10, 0, true) == 200;
+  #assert bs_admit_command(BS_STATE_ARCHIVED, 10, 0, false) == 409;
+  #assert bs_admit_command(BS_STATE_READY, 0, 0, false) == 400 && bs_admit_command(BS_STATE_READY, 65537, 0, false) == 400;
+  #assert bs_admit_command(BS_STATE_READY, 10, 1, true) == 400 && bs_admit_command(BS_STATE_READY, 10, -1, false) == 400 && bs_admit_command(BS_STATE_READY, 10, 601, false) == 400;
+
+  #assert bs_admit_file(BS_STATE_READY, "/x", 0) == 200 && bs_admit_file(BS_STATE_READY, "/tmp/conform.txt", 0) == 200;
+  #assert bs_admit_file(BS_STATE_READY, "/a..b/c", BS_FILE_MAX) == 200 && bs_admit_file(BS_STATE_READY, "/..a/b", 0) == 200 && bs_admit_file(BS_STATE_READY, "/a../b", 0) == 200 && bs_admit_file(BS_STATE_READY, "/a.", 0) == 200;
+  #assert bs_admit_file(BS_STATE_ARCHIVED, "/tmp/x", 1) == 409;
+  #assert bs_admit_file(BS_STATE_READY, "/", 1) == 400 && bs_admit_file(BS_STATE_READY, "rel/x", 1) == 400;
+  #assert bs_admit_file(BS_STATE_READY, "/tmp/../etc/passwd", 1) == 400 && bs_admit_file(BS_STATE_READY, "/tmp/..", 1) == 400 && bs_admit_file(BS_STATE_READY, "/..", 1) == 400;
+  #assert bs_admit_file(BS_STATE_READY, "/tmp/a\nb", 1) == 400 && bs_admit_file(BS_STATE_READY, "/tmp/a\rb", 1) == 400 && bs_admit_file(BS_STATE_READY, "/tmp/x", -1) == 400;
+  nul_p := [4] u8.['/', 'a', 0, 'b']; #assert bs_admit_file(BS_STATE_READY, cast(string) nul_p[..], 0) == 400;
+  soh_p := [4] u8.['/', 'a', 1, 'b']; #assert bs_admit_file(BS_STATE_READY, cast(string) soh_p[..], 0) == 200;
+  so_p := [4] u8.['/', 'a', 14, 'b']; #assert bs_admit_file(BS_STATE_READY, cast(string) so_p[..], 0) == 200;
+  #assert bs_admit_file(BS_STATE_READY, "/tmp/x", BS_FILE_MAX + 1) == 413;
+  long_p: [1025] u8; long_p[0] = '/'; for i: 1..<1025 { long_p[i] = 'a'; }
+  #assert bs_admit_file(BS_STATE_READY, cast(string) long_p[0..<1024], 0) == 200 && bs_admit_file(BS_STATE_READY, cast(string) long_p[..], 0) == 400;
+
+  #assert !bs_ttl_expired(BS_STATE_ARCHIVED, 100, 900, 2000) && !bs_ttl_expired(BS_STATE_READY, 0, 900, 2000) && !bs_ttl_expired(BS_STATE_READY, 100, 0, 2000);
+  #assert bs_ttl_expired(BS_STATE_READY, 1, 1, 2) && !bs_ttl_expired(BS_STATE_READY, 1, 1, 1);
+  #assert !bs_ttl_expired(BS_STATE_READY, 100, 900, 999) && bs_ttl_expired(BS_STATE_READY, 100, 900, 1000) && bs_ttl_expired(BS_STATE_READY, 100, 900, 1001);
+
+  #assert bs_usage_mc("small", 0) == 0 && bs_usage_mc("small", 1) == 1 && bs_usage_mc("large", 3600) == 7200;
+  #assert bs_usage_mc("xlarge", 10) == -1 && bs_usage_mc("small", -1) == -1;
+}

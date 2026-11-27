@@ -238,5 +238,16 @@ OpenAgents API (`/api/integrations/github/{status,connect,repos,disconnect}`) an
 - [ ] Verify the WorkOS Pipes redirect callback URL is registered on the GitHub App/OAuth App per the WorkOS Pipes GitHub setup card.
 - [ ] After enabling GitHub in WorkOS Staging, click **Connect GitHub** on `https://staging.openagents.com/` or `https://staging.openagents.com/settings/account` and confirm repositories load in the New Project quick-picker.
 
+## Cloud Sandbox GCE VM backend opt-in (#14128, 2026-11-27)
+
+The first-party GCP `oa-boat` Boat-v1 control plane (`coax/web/boat/`), `#authority` multi-tenant sandbox admission/policy (`coax/lib/boat/sandbox-policy.coax`, `coax/web/boat/boat-service-policy.coax`), durable `turns_v2` sandbox worker engine (`coax/web/agent/sandbox.coax`), and Web/API `?target=sandbox` dispatch are landed and verified locally with `boat conform --lifecycle` + mock GCE Compute Engine VM lifecycle tests (ASan/UBSan clean, zero serviceAccount, no external IP). GCP Secret Manager already contains `oa-boat-api-key` and `oa-boat-ssh-key`.
+
+- [ ] When ready to enable live billable GCE sandbox VMs on staging (`e2-standard-2` / `e2-standard-4` / `c3d-highcpu-8` in `openagentsgemini` `us-central1-a`), run:
+  ```bash
+  coax/web/boat/deploy.sh --staging
+  ```
+- [ ] Point `oa-agent-staging` (`OA_BOAT_API_BASE` + `OA_BOAT_API_KEY=oa-boat-api-key:latest`) at the deployed `oa-boat-staging` Cloud Run URL and verify `coax/web/tool.sh boat conform --lifecycle` against a live GCE sandbox VM.
+
+
 
 
