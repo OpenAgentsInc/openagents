@@ -1,7 +1,14 @@
 # 13. Members
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` member tool-pack registry
+> and permission policy ([`openagents/core/members.coax`](../../openagents/core/members.coax),
+> `#14057`) alongside [`openagents/core/tool.coax`](../../openagents/core/tool.coax)
+> and [`openagents/core/extensions.coax`](../../openagents/core/extensions.coax)
+> pass on `cpu` (0 surviving mutants on `members.coax`), mounting `OA_PACK_COAX_INTEL`,
+> `OA_PACK_WALLET`, `OA_PACK_CLI`, `OA_PACK_METAVERSE`, and `OA_PACK_AGENTS`
+> into [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax). Remaining:
+> dynamic NIP-CAP `DiscoveryHead` catalog syncing and mobile/web member-list
+> surfaces (`openagents/agent/members.coax`).
 
 ## Premise
 
@@ -48,6 +55,8 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/members.coax`](../../openagents/core/members.coax) (`#authority` member packs: Wallet, OpenAgents CLI, Metaverse/GameBuilder, Agents, `#14057`)
+- [`openagents/core/tool.coax`](../../openagents/core/tool.coax) and [`openagents/core/extensions.coax`](../../openagents/core/extensions.coax)
 - [`coax/lib/nostr/cap`](../../coax/lib/nostr/cap)
 - [`coax/lib/nostr/agent`](../../coax/lib/nostr/agent)
 

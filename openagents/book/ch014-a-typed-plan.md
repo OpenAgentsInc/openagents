@@ -41,6 +41,10 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`coax/lib/agent/router/router.coax`](../../coax/lib/agent/router/router.coax) (`openagents.router.v2alpha1` typed `RoutePlan`, `#14056`)
+- [`coax/lib/agent/router/policy.coax`](../../coax/lib/agent/router/policy.coax)
+- [`openagents/core/query_loop.coax`](../../openagents/core/query_loop.coax)
+- [`openagents/core/members.coax`](../../openagents/core/members.coax) (`#authority` member packs and bypass-immune money approval checks, `#14057`)
 - [`coax/lib/nostr/cj`](../../coax/lib/nostr/cj)
 - [`coax/lib/nostr/pol`](../../coax/lib/nostr/pol)
 - [`coax/lib/bounded.coax`](../../coax/lib/bounded.coax)

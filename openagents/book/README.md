@@ -4,7 +4,7 @@ Building the OpenAgents apps, and the general agent behind them, in
 [Coax](../../coax/book/README.md) on [Coax Native](../../coax/native.md),
 one small step at a time.
 
-> **Status: chapters 1–9, 54–55, and 69–70 partly implemented on CPU; remaining chapters are design drafts and planned outlines.**
+> **Status: 23 chapters partly implemented on CPU (`1–9`, `11–13`, `15`, `17`, `26`, `28`, `32–33`, `54–55`, `58`, `69–70`); 52 design drafts and 3 planned outlines (`35`, `65`, `66`).**
 > Chapters 1–9, 54–55, and 69–70 each ship a runnable Coax example in [`openagents/examples/`](../examples/opening-case-runner.coax)
 > with verified debug/release transcripts grounded in
 > [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
@@ -16,12 +16,23 @@ one small step at a time.
 > [`psionic/lib/hybrid-exec.coax`](../../psionic/lib/hybrid-exec.coax),
 > [`psionic/lib/pylon/onboard.coax`](../../psionic/lib/pylon/onboard.coax), and
 > [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax).
-> Native host accessibility UI tests (`macos-arm64`, `ios-simulator`, `ios-device`)
-> and public external-operator scale remain open per [CONTRACT.md](CONTRACT.md).
-> Where a piece already runs in the repository, such as the desktop shell,
-> the login service, and the GPU login screen, the chapter says so and
-> builds on it. [CONTRACT.md](CONTRACT.md) says what moves a chapter
-> forward. The book gives no dates.
+> Chapters 11–13, 15, 17, 26, 28, 32–33, and 58 are additionally backed by
+> shipped, CPU-tested Coax modules across **Coax Web / Coax UI**
+> ([`components/ui/`](../../components/ui), [`apps/openagents-web/demos/docs-starter/`](../../apps/openagents-web/demos/docs-starter)),
+> the unified 24-layer pure-Coax agent core ([`openagents/core/`](../../openagents/core),
+> [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax),
+> [`coder/tui/oa-subagent.coax`](../../coder/tui/oa-subagent.coax)),
+> the typed router ([`coax/lib/agent/router/`](../../coax/lib/agent/router)),
+> the Desktop + Apple Breez Spark wallet and `#authority` money rules
+> ([`pay/`](../../pay), [`apps/openagents-desktop/page/walletpane.coax`](../../apps/openagents-desktop/page/walletpane.coax)),
+> and 3-leg Executor Network author-royalty settlement ([`pay/executor-settlement.coax`](../../pay/executor-settlement.coax)).
+> Native host accessibility UI tests (`macos-arm64`, `ios-simulator`, `ios-device`),
+> mobile feature parity (`#14068`), shared `NIP-KB` knowledge (`#14058`),
+> OpenAgents Studio / plugin sandboxing (`#14059`), and general public plugin
+> economy scale (`#14060`) remain open per [CONTRACT.md](CONTRACT.md).
+> Where a piece already runs in the repository, the chapter cites its real paths
+> and separates what runs today from what remains. [CONTRACT.md](CONTRACT.md)
+> says what moves a chapter forward. The book gives no dates.
 
 OpenAgents builds open agents that people can own, inspect, improve and earn
 from, on open protocols and Bitcoin. Since November 2023 we have worked on
@@ -64,21 +75,23 @@ on, and how a run proves it.
 
 ## Book-driven development
 
-The book leads and the app follows:
+The book specifies, verifies, and reconciles the product on `main`:
 
-- **The chapter comes first.** A chapter is written, then the app is built
-  to it. Code that no chapter asks for is not written.
-- **The app is what the book has built.** The app on `main` contains
-  exactly what the book has built through its latest implemented chapter,
-  and nothing else. A feature that is not in a chapter is not in the app.
-  Code from the old app comes back only when a chapter rebuilds it the new
-  way.
-- **One small increment per chapter.** Each chapter adds one thing you can
-  see or use and leaves the app running. Its check
-  ([CONTRACT.md](CONTRACT.md#the-chapters-check)) shows the increment works
-  before the next chapter starts.
-- **The chapter changes with the code.** When the build teaches something
-  the draft got wrong, the chapter is corrected in the same change.
+- **Every capability has a chapter.** Planned features start as design drafts
+  naming their schema, refusal cases, and check; when engineering ships a
+  subsystem on `main` (such as [`openagents/core/`](../../openagents/core),
+  the unified [`apps/openagents-desktop/`](../../apps/openagents-desktop)
+  panes, or Coax UI SSR), the corresponding chapter is reconciled to cite the
+  real source paths and list what remains before full qualification.
+- **No silent drift between book and code.** A chapter never claims a target
+  without recorded evidence ([CONTRACT.md](CONTRACT.md)), and never cites a
+  deleted path or pretends shipped code does not exist.
+- **One small increment per check.** Each chapter names a four-part check
+  ([CONTRACT.md](CONTRACT.md#the-chapters-check))—source, trace, refusal, and
+  independent check—so progress from `design draft` to `partly implemented`
+  to `implemented` is audited mechanically.
+- **The chapter changes with the code.** When building teaches something
+  the draft got wrong, the chapter is corrected alongside the code.
 
 ## How to read it
 
@@ -101,7 +114,7 @@ own the foundations, and this book links to them and does not repeat them:
 
 | Topic | Owner |
 | --- | --- |
-| The app framework: state, components, hosts, `coax drive` | [Coax Native](../../coax/native.md), [Coax Native Web](../../coax/web.md), [the components spec](../../components/spec.md), [GPU components on native](../../components/gpu-components.md) |
+| The app framework: state, components, hosts, `coax drive` | [Coax Native](../../coax/native.md), [Coax Web](../../coax/web.md), [the components spec](../../components/spec.md), [GPU components on native](../../components/gpu-components.md) |
 | The coding agent and its harness | [Coder: Coding Agents From Scratch](../../coder/book/README.md) |
 | Events, relays and NIPs | [Nostr From Scratch](../../nostr/book/README.md) |
 | Keys, signatures, Lightning | [Bitcoin From Scratch](../../bitcoin/book/README.md) |
@@ -202,18 +215,18 @@ NIPs, old crates and protocol packages.
 | [8. Environment and repository chips](ch008-environment-and-repository-chips.md) | Partly implemented: cpu |
 | [9. Settings](ch009-settings.md) | Partly implemented: cpu |
 | [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) | Unimplemented: design draft |
-| [11. The web](ch011-the-web.md) | Unimplemented: design draft |
+| [11. The web](ch011-the-web.md) | Partly implemented: cpu |
 
 ### III. One general agent
 
 | Chapter | Status |
 | --- | --- |
-| [12. The simplest agent](ch012-the-simplest-agent.md) | Unimplemented: design draft |
-| [13. Members](ch013-members.md) | Unimplemented: design draft |
+| [12. The simplest agent](ch012-the-simplest-agent.md) | Partly implemented: cpu |
+| [13. Members](ch013-members.md) | Partly implemented: cpu |
 | [14. A typed plan](ch014-a-typed-plan.md) | Unimplemented: design draft |
-| [15. Decide before you generate](ch015-decide-before-you-generate.md) | Unimplemented: design draft |
+| [15. Decide before you generate](ch015-decide-before-you-generate.md) | Partly implemented: cpu |
 | [16. Measure the front](ch016-measure-the-front.md) | Unimplemented: design draft |
-| [17. Grants and approvals](ch017-grants-and-approvals.md) | Unimplemented: design draft |
+| [17. Grants and approvals](ch017-grants-and-approvals.md) | Partly implemented: cpu |
 | [18. On the record](ch018-on-the-record.md) | Unimplemented: design draft |
 | [19. Conversation](ch019-conversation.md) | Unimplemented: design draft |
 | [20. Prepared answers](ch020-prepared-answers.md) | Unimplemented: design draft |
@@ -227,14 +240,14 @@ NIPs, old crates and protocol packages.
 | --- | --- |
 | [24. Coder as a member](ch024-coder-as-a-member.md) | Unimplemented: design draft |
 | [25. Other engines](ch025-other-engines.md) | Unimplemented: design draft |
-| [26. Subagents you can see](ch026-subagents-you-can-see.md) | Unimplemented: design draft |
+| [26. Subagents you can see](ch026-subagents-you-can-see.md) | Partly implemented: cpu |
 | [27. Programs](ch027-programs.md) | Unimplemented: design draft |
-| [28. The command line behind the agent](ch028-the-command-line-behind-the-agent.md) | Unimplemented: design draft |
+| [28. The command line behind the agent](ch028-the-command-line-behind-the-agent.md) | Partly implemented: cpu |
 | [29. Where work runs](ch029-where-work-runs.md) | Unimplemented: design draft |
 | [30. Files and device services](ch030-files-and-device-services.md) | Unimplemented: design draft |
 | [31. Voice](ch031-voice.md) | Unimplemented: design draft |
-| [32. A wallet](ch032-a-wallet.md) | Unimplemented: design draft |
-| [33. Spending approval](ch033-spending-approval.md) | Unimplemented: design draft |
+| [32. A wallet](ch032-a-wallet.md) | Partly implemented: cpu |
+| [33. Spending approval](ch033-spending-approval.md) | Partly implemented: cpu |
 
 ### V. Continuity across devices
 
@@ -269,7 +282,7 @@ NIPs, old crates and protocol packages.
 | [55. Everyone gets it](ch055-everyone-gets-it.md) | Partly implemented: cpu |
 | [56. Paid calls](ch056-paid-calls.md) | Unimplemented: design draft |
 | [57. Metering and receipts](ch057-metering-and-receipts.md) | Unimplemented: design draft |
-| [58. Payouts to authors](ch058-payouts-to-authors.md) | Unimplemented: design draft |
+| [58. Payouts to authors](ch058-payouts-to-authors.md) | Partly implemented: cpu |
 | [59. One identity](ch059-one-identity.md) | Unimplemented: design draft |
 | [60. Reputation from reproduced claims](ch060-reputation-from-reproduced-claims.md) | Unimplemented: design draft |
 | [61. Markets for work](ch061-markets-for-work.md) | Unimplemented: design draft |

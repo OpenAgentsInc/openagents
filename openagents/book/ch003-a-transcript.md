@@ -78,7 +78,7 @@ It builds on what exists today:
 - [`coax/lib/agent/session/session.coax`](../../coax/lib/agent/session/session.coax)
 - [`components/core/markdown.coax`](../../components/core/markdown.coax)
 - [`components/kit/markdown.coax`](../../components/kit/markdown.coax)
-- [`components/zeron/transcript.coax`](../../components/kit/markdown.coax)
+- [`apps/openagents-desktop/page/transcript.coax`](../../apps/openagents-desktop/page/transcript.coax)
 - [`components/core/scroll.coax`](../../components/core/scroll.coax)
 - [`components/core/keyed.coax`](../../components/core/keyed.coax)
 

@@ -30,18 +30,23 @@ restricts access, and working setups break.
 Being neutral does not make providers the same. They differ in tools, price,
 limits and how they fail. So the choice is a written policy: which provider is
 tried first for which job, and what happens when it is down or over its limit.
-The owner's standing rule for hosted models is Google first: Vertex before
-any other provider, with the others as fallbacks. Decisions go through the
-Decisions API, which tries our own decision model first (chapter 15).
+On desktop and CLI (`#14069`–`#14072`, `#14087`), **OpenAgents Cloud** is
+wired as the primary cloud gateway backend (with Google Vertex / Gemini 4 Neon
+first behind the cloud tier, OpenRouter/Anthropic/OpenAI as fallbacks), while
+local `psionic-inkling-serve` (`Inkling-2-Mini`) runs at a hard-enforced
+`$0.00` local compute rate. Decisions go through the Decisions API
+(`coax/lib/agent/router/`, chapter 15).
 
 Chapter 16's lesson applies to every model call. One account running out of
 credits should never stop the agent.
 
 The gateway is also where cost becomes visible. Each step in a record carries
-what it cost, so a person can see what a request spent and on what.
-
-Rates and usage live here for the same reason. They are checked against what
-providers report, not assumed.
+what it cost, and the Desktop **Always-On Usage HUD** (`#14064`, `#14072`,
+[`apps/openagents-desktop/page/usage.coax`](../../apps/openagents-desktop/page/usage.coax)
+and [`apps/openagents-desktop/Window+Usage.swift`](../../apps/openagents-desktop/Window+Usage.swift))
+syncs OpenAgents Cloud usage live, enforces `$0.00` on local compute, and
+gates external harness quotas transparently. Rates and usage are checked
+against what providers and `coax/lib/gateway/card.coax` report, not assumed.
 
 ## What we build
 
@@ -55,8 +60,11 @@ A plan for what this chapter ships once the draft is approved:
 It builds on what exists today:
 
 - [`coax/lib/gateway/gateway.coax`](../../coax/lib/gateway/gateway.coax)
+- [`coax/lib/gateway/card.coax`](../../coax/lib/gateway/card.coax) (OpenAgents Cloud model catalog & retail pricing cards, `#14069`)
 - [`coax/lib/gateway/plan.coax`](../../coax/lib/gateway/plan.coax)
 - [`coax/lib/gateway/rates.coax`](../../coax/lib/gateway/rates.coax)
+- [`openagents/core/wire.coax`](../../openagents/core/wire.coax) and [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) (OpenAgents Cloud gateway wiring, `#14070`)
+- [`apps/openagents-desktop/page/usage.coax`](../../apps/openagents-desktop/page/usage.coax) and [`apps/openagents-desktop/Window+Usage.swift`](../../apps/openagents-desktop/Window+Usage.swift) (Always-On Usage HUD & `$0.00` local compute enforcement, `#14064`, `#14072`)
 - [`coax/lib/gateway/anthropic.coax`](../../coax/lib/gateway/anthropic.coax)
 - [`coax/lib/gateway/openai.coax`](../../coax/lib/gateway/openai.coax)
 - [`coax/lib/gateway/vertex.coax`](../../coax/lib/gateway/vertex.coax)

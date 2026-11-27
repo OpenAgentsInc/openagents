@@ -13,26 +13,34 @@ Windows is qualified on its own evidence.
 ## Draft
 
 Episode 289 lists them: Windows, Mac and Linux, iOS and Android, web and
-terminal. The audit checks each against today's tree and finds one with
-nothing behind it. There is no Windows host.
+terminal. When the initial port audit ran, Windows had nothing behind it.
+Since then, **the Win32 + Vulkan OpenAgents Desktop host has shipped** in
+[`apps/openagents-desktop/windows/`](../../apps/openagents-desktop/windows)
+(`#14046`, with WebView2 integration in `browser_webview2.c`, cross-build
+tooling in `build.sh`, Wine smoke harnesses `wine-smoke.sh` and
+`wine-window.sh`, and Linux/Windows `Inkling-2-Mini` CUDA serving and variant
+selection on RTX 4080-class GPUs). What remains open for this chapter is the
+full **Metaverse Engine** Windows host (`metaverse-engine/host/windows/`)
+passing [`conformance.coax`](../../metaverse-engine/host/conformance.coax)
+with pixel-for-pixel frame parity against Linux Vulkan.
 
 A host is the layer between Coax code and a platform. It opens a window, reads
 input, plays sound, talks to the graphics card, opens sockets and reads files.
 The OpenAgents Metaverse Engine defines what a host must provide, and has conformance checks that a
-host must pass. The tree has hosts for the browser, for Apple's platforms and
-for Linux.
+host must pass. The tree has hosts for the browser, for Apple's platforms, for
+Linux Vulkan, and the Win32 + Vulkan desktop carrier in
+[`apps/openagents-desktop/windows/`](../../apps/openagents-desktop/windows).
 
-A Windows host has four pieces. The window and input come from the platform's
-own interfaces. Graphics is a choice between the platform's own graphics
-interface and Vulkan, which the Linux host already uses. Sound, sockets and
-files are smaller. And the build has to produce a Windows program from Coax's
-C output.
+The graphics decision (audit decision 5) is settled: **Vulkan** is the shared
+desktop graphics interface across both Linux and Windows, avoiding a separate
+Direct3D backend. Windowing and input use native Win32, embedded browser panes
+use WebView2, and Coax compiles cleanly to Windows executables via C output.
 
 Windows matters more than its place at the end of the book suggests. Chapter
 70's sellers are people with gaming computers, and most gaming computers run
-Windows. A Pylon that does not run there misses the audience Episode 290
-named. So the Pylon and the terminal are the first things to run on Windows,
-before the full app.
+Windows. Psionic's CUDA serving backend (`psionic-inkling-serve`) and the
+desktop Win32/Vulkan carrier already target NVIDIA Windows hardware; finishing
+full Metaverse Engine host conformance completes the seventh platform.
 
 Because a host is a contract with checks, this is a bounded job. The chapter
 is done when the Windows host passes the same conformance run as the others
@@ -40,16 +48,23 @@ and the same realm draws the same frame.
 
 ## What we build
 
-A plan for what this chapter ships once the draft is approved:
+Shipped today:
 
-- A Windows host for the Metaverse Engine and the platform layer: window, input, graphics,
-  sound, sockets and files.
-- The Pylon and the command line running on Windows first.
+- Win32 + Vulkan OpenAgents Desktop host ([`apps/openagents-desktop/windows/`](../../apps/openagents-desktop/windows), `#14046`), including WebView2 pane support (`browser_webview2.c`), build scripts (`build.sh`), and Wine smoke checks (`wine-smoke.sh`, `wine-window.sh`).
+- Windows/Linux NVIDIA CUDA serving support and `Inkling-2-Mini` variant catalog selection.
+
+Remaining for full chapter completion:
+
+- A Windows host for the Metaverse Engine (`metaverse-engine/host/windows/`): window, input, Vulkan graphics, sound, sockets, and files passing the engine conformance suite.
+- Full Pylon and CLI release qualification on native Windows CI hardware.
 - The host conformance run passing on Windows, with a frame that matches the
   other hosts.
 
 It builds on what exists today:
 
+- [`apps/openagents-desktop/windows/README.md`](../../apps/openagents-desktop/windows/README.md)
+- [`apps/openagents-desktop/windows/main.c`](../../apps/openagents-desktop/windows/main.c)
+- [`apps/openagents-desktop/windows/browser_webview2.c`](../../apps/openagents-desktop/windows/browser_webview2.c)
 - [`metaverse-engine/host/README.md`](../../metaverse-engine/host/README.md)
 - [`metaverse-engine/host/conformance.coax`](../../metaverse-engine/host/conformance.coax)
 - [`metaverse-engine/host/build-vulkan.coax`](../../metaverse-engine/host/build-vulkan.coax)
@@ -87,7 +102,5 @@ Planned paths: `metaverse-engine/host/windows/`.
 
 ## Open questions for the owner
 
-1. Which graphics interface does the Windows host use: the platform's own, or
-   Vulkan as on Linux? This is the audit's decision 5.
-2. Do we need a Windows machine in the build fleet, or do we build from
+1. Do we need a Windows machine in the build fleet, or do we build from
    another platform and test on a rented one?

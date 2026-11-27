@@ -17,11 +17,12 @@ The voice engine is Coax
 levels, the noise floor, voice activity, end of turn, barge-in and the jitter
 buffer. Consent and the input floor are in
 [`metaverse/voice-floor.coax`](../../metaverse/voice-floor.coax), and the
-meter is [`pay/voice-meter.coax`](../../pay/voice-meter.coax). Dictation for
-the native apps is shared in
-[`apps/shared/dictation.coax`](../../apps/shared/dictation.coax). The iPhone
-app already has a voice bar and session
-(`apps/openagents-ios/OpenAgents/Voice`).
+meter is [`pay/voice-meter.coax`](../../pay/voice-meter.coax). Dictation for the native apps is shared in
+[`apps/shared/dictation.coax`](../../apps/shared/dictation.coax). The desktop
+app ships a voice panel and native audio session
+([`apps/openagents-desktop/page/voice.coax`](../../apps/openagents-desktop/page/voice.coax)
+and [`apps/openagents-desktop/Window+Voice.swift`](../../apps/openagents-desktop/Window+Voice.swift),
+`#14065`), and the iOS app links the same shared dictation state.
 
 This chapter uses all of it and writes no second engine. Dictation turns
 speech into text in the composer, and you send it as usual. A spoken turn
@@ -52,7 +53,8 @@ It builds on what exists today:
 - [`metaverse/voice-floor.coax`](../../metaverse/voice-floor.coax)
 - [`pay/voice-meter.coax`](../../pay/voice-meter.coax)
 - [`apps/shared/dictation.coax`](../../apps/shared/dictation.coax)
-- `apps/openagents-ios/OpenAgents/Voice`
+- [`apps/openagents-desktop/page/voice.coax`](../../apps/openagents-desktop/page/voice.coax)
+- [`apps/openagents-desktop/Window+Voice.swift`](../../apps/openagents-desktop/Window+Voice.swift)
 
 ### The chapter's check
 

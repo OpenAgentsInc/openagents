@@ -51,6 +51,9 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`gamebuilder/worlds`](../../gamebuilder/worlds) (five live `gamebuilder.org` worlds: `whispering-spring`, `fated-dragon`, `ice-cream-man`, `scrappers-arena`, `splicebots`, playable in the embedded Desktop GameBuilder pane, `#14043`–`#14045`)
+- [`openagents/core/members.coax`](../../openagents/core/members.coax) (`OA_PACK_METAVERSE` `GameBuilder` tool pack, `#14057`)
+- [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax) (shipped 3-leg author-royalty split rails, `#13961`)
 - [`verse`](../../metaverse)
 - [`metaverse-engine/editor`](../../metaverse-engine/editor)
 - [`apps/openagents-cli/realm.coax`](../../apps/openagents-cli/realm.coax)

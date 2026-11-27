@@ -48,13 +48,27 @@ transcript and draft are cleared. A held reply can't appear in the next
 person's screen.
 
 The account behind the card is already built
-([docs/auth](../../docs/auth/README.md)). An account is an opaque ID. An
-email address, a Nostr key and a passkey attach to it in any combination,
-and a Nostr key alone is enough. There are no passwords, and we never
-collect a phone number. Levels decide what a session may do: an email code
-gives L1; a passkey, a Nostr key or a recovery code gives L2; some actions
-need an L2 login from the last five minutes. The server's rules are Coax in
-[`coax/web/api/auth-policy.coax`](../../coax/web/api/auth-policy.coax).
+([docs/auth](../../docs/auth/README.md)), and on 2026-11-26 the locked
+**WorkOS hybrid `acct_` spine** (`#14097`–`#14103`,
+[`docs/auth/2026-11-26-workos-coax-sdk.md`](../../docs/auth/2026-11-26-workos-coax-sdk.md))
+extended it without giving up self-sovereign keys or wallets. An account is
+still an opaque `acct_...` ID in Cloud SQL Postgres. WorkOS mediates human
+login (Email Magic Auth codes, Google/GitHub/Apple OAuth via native PKCE and
+`ASWebAuthenticationSession` / Custom Tabs, Enterprise SSO, and Optional
+Organizations) behind our own **Custom Coax UI** (no Hosted AuthKit redirect),
+while `oa-api` mints our own opaque sessions (`__Host-oa_session` on web,
+device-bound `oa_at_`/`oa_rt_` with `OA-Device-Proof` on native). An email
+address, a Nostr key and a first-party WebAuthn passkey attach to the same
+`acct_...` in any combination, and a Nostr key alone is enough (D8). There are
+no passwords, and we never collect a phone number (D3). Levels decide what a
+session may do: every WorkOS login (email code, social OAuth, or SSO) enters
+at `L1`; a first-party passkey, a Nostr key or a recovery code gives `L2`;
+wallet backups, spend limits, key removal and agent grants still require an
+`L2`/`L2-fresh` step-up from the last five minutes. The server's rules are
+Coax in [`coax/web/api/auth-policy.coax`](../../coax/web/api/auth-policy.coax),
+and the Sans-I/O `#authority` Coax WorkOS SDK lives in
+[`coax/lib/workos/`](../../coax/lib/workos) with checked-in OpenAPI bindings
+emitted by [`tools/oagen-coax/`](../../tools/oagen-coax).
 
 An agent is an account too. It has an owner and its own way in: a Nostr key
 that signs every request (NIP-98), or an `oa_key_` API key for tools that
@@ -76,6 +90,9 @@ Built in the repository today ([docs/auth](../../docs/auth/README.md)):
 - Step-up, linking and the 72-hour recovery (#13212, #13213).
 - Passkeys on the web and in the iPhone app (#13215), and device keys
   (#13216).
+- Locked WorkOS hybrid `acct_` authentication architecture (`#14097`–`#14103`),
+  in-repo Sans-I/O `#authority` Coax WorkOS SDK ([`coax/lib/workos/`](../../coax/lib/workos)),
+  and checked-in OpenAPI codegen emitter ([`tools/oagen-coax/`](../../tools/oagen-coax)).
 - The GPU login screen and its native side, checked in the iOS Simulator
   (#13645).
 

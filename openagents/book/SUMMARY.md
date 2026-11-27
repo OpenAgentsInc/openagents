@@ -20,16 +20,16 @@
 - [8. Environment and repository chips](ch008-environment-and-repository-chips.md) — partly implemented
 - [9. Settings](ch009-settings.md) — partly implemented
 - [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) — design draft
-- [11. The web](ch011-the-web.md) — design draft
+- [11. The web](ch011-the-web.md) — partly implemented
 
 ## III. One general agent
 
-- [12. The simplest agent](ch012-the-simplest-agent.md) — design draft
-- [13. Members](ch013-members.md) — design draft
+- [12. The simplest agent](ch012-the-simplest-agent.md) — partly implemented
+- [13. Members](ch013-members.md) — partly implemented
 - [14. A typed plan](ch014-a-typed-plan.md) — design draft
-- [15. Decide before you generate](ch015-decide-before-you-generate.md) — design draft
+- [15. Decide before you generate](ch015-decide-before-you-generate.md) — partly implemented
 - [16. Measure the front](ch016-measure-the-front.md) — design draft
-- [17. Grants and approvals](ch017-grants-and-approvals.md) — design draft
+- [17. Grants and approvals](ch017-grants-and-approvals.md) — partly implemented
 - [18. On the record](ch018-on-the-record.md) — design draft
 - [19. Conversation](ch019-conversation.md) — design draft
 - [20. Prepared answers](ch020-prepared-answers.md) — design draft
@@ -41,14 +41,14 @@
 
 - [24. Coder as a member](ch024-coder-as-a-member.md) — design draft
 - [25. Other engines](ch025-other-engines.md) — design draft
-- [26. Subagents you can see](ch026-subagents-you-can-see.md) — design draft
+- [26. Subagents you can see](ch026-subagents-you-can-see.md) — partly implemented
 - [27. Programs](ch027-programs.md) — design draft
-- [28. The command line behind the agent](ch028-the-command-line-behind-the-agent.md) — design draft
+- [28. The command line behind the agent](ch028-the-command-line-behind-the-agent.md) — partly implemented
 - [29. Where work runs](ch029-where-work-runs.md) — design draft
 - [30. Files and device services](ch030-files-and-device-services.md) — design draft
 - [31. Voice](ch031-voice.md) — design draft
-- [32. A wallet](ch032-a-wallet.md) — design draft
-- [33. Spending approval](ch033-spending-approval.md) — design draft
+- [32. A wallet](ch032-a-wallet.md) — partly implemented
+- [33. Spending approval](ch033-spending-approval.md) — partly implemented
 
 ## V. Continuity across devices
 
@@ -79,7 +79,7 @@
 - [55. Everyone gets it](ch055-everyone-gets-it.md) — partly implemented
 - [56. Paid calls](ch056-paid-calls.md) — design draft
 - [57. Metering and receipts](ch057-metering-and-receipts.md) — design draft
-- [58. Payouts to authors](ch058-payouts-to-authors.md) — design draft
+- [58. Payouts to authors](ch058-payouts-to-authors.md) — partly implemented
 - [59. One identity](ch059-one-identity.md) — design draft
 - [60. Reputation from reproduced claims](ch060-reputation-from-reproduced-claims.md) — design draft
 - [61. Markets for work](ch061-markets-for-work.md) — design draft

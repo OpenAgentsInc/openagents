@@ -49,6 +49,8 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/remote_bridge.coax`](../../openagents/core/remote_bridge.coax) (resident `coder-host` execution survival & Tailnet → LAN → Nostr relay failover, `#14027`, `#14030`, `#14032`)
+- [`apps/openagents-desktop/Window+Environments.swift`](../../apps/openagents-desktop/Window+Environments.swift)
 - [`coax/lib/agent/session/session.coax`](../../coax/lib/agent/session/session.coax)
 - [`coax/lib/agent/journal.coax`](../../coax/lib/agent/journal.coax)
 - [`coax/lib/agent/engine/engine.coax`](../../coax/lib/agent/engine/engine.coax)

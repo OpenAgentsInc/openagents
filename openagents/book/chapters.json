@@ -217,42 +217,72 @@
       "number": 11,
       "title": "The web",
       "file": "ch011-the-web.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         6,
         7,
         9
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "components/ui/runtime.coax",
+        "components/ui/router.coax",
+        "components/backend/dom.coax",
+        "components/backend/html.coax",
+        "components/ui/test_harness.coax",
+        "apps/openagents-web/demos/docs-starter/books.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-web/demos/docs-starter/page.coax",
+        "apps/openagents-web/demos/docs-starter/build.coax"
+      ]
     },
     {
       "number": 12,
       "title": "The simplest agent",
       "file": "ch012-the-simplest-agent.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         6
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "openagents/core/core.coax",
+        "openagents/core/query_loop.coax",
+        "openagents/core/wire.coax",
+        "coder/tui/oa-worker.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-desktop/Window+Runs.swift"
+      ]
     },
     {
       "number": 13,
       "title": "Members",
       "file": "ch013-members.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         12
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "openagents/core/members.coax",
+        "openagents/core/tool.coax",
+        "openagents/core/extensions.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coder/tui/oa-worker.coax",
+        "openagents/core/wire.coax"
+      ]
     },
     {
       "number": 14,
@@ -271,14 +301,25 @@
       "number": 15,
       "title": "Decide before you generate",
       "file": "ch015-decide-before-you-generate.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         14
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/router/router.coax",
+        "coax/lib/agent/router/decide.coax",
+        "coax/lib/agent/router/policy.coax",
+        "coax/lib/agent/router/native-choice.coax",
+        "coax/lib/agent/router/replay-check.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coder/tui/oa-worker.coax",
+        "apps/openagents-desktop/page/agent_settings.coax"
+      ]
     },
     {
       "number": 16,
@@ -297,14 +338,25 @@
       "number": 17,
       "title": "Grants and approvals",
       "file": "ch017-grants-and-approvals.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         14
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "openagents/core/permissions.coax",
+        "openagents/core/perm_match.coax",
+        "openagents/core/members.coax",
+        "coax/web/api/agent-policy.coax",
+        "coax/web/api/agent-wire.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coder/tui/oa-worker.coax",
+        "apps/openagents-desktop/page/permit.coax"
+      ]
     },
     {
       "number": 18,
@@ -419,15 +471,26 @@
       "number": 26,
       "title": "Subagents you can see",
       "file": "ch026-subagents-you-can-see.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         18,
         25
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "openagents/core/subagent.coax",
+        "openagents/core/agents.coax",
+        "openagents/core/swarm.coax",
+        "coder/tui/oa-subagent.coax",
+        "coax/lib/agent/tier.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-desktop/page/dashboard.coax",
+        "apps/openagents-desktop/page/chats.coax"
+      ]
     },
     {
       "number": 27,
@@ -447,15 +510,24 @@
       "number": 28,
       "title": "The command line behind the agent",
       "file": "ch028-the-command-line-behind-the-agent.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         15,
         17
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "openagents/core/members.coax",
+        "apps/openagents-cli/commands.coax",
+        "apps/openagents-cli/mcp.coax",
+        "apps/openagents-cli/rules.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 29,
@@ -503,29 +575,53 @@
       "number": 32,
       "title": "A wallet",
       "file": "ch032-a-wallet.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         17,
         28
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "pay/wallet.coax",
+        "pay/wallet-policy.coax",
+        "pay/wallet-backup.coax",
+        "pay/wallet-rpc.coax",
+        "apps/openagents-desktop/page/walletpane.coax",
+        "apps/openagents-cli/wallet.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/shared/host/apple/SparkWallet.swift",
+        "apps/openagents-desktop/Window+Wallet.swift",
+        "apps/openagents-desktop/Window+WalletRPC.swift"
+      ]
     },
     {
       "number": 33,
       "title": "Spending approval",
       "file": "ch033-spending-approval.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         17,
         32
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "pay/wallet-rpc.coax",
+        "pay/wallet-policy.coax",
+        "openagents/core/members.coax",
+        "coax/web/api/agent-policy.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-desktop/Window+WalletRPC.swift",
+        "apps/openagents-desktop/page/walletpane.coax",
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 34,
@@ -878,15 +974,22 @@
       "number": 58,
       "title": "Payouts to authors",
       "file": "ch058-payouts-to-authors.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         32,
         57
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "pay/executor-settlement.coax",
+        "psionic/lib/peer/pay.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/pylon-settle.coax"
+      ]
     },
     {
       "number": 59,

@@ -48,7 +48,9 @@ It builds on what exists today:
 
 - [`metaverse-engine/agent/drive.coax`](../../metaverse-engine/agent/drive.coax)
 - [`metaverse-engine/talk`](../../metaverse-engine/talk)
-- `apps/everglade-desktop/next.coax`
+- [`apps/openagents-desktop/page/metaversepane.coax`](../../apps/openagents-desktop/page/metaversepane.coax)
+- [`apps/openagents-desktop/page/dashboard.coax`](../../apps/openagents-desktop/page/dashboard.coax)
+- [`openagents/core/agents.coax`](../../openagents/core/agents.coax)
 - [`coax/lib/agent/observe/processes.coax`](../../coax/lib/agent/observe/processes.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
 

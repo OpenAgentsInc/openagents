@@ -51,10 +51,11 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/query_loop.coax`](../../openagents/core/query_loop.coax) and [`openagents/core/tasks.coax`](../../openagents/core/tasks.coax) (unified execution loop and `/goal` state machine, `#14083`–`#14086`; replaces deprecated `coax/lib/microcoder/loop.coax`, `#13983`)
+- [`apps/openagents-desktop/page/goal.coax`](../../apps/openagents-desktop/page/goal.coax)
 - [`coax/lib/nostr/opt`](../../coax/lib/nostr/opt)
 - [`coax/lib/nostr/cj`](../../coax/lib/nostr/cj)
 - [`coax/lib/systemone`](../../coax/lib/systemone)
-- [`coax/lib/microcoder/loop.coax`](../../coax/lib/microcoder/loop.coax)
 
 On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 

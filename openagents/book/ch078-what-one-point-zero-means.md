@@ -26,20 +26,49 @@ a payout that matches its receipts. Some need a person: a stranger publishes a
 plugin and is paid. The list says which is which.
 
 The general-agent essay ends by separating what was shown from what was not,
-and that section stays true until we change it. With the **OpenAgents Executor
-Network** (`#13912`–`#13928`, [master capstone](../../docs/books/capstones/executor-network-flywheel.md)),
-we have now proven the full end-to-end compounding loop on our own real
-hardware—exact compiled WASM/VM transformers across Apple Metal 4 and NVIDIA
-RTX 4080 CUDA, `Inkling-2-Mini` hybrid routing with `0` silent hallucinations,
-multi-device replay verification with live Bitcoin mainnet two-leg Breez Spark
-settlement, Byzantine-safe DiLoCo training (`7/7` attacks and `3/3` regressions
-blocked), and signed shadow-to-promote rollouts
-([H7 qualification record](../../docs/verification/executor-network-effect-h7.md)).
-What we have **not** yet shown is independent outside contributors operating
-Pylons and submitting winning capabilities at scale, sustained real-world
-compounding across public users, and composition working outside software. 1.0
-does not need all three. It needs each to be stated plainly next to the version
-number, with the measurement that would settle it.
+and that section stays true until we change it. On `main` today we have
+shipped and verified:
+
+- **Unified pure-Coax agent core & native desktop surface:** the 24-layer
+  [`openagents/core/`](../../openagents/core) runtime (`oa-worker.coax`,
+  `oa-subagent.coax`, `#14050`–`#14057`, `#14096`), typed `RoutePlan` routing
+  (`coax/lib/agent/router/`, `#14056`), bypass-immune `WalletPay` and closed
+  `OpenAgentsCli`/`Metaverse` tool packs (`#14057`), and the unified
+  [`apps/openagents-desktop/`](../../apps/openagents-desktop) app across macOS
+  Metal 4, Linux Vulkan, and Windows Win32/Vulkan (`#14046`) with File Viewer,
+  Embedded Browser Pane (`#14105`–`#14110`), Desktop Spark Wallet pane, Voice
+  pane (`#14065`), Always-On Usage HUD (`#14064`), and Embedded Metaverse &
+  GameBuilder pane (`#14038`–`#14046`).
+- **Cloud + local serving & web stack:** OpenAgents Cloud retail pricing and
+  usage APIs (`#14069`–`#14072`), local `$0.00` `psionic-inkling-serve` on
+  Metal 4 and CUDA (`#14028`, `#14087`), **Coax Web** with Coax UI Core/Kit/Router,
+  native SSR/Hydration, and 0-KB-Wasm SSR books, and the locked **WorkOS hybrid
+  `acct_` auth** SDK (`coax/lib/workos/`, `#14097`–`#14103`).
+- **OpenAgents Executor Network (`#13912`–`#13928`, `#13960`–`#13963`):** the
+  full compounding loop proven on our own hardware ([master capstone](../../docs/books/capstones/executor-network-flywheel.md))—exact
+  compiled WASM/VM transformers across Apple Metal 4 and NVIDIA RTX 4080 CUDA,
+  `Inkling-2-Mini` hybrid routing with `0` silent hallucinations, multi-device
+  replay verification with live Bitcoin mainnet 3-leg Breez Spark settlement
+  (Worker + Validator + Module Author royalty `<= 25%`, `#13961`), Byzantine-safe
+  DiLoCo training (`7/7` attacks and `3/3` regressions blocked), and signed
+  shadow-to-promote rollouts ([H7 qualification record](../../docs/verification/executor-network-effect-h7.md)).
+
+What remains **open and tracked** before 1.0 (not yet shown at full product
+scale):
+
+- Shared knowledge base & semantic retrieval (`#14058`, `NIP-KB`, chapters 20–22).
+- OpenAgents Studio, conversational plugin/skill authoring interview, and
+  sandboxed third-party plugin runtime (`#14059`, chapters 38–42).
+- General public `NIP-REG` / `NIP-EVAL` / `NIP-PAY` plugin economy and
+  book-reconciled cross-host conformance (`#14060`, chapters 43–61).
+- Deep session introspection, borderless cross-window control, full mobile
+  feature parity on iOS/Android, and Metaverse Engine Windows host conformance
+  (`#14066`–`#14068`, `#14073`–`#14094`, chapters 10, 75, 77).
+- Independent outside contributors operating Pylons and submitting winning
+  capabilities at scale, sustained real-world compounding across public users,
+  and composition working outside software. 1.0 does not need all three of
+  these long-horizon proofs; it needs each stated plainly next to the version
+  number, with the measurement that would settle it.
 
 The essay also says what would show the thesis is wrong. If members that pass
 every check do not make the agent better on new work, the method has failed,

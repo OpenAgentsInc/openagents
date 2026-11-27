@@ -33,9 +33,12 @@ then what the computer's owner allows, then which engine has capacity. If an
 engine is at its limit, the next one takes over, and the log records which
 engine ran.
 
-The old tree delegated to five engines. Today's Coax tree drives Claude Code,
-Codex and Cursor, alongside our own Microcoder. Chapter 26 gives each task a
-model tier.
+The old tree delegated to five engines. Today's Coax tree runs our own
+unified [`openagents/core/`](../../openagents/core) native engine
+(`oa-worker.coax`) and [`coax/lib/inky/`](../../coax/lib/inky) by default
+(retiring `microcoder`, `#13983`), and delegates to Claude Code, Codex,
+Cursor, and Antigravity (`agyworker.coax`, `#14024`, `#14031`) when the
+person explicitly opts in (`#14071`). Chapter 26 gives each task a model tier.
 
 ## What we build
 
@@ -49,9 +52,11 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) and [`coax/lib/agent/router/native-choice.coax`](../../coax/lib/agent/router/native-choice.coax) (native default + opt-in external delegation gating, `#14071`)
 - [`coax/lib/agent/claude`](../../coax/lib/agent/claude)
 - [`coax/lib/agent/codex`](../../coax/lib/agent/codex)
 - [`coax/lib/agent/cursor`](../../coax/lib/agent/cursor)
+- [`coder/tui/agyworker.coax`](../../coder/tui/agyworker.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
 - [`coax/lib/agent/engine/availability-policy.coax`](../../coax/lib/agent/engine/availability-policy.coax)
 

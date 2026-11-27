@@ -1,7 +1,16 @@
 # 15. Decide before you generate
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The typed `openagents.router.v2alpha1` router
+> (`RoutePlan`, [`coax/lib/agent/router/router.coax`](../../coax/lib/agent/router/router.coax),
+> [`decide.coax`](../../coax/lib/agent/router/decide.coax),
+> [`policy.coax`](../../coax/lib/agent/router/policy.coax),
+> [`native-choice.coax`](../../coax/lib/agent/router/native-choice.coax),
+> [`replay-check.coax`](../../coax/lib/agent/router/replay-check.coax), `#14056`,
+> `#14071`) passes on `cpu` (`66/66` dev, `30/31` held-out) and routes native
+> OpenAgents Core vs opt-in external delegation in
+> [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax). Remaining:
+> mobile/web front integration and live multi-door latency benchmarking in
+> `openagents/agent/front/`.
 
 ## Premise
 
@@ -49,6 +58,7 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`coax/lib/agent/router/router.coax`](../../coax/lib/agent/router/router.coax), [`decide.coax`](../../coax/lib/agent/router/decide.coax), [`policy.coax`](../../coax/lib/agent/router/policy.coax), [`native-choice.coax`](../../coax/lib/agent/router/native-choice.coax), and [`replay-check.coax`](../../coax/lib/agent/router/replay-check.coax) (`openagents.router.v2alpha1` typed `RoutePlan`, `66/66` dev / `30/31` held-out, `#14056`, `#14071`)
 - [`coax/lib/systemone`](../../coax/lib/systemone)
 - [`psionic/lib/decision-models.coax`](../../psionic/lib/decision-models.coax)
 - [`psionic/lib/decision-plan.coax`](../../psionic/lib/decision-plan.coax)

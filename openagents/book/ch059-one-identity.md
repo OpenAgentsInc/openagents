@@ -19,12 +19,25 @@ On the network, your identity is a key pair. The public half is your name. The
 private half signs what you publish: a release, a check, an approval. Nobody
 can take a key from you, and a record you signed stays yours on any relay.
 
-On our service, your identity is an account. It is an opaque id in our own
-database, and the ways you prove you are that account attach to it: an email
-address, a Nostr key, a passkey. Any combination works, and a Nostr key alone
-is enough. We keep the user table ourselves. No outside login provider holds a
-copy, there are no passwords, and we never collect a phone number. Chapter 5
-builds the account.
+On our service, your identity is an account. It is an opaque `acct_...` id in
+our own Cloud SQL Postgres database, and the ways you prove you are that
+account attach to it: an email address, a social OAuth or Enterprise SSO login,
+a Nostr key, or a first-party WebAuthn passkey. Under the locked **WorkOS
+hybrid `acct_` spine** (`#14097`–`#14103`,
+[`docs/auth/2026-11-26-workos-coax-sdk.md`](../../docs/auth/2026-11-26-workos-coax-sdk.md)),
+WorkOS mediates human login, social OAuth (Google, GitHub, Apple), Enterprise
+SSO, and Optional Organizations behind our **Custom Coax UI** (no Hosted
+AuthKit redirect), while our own `acct_...` spine stays canonical for all
+product tables, Nostr-only accounts (D8), self-custodial wallets, NIP-VAULT
+backups, Lightning Addresses, and sat-capped agent grants. WorkOS data is
+mirrored into our `workos` Postgres schema by a pure Coax/C Events API poller
+and verified webhook handler inside `oa-api` and backed up in our locked dumps.
+Every WorkOS login enters at `L1` and receives an OpenAgents opaque session
+(`__Host-oa_session` on web, device-bound `oa_at_`/`oa_rt_` on native);
+wallet backups, spend limits, key removal, and agent grants still require our
+own first-party Passkey or Nostr `L2`/`L2-fresh` step-up. There are no
+passwords, and we never collect a phone number (D3). Chapter 5 builds the
+account.
 
 [Episode 207](../../docs/transcripts/207.md) is the first design: a seed
 phrase you write down, with your Nostr key and your wallet key both derived
@@ -63,6 +76,8 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`docs/auth/2026-11-26-workos-coax-sdk.md`](../../docs/auth/2026-11-26-workos-coax-sdk.md) (locked WorkOS hybrid `acct_` architecture, `#14097`–`#14103`)
+- [`coax/lib/workos/`](../../coax/lib/workos) and [`tools/oagen-coax/`](../../tools/oagen-coax) (Sans-I/O `#authority` Coax WorkOS SDK & OpenAPI emitter)
 - [`coax/lib/nostr/keys.coax`](../../coax/lib/nostr/keys.coax)
 - [`coax/lib/nostr/nip06.coax`](../../coax/lib/nostr/nip06.coax)
 - [`coax/lib/nostr/nip05.coax`](../../coax/lib/nostr/nip05.coax)

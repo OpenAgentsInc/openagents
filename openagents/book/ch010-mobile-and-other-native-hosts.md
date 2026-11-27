@@ -45,8 +45,11 @@ target reuses what the first one built.
   calls, model requests or payments. Chapter 37 builds the rule.
 
 The native hosts already exist and draw the same display-list kit: AppKit
-with Metal on the Mac (the primary desktop host from chapter 1), UIKit with
-Metal on iOS, Wayland with Vulkan on Linux, and the Vulkan host on Android
+with Metal 4 on the Mac (the primary desktop host from chapter 1), UIKit with
+Metal on iOS (unified GPU carrier in [`apps/openagents-ios/gpu-host.c`](../../apps/openagents-ios/gpu-host.c),
+`#14023`), Wayland with Vulkan on Linux, Win32 with Vulkan on Windows
+([`apps/openagents-desktop/windows/`](../../apps/openagents-desktop/windows),
+`#14046`, chapter 77), and the Vulkan host on Android
 ([GPU components, stages G6 and G7](../../components/gpu-components.md#stages)).
 Each supplies the same three things: the focused field's editor
 (`NSTextInputClient` on the Mac, `UITextField` on iOS, the Wayland
@@ -58,13 +61,16 @@ width, not the platform's name.
 
 The desktop app already owns the primary chat workflow and configures the
 computer it runs on as an environment (chapter 8): a resident environment
-service, runnable without the window, owns the agent's turns, so closing
-the app never stops them. The
+service (`coder-host`), runnable without the window, owns the agent's turns,
+so closing the app never stops them (`#14027`, `#14032`). Phone-to-desktop
+reachability routes over **Tailnet → LAN → Nostr relay failover**
+(`#13993`, `#14030`, `#14032`) without requiring a public port. The
 [desktop and environment plan](../../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
 owns that service.
 
 This chapter qualifies the remaining native hosts—iOS, Linux desktop, and
-Android—against the same shared modules and chapter 6's acceptance case.
+Android—against the same shared modules and chapter 6's acceptance case
+(tracked for mobile feature parity in `#14068`).
 Each host claims nothing until chapter 6's case passes there with a real
 input method and native accessibility (VoiceOver, AT-SPI, or TalkBack).
 

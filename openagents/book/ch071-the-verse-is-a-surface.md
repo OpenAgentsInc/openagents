@@ -37,7 +37,13 @@ Building Everglade builds a whole game on it.
 In this book the Metaverse is a surface in the sense of chapter 10. It links the
 same runtime. The agent you talk to in the world is the one you talk to in
 chat, in the same conversation, with the same members, grants and wallet. A
-panel in the world and a page on the web show the same records.
+panel in the world and a page on the web show the same records. On Desktop,
+the **Embedded Metaverse & GameBuilder Pane** (`#14038`–`#14046`,
+[`apps/openagents-desktop/page/metaversepane.coax`](../../apps/openagents-desktop/page/metaversepane.coax)
+and [`apps/openagents-desktop/Window+Metaverse.swift`](../../apps/openagents-desktop/Window+Metaverse.swift))
+already mounts live 3D worlds right beside the agent chat, exposes the
+`OA_PACK_METAVERSE` tool pack (`MetaverseRoute`, `GameBuilder`, `#14057`), and
+joins multiplayer sessions over the **GameBuilder Nostr Lobby** (`#14045`).
 
 ## What we build
 
@@ -50,6 +56,8 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`apps/openagents-desktop/page/metaversepane.coax`](../../apps/openagents-desktop/page/metaversepane.coax) and [`apps/openagents-desktop/Window+Metaverse.swift`](../../apps/openagents-desktop/Window+Metaverse.swift) (embedded Desktop Metaverse & GameBuilder pane, `#14038`–`#14046`)
+- [`openagents/core/members.coax`](../../openagents/core/members.coax) (`OA_PACK_METAVERSE` tool pack, `#14057`)
 - [`metaverse-engine/README.md`](../../metaverse-engine/README.md)
 - [`metaverse-engine/talk`](../../metaverse-engine/talk)
 - [`metaverse-engine/ui`](../../metaverse-engine/ui)

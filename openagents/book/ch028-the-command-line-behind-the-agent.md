@@ -1,7 +1,15 @@
 # 28. The command line behind the agent
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` `OpenAgentsCli` member tool
+> in [`openagents/core/members.coax`](../../openagents/core/members.coax)
+> (`#14057`) mounts a closed 8-subcommand allowlist (`nostr`, `pylon`, `project`,
+> `dictate`, `transcribe`, `realm`, `vault`, `tasks`), rejects unsafe argument
+> characters, enforces bypass-immune interactive approval for vault secret
+> reads and Nostr signing/publishing, and runs inside
+> [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) beside the
+> command table and MCP server in [`apps/openagents-cli/`](../../apps/openagents-cli).
+> Remaining: auto-generating NIP-CAP descriptors for every command in
+> `openagents/agent/members/cli.coax`.
 
 ## Premise
 
@@ -49,6 +57,7 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/members.coax`](../../openagents/core/members.coax) (`#authority` `OpenAgentsCli` 8-subcommand allowlist & bypass-immune vault/Nostr signing guard, `#14057`)
 - [`apps/openagents-cli/commands.coax`](../../apps/openagents-cli/commands.coax)
 - [`apps/openagents-cli/help-generated.coax`](../../apps/openagents-cli/help-generated.coax)
 - [`apps/openagents-cli/mcp.coax`](../../apps/openagents-cli/mcp.coax)

@@ -59,10 +59,11 @@ It builds on what exists today:
 
 - [`apps/openagents-web`](../../apps/openagents-web)
 - [`apps/openagents-cli`](../../apps/openagents-cli)
-- [`apps/openagents-desktop`](../../apps/openagents-desktop)
-- [`apps/openagents-ios`](../../apps/openagents-ios)
-- `apps/everglade-mobile`
+- [`apps/openagents-desktop`](../../apps/openagents-desktop) (macOS Metal 4, Linux Vulkan, and Windows Win32/Vulkan in [`apps/openagents-desktop/windows/`](../../apps/openagents-desktop/windows), `#14046`)
+- [`apps/openagents-ios`](../../apps/openagents-ios) (unified GPU carrier `#14023`)
+- [`apps/shared/host/android`](../../apps/shared/host/android)
 - [`apps/shared`](../../apps/shared)
+- [`components/ui/test_harness.coax`](../../components/ui/test_harness.coax) (zero-browser Story/Scene/Play headless conformance harness)
 - [`coax/lib/tui`](../../coax/lib/tui)
 - [`coder/tui/coder.coax`](../../coder/tui/coder.coax)
 - [`coax/web`](../../coax/web)

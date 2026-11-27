@@ -46,7 +46,8 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval)
+- [`apps/openagents-desktop/page/gym-lean.coax`](../../apps/openagents-desktop/page/gym-lean.coax) and [`apps/openagents-desktop/Window+Gym.swift`](../../apps/openagents-desktop/Window+Gym.swift) (Desktop Gym UI & A/B bench runner)
+- [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval) (gBench, Terminal-Bench 4.1, and ATIF-v1.8 session-history friction scorecards)
 - [`coax/lib/nostr/xp_ledger.coax`](../../coax/lib/nostr/xp_ledger.coax)
 - [`coax/lib/nostr/nipmv.coax`](../../coax/lib/nostr/nipmv.coax)
 - [`coax/remote`](../../coax/remote)

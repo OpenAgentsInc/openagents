@@ -72,9 +72,9 @@ It builds on what exists today:
 - [`apps/openagents-ios/release.sh`](../../apps/openagents-ios/release.sh)
 - [`coax/web`](../../coax/web)
 - [`apps/openagents-web`](../../apps/openagents-web)
-- [`apps/openagents-desktop`](../../apps/openagents-desktop)
+- [`apps/openagents-desktop`](../../apps/openagents-desktop), [`apps/openagents-desktop/Window+Update.swift`](../../apps/openagents-desktop/Window+Update.swift), and [`apps/openagents-desktop/windows/build.sh`](../../apps/openagents-desktop/windows/build.sh)
 - [`apps/openagents-ios`](../../apps/openagents-ios)
-- `apps/everglade-mobile`
+- [`apps/shared/host/android`](../../apps/shared/host/android)
 - [`os`](../../os)
 
 ### The chapter's check

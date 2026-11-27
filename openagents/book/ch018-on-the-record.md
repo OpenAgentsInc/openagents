@@ -49,10 +49,12 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/transcript_dag.coax`](../../openagents/core/transcript_dag.coax)
+- [`openagents/core/session.coax`](../../openagents/core/session.coax)
 - [`coax/lib/agent/journal.coax`](../../coax/lib/agent/journal.coax)
 - [`coax/lib/agent/journal-flow.coax`](../../coax/lib/agent/journal-flow.coax)
 - [`coax/lib/nostr/run`](../../coax/lib/nostr/run)
-- [`coax/lib/nostr/atif`](../../coax/lib/nostr/atif)
+- [`coax/lib/nostr/atif`](../../coax/lib/nostr/atif) (including ATIF-v1.8 friction telemetry)
 
 On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 

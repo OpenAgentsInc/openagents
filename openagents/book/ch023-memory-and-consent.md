@@ -47,6 +47,9 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/memory.coax`](../../openagents/core/memory.coax)
+- [`openagents/core/compaction.coax`](../../openagents/core/compaction.coax)
+- [`apps/openagents-desktop/page/customize.coax`](../../apps/openagents-desktop/page/customize.coax)
 - [`coder/tui/memory.coax`](../../coder/tui/memory.coax)
 - [`coax/lib/nostr/vault.coax`](../../coax/lib/nostr/vault.coax)
 - [`coax/lib/nostr/nip44.coax`](../../coax/lib/nostr/nip44.coax)

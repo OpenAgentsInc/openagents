@@ -1,7 +1,17 @@
 # 32. A wallet
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The self-custodial Breez Spark + NIP-06
+> Bitcoin wallet runs on iOS ([`apps/shared/host/apple/SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift)),
+> Desktop ([`apps/openagents-desktop/page/walletpane.coax`](../../apps/openagents-desktop/page/walletpane.coax),
+> [`Window+Wallet.swift`](../../apps/openagents-desktop/Window+Wallet.swift),
+> [`Window+WalletRPC.swift`](../../apps/openagents-desktop/Window+WalletRPC.swift)),
+> and CLI ([`apps/openagents-cli/wallet.coax`](../../apps/openagents-cli/wallet.coax))
+> over `#authority` money rules in [`pay/wallet.coax`](../../pay/wallet.coax),
+> [`pay/wallet-policy.coax`](../../pay/wallet-policy.coax),
+> [`pay/wallet-backup.coax`](../../pay/wallet-backup.coax), and
+> [`pay/wallet-rpc.coax`](../../pay/wallet-rpc.coax) (`cpu` checks pass).
+> Remaining: bringing the shared wallet screens to the web surface and
+> full cross-host Lightning Address parity.
 
 ## Premise
 
@@ -46,16 +56,26 @@ money sent to it lands in your own wallet, never in ours. These are owner
 decisions ([wallets and custody](../../docs/auth/wallets-and-custody.md),
 [Lightning Addresses](../../docs/auth/lightning-addresses.md)).
 
-The wallet exists. The iPhone app has a Breez Spark wallet
-([`apps/openagents-ios/host/apple/SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift)):
+The wallet exists on both Desktop and iOS. The shared Apple Breez Spark host
+([`apps/shared/host/apple/SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift))
+powers the iPhone wallet and the Desktop sidebar Wallet pane
+([`apps/openagents-desktop/page/walletpane.coax`](../../apps/openagents-desktop/page/walletpane.coax),
+[`Window+Wallet.swift`](../../apps/openagents-desktop/Window+Wallet.swift),
+[`Window+WalletRPC.swift`](../../apps/openagents-desktop/Window+WalletRPC.swift)),
+alongside `openagents wallet` in [`apps/openagents-cli/wallet.coax`](../../apps/openagents-cli/wallet.coax):
 receive by invoice, on-chain or Spark address, send, a balance, a history,
 the encrypted backup and a Lightning Address claimed in one tap. Swift talks
 to the Spark SDK and nothing else. Every rule about money is Coax in
 [`pay/`](../../pay): [`pay/wallet.coax`](../../pay/wallet.coax) decides
-whether a quote may be paid and how a payment's state moves, and
+whether a quote may be paid and how a payment's state moves,
+[`pay/wallet-rpc.coax`](../../pay/wallet-rpc.coax) gates local RPC calls
+with `#authority` checks, and
 [`pay/wallet-policy.coax`](../../pay/wallet-policy.coax) holds the daily
-limit on the server. This chapter does not build a second wallet. It makes
-the existing one a member of the agent and brings the same rules to the web.
+limit on the server. `OA_PACK_WALLET` in
+[`openagents/core/members.coax`](../../openagents/core/members.coax) mounts
+`WalletStatus`, `WalletReceive`, `WalletQuote`, and bypass-immune `WalletPay`
+into the unified agent (`#14057`). What remains is bringing the same wallet
+screens to the web.
 
 The Coax tree also has the Lightning primitives from Bitcoin From Scratch:
 invoices, offers, onion routing, channels and payment. A node of our own
@@ -73,10 +93,14 @@ A plan for what this chapter ships once the draft is approved:
   without real money.
 It builds on what exists today:
 
-- [`apps/openagents-ios/host/apple/SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift)
+- [`apps/shared/host/apple/SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift)
+- [`apps/openagents-desktop/page/walletpane.coax`](../../apps/openagents-desktop/page/walletpane.coax), [`apps/openagents-desktop/Window+Wallet.swift`](../../apps/openagents-desktop/Window+Wallet.swift), and [`apps/openagents-desktop/Window+WalletRPC.swift`](../../apps/openagents-desktop/Window+WalletRPC.swift)
+- [`apps/openagents-cli/wallet.coax`](../../apps/openagents-cli/wallet.coax)
+- [`openagents/core/members.coax`](../../openagents/core/members.coax) (`OA_PACK_WALLET`, `#14057`)
 - [`pay/wallet.coax`](../../pay/wallet.coax)
 - [`pay/wallet-policy.coax`](../../pay/wallet-policy.coax)
 - [`pay/wallet-backup.coax`](../../pay/wallet-backup.coax)
+- [`pay/wallet-rpc.coax`](../../pay/wallet-rpc.coax)
 
 - [`coax/lib/lightning/invoice.coax`](../../coax/lib/lightning/invoice.coax)
 - [`coax/lib/lightning/offers.coax`](../../coax/lib/lightning/offers.coax)

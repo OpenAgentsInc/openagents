@@ -1,7 +1,15 @@
 # 17. Grants and approvals
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** Core permission matching and `#authority`
+> bypass-immune member approval policy
+> ([`openagents/core/permissions.coax`](../../openagents/core/permissions.coax),
+> [`openagents/core/perm_match.coax`](../../openagents/core/perm_match.coax),
+> [`openagents/core/members.coax`](../../openagents/core/members.coax), `#14057`),
+> Desktop interactive permission cards ([`apps/openagents-desktop/page/permit.coax`](../../apps/openagents-desktop/page/permit.coax)),
+> and HTTP protobuf agent grants ([`coax/web/api/agent-policy.coax`](../../coax/web/api/agent-policy.coax),
+> [`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax)) pass on
+> `cpu`. Remaining: unified NIP-CAP/NIP-POL protobuf schemas and mobile/web
+> approval sheet parity (`openagents/agent/grants.coax`).
 
 ## Premise
 
@@ -51,6 +59,9 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/permissions.coax`](../../openagents/core/permissions.coax), [`openagents/core/perm_match.coax`](../../openagents/core/perm_match.coax), and [`openagents/core/members.coax`](../../openagents/core/members.coax) (`#authority` bypass-immune grants for `WalletPay`, vault secrets, and Nostr signing, `#14057`)
+- [`apps/openagents-desktop/page/permit.coax`](../../apps/openagents-desktop/page/permit.coax) (interactive Desktop approval cards & Full Auto mode, `#14063`)
+- [`coax/web/api/agent-policy.coax`](../../coax/web/api/agent-policy.coax) and [`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax)
 - [`coder/tui/approvals.coax`](../../coder/tui/approvals.coax)
 - [`coder/tui/host_grants.coax`](../../coder/tui/host_grants.coax)
 - [`coax/lib/nostr/cap`](../../coax/lib/nostr/cap)

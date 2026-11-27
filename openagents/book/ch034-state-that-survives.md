@@ -52,6 +52,8 @@ A plan for what this chapter ships once the draft is approved:
 It builds on what exists today:
 
 - [`docs/sync/README.md`](../../docs/sync/README.md)
+- [`openagents/core/session.coax`](../../openagents/core/session.coax) and [`openagents/core/transcript_dag.coax`](../../openagents/core/transcript_dag.coax)
+- [`apps/openagents-desktop/page/persist.coax`](../../apps/openagents-desktop/page/persist.coax) and [`apps/openagents-desktop/page/checkpoint.coax`](../../apps/openagents-desktop/page/checkpoint.coax) (turn checkpoints & rewind, `#14026`)
 - [`coax/web/state-keep.js`](../../coax/web/state-keep.js)
 - [`coax/lib/agent/journal.coax`](../../coax/lib/agent/journal.coax)
 - [`coax/lib/agent/session/log.coax`](../../coax/lib/agent/session/log.coax)

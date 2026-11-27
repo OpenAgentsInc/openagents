@@ -96,7 +96,7 @@ It builds on what exists today:
 - [`components/rendering.md`](../../components/rendering.md)
 - [`components/kit/frame.coax`](../../components/kit/frame.coax)
 - [`components/kit/form.coax`](../../components/kit/form.coax) (`ctx_field`)
-- [`components/zeron/composer.coax`](../../components/kit/form.coax)
+- [`components/kit/composer.coax`](../../components/kit/composer.coax)
 - [`components/core/edit.coax`](../../components/core/edit.coax)
 - [`apps/shared/login/screen.coax`](../../apps/shared/login/screen.coax)
 - [`apps/shared/native/NativeLogin.swift`](../../apps/shared/native/NativeLogin.swift)

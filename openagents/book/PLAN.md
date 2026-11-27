@@ -11,12 +11,19 @@ was reordered so that working web and iPhone apps came first, on
 [Coax Native](../../coax/native.md), from shared DOM and UIKit components.
 On 2026-11-15
 ([#13645](https://github.com/OpenAgentsInc/openagents/issues/13645)) the
-opening, chapters 1 to 11, was rewritten for the new iOS app: compiled Coax
-linked into the binary, every component drawn on the GPU by the shared
-display-list kit, no JavaScript and no over-the-air updates. The app starts
-from one text input on the chat page and grows a chapter at a time, under
-[book-driven development](README.md#book-driven-development). Chapters 12
-to 78 keep their numbers and content. The [chapter map](#chapter-map) gives
+opening, chapters 1 to 11, was rewritten for the compiled-Coax GPU architecture:
+every component drawn on the GPU by the shared display-list kit, no JavaScript
+and no over-the-air updates. Subsequent desktop-first shipping made
+[`apps/openagents-desktop`](../../apps/openagents-desktop) the primary native
+host (macOS Metal 4, Linux Vulkan, and Windows Win32/Vulkan `#14046`), backed
+by shared Coax screen/app modules in [`apps/shared/`](../../apps/shared) that
+[`apps/openagents-ios`](../../apps/openagents-ios) and Android consume, the
+unified 24-layer pure-Coax runtime in [`openagents/core/`](../../openagents/core)
+(`#14050`–`#14057`), **Coax Web** with Coax UI Core/Kit/Router and 0-KB-Wasm
+SSR in [`components/ui/`](../../components/ui), OpenAgents Cloud pricing/usage
+APIs (`#14069`–`#14072`), and the locked **WorkOS hybrid `acct_` auth** SDK in
+[`coax/lib/workos/`](../../coax/lib/workos) (`#14097`–`#14103`). Chapters 12
+to 78 keep their numbers and structure. The [chapter map](#chapter-map) gives
 each chapter's number in the first draft and in the 2026-11-13 order, so
 links and notes against the old numbers can be traced.
 
@@ -27,18 +34,19 @@ extends the owner.
 
 | What | Owner | Chapters |
 | --- | --- | --- |
-| App state, actions, routes and the driver | Coax Native ([`coax/native.md`](../../coax/native.md)); generic pieces in the proposed `coax/lib/app/` | 2, 4, 6, 7 |
+| App state, actions, routes and the driver | Coax Native ([`coax/native.md`](../../coax/native.md)); shared app state in [`apps/shared/`](../../apps/shared) | 2, 4, 6, 7 |
 | Components on the GPU: the frame context, keyed state, the semantic table, the surface commit, text, Markdown, the edit buffer | [`components/`](../../components) ([GPU components on native](../../components/gpu-components.md)) | 1–3, 5, 7–9 |
-| The web's DOM presentation | [`components/backend/dom.coax`](../../components/backend/dom.coax), [`coax/web/`](../../coax/web) | 11 |
-| The apps | [`apps/openagents-ios`](../../apps/openagents-ios) first, then [`apps/openagents-desktop`](../../apps/openagents-desktop/README.md), Android and [`apps/openagents-web`](../../apps/openagents-web); hosts and shared app code in [`apps/shared`](../../apps/shared) | 1–11, 30, 31, 34, 36, 75 |
-| Login, accounts, agent grants and the HTTP API | [`coax/web/api/`](../../coax/web/api); on iOS the GPU login screen ([`apps/shared/login/`](../../apps/shared/login)) and the native auth adapter ([`AppAuth.swift`](../../apps/shared/host/apple/AppAuth.swift)) | 4, 5, 59, 64 |
-| Engines, sessions, the journal, observation | [`coax/lib/agent/`](../../coax/lib/agent) | 3, 4, 12, 18, 25, 26, 37 |
-| Money rules | The Payments context, [`pay/`](../../pay) | 32, 33, 56–58, 61 |
-| The wallet | Shared Apple Breez Spark host ([`SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift)), Desktop wallet panel & RPC ([`Window+Wallet.swift`](../../apps/openagents-desktop/Window+Wallet.swift), [`Window+WalletRPC.swift`](../../apps/openagents-desktop/Window+WalletRPC.swift)), and `openagents wallet` CLI ([`wallet.coax`](../../apps/openagents-cli/wallet.coax)) over `#authority` [`pay/`](../../pay) | 32, 33 |
-| Voice | [`metaverse/voice.coax`](../../metaverse/voice.coax), [`apps/shared/dictation.coax`](../../apps/shared/dictation.coax) | 31 |
-| Worlds | The Metaverse Engine | 71–74 |
-| Releases (every iOS change ships in a TestFlight or store build) | [`coax/remote/`](../../coax/remote), each app's release script | 76 |
-| The front, members, plans, knowledge, plugins, evidence and the registry | `openagents/` (planned), the product's own behavior | 12–23, 27, 28, 38–55 |
+| Coax Web, Coax UI Core/Kit/Router, Native SSR/Hydration & DOM presentation | [`components/ui/`](../../components/ui), [`components/backend/dom.coax`](../../components/backend/dom.coax), [`components/backend/html.coax`](../../components/backend/html.coax), [`coax/web/`](../../coax/web) | 11 |
+| The apps | [`apps/openagents-desktop`](../../apps/openagents-desktop/README.md) primary (macOS Metal 4, Linux Vulkan, Windows Win32/Vulkan [`windows/`](../../apps/openagents-desktop/windows)), with [`apps/openagents-ios`](../../apps/openagents-ios), Android ([`apps/shared/host/android`](../../apps/shared/host/android)), and [`apps/openagents-web`](../../apps/openagents-web) consuming shared Coax modules in [`apps/shared`](../../apps/shared) | 1–11, 30, 31, 34, 36, 75, 77 |
+| Login, accounts, WorkOS hybrid `acct_` spine, agent grants and the HTTP API | [`coax/web/api/`](../../coax/web/api), [`coax/lib/workos/`](../../coax/lib/workos), [`tools/oagen-coax/`](../../tools/oagen-coax), GPU login screen ([`apps/shared/login/`](../../apps/shared/login)), and native auth adapter ([`AppAuth.swift`](../../apps/shared/host/apple/AppAuth.swift)) | 4, 5, 59, 64 |
+| Engines, typed router, sessions, the journal, observation | [`coax/lib/agent/`](../../coax/lib/agent) (including [`router/`](../../coax/lib/agent/router)) | 3, 4, 12, 15, 18, 25, 26, 37 |
+| Unified 24-layer pure-Coax agent runtime, member packs, subagents, permissions & memory | [`openagents/core/`](../../openagents/core) and [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) / [`oa-subagent.coax`](../../coder/tui/oa-subagent.coax) | 12–14, 17–18, 23–28, 33–36 |
+| Money rules & 3-leg author-royalty settlement | The Payments context, [`pay/`](../../pay) (`wallet.coax`, `wallet-rpc.coax`, `executor-settlement.coax`) | 32, 33, 56–58, 61, 70 |
+| The wallet | Shared Apple Breez Spark host ([`SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift)), Desktop wallet panel & RPC ([`walletpane.coax`](../../apps/openagents-desktop/page/walletpane.coax), [`Window+Wallet.swift`](../../apps/openagents-desktop/Window+Wallet.swift), [`Window+WalletRPC.swift`](../../apps/openagents-desktop/Window+WalletRPC.swift)), and `openagents wallet` CLI ([`wallet.coax`](../../apps/openagents-cli/wallet.coax)) over `#authority` [`pay/`](../../pay) | 32, 33 |
+| Voice | [`metaverse/voice.coax`](../../metaverse/voice.coax), [`apps/shared/dictation.coax`](../../apps/shared/dictation.coax), [`apps/openagents-desktop/page/voice.coax`](../../apps/openagents-desktop/page/voice.coax), [`Window+Voice.swift`](../../apps/openagents-desktop/Window+Voice.swift) | 31 |
+| Worlds & Embedded GameBuilder | The Metaverse Engine ([`metaverse-engine/`](../../metaverse-engine)), [`gamebuilder/worlds/`](../../gamebuilder/worlds), [`apps/openagents-desktop/page/metaversepane.coax`](../../apps/openagents-desktop/page/metaversepane.coax) | 71–74 |
+| Releases (every iOS change ships in a TestFlight or store build; Desktop via signed macOS/Linux/Windows builds) | [`coax/remote/`](../../coax/remote), each app's release script | 76 |
+| Remaining planned product specs (knowledge base, sandboxed plugin SDK, public Gym/registry) | `openagents/agent/`, `openagents/knowledge/`, `openagents/eval/`, `openagents/registry/` (planned; tracked in `#14058`–`#14060`) | 20–22, 38–53, 56–57, 60–61, 73 |
 
 The wire shapes live in [`proto/`](../../proto/README.md), and
 [the OpenAgents Protocol](../../docs/protocol/openagents-protocol-spec.md)
@@ -178,39 +186,32 @@ promise is met.
 ## Order of building
 
 Each step ships something a person can use and is the base for the next.
-Under [book-driven development](README.md#book-driven-development), a
-step's chapters are written before its code, and the app contains only what
-the implemented chapters built.
+Desktop (`apps/openagents-desktop`) leads as the primary host, sharing its
+Coax logic in `apps/shared/` and `openagents/core/` with mobile and web:
 
 | Step | What ships | Chapters | Targets |
 | --- | --- | --- | --- |
-| Step 1: the chat page | The lean iOS app, one chapter at a time: a text input on the GPU, Send, a transcript, a streamed reply with Stop, and the login card when a send needs an account. One case asserts every step; logout and Stop fence a held reply; a retry can't send twice | 1–6 | `ios-simulator`, `ios-device` |
-| Step 2: the rest of the iOS app | History and the sidebar, the environment and repository chips, settings, each rebuilt on the GPU kit | 7–9 | as step 1 |
-| Step 3: desktop and Android | The same app on the Mac and Linux hosts, replacing the current desktop shell, then on Android, without claiming a finished Android app before its cases pass | 10, 75 | `macos-arm64`, `android-emulator`, `android-device` |
-| Step 4: the web | The chat page, history and settings on openagents.com from the shared state and actions, drawn as DOM, and the public pages | 11 | `web` |
-| Step 5: one agent | The loop, members, the typed front, grants, the record, conversation, knowledge and memory behind the chat page | 12–23 | as step 1 |
-| Step 6: capabilities | Coder, other engines, remote work, files, voice, the wallet and payment approval | 24–33 | as step 1 |
-| Step 7: continuity | Persistence, sync, background and resume, one owner per task | 34–37 | as step 1 |
-| Step 8: plugins, evidence and the market | The plugin interface, the evidence rule, the registry, paid calls and payouts | 38–61 | as step 1 |
-| Step 9: the protocol and compute | The protocol chapters, the API for partners, self-hosting, the gateway and Pylons | 62–70 | as step 1 |
-| Step 10: worlds and delivery | The agent in realms, the conformance run, releases from one source, Windows and 1.0 | 71–78 | every target |
+| Step 1: the chat page | Shared GPU chat page (desktop primary + mobile consumer): text input, Send, transcript, streamed reply with Stop, login card (`cpu` verified) | 1–6 | `cpu`, `macos-arm64`, `ios-simulator`, `ios-device` |
+| Step 2: sidebar, chips and settings | History and sidebar, environment and repository chips, settings (`cpu` verified) | 7–9 | as step 1 |
+| Step 3: mobile and other native hosts | Full native host parity across iOS (`#14023`, `#14068`), Linux Vulkan, Windows Win32/Vulkan (`#14046`), and Android | 10, 75, 77 | `macos-arm64`, `ios-device`, `android-emulator`, `android-device` |
+| Step 4: the web | Coax Web, Coax UI Core/Kit/Router, 0-KB-Wasm SSR books (`cpu` verified), plus migrating `/chat`, history and settings onto shared state | 11 | `cpu`, `web` |
+| Step 5: one agent | Unified `openagents/core/` loop, `#authority` members, typed `RoutePlan` router, grants, records (`12–13, 15, 17` `cpu` verified), plus shared `NIP-KB` knowledge and memory (`#14058`) | 12–23 | `cpu`, `macos-arm64`, `ios-device` |
+| Step 6: capabilities | Coder (`oa-worker`), opt-in external engines (`#14071`), visible subagents (`#14096`), CLI allowlist (`#14057`), files/browser/voice, Desktop+iOS Spark wallet & bypass-immune `WalletPay` (`26, 28, 32–33` `cpu` verified) | 24–33 | as step 5 |
+| Step 7: continuity | Persistence, checkpoints (`#14026`), sync, resident `coder-host` background survival & Tailnet/LAN/Nostr failover (`#14027`, `#14030`, `#14032`) | 34–37 | as step 5 |
+| Step 8: plugins, evidence and the market | OpenAgents Studio & plugin sandbox (`#14059`), Gym & evidence rules, signed registry (`54–55` `cpu` verified), 3-leg author royalties (`#13961`, `58` `cpu` verified), public `NIP-REG`/`EVAL`/`PAY` market (`#14060`) | 38–61 | as step 5 |
+| Step 9: the protocol and compute | Protocol compliance, OpenAgents Cloud API & Usage HUD (`#14064`, `#14069`–`#14072`), local `$0` Psionic serving (`#14028`, `#14087`, `69` `cpu` verified), Pylons (`70` `cpu` verified) | 62–70 | as step 5 |
+| Step 10: worlds and delivery | Embedded Metaverse & GameBuilder pane (`#14038`–`#14046`), cross-host conformance, releases from one source, Windows engine conformance, and 1.0 | 71–78 | every target |
 
-**The desktop and environment service (owner direction, 2026-11-13).**
-Chapter 10 replaces the existing desktop shell on Mac and Linux, reusing
-the shared hosts and components. The desktop app sets up and attaches to an
-independent local environment service, shows authorized chat history from
-both computers, and controls managed Claude chat from either desktop and the
-phone. A CLI-only service may land first for phone access; the normal setup
-experience is the desktop app. Closing the window must not stop Claude. See
-the [canonical stages and gates](../../docs/protocol/environments-claude-and-world-editing.md#10-implementation-sequence-and-completion-gates).
-The service can be built alongside steps 1 and 2; the desktop app itself
-follows them, so it reuses the pieces the iPhone app built. Windows follows
-Mac and Linux qualification (chapter 77).
-
-Steps 5 to 9 can overlap once step 1 is done, each adding to the chat page
-through chapters of its own. Windows and the other additional platforms
-(chapter 77) are qualified on their own evidence and never hold up the
-iPhone. Name an implementer and a start date for a step before it begins.
+**The desktop and environment service (reconciled with shipped `main`).**
+[`apps/openagents-desktop`](../../apps/openagents-desktop) is the primary
+unified desktop host across macOS Metal 4, Linux Vulkan, and Windows
+Win32/Vulkan (`#14046`). It attaches to the independent resident `coder-host`
+environment service (`#14027`, `#14032`) so closing the window never stops an
+active agent turn, and reaches paired phones over Tailnet → LAN → Nostr relay
+failover (`#14030`). See the
+[canonical stages and gates](../../docs/protocol/environments-claude-and-world-editing.md#10-implementation-sequence-and-completion-gates).
+Full Metaverse Engine Windows conformance (chapter 77) qualifies on its own
+evidence and never blocks macOS, Linux, web, or mobile.
 
 ## What the new approach keeps from the first plan
 
@@ -336,17 +337,35 @@ plan did better, and the new app should adopt them.
 
 The audit lists five decisions in its
 [section 8](../../docs/audits/2026-11-10-episode-289-port-audit.md#8-decisions-for-the-owner).
-The first, the name and place of `openagents/`, is settled: the directory
-holds this book, and product code goes there only where no current owner
-exists. Two of the first draft's questions are settled by what now runs: the
-first wallet is Breez Spark, in the iPhone app (chapter 32), and every agent
-task has one execution owner instead of a fixed split between devices and
-the hosted service (chapter 37). The 2026-11-15 decision settles the old
-chapter 3's question, which iPhone screens move off UIKit first: all of
-them, on the GPU kit, starting with the chat page. The chapters still ask:
+Several major questions are now **settled on `main`**:
+
+- **Directory & ownership (`decision 1`):** `openagents/book/` holds this book,
+  and [`openagents/core/`](../../openagents/core) holds the unified 24-layer
+  pure-Coax agent runtime.
+- **Wallet & execution ownership:** the self-custodial Breez Spark wallet runs
+  across Desktop, iOS, and CLI over `#authority` `pay/` (`#14057`, chapter 32),
+  with bypass-immune `WalletPay` approval (chapter 33); every agent task has
+  one execution owner via resident `coder-host` (`#14027`, `#14032`, chapter 37).
+- **Authentication:** locked **WorkOS hybrid `acct_` spine** (`#14097`–`#14103`,
+  [`docs/auth/2026-11-26-workos-coax-sdk.md`](../../docs/auth/2026-11-26-workos-coax-sdk.md))
+  with Custom Coax UI, social OAuth/SSO at `L1`, and first-party Passkey/Nostr
+  `L2`/`L2-fresh` step-up (chapters 5 and 59).
+- **Default engines, gateway & local serving:** native `openagents/core/`
+  (`oa-worker.coax`) + OpenAgents Cloud retail gateway (`#14069`–`#14072`) +
+  `$0.00` local `psionic-inkling-serve` (`Inkling-2-Mini`, `#14028`, `#14087`),
+  with external coding engines (Claude Code, Codex, Cursor, Antigravity)
+  explicitly opt-in (`#14071`, chapters 25, 68, 69).
+- **Executor author royalty cap:** 3-leg settlement (`Worker + Validator + Module Author`)
+  capped at `<= 25%` (`2500 bps`) in `pay/executor-settlement.coax` (`#13961`,
+  chapters 58 and 70).
+- **Windows graphics (`decision 5`):** **Vulkan** is the shared desktop
+  graphics API across Linux and Windows (`apps/openagents-desktop/windows/`,
+  `#14046`, chapter 77).
+
+The chapters still ask these genuinely open owner questions:
 
 <!-- questions:begin -->
-There are 83 of them.
+There are 78 of them.
 
 | Chapter | Question |
 | --- | --- |
@@ -372,9 +391,8 @@ There are 83 of them.
 | [22](ch022-retrieval-by-meaning.md) | Which model makes the embeddings: a hosted one through the gateway, or one we serve with Psionic? |
 | [23](ch023-memory-and-consent.md) | Where does memory live: on the device only, encrypted on a relay, or on our service? |
 | [23](ch023-memory-and-consent.md) | Which sharing model do we offer first: none, opt-in publishing, or opt-in sale? |
-| [25](ch025-other-engines.md) | Which engines does 1.0 name? The Coax tree drives Claude Code, Codex and Cursor. The old tree also drove Grok Build, OpenCode and Devin. |
 | [27](ch027-programs.md) | Which of the twenty recipes come back, and are they members of the general agent or examples in this book? |
-| [28](ch028-the-command-line-behind-the-agent.md) | Which commands can chat never call? Proposed: key export, admin commands, and anything that deletes data. |
+| [28](ch028-the-command-line-behind-the-agent.md) | Beyond the shipped 8-subcommand allowlist (`openagents/core/members.coax`), which additional CLI commands should remain permanently denied from chat? |
 | [29](ch029-where-work-runs.md) | Does 1.0 offer hosted computers to everyone, and at what price? Episode 276 named one dollar an hour at the time. |
 | [29](ch029-where-work-runs.md) | How does hosted compute fit inside the monthly cloud budget as use grows? |
 | [31](ch031-voice.md) | Which voice reads replies aloud by default, and may a person choose another? |
@@ -401,11 +419,10 @@ There are 83 of them.
 | [56](ch056-paid-calls.md) | Do we offer card-funded credits as Episode 290 describes, with a fee and a Bitcoin discount, and what are the numbers? |
 | [56](ch056-paid-calls.md) | Is there a free amount of paid calls for new people, and who funds it? |
 | [57](ch057-metering-and-receipts.md) | How public is the ledger: every receipt, or totals per release with receipts shown only to the author and the payer? |
-| [58](ch058-payouts-to-authors.md) | What is the author's share of each paid call? This is the audit's decision 3. |
-| [58](ch058-payouts-to-authors.md) | What is the payout schedule and the minimum: for example, daily above a set number of sats? |
+| [58](ch058-payouts-to-authors.md) | What is the general plugin payout schedule and minimum (beyond Executor Network 3-leg royalties capped at 25%)? |
 | [58](ch058-payouts-to-authors.md) | When a plugin depends on another paid plugin, how is the price split between the two authors? |
 | [58](ch058-payouts-to-authors.md) | A tip goes straight from the payer to the maker's own wallet (owner decision D6 in [docs/auth](../../docs/auth/decisions.md), built in #13210). A paid call with a split can't always do that. Who holds the money between such a call and the payout, and under what custody? |
-| [59](ch059-one-identity.md) | When does a person who logged in by email get a Nostr key for signing public records, where is it made, and how do they take it with them? |
+| [59](ch059-one-identity.md) | When does a person who logged in by WorkOS email/OAuth get a Nostr key for signing public records, where is it made, and how do they take it with them? |
 | [60](ch060-reputation-from-reproduced-claims.md) | What makes two keys distinct enough to count as independent confirmations? |
 | [61](ch061-markets-for-work.md) | Who accepts a result: the buyer alone, or an independent checker when the buyer asks for one? |
 | [61](ch061-markets-for-work.md) | Do the terms of the subscriptions people would lend allow this use? We need an answer per provider before we ship worker mode. |
@@ -417,11 +434,9 @@ There are 83 of them.
 | [66](ch066-the-compliance-rule.md) | Does a chapter reach "implemented" only when its records are compliant? |
 | [66](ch066-the-compliance-rule.md) | Do we publish the fixtures as a kit that a second implementation can run? |
 | [67](ch067-host-it-yourself.md) | How are authors paid when a self-hosted instance runs a paid plugin locally: by license terms, by plugins that call home for payment, or not at all? |
-| [68](ch068-one-gateway.md) | What is the default order of providers for each job: decisions, conversation and long work? |
-| [69](ch069-models-we-serve.md) | Which models does 1.0 serve on our own hardware, and which stay hosted? |
-| [70](ch070-pylons.md) | What does a Pylon earn per decision, and who sets it: us, the Pylon's owner, or a market? |
-| [70](ch070-pylons.md) | How large a sample of results do we recompute, and what happens to a Pylon whose answers don't match? |
-| [70](ch070-pylons.md) | Beyond our own agent and the Metaverse, who is the first outside buyer? |
+| [70](ch070-pylons.md) | As public operators join beyond our own machines, should per-job payouts stay fixed or move to open market bidding under daily caps? |
+| [70](ch070-pylons.md) | What trust/reputation threshold graduates a new public Pylon from Tier-2 redundant replication to sampled validation? |
+| [70](ch070-pylons.md) | Beyond our own coding agents and the Metaverse, who is the first outside buyer? |
 | [72](ch072-agents-you-can-meet.md) | Do agents appear in shared public realms by default, or only in your own space until you choose to show them? |
 | [73](ch073-realms-and-makers.md) | Is the maker's share the same as a plugin author's, and what does a fork's maker owe the original's? |
 | [73](ch073-realms-and-makers.md) | Who curates the featured list, and by what written rule? |
@@ -429,7 +444,6 @@ There are 83 of them.
 | [75](ch075-cross-host-conformance.md) | Does Android get the full OpenAgents app for 1.0, or does the Android game app come first and the agent follow? |
 | [76](ch076-releases-from-one-source.md) | Which stores do we publish to at 1.0, and which platforms get a direct download only? |
 | [76](ch076-releases-from-one-source.md) | Which kinds of update may install on their own, and which ask the person first? |
-| [77](ch077-a-windows-host.md) | Which graphics interface does the Windows host use: the platform's own, or Vulkan as on Linux? This is the audit's decision 5. |
 | [77](ch077-a-windows-host.md) | Do we need a Windows machine in the build fleet, or do we build from another platform and test on a rented one? |
 | [78](ch078-what-one-point-zero-means.md) | Is 1.0 one release of everything, or does each surface reach 1.0 when its own chapters run? |
 | [78](ch078-what-one-point-zero-means.md) | Which of the sixteen promises may ship marked "gated" at 1.0, if any? |

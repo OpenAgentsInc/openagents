@@ -47,6 +47,9 @@ It builds on what exists today:
 
 - [`coax/native.md`](../../coax/native.md)
 - [`components/core/text.coax`](../../components/core/text.coax)
+- [`apps/openagents-desktop/page/filepane.coax`](../../apps/openagents-desktop/page/filepane.coax) and [`apps/openagents-desktop/Window+Files.swift`](../../apps/openagents-desktop/Window+Files.swift) (Desktop File Viewer & tree, `#13992`)
+- [`apps/openagents-desktop/page/browserpane.coax`](../../apps/openagents-desktop/page/browserpane.coax) and [`apps/openagents-desktop/Window+Browser.swift`](../../apps/openagents-desktop/Window+Browser.swift) (Desktop Embedded Browser Pane & agent CDP/automation bridge, `#14105`–`#14110`)
+- [`apps/openagents-desktop/page/attach.coax`](../../apps/openagents-desktop/page/attach.coax) and [`apps/openagents-desktop/Window+Attach.swift`](../../apps/openagents-desktop/Window+Attach.swift)
 - [`apps/shared/host/apple`](../../apps/shared/host/apple)
 - [`apps/openagents-ios`](../../apps/openagents-ios)
 

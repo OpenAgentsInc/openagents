@@ -32,7 +32,7 @@ The interface is small. A task goes in with a grant for one repository. A
 result comes out: a change, the checks that ran, and whether they passed. A
 red result pushes nothing and says why.
 
-This book does not rebuild Coder. The Coder book does that, in 38 chapters.
+This book does not rebuild Coder. The Coder book does that, in 43 chapters.
 This chapter builds the adapter that makes Coder a member, and the route that
 sends it work.
 
@@ -49,8 +49,10 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/core.coax`](../../openagents/core/core.coax) and [`openagents/core/query_loop.coax`](../../openagents/core/query_loop.coax) (the unified 24-layer pure-Coax runtime, `#14050`–`#14057`)
+- [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) (native OpenAgents Core worker replacing deprecated `coax/lib/microcoder`, `#13983`)
+- [`coax/lib/inky/`](../../coax/lib/inky) (local `Inkling-2-Mini` coding agent loop)
 - [`coder/tui/coder.coax`](../../coder/tui/coder.coax)
-- [`coax/lib/microcoder`](../../coax/lib/microcoder)
 - [`coax/lib/agent`](../../coax/lib/agent)
 - [`coder/book/README.md`](../../coder/book/README.md)
 

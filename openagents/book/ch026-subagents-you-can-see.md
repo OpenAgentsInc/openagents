@@ -1,7 +1,14 @@
 # 26. Subagents you can see
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** Claude-Code-parity subagents and swarm
+> coordination ([`openagents/core/subagent.coax`](../../openagents/core/subagent.coax),
+> [`openagents/core/agents.coax`](../../openagents/core/agents.coax),
+> [`openagents/core/swarm.coax`](../../openagents/core/swarm.coax),
+> [`coder/tui/oa-subagent.coax`](../../coder/tui/oa-subagent.coax), `#14096`),
+> model tier selection ([`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)),
+> and Desktop visibility panes ([`apps/openagents-desktop/page/dashboard.coax`](../../apps/openagents-desktop/page/dashboard.coax),
+> [`apps/openagents-desktop/page/chats.coax`](../../apps/openagents-desktop/page/chats.coax))
+> pass on `cpu`. Remaining: cross-device NIP-COORD sync and mobile fleet cards.
 
 ## Premise
 
@@ -45,9 +52,11 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/subagent.coax`](../../openagents/core/subagent.coax), [`openagents/core/agents.coax`](../../openagents/core/agents.coax), and [`openagents/core/swarm.coax`](../../openagents/core/swarm.coax) (CC-parity subagent spawn, `SendMessage`, `TaskStop`, `TaskOutput`, and worktree isolation, `#14096`)
+- [`coder/tui/oa-subagent.coax`](../../coder/tui/oa-subagent.coax)
+- [`apps/openagents-desktop/page/dashboard.coax`](../../apps/openagents-desktop/page/dashboard.coax) and [`apps/openagents-desktop/page/chats.coax`](../../apps/openagents-desktop/page/chats.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
 - [`coax/lib/agent/observe/processes.coax`](../../coax/lib/agent/observe/processes.coax)
-- `apps/everglade-desktop/next.coax`
 - [`coax/lib/agent/observe/claude-history.coax`](../../coax/lib/agent/observe/claude-history.coax)
 
 On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):

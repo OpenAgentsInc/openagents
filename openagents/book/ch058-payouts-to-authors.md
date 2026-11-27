@@ -1,7 +1,15 @@
 # 58. Payouts to authors
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` **3-leg author-royalty
+> settlement** ledger (`Worker + Validator + Module Author`, royalty capped at
+> `<= 25%` / `2500 bps`, repeat-safe idempotency, rolling UTC daily caps) is
+> implemented and mutation-tested (`101/101` mutants killed, `#13961`) in
+> [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax) and
+> [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax), driving live
+> Breez Spark payouts in [`apps/openagents-cli/pylon-settle.coax`](../../apps/openagents-cli/pylon-settle.coax)
+> (see also [chapter 70](ch070-pylons.md)). Remaining: general scheduled batch
+> payouts and held balances for non-executor plugin authors
+> (`pay/payout-policy.coax`, tracked in `#14060`).
 
 ## Premise
 
@@ -34,24 +42,36 @@ minute-by-minute balances. [Episode 223](../../docs/transcripts/223.md)
 reports payouts as the bottleneck once many people were owed. The lesson is to
 automate it fully and keep each step checkable.
 
-The share itself is not ours to draft. The split between the author, any
-authors of plugins theirs depends on, and us is an owner decision. This
-chapter builds the machinery so that the split is a number in one signed
-policy record.
+The share itself is now proven for Executor Network modules (`#13961`):
+[`pay/executor-settlement.coax`](../../pay/executor-settlement.coax) enforces
+a **3-leg settlement** (`Worker + Validator + Module Author`) with a hard
+`<= 25%` (`2500 bps`) royalty cap, duplicate-leg refusal, and rolling UTC
+daily caps, paying authors directly over Breez Spark / Lightning via
+[`apps/openagents-cli/pylon-settle.coax`](../../apps/openagents-cli/pylon-settle.coax).
+For general third-party plugins with nested dependencies (`#14060`), the split
+policy stays a signed record in `pay/payout-policy.coax`.
 
 ## What we build
 
-A plan for what this chapter ships once the draft is approved:
+Shipped today for Executor Network modules:
 
-- A payout runner as a Coax binary: totals in, Lightning payments out, a
-  signed record of each.
-- Repeat-safe payouts, retries, and held balances for authors with no address
-  yet.
+- 3-leg author-royalty admission, `<= 25%` cap enforcement, and idempotent
+  payouts in [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax)
+  and [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax) (`#13961`).
+
+Remaining for general plugin payouts (`#14060`):
+
+- A general payout runner as a Coax binary (`pay/payout-policy.coax`): totals
+  in, Lightning payments out, a signed record of each.
+- Repeat-safe scheduled payouts, retries, and held balances for authors with no
+  address yet.
 - A public check that payouts plus balances equal the author shares in the
   receipts.
 
 It builds on what exists today:
 
+- [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax) (3-leg author-royalty settlement, `101/101` mutants killed, `#13961`)
+- [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax) and [`apps/openagents-cli/pylon-settle.coax`](../../apps/openagents-cli/pylon-settle.coax)
 - [`coax/lib/lightning/offers.coax`](../../coax/lib/lightning/offers.coax)
 - [`coax/lib/lightning/pay.coax`](../../coax/lib/lightning/pay.coax)
 - [`coax/lib/lightning/invoice.coax`](../../coax/lib/lightning/invoice.coax)

@@ -10,23 +10,25 @@ python3 psionic/tests/book.py --book openagents
 
 ## Book-driven development
 
-The book leads and the app follows. These rules hold for every chapter:
+The book specifies, verifies, and reconciles the product on `main`. These rules
+hold for every chapter:
 
-- **The chapter is written first.** Then the app is built to it. Code that
-  no chapter asks for is not written.
-- **The app on `main` is what the book has built.** It contains exactly
-  what the book has built through its latest implemented chapter, and
-  nothing else. A feature that is not in a chapter is not in the app. Code
-  from the old app returns only when a chapter rebuilds it the new way.
-- **One small increment per chapter.** Each chapter adds one thing you can
-  see or use, and leaves the app running. Its check passes before the next
-  chapter's code starts.
+- **Every capability has a chapter.** Planned features start as design drafts
+  naming their schema, refusal cases, and check. When engineering lands a
+  subsystem on `main`, the book reconciles the chapter to cite real paths,
+  promote its status when checks pass, and state what remains.
+- **No silent drift between book and code.** A chapter never claims a target
+  without recorded evidence, never cites a deleted path, and clearly separates
+  shipped code from planned work.
+- **One small increment per check.** Each chapter's four-part check (source,
+  trace, refusal, independent check) governs its move from `design draft` to
+  `partly implemented` to `implemented`.
 - **The chapter changes with the code.** When building shows the draft was
-  wrong, the same change corrects the chapter.
+  wrong, the same change (or reconciliation pass) corrects the chapter.
 
 A chapter about a later capability can be a design draft long before its
-code exists. What it can't do is describe the app as having something that
-no implemented chapter built.
+code exists. What it can't do is claim a target is qualified before its checks
+have run and been recorded.
 
 ## Three separate facts
 
@@ -117,9 +119,10 @@ the run is recorded.
   promises match the chapter's "Promises covered" line, and that every
   promise P1 to P16 is covered.
 - That a planned path does not exist yet and does not duplicate a current
-  owner: engines, sessions and the journal are in `coax/lib/agent/`, money
-  rules are in `pay/`, the wallet is the iPhone app's Spark wallet, the API
-  is `coax/web/api/`, and clients are the apps in `apps/`.
+  owner: engines, sessions and the journal are in `coax/lib/agent/` (and the
+  unified runtime in `openagents/core/`), money rules are in `pay/`, the
+  wallet is the shared Breez Spark wallet across Desktop, iOS, and CLI, the
+  API is `coax/web/api/`, and clients are the apps in `apps/`.
 - That a partly implemented or implemented chapter has a "The chapter's
   check" section naming its source, trace, refusal and independent check.
   Chapters 1 to 11, rewritten on 2026-11-15, already plan one; the others

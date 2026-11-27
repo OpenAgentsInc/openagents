@@ -37,11 +37,18 @@ can't drift.
 There is a third carriage, and part of the API already uses it. Agent grants
 travel as binary protobuf, written by a codec that Coax generates from the
 schema. Binary suits frames, files and calls where both ends are ours. Chapter
-49 explains the three together.
+65 explains the three together.
 
-Today most of the site's routes write their own JSON. The [compliance
+Today the **OpenAgents Cloud inference, pricing, and usage API** is live in
+`coax/web/api/` (`#14069`–`#14072`): retail pricing tables, cached-token and
+decision billing, and usage sync endpoints are specified in
+[`proto/openagents/api/v1alpha1/inference.proto`](../../proto/openagents/api/v1alpha1/inference.proto)
+and backed by [`coax/web/api/inference.c`](../../coax/web/api/inference.c),
+[`coax/web/api/router.c`](../../coax/web/api/router.c), and
+[`coax/web/api/migrations/0216_inference_openagents_pricing.sql`](../../coax/web/api/migrations/0216_inference_openagents_pricing.sql).
+Most older site routes still write hand-packed JSON; the [compliance
 plan](../../docs/protocol/2026-11-11-compliance-plan.md) orders the move onto
-the envelope.
+the shared envelope.
 
 The rule that keeps the API honest is that our own apps use it. Chapter 4's
 chat service is behind it. There is no private API with more in it.
@@ -68,6 +75,7 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`proto/openagents/api/v1alpha1/inference.proto`](../../proto/openagents/api/v1alpha1/inference.proto), [`coax/web/api/inference.c`](../../coax/web/api/inference.c), [`coax/web/api/router.c`](../../coax/web/api/router.c), and [`coax/web/api/migrations/0216_inference_openagents_pricing.sql`](../../coax/web/api/migrations/0216_inference_openagents_pricing.sql) (OpenAgents Cloud retail pricing, cached tokens, decision billing & usage APIs, `#14069`)
 - [`apps/openagents-cli/api.coax`](../../apps/openagents-cli/api.coax)
 - [`proto/README.md`](../../proto/README.md)
 - [`docs/protocol/openagents-protocol-spec.md`](../../docs/protocol/openagents-protocol-spec.md)

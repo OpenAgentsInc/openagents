@@ -1,7 +1,14 @@
 # 33. Spending approval
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** Bypass-immune `WalletPay` approval in
+> [`openagents/core/members.coax`](../../openagents/core/members.coax) (`#14057`),
+> Desktop Spark RPC approval gating in [`pay/wallet-rpc.coax`](../../pay/wallet-rpc.coax)
+> and [`apps/openagents-desktop/Window+WalletRPC.swift`](../../apps/openagents-desktop/Window+WalletRPC.swift),
+> and server-side agent spend caps in [`pay/wallet-policy.coax`](../../pay/wallet-policy.coax)
+> and [`coax/web/api/agent-policy.coax`](../../coax/web/api/agent-policy.coax)
+> pass on `cpu` (0 surviving mutants on `members.coax`). Remaining: standing
+> user-configured agent allowance UI (`pay/spend-approval-policy.coax`) and
+> web/mobile approval sheet parity.
 
 ## Premise
 
@@ -51,8 +58,11 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
+- [`openagents/core/members.coax`](../../openagents/core/members.coax) (bypass-immune `WalletPay` requiring interactive `ASK` even in `BYPASS` mode and `DENY` in `PLAN`/`DONT_ASK` modes, `#14057`)
+- [`pay/wallet-rpc.coax`](../../pay/wallet-rpc.coax) and [`apps/openagents-desktop/Window+WalletRPC.swift`](../../apps/openagents-desktop/Window+WalletRPC.swift)
 - [`pay/wallet.coax`](../../pay/wallet.coax)
 - [`pay/wallet-policy.coax`](../../pay/wallet-policy.coax)
+- [`coax/web/api/agent-policy.coax`](../../coax/web/api/agent-policy.coax)
 - [`coax/lib/quantity.coax`](../../coax/lib/quantity.coax)
 - [`coax/lib/lightning/pay.coax`](../../coax/lib/lightning/pay.coax)
 - [`coder/tui/approvals.coax`](../../coder/tui/approvals.coax)

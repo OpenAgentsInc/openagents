@@ -51,6 +51,8 @@ A plan for what this chapter ships once the draft is approved:
 It builds on what exists today:
 
 - [`coax/native.md`](../../coax/native.md)
+- [`openagents/core/tasks.coax`](../../openagents/core/tasks.coax) and [`openagents/core/scheduler.coax`](../../openagents/core/scheduler.coax) (background tasks, `/goal`, and scheduled runs, `#14083`–`#14086`)
+- [`apps/openagents-desktop/page/scheduled.coax`](../../apps/openagents-desktop/page/scheduled.coax) and [`apps/openagents-desktop/page/checkpoint.coax`](../../apps/openagents-desktop/page/checkpoint.coax) (turn checkpoints & rewind, `#14026`)
 - [`metaverse-engine/agent/pin.coax`](../../metaverse-engine/agent/pin.coax)
 - [`pay/wallet.coax`](../../pay/wallet.coax)
 
