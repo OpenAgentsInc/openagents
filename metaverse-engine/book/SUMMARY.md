@@ -86,7 +86,7 @@
 - [61. Hecate's Cemetery](ch061-hecates-cemetery.md) — design draft
 - [62. Fairy Forest](ch062-fairy-forest.md) — design draft
 - [63. The space games](ch063-the-space-games.md) — design draft
-- [64. Every realm runs on the Metaverse Engine](ch064-every-realm-runs-on-aethyr.md) — partly implemented
+- [64. Every realm runs on the Metaverse Engine](ch064-every-realm-runs-on-the-metaverse-engine.md) — partly implemented
 
 **VIII. Hearing it**
 

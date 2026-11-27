@@ -543,7 +543,7 @@ Checks for these actions:
 ## Further input surfaces
 
 The frame-driven walking adapters now use the shared buffer. The broader
-realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)) also covers
+realm migration ([chapter 64](ch064-every-realm-runs-on-the-metaverse-engine.md)) also covers
 UI, remote input and other gameplay-specific action types:
 
 - gameplay-specific uses of the Grid's touch controls (`Sticks` in

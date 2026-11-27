@@ -65,8 +65,8 @@ that already touches the file (#13267 to #13269, #13280).
 | Coax | The language every book is written in. | Coax |
 | `coax0` | The bootstrap compiler. It emits C11, which also builds to WebAssembly, and shader functions for Metal and WGSL. | Coax 27 |
 | Coaxial | Deprecated public name for Coax Native Web. Existing technical ABI and protocol spellings retain their identity. | [coax/web.md](../../coax/web.md) |
-| Coax Native | The shared Coax application framework for apps and websites: app state and actions, components, platform hosts/services, delivery and one agent interface. The initial iOS UIKit/JavaScriptCore starter runs generated Coax code; other host qualifications remain explicit. The OpenAgents desktop replacement is planned for Mac/Linux, then Windows. | [coax/native.md](../../coax/native.md), [starter](../../coax/native/README.md), [desktop/environment plan](../protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes) |
-| Coax Native Web | Coax Native's browser target: DOM text surfaces, GPU worlds and browser services, formerly Coaxial. | [coax/web.md](../../coax/web.md) |
+| Coax Native | The shared Coax application framework for apps and websites: app state and actions, components, platform hosts/services, delivery and one agent interface. Ships in OpenAgents Desktop (`apps/openagents-desktop/` on macOS Metal 4, Linux Wayland/Vulkan, and Windows Win32/Vulkan), iOS (`apps/openagents-ios/`), and Coax Web/UI SSR (`coax/web/`, `coax/ui/`). | [coax/native.md](../../coax/native.md), [starter](../../coax/native/README.md), [desktop/environment plan](../protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes) |
+| Coax Web | Coax's browser and SSR web target: DOM/SSR text surfaces, Coax UI Kit/Router/Native SSR (0-KB-Wasm static book publishing), GPU worlds, and browser services (formerly Coax Native Web / Coaxial). | [coax/web.md](../../coax/web.md) |
 | Presentation surface | A region with one presentation owner, coordinates, clipping and input/focus boundary; it may be DOM, GPU or a declared native surface. | [Component rendering](../../components/rendering.md) |
 | Scene view | A presentation of an engine-owned world through a camera, composed as a component surface. It does not itself create a room or grant authority. | [Component rendering](../../components/rendering.md#several-inline-worlds), Metaverse Engine |
 | Semantic row | One thing on a presentation surface that a person presses, types into or reads as a unit: stable id, role, label, state, value, bounds, parent and action. Hit tests, focus order, accessibility and `coax drive` read the same committed rows. | [GPU components](../../components/gpu-components.md#one-semantic-table) |
@@ -115,11 +115,11 @@ that already touches the file (#13267 to #13269, #13280).
 | Hybrid executor | A neural language model paired with a learned routing adapter (such as a rank-8 LoRA) that invokes frozen compiled weight modules with zero silent hallucinations. | Psionic 236 |
 | Training window | A bounded, digest-pinned decentralized training job (Local-SGD / DiLoCo) over an assigned verified shard whose delta must pass Byzantine verification before entering quarantine. | Psionic 272–273 |
 | Quarantine optimizer | The three-checkpoint state machine (`canonical -> quarantine -> promoted`) that prevents public updates from mutating production weights until they beat held-out gates. | Psionic 274 |
-| Two-leg settlement | Receipt-first Bitcoin/Spark payout that settles both the worker and the independent replay validator (`worker != validator`, distinct devices) under rolling daily caps. | Bitcoin 123, Psionic 238, `pay/executor-settlement.coax` |
+| Three-leg settlement | Receipt-first Bitcoin/Spark payout (`#13961`) that settles the worker, the independent replay validator (`worker != validator`, distinct devices), and the module author (`<= 25%` / `2500 bps` royalty cap) under rolling daily caps. | Bitcoin 123, Psionic 238, `pay/executor-settlement.coax` |
 | Harness | The program around a model that sends requests, runs tools and decides when to stop. | Coder 1 |
-| Engine (Coder) | What runs a Coder task: Microcoder, a Psionic-served model, Claude Code or Codex. | Coder 9–13 |
-| Microcoder | Coder's own loop, on any model it can reach. | Coder 9 |
-| Router, Worker | The Router decides what each incoming event becomes. A Worker does one task. | Coder 17 |
+| Engine (Coder) | What runs a Coder task: Inky (`openagents/core/` + `oa-worker`), a Psionic-served local Inkling model, or an opt-in delegated CLI subagent (`Claude Code`, `Codex`, `Antigravity`). | Coder 9–13 |
+| Inky / `oa-worker` | OpenAgents' primary 24-layer Coax coding agent (`openagents/core/`, `#14051`–`#14053`), superseding the deprecated Microcoder loop (`#13983`). | Coder 9 |
+| RoutePlan / Foreman | Deterministic routing (`RoutePlan`, `#14056`) and multi-worker orchestration (`oa-worker` / `oa-subagent`, `#14096`) replacing the earlier single-file Router sketch. | Coder 17 |
 
 ## Money and identity
 

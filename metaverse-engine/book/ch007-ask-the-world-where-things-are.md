@@ -727,7 +727,7 @@ legacy permissive query continues to skip malformed shapes for trusted callers.
 
 [Chapter 8](ch008-ground-and-collision.md) adds heightfield ground to all four
 queries and moves the legacy terrain sampler onto the shared implementation.
-The remaining realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
+The remaining realm migration ([chapter 64](ch064-every-realm-runs-on-the-metaverse-engine.md))
 includes the four terrain realms' floor-relative adapters, their older ray
 helpers, Everglade's wall-filter step constants and moving `metaverse-engine/physics/stand.coax`
 into the engine. Rays against floor shapes for roof and rubble picking remain

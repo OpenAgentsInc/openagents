@@ -13,7 +13,7 @@ needs, from scratch, in one language, with every claim checked.
 | [Coder: Coding Agents From Scratch](../../coder/book/README.md) | A coding agent and its harness | build or drive an agent |
 | [Bitcoin From Scratch](../../bitcoin/book/README.md) | Bitcoin and Lightning, from SHA-256 to channels | understand or check how money moves |
 | [Nostr From Scratch](../../nostr/book/README.md) | A Nostr client, a relay and the NIPs OpenAgents uses | understand identity, events and markets |
-| [The OpenAgents Book](../../openagents/book/README.md) | The OpenAgents desktop and iPhone apps on compiled Coax and the GPU component kit, the Breez Spark Bitcoin/Lightning wallet, and the Episode 289 composable general agent behind them (design drafts) | build the product apps or the agent |
+| [The OpenAgents Book](../../openagents/book/README.md) | OpenAgents Desktop (`apps/openagents-desktop/`), iOS, and Coax Web/UI SSR apps on compiled Coax, `openagents/core/` (`oa-worker`/`Inky`), WorkOS hybrid auth, Breez Spark Bitcoin/Lightning wallet, and the Episode 289 capability economy | build the product apps or the agent |
 
 ## The argument
 

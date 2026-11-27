@@ -861,7 +861,7 @@ covers four frame cadences, a translated pose and a stale selection. Playable
 lock-on/talk adoption, final shake/fade drawing and broader camera qualification
 remain #13026 work; this companion does not expand this chapter's native profile.
 
-The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
+The realm migration ([chapter 64](ch064-every-realm-runs-on-the-metaverse-engine.md))
 moves the rest of the realms' cameras onto `CameraShot`:
 
 - `metaverse-engine/core/points.coax`'s `Shot`, which the overview, Start's dolly and the

@@ -461,7 +461,7 @@ coax/bin/coax mutate metaverse-engine/core/entity.coax --library --root-only
 
 ## Still to do
 
-The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
+The realm migration ([chapter 64](ch064-every-realm-runs-on-the-metaverse-engine.md))
 moves the realms onto this module:
 
 - Realms that keep fixed arrays addressed by index, such as Orbit League's

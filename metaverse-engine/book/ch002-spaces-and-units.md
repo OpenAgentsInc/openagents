@@ -368,7 +368,7 @@ pixels are separate qualifications in chapters 11 and 84.
 
 ## Later consolidation
 
-The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
+The realm migration ([chapter 64](ch064-every-realm-runs-on-the-metaverse-engine.md))
 replaces the older vector types behind the existing C interfaces:
 
 - `Point` in [metaverse-engine/core/points.coax](../core/points.coax);

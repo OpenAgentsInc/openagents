@@ -34,22 +34,29 @@ Paths by what you want to do:
 
 ## Runnable routes
 
-Four books have routes you can run here:
-[The Coax Programming Language](../../coax/book/README.md),
+All eight OpenAgents books have bounded CPU routes you can run from a clean
+checkout today: [The Coax Programming Language](../../coax/book/README.md),
 [Psionic: ML From Scratch](../../psionic/book/README.md),
-[Building the OpenAgents Metaverse Engine](../../metaverse-engine/book/README.md) and
-[Nostr From Scratch](../../nostr/book/README.md). Chapter numbers below are
-each book's own. Three more books have no runnable route yet:
-[Coder: Coding Agents From Scratch](../../coder/book/README.md), whose harness
-chapters moved from Part XXI of the Psionic book;
-[Bitcoin From Scratch](../../bitcoin/book/README.md), Nostr's companion, which
-took over the cryptography chapters Nostr used (Nostr chapters 1–13, 15 and
-18); and [Building Everglade](../../everglade/book/README.md). No route yet
-ends in a realm you can play or a payment you can see. The
-[capstones](README.md#capstones) are the plan for those.
+[Building the OpenAgents Metaverse Engine](../../metaverse-engine/book/README.md),
+[Nostr From Scratch](../../nostr/book/README.md),
+[Bitcoin From Scratch](../../bitcoin/book/README.md),
+[Coder: Coding Agents From Scratch](../../coder/book/README.md),
+[Building Everglade](../../everglade/book/README.md), and
+[The OpenAgents Book](../../openagents/book/README.md). Chapter numbers below
+are each book's own.
 
-The [supported-route catalog](routes.json) declares five bounded CPU routes
-(including the cross-book `executor-network-flywheel` capstone route).
+The [supported-route catalog](routes.json) declares nine bounded CPU routes:
+
+- `coax-current-ffi` (`coax`)
+- `aethyr-core-replay` (`metaverse-engine`)
+- `psionic-public-models` (`psionic`)
+- `nostr-event-client` (`nostr`)
+- `executor-network-flywheel` (cross-book capstone: Coax, Psionic, Bitcoin 3-leg settlement, Nostr)
+- `bitcoin-crypto-settlement` (`bitcoin`: HMAC-SHA256, BIP-340 Schnorr verify, addresses, 3-leg settlement)
+- `coder-harness-memory` (`coder`: bounded loop, transcript logging, revocable memory)
+- `everglade-world-srd-dragon` (`everglade`: terrain seams, SRD d20 rolls & refusals, Adult Red Dragon flight & Shapechange)
+- `openagents-app-economy` (`openagents`: chat screen flow, signed module registry, capability economy E2E `#14060`)
+
 The [delivery process](DELIVERY.md) explains clean-checkout execution, selective
 reuse and source-bound publication receipts.
 Each names its prerequisites, commands, exact stdout fixture, expected exit,
@@ -78,21 +85,26 @@ tiny synthetic training run; it does not retrain MNIST.
 The terminal routes require Python 3, a native C compiler and the chosen Coax
 executable; the C boundary also needs Bash. Retained observations use Apple
 silicon/macOS. Another compiler or host requires its own matching evidence.
-All four routes need no GPU, external data, network access or user secrets.
+All nine routes need no GPU, external data, network access or user secrets.
 The route receipt, rather than an old compiler version or duration printed on
 this page, records the executed profile. Every declared exit is zero and
 stdout must match the linked fixture bytes. Standalone Coax examples run in
 debug and release. The C workflow runs once and itself executes two C builds.
 
 A chapter marked *(design draft)* or *(planned)* describes work that does not
-run yet. The chapter registries for [Coax](../../coax/book/chapters.json),
+run yet. The chapter registries for all eight books
+([Coax](../../coax/book/chapters.json),
 [Psionic](../../psionic/book/chapters.json),
-[the Metaverse Engine](../../metaverse-engine/book/chapters.json) and
-[Nostr](../../nostr/book/chapters.json) retain each named teaching scope,
-qualified targets and reviewed component adoption. See
+[the Metaverse Engine](../../metaverse-engine/book/chapters.json),
+[Nostr](../../nostr/book/chapters.json),
+[Bitcoin](../../bitcoin/book/chapters.json),
+[Coder](../../coder/book/chapters.json),
+[Everglade](../../everglade/book/chapters.json), and
+[OpenAgents](../../openagents/book/chapters.json)) retain each named teaching
+scope, qualified targets and reviewed component adoption. See
 [completion milestones](completion.md) for the remaining integration, quality,
 target and application gates. The optional original-model route below retains
-its older, separately dated measurements and is outside this four-route catalog.
+its older, separately dated measurements and is outside this nine-route catalog.
 Those original-model command observations are from 2026-10-31 on an Apple
 M5 Max with 128 GB memory and macOS 26.4, using `coax0 0.45.0`. They were not
 rerun for this catalog and are not current performance guarantees.

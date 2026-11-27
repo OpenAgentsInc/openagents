@@ -393,7 +393,7 @@
     },
     {
       "source": "metaverse-engine/examples/one-walk-every-realm.coax",
-      "chapter": "metaverse-engine/book/ch064-every-realm-runs-on-aethyr.md",
+      "chapter": "metaverse-engine/book/ch064-every-realm-runs-on-the-metaverse-engine.md",
       "stdout": "metaverse-engine/fixtures/one-walk-every-realm.out",
       "exit_status": 0,
       "modes": [

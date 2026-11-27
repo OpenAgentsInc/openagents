@@ -47,7 +47,7 @@ tasks) builds Part I and II's primitives first. Each task owns one chapter.
 | `ec-query` | [7](ch007-ask-the-world-where-things-are.md) | `metaverse-engine/physics/query.coax` | `ec-space` |
 | `ec-camera` | [10](ch010-the-camera-follows.md) | `metaverse-engine/cam/follow.coax` | `ec-loop`, `ec-space`, `ec-query` |
 | `ec-budget` | [16](ch016-budgets-that-refuse.md) | asset identity and budgets | — |
-| `ec-migrate` | [64](ch064-every-realm-runs-on-aethyr.md) | every realm on the core | all of the above |
+| `ec-migrate` | [64](ch064-every-realm-runs-on-the-metaverse-engine.md) | every realm on the core | all of the above |
 
 Chapter 8 now owns the admitted ground sampler, mesh contacts and bounded
 capsule publication in `metaverse-engine/physics/ground*.coax` and `metaverse-engine/physics/collide.coax`.

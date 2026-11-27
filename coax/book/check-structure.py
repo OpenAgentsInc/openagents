@@ -66,6 +66,7 @@ def problems(root):
 BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "metaverse-engine/book", "nostr": "nostr/book",
          "coder": "coder/book", "bitcoin": "bitcoin/book", "openagents": "openagents/book",
          "everglade": "everglade/book"}
+BOOK_ALIASES = {"metaverse-engine": "aethyr"}
 # A moved chapter keeps its number so the numbering stays 1..N; its title names
 # where it went and it has no file here.
 # A written chapter (Coder's Part VII) surveys another project: its profile
@@ -366,10 +367,10 @@ if __name__ == "__main__":
     if sys.argv[1:2] == ["--registry"]:
         # Check every registry (or the books named after --registry) and print its status counts.
         failed = False
-        named = sys.argv[2:]
+        named = [BOOK_ALIASES.get(b, b) for b in sys.argv[2:]]
         unknown = [b for b in named if b not in BOOKS]
         if unknown:
-            sys.exit(f"--registry: unknown book {', '.join(unknown)} (one of {', '.join(sorted(BOOKS))})")
+            sys.exit(f"--registry: unknown book {', '.join(unknown)} (one of {', '.join(sorted(BOOKS | BOOK_ALIASES))})")
         for book in sorted(named or BOOKS):
             errors = registry_problems(book)
             for error in errors:

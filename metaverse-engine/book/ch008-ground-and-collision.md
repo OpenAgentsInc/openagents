@@ -5,7 +5,7 @@
 > `metaverse-engine/`. `metaverse-engine/physics/ground-point.coax` and the real fixed-step controller use them;
 > each walking realm declares its collision profile. This profile qualifies
 > native arithmetic, state publication and the existing C boundaries. Whole-realm
-> coordinate migration remains in [chapter 64](ch064-every-realm-runs-on-aethyr.md).
+> coordinate migration remains in [chapter 64](ch064-every-realm-runs-on-the-metaverse-engine.md).
 
 Chapter 7 asks where shapes are. This chapter resolves a vertical capsule
 against boxes, body capsules and floor sides. Terrain locomotion samples the

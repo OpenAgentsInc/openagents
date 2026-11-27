@@ -1,10 +1,11 @@
 # Supported routes and publication evidence
 
-The [route catalog](routes.json) and [reader paths](paths.md) define four
-bounded native profiles. Their entry commands run existing Coax examples and
-one local C/protobuf boundary. They require no GPU, dataset download, user key,
-network service or visible browser. They do not complete the broader
-[application milestones](completion.md).
+The [route catalog](routes.json) and [reader paths](paths.md) define nine
+bounded native profiles covering all eight OpenAgents books (including the
+cross-book `executor-network-flywheel` capstone route). Their entry commands run
+existing Coax examples and one local C/protobuf boundary. They require no GPU,
+dataset download, user key, network service or visible browser. They do not
+complete the broader [application milestones](completion.md).
 
 ## A clean checkout
 
@@ -27,8 +28,10 @@ workflow in `coax/tests/run.sh` includes catalog validation and the focused
 runner/publication tests. Qualify one named route per command, so its complete
 execution stays within the declared bound.
 
-The other route IDs are `aethyr-core-replay`, `psionic-public-models` and
-`nostr-event-client`. [Their profiles](routes.json) record the precise scope,
+The other route IDs are `aethyr-core-replay`, `psionic-public-models`,
+`nostr-event-client`, `executor-network-flywheel`, `bitcoin-crypto-settlement`,
+`coder-harness-memory`, `everglade-world-srd-dragon`, and
+`openagents-app-economy`. [Their profiles](routes.json) record the precise scope,
 prerequisites, output fixtures and remaining limitations. The Psionic route
 actually trains/resumes the existing tiny synthetic module; its MLP/CNN steps
 are dataset-free API examples. No route repeats the frozen MNIST experiments.

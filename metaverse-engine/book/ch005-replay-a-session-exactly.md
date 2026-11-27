@@ -672,7 +672,7 @@ record transfer in both directions.
 - These profiles require the same constructed state and declared world
   inputs. They do not serialize an arbitrary running realm, every presence
   packet or every GPU/host effect. Whole-realm migration and qualification
-  remain the scope of [chapter 64](ch064-every-realm-runs-on-aethyr.md).
+  remain the scope of [chapter 64](ch064-every-realm-runs-on-the-metaverse-engine.md).
 - A mismatch reports its first step. Field-by-field diagnostics can be added
   by the realm's state comparer.
 

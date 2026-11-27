@@ -1,11 +1,10 @@
 # Completing the four books
 
-> **Scope.** This plan was written on 2026-11-01 for four books: Coax,
-> Psionic, the OpenAgents Metaverse Engine and Nostr. Bitcoin, Coder and Everglade have their own
-> plans in their book folders and are not covered here. For all seven
-> books, start at [the OpenAgents books](README.md). As of 2026-11-09 the
-> priority is the books the releases depend on: Metaverse Engine Parts I–III, VI, XII
-> and XIII, and Everglade.
+> **Scope.** This plan was originally written on 2026-11-01 for four books:
+> Coax, Psionic, the OpenAgents Metaverse Engine and Nostr. Bitcoin, Coder,
+> Everglade and OpenAgents maintain their own plans in their book folders
+> (`PLAN.md`). For all eight books, start at [the OpenAgents books](README.md)
+> and the nine-route catalog in [routes.json](routes.json).
 
 Reconciled against `main` on 2026-11-01, starting at `6f4c722640`. This is the
 shared delivery sequence for [Coax](../../coax/book/README.md),
@@ -173,7 +172,7 @@ branches with their written prerequisites and acceptance criteria.
 The [native GPU record](../metaverse/native-gpu.md) already documents generated Coax
 shaders. The remaining rendering milestone is shared frame/pass/binding
 admission and independent references, not repeating that port. The
-[migration chapter](../../metaverse-engine/book/ch064-every-realm-runs-on-aethyr.md) records
+[migration chapter](../../metaverse-engine/book/ch064-every-realm-runs-on-the-metaverse-engine.md) records
 both adopted components and remaining private paths; a migrated clock is not a
 whole migrated realm.
 
@@ -207,15 +206,11 @@ producer identities; carry unchanged passing evidence rather than repeating
 whole-model or whole-book execution. Preserve dated records and failed results.
 The four tracks can advance in parallel around concrete shared consumers.
 
-Metadata-only checks, without building a compiler or running examples:
+Metadata-only checks across all eight books, without building a compiler or
+running examples:
 
 ```shell
-python3 coax/tests/book_registry.py
-python3 coax/book/check-structure.py --registry
-python3 coax/book/check-structure.py
-python3 psionic/tests/book.py
-python3 psionic/tests/book.py --book aethyr
-python3 psionic/tests/book.py --book nostr
+scripts/check-books.sh --check
 ```
 
 These checks cover metadata, dependency cycles, adoption-path hygiene, local

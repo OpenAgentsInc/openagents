@@ -102,7 +102,7 @@
     {
       "id": "aethyr-core-replay",
       "title": "Metaverse Engine fixed steps, input and replay",
-      "book": "aethyr",
+      "book": "metaverse-engine",
       "scope": "Run CPU engine-core examples for fixed-step scheduling at four frame rates, one queued press consumed once, and a recorded walk replayed to the same digest with an identified planted divergence.",
       "limitations": [
         "The small teaching session does not qualify a rendered or playable full realm, general rigid-body simulation or Forge artifacts.",
@@ -308,9 +308,9 @@
     },
     {
       "id": "executor-network-flywheel",
-      "title": "Executor Network: exact replay, two-leg settlement, and quarantined decentralized training",
+      "title": "Executor Network: exact replay, 3-leg settlement, and quarantined decentralized training",
       "book": "psionic",
-      "scope": "Run the CPU #authority chain behind the OpenAgents Executor Network capstone in debug and release: Ch 234 exact replay verification, Bitcoin Ch 123 two-leg Spark/Lightning settlement policy under rolling 24h UTC caps, Ch 272 Dataset Shard Authority & bounded DiLoCo leases, Ch 273 6-tier Byzantine verification blocking 7/7 attacks, and Ch 274 Quarantine Optimizer blocking 3/3 regressions with atomic rollback.",
+      "scope": "Run the CPU #authority chain behind the OpenAgents Executor Network capstone in debug and release: Ch 234 exact replay verification, Bitcoin Ch 123 3-leg Spark/Lightning author-royalty settlement policy (#13961, worker + validator + module author <= 25%) under rolling 24h UTC caps, Ch 272 Dataset Shard Authority & bounded DiLoCo leases, Ch 273 6-tier Byzantine verification blocking 7/7 attacks, and Ch 274 Quarantine Optimizer blocking 3/3 regressions with atomic rollback.",
       "limitations": [
         "This offline CPU route runs the #authority policy, replay, Byzantine verification, quarantine promotion and settlement admission rules with no network, GPU, Nostr relay or live Bitcoin wallet.",
         "Live Apple M5 Max Metal 4, NVIDIA RTX 4080 CUDA, 16.38 GB Inkling-2-Mini hybrid execution, and live Bitcoin mainnet Breez Spark settlement retain their own dated verification records under docs/verification/executor-*.md.",
@@ -408,6 +408,286 @@
             "release"
           ],
           "timeout": 120
+        }
+      ]
+    },
+    {
+      "id": "bitcoin-crypto-settlement",
+      "title": "Bitcoin: HMAC-SHA256, BIP-340 Schnorr verification, addresses, and 3-leg settlement",
+      "book": "bitcoin",
+      "scope": "Run bounded CPU Bitcoin From Scratch examples in debug and release: RFC 4231 HMAC-SHA256, BIP-340 Schnorr signature verification, Bech32/Bech32m/Base58Check addresses, and Ch 123 #authority 3-leg author-royalty Spark/Lightning settlement admission (#13961).",
+      "limitations": [
+        "Uses committed public test vectors and synthetic settlement requests. No live Bitcoin node, wallet seed, or mainnet satoshis are touched.",
+        "Passing this CPU route does not qualify live Lightning channel state, hardware signers, or Breez Spark network transport."
+      ],
+      "prerequisites": {
+        "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+        "commands": [
+          "python3",
+          "cc"
+        ],
+        "hardware": "CPU terminal; no GPU, network, or wallet secret is required.",
+        "data": [],
+        "network": false
+      },
+      "chapters": [
+        "bitcoin/book/ch008-hmac-sha256.md",
+        "bitcoin/book/ch023-verify-a-schnorr-signature.md",
+        "bitcoin/book/ch029-addresses.md",
+        "bitcoin/book/ch123-paying-for-requests.md"
+      ],
+      "evidence": [
+        "bitcoin/book/examples.json",
+        "pay/executor-settlement.coax"
+      ],
+      "steps": [
+        {
+          "id": "hmac-sha256",
+          "kind": "coax-run",
+          "source": "bitcoin/examples/hmac-sha256.coax",
+          "stdout": "bitcoin/fixtures/hmac-sha256.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "schnorr-verify",
+          "kind": "coax-run",
+          "source": "bitcoin/examples/schnorr-verify.coax",
+          "stdout": "bitcoin/fixtures/schnorr-verify.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 180
+        },
+        {
+          "id": "addresses",
+          "kind": "coax-run",
+          "source": "bitcoin/examples/addresses.coax",
+          "stdout": "bitcoin/fixtures/addresses.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "paying-for-requests",
+          "kind": "coax-run",
+          "source": "bitcoin/examples/paying-for-requests.coax",
+          "stdout": "bitcoin/fixtures/paying-for-requests.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        }
+      ]
+    },
+    {
+      "id": "coder-harness-memory",
+      "title": "Coder: bounded agent loop, exact transcript logging, and revocable memory",
+      "book": "coder",
+      "scope": "Run the CPU Coder book examples in debug and release: Ch 1 bounded turn loop, Ch 2 model-visible transcript logging, and Ch 19 structured memory with revision and refusal.",
+      "limitations": [
+        "Runs scripted local turns and in-memory facts with no external model API, GPU inference, or shell subprocesses.",
+        "Does not qualify live oa-worker/Inky coding benchmarks (gBench / Terminal-Bench) or desktop host integration."
+      ],
+      "prerequisites": {
+        "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+        "commands": [
+          "python3",
+          "cc"
+        ],
+        "hardware": "CPU terminal; no GPU, network, or API key is required.",
+        "data": [],
+        "network": false
+      },
+      "chapters": [
+        "coder/book/ch001-the-simplest-loop.md",
+        "coder/book/ch002-model-visible-means-logged.md",
+        "coder/book/ch019-remember-a-fact-then-revise-it.md"
+      ],
+      "evidence": [
+        "psionic/book/examples.json",
+        "coder/book/chapters.json"
+      ],
+      "steps": [
+        {
+          "id": "harness-loop",
+          "kind": "coax-run",
+          "source": "psionic/examples/harness-loop.coax",
+          "stdout": "psionic/fixtures/harness-loop.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "harness-log",
+          "kind": "coax-run",
+          "source": "psionic/examples/harness-log.coax",
+          "stdout": "psionic/fixtures/harness-log.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "memory-revise",
+          "kind": "coax-run",
+          "source": "psionic/examples/memory.coax",
+          "stdout": "psionic/fixtures/memory/memory.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        }
+      ]
+    },
+    {
+      "id": "everglade-world-srd-dragon",
+      "title": "Everglade: terrain seams, SRD d20 rolls, and Adult Red Dragon flight & Shapechange",
+      "book": "everglade",
+      "scope": "Run all three implemented Everglade teaching examples in debug and release: Ch 4 zero-seam terrain tiles, Ch 14 SRD 5.2.1 d20/modifier/refusal rules, and Ch 33 Adult Red Dragon flight, 60-ft Fire Breath cone, Recharge 5-6, and Shapechange CR refusal.",
+      "limitations": [
+        "Offline CPU rules, terrain, and flight verification; does not start WebGPU rendering, browser rooms, or live multiplayer sockets."
+      ],
+      "prerequisites": {
+        "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+        "commands": [
+          "python3",
+          "cc"
+        ],
+        "hardware": "CPU terminal; no GPU or browser is required.",
+        "data": [],
+        "network": false
+      },
+      "chapters": [
+        "everglade/book/ch004-ground-you-can-stand-on.md",
+        "everglade/book/ch014-ability-scores-proficiency-and-the-d20.md",
+        "everglade/book/ch033-lets-build-a-dragon.md"
+      ],
+      "evidence": [
+        "everglade/book/examples.json",
+        "everglade/book/chapters.json"
+      ],
+      "steps": [
+        {
+          "id": "terrain-seams",
+          "kind": "coax-run",
+          "source": "everglade/examples/terrain-seams.coax",
+          "stdout": "everglade/examples/terrain-seams.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "srd-d20-rolls",
+          "kind": "coax-run",
+          "source": "everglade/examples/srd-d20-rolls.coax",
+          "stdout": "everglade/examples/srd-d20-rolls.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "dragon-flight-breath",
+          "kind": "coax-run",
+          "source": "everglade/examples/dragon-flight-breath.coax",
+          "stdout": "everglade/examples/dragon-flight-breath.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        }
+      ]
+    },
+    {
+      "id": "openagents-app-economy",
+      "title": "OpenAgents: chat screen state, signed module registry, and capability economy E2E",
+      "book": "openagents",
+      "scope": "Run bounded CPU OpenAgents product and economy examples in debug and release: Ch 2 chat screen action flow, Ch 54 signed NIP-EXT/module registry, and Ch 58 end-to-end capability economy (#14060: BIP-340 Schnorr signing, NIP-REG/NIP-EVAL quorum, SHA-256 hash-pinned install, x402 metering, and Lightning/Spark author payouts).",
+      "limitations": [
+        "Runs pure-Coax app state, registry admission, and payout policy on CPU with test keys and no live network, Postgres, WorkOS, or native desktop/iOS windowing."
+      ],
+      "prerequisites": {
+        "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+        "commands": [
+          "python3",
+          "cc"
+        ],
+        "hardware": "CPU terminal; no GPU, network, or credentials are required.",
+        "data": [],
+        "network": false
+      },
+      "chapters": [
+        "openagents/book/ch002-state-and-actions.md",
+        "openagents/book/ch054-releases-as-signed-events.md",
+        "openagents/book/ch058-payouts-to-authors.md"
+      ],
+      "evidence": [
+        "openagents/book/examples.json",
+        "openagents/book/chapters.json"
+      ],
+      "steps": [
+        {
+          "id": "chat-screen-flow",
+          "kind": "coax-run",
+          "source": "openagents/examples/chat-screen-flow.coax",
+          "stdout": "openagents/examples/chat-screen-flow.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "signed-module-registry",
+          "kind": "coax-run",
+          "source": "openagents/examples/signed-module-registry.coax",
+          "stdout": "openagents/examples/signed-module-registry.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "capability-economy-e2e",
+          "kind": "coax-run",
+          "source": "openagents/examples/capability-economy-e2e.coax",
+          "stdout": "openagents/examples/capability-economy-e2e.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 180,
+          "run_steps": 100000000
         }
       ]
     }

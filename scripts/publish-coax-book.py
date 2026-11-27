@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Publish a clean, pushed book written in Coax (`--book coax|psionic|aethyr|nostr|coder|bitcoin`) through its GitBook space's draft API.
+"""Publish a clean, pushed book written in Coax (`--book coax|psionic|metaverse-engine|aethyr|nostr|coder|bitcoin`) through its GitBook space's draft API.
+Note: `everglade` and `openagents` publish natively via Coax Web static SSR (`apps/openagents-web/demos/docs-starter/build.coax` -> `/books/<slug>`).
 
 Standard-library maintenance tooling, never part of a compiler or app build.
 Existing pages keep their IDs/URLs. New SUMMARY sections become overview pages.
@@ -70,8 +71,9 @@ BOOKS = {
 }
 # Chapters that moved to another book: a deleted page whose file name matches a
 # page there redirects to that book's page (Nostr chapters 1-13, 15 and 18
-# became Bitcoin chapters).
-MOVED_TO = {"nostr": "bitcoin"}
+# became Bitcoin chapters; Psionic Part XXI harness chapters became Coder).
+BOOK_ALIASES = {"metaverse-engine": "aethyr"}
+MOVED_TO = {"nostr": "bitcoin", "psionic": "coder"}
 # Coax keeps its original constants for callers and tests.
 SPACE = BOOKS["coax"][1]
 PUBLIC = BOOKS["coax"][3]
@@ -344,7 +346,7 @@ def redirect_target(old, current):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--book", choices=sorted(BOOKS), default="coax")
+    parser.add_argument("--book", choices=sorted(BOOKS | BOOK_ALIASES), default="coax")
     parser.add_argument("--token-file", type=Path, help="local env file defining GITBOOK_TOKEN")
     parser.add_argument("--change-request", help="resume a previously printed draft ID")
     modes = parser.add_mutually_exclusive_group()
@@ -357,6 +359,7 @@ def main():
     parser.add_argument("--require-receipt", action="store_true",
                         help="require a valid source/revision receipt with --check-live")
     args = parser.parse_args()
+    args.book = BOOK_ALIASES.get(args.book, args.book)
     directory, space_id, space_title, public, gate, prune = BOOKS[args.book]
     receipt_path = args.receipt or ROOT / "docs/books/publications" / (args.book + ".json")
     if args.require_receipt and not args.check_live:
