@@ -1228,7 +1228,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "psionic/lib/harness/memory.coax"
+        "coax/lib/agent/engine/memory.coax"
       ]
     },
     {

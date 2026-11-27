@@ -1,9 +1,10 @@
 // Chapter 18: Consent before sharing — Hash-chained consent ledger backing
 // `coax/lib/agent/engine/consent-gate.coax` & `coder/tui/gate.coax`
-// (`psionic/lib/harness/consent.coax`) paired with OpenAgents member-pack
+// (`coax/lib/agent/engine/consent.coax`) paired with OpenAgents member-pack
 // bypass-immune spending/signing boundaries (`openagents/core/members.coax`).
 #import "Basic";
-#load "../../psionic/lib/harness/consent.coax";
+#load "../../coax/lib/agent/engine/consent.coax";
+#load "../../psionic/tests/harness-consent-checks.coax";
 #load "../../openagents/core/members.coax";
 
 WHY :: [17] string.["ok", "none", "classes", "early", "expired", "revoked", "shape", "capacity", "unknown", "person", "twice", "tick", "sequence", "link", "digest", "uncovered", "replay"];

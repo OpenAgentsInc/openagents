@@ -5064,7 +5064,7 @@
       "tests": [
         "coax/lib/agent/engine/ledger-profile.coax"
       ],
-      "note": "The consent ledger, ~/.openagents/coder/consent/events.jsonl: one event of psionic/lib/harness/consent.coax a line, hash-chained. gt_line writes a line and gt_unline reads one; Coder (coder/tui/gate.coax) and the Metaverse Engine's chat open and save the ledger through this file. The fixture is ledgers the Coder CLI wrote. docs/protocol/consent-memory-ledgers-v1.md."
+      "note": "The consent ledger, ~/.openagents/coder/consent/events.jsonl: one event of coax/lib/agent/engine/consent.coax a line, hash-chained. gt_line writes a line and gt_unline reads one; Coder (coder/tui/gate.coax) and the Metaverse Engine's chat open and save the ledger through this file. The fixture is ledgers the Coder CLI wrote. docs/protocol/consent-memory-ledgers-v1.md."
     },
     {
       "id": "coder-memory-log-v1",
@@ -5077,7 +5077,7 @@
       "tests": [
         "coax/lib/agent/engine/ledger-profile.coax"
       ],
-      "note": "Coder's memory log, ~/.openagents/coder/memory/events.jsonl: one event of psionic/lib/harness/memory.coax a line, hash-chained, its bytes in hex. mem_line writes a line and mem_unline reads one; coder/tui/memory.coax loads and saves the log through this file. The fixture is a log the Coder CLI wrote. docs/protocol/consent-memory-ledgers-v1.md."
+      "note": "Coder's memory log, ~/.openagents/coder/memory/events.jsonl: one event of coax/lib/agent/engine/memory.coax a line, hash-chained, its bytes in hex. mem_line writes a line and mem_unline reads one; coder/tui/memory.coax loads and saves the log through this file. The fixture is a log the Coder CLI wrote. docs/protocol/consent-memory-ledgers-v1.md."
     },
     {
       "id": "coder.router.v1",

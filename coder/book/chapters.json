@@ -534,7 +534,7 @@
         "coax/lib/agent/engine/ledger-profile.coax",
         "coder/tui/gate.coax",
         "openagents/core/members.coax",
-        "psionic/lib/harness/consent.coax",
+        "coax/lib/agent/engine/consent.coax",
         "proto/coder/consent-memory-ledgers-v1.json"
       ],
       "qualified_targets": [
@@ -564,7 +564,7 @@
         "coax/lib/agent/engine/memory-log.coax",
         "coax/lib/agent/engine/ledger-profile.coax",
         "coder/tui/memory.coax",
-        "psionic/lib/harness/memory.coax",
+        "coax/lib/agent/engine/memory.coax",
         "proto/coder/consent-memory-ledgers-v1.json"
       ],
       "qualified_targets": [

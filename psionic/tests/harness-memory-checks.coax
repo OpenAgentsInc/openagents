@@ -308,8 +308,20 @@ mc_random :: (seed: int, tally: [] int) {
   #assert mm_replay(l[0], u[..]).status == MmStatus.ok && mc_same_table(t[0], u[0]);
 }
 
-// Six sequences here, which reach every outcome; psionic/tests/harness-memory-model.coax
+// Six sequences here, which reach every outcome; coder/tests/memory-model-checks.coax
 // runs 200 more.
+#test "event-sourced facts preserve session id and line number across log and replay" {
+  ev: [4] MmEvent; by: [128] u8; fs: [4] MmFact; gs: [4] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}];
+  t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  u := [1] MmTable.[MmTable.{facts = gs[..]}];
+  ids := MC_IDS; hd := MC_HEADS; old := MC_OLD; p := mc_passages(ids[..], hd[..], old[..]);
+  w := mc_event("style", MmScope.project, 7, "tabs", 170, 0, 1000);
+  w.cite.id = "sess-01"; w.cite.from = 42;
+  #assert mm_remember(l[..], t[..], w, p) == MmStatus.ok;
+  #assert ev[0].from == 42 && fs[0].cite.id == "sess-01" && fs[0].cite.from == 42;
+  #assert mm_replay(l[0], u[..]).status == MmStatus.ok && gs[0].cite.from == 42 && mc_same_table(t[0], u[0]);
+}
 #test "the store agrees with the model on random sequences that reach every outcome" #steps 4000000000 {
   tally: [32] int;
   for seed: 0..<6 { mc_random(seed, tally[..]); }

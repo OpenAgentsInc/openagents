@@ -1,5 +1,5 @@
 // Coder's consent gate (Coder book chapter 18) on
-// psionic/lib/harness/consent.coax. Remembered facts (chapter 19) go to an
+// coax/lib/agent/engine/consent.coax. Remembered facts (chapter 19) go to an
 // engine only under a grant you record for that engine and those classes
 // of data. Each send, and each refusal, is logged in a hash-chained ledger
 // before the message reaches the engine; a later process replays the

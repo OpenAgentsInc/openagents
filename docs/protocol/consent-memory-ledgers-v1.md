@@ -5,8 +5,8 @@ line, each event chained to the one before by SHA-256.
 
 | Log | File | Codec | Rules |
 | --- | --- | --- | --- |
-| Consent ledger | `~/.openagents/coder/consent/events.jsonl` | [`coax/lib/agent/engine/consent-gate.coax`](../../coax/lib/agent/engine/consent-gate.coax) (`gt_line`, `gt_unline`) | `psionic/lib/harness/consent.coax` |
-| Memory log | `~/.openagents/coder/memory/events.jsonl` | [`coax/lib/agent/engine/memory-log.coax`](../../coax/lib/agent/engine/memory-log.coax) (`mem_line`, `mem_unline`) | `psionic/lib/harness/memory.coax` |
+| Consent ledger | `~/.openagents/coder/consent/events.jsonl` | [`coax/lib/agent/engine/consent-gate.coax`](../../coax/lib/agent/engine/consent-gate.coax) (`gt_line`, `gt_unline`) | [`coax/lib/agent/engine/consent.coax`](../../coax/lib/agent/engine/consent.coax) |
+| Memory log | `~/.openagents/coder/memory/events.jsonl` | [`coax/lib/agent/engine/memory-log.coax`](../../coax/lib/agent/engine/memory-log.coax) (`mem_line`, `mem_unline`) | [`coax/lib/agent/engine/memory.coax`](../../coax/lib/agent/engine/memory.coax) |
 
 - Fixtures: [`proto/coder/consent-memory-ledgers-v1.json`](../../proto/coder/consent-memory-ledgers-v1.json)
 - Check: `coax/web/tool.sh coax/lib/agent/engine/ledger-profile.coax proto/coder/consent-memory-ledgers-v1.json`

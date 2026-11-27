@@ -18,7 +18,7 @@ hash-chained ledger before any bytes move.
 OpenAgents implements consent enforcement across two production layers:
 
 1. **Hash-chained consent gate (`coax/lib/agent/engine/consent-gate.coax`,
-   `coder/tui/gate.coax`, backed by `psionic/lib/harness/consent.coax`):**
+   `coder/tui/gate.coax`, backed by `coax/lib/agent/engine/consent.coax`):**
    - Stores `~/.openagents/coder/consent/events.jsonl` via one canonical JSONL
      codec (`gt_line` / `gt_unline`, checked by
      [`coax/lib/agent/engine/ledger-profile.coax`](../../coax/lib/agent/engine/ledger-profile.coax)

@@ -1,5 +1,5 @@
 // Coder's memory log on disk, the one codec (Protocol C12, GitHub #13250): one event of
-// psionic/lib/harness/memory.coax a line of ~/.openagents/coder/memory/events.jsonl, hash-chained
+// coax/lib/agent/engine/memory.coax a line of ~/.openagents/coder/memory/events.jsonl, hash-chained
 // (mm_digest), its bytes in hex. coder/tui/memory.coax loads and saves the log through here and
 // nothing else writes or reads a line. Moved unchanged from coder/tui/memory.coax.
 //   mem_line     event i of a log as its line
@@ -7,7 +7,7 @@
 // The consent ledger beside it is consent-gate.coax's (gt_line, gt_unline); the hex and field
 // readers both use are there. Fixtures: proto/coder/consent-memory-ledgers-v1.json, lines the Coder
 // CLI wrote, checked by ledger-profile.coax.
-#load "../../../../psionic/lib/harness/memory.coax";
+#load "memory.coax";
 #load "consent-gate.coax";
 
 mem_op_name :: (o: MmOp) -> string { return ifx o == MmOp.remember then "remember" else ifx o == MmOp.revise then "revise" else "forget"; }

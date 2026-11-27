@@ -14,9 +14,10 @@
 // still readable.
 // Profile mm-memory-v1: SHA-256 over little-endian u64 fields, one in-process
 // log of caller-owned events and bytes, ticks are caller integers.
+//   coax/bin/coax test coax/lib/agent/engine/memory.coax --library
 #authority;
-#load "../book-search/answer.coax";
-#load "../../tests/harness-memory-checks.coax";
+#load "../../../../psionic/lib/book-search/answer.coax";
+#load "../../../../psionic/tests/harness-memory-checks.coax" #test;
 
 // book:begin types
 MmScope :: enum u8 { session; user; project; }

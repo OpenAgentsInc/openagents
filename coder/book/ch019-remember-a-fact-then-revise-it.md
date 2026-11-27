@@ -31,7 +31,7 @@ two layers of `#authority` discipline:
    - **Fail-closed team secret scanner (`flawed_team_mem_has_secret`):** blocks
      AWS keys, tokens, and private keys before shared team memory sync.
 2. **Hash-chained fact ledger (`coax/lib/agent/engine/memory-log.coax` and
-   `coder/tui/memory.coax`, backed by `psionic/lib/harness/memory.coax`):**
+   `coder/tui/memory.coax`, backed by `coax/lib/agent/engine/memory.coax`):**
    - Persists `~/.openagents/coder/memory/events.jsonl` via one canonical codec
      (`mem_line` / `mem_unline`, checked by `ledger-profile.coax` against
      [`proto/coder/consent-memory-ledgers-v1.json`](../../proto/coder/consent-memory-ledgers-v1.json)).

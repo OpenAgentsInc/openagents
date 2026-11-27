@@ -1,10 +1,11 @@
 // Chapter 19: Remember a fact, then revise it — OpenAgents Core memory trust &
 // governance (`openagents/core/memory.coax`) paired with the hash-chained
 // memory event log backing `coax/lib/agent/engine/memory-log.coax` &
-// `coder/tui/memory.coax` (`psionic/lib/harness/memory.coax`).
+// `coder/tui/memory.coax` (`coax/lib/agent/engine/memory.coax`).
 #import "Basic";
 #load "../../openagents/core/memory.coax";
-#load "../../psionic/lib/harness/memory.coax";
+#load "../../coax/lib/agent/engine/memory.coax";
+#load "../../psionic/tests/harness-memory-checks.coax";
 
 mm_st :: (s: MmStatus) -> string {
   names := [13] string.["ok", "capacity", "shape", "reason", "source", "same", "missing", "sequence", "link", "content", "digest", "redacted", "exposed"];

@@ -18,9 +18,10 @@
 // Profile cs-consent-v1: five data classes, SHA-256 over little-endian u64
 // fields, one in-process ledger and sink of caller-owned storage, ticks are
 // caller integers that never go back.
+//   coax/bin/coax test coax/lib/agent/engine/consent.coax --library
 #authority;
-#load "../../../coax/lib/crypto/sha256.coax";
-#load "../../tests/harness-consent-checks.coax";
+#load "../../crypto/sha256.coax";
+#load "../../../../psionic/tests/harness-consent-checks.coax" #test;
 
 // book:begin types
 // The classes of data, one bit each in a label: session (typed in the
