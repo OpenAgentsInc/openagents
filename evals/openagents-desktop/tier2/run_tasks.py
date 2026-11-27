@@ -117,7 +117,7 @@ CLAUDE_KEY_FILE = REAL_HOME / ".openagents/claude-setup-token"
 
 
 def sub_agent_note() -> str:
-    return f" Run every sub-agent in Claude Code: call Agent with subagent_type {SUB_AGENTS}." if SUB_AGENTS else ""
+    return f" If you use sub-agents, run every one of them in Claude Code: call Agent with subagent_type {SUB_AGENTS}." if SUB_AGENTS else ""
 
 
 AJ_KINDS = ["context", "model_chunk", "model_intent", "model_reply", "model_end", "command_intent",

@@ -29,8 +29,9 @@ billed.
 `--sub-agents NAME` does three things:
 
 1. Turns on **Settings > Agent > Allow delegating to other local harnesses** for the chat.
-2. Adds one sentence to each message: "Run every sub-agent in Claude Code: call Agent with
-   subagent_type NAME."
+2. Adds one sentence to each message: "If you use sub-agents, run every one of them in Claude
+   Code: call Agent with subagent_type NAME." It does not ask for sub-agents where the message
+   does not.
 3. Gives `claudeworker` the token in `~/.openagents/claude-setup-token` (from `claude setup-token`).
    On Linux, Claude Code keeps its sign-in under `HOME`, and a task's `HOME` is empty.
 
@@ -92,10 +93,35 @@ What the runs show:
 Two trials is a small sample. The cost gap and the guarded commands showed up in both trials; treat
 the timings as a first reading.
 
+## The same arms on `evals/subagent-bench` (2026-11-26, Linux, one trial)
+
+`--sub-agents` works with any task folder. Two tasks of the
+[sub-agent benchmark](../../subagent-bench/README.md), each with five sub-agents at once:
+
+```sh
+python3 evals/openagents-desktop/tier2/run_tasks.py --model gemini-4-neon -j 1 \
+  --tasks-dir evals/subagent-bench/tasks --filter sb1_,sb2_ --sub-agents claude-sonnet
+```
+
+| Task | Neon | Haiku | Sonnet |
+|---|---|---|---|
+| `sb1_five_service_bugfix` (10 bugs in 5 packages) | pass, 95 s, $0.37 | pass, 61 s, $0.09 | pass, 37 s, $0.38 |
+| `sb2_five_plugin_impl` (5 plugins from specs) | fail: 241 s, over the 240 s limit, $0.80 | pass, 190 s, $0.21 | pass, 150 s, $0.97 |
+
+- **Larger tasks are where Claude sub-agents were clearly better.** On `sb2` the Neon sub-agents'
+  code passed the verifier, but the run went past the task's 240 s limit and was stopped. Both
+  Claude arms finished inside it. On `sb1` Sonnet took 37 s and Neon 95 s.
+- Haiku again cost about a quarter of the other two.
+- No arm attempted a guarded command in these runs.
+
+This is one trial. The benchmark's own report has Neon passing `sb2` in 135.6 s on a Mac, so the
+Neon timeout here may not repeat.
+
 ## Not covered
 
-- No task here is hard enough for an arm to fail. A case where Claude does better work than Neon,
+- No arm produced wrong work on any task. A case where Claude's work is correct and Neon's is not,
   or the reverse, still has to be found with harder tasks.
+- `sb3` to `sb6` of the sub-agent benchmark were not run with Claude sub-agents.
 - Opus and Fable were not run.
 - The chat always runs on Neon. A local Inkling chat that delegates to Claude is checked by
   `OpenAgents --delegate-claude-test`, not here.
