@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 101;
+CP_SET_ENTRIES :: 103;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -127,6 +127,8 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.pmode", name = "Permission mode", terms = "openagents permission allow all ask accept edits plan auto dont ask bypass"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.sandbox", name = "OS shell sandbox", terms = "openagents sandbox seatbelt sandbox-exec bash confinement"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tools", name = "Tool rules & directories", terms = "openagents allowedTools disallowedTools additionalDirs tools"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.xtools", name = "X API tool (XSearch)", terms = "x twitter xsearch api posts tweets search social optional tool"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.xkey", name = "X API Bearer token", terms = "x twitter xsearch api bearer token key secret credential"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.cache", name = "Prompt caching & compaction", terms = "openagents prompt cache auto compact memory claude.md bare mode"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.style", name = "Output style & hooks", terms = "openagents concise explanatory learning hooks defer toolsearch"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.limits", name = "Turn & budget limits", terms = "openagents max turns budget usd cap remote bridge"},
@@ -1242,6 +1244,8 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert surface_find(s[0].surface[..], "set.flawed.sandbox") >= 0;
   #assert surface_find(s[0].surface[..], "set.flawed.cache") >= 0;
   #assert surface_find(s[0].surface[..], "set.flawed.style") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.xtools") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.xkey") >= 0;
   #assert surface_find(s[0].surface[..], "set.flawed.reset") >= 0;
   // Switching default compute between Local, Auto, and Cloud updates an empty chat cleanly.
   coder_page_set_inkling(s, true);
@@ -1249,6 +1253,15 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.0") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_flawed(s);
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.others.1") && coder_page_action(s) == CP_ASK_SHOW_OTHER_MODELS && coder_page_show_other_models(s);
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.model.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && cp_model_id(s, cp_model_index(s)) == "oa:gemini-4-carbon";
+  // Optional X API (XSearch) toggle and Bearer token row (#14124).
+  #assert !coder_page_flawed_x_tools(s);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.xtools.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_flawed_x_tools(s);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.xtools.0") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && !coder_page_flawed_x_tools(s);
+  coder_page_flawed_x_tools_set(s, true);
+  #assert coder_page_flawed_x_tools(s);
+  coder_page_flawed_x_key(s, "Ends …E3F");
+  #assert cast(string) s[0].flawed[0].x_key_label[0..<s[0].flawed[0].x_key_label_n] == "Ends …E3F";
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.xkey.a") && coder_page_action(s) == CP_ASK_FLAWED_X_KEY;
   // Dialog actions dispatch cleanly.
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.key.a") && coder_page_action(s) == CP_ASK_FLAWED_KEY;
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.url.a") && coder_page_action(s) == CP_ASK_FLAWED_BASE_URL;
@@ -1261,4 +1274,6 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   hits: [CP_SET_HITS] int;
   #assert cp_set_hits_flags("agent", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("sandbox", hits[..], 0) >= 1;
+  #assert cp_set_hits_flags("xsearch", hits[..], 0) >= 2;
+  #assert cp_set_hits_flags("bearer", hits[..], 0) >= 1;
 }

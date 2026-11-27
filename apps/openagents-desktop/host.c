@@ -485,6 +485,22 @@ void cd_flawed_info(void *page, const char *auth_status, const char *key_label, 
   coder_page_flawed_info(cd_state(c), cd_string(auth_status), cd_string(key_label), cd_string(base_url), cd_string(custom_model), cd_string(tools_summary), cd_string(limits_summary));
   cd_changed(c);
 }
+void cd_flawed_x_tools_set(void *page, int enabled) {
+  CoderHost *c = page;
+  if (!c) return;
+  coder_page_flawed_x_tools_set(cd_state(c), enabled != 0);
+  cd_changed(c);
+}
+int cd_flawed_x_tools(void *page) {
+  CoderHost *c = page;
+  return c && coder_page_flawed_x_tools(cd_state(c)) ? 1 : 0;
+}
+void cd_flawed_x_key(void *page, const char *key_label) {
+  CoderHost *c = page;
+  if (!c) return;
+  coder_page_flawed_x_key(cd_state(c), cd_string(key_label));
+  cd_changed(c);
+}
 void cd_orchestrator_set(void *page, int claude, int model) { CoderHost *c = page; if (!c) return; coder_page_orchestrator_set(cd_state(c), claude != 0, model); cd_woke(c); }
 void cd_claude_effort_set(void *page, int model, int level) { CoderHost *c = page; if (!c) return; coder_page_claude_effort_set(cd_state(c), model, level); cd_woke(c); }
 int cd_claude_effort(void *page, int model) { CoderHost *c = page; return c ? (int)coder_page_claude_effort(cd_state(c), model) : 2; }

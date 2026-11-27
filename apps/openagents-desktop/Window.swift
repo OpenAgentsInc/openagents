@@ -683,7 +683,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 230...249: if FeatureFlags.isOn(.browser) { browserAsked(what) }
         case 170...187: providersSettingsAsked(what)
         case 188: focusProvidersField()
-        case 190...197: flawedAsked(what)
+        case 190...197, 222: flawedAsked(what)
         case 198: editCustomSystemPrompt()
         case 199: clearCustomSystemPrompt()
         case 189:

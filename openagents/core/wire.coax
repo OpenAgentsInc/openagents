@@ -474,7 +474,8 @@ flawed_wire_tool_is_concurrency_safe :: (name: string) -> bool #effects(reads, t
          name == "WalletStatus" || name == "MetaverseRoute" ||
          name == "KnowledgeSearch" || name == "KnowledgeGet" ||
          name == "CapabilityList" ||
-         name == "session_list" || name == "session_read";
+         name == "session_list" || name == "session_read" ||
+         name == "XSearch";
 }
 
 flawed_wire_write_tool_one :: (o: [] Jo, gemini_fmt: bool, name: string, desc: string, schema_raw: string) #effects(all) {
@@ -647,6 +648,13 @@ flawed_wire_write_tools_packs_for_agent :: (
     "{\"type\":\"object\",\"properties\":{\"prompt\":{\"type\":\"string\",\"description\":\"Initial prompt or command to run\"},\"title\":{\"type\":\"string\"},\"cwd\":{\"type\":\"string\"},\"harness\":{\"type\":\"string\",\"description\":\"openagents (default), tmux, or opted-in external harness\"},\"machine\":{\"type\":\"string\",\"description\":\"Target machine id (empty or local for this computer)\"}},\"required\":[\"prompt\"]}",
     "{\"type\":\"object\",\"properties\":{\"session_id\":{\"type\":\"string\",\"description\":\"Target canonical session_id\"}},\"required\":[\"session_id\"]}",
   ];
+  x_names := [OA_MEMBER_NX] string.["XSearch"];
+  x_descs := [OA_MEMBER_NX] string.[
+    "Query X (Twitter) API v2 (read-only): search recent posts from the last 7 days (action: search), look up a user profile by handle (action: user), list a user's recent posts by username or user_id (action: user_tweets), or fetch a single post by numeric ID or x.com/twitter.com URL (action: post). Returns concise Markdown with author handles, timestamps, engagement metrics, pagination next_token, and https://x.com post links.",
+  ];
+  x_schemas := [OA_MEMBER_NX] string.[
+    "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"search\",\"user\",\"user_tweets\",\"post\"],\"description\":\"Read-only X API v2 operation\"},\"query\":{\"type\":\"string\",\"description\":\"X v2 search query for action=search (supports from:user, -is:retweet, lang:en, etc.)\"},\"username\":{\"type\":\"string\",\"description\":\"X handle with or without leading @ (for action=user or action=user_tweets)\"},\"user_id\":{\"type\":\"string\",\"description\":\"Numeric X user ID (optional alternative to username for action=user_tweets)\"},\"post_id\":{\"type\":\"string\",\"description\":\"Numeric tweet/post ID or x.com/twitter.com status URL (for action=post)\"},\"max_results\":{\"type\":\"integer\",\"description\":\"Number of posts to return (search: 10-100, user_tweets: 5-100, default 10)\"},\"next_token\":{\"type\":\"string\",\"description\":\"Pagination token from a previous response\"},\"exclude_replies\":{\"type\":\"boolean\",\"description\":\"Exclude replies when action=user_tweets\"},\"exclude_retweets\":{\"type\":\"boolean\",\"description\":\"Exclude retweets when action=user_tweets\"}},\"required\":[\"action\"]}",
+  ];
   if gemini_fmt {
     jo_arr(o);
     jo_obj(o);
@@ -714,6 +722,13 @@ flawed_wire_write_tools_packs_for_agent :: (
     for i: 0..<OA_MEMBER_NSESSIONS {
       if !flawed_wire_tool_allowed_for_agent(sess_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, sess_names[i], sess_descs[i], sess_schemas[i]);
+      emitted += 1;
+    }
+  }
+  if (packs_mask & OA_PACK_X) != 0 {
+    for i: 0..<OA_MEMBER_NX {
+      if !flawed_wire_tool_allowed_for_agent(x_names[i], allowed_csv, disallowed_csv, use_agent_def, agent_def, is_async, is_fork) { continue; }
+      flawed_wire_write_tool_one(o, gemini_fmt, x_names[i], x_descs[i], x_schemas[i]);
       emitted += 1;
     }
   }
@@ -1197,4 +1212,31 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   jo_start(o[..], sub_buf[..]);
   nnf := flawed_wire_write_tools_packs_for_agent(o[..], false, "", "", OA_PACK_AGENTS, true, fork_def, false, false);
   #assert !o[0].bad && nnf == 12;
+
+  // Optional X API v2 pack (OA_PACK_X): XSearch emitted ONLY when OA_PACK_X bit is set (#14124)
+  jo_start(o[..], all_buf[..]);
+  n15 := flawed_wire_write_tools_packs(o[..], true, "", "", OA_PACK_X);
+  #assert !o[0].bad && n15 == 10 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
+  decls15 := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
+  #assert jv_len(d[0], decls15) == 10;
+  t_xs := jv_at(d[0], decls15, 9);
+  #assert jv_str(d[0], jv_get(d[0], t_xs, "name"), sb[..]) == 7 && cast(string) sb[0..<7] == "XSearch";
+  #assert jv_kind(d[0], jv_get(d[0], t_xs, "parameters")) == JV_OBJECT;
+  jo_start(o[..], all_buf[..]);
+  n16 := flawed_wire_write_tools_packs(o[..], false, "XSearch", "", OA_PACK_X);
+  #assert !o[0].bad && n16 == 1 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]) && jv_len(d[0], 0) == 1;
+  fn_xs := jv_get(d[0], jv_at(d[0], 0, 0), "function");
+  #assert jv_str(d[0], jv_get(d[0], fn_xs, "name"), sb[..]) == 7 && cast(string) sb[0..<7] == "XSearch";
+  jo_start(o[..], all_buf[..]);
+  #assert flawed_wire_write_tools_packs(o[..], false, "XSearch", "XSearch", OA_PACK_X) == 0 && !o[0].bad && jo_text(o[..]) == "[]";
+  jo_start(o[..], all_buf[..]);
+  #assert flawed_wire_write_tools_packs(o[..], false, "XSearch", "", 0) == 0 && !o[0].bad && jo_text(o[..]) == "[]";
+  // Subagent filter also gates XSearch (allowed on sync general-purpose, stripped on async subagent)
+  jo_start(o[..], sub_buf[..]);
+  #assert flawed_wire_write_tools_packs_for_agent(o[..], false, "XSearch", "", OA_PACK_X, true, gen_def, false, false) == 1;
+  jo_start(o[..], sub_buf[..]);
+  #assert flawed_wire_write_tools_packs_for_agent(o[..], false, "XSearch", "", OA_PACK_X, true, gen_def, true, false) == 0;
+  #assert flawed_wire_tool_is_concurrency_safe("XSearch");
+  #assert flawed_wire_tool_permission("XSearch", "search coax", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("XSearch", "delete 123", FLAWED_PMODE_BYPASS, true, true) == FLAWED_PBEH_DENY;
 }

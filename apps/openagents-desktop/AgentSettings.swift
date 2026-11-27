@@ -28,6 +28,7 @@ enum AgentSettings {
     private static let kExtendedCtx = "oa.agent.extendedCtx"
     private static let kRemoteBridge = "oa.agent.remoteBridge"
     private static let kAllowLocalHarnesses = "oa.agent.allowLocalHarnesses"
+    private static let kXToolsEnabled = "oa.agent.xToolsEnabled"
 
     private static let kBaseURL = "oa.agent.baseURL"
     private static let kCustomModel = "oa.agent.customModel"
@@ -214,6 +215,11 @@ enum AgentSettings {
         get { getBool(kAllowLocalHarnesses, default: false) }
         set { d.set(newValue, forKey: kAllowLocalHarnesses) }
     }
+    /// Opt-in (default Off): mount read-only XSearch tool when an X API v2 Bearer token is configured (#14124).
+    static var xToolsEnabled: Bool {
+        get { getBool(kXToolsEnabled, default: false) }
+        set { d.set(newValue, forKey: kXToolsEnabled) }
+    }
 
     static var baseURL: String {
         get { getString(kBaseURL) }
@@ -287,6 +293,36 @@ enum AgentSettings {
         return "Not set (uses OpenAgents Cloud / Local Psionic)"
     }
 
+    // ---- X API v2 Bearer token storage (0600 ~/Library/Application Support/Coder/x-api-key; never logged) ----
+
+    static var savedXKey: String? {
+        let key = DesktopCore.withCoaxString("x-api-key") { cn in
+            DesktopCore.callString(4096) { oa_dc_key_read(cn, $0) }
+        }
+        return key.isEmpty ? nil : key
+    }
+
+    @discardableResult
+    static func saveXKey(_ key: String) -> Bool {
+        // Preserve percent-encoding (%2B/%2F/%3D) verbatim; strip only CR/LF line endings.
+        let cleaned = key.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
+        return DesktopCore.withCoaxString("x-api-key") { cn in
+            DesktopCore.withCoaxString(cleaned) { ck in
+                oa_dc_key_save(cn, ck) == 1
+            }
+        }
+    }
+
+    static var xKeyLabel: String {
+        if let key = savedXKey {
+            let tail = DesktopCore.withCoaxString(key) { ck in
+                DesktopCore.callString(64) { oa_dc_key_tail(ck, $0) }
+            }
+            return tail.isEmpty ? "Saved" : "Ends \(tail)"
+        }
+        return "Not set"
+    }
+
     static var toolsSummary: String {
         var parts: [String] = []
         if !allowedTools.isEmpty { parts.append("Allow: \(allowedTools)") }
@@ -345,7 +381,7 @@ enum AgentSettings {
             env["OA_CLOUD_KEY_PATH"] = keyPath
         }
         let penv = ProcessInfo.processInfo.environment
-        for k in ["OA_CLOUD_BASE_URL", "OA_EXA_BASE_URL", "OA_EXA_DIRECT", "EXA_API_KEY"] {
+        for k in ["OA_CLOUD_BASE_URL", "OA_EXA_BASE_URL", "OA_EXA_DIRECT", "EXA_API_KEY", "OA_X_API_BASE_URL"] {
             if let v = penv[k], !v.isEmpty { env[k] = v }
         }
         return env
@@ -517,6 +553,7 @@ enum AgentSettings {
         if maxBudgetMicros > 0 { env["OA_AGENT_MAX_BUDGET_MICROS"] = String(maxBudgetMicros) }
         env["OA_FULL_AUTO"] = isFullAuto ? "1" : "0"
         env["OA_ALLOW_LOCAL_HARNESSES"] = allowLocalHarnesses ? "1" : "0"
+        env["OA_X_TOOLS"] = xToolsEnabled ? "1" : "0"
         env["OA_OPERATOR_VAULT_PATH"] = OperatorVault.vaultURL.path
         for (k, v) in cloudAuthEnv() { env[k] = v }
         return env
@@ -562,6 +599,8 @@ enum AgentSettings {
             cd_flawed_prefs_set(page, buf.baseAddress, Int32(buf.count))
         }
         cd_flawed_info(page, authStatus, keyLabel, baseURLLabel, customModel, toolsSummary, limitsSummary)
+        cd_flawed_x_tools_set(page, xToolsEnabled ? 1 : 0)
+        cd_flawed_x_key(page, xKeyLabel)
         cd_permit_full_auto_set(page, isFullAuto ? 1 : 0)
         // Whether a sub-agent can run in Claude Code here: claudeworker is in the app and the
         // claude command is installed & signed in (GitHub #14104). The opt-in above decides whether it may.
@@ -597,6 +636,7 @@ enum AgentSettings {
         extendedCtx = vec[18] != 0
         remoteBridge = vec[19] != 0
         allowLocalHarnesses = vec[20] != 0
+        xToolsEnabled = cd_flawed_x_tools(page) != 0
     }
 
     static func resetAll() {
@@ -621,6 +661,7 @@ enum AgentSettings {
         extendedCtx = false
         remoteBridge = false
         allowLocalHarnesses = false
+        xToolsEnabled = false
         baseURL = ""
         customModel = ""
         allowedTools = ""
@@ -736,14 +777,27 @@ extension CoderWindow {
     /// Mirrors Flawed settings onto the foreground page and every active background run.
     func syncFlawedSettingsAll() {
         AgentSettings.apply(to: page)
-        for r in runs.values where r.page != page {
-            AgentSettings.apply(to: r.page)
-        }
         configureWorkerEnv(run, isForeman: isForemanShown)
+        for (id, r) in runs where r.page != page {
+            AgentSettings.apply(to: r.page)
+            configureWorkerEnv(r, isForeman: id == Foreman.chatID)
+        }
         wake()
     }
 
-    /// Dispatches Settings -> Flawed actions (CP_ASK_FLAWED_* = 190..197).
+    private func restartIdleOaWorkers() {
+        if run.worker.program == "oa-worker" && run.worker.alive && cd_running(page) == 0 {
+            run.worker.stop(forget: false)
+            recallDue = true
+        }
+        for r in runs.values where r !== run {
+            if r.worker.program == "oa-worker" && r.worker.alive && cd_running(r.page) == 0 {
+                r.worker.stop(forget: false)
+            }
+        }
+    }
+
+    /// Dispatches Settings -> Flawed actions (CP_ASK_FLAWED_* = 190..197, 222).
     func flawedAsked(_ what: Int32) {
         switch what {
         case 190: flawedPrefsChanged()
@@ -754,6 +808,7 @@ extension CoderWindow {
         case 195: editFlawedLimits()
         case 196: checkFlawedAuth(showToast: true)
         case 197: resetFlawedSettings()
+        case 222: editFlawedXKey()
         default: break
         }
     }
@@ -763,16 +818,16 @@ extension CoderWindow {
         let prevAllowHarnesses = AgentSettings.allowLocalHarnesses
         let prevPermMode = AgentSettings.permissionMode
         let prevBypass = AgentSettings.bypassDanger
+        let prevXTools = AgentSettings.xToolsEnabled
         AgentSettings.readBack(from: page)
         syncFlawedSettingsAll()
         // Restart an idle oa-worker when settings read from its launch environment change
-        // (allow_local_harnesses, permission mode, bypass_danger) so the next turn honors them immediately.
-        if (AgentSettings.allowLocalHarnesses != prevAllowHarnesses
+        // (allow_local_harnesses, permission mode, bypass_danger, XSearch toggle) so the next turn honors them immediately.
+        if AgentSettings.allowLocalHarnesses != prevAllowHarnesses
             || AgentSettings.permissionMode != prevPermMode
-            || AgentSettings.bypassDanger != prevBypass)
-            && run.worker.program == "oa-worker" && run.worker.alive && cd_running(page) == 0 {
-            run.worker.stop(forget: false)
-            recallDue = true
+            || AgentSettings.bypassDanger != prevBypass
+            || AgentSettings.xToolsEnabled != prevXTools {
+            restartIdleOaWorkers()
         }
         if AgentSettings.backend != prevBackend || AgentSettings.allowLocalHarnesses != prevAllowHarnesses {
             checkFlawedAuth(showToast: false)
@@ -828,6 +883,54 @@ extension CoderWindow {
                     self.syncFlawedSettingsAll()
                     self.checkFlawedAuth(showToast: false)
                     cd_toast(self.page, "Saved Agent API key.", 0)
+                }
+            }
+            self.refocus()
+        }
+    }
+
+    func editFlawedXKey() {
+        let hasSaved = AgentSettings.savedXKey != nil
+        var d = CoderDialog(
+            size: .md,
+            title: "X API Bearer token",
+            body: "Optional X API v2 Bearer token stored locally in ~/Library/Application Support/Coder/x-api-key (0600, percent-encoding preserved verbatim, never logged). Saving a token automatically enables XSearch."
+        )
+        d.fields = [
+            .init(label: "Bearer token", value: "", hint: hasSaved ? "Currently \(AgentSettings.xKeyLabel) — paste a new token to replace" : "AAAAAAAAAAAAAAAAAAAA…", secure: true),
+        ]
+        if hasSaved {
+            d.buttons = [
+                .init(title: "Remove", kind: .danger, aside: true),
+                .init(title: "Cancel"),
+                .init(title: "Save", kind: .primary),
+            ]
+            d.cancel = 1; d.confirm = 2
+        } else {
+            d.buttons = [
+                .init(title: "Cancel"),
+                .init(title: "Save", kind: .primary),
+            ]
+            d.cancel = 0; d.confirm = 1
+        }
+        present(d) { [weak self] answer, values in
+            guard let self else { return }
+            if hasSaved && answer == 0 {
+                _ = AgentSettings.saveXKey("")
+                self.syncFlawedSettingsAll()
+                self.restartIdleOaWorkers()
+                cd_toast(self.page, "Removed saved X API Bearer token.", 0)
+            } else if answer == d.confirm {
+                let raw = (values.first ?? "").replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
+                if !raw.isEmpty {
+                    if AgentSettings.saveXKey(raw) {
+                        AgentSettings.xToolsEnabled = true
+                        self.syncFlawedSettingsAll()
+                        self.restartIdleOaWorkers()
+                        cd_toast(self.page, "Saved X API Bearer token and enabled XSearch.", 0)
+                    } else {
+                        cd_toast(self.page, "Failed to save X API Bearer token.", 1)
+                    }
                 }
             }
             self.refocus()

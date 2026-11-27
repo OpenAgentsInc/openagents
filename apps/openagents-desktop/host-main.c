@@ -276,16 +276,32 @@ static void refresh_dashboard(DesktopApp *a) {
   cd_dashboard_items(a->page, out);
 }
 
-enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN, OA_DIALOG_LOCAL, OA_DIALOG_LOCAL_DELETE, OA_DIALOG_AGY_CODE, OA_DIALOG_LOCAL_PICK };
+enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_X_KEY, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN, OA_DIALOG_LOCAL, OA_DIALOG_LOCAL_DELETE, OA_DIALOG_AGY_CODE, OA_DIALOG_LOCAL_PICK };
 static void local_sync(DesktopApp *a);
 static void ask_local_models(DesktopApp *a);
 static int local_running_count(DesktopApp *a);
+
+static void refresh_x_key_info(DesktopApp *a) {
+  if (!a || !a->page) return;
+  char xk[512] = {0};
+  int xn = (int)oa_core_key_read(cs("x-api-key"), vu(xk, (int)sizeof(xk) - 1));
+  char label[64];
+  if (xn > 0 && xk[0]) {
+    if (xn >= 4) snprintf(label, sizeof label, "Ends \xe2\x80\xa6%s", xk + xn - 4);
+    else snprintf(label, sizeof label, "Saved");
+  } else {
+    snprintf(label, sizeof label, "Not set");
+  }
+  memset(xk, 0, sizeof xk);
+  cd_flawed_x_key(a->page, label);
+}
 
 static void refresh_settings_info(DesktopApp *a) {
   char ck[256] = {0}, ok[256] = {0};
   oa_core_key_read(cs("claude-key"), vu(ck, (int)sizeof(ck)));
   oa_core_key_read(cs("openrouter-key"), vu(ok, (int)sizeof(ok)));
   cd_settings_info(a->page, ck[0] ? "configured" : "", ok[0] ? "configured" : "", OA_APP_VERSION);
+  refresh_x_key_info(a);
   const char *agy_status = a->agy_worker_bin[0] ? (a->agy_bin[0] ? a->agy_bin : "agyworker ready") : "agyworker not bundled";
   cd_settings_agy(a->page, agy_status, a->agy_mode, a->agy_model[0] ? a->agy_model : "default", "");
   int64_t tier = a->foreman_tier;
@@ -1282,21 +1298,28 @@ static void agent_prefs_keep(DesktopApp *a) {
   size_t pos = 0;
   for (int i = 0; i < n && pos + 16 < sizeof buf; i++) pos += (size_t)snprintf(buf + pos, sizeof buf - pos, "%s%d", i ? " " : "", v[i]);
   if (n > 0) (void)oa_core_key_save(cs("agent-prefs"), cs(buf));
+  (void)oa_core_key_save(cs("x-tools-enabled"), cs(cd_flawed_x_tools(a->page) ? "1" : "0"));
 }
 static void agent_prefs_load(DesktopApp *a) {
   char buf[400] = {0};
   int v[32] = {0};
   int have = cd_flawed_prefs_get(a->page, v, 32);
-  if (have <= 0 || oa_core_key_read(cs("agent-prefs"), vu(buf, (int)sizeof buf - 1)) <= 0) return;
-  char *p = buf;
-  for (int i = 0; i < have && *p; i++) {
-    char *end = NULL;
-    long x = strtol(p, &end, 10);
-    if (end == p) break;
-    v[i] = (int)x;
-    p = end;
+  if (have > 0 && oa_core_key_read(cs("agent-prefs"), vu(buf, (int)sizeof buf - 1)) > 0) {
+    char *p = buf;
+    for (int i = 0; i < have && *p; i++) {
+      char *end = NULL;
+      long x = strtol(p, &end, 10);
+      if (end == p) break;
+      v[i] = (int)x;
+      p = end;
+    }
+    cd_flawed_prefs_set(a->page, v, have);
   }
-  cd_flawed_prefs_set(a->page, v, have);
+  char xon[16] = {0};
+  if (oa_core_key_read(cs("x-tools-enabled"), vu(xon, (int)sizeof xon - 1)) > 0) {
+    cd_flawed_x_tools_set(a->page, (xon[0] == '1') ? 1 : 0);
+  }
+  refresh_x_key_info(a);
 }
 static int flawed_needs_local(DesktopApp *a) {
   if (!flawed_wanted(a)) return 0;
@@ -1338,6 +1361,8 @@ static size_t flawed_env(DesktopApp *a, char *out, size_t cap) {
   if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "OA_ALLOW_LOCAL_HARNESSES=%d\n", v[20] ? 1 : 0);
   // Settings > Agent > Most a sub-agent may do with git (GitHub #14104)
   if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "OA_SUBAGENT_GIT_MAX=%s\n", v[21] == 2 ? "none" : v[21] == 1 ? "commit" : "push");
+  // Settings > Agent > X API tool (XSearch) (GitHub #14124)
+  if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "OA_X_TOOLS=%d\n", cd_flawed_x_tools(a->page) ? 1 : 0);
   return (n > 0 && (size_t)n < cap) ? (size_t)n : 0;
 }
 
@@ -1869,17 +1894,20 @@ static void show_dialog(DesktopApp *a, int kind, int confirm, int cancel) {
   cd_dialog_show(a->page, confirm, cancel, 0);
 }
 
-// The Claude or OpenRouter key, kept as the Mac app keeps it (store.coax dc_key_save).
+// The Claude, OpenRouter, or X API Bearer key, kept as the Mac app keeps it (store.coax dc_key_save).
 static void ask_key(DesktopApp *a, int kind) {
   int claude = kind == OA_DIALOG_CLAUDE;
+  int xkey = kind == OA_DIALOG_X_KEY;
   char kept[1024] = {0};
-  oa_core_key_read(cs(claude ? "claude-key" : "openrouter-key"), vu(kept, (int)sizeof kept));
+  const char *fname = xkey ? "x-api-key" : (claude ? "claude-key" : "openrouter-key");
+  oa_core_key_read(cs(fname), vu(kept, (int)sizeof kept));
   char body[512];
-  if (claude) snprintf(body, sizeof body, "Claude sub-agents use this key. Paste an Anthropic API key (sk-ant-...). OpenAgents keeps it in a file only you can read.%s", kept[0] ? " A key is set now." : "");
+  if (xkey) snprintf(body, sizeof body, "Optional X API v2 Bearer token stored locally (0600, percent-encoding preserved verbatim, never logged). Saving a token automatically enables XSearch.%s", kept[0] ? " A token is set now." : "");
+  else if (claude) snprintf(body, sizeof body, "Claude sub-agents use this key. Paste an Anthropic API key (sk-ant-...). OpenAgents keeps it in a file only you can read.%s", kept[0] ? " A key is set now." : "");
   else snprintf(body, sizeof body, "Microcoder uses this key to reach models through OpenRouter. Paste your key (sk-or-...). OpenAgents keeps it in a file only you can read.%s", kept[0] ? " A key is set now." : "");
   memset(kept, 0, sizeof kept);
-  cd_dialog_begin(a->page, 1, claude ? "Claude Key" : "OpenRouter Key", body);
-  cd_dialog_field(a->page, "", "", claude ? "sk-ant-..." : "sk-or-...", 1, 1);
+  cd_dialog_begin(a->page, 1, xkey ? "X API Bearer token" : (claude ? "Claude Key" : "OpenRouter Key"), body);
+  cd_dialog_field(a->page, "", "", xkey ? "AAAAAAAAAAAAAAAAAAAA..." : (claude ? "sk-ant-..." : "sk-or-..."), 1, 1);
   cd_dialog_button(a->page, "Remove Key", 2, 1);
   cd_dialog_button(a->page, "Cancel", 1, 0);
   cd_dialog_button(a->page, "Save", 0, 0);
@@ -2272,6 +2300,23 @@ static void pump_dialog(DesktopApp *a) {
       refresh_settings_info(a);
       break;
     }
+    case OA_DIALOG_X_KEY: {
+      if (answer == 2 && vn > 0) {
+        if (oa_core_key_save(cs("x-api-key"), cs(v))) {
+          cd_flawed_x_tools_set(a->page, 1);
+          agent_prefs_keep(a);
+          cd_toast(a->page, "Saved X API Bearer token and enabled XSearch.", 0);
+        } else {
+          cd_toast(a->page, "The X API Bearer token could not be saved.", 1);
+        }
+      } else if (answer == 0) {
+        cd_toast(a->page, oa_core_key_save(cs("x-api-key"), cs("")) ? "Removed saved X API Bearer token." : "The X API Bearer token could not be removed.", 0);
+      }
+      memset(value, 0, sizeof value);
+      refresh_settings_info(a);
+      if (a->worker_is_agy == 4 && oa_core_worker_alive(vc(a)) && !cd_running(a->page)) oa_core_worker_stop(vc(a), 0);
+      break;
+    }
     case OA_DIALOG_BUDGET: {
       if (answer != 1) break;
       char clean[64]; size_t n = 0;
@@ -2592,6 +2637,7 @@ static void handle_action(DesktopApp *a, int act) {
     case 196:
       if (!a->test_mode) claude_probe_auth(a);
       break;
+    case 222: ask_key(a, OA_DIALOG_X_KEY); break;
     case 14: cd_zoom(a->page, 1); break;
     case 15: cd_zoom(a->page, -1); break;
     case 16: ask_key(a, OA_DIALOG_CLAUDE); break;

@@ -2603,6 +2603,16 @@ fww_active_packs :: (cwd: string, include_coax_intel: bool) -> int {
   if sess_env == "1" || sess_env == "true" || (sess_env != "0" && sess_env != "false" && fww_has_session_bus()) {
     mask |= OA_PACK_SESSIONS;
   }
+  x_env := fww_trim(cl_getenv("OA_X_TOOLS", eb[..]));
+  if x_env != "0" && x_env != "false" {
+    xhb: [FS_PATH_MAX] u8;
+    xhome := fww_trim(cl_getenv("HOME", xhb[..]));
+    xtok: [1024] u8;
+    if fww_discover_x_bearer_token(xhome, xtok[..]) > 0 {
+      mask |= OA_PACK_X;
+    }
+    for xi: 0..<xtok.count { xtok[xi] = 0; }
+  }
   return mask;
 }
 
@@ -5232,6 +5242,750 @@ fww_tool_websearch :: (args_json: string, auth: [] FwAuth, raw_b: [] u8, out_res
   return n;
 }
 
+// ============================================================================
+// Optional X API v2 (XSearch) Tool (#14124)
+// Strictly read-only, gated on OA_X_TOOLS != "0" + Bearer token availability.
+// ============================================================================
+
+// Strip ONLY trailing CR/LF line endings so percent-encoded Bearer tokens (%2B/%2F/%3D)
+// are preserved byte-for-byte verbatim (never URL-decoded or stripped of '=').
+fww_x_strip_eol :: (s: string) -> string {
+  b := s.count;
+  while b > 0 && (s[b - 1] == '\n' || s[b - 1] == '\r') { b -= 1; }
+  return cast(string) s[0..<b];
+}
+
+// Reject empty, oversized, whitespace, or control bytes before embedding in curl -K config.
+fww_x_token_safe :: (tok: string) -> bool {
+  if tok.count == 0 || tok.count > 1024 { return false; }
+  for i: 0..<tok.count {
+    c := tok[i];
+    if c <= 32 || c == 127 { return false; }
+  }
+  return true;
+}
+
+fww_read_x_token_file :: (path: string, out: [] u8) -> int {
+  if path.count == 0 || !fs_exists(path) { return 0; }
+  raw: [2048] u8;
+  n := fs_read(path, raw[..]);
+  res := 0;
+  if n > 0 {
+    tok := fww_x_strip_eol(cast(string) raw[0..<n]);
+    if fww_x_token_safe(tok) && tok.count <= out.count {
+      for i: 0..<tok.count { out[i] = tok[i]; }
+      res = tok.count;
+    }
+  }
+  for i: 0..<raw.count { raw[i] = 0; }
+  return res;
+}
+
+// Discover X API v2 Bearer token verbatim from X_BEARER_TOKEN env or Desktop's 0600 x-api-key file.
+fww_discover_x_bearer_token :: (home: string, out_tok: [] u8) -> int {
+  eb: [2048] u8;
+  env_raw := cl_getenv("X_BEARER_TOKEN", eb[..]);
+  tok := fww_x_strip_eol(env_raw);
+  res := 0;
+  if fww_x_token_safe(tok) && tok.count <= out_tok.count {
+    for i: 0..<tok.count { out_tok[i] = tok[i]; }
+    res = tok.count;
+  }
+  for i: 0..<eb.count { eb[i] = 0; }
+  if res > 0 { return res; }
+  if home.count > 0 {
+    pb: [FS_PATH_MAX] u8;
+    n := fww_read_x_token_file(fs_join(home, "Library/Application Support/Coder/x-api-key", pb[..]), out_tok);
+    if n > 0 { return n; }
+    if tool_os() == TOOL_LINUX {
+      xb: [FS_PATH_MAX] u8;
+      xdg := fww_trim(cl_getenv("XDG_DATA_HOME", xb[..]));
+      if xdg.count > 0 && xdg[0] == '/' {
+        n = fww_read_x_token_file(fs_join(xdg, "Coder/x-api-key", pb[..]), out_tok);
+        if n > 0 { return n; }
+      }
+      n = fww_read_x_token_file(fs_join(home, ".local/share/Coder/x-api-key", pb[..]), out_tok);
+      if n > 0 { return n; }
+    }
+  }
+  return 0;
+}
+
+// Safe RFC 3986 percent-encoding (unreserved: A-Z a-z 0-9 - . _ ~). Returns -1 on overflow.
+fww_url_encode_rfc3986 :: (src: string, out: [] u8) -> int {
+  hex := "0123456789ABCDEF";
+  n := 0;
+  for i: 0..<src.count {
+    c := src[i];
+    unreserved := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                  (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~';
+    if unreserved {
+      if n >= out.count { return -1; }
+      out[n] = c;
+      n += 1;
+    } else {
+      if n + 3 > out.count { return -1; }
+      out[n] = '%';
+      out[n + 1] = hex[(cast(int) c >> 4) & 0xF];
+      out[n + 2] = hex[cast(int) c & 0xF];
+      n += 3;
+    }
+  }
+  return n;
+}
+
+// Case-insensitive host match for x.com / twitter.com and their subdomains.
+fww_x_host_allowed :: (host: string) -> bool {
+  if host.count == 0 || host.count > 128 { return false; }
+  lb: [128] u8;
+  for i: 0..<host.count { lb[i] = flawed_aw_lower(host[i]); }
+  h := cast(string) lb[0..<host.count];
+  return h == "x.com" || h == "twitter.com" ||
+         flawed_aw_ends(h, ".x.com") || flawed_aw_ends(h, ".twitter.com");
+}
+
+// Extract a validated Snowflake post ID from either a numeric ID or an x.com / twitter.com status URL.
+fww_x_extract_post_id :: (raw: string) -> string {
+  s := fww_trim(raw);
+  if s.count == 0 { return ""; }
+  if oa_x_tweet_id_safe(s) { return s; }
+  rest := s;
+  if rest.count >= 8 && flawed_aw_eq_ci(cast(string) rest[0..<8], "https://") {
+    rest = cast(string) rest[8..<rest.count];
+  } else if rest.count >= 7 && flawed_aw_eq_ci(cast(string) rest[0..<7], "http://") {
+    rest = cast(string) rest[7..<rest.count];
+  }
+  slash := -1;
+  for i: 0..<rest.count {
+    if rest[i] == '/' || rest[i] == '?' || rest[i] == '#' { slash = i; break; }
+  }
+  if slash <= 0 || rest[slash] != '/' { return ""; }
+  host := cast(string) rest[0..<slash];
+  for i: 0..<host.count {
+    if host[i] == ':' { host = cast(string) host[0..<i]; break; }
+  }
+  if !fww_x_host_allowed(host) { return ""; }
+  path := cast(string) rest[slash..<rest.count];
+  p_end := path.count;
+  for i: 0..<path.count {
+    if path[i] == '?' || path[i] == '#' { p_end = i; break; }
+  }
+  clean_path := cast(string) path[0..<p_end];
+  id_start := -1;
+  for i: 0..<clean_path.count {
+    rem := cast(string) clean_path[i..<clean_path.count];
+    if rem.count >= 8 && flawed_aw_eq_ci(cast(string) rem[0..<8], "/status/") {
+      id_start = i + 8;
+      break;
+    }
+    if rem.count >= 10 && flawed_aw_eq_ci(cast(string) rem[0..<10], "/statuses/") {
+      id_start = i + 10;
+      break;
+    }
+  }
+  if id_start < 0 || id_start >= clean_path.count { return ""; }
+  id_end := id_start;
+  while id_end < clean_path.count && clean_path[id_end] != '/' { id_end += 1; }
+  cand := cast(string) clean_path[id_start..<id_end];
+  return ifx oa_x_tweet_id_safe(cand) then cand else "";
+}
+
+// Build curl -K - stdin config carrying Authorization: Bearer <token> safely (never in argv).
+fww_x_curl_config :: (token: string, out: [] u8) -> int {
+  if !fww_x_token_safe(token) { return -1; }
+  n := fww_cat(out, 0, "header = \"Authorization: Bearer ");
+  for i: 0..<token.count {
+    c := token[i];
+    if c == '\\' || c == '"' {
+      if n + 2 > out.count { return -1; }
+      out[n] = '\\'; n += 1;
+      out[n] = c; n += 1;
+    } else {
+      if n + 1 > out.count { return -1; }
+      out[n] = c; n += 1;
+    }
+  }
+  if n + 2 > out.count { return -1; }
+  out[n] = '"'; n += 1;
+  out[n] = '\n'; n += 1;
+  return n;
+}
+
+fww_x_api_base :: (out: [] u8) -> string {
+  eb: [512] u8;
+  raw := flawed_aw_trim_slash(fww_trim(cl_getenv("OA_X_API_BASE_URL", eb[..])));
+  if raw.count == 0 {
+    n := fww_keep(out, "https://api.x.com");
+    return cast(string) out[0..<n];
+  }
+  if (!flawed_aw_starts(raw, "https://") && !flawed_aw_starts(raw, "http://")) || !oa_cli_arg_safe(raw) {
+    return "";
+  }
+  n := fww_keep(out, raw);
+  return cast(string) out[0..<n];
+}
+
+// Execute one X API v2 HTTP GET via curl -K - (Bearer token supplied exclusively via stdin config).
+fww_x_http_get :: (endpoint: string, token: string, tag: int, raw_b: [] u8, out_raw_n: [] int) -> int {
+  out_raw_n[0] = 0;
+  cfg_b: [2400] u8;
+  cfg_n := fww_x_curl_config(token, cfg_b[..]);
+  if cfg_n <= 0 { return 0; }
+
+  now_ms := proc_now_ms();
+  resp_p: [160] u8;
+  pn := fww_cat(resp_p[..], 0, "/tmp/oa-x-resp-");
+  pn = fww_put_int(resp_p[..], pn, now_ms);
+  pn = fww_cat(resp_p[..], pn, "-");
+  pn = fww_put_int(resp_p[..], pn, tag);
+  pn = fww_cat(resp_p[..], pn, ".json");
+  resp_path := cast(string) resp_p[0..<pn];
+
+  code_b: [64] u8;
+  code_n := 0;
+  exit_code := 1;
+  h := proc_new();
+  if h >= 0 {
+    ok := proc_arg(h, "curl") && proc_arg(h, "-sS") &&
+          proc_arg(h, "-K") && proc_arg(h, "-") &&
+          proc_arg(h, "-o") && proc_arg(h, resp_path) &&
+          proc_arg(h, "-w") && proc_arg(h, "%{http_code}\n") &&
+          proc_arg(h, "--connect-timeout") && proc_arg(h, "10") &&
+          proc_arg(h, "--max-time") && proc_arg(h, "25") &&
+          proc_arg(h, "--") && proc_arg(h, endpoint);
+    if ok && proc_start(h) == 0 {
+      _ = proc_send(h, cast(string) cfg_b[0..<cfg_n]);
+      _ = proc_close_stdin(h);
+      for ci: 0..<cfg_b.count { cfg_b[ci] = 0; }
+      lbuf: [128] u8;
+      deadline := proc_now_ms() + 27000;
+      while proc_now_ms() < deadline {
+        r := proc_line(h, 250, lbuf[..]);
+        if r == PROC_EOF { break; }
+        if r == PROC_TIMEOUT { continue; }
+        if r < 0 { break; }
+        if code_n == 0 && r > 0 { code_n = fww_keep(code_b[..], cast(string) lbuf[0..<r]); }
+      }
+      exit_code = proc_wait(h, 2000);
+    }
+    _ = proc_release(h);
+  }
+  for ci: 0..<cfg_b.count { cfg_b[ci] = 0; }
+
+  http_code := 0;
+  if exit_code == 0 && code_n > 0 {
+    cs := fww_trim(cast(string) code_b[0..<code_n]);
+    for ci: 0..<cs.count {
+      c := cs[ci];
+      if c >= '0' && c <= '9' { http_code = http_code * 10 + cast(int) (c - '0'); }
+      else { http_code = 0; break; }
+    }
+  }
+  got := fs_read(resp_path, raw_b);
+  _ = fs_remove(resp_path);
+  if got > 0 { out_raw_n[0] = got; }
+  return http_code;
+}
+
+fww_x_lookup_author :: (v: Jv, users_arr: int, author_id: string, out_handle: [] u8, out_hn: [] int, out_name: [] u8, out_nn: [] int) {
+  out_hn[0] = 0;
+  out_nn[0] = 0;
+  if author_id.count == 0 || jv_kind(v, users_arr) != JV_ARRAY { return; }
+  nu := jv_len(v, users_arr);
+  id_b: [64] u8;
+  for i: 0..<nu {
+    u := jv_at(v, users_arr, i);
+    uid := fww_jv_str_safe(v, u, "id", id_b[..]);
+    if uid == author_id {
+      hn := jv_str(v, jv_get(v, u, "username"), out_handle);
+      if hn > 0 { out_hn[0] = hn; }
+      nn := jv_str(v, jv_get(v, u, "name"), out_name);
+      if nn > 0 { out_nn[0] = nn; }
+      return;
+    }
+  }
+}
+
+fww_x_append_one_tweet :: (
+  v: Jv, tw: int, users_arr: int, idx_1: int, fallback_handle: string, fallback_name: string,
+  out: [] u8, at: int
+) -> int {
+  n := at;
+  id_b: [64] u8; aid_b: [64] u8; ts_b: [64] u8; txt_b: [4096] u8;
+  uh_b: [64] u8; un_b: [128] u8; uh_n := [1] int.[0]; un_n := [1] int.[0];
+  tid := fww_jv_str_safe(v, tw, "id", id_b[..]);
+  aid := fww_jv_str_safe(v, tw, "author_id", aid_b[..]);
+  created := fww_jv_str_safe(v, tw, "created_at", ts_b[..]);
+  txt := fww_jv_str_safe(v, tw, "text", txt_b[..]);
+  fww_x_lookup_author(v, users_arr, aid, uh_b[..], uh_n[..], un_b[..], un_n[..]);
+  handle := ifx uh_n[0] > 0 then cast(string) uh_b[0..<uh_n[0]] else fallback_handle;
+  aname := ifx un_n[0] > 0 then cast(string) un_b[0..<un_n[0]] else fallback_name;
+
+  if idx_1 > 0 {
+    n = fww_put_int(out, n, idx_1);
+    n = fww_cat(out, n, ". ");
+  }
+  if aname.count > 0 && handle.count > 0 {
+    n = fww_cat(out, n, "**"); n = fww_cat(out, n, aname); n = fww_cat(out, n, "** (@"); n = fww_cat(out, n, handle); n = fww_cat(out, n, ")");
+  } else if handle.count > 0 {
+    n = fww_cat(out, n, "@"); n = fww_cat(out, n, handle);
+  } else if aid.count > 0 {
+    n = fww_cat(out, n, "author:"); n = fww_cat(out, n, aid);
+  } else {
+    n = fww_cat(out, n, "Post");
+  }
+  if created.count > 0 {
+    n = fww_cat(out, n, " · `"); n = fww_cat(out, n, created); n = fww_cat(out, n, "`");
+  }
+  n = fww_cat(out, n, "\n");
+  if txt.count > 0 {
+    n = fww_cat(out, n, txt);
+    n = fww_cat(out, n, "\n");
+  }
+  pm := jv_get(v, tw, "public_metrics");
+  if jv_kind(v, pm) == JV_OBJECT {
+    likes := jv_int(v, jv_get(v, pm, "like_count"), 0);
+    reposts := jv_int(v, jv_get(v, pm, "retweet_count"), 0);
+    replies := jv_int(v, jv_get(v, pm, "reply_count"), 0);
+    quotes := jv_int(v, jv_get(v, pm, "quote_count"), 0);
+    views := jv_int(v, jv_get(v, pm, "impression_count"), 0);
+    bmarks := jv_int(v, jv_get(v, pm, "bookmark_count"), 0);
+    n = fww_cat(out, n, "Likes: "); n = fww_put_int(out, n, likes);
+    n = fww_cat(out, n, " · Reposts: "); n = fww_put_int(out, n, reposts);
+    n = fww_cat(out, n, " · Replies: "); n = fww_put_int(out, n, replies);
+    n = fww_cat(out, n, " · Quotes: "); n = fww_put_int(out, n, quotes);
+    if views > 0 { n = fww_cat(out, n, " · Views: "); n = fww_put_int(out, n, views); }
+    if bmarks > 0 { n = fww_cat(out, n, " · Bookmarks: "); n = fww_put_int(out, n, bmarks); }
+    n = fww_cat(out, n, "\n");
+  }
+  if tid.count > 0 {
+    n = fww_cat(out, n, "https://x.com/");
+    n = fww_cat(out, n, ifx handle.count > 0 then handle else "i/web");
+    n = fww_cat(out, n, "/status/");
+    n = fww_cat(out, n, tid);
+    n = fww_cat(out, n, "\n");
+  }
+  return n;
+}
+
+fww_x_extract_v2_error :: (v: Jv, out: [] u8) -> int {
+  errs := jv_get(v, 0, "errors");
+  if jv_kind(v, errs) == JV_ARRAY && jv_len(v, errs) > 0 {
+    e0 := jv_at(v, errs, 0);
+    d_b: [512] u8;
+    detail := fww_jv_str_safe(v, e0, "detail", d_b[..]);
+    if detail.count == 0 { detail = fww_jv_str_safe(v, e0, "message", d_b[..]); }
+    if detail.count == 0 { detail = fww_jv_str_safe(v, e0, "title", d_b[..]); }
+    if detail.count > 0 { return fww_keep(out, detail); }
+  }
+  db: [512] u8;
+  d := fww_jv_str_safe(v, 0, "detail", db[..]);
+  if d.count == 0 { d = fww_jv_str_safe(v, 0, "title", db[..]); }
+  if d.count > 0 { return fww_keep(out, d); }
+  return 0;
+}
+
+fww_x_format_tweets :: (resp_json: string, fallback_handle: string, fallback_name: string, out: [] u8, is_err: [] bool) -> int {
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], resp_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+    is_err[0] = true;
+    return fww_keep(out, "XSearch error: invalid JSON response from X API.");
+  }
+  v := d[0];
+  data := jv_get(v, 0, "data");
+  if jv_kind(v, data) != JV_ARRAY {
+    eb: [512] u8;
+    en := fww_x_extract_v2_error(v, eb[..]);
+    if en > 0 {
+      is_err[0] = true;
+      n := fww_cat(out, 0, "XSearch error: ");
+      return fww_cat(out, n, cast(string) eb[0..<en]);
+    }
+    return fww_keep(out, "No X posts found.");
+  }
+  cnt := jv_len(v, data);
+  if cnt == 0 { return fww_keep(out, "No X posts found."); }
+  users_arr := jv_get(v, jv_get(v, 0, "includes"), "users");
+  n := 0;
+  for i: 0..<cnt {
+    if i > 0 { n = fww_cat(out, n, "\n"); }
+    tw := jv_at(v, data, i);
+    n = fww_x_append_one_tweet(v, tw, users_arr, i + 1, fallback_handle, fallback_name, out, n);
+    if n + 256 >= out.count { break; }
+  }
+  meta := jv_get(v, 0, "meta");
+  nt_b: [256] u8;
+  nt := fww_jv_str_safe(v, meta, "next_token", nt_b[..]);
+  if nt.count > 0 {
+    n = fww_cat(out, n, "\nPagination: `next_token=");
+    n = fww_cat(out, n, nt);
+    n = fww_cat(out, n, "`\n");
+  }
+  return n;
+}
+
+fww_x_format_user :: (resp_json: string, out: [] u8, is_err: [] bool) -> int {
+  nodes: [1024] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], resp_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+    is_err[0] = true;
+    return fww_keep(out, "XSearch error: invalid JSON response from X API.");
+  }
+  v := d[0];
+  u := jv_get(v, 0, "data");
+  if jv_kind(v, u) != JV_OBJECT {
+    is_err[0] = true;
+    eb: [512] u8;
+    en := fww_x_extract_v2_error(v, eb[..]);
+    if en > 0 {
+      n := fww_cat(out, 0, "XSearch user lookup failed: ");
+      return fww_cat(out, n, cast(string) eb[0..<en]);
+    }
+    return fww_keep(out, "XSearch user not found.");
+  }
+  id_b: [64] u8; un_b: [64] u8; nm_b: [128] u8; bio_b: [1024] u8; ts_b: [64] u8; loc_b: [128] u8; url_b: [256] u8;
+  uid := fww_jv_str_safe(v, u, "id", id_b[..]);
+  uname := fww_jv_str_safe(v, u, "username", un_b[..]);
+  name := fww_jv_str_safe(v, u, "name", nm_b[..]);
+  bio := fww_jv_str_safe(v, u, "description", bio_b[..]);
+  created := fww_jv_str_safe(v, u, "created_at", ts_b[..]);
+  loc := fww_jv_str_safe(v, u, "location", loc_b[..]);
+  uurl := fww_jv_str_safe(v, u, "url", url_b[..]);
+
+  n := 0;
+  n = fww_cat(out, n, "**"); n = fww_cat(out, n, ifx name.count > 0 then name else uname);
+  n = fww_cat(out, n, "** (@"); n = fww_cat(out, n, uname); n = fww_cat(out, n, ")\n");
+  if uid.count > 0 { n = fww_cat(out, n, "ID: `"); n = fww_cat(out, n, uid); n = fww_cat(out, n, "`"); }
+  if created.count > 0 {
+    if uid.count > 0 { n = fww_cat(out, n, " · "); }
+    n = fww_cat(out, n, "Joined: `"); n = fww_cat(out, n, created); n = fww_cat(out, n, "`");
+  }
+  if uid.count > 0 || created.count > 0 { n = fww_cat(out, n, "\n"); }
+  pm := jv_get(v, u, "public_metrics");
+  if jv_kind(v, pm) == JV_OBJECT {
+    n = fww_cat(out, n, "Followers: "); n = fww_put_int(out, n, jv_int(v, jv_get(v, pm, "followers_count"), 0));
+    n = fww_cat(out, n, " · Following: "); n = fww_put_int(out, n, jv_int(v, jv_get(v, pm, "following_count"), 0));
+    n = fww_cat(out, n, " · Posts: "); n = fww_put_int(out, n, jv_int(v, jv_get(v, pm, "tweet_count"), 0));
+    n = fww_cat(out, n, " · Listed: "); n = fww_put_int(out, n, jv_int(v, jv_get(v, pm, "listed_count"), 0));
+    n = fww_cat(out, n, "\n");
+  }
+  if bio.count > 0 { n = fww_cat(out, n, "Bio: "); n = fww_cat(out, n, bio); n = fww_cat(out, n, "\n"); }
+  if loc.count > 0 { n = fww_cat(out, n, "Location: "); n = fww_cat(out, n, loc); n = fww_cat(out, n, "\n"); }
+  if uurl.count > 0 { n = fww_cat(out, n, "URL: "); n = fww_cat(out, n, uurl); n = fww_cat(out, n, "\n"); }
+  if uname.count > 0 { n = fww_cat(out, n, "Profile: https://x.com/"); n = fww_cat(out, n, uname); n = fww_cat(out, n, "\n"); }
+  return n;
+}
+
+fww_x_format_post :: (resp_json: string, out: [] u8, is_err: [] bool) -> int {
+  nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], resp_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+    is_err[0] = true;
+    return fww_keep(out, "XSearch error: invalid JSON response from X API.");
+  }
+  v := d[0];
+  tw := jv_get(v, 0, "data");
+  if jv_kind(v, tw) != JV_OBJECT {
+    is_err[0] = true;
+    eb: [512] u8;
+    en := fww_x_extract_v2_error(v, eb[..]);
+    if en > 0 {
+      n := fww_cat(out, 0, "XSearch post lookup failed: ");
+      return fww_cat(out, n, cast(string) eb[0..<en]);
+    }
+    return fww_keep(out, "XSearch post not found.");
+  }
+  users_arr := jv_get(v, jv_get(v, 0, "includes"), "users");
+  return fww_x_append_one_tweet(v, tw, users_arr, 0, "", "", out, 0);
+}
+
+fww_x_format_http_error :: (http_code: int, resp_body: string, token: string, out_res: [] u8) -> int {
+  if http_code == 0 {
+    return fww_keep(out_res, "XSearch failed: could not reach X API.");
+  }
+  if http_code == 401 || http_code == 403 {
+    n := fww_cat(out_res, 0, "XSearch authentication failed (HTTP ");
+    n = fww_put_int(out_res, n, http_code);
+    return fww_cat(out_res, n, "). Verify your X API v2 Bearer token in Settings -> Agent.");
+  }
+  if http_code == 429 {
+    return fww_keep(out_res, "XSearch rate limit exceeded (HTTP 429). Try again later.");
+  }
+  eb: [512] u8;
+  en := 0;
+  nodes: [512] JvNode; d: [1] Jv;
+  if jv_parse(d[..], resp_body, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
+    en = fww_x_extract_v2_error(d[0], eb[..]);
+  }
+  if en == 0 { en = fww_extract_err_msg(resp_body, eb[..]); }
+  // Defensive scrub: never allow error text to echo any Bearer token substring.
+  if en > 0 && token.count >= 8 && fww_contains_ci(cast(string) eb[0..<en], token) {
+    en = 0;
+  }
+  n := fww_cat(out_res, 0, "XSearch failed (HTTP ");
+  n = fww_put_int(out_res, n, http_code);
+  if en > 0 {
+    n = fww_cat(out_res, n, "): ");
+    return fww_cat(out_res, n, cast(string) eb[0..<en]);
+  }
+  return fww_cat(out_res, n, ").");
+}
+
+// Execute read-only XSearch tool (actions: search, user, user_tweets, post) via X API v2 (#14124).
+fww_tool_x_search :: (home: string, args_json: string, raw_b: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for XSearch.");
+  }
+  v := d[0];
+  act_b: [32] u8;
+  action := fww_trim(fww_jv_str_safe(v, 0, "action", act_b[..]));
+  if !oa_x_action_allowed(action) {
+    is_err[0] = true;
+    return fww_keep(out_res, "XSearch requires action in {search, user, user_tweets, post}.");
+  }
+
+  xe_b: [32] u8;
+  x_env := fww_trim(cl_getenv("OA_X_TOOLS", xe_b[..]));
+  if x_env == "0" || x_env == "false" {
+    is_err[0] = true;
+    return fww_keep(out_res, "XSearch is disabled (enable X API tool in Settings -> Agent).");
+  }
+
+  tok_b: [1024] u8;
+  tok_n := fww_discover_x_bearer_token(home, tok_b[..]);
+  if tok_n <= 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "XSearch requires an X API v2 Bearer token (configure in Settings -> Agent or set X_BEARER_TOKEN).");
+  }
+  token := cast(string) tok_b[0..<tok_n];
+
+  base_b: [512] u8;
+  base := fww_x_api_base(base_b[..]);
+  if base.count == 0 {
+    for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+    is_err[0] = true;
+    return fww_keep(out_res, "XSearch error: invalid OA_X_API_BASE_URL.");
+  }
+
+  lbl_b: [512] u8;
+  ln := fww_cat(lbl_b[..], 0, "XSearch ");
+  ln = fww_cat(lbl_b[..], ln, action);
+
+  url_b: [4096] u8;
+  url_n := 0;
+  res_n := 0;
+  raw_n := [1] int.[0];
+  fb_handle_b: [64] u8; fb_hn := 0;
+  fb_name_b: [128] u8; fb_nn := 0;
+  tag := fww_str_hash(args_json) & 0x7fffffff;
+
+  if action == "search" {
+    qb: [1024] u8;
+    query := fww_trim(fww_jv_str_safe(v, 0, "query", qb[..]));
+    if query.count == 0 || !oa_cli_arg_safe(query) {
+      for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+      is_err[0] = true;
+      return fww_keep(out_res, "XSearch search requires a valid non-empty query.");
+    }
+    ln = fww_cat(lbl_b[..], ln, " ");
+    ln = fww_cat(lbl_b[..], ln, query);
+    max_r := jv_int(v, jv_get(v, 0, "max_results"), 10);
+    if max_r <= 0 { max_r = 10; }
+    if max_r < 10 { max_r = 10; }
+    if max_r > 100 { max_r = 100; }
+    nt_b: [256] u8;
+    nt := fww_trim(fww_jv_str_safe(v, 0, "next_token", nt_b[..]));
+    if nt.count > 0 && !oa_cli_arg_safe(nt) {
+      for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+      is_err[0] = true;
+      return fww_keep(out_res, "XSearch error: invalid next_token.");
+    }
+    enc_q: [3072] u8;
+    eqn := fww_url_encode_rfc3986(query, enc_q[..]);
+    if eqn <= 0 {
+      for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+      is_err[0] = true;
+      return fww_keep(out_res, "XSearch error: query too long.");
+    }
+    url_n = fww_cat(url_b[..], 0, base);
+    url_n = fww_cat(url_b[..], url_n, "/2/tweets/search/recent?query=");
+    url_n = fww_cat(url_b[..], url_n, cast(string) enc_q[0..<eqn]);
+    url_n = fww_cat(url_b[..], url_n, "&max_results=");
+    url_n = fww_put_int(url_b[..], url_n, max_r);
+    url_n = fww_cat(url_b[..], url_n, "&tweet.fields=created_at,public_metrics,author_id,conversation_id,lang&expansions=author_id&user.fields=name,username,verified");
+    if nt.count > 0 {
+      enc_nt: [768] u8;
+      ent_n := fww_url_encode_rfc3986(nt, enc_nt[..]);
+      if ent_n > 0 {
+        url_n = fww_cat(url_b[..], url_n, "&next_token=");
+        url_n = fww_cat(url_b[..], url_n, cast(string) enc_nt[0..<ent_n]);
+      }
+    }
+    code := fww_x_http_get(cast(string) url_b[0..<url_n], token, tag, raw_b, raw_n[..]);
+    if code != 200 {
+      is_err[0] = true;
+      res_n = fww_x_format_http_error(code, cast(string) raw_b[0..<raw_n[0]], token, out_res);
+    } else {
+      res_n = fww_x_format_tweets(cast(string) raw_b[0..<raw_n[0]], "", "", out_res, is_err);
+    }
+  } else if action == "user" {
+    ub: [128] u8;
+    raw_u := fww_trim(fww_jv_str_safe(v, 0, "username", ub[..]));
+    if !oa_x_username_safe(raw_u) {
+      for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+      is_err[0] = true;
+      return fww_keep(out_res, "XSearch user requires a valid X username (1-15 alphanumeric/underscore chars).");
+    }
+    uname := ifx raw_u[0] == '@' then cast(string) raw_u[1..<raw_u.count] else raw_u;
+    ln = fww_cat(lbl_b[..], ln, " @");
+    ln = fww_cat(lbl_b[..], ln, uname);
+    url_n = fww_cat(url_b[..], 0, base);
+    url_n = fww_cat(url_b[..], url_n, "/2/users/by/username/");
+    url_n = fww_cat(url_b[..], url_n, uname);
+    url_n = fww_cat(url_b[..], url_n, "?user.fields=created_at,description,public_metrics,verified,location,url");
+    code := fww_x_http_get(cast(string) url_b[0..<url_n], token, tag, raw_b, raw_n[..]);
+    if code != 200 {
+      is_err[0] = true;
+      res_n = fww_x_format_http_error(code, cast(string) raw_b[0..<raw_n[0]], token, out_res);
+    } else {
+      res_n = fww_x_format_user(cast(string) raw_b[0..<raw_n[0]], out_res, is_err);
+    }
+  } else if action == "user_tweets" {
+    uid_b: [64] u8;
+    un_b: [128] u8;
+    uid := fww_trim(fww_jv_str_safe(v, 0, "user_id", uid_b[..]));
+    raw_u := fww_trim(fww_jv_str_safe(v, 0, "username", un_b[..]));
+    resolved_uid_b: [64] u8;
+    resolved_uid := "";
+    if uid.count > 0 {
+      if !oa_x_tweet_id_safe(uid) {
+        for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+        is_err[0] = true;
+        return fww_keep(out_res, "XSearch user_tweets requires a numeric user_id or valid username.");
+      }
+      resolved_uid = uid;
+      ln = fww_cat(lbl_b[..], ln, " ");
+      ln = fww_cat(lbl_b[..], ln, uid);
+    } else if raw_u.count > 0 {
+      if !oa_x_username_safe(raw_u) {
+        for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+        is_err[0] = true;
+        return fww_keep(out_res, "XSearch user_tweets requires a valid username (1-15 alphanumeric/underscore chars) or user_id.");
+      }
+      uname := ifx raw_u[0] == '@' then cast(string) raw_u[1..<raw_u.count] else raw_u;
+      ln = fww_cat(lbl_b[..], ln, " @");
+      ln = fww_cat(lbl_b[..], ln, uname);
+      lu_url: [1024] u8;
+      lun := fww_cat(lu_url[..], 0, base);
+      lun = fww_cat(lu_url[..], lun, "/2/users/by/username/");
+      lun = fww_cat(lu_url[..], lun, uname);
+      lun = fww_cat(lu_url[..], lun, "?user.fields=name,username");
+      lcode := fww_x_http_get(cast(string) lu_url[0..<lun], token, tag, raw_b, raw_n[..]);
+      if lcode != 200 {
+        is_err[0] = true;
+        res_n = fww_x_format_http_error(lcode, cast(string) raw_b[0..<raw_n[0]], token, out_res);
+        for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+        fww_send(wire_out, mww_command(wire_out, cast(string) lbl_b[0..<ln], 1, false, cast(string) out_res[0..<res_n]));
+        return res_n;
+      }
+      lnodes: [512] JvNode; ld: [1] Jv;
+      if jv_parse(ld[..], cast(string) raw_b[0..<raw_n[0]], lnodes[..]) && jv_kind(ld[0], 0) == JV_OBJECT {
+        udata := jv_get(ld[0], 0, "data");
+        if jv_kind(ld[0], udata) == JV_OBJECT {
+          resolved_uid = fww_jv_str_safe(ld[0], udata, "id", resolved_uid_b[..]);
+          fb_hn = fww_keep(fb_handle_b[..], fww_jv_str_safe(ld[0], udata, "username", fb_handle_b[..]));
+          if fb_hn == 0 { fb_hn = fww_keep(fb_handle_b[..], uname); }
+          fb_nn = fww_keep(fb_name_b[..], fww_jv_str_safe(ld[0], udata, "name", fb_name_b[..]));
+        }
+      }
+      if !oa_x_tweet_id_safe(resolved_uid) {
+        is_err[0] = true;
+        res_n = fww_x_format_user(cast(string) raw_b[0..<raw_n[0]], out_res, is_err);
+        for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+        fww_send(wire_out, mww_command(wire_out, cast(string) lbl_b[0..<ln], 1, false, cast(string) out_res[0..<res_n]));
+        return res_n;
+      }
+    } else {
+      for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+      is_err[0] = true;
+      return fww_keep(out_res, "XSearch user_tweets requires username or user_id.");
+    }
+
+    max_r := jv_int(v, jv_get(v, 0, "max_results"), 10);
+    if max_r <= 0 { max_r = 10; }
+    if max_r < 5 { max_r = 5; }
+    if max_r > 100 { max_r = 100; }
+    ex_rep := jv_bool(v, jv_get(v, 0, "exclude_replies"));
+    ex_rt := jv_bool(v, jv_get(v, 0, "exclude_retweets"));
+    nt_b: [256] u8;
+    nt := fww_trim(fww_jv_str_safe(v, 0, "next_token", nt_b[..]));
+    if nt.count > 0 && !oa_cli_arg_safe(nt) {
+      for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+      is_err[0] = true;
+      return fww_keep(out_res, "XSearch error: invalid next_token.");
+    }
+    url_n = fww_cat(url_b[..], 0, base);
+    url_n = fww_cat(url_b[..], url_n, "/2/users/");
+    url_n = fww_cat(url_b[..], url_n, resolved_uid);
+    url_n = fww_cat(url_b[..], url_n, "/tweets?max_results=");
+    url_n = fww_put_int(url_b[..], url_n, max_r);
+    url_n = fww_cat(url_b[..], url_n, "&tweet.fields=created_at,public_metrics,author_id,conversation_id,lang&expansions=author_id&user.fields=name,username,verified");
+    if ex_rep && ex_rt { url_n = fww_cat(url_b[..], url_n, "&exclude=replies,retweets"); }
+    else if ex_rep { url_n = fww_cat(url_b[..], url_n, "&exclude=replies"); }
+    else if ex_rt { url_n = fww_cat(url_b[..], url_n, "&exclude=retweets"); }
+    if nt.count > 0 {
+      enc_nt: [768] u8;
+      ent_n := fww_url_encode_rfc3986(nt, enc_nt[..]);
+      if ent_n > 0 {
+        url_n = fww_cat(url_b[..], url_n, "&pagination_token=");
+        url_n = fww_cat(url_b[..], url_n, cast(string) enc_nt[0..<ent_n]);
+      }
+    }
+    code := fww_x_http_get(cast(string) url_b[0..<url_n], token, tag + 1, raw_b, raw_n[..]);
+    if code != 200 {
+      is_err[0] = true;
+      res_n = fww_x_format_http_error(code, cast(string) raw_b[0..<raw_n[0]], token, out_res);
+    } else {
+      res_n = fww_x_format_tweets(
+        cast(string) raw_b[0..<raw_n[0]],
+        cast(string) fb_handle_b[0..<fb_hn],
+        cast(string) fb_name_b[0..<fb_nn],
+        out_res,
+        is_err
+      );
+    }
+  } else {
+    // action == "post"
+    pb: [512] u8;
+    raw_pid := fww_trim(fww_jv_str_safe(v, 0, "post_id", pb[..]));
+    if raw_pid.count == 0 { raw_pid = fww_trim(fww_jv_str_safe(v, 0, "id", pb[..])); }
+    if raw_pid.count == 0 { raw_pid = fww_trim(fww_jv_str_safe(v, 0, "url", pb[..])); }
+    pid := fww_x_extract_post_id(raw_pid);
+    if !oa_x_tweet_id_safe(pid) {
+      for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+      is_err[0] = true;
+      return fww_keep(out_res, "XSearch post requires a numeric tweet ID or x.com/twitter.com status URL.");
+    }
+    ln = fww_cat(lbl_b[..], ln, " ");
+    ln = fww_cat(lbl_b[..], ln, pid);
+    url_n = fww_cat(url_b[..], 0, base);
+    url_n = fww_cat(url_b[..], url_n, "/2/tweets/");
+    url_n = fww_cat(url_b[..], url_n, pid);
+    url_n = fww_cat(url_b[..], url_n, "?tweet.fields=created_at,public_metrics,author_id,conversation_id,lang&expansions=author_id&user.fields=name,username,verified");
+    code := fww_x_http_get(cast(string) url_b[0..<url_n], token, tag, raw_b, raw_n[..]);
+    if code != 200 {
+      is_err[0] = true;
+      res_n = fww_x_format_http_error(code, cast(string) raw_b[0..<raw_n[0]], token, out_res);
+    } else {
+      res_n = fww_x_format_post(cast(string) raw_b[0..<raw_n[0]], out_res, is_err);
+    }
+  }
+
+  for ti: 0..<tok_b.count { tok_b[ti] = 0; }
+  fww_send(wire_out, mww_command(wire_out, cast(string) lbl_b[0..<ln], ifx is_err[0] then 1 else 0, false, cast(string) out_res[0..<res_n]));
+  return res_n;
+}
+
 fww_coax_intel_subcmd :: (name: string) -> string {
   if name == "CoaxDefines" { return "defines"; }
   if name == "CoaxUses" { return "uses"; }
@@ -7109,6 +7863,17 @@ fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
   else if name == "CapabilityDraft" || name == "CapabilityEval" {
     n = jv_str(d[0], jv_get(d[0], 0, "slug"), out);
   }
+  else if name == "XSearch" {
+    ab: [32] u8; tb: [512] u8;
+    an := jv_str(d[0], jv_get(d[0], 0, "action"), ab[..]);
+    if an > 0 { n = fww_cat(out, n, cast(string) ab[0..<an]); }
+    tn := jv_str(d[0], jv_get(d[0], 0, "query"), tb[..]);
+    if tn <= 0 { tn = jv_str(d[0], jv_get(d[0], 0, "username"), tb[..]); }
+    if tn <= 0 { tn = jv_str(d[0], jv_get(d[0], 0, "user_id"), tb[..]); }
+    if tn <= 0 { tn = jv_str(d[0], jv_get(d[0], 0, "post_id"), tb[..]); }
+    if tn <= 0 { tn = jv_str(d[0], jv_get(d[0], 0, "url"), tb[..]); }
+    if tn > 0 { n = fww_cat(out, n, " "); n = fww_cat(out, n, cast(string) tb[0..<tn]); }
+  }
   else {
     n = jv_str(d[0], jv_get(d[0], 0, "file_path"), out);
     if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "file"), out); }
@@ -7678,6 +8443,9 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   else if oa_member_is_session_tool(name) {
     rn = fww_tool_session(name, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
+  }
+  else if oa_member_is_x_tool(name) {
+    rn = fww_tool_x_search(cast(string) r[0].home[0..<r[0].nhome], args, b[0].file_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out);
   }
   else if name == "TaskStop" {
     rn = fww_tool_task_stop(r, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
@@ -12062,4 +12830,85 @@ fww_find_bytes :: (hay: string, needle: string) -> int {
   }
   #assert !rd2[0].denial_tripped && rd2[0].denial[0].total == 19;
   #assert fww_denial_record_decision(rd2[..], cfg[..], FLAWED_PMODE_PLAN, false) && rd2[0].denial_tripped;
+}
+
+#test "oa-worker: XSearch URL encoding, post URL-to-ID extraction, curl -K config, formatting, and schema gating (#14124)" {
+  // 1. RFC 3986 percent-encoding
+  enc: [256] u8;
+  en := fww_url_encode_rfc3986("from:OpenAgentsInc \"coax lang\" -is:retweet #ai+1~_.-", enc[..]);
+  #assert en > 0 && cast(string) enc[0..<en] == "from%3AOpenAgentsInc%20%22coax%20lang%22%20-is%3Aretweet%20%23ai%2B1~_.-";
+  tiny: [4] u8;
+  #assert fww_url_encode_rfc3986("a b", tiny[..]) == -1;
+
+  // 2. Post ID extraction from raw Snowflake IDs and x.com / twitter.com URLs
+  #assert fww_x_extract_post_id("1891234567890123456") == "1891234567890123456";
+  #assert fww_x_extract_post_id("https://x.com/OpenAgentsInc/status/1891234567890123456") == "1891234567890123456";
+  #assert fww_x_extract_post_id("https://x.com/OpenAgentsInc/status/1891234567890123456?s=20&t=abc") == "1891234567890123456";
+  #assert fww_x_extract_post_id("https://twitter.com/i/web/status/1891234567890123456/photo/1") == "1891234567890123456";
+  #assert fww_x_extract_post_id("https://mobile.x.com/user/statuses/9876543210") == "9876543210";
+  #assert fww_x_extract_post_id("http://x.com/user/status/42") == "42";
+  #assert fww_x_extract_post_id("x.com/user/status/42") == "42";
+  #assert fww_x_extract_post_id("https://evil.com/user/status/1891234567890123456") == "";
+  #assert fww_x_extract_post_id("https://notx.com/user/status/1891234567890123456") == "";
+  #assert fww_x_extract_post_id("https://x.com/user/status/notdigits") == "";
+  #assert fww_x_extract_post_id("") == "";
+
+  // 3. Verbatim percent-encoding preservation & safe curl -K - stdin config
+  raw_tok := "AAA%2Bbbb%2Fccc%3D\r\n";
+  stripped := fww_x_strip_eol(raw_tok);
+  #assert stripped == "AAA%2Bbbb%2Fccc%3D" && fww_x_token_safe(stripped);
+  #assert !fww_x_token_safe("") && !fww_x_token_safe("bad token") && !fww_x_token_safe("bad\ntoken");
+  cb: [256] u8;
+  cn := fww_x_curl_config("AAA%2Bbbb%3D", cb[..]);
+  #assert cn > 0 && cast(string) cb[0..<cn] == "header = \"Authorization: Bearer AAA%2Bbbb%3D\"\n";
+  #assert fww_x_curl_config("bad\nline", cb[..]) == -1;
+
+  // 4. Markdown formatting for search/user_tweets, user, post, and token-scrubbed errors
+  out_b: [4096] u8;
+  err_b := [1] bool.[false];
+  search_json := "{\"data\":[{\"id\":\"1891000000000000001\",\"author_id\":\"42\",\"created_at\":\"2026-11-27T08:00:00.000Z\",\"text\":\"Coax native compiler is fast!\",\"public_metrics\":{\"like_count\":120,\"retweet_count\":34,\"reply_count\":9,\"quote_count\":4,\"impression_count\":5600}}],\"includes\":{\"users\":[{\"id\":\"42\",\"name\":\"OpenAgents\",\"username\":\"OpenAgentsInc\"}]},\"meta\":{\"next_token\":\"b26v89c19zqg8o3f\"}}";
+  sn := fww_x_format_tweets(search_json, "", "", out_b[..], err_b[..]);
+  s_md := cast(string) out_b[0..<sn];
+  #assert !err_b[0] && fww_contains_ci(s_md, "**OpenAgents** (@OpenAgentsInc)");
+  #assert fww_contains_ci(s_md, "2026-11-27T08:00:00.000Z") && fww_contains_ci(s_md, "Likes: 120 · Reposts: 34 · Replies: 9 · Quotes: 4 · Views: 5600");
+  #assert fww_contains_ci(s_md, "https://x.com/OpenAgentsInc/status/1891000000000000001");
+  #assert fww_contains_ci(s_md, "next_token=b26v89c19zqg8o3f");
+
+  user_json := "{\"data\":{\"id\":\"42\",\"name\":\"OpenAgents\",\"username\":\"OpenAgentsInc\",\"created_at\":\"2024-01-01T00:00:00.000Z\",\"description\":\"Open source autonomous agents\",\"location\":\"Internet\",\"public_metrics\":{\"followers_count\":9001,\"following_count\":42,\"tweet_count\":321,\"listed_count\":88}}}";
+  un := fww_x_format_user(user_json, out_b[..], err_b[..]);
+  u_md := cast(string) out_b[0..<un];
+  #assert !err_b[0] && fww_contains_ci(u_md, "**OpenAgents** (@OpenAgentsInc)") && fww_contains_ci(u_md, "Followers: 9001");
+  #assert fww_contains_ci(u_md, "https://x.com/OpenAgentsInc");
+
+  post_json := "{\"data\":{\"id\":\"1891000000000000002\",\"author_id\":\"42\",\"created_at\":\"2026-11-27T09:00:00.000Z\",\"text\":\"Single post view\",\"public_metrics\":{\"like_count\":5,\"retweet_count\":1,\"reply_count\":0,\"quote_count\":0}},\"includes\":{\"users\":[{\"id\":\"42\",\"name\":\"OpenAgents\",\"username\":\"OpenAgentsInc\"}]}}";
+  pn := fww_x_format_post(post_json, out_b[..], err_b[..]);
+  p_md := cast(string) out_b[0..<pn];
+  #assert !err_b[0] && fww_contains_ci(p_md, "Single post view") && fww_contains_ci(p_md, "https://x.com/OpenAgentsInc/status/1891000000000000002");
+
+  // Error scrub never leaks token
+  secret := "SECRET_TOKEN_%2F123456";
+  en_s := fww_x_format_http_error(500, "{\"detail\":\"echo SECRET_TOKEN_%2F123456\"}", secret, out_b[..]);
+  #assert !fww_contains_ci(cast(string) out_b[0..<en_s], secret);
+  en_401 := fww_x_format_http_error(401, "{}", secret, out_b[..]);
+  #assert fww_contains_ci(cast(string) out_b[0..<en_401], "401") && !fww_contains_ci(cast(string) out_b[0..<en_401], secret);
+
+  // 5. fww_tool_target extraction
+  tb: [256] u8;
+  #assert fww_tool_target("XSearch", "{\"action\":\"search\",\"query\":\"coax\"}", tb[..]) == "search coax";
+  #assert fww_tool_target("XSearch", "{\"action\":\"user\",\"username\":\"OpenAgentsInc\"}", tb[..]) == "user OpenAgentsInc";
+  #assert fww_tool_target("XSearch", "{\"action\":\"post\",\"post_id\":\"1891000000000000001\"}", tb[..]) == "post 1891000000000000001";
+
+  // 6. Wire schema gating: ABSENT when OA_PACK_X is off, PRESENT when OA_PACK_X is on (both Gemini & OpenAI)
+  cfg: [1] FwConfig;
+  h: [1] FwHist;
+  fww_hist_push_user(h[..], "check x");
+  body: [24576] u8;
+  n_g_off := fww_build_gemini_body_packs(cfg[..], h[..], "high", "sys", false, 0, body[..]);
+  #assert n_g_off > 0 && !fww_contains_ci(cast(string) body[0..<n_g_off], "\"XSearch\"");
+  n_g_on := fww_build_gemini_body_packs(cfg[..], h[..], "high", "sys", false, OA_PACK_X, body[..]);
+  #assert n_g_on > n_g_off && fww_contains_ci(cast(string) body[0..<n_g_on], "\"XSearch\"");
+  n_o_off := fww_build_openai_body_packs(cfg[..], h[..], "inkling-2-mini", "low", "sys", true, 32768, false, false, 0, body[..]);
+  #assert n_o_off > 0 && !fww_contains_ci(cast(string) body[0..<n_o_off], "\"XSearch\"");
+  n_o_on := fww_build_openai_body_packs(cfg[..], h[..], "inkling-2-mini", "low", "sys", true, 32768, false, false, OA_PACK_X, body[..]);
+  #assert n_o_on > n_o_off && fww_contains_ci(cast(string) body[0..<n_o_on], "\"XSearch\"");
 }
