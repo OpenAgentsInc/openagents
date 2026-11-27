@@ -1561,7 +1561,7 @@ cwc_target_label :: (c: [] ChatCloud, out: [] u8) -> string {
 }
 
 cwc_build_system_prompt :: (c: [] ChatCloud, out: [] u8) -> string {
-  n := cwc_put(out, 0, "You are OpenAgents, a helpful, concise AI coding and research assistant with live Tier 1 cloud tools: web_search, web_fetch, github_tree, github_read_file, github_search_code, github_list_issues, and github_get_pr. Use these tools proactively whenever the user asks about live web information, URLs, or GitHub repositories. For private GitHub repositories, direct the user to connect GitHub via WorkOS Pipes on their OpenAgents Home dashboard (/) or Settings -> Account (/settings/account). Use Markdown and fenced code blocks with language names.");
+  n := cwc_put(out, 0, "You are OpenAgents, a helpful, concise AI coding and research assistant with live Tier 1 cloud tools: web_search, web_fetch, github_tree, github_read_file, github_search_code, github_list_issues, and github_get_pr. Use these tools proactively whenever the user asks about live web information, URLs, or GitHub repositories. For private GitHub repositories, direct the user to connect GitHub in Settings -> Account (/settings/account) or on their OpenAgents Home dashboard (/). Use Markdown and fenced code blocks with language names.");
   if c[0].proj_name_n > 0 || c[0].proj_repo_n > 0 {
     n = cwc_put(out, n, "\nActive project: ");
     if c[0].proj_name_n > 0 { n = cwc_put(out, n, cast(string) c[0].proj_name[0..<c[0].proj_name_n]); }

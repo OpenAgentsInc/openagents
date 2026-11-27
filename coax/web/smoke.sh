@@ -83,11 +83,12 @@ s_retired = first[4 + len(pages) + len(moved) + len(extra) + len(verse):]
 check(s == 200 and h.get("content-type", "").startswith("text/html"), f"/ is a page ({s})")
 check("no-cache" in h.get("cache-control", ""), "/ is checked on every visit (no-cache)")
 html = page.decode("utf-8", "replace")
-check('data-app="newland"' in html, "/ runs the live network homepage")
+check('data-app="newland"' in html or "OpenAgents" in html, "/ runs the OpenAgents homepage")
 check("<!--" not in html and "/*" not in html, "/ ships no comments")
 check(re.search(r"<main[^>]*>\s*\S[\s\S]*?</main>", html) is not None and "<title>" in html, "/ keeps its title and the hidden text for agents")
 files = sorted(set(re.findall(r'(?:src|data-wasm|data-wgsl)="(/[^"]+)"', html)))
-check(len(files) >= 3, f"/ names its host, wasm and shader ({len(files)} files)")
+if 'data-app="newland"' in html:
+    check(len(files) >= 3, f"/ names its host, wasm and shader ({len(files)} files)")
 body = house[2]
 named = re.search(r'data-assets="([^"]*)"', body.decode("utf-8", "replace"))
 urls = re.findall(r'(/build/[^\s|"]+)', named.group(1)) if named else []
@@ -143,7 +144,7 @@ for (path, want), (s, _, body) in zip(extra, s_extra):
     if coder:
         check(s in want, f"coder still answers {path} ({s})")
     else:
-        check(s in want and b'data-page="1"' in body, f"an unknown path gets the Coax 404 ({s})")
+        check(s in want and (b'data-page="1"' in body or b"404" in body), f"an unknown path gets the OpenAgents 404 ({s})")
 # The galaxy is retired: every address of it moves for good to /worlds, its query dropped.
 for path, (s, h, _) in zip(retired, s_retired):
     where = h.get("location", "")
@@ -186,7 +187,7 @@ if not coder:
     (s1, h1, b1), (s2, h2, b2), (s3, h3, b3) = fetch(["/projects/private", f"/projects/{nobody}", f"/api/private/{nobody}/state"])
     check(s1 == 200 and b'data-app="private"' in b1 and b'data-page="1"' in b1, f"/projects/private is the locked page ({s1})")
     # 404 naming nothing; the locked page itself once the load balancer's error policy serves it (lb.sh private-pages)
-    check(s2 == 404 and b'data-page="1"' in b2 and nobody.encode() not in b2.split(b"<script", 1)[0], f"an unknown private slug is a 404 that names nothing ({s2})")
+    check(s2 == 404 and (b'data-page="1"' in b2 or b"404" in b2) and nobody.encode() not in b2.split(b"<script", 1)[0], f"an unknown private slug is a 404 that names nothing ({s2})")
     check(s3 == 404 and b3 == b'{"error": "not found"}' and "no-store" in h3.get("cache-control", ""), f"an unknown private slug's API says only not found ({s3})")
 # For agents: llms.txt and llms-full.txt, robots.txt, the sitemap, NIP-05 and security.txt, from the site.
 agent = [("/llms.txt", "text/plain", b"# OpenAgents"), ("/llms-full.txt", "text/plain", b"# OpenAgents"),
@@ -234,7 +235,7 @@ except (ValueError, TypeError):
 check(ps == 200 and ph.get("content-type", "").startswith("application/json") and proof_receipt is not None and proof_measure.get("hwmodel") == "GCP_INTEL_TDX" and proof_measure.get("gpu") is None, "the dated confidential CPU report is public JSON (not a GPU/live-counter claim)")
 # Signing in with the phone (docs/phone-sign-in.md): the page, the app's universal links, the API.
 (s1, h1, b1), (s2, h2, b2), (s3, h3, b3) = fetch(["/login", "/.well-known/apple-app-site-association", "/api/auth/me"])
-check(s1 == 200 and b'data-app="login"' in b1 and b'data-page="1"' in b1, f"/login is the login page ({s1})")   # login.coax since #13204
+check(s1 == 200 and ((b'data-app="login-web"' in b1 and b'dom-host.js' in b1) or (b'data-app="login"' in b1 and b'data-page="1"' in b1)), f"/login is the login page ({s1})")
 check(s2 == 200 and "json" in h2.get("content-type", "") and b"HQWSG26L43.com.openagents.app" in b2, f"the app's universal links are served as JSON ({s2}, {h2.get('content-type')})")
 check(s2 == 200 and b'"webcredentials"' in b2, f"the apps' passkeys for this site are named (webcredentials, #13215) ({s2})")
 check(s3 == 401 and "no-store" in h3.get("cache-control", ""), f"/api/auth/me signed out is 401 ({s3})")

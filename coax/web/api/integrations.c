@@ -107,8 +107,8 @@ bool integrations_route(const request *q) {
   }
 
   if (is_connect) {
-    if (!workos_pipes_configured()) { api_error(q->fd, 503, "WorkOS Pipes is not configured."); return true; }
-    if (!has_wos) { api_error(q->fd, 409, "Sign in with WorkOS to connect GitHub."); return true; }
+    if (!workos_pipes_configured()) { api_error(q->fd, 503, "GitHub integration is not configured."); return true; }
+    if (!has_wos) { api_error(q->fd, 409, "Log in to connect GitHub."); return true; }
     uint8_t req_rt[260] = {0};
     int64_t rtn = wos_c_pipes_connect_req_read((coax_string){q->body, (int64_t)q->body_len},
                                                (coax_v_u8){req_rt, 256});
@@ -145,7 +145,7 @@ bool integrations_route(const request *q) {
                       : -1;
     http_client_res_free(&res);
     if (aun < 10) {
-      api_error(q->fd, 502, "WorkOS Pipes did not return a valid GitHub authorization URL.");
+      api_error(q->fd, 502, "Could not start GitHub authorization. Try again.");
       return true;
     }
     auth_url[aun] = 0;
@@ -214,7 +214,7 @@ bool integrations_route(const request *q) {
   }
 
   // POST /api/integrations/github/disconnect
-  if (!workos_pipes_configured()) { api_error(q->fd, 503, "WorkOS Pipes is not configured."); return true; }
+  if (!workos_pipes_configured()) { api_error(q->fd, 503, "GitHub integration is not configured."); return true; }
   if (!has_wos) { api_error(q->fd, 404, "GitHub is not connected."); return true; }
   uint8_t url_b[512];
   int64_t un = 0;

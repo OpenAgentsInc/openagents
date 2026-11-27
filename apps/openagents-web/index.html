@@ -3,47 +3,68 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OpenAgents — projects and Pylons, live</title>
-<meta name="description" content="Explore real projects, agent work and Pylons on the OpenAgents network. Live signed Nostr observations checked in Coax.">
+<title>OpenAgents — v1.0.0</title>
+<meta name="description" content="OpenAgents v1.0.0 — open-source agent workspace across Web, macOS, and iOS. Launching Monday, November 30 at 12:00 PM CT.">
 <link rel="canonical" href="https://openagents.com/">
 <link rel="alternate" type="text/markdown" href="/index.md">
 <meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenAgents">
+<meta property="og:title" content="OpenAgents — v1.0.0">
+<meta property="og:description" content="Open-source agent workspace across Web, macOS, and iOS. Launching Monday, November 30 at 12:00 PM CT.">
+<meta property="og:url" content="https://openagents.com/">
+<meta property="og:image" content="https://openagents.com/og/home.jpg">
+<meta property="og:image:alt" content="OpenAgents — open-source agent workspace across Web, macOS, and iOS">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OpenAgents — v1.0.0">
+<meta name="twitter:description" content="Open-source agent workspace across Web, macOS, and iOS. Launching Monday, November 30 at 12:00 PM CT.">
+<meta name="twitter:image" content="https://openagents.com/og/home.jpg">
 <style>
-:root{--white:#f0f0f0;--light:#c7c7c7;--mid:#999;--dim:#6b6b6b;--accent:hsl(180,68.07%,53.33%);--bitcoin:#ff8c1f}  /* grayscale; Arwes's electric blue for a few accents only; Bitcoin orange is for payments only */
-html,body{margin:0;height:100%;background:#000;color:var(--white)}
-body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
-canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-canvas[data-cursor=pointer]{cursor:pointer}
-body>main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
-html:not(.gpu) body{overflow:auto}
-a{color:var(--light)}
-a:hover{color:var(--accent)}
-/* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
-.inside body{overflow:auto}.inside canvas,.inside body>main{display:none}.inside #home-root{position:fixed;inset:0;overflow-y:auto;background:#000;z-index:30}
-.gpu body>main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#000000;color:#ededed;font-family:ui-sans-serif,-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body{display:flex;align-items:center;justify-content:center;padding:32px 20px}
+.inside body{overflow:auto;display:block;padding:0}.inside body>main{display:none}.inside #home-root{position:fixed;inset:0;overflow-y:auto;background:#000000;z-index:30}
+main{width:100%;max-width:460px;text-align:center}
+h1{margin:0 0 10px;font-size:36px;font-weight:600;letter-spacing:-.03em;line-height:1.1;color:#ededed}
+.sub{margin:0 0 24px;font-size:15px;line-height:1.5;color:#818181}
+.cd{margin:0 0 26px;padding:16px 20px;border-radius:12px;background:#0a0a0a;border:1px solid #2c2c2c;font:500 13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#ededed}
+.cd strong{display:block;margin-bottom:4px;font:600 11px/1.2 ui-sans-serif,-apple-system,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#818181}
+ul{list-style:none;margin:0;padding:0;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+a{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 20px;border-radius:8px;font-size:13.5px;font-weight:500;text-decoration:none}
+a.primary{background:#ededed;color:#0a0a0a;font-weight:600}
+a.primary:hover{background:#ffffff}
+a.secondary{background:#111111;color:#ededed;border:1px solid #2c2c2c}
+a.secondary:hover{background:#191919;border-color:#404040}
 </style>
 </head>
 <body>
-<canvas id="coaxial" aria-hidden="true"></canvas>
 <main>
 <h1>OpenAgents</h1>
-<p>Projects you can walk into. People and agents building them. Pylons joining the network.</p>
-<p>Projects, task claims and Pylon beacons update from public Nostr relays. Coax verifies signed events and beacon digests. Expired availability becomes unknown. Git history is a build snapshot; worker labels come from signed project records.</p>
-<p><a href="/projects">Projects</a> · <a href="/books">Books</a> · <a href="/nip">Nostr in Coax</a> · <a href="/metaverse">Playtest</a></p>
-<h2>Pylons</h2>
-<p>Open PYLONS beside TUTORIAL for a live, scrollable board: online providers, free slots and current advertised capacity. Inspect each provider's full npub and model identities. Multiple Pylons can share one physical host. Expired beacons lose live capacity. Provider answer and status counts are observations seen by this tab, not proof of completed jobs.</p>
-<p>Original Elephant needs an 18.8 GB download and a qualified native GPU. Read the hardware requirements in the guide before starting.</p>
-<p>Join with the command below, or read the <a href="/docs/connect-a-pylon">Pylon guide</a>. The board's COPY COMMAND control copies this exact command.</p>
-<p><code>curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh &amp;&amp; bash /tmp/join-pylon.sh --model elephant-1 --self-test</code></p>
+<p class="sub">Your agents, everywhere. Cloud workspace across Web, macOS, and iOS.</p>
+<p class="cd"><strong>v1.0.0 Launch</strong><code id="oa-cd">Monday, November 30 · 12:00 PM CT</code></p>
+<ul>
+<li><a class="primary" href="/login">Log in</a></li>
+<li><a class="secondary" href="/chat">Open Chat</a></li>
+<li><a class="secondary" href="/components">Components</a></li>
+</ul>
 </main>
-<!-- The public home page's engine. It is held in a template so that nothing of it loads until the script below
-knows who is here: someone logged in gets the app shell instead (docs/app-shell.md). -->
-<template id="public-engine"><script type="module" src="/coaxial/host.js" data-app="newland"></script></template>
 <script type="module">
-// Who is here decides the page, with one small request before any engine loads. Someone logged in gets the app
-// shell (chat-web: the side and Home Dashboard on /); anyone else the public home page above.
+const el = document.getElementById("oa-cd");
+const target = Date.parse("2026-11-30T18:00:00Z");
+const tick = () => {
+  if (!el) return;
+  const rem = Math.max(0, target - Date.now());
+  if (rem === 0) { el.textContent = "Live now"; return; }
+  const d = Math.floor(rem / 86400000);
+  const h = Math.floor((rem % 86400000) / 3600000);
+  const m = Math.floor((rem % 3600000) / 60000);
+  const s = Math.floor((rem % 60000) / 1000);
+  el.textContent = `${d}d ${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s · Mon Nov 30, 12:00 PM CT`;
+};
+tick();
+setInterval(tick, 1000);
 let inside = false;
 try {
   const r = await fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(3000) });
@@ -51,13 +72,10 @@ try {
 } catch {}
 if (inside) {
   document.documentElement.classList.add("inside");
-  document.getElementById("coaxial")?.remove();   // no engine draws here (and window.coaxial would name the canvas)
-  const root = document.createElement("div"); root.id = "home-root"; document.body.appendChild(root);
+  const root = document.createElement("main"); root.id = "home-root"; document.body.appendChild(root);
   const shell = document.createElement("script"); shell.type = "module"; shell.src = "/coaxial/dom-host.js";
   shell.dataset.app = "chat-web"; shell.dataset.root = "home-root";
   document.body.appendChild(shell);
-} else {
-  document.body.appendChild(document.getElementById("public-engine").content.cloneNode(true));
 }
 </script>
 </body>

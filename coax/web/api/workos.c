@@ -117,12 +117,12 @@ bool workos_pipes_github_token(PGconn *db, const char *account, char *token_out,
   if (err_out && err_cap) err_out[0] = 0;
   if (!token_out || token_cap < 16) return false;
   if (!workos_pipes_configured()) {
-    if (err_out && err_cap) snprintf(err_out, err_cap, "WorkOS Pipes is not configured.");
+    if (err_out && err_cap) snprintf(err_out, err_cap, "GitHub integration is not configured.");
     return false;
   }
   char uid[128] = "", org[128] = "";
   if (!workos_lookup_identity(db, account, uid, org)) {
-    if (err_out && err_cap) snprintf(err_out, err_cap, "Sign in with WorkOS to connect GitHub.");
+    if (err_out && err_cap) snprintf(err_out, err_cap, "Log in to connect GitHub.");
     return false;
   }
   uint8_t url_b[512], body_b[512];
@@ -131,7 +131,7 @@ bool workos_pipes_github_token(PGconn *db, const char *account, char *token_out,
           cs(workos_base_url()), cs("github"), cs(uid), cs(org),
           (coax_v_u8){url_b, (int64_t)sizeof url_b - 1}, (coax_v_u8){body_b, (int64_t)sizeof body_b - 1},
           (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1})) {
-    if (err_out && err_cap) snprintf(err_out, err_cap, "Could not build WorkOS Pipes token request.");
+    if (err_out && err_cap) snprintf(err_out, err_cap, "Could not build GitHub token request.");
     return false;
   }
   url_b[un] = 0;
@@ -470,8 +470,8 @@ static bool resolve_workos_account(PGconn *db, const char *wos_uid, const char *
     snprintf(words, sizeof words,
              "A %s sign-in (%s) was linked to your OpenAgents account after email verification. "
              "If this wasn't you, freeze your account immediately at %s/settings/data.",
-             provider && *provider ? provider : "WorkOS", masked[0] ? masked : "verified email", auth_origin());
-    auth_notice(db, acct_out, "workos.link", "new sign-in method linked", words);
+             provider && *provider ? provider : "Cloud login", masked[0] ? masked : "verified email", auth_origin());
+    auth_notice(db, acct_out, "workos.link", "new log-in method linked", words);
   }
   explicit_bzero(norm_email, sizeof norm_email);
   workos_sync_external_id(wos_uid, acct_out);
@@ -620,15 +620,15 @@ static void route_config(const request *q) {
   char json[512], lines[512], cid_esc[200];
   auth_json_esc(on ? workos_client_id() : "", cid_esc, sizeof cid_esc);
   snprintf(json, sizeof json,
-           "{\"enabled\":%s,\"client_id\":\"%s\",\"providers\":[\"magic\",\"password\",\"google\",\"github\",\"apple\",\"sso\"]}",
+           "{\"enabled\":%s,\"client_id\":\"%s\",\"providers\":[\"magic\",\"password\",\"google\",\"apple\"]}",
            on ? "true" : "false", cid_esc);
-  snprintf(lines, sizeof lines, "enabled %d\nclient_id %s\nproviders magic,password,google,github,apple,sso\n",
+  snprintf(lines, sizeof lines, "enabled %d\nclient_id %s\nproviders magic,password,google,apple\n",
            on ? 1 : 0, on ? workos_client_id() : "");
   auth_answer(q, 200, NULL, json, lines);
 }
 
 static void route_magic_start(const request *q, PGconn *db, const char *body) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char raw_email[400] = "", email[300] = "", client[16] = "web";
   if (!auth_json_str(body, q->body_len, "email", raw_email, sizeof raw_email) || !auth_normal_email(raw_email, email, sizeof email)) {
     auth_refuse(q, 400, "Type your email address.");
@@ -693,7 +693,7 @@ static void route_magic_start(const request *q, PGconn *db, const char *body) {
 }
 
 static void route_magic_verify(const request *q, PGconn *db, const char *body) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char raw_code[32] = "", code[16] = "", email[300] = "", pend[80] = "", radar_id[128] = "", client[16] = "web";
   if (!auth_json_str(body, q->body_len, "code", raw_code, sizeof raw_code)) {
     auth_refuse(q, 400, "Type the 6 digits from the email.");
@@ -766,7 +766,7 @@ static void route_magic_verify(const request *q, PGconn *db, const char *body) {
 }
 
 static void route_password_login(const request *q, PGconn *db, const char *body) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char raw_email[400] = "", email[300] = "", password[260] = "", radar_id[128] = "", client[16] = "web";
   if (!auth_json_str(body, q->body_len, "email", raw_email, sizeof raw_email) || !auth_normal_email(raw_email, email, sizeof email)) {
     auth_refuse(q, 400, "Type your email address.");
@@ -813,7 +813,7 @@ static void route_password_login(const request *q, PGconn *db, const char *body)
 }
 
 static void route_password_register(const request *q, PGconn *db, const char *body) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char raw_email[400] = "", email[300] = "", password[260] = "", radar_id[128] = "", client[16] = "web";
   if (!auth_json_str(body, q->body_len, "email", raw_email, sizeof raw_email) || !auth_normal_email(raw_email, email, sizeof email)) {
     auth_refuse(q, 400, "Type your email address.");
@@ -894,7 +894,7 @@ static void route_password_register(const request *q, PGconn *db, const char *bo
 }
 
 static void route_password_reset(const request *q, PGconn *db, const char *body) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char raw_email[400] = "", email[300] = "";
   if (!auth_json_str(body, q->body_len, "email", raw_email, sizeof raw_email) || !auth_normal_email(raw_email, email, sizeof email)) {
     auth_refuse(q, 400, "Type your email address.");
@@ -932,7 +932,7 @@ static void route_password_reset(const request *q, PGconn *db, const char *body)
 }
 
 static void route_password_reset_confirm(const request *q, PGconn *db, const char *body) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char token[512] = "", new_pw[260] = "";
   if (!auth_json_str(body, q->body_len, "token", token, sizeof token) || !token[0]) {
     auth_refuse(q, 400, "Missing password reset token.");
@@ -1019,7 +1019,7 @@ static bool discover_sso_connection(PGconn *db, const char *domain, char conn_id
 }
 
 static void route_device_start(const request *q, PGconn *db) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char ipk[65]; auth_visitor_key(q, ipk);
   long long left_ms = 0;
   if (!api_limit(db, "workos_magic_ip", ipk, 30, &left_ms)) {
@@ -1035,7 +1035,7 @@ static void route_device_start(const request *q, PGconn *db) {
   if (res.status < 200 || res.status >= 300 || !res.body) {
     long st = res.status;
     http_client_res_free(&res);
-    auth_refuse(q, st == 429 ? 429 : 502, "Could not start WorkOS device authorization.");
+    auth_refuse(q, st == 429 ? 429 : 502, "Could not start device authorization.");
     return;
   }
   auth_audit(db, NULL, NULL, "workos.device_start", "ok", NULL);
@@ -1044,7 +1044,7 @@ static void route_device_start(const request *q, PGconn *db) {
 }
 
 static void route_sso_discover(const request *q, PGconn *db, const char *body) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char email[300] = "", domain[200] = "";
   if (auth_json_str(body, q->body_len, "domain", domain, sizeof domain) && domain[0]) {
     // domain provided directly
@@ -1067,7 +1067,7 @@ static void route_sso_discover(const request *q, PGconn *db, const char *body) {
 }
 
 static void route_oauth_start(const request *q, PGconn *db) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char provider[64] = "", domain[200] = "", conn_id[128] = "", org_id[128] = "", login_hint[256] = "", next_path[256] = "/", mode[16] = "";
   api_query(q, "provider", provider, sizeof provider);
   api_query(q, "domain", domain, sizeof domain);
@@ -1171,7 +1171,7 @@ static void route_oauth_start(const request *q, PGconn *db) {
 }
 
 static void route_callback(const request *q, PGconn *db) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char code[512] = "", state[128] = "", err_param[128] = "", cookie_state[128] = "";
   api_query(q, "code", code, sizeof code);
   api_query(q, "state", state, sizeof state);
@@ -1274,7 +1274,7 @@ static void route_callback(const request *q, PGconn *db) {
 }
 
 static void route_org_pending(const request *q, PGconn *db) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char ptok[80] = "";
   auth_cookie(q, WOS_ORG_COOKIE, ptok, sizeof ptok);
   if (!ptok[0]) api_query(q, "pending", ptok, sizeof ptok);
@@ -1302,7 +1302,7 @@ static void route_org_pending(const request *q, PGconn *db) {
 }
 
 static void route_org_select(const request *q, PGconn *db, const char *body) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char org_id[128] = "", ptok[80] = "", client[16] = "web";
   if (!auth_json_str(body, q->body_len, "organization_id", org_id, sizeof org_id) || !org_id[0]) {
     auth_refuse(q, 400, "Choose an organization.");
@@ -1353,7 +1353,7 @@ static void route_org_select(const request *q, PGconn *db, const char *body) {
 
 // Native PKCE exchange (iOS/macOS/Android) and CLI WorkOS JWT handoff -> Option A1 oa_at_/oa_rt_.
 static void route_exchange(const request *q, PGconn *db, const char *body) {
-  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
   char code[512] = "", verifier[256] = "", access_token[4096] = "";
   auth_json_str(body, q->body_len, "code", code, sizeof code);
   auth_json_str(body, q->body_len, "code_verifier", verifier, sizeof verifier);
@@ -1395,7 +1395,7 @@ static void route_exchange(const request *q, PGconn *db, const char *body) {
     workos_http("GET", (const char *)jwks_url, NULL, 0, false, &jres);
     if (jres.status != 200 || !jres.body) {
       http_client_res_free(&jres);
-      auth_refuse(q, 502, "Could not verify WorkOS session token.");
+      auth_refuse(q, 502, "Could not verify session token.");
       return;
     }
     coax_t_WosJwtClaims claims;
@@ -1404,7 +1404,7 @@ static void route_exchange(const request *q, PGconn *db, const char *body) {
                                            cs(""), (int64_t)time(NULL), (coax_v_t_WosJwtClaims){&claims, 1});
     http_client_res_free(&jres);
     if (jerr != WOS_JWT_OK || claims.sub_n <= 0) {
-      auth_refuse(q, 401, "That WorkOS token isn't valid.");
+      auth_refuse(q, 401, "That login token isn't valid.");
       return;
     }
     char wos_uid[128] = "", org_id[128] = "", wos_sid[128] = "";
@@ -1456,7 +1456,7 @@ static void route_exchange(const request *q, PGconn *db, const char *body) {
     return;
   }
 
-  auth_refuse(q, 400, "Provide a PKCE code or WorkOS access_token.");
+  auth_refuse(q, 400, "Provide a PKCE code or access_token.");
 }
 
 static void route_orgs_list(const request *q, PGconn *db) {

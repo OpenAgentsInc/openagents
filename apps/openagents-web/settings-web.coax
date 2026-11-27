@@ -534,7 +534,7 @@ sw_link :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string, name: string, a
 
 // Account formatting helpers shared by Home Dashboard (/) and Account Settings (/settings/account).
 sw_via_label :: (via: string) -> string {
-  if via == "workos" { return "WorkOS"; }
+  if via == "workos" { return "Cloud account"; }
   if via == "email" { return "Email code"; }
   if via == "nostr" { return "Nostr key"; }
   if via == "passkey" { return "Passkey"; }
@@ -549,7 +549,7 @@ sw_state_badge :: (s: [] SettingsWeb) -> string {
   return "Active";
 }
 sw_status_line :: (s: [] SettingsWeb, out: [] u8) -> string {
-  n := sw_put(out, 0, "Signed in via ");
+  n := sw_put(out, 0, "Logged in via ");
   n = sw_put(out, n, sw_via_label(cast(string) s[0].via[0..<s[0].via_n]));
   if s[0].level_n > 0 { n = sw_put(out, n, " · "); n = sw_put(out, n, cast(string) s[0].level[0..<s[0].level_n]); }
   if s[0].strong { n = sw_put(out, n, " (strong credential)"); }
@@ -622,7 +622,7 @@ sw_orgs_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
   active := cast(string) s[0].active_org[0..<s[0].active_org_n];
   if s[0].norgs == 0 {
     ida: [UI_ID] u8; idv: [UI_ID] u8;
-    if sw_row(s, t, u, tr_cat(ida[..], id, ".cur"), "Active organization", "Current WorkOS organization context.") {
+    if sw_row(s, t, u, tr_cat(ida[..], id, ".cur"), "Active organization", "Current organization context.") {
       v := k_set_value(t, tr_cat(idv[..], id, ".cur.v"), active);
       k_set_row_end(t);
     }
@@ -739,7 +739,7 @@ sw_github_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
   sw_group(s, t, u, id, "GitHub");
   idr: [UI_ID] u8;
   if s[0].gh_connected {
-    about: [220] u8; num: [24] u8; n := sw_put(about[..], 0, "Connected via WorkOS Pipes");
+    about: [220] u8; num: [24] u8; n := sw_put(about[..], 0, "Connected");
     if s[0].gh_login_n > 0 { n = sw_put(about[..], n, " as @"); n = sw_put(about[..], n, cast(string) s[0].gh_login[0..<s[0].gh_login_n]); }
     if s[0].gh_nrepos > 0 {
       n = sw_put(about[..], n, " · "); n = sw_put(about[..], n, tr_join(num[..], "", s[0].gh_nrepos));
@@ -752,7 +752,7 @@ sw_github_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
     }
   } else {
     if sw_row(s, t, u, tr_cat(idr[..], id, ".conn"), "Connect GitHub",
-      "Authorize GitHub via WorkOS Pipes to pick repositories for Projects and let Cloud Chat read your code. OpenAgents never stores your GitHub token.") {
+      "Connect GitHub to pick repositories for Projects and let Cloud Chat read your code. OpenAgents never stores your GitHub token.") {
       bc := k_button(t, u, "sw.gh.connect", "Connect GitHub", BS_PRIMARY);
       k_set_row_end(t);
     }
@@ -764,17 +764,17 @@ sw_github_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
   sw_group_end(s, t);
 }
 
-// Home Dashboard (/): login status, full identity & account overview, WorkOS organizations, and settings shortcuts.
+// Home Dashboard (/): login status, full identity & account overview, organizations, and settings shortcuts.
 sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: int, worlds_n: int) {
   p := k_set(t, "home");
-  crumb := ifx !s[0].logged then (ifx s[0].read then "Home · Not signed in" else "Home · Checking login")
-    else ifx s[0].admin then "Home · Signed in · Admin" else "Home · Signed in";
+  crumb := ifx !s[0].logged then (ifx s[0].read then "Home · Not logged in" else "Home · Checking login")
+    else ifx s[0].admin then "Home · Logged in · Admin" else "Home · Logged in";
   title := ifx s[0].primary_n > 0 then cast(string) s[0].primary[0..<s[0].primary_n]
     else ifx who.count > 0 then who else "OpenAgents";
   b := k_set_body(t, u, "home.b", crumb, title);
   if !s[0].logged {
     sw_group(s, t, u, "home.status", "Login status");
-    if sw_row(s, t, u, "home.status.in", "Not logged in", ifx s[0].read then "Sign in to view your account dashboard and manage your settings." else "Checking your session.") {
+    if sw_row(s, t, u, "home.status.in", "Not logged in", ifx s[0].read then "Log in to view your account dashboard and manage your settings." else "Checking your session.") {
       if s[0].read { g := k_go(t, "home.status.in.go", "Log in", "/login"); }
       k_set_row_end(t);
     }
@@ -1193,7 +1193,7 @@ sw_test_build :: (x: [] SwTest, who: string) {
   tr_begin(t); ui_begin(u, 0, true);
   sw_home(s, t, u, "chris@openagents.com", 2, 1);
   #assert t[0].depth == 0 && t[0].lost == 0;
-  #assert tr_text_of(t, tr_find(t, "home.b.crumb")) == "Home · Signed in · Admin";
+  #assert tr_text_of(t, tr_find(t, "home.b.crumb")) == "Home · Logged in · Admin";
   #assert tr_text_of(t, tr_find(t, "home.b.t")) == "chris@openagents.com";
   #assert tr_text_of(t, tr_find(t, "home.status.state.v")) == "Active";
   #assert tr_text_of(t, tr_find(t, "home.status.acct.v")) == "acct_42";

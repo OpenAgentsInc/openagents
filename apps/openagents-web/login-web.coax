@@ -287,9 +287,11 @@ lw_build :: (s: [] LoginWeb) {
   }
 
   if s[0].screen == LW_SCR_EMAIL {
+    dest := ifx s[0].next_path_n > 0 then cast(string) s[0].next_path[0..<s[0].next_path_n] else "/chat";
+    gb: [320] u8; ab: [320] u8;
     _ = tr_open(t, "lw.oauth", TG_DIV, "lw-oauth");
-    lw_oauth_btn(t, "lw.oauth.google", "Continue with Google", "/api/auth/workos/oauth/start?provider=GoogleOAuth", "/login/google.svg", false);
-    lw_oauth_btn(t, "lw.oauth.apple", "Continue with Apple", "/api/auth/workos/oauth/start?provider=AppleOAuth", "/login/apple.svg#i", true);
+    lw_oauth_btn(t, "lw.oauth.google", "Continue with Google", tr_cat(gb[..], "/api/auth/workos/oauth/start?provider=GoogleOAuth&next=", dest), "/login/google.svg", false);
+    lw_oauth_btn(t, "lw.oauth.apple", "Continue with Apple", tr_cat(ab[..], "/api/auth/workos/oauth/start?provider=AppleOAuth&next=", dest), "/login/apple.svg#i", true);
     tr_close(t);
 
     _ = tr_leaf(t, "lw.or", TG_DIV, "lw-or", "OR");

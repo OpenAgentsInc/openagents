@@ -519,7 +519,7 @@ lg_answer :: (s: [] Lg, text: string) {
     ao := lg_value(lines, "active_organization_id", found[..]);
     if found[0] { s[0].active_org_n = lg_set(s[0].active_org[..], ao); }
     lg_wos_parse_orgs(s, lines);
-    if s[0].org_n == 0 { lg_err(s, "Your account is not in any WorkOS organization yet."); return; }
+    if s[0].org_n == 0 { lg_err(s, "Your account is not in any organization yet."); return; }
     s[0].org_mode_switch = true; s[0].screen = LG_ORG_SELECT; s[0].focus = -1; return;
   }
   if req == REQ_WOS_ORG_SWITCH {
