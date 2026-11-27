@@ -1,0 +1,165 @@
+// OpenAgents Shared Knowledge Base — Normalized Tokenizer & Reader-Side Dense Semantic Encoder (#14058).
+//
+// Computes deterministic, zero-heap, unit-normalized 64-dim dense embeddings on the reader
+// side (never accepting author-supplied vectors per NIP-KB §Trust). Combines:
+//   - normalized tokens (preserving `#authority`, `#test`, `289`, etc.)
+//   - `#`-stripped directive stems (`#authority` -> `authority`)
+//   - 5-char morphological stems (aligns decide/decided/decision, retrieve/retrieval, author/authoring)
+//   - character 3-grams over words >= 4 chars (subword/compound/plural alignment)
+//   - adjacent non-stopword bigrams (`episode 289`, `system one`, `nip kb`, `two arm`)
+//
+//   coax/bin/coax test openagents/knowledge/embed.coax --library
+#load "record.coax";
+
+// FNV-1a 32-bit hash over normalized bytes for vocabulary lookup and signed feature projection.
+kb_fnv32 :: (s: string) -> u32 #effects(reads, traps) {
+  h: u32 = 2166136261;
+  for i: 0..<s.count {
+    h = h ^ cast(u32) s[i];
+    h = cast,trunc(u32) (cast(u64) h * 16777619);
+  }
+  return h;
+}
+
+// Common natural-language question stopwords excluded from BM25 & dense weighting.
+kb_is_stopword :: (tok: string) -> bool #effects(reads, traps) {
+  if tok.count < 2 { return true; }
+  return tok == "the" || tok == "and" || tok == "for" || tok == "that" || tok == "this" ||
+         tok == "with" || tok == "from" || tok == "are" || tok == "was" || tok == "were" ||
+         tok == "what" || tok == "how" || tok == "does" || tok == "did" || tok == "can" ||
+         tok == "our" || tok == "you" || tok == "your" || tok == "about" || tok == "into" ||
+         tok == "have" || tok == "has" || tok == "not" || tok == "but" || tok == "all" ||
+         tok == "when" || tok == "where" || tok == "who" || tok == "why" || tok == "we" ||
+         tok == "in" || tok == "on" || tok == "to" || tok == "of" || tok == "is" ||
+         tok == "it" || tok == "as" || tok == "at" || tok == "by" || tok == "an" ||
+         tok == "or" || tok == "be" || tok == "do" || tok == "if" || tok == "its" ||
+         tok == "they" || tok == "them" || tok == "their" || tok == "there" || tok == "then" ||
+         tok == "than" || tok == "will" || tok == "would" || tok == "should" || tok == "could" ||
+         tok == "also" || tok == "just" || tok == "more" || tok == "most" || tok == "some" ||
+         tok == "only" || tok == "very" || tok == "been" || tok == "being" || tok == "into";
+}
+
+// Read the next lowercase token from `text` starting at `pos[0]`.
+// Preserves a leading `#` when followed by an ASCII letter (so `#authority` and `#test` stay distinct).
+kb_next_tok :: (text: string, pos: [] int, out: [] u8) -> int #effects(all) {
+  if pos.count < 1 || out.count < 1 { return 0; }
+  i := pos[0];
+  if i < 0 { i = 0; }
+  while i < text.count {
+    c := text[i];
+    if kb_rec_is_alnum(c) { break; }
+    if c == '#' && i + 1 < text.count && kb_rec_is_alpha(text[i + 1]) { break; }
+    i += 1;
+  }
+  if i >= text.count { pos[0] = i; return 0; }
+  n := 0;
+  if text[i] == '#' {
+    out[0] = '#';
+    n = 1;
+    i += 1;
+  }
+  while i < text.count && kb_rec_is_alnum(text[i]) {
+    if n < out.count {
+      out[n] = kb_rec_lower(text[i]);
+      n += 1;
+    }
+    i += 1;
+  }
+  pos[0] = i;
+  return n;
+}
+
+// Project one signed feature hash into `vec[0..<KB_VEC_DIM]` with weight `w`.
+kb_proj :: (vec: [] f64, h: u32, w: f64) #effects(all) {
+  b := cast(int) (h & 63);
+  sign := ifx ((h >> 6) & 1) == 0 then 1.0 else -1.0;
+  vec[b] += sign * w;
+  b2 := cast(int) ((h >> 8) & 63);
+  sign2 := ifx ((h >> 14) & 1) == 0 then 1.0 else -1.0;
+  vec[b2] += sign2 * w * 0.5;
+}
+
+// Accumulate semantic features from `text` into `acc[0..<KB_VEC_DIM]` with weight `weight`.
+kb_embed_add :: (acc: [] f64, text: string, weight: f64) #effects(all) {
+  pos := [1] int.[0];
+  tb: [48] u8;
+  prev_h: u32 = 0;
+  has_prev := false;
+  while true {
+    n := kb_next_tok(text, pos[..], tb[..]);
+    if n == 0 { break; }
+    tok := cast(string) tb[0..<n];
+    if kb_is_stopword(tok) { continue; }
+    h := kb_fnv32(tok);
+    kb_proj(acc, h, weight);
+    start := ifx tok[0] == '#' then 1 else 0;
+    bare := cast(string) tb[start..<n];
+    if start == 1 {
+      kb_proj(acc, kb_fnv32(bare), weight * 0.9);
+    }
+    if bare.count >= 6 {
+      stem := cast(string) tb[start..<start + 5];
+      kb_proj(acc, kb_fnv32(stem) ^ 0x5a5a5a5a, weight * 0.85);
+    }
+    if bare.count >= 4 {
+      lim := ifx bare.count < 16 then bare.count else 16;
+      for j: 0..<lim - 2 {
+        tri := cast(string) tb[start + j..<start + j + 3];
+        kb_proj(acc, kb_fnv32(tri) ^ 0x3c3c3c3c, weight * 0.35);
+      }
+    }
+    if has_prev {
+      bh := cast,trunc(u32) (cast(u64) prev_h * 31) ^ h ^ 0x9e3779b9;
+      kb_proj(acc, bh, weight * 0.65);
+    }
+    prev_h = h;
+    has_prev = true;
+  }
+}
+
+// Compute a unit-normalized 64-dim reader embedding for a passage or query.
+// Returns true when non-zero (normalized), false when empty/stopword-only.
+kb_embed :: (heading: string, path: string, body: string, out_vec: [] f32) -> bool #effects(all) {
+  if out_vec.count < KB_VEC_DIM { return false; }
+  acc: [KB_VEC_DIM] f64;
+  for i: 0..<KB_VEC_DIM { acc[i] = 0.0; out_vec[i] = 0.0; }
+  kb_embed_add(acc[..], heading, 2.5);
+  kb_embed_add(acc[..], path, 1.8);
+  kb_embed_add(acc[..], body, 1.0);
+  norm2 := 0.0;
+  for i: 0..<KB_VEC_DIM { norm2 += acc[i] * acc[i]; }
+  if norm2 <= 1e-12 { return false; }
+  inv := 1.0 / sqrt(norm2);
+  for i: 0..<KB_VEC_DIM { out_vec[i] = cast(f32) (acc[i] * inv); }
+  return true;
+}
+
+#test "knowledge embed: tokenizer, stopwords, and unit-normalized dense semantic cosine" {
+  #assert kb_fnv32("") == 2166136261 && kb_fnv32("a") != kb_fnv32("b");
+  #assert kb_is_stopword("a") && kb_is_stopword("the") && kb_is_stopword("what") && !kb_is_stopword("#authority") && !kb_is_stopword("289");
+
+  pos := [1] int.[-5];
+  tb: [16] u8;
+  txt := "How does #Authority #9 work? NIP-KB!";
+  #assert kb_next_tok(txt, pos[..], tb[..]) == 3 && cast(string) tb[0..<3] == "how";
+  #assert kb_next_tok(txt, pos[..], tb[..]) == 4 && cast(string) tb[0..<4] == "does";
+  #assert kb_next_tok(txt, pos[..], tb[..]) == 10 && cast(string) tb[0..<10] == "#authority";
+  #assert kb_next_tok(txt, pos[..], tb[..]) == 1 && cast(string) tb[0..<1] == "9";
+  #assert kb_next_tok(txt, pos[..], tb[..]) == 4 && cast(string) tb[0..<4] == "work";
+  #assert kb_next_tok(txt, pos[..], tb[..]) == 3 && cast(string) tb[0..<3] == "nip";
+  #assert kb_next_tok(txt, pos[..], tb[..]) == 2 && cast(string) tb[0..<2] == "kb";
+  #assert kb_next_tok(txt, pos[..], tb[..]) == 0;
+
+  vq: [KB_VEC_DIM] f32; v1: [KB_VEC_DIM] f32; v2: [KB_VEC_DIM] f32; v3: [KB_VEC_DIM] f32;
+  #assert !kb_embed("", "", "", vq[0..<63]);
+  #assert !kb_embed("the and", "what", "in of", vq[..]);
+  #assert kb_embed("", "", "how does Coax #authority mutation checking work?", vq[..]);
+  #assert kb_embed("Authority and Mutation Checks", "coax/book/ch11-writing-checks.md", "Files marked #authority require zero surviving mutants.", v1[..]);
+  #assert kb_embed("Episode 289 OpenAgents", "docs/transcripts/289.md", "We decided to build System One Front and a shared knowledge base.", v2[..]);
+  #assert kb_embed("Sourdough Pizza Recipe", "food/pizza.md", "Bake dough at 500 degrees with mozzarella and basil.", v3[..]);
+  s1 := bs_dot(vq[..], v1[..]);
+  s2 := bs_dot(vq[..], v2[..]);
+  s3 := bs_dot(vq[..], v3[..]);
+  #assert abs(bs_dot(v1[..], v1[..]) - 1.0) < 1e-4;
+  #assert s1 > s2 && s1 > s3 && s1 > 0.35;
+}

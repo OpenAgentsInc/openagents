@@ -1,0 +1,1282 @@
+// OpenAgents Shared Knowledge Base — Workspace Index, Disk Cache & Hybrid Retrieval (#14058).
+//
+// Indexes Markdown documents across `docs/`, `*/book/`, `docs/transcripts/`,
+// `nostr/nips/openagents/`, and workspace root docs (`AGENTS.md`, `INVARIANTS.md`, `README.md`):
+//   - Heading-aware + bounded-window chunking with exact 1-based line ranges & byte offsets
+//   - Inverted BM25 lexical index reusing `bs_bm25` (psionic/lib/book-search/rank.coax)
+//   - Reader-computed 64-dim unit dense semantic embeddings (quantized s16 in memory & cache)
+//     scored via `bs_dot` and fused via `kb_rec_hybrid_fuse` (`bs_fuse` + `bs_top`)
+//   - Atomic binary disk cache in `~/.openagents/cache/kb-<root_hash>.v1` validated by
+//     O(files) mtime+size fingerprint so warm queries run in <50ms locally
+//   - Mounted by OpenAgents Core (`OA_PACK_KNOWLEDGE`: `KnowledgeSearch`, `KnowledgeGet`)
+//
+//   coax/bin/coax test openagents/knowledge/index.coax --library
+#load "embed.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+KB_MAX_FILES      :: 4096;
+KB_PATH_SLAB      :: 262144;
+KB_MAX_CHUNKS     :: 32768;
+KB_HEAD_SLAB      :: 2097152;
+KB_VOCAB_CAP      :: 131072;
+KB_VOCAB_MASK     :: 131071;
+KB_MAX_POSTS      :: 3145728;
+KB_CHUNK_TARGET   :: 3000;
+KB_CHUNK_MAX_TERM :: 112;
+KB_READ_BUF       :: 524288;
+KB_MAX_HITS       :: 16;
+KB_TOP_CANDS      :: 48;
+KB_CACHE_MAGIC    :: 0x4F414B42;
+KB_CACHE_VER      :: 4;
+KB_CACHE_BUF_MAX  :: 40000000;
+
+KbFileEntry :: struct {
+  path_off: s32;
+  path_len: u16;
+  kind: u8;
+  doc_status: u8;
+  mtime_ns: int;
+  size: s32;
+}
+
+KbChunkEntry :: struct {
+  file_idx: u16;
+  doc_status: u8;
+  pad: u8;
+  start_line: s32;
+  end_line: s32;
+  start_byte: s32;
+  end_byte: s32;
+  head_off: s32;
+  head_len: u16;
+  tok_len: u16;
+}
+
+KbIndex :: struct {
+  ready: bool;
+  root_buf: [FS_PATH_MAX] u8;
+  root_len: int;
+  fp_lo: u64;
+  fp_hi: u64;
+
+  nfiles: int;
+  files: [KB_MAX_FILES] KbFileEntry;
+  path_used: int;
+  path_slab: [KB_PATH_SLAB] u8;
+
+  nchunks: int;
+  chunks: [KB_MAX_CHUNKS] KbChunkEntry;
+  head_used: int;
+  head_slab: [KB_HEAD_SLAB] u8;
+  total_tok_len: int;
+
+  // Quantized unit-normalized 64-dim dense vectors (s16 = round(f32 * 32767.0)).
+  vecs_q: [KB_MAX_CHUNKS * KB_VEC_DIM] s16;
+
+  // Open-addressed term vocabulary -> linked inverted posting lists.
+  vocab_h1: [KB_VOCAB_CAP] u32;
+  vocab_h2: [KB_VOCAB_CAP] u32;
+  vocab_df: [KB_VOCAB_CAP] s32;
+  vocab_head: [KB_VOCAB_CAP] s32;
+  nvocab: int;
+
+  nposts: int;
+  post_chunk: [KB_MAX_POSTS] u16;
+  post_tf: [KB_MAX_POSTS] u16;
+  post_next: [KB_MAX_POSTS] s32;
+}
+
+KbQueryHitBuf :: struct {
+  entry_id: [132] u8; entry_id_n: int;
+  digest: [64] u8; digest_n: int;
+  snippet: [512] u8; snippet_n: int;
+  hit: KbRecHit;
+}
+
+KbQueryResult :: struct {
+  latency_ms: int;
+  indexed_files: int;
+  indexed_chunks: int;
+  nhits: int;
+  hits: [KB_MAX_HITS] KbQueryHitBuf;
+}
+
+KbDirSpan :: struct { off: s32; len: u16; }
+
+KbScanWork :: struct {
+  flist: [1] FsList;
+  q_spans: [1024] KbDirSpan;
+  q_slab: [131072] u8;
+  q_used: int;
+}
+
+// Secondary hash for collision-free vocabulary slots.
+kb_fnv32_alt :: (s: string) -> u32 #effects(reads, traps) {
+  h: u32 = 33554467;
+  for i: 0..<s.count {
+    h = cast,trunc(u32) (cast(u64) h * 131 + cast(u64) s[i] + 17);
+  }
+  return ifx h == 0 then 1 else h;
+}
+
+kb_mix_fp :: (lo: [] u64, hi: [] u64, s: string, mtime_ns: int, size: int) {
+  a := cast,trunc(u32) lo[0];
+  b := cast,trunc(u32) hi[0];
+  for i: 0..<s.count {
+    a = cast,trunc(u32) (cast(u64) (a ^ cast(u32) s[i]) * 16777619);
+    b = cast,trunc(u32) (cast(u64) b * 131 + cast(u64) s[i] + 1);
+  }
+  m_lo := cast,trunc(u32) mtime_ns;
+  m_hi := cast,trunc(u32) (cast,trunc(u64) mtime_ns >> 32);
+  a = cast,trunc(u32) (cast(u64) (a ^ m_lo) * 16777619);
+  a = cast,trunc(u32) (cast(u64) (a ^ m_hi) * 16777619);
+  b = cast,trunc(u32) (cast(u64) (b ^ cast,trunc(u32) size) * 2246822519 + 3266489917);
+  lo[0] = cast(u64) a;
+  hi[0] = cast(u64) b;
+}
+
+kb_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+kb_cat :: (dst: [] u8, at: int, src: string) -> int {
+  n := at;
+  if n < 0 { n = 0; }
+  for i: 0..<src.count {
+    if n >= dst.count { break; }
+    dst[n] = src[i];
+    n += 1;
+  }
+  return n;
+}
+
+kb_file_path :: (idx: [] KbIndex, fi: int) -> string {
+  if fi < 0 || fi >= idx[0].nfiles { return ""; }
+  f := idx[0].files[fi];
+  off := cast(int) f.path_off;
+  ln := cast(int) f.path_len;
+  return cast(string) idx[0].path_slab[off..<off + ln];
+}
+
+kb_chunk_heading :: (idx: [] KbIndex, ci: int) -> string {
+  if ci < 0 || ci >= idx[0].nchunks { return ""; }
+  c := idx[0].chunks[ci];
+  off := cast(int) c.head_off;
+  ln := cast(int) c.head_len;
+  return cast(string) idx[0].head_slab[off..<off + ln];
+}
+
+kb_idx_clear :: (idx: [] KbIndex) {
+  idx[0].ready = false;
+  idx[0].nfiles = 0;
+  idx[0].path_used = 0;
+  idx[0].nchunks = 0;
+  idx[0].head_used = 0;
+  idx[0].total_tok_len = 0;
+  idx[0].nvocab = 0;
+  idx[0].nposts = 0;
+  idx[0].fp_lo = 14695981039346656037;
+  idx[0].fp_hi = 11400714819323198485;
+  for i: 0..<KB_VOCAB_CAP {
+    idx[0].vocab_h2[i] = 0;
+    idx[0].vocab_df[i] = 0;
+    idx[0].vocab_head[i] = -1;
+  }
+}
+
+kb_skip_dir_name :: (name: string) -> bool {
+  if name.count == 0 || name[0] == '.' { return true; }
+  return name == "node_modules" || name == "target" || name == "build" ||
+         name == "dist" || name == "assets" || name == "images" ||
+         name == "screenshots" || name == "bin" || name == "vendor" ||
+         name == "archive";
+}
+
+kb_add_file :: (idx: [] KbIndex, root: string, rel: string, fp_lo: [] u64, fp_hi: [] u64) {
+  if idx[0].nfiles >= KB_MAX_FILES { return; }
+  if idx[0].path_used + rel.count > KB_PATH_SLAB { return; }
+  full_b: [FS_PATH_MAX] u8;
+  full := fs_join(root, rel, full_b[..]);
+  if full.count == 0 { return; }
+  if fs_kind(full) != FS_FILE { return; }
+  sz := fs_size(full);
+  if sz <= 0 || sz > KB_READ_BUF { return; }
+  mt := fs_mtime_ns(full);
+
+  fi := idx[0].nfiles;
+  off := idx[0].path_used;
+  for i: 0..<rel.count { idx[0].path_slab[off + i] = rel[i]; }
+  idx[0].path_used += rel.count;
+  idx[0].files[fi] = KbFileEntry.{
+    path_off = cast(s32) off,
+    path_len = cast(u16) rel.count,
+    kind = cast(u8) kb_rec_classify_source(rel),
+    doc_status = cast(u8) BsStatus.implemented,
+    mtime_ns = mt,
+    size = cast(s32) sz,
+  };
+  idx[0].nfiles += 1;
+  kb_mix_fp(fp_lo, fp_hi, rel, mt, sz);
+}
+
+kb_queue_push :: (w: [] KbScanWork, qn: [] int, rel_dir: string) {
+  if qn[0] >= w[0].q_spans.count { return; }
+  if w[0].q_used + rel_dir.count > w[0].q_slab.count { return; }
+  off := w[0].q_used;
+  for i: 0..<rel_dir.count { w[0].q_slab[off + i] = rel_dir[i]; }
+  w[0].q_used += rel_dir.count;
+  w[0].q_spans[qn[0]] = KbDirSpan.{off = cast(s32) off, len = cast(u16) rel_dir.count};
+  qn[0] += 1;
+}
+
+kb_walk_subdir :: (idx: [] KbIndex, root: string, start_rel: string, w: [] KbScanWork, fp_lo: [] u64, fp_hi: [] u64) {
+  full_b: [FS_PATH_MAX] u8;
+  start_full := fs_join(root, start_rel, full_b[..]);
+  if start_full.count == 0 || fs_kind(start_full) != FS_DIR { return; }
+
+  w[0].q_used = 0;
+  qn := [1] int.[0];
+  kb_queue_push(w, qn[..], start_rel);
+  qi := 0;
+  rel_b: [FS_PATH_MAX] u8;
+  while qi < qn[0] {
+    sp := w[0].q_spans[qi];
+    qi += 1;
+    cur_rel := cast(string) w[0].q_slab[cast(int) sp.off..<cast(int) sp.off + cast(int) sp.len];
+    cur_full := fs_join(root, cur_rel, full_b[..]);
+    if cur_full.count == 0 { continue; }
+    cnt := fs_list(cur_full, w[0].flist[..]);
+    if cnt <= 0 { continue; }
+    for i: 0..<cnt {
+      name := fs_entry(w[0].flist[..], i);
+      if name.count == 0 { continue; }
+      child_rel := fs_join(cur_rel, name, rel_b[..]);
+      if child_rel.count == 0 { continue; }
+      child_full := fs_join(root, child_rel, full_b[..]);
+      if child_full.count == 0 { continue; }
+      k := fs_kind(child_full);
+      if k == FS_DIR {
+        if !kb_skip_dir_name(name) {
+          kb_queue_push(w, qn[..], child_rel);
+        }
+      } else if k == FS_FILE {
+        if kb_rec_ends(name, ".md") || kb_rec_ends(name, ".MD") {
+          kb_add_file(idx, root, child_rel, fp_lo, fp_hi);
+        }
+      }
+    }
+  }
+}
+
+// Discover all Markdown files across primary canonical sources first:
+//   1. Workspace root docs (`AGENTS.md`, `INVARIANTS.md`, `README.md`, ...)
+//   2. All `*/book/` directories (all 9+ repo books)
+//   3. `docs/transcripts/` (all podcast/session transcripts)
+//   4. `nostr/nips/openagents/` (NIP-KB and OpenAgents NIPs)
+//   5. Remaining `docs/` subtrees (skipping `docs/transcripts/` already added and `archive/`)
+//   6. Optional workspace `knowledge/` or `notes/` directories
+kb_scan_corpus :: (idx: [] KbIndex, root: string) {
+  w: [1] KbScanWork;
+  fp_lo := [1] u64.[14695981039346656037];
+  fp_hi := [1] u64.[11400714819323198485];
+
+  // 1. Workspace root architecture/contract docs.
+  root_docs := [5] string.["AGENTS.md", "INVARIANTS.md", "README.md", "CONTRIBUTING.md", "CLAUDE.md"];
+  for i: 0..<root_docs.count {
+    kb_add_file(idx, root, root_docs[i], fp_lo[..], fp_hi[..]);
+  }
+
+  // 2. All top-level `*/book/` directories (dynamically discovers all 9+ repo books).
+  top_list: [1] FsList;
+  ntop := fs_list(root, top_list[..]);
+  if ntop > 0 {
+    sub_b: [FS_PATH_MAX] u8;
+    for i: 0..<ntop {
+      name := fs_entry(top_list[..], i);
+      if kb_skip_dir_name(name) { continue; }
+      bk_rel := fs_join(name, "book", sub_b[..]);
+      if bk_rel.count > 0 {
+        kb_walk_subdir(idx, root, bk_rel, w[..], fp_lo[..], fp_hi[..]);
+      }
+    }
+  }
+
+  // 3. `docs/transcripts/` first so transcripts are prioritized ahead of ephemeral verification/audit dumps.
+  kb_walk_subdir(idx, root, "docs/transcripts", w[..], fp_lo[..], fp_hi[..]);
+
+  // 4. `nostr/nips/openagents/` (NIP-KB and OpenAgents NIPs).
+  kb_walk_subdir(idx, root, "nostr/nips/openagents", w[..], fp_lo[..], fp_hi[..]);
+
+  // 5. Remaining `docs/` files first (top-level `docs/*.md`), then subdirectories (avoiding duplicating `docs/transcripts`).
+  docs_full_b: [FS_PATH_MAX] u8;
+  docs_full := fs_join(root, "docs", docs_full_b[..]);
+  if docs_full.count > 0 && fs_kind(docs_full) == FS_DIR {
+    dlist: [1] FsList;
+    nd := fs_list(docs_full, dlist[..]);
+    rel_b: [FS_PATH_MAX] u8;
+    cf_b: [FS_PATH_MAX] u8;
+    for i: 0..<nd {
+      name := fs_entry(dlist[..], i);
+      if name == "transcripts" || kb_skip_dir_name(name) { continue; }
+      child_rel := fs_join("docs", name, rel_b[..]);
+      child_full := fs_join(root, child_rel, cf_b[..]);
+      if fs_kind(child_full) == FS_FILE && (kb_rec_ends(name, ".md") || kb_rec_ends(name, ".MD")) {
+        kb_add_file(idx, root, child_rel, fp_lo[..], fp_hi[..]);
+      }
+    }
+    for i: 0..<nd {
+      name := fs_entry(dlist[..], i);
+      if name == "transcripts" || kb_skip_dir_name(name) { continue; }
+      child_rel := fs_join("docs", name, rel_b[..]);
+      child_full := fs_join(root, child_rel, cf_b[..]);
+      if fs_kind(child_full) == FS_DIR {
+        kb_walk_subdir(idx, root, child_rel, w[..], fp_lo[..], fp_hi[..]);
+      }
+    }
+  }
+
+  // 6. Optional workspace knowledge/ or notes/ directory (also used by compact tests).
+  kb_walk_subdir(idx, root, "knowledge", w[..], fp_lo[..], fp_hi[..]);
+  kb_walk_subdir(idx, root, "notes", w[..], fp_lo[..], fp_hi[..]);
+
+  idx[0].fp_lo = fp_lo[0];
+  idx[0].fp_hi = fp_hi[0];
+}
+
+// Find or insert a vocabulary slot for `(h1, h2)`. Returns slot index or -1 if table full.
+kb_vocab_slot :: (idx: [] KbIndex, h1: u32, h2: u32, create: bool) -> int {
+  slot := cast(int) (h1 & KB_VOCAB_MASK);
+  probes := 0;
+  while probes < 128 {
+    if idx[0].vocab_h2[slot] == 0 {
+      if !create { return -1; }
+      idx[0].vocab_h1[slot] = h1;
+      idx[0].vocab_h2[slot] = h2;
+      idx[0].vocab_df[slot] = 0;
+      idx[0].vocab_head[slot] = -1;
+      idx[0].nvocab += 1;
+      return slot;
+    }
+    if idx[0].vocab_h1[slot] == h1 && idx[0].vocab_h2[slot] == h2 {
+      return slot;
+    }
+    slot = (slot + 1) & KB_VOCAB_MASK;
+    probes += 1;
+  }
+  return -1;
+}
+
+// Lightweight English suffix normalization (decide/decided/decides/deciding -> decid,
+// checks/checked/checking -> check, capabilities -> capabilit) for better lexical recall.
+kb_lex_stem :: (tok: string) -> string {
+  n := tok.count;
+  if n < 5 || tok[0] == '#' { return tok; }
+  if n >= 7 && kb_rec_ends(tok, "ies") { return cast(string) tok[0..<n - 3]; }
+  if n >= 6 && kb_rec_ends(tok, "ing") { return cast(string) tok[0..<n - 3]; }
+  if n >= 6 && kb_rec_ends(tok, "ed")  { return cast(string) tok[0..<n - 2]; }
+  if n >= 6 && kb_rec_ends(tok, "es")  { return cast(string) tok[0..<n - 2]; }
+  if n >= 5 && tok[n - 1] == 's' && tok[n - 2] != 's' { return cast(string) tok[0..<n - 1]; }
+  if n >= 5 && tok[n - 1] == 'e' && (tok[n - 2] == 'd' || tok[n - 2] == 't' || tok[n - 2] == 'v') {
+    return cast(string) tok[0..<n - 1];
+  }
+  return tok;
+}
+
+kb_add_chunk_term :: (
+  t_h1: [] u32, t_h2: [] u32, t_tf: [] u16, nt: [] int, vt: string, w: int
+) {
+  h1 := kb_fnv32(vt);
+  h2 := kb_fnv32_alt(vt);
+  found := -1;
+  for k: 0..<nt[0] {
+    if t_h1[k] == h1 && t_h2[k] == h2 { found = k; break; }
+  }
+  if found >= 0 {
+    nv := cast(int) t_tf[found] + w;
+    t_tf[found] = cast(u16) (ifx nv > 65535 then 65535 else nv);
+  } else if nt[0] < KB_CHUNK_MAX_TERM {
+    t_h1[nt[0]] = h1;
+    t_h2[nt[0]] = h2;
+    t_tf[nt[0]] = cast(u16) w;
+    nt[0] += 1;
+  }
+}
+
+// Index one chunk's tokens into the inverted BM25 index and compute its quantized 64-dim dense vector.
+kb_index_chunk :: (
+  idx: [] KbIndex, fi: int, fkind: int, fpath: string, fstatus: BsStatus,
+  heading: string, text: string, start_line: int, end_line: int, start_byte: int, end_byte: int
+) {
+  if idx[0].nchunks >= KB_MAX_CHUNKS { return; }
+  ci := idx[0].nchunks;
+
+  // Store heading trail in head_slab.
+  hoff := idx[0].head_used;
+  hlen := heading.count;
+  if hlen > 160 { hlen = 160; }
+  if hoff + hlen > KB_HEAD_SLAB { hlen = 0; }
+  for i: 0..<hlen { idx[0].head_slab[hoff + i] = heading[i]; }
+  idx[0].head_used += hlen;
+
+  // Collect per-chunk distinct term frequencies (heading boosted 4x, path boosted 5x, body 1x).
+  t_h1: [KB_CHUNK_MAX_TERM] u32;
+  t_h2: [KB_CHUNK_MAX_TERM] u32;
+  t_tf: [KB_CHUNK_MAX_TERM] u16;
+  nt := [1] int.[0];
+  total_toks := 0;
+
+  fields := [3] string.[heading, fpath, text];
+  weights := [3] int.[4, 5, 1];
+  tb: [48] u8;
+  for pass: 0..<3 {
+    src := fields[pass];
+    w := weights[pass];
+    pos := [1] int.[0];
+    while true {
+      tn := kb_next_tok(src, pos[..], tb[..]);
+      if tn == 0 { break; }
+      tok := cast(string) tb[0..<tn];
+      if kb_is_stopword(tok) { continue; }
+      total_toks += 1;
+
+      kb_add_chunk_term(t_h1[..], t_h2[..], t_tf[..], nt[..], tok, w);
+      if tok[0] == '#' && tn > 2 {
+        bare := cast(string) tb[1..<tn];
+        kb_add_chunk_term(t_h1[..], t_h2[..], t_tf[..], nt[..], bare, w);
+      } else {
+        st := kb_lex_stem(tok);
+        if st.count != tok.count {
+          kb_add_chunk_term(t_h1[..], t_h2[..], t_tf[..], nt[..], st, w);
+        }
+      }
+    }
+  }
+
+  // Boost transcript kind with implicit "episode" and "transcript" tokens so natural queries hit cleanly.
+  if fkind == KB_KIND_TRANSCRIPT {
+    kb_add_chunk_term(t_h1[..], t_h2[..], t_tf[..], nt[..], "episode", 4);
+    kb_add_chunk_term(t_h1[..], t_h2[..], t_tf[..], nt[..], "transcript", 3);
+  }
+
+  // Append postings to inverted index.
+  for k: 0..<nt[0] {
+    if idx[0].nposts >= KB_MAX_POSTS { break; }
+    slot := kb_vocab_slot(idx, t_h1[k], t_h2[k], true);
+    if slot < 0 { continue; }
+    pi := idx[0].nposts;
+    idx[0].post_chunk[pi] = cast(u16) ci;
+    idx[0].post_tf[pi] = t_tf[k];
+    idx[0].post_next[pi] = idx[0].vocab_head[slot];
+    idx[0].vocab_head[slot] = cast(s32) pi;
+    idx[0].vocab_df[slot] += 1;
+    idx[0].nposts += 1;
+  }
+
+  // Compute reader-side 64-dim dense embedding and quantize to s16.
+  fvec: [KB_VEC_DIM] f32;
+  _ = kb_embed(heading, fpath, text, fvec[..]);
+  voff := ci * KB_VEC_DIM;
+  for d: 0..<KB_VEC_DIM {
+    scaled := f64(fvec[d]) * 32767.0;
+    if scaled > 32767.0 { scaled = 32767.0; }
+    if scaled < -32767.0 { scaled = -32767.0; }
+    idx[0].vecs_q[voff + d] = cast(s16) scaled;
+  }
+
+  if total_toks < 1 { total_toks = 1; }
+  cstatus := bs_section_status(fstatus, heading);
+  idx[0].chunks[ci] = KbChunkEntry.{
+    file_idx = cast(u16) fi,
+    doc_status = cast(u8) cstatus,
+    start_line = cast(s32) start_line,
+    end_line = cast(s32) end_line,
+    start_byte = cast(s32) start_byte,
+    end_byte = cast(s32) end_byte,
+    head_off = cast(s32) hoff,
+    head_len = cast(u16) hlen,
+    tok_len = cast(u16) (ifx total_toks > 65535 then 65535 else total_toks),
+  };
+  idx[0].nchunks += 1;
+  idx[0].total_tok_len += total_toks;
+}
+
+kb_trim_heading :: (line: string) -> string {
+  a := 0;
+  while a < line.count && (line[a] == '#' || line[a] == ' ' || line[a] == '\t') { a += 1; }
+  b := line.count;
+  while b > a && (line[b - 1] == ' ' || line[b - 1] == '\t' || line[b - 1] == '\r' || line[b - 1] == '#') { b -= 1; }
+  return cast(string) line[a..<b];
+}
+
+kb_heading_level :: (line: string) -> int {
+  lvl := 0;
+  while lvl < line.count && lvl < 4 && line[lvl] == '#' { lvl += 1; }
+  if lvl >= 1 && lvl <= 3 && lvl < line.count && line[lvl] == ' ' { return lvl; }
+  return 0;
+}
+
+kb_compose_trail :: (h1: string, h2: string, h3: string, fallback: string, out: [] u8) -> string {
+  n := 0;
+  if h1.count > 0 { n = kb_cat(out, n, h1); }
+  if h2.count > 0 {
+    if n > 0 { n = kb_cat(out, n, " > "); }
+    n = kb_cat(out, n, h2);
+  }
+  if h3.count > 0 {
+    if n > 0 { n = kb_cat(out, n, " > "); }
+    n = kb_cat(out, n, h3);
+  }
+  if n == 0 { n = kb_cat(out, n, fallback); }
+  return cast(string) out[0..<n];
+}
+
+// Chunk one Markdown file by `#`/`##`/`###` headings and bounded byte windows (~KB_CHUNK_TARGET).
+kb_chunk_and_index_file :: (idx: [] KbIndex, fi: int, fpath: string, text: string) {
+  fstatus := bs_status(fs_base(fpath), text);
+  idx[0].files[fi].doc_status = cast(u8) fstatus;
+  fkind := cast(int) idx[0].files[fi].kind;
+
+  h1: [128] u8; h1_n := 0;
+  h2: [128] u8; h2_n := 0;
+  h3: [128] u8; h3_n := 0;
+  trail_b: [256] u8;
+
+  c_start_byte := 0;
+  c_start_line := 1;
+  line_no := 0;
+  i := 0;
+  in_fence := false;
+  emitted_any := false;
+
+  while i < text.count {
+    ls := i;
+    while i < text.count && text[i] != '\n' { i += 1; }
+    le := i;
+    if i < text.count && text[i] == '\n' { i += 1; }
+    line_no += 1;
+    line := cast(string) text[ls..<le];
+
+    if kb_rec_starts(line, "```") { in_fence = !in_fence; }
+    hlvl := ifx in_fence then 0 else kb_heading_level(line);
+
+    if hlvl > 0 {
+      // Flush previous chunk once it has meaningful body size (prevents tiny 4-line stub explosion).
+      min_flush := ifx hlvl <= 2 then 220 else 450;
+      if ls - c_start_byte >= min_flush {
+        tr := kb_compose_trail(cast(string) h1[0..<h1_n], cast(string) h2[0..<h2_n], cast(string) h3[0..<h3_n], fs_base(fpath), trail_b[..]);
+        kb_index_chunk(idx, fi, fkind, fpath, fstatus, tr, cast(string) text[c_start_byte..<ls], c_start_line, line_no - 1, c_start_byte, ls);
+        emitted_any = true;
+        c_start_byte = ls;
+        c_start_line = line_no;
+      }
+      ht := kb_trim_heading(line);
+      if hlvl == 1 { h1_n = kb_copy(h1[..], ht); h2_n = 0; h3_n = 0; }
+      else if hlvl == 2 { h2_n = kb_copy(h2[..], ht); h3_n = 0; }
+      else { h3_n = kb_copy(h3[..], ht); }
+    } else if i - c_start_byte >= KB_CHUNK_TARGET {
+      // Window boundary on blank line or target cap (keeps transcripts cleanly split).
+      if le == ls || i - c_start_byte >= KB_CHUNK_TARGET + 600 {
+        tr := kb_compose_trail(cast(string) h1[0..<h1_n], cast(string) h2[0..<h2_n], cast(string) h3[0..<h3_n], fs_base(fpath), trail_b[..]);
+        kb_index_chunk(idx, fi, fkind, fpath, fstatus, tr, cast(string) text[c_start_byte..<i], c_start_line, line_no, c_start_byte, i);
+        emitted_any = true;
+        c_start_byte = i;
+        c_start_line = line_no + 1;
+      }
+    }
+  }
+
+  if text.count > c_start_byte && (text.count - c_start_byte >= 24 || !emitted_any) {
+    end_ln := ifx line_no < c_start_line then c_start_line else line_no;
+    tr := kb_compose_trail(cast(string) h1[0..<h1_n], cast(string) h2[0..<h2_n], cast(string) h3[0..<h3_n], fs_base(fpath), trail_b[..]);
+    kb_index_chunk(idx, fi, fkind, fpath, fstatus, tr, cast(string) text[c_start_byte..<text.count], c_start_line, end_ln, c_start_byte, text.count);
+  }
+}
+
+// ---- Compact binary disk cache (~/.openagents/cache/kb-<hash16>.v1) ----
+
+kb_put_u16 :: (b: [] u8, at: [] int, v: u16) {
+  p := at[0];
+  if p + 2 > b.count { return; }
+  b[p] = cast,trunc(u8) (v & 255);
+  b[p + 1] = cast,trunc(u8) ((v >> 8) & 255);
+  at[0] = p + 2;
+}
+kb_put_u32 :: (b: [] u8, at: [] int, v: u32) {
+  p := at[0];
+  if p + 4 > b.count { return; }
+  b[p] = cast,trunc(u8) (v & 255);
+  b[p + 1] = cast,trunc(u8) ((v >> 8) & 255);
+  b[p + 2] = cast,trunc(u8) ((v >> 16) & 255);
+  b[p + 3] = cast,trunc(u8) ((v >> 24) & 255);
+  at[0] = p + 4;
+}
+kb_put_u64 :: (b: [] u8, at: [] int, v: u64) {
+  kb_put_u32(b, at, cast,trunc(u32) (v & 0xFFFFFFFF));
+  kb_put_u32(b, at, cast,trunc(u32) ((v >> 32) & 0xFFFFFFFF));
+}
+kb_get_u16 :: (b: [] u8, at: [] int) -> u16 {
+  p := at[0];
+  if p + 2 > b.count { return 0; }
+  v := cast(u16) b[p] | (cast(u16) b[p + 1] << 8);
+  at[0] = p + 2;
+  return v;
+}
+kb_get_u32 :: (b: [] u8, at: [] int) -> u32 {
+  p := at[0];
+  if p + 4 > b.count { return 0; }
+  v := cast(u32) b[p] | (cast(u32) b[p + 1] << 8) | (cast(u32) b[p + 2] << 16) | (cast(u32) b[p + 3] << 24);
+  at[0] = p + 4;
+  return v;
+}
+kb_get_u64 :: (b: [] u8, at: [] int) -> u64 {
+  lo := cast(u64) kb_get_u32(b, at);
+  hi := cast(u64) kb_get_u32(b, at);
+  return lo | (hi << 32);
+}
+
+kb_cache_path :: (root: string, out: [] u8) -> string {
+  dir_b: [FS_PATH_MAX] u8;
+  cdir := proc_getenv("OA_KB_CACHE_DIR", dir_b[..]);
+  if cdir.count == 0 {
+    hb: [FS_PATH_MAX] u8;
+    home := proc_getenv("HOME", hb[..]);
+    if home.count == 0 { return ""; }
+    cdir = fs_join(home, ".openagents/cache", dir_b[..]);
+  }
+  if cdir.count == 0 { return ""; }
+  _ = fs_mkdir_all(cdir);
+  rh: [64] u8;
+  _ = kb_rec_hash_hex(root, rh[..]);
+  fn_b: [64] u8;
+  n := kb_cat(fn_b[..], 0, "kb-");
+  n = kb_cat(fn_b[..], n, cast(string) rh[0..<16]);
+  n = kb_cat(fn_b[..], n, ".v1");
+  return fs_join(cdir, cast(string) fn_b[0..<n], out);
+}
+
+kb_cache_save :: (idx: [] KbIndex, cache_path: string) -> bool {
+  if cache_path.count == 0 { return false; }
+  // Estimate serialized size and ensure it fits within KB_CACHE_BUF_MAX.
+  need := 64 + idx[0].nfiles * 20 + idx[0].path_used +
+          idx[0].nchunks * 28 + idx[0].head_used +
+          idx[0].nchunks * KB_VEC_DIM * 2 +
+          idx[0].nvocab * 20 + idx[0].nposts * 8;
+  if need > KB_CACHE_BUF_MAX { return false; }
+  buf: [KB_CACHE_BUF_MAX] u8;
+  at := [1] int.[0];
+  kb_put_u32(buf[..], at[..], KB_CACHE_MAGIC);
+  kb_put_u32(buf[..], at[..], KB_CACHE_VER);
+  kb_put_u64(buf[..], at[..], idx[0].fp_lo);
+  kb_put_u64(buf[..], at[..], idx[0].fp_hi);
+  kb_put_u32(buf[..], at[..], cast(u32) idx[0].nfiles);
+  kb_put_u32(buf[..], at[..], cast(u32) idx[0].path_used);
+  kb_put_u32(buf[..], at[..], cast(u32) idx[0].nchunks);
+  kb_put_u32(buf[..], at[..], cast(u32) idx[0].head_used);
+  kb_put_u32(buf[..], at[..], cast(u32) idx[0].nvocab);
+  kb_put_u32(buf[..], at[..], cast(u32) idx[0].nposts);
+  kb_put_u64(buf[..], at[..], cast(u64) idx[0].total_tok_len);
+
+  for i: 0..<idx[0].nfiles {
+    f := idx[0].files[i];
+    kb_put_u32(buf[..], at[..], cast(u32) f.path_off);
+    kb_put_u16(buf[..], at[..], f.path_len);
+    kb_put_u16(buf[..], at[..], cast(u16) f.kind | (cast(u16) f.doc_status << 8));
+    kb_put_u64(buf[..], at[..], cast(u64) f.mtime_ns);
+    kb_put_u32(buf[..], at[..], cast(u32) f.size);
+  }
+  for i: 0..<idx[0].path_used { buf[at[0]] = idx[0].path_slab[i]; at[0] += 1; }
+
+  for i: 0..<idx[0].nchunks {
+    c := idx[0].chunks[i];
+    kb_put_u16(buf[..], at[..], c.file_idx);
+    kb_put_u16(buf[..], at[..], cast(u16) c.doc_status);
+    kb_put_u32(buf[..], at[..], cast(u32) c.start_line);
+    kb_put_u32(buf[..], at[..], cast(u32) c.end_line);
+    kb_put_u32(buf[..], at[..], cast(u32) c.start_byte);
+    kb_put_u32(buf[..], at[..], cast(u32) c.end_byte);
+    kb_put_u32(buf[..], at[..], cast(u32) c.head_off);
+    kb_put_u16(buf[..], at[..], c.head_len);
+    kb_put_u16(buf[..], at[..], c.tok_len);
+  }
+  for i: 0..<idx[0].head_used { buf[at[0]] = idx[0].head_slab[i]; at[0] += 1; }
+
+  vtotal := idx[0].nchunks * KB_VEC_DIM;
+  for i: 0..<vtotal {
+    kb_put_u16(buf[..], at[..], cast,trunc(u16) idx[0].vecs_q[i]);
+  }
+
+  for s: 0..<KB_VOCAB_CAP {
+    if idx[0].vocab_h2[s] != 0 {
+      kb_put_u32(buf[..], at[..], cast(u32) s);
+      kb_put_u32(buf[..], at[..], idx[0].vocab_h1[s]);
+      kb_put_u32(buf[..], at[..], idx[0].vocab_h2[s]);
+      kb_put_u32(buf[..], at[..], cast(u32) idx[0].vocab_df[s]);
+      kb_put_u32(buf[..], at[..], cast,trunc(u32) idx[0].vocab_head[s]);
+    }
+  }
+
+  for p: 0..<idx[0].nposts {
+    kb_put_u16(buf[..], at[..], idx[0].post_chunk[p]);
+    kb_put_u16(buf[..], at[..], idx[0].post_tf[p]);
+    kb_put_u32(buf[..], at[..], cast,trunc(u32) idx[0].post_next[p]);
+  }
+
+  tmp_b: [FS_PATH_MAX] u8;
+  tn := kb_cat(tmp_b[..], 0, cache_path);
+  tn = kb_cat(tmp_b[..], tn, ".tmp");
+  tmp_p := cast(string) tmp_b[0..<tn];
+  if !fs_write(tmp_p, cast(string) buf[0..<at[0]]) { return false; }
+  return fs_rename(tmp_p, cache_path);
+}
+
+kb_cache_try_load :: (idx: [] KbIndex, cache_path: string, expect_files: int, expect_lo: u64, expect_hi: u64) -> bool {
+  if cache_path.count == 0 || fs_kind(cache_path) != FS_FILE { return false; }
+  sz := fs_size(cache_path);
+  if sz < 56 || sz > KB_CACHE_BUF_MAX { return false; }
+  // Fast header check before reading the whole cache file.
+  hdr: [56] u8;
+  if fs_read_at(cache_path, 0, hdr[..]) != 56 { return false; }
+  ha := [1] int.[0];
+  if kb_get_u32(hdr[..], ha[..]) != KB_CACHE_MAGIC { return false; }
+  if kb_get_u32(hdr[..], ha[..]) != KB_CACHE_VER { return false; }
+  flo := kb_get_u64(hdr[..], ha[..]);
+  fhi := kb_get_u64(hdr[..], ha[..]);
+  nf := cast(int) kb_get_u32(hdr[..], ha[..]);
+  if nf != expect_files || flo != expect_lo || fhi != expect_hi { return false; }
+
+  buf: [KB_CACHE_BUF_MAX] u8;
+  n := fs_read(cache_path, buf[0..<sz]);
+  if n != sz { return false; }
+
+  at := [1] int.[28];
+  path_used := cast(int) kb_get_u32(buf[0..<n], at[..]);
+  nchunks := cast(int) kb_get_u32(buf[0..<n], at[..]);
+  head_used := cast(int) kb_get_u32(buf[0..<n], at[..]);
+  nvocab := cast(int) kb_get_u32(buf[0..<n], at[..]);
+  nposts := cast(int) kb_get_u32(buf[0..<n], at[..]);
+  tot_tok := cast(int) kb_get_u64(buf[0..<n], at[..]);
+
+  if nf > KB_MAX_FILES || path_used > KB_PATH_SLAB || nchunks > KB_MAX_CHUNKS ||
+     head_used > KB_HEAD_SLAB || nvocab > KB_VOCAB_CAP || nposts > KB_MAX_POSTS {
+    return false;
+  }
+
+  kb_idx_clear(idx);
+  idx[0].fp_lo = flo;
+  idx[0].fp_hi = fhi;
+  idx[0].nfiles = nf;
+  idx[0].path_used = path_used;
+  idx[0].nchunks = nchunks;
+  idx[0].head_used = head_used;
+  idx[0].nvocab = nvocab;
+  idx[0].nposts = nposts;
+  idx[0].total_tok_len = tot_tok;
+
+  for i: 0..<nf {
+    po := cast(s32) kb_get_u32(buf[0..<n], at[..]);
+    pl := kb_get_u16(buf[0..<n], at[..]);
+    kd := kb_get_u16(buf[0..<n], at[..]);
+    mt := cast(int) kb_get_u64(buf[0..<n], at[..]);
+    fsz := cast(s32) kb_get_u32(buf[0..<n], at[..]);
+    idx[0].files[i] = KbFileEntry.{
+      path_off = po,
+      path_len = pl,
+      kind = cast,trunc(u8) (kd & 255),
+      doc_status = cast,trunc(u8) ((kd >> 8) & 255),
+      mtime_ns = mt,
+      size = fsz,
+    };
+  }
+  for i: 0..<path_used { idx[0].path_slab[i] = buf[at[0]]; at[0] += 1; }
+
+  for i: 0..<nchunks {
+    fi := kb_get_u16(buf[0..<n], at[..]);
+    ds := cast,trunc(u8) kb_get_u16(buf[0..<n], at[..]);
+    sl := cast(s32) kb_get_u32(buf[0..<n], at[..]);
+    el := cast(s32) kb_get_u32(buf[0..<n], at[..]);
+    sb := cast(s32) kb_get_u32(buf[0..<n], at[..]);
+    eb := cast(s32) kb_get_u32(buf[0..<n], at[..]);
+    ho := cast(s32) kb_get_u32(buf[0..<n], at[..]);
+    hl := kb_get_u16(buf[0..<n], at[..]);
+    tl := kb_get_u16(buf[0..<n], at[..]);
+    idx[0].chunks[i] = KbChunkEntry.{
+      file_idx = fi, doc_status = ds, start_line = sl, end_line = el,
+      start_byte = sb, end_byte = eb, head_off = ho, head_len = hl, tok_len = tl,
+    };
+  }
+  for i: 0..<head_used { idx[0].head_slab[i] = buf[at[0]]; at[0] += 1; }
+
+  vtotal := nchunks * KB_VEC_DIM;
+  for i: 0..<vtotal {
+    idx[0].vecs_q[i] = cast,trunc(s16) kb_get_u16(buf[0..<n], at[..]);
+  }
+
+  for vi: 0..<nvocab {
+    s := cast(int) kb_get_u32(buf[0..<n], at[..]);
+    h1 := kb_get_u32(buf[0..<n], at[..]);
+    h2 := kb_get_u32(buf[0..<n], at[..]);
+    df := cast(s32) kb_get_u32(buf[0..<n], at[..]);
+    hd := cast,trunc(s32) kb_get_u32(buf[0..<n], at[..]);
+    if s >= 0 && s < KB_VOCAB_CAP {
+      idx[0].vocab_h1[s] = h1;
+      idx[0].vocab_h2[s] = h2;
+      idx[0].vocab_df[s] = df;
+      idx[0].vocab_head[s] = hd;
+    }
+  }
+
+  for p: 0..<nposts {
+    idx[0].post_chunk[p] = kb_get_u16(buf[0..<n], at[..]);
+    idx[0].post_tf[p] = kb_get_u16(buf[0..<n], at[..]);
+    idx[0].post_next[p] = cast,trunc(s32) kb_get_u32(buf[0..<n], at[..]);
+  }
+
+  idx[0].ready = true;
+  return true;
+}
+
+// Build or load (via cache) the knowledge base index for `root`.
+// If `force_rebuild` is true, bypasses the disk cache and writes a fresh cache.
+kb_build_or_load :: (idx: [] KbIndex, root: string, force_rebuild: bool) -> bool {
+  if root.count == 0 { return false; }
+  // Fast path: already loaded in memory for the exact same root.
+  if !force_rebuild && idx[0].ready && idx[0].root_len == root.count &&
+     cast(string) idx[0].root_buf[0..<idx[0].root_len] == root {
+    return true;
+  }
+
+  kb_idx_clear(idx);
+  idx[0].root_len = kb_copy(idx[0].root_buf[..], root);
+  kb_scan_corpus(idx, root);
+
+  cp_b: [FS_PATH_MAX] u8;
+  cp := kb_cache_path(root, cp_b[..]);
+  if !force_rebuild && kb_cache_try_load(idx, cp, idx[0].nfiles, idx[0].fp_lo, idx[0].fp_hi) {
+    idx[0].root_len = kb_copy(idx[0].root_buf[..], root);
+    return true;
+  }
+
+  // Full index build over discovered files.
+  rbuf: [KB_READ_BUF] u8;
+  full_b: [FS_PATH_MAX] u8;
+  for fi: 0..<idx[0].nfiles {
+    rel := kb_file_path(idx, fi);
+    full := fs_join(root, rel, full_b[..]);
+    if full.count == 0 { continue; }
+    nr := fs_read(full, rbuf[..]);
+    if nr <= 0 { continue; }
+    kb_chunk_and_index_file(idx, fi, rel, cast(string) rbuf[0..<nr]);
+  }
+  idx[0].ready = true;
+  if cp.count > 0 { _ = kb_cache_save(idx, cp); }
+  return true;
+}
+
+kb_kind_matches_filter :: (kind: int, filter: string) -> bool {
+  if filter.count == 0 || filter == "all" { return true; }
+  return kb_rec_kind_name(kind) == filter;
+}
+
+// Cleanly extract a compact UTF-8 snippet from chunk bytes (collapsing excessive whitespace).
+kb_extract_snippet :: (raw: string, out: [] u8) -> int {
+  n := 0;
+  prev_ws := true;
+  for i: 0..<raw.count {
+    if n >= out.count - 4 { break; }
+    c := raw[i];
+    if c == '\r' || c == '\t' || c == '\n' || c == ' ' {
+      if !prev_ws {
+        out[n] = ' ';
+        n += 1;
+        prev_ws = true;
+      }
+    } else {
+      out[n] = c;
+      n += 1;
+      prev_ws = false;
+    }
+  }
+  while n > 0 && out[n - 1] == ' ' { n -= 1; }
+  // Avoid cutting in the middle of a multi-byte UTF-8 sequence.
+  while n > 0 && (out[n - 1] & 0xC0) == 0x80 { n -= 1; }
+  if n > 0 && (out[n - 1] & 0x80) != 0 { n -= 1; }
+  return n;
+}
+
+// Hybrid lexical (BM25 + multi-term coverage) + 64-dim dense cosine + RRF retrieval.
+kb_search :: (idx: [] KbIndex, query: string, limit: int, kind_filter: string, res: [] KbQueryResult) -> int {
+  t0 := proc_now_ms();
+  res[0].nhits = 0;
+  res[0].indexed_files = idx[0].nfiles;
+  res[0].indexed_chunks = idx[0].nchunks;
+  res[0].latency_ms = 0;
+
+  nc := idx[0].nchunks;
+  if !idx[0].ready || nc <= 0 || query.count == 0 {
+    res[0].latency_ms = proc_now_ms() - t0;
+    return 0;
+  }
+  k_want := ifx limit < 1 then 5 else ifx limit > KB_MAX_HITS then KB_MAX_HITS else limit;
+
+  // 1. Tokenize distinct query concepts (each concept carries exact token + optional stem/bare variant;
+  //    track concept count `nconcepts` separately so `#authority`+`authority` or `decide`+`decid` don't double-count).
+  q_h1: [48] u32;
+  q_h2: [48] u32;
+  q_cid: [48] u8;
+  nq := 0;
+  nconcepts := 0;
+  q_has_episode := false;
+  q_ep_num: [16] u8; q_ep_num_n := 0;
+  pos := [1] int.[0];
+  tb: [48] u8;
+  while nq < 44 && nconcepts < 32 {
+    tn := kb_next_tok(query, pos[..], tb[..]);
+    if tn == 0 { break; }
+    tok := cast(string) tb[0..<tn];
+    if kb_is_stopword(tok) { continue; }
+    if tok == "episode" || tok == "ep" { q_has_episode = true; }
+    if q_has_episode && q_ep_num_n == 0 && tok.count >= 2 && tok.count <= 4 && kb_rec_is_digit(tok[0]) {
+      q_ep_num_n = kb_copy(q_ep_num[..], tok);
+    }
+    cid := cast(u8) nconcepts;
+    nconcepts += 1;
+
+    h1 := kb_fnv32(tok);
+    h2 := kb_fnv32_alt(tok);
+    dup := false;
+    for j: 0..<nq { if q_h1[j] == h1 && q_h2[j] == h2 { dup = true; break; } }
+    if !dup { q_h1[nq] = h1; q_h2[nq] = h2; q_cid[nq] = cid; nq += 1; }
+
+    vtok := "";
+    if tok[0] == '#' && tn > 2 { vtok = cast(string) tb[1..<tn]; }
+    else {
+      st := kb_lex_stem(tok);
+      if st.count != tok.count { vtok = st; }
+    }
+    if vtok.count > 0 && nq < 48 {
+      vh1 := kb_fnv32(vtok);
+      vh2 := kb_fnv32_alt(vtok);
+      vdup := false;
+      for j: 0..<nq { if q_h1[j] == vh1 && q_h2[j] == vh2 { vdup = true; break; } }
+      if !vdup { q_h1[nq] = vh1; q_h2[nq] = vh2; q_cid[nq] = cid; nq += 1; }
+    }
+  }
+
+  lex_scores: [KB_MAX_CHUNKS] f64;
+  lex_mask: [KB_MAX_CHUNKS] u32;
+  den_scores: [KB_MAX_CHUNKS] f64;
+  fuse_scores: [KB_MAX_CHUNKS] f64;
+  for c: 0..<nc { lex_scores[c] = 0.0; lex_mask[c] = 0; den_scores[c] = 0.0; }
+
+  avg_len := f64(idx[0].total_tok_len) / f64(nc);
+  if avg_len < 1.0 { avg_len = 1.0; }
+
+  // 2. Inverted BM25 lexical scoring (O(postings of query terms), sub-millisecond).
+  for qi: 0..<nq {
+    slot := kb_vocab_slot(idx, q_h1[qi], q_h2[qi], false);
+    if slot < 0 { continue; }
+    df := cast(int) idx[0].vocab_df[slot];
+    if df <= 0 { continue; }
+    cbit := cast(u32) 1 << cast(u32) q_cid[qi];
+    p := cast(int) idx[0].vocab_head[slot];
+    while p >= 0 {
+      ci := cast(int) idx[0].post_chunk[p];
+      tf := cast(int) idx[0].post_tf[p];
+      if ci < nc {
+        fi := cast(int) idx[0].chunks[ci].file_idx;
+        if kb_kind_matches_filter(cast(int) idx[0].files[fi].kind, kind_filter) {
+          lex_scores[ci] += bs_bm25(tf, df, nc, cast(int) idx[0].chunks[ci].tok_len, avg_len);
+          lex_mask[ci] |= cbit;
+        }
+      }
+      p = cast(int) idx[0].post_next[p];
+    }
+  }
+
+  // 3. 64-dim dense semantic cosine scan via `bs_dot`.
+  q_vec: [KB_VEC_DIM] f32;
+  nden := 0;
+  top_den: [KB_TOP_CANDS] BsHit;
+  if kb_embed("", "", query, q_vec[..]) {
+    q_scaled: [KB_VEC_DIM] f32;
+    inv_q: f32 = 1.0 / 32767.0;
+    for d: 0..<KB_VEC_DIM { q_scaled[d] = q_vec[d] * inv_q; }
+    c_vec: [KB_VEC_DIM] f32;
+    for c: 0..<nc {
+      fi := cast(int) idx[0].chunks[c].file_idx;
+      if !kb_kind_matches_filter(cast(int) idx[0].files[fi].kind, kind_filter) { continue; }
+      voff := c * KB_VEC_DIM;
+      for d: 0..<KB_VEC_DIM { c_vec[d] = cast(f32) idx[0].vecs_q[voff + d]; }
+      den_scores[c] = bs_dot(q_scaled[..], c_vec[..]);
+    }
+    nden = bs_top(den_scores[0..<nc], 0.0, top_den[..]);
+  }
+
+  // Source-authority, boilerplate suppression, transcript-episode matching & multi-concept coverage:
+  ep_file_b: [48] u8;
+  ep_file := "";
+  if q_ep_num_n > 0 {
+    en := kb_cat(ep_file_b[..], 0, "docs/transcripts/");
+    en = kb_cat(ep_file_b[..], en, cast(string) q_ep_num[0..<q_ep_num_n]);
+    en = kb_cat(ep_file_b[..], en, ".md");
+    ep_file = cast(string) ep_file_b[0..<en];
+  }
+  for c: 0..<nc {
+    m := lex_mask[c];
+    if m == 0 { continue; }
+    hits_c := 0;
+    tmp_m := m;
+    while tmp_m != 0 {
+      hits_c += cast(int) (tmp_m & 1);
+      tmp_m = tmp_m >> 1;
+    }
+    if nconcepts >= 4 && hits_c <= 1 && den_scores[c] < 0.45 {
+      lex_scores[c] = 0.0;
+      continue;
+    }
+    if hits_c >= 2 {
+      lex_scores[c] *= 1.0 + 0.55 * f64(hits_c - 1);
+    } else if nconcepts >= 3 {
+      lex_scores[c] *= 0.35;
+    }
+    fi := cast(int) idx[0].chunks[c].file_idx;
+    rel := kb_file_path(idx, fi);
+    hd := kb_chunk_heading(idx, c);
+    if kb_rec_ends(hd, "> Sources") || kb_rec_ends(hd, "> Checks") || kb_rec_contains(hd, "> How the code is checked") {
+      lex_scores[c] *= 0.45;
+      den_scores[c] *= 0.70;
+    }
+    if kb_rec_starts(rel, "docs/audits/") || kb_rec_starts(rel, "docs/verification/") || kb_rec_starts(rel, "docs/books/audits/") {
+      lex_scores[c] *= 0.65;
+    } else if idx[0].files[fi].kind == KB_KIND_BOOK || idx[0].files[fi].kind == KB_KIND_TRANSCRIPT || kb_rec_starts(rel, "nostr/nips/") {
+      lex_scores[c] *= 1.20;
+    }
+    if ep_file.count > 0 && rel == ep_file {
+      lex_scores[c] *= 2.80;
+      den_scores[c] += 0.25;
+    }
+  }
+  if nden > 0 {
+    nden = bs_top(den_scores[0..<nc], 0.0, top_den[..]);
+  }
+  top_lex: [KB_TOP_CANDS] BsHit;
+  nlex := bs_top(lex_scores[0..<nc], 0.0, top_lex[..]);
+
+  // 4. Hybrid RRF fusion + relevance refusal gate (`kb_rec_hybrid_fuse`).
+  top_fused: [KB_MAX_HITS] BsHit;
+  nf := kb_rec_hybrid_fuse(top_lex[0..<nlex], top_den[0..<nden], fuse_scores[0..<nc], top_fused[0..<k_want]);
+
+  // 5. Hydrate exact citations, snippets, and SHA-256 digests on demand for top-K hits only.
+  root := cast(string) idx[0].root_buf[0..<idx[0].root_len];
+  full_b: [FS_PATH_MAX] u8;
+  chunk_buf: [8192] u8;
+  for hi: 0..<nf {
+    ci := top_fused[hi].passage;
+    ch := idx[0].chunks[ci];
+    fi := cast(int) ch.file_idx;
+    rel := kb_file_path(idx, fi);
+    hd := kb_chunk_heading(idx, ci);
+    full := fs_join(root, rel, full_b[..]);
+
+    cb_len := cast(int) (ch.end_byte - ch.start_byte);
+    if cb_len > chunk_buf.count { cb_len = chunk_buf.count; }
+    if cb_len < 0 { cb_len = 0; }
+    rd := ifx full.count > 0 && cb_len > 0 then fs_read_at(full, cast(int) ch.start_byte, chunk_buf[0..<cb_len]) else 0;
+    raw := ifx rd > 0 then cast(string) chunk_buf[0..<rd] else "";
+
+    res[0].hits[hi].entry_id_n = kb_rec_path_to_id(rel, res[0].hits[hi].entry_id[..]);
+    res[0].hits[hi].digest_n = kb_rec_hash_hex(raw, res[0].hits[hi].digest[..]);
+    res[0].hits[hi].snippet_n = kb_extract_snippet(raw, res[0].hits[hi].snippet[..]);
+
+    res[0].hits[hi].hit = KbRecHit.{
+      entry_id = cast(string) res[0].hits[hi].entry_id[0..<res[0].hits[hi].entry_id_n],
+      source_path = rel,
+      start_line = cast(int) ch.start_line,
+      end_line = cast(int) ch.end_line,
+      heading = hd,
+      kind = cast(int) idx[0].files[fi].kind,
+      doc_status = cast(BsStatus) ch.doc_status,
+      trust_status = KB_TRUST_ADMITTED,
+      digest = cast(string) res[0].hits[hi].digest[0..<res[0].hits[hi].digest_n],
+      snippet = cast(string) res[0].hits[hi].snippet[0..<res[0].hits[hi].snippet_n],
+      score_milli = kb_rec_to_milli(top_fused[hi].score),
+      lexical_milli = kb_rec_to_milli(lex_scores[ci]),
+      semantic_milli = kb_rec_to_milli(den_scores[ci]),
+    };
+  }
+  res[0].nhits = nf;
+  res[0].latency_ms = proc_now_ms() - t0;
+  return nf;
+}
+
+// Serialize a `KbQueryResult` as an `openagents.knowledge.v1alpha1` JSON string into `out`.
+kb_format_result_json :: (query: string, res: [] KbQueryResult, out: [] u8) -> int {
+  hits: [KB_MAX_HITS] KbRecHit;
+  for i: 0..<res[0].nhits { hits[i] = res[0].hits[i].hit; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  kb_rec_write_reply_json(o[..], query, res[0].latency_ms, res[0].indexed_files, res[0].indexed_chunks, hits[0..<res[0].nhits]);
+  return ifx o[0].bad then 0 else o[0].n;
+}
+
+// Execute a `KnowledgeGet` lookup by `source_path` (or NIP-KB `entry_id`) + optional line range,
+// returning an `openagents.knowledge.v1alpha1` JSON object into `out`.
+kb_get_entry_json :: (idx: [] KbIndex, target: string, start_line: int, max_lines: int, out: [] u8) -> int {
+  if !idx[0].ready || target.count == 0 { return 0; }
+  match_fi := -1;
+  idb: [160] u8;
+  for fi: 0..<idx[0].nfiles {
+    rel := kb_file_path(idx, fi);
+    if rel == target { match_fi = fi; break; }
+    in := kb_rec_path_to_id(rel, idb[..]);
+    if cast(string) idb[0..<in] == target { match_fi = fi; break; }
+  }
+  if match_fi < 0 { return 0; }
+
+  rel := kb_file_path(idx, match_fi);
+  root := cast(string) idx[0].root_buf[0..<idx[0].root_len];
+  full_b: [FS_PATH_MAX] u8;
+  full := fs_join(root, rel, full_b[..]);
+  rbuf: [KB_READ_BUF] u8;
+  nr := fs_read(full, rbuf[..]);
+  if nr < 0 { return 0; }
+  text := cast(string) rbuf[0..<nr];
+
+  want_start := ifx start_line < 1 then 1 else start_line;
+  want_max := ifx max_lines < 1 then 120 else ifx max_lines > 400 then 400 else max_lines;
+  want_end := want_start + want_max - 1;
+
+  s_byte := 0;
+  e_byte := nr;
+  actual_end := want_start;
+  ln := 0;
+  i := 0;
+  found_start := false;
+  while i < nr {
+    ls := i;
+    while i < nr && text[i] != '\n' { i += 1; }
+    if i < nr && text[i] == '\n' { i += 1; }
+    ln += 1;
+    if ln == want_start { s_byte = ls; found_start = true; }
+    if ln <= want_end { e_byte = i; actual_end = ln; }
+    if ln >= want_end { break; }
+  }
+  if !found_start { s_byte = nr; e_byte = nr; actual_end = ln; }
+  slice := cast(string) text[s_byte..<e_byte];
+  if slice.count > 12288 { slice = cast(string) slice[0..<12288]; }
+
+  eid_n := kb_rec_path_to_id(rel, idb[..]);
+  dig_b: [64] u8;
+  dig_n := kb_rec_hash_hex(slice, dig_b[..]);
+  h := KbRecHit.{
+    entry_id = cast(string) idb[0..<eid_n],
+    source_path = rel,
+    start_line = want_start,
+    end_line = actual_end,
+    heading = fs_base(rel),
+    kind = cast(int) idx[0].files[match_fi].kind,
+    doc_status = cast(BsStatus) idx[0].files[match_fi].doc_status,
+    trust_status = KB_TRUST_ADMITTED,
+    digest = cast(string) dig_b[0..<dig_n],
+    snippet = slice,
+    score_milli = 1000,
+    lexical_milli = 1000,
+    semantic_milli = 1000,
+  };
+  o: [1] Jo;
+  jo_start(o[..], out);
+  kb_rec_write_hit_json(o[..], h);
+  return ifx o[0].bad then 0 else o[0].n;
+}
+
+// Live filesystem + cache round-trip self-test (called by `kb-tool.coax selftest`).
+kb_selftest_fs :: () -> bool {
+  tmp_b: [FS_PATH_MAX] u8;
+  tmp := fs_temp("oa-kb-test-", tmp_b[..]);
+  if tmp.count == 0 { return false; }
+  defer { _ = fs_remove(tmp); }
+
+  p_b: [FS_PATH_MAX] u8;
+  if !fs_mkdir_all(fs_join(tmp, "docs/transcripts", p_b[..])) { return false; }
+  if !fs_mkdir_all(fs_join(tmp, "coax/book", p_b[..])) { return false; }
+  if !fs_mkdir_all(fs_join(tmp, "cache", p_b[..])) { return false; }
+
+  if !fs_write(fs_join(tmp, "docs/transcripts/289.md", p_b[..]),
+    "# Episode 289: OpenAgents\n\nIn episode 289 we decided to ship System One Front routing and a shared knowledge base over transcripts and books.\n") { return false; }
+  if !fs_write(fs_join(tmp, "coax/book/ch11-writing-checks.md", p_b[..]),
+    "# 11. Writing Checks\n\n## Authority\nFiles marked with #authority require zero surviving mutants under coax mutate.\n") { return false; }
+  if !fs_write(fs_join(tmp, "AGENTS.md", p_b[..]),
+    "# AGENTS\n\nWork in isolated git worktrees and keep Bitcoin-only money rules.\n") { return false; }
+
+  idx: [1] KbIndex;
+  if !kb_build_or_load(idx[..], tmp, true) { return false; }
+  if idx[0].nfiles != 3 || idx[0].nchunks < 3 { return false; }
+
+  res: [1] KbQueryResult;
+  // 1. Transcript query hits docs/transcripts/289.md first with citation & SHA-256 digest.
+  n1 := kb_search(idx[..], "what did we decide in episode 289?", 3, "", res[..]);
+  if n1 < 1 || res[0].hits[0].hit.source_path != "docs/transcripts/289.md" { return false; }
+  if res[0].hits[0].hit.kind != KB_KIND_TRANSCRIPT || res[0].hits[0].hit.digest.count != 64 { return false; }
+  if res[0].hits[0].hit.entry_id != "docs.transcripts.289" { return false; }
+
+  // 2. Coax #authority query hits coax/book/ch11-writing-checks.md first.
+  n2 := kb_search(idx[..], "how does Coax #authority work?", 3, "", res[..]);
+  if n2 < 1 || res[0].hits[0].hit.source_path != "coax/book/ch11-writing-checks.md" { return false; }
+  if res[0].hits[0].hit.kind != KB_KIND_BOOK { return false; }
+
+  // 3. Kind filter restricts to docs only.
+  n3 := kb_search(idx[..], "git worktrees bitcoin", 3, "doc", res[..]);
+  if n3 < 1 || res[0].hits[0].hit.source_path != "AGENTS.md" { return false; }
+
+  // 4. Off-topic query is refused cleanly.
+  n4 := kb_search(idx[..], "best sourdough pizza recipe in Rome", 3, "", res[..]);
+  if n4 != 0 { return false; }
+
+  // 5. Wire JSON round-trip & KnowledgeGet by NIP-KB entry_id.
+  jb: [16384] u8;
+  jn := kb_format_result_json("episode 289", res[..], jb[..]);
+  if jn <= 0 { return false; }
+  gn := kb_get_entry_json(idx[..], "docs.transcripts.289", 1, 20, jb[..]);
+  if gn <= 0 || !kb_rec_contains(cast(string) jb[0..<gn], "System One Front") { return false; }
+
+  // 6. Disk cache save + reload round-trip.
+  cp_b: [FS_PATH_MAX] u8;
+  cp := fs_join(tmp, "cache/test.v1", cp_b[..]);
+  if !kb_cache_save(idx[..], cp) { return false; }
+  idx2: [1] KbIndex;
+  if !kb_cache_try_load(idx2[..], cp, idx[0].nfiles, idx[0].fp_lo, idx[0].fp_hi) { return false; }
+  idx2[0].root_len = kb_copy(idx2[0].root_buf[..], tmp);
+  n5 := kb_search(idx2[..], "how does Coax #authority work?", 3, "", res[..]);
+  if n5 < 1 || res[0].hits[0].hit.source_path != "coax/book/ch11-writing-checks.md" { return false; }
+  return true;
+}
+
+#test "knowledge index: pure heading trails, snippet normalization, binary codecs, and dir filters" {
+  #assert kb_heading_level("# Title") == 1 && kb_heading_level("## Sub") == 2 && kb_heading_level("### Leaf") == 3;
+  #assert kb_heading_level("#### Deep") == 0 && kb_heading_level("#NoSpace") == 0 && kb_heading_level("plain") == 0;
+  #assert kb_trim_heading("##  Authority  ##") == "Authority";
+  tb: [128] u8;
+  #assert kb_compose_trail("Ch 11", "Authority", "Mutants", "f.md", tb[..]) == "Ch 11 > Authority > Mutants";
+  #assert kb_compose_trail("", "", "", "fallback.md", tb[..]) == "fallback.md";
+
+  sb: [64] u8;
+  sn := kb_extract_snippet("  hello\n\tworld   #authority\r\n", sb[..]);
+  #assert cast(string) sb[0..<sn] == "hello world #authority";
+
+  #assert kb_skip_dir_name(".git") && kb_skip_dir_name("node_modules") && !kb_skip_dir_name("transcripts");
+  #assert kb_kind_matches_filter(KB_KIND_TRANSCRIPT, "") && kb_kind_matches_filter(KB_KIND_TRANSCRIPT, "all");
+  #assert kb_kind_matches_filter(KB_KIND_TRANSCRIPT, "transcript") && !kb_kind_matches_filter(KB_KIND_TRANSCRIPT, "book");
+
+  bb: [32] u8;
+  at := [1] int.[0];
+  kb_put_u16(bb[..], at[..], 0x1234);
+  kb_put_u32(bb[..], at[..], 0xDEADBEEF);
+  kb_put_u64(bb[..], at[..], 0x0102030405060708);
+  at[0] = 0;
+  #assert kb_get_u16(bb[..], at[..]) == 0x1234;
+  #assert kb_get_u32(bb[..], at[..]) == 0xDEADBEEF;
+  #assert kb_get_u64(bb[..], at[..]) == 0x0102030405060708;
+}

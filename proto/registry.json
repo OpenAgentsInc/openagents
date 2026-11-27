@@ -7621,6 +7621,27 @@
         "coax/web/api/tests/cloud_chat_sync_checks.coax"
       ],
       "note": "Unified cloud chat full conversation snapshot with turns and rich event stream (#14093)."
+    },
+    {
+      "id": "openagents.knowledge.v1alpha1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coax-native/knowledge-v1alpha1.json",
+      "codec": "openagents/knowledge/record.coax",
+      "check": "coax/bin/coax test openagents/knowledge/record.coax --library",
+      "step": "new",
+      "files": [
+        "openagents/knowledge/index.coax",
+        "openagents/knowledge/nipkb.coax",
+        "openagents/knowledge/kb-tool.coax",
+        "coder/tui/oa-worker.coax"
+      ],
+      "tests": [
+        "openagents/knowledge/record.coax",
+        "openagents/knowledge/index.coax",
+        "openagents/knowledge/nipkb.coax"
+      ],
+      "note": "Shared Knowledge Base record and hybrid lexical+semantic retrieval envelope aligned with NIP-KB (#14058)."
     }
   ]
 }

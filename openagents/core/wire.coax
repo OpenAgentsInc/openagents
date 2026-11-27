@@ -455,7 +455,8 @@ flawed_wire_tool_is_concurrency_safe :: (name: string) -> bool #effects(reads, t
          name == "CoaxDefines" || name == "CoaxUses" || name == "CoaxChecks" || name == "CoaxExports" ||
          name == "CoaxShow" || name == "CoaxCheck" || name == "CoaxExplain" || name == "CoaxVocab" ||
          name == "CoaxEffects" || name == "CoaxDepends" || name == "CoaxLoaders" ||
-         name == "WalletStatus" || name == "MetaverseRoute";
+         name == "WalletStatus" || name == "MetaverseRoute" ||
+         name == "KnowledgeSearch" || name == "KnowledgeGet";
 }
 
 flawed_wire_write_tool_one :: (o: [] Jo, gemini_fmt: bool, name: string, desc: string, schema_raw: string) #effects(all) {
@@ -581,6 +582,15 @@ flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: strin
     "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"description\":\"Optional worktree slug name\"}}}",
     "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"keep\",\"remove\"]},\"discard_changes\":{\"type\":\"boolean\"}},\"required\":[\"action\"]}",
   ];
+  kb_names := [OA_MEMBER_NKNOWLEDGE] string.["KnowledgeSearch", "KnowledgeGet"];
+  kb_descs := [OA_MEMBER_NKNOWLEDGE] string.[
+    "Hybrid lexical (BM25) + dense semantic search over the OpenAgents shared knowledge base (docs/, */book/, docs/transcripts/, NIP-KB, and workspace docs). Returns versioned knowledge citations (source_path, start_line..end_line, entry_id, SHA-256 digest, snippet) locally in <50ms. Prefer this over repo-wide Grep/Bash loops for questions about episodes, books, architecture, or decisions.",
+    "Read an exact cited excerpt from the OpenAgents shared knowledge base by source_path (e.g. docs/transcripts/289.md) or NIP-KB entry_id (e.g. docs.transcripts.289) with optional start_line and max_lines.",
+  ];
+  kb_schemas := [OA_MEMBER_NKNOWLEDGE] string.[
+    "{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"description\":\"Natural-language or keyword question\"},\"limit\":{\"type\":\"integer\",\"description\":\"Max citations to return (1-16, default 5)\"},\"kind\":{\"type\":\"string\",\"enum\":[\"all\",\"doc\",\"book\",\"transcript\"],\"description\":\"Optional source kind filter\"}},\"required\":[\"query\"]}",
+    "{\"type\":\"object\",\"properties\":{\"target\":{\"type\":\"string\",\"description\":\"source_path or NIP-KB entry_id from KnowledgeSearch\"},\"start_line\":{\"type\":\"integer\"},\"max_lines\":{\"type\":\"integer\"}},\"required\":[\"target\"]}",
+  ];
   if gemini_fmt {
     jo_arr(o);
     jo_obj(o);
@@ -627,6 +637,13 @@ flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: strin
     for i: 0..<OA_MEMBER_NAGENTS {
       if !flawed_wire_tool_allowed(ag_names[i], allowed_csv, disallowed_csv) { continue; }
       flawed_wire_write_tool_one(o, gemini_fmt, ag_names[i], ag_descs[i], ag_schemas[i]);
+      emitted += 1;
+    }
+  }
+  if (packs_mask & OA_PACK_KNOWLEDGE) != 0 {
+    for i: 0..<OA_MEMBER_NKNOWLEDGE {
+      if !flawed_wire_tool_allowed(kb_names[i], allowed_csv, disallowed_csv) { continue; }
+      flawed_wire_write_tool_one(o, gemini_fmt, kb_names[i], kb_descs[i], kb_schemas[i]);
       emitted += 1;
     }
   }
@@ -1002,5 +1019,25 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert flawed_wire_tool_permission("SendMessage", "a1", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("TaskStop", "a1", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("EnterWorktree", "feat", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ASK;
+  #assert flawed_wire_tool_permission("EnterWorktree", "feat", FLAWED_PMODE_ACCEPT_EDITS, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("EnterWorktree", "feat", FLAWED_PMODE_DONT_ASK, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("EnterWorktree", "feat", FLAWED_PMODE_DEFAULT, false, true) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("ExitWorktree", "keep", FLAWED_PMODE_AUTO, false, false) == FLAWED_PBEH_ALLOW;
+
+  // Shared Knowledge Base pack (OA_PACK_KNOWLEDGE): KnowledgeSearch, KnowledgeGet (#14058)
+  jo_start(o[..], all_buf[..]);
+  n9 := flawed_wire_write_tools_packs(o[..], true, "", "", OA_PACK_KNOWLEDGE);
+  #assert !o[0].bad && n9 == 10 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
+  decls9 := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
+  #assert jv_len(d[0], decls9) == 10;
+  t_ks := jv_at(d[0], decls9, 8);
+  #assert jv_str(d[0], jv_get(d[0], t_ks, "name"), sb[..]) == 15 && cast(string) sb[0..<15] == "KnowledgeSearch";
+  t_kg := jv_at(d[0], decls9, 9);
+  #assert jv_str(d[0], jv_get(d[0], t_kg, "name"), sb[..]) == 12 && cast(string) sb[0..<12] == "KnowledgeGet";
+  jo_start(o[..], all_buf[..]);
+  n10 := flawed_wire_write_tools_packs(o[..], false, "KnowledgeSearch,KnowledgeGet", "KnowledgeGet", OA_PACK_KNOWLEDGE);
+  #assert !o[0].bad && n10 == 1 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]) && jv_len(d[0], 0) == 1;
+  #assert flawed_wire_tool_is_concurrency_safe("KnowledgeSearch") && flawed_wire_tool_is_concurrency_safe("KnowledgeGet");
+  #assert flawed_wire_tool_permission("KnowledgeSearch", "episode 289", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("KnowledgeGet", "docs/transcripts/289.md", FLAWED_PMODE_DONT_ASK, false, false) == FLAWED_PBEH_ALLOW;
 }

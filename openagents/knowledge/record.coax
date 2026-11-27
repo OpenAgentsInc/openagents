@@ -1,0 +1,459 @@
+// OpenAgents Shared Knowledge Base — Record Codec, NIP-KB Alignment & Hybrid Admission (#14058).
+//
+// Authoritative, pure, zero-heap rules for `openagents.knowledge.v1alpha1`:
+//   - NIP-KB entry ID validation & deterministic path -> ID derivation (`^[a-z][a-z0-9.-]{0,127}$`)
+//   - Source kind classification (`doc`, `book`, `transcript`, plus NIP-KB kinds)
+//   - SHA-256 content digest (`x` tag) via coax/lib/crypto/sha256-kernel.coax
+//   - Hybrid RRF fusion + relevance refusal gate reusing psionic/lib/book-search/rank.coax
+//   - Versioned JSON wire codecs for `openagents.knowledge.v1alpha1` & NIP-KB frontmatter
+//
+//   coax/bin/coax test openagents/knowledge/record.coax --library
+//   coax/bin/coax mutate openagents/knowledge/record.coax --library --root-only
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#load "../../psionic/lib/book-search/rank.coax";
+#authority;
+
+KB_V1ALPHA1_SCHEMA :: "openagents.knowledge.v1alpha1";
+KB_VEC_DIM         :: 64;
+KB_MAX_ID_LEN      :: 128;
+
+// Record kinds: local workspace corpus kinds + NIP-KB kinds
+KB_KIND_DOC        :: 0;
+KB_KIND_BOOK       :: 1;
+KB_KIND_TRANSCRIPT :: 2;
+KB_KIND_METHOD     :: 3;
+KB_KIND_EDGE_CASE  :: 4;
+KB_KIND_SLIP       :: 5;
+KB_KIND_ENV        :: 6;
+KB_KIND_TOOL       :: 7;
+
+// Trust status matching coax/lib/nostr/kb/entry.coax (KS_WITHDRAWN=0, KS_CANDIDATE=1, KS_ADMITTED=2)
+KB_TRUST_WITHDRAWN :: 0;
+KB_TRUST_CANDIDATE :: 1;
+KB_TRUST_ADMITTED  :: 2;
+
+KB_REFUSE_MSG :: "We don't have an entry for that.";
+
+KbRecHit :: struct {
+  entry_id: string;
+  source_path: string;
+  start_line: int;
+  end_line: int;
+  heading: string;
+  kind: int;
+  doc_status: BsStatus;
+  trust_status: int;
+  digest: string;
+  snippet: string;
+  score_milli: int;
+  lexical_milli: int;
+  semantic_milli: int;
+}
+
+kb_rec_kind_name :: (k: int) -> string #effects(reads, traps) {
+  if k == KB_KIND_BOOK       { return "book"; }
+  if k == KB_KIND_TRANSCRIPT { return "transcript"; }
+  if k == KB_KIND_METHOD     { return "method"; }
+  if k == KB_KIND_EDGE_CASE  { return "edge-case"; }
+  if k == KB_KIND_SLIP       { return "slip"; }
+  if k == KB_KIND_ENV        { return "environment"; }
+  if k == KB_KIND_TOOL       { return "tool"; }
+  return "doc";
+}
+
+kb_rec_trust_name :: (t: int) -> string #effects(reads, traps) {
+  if t == KB_TRUST_ADMITTED  { return "admitted"; }
+  if t == KB_TRUST_WITHDRAWN { return "withdrawn"; }
+  return "candidate";
+}
+
+kb_rec_lower :: (c: u8) -> u8 #effects(reads, traps) {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+kb_rec_is_alpha :: (c: u8) -> bool #effects(reads, traps) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+kb_rec_is_digit :: (c: u8) -> bool #effects(reads, traps) {
+  return c >= '0' && c <= '9';
+}
+
+kb_rec_is_alnum :: (c: u8) -> bool #effects(reads, traps) {
+  return kb_rec_is_alpha(c) || kb_rec_is_digit(c);
+}
+
+kb_rec_starts :: (s: string, pre: string) -> bool #effects(reads, traps) {
+  if s.count < pre.count { return false; }
+  for i: 0..<pre.count { if s[i] != pre[i] { return false; } }
+  return true;
+}
+
+kb_rec_ends :: (s: string, suf: string) -> bool #effects(reads, traps) {
+  if s.count < suf.count { return false; }
+  off := s.count - suf.count;
+  for i: 0..<suf.count { if s[off + i] != suf[i] { return false; } }
+  return true;
+}
+
+kb_rec_contains :: (s: string, sub: string) -> bool #effects(reads, traps) {
+  if sub.count == 0 { return true; }
+  if s.count < sub.count { return false; }
+  for i: 0..<s.count - sub.count + 1 {
+    ok := true;
+    for j: 0..<sub.count {
+      if s[i + j] != sub[j] { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+// Classify a repository-relative markdown path into transcript, book, or doc.
+kb_rec_classify_source :: (path: string) -> int #effects(reads, traps) {
+  if kb_rec_starts(path, "docs/transcripts/") { return KB_KIND_TRANSCRIPT; }
+  if kb_rec_contains(path, "/book/") || kb_rec_starts(path, "book/") { return KB_KIND_BOOK; }
+  return KB_KIND_DOC;
+}
+
+// NIP-KB entry ID grammar: ^[a-z][a-z0-9.-]{0,127}$
+kb_rec_id_valid :: (s: string) -> bool #effects(reads, traps) {
+  if s.count < 1 || s.count > KB_MAX_ID_LEN { return false; }
+  if s[0] < 'a' || s[0] > 'z' { return false; }
+  for i: 1..<s.count {
+    c := s[i];
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-') {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Deterministically derive a valid NIP-KB entry ID from a repo-relative path.
+// Returns length written into `out`, or 0 if out is too small (< 4 bytes).
+kb_rec_path_to_id :: (path: string, out: [] u8) -> int #effects(all) {
+  if out.count < 4 { return 0; }
+  s := path;
+  if kb_rec_ends(s, ".md") || kb_rec_ends(s, ".MD") {
+    s = cast(string) s[0..<s.count - 3];
+  }
+  n := 0;
+  prev_sep := true;
+  max_n := ifx out.count < KB_MAX_ID_LEN then out.count else KB_MAX_ID_LEN; // mutant: equivalent (equal values select identical cap)
+  for i: 0..<s.count {
+    if n >= max_n { break; }
+    c := kb_rec_lower(s[i]);
+    if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+      if n == 0 && c < 'a' {
+        out[0] = 'k'; out[1] = 'b'; out[2] = '.';
+        n = 3;
+      }
+      out[n] = c;
+      n += 1;
+      prev_sep = false;
+    } else if c == '/' || c == '.' {
+      if !prev_sep {
+        out[n] = '.';
+        n += 1;
+        prev_sep = true;
+      }
+    } else if c == '-' || c == '_' || c == ' ' {
+      if !prev_sep {
+        out[n] = '-';
+        n += 1;
+        prev_sep = true;
+      }
+    }
+  }
+  while n > 0 && (out[n - 1] == '.' || out[n - 1] == '-') { n -= 1; } // mutant: equivalent (out[0] is always [a-z] since prev_sep starts true)
+  if n == 0 {
+    out[0] = 'k'; out[1] = 'b'; out[2] = '.'; out[3] = 'x';
+    return 4;
+  }
+  return n;
+}
+
+// Compute 64-character lowercase SHA-256 hex digest of `data` into `out` (returns 64 on success, 0 on error).
+kb_rec_hash_hex :: (data: string, out: [] u8) -> int #effects(all) {
+  if out.count < 64 { return 0; }
+  _ = S_hex(S_hash(data), out[0..<64]);
+  return 64;
+}
+
+// Hybrid relevance gate: refuses queries that have neither lexical BM25 evidence nor strong semantic similarity.
+// Prevents fabricated matches for out-of-corpus queries ("best sourdough pizza in Rome").
+kb_rec_hit_admitted :: (best_lex: f64, best_sem: f64) -> bool #effects(reads, traps) {
+  if best_lex >= 1.25 { return true; }
+  if best_lex > 0.0 && best_sem >= 0.28 { return true; }
+  if best_sem >= 0.58 { return true; }
+  return false;
+}
+
+// Fuse lexical and dense rankings using RRF (psionic/lib/book-search/rank.coax `bs_fuse` + `bs_top`),
+// returning top hits in `out` (0 when refused by `kb_rec_hit_admitted`).
+kb_rec_hybrid_fuse :: (lex: [] BsHit, den: [] BsHit, scores: [] f64, out: [] BsHit) -> int #effects(all) {
+  best_lex := ifx lex.count > 0 then lex[0].score else 0.0;
+  best_sem := ifx den.count > 0 then den[0].score else 0.0;
+  if !kb_rec_hit_admitted(best_lex, best_sem) { return 0; }
+  bs_fuse(lex, den, scores);
+  return bs_top(scores, 0.0, out);
+}
+
+// Scale a floating-point score into deterministic milli-units (integer) for wire JSON.
+kb_rec_to_milli :: (v: f64) -> int #effects(reads, traps) {
+  if v <= 0.0 { return 0; } // mutant: equivalent (when v == 0.0, int(0.5) == 0 as well)
+  return cast(int) (v * 1000.0 + 0.5);
+}
+
+// Serialize one `openagents.knowledge.v1alpha1` hit object.
+kb_rec_write_hit_json :: (o: [] Jo, h: KbRecHit) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "schema");         jo_str(o, KB_V1ALPHA1_SCHEMA);
+  jo_key(o, "entry_id");       jo_str(o, h.entry_id);
+  jo_key(o, "source_path");    jo_str(o, h.source_path);
+  jo_key(o, "start_line");     jo_int(o, h.start_line);
+  jo_key(o, "end_line");       jo_int(o, h.end_line);
+  jo_key(o, "heading");        jo_str(o, h.heading);
+  jo_key(o, "kind");           jo_str(o, kb_rec_kind_name(h.kind));
+  jo_key(o, "doc_status");     jo_str(o, bs_status_name(h.doc_status));
+  jo_key(o, "trust_status");   jo_str(o, kb_rec_trust_name(h.trust_status));
+  jo_key(o, "digest");         jo_str(o, h.digest);
+  jo_key(o, "snippet");        jo_str(o, h.snippet);
+  jo_key(o, "score");          jo_int(o, h.score_milli);
+  jo_key(o, "lexical_score");  jo_int(o, h.lexical_milli);
+  jo_key(o, "semantic_score"); jo_int(o, h.semantic_milli);
+  jo_end(o);
+}
+
+// Serialize a versioned `openagents.knowledge.v1alpha1` query response envelope.
+kb_rec_write_reply_json :: (o: [] Jo, query: string, latency_ms: int, indexed_files: int, indexed_chunks: int, hits: [] KbRecHit) #effects(all) {
+  refused := hits.count == 0;
+  jo_obj(o);
+  jo_key(o, "schema");         jo_str(o, KB_V1ALPHA1_SCHEMA);
+  jo_key(o, "query");          jo_str(o, query);
+  jo_key(o, "latency_ms");     jo_int(o, latency_ms);
+  jo_key(o, "indexed_files");  jo_int(o, indexed_files);
+  jo_key(o, "indexed_chunks"); jo_int(o, indexed_chunks);
+  jo_key(o, "refused");        jo_bool(o, refused);
+  jo_key(o, "message");        jo_str(o, ifx refused then KB_REFUSE_MSG else "");
+  jo_key(o, "hits");           jo_arr(o);
+  for i: 0..<hits.count {
+    kb_rec_write_hit_json(o, hits[i]);
+  }
+  jo_end(o);
+  jo_end(o);
+}
+
+// Append bytes helper for frontmatter formatting.
+kb_rec_cat :: (dst: [] u8, at: int, src: string) -> int #effects(all) {
+  n := at;
+  if n < 0 { return 0; }
+  for i: 0..<src.count {
+    if n >= dst.count { return n; } // mutant: equivalent (n increments by 1 up to dst.count)
+    dst[n] = src[i];
+    n += 1;
+  }
+  return n;
+}
+
+// Format a NIP-KB YAML frontmatter block (`---\nid: ...\nversion: ...\nkind: ...\ntitle: ...\nstatus: ...\n---\n`).
+kb_rec_write_nipkb_frontmatter :: (out: [] u8, entry_id: string, version: int, kind: int, title: string, trust_status: int) -> int #effects(all) {
+  if !kb_rec_id_valid(entry_id) || version < 1 { return 0; }
+  n := 0;
+  n = kb_rec_cat(out, n, "---\nid: ");
+  n = kb_rec_cat(out, n, entry_id);
+  n = kb_rec_cat(out, n, "\nversion: ");
+  db: [24] u8;
+  v := version;
+  dn := 0;
+  while v > 0 {
+    db[dn] = cast(u8) ('0' + (v % 10));
+    dn += 1;
+    v = v / 10;
+  }
+  while dn > 0 {
+    dn -= 1;
+    if n < out.count { out[n] = db[dn]; n += 1; }
+  }
+  n = kb_rec_cat(out, n, "\nkind: ");
+  n = kb_rec_cat(out, n, kb_rec_kind_name(kind));
+  n = kb_rec_cat(out, n, "\ntitle: ");
+  n = kb_rec_cat(out, n, title);
+  n = kb_rec_cat(out, n, "\nstatus: ");
+  n = kb_rec_cat(out, n, kb_rec_trust_name(trust_status));
+  n = kb_rec_cat(out, n, "\n---\n");
+  return n;
+}
+
+// ============================================================================
+// #forall & #test Verification (0 surviving mutants)
+// ============================================================================
+
+#test "knowledge record: kind/trust names, string helpers, and source classification" {
+  #assert kb_rec_kind_name(KB_KIND_DOC) == "doc";
+  #assert kb_rec_kind_name(KB_KIND_BOOK) == "book";
+  #assert kb_rec_kind_name(KB_KIND_TRANSCRIPT) == "transcript";
+  #assert kb_rec_kind_name(KB_KIND_METHOD) == "method";
+  #assert kb_rec_kind_name(KB_KIND_EDGE_CASE) == "edge-case";
+  #assert kb_rec_kind_name(KB_KIND_SLIP) == "slip";
+  #assert kb_rec_kind_name(KB_KIND_ENV) == "environment";
+  #assert kb_rec_kind_name(KB_KIND_TOOL) == "tool";
+  #assert kb_rec_kind_name(99) == "doc";
+
+  #assert kb_rec_trust_name(KB_TRUST_ADMITTED) == "admitted";
+  #assert kb_rec_trust_name(KB_TRUST_WITHDRAWN) == "withdrawn";
+  #assert kb_rec_trust_name(KB_TRUST_CANDIDATE) == "candidate";
+  #assert kb_rec_trust_name(99) == "candidate";
+
+  #assert kb_rec_lower('A') == 'a' && kb_rec_lower('Z') == 'z' && kb_rec_lower('@') == '@' && kb_rec_lower('[') == '[';
+  #assert kb_rec_is_alpha('a') && kb_rec_is_alpha('z') && kb_rec_is_alpha('A') && kb_rec_is_alpha('Z');
+  #assert !kb_rec_is_alpha('0') && !kb_rec_is_alpha('`') && !kb_rec_is_alpha('{') && !kb_rec_is_alpha('@') && !kb_rec_is_alpha('[');
+  #assert kb_rec_is_digit('0') && kb_rec_is_digit('9') && !kb_rec_is_digit('/') && !kb_rec_is_digit(':');
+  #assert kb_rec_is_alnum('a') && kb_rec_is_alnum('5') && !kb_rec_is_alnum('-');
+
+  #assert kb_rec_starts("abc", "ab") && kb_rec_starts("ab", "ab") && !kb_rec_starts("a", "ab") && !kb_rec_starts("xb", "ab") && !kb_rec_starts("ax", "ab");
+  #assert kb_rec_ends("abc", "bc") && kb_rec_ends("bc", "bc") && !kb_rec_ends("c", "bc") && !kb_rec_ends("xc", "bc") && !kb_rec_ends("bx", "bc");
+  #assert kb_rec_contains("abc", "") && kb_rec_contains("abc", "bc") && kb_rec_contains("abc", "ab") && kb_rec_contains("ab", "ab");
+  #assert !kb_rec_contains("ab", "abc") && !kb_rec_contains("ab", "bc") && !kb_rec_contains("b", "a") && !kb_rec_contains("abc", "bd") && !kb_rec_contains("xb", "ab") && !kb_rec_contains("a", "ab") && kb_rec_contains("a", "a");
+
+  #assert kb_rec_classify_source("docs/transcripts/289.md") == KB_KIND_TRANSCRIPT;
+  #assert kb_rec_classify_source("coax/book/ch11-writing-checks.md") == KB_KIND_BOOK;
+  #assert kb_rec_classify_source("book/intro.md") == KB_KIND_BOOK;
+  #assert kb_rec_classify_source("docs/REPO-MAP.md") == KB_KIND_DOC;
+  #assert kb_rec_classify_source("AGENTS.md") == KB_KIND_DOC;
+}
+
+#test "knowledge record: NIP-KB ID grammar, path derivation, and SHA-256 digest" {
+  #assert kb_rec_id_valid("a") && kb_rec_id_valid("z") && kb_rec_id_valid("a0z9.-");
+  #assert kb_rec_id_valid("docs.transcripts.289") && kb_rec_id_valid("coax.book.ch11-checks");
+  #assert !kb_rec_id_valid("") && !kb_rec_id_valid("1abc") && !kb_rec_id_valid("Abc") && !kb_rec_id_valid(".abc") && !kb_rec_id_valid("-abc");
+  #assert !kb_rec_id_valid("{abc") && !kb_rec_id_valid("`abc") && !kb_rec_id_valid("a_b") && !kb_rec_id_valid("a/b") && !kb_rec_id_valid("a{b") && !kb_rec_id_valid("a:b");
+  long_ok: [128] u8; long_bad: [129] u8;
+  for i: 0..<128 { long_ok[i] = 'a'; }
+  for i: 0..<129 { long_bad[i] = 'a'; }
+  #assert kb_rec_id_valid(cast(string) long_ok[..]) && !kb_rec_id_valid(cast(string) long_bad[..]);
+
+  idb: [160] u8;
+  n0 := kb_rec_path_to_id("/", idb[..]);
+  #assert cast(string) idb[0..<n0] == "kb.x";
+  n0b := kb_rec_path_to_id(".", idb[..]);
+  #assert cast(string) idb[0..<n0b] == "kb.x";
+  n0c := kb_rec_path_to_id("/a", idb[..]);
+  #assert cast(string) idb[0..<n0c] == "a";
+  n0d := kb_rec_path_to_id(".z09", idb[..]);
+  #assert cast(string) idb[0..<n0d] == "z09";
+  n1 := kb_rec_path_to_id("./docs/transcripts/289.md", idb[..]);
+  #assert cast(string) idb[0..<n1] == "docs.transcripts.289" && kb_rec_id_valid(cast(string) idb[0..<n1]);
+  n2 := kb_rec_path_to_id("/289_Notes Foo!.MD", idb[..]);
+  #assert cast(string) idb[0..<n2] == "kb.289-notes-foo" && kb_rec_id_valid(cast(string) idb[0..<n2]);
+  n3 := kb_rec_path_to_id("...---///", idb[..]);
+  #assert cast(string) idb[0..<n3] == "kb.x" && kb_rec_id_valid(cast(string) idb[0..<n3]);
+  n4 := kb_rec_path_to_id("coax//book/ch11__checks-.md", idb[..]);
+  #assert cast(string) idb[0..<n4] == "coax.book.ch11-checks" && kb_rec_id_valid(cast(string) idb[0..<n4]);
+  n5 := kb_rec_path_to_id("a.b-c/d.", idb[..]);
+  #assert cast(string) idb[0..<n5] == "a.b-c.d";
+  n6 := kb_rec_path_to_id("a..b--c", idb[..]);
+  #assert cast(string) idb[0..<n6] == "a.b-c";
+  n7 := kb_rec_path_to_id("-a{09:z}!", idb[..]);
+  #assert cast(string) idb[0..<n7] == "a09z";
+  #assert kb_rec_path_to_id("a.md", idb[0..<3]) == 0;
+  tiny: [4] u8;
+  #assert kb_rec_path_to_id("9abc", tiny[..]) == 4 && cast(string) tiny[0..<4] == "kb.9";
+  #assert kb_rec_path_to_id("0", tiny[..]) == 4 && cast(string) tiny[0..<4] == "kb.0";
+  #assert kb_rec_path_to_id("abcdef", tiny[..]) == 4 && cast(string) tiny[0..<4] == "abcd";
+  #assert kb_rec_path_to_id(cast(string) long_bad[..], idb[..]) == 128;
+  // Verify fallback "kb.x" overwrites all 4 positions when buffer was pre-filled.
+  pre := [4] u8.['!', '!', '!', '!'];
+  #assert kb_rec_path_to_id("!!!", pre[..]) == 4 && cast(string) pre[..] == "kb.x";
+
+  hb: [65] u8;
+  hb[0] = 'X';
+  #assert kb_rec_hash_hex("abc", hb[0..<64]) == 64;
+  #assert cast(string) hb[0..<64] == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  #assert kb_rec_hash_hex("abc", hb[0..<63]) == 0;
+}
+
+#test "knowledge record: hybrid RRF fusion, admission boundaries, and milli scaling" {
+  // Relevance refusal gate boundaries
+  #assert kb_rec_hit_admitted(1.25, 0.0) && !kb_rec_hit_admitted(1.24, 0.27);
+  #assert kb_rec_hit_admitted(0.01, 0.28) && !kb_rec_hit_admitted(0.0, 0.57) && kb_rec_hit_admitted(0.0, 0.58);
+
+  // Hybrid RRF fusion + refusal (including 1-element lists so count > 0 boundary is tested!)
+  lex1 := [1] BsHit.[BsHit.{passage = 1, score = 2.0}];
+  den1 := [1] BsHit.[BsHit.{passage = 0, score = 0.65}];
+  sc: [4] f64;
+  out: [3] BsHit;
+  #assert kb_rec_hybrid_fuse(lex1[..], den1[0..<0], sc[..], out[..]) == 1 && out[0].passage == 1;
+  #assert kb_rec_hybrid_fuse(lex1[0..<0], den1[..], sc[..], out[..]) == 1 && out[0].passage == 0;
+
+  lex := [2] BsHit.[BsHit.{passage = 1, score = 4.2}, BsHit.{passage = 0, score = 1.5}];
+  den := [2] BsHit.[BsHit.{passage = 0, score = 0.72}, BsHit.{passage = 2, score = 0.40}];
+  nh := kb_rec_hybrid_fuse(lex[..], den[..], sc[..], out[..]);
+  #assert nh == 3 && out[0].passage == 0 && out[1].passage == 1 && out[2].passage == 2;
+  weak_lex := [1] BsHit.[BsHit.{passage = 0, score = 0.2}];
+  weak_den := [1] BsHit.[BsHit.{passage = 0, score = 0.1}];
+  #assert kb_rec_hybrid_fuse(weak_lex[..], weak_den[..], sc[..], out[..]) == 0;
+  #assert kb_rec_hybrid_fuse(lex[0..<0], den[0..<0], sc[..], out[..]) == 0;
+  #assert kb_rec_to_milli(-0.5) == 0 && kb_rec_to_milli(0.0) == 0 && kb_rec_to_milli(0.4567) == 457;
+}
+
+#test "knowledge record: openagents.knowledge.v1alpha1 JSON wire codec and NIP-KB frontmatter" {
+  buf: [4096] u8;
+  o: [1] Jo;
+  nodes: [256] JvNode;
+  d: [1] Jv;
+  sb: [128] u8;
+
+  hits := [1] KbRecHit.[KbRecHit.{
+    entry_id = "docs.transcripts.289",
+    source_path = "docs/transcripts/289.md",
+    start_line = 12,
+    end_line = 48,
+    heading = "Episode 289: OpenAgents",
+    kind = KB_KIND_TRANSCRIPT,
+    doc_status = BsStatus.implemented,
+    trust_status = KB_TRUST_ADMITTED,
+    digest = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    snippet = "System One Front routes to capability packs.",
+    score_milli = 32,
+    lexical_milli = 4200,
+    semantic_milli = 710,
+  }];
+  jo_start(o[..], buf[..]);
+  kb_rec_write_reply_json(o[..], "episode 289", 14, 412, 2300, hits[..]);
+  #assert !o[0].bad && jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  #assert jv_str(d[0], jv_get(d[0], 0, "schema"), sb[..]) == 29 && cast(string) sb[0..<29] == "openagents.knowledge.v1alpha1";
+  #assert jv_int(d[0], jv_get(d[0], 0, "latency_ms"), -1) == 14;
+  #assert jv_int(d[0], jv_get(d[0], 0, "indexed_files"), -1) == 412;
+  #assert jv_int(d[0], jv_get(d[0], 0, "indexed_chunks"), -1) == 2300;
+  #assert !jv_bool(d[0], jv_get(d[0], 0, "refused"));
+  h0 := jv_at(d[0], jv_get(d[0], 0, "hits"), 0);
+  #assert jv_str(d[0], jv_get(d[0], h0, "entry_id"), sb[..]) == 20 && cast(string) sb[0..<20] == "docs.transcripts.289";
+  #assert jv_str(d[0], jv_get(d[0], h0, "kind"), sb[..]) == 10 && cast(string) sb[0..<10] == "transcript";
+  #assert jv_str(d[0], jv_get(d[0], h0, "doc_status"), sb[..]) == 11 && cast(string) sb[0..<11] == "implemented";
+  #assert jv_str(d[0], jv_get(d[0], h0, "trust_status"), sb[..]) == 8 && cast(string) sb[0..<8] == "admitted";
+  #assert jv_int(d[0], jv_get(d[0], h0, "start_line"), 0) == 12 && jv_int(d[0], jv_get(d[0], h0, "end_line"), 0) == 48;
+  #assert jv_int(d[0], jv_get(d[0], h0, "score"), 0) == 32 && jv_int(d[0], jv_get(d[0], h0, "lexical_score"), 0) == 4200 && jv_int(d[0], jv_get(d[0], h0, "semantic_score"), 0) == 710;
+
+  // Refused empty reply
+  jo_start(o[..], buf[..]);
+  kb_rec_write_reply_json(o[..], "sourdough pizza", 5, 412, 2300, hits[0..<0]);
+  #assert !o[0].bad && jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  #assert jv_bool(d[0], jv_get(d[0], 0, "refused"));
+  #assert jv_str(d[0], jv_get(d[0], 0, "message"), sb[..]) == KB_REFUSE_MSG.count && cast(string) sb[0..<KB_REFUSE_MSG.count] == KB_REFUSE_MSG;
+
+  // NIP-KB frontmatter (including version == 1, multi-digit version == 105, and truncated output cap!)
+  fb: [256] u8;
+  #assert kb_rec_cat(fb[0..<2], -1, "x") == 0;
+  #assert kb_rec_cat(fb[0..<2], 1, "xyz") == 2 && fb[1] == 'x';
+  #assert kb_rec_write_nipkb_frontmatter(fb[..], "Bad_ID", 1, KB_KIND_METHOD, "T", KB_TRUST_ADMITTED) == 0;
+  #assert kb_rec_write_nipkb_frontmatter(fb[..], "docs.x", 0, KB_KIND_METHOD, "T", KB_TRUST_ADMITTED) == 0;
+  fn1 := kb_rec_write_nipkb_frontmatter(fb[..], "docs.x", 1, KB_KIND_METHOD, "T", KB_TRUST_CANDIDATE);
+  #assert cast(string) fb[0..<fn1] == "---\nid: docs.x\nversion: 1\nkind: method\ntitle: T\nstatus: candidate\n---\n";
+  fn2 := kb_rec_write_nipkb_frontmatter(fb[..], "docs.x", 105, KB_KIND_METHOD, "Title", KB_TRUST_ADMITTED);
+  #assert cast(string) fb[0..<fn2] == "---\nid: docs.x\nversion: 105\nkind: method\ntitle: Title\nstatus: admitted\n---\n";
+  // Exact-buffer truncation at the version digit boundary.
+  trunc_n := kb_rec_write_nipkb_frontmatter(fb[0..<24], "docs.x", 105, KB_KIND_METHOD, "Title", KB_TRUST_ADMITTED);
+  #assert trunc_n == 24 && cast(string) fb[0..<24] == "---\nid: docs.x\nversion: ";
+}

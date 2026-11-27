@@ -26,6 +26,7 @@
 #load "../../coax/lib/agent/desktop/metaverse-route.coax";
 #load "../../coax/lib/microcoder/steer.coax";
 #load "../../openagents/core/core.coax";
+#load "../../openagents/knowledge/index.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -2099,7 +2100,21 @@ fww_active_packs :: (cwd: string, include_coax_intel: bool) -> int {
              fww_trim(cl_getenv("OA_GAMEBUILDER", gb2[..])).count > 0 ||
              (cwd.count > 0 && fs_exists(fs_join(cwd, "coax/lib/agent/desktop/metaverse-route.coax", p2[..])));
   }
-  return oa_member_packs_from_flags(include_coax_intel, has_wallet, has_cli, has_mv);
+
+  k_env := fww_trim(cl_getenv("OA_KNOWLEDGE_TOOLS", eb[..]));
+  has_kb := false;
+  if k_env == "1" || k_env == "true" { has_kb = true; }
+  else if k_env != "0" && k_env != "false" {
+    kp1: [FS_PATH_MAX] u8; kp2: [FS_PATH_MAX] u8; kp3: [FS_PATH_MAX] u8;
+    has_kb = cwd.count > 0 && (
+      fs_exists(fs_join(cwd, "docs", kp1[..])) ||
+      fs_exists(fs_join(cwd, "AGENTS.md", kp2[..])) ||
+      fs_exists(fs_join(cwd, "knowledge", kp3[..]))
+    );
+  }
+  mask := oa_member_packs_from_flags(include_coax_intel, has_wallet, has_cli, has_mv);
+  if has_kb { mask |= OA_PACK_KNOWLEDGE; }
+  return mask;
 }
 
 // Compact coding system prompt for 32K local Inkling 2 Mini (#14055).
@@ -4453,6 +4468,55 @@ fww_tool_cli :: (cwd: string, args_json: string, out_res: [] u8, is_err: [] bool
   return n;
 }
 
+// Shared Knowledge Base member tools (#14058):
+// - KnowledgeSearch: hybrid lexical (BM25) + dense semantic retrieval over docs/, */book/, docs/transcripts/, NIP-KB
+// - KnowledgeGet: exact cited excerpt by source_path or NIP-KB entry_id
+fww_tool_knowledge :: (cwd: string, name: string, args_json: string, kb_idx: [] KbIndex, out_res: [] u8, is_err: [] bool) -> int {
+  is_err[0] = false;
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Invalid JSON arguments for Knowledge tool.");
+  }
+  if cwd.count == 0 || !kb_build_or_load(kb_idx, cwd, false) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Knowledge index unavailable for current workspace.");
+  }
+  if name == "KnowledgeGet" {
+    tb: [1024] u8;
+    tn := jv_str(d[0], jv_get(d[0], 0, "target"), tb[..]);
+    if tn <= 0 {
+      is_err[0] = true;
+      return fww_keep(out_res, "KnowledgeGet requires target (source_path or NIP-KB entry_id).");
+    }
+    sl := jv_int(d[0], jv_get(d[0], 0, "start_line"), 1);
+    ml := jv_int(d[0], jv_get(d[0], 0, "max_lines"), 100);
+    gn := kb_get_entry_json(kb_idx, cast(string) tb[0..<tn], sl, ml, out_res);
+    if gn <= 0 {
+      is_err[0] = true;
+      return fww_keep(out_res, "Knowledge entry not found.");
+    }
+    return gn;
+  }
+  qb: [1024] u8; kb_b: [32] u8;
+  qn := jv_str(d[0], jv_get(d[0], 0, "query"), qb[..]);
+  if qn <= 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "KnowledgeSearch requires query.");
+  }
+  lim := jv_int(d[0], jv_get(d[0], 0, "limit"), 5);
+  kn := jv_str(d[0], jv_get(d[0], 0, "kind"), kb_b[..]);
+  kfilter := ifx kn > 0 then cast(string) kb_b[0..<kn] else "";
+  res: [1] KbQueryResult;
+  _ = kb_search(kb_idx, cast(string) qb[0..<qn], lim, kfilter, res[..]);
+  jn := kb_format_result_json(cast(string) qb[0..<qn], res[..], out_res);
+  if jn <= 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "Failed to serialize knowledge search reply.");
+  }
+  return jn;
+}
+
 // Metaverse / GameBuilder member tools (#14057):
 // - MetaverseRoute: in-process #authority mv_route_classify + mv_route_write_json
 // - GameBuilder: #authority allowlisted status/list/check-lease/build/playtest/etc.
@@ -4866,6 +4930,7 @@ FwBufs :: struct {
   fc_entries: [FWW_FC_ENTRIES] FlawedFileEntry;
   fc_slab: [FWW_FC_SLAB] u8;
   fc_state: [1] FlawedFileCacheState;
+  kb_idx: [1] KbIndex;
 }
 
 fww_fc :: (b: [] FwBufs) -> FlawedFileCache {
@@ -5089,6 +5154,9 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   if is_local && ctx_win <= 32768 {
     platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
     ln_sys := fww_build_local_coding_system_prompt_core(cfg, cwd_now, platform, base_sys_b[..]);
+    if r[0].nactive_pack > 0 && cast(string) r[0].active_pack[0..<r[0].nactive_pack] == "knowledge" {
+      ln_sys = fww_cat(base_sys_b[..], ln_sys, "\n\n[Knowledge Pack Active] Answer questions about docs, books, transcripts, or past decisions using KnowledgeSearch (and KnowledgeGet for exact excerpts) in one fast turn with file:line citations instead of running repo-wide Grep/Bash loops.\n");
+    }
     if r[0].nmissing_cap_hint > 0 {
       ln_sys = fww_cat(base_sys_b[..], ln_sys, "\n\n[Missing Capability Detected: ");
       ln_sys = fww_cat(base_sys_b[..], ln_sys, cast(string) r[0].missing_cap_hint[0..<r[0].nmissing_cap_hint]);
@@ -5294,6 +5362,12 @@ fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
     tn := jv_str(d[0], jv_get(d[0], 0, "target"), tb[..]);
     if tn > 0 { n = fww_cat(out, n, " "); n = fww_cat(out, n, cast(string) tb[0..<tn]); }
   }
+  else if name == "KnowledgeSearch" {
+    n = jv_str(d[0], jv_get(d[0], 0, "query"), out);
+  }
+  else if name == "KnowledgeGet" {
+    n = jv_str(d[0], jv_get(d[0], 0, "target"), out);
+  }
   else {
     n = jv_str(d[0], jv_get(d[0], 0, "file_path"), out);
     if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "file"), out); }
@@ -5417,6 +5491,9 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   else if oa_member_is_metaverse_tool(name) {
     rn = fww_tool_metaverse(cwd, name, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
+  }
+  else if oa_member_is_knowledge_tool(name) {
+    rn = fww_tool_knowledge(cwd, name, args, b[0].kb_idx[..], r[0].acc[0].tools[idx].res[..], is_err[..]);
   }
   else if name == "TaskStop" {
     rn = fww_tool_task_stop(r, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
@@ -6577,6 +6654,36 @@ tool_main :: () -> int #export_c #effects(all) {
     return 0;
   }
 
+  if fww_flag_asked("--selftest-knowledge") {
+    cwd_b: [FS_PATH_MAX] u8;
+    cwd := fs_cwd(cwd_b[..]);
+    kb_idx: [1] KbIndex;
+    res_b: [49152] u8;
+    is_err := [1] bool.[false];
+    n1 := fww_tool_knowledge(cwd, "KnowledgeSearch", "{\"query\":\"what did we decide in episode 289?\",\"limit\":3}", kb_idx[..], res_b[..], is_err[..]);
+    s1 := cast(string) res_b[0..<n1];
+    if is_err[0] || n1 <= 0 || !fww_contains_ci(s1, "docs/transcripts/289.md") {
+      print("FAIL: KnowledgeSearch episode 289: %\n", s1);
+      return 1;
+    }
+    print("OK KnowledgeSearch episode 289 (% bytes)\n", n1);
+    n2 := fww_tool_knowledge(cwd, "KnowledgeSearch", "{\"query\":\"how does Coax #authority work?\",\"limit\":3}", kb_idx[..], res_b[..], is_err[..]);
+    s2 := cast(string) res_b[0..<n2];
+    if is_err[0] || n2 <= 0 || !fww_contains_ci(s2, "coax/book/") {
+      print("FAIL: KnowledgeSearch #authority: %\n", s2);
+      return 1;
+    }
+    print("OK KnowledgeSearch #authority (% bytes)\n", n2);
+    n3 := fww_tool_knowledge(cwd, "KnowledgeGet", "{\"target\":\"docs.transcripts.289\",\"start_line\":1,\"max_lines\":15}", kb_idx[..], res_b[..], is_err[..]);
+    s3 := cast(string) res_b[0..<n3];
+    if is_err[0] || n3 <= 0 || !fww_contains_ci(s3, "Episode 289") {
+      print("FAIL: KnowledgeGet docs.transcripts.289: %\n", s3);
+      return 1;
+    }
+    print("OK KnowledgeGet docs.transcripts.289 (% bytes)\n", n3);
+    return 0;
+  }
+
   homebuf: [4096] u8;
   home := cl_getenv("CODER_HOME", homebuf[..]);
   if home.count == 0 { home = cl_getenv("HOME", homebuf[..]); }
@@ -6903,6 +7010,9 @@ tool_main :: () -> int #export_c #effects(all) {
       if cn_cat > 0 {
         run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) cat_b[0..<cn_cat]);
       }
+    }
+    if run[0].nactive_pack > 0 && cast(string) run[0].active_pack[0..<run[0].nactive_pack] == "knowledge" {
+      run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n[Knowledge Pack Active] Answer questions about docs, books, transcripts, or past decisions using KnowledgeSearch (and KnowledgeGet for exact excerpts) in one fast turn with file:line citations instead of running repo-wide Grep/Bash loops.\n");
     }
     if run[0].nmissing_cap_hint > 0 {
       run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n[Missing Capability Detected: ");
@@ -7825,13 +7935,16 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_tool_target("OpenAgentsCli", "{\"subcommand\":\"vault\",\"args\":[\"get\",\"api_key\"]}", tb[..]) == "vault get";
   #assert fww_tool_target("OpenAgentsCli", "{\"subcommand\":\"tasks\",\"args\":[\"list\",\"--json\"]}", tb[..]) == "tasks list";
   #assert fww_tool_target("GameBuilder", "{\"action\":\"build\",\"target\":\"scrappers-arena/level-1\"}", tb[..]) == "build scrappers-arena/level-1";
+  #assert fww_tool_target("KnowledgeSearch", "{\"query\":\"episode 289\"}", tb[..]) == "episode 289";
+  #assert fww_tool_target("KnowledgeGet", "{\"target\":\"docs.transcripts.289\"}", tb[..]) == "docs.transcripts.289";
 
-  packs_all := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE;
+  packs_all := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE | OA_PACK_KNOWLEDGE;
   mp_n := fww_build_gemini_body_packs(cfg[..], h_code[..], "high", full_sys, false, packs_all, b_code[..]);
   #assert mp_n > 0;
   mp_s := cast(string) b_code[0..<mp_n];
   #assert fww_contains_ci(mp_s, "WalletStatus") && fww_contains_ci(mp_s, "WalletPay");
   #assert fww_contains_ci(mp_s, "OpenAgentsCli") && fww_contains_ci(mp_s, "MetaverseRoute") && fww_contains_ci(mp_s, "GameBuilder");
+  #assert fww_contains_ci(mp_s, "KnowledgeSearch") && fww_contains_ci(mp_s, "KnowledgeGet");
 
   mr_out: [4096] u8;
   mr_err := [1] bool.[false];

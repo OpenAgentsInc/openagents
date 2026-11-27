@@ -56,14 +56,14 @@ done
 want_profile="full"
 [[ "$minimal" == 1 ]] && want_profile="minimal"
 # Bump whenever fixed/roots tracking changes so stale $state/inputs files never skip a needed rebuild.
-inputs_schema="4"
+inputs_schema="5"
 # What every build reads besides the Coax sources coax deps lists: the compiler's inputs (as
 # coax/provenance.sh lists them), what coax/web/tool.sh links into the workers, and the app's
 # hosts and assets.
 fixed=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto ':(glob)coax/*' scripts/coax-release.sh coax/lib/crypto/sha256-kernel.coax
        coax/platform coax/web/tool.sh coax/lib/crypto/entropy.coax coax/lib/sys coax/lib/net
        coax/lib/nostr/nip06.coax pay metaverse/stage-resources/bip39-english.txt
-       openagents/core
+       openagents/core openagents/knowledge
        apps/shared/auth apps/shared/host apps/shared/native components/chat components/fonts components/icons components/NOTICE apps/openagents-desktop/native psionic/platform psionic/lib/inkling)
 if [[ "$minimal" == 1 ]]; then
   roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/gitguard.coax coder/tui/claudeworker.coax)

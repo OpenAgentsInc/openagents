@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "openagents.knowledge.v1alpha1",
+  "description": "Versioned OpenAgents shared knowledge base record and hybrid retrieval response aligned with NIP-KB (#14058). Produced by openagents/knowledge/record.coax.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "query",
+    "latency_ms",
+    "indexed_files",
+    "indexed_chunks",
+    "refused",
+    "message",
+    "hits"
+  ],
+  "properties": {
+    "schema": { "const": "openagents.knowledge.v1alpha1" },
+    "query": { "type": "string" },
+    "latency_ms": { "type": "integer", "minimum": 0 },
+    "indexed_files": { "type": "integer", "minimum": 0 },
+    "indexed_chunks": { "type": "integer", "minimum": 0 },
+    "refused": { "type": "boolean" },
+    "message": { "type": "string" },
+    "hits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "entry_id",
+          "source_path",
+          "start_line",
+          "end_line",
+          "heading",
+          "kind",
+          "doc_status",
+          "trust_status",
+          "digest",
+          "snippet",
+          "score",
+          "lexical_score",
+          "semantic_score"
+        ],
+        "properties": {
+          "schema": { "const": "openagents.knowledge.v1alpha1" },
+          "entry_id": { "type": "string", "pattern": "^[a-z][a-z0-9.-]{0,127}$" },
+          "source_path": { "type": "string", "minLength": 1 },
+          "start_line": { "type": "integer", "minimum": 1 },
+          "end_line": { "type": "integer", "minimum": 1 },
+          "heading": { "type": "string" },
+          "kind": { "type": "string", "enum": ["doc", "book", "transcript", "method", "edge-case", "slip", "environment", "tool"] },
+          "doc_status": { "type": "string", "enum": ["implemented", "design draft", "planned"] },
+          "trust_status": { "type": "string", "enum": ["admitted", "candidate", "withdrawn"] },
+          "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "snippet": { "type": "string" },
+          "score": { "type": "integer" },
+          "lexical_score": { "type": "integer" },
+          "semantic_score": { "type": "integer" }
+        }
+      }
+    }
+  }
+}

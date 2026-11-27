@@ -24,11 +24,13 @@ OA_PACK_WALLET     :: 2;
 OA_PACK_CLI        :: 4;
 OA_PACK_METAVERSE  :: 8;
 OA_PACK_AGENTS     :: 16;
+OA_PACK_KNOWLEDGE  :: 32;
 
 OA_MEMBER_NWALLET    :: 4;
 OA_MEMBER_NCLI       :: 1;
 OA_MEMBER_NMETAVERSE :: 2;
 OA_MEMBER_NAGENTS    :: 6;
+OA_MEMBER_NKNOWLEDGE :: 2;
 
 // Permission modes & behaviors (exact numeric values of openagents/core/permissions.coax;
 // lockstep-asserted in openagents/core/wire.coax).
@@ -70,8 +72,12 @@ oa_member_is_agent_tool :: (name: string) -> bool #effects(reads, traps) {
          name == "EnterWorktree" || name == "ExitWorktree";
 }
 
+oa_member_is_knowledge_tool :: (name: string) -> bool #effects(reads, traps) {
+  return name == "KnowledgeSearch" || name == "KnowledgeGet";
+}
+
 oa_member_is_member_tool :: (name: string) -> bool #effects(reads, traps) {
-  return oa_member_is_wallet_tool(name) || oa_member_is_cli_tool(name) || oa_member_is_metaverse_tool(name);
+  return oa_member_is_wallet_tool(name) || oa_member_is_cli_tool(name) || oa_member_is_metaverse_tool(name) || oa_member_is_knowledge_tool(name);
 }
 
 // Extract the whitespace-delimited token at index `want` (0 = first token, 1 = second token).
@@ -207,6 +213,11 @@ oa_member_tool_permission :: (tool_name: string, target: string, pmode: int, byp
     if pmode == OA_MP_PMODE_PLAN || pmode == OA_MP_PMODE_DONT_ASK { return OA_MP_PBEH_DENY; }
     if pmode == OA_MP_PMODE_AUTO || pmode == OA_MP_PMODE_ACCEPT_EDITS || session_allow { return OA_MP_PBEH_ALLOW; }
     return OA_MP_PBEH_ASK;
+  }
+
+  // ---- Knowledge Base pack (#14058) ----
+  if oa_member_is_knowledge_tool(tool_name) {
+    return OA_MP_PBEH_ALLOW;
   }
 
   return OA_MP_PBEH_ASK;
@@ -353,6 +364,12 @@ oa_member_tool_permission :: (tool_name: string, target: string, pmode: int, byp
   #assert oa_member_is_agent_tool("Agent") && oa_member_is_agent_tool("SendMessage") && oa_member_is_agent_tool("TaskStop");
   #assert oa_member_is_agent_tool("TaskOutput") && oa_member_is_agent_tool("EnterWorktree") && oa_member_is_agent_tool("ExitWorktree");
   #assert !oa_member_is_agent_tool("Read");
+
+  // Knowledge Base pack (#14058): strictly read-only, ALLOW across all modes
+  #assert oa_member_is_knowledge_tool("KnowledgeSearch") && oa_member_is_knowledge_tool("KnowledgeGet");
+  #assert !oa_member_is_knowledge_tool("Read") && oa_member_is_member_tool("KnowledgeSearch") && oa_member_is_member_tool("KnowledgeGet");
+  #assert oa_member_tool_permission("KnowledgeSearch", "episode 289", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("KnowledgeGet", "docs/transcripts/289.md", OA_MP_PMODE_DONT_ASK, false, false) == OA_MP_PBEH_ALLOW;
 
   // Unknown non-member fallback
   #assert oa_member_tool_permission("SomethingElse", "", OA_MP_PMODE_BYPASS, true, true) == OA_MP_PBEH_ASK;

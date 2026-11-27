@@ -1,0 +1,220 @@
+// OpenAgents Shared Knowledge Base — Signed NIP-KB Ingestion Bridge (#14058).
+//
+// Bridges signed Nostr NIP-KB events (kinds 3190 entry, 30190 head, 3191 withdrawal)
+// into verified `openagents.knowledge.v1alpha1` records using `coax/lib/nostr/kb/current.coax`:
+//   1. Verifies every event's NIP-01 id, BIP-340 Schnorr signature, SHA-256 document digest,
+//      and frontmatter agreement via `kb_read`.
+//   2. Resolves each (author, entry_id)'s current non-withdrawn, non-equivocating version
+//      via `kb_current`.
+//   3. Applies reader trust status (`kb_status`: trusted authors keep `admitted`; others
+//      are downgraded to at most `candidate`).
+//   4. Computes the reader's own 64-dim dense semantic embedding (never accepting author vectors).
+//
+//   coax/bin/coax test openagents/knowledge/nipkb.coax --library --run-steps 250000000
+#load "embed.coax";
+#load "../../coax/lib/nostr/kb/current.coax";
+
+KB_NIPKB_MAX_EVENTS :: 256;
+KB_NIPKB_ARENA_CAP  :: 524288;
+
+KbNipkbEntry :: struct {
+  entry_id: string;
+  author: string;
+  event_id: string;
+  version: int;
+  kind: int;
+  trust_status: int;
+  digest: string;
+  title: string;
+  body: string;
+  vec: [KB_VEC_DIM] f32;
+}
+
+KbNipkbStore :: struct {
+  arena_buf: [KB_NIPKB_ARENA_CAP] u8;
+  records: [KB_NIPKB_MAX_EVENTS] KbRecord;
+  nrecords: int;
+  admitted: int;
+  refused: int;
+  entries: [KB_NIPKB_MAX_EVENTS] KbNipkbEntry;
+  nentries: int;
+}
+
+// Map NIP-KB kind index (0..4: method, edge-case, slip, environment, tool) to record.coax kind.
+kb_nipkb_kind_to_rec :: (kb_kind: int) -> int {
+  if kb_kind == 0 { return KB_KIND_METHOD; }
+  if kb_kind == 1 { return KB_KIND_EDGE_CASE; }
+  if kb_kind == 2 { return KB_KIND_SLIP; }
+  if kb_kind == 3 { return KB_KIND_ENV; }
+  if kb_kind == 4 { return KB_KIND_TOOL; }
+  return KB_KIND_DOC;
+}
+
+// Extract title line from NIP-KB frontmatter (empty if absent) and slice document body after closing `---`.
+kb_nipkb_extract_title :: (doc: string) -> string {
+  i := 0;
+  if !kb_rec_starts(doc, "---\n") { return ""; }
+  i = 4;
+  while i < doc.count {
+    ls := i;
+    while i < doc.count && doc[i] != '\n' { i += 1; }
+    line := cast(string) doc[ls..<i];
+    if i < doc.count && doc[i] == '\n' { i += 1; }
+    if line == "---" { break; }
+    if kb_rec_starts(line, "title:") {
+      t := cast(string) line[6..<line.count];
+      while t.count > 0 && (t[0] == ' ' || t[0] == '\t') { t = cast(string) t[1..<t.count]; }
+      return t;
+    }
+  }
+  return "";
+}
+
+kb_nipkb_extract_body :: (doc: string) -> string {
+  if !kb_rec_starts(doc, "---\n") { return doc; }
+  i := 4;
+  while i < doc.count {
+    ls := i;
+    while i < doc.count && doc[i] != '\n' { i += 1; }
+    line := cast(string) doc[ls..<i];
+    if i < doc.count && doc[i] == '\n' { i += 1; }
+    if line == "---" { return cast(string) doc[i..<doc.count]; }
+  }
+  return doc;
+}
+
+// Verify a slice of raw NIP-KB event JSON strings, resolve current non-withdrawn non-equivocating
+// versions for every (author, id), apply reader trust, and compute reader-side embeddings.
+kb_nipkb_ingest :: (st: [] KbNipkbStore, events: [] string, reader_pubkey: string, trusted_authors: [] string) -> int {
+  st[0].nrecords = 0;
+  st[0].admitted = 0;
+  st[0].refused = 0;
+  st[0].nentries = 0;
+  arena: [1] KbText;
+  arena[0] = KbText.{buf = st[0].arena_buf[..], at = 0};
+  scratch: [32768] u8;
+
+  for i: 0..<events.count {
+    if st[0].nrecords >= KB_NIPKB_MAX_EVENTS { break; }
+    r := kb_read(events[i], scratch[..], arena[..]);
+    if r.error == KB_OK {
+      st[0].records[st[0].nrecords] = r;
+      st[0].nrecords += 1;
+      st[0].admitted += 1;
+    } else {
+      st[0].refused += 1;
+    }
+  }
+
+  // Resolve each unique (author, id) among admitted entry records.
+  rs := st[0].records[0..<st[0].nrecords];
+  for i: 0..<rs.count {
+    if rs[i].type != KB_ENTRY { continue; }
+    seen := false;
+    for j: 0..<i {
+      if rs[j].type == KB_ENTRY && rs[j].author == rs[i].author && rs[j].id == rs[i].id {
+        seen = true;
+        break;
+      }
+    }
+    if seen { continue; }
+    cur := kb_current(rs, rs[i].author, rs[i].id);
+    if cur.error != KC_CURRENT { continue; }
+    // Locate the exact winning record.
+    win := -1;
+    for j: 0..<rs.count {
+      if rs[j].type == KB_ENTRY && rs[j].event == cur.event {
+        win = j;
+        break;
+      }
+    }
+    if win < 0 || st[0].nentries >= KB_NIPKB_MAX_EVENTS { continue; }
+    w := rs[win];
+    idx := st[0].nentries;
+    title := kb_nipkb_extract_title(w.document);
+    body := kb_nipkb_extract_body(w.document);
+    st[0].entries[idx] = KbNipkbEntry.{
+      entry_id = w.id,
+      author = w.author,
+      event_id = w.event,
+      version = w.version,
+      kind = kb_nipkb_kind_to_rec(w.kind),
+      trust_status = kb_status(w, reader_pubkey, trusted_authors),
+      digest = w.digest,
+      title = title,
+      body = body,
+    };
+    _ = kb_embed(title, w.id, body, st[0].entries[idx].vec[..]);
+    st[0].nentries += 1;
+  }
+  return st[0].nentries;
+}
+
+// Convert a resolved NIP-KB entry into an `openagents.knowledge.v1alpha1` hit record.
+kb_nipkb_to_hit :: (e: KbNipkbEntry, score_milli: int, lex_milli: int, sem_milli: int) -> KbRecHit {
+  snip := ifx e.body.count > 280 then cast(string) e.body[0..<280] else e.body;
+  return KbRecHit.{
+    entry_id = e.entry_id,
+    source_path = e.event_id,
+    start_line = 1,
+    end_line = 1,
+    heading = ifx e.title.count > 0 then e.title else e.entry_id,
+    kind = e.kind,
+    doc_status = BsStatus.implemented,
+    trust_status = e.trust_status,
+    digest = e.digest,
+    snippet = snip,
+    score_milli = score_milli,
+    lexical_milli = lex_milli,
+    semantic_milli = sem_milli,
+  };
+}
+
+#test "nipkb bridge: verifies BIP-340 signed events, resolves heads/withdrawals/equivocation, and downgrades untrusted authors" {
+  st: [1] KbNipkbStore;
+  trusted := [1] string.[KBV_AUTHOR];
+
+  // 1. Valid v1 + v2 + head2 + tampered signature + tampered document -> refuses bad events, resolves v2 admitted.
+  evs1 := [5] string.[KBV_E1, KBV_E2, KBV_HEAD2, KBV_TAMPERED_SIGNATURE, KBV_TAMPERED_DOCUMENT];
+  n1 := kb_nipkb_ingest(st[..], evs1[..], KBV_OTHER, trusted[..]);
+  #assert n1 == 1 && st[0].admitted == 3 && st[0].refused == 2;
+  #assert st[0].entries[0].entry_id == "statistics.mmd-estimators";
+  #assert st[0].entries[0].version == 2 && st[0].entries[0].kind == KB_KIND_METHOD;
+  #assert st[0].entries[0].trust_status == KB_TRUST_ADMITTED;
+  #assert st[0].entries[0].digest == KBV_DOC2_SHA;
+  #assert st[0].entries[0].title == "Biased and unbiased MMD estimators";
+
+  // 2. Untrusted author is downgraded to KS_CANDIDATE even if document says admitted.
+  no_trust: [1] string;
+  n2 := kb_nipkb_ingest(st[..], evs1[0..<2], KBV_OTHER, no_trust[0..<0]);
+  #assert n2 == 1 && st[0].entries[0].trust_status == KB_TRUST_CANDIDATE;
+
+  // 3. Withdrawal removes v2 so v1 becomes current; equivocation refuses conflicting v2.
+  evs3 := [4] string.[KBV_E1, KBV_E2, KBV_HEAD2, KBV_WITHDRAW2];
+  n3 := kb_nipkb_ingest(st[..], evs3[..], KBV_AUTHOR, trusted[..]);
+  #assert n3 == 1 && st[0].entries[0].version == 1 && st[0].entries[0].digest == KBV_DOC1_SHA;
+
+  evs4 := [2] string.[KBV_E2, KBV_EQUIVOCATION];
+  n4 := kb_nipkb_ingest(st[..], evs4[..], KBV_AUTHOR, trusted[..]);
+  #assert n4 == 0;
+
+  // 4. Author-supplied embedding field is rejected by kb_read (reader always computes its own vector).
+  evs5 := [1] string.[KBV_VECTOR_FIELD];
+  n5 := kb_nipkb_ingest(st[..], evs5[..], KBV_AUTHOR, trusted[..]);
+  #assert n5 == 0 && st[0].refused == 1;
+
+  // 5. Verified NIP-KB entry emits a valid `openagents.knowledge.v1alpha1` JSON hit.
+  n6 := kb_nipkb_ingest(st[..], evs1[0..<3], KBV_AUTHOR, trusted[..]);
+  #assert n6 == 1;
+  hit := kb_nipkb_to_hit(st[0].entries[0], 31, 2500, 820);
+  jb: [2048] u8;
+  o: [1] Jo;
+  jo_start(o[..], jb[..]);
+  kb_rec_write_hit_json(o[..], hit);
+  nodes: [128] JvNode;
+  d: [1] Jv;
+  #assert !o[0].bad && jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  sb: [64] u8;
+  #assert jv_str(d[0], jv_get(d[0], 0, "schema"), sb[..]) == 29 && cast(string) sb[0..<29] == KB_V1ALPHA1_SCHEMA;
+  #assert jv_str(d[0], jv_get(d[0], 0, "digest"), sb[..]) == 64 && cast(string) sb[0..<64] == KBV_DOC2_SHA;
+}
