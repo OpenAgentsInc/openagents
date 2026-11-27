@@ -154,6 +154,7 @@ for pm in m["pathMatchers"]:
         have = {r.get("fullPathMatch") or r.get("prefixMatch") for r in rule.get("matchRules", [])}
         for match in ({"fullPathMatch": "/admin/analytics"}, {"prefixMatch": "/admin/analytics/"},
                       {"fullPathMatch": "/login"}, {"prefixMatch": "/login/"},
+                      {"fullPathMatch": "/onboarding"}, {"prefixMatch": "/onboarding/"},
                       {"fullPathMatch": "/chat"},
                       {"fullPathMatch": "/chat-gpu"}, {"prefixMatch": "/chat-gpu/"},   # the page before the rebuilt /chat
                       {"fullPathMatch": "/r"},

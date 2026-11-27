@@ -20686,6 +20686,22 @@ CREATE TABLE auth.freeze_links (
 
 
 --
+-- Name: github_links; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.github_links (
+    account_id text NOT NULL,
+    github_id text NOT NULL,
+    github_login text DEFAULT ''::text NOT NULL,
+    github_avatar text DEFAULT ''::text NOT NULL,
+    workos_user_id text DEFAULT ''::text NOT NULL,
+    linked_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT github_links_github_id_check CHECK (((length(github_id) >= 1) AND (length(github_id) <= 64)))
+);
+
+
+--
 -- Name: life_columns; Type: TABLE; Schema: auth; Owner: -
 --
 
@@ -21196,9 +21212,10 @@ CREATE TABLE auth.workos_pending (
     expires_at timestamp with time zone NOT NULL,
     spent_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    link_account text,
     CONSTRAINT workos_pending_client_check CHECK ((client = ANY (ARRAY['web'::text, 'app'::text]))),
     CONSTRAINT workos_pending_id_check CHECK ((id ~ '^[0-9a-f]{32}$'::text)),
-    CONSTRAINT workos_pending_kind_check CHECK ((kind = ANY (ARRAY['magic'::text, 'oauth'::text, 'org'::text]))),
+    CONSTRAINT workos_pending_kind_check CHECK ((kind = ANY (ARRAY['magic'::text, 'oauth'::text, 'oauth_link'::text, 'org'::text]))),
     CONSTRAINT workos_pending_token_sha256_check CHECK ((token_sha256 ~ '^[0-9a-f]{64}$'::text))
 );
 
@@ -22859,7 +22876,7 @@ ALTER SEQUENCE referral.codes_id_seq OWNED BY referral.codes.id;
 
 CREATE TABLE referral.config (
     id integer DEFAULT 1 NOT NULL,
-    github_connect_micros bigint DEFAULT 5000000 NOT NULL,
+    github_connect_micros bigint DEFAULT 10000000 NOT NULL,
     invitee_micros bigint DEFAULT 10000000 NOT NULL,
     inviter_micros bigint DEFAULT 5000000 NOT NULL,
     kickback_bps integer DEFAULT 100 NOT NULL,
@@ -25592,6 +25609,14 @@ ALTER TABLE ONLY auth.freeze_links
 
 
 --
+-- Name: github_links github_links_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.github_links
+    ADD CONSTRAINT github_links_pkey PRIMARY KEY (account_id);
+
+
+--
 -- Name: life_columns life_columns_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
 --
 
@@ -27736,6 +27761,13 @@ CREATE INDEX audit_at ON auth.audit USING btree (at);
 
 
 --
+-- Name: auth_github_links_github_id_idx; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX auth_github_links_github_id_idx ON auth.github_links USING btree (github_id);
+
+
+--
 -- Name: device_logins_key; Type: INDEX; Schema: auth; Owner: -
 --
 
@@ -29107,6 +29139,14 @@ ALTER TABLE ONLY auth.freeze_links
 
 
 --
+-- Name: github_links github_links_account_id_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.github_links
+    ADD CONSTRAINT github_links_account_id_fkey FOREIGN KEY (account_id) REFERENCES auth.accounts(id);
+
+
+--
 -- Name: merge_asks merge_asks_other_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
 --
 
@@ -29264,6 +29304,14 @@ ALTER TABLE ONLY auth.wallet_spends
 
 ALTER TABLE ONLY auth.workos_identities
     ADD CONSTRAINT workos_identities_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id);
+
+
+--
+-- Name: workos_pending workos_pending_link_account_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.workos_pending
+    ADD CONSTRAINT workos_pending_link_account_fkey FOREIGN KEY (link_account) REFERENCES auth.accounts(id);
 
 
 --

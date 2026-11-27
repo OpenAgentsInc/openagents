@@ -668,3 +668,108 @@ ap_cli_code_ok :: (code: string) -> bool #export_c #effects(all) {
   }
   #assert ap_limited_route(AP_HUMAN, true, true, "PUT", "/api/auth/cli/code") == AP_LIMITED && ap_limited_route(AP_HUMAN, true, true, "POST", "/api/auth/device/approve") == AP_LIMITED;
 }
+
+// ---- GitHub onboarding gate
+// Every logged-in person account must link a GitHub account on /onboarding before reaching the workspace.
+ap_onboarding_required :: (kind: int, has_github: bool) -> bool #export_c #effects(all) {
+  return kind == AP_PERSON && !has_github;
+}
+
+ap_path_is_prefix :: (p: string, pre: string) -> bool #effects(all) {
+  if p.count < pre.count { return false; }
+  for i: 0..<pre.count { if p[i] != pre[i] { return false; } }
+  return p.count == pre.count || p[pre.count] == '/' || p[pre.count] == '?';
+}
+
+ap_safe_next_path :: (p: string) -> bool #effects(all) {
+  if p.count < 1 || p.count >= 256 || p[0] != '/' { return false; }
+  if p.count >= 2 && p[1] == '/' { return false; }
+  for c: p { if c <= ' ' || c >= 127 || c == '\\' { return false; } }
+  if ap_path_is_prefix(p, "/onboarding") { return false; }
+  if ap_path_is_prefix(p, "/login") && !ap_path_is_prefix(p, "/login/device") { return false; }
+  return true;
+}
+
+// Where a web login lands: /onboarding (carrying safe non-default ?next=...) until GitHub is linked,
+// else safe next_path (defaulting to /chat). Returns bytes written into out, or -1 if out is too small.
+ap_post_login_dest :: (has_github: bool, next_path: string, out: [] u8) -> int #export_c #effects(all) {
+  safe := ap_safe_next_path(next_path);
+  if has_github {
+    dest := ifx safe then next_path else "/chat";
+    if dest.count > out.count { return -1; }
+    for i: 0..<dest.count { out[i] = dest[i]; }
+    return dest.count;
+  }
+  base := "/onboarding";
+  carry := safe && next_path != "/" && next_path != "/chat";
+  need := base.count + (ifx carry then 6 + next_path.count else 0);
+  if need > out.count { return -1; }
+  k := 0;
+  for i: 0..<base.count { out[k] = base[i]; k += 1; }
+  if carry {
+    q := "?next=";
+    for i: 0..<q.count { out[k] = q[i]; k += 1; }
+    for i: 0..<next_path.count { out[k] = next_path[i]; k += 1; }
+  }
+  return k;
+}
+
+#test "GitHub onboarding is required for person accounts without a linked GitHub account and redirects login there" {
+  #assert ap_onboarding_required(AP_PERSON, false);
+  #assert !ap_onboarding_required(AP_PERSON, true);
+  #assert !ap_onboarding_required(AP_NOBODY, false) && !ap_onboarding_required(AP_KIND_GUEST, false);
+  #assert !ap_onboarding_required(AP_AGENT, false) && !ap_onboarding_required(AP_SERVICE, false);
+
+  b: [300] u8;
+  // Without GitHub: default destinations land cleanly on /onboarding
+  n := ap_post_login_dest(false, "", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding" && ap_post_login_dest(false, "", b[0..<n - 1]) == -1 && ap_post_login_dest(false, "", b[0..<n]) == n;
+  n = ap_post_login_dest(false, "/", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding";
+  n = ap_post_login_dest(false, "/chat", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding";
+  n = ap_post_login_dest(false, "/onboarding", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding";
+  n = ap_post_login_dest(false, "/onboarding/step", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding";
+  n = ap_post_login_dest(false, "/onboarding?err=1", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding";
+  n = ap_post_login_dest(false, "/login", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding";
+  n = ap_post_login_dest(false, "/login?a=1", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding";
+  // Safe deep links are preserved as ?next=
+  n = ap_post_login_dest(false, "/projects", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding?next=/projects" && ap_post_login_dest(false, "/projects", b[0..<n - 1]) == -1 && ap_post_login_dest(false, "/projects", b[0..<n]) == n;
+  n = ap_post_login_dest(false, "/login/device?code=1", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding?next=/login/device?code=1";
+  n = ap_post_login_dest(false, "/onboarding-info", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding?next=/onboarding-info";
+  n = ap_post_login_dest(false, "/login2", b[..]);
+  #assert cast(string) b[0..<n] == "/onboarding?next=/login2";
+  // With GitHub: safe next preserved, unsafe/auth paths fall back to /chat
+  b[0] = 'X';
+  n = ap_post_login_dest(true, "/", b[..]);
+  #assert cast(string) b[0..<n] == "/";
+  b[0] = 'X';
+  n = ap_post_login_dest(true, "/projects", b[..]);
+  #assert cast(string) b[0..<n] == "/projects" && ap_post_login_dest(true, "/projects", b[0..<n - 1]) == -1 && ap_post_login_dest(true, "/projects", b[0..<n]) == n;
+  n = ap_post_login_dest(true, "/onboarding", b[..]);
+  #assert cast(string) b[0..<n] == "/chat";
+  n = ap_post_login_dest(true, "/login", b[..]);
+  #assert cast(string) b[0..<n] == "/chat";
+  n = ap_post_login_dest(true, "/login/device", b[..]);
+  #assert cast(string) b[0..<n] == "/login/device";
+  // Reject unsafe paths: non-leading slash, protocol-relative (exact len 2 too), backslash, space, control, DEL, >=256 bytes
+  #assert !ap_path_is_prefix("xonboarding", "/onboarding");
+  #assert !ap_safe_next_path("") && !ap_safe_next_path("https://evil.com") && !ap_safe_next_path("//") && !ap_safe_next_path("//evil.com");
+  #assert !ap_safe_next_path("/a\\b") && !ap_safe_next_path("/a b") && !ap_safe_next_path("/a\nb");
+  del_p: [3] u8; del_p[0] = '/'; del_p[1] = 'a'; del_p[2] = 127;
+  #assert !ap_safe_next_path(cast(string) del_p[..]);
+  til_p: [3] u8; til_p[0] = '/'; til_p[1] = '!'; til_p[2] = '~';
+  #assert ap_safe_next_path(cast(string) til_p[..]);
+  p255: [255] u8; p255[0] = '/'; for i: 1..<255 { p255[i] = 'a'; }
+  p256: [256] u8; p256[0] = '/'; for i: 1..<256 { p256[i] = 'a'; }
+  #assert ap_safe_next_path(cast(string) p255[..]) && !ap_safe_next_path(cast(string) p256[..]);
+  #assert ap_safe_next_path("/") && ap_safe_next_path("/a");
+}

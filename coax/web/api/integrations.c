@@ -76,7 +76,9 @@ bool integrations_route(const request *q) {
   bool has_wos = workos_lookup_identity(db, p->account, uid, org);
 
   if (is_status) {
-    bool connected = false;
+    char gh_login[64] = "";
+    bool linked = auth_account_has_github(db, p->account, gh_login, sizeof gh_login);
+    bool connected = linked;
     uint8_t scopes_b[256] = {0};
     int64_t scopes_n = 0;
     if (has_wos && workos_pipes_configured()) {
@@ -88,17 +90,20 @@ bool integrations_route(const request *q) {
         http_client_res res;
         workos_api_request("GET", (const char *)url_b, NULL, 0, &res);
         if (res.status == 200 && res.body && res.body_len > 0) {
-          connected = wos_c_pipes_parse_provider_connected(
-              (coax_string){res.body, (int64_t)res.body_len}, is_cs("github"),
-              (coax_v_u8){scopes_b, (int64_t)sizeof scopes_b - 1}, (coax_v_s64){&scopes_n, 1});
+          if (wos_c_pipes_parse_provider_connected(
+                  (coax_string){res.body, (int64_t)res.body_len}, is_cs("github"),
+                  (coax_v_u8){scopes_b, (int64_t)sizeof scopes_b - 1}, (coax_v_s64){&scopes_n, 1})) {
+            connected = true;
+          }
         }
         http_client_res_free(&res);
       }
     }
     scopes_b[scopes_n >= 0 && scopes_n < (int64_t)sizeof scopes_b ? scopes_n : 0] = 0;
     if (connected) referral_on_github_connected(db, p->account);
+    if (!gh_login[0]) auth_account_has_github(db, p->account, gh_login, sizeof gh_login);
     uint8_t out[1024];
-    int64_t n = wos_c_pipes_status_write(connected, is_cs("github"), is_cs((const char *)scopes_b), is_cs(""),
+    int64_t n = wos_c_pipes_status_write(connected, is_cs("github"), is_cs((const char *)scopes_b), is_cs(gh_login),
                                          as_lines, (coax_v_u8){out, sizeof out});
     if (n < 1) { api_error(q->fd, 503, "GitHub status unavailable."); return true; }
     if (as_lines) integ_respond_lines(q->fd, 200, out, (size_t)n);

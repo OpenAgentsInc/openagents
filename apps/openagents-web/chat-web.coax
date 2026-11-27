@@ -1462,6 +1462,9 @@ cw_end :: (s: [] ChatWeb, status: int) {
     s[0].me_n = ifx status == 200 then ss_who_read(body, s[0].me[..]) else 0;
     if status == 200 { sw_account_read(s[0].set[..], body); } else { sw_account_read(s[0].set[..], ""); }
     if !s[0].set[0].admin { s[0].known = false; s[0].known_asked = true; }
+    if status == 200 && s[0].set[0].logged && s[0].set[0].onboarding_required {
+      cw_go_to(s, "/onboarding", false);
+    }
   } else if kind == CF_WORLDS {
     s[0].worlds_n = ifx status == 200 then ss_worlds_read(body, s[0].worlds[..]) else 0;
   } else if kind == CF_PROJECTS {
@@ -3824,6 +3827,16 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   cw_test_answer(s, 200, "");
   #assert cw_test_go(s) == "/" && !coaxial_chatweb_go_push(s) && s[0].me_n == 0;
 }
+
+#test "chat-web redirects logged-in users who have not completed GitHub onboarding to /onboarding" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  s[0].flight = CF_WHO;
+  cw_test_answer(s, 200, "logged_in 1\naccount acct_ob1\nkind person\nlevel L1\nvia workos\nprimary chris@openagents.com\ngithub_connected 0\nonboarding_required 1\n");
+  #assert s[0].set[0].logged && s[0].set[0].onboarding_required && !s[0].set[0].gh_linked;
+  #assert cw_test_go(s) == "/onboarding" && !coaxial_chatweb_go_push(s);
+}
+
 
 #load "chat/chat-web-story-checks.coax";
 

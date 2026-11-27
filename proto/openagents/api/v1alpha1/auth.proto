@@ -28,6 +28,10 @@ message AuthAccount {
   // Active non-withdrawable promotional credit balance (USD micros) and nearest lot expiry.
   optional int64 promo_micros = 11 [json_name = "promo_micros"];
   optional string promo_expires_at = 12 [json_name = "promo_expires_at"];
+  // Linked GitHub onboarding state (0225_github_onboarding.sql).
+  optional bool github_connected = 13 [json_name = "github_connected"];
+  optional string github_login = 14 [json_name = "github_login"];
+  optional bool onboarding_required = 15 [json_name = "onboarding_required"];
 }
 
 message AuthAccountKeys {

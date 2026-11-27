@@ -234,8 +234,9 @@ except (ValueError, TypeError):
     proof_receipt, proof_measure = None, {}
 check(ps == 200 and ph.get("content-type", "").startswith("application/json") and proof_receipt is not None and proof_measure.get("hwmodel") == "GCP_INTEL_TDX" and proof_measure.get("gpu") is None, "the dated confidential CPU report is public JSON (not a GPU/live-counter claim)")
 # Signing in with the phone (docs/phone-sign-in.md): the page, the app's universal links, the API.
-(s1, h1, b1), (s2, h2, b2), (s3, h3, b3) = fetch(["/login", "/.well-known/apple-app-site-association", "/api/auth/me"])
+(s1, h1, b1), (s1b, h1b, b1b), (s2, h2, b2), (s3, h3, b3) = fetch(["/login", "/onboarding", "/.well-known/apple-app-site-association", "/api/auth/me"])
 check(s1 == 200 and ((b'data-app="login-web"' in b1 and b'dom-host.js' in b1) or (b'data-app="login"' in b1 and b'data-page="1"' in b1)), f"/login is the login page ({s1})")
+check(s1b == 200 and b'data-app="login-web"' in b1b and b'dom-host.js' in b1b, f"/onboarding is the onboarding page ({s1b})")
 check(s2 == 200 and "json" in h2.get("content-type", "") and b"HQWSG26L43.com.openagents.app" in b2, f"the app's universal links are served as JSON ({s2}, {h2.get('content-type')})")
 check(s2 == 200 and b'"webcredentials"' in b2, f"the apps' passkeys for this site are named (webcredentials, #13215) ({s2})")
 check(s3 == 401 and "no-store" in h3.get("cache-control", ""), f"/api/auth/me signed out is 401 ({s3})")

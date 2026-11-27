@@ -22,6 +22,7 @@ LW_PATH :: 13;
 LW_SCR_EMAIL :: 0;
 LW_SCR_CODE :: 1;
 LW_SCR_SIGNED_IN :: 2;
+LW_SCR_ONBOARDING :: 3;
 
 // Active HTTP requests
 LW_REQ_NONE :: 0;
@@ -30,6 +31,7 @@ LW_REQ_WORKOS_CFG :: 2;
 LW_REQ_START :: 3;
 LW_REQ_VERIFY :: 4;
 LW_REQ_LOGOUT :: 5;
+LW_REQ_AFTER_LOGIN :: 6;
 
 LoginWeb :: struct {
   ready: bool;
@@ -37,6 +39,10 @@ LoginWeb :: struct {
   screen: int;
   busy: bool;
   workos: bool;
+  is_onboarding: bool;
+  account_loaded: bool;
+  logged_in: bool;
+  onboarding_required: bool;
   req_kind: int;
   asking: bool;
   stop_req: bool;
@@ -117,11 +123,54 @@ lw_valid_email :: (em: string) -> bool {
   return at > 0 && dot > at + 1 && dot < em.count - 1;
 }
 
+lw_path_is_prefix :: (p: string, pre: string) -> bool {
+  if p.count < pre.count { return false; }
+  for i: 0..<pre.count { if p[i] != pre[i] { return false; } }
+  return p.count == pre.count || p[pre.count] == '/' || p[pre.count] == '?';
+}
+
 lw_safe_next :: (p: string) -> bool {
   if p.count < 1 || p[0] != '/' { return false; }
   if p.count >= 2 && (p[1] == '/' || p[1] == '\\') { return false; }
-  for c: p { if c <= 32 { return false; } }
+  for c: p { if c <= 32 || c == '\\' { return false; } }
+  if lw_path_is_prefix(p, "/onboarding") { return false; }
+  if lw_path_is_prefix(p, "/login") && !lw_path_is_prefix(p, "/login/device") { return false; }
   return true;
+}
+
+lw_onboarding_url :: (s: [] LoginWeb, out: [] u8) -> string {
+  n := lw_copy(out, "/onboarding");
+  if s[0].next_path_n > 0 {
+    np := cast(string) s[0].next_path[0..<s[0].next_path_n];
+    if np != "/" && np != "/chat" {
+      n = lw_append(out, n, "?next=");
+      n = lw_append(out, n, np);
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
+lw_sync_route :: (s: [] LoginWeb) {
+  if !s[0].account_loaded { return; }
+  ob: [320] u8;
+  if s[0].is_onboarding {
+    if !s[0].logged_in {
+      lw_go(s, "/login?next=/onboarding");
+    } else if !s[0].onboarding_required {
+      dest := ifx s[0].next_path_n > 0 then cast(string) s[0].next_path[0..<s[0].next_path_n] else "/chat";
+      lw_go(s, dest);
+    } else {
+      s[0].screen = LW_SCR_ONBOARDING;
+    }
+    return;
+  }
+  if s[0].logged_in {
+    if s[0].onboarding_required {
+      lw_go(s, lw_onboarding_url(s, ob[..]));
+    } else {
+      s[0].screen = LW_SCR_SIGNED_IN;
+    }
+  }
 }
 
 lw_ask :: (s: [] LoginWeb, kind: int, url: string, body: string) {
@@ -130,7 +179,7 @@ lw_ask :: (s: [] LoginWeb, kind: int, url: string, body: string) {
   s[0].request_n = lw_copy(s[0].request[..], body);
   s[0].resp_n = 0;
   s[0].asking = true;
-  if kind == LW_REQ_START || kind == LW_REQ_VERIFY || kind == LW_REQ_LOGOUT {
+  if kind == LW_REQ_START || kind == LW_REQ_VERIFY || kind == LW_REQ_LOGOUT || kind == LW_REQ_AFTER_LOGIN {
     s[0].busy = true;
   }
 }
@@ -143,24 +192,37 @@ lw_go :: (s: [] LoginWeb, dest: string) {
 lw_parse_query :: (s: [] LoginWeb, path: string) {
   q := -1;
   for i: 0..<path.count { if path[i] == '?' { q = i + 1; break; } }
-  if q < 0 { return; }
-  i := q;
-  while i < path.count {
-    e := i;
-    while e < path.count && path[e] != '&' { e += 1; }
-    eq := -1;
-    for j: i..<e { if path[j] == '=' { eq = j; break; } }
-    if eq > i {
-      k := path[i..<eq];
-      v := path[eq + 1..<e];
-      if k == "next" && lw_safe_next(v) {
-        s[0].next_path_n = lw_copy(s[0].next_path[..], v);
-      } else if k == "ref" && v.count > 0 && v.count <= 64 {
-        s[0].ref_code_n = lw_copy(s[0].ref_code[..], v);
+  base_end := ifx q > 0 then q - 1 else path.count;
+  base := path[0..<base_end];
+  s[0].is_onboarding = lw_path_is_prefix(base, "/onboarding");
+  if q >= 0 {
+    i := q;
+    while i < path.count {
+      e := i;
+      while e < path.count && path[e] != '&' { e += 1; }
+      eq := -1;
+      for j: i..<e { if path[j] == '=' { eq = j; break; } }
+      if eq > i {
+        k := path[i..<eq];
+        v := path[eq + 1..<e];
+        if k == "next" && lw_safe_next(v) {
+          s[0].next_path_n = lw_copy(s[0].next_path[..], v);
+        } else if k == "ref" && v.count > 0 && v.count <= 64 {
+          s[0].ref_code_n = lw_copy(s[0].ref_code[..], v);
+        } else if k == "error" && v.count > 0 {
+          if v == "github_cancelled" {
+            lw_set_err(s, "GitHub connection was cancelled. Connect your GitHub account to continue.");
+          } else if v == "github_link_failed" {
+            lw_set_err(s, "Could not connect your GitHub account. Try again.");
+          } else if v == "oauth_failed" || v == "oauth_exchange_failed" {
+            lw_set_err(s, "Log-in did not finish. Try again.");
+          }
+        }
       }
+      i = e + 1;
     }
-    i = e + 1;
   }
+  lw_sync_route(s);
 }
 
 lw_submit_email :: (s: [] LoginWeb) {
@@ -219,8 +281,10 @@ lw_css :: (out: [] u8, at: int) -> int {
   n = as_put(out, n, ".lw-box .as-in-wrap:focus-within{box-shadow:inset 0 0 0 1px #3b82f6,0 0 0 2px rgba(59,130,246,.22)}");
   n = as_put(out, n, ".lw-box .as-in-wrap input{font-size:13.5px;color:#ededed}");
   n = as_put(out, n, ".lw-box .as-in-wrap input::placeholder{color:#656565}");
-  n = as_put(out, n, ".lw-primary{width:100%;height:40px !important;border-radius:8px !important;background:#ededed !important;color:#0a0a0a !important;font:600 13.5px/1 var(--font-sans) !important}");
+  n = as_put(out, n, ".lw-primary{width:100%;height:40px !important;border-radius:8px !important;background:#ededed !important;color:#0a0a0a !important;font:600 13.5px/1 var(--font-sans) !important;justify-content:center;gap:8px}");
   n = as_put(out, n, ".lw-primary:hover:not(:disabled){background:#ffffff !important}");
+  n = as_put(out, n, ".lw-primary .si-mark{width:18px;height:18px;display:block;color:#0a0a0a;flex:none}");
+  n = as_put(out, n, ".lw-note{margin:2px 0 0;text-align:center;font:400 12px/1.45 var(--font-sans);color:#656565}");
   n = as_put(out, n, ".lw-aux{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:4px}");
   n = as_put(out, n, ".lw-in-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:#0e0e0e;border:1px solid #2c2c2c}");
   n = as_put(out, n, ".lw-foot{position:fixed;bottom:20px;left:0;right:0;padding:0 20px;text-align:center;font:400 12px/1.4 var(--font-sans);color:#656565}");
@@ -260,33 +324,63 @@ lw_build :: (s: [] LoginWeb) {
 
   // Brand mark + wordmark + minimal subtitle
   _ = tr_open(t, "lw.head", TG_HEADER, "lw-head");
-  br := tr_open(t, "lw.brand", TG_A, "lw-brand");
-  tr_attr(t, br, AT_HREF, "/");
+  if s[0].is_onboarding {
+    _ = tr_open(t, "lw.brand", TG_DIV, "lw-brand");
+  } else {
+    br := tr_open(t, "lw.brand", TG_A, "lw-brand");
+    tr_attr(t, br, AT_HREF, "/");
+  }
   im := tr_open(t, "lw.brand.ic", TG_IMG, "lw-mark");
   tr_attr(t, im, AT_SRC, "/favicon.svg");
   tr_attr(t, im, AT_LABEL, "OpenAgents");
   tr_close(t);
   _ = tr_leaf(t, "lw.brand.t", TG_SPAN, "", "OpenAgents");
   tr_close(t);
-  sub_txt := ifx s[0].screen == LW_SCR_CODE then "Enter the 6-digit code we sent to your email"
+  sub_txt := ifx s[0].is_onboarding && !s[0].account_loaded then "Checking your account…"
+    else ifx s[0].screen == LW_SCR_ONBOARDING || s[0].is_onboarding then "Connect your GitHub account for $10 of free credit."
+    else ifx s[0].screen == LW_SCR_CODE then "Enter the 6-digit code we sent to your email"
     else ifx s[0].screen == LW_SCR_SIGNED_IN then "Your OpenAgents account is logged in"
     else "Log in or create an account";
   _ = tr_leaf(t, "lw.sub", TG_P, "lw-sub", sub_txt);
   tr_close(t);
 
-  if s[0].ref_code_n > 0 {
+  if s[0].ref_code_n > 0 && !s[0].is_onboarding {
     _ = as_alert_open(t, "lw.ref.al", "Referral invite applied", "Log in to claim $10 promo credit after your first paid top-up.", AS_SUCCESS, AS_SOFT, IC_SPARKLES);
     as_alert_end(t);
   }
   if s[0].err_n > 0 {
-    _ = as_alert_open(t, "lw.err", "Could not log in", cast(string) s[0].err[0..<s[0].err_n], AS_DANGER, AS_SOFT, IC_ERROR);
+    err_title := ifx s[0].is_onboarding || s[0].screen == LW_SCR_ONBOARDING then "Could not connect GitHub" else "Could not log in";
+    _ = as_alert_open(t, "lw.err", err_title, cast(string) s[0].err[0..<s[0].err_n], AS_DANGER, AS_SOFT, IC_ERROR);
     as_alert_end(t);
   } else if s[0].info_n > 0 {
     _ = as_alert_open(t, "lw.info", "Code sent", cast(string) s[0].info[0..<s[0].info_n], AS_INFO, AS_SOFT, IC_MAIL);
     as_alert_end(t);
   }
 
-  if s[0].screen == LW_SCR_EMAIL {
+  if s[0].is_onboarding && !s[0].account_loaded {
+    _ = tr_open(t, "lw.loading", TG_DIV, "lw-aux");
+    _ = as_spinner(t, "lw.loading.sp", false);
+    tr_close(t);
+  } else if s[0].screen == LW_SCR_ONBOARDING {
+    dest := ifx s[0].next_path_n > 0 then cast(string) s[0].next_path[0..<s[0].next_path_n] else "/chat";
+    ghb: [360] u8;
+    a := tr_open(t, "lw.onboard.github", TG_A, "as-btn as-v-solid as-c-primary as-s-lg lw-primary");
+    tr_attr(t, a, AT_HREF, tr_cat(ghb[..], "/api/auth/workos/oauth/start?provider=GitHubOAuth&link=1&next=", dest));
+    sv := tr_open(t, "lw.onboard.github.ic", TG_SVG, "si-mark");
+    tr_attr(t, sv, AT_HIDDEN, "true");
+    u := tr_open(t, "lw.onboard.github.u", TG_USE, "");
+    tr_attr(t, u, AT_HREF, "/login/github.svg#i");
+    tr_close(t);
+    tr_close(t);
+    _ = tr_leaf(t, "lw.onboard.github.l", TG_SPAN, "", "Continue with GitHub");
+    tr_close(t);
+
+    _ = tr_leaf(t, "lw.onboard.note", TG_P, "lw-note", "One $10 credit per GitHub account.");
+
+    _ = tr_open(t, "lw.onboard.acts", TG_DIV, "lw-aux");
+    _ = as_button(t, "lw.logout", ifx s[0].busy then "Logging out…" else "Log out", AS_SECONDARY, AS_GHOST, AS_SM, false, -1, false, s[0].busy);
+    tr_close(t);
+  } else if s[0].screen == LW_SCR_EMAIL {
     dest := ifx s[0].next_path_n > 0 then cast(string) s[0].next_path[0..<s[0].next_path_n] else "/chat";
     gb: [320] u8; ab: [320] u8;
     _ = tr_open(t, "lw.oauth", TG_DIV, "lw-oauth");
@@ -355,12 +449,32 @@ lw_on_end :: (s: [] LoginWeb, status: int) {
   resp := cast(string) s[0].resp[0..<s[0].resp_n];
 
   if kind == LW_REQ_ACCOUNT {
+    s[0].account_loaded = true;
     if status == 200 && lw_line_val(resp, "logged_in") == "1" {
-      em := lw_line_val(resp, "email");
+      s[0].logged_in = true;
+      s[0].onboarding_required = lw_line_val(resp, "onboarding_required") == "1";
+      em := lw_line_val(resp, "primary");
+      if em.count == 0 { em = lw_line_val(resp, "email"); }
       s[0].signed_email_n = lw_copy(s[0].signed_email[..], em);
-      s[0].screen = LW_SCR_SIGNED_IN;
+      lw_sync_route(s);
     } else {
-      lw_ask(s, LW_REQ_WORKOS_CFG, "/api/auth/workos/config?as=lines", "");
+      s[0].logged_in = false;
+      s[0].onboarding_required = false;
+      if s[0].is_onboarding {
+        lw_sync_route(s);
+      } else {
+        lw_ask(s, LW_REQ_WORKOS_CFG, "/api/auth/workos/config?as=lines", "");
+      }
+    }
+    return;
+  }
+  if kind == LW_REQ_AFTER_LOGIN {
+    ob: [320] u8;
+    if status == 200 && lw_line_val(resp, "onboarding_required") == "1" {
+      lw_go(s, lw_onboarding_url(s, ob[..]));
+    } else {
+      dest := ifx s[0].next_path_n > 0 then cast(string) s[0].next_path[0..<s[0].next_path_n] else "/chat";
+      lw_go(s, dest);
     }
     return;
   }
@@ -383,8 +497,7 @@ lw_on_end :: (s: [] LoginWeb, status: int) {
   }
   if kind == LW_REQ_VERIFY {
     if status == 200 {
-      dest := ifx s[0].next_path_n > 0 then cast(string) s[0].next_path[0..<s[0].next_path_n] else "/chat";
-      lw_go(s, dest);
+      lw_ask(s, LW_REQ_AFTER_LOGIN, "/api/auth/account?as=lines", "");
     } else {
       err := lw_line_val(resp, "error");
       lw_set_err(s, ifx err.count > 0 then err else "That code didn't work. Check it and try again.");
@@ -392,9 +505,15 @@ lw_on_end :: (s: [] LoginWeb, status: int) {
     return;
   }
   if kind == LW_REQ_LOGOUT {
-    s[0].screen = LW_SCR_EMAIL;
+    s[0].logged_in = false;
+    s[0].onboarding_required = false;
     s[0].signed_email_n = 0;
     lw_clear_msgs(s);
+    if s[0].is_onboarding {
+      lw_go(s, "/login");
+    } else {
+      s[0].screen = LW_SCR_EMAIL;
+    }
     return;
   }
 }
@@ -527,5 +646,67 @@ LwTest :: struct { s: [1] LoginWeb; }
   coaxial_loginweb_event(s, LW_SUBMIT, dm_find(d, "lw.code"), 0);
   coaxial_loginweb_asked(s);
   coaxial_loginweb_event(s, LW_END, 200, 0);
-  #assert coaxial_loginweb_go_len(s) > 0 && cast(string) s[0].go[0..<s[0].go_n] == "/projects";
+  // After email verify, login-web checks onboarding_required before entering workspace
+  #assert coaxial_loginweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/auth/account?as=lines";
+  coaxial_loginweb_asked(s);
+  a1 := "logged_in 1\ngithub_connected 0\nonboarding_required 1\n";
+  for i: 0..<a1.count { s[0].inbox[i] = a1[i]; }
+  coaxial_loginweb_event(s, LW_PIECE, 200, a1.count);
+  coaxial_loginweb_event(s, LW_END, 200, 0);
+  #assert coaxial_loginweb_go_len(s) > 0 && cast(string) s[0].go[0..<s[0].go_n] == "/onboarding?next=/projects";
+}
+
+#test "onboarding gates logged-out users, enforces GitHub connect with no skip, and redirects once linked" {
+  // 1. Logged-out visitor on /onboarding -> redirected to /login?next=/onboarding
+  h0: [1] LwTest; s0 := h0[0].s[..];
+  p0 := "/onboarding";
+  for i: 0..<p0.count { s0[0].inbox[i] = p0[i]; }
+  coaxial_loginweb_event(s0, LW_PATH, 0, p0.count);
+  _ = coaxial_loginweb_frame(s0, 0.016, true);
+  #assert tr_find(s0[0].tree[..], "lw.loading") > 0 && tr_find(s0[0].tree[..], "lw.email") < 0;
+  coaxial_loginweb_asked(s0);
+  r0 := "logged_in 0\n";
+  for i: 0..<r0.count { s0[0].inbox[i] = r0[i]; }
+  coaxial_loginweb_event(s0, LW_PIECE, 200, r0.count);
+  coaxial_loginweb_event(s0, LW_END, 200, 0);
+  #assert coaxial_loginweb_go_len(s0) > 0 && cast(string) s0[0].go[0..<s0[0].go_n] == "/login?next=/onboarding";
+
+  // 2. Logged-in user without GitHub on /onboarding -> sees GitHub connect CTA (link=1), no skip, no workspace link
+  h1: [1] LwTest; s1 := h1[0].s[..];
+  p1 := "/onboarding?next=/projects&error=github_cancelled";
+  for i: 0..<p1.count { s1[0].inbox[i] = p1[i]; }
+  coaxial_loginweb_event(s1, LW_PATH, 0, p1.count);
+  _ = coaxial_loginweb_frame(s1, 0.016, true);
+  coaxial_loginweb_asked(s1);
+  r1 := "logged_in 1\nprimary chris@openagents.com\ngithub_connected 0\nonboarding_required 1\n";
+  for i: 0..<r1.count { s1[0].inbox[i] = r1[i]; }
+  coaxial_loginweb_event(s1, LW_PIECE, 200, r1.count);
+  coaxial_loginweb_event(s1, LW_END, 200, 0);
+  n1 := coaxial_loginweb_frame(s1, 0.016, true);
+  t1 := s1[0].tree[..];
+  #assert n1 > 0 && s1[0].screen == LW_SCR_ONBOARDING && coaxial_loginweb_go_len(s1) == 0;
+  #assert tr_find(t1, "lw.onboard.github") > 0 && tr_find(t1, "lw.onboard.note") > 0 && tr_find(t1, "lw.logout") > 0 && tr_find(t1, "lw.err") > 0;
+  #assert tr_find(t1, "lw.in.open") < 0 && tr_find(t1, "lw.email") < 0;
+
+  // 3. Logged-in user WITH GitHub already connected on /onboarding -> redirects straight to next (/chat default)
+  h2: [1] LwTest; s2 := h2[0].s[..];
+  p2 := "/onboarding";
+  for i: 0..<p2.count { s2[0].inbox[i] = p2[i]; }
+  coaxial_loginweb_event(s2, LW_PATH, 0, p2.count);
+  _ = coaxial_loginweb_frame(s2, 0.016, true);
+  coaxial_loginweb_asked(s2);
+  r2 := "logged_in 1\ngithub_connected 1\ngithub_login octocat\nonboarding_required 0\n";
+  for i: 0..<r2.count { s2[0].inbox[i] = r2[i]; }
+  coaxial_loginweb_event(s2, LW_PIECE, 200, r2.count);
+  coaxial_loginweb_event(s2, LW_END, 200, 0);
+  #assert coaxial_loginweb_go_len(s2) > 0 && cast(string) s2[0].go[0..<s2[0].go_n] == "/chat";
+
+  // 4. Logged-in user without GitHub revisiting /login -> redirected straight to /onboarding
+  h3: [1] LwTest; s3 := h3[0].s[..];
+  _ = coaxial_loginweb_frame(s3, 0.016, true);
+  coaxial_loginweb_asked(s3);
+  for i: 0..<r1.count { s3[0].inbox[i] = r1[i]; }
+  coaxial_loginweb_event(s3, LW_PIECE, 200, r1.count);
+  coaxial_loginweb_event(s3, LW_END, 200, 0);
+  #assert coaxial_loginweb_go_len(s3) > 0 && cast(string) s3[0].go[0..<s3[0].go_n] == "/onboarding";
 }

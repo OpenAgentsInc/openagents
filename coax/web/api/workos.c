@@ -11,6 +11,7 @@
 // (coax/lib/workos/adapters/c_unit.coax -> workos-sdk-unit.c).
 #include "workos.h"
 #include "auth-internal.h"
+#include "auth-policy.generated.h"
 #include "http_client.h"
 #include "workos-sdk.generated.h"
 
@@ -160,9 +161,160 @@ static bool same_site_next(const char *s) {
   if (!s || s[0] != '/') return false;
   if (s[1] == '/' || s[1] == '\\') return false;
   if (!strncmp(s, "/login", 6) && strncmp(s, "/login/device", 13) != 0) return false;
+  if (!strncmp(s, "/onboarding", 11) && (s[11] == 0 || s[11] == '/' || s[11] == '?')) return false;
   for (const unsigned char *p = (const unsigned char *)s; *p; p++)
     if (*p <= ' ' || *p >= 127 || *p == '\\') return false;
   return strlen(s) < 256;
+}
+
+static const char *workos_github_api_base(void) { return env_or("OA_GITHUB_API_BASE", "https://api.github.com"); }
+static bool workos_github_allow_local(void) {
+  const char *b = workos_github_api_base();
+  return !strncmp(b, "http://127.0.0.1:", 17) || !strncmp(b, "http://localhost:", 17);
+}
+
+static void workos_gh_parse_profile(PGconn *db, const char *body, char gh_id[64], char gh_login[64],
+                                    char gh_avatar[256], char gh_created[48], int *repos_out, int *followers_out) {
+  if (!body || !*body) return;
+  const char *v[1] = {body};
+  PGresult *r = PQexecParams(
+      db,
+      "WITH d AS (SELECT $1::jsonb j) "
+      "SELECT coalesce(j->>'id', ''), coalesce(j->>'login', ''), coalesce(j->>'avatar_url', ''), "
+      "       coalesce(j->>'created_at', ''), coalesce((j->>'public_repos')::int, 0), coalesce((j->>'followers')::int, 0) "
+      "FROM d",
+      1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+    if (!gh_id[0] && PQgetvalue(r, 0, 0)[0]) snprintf(gh_id, 64, "%s", PQgetvalue(r, 0, 0));
+    if (!gh_login[0] && PQgetvalue(r, 0, 1)[0]) snprintf(gh_login, 64, "%s", PQgetvalue(r, 0, 1));
+    if (!gh_avatar[0] && PQgetvalue(r, 0, 2)[0]) snprintf(gh_avatar, 256, "%s", PQgetvalue(r, 0, 2));
+    if (!gh_created[0] && PQgetvalue(r, 0, 3)[0]) snprintf(gh_created, 48, "%s", PQgetvalue(r, 0, 3));
+    if (repos_out) *repos_out = atoi(PQgetvalue(r, 0, 4));
+    if (followers_out) *followers_out = atoi(PQgetvalue(r, 0, 5));
+  }
+  PQclear(r);
+}
+
+// Extracts the immutable GitHub numeric ID (+ profile metadata when reachable) from a WorkOS
+// GitHubOAuth authenticate response. Uses oauth_tokens.access_token -> GitHub /user when present,
+// and always falls back to WorkOS GET /user_management/users/{id}/identities (idp_id) + public
+// GitHub /user/{idp_id} so onboarding works regardless of whether WorkOS returns OAuth tokens.
+static bool workos_extract_github_identity(PGconn *db, const char *auth_json, const char *wos_uid,
+                                           char gh_id[64], char gh_login[64], char gh_avatar[256],
+                                           char gh_created[48], int *repos_out, int *followers_out) {
+  gh_id[0] = 0; gh_login[0] = 0; gh_avatar[0] = 0; gh_created[0] = 0;
+  if (repos_out) *repos_out = 0;
+  if (followers_out) *followers_out = 0;
+
+  // 1. Primary path: oauth_tokens.access_token from WorkOS authenticate response -> GET /user
+  if (auth_json && *auth_json) {
+    char tok[512] = "";
+    const char *tv[1] = {auth_json};
+    PGresult *tr = PQexecParams(db, "SELECT coalesce(($1::jsonb)->'oauth_tokens'->>'access_token', '')", 1, NULL, tv, NULL, NULL, 0);
+    if (PQresultStatus(tr) == PGRES_TUPLES_OK && PQntuples(tr) == 1) snprintf(tok, sizeof tok, "%s", PQgetvalue(tr, 0, 0));
+    PQclear(tr);
+    if (tok[0]) {
+      char url[512], ahdr[600];
+      snprintf(url, sizeof url, "%s/user", workos_github_api_base());
+      snprintf(ahdr, sizeof ahdr, "Authorization: Bearer %s", tok);
+      explicit_bzero(tok, sizeof tok);
+      const char *hdrs[] = {ahdr, "Accept: application/vnd.github+json", "X-GitHub-Api-Version: 2022-11-28", "User-Agent: openagents-api", NULL};
+      http_client_req req = {.method = "GET", .url = url, .headers = hdrs, .connect_timeout_ms = 5000, .total_timeout_ms = 10000, .max_response_bytes = 262144, .allow_http_local = workos_github_allow_local()};
+      http_client_res gres = {0};
+      http_client_send(&req, &gres);
+      explicit_bzero(ahdr, sizeof ahdr);
+      if (gres.status == 200 && gres.body && gres.body_len > 0) {
+        workos_gh_parse_profile(db, gres.body, gh_id, gh_login, gh_avatar, gh_created, repos_out, followers_out);
+      }
+      http_client_res_free(&gres);
+    }
+  }
+
+  // 2. Guaranteed fallback: WorkOS GET /user_management/users/{wos_uid}/identities -> GitHub idp_id
+  if (!gh_id[0] && wos_uid && *wos_uid) {
+    uint8_t url_b[512]; int64_t un = 0;
+    if (wos_c_build_get_user_identities(cs(workos_base_url()), cs(wos_uid),
+                                        (coax_v_u8){url_b, (int64_t)sizeof url_b - 1}, (coax_v_s64){&un, 1})) {
+      url_b[un] = 0;
+      http_client_res ires = {0};
+      workos_http("GET", (const char *)url_b, NULL, 0, true, &ires);
+      if (ires.status == 200 && ires.body && ires.body_len > 0) {
+        int64_t idn = wos_c_parse_github_idp_id((coax_string){ires.body, (int64_t)ires.body_len},
+                                                (coax_v_u8){(uint8_t *)gh_id, 63});
+        if (idn > 0) gh_id[idn] = 0;
+        else gh_id[0] = 0;
+      }
+      http_client_res_free(&ires);
+    }
+  }
+
+  // 3. Best-effort public GitHub lookup by numeric ID to populate handle/avatar/created_at when missing.
+  if (gh_id[0] && !gh_login[0]) {
+    bool all_digits = true;
+    size_t len = strlen(gh_id);
+    if (len == 0 || len > 24) all_digits = false;
+    for (size_t i = 0; i < len && all_digits; i++) if (gh_id[i] < '0' || gh_id[i] > '9') all_digits = false;
+    if (all_digits) {
+      char url[512];
+      snprintf(url, sizeof url, "%s/user/%s", workos_github_api_base(), gh_id);
+      const char *hdrs[] = {"Accept: application/vnd.github+json", "X-GitHub-Api-Version: 2022-11-28", "User-Agent: openagents-api", NULL};
+      http_client_req req = {.method = "GET", .url = url, .headers = hdrs, .connect_timeout_ms = 3000, .total_timeout_ms = 5000, .max_response_bytes = 262144, .allow_http_local = workos_github_allow_local()};
+      http_client_res pres = {0};
+      http_client_send(&req, &pres);
+      if (pres.status == 200 && pres.body && pres.body_len > 0) {
+        workos_gh_parse_profile(db, pres.body, gh_id, gh_login, gh_avatar, gh_created, repos_out, followers_out);
+      }
+      http_client_res_free(&pres);
+    }
+  }
+  return gh_id[0] != 0;
+}
+
+static bool workos_link_github_account(PGconn *db, const char *acct, const char *wos_uid, const char *auth_json,
+                                       char gh_id_out[64], char gh_login_out[64],
+                                       long long *newly_granted_out, bool *already_claimed_out) {
+  if (gh_id_out) gh_id_out[0] = 0;
+  if (gh_login_out) gh_login_out[0] = 0;
+  if (newly_granted_out) *newly_granted_out = 0;
+  if (already_claimed_out) *already_claimed_out = false;
+  char gh_id[64] = "", gh_login[64] = "", gh_avatar[256] = "", gh_created[48] = "";
+  int repos = 0, followers = 0;
+  if (!workos_extract_github_identity(db, auth_json, wos_uid, gh_id, gh_login, gh_avatar, gh_created, &repos, &followers)) {
+    return false;
+  }
+  const char *v[5] = {acct, gh_id, gh_login, gh_avatar, wos_uid ? wos_uid : ""};
+  PGresult *r = PQexecParams(
+      db,
+      "INSERT INTO auth.github_links (account_id, github_id, github_login, github_avatar, workos_user_id, linked_at, updated_at) "
+      "VALUES ($1, $2, $3, $4, $5, now(), now()) "
+      "ON CONFLICT (account_id) DO UPDATE SET "
+      "github_id = EXCLUDED.github_id, "
+      "github_login = CASE WHEN EXCLUDED.github_login <> '' THEN EXCLUDED.github_login ELSE auth.github_links.github_login END, "
+      "github_avatar = CASE WHEN EXCLUDED.github_avatar <> '' THEN EXCLUDED.github_avatar ELSE auth.github_links.github_avatar END, "
+      "workos_user_id = CASE WHEN EXCLUDED.workos_user_id <> '' THEN EXCLUDED.workos_user_id ELSE auth.github_links.workos_user_id END, "
+      "updated_at = now()",
+      5, NULL, v, NULL, NULL, 0);
+  bool ok = r && PQresultStatus(r) == PGRES_COMMAND_OK;
+  if (r) PQclear(r);
+  if (!ok) return false;
+  referral_on_github_linked(db, acct, gh_id, gh_login, gh_avatar, gh_created, repos, followers, 0, newly_granted_out, already_claimed_out);
+  if (gh_id_out) snprintf(gh_id_out, 64, "%s", gh_id);
+  if (gh_login_out) snprintf(gh_login_out, 64, "%s", gh_login);
+  return true;
+}
+
+static bool workos_pending_is_link(PGconn *db, const char *state, const char *cookie_state) {
+  const char *tok = (cookie_state && *cookie_state) ? cookie_state : state;
+  if (!db || !tok || !*tok) return false;
+  char ssha[65]; auth_sha_hex(tok, ssha);
+  const char *v[1] = {ssha};
+  PGresult *r = PQexecParams(
+      db,
+      "SELECT kind FROM auth.workos_pending WHERE token_sha256 = $1 AND expires_at > now() LIMIT 1",
+      1, NULL, v, NULL, NULL, 0);
+  bool is_link = r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !strcmp(PQgetvalue(r, 0, 0), "oauth_link");
+  if (r) PQclear(r);
+  return is_link;
 }
 
 static char *body_copy(const request *q) {
@@ -1068,21 +1220,44 @@ static void route_sso_discover(const request *q, PGconn *db, const char *body) {
 
 static void route_oauth_start(const request *q, PGconn *db) {
   if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "That login method isn't enabled here."); return; }
-  char provider[64] = "", domain[200] = "", conn_id[128] = "", org_id[128] = "", login_hint[256] = "", next_path[256] = "/", mode[16] = "";
+  char provider[64] = "", domain[200] = "", conn_id[128] = "", org_id[128] = "", login_hint[256] = "", next_path[256] = "/chat", mode[16] = "", link_q[16] = "";
   api_query(q, "provider", provider, sizeof provider);
   api_query(q, "domain", domain, sizeof domain);
   api_query(q, "connection_id", conn_id, sizeof conn_id);
   api_query(q, "organization_id", org_id, sizeof org_id);
   api_query(q, "login_hint", login_hint, sizeof login_hint);
   api_query(q, "mode", mode, sizeof mode);
+  api_query(q, "link", link_q, sizeof link_q);
+  bool is_link = !strcmp(link_q, "1") || !strcmp(link_q, "true");
   char raw_next[256] = "";
   if (api_query(q, "next", raw_next, sizeof raw_next) && same_site_next(raw_next)) snprintf(next_path, sizeof next_path, "%s", raw_next);
+  else if (!is_link) snprintf(next_path, sizeof next_path, "/");
 
   // Normalize friendly provider aliases.
   if (!strcasecmp(provider, "google")) snprintf(provider, sizeof provider, "GoogleOAuth");
   else if (!strcasecmp(provider, "github")) snprintf(provider, sizeof provider, "GitHubOAuth");
   else if (!strcasecmp(provider, "apple")) snprintf(provider, sizeof provider, "AppleOAuth");
   else if (!strcasecmp(provider, "sso")) provider[0] = 0;
+
+  // Account-linking mode (used by /onboarding to connect GitHub to the active acct_ session).
+  char link_account[40] = "";
+  if (is_link) {
+    if (strcmp(provider, "GitHubOAuth") != 0) {
+      auth_refuse(q, 400, "Only GitHub account linking is supported.");
+      return;
+    }
+    const auth_principal *p = auth_principal_of(q);
+    if (!p || p->kind != AP_PERSON || !p->account[0]) {
+      if (!strcmp(mode, "json") || strstr(q->query, "as=lines")) {
+        auth_refuse(q, 401, "Log in first.");
+      } else {
+        api_respond(q->fd, 303, "text/plain", "Location: /login?next=/onboarding\r\n", "", 0);
+      }
+      return;
+    }
+    snprintf(link_account, sizeof link_account, "%s", p->account);
+    domain[0] = 0; conn_id[0] = 0; org_id[0] = 0; login_hint[0] = 0;
+  }
 
   // Reject any unsupported OAuth/phone provider attempts explicitly (passwords use /password/*).
   if (provider[0] && strcmp(provider, "GoogleOAuth") && strcmp(provider, "GitHubOAuth") && strcmp(provider, "AppleOAuth")) {
@@ -1141,12 +1316,12 @@ static void route_oauth_start(const request *q, PGconn *db) {
   char id[33], ssha[65];
   if (!auth_random_hex(id, 16)) { explicit_bzero(verifier, sizeof verifier); auth_refuse(q, 503, "No randomness here. Try again."); return; }
   auth_sha_hex((const char *)state, ssha);
-  const char *v[4] = {id, ssha, (const char *)verifier, next_path};
+  const char *v[6] = {id, is_link ? "oauth_link" : "oauth", ssha, (const char *)verifier, next_path, is_link ? link_account : NULL};
   PGresult *r = PQexecParams(
       db,
-      "INSERT INTO auth.workos_pending (id, kind, token_sha256, verifier, next_path, client, expires_at) "
-      "VALUES ($1, 'oauth', $2, $3, $4, 'web', now() + interval '10 minutes')",
-      4, NULL, v, NULL, NULL, 0);
+      "INSERT INTO auth.workos_pending (id, kind, token_sha256, verifier, next_path, link_account, client, expires_at) "
+      "VALUES ($1, $2, $3, $4, $5, $6, 'web', now() + interval '10 minutes')",
+      6, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
   PQclear(r);
   explicit_bzero(verifier, sizeof verifier);
@@ -1180,33 +1355,55 @@ static void route_callback(const request *q, PGconn *db) {
 
   if (err_param[0] || !code[0] || !state[0] || !cookie_state[0] ||
       !wos_state_equal(cs(cookie_state), cs(state))) {
+    bool is_link_err = workos_pending_is_link(db, state, cookie_state);
+    const char *dest = is_link_err
+      ? (!strcmp(err_param, "access_denied") ? "/onboarding?error=github_cancelled" : "/onboarding?error=github_link_failed")
+      : "/login?error=oauth_failed";
     char hdr[320];
     snprintf(hdr, sizeof hdr,
-             "Location: /login?error=oauth_failed\r\n"
+             "Location: %s\r\n"
              "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n",
-             WOS_STATE_COOKIE);
+             dest, WOS_STATE_COOKIE);
     api_respond(q->fd, 303, "text/plain", hdr, "", 0);
     return;
   }
 
-  char ssha[65], verifier[128] = "", next_path[256] = "/";
+  char ssha[65], pending_kind[24] = "", verifier[128] = "", next_path[256] = "/", link_account[40] = "";
   auth_sha_hex(state, ssha);
   const char *v[1] = {ssha};
   PGresult *r = PQexecParams(
       db,
       "UPDATE auth.workos_pending SET spent_at = now() "
-      "WHERE kind = 'oauth' AND token_sha256 = $1 AND spent_at IS NULL AND expires_at > now() "
-      "RETURNING coalesce(verifier, ''), coalesce(next_path, '/')",
+      "WHERE kind IN ('oauth', 'oauth_link') AND token_sha256 = $1 AND spent_at IS NULL AND expires_at > now() "
+      "RETURNING kind, coalesce(verifier, ''), coalesce(next_path, '/'), coalesce(link_account, '')",
       1, NULL, v, NULL, NULL, 0);
   bool found = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
   if (found) {
-    snprintf(verifier, sizeof verifier, "%s", PQgetvalue(r, 0, 0));
-    if (same_site_next(PQgetvalue(r, 0, 1))) snprintf(next_path, sizeof next_path, "%s", PQgetvalue(r, 0, 1));
+    snprintf(pending_kind, sizeof pending_kind, "%s", PQgetvalue(r, 0, 0));
+    snprintf(verifier, sizeof verifier, "%s", PQgetvalue(r, 0, 1));
+    if (same_site_next(PQgetvalue(r, 0, 2))) snprintf(next_path, sizeof next_path, "%s", PQgetvalue(r, 0, 2));
+    snprintf(link_account, sizeof link_account, "%s", PQgetvalue(r, 0, 3));
   }
   PQclear(r);
   if (!found || !verifier[0]) {
     auth_refuse(q, 401, "That sign-in expired. Start again.");
     return;
+  }
+
+  bool is_link = !strcmp(pending_kind, "oauth_link");
+  const auth_principal *link_p = NULL;
+  if (is_link) {
+    link_p = auth_principal_of(q);
+    if (!link_p || link_p->kind != AP_PERSON || !link_account[0] || strcmp(link_p->account, link_account) != 0) {
+      explicit_bzero(verifier, sizeof verifier);
+      char hdr[320];
+      snprintf(hdr, sizeof hdr,
+               "Location: /login?next=/onboarding\r\n"
+               "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n",
+               WOS_STATE_COOKIE);
+      api_respond(q->fd, 303, "text/plain", hdr, "", 0);
+      return;
+    }
   }
 
   char ip[128], ua[256];
@@ -1224,21 +1421,76 @@ static void route_callback(const request *q, PGconn *db) {
   http_client_res res;
   workos_http("POST", (const char *)url_b, (const char *)req_b, (size_t)bn, true, &res);
 
+  if (is_link) {
+    if (res.status >= 200 && res.status < 300 && res.body && res.body_len > 0) {
+      char wos_uid[128] = "";
+      const char *uv[1] = {res.body};
+      PGresult *ur = PQexecParams(db, "SELECT coalesce(($1::jsonb)->'user'->>'id', '')", 1, NULL, uv, NULL, NULL, 0);
+      if (PQresultStatus(ur) == PGRES_TUPLES_OK && PQntuples(ur) == 1) snprintf(wos_uid, sizeof wos_uid, "%s", PQgetvalue(ur, 0, 0));
+      PQclear(ur);
+
+      char gh_id[64] = "", gh_login[64] = "";
+      long long newly = 0;
+      bool already_claimed = false;
+      bool linked = workos_link_github_account(db, link_account, wos_uid, res.body, gh_id, gh_login, &newly, &already_claimed);
+      if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
+      http_client_res_free(&res);
+      if (linked) {
+        char detail[256], login_esc[128];
+        auth_json_esc(gh_login, login_esc, sizeof login_esc);
+        snprintf(detail, sizeof detail, "{\"github_id\":\"%s\",\"github_login\":\"%s\",\"granted_micros\":%lld,\"already_claimed\":%s}",
+                 gh_id, login_esc, newly, already_claimed ? "true" : "false");
+        auth_audit(db, link_account, link_p->session, "onboarding.github_link", "ok", detail);
+        char dest[320] = "/chat";
+        int64_t dn = ap_post_login_dest(true, cs(next_path), (coax_v_u8){(uint8_t *)dest, (int64_t)sizeof dest - 1});
+        if (dn > 0) dest[dn] = 0;
+        else snprintf(dest, sizeof dest, "/chat");
+        char hdr[600];
+        snprintf(hdr, sizeof hdr,
+                 "Location: %s\r\n"
+                 "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n",
+                 dest, WOS_STATE_COOKIE);
+        api_respond(q->fd, 303, "text/plain", hdr, "", 0);
+        return;
+      }
+    } else {
+      if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
+      http_client_res_free(&res);
+    }
+    char hdr[320];
+    snprintf(hdr, sizeof hdr,
+             "Location: /onboarding?error=github_link_failed\r\n"
+             "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n",
+             WOS_STATE_COOKIE);
+    api_respond(q->fd, 303, "text/plain", hdr, "", 0);
+    return;
+  }
+
   if (res.status >= 200 && res.status < 300 && res.body && res.body_len > 0) {
     char wos_uid[128], email[300], org_id[128], wos_sid[128], method[64];
     bool email_verified = false;
     mirror_auth_response(db, res.body, wos_uid, email, &email_verified, org_id, wos_sid, method);
-    http_client_res_free(&res);
     char acct[40]; bool made = false, auto_linked = false;
     if (!wos_uid[0] || !resolve_workos_account(db, wos_uid, email, email_verified, method, org_id, acct, &made, &auto_linked)) {
+      if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
+      http_client_res_free(&res);
       auth_refuse(q, 500, "That didn't work. Try again.");
       return;
     }
     referral_maybe_redeem_cookie(q, db, acct);
     if (strstr(method, "GitHub") || strstr(method, "github")) {
-      referral_on_github_connected(db, acct);
+      if (!workos_link_github_account(db, acct, wos_uid, res.body, NULL, NULL, NULL, NULL)) {
+        referral_on_github_connected(db, acct);
+      }
     }
-    auth_login_web_redirect(q, db, acct, "workos", "L1", made, "login.workos_oauth", next_path);
+    if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
+    http_client_res_free(&res);
+    bool has_gh = auth_account_has_github(db, acct, NULL, 0);
+    char dest[320] = "/onboarding";
+    int64_t dn = ap_post_login_dest(has_gh, cs(next_path), (coax_v_u8){(uint8_t *)dest, (int64_t)sizeof dest - 1});
+    if (dn > 0) dest[dn] = 0;
+    else snprintf(dest, sizeof dest, "%s", has_gh ? "/chat" : "/onboarding");
+    auth_login_web_redirect(q, db, acct, "workos", "L1", made, "login.workos_oauth", dest);
     return;
   }
 

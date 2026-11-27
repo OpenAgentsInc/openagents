@@ -1695,6 +1695,20 @@ bool auth_freeze_link(PGconn *db, const char *acct, char token[65]) {
   return ok;
 }
 
+bool auth_account_has_github(PGconn *db, const char *account, char *login_out, size_t login_cap) {
+  if (login_out && login_cap) login_out[0] = 0;
+  if (!db || !account || !*account) return false;
+  const char *v[1] = {account};
+  PGresult *r = PQexecParams(
+      db,
+      "SELECT coalesce(github_login, '') FROM auth.github_links WHERE account_id = $1 LIMIT 1",
+      1, NULL, v, NULL, NULL, 0);
+  bool ok = r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+  if (ok && login_out && login_cap) snprintf(login_out, login_cap, "%s", PQgetvalue(r, 0, 0));
+  if (r) PQclear(r);
+  return ok;
+}
+
 static void me(const request *q, PGconn *db) {
   const auth_principal *p = auth_principal_of(q);
   // A bad, forged or expired NIP-98 signature is refused, never read as nobody (INVARIANTS.md).
@@ -1741,12 +1755,16 @@ static void me(const request *q, PGconn *db) {
   const char *keys = PQgetvalue(r, 0, 2);
   long long promo_micros = 0; char promo_exp[40] = "";
   referral_promo_balance(db, p->account, &promo_micros, promo_exp);
+  char gh_login[64] = "";
+  bool has_gh = auth_account_has_github(db, p->account, gh_login, sizeof gh_login);
+  bool onboarding_req = ap_onboarding_required(p->kind, has_gh);
   if (primary[0]) l = auw_me_primary_lines(cs(primary), lv, l);
-  j = auw_me_tail_write(cs(primary), cs(keys), promo_micros, cs(promo_exp), jv, j);
+  j = auw_me_tail_write(cs(primary), cs(keys), promo_micros, cs(promo_exp), has_gh, cs(gh_login), onboarding_req, jv, j);
   memset(primary, 0, sizeof primary);
   for (int64_t at = auw_me_pubkey_at(cs(keys), 0); at >= 0 && l >= 0 && l < 8000; at = auw_me_pubkey_at(cs(keys), at + 1))
     l = auw_me_key_lines((coax_string){keys + at, (int64_t)strnlen(keys + at, 64)}, lv, l);
   l = auw_me_promo_lines(promo_micros, cs(promo_exp), lv, l);
+  l = auw_me_onboarding_lines(has_gh, cs(gh_login), onboarding_req, lv, l);
   answer_n(q, 200, NULL, json, j, lines, l);
   PQclear(r);
   free(json); free(lines);

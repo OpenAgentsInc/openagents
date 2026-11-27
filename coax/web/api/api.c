@@ -503,6 +503,16 @@ static bool spa_deep_link(const request *q) {
     size_t n = strlen(seg);
     if (n > 0 && seg[n - 1] == '/') n--;
     if (spa_valid_conv_id(seg, n)) {
+      const auth_principal *p = auth_principal_of(q);
+      if (p && p->kind == AP_PERSON && p->account[0]) {
+        PGconn *db = api_db();
+        if (db && !auth_account_has_github(db, p->account, NULL, 0)) {
+          char hdr[512];
+          snprintf(hdr, sizeof hdr, "Location: /onboarding?next=%s\r\nCache-Control: no-store\r\n", q->path);
+          api_respond(q->fd, 303, "text/plain", hdr, "", 0);
+          return true;
+        }
+      }
       spa_serve_entry(q, 0, "/chat/index.html");
       return true;
     }

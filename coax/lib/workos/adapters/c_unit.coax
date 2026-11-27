@@ -175,6 +175,41 @@ wos_c_build_delete_user :: (base_url: string, workos_user_id: string, url_out: [
   return wos_c_export_req(r, scratch[..], url_out, empty[0..<0], url_n, bn[..]);
 }
 
+wos_c_build_get_user_identities :: (base_url: string, workos_user_id: string, url_out: [] u8, url_n: [] int) -> bool #export_c #effects(all) {
+  if workos_user_id.count == 0 { return false; }
+  scratch: [2048] u8;
+  empty: [1] u8; bn: [1] int;
+  r := wos_user_management_get_user_identities(base_url, WosP_UserManagementGetUserIdentities.{id = workos_user_id}, scratch[..]);
+  return wos_c_export_req(r, scratch[..], url_out, empty[0..<0], url_n, bn[..]);
+}
+
+wos_c_is_github_provider :: (p: string) -> bool #effects(all) {
+  return p == "GithubOAuth" || p == "GitHubOAuth" || p == "github" || p == "GitHub" || p == "github_oauth";
+}
+
+// Parse GET /user_management/users/{id}/identities JSON array and extract the GitHub OAuth idp_id.
+// Returns bytes written (>0) into id_out, or -1 if absent/invalid.
+wos_c_parse_github_idp_id :: (raw: string, id_out: [] u8) -> int #export_c #effects(all) {
+  if raw.count < 2 || raw.count > 65536 || id_out.count < 1 { return -1; }
+  d: [1] Jv; nodes: [1024] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return -1; }
+  v := d[0];
+  arr := 0;
+  if jv_kind(v, 0) == JV_OBJECT { arr = jv_get(v, 0, "data"); }
+  if arr < 0 || jv_kind(v, arr) != JV_ARRAY { return -1; }
+  cnt := jv_len(v, arr);
+  for i: 0..<cnt {
+    item := jv_at(v, arr, i);
+    if jv_kind(v, item) != JV_OBJECT { continue; }
+    pbuf: [48] u8;
+    pn := wpw_string(v, jv_get(v, item, "provider"), pbuf[..]);
+    if pn < 1 || !wos_c_is_github_provider(cast(string) pbuf[0..<pn]) { continue; }
+    idn := wpw_string(v, jv_get(v, item, "idp_id"), id_out);
+    if idn > 0 { return idn; }
+  }
+  return -1;
+}
+
 wos_c_build_list_events :: (base_url: string, events_csv: string, after: string, limit: int, url_out: [] u8, url_n: [] int) -> bool #export_c #effects(all) {
   scratch: [2048] u8;
   empty: [1] u8; bn: [1] int;
@@ -322,4 +357,14 @@ wos_c_export_req :: (r: WosReq, scratch: [] u8, url_out: [] u8, body_out: [] u8,
   #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/password_reset/confirm";
   #assert wos_c_build_auth_email_verify("", "client_01", "sk_1", "pat_1", "123456", "1.1.1.1", "OA", ub[..], bb[..], un[..], bn[..]);
   #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/authenticate";
+  #assert wos_c_build_get_user_identities("", "user_1", ub[..], un[..]);
+  #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/users/user_1/identities";
+  #assert !wos_c_build_get_user_identities("", "", ub[..], un[..]) && !wos_c_build_get_user_identities("", "..", ub[..], un[..]);
+  idb: [64] u8;
+  idn := wos_c_parse_github_idp_id("[{\"idp_id\":\"9988\",\"type\":\"OAuth\",\"provider\":\"GoogleOAuth\"},{\"idp_id\":\"583231\",\"type\":\"OAuth\",\"provider\":\"GithubOAuth\"}]", idb[..]);
+  #assert idn == 6 && cast(string) idb[0..<idn] == "583231";
+  idn = wos_c_parse_github_idp_id("{\"data\":[{\"idp_id\":\"42\",\"provider\":\"GitHubOAuth\"}]}", idb[..]);
+  #assert idn == 2 && cast(string) idb[0..<idn] == "42";
+  #assert wos_c_parse_github_idp_id("[{\"idp_id\":\"9988\",\"provider\":\"GoogleOAuth\"}]", idb[..]) == -1;
+  #assert wos_c_parse_github_idp_id("not-json", idb[..]) == -1;
 }

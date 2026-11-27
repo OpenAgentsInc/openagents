@@ -34,6 +34,8 @@ SettingsWeb :: struct {
   section: int;                      // the section shown (SW_*)
   // the account, as /api/auth/account?as=lines says
   logged: bool; read: bool; admin: bool;
+  gh_linked: bool; onboarding_required: bool;
+  gh_linked_login: [64] u8; gh_linked_login_n: int;
   account: [48] u8; account_n: int;
   kind: [24] u8; kind_n: int;
   level: [8] u8; level_n: int;
@@ -173,6 +175,7 @@ sw_href :: (k: int, out: [] u8) -> string {
 // masked emails and Nostr keys.
 sw_account_read :: (s: [] SettingsWeb, body: string) {
   s[0].logged = false; s[0].admin = false; s[0].emails = 0; s[0].nkeys = 0; s[0].keys = 0; s[0].read = true;
+  s[0].gh_linked = false; s[0].onboarding_required = false; s[0].gh_linked_login_n = 0;
   s[0].account_n = 0; s[0].kind_n = 0; s[0].level_n = 0; s[0].via_n = 0; s[0].primary_n = 0;
   at := 0;
   while at < body.count {
@@ -198,6 +201,11 @@ sw_account_read :: (s: [] SettingsWeb, body: string) {
     if line.count > 17 && cast(string) line[0..<17] == "promo_expires_at " {
       v := cast(string) line[17..<line.count];
       if v != "-" { s[0].promo_expires_n = sw_put(s[0].promo_expires[..], 0, v); }
+    }
+    if line == "github_connected 1" { s[0].gh_linked = true; }
+    if line == "onboarding_required 1" { s[0].onboarding_required = true; }
+    if line.count > 13 && cast(string) line[0..<13] == "github_login " {
+      s[0].gh_linked_login_n = sw_put(s[0].gh_linked_login[..], 0, cast(string) line[13..<line.count]);
     }
     at = e + 1;
   }
@@ -1053,7 +1061,7 @@ sw_invite :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui) {
   } else if s[0].ref_gh_reason_n > 0 {
     gn = sw_put(gh_about[..], 0, cast(string) s[0].ref_gh_reason[0..<s[0].ref_gh_reason_n]);
   } else {
-    gn = sw_put(gh_about[..], 0, "Connect an eligible GitHub account (90+ days old with public activity) to unlock $5-$15 of promo credit.");
+    gn = sw_put(gh_about[..], 0, "Connect a GitHub account to unlock $10 of free promo credit (one per GitHub account).");
   }
   if sw_row(s, t, u, "inv.gh", "GitHub verification", cast(string) gh_about[0..<gn]) {
     br := k_button(t, u, "sw.ref.recheck", ifx s[0].ref_busy then "Checking" else "Recheck GitHub", BS_PLAIN);
@@ -1076,7 +1084,7 @@ sw_invite :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui) {
   // Group 4: Redeem a code (within 7 days of signup)
   if !s[0].ref_attributed && (s[0].ref_can_redeem || s[0].ref_state != 1) {
     sw_group(s, t, u, "inv.redeem", "Redeem an invite code");
-    if sw_row(s, t, u, "inv.redeem.row", "Have a referral or campaign code?", "Redeem within 7 days of signup to stack $10 of promo credit with your $5 GitHub bonus.") {
+    if sw_row(s, t, u, "inv.redeem.row", "Have a referral or campaign code?", "Redeem within 7 days of signup to stack $10 of promo credit with your $10 GitHub bonus.") {
       fi := k_input(t, u, "sw.ref.code", "Enter code or @handle", "Referral code", "text", "off");
       br := k_button(t, u, "sw.ref.redeem", ifx s[0].ref_busy then "Redeeming" else "Redeem",
         ifx s[0].ref_input_n > 0 && !s[0].ref_busy then BS_PRIMARY else BS_DISABLED);

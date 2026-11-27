@@ -1135,7 +1135,21 @@ static bool rf_run_github_check(PGconn *db, const char *acct, rf_recheck_out *ou
     }
   }
 
-  // Ensure github_connect ($5) grant exists (idempotent via UNIQUE(kind, account_id, source_ref))
+  // Record onboarding link in auth.github_links too (non-unique on github_id).
+  const char *lv[4] = {acct, gh_id_s, login, avatar};
+  PGresult *lr = PQexecParams(
+      db,
+      "INSERT INTO auth.github_links (account_id, github_id, github_login, github_avatar, linked_at, updated_at) "
+      "VALUES ($1, $2, $3, $4, now(), now()) "
+      "ON CONFLICT (account_id) DO UPDATE SET "
+      "github_id = EXCLUDED.github_id, "
+      "github_login = CASE WHEN EXCLUDED.github_login <> '' THEN EXCLUDED.github_login ELSE auth.github_links.github_login END, "
+      "github_avatar = CASE WHEN EXCLUDED.github_avatar <> '' THEN EXCLUDED.github_avatar ELSE auth.github_links.github_avatar END, "
+      "updated_at = now()",
+      4, NULL, lv, NULL, NULL, 0);
+  PQclear(lr);
+
+  // Ensure github_connect ($10) grant exists (idempotent via UNIQUE(kind, account_id, source_ref))
   char amt_s[32], tv_s[16];
   snprintf(amt_s, sizeof amt_s, "%lld", cfg.github_connect_micros);
   snprintf(tv_s, sizeof tv_s, "%d", cfg.terms_version);
@@ -1157,6 +1171,204 @@ static bool rf_run_github_check(PGconn *db, const char *acct, rf_recheck_out *ou
   rf_format_gh_reason(verdict, age_days, &cfg, out->reason);
   out->newly_granted = newly;
   referral_promo_balance(db, acct, &out->promo_micros, out->promo_expires);
+  return true;
+}
+
+// Called from workos.c after linking a GitHub account during /onboarding (or GitHub OAuth login).
+// Enforces strictly one $10 (referral.config.github_connect_micros) promo credit per numeric GitHub ID:
+//   - First OpenAgents account to claim `gh_id`: records referral.github_claims and grants $10 promo credit.
+//   - Subsequent OpenAgents accounts connecting the same `gh_id`: onboarding still succeeds via
+//     auth.github_links, while the github_connect grant is voided with reason 'github_already_claimed' ($0).
+bool referral_on_github_linked(PGconn *db, const char *acct, const char *gh_id, const char *gh_login,
+                               const char *gh_avatar, const char *gh_created_at, int non_fork_repos,
+                               int followers, int orgs, long long *newly_granted_out, bool *already_claimed_out) {
+  if (newly_granted_out) *newly_granted_out = 0;
+  if (already_claimed_out) *already_claimed_out = false;
+  if (!db || !acct || !*acct || !gh_id || !*gh_id) return false;
+
+  const char *login = gh_login ? gh_login : "";
+  const char *avatar = gh_avatar ? gh_avatar : "";
+  const char *created_s = gh_created_at ? gh_created_at : "";
+
+  int age_days = 0;
+  time_t created_t = 0;
+  if (created_s[0] && rf_parse_iso8601_utc(created_s, &created_t)) {
+    time_t now_t = time(NULL);
+    if (now_t > created_t) age_days = (int)((now_t - created_t) / 86400);
+  }
+
+  PGresult *tx = PQexec(db, "BEGIN");
+  if (!tx || PQresultStatus(tx) != PGRES_COMMAND_OK) { if (tx) PQclear(tx); return false; }
+  PQclear(tx);
+
+  char lk[80], glk[96];
+  snprintf(lk, sizeof lk, "ref_acct:%s", acct);
+  snprintf(glk, sizeof glk, "ref_gh:%s", gh_id);
+  if (!rf_advisory_lock(db, lk) || !rf_advisory_lock(db, glk)) {
+    PQclear(PQexec(db, "ROLLBACK"));
+    return false;
+  }
+
+  rf_config cfg;
+  if (!rf_load_config(db, true, &cfg)) {
+    PQclear(PQexec(db, "ROLLBACK"));
+    return false;
+  }
+
+  bool already_claimed = false, denied = false;
+  const char *gv[1] = {gh_id};
+  PGresult *cr = PQexecParams(db, "SELECT account_id, denied FROM referral.github_claims WHERE github_id_key = $1 FOR UPDATE", 1, NULL, gv, NULL, NULL, 0);
+  if (PQresultStatus(cr) == PGRES_TUPLES_OK && PQntuples(cr) == 1) {
+    const char *owner = PQgetvalue(cr, 0, 0);
+    denied = !strcmp(PQgetvalue(cr, 0, 1), "t");
+    if (strcmp(owner, acct) != 0) already_claimed = true;
+  }
+  PQclear(cr);
+
+  int ref_verdict = (int)rp_eligible(age_days, cfg.gh_min_age_days, non_fork_repos, cfg.gh_min_repos,
+                                     followers, cfg.gh_min_followers, orgs, already_claimed, denied);
+
+  if (!already_claimed) {
+    char rc_s[16], fc_s[16], oc_s[16];
+    snprintf(rc_s, sizeof rc_s, "%d", non_fork_repos);
+    snprintf(fc_s, sizeof fc_s, "%d", followers);
+    snprintf(oc_s, sizeof oc_s, "%d", orgs);
+    const char *uv[9] = {gh_id, acct, login, avatar, created_s[0] ? created_s : NULL, rc_s, fc_s, oc_s, ref_verdict == 0 ? "true" : "false"};
+    PGresult *ur = PQexecParams(
+        db,
+        "INSERT INTO referral.github_claims "
+        "(github_id_key, account_id, github_login, github_avatar, github_created_at, repos_count, followers_count, orgs_count, eligible, updated_at) "
+        "VALUES ($1, $2, $3, $4, $5::timestamptz, $6::int, $7::int, $8::int, $9::bool, now()) "
+        "ON CONFLICT (github_id_key) DO UPDATE SET "
+        "github_login = CASE WHEN EXCLUDED.github_login <> '' THEN EXCLUDED.github_login ELSE referral.github_claims.github_login END, "
+        "github_avatar = CASE WHEN EXCLUDED.github_avatar <> '' THEN EXCLUDED.github_avatar ELSE referral.github_claims.github_avatar END, "
+        "github_created_at = coalesce(EXCLUDED.github_created_at, referral.github_claims.github_created_at), "
+        "repos_count = GREATEST(referral.github_claims.repos_count, EXCLUDED.repos_count), "
+        "followers_count = GREATEST(referral.github_claims.followers_count, EXCLUDED.followers_count), "
+        "orgs_count = GREATEST(referral.github_claims.orgs_count, EXCLUDED.orgs_count), "
+        "eligible = (referral.github_claims.eligible OR EXCLUDED.eligible), "
+        "updated_at = now()",
+        9, NULL, uv, NULL, NULL, 0);
+    PQclear(ur);
+
+    if (created_s[0]) {
+      const char *clv[2] = {acct, created_s};
+      PGresult *clr = PQexecParams(
+          db,
+          "SELECT count(*)::int FROM referral.attributions a1 "
+          "JOIN referral.attributions a2 ON a2.code_id = a1.code_id AND a2.invitee_account_id <> a1.invitee_account_id "
+          "JOIN referral.github_claims g2 ON g2.account_id = a2.invitee_account_id "
+          "WHERE a1.invitee_account_id = $1 "
+          "AND g2.github_created_at BETWEEN $2::timestamptz - interval '1 hour' AND $2::timestamptz + interval '1 hour'",
+          2, NULL, clv, NULL, NULL, 0);
+      int cluster = (PQresultStatus(clr) == PGRES_TUPLES_OK && PQntuples(clr) == 1) ? atoi(PQgetvalue(clr, 0, 0)) : 0;
+      PQclear(clr);
+      if (rp_hold_signal(0, cluster > 0, 0) != 0) {
+        const char *hv[1] = {acct};
+        PGresult *hr = PQexecParams(db, "UPDATE referral.attributions SET held = true, hold_reason = 'gh_cluster' WHERE invitee_account_id = $1 AND NOT held", 1, NULL, hv, NULL, NULL, 0);
+        PQclear(hr);
+      }
+    }
+
+    char pcode[16];
+    if (login[0] && rf_ensure_personal_code(db, acct, pcode) && rp_vanity_valid(rf_cs(login))) {
+      const char *cv[2] = {login, acct};
+      PGresult *clr = PQexecParams(db, "UPDATE referral.codes SET vanity_handle = NULL, vanity_enabled = false WHERE lower(vanity_handle) = lower($1) AND owner_account_id <> $2", 2, NULL, cv, NULL, NULL, 0);
+      PQclear(clr);
+      PGresult *svr = PQexecParams(db, "UPDATE referral.codes SET vanity_handle = $1 WHERE owner_account_id = $2 AND kind = 'personal'", 2, NULL, cv, NULL, NULL, 0);
+      PQclear(svr);
+    }
+  }
+
+  // Evaluate the one-per-GitHub-account $10 onboarding credit atomically.
+  long long day_budget = 0, total_budget = 0;
+  PGresult *br = PQexec(
+      db,
+      "SELECT "
+      "coalesce(sum(amount_micros) FILTER (WHERE granted_at >= date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)::bigint, "
+      "coalesce(sum(amount_micros), 0)::bigint "
+      "FROM referral.grants WHERE status = 'granted' AND kind <> 'kickback'");
+  if (PQresultStatus(br) == PGRES_TUPLES_OK && PQntuples(br) == 1) {
+    day_budget = atoll(PQgetvalue(br, 0, 0));
+    total_budget = atoll(PQgetvalue(br, 0, 1));
+  }
+  PQclear(br);
+
+  bool acct_frozen = rf_account_frozen(db, acct);
+  int act = (int)rp_onboarding_github_credit(
+      already_claimed, denied, acct_frozen, cfg.flag_github_connect, cfg.github_connect_micros,
+      day_budget, cfg.daily_budget_micros, total_budget, cfg.total_budget_micros);
+
+  char amt_s[32], tv_s[16], exp_s[16];
+  snprintf(amt_s, sizeof amt_s, "%lld", cfg.github_connect_micros);
+  snprintf(tv_s, sizeof tv_s, "%d", cfg.terms_version);
+  snprintf(exp_s, sizeof exp_s, "%d", cfg.promo_expiry_days);
+  const char *gcv[3] = {acct, amt_s, tv_s};
+  PGresult *gcr = PQexecParams(
+      db,
+      "INSERT INTO referral.grants (account_id, kind, source_ref, amount_micros, status, reason, terms_version) "
+      "VALUES ($1, 'github_connect', '', $2::bigint, 'pending', 'checking', $3::int) "
+      "ON CONFLICT (kind, account_id, source_ref) DO NOTHING",
+      3, NULL, gcv, NULL, NULL, 0);
+  PQclear(gcr);
+
+  long long newly = 0;
+  const char *av[1] = {acct};
+  PGresult *gr = PQexecParams(
+      db,
+      "SELECT id, amount_micros FROM referral.grants "
+      "WHERE account_id = $1 AND kind = 'github_connect' AND source_ref = '' AND status = 'pending' "
+      "FOR UPDATE",
+      1, NULL, av, NULL, NULL, 0);
+  if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1) {
+    const char *gid_s = PQgetvalue(gr, 0, 0);
+    long long amt = atoll(PQgetvalue(gr, 0, 1));
+    char gamt_s[32];
+    snprintf(gamt_s, sizeof gamt_s, "%lld", amt);
+    if (act == 1) { // RP_ACT_GRANT
+      const char *uv[2] = {gid_s, exp_s};
+      PGresult *ur = PQexecParams(
+          db,
+          "UPDATE referral.grants SET status = 'granted', reason = 'ok', granted_at = now(), "
+          "expires_at = now() + make_interval(days => $2::int) WHERE id = $1::bigint",
+          2, NULL, uv, NULL, NULL, 0);
+      bool uok = PQresultStatus(ur) == PGRES_COMMAND_OK;
+      PQclear(ur);
+      if (uok) {
+        const char *pv[4] = {gid_s, acct, gamt_s, exp_s};
+        PGresult *pr = PQexecParams(
+            db,
+            "INSERT INTO inference.promo_credit (grant_id, account_id, remaining_micros, original_micros, kind, expires_at) "
+            "VALUES ($1::bigint, $2, $3::bigint, $3::bigint, 'github_connect', now() + make_interval(days => $4::int)) "
+            "ON CONFLICT (grant_id) DO NOTHING",
+            4, NULL, pv, NULL, NULL, 0);
+        PQclear(pr);
+        newly += amt;
+      }
+    } else if (act >= 10) { // VOID (already_claimed, denied, or frozen)
+      const char *rsn = (act == 10) ? "account_frozen" : (already_claimed ? "github_already_claimed" : "github_denied");
+      const char *vv[2] = {gid_s, rsn};
+      PGresult *vr = PQexecParams(db, "UPDATE referral.grants SET status = 'void', reason = $2, voided_at = now() WHERE id = $1::bigint", 2, NULL, vv, NULL, NULL, 0);
+      PQclear(vr);
+    } else { // Pending (flag_off or budget_ceiling)
+      const char *rsn = (act == 2) ? "flag_off" : "budget_ceiling";
+      const char *pv[2] = {gid_s, rsn};
+      PGresult *pr = PQexecParams(db, "UPDATE referral.grants SET reason = $2 WHERE id = $1::bigint", 2, NULL, pv, NULL, NULL, 0);
+      PQclear(pr);
+    }
+  }
+  PQclear(gr);
+
+  if (!already_claimed && ref_verdict == 0) {
+    newly += rf_eval_pending_grants_tx(db, acct, 0);
+  }
+
+  PGresult *cm = PQexec(db, "COMMIT");
+  bool ok = cm && PQresultStatus(cm) == PGRES_COMMAND_OK;
+  if (cm) PQclear(cm);
+  if (!ok) { PQclear(PQexec(db, "ROLLBACK")); return false; }
+  if (newly_granted_out) *newly_granted_out = newly;
+  if (already_claimed_out) *already_claimed_out = already_claimed;
   return true;
 }
 

@@ -259,6 +259,22 @@ rp_grant :: (kind: int, flag_on: bool, account_frozen: bool, other_frozen: bool,
   return RP_ACT_GRANT;
 }
 
+// Evaluate onboarding GitHub $10 promo credit grant (one per numeric GitHub ID).
+// Users may still connect an already-claimed GitHub account to complete onboarding,
+// in which case this returns RP_ACT_VOID_CLAIMED ($0 credit).
+rp_onboarding_github_credit :: (already_claimed: bool, denied: bool, account_frozen: bool,
+                                flag_on: bool, amount_micros: int,
+                                day_spent_budget: int, day_budget_cap: int,
+                                total_spent_budget: int, total_budget_cap: int) -> int #export_c #effects(all) {
+  if account_frozen { return RP_ACT_VOID_FROZEN; }
+  if denied || already_claimed { return RP_ACT_VOID_CLAIMED; }
+  if !flag_on { return RP_ACT_PENDING_FLAG; }
+  if amount_micros < 1 { return RP_ACT_PENDING_BUDGET; }
+  if day_spent_budget + amount_micros > day_budget_cap { return RP_ACT_PENDING_BUDGET; }
+  if total_spent_budget + amount_micros > total_budget_cap { return RP_ACT_PENDING_BUDGET; }
+  return RP_ACT_GRANT;
+}
+
 // Next unawarded milestone tier (5, 25, 100) or 0 if none.
 // awarded_mask bit 0 = tier 5, bit 1 = tier 25, bit 2 = tier 100.
 rp_milestone_tier :: (activated_count: int, awarded_mask: int) -> int #export_c #effects(all) {
@@ -561,4 +577,36 @@ rp_spend_order :: (promo_balance: int, expires_at_s: int, now_s: int,
   if exp_s > 0 && now >= exp_s { #assert p[0] == 0; }
   #assert p[0] <= bal;
   if spent <= cap { #assert spent + p[0] <= cap; } else { #assert p[0] == 0; }
+}
+
+#test "onboarding GitHub credit grants $10 once per GitHub account and voids duplicates" {
+  // First-time unclaimed GitHub ID gets $10 (10,000,000 micros)
+  #assert rp_onboarding_github_credit(false, false, false, true, 10000000, 0, 500000000, 0, 50000000000) == RP_ACT_GRANT;
+  #assert rp_onboarding_github_credit(false, false, false, true, 1, 0, 1, 0, 1) == RP_ACT_GRANT;
+  // Already claimed by another account or denied -> voided ($0 credit, onboarding still succeeds)
+  #assert rp_onboarding_github_credit(true, false, false, true, 10000000, 0, 500000000, 0, 50000000000) == RP_ACT_VOID_CLAIMED;
+  #assert rp_onboarding_github_credit(false, true, false, true, 10000000, 0, 500000000, 0, 50000000000) == RP_ACT_VOID_CLAIMED;
+  // Frozen account takes precedence -> voided
+  #assert rp_onboarding_github_credit(false, false, true, true, 10000000, 0, 500000000, 0, 50000000000) == RP_ACT_VOID_FROZEN;
+  #assert rp_onboarding_github_credit(true, true, true, false, 0, 0, 0, 0, 0) == RP_ACT_VOID_FROZEN;
+  // Flag off -> pending flag
+  #assert rp_onboarding_github_credit(false, false, false, false, 10000000, 0, 500000000, 0, 50000000000) == RP_ACT_PENDING_FLAG;
+  // Zero/negative amount or budget ceiling boundaries
+  #assert rp_onboarding_github_credit(false, false, false, true, 0, 0, 500000000, 0, 50000000000) == RP_ACT_PENDING_BUDGET;
+  #assert rp_onboarding_github_credit(false, false, false, true, -1, 0, 500000000, 0, 50000000000) == RP_ACT_PENDING_BUDGET;
+  #assert rp_onboarding_github_credit(false, false, false, true, 10000000, 490000000, 500000000, 0, 50000000000) == RP_ACT_GRANT;
+  #assert rp_onboarding_github_credit(false, false, false, true, 10000000, 490000001, 500000000, 0, 50000000000) == RP_ACT_PENDING_BUDGET;
+  #assert rp_onboarding_github_credit(false, false, false, true, 10000000, 0, 500000000, 49990000000, 50000000000) == RP_ACT_GRANT;
+  #assert rp_onboarding_github_credit(false, false, false, true, 10000000, 0, 500000000, 49990000001, 50000000000) == RP_ACT_PENDING_BUDGET;
+}
+
+#forall "onboarding GitHub credit strictly enforces uniqueness and budget ceilings" claimed: bool, denied: bool, frozen: bool, flag: bool, over_day: bool, over_tot: bool {
+  ds := ifx over_day then 490000001 else 490000000;
+  ts := ifx over_tot then 49990000001 else 49990000000;
+  act := rp_onboarding_github_credit(claimed, denied, frozen, flag, 10000000, ds, 500000000, ts, 50000000000);
+  if frozen { #assert act == RP_ACT_VOID_FROZEN; }
+  else if denied || claimed { #assert act == RP_ACT_VOID_CLAIMED; }
+  else if !flag { #assert act == RP_ACT_PENDING_FLAG; }
+  else if over_day || over_tot { #assert act == RP_ACT_PENDING_BUDGET; }
+  else { #assert act == RP_ACT_GRANT; }
 }

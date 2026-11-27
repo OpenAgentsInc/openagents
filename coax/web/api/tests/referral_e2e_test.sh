@@ -180,8 +180,27 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/wos/data-integrations/users/") and "/providers" in p:
             self.send_json(200, {"data": [{"slug": "github", "connected": True, "scopes": ["read:user"]}]})
             return
+        # WorkOS User Identities (fallback when oauth_tokens is omitted)
+        if p.startswith("/wos/user_management/users/") and p.endswith("/identities"):
+            uid = p.split("/")[4]
+            if uid == "wos_gh_shared":
+                self.send_json(200, [
+                    {"idp_id": "999001", "type": "OAuth", "provider": "GoogleOAuth"},
+                    {"idp_id": "777001", "type": "OAuth", "provider": "GithubOAuth"},
+                ])
+                return
+            self.send_json(200, [])
+            return
         # Mock GitHub REST API
         if p.startswith("/gh/"):
+            # Unauthenticated public lookup by numeric GitHub ID (/gh/user/<id>)
+            if p == "/gh/user/777001":
+                self.send_json(200, {
+                    "id": 777001, "login": "onboard-shared",
+                    "avatar_url": "https://avatars.githubusercontent.com/u/777001",
+                    "created_at": iso_days_ago(500), "public_repos": 1, "followers": 0,
+                })
+                return
             auth = self.headers.get("Authorization", "")
             tok = auth.split(" ", 1)[1] if auth.startswith("Bearer ") else ""
             prof = get_profile(tok)
@@ -202,10 +221,32 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_json(404, {"error": "unknown GET " + p})
 
+    def do_PUT(self):
+        _ = self.read_json()
+        self.send_json(200, {"ok": True})
+
     def do_POST(self):
         global INVOICE_SEQ
         p = urlparse(self.path).path
         body = self.read_json()
+        # WorkOS OAuth code exchange (used by onboarding link=1 and Google OAuth login)
+        if p == "/wos/user_management/authenticate":
+            code = body.get("code", "")
+            if code == "gh_link_identities_code":
+                # Deliberately omit oauth_tokens so fallback via /identities + public /user/<id> is exercised!
+                self.send_json(200, {
+                    "user": {"id": "wos_gh_shared", "email": "shared-gh@example.com", "email_verified": True},
+                    "authentication_method": "GitHubOAuth",
+                })
+                return
+            if code == "google_new_user_code":
+                self.send_json(200, {
+                    "user": {"id": "wos_google_new_1", "email": "newgoogle@example.com", "email_verified": True},
+                    "authentication_method": "GoogleOAuth",
+                })
+                return
+            self.send_json(400, {"code": "invalid_grant", "message": "Invalid code"})
+            return
         # WorkOS Pipes token endpoint: /wos/data-integrations/github/token
         if p == "/wos/data-integrations/github/token":
             uid = body.get("user_id", "")
@@ -263,6 +304,8 @@ OA_API_DATABASE="$DSN" \
 OA_API_WORKERS=1 \
 OA_API_ORIGIN="http://127.0.0.1:$API_PORT" \
 OA_ADMIN_PUBKEYS="$ADMIN_PK" \
+OA_AUTH_SEAL_KEY="1:0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20" \
+OA_AUTH_LOOKUP_PEPPER="1:201f1e1d1c1b1a191817161514131211100f0e0d0c0b0a090807060504030201" \
 OA_WORKOS_ENABLED=1 \
 OA_WORKOS_API_KEY="sk_test_mock" \
 OA_WORKOS_CLIENT_ID="client_test_mock" \
@@ -383,13 +426,13 @@ assert st2 == 200 and f"code {alice_code}\n" in body2, (st2, body2)
 st, body, _ = http("GET", f"/api/v1/referral/lookup?code={alice_code}")
 assert st == 200, (st, body)
 lj = json.loads(body)
-assert lj["valid"] is True and lj["bonus_micros"] == 10000000 and lj["github_bonus_micros"] == 5000000, lj
+assert lj["valid"] is True and lj["bonus_micros"] == 10000000 and lj["github_bonus_micros"] == 10000000, lj
 
-# Alice GitHub recheck -> $5 promo credit
+# Alice GitHub recheck -> $10 promo credit
 st, body, _ = http("POST", "/api/v1/referral/recheck", {}, cookie=c_alice)
 assert st == 200, (st, body)
 rj = json.loads(body)
-assert rj["eligible"] is True and rj["newly_granted_micros"] == 5000000 and rj["promo_micros"] == 5000000, rj
+assert rj["eligible"] is True and rj["newly_granted_micros"] == 10000000 and rj["promo_micros"] == 10000000, rj
 
 # Vanity enable + lookup via vanity handle + show_name privacy toggle
 st, body, _ = http("POST", "/api/v1/referral/vanity", {"on": True}, cookie=c_alice)
@@ -407,17 +450,17 @@ assert json.loads(body)["inviter_handle"] == "", body
 st, body, _ = http("GET", "/api/auth/account", cookie=c_alice)
 assert st == 200, (st, body)
 aj = json.loads(body)
-assert aj["promo_micros"] == 5000000 and len(aj.get("promo_expires_at", "")) >= 19, aj
+assert aj["promo_micros"] == 10000000 and len(aj.get("promo_expires_at", "")) >= 19 and aj["github_connected"] is True and aj["onboarding_required"] is False, aj
 st, lines, _ = http("GET", "/api/auth/account?as=lines", cookie=c_alice)
-assert st == 200 and "promo_micros 5000000\n" in lines and "promo_expires_at " in lines, lines
+assert st == 200 and "promo_micros 10000000\n" in lines and "promo_expires_at " in lines and "github_connected 1\n" in lines and "onboarding_required 0\n" in lines, lines
 
 st, body, _ = http("GET", "/api/auth/life", cookie=c_alice)
 assert st == 200, (st, body)
 lf = json.loads(body)
-assert lf["promo_micros"] == 5000000 and len(lf.get("promo_expires_at", "")) >= 19, lf
+assert lf["promo_micros"] == 10000000 and len(lf.get("promo_expires_at", "")) >= 19, lf
 st, lines, _ = http("GET", "/api/auth/life?as=lines", cookie=c_alice)
-assert st == 200 and "promo_micros 5000000\n" in lines, lines
-print("  ok  Flow 1: personal code, lookup+clicks, $5 GitHub, vanity, privacy, auth/account & auth/life promo")
+assert st == 200 and "promo_micros 10000000\n" in lines, lines
+print("  ok  Flow 1: personal code, lookup+clicks, $10 GitHub, vanity, privacy, auth/account & auth/life promo")
 
 # ---- Flow 2: GitHub eligibility gates & permanent numeric-ID uniqueness ----
 st, body, _ = http("POST", "/api/v1/referral/recheck", {}, cookie=c_newbie)
@@ -428,18 +471,18 @@ st, body, _ = http("POST", "/api/v1/referral/recheck", {}, cookie=c_lowact)
 rj = json.loads(body)
 assert st == 200 and rj["eligible"] is False and rj["promo_micros"] == 0 and "repo" in rj["reason"].lower(), rj
 
-# Bob redeems Alice's code (pending before GitHub) then rechecks GitHub -> $5 + $10 = $15 total!
+# Bob redeems Alice's code (pending before GitHub) then rechecks GitHub -> $10 + $10 = $20 total!
 st, body, _ = http("POST", "/api/v1/referral/redeem", {"code": alice_code, "source": "link"}, cookie=c_bob)
 assert st == 200 and json.loads(body)["status"] == "pending", (st, body)
 st, body, _ = http("POST", "/api/v1/referral/recheck", {}, cookie=c_bob)
 rj = json.loads(body)
-assert st == 200 and rj["eligible"] is True and rj["newly_granted_micros"] == 15000000 and rj["promo_micros"] == 15000000, rj
+assert st == 200 and rj["eligible"] is True and rj["newly_granted_micros"] == 20000000 and rj["promo_micros"] == 20000000, rj
 
-# Dup shares Bob's numeric GitHub ID (10002) -> permanently blocked!
+# Dup shares Bob's numeric GitHub ID (10002) -> permanently blocked from promo credit!
 st, body, _ = http("POST", "/api/v1/referral/recheck", {}, cookie=c_dup)
 rj = json.loads(body)
 assert st == 200 and rj["eligible"] is False and rj["promo_micros"] == 0 and "claimed" in rj["reason"].lower(), rj
-print("  ok  Flow 2: GitHub eligibility ($5+$10=$15 stack, too-new/low-activity refused, duplicate GH ID blocked)")
+print("  ok  Flow 2: GitHub eligibility ($10+$10=$20 stack, too-new/low-activity refused, duplicate GH ID blocked)")
 
 # ---- Flow 3: Redeem refusals (self, already-attributed, reciprocal, past-7d, nonexistent) ----
 st, _, _ = http("POST", "/api/v1/referral/redeem", {"code": alice_code}, cookie=c_alice)
@@ -480,12 +523,12 @@ def infer(model, tokens, cookie):
     return st, body, hdrs
 
 # ---- Flow 4: Promo credit spend order (0-sat admission, $5/UTC-day cap split, non-eligible model skips promo) ----
-# Bob currently has 0 paid sats and $15.00 promo credit.
+# Bob currently has 0 paid sats and $20.00 promo credit.
 # Call 1: promo-eligible google/gemini-4-neon, 1,000,000 prompt tokens = $3.75 (3,750,000 micros)
 infer("google/gemini-4-neon", 1000000, c_bob)
 st, bsum, _ = http("GET", "/api/v1/referral", cookie=c_bob)
 bs = json.loads(bsum)
-assert bs["promo_micros"] == 11250000 and bs["promo_daily_spent"] == 3750000, bs
+assert bs["promo_micros"] == 16250000 and bs["promo_daily_spent"] == 3750000, bs
 
 # Give Bob 10,000,000 msat ($10.00) paid credit on his pubkey
 bob_pk = "22" * 32
@@ -496,7 +539,7 @@ infer("google/gemini-4-neon", 1000000, c_bob)
 st, bsum, _ = http("GET", "/api/v1/referral", cookie=c_bob)
 bs = json.loads(bsum)
 paid_after = int(psql(f"SELECT msat FROM inference.credit WHERE pubkey = '{bob_pk}';"))
-assert bs["promo_micros"] == 10000000 and bs["promo_daily_spent"] == 5000000, bs
+assert bs["promo_micros"] == 15000000 and bs["promo_daily_spent"] == 5000000, bs
 assert paid_after == 7500000, f"expected 7500000 paid msat, got {paid_after}"
 
 # Call 3: non-promo model google/gemini-4-hydrogen ($1.875 = 1,875,000 micros) -> skips promo, debits paid only!
@@ -504,21 +547,21 @@ infer("google/gemini-4-hydrogen", 1000000, c_bob)
 st, bsum, _ = http("GET", "/api/v1/referral", cookie=c_bob)
 bs = json.loads(bsum)
 paid_after2 = int(psql(f"SELECT msat FROM inference.credit WHERE pubkey = '{bob_pk}';"))
-assert bs["promo_micros"] == 10000000, bs
+assert bs["promo_micros"] == 15000000, bs
 assert paid_after2 == 5625000, f"expected 5625000 paid msat, got {paid_after2}"
 
 # Check /api/v1/inference/usage reports both paid credit_msat and promo_micros
 st, ubody, _ = http("GET", "/api/v1/inference/usage", cookie=c_bob)
 assert st == 200, (st, ubody)
 uj = json.loads(ubody)
-assert uj["credit_msat"] == 5625000 and uj["promo_micros"] == 10000000, uj
+assert uj["credit_msat"] == 5625000 and uj["promo_micros"] == 15000000, uj
 print("  ok  Flow 4: 0-sat promo admission, $5/day cap exact split to paid sats, non-eligible model skips promo")
 
 # ---- Flow 5: 2-distinct-UTC-day inviter activation ($5 to Alice) ----
 days_before = int(psql(f"SELECT active_days_count FROM referral.attributions WHERE invitee_account_id = '{A_BOB}';"))
 assert days_before == 1, days_before
 st, asum, _ = http("GET", "/api/v1/referral", cookie=c_alice)
-assert json.loads(asum)["promo_micros"] == 5000000, asum
+assert json.loads(asum)["promo_micros"] == 10000000, asum
 
 # Simulate next UTC day for Bob and make one more 200 call
 psql(f"UPDATE referral.attributions SET first_active_day = (now() AT TIME ZONE 'UTC')::date - 1 WHERE invitee_account_id = '{A_BOB}';")
@@ -527,7 +570,7 @@ days_after = int(psql(f"SELECT active_days_count FROM referral.attributions WHER
 assert days_after == 2, days_after
 st, asum, _ = http("GET", "/api/v1/referral", cookie=c_alice)
 aj = json.loads(asum)
-assert aj["activated_invitees"] == 1 and aj["promo_micros"] == 10000000, aj
+assert aj["activated_invitees"] == 1 and aj["promo_micros"] == 15000000, aj
 print("  ok  Flow 5: 2-distinct-UTC-day inviter activation granted $5 to Alice")
 
 # ---- Flow 6: Atomic 1% lifetime kickback inside Lightning top-up + replay idempotency + kill-switch ----
@@ -548,7 +591,7 @@ st, body, _ = http("POST", "/api/v1/inference/credit", topup_req, headers={"PAYM
 assert st == 200, (st, body)
 st, asum, _ = http("GET", "/api/v1/referral", cookie=c_alice)
 aj = json.loads(asum)
-assert aj["kickback_earned_micros"] == 1000000 and aj["promo_micros"] == 11000000, aj
+assert aj["kickback_earned_micros"] == 1000000 and aj["promo_micros"] == 16000000, aj
 
 # Replay exact same PAYMENT-SIGNATURE -> 409 duplicate_settlement, zero duplicate kickback
 st, body, _ = http("POST", "/api/v1/inference/credit", topup_req, headers={"PAYMENT-SIGNATURE": sig_payload})
@@ -586,8 +629,8 @@ for idx in range(1, 5): # 4 more activated invitees from distinct /24 IPs -> tot
 
 st, asum, _ = http("GET", "/api/v1/referral", cookie=c_alice)
 aj = json.loads(asum)
-# Alice had 11M + 4*5M (20M) + 10M milestone-5 = 41M!
-assert aj["activated_invitees"] == 5 and aj["milestones_mask"] == 1 and aj["promo_micros"] == 41000000, aj
+# Alice had 16M + 4*5M (20M) + 10M milestone-5 = 46M!
+assert aj["activated_invitees"] == 5 and aj["milestones_mask"] == 1 and aj["promo_micros"] == 46000000, aj
 
 # Cap override to 5 -> 6th invitee's inviter grant is voided with reason 'cap'
 st, _, _ = http("POST", "/api/v1/referral/admin/cap", {"account": A_ALICE, "cap": 5, "reason": "test_cap"}, cookie=c_admin)
@@ -633,11 +676,11 @@ assert stored_text == "<NULL>", f"campaign code plaintext leaked to DB: {stored_
 st, lbody, _ = http("GET", "/api/v1/referral/admin/campaigns", cookie=c_admin)
 assert st == 200 and camp_code not in lbody and cj["code"][:4] in lbody, (st, lbody)
 
-# Redeem campaign code on c_camp -> gets $20 + $5 = $25
+# Redeem campaign code on c_camp -> gets $20 + $10 = $30
 st, _, _ = http("POST", "/api/v1/referral/redeem", {"code": camp_code}, cookie=c_camp)
 assert st == 200
 st, body, _ = http("POST", "/api/v1/referral/recheck", {}, cookie=c_camp)
-assert st == 200 and json.loads(body)["promo_micros"] == 25000000, body
+assert st == 200 and json.loads(body)["promo_micros"] == 30000000, body
 
 # Revoke campaign -> next redeem returns 410
 st, _, _ = http("POST", "/api/v1/referral/admin/campaigns/revoke", {"id": camp_id, "reason": "done"}, cookie=c_admin)
@@ -652,7 +695,7 @@ assert bob_paid_before > 100000000, bob_paid_before
 st, body, _ = http("POST", "/api/v1/referral/admin/grants/clawback", {"account": A_BOB, "reason": "fraud_test"}, cookie=c_admin)
 assert st == 200, (st, body)
 cb = json.loads(body)
-assert cb["ok"] is True and cb["amount_micros"] == 10000000, cb
+assert cb["ok"] is True and cb["amount_micros"] == 15000000, cb
 st, bsum, _ = http("GET", "/api/v1/referral", cookie=c_bob)
 assert json.loads(bsum)["promo_micros"] == 0, bsum
 bob_paid_after = int(psql(f"SELECT msat FROM inference.credit WHERE pubkey = '{bob_pk}';"))
@@ -661,6 +704,76 @@ assert bob_paid_after == bob_paid_before, f"clawback touched paid sats! {bob_pai
 audit_n = int(psql("SELECT count(*) FROM referral.admin_audit;"))
 assert audit_n >= 6, f"expected >= 6 admin_audit rows, got {audit_n}"
 print(f"  ok  Flow 8: hash-only campaigns, revoke 410, clawback zeroes promo ONLY (paid sats {bob_paid_after} untouched), {audit_n} audit rows")
+
+# ---- Flow 10: Mandatory GitHub Onboarding (link=1, identities fallback, $10 once per GitHub ID, sharing allowed with $0) ----
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+def http_noredir(method, path, cookie=None):
+    hdrs = {}
+    if cookie:
+        hdrs["Cookie"] = cookie
+    req = urllib.request.Request(BASE + path, method=method, headers=hdrs)
+    opener = urllib.request.build_opener(NoRedirect())
+    try:
+        with opener.open(req, timeout=10) as r:
+            return r.status, r.read().decode("utf-8", "replace"), dict(r.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace"), dict(e.headers)
+
+def extract_cookie(hdrs, name):
+    for k, v in hdrs.items():
+        if k.lower() == "set-cookie" and name + "=" in v:
+            for part in v.split(","):
+                if name + "=" in part:
+                    return part.strip().split(";", 1)[0]
+    return ""
+
+# 1. Fresh Google OAuth login without GitHub -> redirects straight to /onboarding!
+st, body, hdrs = http("GET", "/api/auth/workos/oauth/start?provider=GoogleOAuth&next=/chat&mode=json")
+assert st == 200, (st, body)
+from urllib.parse import parse_qs, urlparse as _up
+g_state = parse_qs(_up(json.loads(body)["url"]).query)["state"][0]
+st, _, cb_hdrs = http_noredir("GET", f"/api/auth/workos/callback?code=google_new_user_code&state={g_state}", cookie=f"__Host-oa_wos_state={g_state}")
+assert st == 303 and cb_hdrs.get("Location") == "/onboarding", (st, cb_hdrs)
+
+# 2. Logged-out attempt to link GitHub -> redirects to /login?next=/onboarding
+st, _, lh = http_noredir("GET", "/api/auth/workos/oauth/start?provider=GitHubOAuth&link=1&next=/chat")
+assert st == 303 and lh.get("Location") == "/login?next=/onboarding", (st, lh)
+
+# 3. Un-onboarded account A_OB1: /api/auth/account shows onboarding_required=true, /chat/<uuid> redirects to /onboarding
+A_OB1, c_ob1 = make_user("ob1", None, pubkey="91"*32)
+st, body, _ = http("GET", "/api/auth/account", cookie=c_ob1)
+j1 = json.loads(body)
+assert st == 200 and j1["github_connected"] is False and j1["onboarding_required"] is True and j1["promo_micros"] == 0, j1
+st, _, ch = http_noredir("GET", "/chat/019370a4-7b1c-7e82-9a3f-4c2e1b8d6f05", cookie=c_ob1)
+assert st == 303 and ch.get("Location") == "/onboarding?next=/chat/019370a4-7b1c-7e82-9a3f-4c2e1b8d6f05", (st, ch)
+
+# 4. A_OB1 links GitHub (idp_id=777001 via /identities fallback) -> passes onboarding AND receives $10.00!
+st, body, _ = http("GET", "/api/auth/workos/oauth/start?provider=GitHubOAuth&link=1&next=/projects&mode=json", cookie=c_ob1)
+assert st == 200, (st, body)
+st1 = parse_qs(_up(json.loads(body)["url"]).query)["state"][0]
+st, _, h1 = http_noredir("GET", f"/api/auth/workos/callback?code=gh_link_identities_code&state={st1}", cookie=f"{c_ob1}; __Host-oa_wos_state={st1}")
+assert st == 303 and h1.get("Location") == "/projects", (st, h1)
+st, body, _ = http("GET", "/api/auth/account", cookie=c_ob1)
+j1_after = json.loads(body)
+assert st == 200 and j1_after["account"] == A_OB1 and j1_after["github_connected"] is True and j1_after["github_login"] == "onboard-shared" and j1_after["onboarding_required"] is False and j1_after["promo_micros"] == 10000000, j1_after
+
+# 5. Second account A_OB2 connects the EXACT SAME GitHub account (777001):
+#    passes onboarding, stays logged in as A_OB2, and receives $0 (one $10 credit per GitHub account)!
+A_OB2, c_ob2 = make_user("ob2", None, pubkey="92"*32)
+st, body, _ = http("GET", "/api/auth/workos/oauth/start?provider=GitHubOAuth&link=1&next=/chat&mode=json", cookie=c_ob2)
+assert st == 200, (st, body)
+st2 = parse_qs(_up(json.loads(body)["url"]).query)["state"][0]
+st, _, h2 = http_noredir("GET", f"/api/auth/workos/callback?code=gh_link_identities_code&state={st2}", cookie=f"{c_ob2}; __Host-oa_wos_state={st2}")
+assert st == 303 and h2.get("Location") == "/chat", (st, h2)
+st, body, _ = http("GET", "/api/auth/account", cookie=c_ob2)
+j2_after = json.loads(body)
+assert st == 200 and j2_after["account"] == A_OB2 and j2_after["github_connected"] is True and j2_after["github_login"] == "onboard-shared" and j2_after["onboarding_required"] is False and j2_after["promo_micros"] == 0, j2_after
+dup_reason = psql(f"SELECT status || ':' || reason FROM referral.grants WHERE account_id = '{A_OB2}' AND kind = 'github_connect';")
+assert dup_reason == "void:github_already_claimed", dup_reason
+print("  ok  Flow 10: mandatory GitHub onboarding (/onboarding gate, identities fallback, $10 first link, $0 duplicate GH ID)")
 PY
 
 # Clean shutdown & assert ZERO ASan/UBSan diagnostics

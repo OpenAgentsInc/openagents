@@ -152,6 +152,9 @@ void referral_settle_inference(PGconn *db, const char *who, const char *model, i
                                long long call_id, long long cost_micros, bool free_key);
 bool referral_on_topup_settled_tx(PGconn *db, const char *payment_hash, const char *pubkey_or_acct, long long msat);
 void referral_on_github_connected(PGconn *db, const char *account_id);
+bool referral_on_github_linked(PGconn *db, const char *account_id, const char *gh_id, const char *gh_login,
+                               const char *gh_avatar, const char *gh_created_at, int repos, int followers,
+                               int orgs, long long *newly_granted_out, bool *already_claimed_out);
 void referral_maybe_redeem_cookie(const request *q, PGconn *db, const char *account_id);
 void inference_upstream_init(void);        // inference.c: what the model calls remember about Vertex's two endpoints, shared by the workers
 bool inference_ask(const request *q, const char *pubkey, bool free_key);   // inference.c: the same ask for a caller another route named (chat.c)
@@ -254,6 +257,7 @@ bool auth_same_site(const request *q);
 bool auth_first_party(const request *q);   // auth.c: no Origin, ours, or a listed first-party site (OA_API_SITE_ORIGINS)
 bool auth_listed_site(const request *q);  // auth.c: the Origin is a listed first-party site (ap_site AP_SITE_LISTED), never ours or none
 const char *auth_origin(void);
+bool auth_account_has_github(PGconn *db, const char *account, char *login_out, size_t login_cap);
 
 // Agents, their grants and keys, and `openagents login` (agents.c, agent-policy.coax, #13211).
 bool agents_init(void);                                      // its numbers against agent-policy.coax

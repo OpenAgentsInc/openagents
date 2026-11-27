@@ -4,7 +4,7 @@ OpenAgents promotional credit lets developers try hosted OpenAgents inference an
 
 ## 1. Credit Amounts
 
-- **GitHub Connect Bonus ($5.00 promo credit):** Connect an eligible GitHub account (one-time per numeric GitHub ID).
+- **GitHub Connect Bonus ($10.00 promo credit):** Connect a GitHub account during onboarding (one-time per numeric GitHub ID).
 - **Invited User Bonus ($10.00 promo credit):** Sign up via a referral link (`/r/<code>`) or redeem a code within 7 days of signup, plus eligible GitHub. Stacks with GitHub Connect for $15.00 total.
 - **Inviter Bonus ($5.00 promo credit):** Unlocks when your invitee connects an eligible GitHub account and completes hosted inference turns on 2 distinct UTC days within 30 days of redeeming.
 - **Lifetime Kickback (1% promo credit):** Whenever an attributed invitee settles a paid Bitcoin/Lightning credit top-up, 1% of the settled USD value (`floor(topup_micros * 100 / 10000)`) is granted as promo credit to the inviter.
