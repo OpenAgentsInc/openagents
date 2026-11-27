@@ -65,8 +65,19 @@
   a, button { cursor: default; font-family: inherit; }
   :focus-visible { outline: 2px solid rgba(255, 255, 255, 0.35); outline-offset: 2px; }
 
+  #grid-bg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+    z-index: 0;
+  }
+
   .frame {
     position: relative;
+    z-index: 1;
     width: 100%;
     max-width: 672px;
     height: 100dvh;
@@ -211,6 +222,7 @@
   }
 
   @media (max-width: 672px) {
+    #grid-bg { display: none; }
     .frame { border-left: 0; border-right: 0; }
     .brand-row svg { width: 32px; height: 32px; }
   }
@@ -219,7 +231,7 @@
   }
 
   .inside, .inside body { position: static; height: auto; overflow: auto; overscroll-behavior: auto; touch-action: auto; display: block; padding: 0; }
-  .inside .frame { display: none; }
+  .inside #grid-bg, .inside .frame { display: none; }
   .inside #home-root { position: fixed; inset: 0; overflow-y: auto; background: #000000; z-index: 30; text-align: left; }
 </style>
 <script>
@@ -238,6 +250,7 @@ window.__oaAccountP = fetch("/api/auth/account", { credentials: "same-origin", c
 </script>
 </head>
 <body>
+<canvas id="grid-bg" aria-hidden="true"></canvas>
 <div class="frame">
   <main class="hero">
     <div class="brand-row">
@@ -301,6 +314,217 @@ window.__oaAccountP = fetch("/api/auth/account", { credentials: "same-origin", c
   };
   tick();
   setInterval(tick, 1000);
+
+  // OpenAgents 3D Grid background (just the monochrome Grid floor, camera slowly gliding through it).
+  const canvas = document.getElementById('grid-bg');
+  if (!canvas || document.documentElement.classList.contains('inside')) return;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: 'low-power' })
+          || canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: 'low-power' });
+
+  if (gl) {
+    const isGL2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+    if (!isGL2 && !gl.getExtension('OES_standard_derivatives')) {
+      start2DFallback();
+      return;
+    }
+    const vsSrc = isGL2
+      ? `#version 300 es
+         in vec2 p;
+         void main(){ gl_Position = vec4(p, 0.0, 1.0); }`
+      : `attribute vec2 p;
+         void main(){ gl_Position = vec4(p, 0.0, 1.0); }`;
+    const fsSrc = isGL2
+      ? `#version 300 es
+         precision highp float;
+         uniform vec2 u_res;
+         uniform float u_time;
+         out vec4 fragColor;
+         float gridBand(vec2 p, float scale, float lineWidth) {
+           vec2 c = p / scale;
+           vec2 deriv = max(fwidth(c), vec2(0.0005));
+           vec2 g = abs(fract(c - 0.5) - 0.5) / deriv;
+           float d = min(g.x, g.y);
+           return 1.0 - clamp((d - lineWidth) / 1.15, 0.0, 1.0);
+         }
+         void main() {
+           vec2 uv = (gl_FragCoord.xy - 0.5 * u_res) / u_res.y;
+           float t = u_time;
+           float yaw = 0.785398 + 0.06 * sin(t * 0.07);
+           float pitch = 0.44;
+           float speed = 0.55;
+           vec3 fwd = normalize(vec3(-sin(yaw) * cos(pitch), -sin(pitch), -cos(yaw) * cos(pitch)));
+           vec3 right = normalize(cross(fwd, vec3(0.0, 1.0, 0.0)));
+           vec3 up = cross(right, fwd);
+           vec3 ro = vec3(-0.70710678 * t * speed, 4.6, -0.70710678 * t * speed);
+           vec3 rd = normalize(fwd * 1.45 + right * uv.x + up * uv.y);
+           if (rd.y >= -0.002) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+           float dist = -ro.y / rd.y;
+           if (dist > 140.0) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+           vec2 p = ro.xz + rd.xz * dist;
+           float fine = gridBand(p, 1.0, 0.18);
+           float major = gridBand(p, 4.0, 0.25);
+           // Soft monochrome glow around lines (newland.coax INK_DIM / GREY_MID)
+           vec2 c = p;
+           vec2 d1 = abs(fract(c - 0.5) - 0.5);
+           float glow = exp(-min(d1.x, d1.y) * 26.0) * 0.14;
+           float fog = exp(-dist * 0.040) * smoothstep(130.0, 22.0, dist);
+           float nearFade = smoothstep(1.2, 5.0, dist);
+           vec2 ndc = (gl_FragCoord.xy / u_res) * 2.0 - 1.0;
+           float vig = clamp(1.08 - 0.38 * dot(ndc, ndc), 0.15, 1.0);
+           float intensity = (fine * 0.34 + major * 0.18 + glow) * fog * nearFade * vig;
+           vec3 col = vec3(0.76, 0.77, 0.80) * intensity;
+           fragColor = vec4(col, 1.0);
+         }`
+      : `#extension GL_OES_standard_derivatives : enable
+         precision highp float;
+         uniform vec2 u_res;
+         uniform float u_time;
+         float gridBand(vec2 p, float scale, float lineWidth) {
+           vec2 c = p / scale;
+           vec2 deriv = max(fwidth(c), vec2(0.0005));
+           vec2 g = abs(fract(c - 0.5) - 0.5) / deriv;
+           float d = min(g.x, g.y);
+           return 1.0 - clamp((d - lineWidth) / 1.15, 0.0, 1.0);
+         }
+         void main() {
+           vec2 uv = (gl_FragCoord.xy - 0.5 * u_res) / u_res.y;
+           float t = u_time;
+           float yaw = 0.785398 + 0.06 * sin(t * 0.07);
+           float pitch = 0.44;
+           float speed = 0.55;
+           vec3 fwd = normalize(vec3(-sin(yaw) * cos(pitch), -sin(pitch), -cos(yaw) * cos(pitch)));
+           vec3 right = normalize(cross(fwd, vec3(0.0, 1.0, 0.0)));
+           vec3 up = cross(right, fwd);
+           vec3 ro = vec3(-0.70710678 * t * speed, 4.6, -0.70710678 * t * speed);
+           vec3 rd = normalize(fwd * 1.45 + right * uv.x + up * uv.y);
+           if (rd.y >= -0.002) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+           float dist = -ro.y / rd.y;
+           if (dist > 140.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+           vec2 p = ro.xz + rd.xz * dist;
+           float fine = gridBand(p, 1.0, 0.18);
+           float major = gridBand(p, 4.0, 0.25);
+           vec2 d1 = abs(fract(p - 0.5) - 0.5);
+           float glow = exp(-min(d1.x, d1.y) * 26.0) * 0.14;
+           float fog = exp(-dist * 0.040) * smoothstep(130.0, 22.0, dist);
+           float nearFade = smoothstep(1.2, 5.0, dist);
+           vec2 ndc = (gl_FragCoord.xy / u_res) * 2.0 - 1.0;
+           float vig = clamp(1.08 - 0.38 * dot(ndc, ndc), 0.15, 1.0);
+           float intensity = (fine * 0.34 + major * 0.18 + glow) * fog * nearFade * vig;
+           vec3 col = vec3(0.76, 0.77, 0.80) * intensity;
+           gl_FragColor = vec4(col, 1.0);
+         }`;
+
+    const compile = (type, src) => {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      return gl.getShaderParameter(sh, gl.COMPILE_STATUS) ? sh : null;
+    };
+    const vs = compile(gl.VERTEX_SHADER, vsSrc);
+    const fs = compile(gl.FRAGMENT_SHADER, fsSrc);
+    const prog = vs && fs ? gl.createProgram() : null;
+    if (prog) {
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+    }
+    if (!prog || !gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      start2DFallback();
+      return;
+    }
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.useProgram(prog);
+    const locP = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(locP);
+    gl.vertexAttribPointer(locP, 2, gl.FLOAT, false, 0, 0);
+    const locRes = gl.getUniformLocation(prog, 'u_res');
+    const locTime = gl.getUniformLocation(prog, 'u_time');
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.max(1, Math.floor(window.innerWidth * dpr));
+      const h = Math.max(1, Math.floor(window.innerHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      gl.viewport(0, 0, w, h);
+    };
+    const start = performance.now();
+    const render = (now) => {
+      if (document.documentElement.classList.contains('inside')) return;
+      resize();
+      gl.uniform2f(locRes, canvas.width, canvas.height);
+      gl.uniform1f(locTime, reduced ? 0.0 : (now - start) * 0.001);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (!reduced) requestAnimationFrame(render);
+    };
+    window.addEventListener('resize', () => { resize(); if (reduced) render(start); });
+    requestAnimationFrame(render);
+    return;
+  }
+
+  function start2DFallback() {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    let w = 0, h = 0;
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = window.innerWidth; h = window.innerHeight;
+      canvas.width = Math.max(1, Math.floor(w * dpr));
+      canvas.height = Math.max(1, Math.floor(h * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    const start = performance.now();
+    const draw = (now) => {
+      if (document.documentElement.classList.contains('inside')) return;
+      const t = reduced ? 0 : (now - start) * 0.001;
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, w, h);
+      const yaw = 0.785398 + 0.06 * Math.sin(t * 0.07);
+      const pitch = 0.44;
+      const sp = 0.55 * t;
+      const rox = -0.70710678 * sp, roy = 4.6, roz = -0.70710678 * sp;
+      const fx = -Math.sin(yaw) * Math.cos(pitch), fy = -Math.sin(pitch), fz = -Math.cos(yaw) * Math.cos(pitch);
+      const rx = -fz, rz = fx, rl = Math.hypot(rx, rz) || 1;
+      const R = [rx / rl, 0, rz / rl];
+      const U = [R[1] * fz - R[2] * fy, R[2] * fx - R[0] * fz, R[0] * fy - R[1] * fx];
+      const focal = h * 1.45, cx = w * 0.5, cy = h * 0.5;
+      const proj = (x, z) => {
+        const vx = x - rox, vy = -roy, vz = z - roz;
+        const cz = vx * fx + vy * fy + vz * fz;
+        if (cz < 0.8) return null;
+        return [cx + ((vx * R[0] + vz * R[2]) / cz) * focal, cy - ((vx * U[0] + vy * U[1] + vz * U[2]) / cz) * focal, cz];
+      };
+      const ox = Math.floor(rox - 10), oz = Math.floor(roz - 10);
+      const N = 30;
+      ctx.lineWidth = 1;
+      for (let i = -N; i <= N; i++) {
+        const major = ((ox + i) % 4 === 0);
+        for (let axis = 0; axis < 2; axis++) {
+          const p0 = axis === 0 ? proj(ox + i, oz - N) : proj(ox - N, oz + i);
+          const p1 = axis === 0 ? proj(ox + i, oz + N) : proj(ox + N, oz + i);
+          if (!p0 || !p1) continue;
+          const d = 0.5 * (p0[2] + p1[2]);
+          const a = Math.min(0.4, (major ? 0.34 : 0.22) * Math.exp(-d * 0.032));
+          if (a < 0.01) continue;
+          ctx.strokeStyle = `rgba(194,196,204,${a.toFixed(3)})`;
+          ctx.beginPath();
+          ctx.moveTo(p0[0], p0[1]);
+          ctx.lineTo(p1[0], p1[1]);
+          ctx.stroke();
+        }
+      }
+      if (!reduced) requestAnimationFrame(draw);
+    };
+    window.addEventListener('resize', () => { resize(); if (reduced) draw(start); });
+    resize();
+    requestAnimationFrame(draw);
+  }
 })();
 </script>
 <script type="module">
