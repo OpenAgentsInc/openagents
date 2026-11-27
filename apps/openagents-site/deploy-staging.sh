@@ -25,6 +25,10 @@ if [[ -f "$dir/og/home.jpg" ]]; then
   gcloud storage cp "$dir/og/home.jpg" "gs://${bucket}/og/home.jpg" \
     --content-type="image/jpeg" --cache-control="public, max-age=3600"
 fi
+if [[ -f "$dir/fonts/CommitMono-Variable.woff2" ]]; then
+  gcloud storage cp "$dir/fonts/CommitMono-Variable.woff2" "gs://${bucket}/fonts/CommitMono-Variable.woff2" \
+    --content-type="font/woff2" --cache-control="public, max-age=31536000, immutable"
+fi
 if [[ -n "$dmg" && -f "$dmg" ]]; then
   echo "==> Uploading Mac installer $(basename "$dmg") -> gs://${bucket}/downloads/OpenAgents.dmg"
   gcloud storage cp "$dmg" "gs://${bucket}/downloads/OpenAgents.dmg" \

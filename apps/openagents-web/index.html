@@ -3,48 +3,392 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OpenAgents</title>
-<meta name="description" content="OpenAgents — open-source agent workspace across Web, macOS, and iOS.">
-<link rel="canonical" href="https://openagents.com/">
-<link rel="alternate" type="text/markdown" href="/index.md">
+<title>OpenAgents — v1.0.0 Coming Soon</title>
+<meta name="description" content="One agent workspace for web, mobile & desktop. Launching Monday, November 30 at 1:00 PM CT.">
 <meta name="theme-color" content="#000000">
 <meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://openagents.com/">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/index.md">
+<link rel="preload" href="/fonts/CommitMono-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenAgents">
-<meta property="og:title" content="OpenAgents">
-<meta property="og:description" content="One agent workspace for web, mobile & desktop">
+<meta property="og:title" content="OpenAgents — v1.0.0 Coming Soon">
+<meta property="og:description" content="One agent workspace for web, mobile & desktop. Launching Monday, November 30 at 1:00 PM CT.">
 <meta property="og:url" content="https://openagents.com/">
 <meta property="og:image" content="https://openagents.com/og/home.jpg">
-<meta property="og:image:alt" content="OpenAgents — One agent workspace for web, mobile & desktop">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="OpenAgents">
-<meta name="twitter:description" content="One agent workspace for web, mobile & desktop">
+<meta name="twitter:title" content="OpenAgents — v1.0.0 Coming Soon">
+<meta name="twitter:description" content="One agent workspace for web, mobile & desktop. Launching Monday, November 30 at 1:00 PM CT.">
 <meta name="twitter:image" content="https://openagents.com/og/home.jpg">
 <style>
-html,body,#coaxial-root{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#000000;color:#ededed;color-scheme:dark}
-body{font-family:ui-sans-serif,-apple-system,system-ui,"Segoe UI",sans-serif;font-size:14px;line-height:1.5}
-.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.inside,.inside body,.inside #coaxial-root{overflow:auto}
+  @font-face {
+    font-family: 'Commit Mono';
+    src: url('/fonts/CommitMono-Variable.woff2') format('woff2');
+    font-weight: 200 700;
+    font-style: normal;
+    font-display: swap;
+  }
+  :root {
+    --ground: #000000;
+    --surface: rgba(255, 255, 255, 0.02);
+    --border-subtle: #222222;
+    --border-active: #333333;
+    --ink: #f1efe8;
+    --white-70: rgba(255, 255, 255, 0.70);
+    --white-50: rgba(255, 255, 255, 0.50);
+    --white-45: rgba(255, 255, 255, 0.45);
+    --white-06: rgba(255, 255, 255, 0.06);
+    --font-mono: 'Commit Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; border-radius: 0; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+    color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    position: fixed;
+    inset: 0;
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    display: flex;
+    justify-content: center;
+    background: #000000;
+  }
+  a, button { cursor: default; font-family: inherit; }
+  :focus-visible { outline: 2px solid rgba(255, 255, 255, 0.35); outline-offset: 2px; }
+
+  .frame {
+    position: relative;
+    width: 100%;
+    max-width: 672px;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--border-subtle);
+    background: #000000;
+  }
+  .topbar {
+    height: 48px;
+    min-height: 48px;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-subtle);
+    background: #000000;
+  }
+  .top-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 18px;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+  .top-brand:hover { background: var(--white-06); color: #ffffff; }
+  .top-brand svg { width: 17px; height: 17px; display: block; flex: none; }
+  .top-nav {
+    display: flex;
+    align-items: stretch;
+  }
+  .top-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 18px;
+    border-left: 1px solid var(--border-subtle);
+    color: var(--white-70);
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+  .top-cell:hover { background: var(--white-06); color: #ffffff; }
+  .top-cell-primary {
+    background: var(--ink);
+    color: #000000;
+    font-weight: 600;
+  }
+  .top-cell-primary:hover { background: #ffffff; color: #000000; }
+
+  .hero {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 28px clamp(18px, 4vw, 36px);
+  }
+  .brand-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+    color: var(--ink);
+  }
+  .brand-row svg {
+    width: 36px;
+    height: 36px;
+    display: block;
+    flex: none;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(30px, 5vw, 42px);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.08;
+    color: var(--ink);
+  }
+  .subtitle {
+    margin: 0 0 32px;
+    max-width: 44ch;
+    font-size: clamp(13.5px, 1.8vw, 15px);
+    line-height: 1.55;
+    color: var(--white-50);
+    text-wrap: balance;
+  }
+
+  .launch-card {
+    width: 100%;
+    max-width: 520px;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface);
+  }
+  .launch-head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .launch-sq {
+    width: 6px;
+    height: 6px;
+    background: var(--ink);
+    box-shadow: 0 0 8px rgba(241, 239, 232, 0.55);
+    animation: pulse 2.4s ease-in-out infinite;
+    flex: none;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  .countdown {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    font-variant-numeric: tabular-nums;
+    background: #000000;
+  }
+  .unit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 22px 10px;
+    border-right: 1px solid var(--border-subtle);
+  }
+  .unit:last-child { border-right: 0; }
+  .unit-val {
+    font-size: clamp(26px, 5vw, 38px);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+  }
+  .unit-label {
+    margin-top: 8px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--white-45);
+  }
+  .launch-foot {
+    padding: 12px 18px;
+    border-top: 1px solid var(--border-subtle);
+    text-align: center;
+  }
+  .launch-date {
+    margin: 0;
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--white-50);
+  }
+
+  .bottombar {
+    height: 48px;
+    min-height: 48px;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    border-top: 1px solid var(--border-subtle);
+    background: #000000;
+  }
+  .foot-copy {
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--white-45);
+  }
+
+  @media (max-width: 672px) {
+    .frame { border-left: 0; border-right: 0; }
+    .brand-row svg { width: 30px; height: 30px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .launch-sq { animation: none; }
+  }
+
+  .inside, .inside body { position: static; height: auto; overflow: auto; overscroll-behavior: auto; touch-action: auto; display: block; padding: 0; }
+  .inside .frame { display: none; }
+  .inside #home-root { position: fixed; inset: 0; overflow-y: auto; background: #000000; z-index: 30; text-align: left; }
 </style>
+<script>
+try {
+  const v = localStorage.getItem("oa_logged_in");
+  const ref = document.referrer || "";
+  const fromApp = ref.startsWith(location.origin + "/chat") || ref.startsWith(location.origin + "/login") || ref.startsWith(location.origin + "/onboarding") || ref.startsWith(location.origin + "/settings");
+  if (v === "1" || fromApp || (v === null && localStorage.getItem("coaxial.dom.chat-web.kept"))) {
+    document.documentElement.classList.add("inside");
+  }
+} catch {}
+window.__oaAccountP = fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(3000) })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((j) => ({ logged_in: Boolean(j && j.logged_in === true), onboarding_required: Boolean(j && j.onboarding_required === true) }))
+  .catch(() => ({ logged_in: false, onboarding_required: false }));
+</script>
 </head>
 <body>
-<main id="coaxial-root"><h1 class="sr-only">OpenAgents</h1><p class="sr-only">Log in or create an account.</p></main>
+<div class="frame">
+  <header class="topbar">
+    <a class="top-brand" href="/">
+      <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" aria-hidden="true"><path d="M21 17a19 19 0 1 0 22 0"/><path d="M32 8v24"/></svg>
+      <span>OpenAgents</span>
+    </a>
+    <nav class="top-nav" aria-label="Primary">
+      <a class="top-cell" href="/login">Log in</a>
+    </nav>
+  </header>
+
+  <main class="hero">
+    <div class="brand-row">
+      <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" aria-hidden="true"><path d="M21 17a19 19 0 1 0 22 0"/><path d="M32 8v24"/></svg>
+      <h1>OpenAgents</h1>
+    </div>
+
+    <p class="subtitle">One agent workspace for web, mobile &amp; desktop</p>
+
+    <section class="launch-card" aria-label="OpenAgents v1.0.0 launch countdown">
+      <div class="launch-head">
+        <span class="launch-sq" aria-hidden="true"></span>
+        <span id="launch-status">v1.0.0 Coming Soon</span>
+      </div>
+      <div class="countdown" id="countdown" role="timer" aria-live="off">
+        <div class="unit">
+          <span class="unit-val" id="cd-days">--</span>
+          <span class="unit-label">Days</span>
+        </div>
+        <div class="unit">
+          <span class="unit-val" id="cd-hours">--</span>
+          <span class="unit-label">Hours</span>
+        </div>
+        <div class="unit">
+          <span class="unit-val" id="cd-mins">--</span>
+          <span class="unit-label">Min</span>
+        </div>
+        <div class="unit">
+          <span class="unit-val" id="cd-secs">--</span>
+          <span class="unit-label">Sec</span>
+        </div>
+      </div>
+      <div class="launch-foot">
+        <p class="launch-date">Monday, November 30 &middot; 1:00 PM CT</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bottombar">
+    <span class="foot-copy">&copy; 2026 OpenAgents, Inc.</span>
+    <nav class="top-nav" aria-label="Footer">
+      <a class="top-cell top-cell-primary" href="/login">Get Started</a>
+    </nav>
+  </footer>
+</div>
+<script>
+(() => {
+  // Monday, November 30, 2026 at 1:00:00 PM CST (UTC-06:00)
+  const targetMs = Date.parse('2026-11-30T13:00:00-06:00');
+  const dEl = document.getElementById('cd-days');
+  const hEl = document.getElementById('cd-hours');
+  const mEl = document.getElementById('cd-mins');
+  const sEl = document.getElementById('cd-secs');
+  const statusEl = document.getElementById('launch-status');
+  const pad = (n) => String(n).padStart(2, '0');
+  const tick = () => {
+    const diff = Math.max(0, targetMs - Date.now());
+    const totalSec = Math.floor(diff / 1000);
+    dEl.textContent = pad(Math.floor(totalSec / 86400));
+    hEl.textContent = pad(Math.floor((totalSec % 86400) / 3600));
+    mEl.textContent = pad(Math.floor((totalSec % 3600) / 60));
+    sEl.textContent = pad(totalSec % 60);
+    if (diff === 0 && statusEl) statusEl.textContent = 'v1.0.0 Launching Now';
+  };
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
 <script type="module">
-let inside = false;
-try {
-  const r = await fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(1500) });
-  inside = r.ok && (await r.json()).logged_in === true;
-} catch {}
-const root = document.getElementById("coaxial-root");
-if (root) root.innerHTML = "";
-if (inside) document.documentElement.classList.add("inside");
-const s = document.createElement("script");
-s.type = "module";
-s.src = "/coaxial/dom-host.js";
-s.dataset.app = inside ? "chat-web" : "login-web";
-s.dataset.root = "coaxial-root";
-document.body.appendChild(s);
+const acct = await (window.__oaAccountP ?? Promise.resolve({ logged_in: false, onboarding_required: false }));
+const inside = acct.logged_in;
+try { localStorage.setItem("oa_logged_in", inside ? "1" : "0"); } catch {}
+if (inside && acct.onboarding_required) {
+  location.replace("/onboarding");
+} else if (inside) {
+  document.documentElement.classList.add("inside");
+  const root = document.createElement("div"); root.id = "home-root"; document.body.appendChild(root);
+  const shell = document.createElement("script"); shell.type = "module"; shell.src = "/coaxial/dom-host.js";
+  shell.dataset.app = "chat-web"; shell.dataset.root = "home-root";
+  document.body.appendChild(shell);
+} else {
+  document.documentElement.classList.remove("inside");
+}
 </script>
 </body>
 </html>

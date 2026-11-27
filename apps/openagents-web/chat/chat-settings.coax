@@ -40,9 +40,7 @@ cw_settings_compute :: (s: [] ChatWeb) {
   sn := cwc_put_int(sb[..], 0, cu.sandbox_turns);
   sn = cwc_put(sb[..], sn, " turns · ");
   sn = cwc_put_int(sb[..], sn, cu.sandbox_seconds);
-  sn = cwc_put(sb[..], sn, "s · ");
-  sn = cwc_put_int(sb[..], sn, cu.sandbox_msat / 1000);
-  sn = cwc_put(sb[..], sn, " sats ($0.0225 / $0.0450 / $0.0900 per hr)");
+  sn = cwc_put(sb[..], sn, "s ($0.0225 / $0.0450 / $0.0900 per hr)");
   sw_fact(w, t, u, "acct.compute.sb", "Cloud Sandbox compute", cast(string) sb[0..<sn]);
 
   lb: [96] u8;
@@ -202,8 +200,8 @@ cw_to_settings :: (s: [] ChatWeb, section: int) {
 cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool {
   w := s[0].set[..];
   if kind != CW_CLICK { return false; }
-  // the side's foot (logged in: its name leads to Settings; logged out it is Log in, a page of its own) and the chat's gear
-  if id == "who.go" { if s[0].me_n == 0 { return false; } cw_to_settings(s, SW_ACCOUNT); return true; }
+  // the side's foot (logged in: Credits opens Account Settings; logged out it links to /login) and the chat's gear
+  if id == "who.go" || id == "who.credits" { if s[0].me_n == 0 { return false; } cw_to_settings(s, SW_ACCOUNT); return true; }
   if id == "settings" { cw_to_settings(s, SW_MODELS); if s[0].set[0].admin { again := cw_go(s, CF_ACCOUNT, "/api/chat/account", ""); } return true; }
   k := cw_number(id, "set.nav.");
   if k >= 0 { if k < SW_SECTIONS { cw_to_settings(s, k); } return true; }
@@ -318,7 +316,7 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   h: [1] CwTest; s := h[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   t := s[0].tree[..];
-  cw_test_press(s, "who.go");
+  cw_test_press(s, "who.credits");
   #assert s[0].page == SW_PAGE && s[0].set[0].section == SW_ACCOUNT && cw_test_go(s) == "/settings/account" && coaxial_chatweb_go_push(s);
   coaxial_chatweb_go_done(s); n := coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_class(t, 0) == "home" && tr_find(t, "side") >= 0 && tr_find(t, "composer") < 0 && tr_text_of(t, tr_find(t, "set.b.t")) == "Account";
@@ -352,7 +350,7 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   cw_test_answer(c, 200, "logged_in 0\n");
   n = coaxial_chatweb_frame(c, 0.016, true);
   #assert !coaxial_chatweb_asking(c);
-  cw_test_press(c, "who.go");
+  cw_test_press(c, "who.credits");
   #assert coaxial_chatweb_go_len(c) == 0 && c[0].page != SW_PAGE;
   // a direct load of /settings or a section opens it
   d: [1] CwTest; e := d[0].s[..];

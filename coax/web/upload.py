@@ -18,7 +18,7 @@ types = {".wasm": "application/wasm", ".wgsl": "text/plain; charset=utf-8", ".md
          ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".jpg": "image/jpeg",
          ".json": "application/json", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8",
          ".sh": "text/plain; charset=utf-8", ".ps1": "text/plain; charset=utf-8",
-         ".ttf": "font/ttf", ".frames": "application/octet-stream",
+         ".ttf": "font/ttf", ".woff2": "font/woff2", ".woff": "font/woff", ".frames": "application/octet-stream",
          ".syms": "text/plain; charset=utf-8"}   # a module's function names (wasm.sh, #13298)
 
 def call(url, method="GET", body=None, headers={}):

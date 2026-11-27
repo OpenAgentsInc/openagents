@@ -213,7 +213,7 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   t := s[0].tree[..];
   #assert s[0].cc[0].msg_n == 6;   // user1, thinking1, tool1, asst1, user2, asst2
   #assert sc_by_text(t, "Local · $0.00") >= 0 && sc_by_text(t, "inkling-2-mini") >= 0 && sc_by_text(t, "mac-desktop") >= 0;
-  #assert sc_by_text(t, "Today $0.0125 · 7 req · 250 sats · 900 cached") >= 0;
+  #assert sc_by_text(t, "Today $0.0125 · 7 req · 900 cached") >= 0;
   #assert sc_by_text(t, "Updated app.coax locally.") >= 0 && sc_by_text(t, "Cloud summary ready.") >= 0;
   #assert sc_by_text(t, "+new_val") >= 0 && sc_by_text(t, "-old_val") >= 0;
   // Thinking card starts collapsed; clicking cc.tog.1 expands it cleanly.
@@ -333,7 +333,7 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   cwc_t_stream_ev(u, CWC_TURN_SLOT, UI_SUB_PHASE_ERROR, 402, "{\"error\":\"add credit: POST /api/v1/inference/credit\"}");
   _ = coaxial_chatweb_frame(u, 0.016, true);
   cwc_t_drain(u, ops2[..]);
-  #assert sc_contains(cast(string) u[0].cc[0].error[0..<u[0].cc[0].error_n], "No hosted inference credit (0 sats)");
+  #assert sc_contains(cast(string) u[0].cc[0].error[0..<u[0].cc[0].error_n], "No credits remaining");
   // Before sync completed, failure write-through uses idempotent /api/chat/v2/sync (never 404 /events).
   #assert cwc_t_find_open(ops2[..], "/api/chat/v2/sync") >= 0 && cwc_t_find_open(ops2[..], "/events") < 0;
   // 429 extracts exact server JSON error message.
@@ -451,61 +451,10 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   #assert aen > 0;
   cwc_t_sse_push(s, aslot, "55", cast(string) aeb[0..<aen]);
   t := s[0].tree[..];
-  // Beta moved to index 0 (newest updated_at_ms = 3000) and displays live working indicator!
-  #assert s[0].cc[0].convs[0].working && tr_find(t, "cc.work.0") >= 0;
-
-  // Search filters sidebar cleanly.
-  cw_test_type(s, "side.search", "Alpha");
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-  #assert sc_by_text(t, "Alpha Plan") >= 0 && sc_by_text(t, "Beta Notes") < 0;
-  cw_test_type(s, "side.search", "");
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-  #assert sc_by_text(t, "Beta Notes") >= 0;
-
-  // Pin Alpha (currently index 1) -> moves to index 0 + POST .../meta with CC_META_SCHEMA.
-  ops[0].open_n = 0;
-  cw_test_press(s, "cc.pin.1");
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-  cwc_t_drain(s, ops[..]);
-  mi := cwc_t_find_open(ops[..], "/api/chat/v2/conversations/cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/meta");
-  #assert mi >= 0 && sc_contains(cast(string) ops[0].opens[mi].body[0..<ops[0].opens[mi].body_n], CC_META_SCHEMA);
-  #assert s[0].cc[0].convs[0].pinned && cast(string) s[0].cc[0].convs[0].title[0..<s[0].cc[0].convs[0].title_n] == "Alpha Plan";
-
-  // Rename Alpha (now index 0) -> optimistic title update + POST .../meta.
-  ops[0].open_n = 0;
-  cw_test_press(s, "cc.ren.0");
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-  cw_test_type(s, "cc.ren.in", "Alpha Renamed");
-  cw_test_enter(s, "cc.ren.in");
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-  cwc_t_drain(s, ops[..]);
-  #assert sc_by_text(t, "Alpha Renamed") >= 0;
-  #assert cwc_t_find_open(ops[..], "/meta") >= 0;
-
-  // Archive Beta (index 1) -> hides from active list, visible when Archived toggle pressed.
-  cw_test_press(s, "cc.arc.1");
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-  #assert sc_by_text(t, "Beta Notes") < 0;
-  cw_test_press(s, "side.arc");
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-  #assert sc_by_text(t, "Beta Notes") >= 0;
-  cw_test_press(s, "cc.arc.1");   // restore Beta
-  cw_test_press(s, "side.arc");   // back to active
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-
-  // Switch chats: open Alpha (index 0), then switch to Beta (index 1) -> closes old conv SSE slot & opens new one!
-  ops[0].open_n = 0; ops[0].close_n = 0;
-  cw_test_press(s, "cc.open.0");
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-  cwc_t_drain(s, ops[..]);
-  #assert cwc_t_find_open(ops[..], "/api/chat/v2/conversations/cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/stream") >= 0;
-
-  ops[0].open_n = 0; ops[0].close_n = 0;
-  cw_test_press(s, "cc.open.1");
-  _ = coaxial_chatweb_frame(s, 0.016, true);
-  cwc_t_drain(s, ops[..]);
-  #assert cwc_t_has_close(ops[..], 1);
-  #assert cwc_t_find_open(ops[..], "/api/chat/v2/conversations/cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/stream") >= 0;
+  // Beta moved to index 0 (newest updated_at_ms = 3000) and marked working in cloud state!
+  #assert s[0].cc[0].convs[0].working && cast(string) s[0].cc[0].convs[0].title[0..<s[0].cc[0].convs[0].title_n] == "Beta Notes";
+  // Sidebar remains clean minimal rail with logo, collapse button, and bottom Credits cell.
+  #assert tr_find(t, "side.h.home") >= 0 && tr_find(t, "side.hide") >= 0 && tr_find(t, "who.credits") >= 0;
 }
 
 #test "14094 Scene+Play: VirtualList renders 1,200-message (>150 KB) transcript smoothly with zero 96 KB cap" #steps 300000000 #traversal 536870912 {
@@ -824,7 +773,7 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   cwc_t_drain(s, ops[..]);
   _ = coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  #assert sc_by_text(t, "Sandbox 900s (6 sats)") >= 0 && sc_by_text(t, "43 sats") >= 0;
+  #assert sc_by_text(t, "Sandbox 900s") >= 0 && sc_by_text(t, "sats") < 0;
 
   // In Auto mode, a code-execution prompt automatically routes to the online enrolled computer ($0 local)!
   ops[0].open_n = 0;

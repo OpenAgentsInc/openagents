@@ -1,9 +1,10 @@
-// openagents.com/login: ultra-minimal centered dark-mode Apps SDK UI sign-in page
-// (pure Coax DOM, zero WebGPU HUD, synced with OpenAgents Desktop pure-black palette).
-// Built directly from components/skin/apps-sdk.coax + components/kit/apps-sdk.coax over dom.coax.
+// openagents.com/login & /onboarding: Institute Noir architectural auth surface
+// (docs/web/2026-11-27-institute-noir-theme-spec.md). Pure Coax DOM, single
+// institute_noir_css stylesheet, zero rounded chrome, Commit Mono everywhere.
 //   coax/bin/coax test apps/openagents-web/login-web.coax
 
 #load "../../components/kit/apps-sdk.coax";
+#load "../../components/skin/institute-noir.coax";
 #load "../../components/backend/dom.coax";
 
 LW_INBOX :: 4096;
@@ -261,36 +262,7 @@ lw_submit_code :: (s: [] LoginWeb) {
 }
 
 lw_css :: (out: [] u8, at: int) -> int {
-  n := at;
-  n = as_put(out, n, "*,*::before,*::after{box-sizing:border-box}");
-  n = as_put(out, n, "html,body,#coaxial-root{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#000000;color:#ededed;font-family:var(--font-sans);-webkit-font-smoothing:antialiased}");
-  n = as_put(out, n, ".lw-page{position:fixed;inset:0;height:100dvh;width:100%;overflow:hidden;overscroll-behavior:none;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;background:#000000}");
-  n = as_put(out, n, ".lw-box{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:stretch;gap:10px}");
-  n = as_put(out, n, ".lw-head{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:10px;text-align:center}");
-  n = as_put(out, n, ".lw-brand{display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:#ededed;font:600 22px/1.1 var(--font-sans);letter-spacing:-.025em}");
-  n = as_put(out, n, ".lw-mark{width:22px;height:22px;display:block}");
-  n = as_put(out, n, ".lw-sub{margin:0;font:400 13px/1.4 var(--font-sans);color:#818181}");
-  n = as_put(out, n, ".lw-oauth{display:flex;flex-direction:column;gap:8px;width:100%}");
-  n = as_put(out, n, ".lw-oauth .as-btn{width:100%;height:40px;border-radius:8px;background:#111111;color:#ededed;box-shadow:inset 0 0 0 1px #2c2c2c;font:500 13.5px/1 var(--font-sans);justify-content:center;gap:8px}");
-  n = as_put(out, n, ".lw-oauth .as-btn:hover{background:#191919;box-shadow:inset 0 0 0 1px #404040}");
-  n = as_put(out, n, ".lw-oauth .as-btn .si-mark{width:18px;height:18px;display:block;color:#ededed;flex:none}");
-  n = as_put(out, n, ".lw-or{display:flex;align-items:center;gap:12px;margin:6px 0;color:#656565;font:500 11px/1 var(--font-sans);letter-spacing:.08em;text-transform:uppercase}");
-  n = as_put(out, n, ".lw-or::before,.lw-or::after{content:'';flex:1;height:1px;background:#1b1b1b}");
-  n = as_put(out, n, ".lw-box .as-in-wrap{height:40px;border-radius:8px;background:#0a0a0a;box-shadow:inset 0 0 0 1px #2c2c2c}");
-  n = as_put(out, n, ".lw-box .as-in-wrap:hover{box-shadow:inset 0 0 0 1px #404040}");
-  n = as_put(out, n, ".lw-box .as-in-wrap:focus-within{box-shadow:inset 0 0 0 1px #3b82f6,0 0 0 2px rgba(59,130,246,.22)}");
-  n = as_put(out, n, ".lw-box .as-in-wrap input{font-size:13.5px;color:#ededed}");
-  n = as_put(out, n, ".lw-box .as-in-wrap input::placeholder{color:#656565}");
-  n = as_put(out, n, ".lw-primary{width:100%;height:40px !important;border-radius:8px !important;background:#ededed !important;color:#0a0a0a !important;font:600 13.5px/1 var(--font-sans) !important;justify-content:center;gap:8px}");
-  n = as_put(out, n, ".lw-primary:hover:not(:disabled){background:#ffffff !important}");
-  n = as_put(out, n, ".lw-primary .si-mark{width:18px;height:18px;display:block;color:#0a0a0a;flex:none}");
-  n = as_put(out, n, ".lw-note{margin:2px 0 0;text-align:center;font:400 12px/1.45 var(--font-sans);color:#656565}");
-  n = as_put(out, n, ".lw-aux{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:4px}");
-  n = as_put(out, n, ".lw-in-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:#0e0e0e;border:1px solid #2c2c2c}");
-  n = as_put(out, n, ".lw-foot{position:fixed;bottom:20px;left:0;right:0;padding:0 20px;text-align:center;font:400 12px/1.4 var(--font-sans);color:#656565}");
-  n = as_put(out, n, ".lw-foot a{color:#818181;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#2c2c2c}");
-  n = as_put(out, n, ".lw-foot a:hover{color:#ededed}");
-  return n;
+  return institute_noir_css(out, at);
 }
 
 lw_oauth_btn :: (t: [] Tree, id: string, label: string, href: string, mark_href: string, use_svg: bool) {
@@ -344,6 +316,7 @@ lw_build :: (s: [] LoginWeb) {
   _ = tr_leaf(t, "lw.sub", TG_P, "lw-sub", sub_txt);
   tr_close(t);
 
+  _ = tr_open(t, "lw.body", TG_DIV, "lw-body");
   if s[0].ref_code_n > 0 && !s[0].is_onboarding {
     _ = as_alert_open(t, "lw.ref.al", "Referral invite applied", "Log in to claim $10 promo credit after your first paid top-up.", AS_SUCCESS, AS_SOFT, IC_SPARKLES);
     as_alert_end(t);
@@ -362,6 +335,10 @@ lw_build :: (s: [] LoginWeb) {
     _ = as_spinner(t, "lw.loading.sp", false);
     tr_close(t);
   } else if s[0].screen == LW_SCR_ONBOARDING {
+    _ = tr_open(t, "lw.onboard.badge", TG_DIV, "lw-badge");
+    _ = tr_leaf(t, "lw.onboard.sq", TG_SPAN, "lw-badge-sq", "");
+    _ = tr_leaf(t, "lw.onboard.bt", TG_SPAN, "", "$10.00 FREE CREDIT");
+    tr_close(t);
     dest := ifx s[0].next_path_n > 0 then cast(string) s[0].next_path[0..<s[0].next_path_n] else "/chat";
     ghb: [360] u8;
     a := tr_open(t, "lw.onboard.github", TG_A, "as-btn as-v-solid as-c-primary as-s-lg lw-primary");
@@ -429,6 +406,7 @@ lw_build :: (s: [] LoginWeb) {
     _ = as_button(t, "lw.logout", ifx s[0].busy then "Logging out…" else "Log out", AS_SECONDARY, AS_OUTLINE, AS_MD, false, -1, false, s[0].busy);
   }
 
+  tr_close(t); // lw.body
   tr_close(t); // lw.box
 
   _ = tr_open(t, "lw.foot", TG_FOOTER, "lw-foot");
@@ -537,8 +515,7 @@ coaxial_loginweb_frame :: (s: [] LoginWeb, dt: f32, reduced: bool) -> int #expor
   if !s[0].dirty { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
-    n := apps_sdk_css(s[0].css[..], 0);
-    n = lw_css(s[0].css[..], n);
+    n := institute_noir_css(s[0].css[..], 0);
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   lw_build(s);

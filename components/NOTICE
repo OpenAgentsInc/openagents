@@ -60,3 +60,11 @@ Third-party material in the Zeron-fork UI (zeron/, ../backend/gpu-shader.coax, f
    component styles ported to Coax from @openai/apps-sdk-ui 0.2.2
    (https://github.com/openai/apps-sdk-ui), MIT License, Copyright (c) 2025 OpenAI.
    The permission notice is the same as in 1 above.
+
+7. Institute Noir design tokens, interaction patterns, and PulsingDotGrid effect
+   (skin/institute-noir.coax, apps/openagents-site/index.html, apps/openagents-web/):
+   adapted from kitlangton/effect-institute (https://github.com/kitlangton/effect-institute).
+   MIT License, Copyright (c) Kit Langton.
+
+8. Commit Mono Variable font (fonts/CommitMono-Variable.woff2):
+   Copyright (c) 2023 Eigil Nikolajsen, SIL Open Font License 1.1 / MIT (fonts/CommitMono-OFL.txt).

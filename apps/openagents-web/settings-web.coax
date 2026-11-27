@@ -816,14 +816,9 @@ sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: in
   } else {
     sw_fact(s, t, u, "home.status.keys", ifx s[0].nkeys == 1 then "Nostr key" else "Nostr keys", kstr);
   }
-  if s[0].life_state == 1 && s[0].credit_msat >= 0 {
-    cbuf: [32] u8;
-    if sw_row(s, t, u, "home.status.credit", "Paid credit", "Bitcoin/Lightning balance for hosted inference and services.") {
-      v := k_set_value(t, "home.status.credit.v", sw_credit_line(s[0].credit_msat, cbuf[..]));
-      k_set_row_end(t);
-    }
+  if s[0].life_state == 1 {
     pbuf: [32] u8; pabout: [160] u8;
-    if sw_row(s, t, u, "home.status.promo", "Promo credit", sw_promo_about(s, pabout[..])) {
+    if sw_row(s, t, u, "home.status.promo", "Credits", sw_promo_about(s, pabout[..])) {
       v := k_set_value(t, "home.status.promo.v", sw_usd_micros(s[0].promo_micros, pbuf[..]));
       k_set_row_end(t);
     }
@@ -851,8 +846,6 @@ sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: in
   sw_link(s, t, u, "home.go.models", "Agents and models", "Connect Claude credentials and choose default models.", "Open", "/settings/models");
   sw_link(s, t, u, "home.go.security", "Security", "Manage passkeys, Nostr keys, linked emails, and recovery.", "Open", "/settings/security");
   sw_link(s, t, u, "home.go.devices", "Devices", "Phones, desktops, and browser sessions signed in to your account.", "Open", "/settings/devices");
-  sw_link(s, t, u, "home.go.wallet", "Wallet", "Your wallet's daily limit and backup.", "Open", "/settings/wallet");
-  sw_link(s, t, u, "home.go.lightning", "Lightning Address", "Claim or manage your name@openagents.com payment address.", "Open", "/settings/lightning");
   sw_link(s, t, u, "home.go.agents", "Agents", "Agents acting on your behalf and their permissions.", "Open", "/settings/agents");
   sw_link(s, t, u, "home.go.data", "Your data", "Export what we hold about you, or freeze your account.", "Open", "/settings/data");
   if sw_row(s, t, u, "home.out.row", "Log out", "Log out of this browser.") { btn := k_button(t, u, "home.out", "Log out", BS_PLAIN); k_set_row_end(t); }
@@ -894,14 +887,9 @@ sw_account :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string) {
   sw_fact(s, t, u, "acct.emails", ifx s[0].emails == 1 then "Email" else "Emails", sw_emails_line(s, line[..]));
   kl: [SW_KEYS * 28 + 40] u8;
   sw_fact(s, t, u, "acct.keys", ifx s[0].nkeys == 1 then "Key" else "Keys", sw_keys_line(s, kl[..]));
-  if s[0].life_state == 1 && s[0].credit_msat >= 0 {
-    cbuf: [32] u8;
-    if sw_row(s, t, u, "acct.credit", "Paid credit", "Bitcoin/Lightning balance for hosted inference and services.") {
-      v := k_set_value(t, "acct.credit.v", sw_credit_line(s[0].credit_msat, cbuf[..]));
-      k_set_row_end(t);
-    }
+  if s[0].life_state == 1 {
     pbuf: [32] u8; pabout: [160] u8;
-    if sw_row(s, t, u, "acct.promo", "Promo credit", sw_promo_about(s, pabout[..])) {
+    if sw_row(s, t, u, "acct.promo", "Credits", sw_promo_about(s, pabout[..])) {
       v := k_set_value(t, "acct.promo.v", sw_usd_micros(s[0].promo_micros, pbuf[..]));
       k_set_row_end(t);
     }
@@ -917,8 +905,6 @@ sw_account :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string) {
   sw_link(s, t, u, "acct.invite", "Invite & Referrals", "Share your link, earn $5 per active friend and 1% lifetime kickback.", "Open", "/settings/invite");
   sw_link(s, t, u, "acct.devices", "Devices", "The phones and computers logged in to your account.", "Open", "/settings/devices");
   sw_link(s, t, u, "acct.agents", "Agents", "Agents that act for you with their own keys, and what each may do.", "Open", "/settings/agents");
-  sw_link(s, t, u, "acct.wallet", "Wallet", "Your wallet's daily limit and its backup.", "Open", "/settings/wallet");
-  sw_link(s, t, u, "acct.lightning", "Lightning Address", "Your name@openagents.com address for payments.", "Open", "/settings/lightning");
   sw_link(s, t, u, "acct.data", "Your data", "Download what we hold about you.", "Open", "/settings/data");
   sw_link(s, t, u, "acct.delete", "Delete your account", "Delete your account and what it holds.", "Open", "/settings/delete");
   sw_group_end(s, t);
@@ -1206,7 +1192,7 @@ sw_test_build :: (x: [] SwTest, who: string) {
   #assert tr_text_of(t, tr_find(t, "home.status.state.v")) == "Active";
   #assert tr_text_of(t, tr_find(t, "home.status.acct.v")) == "acct_42";
   #assert tr_text_of(t, tr_find(t, "home.status.primary.a")) == "chris@openagents.com";
-  #assert tr_text_of(t, tr_find(t, "home.status.credit.v")) == "250 sats";
+  #assert tr_find(t, "home.status.credit") < 0 && tr_find(t, "home.status.promo.v") > 0;
   #assert tr_text_of(t, tr_find(t, "home.status.overview.a")) == "2 projects · 3 worlds · 2 agents (1 paused)";
   #assert tr_text_of(t, tr_find(t, "home.orgs.v.0")) == "Active" && tr_find(t, "sw.org.1") > 0;
   #assert tr_attr_of(t, tr_find(t, "home.go.chat.go"), AT_HREF) == "/chat" && tr_attr_of(t, tr_find(t, "home.go.account.go"), AT_HREF) == "/settings/account";
@@ -1216,10 +1202,10 @@ sw_test_build :: (x: [] SwTest, who: string) {
   #assert cast(string) s[0].active_org[0..<s[0].active_org_n] == "org_2" && cast(string) s[0].org_note[0..<s[0].org_note_n] == "Active organization updated.";
   sw_org_switch_read(s, 403, "error You aren't a member.\n");
   #assert cast(string) s[0].org_note[0..<s[0].org_note_n] == "You aren't a member.";
-  // Account section also shows Account ID, Primary email, Credit balance, and Organizations
+  // Account section also shows Account ID, Primary email, Credits balance, and Organizations
   sw_test_build(x[..], "chris@openagents.com");
   #assert tr_text_of(t, tr_find(t, "acct.id.v")) == "acct_42" && tr_text_of(t, tr_find(t, "acct.primary.a")) == "chris@openagents.com";
-  #assert tr_text_of(t, tr_find(t, "acct.credit.v")) == "250 sats" && tr_find(t, "acct.orgs") > 0;
+  #assert tr_find(t, "acct.credit") < 0 && tr_find(t, "acct.promo.v") > 0 && tr_find(t, "acct.orgs") > 0;
 }
 
 #test "home dashboard renders enrolled computers, account projects, and inline create project form" {
@@ -1261,7 +1247,7 @@ sw_test_build :: (x: [] SwTest, who: string) {
   #assert s[0].promo_micros == 15000000 && cast(string) s[0].promo_expires[0..<10] == "2027-02-25";
   tr_begin(t); ui_begin(u, 0, true);
   sw_home(s, t, u, "chris@openagents.com", 0, 0);
-  #assert tr_text_of(t, tr_find(t, "home.status.credit.v")) == "100 sats";
+  #assert tr_find(t, "home.status.credit") < 0;
   #assert tr_text_of(t, tr_find(t, "home.status.promo.v")) == "$15.00";
   #assert tr_attr_of(t, tr_find(t, "home.go.invite.go"), AT_HREF) == "/settings/invite";
 

@@ -2323,7 +2323,7 @@ cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string
       _ = ui_provide_int(c[0].rt[..], c[0].comp_root, "auth.state", CWC_AUTH_ANON);
       c[0].error_n = cwc_put(c[0].error[..], 0, "Log in to OpenAgents to continue.");
     } else if status == 402 {
-      c[0].error_n = cwc_put(c[0].error[..], 0, "No hosted inference credit (0 sats). Add credit in Settings to continue.");
+      c[0].error_n = cwc_put(c[0].error[..], 0, "No credits remaining. Manage credits in Settings to continue.");
     } else if said.count > 0 {
       c[0].error_n = cwc_put(c[0].error[..], 0, said);
     } else if status == 403 {
@@ -2520,7 +2520,7 @@ cwc_drain_msgs :: (c: [] ChatCloud) {
         said = cl_str(ar[..], payload, "error");
       }
       if msg.arg_i == 402 {
-        c[0].error_n = cwc_put(c[0].error[..], 0, ifx said.count > 0 then said else "Insufficient sats credit for Cloud Sandbox. Top up in Settings or switch Target to your computer ($0).");
+        c[0].error_n = cwc_put(c[0].error[..], 0, ifx said.count > 0 then said else "Insufficient credits for Cloud Sandbox. Manage credits in Settings or switch Target to your computer ($0).");
       } else {
         c[0].error_n = cwc_put(c[0].error[..], 0, ifx said.count > 0 then said else "Could not dispatch durable turn.");
       }
@@ -3062,27 +3062,24 @@ cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
   }
   _ = tr_leaf(t, "cc.hud.tier", TG_SPAN, ifx is_local then "cc-pill cc-pill-local" else "cc-pill", cast(string) pill[0..<pn]);
 
-  // Usage & Billing HUD (#14072 parity)
+  // Usage & Billing HUD (USD only — zero sats/Bitcoin in v1 UI)
   if c[0].usage[0].loaded {
     ub: [160] u8; usd: [32] u8;
     un := cwc_put(ub[..], 0, "Today ");
     un = cwc_put(ub[..], un, cwc_format_usd_micros(c[0].usage[0].today_usd_micros, usd[..]));
     un = cwc_put(ub[..], un, " · ");
     un = cwc_put_int(ub[..], un, c[0].usage[0].today_requests);
-    un = cwc_put(ub[..], un, " req · ");
-    un = cwc_put_int(ub[..], un, c[0].usage[0].credit_msat / 1000);
-    un = cwc_put(ub[..], un, " sats");
+    un = cwc_put(ub[..], un, " req");
     if c[0].usage[0].promo_micros > 0 {
       pusd: [32] u8;
-      un = cwc_put(ub[..], un, " · Promo ");
+      un = cwc_put(ub[..], un, " · ");
       un = cwc_put(ub[..], un, cwc_format_usd_micros(c[0].usage[0].promo_micros, pusd[..]));
+      un = cwc_put(ub[..], un, " credits");
     }
-    if c[0].usage[0].sandbox_seconds > 0 || c[0].usage[0].sandbox_msat > 0 {
+    if c[0].usage[0].sandbox_seconds > 0 {
       un = cwc_put(ub[..], un, " · Sandbox ");
       un = cwc_put_int(ub[..], un, c[0].usage[0].sandbox_seconds);
-      un = cwc_put(ub[..], un, "s (");
-      un = cwc_put_int(ub[..], un, c[0].usage[0].sandbox_msat / 1000);
-      un = cwc_put(ub[..], un, " sats)");
+      un = cwc_put(ub[..], un, "s");
     }
     if c[0].usage[0].total_cached_tokens > 0 {
       un = cwc_put(ub[..], un, " · ");

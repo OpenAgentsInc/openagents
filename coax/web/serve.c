@@ -202,6 +202,8 @@ static const char *content_type(const char *path) {
   if (ends_with(path, ".png")) return "image/png";
   if (ends_with(path, ".jpg")) return "image/jpeg";
   if (ends_with(path, ".ttf")) return "font/ttf";
+  if (ends_with(path, ".woff2")) return "font/woff2";
+  if (ends_with(path, ".woff")) return "font/woff";
   if (ends_with(path, ".bin") || ends_with(path, ".frames") || ends_with(path, ".vpk3") || ends_with(path, ".pack")) return "application/octet-stream";
   if (ends_with(path, ".ogg")) return "audio/ogg";
   return "text/plain; charset=utf-8";
