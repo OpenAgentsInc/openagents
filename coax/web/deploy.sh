@@ -226,19 +226,25 @@ seed = os.path.join(app, "build", "home-seed")
 for f in sorted(os.listdir(seed)) if os.path.isdir(seed) else []:
     os.makedirs(os.path.join(site, "build", "home-seed"), exist_ok=True)
     shutil.copy(os.path.join(seed, f), os.path.join(site, "build", "home-seed", f))
-# What the bundled host fetches beside itself (new URL(PATH, import.meta.url)): its carriers
-# ../build/NAME.wasm (host-services, host-audio, character-host...), ../character.wgsl and
-# ./audio-worklet.js. From /coaxial/host.*.js those are /build/NAME.wasm, /character.wgsl and
-# /coaxial/audio-worklet.js, under their fixed names (checked on every visit, like the pages).
-for rel in sorted(set(re.findall(r"new URL\(\"(\.\.?/[A-Za-z0-9/_.-]+)\", import\.meta\.url\)", open(host, encoding="utf-8").read()))):
-    src, dst = (os.path.join(app, rel[3:]), os.path.join(site, rel[3:])) if rel.startswith("../") else (os.path.join(tools, rel[2:]), os.path.join(site, "coaxial", rel[2:]))
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    shutil.copy(src, dst)
-    # a worklet's own imports (./audio-bridge.js) come from beside it, unbundled
-    todo = [rel[2:]] if rel.startswith("./") and rel.endswith(".js") else []
-    while todo:
-        for dep in re.findall(r"from\s+['\"]\./([A-Za-z0-9_.-]+\.js)['\"]", open(os.path.join(tools, todo.pop()), encoding="utf-8").read()):
-            if not os.path.exists(os.path.join(site, "coaxial", dep)): shutil.copy(os.path.join(tools, dep), os.path.join(site, "coaxial", dep)); todo.append(dep)
+# What the bundled host fetches beside itself (new URL(PATH, import.meta.url) and lazyMod("./NAME.js")):
+# its carriers ../build/NAME.wasm (host-services, host-audio, host-packs, character-host...),
+# ../character.wgsl, ./audio-worklet.js, ./pack-worker.js, and the lazy subsystem modules.
+# From /coaxial/host.*.js those are /build/NAME.wasm, /character.wgsl and /coaxial/*.js under
+# their fixed names (checked on every visit, like the pages).
+host_seen, host_todo = set(), [host]
+while host_todo:
+    cur = host_todo.pop()
+    src_text = open(cur, encoding="utf-8").read()
+    rels = set(re.findall(r"new URL\(['\"](\.\.?/[A-Za-z0-9/_.-]+)['\"],\s*import\.meta\.url\)", src_text))
+    for dep in re.findall(r"(?:lazyMod\(|from\s+|import\s*\(\s*)['\"]\./([A-Za-z0-9_.-]+\.js)['\"]", src_text):
+        rels.add("./" + dep)
+    for rel in sorted(rels):
+        if rel in host_seen: continue
+        host_seen.add(rel)
+        src, dst = (os.path.join(app, rel[3:]), os.path.join(site, rel[3:])) if rel.startswith("../") else (os.path.join(tools, rel[2:]), os.path.join(site, "coaxial", rel[2:]))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy(src, dst)
+        if rel.startswith("./") and rel.endswith(".js"): host_todo.append(src)
 # well-known/apple-app-site-association.json is served without its extension, as JSON (upload.py's
 # .wellknown): the phone app's universal links (docs/phone-sign-in.md). Others keep their name (nostr.json, NIP-05).
 for f in sorted(os.listdir(os.path.join(app, "well-known"))) if os.path.isdir(os.path.join(app, "well-known")) else []:
