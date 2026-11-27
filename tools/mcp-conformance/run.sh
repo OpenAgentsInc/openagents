@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper: builds Coax MCP binaries via coax/web/tool.sh and invokes external Node/npx @modelcontextprotocol/{server-everything,inspector,conformance} oracles)
+# Phase 2–5 Coax MCP conformance & interop runner.
+# Builds the Coax MCP stdio harnesses via coax/web/tool.sh and verifies:
+#   1. Coax stdio client <-> Coax stdio server (2026-07-28 mode)
+#   2. Coax stdio client <-> Coax stdio server (--2025-only fallback probe)
+#   3. Coax stdio client <-> official @modelcontextprotocol/server-everything (if available)
+#   4. Official @modelcontextprotocol/inspector --cli <-> Coax stdio server (if available)
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
+tool="$repo/coax/web/tool.sh"
+
+echo "==> Building Coax MCP stdio server & client binaries"
+COAX_TOOL_BUILD_ONLY=1 "$tool" "$here/stdio-server.coax"
+COAX_TOOL_BUILD_ONLY=1 "$tool" "$here/stdio-client.coax"
+
+coax="${COAX:-$repo/coax/bin/coax}"
+chash="$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
+srv_bin="$repo/coax/web/build/tools/stdio-server-$chash"
+cli_bin="$repo/coax/web/build/tools/stdio-client-$chash"
+
+echo "==> [1/4] Coax stdio client <-> Coax stdio server (2026-07-28 stateless)"
+out_2026="$("$cli_bin" \
+  --call echo --args '{"message":"hello-2026"}' \
+  --resource memo://hello \
+  --prompt greet --prompt-args '{"name":"Coax"}' \
+  --test-cancel \
+  -- "$srv_bin")"
+echo "$out_2026"
+grep -q "CONNECTED mode=2026-07-28 version=2026-07-28 server=coax-mcp-stdio/0.2.0" <<<"$out_2026"
+grep -q "TOOLS count=3 valid_headers=3" <<<"$out_2026"
+grep -q "TOOL_CALL name=echo isError=false text=hello-2026" <<<"$out_2026"
+grep -q "RESOURCE_READ uri=memo://hello text=Hello from Coax MCP stdio server!" <<<"$out_2026"
+grep -q "PROMPT_GET name=greet messages=1" <<<"$out_2026"
+grep -q "CANCEL ok=true" <<<"$out_2026"
+
+echo "==> [2/4] Coax stdio client <-> Coax stdio server (2025-11-25 discover->initialize fallback)"
+out_2025="$("$cli_bin" \
+  --call add --args '{"a":19,"b":23}' \
+  --resource memo://42 \
+  --prompt greet --prompt-args '{"name":"Legacy"}' \
+  --test-cancel \
+  -- "$srv_bin" --2025-only)"
+echo "$out_2025"
+grep -q "CONNECTED mode=2025-11-25 version=2025-11-25 server=coax-mcp-stdio/0.2.0" <<<"$out_2025"
+grep -q "TOOL_CALL name=add isError=false text=42" <<<"$out_2025"
+grep -q "RESOURCE_READ uri=memo://42 text=Memo item: memo://42" <<<"$out_2025"
+grep -q "PING ok=true" <<<"$out_2025"
+grep -q "CANCEL ok=true" <<<"$out_2025"
+
+echo "==> [3/4] Coax stdio client <-> @modelcontextprotocol/server-everything"
+everything_dir="${MCP_EVERYTHING_DIR:-$HOME/work/projects/repos/mcp/servers/src/everything}"
+everything_cmd=()
+if [[ -f "$everything_dir/dist/index.js" ]]; then
+  everything_cmd=(node "$everything_dir/dist/index.js")
+elif command -v npx >/dev/null 2>&1 && [[ "${MCP_ALLOW_NPX:-0}" == "1" ]]; then
+  everything_cmd=(npx -y @modelcontextprotocol/server-everything)
+fi
+if [[ ${#everything_cmd[@]} -gt 0 ]]; then
+  out_ev="$("$cli_bin" --call echo --args '{"message":"from-coax"}' --test-cancel -- "${everything_cmd[@]}")"
+  echo "$out_ev"
+  grep -Eq "CONNECTED mode=(2026-07-28|2025-11-25)" <<<"$out_ev"
+  grep -q "TOOL_CALL name=echo isError=false text=Echo: from-coax" <<<"$out_ev"
+  grep -q "CANCEL ok=true" <<<"$out_ev"
+  out_ev_legacy="$("$cli_bin" --legacy-2025 --call echo --args '{"message":"from-coax-2025"}' --test-cancel -- "${everything_cmd[@]}")"
+  echo "$out_ev_legacy"
+  grep -q "CONNECTED mode=2025-11-25" <<<"$out_ev_legacy"
+  grep -q "TOOL_CALL name=echo isError=false text=Echo: from-coax-2025" <<<"$out_ev_legacy"
+  grep -q "PING ok=true" <<<"$out_ev_legacy"
+  grep -q "CANCEL ok=true" <<<"$out_ev_legacy"
+else
+  echo "SKIP: $everything_dir/dist/index.js not built (set MCP_EVERYTHING_DIR or MCP_ALLOW_NPX=1)"
+fi
+
+echo "==> [4/4] @modelcontextprotocol/inspector --cli <-> Coax stdio server"
+inspector_cli="${MCP_INSPECTOR_CLI:-$HOME/work/projects/repos/mcp/inspector/cli/build/cli.js}"
+inspector_cmd=()
+if [[ -f "$inspector_cli" ]]; then
+  inspector_cmd=(node "$inspector_cli")
+elif command -v npx >/dev/null 2>&1 && [[ "${MCP_ALLOW_NPX:-0}" == "1" ]]; then
+  inspector_cmd=(npx -y @modelcontextprotocol/inspector)
+fi
+if [[ ${#inspector_cmd[@]} -gt 0 ]]; then
+  "${inspector_cmd[@]}" --cli "$srv_bin" --method tools/list | grep -q '"echo"'
+  "${inspector_cmd[@]}" --cli "$srv_bin" --method tools/call --tool-name add --tool-arg a=7 --tool-arg b=8 | grep -q '15'
+  "${inspector_cmd[@]}" --cli "$srv_bin" --method resources/list | grep -q 'memo://hello'
+  "${inspector_cmd[@]}" --cli "$srv_bin" --method prompts/list | grep -q '"greet"'
+  echo "INSPECTOR_CLI ok=true"
+else
+  echo "SKIP: $inspector_cli not built (set MCP_INSPECTOR_CLI or MCP_ALLOW_NPX=1)"
+fi
+
+echo "ALL PHASE 2 STDIO INTEROP CHECKS PASSED"

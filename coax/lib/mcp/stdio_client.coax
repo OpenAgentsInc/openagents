@@ -1,0 +1,349 @@
+// Child-process stdio MCP Client transport (2025-11-25 + 2026-07-28).
+// Spawns an MCP server process over coax/lib/sys/proc.coax, runs the dual-era
+// handshake (server/discover -> initialize fallback + notifications/initialized),
+// preserves owned handshake strings across line-buffer reuse, supports
+// notifications/cancelled over stdio, and shuts down cleanly (close stdin ->
+// wait -> SIGTERM -> SIGKILL).
+#load "client_core.coax";
+#load "stdio_frame.coax";
+#load "../sys/proc.coax";
+
+MCP_CLI_STDIO_OK :: 0;
+MCP_CLI_STDIO_EOF :: -1;
+MCP_CLI_STDIO_TIMEOUT :: -2;
+MCP_CLI_STDIO_TOO_LONG :: -3;
+MCP_CLI_STDIO_IO_ERR :: -4;
+MCP_CLI_STDIO_PROTO_ERR :: -5;
+MCP_CLI_STDIO_NOT_READY :: -6;
+
+MCP_CLI_STDIO_DEFAULT_TIMEOUT :: 30000;
+MCP_CLI_STDIO_HANDSHAKE_MAX_SKIP :: 64;
+
+McpStdioClient :: struct {
+  proc: int = -1;
+  connected: bool;
+  timeout_ms: int = MCP_CLI_STDIO_DEFAULT_TIMEOUT;
+  core: [1] McpClientCore;
+  // Owned copies of negotiated handshake strings so reusing caller's line_buf
+  // never invalidates core[0].protocol_version or core[0].server_info slices.
+  proto_len: int;
+  proto_buf: [64] u8;
+  srv_name_len: int;
+  srv_name_buf: [128] u8;
+  srv_ver_len: int;
+  srv_ver_buf: [64] u8;
+}
+
+mcp_stdio_client_strip_cr :: (s: string) -> string { return mcp_stdio_strip_cr(s); }
+mcp_stdio_client_is_blank :: (s: string) -> bool { return mcp_stdio_is_blank(s); }
+mcp_stdio_client_frame :: (msg: string, out: [] u8) -> int { return mcp_stdio_frame_line(msg, out); }
+
+mcp_stdio_client_copy_bounded :: (src: string, dst: [] u8) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+// Copies protocol_version and server_info into McpStdioClient's owned buffers
+// so subsequent line reads into the caller's line_buf never alias or corrupt them.
+mcp_stdio_client_stabilize_handshake :: (c: [] McpStdioClient) {
+  c[0].proto_len = mcp_stdio_client_copy_bounded(c[0].core[0].protocol_version, c[0].proto_buf[..]);
+  c[0].srv_name_len = mcp_stdio_client_copy_bounded(c[0].core[0].server_info.name, c[0].srv_name_buf[..]);
+  c[0].srv_ver_len = mcp_stdio_client_copy_bounded(c[0].core[0].server_info.version, c[0].srv_ver_buf[..]);
+  c[0].core[0].protocol_version = cast(string) c[0].proto_buf[0..<c[0].proto_len];
+  c[0].core[0].server_info.name = cast(string) c[0].srv_name_buf[0..<c[0].srv_name_len];
+  c[0].core[0].server_info.version = cast(string) c[0].srv_ver_buf[0..<c[0].srv_ver_len];
+}
+
+// Initializes an McpStdioClient before spawning a server child process.
+mcp_stdio_client_init :: (c: [] McpStdioClient, info: McpImplInfo, caps: McpClientCaps, timeout_ms: int) {
+  c[0] = McpStdioClient.{};
+  c[0].proc = -1;
+  c[0].timeout_ms = ifx timeout_ms > 0 then timeout_ms else MCP_CLI_STDIO_DEFAULT_TIMEOUT;
+  mcp_client_init(c[0].core[..], info, caps);
+}
+
+// Spawns an MCP stdio server child process (argv[0] is program path or PATH name).
+// env entries are "NAME=VALUE"; pass empty slice for none. Pass "" for cwd to inherit.
+// Returns 0 on success, or proc_start's errno / PROC_ERROR on failure.
+mcp_stdio_client_spawn :: (c: [] McpStdioClient, argv: [] const string, env: [] const string, cwd: string) -> int {
+  if argv.count <= 0 { return PROC_ERROR; }
+  h := proc_new();
+  if h < 0 { return PROC_ERROR; }
+  ok := true;
+  for a: argv { ok = ok && proc_arg(h, a); }
+  for e: env { ok = ok && proc_env(h, e); }
+  if cwd.count > 0 { ok = ok && proc_cwd(h, cwd); }
+  ok = ok && proc_gentle(h);
+  if !ok {
+    _ = proc_release(h);
+    return PROC_ERROR;
+  }
+  st := proc_start(h);
+  if st != 0 {
+    _ = proc_release(h);
+    return st;
+  }
+  c[0].proc = h;
+  c[0].connected = true;
+  return 0;
+}
+
+// Sends one JSON-RPC message (framed with '\n') to the child server's stdin.
+mcp_stdio_client_send_raw :: (c: [] McpStdioClient, msg: string, scratch: [] u8) -> bool {
+  if !c[0].connected || c[0].proc < 0 { return false; }
+  n := mcp_stdio_client_frame(msg, scratch);
+  if n <= 0 { return false; }
+  return proc_send(c[0].proc, cast(string) scratch[0..<n]);
+}
+
+// Reads the next non-blank line from the child server's stdout, within timeout_ms.
+// Returns line length >= 0, or MCP_CLI_STDIO_EOF / TIMEOUT / TOO_LONG / IO_ERR.
+mcp_stdio_client_recv_line :: (c: [] McpStdioClient, timeout_ms: int, line_buf: [] u8) -> int {
+  if !c[0].connected || c[0].proc < 0 { return MCP_CLI_STDIO_EOF; }
+  deadline := proc_deadline(timeout_ms, proc_now_ms());
+  while true {
+    left := proc_left(deadline, proc_now_ms());
+    n := proc_line(c[0].proc, left, line_buf);
+    if n == PROC_EOF { c[0].connected = false; return MCP_CLI_STDIO_EOF; }
+    if n == PROC_TIMEOUT { return MCP_CLI_STDIO_TIMEOUT; }
+    if n == PROC_TOO_LONG { return MCP_CLI_STDIO_TOO_LONG; }
+    if n < 0 { c[0].connected = false; return MCP_CLI_STDIO_IO_ERR; }
+    s := mcp_stdio_client_strip_cr(cast(string) line_buf[0..<n]);
+    if mcp_stdio_client_is_blank(s) { continue; }
+    return s.count;
+  }
+  return MCP_CLI_STDIO_EOF;
+}
+
+// Reads one JSON-RPC message from the child server and dispatches it through McpClientCore.
+mcp_stdio_client_recv_event :: (
+  c: [] McpStdioClient,
+  timeout_ms: int,
+  line_buf: [] u8,
+  nodes: [] JvNode,
+  doc: [] Jv,
+  ev_out: [] McpClientEvent
+) -> int {
+  ev_out[0] = McpClientEvent.{ kind = MCP_CLI_EV_NONE };
+  ln := mcp_stdio_client_recv_line(c, timeout_ms, line_buf);
+  if ln < 0 { return ln; }
+  line := cast(string) line_buf[0..<ln];
+  if !jv_parse(doc, line, nodes) {
+    ev_out[0].kind = MCP_CLI_EV_PROTOCOL_ERR;
+    return MCP_CLI_STDIO_OK;
+  }
+  ev := mcp_client_on_message(c[0].core[..], doc[0]);
+  if ev.kind == MCP_CLI_EV_READY || ev.kind == MCP_CLI_EV_SEND_INIT_ACK {
+    mcp_stdio_client_stabilize_handshake(c);
+  }
+  ev_out[0] = ev;
+  return MCP_CLI_STDIO_OK;
+}
+
+// Runs the MCP stdio handshake:
+//   - If prefer_2026: probes `server/discover` first; if the server responds with
+//     DiscoverResult, client enters READY in 2026-07-28 mode. If the server responds
+//     with a JSON-RPC error (e.g. -32601 Method not found or -32600 Server not
+//     initialized), transparently falls back to 2025-11-25 `initialize` +
+//     `notifications/initialized`.
+//   - If !prefer_2026: starts directly with 2025-11-25 `initialize` +
+//     `notifications/initialized`.
+mcp_stdio_client_connect :: (
+  c: [] McpStdioClient,
+  prefer_2026: bool,
+  wire_buf: [] u8,
+  scratch: [] u8,
+  line_buf: [] u8,
+  nodes: [] JvNode,
+  doc: [] Jv
+) -> int {
+  if !c[0].connected || c[0].proc < 0 { return MCP_CLI_STDIO_EOF; }
+  deadline := proc_deadline(c[0].timeout_ms, proc_now_ms());
+  ev: [1] McpClientEvent;
+
+  if prefer_2026 {
+    n := mcp_client_start_discover(c[0].core[..], wire_buf);
+    if n <= 0 || !mcp_stdio_client_send_raw(c, cast(string) wire_buf[0..<n], scratch) {
+      return MCP_CLI_STDIO_IO_ERR;
+    }
+    fell_back := false;
+    skips := 0;
+    while skips < MCP_CLI_STDIO_HANDSHAKE_MAX_SKIP {
+      rc := mcp_stdio_client_recv_event(c, proc_left(deadline, proc_now_ms()), line_buf, nodes, doc, ev[..]);
+      if rc < 0 { return rc; }
+      if ev[0].kind == MCP_CLI_EV_NOTIFICATION { skips += 1; continue; }
+      if ev[0].kind == MCP_CLI_EV_READY { return MCP_CLI_STDIO_OK; }
+      if ev[0].kind == MCP_CLI_EV_FALLBACK_INIT { fell_back = true; break; }
+      return MCP_CLI_STDIO_PROTO_ERR;
+    }
+    if !fell_back { return MCP_CLI_STDIO_PROTO_ERR; }
+  }
+
+  // 2025-11-25 initialize -> InitializeResult -> notifications/initialized
+  n := mcp_client_start_initialize(c[0].core[..], wire_buf);
+  if n <= 0 || !mcp_stdio_client_send_raw(c, cast(string) wire_buf[0..<n], scratch) {
+    return MCP_CLI_STDIO_IO_ERR;
+  }
+  skips := 0;
+  while skips < MCP_CLI_STDIO_HANDSHAKE_MAX_SKIP {
+    rc := mcp_stdio_client_recv_event(c, proc_left(deadline, proc_now_ms()), line_buf, nodes, doc, ev[..]);
+    if rc < 0 { return rc; }
+    if ev[0].kind == MCP_CLI_EV_NOTIFICATION { skips += 1; continue; }
+    if ev[0].kind == MCP_CLI_EV_SEND_INIT_ACK {
+      an := mcp_client_write_initialized(wire_buf);
+      if an <= 0 || !mcp_stdio_client_send_raw(c, cast(string) wire_buf[0..<an], scratch) {
+        return MCP_CLI_STDIO_IO_ERR;
+      }
+      return MCP_CLI_STDIO_OK;
+    }
+    return MCP_CLI_STDIO_PROTO_ERR;
+  }
+  return MCP_CLI_STDIO_PROTO_ERR;
+}
+
+// Waits until a response matching req_id arrives, skipping notifications.
+// Returns MCP_CLI_STDIO_OK with ev_out[0] populated (RESPONSE_OK, INPUT_REQUIRED,
+// RESPONSE_ERR, or SERVER_REQ), or a negative transport error.
+mcp_stdio_client_wait_response :: (
+  c: [] McpStdioClient,
+  req_id: int,
+  timeout_ms: int,
+  line_buf: [] u8,
+  nodes: [] JvNode,
+  doc: [] Jv,
+  ev_out: [] McpClientEvent
+) -> int {
+  deadline := proc_deadline(timeout_ms, proc_now_ms());
+  while true {
+    rc := mcp_stdio_client_recv_event(c, proc_left(deadline, proc_now_ms()), line_buf, nodes, doc, ev_out);
+    if rc < 0 { return rc; }
+    k := ev_out[0].kind;
+    if k == MCP_CLI_EV_NOTIFICATION { continue; }
+    if k == MCP_CLI_EV_SERVER_REQ { return MCP_CLI_STDIO_OK; }
+    if k == MCP_CLI_EV_PROTOCOL_ERR { return MCP_CLI_STDIO_PROTO_ERR; }
+    if (k == MCP_CLI_EV_RESPONSE_OK || k == MCP_CLI_EV_INPUT_REQUIRED || k == MCP_CLI_EV_RESPONSE_ERR) && ev_out[0].req_id == req_id {
+      return MCP_CLI_STDIO_OK;
+    }
+  }
+  return MCP_CLI_STDIO_EOF;
+}
+
+// ---- High-level request helpers -----------------------------------------------------
+
+mcp_stdio_client_send_simple :: (
+  c: [] McpStdioClient,
+  method: string,
+  cursor: string,
+  id_out: [] int,
+  wire_buf: [] u8,
+  scratch: [] u8
+) -> int {
+  if c[0].core[0].state != MCP_CLI_READY { return MCP_CLI_STDIO_NOT_READY; }
+  n := mcp_client_write_simple_req(c[0].core[..], method, cursor, id_out, wire_buf);
+  if n <= 0 { return MCP_CLI_STDIO_IO_ERR; }
+  if !mcp_stdio_client_send_raw(c, cast(string) wire_buf[0..<n], scratch) { return MCP_CLI_STDIO_IO_ERR; }
+  return MCP_CLI_STDIO_OK;
+}
+
+mcp_stdio_client_send_tools_call :: (
+  c: [] McpStdioClient,
+  name: string,
+  args_json: string,
+  progress_tok: string,
+  req_state: string,
+  input_resps_json: string,
+  id_out: [] int,
+  wire_buf: [] u8,
+  scratch: [] u8
+) -> int {
+  if c[0].core[0].state != MCP_CLI_READY { return MCP_CLI_STDIO_NOT_READY; }
+  n := mcp_client_write_tools_call(c[0].core[..], name, args_json, progress_tok, req_state, input_resps_json, id_out, wire_buf);
+  if n <= 0 { return MCP_CLI_STDIO_IO_ERR; }
+  if !mcp_stdio_client_send_raw(c, cast(string) wire_buf[0..<n], scratch) { return MCP_CLI_STDIO_IO_ERR; }
+  return MCP_CLI_STDIO_OK;
+}
+
+mcp_stdio_client_send_resources_read :: (
+  c: [] McpStdioClient,
+  uri: string,
+  req_state: string,
+  input_resps_json: string,
+  id_out: [] int,
+  wire_buf: [] u8,
+  scratch: [] u8
+) -> int {
+  if c[0].core[0].state != MCP_CLI_READY { return MCP_CLI_STDIO_NOT_READY; }
+  n := mcp_client_write_resources_read(c[0].core[..], uri, req_state, input_resps_json, id_out, wire_buf);
+  if n <= 0 { return MCP_CLI_STDIO_IO_ERR; }
+  if !mcp_stdio_client_send_raw(c, cast(string) wire_buf[0..<n], scratch) { return MCP_CLI_STDIO_IO_ERR; }
+  return MCP_CLI_STDIO_OK;
+}
+
+mcp_stdio_client_send_prompts_get :: (
+  c: [] McpStdioClient,
+  name: string,
+  args_json: string,
+  req_state: string,
+  input_resps_json: string,
+  id_out: [] int,
+  wire_buf: [] u8,
+  scratch: [] u8
+) -> int {
+  if c[0].core[0].state != MCP_CLI_READY { return MCP_CLI_STDIO_NOT_READY; }
+  n := mcp_client_write_prompts_get(c[0].core[..], name, args_json, req_state, input_resps_json, id_out, wire_buf);
+  if n <= 0 { return MCP_CLI_STDIO_IO_ERR; }
+  if !mcp_stdio_client_send_raw(c, cast(string) wire_buf[0..<n], scratch) { return MCP_CLI_STDIO_IO_ERR; }
+  return MCP_CLI_STDIO_OK;
+}
+
+mcp_stdio_client_send_ping :: (
+  c: [] McpStdioClient,
+  id_out: [] int,
+  wire_buf: [] u8,
+  scratch: [] u8
+) -> int {
+  if c[0].core[0].state != MCP_CLI_READY { return MCP_CLI_STDIO_NOT_READY; }
+  n := mcp_client_write_ping(c[0].core[..], id_out, wire_buf);
+  if n <= 0 { return MCP_CLI_STDIO_IO_ERR; }
+  if !mcp_stdio_client_send_raw(c, cast(string) wire_buf[0..<n], scratch) { return MCP_CLI_STDIO_IO_ERR; }
+  return MCP_CLI_STDIO_OK;
+}
+
+// Sends notifications/cancelled over stdio for an in-flight request id.
+mcp_stdio_client_cancel :: (
+  c: [] McpStdioClient,
+  req_id: int,
+  reason: string,
+  wire_buf: [] u8,
+  scratch: [] u8
+) -> int {
+  n := mcp_client_cancel(c[0].core[..], req_id, reason, wire_buf);
+  if n <= 0 { return MCP_CLI_STDIO_IO_ERR; }
+  if !mcp_stdio_client_send_raw(c, cast(string) wire_buf[0..<n], scratch) { return MCP_CLI_STDIO_IO_ERR; }
+  return MCP_CLI_STDIO_OK;
+}
+
+// Returns the child's recent stderr bytes for diagnostics.
+mcp_stdio_client_stderr :: (c: [] McpStdioClient, out: [] u8) -> string {
+  if c[0].proc < 0 { return ""; }
+  return proc_stderr(c[0].proc, out);
+}
+
+// Graceful MCP stdio shutdown: close child's stdin -> wait up to wait_ms ->
+// SIGTERM -> wait 500ms -> proc_release (SIGKILL + reap).
+mcp_stdio_client_close :: (c: [] McpStdioClient, wait_ms: int) -> int {
+  if c[0].proc < 0 { return 0; }
+  h := c[0].proc;
+  c[0].proc = -1;
+  c[0].connected = false;
+  _ = proc_close_stdin(h);
+  grace := ifx wait_ms > 0 then wait_ms else 1500;
+  st := proc_wait(h, grace);
+  if st == PROC_RUNNING {
+    _ = proc_kill(h, PROC_SIGTERM);
+    st = proc_wait(h, 500);
+  }
+  _ = proc_release(h);
+  return st;
+}

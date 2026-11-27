@@ -1,0 +1,261 @@
+// Newline-delimited stdio MCP Server transport (2025-11-25 + 2026-07-28).
+// Reads JSON-RPC messages from stdin and writes JSON-RPC responses strictly to
+// stdout; all diagnostic logs go strictly to stderr (never stdout).
+// Built on pure #authority server_core.coax + coax/platform/tool-native.c.
+#load "server_core.coax";
+#load "stdio_frame.coax";
+#load "../sys/tool.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+MCP_STDIO_DEFAULT_BUF :: 1048576; // 1 MiB default caller buffer guide (up to 16 MiB)
+
+// Transport status codes
+MCP_STDIO_OK :: 0;
+MCP_STDIO_EOF :: -1;
+MCP_STDIO_TIMEOUT :: -2;
+MCP_STDIO_TOO_LONG :: -3;
+MCP_STDIO_IO_ERR :: -4;
+
+// Server step outcomes
+MCP_STDIO_STEP_HANDLED :: 1;  // Blank line, notification, error, or built-in RPC handled
+MCP_STDIO_STEP_DISPATCH :: 2; // Host must execute dp_out[0] and reply on stdout
+
+// Logs a diagnostic message strictly to stderr (never pollutes MCP stdout).
+mcp_stdio_log :: (msg: string) {
+  tool_err("[mcp] ");
+  tool_errln(msg);
+}
+
+// Writes one JSON-RPC message followed by '\n' atomically to stdout.
+mcp_stdio_write_msg :: (msg: string, scratch: [] u8) -> bool {
+  n := mcp_stdio_frame_line(msg, scratch);
+  if n <= 0 { return false; }
+  return cxterm_write(scratch[0..<n]) == 0;
+}
+
+// Reads one newline-delimited line from stdin into line_buf (excluding '\n' and trailing '\r').
+// Returns byte length >= 0, MCP_STDIO_EOF, MCP_STDIO_TIMEOUT, or MCP_STDIO_TOO_LONG.
+// On MCP_STDIO_TOO_LONG, drains stdin through the terminating '\n' (or EOF) so the next read starts aligned.
+mcp_stdio_read_line :: (line_buf: [] u8, timeout_ms: int) -> int {
+  n := 0;
+  too_long := false;
+  eintr_retries := 0;
+  while true {
+    b := cxterm_byte(timeout_ms);
+    if b == -2 {
+      if too_long { return MCP_STDIO_TOO_LONG; }
+      if n > 0 {
+        s := mcp_stdio_strip_cr(cast(string) line_buf[0..<n]);
+        return s.count;
+      }
+      return MCP_STDIO_EOF;
+    }
+    if b == -1 {
+      if timeout_ms >= 0 {
+        if n == 0 && !too_long { return MCP_STDIO_TIMEOUT; }
+        return MCP_STDIO_TIMEOUT;
+      }
+      // Blocking mode: EINTR returned -1; retry boundedly to avoid busy spin on broken fds.
+      eintr_retries += 1;
+      if eintr_retries > 1024 { return MCP_STDIO_EOF; }
+      continue;
+    }
+    eintr_retries = 0;
+    if b == '\n' {
+      if too_long { return MCP_STDIO_TOO_LONG; }
+      s := mcp_stdio_strip_cr(cast(string) line_buf[0..<n]);
+      return s.count;
+    }
+    if !too_long {
+      if n < line_buf.count {
+        line_buf[n] = cast,trunc(u8) b;
+        n += 1;
+      } else {
+        too_long = true;
+      }
+    }
+  }
+  return MCP_STDIO_EOF;
+}
+
+// Processes a single stdin line through McpServerCore.
+// Returns:
+//   MCP_STDIO_STEP_HANDLED  — blank line, notification, protocol error, or built-in RPC completed
+//   MCP_STDIO_STEP_DISPATCH — host action required (inspect dp_out[0] and doc[0], then send reply)
+//   MCP_STDIO_EOF / MCP_STDIO_TIMEOUT / MCP_STDIO_IO_ERR
+mcp_stdio_server_step :: (
+  srv: [] McpServerCore,
+  line_buf: [] u8,
+  nodes: [] JvNode,
+  doc: [] Jv,
+  out_buf: [] u8,
+  scratch: [] u8,
+  timeout_ms: int,
+  dp_out: [] McpDispatch
+) -> int {
+  dp_out[0] = McpDispatch.{};
+  ln := mcp_stdio_read_line(line_buf, timeout_ms);
+  if ln == MCP_STDIO_EOF { return MCP_STDIO_EOF; }
+  if ln == MCP_STDIO_TIMEOUT { return MCP_STDIO_TIMEOUT; }
+  if ln == MCP_STDIO_TOO_LONG {
+    en := mcp_stdio_write_null_error(MCP_ERR_INVALID_REQUEST, "Request exceeds maximum line size", out_buf);
+    if en > 0 && !mcp_stdio_write_msg(cast(string) out_buf[0..<en], scratch) { return MCP_STDIO_IO_ERR; }
+    return MCP_STDIO_STEP_HANDLED;
+  }
+
+  line := cast(string) line_buf[0..<ln];
+  if mcp_stdio_is_blank(line) { return MCP_STDIO_STEP_HANDLED; }
+
+  if !jv_parse(doc, line, nodes) {
+    en := mcp_stdio_write_null_error(MCP_ERR_PARSE, "Parse error", out_buf);
+    if en > 0 && !mcp_stdio_write_msg(cast(string) out_buf[0..<en], scratch) { return MCP_STDIO_IO_ERR; }
+    return MCP_STDIO_STEP_HANDLED;
+  }
+
+  dp := mcp_server_dispatch(srv, doc[0], out_buf);
+  dp_out[0] = dp;
+
+  if dp.action == MCP_DISP_NO_RESPONSE { return MCP_STDIO_STEP_HANDLED; }
+  if dp.action == MCP_DISP_DONE || dp.action == MCP_DISP_SUB_LISTEN {
+    if dp.written > 0 {
+      if !mcp_stdio_write_msg(cast(string) out_buf[0..<dp.written], scratch) { return MCP_STDIO_IO_ERR; }
+    }
+    return MCP_STDIO_STEP_HANDLED;
+  }
+  return MCP_STDIO_STEP_DISPATCH;
+}
+
+// ---- Host reply convenience helpers -------------------------------------------------
+
+mcp_stdio_reply_error :: (d: Jv, code: int, message: string, out_buf: [] u8, scratch: [] u8) -> bool {
+  req := jrpc_classify(d);
+  o: [1] Jo;
+  jo_start(o[..], out_buf);
+  jrpc_write_error(o[..], d, req, code, message);
+  if o[0].bad { return false; }
+  return mcp_stdio_write_msg(jo_text(o[..]), scratch);
+}
+
+mcp_stdio_reply_tool_result :: (
+  d: Jv,
+  dp: McpDispatch,
+  contents: [] McpContent,
+  is_error: bool,
+  structured_json: string,
+  out_buf: [] u8,
+  scratch: [] u8
+) -> bool {
+  req := jrpc_classify(d);
+  o: [1] Jo;
+  jo_start(o[..], out_buf);
+  jrpc_write_result_head(o[..], d, req);
+  mcp_write_call_tool_result(o[..], dp.modern, contents, is_error, structured_json);
+  jo_end(o[..]);
+  if o[0].bad { return false; }
+  return mcp_stdio_write_msg(jo_text(o[..]), scratch);
+}
+
+mcp_stdio_reply_tool_text :: (
+  d: Jv,
+  dp: McpDispatch,
+  text: string,
+  is_error: bool,
+  out_buf: [] u8,
+  scratch: [] u8
+) -> bool {
+  blocks := [1] McpContent.[McpContent.{ kind = MCP_CONTENT_TEXT, text = text }];
+  return mcp_stdio_reply_tool_result(d, dp, blocks[..], is_error, "", out_buf, scratch);
+}
+
+mcp_stdio_reply_resources :: (
+  d: Jv,
+  dp: McpDispatch,
+  contents: [] McpResourceContents,
+  cache: McpCacheHint,
+  out_buf: [] u8,
+  scratch: [] u8
+) -> bool {
+  req := jrpc_classify(d);
+  o: [1] Jo;
+  jo_start(o[..], out_buf);
+  jrpc_write_result_head(o[..], d, req);
+  mcp_write_read_resource_result(o[..], dp.modern, contents, cache);
+  jo_end(o[..]);
+  if o[0].bad { return false; }
+  return mcp_stdio_write_msg(jo_text(o[..]), scratch);
+}
+
+mcp_stdio_reply_prompt :: (
+  d: Jv,
+  dp: McpDispatch,
+  description: string,
+  msgs: [] McpPromptMessage,
+  out_buf: [] u8,
+  scratch: [] u8
+) -> bool {
+  req := jrpc_classify(d);
+  o: [1] Jo;
+  jo_start(o[..], out_buf);
+  jrpc_write_result_head(o[..], d, req);
+  mcp_write_get_prompt_result(o[..], dp.modern, description, msgs);
+  jo_end(o[..]);
+  if o[0].bad { return false; }
+  return mcp_stdio_write_msg(jo_text(o[..]), scratch);
+}
+
+mcp_stdio_reply_complete :: (
+  d: Jv,
+  dp: McpDispatch,
+  values: [] string,
+  has_total: bool,
+  total: int,
+  has_more: bool,
+  out_buf: [] u8,
+  scratch: [] u8
+) -> bool {
+  req := jrpc_classify(d);
+  o: [1] Jo;
+  jo_start(o[..], out_buf);
+  jrpc_write_result_head(o[..], d, req);
+  mcp_write_complete_result(o[..], dp.modern, values, has_total, total, has_more);
+  jo_end(o[..]);
+  if o[0].bad { return false; }
+  return mcp_stdio_write_msg(jo_text(o[..]), scratch);
+}
+
+// Emits a server->client progress notification on stdout.
+mcp_stdio_send_progress :: (
+  ptok_kind: int,
+  ptok_int: int,
+  ptok_str: string,
+  progress_raw: string,
+  total_raw: string,
+  message: string,
+  out_buf: [] u8,
+  scratch: [] u8
+) -> bool {
+  o: [1] Jo;
+  jo_start(o[..], out_buf);
+  mcp_write_progress_notification(o[..], ptok_kind, ptok_int, ptok_str, progress_raw, total_raw, message);
+  if o[0].bad { return false; }
+  return mcp_stdio_write_msg(jo_text(o[..]), scratch);
+}
+
+// Emits a server->client logging notification on stdout (if level is allowed by srv.log_level).
+mcp_stdio_send_log :: (
+  srv: McpServerCore,
+  level: int,
+  logger: string,
+  data_json: string,
+  out_buf: [] u8,
+  scratch: [] u8
+) -> bool {
+  if !mcp_log_level_allows(srv.log_level, level) { return true; }
+  o: [1] Jo;
+  jo_start(o[..], out_buf);
+  mcp_write_log_notification(o[..], level, logger, data_json);
+  if o[0].bad { return false; }
+  return mcp_stdio_write_msg(jo_text(o[..]), scratch);
+}

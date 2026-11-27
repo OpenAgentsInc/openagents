@@ -1,0 +1,77 @@
+// Pure #authority newline-delimited JSON-RPC framing for MCP stdio transports.
+// Shared by stdio_server.coax and stdio_client.coax.
+#authority;
+#load "jsonrpc.coax";
+
+#test "stdio_frame pure framing: CR stripping, blank detection, newline rejection, null-id errors" {
+  #assert mcp_stdio_strip_cr("") == "";
+  #assert mcp_stdio_strip_cr("abc") == "abc";
+  #assert mcp_stdio_strip_cr("abc\r") == "abc";
+  #assert mcp_stdio_strip_cr("\r") == "";
+
+  #assert mcp_stdio_is_blank("");
+  #assert mcp_stdio_is_blank("   \t\r ");
+  #assert !mcp_stdio_is_blank("  {}  ");
+
+  out: [128] u8;
+  tiny: [4] u8;
+  // Normal frame appends exactly one LF.
+  n := mcp_stdio_frame_line("{\"jsonrpc\":\"2.0\"}", out[..]);
+  #assert n == 18 && cast(string) out[0..<n] == "{\"jsonrpc\":\"2.0\"}\n";
+  // Empty message, embedded LF, embedded CR, or insufficient buffer are refused.
+  #assert mcp_stdio_frame_line("", out[..]) == -1;
+  #assert mcp_stdio_frame_line("x", tiny[..]) == 2 && cast(string) tiny[0..<2] == "x\n";
+  #assert mcp_stdio_frame_line("a\nb", out[..]) == -1;
+  #assert mcp_stdio_frame_line("a\rb", out[..]) == -1;
+  #assert mcp_stdio_frame_line("1234", tiny[..]) == -1; // needs 5 bytes with '\n'
+  #assert mcp_stdio_frame_line("123", tiny[..]) == 4 && cast(string) tiny[0..<4] == "123\n";
+
+  // Null-id JSON-RPC errors (parse error / request too long) are valid JSON with no newlines.
+  en := mcp_stdio_write_null_error(MCP_ERR_PARSE, "Parse error", out[..]);
+  #assert en > 0 && cast(string) out[0..<en] == "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}";
+  #assert mcp_stdio_write_null_error(MCP_ERR_INVALID_REQUEST, "too long", tiny[..]) == -1;
+}
+
+// Strips a single trailing '\r' (for CRLF stdio pipes).
+mcp_stdio_strip_cr :: (s: string) -> string #effects(reads, traps) {
+  if s.count > 0 && s[s.count - 1] == '\r' { return s[0..<s.count - 1]; }
+  return s;
+}
+
+// True when line contains only ASCII horizontal whitespace / CR.
+mcp_stdio_is_blank :: (s: string) -> bool #effects(reads) {
+  for c: s {
+    if c != ' ' && c != '\t' && c != '\r' { return false; }
+  }
+  return true;
+}
+
+// Frames a single JSON-RPC message as "<msg>\n" into out.
+// Refuses empty messages, embedded '\n' or '\r', or insufficient capacity.
+mcp_stdio_frame_line :: (msg: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  if msg.count <= 0 || msg.count + 1 > out.count { return -1; }
+  for i: 0..<msg.count {
+    c := msg[i];
+    if c == '\n' || c == '\r' { return -1; }
+    out[i] = c;
+  }
+  out[msg.count] = '\n';
+  return msg.count + 1;
+}
+
+// Writes a JSON-RPC 2.0 error object with id:null into out.
+mcp_stdio_write_null_error :: (code: int, message: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0");
+  jo_key(o[..], "id"); jo_null(o[..]);
+  jo_key(o[..], "error");
+  jo_obj(o[..]);
+  jo_key(o[..], "code"); jo_int(o[..], code);
+  jo_key(o[..], "message"); jo_str(o[..], message);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}

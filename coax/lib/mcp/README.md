@@ -26,6 +26,15 @@ Pure `#authority` Sans-I/O MCP protocol library supporting both **`2025-11-25`**
 | `client_core.coax` | Sans-I/O dual-era `McpClientCore` state machine (`server/discover` → `initialize` fallback, `_meta` injection, SEP-2243 `x-mcp-header` tool filtering, MRTR continuation, pending-ID tracking) |
 | `memory_transport.coax` | Bounded FIFO in-memory bidirectional message pipe + full end-to-end `McpClientCore` ↔ `McpServerCore` integration tests across `2026-07-28` and `2025-11-25` |
 
+## Phase 2 Modules — Stdio & Child-Process Transports (`#effects(...)`)
+
+| File | Responsibility |
+| --- | --- |
+| `stdio_server.coax` | Newline-delimited stdin/stdout MCP server transport (strict LF framing, embedded CR/LF rejection, oversized-line drain + `-32600`, parse-error `-32700`, `stderr`-only `mcp_stdio_log`, host reply & progress/log helpers) |
+| `stdio_client.coax` | Child-process MCP stdio client over `coax/lib/sys/proc.coax` (owned handshake string stabilization, `server/discover` → `initialize` backward-compat probe, `notifications/cancelled`, graceful stdin-close → `SIGTERM` → `SIGKILL` shutdown) |
+
+Phase 2 interop harnesses live in [`tools/mcp-conformance/`](../../tools/mcp-conformance/) (`stdio-server.coax`, `stdio-client.coax`, `run.sh`).
+
 ## Verification
 
 Run unit/property tests and mutation checks on every module:
