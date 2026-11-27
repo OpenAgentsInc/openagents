@@ -47,6 +47,7 @@ gcloud run deploy "$service" \
   --project "$project" --region "$region" --image "$tag" \
   --service-account "oa-boat@$project.iam.gserviceaccount.com" \
   --network default --subnet default --vpc-egress private-ranges-only \
+  --no-cpu-throttling \
   --allow-unauthenticated --port 8080 --cpu 1 --memory 512Mi \
   --min-instances 0 --max-instances 1 --timeout 600 \
   --set-secrets "OA_BOAT_API_KEY=oa-boat-api-key:latest,/var/run/oa-boat/ssh_key=oa-boat-ssh-key:latest" \

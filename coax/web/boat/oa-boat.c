@@ -320,7 +320,8 @@ static bool gce_create_vm(const box_rec *b) {
   if (g_ssh_pubkey[0]) {
     snprintf(meta, sizeof meta,
              ",\"metadata\":{\"items\":[{\"key\":\"enable-oslogin\",\"value\":\"FALSE\"},"
-             "{\"key\":\"ssh-keys\",\"value\":\"user:%s\"}]}",
+             "{\"key\":\"block-project-ssh-keys\",\"value\":\"TRUE\"},"
+             "{\"key\":\"ssh-keys\",\"value\":\"user:%s user\"}]}",
              g_ssh_pubkey);
   }
   // Debian 12 boot disk (autoDelete), no external IP (empty accessConfigs, Cloud NAT egress),
@@ -531,6 +532,14 @@ static bool gce_init_ssh(void) {
   while (waitpid(child, &st, 0) < 0 && errno == EINTR) {}
   while (pn > 0 && (g_ssh_pubkey[pn - 1] == '\n' || g_ssh_pubkey[pn - 1] == '\r' || g_ssh_pubkey[pn - 1] == ' ')) pn--;
   g_ssh_pubkey[pn] = 0;
+  // Keep strictly "<type> <base64>" (strip any trailing comment so JSON and GCE ssh-keys metadata stay canonical).
+  {
+    char *sp1 = strchr(g_ssh_pubkey, ' ');
+    if (sp1) {
+      char *sp2 = strchr(sp1 + 1, ' ');
+      if (sp2) { *sp2 = 0; pn = (size_t)(sp2 - g_ssh_pubkey); }
+    }
+  }
   if (!WIFEXITED(st) || WEXITSTATUS(st) != 0 || pn < 20) {
     fprintf(stderr, "oa-boat: ssh-keygen -y failed (status=%d pub_len=%zu)\n", WIFEXITED(st) ? WEXITSTATUS(st) : -1, pn);
     return false;
@@ -595,7 +604,7 @@ static void *gce_wait_ready_thread(void *arg) {
     char ob[256] = "", eb[256] = "";
     size_t ol = 0, el = 0;
     bool to = false;
-    int ec = gce_ssh_exec_capture(ip, "mkdir -p /tmp /workspace && echo OA_READY", NULL, 0, ob, sizeof ob, &ol, eb, sizeof eb, &el, 15, &to);
+    int ec = gce_ssh_exec_capture(ip, "(sudo -n mkdir -p /workspace && sudo -n chown user:user /workspace) 2>/dev/null || true; echo OA_READY", NULL, 0, ob, sizeof ob, &ol, eb, sizeof eb, &el, 15, &to);
     if (ec == 0 && strstr(ob, "OA_READY") != NULL) {
       pthread_mutex_lock(&g_mu);
       if (g_boxes[slot].used && strcmp(g_boxes[slot].id, id) == 0 && g_boxes[slot].state == 1) {
@@ -604,8 +613,11 @@ static void *gce_wait_ready_thread(void *arg) {
         iso_of(g_boxes[slot].started_s + g_boxes[slot].ttl_s, g_boxes[slot].archive_iso);
       }
       pthread_mutex_unlock(&g_mu);
-      fprintf(stderr, "oa-boat: sandbox %s SSH ready at %s\n", id, ip);
+      fprintf(stderr, "oa-boat: sandbox %s SSH ready at %s (attempt=%d)\n", id, ip, attempt);
       return NULL;
+    }
+    if (attempt == 0 || attempt == 3 || attempt == 10 || attempt == 20 || attempt == 40) {
+      fprintf(stderr, "oa-boat: sandbox %s ssh wait attempt=%d ec=%d to=%d err=%.160s\n", id, attempt, ec, to ? 1 : 0, eb);
     }
     struct timespec ts = {2, 0};
     nanosleep(&ts, NULL);
