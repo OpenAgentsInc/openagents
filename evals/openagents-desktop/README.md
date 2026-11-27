@@ -27,6 +27,12 @@ Run `coax/build.sh` first in a fresh worktree. Results go to `evals/openagents-d
 | 3 | 10 flows (`tier3/run_ui.py`) on the real built `OpenAgents.app`, driven with real input events on the mock worker; 20 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |
 | 4 | 4 golden trajectories from real desktop bugs and the 25-task coding benchmark slice (`tier4/slice.json`), through the Tier 2 harness, compared with `tier4/baseline/` | free locally on Inkling (`--model <cloud>` opt-in) |
 
+## Delegation comparison
+
+[`delegation/`](delegation/README.md) has seven tasks that compare a chat's sub-agents on its own
+model with sub-agents in Claude Code (`run_tasks.py --tasks-dir ... --sub-agents claude-haiku`),
+and the results of the first runs.
+
 ## Tier 2 and Tier 4 are opt-in
 
 Tier 2 and Tier 4 run real model inference (by default local **Inkling 2 Mini** on the shipped `psionic-inkling-serve --ctx 32768` binary, `$0.00`; cloud models such as `--model gemini-4-neon` are opt-in). They run only with `--tier 2` or `--tier 4`. `--tier all`, the default, never runs them, so CI and fast local checks stay deterministic and quick.

@@ -108,6 +108,18 @@ HOME_LINKS = [
     ".openagents/models",
 ]
 
+# --sub-agents: where a task's sub-agents run. "" leaves the message as written (they run on the
+# chat's own model). A Claude name turns on Settings > Agent > Allow delegating to other local
+# harnesses and adds one sentence to each message, so every sub-agent runs in Claude Code (#14104).
+SUB_AGENT_CHOICES = ["", "claude-haiku", "claude-sonnet", "claude-opus", "claude-fable"]
+SUB_AGENTS = ""
+CLAUDE_KEY_FILE = REAL_HOME / ".openagents/claude-setup-token"
+
+
+def sub_agent_note() -> str:
+    return f" Run every sub-agent in Claude Code: call Agent with subagent_type {SUB_AGENTS}." if SUB_AGENTS else ""
+
+
 AJ_KINDS = ["context", "model_chunk", "model_intent", "model_reply", "model_end", "command_intent",
             "view_intent", "tool_output", "tool_end", "stop", "decision"]
 
@@ -441,6 +453,11 @@ class Sandbox:
             env["OA_AGENT_MODEL"] = model
         elif model:
             env["OA_AGENT_MODEL"] = model
+        if SUB_AGENTS:
+            env["OA_ALLOW_LOCAL_HARNESSES"] = "1"
+            local_bin = REAL_HOME / ".local/bin"   # where the claude command is installed
+            if (local_bin / "claude").exists() and str(local_bin) not in env.get("PATH", "").split(":"):
+                env["PATH"] = f"{local_bin}:{env.get('PATH', '')}"
         (self.root / "tmp").mkdir(exist_ok=True)
         return env
 
@@ -542,6 +559,8 @@ class Driver:
         args = [str(HOST_DRIVER_BIN), "--worker", str(worker)]
         if claude_worker:
             args += ["--claude-worker", str(claude_worker)]
+            if SUB_AGENTS and CLAUDE_KEY_FILE.exists():
+                args += ["--claude-key-file", str(CLAUDE_KEY_FILE)]
         self.log = open(log_path, "w")
         self.p = subprocess.Popen(args, cwd=str(sb.root), env=sb.worker_env(psionic_base_url, model, effort, subagents=subagents, subagent_effort=subagent_effort), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=self.log, text=True, bufsize=1)
@@ -586,6 +605,8 @@ def open_slot(d: Driver, sb: Sandbox, task: dict[str, Any], session: str, claude
         must(d.cmd(f"SKILLS 0 {esc(sb.skills_note)}"), "SKILLS")
     if claude and not is_local_release:
         must(d.cmd("CLAUDE 0 1"), "CLAUDE")
+    if SUB_AGENTS:
+        must(d.cmd("HARNESSES 0 1"), "HARNESSES")
     for g in DEFAULT_GUARDS + [str(sb.outside)] + task.get("guards", []):
         must(d.cmd(f"GUARD 0 {g}"), "GUARD")
 
@@ -676,7 +697,7 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
     timed_out = False
     error = None
     reloads = 0
-    d = Driver(sb, worker, claude_worker if task.get("claude") else None, case_dir / "driver.log",
+    d = Driver(sb, worker, claude_worker if (task.get("claude") or SUB_AGENTS) else None, case_dir / "driver.log",
                psionic_base_url=psionic_base_url, model=eff_model, effort=effort,
                subagents=subagents, subagent_effort=subagent_effort)
     try:
@@ -687,7 +708,7 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
         d.cmd("PUMP 0 3000 1")
         for step in task["steps"]:
             if "send" in step:
-                must(d.cmd(f"SET_TEXT 0 {esc(step['send'])}"), "SET_TEXT")
+                must(d.cmd(f"SET_TEXT 0 {esc(step['send'] + sub_agent_note())}"), "SET_TEXT")
                 must(d.cmd("SUBMIT 0"), "SUBMIT")
                 st, to = pump_until_idle(d, deadline)
                 states.append(st)
@@ -761,6 +782,8 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
         "models": sorted({a.get("model", "") for a in attempts if a.get("model")}) or [eff_model],
         "turns": ctx.count_to_worker("task", main_only=True),
         "agent_tasks": ctx.count_to_worker("task", main_only=False) - ctx.count_to_worker("task", main_only=True),
+        "claude_agents": sum(1 for l in lines if l["dir"] == "spawn" and l.get("agent", -1) >= 0 and "claudeworker" in str(l.get("line", ""))),
+        "sub_agents": SUB_AGENTS or "own-model",
         "tool_calls": ctx.count_from("command"),
         "guard_trips": sum(1 for l in lines if l["dir"] == "guard"),
         "goal_status": GOAL_STATUS.get(final.get("goal_status", 0), final.get("goal_status")),
@@ -1052,6 +1075,7 @@ def main() -> int:
     ap.add_argument("--out", default="", help="run directory (default evals/openagents-desktop/results/tier2-<ts>-<sha>)")
     ap.add_argument("--keep", action="store_true", help="keep each task's temp sandbox")
     ap.add_argument("--claude", action="store_true", help="build claudeworker and let tasks marked claude use it")
+    ap.add_argument("--sub-agents", default="", choices=SUB_AGENT_CHOICES, help="run each task's sub-agents in Claude Code on this model (default: the chat's own model); needs a signed-in claude command")
     ap.add_argument("--list", action="store_true", help="list the tasks and exit")
     ap.add_argument("--manifest", default="", help="run the tasks a manifest names (Tier 4: evals/openagents-desktop/tier4/slice.json)")
     ap.add_argument("--tasks-dir", default="", help="load task JSONs from this directory (e.g. evals/session-history/tasks)")
@@ -1116,7 +1140,9 @@ def main() -> int:
     os.environ["BROWSER"] = "/usr/bin/true"
     build_driver()
     worker = build_worker(args.worker)
-    claude_worker = build_worker("claudeworker") if (args.claude and not is_local) else None
+    global SUB_AGENTS
+    SUB_AGENTS = args.sub_agents
+    claude_worker = build_worker("claudeworker") if ((args.claude or SUB_AGENTS) and not is_local) else None
     if claude_worker:
         build_worker("gitguard")   # the git guard hook claudeworker finds beside it (#13771)
 

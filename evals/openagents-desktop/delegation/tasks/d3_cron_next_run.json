@@ -1,0 +1,51 @@
+{
+  "id": "d3_cron_next_run",
+  "category": "delegation_hard",
+  "fixture": "cron",
+  "description": "One sub-agent writes a cron next-run calculator from its README",
+  "budget_usd_micros": 500000,
+  "timeout_s": 420,
+  "steps": [
+    {
+      "send": "Hand this whole task to one sub-agent and wait for it. Do not do the work yourself. The task: implement next_run in cron.py exactly as README.md describes, so `python3 -m unittest` passes. Do not change the tests. When the sub-agent is done, tell me what it did."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_cron.py"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "hidden tests",
+      "run": "python3 -m unittest -q test_hidden",
+      "add": {
+        "test_hidden.py": "import unittest\nfrom datetime import datetime as D\nfrom cron import next_run\n\n\nclass H(unittest.TestCase):\n    def eq(self, expr, after, want):\n        self.assertEqual(next_run(expr, after), want, expr)\n\n    def test_leap_day(self):\n        self.eq(\"0 0 29 2 *\", D(2026, 3, 1), D(2028, 2, 29))\n\n    def test_day_of_month_or_day_of_week(self):\n        self.eq(\"0 12 13 * 5\", D(2026, 3, 1), D(2026, 3, 6, 12))\n        self.eq(\"0 12 13 * 5\", D(2026, 3, 6, 12), D(2026, 3, 13, 12))\n        self.eq(\"0 12 10 * 5\", D(2026, 3, 6, 12), D(2026, 3, 10, 12))\n\n    def test_only_day_of_week(self):\n        self.eq(\"0 0 * * 1\", D(2026, 3, 1), D(2026, 3, 2))\n\n    def test_sunday_is_0_and_7(self):\n        self.eq(\"0 9 * * 7\", D(2026, 3, 2), D(2026, 3, 8, 9))\n        self.eq(\"0 9 * * 0\", D(2026, 3, 2), D(2026, 3, 8, 9))\n\n    def test_range_with_step(self):\n        self.eq(\"10-30/5 * * * *\", D(2026, 3, 1, 10, 27), D(2026, 3, 1, 10, 30))\n        self.eq(\"10-30/5 * * * *\", D(2026, 3, 1, 10, 30), D(2026, 3, 1, 11, 10))\n\n    def test_number_with_step(self):\n        self.eq(\"5/20 * * * *\", D(2026, 3, 1, 10, 26), D(2026, 3, 1, 10, 45))\n        self.eq(\"5/20 * * * *\", D(2026, 3, 1, 10, 45), D(2026, 3, 1, 11, 5))\n\n    def test_day_31_skips_short_months(self):\n        self.eq(\"0 0 31 * *\", D(2026, 4, 1), D(2026, 5, 31))\n\n    def test_strictly_after(self):\n        self.eq(\"0 10 * * *\", D(2026, 3, 1, 10, 0), D(2026, 3, 2, 10, 0))\n        self.eq(\"0 10 * * *\", D(2026, 3, 1, 9, 59, 59, 5), D(2026, 3, 1, 10, 0))\n\n    def test_year_end(self):\n        self.eq(\"59 23 31 12 *\", D(2026, 12, 31, 23, 59), D(2027, 12, 31, 23, 59))\n\n    def test_lists(self):\n        self.eq(\"0 8,20 1,15 * *\", D(2026, 3, 1, 21), D(2026, 3, 15, 8))\n\n    def test_invalid(self):\n        for bad in (\"* * * *\", \"* * * * * *\", \"60 * * * *\", \"* 24 * * *\", \"* * 0 * *\", \"* * * 13 *\", \"* * * * 8\",\n                    \"5-1 * * * *\", \"*/0 * * * *\", \"a * * * *\", \"1.5 * * * *\", \"\", \"0 0 31 2 *\", \"0 0 30,31 2 *\"):\n            with self.assertRaises(ValueError, msg=bad):\n                next_run(bad, D(2026, 3, 1))\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+      }
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

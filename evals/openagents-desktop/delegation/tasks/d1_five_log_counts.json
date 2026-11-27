@@ -1,0 +1,44 @@
+{
+  "id": "d1_five_log_counts",
+  "category": "delegation_simple",
+  "fixture": "logs",
+  "description": "Five sub-agents at once, each counts the ERROR lines of one log",
+  "budget_usd_micros": 500000,
+  "timeout_s": 420,
+  "steps": [
+    {
+      "send": "Use five sub-agents at the same time, one for each .log file here. Each one counts the lines whose level is ERROR in its file. Do not count them yourself. Then write counts.json: one JSON object that maps each file name to its count."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "command",
+      "name": "counts.json is right",
+      "run": "python3 check.py",
+      "add": {
+        "check.py": "import json\nwant = {'api.log': 17, 'auth.log': 23, 'billing.log': 8, 'search.log': 31, 'worker.log': 12}\ngot = json.load(open('counts.json'))\nassert got == want, got\n"
+      }
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "*.log"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "id": "d7_shell_word_split",
+  "category": "delegation_hard",
+  "fixture": "words",
+  "description": "One sub-agent writes a POSIX shell word splitter from its README",
+  "budget_usd_micros": 500000,
+  "timeout_s": 420,
+  "steps": [
+    {
+      "send": "Hand this whole task to one sub-agent and wait for it. Do not do the work yourself. The task: implement split in words.py exactly as README.md describes, so `python3 -m unittest` passes. Do not change the tests. When the sub-agent is done, tell me what it did."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_words.py"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "hidden tests",
+      "run": "python3 -m unittest -q test_hidden",
+      "add": {
+        "test_hidden.py": "import shlex\nimport unittest\nfrom words import split\n\nQ, D, B = \"'\", '\"', \"\\\\\"\nGOOD = [\"\", \"   \", \"a\", \" a  b\\tc\\nd\\re \", \"a\" + D + \"b c\" + D + Q + \"d\" + Q, \"a \" + Q + Q + \" b\", D + D, Q + Q + Q + Q,\n        \"a\" + B + \" b c\", B + B, B + Q, B + D + \"x\", D + \"a\" + B + D + \"b\" + D, D + \"a\" + B + B + \"b\" + D,\n        D + \"a\" + B + \"nb\" + D, D + \"a\" + B + Q + \"b\" + D, Q + \"a\" + B + Q, Q + \"a\" + D + \"b\" + Q, D + \"a\" + Q + \"b\" + D,\n        \"x=#1 $y *.py\", \"#not a comment\", \"a\" + B + \"\\nb\", D + \"a\" + B + \"\\nb\" + D, Q + \"a\\nb\" + Q + \" c\",\n        \"echo \" + D + \"it\" + Q + \"s\" + D + \" \" + Q + \"say \" + D + \"hi\" + D + Q, \"a\" + D + D + \"b\", Q + Q + \"a\", \"a\" + Q + Q,\n        B + \"a\" + B + \"b\" + B + \"c\", D + B + \"a\" + D, \"a \" + Q + \"b\" + Q + D + \"c\" + D + B + \" d e\", \"\\t\" + Q + \"x\" + Q + \"\\t\",\n        D + \"$HOME/my dir\" + D + \"/file\", \"k=\" + Q + \"v w\" + Q + \" -n\" + B + \" 1\", Q + Q + D + D + Q + Q, \"a\" + B + B + \" b\",\n        D + B + B + B + D + D]\nBAD = [Q + \"abc\", D + \"abc\", \"abc\" + B, \"a \" + Q + \"b\", D + \"a\" + B + D, \"a \" + D + \"b \" + Q + \"c\" + Q, Q, D, B, \"a\" + D + \"b\" + B]\n\n\nclass H(unittest.TestCase):\n    def test_same_as_a_posix_shell(self):\n        for line in GOOD:\n            self.assertEqual(split(line), shlex.split(line), repr(line))\n\n    def test_unfinished(self):\n        for line in BAD:\n            with self.assertRaises(ValueError):\n                shlex.split(line)\n            with self.assertRaises(ValueError, msg=repr(line)):\n                split(line)\n\n    def test_splits_by_itself(self):\n        with open(\"words.py\") as f:\n            self.assertNotIn(\"shlex\", f.read())\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+      }
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

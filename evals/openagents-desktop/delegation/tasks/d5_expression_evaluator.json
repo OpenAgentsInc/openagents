@@ -1,0 +1,51 @@
+{
+  "id": "d5_expression_evaluator",
+  "category": "delegation_hard",
+  "fixture": "calc2",
+  "description": "One sub-agent writes an arithmetic evaluator with Python's precedence and types",
+  "budget_usd_micros": 500000,
+  "timeout_s": 420,
+  "steps": [
+    {
+      "send": "Hand this whole task to one sub-agent and wait for it. Do not do the work yourself. The task: implement evaluate in calc.py exactly as README.md describes, so `python3 -m unittest` passes. Do not change the tests. When the sub-agent is done, tell me what it did."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_calc.py"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "hidden tests",
+      "run": "python3 -m unittest -q test_hidden",
+      "add": {
+        "test_hidden.py": "import re\nimport unittest\nfrom calc import evaluate\n\nGOOD = [\"-2**2\", \"2**-1\", \"2**3**2\", \"-(-3)\", \"--3\", \"7//2\", \"-7//2\", \"7%-3\", \"6/3\", \"1e3\", \".5+2.\", \"2.5e-1*4\",\n        \"(1+2)*(3+4)**2\", \"2 ** 3 ** 0\", \"10-4-3\", \"100/10/5\", \"-2**-2\", \"+-+3\", \"2*-3\", \"1 - -1\", \"( ( 4 ) )\",\n        \"3*(2+(4-1))**2//5\", \"2**3\", \"8-3*2+1\", \"  42  \", \"1+2*3-4/2\", \"-3**2+10\", \"2*(3+4)*5\", \"17%5*2\", \"1.5//0.4\"]\nBAD = [\"\", \"   \", \"2 +\", \"(1\", \"1 2\", \"2 ** * 3\", \"x+1\", \"2 $ 3\", \"()\", \"1)\", \"1..2\", \"1e\", \"*3\", \"2 3 +\", \"1 + (2\", \"abs(1)\"]\nZERO = [\"1/0\", \"5%0\", \"4//(2-2)\", \"1/(3-3.0)\"]\n\n\nclass H(unittest.TestCase):\n    def test_values_and_types(self):\n        for text in GOOD:\n            want = eval(text)\n            got = evaluate(text)\n            self.assertEqual(got, want, text)\n            self.assertIs(type(got), type(want), text)\n\n    def test_invalid(self):\n        for text in BAD:\n            with self.assertRaises(ValueError, msg=repr(text)):\n                evaluate(text)\n\n    def test_zero_division(self):\n        for text in ZERO:\n            with self.assertRaises(ZeroDivisionError, msg=text):\n                evaluate(text)\n\n    def test_parses_by_itself(self):\n        src = open(\"calc.py\").read()\n        self.assertIsNone(re.search(r\"(?<![.\\w])(eval|exec|compile)\\s*\\(|^\\s*(import|from)\\s+ast\\b\", src, re.M))\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+      }
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

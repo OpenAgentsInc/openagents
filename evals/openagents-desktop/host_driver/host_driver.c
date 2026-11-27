@@ -74,6 +74,9 @@ static Slot g_slots[MAX_SLOTS];
 static char g_mock_worker_path[1024] = "evals/openagents-desktop/mock_worker/mock_worker.py";
 static char g_worker_bin[1024] = "";
 static char g_claude_worker_bin[1024] = "";
+// --claude-key-file PATH: a file holding a `claude setup-token` token. Only the Claude worker gets
+// it (as CODER_CLAUDE_KEY): on Linux Claude Code keeps its login under HOME, and a task's HOME is empty.
+static char g_claude_key_file[1024] = "";
 static FILE *g_wire = NULL;
 static double g_t0 = 0.0;
 
@@ -170,6 +173,15 @@ static int wp_spawn_any(WorkerProc *w, const char *script_path, const char *reco
         char bb[32];
         snprintf(bb, sizeof(bb), "%lld", (long long)budget_micros);
         setenv("MC_HYBRID_CLOUD_BUDGET_MICROS", bb, 0);
+      }
+      unsetenv("CODER_CLAUDE_KEY");
+      if (g_claude_key_file[0] && g_claude_worker_bin[0] && strcmp(exec_bin, g_claude_worker_bin) == 0) {
+        char key[512] = {0};
+        FILE *kf = fopen(g_claude_key_file, "rb");
+        size_t kn = kf ? fread(key, 1, sizeof key - 1, kf) : 0;
+        if (kf) fclose(kf);
+        while (kn > 0 && (key[kn - 1] == '\n' || key[kn - 1] == '\r' || key[kn - 1] == ' ')) key[--kn] = 0;
+        if (kn > 0) setenv("CODER_CLAUDE_KEY", key, 1);
       }
       if (cwd && cwd[0] && chdir(cwd) != 0) _exit(126);
       int devnull = open("/dev/null", O_WRONLY);
@@ -617,6 +629,8 @@ int main(int argc, char **argv) {
       snprintf(g_worker_bin, sizeof(g_worker_bin), "%s", argv[++i]);
     } else if (strcmp(argv[i], "--claude-worker") == 0 && i + 1 < argc) {
       snprintf(g_claude_worker_bin, sizeof(g_claude_worker_bin), "%s", argv[++i]);
+    } else if (strcmp(argv[i], "--claude-key-file") == 0 && i + 1 < argc) {
+      snprintf(g_claude_key_file, sizeof(g_claude_key_file), "%s", argv[++i]);
     }
   }
   g_t0 = now_ms();
@@ -735,6 +749,22 @@ int main(int argc, char **argv) {
       sscanf(line, "%*s %d %d", &si, &on);
       if (si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
         cd_claude(g_slots[si].page, on);
+        printf("{\"ok\":true}\n");
+      } else {
+        printf("{\"ok\":false}\n");
+      }
+    } else if (strcmp(cmd, "HARNESSES") == 0) {
+      // HARNESSES si on: Settings > Agent > Allow delegating to other local harnesses, and whether
+      // a sub-agent can run in Claude Code here (GitHub #14104).
+      int si = 0, on = 0;
+      sscanf(line, "%*s %d %d", &si, &on);
+      if (si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
+        int v[32] = {0};
+        int have = cd_flawed_prefs_get(g_slots[si].page, v, 32);
+        if (have < 21) have = 21;
+        v[20] = on ? 1 : 0;
+        cd_flawed_prefs_set(g_slots[si].page, v, have);
+        cd_claude_sub(g_slots[si].page, on ? 1 : 0);
         printf("{\"ok\":true}\n");
       } else {
         printf("{\"ok\":false}\n");

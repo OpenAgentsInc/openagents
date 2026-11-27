@@ -1,0 +1,44 @@
+{
+  "id": "d6_review_find_bugs",
+  "category": "delegation_hard",
+  "fixture": "review",
+  "description": "One sub-agent reviews ten functions and names the four that break their docstrings",
+  "budget_usd_micros": 500000,
+  "timeout_s": 420,
+  "steps": [
+    {
+      "send": "Hand this whole task to one sub-agent and wait for it. Do not do the work yourself. The task: review ledger.py. Some of its functions do not do what their docstring says. Write findings.txt with the name of each function that has a bug, one name per line, and nothing else. Do not change ledger.py. When the sub-agent is done, tell me what it found."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "command",
+      "name": "exactly the four buggy functions",
+      "run": "python3 check.py",
+      "add": {
+        "check.py": "import re\nbugs = {\"merge_ranges\", \"chunk\", \"parse_kv\", \"to_cents\"}\nnames = {\"clamp\", \"merge_ranges\", \"median\", \"chunk\", \"running_total\", \"parse_kv\", \"dedupe_keep_last\", \"to_cents\", \"apply_discount\", \"top_n\"}\nfound = {w for w in re.findall(r\"[a-z_]+\", open(\"findings.txt\").read()) if w in names}\nmissed, extra = bugs - found, found - bugs\nassert not missed and not extra, f\"missed {sorted(missed)}, wrongly named {sorted(extra)}\"\n"
+      }
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "ledger.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

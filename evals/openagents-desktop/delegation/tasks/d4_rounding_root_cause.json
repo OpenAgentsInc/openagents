@@ -1,0 +1,51 @@
+{
+  "id": "d4_rounding_root_cause",
+  "category": "delegation_hard",
+  "fixture": "rounding",
+  "description": "One sub-agent fixes a failing invoice test whose cause is in another module",
+  "budget_usd_micros": 500000,
+  "timeout_s": 420,
+  "steps": [
+    {
+      "send": "Hand this whole task to one sub-agent and wait for it. Do not do the work yourself. The task: `python3 -m unittest` fails here. Find the root cause and fix it properly, so the code does what README.md says for every amount, not only the one in the test. Do not change the tests. When the sub-agent is done, tell me what it did."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_invoice.py"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "hidden tests",
+      "run": "python3 -m unittest -q test_hidden",
+      "add": {
+        "test_hidden.py": "import unittest\nfrom shop.money import round_cents, add_tax\nfrom shop.cart import line_total, subtotal\nfrom shop.invoice import invoice_total\n\n\nclass H(unittest.TestCase):\n    def test_half_up(self):\n        for amount, want in ((0.125, 0.13), (2.675, 2.68), (1.005, 1.01), (0.135, 0.14), (8.345, 8.35), (10.0, 10.0), (0.124, 0.12), (3.14159, 3.14)):\n            self.assertEqual(round_cents(amount), want, amount)\n\n    def test_lines(self):\n        self.assertEqual(line_total(0.25, 1, 0.5), 0.13)\n        self.assertEqual(line_total(5.35, 1, 0.5), 2.68)\n        self.assertEqual(subtotal([(0.25, 1, 0.5), (5.35, 1, 0.5)]), 2.81)\n\n    def test_tax(self):\n        self.assertEqual(add_tax(20.5, 0.5), 30.75)\n        self.assertEqual(add_tax(0.5, 0.25), 0.63)\n\n    def test_invoice(self):\n        self.assertEqual(invoice_total([(0.25, 1, 0.5)], 0.0), 0.13)\n        self.assertEqual(invoice_total([(5.35, 1, 0.5)], 0.0), 2.68)\n        self.assertEqual(invoice_total([(10.00, 2, 0.0)], 0.10), 22.00)\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+      }
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}
