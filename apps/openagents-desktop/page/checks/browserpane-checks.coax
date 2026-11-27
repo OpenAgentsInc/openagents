@@ -141,3 +141,103 @@ cp_br_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
     #assert s2[0].br[0].tabs[i].profile != BR_PROFILE_EPHEMERAL;
   }
 }
+
+#test "browserpane: horizontal split divider hit strip, drag-resize, clamping, viewport inset, and expanded resize" {
+  p: [1] CoderPage; st: [1] CpCheckStore;
+  s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  s[0].flags = DC_FLAGS_ALL;
+
+  _ := cp_br_open_tab(s, "http://localhost:5173/app", BR_CALLER_HUMAN, BR_PROFILE_WORKSPACE);
+  #assert cp_br_test_frame(s, 1400, 900);
+  #assert s[0].side == cast(f32) CP_SIDE;
+  #assert s[0].pane_w == cast(f32) CP_PANE;
+  #assert s[0].pane_x == 1400.0f32 - cast(f32) CP_PANE;
+
+  // Divider hit strip exists on the browser pane's left edge and blocks titlebar window-move.
+  edge_x := s[0].pane_x;
+  #assert cp_edge(s, edge_x) == 2;
+  #assert cp_edge(s, edge_x - cast(f32) CP_EDGE) == 2;
+  #assert cp_edge(s, edge_x + cast(f32) CP_EDGE) == 2;
+  #assert cp_edge(s, edge_x + cast(f32) CP_EDGE + 1.0f32) == 0;
+  #assert !coder_page_bar_drags(s, edge_x, 12.0f32);
+
+  // Hovering the divider activates resizeLeftRight cursor; moving inside the pane clears it.
+  #assert !coder_page_pointer(s, edge_x, 300.0f32, 1);
+  #assert s[0].hover == 2 && coder_page_edge(s) && coder_page_cursor(s) == 3;
+  #assert !coder_page_pointer(s, edge_x + 40.0f32, 300.0f32, 1);
+  #assert s[0].hover == 0 && !coder_page_edge(s);
+
+  // Native viewport rect leaves the full right half of CP_EDGE uncovered so WKWebView never swallows drags.
+  r0: [4] f32;
+  #assert coder_page_br_rect(s, r0[..]);
+  #assert r0[0] == edge_x + cast(f32) CP_EDGE;
+  #assert abs((r0[0] + r0[2]) - 1400.0f32) < 0.01f32;
+
+  // Dragging wider (left to x=760 -> width=640) updates pane_user, pane_w, coder_page_sides, and coder_page_br_rect.
+  #assert coder_page_pointer(s, edge_x, 300.0f32, 0) && s[0].drag == 2 && coder_page_edge(s);
+  #assert coder_page_pointer(s, 760.0f32, 300.0f32, 1) && s[0].pane_user == 640.0f32;
+  #assert coder_page_pointer(s, 760.0f32, 300.0f32, 2) && s[0].drag == 0;
+  sides: [2] f32;
+  #assert coder_page_sides(s, sides[..]) && sides[1] == 640.0f32;
+  #assert cp_br_test_frame(s, 1400, 900);
+  #assert s[0].pane_w == 640.0f32 && s[0].pane_x == 760.0f32;
+  r_wide: [4] f32;
+  #assert coder_page_br_rect(s, r_wide[..]);
+  #assert r_wide[0] == 760.0f32 + cast(f32) CP_EDGE && r_wide[2] > r0[2];
+
+  // Dragging past max clamps while keeping CP_PANE_MAIN beside the sidebar (1400 - 272 - 456 = 672).
+  max_w := 1400.0f32 - cast(f32) CP_SIDE - cast(f32) CP_PANE_MAIN;
+  #assert coder_page_pointer(s, s[0].pane_x, 300.0f32, 0) && s[0].drag == 2;
+  #assert coder_page_pointer(s, 100.0f32, 300.0f32, 1) && s[0].pane_user == max_w;
+  #assert coder_page_pointer(s, 100.0f32, 300.0f32, 2);
+  #assert cp_br_test_frame(s, 1400, 900);
+  #assert s[0].pane_w == max_w && s[0].col_w > 0;
+
+  // Dragging narrower (x=980 -> width=420) and past min (x=1350 -> clamped to CP_PANE_LEAST=360).
+  #assert coder_page_pointer(s, s[0].pane_x, 300.0f32, 0) && s[0].drag == 2;
+  #assert coder_page_pointer(s, 980.0f32, 300.0f32, 1) && s[0].pane_user == 420.0f32;
+  #assert coder_page_pointer(s, 1350.0f32, 300.0f32, 1) && s[0].pane_user == cast(f32) CP_PANE_LEAST;
+  #assert coder_page_pointer(s, 1350.0f32, 300.0f32, 2);
+  #assert cp_br_test_frame(s, 1400, 900);
+  #assert s[0].pane_w == cast(f32) CP_PANE_LEAST;
+  r_narrow: [4] f32;
+  #assert coder_page_br_rect(s, r_narrow[..]);
+  #assert r_narrow[0] == s[0].pane_x + cast(f32) CP_EDGE && r_narrow[2] < r0[2];
+
+  // Double-clicking the divider resets browser pane width back to default CP_PANE.
+  #assert cp_pointer_with(s, s[0].pane_x, 300.0f32, 0, 2, 0) && s[0].pane_user == 0.0f32;
+  #assert coder_page_sides(s, sides[..]) && sides[1] == 0.0f32;
+  #assert cp_br_test_frame(s, 1400, 900) && s[0].pane_w == cast(f32) CP_PANE;
+
+  // Expanded mode: dragging the sidebar/browser divider smoothly resizes both, and Restore keeps split pane_user.
+  #assert coder_page_pointer(s, s[0].pane_x, 300.0f32, 0) && coder_page_pointer(s, 800.0f32, 300.0f32, 1) && coder_page_pointer(s, 800.0f32, 300.0f32, 2);
+  #assert s[0].pane_user == 600.0f32;
+  #assert cp_br_press(s, CP_BR_EXPAND, "") && s[0].br[0].expanded;
+  #assert cp_br_test_frame(s, 1400, 900);
+  #assert s[0].pane_x == cast(f32) CP_SIDE && s[0].pane_w == 1400.0f32 - cast(f32) CP_SIDE;
+  #assert coder_page_pointer(s, s[0].pane_x, 300.0f32, 0) && s[0].drag == 1;
+  #assert coder_page_pointer(s, 340.0f32, 300.0f32, 1) && s[0].side_w == 340.0f32;
+  #assert coder_page_pointer(s, 340.0f32, 300.0f32, 2);
+  #assert cp_br_test_frame(s, 1400, 900);
+  #assert s[0].side == 340.0f32 && s[0].pane_x == 340.0f32 && s[0].pane_w == 1060.0f32;
+  r_exp: [4] f32;
+  #assert coder_page_br_rect(s, r_exp[..]) && r_exp[0] == 340.0f32 + cast(f32) CP_EDGE;
+  // Restoring split brings back the dragged 600pt browser width cleanly.
+  #assert cp_br_press(s, CP_BR_EXPAND, "") && !s[0].br[0].expanded;
+  #assert cp_br_test_frame(s, 1400, 900);
+  #assert s[0].pane_w == 600.0f32 && s[0].pane_x == 800.0f32;
+
+  // Text zoom scales coder_page_br_rect into AppKit window points matching the divider strip.
+  #assert coder_page_zoom_set(s, 5) == 5 && abs(cp_scale(s) - 1.5f32) < 0.001f32;
+  #assert cp_br_test_frame(s, 1800.0f32 / 1.5f32, 900.0f32 / 1.5f32);
+  #assert s[0].pane_x == 600.0f32 && s[0].pane_w == 600.0f32;
+  r_zoom: [4] f32;
+  #assert coder_page_br_rect(s, r_zoom[..]);
+  #assert abs(r_zoom[0] - (s[0].pane_x + cast(f32) CP_EDGE) * 1.5f32) < 0.05f32;
+  #assert coder_page_zoom_set(s, CP_ZOOM_USUAL) == CP_ZOOM_USUAL;
+
+  // Hiding the browser pane removes its divider hit region and hides the native viewport rect.
+  #assert cp_br_press(s, CP_BR_HIDE, "") && !cp_br_shown(s);
+  #assert cp_edge(s, 800.0f32) == 0 && !coder_page_br_rect(s, r0[..]);
+}

@@ -219,29 +219,53 @@ final class BrowserViewportView: NSView {
 
     /// Updates CAShapeLayer even-odd cutout mask from cd_over_rects so Coax menus/⌘K palette float with ZERO flashing.
     func updateOverlayCutouts(_ rectsInSelf: [CGRect]) {
-        overRectsInSelf = rectsInSelf
-        guard let lyr = layer else { return }
-        if rectsInSelf.isEmpty {
-            lyr.mask = nil
+        if overRectsInSelf == rectsInSelf && (rectsInSelf.isEmpty ? layer?.mask == nil : layer?.mask?.frame == bounds) {
             return
         }
-        let path = CGMutablePath()
-        path.addRect(bounds)
-        for r in rectsInSelf { path.addRect(r) }
-        let mask = (lyr.mask as? CAShapeLayer) ?? CAShapeLayer()
-        mask.frame = bounds
-        mask.fillRule = .evenOdd
-        mask.path = path
-        lyr.mask = mask
+        overRectsInSelf = rectsInSelf
+        guard let lyr = layer else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if rectsInSelf.isEmpty {
+            lyr.mask = nil
+        } else {
+            let path = CGMutablePath()
+            path.addRect(bounds)
+            for r in rectsInSelf { path.addRect(r) }
+            let mask = (lyr.mask as? CAShapeLayer) ?? CAShapeLayer()
+            mask.frame = bounds
+            mask.fillRule = .evenOdd
+            mask.path = path
+            lyr.mask = mask
+        }
+        CATransaction.commit()
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for entry in tabs.values where entry.webView.frame != bounds {
+            entry.webView.frame = bounds
+        }
+        if !overRectsInSelf.isEmpty, let mask = layer?.mask as? CAShapeLayer {
+            let path = CGMutablePath()
+            path.addRect(bounds)
+            for r in overRectsInSelf { path.addRect(r) }
+            mask.frame = bounds
+            mask.path = path
+        }
+        CATransaction.commit()
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let pt = convert(point, from: superview)
+        guard bounds.contains(pt) else { return nil }
         for r in overRectsInSelf where r.contains(pt) {
             return nil // Pass clicks directly through to Coax overlay (menus, dialogs, ⌘K palette)
         }
         // Human Supremacy (Invariant I-5): any click inside an agent-leased viewport immediately notifies host
-        if activeTabId > 0, bounds.contains(pt), NSApp.currentEvent?.type == .leftMouseDown {
+        if activeTabId > 0, NSApp.currentEvent?.type == .leftMouseDown {
             onHumanInteraction?(activeTabId)
         }
         return super.hitTest(point)

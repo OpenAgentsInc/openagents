@@ -397,7 +397,8 @@ cp_edge :: (s: [] CoderPage, ux: f32) -> int {
   if s[0].side > 0 && abs(ux - s[0].side) <= CP_EDGE { return 1; }
   fp_edge_vis := !s[0].fp[0].hidden && !s[0].fp[0].expanded && (s[0].fp[0].open || s[0].ft[0].open);
   mv_edge_vis := cp_mv_enabled(s) && s[0].mv[0].open && !s[0].mv[0].hidden && !s[0].mv[0].expanded;
-  if (s[0].pane_open || s[0].review || fp_edge_vis || mv_edge_vis || s[0].sim[0].open || s[0].term[0].open || s[0].rich[0].side_open || s[0].forge[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
+  br_edge_vis := cp_br_shown(s) && !s[0].br[0].expanded;
+  if (s[0].pane_open || s[0].review || fp_edge_vis || mv_edge_vis || br_edge_vis || s[0].sim[0].open || s[0].term[0].open || s[0].rich[0].side_open || s[0].forge[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
   return 0;
 }
 // True while the pointer is on a sidebar's edge or drags one: the host shows the resize cursor.
@@ -447,8 +448,9 @@ cp_pointer_with :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mo
   }
   if s[0].drag != 0 {
     if phase == 1 {
+      pane_expanded := (cp_fp_shown(s) && s[0].fp[0].expanded) || (cp_mv_shown(s) && s[0].mv[0].expanded) || (cp_br_shown(s) && s[0].br[0].expanded);
       if s[0].drag == 1 {
-        s[0].side_w = app_sidebar_drag(ux, s[0].win_w, s[0].pane_w, cp_sidebar_spec());
+        s[0].side_w = app_sidebar_drag(ux, s[0].win_w, ifx pane_expanded then 0.0f32 else s[0].pane_w, cp_sidebar_spec());
       } else if s[0].todos[0].n > 0 && !cp_other_pane_open(s) {
         s[0].todos_pane_w = app_pane_drag(ux, s[0].win_w, s[0].side, cp_todos_pane_spec());
       } else {

@@ -188,13 +188,21 @@ extension CoderWindow {
         }
         let vp = ensureBrowserViewport()
         let ch = canvas.bounds.height
-        let x = CGFloat(rect[0])
-        let yTop = CGFloat(rect[1])
-        let w = CGFloat(rect[2])
-        let h = CGFloat(rect[3])
-        // Convert top-left Coax coordinates to AppKit bottom-left frame
-        let frame = NSRect(x: x, y: ch - yTop - h, width: w, height: h)
-        if vp.frame != frame { vp.frame = frame }
+        // Round left up so the native WKWebView frame never intrudes into the left divider drag strip.
+        let left = CGFloat(rect[0]).rounded(.up)
+        let right = (CGFloat(rect[0]) + CGFloat(rect[2])).rounded()
+        let top = CGFloat(rect[1]).rounded()
+        let bottom = (CGFloat(rect[1]) + CGFloat(rect[3])).rounded()
+        let w = max(1, right - left)
+        let h = max(1, bottom - top)
+        // Convert top-left Coax coordinates to AppKit bottom-left frame without implicit CA lag during drag-resize.
+        let frame = NSRect(x: left, y: max(0, ch - bottom), width: w, height: h)
+        if vp.frame != frame {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            vp.frame = frame
+            CATransaction.commit()
+        }
         vp.isHidden = false
 
         // Feed cd_over_rects into CAShapeLayer even-odd cutout mask (zero flashing over ⌘K / menus!)
@@ -202,8 +210,8 @@ extension CoderWindow {
         let n = Int(cd_over_rects(page, &ov, 8))
         var cutouts: [CGRect] = []
         for i in 0..<n {
-            let rx = CGFloat(ov[i * 4]) - x
-            let ry = CGFloat(ov[i * 4 + 1]) - yTop
+            let rx = CGFloat(ov[i * 4]) - left
+            let ry = CGFloat(ov[i * 4 + 1]) - top
             let rw = CGFloat(ov[i * 4 + 2])
             let rh = CGFloat(ov[i * 4 + 3])
             let r = CGRect(x: rx, y: ry, width: rw, height: rh)

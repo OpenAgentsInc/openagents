@@ -683,9 +683,8 @@ cp_br_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   k := f[0].skin; sh := f[0].sheet;
   br := s[0].br[..];
 
-  // Pane background & left split divider
+  // Pane background
   sheet_fill(sh, px, 0, pw, h, 0, k.canvas);
-  if px > 0 { cp_side_border_left(s, sh, px, 0, h, k.menu_divider); }
 
   // Narrow-window APP_PANE_FULL clearance below titlebar
   y0: f32 = ifx px <= 0.5f32 && !br[0].expanded then cp_bar(s) else 0.0f32;
@@ -829,20 +828,24 @@ cp_br_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   }
 
   // --- Viewport body + optional 300pt DevTools / Agent Drawer ---
+  // Leave the full right half of the CP_EDGE resize strip uncovered whenever px > 0 so the native
+  // BrowserViewportView/WKWebView never swallows divider hover, cursor updates, or resize drags.
   body_y := y2 + ctx_h;
   body_h := h - body_y;
   drw_w: f32 = ifx br[0].drawer_open && pw >= 560.0f32 then cast(f32) CP_BR_DRAWER_W else 0.0f32;
-  vp_w := pw - drw_w;
+  edge_inset: f32 = ifx px > 0.0f32 then cast(f32) CP_EDGE else 0.0f32;
+  vp_x0 := px + edge_inset;
+  vp_w := pw - edge_inset - drw_w;
   if vp_w < 0 { vp_w = 0; }
   if body_h < 0 { body_h = 0; }
 
   draw_vp_w := vp_w;
-  draw_vp_x := px;
+  draw_vp_x := vp_x0;
   if br[0].viewport_mode == CP_BR_VP_MOBILE && draw_vp_w > 390.0f32 {
-    draw_vp_x = px + (vp_w - 390.0f32) * 0.5f32;
+    draw_vp_x = vp_x0 + (vp_w - 390.0f32) * 0.5f32;
     draw_vp_w = 390.0f32;
   } else if br[0].viewport_mode == CP_BR_VP_TABLET && draw_vp_w > 768.0f32 {
-    draw_vp_x = px + (vp_w - 768.0f32) * 0.5f32;
+    draw_vp_x = vp_x0 + (vp_w - 768.0f32) * 0.5f32;
     draw_vp_w = 768.0f32;
   }
   br[0].vp_x = draw_vp_x;
@@ -852,7 +855,7 @@ cp_br_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
 
   // Collapsible 5-tab DevTools / Agent Drawer
   if drw_w > 0 && body_h > 20.0f32 {
-    dx := px + vp_w;
+    dx := px + pw - drw_w;
     sheet_fill(sh, dx, body_y, drw_w, body_h, 0, k.surface);
     sheet_fill(sh, dx, body_y, k.border, body_h, 0, k.menu_divider);
     labels := [5] string.["Console", "Net", "DOM", "Agent", "Marks"];
@@ -899,6 +902,12 @@ cp_br_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       }
     }
   }
+
+  // Draw left split divider after header fills so it stays crisp full-height and highlights on hover/drag.
+  if px > 0 {
+    edge_c := ifx !br[0].expanded && (s[0].hover == 2 || s[0].drag == 2) then k.set.strong else k.menu_divider;
+    cp_side_border_left(s, sh, px, 0, h, edge_c);
+  }
 }
 
 // ---- C-Exported Host Bridge Entrypoints (coder_page_br_*) ----
@@ -927,10 +936,11 @@ coder_page_br_show :: (s: [] CoderPage, open: bool, expand: bool) #export_c #eff
 }
 
 coder_page_br_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 4 || s[0].set_open || !cp_br_shown(s) { return false; }
+  if s.count < 1 || out.count < 4 || s[0].set_open || s[0].gym_open || s[0].wallet[0].open || s[0].dash[0].open || s[0].introspect[0].open || !cp_br_shown(s) { return false; }
   br := s[0].br[..];
   if br[0].vp_w <= 1.0f32 || br[0].vp_h <= 1.0f32 { return false; }
-  out[0] = br[0].vp_x; out[1] = br[0].vp_y; out[2] = br[0].vp_w; out[3] = br[0].vp_h;
+  sc := cp_scale(s);
+  out[0] = br[0].vp_x * sc; out[1] = br[0].vp_y * sc; out[2] = br[0].vp_w * sc; out[3] = br[0].vp_h * sc;
   return true;
 }
 
