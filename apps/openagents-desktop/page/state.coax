@@ -214,14 +214,11 @@ CP_WALLET_TOGGLE :: 409;    // sidebar footer Wallet icon: toggle Bitcoin Spark 
 CP_WALLET_ACT :: 410;       // Wallet pane button press (connect, refresh, copy npub/hex/addr)
 CP_CLOUD_LOGIN :: 520;      // cloud-first onboarding: Sign in to OpenAgents Cloud (#14087)
 CP_CLOUD_BYO :: 521;        // cloud-first onboarding: open Settings -> Agent for BYO key/endpoint (#14087)
-// Desktop UX & Panes roadmap (#14138-#14147): workspace modes, nav history, unified pane toggle.
-CP_MODE_CHAT :: 0; CP_MODE_CODE :: 1;
+// Desktop UX & Panes roadmap (#14138-#14147): nav history, unified pane toggle.
 CP_NAV_HIST_MAX :: 32;
 CP_NAV_CHAT :: 0; CP_NAV_DASHBOARD :: 1; CP_NAV_CATALOG :: 2; CP_NAV_WALLET :: 3; CP_NAV_INTROSPECT :: 4;
 CP_NAV_BACK :: 600;         // title bar < Back button / Cmd+[ (#14138)
 CP_NAV_FWD :: 601;          // title bar > Forward button / Cmd+] (#14138)
-CP_MODE_CHAT_ACT :: 602;    // [Chat | Code] segmented switch -> Chat mode (#14138)
-CP_MODE_CODE_ACT :: 603;    // [Chat | Code] segmented switch -> Code mode (#14138)
 CP_RIGHT_PANE_TOGGLE :: 604; // top-right unified right-pane inspector toggle / Opt+Cmd+S (#14138)
 // Unified Right-Pane dock & Bottom Terminal dock (#14141)
 CP_DOCK_AUTO :: 0; CP_DOCK_FILES :: 1; CP_DOCK_DIFFS :: 2; CP_DOCK_TERM :: 3; CP_DOCK_BROWSER :: 4; CP_DOCK_PREVIEW :: 5; CP_DOCK_SIM :: 6; CP_DOCK_WORLD :: 7; CP_DOCK_AGENT :: 8; CP_DOCK_ARTIFACTS :: 9;
@@ -238,7 +235,6 @@ CpNavEntry :: struct {
   view: int;
   chat_id: [CP_CHAT_ID] u8; chat_id_n: int;
   catalog: int;
-  mode: int;
 }
 CP_AGY_IDLE :: 0; CP_AGY_BUSY :: 1; CP_AGY_FAILED :: 2;   // agy_conn: the onboarding's Antigravity connection
 CP_LOCAL_NOT_INSTALLED :: 0; CP_LOCAL_DOWNLOADING :: 1; CP_LOCAL_VERIFYING :: 2; CP_LOCAL_READY :: 3; CP_LOCAL_ERROR :: 4; CP_LOCAL_STARTING :: 5; CP_LOCAL_SERVER_ERROR :: 6;
@@ -453,7 +449,6 @@ CoderPage :: struct {
   agent_buf: [] u8; agent_n: int; // CP_AGENT_POOL bytes in the page's store: the sub-agents' replies
   side_w: f32; pane_user: f32; todos_pane_w: f32; drag: int; hover: int; win_w: f32; sides_due: bool; side_collapsed: bool; side_drawer: bool; cmd_hints: bool;
   // Workspace mode & navigation history (#14138)
-  work_mode: int;
   nav_hist: [CP_NAV_HIST_MAX] CpNavEntry; nav_n: int; nav_at: int; nav_suppress: bool;
   last_right_pane: int;       // last active right-pane kind so Opt+Cmd+S / top-right toggle restores it
   // Appearance & Desktop app preferences (#14140)
@@ -684,12 +679,6 @@ CpCheckStore :: struct {
 cp_flag :: (s: [] CoderPage, flag: int) -> bool {
   if s.count < 1 { return false; }
   if dc_flag_on(s[0].flags, flag) { return true; }
-  // Graduate core Code Mode surfaces out of OA_EXPERIMENTAL when user is in </> Code mode (#14142).
-  if s[0].work_mode == CP_MODE_CODE {
-    if flag == DC_FLAG_GIT || flag == DC_FLAG_TERMINAL || flag == DC_FLAG_MCP || flag == DC_FLAG_VOICE || flag == DC_FLAG_USAGE || flag == DC_FLAG_SCHEDULED || flag == DC_FLAG_BROWSER {
-      return true;
-    }
-  }
   return false;
 }
 // True whenever more than one model/agent is selectable in the composer picker
@@ -804,7 +793,6 @@ cp_init :: (s: [] CoderPage) {
   cp_lean_init(s);
   cp_ps_init(s);
   cp_mv_init(s);
-  s[0].work_mode = CP_MODE_CHAT;
   s[0].nav_n = 0; s[0].nav_at = -1; s[0].nav_suppress = false;
   s[0].last_right_pane = 0;
   s[0].wide_transcript = false;

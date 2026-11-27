@@ -259,14 +259,6 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_WALLET_ACT { return cp_wallet_pane_press(s, surface_id(s[0].surface[..], row)); }
   if act == CP_NAV_BACK { return cp_nav_go(s, -1); }
   if act == CP_NAV_FWD { return cp_nav_go(s, 1); }
-  if act == CP_MODE_CHAT_ACT {
-    if s[0].work_mode != CP_MODE_CHAT { s[0].work_mode = CP_MODE_CHAT; cp_nav_record_current(s); }
-    return true;
-  }
-  if act == CP_MODE_CODE_ACT {
-    if s[0].work_mode != CP_MODE_CODE { s[0].work_mode = CP_MODE_CODE; cp_nav_record_current(s); }
-    return true;
-  }
   if act == CP_RIGHT_PANE_TOGGLE { return cp_right_pane_toggle(s); }
   if act == CP_DOCK_TAB_ACT {
     kind := cp_number(surface_id(s[0].surface[..], row), "coder.dock.tab.");

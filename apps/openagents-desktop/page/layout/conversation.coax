@@ -801,8 +801,8 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   if cp_flag(s, DC_FLAG_GIT) && s[0].git[0].in_repo && git_right - git_min >= 120.0f32 {
     right_for_title = git_min - a.gap;
   }
-  // Quiet empty-chat canvas (#14138): omit heavy bottom border on clean unscrolled empty Chat mode.
-  quiet_empty := home && s[0].work_mode == CP_MODE_CHAT && s[0].scroll <= 1.0f32;
+  // Quiet empty-chat canvas (#14138): omit heavy bottom border on a clean unscrolled empty chat.
+  quiet_empty := home && s[0].scroll <= 1.0f32;
   cp_header_bar_styled(s, f, left, w, title, right_for_title, !quiet_empty);
   if wt_drawn {
     wy := cp_bar_y(s, k.cmp.chip_h);

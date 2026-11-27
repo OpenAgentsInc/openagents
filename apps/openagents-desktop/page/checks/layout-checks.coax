@@ -473,7 +473,7 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert cast(string) hd.label[0..<hd.label_n] == "Dashboard";
 }
 
-#test "P0.1 (#14138): quiet empty chat bar, Back/Forward history, [Chat | Code] mode switch, and right-pane toggle" {
+#test "P0.1 (#14138): quiet empty chat bar, Back/Forward history, no Chat | Code switch, and right-pane toggle" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   f: [1] UiFrame;
   coder_page_chats(s, "c1\tFirst thread\t0\t0\t0\t0\t0\t0\t/w/openagents\t1000\tmain\t0\nc2\tSecond thread\t0\t0\t0\t0\t0\t0\t/w/cc\t900\tmain\t0\n");
@@ -482,15 +482,8 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   bk := cp_bar_row(s, "coder.nav.back");
   fw := cp_bar_row(s, "coder.nav.fwd");
   #assert (bk.state & EL_S_DISABLED) != 0 && (fw.state & EL_S_DISABLED) != 0;
-  // [Chat | Code] mode switch renders in the expanded sidebar and toggles work_mode.
-  m_chat := cp_bar_row(s, "coder.mode.chat");
-  m_code := cp_bar_row(s, "coder.mode.code");
-  #assert (m_chat.state & EL_S_CURRENT) != 0 && (m_code.state & EL_S_CURRENT) == 0;
-  #assert cp_press(s, surface_find(s[0].surface[..], "coder.mode.code")) && s[0].work_mode == CP_MODE_CODE;
-  // Back returns to Chat mode; Forward returns to Code mode; Cmd+[ / Cmd+] work identically.
-  #assert cp_nav_can_back(s) && !cp_nav_can_fwd(s);
-  #assert coder_page_key(s, '[', MOD_CMD) && s[0].work_mode == CP_MODE_CHAT;
-  #assert cp_nav_can_fwd(s) && coder_page_key(s, ']', MOD_CMD) && s[0].work_mode == CP_MODE_CODE;
+  // There is no Chat | Code switch: one workspace (owner, 2026-11-27).
+  #assert surface_find(s[0].surface[..], "coder.mode.chat") < 0 && surface_find(s[0].surface[..], "coder.mode.code") < 0;
   // Navigating to Dashboard and back pushes and restores cleanly.
   #assert cp_bar_draw(s, f[..], 1400, 900);
   #assert cp_press(s, surface_find(s[0].surface[..], "coder.dashboard")) && s[0].dash[0].open;
@@ -506,22 +499,13 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert coder_page_key(s, 's', MOD_CMD | MOD_ALT) && cp_other_pane_open(s);
 }
 
-#test "P0.2 (#14139): 64pt collapsed rail on desktop, mode-aware Chat recents vs repo-grouped Code sidebar" {
+#test "P0.2 (#14139): 64pt collapsed rail on desktop, one flat Recents list" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   f: [1] UiFrame;
   coder_page_chats(s, "c1\tBuild shell\t0\t0\t0\t0\t0\t0\t/Users/me/openagents\t2000\tmain\t0\nc2\tBook draft\t0\t0\t0\t0\t0\t0\t/Users/me/cc\t1500\tmain\t0\nc3\tSecond OA chat\t0\t0\t0\t0\t0\t0\t/Users/me/openagents\t1000\tfeat\t0\n");
-  // Chat mode: single Recents heading, no repo group headings.
-  s[0].work_mode = CP_MODE_CHAT;
+  // A single Recents heading, no repo group headings.
   #assert cp_bar_draw(s, f[..], 1400, 900);
   #assert surface_find(s[0].surface[..], "coder.chats") >= 0 && surface_find(s[0].surface[..], "coder.repo.0") < 0;
-  // Code mode: repo-grouped headings ("openagents" and "cc"), no flat "Recents" heading.
-  s[0].work_mode = CP_MODE_CODE;
-  #assert cp_bar_draw(s, f[..], 1400, 900);
-  #assert surface_find(s[0].surface[..], "coder.chats") < 0;
-  r0 := cp_bar_row(s, "coder.repo.0");
-  r1 := cp_bar_row(s, "coder.repo.1");
-  #assert r0.x >= 0 && r1.x >= 0;
-  #assert cast(string) r0.label[0..<r0.label_n] == "openagents" && cast(string) r1.label[0..<r1.label_n] == "cc";
   // Below CP_SIDE_RAIL_FROM (800pt), collapsed sidebar hides to 0px (overlay drawer only).
   s[0].side_collapsed = true;
   #assert cp_bar_draw(s, f[..], 800, 900) && cp_test_settle(s, f[..], 800, 900) <= 60 && s[0].side == 0;
@@ -593,7 +577,7 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   f: [1] UiFrame;
   #assert cp_bar_draw(s, f[..], 1400, 900);
-  // All 4 catalog links appear in Chat mode sidebar.
+  // All 4 catalog links appear in the sidebar.
   p_row := surface_find(s[0].surface[..], "coder.cat.plugins");
   #assert surface_find(s[0].surface[..], "coder.cat.projects") >= 0 && surface_find(s[0].surface[..], "coder.cat.artifacts") >= 0;
   #assert surface_find(s[0].surface[..], "coder.cat.scheduled") >= 0 && p_row >= 0;

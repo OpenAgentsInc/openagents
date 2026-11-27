@@ -42,11 +42,7 @@ cp_right_pane_toggle :: (s: [] CoderPage) -> bool {
   if last == 6 && cp_flag(s, DC_FLAG_SIMULATOR) { s[0].sim[0].open = true; return true; }
   if last == 7 && cp_mv_enabled(s) && s[0].mv[0].open { s[0].mv[0].hidden = false; return true; }
   if last == 9 && cp_flag(s, DC_FLAG_GIT) { s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; s[0].ask = CP_ASK_GIT_DIFF; return true; }
-  // Default restore/open: File Explorer (or Git Review in Code mode when edits exist).
-  if s[0].work_mode == CP_MODE_CODE && cp_flag(s, DC_FLAG_GIT) && cp_has_edits(s) && !s[0].fp[0].open && !s[0].ft[0].open {
-    s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; s[0].ask = CP_ASK_GIT_DIFF;
-    return true;
-  }
+  // Default restore/open: File Explorer.
   s[0].fp[0].hidden = false;
   if !s[0].fp[0].open { s[0].ft[0].open = true; }
   return true;
