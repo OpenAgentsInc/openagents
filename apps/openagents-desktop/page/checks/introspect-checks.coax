@@ -116,3 +116,83 @@ cp_is_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   xbtn := surface_find(s[0].surface[..], "introspect.pane.close");
   #assert xbtn >= 0 && cp_press(s, xbtn) && !coder_page_introspect_shown(s);
 }
+
+#test "introspect page: direct command composer sends commands to TUI/remote sessions, preserves chat draft, and honors #14071 opt-in" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  s[0].flawed[0].allow_local_harnesses = false;
+  f: [1] UiFrame;
+
+  // Keep an active main chat draft to prove introspect direct command doesn't clobber it.
+  eb_set(s[0].draft[..], "main chat draft untouched");
+
+  tmux := "dev\t0\t0\t12345\tzsh\t/Users/chris/work/openagents\tdev-shell\t1\n";
+  har := "claude\tsess-a1\tFix Metal shader\t/Users/chris/work/openagents\tmain\trunning\t1700000100000\t4410\tCompiling\n";
+  mach := "studio\tMac Studio\t100.88.1.10\tchris\t22\ttailscale\tonline\t0\t0\tmacOS\n";
+  rem := "studio\tMac Studio\tchat-99\topenagents\tTrain Inkling\t/Users/chris/openagents\tmain\trunning\t1700000200000\tstep 420\n";
+  #assert coder_page_introspect_set_tui(s, tmux, "", false) == 1;
+  #assert coder_page_introspect_set_harnesses(s, har, "", false) == 1;
+  #assert coder_page_introspect_set_machines(s, mach, rem) == 1;
+
+  // 1. Open TUI tmux session -> directly commandable, renders composer/send/stop.
+  #assert cp_introspect_open_session(s, 0);
+  #assert coder_page_introspect_can_command(s);
+  #assert cp_is_test_frame(s, f[..], 1280, 900);
+  #assert surface_find(s[0].surface[..], "introspect.pane.composer") >= 0;
+  #assert surface_find(s[0].surface[..], "introspect.pane.send") >= 0;
+  #assert surface_find(s[0].surface[..], "introspect.pane.stop") >= 0;
+
+  // Type via composer and press Send button.
+  #assert coder_page_introspect_set_cmd(s, "git status -sb");
+  #assert cp_is_test_frame(s, f[..], 1280, 900);
+  sbtn := surface_find(s[0].surface[..], "introspect.pane.send");
+  #assert sbtn >= 0 && cp_press(s, sbtn);
+  #assert coder_page_action(s) == CP_ASK_INTROSPECT_SEND;
+  cbuf: [128] u8;
+  cn := coder_page_introspect_cmd(s, cbuf[..]);
+  #assert cast(string) cbuf[0..<cn] == "git status -sb";
+  #assert coder_page_introspect_cmd_done(s, "local:tmux:dev:0.0", "Sent to tmux pane", false);
+
+  // Focus composer, type via text input, and submit with Return.
+  frow := surface_find(s[0].surface[..], "introspect.pane.composer");
+  #assert frow >= 0 && cp_press(s, frow);
+  #assert coder_page_text_edit(s, "pwd", "", 0, 0);
+  #assert coder_page_key(s, KEY_ENTER, 0);
+  #assert coder_page_action(s) == CP_ASK_INTROSPECT_SEND;
+  cn = coder_page_introspect_cmd(s, cbuf[..]);
+  #assert cast(string) cbuf[0..<cn] == "pwd";
+
+  // Stop button emits CP_ASK_INTROSPECT_STOP.
+  stbtn := surface_find(s[0].surface[..], "introspect.pane.stop");
+  #assert stbtn >= 0 && cp_press(s, stbtn) && coder_page_action(s) == CP_ASK_INTROSPECT_STOP;
+
+  // 2. External local harness with allow_local_harnesses == false -> read-only, no composer, submit refused.
+  #assert cp_introspect_open_session(s, 1);
+  #assert !coder_page_introspect_can_command(s);
+  #assert !coder_page_introspect_set_cmd(s, "should fail");
+  #assert !coder_page_introspect_submit(s);
+  #assert cp_is_test_frame(s, f[..], 1280, 900);
+  #assert surface_find(s[0].surface[..], "introspect.pane.composer") < 0;
+  #assert surface_find(s[0].surface[..], "introspect.pane.readonly_note") >= 0;
+
+  // Enabling #14071 opt-in makes external local harnesses directly commandable.
+  s[0].flawed[0].allow_local_harnesses = true;
+  #assert coder_page_introspect_set_harnesses(s, har, "", true) == 1;
+  #assert coder_page_introspect_can_command(s);
+  #assert cp_is_test_frame(s, f[..], 1280, 900);
+  #assert surface_find(s[0].surface[..], "introspect.pane.composer") >= 0;
+  #assert coder_page_introspect_set_cmd(s, "status check");
+  #assert coder_page_introspect_submit(s) && coder_page_action(s) == CP_ASK_INTROSPECT_SEND;
+  cn = coder_page_introspect_cmd(s, cbuf[..]);
+  #assert cast(string) cbuf[0..<cn] == "status check";
+
+  // 3. Remote session is directly commandable.
+  #assert cp_introspect_open_session(s, 2);
+  #assert coder_page_introspect_can_command(s);
+  #assert coder_page_introspect_set_cmd(s, "nvidia-smi");
+  #assert coder_page_introspect_submit(s) && coder_page_action(s) == CP_ASK_INTROSPECT_SEND;
+
+  // Closing inspector preserves main chat draft completely untouched.
+  coder_page_introspect_close(s);
+  #assert eb_text(s[0].draft[..]) == "main chat draft untouched";
+}

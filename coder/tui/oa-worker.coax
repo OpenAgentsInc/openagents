@@ -2070,6 +2070,32 @@ fww_wallet_control_path :: (out: [] u8) -> string {
   return fs_join(h, "Library/Application Support/Coder/foreman-control.json", out);
 }
 
+fww_session_bus_path :: (out: [] u8) -> string {
+  eb: [FS_PATH_MAX] u8;
+  custom := fww_trim(cl_getenv("OA_SESSION_BUS_FILE", eb[..]));
+  if custom.count > 0 && custom.count <= out.count {
+    n := fww_keep(out, custom);
+    return cast(string) out[0..<n];
+  }
+  hb: [FS_PATH_MAX] u8;
+  h := cl_getenv("HOME", hb[..]);
+  if h.count > 0 {
+    p := fs_join(h, ".openagents/session-bus.json", out);
+    if p.count > 0 && fs_exists(p) { return p; }
+  }
+  return fww_wallet_control_path(out);
+}
+
+fww_has_session_bus :: () -> bool {
+  ub: [256] u8; tb: [256] u8;
+  u := fww_trim(cl_getenv("OA_SESSION_BUS_URL", ub[..]));
+  t := fww_trim(cl_getenv("OA_SESSION_BUS_TOKEN", tb[..]));
+  if u.count > 0 && t.count > 0 { return true; }
+  pb: [FS_PATH_MAX] u8;
+  p := fww_session_bus_path(pb[..]);
+  return p.count > 0 && fs_exists(p);
+}
+
 // Compute active member-tool packs bitmask (#14057) from feature flags, env, and workspace.
 fww_active_packs :: (cwd: string, include_coax_intel: bool) -> int {
   eb: [128] u8;
@@ -2117,6 +2143,10 @@ fww_active_packs :: (cwd: string, include_coax_intel: bool) -> int {
   if has_kb { mask |= OA_PACK_KNOWLEDGE; }
   cap_env := fww_trim(cl_getenv("OA_CAPABILITY_TOOLS", eb[..]));
   if cap_env != "0" && cap_env != "false" { mask |= OA_PACK_CAPABILITY; }
+  sess_env := fww_trim(cl_getenv("OA_SESSION_TOOLS", eb[..]));
+  if sess_env == "1" || sess_env == "true" || (sess_env != "0" && sess_env != "false" && fww_has_session_bus()) {
+    mask |= OA_PACK_SESSIONS;
+  }
   return mask;
 }
 
@@ -4387,6 +4417,201 @@ fww_tool_wallet :: (name: string, args_json: string, out_res: [] u8, is_err: [] 
   return n;
 }
 
+// Borderless Session Control Bus tools (#14067): session_list, session_read, session_send, session_spawn, session_stop.
+// Resolves OA_SESSION_BUS_URL/TOKEN env first, falling back to ~/.openagents/session-bus.json or foreman-control.json.
+fww_tool_session :: (name: string, args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [128] JvNode; d: [1] Jv;
+  parsed := jv_parse(d[..], args_json, nodes[..]);
+  if !parsed {
+    is_err[0] = true;
+    return fww_keep(out_res, "Invalid JSON arguments for session tool.");
+  }
+
+  method := "POST";
+  route_b: [256] u8;
+  route := "";
+  body_b: [16384] u8;
+  body_s := "{}";
+
+  if name == "session_list" {
+    method = "GET";
+    rn := fww_cat(route_b[..], 0, "/v1/sessions");
+    kb: [32] u8;
+    kn := jv_str(d[0], jv_get(d[0], 0, "kind"), kb[..]);
+    if kn > 0 {
+      ks := cast(string) kb[0..<kn];
+      if ks != "all" && ks != "desktop" && ks != "tui" && ks != "harness" && ks != "remote" {
+        is_err[0] = true;
+        return fww_keep(out_res, "session_list: kind must be all, desktop, tui, harness, or remote.");
+      }
+      if ks != "all" {
+        rn = fww_cat(route_b[..], rn, "?kind=");
+        rn = fww_cat(route_b[..], rn, ks);
+      }
+    }
+    route = cast(string) route_b[0..<rn];
+  } else {
+    o: [1] Jo; jo_start(o[..], body_b[..]);
+    jo_obj(o[..]);
+    if name == "session_read" {
+      route = "/v1/sessions/read";
+      sid_b: [256] u8;
+      sid_n := jv_str(d[0], jv_get(d[0], 0, "session_id"), sid_b[..]);
+      if sid_n <= 0 {
+        is_err[0] = true;
+        return fww_keep(out_res, "session_read requires non-empty session_id.");
+      }
+      jo_key(o[..], "session_id"); jo_str(o[..], cast(string) sid_b[0..<sid_n]);
+      tail := jv_int(d[0], jv_get(d[0], 0, "tail"), 40);
+      if tail < 1 { tail = 1; }
+      if tail > 200 { tail = 200; }
+      jo_key(o[..], "tail"); jo_int(o[..], tail);
+      it_idx := jv_get(d[0], 0, "include_tools");
+      it_k := jv_kind(d[0], it_idx);
+      if it_k == JV_TRUE || it_k == JV_FALSE {
+        jo_key(o[..], "include_tools"); jo_bool(o[..], it_k == JV_TRUE);
+      }
+    } else if name == "session_send" {
+      route = "/v1/sessions/send";
+      sid_b: [256] u8; pr_b: [8192] u8; mode_b: [32] u8;
+      sid_n := jv_str(d[0], jv_get(d[0], 0, "session_id"), sid_b[..]);
+      pr_n := jv_str(d[0], jv_get(d[0], 0, "prompt"), pr_b[..]);
+      if sid_n <= 0 || pr_n <= 0 {
+        is_err[0] = true;
+        return fww_keep(out_res, "session_send requires non-empty session_id and prompt.");
+      }
+      jo_key(o[..], "session_id"); jo_str(o[..], cast(string) sid_b[0..<sid_n]);
+      jo_key(o[..], "prompt"); jo_str(o[..], cast(string) pr_b[0..<pr_n]);
+      mn := jv_str(d[0], jv_get(d[0], 0, "mode"), mode_b[..]);
+      if mn > 0 {
+        ms := cast(string) mode_b[0..<mn];
+        if ms != "send" && ms != "steer" && ms != "keys" {
+          is_err[0] = true;
+          return fww_keep(out_res, "session_send: mode must be send, steer, or keys.");
+        }
+        jo_key(o[..], "mode"); jo_str(o[..], ms);
+      }
+      sub_idx := jv_get(d[0], 0, "submit");
+      sub_k := jv_kind(d[0], sub_idx);
+      if sub_k == JV_TRUE || sub_k == JV_FALSE {
+        jo_key(o[..], "submit"); jo_bool(o[..], sub_k == JV_TRUE);
+      }
+    } else if name == "session_spawn" {
+      route = "/v1/sessions/spawn";
+      pr_b: [8192] u8; m_b: [128] u8; h_b: [64] u8; c_b: [512] u8; t_b: [256] u8;
+      pr_n := jv_str(d[0], jv_get(d[0], 0, "prompt"), pr_b[..]);
+      if pr_n <= 0 {
+        is_err[0] = true;
+        return fww_keep(out_res, "session_spawn requires non-empty prompt.");
+      }
+      jo_key(o[..], "prompt"); jo_str(o[..], cast(string) pr_b[0..<pr_n]);
+      mn := jv_str(d[0], jv_get(d[0], 0, "machine"), m_b[..]);
+      if mn > 0 { jo_key(o[..], "machine"); jo_str(o[..], cast(string) m_b[0..<mn]); }
+      hn := jv_str(d[0], jv_get(d[0], 0, "harness"), h_b[..]);
+      if hn > 0 { jo_key(o[..], "harness"); jo_str(o[..], cast(string) h_b[0..<hn]); }
+      cn := jv_str(d[0], jv_get(d[0], 0, "cwd"), c_b[..]);
+      if cn > 0 { jo_key(o[..], "cwd"); jo_str(o[..], cast(string) c_b[0..<cn]); }
+      tn := jv_str(d[0], jv_get(d[0], 0, "title"), t_b[..]);
+      if tn > 0 { jo_key(o[..], "title"); jo_str(o[..], cast(string) t_b[0..<tn]); }
+    } else if name == "session_stop" {
+      route = "/v1/sessions/stop";
+      sid_b: [256] u8;
+      sid_n := jv_str(d[0], jv_get(d[0], 0, "session_id"), sid_b[..]);
+      if sid_n <= 0 {
+        is_err[0] = true;
+        return fww_keep(out_res, "session_stop requires non-empty session_id.");
+      }
+      jo_key(o[..], "session_id"); jo_str(o[..], cast(string) sid_b[0..<sid_n]);
+    } else {
+      is_err[0] = true;
+      return fww_keep(out_res, "Unknown session tool.");
+    }
+    jo_end(o[..]);
+    if o[0].bad {
+      is_err[0] = true;
+      return fww_keep(out_res, "Session Control Bus request payload overflow.");
+    }
+    body_s = jo_text(o[..]);
+  }
+
+  url_b: [256] u8; tok_b: [256] u8;
+  u_env := fww_trim(cl_getenv("OA_SESSION_BUS_URL", url_b[..]));
+  t_env := fww_trim(cl_getenv("OA_SESSION_BUS_TOKEN", tok_b[..]));
+  un := u_env.count;
+  tn := t_env.count;
+  if un <= 0 || tn <= 0 {
+    cpath_b: [FS_PATH_MAX] u8;
+    cpath := fww_session_bus_path(cpath_b[..]);
+    if cpath.count == 0 || !fs_exists(cpath) {
+      is_err[0] = true;
+      return fww_keep(out_res, "OpenAgents Session Control Bus is not running (missing OA_SESSION_BUS_URL/TOKEN and ~/.openagents/session-bus.json).");
+    }
+    raw: [8192] u8;
+    rn := fs_read(cpath, raw[..]);
+    if rn <= 0 {
+      is_err[0] = true;
+      return fww_keep(out_res, "Failed to read Session Control Bus descriptor.");
+    }
+    cnodes: [128] JvNode; cd: [1] Jv;
+    if !jv_parse(cd[..], cast(string) raw[0..<rn], cnodes[..]) {
+      is_err[0] = true;
+      return fww_keep(out_res, "Malformed Session Control Bus descriptor.");
+    }
+    un = jv_str(cd[0], jv_get(cd[0], 0, "url"), url_b[..]);
+    tn = jv_str(cd[0], jv_get(cd[0], 0, "token"), tok_b[..]);
+    if un <= 0 || tn <= 0 {
+      is_err[0] = true;
+      return fww_keep(out_res, "Session Control Bus descriptor missing url or token.");
+    }
+  }
+
+  full_url_b: [512] u8;
+  fu_n := fww_cat(full_url_b[..], 0, cast(string) url_b[0..<un]);
+  fu_n = fww_cat(full_url_b[..], fu_n, route);
+  hdr_b: [320] u8;
+  hn := fww_cat(hdr_b[..], 0, "X-Session-Bus-Token: ");
+  hn = fww_cat(hdr_b[..], hn, cast(string) tok_b[0..<tn]);
+
+  h := proc_new();
+  if h < 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "Failed to allocate process for Session Control Bus RPC.");
+  }
+  ok := proc_arg(h, "curl") && proc_arg(h, "-sS") && proc_arg(h, "--max-time") && proc_arg(h, "30") &&
+        proc_arg(h, "-H") && proc_arg(h, cast(string) hdr_b[0..<hn]) &&
+        proc_arg(h, "-X") && proc_arg(h, method);
+  if method == "POST" {
+    ok = ok && proc_arg(h, "-H") && proc_arg(h, "Content-Type: application/json") && proc_arg(h, "-d") && proc_arg(h, body_s);
+  }
+  ok = ok && proc_arg(h, cast(string) full_url_b[0..<fu_n]);
+
+  n := 0;
+  exit_code := -1;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    lbuf: [4096] u8;
+    deadline := proc_now_ms() + 32000;
+    while proc_now_ms() < deadline {
+      r := proc_line(h, 250, lbuf[..]);
+      if r == PROC_EOF { break; }
+      if r == PROC_TIMEOUT { continue; }
+      if r < 0 { break; }
+      if n + r + 2 >= out_res.count { break; }
+      n = fww_cat(out_res, n, cast(string) lbuf[0..<r]);
+      n = fww_cat(out_res, n, "\n");
+    }
+    exit_code = proc_wait(h, 2000);
+  }
+  _ = proc_release(h);
+  is_err[0] = exit_code != 0;
+  if n == 0 { n = fww_keep(out_res, ifx exit_code == 0 then "{}" else "Session Control Bus RPC call failed."); }
+  if wire_out.count > 0 {
+    fww_send(wire_out, mww_command(wire_out, name, exit_code, false, cast(string) out_res[0..<n]));
+  }
+  return n;
+}
+
 // Execute an allowlisted OpenAgents CLI subcommand via argv array (NEVER sh -c).
 fww_tool_cli :: (cwd: string, args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
   is_err[0] = false;
@@ -5591,6 +5816,11 @@ fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
   else if name == "KnowledgeGet" {
     n = jv_str(d[0], jv_get(d[0], 0, "target"), out);
   }
+  else if oa_member_is_session_tool(name) {
+    n = jv_str(d[0], jv_get(d[0], 0, "session_id"), out);
+    if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "title"), out); }
+    if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "kind"), out); }
+  }
   else if name == "CapabilityDraft" || name == "CapabilityEval" {
     n = jv_str(d[0], jv_get(d[0], 0, "slug"), out);
   }
@@ -5723,6 +5953,9 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   else if oa_member_is_capability_tool(name) {
     rn = fww_tool_capability(cwd, cast(string) r[0].home[0..<r[0].nhome], name, args, r[0].acc[0].tools[idx].res[..], is_err[..]);
+  }
+  else if oa_member_is_session_tool(name) {
+    rn = fww_tool_session(name, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
   }
   else if name == "TaskStop" {
     rn = fww_tool_task_stop(r, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
@@ -8305,7 +8538,7 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_detect_missing_capability("post release notes to Slack", kw_b[..], kw_n[..]) == "messaging_integration" && cast(string) kw_b[0..<kw_n[0]] == "slack";
   #assert fww_detect_missing_capability("fix bug in policy.coax", kw_b[..], kw_n[..]) == "";
 
-  packs_all := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE | OA_PACK_KNOWLEDGE | OA_PACK_CAPABILITY;
+  packs_all := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE | OA_PACK_KNOWLEDGE | OA_PACK_CAPABILITY | OA_PACK_SESSIONS;
   mp_n := fww_build_gemini_body_packs(cfg[..], h_code[..], "high", full_sys, false, packs_all, b_code[..]);
   #assert mp_n > 0;
   mp_s := cast(string) b_code[0..<mp_n];
@@ -8313,6 +8546,14 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_contains_ci(mp_s, "OpenAgentsCli") && fww_contains_ci(mp_s, "MetaverseRoute") && fww_contains_ci(mp_s, "GameBuilder");
   #assert fww_contains_ci(mp_s, "KnowledgeSearch") && fww_contains_ci(mp_s, "KnowledgeGet");
   #assert fww_contains_ci(mp_s, "CapabilityDraft") && fww_contains_ci(mp_s, "CapabilityEval") && fww_contains_ci(mp_s, "CapabilityList");
+  #assert fww_contains_ci(mp_s, "session_list") && fww_contains_ci(mp_s, "session_read") && fww_contains_ci(mp_s, "session_send") && fww_contains_ci(mp_s, "session_spawn") && fww_contains_ci(mp_s, "session_stop");
+  #assert fww_tool_target("session_send", "{\"session_id\":\"local:tmux:dev:0.0\",\"prompt\":\"ls\"}", tb[..]) == "local:tmux:dev:0.0";
+  #assert fww_tool_target("session_spawn", "{\"title\":\"Tests\",\"prompt\":\"run\"}", tb[..]) == "Tests";
+  s_out: [4096] u8; s_err := [1] bool.[false]; s_empty: [1] u8;
+  sn_bad := fww_tool_session("session_send", "{\"session_id\":\"\",\"prompt\":\"hi\"}", s_out[..], s_err[..], s_empty[0..<0]);
+  #assert s_err[0] && sn_bad > 0 && fww_contains_ci(cast(string) s_out[0..<sn_bad], "session_id");
+  sn_bad2 := fww_tool_session("session_list", "{\"kind\":\"bogus\"}", s_out[..], s_err[..], s_empty[0..<0]);
+  #assert s_err[0] && sn_bad2 > 0 && fww_contains_ci(cast(string) s_out[0..<sn_bad2], "kind");
 
   mr_out: [4096] u8;
   mr_err := [1] bool.[false];

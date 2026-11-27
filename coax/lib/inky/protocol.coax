@@ -28,6 +28,11 @@ IK_TK_CMD :: 6;
 IK_TK_TODOS :: 7;
 IK_TK_EXEC :: 8;
 IK_TK_OUTLINE :: 9;
+IK_TK_SESS_LIST :: 10;
+IK_TK_SESS_READ :: 11;
+IK_TK_SESS_SEND :: 12;
+IK_TK_SESS_SPAWN :: 13;
+IK_TK_SESS_STOP :: 14;
 
 IkSpan :: struct { off: int; len: int; }
 

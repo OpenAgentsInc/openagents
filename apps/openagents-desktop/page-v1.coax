@@ -243,6 +243,14 @@
   #assert coder_page_introspect_counts(s[..], ic[..]) && ic[0] == 1 && ic[1] == 1 && ic[2] == 1 && ic[3] == 1;
   #assert cp_introspect_open_session(s[..], 0) && coder_page_introspect_shown(s[..]);
   #assert coder_page_introspect_set_output(s[..], "local:tmux:dev:0.0", "hello from tmux\n", "Updated", false);
+  // Borderless Session Control UI Direct Command works unconditionally in --minimal (#14067).
+  #assert coder_page_introspect_can_command(s[..]);
+  #assert coder_page_introspect_set_cmd(s[..], "echo hi");
+  #assert coder_page_introspect_submit(s[..]) && coder_page_action(s[..]) == CP_ASK_INTROSPECT_SEND;
+  icmd: [64] u8;
+  icmd_n := coder_page_introspect_cmd(s[..], icmd[..]);
+  #assert cast(string) icmd[0..<icmd_n] == "echo hi";
+  #assert coder_page_introspect_cmd_done(s[..], "local:tmux:dev:0.0", "Sent", false);
   coder_page_introspect_close(s[..]);
   #assert !coder_page_introspect_shown(s[..]);
 

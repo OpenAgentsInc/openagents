@@ -249,6 +249,11 @@ extension CoderWindow {
                 one.extraEnv["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
             }
         }
+        if foremanServer.port > 0 {
+            one.extraEnv["OA_SESSION_BUS_URL"] = foremanServer.baseURL
+            one.extraEnv["OA_SESSION_BUS_TOKEN"] = foremanServer.operatorToken
+            one.extraEnv["OA_CURRENT_SESSION_ID"] = "local:chat:" + (chat ?? run.session)
+        }
     }
     /// Sub-agent j's worker lines go to its run's page.
     private func wireAgent(_ r: CoderRun, _ j: Int32, _ one: CoderWorker) {
@@ -1329,6 +1334,11 @@ extension CoderWindow {
                 env["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
             }
         }
+        if foremanServer.port > 0 {
+            env["OA_SESSION_BUS_URL"] = foremanServer.baseURL
+            env["OA_SESSION_BUS_TOKEN"] = foremanServer.operatorToken
+            env["OA_CURRENT_SESSION_ID"] = "local:chat:" + ((r === run ? chat : r.chat) ?? r.session)
+        }
         #if OA_FULL
         if FeatureFlags.isOn(.mcp) {
             for (k, v) in McpServerStore.workerEnv() { env[k] = v }
@@ -1450,16 +1460,12 @@ extension CoderWindow {
     func finish(_ id: String) {
         guard let back = runs.removeValue(forKey: id) else { return }
         captureTurnCheckpoint(for: back)
-        #if OA_FULL
         let cost = Int(cd_cost_usd_micros(back.page))
-        #endif
         back.stop(); cd_close(back.page)
-        #if OA_FULL
         _ = foremanEvents.emit(type: "chat.finished", chatID: id, data: [
             "title": store.title(id) ?? "Chat",
             "cost_usd_micros": cost
         ])
-        #endif
         if id != chat { unread.insert(id) }
         needsAttention.remove(id)
         notifyTurnCompleted(chatID: id, isActiveChat: id == chat)

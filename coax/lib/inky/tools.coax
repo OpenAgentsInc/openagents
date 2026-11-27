@@ -19,6 +19,8 @@ IK_GREP_MAX :: 200;
 IK_LIST_MAX_DEPTH :: 3;
 IK_TODOS_MAX :: 64;
 IK_MAX_EDIT_HUNKS :: 8;
+IK_SESS_TAIL_DEFAULT :: 40;
+IK_SESS_TAIL_MAX :: 200;
 
 ik_tool_kind :: (name: string) -> int #effects(all) {
   if name == "read_file" { return IK_TK_READ; }
@@ -30,6 +32,11 @@ ik_tool_kind :: (name: string) -> int #effects(all) {
   if name == "update_todos" { return IK_TK_TODOS; }
   if name == "executor_verify" { return IK_TK_EXEC; }
   if name == "outline" { return IK_TK_OUTLINE; }
+  if name == "session_list" { return IK_TK_SESS_LIST; }
+  if name == "session_read" { return IK_TK_SESS_READ; }
+  if name == "session_send" { return IK_TK_SESS_SEND; }
+  if name == "session_spawn" { return IK_TK_SESS_SPAWN; }
+  if name == "session_stop" { return IK_TK_SESS_STOP; }
   return IK_TK_NONE;
 }
 
@@ -37,12 +44,20 @@ ik_tool_is_readonly :: (kind: int) -> bool #effects(all) {
   return kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS || kind == IK_TK_EXEC || kind == IK_TK_OUTLINE;
 }
 
+ik_tool_is_session :: (kind: int) -> bool #effects(all) {
+  return kind == IK_TK_SESS_LIST || kind == IK_TK_SESS_READ || kind == IK_TK_SESS_SEND || kind == IK_TK_SESS_SPAWN || kind == IK_TK_SESS_STOP;
+}
+
 // Decides whether a tool call runs immediately, waits for MWW_ASK approval, or is denied.
 // Read-only workspace tools NEVER block on MWW_ASK.
+// Borderless session_* tools run without permission boundaries in danger-full-access (#14067).
 ik_tool_admit :: (kind: int, profile: string, ceiling: int, gated: bool, edits_free: bool) -> int #effects(all) {
   if kind == IK_TK_NONE || ceiling < 0 || ceiling > 3 { return IK_ADMIT_DENY; }
   if profile != "danger-full-access" && profile != "workspace-write" && profile != "read-only" { return IK_ADMIT_DENY; }
   if ik_tool_is_readonly(kind) { return IK_ADMIT_RUN; }
+  if ik_tool_is_session(kind) {
+    return ifx profile == "danger-full-access" then IK_ADMIT_RUN else IK_ADMIT_DENY;
+  }
   if profile == "read-only" { return IK_ADMIT_DENY; }
   if kind == IK_TK_EDIT || kind == IK_TK_WRITE {
     if ceiling < 1 { return IK_ADMIT_DENY; }
@@ -161,6 +176,11 @@ IkListArgs :: struct { ok: bool; path: string; depth: int; }
 IkCmdArgs :: struct { ok: bool; command: string; timeout_s: int; }
 IkExecArgs :: struct { ok: bool; module_id: int; n_args: int; args: [8] int; }
 IkOutlineArgs :: struct { ok: bool; path: string; filter: string; }
+IkSessionListArgs :: struct { ok: bool; kind: string; }
+IkSessionReadArgs :: struct { ok: bool; session_id: string; tail: int; include_tools: bool; }
+IkSessionSendArgs :: struct { ok: bool; session_id: string; prompt: string; mode: string; submit: bool; }
+IkSessionSpawnArgs :: struct { ok: bool; machine: string; harness: string; cwd: string; prompt: string; title: string; }
+IkSessionStopArgs :: struct { ok: bool; session_id: string; }
 
 ik_exec_module_id :: (name: string) -> int #effects(all) {
   if name == "diff_verify" || name == "oa-exec-diff-verify" { return 1; }
@@ -328,6 +348,80 @@ ik_admit_outline :: (ar: [] ClArena, args_json: string) -> IkOutlineArgs #effect
   return IkOutlineArgs.{ok = true, path = p, filter = f};
 }
 
+ik_admit_session_list :: (ar: [] ClArena, args_json: string) -> IkSessionListArgs #effects(all) {
+  if !json_valid(args_json) { return IkSessionListArgs.{}; }
+  k := "";
+  if cl_at(args_json, "kind").tok == JSON_STRING {
+    k = cl_str(ar, args_json, "kind");
+    if ar[0].full { return IkSessionListArgs.{}; }
+    if k.count > 0 && k != "all" && k != "desktop" && k != "tui" && k != "harness" && k != "remote" {
+      return IkSessionListArgs.{};
+    }
+  }
+  return IkSessionListArgs.{ok = true, kind = k};
+}
+
+ik_admit_session_read :: (ar: [] ClArena, args_json: string) -> IkSessionReadArgs #effects(all) {
+  if !json_valid(args_json) { return IkSessionReadArgs.{}; }
+  sid := cl_str(ar, args_json, "session_id");
+  if ar[0].full || sid.count == 0 || ik_has_nul(sid) { return IkSessionReadArgs.{}; }
+  t := cl_int(args_json, "tail");
+  tail := ifx t.ok then ik_clamp(t.value, 1, IK_SESS_TAIL_MAX) else IK_SESS_TAIL_DEFAULT;
+  inc := cl_bool(args_json, "include_tools");
+  return IkSessionReadArgs.{ok = true, session_id = sid, tail = tail, include_tools = inc.ok && inc.value};
+}
+
+ik_admit_session_send :: (ar: [] ClArena, args_json: string) -> IkSessionSendArgs #effects(all) {
+  if !json_valid(args_json) { return IkSessionSendArgs.{}; }
+  sid := cl_str(ar, args_json, "session_id");
+  pr := cl_str(ar, args_json, "prompt");
+  if ar[0].full || sid.count == 0 || pr.count == 0 || ik_has_nul(sid) || ik_has_nul(pr) { return IkSessionSendArgs.{}; }
+  m := "send";
+  if cl_at(args_json, "mode").tok == JSON_STRING {
+    q := cl_str(ar, args_json, "mode");
+    if ar[0].full { return IkSessionSendArgs.{}; }
+    if q != "send" && q != "steer" && q != "keys" { return IkSessionSendArgs.{}; }
+    m = q;
+  }
+  sub := cl_bool(args_json, "submit");
+  do_sub := ifx sub.ok then sub.value else true;
+  return IkSessionSendArgs.{ok = true, session_id = sid, prompt = pr, mode = m, submit = do_sub};
+}
+
+ik_admit_session_spawn :: (ar: [] ClArena, args_json: string) -> IkSessionSpawnArgs #effects(all) {
+  if !json_valid(args_json) { return IkSessionSpawnArgs.{}; }
+  pr := cl_str(ar, args_json, "prompt");
+  if ar[0].full || pr.count == 0 || ik_has_nul(pr) { return IkSessionSpawnArgs.{}; }
+  mach := "";
+  if cl_at(args_json, "machine").tok == JSON_STRING {
+    mach = cl_str(ar, args_json, "machine");
+    if ar[0].full || ik_has_nul(mach) { return IkSessionSpawnArgs.{}; }
+  }
+  har := "";
+  if cl_at(args_json, "harness").tok == JSON_STRING {
+    har = cl_str(ar, args_json, "harness");
+    if ar[0].full || ik_has_nul(har) { return IkSessionSpawnArgs.{}; }
+  }
+  cwd := "";
+  if cl_at(args_json, "cwd").tok == JSON_STRING {
+    cwd = cl_str(ar, args_json, "cwd");
+    if ar[0].full || ik_has_nul(cwd) { return IkSessionSpawnArgs.{}; }
+  }
+  title := "";
+  if cl_at(args_json, "title").tok == JSON_STRING {
+    title = cl_str(ar, args_json, "title");
+    if ar[0].full || ik_has_nul(title) { return IkSessionSpawnArgs.{}; }
+  }
+  return IkSessionSpawnArgs.{ok = true, machine = mach, harness = har, cwd = cwd, prompt = pr, title = title};
+}
+
+ik_admit_session_stop :: (ar: [] ClArena, args_json: string) -> IkSessionStopArgs #effects(all) {
+  if !json_valid(args_json) { return IkSessionStopArgs.{}; }
+  sid := cl_str(ar, args_json, "session_id");
+  if ar[0].full || sid.count == 0 || ik_has_nul(sid) { return IkSessionStopArgs.{}; }
+  return IkSessionStopArgs.{ok = true, session_id = sid};
+}
+
 // 8-hex-digit FNV-1a 32-bit digest for read_file/edit_file/write_file version tracking.
 ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   if out.count < 8 { return -1; }
@@ -350,19 +444,25 @@ ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   #assert ik_tool_kind("write_file") == IK_TK_WRITE && ik_tool_kind("grep") == IK_TK_GREP;
   #assert ik_tool_kind("list_dir") == IK_TK_LIST && ik_tool_kind("run_command") == IK_TK_CMD;
   #assert ik_tool_kind("update_todos") == IK_TK_TODOS && ik_tool_kind("executor_verify") == IK_TK_EXEC && ik_tool_kind("outline") == IK_TK_OUTLINE && ik_tool_kind("other") == IK_TK_NONE;
+  #assert ik_tool_kind("session_list") == IK_TK_SESS_LIST && ik_tool_kind("session_read") == IK_TK_SESS_READ;
+  #assert ik_tool_kind("session_send") == IK_TK_SESS_SEND && ik_tool_kind("session_spawn") == IK_TK_SESS_SPAWN && ik_tool_kind("session_stop") == IK_TK_SESS_STOP;
   #assert ik_tool_is_readonly(IK_TK_READ) && ik_tool_is_readonly(IK_TK_GREP) && ik_tool_is_readonly(IK_TK_LIST) && ik_tool_is_readonly(IK_TK_TODOS) && ik_tool_is_readonly(IK_TK_EXEC) && ik_tool_is_readonly(IK_TK_OUTLINE);
   #assert !ik_tool_is_readonly(IK_TK_EDIT) && !ik_tool_is_readonly(IK_TK_WRITE) && !ik_tool_is_readonly(IK_TK_CMD) && !ik_tool_is_readonly(IK_TK_NONE);
+  #assert ik_tool_is_session(IK_TK_SESS_LIST) && ik_tool_is_session(IK_TK_SESS_READ) && ik_tool_is_session(IK_TK_SESS_SEND) && ik_tool_is_session(IK_TK_SESS_SPAWN) && ik_tool_is_session(IK_TK_SESS_STOP);
+  #assert !ik_tool_is_session(IK_TK_READ) && !ik_tool_is_session(IK_TK_CMD) && !ik_tool_is_session(IK_TK_NONE);
 }
 
-#forall "inky tools: sandbox ceiling and gating admission matrix" kind:0..<11, ceiling:-1..<5, gated:bool, edits_free:bool {
+#forall "inky tools: sandbox ceiling and gating admission matrix" kind:0..<16, ceiling:-1..<5, gated:bool, edits_free:bool {
   profiles := [4] string.["read-only", "workspace-write", "danger-full-access", "bogus"];
   for pi: 0..<4 {
     p := profiles[pi];
     got := ik_tool_admit(kind, p, ceiling, gated, edits_free);
     want := IK_ADMIT_DENY;
-    if kind >= 1 && kind <= 9 && ceiling >= 0 && ceiling <= 3 && pi < 3 {
+    if kind >= 1 && kind <= 14 && ceiling >= 0 && ceiling <= 3 && pi < 3 {
       if kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS || kind == IK_TK_EXEC || kind == IK_TK_OUTLINE {
         want = IK_ADMIT_RUN;
+      } else if kind >= IK_TK_SESS_LIST && kind <= IK_TK_SESS_STOP {
+        if p == "danger-full-access" { want = IK_ADMIT_RUN; }
       } else if p != "read-only" {
         if kind == IK_TK_EDIT || kind == IK_TK_WRITE {
           if ceiling >= 1 { want = ifx gated && !edits_free then IK_ADMIT_ASK else IK_ADMIT_RUN; }
@@ -651,4 +751,111 @@ ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   #assert ik_hash8("", hb[..]) == 8 && cast(string) hb[..] == "811c9dc5";
   #assert ik_hash8("hello", hb[..]) == 8 && cast(string) hb[..] == "4f9f2cab";
   #assert ik_hash8("hello", hb[0..<7]) < 0;
+
+  // session_list (#14067)
+  ar[0].at = 0; ar[0].full = false;
+  sl := ik_admit_session_list(ar[..], "{}");
+  #assert sl.ok && sl.kind == "";
+  ar[0].at = 0; ar[0].full = false;
+  sl = ik_admit_session_list(ar[..], "{\"kind\":\"\"}");
+  #assert sl.ok && sl.kind == "";
+  ar[0].at = 0; ar[0].full = false;
+  sl = ik_admit_session_list(ar[..], "{\"kind\":\"all\"}");
+  #assert sl.ok && sl.kind == "all";
+  ar[0].at = 0; ar[0].full = false;
+  sl = ik_admit_session_list(ar[..], "{\"kind\":\"desktop\"}");
+  #assert sl.ok && sl.kind == "desktop";
+  ar[0].at = 0; ar[0].full = false;
+  sl = ik_admit_session_list(ar[..], "{\"kind\":\"tui\"}");
+  #assert sl.ok && sl.kind == "tui";
+  ar[0].at = 0; ar[0].full = false;
+  sl = ik_admit_session_list(ar[..], "{\"kind\":\"harness\"}");
+  #assert sl.ok && sl.kind == "harness";
+  ar[0].at = 0; ar[0].full = false;
+  sl = ik_admit_session_list(ar[..], "{\"kind\":\"remote\"}");
+  #assert sl.ok && sl.kind == "remote";
+  ar[0].at = 0; ar[0].full = false;
+  sl = ik_admit_session_list(ar[..], "{\"kind\":42}");
+  #assert sl.ok && sl.kind == "";
+  #assert !ik_admit_session_list(ar[..], "{\"kind\":\"bogus\"}").ok && !ik_admit_session_list(ar[..], "{\"kind\":\"x\"}").ok && !ik_admit_session_list(ar[..], "bad").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_list(tar[..], "{\"kind\":\"\\u0074ui\"}").ok;
+
+  // session_read (#14067)
+  ar[0].at = 0; ar[0].full = false;
+  sr := ik_admit_session_read(ar[..], "{\"session_id\":\"local:tmux:dev:0.0\"}");
+  #assert sr.ok && sr.session_id == "local:tmux:dev:0.0" && sr.tail == IK_SESS_TAIL_DEFAULT && !sr.include_tools;
+  ar[0].at = 0; ar[0].full = false;
+  sr = ik_admit_session_read(ar[..], "{\"session_id\":\"local:chat:c1\",\"tail\":500,\"include_tools\":true}");
+  #assert sr.ok && sr.tail == IK_SESS_TAIL_MAX && sr.include_tools;
+  ar[0].at = 0; ar[0].full = false;
+  sr = ik_admit_session_read(ar[..], "{\"session_id\":\"local:chat:c1\",\"tail\":0,\"include_tools\":false}");
+  #assert sr.ok && sr.tail == 1 && !sr.include_tools;
+  ar[0].at = 0; ar[0].full = false;
+  sr = ik_admit_session_read(ar[..], "{\"session_id\":\"local:chat:c1\",\"tail\":25}");
+  #assert sr.ok && sr.tail == 25;
+  #assert !ik_admit_session_read(ar[..], "{\"session_id\":\"\"}").ok && !ik_admit_session_read(ar[..], "{}").ok && !ik_admit_session_read(ar[..], "bad").ok;
+  #assert !ik_admit_session_read(ar[..], "{\"session_id\":\"a\\u0000b\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_read(tar[..], "{\"session_id\":\"\\u0061\\u0062\"}").ok;
+
+  // session_send (#14067)
+  ar[0].at = 0; ar[0].full = false;
+  ss := ik_admit_session_send(ar[..], "{\"session_id\":\"local:tmux:dev:0.0\",\"prompt\":\"ls\"}");
+  #assert ss.ok && ss.session_id == "local:tmux:dev:0.0" && ss.prompt == "ls" && ss.mode == "send" && ss.submit;
+  ar[0].at = 0; ar[0].full = false;
+  ss = ik_admit_session_send(ar[..], "{\"session_id\":\"local:chat:c1\",\"prompt\":\"stop and check\",\"mode\":\"steer\",\"submit\":false}");
+  #assert ss.ok && ss.mode == "steer" && !ss.submit;
+  ar[0].at = 0; ar[0].full = false;
+  ss = ik_admit_session_send(ar[..], "{\"session_id\":\"local:tmux:dev:0.0\",\"prompt\":\"C-c\",\"mode\":\"keys\",\"submit\":true}");
+  #assert ss.ok && ss.mode == "keys" && ss.submit;
+  ar[0].at = 0; ar[0].full = false;
+  ss = ik_admit_session_send(ar[..], "{\"session_id\":\"local:chat:c1\",\"prompt\":\"hi\",\"mode\":99}");
+  #assert ss.ok && ss.mode == "send";
+  #assert !ik_admit_session_send(ar[..], "{\"session_id\":\"local:chat:c1\",\"prompt\":\"hi\",\"mode\":\"bad\"}").ok;
+  #assert !ik_admit_session_send(ar[..], "{\"session_id\":\"\",\"prompt\":\"hi\"}").ok;
+  #assert !ik_admit_session_send(ar[..], "{\"session_id\":\"c1\",\"prompt\":\"\"}").ok;
+  #assert !ik_admit_session_send(ar[..], "{\"session_id\":\"a\\u0000b\",\"prompt\":\"hi\"}").ok;
+  #assert !ik_admit_session_send(ar[..], "{\"session_id\":\"c1\",\"prompt\":\"a\\u0000b\"}").ok;
+  #assert !ik_admit_session_send(ar[..], "bad").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_send(tar[..], "{\"session_id\":\"\\u0061\\u0062\",\"prompt\":\"hi\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_send(tar[..], "{\"session_id\":\"c\",\"prompt\":\"h\",\"mode\":\"\\u0073end\"}").ok;
+
+  // session_spawn (#14067)
+  ar[0].at = 0; ar[0].full = false;
+  sp := ik_admit_session_spawn(ar[..], "{\"prompt\":\"run tests\"}");
+  #assert sp.ok && sp.prompt == "run tests" && sp.machine == "" && sp.harness == "" && sp.cwd == "" && sp.title == "";
+  ar[0].at = 0; ar[0].full = false;
+  sp = ik_admit_session_spawn(ar[..], "{\"prompt\":\"go\",\"machine\":\"studio\",\"harness\":\"tmux\",\"cwd\":\"/repo\",\"title\":\"Tests\"}");
+  #assert sp.ok && sp.machine == "studio" && sp.harness == "tmux" && sp.cwd == "/repo" && sp.title == "Tests";
+  ar[0].at = 0; ar[0].full = false;
+  sp = ik_admit_session_spawn(ar[..], "{\"prompt\":\"go\",\"machine\":1,\"harness\":2,\"cwd\":3,\"title\":4}");
+  #assert sp.ok && sp.machine == "" && sp.harness == "" && sp.cwd == "" && sp.title == "";
+  #assert !ik_admit_session_spawn(ar[..], "{\"prompt\":\"\"}").ok && !ik_admit_session_spawn(ar[..], "{}").ok && !ik_admit_session_spawn(ar[..], "bad").ok;
+  #assert !ik_admit_session_spawn(ar[..], "{\"prompt\":\"a\\u0000b\"}").ok;
+  #assert !ik_admit_session_spawn(ar[..], "{\"prompt\":\"go\",\"machine\":\"a\\u0000b\"}").ok;
+  #assert !ik_admit_session_spawn(ar[..], "{\"prompt\":\"go\",\"harness\":\"a\\u0000b\"}").ok;
+  #assert !ik_admit_session_spawn(ar[..], "{\"prompt\":\"go\",\"cwd\":\"a\\u0000b\"}").ok;
+  #assert !ik_admit_session_spawn(ar[..], "{\"prompt\":\"go\",\"title\":\"a\\u0000b\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_spawn(tar[..], "{\"prompt\":\"\\u0061\\u0062\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_spawn(tar[..], "{\"prompt\":\"p\",\"machine\":\"\\u0061\\u0062\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_spawn(tar[..], "{\"prompt\":\"p\",\"harness\":\"\\u0061\\u0062\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_spawn(tar[..], "{\"prompt\":\"p\",\"cwd\":\"\\u0061\\u0062\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_spawn(tar[..], "{\"prompt\":\"p\",\"title\":\"\\u0061\\u0062\"}").ok;
+
+  // session_stop (#14067)
+  ar[0].at = 0; ar[0].full = false;
+  st := ik_admit_session_stop(ar[..], "{\"session_id\":\"local:tmux:dev:0.0\"}");
+  #assert st.ok && st.session_id == "local:tmux:dev:0.0";
+  #assert !ik_admit_session_stop(ar[..], "{\"session_id\":\"\"}").ok && !ik_admit_session_stop(ar[..], "{}").ok && !ik_admit_session_stop(ar[..], "bad").ok;
+  #assert !ik_admit_session_stop(ar[..], "{\"session_id\":\"a\\u0000b\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_session_stop(tar[..], "{\"session_id\":\"\\u0061\\u0062\"}").ok;
 }

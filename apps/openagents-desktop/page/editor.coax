@@ -35,6 +35,9 @@ cp_ed_which :: (s: [] CoderPage) -> int {
   if k == CP_KB_FIND { return ifx s[0].find[0].open then CP_ED_FIND else -1; }
   if k == CP_KB_FT_FILTER { return ifx cp_ft_tree_shown(s) then CP_ED_FT_FILTER else -1; }
   if k == CP_KB_FILE { return ifx cp_fp_editing(s) then CP_ED_FILE else -1; }
+  if s[0].introspect[0].open {
+    return ifx k == CP_KB_COMPOSER && cp_introspect_composer_active(s) then CP_ED_COMPOSER else -1;
+  }
   return ifx k == CP_KB_COMPOSER then CP_ED_COMPOSER else -1;
 }
 // The dialog's field with the keyboard while it is up at rest, -1 for none.
@@ -63,6 +66,7 @@ cp_ed_text :: (s: [] CoderPage, which: int) -> string {
   if which == CP_ED_FIND { return cp_find_query(s); }
   if which == CP_ED_FT_FILTER { return cp_ft_filter_query(s); }
   if which == CP_ED_PROV { return cp_ps_ed_text(s); }
+  if which == CP_ED_COMPOSER && cp_introspect_composer_active(s) { return cp_introspect_cmd_draft(s); }
   return ifx which == CP_ED_COMPOSER then eb_text(s[0].draft[..]) else cp_set_query(s);
 }
 // Field `which`, opened again when what it committed is not the page's (a send emptied the draft).
@@ -89,7 +93,11 @@ cp_ed_publish :: (s: [] CoderPage, which: int) {
   text := ue_value(s[0].fld[0].ed[which..<which + 1]);
   if which == CP_ED_DIALOG { _ = app_dialog_set(s[0].ov[0].dlg[..], cp_ed_dialog_field(s), text); return; }
   if which == CP_ED_PALETTE { if text != app_palette_query(s[0].ov[0].pal[..]) { _ = app_palette_set_query(s[0].ov[0].pal[..], text); cp_palette_on_query(s); } return; }
-  if which == CP_ED_COMPOSER { if text != eb_text(s[0].draft[..]) { eb_set(s[0].draft[..], text); } return; }
+  if which == CP_ED_COMPOSER {
+    if cp_introspect_composer_active(s) { cp_introspect_cmd_draft_set(s, text); return; }
+    if text != eb_text(s[0].draft[..]) { eb_set(s[0].draft[..], text); }
+    return;
+  }
   if which == CP_ED_FILE { if text != cp_fp_text(s) { cp_fp_publish(s, text); } return; }
   if which == CP_ED_FIND { if text != cp_find_query(s) { cp_find_set_query(s, text); } return; }
   if which == CP_ED_FT_FILTER { if text != cp_ft_filter_query(s) { cp_ft_filter_set(s, text); } return; }
@@ -162,7 +170,7 @@ cp_ed_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods
     over := cp_overlay_open(s);
     for i: 0..<CP_EDS {
       if (i == CP_ED_DIALOG || i == CP_ED_PALETTE) && cp_ed_which(s) != i { continue; }
-      if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu || s[0].effort_menu) { continue; }
+      if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu || s[0].effort_menu || (s[0].introspect[0].open && !cp_introspect_composer_active(s))) { continue; }
       if i == CP_ED_FILE && (over || !cp_fp_editing(s) || s[0].fp[0].large_edit) { continue; }
       if i == CP_ED_FIND && (over || s[0].set_open || !s[0].find[0].open) { continue; }
       if i == CP_ED_FT_FILTER && (over || s[0].set_open || !cp_ft_tree_shown(s) || !(s[0].ft[0].tree_w > 0)) { continue; }
@@ -241,7 +249,7 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
 // Command+Up/Down on macOS, Control+Up/Down on Linux/Windows: jump the chat transcript to the
 // top or bottom of the conversation when not in an overlay/settings/other editor.
 cp_transcript_jump_key :: (s: [] CoderPage, which: int, key: int, mods: int) -> bool {
-  if cp_overlay_open(s) || s[0].set_open || s[0].model_menu || s[0].effort_menu || s[0].mn[0].open { return false; }
+  if cp_overlay_open(s) || s[0].set_open || s[0].model_menu || s[0].effort_menu || s[0].mn[0].open || s[0].introspect[0].open { return false; }
   if key != KEY_UP && key != KEY_DOWN { return false; }
   jump_mod := ifx s[0].ctrl_keys then MOD_CTRL else MOD_CMD;
   if mods != jump_mod { return false; }
@@ -335,22 +343,34 @@ cp_key_in :: (s: [] CoderPage, key: int, mods: int) -> bool {
     cp_ed_publish(s, which); return true;
   }
   if which == CP_ED_COMPOSER {
-    if cp_mn_key(s, key, mods) { return true; }   // the @ and / popover's keys first (mention.coax)
-    if cp_flag(s, DC_FLAG_RICH) && cp_hist_key(s, key, mods) { return true; } // Up/Down prompt history on first/last line (rich.coax)
-    if key == KEY_ENTER && mods == 0 {
-      if coder_page_followup_submit(s, false) { return true; }
-      _ = cp_send(s); return true;
+    if cp_introspect_composer_active(s) {
+      if key == KEY_ENTER && mods == 0 { _ = cp_introspect_submit(s); return true; }
+      if key == KEY_ENTER && (mods == MOD_SHIFT || mods == MOD_ALT) {
+        if !ue_insert(e, "\n") { return false; }
+        cp_ed_publish(s, which); return true;
+      }
+      if key == KEY_ESCAPE && mods == 0 {
+        if s[0].introspect[0].cmd_draft_n > 0 { cp_introspect_cmd_draft_set(s, ""); return true; }
+        cp_introspect_close(s); return true;
+      }
+    } else {
+      if cp_mn_key(s, key, mods) { return true; }   // the @ and / popover's keys first (mention.coax)
+      if cp_flag(s, DC_FLAG_RICH) && cp_hist_key(s, key, mods) { return true; } // Up/Down prompt history on first/last line (rich.coax)
+      if key == KEY_ENTER && mods == 0 {
+        if coder_page_followup_submit(s, false) { return true; }
+        _ = cp_send(s); return true;
+      }
+      if key == KEY_ENTER && mods == MOD_SHIFT {
+        if coder_page_followup_submit(s, true) { return true; }
+        if !ue_insert(e, "\n") { return false; }
+        cp_ed_publish(s, which); return true;
+      }
+      if key == KEY_ENTER && mods == MOD_ALT {
+        if !ue_insert(e, "\n") { return false; }
+        cp_ed_publish(s, which); return true;
+      }
+      if key == KEY_ESCAPE && mods == 0 { return coder_page_followup_escape(s); }
     }
-    if key == KEY_ENTER && mods == MOD_SHIFT {
-      if coder_page_followup_submit(s, true) { return true; }
-      if !ue_insert(e, "\n") { return false; }
-      cp_ed_publish(s, which); return true;
-    }
-    if key == KEY_ENTER && mods == MOD_ALT {
-      if !ue_insert(e, "\n") { return false; }
-      cp_ed_publish(s, which); return true;
-    }
-    if key == KEY_ESCAPE && mods == 0 { return coder_page_followup_escape(s); }
   } else if which == CP_ED_FILE {
     // in the file Return and Tab write: a new line, two spaces
     if (key == KEY_ENTER || key == -15) && mods == 0 {

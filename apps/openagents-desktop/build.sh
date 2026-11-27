@@ -198,6 +198,7 @@ core_swift=(
   "$here/Window+GitDiff.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"
   "$here/AgentSettings.swift" "$here/TitleGenerator.swift" "$here/Window+Usage.swift" "$here/Window+Voice.swift"
   "$here/Window+Environments.swift" "$here/Window+Introspect.swift"
+  "$here/Foreman.swift" "$here/ForemanOperator.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift"
   "$here/Window+Wallet.swift"
   "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift"
   "$repo/apps/shared/host/apple/BreezKey.swift" "$repo/apps/shared/host/apple/BIP39.swift"
@@ -246,12 +247,10 @@ if [[ "$minimal" != "1" ]]; then
     "$here/SceneModel.swift" "$here/SceneView.swift" "$here/ScenePanelView.swift"
     "$here/GymDiscovery.swift" "$here/GymBenchmarkView.swift" "$here/GymTerminalBenchView.swift" "$here/GymGBenchView.swift"
     "$here/RhFlythroughView.swift" "$here/GymWorkbenchView.swift" "$here/GymWorkbenchView+Plan.swift" "$here/Window+Gym.swift"
-    "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift"
     "$here/Window+WalletRPC.swift"
     "$here/Window+Rich.swift"
     "$here/Window+Scheduled.swift" "$here/Window+Preview.swift" "$here/Window+Forge.swift"
     "$here/BrowserViewportView.swift" "$here/Window+Browser.swift"
-    "$here/Foreman.swift" "$here/ForemanOperator.swift"
   )
   swift_files+=("${full_swift[@]}")
   link_flags+=(

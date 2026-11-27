@@ -141,11 +141,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var recallDue = false      // a chat was opened: the worker is told its turns ahead of the next message
     var choosingFolder = false // prevents stacking folder sheets while one is opening or open
     let launchBinary = CoderWindow.currentBinaryIdentity()
-    #if OA_FULL
     let foremanServer = ForemanControlServer()
     let foremanEvents = ForemanEventBus()
     let foremanAudit = ForemanAuditLog()
-    #endif
     let daemonClient = CoderDaemonClient()
     lazy var cloudSync: CloudChatSync = CloudChatSync(
         stateDir: MacAccount.folder.appendingPathComponent("cloud-sync", isDirectory: true),
@@ -168,9 +166,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var phoneBusyChats: Set<String> = []
     var phoneSyncing = false
     var phoneSyncedAt: CFTimeInterval = 0
-    #if OA_FULL
     var foremanTier: ForemanTier = ForemanTier.load()
-    #endif
     let updater = CoderUpdater()
     /// The working folder: commands start there. The corner shows it with ~ for the home folder.
     var folder = FileManager.default.homeDirectoryForCurrentUser
@@ -234,6 +230,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var introspectRemoteBusy = false
     var introspectOutputBusy = false
     var introspectPathIndex: [String: String] = [:]
+    var introspectLocalSnap: IntrospectScanner.LocalScanResult? = nil
+    var introspectRemoteSnap: IntrospectScanner.RemoteScanResult? = nil
     var localModelsDialogState: LocalModelState? = nil // tracks open Local Models dialog for live progress updates (#13826)
     var localModelsDialogGen = 0
     let voice = CoderVoiceController()   // native & local voice dictation + bi-directional TTS (Window+Voice.swift, #14065)
@@ -293,6 +291,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_chats(page, chatLines)
         #if OA_FULL
         if FeatureFlags.isOn(.foreman) { syncForemanUI() }
+        #endif
         foremanServer.handler = { [weak self] request, done in
             guard let self else {
                 done(ForemanResponse(status: 503, body: ["error": "window unavailable"]))
@@ -300,7 +299,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             }
             self.handleForemanAsyncRequest(request, done: done)
         }
-        #endif
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         cd_sb_condensed_set(page, SidebarViewMode.condensed ? 1 : 0)
         CoderNotifications.shared.install()
@@ -320,9 +318,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         CoderProbes.apply(page)
         // ProviderInstancesStore.shared.refreshAll() in setupProvidersSettings() probes enabled
         // Antigravity instances and updates both loaded models and legacy CoderProbes cache.
+        // Borderless Session Control Bus starts automatically in --minimal & --full without DC_FLAG_FOREMAN (#14067).
+        startSessionBus()
         #if OA_FULL
         if ComposerModelVisibility.showOtherModels && FeatureFlags.isOn(.modelsGemini) { CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() } }
-        if FeatureFlags.isOn(.foreman) { startForemanServer() }
         if FeatureFlags.isOn(.gym) { startGymRequests() }
         #endif
         // Keep ~/.openagents/bin workers and the resident coder-host daemon strictly synced with this app's version.
@@ -688,7 +687,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 94: envPairMobileDevice()
         case 95: envRevokeDevice()
         case 96: envKeepAwakeChanged()
-        case 250...254: introspectAsked(what)
+        case 250...255: introspectAsked(what)
         #if OA_FULL
         case 70: if FeatureFlags.isOn(.mcp) { mcpAddDialog() }
         case 71: if FeatureFlags.isOn(.mcp) { mcpToggleSelected() }
@@ -839,13 +838,13 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 if let cid = chat { maybeRefineTitleAfterTurn(chatID: cid) }
             }
             if cd_dashboard_shown(page) != 0 { syncDashboard() }
-            #if OA_FULL
-            if FeatureFlags.isOn(.foreman), let cid = chat {
+            if let cid = chat {
                 _ = foremanEvents.emit(type: fgRunning ? "chat.started" : "chat.finished", chatID: cid, data: [
                     "title": store.title(cid) ?? (cid == Foreman.chatID ? Foreman.title : "Chat"),
                     "cost_usd_micros": Int(cd_cost_usd_micros(page))
                 ])
             }
+            #if OA_FULL
             if FeatureFlags.isOn(.foreman) { syncForemanUI() }
             #endif
         }
@@ -948,9 +947,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         #if OA_FULL
         stopAllTerminals()
         retirePreview()
-        foremanServer.stop()
-        ForemanControlDescriptor.remove()
         #endif
+        foremanServer.stop()
+        SessionBusDescriptor.remove()
+        ForemanControlDescriptor.remove()
         AntigravityProfileManager.retireTempDirs()
         stopFileWatcher()
         if chat != nil && (cd_save_due(page) != 0 || cd_running(page) != 0) { keep(closing: true) }

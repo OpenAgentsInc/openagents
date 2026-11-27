@@ -1,14 +1,6 @@
 // Firm reason: 6 (Swift-to-C host wrapper over coax/lib/agent/desktop/store.coax; GitHub #13794).
 import AppKit
 
-#if !OA_FULL
-enum Foreman {
-    static let chatID = "foreman"
-    static let title = "Foreman"
-    static let managedTag = "foreman"
-}
-#endif
-
 /// One kept chat in the list.
 struct CoderChat: Codable {
     var id: String

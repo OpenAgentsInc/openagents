@@ -402,13 +402,8 @@ extension CoderWindow {
             cd_flags_set(r.page, m)
             cd_cloud_authed_set(r.page, acctAuthed)
         }
-        if FeatureFlags.isOn(.foreman) {
-            startForemanServer()
-        } else {
-            if isForemanShown { newChat() }
-            foremanServer.stop()
-            ForemanControlDescriptor.remove()
-        }
+        if !FeatureFlags.isOn(.foreman), isForemanShown { newChat() }
+        startSessionBus()
         if FeatureFlags.isOn(.gym) {
             startGymRequests()
         } else {
@@ -438,13 +433,25 @@ extension CoderWindow {
         UserDefaults.standard.set(on, forKey: Experimental.key)
         applyFlags()
     }
-    /// Starts the Foreman control server (127.0.0.1) and writes its descriptor for programs outside the app.
-    func startForemanServer() {
+    #endif
+    /// Starts the always-on Borderless Session Control Bus (127.0.0.1) and writes
+    /// ~/.openagents/session-bus.json (+ legacy foreman-control.json) with mode 0600 (#14067).
+    func startSessionBus() {
         if foremanServer.start() {
-            ForemanControlDescriptor.write(url: foremanServer.baseURL, token: foremanServer.operatorToken, auditLog: foremanAudit.fileURL.path)
+            SessionBusDescriptor.write(
+                port: foremanServer.port,
+                url: foremanServer.baseURL,
+                token: foremanServer.operatorToken,
+                auditLog: foremanAudit.fileURL.path
+            )
+            ForemanControlDescriptor.write(
+                url: foremanServer.baseURL,
+                token: foremanServer.operatorToken,
+                auditLog: foremanAudit.fileURL.path
+            )
         }
     }
-    #endif
+    func startForemanServer() { startSessionBus() }
     // MARK: - Settings (settings.coax)
     /// Coder > Settings… (Command-comma), and the menu items that open one of its pages: 0 General,
     /// 1 Models, 2 Foreman, 3 Account, 4 About & updates (-1 the last one shown), at a row ("" the top).

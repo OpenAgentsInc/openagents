@@ -9,9 +9,10 @@ CP_SCR_INTROSPECT :: 15;
 // Host asks (free after CP_ASK_BR_LAST :: 249).
 CP_ASK_INTROSPECT_REFRESH :: 250; // Re-scan local tmux/TUI/harnesses and remote machines
 CP_ASK_INTROSPECT_INSPECT :: 251; // Fetch/refresh live output for active_id
-CP_ASK_INTROSPECT_SEND :: 252;    // Reserved: send prompt/keystrokes when commandable
+CP_ASK_INTROSPECT_SEND :: 252;    // Send direct command/prompt/keystrokes to active_id (#14067)
 CP_ASK_INTROSPECT_CONNECT :: 253; // Connect or open Settings -> Connections for active machine
 CP_ASK_INTROSPECT_COPY :: 254;    // Copy inspected live output to clipboard
+CP_ASK_INTROSPECT_STOP :: 255;    // Stop / send Ctrl-C to active_id (#14067)
 
 // Row actions (free after CP_BR_ACT_LAST :: 579).
 CP_IS_ACT_FIRST :: 580;
@@ -25,10 +26,14 @@ CP_IS_INSPECT_REFRESH :: 586;
 CP_IS_INSPECT_COPY :: 587;
 CP_IS_INSPECT_CONNECT :: 588;
 CP_IS_INSPECT_SETTINGS :: 589;
+CP_IS_INSPECT_SEND :: 590;
+CP_IS_INSPECT_STOP :: 591;
+CP_IS_INSPECT_FOCUS :: 592;
 CP_IS_ACT_LAST :: 595;
 
 CP_IS_OUTPUT_MAX :: 16384;
 CP_IS_MAX_LINES :: 260;
+CP_IS_CMD_MAX :: 4096;
 
 CpIntrospect :: struct {
   snap: [1] IntrospectSnapshot;
@@ -42,6 +47,11 @@ CpIntrospect :: struct {
   output: [CP_IS_OUTPUT_MAX] u8; output_n: int;
   output_status: [128] u8; output_status_n: int;
   loading: bool;
+  cmd_draft: [CP_IS_CMD_MAX] u8; cmd_draft_n: int;
+  pending_cmd: [CP_IS_CMD_MAX] u8; pending_cmd_n: int;
+  cmd_sending: bool;
+  cmd_note: [256] u8; cmd_note_n: int;
+  cmd_note_err: bool;
   scroll: f32; content: f32; view: f32; stick: bool;
   scr: [1] UiScroll;
 }
@@ -88,6 +98,49 @@ cp_introspect_side_busy :: (s: [] CoderPage) -> bool {
 cp_introspect_active_id :: (s: [] CoderPage) -> string {
   if s.count < 1 { return ""; }
   return is_str(s[0].introspect[0].active_id[..], s[0].introspect[0].active_id_n);
+}
+
+// Whether the currently inspected session accepts direct commands (#14067).
+// Reconciled with #14071: external local harnesses require allow_local_harnesses opt-in.
+cp_introspect_can_command :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return false; }
+  ip := s[0].introspect[..];
+  if !ip[0].open || ip[0].inspect_is_machine { return false; }
+  idx := is_find_session(ip[0].snap[..], cp_introspect_active_id(s));
+  if idx < 0 { return false; }
+  sess := ip[0].snap[0].sessions[idx];
+  if is_harness_is_external(sess.harness) {
+    return cp_flawed_allow_local_harnesses(s) && sess.commandable;
+  }
+  return sess.commandable;
+}
+
+cp_introspect_composer_active :: (s: [] CoderPage) -> bool {
+  return cp_introspect_can_command(s);
+}
+
+cp_introspect_cmd_draft :: (s: [] CoderPage) -> string {
+  if s.count < 1 { return ""; }
+  return cast(string) s[0].introspect[0].cmd_draft[0..<s[0].introspect[0].cmd_draft_n];
+}
+
+cp_introspect_cmd_draft_set :: (s: [] CoderPage, text: string) {
+  if s.count < 1 { return; }
+  s[0].introspect[0].cmd_draft_n = is_copy(s[0].introspect[0].cmd_draft[..], text);
+}
+
+cp_introspect_submit :: (s: [] CoderPage) -> bool {
+  if !cp_introspect_can_command(s) { return false; }
+  ip := s[0].introspect[..];
+  cmd := cast(string) ip[0].cmd_draft[0..<ip[0].cmd_draft_n];
+  if is_trim(cmd).count == 0 { return false; }
+  ip[0].pending_cmd_n = is_copy(ip[0].pending_cmd[..], cmd);
+  ip[0].cmd_draft_n = 0;
+  ip[0].cmd_sending = true;
+  ip[0].cmd_note_n = is_copy(ip[0].cmd_note[..], "Sending command…");
+  ip[0].cmd_note_err = false;
+  s[0].ask = CP_ASK_INTROSPECT_SEND;
+  return true;
 }
 
 // Replaces all sessions of `kind` with `fresh` while preserving all other kinds in order.
@@ -353,8 +406,16 @@ cp_introspect_open_session :: (s: [] CoderPage, idx: int) -> bool {
     ip[0].output_n = 0;
     ip[0].output_status_n = is_copy(ip[0].output_status[..], "Loading live output…");
     ip[0].loading = true;
+    ip[0].cmd_draft_n = 0;
+    ip[0].pending_cmd_n = 0;
+    ip[0].cmd_sending = false;
+    ip[0].cmd_note_n = 0;
+    ip[0].cmd_note_err = false;
     ip[0].scroll = 0.0f32;
     ip[0].stick = true;
+  }
+  if cp_introspect_can_command(s) {
+    s[0].fld[0].kb = CP_KB_COMPOSER;
   }
   s[0].ask = CP_ASK_INTROSPECT_INSPECT;
   return true;
@@ -442,6 +503,21 @@ cp_introspect_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     cp_settings_show(s, true, CP_PG_FLAWED);
     return true;
   }
+  if act == CP_IS_INSPECT_SEND {
+    return cp_introspect_submit(s);
+  }
+  if act == CP_IS_INSPECT_STOP {
+    if !cp_introspect_can_command(s) { return false; }
+    ip[0].cmd_note_n = is_copy(ip[0].cmd_note[..], "Sending interrupt (Ctrl-C)…");
+    ip[0].cmd_note_err = false;
+    s[0].ask = CP_ASK_INTROSPECT_STOP;
+    return true;
+  }
+  if act == CP_IS_INSPECT_FOCUS {
+    if !cp_introspect_can_command(s) { return false; }
+    cp_ed_focus(s, CP_KB_COMPOSER);
+    return true;
+  }
   return false;
 }
 
@@ -487,8 +563,11 @@ cp_introspect_pane :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32
   }
   cp_header_bar(s, f, left, w, hdr_title, w - CP_CORNER);
 
+  can_cmd := !ip[0].inspect_is_machine && sidx >= 0 && cp_introspect_can_command(s);
+  cmd_bar_h: f32 = ifx can_cmd then 92.0f32 else 0.0f32;
+
   top := cp_bar(s);
-  view := h - top;
+  view := h - top - cmd_bar_h;
   if view < 0.0f32 { view = 0.0f32; }
   ip[0].view = view;
   if ip[0].stick && ip[0].content > view {
@@ -497,7 +576,7 @@ cp_introspect_pane :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32
   ip[0].scroll = scroll_clamp(ip[0].scroll, ip[0].content, view);
   at := ip[0].scroll;
 
-  uiframe_clip(f, left, top, w, h);
+  uiframe_clip(f, left, top, w, h - cmd_bar_h);
 
   pad_x: f32 = 28.0f32;
   max_col: f32 = 860.0f32;
@@ -517,6 +596,11 @@ cp_introspect_pane :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32
   _ := app_button(f, "introspect.pane.close", rx, y, close_w, ICON_CLOSE, "Close", APP_BUTTON_QUIET, 0, CP_IS_INSPECT_CLOSE);
   rx -= ref_w + 8.0f32;
   _ := app_button(f, "introspect.pane.refresh", rx, y, ref_w, ICON_RELOAD, "Refresh", APP_BUTTON_DEFAULT, 0, CP_IS_INSPECT_REFRESH);
+  if can_cmd {
+    st_w := app_button_width(f, ICON_STOP, "Stop");
+    rx -= st_w + 8.0f32;
+    _ := app_button(f, "introspect.pane.stop", rx, y, st_w, ICON_STOP, "Stop", APP_BUTTON_DEFAULT, 0, CP_IS_INSPECT_STOP);
+  }
   if !ip[0].inspect_is_machine && ip[0].output_n > 0 {
     cp_w := app_button_width(f, ICON_COPY, "Copy");
     rx -= cp_w + 8.0f32;
@@ -622,7 +706,7 @@ cp_introspect_pane :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32
 
     iy += cp_introspect_kv(f, "introspect.pane.uri", "Session URI", sheet_pool(sh, is_str(sess.id[..], sess.id_n)), true, ix, iy, inner_w, false);
 
-    mode_s := ifx sess.commandable then "Interactive inspection (live output + commands)" else "Read-only live inspection";
+    mode_s := ifx can_cmd then "Interactive control (live output + direct commands)" else "Read-only live inspection";
     iy += cp_introspect_kv(f, "introspect.pane.mode", "Access", mode_s, false, ix, iy, inner_w, true);
 
     if sess.cwd_n > 0 {
@@ -714,6 +798,47 @@ cp_introspect_pane :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32
   uiframe_unclip(f);
   ip[0].content = (y - y0) + 28.0f32;
   app_scroll_rail(f, ip[0].scr[..], w, top, ip[0].scroll, ip[0].content, view, view, s[0].now, s[0].reduced);
+
+  // Docked Borderless Direct Command Composer for any commandable introspected session (#14067).
+  if can_cmd && h > top + cmd_bar_h {
+    by := h - cmd_bar_h;
+    sheet_fill(sh, left, by, area_w, cmd_bar_h, 0, k.canvas);
+    sheet_fill(sh, left, by, area_w, k.border, 0, k.hairline);
+
+    note_y := by + 8.0f32;
+    note_txt := ifx ip[0].cmd_note_n > 0 then sheet_pool(sh, is_str(ip[0].cmd_note[..], ip[0].cmd_note_n))
+                else "Direct session command — type and press Return to send";
+    note_col := ifx ip[0].cmd_note_err then rgba(239, 68, 68, 0.95f32) else k.muted;
+    _ := uiframe_semantic(f, "introspect.pane.cmd_note", EL_TEXT, note_txt, cx, note_y, cw, k.small.line, 0, 0);
+    _ := sheet_text(sh, m, -1, cx, note_y, k.small.line, k.small.face, note_col, app_fit(f, k.small.face, note_txt, cw));
+
+    box_y := note_y + k.small.line + 8.0f32;
+    box_h: f32 = 44.0f32;
+    focused := cp_composer_focused(s);
+    border_c := ifx focused then k.accent else k.hairline;
+    _ := sheet_box(sh, cx, box_y, cw, box_h, 12.0f32, k.border, k.raised, border_c);
+
+    send_w := app_button_width(f, ICON_ARROW_UP, "Send");
+    send_x := cx + cw - send_w - 8.0f32;
+    send_y := box_y + (box_h - 28.0f32) * 0.5f32;
+    has_draft := is_trim(cp_introspect_cmd_draft(s)).count > 0;
+    send_st := ifx has_draft then 0 else EL_S_DISABLED;
+    _ := app_button(f, "introspect.pane.send", send_x, send_y, send_w, ICON_ARROW_UP, "Send", APP_BUTTON_PRIMARY, send_st, CP_IS_INSPECT_SEND);
+
+    ed_x := cx + 14.0f32;
+    ed_w := send_x - ed_x - 10.0f32;
+    if ed_w < 60.0f32 { ed_w = 60.0f32; }
+    ed_y := box_y + 10.0f32;
+    ed_h := box_h - 20.0f32;
+    frow := uiframe_semantic(f, "introspect.pane.composer", EL_FIELD, "Direct session command", cx, box_y, send_x - cx - 4.0f32, box_h, ifx focused then EL_S_FOCUSED else 0, CP_IS_INSPECT_FOCUS);
+    sheet_hit(sh, UIFRAME_HIT, frow, 0, cx, box_y, send_x - cx - 4.0f32, box_h);
+
+    ph_b: [160] u8;
+    phn := el_put(ph_b[..], 0, "Command ");
+    phn = el_put(ph_b[..], phn, act_id);
+    phn = el_put(ph_b[..], phn, "…");
+    cp_ed_draw(s, f, CP_ED_COMPOSER, ed_x, ed_y, ed_w, ed_h, sheet_pool(sh, cast(string) ph_b[0..<phn]));
+  }
 }
 
 // ---------------------------------------------------------------- C exports
@@ -860,5 +985,34 @@ coder_page_introspect_counts :: (s: [] CoderPage, out4: [] int) -> bool #export_
   out4[1] = is_count_kind(snap, IS_KIND_HARNESS);
   out4[2] = is_count_kind(snap, IS_KIND_REMOTE);
   out4[3] = snap[0].nmachines;
+  return true;
+}
+
+coder_page_introspect_can_command :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return cp_introspect_can_command(s);
+}
+
+coder_page_introspect_cmd :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, cast(string) s[0].introspect[0].pending_cmd[0..<s[0].introspect[0].pending_cmd_n]);
+}
+
+coder_page_introspect_set_cmd :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || !cp_introspect_can_command(s) { return false; }
+  cp_introspect_cmd_draft_set(s, text);
+  return true;
+}
+
+coder_page_introspect_submit :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return cp_introspect_submit(s);
+}
+
+coder_page_introspect_cmd_done :: (s: [] CoderPage, session_id: string, note: string, failed: bool) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  ip := s[0].introspect[..];
+  if session_id.count > 0 && session_id != cp_introspect_active_id(s) { return false; }
+  ip[0].cmd_sending = false;
+  ip[0].cmd_note_n = is_copy(ip[0].cmd_note[..], note);
+  ip[0].cmd_note_err = failed;
   return true;
 }

@@ -877,4 +877,9 @@ int cd_introspect_shown(void *page);
 void cd_introspect_close(void *page);
 int cd_introspect_output(void *page, char *out, int cap);
 int cd_introspect_counts(void *page, int out4[4]);
+int cd_introspect_can_command(void *page);
+int cd_introspect_cmd(void *page, char *out, int cap);
+int cd_introspect_set_cmd(void *page, const char *text);
+int cd_introspect_submit(void *page);
+int cd_introspect_cmd_done(void *page, const char *session_id, const char *note, int failed);
 #endif

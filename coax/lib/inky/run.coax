@@ -1498,6 +1498,192 @@ ik_finish_cmd :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEv
   });
 }
 
+ik_session_bus_resolve :: (url_out: [] u8, tok_out: [] u8, url_n: [] int, tok_n: [] int) -> bool {
+  url_n[0] = 0;
+  tok_n[0] = 0;
+  u := proc_getenv("OA_SESSION_BUS_URL", url_out);
+  t := proc_getenv("OA_SESSION_BUS_TOKEN", tok_out);
+  if u.count > 0 && t.count > 0 {
+    url_n[0] = u.count;
+    tok_n[0] = t.count;
+    return true;
+  }
+  pbuf: [4096] u8;
+  path := proc_getenv("OA_SESSION_BUS_FILE", pbuf[..]);
+  if path.count == 0 {
+    hbuf: [4096] u8;
+    home := proc_getenv("HOME", hbuf[..]);
+    if home.count == 0 { return false; }
+    path = fs_join(home, ".openagents/session-bus.json", pbuf[..]);
+    if path.count == 0 || !fs_exists(path) {
+      path = fs_join(home, "Library/Application Support/Coder/foreman-control.json", pbuf[..]);
+    }
+  }
+  if path.count == 0 || !fs_exists(path) { return false; }
+  raw: [8192] u8;
+  rn := fs_read(path, raw[..]);
+  if rn <= 0 { return false; }
+  doc := cast(string) raw[0..<rn];
+  if !json_valid(doc) { return false; }
+  ab: [1024] u8;
+  ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  su := cl_str(ar[..], doc, "url");
+  st := cl_str(ar[..], doc, "token");
+  if ar[0].full || su.count == 0 || st.count == 0 || su.count > url_out.count || st.count > tok_out.count { return false; }
+  url_n[0] = ik_loop_copy(url_out, su);
+  tok_n[0] = ik_loop_copy(tok_out, st);
+  return true;
+}
+
+ik_session_bus_call :: (method: string, route: string, body_json: string, out_buf: [] u8, is_err: [] bool) -> int {
+  is_err[0] = false;
+  ub: [256] u8; tb: [256] u8;
+  un := [1] int.[0]; tn := [1] int.[0];
+  if !ik_session_bus_resolve(ub[..], tb[..], un[..], tn[..]) {
+    is_err[0] = true;
+    return ik_fmt_put(out_buf, 0, "Session Control Bus is not running (missing OA_SESSION_BUS_URL/TOKEN and ~/.openagents/session-bus.json).");
+  }
+  full_b: [512] u8;
+  fn := ik_fmt_put(full_b[..], 0, cast(string) ub[0..<un[0]]);
+  fn = ik_fmt_put(full_b[..], fn, route);
+  hdr_b: [320] u8;
+  hn := ik_fmt_put(hdr_b[..], 0, "X-Session-Bus-Token: ");
+  hn = ik_fmt_put(hdr_b[..], hn, cast(string) tb[0..<tn[0]]);
+
+  ph := proc_new();
+  if ph < 0 {
+    is_err[0] = true;
+    return ik_fmt_put(out_buf, 0, "Session Control Bus call failed: no process slot available.");
+  }
+  ok := proc_arg(ph, "curl") && proc_arg(ph, "-sS") && proc_arg(ph, "--max-time") && proc_arg(ph, "25") &&
+        proc_arg(ph, "-H") && proc_arg(ph, cast(string) hdr_b[0..<hn]) &&
+        proc_arg(ph, "-X") && proc_arg(ph, method);
+  if method == "POST" {
+    ok = ok && proc_arg(ph, "-H") && proc_arg(ph, "Content-Type: application/json") && proc_arg(ph, "-d") && proc_arg(ph, body_json);
+  }
+  ok = ok && proc_arg(ph, cast(string) full_b[0..<fn]);
+
+  n := 0;
+  exit_code := -1;
+  if ok && proc_start(ph) == 0 {
+    _ = proc_close_stdin(ph);
+    lbuf: [4096] u8;
+    deadline := proc_now_ms() + 28000;
+    while proc_now_ms() < deadline {
+      lr := proc_line(ph, 250, lbuf[..]);
+      if lr == PROC_EOF { break; }
+      if lr == PROC_TIMEOUT { continue; }
+      if lr < 0 { break; }
+      if n + lr + 2 >= out_buf.count { break; }
+      n = ik_fmt_put(out_buf, n, cast(string) lbuf[0..<lr]);
+      n = ik_fmt_byte(out_buf, n, '\n');
+    }
+    exit_code = proc_wait(ph, 2000);
+  }
+  _ = proc_release(ph);
+  is_err[0] = exit_code != 0;
+  if n == 0 { n = ik_fmt_put(out_buf, 0, ifx exit_code == 0 then "{}" else "Session Control Bus HTTP request failed."); }
+  return n;
+}
+
+ik_exec_session_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, kind: int, args_json: string, out: [] IkRunEvent, ne: int) -> int {
+  ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+  body_b: [16384] u8;
+  route_b: [256] u8;
+  method := "POST";
+  route := "";
+  body := "{}";
+  summary := "";
+
+  if kind == IK_TK_SESS_LIST {
+    a := ik_admit_session_list(ar[..], args_json);
+    if !a.ok {
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], kind, "session_list", 1, "session_list error: invalid arguments.", true);
+      return ne;
+    }
+    method = "GET";
+    rn := ik_fmt_put(route_b[..], 0, "/v1/sessions");
+    if a.kind.count > 0 && a.kind != "all" {
+      rn = ik_fmt_put(route_b[..], rn, "?kind=");
+      rn = ik_fmt_put(route_b[..], rn, a.kind);
+    }
+    route = cast(string) route_b[0..<rn];
+    summary = ifx a.kind.count > 0 then a.kind else "all";
+  } else if kind == IK_TK_SESS_READ {
+    a := ik_admit_session_read(ar[..], args_json);
+    if !a.ok {
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], kind, "session_read", 1, "session_read error: require non-empty session_id.", true);
+      return ne;
+    }
+    route = "/v1/sessions/read";
+    bn := json_raw(body_b[..], 0, "{\"session_id\":");
+    bn = json_write_string(body_b[..], bn, a.session_id);
+    bn = json_raw(body_b[..], bn, ",\"tail\":");
+    bn = json_write_int(body_b[..], bn, a.tail);
+    bn = json_raw(body_b[..], bn, ifx a.include_tools then ",\"include_tools\":true}" else ",\"include_tools\":false}");
+    body = cast(string) body_b[0..<bn];
+    summary = a.session_id;
+  } else if kind == IK_TK_SESS_SEND {
+    a := ik_admit_session_send(ar[..], args_json);
+    if !a.ok {
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], kind, "session_send", 1, "session_send error: require non-empty session_id and prompt.", true);
+      return ne;
+    }
+    route = "/v1/sessions/send";
+    bn := json_raw(body_b[..], 0, "{\"session_id\":");
+    bn = json_write_string(body_b[..], bn, a.session_id);
+    bn = json_raw(body_b[..], bn, ",\"prompt\":");
+    bn = json_write_string(body_b[..], bn, a.prompt);
+    bn = json_raw(body_b[..], bn, ",\"mode\":");
+    bn = json_write_string(body_b[..], bn, a.mode);
+    bn = json_raw(body_b[..], bn, ifx a.submit then ",\"submit\":true}" else ",\"submit\":false}");
+    body = cast(string) body_b[0..<bn];
+    summary = a.session_id;
+  } else if kind == IK_TK_SESS_SPAWN {
+    a := ik_admit_session_spawn(ar[..], args_json);
+    if !a.ok {
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], kind, "session_spawn", 1, "session_spawn error: require non-empty prompt.", true);
+      return ne;
+    }
+    route = "/v1/sessions/spawn";
+    bn := json_raw(body_b[..], 0, "{\"prompt\":");
+    bn = json_write_string(body_b[..], bn, a.prompt);
+    if a.machine.count > 0 { bn = json_raw(body_b[..], bn, ",\"machine\":"); bn = json_write_string(body_b[..], bn, a.machine); }
+    if a.harness.count > 0 { bn = json_raw(body_b[..], bn, ",\"harness\":"); bn = json_write_string(body_b[..], bn, a.harness); }
+    if a.cwd.count > 0 { bn = json_raw(body_b[..], bn, ",\"cwd\":"); bn = json_write_string(body_b[..], bn, a.cwd); }
+    if a.title.count > 0 { bn = json_raw(body_b[..], bn, ",\"title\":"); bn = json_write_string(body_b[..], bn, a.title); }
+    bn = json_raw(body_b[..], bn, "}");
+    body = cast(string) body_b[0..<bn];
+    summary = ifx a.title.count > 0 then a.title else "spawn";
+  } else {
+    a := ik_admit_session_stop(ar[..], args_json);
+    if !a.ok {
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], kind, "session_stop", 1, "session_stop error: require non-empty session_id.", true);
+      return ne;
+    }
+    route = "/v1/sessions/stop";
+    bn := json_raw(body_b[..], 0, "{\"session_id\":");
+    bn = json_write_string(body_b[..], bn, a.session_id);
+    bn = json_raw(body_b[..], bn, "}");
+    body = cast(string) body_b[0..<bn];
+    summary = a.session_id;
+  }
+
+  ik_guard_note_progress(r[0].l[0].guard[..]);
+  is_err := [1] bool.[false];
+  n := ik_session_bus_call(method, route, body, b[0].tool_out[..], is_err[..]);
+  shown := cast(string) b[0].tool_out[0..<n];
+  _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], kind, summary, ifx is_err[0] then 1 else 0, shown, is_err[0]);
+  tlen := ik_loop_copy(b[0].ev_text[..], summary);
+  olen := ik_loop_copy(b[0].ev_out[..], shown);
+  return ik_put_ev(out, ne, IkRunEvent.{
+    kind = IK_EV_COMMAND,
+    text = cast(string) b[0].ev_text[0..<tlen],
+    output = cast(string) b[0].ev_out[0..<olen],
+    exit = ifx is_err[0] then 1 else 0,
+  });
+}
+
 ik_dispatch_next_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEvent, ne: int) -> int {
   tc := ik_loop_next_tool(r[0].l[..]);
   if tc.call_id.count == 0 { return ne; }
@@ -1520,6 +1706,7 @@ ik_dispatch_next_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: []
   if kind == IK_TK_LIST { return ik_exec_list(r, h, b, tc.input_json, out, ne); }
   if kind == IK_TK_TODOS { return ik_exec_todos(r, h, b, tc.input_json, out, ne); }
   if kind == IK_TK_EXEC { return ik_exec_verify(r, h, b, tc.input_json, out, ne); }
+  if ik_tool_is_session(kind) { return ik_exec_session_tool(r, h, b, kind, tc.input_json, out, ne); }
 
   // Gated write or command: check args/guards first before asking user!
   if kind == IK_TK_CMD {

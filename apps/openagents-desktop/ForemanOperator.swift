@@ -63,7 +63,16 @@ enum ForemanAPI {
         ForemanRoute(method: "GET", path: "/v1/wallet/status", operatorOnly: false, summary: "Bitcoin/Lightning Spark wallet status, balance in sats, Spark address, and daily limit"),
         ForemanRoute(method: "POST", path: "/v1/wallet/receive", operatorOnly: false, summary: "Generate a BOLT11 invoice, Spark address, or Bitcoin address: {kind?, amount_sats?, description?}"),
         ForemanRoute(method: "POST", path: "/v1/wallet/quote", operatorOnly: false, summary: "Prepare a real Spark send quote: {destination, amount_sats?, comment?}"),
-        ForemanRoute(method: "POST", path: "/v1/wallet/pay", operatorOnly: false, summary: "Request a Bitcoin/Lightning/x402 spend (always gated by pay/wallet-rpc.coax + interactive user approval): {destination, amount_sats?, comment?, reason?, x402_challenge?}")
+        ForemanRoute(method: "POST", path: "/v1/wallet/pay", operatorOnly: false, summary: "Request a Bitcoin/Lightning/x402 spend (always gated by pay/wallet-rpc.coax + interactive user approval): {destination, amount_sats?, comment?, reason?, x402_challenge?}"),
+        ForemanRoute(method: "GET", path: "/v1/sessions", operatorOnly: false, summary: "List all local Desktop, TUI/tmux, external harness, and remote sessions"),
+        ForemanRoute(method: "POST", path: "/v1/sessions/read", operatorOnly: false, summary: "Read live transcript or scrollback for any session: {session_id, tail?, include_tools?}"),
+        ForemanRoute(method: "POST", path: "/v1/sessions/send", operatorOnly: false, summary: "Send a prompt, steer, or keystrokes to any session without tier walls: {session_id, prompt, mode?, submit?}"),
+        ForemanRoute(method: "POST", path: "/v1/sessions/spawn", operatorOnly: false, summary: "Spawn a new local Desktop, TUI/tmux, or remote session: {prompt, title?, cwd?, harness?, machine?}"),
+        ForemanRoute(method: "POST", path: "/v1/sessions/stop", operatorOnly: false, summary: "Stop or interrupt any session (turn cancel or Ctrl-C): {session_id}"),
+        ForemanRoute(method: "POST", path: "/v1/sessions/wait", operatorOnly: false, summary: "Wait for sessions to finish: {session_ids?, session_id?, mode?, timeout_seconds?}"),
+        ForemanRoute(method: "GET", path: "/v1/sessions/:id/read", operatorOnly: false, summary: "Read live output for session :id"),
+        ForemanRoute(method: "POST", path: "/v1/sessions/:id/send", operatorOnly: false, summary: "Send prompt/keys to session :id"),
+        ForemanRoute(method: "POST", path: "/v1/sessions/:id/stop", operatorOnly: false, summary: "Stop/interrupt session :id")
     ]
 
     /// A token of 48 hex characters from the system's random source.
@@ -142,8 +151,9 @@ enum ForemanControlDescriptor {
     }
 
     static func body(url: String, token: String, auditLog: String) -> [String: Any] {
-        [
+        var out: [String: Any] = [
             "api_version": ForemanAPI.version,
+            "bus_mode": "unbounded",
             "url": url,
             "token": token,
             "principal": ForemanPrincipal.operatorClient.rawValue,
@@ -151,6 +161,8 @@ enum ForemanControlDescriptor {
             "started": Date().timeIntervalSince1970,
             "audit_log": auditLog
         ]
+        if let port = URL(string: url)?.port { out["port"] = port }
+        return out
     }
 
     /// Writes the file whole: a temporary file made 0600, then renamed over the old one.
@@ -176,5 +188,44 @@ enum ForemanControlDescriptor {
     static func remove(at file: URL = defaultURL) {
         guard let pid = read(from: file)?["pid"] as? Int, pid == Int(getpid()) else { return }
         try? FileManager.default.removeItem(at: file)
+    }
+}
+
+/// Primary Borderless Session Control Bus descriptor (~/.openagents/session-bus.json, mode 0600; #14067).
+/// Written unconditionally on Desktop startup in both --minimal and --full builds.
+enum SessionBusDescriptor {
+    static let fileName = "session-bus.json"
+
+    static var defaultURL: URL {
+        if let custom = ProcessInfo.processInfo.environment["OA_SESSION_BUS_FILE"], !custom.isEmpty {
+            return URL(fileURLWithPath: custom)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents", isDirectory: true)
+            .appendingPathComponent(fileName)
+    }
+
+    @discardableResult
+    static func write(to file: URL = defaultURL, port: UInt16, url: String, token: String, auditLog: String) -> Bool {
+        guard port > 0, !url.isEmpty else { return false }
+        var doc = ForemanControlDescriptor.body(url: url, token: token, auditLog: auditLog)
+        doc["port"] = Int(port)
+        doc["bus_mode"] = "unbounded"
+        guard let data = try? JSONSerialization.data(withJSONObject: doc, options: [.sortedKeys, .prettyPrinted]) else { return false }
+        let fm = FileManager.default
+        try? fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let tmp = file.deletingLastPathComponent().appendingPathComponent(".\(file.lastPathComponent).\(getpid())")
+        try? fm.removeItem(at: tmp)
+        guard fm.createFile(atPath: tmp.path, contents: data, attributes: [.posixPermissions: 0o600]) else { return false }
+        guard rename(tmp.path, file.path) == 0 else { try? fm.removeItem(at: tmp); return false }
+        return true
+    }
+
+    static func read(from file: URL = defaultURL) -> [String: Any]? {
+        ForemanControlDescriptor.read(from: file)
+    }
+
+    static func remove(at file: URL = defaultURL) {
+        ForemanControlDescriptor.remove(at: file)
     }
 }

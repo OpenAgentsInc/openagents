@@ -24,14 +24,27 @@ IK_TOOLS_READONLY_JSON :: "[{\"type\":\"function\",\"function\":{\"name\":\"read
 // Native Class-E compiled weight-module verification tool declaration (Executor W2.2 / hybrid-exec-v1).
 IK_TOOL_EXEC_JSON :: "{\"type\":\"function\",\"function\":{\"name\":\"executor_verify\",\"description\":\"Run a frozen, digest-pinned Class-E compiled dense F64 weight module with Ch 234 SHA-256 exact replay. Modules & integer arg tuples: diff_verify(7:[old_start,old_count,new_start,new_count,file_lines,matched_ctx,expected_ctx]), json_schema(8:[has_path,path_len,max_path,has_old,old_len,has_new,new_len,max_body]), dep_sched(6:[remaining_deps,has_cycle,running,max_slots,priority,blocked]), arith_budget(6:[balance_sats,spent_sats,req_sats,daily_cap,tokens_k,rate_sats]), patch_rebase(7:[h1_start,h1_old,h1_new,h2_start,h2_old,h2_new,file_lines]), glob_match(7:[path_segs,pat_segs,has_double_star,matched_prefix,req_prefix,matched_suffix,req_suffix]), semver_solve(7:[cand_maj,cand_min,cand_pat,min_maj,min_min,min_pat,max_maj_excl]), wire_bounds(7:[field_tag,max_tag,wire_type,varint_bytes,declared_len,frame_bytes,max_frame_bytes]).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"module\":{\"type\":\"string\",\"enum\":[\"diff_verify\",\"json_schema\",\"dep_sched\",\"arith_budget\",\"patch_rebase\",\"glob_match\",\"semver_solve\",\"wire_bounds\"]},\"args\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}},\"required\":[\"module\",\"args\"]}}}";
 
+// Borderless Session Control tools mounted in danger-full-access (#14067).
+IK_TOOLS_SESSION_JSON :: "{\"type\":\"function\",\"function\":{\"name\":\"session_list\",\"description\":\"List all active/recent sessions across Desktop chats, local TUI/tmux panes, other harnesses, and remote machines via the Session Control Bus.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"kind\":{\"type\":\"string\",\"enum\":[\"all\",\"desktop\",\"tui\",\"harness\",\"remote\"],\"description\":\"Optional session kind filter (default all)\"}},\"required\":[]}}},{\"type\":\"function\",\"function\":{\"name\":\"session_read\",\"description\":\"Read live transcript turns or terminal scrollback from any session by canonical session_id (e.g. local:chat:<id>, local:tmux:<target>, local:harness:<h>:<id>, remote:<machine>:<id>).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"session_id\":{\"type\":\"string\",\"description\":\"Canonical session_id (or local chat id)\"},\"tail\":{\"type\":\"integer\",\"description\":\"Recent turns/lines to read (1-200, default 40)\"},\"include_tools\":{\"type\":\"boolean\",\"description\":\"Include tool calls for chat transcripts\"}},\"required\":[\"session_id\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"session_send\",\"description\":\"Send a prompt, steer, or keystrokes directly to any session (Desktop chat, tmux pane, opted-in external harness, or remote machine session) without permission gates.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"session_id\":{\"type\":\"string\",\"description\":\"Target canonical session_id\"},\"prompt\":{\"type\":\"string\",\"description\":\"Prompt text, command, or tmux key sequence\"},\"mode\":{\"type\":\"string\",\"enum\":[\"send\",\"steer\",\"keys\"],\"description\":\"Dispatch mode: send (default), steer (interrupt & redirect), or keys (raw tmux send-keys)\"},\"submit\":{\"type\":\"boolean\",\"description\":\"Press Enter after text for tmux/TUI (default true)\"}},\"required\":[\"session_id\",\"prompt\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"session_spawn\",\"description\":\"Spawn a new session on local Desktop (oa-worker), local tmux/TUI, or a remote machine.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"prompt\":{\"type\":\"string\",\"description\":\"Initial prompt or command to run\"},\"title\":{\"type\":\"string\",\"description\":\"Optional session title\"},\"cwd\":{\"type\":\"string\",\"description\":\"Working directory path\"},\"harness\":{\"type\":\"string\",\"description\":\"Target harness: openagents (default), tmux, or opted-in external harness\"},\"machine\":{\"type\":\"string\",\"description\":\"Target machine id (empty or local for this computer)\"}},\"required\":[\"prompt\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"session_stop\",\"description\":\"Stop or interrupt any running session (cancels Desktop turn or sends Ctrl-C to tmux/TUI/remote session).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"session_id\":{\"type\":\"string\",\"description\":\"Target canonical session_id\"}},\"required\":[\"session_id\"]}}}";
+
 ik_prompt_tools_for_mode :: (profile: string, tools_disabled: bool, hybrid_exec: bool, out: [] u8) -> string {
   if tools_disabled { return ""; }
   base := ifx profile == "read-only" then IK_TOOLS_READONLY_JSON else IK_TOOLS_JSON;
-  if !hybrid_exec { return base; }
-  if base.count < 2 || base.count + IK_TOOL_EXEC_JSON.count + 2 > out.count { return base; }
+  add_sess := profile == "danger-full-access";
+  if !hybrid_exec && !add_sess { return base; }
+  need := base.count;
+  if add_sess { need += 1 + IK_TOOLS_SESSION_JSON.count; }
+  if hybrid_exec { need += 1 + IK_TOOL_EXEC_JSON.count; }
+  if base.count < 2 || need > out.count { return base; }
   n := ik_fmt_put(out, 0, cast(string) base[0..<base.count - 1]);
-  n = ik_fmt_byte(out, n, ',');
-  n = ik_fmt_put(out, n, IK_TOOL_EXEC_JSON);
+  if add_sess {
+    n = ik_fmt_byte(out, n, ',');
+    n = ik_fmt_put(out, n, IK_TOOLS_SESSION_JSON);
+  }
+  if hybrid_exec {
+    n = ik_fmt_byte(out, n, ',');
+    n = ik_fmt_put(out, n, IK_TOOL_EXEC_JSON);
+  }
   n = ik_fmt_byte(out, n, ']');
   return cast(string) out[0..<n];
 }
@@ -234,11 +247,16 @@ ik_prompt_build :: (os_name: string, cwd: string, git_info: string, user_instr: 
   #assert ik_prompt_tools_for("workspace-write", false) == IK_TOOLS_JSON;
   #assert ik_prompt_tools_for("read-only", false) == IK_TOOLS_READONLY_JSON;
   #assert ik_prompt_tools_for("workspace-write", true) == "";
-  tbuf: [8192] u8;
+  tbuf: [16384] u8;
   ht := ik_prompt_tools_for_mode("workspace-write", false, true, tbuf[..]);
   #assert json_valid(ht) && cl_count(ht) == 9;
   hro := ik_prompt_tools_for_mode("read-only", false, true, tbuf[..]);
   #assert json_valid(hro) && cl_count(hro) == 6;
+  dfa := ik_prompt_tools_for_mode("danger-full-access", false, false, tbuf[..]);
+  #assert json_valid(dfa) && cl_count(dfa) == 13;
+  #assert ik_prompt_has_ci(dfa, "session_list") && ik_prompt_has_ci(dfa, "session_read") && ik_prompt_has_ci(dfa, "session_send") && ik_prompt_has_ci(dfa, "session_spawn") && ik_prompt_has_ci(dfa, "session_stop");
+  dfah := ik_prompt_tools_for_mode("danger-full-access", false, true, tbuf[..]);
+  #assert json_valid(dfah) && cl_count(dfah) == 14;
   #assert ik_prompt_is_goal("Please finish <goal_objective>fix bug</goal_objective>");
   #assert !ik_prompt_is_goal("Hello, how is it going?");
 }
