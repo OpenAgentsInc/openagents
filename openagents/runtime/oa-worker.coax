@@ -1993,10 +1993,12 @@ fww_obs_mask_epoch :: (h: [] FwHist, is_local: bool) -> bool {
     }
   }
   if suffix_bytes > unmasked_bytes { suffix_bytes -= unmasked_bytes; } else { suffix_bytes = 0; }
-  est_r := 28 - tot_tr;
-  if est_r < 8 { est_r = 8; }
   c_pct := h[0].exp_obs_mask_c_pct;
   if c_pct <= 0 { c_pct = ifx is_local then 100 else 10; }
+  // Conservative remaining-turns gate on cloud (c < 100): never bust a warm cloud prefix cache
+  // on short trajectories (< 8 tool-result turns) where remaining turns R cannot amortize (1-c)*S.
+  if c_pct < 100 && tot_tr < 8 { return false; }
+  est_r := ifx c_pct >= 100 then 16 else 6;
   if !fww_obs_mask_break_even(unmasked_bytes, suffix_bytes, est_r, c_pct) { return false; }
 
   // Pass 2: replace older bulky TOOL_RES blocks with compact anchor-preserving stubs.
@@ -6366,6 +6368,8 @@ FwRun :: struct {
   tp_viewed_files: [32] int; ntp_viewed: int;
   tp_last_err_sig: int;
   tp_err_inertia_cnt: int;
+  tp_last_call_sig: int;
+  tp_repeat_cnt: int;
   faith_retries: int;
   faith_ran_test: bool;
   faith_last_test_ok: bool;
@@ -7426,6 +7430,9 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       if cfg[0].exp_edit_ground {
         rn = fww_edit_integrity_check(cwd, tp, r[0].acc[0].tools[idx].res[..], rn);
       }
+      if cfg[0].exp_dep_sync {
+        rn = fww_dep_sync_check(cwd, tp, args, r[0].dep_edited_hashes[..], r[0].ndep_edited, r[0].acc[0].tools[idx].res[..], rn);
+      }
     }
   }
   else if name == "Glob" || name == "Grep" {
@@ -7645,6 +7652,19 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
         r[0].faith_ran_test = true;
         r[0].faith_last_test_ok = !err_ti;
         r[0].faith_edited_after_test = false;
+      }
+    }
+    if cfg[0].exp_toolpulse {
+      csig := fww_tool_sig_hash(nm_ti, cast(string) r[0].acc[0].tools[ti].args[0..<r[0].acc[0].tools[ti].nargs]);
+      if csig != 0 && csig == r[0].tp_last_call_sig {
+        r[0].tp_repeat_cnt += 1;
+        if r[0].tp_repeat_cnt >= 3 {
+          r[0].acc[0].tools[ti].nres = fww_cat(r[0].acc[0].tools[ti].res[..], r[0].acc[0].tools[ti].nres,
+            "\n[ToolPulse: Calling Repetition — identical tool call repeated 3+ times in a row. Change parameters or strategy instead of repeating.]");
+        }
+      } else {
+        r[0].tp_last_call_sig = csig;
+        r[0].tp_repeat_cnt = 1;
       }
     }
     if cfg[0].exp_toolpulse && err_ti {
@@ -9591,6 +9611,8 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].ntp_viewed = 0;
     run[0].tp_last_err_sig = 0;
     run[0].tp_err_inertia_cnt = 0;
+    run[0].tp_last_call_sig = 0;
+    run[0].tp_repeat_cnt = 0;
     run[0].faith_retries = 0;
     run[0].faith_ran_test = false;
     run[0].faith_last_test_ok = false;
@@ -10936,8 +10958,10 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_obs_mask_break_even(4096, 16384, 10, 100);
   // Cloud (c=10%): removing 4KB before a 20KB suffix over 10 remaining turns loses (10*10*64 < 90*313) -> MUST NOT MASK.
   #assert !fww_obs_mask_break_even(4096, 20000, 10, 10);
-  // Cloud (c=10%): removing a huge 64KB block early before a 10KB suffix over 20 remaining turns pays -> MASKS.
-  #assert fww_obs_mask_break_even(65536, 10240, 20, 10);
+  // Cloud (c=10%): removing a huge 64KB block early before a 10KB suffix over 6 conservative turns pays -> MASKS.
+  #assert fww_obs_mask_break_even(65536, 10240, 6, 10);
+  // Cloud (c=10%): removing 16KB before a 16KB suffix over 6 conservative turns loses (6*10*16 < 90*16) -> MUST NOT MASK.
+  #assert !fww_obs_mask_break_even(16384, 16384, 6, 10);
 
   // 7. Verify DepSync (2611.29242) extracts added fields & modified def names from Edit diffs.
   sym_b: [256] u8; st_a: [8] int; ln_a: [8] int;
@@ -10955,11 +10979,13 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   #assert got_np && got_bn;
 
-  // 8. Verify ToolPulse (2611.19275) error signature normalizes line numbers for Failure Inertia.
+  // 8. Verify ToolPulse (2611.19275) error signature normalizes line numbers for Failure Inertia and tool sig hash detects Calling Repetition.
   s_err1 := fww_tp_err_sig("Bash", "Traceback:\n  File \"a.py\", line 14\nValueError: bad quota 42\n");
   s_err2 := fww_tp_err_sig("Bash", "Traceback:\n  File \"a.py\", line 29\nValueError: bad quota 99\n");
   s_err3 := fww_tp_err_sig("Bash", "Traceback:\n  File \"a.py\", line 29\nKeyError: missing_key\n");
   #assert s_err1 != 0 && s_err1 == s_err2 && s_err1 != s_err3;
+  #assert fww_tool_sig_hash("Grep", "{\"pattern\":\"foo\"}") == fww_tool_sig_hash("Grep", "{\"pattern\":\"foo\"}");
+  #assert fww_tool_sig_hash("Grep", "{\"pattern\":\"foo\"}") != fww_tool_sig_hash("Grep", "{\"pattern\":\"bar\"}");
 
   // 9. Verify FaithCheck (2611.25760 + 2611.27095) flags ungrounded test-pass & failed-edit claims, allows honest replies.
   f_out: [512] u8;
