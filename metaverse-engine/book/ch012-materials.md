@@ -4,8 +4,9 @@
 > `metaverse/style.coax` into [metaverse-engine/render/shade/material.coax](../render/shade/material.coax),
 > with a typed `Material` record, its admission and the CPU form of the
 > painterly banded surface. Every realm's WGSL is byte-identical after the
-> move. No realm draws from a material table yet; the style presets, the
-> outline pass and the texture layers stay in `metaverse/` (see
+> move. `metaverse/valley/rock.coax` adopts `material_admit` for typed rock
+> material records (`#13541`), while broader multi-material realm tables, style
+> presets, the outline pass and texture layers stay in `metaverse/` (see
 > [Still to do](#still-to-do)).
 
 A material says how a surface answers light: its albedo, the texture layer
@@ -330,10 +331,11 @@ adapter) checks the pages the move can reach against their goldens.
 
 ## Still to do
 
-- **A material table in each realm.** The record and its admission exist,
-  but realms still pass albedo and style through their own vertex words. A
-  realm declaring its table, with a material ID per instance read by the
-  scene pass, is the next step.
+- **A material table in each realm.** The record and its admission exist and
+  are adopted for typed rock materials in `metaverse/valley/rock.coax`
+  (`#13541`), while most realms still pass albedo and style through their own
+  vertex words. Extending every realm to declare a full material table read by
+  instance ID in the scene pass is the next step.
 - **Presets and outlines.** The style presets (`metaverse/style-preset.coax`),
   the outline pass (`metaverse/look.coax`), the flat and anime functions stay in `metaverse/style.coax`. Shared sky,
   clouds, grass, canopies and wind now live in `metaverse-engine/render/shade/sky.coax`

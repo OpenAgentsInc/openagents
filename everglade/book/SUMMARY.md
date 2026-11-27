@@ -30,15 +30,28 @@
 
 ## Part V: The SRD as code
 
-- [14. Ability scores, proficiency and the d20](ch014-ability-scores-proficiency-and-the-d20.md) — partly implemented
+- [14. Ability scores, proficiency and the d20](ch014-ability-scores-proficiency-and-the-d20.md)
 - [15. Classes, levels 1 to 6](ch015-classes-levels-1-to-6.md) — partly implemented
 - [16. Spells and slots](ch016-spells-and-slots.md) — partly implemented
 - [17. Conditions](ch017-conditions.md) — partly implemented
 - [18. Turns become time](ch018-turns-become-time.md) — partly implemented
+- [19. Familiars and Wild Shape](ch019-familiars-and-wild-shape.md) — partly implemented
+
+## Part VI: The guard
+
+- [20. A guard walks the path](ch020-a-guard-walks-the-path.md) — partly implemented
+- [21. Attack the guard](ch021-attack-the-guard.md) — partly implemented
+- [22. Death and respawn](ch022-death-and-respawn.md) — partly implemented
+
+## Part VII: The Ranger and action combat
+
+- [23. Mouse look and the crosshair](ch023-mouse-look-and-the-crosshair.md) — partly implemented
+- [24. The longbow](ch024-the-longbow.md) — partly implemented
+- [25. Cast while you run](ch025-cast-while-you-run.md) — partly implemented
 
 ## Part X: Beasts and mounts
 
-- [33. Let's build a dragon](ch033-lets-build-a-dragon.md) — partly implemented
+- [33. Let's build a dragon](ch033-lets-build-a-dragon.md)
 
 ## Appendices
 

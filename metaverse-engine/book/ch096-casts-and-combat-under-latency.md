@@ -52,6 +52,11 @@ CR_LOW :: 1.2;            // m: a piece lower than this (a crate, a fence, a ben
 CR_NEAR :: 2.5;           // m: an aim this close needs no line of sight (a press aims 2 m ahead of you; the rest is the wire's cm and your pose)
 ```
 
+The retired Everglade v1 timing and repair constants below are retained as a
+historical reference; live room cast handling runs in
+[`coax/web/room/room-casts.coax`](../../coax/web/room/room-casts.coax) and
+[`everglade/server/casts.coax`](../../everglade/server/casts.coax):
+
 <!-- historical excerpt: apps/openagents-web/old/v1/everglade-cast-rules.coax cast-rules -->
 ```jai
 // ---- time

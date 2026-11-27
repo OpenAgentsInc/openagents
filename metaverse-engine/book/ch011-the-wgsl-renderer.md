@@ -14,8 +14,19 @@ both the bytes a frame may read and the order in which it reads them.
 The realm writes its drawn state into buffers. Coax admits the measured
 ranges, derives the geometry domains, and produces the pass operations.
 The host creates resources and executes those admitted operations. Shader
-arithmetic also stays in Coax: one checked procedure is emitted as WGSL for
-WebGPU and SPIR-V for Vulkan.
+arithmetic also stays in Coax: one checked procedure is emitted across all
+three GPU targets—WGSL for WebGPU (`coax wgsl`), Apple Metal Shading Language
+for macOS/iOS (`coax metal`), and SPIR-V for Linux/Windows Vulkan
+(`coax spirv`). Beyond realm pages, the same triple-target shader pipeline
+drives the universal pure-Coax 3D model and `.splat`/3DGS viewer
+([`metaverse-engine/content/model-view.coax`](../content/model-view.coax),
+[`metaverse-engine/gpu/model-view-shader.coax`](../gpu/model-view-shader.coax),
+`#14041`/`#14046`) inside OpenAgents Desktop. On the browser WebGPU path,
+the `7a845fd450` performance hillclimb added dedicated depth-only shadow vertex
+paths (`shadowOpaque`), single-pass `e2_pieces()` culling, precomputed Vogel
+PCF offsets, and GPU fullscreen-triangle mipmap generation, cutting Everglade
+II `@2x` scene+post GPU time by `44.9%` and locking `60.0 FPS` with zero frames
+over `17 ms`.
 
 [asset-profile.coax](../render/asset-profile.coax) also owns the delivery
 rows. A pack expands into data, storage, index and layer deliveries with

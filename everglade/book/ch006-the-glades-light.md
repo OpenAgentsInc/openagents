@@ -6,8 +6,7 @@
 > [`everglade/world/environment.coax`](../../everglade/world/environment.coax)
 > (`e2_environment_set`). Phase 1 of the
 > [lighting plan](../../docs/metaverse/lighting/README.md) is done for the
-> browser. The code moves into `everglade/world/` later, so this chapter names
-> functions and has no source listings yet.
+> browser; a standalone runnable book example remains to be extracted.
 
 This chapter answers the player's question: "Why does it get darker under the
 trees, and why doesn't the light jump when I walk?"

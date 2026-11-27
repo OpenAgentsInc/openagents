@@ -1,20 +1,24 @@
 # 33. Let's build a dragon
 
-> **Status: partly implemented.** The model is a script,
-> [`scripts/blender/dragon.py`](../../scripts/blender/dragon.py), baked by
+> **Implemented profile (`dragon-shapechange-flight-v1`).** The procedural model
+> script is [`scripts/blender/dragon.py`](../../scripts/blender/dragon.py),
+> baked into zone packs by
 > [`metaverse/tools/assets/dragon_bake.py`](../../metaverse/tools/assets/dragon_bake.py)
-> into the glade's pack. Its clips are
-> [`everglade/dragon-clips.coax`](../../everglade/dragon-clips.coax). Flight is
-> [`metaverse-engine/action/flight.coax`](../../metaverse-engine/action/flight.coax). The rules are
-> [`rules/srd/shapechange.coax`](../../rules/srd/shapechange.coax)
-> and [`rules/srd/dragon-actions.coax`](../../rules/srd/dragon-actions.coax).
-> The body's change, flight and breath are
-> [`everglade/shapeshift.coax`](../../everglade/shapeshift.coax), and the
-> field at `/druid` is
-> [`everglade/zone-shapechange.coax`](../zone-shapechange.coax). Dragon Lab at
-> `/dragon-lab` is the same field, where you arrive as the dragon.
-> Riding the dragon as a mount is a design draft: see
-> [`everglade/docs/mounts-spec.md`](../docs/mounts-spec.md).
+> and into standalone GameBuilder `GBD1` worlds (`/fated-dragon`, `#13973`) by
+> the pure-Coax baker
+> [`gamebuilder/tools/dragon-bake.coax`](../../gamebuilder/tools/dragon-bake.coax).
+> Its clips live in [`everglade/dragon-clips.coax`](../../everglade/dragon-clips.coax),
+> shared flight in [`metaverse-engine/action/flight.coax`](../../metaverse-engine/action/flight.coax),
+> SRD rules in [`rules/srd/shapechange.coax`](../../rules/srd/shapechange.coax)
+> and [`rules/srd/dragon-actions.coax`](../../rules/srd/dragon-actions.coax),
+> shapeshift presentation in [`everglade/shapeshift.coax`](../../everglade/shapeshift.coax),
+> and the `/druid` / `/dragon-lab` zone in
+> [`everglade/zone-shapechange.coax`](../zone-shapechange.coax). Mounted
+> riding and room authority (`#13268`) are implemented in
+> [`everglade/mounts.coax`](../mounts.coax),
+> [`everglade/server/riding.coax`](../server/riding.coax),
+> [`everglade/shared/mount-rules.coax`](../shared/mount-rules.coax), and
+> [`everglade/zone-ride.coax`](../zone-ride.coax).
 
 This chapter answers the player's question: "Can I turn into a dragon and fly?"
 
@@ -28,7 +32,8 @@ Each piece of that lives in one place, and every Everglade zone reuses it:
 | Piece | Layer | Where |
 | --- | --- | --- |
 | The dragon's mesh, bones and clips | Asset script | `scripts/blender/dragon.py` |
-| Its baked frames in the pack | Asset pipeline | `metaverse/tools/assets/dragon_bake.py`, `dragon_pack.coax` |
+| Its baked frames in the pack | Asset pipeline | `metaverse/tools/assets/dragon_bake.py`, `gamebuilder/tools/dragon-bake.coax` (`GBD1`, `#13973`) |
+| Riding & room-authoritative mounts | Everglade | `everglade/mounts.coax`, `everglade/server/riding.coax`, `everglade/shared/mount-rules.coax` (`#13268`) |
 | Walking, takeoff, flight, banking and landing | Engine | `metaverse-engine/action/flight.coax` |
 | Shapechange and the dragon's actions | Engine (SRD rules) | `shapechange.coax`, `dragon-actions.coax` |
 | The change on screen, the breath's aim, the clip to play | Everglade | `everglade/shapeshift.coax` |
@@ -92,9 +97,13 @@ Why a script? You can read it, diff it and review it, and the same script
 gives the same dragon on every machine. A change such as "make the wings wider"
 is one number, and the preview renders again in seconds.
 
-The previews from three angles are in
-`docs/verification/druid-demo-2026-11-09/`:
-`dragon-model-front.png`, `dragon-model-side.png` and `dragon-model-below.png`.
+The three-angle renders (`dragon-model-front.png`, `dragon-model-side.png`, and
+`dragon-model-below.png`, originally archived under `druid-demo-2026-11-09`)
+verify silhouette, wing span, and saddle placement. For standalone GameBuilder
+worlds (`/fated-dragon`, `#13973`),
+[`gamebuilder/tools/dragon-bake.coax`](../../gamebuilder/tools/dragon-bake.coax)
+also bakes `assets/metaverse/beasts/dragon.gltf` directly into a compact
+pure-Coax `GBD1` binary with zero Python or Blender dependency.
 
 The clips are idle, walk, fly, glide, bite, breath, roar and sweep for the
 druid, and idle_saddled, takeoff, hover, land, bank_left and bank_right for a
@@ -283,21 +292,52 @@ xd_keep :: (s: [] EgZone) {
 }
 ```
 
-The headless captures are in
-`docs/verification/dragon-lab-2026-11-17/`.
-
 ## Riding it as a mount
 
-> **Design draft.** The mounts are being built now.
+Mounted riding (`#13268`) is implemented across both the client/zone layer and
+the authoritative room server:
 
-A dragon in Everglade Experimental is a mount as the horse is. You mount it,
-sit at its `saddle` bone and fly it with the same `wing_step`. Your request to
-mount, to fly or to breathe goes through the deed pipeline like any other
-action: the world asks the rules first, then acts, then shows the result
-([`docs/metaverse/action-pipeline.md`](../../docs/metaverse/action-pipeline.md)). Fire
-Breath from the saddle is the same `rs_fire_breath_on`. The rider aims, and the
-mount's creature breathes. [`everglade/docs/mounts-spec.md`](../docs/mounts-spec.md)
-has the SRD's mounted-combat rules that the mounts follow.
+- **Shared mount rules and terrain step:**
+  [`everglade/shared/mount-rules.coax`](../shared/mount-rules.coax) is the
+  authority on who may mount and dismount, and
+  [`everglade/shared/mount-land.coax`](../shared/mount-land.coax) (`e2ml_step`)
+  steps the mount among the land's colliders identically on client and server.
+- **Game mounts & dragon saddle:** [`everglade/mounts.coax`](../mounts.coax)
+  builds horses (`eg_mount_add`) and winged dragons (`eg_dragon_add`) over
+  [`metaverse-engine/action/mount.coax`](../../metaverse-engine/action/mount.coax),
+  [`metaverse-engine/action/ride-pose.coax`](../../metaverse-engine/action/ride-pose.coax),
+  and `wing_step`, seating the rider on the dragon's `saddle` bone.
+- **Room authority & wire:** [`everglade/server/riding.coax`](../server/riding.coax)
+  steps each ridden mount one input at a time, replicates it as `WK_MOUNT`,
+  answers mount/dismount requests (`everglade/server/mount-wire.coax`), and
+  dismounts riders who leave or fall (`everglade/server/riding-checks.coax`).
+- **Zone wiring:** [`everglade/zone-mounts.coax`](../zone-mounts.coax) and
+  [`everglade/zone-ride.coax`](../zone-ride.coax) connect input prompts and
+  Fire Breath from the saddle (`rs_fire_breath_on`).
+
+## Worked hand calculation
+
+Before running the example, work out the Adult Red Dragon's speeds, Fire Breath
+cone boundary, and Recharge probability by hand:
+
+```text
+Realm 30-ft pace   = 4.5 m/s
+Walk (40 ft)       = 4.5 × (40 / 30) = 6.0 m/s  (60 tenths-of-m/s)
+Fly  (80 ft)       = 4.5 × (80 / 30) = 12.0 m/s (120 tenths-of-m/s)
+
+60-ft Fire Breath cone (along x-axis, half-width = along / 2):
+  (30,  0): along = 30 <= 60, side =  0 <= 15   -> inside  (true)
+  (40, 20): along = 40 <= 60, side = 20 <= 20   -> on edge (true)
+  (40, 21): along = 40 <= 60, side = 21 >  20   -> outside (false)
+  (61,  0): along = 61 >  60                    -> past tip (false)
+
+Recharge 5–6 on 1d6:
+  roll 4 -> false; roll 5 or 6 -> true (P = 2/6 ≈ 33.3%)
+
+Shapechange CR eligibility (Adult Red Dragon = CR 17):
+  level 16 Druid: CR 17 > level 16 -> refused (false, slot unspent)
+  level 17 Druid: CR 17 <= level 17 -> admitted (AC 19, STR 27, Fly 80, Temp HP 256)
+```
 
 ## The checks
 
@@ -415,8 +455,9 @@ refuse_l16=true shifted=true dragon_ac=19 str=27 fly=80 temp=256 breath_hits=1 s
 ok=true
 ```
 
-The headless captures are in
-`docs/verification/druid-demo-2026-11-09/`.
+The earlier headless capture sets (`druid-demo-2026-11-09` and
+`dragon-lab-2026-11-17`) were archived externally; the Coax checks and runnable
+program above remain the authoritative verification gate.
 
 ## Mistakes
 

@@ -302,7 +302,7 @@
       "number": 14,
       "title": "Ability scores, proficiency and the d20",
       "file": "ch014-ability-scores-proficiency-and-the-d20.md",
-      "status": "partly implemented",
+      "status": "implemented",
       "profile": "srd-d20-rolls-v1",
       "depends_on": [
         12,
@@ -418,103 +418,175 @@
     {
       "number": 19,
       "title": "Familiars and Wild Shape",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch019-familiars-and-wild-shape.md",
+      "status": "partly implemented",
+      "profile": "familiars-wild-shape-v1",
       "depends_on": [
         15,
         16,
         18
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/server/familiar.coax",
+        "everglade/server/familiar-wire.coax",
+        "everglade/client/wild.coax",
+        "everglade/shapeshift.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/room/room-everglade.coax",
+        "everglade/client/client.coax"
+      ]
     },
     {
       "number": 20,
       "title": "A guard walks the path",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch020-a-guard-walks-the-path.md",
+      "status": "partly implemented",
+      "profile": "guard-patrol-v1",
       "depends_on": [
         9,
         12,
         "psionic:28"
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/server/guard.coax",
+        "everglade/server/creatures.coax",
+        "everglade/client/guard.coax",
+        "everglade/npc/guard-decision.coax",
+        "everglade/npc/guide-route.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/room/room-everglade.coax",
+        "everglade/client/client.coax"
+      ]
     },
     {
       "number": 21,
       "title": "Attack the guard",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch021-attack-the-guard.md",
+      "status": "partly implemented",
+      "profile": "guard-combat-v1",
       "depends_on": [
         18,
         20
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/server/battle.coax",
+        "everglade/server/guard.coax",
+        "everglade/server/aid.coax",
+        "everglade/zone-combat.coax",
+        "everglade/zone-combat-actions.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/room/room-everglade.coax",
+        "everglade/zone.coax"
+      ]
     },
     {
       "number": 22,
       "title": "Death and respawn",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch022-death-and-respawn.md",
+      "status": "partly implemented",
+      "profile": "death-rest-respawn-v1",
       "depends_on": [
         21
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/server/battle.coax",
+        "everglade/server/rest.coax",
+        "everglade/server/seat.coax",
+        "everglade/server/progress.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/room/room-everglade.coax"
+      ]
     },
     {
       "number": 23,
       "title": "Mouse look and the crosshair",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch023-mouse-look-and-the-crosshair.md",
+      "status": "partly implemented",
+      "profile": "mouse-look-crosshair-v1",
       "depends_on": [
         8,
         12
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/client/mouse.coax",
+        "everglade/client/sight.coax",
+        "everglade/client/range.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax"
+      ]
     },
     {
       "number": 24,
       "title": "The longbow",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch024-the-longbow.md",
+      "status": "partly implemented",
+      "profile": "longbow-archery-v1",
       "depends_on": [
         14,
         21,
         23
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/longbow.coax",
+        "everglade/shared/archery.coax",
+        "everglade/client/arrows.coax",
+        "everglade/server/arrows.coax",
+        "everglade/range/layout.coax",
+        "everglade/range/score.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax",
+        "coax/web/room/room-everglade.coax"
+      ]
     },
     {
       "number": 25,
       "title": "Cast while you run",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch025-cast-while-you-run.md",
+      "status": "partly implemented",
+      "profile": "cast-while-running-v1",
       "depends_on": [
         16,
         18,
         23
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/client/cast-pose.coax",
+        "everglade/held-kit.coax",
+        "everglade/client/cast.coax",
+        "everglade/shared/cast-pace.coax",
+        "everglade/server/casts.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/client.coax",
+        "coax/web/room/room-everglade.coax"
+      ]
     },
     {
       "number": 26,
@@ -618,7 +690,7 @@
       "number": 33,
       "title": "Let's build a dragon",
       "file": "ch033-lets-build-a-dragon.md",
-      "status": "partly implemented",
+      "status": "implemented",
       "profile": "dragon-shapechange-flight-v1",
       "depends_on": [
         16,
@@ -631,8 +703,11 @@
         "everglade/zone-shapechange.coax",
         "everglade/shapeshift.coax",
         "everglade/dragon-clips.coax",
+        "everglade/mounts.coax",
+        "everglade/server/riding.coax",
         "scripts/blender/dragon.py",
         "metaverse/tools/assets/dragon_bake.py",
+        "gamebuilder/tools/dragon-bake.coax",
         "everglade/examples/dragon-flight-breath.coax",
         "everglade/examples/dragon-flight-breath.out"
       ],

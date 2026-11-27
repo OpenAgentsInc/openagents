@@ -3,9 +3,8 @@
 > **Status: partly implemented.** The path is a set of pure functions in
 > [`everglade/world/forest.coax`](../../everglade/world/forest.coax)
 > (`e2_road_x`, `e2_road_dist`, `e2_level`, `e2_path`). The walk along it is in
-> [`everglade/client/client.coax`](../client/client.coax).
-> The code moves into `everglade/world/` later, so this chapter names functions
-> and has no source listings yet.
+> [`everglade/client/client.coax`](../client/client.coax). A standalone
+> runnable book example remains to be extracted.
 
 This chapter answers the player's question: "Where does this path go?"
 

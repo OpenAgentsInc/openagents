@@ -1,0 +1,4 @@
+admit ok=true cold=true rules=true steps live=true cold=false gen same=true stale=false hold in=true out=false
+cmd adv=true dup=false credit_500ms=15 credit_cap=30 limited=true step4=true step5=false
+replica ready_before=false ready_after=true base=5 gone=0
+ok=true

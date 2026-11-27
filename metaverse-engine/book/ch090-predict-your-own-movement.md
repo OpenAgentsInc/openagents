@@ -7,9 +7,9 @@
 > [metaverse-engine/net/predict.coax](../net/predict.coax) keeps the inputs, says when a
 > re-run is due and holds the ledger of actions that wait for the room (261
 > mutants, all killed), and [metaverse-engine/net/interp.coax](../net/interp.coax) eases
-> the correction out of the drawn body over 0.12 s. Everglade's two pages
-> (`everglade/client/net.coax`, `apps/openagents-web/old/v1/everglade-net.coax`)
-> supply their step and their row's fields and no longer carry a copy each.
+> the correction out of the drawn body over 0.12 s. Everglade's live client
+> (`everglade/client/net.coax`, replacing the retired v1 page)
+> supplies its step and its row's fields and no longer carries a copy.
 > The follow camera turns toward the motion your controls ask for, never the
 > corrected velocity (#12777, commit 41093d1f49). The drift check (chapter
 > 100) still finds more corrections in a room than its bound allows (#12778).

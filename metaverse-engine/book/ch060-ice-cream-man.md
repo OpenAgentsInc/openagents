@@ -1,10 +1,12 @@
 # 60. Ice Cream Man
 
-> **Status: unimplemented — design draft.** Ice Cream Man runs today on its
-> own private code at `/realms/ice-cream-man`: the rules, run, camera and
-> house in [metaverse/icecream/](../../metaverse/icecream/play.coax) and the HUD in
-> [icecream.coax](../../apps/openagents-web/icecream.coax). This chapter plans
-> rebuilding it only from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs yet.
+> **Status: unimplemented — design draft.** Ice Cream Man runs today both on
+> its original realm code at `/realms/ice-cream-man`
+> ([metaverse/icecream/](../../metaverse/icecream/play.coax) and
+> [icecream.coax](../../apps/openagents-web/icecream.coax)) and as a published
+> GameBuilder world on `gamebuilder.org` (with iPad touch, stamina, closet, and
+> bot playtest parity). This chapter plans rebuilding the full realm solely
+> from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs yet.
 
 Ice Cream Man is OpenAgents' seeded house game: a kid finds three keys and
 escapes a house the Ice Cream Man and his minions patrol. Its rules were

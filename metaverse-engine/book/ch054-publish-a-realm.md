@@ -98,6 +98,14 @@ another environment's realms.
 - An agent publishes a hand-built realm by pull request
   ([metaverse/SKILL.md](../../metaverse/SKILL.md)); the template is
   [metaverse/realm-template/](../../metaverse/realm-template/index.md).
+- **GameBuilder & `gamebuilder.org` worlds (`#13986`, `#13988`, `#14045`, `#14057`):**
+  GameBuilder worlds publish as static web bundles on `gamebuilder.org`—five
+  live worlds ship on the unified pipeline (*Fated Dragon* `/fated-dragon`,
+  *SPLICEBOTS* `/packs/splicebots`, *Ice Cream Man*, *Scrappers Arena*, and
+  *The Whispering Spring* `/whispering-spring`)—and can also be published from
+  OpenAgents Desktop's embedded GameBuilder Studio drawer (`Publish` & Nostr
+  Lobby, `#14045`) or packaged into Desktop releases via the `OA_PACK_METAVERSE`
+  pack gate (`#14057`).
 
 The made-realm write and the hand-built table are separate code paths with
 separate checks.

@@ -6,11 +6,12 @@
 > extracting every private engine path remains work.
 
 Everglade combines the forest city, characters, the watch, quests, combat,
-fire, boats and the Cultist Raid. Its current page is
-`everglade5e.coax`, with content
-in [`everglade/legacy/v1/`](../../everglade/world/plan.coax) and the shared
+fire, boats and the Cultist Raid. Its current room client lives in
+`everglade/` (with world planning in
+[`everglade/world/plan.coax`](../../everglade/world/plan.coax) and the shared
 movement step in
-[`everglade-step.coax`](../../everglade/shared/everglade-step.coax).
+[`everglade-step.coax`](../../everglade/shared/everglade-step.coax)), while the
+legacy v1 entry page remains `everglade5e.coax`.
 
 ## Read the implementation by responsibility
 

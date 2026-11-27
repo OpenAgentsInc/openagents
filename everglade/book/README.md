@@ -1,10 +1,11 @@
 # Building Everglade
 
-**Status: drafting.** Chapters 1 to 18 and 33 are drafted (Chapter 4 is
-implemented; the rest are marked partly implemented). They copy listings from
-source between `// book:begin` and `// book:end` markers; chapters whose code
-has not moved into `everglade/` yet wait for that move. The
-[contents](SUMMARY.md) list them. Chapters 19 to 32 are planned.
+**Status: active.** Chapters 1 to 25 and 33 are written (Chapters 4, 14, and
+33 are implemented with runnable examples, refusals, and exact transcripts;
+Chapters 1–3, 5–13, and 15–25 are partly implemented). They copy listings from
+source between `// book:begin` and `// book:end` markers. The
+[contents](SUMMARY.md) list them. Chapters 26 to 32 (city, multi-room shards,
+accounts, shipping, and live operations) are planned.
 
 ## Start here
 
@@ -32,11 +33,16 @@ When a room is full, the next player joins another room.
 This book shows you how to build Everglade from scratch, starting from a bare
 world and building outward one working piece at a time, with these tools:
 
-- **GameBuilder** (`gamebuilder` CLI and desktop app), where a new world begins.
-  You create a game from a template, inspect its level and shape table, and lay
-  out or change the world programmatically through CLI commands and atomic
-  `world.edit.v1` batches—dipping into the desktop UI with `--attach` when you
-  want to look around, tweak by eye, or undo a batch with `⌘Z`.
+- **GameBuilder** (`gamebuilder` CLI, standalone web publishing on
+  `gamebuilder.org`, and the embedded Metaverse/GameBuilder pane inside
+  OpenAgents Desktop, `#14043`–`#14045`, `OA_PACK_METAVERSE` `#14057`), where a
+  new world begins. Five live worlds run on the unified `gamebuilder.org`
+  pipeline (*Fated Dragon*, *SPLICEBOTS*, *Ice Cream Man*, *Scrappers Arena*,
+  and *The Whispering Spring*). You create a game from a template, inspect its
+  level and shape table, and lay out or change the world programmatically
+  through CLI commands and atomic `world.edit.v1` batches—dipping into the
+  embedded desktop UI with `--attach` when you want to look around, tweak by
+  eye, or undo a batch with `⌘Z`.
 - [Coax](../../coax/book/README.md), the language. When a world grows past what
   a level's palette can express, you write the land, the rules, the network code
   and the shaders in Coax.
@@ -286,7 +292,7 @@ Everglade's code is currently spread across the repository:
 | --- | --- |
 | The land, planting, ground and light, and the edit codec | `everglade/world/` |
 | The guard and guide AI and the people's words | `everglade/npc/` |
-| v1 Everglade's town and GPU passes, frozen and deleted after P2 (#13269) | `everglade/legacy/v1/`, `apps/openagents-web/gpu/everglade-v1/` |
+| v1 Everglade's town and GPU passes (v1 gameplay retired in `#13269`; WGSL fixtures retained) | `apps/openagents-web/gpu/everglade-v1/` |
 | The client: the page's units, casting, the room's client and Character Create in the world | `everglade/client/` |
 | What the client and the room both load: movement, the class kits, the casts' rules, the wire | `everglade/shared/` |
 | The room's rules | `everglade/server/` |
@@ -347,18 +353,18 @@ agree with it (`python3 psionic/tests/book.py --book everglade`).
 | [11. One address](ch011-one-address.md) | Partly implemented: everglade-domain-v1 |
 | [12. The room](ch012-the-room.md) | Partly implemented: authoritative-room-v1 |
 | [13. Coming back](ch013-coming-back.md) | Partly implemented: room-checkpoint-v1 |
-| [14. Ability scores, proficiency and the d20](ch014-ability-scores-proficiency-and-the-d20.md) | Partly implemented: srd-d20-rolls-v1 |
+| [14. Ability scores, proficiency and the d20](ch014-ability-scores-proficiency-and-the-d20.md) | Runnable: srd-d20-rolls-v1 |
 | [15. Classes, levels 1 to 6](ch015-classes-levels-1-to-6.md) | Partly implemented: srd-classes-1-to-6-v1 |
 | [16. Spells and slots](ch016-spells-and-slots.md) | Partly implemented: srd-spells-and-slots-v1 |
 | [17. Conditions](ch017-conditions.md) | Partly implemented: srd-conditions-v1 |
 | [18. Turns become time](ch018-turns-become-time.md) | Partly implemented: srd-timing-profiles-v1 |
-| 19. Familiars and Wild Shape | Planned |
-| 20. A guard walks the path | Planned |
-| 21. Attack the guard | Planned |
-| 22. Death and respawn | Planned |
-| 23. Mouse look and the crosshair | Planned |
-| 24. The longbow | Planned |
-| 25. Cast while you run | Planned |
+| [19. Familiars and Wild Shape](ch019-familiars-and-wild-shape.md) | Partly implemented: familiars-wild-shape-v1 |
+| [20. A guard walks the path](ch020-a-guard-walks-the-path.md) | Partly implemented: guard-patrol-v1 |
+| [21. Attack the guard](ch021-attack-the-guard.md) | Partly implemented: guard-combat-v1 |
+| [22. Death and respawn](ch022-death-and-respawn.md) | Partly implemented: death-rest-respawn-v1 |
+| [23. Mouse look and the crosshair](ch023-mouse-look-and-the-crosshair.md) | Partly implemented: mouse-look-crosshair-v1 |
+| [24. The longbow](ch024-the-longbow.md) | Partly implemented: longbow-archery-v1 |
+| [25. Cast while you run](ch025-cast-while-you-run.md) | Partly implemented: cast-while-running-v1 |
 | 26. Walk into a city | Planned |
 | 27. Townspeople | Planned |
 | 28. Interactions | Planned |
@@ -366,5 +372,5 @@ agree with it (`python3 psionic/tests/book.py --book everglade`).
 | 30. Accounts and persistence | Planned |
 | 31. Ship it | Planned |
 | 32. Run a live world | Planned |
-| [33. Let's build a dragon](ch033-lets-build-a-dragon.md) | Partly implemented: dragon-shapechange-flight-v1 |
+| [33. Let's build a dragon](ch033-lets-build-a-dragon.md) | Runnable: dragon-shapechange-flight-v1 |
 

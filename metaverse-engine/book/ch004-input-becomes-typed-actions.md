@@ -499,7 +499,9 @@ coax/bin/coax test metaverse-engine/move/player.coax --library
 
 ## Menus, focus and keyboard activation
 
-> **Design draft.** Not implemented. [Chapter 15](ch015-ui-and-the-hud.md)
+> **Status note.** [Chapter 15](ch015-ui-and-the-hud.md) now ships the semantic
+> UI tree (`metaverse-engine/ui/tree.coax`), while full realm adoption of unified
+> input focus routing remains in progress.
 > uses these actions for its focus order and its keyboard and screen-reader
 > journey.
 

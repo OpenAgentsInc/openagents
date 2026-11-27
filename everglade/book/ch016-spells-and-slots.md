@@ -7,12 +7,10 @@
 > [`rules/srd/spell-coverage.coax`](../../rules/srd/spell-coverage.coax)
 > counts which ones. Casting under latency shares its reach, sight and refusal
 > words between the room and the page in
-> [`everglade/shared/cast-limits.coax`](../../everglade/shared/cast-limits.coax);
-> v1's bars, wait and Repair stay in
-> `apps/openagents-web/old/v1/everglade-cast-rules.coax`
-> (#12790, #13346).
-> Other agents are extending the spell files now, so this chapter's only listing
-> is the cast rules, which already have markers.
+> [`everglade/shared/cast-limits.coax`](../../everglade/shared/cast-limits.coax)
+> and [`everglade/server/casts.coax`](../server/casts.coax) (#12790, #13267,
+> #13346); the retired v1 cast-bar constants below are retained only as a
+> historical reference.
 
 Everglade aims to follow the SRD 5.2.1's spells faithfully while adapting them
 for action combat. This chapter answers the player's question: "Why didn't my

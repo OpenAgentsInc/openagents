@@ -6,12 +6,15 @@
 > on the shared client half in
 > [`everglade/client/net-core.coax`](../client/net-core.coax).
 > The server's side is
-> [`coax/web/room/room-everglade.coax`](../../coax/web/room/room-everglade.coax)
-> and `world2_*` in `coax/web/room/room-world.c`. Both step you with
-> [`everglade/shared/move.coax`](../shared/move.coax).
+> [`coax/web/room/room-everglade.coax`](../../coax/web/room/room-everglade.coax),
+> the game-server modules in `everglade/server/` (`tick.coax`, `battle.coax`,
+> `casts.coax`, `send.coax`, `guard.coax`, `riding.coax`, `familiar.coax`,
+> `rest.coax`), and `world2_*` in `coax/web/room/room-world.c`. Both step you
+> with [`everglade/shared/move.coax`](../shared/move.coax).
 > The measurements below are from headless Chrome against a local room.
 > Real Chrome on two machines through the staging path is not checked yet.
-> This chapter names functions and has no source listings yet.
+> See [Metaverse Engine chapter 86](../../metaverse-engine/book/ch086-one-server-owns-the-scene.md)
+> for the runnable native Part XII multiplayer contract example.
 
 This chapter answers the player's question: "Is that another person?"
 

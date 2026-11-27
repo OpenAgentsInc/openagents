@@ -107,6 +107,82 @@ The exit status is 0. Remove the `coax_default_t_RmServer` call from
 `server_new` in `room-host.c` and the check reports how many fields are off
 their defaults and exits 1.
 
+### Runnable native multiplayer contract example
+
+[`metaverse-engine/examples/part12-server-scene.coax`](../examples/part12-server-scene.coax)
+exercises the shared `#authority` multiplayer contracts in
+[`metaverse-engine/net/session.coax`](../net/session.coax),
+[`metaverse-engine/net/command.coax`](../net/command.coax), and
+[`metaverse-engine/net/replication.coax`](../net/replication.coax) natively in
+debug and release without opening a socket: version/readiness admission,
+uninitialized-world refusal (`CP_NO_CAPACITY`), rules mismatch refusal
+(`CP_RULES`), seat generation fencing, the 15 s reconnect hold boundary,
+30 Hz earned simulation credit capped at `30` (`per_tick = 4`), and
+acknowledged-baseline replication with owed removal retention
+(committed transcript
+[`metaverse-engine/fixtures/part12-server-scene.out`](../fixtures/part12-server-scene.out)):
+
+<!-- source: metaverse-engine/examples/part12-server-scene.coax part12-server-scene -->
+```jai
+part12_run :: () -> bool {
+  // 1. Server admission: matching pins + initialized world admits; uninitialized or wrong rules refuses.
+  pins := CompatPins.{engine = 1, rules = 2, content = 3, wire = 5, schema = 2};
+  server := CompatServer.{pins = pins, wire_min = 5};
+  admit_ok := net_session_admit(server, pins, true);
+  admit_cold := net_session_admit(server, pins, false);
+  bad := pins; bad.rules = 1;
+  admit_rules := net_session_admit(server, bad, true);
+  steps_live := net_world_steps(true, true, false);
+  steps_cold := net_world_steps(false, true, false);
+  gen_same := net_session_current(SeatGeneration.{value = 1}, SeatGeneration.{value = 1});
+  gen_stale := net_session_current(SeatGeneration.{value = 1}, SeatGeneration.{value = 2});
+  hold_in := net_session_holds(15000, 100, 15099);
+  hold_out := net_session_holds(15000, 100, 15100);
+  print("admit ok=% cold=% rules=% steps live=% cold=% gen same=% stale=% hold in=% out=%\n",
+    admit_ok == CP_OK, admit_cold == CP_NO_CAPACITY, admit_rules == CP_RULES,
+    steps_live, steps_cold, gen_same, gen_stale, hold_in, hold_out);
+
+  // 2. Command ordering & 30 Hz earned simulation credit: duplicates do not advance, bank caps at 30.
+  a1 := net_accepted_result(6, 7);
+  a_dup := net_accepted_result(7, 7);
+  prof := NetCreditProfile.{hz = 30, most = 30, per_tick = 4, excess = 4};
+  c := net_credit_step(prof, NetCredit.{since = 0}, 500);     // 15 steps earned in 0.5 s
+  c_cap := net_credit_step(prof, c, 2500);                    // stalled link capped at 30
+  can_4th := net_credit_can_step(prof, c.bank, 3);
+  can_5th := net_credit_can_step(prof, c.bank, 4);
+  print("cmd adv=% dup=% credit_500ms=% credit_cap=% limited=% step4=% step5=%\n",
+    a1.advanced, a_dup.advanced, c.bank, c_cap.bank, c_cap.limited, can_4th, can_5th);
+
+  // 3. Replication lifecycle: replacement retains owed removals until acknowledged whole tick.
+  r := NetReplica.{held = 8, base = 3, sent = (1 << 3), last = 3};
+  r = net_replica_observe(r, 9, true, 4, 32);                 // entity 8 replaced by 9 -> gone=8 owed
+  ready_before := net_replica_ready(r);
+  r.gone_t = 4;
+  ready_after := net_replica_ready(r);
+  r = net_replica_sent(r, 9, 5, 32);
+  r = net_replica_ack(r, 4, 32);                              // tick 4 ack clears owed removal of 8
+  r = net_replica_ack(r, 5, 32);                              // tick 5 ack advances baseline to 5
+  print("replica ready_before=% ready_after=% base=% gone=%\n",
+    ready_before, ready_after, r.base, r.gone);
+
+  return admit_ok == CP_OK && admit_cold == CP_NO_CAPACITY && admit_rules == CP_RULES &&
+         steps_live && !steps_cold && gen_same && !gen_stale && hold_in && !hold_out &&
+         a1.advanced && !a_dup.advanced && c.bank == 15 && c_cap.bank == 30 && c_cap.limited &&
+         can_4th && !can_5th && !ready_before && ready_after && r.base == 5 && r.gone == 0;
+}
+```
+
+```shell
+coax/bin/coax run metaverse-engine/examples/part12-server-scene.coax
+```
+
+```text
+admit ok=true cold=true rules=true steps live=true cold=false gen same=true stale=false hold in=true out=false
+cmd adv=true dup=false credit_500ms=15 credit_cap=30 limited=true step4=true step5=false
+replica ready_before=false ready_after=true base=5 gone=0
+ok=true
+```
+
 ## What exists today
 
 - [coax/web/room/room-host.c](../../coax/web/room/room-host.c): the

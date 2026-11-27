@@ -62,6 +62,12 @@ them, and every engine improvement reaches all of them at once.
 - [droprealm.coax](../../apps/openagents-web/droprealm.coax) (`MIN_SIZE`,
   `MAX_SIZE`, a carried lamp) and `/realms/drop` on the fixture pack.
 - `/realms/built` and `/realms/drop` have goldens.
+- **Embedded Desktop GameBuilder & Metaverse Pane (`#14040`–`#14045`):**
+  OpenAgents Desktop embeds [`gamebuilder/core/desktop-bridge.coax`](../../gamebuilder/core/desktop-bridge.coax)
+  inside [`apps/openagents-desktop/page/metaversepane.coax`](../../apps/openagents-desktop/page/metaversepane.coax)
+  with live `--attach` editing, `TK_WORLD` round-trips, a Studio drawer
+  (Agents, Claims, Replay Scrubber, Publish, and Nostr Lobby), and the
+  universal pure-Coax 3D/realm viewer ([`metaverse-engine/content/model-view.coax`](../content/model-view.coax)).
 
 Each module carries its own controller wiring, camera modes and ground; the
 side camera's collision is separate from the 3D ones.

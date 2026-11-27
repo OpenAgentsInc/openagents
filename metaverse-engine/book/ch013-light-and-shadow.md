@@ -298,9 +298,10 @@ themselves qualify every backend's rendered image.
   the same code in Everglade). One record, filled once from the clock and
   read by every material, replaces those copies.
 - **The shadow pass.** Drawing the shadow map first in the scene pass, with
-  its snapped projection and filter taps, is `metaverse-engine/render/shadow.coax`.
-  Tap positions and radius are already shared in `shadow-filter.coax`;
-  full pass ownership remains.
+  its snapped projection and filter taps, builds on
+  `metaverse-engine/render/shade/light.coax`, `shadow-filter.coax`, and
+  `metaverse-engine/render/graph/cascades.coax`; full single-module pass
+  ownership remains.
 - **Encoding and native profile.** Tone, bloom and light-shaft arithmetic
   are shared in `post.coax` through `metaverse/style.coax`. The separate Metal
   profile in `metaverse/light.coax` and its display encoding still remain.

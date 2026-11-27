@@ -2,14 +2,14 @@
 
 > **Status: partly implemented.** A lasting world ability (Reverse Gravity,
 > Wind Wall, Wall of Stone) is drawn only from its server entity, and its
-> cast event is a cue (#12775, commit 26b09b5e11). Every condition drawn or
-> said on the page reads one status state, filled once a frame
-> (everglade-status.coax,
-> #12776, commit c3c2805dc6). The wire carries effects as `WK_EFFECT` rows
-> with their cause, `T0` and `DUR` (commit 67b4f62448), so a room shows
-> `HELD · HOLD PERSON` with its seconds left (commit 3370a41ddc). Your own
-> lasting abilities show at your press and take the room's entity as that
-> cast (commit f54bb0f001).
+> cast event is a cue (#12775, commit 26b09b5e11). The wire carries effects as
+> `WK_EFFECT` rows with their cause, `T0` and `DUR` in
+> [`everglade/shared/everglade-wire.coax`](../../everglade/shared/everglade-wire.coax),
+> emitted by [`everglade/server/send.coax`](../../everglade/server/send.coax)
+> and interest-filtered in [`coax/web/room/room-blocks.coax`](../../coax/web/room/room-blocks.coax),
+> so a room shows `HELD · HOLD PERSON` with its seconds left (commit
+> 3370a41ddc). Your own lasting abilities show at your press and take the
+> room's entity as that cast (commit f54bb0f001).
 
 A spell that holds a player for 3 s has two parts: the fact that the player
 is held, and the gold rings, the sound and the `HELD` line that show it.
@@ -52,8 +52,10 @@ Zones and walls are already entities (`WK_ZONE`, `WK_STONE`) and get `T0`
 and `DUR` too.
 
 **Everything shown is derived.** Each frame the page fills one status state
-from the entity table. The status lines, the rings on every body, the
-particles and the hotbar read only that state.
+from the `WK_EFFECT` entity table (`everglade/shared/everglade-wire.coax`,
+`everglade/server/send.coax`). The status lines, the rings on every body, the
+particles and the hotbar read only that state. The retired v1 record below
+illustrates the original derived status layout:
 
 <!-- historical excerpt: apps/openagents-web/old/v1/everglade-status.coax status-effect -->
 ```jai

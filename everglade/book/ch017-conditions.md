@@ -7,11 +7,11 @@
 > [`rules/srd/condition-permissions.coax`](../../rules/srd/condition-permissions.coax),
 > and what it does to rolls is
 > [`rules/srd/condition-rolls.coax`](../../rules/srd/condition-rolls.coax).
-> Exhaustion and Prone have their own files. The Everglade room shows
-> conditions through
-> `apps/openagents-web/old/v1/everglade-status.coax`.
-> Other agents are extending the rules files now, so this chapter's only
-> listing is the status record, which already has markers.
+> Exhaustion and Prone have their own files. The live room sends active
+> conditions as `WK_EFFECT` rows in
+> [`everglade/shared/everglade-wire.coax`](../shared/everglade-wire.coax) and
+> [`everglade/server/send.coax`](../server/send.coax); the retired v1
+> `StEffect` layout below is retained as a historical reference.
 
 Everglade aims to follow the SRD 5.2.1's conditions faithfully while adapting
 them for action combat. This chapter answers the player's question: "Why can't
@@ -37,7 +37,7 @@ your Hit Points.
 | Attack edges, automatic failures, critical hits and damage defenses | `condition-rolls.coax` |
 | Exhaustion's six levels | [`rules/srd/exhaustion.coax`](../../rules/srd/exhaustion.coax) |
 | Standing up and crawling | [`rules/srd/prone-movement.coax`](../../rules/srd/prone-movement.coax) |
-| What the page draws and says about a condition | `st_fill` and `st_draw_on` in `everglade-status.coax`, `st_draw` in `apps/openagents-web/old/v1/everglade-storm.coax` |
+| What the room sends and the page draws about a condition | `WK_EFFECT` rows in [`everglade/shared/everglade-wire.coax`](../shared/everglade-wire.coax) and [`everglade/server/send.coax`](../server/send.coax) (evolved from retired v1 `everglade-status.coax`) |
 
 ## What follows the SRD exactly
 

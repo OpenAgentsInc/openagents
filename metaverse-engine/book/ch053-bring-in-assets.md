@@ -48,7 +48,17 @@ tetrahedral meshes) are [chapter 35](ch035-bring-in-robots-and-meshes.md)'s.
 
 The shared reader supports VPK1's published 48-entry ceiling and the
 separately versioned VPK2 128-entry ceiling. `pack_write` preserves VPK1;
-`pack_write_v2` explicitly selects VPK2. The listings below follow the
+`pack_write_v2` explicitly selects VPK2. For large browser-streamed worlds,
+`page-pack.coax` (`7a845fd450`) adds lossless **VPK3** paged packs with two
+bit-exact codecs (`PPK_DEFLATE_T32S` 32-byte stride delta+transpose and
+`PPK_DEFLATE_IDX32` u32 delta+zigzag+transpose), shrinking `everglade2.vpk3`
+from `31.78 MB` to `27.28 MB` (`-14.2%`) and cutting throttled cold loads from
+`4,397 ms` to `2,537 ms` (`-42.3%`) and warm loads from `3,597 ms` to `803 ms`
+(`4.5x`) with Coax SHA-256 admission over Cache API pages. On the Desktop
+viewer side, [`metaverse-engine/content/model-view.coax`](../content/model-view.coax)
+adds direct pure-Coax loading for glTF/GLB, OBJ, STL, PLY, RBA1 skeletal
+animation archives (`#14041`/`#14042`), and `.splat` / 3D Gaussian Splatting
+point clouds (`#14046`). The listings below follow the
 current source. The new [RCM1 cost companion](../world/README.md) does not
 change either pack's bytes or asset identity.
 

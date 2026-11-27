@@ -714,6 +714,10 @@ instead of calling anything.
 
 ### The envelope
 
+The conceptual envelope shape below illustrates how external events map onto
+the shipped replay event record in
+[`metaverse-engine/core/replay.coax`](../core/replay.coax):
+
 ```jai
 ExternalEvent :: struct {
   apply_tick: u64       // the step at which the event takes effect

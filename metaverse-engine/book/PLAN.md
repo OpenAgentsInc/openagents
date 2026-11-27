@@ -50,14 +50,15 @@ tasks) builds Part I and II's primitives first. Each task owns one chapter.
 | `ec-migrate` | [64](ch064-every-realm-runs-on-aethyr.md) | every realm on the core | all of the above |
 
 Chapter 8 now owns the admitted ground sampler, mesh contacts and bounded
-capsule publication in `metaverse-engine/ground*.coax` and `metaverse-engine/physics/collide.coax`.
+capsule publication in `metaverse-engine/physics/ground*.coax` and `metaverse-engine/physics/collide.coax`.
 Chapter 9 consolidates the walking controller and its declared tuning;
 chapter 64 still owns the complete migration of realm adapters. Part III
-consolidates the existing Coax shader and host paths in `metaverse/gpu/`.
+consolidates the existing triple-target Coax shader and host paths in
+`metaverse-engine/gpu/` and `metaverse/gpu/`.
 
 ## Completion milestones
 
-At the November 15 review the registry has 103 chapters: 14 implemented,
+At the November 26 review the registry has 103 chapters: 14 implemented,
 57 partly implemented and 32 design drafts. These counts
 describe teaching profiles, not a percentage of the engine completed. Existing
 realm code can already provide a feature whose shared Metaverse Engine module is a draft.

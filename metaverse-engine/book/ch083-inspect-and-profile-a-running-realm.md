@@ -11,7 +11,15 @@
 > `goldens.ts` on the Mac). Probes read a frame back at a chosen moment.
 > `state-defaults` checks that every engine starts from its declared state
 > in the browser, the GPU ledger counts every buffer and texture a host
-> makes, and the compiler's `--timings` measures its own phases. The example
+> makes, and the compiler's `--timings` measures its own phases. The five-stage
+> `7a845fd450` engine performance hillclimb verified these gates end to end:
+> HTTP/1.1 Keep-Alive + zero-dependency Coax gzip (`http-gzip.coax`) cut
+> Everglade II TCP connections `84 -> 6` (`-93%`) and non-pack wire bytes
+> `-55%`; lazy browser ES module imports cut Dead Gears cold load `720 -> 405 ms`
+> (`-43.8%`); lossless VPK3 codecs (`PPK_DEFLATE_T32S`/`IDX32`) + GPU mipmaps cut
+> Everglade II warm load `3,597 -> 803 ms` (`4.5x`, warm wire `-98.2%`); and
+> WebGPU shadow/cull specialization + AudioContext pre-warm locked `60.0 FPS`
+> (`0` frames > `17 ms`, `@2x` scene+post GPU `-44.9%`). The example
 > below runs natively in debug and release. Not built yet: stage timers in
 > the page's frame, the HUD overlay that draws them, and the overlay's cost.
 > See [Still to do](#still-to-do).

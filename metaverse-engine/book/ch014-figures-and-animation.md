@@ -4,7 +4,16 @@
 > [metaverse-engine/anim/pose.coax](../anim/pose.coax): the rotations, a cross-fade
 > blended joint by joint, the skeleton chained from the root and the
 > skinning palette. [metaverse-engine/anim/skin.coax](../anim/skin.coax) plays its clips through
-> it, bit for bit as before. The Grid's cast (`metaverse/cast.coax`) and the
+> it, bit for bit as before. The animation suite also ships glTF animation
+> sampling ([`metaverse-engine/anim/gltf-animation.coax`](../anim/gltf-animation.coax)),
+> two-bone IK and roll-bone fixups
+> ([`metaverse-engine/anim/two-bone.coax`](../anim/two-bone.coax),
+> [`metaverse-engine/anim/fixup.coax`](../anim/fixup.coax)), layered clip masks
+> ([`metaverse-engine/anim/layers.coax`](../anim/layers.coax)), retargeting
+> ([`metaverse-engine/anim/retarget.coax`](../anim/retarget.coax)), and RBA1 /
+> glTF clip scrubbing in the Desktop pure-Coax model viewer
+> ([`metaverse-engine/content/model-view.coax`](../content/model-view.coax), `#14042`).
+> The Grid's cast (`metaverse/cast.coax`) and the
 > rounded-bone figures (`metaverse-engine/anim/figure.coax`) still pose their joints in
 > their own files (see [Still to do](#still-to-do)).
 

@@ -1,11 +1,17 @@
 # 3. Start from a bare world
 
 > **Status: partly implemented.** The `gamebuilder` CLI, its `world.edit.v1`
-> batch wire, `--attach` UI bridge and `play-test` runner exist today in
-> GameBuilder (pinned to `OpenAgentsInc/openagents`). Everglade's custom Coax
-> modules live in `everglade/` and `apps/openagents-web/`. This chapter walks
-> through the GameBuilder workflow from a bare world and shows where Everglade
-> drops down into Coax and the Metaverse Engine.
+> batch wire, `--attach` UI bridge, and `play-test` runner exist today in
+> GameBuilder (`gamebuilder/`), and GameBuilder embeds directly inside
+> OpenAgents Desktop's right-side Metaverse pane
+> (`apps/openagents-desktop/page/metaversepane.coax`,
+> `gamebuilder/core/desktop-bridge.coax`, `#14043`–`#14045`, gated for Desktop
+> packaging via `OA_PACK_METAVERSE`, `#14057`). Five live worlds publish on
+> `gamebuilder.org` (*Fated Dragon*, *SPLICEBOTS*, *Ice Cream Man*, *Scrappers
+> Arena*, and *The Whispering Spring*). Everglade's custom Coax modules live in
+> `everglade/` and `rules/srd/`. This chapter walks through the GameBuilder
+> workflow from a bare world and shows where Everglade drops down into Coax and
+> the Metaverse Engine.
 
 You don't start Everglade by hand-wiring a web page and a shader pipeline. You
 start from a bare world in **GameBuilder**, driven programmatically from the

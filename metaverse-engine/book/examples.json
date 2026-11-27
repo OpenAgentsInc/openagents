@@ -570,6 +570,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "metaverse-engine/examples/part12-server-scene.coax",
+      "chapter": "metaverse-engine/book/ch086-one-server-owns-the-scene.md",
+      "stdout": "metaverse-engine/fixtures/part12-server-scene.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

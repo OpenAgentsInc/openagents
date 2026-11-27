@@ -397,7 +397,8 @@
       ],
       "adopted_by": [
         "metaverse/style.coax",
-        "apps/openagents-web/gpu/fixture.coax"
+        "apps/openagents-web/gpu/fixture.coax",
+        "metaverse/valley/rock.coax"
       ]
     },
     {
@@ -2112,6 +2113,7 @@
       "source": [
         "metaverse-engine/session/lifecycle.coax",
         "metaverse-engine/host/lifecycle.coax",
+        "metaverse-engine/host/aethyr-host-v2.coax",
         "metaverse-engine/render/loss-policy.coax",
         "metaverse-engine/world/stream-walk-device.coax",
         "metaverse-engine/host/rescue-policy.coax",
@@ -2123,7 +2125,9 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-desktop/page/metaversepane.coax"
+      ]
     },
     {
       "number": 85,
@@ -2163,7 +2167,11 @@
         "coax/web/room/room.coax",
         "coax/web/room/room-host.c",
         "coax/web/room/room-everglade.coax",
-        "coax/web/room/room-world.c"
+        "coax/web/room/room-world.c",
+        "metaverse-engine/net/session.coax",
+        "metaverse-engine/net/command.coax",
+        "metaverse-engine/net/replication.coax",
+        "metaverse-engine/examples/part12-server-scene.coax"
       ],
       "qualified_targets": [
         "cpu"
@@ -2325,8 +2333,13 @@
         72,
         91
       ],
-      "source": [],
+      "source": [
+        "everglade/shared/everglade-wire.coax",
+        "everglade/server/send.coax",
+        "coax/web/room/room-blocks.coax"
+      ],
       "qualified_targets": [
+        "cpu",
         "wasm"
       ],
       "adopted_by": []

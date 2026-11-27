@@ -1,10 +1,9 @@
 # 5. Plant a forest with a function
 
-> **Status: partly implemented.** The planting is
+> **Status: partly implemented.** The planting lives in
 > [`everglade/world/plant.coax`](../../everglade/world/plant.coax) and the
-> grass is [`everglade/world/field.coax`](../../everglade/world/field.coax).
-> The code moves into `everglade/world/` later, so this chapter names functions
-> and has no source listings yet.
+> grass in [`everglade/world/field.coax`](../../everglade/world/field.coax).
+> A standalone runnable book example remains to be extracted.
 
 This chapter answers the player's question: "Why does this forest feel real?"
 

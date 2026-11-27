@@ -3,4 +3,5 @@ edge_adv=1 edge_dis=-1 edge_cancel=0
 fixed_plain=10 dice=1 fixed_adv=10 dice=3
 shot1_roll=8 total=13 hit=false dmg=0
 shot2_roll=17 total=22 hit=true dmg=11
+refuse_ability=true blind_auto_fail=true
 ok=true

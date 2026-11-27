@@ -1,13 +1,15 @@
 # 14. Ability scores, proficiency and the d20
 
-> **Status: partly implemented.** The core roll is in the OpenAgents Metaverse Engine's shared SRD rules,
-> [`rules/srd/engine.coax`](../../rules/srd/engine.coax)
-> (`rs_roll`, `rs_d20`, `rs_edge`, `rs_mod`, `rs_proficiency`), with checks in
-> [`rules/srd/ability-check-math.coax`](../../rules/srd/ability-check-math.coax)
-> and saving throws in
-> [`rules/srd/condition-rolls.coax`](../../rules/srd/condition-rolls.coax).
-> Other agents are extending these files now, so this chapter names functions
-> and has no source listings. The SRD's coverage is tracked in the
+> **Implemented profile (`srd-d20-rolls-v1`).** The core roll lives in the
+> shared SRD 5.2.1 rules, [`rules/srd/engine.coax`](../../rules/srd/engine.coax)
+> (`rs_roll`, `rs_d20`, `rs_edge`, `rs_mod`, `rs_proficiency`), with ability
+> checks and refusals in
+> [`rules/srd/ability-check-math.coax`](../../rules/srd/ability-check-math.coax),
+> saving throws in
+> [`rules/srd/condition-rolls.coax`](../../rules/srd/condition-rolls.coax), and
+> the runnable example
+> [`everglade/examples/srd-d20-rolls.coax`](../examples/srd-d20-rolls.coax).
+> Broader SRD coverage is tracked in the
 > [compliance ledger](../../docs/dnd/srd-compliance-ledger.md).
 
 Everglade aims to follow the SRD 5.2.1's rules faithfully while adapting them
@@ -127,7 +129,7 @@ coax/bin/coax run everglade/examples/srd-d20-rolls.coax
 
 ## Runnable example
 
-[`everglade/examples/srd-d20-rolls.coax`](../examples/srd-d20-rolls.coax) runs the Ranger longbow worked example directly against `rules/srd/` (`rs_mod`, `rs_proficiency`, `rs_edge`, `rs_d20`, and `rs_line_attack`), verifying Advantage/Disadvantage cancellation, exact fixed-die counts, and deterministic seeded rolls against a Goblin Warrior (AC 15) (committed transcript [`everglade/examples/srd-d20-rolls.out`](../examples/srd-d20-rolls.out)):
+[`everglade/examples/srd-d20-rolls.coax`](../examples/srd-d20-rolls.coax) runs the Ranger longbow worked example directly against `rules/srd/` (`rs_mod`, `rs_proficiency`, `rs_edge`, `rs_d20`, `rs_line_attack`, and `rs_check_plan`), verifying Advantage/Disadvantage cancellation, exact fixed-die counts, deterministic seeded rolls against a Goblin Warrior (AC 15), explicit refusal of an out-of-range ability index, and Blinded sight-check automatic failure (committed transcript [`everglade/examples/srd-d20-rolls.out`](../examples/srd-d20-rolls.out)):
 
 <!-- source: everglade/examples/srd-d20-rolls.coax srd-d20-rolls -->
 ```jai
@@ -164,8 +166,16 @@ srd_run :: () -> bool {
   print("shot1_roll=% total=% hit=% dmg=%\n", a1.roll, a1.total, a1.hit, a1.damage);
   print("shot2_roll=% total=% hit=% dmg=%\n", a2.roll, a2.total, a2.hit, a2.damage);
 
+  // Refusal & automatic failure: out-of-range ability index is refused whole;
+  // a sight-dependent check while Blinded auto-fails without rolling a die.
+  c: RsCreature; c.level = 1; c.score[RS_WIS] = 14; c.cond = RS_BLINDED;
+  bad_plan := rs_check_plan(c, RsAbilityRequest.{ability = 9});
+  blind_plan := rs_check_plan(c, RsAbilityRequest.{ability = RS_WIS, sight = true});
+  print("refuse_ability=% blind_auto_fail=%\n", !bad_plan.accepted, blind_plan.accepted && blind_plan.automatic);
+
   return dex_mod == 3 && p1 == 2 && p17 == 6 && e_adv == 1 && e_dis == -1 && e_cancel == 0 &&
-         rolled_after_cancel == 1 && rolled_after_adv == 3;
+         rolled_after_cancel == 1 && rolled_after_adv == 3 &&
+         !bad_plan.accepted && blind_plan.accepted && blind_plan.automatic;
 }
 ```
 
@@ -177,6 +187,7 @@ edge_adv=1 edge_dis=-1 edge_cancel=0
 fixed_plain=10 dice=1 fixed_adv=10 dice=3
 shot1_roll=8 total=13 hit=false dmg=0
 shot2_roll=17 total=22 hit=true dmg=11
+refuse_ability=true blind_auto_fail=true
 ok=true
 ```
 

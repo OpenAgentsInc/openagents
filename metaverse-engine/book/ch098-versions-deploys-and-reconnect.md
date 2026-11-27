@@ -62,7 +62,9 @@ protocol preserves captured character state, not every transient world event.
 A socket, an authenticated session and ownership of a character have
 different lifetimes (research doc, section 4).
 
-What works today: the page watches its socket and rejoins after silence.
+What works today: the live client (`everglade/client/net.coax`, evolved from
+the retired v1 quiet-socket watch shown below for historical reference) watches
+its socket and rejoins after silence.
 
 <!-- historical excerpt: apps/openagents-web/old/v1/everglade-net.coax quiet-socket -->
 ```jai

@@ -4,9 +4,9 @@
 > reference image are in the OpenAgents Metaverse Engine's shared glade profile
 > ([`metaverse-engine/world/environment.coax`](../../metaverse-engine/world/environment.coax),
 > `env_glade_profile`) and Everglade II's land
-> ([`everglade/world/forest.coax`](../../everglade/world/forest.coax)). The
-> code still lives outside `everglade/`, so this chapter names functions and
-> has no source listings yet.
+> ([`everglade/world/forest.coax`](../../everglade/world/forest.coax)). This
+> chapter documents the reference numbers and checks while its standalone
+> runnable example remains to be added.
 
 Everglade is an MMORPG on the D&D 5E SRD 5.2.1. Before you write a rule or a
 spell, you decide what the world looks like. This chapter answers the first
@@ -25,10 +25,11 @@ Every later chapter compares its result with that picture.
 
 ## What exists today
 
-The reference and the captures that compare with it are in
-`docs/verification/character-glade-reference-light-2026-11-07/`.
-`reference-compare.jpg` and `reference-compare-2.jpg` put the reference next to
-Character Create's glade.
+The reference comparison captures (`reference-compare.jpg` and
+`reference-compare-2.jpg`, originally archived under
+`character-glade-reference-light-2026-11-07`) put the reference next to
+Character Create's glade; the live lighting verification artifacts live under
+[`docs/verification/aethyr-lighting-p1-2026-11-08/`](../../docs/verification/aethyr-lighting-p1-2026-11-08/).
 
 The numbers taken from the picture live in three places:
 

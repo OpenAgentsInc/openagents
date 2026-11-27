@@ -1,9 +1,10 @@
 // Runnable example for Everglade Book Chapter 14: Ability scores, proficiency and the d20.
-// Exercises the production SRD 5.2.1 rules math (rules/srd/engine.coax + rules/srd/rolls.coax):
+// Exercises the production SRD 5.2.1 rules math (rules/srd/engine.coax + rules/srd/ability-check-math.coax):
 // ability modifiers, proficiency progression, Advantage/Disadvantage cancellation, exact die
-// roll counts under fixed & seeded dice, and a level-1 Ranger Longbow attack against a
-// Goblin Warrior (AC 15).
+// roll counts under fixed & seeded dice, a level-1 Ranger Longbow attack against a
+// Goblin Warrior (AC 15), and explicit check-plan refusal + Blinded sight auto-fail.
 //   coax/bin/coax run everglade/examples/srd-d20-rolls.coax
+//   coax/bin/coax run --release everglade/examples/srd-d20-rolls.coax
 #import "Basic";
 #load "../../rules/srd/battle.coax";
 
@@ -41,8 +42,16 @@ srd_run :: () -> bool {
   print("shot1_roll=% total=% hit=% dmg=%\n", a1.roll, a1.total, a1.hit, a1.damage);
   print("shot2_roll=% total=% hit=% dmg=%\n", a2.roll, a2.total, a2.hit, a2.damage);
 
+  // Refusal & automatic failure: out-of-range ability index is refused whole;
+  // a sight-dependent check while Blinded auto-fails without rolling a die.
+  c: RsCreature; c.level = 1; c.score[RS_WIS] = 14; c.cond = RS_BLINDED;
+  bad_plan := rs_check_plan(c, RsAbilityRequest.{ability = 9});
+  blind_plan := rs_check_plan(c, RsAbilityRequest.{ability = RS_WIS, sight = true});
+  print("refuse_ability=% blind_auto_fail=%\n", !bad_plan.accepted, blind_plan.accepted && blind_plan.automatic);
+
   return dex_mod == 3 && p1 == 2 && p17 == 6 && e_adv == 1 && e_dis == -1 && e_cancel == 0 &&
-         rolled_after_cancel == 1 && rolled_after_adv == 3;
+         rolled_after_cancel == 1 && rolled_after_adv == 3 &&
+         !bad_plan.accepted && blind_plan.accepted && blind_plan.automatic;
 }
 // book:end srd-d20-rolls
 

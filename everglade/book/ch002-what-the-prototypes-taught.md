@@ -1,10 +1,9 @@
 # 2. What the prototypes taught
 
-> **Status: partly implemented.** Every prototype in this chapter runs today:
-> Everglade v1 at `/worlds/everglade`, Everglade Experimental at
-> `/worlds/everglade-experimental` and Character Create at
-> `/worlds/character-creator`. Their code is in `apps/openagents-web/` and
-> `metaverse/`, so this chapter names functions and has no source listings yet.
+> **Status: partly implemented.** Everglade II (`everglade/`) now carries the
+> consolidated world, client, shared, and server modules distilled from the
+> prototypes (Everglade Experimental and Character Create). This chapter
+> records what each prototype settled and what Everglade II kept or retired.
 
 Everglade aims to follow the SRD's rules faithfully while adapting them for
 action combat. Three prototypes came before Everglade II, and each answered one
@@ -31,9 +30,10 @@ What v1 settled, and Everglade II keeps:
   server both call them, so your movement on your screen and on the server
   agree. [Metaverse Engine chapter 87](../../metaverse-engine/book/ch087-server-and-client-share-one-step.md)
   builds this step.
-- **Casting under latency.** v1's room checks range and line of sight when a
-  cast starts and when it releases, with some slack for the time in between
-  (`apps/openagents-web/old/v1/everglade-cast-rules.coax`).
+- **Casting under latency.** The room checks range and line of sight when a
+  cast starts and when it releases, with slack for the time in between
+  ([`everglade/shared/cast-limits.coax`](../shared/cast-limits.coax),
+  [`everglade/server/casts.coax`](../server/casts.coax)).
   [Chapter 16](ch016-spells-and-slots.md) shows those rules.
 
 What Everglade II leaves behind: v1's town, map and speeds. v1 runs at
