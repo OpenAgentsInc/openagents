@@ -151,6 +151,11 @@ final class DesktopActivation {
             if let raw = obj["url"] as? String, let url = URL(string: raw) {
                 _ = handleURL(url)
             }
+        case "browser":
+            if let raw = obj["url"] as? String, !raw.isEmpty {
+                delegate.main?.show()
+                _ = delegate.main?.openBrowserURI(raw)
+            }
         case "new_window":
             let path = obj["path"] as? String
             delegate.openNewWindow(folderPath: path)
@@ -188,6 +193,8 @@ final class DesktopActivation {
                 if delegate.main?.openInMetaverseIfApplicable(target, autoOpened: false) == true { return true }
             }
             return delegate.main?.openMetaverseURI(url.absoluteString, autoOpened: false) ?? false
+        case "browser":
+            return delegate.main?.openBrowserURI(url.absoluteString) ?? false
         case "chat":
             let trimmed = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             let id = !trimmed.isEmpty ? trimmed : (query["id"] ?? "")
