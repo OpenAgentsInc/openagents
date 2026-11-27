@@ -480,6 +480,7 @@ if [[ "$need_build" == 1 ]]; then
   /usr/libexec/PlistBuddy -c "Delete :OACommit" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :OACommit string $target" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OAProfile" "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :OAProfile string $want_profile" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OABuildDate" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :OABuildDate string $(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$plist"
   codesign --force --sign - "$stage/OpenAgents.app" >> "$state/build.log" 2>&1

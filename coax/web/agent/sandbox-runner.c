@@ -367,7 +367,11 @@ static bool sandbox_try_run(const char *worker, coax_string turn_cs, coax_string
   long st = signed_post("/api/chat/runner/sandbox/v1", req.p, 30, &out);
   free(req.p);
   if (st == 409) { free(out.p); return true; }
-  if (st != 200 || !out.p) { free(out.p); return false; }
+  if (st != 200 || !out.p) {
+    say("sandbox begin failed HTTP %ld: %.160s", st, out.p ? out.p : "");
+    free(out.p);
+    return false;
+  }
   if (strstr(out.p, "\"sandbox\":false") || strstr(out.p, "\"sandbox\": false")) {
     free(out.p);
     return false;

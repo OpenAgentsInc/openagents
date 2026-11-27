@@ -420,6 +420,7 @@ static void sandbox_runner_begin(const request *q, PGconn *db, const char *key,
 
 done:
   if (tx) (void)exec_sql(db, "ROLLBACK", 0, NULL);
+  api_log("sandbox_runner_begin failed status=%d why=%s pg=%s", status, why, PQerrorMessage(db));
   refuse(q, status, why);
 finish:
   OPENSSL_cleanse(cloud_tok, sizeof cloud_tok);
@@ -516,6 +517,7 @@ static void sandbox_runner_event(const request *q, PGconn *db, const char *key,
 
 done:
   if (tx) (void)exec_sql(db, "ROLLBACK", 0, NULL);
+  api_log("sandbox_runner_begin failed status=%d why=%s pg=%s", status, why, PQerrorMessage(db));
   refuse(q, status, why);
 finish:
   PQclear(r);
@@ -623,6 +625,7 @@ static void sandbox_runner_finish(const request *q, PGconn *db, const char *key,
 
 done:
   if (tx) (void)exec_sql(db, "ROLLBACK", 0, NULL);
+  api_log("sandbox_runner_begin failed status=%d why=%s pg=%s", status, why, PQerrorMessage(db));
   refuse(q, status, why);
 finish:
   PQclear(br); PQclear(ar); PQclear(r);

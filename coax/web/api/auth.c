@@ -1171,10 +1171,11 @@ bool auth_mint_sandbox_token(PGconn *db, const char *acct, char token_out[160], 
     return false;
   }
   sha_hex(tok, dig);
-  const char *v[8] = {dig, acct, "sandbox", NULL, "L1", "app", "Cloud Sandbox", ""};
+  const char *v[8] = {dig, acct, "device", NULL, "L1", "app", "Cloud Sandbox", ""};
   PGresult *r = PQexecParams(db, "SELECT auth.session_new($1, $2, $3, $4::bigint, $5, $6, $7, $8)",
                              8, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
+  if (!ok) api_log("auth_mint_sandbox_token: session_new failed: %s", PQerrorMessage(db));
   if (ok) snprintf(sid_out, 40, "%s", PQgetvalue(r, 0, 0));
   PQclear(r);
   if (!ok || !sid_out[0]) {
@@ -1184,6 +1185,7 @@ bool auth_mint_sandbox_token(PGconn *db, const char *acct, char token_out[160], 
   const char *w[4] = {sid_out, fam, rtd, atd};
   PGresult *p = PQexecParams(db, "SELECT auth.app_pair($1, $2, $3, $4)", 4, NULL, w, NULL, NULL, 0);
   ok = PQresultStatus(p) == PGRES_TUPLES_OK;
+  if (!ok) api_log("auth_mint_sandbox_token: app_pair failed: %s", PQerrorMessage(db));
   PQclear(p);
   if (ok) snprintf(token_out, 160, "%s", at);
   else {
