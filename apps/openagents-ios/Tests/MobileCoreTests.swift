@@ -7,6 +7,15 @@ import XCTest
 
 final class MobileCoreTests: XCTestCase {
     func testAntigravityOnlyModelEffortAndReviewModePolicy() {
+        XCTAssertTrue(MobileCore.isCoreModel("oa:auto"))
+        XCTAssertTrue(MobileCore.isCoreModel("oa:cloud"))
+        XCTAssertTrue(MobileCore.isCoreModel("oa:local"))
+        XCTAssertTrue(MobileCore.isCoreModel("oa:gemini-4-neon"))
+        XCTAssertTrue(MobileCore.isCoreModel("oa:inkling-2-mini"))
+        XCTAssertEqual(MobileCore.normalizeCoreModel("oa:cloud"), "oa:gemini-4-neon")
+        XCTAssertEqual(MobileCore.normalizeCoreModel("oa:local"), "oa:inkling-2-mini")
+        XCTAssertEqual(MobileCore.normalizeCoreModel("antigravity"), "oa:auto")
+        XCTAssertTrue(MobileCore.isAntigravityModel("oa:auto"))
         XCTAssertTrue(MobileCore.isAntigravityModel("gemini-4-neon"))
         XCTAssertTrue(MobileCore.isAntigravityModel("gemini-4-carbon"))
         XCTAssertTrue(MobileCore.isAntigravityModel("gemini-3.8-flash"))

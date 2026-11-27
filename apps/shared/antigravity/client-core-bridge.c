@@ -132,6 +132,14 @@ int64_t oa_mobile_normalize_agy_effort(const char *model, const char *want, uint
     return mc_normalize_agy_effort(oa_mc_cstr(model), oa_mc_cstr(want), oa_mc_out(out, cap));
 }
 
+int oa_mobile_is_core_model(const char *id) {
+    return mc_is_core_model(oa_mc_cstr(id)) ? 1 : 0;
+}
+
+int64_t oa_mobile_normalize_core_model(const char *want, uint8_t *out, int64_t cap) {
+    return mc_normalize_core_model(oa_mc_cstr(want), oa_mc_out(out, cap));
+}
+
 int oa_mobile_folder_ok(const char *folder) {
     return mc_folder_ok(oa_mc_cstr(folder)) ? 1 : 0;
 }

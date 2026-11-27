@@ -116,9 +116,14 @@ TEST_RUNNER_OA_E2E_SCREENSHOT_DIR="$shot_dir" \
   OA_IOS_BUNDLE_ID=com.openagents.app.e2etest \
   test
 
-echo "==> [6/6] Running real compiled coder-host daemon smoke check (isolated CODER_HOME)..."
+echo "==> [6/6] Running real compiled coder-host + oa-worker daemon smoke check (isolated CODER_HOME)..."
 host_home="$run_dir/coder-home"
-mkdir -p "$host_home"
+worker_dir="$run_dir/workers"
+mkdir -p "$host_home" "$worker_dir"
+compiler_hash="$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" bash "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" </dev/null >/dev/null
+cp -f "$repo/coax/web/build/tools/oa-worker-$compiler_hash" "$worker_dir/oa-worker"
+chmod 755 "$worker_dir/oa-worker"
 CODER_HOME="$host_home" bash "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" --help >/dev/null
 grant_json="$(CODER_HOME="$host_home" bash "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" direct-grant \
   --device 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
@@ -132,7 +137,7 @@ assert not d.get("refused"), d
 print("    real coder-host direct-grant verified: host=" + d["host"][:12] + "...")
 ' "$grant_json"
 
-CODER_HOME="$host_home" bash "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" serve --no-relay --for 30 >"$run_dir/coder-host.log" 2>&1 &
+CODER_HOME="$host_home" CODER_WORKER_DIR="$worker_dir" bash "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" serve --no-relay --for 45 >"$run_dir/coder-host.log" 2>&1 &
 p_real_host=$!
 sock="$host_home/.openagents/coder/host/service.sock"
 for _ in $(seq 1 80); do
@@ -140,9 +145,22 @@ for _ in $(seq 1 80); do
   sleep 0.25
 done
 [[ -S "$sock" ]] || { echo "e2e-sim-test: coder-host did not create $sock" >&2; cat "$run_dir/coder-host.log" >&2; exit 1; }
-/usr/bin/python3 - "$sock" <<'PY'
-import json, socket, sys
-sock_path = sys.argv[1]
+/usr/bin/python3 - "$sock" "$host_home" <<'PY'
+import json, os, socket, sys, time
+sock_path, host_home = sys.argv[1], sys.argv[2]
+def rpc(payload):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(10)
+    s.connect(sock_path)
+    s.sendall((json.dumps(payload) + "\n").encode())
+    buf = b""
+    while b"\n" not in buf:
+        chunk = s.recv(65536)
+        if not chunk:
+            break
+        buf += chunk
+    s.close()
+    return json.loads(buf.decode().strip())
 def ea_req(method, **extra):
     base = {
         "method": method, "workspace_id": "default", "session_id": "", "command_id": "",
@@ -157,28 +175,42 @@ ws_read = {
     "number": 0, "page": 0, "cursor": 0, "expected": "", "command": "",
     "issued_at": 0, "expires_at": 0,
 }
+desc = rpc(ea_req("DescribeEnvironment"))
+assert desc.get("error", "") == "" and desc.get("method") == "DescribeEnvironment", desc
+assert "oa.core.v1" in desc.get("capabilities", []), f"missing oa.core.v1: {desc}"
 for payload in (
-    ea_req("DescribeEnvironment"),
     ea_req("ListSessions"),
     ea_req("ListSessions", model="antigravity"),
     ws_read,
 ):
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(5)
-    s.connect(sock_path)
-    s.sendall((json.dumps(payload) + "\n").encode())
-    buf = b""
-    while b"\n" not in buf:
-        chunk = s.recv(65536)
-        if not chunk:
-            break
-        buf += chunk
-    s.close()
-    resp = json.loads(buf.decode().strip())
-    err = resp.get("error", "")
-    assert err == "", f"coder-host {payload['method']} returned error: {err!r}"
+    resp = rpc(payload)
+    assert resp.get("error", "") == "", f"coder-host {payload['method']} returned error: {resp!r}"
     assert resp.get("method") == payload["method"], f"method mismatch: {resp}"
-print("    real coder-host service.sock verified: DescribeEnvironment, ListSessions, ListSessions(antigravity), ReadWorkspace all returned error=''")
+models = [m.get("model_id") for m in desc.get("models", [])]
+if "oa:auto" in models:
+    now_ms = int(time.time() * 1000)
+    sid = "11112222333344445555666677778888"
+    cid = "aaaabbbbccccddddeeeeffff00001111"
+    op = rpc(ea_req(
+        "OpenSession", session_id=sid, command_id=cid, generation=1, expected_revision=0,
+        text="Reply with exactly one word: PONG", model="oa:auto", effort="low",
+        issued_at_ms=now_ms, expires_at_ms=now_ms + 300000,
+    ))
+    assert op.get("error", "") == "" and op.get("command_status") == "accepted", op
+    runs_dir = os.path.join(host_home, ".openagents/coder/host/runs")
+    phone_meta = json.loads(open(os.path.join(runs_dir, f"{sid}.phone")).read())
+    assert phone_meta.get("engine") == "openagents", phone_meta
+    assert phone_meta.get("model") == "oa:auto", phone_meta
+    out_path = os.path.join(runs_dir, f"{sid}.out")
+    ready_seen = False
+    for _ in range(50):
+        if os.path.exists(out_path) and '"kind":"ready"' in open(out_path).read():
+            ready_seen = True
+            break
+        time.sleep(0.2)
+    assert ready_seen, f"oa-worker did not emit ready line in {out_path}"
+    print("    real coder-host + oa-worker live OpenSession verified: engine=openagents, kind=ready")
+print("    real coder-host service.sock verified: DescribeEnvironment(oa.core.v1), ListSessions, ListSessions(antigravity), ReadWorkspace all returned error=''")
 PY
 
 echo "e2e-sim-test: ALL 6 STAGES PASSED! Screenshots saved in: $shot_dir"

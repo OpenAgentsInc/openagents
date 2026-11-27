@@ -119,13 +119,16 @@ e2e_fill_offer :: (v: [] EaView) #effects(all) {
   l1 := EaLevel.{}; l1.ni = ea_copy(l1.id[..], "medium"); l1.nl = ea_copy(l1.label[..], "Medium"); o.levels[1] = l1;
   l2 := EaLevel.{}; l2.ni = ea_copy(l2.id[..], "high"); l2.nl = ea_copy(l2.label[..], "High"); o.levels[2] = l2;
   l3 := EaLevel.{}; l3.ni = ea_copy(l3.id[..], "xhigh"); l3.nl = ea_copy(l3.label[..], "X-High"); o.levels[3] = l3;
-  // Include Antigravity + non-Antigravity models to verify client-side Antigravity filtering!
-  o.n = 5;
-  m0 := EaModel.{}; m0.ni = ea_copy(m0.id[..], "gemini-4-neon"); m0.nl = ea_copy(m0.label[..], "Gemini 4 Neon"); m0.ladder = 15; o.models[0] = m0;
-  m1 := EaModel.{}; m1.ni = ea_copy(m1.id[..], "gemini-4-carbon"); m1.nl = ea_copy(m1.label[..], "Gemini 4 Carbon"); m1.ladder = 15; o.models[1] = m1;
-  m2 := EaModel.{}; m2.ni = ea_copy(m2.id[..], "gemini-3.8-flash"); m2.nl = ea_copy(m2.label[..], "Gemini 3.8 Flash"); m2.ladder = 7; o.models[2] = m2;
-  m3 := EaModel.{}; m3.ni = ea_copy(m3.id[..], "claude-opus-5-5"); m3.nl = ea_copy(m3.label[..], "Claude Opus 5.5"); m3.ladder = 7; o.models[3] = m3;
-  m4 := EaModel.{}; m4.ni = ea_copy(m4.id[..], "inkling-2-mini"); m4.nl = ea_copy(m4.label[..], "Inkling 2 Mini"); m4.ladder = 7; o.models[4] = m4;
+  // Include OpenAgents Core (`oa:*`) + ACP + legacy bare local model to verify client-side filtering!
+  o.n = 8;
+  m0 := EaModel.{}; m0.ni = ea_copy(m0.id[..], "oa:auto"); m0.nl = ea_copy(m0.label[..], "OpenAgents Auto"); m0.ladder = 15; o.models[0] = m0;
+  m1 := EaModel.{}; m1.ni = ea_copy(m1.id[..], "oa:gemini-4-neon"); m1.nl = ea_copy(m1.label[..], "OpenAgents Cloud · Gemini 4 Neon"); m1.ladder = 15; o.models[1] = m1;
+  m2 := EaModel.{}; m2.ni = ea_copy(m2.id[..], "oa:inkling-2-mini"); m2.nl = ea_copy(m2.label[..], "OpenAgents Local · Inkling 2 Mini"); m2.ladder = 7; o.models[2] = m2;
+  m3 := EaModel.{}; m3.ni = ea_copy(m3.id[..], "gemini-4-neon"); m3.nl = ea_copy(m3.label[..], "Gemini 4 Neon"); m3.ladder = 15; o.models[3] = m3;
+  m4 := EaModel.{}; m4.ni = ea_copy(m4.id[..], "gemini-4-carbon"); m4.nl = ea_copy(m4.label[..], "Gemini 4 Carbon"); m4.ladder = 15; o.models[4] = m4;
+  m5 := EaModel.{}; m5.ni = ea_copy(m5.id[..], "gemini-3.8-flash"); m5.nl = ea_copy(m5.label[..], "Gemini 3.8 Flash"); m5.ladder = 7; o.models[5] = m5;
+  m6 := EaModel.{}; m6.ni = ea_copy(m6.id[..], "claude-opus-5-5"); m6.nl = ea_copy(m6.label[..], "Claude Opus 5.5"); m6.ladder = 7; o.models[6] = m6;
+  m7 := EaModel.{}; m7.ni = ea_copy(m7.id[..], "inkling-2-mini"); m7.nl = ea_copy(m7.label[..], "Inkling 2 Mini"); m7.ladder = 7; o.models[7] = m7;
   v[0].offer = o;
 }
 

@@ -2021,7 +2021,7 @@ ios_frame :: (s: [] IosPhonePage, out: [] f32, width: f32, height: f32, dpr: f32
     input := uiinput(s[0].px, s[0].py, mine && s[0].touching, mine && s[0].touching,
       ifx mine then cast(string) s[0].pressed[0..<s[0].pressed_n] else "", ios_focus_str(s));
     uiframe_begin(f[..], ios_sf(s, layer), s[0].keyed[layer..<layer + 1], measure_font(a), sk, input, s[0].time, t, s[0].reduced, s[0].reduced_transparency);
-    if mine && uiframe_focus(f[..]) != ios_focus_str(s) {
+    if mine && s[0].pressed_n == 0 && uiframe_focus(f[..]) != ios_focus_str(s) {
       s[0].focus_n = el_copy(s[0].focus[..], uiframe_focus(f[..]));
     }
     if layer == 0 { ios_layout_page(s, f[..], w, h); } else { ios_layout_cover(s, f[..], w, h); }
@@ -2048,9 +2048,14 @@ ios_pointer :: (s: [] IosPhonePage, x: f32, y: f32, phase: int) -> bool #export_
   if phase == 0 {
     s[0].touching = true; s[0].down_x = ux; s[0].down_y = uy; s[0].last_y = uy;
     s[0].swiped = false; s[0].scrolling = false;
-    s[0].pressed_n = ifx surface_action(sf, row) != 0 then el_copy(s[0].pressed[..], id) else 0;
-    ins := [1] UiInput.[uiinput(ux, uy, true, true, cast(string) s[0].pressed[0..<s[0].pressed_n], ios_focus_str(s))];
-    if uiframe_press_focus(sf, ins[..]) { s[0].focus_n = el_copy(s[0].focus[..], cast(string) ins[0].focused[0..<ins[0].focused_n]); }
+    act0 := surface_action(sf, row);
+    s[0].pressed_n = ifx act0 != 0 then el_copy(s[0].pressed[..], id) else 0;
+    // Do not blur chat.composer on touch-down of an interactive button (e.g. chat.send):
+    // dismissing the keyboard mid-tap shifts the composer dock 300pt down before touch-up!
+    if act0 == 0 || act0 == IOS_HIT_COMPOSER {
+      ins := [1] UiInput.[uiinput(ux, uy, true, true, cast(string) s[0].pressed[0..<s[0].pressed_n], ios_focus_str(s))];
+      if uiframe_press_focus(sf, ins[..]) { s[0].focus_n = el_copy(s[0].focus[..], cast(string) ins[0].focused[0..<ins[0].focused_n]); }
+    }
     return true;
   }
   if phase == 1 {

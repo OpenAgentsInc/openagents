@@ -20,13 +20,15 @@ fi
 stage="$(mktemp -d /tmp/oa-macos-dmg-XXXXXX)"
 trap 'rm -rf "$stage"' EXIT
 
-echo "==> [1/4] Building bundled coder-host and agyworker"
+echo "==> [1/4] Building bundled coder-host, oa-worker, and agyworker"
 compiler_hash="$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" build-only </dev/null >/dev/null 2>&1 || true
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" </dev/null >/dev/null
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" </dev/null >/dev/null
 cp -f "$repo/coax/web/build/tools/host-$compiler_hash" "$stage/coder-host"
+cp -f "$repo/coax/web/build/tools/oa-worker-$compiler_hash" "$stage/oa-worker"
 cp -f "$repo/coax/web/build/tools/agyworker-$compiler_hash" "$stage/agyworker"
-chmod 755 "$stage/coder-host" "$stage/agyworker"
+chmod 755 "$stage/coder-host" "$stage/oa-worker" "$stage/agyworker"
 
 echo "==> [2/4] Building OpenAgents.app (Release)"
 cd "$repo/apps/openagents-macos"
@@ -41,12 +43,14 @@ app="$stage/OpenAgents.app"
 ditto "$stage/derived/Build/Products/Release/OpenAgents.app" "$app"
 mkdir -p "$app/Contents/Resources"
 cp -f "$stage/coder-host" "$app/Contents/Resources/coder-host"
+cp -f "$stage/oa-worker" "$app/Contents/Resources/oa-worker"
 cp -f "$stage/agyworker" "$app/Contents/Resources/agyworker"
-chmod 755 "$app/Contents/Resources/coder-host" "$app/Contents/Resources/agyworker"
+chmod 755 "$app/Contents/Resources/coder-host" "$app/Contents/Resources/oa-worker" "$app/Contents/Resources/agyworker"
 
 echo "==> [3/4] Signing & verifying clean-sheet invariants"
 if [[ "$sign_id" != "-" ]]; then
   codesign --force --options runtime --timestamp --sign "$sign_id" "$app/Contents/Resources/coder-host"
+  codesign --force --options runtime --timestamp --sign "$sign_id" "$app/Contents/Resources/oa-worker"
   codesign --force --options runtime --timestamp --sign "$sign_id" "$app/Contents/Resources/agyworker"
   codesign --force --options runtime --timestamp --deep --sign "$sign_id" "$app"
 else

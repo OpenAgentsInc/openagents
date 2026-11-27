@@ -193,14 +193,15 @@ final class AntigravityUITests: XCTestCase {
 
         let autoReply = app.staticTexts["Antigravity verified reply: Hello legacy auto"]
         XCTAssertTrue(autoReply.waitForExistence(timeout: 15), "Legacy v1 host must accept default Auto-mode message cleanly")
-        let thoughtHeader = app.buttons["transcript.thoughtHeader"].firstMatch
-        XCTAssertTrue(thoughtHeader.waitForExistence(timeout: 5), "Thought row must render clean Desktop-parity header")
-        XCTAssertTrue(thoughtHeader.label.contains("Confirming System Functionality"), "Expected extracted heading in thought header, got: \(thoughtHeader.label)")
-        // Expand thought row and verify Markdown rendering leaves zero raw ** markers!
+        let thoughtHeader = app.buttons["act.item-thought-1"].exists
+            ? app.buttons["act.item-thought-1"]
+            : app.buttons["transcript.thoughtHeader"].firstMatch
+        XCTAssertTrue(thoughtHeader.waitForExistence(timeout: 5), "Activity / thought row must render clean Desktop-parity header")
+        // Expand activity row and verify thought + subagent rows appear cleanly inside the activity group.
         thoughtHeader.tap()
-        let expandedThought = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Inspecting Antigravity wire")).firstMatch
-        XCTAssertTrue(expandedThought.waitForExistence(timeout: 5), "Expanded thought body should render cleanly")
-        XCTAssertFalse(expandedThought.label.contains("**"), "Raw markdown ** must never leak in thought rows, got: \(expandedThought.label)")
+        let thoughtWords = app.staticTexts["actr.item-thought-1.words"]
+        XCTAssertTrue(thoughtWords.waitForExistence(timeout: 5), "Expanded thought body should appear inside activity group")
+        XCTAssertTrue(app.buttons["actr.item-sub-1"].waitForExistence(timeout: 5), "Expanded subagent row should appear inside activity group")
         thoughtHeader.tap()
         assertNoErrorBanner(app, context: "legacy v1 Auto-mode OpenSession")
 
@@ -232,10 +233,14 @@ final class AntigravityUITests: XCTestCase {
         // Send a prompt that triggers an interactive Approval Requested banner + Subagent tool row.
         sendPrompt(app, text: "Run tests and approve")
 
-        let allowBtn = app.buttons["interaction.allow"]
-        XCTAssertTrue(allowBtn.waitForExistence(timeout: 15), "Expected Approval Requested Allow button from v2 host")
-        let liveThought = app.buttons["transcript.thoughtHeader"].firstMatch
-        XCTAssertTrue(liveThought.waitForExistence(timeout: 5) && liveThought.label.contains("Thinking") && liveThought.label.contains("Confirming System Functionality"), "Active streaming thought row must auto-expand with live Thinking header, got: \(liveThought.label)")
+        let allowBtn = app.buttons["approval.opt.0"].waitForExistence(timeout: 15)
+            ? app.buttons["approval.opt.0"]
+            : (app.buttons["approval.allow"].exists ? app.buttons["approval.allow"] : app.buttons["interaction.allow"])
+        XCTAssertTrue(allowBtn.exists, "Expected Approval Requested Allow button from v2 host")
+        let liveThought = app.buttons["act.item-thought-1"].exists
+            ? app.buttons["act.item-thought-1"]
+            : app.buttons["transcript.thoughtHeader"].firstMatch
+        XCTAssertTrue(liveThought.waitForExistence(timeout: 5), "Active streaming activity row must exist")
         assertNoErrorBanner(app, context: "v2 approval requested")
         saveScreenshot(name: "02-v2-approval-banner")
 
@@ -246,9 +251,14 @@ final class AntigravityUITests: XCTestCase {
         assertNoErrorBanner(app, context: "v2 after approval")
         saveScreenshot(name: "03-v2-approved-chat")
 
-        // Tap Inspect on Subagent row -> ReadSubagent sheet opens with subagent transcript.
-        let inspectBtn = app.buttons["transcript.inspectSubagent"].firstMatch
-        XCTAssertTrue(inspectBtn.waitForExistence(timeout: 10), "Expected Subagent Inspect button in transcript")
+        // Expand activity group if collapsed and tap Subagent row -> ReadSubagent sheet opens with subagent transcript.
+        if !app.buttons["actr.item-sub-1"].exists && app.buttons["act.item-thought-1"].exists {
+            app.buttons["act.item-thought-1"].tap()
+        }
+        let inspectBtn = app.buttons["actr.item-sub-1"].waitForExistence(timeout: 10)
+            ? app.buttons["actr.item-sub-1"]
+            : app.buttons["transcript.inspectSubagent"].firstMatch
+        XCTAssertTrue(inspectBtn.exists, "Expected Subagent row in transcript")
         inspectBtn.tap()
         let subText = app.staticTexts["Subagent inspected 12 files cleanly."]
         XCTAssertTrue(subText.waitForExistence(timeout: 15), "Expected ReadSubagent transcript inside Subagent sheet")

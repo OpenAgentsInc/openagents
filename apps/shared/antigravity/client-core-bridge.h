@@ -56,6 +56,8 @@ int oa_mobile_host_key_ok(const char *key);
 int oa_mobile_is_agy_model(const char *id);
 int64_t oa_mobile_normalize_agy_model(const char *want, uint8_t *out, int64_t cap);
 int64_t oa_mobile_normalize_agy_effort(const char *model, const char *want, uint8_t *out, int64_t cap);
+int oa_mobile_is_core_model(const char *id);
+int64_t oa_mobile_normalize_core_model(const char *want, uint8_t *out, int64_t cap);
 int oa_mobile_folder_ok(const char *folder);
 int oa_mobile_mode_ok(const char *mode);
 int oa_mobile_v1_ea_compat(const uint8_t *raw, int64_t n);

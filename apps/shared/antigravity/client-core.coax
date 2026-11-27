@@ -37,7 +37,16 @@ mc_normalize_agy_model :: (want: string, out: [] u8) -> int #export_c #effects(a
 }
 
 mc_normalize_agy_effort :: (model: string, want: string, out: [] u8) -> int #export_c #effects(all) {
-  return mc_copy(out, pa_effort(PA_AGY, model, want));
+  eng := ifx pa_core_model(model) then PA_CORE else PA_AGY;
+  return mc_copy(out, pa_effort(eng, model, want));
+}
+
+mc_is_core_model :: (id: string) -> bool #export_c #effects(all) {
+  return pa_mobile_core_allowed(id);
+}
+
+mc_normalize_core_model :: (want: string, out: [] u8) -> int #export_c #effects(all) {
+  return mc_copy(out, pa_mobile_core_model(want));
 }
 
 mc_folder_ok :: (folder: string) -> bool #export_c #effects(all) {
@@ -126,7 +135,9 @@ mc_env_request :: (
     }
   }
   if effort.count > 0 {
-    resolved_effort := pa_effort(PA_AGY, ifx model.count > 0 then pa_mobile_agy_model(model) else PA_AGY_DEFAULT, effort);
+    eff_model := ifx model.count > 0 then pa_mobile_agy_model(model) else PA_AGY_DEFAULT;
+    eff_eng := ifx pa_core_model(eff_model) then PA_CORE else PA_AGY;
+    resolved_effort := pa_effort(eff_eng, eff_model, effort);
     if resolved_effort.count > 0 {
       if !ea_choice(resolved_effort) { return -1; }
       q[0].nef = ea_copy(q[0].effort[..], resolved_effort);
@@ -276,6 +287,8 @@ mc_dm_view_valid :: (v: [] DmView, host: string, method: string, raw: string) ->
 }
 
 #test "shared Antigravity client core enforces dynamic Antigravity ACP models, review modes, and workspace RPCs" {
+  #assert mc_is_core_model("oa:auto") && mc_is_core_model("oa:gemini-4-neon") && mc_is_core_model("oa:inkling-2-mini");
+  #assert mc_is_agy_model("oa:auto") && mc_is_agy_model("oa:gemini-4-neon") && mc_is_agy_model("oa:inkling-2-mini");
   #assert mc_is_agy_model("gemini-4-neon") && mc_is_agy_model("antigravity") && mc_is_agy_model("gemini-pro-orchestrator") && mc_is_agy_model("claude-opus-5-5") && mc_is_agy_model("gpt-oss-120b");
   #assert !mc_is_agy_model("inkling-2-mini") && !mc_is_agy_model("inkling") && !mc_is_agy_model("default") && !mc_is_agy_model("--bad");
   #assert mc_mode_ok("auto") && mc_mode_ok("default") && mc_mode_ok("plan") && mc_mode_ok("accept-edits") && mc_mode_ok("turbo") && !mc_mode_ok("invalid");
@@ -283,6 +296,11 @@ mc_dm_view_valid :: (v: [] DmView, host: string, method: string, raw: string) ->
   q: [1] EaRequest;
   out: [65536] u8;
   r: [1] EaRequest;
+  // Unified OpenAgents Core (`oa-worker`) model slugs round-trip & keep strict v1 16-key compat in auto mode (#14060, #14073)
+  nc := mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "Run OpenAgents Core turn", "", false, 0, 1700000000000, 1700000300000, "oa:auto", "high", "apps/openagents-ios", "", "auto", "", "", out[..]);
+  #assert nc > 0 && mc_v1_ea_compat(cast(string) out[0..<nc]) && ea_read(cast(string) out[0..<nc], r[..]) && cast(string) r[0].model[0..<r[0].nmo] == "oa:auto" && cast(string) r[0].effort[0..<r[0].nef] == "high";
+  nc = mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "Local $0 Inkling turn", "", false, 0, 1700000000000, 1700000300000, "oa:local", "xhigh", "", "", "auto", "", "", out[..]);
+  #assert nc > 0 && mc_v1_ea_compat(cast(string) out[0..<nc]) && ea_read(cast(string) out[0..<nc], r[..]) && cast(string) r[0].model[0..<r[0].nmo] == "oa:inkling-2-mini" && cast(string) r[0].effort[0..<r[0].nef] == "high";
   n := mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "Review diff", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "high", "apps/openagents-ios", "", "plan", "", "", out[..]);
   #assert n > 0 && ea_read(cast(string) out[0..<n], r[..]);
   #assert cast(string) r[0].mode[0..<r[0].nmd] == "plan" && cast(string) r[0].model[0..<r[0].nmo] == "gemini-4-neon";

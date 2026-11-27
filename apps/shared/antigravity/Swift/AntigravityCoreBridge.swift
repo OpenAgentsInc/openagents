@@ -142,9 +142,22 @@ enum MobileCore {
         oa_mobile_host_key_ok(key) != 0
     }
 
-    /// Coax `#authority` Antigravity-only model predicate (`phone-agent-policy.coax`).
+    /// Coax `#authority` model predicate (`phone-agent-policy.coax`: OpenAgents Core + dynamic ACP catalog).
     static func isAntigravityModel(_ id: String) -> Bool {
         oa_mobile_is_agy_model(id) != 0
+    }
+
+    /// Coax `#authority` OpenAgents Core model predicate (`oa:auto`, `oa:cloud`, `oa:local`, `oa:gemini-4-neon`, `oa:inkling-2-mini`, ACP).
+    static func isCoreModel(_ id: String) -> Bool {
+        oa_mobile_is_core_model(id) != 0
+    }
+
+    /// Coax `#authority` OpenAgents Core normalization (defaults to `oa:auto`).
+    static func normalizeCoreModel(_ want: String) -> String {
+        var out = [UInt8](repeating: 0, count: 128)
+        let n = oa_mobile_normalize_core_model(want, &out, Int64(out.count))
+        guard n > 0 else { return "oa:auto" }
+        return String(decoding: out[0..<Int(n)], as: UTF8.self)
     }
 
     /// Coax `#authority` normalization strictly within Antigravity (defaults to `gemini-4-neon`).

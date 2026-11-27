@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Firm reason: 5 (thin wrapper: builds Release OpenAgentsMac.app + coder-host + agyworker, runs check.sh, and installs to /Applications/OpenAgentsMac.app by default; holds no logic).
+# Firm reason: 5 (thin wrapper: builds Release OpenAgentsMac.app + coder-host + oa-worker + agyworker, runs check.sh, and installs to /Applications/OpenAgentsMac.app by default; holds no logic).
 # Builds and installs the SwiftUI macOS companion (/Applications/OpenAgentsMac.app by default, or /Applications/OpenAgents.app with --replace-desktop),
-# plus ~/.openagents/bin/coder-host and ~/.openagents/bin/agyworker (GitHub #13993).
+# plus ~/.openagents/bin/coder-host, ~/.openagents/bin/oa-worker, and ~/.openagents/bin/agyworker (GitHub #13993, #14060).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 repo="$(pwd -P)"
@@ -23,6 +23,14 @@ cp -f "$host_built" "$HOME/.openagents/bin/coder-host.tmp"
 chmod 755 "$HOME/.openagents/bin/coder-host.tmp"
 mv -f "$HOME/.openagents/bin/coder-host.tmp" "$HOME/.openagents/bin/coder-host"
 
+echo "==> Building oa-worker (~/.openagents/bin/oa-worker)"
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" </dev/null >/dev/null
+oa_built="$repo/coax/web/build/tools/oa-worker-$compiler_hash"
+test -x "$oa_built"
+cp -f "$oa_built" "$HOME/.openagents/bin/oa-worker.tmp"
+chmod 755 "$HOME/.openagents/bin/oa-worker.tmp"
+mv -f "$HOME/.openagents/bin/oa-worker.tmp" "$HOME/.openagents/bin/oa-worker"
+
 echo "==> Building agyworker (~/.openagents/bin/agyworker)"
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" </dev/null >/dev/null
 agy_built="$repo/coax/web/build/tools/agyworker-$compiler_hash"
@@ -41,8 +49,9 @@ xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Relea
 app="$repo/apps/openagents-macos/build/Build/Products/Release/OpenAgents.app"
 mkdir -p "$app/Contents/Resources"
 cp -f "$HOME/.openagents/bin/coder-host" "$app/Contents/Resources/coder-host"
+cp -f "$HOME/.openagents/bin/oa-worker" "$app/Contents/Resources/oa-worker"
 cp -f "$HOME/.openagents/bin/agyworker" "$app/Contents/Resources/agyworker"
-chmod 755 "$app/Contents/Resources/coder-host" "$app/Contents/Resources/agyworker"
+chmod 755 "$app/Contents/Resources/coder-host" "$app/Contents/Resources/oa-worker" "$app/Contents/Resources/agyworker"
 codesign --force --deep --sign - "$app"
 
 ./check.sh "$app"
@@ -94,4 +103,4 @@ mv "$stage" "$dest"
 rm -rf "$old"
 touch "$dest"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$dest" 2>/dev/null || true
-echo "Installed $dest, $HOME/.openagents/bin/coder-host, and $HOME/.openagents/bin/agyworker"
+echo "Installed $dest, $HOME/.openagents/bin/coder-host, $HOME/.openagents/bin/oa-worker, and $HOME/.openagents/bin/agyworker"
