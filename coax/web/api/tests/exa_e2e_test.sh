@@ -314,5 +314,22 @@ assert u["search"]["usd_micros"] == expected_spend, u["search"]
 assert u["search"]["msat"] == expected_spend, u["search"]
 assert u["credit_msat"] == 100000 - expected_spend, u
 
+# --- 9. Daily request cap (429), daily spend cap (429), and MCP 429 (-32029) ---
+seen_before_caps = len(seen)
+sql(f"UPDATE inference.account_day SET n = 50 WHERE pubkey = '{PAID_PUB}' AND day = current_date;")
+st, b = req("POST", "/api/v1/search", {"query": "over request cap"}, keyfile=PAID_KEY)
+assert st == 429 and "50 requests for today are used up" in b, (st, b)
+assert int(sql(f"SELECT n FROM inference.account_day WHERE pubkey = '{PAID_PUB}' AND day = current_date")) == 50
+
+sql(f"UPDATE inference.account_day SET n = 1, usd_micros = 500000 WHERE pubkey = '{PAID_PUB}' AND day = current_date;")
+st, b = req("POST", "/api/v1/search", {"query": "over spend cap"}, keyfile=PAID_KEY)
+assert st == 429 and "$0.50 spend for today is used up" in b, (st, b)
+st, b = req("POST", "/api/v1/mcp/exa", {
+    "jsonrpc": "2.0", "id": 5, "method": "tools/call",
+    "params": {"name": "web_search_exa", "arguments": {"query": "mcp over spend cap"}}
+}, keyfile=PAID_KEY)
+assert st == 429 and json.loads(b)["error"]["code"] == -32029, (st, b)
+assert len(seen) == seen_before_caps, f"quota-refused requests must never reach Exa: {seen[seen_before_caps:]}"
+
 print("ALL EXA E2E CHECKS PASSED! (REST /search, /fetch, MCP /api/v1/mcp/exa, billing, pricing, usage)")
 PY

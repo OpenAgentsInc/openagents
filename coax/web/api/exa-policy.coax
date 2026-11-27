@@ -3,7 +3,7 @@
 //   - Domain & category validation
 //   - SSRF URL safety guard for /api/v1/fetch and web_fetch_exa
 //   - Exact integer decimal parser for Exa's costDollars.total -> upstream_usd_micros
-//   - Exact ceiling retail markup arithmetic matching SQL inference.search_finish
+//   - Admission & settlement policy (precheck, daily quotas, retail markup, msat ceiling)
 #authority;
 
 EXA_DEFAULT_NUM_RESULTS :: 8;
@@ -15,6 +15,7 @@ EXA_MAX_URLS :: 5;
 EXA_MAX_DOMAINS :: 20;
 EXA_MAX_QUERY_BYTES :: 2000;
 EXA_DEFAULT_MARKUP_BPS :: 2500;
+EXA_RATE_MAX_AGE_MS :: 3600000;
 
 exa_clamp_num_results :: (n: int) -> int #export_c #effects(all) {
   if n <= 0 { return EXA_DEFAULT_NUM_RESULTS; }
@@ -238,7 +239,7 @@ exa_cost_dollars_to_micros :: (s: string) -> int #export_c #effects(all) {
   return res;
 }
 
-// Compute billed retail micros matching SQL inference.search_finish.
+// Compute billed retail micros for Exa settlement.
 exa_retail_micros :: (upstream_micros: int, markup_bps: int, fallback_retail: int, http_status: int) -> int #export_c #effects(all) {
   if http_status != 200 { return 0; }
   bps := ifx markup_bps > 0 then markup_bps else 0; // mutant: equivalent (when markup_bps == 0 both branches evaluate to 0)
@@ -246,6 +247,41 @@ exa_retail_micros :: (upstream_micros: int, markup_bps: int, fallback_retail: in
     return (upstream_micros * (10000 + bps) + 9999) / 10000;
   }
   return ifx fallback_retail > 0 then fallback_retail else 0; // mutant: equivalent (when fallback_retail == 0 both branches evaluate to 0)
+}
+
+// Compute recorded upstream USD micros for Exa settlement.
+exa_upstream_micros :: (upstream_micros: int, markup_bps: int, fallback_retail: int, http_status: int) -> int #export_c #effects(all) {
+  if http_status != 200 { return 0; }
+  if upstream_micros > 0 { return upstream_micros; }
+  if fallback_retail <= 0 { return 0; } // mutant: equivalent (when fallback_retail == 0 both branches return 0)
+  bps := ifx markup_bps > 0 then markup_bps else 0; // mutant: equivalent (when markup_bps == 0 both branches evaluate to 0)
+  return (fallback_retail * 10000) / (10000 + bps);
+}
+
+// Convert retail USD micros to ceiling msat at usd_per_btc (0 for free callers or invalid rate).
+exa_msat_due :: (usd_micros: int, usd_per_btc: int, free: bool) -> int #export_c #effects(all) {
+  if free || usd_micros <= 0 || usd_per_btc <= 0 { return 0; } // mutant: equivalent (when usd_micros == 0 and usd_per_btc > 0 ceiling formula also returns 0)
+  return (usd_micros * 100000 + usd_per_btc - 1) / usd_per_btc;
+}
+
+// Pre-quota admission check: model exists, and non-free callers have positive credit
+// and a fresh BTC/USD exchange rate (<= 3600s old).
+// Returns 200 (ok), 400 (unknown search service), 402 (no credit), or 503 (missing/stale rate).
+exa_admit_precheck :: (model_found: bool, free: bool, credit_msat: int, has_rate: bool, rate_age_ms: int) -> int #export_c #effects(all) {
+  if !model_found { return 400; }
+  if !free {
+    if credit_msat <= 0 { return 402; }
+    if !has_rate || rate_age_ms > EXA_RATE_MAX_AGE_MS { return 503; }
+  }
+  return 200;
+}
+
+// Daily quota admission check after incrementing account_day.n.
+// Returns 200 (ok), 4291 (daily request cap exceeded), or 4292 (daily USD spend cap reached).
+exa_admit_quota :: (day_n: int, cap_n: int, day_usd_micros: int, cap_usd_micros: int) -> int #export_c #effects(all) {
+  if day_n > cap_n { return 4291; }
+  if day_usd_micros >= cap_usd_micros { return 4292; }
+  return 200;
 }
 
 #test "exa-policy: clamping, search type, category, and domain validation" {
@@ -363,4 +399,42 @@ exa_retail_micros :: (upstream_micros: int, markup_bps: int, fallback_retail: in
   #assert exa_retail_micros(0, 2500, 6250, 200) == 6250; // fallback when costDollars omitted
   #assert exa_retail_micros(0, 2500, 1, 200) == 1 && exa_retail_micros(0, 2500, -10, 200) == 0;
   #assert exa_retail_micros(5000, 2500, 6250, 502) == 0; // non-200 never charged
+
+  #assert exa_upstream_micros(5000, 2500, 6250, 200) == 5000;
+  #assert exa_upstream_micros(1, 2500, 6250, 200) == 1;
+  #assert exa_upstream_micros(0, 2500, 6250, 200) == 5000;
+  #assert exa_upstream_micros(-5, 2500, 6250, 200) == 5000;
+  #assert exa_upstream_micros(0, 2500, 1250, 200) == 1000;
+  #assert exa_upstream_micros(0, 0, 6250, 200) == 6250;
+  #assert exa_upstream_micros(0, -500, 6250, 200) == 6250;
+  #assert exa_upstream_micros(0, 1, 10001, 200) == 10000;
+  #assert exa_upstream_micros(0, 2500, 0, 200) == 0 && exa_upstream_micros(0, 2500, -1250, 200) == 0;
+  #assert exa_upstream_micros(0, 0, 1, 200) == 1;
+  #assert exa_upstream_micros(5000, 2500, 6250, 502) == 0;
+  #assert exa_upstream_micros(5000, 2500, 6250, 199) == 0 && exa_upstream_micros(5000, 2500, 6250, 201) == 0;
+
+  #assert exa_msat_due(15625, 100000, false) == 15625;
+  #assert exa_msat_due(15625, 100000, true) == 0;
+  #assert exa_msat_due(0, 100000, false) == 0 && exa_msat_due(-100, 100000, false) == 0;
+  #assert exa_msat_due(10000, 0, false) == 0 && exa_msat_due(10000, -100, false) == 0;
+  #assert exa_msat_due(1, 100000, false) == 1 && exa_msat_due(1, 100001, false) == 1 && exa_msat_due(1, 99999, false) == 2;
+  #assert exa_msat_due(2, 100000, false) == 2 && exa_msat_due(1, 1, false) == 100000;
+}
+
+#test "exa-policy: admission precheck and daily quota policy" {
+  #assert exa_admit_precheck(false, true, 0, false, 0) == 400;
+  #assert exa_admit_precheck(false, false, 100, true, 0) == 400;
+  #assert exa_admit_precheck(true, true, 0, false, 9999999) == 200;
+  #assert exa_admit_precheck(true, false, 0, true, 0) == 402;
+  #assert exa_admit_precheck(true, false, -1, true, 0) == 402;
+  #assert exa_admit_precheck(true, false, 1, false, 0) == 503;
+  #assert exa_admit_precheck(true, false, 1, true, 3600000) == 200;
+  #assert exa_admit_precheck(true, false, 1, true, 3600001) == 503;
+  #assert exa_admit_precheck(true, false, 1, true, -10) == 200;
+
+  #assert exa_admit_quota(1, 250, 0, 2000000) == 200;
+  #assert exa_admit_quota(250, 250, 1999999, 2000000) == 200;
+  #assert exa_admit_quota(251, 250, 0, 2000000) == 4291;
+  #assert exa_admit_quota(1, 250, 2000000, 2000000) == 4292;
+  #assert exa_admit_quota(1, 250, 2000001, 2000000) == 4292;
 }

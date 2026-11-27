@@ -14,6 +14,7 @@
 #include "exa-policy.generated.h"
 
 #include <curl/curl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,15 @@
 static const char *exa_env_or(const char *name, const char *fallback) {
   const char *v = getenv(name);
   return (v && *v) ? v : fallback;
+}
+
+static long long exa_env_i64(const char *name, long long fallback) {
+  const char *v = getenv(name);
+  if (!v || !*v) return fallback;
+  char *end = NULL;
+  long long n = strtoll(v, &end, 10);
+  if (!end || *end != '\0' || n < 0) return fallback;
+  return n;
 }
 
 static coax_string exa_cs(const char *s) {
@@ -192,7 +202,13 @@ static long long exa_extract_cost_micros(PGconn *db, const char *raw_resp) {
   return micros;
 }
 
-// Run SQL admission check (wallet daily limit, BTC rate refresh, credit > 0, daily caps).
+static void exa_rollback(PGconn *db) {
+  PGresult *rb = PQexec(db, "ROLLBACK");
+  if (rb) PQclear(rb);
+}
+
+// Run admission check in a plain SQL transaction using #authority exa-policy.coax
+// (wallet daily limit, BTC rate refresh, credit > 0, fresh BTC/USD rate, daily caps).
 // Returns true if admitted; otherwise populates res->status / res->json / res->err.
 static bool exa_admit_call(PGconn *db, const request *q, const char *who, bool free_key,
                            const char *model_name, exa_exec_res *res) {
@@ -204,39 +220,294 @@ static bool exa_admit_call(PGconn *db, const request *q, const char *who, bool f
     }
     inference_rate_refresh(db);
   }
-  char origin[600];
-  snprintf(origin, sizeof origin, "%s/api/v1/inference/credit", exa_env_or("OA_API_ORIGIN", "https://openagents.com"));
-  const char *v[6] = {
-      who,
-      model_name,
-      exa_env_or("OA_EXA_DAILY_REQUESTS", "250"),
-      exa_env_or("OA_EXA_DAILY_USD_MICROS", "2000000"),
-      free_key ? "true" : "false",
-      origin,
-  };
-  PGresult *r = PQexecParams(
-      db,
-      "SELECT (x->>'status')::int, coalesce(x->>'error', ''), "
-      "(x - 'status' || CASE WHEN x ? 'credit' THEN jsonb_build_object('credit', $6::text) ELSE '{}' END)::text "
-      "FROM inference.search_admit($1, $2, $3::int, $4::bigint, $5::bool) x",
-      6, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
-    api_log("exa: admit failed: %s", PQerrorMessage(db));
-    if (r) PQclear(r);
+
+  long long cap_n = exa_env_i64("OA_EXA_DAILY_REQUESTS", 250);
+  long long cap_usd = exa_env_i64("OA_EXA_DAILY_USD_MICROS", 2000000);
+
+  PGresult *tx = PQexec(db, "BEGIN");
+  if (!tx || PQresultStatus(tx) != PGRES_COMMAND_OK) {
+    api_log("exa: admit begin failed: %s", PQerrorMessage(db));
+    if (tx) PQclear(tx);
     res->status = 500;
     snprintf(res->err, sizeof res->err, "search admission failed");
     return false;
   }
-  int st = atoi(PQgetvalue(r, 0, 0));
-  if (st != 200) {
-    res->status = st;
-    snprintf(res->err, sizeof res->err, "%s", PQgetvalue(r, 0, 1));
-    if (st == 402) res->json = strdup(PQgetvalue(r, 0, 2));
-    PQclear(r);
+  PQclear(tx);
+
+  const char *mv[1] = {model_name};
+  PGresult *mr = PQexecParams(
+      db,
+      "SELECT 1 FROM inference.models WHERE name = $1 AND kind = 'search'",
+      1, NULL, mv, NULL, NULL, 0);
+  if (!mr || PQresultStatus(mr) != PGRES_TUPLES_OK) {
+    api_log("exa: admit model lookup failed: %s", PQerrorMessage(db));
+    if (mr) PQclear(mr);
+    exa_rollback(db);
+    res->status = 500;
+    snprintf(res->err, sizeof res->err, "search admission failed");
     return false;
   }
-  PQclear(r);
+  bool model_found = PQntuples(mr) == 1;
+  PQclear(mr);
+
+  long long credit_msat = 0;
+  bool has_rate = false;
+  long long rate_age_ms = 0;
+  if (model_found && !free_key) {
+    const char *wv[1] = {who};
+    PGresult *cr = PQexecParams(
+        db,
+        "SELECT msat FROM inference.credit WHERE pubkey = $1",
+        1, NULL, wv, NULL, NULL, 0);
+    if (!cr || PQresultStatus(cr) != PGRES_TUPLES_OK) {
+      api_log("exa: admit credit lookup failed: %s", PQerrorMessage(db));
+      if (cr) PQclear(cr);
+      exa_rollback(db);
+      res->status = 500;
+      snprintf(res->err, sizeof res->err, "search admission failed");
+      return false;
+    }
+    if (PQntuples(cr) == 1) credit_msat = atoll(PQgetvalue(cr, 0, 0));
+    PQclear(cr);
+
+    PGresult *rr = PQexec(
+        db,
+        "SELECT ceil(extract(epoch FROM now() - at) * 1000)::bigint FROM inference.btc_usd");
+    if (!rr || PQresultStatus(rr) != PGRES_TUPLES_OK) {
+      api_log("exa: admit rate lookup failed: %s", PQerrorMessage(db));
+      if (rr) PQclear(rr);
+      exa_rollback(db);
+      res->status = 500;
+      snprintf(res->err, sizeof res->err, "search admission failed");
+      return false;
+    }
+    if (PQntuples(rr) == 1) {
+      has_rate = true;
+      rate_age_ms = atoll(PQgetvalue(rr, 0, 0));
+    }
+    PQclear(rr);
+  }
+
+  int64_t pre = exa_admit_precheck(model_found, free_key, credit_msat, has_rate, rate_age_ms);
+  if (pre != 200) {
+    exa_rollback(db);
+    res->status = (int)pre;
+    if (pre == 400) {
+      snprintf(res->err, sizeof res->err, "unknown search service");
+    } else if (pre == 402) {
+      snprintf(res->err, sizeof res->err, "add credit: POST /api/v1/inference/credit");
+      char origin[600], cred_s[32];
+      snprintf(origin, sizeof origin, "%s/api/v1/inference/credit",
+               exa_env_or("OA_API_ORIGIN", "https://openagents.com"));
+      snprintf(cred_s, sizeof cred_s, "%lld", credit_msat);
+      const char *jv[2] = {origin, cred_s};
+      PGresult *jr = PQexecParams(
+          db,
+          "SELECT jsonb_build_object("
+          "  'error', 'add credit: POST /api/v1/inference/credit',"
+          "  'credit', $1::text,"
+          "  'credit_msat', $2::bigint"
+          ")::text",
+          2, NULL, jv, NULL, NULL, 0);
+      if (jr && PQresultStatus(jr) == PGRES_TUPLES_OK && PQntuples(jr) == 1) {
+        res->json = strdup(PQgetvalue(jr, 0, 0));
+      }
+      if (jr) PQclear(jr);
+    } else {
+      snprintf(res->err, sizeof res->err, "no bitcoin price to charge at; try again soon");
+    }
+    return false;
+  }
+
+  const char *dv[1] = {who};
+  PGresult *dr = PQexecParams(
+      db,
+      "INSERT INTO inference.account_day AS a (pubkey, day, n) "
+      "VALUES ($1, current_date, 1) "
+      "ON CONFLICT (pubkey, day) DO UPDATE SET n = a.n + 1 "
+      "RETURNING n, usd_micros",
+      1, NULL, dv, NULL, NULL, 0);
+  if (!dr || PQresultStatus(dr) != PGRES_TUPLES_OK || PQntuples(dr) != 1) {
+    api_log("exa: admit quota update failed: %s", PQerrorMessage(db));
+    if (dr) PQclear(dr);
+    exa_rollback(db);
+    res->status = 500;
+    snprintf(res->err, sizeof res->err, "search admission failed");
+    return false;
+  }
+  long long day_n = atoll(PQgetvalue(dr, 0, 0));
+  long long day_usd = atoll(PQgetvalue(dr, 0, 1));
+  PQclear(dr);
+
+  int64_t qdec = exa_admit_quota(day_n, cap_n, day_usd, cap_usd);
+  if (qdec != 200) {
+    exa_rollback(db);
+    res->status = 429;
+    if (qdec == 4291) {
+      snprintf(res->err, sizeof res->err, "this account's %lld requests for today are used up", cap_n);
+    } else {
+      snprintf(res->err, sizeof res->err, "this account's $%.2f spend for today is used up",
+               (double)cap_usd / 1000000.0);
+    }
+    return false;
+  }
+
+  PGresult *cm = PQexec(db, "COMMIT");
+  bool ok = cm && PQresultStatus(cm) == PGRES_COMMAND_OK;
+  if (cm) PQclear(cm);
+  if (!ok) {
+    api_log("exa: admit commit failed: %s", PQerrorMessage(db));
+    exa_rollback(db);
+    res->status = 500;
+    snprintf(res->err, sizeof res->err, "search admission failed");
+    return false;
+  }
   return true;
+}
+
+// Record and settle a completed Exa search/fetch call in a plain SQL transaction
+// using #authority exa-policy.coax for retail markup, upstream cost, and msat ceiling math.
+static char *exa_finish_call(PGconn *db, const char *who, const char *model_name,
+                             long http_status, long long upstream_micros, int taken_ms,
+                             bool free_key) {
+  int status_int = (http_status > 0 && http_status <= INT_MAX) ? (int)http_status : 0;
+  int ms_clamped = taken_ms > 0 ? taken_ms : 0;
+
+  PGresult *tx = PQexec(db, "BEGIN");
+  if (!tx || PQresultStatus(tx) != PGRES_COMMAND_OK) {
+    api_log("exa: finish begin (%s) failed: %s", model_name, PQerrorMessage(db));
+    if (tx) PQclear(tx);
+    goto fallback;
+  }
+  PQclear(tx);
+
+  long long cost = 0, up_cost = 0, msat_due = 0;
+  const char *mv[1] = {model_name};
+  PGresult *mr = PQexecParams(
+      db,
+      "SELECT per_call_micros, markup_bps FROM inference.models WHERE name = $1 AND kind = 'search'",
+      1, NULL, mv, NULL, NULL, 0);
+  if (!mr || PQresultStatus(mr) != PGRES_TUPLES_OK) {
+    api_log("exa: finish model lookup (%s) failed: %s", model_name, PQerrorMessage(db));
+    if (mr) PQclear(mr);
+    goto fail;
+  }
+  if (PQntuples(mr) == 1) {
+    long long fallback_retail = atoll(PQgetvalue(mr, 0, 0));
+    long long markup_bps = atoll(PQgetvalue(mr, 0, 1));
+    cost = (long long)exa_retail_micros(upstream_micros, markup_bps, fallback_retail, status_int);
+    up_cost = (long long)exa_upstream_micros(upstream_micros, markup_bps, fallback_retail, status_int);
+  }
+  PQclear(mr);
+
+  if (!free_key && cost > 0) {
+    PGresult *rr = PQexec(db, "SELECT usd_per_btc FROM inference.btc_usd");
+    if (!rr || PQresultStatus(rr) != PGRES_TUPLES_OK) {
+      api_log("exa: finish rate lookup (%s) failed: %s", model_name, PQerrorMessage(db));
+      if (rr) PQclear(rr);
+      goto fail;
+    }
+    long long rate = (PQntuples(rr) == 1) ? atoll(PQgetvalue(rr, 0, 0)) : 0;
+    PQclear(rr);
+    msat_due = (long long)exa_msat_due(cost, rate, free_key);
+  }
+
+  char st_s[16], cost_s[32], up_s[32], ms_s[16], msat_s[32];
+  snprintf(st_s, sizeof st_s, "%d", status_int);
+  snprintf(cost_s, sizeof cost_s, "%lld", cost);
+  snprintf(up_s, sizeof up_s, "%lld", up_cost);
+  snprintf(ms_s, sizeof ms_s, "%d", ms_clamped);
+  snprintf(msat_s, sizeof msat_s, "%lld", msat_due);
+
+  if (cost > 0) {
+    const char *dv[2] = {who, cost_s};
+    PGresult *dr = PQexecParams(
+        db,
+        "INSERT INTO inference.account_day AS a (pubkey, day, n, usd_micros) "
+        "VALUES ($1, current_date, 0, $2::bigint) "
+        "ON CONFLICT (pubkey, day) DO UPDATE SET usd_micros = a.usd_micros + EXCLUDED.usd_micros",
+        2, NULL, dv, NULL, NULL, 0);
+    if (!dr || PQresultStatus(dr) != PGRES_COMMAND_OK) {
+      api_log("exa: finish account_day (%s) failed: %s", model_name, PQerrorMessage(db));
+      if (dr) PQclear(dr);
+      goto fail;
+    }
+    PQclear(dr);
+  }
+
+  const char *cv[7] = {who, model_name, st_s, cost_s, up_s, ms_s, msat_s};
+  PGresult *cr = PQexecParams(
+      db,
+      "INSERT INTO inference.calls "
+      "  (ms, pubkey, model, status, in_tokens, cached_in_tokens, out_tokens, "
+      "   usd_micros, upstream_usd_micros, ms_taken, msat, kind) "
+      "VALUES "
+      "  ((extract(epoch FROM clock_timestamp()) * 1000)::bigint, $1, $2, $3::int, 0, 0, 0, "
+      "   $4::bigint, $5::bigint, $6::int, $7::bigint, 'search')",
+      7, NULL, cv, NULL, NULL, 0);
+  if (!cr || PQresultStatus(cr) != PGRES_COMMAND_OK) {
+    api_log("exa: finish insert call (%s) failed: %s", model_name, PQerrorMessage(db));
+    if (cr) PQclear(cr);
+    goto fail;
+  }
+  PQclear(cr);
+
+  if (!free_key && cost > 0) {
+    const char *uv[2] = {who, msat_s};
+    PGresult *ur = PQexecParams(
+        db,
+        "UPDATE inference.credit SET msat = msat - $2::bigint, updated = now() WHERE pubkey = $1",
+        2, NULL, uv, NULL, NULL, 0);
+    if (!ur || PQresultStatus(ur) != PGRES_COMMAND_OK) {
+      api_log("exa: finish credit debit (%s) failed: %s", model_name, PQerrorMessage(db));
+      if (ur) PQclear(ur);
+      goto fail;
+    }
+    PQclear(ur);
+
+    if (msat_due > 0) {
+      PGresult *sr = PQexecParams(
+          db,
+          "INSERT INTO auth.credit_spends AS c (account, hour, msat) "
+          "SELECT a.id, date_trunc('hour', now()), $2::bigint "
+          "  FROM auth.accounts a "
+          "  LEFT JOIN auth.nostr_keys k ON k.account = a.id "
+          " WHERE a.kind = 'person' AND (k.pubkey = $1 OR a.id = $1) "
+          " GROUP BY a.id "
+          "ON CONFLICT (account, hour) DO UPDATE SET msat = c.msat + EXCLUDED.msat",
+          2, NULL, uv, NULL, NULL, 0);
+      if (!sr || PQresultStatus(sr) != PGRES_COMMAND_OK) {
+        api_log("exa: finish credit_spends (%s) failed: %s", model_name, PQerrorMessage(db));
+        if (sr) PQclear(sr);
+        goto fail;
+      }
+      PQclear(sr);
+    }
+  }
+
+  PGresult *cm = PQexec(db, "COMMIT");
+  bool ok = cm && PQresultStatus(cm) == PGRES_COMMAND_OK;
+  if (cm) PQclear(cm);
+  if (!ok) {
+    api_log("exa: finish commit (%s) failed: %s", model_name, PQerrorMessage(db));
+    goto fail;
+  }
+
+  char buf[256];
+  snprintf(buf, sizeof buf,
+           "{\"model\":\"%s\",\"upstream_usd_micros\":%lld,\"usd_micros\":%lld,\"msat\":%lld,\"free\":%s}",
+           model_name, up_cost, cost, msat_due, free_key ? "true" : "false");
+  return strdup(buf);
+
+fail:
+  exa_rollback(db);
+fallback: {
+  char buf[256];
+  snprintf(buf, sizeof buf,
+           "{\"model\":\"%s\",\"upstream_usd_micros\":0,\"usd_micros\":0,\"msat\":0,\"free\":%s}",
+           model_name, free_key ? "true" : "false");
+  return strdup(buf);
+}
 }
 
 // Execute a metered Exa /search call for REST (/api/v1/search) or MCP (web_search_exa).
@@ -434,25 +705,15 @@ static void exa_execute_search(PGconn *db, const request *q, const char *who, bo
   int taken_ms = (int)(api_now_ms() - t0);
   free(payload);
 
-  // 7. Parse exact costDollars.total and record/bill via inference.search_finish().
+  // 7. Parse exact costDollars.total and settle billing in a plain SQL transaction.
   long long upstream_micros = (http_status == 200) ? exa_extract_cost_micros(db, raw_resp) : 0;
-  char http_s[16], up_s[32], ms_s[16];
-  snprintf(http_s, sizeof http_s, "%ld", http_status > 0 ? http_status : 0);
-  snprintf(up_s, sizeof up_s, "%lld", upstream_micros);
-  snprintf(ms_s, sizeof ms_s, "%d", taken_ms);
-  const char *fv[6] = {who, "exa/search", http_s, up_s, ms_s, free_key ? "true" : "false"};
-  PGresult *fr = PQexecParams(
-      db,
-      "SELECT inference.search_finish($1, $2, $3::int, $4::bigint, $5::int, $6::bool)::text",
-      6, NULL, fv, NULL, NULL, 0);
-  char *billing_json = NULL;
-  if (fr && PQresultStatus(fr) == PGRES_TUPLES_OK && PQntuples(fr) == 1) {
-    billing_json = strdup(PQgetvalue(fr, 0, 0));
-  } else {
-    api_log("exa: search_finish failed: %s", PQerrorMessage(db));
-    billing_json = strdup("{\"model\":\"exa/search\",\"upstream_usd_micros\":0,\"usd_micros\":0,\"msat\":0}");
+  char *billing_json = exa_finish_call(db, who, "exa/search", http_status, upstream_micros, taken_ms, free_key);
+  if (!billing_json) {
+    free(raw_resp);
+    res->status = 503;
+    snprintf(res->err, sizeof res->err, "memory");
+    return;
   }
-  if (fr) PQclear(fr);
 
   if (http_status != 200 || !raw_resp) {
     api_log("exa: /search upstream answered %ld in %d ms", http_status, taken_ms);
@@ -669,23 +930,13 @@ static void exa_execute_fetch(PGconn *db, const request *q, const char *who, boo
   free(payload);
 
   long long upstream_micros = (http_status == 200) ? exa_extract_cost_micros(db, raw_resp) : 0;
-  char http_s[16], up_s[32], ms_s[16];
-  snprintf(http_s, sizeof http_s, "%ld", http_status > 0 ? http_status : 0);
-  snprintf(up_s, sizeof up_s, "%lld", upstream_micros);
-  snprintf(ms_s, sizeof ms_s, "%d", taken_ms);
-  const char *fv[6] = {who, "exa/contents", http_s, up_s, ms_s, free_key ? "true" : "false"};
-  PGresult *fr = PQexecParams(
-      db,
-      "SELECT inference.search_finish($1, $2, $3::int, $4::bigint, $5::int, $6::bool)::text",
-      6, NULL, fv, NULL, NULL, 0);
-  char *billing_json = NULL;
-  if (fr && PQresultStatus(fr) == PGRES_TUPLES_OK && PQntuples(fr) == 1) {
-    billing_json = strdup(PQgetvalue(fr, 0, 0));
-  } else {
-    api_log("exa: contents finish failed: %s", PQerrorMessage(db));
-    billing_json = strdup("{\"model\":\"exa/contents\",\"upstream_usd_micros\":0,\"usd_micros\":0,\"msat\":0}");
+  char *billing_json = exa_finish_call(db, who, "exa/contents", http_status, upstream_micros, taken_ms, free_key);
+  if (!billing_json) {
+    free(raw_resp);
+    res->status = 503;
+    snprintf(res->err, sizeof res->err, "memory");
+    return;
   }
-  if (fr) PQclear(fr);
 
   if (http_status != 200 || !raw_resp) {
     api_log("exa: /contents upstream answered %ld in %d ms", http_status, taken_ms);
