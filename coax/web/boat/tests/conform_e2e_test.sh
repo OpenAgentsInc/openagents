@@ -113,8 +113,11 @@ assert create_body["machineType"].endswith("/c3d-highcpu-8")
 assert create_body["serviceAccounts"] == []
 assert "accessConfigs" not in json.dumps(create_body["networkInterfaces"])
 assert create_body["labels"]["oa-boat-id"] == bid
-assert ops[1]["path"].endswith(f"/instances/oa-{bid}/stop")
-assert ops[2]["path"].endswith(f"/instances/oa-{bid}/start")
-assert ops[3]["method"] == "DELETE" and ops[3]["path"].endswith(f"/instances/oa-{bid}")
+gce_vm = "oa-" + bid.replace("_", "-")
+assert create_body["name"] == gce_vm and "_" not in create_body["name"], create_body["name"]
+assert create_body["disks"][0]["boot"] is True and create_body["disks"][0]["autoDelete"] is True
+assert ops[1]["path"].endswith(f"/instances/{gce_vm}/stop")
+assert ops[2]["path"].endswith(f"/instances/{gce_vm}/start")
+assert ops[3]["method"] == "DELETE" and ops[3]["path"].endswith(f"/instances/{gce_vm}")
 print("oa-boat conform_e2e_test: boat conform --lifecycle + GCE VM lifecycle (zero-SA, no external IP, idempotency) PASSED (ASan/UBSan clean)")
 PY

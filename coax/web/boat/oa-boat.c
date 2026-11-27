@@ -300,10 +300,22 @@ static bool gce_call_body(const char *method, const char *path, const char *body
   return rc == CURLE_OK && code >= 200 && code < 300;
 }
 
+static void gce_vm_name(const char *box_id, char out[32]) {
+  // GCE instance names must satisfy RFC 1035: [a-z]([-a-z0-9]{0,61}[a-z0-9])? (no underscores).
+  size_t n = 0;
+  out[n++] = 'o'; out[n++] = 'a'; out[n++] = '-';
+  for (size_t i = 0; box_id[i] && n + 1 < 32; i++) {
+    char c = box_id[i];
+    out[n++] = (c == '_') ? '-' : (char)tolower((unsigned char)c);
+  }
+  out[n] = 0;
+}
+
 static bool gce_create_vm(const box_rec *b) {
   const char *mt = strcmp(b->size, "small") == 0 ? "e2-standard-2"
                  : strcmp(b->size, "large") == 0 ? "c3d-highcpu-8" : "e2-standard-4";
-  char path[256], body[4096], meta[1536] = "", resp[1024] = "";
+  char vm[32], path[256], body[4096], meta[1536] = "", resp[1024] = "";
+  gce_vm_name(b->id, vm);
   snprintf(path, sizeof path, "/projects/%s/zones/%s/instances", g_gce_project, g_gce_zone);
   if (g_ssh_pubkey[0]) {
     snprintf(meta, sizeof meta,
@@ -314,14 +326,14 @@ static bool gce_create_vm(const box_rec *b) {
   // Debian 12 boot disk (autoDelete), no external IP (empty accessConfigs, Cloud NAT egress),
   // no project-admin SA (empty serviceAccounts), labeled for reaper & billing.
   snprintf(body, sizeof body,
-           "{\"name\":\"oa-%s\",\"machineType\":\"zones/%s/machineTypes/%s\","
+           "{\"name\":\"%s\",\"machineType\":\"zones/%s/machineTypes/%s\","
            "\"disks\":[{\"boot\":true,\"autoDelete\":true,\"initializeParams\":"
            "{\"sourceImage\":\"projects/debian-cloud/global/images/family/debian-12\",\"diskSizeGb\":\"30\"}}],"
            "\"networkInterfaces\":[{\"network\":\"global/networks/default\"}],"
            "\"serviceAccounts\":[],"
            "\"tags\":{\"items\":[\"oa-boat-sandbox\"]},"
            "\"labels\":{\"oa-boat-id\":\"%s\",\"oa-boat-size\":\"%s\",\"oa-boat-sec\":\"0\"}%s}",
-           b->id, g_gce_zone, mt, b->id, b->size, meta);
+           vm, g_gce_zone, mt, b->id, b->size, meta);
   long code = 0;
   bool ok = gce_call_body("POST", path, body, &code, resp, sizeof resp);
   if (!ok) fprintf(stderr, "oa-boat: gce_create_vm(%s) failed HTTP %ld: %.300s\n", b->id, code, resp);
@@ -329,8 +341,9 @@ static bool gce_create_vm(const box_rec *b) {
 }
 
 static void gce_instance_op(const char *id, const char *method, const char *suffix) {
-  char path[256], resp[512] = "";
-  snprintf(path, sizeof path, "/projects/%s/zones/%s/instances/oa-%s%s", g_gce_project, g_gce_zone, id, suffix);
+  char vm[32], path[256], resp[512] = "";
+  gce_vm_name(id, vm);
+  snprintf(path, sizeof path, "/projects/%s/zones/%s/instances/%s%s", g_gce_project, g_gce_zone, vm, suffix);
   long code = 0;
   bool ok = gce_call_body(method, path, "", &code, resp, sizeof resp);
   if (!ok && code != 404) fprintf(stderr, "oa-boat: gce %s %s failed HTTP %ld: %.200s\n", method, path, code, resp);
@@ -538,8 +551,9 @@ static void *gce_wait_ready_thread(void *arg) {
   snprintf(id, sizeof id, "%s", wa->id);
   free(wa);
 
-  char path[256];
-  snprintf(path, sizeof path, "/projects/%s/zones/%s/instances/oa-%s", g_gce_project, g_gce_zone, id);
+  char vm[32], path[256];
+  gce_vm_name(id, vm);
+  snprintf(path, sizeof path, "/projects/%s/zones/%s/instances/%s", g_gce_project, g_gce_zone, vm);
   char ip[64] = "";
   for (int attempt = 0; attempt < 60; attempt++) {
     pthread_mutex_lock(&g_mu);
