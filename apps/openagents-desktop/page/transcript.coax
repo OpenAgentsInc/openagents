@@ -601,6 +601,8 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     if oc_b.ok && oc_b.value { s[0].turns[i].agents[j].omit_claudemd = true; }
     ro_b := cl_bool(one, "read_only");
     if ro_b.ok && ro_b.value { s[0].turns[i].agents[j].read_only = true; }
+    git_s := cl_str(ar[..], one, "git");
+    s[0].turns[i].agents[j].git = ifx git_s == "push" then 2 else ifx git_s == "commit" then 1 else 0;
     fk_b := cl_bool(one, "is_fork");
     if fk_b.ok && fk_b.value { s[0].turns[i].agents[j].is_fork = true; }
     fkp_s := cl_str(ar[..], one, "fork_context_path");
@@ -858,7 +860,7 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   if level >= CP_LEVEL_CLAUDE && level < CP_LEVEL_CLAUDE_END {
     cmode := cp_claude_sub_mode(s, s[0].turns[i].agents[j].read_only);
     csandbox := cp_claude_sub_sandbox(cmode);
-    return mww_task(out, McTask.{task = full_task, session = session, cwd = eff_cwd, sandbox = csandbox, ceiling = 3, no_ask = true, model = CP_LEVEL[level], effort = CP_CLAUDE_EFFORT_WORD[cp_claude_effort(s, CP_LEVEL_CLAUDE_END - 1 - level)], no_steer = true, mode = cmode, read_only = cmode == "plan"});
+    return mww_task(out, McTask.{task = full_task, session = session, cwd = eff_cwd, sandbox = csandbox, ceiling = 3, no_ask = true, model = CP_LEVEL[level], effort = CP_CLAUDE_EFFORT_WORD[cp_claude_effort(s, CP_LEVEL_CLAUDE_END - 1 - level)], no_steer = true, mode = cmode, read_only = cmode == "plan", git = CP_AGENT_GIT[s[0].turns[i].agents[j].git]});
   }
   if level >= CP_LEVEL_AGY && level < CP_LEVELS {
     return mww_task(out, McTask.{task = full_task, session = session, cwd = eff_cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level], no_steer = true});
@@ -875,6 +877,7 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
       omit_claudemd = s[0].turns[i].agents[j].omit_claudemd,
       read_only = s[0].turns[i].agents[j].read_only,
       is_subagent = true,
+      git = CP_AGENT_GIT[s[0].turns[i].agents[j].git],
       is_fork = s[0].turns[i].agents[j].is_fork,
       fork_context_path = cast(string) s[0].turns[i].agents[j].fork_ctx_path[0..<s[0].turns[i].agents[j].fork_ctx_path_n],
     };

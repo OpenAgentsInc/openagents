@@ -496,6 +496,13 @@ to Claude Code:
 The agent then calls `Agent` with `subagent_type` set to `claude-haiku`, `claude-sonnet`,
 `claude-opus` or `claude-fable`.
 
+A sub-agent does not commit or push unless the chat allows it. The `Agent` call's `git` option is
+`none` (the default: its changes stay in the working tree), `commit` or `push`, and the chat passes
+`commit` or `push` only when you ask for that: "have Claude fix it and commit the fix". A command
+that goes past the rule is refused. `OA_SUBAGENT_GIT_MAX` (`none`, `commit` or `push`) is the most
+any sub-agent gets. Measured in
+[`docs/verification/2026-11-26-subagent-git-rule-delegation-bench.md`](../../docs/verification/2026-11-26-subagent-git-rule-delegation-bench.md).
+
 The sub-agent then runs in `claudeworker`, which ships in `--minimal` on macOS and Linux and drives
 the `claude` command through the Coax Claude Agent SDK (`coax/lib/agent/claude`). Settings > Agent
 probes `claudeworker --auth` to show live Claude Code installation and sign-in status next to the

@@ -112,6 +112,7 @@ McTask :: struct {
   omit_claudemd: bool;           // skip CLAUDE.md/AGENTS.md & git status for one-shot Explore/Plan (#14096)
   read_only: bool;               // strictly read-only tool & Bash guard (#14096)
   is_subagent: bool;             // marks child worker as a subagent (disables recursive Agent tool, #14096)
+  git: string;                   // a sub-agent's git rule: "none", "commit" or "push" (mc_gg_refuse_publish, #14104); "" on a chat's own task
   is_fork: bool;                 // marks child worker as a FORK_AGENT sharing parent cached context (#14096)
   fork_context_path: string;     // path to serialized parent history + sibling placeholder tool_results (#14096)
 }
@@ -145,6 +146,7 @@ mww_task :: (o: [] u8, t: McTask) -> int {
   if t.omit_claudemd { n = json_raw(o, n, ",\"omit_claudemd\":true"); }
   if t.read_only { n = json_raw(o, n, ",\"read_only\":true"); }
   if t.is_subagent { n = json_raw(o, n, ",\"is_subagent\":true"); }
+  if t.git.count > 0 { n = json_raw(o, n, ",\"git\":"); n = json_write_string(o, n, t.git); }
   if t.is_fork { n = json_raw(o, n, ",\"is_fork\":true"); }
   if t.fork_context_path.count > 0 { n = json_raw(o, n, ",\"fork_context_path\":"); n = json_write_string(o, n, t.fork_context_path); }
   n = json_raw(o, n, "}\n");
@@ -251,6 +253,7 @@ MwwRequest :: struct {
   subagent_type: string; agent_id: string; allowed_tools: string; disallowed_tools: string;
   omit_claudemd: bool; read_only: bool; is_subagent: bool;
   is_fork: bool; fork_context_path: string;
+  git: string;                   // task: a sub-agent's git rule ("" when the line has none)
 }
 // The strings are in msg or in ar; they hold until either changes. model is read only for a task
 // that is not local, as the worker always did.
@@ -325,6 +328,7 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
   oc := cl_bool(msg, "omit_claudemd"); r[0].omit_claudemd = oc.ok && oc.value;
   ro := cl_bool(msg, "read_only"); r[0].read_only = ro.ok && ro.value;
   isub := cl_bool(msg, "is_subagent"); r[0].is_subagent = isub.ok && isub.value;
+  r[0].git = cl_str(ar, msg, "git");
   ifk := cl_bool(msg, "is_fork"); r[0].is_fork = ifk.ok && ifk.value;
   r[0].fork_context_path = cl_str(ar, msg, "fork_context_path");
   r[0].kind = MWW_TASK; return MWW_TASK;
@@ -359,6 +363,7 @@ mww_task_read :: (ar: [] ClArena, msg: string, t: [] McTask) -> bool {
   oc := cl_bool(msg, "omit_claudemd"); t[0].omit_claudemd = oc.ok && oc.value;
   ro := cl_bool(msg, "read_only"); t[0].read_only = ro.ok && ro.value;
   isub := cl_bool(msg, "is_subagent"); t[0].is_subagent = isub.ok && isub.value;
+  t[0].git = cl_str(ar, msg, "git");
   ifk := cl_bool(msg, "is_fork"); t[0].is_fork = ifk.ok && ifk.value;
   t[0].fork_context_path = cl_str(ar, msg, "fork_context_path");
   return !ar[0].full;
@@ -1004,17 +1009,17 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
     policy = true, allow = 1, ceiling = 3, roots = "/w",
     subagent_type = "Explore", agent_id = "aexplore-0123456789abcdef",
     allowed_tools = "Read,Glob,Grep", disallowed_tools = "Edit,Write,Agent",
-    omit_claudemd = true, read_only = true, is_subagent = true,
+    omit_claudemd = true, read_only = true, is_subagent = true, git = "commit",
   };
   n := mww_task(o[..], t);
   #assert n > 0 && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK;
   #assert r[0].subagent_type == "Explore" && r[0].agent_id == "aexplore-0123456789abcdef";
   #assert r[0].allowed_tools == "Read,Glob,Grep" && r[0].disallowed_tools == "Edit,Write,Agent";
-  #assert r[0].omit_claudemd && r[0].read_only && r[0].is_subagent;
+  #assert r[0].omit_claudemd && r[0].read_only && r[0].is_subagent && r[0].git == "commit";
   ar[0].at = 0;
   #assert mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]);
   #assert back[0].subagent_type == "Explore" && back[0].agent_id == "aexplore-0123456789abcdef";
-  #assert back[0].omit_claudemd && back[0].read_only && back[0].is_subagent;
+  #assert back[0].omit_claudemd && back[0].read_only && back[0].is_subagent && back[0].git == "commit";
 
   dn := mww_delegate_ex(o[..], "[{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"task\":\"scan\"}]", 7, true);
   #assert dn > 0 && mww_read(ar[..], cast(string) o[0..<dn], l[..]) == MWW_DELEGATE;

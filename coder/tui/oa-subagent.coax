@@ -353,6 +353,23 @@ fww_find_subagent_rec :: (r: [] FwRun, id_or_name: string) -> int {
 
 // ---------------------------------------------------------------- parallel Agent batch delegation
 
+// A sub-agent's git rule (GitHub #14104). asked is the Agent call's `git` ("" when it names none):
+// none unless asked, except in a worktree of its own, where a commit is how its work comes back.
+// Never more than most, the owner's limit (OA_SUBAGENT_GIT_MAX).
+fww_subagent_git :: (asked: string, own_worktree: bool, most: string) -> string {
+  want := ifx asked == "none" || asked == "commit" || asked == "push" then asked else ifx own_worktree then "commit" else "none";
+  if most == "none" { return "none"; }
+  if most == "commit" && want == "push" { return "commit"; }
+  return want;
+}
+#test "sub-agents (#14104): the git rule is none unless the call asks, commit in its own worktree, and never past the limit" {
+  #assert fww_subagent_git("", false, "push") == "none" && fww_subagent_git("bogus", false, "push") == "none";
+  #assert fww_subagent_git("", true, "push") == "commit" && fww_subagent_git("none", true, "push") == "none";
+  #assert fww_subagent_git("commit", false, "push") == "commit" && fww_subagent_git("push", false, "push") == "push";
+  #assert fww_subagent_git("push", false, "commit") == "commit" && fww_subagent_git("commit", false, "commit") == "commit";
+  #assert fww_subagent_git("push", false, "none") == "none" && fww_subagent_git("", true, "none") == "none";
+}
+
 // The app's sub-agent level for a subagent_type that names Claude Code, or "" (GitHub #14104).
 fww_claude_level :: (kind: string) -> string {
   if oa_ag_eq_ci(kind, "claude-haiku") { return "haiku"; }
@@ -468,6 +485,7 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
     desc_b: [160] u8; prompt_b: [16384] u8; type_b: [64] u8;
     model_b: [64] u8; name_b: [64] u8; iso_b: [32] u8; mode_b: [32] u8;
     dn := 0; pn := 0; tn := 0; mn := 0; nn := 0; ison := 0; modn := 0;
+    git_b: [16] u8; gitn := 0;
     req_bg := false; req_fork := false;
     if jv_parse(d[..], args, nodes[..]) {
       dn = jv_str(d[0], jv_get(d[0], 0, "description"), desc_b[..]);
@@ -476,6 +494,7 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
       mn = jv_str(d[0], jv_get(d[0], 0, "model"), model_b[..]);
       nn = jv_str(d[0], jv_get(d[0], 0, "name"), name_b[..]);
       ison = jv_str(d[0], jv_get(d[0], 0, "isolation"), iso_b[..]);
+      gitn = jv_str(d[0], jv_get(d[0], 0, "git"), git_b[..]);
       modn = jv_str(d[0], jv_get(d[0], 0, "mode"), mode_b[..]);
       req_bg = jv_bool(d[0], jv_get(d[0], 0, "run_in_background"));
       req_fork = jv_bool(d[0], jv_get(d[0], 0, "fork"));
@@ -525,6 +544,7 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
 
     is_bg := oa_agent_should_run_async(false, req_bg, def, false, false);
     want_wt := oa_ag_eq_ci(iso_s, "worktree") || def.isolation_worktree;
+    git_s := fww_subagent_git(ifx gitn > 0 then cast(string) git_b[0..<gitn] else "", want_wt, cast(string) cfg[0].subagent_git_max[0..<cfg[0].nsubagent_git_max]);
 
     rec_idx := r[0].nsubagents;
     if rec_idx < FWW_MAX_SUBAGENT_RECS {
@@ -605,6 +625,7 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
             is_subagent = true,
             is_fork = is_fork,
             fork_context_path = fork_path_s,
+            git = git_s,
           };
           tn_w := mww_task(tb[..], mt);
           if tn_w > 0 && proc_send(ph, cast(string) tb[0..<tn_w]) {
@@ -649,6 +670,7 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
     if def.ndisallowed > 0 { jo_key(jo[..], "disallowed_tools"); jo_str(jo[..], cast(string) def.disallowed_tools[0..<def.ndisallowed]); }
     if !is_fork && oa_agent_should_trim_claudemd(def) { jo_key(jo[..], "omit_claudemd"); jo_bool(jo[..], true); }
     if def.read_only && !is_fork { jo_key(jo[..], "read_only"); jo_bool(jo[..], true); }
+    jo_key(jo[..], "git"); jo_str(jo[..], git_s);
     if is_fork { jo_key(jo[..], "is_fork"); jo_bool(jo[..], true); }
     if fork_path_s.count > 0 { jo_key(jo[..], "fork_context_path"); jo_str(jo[..], fork_path_s); }
     if r[0].subagents[rec_idx].nwt_path > 0 {

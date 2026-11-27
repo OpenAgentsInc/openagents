@@ -26,6 +26,7 @@
 #load "../../coax/lib/agent/desktop/metaverse-route.coax";
 #load "../../coax/lib/agent/desktop/capability-author.coax";
 #load "../../coax/lib/microcoder/steer.coax";
+#load "../../coax/lib/microcoder/git-guard.coax";
 #load "../../openagents/core/core.coax";
 #load "../../openagents/knowledge/index.coax";
 
@@ -180,6 +181,7 @@ FwConfig :: struct {
   allow_local_harnesses: bool; // Opt-in (default Off): allow external local harness sub-agent delegates (#14071)
   subagents_enabled: bool;     // Default On (OA_AGENT_SUBAGENTS=0 disables OA_PACK_AGENTS & catalog prompt for A/B evals)
   subagent_effort: [32] u8; nsubagent_effort: int; // Optional child subagent effort override (OA_SUBAGENT_EFFORT)
+  subagent_git_max: [8] u8; nsubagent_git_max: int; // The most a sub-agent may be allowed with git: none, commit or push (OA_SUBAGENT_GIT_MAX, default push; #14104)
   max_turns: int;             // 0 = unlimited (capped at 64 safety)
   max_budget_micros: int;     // 0 = unlimited
   budget_s: int;              // 0 = no wall-clock pacing budget (set via FLAWED_BUDGET_S)
@@ -291,6 +293,8 @@ fww_load_config :: (cfg: [] FwConfig) {
   cfg[0].subagents_enabled = fww_env_bool2("OA_AGENT_SUBAGENTS", "FLAWED_SUBAGENTS", true);
   se := fww_getenv2("OA_SUBAGENT_EFFORT", "FLAWED_SUBAGENT_EFFORT", b[..]);
   cfg[0].nsubagent_effort = fww_keep(cfg[0].subagent_effort[..], se);
+  gm := fww_getenv2("OA_SUBAGENT_GIT_MAX", "FLAWED_SUBAGENT_GIT_MAX", b[..]);
+  cfg[0].nsubagent_git_max = fww_keep(cfg[0].subagent_git_max[..], ifx gm == "none" || gm == "commit" then gm else "push");
   cfg[0].max_turns = fww_env_int2("OA_AGENT_MAX_TURNS", "FLAWED_MAX_TURNS", 0);
   cfg[0].max_budget_micros = fww_env_int2("OA_AGENT_MAX_BUDGET_MICROS", "FLAWED_MAX_BUDGET_MICROS", 0);
   cfg[0].budget_s = fww_env_int2("OA_AGENT_BUDGET_S", "FLAWED_BUDGET_S", 0);
@@ -5308,6 +5312,7 @@ FwRun :: struct {
   is_subagent: bool;
   is_fork_child: bool;
   subagent_read_only: bool;
+  subagent_git: [8] u8; nsubagent_git: int;   // "" for a chat's own run; none, commit or push for a sub-agent (mc_gg_refuse_publish)
   subagent_omit_claudemd: bool;
   subagent_type: [32] u8; nsubagent_type: int;
   subagent_allowed: [256] u8; nsubagent_allowed: int;
@@ -5873,6 +5878,16 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       r[0].acc[0].tools[idx].is_error = true;
       r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Bash command denied: this subagent is strictly read-only.");
       return false;
+    }
+    if r[0].nsubagent_git > 0 {
+      gwb: [600] u8;
+      gw := mc_gg_refuse_publish(cwd, cast(string) cb[0..<cn], cast(string) r[0].home[0..<r[0].nhome], cast(string) r[0].subagent_git[0..<r[0].nsubagent_git], gwb[..]);
+      if gw.count > 0 {
+        r[0].acc[0].tools[idx].done = true;
+        r[0].acc[0].tools[idx].is_error = true;
+        r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], gw);
+        return false;
+      }
     }
     if fww_start_bash(r, cfg, idx, cast(string) cb[0..<cn], timeout_s, out) {
       return true;
@@ -7485,6 +7500,8 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].is_subagent = req[0].is_subagent;
     run[0].is_fork_child = req[0].is_fork;
     run[0].subagent_read_only = req[0].read_only;
+    // A sub-agent's git rule; one whose task line names none may not commit or push (#14104).
+    run[0].nsubagent_git = fww_keep(run[0].subagent_git[..], ifx !req[0].is_subagent then "" else mc_gg_publish_rule(req[0].git));
     run[0].subagent_omit_claudemd = req[0].omit_claudemd;
     run[0].nsubagent_type = fww_keep(run[0].subagent_type[..], req[0].subagent_type);
     run[0].nsubagent_allowed = fww_keep(run[0].subagent_allowed[..], req[0].allowed_tools);

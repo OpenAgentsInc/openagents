@@ -837,3 +837,20 @@
   rn := coder_page_answer_line(s, rb[..]);
   #assert rn > 0 && cp_contains(cast(string) rb[0..<rn], "Not signed in");
 }
+
+#test "sub-agents (#14104): a delegated task carries its git rule to its worker: none unless the delegation says commit or push" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  s[0].flawed[0].allow_local_harnesses = true;
+  #assert coder_page_set_text(s, "delegate") && coder_page_submit(s);
+  del := "{\"kind\":\"delegate\",\"ticket\":1,\"tasks\":[{\"level\":\"sonnet\",\"subagent_type\":\"claude-sonnet\",\"agent_id\":\"a1\",\"task\":\"review\"},{\"level\":\"haiku\",\"subagent_type\":\"claude-haiku\",\"agent_id\":\"a2\",\"task\":\"fix\",\"git\":\"commit\"},{\"level\":\"neon\",\"subagent_type\":\"general-purpose\",\"agent_id\":\"a3\",\"task\":\"ship\",\"git\":\"push\"},{\"level\":\"neon\",\"subagent_type\":\"general-purpose\",\"agent_id\":\"a4\",\"task\":\"x\",\"git\":\"anything\"}]}";
+  #assert coder_page_line(s, del) == MWW_DELEGATE && s[0].turns[0].nagents == 4;
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  want := [4] string.["none", "commit", "push", "none"];
+  for j: 0..<4 {
+    #assert coder_page_agent_next(s) == j;
+    ar[0].at = 0;
+    n := coder_page_agent_task(s, j, "s", "/repo", out[..]);
+    #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].git == want[j];
+  }
+}

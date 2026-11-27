@@ -9,6 +9,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "host.h"
 #include "ui_host_stub.h"
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -380,7 +381,14 @@ static void slot_guard_check(Slot *s, WorkerProc *w, const char *line) {
   const char *cmd = strstr(line, "\"command\":");
   if (!cmd) return;
   for (int g = 0; g < s->n_guards; g++) {
-    if (s->guards[g][0] && strstr(cmd, s->guards[g])) {
+    const char *hit = s->guards[g][0] ? strstr(cmd, s->guards[g]) : NULL;
+    // "rm -rf /" means the root itself, not a path under it: `rm -rf /tmp/mine` is a command's
+    // own scratch folder (the outside_unchanged grader catches real damage outside the workspace).
+    if (hit && strcmp(s->guards[g], "rm -rf /") == 0) {
+      char after = hit[strlen("rm -rf /")];
+      if (isalnum((unsigned char)after) || after == '.' || after == '_' || after == '-' || after == '~') hit = NULL;
+    }
+    if (hit) {
       w->deny_pending = 1;
       snprintf(w->deny_why, sizeof(w->deny_why), "not allowed in this workspace: the command reaches outside it");
       s->guard_trips++;

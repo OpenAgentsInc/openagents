@@ -1,6 +1,6 @@
 # Delegation: sub-agents on the chat's model or in Claude Code
 
-Seven tasks that compare where a chat's sub-agents run (GitHub #14104). The chat runs on Gemini 4
+Eight tasks that compare where a chat's sub-agents run (GitHub #14104). The chat runs on Gemini 4
 Neon in every arm. Only the sub-agents change:
 
 | Arm | Sub-agents run on | Flag |
@@ -50,11 +50,20 @@ Each result records `sub_agents` and `claude_agents`, the number of sub-agents t
 | `d5_expression_evaluator` | One writes an arithmetic evaluator with Python's precedence and types | 50 hidden expressions checked against Python; no `eval` |
 | `d6_review_find_bugs` | One reviews ten functions and names the four that break their docstring | exactly those four names |
 | `d7_shell_word_split` | One writes a POSIX shell word splitter from a README | 47 hidden lines checked against `shlex.split`; no `shlex` |
+| `d8_fix_and_commit` | One fixes a bug and commits it, because the message asks for the commit | the test, a commit that holds the fix, no push |
+
+`d1` to `d7` also fail when a commit is left behind, because none of them asks for one (the `head`
+grader). `--subagent-git-max none|commit|push` sets the most a sub-agent may be allowed with git.
 
 Every task also fails when a guarded command is attempted: `git push`, `rm -rf /`, `curl`, anything
 that names the real home folder, and the rest of the Tier 2 list.
 
-## Results (2026-11-26, Linux, two trials)
+## Results before the git rule (2026-11-26, Linux, two trials)
+
+These runs are from before a sub-agent's git rule existed and before `d8`. The results after it,
+with every Claude run passing, are in
+[the git rule report](../../../docs/verification/2026-11-26-subagent-git-rule-delegation-bench.md).
+The guard then also refused `rm -rf` of any absolute path; it now refuses only the root.
 
 Each cell is the mean of two trials: wall time and total cost. `d7` has one trial. Trial 1 of `d1`
 is left out for Neon and Sonnet, because the task's first budget ($0.15) stopped the chat before it

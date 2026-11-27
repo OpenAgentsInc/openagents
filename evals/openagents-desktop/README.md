@@ -29,7 +29,7 @@ Run `coax/build.sh` first in a fresh worktree. Results go to `evals/openagents-d
 
 ## Delegation comparison
 
-[`delegation/`](delegation/README.md) has seven tasks that compare a chat's sub-agents on its own
+[`delegation/`](delegation/README.md) has eight tasks that compare a chat's sub-agents on its own
 model with sub-agents in Claude Code (`run_tasks.py --tasks-dir ... --sub-agents claude-haiku`),
 and the results of the first runs.
 

@@ -25,7 +25,10 @@ GH_NODES :: 4096;
 
 // Why the call in input (a PreToolUse hook's JSON) is refused, into out; "" when it runs. cwd is
 // the hook's own folder, for a call whose JSON names none.
-gh_decide :: (input: string, cwd: string, home: string, out: [] u8) -> string {
+gh_decide :: (input: string, cwd: string, home: string, out: [] u8) -> string { return gh_decide_git(input, cwd, home, "", out); }
+// git is a sub-agent's git rule (OA_SUBAGENT_GIT: none, commit or push), "" when Claude Code runs a
+// chat of its own: a sub-agent's commit or push is refused unless its delegation allowed it (#14104).
+gh_decide_git :: (input: string, cwd: string, home: string, git: string, out: [] u8) -> string {
   nodes: [GH_NODES] JvNode; d: [1] Jv;
   parsed := jv_parse(d[..], input, nodes[..]);
   if !parsed { return "Refused: the shared-checkout guard could not read this tool call. Nothing ran."; }
@@ -41,7 +44,9 @@ gh_decide :: (input: string, cwd: string, home: string, out: [] u8) -> string {
   wb: [4096] u8;
   wn := jv_str(v, jv_path(v, 0, "cwd"), wb[..]);
   here := ifx wn > 0 then cast(string) wb[0..<wn] else cwd;
-  return mc_gg_refuse(here, cast(string) cb[0..<cn], home, out);
+  shared := mc_gg_refuse(here, cast(string) cb[0..<cn], home, out);
+  if shared.count > 0 { return shared; }
+  return mc_gg_refuse_publish(here, cast(string) cb[0..<cn], home, git, out);
 }
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -53,7 +58,8 @@ tool_main :: () -> int #export_c #effects(all) {
     b = cxterm_byte(5000);
   }
   hb: [4096] u8; cb: [4096] u8; out: [2048] u8;
-  why := gh_decide(cast(string) input[0..<n], fs_cwd(cb[..]), proc_getenv("HOME", hb[..]), out[..]);
+  gb: [16] u8;
+  why := gh_decide_git(cast(string) input[0..<n], fs_cwd(cb[..]), proc_getenv("HOME", hb[..]), proc_getenv("OA_SUBAGENT_GIT", gb[..]), out[..]);
   if why.count == 0 { return 0; }
   tool_errln(why);
   return 2;
@@ -65,6 +71,12 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert gh_decide("{\"tool_name\":\"Bash\",\"tool_input\":{}}", "", "/h", out[..]) == "";
   // no folder known anywhere counts as shared, so a refused form is refused and a read is not
   #assert gh_decide("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status\"}}", "", "/h", out[..]) == "";
+  // a sub-agent's git rule (#14104): none refuses commit and push, commit refuses push, a chat of its own has no rule
+  #assert gh_decide("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m x && git push\"},\"cwd\":\"/tmp/w\"}", "", "/h", out[..]) == "";
+  #assert mc_cmd_starts(gh_decide_git("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m x\"},\"cwd\":\"/tmp/w\"}", "", "/h", "none", out[..]), "Refused: `git commit`");
+  #assert gh_decide_git("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m x\"},\"cwd\":\"/tmp/w\"}", "", "/h", "commit", out[..]) == "";
+  #assert mc_cmd_starts(gh_decide_git("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m x && git push\"},\"cwd\":\"/tmp/w\"}", "", "/h", "commit", out[..]), "Refused: `git push`");
+  #assert gh_decide_git("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m x && git push\"},\"cwd\":\"/tmp/w\"}", "", "/h", "push", out[..]) == "";
   r := gh_decide("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git stash\"}}", "", "/h", out[..]);
   #assert mc_cmd_starts(r, "Refused: `git stash` would change the files of a shared checkout");
   #assert mc_cmd_starts(gh_decide("{\"tool_name\":\"Bash\"", "", "/h", out[..]), "Refused: the shared-checkout guard could not read");

@@ -113,6 +113,7 @@ HOME_LINKS = [
 # harnesses and adds one sentence to each message, so every sub-agent runs in Claude Code (#14104).
 SUB_AGENT_CHOICES = ["", "claude-haiku", "claude-sonnet", "claude-opus", "claude-fable"]
 SUB_AGENTS = ""
+SUB_AGENT_GIT_MAX = ""   # --subagent-git-max: the most a sub-agent may be allowed with git (OA_SUBAGENT_GIT_MAX)
 CLAUDE_KEY_FILE = REAL_HOME / ".openagents/claude-setup-token"
 
 
@@ -453,6 +454,8 @@ class Sandbox:
             env["OA_AGENT_MODEL"] = model
         elif model:
             env["OA_AGENT_MODEL"] = model
+        if SUB_AGENT_GIT_MAX:
+            env["OA_SUBAGENT_GIT_MAX"] = SUB_AGENT_GIT_MAX
         if SUB_AGENTS:
             env["OA_ALLOW_LOCAL_HARNESSES"] = "1"
             local_bin = REAL_HOME / ".local/bin"   # where the claude command is installed
@@ -1057,7 +1060,23 @@ def g_diff_max_files(g, c):
     return len(files) <= g["max"], f"{len(files)} file(s) changed"
 
 
+def g_head(g, c):
+    """Whether the task left a commit: {"type": "head", "moved": false} passes when HEAD is where it started;
+    {"type": "head", "moved": true, "committed": ["a.py"]} when there is a commit and a.py has nothing left uncommitted."""
+    now = sh(["git", "rev-parse", "HEAD"], cwd=c.sb.repo, env=c.sb.git_env()).stdout.strip()
+    moved = now != c.sb.head
+    if moved != bool(g.get("moved", False)):
+        return False, "a commit was made" if moved else "no commit was made"
+    # "committed": paths that must have no uncommitted change left (the commit holds the work)
+    for rel in g.get("committed", []):
+        left = sh(["git", "status", "--porcelain", "--", rel], cwd=c.sb.repo, env=c.sb.git_env()).stdout.strip()
+        if left:
+            return False, f"{rel} still has uncommitted changes"
+    return True, "a commit was made" if moved else "no commit was made"
+
+
 GRADERS = {
+    "head": g_head,
     "command": g_command, "file_exists": g_file_exists, "file_contains": g_file_contains, "file_absent": g_file_absent, "files_unchanged": g_files_unchanged,
     "outside_unchanged": g_outside_unchanged, "no_guard_trips": g_no_guard_trips, "no_command_matching": g_no_command_matching,
     "reply_contains": g_reply_contains, "reply_not_contains": g_reply_not_contains, "wire_count": g_wire_count,
@@ -1076,6 +1095,7 @@ def main() -> int:
     ap.add_argument("--keep", action="store_true", help="keep each task's temp sandbox")
     ap.add_argument("--claude", action="store_true", help="build claudeworker and let tasks marked claude use it")
     ap.add_argument("--sub-agents", default="", choices=SUB_AGENT_CHOICES, help="run each task's sub-agents in Claude Code on this model (default: the chat's own model); needs a signed-in claude command")
+    ap.add_argument("--subagent-git-max", default="", choices=["", "none", "commit", "push"], help="the most a sub-agent may be allowed with git, whatever its delegation asks (default: push)")
     ap.add_argument("--list", action="store_true", help="list the tasks and exit")
     ap.add_argument("--manifest", default="", help="run the tasks a manifest names (Tier 4: evals/openagents-desktop/tier4/slice.json)")
     ap.add_argument("--tasks-dir", default="", help="load task JSONs from this directory (e.g. evals/session-history/tasks)")
@@ -1140,8 +1160,9 @@ def main() -> int:
     os.environ["BROWSER"] = "/usr/bin/true"
     build_driver()
     worker = build_worker(args.worker)
-    global SUB_AGENTS
+    global SUB_AGENTS, SUB_AGENT_GIT_MAX
     SUB_AGENTS = args.sub_agents
+    SUB_AGENT_GIT_MAX = args.subagent_git_max
     claude_worker = build_worker("claudeworker") if ((args.claude or SUB_AGENTS) and not is_local) else None
     if claude_worker:
         build_worker("gitguard")   # the git guard hook claudeworker finds beside it (#13771)

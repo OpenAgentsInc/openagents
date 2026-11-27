@@ -352,6 +352,19 @@ cw_system_instructions :: (o: [] ClOptions, user_text: string, custom_text: stri
   o[0].append_system_prompt = ifx n > 0 then cast(string) out[0..<n] else "";
 }
 
+// What a sub-agent is told about git, after the person's instructions (which may say to commit and
+// push every finished change): its delegation's rule wins (GitHub #14104).
+cw_subagent_git_note :: (rule: string) -> string {
+  if rule == "push" { return "\n\nAnother agent handed you this task and allowed you to commit and push your work when it is done and its checks pass."; }
+  if rule == "commit" { return "\n\nAnother agent handed you this task. Whatever the instructions above say about git: commit your work when it is done and its checks pass, and do not push. A command that pushes is refused."; }
+  return "\n\nAnother agent handed you this task. Whatever the instructions above say about git: do not commit and do not push. Leave your changes in the working tree and say in your reply what you changed; the agent that handed you the task decides what is committed. A command that commits or pushes is refused.";
+}
+#test "a sub-agent is told its git rule: none by default, never to push unless allowed (#14104)" {
+  #assert uinstr_find(cw_subagent_git_note("none"), "do not commit and do not push") > 0 && uinstr_find(cw_subagent_git_note("bogus"), "do not commit and do not push") > 0;
+  #assert uinstr_find(cw_subagent_git_note("commit"), "do not push") > 0 && uinstr_find(cw_subagent_git_note("commit"), "do not commit") < 0;
+  #assert uinstr_find(cw_subagent_git_note("push"), "allowed you to commit and push") > 0;
+}
+
 // The guard hook beside the worker at self: gitguard for claudeworker, gitguard-HASH for
 // claudeworker-HASH, into out; "" when self is not named claudeworker.
 cw_guard_beside :: (self: string, out: [] u8) -> string {
@@ -942,6 +955,7 @@ tool_main :: () -> int #export_c #effects(all) {
   prompt: [CW_TASK + CW_HIST + 512] u8; pn := 0; prompt_due := false;
   hist: [CW_HIST] u8; hn := 0; told := false;   // the conversation so far, and whether this session was told it
   s_claude := false; orb: [512] u8; orn := 0;   // the session's sub-agent levels: Claude's, and the OpenRouter model
+  git_env: [32] u8;
   schema: [1024] u8; noteb: [4096] u8; sysb: [UINSTR_BLOCK_BYTES + CSYS_BLOCK_BYTES + 4096] u8;
   later: [1] ClToolLater; wait_ticket := 0; wait_asked := 0;   // the delegate call that waits for its results
   dl: [CW_TASK] u8; dab: [CW_TASK] u8; rab: [CW_LINE] u8; rtext: [CW_RESULTS + 4096] u8;
@@ -1251,6 +1265,16 @@ tool_main :: () -> int #export_c #effects(all) {
       uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
       cspb: [FS_PATH_MAX] u8; cstb: [CSYS_MAX_BYTES + 1] u8;
       cw_system_instructions(o[..], uinstr_read(uinstr_path(uipb[..]), uitb[..]), csys_read(csys_path(cspb[..]), cstb[..]), uib[..]);
+      if !main {
+        // a sub-agent: its delegation's git rule, told to Claude and given to the guard hook (#14104)
+        rule := ifx req[0].git == "commit" || req[0].git == "push" then req[0].git else "none";
+        sn := json_raw(sysb[..], 0, o[0].append_system_prompt);
+        sn = json_raw(sysb[..], sn, cw_subagent_git_note(rule));
+        if sn > 0 { o[0].append_system_prompt = cast(string) sysb[0..<sn]; }
+        gn := json_raw(git_env[..], 0, "OA_SUBAGENT_GIT=");
+        gn = json_raw(git_env[..], gn, rule);
+        if gn > 0 { cl_add_env(o[..], cast(string) git_env[0..<gn]); }
+      }
       if main {
         // the delegate tool, and what the orchestrator is told of it after the person's instructions
         cw_main_options(o[..], cast(string) effort[0..<en], cw_delegate_schema(s_claude, orn > 0, schema[..]));

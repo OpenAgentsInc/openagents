@@ -282,8 +282,10 @@ CpAgent :: struct {
   task_long_at: int; task_long_n: int;                // full prompt in CoderPage.long_buf when > CP_AGENT_TASK (#14096)
   fork_ctx_path: [256] u8; fork_ctx_path_n: int;      // FORK_AGENT cache-exact context snapshot path (#14096)
   is_background: bool; omit_claudemd: bool; read_only: bool; is_cc_agent: bool; is_fork: bool;
+  git: int;                                           // what it may do with git: 0 none, 1 commit, 2 push (CP_AGENT_GIT; #14104)
   tokens_in: int; tokens_out: int;
 }
+CP_AGENT_GIT :: [3] string.["none", "commit", "push"];
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
 CpTurn :: struct {
   head: int; tail: int; ncmds: int;   // its own commands, file reads and thoughts, oldest first: the first's and last's places in the page's calls, plus 1
