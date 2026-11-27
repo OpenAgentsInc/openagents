@@ -133,14 +133,14 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   #assert li >= 0 && ui >= 0 && ops[0].opens[li].slot >= CWC_HTTP_BASE;
   #assert pl_stream_find(s[0].cc[0].rt[..], "acct.stream") < 0;
 
-  // 401 on /api/chat/v2/conversations gates the UI cleanly with Sign in CTA and no composer.
+  // 401 on /api/chat/v2/conversations gates the UI cleanly with Log in CTA and no composer.
   cwc_t_http_reply(s, ops[0].opens[li].slot, 401, "{\"error\":\"unauthorized\"}");
   t := s[0].tree[..];
   #assert s[0].cc[0].auth_state == CWC_AUTH_ANON;
-  #assert sc_by_role(t, "region", "Sign in required") >= 0;
-  #assert sc_by_text(t, "Sign in to OpenAgents") >= 0;
-  cta := sc_by_role(t, "link", "Sign in");
-  #assert cta >= 0 && tr_attr_of(t, cta, AT_HREF) == "/login?next=/chat";
+  #assert sc_by_role(t, "region", "Log in required") >= 0;
+  #assert sc_by_text(t, "Log in to OpenAgents") >= 0;
+  cta := tr_find(t, "cc.login.go");
+  #assert cta >= 0 && tr_text_of(t, cta) == "Log in" && tr_attr_of(t, cta, AT_HREF) == "/login?next=/chat";
   #assert tr_find(t, "composer") < 0 && tr_find(t, "log") < 0;
   #assert !cwc_send(s[0].cc[..], "should not send while logged out");
   #assert pl_stream_find(s[0].cc[0].rt[..], "acct.stream") < 0;

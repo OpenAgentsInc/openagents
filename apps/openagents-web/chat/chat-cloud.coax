@@ -1772,7 +1772,7 @@ cwc_on_tool_reply :: (c: [] ChatCloud, http_ok: bool, status: int, body: string)
       cap := ifx body.count > 512 then 512 else body.count;
       res_n = cwc_put(c[0].scratch_b[..], 0, cast(string) body[0..<cap]);
     } else if status == 401 {
-      res_n = cwc_put(c[0].scratch_b[..], 0, "Sign in required to run cloud tools.");
+      res_n = cwc_put(c[0].scratch_b[..], 0, "Log in required to run cloud tools.");
     } else {
       res_n = cwc_put(c[0].scratch_b[..], 0, "Cloud tool execution failed.");
     }
@@ -1895,7 +1895,7 @@ cwc_send_approval :: (c: [] ChatCloud, msg_idx: int, allow: bool) {
 cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
   cwc_init(c);
   if c[0].auth_state == CWC_AUTH_ANON {
-    c[0].error_n = cwc_put(c[0].error[..], 0, "Sign in to OpenAgents to chat.");
+    c[0].error_n = cwc_put(c[0].error[..], 0, "Log in to OpenAgents to chat.");
     c[0].dirty = true;
     return false;
   }
@@ -2198,7 +2198,7 @@ cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string
     if status == 401 {
       c[0].auth_state = CWC_AUTH_ANON;
       _ = ui_provide_int(c[0].rt[..], c[0].comp_root, "auth.state", CWC_AUTH_ANON);
-      c[0].error_n = cwc_put(c[0].error[..], 0, "Sign in to OpenAgents to continue.");
+      c[0].error_n = cwc_put(c[0].error[..], 0, "Log in to OpenAgents to continue.");
     } else if status == 402 {
       c[0].error_n = cwc_put(c[0].error[..], 0, "No hosted inference credit (0 sats). Add credit in Settings to continue.");
     } else if said.count > 0 {
@@ -2868,13 +2868,13 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
   if c[0].auth_state == CWC_AUTH_ANON {
     gate := tr_open(t, "cc.login", TG_SECTION, "cc-login");
     tr_attr(t, gate, AT_ROLE, "region");
-    tr_attr(t, gate, AT_LABEL, "Sign in required");
+    tr_attr(t, gate, AT_LABEL, "Log in required");
     _ = tr_open(t, "cc.login.icw", TG_DIV, "cc-welcome-ic");
     _ = as_icon(t, "cc.login.ic", IC_SPARKLES, "as-ic-lg");
     tr_close(t);
-    _ = tr_leaf(t, "cc.login.h", TG_H2, "hd-t", "Sign in to OpenAgents");
-    _ = tr_leaf(t, "cc.login.p", TG_P, "lede", "Every chat syncs live across Desktop, Web, and Mobile. Sign in to access your cloud conversations.");
-    cta := tr_leaf(t, "cc.login.go", TG_A, "btn", "Sign in");
+    _ = tr_leaf(t, "cc.login.h", TG_H2, "hd-t", "Log in to OpenAgents");
+    _ = tr_leaf(t, "cc.login.p", TG_P, "lede", "Every chat syncs live across Desktop, Web, and Mobile. Log in to access your cloud conversations.");
+    cta := tr_leaf(t, "cc.login.go", TG_A, "btn", "Log in");
     tr_attr(t, cta, AT_HREF, "/login?next=/chat");
     tr_close(t);
     return;

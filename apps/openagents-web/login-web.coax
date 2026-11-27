@@ -209,24 +209,45 @@ lw_css :: (out: [] u8, at: int) -> int {
   n = as_put(out, n, ".lw-mark{width:22px;height:22px;display:block}");
   n = as_put(out, n, ".lw-sub{margin:0;font:400 13px/1.4 var(--font-sans);color:#818181}");
   n = as_put(out, n, ".lw-oauth{display:flex;flex-direction:column;gap:8px;width:100%}");
-  n = as_put(out, n, ".lw-oauth .as-btn{position:relative;width:100%;height:38px;border-radius:8px;background:#111111;color:#ededed;box-shadow:inset 0 0 0 1px #2c2c2c;font:500 13.5px/1 var(--font-sans);justify-content:center}");
+  n = as_put(out, n, ".lw-oauth .as-btn{position:relative;width:100%;height:40px;border-radius:8px;background:#111111;color:#ededed;box-shadow:inset 0 0 0 1px #2c2c2c;font:500 13.5px/1 var(--font-sans);justify-content:center}");
   n = as_put(out, n, ".lw-oauth .as-btn:hover{background:#191919;box-shadow:inset 0 0 0 1px #404040}");
-  n = as_put(out, n, ".lw-oauth .as-btn .as-ic{position:absolute;left:13px;width:15px;height:15px;color:#ededed}");
+  n = as_put(out, n, ".lw-oauth .as-btn .si-mark{position:absolute;left:13px;width:18px;height:18px;display:block;color:#ededed;flex:none}");
   n = as_put(out, n, ".lw-or{display:flex;align-items:center;gap:12px;margin:6px 0;color:#656565;font:500 11px/1 var(--font-sans);letter-spacing:.08em;text-transform:uppercase}");
   n = as_put(out, n, ".lw-or::before,.lw-or::after{content:'';flex:1;height:1px;background:#1b1b1b}");
-  n = as_put(out, n, ".lw-box .as-in-wrap{height:38px;border-radius:8px;background:#0a0a0a;box-shadow:inset 0 0 0 1px #2c2c2c}");
+  n = as_put(out, n, ".lw-box .as-in-wrap{height:40px;border-radius:8px;background:#0a0a0a;box-shadow:inset 0 0 0 1px #2c2c2c}");
   n = as_put(out, n, ".lw-box .as-in-wrap:hover{box-shadow:inset 0 0 0 1px #404040}");
   n = as_put(out, n, ".lw-box .as-in-wrap:focus-within{box-shadow:inset 0 0 0 1px #3b82f6,0 0 0 2px rgba(59,130,246,.22)}");
   n = as_put(out, n, ".lw-box .as-in-wrap input{font-size:13.5px;color:#ededed}");
   n = as_put(out, n, ".lw-box .as-in-wrap input::placeholder{color:#656565}");
-  n = as_put(out, n, ".lw-primary{width:100%;height:38px !important;border-radius:8px !important;background:#ededed !important;color:#0a0a0a !important;font:600 13.5px/1 var(--font-sans) !important}");
+  n = as_put(out, n, ".lw-primary{width:100%;height:40px !important;border-radius:8px !important;background:#ededed !important;color:#0a0a0a !important;font:600 13.5px/1 var(--font-sans) !important}");
   n = as_put(out, n, ".lw-primary:hover:not(:disabled){background:#ffffff !important}");
   n = as_put(out, n, ".lw-aux{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:4px}");
   n = as_put(out, n, ".lw-in-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:#0e0e0e;border:1px solid #2c2c2c}");
-  n = as_put(out, n, ".lw-foot{position:fixed;bottom:20px;left:0;right:0;text-align:center;font:400 12px/1.4 var(--font-sans);color:#656565}");
+  n = as_put(out, n, ".lw-foot{position:fixed;bottom:20px;left:0;right:0;padding:0 20px;text-align:center;font:400 12px/1.4 var(--font-sans);color:#656565}");
   n = as_put(out, n, ".lw-foot a{color:#818181;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#2c2c2c}");
   n = as_put(out, n, ".lw-foot a:hover{color:#ededed}");
   return n;
+}
+
+lw_oauth_btn :: (t: [] Tree, id: string, label: string, href: string, mark_href: string, use_svg: bool) {
+  a := tr_open(t, id, TG_A, "as-btn as-v-outline as-c-secondary as-s-lg");
+  tr_attr(t, a, AT_HREF, href);
+  ida: [64] u8; idb: [64] u8;
+  if use_svg {
+    sv := tr_open(t, tr_cat(ida[..], id, ".ic"), TG_SVG, "si-mark");
+    tr_attr(t, sv, AT_HIDDEN, "true");
+    u := tr_open(t, tr_cat(idb[..], id, ".u"), TG_USE, "");
+    tr_attr(t, u, AT_HREF, mark_href);
+    tr_close(t);
+    tr_close(t);
+  } else {
+    im := tr_open(t, tr_cat(ida[..], id, ".ic"), TG_IMG, "si-mark");
+    tr_attr(t, im, AT_SRC, mark_href);
+    tr_attr(t, im, AT_HIDDEN, "true");
+    tr_close(t);
+  }
+  _ = tr_leaf(t, tr_cat(ida[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
 }
 
 lw_build :: (s: [] LoginWeb) {
@@ -248,13 +269,13 @@ lw_build :: (s: [] LoginWeb) {
   _ = tr_leaf(t, "lw.brand.t", TG_SPAN, "", "OpenAgents");
   tr_close(t);
   sub_txt := ifx s[0].screen == LW_SCR_CODE then "Enter the 6-digit code we sent to your email"
-    else ifx s[0].screen == LW_SCR_SIGNED_IN then "Your OpenAgents account is signed in"
-    else "Sign in or create an account";
+    else ifx s[0].screen == LW_SCR_SIGNED_IN then "Your OpenAgents account is logged in"
+    else "Log in or create an account";
   _ = tr_leaf(t, "lw.sub", TG_P, "lw-sub", sub_txt);
   tr_close(t);
 
   if s[0].ref_code_n > 0 {
-    _ = as_alert_open(t, "lw.ref.al", "Referral invite applied", "Sign in to claim $10 promo credit after your first paid top-up.", AS_SUCCESS, AS_SOFT, IC_SPARKLES);
+    _ = as_alert_open(t, "lw.ref.al", "Referral invite applied", "Log in to claim $10 promo credit after your first paid top-up.", AS_SUCCESS, AS_SOFT, IC_SPARKLES);
     as_alert_end(t);
   }
   if s[0].err_n > 0 {
@@ -267,9 +288,8 @@ lw_build :: (s: [] LoginWeb) {
 
   if s[0].screen == LW_SCR_EMAIL {
     _ = tr_open(t, "lw.oauth", TG_DIV, "lw-oauth");
-    _ = as_button_link(t, "lw.oauth.github", "Continue with GitHub", "/api/auth/workos/oauth/start?provider=GitHubOAuth", AS_SECONDARY, AS_OUTLINE, AS_LG, false, IC_CODE);
-    _ = as_button_link(t, "lw.oauth.google", "Continue with Google", "/api/auth/workos/oauth/start?provider=GoogleOAuth", AS_SECONDARY, AS_OUTLINE, AS_LG, false, IC_GLOBE);
-    _ = as_button_link(t, "lw.oauth.apple", "Continue with Apple", "/api/auth/workos/oauth/start?provider=AppleOAuth", AS_SECONDARY, AS_OUTLINE, AS_LG, false, IC_LOCK);
+    lw_oauth_btn(t, "lw.oauth.google", "Continue with Google", "/api/auth/workos/oauth/start?provider=GoogleOAuth", "/login/google.svg", false);
+    lw_oauth_btn(t, "lw.oauth.apple", "Continue with Apple", "/api/auth/workos/oauth/start?provider=AppleOAuth", "/login/apple.svg#i", true);
     tr_close(t);
 
     _ = tr_leaf(t, "lw.or", TG_DIV, "lw-or", "OR");
@@ -301,7 +321,7 @@ lw_build :: (s: [] LoginWeb) {
     _ = tr_open(t, "lw.in.card", TG_DIV, "lw-in-card");
     _ = as_avatar(t, "lw.in.av", "OA", AS_SECONDARY, AS_SOFT, AS_LG, false, true);
     _ = tr_open(t, "lw.in.tx", TG_DIV, "as-ctl-txt");
-    _ = tr_leaf(t, "lw.in.em", TG_SPAN, "as-ctl-lbl", ifx s[0].signed_email_n > 0 then cast(string) s[0].signed_email[0..<s[0].signed_email_n] else "Signed in");
+    _ = tr_leaf(t, "lw.in.em", TG_SPAN, "as-ctl-lbl", ifx s[0].signed_email_n > 0 then cast(string) s[0].signed_email[0..<s[0].signed_email_n] else "Logged in");
     _ = tr_leaf(t, "lw.in.st", TG_SPAN, "as-ctl-desc", "OpenAgents Cloud session active");
     tr_close(t);
     tr_close(t);
@@ -310,15 +330,17 @@ lw_build :: (s: [] LoginWeb) {
     tr_attr(t, a, AT_HREF, dest);
     _ = tr_leaf(t, "lw.in.open.l", TG_SPAN, "", "Open Workspace");
     tr_close(t);
-    _ = as_button(t, "lw.logout", ifx s[0].busy then "Signing out…" else "Sign out", AS_SECONDARY, AS_OUTLINE, AS_MD, false, -1, false, s[0].busy);
+    _ = as_button(t, "lw.logout", ifx s[0].busy then "Logging out…" else "Log out", AS_SECONDARY, AS_OUTLINE, AS_MD, false, -1, false, s[0].busy);
   }
 
   tr_close(t); // lw.box
 
   _ = tr_open(t, "lw.foot", TG_FOOTER, "lw-foot");
+  _ = tr_leaf(t, "lw.leg.0", TG_SPAN, "", "By continuing, you agree to our ");
   l1 := tr_leaf(t, "lw.leg.1", TG_A, "", "Terms of Service"); tr_attr(t, l1, AT_HREF, "/terms");
   _ = tr_leaf(t, "lw.leg.2", TG_SPAN, "", " and ");
   l2 := tr_leaf(t, "lw.leg.3", TG_A, "", "Privacy Policy"); tr_attr(t, l2, AT_HREF, "/privacy");
+  _ = tr_leaf(t, "lw.leg.4", TG_SPAN, "", ".");
   tr_close(t);
 
   tr_close(t); // lw.page
@@ -353,7 +375,7 @@ lw_on_end :: (s: [] LoginWeb, status: int) {
       lw_set_info(s, "Enter the 6-digit code we emailed you.");
     } else {
       err := lw_line_val(resp, "error");
-      lw_set_err(s, ifx err.count > 0 then err else "Could not send sign-in code. Try again.");
+      lw_set_err(s, ifx err.count > 0 then err else "Could not send log-in code. Try again.");
     }
     return;
   }
@@ -462,8 +484,8 @@ LwTest :: struct { s: [1] LoginWeb; }
   t := s[0].tree[..]; d := s[0].dom[..];
   #assert n > 10000 && t[0].lost == 0 && t[0].depth == 0;
   #assert tr_find(t, "lw.box") > 0 && tr_find(t, "lw.email") > 0 && tr_find(t, "lw.submit.email") > 0;
-  #assert tr_find(t, "lw.oauth.github") > 0 && tr_find(t, "lw.oauth.google") > 0 && tr_find(t, "lw.oauth.apple") > 0;
-  #assert tr_find(t, "lw.stage") < 0 && tr_find(t, "lw.go.sso") < 0;
+  #assert tr_find(t, "lw.oauth.github") < 0 && tr_find(t, "lw.oauth.google") > 0 && tr_find(t, "lw.oauth.apple") > 0;
+  #assert tr_find(t, "lw.stage") < 0 && tr_find(t, "lw.go.sso") < 0 && tr_find(t, "lw.leg.0") > 0;
   #assert coaxial_loginweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/auth/account?as=lines";
   coaxial_loginweb_asked(s);
 
