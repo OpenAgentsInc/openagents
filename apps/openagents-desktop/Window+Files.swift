@@ -11,13 +11,6 @@ extension CoderWindow {
     /// code up to 4 MB, explicit inline edit up to 128 KB, or rich read-only preview for CSV/TSV, .ipynb,
     /// images, PDFs, binary hex).
     func openNamedFile(_ url: URL, jumpRange: (Int, Int)? = nil) {
-        if (FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder)) && openInMetaverseIfApplicable(url, autoOpened: false) {
-            return
-        }
-        if PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) {
-            openFileInPane(url, jumpRange: nil)
-            return
-        }
         openFileInPane(url, jumpRange: jumpRange)
     }
 
@@ -139,14 +132,8 @@ extension CoderWindow {
             cd_file_failed(page, shown, "Coder couldn't find \(name). It may have been moved or deleted."); wake(); return
         }
         if isFolder.boolValue {
-            hideScenePanel()
             cd_file_failed(page, shown, "\(name) is a folder, not a file."); wake(); return
         }
-        if FeatureFlags.isOn(.scenes) && (PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url)) {
-            openSceneInPane(url, shown: shown)
-            return
-        }
-        hideScenePanel()
         let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
         let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
         let mtime = attrs?[.modificationDate] as? Date
@@ -278,25 +265,7 @@ extension CoderWindow {
         wake()
     }
 
-    /// Asynchronously queries oa-leanhost (`lean-run goal`) for the open .lean file at cursor line (#13947).
-    func refreshFilePaneLeanGoal() {
-        guard let url = fileURL, url.pathExtension.lowercased() == "lean" else { return }
-        let line = max(1, Int(cd_file_line(page)))
-        runLeanTool(["goal", url.path, "\(line)", "5", "--json"]) { [weak self] out in
-            guard let self, self.fileURL == url else { return }
-            guard let out, let data = out.data(using: .utf8),
-                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                cd_file_lean_goal(self.page, Int32(line), 0, 0, "oa-leanhost unavailable (install elan / Lean 4)")
-                self.wake()
-                return
-            }
-            let ok: Int32 = (obj["ok"] as? Bool) == true ? 1 : 0
-            let done: Int32 = (obj["accomplished"] as? Bool) == true ? 1 : 0
-            let summary = (obj["summary"] as? String) ?? ((obj["error"] as? String) ?? "No tactic goal at cursor")
-            cd_file_lean_goal(self.page, Int32(line), ok, done, summary)
-            self.wake()
-        }
-    }
+    func refreshFilePaneLeanGoal() { }
 
     /// What the pane asked (cd_action 40..43, 164..169).
     func fileAsked(_ what: Int32) {
@@ -686,203 +655,5 @@ extension CoderWindow {
         }
     }
 
-    // MARK: - 3D PLE Scene Viewport (SceneView.swift, GitHub #13792)
-
-    /// Opens a `.ple-scene.json`, `.ple-scene.v1.json`, or `.ifc` file in the right-hand pane's
-    /// embedded Metal 3D viewport.
-    func openSceneInPane(_ url: URL, shown: String? = nil) {
-        let displayPath = shown ?? (url.path as NSString).abbreviatingWithTildeInPath
-        let name = url.lastPathComponent
-        do {
-            let doc: PleScene
-            if PleSceneLoader.isIfcFile(url) {
-                doc = try PleSceneLoader.loadIfc(from: url, searchRoot: folder)
-            } else {
-                doc = try PleSceneLoader.load(from: url)
-            }
-            guard cd_file_open_scene(page, displayPath) != 0 else {
-                hideScenePanel()
-                cd_file_failed(page, displayPath, "Coder couldn't open 3D scene \(name).")
-                wake()
-                return
-            }
-            let panel = ensureScenePanel()
-            panel.loadScene(doc)
-            panel.isHidden = false
-            syncScenePanelFrame()
-            wake()
-        } catch {
-            hideScenePanel()
-            cd_file_failed(page, displayPath, "Coder couldn't parse 3D scene \(name): \(error.localizedDescription)")
-            wake()
-        }
-    }
-
-    /// File > Open 3D Scene… panel.
-    func chooseSceneFile() {
-        let panel = NSOpenPanel()
-        panel.title = "Open 3D PLE Scene"
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = folder
-        panel.allowedContentTypes = [.json, UTType(filenameExtension: "ifc") ?? .data]
-        panel.beginSheetModal(for: window) { [weak self] resp in
-            guard resp == .OK, let url = panel.url else { return }
-            self?.openFileInPane(url)
-        }
-    }
-
-    private func ensureScenePanel() -> PleScenePanelView {
-        if let existing = scenePanel {
-            if existing.superview !== canvas {
-                canvas.addSubview(existing)
-            }
-            return existing
-        }
-        let panel = PleScenePanelView(frame: .zero)
-        panel.isHidden = true
-        canvas.addSubview(panel)
-        scenePanel = panel
-        return panel
-    }
-
-    func hideScenePanel() {
-        scenePanel?.isHidden = true
-    }
-
-    /// Keeps the embedded Metal 3D viewport aligned to the Coax filepane's body rect.
-    func syncScenePanelFrame() {
-        guard let panel = scenePanel else { return }
-        var rect = [Float](repeating: 0, count: 4)
-        let shown = cd_file_scene_rect(page, &rect)
-        guard shown != 0, rect[2] > 1, rect[3] > 1 else {
-            if !panel.isHidden { panel.isHidden = true }
-            return
-        }
-        // Coax layout uses top-left logical points; AppKit canvas uses bottom-left points.
-        let canvasH = canvas.bounds.height
-        let x = CGFloat(rect[0]).rounded()
-        let w = CGFloat(rect[2]).rounded()
-        let h = CGFloat(rect[3]).rounded()
-        let y = (canvasH - CGFloat(rect[1]) - h).rounded()
-        let target = NSRect(x: x, y: max(0, y), width: max(1, w), height: max(1, h))
-        if panel.frame != target {
-            panel.frame = target
-        }
-        panel.setHoles(pageOverRects(in: panel))
-        if panel.isHidden {
-            panel.isHidden = false
-        }
-    }
-
-    // MARK: - The live 3D card in the transcript (page/shows.coax, GitHub #13812)
-
-    /// Mounts a compact PleScenePanelView over the live card the page drew last frame (a command's
-    /// `OA-SHOW-LIVE: on` card, while Experimental is on), cut to the conversation's clip, and reloads
-    /// it, keeping the camera, when the file changes (checked twice a second). With no live card on
-    /// screen it hides; the card's picture is under it either way.
-    func syncLiveScene() {
-        var r = [Float](repeating: 0, count: 8)
-        var buf = [CChar](repeating: 0, count: 4096)
-        let n = cd_live_scene(page, &r, &buf, Int32(buf.count))
-        guard n > 0, r[2] > 1, r[3] > 1, r[6] > 1, r[7] > 1 else {
-            if let box = liveSceneBox, !box.isHidden { box.isHidden = true }
-            return
-        }
-        let path = String(cString: buf)
-        // Phase 2 (#14042): Deduplicate inline OA-SHOW-LIVE GPU view via #authority aethyr.host.v2
-        // when the exact same target is already visible in the right-side Metaverse pane (0 MiB duplicate cost).
-        if shouldDeduplicateInlineLiveCard(for: path) {
-            if let box = liveSceneBox, !box.isHidden { box.isHidden = true }
-            return
-        }
-        let now = CACurrentMediaTime()
-        if path != liveScenePath || now - liveSceneCheckedAt > 0.5 {
-            liveSceneCheckedAt = now
-            loadLiveScene(path)
-        }
-        guard liveSceneStamp != nil, let panel = liveScenePanel, let box = liveSceneBox else {
-            liveSceneBox?.isHidden = true
-            return
-        }
-        if box.isHidden {
-            handoffCameraToLiveCard(for: path, panel: panel)
-        }
-        // the page's rects are top-left points; the canvas's, bottom-left
-        let canvasH = canvas.bounds.height
-        let clip = Self.snapped(CGFloat(r[4]), canvasH - CGFloat(r[5]) - CGFloat(r[7]), CGFloat(r[6]), CGFloat(r[7]))
-        let card = Self.snapped(CGFloat(r[0]) - clip.minX, canvasH - CGFloat(r[1]) - CGFloat(r[3]) - clip.minY, CGFloat(r[2]), CGFloat(r[3]))
-        if box.frame != clip { box.frame = clip }
-        if panel.frame != card { panel.frame = card }
-        panel.setHoles(pageOverRects(in: panel))
-        if box.isHidden { box.isHidden = false }
-    }
-
-    /// A rect with each edge on the nearest whole point (not grown, as NSRect.integral is).
-    static func snapped(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect {
-        let x0 = x.rounded(), y0 = y.rounded()
-        return NSRect(x: x0, y: y0, width: (x + w).rounded() - x0, height: (y + h).rounded() - y0)
-    }
-
-    /// Loads path into the live card's viewport when it is a new file or the file changed; a file
-    /// that fails to load leaves the picture showing until it changes.
-    private func loadLiveScene(_ path: String) {
-        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
-        let size = (attrs?[.size] as? NSNumber)?.doubleValue ?? -1
-        let time = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? -1
-        let same = path == liveScenePath
-        if same, let st = liveSceneStamp, st == [size, time] { return }
-        if same, liveSceneStamp == nil, liveSceneFailedAt == [size, time] { return }
-        liveScenePath = path
-        let panel = ensureLiveScenePanel()
-        do {
-            let doc = try PleSceneLoader.load(from: URL(fileURLWithPath: path))
-            panel.loadScene(doc, preserveView: same && liveSceneStamp != nil)
-            liveSceneStamp = [size, time]
-        } catch {
-            liveSceneStamp = nil
-            liveSceneFailedAt = [size, time]
-        }
-    }
-
-    private func ensureLiveScenePanel() -> PleScenePanelView {
-        if let panel = liveScenePanel, let box = liveSceneBox {
-            if box.superview !== canvas { canvas.addSubview(box) }
-            return panel
-        }
-        let box = PassThroughView(frame: .zero)
-        box.wantsLayer = true
-        box.layer?.masksToBounds = true
-        box.isHidden = true
-        let panel = PleScenePanelView(frame: .zero)
-        panel.makeCompact()
-        box.addSubview(panel)
-        canvas.addSubview(box)
-        liveSceneBox = box
-        liveScenePanel = panel
-        return panel
-    }
-
-    /// What the page drew over everything in its last frame (coder_page_over_rects: menus,
-    /// popovers, dialogs, toasts) in view's coordinates, for a native view over the page to cut out.
-    func pageOverRects(in view: NSView) -> [NSRect] {
-        var r = [Float](repeating: 0, count: 32)
-        let n = Int(cd_over_rects(page, &r, 8))
-        guard n > 0 else { return [] }
-        let canvasH = canvas.bounds.height
-        return (0..<n).map { i in
-            let c = NSRect(x: CGFloat(r[i * 4]), y: canvasH - CGFloat(r[i * 4 + 1]) - CGFloat(r[i * 4 + 3]), width: CGFloat(r[i * 4 + 2]), height: CGFloat(r[i * 4 + 3]))
-            return view.convert(c, from: canvas)
-        }
-    }
-}
-
-/// A view that holds others and takes no press itself: the live 3D card's clip (#13812), so a press
-/// outside its viewport, or in a hole the page cut in it, reaches the page under it.
-final class PassThroughView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let hit = super.hitTest(point)
-        return hit === self ? nil : hit
-    }
+    func hideScenePanel() { }
 }

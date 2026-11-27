@@ -500,6 +500,7 @@ void cd_local_state(void *page, int os_ok, int hw_ok, int ram_gb, int dl_state, 
 // Antigravity CLI downloads its percent (-1 otherwise), MB done and MB in all (0 unknown).
 void cd_agy_connect(void *page, int avail, int state, const char *msg, int pct, int dl_mb, int total_mb);
 void cd_cloud_authed_set(void *page, int on);
+void cd_settings_account(void *page, const char *email, const char *org, const char *paid, const char *promo, const char *promo_exp, const char *github, const char *enroll, const char *target, const char *projects);
 // Git Actions toolbar (page/gitactions.coax, GitHub #13871). cd_action 49 asks; cd_git_op says which op.
 void cd_git_status(void *page, int in_repo, int in_worktree, int dirty, int ahead, int behind);
 void cd_git_mode_set(void *page, int mode);

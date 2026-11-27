@@ -121,9 +121,9 @@ extension CoderWindow {
     /// starts has them.
     @discardableResult func queueWorker() -> Bool {
         if !run.worker.alive {
-            configureWorkerEnv(run, isForeman: isForemanShown)
-            syncSkillsNote(for: page, isForeman: isForemanShown)
-            guard run.worker.start() else { let label = run.worker.program == "inky" ? "Local agent worker" : run.worker.program == "claudeworker" ? "Claude" : run.worker.program == "agyworker" ? "Antigravity" : "OpenAgents"; cd_failed(page, run.worker.failure ?? "\(label) could not start."); return false }
+            configureWorkerEnv(run, isForeman: false)
+            syncSkillsNote(for: page, isForeman: false)
+            guard run.worker.start() else { let label = run.worker.program == "claudeworker" ? "Claude" : "OpenAgents"; cd_failed(page, run.worker.failure ?? "\(label) could not start."); return false }
         }
         if recallDue {
             recallDue = false

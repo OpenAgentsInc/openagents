@@ -337,7 +337,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
                               action = CP_SB_LOAD_MORE_ACT};
     nrows += 1;
   }
-  if !is_arch {
+  if !is_arch && cp_flag(s, DC_FLAG_ENVIRONMENTS) {
     nrows = cp_introspect_sidebar_rows(s, f, rows[..], nrows);
   }
   // the foot: the update pill when there is one, then the unified Settings row
@@ -479,7 +479,7 @@ cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, 
     bx += cp_side_icon_btn(f, "coder.gym", "Gym", bx, by, side, ICON_WIDGET, s[0].gym_open, CP_GYM) + gap;
   }
   avail_w := right_edge - bx;
-  if avail_w >= 36.0f32 {
+  if cp_flag(s, DC_FLAG_USAGE) && avail_w >= 36.0f32 {
     pw := ifx pill_w <= avail_w then pill_w else avail_w;
     cp_side_credits_pill(s, f, right_edge - pw, by, pw, side, credits_txt);
   }

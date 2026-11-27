@@ -45,7 +45,7 @@ Reference specs: [docs/auth/2026-11-26-workos-coax-sdk.md](../auth/2026-11-26-wo
 
 - Paid inference, Exa search metering (`0222`), and Cloud Sandbox compute (`0223`) settle strictly in **Bitcoin / Lightning sats** (`inference.credit` stored in millisatoshis via `oa-spark` / Breez Spark).
 - No fiat wallets, stablecoins (USDC/USDT), EVM, Solana, Tron, or Cashu exist anywhere in the stack.
-- Self-custodial Spark Bitcoin wallets on iOS and Desktop keep wallet seed custody isolated from account Nostr keys.
+- Self-custodial Spark Bitcoin wallets on iOS keep wallet seed custody isolated from account keys; Desktop v1 does not bundle a Bitcoin/Spark wallet or Nostr signer and instead displays read-only Paid + Promo Cloud credit balances fetched from `/api/auth/life`.
 
 ---
 

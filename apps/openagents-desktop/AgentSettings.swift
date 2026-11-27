@@ -376,10 +376,6 @@ enum AgentSettings {
         if let tok = MacAccount.shared.store.load()?.access, !tok.isEmpty {
             env["OA_CLOUD_TOKEN"] = tok
         }
-        let keyPath = MacAccount.shared.keyFile.path
-        if FileManager.default.fileExists(atPath: keyPath) {
-            env["OA_CLOUD_KEY_PATH"] = keyPath
-        }
         let penv = ProcessInfo.processInfo.environment
         for k in ["OA_CLOUD_BASE_URL", "OA_EXA_BASE_URL", "OA_EXA_DIRECT", "EXA_API_KEY", "OA_X_API_BASE_URL"] {
             if let v = penv[k], !v.isEmpty { env[k] = v }
@@ -777,10 +773,10 @@ extension CoderWindow {
     /// Mirrors Flawed settings onto the foreground page and every active background run.
     func syncFlawedSettingsAll() {
         AgentSettings.apply(to: page)
-        configureWorkerEnv(run, isForeman: isForemanShown)
-        for (id, r) in runs where r.page != page {
+        configureWorkerEnv(run, isForeman: false)
+        for (_, r) in runs where r.page != page {
             AgentSettings.apply(to: r.page)
-            configureWorkerEnv(r, isForeman: id == Foreman.chatID)
+            configureWorkerEnv(r, isForeman: false)
         }
         wake()
     }

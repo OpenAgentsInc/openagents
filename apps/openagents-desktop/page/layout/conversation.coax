@@ -1185,7 +1185,7 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
            else ifx st == CP_LOCAL_DOWNLOADING then "Downloading local model…"
            else "Click the model below to download";
   }
-  has_voice := true;
+  has_voice := cp_flag(s, DC_FLAG_VOICE);
   mic_side := cast(f32) ZC_CONTROL; mic_gap := 6.0f32;
   tx := border + g.text_left; tw := w - 2 * border - g.text_left - g.text_right - (ifx g.expanded || !has_voice then 0.0f32 else mic_side + mic_gap);
   if tw < g.line { tw = g.line; }
@@ -1378,7 +1378,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   show_goal := has_goal;
   show_cost := !home;
   show_ring := s[0].ctx_in > 0;
-  show_usage := true;
+  show_usage := cp_flag(s, DC_FLAG_USAGE);
   show_branch := cp_flag(s, DC_FLAG_GIT) && show_folder && s[0].branch_n > 0 && !running;
   room := cw - 2 * side;
   for step: 0..<6 {
@@ -1523,7 +1523,7 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   show_flawed_row := true;
   show_local_row := true;
   show_others_row := s[0].show_other_models;
-  show_prov_row := s[0].show_other_models;
+  show_prov_row := s[0].show_other_models && cp_flag(s, DC_FLAG_MODELS_EXTERNAL);
   footer_h := div_h
             + (ifx show_flawed_row then frh else 0.0f32)
             + (ifx show_local_row then lrh else 0.0f32)

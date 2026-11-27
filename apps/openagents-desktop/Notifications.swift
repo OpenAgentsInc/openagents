@@ -154,7 +154,6 @@ extension CoderWindow {
 
     func chatDisplayTitle(_ id: String?) -> String {
         guard let id, !id.isEmpty else { return "OpenAgents" }
-        if id == Foreman.chatID { return Foreman.title }
         return store.title(id) ?? "Chat"
     }
 

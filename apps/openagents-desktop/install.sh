@@ -48,18 +48,17 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
-want_profile="unified"
+want_profile="v1"
 # Bump whenever fixed/roots tracking changes so stale $state/inputs files never skip a needed rebuild.
-inputs_schema="7"
+inputs_schema="8"
 # What every build reads besides the Coax sources coax deps lists: the compiler's inputs (as
 # coax/provenance.sh lists them), what coax/web/tool.sh links into the workers, and the app's
 # hosts and assets.
 fixed=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto ':(glob)coax/*' scripts/coax-release.sh coax/lib/crypto/sha256-kernel.coax
        coax/platform coax/web/tool.sh coax/lib/crypto/entropy.coax coax/lib/sys coax/lib/net
-       coax/lib/nostr/nip06.coax pay metaverse/stage-resources/bip39-english.txt
        openagents/core openagents/runtime openagents/daemon openagents/workers openagents/knowledge
-       apps/shared/auth apps/shared/host apps/shared/native components/chat components/fonts components/icons components/NOTICE apps/openagents-desktop/native psionic/platform psionic/lib/inkling)
-roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax openagents/daemon/host.coax openagents/runtime/oa-worker.coax openagents/workers/agyworker.coax openagents/workers/gitguard.coax openagents/workers/claudeworker.coax coax/lib/agent/device/oasim.coax coax/lib/lean/lean-run.coax coax/lib/tbench/tbench-run.coax coax/lib/gbench/gbench-run.coax metaverse/rh-flythrough.coax)
+       apps/shared/host apps/shared/native components/chat components/fonts components/icons components/NOTICE apps/openagents-desktop/native psionic/platform psionic/lib/inkling)
+roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax openagents/daemon/host.coax openagents/runtime/oa-worker.coax openagents/workers/gitguard.coax openagents/workers/claudeworker.coax)
 mkdir -p "$state"
 
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') coder-release: $*"; }
@@ -255,7 +254,7 @@ sync_resident() {
   # per-version directory ~/.openagents/environment/bin/<ver_id>/ so swapping OpenAgents.app never
   # replaces binaries underneath active daemon workers (#14095).
   local helper src_h dst_h vdst_h tmp_h mode
-  for helper in oa-worker agyworker gitguard coder-host psionic-inkling-serve inkling-kernels.metal claudeworker oasim ple-run lean-run tbench-run gbench-run; do
+  for helper in oa-worker gitguard coder-host psionic-inkling-serve inkling-kernels.metal claudeworker; do
     src_h="$res/$helper"
     [[ -f "$src_h" ]] || continue
     mode=0755; [[ "$helper" == *.metal ]] && mode=0644

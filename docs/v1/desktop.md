@@ -6,14 +6,15 @@
 
 ---
 
-## 1. Unified Desktop Build Architecture (`#14116`)
+## 1. Pruned v1.0.0 Desktop Build Architecture (`#14137`)
 
-Commit `685bffd3c3` collapsed the earlier `--minimal` / `--full` split into **one unified build** across macOS, Linux, and Windows (`profile=unified`, `inputs_schema=7`, `--minimal` and `--full` kept as no-op aliases):
+Desktop v1.0.0 ships a single slim, audited native build across macOS, Linux, and Windows (`OAProfile=v1`, `inputs_schema=8`, `--minimal` and `--full` kept as compatibility aliases):
 
 - **Single Coax UI & Host Stack:** `apps/openagents-desktop/app.coax` / `page.coax` compiled to C (`gallery.o`) driving shared Coax GPU shaders (`coax metal` on macOS, `coax spirv` on Linux/Windows Vulkan).
-- **Bundle Integrity Policy (`apps/openagents-desktop/v1-bundle-policy.coax` & `v1-bundle-check.coax`):** Clean staging `.app` assembly before atomic swap (never mutating an existing `.app` in place), strict size budgets, allowlisted binaries/resources, and `Info.plist` provenance (`OACommit`, `OAProfile=unified`, `CFBundleVersion`).
+- **Strict v1 Scope Cut (Zero Non-v1 Bloat):** Explicitly excluded from the Desktop v1 binary and bundle: Bitcoin / Lightning / Spark Wallet (`breez_sdk_sparkFFI.framework`, `bip39-english.txt`, `pay-wallet*.o`), Nostr / NIP-98 (`nip06.o`, `lab-sign.o`), Gym / Lean / RH Flythrough / Benchmarks (`ple-run`, `lean-run`, `tbench-run`, `gbench-run`), Metaverse 3D Viewer / GameBuilder / 3D Scenes (`ModelIO`, `.world`/`.game`), Foreman (`foreman-ctl`), Capability Studio, Agents Page, Thread Proof, Scheduled Tasks, Forge, Voice (`Speech`/`AVFoundation`), Pylon/Executor, Antigravity (`agyworker`), `oasim`, and Bonjour / Local Network pairing.
+- **Bundle Integrity Policy (`apps/openagents-desktop/v1-bundle-policy.coax` & `v1-bundle-check.coax`):** Clean staging `.app` assembly before atomic swap, strict `<= 20 MiB` unpacked Stage 2 budget on macOS (`WebKit.framework` allowed for the Browser Pane; `breez_sdk_sparkFFI`, `Speech`, `AVFoundation`, `AVFAudio`, `CoreMedia`, `CoreVideo`, and `ModelIO` strictly forbidden), allowlisted v1 binaries/resources (`oa-worker`, `coder-host`, `gitguard`, `claudeworker`, `psionic-inkling-serve`, `inkling-kernels.metal`, `Components`, `OpenAgents.icns`), and `Info.plist` provenance (`OACommit`, `OAProfile=v1`, `CFBundleVersion`).
 - **Auto-Updates & LaunchAgent:** Signed Sparkle/Ed25519 update feed (`Updater.swift`) and local `apps/openagents-desktop/install.sh` / `com.openagents.desktop-update` ownership of `/Applications/OpenAgents.app`.
-- **Runtime Flags (`coax/lib/agent/desktop/flags.coax`):** `account` (`default_on = true`) and `git` (`default_on = true`) are enabled out of the box; experimental panes (`metaverse`, `gamebuilder`, `browser`, `gym`, `foreman`, etc.) remain cleanly flag-gated.
+- **Runtime Flags (`coax/lib/agent/desktop/flags.coax`):** Core v1 flags default ON: `account`, `git`, `mcp`, `browser`, `models.gemini`, `models.claude`, and `models.openrouter`. All post-v1 / excluded subsystems default OFF.
 
 ---
 
@@ -50,11 +51,11 @@ Commit `685bffd3c3` collapsed the earlier `--minimal` / `--full` split into **on
   - 6-tier loader with tool filtering, memory scopes, `permissionMode`, and `maxTurns`
   - Session-scoped append-only DAG JSONL transcripts, disk-backed `SendMessage` resume, and blocking `TaskOutput`
   - Explicit per-delegation git rules (`none`, `commit`, `push`) configurable in Settings and preserved on resume
-- **Programmatic iOS Simulator Pane (`oasim`, `#14116`):** Passive subscription to `simhost.sock` so agents and users can attach and inspect iOS Simulator sessions directly inside Desktop.
+- **Expandable Multi-Tab Browser Pane (`browser` flag ON by default):** Integrated `WKWebView` right-side Browser Pane (`BrowserViewportView.swift`, `Window+Browser.swift`, `page/browserpane.coax`) with DevTools drawer and `browser.sock` agent automation.
 
 ### 2.4 OpenAgents Account & Cloud Computer Enrollment
-- **WorkOS Account Sign-In (`Account.swift`, `account` flag ON by default):** Magic Auth, Google, GitHub, Apple, Email+Password, Enterprise SSO, B2B `switchOrganization()`, `0600` credential storage under `~/.openagents/desktop/`, and Passkey/Nostr `L2` linking.
-- **Enrolled Workstation Daemon (Zero Tailscale):** Enroll the Mac/Linux machine with OpenAgents Cloud (`0220_cloud_projects_environments.sql`). Desktop / `openagents-environment` heartbeats available git repos to `oa-api` and accepts durable `turns_v2` jobs from Web and iOS over outbound HTTPS/SSE — no inbound ports, no Tailscale, no firewall changes.
+- **WorkOS Account Sign-In (`Account.swift`, `account` flag ON by default):** Magic Auth, Google, GitHub, Apple, Email+Password, Enterprise SSO, B2B `switchOrganization()`, Passkey login, `0600` credential storage under `~/.openagents/desktop/`, and read-only two-line Paid Credit + Promo Credit balance display via `/api/auth/life` (zero Bitcoin/Spark SDK and zero Nostr keys in Desktop v1).
+- **Enrolled Workstation, Execution Target, Projects & GitHub Pipes (Zero Tailscale):** Enroll the Mac/Linux machine with OpenAgents Cloud (`0220_cloud_projects_environments.sql`), pick default execution target (`Auto | Local | Cloud | Cloud Sandbox | Enrolled`), browse synced Cloud Projects (`/api/projects/v1`), and connect GitHub via WorkOS Pipes (`/api/integrations/github/*`) over outbound HTTPS/SSE — no inbound ports, no Tailscale, no Bonjour/Local Network permissions.
 
 ---
 

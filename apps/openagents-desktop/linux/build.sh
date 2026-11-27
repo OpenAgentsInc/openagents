@@ -49,24 +49,17 @@ if [[ ! -x "$coax" ]]; then "$repo/coax/build.sh"; fi
 work="$here/build"
 mkdir -p "$work/c" "$work/wl" "$work/resources"
 
-# 1. Compile page (app.coax), desktop core bridge (host-core.coax), entropy policy, wallet units, and Wayland input/text.
+# 1. Compile page (app.coax), desktop core bridge (host-core.coax), entropy policy, and Wayland input/text.
 app_src="$app_dir/app.coax"
 "$coax" c "$app_src" --library --header "$work/c/gallery.h" > "$work/c/gallery.c"
 "$coax" c "$app_dir/host-core.coax" --library --header "$work/c/core.h" > "$work/c/core.c"
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h" > "$work/c/entropy.c"
-"$coax" c "$repo/pay/wallet.coax" --library --header "$work/c/pay-wallet.h" > "$work/c/pay-wallet.c"
-"$coax" c "$repo/pay/wallet-backup.coax" --library --header "$work/c/pay-wallet-backup.h" > "$work/c/pay-wallet-backup.c"
-"$coax" c "$repo/pay/wallet-rpc.coax" --library --header "$work/c/pay-wallet-rpc.h" > "$work/c/pay-wallet-rpc.c"
-wallet_srcs=("$work/c/pay-wallet.c" "$work/c/pay-wallet-backup.c" "$work/c/pay-wallet-rpc.c")
 "$coax" c "$repo/metaverse-engine/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
 "$coax" c "$repo/metaverse-engine/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
 
-# 2. Emit the shared component, composition-v2, and Metaverse/GameBuilder SPIR-V shaders.
+# 2. Emit the shared component and composition-v2 SPIR-V shaders.
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/resources/components.spv" 2> "$work/resources/components.spv.bindings"
 "$coax" spirv "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs -o "$work/resources/composition.spv" 2> "$work/resources/composition.spv.bindings"
-"$coax" spirv "$repo/metaverse-engine/gpu/model-view-shader.coax" --vertex mv_vs --fragment mv_fs -o "$work/resources/metaverse-model.spv" 2> "$work/resources/metaverse-model.spv.bindings"
-"$coax" spirv "$repo/metaverse-engine/gpu/ple-shader.coax" --vertex ple_vs --fragment ple_fs -o "$work/resources/metaverse-ple.spv" 2> "$work/resources/metaverse-ple.spv.bindings"
-"$coax" spirv "$repo/gamebuilder/core/gpu/gb-instances.coax" --vertex gb_vs --fragment gb_fs -o "$work/resources/gb-instances.spv" 2> "$work/resources/gb-instances.spv.bindings"
 
 # 3. Generate Wayland protocol C bindings.
 protocols="$(pkg-config --variable=pkgdatadir wayland-protocols)"
@@ -91,7 +84,6 @@ cc "${cflags[@]}" \
   "$repo/apps/shared/host/linux/portal.c" \
   \
   "$work/c/gallery.c" "$work/c/core.c" "$work/c/entropy.c" \
-  ${wallet_srcs[@]+"${wallet_srcs[@]}"} \
   "$work/c/wayland-input.c" "$work/c/wayland-text.c" \
   "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" "$repo/metaverse/gpu/vkp.c" \
   "$work/wl/xdg-shell-protocol.c" "$work/wl/xdg-decoration-unstable-v1-protocol.c" "$work/wl/text-input-unstable-v3-protocol.c" \
@@ -121,8 +113,8 @@ fi
 # 5. Build workers, gitguard and resident daemon beside OpenAgents unless --no-worker is passed.
 if [[ "$want_worker" == 1 ]]; then
   coax_hash="$(sha256sum "$coax" | cut -d " " -f 1)"
-  worker_pairs=("openagents/runtime/oa-worker.coax:oa-worker:oa-worker" "openagents/workers/claudeworker.coax:claudeworker:claudeworker" "openagents/workers/agyworker.coax:agyworker:agyworker" "openagents/workers/gitguard.coax:gitguard:gitguard" "openagents/daemon/host.coax:host:coder-host")
-  rm -f "$work/inky" "$work/mcworker"
+  worker_pairs=("openagents/runtime/oa-worker.coax:oa-worker:oa-worker" "openagents/workers/claudeworker.coax:claudeworker:claudeworker" "openagents/workers/gitguard.coax:gitguard:gitguard" "openagents/daemon/host.coax:host:coder-host")
+  rm -f "$work/inky" "$work/mcworker" "$work/agyworker"
   for pair in "${worker_pairs[@]}"; do
     IFS=: read -r src_rel src_name dst_name <<< "$pair"
     if [[ -f "$repo/$src_rel" ]]; then
@@ -157,7 +149,7 @@ if [[ -n "$stage_dir" ]]; then
   rm -rf "$out_stage"
   mkdir -p "$out_stage/resources/fonts" "$out_stage/resources/icons"
   install -m 0755 "$work/OpenAgents" "$out_stage/OpenAgents"
-  stage_bins=(oa-worker claudeworker agyworker coder-host gitguard psionic-inkling-serve)
+  stage_bins=(oa-worker claudeworker coder-host gitguard psionic-inkling-serve)
   for bin in "${stage_bins[@]}"; do
     if [[ -x "$work/$bin" ]]; then
       install -m 0755 "$work/$bin" "$out_stage/$bin"
@@ -169,9 +161,6 @@ if [[ -n "$stage_dir" ]]; then
     fi
   done
   cp "$work/resources/components.spv" "$work/resources/composition.spv" "$out_stage/resources/"
-  for spv in metaverse-model.spv metaverse-ple.spv gb-instances.spv; do
-    [[ -f "$work/resources/$spv" ]] && cp "$work/resources/$spv" "$out_stage/resources/"
-  done
   cp "$work/resources/fonts/"Geist* "$out_stage/resources/fonts/"
   cp "$work/resources/icons/"*.svg "$out_stage/resources/icons/"
   cp "$work/resources/NOTICE" "$out_stage/resources/NOTICE"

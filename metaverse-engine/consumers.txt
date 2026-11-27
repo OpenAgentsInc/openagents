@@ -70,8 +70,8 @@ adopt metaverse-engine/audio/host-pcm.coax #13857
 adopt metaverse-engine/audio/host-voice.coax #13857
 book metaverse-engine/fx/flat.coax metaverse-engine/book/ch072-effects-made-of-particles.md
 book metaverse-engine/ui/settings.coax metaverse-engine/book/ch085-everyone-can-play.md
-built metaverse-engine/gpu/model-view-shader.coax apps/openagents-desktop/build.sh
-built metaverse-engine/gpu/ple-shader.coax apps/openagents-desktop/build.sh
-built metaverse-engine/gpu/splat-sort.coax apps/openagents-desktop/build.sh
-built metaverse-engine/content/desktop-viewer-bridge.coax apps/openagents-desktop/build.sh
+adopt metaverse-engine/gpu/model-view-shader.coax #13857
+adopt metaverse-engine/gpu/ple-shader.coax #13857
+adopt metaverse-engine/gpu/splat-sort.coax #13857
+adopt metaverse-engine/content/desktop-viewer-bridge.coax #13857
 built metaverse-engine/content/model-view.coax metaverse-engine/content/desktop-viewer-bridge.coax

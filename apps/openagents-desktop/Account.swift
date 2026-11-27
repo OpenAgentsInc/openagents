@@ -4,117 +4,14 @@ import CryptoKit
 import Foundation
 import UserNotifications
 
-/// The Mac app's account login (#13229, docs/auth/identity-and-methods.md "Per-platform flows"):
-/// OpenAgents ▸ Log In… asks for an email and the code we send, or logs in with this Mac's key.
-/// The login is the iPhone app's own, `AppAuth` (apps/shared/host/apple/AppAuth.swift): the same
-/// requests, an access and refresh token pair whose refreshes are bound to a Secure Enclave key, and
-/// "Log in again." when the server ends it. On the Mac the tokens and the device key's blob are
-/// files under `~/.openagents/desktop/` (0600), never the Keychain, so a rebuilt app never asks for
-/// the login password.
-///
-/// This Mac's key is the one the openagents command keeps (`~/.openagents/cli/keys/PROFILE`, mode
-/// 0600; PROFILE is OPENAGENTS_PROFILE or "default"), so the app and the CLI are one identity. When
-/// there is none, Log In offers to make it. The file's format and the NIP-98 event are lab-sign.coax's.
+/// The Mac app's account login (docs/v1/desktop.md §2.4):
+/// OpenAgents ▸ Log In… uses WorkOS (Magic Auth 6-digit email code, Email & Password, Google,
+/// GitHub, Apple, Enterprise SSO, B2B Organizations) or first-party Passkey.
+/// Session tokens (`oa_at_`/`oa_rt_`) and the Secure Enclave device key blob live in 0600 files
+/// under `~/.openagents/desktop/`, never the Keychain, so rebuilt apps never prompt for Keychain.
 ///
 /// OPENAGENTS_API_ORIGIN points it at staging (https://staging.openagents.com) or a local API on
 /// 127.0.0.1; anything else is openagents.com.
-enum MacKey {
-    struct Missing: Error {}
-
-    static var profile: String {
-        let env = ProcessInfo.processInfo.environment["OPENAGENTS_PROFILE"] ?? ""
-        return !env.isEmpty && withText(env, { coaxial_account_profile_ok($0) }) ? env : "default"
-    }
-    static func file(home: URL = MacAccount.home) -> URL {
-        home.appendingPathComponent(".openagents/cli/keys", isDirectory: true).appendingPathComponent(profile)
-    }
-
-    /// The key in the file, or nil when there is none (or it isn't a key).
-    static func load(_ url: URL) -> [UInt8]? {
-        guard let data = try? Data(contentsOf: url), data.count <= 128 else { return nil }
-        var text = [UInt8](data)
-        defer { wipe(&text) }
-        var key = [UInt8](repeating: 0, count: 32)
-        let ok = text.withUnsafeBufferPointer { t in
-            key.withUnsafeMutableBufferPointer { k in
-                coaxial_account_key_parse(coax_string(data: UnsafeRawPointer(t.baseAddress!).assumingMemoryBound(to: CChar.self), count: Int64(t.count)),
-                                          coax_v_u8(data: k.baseAddress, count: 32))
-            }
-        }
-        if !ok { wipe(&key); return nil }
-        return key
-    }
-
-    /// A new key in the file (0600, its folder 0700); never over one that is there.
-    static func make(_ url: URL) throws -> [UInt8] {
-        var key = [UInt8](repeating: 0, count: 32)
-        for _ in 0..<4 {
-            guard SecRandomCopyBytes(kSecRandomDefault, 32, &key) == errSecSuccess else { throw AppAuth.Failure.said("This Mac couldn't make a key.") }
-            if key.withUnsafeMutableBufferPointer({ coaxial_account_key_ok(coax_v_u8(data: $0.baseAddress, count: 32)) }) { break }
-        }
-        var text = [UInt8](repeating: 0, count: 81)
-        defer { wipe(&text) }
-        let n = key.withUnsafeMutableBufferPointer { k in text.withUnsafeMutableBufferPointer { t in
-            coaxial_account_key_text(coax_v_u8(data: k.baseAddress, count: 32), coax_v_u8(data: t.baseAddress, count: 81)) } }
-        guard n == 81 else { wipe(&key); throw AppAuth.Failure.said("This Mac couldn't make a key.") }
-        let dir = url.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let fd = open(url.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
-        guard fd >= 0 else { wipe(&key); throw AppAuth.Failure.said("This Mac couldn't keep its key in \(url.path).") }
-        let wrote = text.withUnsafeBytes { write(fd, $0.baseAddress, 81) }
-        close(fd)
-        guard wrote == 81 else { unlink(url.path); wipe(&key); throw AppAuth.Failure.said("This Mac couldn't keep its key in \(url.path).") }
-        return key
-    }
-
-    /// The Authorization value for a POST of body to url, signed with the key in the file.
-    static func signer(_ url: URL) -> AppAuth.Sign {
-        { target, body, now in
-            guard var key = load(url) else { throw Missing() }
-            defer { wipe(&key) }
-            return try nip98(key: key, url: target, body: body, now: now)
-        }
-    }
-
-    static func nip98(key: [UInt8], url: String, body: String, now: Date) throws -> String {
-        let payload = DeviceKeys.hex(Data(SHA256.hash(data: Data(body.utf8))))
-        var k = key, aux = [UInt8](repeating: 0, count: 32), out = [UInt8](repeating: 0, count: 2048)
-        defer { wipe(&k); wipe(&aux) }
-        guard SecRandomCopyBytes(kSecRandomDefault, 32, &aux) == errSecSuccess else { throw AppAuth.Failure.said("That didn't work. Try again.") }
-        let n = withText(url) { u in withText(payload) { p in
-            k.withUnsafeMutableBufferPointer { kb in aux.withUnsafeMutableBufferPointer { ab in out.withUnsafeMutableBufferPointer { ob in
-                coaxial_account_nip98(coax_v_u8(data: kb.baseAddress, count: 32), coax_v_u8(data: ab.baseAddress, count: 32), Int64(now.timeIntervalSince1970),
-                                      u, p, coax_v_u8(data: ob.baseAddress, count: Int64(ob.count))) } } } } }
-        guard n > 0 else { throw AppAuth.Failure.said("That didn't work. Try again.") }
-        return "Nostr " + String(decoding: out[0..<Int(n)], as: UTF8.self)
-    }
-
-    /// NIP-98 Authorization header for a signed GET request (e.g. GET /api/v1/inference/credit).
-    static func nip98Get(key: [UInt8], url: String, now: Date) throws -> String {
-        guard let urlData = try? JSONSerialization.data(withJSONObject: [url]),
-              let urlArr = String(data: urlData, encoding: .utf8),
-              urlArr.count >= 2 else { throw AppAuth.Failure.said("That didn't work. Try again.") }
-        let escapedUrl = String(urlArr.dropFirst().dropLast())
-        let tags = "[[\"u\",\(escapedUrl)],[\"method\",\"GET\"]]"
-        var k = key, aux = [UInt8](repeating: 0, count: 32), out = [UInt8](repeating: 0, count: 2048)
-        defer { wipe(&k); wipe(&aux) }
-        guard SecRandomCopyBytes(kSecRandomDefault, 32, &aux) == errSecSuccess else { throw AppAuth.Failure.said("That didn't work. Try again.") }
-        let n = withText(tags) { t in
-            k.withUnsafeMutableBufferPointer { kb in aux.withUnsafeMutableBufferPointer { ab in out.withUnsafeMutableBufferPointer { ob in
-                coaxial_lab_nip98(coax_v_u8(data: kb.baseAddress, count: 32), coax_v_u8(data: ab.baseAddress, count: 32), Int64(now.timeIntervalSince1970),
-                                  t, coax_v_u8(data: ob.baseAddress, count: Int64(ob.count))) } } } }
-        guard n > 0 else { throw AppAuth.Failure.said("That didn't work. Try again.") }
-        return "Nostr " + String(decoding: out[0..<Int(n)], as: UTF8.self)
-    }
-
-    static func wipe(_ b: inout [UInt8]) { for i in b.indices { b[i] = 0 } }
-    static func withText<T>(_ s: String, _ body: (coax_string) -> T) -> T {
-        var bytes = Array(s.utf8)
-        return bytes.withUnsafeMutableBufferPointer { b in
-            body(coax_string(data: b.baseAddress.map { UnsafeRawPointer($0).assumingMemoryBound(to: CChar.self) }, count: Int64(b.count)))
-        }
-    }
-}
 
 /// The app's one login, what its menu says, and the sheets.
 final class MacAccount: @unchecked Sendable {
@@ -133,66 +30,149 @@ final class MacAccount: @unchecked Sendable {
         return "https://openagents.com"
     }
 
-    let keyFile: URL
     let store: TokenStore
     let auth: AppAuth
+    private let send: AppAuth.Send
     private let lock = NSLock()
-    private var shown = ""          // what the account answered: the masked email, or "" for a key only
+    private var shown = ""          // what the account answered: the masked email
     private var known = false
     private var cachedCreditMsat: Int64? = nil
+    private var cachedPromoMicros: Int64 = 0
+    private var cachedPromoExpiresAt: String = ""
+    private var cachedOrgName: String = "Personal"
+    private var cachedGitHubStatus: String = "Not connected"
+    private var cachedProjectsSummary: String = "None synced"
     var changed: (() -> Void)?
 
-    init(keyFile: URL = MacKey.file(), store: TokenStore = FileTokenStore(url: MacAccount.folder.appendingPathComponent("login.json")),
+    init(store: TokenStore = FileTokenStore(url: MacAccount.folder.appendingPathComponent("login.json")),
          device: DeviceKeys? = DeviceKeys(store: FileDeviceKeyStore(url: MacAccount.folder.appendingPathComponent("device-key"))),
          origin: String = MacAccount.origin, send: @escaping AppAuth.Send = AppAuth.network) {
-        self.keyFile = keyFile; self.store = store
-        auth = AppAuth(origin: origin, send: send, store: store, device: device, sign: MacKey.signer(keyFile))
+        self.store = store
+        self.send = send
+        auth = AppAuth(origin: origin, send: send, store: store, device: device)
     }
 
     var loggedIn: Bool { auth.loggedIn }
+    var email: String { lock.lock(); defer { lock.unlock() }; return shown }
+    var orgName: String { lock.lock(); defer { lock.unlock() }; return cachedOrgName }
     var creditMsat: Int64? { lock.lock(); defer { lock.unlock() }; return cachedCreditMsat }
+    var promoMicros: Int64 { lock.lock(); defer { lock.unlock() }; return cachedPromoMicros }
+    var promoExpiresAt: String { lock.lock(); defer { lock.unlock() }; return cachedPromoExpiresAt }
+    var githubStatus: String { lock.lock(); defer { lock.unlock() }; return cachedGitHubStatus }
+    var projectsSummary: String { lock.lock(); defer { lock.unlock() }; return cachedProjectsSummary }
+
+    var paidCreditLabel: String {
+        guard let msat = creditMsat else { return loggedIn ? "0 sats" : "Sign in to view" }
+        let sats = max(0, msat / 1000)
+        return "\(sats) sats"
+    }
+
+    var promoCreditLabel: String {
+        let dollars = Double(max(0, promoMicros)) / 1_000_000.0
+        return String(format: "$%.2f USD", dollars)
+    }
+
+    var promoExpiryLabel: String {
+        let exp = promoExpiresAt
+        if exp.isEmpty {
+            return "Non-withdrawable service credit; spends oldest expiry first on eligible models."
+        }
+        return "Nearest expiry: \(exp) · Non-withdrawable service credit."
+    }
+
     var title: String {
         guard loggedIn else { return "Log In…" }
         lock.lock(); defer { lock.unlock() }
         if !known { return "Logged in" }
-        return shown.isEmpty ? "Logged in with this Mac's key" : "Logged in as \(shown)"
+        return shown.isEmpty ? "Logged in" : "Logged in as \(shown)"
     }
 
-    /// Fetches the user's actual OpenAgents account credit balance in millisatoshis:
-    /// prefers the logged-in account (GET /api/auth/life), falling back to a NIP-98 signed
-    /// GET /api/v1/inference/credit using this Mac's key if present.
+    /// Fetches the user's two-line Paid Credit (msat) and Promo Credit (USD micros + nearest expiry)
+    /// from GET /api/auth/life using the signed-in account session.
     @discardableResult
     func fetchCreditMsat() async -> Int64? {
-        if loggedIn, let msat = try? await auth.creditMsat() {
+        guard loggedIn else { return nil }
+        if let url = URL(string: auth.origin + "/api/auth/life") {
+            var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 15)
+            req.httpMethod = "GET"
+            if let authed = try? await auth.authorize(req),
+               let (data, code) = try? await send(authed),
+               code == 200,
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let msat = (obj["credit_msat"] as? NSNumber)?.int64Value ?? 0
+                let promo = (obj["promo_micros"] as? NSNumber)?.int64Value ?? 0
+                let exp = (obj["promo_expires_at"] as? String) ?? ""
+                setCredits(msat: max(0, msat), promoMicros: max(0, promo), promoExpiresAt: exp)
+                return max(0, msat)
+            }
+        }
+        if let msat = try? await auth.creditMsat() {
             setCreditMsat(msat)
             return msat
         }
-        if var key = MacKey.load(keyFile) {
-            defer { MacKey.wipe(&key) }
-            let urlStr = auth.origin + "/api/v1/inference/credit"
-            if let url = URL(string: urlStr),
-               let authHeader = try? MacKey.nip98Get(key: key, url: urlStr, now: Date()) {
-                var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 15)
-                req.httpMethod = "GET"
-                req.setValue(authHeader, forHTTPHeaderField: "Authorization")
-                if let (data, resp) = try? await URLSession.shared.data(for: req),
-                   (resp as? HTTPURLResponse)?.statusCode == 200,
-                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let msat = (obj["credit_msat"] as? NSNumber)?.int64Value {
-                    let clamped = max(0, msat)
-                    setCreditMsat(clamped)
-                    return clamped
-                }
-            }
-        }
         return creditMsat
+    }
+
+    /// Fetches WorkOS Pipes GitHub connection status (GET /api/integrations/github/status).
+    func fetchGitHubStatus() async {
+        guard loggedIn, let url = URL(string: auth.origin + "/api/integrations/github/status") else { return }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 12)
+        req.httpMethod = "GET"
+        guard let authed = try? await auth.authorize(req),
+              let (data, code) = try? await send(authed),
+              code == 200,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        let connected = (obj["connected"] as? Bool) == true
+        let login = (obj["login"] as? String) ?? (obj["username"] as? String) ?? ""
+        lock.lock()
+        cachedGitHubStatus = connected ? (login.isEmpty ? "Connected" : "Connected (@\(login))") : "Not connected"
+        lock.unlock()
+    }
+
+    /// Fetches synced Cloud Projects count (GET /api/projects/v1).
+    func fetchCloudProjects() async -> [[String: Any]] {
+        guard loggedIn, let url = URL(string: auth.origin + "/api/projects/v1") else { return [] }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 12)
+        req.httpMethod = "GET"
+        guard let authed = try? await auth.authorize(req),
+              let (data, code) = try? await send(authed),
+              code == 200,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let list = obj["projects"] as? [[String: Any]] else { return [] }
+        lock.lock()
+        cachedProjectsSummary = list.isEmpty ? "0 projects" : (list.count == 1 ? "1 project" : "\(list.count) projects")
+        lock.unlock()
+        return list
+    }
+
+    /// Starts WorkOS Pipes GitHub OAuth connection in the system browser (POST /api/integrations/github/connect).
+    @MainActor func connectGitHubPipes() async {
+        guard loggedIn else { return await showLogin() }
+        guard let url = URL(string: auth.origin + "/api/integrations/github/connect") else { return }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 15)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{\"return_to\":\"/settings\"}".utf8)
+        do {
+            let authed = try await auth.authorize(req)
+            let (data, code) = try await send(authed)
+            if (200..<300).contains(code),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let authURLStr = (obj["url"] as? String) ?? (obj["authorize_url"] as? String),
+               let authURL = URL(string: authURLStr) {
+                NSWorkspace.shared.open(authURL)
+            } else {
+                note("Open openagents.com/settings to connect GitHub via WorkOS Pipes.")
+            }
+        } catch {
+            say(error)
+        }
     }
 
     /// Asks the server who is logged in (an authorized request: a stale access token is renewed
     /// first); a login the server ended is forgotten.
     func look() async {
         guard loggedIn else {
-            _ = await fetchCreditMsat()
             tell()
             return
         }
@@ -200,19 +180,29 @@ final class MacAccount: @unchecked Sendable {
             setShown(a.emails.first ?? "")
         }
         _ = await fetchCreditMsat()
+        await fetchGitHubStatus()
+        _ = await fetchCloudProjects()
         tell()
         await registerForPush()
     }
     private func setShown(_ s: String) { lock.lock(); shown = s; known = true; lock.unlock() }
     private func setCreditMsat(_ msat: Int64?) { lock.lock(); cachedCreditMsat = msat; lock.unlock() }
-    func forgetShown() { lock.lock(); shown = ""; known = false; cachedCreditMsat = nil; lock.unlock() }
+    private func setCredits(msat: Int64?, promoMicros: Int64, promoExpiresAt: String) {
+        lock.lock()
+        cachedCreditMsat = msat
+        cachedPromoMicros = promoMicros
+        cachedPromoExpiresAt = promoExpiresAt
+        lock.unlock()
+    }
+    func forgetShown() {
+        lock.lock()
+        shown = ""; known = false; cachedCreditMsat = nil
+        cachedPromoMicros = 0; cachedPromoExpiresAt = ""
+        cachedOrgName = "Personal"; cachedGitHubStatus = "Not connected"; cachedProjectsSummary = "None synced"
+        lock.unlock()
+    }
     func tell() { DispatchQueue.main.async { self.changed?() } }
 
-    func keyLogin() async throws {
-        try await auth.keyLogin()
-        forgetShown()
-        await look()
-    }
     func logout() async {
         await auth.logout()
         forgetShown()
@@ -226,7 +216,7 @@ final class MacAccount: @unchecked Sendable {
         let alert = NSAlert()
         alert.messageText = "Log in to OpenAgents"
         alert.informativeText = wos.enabled
-            ? "Enter your email for a 6-digit code, or continue with Email & Password, Google, GitHub, Apple, Enterprise SSO, Passkey, or this Mac's key."
+            ? "Enter your email for a 6-digit code, or continue with Email & Password, Google, GitHub, Apple, Enterprise SSO, or Passkey."
             : "Enter your email and we'll send you a code."
         let email = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
         email.placeholderString = "you@example.com"
@@ -235,7 +225,6 @@ final class MacAccount: @unchecked Sendable {
         alert.addButton(withTitle: "Send Code")
         if wos.enabled { alert.addButton(withTitle: "Password / Google / GitHub / Apple / SSO…") }
         alert.addButton(withTitle: "Log In with Passkey")
-        alert.addButton(withTitle: "Log In with This Mac's Key")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = email
         let resp = alert.runModal()
@@ -259,9 +248,7 @@ final class MacAccount: @unchecked Sendable {
             return
         }
         let passkeyIdx = wos.enabled ? 2 : 1
-        let keyIdx = wos.enabled ? 3 : 2
         if idx == passkeyIdx { await loginWithPasskey() }
-        else if idx == keyIdx { await loginWithKey() }
     }
 
     @MainActor private func showWorkOSProviders(clientID: String, emailHint: String) async {
@@ -411,6 +398,7 @@ final class MacAccount: @unchecked Sendable {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             let i = max(0, min(popup.indexOfSelectedItem, orgs.count - 1))
             _ = try await auth.workosSwitchOrg(orgs[i].id)
+            lock.lock(); cachedOrgName = orgs[i].name; lock.unlock()
             note("Switched to \(orgs[i].name).")
             tell()
         } catch { say(error) }
@@ -454,23 +442,6 @@ final class MacAccount: @unchecked Sendable {
         }
     }
 
-    @MainActor private func loginWithKey() async {
-        do { try await keyLogin(); return }
-        catch is MacKey.Missing {}
-        catch { say(error); return }
-        let alert = NSAlert()
-        alert.messageText = "This Mac has no key yet"
-        alert.informativeText = "Make one to log in with it. It's kept in \(keyFile.path), which only you can read, and the openagents command uses the same key. Until you add an email or a passkey, it's the only way in to that account."
-        alert.addButton(withTitle: "Make a Key")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        do {
-            var made = try MacKey.make(keyFile)
-            MacKey.wipe(&made)
-            try await keyLogin()
-        } catch { say(error) }
-    }
-
     @MainActor func loginWithPasskey() async {
         do {
             let challenge = try await auth.passkeyChallenge()
@@ -483,21 +454,6 @@ final class MacAccount: @unchecked Sendable {
             if case AppAuth.Failure.said(let msg) = error, msg.hasPrefix("No passkey was used") { return }
             say(error)
         }
-    }
-
-    /// Links this Mac's Nostr key (~/.openagents/nostr/key) to the signed-in OpenAgents account.
-    @MainActor func linkDeviceKey() async {
-        guard loggedIn else { return await showLogin() }
-        do {
-            if !FileManager.default.fileExists(atPath: keyFile.path) {
-                var made = try MacKey.make(keyFile)
-                MacKey.wipe(&made)
-            }
-            let url = try await auth.proofChallenge(purpose: "link")
-            let proof = try MacKey.signer(keyFile)(url, "", Date())
-            try await auth.linkNostr(url: url, proof: proof, label: "app")
-            note("This Mac's key is now linked to your OpenAgents account.")
-        } catch { say(error) }
     }
 
     /// Handles universal links matched by apple-app-site-association:
@@ -667,9 +623,6 @@ func oa_account_drive(_ request: UnsafePointer<CChar>?, _ out: UnsafeMutablePoin
     Task.detached {
         do {
             switch op {
-            case "key":
-                if MacKey.load(me.keyFile) == nil { var k = try MacKey.make(me.keyFile); MacKey.wipe(&k) }
-                try await me.keyLogin()
             case "refresh":
                 guard var t = me.store.load() else { throw AppAuth.Failure.said("Log in first.") }
                 t.accessUntil = Date(timeIntervalSince1970: 0); me.store.save(t)
@@ -677,7 +630,7 @@ func oa_account_drive(_ request: UnsafePointer<CChar>?, _ out: UnsafeMutablePoin
             case "logout": await me.logout()
             case "security": said.set("account: security\n" + MacAccount.securityWords(try await me.auth.security()) + "\n")
             case "state": break
-            default: said.set("account: state | key | refresh | logout | security\n")
+            default: said.set("account: state | refresh | logout | security\n")
             }
         } catch { said.set("account: \((error as? LocalizedError)?.errorDescription ?? "\(error)")\n") }
         done.signal()

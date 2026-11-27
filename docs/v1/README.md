@@ -88,18 +88,18 @@ flowchart TD
 | Capability | Web (`openagents.com`) | iOS (`apps/openagents-ios`) | Desktop (`OpenAgents.app`) | CLI (`openagents`) |
 | --- | :---: | :---: | :---: | :---: |
 | **WorkOS Auth** (Magic Auth, Google, GitHub, Apple, Email+Password, SSO) | Yes (`/login`) | Yes (`AccountView`, Apple 4.8) | Yes (`Account.swift`) | Yes (`login --workos`) |
-| **Passkey & Nostr Identity** (`L2` / `L2-fresh` step-up) | Yes | Yes | Yes | Yes (NIP-98) |
+| **Passkey & Nostr Identity** (`L2` / `L2-fresh` step-up) | Yes | Yes | Passkey only (no Nostr in Desktop v1) | Yes (NIP-98) |
 | **Synced Cloud Chat (`chat_v2` + SSE)** | Yes (`/chat`) | Yes (`MobileCloudChat`) | Yes (linked via account) | Yes (`chat`) |
 | **Cloud Inference + Tool Loop** (Gemini 4 Neon `thought_signature`, Tier 1 tools) | Yes | Yes | Yes | Yes |
 | **GitHub Repo Integration** (WorkOS Pipes, zero stored token) | Yes (`/projects`, `/settings`) | Read/use via Projects & Cloud Chat | Yes | Yes |
 | **Enrolled Computers (Tier 2 — Zero Tailscale)** | Target & monitor turns | Target & monitor turns | Enroll workstation + run turns | `environments enroll/run` |
 | **Cloud Sandboxes (Tier 3 — GCE `oa-boat`)** | Target + metered billing | Target + stream output | Target + stream output | Yes |
 | **Local Inkling 2 Mini (Psionic Metal 4, 32K ctx)** | — | — | Yes (macOS Apple Silicon ≥ 32 GB) | Via Psionic binary |
-| **Local Coding Harness (`oa-worker`, worktrees, MCP, Subagents, `/goal`)** | — | — | Yes | Yes (`coder`, `mcp`) |
-| **Bitcoin / Lightning Paid Credit & Spark Wallet** | Top-up + balance (`/settings/wallet`) | Native Spark Wallet (`WalletView`) | Spark Wallet + balance | `wallet` |
-| **Referrals & Promo Credit** (`/r/<code>`, `$5+$10+$5+1%`, milestones) | Full UI (`/r/`, `/referrals`, Settings) | Balance reflected via account API | Balance reflected via account API | `referral`, `admin referral` |
+| **Local Coding Harness (`oa-worker`, worktrees, MCP, Subagents, `/goal`, Browser Pane)** | — | — | Yes | Yes (`coder`, `mcp`) |
+| **Bitcoin / Lightning Paid Credit & Spark Wallet** | Top-up + balance (`/settings/wallet`) | Native Spark Wallet (`WalletView`) | Balance display via account API (no Spark Wallet / Bitcoin SDK in Desktop v1) | `wallet` |
+| **Referrals & Promo Credit** (`/r/<code>`, `$5+$10+$5+1%`, milestones) | Full UI (`/r/`, `/referrals`, Settings) | Balance reflected via account API | Two-line Paid + Promo balance via account API | `referral`, `admin referral` |
 | **9 Static SSR Technical Books** | Yes (`/books`, 0 KB JS/Wasm) | — | — | — |
-| **Tailscale / LAN Pairing** | None | **Removed completely** | Legacy optional only (not required for Cloud) | None |
+| **Tailscale / LAN Pairing** | None | **Removed completely** | **Removed from Desktop v1** (zero Bonjour/Local Network) | None |
 
 ---
 

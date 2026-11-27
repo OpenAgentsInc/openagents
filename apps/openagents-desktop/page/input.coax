@@ -57,9 +57,9 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_flag(s, DC_FLAG_TERMINAL) && cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
   if act >= CP_CKPT_DIFF && act <= CP_CKPT_DIFF_ALL { return cp_flag(s, DC_FLAG_GIT) && cp_ckpt_press(s, act, surface_id(s[0].surface[..], row)); }   // Per-turn checkpoints (checkpoint.coax; #13872)
   if act >= CP_SB_VIEW_ACTIVE_ACT && act <= CP_SB_SNOOZED_TOGGLE { return cp_sb_press(s, act, surface_id(s[0].surface[..], row)); }   // Sidebar working/snoozed shelf, archive, bulk, load more & undo (sidebar_groups.coax; #13875, #14025)
-  if act >= CP_IS_ACT_FIRST && act <= CP_IS_ACT_LAST { return cp_introspect_press(s, act, surface_id(s[0].surface[..], row)); }   // Universal Introspection sidebar sections & live inspector (introspect.coax; #14066)
+  if act >= CP_IS_ACT_FIRST && act <= CP_IS_ACT_LAST { return cp_flag(s, DC_FLAG_ENVIRONMENTS) && cp_introspect_press(s, act, surface_id(s[0].surface[..], row)); }   // Universal Introspection sidebar sections & live inspector (introspect.coax; #14066)
   if act >= CP_FIND_PREV && act <= CP_MINIMAP_TRACK { return cp_find_press(s, act); }   // In-thread Find & Minimap (find.coax; #13876)
-  if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882, #14065)
+  if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_flag(s, DC_FLAG_VOICE) && cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882, #14065)
   if act >= CP_RICH_STASH_POP && act <= CP_RICH_SIDE_OPEN_MAIN { return cp_flag(s, DC_FLAG_RICH) && cp_rich_press(s, act, surface_id(s[0].surface[..], row)); } // Rich composer & Side Chat (rich.coax; #13884)
   if act >= CP_SCHED_ACT_ADD && act <= CP_SCHED_ACT_UPDATE_ALL { return cp_flag(s, DC_FLAG_SCHEDULED) && cp_sched_press(s, act, surface_id(s[0].surface[..], row)); }  // Scheduled Tasks & Update Everything (scheduled.coax; #13885)
   if act >= CP_PREVIEW_CLOSE && act < CP_PREVIEW_PORT_BASE + CP_PREVIEW_MAX_PORTS { return cp_flag(s, DC_FLAG_PREVIEW) && cp_preview_press(s, act); } // Embedded Web Preview Pane (preview.coax; #13888)
@@ -252,11 +252,12 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   }
   if act == CP_DASH_CHAT { return cp_dash_press(s, surface_id(s[0].surface[..], row)); }
   if act == CP_WALLET_TOGGLE {
+    if !cp_flag(s, DC_FLAG_WALLET) { return false; }
     ok := cp_wallet_pane_toggle(s);
     if ok { cp_nav_record_current(s); }
     return ok;
   }
-  if act == CP_WALLET_ACT { return cp_wallet_pane_press(s, surface_id(s[0].surface[..], row)); }
+  if act == CP_WALLET_ACT { return cp_flag(s, DC_FLAG_WALLET) && cp_wallet_pane_press(s, surface_id(s[0].surface[..], row)); }
   if act == CP_NAV_BACK { return cp_nav_go(s, -1); }
   if act == CP_NAV_FWD { return cp_nav_go(s, 1); }
   if act == CP_RIGHT_PANE_TOGGLE { return cp_right_pane_toggle(s); }

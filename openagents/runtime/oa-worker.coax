@@ -2598,9 +2598,9 @@ fww_active_packs :: (cwd: string, include_coax_intel: bool) -> int {
   mask := oa_member_packs_from_flags(include_coax_intel, has_wallet, has_cli, has_mv);
   if has_kb { mask |= OA_PACK_KNOWLEDGE; }
   cap_env := fww_trim(cl_getenv("OA_CAPABILITY_TOOLS", eb[..]));
-  if cap_env != "0" && cap_env != "false" { mask |= OA_PACK_CAPABILITY; }
+  if cap_env == "1" || cap_env == "true" { mask |= OA_PACK_CAPABILITY; }
   sess_env := fww_trim(cl_getenv("OA_SESSION_TOOLS", eb[..]));
-  if sess_env == "1" || sess_env == "true" || (sess_env != "0" && sess_env != "false" && fww_has_session_bus()) {
+  if sess_env == "1" || sess_env == "true" {
     mask |= OA_PACK_SESSIONS;
   }
   x_env := fww_trim(cl_getenv("OA_X_TOOLS", eb[..]));

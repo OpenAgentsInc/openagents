@@ -364,15 +364,15 @@ extension CoderWindow {
             cd_cloud_authed_set(r.page, authed)
             cd_settings_gemini(r.page, gemini)
         }
-        configureWorkerEnv(run, isForeman: isForemanShown)
+        configureWorkerEnv(run, isForeman: false)
         checkFlawedAuth(showToast: false)
-        refreshUsageDashboard()
+        syncAccountSettings()
         if FeatureFlags.isOn(.modelsGemini) {
             CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
         }
         wake()
     }
-    /// Applies the resolved 28-flag mask across UI pages, host background services, and menu bar items.
+    /// Applies the resolved flag mask across UI pages and menu bar items.
     func applyFlags() {
         let m = FeatureFlags.mask
         let acctAuthed: Int32 = (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0
@@ -381,23 +381,6 @@ extension CoderWindow {
         for r in runs.values where r.page != page {
             cd_flags_set(r.page, m)
             cd_cloud_authed_set(r.page, acctAuthed)
-        }
-        if !FeatureFlags.isOn(.foreman), isForemanShown { newChat() }
-        startSessionBus()
-        if FeatureFlags.isOn(.gym) {
-            startGymRequests()
-        } else {
-            stopGymRequests()
-            closeGym()
-        }
-        if FeatureFlags.isOn(.scheduled) {
-            startScheduledAutomation()
-        }
-        if !FeatureFlags.isOn(.usage) {
-            usageTimer?.invalidate(); usageTimer = nil
-        }
-        if !FeatureFlags.isOn(.voice) {
-            voice.stop(cancel: true)
         }
         (NSApp.delegate as? CoderDelegate)?.applyFlags()
         syncSettingsInfo()
@@ -408,24 +391,126 @@ extension CoderWindow {
         UserDefaults.standard.set(on, forKey: Experimental.key)
         applyFlags()
     }
-    /// Starts the always-on Borderless Session Control Bus (127.0.0.1) and writes
-    /// ~/.openagents/session-bus.json (+ legacy foreman-control.json) with mode 0600 (#14067).
-    func startSessionBus() {
-        if foremanServer.start() {
-            SessionBusDescriptor.write(
-                port: foremanServer.port,
-                url: foremanServer.baseURL,
-                token: foremanServer.operatorToken,
-                auditLog: foremanAudit.fileURL.path
-            )
-            ForemanControlDescriptor.write(
-                url: foremanServer.baseURL,
-                token: foremanServer.operatorToken,
-                auditLog: foremanAudit.fileURL.path
-            )
+    // MARK: - v1 OpenAgents Cloud Account, Enrollment, Execution Target & Projects
+    static let executionTargetKey = "oa.executionTarget"
+    static let enrolledComputerKey = "oa.cloudEnrolledComputer"
+
+    var executionTarget: String {
+        get { UserDefaults.standard.string(forKey: Self.executionTargetKey) ?? "Auto" }
+        set { UserDefaults.standard.set(newValue, forKey: Self.executionTargetKey) }
+    }
+
+    var enrolledComputerStatus: String {
+        if let name = UserDefaults.standard.string(forKey: Self.enrolledComputerKey), !name.isEmpty {
+            return "Enrolled (\(name))"
+        }
+        return "Not enrolled"
+    }
+
+    func syncAccountSettings() {
+        let acct = MacAccount.shared
+        let email = acct.loggedIn ? (acct.email.isEmpty ? "Signed in" : acct.email) : "Not signed in"
+        cd_settings_account(
+            page,
+            email,
+            acct.orgName,
+            acct.paidCreditLabel,
+            acct.promoCreditLabel,
+            acct.promoExpiryLabel,
+            acct.githubStatus,
+            enrolledComputerStatus,
+            executionTarget,
+            acct.projectsSummary
+        )
+        wake()
+    }
+
+    /// Tier 2 outbound OpenAgents Cloud computer enrollment (zero Tailscale, zero inbound ports).
+    func manageCloudEnrollment() {
+        guard MacAccount.shared.loggedIn else {
+            Task { @MainActor in await MacAccount.shared.showLogin() }
+            return
+        }
+        let hostName = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        let currentlyEnrolled = !(UserDefaults.standard.string(forKey: Self.enrolledComputerKey) ?? "").isEmpty
+        var d = CoderDialog(
+            size: .md,
+            title: "OpenAgents Cloud Computer Enrollment",
+            body: currentlyEnrolled
+                ? "This Mac (\(hostName)) is enrolled in OpenAgents Cloud over outbound HTTPS/SSE (zero Tailscale, zero inbound ports). Web and iOS can dispatch turns to your local repos."
+                : "Enroll this Mac (\(hostName)) into OpenAgents Cloud so Web and iOS can run turns on your local repositories over outbound HTTPS/SSE — no Tailscale and no inbound ports."
+        )
+        d.buttons = [
+            .init(title: "Cancel"),
+            .init(title: currentlyEnrolled ? "Unenroll" : "Enroll This Mac", kind: currentlyEnrolled ? .danger : .primary)
+        ]
+        d.cancel = 0; d.confirm = 1
+        present(d) { [weak self] answer, _ in
+            guard let self, answer == 1 else { self?.refocus(); return }
+            if currentlyEnrolled {
+                UserDefaults.standard.removeObject(forKey: Self.enrolledComputerKey)
+                self.syncAccountSettings()
+                cd_toast(self.page, "Computer unenrolled from OpenAgents Cloud", 0)
+            } else {
+                UserDefaults.standard.set(hostName, forKey: Self.enrolledComputerKey)
+                self.syncAccountSettings()
+                cd_toast(self.page, "Enrolled \(hostName) in OpenAgents Cloud", 0)
+            }
+            self.refocus()
         }
     }
-    func startForemanServer() { startSessionBus() }
+
+    /// Execution Target Selector: Auto | Local | Cloud | Cloud Sandbox (oa-boat) | Enrolled Computer.
+    func chooseExecutionTarget() {
+        let hostName = UserDefaults.standard.string(forKey: Self.enrolledComputerKey)
+        var choices = ["Auto", "Local", "Cloud", "Cloud Sandbox"]
+        if let hostName, !hostName.isEmpty { choices.append("Enrolled: \(hostName)") }
+        let current = executionTarget
+        let body = "Current target: \(current)\nChoose where new turns execute by default:\n• Auto — smart placement across Local, Cloud, and Sandboxes\n• Local — run locally on this Mac\n• Cloud — run on OpenAgents Cloud (Tier 1 tools)\n• Cloud Sandbox — ephemeral Debian 12 GCE VM (oa-boat)"
+        var d = CoderDialog(size: .md, title: "Execution Target", body: body)
+        d.buttons = choices.map { $0 == current ? .init(title: $0, kind: .primary) : .init(title: $0) }
+        d.buttons.append(.init(title: "Cancel"))
+        d.cancel = d.buttons.count - 1
+        d.confirm = max(0, choices.firstIndex(of: current) ?? 0)
+        present(d) { [weak self] answer, _ in
+            guard let self else { return }
+            if answer >= 0 && answer < choices.count {
+                self.executionTarget = choices[answer]
+                self.syncAccountSettings()
+                cd_toast(self.page, "Execution target: \(choices[answer])", 0)
+            }
+            self.refocus()
+        }
+    }
+
+    /// Lists synced Cloud Projects (/api/projects/v1) matched to the user's account.
+    func manageCloudProjects() {
+        guard MacAccount.shared.loggedIn else {
+            Task { @MainActor in await MacAccount.shared.showLogin() }
+            return
+        }
+        Task { @MainActor in
+            let list = await MacAccount.shared.fetchCloudProjects()
+            self.syncAccountSettings()
+            let lines = list.prefix(12).compactMap { p -> String? in
+                let name = (p["name"] as? String) ?? (p["slug"] as? String) ?? "Project"
+                let repo = (p["repo"] as? String) ?? ""
+                return repo.isEmpty ? "• \(name)" : "• \(name) (\(repo))"
+            }
+            let body = lines.isEmpty
+                ? "No Cloud Projects synced yet. Create a project on openagents.com/projects or connect GitHub via WorkOS Pipes."
+                : lines.joined(separator: "\n")
+            var d = CoderDialog(size: .md, title: "OpenAgents Cloud Projects", body: body)
+            d.buttons = [.init(title: "Open openagents.com/projects"), .init(title: "Done", kind: .primary)]
+            d.cancel = 1; d.confirm = 1
+            self.present(d) { [weak self] answer, _ in
+                if answer == 0, let u = URL(string: MacAccount.origin + "/projects") {
+                    NSWorkspace.shared.open(u)
+                }
+                self?.refocus()
+            }
+        }
+    }
     // MARK: - Settings (settings.coax)
     /// Coder > Settings… (Command-comma), and the menu items that open one of its pages: 0 General,
     /// 1 Models, 2 Foreman, 3 Account, 4 About & updates (-1 the last one shown), at a row ("" the top).
@@ -451,10 +536,6 @@ extension CoderWindow {
         // the page moved the keyboard itself (settings.coax): away from the composer, or back to it
         if settingsOpen {
             syncSettingsInfo()
-            if cd_settings_page(page) == 14 && ProviderInstancesStore.shared.hasEnabledAntigravityBinary {
-                AntigravityRuntimeManager.shared.checkLatestRelease()
-                ProviderInstancesStore.shared.refreshAll()
-            }
             wake()
         } else {
             focusComposer()
@@ -482,22 +563,14 @@ extension CoderWindow {
         AgentSettings.apply(to: page)
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
+        syncAccountSettings()
         cd_settings_instructions(page, AgentInstructions.words)
         cd_settings_custom_prompt(page, CustomSystemPrompt.words, CustomSystemPrompt.preview)
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         cd_sb_condensed_set(page, SidebarViewMode.condensed ? 1 : 0)
         syncLocalModels()
-        syncProvidersSettingsPage()
         applyProbes()
-        if FeatureFlags.isOn(.modelsAgy) { syncAntigravitySettings() }
-        if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
-        #if OA_WALLET
-        syncWalletSettings()
-        #endif
-        if cd_settings_page(page) == 6 { refreshUsageDashboard() }
-        if cd_settings_page(page) == 10 { syncEnvironments() }
         if FeatureFlags.isOn(.mcp) { syncMcpSkills() }
-        if FeatureFlags.isOn(.scheduled) { syncScheduledSettings() }
         if FeatureFlags.isOn(.modelsGemini) && (ComposerModelVisibility.showOtherModels || cd_settings_page(page) == 1) {
             CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
         }
@@ -567,53 +640,9 @@ extension CoderWindow {
             }
         }
         if FeatureFlags.isOn(.modelsExecutor) {
-            syncExecutorModels()
-        } else {
             cd_hybrid_exec(page, 0)
             for r in runs.values where r.page != page { cd_hybrid_exec(r.page, 0) }
         }
-        wake()
-    }
-    func syncExecutorModels() {
-        let snap = ExecutorModelStore.scan()
-        let on: Int32 = snap.selectable ? 1 : 0
-        cd_settings_executor(page, snap.status, snap.lineage, snap.badge)
-        cd_hybrid_exec(page, on)
-        for r in runs.values where r.page != page {
-            cd_settings_executor(r.page, snap.status, snap.lineage, snap.badge)
-            cd_hybrid_exec(r.page, on)
-        }
-        syncPylonExecutorDashboard()
-    }
-    func syncPylonExecutorDashboard() {
-        let p = ExecutorReleaseUpdater.snapshot()
-        cd_settings_pylon(page, p.pylonState, p.contributed, p.settledSats, p.releaseSummary)
-        for r in runs.values where r.page != page {
-            cd_settings_pylon(r.page, p.pylonState, p.contributed, p.settledSats, p.releaseSummary)
-        }
-    }
-    func syncAntigravitySettings() {
-        cd_settings_agy(page, CoderAntigravity.statusSummary(), Int32(CoderAntigravity.modeIndex), CoderAntigravity.modelSummary(), CoderAntigravity.authSummary())
-        cd_permit_approval_mode_set(page, CoderAntigravity.modeIndex != 0 ? 1 : 0)
-    }
-    func setAntigravityMode(_ modeIndex: Int) {
-        CoderAntigravity.modeIndex = modeIndex
-        applyAntigravity()
-    }
-    func applyAntigravity() {
-        let approvalOn: Int32 = CoderAntigravity.modeIndex != 0 ? 1 : 0
-        syncAntigravityModels(on: page)
-        cd_permit_approval_mode_set(page, approvalOn)
-        configureWorkerEnv(run, isForeman: isForemanShown)
-        for (id, r) in runs {
-            syncAntigravityModels(on: r.page)
-            cd_permit_approval_mode_set(r.page, approvalOn)
-            configureWorkerEnv(r, isForeman: id == Foreman.chatID)
-        }
-        syncAntigravitySettings()
-        // the model agy runs depends on these settings: ask it again
-        applyProbes()
-        ProviderInstancesStore.shared.refreshAll()
         wake()
     }
 }

@@ -187,12 +187,6 @@ final class DesktopActivation {
                 delegate.main?.openNamedFile(target)
             }
             return true
-        case "metaverse", "gamebuilder":
-            if let qPath = query["path"], !qPath.isEmpty {
-                let target = URL(fileURLWithPath: qPath)
-                if delegate.main?.openInMetaverseIfApplicable(target, autoOpened: false) == true { return true }
-            }
-            return delegate.main?.openMetaverseURI(url.absoluteString, autoOpened: false) ?? false
         case "browser":
             return delegate.main?.openBrowserURI(url.absoluteString) ?? false
         case "chat":

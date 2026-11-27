@@ -164,6 +164,12 @@ CP_ASK_WALLET_OPEN :: 217;      // Sidebar Wallet pane opened: host syncs Keycha
 CP_ASK_WALLET_COPY_NPUB :: 218; // Wallet pane: copy read-only Nostr npub to clipboard
 CP_ASK_WALLET_COPY_HEX :: 219;  // Wallet pane: copy read-only Nostr hex pubkey to clipboard
 CP_ASK_WALLET_COPY_ADDR :: 220; // Wallet pane: copy Spark receive address to clipboard
+CP_ASK_ACCOUNT_ORG :: 260;      // Settings > Account: switch WorkOS organization
+CP_ASK_ACCOUNT_GITHUB :: 261;   // Settings > Account: connect/manage WorkOS Pipes GitHub integration
+CP_ASK_ACCOUNT_ENROLL :: 262;   // Settings > Account: enroll/sync this computer into OpenAgents Cloud (Tier 2)
+CP_ASK_ACCOUNT_TARGET :: 263;   // Settings > Account: pick execution target (Auto/Local/Cloud/Sandbox/Enrolled)
+CP_ASK_ACCOUNT_PROJECTS :: 264; // Settings > Account: list/manage OpenAgents Cloud Projects
+CP_ASK_ACCOUNT_LOGOUT :: 265;   // Settings > Account: sign out of OpenAgents Cloud
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)
@@ -554,6 +560,16 @@ CoderPage :: struct {
   set_wallet_backup: [96] u8; set_wallet_backup_n: int;   // Settings > Wallet backup status (#13900)
   set_wallet_history: [512] u8; set_wallet_history_n: int;// Settings > Wallet recent payments summary (#13900)
   set_wallet_ready: bool;                                 // true only when Spark wallet is live-connected (#13900)
+  // v1 Settings > Account & OpenAgents Cloud status (paid/promo balance, org, GitHub Pipes, enrollment, execution target, projects)
+  set_acct_email: [96] u8; set_acct_email_n: int;
+  set_acct_org: [96] u8; set_acct_org_n: int;
+  set_acct_paid: [64] u8; set_acct_paid_n: int;
+  set_acct_promo: [96] u8; set_acct_promo_n: int;
+  set_acct_promo_exp: [64] u8; set_acct_promo_exp_n: int;
+  set_acct_github: [96] u8; set_acct_github_n: int;
+  set_acct_enroll: [128] u8; set_acct_enroll_n: int;
+  set_acct_target: [96] u8; set_acct_target_n: int;
+  set_acct_projects: [96] u8; set_acct_projects_n: int;
   set_instr: [48] u8; set_instr_n: int;   // the agent instructions' state: "Default", "Edited" (#13808)
   set_sysprompt: [48] u8; set_sysprompt_n: int; // custom system prompt state: "Off", "Active", "Active (over 8 KB)"
   set_sysprompt_preview: [160] u8; set_sysprompt_preview_n: int; // first-line preview of active custom system prompt

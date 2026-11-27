@@ -1,12 +1,11 @@
 // Feature flag registry for OpenAgents Desktop (macOS, Linux, Windows).
-// Single source of truth for the release defaults and all gated capabilities.
+// Single source of truth for the v1.0.0 release defaults and all gated capabilities.
 //
-// `account` defaults ON so users can sign in to OpenAgents Cloud out of the box
-// in --minimal release builds (#14087); all other flags default OFF. Turning on
-// `experimentalFeatures` (Settings > General, `--experimental`, or
-// `OA_EXPERIMENTAL=1`) enables every flag as a developer alias; individual flags
-// turn on via `defaults write com.openagents.desktop flag.NAME -bool YES`,
-// `OA_FLAGS=name,name`, or `--flag name`.
+// Core v1.0.0 flags default ON: account, git, mcp, browser, and Cloud/BYOK models
+// (models.gemini, models.claude, models.openrouter). All post-v1 / excluded subsystems
+// (wallet, foreman, gym, forge, voice, scheduled, customize, usage, proof, capabilities,
+// agents, scenes, rich, metaverse, gamebuilder, preview, antigravity, external, executor,
+// environments, pairing, simulator, terminal) default OFF.
 #authority;
 
 DC_FLAG_NONE :: -1;
@@ -55,24 +54,24 @@ DcFlagDef :: struct {
 
 dc_flags_table :: () -> [DC_FLAG_COUNT] DcFlagDef #effects() {
   return [DC_FLAG_COUNT] DcFlagDef.[
-    DcFlagDef.{bit = DC_FLAG_MODELS_GEMINI, name = "models.gemini", default_on = false, desc = "Gemini cloud models, API key, sign-in probe, and Gemini sub-agent levels."},
-    DcFlagDef.{bit = DC_FLAG_MODELS_CLAUDE, name = "models.claude", default_on = false, desc = "Claude Code models, Claude sub-agents, Claude key, and orchestrator picker."},
-    DcFlagDef.{bit = DC_FLAG_MODELS_OPENROUTER, name = "models.openrouter", default_on = false, desc = "OpenRouter main and sub-agent models and key settings."},
+    DcFlagDef.{bit = DC_FLAG_MODELS_GEMINI, name = "models.gemini", default_on = true, desc = "Gemini cloud models, API key, sign-in probe, and Gemini sub-agent levels."},
+    DcFlagDef.{bit = DC_FLAG_MODELS_CLAUDE, name = "models.claude", default_on = true, desc = "Claude Code models, Claude sub-agents, Claude key, and orchestrator picker."},
+    DcFlagDef.{bit = DC_FLAG_MODELS_OPENROUTER, name = "models.openrouter", default_on = true, desc = "OpenRouter main and sub-agent models and key settings."},
     DcFlagDef.{bit = DC_FLAG_MODELS_ANTIGRAVITY, name = "models.antigravity", default_on = false, desc = "Antigravity CLI model entry, probe, and settings rows."},
     DcFlagDef.{bit = DC_FLAG_MODELS_EXTERNAL, name = "models.external", default_on = false, desc = "Codex, Cursor, ACP Registry providers, handoff, and multi-model fan-out."},
     DcFlagDef.{bit = DC_FLAG_MODELS_EXECUTOR, name = "models.executor", default_on = false, desc = "Hybrid Executor, compiled weight modules, Local Pylon, settled sats, and rollout."},
     DcFlagDef.{bit = DC_FLAG_MODELS_INKLING_NEON, name = "models.inklingNeon", default_on = false, desc = "Inkling + Neon hybrid routing and Inkling as a cloud sub-agent."},
-    DcFlagDef.{bit = DC_FLAG_ACCOUNT, name = "account", default_on = true, desc = "OpenAgents account login, profile page, and device key linking."},
+    DcFlagDef.{bit = DC_FLAG_ACCOUNT, name = "account", default_on = true, desc = "OpenAgents account login, profile page, org switcher, and Cloud computer enrollment."},
     DcFlagDef.{bit = DC_FLAG_FOREMAN, name = "foreman", default_on = false, desc = "Foreman chat, sidebar row, menu, permission tiers, and local control server."},
     DcFlagDef.{bit = DC_FLAG_GYM, name = "gym", default_on = false, desc = "Gym workbench, Benchmarks, Terminal-Bench, PLE 3D, and Lean RH modes."},
     DcFlagDef.{bit = DC_FLAG_WALLET, name = "wallet", default_on = false, desc = "Spark Bitcoin/Lightning wallet, RPC, Nostr identity, and settle helper."},
     DcFlagDef.{bit = DC_FLAG_FORGE, name = "forge", default_on = false, desc = "PRs & Issues sidebar view and review tours."},
-    DcFlagDef.{bit = DC_FLAG_GIT, name = "git", default_on = false, desc = "Git actions toolbar, diff viewer, checkpoints, and rewind."},
+    DcFlagDef.{bit = DC_FLAG_GIT, name = "git", default_on = true, desc = "Git actions toolbar, diff viewer, checkpoints, and rewind."},
     DcFlagDef.{bit = DC_FLAG_SIMULATOR, name = "simulator", default_on = false, desc = "iOS Simulator pane and oasim helper."},
     DcFlagDef.{bit = DC_FLAG_TERMINAL, name = "terminal", default_on = false, desc = "Integrated multi-tab terminal pane."},
     DcFlagDef.{bit = DC_FLAG_PREVIEW, name = "preview", default_on = false, desc = "Web preview pane and SnapShot Region."},
     DcFlagDef.{bit = DC_FLAG_VOICE, name = "voice", default_on = false, desc = "Voice dictation, mic button, and Voice settings page."},
-    DcFlagDef.{bit = DC_FLAG_MCP, name = "mcp", default_on = false, desc = "MCP servers, OAuth sign-in, and Skills catalog."},
+    DcFlagDef.{bit = DC_FLAG_MCP, name = "mcp", default_on = true, desc = "MCP servers, OAuth sign-in, and Skills catalog."},
     DcFlagDef.{bit = DC_FLAG_SCHEDULED, name = "scheduled", default_on = false, desc = "Scheduled tasks, webhooks, and Update Everything."},
     DcFlagDef.{bit = DC_FLAG_ENVIRONMENTS, name = "environments", default_on = false, desc = "Remote SSH, Boats, server exposure, and keep awake."},
     DcFlagDef.{bit = DC_FLAG_PAIRING, name = "pairing", default_on = false, desc = "Tailscale mobile device pairing listener and settings."},
@@ -85,7 +84,7 @@ dc_flags_table :: () -> [DC_FLAG_COUNT] DcFlagDef #effects() {
     DcFlagDef.{bit = DC_FLAG_RICH, name = "rich", default_on = false, desc = "Prompt stash, history, side chat, and composer upgrades."},
     DcFlagDef.{bit = DC_FLAG_METAVERSE, name = "metaverse", default_on = false, desc = "Expandable right-side Metaverse 3D Viewer pane for models, packs, scenes, and realms."},
     DcFlagDef.{bit = DC_FLAG_GAMEBUILDER, name = "gamebuilder", default_on = false, desc = "GameBuilder creation, play, play-test, agents, and publish studio inside the Metaverse pane."},
-    DcFlagDef.{bit = DC_FLAG_BROWSER, name = "browser", default_on = false, desc = "Expandable multi-tab right-side Browser pane with DevTools drawer and agent automation."},
+    DcFlagDef.{bit = DC_FLAG_BROWSER, name = "browser", default_on = true, desc = "Expandable multi-tab right-side Browser pane with DevTools drawer and agent automation."},
   ];
 }
 
@@ -230,14 +229,15 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
 
 // ---------------------------------------------------------------- checks
 
-#test "flag registry: all 31 flags have unique sequential bits, names, descriptions, and only account defaults on" {
+#test "flag registry: all 31 flags have unique sequential bits, names, descriptions, and v1 release defaults" {
   tbl := dc_flags_table();
   #assert tbl.count == DC_FLAG_COUNT && DC_FLAG_COUNT == 31;
-  #assert dc_flags_defaults() == dc_flag_bit(DC_FLAG_ACCOUNT);
+  want_def := dc_flag_bit(DC_FLAG_MODELS_GEMINI) | dc_flag_bit(DC_FLAG_MODELS_CLAUDE) | dc_flag_bit(DC_FLAG_MODELS_OPENROUTER) | dc_flag_bit(DC_FLAG_ACCOUNT) | dc_flag_bit(DC_FLAG_GIT) | dc_flag_bit(DC_FLAG_MCP) | dc_flag_bit(DC_FLAG_BROWSER);
+  #assert dc_flags_defaults() == want_def;
   for i: 0..<DC_FLAG_COUNT {
     #assert tbl[i].bit == i;
     #assert tbl[i].name.count > 0 && tbl[i].desc.count > 0;
-    #assert tbl[i].default_on == (i == DC_FLAG_ACCOUNT);
+    #assert tbl[i].default_on == dc_flag_on(want_def, i);
     #assert dc_flag_find(tbl[i].name) == i;
     #assert dc_flag_name(i) == tbl[i].name;
     #assert dc_flag_desc(i) == tbl[i].desc;
@@ -300,14 +300,16 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
   #assert dc_flags_parse_args(1 << DC_FLAG_COUNT, "") == 0;
 }
 
-#test "flag resolution: release default enables account only; defaults, OA_FLAGS, --flag, and experimentalFeatures compose cleanly" {
-  // Release default: account on for OpenAgents Cloud sign-in; extra models off
+#test "flag resolution: release default enables v1 core flags; defaults, OA_FLAGS, --flag, and experimentalFeatures compose cleanly" {
+  want_def := dc_flags_defaults();
+  // Release default: v1 core flags (account, git, mcp, browser, gemini, claude, openrouter) on; non-v1 flags off
   r0 := dc_flags_resolve(false, 0, "", "", "");
-  #assert r0 == dc_flag_bit(DC_FLAG_ACCOUNT) && !dc_flags_any_extra_model(r0);
+  #assert r0 == want_def && dc_flags_any_extra_model(r0);
+  #assert !dc_flag_on(r0, DC_FLAG_WALLET) && !dc_flag_on(r0, DC_FLAG_FOREMAN) && !dc_flag_on(r0, DC_FLAG_GYM) && !dc_flag_on(r0, DC_FLAG_METAVERSE) && !dc_flag_on(r0, DC_FLAG_GAMEBUILDER) && !dc_flag_on(r0, DC_FLAG_VOICE) && !dc_flag_on(r0, DC_FLAG_MODELS_ANTIGRAVITY);
 
   // Individual defaults bitmask masked to valid bits and combined with release defaults
-  r1 := dc_flags_resolve(false, dc_flag_bit(DC_FLAG_GIT) | (1 << 35), "", "", "");
-  #assert r1 == (dc_flag_bit(DC_FLAG_ACCOUNT) | dc_flag_bit(DC_FLAG_GIT));
+  r1 := dc_flags_resolve(false, dc_flag_bit(DC_FLAG_TERMINAL) | (1 << 35), "", "", "");
+  #assert r1 == (want_def | dc_flag_bit(DC_FLAG_TERMINAL));
 
   // experimentalFeatures default alias turns every flag on
   #assert dc_flags_resolve(true, 0, "", "", "") == DC_FLAGS_ALL;
@@ -315,10 +317,10 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
   // OA_EXPERIMENTAL=1 alias turns every flag on; "0" does not
   #assert dc_flags_resolve(false, 0, "", "1", "") == DC_FLAGS_ALL;
   #assert dc_flags_resolve(false, 0, "", " 1 ", "") == DC_FLAGS_ALL;
-  #assert dc_flags_resolve(false, 0, "", "0", "") == dc_flag_bit(DC_FLAG_ACCOUNT);
+  #assert dc_flags_resolve(false, 0, "", "0", "") == want_def;
 
   // Explicit --no-flag=account turns account off cleanly
-  #assert dc_flags_resolve(false, 0, "", "", "--no-flag=account\n") == 0;
+  #assert dc_flags_resolve(false, 0, "", "", "--no-flag=account\n") == (want_def ^ dc_flag_bit(DC_FLAG_ACCOUNT));
 
   // --experimental turns all on; subsequent --no-flag can narrow it
   r2 := dc_flags_resolve(false, 0, "", "", "--experimental\n--no-flag=wallet\n");
@@ -326,5 +328,5 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
 
   // Env and CLI compose with defaults
   r3 := dc_flags_resolve(false, dc_flag_bit(DC_FLAG_GIT), "terminal", "", "--flag\npreview");
-  #assert r3 == (dc_flag_bit(DC_FLAG_ACCOUNT) | dc_flag_bit(DC_FLAG_GIT) | dc_flag_bit(DC_FLAG_TERMINAL) | dc_flag_bit(DC_FLAG_PREVIEW));
+  #assert r3 == (want_def | dc_flag_bit(DC_FLAG_TERMINAL) | dc_flag_bit(DC_FLAG_PREVIEW));
 }

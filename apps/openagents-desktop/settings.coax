@@ -21,7 +21,7 @@ CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account",
 CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN, ICON_SET_MODELS, ICON_SET_TAG, ICON_SET_PHONE, ICON_SET_PHONE, ICON_SET_FOREMAN, ICON_SET_GENERAL, ICON_SET_GENERAL, ICON_WIDGET, ICON_BOT];
 // The list's groups, in order, and their pages (Zeron's names where they mean the same).
 CP_SET_GROUPS :: 3;
-CP_SET_GROUP :: [CP_SET_GROUPS] string.["Personal", "Agents", "Coder"];
+CP_SET_GROUP :: [CP_SET_GROUPS] string.["Personal", "Agents", "OpenAgents"];
 CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_APPEARANCE, CP_PG_KEYBINDINGS, CP_PG_VOICE, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_FLAWED, CP_PG_PROVIDERS, CP_PG_MODELS, CP_PG_MCP, CP_PG_SKILLS, CP_PG_SCHED, CP_PG_FOREMAN, CP_PG_CONNECTIONS, CP_PG_ABOUT];
 CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2];   // the group of each place in CP_SET_ORDER
 CP_SET_QUERY :: 64;           // bytes of a search kept
@@ -142,16 +142,20 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.desktop.quickaccess", name = "Quick Access shortcut", terms = "desktop app quick access option double tap global hotkey floating panel"}];
 }
 // Whether a settings page is visible for the active flag bitmask.
-// Core release pages (flags == 0): General, Flawed, Providers, Models (Local), and About & updates.
+// Core release pages (flags == 0): General, Agent, Models, and About & updates.
+// v1 default-on flagged pages: Account, MCP, Skills.
+// All non-v1 pages (Providers, Foreman, Wallet, Usage, Voice, Connections, Scheduled, Appearance, Keybindings)
+// remain strictly gated on their respective flags (all default_on = false).
 cp_set_page_ok_flags :: (flags: int, page: int) -> bool {
-  if page == CP_PG_GENERAL || page == CP_PG_FLAWED || page == CP_PG_MODELS || page == CP_PG_PROVIDERS || page == CP_PG_ABOUT { return true; }
+  if page == CP_PG_GENERAL || page == CP_PG_FLAWED || page == CP_PG_MODELS || page == CP_PG_ABOUT { return true; }
+  if page == CP_PG_PROVIDERS { return dc_flag_on(flags, DC_FLAG_MODELS_EXTERNAL); }
   if page == CP_PG_FOREMAN { return dc_flag_on(flags, DC_FLAG_FOREMAN); }
   if page == CP_PG_ACCOUNT { return dc_flag_on(flags, DC_FLAG_ACCOUNT); }
   if page == CP_PG_WALLET { return dc_flag_on(flags, DC_FLAG_WALLET); }
-  if page == CP_PG_USAGE { return true; }
+  if page == CP_PG_USAGE { return dc_flag_on(flags, DC_FLAG_USAGE); }
   if page == CP_PG_MCP || page == CP_PG_SKILLS { return dc_flag_on(flags, DC_FLAG_MCP); }
-  if page == CP_PG_VOICE { return true; }
-  if page == CP_PG_CONNECTIONS { return true; }
+  if page == CP_PG_VOICE { return dc_flag_on(flags, DC_FLAG_VOICE); }
+  if page == CP_PG_CONNECTIONS { return dc_flag_on(flags, DC_FLAG_ENVIRONMENTS) || dc_flag_on(flags, DC_FLAG_PAIRING); }
   if page == CP_PG_SCHED { return dc_flag_on(flags, DC_FLAG_SCHEDULED); }
   if page == CP_PG_APPEARANCE || page == CP_PG_KEYBINDINGS { return dc_flag_on(flags, DC_FLAG_CUSTOMIZE); }
   return false;
@@ -365,7 +369,15 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     if id == "set.audit.a" { s[0].ask = CP_ASK_AUDIT; return true; }
     if id == "set.clear.a" { s[0].ask = CP_ASK_CLEAR_FOREMAN; return true; }
   }
-  if cp_flag(s, DC_FLAG_ACCOUNT) && id == "set.login" { s[0].ask = CP_ASK_LOGIN; return true; }
+  if cp_flag(s, DC_FLAG_ACCOUNT) {
+    if id == "set.login" || id == "set.account.login.a" { s[0].ask = CP_ASK_LOGIN; return true; }
+    if id == "set.account.org.a" || id == "set.account.org" { s[0].ask = CP_ASK_ACCOUNT_ORG; return true; }
+    if id == "set.account.github.a" || id == "set.account.github" { s[0].ask = CP_ASK_ACCOUNT_GITHUB; return true; }
+    if id == "set.account.enroll.a" || id == "set.account.enroll" { s[0].ask = CP_ASK_ACCOUNT_ENROLL; return true; }
+    if id == "set.account.target.a" || id == "set.account.target" { s[0].ask = CP_ASK_ACCOUNT_TARGET; return true; }
+    if id == "set.account.projects.a" || id == "set.account.projects" { s[0].ask = CP_ASK_ACCOUNT_PROJECTS; return true; }
+    if id == "set.account.logout.a" || id == "set.account.logout" { s[0].ask = CP_ASK_ACCOUNT_LOGOUT; return true; }
+  }
   return false;
 }
 
@@ -467,12 +479,12 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   page := s[0].set_page; names := CP_SET_NAME;
   nb: [CP_SET_QUERY + 16] u8;
   if page == CP_PG_GENERAL {
-    y += set_page_head(f, "set.title", x, y, w, names[page], "How Coder works on this computer.") + t.block_gap;
-    rows: [6] SetRow;
+    y += set_page_head(f, "set.title", x, y, w, names[page], "How OpenAgents works on this computer.") + t.block_gap;
+    rows: [5] SetRow;
     folder := ifx s[0].folder_n > 0 then sheet_pool(sh, cast(string) s[0].folder[0..<s[0].folder_n]) else "Home folder";
     rows[0] = SetRow.{id = "set.folder", name = "Working folder", desc = "Where OpenAgents runs its commands. New chats start here too.",
       value = folder, kind = SET_ROW_BUTTON, button = "Choose…", action = CP_SET_ACT, state = ifx cp_running(s) then EL_S_DISABLED else 0};
-    rows[1] = SetRow.{id = "set.zoom", name = "Text size", desc = "Bigger and smaller words everywhere in Coder.",
+    rows[1] = SetRow.{id = "set.zoom", name = "Text size", desc = "Bigger and smaller text everywhere in OpenAgents.",
       value = sheet_pool(sh, cp_zoom_text(s, nb[..])), kind = SET_ROW_STEPPER, button = "−", button2 = "+", action = CP_SET_ACT, action2 = CP_SET_ACT};
     rows[2] = SetRow.{id = "set.sidebar.view", name = "Sidebar view",
       desc = ifx s[0].sb[0].condensed then "Condensed — show only the chat title and status line." else "Expanded — show chat title, repository, branch, and model icon.",
@@ -498,9 +510,6 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
              else "Notifications & Sound — OS alerts and subtle chimes when turns finish or need input.",
       kind = SET_ROW_CHOICE, noptions = 4, chosen = nmode, action = CP_SET_ACT};
     rows[4].options[0] = "Off"; rows[4].options[1] = "Notify"; rows[4].options[2] = "Sound"; rows[4].options[3] = "Both";
-    rows[5] = SetRow.{id = "set.exp", name = "Experimental features", desc = "Log in, account, Gym and Foreman.",
-      kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].experimental then 1 else 0, action = CP_SET_ACT};
-    rows[5].options[0] = "Off"; rows[5].options[1] = "On";
     y += cp_set_group(s, f, "set.general.group", x, y, w, rows[..]) + t.block_gap;
     // Desktop app & reading layout settings (#14140)
     y += set_section_head(f, "set.desktop.head", x, y, w, "Desktop app", "Reading width, macOS menu bar presence, and global Quick Access.") + t.section_gap;
@@ -694,22 +703,30 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     y += cp_set_group(s, f, "set.foreman.group", x, y, w, rows[..]);
   } else if page == CP_PG_ACCOUNT {
     narrow := w < t.aside_narrow;
-    y += set_page_head(f, "set.title", x, y, w, names[page], "Sign in to OpenAgents Cloud for frontier models, synced cloud chats, and transparent usage metering.") + t.block_gap;
+    y += set_page_head(f, "set.title", x, y, w, names[page], "Sign in to OpenAgents Cloud for frontier models, synced cloud chats, Projects, GitHub Pipes, and enrolled computer execution.") + t.block_gap;
     gw := ifx narrow then w else w - t.block_gap - t.aside_w;
     gx := x;
+    acct_email := ifx s[0].set_acct_email_n > 0 then sheet_pool(sh, cast(string) s[0].set_acct_email[0..<s[0].set_acct_email_n]) else "Signed in";
+    acct_org := ifx s[0].set_acct_org_n > 0 then sheet_pool(sh, cast(string) s[0].set_acct_org[0..<s[0].set_acct_org_n]) else "Personal";
+    acct_paid := ifx s[0].set_acct_paid_n > 0 then sheet_pool(sh, cast(string) s[0].set_acct_paid[0..<s[0].set_acct_paid_n]) else "—";
+    acct_promo := ifx s[0].set_acct_promo_n > 0 then sheet_pool(sh, cast(string) s[0].set_acct_promo[0..<s[0].set_acct_promo_n]) else "$0.00";
+    acct_promo_exp := ifx s[0].set_acct_promo_exp_n > 0 then sheet_pool(sh, cast(string) s[0].set_acct_promo_exp[0..<s[0].set_acct_promo_exp_n]) else "Non-withdrawable service credit; spends oldest expiry first on eligible models.";
+    acct_gh := ifx s[0].set_acct_github_n > 0 then sheet_pool(sh, cast(string) s[0].set_acct_github[0..<s[0].set_acct_github_n]) else "Not connected";
+    acct_enroll := ifx s[0].set_acct_enroll_n > 0 then sheet_pool(sh, cast(string) s[0].set_acct_enroll[0..<s[0].set_acct_enroll_n]) else "Not enrolled";
+    acct_target := ifx s[0].set_acct_target_n > 0 then sheet_pool(sh, cast(string) s[0].set_acct_target[0..<s[0].set_acct_target_n]) else "Auto";
+    acct_proj := ifx s[0].set_acct_projects_n > 0 then sheet_pool(sh, cast(string) s[0].set_acct_projects[0..<s[0].set_acct_projects_n]) else "None synced";
     card_tag := ifx s[0].cloud_authed then "OpenAgents Cloud" else "Not signed in";
-    card_name := ifx s[0].cloud_authed then "Signed in" else "Sign in";
-    card_sub := ifx s[0].cloud_authed then "Connected to OpenAgents Cloud" else "Email code, passkey, or Mac key";
+    card_name := ifx s[0].cloud_authed then acct_email else "Sign in";
+    card_sub := ifx s[0].cloud_authed then acct_org else "WorkOS, email code, or passkey";
     if narrow {
-      // the card stands over the rows, centred
       y += set_member_card(f, "set.card", x + (w - t.aside_w) / 2, y, t.aside_w, t.aside_h, card_tag, card_name, card_sub) + t.block_gap;
     } else {
       _ := set_member_card(f, "set.card", x + w - t.aside_w, y, t.aside_w, t.aside_h, card_tag, card_name, card_sub);
     }
     rows: [3] SetRow;
-    rows[0] = SetRow.{id = "set.you", icon = ICON_SET_ACCOUNT, name = "OpenAgents Cloud", desc = ifx s[0].cloud_authed then "Signed in. Cloud turns route through OpenAgents Cloud; local Inkling turns stay $0." else "Sign in with email code, passkey, or this Mac's Nostr key to start chatting."};
-    rows[1] = SetRow.{id = "set.keys", icon = ICON_SET_TAG, name = "Credentials", desc = "Session tokens and BYO keys stay in 0600 files under ~/.openagents/."};
-    rows[2] = SetRow.{id = "set.chats", icon = ICON_SET_PHONE, name = "Cloud chats & local compute", desc = "Chats use OpenAgents Cloud with optional $0 local Inkling 2 Mini acceleration."};
+    rows[0] = SetRow.{id = "set.you", icon = ICON_SET_ACCOUNT, name = "OpenAgents Account", desc = ifx s[0].cloud_authed then "Signed in via WorkOS / Passkey. Session tokens stay in 0600 files under ~/.openagents/desktop/." else "Sign in with WorkOS (Email code, Password, Google, GitHub, Apple, Enterprise SSO) or Passkey."};
+    rows[1] = SetRow.{id = "set.account.org", icon = ICON_SET_TAG, name = "Organization", desc = "Switch active WorkOS B2B organization for this session.", value = acct_org, kind = SET_ROW_BUTTON, button = "Switch…", action = CP_SET_ACT, state = ifx s[0].cloud_authed then 0 else EL_S_DISABLED};
+    rows[2] = SetRow.{id = "set.account.logout", icon = ICON_SET_ACCOUNT, name = "Sign out", desc = "Revoke this Desktop session token and clear local login state.", value = ifx s[0].cloud_authed then acct_email else "Signed out", kind = SET_ROW_BUTTON, button = "Sign out", action = CP_SET_ACT, danger = true, state = ifx s[0].cloud_authed then 0 else EL_S_DISABLED};
     gy := y;
     y += cp_set_group(s, f, "set.account.group", gx, y, gw, rows[..]);
     btn_lbl := ifx s[0].cloud_authed then "Switch account…" else "Sign in to OpenAgents";
@@ -717,6 +734,21 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     _ := set_button(f, "set.login", gx + gw - bw, y + t.button_top, btn_lbl, true, 0, CP_SET_ACT);
     y += t.button_top + t.button_h;
     if !narrow { aside_end := gy + t.aside_h + t.caption_gap + t.desc_line; if aside_end > y { y = aside_end; } }
+    y += t.block_gap;
+    // Two-line Paid + Promo Cloud Credit balance (docs/v1/platform-cloud-auth-money.md §4.3)
+    y += set_section_head(f, "set.account.credits.head", x, y, w, "Cloud Credit Balance", "Paid credit and Promo credit are tracked separately and never commingled.") + t.section_gap;
+    crows: [2] SetRow;
+    crows[0] = SetRow.{id = "set.account.credit", name = "Paid Credit", desc = "Prepaid cloud inference and sandbox balance from openagents.com.", value = acct_paid, kind = SET_ROW_PLAIN};
+    crows[1] = SetRow.{id = "set.account.promo", name = "Promo Credit", desc = acct_promo_exp, value = acct_promo, kind = SET_ROW_PLAIN};
+    y += cp_set_group(s, f, "set.account.credits.group", x, y, w, crows[..]) + t.block_gap;
+    // OpenAgents Cloud: Enrolled Computer (Tier 2), Execution Target, Projects & GitHub Pipes
+    y += set_section_head(f, "set.account.cloud.head", x, y, w, "OpenAgents Cloud & Execution", "Enroll this workstation over outbound HTTPS/SSE (zero Tailscale, zero inbound ports), choose where turns run, and bind GitHub repos via WorkOS Pipes.") + t.section_gap;
+    erows: [4] SetRow;
+    erows[0] = SetRow.{id = "set.account.enroll", name = "Enrolled Computer (Tier 2)", desc = "Outbound OpenAgents Cloud enrollment so Web & iOS can run turns on this Mac's repos with zero Tailscale.", value = acct_enroll, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
+    erows[1] = SetRow.{id = "set.account.target", name = "Execution Target", desc = "Default target for new turns: Auto, Local, Cloud, Cloud Sandbox (oa-boat), or an Enrolled Computer.", value = acct_target, kind = SET_ROW_BUTTON, button = "Choose…", action = CP_SET_ACT};
+    erows[2] = SetRow.{id = "set.account.projects", name = "Cloud Projects", desc = "Synced account Projects (/api/projects/v1) matched to your local and GitHub repositories.", value = acct_proj, kind = SET_ROW_BUTTON, button = "Projects…", action = CP_SET_ACT};
+    erows[3] = SetRow.{id = "set.account.github", name = "GitHub Integration (WorkOS Pipes)", desc = "Connect GitHub via WorkOS Pipes for Cloud repo access and eligible promo credits (zero stored token).", value = acct_gh, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
+    y += cp_set_group(s, f, "set.account.cloud.group", x, y, w, erows[..]);
   } else if page == CP_PG_WALLET {
     y += set_page_head(f, "set.title", x, y, w, names[page], "Self-custodial Bitcoin & Lightning wallet on Breez Spark. Payment rules are enforced by pay/wallet.coax.") + t.block_gap;
     wst := ifx s[0].set_wallet_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_wallet_status[0..<s[0].set_wallet_status_n]) else "Not connected";
@@ -960,6 +992,19 @@ coder_page_settings_wallet :: (s: [] CoderPage, status: string, balance: string,
   s[0].set_wallet_history_n = cp_out(s[0].set_wallet_history[..], history);
   s[0].set_wallet_ready = ready;
 }
+// OpenAgents Cloud Account status (email, org, two-line paid/promo credit, GitHub Pipes, enrollment, execution target, projects).
+coder_page_settings_account :: (s: [] CoderPage, email: string, org: string, paid: string, promo: string, promo_exp: string, github: string, enroll: string, target: string, projects: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].set_acct_email_n = cp_out(s[0].set_acct_email[..], email);
+  s[0].set_acct_org_n = cp_out(s[0].set_acct_org[..], org);
+  s[0].set_acct_paid_n = cp_out(s[0].set_acct_paid[..], paid);
+  s[0].set_acct_promo_n = cp_out(s[0].set_acct_promo[..], promo);
+  s[0].set_acct_promo_exp_n = cp_out(s[0].set_acct_promo_exp[..], promo_exp);
+  s[0].set_acct_github_n = cp_out(s[0].set_acct_github[..], github);
+  s[0].set_acct_enroll_n = cp_out(s[0].set_acct_enroll[..], enroll);
+  s[0].set_acct_target_n = cp_out(s[0].set_acct_target[..], target);
+  s[0].set_acct_projects_n = cp_out(s[0].set_acct_projects[..], projects);
+}
 // The agent instructions' state for General's row ("Default", "Edited", "Off (empty)"; #13808).
 coder_page_settings_instructions :: (s: [] CoderPage, words: string) #export_c #effects(all) {
   if s.count < 1 { return; }
@@ -1165,10 +1210,10 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   coder_page_gym_set(s, true);
   #assert !coder_page_gym_open(s);
   #assert cp_settings_press(s, CP_SET_ACCOUNT, "coder.me") && s[0].set_open && s[0].set_page == CP_PG_ACCOUNT;
-  // the list: General, Account, Providers, Models and About; Foreman opens General
+  // the list: General, Account, Agent, Models, MCP, Skills and About; Foreman/Providers/Voice/Usage/Connections/Wallet stay hidden by default
   #assert cp_set_test_frame(s, 1200, 700);
-  #assert surface_find(s[0].surface[..], "set.page.0") >= 0 && surface_find(s[0].surface[..], "set.page.1") >= 0 && surface_find(s[0].surface[..], "set.page.3") >= 0 && surface_find(s[0].surface[..], "set.page.14") >= 0 && surface_find(s[0].surface[..], "set.page.4") >= 0;
-  #assert surface_find(s[0].surface[..], "set.page.2") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.0") >= 0 && surface_find(s[0].surface[..], "set.page.1") >= 0 && surface_find(s[0].surface[..], "set.page.3") >= 0 && surface_find(s[0].surface[..], "set.page.4") >= 0 && surface_find(s[0].surface[..], "set.page.7") >= 0;
+  #assert surface_find(s[0].surface[..], "set.page.2") < 0 && surface_find(s[0].surface[..], "set.page.5") < 0 && surface_find(s[0].surface[..], "set.page.6") < 0 && surface_find(s[0].surface[..], "set.page.9") < 0 && surface_find(s[0].surface[..], "set.page.10") < 0 && surface_find(s[0].surface[..], "set.page.14") < 0;
   coder_page_settings_open(s, CP_PG_FOREMAN, "");
   #assert coder_page_settings_page(s) == CP_PG_GENERAL;
   coder_page_settings_open(s, CP_PG_ACCOUNT, "");
@@ -1180,13 +1225,11 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_set_hits_in("tier", hits[..], false) == 0 && cp_set_hits_in("tier", hits[..], true) == 1;
   n := cp_set_hits_in("account", hits[..], false);
   #assert n >= 1 && es[hits[0]].page == CP_PG_ACCOUNT;
-  #assert cp_set_page_ok(false, CP_PG_GENERAL) && cp_set_page_ok(false, CP_PG_MODELS) && cp_set_page_ok(false, CP_PG_ABOUT) && cp_set_page_ok(false, CP_PG_ACCOUNT);
-  #assert !cp_set_page_ok(false, CP_PG_FOREMAN) && !cp_set_page_ok_flags(0, CP_PG_ACCOUNT) && cp_set_page_ok(true, CP_PG_ACCOUNT);
-  // General's row: Off shown; On turns them on and asks the host to keep it
-  coder_page_settings_open(s, CP_PG_GENERAL, "");
-  #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.exp.1").action == CP_SET_ACT;
-  #assert cp_set_test_row(s, "set.exp.0").state & EL_S_CURRENT != 0;
-  #assert cp_settings_press(s, CP_SET_ACT, "set.exp.1") && coder_page_action(s) == CP_ASK_EXPERIMENTAL && coder_page_experimental(s);
+  #assert cp_set_page_ok(false, CP_PG_GENERAL) && cp_set_page_ok(false, CP_PG_MODELS) && cp_set_page_ok(false, CP_PG_ABOUT) && cp_set_page_ok(false, CP_PG_ACCOUNT) && cp_set_page_ok(false, CP_PG_MCP);
+  #assert !cp_set_page_ok(false, CP_PG_FOREMAN) && !cp_set_page_ok(false, CP_PG_WALLET) && !cp_set_page_ok(false, CP_PG_VOICE) && !cp_set_page_ok(false, CP_PG_USAGE) && !cp_set_page_ok(false, CP_PG_PROVIDERS) && !cp_set_page_ok(false, CP_PG_CONNECTIONS);
+  #assert !cp_set_page_ok_flags(0, CP_PG_ACCOUNT) && cp_set_page_ok(true, CP_PG_ACCOUNT);
+  // Experimental features toggle via API still switches Foreman/Gym when explicitly enabled
+  coder_page_experimental_set(s, true);
   coder_page_settings_open(s, CP_PG_FOREMAN, "");
   #assert coder_page_settings_page(s) == CP_PG_FOREMAN;
   // Off again while Foreman is shown and the Gym open: General shows and the Gym closes
