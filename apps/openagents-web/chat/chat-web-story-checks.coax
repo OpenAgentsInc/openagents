@@ -839,3 +839,30 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   _ = coaxial_chatweb_frame(s, 0.016, true);
   #assert !s[0].cc[0].remote_running && sc_by_text(t, "Insufficient sats credit for Cloud Sandbox.") >= 0;
 }
+
+#test "Apps SDK UI dark-mode skin fits CW_CSS without truncation and empty-chat SuggestionChips send prompts" {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  n := mono_held_css(s[0].css[..], mono_work_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..]))));
+  n = apps_sdk_css(s[0].css[..], n);
+  n = cwc_css(s[0].css[..], n);
+  #assert n > 45000 && n < CW_CSS - 4096;
+  css := cast(string) s[0].css[0..<n];
+  #assert sc_contains(css, "--color-surface") && sc_contains(css, "svg.fr{display:none}") && sc_contains(css, ".cc-welcome");
+
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_path(s, "/chat");
+  cwc_t_drain(s, ops[..]);
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  lb: [256] u8;
+  cwc_t_http_reply(s, ops[0].opens[li].slot, 200, cwc_t_list_json(lb[..], ""));
+  cwc_t_drain(s, ops[..]);
+  ops[0].open_n = 0;
+
+  t := s[0].tree[..];
+  #assert tr_find(t, "cc.welcome") >= 0 && tr_find(t, "cc.chip.0") >= 0 && tr_find(t, "cc.chip.3") >= 0;
+  cw_test_press(s, "cc.chip.0");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  #assert s[0].cc[0].msg_n >= 2 && tr_find(t, "cc.welcome") < 0 && cwc_t_find_open(ops[..], "/api/v1/inference") >= 0;
+}

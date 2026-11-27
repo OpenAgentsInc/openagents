@@ -51,6 +51,7 @@
 
 #load "../../components/kit/frames.coax";
 #load "../../components/kit/listing.coax";      // k_held, k_loading: another page held beside the side, and its loading screen
+#load "../../components/kit/apps-sdk.coax";     // Apps SDK UI dark-mode tokens, icons, badges, chips, cards
 #load "chat/chat-tools.coax";                     // tool calls: what each is called, how it stands, a run drawn (#13481)
 #load "chat/chat-hosted.coax";                    // our own tools for a Gemini message: the command table's reads, run as the person
 #load "chat/chat-ideas.coax";                     // visitors' ideas for a realm, in the editor: a turn each, with Accept and Decline (#13527)
@@ -68,7 +69,7 @@
 CW_INBOX :: 16384;     // a field's text, or a piece of the answer's stream, from the host
 CW_DRAFT :: 16384;     // a message's most, in bytes: what is typed past it is not taken
 CW_ANSWER :: 49152;    // an answer's most, in bytes
-CW_CSS :: 32768;
+CW_CSS :: 131072;
 CW_MESSAGES :: 128;    // messages kept
 CW_POOL :: 524288;     // bytes of their text kept
 CW_SHOWN :: 98304;     // bytes of text the page shows at once (the tree holds 131072)
@@ -498,7 +499,8 @@ cw_side :: (s: [] ChatWeb) {
     for e: 0..<s[0].set[0].nenvs {
       ehref: [96] u8; ehn := cw_put(ehref[..], 0, "/chat?host="); ehn = cw_put(ehref[..], ehn, cast(string) s[0].set[0].env_host[e][..]);
       eidb: [UI_ID] u8;
-      _ = k_sub_place(t, u, tr_join(eidb[..], "env.", e), cast(string) s[0].set[0].env_name[e][0..<s[0].set[0].env_name_n[e]], cast(string) ehref[0..<ehn]);
+      er := k_sub_place(t, u, tr_join(eidb[..], "env.", e), cast(string) s[0].set[0].env_name[e][0..<s[0].set[0].env_name_n[e]], cast(string) ehref[0..<ehn]);
+      tr_attr(t, er, AT_STATE, ifx s[0].set[0].env_online[e] then "online" else "offline");
     }
   }
   k_side_end(t);
@@ -1869,6 +1871,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   d := s[0].dom[..];
   if !d[0].styled {
     n := mono_held_css(s[0].css[..], mono_work_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..]))));
+    n = apps_sdk_css(s[0].css[..], n);
     n = cwc_css(s[0].css[..], n);
     dm_style(d, cast(string) s[0].css[0..<n]);
   }

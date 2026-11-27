@@ -48,7 +48,9 @@ chat 270000
 # account Projects with inline creation, and WorkOS Pipes GitHub connect/repo picker UI (#14125, #14126); ~7% room.
 # 570,397 bytes measured 2026-11-27 on a Mac release build after adding Settings -> Invite & Referrals section,
 # two-line Paid/Promo credit display, and Cloud Chat promo HUD; ~5% room.
-chat-web 600000
+# 648,977 bytes measured 2026-11-27 on a Mac release build after upgrading /chat to dark-mode Apps SDK UI
+# (components/skin/apps-sdk.coax, components/kit/apps-sdk.coax, SuggestionChips, obsidian AppShell/Sidebar/HUD/Composer/Cards); ~7.9% room.
+chat-web 700000
 milestone 128000
 # /nostr-chat, Nostr from scratch as a scripted chat on the same components (nostr-chat.coax): the frames set and the
 # library's signing, relay, NIP-44 and NIP-59 code it runs in the page: 309,585 bytes measured 2026-11-12 on a Linux build host;

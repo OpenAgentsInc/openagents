@@ -226,6 +226,44 @@ seed = os.path.join(app, "build", "home-seed")
 for f in sorted(os.listdir(seed)) if os.path.isdir(seed) else []:
     os.makedirs(os.path.join(site, "build", "home-seed"), exist_ok=True)
     shutil.copy(os.path.join(seed, f), os.path.join(site, "build", "home-seed", f))
+# Apps SDK SVG icons (/build/icons/*.svg, components/core/icons.coax) and Geist web fonts + legacy
+# icon bundle (/build/zeron/Geist*.ttf, components/skin/mono.coax). DOM pages (/chat, /components,
+# /settings, /worlds) fetch these at fixed paths; populate from repo sources if a remote build did
+# not sync unchanged files back into app/build/.
+repo_root = os.path.abspath(os.path.join(tools, "..", ".."))
+icons_src = os.path.join(app, "build", "icons")
+if not os.path.isdir(icons_src) or not any(f.endswith(".svg") for f in os.listdir(icons_src)):
+    cand = os.path.join(repo_root, "components", "icons", "apps-sdk")
+    if os.path.isdir(cand):
+        os.makedirs(icons_src, exist_ok=True)
+        for f in sorted(os.listdir(cand)):
+            if f.endswith(".svg"):
+                shutil.copy(os.path.join(cand, f), os.path.join(icons_src, f))
+        notice = os.path.join(repo_root, "components", "icons", "NOTICE")
+        if os.path.isfile(notice):
+            shutil.copy(notice, os.path.join(icons_src, "NOTICE"))
+if os.path.isdir(icons_src):
+    icons_dst = os.path.join(site, "build", "icons")
+    os.makedirs(icons_dst, exist_ok=True)
+    for f in sorted(os.listdir(icons_src)):
+        src = os.path.join(icons_src, f)
+        if os.path.isfile(src):
+            shutil.copy(src, os.path.join(icons_dst, f))
+zeron_src = os.path.join(app, "build", "zeron")
+if not os.path.isdir(zeron_src) or not any(f.endswith(".ttf") for f in os.listdir(zeron_src)):
+    fcand = os.path.join(repo_root, "components", "fonts")
+    if os.path.isdir(fcand):
+        os.makedirs(zeron_src, exist_ok=True)
+        for f in sorted(os.listdir(fcand)):
+            if f.startswith("Geist") and (f.endswith(".ttf") or f.endswith(".txt")):
+                shutil.copy(os.path.join(fcand, f), os.path.join(zeron_src, f))
+if os.path.isdir(zeron_src):
+    zeron_dst = os.path.join(site, "build", "zeron")
+    os.makedirs(zeron_dst, exist_ok=True)
+    for f in sorted(os.listdir(zeron_src)):
+        src = os.path.join(zeron_src, f)
+        if os.path.isfile(src):
+            shutil.copy(src, os.path.join(zeron_dst, f))
 # What the bundled host fetches beside itself (new URL(PATH, import.meta.url) and lazyMod("./NAME.js")):
 # its carriers ../build/NAME.wasm (host-services, host-audio, host-packs, character-host...),
 # ../character.wgsl, ./audio-worklet.js, ./pack-worker.js, and the lazy subsystem modules.

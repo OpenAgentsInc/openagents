@@ -45,6 +45,21 @@ CWC_MODEL_NOTES :: [5] string.[
   "High-throughput OpenAgents Cloud model"
 ];
 
+// Starter SuggestionChips shown on an empty Cloud Chat thread (Apps SDK UI).
+CWC_SUGGEST_N :: 4;
+CWC_SUGGEST_LABELS :: [4] string.[
+  "Explore a GitHub repo",
+  "Search live web docs",
+  "Run tests on my computer",
+  "Explain OpenAgents Cloud"
+];
+CWC_SUGGEST_PROMPTS :: [4] string.[
+  "List the key files and architecture of my active GitHub repository.",
+  "Search the web for the latest WebGPU and Coax design patterns.",
+  "Check my enrolled computer workspaces and run the test suite.",
+  "How do Cloud Chat, Tier 1 tools, enrolled computers, and Cloud Sandboxes work together?"
+];
+
 // Auth states.
 CWC_AUTH_UNKNOWN :: 0;
 CWC_AUTH_IN      :: 1;
@@ -2626,6 +2641,12 @@ cwc_on_click :: (c: [] ChatCloud, id: string) -> bool {
     c[0].dirty = true;
     return true;
   }
+  k = cwc_index_after(id, "cc.chip.");
+  if k >= 0 && k < CWC_SUGGEST_N {
+    prompts := CWC_SUGGEST_PROMPTS;
+    _ = cwc_send(c, prompts[k]);
+    return true;
+  }
   return false;
 }
 
@@ -2848,6 +2869,9 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
     gate := tr_open(t, "cc.login", TG_SECTION, "cc-login");
     tr_attr(t, gate, AT_ROLE, "region");
     tr_attr(t, gate, AT_LABEL, "Sign in required");
+    _ = tr_open(t, "cc.login.icw", TG_DIV, "cc-welcome-ic");
+    _ = as_icon(t, "cc.login.ic", IC_SPARKLES, "as-ic-lg");
+    tr_close(t);
     _ = tr_leaf(t, "cc.login.h", TG_H2, "hd-t", "Sign in to OpenAgents");
     _ = tr_leaf(t, "cc.login.p", TG_P, "lede", "Every chat syncs live across Desktop, Web, and Mobile. Sign in to access your cloud conversations.");
     cta := tr_leaf(t, "cc.login.go", TG_A, "btn", "Sign in");
@@ -2859,6 +2883,23 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
   r := vl_open_shell(t, "log", "log vl-scroll", "Conversation transcript", c[0].vl[..], 3);
   th := tr_open(t, "thread", TG_DIV, "thread");
   b1: [64] u8; b2: [96] u8; b3: [96] u8;
+
+  if c[0].msg_n == 0 && !c[0].conv_loading && c[0].error_n == 0 {
+    _ = tr_open(t, "cc.welcome", TG_DIV, "cc-welcome");
+    _ = tr_open(t, "cc.welcome.icw", TG_DIV, "cc-welcome-ic");
+    _ = as_icon(t, "cc.welcome.ico", IC_SPARKLES, "as-ic-lg");
+    tr_close(t);
+    _ = tr_leaf(t, "cc.welcome.h", TG_H2, "cc-welcome-t", "What can I help you build?");
+    _ = tr_leaf(t, "cc.welcome.s", TG_P, "cc-welcome-s", "Synced live across Web, Desktop, and Mobile — with Cloud tools, GitHub repos, and your enrolled computers.");
+    _ = tr_open(t, "cc.chips", TG_DIV, "as-chips cc-welcome-chips");
+    slabels := CWC_SUGGEST_LABELS;
+    sicons := [4] int.[IC_CODE, IC_SEARCH, IC_TERMINAL, IC_SPARKLES];
+    for si: 0..<CWC_SUGGEST_N {
+      _ = as_suggestion_chip(t, tr_join(b1[..], "cc.chip.", si), sicons[si], slabels[si]);
+    }
+    tr_close(t);
+    tr_close(t);
+  }
 
   for k: r.first..<r.last {
     if k < 0 || k >= c[0].msg_n { continue; }
@@ -2992,37 +3033,155 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
   }
 }
 
-// Appends monochrome ARWES-aligned CSS rules for Coax UI Cloud Chat components.
+// Appends dark-mode Apps SDK UI rules for /chat, its AppShell, Sidebar, HUD, Thread, Composer, and Settings.
 cwc_css :: (out: [] u8, at: int) -> int {
   n := at;
-  n = mc(out, n, ".cc-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line-dim);background:var(--surface)}");
-  n = mc(out, n, ".cc-pill{font:500 11px/1.2 var(--mono);letter-spacing:.08em;padding:4px 8px;border:1px solid var(--line-dim);color:var(--ink-muted)}");
-  n = mc(out, n, ".cc-tbtn{background:none;cursor:pointer}.cc-tbtn:hover{border-color:var(--line-bright);color:var(--ink)}.cc-tmenu{display:flex;flex-wrap:wrap;gap:4px}.cc-topt-on{border-color:var(--line-bright);color:var(--ink-bright)}");
-  n = mc(out, n, ".cc-pill-local{border-color:var(--line);color:var(--ink)}.cc-pill-live{border-color:var(--line-bright);color:var(--ink-bright)}");
-  n = mc(out, n, ".cc-recon{border-style:dashed;color:var(--ink)}");
-  n = mc(out, n, ".cc-sbar{display:flex;gap:6px;padding:6px 8px;align-items:center}");
-  n = mc(out, n, ".cc-search{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line-dim);color:var(--ink);font:12px/1.4 var(--sans);padding:5px 8px}");
-  n = mc(out, n, ".cc-sbtn{appearance:none;background:none;border:1px solid var(--line-dim);color:var(--ink-muted);font:500 10px/1.2 var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:4px 6px;cursor:pointer}");
-  n = mc(out, n, ".cc-sbtn:hover{border-color:var(--line-bright);color:var(--ink)}");
-  n = mc(out, n, ".cc-crow{display:flex;flex-direction:column;gap:4px;padding:6px 8px;border-left:2px solid transparent}");
-  n = mc(out, n, ".cc-crow[data-state='current']{border-left-color:var(--line-bright);background:var(--raised)}");
-  n = mc(out, n, ".cc-copen{appearance:none;background:none;border:0;color:var(--ink);text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:0}");
-  n = mc(out, n, ".cc-ctitle{font:500 13px/1.3 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}");
-  n = mc(out, n, ".cc-csub{font:10px/1.3 var(--mono);color:var(--ink-faint);letter-spacing:.06em}");
-  n = mc(out, n, ".cc-cacts{display:flex;gap:4px;opacity:.7}.cc-crow:hover .cc-cacts{opacity:1}");
-  n = mc(out, n, ".cc-pulse{display:inline-block;margin-right:6px;color:var(--ink-bright)}");
-  n = mc(out, n, ".vl-scroll{overflow-y:auto;flex:1;min-height:0}.vl-pad{flex-shrink:0;pointer-events:none}");
-  n = mc(out, n, ".cc-think,.cc-tool{border:1px solid var(--line-dim);background:var(--surface);padding:8px 12px;display:flex;flex-direction:column;gap:6px}");
-  n = mc(out, n, ".cc-tool-fail{border-color:var(--line-bright)}");
-  n = mc(out, n, ".cc-trig{appearance:none;background:none;border:0;color:var(--ink-muted);font:500 11px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;text-align:left;cursor:pointer;padding:0}");
-  n = mc(out, n, ".cc-think-body{font:13px/1.5 var(--sans);color:var(--ink-muted);white-space:pre-wrap}");
-  n = mc(out, n, ".cc-code,.cc-diff{margin:0;padding:8px;background:#050505;border:1px solid var(--line-dim);font:12px/1.45 var(--mono);overflow-x:auto}");
-  n = mc(out, n, ".cc-diff-add{color:#e6ffe6;background:#0e2212}.cc-diff-del{color:#ffe6e6;background:#261010}.cc-diff-hdr{color:var(--ink-muted)}");
-  n = mc(out, n, ".cc-login{max-width:460px;margin:48px auto;padding:24px;border:1px solid var(--line-dim);background:var(--surface);display:flex;flex-direction:column;gap:14px}");
-  n = mc(out, n, ".cc-jump{position:sticky;bottom:12px;align-self:center;appearance:none;background:var(--raised);border:1px solid var(--line);color:var(--ink);font:500 11px/1 var(--mono);padding:6px 12px;cursor:pointer}");
-  n = mc(out, n, ".md-code-block{border:1px solid var(--line-dim);background:#050505;margin:8px 0}.md-code-hdr{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--line-dim);font:11px/1 var(--mono);color:var(--ink-muted)}");
-  n = mc(out, n, ".md-code-copy{appearance:none;background:none;border:1px solid var(--line-dim);color:var(--ink-muted);font:10px/1 var(--mono);padding:3px 6px;cursor:pointer}");
-  n = mc(out, n, ".md-pre{margin:0;padding:10px;overflow-x:auto;font:12px/1.5 var(--mono)}.syn-kw{color:#fff;font-weight:600}.syn-str{color:#cfcfcf}.syn-com{color:#6b6b6b}.syn-num{color:#d8d8d8}");
+  // ---- Obsidian Apps SDK ground & suppression of legacy scanline grid and chamfered SVG frame overlays
+  n = mc(out, n, ":root{--ground:var(--color-surface);--surface:var(--color-surface-secondary);--raised:var(--color-surface-elevated);--line-dim:var(--color-border-subtle);--line:var(--color-border);--line-bright:var(--color-border-strong);--ink:var(--color-text);--ink-muted:var(--color-text-secondary);--ink-faint:var(--color-text-tertiary)}");
+  n = mc(out, n, "html,body{background:var(--color-surface);color:var(--color-text);font:400 14px/1.55 var(--font-sans);-webkit-font-smoothing:antialiased}");
+  n = mc(out, n, "body::before{display:none}svg.fr{display:none}::selection{background:var(--blue-a75);color:#ffffff}");
+
+  // ---- AppShell & Obsidian Sidebar (#161616)
+  n = mc(out, n, ".chat{padding:0 16px 20px;background:var(--color-surface)}");
+  n = mc(out, n, ".chat:has(.side){margin-left:280px;max-width:none;padding:0 0 20px}");
+  n = mc(out, n, ".chat:has(.side)>:not(.side):not(.log),.chat:has(.side) .log>*{width:calc(100% - 40px);max-width:780px;margin-left:auto;margin-right:auto}");
+  n = mc(out, n, ".chat:has(.side)>header.cc-hud{width:100% !important;max-width:none !important;margin:0 !important}");
+  n = mc(out, n, ".side{width:280px;background:var(--color-surface-secondary);border-right:1px solid var(--color-border-subtle);padding:12px 10px;gap:6px}");
+  n = mc(out, n, ".side-h{min-height:36px;padding:0 4px 4px 10px;gap:6px}");
+  n = mc(out, n, ".side-b{font:600 14px/1 var(--font-sans);letter-spacing:-.015em;color:var(--color-text);gap:9px}");
+  n = mc(out, n, ".side-b>.ic{width:18px;height:18px;color:var(--color-text)}");
+  n = mc(out, n, ".side-l{gap:2px;padding-right:2px;scrollbar-color:var(--alpha-15) transparent}");
+  n = mc(out, n, ".side-m{padding:14px 10px 6px;font:600 11px/1 var(--font-sans);letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-tertiary)}");
+  n = mc(out, n, ".side-f{padding-top:10px;margin-top:4px;border-top:1px solid var(--color-border-subtle);gap:6px}");
+  n = mc(out, n, ".side .row,.side .fold-b{border-radius:var(--radius-md);padding:7px 10px;color:var(--color-text-secondary);font:500 13px/1.3 var(--font-sans);transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".side .row:hover,.side .row:focus-visible,.side .fold-b:hover,.side .fold-b:focus-visible{background:var(--alpha-06);color:var(--color-text)}");
+  n = mc(out, n, ".side .row[aria-current=true],.side .fold-b[aria-current=true]{background:var(--alpha-10);color:var(--color-text)}");
+  n = mc(out, n, ".side .row-s{padding-left:32px;font-weight:400}");
+  n = mc(out, n, ".side .row-s[data-state=online],.side .row-s[data-state=offline]{padding-left:14px;gap:8px}");
+  n = mc(out, n, ".side .row-s[data-state=online]::before,.side .row-s[data-state=offline]::before{content:'';width:7px;height:7px;border-radius:9999px;flex:none}");
+  n = mc(out, n, ".side .row-s[data-state=online]::before{background:var(--green-400);box-shadow:0 0 0 3px var(--green-a25)}");
+  n = mc(out, n, ".side .row-s[data-state=offline]::before{background:var(--gray-500)}");
+  n = mc(out, n, ".ib{width:30px;height:30px;border-radius:var(--radius-md);color:var(--color-text-tertiary);transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".ib:hover,.ib:focus-visible{background:var(--alpha-08);color:var(--color-text)}");
+  n = mc(out, n, ".ib[data-state=side]{top:11px;left:12px;background:var(--color-surface-elevated);border:1px solid var(--color-border);color:var(--color-text-secondary)}");
+  n = mc(out, n, ".ib[data-state=side]:hover{background:var(--color-surface-elevated-secondary);color:var(--color-text)}");
+  n = mc(out, n, ".fold-h{gap:2px}.fold-b>.ic:last-child{opacity:.7}");
+  n = mc(out, n, ".side-f .row{border-radius:var(--radius-lg);padding:8px 10px}");
+
+  // ---- Cloud Sidebar Search & Conversation Rows
+  n = mc(out, n, ".cc-sbar{display:flex;gap:6px;padding:6px 4px 8px;align-items:center}");
+  n = mc(out, n, ".cc-search{flex:1;min-width:0;height:32px;border-radius:var(--radius-md);background:var(--color-surface);border:0;box-shadow:inset 0 0 0 1px var(--color-border);color:var(--color-text);font:400 13px/1 var(--font-sans);padding:0 10px;transition:box-shadow var(--as-dur) ease}");
+  n = mc(out, n, ".cc-search::placeholder{color:var(--color-text-tertiary)}.cc-search:focus{outline:0;box-shadow:inset 0 0 0 1px var(--alpha-40),0 0 0 2px rgba(2,133,255,.22)}");
+  n = mc(out, n, ".cc-sbtn{appearance:none;display:inline-flex;align-items:center;justify-content:center;height:26px;padding:0 9px;border:0;border-radius:var(--radius-md);background:var(--alpha-08);color:var(--color-text-secondary);font:500 12px/1 var(--font-sans);letter-spacing:0;text-transform:none;cursor:pointer;white-space:nowrap;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".cc-sbtn:hover,.cc-sbtn:focus-visible{background:var(--alpha-15);color:var(--color-text);outline:0}");
+  n = mc(out, n, ".cc-sbtn[aria-pressed=true]{background:var(--alpha-15);color:var(--color-text)}");
+  n = mc(out, n, ".cc-crow{display:flex;flex-direction:column;gap:5px;padding:8px 10px;border-radius:var(--radius-md);border:0;transition:background-color var(--as-dur) ease}");
+  n = mc(out, n, ".cc-crow:hover{background:var(--alpha-05)}.cc-crow[data-state='current']{background:var(--alpha-10);box-shadow:inset 0 0 0 1px var(--color-border-subtle)}");
+  n = mc(out, n, ".cc-copen{appearance:none;background:none;border:0;color:var(--color-text);text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:0;min-width:0}");
+  n = mc(out, n, ".cc-ctitle{font:500 13px/1.35 var(--font-sans);color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}");
+  n = mc(out, n, ".cc-csub{font:400 11.5px/1.3 var(--font-sans);color:var(--color-text-tertiary);letter-spacing:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}");
+  n = mc(out, n, ".cc-cacts{display:flex;gap:4px;opacity:.55;transition:opacity var(--as-dur) ease}.cc-crow:hover .cc-cacts,.cc-crow:focus-within .cc-cacts,.cc-crow[data-state='current'] .cc-cacts{opacity:1}");
+  n = mc(out, n, ".cc-cacts .cc-sbtn{height:22px;padding:0 7px;font-size:11px;background:var(--alpha-06)}");
+  n = mc(out, n, ".cc-pulse{display:inline-block;margin-right:6px;color:var(--green-400)}");
+
+  // ---- Top Cloud HUD Bar (Apps SDK Soft Pill Badges)
+  n = mc(out, n, ".cc-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 24px;border-bottom:1px solid var(--color-border-subtle);background:rgba(13,13,13,.88);backdrop-filter:blur(12px);position:relative;z-index:3}");
+  n = mc(out, n, ".cc-pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border:0;border-radius:var(--radius-full);background:var(--alpha-08);color:var(--color-text-secondary);font:500 12px/1 var(--font-sans);letter-spacing:0;white-space:nowrap}");
+  n = mc(out, n, "#cc\\.hud\\.tier::before{content:'';width:6px;height:6px;border-radius:9999px;background:var(--blue-300);flex:none}");
+  n = mc(out, n, "#cc\\.hud\\.tier.cc-pill-local::before{background:var(--green-400)}");
+  n = mc(out, n, "#cc\\.hud\\.usage{margin-left:auto;background:var(--alpha-05);color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}");
+  n = mc(out, n, ".cc-tbtn{cursor:pointer;color:var(--color-text);background:var(--alpha-06);box-shadow:inset 0 0 0 1px var(--color-border);transition:background-color var(--as-dur) ease,box-shadow var(--as-dur) ease}");
+  n = mc(out, n, ".cc-tbtn:hover,.cc-tbtn[aria-expanded=true]{background:var(--alpha-12);box-shadow:inset 0 0 0 1px var(--color-border-strong)}");
+  n = mc(out, n, ".cc-tmenu{display:flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:var(--radius-xl);background:var(--color-surface-elevated);border:1px solid var(--color-border);box-shadow:var(--shadow-elev)}");
+  n = mc(out, n, ".cc-topt-on{background:#ffffff !important;color:#0d0d0d !important;font-weight:600}");
+  n = mc(out, n, ".cc-pill-local{background:var(--green-a50);color:var(--green-300)}.cc-pill-live{background:var(--blue-a50);color:var(--blue-200)}");
+  n = mc(out, n, ".cc-recon{background:var(--orange-a50);color:var(--orange-300);box-shadow:inset 0 0 0 1px var(--orange-a75)}");
+
+  // ---- Transcript, Empty Welcome Hero + SuggestionChips, User/Assistant Bubbles, CodeBlock & Steps
+  n = mc(out, n, ".vl-scroll{overflow-y:auto;flex:1;min-height:0;scrollbar-color:var(--alpha-15) transparent}.vl-pad{flex-shrink:0;pointer-events:none}");
+  n = mc(out, n, ".log .thread{padding:20px 0 28px;gap:0;margin-bottom:auto}");
+  n = mc(out, n, ".log .thread:has(.cc-welcome){margin:auto;padding:24px 0}");
+  n = mc(out, n, ".cc-welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:24px 16px;max-width:640px;margin:0 auto}");
+  n = mc(out, n, ".cc-welcome-ic{width:46px;height:46px;border-radius:14px;background:var(--color-surface-elevated);border:1px solid var(--color-border);color:var(--color-text);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-elev)}");
+  n = mc(out, n, ".cc-welcome-t{margin:0;font:600 24px/1.25 var(--font-sans);letter-spacing:-.025em;color:var(--color-text)}");
+  n = mc(out, n, ".cc-welcome-s{margin:0;max-width:48ch;font:400 14px/1.55 var(--font-sans);color:var(--color-text-tertiary)}");
+  n = mc(out, n, ".cc-welcome-chips{justify-content:center;margin-top:6px}");
+  n = mc(out, n, ".cc-row{display:flex;flex-direction:column;width:100%}");
+  n = mc(out, n, ".msg-user{align-self:flex-end;max-width:78%;padding:11px 16px;border-radius:18px;background:var(--gray-200);border:1px solid var(--color-border-subtle);color:var(--color-text);font:400 15px/1.55 var(--font-sans)}");
+  n = mc(out, n, ".log .msg-user{margin-top:24px}");
+  n = mc(out, n, ".msg-ai{margin-top:16px;gap:8px;color:var(--gray-900)}");
+  n = mc(out, n, ".md{font:400 15px/1.65 var(--font-sans);color:var(--gray-900);gap:14px}");
+  n = mc(out, n, ".md h1,.md h2,.md h3,.md h4{margin:6px 0 0;font-family:var(--font-sans);font-weight:600;letter-spacing:-.015em;color:var(--color-text)}");
+  n = mc(out, n, ".md code{padding:2px 6px;border-radius:5px;background:var(--alpha-10);color:var(--color-text);font:400 13px/1.4 var(--font-mono)}");
+  n = mc(out, n, ".md a{color:var(--blue-200);text-decoration-color:rgba(102,181,255,.4)}.md a:hover{color:var(--blue-300);text-decoration-color:var(--blue-300)}");
+  n = mc(out, n, ".md blockquote{padding:8px 14px;border-left:2px solid var(--blue-400);background:var(--alpha-04);border-radius:0 var(--radius-md) var(--radius-md) 0;color:var(--color-text-secondary)}");
+  n = mc(out, n, ".md table{width:100%;border-collapse:collapse;font:400 13.5px/1.45 var(--font-sans);background:var(--color-surface-secondary);border-radius:var(--radius-xl);overflow:hidden;border:1px solid var(--color-border)}");
+  n = mc(out, n, ".md th{padding:10px 14px;font:600 12px/1.2 var(--font-sans);letter-spacing:0;text-transform:none;color:var(--color-text-tertiary);background:var(--alpha-04);border-bottom:1px solid var(--color-border)}");
+  n = mc(out, n, ".md td{padding:10px 14px;color:var(--color-text);border-bottom:1px solid var(--color-border-subtle)}");
+  n = mc(out, n, ".acts{gap:8px;margin-left:0;margin-top:4px}.acts .meta{margin-left:0;font:400 12px/1.3 var(--font-sans);letter-spacing:0;text-transform:none;color:var(--color-text-tertiary)}");
+  n = mc(out, n, ".md-code-block,.code{border-radius:var(--radius-xl);border:1px solid var(--color-border);background:var(--color-surface-secondary);overflow:hidden;margin:8px 0}");
+  n = mc(out, n, ".md-code-hdr,.code-h{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--color-border-subtle);background:var(--alpha-04);font:500 12px/1 var(--font-mono);color:var(--color-text-tertiary)}");
+  n = mc(out, n, ".md-code-copy{appearance:none;background:transparent;border:0;border-radius:var(--radius-sm);color:var(--color-text-secondary);font:500 12px/1 var(--font-sans);height:24px;padding:0 8px;cursor:pointer;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".md-code-copy:hover{background:var(--alpha-10);color:var(--color-text)}");
+  n = mc(out, n, ".md-pre,.code pre{margin:0;padding:14px 16px;overflow-x:auto;font:400 13px/1.55 var(--font-mono);color:var(--gray-900)}");
+  n = mc(out, n, ".syn-kw{color:var(--purple-300);font-weight:500}.syn-str{color:var(--green-300)}.syn-com{color:var(--gray-550)}.syn-num{color:var(--blue-200)}");
+  n = mc(out, n, ".cc-think,.cc-tool{margin-top:10px;border-radius:var(--radius-xl);border:1px solid var(--color-border-subtle);background:var(--color-surface-secondary);padding:10px 14px;display:flex;flex-direction:column;gap:8px}");
+  n = mc(out, n, ".cc-tool-fail{border-color:var(--red-a75);background:var(--red-a25)}");
+  n = mc(out, n, ".cc-trig{appearance:none;background:none;border:0;color:var(--color-text-secondary);font:500 13px/1.35 var(--font-sans);letter-spacing:0;text-transform:none;text-align:left;cursor:pointer;padding:0;transition:color var(--as-dur) ease}");
+  n = mc(out, n, ".cc-trig:hover{color:var(--color-text)}");
+  n = mc(out, n, ".cc-think-body{font:400 13.5px/1.55 var(--font-sans);color:var(--color-text-secondary);white-space:pre-wrap;padding-top:4px;border-top:1px solid var(--color-border-subtle)}");
+  n = mc(out, n, ".cc-code,.cc-diff{margin:0;padding:10px 12px;border-radius:var(--radius-lg);background:var(--color-surface);border:1px solid var(--color-border-subtle);font:400 12.5px/1.5 var(--font-mono);overflow-x:auto}");
+  n = mc(out, n, ".cc-diff-add{color:var(--green-300);background:rgba(4,184,76,.14)}.cc-diff-del{color:var(--red-300);background:rgba(250,66,62,.14)}.cc-diff-hdr{color:var(--color-text-tertiary)}");
+  n = mc(out, n, ".notice{margin-top:14px;border-radius:var(--radius-xl);background:var(--red-a25);border:1px solid var(--red-a75);padding:14px 16px;gap:4px}");
+  n = mc(out, n, ".notice-k{font:600 12px/1.3 var(--font-sans);letter-spacing:.02em;text-transform:none;color:var(--red-300)}.notice-t{font:400 13.5px/1.5 var(--font-sans);color:var(--color-text)}");
+  n = mc(out, n, ".cc-login{max-width:440px;margin:auto;padding:28px;border-radius:var(--radius-2xl);border:1px solid var(--color-border);background:var(--color-surface-elevated);box-shadow:var(--shadow-elev);display:flex;flex-direction:column;gap:14px}");
+  n = mc(out, n, ".cc-login .hd-t{font:600 20px/1.3 var(--font-sans);letter-spacing:-.02em;text-transform:none;color:var(--color-text)}");
+  n = mc(out, n, ".cc-login .lede{font:400 14px/1.55 var(--font-sans);color:var(--color-text-secondary)}");
+  n = mc(out, n, ".cc-login .btn{align-self:flex-start;height:40px;padding:0 22px;border-radius:var(--radius-full);background:#ffffff;color:#0d0d0d;font:600 14px/1 var(--font-sans);letter-spacing:0;text-transform:none}");
+  n = mc(out, n, ".cc-login .btn:hover{background:#e5e5e5}");
+  n = mc(out, n, ".cc-jump{position:sticky;bottom:14px;align-self:center;appearance:none;height:32px;padding:0 14px;border-radius:var(--radius-full);background:var(--color-surface-elevated);border:1px solid var(--color-border-strong);color:var(--color-text);font:500 12.5px/1 var(--font-sans);box-shadow:var(--shadow-elev);cursor:pointer}");
+  n = mc(out, n, ".cc-jump:hover{background:var(--color-surface-elevated-secondary)}");
+
+  // ---- Elevated Obsidian Composer (20px radius, blue focus ring, solid white pill Send/Stop)
+  n = mc(out, n, ".composer{border-radius:var(--radius-3xl);background:var(--color-surface-elevated);border:1px solid var(--color-border-strong);padding:14px 16px 12px;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.35);transition:border-color var(--as-dur) ease,box-shadow var(--as-dur) ease}");
+  n = mc(out, n, ".composer:focus-within{border-color:var(--alpha-30);box-shadow:0 4px 24px rgba(0,0,0,.45),0 0 0 2px rgba(2,133,255,.28)}");
+  n = mc(out, n, ".composer textarea,.composer textarea.field{width:100%;max-width:none;padding:2px 0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none !important;outline:0;font:400 15px/1.55 var(--font-sans);color:var(--color-text);min-height:28px}");
+  n = mc(out, n, ".composer textarea::placeholder{color:var(--color-text-tertiary)}");
+  n = mc(out, n, ".composer-r{gap:8px}.composer-r .ib{width:32px;height:32px;border-radius:var(--radius-full);color:var(--color-text-secondary)}");
+  n = mc(out, n, ".sel{height:32px;padding:0 12px;border-radius:var(--radius-full);background:var(--alpha-06);box-shadow:inset 0 0 0 1px var(--color-border);color:var(--color-text-secondary);font:500 13px/1 var(--font-sans);letter-spacing:0;text-transform:none;transition:background-color var(--as-dur) ease,color var(--as-dur) ease,box-shadow var(--as-dur) ease}");
+  n = mc(out, n, ".sel:hover,.sel:focus-visible,.sel[aria-expanded=true]{background:var(--alpha-10);color:var(--color-text);box-shadow:inset 0 0 0 1px var(--color-border-strong)}");
+  n = mc(out, n, ".menu,.menu.pop{border-radius:var(--radius-xl);background:var(--color-surface-elevated);border:1px solid var(--color-border);padding:5px;box-shadow:var(--shadow-elev)}");
+  n = mc(out, n, ".menu .row{border-radius:var(--radius-md);padding:8px 10px;color:var(--color-text-secondary);font:400 13px/1.3 var(--font-sans)}");
+  n = mc(out, n, ".menu .row:hover,.menu .row:focus-visible{background:var(--alpha-08);color:var(--color-text)}");
+  n = mc(out, n, ".menu .row[aria-current=true]{background:var(--alpha-12);color:var(--color-text);font-weight:500}");
+  n = mc(out, n, ".btn{display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 15px;border-radius:var(--radius-md);background:var(--alpha-10);color:var(--color-text);font:500 13px/1 var(--font-sans);letter-spacing:0;text-transform:none;transition:background-color var(--as-dur) ease,color var(--as-dur) ease,transform 100ms ease}");
+  n = mc(out, n, ".btn:hover:not([disabled]){background:var(--alpha-15)}.btn:active:not([disabled]){transform:scale(.98)}");
+  n = mc(out, n, ".btn[data-state=primary]{background:#ffffff;color:#0d0d0d;font-weight:600}.btn[data-state=primary]:hover:not([disabled]){background:#e5e5e5}");
+  n = mc(out, n, ".btn[disabled]{background:var(--alpha-08);color:var(--color-text-tertiary);cursor:not-allowed}");
+  n = mc(out, n, ".composer-r>.btn{height:34px;padding:0 18px;border-radius:var(--radius-full)}");
+  n = mc(out, n, ".lk{height:30px;padding:0 12px;border-radius:var(--radius-md);background:var(--alpha-06);box-shadow:inset 0 0 0 1px var(--color-border);color:var(--color-text);font:500 12.5px/1 var(--font-sans);letter-spacing:0;text-transform:none}");
+  n = mc(out, n, ".lk:hover,.lk:focus-visible{background:var(--alpha-12);color:var(--color-text);box-shadow:inset 0 0 0 1px var(--color-border-strong)}");
+
+  // ---- Settings, Home Dashboard & Projects Cards inside /chat
+  n = mc(out, n, ".home{background:var(--color-surface)}.side~.st{margin-left:280px}");
+  n = mc(out, n, ".st-nav{background:var(--color-surface);border-right:1px solid var(--color-border-subtle);padding:16px 10px}");
+  n = mc(out, n, ".st-nav .row{border-radius:var(--radius-md);padding:8px 10px;color:var(--color-text-secondary);font:500 13px/1.3 var(--font-sans)}");
+  n = mc(out, n, ".st-nav .row:hover{background:var(--alpha-06);color:var(--color-text)}.st-nav .row[aria-current=true]{background:var(--alpha-10);color:var(--color-text)}");
+  n = mc(out, n, ".st-b{padding:28px 32px 96px;gap:28px}.st-t{font:600 22px/1.3 var(--font-sans);letter-spacing:-.02em;color:var(--color-text)}");
+  n = mc(out, n, ".st-g .sec-h{font:600 12px/1.3 var(--font-sans);letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-tertiary)}");
+  n = mc(out, n, ".st-l,.card{background:var(--color-surface-elevated);border:1px solid var(--color-border);border-radius:var(--radius-2xl);overflow:hidden}");
+  n = mc(out, n, ".st-r{padding:15px 20px}.st-r+.st-r{border-top:1px solid var(--color-border-subtle)}");
+  n = mc(out, n, ".st-n{font:500 14px/1.4 var(--font-sans);color:var(--color-text)}.st-a{font:400 13px/1.45 var(--font-sans);color:var(--color-text-secondary)}");
+  n = mc(out, n, ".st-v{font:500 12.5px/1.3 var(--font-mono);color:var(--color-text);padding:4px 10px;border-radius:var(--radius-full);background:var(--alpha-08)}");
+  n = mc(out, n, ".field{border-radius:var(--radius-md);background:var(--color-surface);box-shadow:inset 0 0 0 1px var(--color-border-strong);padding:8px 12px;transition:box-shadow var(--as-dur) ease}");
+  n = mc(out, n, ".field:focus-within{box-shadow:inset 0 0 0 1px var(--alpha-50),0 0 0 2px rgba(2,133,255,.25)}");
+  n = mc(out, n, ".field input{font:400 14px/1.4 var(--font-sans);color:var(--color-text)}");
+  n = mc(out, n, ".sw{font:500 12.5px/1 var(--font-sans);letter-spacing:0;text-transform:none;color:var(--color-text-secondary)}");
+  n = mc(out, n, ".sw-k{width:36px;height:20px;border-radius:9999px;border:0;background:var(--gray-350);transition:background-color 200ms var(--cubic-move)}");
+  n = mc(out, n, ".sw-k::after{top:2px;left:2px;width:16px;height:16px;border-radius:9999px;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,.4);transition:left 200ms var(--cubic-move)}");
+  n = mc(out, n, ".sw[aria-pressed=true] .sw-k{background:var(--blue-400)}.sw[aria-pressed=true] .sw-k::after{left:18px;background:#ffffff}");
+  n = mc(out, n, ".wk-h{border-radius:var(--radius-md)}.wk-h:hover{background:var(--alpha-06)}");
+  n = mc(out, n, "@media (max-width:760px){.chat:has(.side){margin-left:0}.side~.st{margin-left:0}.cc-hud{padding:10px 14px 10px 52px}#cc\\.hud\\.usage{margin-left:0}.slot .chat{padding:0}}");
   return n;
 }
 
