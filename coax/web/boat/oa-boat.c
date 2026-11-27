@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -106,6 +107,15 @@ static char g_gce_project[128] = "openagentsgemini";
 static char g_gce_zone[64] = "us-central1-a";
 static char g_gce_base[256] = "https://compute.googleapis.com/compute/v1";
 static char g_gce_token[512] = "";
+static char g_ssh_key_copy[256] = "";
+static char g_ssh_pubkey[1024] = "";
+static pthread_mutex_t g_tok_mu = PTHREAD_MUTEX_INITIALIZER;
+static char g_meta_tok[2048] = "";
+static int64_t g_meta_tok_exp = 0;
+
+static bool gce_is_live(void) {
+  return strcmp(g_backend, "gce") == 0 && strncmp(g_gce_base, "https://compute.googleapis.com", 30) == 0;
+}
 
 static int64_t now_sec(void) { return (int64_t)time(NULL); }
 
@@ -165,27 +175,121 @@ static box_rec *find_box_locked(const char *id) {
   return NULL;
 }
 
-static size_t curl_discard_cb(void *ptr, size_t sz, size_t nm, void *ud) {
-  (void)ptr; (void)ud;
-  return sz * nm;
+typedef struct {
+  char *buf;
+  size_t len;
+  size_t cap;
+} curl_buf;
+
+static size_t curl_collect_cb(void *ptr, size_t sz, size_t nm, void *ud) {
+  size_t n = sz * nm;
+  curl_buf *cb = (curl_buf *)ud;
+  if (cb && cb->buf && cb->cap > 1) {
+    size_t avail = cb->cap - 1 - cb->len;
+    size_t take = n < avail ? n : avail;
+    if (take > 0) { memcpy(cb->buf + cb->len, ptr, take); cb->len += take; cb->buf[cb->len] = 0; }
+  }
+  return n;
 }
 
-static bool gce_call(const char *method, const char *path, const char *body, long *out_code) {
+static bool extract_json_str(const char *json, const char *key, char *out, size_t cap) {
+  char pat[128];
+  snprintf(pat, sizeof pat, "\"%s\"", key);
+  const char *p = strstr(json, pat);
+  if (!p) return false;
+  p += strlen(pat);
+  while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+  if (*p != ':') return false;
+  p++;
+  while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+  if (*p != '"') return false;
+  p++;
+  size_t n = 0;
+  while (*p && *p != '"' && n + 1 < cap) {
+    if (*p == '\\' && p[1]) p++;
+    out[n++] = *p++;
+  }
+  out[n] = 0;
+  return *p == '"' && n > 0;
+}
+
+static int64_t extract_json_int(const char *json, const char *key, int64_t defv) {
+  char pat[128];
+  snprintf(pat, sizeof pat, "\"%s\"", key);
+  const char *p = strstr(json, pat);
+  if (!p) return defv;
+  p += strlen(pat);
+  while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+  if (*p != ':') return defv;
+  p++;
+  while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+  if (!isdigit((unsigned char)*p) && *p != '-') return defv;
+  return strtoll(p, NULL, 10);
+}
+
+static bool gce_get_token(char *out, size_t cap) {
+  if (g_gce_token[0]) { snprintf(out, cap, "%s", g_gce_token); return true; }
+  pthread_mutex_lock(&g_tok_mu);
+  int64_t now = now_sec();
+  if (g_meta_tok[0] && now + 60 < g_meta_tok_exp) {
+    snprintf(out, cap, "%s", g_meta_tok);
+    pthread_mutex_unlock(&g_tok_mu);
+    return true;
+  }
+  pthread_mutex_unlock(&g_tok_mu);
+
+  CURL *c = curl_easy_init();
+  if (!c) return false;
+  char resp[4096] = "";
+  curl_buf cb = {resp, 0, sizeof resp};
+  struct curl_slist *hdrs = curl_slist_append(NULL, "Metadata-Flavor: Google");
+  curl_easy_setopt(c, CURLOPT_URL, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token");
+  curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
+  curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, curl_collect_cb);
+  curl_easy_setopt(c, CURLOPT_WRITEDATA, &cb);
+  curl_easy_setopt(c, CURLOPT_TIMEOUT, 5L);
+  CURLcode rc = curl_easy_perform(c);
+  long code = 0;
+  if (rc == CURLE_OK) curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
+  curl_slist_free_all(hdrs);
+  curl_easy_cleanup(c);
+  if (rc != CURLE_OK || code != 200) {
+    fprintf(stderr, "oa-boat: metadata token fetch failed (rc=%d http=%ld)\n", (int)rc, code);
+    return false;
+  }
+  char tok[2048] = "";
+  if (!extract_json_str(resp, "access_token", tok, sizeof tok)) return false;
+  int64_t exp_in = extract_json_int(resp, "expires_in", 600);
+  if (exp_in < 120) exp_in = 120;
+  pthread_mutex_lock(&g_tok_mu);
+  snprintf(g_meta_tok, sizeof g_meta_tok, "%s", tok);
+  g_meta_tok_exp = now_sec() + exp_in;
+  snprintf(out, cap, "%s", g_meta_tok);
+  pthread_mutex_unlock(&g_tok_mu);
+  return true;
+}
+
+static bool gce_call_body(const char *method, const char *path, const char *body, long *out_code, char *resp_buf, size_t resp_cap) {
   CURL *c = curl_easy_init();
   if (!c) return false;
   char url[512];
   snprintf(url, sizeof url, "%s%s", g_gce_base, path);
   struct curl_slist *hdrs = curl_slist_append(NULL, "Content-Type: application/json");
-  char auth[600] = "";
-  if (g_gce_token[0]) {
-    snprintf(auth, sizeof auth, "Authorization: Bearer %s", g_gce_token);
-    hdrs = curl_slist_append(hdrs, auth);
+  char tok[2048] = "", auth[2100] = "";
+  if (g_gce_token[0] || gce_is_live()) {
+    if (gce_get_token(tok, sizeof tok) && tok[0]) {
+      snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
+      hdrs = curl_slist_append(hdrs, auth);
+    }
   }
+  if (resp_buf && resp_cap > 0) resp_buf[0] = 0;
+  curl_buf cb = {resp_buf, 0, resp_cap};
   curl_easy_setopt(c, CURLOPT_URL, url);
   curl_easy_setopt(c, CURLOPT_CUSTOMREQUEST, method);
   curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
-  curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, curl_discard_cb);
-  curl_easy_setopt(c, CURLOPT_TIMEOUT, 15L);
+  curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, curl_collect_cb);
+  curl_easy_setopt(c, CURLOPT_WRITEDATA, &cb);
+  curl_easy_setopt(c, CURLOPT_TIMEOUT, 20L);
   if (body && *body) curl_easy_setopt(c, CURLOPT_POSTFIELDS, body);
   CURLcode rc = curl_easy_perform(c);
   long code = 0;
@@ -199,24 +303,304 @@ static bool gce_call(const char *method, const char *path, const char *body, lon
 static bool gce_create_vm(const box_rec *b) {
   const char *mt = strcmp(b->size, "small") == 0 ? "e2-standard-2"
                  : strcmp(b->size, "large") == 0 ? "c3d-highcpu-8" : "e2-standard-4";
-  char path[256], body[1024];
+  char path[256], body[4096], meta[1536] = "", resp[1024] = "";
   snprintf(path, sizeof path, "/projects/%s/zones/%s/instances", g_gce_project, g_gce_zone);
-  // No external IP (empty accessConfigs), no project-admin SA (empty serviceAccounts), labeled for reaper & billing.
+  if (g_ssh_pubkey[0]) {
+    snprintf(meta, sizeof meta,
+             ",\"metadata\":{\"items\":[{\"key\":\"enable-oslogin\",\"value\":\"FALSE\"},"
+             "{\"key\":\"ssh-keys\",\"value\":\"user:%s\"}]}",
+             g_ssh_pubkey);
+  }
+  // Debian 12 boot disk (autoDelete), no external IP (empty accessConfigs, Cloud NAT egress),
+  // no project-admin SA (empty serviceAccounts), labeled for reaper & billing.
   snprintf(body, sizeof body,
            "{\"name\":\"oa-%s\",\"machineType\":\"zones/%s/machineTypes/%s\","
+           "\"disks\":[{\"boot\":true,\"autoDelete\":true,\"initializeParams\":"
+           "{\"sourceImage\":\"projects/debian-cloud/global/images/family/debian-12\",\"diskSizeGb\":\"30\"}}],"
            "\"networkInterfaces\":[{\"network\":\"global/networks/default\"}],"
            "\"serviceAccounts\":[],"
-           "\"labels\":{\"oa-boat-id\":\"%s\",\"oa-boat-size\":\"%s\",\"oa-boat-sec\":\"0\"}}",
-           b->id, g_gce_zone, mt, b->id, b->size);
+           "\"tags\":{\"items\":[\"oa-boat-sandbox\"]},"
+           "\"labels\":{\"oa-boat-id\":\"%s\",\"oa-boat-size\":\"%s\",\"oa-boat-sec\":\"0\"}%s}",
+           b->id, g_gce_zone, mt, b->id, b->size, meta);
   long code = 0;
-  return gce_call("POST", path, body, &code);
+  bool ok = gce_call_body("POST", path, body, &code, resp, sizeof resp);
+  if (!ok) fprintf(stderr, "oa-boat: gce_create_vm(%s) failed HTTP %ld: %.300s\n", b->id, code, resp);
+  return ok;
 }
 
 static void gce_instance_op(const char *id, const char *method, const char *suffix) {
-  char path[256];
+  char path[256], resp[512] = "";
   snprintf(path, sizeof path, "/projects/%s/zones/%s/instances/oa-%s%s", g_gce_project, g_gce_zone, id, suffix);
   long code = 0;
-  (void)gce_call(method, path, "", &code);
+  bool ok = gce_call_body(method, path, "", &code, resp, sizeof resp);
+  if (!ok && code != 404) fprintf(stderr, "oa-boat: gce %s %s failed HTTP %ld: %.200s\n", method, path, code, resp);
+}
+
+static int sh_quote(const char *src, char *dst, size_t cap) {
+  size_t n = 0;
+  if (cap < 3) return -1;
+  dst[n++] = '\'';
+  for (const char *p = src; *p; p++) {
+    if (*p == '\'') {
+      if (n + 5 >= cap) return -1;
+      dst[n++] = '\''; dst[n++] = '\\'; dst[n++] = '\''; dst[n++] = '\'';
+    } else {
+      if (n + 2 >= cap) return -1;
+      dst[n++] = *p;
+    }
+  }
+  dst[n++] = '\'';
+  dst[n] = 0;
+  return (int)n;
+}
+
+static int gce_ssh_exec_capture(const char *ip, const char *remote_cmd,
+                                const char *stdin_buf, size_t stdin_len,
+                                char *out_buf, size_t out_cap, size_t *out_len,
+                                char *err_buf, size_t err_cap, size_t *err_len,
+                                int64_t timeout_s, bool *timed_out) {
+  if (out_len) *out_len = 0;
+  if (err_len) *err_len = 0;
+  if (timed_out) *timed_out = false;
+  int inp[2] = {-1, -1}, outp[2] = {-1, -1}, errp[2] = {-1, -1};
+  if (pipe(outp) != 0 || pipe(errp) != 0) return -1;
+  if (stdin_buf != NULL && pipe(inp) != 0) {
+    close(outp[0]); close(outp[1]); close(errp[0]); close(errp[1]);
+    return -1;
+  }
+  char target[96];
+  snprintf(target, sizeof target, "user@%s", ip);
+  pid_t child = fork();
+  if (child < 0) {
+    if (inp[0] >= 0) { close(inp[0]); close(inp[1]); }
+    close(outp[0]); close(outp[1]); close(errp[0]); close(errp[1]);
+    return -1;
+  }
+  if (child == 0) {
+    setpgid(0, 0);
+    if (stdin_buf != NULL) {
+      dup2(inp[0], 0);
+      close(inp[0]); close(inp[1]);
+    } else {
+      int dn = open("/dev/null", O_RDONLY);
+      if (dn >= 0) { dup2(dn, 0); close(dn); }
+    }
+    dup2(outp[1], 1); dup2(errp[1], 2);
+    close(outp[0]); close(outp[1]); close(errp[0]); close(errp[1]);
+    execlp("ssh", "ssh",
+           "-i", g_ssh_key_copy,
+           "-o", "BatchMode=yes",
+           "-o", "StrictHostKeyChecking=no",
+           "-o", "UserKnownHostsFile=/dev/null",
+           "-o", "ConnectTimeout=10",
+           "-o", "ServerAliveInterval=15",
+           "-o", "LogLevel=ERROR",
+           target, remote_cmd, (char *)NULL);
+    _exit(127);
+  }
+  if (inp[0] >= 0) close(inp[0]);
+  close(outp[1]); close(errp[1]);
+
+  if (inp[1] >= 0) {
+    int fl = fcntl(inp[1], F_GETFL, 0);
+    if (fl >= 0) (void)fcntl(inp[1], F_SETFL, fl | O_NONBLOCK);
+    if (stdin_len == 0) { close(inp[1]); inp[1] = -1; }
+  }
+  {
+    int fl = fcntl(outp[0], F_GETFL, 0);
+    if (fl >= 0) (void)fcntl(outp[0], F_SETFL, fl | O_NONBLOCK);
+    fl = fcntl(errp[0], F_GETFL, 0);
+    if (fl >= 0) (void)fcntl(errp[0], F_SETFL, fl | O_NONBLOCK);
+  }
+
+  size_t in_off = 0, so = 0, se = 0;
+  int64_t deadline = timeout_s > 0 ? now_sec() + timeout_s : 0;
+  char discard[1024];
+  while (inp[1] >= 0 || outp[0] >= 0 || errp[0] >= 0) {
+    if (deadline > 0 && now_sec() >= deadline) {
+      if (timed_out) *timed_out = true;
+      kill(-child, SIGKILL);
+      break;
+    }
+    struct pollfd pfds[3];
+    int nfds = 0, idx_in = -1, idx_out = -1, idx_err = -1;
+    if (inp[1] >= 0) { idx_in = nfds; pfds[nfds++] = (struct pollfd){inp[1], POLLOUT, 0}; }
+    if (outp[0] >= 0) { idx_out = nfds; pfds[nfds++] = (struct pollfd){outp[0], POLLIN, 0}; }
+    if (errp[0] >= 0) { idx_err = nfds; pfds[nfds++] = (struct pollfd){errp[0], POLLIN, 0}; }
+    int pr = poll(pfds, (nfds_t)nfds, 500);
+    if (pr < 0) { if (errno == EINTR) continue; break; }
+    if (idx_in >= 0 && (pfds[idx_in].revents & (POLLOUT | POLLERR | POLLHUP))) {
+      ssize_t w = write(inp[1], stdin_buf + in_off, stdin_len - in_off);
+      if (w > 0) {
+        in_off += (size_t)w;
+        if (in_off >= stdin_len) { close(inp[1]); inp[1] = -1; }
+      } else if (w < 0 && errno != EAGAIN && errno != EINTR) {
+        close(inp[1]); inp[1] = -1;
+      }
+    }
+    if (idx_out >= 0 && (pfds[idx_out].revents & (POLLIN | POLLHUP | POLLERR))) {
+      ssize_t r;
+      if (out_buf && so + 1 < out_cap) {
+        r = read(outp[0], out_buf + so, out_cap - 1 - so);
+        if (r > 0) so += (size_t)r;
+      } else {
+        r = read(outp[0], discard, sizeof discard);
+      }
+      if (r == 0 || (r < 0 && errno != EAGAIN && errno != EINTR)) { close(outp[0]); outp[0] = -1; }
+    }
+    if (idx_err >= 0 && (pfds[idx_err].revents & (POLLIN | POLLHUP | POLLERR))) {
+      ssize_t r;
+      if (err_buf && se + 1 < err_cap) {
+        r = read(errp[0], err_buf + se, err_cap - 1 - se);
+        if (r > 0) se += (size_t)r;
+      } else {
+        r = read(errp[0], discard, sizeof discard);
+      }
+      if (r == 0 || (r < 0 && errno != EAGAIN && errno != EINTR)) { close(errp[0]); errp[0] = -1; }
+    }
+  }
+  if (inp[1] >= 0) close(inp[1]);
+  if (outp[0] >= 0) close(outp[0]);
+  if (errp[0] >= 0) close(errp[0]);
+  if (out_buf && out_cap > 0) out_buf[so] = 0;
+  if (err_buf && err_cap > 0) err_buf[se] = 0;
+  if (out_len) *out_len = so;
+  if (err_len) *err_len = se;
+
+  int st = 0;
+  while (waitpid(child, &st, 0) < 0 && errno == EINTR) {}
+  return WIFEXITED(st) ? WEXITSTATUS(st) : WIFSIGNALED(st) ? (128 + WTERMSIG(st)) : -1;
+}
+
+static bool gce_init_ssh(void) {
+  const char *src = getenv("OA_BOAT_SSH_KEY_FILE");
+  if (!src || !*src) src = "/var/run/oa-boat/ssh_key";
+  FILE *fp = fopen(src, "rb");
+  if (!fp) {
+    fprintf(stderr, "oa-boat: cannot open GCE ssh key file %s: %s\n", src, strerror(errno));
+    return false;
+  }
+  char kbuf[8192];
+  size_t kn = fread(kbuf, 1, sizeof kbuf - 1, fp);
+  fclose(fp);
+  if (kn < 32) {
+    fprintf(stderr, "oa-boat: GCE ssh key file %s too short (%zu bytes)\n", src, kn);
+    return false;
+  }
+  snprintf(g_ssh_key_copy, sizeof g_ssh_key_copy, "%s/ssh_key", g_work_root);
+  int fd = open(g_ssh_key_copy, O_CREAT | O_WRONLY | O_TRUNC, 0600);
+  if (fd < 0) { fprintf(stderr, "oa-boat: cannot write %s: %s\n", g_ssh_key_copy, strerror(errno)); return false; }
+  (void)fchmod(fd, 0600);
+  size_t off = 0;
+  while (off < kn) {
+    ssize_t w = write(fd, kbuf + off, kn - off);
+    if (w <= 0) { if (errno == EINTR) continue; break; }
+    off += (size_t)w;
+  }
+  close(fd);
+
+  int pfd[2];
+  if (pipe(pfd) != 0) return false;
+  pid_t child = fork();
+  if (child == 0) {
+    close(pfd[0]);
+    dup2(pfd[1], 1);
+    close(pfd[1]);
+    execlp("ssh-keygen", "ssh-keygen", "-y", "-f", g_ssh_key_copy, (char *)NULL);
+    _exit(127);
+  }
+  close(pfd[1]);
+  size_t pn = 0;
+  ssize_t r;
+  while (pn + 1 < sizeof g_ssh_pubkey && (r = read(pfd[0], g_ssh_pubkey + pn, sizeof g_ssh_pubkey - 1 - pn)) > 0) pn += (size_t)r;
+  close(pfd[0]);
+  int st = 0;
+  while (waitpid(child, &st, 0) < 0 && errno == EINTR) {}
+  while (pn > 0 && (g_ssh_pubkey[pn - 1] == '\n' || g_ssh_pubkey[pn - 1] == '\r' || g_ssh_pubkey[pn - 1] == ' ')) pn--;
+  g_ssh_pubkey[pn] = 0;
+  if (!WIFEXITED(st) || WEXITSTATUS(st) != 0 || pn < 20) {
+    fprintf(stderr, "oa-boat: ssh-keygen -y failed (status=%d pub_len=%zu)\n", WIFEXITED(st) ? WEXITSTATUS(st) : -1, pn);
+    return false;
+  }
+  fprintf(stderr, "oa-boat: loaded GCE ssh pubkey (%zu bytes)\n", pn);
+  return true;
+}
+
+typedef struct {
+  int slot;
+  char id[16];
+} gce_wait_arg;
+
+static void *gce_wait_ready_thread(void *arg) {
+  gce_wait_arg *wa = (gce_wait_arg *)arg;
+  int slot = wa->slot;
+  char id[16];
+  snprintf(id, sizeof id, "%s", wa->id);
+  free(wa);
+
+  char path[256];
+  snprintf(path, sizeof path, "/projects/%s/zones/%s/instances/oa-%s", g_gce_project, g_gce_zone, id);
+  char ip[64] = "";
+  for (int attempt = 0; attempt < 60; attempt++) {
+    pthread_mutex_lock(&g_mu);
+    bool alive = g_boxes[slot].used && strcmp(g_boxes[slot].id, id) == 0 && g_boxes[slot].state == 1;
+    pthread_mutex_unlock(&g_mu);
+    if (!alive) return NULL;
+
+    char resp[16384] = "";
+    long code = 0;
+    if (gce_call_body("GET", path, "", &code, resp, sizeof resp)) {
+      char st_str[32] = "";
+      if (extract_json_str(resp, "status", st_str, sizeof st_str) && strcmp(st_str, "RUNNING") == 0) {
+        if (extract_json_str(resp, "networkIP", ip, sizeof ip) && ip[0]) {
+          pthread_mutex_lock(&g_mu);
+          if (g_boxes[slot].used && strcmp(g_boxes[slot].id, id) == 0) snprintf(g_boxes[slot].ip, sizeof g_boxes[slot].ip, "%s", ip);
+          pthread_mutex_unlock(&g_mu);
+          fprintf(stderr, "oa-boat: sandbox %s GCE VM RUNNING at %s\n", id, ip);
+          break;
+        }
+      }
+    }
+    struct timespec ts = {2, 0};
+    nanosleep(&ts, NULL);
+  }
+  if (!ip[0]) {
+    fprintf(stderr, "oa-boat: sandbox %s timed out waiting for GCE RUNNING/networkIP\n", id);
+    pthread_mutex_lock(&g_mu);
+    if (g_boxes[slot].used && strcmp(g_boxes[slot].id, id) == 0 && g_boxes[slot].state == 1) g_boxes[slot].state = 7;
+    pthread_mutex_unlock(&g_mu);
+    return NULL;
+  }
+
+  for (int attempt = 0; attempt < 60; attempt++) {
+    pthread_mutex_lock(&g_mu);
+    bool alive = g_boxes[slot].used && strcmp(g_boxes[slot].id, id) == 0 && g_boxes[slot].state == 1;
+    pthread_mutex_unlock(&g_mu);
+    if (!alive) return NULL;
+
+    char ob[256] = "", eb[256] = "";
+    size_t ol = 0, el = 0;
+    bool to = false;
+    int ec = gce_ssh_exec_capture(ip, "mkdir -p /tmp /workspace && echo OA_READY", NULL, 0, ob, sizeof ob, &ol, eb, sizeof eb, &el, 15, &to);
+    if (ec == 0 && strstr(ob, "OA_READY") != NULL) {
+      pthread_mutex_lock(&g_mu);
+      if (g_boxes[slot].used && strcmp(g_boxes[slot].id, id) == 0 && g_boxes[slot].state == 1) {
+        g_boxes[slot].state = 2; // ready
+        g_boxes[slot].started_s = now_sec();
+        iso_of(g_boxes[slot].started_s + g_boxes[slot].ttl_s, g_boxes[slot].archive_iso);
+      }
+      pthread_mutex_unlock(&g_mu);
+      fprintf(stderr, "oa-boat: sandbox %s SSH ready at %s\n", id, ip);
+      return NULL;
+    }
+    struct timespec ts = {2, 0};
+    nanosleep(&ts, NULL);
+  }
+  fprintf(stderr, "oa-boat: sandbox %s timed out waiting for SSH at %s\n", id, ip);
+  pthread_mutex_lock(&g_mu);
+  if (g_boxes[slot].used && strcmp(g_boxes[slot].id, id) == 0 && g_boxes[slot].state == 1) g_boxes[slot].state = 7;
+  pthread_mutex_unlock(&g_mu);
+  return NULL;
 }
 
 static void send_all(int fd, const void *buf, size_t len) {
@@ -682,9 +1066,9 @@ static void handle_client(int fd) {
     snprintf(b.size, sizeof b.size, "%s", size);
     snprintf(b.env_name, sizeof b.env_name, "%s", env_name);
     snprintf(b.idem_key, sizeof b.idem_key, "%s", idem_hdr);
-    snprintf(b.ip, sizeof b.ip, "%s", strcmp(g_backend, "gce") == 0 ? "10.128.0.10" : "127.0.0.1");
+    snprintf(b.ip, sizeof b.ip, "%s", gce_is_live() ? "" : strcmp(g_backend, "gce") == 0 ? "10.128.0.10" : "127.0.0.1");
     snprintf(b.root_dir, sizeof b.root_dir, "%s/%s", g_work_root, b.id);
-    b.state = 2; // ready
+    b.state = gce_is_live() ? 1 : 2; // provisioning on live GCE until RUNNING + SSH ready
     b.ttl_s = ttl_s > 0 ? ttl_s : 3600;
     b.started_s = now_sec();
     iso_of(b.started_s, b.created_iso);
@@ -706,6 +1090,16 @@ static void handle_client(int fd) {
         pthread_mutex_unlock(&g_mu);
         send_err(fd, 502, "gce_create_failed", "GCE instance create failed", req_id, NULL);
         free(buf); close(fd); return;
+      }
+      if (gce_is_live()) {
+        gce_wait_arg *wa = malloc(sizeof *wa);
+        if (wa) {
+          wa->slot = slot;
+          snprintf(wa->id, sizeof wa->id, "%s", b.id);
+          pthread_t th;
+          if (pthread_create(&th, NULL, gce_wait_ready_thread, wa) == 0) pthread_detach(th);
+          else free(wa);
+        }
       }
     }
 
@@ -803,16 +1197,29 @@ static void handle_client(int fd) {
       pthread_mutex_lock(&g_mu);
       box_rec *b = find_box_locked(bid);
       if (!b) { pthread_mutex_unlock(&g_mu); send_err(fd, 404, "not_found", "sandbox not found", req_id, NULL); free(buf); close(fd); return; }
+      int slot = (int)(b - g_boxes);
       if (nsize[0]) snprintf(b->size, sizeof b->size, "%s", nsize);
       if (ttl_s > 0 && ttl_s <= 86400) b->ttl_s = ttl_s;
-      b->state = 2; // ready
+      b->state = gce_is_live() ? 1 : 2; // provisioning on live GCE until RUNNING + SSH ready
       b->started_s = now_sec();
       iso_of(b->started_s + b->ttl_s, b->archive_iso);
       uint8_t out[1024];
       int64_t on = bs_w_sandbox_env(cs(b->id), cs(b->name), b->state, cs(b->size), cs(b->ip), cs(b->env_name),
                                     b->ttl_s, cs(b->archive_iso), cs(b->created_iso), vb(out, sizeof out));
       pthread_mutex_unlock(&g_mu);
-      if (strcmp(g_backend, "gce") == 0) gce_instance_op(bid, "POST", "/start");
+      if (strcmp(g_backend, "gce") == 0) {
+        gce_instance_op(bid, "POST", "/start");
+        if (gce_is_live()) {
+          gce_wait_arg *wa = malloc(sizeof *wa);
+          if (wa) {
+            wa->slot = slot;
+            snprintf(wa->id, sizeof wa->id, "%s", bid);
+            pthread_t th;
+            if (pthread_create(&th, NULL, gce_wait_ready_thread, wa) == 0) pthread_detach(th);
+            else free(wa);
+          }
+        }
+      }
       send_json(fd, 200, NULL, out, (size_t)on);
       free(buf); close(fd); return;
     }
@@ -855,8 +1262,8 @@ static void handle_client(int fd) {
       pthread_mutex_lock(&g_mu);
       box_rec *b = find_box_locked(bid);
       int bst = b ? b->state : 0;
-      char broot[256] = "";
-      if (b) snprintf(broot, sizeof broot, "%s", b->root_dir);
+      char broot[256] = "", bip[64] = "";
+      if (b) { snprintf(broot, sizeof broot, "%s", b->root_dir); snprintf(bip, sizeof bip, "%s", b->ip); }
       pthread_mutex_unlock(&g_mu);
       if (!b) { send_err(fd, 404, "not_found", "sandbox not found", req_id, NULL); free(buf); close(fd); return; }
 
@@ -870,6 +1277,19 @@ static void handle_client(int fd) {
         if (adm != 200 || cn < 0) {
           free(content);
           send_err(fd, adm != 200 ? adm : 400, adm == 413 ? "file_too_large" : adm == 409 ? "machine_not_running" : "invalid_request", "file write refused", req_id, NULL);
+          free(buf); close(fd); return;
+        }
+        if (gce_is_live()) {
+          char qp[4200], rcmd[9000], ob[256], eb[512];
+          size_t ol = 0, el = 0; bool to = false;
+          if (!bip[0] || sh_quote(fpath, qp, sizeof qp) < 0) {
+            free(content); send_err(fd, 500, "io_error", "invalid gce file target", req_id, NULL); free(buf); close(fd); return;
+          }
+          snprintf(rcmd, sizeof rcmd, "d=$(dirname -- %s) && mkdir -p -- \"$d\" && cat > %s", qp, qp);
+          int ec = gce_ssh_exec_capture(bip, rcmd, content, (size_t)cn, ob, sizeof ob, &ol, eb, sizeof eb, &el, 60, &to);
+          free(content);
+          if (ec != 0) { send_err(fd, 500, "io_error", "cannot write file on GCE VM", req_id, NULL); free(buf); close(fd); return; }
+          send_json(fd, 200, NULL, "{\"ok\":true}", 11);
           free(buf); close(fd); return;
         }
         char full[1400], dirp[1400];
@@ -890,6 +1310,23 @@ static void handle_client(int fd) {
         if (!query_param(qs, "path", fpath, sizeof fpath)) { send_err(fd, 400, "invalid_request", "missing path", req_id, NULL); free(buf); close(fd); return; }
         int adm = (int)bs_c_admit_file(bst, cs(fpath), 0);
         if (adm != 200) { send_err(fd, adm, adm == 409 ? "machine_not_running" : "invalid_request", "file read refused", req_id, NULL); free(buf); close(fd); return; }
+        if (gce_is_live()) {
+          char qp[4200], rcmd[9000], eb[512];
+          if (!bip[0] || sh_quote(fpath, qp, sizeof qp) < 0) {
+            send_err(fd, 500, "io_error", "invalid gce file path", req_id, NULL); free(buf); close(fd); return;
+          }
+          snprintf(rcmd, sizeof rcmd, "test -f %s && cat -- %s", qp, qp);
+          char *fbuf = malloc(BS_FILE_MAX + 2);
+          size_t rd = 0, el = 0; bool to = false;
+          int ec = fbuf ? gce_ssh_exec_capture(bip, rcmd, NULL, 0, fbuf, BS_FILE_MAX + 2, &rd, eb, sizeof eb, &el, 60, &to) : -1;
+          if (!fbuf || ec != 0) { free(fbuf); send_err(fd, 404, "not_found", "file not found", req_id, NULL); free(buf); close(fd); return; }
+          if (rd > BS_FILE_MAX) { free(fbuf); send_err(fd, 413, "file_too_large", "file too large", req_id, NULL); free(buf); close(fd); return; }
+          size_t ocap = rd * 2 + 2048;
+          uint8_t *out = malloc(ocap);
+          int64_t on = bs_w_file(cs(fpath), (coax_string){fbuf, (int64_t)rd}, false, (int64_t)rd, vb(out, ocap));
+          send_json(fd, 200, NULL, out, on > 0 ? (size_t)on : 0);
+          free(out); free(fbuf); free(buf); close(fd); return;
+        }
         char full[1400];
         snprintf(full, sizeof full, "%s/fs%s", broot, fpath);
         FILE *fp = fopen(full, "rb");
@@ -915,8 +1352,8 @@ static void handle_client(int fd) {
       pthread_mutex_lock(&g_mu);
       box_rec *b = find_box_locked(bid);
       int bst = b ? b->state : 0;
-      char broot[256] = "";
-      if (b) snprintf(broot, sizeof broot, "%s", b->root_dir);
+      char broot[256] = "", bip[64] = "";
+      if (b) { snprintf(broot, sizeof broot, "%s", b->root_dir); snprintf(bip, sizeof bip, "%s", b->ip); }
       pthread_mutex_unlock(&g_mu);
       if (!b) { send_err(fd, 404, "not_found", "sandbox not found", req_id, NULL); free(buf); close(fd); return; }
 
@@ -936,11 +1373,11 @@ static void handle_client(int fd) {
         free(buf); close(fd); return;
       }
 
-      // Compute working directory inside sandbox root
+      // Compute working directory inside sandbox root (local backend)
       char run_cwd[768];
       if (cwd[0] == '/') {
         snprintf(run_cwd, sizeof run_cwd, "%s/fs%s", broot, cwd);
-        mkdir_p(run_cwd);
+        if (!gce_is_live()) mkdir_p(run_cwd);
       } else {
         snprintf(run_cwd, sizeof run_cwd, "%s/fs", broot);
       }
@@ -963,21 +1400,56 @@ static void handle_client(int fd) {
         pthread_mutex_unlock(&g_mu);
         if (slot < 0) { free(cmd); send_err(fd, 429, "limit_exceeded", "too many detached processes", req_id, NULL); free(buf); close(fd); return; }
 
+        char *rcmd = NULL;
+        if (gce_is_live()) {
+          size_t qcap = (size_t)cl * 4 + 16;
+          char *qcmd = malloc(qcap);
+          char qcwd[2200] = "";
+          rcmd = malloc(qcap + 2560);
+          if (!bip[0] || !qcmd || !rcmd || sh_quote(cmd, qcmd, qcap) < 0 || (cwd[0] == '/' && sh_quote(cwd, qcwd, sizeof qcwd) < 0)) {
+            free(qcmd); free(rcmd); free(cmd);
+            pthread_mutex_lock(&g_mu); g_procs[slot].used = false; pthread_mutex_unlock(&g_mu);
+            send_err(fd, 500, "exec_error", "cannot prepare GCE detached command", req_id, NULL);
+            free(buf); close(fd); return;
+          }
+          if (cwd[0] == '/') {
+            snprintf(rcmd, qcap + 2560, "echo $$ > /tmp/oa-pid-%d; mkdir -p -- %s && cd -- %s && exec sh -c %s", pid_id, qcwd, qcwd, qcmd);
+          } else {
+            snprintf(rcmd, qcap + 2560, "echo $$ > /tmp/oa-pid-%d; exec sh -c %s", pid_id, qcmd);
+          }
+          free(qcmd);
+        }
+
         int ofd = open(g_procs[slot].out_path, O_CREAT | O_WRONLY | O_TRUNC, 0600);
         int efd = open(g_procs[slot].err_path, O_CREAT | O_WRONLY | O_TRUNC, 0600);
         pid_t child = fork();
         if (child == 0) {
           setpgid(0, 0);
-          (void)chdir(run_cwd);
           int dn = open("/dev/null", O_RDONLY);
           if (dn >= 0) { dup2(dn, 0); close(dn); }
           if (ofd >= 0) { dup2(ofd, 1); close(ofd); }
           if (efd >= 0) { dup2(efd, 2); close(efd); }
-          execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+          if (rcmd) {
+            char target[96];
+            snprintf(target, sizeof target, "user@%s", bip);
+            execlp("ssh", "ssh",
+                   "-i", g_ssh_key_copy,
+                   "-o", "BatchMode=yes",
+                   "-o", "StrictHostKeyChecking=no",
+                   "-o", "UserKnownHostsFile=/dev/null",
+                   "-o", "ConnectTimeout=10",
+                   "-o", "ServerAliveInterval=15",
+                   "-o", "LogLevel=ERROR",
+                   target, rcmd, (char *)NULL);
+          } else {
+            (void)chdir(run_cwd);
+            execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+          }
           _exit(127);
         }
         if (ofd >= 0) close(ofd);
         if (efd >= 0) close(efd);
+        free(rcmd);
         free(cmd);
         pthread_mutex_lock(&g_mu);
         g_procs[slot].pid = child;
@@ -995,6 +1467,28 @@ static void handle_client(int fd) {
       }
 
       // Synchronous command
+      if (gce_is_live()) {
+        size_t qcap = (size_t)cl * 4 + 16;
+        char *qcmd = malloc(qcap);
+        char qcwd[2200] = "";
+        char *rcmd = malloc(qcap + 2560);
+        if (!bip[0] || !qcmd || !rcmd || sh_quote(cmd, qcmd, qcap) < 0 || (cwd[0] == '/' && sh_quote(cwd, qcwd, sizeof qcwd) < 0)) {
+          free(qcmd); free(rcmd); free(cmd);
+          send_err(fd, 500, "exec_error", "cannot prepare GCE command", req_id, NULL);
+          free(buf); close(fd); return;
+        }
+        if (cwd[0] == '/') snprintf(rcmd, qcap + 2560, "mkdir -p -- %s && cd -- %s && sh -c %s", qcwd, qcwd, qcmd);
+        else snprintf(rcmd, qcap + 2560, "sh -c %s", qcmd);
+        free(qcmd); free(cmd);
+        char so[65536], se[16384];
+        size_t son = 0, sen = 0; bool to = false;
+        int ec = gce_ssh_exec_capture(bip, rcmd, NULL, 0, so, sizeof so, &son, se, sizeof se, &sen, timeout_s > 0 ? timeout_s : 120, &to);
+        free(rcmd);
+        uint8_t *out = malloc(163840);
+        int64_t on = bs_w_command_res(cs(req_id), ec, to, (coax_string){so, (int64_t)son}, (coax_string){se, (int64_t)sen}, vb(out, 163840));
+        send_json(fd, 200, NULL, out, on > 0 ? (size_t)on : 0);
+        free(out); free(buf); close(fd); return;
+      }
       int outp[2], errp[2];
       if (pipe(outp) != 0 || pipe(errp) != 0) { free(cmd); send_err(fd, 500, "pipe_failed", "pipe failed", req_id, NULL); free(buf); close(fd); return; }
       pid_t child = fork();
@@ -1055,8 +1549,16 @@ static void handle_client(int fd) {
         proc_rec *pr = NULL;
         for (int i = 0; i < MAX_PROCS; i++) if (g_procs[i].used && g_procs[i].id == proc_id && strcmp(g_procs[i].box_id, bid) == 0) { pr = &g_procs[i]; break; }
         pid_t target_pid = (pr && pr->running) ? pr->pid : 0;
+        box_rec *bx = find_box_locked(bid);
+        char bip[64] = "";
+        if (bx) snprintf(bip, sizeof bip, "%s", bx->ip);
         pthread_mutex_unlock(&g_mu);
         if (!pr) { send_err(fd, 404, "not_found", "process not found", req_id, NULL); free(buf); close(fd); return; }
+        if (gce_is_live() && bip[0]) {
+          char kcmd[256], ob[64], eb[64]; size_t ol = 0, el = 0; bool to = false;
+          snprintf(kcmd, sizeof kcmd, "p=$(cat /tmp/oa-pid-%d 2>/dev/null) && kill -9 -$p $p 2>/dev/null || true", proc_id);
+          (void)gce_ssh_exec_capture(bip, kcmd, NULL, 0, ob, sizeof ob, &ol, eb, sizeof eb, &el, 10, &to);
+        }
         if (target_pid > 0) kill(-target_pid, SIGKILL);
         send_json(fd, 200, NULL, "{\"ok\":true,\"status\":\"killed\"}", 29);
         free(buf); close(fd); return;
@@ -1113,6 +1615,10 @@ int main(int argc, char **argv) {
 
   snprintf(g_work_root, sizeof g_work_root, "/tmp/oa-boat-%d", (int)getpid());
   mkdir_p(g_work_root);
+  if (gce_is_live() && !gce_init_ssh()) {
+    fprintf(stderr, "oa-boat: live GCE backend requires readable OA_BOAT_SSH_KEY_FILE\n");
+    return 2;
+  }
 
   int srv = socket(AF_INET, SOCK_STREAM, 0);
   if (srv < 0) { perror("socket"); return 1; }
