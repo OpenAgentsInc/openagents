@@ -59,6 +59,13 @@ GW_TOOL_CALLS :: 8; GW_TOOL_HISTORY :: 64; GW_TOOL_MESSAGES :: 128;
  n=gwt_chat_message_ex(out[..],0,GwMessage.{role="user",text="",images=imgs[2..<4]},false);
  #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:a;base64,b\"}},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:c;base64,d\"}}]}";
  n=gwt_chat_message(out[..],0,GwMessage.{role="user",text="Hi"});#assert n>0 && cast(string)out[0..<n]=="{\"role\":\"user\",\"content\":\"Hi\"}";
+ sig_calls:=[1]GwToolCall.[GwToolCall.{call_id="c_sig",name="web_fetch",input_json="{}",thought_signature="AY89/sig\"1"}];
+ n=gwt_chat_message(out[..],0,GwMessage.{role="assistant",calls=sig_calls[..]});
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c_sig\",\"type\":\"function\",\"function\":{\"name\":\"web_fetch\",\"arguments\":\"{}\"},\"extra_content\":{\"google\":{\"thought_signature\":\"AY89/sig\\\"1\"}}}]}";
+ #assert gwt_chat_message(out[0..<n-1],0,GwMessage.{role="assistant",calls=sig_calls[..]})<0;
+ sig1:=[1]GwToolCall.[GwToolCall.{call_id="c_s1",name="f",input_json="{}",thought_signature="x"}];
+ n=gwt_chat_message(out[..],0,GwMessage.{role="assistant",calls=sig1[..]});
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c_s1\",\"type\":\"function\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"},\"extra_content\":{\"google\":{\"thought_signature\":\"x\"}}}]}";
  two:=[2]GwToolCall.[calls[0],GwToolCall.{call_id="b",name="find",input_json="{}"}];n=gwt_chat_message(out[..],0,GwMessage.{role="assistant",calls=two[..]});#assert n>0 && cl_count(cl_raw(cast(string)out[0..<n],"tool_calls"))==2;
  #assert gwt_chat_message(out[0..<1],0,GwMessage.{role="assistant",calls=calls[..]})<0 && gwt_chat_message(out[0..<1],0,GwMessage.{role="tool",result=GwToolResult.{call_id="a"}})<0;
 }
@@ -114,6 +121,6 @@ gwt_chat_message_ex :: (out:[]u8,at:int,m:GwMessage,tool_error:bool)->int #effec
   n=json_raw(out,n,"]");
  }
  if m.role=="assistant" && m.reasoning.count>0 { n=json_raw(out,n,",\"reasoning_content\":"); n=json_write_string(out,n,m.reasoning); }
- if m.calls.count>0 {n=json_raw(out,n,",\"tool_calls\":[");for call,i:m.calls {if i>0 {n=json_raw(out,n,",");}n=json_raw(out,n,"{\"id\":");n=json_write_string(out,n,call.call_id);n=json_raw(out,n,",\"type\":\"function\",\"function\":{\"name\":");n=json_write_string(out,n,call.name);n=json_raw(out,n,",\"arguments\":");n=json_write_string(out,n,call.input_json);n=json_raw(out,n,"}}");}n=json_raw(out,n,"]");}
+ if m.calls.count>0 {n=json_raw(out,n,",\"tool_calls\":[");for call,i:m.calls {if i>0 {n=json_raw(out,n,",");}n=json_raw(out,n,"{\"id\":");n=json_write_string(out,n,call.call_id);n=json_raw(out,n,",\"type\":\"function\",\"function\":{\"name\":");n=json_write_string(out,n,call.name);n=json_raw(out,n,",\"arguments\":");n=json_write_string(out,n,call.input_json);n=json_raw(out,n,"}");if call.thought_signature.count>0 {n=json_raw(out,n,",\"extra_content\":{\"google\":{\"thought_signature\":");n=json_write_string(out,n,call.thought_signature);n=json_raw(out,n,"}}");}n=json_raw(out,n,"}");}n=json_raw(out,n,"]");}
  return json_raw(out,n,"}");
 }

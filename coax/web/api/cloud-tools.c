@@ -66,6 +66,30 @@ static void ct_respond(int fd, const char *tool, bool ok, const char *output, co
   free(buf);
 }
 
+// Detect whether a fetched body looks like HTML rather than JSON/plain text.
+static bool ct_looks_html(const char *src, size_t len) {
+  size_t i = 0;
+  while (i < len && (src[i] == ' ' || src[i] == '\t' || src[i] == '\r' || src[i] == '\n')) i++;
+  if (i >= len || src[i] != '<') return false;
+  if (i + 9 <= len && !strncasecmp(src + i, "<!doctype", 9)) return true;
+  if (i + 5 <= len && !strncasecmp(src + i, "<html", 5)) return true;
+  if (i + 5 <= len && !strncasecmp(src + i, "<head", 5)) return true;
+  if (i + 5 <= len && !strncasecmp(src + i, "<body", 5)) return true;
+  return true;
+}
+
+// Copy non-HTML text/JSON with bounded length, normalizing control bytes while preserving <...> syntax.
+static size_t ct_copy_plain(const char *src, size_t len, char *out, size_t cap) {
+  size_t n = 0;
+  for (size_t i = 0; i < len && n + 2 < cap; i++) {
+    unsigned char uc = (unsigned char)src[i];
+    if (uc == '\r') continue;
+    if (uc == '\n' || uc == '\t' || uc >= 32) out[n++] = (char)uc;
+  }
+  out[n] = 0;
+  return n;
+}
+
 // Minimal bounded HTML-to-text extractor (strips <script>/<style> blocks and HTML tags).
 static size_t ct_extract_text(const char *src, size_t len, char *out, size_t cap) {
   size_t n = 0;
@@ -343,7 +367,11 @@ bool cloud_tools_route(const request *q) {
 
   // 2) web_fetch (SSRF-guarded public HTTPS)
   if (kind == 2) {
-    const char *hdrs[] = { "User-Agent: openagents-cloud-fetch/1.0", "Accept: text/plain, text/markdown, text/html;q=0.9", NULL };
+    const char *hdrs[] = {
+      "User-Agent: openagents-cloud-fetch/1.0",
+      "Accept: text/markdown, text/plain, text/html;q=0.9, application/json;q=0.9, */*;q=0.8",
+      NULL
+    };
     http_client_req hr = {
       .method = "GET", .url = url, .headers = hdrs,
       .connect_timeout_ms = 5000, .total_timeout_ms = 12000,
@@ -358,9 +386,10 @@ bool cloud_tools_route(const request *q) {
       ct_respond(q->fd, tool, false, "", msg);
       return true;
     }
-    char *text = calloc(1, 12288);
+    char *text = calloc(1, 16384);
     if (!text) { http_client_res_free(&res); api_error(q->fd, 503, "Memory unavailable."); return true; }
-    ct_extract_text(res.body, res.body_len, text, 12288);
+    if (ct_looks_html(res.body, res.body_len)) ct_extract_text(res.body, res.body_len, text, 16384);
+    else ct_copy_plain(res.body, res.body_len, text, 16384);
     http_client_res_free(&res);
     ct_respond(q->fd, tool, true, text, "");
     free(text);

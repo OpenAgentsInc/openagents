@@ -188,9 +188,9 @@ gw_chat_tools :: (ar: [] ClArena, obj: string, out: [] GwEvent, at: int) -> int 
   if cl_count(calls)>out.count-at {return gw_put(out,0,GwEvent.{kind=GW_EV_REFUSED,reason="tool events exceed their buffer"});}
   for i: 0..<cl_count(calls) {
     c := cl_json(calls, cl_item(calls, i));
-    if !cl_valid(c,"?s:id ?u:index ?s:type=function ?o:function ?s:function.name ?s:function.arguments") {return gw_put(out,0,GwEvent.{kind=GW_EV_REFUSED,reason="invalid tool-call fields"});}
+    if !cl_valid(c,"?s:id ?u:index ?s:type=function ?o:function ?s:function.name ?s:function.arguments ?o:extra_content ?o:extra_content.google ?s:extra_content.google.thought_signature") {return gw_put(out,0,GwEvent.{kind=GW_EV_REFUSED,reason="invalid tool-call fields"});}
     k := cl_int(c, "index");
-    n = gw_put(out, n, GwEvent.{kind = GW_EV_TOOL, status = ifx k.ok then k.value else i, text = cl_str(ar, c, "function.name"), reason = cl_str(ar, c, "function.arguments"),call_id=cl_str(ar,c,"id")});
+    n = gw_put(out, n, GwEvent.{kind = GW_EV_TOOL, status = ifx k.ok then k.value else i, text = cl_str(ar, c, "function.name"), reason = cl_str(ar, c, "function.arguments"),call_id=cl_str(ar,c,"id"),thought_signature=cl_str(ar,c,"extra_content.google.thought_signature")});
     if ar[0].full {return gw_put(out,0,GwEvent.{kind=GW_EV_REFUSED,reason="tool strings exceed their buffer"});}
   }
   return n;

@@ -135,12 +135,23 @@ GwToolConversation :: struct {
  }
 }
 
+#test "conversation retains owned thought_signature across tool calls and results" {
+ pool:[16384]u8;c:[1]GwToolConversation;base:=[1]GwMessage.[GwMessage.{role="user",text="summarize"}];step:[1]GwToolStep;
+ #assert gwt_conversation_begin(c[..],pool[..],2,base[..]);gwt_step_begin(step[..]);
+ #assert gwt_step_feed(step[..],GwEvent.{kind=GW_EV_TOOL,call_id="call_g1",text="web_fetch",reason="{}",thought_signature="AY89sig=="}) && gwt_step_feed(step[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(step[..],true);
+ #assert gwt_conversation_calls(c[..],step[..],"");
+ gwt_step_begin(step[..]);
+ #assert gwt_conversation_result(c[..],GwToolResult.{call_id="call_g1",output="ok"});
+ msgs:=gwt_conversation_messages(c[..]);
+ #assert msgs.count==3 && msgs[1].calls.count==1 && msgs[1].calls[0].thought_signature=="AY89sig==";
+}
+
 gwt_conversation_text :: (c:[]GwToolConversation,value:string)->string #effects(all) {
  if !js_utf8(value) || value.count>c[0].pool.count-c[0].used {c[0].failed=true;return "";}at:=c[0].used;c[0].used+=js_copy(c[0].pool[at..<c[0].pool.count],value);return cast(string)c[0].pool[at..<c[0].used];
 }
 gwt_conversation_copy :: (c:[]GwToolConversation,m:GwMessage)->bool #effects(all) {
  if c[0].n>=GW_TOOL_MESSAGES || m.calls.count>GW_TOOL_HISTORY-c[0].nc {return false;}start:=c[0].nc;
- for call:m.calls {c[0].calls[c[0].nc]=GwToolCall.{call_id=gwt_conversation_text(c,call.call_id),name=gwt_conversation_text(c,call.name),input_json=gwt_conversation_text(c,call.input_json)};c[0].nc+=1;}
+ for call:m.calls {c[0].calls[c[0].nc]=GwToolCall.{call_id=gwt_conversation_text(c,call.call_id),name=gwt_conversation_text(c,call.name),input_json=gwt_conversation_text(c,call.input_json),thought_signature=gwt_conversation_text(c,call.thought_signature)};c[0].nc+=1;}
  row:=GwMessage.{role=ifx m.role=="user" then "user" else ifx m.role=="assistant" then "assistant" else "tool",text=gwt_conversation_text(c,m.text),calls=c[0].calls[start..<c[0].nc]};
  if m.role=="tool" {row.result=GwToolResult.{call_id=gwt_conversation_text(c,m.result.call_id),output=gwt_conversation_text(c,m.result.output),is_error=m.result.is_error};}
  if c[0].failed {return false;}c[0].messages[c[0].n]=row;c[0].n+=1;return true;

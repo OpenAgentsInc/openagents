@@ -4,7 +4,7 @@
 // coax/bin/coax test coax/lib/gateway/tool-step.coax --library
 #load "tool-history.coax";
 #authority;
-GwToolDraft :: struct {id:[GW_TOOL_ID]u8;ni:int;name:[GW_TOOL_ID]u8;nn:int;input:[GW_TOOL_INPUT]u8;nb:int;used:bool;}
+GwToolDraft :: struct {id:[GW_TOOL_ID]u8;ni:int;name:[GW_TOOL_ID]u8;nn:int;input:[GW_TOOL_INPUT]u8;nb:int;sig:[GW_TOOL_SIG]u8;ns:int;used:bool;}
 GwToolStep :: struct {calls:[GW_TOOL_CALLS]GwToolDraft;n:int;done:bool;sealed:bool;failed:bool;tools:bool;}
 
 #test "gateway tools: deltas are owned and inaccessible until a successful transport seals the step" {
@@ -53,6 +53,21 @@ GwToolStep :: struct {calls:[GW_TOOL_CALLS]GwToolDraft;n:int;done:bool;sealed:bo
  #assert gwt_step_call(s[..],GW_TOOL_CALLS).call_id=="";
 }
 
+#test "gateway tools: thought_signature assembles across deltas and enforces exact GW_TOOL_SIG capacity" {
+ s:[1]GwToolStep;gwt_step_begin(s[..]);
+ p1:[4]u8;_=js_copy(p1[..],"AY89");
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=0,call_id="c1",text="web_fetch",reason="{}",thought_signature=cast(string)p1[..]});
+ for i:0..<p1.count {p1[i]=0;}
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,status=0,thought_signature="a1/sig"});
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(s[..],true);
+ #assert gwt_step_call(s[..],0).thought_signature=="AY89a1/sig";
+ full:[GW_TOOL_SIG]u8;for i:0..<GW_TOOL_SIG {full[i]='A';}
+ gwt_step_begin(s[..]);
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,call_id="c2",text="web_fetch",reason="{}",thought_signature=cast(string)full[..]}) && gwt_step_feed(s[..],GwEvent.{kind=GW_EV_DONE,reason="tool_calls"}) && gwt_step_end(s[..],true) && gwt_step_call(s[..],0).thought_signature.count==GW_TOOL_SIG;
+ gwt_step_begin(s[..]);
+ #assert gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,call_id="c3",text="web_fetch",reason="{}",thought_signature=cast(string)full[..]}) && !gwt_step_feed(s[..],GwEvent.{kind=GW_EV_TOOL,thought_signature="x"}) && s[0].failed;
+}
+
 gwt_step_begin :: (s:[]GwToolStep) #effects(all) {s[0]=GwToolStep.{};}
 gwt_step_fail :: (s:[]GwToolStep)->bool #effects(all) {s[0].failed=true;s[0].sealed=false;return false;}
 gwt_step_feed :: (s:[]GwToolStep,e:GwEvent)->bool #effects(all) {
@@ -60,14 +75,14 @@ gwt_step_feed :: (s:[]GwToolStep,e:GwEvent)->bool #effects(all) {
  if e.kind==GW_EV_REFUSED {return gwt_step_fail(s);}
  if e.kind==GW_EV_DONE {s[0].done=true;s[0].tools=e.reason=="tool_calls";if !s[0].tools && e.reason!="stop" && e.reason!="length" {return gwt_step_fail(s);}return true;}
  if e.kind!=GW_EV_TOOL {return true;}if e.status<0 || e.status>=GW_TOOL_CALLS {return gwt_step_fail(s);}p:=s[0].calls[e.status..<e.status+1];
- if e.call_id.count>GW_TOOL_ID-p[0].ni || e.text.count>GW_TOOL_ID-p[0].nn || e.reason.count>GW_TOOL_INPUT-p[0].nb {return gwt_step_fail(s);}
- p[0].ni+=js_copy(p[0].id[p[0].ni..<GW_TOOL_ID],e.call_id);p[0].nn+=js_copy(p[0].name[p[0].nn..<GW_TOOL_ID],e.text);p[0].nb+=js_copy(p[0].input[p[0].nb..<GW_TOOL_INPUT],e.reason);p[0].used=true;
+ if e.call_id.count>GW_TOOL_ID-p[0].ni || e.text.count>GW_TOOL_ID-p[0].nn || e.reason.count>GW_TOOL_INPUT-p[0].nb || e.thought_signature.count>GW_TOOL_SIG-p[0].ns {return gwt_step_fail(s);}
+ p[0].ni+=js_copy(p[0].id[p[0].ni..<GW_TOOL_ID],e.call_id);p[0].nn+=js_copy(p[0].name[p[0].nn..<GW_TOOL_ID],e.text);p[0].nb+=js_copy(p[0].input[p[0].nb..<GW_TOOL_INPUT],e.reason);p[0].ns+=js_copy(p[0].sig[p[0].ns..<GW_TOOL_SIG],e.thought_signature);p[0].used=true;
  if s[0].n<e.status+1 { // mutant: equivalent (including n == status+1 in this condition only assigns the same count again)
   s[0].n=e.status+1;
  }return true;
 }
 gwt_step_call :: (s:[]GwToolStep,index:int)->GwToolCall #effects(all) {
- if !s[0].sealed || s[0].failed || index<0 || index>=s[0].n {return GwToolCall.{};}p:=s[0].calls[index..<index+1];return GwToolCall.{call_id=cast(string)p[0].id[0..<p[0].ni],name=cast(string)p[0].name[0..<p[0].nn],input_json=cast(string)p[0].input[0..<p[0].nb]};
+ if !s[0].sealed || s[0].failed || index<0 || index>=s[0].n {return GwToolCall.{};}p:=s[0].calls[index..<index+1];return GwToolCall.{call_id=cast(string)p[0].id[0..<p[0].ni],name=cast(string)p[0].name[0..<p[0].nn],input_json=cast(string)p[0].input[0..<p[0].nb],thought_signature=cast(string)p[0].sig[0..<p[0].ns]};
 }
 gwt_step_end :: (s:[]GwToolStep,clean:bool)->bool #effects(all) {
  if s[0].failed {return false;}if !clean {return gwt_step_fail(s);}if !s[0].done {return false;}

@@ -111,14 +111,14 @@ gw_test_has_tools :: (body: string) -> bool { return cl_raw(body, "tools").count
 }
 #test "native tool IDs survive streamed and whole replies and an event overflow refuses the entire tool prefix" {
  arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];events:[4]GwEvent;
- body:="{\"choices\":[{\"message\":{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}},{\"id\":\"b\",\"function\":{\"name\":\"find\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}";
- n:=gw_chat_whole(ar[..],body,events[..]);#assert n==3 && events[0].call_id=="a" && events[1].call_id=="b" && events[2].reason=="tool_calls";
+ body:="{\"choices\":[{\"message\":{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"},\"extra_content\":{\"google\":{\"thought_signature\":\"AY89a1/sig==\"}}},{\"id\":\"b\",\"function\":{\"name\":\"find\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}";
+ n:=gw_chat_whole(ar[..],body,events[..]);#assert n==3 && events[0].call_id=="a" && events[0].thought_signature=="AY89a1/sig==" && events[1].call_id=="b" && events[1].thought_signature=="" && events[2].reason=="tool_calls";
  n=gw_chat_tools(ar[..],cl_raw(body,"choices.0.message"),events[0..<1],0);#assert n==1 && events[0].kind==GW_EV_REFUSED;
- n=gw_chat_tools(ar[..],cl_raw(body,"choices.0.message"),events[0..<2],0);#assert n==2 && events[0].call_id=="a" && events[1].call_id=="b";
+ n=gw_chat_tools(ar[..],cl_raw(body,"choices.0.message"),events[0..<2],0);#assert n==2 && events[0].call_id=="a" && events[0].thought_signature=="AY89a1/sig==" && events[1].call_id=="b";
  n=gw_chat_tools(ar[..],cl_raw(body,"choices.0.message"),events[..],3);#assert n==1 && events[0].kind==GW_EV_REFUSED;
  #assert gw_chat_tools(ar[..],"",events[..],2)==2;
  tiny:[1]u8;ar[0]=ClArena.{buf=tiny[..]};n=gw_chat_tools(ar[..],"{\"tool_calls\":[{\"id\":\"\\u0061\\u0062\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]}",events[..],0);#assert n==1 && events[0].kind==GW_EV_REFUSED;
- ar[0]=ClArena.{buf=arena[..]};for bad:[4]string.["{\"tool_calls\":[{\"id\":3}]}","{\"tool_calls\":[{\"index\":-1}]}","{\"tool_calls\":[{\"function\":{\"arguments\":{}}}]}","{\"tool_calls\":[{\"type\":\"custom\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]}"] {n=gw_chat_tools(ar[..],bad,events[..],0);#assert n==1 && events[0].kind==GW_EV_REFUSED;}
+ ar[0]=ClArena.{buf=arena[..]};for bad:[5]string.["{\"tool_calls\":[{\"id\":3}]}","{\"tool_calls\":[{\"index\":-1}]}","{\"tool_calls\":[{\"function\":{\"arguments\":{}}}]}","{\"tool_calls\":[{\"type\":\"custom\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]}","{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"},\"extra_content\":{\"google\":{\"thought_signature\":123}}}]}"] {n=gw_chat_tools(ar[..],bad,events[..],0);#assert n==1 && events[0].kind==GW_EV_REFUSED;}
  n=gw_chat_tools(ar[..],"{\"tool_calls\":0}",events[..],0);#assert n==1 && events[0].kind==GW_EV_REFUSED;
 }
 #test "Chat translation retains each existing dialect flag at its one-byte boundaries" {

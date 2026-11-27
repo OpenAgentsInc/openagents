@@ -84,6 +84,11 @@ class H(BaseHTTPRequestHandler):
         if p == "/health": return self._send(200, {"ok": True})
         if p == "/page":
             return self._send(200, "<html><head><script>evil()</script></head><body><h1>OpenAgents Docs</h1><p>Cloud execution works.</p></body></html>", "text/html")
+        if p == "/api-commits":
+            acc = (self.headers.get("Accept") or "").lower()
+            if "application/json" not in acc and "*/*" not in acc:
+                return self._send(415, {"message": "Unsupported Media Type"})
+            return self._send(200, [{"sha": "abc1234", "commit": {"message": "Fix thought_signature <dev@openagents.com>"}}])
         if p.startswith("/gh/"):
             assert self.headers.get("Authorization") == f"Bearer {GH}", self.headers.get("Authorization")
             if p == "/gh/repos/OpenAgentsInc/openagents/contents":
@@ -199,6 +204,9 @@ assert st == 200 and j["ok"] and "Coax Lang" in j["output"], j
 
 st, j = call({"tool": "web_fetch", "arguments": {"url": f"{mock}/page"}})
 assert st == 200 and j["ok"] and "OpenAgents Docs" in j["output"] and "evil()" not in j["output"], j
+
+st, j = call({"tool": "web_fetch", "arguments": {"url": f"{mock}/api-commits"}})
+assert st == 200 and j["ok"] and "abc1234" in j["output"] and "<dev@openagents.com>" in j["output"], j
 
 st, j = call({"tool": "github_tree", "arguments": {"repo": "OpenAgentsInc/openagents"}})
 assert st == 200 and j["ok"] and "d coax\nf AGENTS.md\n" == j["output"], j

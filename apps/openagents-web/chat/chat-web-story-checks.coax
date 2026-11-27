@@ -639,8 +639,8 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   #assert sc_contains(req_body, "github_tree") && sc_contains(req_body, "OpenAgentsInc/openagents");
   ops[0].open_n = 0;
 
-  // Model emits a streamed github_tree tool_call and closes cleanly.
-  tc_sse := "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_gh1\",\"function\":{\"name\":\"github_tree\",\"arguments\":\"{\\\"repo\\\":\\\"OpenAgentsInc/openagents\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
+  // Model emits a streamed github_tree tool_call with Gemini/Vertex thought_signature and closes cleanly.
+  tc_sse := "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_gh1\",\"type\":\"function\",\"extra_content\":{\"google\":{\"thought_signature\":\"AY89a1/vertex_sig_test_123\"}},\"function\":{\"name\":\"github_tree\",\"arguments\":\"{\\\"repo\\\":\\\"OpenAgentsInc/openagents\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
   cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_OPEN, 200, "");
   cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, tc_sse);
   cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_END, 200, "");
@@ -654,7 +654,7 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   #assert sc_contains(tbody, "\"tool\":\"github_tree\"") && sc_contains(tbody, "OpenAgentsInc/openagents");
   #assert sc_by_text(t, "github_tree · running") >= 0;
 
-  // Deliver tool output -> card turns done, continuation /api/v1/inference opens with tool result!
+  // Deliver tool output -> card turns done, continuation /api/v1/inference opens with tool result and echoed thought_signature!
   tool_slot := ops[0].opens[ti].slot;
   ops[0].open_n = 0;
   cwc_t_http_reply(s, tool_slot, 200, "{\"schema\":\"openagents.cloud.tool.res.v1alpha1\",\"tool\":\"github_tree\",\"ok\":true,\"output\":\"d coax\\nf AGENTS.md\\n\"}");
@@ -664,6 +664,7 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   #assert inf2 >= 0 && ops[0].opens[inf2].slot == CWC_TURN_SLOT && !s[0].cc[0].tool_running && s[0].cc[0].web_streaming;
   req2 := cast(string) ops[0].opens[inf2].body[0..<ops[0].opens[inf2].body_n];
   #assert sc_contains(req2, "\"role\":\"tool\"") && sc_contains(req2, "call_gh1") && sc_contains(req2, "AGENTS.md");
+  #assert sc_contains(req2, "\"extra_content\":{\"google\":{\"thought_signature\":\"AY89a1/vertex_sig_test_123\"}}");
   #assert sc_by_text(t, "github_tree · done") >= 0;
 
   // Stream final answer -> turn completes cleanly.

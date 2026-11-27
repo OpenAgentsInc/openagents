@@ -42,6 +42,7 @@ GwEvent :: struct {
   status: int;
   reason: string;
   call_id: string;               // native tool-call ID; absent on later argument-only deltas
+  thought_signature: string;     // optional Gemini/Vertex thought_signature on tool_calls (must be echoed back)
 }
 
 GwImage :: struct {
