@@ -172,7 +172,7 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   if kind != CW_CLICK { return false; }
   // the side's foot (logged in: its name leads to Settings; logged out it is Log in, a page of its own) and the chat's gear
   if id == "who.go" { if s[0].me_n == 0 { return false; } cw_to_settings(s, SW_ACCOUNT); return true; }
-  if id == "settings" { cw_to_settings(s, SW_MODELS); again := cw_go(s, CF_ACCOUNT, "/api/chat/account", ""); return true; }
+  if id == "settings" { cw_to_settings(s, SW_MODELS); if s[0].set[0].admin { again := cw_go(s, CF_ACCOUNT, "/api/chat/account", ""); } return true; }
   k := cw_number(id, "set.nav.");
   if k >= 0 { if k < SW_SECTIONS { cw_to_settings(s, k); } return true; }
   if id == "set.out" || id == "home.out" { s[0].out_due = true; return true; }
@@ -245,13 +245,13 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   coaxial_chatweb_go_done(s);
   cw_test_press(s, "acct.security.go");
   #assert cw_test_go(s) == "/settings/security" && coaxial_chatweb_go_push(s) && s[0].page == SS_HELD;
-  // logged out, the foot is Log in, a page of its own
+  // logged out, the foot is Log in, a page of its own (and never hits /api/chat/account)
   o: [1] CwTest; c := o[0].s[..];
   n = coaxial_chatweb_frame(c, 0.016, true);
-  cw_test_answer(c, 401, "");
-  n = coaxial_chatweb_frame(c, 0.016, true);
+  #assert cw_test_door(c) == "/api/auth/account?as=lines";
   cw_test_answer(c, 200, "logged_in 0\n");
   n = coaxial_chatweb_frame(c, 0.016, true);
+  #assert !coaxial_chatweb_asking(c);
   cw_test_press(c, "who.go");
   #assert coaxial_chatweb_go_len(c) == 0 && c[0].page != SW_PAGE;
   // a direct load of /settings or a section opens it

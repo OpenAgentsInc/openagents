@@ -252,7 +252,7 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   _ = coaxial_chatweb_frame(s, 0.016, true);
   #assert s[0].cc[0].core_model == 3 && cwc_model_id(s[0].cc[..]) == "google/gemini-4-argon";
 
-  // Type and submit prompt -> pushes /chat/cnv_..., opens POST /api/chat/complete on Slot 4 + write-through sync.
+  // Type and submit prompt -> pushes /chat/cnv_..., opens POST /api/v1/inference on Slot 4 + write-through sync.
   cw_test_type(s, "composer", "Show a coax function");
   cw_test_enter(s, "composer");
   _ = coaxial_chatweb_frame(s, 0.016, true);
@@ -260,12 +260,19 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
 
   go := cw_test_go(s);
   #assert go.count == 42 && cast(string) go[0..<10] == "/chat/cnv_" && coaxial_chatweb_go_push(s);
-  ci := cwc_t_find_open(ops[..], "/api/chat/complete");
+  ci := cwc_t_find_open(ops[..], "/api/v1/inference");
   si := cwc_t_find_open(ops[..], "/api/chat/v2/sync");
   #assert ci >= 0 && ops[0].opens[ci].slot == CWC_TURN_SLOT;
   #assert sc_contains(cast(string) ops[0].opens[ci].body[0..<ops[0].opens[ci].body_n], "\"model\":\"google/gemini-4-argon\"");
   #assert sc_contains(cast(string) ops[0].opens[ci].body[0..<ops[0].opens[ci].body_n], "\"stream\":true");
   #assert si >= 0 && sc_contains(cast(string) ops[0].opens[si].body[0..<ops[0].opens[si].body_n], CC_SYNC_SCHEMA);
+  // Fresh conversation must NOT open /stream before /api/chat/v2/sync persists it (zero 404 race).
+  #assert cwc_t_find_open(ops[..], "/stream") < 0;
+  // Once /api/chat/v2/sync returns 200, conv.stream attaches cleanly.
+  cwc_t_http_reply(s, ops[0].opens[si].slot, 200, "{\"ok\":true}");
+  ops[0].open_n = 0;
+  cwc_t_drain(s, ops[..]);
+  #assert cwc_t_find_open(ops[..], "/stream") >= 0;
 
   // Verify ZERO 1Hz /api/chat/turn or /local/* polling over 120 frames (>10 simulated seconds)!
   for f: 0..<120 { _ = coaxial_chatweb_frame(s, 0.1, true); }
@@ -305,6 +312,36 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   // Answer Copy button copies markdown text cleanly.
   cw_test_press(s, "cc.copy.1");
   #assert coaxial_chatweb_clip(s) > 0 && sc_contains(cast(string) s[0].clip[0..<s[0].clip_n], "## Demo");
+
+  // Error extraction on POST /api/v1/inference: 402 credit prompt, 429 daily limit, and idempotent /sync fallback before conv_persisted.
+  e2: [1] CwTest; u := e2[0].s[..];
+  ops2: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  cw_test_path(u, "/chat");
+  cwc_t_drain(u, ops2[..]);
+  li2 := cwc_t_find_open(ops2[..], "/api/chat/v2/conversations");
+  lb2: [256] u8;
+  cwc_t_http_reply(u, ops2[0].opens[li2].slot, 200, cwc_t_list_json(lb2[..], ""));
+  cwc_t_drain(u, ops2[..]);
+  ops2[0].open_n = 0;
+  cw_test_type(u, "composer", "sup");
+  cw_test_enter(u, "composer");
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  cwc_t_drain(u, ops2[..]);
+  ops2[0].open_n = 0;
+  cwc_t_stream_ev(u, CWC_TURN_SLOT, UI_SUB_PHASE_ERROR, 402, "{\"error\":\"add credit: POST /api/v1/inference/credit\"}");
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  cwc_t_drain(u, ops2[..]);
+  #assert sc_contains(cast(string) u[0].cc[0].error[0..<u[0].cc[0].error_n], "No hosted inference credit (0 sats)");
+  // Before sync completed, failure write-through uses idempotent /api/chat/v2/sync (never 404 /events).
+  #assert cwc_t_find_open(ops2[..], "/api/chat/v2/sync") >= 0 && cwc_t_find_open(ops2[..], "/events") < 0;
+  // 429 extracts exact server JSON error message.
+  cw_test_type(u, "composer", "again");
+  cw_test_enter(u, "composer");
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  cwc_t_stream_ev(u, CWC_TURN_SLOT, UI_SUB_PHASE_ERROR, 429, "{\"error\":\"this account's 500 requests for today are used up\"}");
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  #assert cast(string) u[0].cc[0].error[0..<u[0].cc[0].error_n] == "this account's 500 requests for today are used up";
 }
 
 #test "14094 Story+Scene+Play: live Desktop observation, Last-Event-ID reconnect with zero duplicates, and Stop turn steering" {

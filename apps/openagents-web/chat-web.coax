@@ -1424,6 +1424,7 @@ cw_end :: (s: [] ChatWeb, status: int) {
   if kind == CF_WHO {
     s[0].me_n = ifx status == 200 then ss_who_read(body, s[0].me[..]) else 0;
     if status == 200 { sw_account_read(s[0].set[..], body); } else { sw_account_read(s[0].set[..], ""); }
+    if !s[0].set[0].admin { s[0].known = false; s[0].known_asked = true; }
   } else if kind == CF_WORLDS {
     s[0].worlds_n = ifx status == 200 then ss_worlds_read(body, s[0].worlds[..]) else 0;
   } else if kind == CF_PROJECTS {
@@ -1555,7 +1556,8 @@ cw_tick :: (s: [] ChatWeb) {
   if s[0].flight != CF_NONE { return; }
   if s[0].out_due { if cw_go(s, CF_OUT, "/api/auth/logout?as=lines", "{}") { s[0].out_due = false; } return; }
   if ci_tick(s) { return; }   // Accept or Decline on a visitor's idea, as soon as the page is free
-  if !s[0].me_asked && s[0].known_asked { if cw_go(s, CF_WHO, "/api/auth/account?as=lines", "") { s[0].me_asked = true; } return; }
+  if !s[0].me_asked { if cw_go(s, CF_WHO, "/api/auth/account?as=lines", "") { s[0].me_asked = true; } return; }
+  if !s[0].known_asked && s[0].set[0].admin { if cw_go(s, CF_ACCOUNT, "/api/chat/account", "") { s[0].known_asked = true; } return; }
   if !s[0].worlds_asked && s[0].me_n > 0 { if cw_go(s, CF_WORLDS, "/api/worlds", "") { s[0].worlds_asked = true; } return; }
   if !s[0].projects_asked && s[0].me_n > 0 { if cw_go(s, CF_PROJECTS, "/api/projects", "") { s[0].projects_asked = true; } return; }
   // Settings: the limits and the release, once each, when its page is open
@@ -1652,7 +1654,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   if !s[0].ready {
     n := mono_frames(s[0].sets[..]);
     s[0].ready = true; s[0].dirty = true;
-    asked := cw_go(s, CF_ACCOUNT, "/api/chat/account", "");
+    if cw_go(s, CF_WHO, "/api/auth/account?as=lines", "") { s[0].me_asked = true; }
   }
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].time += step;
@@ -2056,20 +2058,20 @@ cw_test_has :: (s: string, part: string) -> bool {
   while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
   return false;
 }
-// The page as it opens: its first frame, and the account's answer.
+// The page as it opens: its first frame, who is logged in, and (for admins) the Claude account status.
 cw_test_open :: (s: [] ChatWeb, account: string) {
   n := coaxial_chatweb_frame(s, 0.016, true);
-  cw_test_answer(s, 200, account);
-  n = coaxial_chatweb_frame(s, 0.016, true);
-  // then who is logged in, for the side's foot
+  // who is logged in first (public route, never 403 for non-admins)
   if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/auth/account?as=lines" { cw_test_answer(s, 200, CW_TEST_WHO); n = coaxial_chatweb_frame(s, 0.016, true); }
+  // then, because CW_TEST_WHO is an admin, the Claude account status
+  if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/chat/account" { cw_test_answer(s, 200, account); n = coaxial_chatweb_frame(s, 0.016, true); }
   // then the worlds they may edit, under Worlds
   if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/worlds" { cw_test_answer(s, 200, CW_TEST_WORLDS); n = coaxial_chatweb_frame(s, 0.016, true); }
   // then the projects they are in, under Projects
   // (a frame that takes no time, so the page's clock stands where the checks after it expect)
   if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/projects" { cw_test_answer(s, 200, CW_TEST_PROJECTS); n = coaxial_chatweb_frame(s, 0.0, true); }
 }
-CW_TEST_WHO :: "logged_in 1\naccount acct_1\nkind email\nemail a•••@example.com\n";
+CW_TEST_WHO :: "logged_in 1\naccount acct_1\nkind email\nadmin 1\nemail a•••@example.com\n";
 CW_TEST_WORLDS :: "world splice Splice\n";
 CW_TEST_PROJECTS :: "project coax Coax\n";
 cw_test_door :: (s: [] ChatWeb) -> string { return cast(string) s[0].door[0..<s[0].door_n]; }
@@ -2077,22 +2079,33 @@ cw_test_body :: (s: [] ChatWeb) -> string { return cast(string) s[0].request[0..
 cw_test_press :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_CLICK, dm_find(s[0].dom[..], id), 0); }
 cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMIT, dm_find(s[0].dom[..], id), 0); }
 
-#test "the page opens on the composer, asks for the account, and Send is off until there are words" {
+#test "the page opens on the composer, asks who is logged in first, only asks /api/chat/account for admins, and Send is off until there are words" {
   h: [1] CwTest; s := h[0].s[..];
   n := coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
   #assert n > 0 && t[0].lost == 0 && tr_class(t, 0) == "chat" && tr_find(t, "log") < 0 && tr_find(t, "settings.title") < 0;
-  #assert coaxial_chatweb_asking(s) && coaxial_chatweb_ask(s) == 0 && cw_test_door(s) == "/api/chat/account";
+  #assert coaxial_chatweb_asking(s) && coaxial_chatweb_ask(s) == 0 && cw_test_door(s) == "/api/auth/account?as=lines";
   #assert t[0].nodes[tr_find(t, "composer")].tag == TG_TEXTAREA && tr_has(t, tr_find(t, "composer"), AT_FOCUS);
   #assert tr_attr_of(t, tr_find(t, "settings"), AT_LABEL) == "Settings" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 4 Hydrogen";
   #assert tr_has(t, tr_find(t, "composer.send"), AT_DISABLED);
+  cw_test_answer(s, 200, CW_TEST_WHO);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/chat/account";
   cw_test_answer(s, 200, "{\"claude\":null}");
   #assert s[0].known && s[0].claude == CA_NONE && !coaxial_chatweb_asking(s);
   cw_test_type(s, "composer", "  \n ");
   n = coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED);
   cw_test_enter(s, "composer");
-  #assert s[0].sends == 0 && (!coaxial_chatweb_asking(s) || cw_test_door(s) == "/api/auth/account?as=lines");   // only who is logged in, for the side
+  #assert s[0].sends == 0 && (!coaxial_chatweb_asking(s) || cw_test_door(s) == "/api/worlds");
+  // Non-admin (e.g. WorkOS L1 user) never calls admin-only /api/chat/account on boot or Settings!
+  na: [1] CwTest; u := na[0].s[..];
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  #assert cw_test_door(u) == "/api/auth/account?as=lines";
+  cw_test_answer(u, 200, "logged_in 1\naccount acct_wos\nkind person\nlevel L1\nvia workos\nprimary chris@openagents.com\n");
+  #assert u[0].known_asked && !u[0].known && !u[0].set[0].admin;
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  #assert cw_test_door(u) != "/api/chat/account";
 }
 
 #test "a message goes into the transcript, the field clears, and Gemini is asked with the conversation" {
@@ -3373,11 +3386,11 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
 #test "a message sent in the page's first moment, while the account is still being read, goes when that read is back" {
   h: [1] CwTest; s := h[0].s[..];
   n := coaxial_chatweb_frame(s, 0.016, true);
-  #assert s[0].flight == CF_ACCOUNT;
+  #assert s[0].flight == CF_WHO;
   coaxial_chatweb_asked(s);
   cw_test_type(s, "composer", "hello");
   cw_test_enter(s, "composer");
-  #assert s[0].send_due && s[0].count == 0 && s[0].flight == CF_ACCOUNT;
+  #assert s[0].send_due && s[0].count == 0 && s[0].flight == CF_WHO;
   cw_test_answer(s, 404, "{\"error\":\"not found\"}");
   #assert !s[0].send_due && s[0].count == 2 && cw_text(s, 0) == "hello" && s[0].flight == CF_COMPLETE && cw_test_door(s) == "/api/chat/complete";
 }

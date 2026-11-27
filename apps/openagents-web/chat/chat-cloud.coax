@@ -199,6 +199,7 @@ ChatCloud :: struct {
   active_device: [48] u8; active_device_n: int;
   active_cost_msat: int;
   conv_loading: bool;
+  conv_persisted: bool;
 
   // Navigation push request for host (e.g., /chat/cnv_<32hex>).
   push_url: [80] u8; push_url_n: int;
@@ -525,7 +526,7 @@ cwc_reconcile_subs :: (c: [] ChatCloud) {
   ui_sub_commit(rt, c[0].comp_side);
 
   ui_sub_begin(rt, c[0].comp_transcript);
-  if c[0].auth_state == CWC_AUTH_IN && c[0].active_id_n == 36 {
+  if c[0].auth_state == CWC_AUTH_IN && c[0].active_id_n == 36 && c[0].conv_persisted {
     url: [128] u8;
     un := cwc_put(url[..], 0, "/api/chat/v2/conversations/");
     un = cwc_put(url[..], un, cwc_active_id(c));
@@ -655,6 +656,7 @@ cwc_new_chat :: (c: [] ChatCloud) {
   c[0].active_device_n = 0;
   c[0].active_cost_msat = 0;
   c[0].conv_loading = false;
+  c[0].conv_persisted = false;
   c[0].push_url_n = cwc_put(c[0].push_url[..], 0, "/chat");
   _ = ui_provide_str(c[0].rt[..], c[0].comp_root, "conv.active", "");
   cwc_reconcile_subs(c);
@@ -672,6 +674,7 @@ cwc_open_conversation :: (c: [] ChatCloud, cid: string, push: bool) {
     c[0].active_id_n = cwc_put(c[0].active_id[..], 0, cid);
     c[0].active_title_n = 0;
     c[0].active_revision = 0;
+    c[0].conv_persisted = true;
     _ = ui_provide_str(c[0].rt[..], c[0].comp_root, "conv.active", cid);
   }
   if push {
@@ -703,6 +706,7 @@ cwc_route_path :: (c: [] ChatCloud, raw_path: string) -> bool {
       cwc_clear_transcript(c);
       c[0].active_id_n = 0;
       c[0].active_title_n = 0;
+      c[0].conv_persisted = false;
       _ = ui_provide_str(c[0].rt[..], c[0].comp_root, "conv.active", "");
       cwc_reconcile_subs(c);
       cwc_flush_effects(c);
@@ -1397,6 +1401,7 @@ cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
     tn := ifx prompt.count > 64 then 64 else prompt.count;
     c[0].active_title_n = cwc_put(c[0].active_title[..], 0, cast(string) prompt[0..<tn]);
     c[0].active_revision = 1;
+    c[0].conv_persisted = false;
     un := cwc_put(c[0].push_url[..], 0, "/chat/");
     c[0].push_url_n = cwc_put(c[0].push_url[..], un, cwc_active_id(c));
     _ = ui_provide_str(c[0].rt[..], c[0].comp_root, "conv.active", cwc_active_id(c));
@@ -1485,7 +1490,7 @@ cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
   c[0].web_ps[0] = GwParse.{};
   smd_reset(c[0].live_md[..], 0, true);
 
-  cwc_queue_open(c, CWC_TURN_SLOT, "/api/chat/complete", cast(string) c[0].scratch_a[0..<bn], "", 0);
+  cwc_queue_open(c, CWC_TURN_SLOT, "/api/v1/inference", cast(string) c[0].scratch_a[0..<bn], "", 0);
   cwc_emit_sync(c, cid, tid, cast(string) c[0].active_title[0..<c[0].active_title_n],
                 prompt, "", CT_RUNNING, "", "", CC_EV_USER_MESSAGE, 1, false);
   cwc_reconcile_subs(c);
@@ -1506,7 +1511,7 @@ cwc_stop :: (c: [] ChatCloud) {
     cid := cwc_active_id(c);
     tid := cast(string) c[0].web_turn_id[0..<c[0].web_turn_n];
     if cid.count == 36 && tid.count == 36 {
-      cwc_emit_sync(c, cid, tid, "", "", partial, CT_CANCELLED, "user_stop", "", CC_EV_CANCELLED, 3, true);
+      cwc_emit_sync(c, cid, tid, "", "", partial, CT_CANCELLED, "user_stop", "", CC_EV_CANCELLED, 3, c[0].conv_persisted);
     }
     si := cwc_find_conv(c, cid);
     if si >= 0 { c[0].convs[si].working = false; c[0].convs[si].active_turn_n = 0; }
@@ -1604,12 +1609,29 @@ cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string
   idx := c[0].web_msg_idx;
   ok := phase == UI_SUB_PHASE_END && status == 200 && c[0].error_n == 0;
   if !ok && c[0].error_n == 0 {
+    if phase == UI_SUB_PHASE_ERROR && c[0].web_err_n == 0 && payload.count > 0 && payload != "closed" && payload != "interrupted" {
+      c[0].web_err_n = cwc_put(c[0].web_err[..], 0, payload);
+    }
+    raw_err := cast(string) c[0].web_err[0..<c[0].web_err_n];
+    said := "";
+    if raw_err.count > 0 {
+      ar: [1] ClArena; ar[0].buf = c[0].scratch_c[..];
+      said = cl_str(ar[..], raw_err, "error");
+    }
     if status == 401 {
       c[0].auth_state = CWC_AUTH_ANON;
       _ = ui_provide_int(c[0].rt[..], c[0].comp_root, "auth.state", CWC_AUTH_ANON);
       c[0].error_n = cwc_put(c[0].error[..], 0, "Sign in to OpenAgents to continue.");
-    } else if c[0].web_err_n > 0 {
-      c[0].error_n = cwc_put(c[0].error[..], 0, cast(string) c[0].web_err[0..<c[0].web_err_n]);
+    } else if status == 402 {
+      c[0].error_n = cwc_put(c[0].error[..], 0, "No hosted inference credit (0 sats). Add credit in Settings to continue.");
+    } else if said.count > 0 {
+      c[0].error_n = cwc_put(c[0].error[..], 0, said);
+    } else if status == 403 {
+      c[0].error_n = cwc_put(c[0].error[..], 0, "This account cannot use hosted inference here.");
+    } else if status == 429 {
+      c[0].error_n = cwc_put(c[0].error[..], 0, "Rate limit reached. Wait a moment and try again.");
+    } else if raw_err.count > 0 && raw_err[0] != '{' {
+      c[0].error_n = cwc_put(c[0].error[..], 0, raw_err);
     } else {
       c[0].error_n = cwc_put(c[0].error[..], 0, "The model request failed. Try again.");
     }
@@ -1630,7 +1652,7 @@ cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string
                   ifx ok then CT_COMPLETED else CT_FAILED,
                   ifx ok then "end_turn" else "error",
                   cast(string) c[0].error[0..<c[0].error_n],
-                  ifx ok then CC_EV_COMPLETED else CC_EV_FAILED, 3, true);
+                  ifx ok then CC_EV_COMPLETED else CC_EV_FAILED, 3, c[0].conv_persisted);
     cwc_fetch_usage(c);
   }
   si := cwc_find_conv(c, cid);
@@ -1758,9 +1780,16 @@ cwc_drain_msgs :: (c: [] ChatCloud) {
       c[0].dirty = true;
     } else if msg.tag == CWC_MSG_DETAIL_OK {
       c[0].auth_state = CWC_AUTH_IN;
+      c[0].conv_persisted = true;
       _ = ui_provide_int(rt, c[0].comp_root, "auth.state", CWC_AUTH_IN);
       if payload.count > 0 { _ = cwc_read_conv_detail(c, payload); }
       cwc_reconcile_subs(c);
+      c[0].dirty = true;
+    } else if msg.tag == CWC_MSG_SYNC_OK {
+      if c[0].active_id_n == 36 && !c[0].conv_persisted {
+        c[0].conv_persisted = true;
+        cwc_reconcile_subs(c);
+      }
       c[0].dirty = true;
     } else if msg.tag == CWC_MSG_DETAIL_ERR {
       c[0].conv_loading = false;

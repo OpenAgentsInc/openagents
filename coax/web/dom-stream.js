@@ -129,6 +129,7 @@ export function createStreamPool({
       let status = 0;
       let sawBody = false;
       let cleanEof = false;
+      let errBody = null;
       try {
         const hdrs = { ...headersForUrl(entry.url) };
         if (entry.isGet) {
@@ -181,6 +182,12 @@ export function createStreamPool({
             }
             cleanEof = true;
           }
+        } else {
+          try {
+            const cap = Math.max(1, Math.min(4096, inboxCap()));
+            const raw = new Uint8Array(await res.arrayBuffer());
+            if (raw.length > 0) errBody = raw.length > cap ? raw.subarray(0, cap) : raw;
+          } catch {}
         }
       } catch {
         if (!live()) return;
@@ -212,8 +219,8 @@ export function createStreamPool({
 
       slots[entry.slot] = null;
       entry.closed = true;
-      const reason = sawBody ? "interrupted" : "closed";
-      emit(entry.slot, DOM_STREAM_ERROR, status, encoder.encode(reason));
+      const errBytes = errBody || encoder.encode(sawBody ? "interrupted" : "closed");
+      emit(entry.slot, DOM_STREAM_ERROR, status, errBytes);
       onFlush?.();
     })();
   }
