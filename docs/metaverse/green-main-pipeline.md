@@ -153,12 +153,28 @@ refuses a push when:
    writes, and each committed copy, `connect-pylon.wgsl`, is its source
    `newland.wgsl`; run `coax/web/tool.sh coax/web/wgsl-module.coax --site`
    and commit),
+   `changelog-page --check` when the push changes `coax/CHANGELOG.md` or the
+   changelog page,
+   `books-check` (`bash scripts/check-books.sh --check`, ~2 s metadata-only,
+   zero compiler execution — runs even without a local `coax/bin/coax`) when
+   the push changes any book directory (`coax/book/`, `psionic/book/`,
+   `metaverse-engine/book/`, `everglade/book/`, `coder/book/`, `bitcoin/book/`,
+   `nostr/book/`, `openagents/book/`, `claude-code/book/`), `docs/books/`,
+   book checker/infra scripts (`psionic/tests/book.py`,
+   `scripts/check-books.sh`, `scripts/book_routes.py`,
+   `coax/tests/book_registry.py`, `coax/tests/book_claims.py`), or
+   `openagents/` (tracked by `openagents/book/provenance.json`),
+   `coax check` of every root above a changed `.coax` file
+   (`suites --check-affected`),
    and `coax test` of the suites the push changed (`check.sh only`, on the
-  pushed commit itself), on a build host when
+   pushed commit itself), on a build host when
    `remote.sh status` shows one with a free slot. A check that fails on
-   `main` already (an open entry on the red list) isn't counted. The checks
-   run only when the pushed commit is the checkout's `HEAD`, and only when
-   the push changes something that isn't a document.
+   `main` already (an open entry on the red list) isn't counted (except
+   `coax test` and `coax check`, which judge only the push's own changes). The
+   checks run only when the pushed commit is the checkout's `HEAD`, and only
+   when the push changes something that isn't a plain document (edits to
+   `coax/CHANGELOG.md`, book directories, or `docs/books/` still trigger their
+   checks).
 
 The checks share a time limit of 120 seconds (`OA_PREPUSH_SECONDS`).
 Anything still running then is stopped and named as skipped; the
