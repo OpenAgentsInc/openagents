@@ -117,6 +117,13 @@ CREATE SCHEMA queue;
 
 
 --
+-- Name: referral; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA referral;
+
+
+--
 -- Name: sys; Type: SCHEMA; Schema: -; Owner: -
 --
 
@@ -21629,8 +21636,11 @@ CREATE TABLE chat.turns_v2 (
     source_device text DEFAULT ''::text NOT NULL,
     workspace text DEFAULT ''::text NOT NULL,
     attachments_json text DEFAULT '[]'::text NOT NULL,
+    sandbox_seconds bigint DEFAULT 0 NOT NULL,
+    placement_reason text DEFAULT ''::text NOT NULL,
     CONSTRAINT turns_v2_admitted_for_check CHECK ((admitted_for = ANY (ARRAY[''::text, 'gamebuilder-agent'::text]))),
     CONSTRAINT turns_v2_check CHECK (((cost_msat >= 0) AND ((compute <> 'local'::text) OR (cost_msat = 0)))),
+    CONSTRAINT turns_v2_check1 CHECK (((sandbox_seconds >= 0) AND ((compute = 'sandbox'::text) OR (sandbox_seconds = 0)))),
     CONSTRAINT turns_v2_compute_check CHECK ((compute = ANY (ARRAY['cloud'::text, 'local'::text, 'sandbox'::text])))
 );
 
@@ -21882,6 +21892,51 @@ CREATE TABLE inference.models (
     markup_bps integer DEFAULT 2500 NOT NULL,
     per_call_micros bigint DEFAULT 0 NOT NULL,
     kind text DEFAULT 'chat'::text NOT NULL
+);
+
+
+--
+-- Name: promo_calls; Type: TABLE; Schema: inference; Owner: -
+--
+
+CREATE TABLE inference.promo_calls (
+    call_id bigint NOT NULL,
+    account_id text NOT NULL,
+    promo_micros bigint DEFAULT 0 NOT NULL,
+    paid_msat bigint DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT promo_calls_paid_msat_check CHECK ((paid_msat >= 0)),
+    CONSTRAINT promo_calls_promo_micros_check CHECK ((promo_micros >= 0))
+);
+
+
+--
+-- Name: promo_credit; Type: TABLE; Schema: inference; Owner: -
+--
+
+CREATE TABLE inference.promo_credit (
+    grant_id bigint NOT NULL,
+    account_id text NOT NULL,
+    remaining_micros bigint NOT NULL,
+    original_micros bigint NOT NULL,
+    kind text NOT NULL,
+    expires_at timestamp with time zone,
+    last_activity_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT promo_credit_original_micros_check CHECK ((original_micros >= 0)),
+    CONSTRAINT promo_credit_remaining_micros_check CHECK ((remaining_micros >= 0))
+);
+
+
+--
+-- Name: promo_spend_day; Type: TABLE; Schema: inference; Owner: -
+--
+
+CREATE TABLE inference.promo_spend_day (
+    account_id text NOT NULL,
+    utc_day date NOT NULL,
+    spent_micros bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT promo_spend_day_spent_micros_check CHECK ((spent_micros >= 0))
 );
 
 
@@ -22652,6 +22707,280 @@ CREATE SEQUENCE queue.jobs_id_seq
 --
 
 ALTER SEQUENCE queue.jobs_id_seq OWNED BY queue.jobs.id;
+
+
+--
+-- Name: admin_audit; Type: TABLE; Schema: referral; Owner: -
+--
+
+CREATE TABLE referral.admin_audit (
+    id bigint NOT NULL,
+    admin_account_id text NOT NULL,
+    action text NOT NULL,
+    target_id text DEFAULT ''::text NOT NULL,
+    reason text DEFAULT ''::text NOT NULL,
+    payload_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: admin_audit_id_seq; Type: SEQUENCE; Schema: referral; Owner: -
+--
+
+CREATE SEQUENCE referral.admin_audit_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: admin_audit_id_seq; Type: SEQUENCE OWNED BY; Schema: referral; Owner: -
+--
+
+ALTER SEQUENCE referral.admin_audit_id_seq OWNED BY referral.admin_audit.id;
+
+
+--
+-- Name: attributions; Type: TABLE; Schema: referral; Owner: -
+--
+
+CREATE TABLE referral.attributions (
+    invitee_account_id text NOT NULL,
+    inviter_account_id text,
+    code_id bigint NOT NULL,
+    code_text text DEFAULT ''::text NOT NULL,
+    source text DEFAULT 'typed'::text NOT NULL,
+    show_to_inviter boolean DEFAULT true NOT NULL,
+    terms_version integer DEFAULT 1 NOT NULL,
+    bound_at timestamp with time zone DEFAULT now() NOT NULL,
+    ip_hash text DEFAULT ''::text NOT NULL,
+    ua_hash text DEFAULT ''::text NOT NULL,
+    device_hash text DEFAULT ''::text NOT NULL,
+    held boolean DEFAULT false NOT NULL,
+    hold_reason text DEFAULT ''::text NOT NULL,
+    active_days_count integer DEFAULT 0 NOT NULL,
+    first_active_day date,
+    second_active_day date,
+    activated_at timestamp with time zone,
+    CONSTRAINT attributions_active_days_count_check CHECK ((active_days_count >= 0)),
+    CONSTRAINT attributions_source_check CHECK ((source = ANY (ARRAY['link'::text, 'typed'::text, 'cli'::text])))
+);
+
+
+--
+-- Name: clicks; Type: TABLE; Schema: referral; Owner: -
+--
+
+CREATE TABLE referral.clicks (
+    id bigint NOT NULL,
+    code_id bigint,
+    code_text text DEFAULT ''::text NOT NULL,
+    ip_hash text DEFAULT ''::text NOT NULL,
+    ua_hash text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: clicks_id_seq; Type: SEQUENCE; Schema: referral; Owner: -
+--
+
+CREATE SEQUENCE referral.clicks_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: clicks_id_seq; Type: SEQUENCE OWNED BY; Schema: referral; Owner: -
+--
+
+ALTER SEQUENCE referral.clicks_id_seq OWNED BY referral.clicks.id;
+
+
+--
+-- Name: codes; Type: TABLE; Schema: referral; Owner: -
+--
+
+CREATE TABLE referral.codes (
+    id bigint NOT NULL,
+    code_hash text NOT NULL,
+    code_text text,
+    code_hint text DEFAULT ''::text NOT NULL,
+    kind text NOT NULL,
+    owner_account_id text,
+    vanity_handle text,
+    vanity_enabled boolean DEFAULT false NOT NULL,
+    bonus_micros bigint,
+    max_uses integer,
+    uses_count integer DEFAULT 0 NOT NULL,
+    expires_at timestamp with time zone,
+    revoked_at timestamp with time zone,
+    show_name boolean DEFAULT true NOT NULL,
+    commit_footer_opt_in boolean DEFAULT false NOT NULL,
+    inviter_cap_override integer,
+    note text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT codes_bonus_micros_check CHECK (((bonus_micros IS NULL) OR (bonus_micros >= 0))),
+    CONSTRAINT codes_inviter_cap_override_check CHECK (((inviter_cap_override IS NULL) OR (inviter_cap_override >= 0))),
+    CONSTRAINT codes_kind_check CHECK ((kind = ANY (ARRAY['personal'::text, 'campaign'::text]))),
+    CONSTRAINT codes_max_uses_check CHECK (((max_uses IS NULL) OR (max_uses >= 1))),
+    CONSTRAINT codes_uses_count_check CHECK ((uses_count >= 0))
+);
+
+
+--
+-- Name: codes_id_seq; Type: SEQUENCE; Schema: referral; Owner: -
+--
+
+CREATE SEQUENCE referral.codes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: codes_id_seq; Type: SEQUENCE OWNED BY; Schema: referral; Owner: -
+--
+
+ALTER SEQUENCE referral.codes_id_seq OWNED BY referral.codes.id;
+
+
+--
+-- Name: config; Type: TABLE; Schema: referral; Owner: -
+--
+
+CREATE TABLE referral.config (
+    id integer DEFAULT 1 NOT NULL,
+    github_connect_micros bigint DEFAULT 5000000 NOT NULL,
+    invitee_micros bigint DEFAULT 10000000 NOT NULL,
+    inviter_micros bigint DEFAULT 5000000 NOT NULL,
+    kickback_bps integer DEFAULT 100 NOT NULL,
+    gh_min_age_days integer DEFAULT 90 NOT NULL,
+    gh_min_repos integer DEFAULT 3 NOT NULL,
+    gh_min_followers integer DEFAULT 5 NOT NULL,
+    inviter_cap_30d integer DEFAULT 20 NOT NULL,
+    promo_daily_cap_micros bigint DEFAULT 5000000 NOT NULL,
+    promo_expiry_days integer DEFAULT 90 NOT NULL,
+    kickback_inactivity_days integer DEFAULT 365 NOT NULL,
+    redeem_window_days integer DEFAULT 7 NOT NULL,
+    activation_days_needed integer DEFAULT 2 NOT NULL,
+    activation_window_days integer DEFAULT 30 NOT NULL,
+    daily_budget_micros bigint DEFAULT 500000000 NOT NULL,
+    total_budget_micros bigint DEFAULT '50000000000'::bigint NOT NULL,
+    promo_models text DEFAULT 'google/gemini-4-neon,gemini-4-neon,openagents/router-decision'::text NOT NULL,
+    flag_redeem boolean DEFAULT true NOT NULL,
+    flag_grants boolean DEFAULT true NOT NULL,
+    flag_kickback boolean DEFAULT true NOT NULL,
+    flag_github_connect boolean DEFAULT true NOT NULL,
+    terms_version integer DEFAULT 1 NOT NULL,
+    launch_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT config_activation_days_needed_check CHECK ((activation_days_needed >= 1)),
+    CONSTRAINT config_activation_window_days_check CHECK ((activation_window_days >= 1)),
+    CONSTRAINT config_daily_budget_micros_check CHECK ((daily_budget_micros >= 0)),
+    CONSTRAINT config_gh_min_age_days_check CHECK ((gh_min_age_days >= 0)),
+    CONSTRAINT config_gh_min_followers_check CHECK ((gh_min_followers >= 0)),
+    CONSTRAINT config_gh_min_repos_check CHECK ((gh_min_repos >= 0)),
+    CONSTRAINT config_github_connect_micros_check CHECK ((github_connect_micros >= 0)),
+    CONSTRAINT config_id_check CHECK ((id = 1)),
+    CONSTRAINT config_invitee_micros_check CHECK ((invitee_micros >= 0)),
+    CONSTRAINT config_inviter_cap_30d_check CHECK ((inviter_cap_30d >= 0)),
+    CONSTRAINT config_inviter_micros_check CHECK ((inviter_micros >= 0)),
+    CONSTRAINT config_kickback_bps_check CHECK (((kickback_bps >= 0) AND (kickback_bps <= 10000))),
+    CONSTRAINT config_kickback_inactivity_days_check CHECK ((kickback_inactivity_days >= 1)),
+    CONSTRAINT config_promo_daily_cap_micros_check CHECK ((promo_daily_cap_micros >= 0)),
+    CONSTRAINT config_promo_expiry_days_check CHECK ((promo_expiry_days >= 1)),
+    CONSTRAINT config_redeem_window_days_check CHECK ((redeem_window_days >= 1)),
+    CONSTRAINT config_terms_version_check CHECK ((terms_version >= 1)),
+    CONSTRAINT config_total_budget_micros_check CHECK ((total_budget_micros >= 0))
+);
+
+
+--
+-- Name: github_claims; Type: TABLE; Schema: referral; Owner: -
+--
+
+CREATE TABLE referral.github_claims (
+    github_id_key text NOT NULL,
+    account_id text NOT NULL,
+    github_login text DEFAULT ''::text NOT NULL,
+    github_avatar text DEFAULT ''::text NOT NULL,
+    github_created_at timestamp with time zone,
+    repos_count integer DEFAULT 0 NOT NULL,
+    followers_count integer DEFAULT 0 NOT NULL,
+    orgs_count integer DEFAULT 0 NOT NULL,
+    eligible boolean DEFAULT false NOT NULL,
+    denied boolean DEFAULT false NOT NULL,
+    claimed_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: grants; Type: TABLE; Schema: referral; Owner: -
+--
+
+CREATE TABLE referral.grants (
+    id bigint NOT NULL,
+    account_id text NOT NULL,
+    attribution_id text,
+    kind text NOT NULL,
+    source_ref text DEFAULT ''::text NOT NULL,
+    amount_micros bigint NOT NULL,
+    status text NOT NULL,
+    reason text DEFAULT ''::text NOT NULL,
+    terms_version integer DEFAULT 1 NOT NULL,
+    source_topup_id text,
+    milestone_tier integer,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    granted_at timestamp with time zone,
+    expires_at timestamp with time zone,
+    voided_at timestamp with time zone,
+    CONSTRAINT grants_amount_micros_check CHECK ((amount_micros >= 0)),
+    CONSTRAINT grants_kind_check CHECK ((kind = ANY (ARRAY['github_connect'::text, 'referral_invitee'::text, 'referral_inviter'::text, 'kickback'::text, 'milestone'::text, 'campaign'::text]))),
+    CONSTRAINT grants_milestone_tier_check CHECK (((milestone_tier IS NULL) OR (milestone_tier = ANY (ARRAY[5, 25, 100])))),
+    CONSTRAINT grants_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'granted'::text, 'void'::text, 'clawed_back'::text])))
+);
+
+
+--
+-- Name: grants_id_seq; Type: SEQUENCE; Schema: referral; Owner: -
+--
+
+CREATE SEQUENCE referral.grants_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: grants_id_seq; Type: SEQUENCE OWNED BY; Schema: referral; Owner: -
+--
+
+ALTER SEQUENCE referral.grants_id_seq OWNED BY referral.grants.id;
+
+
+--
+-- Name: milestones; Type: TABLE; Schema: referral; Owner: -
+--
+
+CREATE TABLE referral.milestones (
+    account_id text NOT NULL,
+    tier integer NOT NULL,
+    grant_id bigint,
+    awarded_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT milestones_tier_check CHECK ((tier = ANY (ARRAY[5, 25, 100])))
+);
 
 
 --
@@ -24708,6 +25037,34 @@ ALTER TABLE ONLY queue.jobs ALTER COLUMN id SET DEFAULT nextval('queue.jobs_id_s
 
 
 --
+-- Name: admin_audit id; Type: DEFAULT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.admin_audit ALTER COLUMN id SET DEFAULT nextval('referral.admin_audit_id_seq'::regclass);
+
+
+--
+-- Name: clicks id; Type: DEFAULT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.clicks ALTER COLUMN id SET DEFAULT nextval('referral.clicks_id_seq'::regclass);
+
+
+--
+-- Name: codes id; Type: DEFAULT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.codes ALTER COLUMN id SET DEFAULT nextval('referral.codes_id_seq'::regclass);
+
+
+--
+-- Name: grants id; Type: DEFAULT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.grants ALTER COLUMN id SET DEFAULT nextval('referral.grants_id_seq'::regclass);
+
+
+--
 -- Name: character_outbox seq; Type: DEFAULT; Schema: verse; Owner: -
 --
 
@@ -25843,6 +26200,30 @@ ALTER TABLE ONLY inference.models
 
 
 --
+-- Name: promo_calls promo_calls_pkey; Type: CONSTRAINT; Schema: inference; Owner: -
+--
+
+ALTER TABLE ONLY inference.promo_calls
+    ADD CONSTRAINT promo_calls_pkey PRIMARY KEY (call_id);
+
+
+--
+-- Name: promo_credit promo_credit_pkey; Type: CONSTRAINT; Schema: inference; Owner: -
+--
+
+ALTER TABLE ONLY inference.promo_credit
+    ADD CONSTRAINT promo_credit_pkey PRIMARY KEY (grant_id);
+
+
+--
+-- Name: promo_spend_day promo_spend_day_pkey; Type: CONSTRAINT; Schema: inference; Owner: -
+--
+
+ALTER TABLE ONLY inference.promo_spend_day
+    ADD CONSTRAINT promo_spend_day_pkey PRIMARY KEY (account_id, utc_day);
+
+
+--
 -- Name: topups topups_invoice_key; Type: CONSTRAINT; Schema: inference; Owner: -
 --
 
@@ -26208,6 +26589,102 @@ ALTER TABLE ONLY queue.jobs
 
 ALTER TABLE ONLY queue.jobs
     ADD CONSTRAINT jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: admin_audit admin_audit_pkey; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.admin_audit
+    ADD CONSTRAINT admin_audit_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: attributions attributions_pkey; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.attributions
+    ADD CONSTRAINT attributions_pkey PRIMARY KEY (invitee_account_id);
+
+
+--
+-- Name: clicks clicks_pkey; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.clicks
+    ADD CONSTRAINT clicks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: codes codes_code_hash_key; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.codes
+    ADD CONSTRAINT codes_code_hash_key UNIQUE (code_hash);
+
+
+--
+-- Name: codes codes_code_text_key; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.codes
+    ADD CONSTRAINT codes_code_text_key UNIQUE (code_text);
+
+
+--
+-- Name: codes codes_owner_account_id_key; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.codes
+    ADD CONSTRAINT codes_owner_account_id_key UNIQUE (owner_account_id);
+
+
+--
+-- Name: codes codes_pkey; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.codes
+    ADD CONSTRAINT codes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: config config_pkey; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.config
+    ADD CONSTRAINT config_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: github_claims github_claims_pkey; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.github_claims
+    ADD CONSTRAINT github_claims_pkey PRIMARY KEY (github_id_key);
+
+
+--
+-- Name: grants grants_kind_account_id_source_ref_key; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.grants
+    ADD CONSTRAINT grants_kind_account_id_source_ref_key UNIQUE (kind, account_id, source_ref);
+
+
+--
+-- Name: grants grants_pkey; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.grants
+    ADD CONSTRAINT grants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: milestones milestones_pkey; Type: CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.milestones
+    ADD CONSTRAINT milestones_pkey PRIMARY KEY (account_id, tier);
 
 
 --
@@ -27567,6 +28044,13 @@ CREATE INDEX inference_calls_pubkey ON inference.calls USING btree (pubkey, ms);
 
 
 --
+-- Name: inference_promo_credit_acct_exp_idx; Type: INDEX; Schema: inference; Owner: -
+--
+
+CREATE INDEX inference_promo_credit_acct_exp_idx ON inference.promo_credit USING btree (account_id, expires_at, created_at) WHERE (remaining_micros > 0);
+
+
+--
 -- Name: inference_topups_pubkey; Type: INDEX; Schema: inference; Owner: -
 --
 
@@ -27711,6 +28195,76 @@ CREATE INDEX queue_failed_jobs_idx ON queue.failed_jobs USING btree (queue, fail
 --
 
 CREATE INDEX queue_jobs_claim_idx ON queue.jobs USING btree (queue, available_at, id) WHERE (reserved_at IS NULL);
+
+
+--
+-- Name: referral_attributions_code_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE INDEX referral_attributions_code_idx ON referral.attributions USING btree (code_id, bound_at);
+
+
+--
+-- Name: referral_attributions_code_ip_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE INDEX referral_attributions_code_ip_idx ON referral.attributions USING btree (code_id, ip_hash, bound_at);
+
+
+--
+-- Name: referral_attributions_inviter_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE INDEX referral_attributions_inviter_idx ON referral.attributions USING btree (inviter_account_id, bound_at);
+
+
+--
+-- Name: referral_clicks_code_created_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE INDEX referral_clicks_code_created_idx ON referral.clicks USING btree (code_id, created_at);
+
+
+--
+-- Name: referral_codes_vanity_lower_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE UNIQUE INDEX referral_codes_vanity_lower_idx ON referral.codes USING btree (lower(vanity_handle)) WHERE (vanity_handle IS NOT NULL);
+
+
+--
+-- Name: referral_github_claims_account_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE INDEX referral_github_claims_account_idx ON referral.github_claims USING btree (account_id);
+
+
+--
+-- Name: referral_github_claims_created_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE INDEX referral_github_claims_created_idx ON referral.github_claims USING btree (github_created_at);
+
+
+--
+-- Name: referral_grants_account_status_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE INDEX referral_grants_account_status_idx ON referral.grants USING btree (account_id, status, created_at);
+
+
+--
+-- Name: referral_grants_granted_at_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE INDEX referral_grants_granted_at_idx ON referral.grants USING btree (granted_at) WHERE (status = 'granted'::text);
+
+
+--
+-- Name: referral_grants_status_created_idx; Type: INDEX; Schema: referral; Owner: -
+--
+
+CREATE INDEX referral_grants_status_created_idx ON referral.grants USING btree (status, created_at);
 
 
 --
@@ -28905,6 +29459,14 @@ ALTER TABLE ONLY drops.projects
 
 
 --
+-- Name: promo_credit promo_credit_grant_id_fkey; Type: FK CONSTRAINT; Schema: inference; Owner: -
+--
+
+ALTER TABLE ONLY inference.promo_credit
+    ADD CONSTRAINT promo_credit_grant_id_fkey FOREIGN KEY (grant_id) REFERENCES referral.grants(id);
+
+
+--
 -- Name: payouts payouts_tip_fkey; Type: FK CONSTRAINT; Schema: makers; Owner: -
 --
 
@@ -29046,6 +29608,30 @@ ALTER TABLE ONLY projects.turns
 
 ALTER TABLE ONLY projects.turns
     ADD CONSTRAINT turns_undone_by_fkey FOREIGN KEY (undone_by) REFERENCES projects.turns(id);
+
+
+--
+-- Name: attributions attributions_code_id_fkey; Type: FK CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.attributions
+    ADD CONSTRAINT attributions_code_id_fkey FOREIGN KEY (code_id) REFERENCES referral.codes(id);
+
+
+--
+-- Name: clicks clicks_code_id_fkey; Type: FK CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.clicks
+    ADD CONSTRAINT clicks_code_id_fkey FOREIGN KEY (code_id) REFERENCES referral.codes(id);
+
+
+--
+-- Name: milestones milestones_grant_id_fkey; Type: FK CONSTRAINT; Schema: referral; Owner: -
+--
+
+ALTER TABLE ONLY referral.milestones
+    ADD CONSTRAINT milestones_grant_id_fkey FOREIGN KEY (grant_id) REFERENCES referral.grants(id);
 
 
 --

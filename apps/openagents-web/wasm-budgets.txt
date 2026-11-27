@@ -46,7 +46,9 @@ chat 270000
 # chat v2 wire codec (chat-cloud.coax, account-chat-cloud-wire.coax: #14094); about 5% room.
 # 521,701 bytes measured 2026-11-26 on a Mac release build after adding Home Dashboard enrolled computers, private
 # account Projects with inline creation, and WorkOS Pipes GitHub connect/repo picker UI (#14125, #14126); ~7% room.
-chat-web 560000
+# 570,397 bytes measured 2026-11-27 on a Mac release build after adding Settings -> Invite & Referrals section,
+# two-line Paid/Promo credit display, and Cloud Chat promo HUD; ~5% room.
+chat-web 600000
 milestone 128000
 # /nostr-chat, Nostr from scratch as a scripted chat on the same components (nostr-chat.coax): the frames set and the
 # library's signing, relay, NIP-44 and NIP-59 code it runs in the page: 309,585 bytes measured 2026-11-12 on a Linux build host;

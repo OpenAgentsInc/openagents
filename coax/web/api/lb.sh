@@ -156,6 +156,8 @@ for pm in m["pathMatchers"]:
                       {"fullPathMatch": "/login"}, {"prefixMatch": "/login/"},
                       {"fullPathMatch": "/chat"}, {"prefixMatch": "/chat/"},
                       {"fullPathMatch": "/chat-gpu"}, {"prefixMatch": "/chat-gpu/"},   # the page before the rebuilt /chat
+                      {"fullPathMatch": "/r"}, {"prefixMatch": "/r/"},
+                      {"fullPathMatch": "/referrals"}, {"prefixMatch": "/referrals/"},
                       {"fullPathMatch": "/.well-known/apple-app-site-association"}):
             if next(iter(match.values())) not in have:
                 rule["matchRules"].append(match); changed = True
@@ -201,7 +203,7 @@ for pm in m["pathMatchers"]:
     if pm["name"] not in ("production", "staging"): continue
     rules = pm.setdefault("routeRules", [])
     bucket = f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendBuckets/" + ("coaxial-openagents-web" if pm["name"] == "production" else "coaxial-openagents-web-staging")
-    for page in ("agents", "security", "data", "delete", "devices", "lightning", "wallet"):
+    for page in ("agents", "security", "data", "delete", "devices", "lightning", "wallet", "invite"):
         want = [{"fullPathMatch": f"/settings/{page}"}, {"prefixMatch": f"/settings/{page}/"}]
         rule = next((r for r in rules if r.get("matchRules") == want), None)
         old = next((r["priority"] for r in rules if r.get("urlRedirect", {}).get("pathRedirect") == "/login" and {"prefixMatch": "/settings/"} in r.get("matchRules", [])), 40)

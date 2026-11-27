@@ -134,6 +134,10 @@ that already touches the file (#13267 to #13269, #13280).
 | The OpenAgents Protocol | The protobuf schemas in [`proto/`](../../proto/README.md) that every OpenAgents surface speaks. Nostr is one transport for it. | Coax 18 |
 | Treasury | Keys and rules that let an agent hold and spend Bitcoin. | Bitcoin 122, Nostr 104 |
 | Receipt | A signed record that work was done or paid for. | Nostr 82, Psionic 238 |
+| Referral | An attribution linking an invited account to the inviter whose referral code or vanity link it redeemed (`referral.attributions`), distinct from realm invites (`access.c`, `/invite#code=`). | Payments (`pay/referral-policy.coax`, [spec](../business/2026-11-27-referrals-and-promo-credit-spec.md)) |
+| Referral code | An account's permanent 8-character Crockford base32 code (`openagents.com/r/<code>`), verified GitHub handle vanity link (`openagents.com/r/<handle>`), or admin-minted campaign code (`referral.codes`). Never called an invite code. | Payments (`pay/referral-policy.coax`) |
+| Promo credit | Non-withdrawable, non-transferable service discount denominated in USD micros (`inference.promo_credit`), separate from paid Bitcoin/Lightning credit (`inference.credit` in msat). Spends before paid credit (oldest expiry first) on promo-eligible models up to the daily cap. | Payments (`pay/referral-policy.coax`) |
+| Kickback | Ongoing 1% (`floor(topup_micros * bps / 10000)`) promo credit granted atomically to an inviter inside the same transaction that settles an invitee's paid Lightning top-up (`inference.topups`), one level only. | Payments (`pay/referral-policy.coax`) |
 
 ## Words about evidence
 

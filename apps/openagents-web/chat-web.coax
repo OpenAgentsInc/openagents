@@ -139,6 +139,10 @@ CF_GH_STATUS :: 32;     // Home & Account: GitHub via WorkOS Pipes status (/api/
 CF_GH_CONNECT :: 33;    // Home & Account: start WorkOS Pipes GitHub OAuth (POST /api/integrations/github/connect)
 CF_GH_REPOS :: 34;      // Home & Account: list connected GitHub repos (/api/integrations/github/repos?as=lines)
 CF_GH_DISCONNECT :: 35; // Home & Account: disconnect GitHub (POST /api/integrations/github/disconnect)
+CF_REFERRAL :: 36;      // Settings, Invite: referral summary (/api/v1/referral?as=lines)
+CF_REF_REDEEM :: 37;    // Settings, Invite: redeem invite code (POST /api/v1/referral/redeem?as=lines)
+CF_REF_VANITY :: 38;    // Settings, Invite: update vanity/show_name/footer (POST /api/v1/referral/vanity?as=lines)
+CF_REF_RECHECK :: 39;   // Settings, Invite: recheck GitHub eligibility (POST /api/v1/referral/recheck?as=lines)
 CW_GO :: 2048;          // bytes of a browser navigation URL (supports external WorkOS Pipes OAuth URLs)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 // A world step's realm tool (turn.coax WT_TOOL; a size is a set), for its icon and how a run of them is named: the
@@ -282,6 +286,9 @@ ChatWeb :: struct {
   new_proj_seq: int;                 // Monotonic counter for Project create operation IDs
   gh_connect_due: bool;              // Connect GitHub via WorkOS Pipes requested
   gh_disconnect_due: bool;           // Disconnect GitHub via WorkOS Pipes requested
+  ref_redeem_due: bool;              // POST /api/v1/referral/redeem requested
+  ref_vanity_due: int;               // 1=vanity, 2=show_name, 3=commit_footer toggle requested
+  ref_recheck_due: bool;             // POST /api/v1/referral/recheck requested
   here: int;                         // the side alone on a place's page (SS_SIDE): the place it lights (ss_side_place), else -2
   side_closed: bool;                 // the side is put away (kept in this browser)
   mob_side_open: bool;               // mobile overlay drawer open (<= 760px; #13929)
@@ -1507,8 +1514,43 @@ cw_end :: (s: [] ChatWeb, status: int) {
     } else {
       s[0].set[0].gh_note_n = sw_put(s[0].set[0].gh_note[..], 0, "Could not disconnect GitHub.");
     }
+  } else if kind == CF_REFERRAL {
+    sw_referral_read(s[0].set[..], status, body);
+  } else if kind == CF_REF_REDEEM {
+    s[0].set[0].ref_busy = false;
+    if status == 200 {
+      s[0].set[0].ref_input_n = 0;
+      dm_value(s[0].dom[..], "sw.ref.code", "");
+      s[0].set[0].ref_note_n = sw_put(s[0].set[0].ref_note[..], 0, "Referral code redeemed.");
+      s[0].set[0].ref_asked = false;
+      s[0].set[0].life_asked = false;
+    } else {
+      ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
+      err := cl_str(ar[..], body, "error");
+      s[0].set[0].ref_note_n = sw_put(s[0].set[0].ref_note[..], 0, ifx err.count > 0 then err else "Could not redeem referral code.");
+    }
+  } else if kind == CF_REF_VANITY {
+    if status == 200 {
+      s[0].set[0].ref_note_n = sw_put(s[0].set[0].ref_note[..], 0, "Referral preferences saved.");
+      s[0].set[0].ref_asked = false;
+    } else {
+      ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
+      err := cl_str(ar[..], body, "error");
+      s[0].set[0].ref_note_n = sw_put(s[0].set[0].ref_note[..], 0, ifx err.count > 0 then err else "Could not update preference.");
+    }
+  } else if kind == CF_REF_RECHECK {
+    s[0].set[0].ref_busy = false;
+    if status == 200 {
+      s[0].set[0].ref_note_n = sw_put(s[0].set[0].ref_note[..], 0, "GitHub eligibility checked.");
+      s[0].set[0].ref_asked = false;
+      s[0].set[0].life_asked = false;
+    } else {
+      ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
+      err := cl_str(ar[..], body, "error");
+      s[0].set[0].ref_note_n = sw_put(s[0].set[0].ref_note[..], 0, ifx err.count > 0 then err else "Could not check GitHub eligibility.");
+    }
   } else if kind == CF_OUT {
-    if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; s[0].projects_n = 0; sw_account_read(s[0].set[..], ""); s[0].set[0].life_asked = false; s[0].set[0].orgs_asked = false; s[0].set[0].envs_asked = false; s[0].set[0].nenvs = 0; s[0].set[0].aprojs_asked = false; s[0].set[0].naprojs = 0; s[0].set[0].gh_asked = false; s[0].set[0].gh_connected = false; s[0].set[0].gh_repos_asked = false; s[0].set[0].gh_nrepos = 0; cw_go_to(s, "/", false); }   // logged out: the public home page
+    if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; s[0].projects_n = 0; sw_account_read(s[0].set[..], ""); s[0].set[0].life_asked = false; s[0].set[0].orgs_asked = false; s[0].set[0].envs_asked = false; s[0].set[0].nenvs = 0; s[0].set[0].aprojs_asked = false; s[0].set[0].naprojs = 0; s[0].set[0].gh_asked = false; s[0].set[0].gh_connected = false; s[0].set[0].gh_repos_asked = false; s[0].set[0].gh_nrepos = 0; s[0].set[0].ref_asked = false; s[0].set[0].ref_state = 0; cw_go_to(s, "/", false); }   // logged out: the public home page
   } else if kind == CF_ACCOUNT {
     s[0].known = status == 200; s[0].known_asked = true;
     if status == 200 { cw_account(s, body, "claude."); }
@@ -1682,6 +1724,29 @@ cw_tick :: (s: [] ChatWeb) {
   if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].orgs_asked { if cw_go(s, CF_ORGS, "/api/auth/workos/orgs?as=lines", "") { s[0].set[0].orgs_asked = true; } return; }
   if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].gh_asked { if cw_go(s, CF_GH_STATUS, "/api/integrations/github/status?as=lines", "") { s[0].set[0].gh_asked = true; } return; }
   if on_acct_dash && s[0].me_n > 0 && s[0].set[0].gh_connected && !s[0].set[0].gh_repos_asked { if cw_go(s, CF_GH_REPOS, "/api/integrations/github/repos?as=lines", "") { s[0].set[0].gh_repos_asked = true; } return; }
+  on_invite := s[0].page == SW_PAGE && s[0].set[0].section == SW_INVITE;
+  if s[0].ref_redeem_due {
+    rb: [160] u8; rn := cw_put(rb[..], 0, "{\"code\":\"");
+    for i: 0..<s[0].set[0].ref_input_n {
+      ch := s[0].set[0].ref_input[i];
+      if ch != '"' && ch != '\\' && ch >= 32 && rn + 24 < rb.count { rb[rn] = ch; rn += 1; }
+    }
+    rn = cw_put(rb[..], rn, "\",\"source\":\"typed\"}");
+    if cw_go(s, CF_REF_REDEEM, "/api/v1/referral/redeem?as=lines", cast(string) rb[0..<rn]) { s[0].ref_redeem_due = false; }
+    return;
+  }
+  if s[0].ref_vanity_due > 0 {
+    vb := ifx s[0].ref_vanity_due == 1 then (ifx s[0].set[0].ref_vanity_on then "{\"vanity_enabled\":false}" else "{\"vanity_enabled\":true}")
+      else ifx s[0].ref_vanity_due == 2 then (ifx s[0].set[0].ref_show_name then "{\"show_name\":false}" else "{\"show_name\":true}")
+      else (ifx s[0].set[0].ref_commit_footer then "{\"commit_footer_opt_in\":false}" else "{\"commit_footer_opt_in\":true}");
+    if cw_go(s, CF_REF_VANITY, "/api/v1/referral/vanity?as=lines", vb) { s[0].ref_vanity_due = 0; }
+    return;
+  }
+  if s[0].ref_recheck_due {
+    if cw_go(s, CF_REF_RECHECK, "/api/v1/referral/recheck?as=lines", "{}") { s[0].ref_recheck_due = false; }
+    return;
+  }
+  if on_invite && s[0].me_n > 0 && !s[0].set[0].ref_asked { if cw_go(s, CF_REFERRAL, "/api/v1/referral?as=lines", "") { s[0].set[0].ref_asked = true; } return; }
   // a card waits for the turn to end, so a running session's tool calls stay the transcript's last message
   if s[0].card_due_n > 0 && !s[0].live && !s[0].lrun {
     url: [96] u8;
@@ -1926,6 +1991,14 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_SUBMIT && (id == "sw.proj.name" || id == "sw.proj.repo") {
     if s[0].set[0].new_proj_name_n > 0 && !s[0].set[0].new_proj_busy { s[0].new_proj_due = true; }
+  }
+  else if kind == CW_INPUT && id == "sw.ref.code" {
+    n := ifx length < 0 then 0 else ifx length > 64 then 64 else length;
+    for i: 0..<n { s[0].set[0].ref_input[i] = s[0].inbox[i]; }
+    s[0].set[0].ref_input_n = n;
+  }
+  else if kind == CW_SUBMIT && id == "sw.ref.code" {
+    if s[0].set[0].ref_input_n > 0 && !s[0].set[0].ref_busy { s[0].ref_redeem_due = true; s[0].set[0].ref_busy = true; }
   }
   else if kind == CW_SUBMIT && id == "composer" {
     if cw_is_cloud(s) {

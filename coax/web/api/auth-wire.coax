@@ -293,10 +293,19 @@ auw_me_email_write :: (masked: string, first: bool, out: [] u8, at: int) -> int 
   jo_quoted(o[..], masked);
   return aw_len(o[..]);
 }
-auw_me_tail_write :: (primary: string, keys: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+auw_me_tail_write :: (primary: string, keys: string, promo_micros: int, promo_expires_at: string, out: [] u8, at: int) -> int #export_c #effects(all) {
   o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], "]");
   if primary.count > 0 { jo_put(o[..], ",\"primary\":"); jo_quoted(o[..], primary); }
-  jo_put(o[..], ",\"keys\":"); jo_put(o[..], keys); jo_put(o[..], "}"); return aw_len(o[..]);
+  jo_put(o[..], ",\"keys\":"); jo_put(o[..], keys);
+  jo_put(o[..], ",\"promo_micros\":"); jo_int(o[..], promo_micros);
+  if promo_expires_at.count > 0 { jo_put(o[..], ",\"promo_expires_at\":"); jo_quoted(o[..], promo_expires_at); }
+  jo_put(o[..], "}"); return aw_len(o[..]);
+}
+auw_me_promo_lines :: (promo_micros: int, promo_expires_at: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], "promo_micros "); jo_int(o[..], promo_micros); jo_put(o[..], "\n");
+  if promo_expires_at.count > 0 { jo_put(o[..], "promo_expires_at "); jo_put(o[..], promo_expires_at); jo_put(o[..], "\n"); }
+  return aw_len(o[..]);
 }
 auw_me_head_lines :: (account: string, kind: string, level: int, via: string, admin: bool, out: [] u8) -> int #export_c #effects(all) {
   o: [1] Jo; aw_at(o[..], out, 0);
@@ -592,22 +601,27 @@ auw_me_sealed_len :: (emails: string, at: int) -> int #export_c #effects(all) {
   n = auw_nobody_lines(b[..]);
   #assert cast(string) b[0..<n] == "logged_in 0\n" && auw_nobody_lines(b[0..<n - 1]) == -1;
   n = auw_me_head_write("acct_1", "person", 2, "nostr", "s1", true, b[..]);
-  n = auw_me_tail_write("", "[]", b[..], n);
-  #assert cast(string) b[0..<n] == "{\"logged_in\":true,\"account\":\"acct_1\",\"kind\":\"person\",\"level\":\"L2\",\"via\":\"nostr\",\"session\":\"s1\",\"admin\":true,\"emails\":[],\"keys\":[]}";
+  n = auw_me_tail_write("", "[]", 0, "", b[..], n);
+  #assert cast(string) b[0..<n] == "{\"logged_in\":true,\"account\":\"acct_1\",\"kind\":\"person\",\"level\":\"L2\",\"via\":\"nostr\",\"session\":\"s1\",\"admin\":true,\"emails\":[],\"keys\":[],\"promo_micros\":0}";
   n = auw_me_head_write("acct_1", "", 1, "email", "", false, b[..]);
   n = auw_me_email_write("a•••@example.com", true, b[..], n);
   n = auw_me_email_write("•••", false, b[..], n);
-  n = auw_me_tail_write("ada@example.com", "[{\"label\": \"app\", \"pubkey\": \"ab\"}]", b[..], n);
-  #assert cast(string) b[0..<n] == "{\"logged_in\":true,\"account\":\"acct_1\",\"kind\":\"\",\"level\":\"L1\",\"via\":\"email\",\"session\":\"\",\"admin\":false,\"emails\":[\"a•••@example.com\",\"•••\"],\"primary\":\"ada@example.com\",\"keys\":[{\"label\": \"app\", \"pubkey\": \"ab\"}]}";
-  n = auw_me_tail_write("a", "[]", b[..], 0);
-  #assert cast(string) b[0..<n] == "],\"primary\":\"a\",\"keys\":[]}";
-  #assert auw_me_head_write("acct_1", "person", 2, "nostr", "s1", true, b[0..<40]) == -1 && auw_me_email_write("x", true, b[..], -1) == -1 && auw_me_tail_write("", "[]", b[..], -1) == -1 && auw_me_email_write("x", true, b[0..<12], 10) == -1 && auw_me_tail_write("", "[]", b[0..<12], 10) == -1;
+  n = auw_me_tail_write("ada@example.com", "[{\"label\": \"app\", \"pubkey\": \"ab\"}]", 15000000, "2027-02-25T00:00:00Z", b[..], n);
+  #assert cast(string) b[0..<n] == "{\"logged_in\":true,\"account\":\"acct_1\",\"kind\":\"\",\"level\":\"L1\",\"via\":\"email\",\"session\":\"\",\"admin\":false,\"emails\":[\"a•••@example.com\",\"•••\"],\"primary\":\"ada@example.com\",\"keys\":[{\"label\": \"app\", \"pubkey\": \"ab\"}],\"promo_micros\":15000000,\"promo_expires_at\":\"2027-02-25T00:00:00Z\"}";
+  n = auw_me_tail_write("a", "[]", 1, "x", b[..], 0);
+  #assert cast(string) b[0..<n] == "],\"primary\":\"a\",\"keys\":[],\"promo_micros\":1,\"promo_expires_at\":\"x\"}";
+  #assert auw_me_head_write("acct_1", "person", 2, "nostr", "s1", true, b[0..<40]) == -1 && auw_me_email_write("x", true, b[..], -1) == -1 && auw_me_tail_write("", "[]", 0, "", b[..], -1) == -1 && auw_me_email_write("x", true, b[0..<12], 10) == -1 && auw_me_tail_write("", "[]", 0, "", b[0..<12], 10) == -1;
   n = auw_me_head_lines("acct_1", "person", 2, "nostr", true, b[..]);
   n = auw_me_email_lines("a•••@example.com", b[..], n);
   n = auw_me_primary_lines("ada@example.com", b[..], n);
   n = auw_me_key_lines("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\", \"label\": \"app\"}]", b[..], n);
   n = auw_me_key_lines("ab", b[..], n);
-  #assert cast(string) b[0..<n] == "logged_in 1\naccount acct_1\nkind person\nlevel L2\nvia nostr\nadmin 1\nemail a•••@example.com\nprimary ada@example.com\nkey 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nkey ab\n";
+  n = auw_me_promo_lines(5000000, "2027-02-25T00:00:00Z", b[..], n);
+  #assert cast(string) b[0..<n] == "logged_in 1\naccount acct_1\nkind person\nlevel L2\nvia nostr\nadmin 1\nemail a•••@example.com\nprimary ada@example.com\nkey 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nkey ab\npromo_micros 5000000\npromo_expires_at 2027-02-25T00:00:00Z\n";
+  n = auw_me_promo_lines(0, "", b[..], 0);
+  #assert cast(string) b[0..<n] == "promo_micros 0\n";
+  n = auw_me_promo_lines(1, "x", b[..], 0);
+  #assert cast(string) b[0..<n] == "promo_micros 1\npromo_expires_at x\n" && auw_me_promo_lines(1, "x", b[..], -1) == -1 && auw_me_promo_lines(1, "x", b[0..<10], 0) == -1;
   n = auw_me_head_lines("acct_1", "person", 1, "email", false, b[..]);
   #assert cast(string) b[0..<n] == "logged_in 1\naccount acct_1\nkind person\nlevel L1\nvia email\nadmin 0\n" && auw_me_head_lines("acct_1", "person", 1, "email", false, b[0..<n - 1]) == -1;
   #assert auw_me_email_lines("x", b[..], -1) == -1 && auw_me_primary_lines("x", b[..], -1) == -1 && auw_me_key_lines("x", b[..], -1) == -1 && auw_me_key_lines("x", b[0..<12], 10) == -1;

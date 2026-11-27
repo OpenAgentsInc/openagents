@@ -63,6 +63,8 @@ message AuthLifeLife {
   optional int64 purge_days = 22 [json_name = "purge_days"];
   optional int64 backup_days = 23 [json_name = "backup_days"];
   optional int64 backups_gone_days = 24 [json_name = "backups_gone_days"];
+  optional int64 promo_micros = 25 [json_name = "promo_micros"];
+  optional string promo_expires_at = 26 [json_name = "promo_expires_at"];
 }
 
 // POST /api/auth/delete 200

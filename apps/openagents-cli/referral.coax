@@ -1,0 +1,226 @@
+// Referral & Promo Credit CLI commands:
+//   openagents referral                      show your referral link, promo credit balance, invites, and milestones
+//   openagents referral redeem CODE          redeem a referral or campaign code (within 7 days of signup)
+//   openagents referral recheck              recheck GitHub eligibility and unlock pending promo credit
+//   openagents referral vanity on|off        toggle your GitHub handle vanity invite link
+//   openagents admin referral new|list|revoke|hold|void|clawback|cap|flag|config
+
+referral_usage :: () {
+  print("%\n", "Referrals & Promo Credit:");
+  print("%\n", "  referral                           your invite link, promo credit balance, counts, and milestones");
+  print("%\n", "  referral redeem CODE               bind a referral or campaign code (within 7 days of signup)");
+  print("%\n", "  referral recheck                   recheck GitHub eligibility and grant eligible promo credit");
+  print("%\n", "  referral vanity on|off             enable or disable your GitHub handle vanity link");
+  print("%\n", "");
+}
+
+referral_redeem_body :: (code: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "code"); jo_str(o[..], code);
+  jo_key(o[..], "source"); jo_str(o[..], "cli");
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+referral_vanity_body :: (enabled: bool, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "vanity_enabled"); jo_bool(o[..], enabled);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+referral_admin_campaign_body :: (uses: int, days: int, bonus_micros: int, note: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  if uses > 0 { jo_key(o[..], "max_uses"); jo_int(o[..], uses); }
+  if days > 0 { jo_key(o[..], "days"); jo_int(o[..], days); }
+  if bonus_micros > 0 { jo_key(o[..], "bonus_micros"); jo_int(o[..], bonus_micros); }
+  if note.count > 0 { jo_key(o[..], "note"); jo_str(o[..], note); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+referral_admin_target_body :: (key: string, target: string, reason: string, num_key: string, num_val: int, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], key); jo_str(o[..], target);
+  if reason.count > 0 { jo_key(o[..], "reason"); jo_str(o[..], reason); }
+  if num_key.count > 0 { jo_key(o[..], num_key); jo_int(o[..], num_val); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+referral_admin_flag_body :: (name: string, on: bool, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "name"); jo_str(o[..], name);
+  jo_key(o[..], "on"); jo_bool(o[..], on);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+referral_admin_config_body :: (key: string, value: string, reason: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "key"); jo_str(o[..], key);
+  jo_key(o[..], "value"); jo_str(o[..], value);
+  if reason.count > 0 { jo_key(o[..], "reason"); jo_str(o[..], reason); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+referral_get :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  out: [API_OUT] u8;
+  path := ifx r[0].json then "/api/v1/referral" else "/api/v1/referral?as=lines";
+  res := api_call(a, profile, "GET", path, "", out[..]);
+  body := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r, res, body); }
+  if !r[0].json { print("%", body); return EXIT_OK; }
+  if !rep_object(r, body) { rep_str(r, "answer", body); }
+  return rep_done(r, EXIT_OK);
+}
+
+referral_post :: (a: [] Args, r: [] Rep, profile: string, path: string, body: string) -> int {
+  out: [API_OUT] u8;
+  res := api_call(a, profile, "POST", path, body, out[..]);
+  text := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r, res, text); }
+  if !rep_object(r, text) { if r[0].json { rep_str(r, "answer", text); } else { rep_put(r, text); } }
+  return rep_done(r, EXIT_OK);
+}
+
+referral_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "" || verb == "status" { return referral_get(a, r, profile); }
+  if verb == "redeem" {
+    code := positional(a, 2);
+    if code.count == 0 || code.count > 64 { return fail(r, EXIT_USAGE, "referral redeem CODE"); }
+    buf: [256] u8;
+    body := referral_redeem_body(code, buf[..]);
+    if body.count == 0 { return fail(r, EXIT_USAGE, "referral code too long"); }
+    return referral_post(a, r, profile, "/api/v1/referral/redeem", body);
+  }
+  if verb == "recheck" {
+    return referral_post(a, r, profile, "/api/v1/referral/recheck", "{}");
+  }
+  if verb == "vanity" {
+    on := cli_onoff(positional(a, 2));
+    if on < 0 { return fail(r, EXIT_USAGE, "referral vanity on|off"); }
+    buf: [128] u8;
+    return referral_post(a, r, profile, "/api/v1/referral/vanity", referral_vanity_body(on == 1, buf[..]));
+  }
+  return fail(r, EXIT_USAGE, "referral [status | redeem CODE | recheck | vanity on|off]");
+}
+
+admin_referral_usage :: () {
+  print("%\n", "  admin referral new [--uses N] [--days N] [--bonus-usd N | --bonus-micros N] [--note T]");
+  print("%\n", "  admin referral list | admin referral revoke ID_OR_CODE [--reason R]");
+  print("%\n", "  admin referral hold|void|clawback ACCOUNT [--reason R]");
+  print("%\n", "  admin referral cap ACCOUNT N [--reason R]");
+  print("%\n", "  admin referral flag NAME on|off  (referral_redeem|referral_grants|referral_kickback|github_connect_grant)");
+  print("%\n", "  admin referral config [KEY VALUE [--reason R]]");
+}
+
+admin_referral :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  what := positional(a, 2);
+  if what == "list" {
+    out: [API_OUT] u8;
+    res := api_call(a, profile, "GET", "/api/v1/referral/admin/campaigns", "", out[..]);
+    body := cast(string) out[0..<res.n];
+    if !api_ok(res) { return api_fail(r, res, body); }
+    if !rep_object(r, body) { rep_str(r, "answer", body); }
+    return rep_done(r, EXIT_OK);
+  }
+  if what == "new" {
+    uses := 0; days := 0; bonus := 0;
+    if args_has(a, "--uses") {
+      uses = cli_count(args_value(a, "--uses", ""), 1, 100000);
+      if uses < 0 { return fail(r, EXIT_USAGE, "--uses is 1 to 100000"); }
+    }
+    if args_has(a, "--days") {
+      days = cli_count(args_value(a, "--days", ""), 1, 365);
+      if days < 0 { return fail(r, EXIT_USAGE, "--days is 1 to 365"); }
+    }
+    if args_has(a, "--bonus-micros") {
+      bonus = cli_count(args_value(a, "--bonus-micros", ""), 1, 500000000);
+      if bonus < 0 { return fail(r, EXIT_USAGE, "--bonus-micros is 1 to 500000000"); }
+    } else if args_has(a, "--bonus-usd") {
+      usd := cli_count(args_value(a, "--bonus-usd", ""), 1, 500);
+      if usd < 0 { return fail(r, EXIT_USAGE, "--bonus-usd is 1 to 500"); }
+      bonus = usd * 1000000;
+    }
+    note := args_value(a, "--note", "");
+    buf: [512] u8;
+    body := referral_admin_campaign_body(uses, days, bonus, note, buf[..]);
+    if body.count == 0 { return fail(r, EXIT_USAGE, "--note is too long"); }
+    if !r[0].json { tool_errln("openagents: the campaign code is shown once; only its hash is stored."); }
+    return admin_post(a, r, profile, "/api/v1/referral/admin/campaigns", body);
+  }
+  if what == "revoke" {
+    tgt := positional(a, 3);
+    if tgt.count == 0 { return fail(r, EXIT_USAGE, "admin referral revoke ID_OR_CODE [--reason R]"); }
+    reason := args_value(a, "--reason", "");
+    buf: [512] u8;
+    body := referral_admin_target_body("code", tgt, reason, "", 0, buf[..]);
+    return admin_post(a, r, profile, "/api/v1/referral/admin/campaigns/revoke", body);
+  }
+  if what == "hold" || what == "void" || what == "clawback" {
+    acct := positional(a, 3);
+    if acct.count == 0 { return fail(r, EXIT_USAGE, "admin referral hold|void|clawback ACCOUNT [--reason R]"); }
+    reason := args_value(a, "--reason", "");
+    buf: [512] u8;
+    body := referral_admin_target_body("account", acct, reason, "", 0, buf[..]);
+    path := ifx what == "hold" then "/api/v1/referral/admin/grants/hold"
+            else ifx what == "void" then "/api/v1/referral/admin/grants/void"
+            else "/api/v1/referral/admin/grants/clawback";
+    return admin_post(a, r, profile, path, body);
+  }
+  if what == "cap" {
+    acct := positional(a, 3);
+    cap_v := cli_count(positional(a, 4), 0, 100000);
+    if acct.count == 0 || cap_v < 0 { return fail(r, EXIT_USAGE, "admin referral cap ACCOUNT N [--reason R]"); }
+    reason := args_value(a, "--reason", "");
+    buf: [512] u8;
+    body := referral_admin_target_body("account", acct, reason, "cap", cap_v, buf[..]);
+    return admin_post(a, r, profile, "/api/v1/referral/admin/cap", body);
+  }
+  if what == "flag" {
+    name := positional(a, 3);
+    on := cli_onoff(positional(a, 4));
+    if name.count == 0 || on < 0 { return fail(r, EXIT_USAGE, "admin referral flag NAME on|off"); }
+    buf: [256] u8;
+    return admin_post(a, r, profile, "/api/v1/referral/admin/flag", referral_admin_flag_body(name, on == 1, buf[..]));
+  }
+  if what == "config" {
+    key := positional(a, 3);
+    if key.count == 0 {
+      out: [API_OUT] u8;
+      res := api_call(a, profile, "GET", "/api/v1/referral/admin/config", "", out[..]);
+      body := cast(string) out[0..<res.n];
+      if !api_ok(res) { return api_fail(r, res, body); }
+      if !rep_object(r, body) { rep_str(r, "answer", body); }
+      return rep_done(r, EXIT_OK);
+    }
+    val := positional(a, 4);
+    if val.count == 0 { return fail(r, EXIT_USAGE, "admin referral config KEY VALUE [--reason R]"); }
+    reason := args_value(a, "--reason", "");
+    buf: [1024] u8;
+    body := referral_admin_config_body(key, val, reason, buf[..]);
+    if body.count == 0 { return fail(r, EXIT_USAGE, "config value too long"); }
+    return admin_post(a, r, profile, "/api/v1/referral/admin/config", body);
+  }
+  return fail(r, EXIT_USAGE, "admin referral: new, list, revoke, hold, void, clawback, cap, flag, or config");
+}
+
+#test "referral CLI JSON body builders encode exact wire payloads" {
+  b: [512] u8;
+  #assert referral_redeem_body("7K3M9Q2P", b[..]) == "{\"code\":\"7K3M9Q2P\",\"source\":\"cli\"}";
+  #assert referral_vanity_body(true, b[..]) == "{\"vanity_enabled\":true}";
+  #assert referral_vanity_body(false, b[..]) == "{\"vanity_enabled\":false}";
+  #assert referral_admin_campaign_body(50, 30, 15000000, "launch", b[..]) == "{\"max_uses\":50,\"days\":30,\"bonus_micros\":15000000,\"note\":\"launch\"}";
+  #assert referral_admin_target_body("account", "acct_1", "abuse", "", 0, b[..]) == "{\"account\":\"acct_1\",\"reason\":\"abuse\"}";
+  #assert referral_admin_target_body("account", "acct_1", "ambassador", "cap", 100, b[..]) == "{\"account\":\"acct_1\",\"reason\":\"ambassador\",\"cap\":100}";
+  #assert referral_admin_flag_body("referral_kickback", false, b[..]) == "{\"name\":\"referral_kickback\",\"on\":false}";
+  #assert referral_admin_config_body("kickback_bps", "150", "promo", b[..]) == "{\"key\":\"kickback_bps\",\"value\":\"150\",\"reason\":\"promo\"}";
+}

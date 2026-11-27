@@ -1234,6 +1234,10 @@ static void route_callback(const request *q, PGconn *db) {
       auth_refuse(q, 500, "That didn't work. Try again.");
       return;
     }
+    referral_maybe_redeem_cookie(q, db, acct);
+    if (strstr(method, "GitHub") || strstr(method, "github")) {
+      referral_on_github_connected(db, acct);
+    }
     auth_login_web_redirect(q, db, acct, "workos", "L1", made, "login.workos_oauth", next_path);
     return;
   }

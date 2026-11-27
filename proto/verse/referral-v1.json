@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenAgents Referral & Promo Credit Wire v1",
+  "description": "Closed JSON and ?as=lines wire shapes for /api/v1/referral/* endpoints (docs/business/2026-11-27-referrals-and-promo-credit-spec.md).",
+  "type": "object",
+  "required": ["schema"],
+  "properties": {
+    "schema": {
+      "enum": [
+        "openagents.referral.summary.v1",
+        "openagents.referral.lookup.v1",
+        "openagents.referral.redeem.v1",
+        "openagents.referral.vanity.v1",
+        "openagents.referral.recheck.v1",
+        "openagents.referral.admin.v1"
+      ]
+    }
+  }
+}

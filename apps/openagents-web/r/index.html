@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>You're invited · OpenAgents</title>
+<meta name="description" content="Claim promotional OpenAgents inference credit when you sign up and connect an eligible GitHub account.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#000;color:#f2f2f2;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+a{color:#b9e8e8;text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px}
+.card{width:100%;max-width:480px;background:#0c0c0d;border:1px solid #242428;border-radius:12px;padding:32px 28px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:24px;color:#a0a0a8;font-size:13px;letter-spacing:.04em;text-transform:uppercase}
+.brand img{width:20px;height:20px}
+.inviter{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.avatar{width:40px;height:40px;border-radius:50%;border:1px solid #2d2d34;object-fit:cover;display:none}
+h1{margin:0 0 10px;font-size:24px;line-height:1.25;font-weight:600;color:#fff}
+.sub{margin:0 0 22px;color:#b8b8c0;font-size:14px}
+.pill{display:inline-block;padding:4px 10px;margin-bottom:18px;border-radius:999px;background:#142323;border:1px solid #254848;color:#b9e8e8;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.cta{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;border-radius:8px;font-size:14px;font-weight:600;text-align:center;cursor:pointer;border:1px solid transparent;transition:background .12s,border-color .12s}
+.btn-primary{background:#f2f2f2;color:#000}
+.btn-primary:hover{background:#fff;text-decoration:none}
+.btn-secondary{background:#16161a;color:#e6e6eb;border-color:#2b2b32}
+.btn-secondary:hover{background:#1e1e24;border-color:#3d3d46;text-decoration:none}
+.note{border-top:1px solid #1e1e22;padding-top:16px;color:#8c8c96;font-size:12.5px;line-height:1.5}
+.note p{margin:0 0 8px}
+.note p:last-child{margin-bottom:0}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="card" aria-live="polite">
+    <div class="brand">
+      <img src="/favicon.svg" alt="" width="20" height="20">
+      <span>OpenAgents</span>
+    </div>
+    <div class="inviter">
+      <img id="avatar" class="avatar" alt="">
+      <span id="badge" class="pill" style="display:none"></span>
+    </div>
+    <h1 id="headline">Checking your invite...</h1>
+    <p id="subline" class="sub">Promotional inference credit for eligible developers.</p>
+    <div class="cta">
+      <a id="cta-github" class="btn btn-primary" href="/api/auth/workos/oauth/start?provider=github&amp;next=/settings/invite">Continue with GitHub</a>
+      <a id="cta-google" class="btn btn-secondary" href="/api/auth/workos/oauth/start?provider=google&amp;next=/settings/invite">Continue with Google</a>
+      <a id="cta-login" class="btn btn-secondary" href="/login?next=/settings/invite">Sign in with Email or Nostr</a>
+    </div>
+    <div class="note">
+      <p>Connect an eligible GitHub account (90+ days old with 3+ public non-fork repos, 5+ followers, or a public organization) to unlock your promotional credit automatically.</p>
+      <p>Promo credit is a non-withdrawable service discount for promo-eligible models ($5/day cap, 90-day expiry). <a href="/referrals">Read referral terms</a>.</p>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const fmtUsd = (m) => {
+    const dollars = Math.floor(m / 1000000);
+    const cents = Math.floor((m % 1000000) / 10000);
+    return cents === 0 ? "$" + dollars : "$" + dollars + "." + String(cents).padStart(2, "0");
+  };
+  const params = new URLSearchParams(location.search);
+  let code = (params.get("code") || "").trim();
+  if (!code) {
+    const parts = location.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+    if (parts.length >= 2 && parts[0] === "r" && parts[1] !== "index.html") code = decodeURIComponent(parts[1]);
+  }
+  const setStoredRef = (val) => {
+    if (!val || val.length > 64) return;
+    try { localStorage.setItem("oa_ref", val); } catch {}
+    const sec = location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = "oa_ref=" + encodeURIComponent(val) + "; Path=/; Max-Age=2592000; SameSite=Lax" + sec;
+  };
+  const headline = document.getElementById("headline");
+  const subline = document.getElementById("subline");
+  const badge = document.getElementById("badge");
+  const avatar = document.getElementById("avatar");
+  const ctaLogin = document.getElementById("cta-login");
+  if (code) {
+    setStoredRef(code);
+    ctaLogin.href = "/login?ref=" + encodeURIComponent(code) + "&next=" + encodeURIComponent("/settings/invite");
+  }
+  if (!code) {
+    headline.textContent = "Get $5 of OpenAgents promo credit";
+    subline.textContent = "Sign up and connect an eligible GitHub account to start building with hosted inference.";
+    return;
+  }
+  fetch("/api/v1/referral/lookup?code=" + encodeURIComponent(code), { credentials: "same-origin" })
+    .then((r) => r.ok ? r.json() : null)
+    .then((d) => {
+      if (!d || !d.valid) {
+        headline.textContent = "This invite link is no longer active";
+        subline.textContent = "You can still sign up and connect an eligible GitHub account to claim $5 of OpenAgents promo credit.";
+        return;
+      }
+      const bonus = Number(d.bonus_micros || 10000000);
+      const ghBonus = Number(d.github_bonus_micros || 5000000);
+      const total = bonus + ghBonus;
+      if (d.inviter_handle) {
+        headline.textContent = "@" + d.inviter_handle + " gave you " + fmtUsd(bonus) + " of OpenAgents credit.";
+      } else {
+        headline.textContent = "You've been invited — get " + fmtUsd(bonus) + " of OpenAgents credit.";
+      }
+      subline.textContent = "Sign up with GitHub to unlock " + fmtUsd(bonus) + " referral credit plus " + fmtUsd(ghBonus) + " GitHub bonus (" + fmtUsd(total) + " total promo credit).";
+      badge.textContent = "Code " + (d.code || code) + " · " + fmtUsd(total) + " promo credit";
+      badge.style.display = "inline-block";
+      if (d.inviter_avatar && /^https:\/\/avatars\.githubusercontent\.com\//.test(d.inviter_avatar)) {
+        avatar.src = d.inviter_avatar;
+        avatar.style.display = "block";
+      }
+    })
+    .catch(() => {
+      headline.textContent = "You've been invited to OpenAgents";
+      subline.textContent = "Continue with GitHub to sign up and claim your referral promo credit.";
+    });
+})();
+</script>
+</body>
+</html>

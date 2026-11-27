@@ -39,6 +39,7 @@
 #load "tasks.coax";
 #load "realm.coax";
 #load "realm-play.coax";
+#load "referral.coax";
 #load "admin.coax";
 #load "transcribe.coax";
 #load "dictate-launch.coax";
@@ -90,6 +91,7 @@ usage :: () {
   chat_usage();
   tasks_usage();
   account_usage();
+  referral_usage();
   agent_usage();
   realm_usage();
   admin_usage();
@@ -153,6 +155,7 @@ cli_dispatch :: (a: [] Args, r: [] Rep, profile: string, domain: string, verb: s
   if domain == "whoami" { return cli_whoami(a, r, profile, false); }
   if domain == "account" { return ifx verb == "keys" then cli_whoami(a, r, profile, true) else fail(r, EXIT_USAGE, "account keys"); }
   if domain == "access" { return cli_access(a, r, profile, verb); }
+  if domain == "referral" { return referral_main(a, r, profile, verb); }
   if domain == "agent" { return agent_main(a, r, profile, verb); }
   // One line per domain; each domain file dispatches its own verbs.
   if domain == "nostr" { return nostr_main(a, r, profile, verb); }

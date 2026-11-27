@@ -17,9 +17,9 @@
 #load "../../components/kit/settings.coax";
 #load "site-side.coax";
 
-SW_ACCOUNT :: 0; SW_MODELS :: 1; SW_LOOK :: 2; SW_LIMITS_S :: 3; SW_ABOUT :: 4; SW_SECTIONS :: 5;
-SW_NAMES :: [5] string.["Account", "Agents and models", "Appearance", "Limits", "About"];
-SW_SLUGS :: [5] string.["account", "models", "appearance", "limits", "about"];
+SW_ACCOUNT :: 0; SW_MODELS :: 1; SW_LOOK :: 2; SW_LIMITS_S :: 3; SW_ABOUT :: 4; SW_INVITE :: 5; SW_SECTIONS :: 6;
+SW_NAMES :: [6] string.["Account", "Agents and models", "Appearance", "Limits", "About", "Invite"];
+SW_SLUGS :: [6] string.["account", "models", "appearance", "limits", "about", "invite"];
 SW_PAGE :: 9;          // the shell's page value for Settings (beside site-side's SS_HOME and SS_CHATS)
 SW_EMAILS :: 4; SW_EMAIL :: 96;
 SW_KEYS :: 4;
@@ -48,6 +48,28 @@ SettingsWeb :: struct {
   strong: bool; limited: bool; fresh: bool;
   life_agents: int; life_agents_paused: int; life_worlds: int; life_saves: int;
   credit_msat: int;
+  promo_micros: int;
+  promo_expires: [32] u8; promo_expires_n: int;
+  // Referrals & promo credit summary (/api/v1/referral?as=lines)
+  ref_asked: bool; ref_state: int;   // 0 pending, 1 read, -1 unavailable
+  ref_code: [24] u8; ref_code_n: int;
+  ref_vanity: [64] u8; ref_vanity_n: int;
+  ref_vanity_on: bool;
+  ref_link: [160] u8; ref_link_n: int;
+  ref_vlink: [160] u8; ref_vlink_n: int;
+  ref_show_name: bool;
+  ref_commit_footer: bool;
+  ref_clicks: int; ref_signups: int; ref_pending: int; ref_activated: int;
+  ref_promo_day: int; ref_promo_cap: int;
+  ref_bonus_earned: int; ref_kb_earned: int; ref_kb_today: int;
+  ref_milestones_mask: int;
+  ref_gh_connected: bool; ref_gh_eligible: bool;
+  ref_gh_login: [64] u8; ref_gh_login_n: int;
+  ref_gh_reason: [160] u8; ref_gh_reason_n: int;
+  ref_attributed: bool; ref_can_redeem: bool;
+  ref_input: [64] u8; ref_input_n: int;
+  ref_busy: bool;
+  ref_note: [160] u8; ref_note_n: int;
   // WorkOS organizations, as /api/auth/workos/orgs?as=lines says
   orgs_asked: bool; orgs_state: int;   // 0 not back yet, 1 read, -1 not to be had
   active_org: [SW_ORG_ID] u8; active_org_n: int;
@@ -172,6 +194,11 @@ sw_account_read :: (s: [] SettingsWeb, body: string) {
       if s[0].keys < SW_KEYS { for i: 0..<64 { s[0].key[s[0].keys][i] = line[4 + i]; } s[0].keys += 1; }
       s[0].nkeys += 1;
     }
+    if line.count > 13 && cast(string) line[0..<13] == "promo_micros " { s[0].promo_micros = sw_parse_int(cast(string) line[13..<line.count], 0); }
+    if line.count > 17 && cast(string) line[0..<17] == "promo_expires_at " {
+      v := cast(string) line[17..<line.count];
+      if v != "-" { s[0].promo_expires_n = sw_put(s[0].promo_expires[..], 0, v); }
+    }
     at = e + 1;
   }
 }
@@ -202,6 +229,56 @@ sw_life_read :: (s: [] SettingsWeb, status: int, body: string) {
     else if line.count > 7 && cast(string) line[0..<7] == "worlds " { s[0].life_worlds = sw_parse_int(cast(string) line[7..<line.count], 0); }
     else if line.count > 6 && cast(string) line[0..<6] == "saves " { s[0].life_saves = sw_parse_int(cast(string) line[6..<line.count], 0); }
     else if line.count > 12 && cast(string) line[0..<12] == "credit_msat " { s[0].credit_msat = sw_parse_int(cast(string) line[12..<line.count], -1); }
+    else if line.count > 13 && cast(string) line[0..<13] == "promo_micros " { s[0].promo_micros = sw_parse_int(cast(string) line[13..<line.count], 0); }
+    else if line.count > 17 && cast(string) line[0..<17] == "promo_expires_at " {
+      v := cast(string) line[17..<line.count];
+      s[0].promo_expires_n = ifx v != "-" then sw_put(s[0].promo_expires[..], 0, v) else 0;
+    }
+  }
+}
+// Referral summary lines (/api/v1/referral?as=lines).
+sw_referral_read :: (s: [] SettingsWeb, status: int, body: string) {
+  s[0].ref_state = ifx status == 200 then 1 else -1;
+  s[0].ref_busy = false;
+  if status != 200 { return; }
+  s[0].ref_code_n = 0; s[0].ref_vanity_n = 0; s[0].ref_link_n = 0; s[0].ref_vlink_n = 0;
+  s[0].ref_gh_login_n = 0; s[0].ref_gh_reason_n = 0;
+  s[0].ref_vanity_on = false; s[0].ref_show_name = true; s[0].ref_commit_footer = false;
+  s[0].ref_gh_connected = false; s[0].ref_gh_eligible = false; s[0].ref_attributed = false; s[0].ref_can_redeem = false;
+  at := 0;
+  while at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count > 5 && cast(string) line[0..<5] == "code " { s[0].ref_code_n = sw_put(s[0].ref_code[..], 0, cast(string) line[5..<line.count]); }
+    else if line.count > 7 && cast(string) line[0..<7] == "vanity " { s[0].ref_vanity_n = sw_put(s[0].ref_vanity[..], 0, cast(string) line[7..<line.count]); }
+    else if line == "vanity_enabled 1" { s[0].ref_vanity_on = true; }
+    else if line == "vanity_enabled 0" { s[0].ref_vanity_on = false; }
+    else if line.count > 5 && cast(string) line[0..<5] == "link " { s[0].ref_link_n = sw_put(s[0].ref_link[..], 0, cast(string) line[5..<line.count]); }
+    else if line.count > 12 && cast(string) line[0..<12] == "vanity_link " { s[0].ref_vlink_n = sw_put(s[0].ref_vlink[..], 0, cast(string) line[12..<line.count]); }
+    else if line == "show_name 1" { s[0].ref_show_name = true; }
+    else if line == "show_name 0" { s[0].ref_show_name = false; }
+    else if line == "commit_footer_opt_in 1" { s[0].ref_commit_footer = true; }
+    else if line == "commit_footer_opt_in 0" { s[0].ref_commit_footer = false; }
+    else if line.count > 7 && cast(string) line[0..<7] == "clicks " { s[0].ref_clicks = sw_parse_int(cast(string) line[7..<line.count], 0); }
+    else if line.count > 8 && cast(string) line[0..<8] == "signups " { s[0].ref_signups = sw_parse_int(cast(string) line[8..<line.count], 0); }
+    else if line.count > 17 && cast(string) line[0..<17] == "pending_invitees " { s[0].ref_pending = sw_parse_int(cast(string) line[17..<line.count], 0); }
+    else if line.count > 19 && cast(string) line[0..<19] == "activated_invitees " { s[0].ref_activated = sw_parse_int(cast(string) line[19..<line.count], 0); }
+    else if line.count > 13 && cast(string) line[0..<13] == "promo_micros " { s[0].promo_micros = sw_parse_int(cast(string) line[13..<line.count], 0); }
+    else if line.count > 17 && cast(string) line[0..<17] == "promo_expires_at " { s[0].promo_expires_n = sw_put(s[0].promo_expires[..], 0, cast(string) line[17..<line.count]); }
+    else if line.count > 18 && cast(string) line[0..<18] == "promo_daily_spent " { s[0].ref_promo_day = sw_parse_int(cast(string) line[18..<line.count], 0); }
+    else if line.count > 16 && cast(string) line[0..<16] == "promo_daily_cap " { s[0].ref_promo_cap = sw_parse_int(cast(string) line[16..<line.count], 5000000); }
+    else if line.count > 20 && cast(string) line[0..<20] == "bonus_earned_micros " { s[0].ref_bonus_earned = sw_parse_int(cast(string) line[20..<line.count], 0); }
+    else if line.count > 23 && cast(string) line[0..<23] == "kickback_earned_micros " { s[0].ref_kb_earned = sw_parse_int(cast(string) line[23..<line.count], 0); }
+    else if line.count > 22 && cast(string) line[0..<22] == "kickback_today_micros " { s[0].ref_kb_today = sw_parse_int(cast(string) line[22..<line.count], 0); }
+    else if line.count > 16 && cast(string) line[0..<16] == "milestones_mask " { s[0].ref_milestones_mask = sw_parse_int(cast(string) line[16..<line.count], 0); }
+    else if line == "gh_connected 1" { s[0].ref_gh_connected = true; }
+    else if line == "gh_eligible 1" { s[0].ref_gh_eligible = true; }
+    else if line.count > 9 && cast(string) line[0..<9] == "gh_login " { s[0].ref_gh_login_n = sw_put(s[0].ref_gh_login[..], 0, cast(string) line[9..<line.count]); }
+    else if line.count > 10 && cast(string) line[0..<10] == "gh_reason " { s[0].ref_gh_reason_n = sw_put(s[0].ref_gh_reason[..], 0, cast(string) line[10..<line.count]); }
+    else if line == "attributed 1" { s[0].ref_attributed = true; }
+    else if line == "can_redeem 1" { s[0].ref_can_redeem = true; }
   }
 }
 // WorkOS organizations lines (/api/auth/workos/orgs?as=lines).
@@ -424,7 +501,7 @@ sw_about_read :: (s: [] SettingsWeb, status: int, body: string) {
 // The page begins: the section list (a place each, the one shown bright) and the body under the section's
 // name. Close it with sw_page_end.
 sw_page_begin :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui) {
-  names := SW_NAMES; icons := [5] int.[IC_AVATAR_PROFILE, IC_AGENT, IC_COLOR_THEME, IC_SPEED, IC_INFO];
+  names := SW_NAMES; icons := [6] int.[IC_AVATAR_PROFILE, IC_AGENT, IC_COLOR_THEME, IC_SPEED, IC_INFO, IC_GLOBE];
   buf: [UI_ID] u8; href: [40] u8;
   p := k_set(t, "set");
   nav := k_set_nav(t, "set.nav", "Settings");
@@ -511,6 +588,33 @@ sw_credit_line :: (credit_msat: int, out: [] u8) -> string {
   n := sw_put(out, 0, tr_join(num[..], "", sats));
   n = sw_put(out, n, ifx sats == 1 then " sat" else " sats");
   return cast(string) out[0..<n];
+}
+sw_usd_micros :: (micros: int, out: [] u8) -> string {
+  m := ifx micros < 0 then 0 else micros;
+  dollars := m / 1000000;
+  cents := (m % 1000000) / 10000;
+  num: [24] u8;
+  n := sw_put(out, 0, "$");
+  n = sw_put(out, n, tr_join(num[..], "", dollars));
+  n = sw_put(out, n, ".");
+  if cents < 10 { n = sw_put(out, n, "0"); }
+  n = sw_put(out, n, tr_join(num[..], "", cents));
+  return cast(string) out[0..<n];
+}
+sw_promo_about :: (s: [] SettingsWeb, out: [] u8) -> string {
+  if s[0].promo_micros <= 0 {
+    return "Non-withdrawable service discount for promo models. Connect GitHub or invite friends to earn.";
+  }
+  n := sw_put(out, 0, "Promo models only ($5/day cap, non-withdrawable)");
+  if s[0].promo_expires_n >= 10 {
+    n = sw_put(out, n, " · expires ");
+    n = sw_put(out, n, cast(string) s[0].promo_expires[0..<10]);
+  }
+  return cast(string) out[0..<n];
+}
+sw_active_ref_link :: (s: [] SettingsWeb) -> string {
+  if s[0].ref_vanity_on && s[0].ref_vlink_n > 0 { return cast(string) s[0].ref_vlink[0..<s[0].ref_vlink_n]; }
+  return cast(string) s[0].ref_link[0..<s[0].ref_link_n];
 }
 sw_orgs_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
   if s[0].norgs == 0 && s[0].active_org_n == 0 { return; }
@@ -706,8 +810,13 @@ sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: in
   }
   if s[0].life_state == 1 && s[0].credit_msat >= 0 {
     cbuf: [32] u8;
-    if sw_row(s, t, u, "home.status.credit", "Credit balance", "Available balance for hosted inference and services.") {
+    if sw_row(s, t, u, "home.status.credit", "Paid credit", "Bitcoin/Lightning balance for hosted inference and services.") {
       v := k_set_value(t, "home.status.credit.v", sw_credit_line(s[0].credit_msat, cbuf[..]));
+      k_set_row_end(t);
+    }
+    pbuf: [32] u8; pabout: [160] u8;
+    if sw_row(s, t, u, "home.status.promo", "Promo credit", sw_promo_about(s, pabout[..])) {
+      v := k_set_value(t, "home.status.promo.v", sw_usd_micros(s[0].promo_micros, pbuf[..]));
       k_set_row_end(t);
     }
   }
@@ -730,6 +839,7 @@ sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: in
   sw_group(s, t, u, "home.quick", "Quick actions & settings");
   sw_link(s, t, u, "home.go.chat", "Cloud Chat", "Start a new conversation or resume your synced chats.", "Open Chat", "/chat");
   sw_link(s, t, u, "home.go.account", "Account settings", "Profile details, connected credentials, appearance, and limits.", "Settings", "/settings/account");
+  sw_link(s, t, u, "home.go.invite", "Invite & Referrals", "Share your link, earn $5 per active friend + 1% lifetime kickback.", "Open", "/settings/invite");
   sw_link(s, t, u, "home.go.models", "Agents and models", "Connect Claude credentials and choose default models.", "Open", "/settings/models");
   sw_link(s, t, u, "home.go.security", "Security", "Manage passkeys, Nostr keys, linked emails, and recovery.", "Open", "/settings/security");
   sw_link(s, t, u, "home.go.devices", "Devices", "Phones, desktops, and browser sessions signed in to your account.", "Open", "/settings/devices");
@@ -778,8 +888,13 @@ sw_account :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string) {
   sw_fact(s, t, u, "acct.keys", ifx s[0].nkeys == 1 then "Key" else "Keys", sw_keys_line(s, kl[..]));
   if s[0].life_state == 1 && s[0].credit_msat >= 0 {
     cbuf: [32] u8;
-    if sw_row(s, t, u, "acct.credit", "Credit balance", "Available balance for hosted inference and services.") {
+    if sw_row(s, t, u, "acct.credit", "Paid credit", "Bitcoin/Lightning balance for hosted inference and services.") {
       v := k_set_value(t, "acct.credit.v", sw_credit_line(s[0].credit_msat, cbuf[..]));
+      k_set_row_end(t);
+    }
+    pbuf: [32] u8; pabout: [160] u8;
+    if sw_row(s, t, u, "acct.promo", "Promo credit", sw_promo_about(s, pabout[..])) {
+      v := k_set_value(t, "acct.promo.v", sw_usd_micros(s[0].promo_micros, pbuf[..]));
       k_set_row_end(t);
     }
   }
@@ -791,6 +906,7 @@ sw_account :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string) {
   sw_orgs_group(s, t, u, "acct.orgs");
   sw_group(s, t, u, "acct.more", "More of your account");
   sw_link(s, t, u, "acct.security", "Security", "How you log in: your email, keys and passkeys.", "Open", "/settings/security");
+  sw_link(s, t, u, "acct.invite", "Invite & Referrals", "Share your link, earn $5 per active friend and 1% lifetime kickback.", "Open", "/settings/invite");
   sw_link(s, t, u, "acct.devices", "Devices", "The phones and computers logged in to your account.", "Open", "/settings/devices");
   sw_link(s, t, u, "acct.agents", "Agents", "Agents that act for you with their own keys, and what each may do.", "Open", "/settings/agents");
   sw_link(s, t, u, "acct.wallet", "Wallet", "Your wallet's daily limit and its backup.", "Open", "/settings/wallet");
@@ -845,6 +961,131 @@ sw_about :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui) {
   sw_group_end(s, t);
 }
 
+// Invite & Referrals (/settings/invite): personal invite link, optional GitHub vanity link,
+// Copy / Share on X / Share on Nostr / Copy README badge, promo balance, counts & milestones,
+// GitHub eligibility check, preferences, and manual code redeem.
+sw_invite :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui) {
+  if !sw_section(s, SW_INVITE) { return; }
+  if !s[0].logged {
+    sw_group(s, t, u, "inv.auth", "Invite & Referrals");
+    if sw_row(s, t, u, "inv.in", "Not logged in", ifx s[0].read then "Log in to view your invite link and promotional credit." else "Checking your session.") {
+      if s[0].read { g := k_go(t, "inv.in.go", "Log in", "/login?next=/settings/invite"); }
+      k_set_row_end(t);
+    }
+    sw_group_end(s, t);
+    return;
+  }
+
+  // Group 1: Your invite link & sharing
+  sw_group(s, t, u, "inv.share", "Your invite link");
+  active_link := sw_active_ref_link(s);
+  link_about := ifx active_link.count > 0 then active_link
+    else ifx s[0].ref_state < 0 then "Could not load your referral link."
+    else "Loading your referral link...";
+  if sw_row(s, t, u, "inv.link", "Share link", link_about) {
+    if active_link.count > 0 {
+      bc := k_button(t, u, "sw.ref.copy", "Copy link", BS_PRIMARY);
+      bb := k_button(t, u, "sw.ref.badge", "Copy README badge", BS_PLAIN);
+      bx := k_button(t, u, "sw.ref.x", "Share on X", BS_PLAIN);
+      bn := k_button(t, u, "sw.ref.nostr", "Share on Nostr", BS_PLAIN);
+    }
+    k_set_row_end(t);
+  }
+  if s[0].ref_code_n > 0 {
+    code_about: [192] u8; cn := sw_put(code_about[..], 0, "Permanent code: ");
+    cn = sw_put(code_about[..], cn, cast(string) s[0].ref_code[0..<s[0].ref_code_n]);
+    if s[0].ref_vanity_n > 0 {
+      cn = sw_put(code_about[..], cn, " · GitHub handle: @");
+      cn = sw_put(code_about[..], cn, cast(string) s[0].ref_vanity[0..<s[0].ref_vanity_n]);
+    }
+    sw_fact(s, t, u, "inv.code", "Referral code", cast(string) code_about[0..<cn]);
+  }
+  if s[0].ref_note_n > 0 {
+    sw_fact(s, t, u, "inv.note", "Status", cast(string) s[0].ref_note[0..<s[0].ref_note_n]);
+  }
+  sw_group_end(s, t);
+
+  // Group 2: Promotional credit balance & stats
+  sw_group(s, t, u, "inv.bal", "Promo credit & rewards");
+  pbuf: [32] u8; pabout: [160] u8;
+  if sw_row(s, t, u, "inv.promo", "Promo credit balance", sw_promo_about(s, pabout[..])) {
+    v := k_set_value(t, "inv.promo.v", sw_usd_micros(s[0].promo_micros, pbuf[..]));
+    k_set_row_end(t);
+  }
+  if s[0].ref_state == 1 {
+    day_buf: [120] u8; u1: [32] u8; u2: [32] u8;
+    dn := sw_put(day_buf[..], 0, sw_usd_micros(s[0].ref_promo_day, u1[..]));
+    dn = sw_put(day_buf[..], dn, " / ");
+    dn = sw_put(day_buf[..], dn, sw_usd_micros(ifx s[0].ref_promo_cap > 0 then s[0].ref_promo_cap else 5000000, u2[..]));
+    dn = sw_put(day_buf[..], dn, " spent today (UTC)");
+    sw_fact(s, t, u, "inv.daily", "Daily promo spend", cast(string) day_buf[0..<dn]);
+
+    st_buf: [200] u8; num: [24] u8; sn := 0;
+    sn = sw_put(st_buf[..], sn, tr_join(num[..], "", s[0].ref_clicks)); sn = sw_put(st_buf[..], sn, " clicks · ");
+    sn = sw_put(st_buf[..], sn, tr_join(num[..], "", s[0].ref_pending)); sn = sw_put(st_buf[..], sn, " pending · ");
+    sn = sw_put(st_buf[..], sn, tr_join(num[..], "", s[0].ref_activated)); sn = sw_put(st_buf[..], sn, " activated");
+    sw_fact(s, t, u, "inv.counts", "Invites", cast(string) st_buf[0..<sn]);
+
+    earn_buf: [160] u8; b1: [32] u8; b2: [32] u8;
+    en := sw_put(earn_buf[..], 0, "Bonuses "); en = sw_put(earn_buf[..], en, sw_usd_micros(s[0].ref_bonus_earned, b1[..]));
+    en = sw_put(earn_buf[..], en, " · Lifetime 1% kickback "); en = sw_put(earn_buf[..], en, sw_usd_micros(s[0].ref_kb_earned, b2[..]));
+    sw_fact(s, t, u, "inv.earned", "Total earned", cast(string) earn_buf[0..<en]);
+
+    ms_buf: [180] u8; mn := 0;
+    m5 := (s[0].ref_milestones_mask & 1) != 0;
+    m25 := (s[0].ref_milestones_mask & 2) != 0;
+    m100 := (s[0].ref_milestones_mask & 4) != 0;
+    mn = sw_put(ms_buf[..], mn, ifx m5 then "5 ($10 unlocked) · " else "5 ($10) · ");
+    mn = sw_put(ms_buf[..], mn, ifx m25 then "25 ($50 unlocked) · " else "25 ($50) · ");
+    mn = sw_put(ms_buf[..], mn, ifx m100 then "100 ($250 unlocked)" else "100 ($250)");
+    sw_fact(s, t, u, "inv.milestones", "Milestones", cast(string) ms_buf[0..<mn]);
+  }
+  sw_link(s, t, u, "inv.terms", "Program terms", "Plain-language rules, GitHub eligibility, daily cap, and expiry.", "Read terms", "/referrals");
+  sw_group_end(s, t);
+
+  // Group 3: GitHub eligibility & preferences
+  sw_group(s, t, u, "inv.prefs", "GitHub eligibility & link preferences");
+  gh_about: [220] u8; gn := 0;
+  if s[0].ref_gh_eligible {
+    gn = sw_put(gh_about[..], 0, "Eligible");
+    if s[0].ref_gh_login_n > 0 { gn = sw_put(gh_about[..], gn, " (@"); gn = sw_put(gh_about[..], gn, cast(string) s[0].ref_gh_login[0..<s[0].ref_gh_login_n]); gn = sw_put(gh_about[..], gn, ")"); }
+    gn = sw_put(gh_about[..], gn, " — promo credit unlocked.");
+  } else if s[0].ref_gh_reason_n > 0 {
+    gn = sw_put(gh_about[..], 0, cast(string) s[0].ref_gh_reason[0..<s[0].ref_gh_reason_n]);
+  } else {
+    gn = sw_put(gh_about[..], 0, "Connect an eligible GitHub account (90+ days old with public activity) to unlock $5-$15 of promo credit.");
+  }
+  if sw_row(s, t, u, "inv.gh", "GitHub verification", cast(string) gh_about[0..<gn]) {
+    br := k_button(t, u, "sw.ref.recheck", ifx s[0].ref_busy then "Checking" else "Recheck GitHub", BS_PLAIN);
+    k_set_row_end(t);
+  }
+  if sw_row(s, t, u, "inv.vanity", "GitHub vanity link", "Use your GitHub handle in /r/<handle> (requires eligible GitHub).") {
+    swv := k_switch(t, "sw.ref.vanity", "GitHub vanity link", s[0].ref_vanity_on);
+    k_set_row_end(t);
+  }
+  if sw_row(s, t, u, "inv.showname", "Show GitHub handle on invite page", "Let people opening your invite link see your GitHub handle and avatar.") {
+    swn := k_switch(t, "sw.ref.showname", "Show GitHub handle on invite page", s[0].ref_show_name);
+    k_set_row_end(t);
+  }
+  if sw_row(s, t, u, "inv.footer", "Commit footer opt-in", "Optional referral link footer on OpenAgents-assisted commits (off by default).") {
+    swf := k_switch(t, "sw.ref.footer", "Commit footer opt-in", s[0].ref_commit_footer);
+    k_set_row_end(t);
+  }
+  sw_group_end(s, t);
+
+  // Group 4: Redeem a code (within 7 days of signup)
+  if !s[0].ref_attributed && (s[0].ref_can_redeem || s[0].ref_state != 1) {
+    sw_group(s, t, u, "inv.redeem", "Redeem an invite code");
+    if sw_row(s, t, u, "inv.redeem.row", "Have a referral or campaign code?", "Redeem within 7 days of signup to stack $10 of promo credit with your $5 GitHub bonus.") {
+      fi := k_input(t, u, "sw.ref.code", "Enter code or @handle", "Referral code", "text", "off");
+      br := k_button(t, u, "sw.ref.redeem", ifx s[0].ref_busy then "Redeeming" else "Redeem",
+        ifx s[0].ref_input_n > 0 && !s[0].ref_busy then BS_PRIMARY else BS_DISABLED);
+      k_set_row_end(t);
+    }
+    sw_group_end(s, t);
+  }
+}
+
 // ---------------------------------------------------------------- checks
 
 SW_T_ACCOUNT :: "logged_in 1\naccount acct_1\nkind email\nlevel L2\nvia email\nadmin 1\nemail a•••@example.com\nemail b•••@x.com\nkey 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e\n";
@@ -858,6 +1099,7 @@ sw_test_build :: (x: [] SwTest, who: string) {
   names := [2] string.["A message", "An answer"]; values := [2] string.["16 KB", "48 KB"];
   sw_limits(s, t, u, names[..], values[..]);
   sw_about(s, t, u);
+  sw_invite(s, t, u);
   sw_page_end(s, t);
 }
 
@@ -1001,4 +1243,28 @@ sw_test_build :: (x: [] SwTest, who: string) {
   tr_begin(t); ui_begin(u, 0, true);
   sw_home(s, t, u, "chris@openagents.com", 0, 0);
   #assert tr_find(t, "sw.gh.connect") > 0 && tr_find(t, "sw.gh.disconnect") < 0;
+}
+
+#test "promo credit two-line display and Settings Invite section parse and render referral summary" {
+  x: [1] SwTest; s := x[0].s[..]; t := x[0].t[..]; u := x[0].u[..];
+  #assert sw_section_of("/settings/invite") == SW_INVITE;
+  sw_account_read(s, "logged_in 1\naccount acct_42\nkind person\nlevel L1\nvia workos\nprimary chris@openagents.com\npromo_micros 15000000\npromo_expires_at 2027-02-25T00:00:00Z\n");
+  sw_life_read(s, 200, "account acct_42\nkind person\nfrozen no\nstrong 0\nagents 0\nagents_paused 0\ncredit_msat 100000\nworlds 0\nsaves 0\nlimited 0\nfresh 1\npromo_micros 15000000\npromo_expires_at 2027-02-25T00:00:00Z\n");
+  #assert s[0].promo_micros == 15000000 && cast(string) s[0].promo_expires[0..<10] == "2027-02-25";
+  tr_begin(t); ui_begin(u, 0, true);
+  sw_home(s, t, u, "chris@openagents.com", 0, 0);
+  #assert tr_text_of(t, tr_find(t, "home.status.credit.v")) == "100 sats";
+  #assert tr_text_of(t, tr_find(t, "home.status.promo.v")) == "$15.00";
+  #assert tr_attr_of(t, tr_find(t, "home.go.invite.go"), AT_HREF) == "/settings/invite";
+
+  sw_referral_read(s, 200, "code 7K3M9Q2P\nvanity octocat\nvanity_enabled 1\nlink https://openagents.com/r/7K3M9Q2P\nvanity_link https://openagents.com/r/octocat\nshow_name 1\ncommit_footer_opt_in 0\nclicks 12\nsignups 6\npending_invitees 1\nactivated_invitees 5\npromo_micros 15000000\npromo_expires_at 2027-02-25T00:00:00Z\npromo_daily_spent 1250000\npromo_daily_cap 5000000\nbonus_earned_micros 35000000\nkickback_earned_micros 250000\nkickback_today_micros 0\nmilestones_mask 1\ngh_connected 1\ngh_eligible 1\ngh_login octocat\nattributed 0\ncan_redeem 1\n");
+  #assert s[0].ref_state == 1 && s[0].ref_vanity_on && s[0].ref_activated == 5 && s[0].ref_milestones_mask == 1 && s[0].ref_can_redeem;
+  s[0].section = SW_INVITE;
+  sw_test_build(x[..], "chris@openagents.com");
+  #assert tr_text_of(t, tr_find(t, "set.b.t")) == "Invite";
+  #assert tr_text_of(t, tr_find(t, "inv.link.a")) == "https://openagents.com/r/octocat";
+  #assert tr_text_of(t, tr_find(t, "inv.promo.v")) == "$15.00";
+  #assert tr_text_of(t, tr_find(t, "inv.counts.a")) == "12 clicks · 1 pending · 5 activated";
+  #assert tr_find(t, "sw.ref.copy") > 0 && tr_find(t, "sw.ref.badge") > 0 && tr_find(t, "sw.ref.x") > 0 && tr_find(t, "sw.ref.nostr") > 0;
+  #assert tr_find(t, "sw.ref.vanity") > 0 && tr_find(t, "sw.ref.recheck") > 0 && tr_find(t, "sw.ref.code") > 0 && tr_find(t, "sw.ref.redeem") > 0;
 }

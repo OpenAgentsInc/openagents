@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Referral &amp; Promo Credit Terms · OpenAgents</title>
+<meta name="description" content="Plain-language terms for the OpenAgents Referral and Promotional Credit program.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/referrals/index.md">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;background:#000;color:#e8e8ec;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.65}
+main{max-width:720px;margin:0 auto;padding:48px 20px 80px}
+a{color:#b9e8e8}
+h1{margin:0 0 8px;font-size:28px;color:#fff}
+.meta{color:#8c8c96;font-size:13px;margin:0 0 28px}
+h2{margin:32px 0 10px;font-size:18px;color:#fff;border-bottom:1px solid #1e1e24;padding-bottom:6px}
+ul{padding-left:20px}
+li{margin:6px 0}
+table{width:100%;border-collapse:collapse;margin:12px 0 20px;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #1e1e24}
+th{color:#a8a8b2;font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:#141418;padding:2px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<main>
+  <p class="meta"><a href="/">OpenAgents</a> / Referral &amp; Promo Credit Terms · Terms v1</p>
+  <h1>Referral &amp; Promo Credit Program</h1>
+  <p>OpenAgents promotional credit lets developers try hosted OpenAgents inference and reward friends who join. Promo credit is strictly a non-withdrawable, non-transferable service discount — paid Bitcoin/Lightning credit in satoshis remains separate and is the only money on OpenAgents.</p>
+
+  <h2>1. Credit Amounts</h2>
+  <table>
+    <thead><tr><th>Reward</th><th>Amount</th><th>When it unlocks</th></tr></thead>
+    <tbody>
+      <tr><td>GitHub Connect Bonus</td><td>$5.00 promo credit</td><td>Connect an eligible GitHub account (one-time per GitHub account).</td></tr>
+      <tr><td>Invited User Bonus</td><td>$10.00 promo credit</td><td>Sign up via a referral link or redeem a code within 7 days of signup, plus eligible GitHub. Stacks with GitHub Connect for $15.00 total.</td></tr>
+      <tr><td>Inviter Bonus</td><td>$5.00 promo credit</td><td>Your invitee connects an eligible GitHub account and completes hosted inference turns on 2 distinct UTC days within 30 days of redeeming.</td></tr>
+      <tr><td>Lifetime Kickback</td><td>1% promo credit</td><td>Every time a referred user tops up paid credit over Bitcoin/Lightning, 1% of the USD value (floored to whole USD micros) is granted as promo credit to the inviter.</td></tr>
+      <tr><td>Inviter Milestones</td><td>$10 / $50 / $250</td><td>One-time promo credit bonuses at 5, 25, and 100 activated invitees.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. GitHub Eligibility</h2>
+  <ul>
+    <li>Your GitHub account must be at least <strong>90 days old</strong>.</li>
+    <li>It must show public developer activity: at least <strong>3 public non-fork repositories</strong>, or <strong>5 followers</strong>, or membership in at least <strong>1 public organization</strong>.</li>
+    <li>Each numeric GitHub account ID can claim promotional credit <strong>once</strong> across OpenAgents. Unlinking or deleting an OpenAgents account does not reset GitHub eligibility.</li>
+    <li>OpenAgents requests a read-only check through WorkOS Pipes and never stores your GitHub OAuth token in our database.</li>
+  </ul>
+
+  <h2>3. How Promo Credit Spends &amp; Expires</h2>
+  <ul>
+    <li><strong>Promo-eligible models only:</strong> Promo credit applies automatically to designated OpenAgents models (currently <code>google/gemini-4-neon</code> and <code>openagents/router-decision</code>). Other models debit your paid Bitcoin credit.</li>
+    <li><strong>Spend order:</strong> On eligible models, promo credit spends automatically before paid Bitcoin credit, consuming the lot with the earliest expiry date first.</li>
+    <li><strong>Daily cap:</strong> At most <strong>$5.00</strong> of promo credit may be spent per account per UTC day. Additional usage on the same day falls through seamlessly to paid Bitcoin credit.</li>
+    <li><strong>Expiry:</strong> Promotional bonus grants expire <strong>90 days</strong> after grant. Lifetime kickback promo credit stays active as long as your account has activity at least once every <strong>365 days</strong>.</li>
+    <li><strong>Not money:</strong> Promo credit has no cash value, cannot be withdrawn to Bitcoin or fiat, cannot be transferred between accounts, and cannot be used for marketplace author payouts or third-party disbursements.</li>
+  </ul>
+
+  <h2>4. Fair Use, Caps &amp; Clawbacks</h2>
+  <ul>
+    <li>Self-referrals, reciprocal referrals between two accounts, shared GitHub accounts, and automated farming are prohibited.</li>
+    <li>Inviter bonuses are capped at <strong>20 activated invitees per rolling 30-day window</strong> by default (higher limits may be granted to verified community ambassadors).</li>
+    <li>Suspicious bursts may be held for review. If fraud or abuse is confirmed, OpenAgents may void pending rewards and claw back <strong>unspent promo credit only</strong>. Paid Bitcoin credit in your balance is never clawed back for referral enforcement.</li>
+    <li>OpenAgents may pause, adjust, or end promotional offers or daily/total program budgets at any time. Rewards already granted remain governed by the terms version recorded on the grant.</li>
+  </ul>
+
+  <p><a href="/settings/invite">Open your Invite &amp; Referrals dashboard</a> · <a href="/referrals/index.md">Plain Markdown copy</a></p>
+</main>
+</body>
+</html>

@@ -96,6 +96,7 @@ bool integrations_route(const request *q) {
       }
     }
     scopes_b[scopes_n >= 0 && scopes_n < (int64_t)sizeof scopes_b ? scopes_n : 0] = 0;
+    if (connected) referral_on_github_connected(db, p->account);
     uint8_t out[1024];
     int64_t n = wos_c_pipes_status_write(connected, is_cs("github"), is_cs((const char *)scopes_b), is_cs(""),
                                          as_lines, (coax_v_u8){out, sizeof out});

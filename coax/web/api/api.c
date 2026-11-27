@@ -469,6 +469,7 @@ static void dispatch(client *cl, request *qp) {
   ROUTE(world_files_project_route);
   ROUTE(inference_route);
   ROUTE(exa_route);
+  ROUTE(referral_route);
   ROUTE(mesh_route);
   ROUTE(piece_route);
   ROUTE(voice_edit_route);

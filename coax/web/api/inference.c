@@ -302,17 +302,32 @@ static void credit_answer(int fd, const char *body, const char *sig) {
     char out[96]; api_error_text(out, sizeof out, "payment_pending: our wallet did not answer; try again");
     x402_reply(fd, 402, "PAYMENT-REQUIRED", PQgetvalue(r, 0, 4), out); goto done;
   }
+  PQclear(PQexec(db, "BEGIN"));
   const char *v3[3] = {PQgetvalue(r, 0, 2), w, PQgetvalue(r, 0, 3)};
   PGresult *t = PQexecParams(db, "SELECT (x->>'status')::int, coalesce(x->>'header', ''), "
                                  "CASE WHEN x ? 'credit_msat' THEN jsonb_build_object('credit_msat', x->'credit_msat', 'msat', x->'msat', 'pubkey', x->'pubkey') "
-                                 "ELSE jsonb_build_object('error', x->'error') END::text "
+                                 "ELSE jsonb_build_object('error', x->'error') END::text, "
+                                 "coalesce(x->>'pubkey', ''), coalesce(x->>'msat', '0') "
                                  "FROM (SELECT inference.topup_settle($1, w->>'state', CASE WHEN w->>'amount_msat' ~ '^[0-9]{1,18}$' THEN (w->>'amount_msat')::bigint END, "
                                  "w->>'preimage', $3) x FROM (SELECT $2::jsonb w) s) q", 3, NULL, v3, NULL, NULL, 0);
-  if (PQresultStatus(t) != PGRES_TUPLES_OK || PQntuples(t) != 1) { api_log("inference: credit settle: %s", PQerrorMessage(db)); api_error(fd, 500, "not settled"); }
-  else {
+  if (PQresultStatus(t) != PGRES_TUPLES_OK || PQntuples(t) != 1) {
+    PQclear(PQexec(db, "ROLLBACK"));
+    api_log("inference: credit settle: %s", PQerrorMessage(db)); api_error(fd, 500, "not settled");
+  } else {
     int st = atoi(PQgetvalue(t, 0, 0));
-    if (st == 200) x402_reply(fd, 200, "PAYMENT-RESPONSE", PQgetvalue(t, 0, 1), PQgetvalue(t, 0, 2));
-    else x402_reply(fd, st, st == 402 ? "PAYMENT-REQUIRED" : NULL, PQgetvalue(r, 0, 4), PQgetvalue(t, 0, 2));
+    if (st == 200) {
+      if (!referral_on_topup_settled_tx(db, PQgetvalue(r, 0, 2), PQgetvalue(t, 0, 3), atoll(PQgetvalue(t, 0, 4)))) {
+        PQclear(PQexec(db, "ROLLBACK"));
+        api_log("inference: referral kickback settle failed");
+        api_error(fd, 500, "not settled");
+      } else {
+        PQclear(PQexec(db, "COMMIT"));
+        x402_reply(fd, 200, "PAYMENT-RESPONSE", PQgetvalue(t, 0, 1), PQgetvalue(t, 0, 2));
+      }
+    } else {
+      PQclear(PQexec(db, "COMMIT"));
+      x402_reply(fd, st, st == 402 ? "PAYMENT-REQUIRED" : NULL, PQgetvalue(r, 0, 4), PQgetvalue(t, 0, 2));
+    }
   }
   PQclear(t);
 done:
@@ -413,13 +428,15 @@ static void usage_route(const request *q) {
     loc_turns = atoll(PQgetvalue(sr, 0, 3));
   }
   if (sr) PQclear(sr);
+  long long promo_micros = 0; char promo_exp[40] = "";
+  referral_promo_balance(db, who, &promo_micros, promo_exp);
   if (blen > 1 && body[blen - 1] == '}') {
-    size_t cap = blen + 192;
+    size_t cap = blen + 288;
     char *merged = malloc(cap);
     if (merged) {
       int n = snprintf(merged, cap,
-        "%.*s,\"sandbox\":{\"turns\":%lld,\"seconds\":%lld,\"msat\":%lld},\"local\":{\"turns\":%lld,\"msat\":0}}",
-        (int)(blen - 1), body, sb_turns, sb_secs, sb_msat, loc_turns);
+        "%.*s,\"sandbox\":{\"turns\":%lld,\"seconds\":%lld,\"msat\":%lld},\"local\":{\"turns\":%lld,\"msat\":0},\"promo_micros\":%lld,\"promo_expires_at\":\"%s\"}",
+        (int)(blen - 1), body, sb_turns, sb_secs, sb_msat, loc_turns, promo_micros, promo_exp);
       if (n > 0) {
         api_json(q->fd, 200, merged);
         free(merged);
@@ -751,12 +768,22 @@ static void answer(int fd, const char *who, const char *model, const char *reque
   snprintf(out, sizeof out, "%d", last_int(r.all.p, "\"completion_tokens\""));
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
   PGconn *db = api_db_new();
-  const char *v[8] = {who, model, http, in, cached_in, out, taken, free_key ? "true" : "false"};
-  PGresult *q = db ? PQexecParams(db, "SELECT inference.finish($1, $2, $3::int, $4::int, $5::int, $6::int, $7::int, $8::bool)", 8, NULL, v, NULL, NULL, 0) : NULL;
-  if (!q || PQresultStatus(q) != PGRES_TUPLES_OK) api_log("inference: not kept: %s", db ? PQerrorMessage(db) : "no database");
+  const char *v[7] = {who, model, http, in, cached_in, out, taken};
+  PGresult *q = db ? PQexecParams(db, "SELECT inference.finish_call($1, $2, $3::int, $4::int, $5::int, $6::int, $7::int)", 7, NULL, v, NULL, NULL, 0) : NULL;
+  long long cost_micros = 0;
+  if (!q || PQresultStatus(q) != PGRES_TUPLES_OK || PQntuples(q) != 1) api_log("inference: not kept: %s", db ? PQerrorMessage(db) : "no database");
+  else cost_micros = atoll(PQgetvalue(q, 0, 0));
   if (status != 200) api_log("inference: the model answered %ld", status);
   if (q) PQclear(q);
-  if (db) PQfinish(db);
+  if (db) {
+    long long call_id = 0;
+    const char *cv[1] = {who};
+    PGresult *cr = PQexecParams(db, "SELECT id FROM inference.calls WHERE pubkey = $1 ORDER BY id DESC LIMIT 1", 1, NULL, cv, NULL, NULL, 0);
+    if (PQresultStatus(cr) == PGRES_TUPLES_OK && PQntuples(cr) == 1) call_id = atoll(PQgetvalue(cr, 0, 0));
+    PQclear(cr);
+    referral_settle_inference(db, who, model, (int)status, call_id, cost_micros, free_key);
+    PQfinish(db);
+  }
   if(observer){observer->end(context,(int)status,transport==CURLE_OK,api_now_ms()-t0);}
   if (save) {
     bool kept=save(context,(int)status,r.all.p ? r.all.p : "",r.all.n);
@@ -792,9 +819,10 @@ static bool inference_ask_impl(const request *q, const char *pubkey, bool free_k
   char *body = malloc(q->body_len + 1);
   if (!body) {if(observer)observer->end(context,503,true,0);else api_error(q->fd,503,"memory");return true;}
   memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
+  bool promo_admit = !free_key && referral_promo_can_admit(db, pubkey, body);
   char origin[600]; snprintf(origin, sizeof origin, "%s/api/v1/inference/credit", env_or("OA_API_ORIGIN", "https://openagents.com"));
   const char *v[6] = {pubkey, body, env_or("OA_INFERENCE_DAILY_REQUESTS", "500"), env_or("OA_INFERENCE_DAILY_USD_MICROS", "2000000"),
-                      free_key ? "true" : "false", origin};
+                      (free_key || promo_admit) ? "true" : "false", origin};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, x->>'model', x->>'stream', "
                                  "(x - 'status' || CASE WHEN x ? 'credit' THEN jsonb_build_object('credit', $6::text) ELSE '{}' END)::text "
                                  "FROM inference.request($1, $2, $3::int, $4::bigint, $5::bool) x", 6, NULL, v, NULL, NULL, 0);

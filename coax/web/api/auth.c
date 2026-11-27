@@ -309,6 +309,14 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/lightning/address/profile", false, AP_HUMAN, "your Nostr profile with this address in it, for your key to sign"),
   R("POST", "/api/lightning/address/profile", false, AP_HUMAN, "your signed profile, checked and passed on to the relays; we never sign it"),
   R("GET",  "/.well-known/nostr.json", false, AP_PUBLIC, "NIP-05: the key on the account that signed its address's profile"),
+  // ---- referrals & promo credit (referral.c, pay/referral-policy.coax)
+  R("GET",  "/api/v1/referral/lookup", false, AP_PUBLIC, "public referral code lookup and click recording"),
+  R("GET",  "/api/v1/referral", false, AP_ACCOUNT, "your referral link, vanity toggle, grants, milestones and promo credit"),
+  R("POST", "/api/v1/referral/redeem", false, AP_ACCOUNT, "bind a referral or campaign code within 7 days of signup"),
+  R("POST", "/api/v1/referral/vanity", false, AP_ACCOUNT, "toggle GitHub handle vanity link and referral preferences"),
+  R("POST", "/api/v1/referral/recheck", false, AP_ACCOUNT, "recheck GitHub eligibility for promo credit grants"),
+  R("POST", "/api/v1/referral/admin/", true, AP_ADMIN_FRESH, "admin referral campaigns, grants, caps, flags and config"),
+  R("GET",  "/api/v1/referral/admin/", true, AP_ADMIN, "admin referral campaigns and config inspection"),
   // ---- our models and the mesh: NIP-98 or a session, metered (inference.c, mesh.c)
   R("*",    "/api/v1/", true, AP_GUEST, "NIP-98 signed or logged in, checked there"),
   // ---- private projects and drops: members only, the same 404 for everyone else (private.c, drops.c)
@@ -1118,6 +1126,7 @@ static void logged_in(const request *q, PGconn *db, const char *acct, const char
   }
   char detail[500], from[256];
   audit(db, acct, sid, action, "ok", detail_of(detail, auw_login_detail_write(cs(via_kind), cs(app ? "app" : "web"), made, device.bind, cs(listed_site(q, from)), OUT(detail))));
+  if (!app) referral_maybe_redeem_cookie(q, db, acct);
   if (!strcmp(level, "L2")) auth_recover_strong_login(db, acct, sid);   // a pending recovery ends (#13213)
   if (!extra_json) extra_json = "";
   if (!extra_lines) extra_lines = "";
@@ -1728,11 +1737,14 @@ static void me(const request *q, PGconn *db) {
     l = auw_me_email_lines(cs(masked), lv, l);
   }
   const char *keys = PQgetvalue(r, 0, 2);
+  long long promo_micros = 0; char promo_exp[40] = "";
+  referral_promo_balance(db, p->account, &promo_micros, promo_exp);
   if (primary[0]) l = auw_me_primary_lines(cs(primary), lv, l);
-  j = auw_me_tail_write(cs(primary), cs(keys), jv, j);
+  j = auw_me_tail_write(cs(primary), cs(keys), promo_micros, cs(promo_exp), jv, j);
   memset(primary, 0, sizeof primary);
   for (int64_t at = auw_me_pubkey_at(cs(keys), 0); at >= 0 && l >= 0 && l < 8000; at = auw_me_pubkey_at(cs(keys), at + 1))
     l = auw_me_key_lines((coax_string){keys + at, (int64_t)strnlen(keys + at, 64)}, lv, l);
+  l = auw_me_promo_lines(promo_micros, cs(promo_exp), lv, l);
   answer_n(q, 200, NULL, json, j, lines, l);
   PQclear(r);
   free(json); free(lines);

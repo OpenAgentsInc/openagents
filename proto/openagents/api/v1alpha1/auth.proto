@@ -25,6 +25,9 @@ message AuthAccount {
   repeated AuthAccountKeys keys = 9 [json_name = "keys"];
   // The account's primary email (else its first), whole; written after emails, when it has one.
   optional string primary = 10 [json_name = "primary"];
+  // Active non-withdrawable promotional credit balance (USD micros) and nearest lot expiry.
+  optional int64 promo_micros = 11 [json_name = "promo_micros"];
+  optional string promo_expires_at = 12 [json_name = "promo_expires_at"];
 }
 
 message AuthAccountKeys {

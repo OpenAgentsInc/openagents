@@ -1,6 +1,6 @@
 # Invariants — pay/INVARIANTS.md
 
-> Scope: Payments, Spark wallet, Lightning, LNURL, tips, voice-meter, capability economy payouts (3 invariants). Indexed from root [INVARIANTS.md](../INVARIANTS.md).
+> Scope: Payments, Spark wallet, Lightning, LNURL, tips, voice-meter, capability economy payouts, referrals & promo credit (4 invariants). Indexed from root [INVARIANTS.md](../INVARIANTS.md).
 
 ## The iOS wallet seed is read, never written; sends go through Coax
 
@@ -169,4 +169,38 @@ Check: `coax/bin/coax test pay/price-policy.coax --library`,
 `coax/bin/coax test pay/payout-policy.coax --library`,
 `coax/bin/coax mutate <each> --library --root-only` (0 surviving mutants on all
 three), and `coax/bin/coax run openagents/examples/capability-economy-e2e.coax`.
+
+## Promotional credit is a non-money service discount governed by `#authority` policy
+
+Referral bonuses, GitHub connect credit, milestones, campaigns, and lifetime
+kickbacks (`docs/business/2026-11-27-referrals-and-promo-credit-spec.md`) are
+non-withdrawable, non-transferable USD-micro promotional discounts stored in
+`inference.promo_credit`, strictly separate from paid Bitcoin/Lightning credit
+in `inference.credit`:
+
+- `pay/referral-policy.coax` (`#authority`, 0 surviving mutants) decides
+  Crockford base32/vanity validation, GitHub account eligibility (age, public
+  non-fork repos / followers / public orgs, one permanent claim per numeric
+  GitHub ID, deny-list), referral attribution binding (no self, shared-GitHub,
+  or reciprocal referrals; 7-day signup window; campaign expiry/uses/revocation),
+  grant state transitions (`pending -> granted | void | clawed_back`, rolling
+  30-day inviter cap, budget ceilings holding over-cap grants `pending` without
+  error, independent kill-switch flags), milestone tiers (5 / 25 / 100),
+  exact floor kickback math (`floor(topup_micros * bps / 10000)`), and promo
+  spend order (promo-eligible models only, never past expiry, oldest-expiry
+  first, capped at `$5`/UTC day, exact conservation `promo_used + paid_remaining == cost`).
+- `coax/web/api/referral-wire.coax` (`openagents.referral.*.v1`, 0 surviving
+  mutants) owns wire encoding/decoding for `/api/v1/referral*`; `coax/web/api/referral.c`
+  uses plain parameterized SQL with `pg_advisory_xact_lock(...)` (zero new
+  PL/pgSQL functions).
+- Lifetime kickbacks settle inside the same Postgres transaction as
+  `inference.topup_settle` with `UNIQUE (kind, account_id, source_ref)`
+  idempotency. Admin clawbacks zero only remaining `inference.promo_credit`
+  and never touch paid `inference.credit`.
+
+Check: `coax/bin/coax test pay/referral-policy.coax --library`,
+`coax/bin/coax mutate pay/referral-policy.coax --library --root-only` (0 survivors),
+`coax/bin/coax test coax/web/api/referral-wire.coax --library`,
+`coax/bin/coax mutate coax/web/api/referral-wire.coax --library --root-only` (0 survivors),
+and `coax/web/api/tests/referral_e2e_test.sh` (ASan/UBSan).
 

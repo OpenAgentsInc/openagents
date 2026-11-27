@@ -7856,6 +7856,110 @@
         "coax/web/api/router-wire.coax"
       ],
       "note": "Automatic Execution Target placement response (POST /api/chat/placement/v1; #14129)."
+    },
+    {
+      "id": "openagents.referral.summary.v1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/verse/referral-v1.json",
+      "codec": "coax/web/api/referral-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/referral-wire.coax --library",
+      "step": "new",
+      "files": [
+        "pay/referral-policy.coax",
+        "coax/web/api/referral.c"
+      ],
+      "tests": [
+        "pay/referral-policy.coax",
+        "coax/web/api/referral-wire.coax",
+        "coax/web/api/tests/referral_e2e_test.sh"
+      ],
+      "note": "Referral dashboard summary, personal/vanity links, promo credit balance, and grants (GET /api/v1/referral)."
+    },
+    {
+      "id": "openagents.referral.lookup.v1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/verse/referral-v1.json",
+      "codec": "coax/web/api/referral-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/referral-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/referral.c"
+      ],
+      "tests": [
+        "coax/web/api/referral-wire.coax",
+        "coax/web/api/tests/referral_e2e_test.sh"
+      ],
+      "note": "Public referral code/vanity/campaign lookup envelope (GET /api/v1/referral/lookup)."
+    },
+    {
+      "id": "openagents.referral.redeem.v1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/verse/referral-v1.json",
+      "codec": "coax/web/api/referral-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/referral-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/referral.c"
+      ],
+      "tests": [
+        "coax/web/api/referral-wire.coax",
+        "coax/web/api/tests/referral_e2e_test.sh"
+      ],
+      "note": "Referral attribution redemption request/response (POST /api/v1/referral/redeem)."
+    },
+    {
+      "id": "openagents.referral.vanity.v1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/verse/referral-v1.json",
+      "codec": "coax/web/api/referral-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/referral-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/referral.c"
+      ],
+      "tests": [
+        "coax/web/api/referral-wire.coax",
+        "coax/web/api/tests/referral_e2e_test.sh"
+      ],
+      "note": "Referral vanity link and privacy preferences update (POST /api/v1/referral/vanity)."
+    },
+    {
+      "id": "openagents.referral.recheck.v1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/verse/referral-v1.json",
+      "codec": "coax/web/api/referral-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/referral-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/referral.c"
+      ],
+      "tests": [
+        "coax/web/api/referral-wire.coax",
+        "coax/web/api/tests/referral_e2e_test.sh"
+      ],
+      "note": "GitHub identity eligibility recheck and reward grant response (POST /api/v1/referral/recheck)."
+    },
+    {
+      "id": "openagents.referral.admin.v1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/verse/referral-v1.json",
+      "codec": "coax/web/api/referral-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/referral-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/referral.c"
+      ],
+      "tests": [
+        "coax/web/api/referral-wire.coax",
+        "coax/web/api/tests/referral_e2e_test.sh"
+      ],
+      "note": "Admin referral campaign, grant hold/void/clawback, cap, flag, and config responses (/api/v1/referral/admin/*)."
     }
   ]
 }

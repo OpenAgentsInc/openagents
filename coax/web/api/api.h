@@ -145,6 +145,14 @@ bool inference_route(const request *q);   // inference.c: POST /api/v1/inference
 bool inference_auth_caller(const request *q, char who[65], bool *free_key);   // inference.c: NIP-98 or account session auth
 void inference_rate_refresh(PGconn *db);   // inference.c: refresh BTC/USD rate from Spark wallet when stale
 bool exa_route(const request *q);         // exa.c: POST /api/v1/search, /api/v1/fetch, /api/v1/mcp/exa (#14114, #14115)
+bool referral_route(const request *q);    // referral.c: /api/v1/referral*, promo credit & kickbacks
+void referral_promo_balance(PGconn *db, const char *account_or_key, long long *micros_out, char expires_iso[40]);
+bool referral_promo_can_admit(PGconn *db, const char *who, const char *req_body);
+void referral_settle_inference(PGconn *db, const char *who, const char *model, int http_status,
+                               long long call_id, long long cost_micros, bool free_key);
+bool referral_on_topup_settled_tx(PGconn *db, const char *payment_hash, const char *pubkey_or_acct, long long msat);
+void referral_on_github_connected(PGconn *db, const char *account_id);
+void referral_maybe_redeem_cookie(const request *q, PGconn *db, const char *account_id);
 void inference_upstream_init(void);        // inference.c: what the model calls remember about Vertex's two endpoints, shared by the workers
 bool inference_ask(const request *q, const char *pubkey, bool free_key);   // inference.c: the same ask for a caller another route named (chat.c)
 typedef struct {

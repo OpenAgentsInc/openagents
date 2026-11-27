@@ -1,0 +1,564 @@
+// Referral & Promo Credit policy (#authority; docs/business/2026-11-27-referrals-and-promo-credit-spec.md).
+//
+// Pure, deterministic rules for:
+//   - Crockford base32 referral codes, GitHub vanity handles, and reserved/profanity rejection
+//   - GitHub identity eligibility (age + real activity + uniqueness + deny list)
+//   - Attribution binding (self, shared GitHub, reciprocal, 7-day window, campaign limits, kill-switch)
+//   - Fraud/velocity automatic hold signals
+//   - Grant state transitions (pending -> granted | void), rolling 30d inviter cap, budget ceilings, flags
+//   - Milestone one-time rewards (5 -> $10, 25 -> $50, 100 -> $250)
+//   - 1% lifetime kickback math (overflow-safe integer floor)
+//   - Promo credit spend order (model allowlist, expiry, $5/UTC-day cap, conservation with paid balance)
+//
+// Promo credit is strictly a non-withdrawable, non-transferable service discount in USD micros;
+// paid Bitcoin/Lightning sats (inference.credit) remain the only money in OpenAgents.
+//
+//   coax/bin/coax test pay/referral-policy.coax --library
+//   coax/bin/coax mutate pay/referral-policy.coax --library
+#authority;
+
+RP_CODE_LEN :: 8;
+RP_CROCKFORD :: "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+// GitHub eligibility verdicts
+RP_ELIG_OK :: 0;
+RP_ELIG_TOO_NEW :: 1;
+RP_ELIG_LOW_ACTIVITY :: 2;
+RP_ELIG_CLAIMED :: 3;
+RP_ELIG_DENIED :: 4;
+
+// Attribution bind verdicts
+RP_BIND_OK :: 0;
+RP_BIND_DISABLED :: 1;
+RP_BIND_FROZEN :: 2;
+RP_BIND_ALREADY :: 3;
+RP_BIND_NOT_FOUND :: 4;
+RP_BIND_REVOKED :: 5;
+RP_BIND_EXPIRED :: 6;
+RP_BIND_EXHAUSTED :: 7;
+RP_BIND_SELF :: 8;
+RP_BIND_SHARED_GH :: 9;
+RP_BIND_RECIPROCAL :: 10;
+RP_BIND_WINDOW :: 11;
+
+// Auto-hold signals
+RP_HOLD_NONE :: 0;
+RP_HOLD_PREFIX :: 1;
+RP_HOLD_GH_CLUSTER :: 2;
+RP_HOLD_VELOCITY :: 3;
+
+// Grant kinds
+RP_KIND_GH_CONNECT :: 1;
+RP_KIND_INVITEE :: 2;
+RP_KIND_INVITER :: 3;
+RP_KIND_KICKBACK :: 4;
+RP_KIND_MILESTONE :: 5;
+RP_KIND_CAMPAIGN :: 6;
+
+// Grant transition decisions
+RP_ACT_GRANT :: 1;
+RP_ACT_PENDING_FLAG :: 2;
+RP_ACT_PENDING_BUDGET :: 3;
+RP_ACT_PENDING_HOLD :: 4;
+RP_ACT_PENDING_ELIG :: 5;
+RP_ACT_PENDING_ACTIVE :: 6;
+RP_ACT_VOID_FROZEN :: 10;
+RP_ACT_VOID_CLAIMED :: 11;
+RP_ACT_VOID_EXPIRED :: 12;
+RP_ACT_VOID_CAP :: 13;
+
+// Milestone tiers & amounts (USD micros)
+RP_MS_T1_COUNT :: 5;   RP_MS_T1_MICROS :: 10000000;
+RP_MS_T2_COUNT :: 25;  RP_MS_T2_MICROS :: 50000000;
+RP_MS_T3_COUNT :: 100; RP_MS_T3_MICROS :: 250000000;
+
+rp_lower :: (c: u8) -> u8 #effects(all) {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+rp_upper :: (c: u8) -> u8 #effects(all) {
+  return ifx c >= 'a' && c <= 'z' then cast(u8) (c - 32) else c;
+}
+
+rp_eq_ci :: (a: string, b: string) -> bool #effects(all) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    if rp_lower(a[i]) != rp_lower(b[i]) { return false; }
+  }
+  return true;
+}
+
+rp_contains_ci :: (hay: string, needle: string) -> bool #effects(all) {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  limit := hay.count - needle.count + 1;
+  for i: 0..<limit {
+    ok := true;
+    for j: 0..<needle.count {
+      if rp_lower(hay[i + j]) != rp_lower(needle[j]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+RP_PROFANITY :: [14] string.[
+  "fuck", "shit", "cunt", "bitch", "dick", "cock", "pussy",
+  "slut", "whore", "nigg", "fagg", "nazi", "rape", "porn"
+];
+
+RP_RESERVED :: [26] string.[
+  "admin", "api", "auth", "login", "logout", "signup", "signin",
+  "settings", "chat", "worlds", "world", "referrals", "referral",
+  "invite", "invites", "docs", "help", "about", "status", "terms",
+  "privacy", "wallet", "agents", "projects", "openagents", "support"
+];
+
+rp_has_profanity :: (s: string) -> bool #effects(all) {
+  words := RP_PROFANITY;
+  for w: words {
+    if rp_contains_ci(s, w) { return true; }
+  }
+  return false;
+}
+
+rp_is_reserved :: (s: string) -> bool #effects(all) {
+  words := RP_RESERVED;
+  for w: words {
+    if rp_eq_ci(s, w) { return true; }
+  }
+  return false;
+}
+
+rp_crockford_char :: (c: u8) -> bool #effects(all) {
+  u := rp_upper(c);
+  if u >= '0' && u <= '9' { return true; }
+  if u >= 'A' && u <= 'Z' {
+    return u != 'I' && u != 'L' && u != 'O' && u != 'U';
+  }
+  return false;
+}
+
+// Validate an 8-character Crockford base32 referral code (case-insensitive, no profanity).
+rp_code_valid :: (code: string) -> bool #export_c #effects(all) {
+  if code.count != RP_CODE_LEN { return false; }
+  for i: 0..<RP_CODE_LEN {
+    if !rp_crockford_char(code[i]) { return false; }
+  }
+  return !rp_has_profanity(code);
+}
+
+// Format 5 random bytes (40 bits) into an 8-char uppercase Crockford base32 code.
+// Returns 8 on success, 0 if the generated code hit the profanity filter (caller rerolls),
+// or -1 if src has fewer than 5 bytes or out has fewer than 8 bytes.
+rp_code_from_bytes :: (src: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if src.count < 5 || out.count < RP_CODE_LEN { return -1; }
+  bits: int = (cast(int) src[0] << 32) | (cast(int) src[1] << 24) | (cast(int) src[2] << 16) | (cast(int) src[3] << 8) | cast(int) src[4];
+  alpha := RP_CROCKFORD;
+  for i: 0..<RP_CODE_LEN {
+    shift := 35 - i * 5;
+    idx := (bits >> shift) & 31;
+    out[i] = alpha[idx];
+  }
+  if rp_has_profanity(cast(string) out[0..<RP_CODE_LEN]) { return 0; }
+  return RP_CODE_LEN;
+}
+
+// Validate a GitHub handle for use as a vanity referral path (/r/<handle>).
+rp_vanity_valid :: (handle: string) -> bool #export_c #effects(all) {
+  if handle.count < 1 || handle.count > 39 { return false; }
+  if handle[0] == '-' || handle[handle.count - 1] == '-' { return false; }
+  prev_dash := false; // mutant: equivalent — handle[0] != '-' is enforced above, so i=0 cannot enter c == '-' and resets prev_dash to false
+  for i: 0..<handle.count {
+    c := handle[i];
+    is_alnum := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+    if c == '-' {
+      if prev_dash { return false; }
+      prev_dash = true;
+    } else if is_alnum {
+      prev_dash = false;
+    } else {
+      return false;
+    }
+  }
+  return !rp_is_reserved(handle) && !rp_has_profanity(handle);
+}
+
+// Validate any code token submitted to /lookup or /redeem (personal code, vanity handle, or campaign code).
+rp_lookup_token_ok :: (token: string) -> bool #export_c #effects(all) {
+  if token.count < 1 || token.count > 48 { return false; }
+  for i: 0..<token.count {
+    c := token[i];
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+    if !ok { return false; }
+  }
+  return true;
+}
+
+// Evaluate GitHub identity eligibility (§4.1).
+// Returns RP_ELIG_OK (0) or the first failing gate.
+rp_eligible :: (age_days: int, min_age_days: int, non_fork_repos: int, min_repos: int,
+                followers: int, min_followers: int, public_orgs: int,
+                already_claimed: bool, denied: bool) -> int #export_c #effects(all) {
+  if denied { return RP_ELIG_DENIED; }
+  if already_claimed { return RP_ELIG_CLAIMED; }
+  if age_days < min_age_days { return RP_ELIG_TOO_NEW; }
+  has_activity := non_fork_repos >= min_repos || followers >= min_followers || public_orgs >= 1;
+  if !has_activity { return RP_ELIG_LOW_ACTIVITY; }
+  return RP_ELIG_OK;
+}
+
+// Evaluate whether an account may bind a referral code (§3.3).
+rp_bind :: (flag_redeem: bool, invitee_frozen: bool, already_attributed: bool,
+            self_referral: bool, shared_github: bool, reciprocal: bool,
+            account_age_s: int, redeem_window_s: int,
+            code_exists: bool, code_revoked: bool, code_expired: bool, code_exhausted: bool) -> int #export_c #effects(all) {
+  if !flag_redeem { return RP_BIND_DISABLED; }
+  if invitee_frozen { return RP_BIND_FROZEN; }
+  if already_attributed { return RP_BIND_ALREADY; }
+  if !code_exists { return RP_BIND_NOT_FOUND; }
+  if code_revoked { return RP_BIND_REVOKED; }
+  if code_expired { return RP_BIND_EXPIRED; }
+  if code_exhausted { return RP_BIND_EXHAUSTED; }
+  if self_referral { return RP_BIND_SELF; }
+  if shared_github { return RP_BIND_SHARED_GH; }
+  if reciprocal { return RP_BIND_RECIPROCAL; }
+  if account_age_s < 0 || account_age_s > redeem_window_s { return RP_BIND_WINDOW; }
+  return RP_BIND_OK;
+}
+
+// Automatic hold decision on abuse/velocity signals (§4.3, §4.4).
+rp_hold_signal :: (same_prefix_today: int, same_hour_gh: bool, code_uses_hour: int) -> int #export_c #effects(all) {
+  if same_prefix_today > 5 { return RP_HOLD_PREFIX; }
+  if same_hour_gh { return RP_HOLD_GH_CLUSTER; }
+  if code_uses_hour >= 50 { return RP_HOLD_VELOCITY; }
+  return RP_HOLD_NONE;
+}
+
+// Evaluate next state of a pending grant (§3.5, §4.3, §4.5).
+// Over daily/total budget stays pending (RP_ACT_PENDING_BUDGET), never fails with an error.
+rp_grant :: (kind: int, flag_on: bool, account_frozen: bool, other_frozen: bool, held: bool,
+             gh_elig: int, amount_micros: int,
+             day_spent_budget: int, day_budget_cap: int,
+             total_spent_budget: int, total_budget_cap: int,
+             inviter_30d_count: int, inviter_30d_cap: int,
+             active_days: int, active_days_needed: int,
+             elapsed_s: int, max_window_s: int) -> int #export_c #effects(all) {
+  if account_frozen || other_frozen { return RP_ACT_VOID_FROZEN; }
+  if gh_elig == RP_ELIG_CLAIMED || gh_elig == RP_ELIG_DENIED { return RP_ACT_VOID_CLAIMED; }
+  if max_window_s > 0 && elapsed_s > max_window_s { return RP_ACT_VOID_EXPIRED; }
+  if kind == RP_KIND_INVITER && inviter_30d_count >= inviter_30d_cap { return RP_ACT_VOID_CAP; }
+  if !flag_on { return RP_ACT_PENDING_FLAG; }
+  if held { return RP_ACT_PENDING_HOLD; }
+  if gh_elig != RP_ELIG_OK { return RP_ACT_PENDING_ELIG; }
+  if kind == RP_KIND_INVITER && active_days < active_days_needed { return RP_ACT_PENDING_ACTIVE; }
+  if amount_micros <= 0 { return RP_ACT_PENDING_BUDGET; }
+  if kind != RP_KIND_KICKBACK {
+    if day_spent_budget + amount_micros > day_budget_cap { return RP_ACT_PENDING_BUDGET; }
+    if total_spent_budget + amount_micros > total_budget_cap { return RP_ACT_PENDING_BUDGET; }
+  }
+  return RP_ACT_GRANT;
+}
+
+// Next unawarded milestone tier (5, 25, 100) or 0 if none.
+// awarded_mask bit 0 = tier 5, bit 1 = tier 25, bit 2 = tier 100.
+rp_milestone_tier :: (activated_count: int, awarded_mask: int) -> int #export_c #effects(all) {
+  if activated_count >= RP_MS_T1_COUNT && (awarded_mask & 1) == 0 { return RP_MS_T1_COUNT; }
+  if activated_count >= RP_MS_T2_COUNT && (awarded_mask & 2) == 0 { return RP_MS_T2_COUNT; }
+  if activated_count >= RP_MS_T3_COUNT && (awarded_mask & 4) == 0 { return RP_MS_T3_COUNT; }
+  return 0;
+}
+
+// USD micros amount for a milestone tier (5 -> $10, 25 -> $50, 100 -> $250, else 0).
+rp_milestone_micros :: (tier: int) -> int #export_c #effects(all) {
+  if tier == RP_MS_T1_COUNT { return RP_MS_T1_MICROS; }
+  if tier == RP_MS_T2_COUNT { return RP_MS_T2_MICROS; }
+  if tier == RP_MS_T3_COUNT { return RP_MS_T3_MICROS; }
+  return 0;
+}
+
+// Convert settled Lightning top-up millisatoshis to USD micros at usd_per_btc (floor, overflow-safe).
+// 1 BTC = 10^11 msat = usd_per_btc * 10^6 USD micros => 1 msat = usd_per_btc / 100000 USD micros.
+rp_msat_to_micros :: (msat: int, usd_per_btc: int) -> int #export_c #effects(all) {
+  if msat < 1 || usd_per_btc < 1 { return 0; } // mutant: equivalent — at msat == 0 or usd_per_btc == 0, q*usd_per_btc + (r*usd_per_btc)/100000 == 0
+  q := msat / 100000;
+  r := msat % 100000;
+  return q * usd_per_btc + (r * usd_per_btc) / 100000;
+}
+
+// Kickback in USD micros: floor(topup_micros * bps / 10000), overflow-safe.
+rp_kickback :: (topup_micros: int, bps: int, flag_kickback: bool, has_inviter: bool) -> int #export_c #effects(all) {
+  if !flag_kickback || !has_inviter || bps > 10000 { return 0; }
+  if topup_micros < 1 || bps < 1 { return 0; } // mutant: equivalent — at topup_micros == 0 or bps == 0, q*bps + (r*bps)/10000 == 0
+  q := topup_micros / 10000;
+  r := topup_micros % 10000;
+  return q * bps + (r * bps) / 10000;
+}
+
+// Exact comma-separated allowlist match for promo-eligible models.
+rp_model_promo_eligible :: (model: string, csv_list: string) -> bool #export_c #effects(all) {
+  if model.count == 0 || csv_list.count == 0 { return false; }
+  at := 0;
+  while at < csv_list.count { // mutant: equivalent — model.count > 0 is enforced above, so an empty trailing slice at at == csv_list.count never matches
+    e := at;
+    while e < csv_list.count && csv_list[e] != ',' { e += 1; }
+    a := at;
+    b := e;
+    while a < b && (csv_list[a] == ' ' || csv_list[a] == '\t') { a += 1; }
+    while b > a && (csv_list[b - 1] == ' ' || csv_list[b - 1] == '\t') { b -= 1; }
+    if b - a == model.count && cast(string) csv_list[a..<b] == model { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+
+// Compute split between promo credit (USD micros) and paid credit remainder (USD micros) (§4.2).
+// Writes out_promo[0] and out_paid[0] such that out_promo[0] + out_paid[0] == cost_micros.
+rp_spend_order :: (promo_balance: int, expires_at_s: int, now_s: int,
+                   day_spent_micros: int, daily_cap_micros: int,
+                   model_eligible: bool, account_frozen: bool, cost_micros: int,
+                   out_promo: [] int, out_paid: [] int) -> bool #export_c #effects(all) {
+  if out_promo.count < 1 || out_paid.count < 1 || cost_micros < 0 { return false; }
+  if cost_micros == 0 {
+    out_promo[0] = 0;
+    out_paid[0] = 0;
+    return true;
+  }
+  expired := expires_at_s > 0 && now_s >= expires_at_s;
+  if !model_eligible || account_frozen || expired {
+    out_promo[0] = 0;
+    out_paid[0] = cost_micros;
+    return true;
+  }
+  spent_today := ifx day_spent_micros > 0 then day_spent_micros else 0; // mutant: equivalent — at day_spent_micros == 0 both branches equal 0
+  cap_left := daily_cap_micros - spent_today;
+  avail := ifx promo_balance < cap_left then promo_balance else cap_left; // mutant: equivalent — when promo_balance == cap_left both branches equal promo_balance
+  if avail < 0 { avail = 0; } // mutant: equivalent — at avail == 0 setting avail = 0 is a no-op
+  used := ifx cost_micros < avail then cost_micros else avail; // mutant: equivalent — when cost_micros == avail both branches equal cost_micros
+  out_promo[0] = used;
+  out_paid[0] = cost_micros - used;
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "Crockford base32 referral codes, vanity handles, and profanity/reserved rejection" {
+  // Exact ASCII case boundaries
+  #assert rp_lower('A') == 'a' && rp_lower('Z') == 'z' && rp_lower('@') == '@' && rp_lower('[') == '[';
+  #assert rp_upper('a') == 'A' && rp_upper('z') == 'Z' && rp_upper('`') == '`' && rp_upper('{') == '{';
+  // Valid personal codes (case-insensitive, 8 Crockford chars)
+  #assert rp_code_valid("23456789") && rp_code_valid("ABCDEFGH") && rp_code_valid("jkmnprst") && rp_code_valid("VWXYZ019") && rp_code_valid("az09bcde");
+  // Wrong length
+  #assert !rp_code_valid("") && !rp_code_valid("2345678") && !rp_code_valid("234567890");
+  // Disallowed Crockford characters (I, L, O, U), punctuation, and boundary chars at index 0 & 7
+  #assert !rp_code_valid("ABCDIFGH") && !rp_code_valid("ABCDLFGH") && !rp_code_valid("ABCDOFGH") && !rp_code_valid("ABCDUFGH");
+  #assert !rp_code_valid("abcdifgh") && !rp_code_valid("abcd-fgh") && !rp_code_valid("ABCD_FGH") && !rp_code_valid("ABCD/FGH");
+  #assert !rp_code_valid("2345678:") && !rp_code_valid("2345678[") && !rp_code_valid(":2345678") && !rp_code_valid("[2345678");
+  // Profanity inside code rejected
+  #assert !rp_code_valid("XXRAPEXX") && !rp_code_valid("XXPORNXX") && !rp_code_valid("23rape45");
+
+  // Formatting from 5 bytes
+  src0 := [5] u8.[0, 0, 0, 0, 0];
+  srcMax := [5] u8.[255, 255, 255, 255, 255];
+  srcMix := [5] u8.[0x08, 0x42, 0x10, 0x84, 0x21];
+  out: [8] u8;
+  #assert rp_code_from_bytes(src0[0..<4], out[..]) == -1;
+  #assert rp_code_from_bytes(src0[..], out[0..<7]) == -1;
+  #assert rp_code_from_bytes(src0[..], out[..]) == 8 && cast(string) out[..] == "00000000" && rp_code_valid(cast(string) out[..]);
+  #assert rp_code_from_bytes(srcMax[..], out[..]) == 8 && cast(string) out[..] == "ZZZZZZZZ" && rp_code_valid(cast(string) out[..]);
+  #assert rp_code_from_bytes(srcMix[..], out[..]) == 8 && cast(string) out[..] == "11111111";
+  // "RAPE0000": indices 24(R), 10(A), 22(P), 14(E), 0, 0, 0, 0
+  // (24<<35)|(10<<30)|(22<<25)|(14<<20) = 0xC2ACE00000
+  srcBad := [5] u8.[0xC2, 0xAC, 0xE0, 0x00, 0x00];
+  #assert rp_code_from_bytes(srcBad[..], out[..]) == 0 && cast(string) out[..] == "RAPE0000";
+
+  // Vanity handles (exact char boundaries & index 0)
+  #assert rp_vanity_valid("a") && rp_vanity_valid("z") && rp_vanity_valid("A") && rp_vanity_valid("Z") && rp_vanity_valid("0") && rp_vanity_valid("9");
+  #assert rp_vanity_valid("octocat") && rp_vanity_valid("Chris-David-99") && rp_vanity_valid("a12345678901234567890123456789012345678");
+  #assert !rp_vanity_valid("") && !rp_vanity_valid("a123456789012345678901234567890123456789");
+  #assert !rp_vanity_valid("-abc") && !rp_vanity_valid("abc-") && !rp_vanity_valid("ab--cd") && !rp_vanity_valid("ab_cd") && !rp_vanity_valid("ab.cd");
+  #assert !rp_vanity_valid("!abc") && !rp_vanity_valid("a{b") && !rp_vanity_valid("a[b") && !rp_vanity_valid("a:b") && !rp_vanity_valid("a@b") && !rp_vanity_valid("a`b") && !rp_vanity_valid("a/b");
+  #assert !rp_vanity_valid("admin") && !rp_vanity_valid("LOGIN") && !rp_vanity_valid("OpenAgents") && !rp_vanity_valid("referrals");
+  #assert !rp_vanity_valid("myfuckhandle") && !rp_vanity_valid("nazi123");
+
+  // Lookup token validation (lengths 1..48, index 0, char boundaries)
+  #assert rp_lookup_token_ok("a") && rp_lookup_token_ok("azAZ09-_") && rp_lookup_token_ok("2345ABCD") && rp_lookup_token_ok("octo-cat") && rp_lookup_token_ok("LAUNCH_2026");
+  #assert rp_lookup_token_ok("a12345678901234567890123456789012345678901234567");
+  #assert !rp_lookup_token_ok("") && !rp_lookup_token_ok("!abc") && !rp_lookup_token_ok("../admin") && !rp_lookup_token_ok("bad token");
+  #assert !rp_lookup_token_ok("a123456789012345678901234567890123456789012345678");
+  #assert !rp_lookup_token_ok("a{b") && !rp_lookup_token_ok("a[b") && !rp_lookup_token_ok("a:b");
+  #assert !rp_contains_ci("abc", "") && !rp_contains_ci("ab", "abc") && rp_contains_ci("abc", "abc") && rp_contains_ci("AbC", "bc") && !rp_contains_ci("abc", "xy") && !rp_contains_ci("abc", "cz") && !rp_contains_ci("xbc", "abc");
+  #assert !rp_eq_ci("ab", "abc") && !rp_eq_ci("xbc", "abc") && rp_eq_ci("AbC", "abc");
+}
+
+#test "GitHub identity eligibility gates and ordering" {
+  // Passing via each of the 3 activity signals at exact threshold
+  #assert rp_eligible(90, 90, 3, 3, 0, 5, 0, false, false) == RP_ELIG_OK;
+  #assert rp_eligible(90, 90, 0, 3, 5, 5, 0, false, false) == RP_ELIG_OK;
+  #assert rp_eligible(90, 90, 0, 3, 0, 5, 1, false, false) == RP_ELIG_OK;
+  // Below threshold on each signal
+  #assert rp_eligible(89, 90, 10, 3, 10, 5, 2, false, false) == RP_ELIG_TOO_NEW;
+  #assert rp_eligible(90, 90, 2, 3, 4, 5, 0, false, false) == RP_ELIG_LOW_ACTIVITY;
+  // Claimed and denied take precedence
+  #assert rp_eligible(40, 90, 0, 3, 0, 5, 0, true, false) == RP_ELIG_CLAIMED;
+  #assert rp_eligible(40, 90, 0, 3, 0, 5, 0, true, true) == RP_ELIG_DENIED;
+}
+
+#forall "eligibility invariants hold over all GitHub signals" age: 88..<93, repos: 1..<5, followers: 3..<7, orgs: 0..<2, claimed: bool, denied: bool {
+  v := rp_eligible(age, 90, repos, 3, followers, 5, orgs, claimed, denied);
+  if denied { #assert v == RP_ELIG_DENIED; }
+  else if claimed { #assert v == RP_ELIG_CLAIMED; }
+  else if age < 90 { #assert v == RP_ELIG_TOO_NEW; }
+  else if repos < 3 && followers < 5 && orgs < 1 { #assert v == RP_ELIG_LOW_ACTIVITY; }
+  else { #assert v == RP_ELIG_OK; }
+}
+
+#test "attribution binding and auto-hold signals" {
+  win := 7 * 86400;
+  #assert rp_bind(true, false, false, false, false, false, 0, win, true, false, false, false) == RP_BIND_OK;
+  #assert rp_bind(true, false, false, false, false, false, win, win, true, false, false, false) == RP_BIND_OK;
+  #assert rp_bind(false, false, false, false, false, false, 0, win, true, false, false, false) == RP_BIND_DISABLED;
+  #assert rp_bind(true, true, false, false, false, false, 0, win, true, false, false, false) == RP_BIND_FROZEN;
+  #assert rp_bind(true, false, true, false, false, false, 0, win, true, false, false, false) == RP_BIND_ALREADY;
+  #assert rp_bind(true, false, false, false, false, false, 0, win, false, false, false, false) == RP_BIND_NOT_FOUND;
+  #assert rp_bind(true, false, false, false, false, false, 0, win, true, true, false, false) == RP_BIND_REVOKED;
+  #assert rp_bind(true, false, false, false, false, false, 0, win, true, false, true, false) == RP_BIND_EXPIRED;
+  #assert rp_bind(true, false, false, false, false, false, 0, win, true, false, false, true) == RP_BIND_EXHAUSTED;
+  #assert rp_bind(true, false, false, true, false, false, 0, win, true, false, false, false) == RP_BIND_SELF;
+  #assert rp_bind(true, false, false, false, true, false, 0, win, true, false, false, false) == RP_BIND_SHARED_GH;
+  #assert rp_bind(true, false, false, false, false, true, 0, win, true, false, false, false) == RP_BIND_RECIPROCAL;
+  #assert rp_bind(true, false, false, false, false, false, -1, win, true, false, false, false) == RP_BIND_WINDOW;
+  #assert rp_bind(true, false, false, false, false, false, win + 1, win, true, false, false, false) == RP_BIND_WINDOW;
+
+  // Auto-hold boundaries
+  #assert rp_hold_signal(5, false, 49) == RP_HOLD_NONE;
+  #assert rp_hold_signal(6, false, 0) == RP_HOLD_PREFIX;
+  #assert rp_hold_signal(5, true, 0) == RP_HOLD_GH_CLUSTER;
+  #assert rp_hold_signal(5, false, 50) == RP_HOLD_VELOCITY;
+}
+
+#test "grant transitions, caps, budget ceilings, and milestones" {
+  // Normal grants (including max_window_s == 0 with positive elapsed_s, max_window_s == 1, and amount == 1)
+  #assert rp_grant(RP_KIND_GH_CONNECT, true, false, false, false, RP_ELIG_OK, 5000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 100, 0) == RP_ACT_GRANT;
+  #assert rp_grant(RP_KIND_GH_CONNECT, true, false, false, false, RP_ELIG_OK, 1, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_GRANT;
+  #assert rp_grant(RP_KIND_INVITEE, true, false, false, false, RP_ELIG_OK, 10000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 2, 1) == RP_ACT_VOID_EXPIRED;
+  #assert rp_grant(RP_KIND_INVITEE, true, false, false, false, RP_ELIG_OK, 10000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 30 * 86400, 30 * 86400) == RP_ACT_GRANT;
+  #assert rp_grant(RP_KIND_INVITER, true, false, false, false, RP_ELIG_OK, 5000000, 0, 500000000, 0, 50000000000, 19, 20, 2, 2, 30 * 86400, 30 * 86400) == RP_ACT_GRANT;
+
+  // Void rules
+  #assert rp_grant(RP_KIND_INVITEE, true, true, false, false, RP_ELIG_OK, 10000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 30 * 86400) == RP_ACT_VOID_FROZEN;
+  #assert rp_grant(RP_KIND_INVITER, true, false, true, false, RP_ELIG_OK, 5000000, 0, 500000000, 0, 50000000000, 0, 20, 2, 2, 0, 30 * 86400) == RP_ACT_VOID_FROZEN;
+  #assert rp_grant(RP_KIND_GH_CONNECT, true, false, false, false, RP_ELIG_CLAIMED, 5000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_VOID_CLAIMED;
+  #assert rp_grant(RP_KIND_GH_CONNECT, true, false, false, false, RP_ELIG_DENIED, 5000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_VOID_CLAIMED;
+  #assert rp_grant(RP_KIND_INVITEE, true, false, false, false, RP_ELIG_TOO_NEW, 10000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 30 * 86400 + 1, 30 * 86400) == RP_ACT_VOID_EXPIRED;
+  #assert rp_grant(RP_KIND_INVITER, true, false, false, false, RP_ELIG_OK, 5000000, 0, 500000000, 0, 50000000000, 20, 20, 2, 2, 100, 30 * 86400) == RP_ACT_VOID_CAP;
+  // Invitee is NOT capped by inviter_30d_count
+  #assert rp_grant(RP_KIND_INVITEE, true, false, false, false, RP_ELIG_OK, 10000000, 0, 500000000, 0, 50000000000, 25, 20, 0, 2, 100, 30 * 86400) == RP_ACT_GRANT;
+
+  // Pending rules: flag off, held, ineligible (too new/low activity), active days < 2, budget ceilings
+  #assert rp_grant(RP_KIND_GH_CONNECT, false, false, false, false, RP_ELIG_OK, 5000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_PENDING_FLAG;
+  #assert rp_grant(RP_KIND_INVITEE, true, false, false, true, RP_ELIG_OK, 10000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 30 * 86400) == RP_ACT_PENDING_HOLD;
+  #assert rp_grant(RP_KIND_GH_CONNECT, true, false, false, false, RP_ELIG_TOO_NEW, 5000000, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_PENDING_ELIG;
+  #assert rp_grant(RP_KIND_INVITER, true, false, false, false, RP_ELIG_OK, 5000000, 0, 500000000, 0, 50000000000, 0, 20, 1, 2, 100, 30 * 86400) == RP_ACT_PENDING_ACTIVE;
+  #assert rp_grant(RP_KIND_INVITEE, true, false, false, false, RP_ELIG_OK, 0, 0, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_PENDING_BUDGET;
+  // Exact boundary on daily & total ceiling
+  #assert rp_grant(RP_KIND_GH_CONNECT, true, false, false, false, RP_ELIG_OK, 5000000, 495000000, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_GRANT;
+  #assert rp_grant(RP_KIND_GH_CONNECT, true, false, false, false, RP_ELIG_OK, 5000000, 495000001, 500000000, 0, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_PENDING_BUDGET;
+  #assert rp_grant(RP_KIND_GH_CONNECT, true, false, false, false, RP_ELIG_OK, 5000000, 0, 500000000, 49995000000, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_GRANT;
+  #assert rp_grant(RP_KIND_GH_CONNECT, true, false, false, false, RP_ELIG_OK, 5000000, 0, 500000000, 49995000001, 50000000000, 0, 20, 0, 2, 0, 0) == RP_ACT_PENDING_BUDGET;
+  // Kickbacks do NOT draw from flat grant programme budget
+  #assert rp_grant(RP_KIND_KICKBACK, true, false, false, false, RP_ELIG_OK, 100000, 500000000, 500000000, 50000000000, 50000000000, 99, 20, 0, 2, 0, 90 * 86400) == RP_ACT_GRANT;
+
+  // Milestones
+  #assert rp_milestone_tier(4, 0) == 0 && rp_milestone_tier(5, 0) == 5 && rp_milestone_tier(5, 1) == 0;
+  #assert rp_milestone_tier(24, 1) == 0 && rp_milestone_tier(25, 1) == 25 && rp_milestone_tier(25, 3) == 0;
+  #assert rp_milestone_tier(99, 3) == 0 && rp_milestone_tier(100, 3) == 100 && rp_milestone_tier(100, 7) == 0;
+  #assert rp_milestone_micros(5) == 10000000 && rp_milestone_micros(25) == 50000000 && rp_milestone_micros(100) == 250000000 && rp_milestone_micros(0) == 0;
+}
+
+#test "kickback and msat-to-micros conversion boundaries" {
+  #assert rp_msat_to_micros(0, 100000) == 0 && rp_msat_to_micros(-1, 100000) == 0 && rp_msat_to_micros(100000, 0) == 0 && rp_msat_to_micros(100000, -1) == 0;
+  #assert rp_msat_to_micros(1, 100000) == 1 && rp_msat_to_micros(100000, 1) == 1;
+  // 100000 msat (100 sats = 10^-6 BTC) at $100,000/BTC = $0.10 = 100,000 USD micros
+  #assert rp_msat_to_micros(100000, 100000) == 100000;
+  // 10000 msat (10 sats = 10^-7 BTC) at $95,000/BTC = 9,500 USD micros
+  #assert rp_msat_to_micros(10000, 95000) == 9500;
+  // 123456 msat at $80,000/BTC = floor(123456 * 80000 / 100000) = 98764
+  #assert rp_msat_to_micros(123456, 80000) == 98764;
+
+  // Kickback 1% (100 bps)
+  #assert rp_kickback(0, 100, true, true) == 0;
+  #assert rp_kickback(-500, 100, true, true) == 0;
+  #assert rp_kickback(10000000, 0, true, true) == 0 && rp_kickback(10000000, -1, true, true) == 0;
+  #assert rp_kickback(10000000, 10001, true, true) == 0;
+  #assert rp_kickback(1, 10000, true, true) == 1 && rp_kickback(10000, 1, true, true) == 1;
+  #assert rp_kickback(10000000, 10000, true, true) == 10000000;
+  #assert rp_kickback(10000000, 100, false, true) == 0;
+  #assert rp_kickback(10000000, 100, true, false) == 0;
+  #assert rp_kickback(99, 100, true, true) == 0;
+  #assert rp_kickback(100, 100, true, true) == 1;
+  #assert rp_kickback(10000000, 100, true, true) == 100000;
+  #assert rp_kickback(10005099, 100, true, true) == 100050;
+}
+
+#forall "kickback is non-negative, bounded by floor(topup * bps / 10000), zero at zero, and monotone" ai: 0..<12, bi: 0..<12, bi_bps: 0..<4, on: bool, inv: bool {
+  a := ai * 1357;
+  b := bi * 1357;
+  bps := bi_bps * 100;
+  ka := rp_kickback(a, bps, on, inv);
+  kb := rp_kickback(b, bps, on, inv);
+  #assert ka >= 0 && ka <= (a * bps) / 10000;
+  if !on || !inv || a == 0 || bps == 0 { #assert ka == 0; }
+  if a <= b { #assert ka <= kb; }
+}
+
+#test "promo model allowlist matching and spend order boundaries" {
+  list := "google/gemini-4-neon, gemini-4-neon ,openagents/router-decision";
+  #assert rp_model_promo_eligible("google/gemini-4-neon", list);
+  #assert rp_model_promo_eligible("gemini-4-neon", list);
+  #assert rp_model_promo_eligible("openagents/router-decision", list);
+  #assert !rp_model_promo_eligible("", list) && !rp_model_promo_eligible("", "a,,b") && !rp_model_promo_eligible("gemini-4-neon", "");
+  #assert !rp_model_promo_eligible("claude-opus-5", list) && !rp_model_promo_eligible("gemini-4", list);
+  #assert rp_model_promo_eligible("m", "m") && rp_model_promo_eligible("m", "\tm\t") && !rp_model_promo_eligible("m", "   ,  ") && !rp_model_promo_eligible("x", ",a");
+
+  p: [1] int; paid: [1] int;
+  #assert !rp_spend_order(100, 0, 10, 0, 5000000, true, false, 10, p[0..<0], paid[..]);
+  #assert !rp_spend_order(100, 0, 10, 0, 5000000, true, false, 10, p[..], paid[0..<0]);
+  #assert !rp_spend_order(100, 0, 10, 0, 5000000, true, false, -1, p[..], paid[..]);
+  // Zero cost overwrites stale outputs; cost == 1 uses promo; negative balance/cap refuses promo
+  p[0] = 99; paid[0] = 99;
+  #assert rp_spend_order(100, 0, 10, 0, 5000000, true, false, 0, p[..], paid[..]) && p[0] == 0 && paid[0] == 0;
+  #assert rp_spend_order(100, 0, 10, 0, 5000000, true, false, 1, p[..], paid[..]) && p[0] == 1 && paid[0] == 0;
+  #assert rp_spend_order(1, 0, 10, 0, 1, true, false, 2, p[..], paid[..]) && p[0] == 1 && paid[0] == 1;
+  #assert rp_spend_order(100, 0, 10, 1, 2, true, false, 2, p[..], paid[..]) && p[0] == 1 && paid[0] == 1;
+  #assert rp_spend_order(-1, 0, 10, 0, 5000000, true, false, 100, p[..], paid[..]) && p[0] == 0 && paid[0] == 100;
+  #assert rp_spend_order(100, 0, 10, 0, -1, true, false, 100, p[..], paid[..]) && p[0] == 0 && paid[0] == 100;
+  // Exact expiry boundary: now == expires_at => expired (pre-fill p[0] non-zero to verify overwrite)
+  p[0] = 77;
+  #assert rp_spend_order(1000, 500, 500, 0, 5000000, true, false, 200, p[..], paid[..]) && p[0] == 0 && paid[0] == 200;
+  #assert rp_spend_order(1000, 500, 499, 0, 5000000, true, false, 200, p[..], paid[..]) && p[0] == 200 && paid[0] == 0;
+  // No expiry (expires_at_s == 0) does not expire
+  #assert rp_spend_order(1000, 0, 999999, 0, 5000000, true, false, 200, p[..], paid[..]) && p[0] == 200 && paid[0] == 0;
+  // Negative day_spent clamped to 0, zero daily cap blocks promo, frozen blocks promo, ineligible model blocks promo
+  #assert rp_spend_order(1000, 0, 10, -50, 500, true, false, 600, p[..], paid[..]) && p[0] == 500 && paid[0] == 100;
+  #assert rp_spend_order(1000, 0, 10, 0, 0, true, false, 100, p[..], paid[..]) && p[0] == 0 && paid[0] == 100;
+  #assert rp_spend_order(1000, 0, 10, 0, 5000000, true, true, 100, p[..], paid[..]) && p[0] == 0 && paid[0] == 100;
+  #assert rp_spend_order(1000, 0, 10, 0, 5000000, false, false, 100, p[..], paid[..]) && p[0] == 0 && paid[0] == 100;
+  // Partial split by balance vs daily cap
+  #assert rp_spend_order(300, 0, 10, 400, 1000, true, false, 500, p[..], paid[..]) && p[0] == 300 && paid[0] == 200;
+  #assert rp_spend_order(900, 0, 10, 700, 1000, true, false, 500, p[..], paid[..]) && p[0] == 300 && paid[0] == 200;
+  #assert rp_spend_order(900, 0, 10, 1000, 1000, true, false, 500, p[..], paid[..]) && p[0] == 0 && paid[0] == 500;
+}
+
+#forall "spend order conserves cost and enforces model list, expiry, balance, and daily cap" bal_i: 0..<5, exp_s: 0..<3, now: 0..<3, spent_i: 0..<4, cost_i: 0..<5, elig: bool, frozen: bool {
+  cap := 5000000;
+  bal := bal_i * 2000000;
+  spent := spent_i * 2000000;
+  cost := cost_i * 1500000;
+  p: [1] int; paid: [1] int;
+  ok := rp_spend_order(bal, exp_s, now, spent, cap, elig, frozen, cost, p[..], paid[..]);
+  #assert ok && p[0] >= 0 && paid[0] >= 0 && p[0] + paid[0] == cost;
+  if !elig || frozen { #assert p[0] == 0; }
+  if exp_s > 0 && now >= exp_s { #assert p[0] == 0; }
+  #assert p[0] <= bal;
+  if spent <= cap { #assert spent + p[0] <= cap; } else { #assert p[0] == 0; }
+}

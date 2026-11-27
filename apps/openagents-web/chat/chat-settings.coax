@@ -62,6 +62,7 @@ cw_settings_page :: (s: [] ChatWeb) {
   names := CS_LIMIT_NAMES; values := CS_LIMIT_VALUES;
   sw_limits(w, t, u, names[..], values[..]);
   sw_about(w, t, u);
+  sw_invite(w, t, u);
   sw_page_end(w, t);
 }
 
@@ -214,6 +215,53 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   }
   if id == "sw.gh.connect" { s[0].gh_connect_due = true; w[0].gh_note_n = sw_put(w[0].gh_note[..], 0, "Connecting GitHub..."); return true; }
   if id == "sw.gh.disconnect" { s[0].gh_disconnect_due = true; w[0].gh_note_n = sw_put(w[0].gh_note[..], 0, "Disconnecting GitHub..."); return true; }
+  if id == "sw.ref.copy" {
+    lnk := sw_active_ref_link(w);
+    if lnk.count > 0 {
+      s[0].clip_n = cw_put(s[0].clip[..], 0, lnk);
+      w[0].ref_note_n = sw_put(w[0].ref_note[..], 0, "Copied invite link.");
+    }
+    return true;
+  }
+  if id == "sw.ref.badge" {
+    lnk := sw_active_ref_link(w);
+    if lnk.count > 0 {
+      bn := cw_put(s[0].clip[..], 0, "[![Built with OpenAgents](https://openagents.com/favicon.svg)](");
+      bn = cw_put(s[0].clip[..], bn, lnk);
+      bn = cw_put(s[0].clip[..], bn, ")");
+      s[0].clip_n = bn;
+      w[0].ref_note_n = sw_put(w[0].ref_note[..], 0, "Copied Markdown README badge.");
+    }
+    return true;
+  }
+  if id == "sw.ref.x" {
+    lnk := sw_active_ref_link(w);
+    if lnk.count > 0 {
+      xb: [512] u8; xn := cw_put(xb[..], 0, "https://x.com/intent/tweet?text=Get%20%2410%20of%20OpenAgents%20promo%20credit%20with%20my%20invite%20link%3A%20");
+      xn = cw_put(xb[..], xn, lnk);
+      cw_go_to(s, cast(string) xb[0..<xn], false);
+    }
+    return true;
+  }
+  if id == "sw.ref.nostr" {
+    lnk := sw_active_ref_link(w);
+    if lnk.count > 0 {
+      nn := cw_put(s[0].clip[..], 0, "Try OpenAgents with $10 of promo credit: ");
+      nn = cw_put(s[0].clip[..], nn, lnk);
+      nn = cw_put(s[0].clip[..], nn, " #openagents");
+      s[0].clip_n = nn;
+      w[0].ref_note_n = sw_put(w[0].ref_note[..], 0, "Copied Nostr share note to clipboard.");
+    }
+    return true;
+  }
+  if id == "sw.ref.vanity" { s[0].ref_vanity_due = 1; w[0].ref_note_n = sw_put(w[0].ref_note[..], 0, "Updating vanity link..."); return true; }
+  if id == "sw.ref.showname" { s[0].ref_vanity_due = 2; w[0].ref_note_n = sw_put(w[0].ref_note[..], 0, "Updating invite page preference..."); return true; }
+  if id == "sw.ref.footer" { s[0].ref_vanity_due = 3; w[0].ref_note_n = sw_put(w[0].ref_note[..], 0, "Updating commit footer preference..."); return true; }
+  if id == "sw.ref.recheck" { s[0].ref_recheck_due = true; w[0].ref_busy = true; w[0].ref_note_n = sw_put(w[0].ref_note[..], 0, "Checking GitHub eligibility..."); return true; }
+  if id == "sw.ref.redeem" {
+    if w[0].ref_input_n > 0 && !w[0].ref_busy { s[0].ref_redeem_due = true; w[0].ref_busy = true; w[0].ref_note_n = sw_put(w[0].ref_note[..], 0, "Redeeming code..."); }
+    return true;
+  }
   gh_pk := cw_number(id, "sw.proj.pick.");
   if gh_pk >= 0 {
     if gh_pk < w[0].gh_nrepos {

@@ -82,7 +82,8 @@ alw_deleting_lines :: (purge_ms: int, purge_at: string, out: [] u8) -> int #expo
 // GET /api/auth/life: the account's state. frozen is "", freeze or delete; purge_at is "" with no purge.
 alw_life_write :: (account: string, kind: string, frozen: string, frozen_ms: int, delete_asked_ms: int, purge_ms: int, now_ms: int,
                    strong: int, emails: int, keys: int, agents: int, agents_paused: int, credit_msat: int, worlds: int, saves: int,
-                   merged_from: int, purge_at: string, level: int, limited: bool, fresh: bool, proved: bool, out: [] u8) -> int #export_c #effects(all) {
+                   merged_from: int, purge_at: string, level: int, limited: bool, fresh: bool, proved: bool,
+                   promo_micros: int, promo_expires_at: string, out: [] u8) -> int #export_c #effects(all) {
   o: [1] Jo; aw_at(o[..], out, 0);
   jo_put(o[..], "{\"account\":"); jo_quoted(o[..], account); jo_put(o[..], ",\"kind\":"); jo_quoted(o[..], kind);
   jo_put(o[..], ",\"frozen\":"); jo_quoted(o[..], frozen);
@@ -93,13 +94,17 @@ alw_life_write :: (account: string, kind: string, frozen: string, frozen_ms: int
   jo_put(o[..], ",\"purge_at\":"); jo_quoted(o[..], purge_at);
   alw_num(o[..], ",\"level\":\"L", level); jo_put(o[..], "\",\"limited\":"); alw_bool(o[..], limited);
   jo_put(o[..], ",\"fresh\":"); alw_bool(o[..], fresh); jo_put(o[..], ",\"proved\":"); alw_bool(o[..], proved);
-  jo_put(o[..], ",\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40}");
+  jo_put(o[..], ",\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40");
+  alw_num(o[..], ",\"promo_micros\":", promo_micros);
+  if promo_expires_at.count > 0 { jo_put(o[..], ",\"promo_expires_at\":"); jo_quoted(o[..], promo_expires_at); }
+  jo_put(o[..], "}");
   return aw_len(o[..]);
 }
 // The same as lines: frozen is "no" when it is not, purge_at "-" with no purge.
 alw_life_lines :: (account: string, kind: string, frozen: string, frozen_ms: int, delete_asked_ms: int, purge_ms: int, now_ms: int,
                    strong: int, emails: int, keys: int, agents: int, agents_paused: int, credit_msat: int, worlds: int, saves: int,
-                   merged_from: int, purge_at: string, level: int, limited: bool, fresh: bool, proved: bool, out: [] u8) -> int #export_c #effects(all) {
+                   merged_from: int, purge_at: string, level: int, limited: bool, fresh: bool, proved: bool,
+                   promo_micros: int, promo_expires_at: string, out: [] u8) -> int #export_c #effects(all) {
   o: [1] Jo; aw_at(o[..], out, 0);
   jo_put(o[..], "account "); jo_put(o[..], account); jo_put(o[..], "\nkind "); jo_put(o[..], kind);
   jo_put(o[..], "\nfrozen "); jo_put(o[..], ifx frozen.count > 0 then frozen else "no");
@@ -109,7 +114,9 @@ alw_life_lines :: (account: string, kind: string, frozen: string, frozen_ms: int
   alw_num(o[..], "\nworlds ", worlds); alw_num(o[..], "\nsaves ", saves); alw_num(o[..], "\nmerged_from ", merged_from);
   jo_put(o[..], "\npurge_at "); jo_put(o[..], ifx purge_at.count > 0 then purge_at else "-");
   alw_num(o[..], "\nlevel ", level); jo_put(o[..], "\nlimited "); alw_bit(o[..], limited);
-  jo_put(o[..], "\nfresh "); alw_bit(o[..], fresh); jo_put(o[..], "\nproved "); alw_bit(o[..], proved); jo_put(o[..], "\n");
+  jo_put(o[..], "\nfresh "); alw_bit(o[..], fresh); jo_put(o[..], "\nproved "); alw_bit(o[..], proved);
+  alw_num(o[..], "\npromo_micros ", promo_micros);
+  jo_put(o[..], "\npromo_expires_at "); jo_put(o[..], ifx promo_expires_at.count > 0 then promo_expires_at else "-"); jo_put(o[..], "\n");
   return aw_len(o[..]);
 }
 
@@ -232,19 +239,21 @@ alw_money :: (body: string) -> bool #export_c #effects(all) {
 
 #test "the account's state, as JSON and as lines: every member in its place, empty and negative values" {
   b: [1500] u8;
-  n := alw_life_write("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, b[..]);
-  #assert cast(string) b[0..<n] == "{\"account\":\"acct_1\",\"kind\":\"person\",\"frozen\":\"\",\"frozen_ms\":0,\"delete_asked_ms\":0,\"purge_ms\":0,\"now_ms\":1800000000000,\"strong\":1,\"emails\":2,\"keys\":1,\"agents\":3,\"agents_paused\":0,\"credit_msat\":-5,\"worlds\":4,\"saves\":6,\"merged_from\":0,\"purge_at\":\"\",\"level\":\"L2\",\"limited\":false,\"fresh\":true,\"proved\":true,\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40}";
-  #assert alw_life_write("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, b[0..<n - 1]) == -1;
-  n = alw_life_write("acct_2", "person", "delete", 11, 12, 13, 14, 0, 1, 0, 2, 2, 21000, 0, 0, 3, "2027-02-11 00:00 UTC", 1, true, false, false, b[..]);
-  #assert cast(string) b[0..<n] == "{\"account\":\"acct_2\",\"kind\":\"person\",\"frozen\":\"delete\",\"frozen_ms\":11,\"delete_asked_ms\":12,\"purge_ms\":13,\"now_ms\":14,\"strong\":0,\"emails\":1,\"keys\":0,\"agents\":2,\"agents_paused\":2,\"credit_msat\":21000,\"worlds\":0,\"saves\":0,\"merged_from\":3,\"purge_at\":\"2027-02-11 00:00 UTC\",\"level\":\"L1\",\"limited\":true,\"fresh\":false,\"proved\":false,\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40}";
-  n = alw_life_lines("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, b[..]);
-  #assert cast(string) b[0..<n] == "account acct_1\nkind person\nfrozen no\nfrozen_ms 0\ndelete_asked_ms 0\npurge_ms 0\nnow_ms 1800000000000\nstrong 1\nemails 2\nkeys 1\nagents 3\nagents_paused 0\ncredit_msat -5\nworlds 4\nsaves 6\nmerged_from 0\npurge_at -\nlevel 2\nlimited 0\nfresh 1\nproved 1\n";
-  #assert alw_life_lines("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, b[0..<n - 1]) == -1;
-  n = alw_life_lines("acct_2", "person", "freeze", 11, 12, 13, 14, 0, 1, 0, 2, 2, 21000, 0, 0, 3, "2027-02-11 00:00 UTC", 1, true, false, false, b[..]);
-  #assert cast(string) b[0..<n] == "account acct_2\nkind person\nfrozen freeze\nfrozen_ms 11\ndelete_asked_ms 12\npurge_ms 13\nnow_ms 14\nstrong 0\nemails 1\nkeys 0\nagents 2\nagents_paused 2\ncredit_msat 21000\nworlds 0\nsaves 0\nmerged_from 3\npurge_at 2027-02-11 00:00 UTC\nlevel 1\nlimited 1\nfresh 0\nproved 0\n";
-  // one-byte frozen and purge_at values are not replaced by "no" or "-"
-  n = alw_life_lines("a", "p", "x", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "t", 0, false, false, false, b[..]);
-  #assert cast(string) b[0..<n] == "account a\nkind p\nfrozen x\nfrozen_ms 0\ndelete_asked_ms 0\npurge_ms 0\nnow_ms 0\nstrong 0\nemails 0\nkeys 0\nagents 0\nagents_paused 0\ncredit_msat 0\nworlds 0\nsaves 0\nmerged_from 0\npurge_at t\nlevel 0\nlimited 0\nfresh 0\nproved 0\n";
+  n := alw_life_write("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, 0, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"account\":\"acct_1\",\"kind\":\"person\",\"frozen\":\"\",\"frozen_ms\":0,\"delete_asked_ms\":0,\"purge_ms\":0,\"now_ms\":1800000000000,\"strong\":1,\"emails\":2,\"keys\":1,\"agents\":3,\"agents_paused\":0,\"credit_msat\":-5,\"worlds\":4,\"saves\":6,\"merged_from\":0,\"purge_at\":\"\",\"level\":\"L2\",\"limited\":false,\"fresh\":true,\"proved\":true,\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40,\"promo_micros\":0}";
+  #assert alw_life_write("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, 0, "", b[0..<n - 1]) == -1;
+  n = alw_life_write("acct_2", "person", "delete", 11, 12, 13, 14, 0, 1, 0, 2, 2, 21000, 0, 0, 3, "2027-02-11 00:00 UTC", 1, true, false, false, 15000000, "2027-02-25T00:00:00Z", b[..]);
+  #assert cast(string) b[0..<n] == "{\"account\":\"acct_2\",\"kind\":\"person\",\"frozen\":\"delete\",\"frozen_ms\":11,\"delete_asked_ms\":12,\"purge_ms\":13,\"now_ms\":14,\"strong\":0,\"emails\":1,\"keys\":0,\"agents\":2,\"agents_paused\":2,\"credit_msat\":21000,\"worlds\":0,\"saves\":0,\"merged_from\":3,\"purge_at\":\"2027-02-11 00:00 UTC\",\"level\":\"L1\",\"limited\":true,\"fresh\":false,\"proved\":false,\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40,\"promo_micros\":15000000,\"promo_expires_at\":\"2027-02-25T00:00:00Z\"}";
+  n = alw_life_write("a", "p", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, false, false, false, 1, "e", b[..]);
+  #assert cast(string) b[0..<n] == "{\"account\":\"a\",\"kind\":\"p\",\"frozen\":\"\",\"frozen_ms\":0,\"delete_asked_ms\":0,\"purge_ms\":0,\"now_ms\":0,\"strong\":0,\"emails\":0,\"keys\":0,\"agents\":0,\"agents_paused\":0,\"credit_msat\":0,\"worlds\":0,\"saves\":0,\"merged_from\":0,\"purge_at\":\"\",\"level\":\"L0\",\"limited\":false,\"fresh\":false,\"proved\":false,\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40,\"promo_micros\":1,\"promo_expires_at\":\"e\"}";
+  n = alw_life_lines("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, 0, "", b[..]);
+  #assert cast(string) b[0..<n] == "account acct_1\nkind person\nfrozen no\nfrozen_ms 0\ndelete_asked_ms 0\npurge_ms 0\nnow_ms 1800000000000\nstrong 1\nemails 2\nkeys 1\nagents 3\nagents_paused 0\ncredit_msat -5\nworlds 4\nsaves 6\nmerged_from 0\npurge_at -\nlevel 2\nlimited 0\nfresh 1\nproved 1\npromo_micros 0\npromo_expires_at -\n";
+  #assert alw_life_lines("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, 0, "", b[0..<n - 1]) == -1;
+  n = alw_life_lines("acct_2", "person", "freeze", 11, 12, 13, 14, 0, 1, 0, 2, 2, 21000, 0, 0, 3, "2027-02-11 00:00 UTC", 1, true, false, false, 5000000, "2027-02-25T00:00:00Z", b[..]);
+  #assert cast(string) b[0..<n] == "account acct_2\nkind person\nfrozen freeze\nfrozen_ms 11\ndelete_asked_ms 12\npurge_ms 13\nnow_ms 14\nstrong 0\nemails 1\nkeys 0\nagents 2\nagents_paused 2\ncredit_msat 21000\nworlds 0\nsaves 0\nmerged_from 3\npurge_at 2027-02-11 00:00 UTC\nlevel 1\nlimited 1\nfresh 0\nproved 0\npromo_micros 5000000\npromo_expires_at 2027-02-25T00:00:00Z\n";
+  // one-byte frozen, purge_at and promo_expires_at values are not replaced by "no" or "-"
+  n = alw_life_lines("a", "p", "x", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "t", 0, false, false, false, 1, "e", b[..]);
+  #assert cast(string) b[0..<n] == "account a\nkind p\nfrozen x\nfrozen_ms 0\ndelete_asked_ms 0\npurge_ms 0\nnow_ms 0\nstrong 0\nemails 0\nkeys 0\nagents 0\nagents_paused 0\ncredit_msat 0\nworlds 0\nsaves 0\nmerged_from 0\npurge_at t\nlevel 0\nlimited 0\nfresh 0\nproved 0\npromo_micros 1\npromo_expires_at e\n";
 }
 
 #test "the export's rows: the head, an email escaped as auth.c escaped it, the agents" {

@@ -96,6 +96,34 @@ async function passkey(request) {
 addEventListener("coaxial", (e) => {
   const code = e.detail?.code;
   if (code === 0) {
+    // Capture ?ref=<code> into first-party cookie + localStorage so post-login redeem works across all providers.
+    try {
+      const ref = (new URLSearchParams(location.search).get("ref") || "").trim();
+      if (ref && ref.length <= 64) {
+        localStorage.setItem("oa_ref", ref);
+        const sec = location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = "oa_ref=" + encodeURIComponent(ref) + "; Path=/; Max-Age=2592000; SameSite=Lax" + sec;
+      }
+      const stored = (localStorage.getItem("oa_ref") || "").trim();
+      if (stored) {
+        fetch("/api/auth/account?as=lines", { credentials: "same-origin" })
+          .then((r) => r.ok ? r.text() : "")
+          .then((t) => {
+            if (!t.includes("logged_in 1")) return;
+            return fetch("/api/v1/referral/redeem", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: stored, source: "web" }),
+            }).then((res) => {
+              if (res.status === 200 || res.status === 400 || res.status === 409) {
+                try { localStorage.removeItem("oa_ref"); } catch {}
+              }
+            });
+          })
+          .catch(() => {});
+      }
+    } catch {}
     send(HAS_KEY, signer() ? "1" : "0");
     canPasskey().then((v) => send(HAS_PASSKEY, v));
     fetch("/api/auth/workos/config?as=lines", { credentials: "same-origin" })

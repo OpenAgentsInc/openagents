@@ -39,6 +39,15 @@ site_chat_conv_id :: (seg:string)->bool #effects(all) {
   return true;
 }
 
+// Whether `seg` is a referral code or GitHub vanity handle (1..39 of A-Z, a-z, 0-9, -, _).
+site_ref_token :: (seg:string)->bool #effects(all) {
+  if seg.count<1 || seg.count>39 {return false;}
+  for c:seg {
+    if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='-' || c=='_') {return false;}
+  }
+  return true;
+}
+
 site_route :: (path:string)->SiteRoute #export_c #effects(all) {
   if site_under(path,"/verse/galaxy") || site_under(path,"/metaverse/galaxy") {return SiteRoute.{status=301,to="/worlds",skip=path.count,query=false};}
   if site_under(path,"/forge") {return SiteRoute.{status=301,to="/worlds/new",skip=path.count,query=true};}
@@ -49,6 +58,12 @@ site_route :: (path:string)->SiteRoute #export_c #effects(all) {
   if site_under(path,"/projects/metaverse") {return SiteRoute.{status=0,to="/projects/verse",skip=19,query=false};}
   // Static SSR books generated into build/books/ by apps/openagents-web/books-build.coax (deploy.sh stages them at site/books/).
   if site_under(path,"/books") {return SiteRoute.{status=0,to="/build/books",skip=6,query=false};}
+  // Referral landing routes (/r/<code> or /r/<vanity_handle>): serve /r/index.html.
+  if path.count>=4 && cast(string)path[0..<3]=="/r/" {
+    end:=path.count;
+    if path[end-1]=='/' {end-=1;}
+    if site_ref_token(cast(string)path[3..<end]) {return SiteRoute.{status=0,to="/r/index.html",skip=path.count,query=false};}
+  }
   // Unified cloud chat SPA routes (/chat/cnv_<32hex>, #14094): serve /chat/index.html so reloads hydrate cleanly.
   if path.count>=42 && cast(string)path[0..<6]=="/chat/" {
     end:=path.count;
@@ -146,4 +161,20 @@ site_goes :: (path:string,out:[]u8)->string #effects(all) {
   r4:=site_route("/books/coax/ch01-getting-started/index.md");
   #assert r4.status==0 && !r4.query && site_goes("/books/coax/ch01-getting-started/index.md",b[..])=="/build/books/coax/ch01-getting-started/index.md";
   #assert site_route("/book").to.count==0 && site_route("/bookshop").to.count==0 && site_route("/books-old").to.count==0;
+}
+#test "/r/<code> serves /r/index.html without affecting /r/index.html, dots, or /referrals" {
+  b:[256]u8;
+  r:=site_route("/r/7K3M9Q2P");
+  #assert r.status==0 && !r.query && site_goes("/r/7K3M9Q2P",b[..])=="/r/index.html";
+  r2:=site_route("/r/octocat-dev/");
+  #assert r2.status==0 && !r2.query && site_goes("/r/octocat-dev/",b[..])=="/r/index.html";
+  // Boundary lengths (1, 39 valid; 0, 40 invalid) and trailing-slash single-char token
+  #assert site_route("/r/a").to=="/r/index.html" && site_route("/r/a/").to=="/r/index.html";
+  #assert site_route("/r/!a").to.count==0 && site_route("/r//").to.count==0;
+  #assert !site_ref_token("") && site_ref_token("azAZ09-_");
+  #assert site_ref_token("a23456789012345678901234567890123456789");
+  #assert !site_ref_token("a234567890123456789012345678901234567890");
+  // Character class boundary rejections (one below/above each range)
+  #assert !site_ref_token("`") && !site_ref_token("{") && !site_ref_token("@") && !site_ref_token("[") && !site_ref_token("/") && !site_ref_token(":");
+  #assert site_route("/r").to.count==0 && site_route("/r/").to.count==0 && site_route("/r/index.html").to.count==0 && site_route("/r/a/b").to.count==0 && site_route("/referrals").to.count==0;
 }

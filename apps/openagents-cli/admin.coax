@@ -11,6 +11,7 @@ admin_usage :: () {
   print("%\n", "  admin flag realm_invites on|off");
   print("%\n", "  admin invite new [--uses N] [--days N] [--note T]   prints the code and its link once");
   print("%\n", "  admin invite list | admin invite revoke ID");
+  admin_referral_usage();
   print("%\n", "  admin requests | admin approve ID | admin decline ID");
   print("%\n", "  admin creators | admin creator add WHO | admin creator remove WHO | admin grandfather");
   print("%\n", "  admin realms [--visibility V]    every made realm and who sees it");
@@ -198,6 +199,7 @@ admin_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "access" { return admin_access(a, r, profile); }
   if verb == "flag" { return admin_flag(a, r, profile); }
   if verb == "invite" { return admin_invite(a, r, profile); }
+  if verb == "referral" { return admin_referral(a, r, profile); }
   if verb == "requests" { return admin_list(a, r, profile, "R", "request"); }
   if verb == "approve" || verb == "decline" { return admin_decide(a, r, profile, verb); }
   if verb == "creators" { return admin_list(a, r, profile, "C", "creator"); }

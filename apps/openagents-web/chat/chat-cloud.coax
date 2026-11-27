@@ -170,6 +170,9 @@ CwcUsage :: struct {
   sandbox_seconds: int;
   sandbox_msat: int;
   local_turns: int;
+  promo_micros: int;
+  promo_expires: [32] u8;
+  promo_expires_n: int;
 }
 
 CwcHttpSlot :: struct {
@@ -1293,6 +1296,13 @@ cwc_read_usage :: (c: [] ChatCloud, raw: string) -> bool {
   loc := jv_get(v, 0, "local");
   if loc >= 0 && jv_kind(v, loc) == JV_OBJECT {
     u[0].local_turns = jv_int(v, jv_get(v, loc, "turns"), 0);
+  }
+  u[0].promo_micros = jv_int(v, jv_get(v, 0, "promo_micros"), 0);
+  pe := jv_get(v, 0, "promo_expires_at");
+  if pe >= 0 && jv_kind(v, pe) == JV_STRING {
+    u[0].promo_expires_n = cwc_put(u[0].promo_expires[..], 0, jv_raw(v, pe));
+  } else {
+    u[0].promo_expires_n = 0;
   }
   return true;
 }
@@ -2775,6 +2785,11 @@ cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
     un = cwc_put(ub[..], un, " req · ");
     un = cwc_put_int(ub[..], un, c[0].usage[0].credit_msat / 1000);
     un = cwc_put(ub[..], un, " sats");
+    if c[0].usage[0].promo_micros > 0 {
+      pusd: [32] u8;
+      un = cwc_put(ub[..], un, " · Promo ");
+      un = cwc_put(ub[..], un, cwc_format_usd_micros(c[0].usage[0].promo_micros, pusd[..]));
+    }
     if c[0].usage[0].sandbox_seconds > 0 || c[0].usage[0].sandbox_msat > 0 {
       un = cwc_put(ub[..], un, " · Sandbox ");
       un = cwc_put_int(ub[..], un, c[0].usage[0].sandbox_seconds);

@@ -245,12 +245,14 @@ static void life_get(const request *q, PGconn *db, const auth_principal *p) {
   const char *why = l.why == 1 ? "freeze" : l.why == 2 ? "delete" : "";
   char when[40] = "";
   if (l.purge_ms > 0) utc(l.purge_ms, when, sizeof when);
-  char json[1500], lines[1100];
+  char json[1600], lines[1200];
   bool limited = p->limited, is_fresh = fresh == V_OK, proved = any == V_OK;
+  long long promo_micros = 0; char promo_exp[40] = "";
+  referral_promo_balance(db, p->account, &promo_micros, promo_exp);
   int64_t jn = alw_life_write(cs(p->account), cs(l.kind), cs(why), l.frozen_ms, l.asked_ms, l.purge_ms, l.now_ms, l.strong, l.emails, l.keys, l.agents, l.paused,
-                              l.credit_msat, l.worlds, l.saves, l.merged_from, cs(when), p->level, limited, is_fresh, proved, OUT(json));
+                              l.credit_msat, l.worlds, l.saves, l.merged_from, cs(when), p->level, limited, is_fresh, proved, promo_micros, cs(promo_exp), OUT(json));
   int64_t ln = alw_life_lines(cs(p->account), cs(l.kind), cs(why), l.frozen_ms, l.asked_ms, l.purge_ms, l.now_ms, l.strong, l.emails, l.keys, l.agents, l.paused,
-                              l.credit_msat, l.worlds, l.saves, l.merged_from, cs(when), p->level, limited, is_fresh, proved, OUT(lines));
+                              l.credit_msat, l.worlds, l.saves, l.merged_from, cs(when), p->level, limited, is_fresh, proved, promo_micros, cs(promo_exp), OUT(lines));
   if (!fit(json, jn) || !fit(lines, ln)) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
   auth_answer(q, 200, "Cache-Control: no-store\r\n", json, lines);
 }

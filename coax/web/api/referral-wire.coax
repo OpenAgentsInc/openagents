@@ -1,0 +1,572 @@
+// Closed wire codecs for /api/v1/referral/* (JSON and ?as=lines).
+// Single codec registered in proto/registry.json (proto/verse/referral-v1.json).
+// coax/web/api/referral.c calls only these #export_c writers/readers and builds no JSON of its own.
+//
+//   coax/bin/coax test coax/web/api/referral-wire.coax --library
+//   coax/bin/coax mutate coax/web/api/referral-wire.coax --library
+#load "api-wire.coax";
+
+RFW_SCHEMA_SUMMARY :: "openagents.referral.summary.v1";
+RFW_SCHEMA_LOOKUP :: "openagents.referral.lookup.v1";
+RFW_SCHEMA_REDEEM :: "openagents.referral.redeem.v1";
+RFW_SCHEMA_VANITY :: "openagents.referral.vanity.v1";
+RFW_SCHEMA_RECHECK :: "openagents.referral.recheck.v1";
+RFW_SCHEMA_ADMIN :: "openagents.referral.admin.v1";
+
+rfw_bit :: (b: bool) -> string #effects(all) { return ifx b then "1" else "0"; }
+rfw_bool :: (b: bool) -> string #effects(all) { return ifx b then "true" else "false"; }
+rfw_put_bool :: (o: [] Jo, b: bool) #effects(all) { jo_put(o, rfw_bool(b)); }
+rfw_nonneg :: (n: int) -> int #effects(all) { return ifx n < 0 then 0 else n; } // mutant: equivalent — at n == 0 both branches equal 0
+
+rfw_line_str :: (o: [] Jo, key: string, val: string) #effects(all) {
+  jo_put(o, key); jo_put(o, " "); jo_put(o, val); jo_put(o, "\n");
+}
+
+rfw_line_int :: (o: [] Jo, key: string, val: int) #effects(all) {
+  jo_put(o, key); jo_put(o, " "); jo_int(o, val); jo_put(o, "\n");
+}
+
+rfw_line_bool :: (o: [] Jo, key: string, val: bool) #effects(all) {
+  jo_put(o, key); jo_put(o, " "); jo_put(o, rfw_bit(val)); jo_put(o, "\n");
+}
+
+// ---- item step writers (grants & privacy-safe invitees)
+
+rfw_grant_item_write :: (first: bool, id: int, kind: string, amount_micros: int,
+                         status: string, reason: string, created_at: string,
+                         expires_at: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  if !first { jo_put(o[..], ","); }
+  jo_put(o[..], "{\"id\":"); jo_int(o[..], id);
+  jo_put(o[..], ",\"kind\":"); jo_quoted(o[..], kind);
+  jo_put(o[..], ",\"amount_micros\":"); jo_int(o[..], amount_micros);
+  jo_put(o[..], ",\"status\":"); jo_quoted(o[..], status);
+  jo_put(o[..], ",\"reason\":"); jo_quoted(o[..], reason);
+  jo_put(o[..], ",\"created_at\":"); jo_quoted(o[..], created_at);
+  jo_put(o[..], ",\"expires_at\":"); jo_quoted(o[..], expires_at);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+rfw_invitee_item_write :: (first: bool, status: string, handle: string, active_days: int,
+                           bound_at: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  if !first { jo_put(o[..], ","); }
+  jo_put(o[..], "{\"status\":"); jo_quoted(o[..], status);
+  jo_put(o[..], ",\"handle\":"); jo_quoted(o[..], handle);
+  jo_put(o[..], ",\"active_days\":"); jo_int(o[..], active_days);
+  jo_put(o[..], ",\"bound_at\":"); jo_quoted(o[..], bound_at);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+// ---- GET /api/v1/referral
+
+rfw_summary_write :: (code: string, vanity: string, vanity_enabled: bool,
+                      link: string, vanity_link: string,
+                      show_name: bool, commit_footer_opt_in: bool,
+                      clicks: int, signups: int, pending_invitees: int, activated_invitees: int,
+                      promo_micros: int, promo_expires_at: string,
+                      promo_daily_spent: int, promo_daily_cap: int,
+                      bonus_earned_micros: int, kickback_earned_micros: int, kickback_today_micros: int,
+                      milestones_mask: int,
+                      gh_connected: bool, gh_eligible: bool, gh_login: string, gh_reason: string,
+                      attributed: bool, can_redeem: bool,
+                      flag_redeem: bool, flag_grants: bool, flag_kickback: bool, flag_github_connect: bool,
+                      grants_json: string, invitees_json: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"schema\":"); jo_quoted(o[..], RFW_SCHEMA_SUMMARY);
+  jo_put(o[..], ",\"code\":"); jo_quoted(o[..], code);
+  jo_put(o[..], ",\"vanity\":"); jo_quoted(o[..], vanity);
+  jo_put(o[..], ",\"vanity_enabled\":"); rfw_put_bool(o[..], vanity_enabled);
+  jo_put(o[..], ",\"link\":"); jo_quoted(o[..], link);
+  jo_put(o[..], ",\"vanity_link\":"); jo_quoted(o[..], vanity_link);
+  jo_put(o[..], ",\"show_name\":"); rfw_put_bool(o[..], show_name);
+  jo_put(o[..], ",\"commit_footer_opt_in\":"); rfw_put_bool(o[..], commit_footer_opt_in);
+  jo_put(o[..], ",\"clicks\":"); jo_int(o[..], clicks);
+  jo_put(o[..], ",\"signups\":"); jo_int(o[..], signups);
+  jo_put(o[..], ",\"pending_invitees\":"); jo_int(o[..], pending_invitees);
+  jo_put(o[..], ",\"activated_invitees\":"); jo_int(o[..], activated_invitees);
+  jo_put(o[..], ",\"promo_micros\":"); jo_int(o[..], promo_micros);
+  jo_put(o[..], ",\"promo_expires_at\":"); jo_quoted(o[..], promo_expires_at);
+  jo_put(o[..], ",\"promo_daily_spent\":"); jo_int(o[..], promo_daily_spent);
+  jo_put(o[..], ",\"promo_daily_cap\":"); jo_int(o[..], promo_daily_cap);
+  jo_put(o[..], ",\"bonus_earned_micros\":"); jo_int(o[..], bonus_earned_micros);
+  jo_put(o[..], ",\"kickback_earned_micros\":"); jo_int(o[..], kickback_earned_micros);
+  jo_put(o[..], ",\"kickback_today_micros\":"); jo_int(o[..], kickback_today_micros);
+  jo_put(o[..], ",\"milestones_mask\":"); jo_int(o[..], milestones_mask);
+  jo_put(o[..], ",\"gh_connected\":"); rfw_put_bool(o[..], gh_connected);
+  jo_put(o[..], ",\"gh_eligible\":"); rfw_put_bool(o[..], gh_eligible);
+  jo_put(o[..], ",\"gh_login\":"); jo_quoted(o[..], gh_login);
+  jo_put(o[..], ",\"gh_reason\":"); jo_quoted(o[..], gh_reason);
+  jo_put(o[..], ",\"attributed\":"); rfw_put_bool(o[..], attributed);
+  jo_put(o[..], ",\"can_redeem\":"); rfw_put_bool(o[..], can_redeem);
+  jo_put(o[..], ",\"flags\":{\"referral_redeem\":"); rfw_put_bool(o[..], flag_redeem);
+  jo_put(o[..], ",\"referral_grants\":"); rfw_put_bool(o[..], flag_grants);
+  jo_put(o[..], ",\"referral_kickback\":"); rfw_put_bool(o[..], flag_kickback);
+  jo_put(o[..], ",\"github_connect_grant\":"); rfw_put_bool(o[..], flag_github_connect);
+  jo_put(o[..], "},\"grants\":["); jo_put(o[..], grants_json);
+  jo_put(o[..], "],\"invitees\":["); jo_put(o[..], invitees_json);
+  jo_put(o[..], "]}");
+  return aw_len(o[..]);
+}
+
+rfw_summary_lines :: (code: string, vanity: string, vanity_enabled: bool,
+                      link: string, vanity_link: string,
+                      show_name: bool, commit_footer_opt_in: bool,
+                      clicks: int, signups: int, pending_invitees: int, activated_invitees: int,
+                      promo_micros: int, promo_expires_at: string,
+                      promo_daily_spent: int, promo_daily_cap: int,
+                      bonus_earned_micros: int, kickback_earned_micros: int, kickback_today_micros: int,
+                      milestones_mask: int,
+                      gh_connected: bool, gh_eligible: bool, gh_login: string, gh_reason: string,
+                      attributed: bool, can_redeem: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  rfw_line_str(o[..], "code", code);
+  if vanity.count > 0 { rfw_line_str(o[..], "vanity", vanity); }
+  rfw_line_bool(o[..], "vanity_enabled", vanity_enabled);
+  rfw_line_str(o[..], "link", link);
+  if vanity_link.count > 0 { rfw_line_str(o[..], "vanity_link", vanity_link); }
+  rfw_line_bool(o[..], "show_name", show_name);
+  rfw_line_bool(o[..], "commit_footer_opt_in", commit_footer_opt_in);
+  rfw_line_int(o[..], "clicks", clicks);
+  rfw_line_int(o[..], "signups", signups);
+  rfw_line_int(o[..], "pending_invitees", pending_invitees);
+  rfw_line_int(o[..], "activated_invitees", activated_invitees);
+  rfw_line_int(o[..], "promo_micros", promo_micros);
+  if promo_expires_at.count > 0 { rfw_line_str(o[..], "promo_expires_at", promo_expires_at); }
+  rfw_line_int(o[..], "promo_daily_spent", promo_daily_spent);
+  rfw_line_int(o[..], "promo_daily_cap", promo_daily_cap);
+  rfw_line_int(o[..], "bonus_earned_micros", bonus_earned_micros);
+  rfw_line_int(o[..], "kickback_earned_micros", kickback_earned_micros);
+  rfw_line_int(o[..], "kickback_today_micros", kickback_today_micros);
+  rfw_line_int(o[..], "milestones_mask", milestones_mask);
+  rfw_line_bool(o[..], "gh_connected", gh_connected);
+  rfw_line_bool(o[..], "gh_eligible", gh_eligible);
+  if gh_login.count > 0 { rfw_line_str(o[..], "gh_login", gh_login); }
+  if gh_reason.count > 0 { rfw_line_str(o[..], "gh_reason", gh_reason); }
+  rfw_line_bool(o[..], "attributed", attributed);
+  rfw_line_bool(o[..], "can_redeem", can_redeem);
+  return aw_len(o[..]);
+}
+
+// ---- GET /api/v1/referral/lookup
+
+rfw_lookup_write :: (valid: bool, kind: string, code: string,
+                     inviter_handle: string, inviter_avatar: string,
+                     bonus_micros: int, github_bonus_micros: int,
+                     terms_version: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"schema\":"); jo_quoted(o[..], RFW_SCHEMA_LOOKUP);
+  jo_put(o[..], ",\"valid\":"); rfw_put_bool(o[..], valid);
+  jo_put(o[..], ",\"kind\":"); jo_quoted(o[..], kind);
+  jo_put(o[..], ",\"code\":"); jo_quoted(o[..], code);
+  jo_put(o[..], ",\"inviter_handle\":"); jo_quoted(o[..], inviter_handle);
+  jo_put(o[..], ",\"inviter_avatar\":"); jo_quoted(o[..], inviter_avatar);
+  jo_put(o[..], ",\"bonus_micros\":"); jo_int(o[..], bonus_micros);
+  jo_put(o[..], ",\"github_bonus_micros\":"); jo_int(o[..], github_bonus_micros);
+  jo_put(o[..], ",\"terms_version\":"); jo_int(o[..], terms_version);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+rfw_lookup_lines :: (valid: bool, kind: string, code: string,
+                     inviter_handle: string, inviter_avatar: string,
+                     bonus_micros: int, github_bonus_micros: int,
+                     terms_version: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  rfw_line_bool(o[..], "valid", valid);
+  if kind.count > 0 { rfw_line_str(o[..], "kind", kind); }
+  if code.count > 0 { rfw_line_str(o[..], "code", code); }
+  if inviter_handle.count > 0 { rfw_line_str(o[..], "inviter_handle", inviter_handle); }
+  if inviter_avatar.count > 0 { rfw_line_str(o[..], "inviter_avatar", inviter_avatar); }
+  rfw_line_int(o[..], "bonus_micros", bonus_micros);
+  rfw_line_int(o[..], "github_bonus_micros", github_bonus_micros);
+  rfw_line_int(o[..], "terms_version", terms_version);
+  return aw_len(o[..]);
+}
+
+// ---- POST /api/v1/referral/redeem
+
+rfw_redeem_req_read :: (raw: string, code_out: [] u8, source_out: [] u8, show_to_inviter: [] int) -> int #export_c #effects(all) {
+  if show_to_inviter.count < 1 { return -1; }
+  nodes: [32] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) { return -1; }
+  v := d[0];
+  cn := jv_str(v, jv_get(v, 0, "code"), code_out);
+  if cn < 1 { return -1; }
+  sn := jv_str(v, jv_get(v, 0, "source"), source_out);
+  if sn < 1 {
+    def := "typed";
+    if source_out.count >= def.count {
+      for i: 0..<def.count { source_out[i] = def[i]; }
+    }
+  }
+  si := jv_get(v, 0, "show_to_inviter");
+  if si >= 0 { // mutant: equivalent — jv_get returns -1 or a child node index > 0
+    k := v.nodes[si].kind;
+    if k != JV_TRUE && k != JV_FALSE { return -1; }
+    show_to_inviter[0] = ifx jv_bool(v, si) then 1 else 0;
+  } else {
+    show_to_inviter[0] = 1;
+  }
+  return cn;
+}
+
+rfw_redeem_write :: (ok: bool, code: string, kind: string, bonus_micros: int,
+                     status: string, message: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"schema\":"); jo_quoted(o[..], RFW_SCHEMA_REDEEM);
+  jo_put(o[..], ",\"ok\":"); rfw_put_bool(o[..], ok);
+  jo_put(o[..], ",\"code\":"); jo_quoted(o[..], code);
+  jo_put(o[..], ",\"kind\":"); jo_quoted(o[..], kind);
+  jo_put(o[..], ",\"bonus_micros\":"); jo_int(o[..], bonus_micros);
+  jo_put(o[..], ",\"status\":"); jo_quoted(o[..], status);
+  jo_put(o[..], ",\"message\":"); jo_quoted(o[..], message);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+rfw_redeem_lines :: (ok: bool, code: string, kind: string, bonus_micros: int,
+                     status: string, message: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  rfw_line_bool(o[..], "ok", ok);
+  rfw_line_str(o[..], "code", code);
+  rfw_line_str(o[..], "kind", kind);
+  rfw_line_int(o[..], "bonus_micros", bonus_micros);
+  rfw_line_str(o[..], "status", status);
+  if message.count > 0 { rfw_line_str(o[..], "message", message); }
+  return aw_len(o[..]);
+}
+
+// ---- POST /api/v1/referral/vanity
+
+rfw_opt_bool :: (v: Jv, key: string, out: [] int, idx: int) -> bool #effects(all) {
+  n := jv_get(v, 0, key);
+  if n < 0 { out[idx] = -1; return true; } // mutant: equivalent — jv_get returns -1 or a child node index > 0
+  k := v.nodes[n].kind;
+  if k != JV_TRUE && k != JV_FALSE { return false; }
+  out[idx] = ifx jv_bool(v, n) then 1 else 0;
+  return true;
+}
+
+rfw_vanity_req_read :: (raw: string, vals: [] int) -> bool #export_c #effects(all) {
+  if vals.count < 3 { return false; }
+  nodes: [32] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  if !rfw_opt_bool(v, "on", vals, 0) { return false; }
+  if vals[0] == -1 && !rfw_opt_bool(v, "vanity_enabled", vals, 0) { return false; }
+  if !rfw_opt_bool(v, "show_name", vals, 1) { return false; }
+  if !rfw_opt_bool(v, "commit_footer_opt_in", vals, 2) { return false; }
+  return vals[0] != -1 || vals[1] != -1 || vals[2] != -1;
+}
+
+rfw_vanity_write :: (vanity_enabled: bool, vanity: string, vanity_link: string,
+                     show_name: bool, commit_footer_opt_in: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"schema\":"); jo_quoted(o[..], RFW_SCHEMA_VANITY);
+  jo_put(o[..], ",\"vanity_enabled\":"); rfw_put_bool(o[..], vanity_enabled);
+  jo_put(o[..], ",\"vanity\":"); jo_quoted(o[..], vanity);
+  jo_put(o[..], ",\"vanity_link\":"); jo_quoted(o[..], vanity_link);
+  jo_put(o[..], ",\"show_name\":"); rfw_put_bool(o[..], show_name);
+  jo_put(o[..], ",\"commit_footer_opt_in\":"); rfw_put_bool(o[..], commit_footer_opt_in);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+rfw_vanity_lines :: (vanity_enabled: bool, vanity: string, vanity_link: string,
+                     show_name: bool, commit_footer_opt_in: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  rfw_line_bool(o[..], "vanity_enabled", vanity_enabled);
+  if vanity.count > 0 { rfw_line_str(o[..], "vanity", vanity); }
+  if vanity_link.count > 0 { rfw_line_str(o[..], "vanity_link", vanity_link); }
+  rfw_line_bool(o[..], "show_name", show_name);
+  rfw_line_bool(o[..], "commit_footer_opt_in", commit_footer_opt_in);
+  return aw_len(o[..]);
+}
+
+// ---- POST /api/v1/referral/recheck
+
+rfw_recheck_write :: (gh_connected: bool, eligible: bool, gh_login: string, reason: string,
+                      newly_granted_micros: int, promo_micros: int, promo_expires_at: string,
+                      out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"schema\":"); jo_quoted(o[..], RFW_SCHEMA_RECHECK);
+  jo_put(o[..], ",\"gh_connected\":"); rfw_put_bool(o[..], gh_connected);
+  jo_put(o[..], ",\"eligible\":"); rfw_put_bool(o[..], eligible);
+  jo_put(o[..], ",\"gh_login\":"); jo_quoted(o[..], gh_login);
+  jo_put(o[..], ",\"reason\":"); jo_quoted(o[..], reason);
+  jo_put(o[..], ",\"newly_granted_micros\":"); jo_int(o[..], newly_granted_micros);
+  jo_put(o[..], ",\"promo_micros\":"); jo_int(o[..], promo_micros);
+  jo_put(o[..], ",\"promo_expires_at\":"); jo_quoted(o[..], promo_expires_at);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+rfw_recheck_lines :: (gh_connected: bool, eligible: bool, gh_login: string, reason: string,
+                      newly_granted_micros: int, promo_micros: int, promo_expires_at: string,
+                      out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  rfw_line_bool(o[..], "gh_connected", gh_connected);
+  rfw_line_bool(o[..], "eligible", eligible);
+  if gh_login.count > 0 { rfw_line_str(o[..], "gh_login", gh_login); }
+  if reason.count > 0 { rfw_line_str(o[..], "reason", reason); }
+  rfw_line_int(o[..], "newly_granted_micros", newly_granted_micros);
+  rfw_line_int(o[..], "promo_micros", promo_micros);
+  if promo_expires_at.count > 0 { rfw_line_str(o[..], "promo_expires_at", promo_expires_at); }
+  return aw_len(o[..]);
+}
+
+// ---- /api/v1/referral/admin/*
+
+// Parse campaign creation request: {uses?, days?, bonus_micros?, note?}.
+// Writes nums[0]=uses (default 100), nums[1]=days (default 30), nums[2]=bonus_micros (default -1 => config default).
+// Returns note length (>= 0) or -1 on invalid JSON/types.
+rfw_admin_campaign_req :: (raw: string, note_out: [] u8, nums: [] int) -> int #export_c #effects(all) {
+  if nums.count < 3 { return -1; }
+  nodes: [32] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  v := d[0];
+  nums[0] = jv_int(v, jv_get(v, 0, "uses"), 100);
+  nums[1] = jv_int(v, jv_get(v, 0, "days"), 30);
+  nums[2] = jv_int(v, jv_get(v, 0, "bonus_micros"), -1);
+  return rfw_nonneg(jv_str(v, jv_get(v, 0, "note"), note_out));
+}
+
+// Parse admin target request: {target/account/name/code/id, reason?, value?, on?}.
+// Writes out_vals[0]=target_len, out_vals[1]=reason_len, out_vals[2]=val_int (or -1), out_vals[3]=on (-1/0/1).
+rfw_admin_target_req :: (raw: string, target_out: [] u8, reason_out: [] u8, out_vals: [] int) -> bool #export_c #effects(all) {
+  if out_vals.count < 4 { return false; }
+  nodes: [32] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  v := d[0];
+  tn := jv_str(v, jv_get(v, 0, "target"), target_out);
+  if tn < 1 { tn = jv_str(v, jv_get(v, 0, "account"), target_out); }
+  if tn < 1 { tn = jv_str(v, jv_get(v, 0, "name"), target_out); }
+  if tn < 1 { tn = jv_str(v, jv_get(v, 0, "code"), target_out); }
+  if tn < 1 { tn = jv_str(v, jv_get(v, 0, "id"), target_out); }
+  rn := jv_str(v, jv_get(v, 0, "reason"), reason_out);
+  out_vals[0] = rfw_nonneg(tn);
+  out_vals[1] = rfw_nonneg(rn);
+  val_n := jv_get(v, 0, "cap");
+  if val_n < 0 { val_n = jv_get(v, 0, "value"); } // mutant: equivalent — jv_get returns -1 or a child index > 0
+  if val_n < 0 { val_n = jv_get(v, 0, "id"); } // mutant: equivalent — jv_get returns -1 or a child index > 0
+  out_vals[2] = jv_int(v, val_n, -1);
+  if !rfw_opt_bool(v, "on", out_vals, 3) { return false; }
+  return true;
+}
+
+// Parse admin config update request: {key, value, reason?}.
+// Writes lens[0]=key_len, lens[1]=val_len, lens[2]=reason_len.
+rfw_admin_config_req :: (raw: string, key_out: [] u8, val_out: [] u8, reason_out: [] u8, lens: [] int) -> bool #export_c #effects(all) {
+  if lens.count < 3 { return false; }
+  nodes: [32] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  kn := jv_str(v, jv_get(v, 0, "key"), key_out);
+  if kn < 1 { return false; }
+  vn := jv_str(v, jv_get(v, 0, "value"), val_out);
+  if vn < 0 { return false; }
+  rn := jv_str(v, jv_get(v, 0, "reason"), reason_out);
+  lens[0] = kn;
+  lens[1] = vn;
+  lens[2] = rfw_nonneg(rn);
+  return true;
+}
+
+rfw_admin_campaign_write :: (id: int, code: string, link: string, max_uses: int,
+                             bonus_micros: int, expires_at: string, note: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"schema\":"); jo_quoted(o[..], RFW_SCHEMA_ADMIN);
+  jo_put(o[..], ",\"action\":\"campaign_new\",\"id\":"); jo_int(o[..], id);
+  jo_put(o[..], ",\"code\":"); jo_quoted(o[..], code);
+  jo_put(o[..], ",\"link\":"); jo_quoted(o[..], link);
+  jo_put(o[..], ",\"max_uses\":"); jo_int(o[..], max_uses);
+  jo_put(o[..], ",\"bonus_micros\":"); jo_int(o[..], bonus_micros);
+  jo_put(o[..], ",\"expires_at\":"); jo_quoted(o[..], expires_at);
+  jo_put(o[..], ",\"note\":"); jo_quoted(o[..], note);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+rfw_admin_action_write :: (action: string, ok: bool, target: string, amount_micros: int,
+                           detail: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"schema\":"); jo_quoted(o[..], RFW_SCHEMA_ADMIN);
+  jo_put(o[..], ",\"action\":"); jo_quoted(o[..], action);
+  jo_put(o[..], ",\"ok\":"); rfw_put_bool(o[..], ok);
+  jo_put(o[..], ",\"target\":"); jo_quoted(o[..], target);
+  jo_put(o[..], ",\"amount_micros\":"); jo_int(o[..], amount_micros);
+  jo_put(o[..], ",\"detail\":"); jo_quoted(o[..], detail);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+rfw_admin_list_write :: (action: string, items_json: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"schema\":"); jo_quoted(o[..], RFW_SCHEMA_ADMIN);
+  jo_put(o[..], ",\"action\":"); jo_quoted(o[..], action);
+  jo_put(o[..], ",\"items\":["); jo_put(o[..], items_json);
+  jo_put(o[..], "]}");
+  return aw_len(o[..]);
+}
+
+rfw_admin_config_write :: (cfg_json: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"schema\":"); jo_quoted(o[..], RFW_SCHEMA_ADMIN);
+  jo_put(o[..], ",\"action\":\"config\",\"config\":"); jo_put(o[..], cfg_json);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "summary, grant items, and invitee items serialize cleanly in JSON and lines" {
+  gb: [512] u8; gsmall: [10] u8;
+  gn := rfw_grant_item_write(true, 1, "github_connect", 5000000, "granted", "ok", "2026-11-27T00:00:00Z", "2027-02-25T00:00:00Z", gb[..], 0);
+  gn = rfw_grant_item_write(false, 2, "referral_invitee", 10000000, "pending", "too_new", "2026-11-27T00:00:00Z", "", gb[..], gn);
+  #assert gn > 0 && cast(string) gb[0..<gn] == "{\"id\":1,\"kind\":\"github_connect\",\"amount_micros\":5000000,\"status\":\"granted\",\"reason\":\"ok\",\"created_at\":\"2026-11-27T00:00:00Z\",\"expires_at\":\"2027-02-25T00:00:00Z\"},{\"id\":2,\"kind\":\"referral_invitee\",\"amount_micros\":10000000,\"status\":\"pending\",\"reason\":\"too_new\",\"created_at\":\"2026-11-27T00:00:00Z\",\"expires_at\":\"\"}";
+  #assert rfw_grant_item_write(true, 1, "x", 1, "s", "r", "c", "e", gsmall[..], 0) == -1;
+
+  ib: [256] u8;
+  in_n := rfw_invitee_item_write(true, "activated", "octocat", 2, "2026-11-27T00:00:00Z", ib[..], 0);
+  in_n = rfw_invitee_item_write(false, "pending", "", 0, "2026-11-27T01:00:00Z", ib[..], in_n);
+  #assert in_n > 0 && cast(string) ib[0..<in_n] == "{\"status\":\"activated\",\"handle\":\"octocat\",\"active_days\":2,\"bound_at\":\"2026-11-27T00:00:00Z\"},{\"status\":\"pending\",\"handle\":\"\",\"active_days\":0,\"bound_at\":\"2026-11-27T01:00:00Z\"}";
+
+  out: [2048] u8; small: [20] u8;
+  n := rfw_summary_write("2345ABCD", "octocat", true, "https://openagents.com/r/2345ABCD", "https://openagents.com/r/octocat",
+                         true, false, 12, 3, 1, 2, 15000000, "2027-02-25T00:00:00Z", 500000, 5000000,
+                         20000000, 100000, 50000, 1, true, true, "octocat", "", true, false,
+                         true, true, true, true, cast(string) gb[0..<gn], cast(string) ib[0..<in_n], out[..]);
+  #assert n > 0 && rfw_summary_write("2345ABCD", "", false, "https://openagents.com/r/2345ABCD", "",
+                         false, true, 0, 0, 0, 0, 0, "", 0, 5000000, 0, 0, 0, 0, false, false, "", "connect", false, true,
+                         false, false, false, false, "", "", small[..]) == -1;
+  nodes: [128] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], cast(string) out[0..<n], nodes[..]);
+  sb: [64] u8;
+  #assert jv_str(d[0], jv_get(d[0], 0, "schema"), sb[..]) == RFW_SCHEMA_SUMMARY.count && cast(string) sb[0..<RFW_SCHEMA_SUMMARY.count] == RFW_SCHEMA_SUMMARY;
+  #assert jv_int(d[0], jv_get(d[0], 0, "signups"), -1) == 3 && jv_int(d[0], jv_get(d[0], 0, "pending_invitees"), -1) == 1 && jv_int(d[0], jv_get(d[0], 0, "activated_invitees"), -1) == 2;
+  #assert jv_int(d[0], jv_get(d[0], 0, "promo_micros"), -1) == 15000000 && jv_int(d[0], jv_get(d[0], 0, "promo_daily_cap"), -1) == 5000000;
+  #assert jv_int(d[0], jv_get(d[0], 0, "bonus_earned_micros"), -1) == 20000000 && jv_int(d[0], jv_get(d[0], 0, "kickback_earned_micros"), -1) == 100000 && jv_int(d[0], jv_get(d[0], 0, "kickback_today_micros"), -1) == 50000;
+  #assert jv_int(d[0], jv_get(d[0], 0, "milestones_mask"), -1) == 1;
+  #assert jv_len(d[0], jv_get(d[0], 0, "grants")) == 2 && jv_len(d[0], jv_get(d[0], 0, "invitees")) == 2;
+  #assert jv_bool(d[0], jv_get(d[0], jv_get(d[0], 0, "flags"), "referral_kickback"));
+
+  // 1-char optional fields check `> 0` vs `> 1` boundary
+  ln1 := rfw_summary_lines("A", "v", true, "l", "u", true, false, 0, 0, 0, 0, 0, "e", 0, 0, 0, 0, 0, 0, true, true, "g", "r", false, true, out[..]);
+  #assert ln1 > 0 && cast(string) out[0..<ln1] == "code A\nvanity v\nvanity_enabled 1\nlink l\nvanity_link u\nshow_name 1\ncommit_footer_opt_in 0\nclicks 0\nsignups 0\npending_invitees 0\nactivated_invitees 0\npromo_micros 0\npromo_expires_at e\npromo_daily_spent 0\npromo_daily_cap 0\nbonus_earned_micros 0\nkickback_earned_micros 0\nkickback_today_micros 0\nmilestones_mask 0\ngh_connected 1\ngh_eligible 1\ngh_login g\ngh_reason r\nattributed 0\ncan_redeem 1\n";
+  ln := rfw_summary_lines("2345ABCD", "octocat", true, "https://openagents.com/r/2345ABCD", "https://openagents.com/r/octocat",
+                          true, false, 12, 3, 1, 2, 15000000, "2027-02-25T00:00:00Z", 500000, 5000000,
+                          20000000, 100000, 50000, 1, true, true, "octocat", "wait", true, false, out[..]);
+  #assert ln > 0 && cast(string) out[0..<ln] == "code 2345ABCD\nvanity octocat\nvanity_enabled 1\nlink https://openagents.com/r/2345ABCD\nvanity_link https://openagents.com/r/octocat\nshow_name 1\ncommit_footer_opt_in 0\nclicks 12\nsignups 3\npending_invitees 1\nactivated_invitees 2\npromo_micros 15000000\npromo_expires_at 2027-02-25T00:00:00Z\npromo_daily_spent 500000\npromo_daily_cap 5000000\nbonus_earned_micros 20000000\nkickback_earned_micros 100000\nkickback_today_micros 50000\nmilestones_mask 1\ngh_connected 1\ngh_eligible 1\ngh_login octocat\ngh_reason wait\nattributed 1\ncan_redeem 0\n";
+  ln2 := rfw_summary_lines("2345ABCD", "", false, "https://openagents.com/r/2345ABCD", "",
+                           false, true, 0, 0, 0, 0, 0, "", 0, 5000000, 0, 0, 0, 0, false, false, "", "", false, true, out[..]);
+  #assert ln2 > 0 && cast(string) out[0..<ln2] == "code 2345ABCD\nvanity_enabled 0\nlink https://openagents.com/r/2345ABCD\nshow_name 0\ncommit_footer_opt_in 1\nclicks 0\nsignups 0\npending_invitees 0\nactivated_invitees 0\npromo_micros 0\npromo_daily_spent 0\npromo_daily_cap 5000000\nbonus_earned_micros 0\nkickback_earned_micros 0\nkickback_today_micros 0\nmilestones_mask 0\ngh_connected 0\ngh_eligible 0\nattributed 0\ncan_redeem 1\n";
+}
+
+#test "lookup, redeem, vanity, and recheck codecs round-trip and refuse invalid input" {
+  out: [512] u8;
+  n := rfw_lookup_write(true, "personal", "2345ABCD", "octocat", "https://avatars.githubusercontent.com/u/1", 10000000, 5000000, 1, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"schema\":\"openagents.referral.lookup.v1\",\"valid\":true,\"kind\":\"personal\",\"code\":\"2345ABCD\",\"inviter_handle\":\"octocat\",\"inviter_avatar\":\"https://avatars.githubusercontent.com/u/1\",\"bonus_micros\":10000000,\"github_bonus_micros\":5000000,\"terms_version\":1}";
+  ln := rfw_lookup_lines(true, "p", "c", "h", "a", 10000000, 5000000, 1, out[..]);
+  #assert ln > 0 && cast(string) out[0..<ln] == "valid 1\nkind p\ncode c\ninviter_handle h\ninviter_avatar a\nbonus_micros 10000000\ngithub_bonus_micros 5000000\nterms_version 1\n";
+  ln0 := rfw_lookup_lines(false, "", "", "", "", 0, 5000000, 1, out[..]);
+  #assert ln0 > 0 && cast(string) out[0..<ln0] == "valid 0\nbonus_micros 0\ngithub_bonus_micros 5000000\nterms_version 1\n";
+
+  // Redeem request parsing (1-char code, 1-char source, empty source -> default "typed", exact 5-byte source_out)
+  code: [64] u8; src: [16] u8; show: [1] int;
+  #assert rfw_redeem_req_read("{\"code\":\"2345ABCD\"}", code[..], src[..], show[0..<0]) == -1;
+  #assert rfw_redeem_req_read("bad", code[..], src[..], show[..]) == -1;
+  #assert rfw_redeem_req_read("[]", code[..], src[..], show[..]) == -1;
+  #assert rfw_redeem_req_read("{\"code\":\"\"}", code[..], src[..], show[..]) == -1;
+  #assert rfw_redeem_req_read("{\"code\":\"2345ABCD\",\"show_to_inviter\":1}", code[..], src[..], show[..]) == -1;
+  rc1 := rfw_redeem_req_read("{\"code\":\"A\",\"source\":\"x\"}", code[..], src[..], show[..]);
+  #assert rc1 == 1 && code[0] == 'A' && src[0] == 'x' && show[0] == 1;
+  rc0 := rfw_redeem_req_read("{\"code\":\"2345ABCD\",\"source\":\"\"}", code[..], src[0..<5], show[..]);
+  #assert rc0 == 8 && cast(string) code[0..<rc0] == "2345ABCD" && cast(string) src[0..<5] == "typed" && show[0] == 1;
+  rc_small := rfw_redeem_req_read("{\"code\":\"2345ABCD\"}", code[..], src[0..<2], show[..]);
+  #assert rc_small == 8 && show[0] == 1;
+  rc2 := rfw_redeem_req_read("{\"code\":\"LAUNCH\",\"source\":\"link\",\"show_to_inviter\":false}", code[..], src[..], show[..]);
+  #assert rc2 == 6 && cast(string) code[0..<rc2] == "LAUNCH" && cast(string) src[0..<4] == "link" && show[0] == 0;
+  rc3 := rfw_redeem_req_read("{\"code\":\"LAUNCH\",\"source\":\"cli\",\"show_to_inviter\":true}", code[..], src[..], show[..]);
+  #assert rc3 == 6 && show[0] == 1;
+
+  rn := rfw_redeem_write(true, "2345ABCD", "personal", 10000000, "pending", "Connect GitHub to claim", out[..]);
+  #assert rn > 0 && cast(string) out[0..<rn] == "{\"schema\":\"openagents.referral.redeem.v1\",\"ok\":true,\"code\":\"2345ABCD\",\"kind\":\"personal\",\"bonus_micros\":10000000,\"status\":\"pending\",\"message\":\"Connect GitHub to claim\"}";
+  rln := rfw_redeem_lines(true, "2345ABCD", "personal", 10000000, "pending", "m", out[..]);
+  #assert rln > 0 && cast(string) out[0..<rln] == "ok 1\ncode 2345ABCD\nkind personal\nbonus_micros 10000000\nstatus pending\nmessage m\n";
+  rln2 := rfw_redeem_lines(false, "X", "campaign", 0, "void", "", out[..]);
+  #assert rln2 > 0 && cast(string) out[0..<rln2] == "ok 0\ncode X\nkind campaign\nbonus_micros 0\nstatus void\n";
+
+  // Vanity request & response
+  vals: [3] int;
+  #assert !rfw_vanity_req_read("{\"on\":true}", vals[0..<2]);
+  #assert !rfw_vanity_req_read("bad", vals[..]) && !rfw_vanity_req_read("[]", vals[..]) && !rfw_vanity_req_read("{}", vals[..]);
+  #assert !rfw_vanity_req_read("{\"on\":1}", vals[..]) && !rfw_vanity_req_read("{\"vanity_enabled\":\"yes\"}", vals[..]);
+  #assert !rfw_vanity_req_read("{\"show_name\":1}", vals[..]) && !rfw_vanity_req_read("{\"commit_footer_opt_in\":null}", vals[..]);
+  #assert rfw_vanity_req_read("{\"on\":true,\"show_name\":false,\"commit_footer_opt_in\":true}", vals[..]) && vals[0] == 1 && vals[1] == 0 && vals[2] == 1;
+  #assert rfw_vanity_req_read("{\"vanity_enabled\":false}", vals[..]) && vals[0] == 0 && vals[1] == -1 && vals[2] == -1;
+  #assert rfw_vanity_req_read("{\"show_name\":true}", vals[..]) && vals[0] == -1 && vals[1] == 1 && vals[2] == -1;
+  #assert rfw_vanity_req_read("{\"commit_footer_opt_in\":false}", vals[..]) && vals[0] == -1 && vals[1] == -1 && vals[2] == 0;
+
+  vn := rfw_vanity_write(true, "octocat", "https://openagents.com/r/octocat", true, false, out[..]);
+  #assert vn > 0 && cast(string) out[0..<vn] == "{\"schema\":\"openagents.referral.vanity.v1\",\"vanity_enabled\":true,\"vanity\":\"octocat\",\"vanity_link\":\"https://openagents.com/r/octocat\",\"show_name\":true,\"commit_footer_opt_in\":false}";
+  vln := rfw_vanity_lines(true, "v", "u", true, false, out[..]);
+  #assert vln > 0 && cast(string) out[0..<vln] == "vanity_enabled 1\nvanity v\nvanity_link u\nshow_name 1\ncommit_footer_opt_in 0\n";
+  vln2 := rfw_vanity_lines(false, "", "", false, true, out[..]);
+  #assert vln2 > 0 && cast(string) out[0..<vln2] == "vanity_enabled 0\nshow_name 0\ncommit_footer_opt_in 1\n";
+
+  // Recheck response
+  ckn := rfw_recheck_write(true, true, "octocat", "", 15000000, 15000000, "2027-02-25T00:00:00Z", out[..]);
+  #assert ckn > 0 && cast(string) out[0..<ckn] == "{\"schema\":\"openagents.referral.recheck.v1\",\"gh_connected\":true,\"eligible\":true,\"gh_login\":\"octocat\",\"reason\":\"\",\"newly_granted_micros\":15000000,\"promo_micros\":15000000,\"promo_expires_at\":\"2027-02-25T00:00:00Z\"}";
+  ckln := rfw_recheck_lines(true, false, "g", "r", 0, 0, "e", out[..]);
+  #assert ckln > 0 && cast(string) out[0..<ckln] == "gh_connected 1\neligible 0\ngh_login g\nreason r\nnewly_granted_micros 0\npromo_micros 0\npromo_expires_at e\n";
+  ckln2 := rfw_recheck_lines(false, false, "", "", 0, 0, "", out[..]);
+  #assert ckln2 > 0 && cast(string) out[0..<ckln2] == "gh_connected 0\neligible 0\nnewly_granted_micros 0\npromo_micros 0\n";
+}
+
+#test "admin request parsers and response writers" {
+  note: [128] u8; nums: [3] int;
+  #assert rfw_admin_campaign_req("{}", note[..], nums[0..<2]) == -1;
+  #assert rfw_admin_campaign_req("bad", note[..], nums[..]) == -1;
+  #assert rfw_admin_campaign_req("[]", note[..], nums[..]) == -1;
+  #assert rfw_admin_campaign_req("{}", note[..], nums[..]) == 0 && nums[0] == 100 && nums[1] == 30 && nums[2] == -1;
+  #assert rfw_admin_campaign_req("{\"note\":\"x\"}", note[..], nums[..]) == 1 && note[0] == 'x';
+  nn := rfw_admin_campaign_req("{\"uses\":50,\"days\":14,\"bonus_micros\":20000000,\"note\":\"conf\"}", note[..], nums[..]);
+  #assert nn == 4 && cast(string) note[0..<nn] == "conf" && nums[0] == 50 && nums[1] == 14 && nums[2] == 20000000;
+
+  tgt: [64] u8; rsn: [64] u8; av: [4] int;
+  #assert !rfw_admin_target_req("{}", tgt[..], rsn[..], av[0..<3]);
+  #assert !rfw_admin_target_req("bad", tgt[..], rsn[..], av[..]) && !rfw_admin_target_req("[]", tgt[..], rsn[..], av[..]);
+  #assert !rfw_admin_target_req("{\"on\":5}", tgt[..], rsn[..], av[..]);
+  #assert rfw_admin_target_req("{\"target\":\"t\",\"account\":\"x\"}", tgt[..], rsn[..], av[..]) && av[0] == 1 && tgt[0] == 't';
+  #assert rfw_admin_target_req("{\"target\":\"\",\"account\":\"a\",\"name\":\"x\"}", tgt[..], rsn[..], av[..]) && av[0] == 1 && tgt[0] == 'a';
+  #assert rfw_admin_target_req("{\"account\":\"\",\"name\":\"n\",\"code\":\"x\"}", tgt[..], rsn[..], av[..]) && av[0] == 1 && tgt[0] == 'n';
+  #assert rfw_admin_target_req("{\"name\":\"\",\"code\":\"c\",\"id\":\"x\"}", tgt[..], rsn[..], av[..]) && av[0] == 1 && tgt[0] == 'c';
+  #assert rfw_admin_target_req("{\"code\":\"\",\"id\":\"i\",\"reason\":\"r\"}", tgt[..], rsn[..], av[..]) && av[0] == 1 && tgt[0] == 'i' && av[1] == 1 && rsn[0] == 'r';
+  #assert rfw_admin_target_req("{\"account\":\"acct_1\",\"reason\":\"ring\",\"cap\":50}", tgt[..], rsn[..], av[..]) && av[0] == 6 && cast(string) tgt[0..<6] == "acct_1" && av[1] == 4 && av[2] == 50 && av[3] == -1;
+  #assert rfw_admin_target_req("{\"name\":\"referral_grants\",\"on\":false}", tgt[..], rsn[..], av[..]) && av[0] == 15 && av[1] == 0 && av[2] == -1 && av[3] == 0;
+  #assert rfw_admin_target_req("{\"code\":\"ABC\",\"value\":9,\"on\":true}", tgt[..], rsn[..], av[..]) && av[0] == 3 && av[2] == 9 && av[3] == 1;
+  #assert rfw_admin_target_req("{\"id\":7}", tgt[..], rsn[..], av[..]) && av[0] == 0 && av[2] == 7;
+
+  kbuf: [64] u8; vbuf: [128] u8; lens: [3] int;
+  #assert !rfw_admin_config_req("{}", kbuf[..], vbuf[..], rsn[..], lens[0..<2]);
+  #assert !rfw_admin_config_req("bad", kbuf[..], vbuf[..], rsn[..], lens[..]) && !rfw_admin_config_req("[]", kbuf[..], vbuf[..], rsn[..], lens[..]);
+  #assert !rfw_admin_config_req("{\"key\":\"\",\"value\":\"1\"}", kbuf[..], vbuf[..], rsn[..], lens[..]);
+  #assert !rfw_admin_config_req("{\"key\":\"k\"}", kbuf[..], vbuf[..], rsn[..], lens[..]);
+  #assert rfw_admin_config_req("{\"key\":\"gh_min_age_days\",\"value\":\"120\",\"reason\":\"tighten\"}", kbuf[..], vbuf[..], rsn[..], lens[..]);
+  #assert lens[0] == 15 && lens[1] == 3 && lens[2] == 7 && cast(string) vbuf[0..<3] == "120";
+  #assert rfw_admin_config_req("{\"key\":\"k\",\"value\":\"\",\"reason\":\"r\"}", kbuf[..], vbuf[..], rsn[..], lens[..]) && lens[1] == 0 && lens[2] == 1;
+  #assert rfw_admin_config_req("{\"key\":\"k\",\"value\":\"\"}", kbuf[..], vbuf[..], rsn[..], lens[..]) && lens[1] == 0 && lens[2] == 0;
+
+  out: [512] u8;
+  cn := rfw_admin_campaign_write(7, "CAMP2026", "https://openagents.com/r/CAMP2026", 50, 20000000, "2026-12-27T00:00:00Z", "conf", out[..]);
+  #assert cn > 0 && cast(string) out[0..<cn] == "{\"schema\":\"openagents.referral.admin.v1\",\"action\":\"campaign_new\",\"id\":7,\"code\":\"CAMP2026\",\"link\":\"https://openagents.com/r/CAMP2026\",\"max_uses\":50,\"bonus_micros\":20000000,\"expires_at\":\"2026-12-27T00:00:00Z\",\"note\":\"conf\"}";
+  an := rfw_admin_action_write("clawback", true, "acct_1", 10000000, "removed", out[..]);
+  #assert an > 0 && cast(string) out[0..<an] == "{\"schema\":\"openagents.referral.admin.v1\",\"action\":\"clawback\",\"ok\":true,\"target\":\"acct_1\",\"amount_micros\":10000000,\"detail\":\"removed\"}";
+  ln := rfw_admin_list_write("campaigns", "{\"id\":1}", out[..]);
+  #assert ln > 0 && cast(string) out[0..<ln] == "{\"schema\":\"openagents.referral.admin.v1\",\"action\":\"campaigns\",\"items\":[{\"id\":1}]}";
+  cfn := rfw_admin_config_write("{\"terms_version\":1}", out[..]);
+  #assert cfn > 0 && cast(string) out[0..<cfn] == "{\"schema\":\"openagents.referral.admin.v1\",\"action\":\"config\",\"config\":{\"terms_version\":1}}";
+}
