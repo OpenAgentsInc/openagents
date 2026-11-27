@@ -8,7 +8,6 @@ Worlds on the OpenAgents Metaverse you play in the browser, newest first. The pa
 - [Hold the Stair](https://openagents.com/worlds/hold-the-stair): Tower defense on the SRD 5e rules. Opened Oct 30, 2026.
 - [The Grid](https://openagents.com/worlds/the-grid): The homepage's live projects, walked. Opened Oct 29, 2026.
 - [Dead Gears](https://openagents.com/worlds/dead-gears): Hold a ship's hold against three waves. Opened Oct 28, 2026.
-- [Everglade](https://openagents.com/worlds/everglade): A forest city with quests out to the deep wood. Opened Oct 28, 2026.
 - [Ice Cream Man](https://openagents.com/worlds/ice-cream-man): Find three keys and escape the house. Opened Oct 28, 2026.
 - [Haunted House](https://openagents.com/worlds/haunted-house): Nine haunts to find and doors to open. Opened Oct 28, 2026.
 

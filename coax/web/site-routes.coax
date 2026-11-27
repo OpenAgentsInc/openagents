@@ -141,6 +141,8 @@ site_goes :: (path:string,out:[]u8)->string #effects(all) {
   #assert r3.status==0 && !r3.query && site_goes("/books/mono.css",b[..])=="/build/books/mono.css";
   r3s:=site_route("/books/search.json");
   #assert r3s.status==0 && !r3s.query && site_goes("/books/search.json",b[..])=="/build/books/search.json";
+  r3j:=site_route("/books/search.js");
+  #assert r3j.status==0 && !r3j.query && site_goes("/books/search.js",b[..])=="/build/books/search.js";
   r4:=site_route("/books/coax/ch01-getting-started/index.md");
   #assert r4.status==0 && !r4.query && site_goes("/books/coax/ch01-getting-started/index.md",b[..])=="/build/books/coax/ch01-getting-started/index.md";
   #assert site_route("/book").to.count==0 && site_route("/bookshop").to.count==0 && site_route("/books-old").to.count==0;

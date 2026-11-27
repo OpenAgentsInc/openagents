@@ -417,10 +417,10 @@ ww_test_names :: (s: [] WorldsWeb, out: [] u8) -> string {
   ts: [1] WwTest; s := ts[0].s[..];
   n := coaxial_worldsweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  ww_test_answer(s, 200, "world splice Splice\nworld everglade Everglade\nworld my-harbour The Harbour\n");
+  ww_test_answer(s, 200, "world splice Splice\nworld dead-gears Dead Gears\nworld my-harbour The Harbour\n");
   #assert s[0].mine_n == 3 && tr_text_of(t, tr_find(t, "mine.h.n")) == "3";
   #assert tr_text_of(t, tr_find(t, "mine.0.t")) == "Splice" && tr_attr_of(t, tr_find(t, "mine.0.play"), AT_HREF) == "/worlds/splice" && tr_attr_of(t, tr_find(t, "mine.0.edit"), AT_HREF) == "/worlds/splice?edit";
-  #assert tr_attr_of(t, tr_find(t, "mine.1.pic"), AT_SRC) == "/worlds/everglade/og.jpg" && tr_text_of(t, tr_find(t, "mine.1.l")) == "A forest city with quests out to the deep wood";
+  #assert tr_attr_of(t, tr_find(t, "mine.1.pic"), AT_SRC) == "/og/realms/dead-gears.jpg" && tr_text_of(t, tr_find(t, "mine.1.l")) == "Hold a ship's hold against three waves";
   #assert tr_find(t, "mine.2.pic") < 0 && tr_find(t, "mine.2.l") < 0 && tr_attr_of(t, tr_find(t, "mine.2.edit"), AT_HREF) == "/worlds/my-harbour?edit";
   // among all worlds: Edit only on the one they may edit
   #assert tr_find(t, "w.2.edit") >= 0 && tr_find(t, "w.0.edit") < 0 && tr_find(t, "mine.cap") < 0;
@@ -440,14 +440,14 @@ ww_test_names :: (s: [] WorldsWeb, out: [] u8) -> string {
   n := coaxial_worldsweb_frame(s, 0.016, true);
   t := s[0].tree[..];
   ww_test_answer(s, 200, ""); ww_test_answer(s, 200, "total 0\n"); ww_test_answer(s, 200, "make 1\n");
-  ww_test_answer(s, 200, "dead-gears|40|90|30\nthe-grid|70|80|5\neverglade|10|20|600\nnot-a-world|99|99|99\nbroken\n");
+  ww_test_answer(s, 200, "belt-2200|40|90|30\nthe-grid|70|80|5\ndead-gears|10|20|600\nnot-a-world|99|99|99\nbroken\n");
   #assert s[0].counted && tr_text_of(t, tr_find(t, "w.1.f")) == "Opened Oct 29, 2026 · 70 visitors · 5 min played";
   #assert tr_text_of(t, tr_find(t, "w.2.f")) == "Opened Oct 28, 2026 · 10 visitors · 10 h played";
   out: [2048] u8;
-  #assert cast(string) ww_test_names(s, out[..])[0..<26] == "The Grid;Dead Gears;Evergl";   // Popular
+  #assert cast(string) ww_test_names(s, out[..])[0..<26] == "The Grid;Belt 2200;Dead Ge";   // Popular
   #assert tr_attr_of(t, tr_find(t, "sort.0"), AT_PRESSED) == "true";
   ww_test_press(s, "sort.2");
-  #assert s[0].sort == WS_PLAYED && cast(string) ww_test_names(s, out[..])[0..<20] == "Everglade;Dead Gears" && tr_attr_of(t, tr_find(t, "sort.2"), AT_PRESSED) == "true";
+  #assert s[0].sort == WS_PLAYED && cast(string) ww_test_names(s, out[..])[0..<20] == "Dead Gears;Belt 2200" && tr_attr_of(t, tr_find(t, "sort.2"), AT_PRESSED) == "true";
   ww_test_press(s, "sort.3");
   names := ww_test_names(s, out[..]);
   #assert cast(string) names[0..<10] == "Belt 2200;";
