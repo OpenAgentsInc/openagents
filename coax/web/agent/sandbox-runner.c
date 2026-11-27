@@ -541,7 +541,7 @@ static bool sandbox_try_run(const char *worker, coax_string turn_cs, coax_string
     char cep[128]; snprintf(cep, sizeof cep, "/sandboxes/%s/commands", active_box);
     text cbody = {0}, cout = {0};
     puts_(&cbody, "{\"command\":"); putq(&cbody, cmd_buf);
-    puts_(&cbody, ",\"cwd\":\"/workspace\",\"detached\":true,\"timeoutSeconds\":600}");
+    puts_(&cbody, ",\"cwd\":\"/workspace\",\"detached\":true}");
     long cst = sb_boat_req("POST", cep, cbody.p, 30, &cout);
     proc_id = (cst >= 200 && cst < 300) ? jint(cout.p, "processId") : 0;
     if (proc_id <= 0) {
