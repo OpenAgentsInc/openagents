@@ -1812,7 +1812,21 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_CLICK && (id == "fold.chats.b" || id == "fold.projects.b" || id == "fold.worlds.b") {
     k := ifx id == "fold.chats.b" then SS_CHATS else ifx id == "fold.projects.b" then SS_PROJECTS else SS_WORLDS;
-    s[0].shut ^= 1 << k; cw_keep(s);
+    has_items := ifx k == SS_CHATS then ((s[0].cloud_mode && s[0].cc[0].conv_n > 0) || (s[0].local == 1 && !s[0].local_off && s[0].ns + s[0].nc > 0))
+      else ifx k == SS_PROJECTS then s[0].projects_n > 0 else s[0].worlds_n > 0;
+    if has_items {
+      s[0].shut ^= 1 << k; cw_keep(s);
+    } else if k == SS_CHATS {
+      if s[0].page != SS_CHATS {
+        if !cw_keeps(s, "/chat") { cw_to_chat(s); }
+      } else {
+        s[0].shut ^= 1 << k; cw_keep(s);
+      }
+    } else {
+      hrefs := SS_HREFS;
+      url := hrefs[k];
+      if !cw_keeps(s, url) { cw_go_to(s, url, false); }
+    }
   }
   else if kind == CW_CLICK && (id == "fold.projects.add" || id == "fold.worlds.add") {
     news := SS_NEW_HREFS; url := news[ifx id == "fold.worlds.add" then SS_WORLDS else SS_PROJECTS];
@@ -3483,6 +3497,17 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   cw_test_path(s, "/");
   cw_test_press(s, "fold.chats.add");
   #assert s[0].page == SS_CHATS && cw_test_go(s) == "/chat" && coaxial_chatweb_go_push(s);
+  // Empty sidebar folds navigate directly to their section instead of silently toggling nothing
+  te: [1] CwTest; e := te[0].s[..];
+  cw_test_path(e, "/");
+  cw_test_press(e, "fold.chats.b");
+  #assert e[0].page == SS_CHATS && cw_test_go(e) == "/chat" && coaxial_chatweb_go_push(e);
+  coaxial_chatweb_go_done(e);
+  cw_test_press(e, "fold.projects.b");
+  #assert e[0].page == SS_HELD && cw_test_go(e) == "/projects" && coaxial_chatweb_go_push(e);
+  coaxial_chatweb_go_done(e);
+  cw_test_press(e, "fold.worlds.b");
+  #assert e[0].page == SS_HELD && cw_test_go(e) == "/worlds" && coaxial_chatweb_go_push(e);
 }
 
 #test "at / the shell shows the side and the logged-in home dashboard; New chat and the mark move between Home and Chat without leaving the page" #steps 200000000 #traversal 536870912 {
