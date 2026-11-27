@@ -1,0 +1,314 @@
+{
+  "schema_version": 1,
+  "kind": "book-route-qualification-record",
+  "route": {
+    "id": "aethyr-core-replay",
+    "book": "metaverse-engine",
+    "title": "Metaverse Engine fixed steps, input and replay",
+    "scope": "Run CPU engine-core examples for fixed-step scheduling at four frame rates, one queued press consumed once, and a recorded walk replayed to the same digest with an identified planted divergence.",
+    "limitations": [
+      "The small teaching session does not qualify a rendered or playable full realm, general rigid-body simulation or Forge artifacts.",
+      "Browser/Wasm parity belongs to a separate retained harness. This CPU route starts no server, WebGPU page or audio playback.",
+      "Existing component consumers such as metaverse/gridwalk.coax keep their recorded adoption scope. These examples neither migrate a whole realm nor add an adopted_by relationship."
+    ]
+  },
+  "status": "passed",
+  "observed_revision": "da6ab05135e414fb2736a1e9f9744463548288b8",
+  "started_at": "2026-11-27T04:41:20.337833+00:00",
+  "finished_at": "2026-11-27T04:41:24.848332+00:00",
+  "wall_seconds": 4.51,
+  "executed_runs": 6,
+  "retained_runs": 0,
+  "route_definition_sha256": "645976dde8a64794421cc26b86ddb108ced0c790cfd0ca0b93271cf5a3e56eb0",
+  "runner_sha256": "36ff17103b29a508e536431f65b14c34ea99aae980e77a6416960aa2408d4a06",
+  "tools": {
+    "coax": {
+      "sha256": "8a8bcc05b49468bf40c17400ab7eb677e41bfe24549617d60f3ca9a54fbfd7aa",
+      "version": "coax0 0.52.0"
+    },
+    "cc": {
+      "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+      "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+    },
+    "python": {
+      "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+      "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+    }
+  },
+  "target": {
+    "system": "Darwin",
+    "release": "25.4.0",
+    "machine": "arm64",
+    "SDKROOT": "",
+    "MACOSX_DEPLOYMENT_TARGET": ""
+  },
+  "raw_receipt": {
+    "file_sha256": "c612d657979d8e030c95c2913014bebe08b6abbb5c8dbff594785e26a77cfa56",
+    "integrity_sha256": "5011159ecfe2e2de5b8da2c5964f645feb657d6fe051a675fae7329573b728d8"
+  },
+  "retention_verification": {
+    "status": "passed",
+    "started_at": "2026-11-27T04:45:03.050465+00:00",
+    "finished_at": "2026-11-27T04:45:03.720202+00:00",
+    "wall_seconds": 0.67,
+    "executed_runs": 0,
+    "retained_runs": 6,
+    "raw_receipt_file_sha256": "19d5986970639bbed510b2252113a018625a297085c3e082179cdc58c7992f54",
+    "raw_receipt_integrity_sha256": "080a6526f5328943eb51c8220c7566526a9a1b953105241222f90a93922507b4"
+  },
+  "steps": [
+    {
+      "key": "fixed-step:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.333,
+      "recipe_sha256": "ed90859dadf1a6e88f8d3fe1f4c1a9c272399470d63d63dcf8bab77d07983280",
+      "closure_sha256": "5d345eece8611a2502e98867deba9a6222b09f34a322fcd05a8451ab875140a7",
+      "input_count": 3,
+      "inputs": {
+        "metaverse-engine/core/loop.coax": "a4da75eae798a6e7c65a9f353d4d678f85f9d70e44cdc2bf897cb3f89a747ead",
+        "metaverse-engine/examples/frame-rates.coax": "2da0fac532c88a48d403fd1c89156a2d6f3bf0df8e2d536036072ce060f12cec",
+        "metaverse-engine/fixtures/frame-rates.out": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a"
+      },
+      "expected": {
+        "stdout": "metaverse-engine/fixtures/frame-rates.out",
+        "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+        "bytes": 407
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "fixed-step:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.331,
+      "recipe_sha256": "a4d86cdbc7c3a1ca631cd842c261207600cc92ce204746b5b7b3589ea1908a83",
+      "closure_sha256": "5d345eece8611a2502e98867deba9a6222b09f34a322fcd05a8451ab875140a7",
+      "input_count": 3,
+      "inputs": {
+        "metaverse-engine/core/loop.coax": "a4da75eae798a6e7c65a9f353d4d678f85f9d70e44cdc2bf897cb3f89a747ead",
+        "metaverse-engine/examples/frame-rates.coax": "2da0fac532c88a48d403fd1c89156a2d6f3bf0df8e2d536036072ce060f12cec",
+        "metaverse-engine/fixtures/frame-rates.out": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a"
+      },
+      "expected": {
+        "stdout": "metaverse-engine/fixtures/frame-rates.out",
+        "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+        "bytes": 407
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "one-press:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.33,
+      "recipe_sha256": "c46584427e17d3f8d18ca96179af999df881c9c947a94039390842877848bee6",
+      "closure_sha256": "96f036320e5106bd1fab4989eee0553b8e4a63f6ad45e3b6f3f125daa76dd0b3",
+      "input_count": 3,
+      "inputs": {
+        "metaverse-engine/core/input.coax": "994df19dbc13eb9220a5b8d78ae440b5ffedb790d5015628e24973025621bee1",
+        "metaverse-engine/examples/one-press.coax": "2859064b6f27224c718bdd47918b4a9530e924cbc87c0be6e7680311773bfe70",
+        "metaverse-engine/fixtures/one-press.out": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff"
+      },
+      "expected": {
+        "stdout": "metaverse-engine/fixtures/one-press.out",
+        "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+        "bytes": 292
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "one-press:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.344,
+      "recipe_sha256": "4640c2ea92829f9bce79895eeb1131c628e4bfe101168487722e2b57de3c6170",
+      "closure_sha256": "96f036320e5106bd1fab4989eee0553b8e4a63f6ad45e3b6f3f125daa76dd0b3",
+      "input_count": 3,
+      "inputs": {
+        "metaverse-engine/core/input.coax": "994df19dbc13eb9220a5b8d78ae440b5ffedb790d5015628e24973025621bee1",
+        "metaverse-engine/examples/one-press.coax": "2859064b6f27224c718bdd47918b4a9530e924cbc87c0be6e7680311773bfe70",
+        "metaverse-engine/fixtures/one-press.out": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff"
+      },
+      "expected": {
+        "stdout": "metaverse-engine/fixtures/one-press.out",
+        "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+        "bytes": 292
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "replay-walk:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.727,
+      "recipe_sha256": "5d0e1b7e5eb298590acec9f5192095fa98222e569be40eeb4e79aa107e8f915b",
+      "closure_sha256": "da4b6199ac12cef90fdb43b5fa4fde5ea032324111be1f7ccb75791221363585",
+      "input_count": 44,
+      "inputs": {
+        "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+        "metaverse-engine/cam/follow.coax": "58dd4ded46006eb7e22c5211c0f80412e8de430552c683bf37509801f152a6e5",
+        "metaverse-engine/cam/shot.coax": "3fb6f124a1a5feed9358f69eb4a97436137795c3d44e83f65a4213a1af52d38a",
+        "metaverse-engine/core/angle.coax": "8eeebd267c285cbf141d08e62852e6d930fdfa03070657a2f40b60bd33076e80",
+        "metaverse-engine/core/input.coax": "994df19dbc13eb9220a5b8d78ae440b5ffedb790d5015628e24973025621bee1",
+        "metaverse-engine/core/loop.coax": "a4da75eae798a6e7c65a9f353d4d678f85f9d70e44cdc2bf897cb3f89a747ead",
+        "metaverse-engine/core/math.coax": "27617a4e797019205781ed9ff9153d7df554c86ef93b8e65d1fc61223aca9463",
+        "metaverse-engine/core/quality.coax": "45033e2d8246fcd62a95d6788530d4ebfec379a9cc5b1920232a0a6fae43826a",
+        "metaverse-engine/core/rand.coax": "2e53c66998db55458669fd13311c910128b4197ecedbd86d7fbff9cf402df568",
+        "metaverse-engine/core/replay.coax": "173f2056de8ba493cc249edf4afee8528bcbf8ba160a089e52092f3eca3d9d93",
+        "metaverse-engine/core/space.coax": "2b1eccc9b66c8d2485bedb1858923b09d8d6d2cd99a59d934861b5a02ebba17e",
+        "metaverse-engine/core/spatial.coax": "a1e62ba10405cd71cc91655b58c4f670825b168c8150cba5c63c2b9c4be5eff6",
+        "metaverse-engine/examples/replay-a-walk.coax": "05ba2cbbfe83dee423542f460b3c15cfd379254e180e5449a6de814239b126bb",
+        "metaverse-engine/fixtures/replay-a-walk.out": "baf1bb3e8c9563c236c6dd873782a8946d475de45cfeca9461c62a89d558648f",
+        "metaverse-engine/move/echo-walk-checks.coax": "c5bf879b5bfe0257666fce8b65e4d9cf0d9ca6e8cce716bba1166a115b55bc97",
+        "metaverse-engine/move/flight.coax": "e79cbb08fc237fbc43331c8342bb30a2cf25875848fb3f22d25cf7b6b712fc0a",
+        "metaverse-engine/move/jump.coax": "8f103727ffbe2c10b07cd85bac64dd99fa90a8a965d072aeb42af742fe801920",
+        "metaverse-engine/move/locomotion.coax": "fa2d0773404e45e30c5e72777a3608702cb211d75b43b60fa6afd0c7a90eee10",
+        "metaverse-engine/move/player-collision-checks.coax": "24273e8c0c9163ed44b9f448cec208eb6eceb7992f41fea3a7cd36f6963b8408",
+        "metaverse-engine/move/player.coax": "e01b4422441fe5106754c22efef641a5ca06d2a1ee4f16998accdc17fa38382b",
+        "metaverse-engine/move/walk-frame.coax": "5d5cca553367cf80e8d73f4acf5ba916f68b4869b023a8ec47ebb5cf74bd90f7",
+        "metaverse-engine/move/walk-substep-policy.coax": "0e6716f11155e3d56e2cf6765c4063eb656fc41feb60836d18e409bbb9c689a6",
+        "metaverse-engine/move/walk-tuning-checks.coax": "d9469e99b14bd783a3d6eda304561efa8265aef5f9a23d94dfc47f65483362cc",
+        "metaverse-engine/move/walk.coax": "6f5142c28fa34008e44a0a04b50d866b0c94c41eebdd6507dec5d74f64cfabac",
+        "metaverse-engine/physics/collide.coax": "6ff95f058517dacae50744fd42829d28e50e49fdc1710b2793b7b7228d976fb0",
+        "metaverse-engine/physics/collision-profiles.coax": "61a5434c4c06abdd13ffce14e498b44a3cca4307d27620158418a8be0ea0e4aa",
+        "metaverse-engine/physics/ground-contact.coax": "94532dde8d245ba6d22d5ae8a780d610965bde2556bb489ef7466e445cccd27e",
+        "metaverse-engine/physics/ground-query.coax": "98ae3d17aca876304f934dc477e0d7faa8b9bdb3eea89b76cdd5f06cd1fd2609",
+        "metaverse-engine/physics/ground.coax": "9d63c0748ba6c63e13ff5f1b8c9ff6145de1f50761a96180f8017a31f8fff39e",
+        "metaverse-engine/physics/query-near.coax": "f5f4a9569d7e76e77ebf99386e73f79a7717a1abf7733b16fd74ad469a47bb87",
+        "metaverse-engine/physics/query.coax": "163471980ab5adef4b8045491e411598949035e3bf7acd056bd79642bc325ea8",
+        "metaverse-engine/physics/stand.coax": "aa465ab695def72c5f24625e6bd6ca6200899e0603641cb7e943711d7aeb0812",
+        "metaverse-engine/tests/collide-near.coax": "cc6f30ae12b3e100c43041013d9f09bf8b9f021ded4965dfeb1722b06ff58482",
+        "metaverse-engine/tests/collide-oracle.coax": "ac33640d4270a7700e5af6c741398f2861879b7f93d1a96dd9fd4784f58d0039",
+        "metaverse-engine/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+        "metaverse-engine/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+        "metaverse-engine/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+        "metaverse-engine/tests/locomotion-source-oracle.coax": "4ff2f63f4eb18ca4825412ee5f1ad44e13c100cf12a7ff4d1f2a1cfdc05c7160",
+        "metaverse-engine/tests/math-oracle.coax": "384a0eeb72fb25c443f437d29e2fa007e1fad783efceea600fd972939533061f",
+        "metaverse-engine/tests/query-heightfield.coax": "bfbceb101d9db6ba51da7226ceb80242bbf488ec4aeeef0221787227d2c61497",
+        "metaverse-engine/tests/query-near.coax": "48ee31c485b924fe27b2dfb28289bbe8cfdc04ba242978b8e4fa399969bbc27e",
+        "metaverse-engine/tests/query-oracle.coax": "91a3341f2cfa3c55e8e02d80d8d3eeba4911a4a30819d2a1a3316e2e605f0efd",
+        "metaverse-engine/tests/replay-oracle.coax": "7804c4e4a6419f2e1f3ffb71ae4f04db875f997cd2f5963163ba004dcc39095a",
+        "metaverse-engine/tests/replay-walk.coax": "cd826ca2a2b057d0a2bc2235418c8e0ed656f1a5f8f39c9ca76e988c1b09ea8d"
+      },
+      "expected": {
+        "stdout": "metaverse-engine/fixtures/replay-a-walk.out",
+        "sha256": "baf1bb3e8c9563c236c6dd873782a8946d475de45cfeca9461c62a89d558648f",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "baf1bb3e8c9563c236c6dd873782a8946d475de45cfeca9461c62a89d558648f",
+        "bytes": 154
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "replay-walk:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 1.366,
+      "recipe_sha256": "58452e948b6ce65d95e57d8778ab5410dfd3a196df0903f9c786b22267d0fe63",
+      "closure_sha256": "da4b6199ac12cef90fdb43b5fa4fde5ea032324111be1f7ccb75791221363585",
+      "input_count": 44,
+      "inputs": {
+        "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+        "metaverse-engine/cam/follow.coax": "58dd4ded46006eb7e22c5211c0f80412e8de430552c683bf37509801f152a6e5",
+        "metaverse-engine/cam/shot.coax": "3fb6f124a1a5feed9358f69eb4a97436137795c3d44e83f65a4213a1af52d38a",
+        "metaverse-engine/core/angle.coax": "8eeebd267c285cbf141d08e62852e6d930fdfa03070657a2f40b60bd33076e80",
+        "metaverse-engine/core/input.coax": "994df19dbc13eb9220a5b8d78ae440b5ffedb790d5015628e24973025621bee1",
+        "metaverse-engine/core/loop.coax": "a4da75eae798a6e7c65a9f353d4d678f85f9d70e44cdc2bf897cb3f89a747ead",
+        "metaverse-engine/core/math.coax": "27617a4e797019205781ed9ff9153d7df554c86ef93b8e65d1fc61223aca9463",
+        "metaverse-engine/core/quality.coax": "45033e2d8246fcd62a95d6788530d4ebfec379a9cc5b1920232a0a6fae43826a",
+        "metaverse-engine/core/rand.coax": "2e53c66998db55458669fd13311c910128b4197ecedbd86d7fbff9cf402df568",
+        "metaverse-engine/core/replay.coax": "173f2056de8ba493cc249edf4afee8528bcbf8ba160a089e52092f3eca3d9d93",
+        "metaverse-engine/core/space.coax": "2b1eccc9b66c8d2485bedb1858923b09d8d6d2cd99a59d934861b5a02ebba17e",
+        "metaverse-engine/core/spatial.coax": "a1e62ba10405cd71cc91655b58c4f670825b168c8150cba5c63c2b9c4be5eff6",
+        "metaverse-engine/examples/replay-a-walk.coax": "05ba2cbbfe83dee423542f460b3c15cfd379254e180e5449a6de814239b126bb",
+        "metaverse-engine/fixtures/replay-a-walk.out": "baf1bb3e8c9563c236c6dd873782a8946d475de45cfeca9461c62a89d558648f",
+        "metaverse-engine/move/echo-walk-checks.coax": "c5bf879b5bfe0257666fce8b65e4d9cf0d9ca6e8cce716bba1166a115b55bc97",
+        "metaverse-engine/move/flight.coax": "e79cbb08fc237fbc43331c8342bb30a2cf25875848fb3f22d25cf7b6b712fc0a",
+        "metaverse-engine/move/jump.coax": "8f103727ffbe2c10b07cd85bac64dd99fa90a8a965d072aeb42af742fe801920",
+        "metaverse-engine/move/locomotion.coax": "fa2d0773404e45e30c5e72777a3608702cb211d75b43b60fa6afd0c7a90eee10",
+        "metaverse-engine/move/player-collision-checks.coax": "24273e8c0c9163ed44b9f448cec208eb6eceb7992f41fea3a7cd36f6963b8408",
+        "metaverse-engine/move/player.coax": "e01b4422441fe5106754c22efef641a5ca06d2a1ee4f16998accdc17fa38382b",
+        "metaverse-engine/move/walk-frame.coax": "5d5cca553367cf80e8d73f4acf5ba916f68b4869b023a8ec47ebb5cf74bd90f7",
+        "metaverse-engine/move/walk-substep-policy.coax": "0e6716f11155e3d56e2cf6765c4063eb656fc41feb60836d18e409bbb9c689a6",
+        "metaverse-engine/move/walk-tuning-checks.coax": "d9469e99b14bd783a3d6eda304561efa8265aef5f9a23d94dfc47f65483362cc",
+        "metaverse-engine/move/walk.coax": "6f5142c28fa34008e44a0a04b50d866b0c94c41eebdd6507dec5d74f64cfabac",
+        "metaverse-engine/physics/collide.coax": "6ff95f058517dacae50744fd42829d28e50e49fdc1710b2793b7b7228d976fb0",
+        "metaverse-engine/physics/collision-profiles.coax": "61a5434c4c06abdd13ffce14e498b44a3cca4307d27620158418a8be0ea0e4aa",
+        "metaverse-engine/physics/ground-contact.coax": "94532dde8d245ba6d22d5ae8a780d610965bde2556bb489ef7466e445cccd27e",
+        "metaverse-engine/physics/ground-query.coax": "98ae3d17aca876304f934dc477e0d7faa8b9bdb3eea89b76cdd5f06cd1fd2609",
+        "metaverse-engine/physics/ground.coax": "9d63c0748ba6c63e13ff5f1b8c9ff6145de1f50761a96180f8017a31f8fff39e",
+        "metaverse-engine/physics/query-near.coax": "f5f4a9569d7e76e77ebf99386e73f79a7717a1abf7733b16fd74ad469a47bb87",
+        "metaverse-engine/physics/query.coax": "163471980ab5adef4b8045491e411598949035e3bf7acd056bd79642bc325ea8",
+        "metaverse-engine/physics/stand.coax": "aa465ab695def72c5f24625e6bd6ca6200899e0603641cb7e943711d7aeb0812",
+        "metaverse-engine/tests/collide-near.coax": "cc6f30ae12b3e100c43041013d9f09bf8b9f021ded4965dfeb1722b06ff58482",
+        "metaverse-engine/tests/collide-oracle.coax": "ac33640d4270a7700e5af6c741398f2861879b7f93d1a96dd9fd4784f58d0039",
+        "metaverse-engine/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+        "metaverse-engine/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+        "metaverse-engine/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+        "metaverse-engine/tests/locomotion-source-oracle.coax": "4ff2f63f4eb18ca4825412ee5f1ad44e13c100cf12a7ff4d1f2a1cfdc05c7160",
+        "metaverse-engine/tests/math-oracle.coax": "384a0eeb72fb25c443f437d29e2fa007e1fad783efceea600fd972939533061f",
+        "metaverse-engine/tests/query-heightfield.coax": "bfbceb101d9db6ba51da7226ceb80242bbf488ec4aeeef0221787227d2c61497",
+        "metaverse-engine/tests/query-near.coax": "48ee31c485b924fe27b2dfb28289bbe8cfdc04ba242978b8e4fa399969bbc27e",
+        "metaverse-engine/tests/query-oracle.coax": "91a3341f2cfa3c55e8e02d80d8d3eeba4911a4a30819d2a1a3316e2e605f0efd",
+        "metaverse-engine/tests/replay-oracle.coax": "7804c4e4a6419f2e1f3ffb71ae4f04db875f997cd2f5963163ba004dcc39095a",
+        "metaverse-engine/tests/replay-walk.coax": "cd826ca2a2b057d0a2bc2235418c8e0ed656f1a5f8f39c9ca76e988c1b09ea8d"
+      },
+      "expected": {
+        "stdout": "metaverse-engine/fixtures/replay-a-walk.out",
+        "sha256": "baf1bb3e8c9563c236c6dd873782a8946d475de45cfeca9461c62a89d558648f",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "baf1bb3e8c9563c236c6dd873782a8946d475de45cfeca9461c62a89d558648f",
+        "bytes": 154
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    }
+  ],
+  "revision_scope": "Git HEAD at observation; source hashes, not a claim that the worktree is clean or published.",
+  "scope": "Exact selected native examples and declared workflow, not all book capabilities, product adoption, live transport, browser rendering or production deployment.",
+  "integrity_sha256": "ab57e6b4f2f81afa8ea3d41ce8b216175a16967260a30d3a0279b2de6aae721c"
+}

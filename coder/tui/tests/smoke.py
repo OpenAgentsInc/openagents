@@ -1,0 +1,1627 @@
+#!/usr/bin/env python3
+"""Drives coder/tui/coder.sh in a real pseudo-terminal (100x30) on the
+offline echo engine: types a message and checks the streamed reply, runs
+"$ echo ..." and checks the command row, pastes two lines with bracketed
+paste, walks history with Up, switches agent with Shift-Tab (legacy and
+kitty), then quits with Ctrl-C and checks the exit. Then the verbs without a
+terminal, in a fresh HOME: coder run --json on the psionic engine against a
+stand-in local model server (local_model.py), coder ls --json, coder log and
+coder status on an unknown ID, a progress bar's output, a plugin's command, coder fork, coder run --detach then coder
+stop, and coder run without --engine or a System
+One key (the default engine, with the reason in the log).
+
+    python3 coder/tui/smoke.py                # offline, echo engine
+    python3 coder/tui/smoke.py --live         # two turns on the claude engine (your Claude Code login)
+    python3 coder/tui/smoke.py --live codex   # the same on the codex engine (your Codex login)
+    python3 coder/tui/smoke.py --live microcoder   # ... on Microcoder (keys under ~/work/.secrets)
+    python3 coder/tui/smoke.py --live cursor  # the same on the cursor engine (your Cursor login)
+    python3 coder/tui/smoke.py --live antigravity  # the same on the antigravity engine (agy's sign-in)
+
+Test-only harness; the program under test is Coax.
+"""
+import hashlib, queue, threading, json, os, pty, re, select, signal, struct, subprocess, sys, tempfile, time, fcntl, termios
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+TUI_DIR = os.path.dirname(HERE)
+STYLE = re.compile(rb"\x1b\[[0-9;?<>]*[@-~]")
+
+
+def shown(out):
+    """The output without style sequences: what the text says."""
+    return STYLE.sub(b"", bytes(out))
+REPO = os.path.dirname(os.path.dirname(TUI_DIR))
+
+
+def spawn(engine):
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.chdir(REPO)
+        env = dict(os.environ, TERM="xterm-256color", BROWSER="/usr/bin/true", NO_OPEN_BROWSER="1", CODER_USAGE_KEYCHAIN="0")
+        os.execve(os.path.join(TUI_DIR, "coder.sh"), [os.path.join(TUI_DIR, "coder.sh"), "--engine", engine], env)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+    return pid, fd
+
+
+def live(engine):
+    """Two turns in one session: the second needs the first."""
+    pid, fd = spawn(engine)
+    out = bytearray()
+
+    def read_until(needle, seconds):
+        end = time.time() + seconds
+        while time.time() < end and needle.encode() not in shown(out):
+            r, _, _ = select.select([fd], [], [], 0.1)
+            if r:
+                try:
+                    out.extend(os.read(fd, 65536))
+                except OSError:
+                    break
+        return needle.encode() in shown(out)
+
+    steps = [("banner", read_until("/help for commands.", 600))]
+    os.write(fd, b"Remember the word heliotrope. Reply with only: noted\r")
+    steps.append(("first turn", read_until("● noted", 120) and read_until("└ finished", 30)))
+    os.write(fd, b"What word did I ask you to remember? Reply with only that word.\r")
+    steps.append(("second turn remembers", read_until("● heliotrope", 120)))
+    end = time.time() + 30
+    while out.count("└ finished".encode()) < 2 and time.time() < end:
+        read_until("\x00never", 0.2)
+    steps.append(("second turn ended", out.count("└ finished".encode()) >= 2))
+    os.write(fd, b"\x1b[Z")                 # Shift-Tab: the other agent
+    after = {"claude": "Agent: Codex", "codex": "Agent: Cursor", "cursor": "Agent: Antigravity", "antigravity": "Agent: Microcoder", "microcoder": "Agent: Claude Code"}[engine]
+    steps.append(("Shift-Tab switches agent", read_until(after, 5)))
+    for _ in range(3):                      # stop, clear, quit: whichever applies
+        os.write(fd, b"\x03")
+        time.sleep(0.5)
+    status = None
+    end = time.time() + 15
+    while status is None and time.time() < end:
+        p, st = os.waitpid(pid, os.WNOHANG)
+        if p == pid:
+            status = st
+        read_until("\x00never", 0.2)
+    if status is None:
+        os.kill(pid, signal.SIGKILL)
+    steps.append(("quits", status is not None))
+    for name, good in steps:
+        print(("ok   " if good else "FAIL ") + name)
+    good = all(g for _, g in steps)
+    if not good:
+        sys.stdout.write(out[-3000:].decode("utf-8", "replace") + "\n")
+    print("live smoke: " + ("ok" if good else "FAILED"))
+    sys.exit(0 if good else 1)
+
+
+GH_STUB = r"""
+import json, os, sys
+d = os.environ["GH_STUB_DIR"]
+a = sys.argv[1:]
+if a[:2] == ["api", "user"]:
+    print("alice")
+elif a[:1] == ["api"]:
+    if "/actions/runs" in a[1]:
+        print('{"k":"run:4242","b":"main","a":"ci-bot","t":"CI failed: tests on main: Fix parser\\nhttps://github.com/c/i/actions/runs/4242"}')
+    elif "/issues/comments" in a[1]:
+        print('{"k":"comment:555","c":"555","n":7,"a":"alice","t":"thanks"}')
+        if os.path.exists(os.path.join(d, "gh-posted")):
+            print(json.dumps({"k": "comment:999", "c": "999", "n": 7, "a": "alice", "t": open(os.path.join(d, "gh-posted")).read().split(" --body ", 1)[-1]}))
+    elif "/issues/7/comments" in a[1] and "contains(" not in " ".join(a):
+        # the Router inlining the newest comments into a new Worker's first message (chapter 17)
+        print("- alice: the parser test is the one that fails")
+    elif a[1].endswith("/issues/7"):
+        print("#7 Fix parser\n$ echo gh-ok")
+    elif "/issues/7/comments" in a[1]:
+        # the Router looking for a reply it posted before a crash: the marker it names is in the posted body
+        body = open(os.path.join(d, "gh-posted")).read() if os.path.exists(os.path.join(d, "gh-posted")) else ""
+        want = a[3].split('contains("', 1)[-1].split('"', 1)[0] if len(a) > 3 else ""
+        if want and want in body:
+            print("999")
+    else:
+        print('{"k":"issue:7","n":7,"a":"alice","t":"$ echo gh-ok"}')
+elif a[:2] == ["issue", "comment"]:
+    open(os.path.join(d, "gh-posted"), "w").write(" ".join(a))
+    open(os.path.join(d, "gh-posts"), "a").write("post\n")
+    print("https://github.com/o/r/issues/7#issuecomment-999")
+else:
+    sys.exit(1)
+"""
+
+
+def verbs(check):
+    """run, ls, log and status, with no terminal, on the psionic engine."""
+    home = tempfile.mkdtemp(prefix="coder-smoke-")
+    server = subprocess.Popen([sys.executable, os.path.join(HERE, "local_model.py")], stdout=subprocess.PIPE, text=True)
+    try:
+        port = server.stdout.readline().strip()
+        env = dict(os.environ, HOME=home, PSIONIC_BASE_URL="http://127.0.0.1:" + port, BROWSER="/usr/bin/true", CODER_USAGE_KEYCHAIN="0")
+        coder = os.path.join(TUI_DIR, "coder.sh")
+        run = subprocess.run([coder, "run", "say ok", "--engine", "psionic", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=600)
+        lines = [json.loads(l) for l in run.stdout.splitlines() if l.startswith("{")]
+        kinds = [l["kind"] for l in lines]
+        check("run --json exits 0", run.returncode == 0)
+        # attempt (coder.observability.v2) and journal (the worker's private journal, since 410e68f65b) ride beside the log's lines
+        check("run --json: session, user, request, tool, result, reply, end",
+              [k for k in kinds if k not in ("attempt", "journal")] == ["session", "user", "request", "tool", "result", "reply", "end"]
+              and kinds.count("attempt") == 2 and kinds.count("journal") == 1)
+        check("run --json: the local model answered", any(l.get("text") == "local-ok" for l in lines) and lines[-1].get("ending") == "finished")
+        ls = subprocess.run([coder, "ls", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        rows = json.loads(ls.stdout) if ls.returncode == 0 else []
+        check("ls --json lists the session", len(rows) == 1 and rows[0]["engine"] == "psionic" and rows[0]["state"] == "finished" and rows[0]["steps"] == 1)
+        sid = rows[0]["id"] if rows else "none"
+        log = subprocess.run([coder, "log", sid[:15]], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("log by ID prefix", log.returncode == 0 and "● local-ok" in log.stdout and "Bash(echo local-step)" in log.stdout)
+        # the effort reaches the agent's own flag (chapter 13); a stand-in claude records its arguments
+        fake = os.path.join(home, "fakebin"); os.makedirs(fake, exist_ok=True)
+        with open(os.path.join(fake, "claude"), "w") as f:
+            f.write("#!/bin/sh\necho \"$@\" > " + os.path.join(fake, "args") + "\nexit 1\n")
+        os.chmod(os.path.join(fake, "claude"), 0o755)
+        subprocess.run([coder, "run", "hi", "--engine", "claude", "--effort", "high"], cwd=REPO, env=dict(env, PATH=fake + ":" + env["PATH"]), capture_output=True, text=True, timeout=120)
+        check("--effort reaches Claude Code", os.path.exists(os.path.join(fake, "args")) and "--effort=high" in open(os.path.join(fake, "args")).read())
+        bad = subprocess.run([coder, "run", "hi", "--effort", "huge"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("--effort takes low, medium or high", bad.returncode == 2 and "--effort is low, medium or high" in bad.stderr)
+        # approvals answered by policy (chapters 10 and 11): a stand-in claude asks three times
+        stub = os.path.join(home, "stubbin"); os.makedirs(stub, exist_ok=True)
+        with open(os.path.join(stub, "claude"), "w") as f:
+            f.write("#!/bin/sh\nexec " + sys.executable + " " + os.path.join(REPO, "openagents", "workers", "tests", "claude_stub.py") + " \"$@\"\n")
+        os.chmod(os.path.join(stub, "claude"), 0o755)
+        work = os.path.realpath(tempfile.mkdtemp(prefix="coder-policy-")); answers = os.path.join(home, "answers")
+        pol = subprocess.run([coder, "run", "go", "--engine", "claude", "--allow", "write", "--ceiling", "write", "--cwd", work, "--json"], cwd=REPO,
+                             env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=answers), capture_output=True, text=True, timeout=120)
+        verdicts = [(l["tool"], l["verdict"]) for l in (json.loads(x) for x in pol.stdout.splitlines() if '"approval"' in x)]
+        check("policy: write inside runs, outside asks, a command above the ceiling is refused",
+              verdicts == [("Write(a.txt)", "run"), ("Write(/etc/stub-outside.txt)", "ask"), ("Bash(touch b.txt)", "refuse")])
+        sent = [json.loads(x)["behavior"] for x in open(answers)] if os.path.exists(answers) else []
+        check("policy: Claude Code gets allow, then deny with no one to ask, then deny", sent == ["allow", "deny", "deny"] and '"ending":"finished"' in pol.stdout)
+        # a fork of a whole Claude Code conversation resumes its session on the server (chapter 14): --resume and
+        # --fork-session, no earlier turns as text, and replay agrees; with no session file on this machine, text as before
+        fwork = os.path.realpath(tempfile.mkdtemp(prefix="coder-resume-"))
+        fargv = os.path.join(home, "fork-argv")
+        fenv = dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_MODE="calls", CLAUDE_STUB_CALLS="[]", CLAUDE_STUB_ARGV=fargv)
+        def fq(*a):
+            r = subprocess.run([coder, *a, "--engine", "claude", "--cwd", fwork, "--json"], cwd=REPO, env=fenv, capture_output=True, text=True, timeout=120)
+            return [json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")]
+        fp = fq("run", "first turn")
+        fpid = fp[0]["id"] if fp else ""
+        fproj = os.path.join(home, ".claude", "projects", fwork.replace("/", "-").replace(".", "-"))
+        os.makedirs(fproj, exist_ok=True)
+        open(os.path.join(fproj, "stub.jsonl"), "w").write("{}\n")
+        ff = fq("fork", fpid, "second turn")
+        frep = subprocess.run([coder, "replay", ff[0]["id"] if ff else "none"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        os.remove(os.path.join(fproj, "stub.jsonl"))
+        ft = fq("fork", fpid, "third turn")
+        fargs = [json.loads(x) for x in open(fargv)] if os.path.exists(fargv) else []
+        check("fork: a whole Claude Code conversation resumes on the server, replays, and falls back to text without its session file",
+              any(l["kind"] == "engine_session" and l.get("id") == "stub" for l in fp)
+              and ff and ff[0].get("resume") == "stub" and any(l["kind"] == "request" and l["bytes"] == len("second turn") for l in ff)
+              and len(fargs) == 3 and "--resume=stub" in fargs[1] and "--fork-session" in fargs[1]
+              and not any(x.startswith("--resume") for x in fargs[0] + fargs[2]) and "1 of 1 requests rebuilt with the same bytes" in frep.stdout
+              and ft and "resume" not in ft[0] and any(l["kind"] == "request" and l["bytes"] > len("third turn") for l in ft))
+        # coder usage (chapter 36): Zeron's endpoints, read with a stand-in login from files only, never the Keychain
+        import http.server
+        seen_auth = []
+        ufail = {"code": 0, "retry": ""}          # the fake provider's failure for Claude's endpoint: 0 none
+        class UsageStub(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_GET(self):
+                seen_auth.append((self.path, self.headers.get("Authorization"), self.headers.get("anthropic-beta"), self.headers.get("chatgpt-account-id")))
+                if self.path == "/api/oauth/usage" and ufail["code"]:
+                    self.send_response(ufail["code"])
+                    if ufail["retry"]: self.send_header("Retry-After", ufail["retry"])
+                    self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"{}"); return
+                if self.path == "/api/oauth/usage":
+                    body = {"five_hour": {"utilization": 12.0, "resets_at": "2026-11-02T15:00:00Z"}, "seven_day": {"utilization": 84.0, "resets_at": "2026-11-07T10:00:00Z"}}
+                elif self.path == "/backend-api/wham/usage":
+                    body = {"plan_type": "pro", "rate_limit": {"primary_window": {"used_percent": 3, "limit_window_seconds": 18000, "reset_at": 1793000000},
+                            "secondary_window": {"used_percent": 4, "limit_window_seconds": 604800, "reset_at": 1793500000}}}
+                else:
+                    self.send_response(404); self.end_headers(); return
+                b = json.dumps(body).encode()
+                self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        usrv = http.server.HTTPServer(("127.0.0.1", 0), UsageStub)
+        threading.Thread(target=usrv.serve_forever, daemon=True).start()
+        ubase = "http://127.0.0.1:%d" % usrv.server_address[1]
+        ucl = tempfile.mkdtemp(prefix="coder-usage-claude-"); ucx = tempfile.mkdtemp(prefix="coder-usage-codex-"); uagy = tempfile.mkdtemp(prefix="coder-usage-agy-")
+        json.dump({"claudeAiOauth": {"accessToken": "tok-claude", "subscriptionType": "max"}}, open(os.path.join(ucl, ".credentials.json"), "w"))
+        json.dump({"tokens": {"access_token": "tok-codex", "account_id": "acct-1"}}, open(os.path.join(ucx, "auth.json"), "w"))
+        uenv = dict(env, CODER_USAGE_KEYCHAIN="0", CLAUDE_CONFIG_DIR=ucl, CODEX_HOME=ucx, CODER_AGY_PROFILE_DIR=uagy,
+                    CODER_USAGE_CLAUDE_URL=ubase + "/api/oauth/usage", CODER_USAGE_CODEX_URL=ubase + "/backend-api/wham/usage")
+        uj = subprocess.run([coder, "usage", "--json"], cwd=REPO, env=uenv, capture_output=True, text=True, timeout=120)
+        ut = subprocess.run([coder, "usage"], cwd=REPO, env=uenv, capture_output=True, text=True, timeout=120)
+        try: urows = json.loads(uj.stdout)
+        except ValueError: urows = []
+        un = subprocess.run([coder, "usage", "--json"], cwd=REPO, env=dict(uenv, CLAUDE_CONFIG_DIR=tempfile.mkdtemp(), CODEX_HOME=tempfile.mkdtemp(), CODER_AGY_PROFILE_DIR=tempfile.mkdtemp()), capture_output=True, text=True, timeout=120)
+        check("usage: Claude's, Codex's, and Antigravity's plan windows from Zeron's endpoints, with each login's headers; no login says so and exits 1",
+              len(urows) == 3 and [w["used_percent"] for w in urows[0]["windows"]] == [12, 84] and [w["label"] for w in urows[0]["windows"]] == ["Session", "Week"]
+              and [w["used_percent"] for w in urows[1]["windows"]] == [3, 4] and [w["label"] for w in urows[1]["windows"]] == ["Session", "Week"]
+              and urows[2].get("agent") == "antigravity" and urows[2].get("windows") == [] and "unavailable" in urows[2].get("error", "")
+              and ("/api/oauth/usage", "Bearer tok-claude", "oauth-2025-04-20", None) in seen_auth
+              and ("/backend-api/wham/usage", "Bearer tok-codex", None, "acct-1") in seen_auth
+              and "Week" in ut.stdout and "84%" in ut.stdout and "tok-" not in uj.stdout + ut.stdout + uj.stderr + ut.stderr
+              and un.returncode == 1 and '"error"' in un.stdout)
+        # Claude's probe is the computer accounts adapter's (#13598): one credential lookup through a stand-in
+        # Keychain (CODER_USAGE_KEYCHAIN=fake:DIR, never the real one), one HTTP probe in a `coder accounts-probe` child
+        ukc = tempfile.mkdtemp(prefix="coder-usage-keychain-")
+        usvc = os.path.join(ukc, "Claude Code-credentials-" + hashlib.sha256(ucl.encode()).hexdigest()[:8])
+        kenv = dict(uenv, CODER_USAGE_KEYCHAIN="fake:" + ukc)
+        def uclaude(e):
+            del seen_auth[:]
+            r = subprocess.run([coder, "usage"], cwd=REPO, env=e, capture_output=True, text=True, timeout=120)
+            return r, [a for (p, a, _, _) in seen_auth if p == "/api/oauth/usage"]
+        ka, kas = uclaude(kenv)
+        json.dump({"claudeAiOauth": {"accessToken": "tok-keychain", "subscriptionType": "pro"}}, open(usvc, "w"))
+        ki, kis = uclaude(kenv)
+        open(usvc + ".denied", "w").close()
+        kd, kds = uclaude(kenv)
+        os.remove(usvc + ".denied")
+        check("usage: a Keychain item is read before the file, a missing item falls back to the file, a refusal never does",
+              kas == ["Bearer tok-claude"] and "Claude Max" in ka.stdout and kis == ["Bearer tok-keychain"] and "Claude Pro" in ki.stdout
+              and kds == [] and "macOS Keychain denied access to the Claude Code login" in kd.stdout
+              and "tok-" not in ka.stdout + ki.stdout + kd.stdout + ka.stderr + ki.stderr + kd.stderr)
+        ubad = tempfile.mkdtemp(prefix="coder-usage-notoken-")
+        json.dump({"claudeAiOauth": {"refreshToken": "never-used"}}, open(os.path.join(ubad, ".credentials.json"), "w"))
+        nt, nts = uclaude(dict(uenv, CLAUDE_CONFIG_DIR=ubad))
+        answers = {}
+        for code, retry in ((401, ""), (429, "120"), (503, "")):
+            ufail.update(code=code, retry=retry); answers[code] = uclaude(uenv)[0]
+            if code == 429:
+                uframe = subprocess.run([coder, "accounts-probe", "--directory", ucl, "--system"], cwd=REPO, env=uenv, capture_output=True, text=True, timeout=60)
+        ufail.update(code=0, retry="")
+        off, _ = uclaude(dict(uenv, CODER_USAGE_CLAUDE_URL="http://127.0.0.1:9/api/oauth/usage"))
+        check("usage: a login with no token, 401, 429 with its Retry-After, 503 and no answer each say so; the probe's frame has no token",
+              nts == [] and "the Claude Code login has no token" in nt.stdout
+              and all(("the usage service answered %d" % c) in answers[c].stdout for c in answers)
+              and '"status":429' in uframe.stdout and '"retry_after_s":120' in uframe.stdout and '"plan":"max"' in uframe.stdout and "tok-" not in uframe.stdout + uframe.stderr
+              and "the usage service didn't answer" in off.stdout)
+        # the terminal: the last reading paints at start from the cache, the probe runs in the session, and /usage
+        # shows the meters with the failure under them (a stand-in claude on PATH; no turn is sent)
+        ufail.update(code=503)
+        del seen_auth[:]
+        tpid, tfd = pty.fork()
+        if tpid == 0:
+            tenv = dict(uenv, TERM="xterm-256color", PATH=stub + ":" + env["PATH"])
+            tenv.pop("ANTHROPIC_API_KEY", None)
+            os.execve(coder, [coder, "--engine", "claude", "--cwd", REPO], tenv)
+        fcntl.ioctl(tfd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 120, 0, 0))
+        tout = bytearray()
+        def tread(needle, seconds):
+            end = time.time() + seconds
+            while time.time() < end and needle.encode() not in shown(tout):
+                r, _, _ = select.select([tfd], [], [], 0.1)
+                if r:
+                    try:
+                        tout.extend(os.read(tfd, 65536))
+                    except OSError:
+                        break
+            return needle.encode() in shown(tout)
+        painted = tread("Enter send", 60) and tread("Week 84%", 10)
+        probed = False
+        pend = time.time() + 20
+        while time.time() < pend and not probed:
+            probed = any(p == "/api/oauth/usage" for (p, _, _, _) in seen_auth); tread("\x00never", 0.2)
+        os.write(tfd, b"/usage\r")
+        meters = tread("the usage service answered 503", 10) and b"Claude Code \xc2\xb7 Claude Max" in shown(tout)
+        os.write(tfd, b"\x03"); time.sleep(0.2); os.write(tfd, b"\x03")
+        tend = time.time() + 5; tdone = False
+        while time.time() < tend and not tdone:
+            try:
+                tdone = os.waitpid(tpid, os.WNOHANG)[0] == tpid
+            except ChildProcessError:
+                tdone = True
+            tread("\x00never", 0.1)
+        if not tdone:
+            os.kill(tpid, signal.SIGKILL); os.waitpid(tpid, 0)
+        os.close(tfd)
+        ufail.update(code=0)
+        check("usage: the terminal paints the cached Week at start, probes Claude in the session, and /usage keeps the meters with the 503 under them",
+              painted and probed and meters and b"tok-" not in shown(tout))
+        usrv.shutdown()
+        # coder import claude, then coder resume (chapter 14): a Claude Code log of this folder becomes a Coder
+        # session; the terminal UI shows its turns, and the next message continues it on Claude Code's own session
+        iwork = os.path.realpath(tempfile.mkdtemp(prefix="coder-import-"))
+        iproj = os.path.join(home, ".claude", "projects", iwork.replace("/", "-").replace(".", "-"))
+        os.makedirs(iproj, exist_ok=True)
+        ilines = [
+            {"type": "user", "sessionId": "abc-123", "cwd": iwork, "timestamp": "2026-11-02T12:00:00.000Z", "message": {"role": "user", "content": "list the files"}},
+            {"type": "attachment", "timestamp": "2026-11-02T12:00:00.100Z", "attachment": {"type": "date"}},
+            {"type": "assistant", "timestamp": "2026-11-02T12:00:01.000Z", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": iwork + "/notes/a.txt"}}]}},
+            {"type": "user", "timestamp": "2026-11-02T12:00:02.000Z", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "first line\nsecond line", "is_error": False}]}},
+            {"type": "user", "isSidechain": True, "message": {"content": "a subagent's prompt"}},
+            {"type": "user", "isMeta": True, "message": {"content": "a reminder"}},
+            {"type": "api-request-blob", "message": {"content": "x" * 1200000}},
+            {"type": "assistant", "timestamp": "2026-11-02T12:00:05.000Z", "message": {"content": [{"type": "text", "text": "Two files."}]}},
+        ]
+        with open(os.path.join(iproj, "abc-123.jsonl"), "w") as f:
+            f.write("".join(json.dumps(l) + "\n" for l in ilines))
+        imp = subprocess.run([coder, "import", "claude", "--cwd", iwork, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        irow = json.loads(imp.stdout) if imp.returncode == 0 and imp.stdout.startswith("{") else {}
+        ilog = subprocess.run([coder, "log", irow.get("id", "none")], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("import claude: the newest Claude Code session, its turn, tool and reply; a subagent's, meta and long lines left out",
+              irow.get("turns") == 1 and "› list the files" in ilog.stdout and "⏺ Read(notes/a.txt)" in ilog.stdout and "└ first line" in ilog.stdout
+              and "● Two files" in ilog.stdout and "└ finished · 5.0s · 1 step" in ilog.stdout and "subagent" not in ilog.stdout and "reminder" not in ilog.stdout)
+        rargv = os.path.join(home, "resume-argv")
+        rpid, rfd = pty.fork()
+        if rpid == 0:
+            os.chdir(iwork)
+            os.execve(coder, [coder, "resume", "claude"], dict(fenv, TERM="xterm-256color", PWD=iwork, CLAUDE_STUB_ARGV=rargv))
+        fcntl.ioctl(rfd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+        rout = bytearray()
+        def rread(needle, seconds):
+            end = time.time() + seconds
+            while time.time() < end and needle.encode() not in shown(rout):
+                r, _, _ = select.select([rfd], [], [], 0.1)
+                if r:
+                    try:
+                        rout.extend(os.read(rfd, 65536))
+                    except OSError:
+                        break
+            return needle.encode() in shown(rout)
+        shown_turn = rread("Your next message continues it", 120) and b"list the files" in shown(rout) and b"Two files" in shown(rout)
+        check("resume claude: the terminal UI shows the turn and continues on its Claude Code session", shown_turn and b"on its Claude Code session" in shown(rout))
+        rdone0 = shown(rout).count(b"finished")       # the shown turn's own ending is on screen already
+        os.write(rfd, b"and now?\r")
+        rend = time.time() + 60
+        while time.time() < rend and shown(rout).count(b"finished") <= rdone0:
+            rread("\x00never", 0.2)
+        rargs = [json.loads(x) for x in open(rargv)] if os.path.exists(rargv) else []
+        check("resume claude: the next message resumes Claude Code's session abc-123", len(rargs) == 1 and "--resume=abc-123" in rargs[0] and "--fork-session" in rargs[0])
+        os.write(rfd, b"/resume\r")
+        check("/resume lists this folder's sessions", rread("/resume ID continues one.", 10) and rread(irow.get("id", "none") + " · claude · 1 turn", 2))
+        os.write(rfd, b"\x03"); time.sleep(0.2); os.write(rfd, b"\x03")
+        rend = time.time() + 5; rdone = False
+        while time.time() < rend and not rdone:
+            try:
+                rdone = os.waitpid(rpid, os.WNOHANG)[0] == rpid
+            except ChildProcessError:
+                rdone = True
+            rread("\x00never", 0.1)
+        if not rdone:
+            os.kill(rpid, signal.SIGKILL); os.waitpid(rpid, 0)
+        check("resume: Ctrl-C leaves the resumed terminal UI", rdone)
+        os.close(rfd)
+        # the same asks through coder acp (chapter 16): the editor is asked with session/request_permission, and its answer reaches Claude Code
+        acp_answers = os.path.join(home, "acp-answers")
+        pa = subprocess.Popen([coder, "acp", "--engine", "claude", "--allow", "write", "--ceiling", "write"], cwd=REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
+                              env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=acp_answers))
+        def pa_send(o):
+            pa.stdin.write(json.dumps(o) + "\n"); pa.stdin.flush()
+        pa_send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
+        pa_send({"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": work, "mcpServers": []}})
+        psid = ""
+        for _ in range(20):
+            pm = json.loads(pa.stdout.readline() or "{}")
+            if pm.get("id") == 2:
+                psid = pm.get("result", {}).get("sessionId", "")
+                break
+        pa_send({"jsonrpc": "2.0", "id": 3, "method": "session/prompt", "params": {"sessionId": psid, "prompt": [{"type": "text", "text": "go"}]}})
+        pgot = []
+        for line in iter(pa.stdout.readline, ""):      # lines can come several at once: no select over a buffered pipe
+            m = json.loads(line); pgot.append(m)
+            if m.get("method") == "session/request_permission":
+                pa_send({"jsonrpc": "2.0", "id": m["id"], "result": {"outcome": {"outcome": "selected", "optionId": "allow_once"}}})
+            if m.get("id") == 3: break
+        pa.stdin.close()
+        try:
+            pa.wait(15)
+        except subprocess.TimeoutExpired:
+            pa.kill()
+        preqs = [m for m in pgot if m.get("method") == "session/request_permission"]
+        psent = [json.loads(x)["behavior"] for x in open(acp_answers)] if os.path.exists(acp_answers) else []
+        check("acp: an ask goes to the editor as session/request_permission, and its allow reaches Claude Code",
+              len(preqs) == 1 and preqs[0]["params"]["sessionId"] == psid and psid.startswith("acp-") and "stub-outside" in preqs[0]["params"]["toolCall"]["title"]
+              and [o["kind"] for o in preqs[0]["params"]["options"]] == ["allow_once", "allow_always", "reject_once"]
+              and psent == ["allow", "allow", "deny"] and pgot and pgot[-1].get("result") == {"stopReason": "end_turn"})
+        pdiffs = [c for m in pgot if m.get("method") == "session/update" for c in m["params"]["update"].get("content", []) if c.get("type") == "diff"]
+        check("acp: a Write reaches the editor as diff content with its new text",
+              any(c["path"].endswith("/a.txt") and c["oldText"] is None and c["newText"] == "hi" for c in pdiffs))
+        mcp_out = os.path.join(home, "mcp-answers")
+        subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--cwd", work, "--json"], cwd=REPO,
+                       env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=mcp_out, CLAUDE_STUB_MODE="mcp"), capture_output=True, text=True, timeout=120)
+        got = [json.loads(x)["mcp"] for x in open(mcp_out)] if os.path.exists(mcp_out) else []
+        text = got[0]["result"]["content"][0]["text"] if got and got[0] and "result" in got[0] else ""
+        check("--coder-tools: Claude Code's call to coder_ls gets the session list", got and got[0].get("id") == 7 and sid[:15] in text)
+        sub_out = os.path.join(home, "sub-answers")
+        subrun = subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--allow", "write", "--ceiling", "write", "--deadline", "60", "--cwd", work, "--json"], cwd=REPO,
+                                env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=sub_out, CLAUDE_STUB_MODE="mcprun"), capture_output=True, text=True, timeout=120)
+        psid = next((json.loads(l)["id"] for l in subrun.stdout.splitlines() if '"kind":"session"' in l), "")
+        kid = None
+        for _ in range(100):
+            rows = json.loads(subprocess.run([coder, "ls", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
+            kid = next((r for r in rows if r.get("task") == "child task"), None)
+            if kid and kid["state"] != "running":
+                break
+            time.sleep(0.2)
+        head = {}
+        if kid:
+            klog = subprocess.run([coder, "log", kid["id"], "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout
+            head = next((json.loads(l) for l in klog.splitlines() if '"kind":"session"' in l), {})
+        check("a subagent keeps its parent's policy and no more time, and reports back",
+              head.get("report_to") == psid and head.get("allow") == "write" and head.get("ceiling") == "write" and 0 < head.get("deadline_s", 0) <= 60)
+        hook_home = tempfile.mkdtemp(prefix="coder-hook-"); os.makedirs(os.path.join(hook_home, ".openagents/coder/plugins"))
+        with open(os.path.join(hook_home, ".openagents/coder/plugins/guard.json"), "w") as f:
+            f.write(json.dumps({"name": "guard", "hooks": [{"on": "tool_call", "run": "case \"$CODER_TOOL\" in *rm*) echo no rm here; exit 1;; esac"}]}))
+        hook_out = os.path.join(hook_home, "answers")
+        subprocess.run([coder, "run", "go", "--engine", "claude", "--cwd", work, "--json"], cwd=REPO,
+                       env=dict(env, HOME=hook_home, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=hook_out, CLAUDE_STUB_MODE="hook"), capture_output=True, text=True, timeout=120)
+        hooked = [json.loads(x) for x in open(hook_out)] if os.path.exists(hook_out) else []
+        check("a tool_call hook refuses rm and lets ls run", [(h["command"], h["decision"]) for h in hooked] == [("ls", "allow"), ("rm -rf build", "deny")])
+        # Microcoder's commands pass the same hooks and policy before they run (chapter 15)
+        mc_home = tempfile.mkdtemp(prefix="coder-mchook-"); os.makedirs(os.path.join(mc_home, ".openagents/coder/plugins"))
+        with open(os.path.join(mc_home, ".openagents/coder/plugins/guard.json"), "w") as f:
+            f.write(json.dumps({"name": "guard", "hooks": [{"on": "tool_call", "run": "case \"$CODER_TOOL\" in *local-step*) echo no steps here; exit 1;; esac"}]}))
+        mh = subprocess.run([coder, "run", "say ok", "--engine", "psionic", "--json"], cwd=REPO, env=dict(env, HOME=mc_home), capture_output=True, text=True, timeout=600)
+        ml = [json.loads(l) for l in mh.stdout.splitlines() if l.startswith("{")]
+        mhook = [l for l in ml if l["kind"] == "hook"]
+        mres = [l for l in ml if l["kind"] == "result"]
+        check("microcoder: a tool_call hook refuses its command, and the model is told why",
+              len(mhook) == 1 and not mhook[0]["ok"] and mhook[0]["tool"] == "Bash(echo local-step)"
+              and len(mres) == 1 and mres[0]["error"] and "no steps here" in mres[0]["text"] and ml[-1].get("ending") == "finished")
+        mp_run = subprocess.run([coder, "run", "say ok", "--engine", "psionic", "--ceiling", "write", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=600)
+        mpl = [json.loads(l) for l in mp_run.stdout.splitlines() if l.startswith("{")]
+        check("microcoder: the policy refuses a command above the ceiling",
+              any(l["kind"] == "approval" and l["verdict"] == "refuse" and l["tool"] == "Bash(echo local-step)" for l in mpl)
+              and any(l["kind"] == "result" and l["error"] for l in mpl))
+        # the agent's terminal (chapter 37): a program that asks a question gets an answer typed into it
+        term_out = os.path.join(home, "term-answers")
+        calls = [{"name": "terminal_start", "arguments": {"command": "printf 'name? '; read n; echo hi-$n; sleep 5"}},
+                 {"name": "terminal_keys", "arguments": {"keys": "bob<Enter>"}},
+                 {"name": "terminal_stop", "arguments": {}}]
+        subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--cwd", work, "--json"], cwd=REPO,
+                       env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=term_out, CLAUDE_STUB_MODE="calls", CLAUDE_STUB_CALLS=json.dumps(calls)),
+                       capture_output=True, text=True, timeout=120)
+        tr = [json.loads(x)["mcp"]["result"]["content"][0]["text"] for x in open(term_out)] if os.path.exists(term_out) else []
+        check("the agent's terminal: a prompt, typed keys, the answer on screen, then stopped",
+              len(tr) == 3 and "name?" in tr[0] and "hi-bob" in tr[1] and tr[1].startswith("[running") and tr[2].startswith("[ended"))
+        # System One as a tool: coder_decide runs `coder decide`; with no key it says so, and an option with a comma is refused
+        dec_out = os.path.join(work, "decide.jsonl")
+        calls = [{"name": "coder_decide", "arguments": {"question": "Reply needed?", "options": ["yes", "no"], "state": "thanks!"}},
+                 {"name": "coder_decide", "arguments": {"question": "Pick", "options": ["a,b", "c"]}}]
+        denv = dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=dec_out, CLAUDE_STUB_MODE="calls", CLAUDE_STUB_CALLS=json.dumps(calls))
+        denv.pop("BASETEN_API_KEY", None)
+        subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--cwd", work, "--json"], cwd=REPO, env=denv, capture_output=True, text=True, timeout=120)
+        dr = [json.loads(x)["mcp"]["result"] for x in open(dec_out)] if os.path.exists(dec_out) else []
+        check("coder_decide: System One as a tool, with no key it says so; an option with a comma is refused",
+              len(dr) == 2 and dr[0]["isError"] and "no System One key" in dr[0]["content"][0]["text"]
+              and dr[1]["isError"] and "comma" in dr[1]["content"][0]["text"])
+        badp = subprocess.run([coder, "run", "hi", "--allow", "run", "--ceiling", "write"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("policy: --allow can't pass --ceiling", badp.returncode == 2 and "--allow can't be above --ceiling" in badp.stderr)
+        # deadlines and reports (chapter 14): a job past its deadline expires; a job's result reaches the session that started it
+        # The parent works until both jobs have reported (the gate file), not for a fixed time: a
+        # parent that ended first left the child's report unread on a loaded host (#13334).
+        gate = os.path.join(home, "report-gate")
+        par = subprocess.run([coder, "run", "$ i=0; while [ ! -e " + gate + " ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i + 1)); done", "--engine", "echo", "--detach"],
+                             cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout.strip()
+        exp = subprocess.run([coder, "run", "$ sleep 30", "--engine", "echo", "--deadline", "2", "--report-to", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("--deadline: the job expires, exit 124", exp.returncode == 124 and '"ending":"expired"' in exp.stdout)
+        subprocess.run([coder, "run", "child says hi", "--engine", "echo", "--report-to", par], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        open(gate, "w").close()
+        # The parent is "finished" for a moment between its turns (an end line, then the report's
+        # user line), so it is done only once its own turn and both reports' turns have ended.
+        for _ in range(100):
+            st = subprocess.run([coder, "status", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+            plog = subprocess.run([coder, "log", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout
+            if '"running"' not in st.stdout and plog.count('"kind":"end"') >= 3:
+                break
+            time.sleep(0.2)
+        plines = [json.loads(l) for l in plog.splitlines() if l.startswith("{")]
+        jobs = [l["ending"] for l in plines if l["kind"] == "job"]
+        check("--report-to: the parent's log holds both jobs' endings", sorted(jobs) == ["expired", "finished"])
+        check("--report-to: the running parent takes a report as its next turn", any(l["kind"] == "user" and l["text"].startswith("Job ") and "child says hi" in l["text"] for l in plines))
+        # a redirect (chapter 20): ID.turnstop ends the current turn as redirected, and the inbox message is the next turn
+        rj = subprocess.run([coder, "run", "$ sleep 20", "--engine", "echo", "--detach"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout.strip()
+        sd = os.path.join(home, ".openagents", "coder", "sessions")
+        for _ in range(50):
+            if os.path.exists(os.path.join(sd, rj + ".jsonl")):
+                break
+            time.sleep(0.1)
+        time.sleep(0.5)
+        os.makedirs(os.path.join(sd, rj + ".inbox"), exist_ok=True)
+        with open(os.path.join(sd, rj + ".inbox", "1.msg"), "w") as f:
+            f.write('{"text":"watchdog says try again"}\n')
+        with open(os.path.join(sd, rj + ".turnstop"), "w") as f:
+            f.write("redirect\n")
+        for _ in range(100):
+            st = subprocess.run([coder, "status", rj, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+            if json.loads(st.stdout).get("state") == "finished":
+                break
+            time.sleep(0.2)
+        rl = [json.loads(l) for l in subprocess.run([coder, "log", rj, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout.splitlines() if l.startswith("{")]
+        check("a redirect ends the turn as redirected, and the message is the next turn",
+              [l["ending"] for l in rl if l["kind"] == "end"] == ["redirected", "finished"] and any(l["kind"] == "user" and l["text"] == "watchdog says try again" for l in rl))
+        # coder acp (chapter 16): an editor's session, two prompts in one conversation, and a cancel
+        acp = subprocess.Popen([coder, "acp", "--engine", "echo"], cwd=REPO, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+        def acp_send(o):
+            acp.stdin.write(json.dumps(o) + "\n"); acp.stdin.flush()
+        # a reader thread, not select: select on a buffered text pipe misses lines that arrive together
+        acp_q = queue.Queue()
+        threading.Thread(target=lambda: [acp_q.put(l) for l in iter(acp.stdout.readline, "")] and None, daemon=True).start()
+        def acp_until(rid, secs=60):
+            got, end = [], time.time() + secs
+            while time.time() < end:
+                try:
+                    line = acp_q.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                got.append(json.loads(line))
+                if got[-1].get("id") == rid:
+                    break
+            return got
+        acp_send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
+        init = acp_until(1)
+        acp_send({"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": REPO, "mcpServers": []}})
+        sess = (acp_until(2) or [{}])[-1].get("result", {}).get("sessionId", "")
+        acp_send({"jsonrpc": "2.0", "id": 3, "method": "session/prompt", "params": {"sessionId": sess, "prompt": [{"type": "text", "text": "hello acp"}]}})
+        g3 = acp_until(3)
+        acp_send({"jsonrpc": "2.0", "id": 4, "method": "session/prompt", "params": {"sessionId": sess, "prompt": [{"type": "text", "text": "$ echo second"}]}})
+        g4 = acp_until(4)
+        acp_send({"jsonrpc": "2.0", "id": 5, "method": "session/prompt", "params": {"sessionId": sess, "prompt": [{"type": "text", "text": "$ sleep 30"}]}})
+        time.sleep(2)
+        acp_send({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": sess}})
+        g5 = acp_until(5, 20)
+        acp.stdin.close()
+        try:
+            acp.wait(15)
+        except subprocess.TimeoutExpired:
+            acp.kill()
+        ups = lambda g: [m["params"]["update"] for m in g if m.get("method") == "session/update"]
+        check("acp: initialize and session/new", init and init[-1].get("result", {}).get("protocolVersion") == 1 and sess.startswith("acp-")
+              and init[-1]["result"]["agentCapabilities"]["loadSession"] is True)
+        check("acp: a prompt streams the reply and ends the turn", any(u["sessionUpdate"] == "agent_message_chunk" and "hello acp" in u["content"]["text"] for u in ups(g3))
+              and g3[-1].get("result") == {"stopReason": "end_turn"})
+        check("acp: a command is a tool call, then its update", [u["sessionUpdate"] for u in ups(g4)] == ["tool_call", "tool_call_update"] and ups(g4)[0]["kind"] == "execute")
+        check("acp: session/cancel ends the turn as cancelled", g5 and g5[-1].get("result") == {"stopReason": "cancelled"} and acp.returncode == 0)
+        # a new editor process reopens the conversation: session/load replays it, oldest turn first, and a prompt continues it
+        acp = subprocess.Popen([coder, "acp", "--engine", "echo"], cwd=REPO, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+        def acp_until(rid, secs=60):     # a replay writes many lines at once: read them as they come, without select
+            got = []
+            for line in iter(acp.stdout.readline, ""):
+                got.append(json.loads(line))
+                if got[-1].get("id") == rid:
+                    break
+            return got
+        acp_send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
+        acp_until(1)
+        acp_send({"jsonrpc": "2.0", "id": 2, "method": "session/load", "params": {"sessionId": sess, "cwd": REPO, "mcpServers": []}})
+        l2 = acp_until(2)
+        acp_send({"jsonrpc": "2.0", "id": 3, "method": "session/load", "params": {"sessionId": "acp-0", "cwd": REPO, "mcpServers": []}})
+        l3 = acp_until(3)
+        acp_send({"jsonrpc": "2.0", "id": 4, "method": "session/prompt", "params": {"sessionId": sess, "prompt": [{"type": "text", "text": "$ echo after-load"}]}})
+        l4 = acp_until(4)
+        acp.stdin.close()
+        try:
+            acp.wait(15)
+        except subprocess.TimeoutExpired:
+            acp.kill()
+        lu = ups(l2)
+        check("acp: session/load in a new process replays the conversation oldest first, refuses an unknown ID, and a prompt continues it",
+              [u["content"]["text"] for u in lu if u["sessionUpdate"] == "user_message_chunk"] == ["hello acp", "$ echo second", "$ sleep 30"]
+              and any(u["sessionUpdate"] == "agent_message_chunk" and "hello acp" in u["content"]["text"] for u in lu)
+              and any(u["sessionUpdate"] == "tool_call" for u in lu) and l2[-1].get("result", "missing") is None
+              and l3 and "error" in l3[-1] and l4 and l4[-1].get("result") == {"stopReason": "end_turn"}
+              and any(u["sessionUpdate"] == "tool_call_update" and "after-load" in json.dumps(u) for u in ups(l4)))
+        # a progress bar and colors read back as a terminal shows them (chapter 37)
+        bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]
+        check("output reads as the screen shows it", len(res) == 1 and res[0]["text"] == "100%\nok")
+        tty = subprocess.run([coder, "run", "$ test -t 1 && echo on-a-terminal; stty size; cat; echo after", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        tres = [json.loads(l) for l in tty.stdout.splitlines() if '"kind":"result"' in l]
+        check("a command runs on a terminal the screen's width, with input already ended", len(tres) == 1 and tres[0]["text"] == "on-a-terminal\n24 96\nafter")
+        # a plugin's command runs; disabled, nothing it registered remains (chapter 15)
+        plugdir = os.path.join(home, ".openagents", "coder", "plugins")
+        os.makedirs(plugdir, exist_ok=True)
+        with open(os.path.join(plugdir, "demo.json"), "w") as f:
+            f.write('{"name":"demo","commands":[{"name":"hello","run":"echo plugin-ok"}]}')
+        ran = subprocess.run([coder, "run", "/hello", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        check("a plugin's command runs", any(json.loads(l).get("text") == "plugin-ok" for l in ran.stdout.splitlines() if '"kind":"result"' in l))
+        subprocess.run([coder, "run", "/plugin disable demo", "--engine", "echo"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        pl = json.loads(subprocess.run([coder, "plugins", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
+        check("a disabled plugin keeps no command", pl == [{"name": "demo", "state": "disabled", "signed": False, "commands": [], "defines": [], "provides": [], "uses": []}])
+        # a plugin's hooks run on their events, in the session's folder, with the session's context
+        with open(os.path.join(plugdir, "hooks.json"), "w") as f:
+            f.write('{"name":"hooks","hooks":[{"on":"session_start","run":"echo start-$CODER_EVENT"},{"on":"turn_end","run":"echo end-$CODER_ENDING-$CODER_ENGINE"}]}')
+        hk = subprocess.run([coder, "run", "hi", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        hl = [json.loads(l) for l in hk.stdout.splitlines() if '"kind":"hook"' in l]
+        check("a plugin's hooks run on session_start and turn_end", [(h["on"], h["text"]) for h in hl] == [("session_start", "start-session_start"), ("turn_end", "end-finished-echo")])
+        os.remove(os.path.join(plugdir, "hooks.json"))
+        # capabilities and profiles: a user's command gets its provider's command; a profile loads its plugins in order
+        with open(os.path.join(plugdir, "fmt.json"), "w") as f:
+            f.write('{"name":"fmt","defines":[{"name":"format"}],"provides":[{"name":"format","run":"echo formatted"}]}')
+        with open(os.path.join(plugdir, "tidy.json"), "w") as f:
+            f.write('{"name":"tidy","uses":["format"],"commands":[{"name":"tidy","run":"sh -c \\"$CODER_CAP_FORMAT\\""}]}')
+        td = subprocess.run([coder, "run", "/tidy", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        check("capabilities: a user's command runs its provider's command", any(json.loads(l).get("text") == "formatted" for l in td.stdout.splitlines() if '"kind":"result"' in l))
+        os.makedirs(os.path.join(home, ".openagents", "coder", "profiles"), exist_ok=True)
+        with open(os.path.join(home, ".openagents", "coder", "profiles", "lean.json"), "w") as f:
+            f.write('{"plugins":["tidy","fmt"]}')
+        lean = json.loads(subprocess.run([coder, "plugins", "--json", "--profile", "lean"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
+        check("profiles: only the named plugins, in order; a user before its provider fails",
+              [(x["name"], x["state"]) for x in lean] == [("tidy", "failed"), ("fmt", "active")] and lean[0]["why"] == "uses format, which no active plugin provides")
+        nop = subprocess.run([coder, "plugins", "--profile", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("profiles: an unknown profile is refused", nop.returncode == 2 and "no such profile" in nop.stderr)
+        os.remove(os.path.join(plugdir, "fmt.json")); os.remove(os.path.join(plugdir, "tidy.json"))
+        # --on ssh:DEST (chapter 23): a stand-in ssh runs the remote line here, in another HOME whose openagents is this checkout
+        rhome = tempfile.mkdtemp(prefix="coder-remote-"); os.symlink(REPO, os.path.join(rhome, "openagents"))
+        with open(os.path.join(fake, "ssh"), "w") as f:
+            f.write("#!/bin/sh\nfor a; do last=\"$a\"; done\nHOME=" + rhome + " exec sh -c \"$last\"\n")
+        os.chmod(os.path.join(fake, "ssh"), 0o755)
+        senv = dict(env, PATH=fake + ":" + env["PATH"])
+        rr = subprocess.run([coder, "run", "$ echo remote-ok", "--engine", "echo", "--json", "--on", "ssh:box"], cwd=REPO, env=senv, capture_output=True, text=True, timeout=600)
+        rl = [json.loads(l) for l in rr.stdout.splitlines() if l.startswith("{")]
+        rid = rl[0].get("id", "") if rl and rl[0].get("kind") == "session" else ""
+        recs = [n for n in os.listdir(os.path.join(home, ".openagents", "coder", "sessions")) if n.endswith(".remote")]
+        rs = subprocess.run([coder, "status", rid[:15] or "none", "--json"], cwd=REPO, env=senv, capture_output=True, text=True, timeout=120)
+        check("--on ssh: the run happens on the other machine, is recorded here, and status by prefix is forwarded",
+              rr.returncode == 0 and any(l.get("text") == "remote-ok" for l in rl) and recs == [rid + ".remote"]
+              and any(n.startswith(rid) for n in os.listdir(os.path.join(rhome, ".openagents", "coder", "sessions"))) and rid in rs.stdout and "finished" in rs.stdout)
+        # replay (chapter 9): a Microcoder run recorded from Vertex replays through the loop with no credentials, the same each time
+        import re, shutil
+        fx = os.path.join(HERE, "fixtures", "micro-replay")
+        rw = tempfile.mkdtemp(prefix="coder-replay-")
+        renv = dict(env, OPENAGENTS_SECRETS="/nonexistent")
+        for k in ("VERTEX_ACCESS_TOKEN", "GOOGLE_APPLICATION_CREDENTIALS", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
+            renv.pop(k, None)
+        def replay():
+            rd = tempfile.mkdtemp(prefix="coder-replay-dir-")
+            for n in ("1.http", "2.http"):
+                shutil.copy(os.path.join(fx, n), rd)
+            r = subprocess.run([coder, "run", "Run `echo replay-check` and then tell me what it printed, in one short sentence.", "--engine", "micro", "--json", "--cwd", rw],
+                               cwd=REPO, env=dict(renv, GW_REPLAY=rd), capture_output=True, text=True, timeout=300)
+            # the journal line names the worker's journal file, a new one each run
+            return r.returncode, re.sub(r'"(id|cwd)":"[^"]*"|"(ms|started_us)":[0-9]*|"path":"[^"]*\.ajr"', "", r.stdout)
+        ra, rb = replay(), replay()
+        check("replay: recorded gateway streams run through the loop with no credentials, byte-identical each time",
+              ra[0] == 0 and ra == rb and '"text":"It printed replay-check."' in ra[1] and '"label":"Bash(echo replay-check)"' in ra[1])
+        # memory (chapter 19): remember, a conflict, a revise that settles it, forget; recall ranks by replayed embeddings
+        mhome = tempfile.mkdtemp(prefix="coder-memory-")
+        menv = dict(renv, HOME=mhome)
+        def mq(*a, e=None):
+            return subprocess.run([coder] + list(a), cwd=rw, env=e or menv, capture_output=True, text=True, timeout=300)
+        m1 = mq("remember", "deploy", "Ship openagents.com only through coax/web/release.sh.", "--project")
+        m2 = mq("remember", "build", "Build Coder with make.")
+        m3 = mq("remember", "build", "Build with the old script.")
+        m4 = mq("revise", "build", "Build with coder/tui/coder.sh.", "--reason", "resolve")
+        m5 = mq("remember", "cake", "The office cake is lemon on Fridays.")
+        m6 = mq("forget", "cake")
+        mdir = os.path.join(mhome, ".openagents", "coder", "memory")
+        evs = open(os.path.join(mdir, "events.jsonl")).read()
+        mfx = tempfile.mkdtemp(prefix="coder-memory-replay-")
+        for n in ("1.http", "2.http", "3.http"):
+            shutil.copy(os.path.join(HERE, "fixtures", "memory-replay", n), mfx)
+        mr = mq("recall", "how do I put the website live?", "--json", e=dict(menv, GW_REPLAY=mfx))
+        mj = json.loads(mr.stdout or "{}")
+        vlines = open(os.path.join(mdir, "vectors.jsonl")).read().count("\n")
+        m7 = mq("forget", "build")
+        vafter = open(os.path.join(mdir, "vectors.jsonl")).read().count("\n")
+        # the first message of a session carries the remembered facts, logged so replay rebuilds it; --no-memory leaves them out
+        mb = mq("run", "hi", "--engine", "echo", "--json")
+        mbl = [json.loads(l) for l in mb.stdout.splitlines() if l.startswith("{")]
+        mbid = next((l["id"] for l in mbl if l.get("kind") == "session"), "")
+        mbr = mq("replay", mbid)
+        mbn = mq("run", "hi", "--engine", "echo", "--no-memory", "--json")
+        check("memory: a session's first message carries the remembered facts, and replay rebuilds it",
+              any(l.get("kind") == "memory" and l.get("text") == "Facts I asked you to remember:\n- deploy: Ship openagents.com only through coax/web/release.sh." for l in mbl)
+              and "You said: Facts I asked you to remember:" in mb.stdout and "1 of 1 requests rebuilt with the same bytes." in mbr.stdout
+              and '"kind":"memory"' not in mbn.stdout and "You said: hi" in mbn.stdout)
+        # consent (chapter 18): facts reach an engine only under a grant for it and their class; the ledger counts what went
+        def gq(*a):
+            gd = tempfile.mkdtemp(prefix="coder-gate-")
+            for n in ("1.http", "2.http"):
+                shutil.copy(os.path.join(fx, n), gd)
+            r = mq("run", "Run `echo replay-check` and then tell me what it printed, in one short sentence.", "--engine", "micro", "--json", e=dict(menv, GW_REPLAY=gd))
+            return next((json.loads(l) for l in r.stdout.splitlines() if '"kind":"memory"' in l), {})
+        g0 = gq()
+        gu = mq("consent", "grant", "micro", "--classes", "user")
+        g1 = gq()
+        gp = mq("consent", "grant", "micro", "--classes", "project")
+        g2 = gq()
+        gr = mq("consent", "revoke", "1")
+        g3 = gq()
+        gj = json.loads(mq("consent", "--json").stdout or "{}")
+        check("consent: remembered facts reach an engine only under a grant for their class; a revoke stops them; the ledger replays",
+              g0 == {"kind": "memory", "text": "", "withheld": 1} and g1.get("withheld") == 1 and gu.returncode == 0 and gp.returncode == 0 and gr.returncode == 0
+              and g2.get("text") == "Facts I asked you to remember:\n- deploy: Ship openagents.com only through coax/web/release.sh." and "withheld" not in g2
+              and g3.get("withheld") == 1 and gj.get("events") == 7
+              and [(x["engine"], x["classes"], x["state"], x["sends"]) for x in gj.get("grants", [])] == [("microcoder", "user", "active", 1), ("microcoder", "project", "revoked", 1)])
+        open(os.path.join(mdir, "events.jsonl"), "w").write(evs.replace('"from":0', '"from":5', 1))
+        m8 = mq("recall")
+        check("memory: remember, conflict, revise, forget; recall ranks by embeddings; forgotten text leaves the file; an edited log is refused",
+              all(x.returncode == 0 for x in (m1, m2, m4, m5, m6, m7)) and "now holds two texts" in m3.stdout and "version 3" in m4.stdout
+              and "lemon" not in evs and len(evs.splitlines()) == 6
+              and mr.returncode == 0 and mj.get("ranked") is True and [f["key"] for f in mj.get("facts", [])] == ["deploy", "build"]
+              and mj["facts"][0]["score"] > mj["facts"][1]["score"] and mj["facts"][1]["version"] == 3
+              and vlines == 2 and vafter == 1 and m8.returncode == 1 and "does not verify" in m8.stderr)
+        # where a fact was said (chapter 19): its session line's digest, checked on every read; a changed line is not used
+        ohome = tempfile.mkdtemp(prefix="coder-origin-")
+        oenv = dict(renv, HOME=ohome)
+        def oq(*a):
+            return subprocess.run([coder] + list(a), cwd=rw, env=oenv, capture_output=True, text=True, timeout=300)
+        orun = [json.loads(x) for x in oq("run", "the build command is make -C coder", "--engine", "echo", "--json").stdout.splitlines() if x.startswith("{")]
+        osid = orun[0]["id"] if orun else ""
+        o1 = oq("remember", "build", "make -C coder", "--session", osid)
+        o2 = oq("remember", "editor", "vim")
+        oj1 = json.loads(oq("recall", "--json").stdout or "{}")
+        ofile = os.path.join(ohome, ".openagents", "coder", "sessions", osid + ".jsonl")
+        otext = open(ofile).read()
+        open(ofile, "w").write(otext.replace("make -C coder", "make -C coax"))
+        oj2 = json.loads(oq("recall", "--json").stdout or "{}")
+        obrief = next((json.loads(x) for x in oq("run", "hi", "--engine", "echo", "--json").stdout.splitlines() if '"kind":"memory"' in x), {})
+        os.remove(ofile)
+        oj3 = json.loads(oq("recall", "--json").stdout or "{}")
+        o4 = oq("remember", "x", "y", "--session", "nope")
+        def osaid(j):
+            return [f.get("said_in", {}).get("state") for f in j.get("facts", [])]
+        check("memory: a fact remembered from a session carries its line's digest; a changed line is not used, a removed one is gone",
+              o1.returncode == 0 and o2.returncode == 0 and osaid(oj1) == ["held", None] and oj1["facts"][0]["said_in"] == {"session": osid, "line": 2, "state": "held"}
+              and osaid(oj2) == ["changed", None] and obrief.get("text") == "Facts I asked you to remember:\n- editor: vim"
+              and osaid(oj3) == ["gone", None] and o4.returncode == 6)
+        # each Microcoder ending through coder run (chapter 9), from replayed responses
+        def mhttp(content, status=200):
+            if status != 200:
+                return "HTTP/2 %d \r\ncontent-type: application/json\r\n\r\n{\"error\":{\"code\":%d,\"message\":\"overloaded\"}}\n" % (status, status)
+            chunk = {"choices": [{"delta": {"content": content, "role": "assistant"}, "index": 0}], "object": "chat.completion.chunk"}
+            last = {"choices": [{"delta": {"content": ""}, "finish_reason": "stop", "index": 0}], "object": "chat.completion.chunk",
+                    "usage": {"prompt_tokens": 500, "completion_tokens": 40, "total_tokens": 540}}
+            return "HTTP/2 200 \r\ncontent-type: text/event-stream\r\n\r\ndata: " + json.dumps(chunk) + "\n\ndata: " + json.dumps(last) + "\n\ndata: [DONE]\n\n"
+        act = lambda **k: json.dumps(dict({"rationale": "r", "commands": [], "view": [], "finished": False, "reply": "", "ask": "none"}, **k))
+        endings = {}
+        for name, rs in {"asked": [mhttp(act(reply="Which file?", ask="question"))], "bad_replies": [mhttp("not json")] * 3,
+                         "no_capacity": [mhttp("", 503)] * 4, "idle": [mhttp(act())] * 3}.items():
+            ed = tempfile.mkdtemp(prefix="coder-ending-")
+            for i, r in enumerate(rs):
+                with open(os.path.join(ed, "%d.http" % (i + 1)), "w") as f:
+                    f.write(r)
+            ep = subprocess.run([coder, "run", "do it", "--engine", "micro", "--json", "--cwd", ed], cwd=REPO, env=dict(renv, HOME=tempfile.mkdtemp(prefix="coder-ending-home-"), GW_REPLAY=ed), capture_output=True, text=True, timeout=300)
+            el = [json.loads(l) for l in ep.stdout.splitlines() if l.startswith("{")]
+            endings[name] = (ep.returncode, el[-1].get("ending") if el else "", el[-1].get("text", "") if el else "", [l["text"] for l in el if l["kind"] == "reply"])
+        ends_ok = (endings["asked"] == (0, "finished", "", ["Which file?"])
+                   and endings["bad_replies"][:3] == (1, "failed", "The model's replies didn't fit Microcoder's schema three times in a row.")
+                   and endings["no_capacity"][:3] == (1, "failed", "No model answered: overloaded")
+                   and endings["idle"][:3] == (1, "failed", "The model gave nothing to do and no reply three times in a row."))
+        if not ends_ok:
+            print("     endings: %r" % (endings,))
+        check("microcoder endings through coder run: asked, bad_replies, no_capacity and idle", ends_ok)
+        # goals (chapter 14): the check runs after each finished turn; its output is the next turn until it passes
+        gw = tempfile.mkdtemp(prefix="coder-goal-")
+        gm = subprocess.run([coder, "run", "$ echo working", "--engine", "echo", "--json", "--cwd", gw, "--goal", "test -f c || { touch c; echo c-missing; false; }"],
+                            cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+        gl = [json.loads(l) for l in gm.stdout.splitlines() if l.startswith("{")]
+        gu = subprocess.run([coder, "run", "$ echo trying", "--engine", "echo", "--json", "--cwd", gw, "--goal", "false", "--goal-turns", "2"],
+                            cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+        gx = [json.loads(l) for l in gu.stdout.splitlines() if l.startswith("{")]
+        check("goals: a failing check's output is the next turn until it passes; a cap the person sets ends it unmet",
+              gm.returncode == 0 and [(l["turn"], l["met"]) for l in gl if l["kind"] == "goal"] == [(1, False), (2, True)]
+              and any(l["kind"] == "user" and "c-missing" in l["text"] for l in gl)
+              and gu.returncode == 1 and [(l["turn"], l["met"]) for l in gx if l["kind"] == "goal"] == [(1, False), (2, False)])
+        # coder daemon (chapters 20 and 23): queued jobs start within the grant; a job for a machine that does not answer is held, then sent
+        dq = lambda *a, e=env: subprocess.run([coder, *a], cwd=REPO, env=e, capture_output=True, text=True, timeout=300)
+        dq("queue", "$ echo daemon-ok", "--engine", "echo", "--cwd", home); dq("queue", "x", "--engine", "claude", "--cwd", home)
+        dq("queue", "y", "--engine", "echo", "--cwd", "/etc")
+        dq("daemon", "--once", "--engines", "echo,micro")
+        dj = json.loads(dq("jobs", "--json").stdout)
+        dst = sorted((j["state"], j.get("why", "")) for j in dj["jobs"])
+        check("daemon: a queued job starts as a session; an engine or directory outside the grant is refused",
+              dj["daemon"]["engines"] == "echo,micro" and dst == [("refused", "its directory is outside this machine's grant"), ("refused", "its engine is outside this machine's grant"), ("started", "")])
+        with open(os.path.join(fake, "ssh"), "w") as f:
+            f.write("#!/bin/sh\nexit 255\n")
+        hq = dq("queue", "$ echo held-ok", "--engine", "echo", "--cwd", rhome, "--on", "ssh:box", e=senv)
+        held = [j for j in json.loads(dq("jobs", "--json").stdout)["jobs"] if j["state"] == "held"]
+        with open(os.path.join(fake, "ssh"), "w") as f:
+            f.write("#!/bin/sh\nfor a; do last=\"$a\"; done\nHOME=" + rhome + " exec sh -c \"$last\"\n")
+        dq("daemon", "--once", e=senv)
+        sent = [j for j in json.loads(dq("jobs", "--json").stdout)["jobs"] if j["state"] == "sent"]
+        dq("daemon", "--once", e=dict(env, HOME=rhome))
+        rj = [j for j in json.loads(dq("jobs", "--json", e=dict(env, HOME=rhome)).stdout)["jobs"] if j["task"] == "$ echo held-ok"]
+        check("daemon: a job for a machine that does not answer is held, then sent when it does, and starts there",
+              hq.returncode == 0 and len(held) == 1 and held[0]["dest"] == "box" and len(sent) == 1 and sent[0].get("remote_job")
+              and len(rj) == 1 and rj[0]["state"] == "started" and rj[0]["job"] == sent[0]["remote_job"])
+        os.remove(os.path.join(fake, "ssh"))
+        # credential handles (chapter 20): a job names a handle; only a grant that lists it gets the variable, and the log hides the value
+        cv = "ghp_SMOKEVALUE1234567890"
+        ca = subprocess.run([coder, "credential", "add", "gh", "GH_TOKEN"], cwd=REPO, env=env, input=cv + "\n", capture_output=True, text=True, timeout=60)
+        cmode = oct(os.stat(os.path.join(home, ".openagents/coder/credentials/gh.env")).st_mode & 0o777)
+        cls = dq("credential", "ls", "--json").stdout
+        dq("queue", "$ printenv GH_TOKEN | wc -c; printenv GH_TOKEN", "--engine", "echo", "--cwd", home, "--credential", "gh")
+        dq("daemon", "--once", "--engines", "echo")
+        cr1 = [j for j in json.loads(dq("jobs", "--json").stdout)["jobs"] if j["task"].startswith("$ printenv GH_TOKEN")]
+        dq("queue", "$ printenv GH_TOKEN | wc -c; printenv GH_TOKEN", "--engine", "echo", "--cwd", home, "--credential", "gh")
+        dq("daemon", "--once", "--engines", "echo", "--credentials", "gh")
+        cr2 = [j for j in json.loads(dq("jobs", "--json").stdout)["jobs"] if j["task"].startswith("$ printenv GH_TOKEN") and j["state"] == "started"]
+        cfile = os.path.join(home, ".openagents/coder/sessions", (cr2[0].get("session", "") if cr2 else "none") + ".jsonl")
+        clog = ""
+        for _ in range(60):
+            clog = open(cfile).read() if os.path.exists(cfile) else ""
+            if '"kind":"end"' in clog: break
+            time.sleep(0.5)
+        check("credentials: a job gets a handle's variable only under a grant that lists it, and its log shows [credential]",
+              ca.returncode == 0 and cmode == "0o600" and json.loads(cls) == [{"name": "gh", "var": "GH_TOKEN"}]
+              and len(cr1) == 1 and cr1[0].get("why") == "a credential it names is outside this machine's grant"
+              and len(cr2) == 1 and "[credential]" in clog and str(len(cv) + 1) in clog and cv not in clog)
+        # Wasm plugins: built from Coax, run in the bounded host; a module importing more than it was admitted is refused
+        if os.path.exists("/opt/homebrew/opt/llvm/bin/clang") and os.path.isdir("/opt/homebrew/opt/wasi-libc/share/wasi-sysroot"):
+            wsrc = os.path.join(REPO, "coder", "plugins", "hello", "hello.coax"); wsh = os.path.join(HERE, "wasm_plugin.sh")
+            subprocess.run([wsh, wsrc, os.path.join(plugdir, "hello.wasm"), "hello", "spin"], check=True, capture_output=True, timeout=300)
+            subprocess.run([wsh, wsrc, os.path.join(plugdir, "clocky.wasm"), "hello", "clock"], check=True, capture_output=True, timeout=300)
+            with open(os.path.join(plugdir, "hello.json"), "w") as f:
+                f.write(open(os.path.join(REPO, "coder", "plugins", "hello", "hello.json")).read())
+            with open(os.path.join(plugdir, "clocky.json"), "w") as f:
+                f.write('{"name":"clocky","wasm":{"module":"clocky.wasm","imports":["coder_print"]},"commands":[{"name":"clock","export":"clock"}]}')
+            wp = {x["name"]: x for x in json.loads(subprocess.run([coder, "plugins", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)}
+            wh = subprocess.run([coder, "run", "/hello", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+            ws = subprocess.run([coder, "run", "/spin", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+            whr = [json.loads(l) for l in wh.stdout.splitlines() if '"kind":"result"' in l]
+            wsr = [json.loads(l) for l in ws.stdout.splitlines() if '"kind":"result"' in l]
+            check("wasm plugins: a command runs in the host; one that never returns is stopped; an unadmitted import is refused",
+                  wp.get("hello", {}).get("state") == "active" and wp.get("clocky", {}).get("why") == "it imports env.coder_now_ms, which it was not admitted"
+                  and whr and whr[0]["text"] == "hello from wasm" and wsr and wsr[0]["error"] and "stopped after 3s" in wsr[0]["text"])
+            for n in ("hello.wasm", "hello.json", "clocky.wasm", "clocky.json"):
+                os.remove(os.path.join(plugdir, n))
+        else:
+            print("skip wasm plugins: no LLVM with a wasm32 target and wasi-libc")
+        # fork: the new session carries the parent's turns, and its header names the parent
+        first = subprocess.run([coder, "run", "remember heliotrope", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        pid_ = json.loads(first.stdout.splitlines()[0])["id"]
+        fork = subprocess.run([coder, "fork", pid_, "what word?", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        fl = [json.loads(l) for l in fork.stdout.splitlines() if l.startswith("{")]
+        check("fork carries the parent's turns", fork.returncode == 0 and fl[0].get("parent") == pid_ and fl[0].get("at") == 1
+              and any("User: remember heliotrope" in l.get("text", "") and "Now: what word?" in l.get("text", "") for l in fl if l["kind"] == "reply"))
+        # replay rebuilds every request from the log, a fork's from its parent's too, and finds a changed log
+        fid = fl[0]["id"] if fl else "none"
+        rp = subprocess.run([coder, "replay", fid, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        fpath = os.path.join(home, ".openagents", "coder", "sessions", fid + ".jsonl")
+        body = open(fpath).read() if os.path.exists(fpath) else ""
+        with open(fpath, "w") as f:
+            f.write(body.replace('"text":"what word?"', '"text":"what WORD?"'))
+        rp2 = subprocess.run([coder, "replay", fid, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        with open(fpath, "w") as f:
+            f.write(body)
+        check("replay: a fork's request rebuilds with the same bytes; a changed log does not",
+              rp.returncode == 0 and json.loads(rp.stdout)["matched"] == 1 and rp2.returncode == 1 and json.loads(rp2.stdout)["matched"] == 0)
+        # attach: a message becomes a running job's next turn; to an ended job, it continues in a fork
+        aj = subprocess.run([coder, "run", "$ sleep 2; echo one", "--engine", "echo", "--detach"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120).stdout.strip()
+        at1 = subprocess.run([coder, "attach", aj, "$ echo two"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        at2 = subprocess.run([coder, "attach", aj, "$ echo three"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        check("attach: the job takes the message as its next turn", at1.returncode == 0 and "› $ echo two" in at1.stdout and "    └ two" in at1.stdout)
+        check("attach: an ended job's conversation continues in a fork", at2.returncode == 0 and "continuing in" in at2.stdout and "    └ three" in at2.stdout)
+        # a background job, then stop it
+        job = subprocess.run([coder, "run", "$ sleep 60", "--engine", "echo", "--detach"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        jid = job.stdout.strip()
+        running = False
+        for _ in range(100):
+            st = subprocess.run([coder, "status", jid, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+            if st.returncode == 0 and json.loads(st.stdout)["state"] == "running":
+                running = True
+                break
+            time.sleep(0.2)
+        check("run --detach returns an ID and the job runs", job.returncode == 0 and running)
+        stop = subprocess.run([coder, "stop", jid], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        st = subprocess.run([coder, "status", jid, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("stop ends the job as stopped", stop.returncode == 0 and json.loads(st.stdout)["state"] == "stopped")
+        # the Router (chapters 17 and 20): an event addressed to the agent starts a Worker, a later event on its
+        # thread goes to that Worker as a fork, an ignored source is dropped, and a Worker whose process dies is lost
+        rdir = os.path.join(home, ".openagents", "coder", "router")
+        os.makedirs(rdir, exist_ok=True)
+        with open(os.path.join(rdir, "sources.json"), "w") as f:
+            f.write('{"sources":{"local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"},"spam":{"mode":"ignore","authors":["*"]}}}')
+        def router():
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+            return [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        def trigger(*a):
+            return subprocess.run([coder, "trigger", *a], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).returncode
+        ok = trigger("$ echo first", "--thread", "ci", "--to-agent") == 0 and trigger("buy now", "--source", "spam", "--to-agent") == 0 \
+            and trigger("just chatting", "--thread", "lunch") == 0
+        r1 = router()
+        fates = sorted(l["fate"] for l in r1)
+        check("router: a request starts a worker; ignored and unaddressed events drop", ok and fates == sorted([
+            "addressed to the agent: new worker", "dropped: source ignored", "dropped: not addressed to the agent"]))
+        w1 = next((l.get("session", "") for l in r1 if l.get("thread") == "ci"), "")
+        for _ in range(100):
+            st = subprocess.run([coder, "status", w1, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+            if st.returncode == 0 and json.loads(st.stdout)["state"] == "finished":
+                break
+            time.sleep(0.2)
+        r1b = router()
+        outbox = os.path.join(home, ".openagents", "coder", "outbox")
+        reply = json.load(open(os.path.join(outbox, w1 + ".json"))) if os.path.exists(os.path.join(outbox, w1 + ".json")) else {}
+        check("router: a finished worker's reply goes to the outbox under the chat rules", any(l["fate"] == "reply written to the outbox" for l in r1b)
+              and reply.get("channel") == "chat" and reply.get("text") == "first")
+        trigger("$ sleep 60", "--thread", "ci")
+        t_w2 = time.time()
+        r2 = router()
+        w2 = r2[0].get("session", "") if r2 else ""
+        for _ in range(100):                # the Worker writes its session file a moment after it starts; wait for the command, not only the session line
+            head = subprocess.run([coder, "log", w2, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+            if head.returncode == 0 and "$ sleep 60" in head.stdout:
+                break
+            time.sleep(0.2)
+        check("router: a later event on the thread goes to its worker", len(r2) == 1 and r2[0]["fate"] == "passed to its thread's worker"
+              and w2 != w1 and head.returncode == 0 and json.loads(head.stdout.splitlines()[0]).get("parent") == w1)
+        wpid = 0
+        for _ in range(100):
+            try:
+                wpid = int(open(os.path.join(home, ".openagents", "coder", "sessions", w2 + ".pid")).read().strip())
+                break
+            except (OSError, ValueError):
+                time.sleep(0.2)
+        gone = False
+        if wpid:
+            os.kill(wpid, 9)                # the Worker this smoke started
+            for _ in range(600):            # until its process is gone: the Router asks kill(pid, 0), as this does
+                try:
+                    os.kill(wpid, 0)
+                except ProcessLookupError:
+                    gone = True
+                    break
+                time.sleep(0.05)
+        r3 = router()
+        st = subprocess.run([coder, "status", w2, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        lost = any(l["fate"] == "worker lost: ended" for l in r3) and st.returncode == 0 and json.loads(st.stdout)["state"] == "lost"
+        if not lost:                        # what the check saw, for the log (#13370)
+            sd_ = os.path.join(home, ".openagents", "coder", "sessions")
+            print("     lost: worker %s, pid %s (gone after the kill: %s), command seen %s, after %.1f s" % (w2, wpid, gone, "$ sleep 60" in head.stdout, time.time() - t_w2))
+            print("     lost: the pass before: %s" % json.dumps(r2)[:600])
+            print("     lost: the pass after: %s" % json.dumps(r3)[:600])
+            print("     lost: status %s %s %s" % (st.returncode, st.stdout.strip()[:300], st.stderr.strip()[-200:]))
+            print("     lost: its files: %s" % sorted(n for n in os.listdir(sd_) if n.startswith(w2)))
+            lp_ = os.path.join(sd_, w2 + ".jsonl")
+            print("     lost: its log: %s" % (open(lp_).read()[-1500:] if os.path.exists(lp_) else "none"))
+        check("watchdog: a worker whose process died ends as lost", lost)
+        # batching (chapter 17): a pass's candidates go to System One in one request, at most 8; the rest wait for the next pass
+        with open(os.path.join(rdir, "sources.json"), "w") as f:
+            f.write('{"sources":{"local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"},"spam":{"mode":"ignore","authors":["*"]},'
+                    '"team":{"mode":"candidate","authors":["*"],"engine":"echo","policy":"work on requests for changes"}}}')
+        for i in range(10):
+            trigger("message %d" % i, "--source", "team", "--author", "kim")
+        nk = dict(env); nk.pop("BASETEN_API_KEY", None)
+        def rpass():
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=nk, capture_output=True, text=True, timeout=300)
+            return [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        b1, b2 = rpass(), rpass()
+        def counts(ls):
+            return ([l["events"] for l in ls if l.get("kind") == "batch"], sum(1 for l in ls if l.get("fate") == "dropped: no decision"))
+        check("router batching: eight candidates in one System One request, the other two in the next pass",
+              counts(b1) == ([8], 8) and counts(b2) == ([2], 2) and all(not l["decided"] for l in b1 + b2 if l.get("kind") == "batch"))
+        # consent (chapter 18): with a key but no grant, neither the events nor a task go to System One
+        trigger("message gated", "--source", "team", "--author", "kim")
+        r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=dict(nk, BASETEN_API_KEY="not-a-key"), capture_output=True, text=True, timeout=300)
+        bg = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        rr = subprocess.run([coder, "route", "fix the parser", "--json"], cwd=REPO, env=dict(nk, BASETEN_API_KEY="not-a-key"), capture_output=True, text=True, timeout=120)
+        rj = json.loads(rr.stdout) if rr.stdout.startswith("{") else {}
+        check("consent: without a grant the Router's events and a task to route stay here, and the reason names the grant",
+              any(l.get("fate") == "dropped: no decision" and "no consent to send the events" in l.get("note", "") for l in bg)
+              and rj.get("ok") is False and "no consent to send the task" in rj.get("text", "") and "coder consent grant system-one" in rj.get("text", ""))
+        # the watchdog: a worker that repeats one step is redirected, then stopped; a quiet one with no System One key is reported
+        sdir = os.path.join(home, ".openagents", "coder", "sessions")
+        nokey = dict(env)
+        nokey.pop("BASETEN_API_KEY", None)
+        sleeper = subprocess.Popen(["sleep", "60"])
+        try:
+            def fake(sid, lines, old):
+                with open(os.path.join(sdir, sid + ".jsonl"), "w") as f:
+                    f.write('{"kind":"session","id":"%s","engine":"echo","cwd":"/","started_us":1}\n{"kind":"user","text":"fix the build"}\n' % sid + lines)
+                with open(os.path.join(sdir, sid + ".pid"), "w") as f:
+                    f.write(str(sleeper.pid))
+                if old:
+                    os.utime(os.path.join(sdir, sid + ".jsonl"), (time.time() - 600, time.time() - 600))
+            fake("20261102-000000-001", '{"kind":"tool","label":"Bash(make)"}\n' * 5, False)
+            fake("20261102-000000-002", '{"kind":"tool","label":"Bash(ls)"}\n', True)
+            with open(os.path.join(rdir, "threads"), "a") as f:
+                f.write("loop\t20261102-000000-001\tlocal\nquiet\t20261102-000000-002\tlocal\n")
+            r = subprocess.run([coder, "router", "--once", "--json", "--stuck", "60"], cwd=REPO, env=nokey, capture_output=True, text=True, timeout=120)
+            rw = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+            check("watchdog: a worker repeating one step is redirected first", any(l["fate"] == "worker redirected: looping" and l.get("session") == "20261102-000000-001" for l in rw)
+                  and os.path.exists(os.path.join(sdir, "20261102-000000-001.turnstop")) and not os.path.exists(os.path.join(sdir, "20261102-000000-001.stop"))
+                  and any(n.endswith(".msg") for n in os.listdir(os.path.join(sdir, "20261102-000000-001.inbox"))))
+            r = subprocess.run([coder, "router", "--once", "--json", "--stuck", "60"], cwd=REPO, env=nokey, capture_output=True, text=True, timeout=120)
+            rw2 = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+            check("watchdog: still repeating after a redirect, it is stopped", any(l["fate"] == "worker stopped: looping" and l.get("session") == "20261102-000000-001" for l in rw2)
+                  and os.path.exists(os.path.join(sdir, "20261102-000000-001.stop")))
+            check("watchdog: a quiet worker with no decision is reported as stuck", any(l["fate"] == "worker stuck" and "System One key" in l.get("note", "") for l in rw))
+            # with a key but no grant, the log never leaves: the gate refuses and logs it (chapter 18)
+            fake("20261102-000000-004", '{"kind":"tool","label":"Bash(ls)"}\n', True)
+            with open(os.path.join(rdir, "threads"), "a") as f:
+                f.write("gated\t20261102-000000-004\tlocal\n")
+            r = subprocess.run([coder, "router", "--once", "--json", "--stuck", "60"], cwd=REPO, env=dict(nokey, BASETEN_API_KEY="not-a-key"), capture_output=True, text=True, timeout=120)
+            rg = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+            cj = json.loads(subprocess.run([coder, "consent", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
+            check("consent: a quiet Worker's log goes to System One only under a session grant; without one the refusal is in the ledger",
+                  any(l["fate"] == "worker stuck" and l.get("session") == "20261102-000000-004" and "coder consent grant system-one" in l.get("note", "") for l in rg)
+                  and cj["grants"] == [] and cj["events"] >= 1)
+        finally:
+            sleeper.kill()
+        # duplex (chapter 20): a follow-up gets its reply while the Thread's long Worker runs; the long result comes later; a stopped one says so
+        trigger("$ sleep 8; echo long-done", "--thread", "dx", "--to-agent")
+        dl = next((l.get("session", "") for l in router() if l.get("thread") == "dx"), "")
+        time.sleep(1.0)
+        trigger("$ echo quick-dx", "--thread", "dx", "--to-agent")
+        d0 = time.time(); dquick = None; dlong = None; drun = False; dlog = []
+        for _ in range(80):
+            ls = router(); dlog += ls
+            for l in ls:
+                if l.get("thread") == "dx" and l.get("fate") == "reply written to the outbox":
+                    if l.get("note") == "quick-dx" and dquick is None:
+                        dquick = time.time() - d0
+                        drun = json.loads(subprocess.run([coder, "status", dl, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)["state"] == "running"
+                    if l.get("note") == "long-done": dlong = time.time() - d0
+            if dquick is not None and dlong is not None: break
+            time.sleep(0.5)
+        trigger("$ sleep 60", "--thread", "dy", "--to-agent")
+        ds = next((l.get("session", "") for l in router() if l.get("thread") == "dy"), "")
+        time.sleep(1.0)
+        subprocess.run([coder, "stop", ds], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        dstop = [l for l in router() if l.get("thread") == "dy" and l.get("fate") == "reply written to the outbox"]
+        check("duplex: a follow-up is answered while the Thread's long Worker runs, the long result arrives later, and a stopped Worker says so",
+              dl and dquick is not None and drun and dlong is not None and dlong > dquick
+              and len(dstop) == 1 and dstop[0].get("note", "").startswith("Stopped (stopped)"))
+        if dquick is not None: print("     duplex: follow-up answered in %.1f s with the long Worker running; long result after %.1f s" % (dquick, dlong or -1))
+        # containment (chapter 20): an event from an author the policy doesn't name runs under a read ceiling, so its shell
+        # command is refused, a fork of its Worker stays there, and no secret reaches a log or the outbox
+        xhome = tempfile.mkdtemp(prefix="coder-contain-")
+        xenv = dict(env, HOME=xhome)
+        xdir = os.path.join(xhome, ".openagents", "coder")
+        os.makedirs(os.path.join(xdir, "router"), exist_ok=True)
+        with open(os.path.join(xdir, "router", "sources.json"), "w") as f:
+            f.write('{"sources":{"open":{"mode":"explicit_requests_only","authors":["*"],"engine":"echo"},'
+                    '"team":{"mode":"explicit_requests_only","authors":["kim"],"engine":"echo"}}}')
+        xsecret = "contain-s3cr3t-7781"
+        xa = subprocess.run([coder, "credential", "add", "k", "K_TOKEN"], cwd=REPO, env=xenv, input=xsecret + "\n", capture_output=True, text=True, timeout=60)
+        def xq(*a):
+            return subprocess.run([coder, *a], cwd=REPO, env=xenv, capture_output=True, text=True, timeout=300)
+        xq("trigger", "$ cat $HOME/.openagents/coder/credentials/k.env; env", "--source", "open", "--author", "mallory", "--thread", "hx", "--to-agent")
+        xq("trigger", "$ echo trusted-ran", "--source", "team", "--author", "kim", "--thread", "tx", "--to-agent")
+        xr = []
+        for _ in range(60):
+            xr += [json.loads(l) for l in xq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+            if sum(1 for l in xr if l.get("fate") == "reply written to the outbox") >= 2:
+                break
+            time.sleep(0.3)
+        xh = next((l for l in xr if l.get("thread") == "hx" and l.get("fate") == "reply written to the outbox"), {})
+        xt = next((l for l in xr if l.get("thread") == "tx" and l.get("fate") == "reply written to the outbox"), {})
+        xs = xh.get("session", "")
+        xhead = json.loads(open(os.path.join(xdir, "sessions", xs + ".jsonl")).readline()) if xs else {}
+        xf = [json.loads(l) for l in xq("fork", xs, "$ echo widened", "--json").stdout.splitlines() if l.startswith("{")] if xs else []
+        xleak = []
+        for root, _, files in os.walk(xdir):
+            if os.path.basename(root) == "credentials":
+                continue
+            for n in files:
+                with open(os.path.join(root, n), errors="replace") as f:
+                    if xsecret in f.read():
+                        xleak.append(n)
+        check("containment: a third party's shell command is refused under a read ceiling, a fork keeps it, a named author's runs, and no secret leaves",
+              xa.returncode == 0 and xhead.get("ceiling") == "read" and "I didn't run the command" in xh.get("note", "")
+              and "trusted-ran" in xt.get("note", "") and xf and xf[0].get("ceiling") == "read"
+              and any("I didn't run the command" in l.get("text", "") for l in xf) and "widened" not in "".join(l.get("text", "") for l in xf if l.get("kind") != "user")
+              and xleak == [])
+        # chain of recall (chapter 17): an event from another channel that names a session gets that session and the
+        # one it was forked from inline, hop by hop, with the hops and bytes in the Router's log
+        qa = [json.loads(l) for l in xq("run", "fix the parser bug", "--engine", "echo", "--json").stdout.splitlines() if l.startswith("{")]
+        qsa = qa[0]["id"] if qa else ""
+        qb = [json.loads(l) for l in xq("fork", qsa, "$ echo fixed-parser", "--json").stdout.splitlines() if l.startswith("{")]
+        qsb = qb[0]["id"] if qb else ""
+        xq("trigger", "what happened with %s?" % qsb, "--source", "team", "--author", "kim", "--thread", "qx", "--to-agent")
+        qr = []
+        for _ in range(60):
+            qr += [json.loads(l) for l in xq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+            if any(l.get("thread") == "qx" and l.get("fate") == "reply written to the outbox" for l in qr):
+                break
+            time.sleep(0.3)
+        qw = next((l.get("session", "") for l in qr if l.get("thread") == "qx" and l.get("session")), "")
+        qc = open(os.path.join(xdir, "router", "context", qw)).read() if qw and os.path.exists(os.path.join(xdir, "router", "context", qw)) else ""
+        qrec = next((l for l in qr if l.get("kind") == "recall"), {})
+        check("recall: an event naming a session gets it and its parent inline, hop by hop, and the Router logs the walk",
+              ("Session %s" % qsb) in qc and ("forked from session %s" % qsa) in qc and "fix the parser bug" in qc and "fixed-parser" in qc
+              and ("coder log %s" % qsb) in qc and qrec.get("sessions") == 1 and qrec.get("hops") == 2 and qrec.get("bytes", 0) > 0)
+        # recall through Triggers and Threads (chapter 17): an event that names a Trigger's ID gets the Worker it started,
+        # and one that names thread:NAME gets that Thread's Worker, each with its chain
+        qtid = next((l.get("id", "") for l in qr if l.get("thread") == "qx" and "new worker" in l.get("fate", "")), "")
+        xq("trigger", "follow up on %s and on thread:tx." % qtid, "--source", "team", "--author", "kim", "--thread", "qy", "--to-agent")
+        qr2 = []
+        for _ in range(60):
+            qr2 += [json.loads(l) for l in xq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+            if any(l.get("thread") == "qy" and l.get("fate") == "reply written to the outbox" for l in qr2):
+                break
+            time.sleep(0.3)
+        qw2 = next((l.get("session", "") for l in qr2 if l.get("thread") == "qy" and l.get("session")), "")
+        qc2 = open(os.path.join(xdir, "router", "context", qw2)).read() if qw2 and os.path.exists(os.path.join(xdir, "router", "context", qw2)) else ""
+        qrec2 = next((l for l in qr2 if l.get("kind") == "recall"), {})
+        check("recall: an event naming a Trigger gets the Worker it started, and thread:NAME gets that Thread's Worker",
+              qtid and ("Trigger %s started session %s" % (qtid, qw)) in qc2 and "Thread tx's Worker, session" in qc2 and "trusted-ran" in qc2
+              and qrec2.get("sessions") == 2)
+        # mail (chapter 20): a mail source's reply is a Gmail draft through gws, sent only with --send; a Router killed
+        # right after mailing doesn't mail again; --to takes one plain address
+        gws = os.path.join(xhome, "gws")
+        with open(gws, "w") as f:
+            f.write("#!" + sys.executable + "\nimport json, os, sys\n"
+                    "open(os.environ['GWS_STUB_LOG'], 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                    "print(json.dumps({'id': 'm%d' % sum(1 for _ in open(os.environ['GWS_STUB_LOG']))}))\n")
+        os.chmod(gws, 0o755)
+        glog = os.path.join(xhome, "gws.log")
+        menv = dict(xenv, CODER_GWS=gws, GWS_STUB_LOG=glog)
+        def mq(*a, **kw):
+            return subprocess.run([coder, *a], cwd=REPO, env=dict(menv, **kw), capture_output=True, text=True, timeout=300)
+        mbad = mq("policy", "add", "mail", "--mode", "explicit_requests_only", "--authors", "kim", "--engine", "echo", "--channel", "mail",
+                  "--deliver", "--to", "kim@example.com,eve@example.com")
+        mq("policy", "add", "mail", "--mode", "explicit_requests_only", "--authors", "kim", "--engine", "echo", "--channel", "mail",
+           "--deliver", "--to", "kim@example.com")
+        mq("trigger", "$ echo mail-one", "--source", "mail", "--author", "kim", "--thread", "m1", "--to-agent")
+        mr = []
+        for _ in range(60):
+            mr += [json.loads(l) for l in mq("router", "--once", "--json", CODER_ROUTER_FAULT="mailed").stdout.splitlines() if l.startswith("{")]
+            if os.path.exists(glog):
+                break
+            time.sleep(0.3)
+        for _ in range(3):
+            mr += [json.loads(l) for l in mq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+        mcalls = [json.loads(l) for l in open(glog)] if os.path.exists(glog) else []
+        mq("policy", "add", "mail", "--mode", "explicit_requests_only", "--authors", "kim", "--engine", "echo", "--channel", "mail",
+           "--deliver", "--to", "kim@example.com", "--send")
+        mq("trigger", "$ echo mail-two", "--source", "mail", "--author", "kim", "--thread", "m2", "--to-agent")
+        for _ in range(60):
+            mr += [json.loads(l) for l in mq("router", "--once", "--json").stdout.splitlines() if l.startswith("{")]
+            if any(l.get("thread") == "m2" and "reply" in l.get("fate", "") for l in mr):
+                break
+            time.sleep(0.3)
+        mcalls2 = [json.loads(l) for l in open(glog)] if os.path.exists(glog) else []
+        check("mail: a reply is a Gmail draft with its subject, a restart after mailing doesn't repeat it, --send sends, and --to is one address",
+              mbad.returncode == 2 and len(mcalls) == 1 and mcalls[0][:5] == ["gmail", "+send", "--to", "kim@example.com", "--subject"]
+              and mcalls[0][5] == "Re: $ echo mail-one" and "--draft" in mcalls[0] and "mail-one" in mcalls[0][mcalls[0].index("--body") + 1]
+              and not mcalls[0][mcalls[0].index("--body") + 1].startswith("Subject")
+              and any(l.get("thread") == "m1" and "not repeated" in l.get("fate", "") for l in mr)
+              and len(mcalls2) == 2 and "--draft" not in mcalls2[1]
+              and any(l.get("thread") == "m2" and l.get("fate") == "reply mailed" for l in mr))
+        # a log cut at any byte (chapter 2): readers read the complete lines and report the rest; a line appended after a crash starts clean
+        cr = subprocess.run([coder, "run", "$ echo cut-é-check", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        cid = next(json.loads(l)["id"] for l in cr.stdout.splitlines() if l.startswith('{"kind":"session"'))
+        cpath = os.path.join(sdir, cid + ".jsonl"); cdata = open(cpath, "rb").read()
+        cbad = []
+        for cut in range(0, len(cdata) + 1):
+            open(cpath, "wb").write(cdata[:cut])
+            whole = cdata[:cut].rfind(b"\n") + 1
+            st = subprocess.run([coder, "status", cid, "--json"], cwd=REPO, env=env, capture_output=True, timeout=60)
+            lg = subprocess.run([coder, "log", cid, "--json"], cwd=REPO, env=env, capture_output=True, timeout=60)
+            if whole == 0:
+                if st.returncode != 6: cbad.append((cut, "status", st.returncode))
+                continue
+            try:
+                sj = json.loads(st.stdout)
+                ok = st.returncode == 0 and sj.get("cut", 0) == cut - whole and lg.returncode == 0 and lg.stdout == cdata[:whole] \
+                     and all(json.loads(l) for l in lg.stdout.decode().splitlines())
+            except Exception as e:
+                ok = False
+            if not ok: cbad.append((cut, st.stdout[:80], lg.returncode))
+        mid = cdata.rfind(b"\n", 0, len(cdata) - 1) + 10          # inside the end line
+        open(cpath, "wb").write(cdata[:mid])
+        with open(os.path.join(sdir, cid + ".pid"), "w") as f:
+            f.write("999999")
+        with open(os.path.join(rdir, "threads"), "a") as f:
+            f.write("cutlog\t%s\tlocal\n" % cid)
+        subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=nokey, capture_output=True, timeout=120)
+        after = open(cpath, "rb").read()
+        check("a log cut at any byte: status and log read the complete lines and report the rest; the lost line after a crash starts on its own line",
+              not cbad and after.startswith(cdata[:cdata.rfind(b"\n", 0, len(cdata) - 1) + 1])
+              and json.loads(after.decode().splitlines()[-1])["ending"] == "lost"
+              and open(cpath + ".cut", "rb").read() == cdata[cdata.rfind(b"\n", 0, len(cdata) - 1) + 1:mid] + b"\n")
+        if cbad: print("     cut failures:", cbad[:5])
+        # rechecks (chapter 20): a Worker whose model provider did not answer waits, then continues in a fork the Thread follows
+        fsid = "20261102-000000-003"
+        with open(os.path.join(sdir, fsid + ".jsonl"), "w") as f:
+            f.write('{"kind":"session","id":"%s","engine":"echo","cwd":"/","started_us":1}\n{"kind":"user","text":"fix the build"}\n'
+                    '{"kind":"end","ending":"failed","ms":5,"steps":0,"text":"No model answered: overloaded","cause":"provider"}\n' % fsid)
+        with open(os.path.join(rdir, "threads"), "a") as f:
+            f.write("flaky\t%s\tlocal\n" % fsid)
+        def rpass2(first):
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=dict(nokey, CODER_ROUTER_RECHECK_S=first), capture_output=True, text=True, timeout=120)
+            return [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        rc1, rc2 = rpass2("600"), rpass2("0")
+        rk = [l for l in rc2 if l.get("fate") == "worker rechecked: the model provider did not answer"]
+        nsid = rk[0]["session"] if rk else ""
+        for _ in range(60):
+            if nsid and '"kind":"end"' in (open(os.path.join(sdir, nsid + ".jsonl")).read() if os.path.exists(os.path.join(sdir, nsid + ".jsonl")) else ""): break
+            time.sleep(0.5)
+        rc3 = rpass2("0")
+        tmap = dict(l.split("\t")[:2] for l in open(os.path.join(rdir, "threads")).read().splitlines() if "\t" in l)
+        check("rechecks: a Worker the model provider failed waits, then a fork continues it and the Thread follows; the failure is not reported",
+              any(l.get("fate") == "worker waiting: the model provider did not answer" and l.get("session") == fsid for l in rc1)
+              and len(rk) == 1 and tmap.get("flaky") == nsid and nsid != fsid
+              and not any(l.get("session") == fsid and "reply" in l.get("fate", "") for l in rc1 + rc2 + rc3)
+              and any(l.get("session") == nsid for l in rc3))
+        # a GitHub source, against a stand-in gh: the first poll sets the cursor; a labelled issue starts a worker; its
+        # reply is posted as a comment; the Router's own comment does not come back as an event
+        stub = os.path.join(home, "gh")
+        with open(stub, "w") as f:
+            f.write("#!" + sys.executable + "\n" + GH_STUB)
+        os.chmod(stub, 0o755)
+        genv = dict(env, CODER_GH=stub, GH_STUB_DIR=home)
+        with open(os.path.join(rdir, "sources.json"), "w") as f:
+            f.write('{"sources":{"github:o/r":{"mode":"explicit_requests_only","authors":["alice"],"label":"coder","engine":"echo","deliver":true}}}')
+        def grouter():
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=genv, capture_output=True, text=True, timeout=300)
+            return [l for l in (json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")) if l.get("source") == "github:o/r"]
+        g1 = grouter()
+        g2 = grouter()
+        check("github: the first poll only sets the cursor; the next turns a labelled issue into a worker",
+              g1 == [] and sorted(l["fate"] for l in g2) == ["addressed to the agent: new worker", "dropped: not addressed to the agent"]
+              and any(l.get("thread") == "github:o/r#7" for l in g2))
+        gw = next((l.get("session", "") for l in g2 if l.get("session")), "")
+        # inline and spill (chapter 17): the Router writes the issue and its newest comments for the new Worker,
+        # and a model task given that file logs it as a context line ahead of the task, and replays the same bytes
+        gcp = os.path.join(home, ".openagents", "coder", "router", "context", gw)
+        gctx = open(gcp).read() if gw and os.path.exists(gcp) else ""
+        check("github: a new Worker's context has the issue, its newest comments and the command for the rest",
+              "#7 Fix parser" in gctx and "- alice: the parser test is the one that fails" in gctx and "gh issue view 7 -R o/r --comments" in gctx)
+        cr = subprocess.run([coder, "run", "fix it", "--engine", "echo", "--context", gcp, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        cl = [json.loads(x) for x in cr.stdout.splitlines() if x.startswith("{")]
+        cid = cl[0].get("id", "") if cl else ""
+        rp = subprocess.run([coder, "replay", cid], cwd=REPO, env=env, capture_output=True, text=True, timeout=120) if cid else None
+        check("--context: logged as a context line ahead of the task, and replay rebuilds the same bytes",
+              any(l["kind"] == "context" and l.get("text", "") == gctx.rstrip("\n") for l in cl) and rp is not None and "1 of 1 requests rebuilt with the same bytes" in rp.stdout)
+        g3 = []
+        for _ in range(50):
+            g3 += grouter()
+            if any(l["fate"].startswith("reply") for l in g3):
+                break
+            time.sleep(0.2)
+        posted = open(os.path.join(home, "gh-posted")).read() if os.path.exists(os.path.join(home, "gh-posted")) else ""
+        check("github: the worker's reply is posted on the issue, structured", any(l["fate"] == "reply posted to the issue" and l.get("session") == gw for l in g3)
+              and posted.startswith("issue comment 7 -R o/r --body **Coder** finished in") and "gh-ok" in posted)
+        g4 = grouter()
+        check("github: the Router's own comment is not an event", g4 == [])
+        # restart (chapter 20): the Router killed with SIGKILL right after starting a Worker, and right after posting
+        # a reply, resumes from its files with no second Worker and no second comment
+        khome = tempfile.mkdtemp(prefix="coder-restart-")
+        kdir = os.path.join(khome, ".openagents", "coder")
+        os.makedirs(os.path.join(kdir, "router"), exist_ok=True)
+        with open(os.path.join(kdir, "router", "sources.json"), "w") as f:
+            f.write('{"sources":{"local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"},'
+                    '"github:o/r":{"mode":"explicit_requests_only","authors":["alice"],"label":"coder","engine":"echo","deliver":true}}}')
+        kenv = dict(env, HOME=khome, CODER_GH=stub, GH_STUB_DIR=khome)
+        def krouter(fault=""):
+            e = dict(kenv, CODER_ROUTER_FAULT=fault) if fault else kenv
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=e, capture_output=True, text=True, timeout=300)
+            return r.returncode, [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        def ksessions():
+            sd = os.path.join(kdir, "sessions")
+            return sorted(n[:-6] for n in os.listdir(sd) if n.endswith(".jsonl")) if os.path.isdir(sd) else []
+        subprocess.run([coder, "trigger", "$ echo restart-ok", "--thread", "rs", "--to-agent"], cwd=REPO, env=kenv, capture_output=True, text=True, timeout=60)
+        k1 = krouter("started")                     # also the first GitHub poll, which only sets the cursor
+        time.sleep(1.0)
+        s1 = ksessions()
+        pend = os.listdir(os.path.join(kdir, "router", "pending")) if os.path.isdir(os.path.join(kdir, "router", "pending")) else []
+        k2 = krouter()
+        s2 = ksessions()
+        resumed = [l for l in k2[1] if l.get("thread") == "rs" and l["fate"] == "addressed to the agent: new worker"]
+        check("restart: killed right after starting a Worker, the Router resumes with the same Worker and starts no other",
+              k1[0] in (-9, 137) and len(s1) == 1 and len(pend) == 1 and s2 == s1
+              and len(resumed) == 1 and resumed[0].get("session") == s1[0] and "resumed after a restart" in resumed[0].get("note", "")
+              and not os.listdir(os.path.join(kdir, "router", "pending")))
+        gk = []
+        killed = None
+        for _ in range(60):                         # the labelled issue starts a Worker; when it ends, the reply is posted and the Router killed
+            rc, ls = krouter("posted")
+            gk += ls
+            if rc in (-9, 137):
+                killed = rc
+                break
+            time.sleep(0.3)
+        posts1 = open(os.path.join(khome, "gh-posts")).read().count("post") if os.path.exists(os.path.join(khome, "gh-posts")) else 0
+        k3 = krouter()
+        k4 = krouter()
+        posts2 = open(os.path.join(khome, "gh-posts")).read().count("post") if os.path.exists(os.path.join(khome, "gh-posts")) else 0
+        after = [l for l in k3[1] + k4[1] if l.get("source") == "github:o/r"]
+        check("restart: killed right after posting a reply, the Router finds its comment by marker and posts no second one",
+              killed is not None and posts1 == 1 and posts2 == 1
+              and sum(1 for l in after if l["fate"] == "reply posted to the issue") == 1
+              and not any("worker" in l["fate"] for l in after))
+        # watchdog fault injection (chapter 20): a live Router loop; three stand-in Workers fail at t0 (process killed,
+        # one step five times, log stops growing) and the time from each fault to its detection is reported
+        whome = tempfile.mkdtemp(prefix="coder-watchdog-")
+        wsd = os.path.join(whome, ".openagents", "coder", "sessions"); wrd = os.path.join(whome, ".openagents", "coder", "router")
+        os.makedirs(wsd); os.makedirs(wrd)
+        with open(os.path.join(wrd, "sources.json"), "w") as f:
+            f.write('{"sources":{"local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"}}}')
+        sl = [subprocess.Popen(["sleep", "600"]) for _ in range(3)]
+        wids = ["20261102-000000-101", "20261102-000000-102", "20261102-000000-103"]
+        for sid, sp in zip(wids, sl):
+            with open(os.path.join(wsd, sid + ".jsonl"), "w") as f:
+                f.write('{"kind":"session","id":"%s","engine":"echo","cwd":"/","started_us":1}\n{"kind":"user","text":"fix the parser test"}\n{"kind":"tool","label":"Bash(make test)"}\n' % sid)
+            with open(os.path.join(wsd, sid + ".pid"), "w") as f:
+                f.write(str(sp.pid))
+        with open(os.path.join(wrd, "threads"), "w") as f:
+            f.write("".join("w%d\t%s\tlocal\n" % (i, sid) for i, sid in enumerate(wids)))
+        wenv = dict(nokey, HOME=whome)
+        wr = subprocess.Popen([coder, "router", "--json", "--stuck", "3"], cwd=REPO, env=wenv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        detect = {}
+        try:
+            for _ in range(8):                        # the Router is up and has made passes over three healthy Workers
+                os.utime(os.path.join(wsd, wids[2] + ".jsonl"))
+                time.sleep(0.5)
+            t0 = time.time()
+            sl[0].kill(); sl[0].wait()                                    # lost (reaped, as a detached Worker's process is)
+            with open(os.path.join(wsd, wids[1] + ".jsonl"), "a") as f:   # looping: the same step five times
+                f.write('{"kind":"tool","label":"Bash(make test)"}\n' * 4)
+            os.utime(os.path.join(wsd, wids[2] + ".jsonl"))              # quiet from now on
+            want = {wids[0]: "worker lost", wids[1]: "worker redirected: looping", wids[2]: "worker stuck"}
+            while time.time() - t0 < 60 and len(detect) < 3:
+                if os.path.exists(os.path.join(wrd, "log.jsonl")):
+                    for l in open(os.path.join(wrd, "log.jsonl")).read().splitlines():
+                        try:
+                            j = json.loads(l)
+                        except ValueError:
+                            continue
+                        sid = j.get("session", "")
+                        if sid in want and sid not in detect and j.get("fate", "").startswith(want[sid]) and j.get("at_us", 0) / 1e6 >= t0:
+                            detect[sid] = j["at_us"] / 1e6 - t0
+                time.sleep(0.1)
+        finally:
+            wr.kill(); wr.wait()
+            for sp in sl:
+                sp.kill()
+        print("     watchdog time to detection: lost %s s, looping %s s, quiet %s s (--stuck 3, passes every 2 s)" % tuple(
+            ("%.1f" % detect[w]) if w in detect else "none" for w in wids))
+        check("watchdog: a killed, a looping and a quiet Worker are each detected, within a pass after the fault or the --stuck limit",
+              len(detect) == 3 and detect[wids[0]] < 4.5 and detect[wids[1]] < 4.5 and 3 <= detect[wids[2]] < 7.5)
+        # a CI source: with --ci, a failed workflow run is an event addressed to the agent on the branch's Thread
+        pc = subprocess.run([coder, "policy", "add", "github:c/i", "--mode", "explicit_requests_only", "--authors", "*", "--engine", "echo", "--ci"],
+                            cwd=REPO, env=genv, capture_output=True, text=True, timeout=120)
+        def crouter():
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=genv, capture_output=True, text=True, timeout=300)
+            return [l for l in (json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")) if l.get("source") == "github:c/i"]
+        c1 = crouter()
+        c2 = crouter()
+        check("github ci: a failed run starts a worker on the branch's Thread", pc.returncode == 0 and c1 == []
+              and any(l["fate"] == "addressed to the agent: new worker" and l.get("thread") == "github:c/i@main" for l in c2))
+        c3 = crouter()
+        check("github ci: a run seen once is not an event again", not any(l.get("thread") == "github:c/i@main" and "new worker" in l["fate"] for l in c3))
+        # coder policy and coder watch: sources are edited by name; a watched Thread's events are addressed to the agent
+        def cmd(*a, e=None):
+            return subprocess.run([coder, *a], cwd=REPO, env=e or genv, capture_output=True, text=True, timeout=120)
+        w1 = cmd("watch", "github:p/q#3")
+        pol = json.loads(cmd("policy", "list", "--json").stdout)
+        check("watch: a GitHub Thread's repository becomes a source that admits only the gh login",
+              w1.returncode == 0 and pol.get("github:p/q") == {"mode": "explicit_requests_only", "authors": ["alice"], "channel": "issue"})
+        pa = cmd("policy", "add", "local", "--mode", "explicit_requests_only", "--authors", "me", "--engine", "echo")
+        cmd("trigger", "$ echo watched", "--thread", "w")
+        def lrouter():
+            r = cmd("router", "--once", "--json")
+            return [l for l in (json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")) if l.get("source") == "local" and l.get("thread") == "w"]
+        before = lrouter()
+        cmd("watch", "w")
+        cmd("trigger", "$ echo watched", "--thread", "w")
+        after = lrouter()
+        check("watch: an unaddressed event on a watched Thread starts a worker", pa.returncode == 0
+              and [l["fate"] for l in before] == ["dropped: not addressed to the agent"] and [l["fate"] for l in after] == ["addressed to the agent: new worker"])
+        cmd("policy", "rm", "local")
+        bad = cmd("policy", "add", "x", "--mode", "loud")
+        check("policy: rm removes a source; an unknown mode is refused", "local" not in json.loads(cmd("policy", "list", "--json").stdout) and bad.returncode == 2)
+        # no --engine and no System One key: the default engine, and the log says why
+        # only the system's own tools (NixOS keeps bash and the rest in /run/current-system/sw/bin, not /bin)
+        bare = dict(env, PATH="/usr/bin:/bin" + (":/run/current-system/sw/bin" if os.path.isdir("/run/current-system/sw/bin") else ""))
+        for k in ("BASETEN_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
+            bare.pop(k, None)
+        routed = subprocess.run([coder, "run", "hi", "--json"], cwd=REPO, env=bare, capture_output=True, text=True, timeout=120)
+        rl = [json.loads(l) for l in routed.stdout.splitlines() if l.startswith("{")]
+        check("run without --engine or a key: the default, and why", len(rl) > 1 and rl[1]["kind"] == "route" and not rl[1]["ok"]
+              and rl[1]["ran"] == "microcoder" and "System One key" in rl[1]["text"])
+        bn = subprocess.run([coder, "bench", "checks", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=600)
+        br = json.loads(bn.stdout) if bn.returncode == 0 else {}
+        check("bench: a suite runs and its report is kept", br.get("passed") is True and "passed, 0 failed" in br.get("last", "")
+              and len(os.listdir(os.path.join(home, ".openagents", "coder", "bench"))) == 1)
+        # coder mcp: the verbs as MCP tools on stdio
+        mp = subprocess.Popen([coder, "mcp"], cwd=REPO, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        def rpc(i, m, params):
+            mp.stdin.write(json.dumps({"jsonrpc": "2.0", "id": i, "method": m, "params": params}) + "\n"); mp.stdin.flush()
+            return json.loads(mp.stdout.readline())
+        init = rpc(1, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "smoke", "version": "1"}})
+        tools = [t["name"] for t in rpc(2, "tools/list", {})["result"]["tools"]]
+        started = rpc(3, "tools/call", {"name": "coder_run", "arguments": {"task": "$ echo via-mcp", "engine": "echo"}})["result"]
+        mid = started["content"][0]["text"].strip()
+        logged = ""
+        for _ in range(50):
+            logged = rpc(4, "tools/call", {"name": "coder_log", "arguments": {"id": mid}})["result"]["content"][0]["text"]
+            if "finished" in logged:
+                break
+            time.sleep(0.2)
+        unknown = rpc(5, "tools/call", {"name": "coder_nope", "arguments": {}})
+        res = rpc(6, "resources/list", {})["result"]["resources"]
+        mine = [r for r in res if r["name"] == mid]
+        read = rpc(7, "resources/read", {"uri": "coder://session/" + mid})
+        miss = rpc(8, "resources/read", {"uri": "coder://session/../../etc"})
+        mp.stdin.close(); mp.wait(timeout=10)
+        check("mcp resources: each session's log at coder://session/ID; another URI is not found",
+              init["result"]["capabilities"].get("resources") == {} and len(mine) == 1 and mine[0]["uri"] == "coder://session/" + mid
+              and mine[0]["description"].startswith("finished") and "via-mcp" in read["result"]["contents"][0]["text"]
+              and miss["error"]["code"] == -32002)
+        check("mcp: initialize, the tool list, a run started and its log read through tools",
+              init["result"]["serverInfo"]["name"] == "coder" and len(tools) == 12 and "coder_session_read" in tools and "coder_remember" in tools and not started["isError"]
+              and "    └ via-mcp" in logged and unknown["error"]["code"] == -32602)
+        # coder mcp --http: the same server over Streamable HTTP on 127.0.0.1
+        import urllib.request, urllib.error
+        hp = subprocess.Popen([coder, "mcp", "--http", "0"], cwd=REPO, env=env, stdout=subprocess.PIPE, text=True)
+        try:
+            url = hp.stdout.readline().strip().split(" ")[-1]
+            def post(body, headers={}, method="POST"):
+                rq = urllib.request.Request(url, data=None if method == "GET" else json.dumps(body).encode(), method=method,
+                                            headers=dict({"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}, **headers))
+                try:
+                    with urllib.request.urlopen(rq, timeout=60) as rs:
+                        hsid[0] = rs.headers.get("Mcp-Session-Id") or hsid[0]
+                        return rs.status, rs.read().decode()
+                except urllib.error.HTTPError as e:
+                    return e.code, ""
+            hsid = [""]
+            hnone = post({"jsonrpc": "2.0", "id": 9, "method": "ping"})
+            hi = post({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "smoke", "version": "1"}}})
+            sh = {"Mcp-Session-Id": hsid[0]}
+            hn = post({"jsonrpc": "2.0", "method": "notifications/initialized"}, sh)
+            hs = post({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "coder_status", "arguments": {"id": mid}}}, sh)
+            hg = post(None, sh, method="GET")
+            ho = post({"jsonrpc": "2.0", "id": 3, "method": "ping"}, dict(sh, Origin="https://evil.example"))
+            hu = post({"jsonrpc": "2.0", "id": 4, "method": "ping"}, {"Mcp-Session-Id": "0" * 32})
+            hd = post(None, sh, method="DELETE")
+            ha = post({"jsonrpc": "2.0", "id": 5, "method": "ping"}, sh)
+            check("mcp over http: a request answered as JSON, a notification accepted, GET refused, another origin forbidden",
+                  hi[0] == 200 and json.loads(hi[1])["result"]["serverInfo"]["name"] == "coder" and hn == (202, "")
+                  and hs[0] == 200 and "finished" in json.loads(hs[1])["result"]["content"][0]["text"] and hg[0] == 405 and ho[0] == 403)
+            check("mcp over http: initialize starts a session with a random Mcp-Session-Id; no ID is 400, an unknown one 404, DELETE ends it",
+                  re.fullmatch(r"[0-9a-f]{32}", hsid[0] or "") is not None and hnone[0] == 400 and hu[0] == 404 and hd[0] == 200 and ha[0] == 404)
+        finally:
+            hp.kill()
+        bad = subprocess.run([coder, "status", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("status of an unknown ID exits 6", bad.returncode == 6)
+    finally:
+        server.kill()
+
+
+# A stand-in for psionic/apple-fm's bridge: available, and every recap is the same line.
+AFM_STUB = os.path.join(tempfile.mkdtemp(prefix="coder-afm-"), "apple-fm-bridge")
+with open(AFM_STUB, "w") as f:
+    f.write("#!" + sys.executable + "\nimport json, sys\nfor l in sys.stdin:\n    q = json.loads(l)\n"
+            "    r = {'id': q['id'], 'ok': True}\n"
+            "    if q['op'] == 'availability': r['status'] = 'available'\n"
+            "    else: r['text'] = '\"Waiting on the sleep command.\"'\n"
+            "    print(json.dumps(r), flush=True)\n")
+os.chmod(AFM_STUB, 0o755)
+
+
+def main():
+    if sys.argv[1:2] == ["--live"]:
+        return live(sys.argv[2] if len(sys.argv) > 2 else "claude")
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.chdir(REPO)
+        env = dict(os.environ, TERM="xterm-256color", OPENAGENTS_SECRETS="/nonexistent", CODER_APPLE_FM_BRIDGE=AFM_STUB, CODER_RECAPS="1",
+                   CODER_HOME=tempfile.mkdtemp(prefix="coder-smoke-tui-"), CODER_USAGE_KEYCHAIN="0")      # its sessions stay out of the person's own
+        for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
+            env.pop(k, None)
+        os.execve(os.path.join(HERE, "coder.sh"), [os.path.join(HERE, "coder.sh"), "--engine", "echo"], env)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+    out = bytearray()
+
+    def read_until(needle, seconds):
+        end = time.time() + seconds
+        while time.time() < end:
+            if needle.encode() in shown(out):
+                return True
+            r, _, _ = select.select([fd], [], [], 0.1)
+            if r:
+                try:
+                    out.extend(os.read(fd, 65536))
+                except OSError:
+                    break
+        return needle.encode() in shown(out)
+
+    def send(b):
+        os.write(fd, b)
+
+    checks = []
+
+    def check(name, ok):
+        checks.append((name, ok))
+        print(("ok   " if ok else "FAIL ") + name)
+
+    # the first build can take a while
+    check("banner", read_until("/help for commands.", 600))
+    check("composer drawn", read_until("Enter send", 10))
+    for ch in "hello coder":
+        send(ch.encode()); time.sleep(0.01)
+    send(b"\r")
+    check("message committed", read_until("› hello coder", 5))
+    check("reply streamed", read_until("You said: hello coder", 10))
+    check("turn ended", read_until("└ finished", 10))
+    send(b"$ echo smoke-ok\r")
+    check("command ran", read_until("$ echo smoke-ok · exit 0", 10))
+    check("command output", read_until("    smoke-ok", 5))
+    send(b"top\x1b[13;2ubottom\r")       # kitty Shift-Enter between two lines
+    check("Shift-Enter adds a line", read_until("› top", 5) and read_until("  bottom", 5) and b"topbottom" not in out)
+    check("Shift-Enter turn ended", read_until("You said: top", 10))
+    end = time.time() + 15
+    while out.count("└ finished".encode()) < 3 and time.time() < end:
+        read_until("\x00never", 0.2)
+    send(b"\x1b[200~first line\rsecond line\x1b[201~")
+    send(b"\r")
+    check("paste kept both lines", read_until("first line", 5) and read_until("second line", 5))
+    check("paste reply", read_until("You said: first line", 10))
+    end = time.time() + 15
+    while out.count("└ finished".encode()) < 4 and time.time() < end:
+        read_until("\x00never", 0.2)
+    check("paste turn ended", out.count("└ finished".encode()) >= 4)
+    send(b"$ read -r x; echo got-$x\r")   # a command on a terminal reads what the person types (chapter 37)
+    time.sleep(1.0)
+    send(b"typed-in\r")
+    check("a running command takes typed input", read_until("got-typed-in", 10))
+    end = time.time() + 10
+    while out.count("└ finished".encode()) < 5 and time.time() < end:
+        read_until("\x00never", 0.2)
+    send(b"/find SMOKE-ok\r")          # search the transcript, any case
+    check("/find shows the transcript's matching lines", read_until("⌕     smoke-ok", 5) and read_until("3 lines", 5))
+    send(b"/theme light\r")           # a light palette: the brightest text is near black
+    mark = len(out)
+    check("/theme light", read_until("Theme: light.", 5))
+    end = time.time() + 3
+    while time.time() < end and b"38;2;20;20;20" not in out[mark:]:
+        read_until("\x00never", 0.2)
+    check("/theme light draws dark text", b"38;2;20;20;20" in out[mark:])
+    send(b"/theme dark\r")
+    check("/theme dark", read_until("Theme: dark.", 5))
+    # recaps (chapter 36): with a bridge to Apple's on-device model, the status bar says what the agent is doing
+    for ch in "$ sleep 7":
+        send(ch.encode()); time.sleep(0.01)
+    send(b"\r")
+    check("recap: the status bar shows the model's line, cleaned", read_until("Waiting on the sleep command ·", 12))
+    read_until("$ sleep 7 · exit 0", 10)
+    # a background job shows in the hint line while it runs
+    send(("$ " + os.path.join(HERE, "coder.sh") + " run '$ sleep 8' --engine echo --detach\r").encode())
+    check("a running job shows in the hint line", read_until("running · Enter send", 15))
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 60, 0, 0))   # the kernel sends SIGWINCH
+    mark = len(out)
+    rule = re.compile("(?<!─)(?:─){55,60}(?!─)".encode())
+    end = time.time() + 5
+    while time.time() < end and not rule.search(shown(out[mark:])):
+        read_until("\x00never", 0.2)
+    check("resize: the composer redraws at the new width", bool(rule.search(shown(out[mark:]))))
+    send(b"\x1b[Z")                    # Shift-Tab, legacy
+    check("Shift-Tab to Claude Code", read_until("Agent: Claude Code", 5))
+    send(b"\x1b[9;2u")                 # Shift-Tab, kitty
+    check("Shift-Tab to Codex", read_until("Agent: Codex", 5))
+    check("hint names the agent", read_until("codex · ", 5))
+    send(b"\x1b[Z")
+    check("Shift-Tab to Cursor", read_until("Agent: Cursor", 5) and read_until("cursor · ", 5))
+    send(b"\x1b[Z")
+    check("Shift-Tab to Antigravity", read_until("Agent: Antigravity", 5) and read_until("antigravity · ", 5))
+    send(b"\x1b[Z")
+    check("Shift-Tab to Microcoder", read_until("Agent: Microcoder", 5) and read_until("microcoder · ", 5))
+    send(b"\x1b[A")
+    time.sleep(0.3)
+    send(b"\x03")            # clears the recalled entry
+    time.sleep(0.2)
+    send(b"\x03")            # quits
+    status = None
+    end = time.time() + 5
+    while time.time() < end:
+        try:
+            p, st = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            break
+        if p == pid:
+            status = st
+            break
+        try:
+            r, _, _ = select.select([fd], [], [], 0.1)
+            if r:
+                out.extend(os.read(fd, 65536))
+        except OSError:
+            pass
+    if status is None:
+        os.kill(pid, signal.SIGKILL)
+    check("Ctrl-C quits with status 0", status is not None and os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0)
+    check("terminal restored (bracketed paste off)", b"\x1b[?2004l" in out)
+    verbs(check)
+    bad = [n for n, ok in checks if not ok]
+    if bad:
+        sys.stdout.write("--- last output ---\n" + out[-3000:].decode("utf-8", "replace") + "\n")
+        print("smoke: FAILED")
+        sys.exit(1)
+    print("smoke: ok")
+
+
+if __name__ == "__main__":
+    main()

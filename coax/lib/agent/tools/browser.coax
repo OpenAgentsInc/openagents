@@ -45,6 +45,7 @@ br_tool_prepare_cmd :: (
   if verb == "browser.open" || verb == "browser.navigate" {
     r := br_route_classify(url, BR_CALLER_AGENT, requested_profile, flags_mask, norm_buf[..], norm_len[..]);
     if r.pane != BR_PANE_BROWSER { return -5; }
+    if norm_len[0] < 0 || norm_len[0] > norm_buf.count { return -5; }
     eff_prof = r.profile;
     eff_url = cast(string) norm_buf[0..<norm_len[0]];
     if origin_url.count > 0 && !br_ssrf_allowed(origin_url, eff_url, false) { return -6; }

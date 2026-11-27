@@ -41,6 +41,7 @@ MC_GG_NEST :: 8;                 // subshells deep whose folder is remembered
 
 MC_GG_KIND_GIT :: 0;             // destructive git command (refused in shared checkouts only)
 MC_GG_KIND_SCAN :: 1;            // broad/TCC filesystem scan outside workspace (refused everywhere)
+MC_GG_KIND_PUBLISH :: 2;         // git commit or git push: refused only for a sub-agent not allowed it (mc_gg_refuse_publish)
 
 // A folder as the guard knows it: bytes at..<at+size of the arena, size -1 when it can't be told.
 McGgDir :: struct { at: int; size: int; }
@@ -54,6 +55,7 @@ McGitHits :: struct {
   home: McGgDir;                 // normalized HOME folder (size -1 when unset)
   arena: [MC_GG_ARENA] u8; na: int;
   over: bool;                    // the command is longer than the guard reads whole
+  publish: bool;                 // also record git commit and git push (MC_GG_KIND_PUBLISH); off for the shared-checkout check
 }
 
 MC_GG_UNKNOWN :: McGgDir.{at = 0, size = -1};
@@ -143,6 +145,12 @@ mc_gg_hit :: (h: [] McGitHits, why: string, dir: McGgDir) {
   h[0].kind[h[0].n] = MC_GG_KIND_GIT; h[0].why[h[0].n] = why; h[0].dir[h[0].n] = dir; h[0].n += 1;
 }
 
+mc_gg_publish_hit :: (h: [] McGitHits, why: string, dir: McGgDir) {
+  if !h[0].publish { return; }
+  if h[0].n >= MC_GG_HITS { h[0].over = true; return; }
+  h[0].kind[h[0].n] = MC_GG_KIND_PUBLISH; h[0].why[h[0].n] = why; h[0].dir[h[0].n] = dir; h[0].n += 1;
+}
+
 mc_gg_scan_hit :: (h: [] McGitHits, why: string, path: string) {
   if h[0].n >= MC_GG_HITS { h[0].over = true; return; }
   h[0].kind[h[0].n] = MC_GG_KIND_SCAN;
@@ -206,6 +214,8 @@ mc_gg_git :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits, dir0: M
     if first != "list" && first != "show" { mc_gg_hit(h, "git stash", dir); }
     return;
   }
+  if sub == "commit" { mc_gg_publish_hit(h, "git commit", dir); return; }
+  if sub == "push" { mc_gg_publish_hit(h, "git push", dir); return; }
   if sub == "pull" || sub == "rebase" || sub == "merge" {
     on := autostash;
     for j: k + 1..<n {
@@ -913,8 +923,9 @@ mc_gg_scan :: (c: string, h: [] McGitHits, dir: McGgDir, home: string, depth: in
 }
 
 // The refused git and broad-scan commands in command, run from cwd (home for ~), each with its folder.
-mc_gg_check :: (command: string, cwd: string, home: string, h: [] McGitHits) {
-  h[0].n = 0; h[0].na = 0; h[0].over = false;
+mc_gg_check :: (command: string, cwd: string, home: string, h: [] McGitHits) { mc_gg_check_ex(command, cwd, home, h, false); }
+mc_gg_check_ex :: (command: string, cwd: string, home: string, h: [] McGitHits, publish: bool) {
+  h[0].n = 0; h[0].na = 0; h[0].over = false; h[0].publish = publish;
   start := mc_gg_resolve(h, MC_GG_UNKNOWN, ifx cwd.count > 0 && cwd[0] == '/' then cwd else "$", home);
   h[0].cwd = start;
   h[0].home = ifx home.count > 0 && home[0] == '/' then mc_gg_resolve(h, MC_GG_UNKNOWN, home, home) else MC_GG_UNKNOWN;
@@ -969,6 +980,7 @@ mc_gg_refuse :: (cwd: string, command: string, home: string, out: [] u8) -> stri
   mc_gg_check(command, cwd, home, h[..]);
   for i: 0..<h[0].n {
     d := mc_gg_dir(h[..], h[0].dir[i]);
+    if h[0].kind[i] == MC_GG_KIND_PUBLISH { continue; }   // allowed here; a sub-agent's own rule is mc_gg_refuse_publish
     if h[0].kind[i] == MC_GG_KIND_SCAN { return mc_gg_scan_refusal(h[0].why[i], d, out); }
     if (d.count == 0 && (cwd.count == 0 || mc_gg_shared(cwd))) || (d.count > 0 && mc_gg_shared(d)) { return mc_gg_refusal(h[0].why[i], d, out); }
   }
@@ -976,6 +988,50 @@ mc_gg_refuse :: (cwd: string, command: string, home: string, out: [] u8) -> stri
     return "Refused: this command is too long for the shared-checkout check to read whole (1,024 words), and this folder is a shared checkout. Nothing ran. Split it into shorter commands.";
   }
   return "";
+}
+
+// What a sub-agent may do with git, as its delegation says (the Agent tool's `git`, GitHub #14104):
+//   "none"    no commit and no push: its changes stay in the working tree for the chat that delegated
+//   "commit"  it may commit, and may not push
+//   "push"    it may commit and push
+// Anything else reads as "none". "" is no rule at all: the caller is not a sub-agent.
+mc_gg_publish_rule :: (policy: string) -> string { return ifx policy == "commit" || policy == "push" then policy else "none"; }
+// The refusal a sub-agent's command gets under policy, into out; "" when it may run.
+mc_gg_refuse_publish :: (cwd: string, command: string, home: string, policy: string, out: [] u8) -> string {
+  if policy.count == 0 { return ""; }
+  rule := mc_gg_publish_rule(policy);
+  if rule == "push" { return ""; }
+  h: [1] McGitHits;
+  mc_gg_check_ex(command, cwd, home, h[..], true);
+  for i: 0..<h[0].n {
+    if h[0].kind[i] != MC_GG_KIND_PUBLISH { continue; }
+    why := h[0].why[i];
+    if rule == "commit" && why != "git push" { continue; }
+    n := json_raw(out, 0, "Refused: `");
+    n = json_raw(out, n, why);
+    n = json_raw(out, n, ifx rule == "commit"
+      then "` is not allowed for this sub-agent. It may commit, and may not push. Nothing ran. Leave the commit where it is and say so in your reply."
+      else "` is not allowed for this sub-agent. Nothing ran. Leave your changes in the working tree and say what you changed in your reply; the chat that delegated this task decides what is committed.");
+    return ifx n < 0 then "Refused: this sub-agent may not commit or push. Nothing ran." else cast(string) out[0..<n];
+  }
+  return "";
+}
+
+#test "a sub-agent's git rule: none refuses commit and push, commit refuses push, push and no rule refuse nothing (#14104)" {
+  b: [512] u8;
+  #assert mc_gg_refuse_publish("/r", "git commit -m x", "/home/u", "none", b[..]).count > 0;
+  #assert mc_gg_refuse_publish("/r", "git add -A && git commit -q -m \"x\" && git push 2>&1 | tail -3", "/home/u", "none", b[..]).count > 0;
+  #assert mc_gg_refuse_publish("/r", "git -C /r push origin HEAD:main", "/home/u", "none", b[..]).count > 0;
+  #assert mc_gg_refuse_publish("/r", "sh -c 'git push'", "/home/u", "none", b[..]).count > 0;
+  #assert mc_gg_refuse_publish("/r", "git commit -m x", "/home/u", "bogus", b[..]).count > 0;
+  #assert mc_gg_refuse_publish("/r", "git commit -m x", "/home/u", "commit", b[..]) == "";
+  #assert mc_gg_refuse_publish("/r", "git commit -m x && git push", "/home/u", "commit", b[..]).count > 0;
+  #assert mc_gg_refuse_publish("/r", "git commit -m x && git push", "/home/u", "push", b[..]) == "";
+  #assert mc_gg_refuse_publish("/r", "git commit -m x && git push", "/home/u", "", b[..]) == "";
+  #assert mc_gg_refuse_publish("/r", "git status && git diff && git log --oneline && git add -A", "/home/u", "none", b[..]) == "";
+  #assert mc_gg_refuse_publish("/r", "echo git push; grep -n 'git commit' README.md", "/home/u", "none", b[..]) == "";
+  // commit and push are never the shared-checkout guard's business
+  #assert mc_gg_refuse("/r", "git commit -m x && git push", "/home/u", b[..]) == "";
 }
 
 // ---------------------------------------------------------------- checks

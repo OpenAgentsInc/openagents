@@ -1,5 +1,5 @@
 // Coder's memory (Coder book chapter 19): facts you tell Coder to keep,
-// across sessions, on psionic/lib/harness/memory.coax. Every change is an
+// across sessions, on coax/lib/agent/engine/memory.coax. Every change is an
 // event in a hash-chained log; a revise names why and supersedes the text
 // it replaces; a forget hides the text's bytes in every earlier event and
 // keeps their digests, so the chain still verifies. Each verb reads the
@@ -19,7 +19,7 @@
 //   ~/.openagents/coder/memory/events.jsonl   the log, one event a line; bytes in hex
 //   ~/.openagents/coder/memory/vectors.jsonl  one vector a live fact, keyed by its event's digest
 
-#load "../../psionic/lib/harness/memory.coax";
+#load "../../coax/lib/agent/engine/memory.coax";
 #load "../../coax/lib/agent/engine/memory-log.coax";   // the log's one codec: mem_line and mem_unline (Protocol C12, #13250)
 #load "../../coax/lib/nostr/json-f64.coax";
 #load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)

@@ -135,11 +135,23 @@
 
 #test "app nav: busy sidebar chat card draws spinner icon only without Working text" {
   t: [1] AppTest; app_test_init(t[..]);
-  rows := [1] AppSideRow.[
-    AppSideRow.{id = "chat.busy", title = "Running task", status = "now", state = EL_S_BUSY, icon = ICON_FOLDER_11, card = true, repo = "openagents", branch = "main", harness_icon = ICON_BOT}];
+  rows := [2] AppSideRow.[
+    AppSideRow.{id = "chat.busy", title = "Running task", status = "now", state = EL_S_BUSY, icon = ICON_FOLDER_11, card = true, repo = "openagents", branch = "main", harness_icon = ICON_BOT},
+    AppSideRow.{id = "chat.idle", title = "Idle task", status = "25m", icon = ICON_FOLDER_11, card = true, repo = "openagents", branch = "main", harness_icon = ICON_BOT}];
   app_test_begin(t[..], "", "", true);
-  _ := app_side_window(t[0].f[..], 0, 0, 260, 120, rows[..], 0, 0, 50);
+  _ := app_side_window(t[0].f[..], 0, 0, 260, 140, rows[..], 0, 0, 50);
   #assert app_test_end(t[..]);
-  #assert app_test_texts(t[..], "Running task") == 1 && app_test_texts(t[..], "Working") == 0;
+  #assert app_test_texts(t[..], "Running task") == 1 && app_test_texts(t[..], "Working") == 0 && app_test_texts(t[..], "25m") == 1;
   #assert app_test_prims(t[..], PRIM_ARC) == 2;
+  // Busy spinner arcs match the faint timestamp color (same color as "25m").
+  sh := surface_sheet(t[0].sf[..]);
+  faint := t[0].f[0].skin.faint;
+  arcs := 0;
+  for i: 0..<sh.nu {
+    if sh.under[i].kind == PRIM_ARC {
+      #assert sh.under[i].fill.r == faint.r && sh.under[i].fill.g == faint.g && sh.under[i].fill.b == faint.b && sh.under[i].fill.a == faint.a;
+      arcs += 1;
+    }
+  }
+  #assert arcs == 2;
 }

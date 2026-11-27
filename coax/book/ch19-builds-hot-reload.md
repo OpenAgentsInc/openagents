@@ -202,20 +202,30 @@ helpers `lo`, `hi`, `sat` and `smooth` stay private to the library.
 [Chapter 20](ch20-interop.md) goes much further into calling across this
 boundary.
 
-## In the real world: the iOS app's build
+## In the real world: the iOS, Desktop and web builds
 
-`apps/openagents-ios/generate.sh` generates the app's Coax libraries,
-headers and Metal source before Xcode compiles the platform shell. Read the
-script in the current checkout for its complete module list; that list grows
-as engine modules move into the OpenAgents Metaverse Engine.
+`apps/openagents-ios/generate.sh` compiles `apps/openagents-ios/ios-app.coax`
+into `Generated/gallery.{c,h}`, emits the shared GPU shader
+(`components/backend/gpu-shader.coax`) to `Generated/Components/components.metal`,
+stages the pinned Breez Spark SDK package, and enforces the 512 KB iOS stack-frame
+budget (`-Wframe-larger-than=524288 -Werror=frame-larger-than`) before Xcode
+compiles the Swift shell.
 
-The generator rebuilds when compiler inputs are newer and checks release
-metadata before generation.
-A checked build can come from the compiler cache or a verified published
-build; otherwise `coax/build.sh` bootstraps it. Xcode's iOS SDK environment
-must not turn that host compiler into an iOS executable. The script selects
-the Mac SDK and host triple for compiler production, then Xcode compiles the
-generated C for the actual app target.
+The other repository build drivers compose the same single-shot compiler
+commands around fingerprinted caches:
+
+- **`coax/build.sh`** installs a verified compiler from the input-fingerprinted
+  cache (`~/.cache/coax-release/<fingerprint>/`) or bootstraps it cleanly with
+  mutation checks; `apps/openagents-desktop/install.sh` invokes it before
+  assembling `/Applications/OpenAgents.app`.
+- **`coax/web/tool.sh`** compiles and caches standalone Coax CLI and worker
+  binaries (recording their `#load` closure via `coax deps` so unrelated edits do
+  not rebuild them); `apps/openagents-desktop/build.sh` calls it with
+  `COAX_TOOL_BUILD_ONLY=1` to build bundled workers (`oa-worker`, `claudeworker`,
+  `gitguard`, `coder-host`).
+- **`coax/web/wasm.sh`** and **`coax/web/serve.sh`** drive the browser Wasm build
+  (used by `apps/openagents-web/build.sh` and `gamebuilder/web/build.sh`) and the
+  local dev server that watches `.deps` lists to rebuild changed modules.
 
 A library generation uses `coax c --library --header`: C goes to stdout,
 the header to the named file. The generator publishes complete outputs and

@@ -22,6 +22,59 @@ while IFS= read -r page; do
     grep -q '<div id="coaxial-load"' <<< "$loader" || bad "${page#$app/}: a loader block that isn't the loading screen"
   fi
   body="$(sed -n '/<body>/,/<\/body>/p' "$page" | sed '/<!-- loader: coax\/web\/loader.js -->/,/<!-- \/loader -->/d')"
+  # Coax SSR hydration shell (components/backend/html.coax, #14092, #14094): a page drawn by
+  # dom-host.js with a built data-app module may pre-render its Coax tree inside
+  # <main ... data-coax-ssr="1">...</main> for in-place adoption by dom-hydrate.js.
+  # Non-SSR pages, SSR shells without dom-host.js data-app, and scripts/handlers inside SSR still fail.
+  if grep -q 'data-coax-ssr="1"' <<< "$body"; then
+    if ! grep -qE 'dom-host\.js"[^>]*data-app="[^"]+"' "$page"; then
+      bad "${page#$app/}: data-coax-ssr=\"1\" requires dom-host.js with a data-app module"
+    else
+      ssr_split="$(awk '
+        BEGIN { depth = 0; in_ssr = 0; bad_ssr = 0; rest = ""; ssr = "" }
+        {
+          s = $0 "\n"
+          while (length(s) > 0) {
+            if (!in_ssr) {
+              if (match(s, /<main[^>]*data-coax-ssr="1"[^>]*>/)) {
+                rest = rest substr(s, 1, RSTART - 1)
+                ssr = ssr substr(s, RSTART, RLENGTH)
+                s = substr(s, RSTART + RLENGTH)
+                in_ssr = 1; depth = 1
+              } else {
+                rest = rest s; s = ""
+              }
+            } else {
+              if (match(s, /<main[ >]|<\/main>/)) {
+                ssr = ssr substr(s, 1, RSTART + RLENGTH - 1)
+                tok = substr(s, RSTART, RLENGTH)
+                s = substr(s, RSTART + RLENGTH)
+                if (tok == "</main>") { depth--; if (depth == 0) in_ssr = 0 }
+                else depth++
+              } else {
+                ssr = ssr s; s = ""
+              }
+            }
+          }
+        }
+        END {
+          if (depth != 0) print "SSR_UNCLOSED"
+          print "===SSR==="
+          printf "%s", ssr
+          print "\n===REST==="
+          printf "%s", rest
+        }
+      ' <<< "$body")"
+      if grep -q '^SSR_UNCLOSED$' <<< "$ssr_split"; then
+        bad "${page#$app/}: unclosed <main data-coax-ssr=\"1\"> block"
+      else
+        ssr_block="$(awk '/^===SSR===/{f=1;next} /^===REST===/{f=0} f' <<< "$ssr_split")"
+        ssr_bad="$(printf '%s\n' "$ssr_block" | grep -oiE '<(script|iframe|object|embed|style)([[:space:]/>]|$)|[[:space:]]on[a-z]+=' | sort -u || true)"
+        [[ -z "$ssr_bad" ]] || bad "${page#$app/}: forbidden markup in data-coax-ssr block: $(echo $ssr_bad)"
+        body="$(awk '/^===REST===/{f=1;next} f' <<< "$ssr_split")"
+      fi
+    fi
+  fi
   extra="$(printf '%s\n' "$body" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(body|canvas|main|h1|h2|p|a|script|template|ul|li|em|strong|code|table|caption|thead|tbody|tr|th|td)' || true)"
   [[ -z "$extra" ]] || bad "${page#$app/}: visible elements $(echo $extra)"
   # Links and text live only inside <main>, which the GPU page clips away (or, on a page drawn by

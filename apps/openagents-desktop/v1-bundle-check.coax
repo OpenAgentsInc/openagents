@@ -203,6 +203,8 @@ tool_main :: () -> int #export_c #effects(all) {
       violations += vbc_check_required(contents, "MacOS/OpenAgents", "Contents/MacOS/OpenAgents");
       violations += vbc_check_required(contents, "Resources/coder-host", "Contents/Resources/coder-host");
       violations += vbc_check_required(contents, "Resources/oa-worker", "Contents/Resources/oa-worker");
+      violations += vbc_check_required(contents, "Resources/claudeworker", "Contents/Resources/claudeworker");
+      violations += vbc_check_required(contents, "Resources/gitguard", "Contents/Resources/gitguard");
       violations += vbc_check_required(contents, "Resources/psionic-inkling-serve", "Contents/Resources/psionic-inkling-serve");
       violations += vbc_check_required(contents, "Resources/inkling-kernels.metal", "Contents/Resources/inkling-kernels.metal");
       violations += vbc_check_required(contents, "Resources/Components", "Contents/Resources/Components");
@@ -258,6 +260,7 @@ tool_main :: () -> int #export_c #effects(all) {
     violations += vbc_check_required(target, "OpenAgents", "OpenAgents");
     violations += vbc_check_required(target, "coder-host", "coder-host");
     violations += vbc_check_required(target, "oa-worker", "oa-worker");
+    violations += vbc_check_required(target, "claudeworker", "claudeworker");
     violations += vbc_check_required(target, "psionic-inkling-serve", "psionic-inkling-serve");
 
     nl := fs_list(target, list[..]);

@@ -1,0 +1,230 @@
+// Checks for the default out-of-the-box boot state of the unified desktop page (#14116):
+// cloud-first onboarding with Account auth default ON, optional $0 local Inkling, core
+// Settings pages, File Viewer, Full Auto, Usage, Voice, Environments/Introspection, and
+// Bitcoin Spark + Nostr Wallet pane with default feature flags (migrated from retired page-v1.coax).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "unified page: default boot is cloud-first with Account auth ON, optional $0 local Inkling, and valid frames" {
+  s: [1] CoderPage;
+  st: [1] CpCheckLean;
+  cp_store_bind(s[..], st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
+  s[0].flags = dc_flags_defaults();
+  s[0].local_os_ok = false;
+  s[0].local_hw_ok = false;
+  s[0].local_ram_gb = 16;
+  s[0].inkling = false;
+  cp_init(s[..]);
+
+  // Clean profile before sign-in: shows unified cloud-first onboarding (no Antigravity fallback, no mandatory local download).
+  #assert cp_needs_cloud_onboarding(s[..]);
+  s[0].d = 1.0f32;
+  f0: [1] UiFrame;
+  uiframe_begin(f0[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0f32, 0.016f32, true, false);
+  cp_layout(s[..], f0[..], 1280.0f32, 820.0f32);
+  #assert uiframe_end(f0[..], s[0].surface[..]);
+  #assert surface_find(s[0].surface[..], "coder.onboarding") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.onboarding.login") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.onboarding.byo") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.onboarding.cloud_note") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.agy.connect") < 0;
+
+  // Signing into OpenAgents Cloud clears onboarding and exposes Auto | Local | Cloud starting on Auto ("oa:auto").
+  coder_page_set_cloud_authed(s[..], true);
+  #assert !cp_needs_cloud_onboarding(s[..]);
+  #assert cp_has_model_picker(s[..]) && cp_models(s[..]) == CP_COMPUTE_MODES;
+  #assert coder_page_model_flawed(s[..]) && !coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
+  mid: [64] u8;
+  mn := coder_page_model_id_out(s[..], mid[..]);
+  #assert cast(string) mid[0..<mn] == "oa:auto";
+  #assert cp_effort_count(s[..], cp_model_index(s[..])) == 5 && cp_effort_label(s[..], cp_model_index(s[..])) == "High";
+  #assert cp_tr(CP_LOCALE_EN, "new_chat") == "New chat";
+  #assert cp_tr(CP_LOCALE_EN, "send") == "Send";
+  #assert cp_tr(CP_LOCALE_EN, "stop") == "Stop";
+
+  // Local Inkling 2 Mini is an optional $0 compute accelerator on qualifying hardware (never a separate hidden local-only mode).
+  s[0].local_os_ok = true;
+  s[0].local_hw_ok = true;
+  s[0].local_ram_gb = 64;
+  coder_page_set_inkling(s[..], true);
+  #assert cp_has_model_picker(s[..]) && cp_models(s[..]) == CP_COMPUTE_MODES;
+
+  // Switching compute modes and legacy saved model IDs (oa:, flawed:, inkling-2-mini) works cleanly.
+  #assert coder_page_pick_model(s[..], "oa:local") && coder_page_model_flawed(s[..]) && coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
+  #assert coder_page_pick_model(s[..], "flawed:gemini-4-neon") && coder_page_model_flawed(s[..]) && !coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
+  #assert coder_page_pick_model(s[..], "oa:gemini-4-neon") && coder_page_model_flawed(s[..]) && !coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
+  #assert coder_page_pick_model(s[..], "inkling-2-mini") && coder_page_model_flawed(s[..]) && coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
+
+  // Core Settings pages are allowed by default (General, Agent, Account, Providers, Models, Usage, Voice, Connections, About & updates).
+  def_flags := dc_flags_defaults();
+  #assert cp_set_page_ok_flags(def_flags, CP_PG_GENERAL);
+  #assert cp_set_page_ok_flags(def_flags, CP_PG_FLAWED);
+  #assert cp_set_page_ok_flags(def_flags, CP_PG_ACCOUNT);
+  #assert !cp_set_page_ok_flags(0, CP_PG_ACCOUNT);
+  #assert cp_set_page_ok_flags(def_flags, CP_PG_PROVIDERS);
+  #assert cp_set_page_ok_flags(def_flags, CP_PG_MODELS);
+  #assert cp_set_page_ok_flags(def_flags, CP_PG_ABOUT);
+  #assert !cp_set_page_ok_flags(def_flags, CP_PG_WALLET);
+  #assert !cp_set_page_ok_flags(def_flags, CP_PG_FOREMAN);
+  #assert cp_set_page_ok_flags(def_flags, CP_PG_USAGE);
+  #assert cp_set_page_ok_flags(def_flags, CP_PG_VOICE);
+  #assert cp_set_page_ok_flags(def_flags, CP_PG_CONNECTIONS);
+  #assert !cp_set_page_ok_flags(def_flags, CP_PG_SCHED);
+
+  // Enabling Antigravity does NOT expose other models until the user opts in via Settings -> Agent -> Developer.
+  coder_page_set_agy(s[..], true);
+  #assert cp_models(s[..]) == CP_COMPUTE_MODES && coder_page_model_flawed(s[..]);
+  // Once the user opts into Developer -> Show other models, Antigravity joins the picker and switches cleanly.
+  coder_page_show_other_models_set(s[..], true);
+  #assert cp_has_model_picker(s[..]) && cp_models(s[..]) == CP_FLAWED_MODELS + 2;
+  #assert coder_page_pick_model(s[..], "antigravity") && coder_page_model_agy(s[..]) && coder_page_model_provider(s[..]) == 1;
+  #assert coder_page_pick_model(s[..], "flawed:inkling-2-mini") && coder_page_model_flawed(s[..]) && coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
+  coder_page_show_other_models_set(s[..], false);
+  #assert cp_models(s[..]) == CP_COMPUTE_MODES && coder_page_model_provider(s[..]) == 8;
+  coder_page_set_agy(s[..], false);
+  #assert cp_has_model_picker(s[..]) && coder_page_model_provider(s[..]) == 8;
+  // Even without cloud auth, compute picker stays unified (Auto | Local | Cloud) unless developer backend override == 1 (Local).
+  coder_page_set_cloud_authed(s[..], false);
+  coder_page_settings_gauth(s[..], "", "");
+  coder_page_set_inkling(s[..], true);
+  #assert cp_has_model_picker(s[..]) && cp_models(s[..]) == CP_COMPUTE_MODES;
+  s[0].flawed[0].backend = 1;
+  #assert !cp_has_model_picker(s[..]) && cp_models(s[..]) == 1 && coder_page_model_flawed_local(s[..]);
+  s[0].flawed[0].backend = 0;
+  coder_page_set_cloud_authed(s[..], true);
+
+  // Settings -> Flawed & Settings -> Providers open directly without any feature flag.
+  coder_page_settings_open(s[..], CP_PG_FLAWED, "");
+  #assert coder_page_settings_page(s[..]) == CP_PG_FLAWED;
+  pv: [CP_FLAWED_PREFS_COUNT] int;
+  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT;
+  #assert pv[0] == 0 && pv[1] == 0 && pv[4] == 2 && pv[6] == 0 && pv[9] == 0 && pv[11] == 1 && pv[12] == 1 && pv[16] == 1;
+  #assert cp_flawed_settings_press(s[..], "set.flawed.pmode.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
+  #assert cp_flawed_settings_press(s[..], "set.flawed.ctx1m.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
+  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[6] == 1 && pv[18] == 1 && pv[20] == 0;
+  #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
+  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[20] == 1;
+  #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.0") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
+  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[20] == 0;
+  // The sub-agent git limit (#14104) is an optional 22nd number: only a host that passes it gets the row's value.
+  #assert !s[0].flawed[0].subagent_git_host;
+  pw: [CP_FLAWED_PREFS_COUNT + 1] int;
+  #assert coder_page_flawed_prefs_get(s[..], pw[..]) == CP_FLAWED_PREFS_COUNT + 1 && pw[21] == 0 && s[0].flawed[0].subagent_git_host;
+  #assert cp_flawed_settings_press(s[..], "set.flawed.subgit.2") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
+  #assert coder_page_flawed_prefs_get(s[..], pw[..]) == CP_FLAWED_PREFS_COUNT + 1 && pw[21] == 2;
+  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT;
+  pw[21] = 1; coder_page_flawed_prefs_set(s[..], pw[..]);
+  #assert s[0].flawed[0].subagent_git_most == 1;
+  coder_page_flawed_prefs_set(s[..], pv[..]);
+  #assert s[0].flawed[0].subagent_git_most == 1;   // a host that passes 21 numbers leaves it alone
+  s[0].nturns = 1;
+  s[0].turns[0].nagents = 2;
+  s[0].turns[0].agents[0].level = CP_LEVEL_CLAUDE;
+  s[0].turns[0].agents[1].level = CP_LEVEL_CODEX;
+  coder_page_set_claude_sub(s[..], true);
+  #assert coder_page_agent_engine(s[..], 0) == 0 && coder_page_agent_engine(s[..], 1) == 0 && !coder_page_agent_claude(s[..], 0);
+  #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.1");
+  #assert coder_page_agent_engine(s[..], 0) == 1 && coder_page_agent_engine(s[..], 1) == 3 && coder_page_agent_claude(s[..], 0);
+  #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.0");
+  #assert coder_page_agent_engine(s[..], 0) == 0 && coder_page_agent_engine(s[..], 1) == 0;
+  s[0].nturns = 0; s[0].turns[0].nagents = 0;
+  coder_page_settings_open(s[..], CP_PG_PROVIDERS, "");
+  #assert coder_page_settings_page(s[..]) == CP_PG_PROVIDERS;
+  coder_page_settings_open(s[..], -2, "");
+
+  // Sending a message and rendering a frame succeed cleanly.
+  #assert coder_page_set_text(s[..], "Hello Flawed");
+  #assert coder_page_submit(s[..]);
+  #assert coder_page_action(s[..]) == CP_ASK_SEND;
+  #assert s[0].nturns == 1;
+  #assert cp_rich_run_cmd(s[..], CP_CMD_FORK);
+  #assert coder_page_action(s[..]) == CP_ASK_FORK;
+
+  // Core right-pane File Viewer works with default flags (#13992).
+  fb: [64] u8; src := "static int main(void) { return 0; }\n";
+  #assert coder_page_file_open(s[..], "/Users/me/work/inkling-gguf.c", fb[0..<cp_out(fb[..], src)], src.count);
+  #assert coder_page_file_shown(s[..]);
+  #assert coder_page_file_mode(s[..]) == CP_FP_READ;
+  #assert coder_page_file_set_edit(s[..], true) && coder_page_file_mode(s[..]) == CP_FP_EDIT;
+  coder_page_palette_set_mode(s[..], CP_PAL_MODE_FILES);
+  #assert coder_page_palette_mode(s[..]) == CP_PAL_MODE_FILES;
+
+  // Full Auto mode auto-approves approvals, plans, and questions without popping modal cards (#14063).
+  coder_page_permit_approval_mode_set(s[..], true);
+  coder_page_permit_full_auto_set(s[..], true);
+  #assert coder_page_permit_full_auto(s[..]) && !cp_permit_should_gate(s[..]);
+  cp_permit_take_gated(s[..], -1, "", 77, "rm -rf /tmp/foo");
+  #assert coder_page_permit_open(s[..]) == 0 && coder_page_action(s[..]) == CP_ASK_ANSWER;
+  cp_permit_take_plan(s[..], -1, "", 78, "Plan", "Do all steps");
+  #assert coder_page_permit_open(s[..]) == 0 && coder_page_action(s[..]) == CP_ASK_ANSWER;
+  cp_permit_take_secret(s[..], -1, "", 79, "Token", "GITHUB_TOKEN", "Push PR");
+  #assert coder_page_permit_open(s[..]) == 0 && coder_page_action(s[..]) == CP_ASK_SECRET;
+  sn: [64] u8;
+  sn_len := coder_page_permit_secret_name(s[..], sn[..]);
+  #assert cast(string) sn[0..<sn_len] == "GITHUB_TOKEN";
+  #assert coder_page_permit_secret_done(s[..], true) && coder_page_action(s[..]) == CP_ASK_ANSWER;
+
+  // Always Show My Usage works with default flags (#14064).
+  ai := coder_page_usage_set_account(s[..], CP_US_PROV_GEMINI, "Default", "Vertex", CP_US_ST_OBSERVED, "", 1000, false, 0);
+  #assert ai >= 0 && coder_page_usage_add_window(s[..], ai, "5h", 4200, 9999999999);
+  #assert cp_usage_ring_share(s[..]) > 0.40f32;
+  #assert coder_page_usage_spend_add(s[..], "/tmp/chat1.json", CP_US_PROV_GEMINI, "gemini-4-neon", 100000, 0, 20000, 150000);
+  #assert coder_page_usage_total_cost_micros(s[..]) >= 150000 && coder_page_usage_total_tokens(s[..]) == 120000;
+
+  // Dictation & Voice settings work with default flags (#14065).
+  coder_page_voice_set_state(s[..], CP_VOICE_LISTENING, "");
+  #assert coder_page_voice_state(s[..]) == CP_VOICE_LISTENING;
+  coder_page_voice_set_state(s[..], CP_VOICE_IDLE, "");
+  #assert coder_page_voice_state(s[..]) == CP_VOICE_IDLE;
+
+  // Environments/Connections & Universal Introspection work with default flags (#14066).
+  #assert coder_page_env_load_ssh_config(s[..], "Host studio\n  HostName 100.88.1.10\n  User chris\n") == 1;
+  #assert coder_page_env_count(s[..]) == 2;
+  #assert coder_page_introspect_set_tui(s[..], "dev\t0\t0\t12345\tzsh\t/Users/chris/work/openagents\tdev-shell\t1\n", "", false) == 1;
+  #assert coder_page_introspect_set_harnesses(s[..], "claude\ts1\tFix shader\t/Users/chris/work/openagents\tmain\trunning\t1700000100000\t4410\tCompiling\n", "", false) == 1;
+  #assert coder_page_introspect_set_machines(s[..], "studio\tMac Studio\t100.88.1.10\tchris\t22\ttailscale\tonline\t0\t0\tmacOS\n", "studio\tMac Studio\tr1\topenagents\tTrain\t/Users/chris/openagents\tmain\trunning\t1700000200000\tstep 1\n") == 1;
+  ic: [4] int;
+  #assert coder_page_introspect_counts(s[..], ic[..]) && ic[0] == 1 && ic[1] == 1 && ic[2] == 1 && ic[3] == 1;
+  #assert cp_introspect_open_session(s[..], 0) && coder_page_introspect_shown(s[..]);
+  #assert coder_page_introspect_set_output(s[..], "local:tmux:dev:0.0", "hello from tmux\n", "Updated", false);
+  // Borderless Session Control UI Direct Command works unconditionally in --minimal (#14067).
+  #assert coder_page_introspect_can_command(s[..]);
+  #assert coder_page_introspect_set_cmd(s[..], "echo hi");
+  #assert coder_page_introspect_submit(s[..]) && coder_page_action(s[..]) == CP_ASK_INTROSPECT_SEND;
+  icmd: [64] u8;
+  icmd_n := coder_page_introspect_cmd(s[..], icmd[..]);
+  #assert cast(string) icmd[0..<icmd_n] == "echo hi";
+  #assert coder_page_introspect_cmd_done(s[..], "local:tmux:dev:0.0", "Sent", false);
+  coder_page_introspect_close(s[..]);
+  #assert !coder_page_introspect_shown(s[..]);
+
+  // Sidebar bottom utility bar hides the wallet/archive icons and shows the bottom-right account credits pill;
+  // the Bitcoin Spark + read-only Nostr Wallet pane itself still works when toggled programmatically.
+  s[0].d = 1.0f32;
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0f32, 0.016f32, true, false);
+  cp_layout(s[..], f[..], 1280.0f32, 820.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert surface_find(s[0].surface[..], "coder.sb.archived") < 0;
+  #assert surface_find(s[0].surface[..], "coder.wallet") < 0;
+  #assert surface_find(s[0].surface[..], "coder.side.pill.usage") < 0;
+  cbtn := surface_find(s[0].surface[..], "coder.side.pill.credits");
+  #assert cbtn >= 0 && surface_action(s[0].surface[..], cbtn) == CP_USAGE_OPEN;
+  #assert !coder_page_wallet_shown(s[..]);
+  coder_page_settings_wallet(s[..], "Connected (Spark mainnet)", "12,345 sats", "spark1testaddr", "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu", "100,000 sats / day", "Backed up", "No payments yet.", true);
+  coder_page_wallet_info(s[..], "0.00012345 BTC", "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917", "m/44'/1237'/0'/0/0 (NIP-06)", "macOS Keychain (com.openagents.app.spark / seed-v1)", "Read-only · NIP-06 key pair paired with Spark wallet seed", true);
+  #assert cp_wallet_pane_toggle(s[..]) && coder_page_wallet_shown(s[..]) && coder_page_action(s[..]) == CP_ASK_WALLET_OPEN;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016f32, 0.016f32, true, false);
+  cp_layout(s[..], f[..], 1280.0f32, 820.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert surface_find(s[0].surface[..], "wallet.pane.balance") >= 0;
+  #assert surface_find(s[0].surface[..], "wallet.pane.npub") >= 0;
+  #assert surface_find(s[0].surface[..], "wallet.pane.hex") >= 0;
+  #assert surface_find(s[0].surface[..], "wallet.pane.path") >= 0;
+  #assert surface_find(s[0].surface[..], "wallet.pane.custody") >= 0;
+  #assert cp_wallet_pane_press(s[..], "wallet.pane.copy.npub") && coder_page_action(s[..]) == CP_ASK_WALLET_COPY_NPUB;
+  #assert cp_wallet_pane_press(s[..], "wallet.pane.copy.hex") && coder_page_action(s[..]) == CP_ASK_WALLET_COPY_HEX;
+  #assert cp_wallet_pane_press(s[..], "wallet.pane.copy.addr") && coder_page_action(s[..]) == CP_ASK_WALLET_COPY_ADDR;
+  #assert cp_wallet_pane_press(s[..], "wallet.pane.connect") && coder_page_action(s[..]) == CP_ASK_WALLET_REFRESH;
+  #assert cp_wallet_pane_toggle(s[..]) && !coder_page_wallet_shown(s[..]);
+}

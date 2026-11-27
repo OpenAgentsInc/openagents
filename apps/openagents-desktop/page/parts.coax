@@ -25,6 +25,7 @@
 #load "../../../coax/lib/agent/desktop/scheduled.coax";
 #load "../../../coax/lib/agent/desktop/webhook-auth.coax";
 #load "../../../coax/lib/agent/desktop/flags.coax";
+#load "../../../coax/lib/agent/desktop/introspect.coax";
 #load "../../../coax/lib/agent/desktop/metaverse-route.coax";
 #load "../../../coax/lib/agent/desktop/browser-route.coax";
 #load "../../../coax/lib/agent/desktop/browser-policy.coax";
@@ -81,6 +82,7 @@
 #load "mcpskills.coax";
 #load "voice.coax";
 #load "environments.coax";
+#load "introspect.coax";
 #load "rich.coax";
 #load "scheduled.coax";
 #load "preview.coax";

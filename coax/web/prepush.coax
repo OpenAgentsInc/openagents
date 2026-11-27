@@ -12,6 +12,8 @@
 //                       merge base), agent-reference --check, wgsl (the committed .wgsl and their
 //                       copies are what their Coax writes) when the push changes Coax or a shader,
 //                       changelog-page --check when it changes coax/CHANGELOG.md or the page,
+//                       books-check (bash scripts/check-books.sh --check, ~2 s metadata-only) when
+//                       it changes any book, docs/books/, book checker/infra files, or openagents/,
 //                       `coax check` of every root above a changed .coax file (its loaders up the
 //                       #load graph to the files nothing loads, wherever they live), a failure the
 //                       merge base shares not counted,
@@ -48,7 +50,7 @@ PP_PATHS :: 65536;         // files one commit changes
 PP_WINDOW_S :: 86400;      // how far back a change counts as newer work: 24 hours
 PP_SHOW :: 12;             // findings printed per commit
 PP_PUSH :: 512;            // commits judged per push
-PP_JOBS :: 13;
+PP_JOBS :: 14;
 PP_HOW :: "docs/metaverse/green-main-pipeline.md, \"The pre-push check\"";
 PP_REFUSE :: 3;
 PP_ZERO :: "0000000000000000000000000000000000000000";
@@ -619,8 +621,46 @@ pp_only_docs :: (changed: string) -> bool {
     md := p.count >= 3 && cast(string) p[p.count - 3..<p.count] == ".md";
     if !md && !pp_starts(p, "docs/") { return false; }
     if p == "coax/CHANGELOG.md" { return false; }   // the changelog page is generated from it
+    if pp_book_path(p) { return false; }            // books-check validates book markdown and docs/books/
   }
   return true;
+}
+
+// Whether a single changed path belongs to a book, docs/books/, book metadata tooling, or
+// openagents/ (which covers openagents/book/ and paths tracked by openagents/book/provenance.json).
+pp_book_path :: (p: string) -> bool {
+  return pp_starts(p, "coax/book/") || pp_starts(p, "psionic/book/") ||
+         pp_starts(p, "metaverse-engine/book/") || pp_starts(p, "everglade/book/") ||
+         pp_starts(p, "coder/book/") || pp_starts(p, "bitcoin/book/") ||
+         pp_starts(p, "nostr/book/") || pp_starts(p, "claude-code/book/") ||
+         pp_starts(p, "openagents/") || pp_starts(p, "docs/books/") ||
+         p == "psionic/tests/book.py" || p == "scripts/check-books.sh" ||
+         p == "scripts/book_routes.py" || p == "coax/tests/book_registry.py" ||
+         p == "coax/tests/book_claims.py";
+}
+// Whether the push changes any book, book tooling, or directory tracked by book provenance.
+pp_books :: (changed: string) -> bool {
+  i := 0;
+  // At i == changed.count the line is empty and pp_book_path("") is false, so `<=` returns the same result.
+  while i < changed.count {   // mutant: equivalent
+    j := i;
+    while j < changed.count && changed[j] != '\n' { j += 1; }
+    if pp_book_path(cast(string) changed[i..<j]) { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+#test "the books check runs for a push that changes a book, book tooling or openagents/, and for no other" {
+  #assert pp_books("coax/book/SUMMARY.md\n") && pp_books("psionic/book/ch001.md\n") && pp_books("metaverse-engine/book/chapters.json\n");
+  #assert pp_books("everglade/book/README.md\n") && pp_books("coder/book/ch001.md\n") && pp_books("bitcoin/book/ch001.md\n");
+  #assert pp_books("nostr/book/ch001.md\n") && pp_books("openagents/book/ch021.md\n") && pp_books("claude-code/book/README.md\n");
+  #assert pp_books("openagents/knowledge/index.coax\n") && pp_books("docs/books/routes.json\n") && pp_books("docs/books/glossary.md");
+  #assert pp_books("psionic/tests/book.py\n") && pp_books("scripts/check-books.sh\n") && pp_books("scripts/book_routes.py\n");
+  #assert pp_books("coax/tests/book_registry.py\n") && pp_books("coax/tests/book_claims.py\n");
+  #assert pp_books("README.md\ncoax/book/ch01.md\n") && pp_books("coax/book/ch01.md\nREADME.md\n");
+  #assert !pp_books("coax/web/prepush.coax\ndocs/metaverse/green-main-pipeline.md\n") && !pp_books("");
+  #assert !pp_books("docs/openagents/notes.md\napps/openagents-desktop/app.coax\npsionic/tests/book.pyc\n") && !pp_books("README.md");
+  #assert !pp_only_docs("openagents/book/ch021.md\n") && !pp_only_docs("docs/books/glossary.md\n") && !pp_only_docs("docs/books/routes.json\n");
 }
 
 // Whether the push changes what the changelog page is written from (coax/web/changelog-page.coax):
@@ -678,6 +718,7 @@ pp_plan :: (has_compiler: bool, tests: bool) -> int {
 // so the checks run every decision with no process, no wait and no output.
 PP_POLL_MS :: 25;          // between polls of the running jobs
 PP_REMOTE :: 6;            // the job slot of `coax test` on a host
+PP_BOOKS :: 13;            // the job slot of `books-check` (scripts/check-books.sh --check)
 PP_ARGS :: 10;             // words in a job's command
 PP_WAIT :: 0; PP_START_REMOTE :: 1; PP_DONE :: 2;   // pp_tick's answers
 // What the machine says: the environment (OA_PREPUSH_TESTS, COAX, OA_PREPUSH_COAX_OWN_STALE,
@@ -732,6 +773,9 @@ pp_begin :: (r: [] PpRun, e: PpEnv, base: string, commit: string, changed: strin
   // nearest first, a failure the merge base shares not counted): 76ded7e0e0 broke page/todos.coax,
   // which no suite the push changed loads, and the desktop page and app stopped compiling on main
   ca := [5] string.["coax/web/tool.sh", "suites", "--since", base, "--check-affected"];
+  // fast metadata-only book validation (~2 s, zero compiler execution): chapter registries, links,
+  // provenance and route metadata (scripts/check-books.sh --check)
+  bk := [3] string.["bash", "scripts/check-books.sh", "--check"];
   tests := e.tests != "0";
   if !tests { pp_say(r, "prepush: OA_PREPUSH_TESTS=0: no coax test\n", "", "", "", ""); }
   has_compiler := e.has_compiler;
@@ -756,6 +800,7 @@ pp_begin :: (r: [] PpRun, e: PpEnv, base: string, commit: string, changed: strin
   if some_compiler && pp_shaders(changed) { pp_want(r, 10, "wgsl", wg[..]); }
   if some_compiler && pp_changelog(changed) { pp_want(r, 11, "changelog-page", cl[..]); }
   if has_compiler && pp_has(changed, ".coax") { pp_want(r, 12, "coax check", ca[..]); }
+  if pp_books(changed) { pp_want(r, PP_BOOKS, "books-check", bk[..]); }
   r[0].tests = (run & PP_RUN_SUITES) != 0;
   if r[0].tests {
     pp_want(r, 4, "suites --list", sl[..]);
@@ -824,9 +869,10 @@ pp_verdicts :: (r: [] PpRun, jobs: [] PpJob, red: string, now: int) -> int {
     if jobs[k].status == 0 { pp_say(r, "prepush: ", name, " passed (", secs, " s)\n"); continue; }
     excused := pp_has(red, name);
     if k == PP_REMOTE || k == 12 { excused = false; }   // the push's own suites and compiles: never main's red list
-    if jobs[k].status == 1 && !excused {
+    book_fail := name == "books-check" && jobs[k].status == 2;  // book_routes.py --check exits 2 on bad metadata
+    if (jobs[k].status == 1 || book_fail) && !excused {
       pp_say(r, "prepush: ", name, " FAILED (", secs, " s):\n"); pp_tail(r, pp_job_text(jobs, k), 12); failed = true;
-    } else if jobs[k].status == 1 {
+    } else if jobs[k].status == 1 || book_fail {
       pp_say(r, "prepush: ", name, " fails, and is on main's red list already (coax/remote/after.sh state): not this push's\n", "", "");
     } else {
       pp_say(r, "prepush: ", name, " could not run (status ", s, "); not counted:\n"); pp_tail(r, pp_job_text(jobs, k), 4);
@@ -917,6 +963,37 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   // a push with no Coax in it compiles nothing
   g: [1] PpFake; pp_fake(g[..]); g[0].e.has_compiler = true;
   #assert pp_fake_checks(g[..], "B", "C", "coax/web/host.js\n", 120, "") == 0 && g[0].argv[12] == "";
+}
+#test "the runner: books-check runs on book/openagents changes even without a compiler, and refuses on status 1 or 2" {
+  // passing book markdown push with no compiler still runs books-check
+  h: [1] PpFake; pp_fake(h[..]); h[0].ms[PP_BOOKS] = 2000;
+  #assert pp_fake_checks(h[..], "B", "C", "openagents/book/ch021.md\n", 120, "") == 0;
+  #assert h[0].argv[PP_BOOKS] == "bash scripts/check-books.sh --check ";
+  #assert pp_has(pp_report(h[0].r[..]), "prepush: books-check passed (2 s)\n");
+  // status 1 failure (e.g. provenance/structure assertion) refuses the push
+  f1: [1] PpFake; pp_fake(f1[..]);
+  f1[0].status[PP_BOOKS] = 1; f1[0].text[PP_BOOKS] = "AssertionError: chapter 21\n";
+  #assert pp_fake_checks(f1[..], "B", "C", "openagents/knowledge/a.coax\n", 120, "") == 1;
+  #assert pp_has(pp_report(f1[0].r[..]), "prepush: books-check FAILED (0 s):\n      AssertionError: chapter 21\n");
+  // status 2 failure (book_routes.py --check parser.error on bad metadata) also refuses the push
+  f2: [1] PpFake; pp_fake(f2[..]);
+  f2[0].status[PP_BOOKS] = 2; f2[0].text[PP_BOOKS] = "book_routes.py: error: invalid step\n";
+  #assert pp_fake_checks(f2[..], "B", "C", "docs/books/routes.json\n", 120, "") == 1;
+  #assert pp_has(pp_report(f2[0].r[..]), "prepush: books-check FAILED (0 s):\n      book_routes.py: error: invalid step\n");
+  // status 2 is excused when books-check is on main's red list
+  fr: [1] PpFake; pp_fake(fr[..]); fr[0].status[PP_BOOKS] = 2;
+  #assert pp_fake_checks(fr[..], "B", "C", "docs/books/routes.json\n", 120, "books-check\n") == 0;
+  #assert pp_has(pp_report(fr[0].r[..]), "prepush: books-check fails, and is on main's red list already");
+  // status 127 or negative (missing python3/script or wait error) is not counted
+  f3: [1] PpFake; pp_fake(f3[..]); f3[0].status[PP_BOOKS] = 127; f3[0].text[PP_BOOKS] = "python3: not found\n";
+  #assert pp_fake_checks(f3[..], "B", "C", "scripts/check-books.sh\n", 120, "") == 0;
+  #assert pp_has(pp_report(f3[0].r[..]), "prepush: books-check could not run (status 127); not counted:\n");
+  f4: [1] PpFake; pp_fake(f4[..]); f4[0].status[PP_BOOKS] = -1;
+  #assert pp_fake_checks(f4[..], "B", "C", "coax/book/SUMMARY.md\n", 120, "") == 0;
+  #assert pp_has(pp_report(f4[0].r[..]), "prepush: books-check could not run (status -1); not counted:\n");
+  // non-book push does not schedule books-check
+  nb: [1] PpFake; pp_fake(nb[..]);
+  #assert pp_fake_checks(nb[..], "B", "C", "coax/web/prepush.coax\n", 120, "") == 0 && nb[0].argv[PP_BOOKS] == "";
 }
 #test "the runner: failures, the red list, a check that can't run, one cut off at the limit, one that can't start" {
   h: [1] PpFake; pp_fake(h[..]);

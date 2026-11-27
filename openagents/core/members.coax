@@ -26,6 +26,7 @@ OA_PACK_METAVERSE  :: 8;
 OA_PACK_AGENTS     :: 16;
 OA_PACK_KNOWLEDGE  :: 32;
 OA_PACK_CAPABILITY :: 64;
+OA_PACK_SESSIONS   :: 128;
 
 OA_MEMBER_NWALLET     :: 4;
 OA_MEMBER_NCLI        :: 1;
@@ -33,6 +34,7 @@ OA_MEMBER_NMETAVERSE  :: 2;
 OA_MEMBER_NAGENTS     :: 6;
 OA_MEMBER_NKNOWLEDGE  :: 2;
 OA_MEMBER_NCAPABILITY :: 3;
+OA_MEMBER_NSESSIONS   :: 5;
 
 // Permission modes & behaviors (exact numeric values of openagents/core/permissions.coax;
 // lockstep-asserted in openagents/core/wire.coax).
@@ -82,6 +84,11 @@ oa_member_is_capability_tool :: (name: string) -> bool #effects(reads, traps) {
   return name == "CapabilityDraft" || name == "CapabilityEval" || name == "CapabilityList";
 }
 
+oa_member_is_session_tool :: (name: string) -> bool #effects(reads, traps) {
+  return name == "session_list" || name == "session_read" || name == "session_send" ||
+         name == "session_spawn" || name == "session_stop";
+}
+
 // Safe capability slug check for #authority tool permission (mirrors capability-gate.coax: [a-z0-9-], 2..48 chars, no edge/double dashes).
 oa_cap_slug_safe :: (slug: string) -> bool #effects(reads, traps) {
   if slug.count < 2 || slug.count > 48 { return false; }
@@ -96,7 +103,7 @@ oa_cap_slug_safe :: (slug: string) -> bool #effects(reads, traps) {
 }
 
 oa_member_is_member_tool :: (name: string) -> bool #effects(reads, traps) {
-  return oa_member_is_wallet_tool(name) || oa_member_is_cli_tool(name) || oa_member_is_metaverse_tool(name) || oa_member_is_knowledge_tool(name) || oa_member_is_capability_tool(name);
+  return oa_member_is_wallet_tool(name) || oa_member_is_cli_tool(name) || oa_member_is_metaverse_tool(name) || oa_member_is_knowledge_tool(name) || oa_member_is_capability_tool(name) || oa_member_is_session_tool(name);
 }
 
 // Extract the whitespace-delimited token at index `want` (0 = first token, 1 = second token).
@@ -250,6 +257,11 @@ oa_member_tool_permission :: (tool_name: string, target: string, pmode: int, byp
     if pmode == OA_MP_PMODE_PLAN || pmode == OA_MP_PMODE_DONT_ASK { return OA_MP_PBEH_DENY; }
     if pmode == OA_MP_PMODE_AUTO || pmode == OA_MP_PMODE_ACCEPT_EDITS || session_allow { return OA_MP_PBEH_ALLOW; }
     return OA_MP_PBEH_ASK;
+  }
+
+  // ---- Borderless Session Control pack (#14067) ----
+  if oa_member_is_session_tool(tool_name) {
+    return OA_MP_PBEH_ALLOW;
   }
 
   return OA_MP_PBEH_ASK;
@@ -422,6 +434,16 @@ oa_member_tool_permission :: (tool_name: string, target: string, pmode: int, byp
   #assert oa_member_tool_permission("CapabilityEval", "linear-tickets", OA_MP_PMODE_DEFAULT, true, false) == OA_MP_PBEH_ALLOW;
   #assert oa_member_tool_permission("CapabilityEval", "linear-tickets", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_DENY;
   #assert oa_member_tool_permission("CapabilityEval", "linear-tickets", OA_MP_PMODE_DONT_ASK, false, true) == OA_MP_PBEH_DENY;
+
+  // Borderless Session Control pack (#14067): zero permission boundaries across all 5 session_* tools
+  #assert oa_member_is_session_tool("session_list") && oa_member_is_session_tool("session_read");
+  #assert oa_member_is_session_tool("session_send") && oa_member_is_session_tool("session_spawn") && oa_member_is_session_tool("session_stop");
+  #assert !oa_member_is_session_tool("Read") && oa_member_is_member_tool("session_list") && oa_member_is_member_tool("session_send");
+  #assert oa_member_tool_permission("session_list", "", OA_MP_PMODE_DEFAULT, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("session_read", "local:tmux:dev:0.0", OA_MP_PMODE_PLAN, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("session_send", "local:tmux:dev:0.0", OA_MP_PMODE_DONT_ASK, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("session_spawn", "run tests", OA_MP_PMODE_DEFAULT, false, false) == OA_MP_PBEH_ALLOW;
+  #assert oa_member_tool_permission("session_stop", "local:chat:c1", OA_MP_PMODE_DEFAULT, false, false) == OA_MP_PBEH_ALLOW;
 
   // Unknown non-member fallback
   #assert oa_member_tool_permission("SomethingElse", "", OA_MP_PMODE_BYPASS, true, true) == OA_MP_PBEH_ASK;

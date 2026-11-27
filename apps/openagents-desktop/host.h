@@ -73,6 +73,7 @@ int cd_agent_answer_line(void *page, int agent, char *out, int cap);
 int cd_agent_running(void *page, int agent);
 int cd_background_agents(void *page);
 int cd_agent_cancel(void *page, int agent);
+int cd_agent_wt_cleanup_next(void *page, char *path_out, int path_cap, char *branch_out, int branch_cap, char *head_out, int head_cap);
 int cd_stop_agent(void *page);
 // Kept chats. cd_chats: the list for the sidebar, most recent first, one chat a line (its id, a
 // tab, its title). cd_current: the id of the chat that is shown ("" for one not kept yet).
@@ -251,8 +252,10 @@ int cd_recall_line(void *page, char *out, int cap);
 // model). cd_agent_claude: whether this sub-agent runs in Claude Code, on the Claude worker.
 void cd_claude(void *page, int on);
 // Whether a sub-agent can run in Claude Code here: claudeworker is in the app and the claude command
-// is installed (GitHub #14104).
+// is installed and signed in (GitHub #14104).
 void cd_claude_sub(void *page, int on);
+// Live Claude Code availability & sign-in summary shown next to the toggle in Settings > Agent (#14104).
+void cd_claude_status(void *page, const char *status);
 void cd_agy(void *page, int on);
 void cd_agy_models_clear(void *page);
 int cd_agy_models_add(void *page, const char *inst_id, const char *inst_name, const char *slug, const char *name, int efforts_mask, int default_effort, int is_default);
@@ -863,4 +866,21 @@ void cd_br_set_download(void *page, int active, const char *raw_name, int bytes,
 void cd_br_set_ext_texture(void *page, int slot, void *native_tex);
 int cd_br_save_session(void *page, char *out, int cap);
 int cd_br_load_session(void *page, const char *json);
+// Universal Introspection sidebar sections & live output inspector (page/introspect.coax; #14066).
+int cd_introspect_set_tui(void *page, const char *tmux_raw, const char *ps_raw, int allow_ext);
+int cd_introspect_set_harnesses(void *page, const char *harness_tsv, const char *ps_raw, int allow_ext);
+int cd_introspect_set_machines(void *page, const char *machines_tsv, const char *remote_sessions_tsv);
+int cd_introspect_set_output(void *page, const char *session_id, const char *output, const char *status, int loading);
+int cd_introspect_active_id(void *page, char *out, int cap);
+int cd_introspect_active_kind(void *page);
+int cd_introspect_active_is_machine(void *page);
+int cd_introspect_shown(void *page);
+void cd_introspect_close(void *page);
+int cd_introspect_output(void *page, char *out, int cap);
+int cd_introspect_counts(void *page, int out4[4]);
+int cd_introspect_can_command(void *page);
+int cd_introspect_cmd(void *page, char *out, int cap);
+int cd_introspect_set_cmd(void *page, const char *text);
+int cd_introspect_submit(void *page);
+int cd_introspect_cmd_done(void *page, const char *session_id, const char *note, int failed);
 #endif

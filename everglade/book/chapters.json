@@ -591,100 +591,195 @@
     {
       "number": 26,
       "title": "Walk into a city",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch026-walk-into-a-city.md",
+      "status": "partly implemented",
+      "profile": "city-clearing-plots-v1",
       "depends_on": [
         9,
         10
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/world/clearing.coax",
+        "everglade/world/town.coax",
+        "everglade/world/housewright.coax",
+        "everglade/world/town-points.coax",
+        "metaverse-engine/world/plots.coax",
+        "everglade/world/zone-cells.coax",
+        "everglade/examples/city-town-plots.coax",
+        "everglade/examples/city-town-plots.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/world/town-stage.coax",
+        "everglade/world/plan.coax"
+      ]
     },
     {
       "number": 27,
       "title": "Townspeople",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch027-townspeople.md",
+      "status": "partly implemented",
+      "profile": "townspeople-speakers-guide-v1",
       "depends_on": [
         20,
         26
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/npc/people-words.coax",
+        "everglade/world/pansopher.coax",
+        "everglade/npc/guard-guide.coax",
+        "everglade/npc/guard-guide-game.coax",
+        "everglade/npc/guard-door.coax",
+        "everglade/examples/townspeople-roster-guide.coax",
+        "everglade/examples/townspeople-roster-guide.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/world/people.coax",
+        "everglade/client/npc.coax",
+        "everglade/client/speakers.coax"
+      ]
     },
     {
       "number": 28,
       "title": "Interactions",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch028-interactions.md",
+      "status": "partly implemented",
+      "profile": "quests-dialogue-ledger-v1",
       "depends_on": [
         27
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "everglade/model/content.coax",
+        "everglade/content/shipped.coax",
+        "everglade/model/character.coax",
+        "everglade/model/item-op.coax",
+        "metaverse-engine/session/ledger.coax",
+        "everglade/examples/interactions-quests-ledger.coax",
+        "everglade/examples/interactions-quests-ledger.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/bag.coax",
+        "coax/web/room/room-items.coax",
+        "coax/web/api/character-policy.coax"
+      ]
     },
     {
       "number": 29,
       "title": "Many rooms",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch029-many-rooms.md",
+      "status": "partly implemented",
+      "profile": "multi-room-shards-travel-v1",
       "depends_on": [
         12,
         13
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "metaverse-engine/session/control.coax",
+        "metaverse-engine/session/travel.coax",
+        "coax/web/room/room-directory.coax",
+        "coax/web/room/room-travel.coax",
+        "coax/web/room/room-fleet.coax",
+        "everglade/examples/many-rooms-travel.coax",
+        "everglade/examples/many-rooms-travel.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/room/room-travel.coax",
+        "coax/web/room/room-directory.coax"
+      ]
     },
     {
       "number": 30,
       "title": "Accounts and persistence",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch030-accounts-and-persistence.md",
+      "status": "partly implemented",
+      "profile": "accounts-character-persistence-v1",
       "depends_on": [
         13,
         29,
         "nostr:21"
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/web/api/auth-identity-policy.coax",
+        "coax/web/api/auth-device-policy.coax",
+        "coax/web/api/character-policy.coax",
+        "coax/web/api/checkpoint-policy.coax",
+        "everglade/model/character.coax",
+        "metaverse-engine/session/seat-ticket.coax",
+        "everglade/examples/accounts-character-persistence.coax",
+        "everglade/examples/accounts-character-persistence.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/api/player.c",
+        "coax/web/api/auth-device.c",
+        "coax/web/api/auth-identity.c"
+      ]
     },
     {
       "number": 31,
       "title": "Ship it",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch031-ship-it.md",
+      "status": "partly implemented",
+      "profile": "release-set-canary-rollback-v1",
       "depends_on": [
         11,
         29,
         30
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/web/release-set-policy.coax",
+        "coax/web/release-set.coax",
+        "coax/web/room/mmo-fault-policy.coax",
+        "everglade/examples/release-set-gates.coax",
+        "everglade/examples/release-set-gates.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/release-set.coax",
+        "coax/web/room/mmo-fault.coax"
+      ]
     },
     {
       "number": 32,
       "title": "Run a live world",
-      "file": null,
-      "status": "planned",
-      "profile": null,
+      "file": "ch032-run-a-live-world.md",
+      "status": "partly implemented",
+      "profile": "live-world-slo-mod-soak-v1",
       "depends_on": [
         31
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/web/api/service-policy.coax",
+        "metaverse-engine/session/moderation.coax",
+        "coax/web/room/soak-policy.coax",
+        "coax/web/room/room-crash.coax",
+        "coax/web/room/room-observe.coax",
+        "everglade/examples/live-world-ops.coax",
+        "everglade/examples/live-world-ops.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/api/service.c",
+        "coax/web/room/room-mod.coax",
+        "coax/web/room/soak.coax"
+      ]
     },
     {
       "number": 33,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin Docker/musl cross-compile build wrapper around coax c and gcc; holds no agent logic)
-# Build static Linux musl binary of coder/tui/oa-worker.coax for native Terminal-Bench execution.
+# Build static Linux musl binary of openagents/runtime/oa-worker.coax for native Terminal-Bench execution.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -11,7 +11,7 @@ export DOCKER_HOST="${DOCKER_HOST:-unix://$HOME/.colima/oa-agent0/docker.sock}"
 
 echo "[build_flawed_linux] Emitting Coax C..."
 "$REPO/coax/bin/coax" c "$REPO/coax/lib/crypto/entropy.coax" --library --header "$OUT_DIR/entropy-policy.h" > "$OUT_DIR/entropy.c"
-"$REPO/coax/bin/coax" c "$REPO/coder/tui/oa-worker.coax" --library --release > "$OUT_DIR/flawedworker.c"
+"$REPO/coax/bin/coax" c "$REPO/openagents/runtime/oa-worker.coax" --library --release > "$OUT_DIR/flawedworker.c"
 
 cat > "$OUT_DIR/flawedworker_wrap.c" <<'EOF'
 #include <stdio.h>

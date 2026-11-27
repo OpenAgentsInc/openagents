@@ -20,11 +20,13 @@ final class AntigravityStore: ObservableObject {
     @Published var selectedFolder: String = ""
 
     @Published var availableModels: [AntigravityModelOption] = AntigravityModelOption.fallbackCatalog
-    @Published var selectedModelID: String = "gemini-4-neon"
+    @Published var selectedModelID: String = "oa:auto"
     @Published var selectedEffort: ThinkingEffort = .high
     @Published var hostMetaByID: [String: HostRuntimeMeta] = [:]
     @Published var isUpdatingRemoteAgyHostID: String?
     @Published var reviewMode: ReviewMode = .auto
+    @Published var fullAutoEnabled: Bool = true
+    @Published var autoAnswerQuestions: Bool = true
 
     @Published var draftText: String = ""
     @Published var queuedDraft: String?
@@ -41,7 +43,16 @@ final class AntigravityStore: ObservableObject {
 
     @Published var isComputersPresented: Bool = false
     @Published var isWorkspacePresented: Bool = false
+    @Published var isUsagePresented: Bool = false
     @Published var isSidebarOpen: Bool = false
+
+    // Always-On Usage Dashboard & Universal Introspection (#14068)
+    @Published var usageSnapshot: UsageDashboardSnapshot = .empty
+    @Published var isLoadingUsage: Bool = false
+    @Published var introspectSessions: [IntrospectSession] = []
+    @Published var activeIntrospectSession: IntrospectSession?
+    @Published var isLoadingIntrospection: Bool = false
+    @Published var machineSessionCounts: [String: Int] = [:]
 
     // Subagent inspector
     @Published var activeSubagentItem: TranscriptItem?
@@ -108,6 +119,8 @@ final class AntigravityStore: ObservableObject {
 
     /// Zero-secret notification callback (`kind`: "completed" | "approval", `title`: generic non-secret status).
     var onTurnNotificationEvent: ((_ kind: String, _ title: String) -> Void)?
+    /// Live streaming assistant callback for Bi-Directional Voice sentence-chunked TTS (#14068).
+    var onAssistantStreamUpdate: ((_ sessionID: String, _ itemID: String, _ text: String, _ complete: Bool) -> Void)?
 
     private var pollTask: Task<Void, Never>?
     private var pushDebounceTask: Task<Void, Never>?
@@ -124,6 +137,7 @@ final class AntigravityStore: ObservableObject {
     private var legacyNoModeHosts: Set<String> = []
     private var wasActiveSessionBusy = false
     private var lastNotifiedInteractionID: String = ""
+    private var lastAutoApprovedInteractionID: String = ""
     private var pendingOptimisticUserItem: TranscriptItem?
     private var pendingOptimisticBaselineUserCount: Int = 0
     private var sentImagesByName: [String: Data] = [:]
@@ -136,6 +150,8 @@ final class AntigravityStore: ObservableObject {
         if args.contains("-OAResetStateForTests") {
             store.resetForTests()
         }
+        self.fullAutoEnabled = args.contains("-OAFullAutoOffForTests") ? false : store.fullAutoEnabled
+        self.autoAnswerQuestions = store.autoAnswerQuestions
         if args.contains("-OANoLocalNetworkBrowse") {
             self.client.browsesLocalNetwork = false
         }
@@ -192,11 +208,15 @@ final class AntigravityStore: ObservableObject {
 
     var pendingInteraction: PendingInteraction? {
         guard let session = activeSession, !session.interactionID.isEmpty else { return nil }
+        let isQ = interactionMeta?.isQuestion ?? false
+        if MobileCore.fullAutoDecidePrompt(fullAuto: fullAutoEnabled, autoAnswerQuestions: autoAnswerQuestions, kind: isQ ? 1 : 0) == 1 {
+            return nil
+        }
         if let meta = interactionMeta,
            meta.sessionID == session.id,
            meta.interactionID == session.interactionID {
             let prompt = meta.prompt.isEmpty
-                ? (items.last(where: { $0.role == .notice || $0.role == .tool })?.text ?? "Antigravity is waiting for your approval to continue.")
+                ? (items.last(where: { $0.role == .notice || $0.role == .tool })?.text ?? "OpenAgents is waiting for your approval to continue.")
                 : meta.prompt
             return PendingInteraction(
                 id: session.interactionID,
@@ -207,8 +227,53 @@ final class AntigravityStore: ObservableObject {
                 options: meta.options
             )
         }
-        let hint = items.last(where: { $0.role == .notice || $0.role == .tool })?.text ?? "Antigravity is waiting for your approval to continue."
+        let hint = items.last(where: { $0.role == .notice || $0.role == .tool })?.text ?? "OpenAgents is waiting for your approval to continue."
         return PendingInteraction(id: session.interactionID, sessionID: session.id, prompt: hint)
+    }
+
+    var tuiIntrospectSessions: [IntrospectSession] {
+        introspectSessions.filter { $0.kind == .tui }
+    }
+
+    var harnessIntrospectSessions: [IntrospectSession] {
+        introspectSessions.filter { $0.kind == .harness }
+    }
+
+    /// Always-on compact Usage HUD strip summary: active context % + daily/session spend + quota %.
+    var usageStripSummary: String {
+        var parts: [String] = []
+        if let usage = activeUsage, usage.totalTokens > 0 {
+            let pct = max(0, min(100, Int(usage.contextPercent.rounded())))
+            parts.append("ctx \(pct)%")
+        } else {
+            parts.append("ctx 0%")
+        }
+        let activeCost = activeUsage?.estimatedCostMicros(model: selectedModelID) ?? 0
+        let totalDaily = max(usageSnapshot.todayUsdMicros, activeCost)
+        if selectedModelOption.isLocalFreeCompute && totalDaily == 0 {
+            parts.append("$0.00 local")
+        } else {
+            parts.append("Today \(UsageDashboardSnapshot.formatUsd(micros: totalDaily))")
+        }
+        if usageSnapshot.bindingPercent > 0 {
+            let lbl = usageSnapshot.bindingLabel.isEmpty ? "Quota" : usageSnapshot.bindingLabel.capitalized
+            parts.append("\(lbl) \(usageSnapshot.bindingPercent)%")
+        } else if usageSnapshot.creditMsat > 0 {
+            let sats = usageSnapshot.creditMsat / 1000
+            parts.append("\(sats) sats")
+        } else if usageSnapshot.localReady {
+            parts.append("Local $0 ready")
+        } else {
+            parts.append("Quota 0%")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    var usageStripPercent: Int {
+        if let usage = activeUsage, usage.totalTokens > 0 {
+            return max(usageSnapshot.bindingPercent, max(0, min(100, Int(usage.contextPercent.rounded()))))
+        }
+        return usageSnapshot.bindingPercent
     }
 
     var hasMoreSessions: Bool {
@@ -368,7 +433,34 @@ final class AntigravityStore: ObservableObject {
             }
         }
 
-        if !rawQuery.hasPrefix("rules:") && !rawQuery.hasPrefix("conversation:") {
+        if rawQuery.hasPrefix("session:") || "session:".hasPrefix(rawQuery) {
+            let sub = rawQuery.hasPrefix("session:") ? String(rawQuery.dropFirst(8)) : ""
+            for intro in introspectSessions.prefix(12) {
+                if sub.isEmpty || Self.fuzzyMatches(intro.title.lowercased(), query: sub) || intro.id.lowercased().contains(sub) {
+                    candidates.append(MentionCandidate(
+                        id: "sess-\(intro.id)",
+                        kind: .session,
+                        label: "@session:\(intro.title)",
+                        insertion: "@session:\(intro.id)",
+                        subtitle: "\(intro.harness) · \(intro.machineLabel)"
+                    ))
+                }
+            }
+            for s in sessions.prefix(8) {
+                let t = displayTitle(for: s)
+                if sub.isEmpty || Self.fuzzyMatches(t.lowercased(), query: sub) || s.id.lowercased().contains(sub) {
+                    candidates.append(MentionCandidate(
+                        id: "sess-chat-\(s.id)",
+                        kind: .session,
+                        label: "@session:\(t)",
+                        insertion: "@session:\(s.id)",
+                        subtitle: "OpenAgents chat"
+                    ))
+                }
+            }
+        }
+
+        if !rawQuery.hasPrefix("rules:") && !rawQuery.hasPrefix("conversation:") && !rawQuery.hasPrefix("session:") {
             var seen = Set<String>()
             // Prioritize changed files, then full workspace tree files, then top-level folders.
             if let changed = workspaceSnapshot?.changedFiles {
@@ -883,7 +975,7 @@ final class AntigravityStore: ObservableObject {
     }
 
     func chooseModel(_ modelID: String) {
-        let normalized = MobileCore.normalizeAntigravityModel(modelID)
+        let normalized = MobileCore.normalizeCoreModel(modelID)
         selectedModelID = normalized
         if let hostID = activeComputer?.id {
             store.setSelectedModel(normalized, for: hostID)
@@ -895,6 +987,26 @@ final class AntigravityStore: ObservableObject {
                 store.setSelectedEffort(effort.rawValue, for: hostID, model: normalized)
             }
         }
+    }
+
+    func toggleFullAuto() {
+        setFullAuto(!fullAutoEnabled)
+    }
+
+    func setFullAuto(_ enabled: Bool) {
+        fullAutoEnabled = enabled
+        store.fullAutoEnabled = enabled
+        statusToast = enabled ? "Full Auto ON — zero approval prompts" : "Full Auto OFF — prompts enabled"
+        if enabled, let current = activeSession, !current.interactionID.isEmpty, current.interactionID != lastAutoApprovedInteractionID {
+            let allowOpt = interactionMeta?.options.first(where: \.isAllow)?.id ?? ""
+            lastAutoApprovedInteractionID = current.interactionID
+            Task { await respondToInteraction(allow: true, note: "Auto-approved (Full Auto)", optionID: allowOpt) }
+        }
+    }
+
+    func setAutoAnswerQuestions(_ enabled: Bool) {
+        autoAnswerQuestions = enabled
+        store.autoAnswerQuestions = enabled
     }
 
     func chooseEffort(_ effort: ThinkingEffort) {
@@ -939,6 +1051,7 @@ final class AntigravityStore: ObservableObject {
     // MARK: - Chat actions
 
     func startNewChat() {
+        activeIntrospectSession = nil
         activeSessionID = nil
         items = []
         pendingOptimisticUserItem = nil
@@ -959,6 +1072,7 @@ final class AntigravityStore: ObservableObject {
     }
 
     func selectSession(_ session: ChatSessionSummary) {
+        activeIntrospectSession = nil
         sessionSelectionGen &+= 1
         activeTranscriptRefreshTask?.cancel()
         activeSessionID = session.id
@@ -1046,9 +1160,11 @@ final class AntigravityStore: ObservableObject {
             }
         }
 
-        // Sync pin/rename/archive session metadata in background so legacy/minimal hosts never stall pairing (#14013)
+        // Sync pin/rename/archive session metadata, Usage HUD & Universal Introspection in background (#14013, #14068)
         Task { [weak self] in
             await self?.refreshSessionMetadata()
+            await self?.refreshUsage()
+            await self?.refreshIntrospection()
         }
 
         guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
@@ -1059,6 +1175,7 @@ final class AntigravityStore: ObservableObject {
                 mergedByID[sid] = existing
             }
             sessions = mergedByID.values.sorted { $0.updatedAtMs > $1.updatedAtMs }
+            machineSessionCounts[computer.id] = sessions.count
             persistOfflineCache(for: computer.id)
         }
 
@@ -1147,18 +1264,37 @@ final class AntigravityStore: ObservableObject {
                 activeUsage = usage
             }
             detectRateLimitAndBrowserHandoff(from: view.items, error: view.error)
-            updateLiveTurnStatus(nowBusy: nowBusy, needsApproval: !currentInteraction.isEmpty)
+            updateLiveTurnStatus(nowBusy: nowBusy, needsApproval: !currentInteraction.isEmpty && !fullAutoEnabled)
             persistOfflineCache(for: computer.id)
 
-            // Fire zero-secret completion / approval notification hooks for backgrounded clients.
-            if !currentInteraction.isEmpty && currentInteraction != lastNotifiedInteractionID {
-                lastNotifiedInteractionID = currentInteraction
-                onTurnNotificationEvent?("approval", "Antigravity requested approval")
-            } else if currentInteraction.isEmpty {
+            // Stream assistant text deltas to Bi-Directional Voice TTS when active (#14068).
+            if let lastAssistant = items.last(where: { $0.role == .assistant }) {
+                onAssistantStreamUpdate?(sid, lastAssistant.id, lastAssistant.text, lastAssistant.complete && !nowBusy)
+            }
+
+            // Full Auto policy (#14063 / #14068): automatically approve pending interactions without nagging the user.
+            if !currentInteraction.isEmpty {
+                let kind: Int64 = view.interactionQuestion ? 1 : 0
+                if MobileCore.fullAutoDecidePrompt(fullAuto: fullAutoEnabled, autoAnswerQuestions: autoAnswerQuestions, kind: kind) == 1 {
+                    if currentInteraction != lastAutoApprovedInteractionID {
+                        lastAutoApprovedInteractionID = currentInteraction
+                        let firstAllow = view.interactionOptions.first(where: \.isAllow)?.id ?? ""
+                        statusToast = "Full Auto approved action"
+                        Task { [weak self] in
+                            await self?.respondToInteraction(allow: true, note: "Auto-approved (Full Auto)", optionID: firstAllow)
+                        }
+                    }
+                } else if currentInteraction != lastNotifiedInteractionID {
+                    lastNotifiedInteractionID = currentInteraction
+                    onTurnNotificationEvent?("approval", "OpenAgents requested approval")
+                }
+            } else {
                 lastNotifiedInteractionID = ""
+                lastAutoApprovedInteractionID = ""
             }
             if wasActiveSessionBusy && !nowBusy && pendingOptimisticUserItem == nil {
-                onTurnNotificationEvent?("completed", "Antigravity finished your turn")
+                onTurnNotificationEvent?("completed", "OpenAgents finished your turn")
+                Task { [weak self] in await self?.refreshUsage() }
             }
 
             // Auto-dispatch queued follow-up without clobbering user's live draftText or attachments (#14007).
@@ -1214,6 +1350,15 @@ final class AntigravityStore: ObservableObject {
         }
         let attachmentsToSend = overrideAttachments ?? pendingAttachments
         guard !effectiveBaseText.isEmpty || !attachmentsToSend.isEmpty else { return }
+
+        // Borderless Session Control (#14068): when inspecting a TUI/tmux or external harness session,
+        // dispatch the composer prompt directly to that session over Tailscale!
+        if activeIntrospectSession != nil {
+            if !isOverride { draftText = "" }
+            await sendCommandToIntrospect(effectiveBaseText, mode: "send")
+            return
+        }
+
         guard let computer = activeComputer, computer.canSendRPC else {
             isComputersPresented = true
             return
@@ -1444,6 +1589,10 @@ final class AntigravityStore: ObservableObject {
     }
 
     func stopActiveTurn() async {
+        if activeIntrospectSession != nil {
+            await stopActiveIntrospect()
+            return
+        }
         guard let current = activeSession,
               let computer = activeComputer,
               computer.canSendRPC else { return }
@@ -2563,7 +2712,7 @@ final class AntigravityStore: ObservableObject {
         }
         defer { MobileCorePool.shared.checkin(work) }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let writeMethods: Set<String> = ["UpdateSessionMeta", "UpdateForeman", "ToggleAutomation", "RunAutomation", "UpdateAntigravityConfig"]
+        let writeMethods: Set<String> = ["UpdateSessionMeta", "UpdateForeman", "ToggleAutomation", "RunAutomation", "UpdateAntigravityConfig", "SendSessionCommand"]
         let isWrite = writeMethods.contains(method)
         guard let params = MobileCore.encodeDaemonRequest(
             work: work,
@@ -2828,6 +2977,159 @@ final class AntigravityStore: ObservableObject {
         } else {
             activeTurnLiveStatus = nil
         }
+    }
+
+    // MARK: - Always-On Usage Dashboard & Universal Introspection / Borderless Session Control (#14068)
+
+    func refreshUsage() async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        isLoadingUsage = true
+        defer { isLoadingUsage = false }
+        if let view = await performDaemonRPC(computer: computer, method: "GetUsage", quietErrors: true), view.ok {
+            usageSnapshot = UsageDashboardSnapshot.fromDaemonView(view)
+        }
+    }
+
+    func refreshIntrospection() async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        isLoadingIntrospection = true
+        defer { isLoadingIntrospection = false }
+        var discovered: [IntrospectSession] = []
+        if let view = await performDaemonRPC(computer: computer, method: "ListIntrospection", quietErrors: true), view.ok {
+            discovered = IntrospectSession.listFromDaemonView(view, machineID: computer.id, machineLabel: computer.name)
+        }
+        introspectSessions = discovered
+        machineSessionCounts[computer.id] = sessions.count + discovered.count
+    }
+
+    func selectIntrospectSession(_ session: IntrospectSession) {
+        activeIntrospectSession = session
+        activeSessionID = nil
+        pendingOptimisticUserItem = nil
+        interactionMeta = nil
+        activeTodos = []
+        isSidebarOpen = false
+        bannerError = nil
+        items = [
+            TranscriptItem(
+                id: "intro-head-\(session.id)",
+                role: .notice,
+                text: "Connected to \(session.harness.uppercased()) session \"\(session.title)\" on \(session.machineLabel)\(session.cwd.isEmpty ? "" : " · \(session.cwd)"). Type below to send commands or tap Stop for Ctrl-C.",
+                toolName: "",
+                complete: true,
+                startedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
+                subagentCalls: 0,
+                subagentNow: "",
+                path: "",
+                diff: "",
+                diffCut: false,
+                noticeKind: "note"
+            )
+        ]
+        Task { await refreshActiveIntrospect() }
+    }
+
+    func selectIntrospectSessionByID(_ id: String) {
+        if let match = introspectSessions.first(where: { $0.id == id }) {
+            selectIntrospectSession(match)
+        }
+    }
+
+    func selectMachineByID(_ machineID: String) {
+        if let comp = computers.first(where: { $0.id == machineID }) {
+            activeIntrospectSession = nil
+            selectComputer(comp)
+            statusToast = "Switched to \(comp.name)"
+        }
+    }
+
+    func refreshActiveIntrospect() async {
+        guard let target = activeIntrospectSession,
+              let computer = activeComputer, computer.canSendRPC else { return }
+        guard let view = await performDaemonRPC(
+            computer: computer,
+            method: "ReadIntrospection",
+            session: target.id,
+            quietErrors: true
+        ), view.ok else { return }
+        guard activeIntrospectSession?.id == target.id else { return }
+        let extraChunks = view.sessions.map(\.folder).joined()
+        let scrollback = (view.foremanPrompt + extraChunks).trimmingCharacters(in: .whitespacesAndNewlines)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        var nextItems: [TranscriptItem] = [
+            TranscriptItem(
+                id: "intro-head-\(target.id)",
+                role: .notice,
+                text: "\(target.harness.uppercased()) · \(target.title)\(target.cwd.isEmpty ? "" : " · \(target.cwd)")",
+                toolName: "",
+                complete: true,
+                startedAtMs: nowMs,
+                subagentCalls: 0,
+                subagentNow: "",
+                path: "",
+                diff: "",
+                diffCut: false,
+                noticeKind: "note"
+            )
+        ]
+        if !scrollback.isEmpty {
+            let block = target.kind == .tui ? "```text\n\(scrollback)\n```" : scrollback
+            nextItems.append(TranscriptItem(
+                id: "intro-body-\(target.id)",
+                role: .assistant,
+                text: block,
+                toolName: "",
+                complete: true,
+                startedAtMs: nowMs,
+                subagentCalls: 0,
+                subagentNow: "",
+                path: "",
+                diff: "",
+                diffCut: false,
+                noticeKind: ""
+            ))
+        }
+        items = nextItems
+    }
+
+    func sendCommandToIntrospect(_ text: String, mode: String = "send") async {
+        guard let target = activeIntrospectSession,
+              let computer = activeComputer, computer.canSendRPC else { return }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        if mode != "stop" && !text.isEmpty {
+            items.append(TranscriptItem(
+                id: "intro-cmd-\(MobileCore.randomHex(bytes: 6))",
+                role: .user,
+                text: text,
+                toolName: "",
+                complete: true,
+                startedAtMs: nowMs,
+                subagentCalls: 0,
+                subagentNow: "",
+                path: "",
+                diff: "",
+                diffCut: false,
+                noticeKind: ""
+            ))
+        }
+        isSending = true
+        defer { isSending = false }
+        if let view = await performDaemonRPC(
+            computer: computer,
+            method: "SendSessionCommand",
+            session: target.id,
+            title: mode,
+            text: text.truncatedToUTF8Bytes(3_800),
+            quietErrors: false
+        ), view.ok {
+            statusToast = mode == "stop" ? "Sent Ctrl-C to \(target.title)" : "Dispatched to \(target.title)"
+            try? await Task.sleep(for: .milliseconds(250))
+            await refreshActiveIntrospect()
+        }
+    }
+
+    func stopActiveIntrospect() async {
+        await sendCommandToIntrospect("", mode: "stop")
     }
 
     // MARK: - Durable Offline Prompt Outbox (#14019)

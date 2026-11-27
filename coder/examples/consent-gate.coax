@@ -1,0 +1,81 @@
+// Chapter 18: Consent before sharing — Hash-chained consent ledger backing
+// `coax/lib/agent/engine/consent-gate.coax` & `coder/tui/gate.coax`
+// (`coax/lib/agent/engine/consent.coax`) paired with OpenAgents member-pack
+// bypass-immune spending/signing boundaries (`openagents/core/members.coax`).
+#import "Basic";
+#load "../../coax/lib/agent/engine/consent.coax";
+#load "../../psionic/tests/harness-consent-checks.coax";
+#load "../../openagents/core/members.coax";
+
+WHY :: [17] string.["ok", "none", "classes", "early", "expired", "revoked", "shape", "capacity", "unknown", "person", "twice", "tick", "sequence", "link", "digest", "uncovered", "replay"];
+why_name :: (w: CsWhy) -> string { n := WHY; return n[cast(int) w]; }
+
+hex8 :: (d: [32] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<8 {
+    out[2 * i] = digits[cast(int) (d[i] >> 4)];
+    out[2 * i + 1] = digits[cast(int) (d[i] & 15)];
+  }
+  return cast(string) out[0..<16];
+}
+
+// book:begin example
+main :: () {
+  // 1. Initialize consent ledger & session content graph (System One destination = tool 1, call)
+  st: CtStore;
+  l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])];
+  g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])];
+  s := [1] CsSink.[ct_sink(st.bytes[..], st.ends[..], st.sent[..])];
+  ct_session(g[..]);
+  sys_one := CsDest.{kind = CsKind.tool, id = 1, purpose = CsPurpose.call};
+
+  // 2. Outbound send refused before any grant is recorded
+  p4 := [1] int.[4];
+  r0 := cs_send(l[..], g[0], s[..], CsMessage.{dest = sys_one, parts = p4[..]}, 1);
+  print("t1 send without grant: why=% sink_msgs=%\n", why_name(r0.why), s[0].count);
+
+  // 3. Person 1 grants session+project to System One for ticks 2..<20 -> send succeeds
+  g_ok := cs_grant(l[..], sys_one, CT_SESSION | CT_PROJECT, 2, 20, 1, 2);
+  r1 := cs_send(l[..], g[0], s[..], CsMessage.{dest = sys_one, parts = p4[..]}, 3);
+  print("t2-t3 grant=% send_covered=% sink_msgs=%\n", why_name(g_ok), why_name(r1.why), s[0].count);
+
+  // 4. Message mixing ungranted user-class node 2 is refused; minimize + redact strips node 2
+  both := [2] int.[4, 2];
+  m := CsMessage.{dest = sys_one, parts = both[..]};
+  r2 := cs_send(l[..], g[0], s[..], m, 4);
+  keep: [4] int;
+  k := cs_minimize(l[0], g[0], m, 4, keep[..]);
+  bn := cs_redact(l[0], g[0], m, 4, st.redacted[..]);
+  rn := cs_node(g[..], cast(string) st.redacted[0..<bn], 0, keep[0..<k]);
+  pr := [1] int.[rn];
+  r3 := cs_send(l[..], g[0], s[..], CsMessage.{dest = sys_one, parts = pr[..]}, 4);
+  print("t4 mixed=% minimized_parts=% redacted_send=% sink_msgs=%\n",
+    why_name(r2.why), k, why_name(r3.why), s[0].count);
+
+  // 5. Only grantor (person 1) may revoke; revocation records already-sent accounting
+  rv_bad := cs_revoke(l[..], 0, 2, 7);
+  rv_ok := cs_revoke(l[..], 0, 1, 7);
+  rev_ev := st.events[l[0].count - 1];
+  r4 := cs_send(l[..], g[0], s[..], CsMessage.{dest = sys_one, parts = p4[..]}, 8);
+  print("t7-t8 wrong_person=% revoke=% prior_sends=% prior_bytes=% after_revoke=%\n",
+    why_name(rv_bad), why_name(rv_ok), rev_ev.sends, rev_ev.bytes, why_name(r4.why));
+
+  // 6. Hash chain verifies, replays cleanly, and refuses a tampered event digest
+  v := cs_verify(l[0]);
+  st2: CtStore;
+  u := [1] CsLedger.[ct_open(st2.events[..], st2.grants[..])];
+  rp := cs_replay(l[0], u[..]);
+  hb: [16] u8;
+  print("ledger: verify=% events=% replay=% head=%\n",
+    why_name(v.why), v.index, why_name(rp.why), hex8(st.events[l[0].count - 1].digest, hb[..]));
+  st.events[2].bytes += 1;
+  bad := cs_verify(l[0]);
+  print("tamper verify: why=% at_event=%\n", why_name(bad.why), bad.index);
+
+  // 7. Member-pack consent parity: Nostr signing & WalletPay stay bypass-immune
+  print("member bypass-immune: WalletPay=% nostr_publish=% nostr_status=%\n",
+    oa_member_is_bypass_immune("WalletPay", "lnbc100n"),
+    oa_member_is_bypass_immune("OpenAgentsCli", "nostr publish hello"),
+    oa_member_is_bypass_immune("OpenAgentsCli", "nostr status"));
+}
+// book:end example

@@ -1,0 +1,5 @@
+defaults: Edit(ro=false,conc=false) Read(ro=true,conc=true)
+unc guard: smb_bs=true smb_fs=true posix=false
+pool assembled: count=3 built_in_edit_idx=0 mcp_safe_idx=2 mcp_danger_idx=-1
+batches=3: b0(conc=true,len=2) b1(conc=false,len=1) b2(conc=true,len=1)
+member packs mask=7 cli(nostr)=true cli(rm)=false arg_newline_safe=false

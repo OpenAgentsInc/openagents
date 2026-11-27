@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.cloud.tools.v1alpha1",
+  "purpose": "Tier 1 Instant Cloud Tools (web_search, web_fetch, github_*) request and response envelopes (#14127)",
+  "cases": [
+    {
+      "name": "tool-request",
+      "schema": "openagents.cloud.tool.req.v1alpha1",
+      "body": {
+        "tool": "github_tree",
+        "arguments": {
+          "repo": "OpenAgentsInc/openagents",
+          "path": "coax/web",
+          "ref": "main"
+        }
+      }
+    },
+    {
+      "name": "tool-response",
+      "schema": "openagents.cloud.tool.res.v1alpha1",
+      "body": {
+        "schema": "openagents.cloud.tool.res.v1alpha1",
+        "tool": "github_tree",
+        "ok": true,
+        "output": "d coax/web/api\nf coax/web/deploy.sh\n"
+      }
+    }
+  ]
+}

@@ -295,3 +295,26 @@ cp_abs :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
   #assert !cp_sim_test_press(s, "coder.sim.tab.0") && cp_sim_udid(s) == "U1";
   #assert cp_sim_test_press(s, "coder.sim.tab.1") && cp_sim_udid(s) == "U2";
 }
+
+#test "programmatic attach event opens the pane (even after manual close) and selects the requested device" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  cp_sim_test_up(s); out: [4096] u8; _ = cp_sim_test_out(s, out[..]);
+  // Close manually (sets closed_by_person = true)
+  #assert cp_test_draw_side(s, f[..]);
+  _ = cp_sim_press(s, CP_SIM_CLOSE);
+  _ = coder_page_action(s); _ = coder_page_sim_op(s);
+  #assert !coder_page_sim_open(s) && s[0].sim[0].closed_by_person;
+  // attach opens the pane, clears closed_by_person, selects U2, and asks the host to start
+  #assert coder_page_sim_line(s, "{\"event\":\"attach\",\"chat\":\"agent-1\",\"engine\":\"OpenAgents\",\"device\":\"U2\"}");
+  #assert coder_page_sim_open(s) && cp_sim_shown(s) && !s[0].sim[0].closed_by_person;
+  #assert coder_page_action(s) == CP_ASK_SIM && coder_page_sim_op(s) == CP_SIM_OP_OPENED;
+  #assert cp_sim_udid(s) == "U2";
+  // attach naming a newly-created device U3 before list arrives picks U3 once list returns
+  _ = cp_sim_test_out(s, out[..]);
+  #assert coder_page_sim_line(s, "{\"event\":\"attach\",\"chat\":\"agent-1\",\"engine\":\"OpenAgents\",\"device\":\"U3\"}");
+  list_id := s[0].sim[0].next_id;
+  lb: [512] u8; ln := el_put(lb[..], 0, "{\"id\":"); ln = el_put_i(lb[..], ln, list_id);
+  ln = el_put(lb[..], ln, ",\"ok\":true,\"devices\":[{\"udid\":\"U1\",\"name\":\"iPhone 17\",\"runtime\":\"iOS 26.5\",\"state\":\"booted\",\"booted_by_us\":false},{\"udid\":\"U3\",\"name\":\"New Phone\",\"runtime\":\"iOS 26.5\",\"state\":\"booted\",\"booted_by_us\":true}]}");
+  #assert coder_page_sim_line(s, cast(string) lb[0..<ln]);
+  #assert cp_sim_udid(s) == "U3" && s[0].sim[0].want_udid_n == 0;
+}

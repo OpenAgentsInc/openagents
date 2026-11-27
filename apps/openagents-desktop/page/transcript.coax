@@ -591,6 +591,8 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     if wp_s.count > 0 { s[0].turns[i].agents[j].wt_path_n = cp_out(s[0].turns[i].agents[j].wt_path[..], wp_s); }
     wb_s := cl_str(ar[..], one, "worktree_branch");
     if wb_s.count > 0 { s[0].turns[i].agents[j].wt_branch_n = cp_out(s[0].turns[i].agents[j].wt_branch[..], wb_s); }
+    wh_s := cl_str(ar[..], one, "worktree_orig_head");
+    if wh_s.count > 0 { s[0].turns[i].agents[j].wt_orig_head_n = cp_out(s[0].turns[i].agents[j].wt_orig_head[..], wh_s); }
     at_s := cl_str(ar[..], one, "allowed_tools");
     if at_s.count > 0 { s[0].turns[i].agents[j].allowed_tools_n = cp_out(s[0].turns[i].agents[j].allowed_tools[..], at_s); }
     dt_s := cl_str(ar[..], one, "disallowed_tools");
@@ -601,6 +603,8 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     if oc_b.ok && oc_b.value { s[0].turns[i].agents[j].omit_claudemd = true; }
     ro_b := cl_bool(one, "read_only");
     if ro_b.ok && ro_b.value { s[0].turns[i].agents[j].read_only = true; }
+    git_s := cl_str(ar[..], one, "git");
+    s[0].turns[i].agents[j].git = ifx git_s == "push" then 2 else ifx git_s == "commit" then 1 else 0;
     fk_b := cl_bool(one, "is_fork");
     if fk_b.ok && fk_b.value { s[0].turns[i].agents[j].is_fork = true; }
     fkp_s := cl_str(ar[..], one, "fork_context_path");
@@ -614,7 +618,15 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     lv := s[0].turns[i].agents[j].level;
     if lv >= CP_LEVEL_CLAUDE && lv < CP_LEVEL_CLAUDE_END && cp_flawed_allow_local_harnesses(s) && !s[0].claude_sub {
       s[0].turns[i].agents[j].start_due = false;
-      cp_agent_end(s, i, j, CP_FAILED, "Claude Code is not available on this computer. Install the claude command and sign in to it.");
+      why_b: [256] u8;
+      why_s := "Claude Code is not available on this computer. Install the claude command and sign in to it.";
+      if s[0].flawed[0].claude_status_n > 0 {
+        wn := cp_out(why_b[..], "Claude Code is not available on this computer: ");
+        wn += cp_out(why_b[wn..<why_b.count], cast(string) s[0].flawed[0].claude_status[0..<s[0].flawed[0].claude_status_n]);
+        wn += cp_out(why_b[wn..<why_b.count], ".");
+        why_s = cast(string) why_b[0..<wn];
+      }
+      cp_agent_end(s, i, j, CP_FAILED, why_s);
       continue;
     }
     if first < 0 { first = j; }
@@ -710,6 +722,9 @@ cp_agent_finish :: (s: [] CoderPage, i: int, j: int, state: int) {
   cp_calls_end(s, i, j, state != CP_DONE);
   n := s[0].turns[i].agents[j].reply_n; if n > 0 && s[0].pane_open && s[0].pane_turn == i && s[0].pane_agent == j { s[0].live_pane = i * CP_AGENTS + j; } s[0].turns[i].h = 0;
   if was_bg {
+    if s[0].turns[i].agents[j].wt_path_n > 0 {
+      s[0].turns[i].agents[j].wt_cleanup_due = true;
+    }
     st_s := ifx state == CP_DONE then "completed" else ifx state == CP_STOPPED then "killed" else "failed";
     aid_s := ifx s[0].turns[i].agents[j].agent_id_n > 0 then cast(string) s[0].turns[i].agents[j].agent_id[0..<s[0].turns[i].agents[j].agent_id_n] else "bg-agent";
     desc_s := ifx s[0].turns[i].agents[j].desc_n > 0 then cast(string) s[0].turns[i].agents[j].desc[0..<s[0].turns[i].agents[j].desc_n] else "background subagent";
@@ -817,6 +832,25 @@ coder_page_agent_engine :: (s: [] CoderPage, j: int) -> int #export_c #effects(a
 coder_page_agent_claude :: (s: [] CoderPage, j: int) -> bool #export_c #effects(all) {
   return coder_page_agent_engine(s, j) == 1;
 }
+// Permission mode & sandbox forwarded from the parent chat's Settings > Agent > Permission mode
+// (and any per-subagent read_only flag) to a Claude Code sub-agent (GitHub #14104).
+// Explicit read_only always stays read-only ("plan"); otherwise Allow All (0) or bypass_danger
+// runs "bypass", Plan (3) runs "plan", Accept Edits (2) runs "accept-edits", and Ask (1) /
+// Don't Ask (4) run "dont-ask" (non-interactive sub-agents never block on hidden prompts).
+cp_claude_sub_mode :: (s: [] CoderPage, read_only: bool) -> string {
+  if read_only { return "plan"; }
+  if s.count < 1 { return "bypass"; }
+  fl := s[0].flawed[..];
+  if fl[0].bypass_danger || fl[0].permission_mode == 0 { return "bypass"; }
+  if fl[0].permission_mode == 3 { return "plan"; }
+  if fl[0].permission_mode == 2 { return "accept-edits"; }
+  return "dont-ask";
+}
+cp_claude_sub_sandbox :: (mode: string) -> string {
+  if mode == "plan" { return "read-only"; }
+  if mode == "bypass" { return "danger-full-access"; }
+  return "workspace-write";
+}
 // Sub-agent j's task line for its worker: a simple task on Hydrogen, a complex one on Carbon, a
 // neon one on Gemini 4 Neon, an openrouter one on the OpenRouter model set for sub-agents, a Claude level's on that Claude model,
 // or an explicit delegated external CLI subagent (Antigravity, Codex, Cursor).
@@ -829,7 +863,9 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   eff_cwd := ifx s[0].turns[i].agents[j].wt_path_n > 0 then cast(string) s[0].turns[i].agents[j].wt_path[0..<s[0].turns[i].agents[j].wt_path_n] else cwd;
   level := s[0].turns[i].agents[j].level;
   if level >= CP_LEVEL_CLAUDE && level < CP_LEVEL_CLAUDE_END {
-    return mww_task(out, McTask.{task = full_task, session = session, cwd = eff_cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level], effort = CP_CLAUDE_EFFORT_WORD[cp_claude_effort(s, CP_LEVEL_CLAUDE_END - 1 - level)], no_steer = true});
+    cmode := cp_claude_sub_mode(s, s[0].turns[i].agents[j].read_only);
+    csandbox := cp_claude_sub_sandbox(cmode);
+    return mww_task(out, McTask.{task = full_task, session = session, cwd = eff_cwd, sandbox = csandbox, ceiling = 3, no_ask = true, model = CP_LEVEL[level], effort = CP_CLAUDE_EFFORT_WORD[cp_claude_effort(s, CP_LEVEL_CLAUDE_END - 1 - level)], no_steer = true, mode = cmode, read_only = cmode == "plan", git = CP_AGENT_GIT[s[0].turns[i].agents[j].git]});
   }
   if level >= CP_LEVEL_AGY && level < CP_LEVELS {
     return mww_task(out, McTask.{task = full_task, session = session, cwd = eff_cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level], no_steer = true});
@@ -846,9 +882,11 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
       omit_claudemd = s[0].turns[i].agents[j].omit_claudemd,
       read_only = s[0].turns[i].agents[j].read_only,
       is_subagent = true,
+      git = CP_AGENT_GIT[s[0].turns[i].agents[j].git],
       is_fork = s[0].turns[i].agents[j].is_fork,
       fork_context_path = cast(string) s[0].turns[i].agents[j].fork_ctx_path[0..<s[0].turns[i].agents[j].fork_ctx_path_n],
     };
+    if level == CP_LEVEL_INKLING { t.local = true; t.model = "inkling-2-mini"; }   // a local chat's sub-agent is local too
     if s[0].turns[i].agents[j].model_ovr_n > 0 {
       t.model = cast(string) s[0].turns[i].agents[j].model_ovr[0..<s[0].turns[i].agents[j].model_ovr_n];
     }
@@ -1380,4 +1418,29 @@ coder_page_stop_agent :: (s: [] CoderPage) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
   j := s[0].stop_agent; s[0].stop_agent = -1;
   return j;
+}
+// Pops the next finished background subagent's isolated worktree metadata for fail-closed host cleanup (#14121).
+// Writes NUL-terminated strings into out_path, out_branch, and out_head; returns true if one was popped.
+coder_page_agent_wt_cleanup_take :: (s: [] CoderPage, out_path: [] u8, out_branch: [] u8, out_head: [] u8) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  for ti: 0..<s[0].nturns {
+    for tj: 0..<s[0].turns[ti].nagents {
+      if !s[0].turns[ti].agents[tj].wt_cleanup_due { continue; }
+      s[0].turns[ti].agents[tj].wt_cleanup_due = false;
+      if out_path.count > 0 {
+        pn := cp_out(out_path[0..<out_path.count - 1], cast(string) s[0].turns[ti].agents[tj].wt_path[0..<s[0].turns[ti].agents[tj].wt_path_n]);
+        out_path[pn] = 0;
+      }
+      if out_branch.count > 0 {
+        bn := cp_out(out_branch[0..<out_branch.count - 1], cast(string) s[0].turns[ti].agents[tj].wt_branch[0..<s[0].turns[ti].agents[tj].wt_branch_n]);
+        out_branch[bn] = 0;
+      }
+      if out_head.count > 0 {
+        hn := cp_out(out_head[0..<out_head.count - 1], cast(string) s[0].turns[ti].agents[tj].wt_orig_head[0..<s[0].turns[ti].agents[tj].wt_orig_head_n]);
+        out_head[hn] = 0;
+      }
+      return true;
+    }
+  }
+  return false;
 }

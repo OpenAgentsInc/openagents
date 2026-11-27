@@ -1,7 +1,6 @@
 // Firm reason: 6 (AppKit host bridge for page/browserpane.coax: CP_ASK_BR_* 230..249, BrowserViewportView placement with cd_over_rects cutouts, owner-only browser.sock attach server, and Phase 3 oa-browser-helper launcher).
 // Spec: docs/browser/desktop-browser-pane-spec.md (§5–§11); Issues #14107, #14108, #14109, #14110.
 import AppKit
-#if OA_FULL
 import CryptoKit
 
 final class BrowserWindowState {
@@ -277,4 +276,3 @@ extension CoderWindow {
         cd_toast(page, "Chromium Pro (CEF OSR) helper active.", 0)
     }
 }
-#endif

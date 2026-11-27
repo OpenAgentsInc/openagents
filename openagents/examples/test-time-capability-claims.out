@@ -1,0 +1,5 @@
+claim code=verified subject=x:pkg/agent verdict_pass=true admit=ok
+report_refusals unheld=unverifiable untrusted=untrusted no_baseline=measurement
+admit_refusals expired=expired issuer=issuer unverified=unverified subject=subject verdict=verdict
+local_gate pass_code=0 unverified_code=8
+ok=true

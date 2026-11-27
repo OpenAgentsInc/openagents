@@ -1,0 +1,44 @@
+// Chapter 7: Condense the history — Five-layer compaction pipeline, 3-failure
+// circuit breaker, PTL head-truncation drop groups, subagent cleanup isolation,
+// and task-budget subtraction (`openagents/core/compaction.coax` +
+// `coax/lib/agent/engine/cache-policy.coax`, adopted by `openagents/runtime/oa-worker.coax`).
+#import "Basic";
+#load "../../openagents/core/compaction.coax";
+#load "../../coax/lib/agent/engine/cache-policy.coax";
+
+// book:begin example
+main :: () {
+  // 1. Effective context window reserves capped output headroom (200k - 20k = 180k)
+  eff := flawed_effective_context_window(200000, 64000, 0);
+  auto_thresh := flawed_auto_compact_threshold(eff, 0);
+  warn := flawed_calc_token_warning_state(170000, 0, eff, true, 0);
+  print("window: effective=% auto_threshold=% above_auto=% at_blocking=%\n",
+    eff, auto_thresh, warn.is_above_auto_threshold, warn.is_at_blocking_limit);
+
+  // 2. 6-gate auto-compact trigger + 3-failure circuit breaker (stops retry storms)
+  fire_ok := flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 0, 170000, 0, eff, 0);
+  f1 := flawed_autocompact_next_failures(0, false, false);
+  f2 := flawed_autocompact_next_failures(f1, false, false);
+  f3 := flawed_autocompact_next_failures(f2, false, false);
+  fire_tripped := flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, f3, 170000, 0, eff, 0);
+  print("autocompact: initial_fire=% failures_after_3=% tripped_fire=%\n", fire_ok, f3, fire_tripped);
+
+  // 3. PTL head-truncation drops oldest coherent API groups until target gap is recovered
+  groups := [5] int.[12000, 18000, 15000, 9000, 6000];
+  dropped := flawed_ptl_drop_groups(groups[..], 5, 25000);
+  print("ptl head-drop: groups_dropped=% of 5 (reclaimed 30000 >= 25000)\n", dropped);
+
+  // 4. Subagent compaction isolation: main thread clears shared caches; subagent leaves parent intact
+  main_plan := flawed_post_compact_cleanup_plan(FLAWED_QSRC_MAIN_OR_SDK);
+  sub_plan := flawed_post_compact_cleanup_plan(FLAWED_QSRC_SUBAGENT);
+  print("cleanup isolation: main_clears_user_ctx=% subagent_clears_user_ctx=%\n",
+    main_plan.clear_user_context_and_memory, sub_plan.clear_user_context_and_memory);
+
+  // 5. Task budget subtraction accounts for pre-compact tokens across resets
+  rem := flawed_subtract_task_budget(false, 0, 100000, 40000);
+  rem2 := flawed_subtract_task_budget(true, rem, 100000, 15000);
+  idle_rec := cp_cache_status(1000, 310000, 0, 18000, 32000, true);
+  print("task budget: after_compact1=% after_compact2=% idle_compact_recommended=%\n",
+    rem, rem2, idle_rec == CP_CACHE_EXPIRED_COMPACT);
+}
+// book:end example

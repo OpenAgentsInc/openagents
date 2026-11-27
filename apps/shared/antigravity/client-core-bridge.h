@@ -134,6 +134,13 @@ int64_t oa_mobile_route_select(
     int64_t now_ms);
 int oa_mobile_cred_audience_ok(int64_t presented_aud, int64_t expected_aud, int64_t now_ms, int64_t expires_ms);
 
+// #authority Full Auto & Bi-Directional Voice Duplex C ABI (#14063, #14065, #14068).
+int oa_mobile_fa_should_gate(int full_auto, int approval_mode, int64_t agy_mode, int session_allow);
+int64_t oa_mobile_fa_decide_prompt(int full_auto, int auto_answer_questions, int64_t kind);
+int64_t oa_mobile_vd_vad_step(int64_t state_io[7], int64_t rms_bp, int64_t dt_ms);
+int64_t oa_mobile_vd_sanitize_speech(const char *src, uint8_t *out, int64_t cap);
+int64_t oa_mobile_vd_sentence_end(const char *src);
+
 #ifdef __cplusplus
 }
 #endif

@@ -15,13 +15,13 @@ sharing the wire, the policy and the gesture maths.
 | `sim-host.coax` | The helper (`oasim serve`): one socket, its clients, grants and parked asks, `simctl` jobs (boot, screenshot, launch, appearance, open_url, terminate, shutdown) |
 | `sim-shim.coax` | The helper's private CoreSimulator effects (live display, input); stills-only until the shim lands |
 
-The doors: `coder/tui/oasim.coax` (the `oasim` command: CLI verbs for any agent's shell, `serve`,
-`build`, `run`). Every reply is one JSON line.
+The doors: `coax/lib/agent/device/oasim.coax` (the `oasim` command: CLI verbs for any agent's shell, `serve`,
+`build`, `run`) and `oasim-mcp.coax`. Every reply is one JSON line.
 
 Checks:
 
 - `coax/web/tool.sh coax/lib/agent/device/sim-wire-checks.coax proto/coder/sim-host-lines-v1.json`
 - `coax/bin/coax mutate --root-only coax/lib/agent/device/sim-policy.coax` (zero survivors)
 - each file's `#test`s, run whenever a tool loads it
-- `coax/web/tool.sh coder/tui/simhost-check.coax OASIM` on a Mac with Xcode: makes and deletes its
+- `coax/web/tool.sh coax/lib/agent/device/simhost-check.coax OASIM` on a Mac with Xcode: makes and deletes its
   own device, starts a helper with a throwaway home and socket, and acts as the app and an agent

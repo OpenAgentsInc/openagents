@@ -93,7 +93,7 @@ CP_SOURCE :: [CP_CONSUMERS * CP_AXES] string.[
   "coax/web/agent/runner-sign.coax", "", "coax/web/agent/runner.c", "coax/web/agent/runner.c",
   "coax/web/unlock/lib.ts", "coax/web/unlock/lib.ts", "coax/web/unlock/page.ts", "coax/web/unlock/lib.ts",
   "apps/openagents-ios/OpenAgents/SignIn/NostrKey.swift", "", "apps/openagents-ios/OpenAgents/SignIn/NostrKey.swift", "apps/openagents-ios/OpenAgents/SignIn/PhoneSignIn.swift",
-  "coder/tui/host.coax", "apps/openagents-cli/relay.coax", "coder/tui/host.coax", "coax/lib/net/relay_conn.coax"];
+  "openagents/daemon/host.coax", "apps/openagents-cli/relay.coax", "openagents/daemon/host.coax", "coax/lib/net/relay_conn.coax"];
 CP_SYMBOL :: [CP_CONSUMERS * CP_AXES] string.[
   "nostr_event_sign_step", "rl_read(", "cxcli_write_private", "relay_conn_open",
   "nostr_event_sign_step", "rl_read(", "--key-file", "nip44_encrypt_checked",

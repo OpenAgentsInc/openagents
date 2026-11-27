@@ -7,7 +7,7 @@
 > (`openagents/examples/cases/send.ops`), and unit/`#forall` checks pass on
 > `cpu` across [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
 > [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
-> and [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax).
+> and [`apps/openagents-ios/gpu-page.coax`](../../apps/openagents-ios/gpu-page.coax).
 > Native desktop/iOS host wiring and accessibility UI tests remain pending.
 
 ## Premise
@@ -68,7 +68,7 @@ leaves the machine. Chapter 4 sends it.
 
 ## What we build
 
-Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax) and consumed by [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax) (primary) and [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax) (mobile):
+Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax) and consumed by [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax) (primary) and [`apps/openagents-ios/gpu-page.coax`](../../apps/openagents-ios/gpu-page.coax) (mobile):
 
 - The chat page's state record (`ChatState`): the draft (`EditBuf`), the sent
   messages (`ChatMessage` with stable domain keys `message.<id>`), and
@@ -96,7 +96,7 @@ It builds on:
 
 - **Source:** [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
   [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
-  [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax),
+  [`apps/openagents-ios/gpu-page.coax`](../../apps/openagents-ios/gpu-page.coax),
   and [`openagents/examples/cases/send.ops`](../examples/cases/send.ops).
 - **Trace:** `type composer.input hello`, `tap composer.send`, `state
   messages` prints `you: hello`, `state draft` prints an empty line, and
@@ -108,7 +108,7 @@ It builds on:
   incremental frame and a full rebuild commit the same rows.
 - **Commands:** `coax/bin/coax test apps/shared/chat/screen.coax`,
   `coax/bin/coax test apps/openagents-desktop/chat_screen.coax`, and
-  `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
+  `coax/bin/coax test apps/openagents-ios/gpu-page.coax`.
 
 Generic dispatch code goes in the proposed `coax/lib/app/` that
 [Coax Native](../../coax/native.md#architecture) describes, not in this book.
@@ -202,4 +202,4 @@ reply accepted=true count=2 pinned=false unread=1
 jump pinned=true unread=0
 ```
 
-Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.
+Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/gpu-page.coax`.

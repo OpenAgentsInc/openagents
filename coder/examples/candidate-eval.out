@@ -1,0 +1,10 @@
+slug check: fast-lint=true ../escape=false
+cap gate ok: PROMOTED: candidate passed two-arm eval and held-out gate
+cap gate heldout reg: REJECTED: candidate regressed on held-out cases
+cap gate no atif: REJECTED: ATIF-v1.8 trace digest unverified
+cap gate latency: REJECTED: candidate exceeded latency budget
+hillclimb score gain: PROMOTED (promoted_gain_verified)
+hillclimb tpot speedup: PROMOTED (promoted_gain_verified)
+hillclimb no gain: QUARANTINE_HELD (quarantine_held_no_strict_gain)
+hillclimb scaffold mismatch: REJECTED (rejected_scaffold_mismatch)
+hillclimb golden regression: REJECTED (rejected_golden_regressed)

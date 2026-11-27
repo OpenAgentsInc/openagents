@@ -24,12 +24,15 @@ final class SimHostClient {
         if let s = ProcessInfo.processInfo.environment["OA_SIM_SOCKET"], !s.isEmpty { return s }
         return home.appendingPathComponent("simhost.sock").path
     }
-    /// The oasim beside the workers (Contents/Resources), or OA_SIMHOST for a worktree's build.
+    /// The oasim beside the workers (Contents/Resources), OA_SIMHOST for a worktree's build, or ~/.openagents/bin/oasim.
     static var oasim: String? {
         if let s = ProcessInfo.processInfo.environment["OA_SIMHOST"], !s.isEmpty { return s }
-        guard let res = Bundle.main.resourcePath else { return nil }
-        let p = res + "/oasim"
-        return FileManager.default.isExecutableFile(atPath: p) ? p : nil
+        if let res = Bundle.main.resourcePath {
+            let p = res + "/oasim"
+            if FileManager.default.isExecutableFile(atPath: p) { return p }
+        }
+        let userBin = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/bin/oasim").path
+        return FileManager.default.isExecutableFile(atPath: userBin) ? userBin : nil
     }
 
     func connect() -> Bool {
@@ -262,6 +265,37 @@ extension CoderWindow {
         wake()
     }
 
+    /// Programmatic / CLI open (--simulator): idempotently opens the simulator pane.
+    func openSimulator() {
+        cd_sim_show(page, 1)
+        act(cd_action(page))
+        wake()
+    }
+
+    /// Ensures the simulator stills/shots folders exist and informs the current page.
+    private func setupSimulatorDirs() {
+        let stills = SimHostClient.home.appendingPathComponent("stills")
+        let shots = folder.appendingPathComponent(".openagents/shots")
+        try? FileManager.default.createDirectory(at: stills, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? FileManager.default.createDirectory(at: shots, withIntermediateDirectories: true)
+        cd_sim_setup(page, stills.path, shots.path)
+    }
+
+    /// Passively connects to oasim serve at window startup (without opening the pane or starting the
+    /// 15 Hz frame clock) so programmatic `oasim attach` and agent `ask` events open the pane live.
+    func listenSimulator() {
+        setupSimulatorDirs()
+        connectSimulator()
+    }
+
+    /// Reconnects to oasim serve after a restart even while the pane is closed.
+    func pollSimulatorReconnect() {
+        if !simClient.isOpen, let at = simRetryAt, Date() >= at {
+            simRetryAt = nil
+            connectSimulator()
+        }
+    }
+
     /// cd_action 46: what the pane asked.
     func simAsked() {
         switch cd_sim_op(page) {
@@ -277,11 +311,7 @@ extension CoderWindow {
 
     /// The pane opened: the folders, the socket (the helper started if none answers), the clock.
     func startSimulator() {
-        let stills = SimHostClient.home.appendingPathComponent("stills")
-        let shots = folder.appendingPathComponent(".openagents/shots")
-        try? FileManager.default.createDirectory(at: stills, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try? FileManager.default.createDirectory(at: shots, withIntermediateDirectories: true)
-        cd_sim_setup(page, stills.path, shots.path)
+        setupSimulatorDirs()
         connectSimulator()
         if simTimer == nil {
             let t = Timer(timeInterval: 1.0 / 15.0, repeats: true) { [weak self] _ in self?.simClock() }
@@ -290,22 +320,37 @@ extension CoderWindow {
         }
     }
     private func connectSimulator() {
-        if simClient.isOpen { return }
+        if simClient.isOpen {
+            if simConnectedPage != page {
+                simConnectedPage = page
+                setupSimulatorDirs()
+                cd_sim_connected(page, 1, "")
+                pumpSimulator()
+            }
+            return
+        }
         simClient.onLine = { [weak self] line in
             guard let self else { return }
+            if self.simConnectedPage != self.page {
+                self.simConnectedPage = self.page
+                self.setupSimulatorDirs()
+                cd_sim_connected(self.page, 1, "")
+            }
             line.withUnsafeBufferPointer { p in
                 p.baseAddress!.withMemoryRebound(to: CChar.self, capacity: max(1, line.count)) { _ = cd_sim_line(self.page, $0, Int32(line.count)) }
             }
             self.pumpSimulator()
             self.act(cd_action(self.page))
+            self.wake()
         }
         simClient.onClose = { [weak self] in
             guard let self else { return }
+            self.simConnectedPage = nil
             cd_sim_connected(self.page, 0, "The simulator helper stopped. OpenAgents starts it again.")
             self.simRetryAt = Date().addingTimeInterval(2)
             self.wake()
         }
-        if simClient.connect() { cd_sim_connected(page, 1, ""); pumpSimulator(); return }
+        if simClient.connect() { simConnectedPage = page; cd_sim_connected(page, 1, ""); pumpSimulator(); return }
         // nothing answers: `oasim status` starts the helper (detached, as any client does), then we connect
         guard let oasim = SimHostClient.oasim else {
             cd_sim_connected(page, 0, "This build of OpenAgents has no oasim, so the simulator can't start.")
@@ -322,7 +367,7 @@ extension CoderWindow {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.simStarting = false
-                if self.simClient.connect() { cd_sim_connected(self.page, 1, ""); self.pumpSimulator() }
+                if self.simClient.connect() { self.simConnectedPage = self.page; self.setupSimulatorDirs(); cd_sim_connected(self.page, 1, ""); self.pumpSimulator() }
                 else { cd_sim_connected(self.page, 0, "The simulator helper could not be started."); self.simRetryAt = Date().addingTimeInterval(5) }
                 self.wake()
             }

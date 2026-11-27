@@ -1,0 +1,50 @@
+// Chapter 16: Speak the protocols — MCP scope/policy/OAuth/normalization/ToolSearch
+// (`openagents/core/mcp.coax`) + NDJSON/stdout-guard/StructuredIO control protocol
+// (`openagents/core/sdk_protocol.coax`, adopted by `openagents/runtime/oa-worker.coax` & `coder/tui/coder.coax`).
+#import "Basic";
+#load "../../openagents/core/mcp.coax";
+#load "../../openagents/core/sdk_protocol.coax";
+
+// book:begin example
+main :: () {
+  // 1. MCP scope policy, pre-trust headersHelper guard, and 404 + -32001 session expiry
+  sdk_ok := flawed_mcp_scope_allowed(FLAWED_MSCOPE_SDK, true, true, false);
+  user_blocked := flawed_mcp_scope_allowed(FLAWED_MSCOPE_USER, true, false, false);
+  hdr_pre_trust := flawed_mcp_headers_helper_allowed(FLAWED_MSCOPE_PROJECT, true, false);
+  exp_real := flawed_mcp_is_session_expired(404, -32001);
+  exp_other := flawed_mcp_is_session_expired(404, 0);
+  print("mcp policy: sdk_allowed=% user_in_strict=% pre_trust_helper=% expired_32001=% expired_404_only=%\n",
+    sdk_ok, user_blocked, hdr_pre_trust, exp_real, exp_other);
+
+  // 2. OAuth XAA no-downgrade + Step-Up re-consent + claude.ai name normalization
+  xaa := flawed_mcp_oauth_action(true, false, false, 0, true);
+  stepup := flawed_mcp_oauth_action(false, false, true, 999, true);
+  nbuf: [32] u8;
+  nn := flawed_mcp_normalize_name(" claude.ai  Slack! ", true, nbuf[..]);
+  score := flawed_tool_search_score_term(true, true, false, false, true, true);
+  print("mcp auth & search: xaa_refuse=% stepup_reconsent=% norm=\"%\" score=%\n",
+    xaa == FLAWED_OAUTH_XAA_REFUSE_DOWNGRADE, stepup == FLAWED_OAUTH_STEPUP_RECONSENT,
+    cast(string) nbuf[0..<nn], score);
+
+  // 3. NDJSON U+2028 line-terminator escaper & stdout guard (diverts stray text to stderr)
+  raw: [5] u8;
+  raw[0] = 'a'; raw[1] = 0xE2; raw[2] = 0x80; raw[3] = 0xA8; raw[4] = 'b';
+  esc: [16] u8;
+  en := flawed_ndjson_escape_terminators(cast(string) raw[..], esc[..]);
+  g_json := flawed_stdout_guard_classify_line("{\"type\":\"result\"}");
+  g_stray := flawed_stdout_guard_classify_line("stray debug log");
+  print("ndjson & stdout: escaped=\"%\" json_pass=% stray_divert=%\n",
+    cast(string) esc[0..<en], g_json == FLAWED_GUARD_PASS, g_stray == FLAWED_GUARD_DIVERT_STDERR);
+
+  // 4. StructuredIO dedup ring + deadlock-safe mcp_set_servers control dispatch
+  ring: [1] FlawedResolvedIdRing;
+  _ = flawed_resolved_ring_record(ring[..], 42);
+  dup_action := flawed_sdk_classify_control_response(false, flawed_resolved_ring_has(ring[..], 42), true);
+  disp_mcp := flawed_sdk_control_dispatch(FLAWED_CREQ_MCP_SET_SERVERS);
+  disp_init := flawed_sdk_control_dispatch(FLAWED_CREQ_INITIALIZE);
+  print("control io: dup_dropped=% mcp_reply_before_work=% init_inline=%\n",
+    dup_action == FLAWED_CTRLRESP_DROP_DUP,
+    disp_mcp == FLAWED_CDISP_REPLY_BEFORE_WORK,
+    disp_init == FLAWED_CDISP_INLINE);
+}
+// book:end example

@@ -1,0 +1,742 @@
+// Pure #authority OAuth 2.1 wire codecs for MCP clients & resource servers
+// (2025-03-26 backcompat, 2025-11-25 stateful, 2026-07-28 stateless).
+// Zero heap allocation; all outputs write into caller-owned fixed buffers.
+#authority;
+#load "auth_policy.coax";
+#load "http_client_wire.coax";
+#load "../workos/pkce.coax";
+#load "../workos/url.coax";
+#load "../encoding/base64.coax";
+
+MCP_AUTH_STR_CAP :: 512;
+MCP_AUTH_TOK_CAP :: 1024;
+
+McpAuthCallback :: struct {
+  ok: bool;
+  has_code: bool;
+  code_len: int;
+  code_buf: [MCP_AUTH_STR_CAP] u8;
+  has_state: bool;
+  state_len: int;
+  state_buf: [MCP_AUTH_STR_CAP] u8;
+  has_iss: bool;
+  iss_len: int;
+  iss_buf: [MCP_AUTH_STR_CAP] u8;
+  has_error: bool;
+  error_len: int;
+  error_buf: [MCP_AUTH_STR_CAP] u8;
+}
+
+McpAuthUrlReq :: struct {
+  auth_endpoint: string;
+  client_id: string;
+  redirect_uri: string;
+  state: string;
+  code_challenge: string;
+  resource: string;
+  scope: string;
+}
+
+McpTokenReq :: struct {
+  grant_type: string;
+  code: string;
+  redirect_uri: string;
+  code_verifier: string;
+  resource: string;
+  client_id: string;
+  client_secret: string;
+  auth_method: int; // MCP_TOKEN_AUTH_NONE / BASIC / POST
+}
+
+McpPrmMeta :: struct {
+  ok: bool;
+  resource_mismatch: bool;
+  resource_len: int;
+  resource_buf: [MCP_AUTH_STR_CAP] u8;
+  auth_server_len: int;
+  auth_server_buf: [MCP_AUTH_STR_CAP] u8;
+  scopes_len: int;
+  scopes_buf: [MCP_AUTH_STR_CAP] u8;
+}
+
+McpTokenResp :: struct {
+  ok: bool;
+  access_token_len: int;
+  access_token_buf: [MCP_AUTH_TOK_CAP] u8;
+  refresh_token_len: int;
+  refresh_token_buf: [MCP_AUTH_TOK_CAP] u8;
+  scope_len: int;
+  scope_buf: [MCP_AUTH_STR_CAP] u8;
+  expires_in: int;
+}
+
+#test "auth_wire percent-decoding and OAuth callback URL parser handle RFC 9207 iss, state, code, and errors" {
+  out: [64] u8;
+  n := mcp_auth_percent_decode("hello%20world+ok%3A%2f%2F", true, out[..]);
+  #assert n == 17 && cast(string) out[0..<n] == "hello world ok://";
+  n = mcp_auth_percent_decode("a+b%2B", false, out[..]);
+  #assert n == 4 && cast(string) out[0..<n] == "a+b+";
+  #assert mcp_auth_percent_decode("%2", false, out[..]) == -1;
+  #assert mcp_auth_percent_decode("%GG", false, out[..]) == -1;
+  #assert mcp_auth_percent_decode("%0G", false, out[..]) == -1;
+  #assert mcp_auth_percent_decode("abc", false, out[0..<2]) == -1;
+  #assert mcp_auth_percent_decode("%20", false, out[0..<0]) == -1;
+
+  // Hex boundary checks
+  #assert mcp_auth_hex_val('0') == 0 && mcp_auth_hex_val('9') == 9;
+  #assert mcp_auth_hex_val('A') == 10 && mcp_auth_hex_val('F') == 15;
+  #assert mcp_auth_hex_val('a') == 10 && mcp_auth_hex_val('f') == 15;
+  #assert mcp_auth_hex_val('/') == -1 && mcp_auth_hex_val(':') == -1;
+  #assert mcp_auth_hex_val('@') == -1 && mcp_auth_hex_val('G') == -1;
+  #assert mcp_auth_hex_val('`') == -1 && mcp_auth_hex_val('g') == -1;
+
+  cb: [1] McpAuthCallback;
+  #assert mcp_auth_parse_callback_url("http://127.0.0.1:8080/cb?code=auth%2D123&state=st_1&iss=https%3A%2F%2Fauth.example.com#frag", cb[..]);
+  #assert cb[0].ok && cb[0].has_code && cast(string) cb[0].code_buf[0..<cb[0].code_len] == "auth-123";
+  #assert cb[0].has_state && cast(string) cb[0].state_buf[0..<cb[0].state_len] == "st_1";
+  #assert cb[0].has_iss && cast(string) cb[0].iss_buf[0..<cb[0].iss_len] == "https://auth.example.com";
+  #assert !cb[0].has_error;
+
+  #assert mcp_auth_parse_callback_url("/cb?error=access_denied&ignored=1&barekey", cb[..]);
+  #assert cb[0].ok && cb[0].has_error && cast(string) cb[0].error_buf[0..<cb[0].error_len] == "access_denied";
+  #assert !cb[0].has_code && !cb[0].has_state && !cb[0].has_iss;
+
+  #assert !mcp_auth_parse_callback_url("/cb", cb[..]);
+  #assert !mcp_auth_parse_callback_url("/cb?code=%ZZ", cb[..]);
+  #assert !mcp_auth_parse_callback_url("/cb?state=%ZZ", cb[..]);
+  #assert !mcp_auth_parse_callback_url("/cb?iss=%ZZ", cb[..]);
+  #assert !mcp_auth_parse_callback_url("/cb?error=%ZZ", cb[..]);
+}
+
+#test "auth_wire authorize URL, DCR body, Basic header, and token form serializers match RFC 6749/7591/8707" {
+  out: [1024] u8;
+  req := McpAuthUrlReq.{
+    auth_endpoint = "https://auth.example.com/authorize",
+    client_id = "cid-1",
+    redirect_uri = "http://127.0.0.1:9999/cb",
+    state = "st-abc",
+    code_challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    resource = "https://mcp.example.com/mcp",
+    scope = "mcp:basic mcp:write"
+  };
+  n := mcp_auth_build_authorize_url(req, out[..]);
+  #assert n > 0;
+  expected := "https://auth.example.com/authorize?response_type=code&client_id=cid-1&redirect_uri=http%3A%2F%2F127.0.0.1%3A9999%2Fcb&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=st-abc&resource=https%3A%2F%2Fmcp.example.com%2Fmcp&scope=mcp%3Abasic%20mcp%3Awrite";
+  #assert cast(string) out[0..<n] == expected;
+
+  // Endpoint that already contains '?' uses '&' and omits optional empty params
+  req2 := McpAuthUrlReq.{
+    auth_endpoint = "https://auth.example.com/authorize?tenant=1",
+    client_id = "c",
+    redirect_uri = "http://localhost/cb",
+    code_challenge = "ch"
+  };
+  n = mcp_auth_build_authorize_url(req2, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://auth.example.com/authorize?tenant=1&response_type=code&client_id=c&redirect_uri=http%3A%2F%2Flocalhost%2Fcb&code_challenge=ch&code_challenge_method=S256";
+  #assert mcp_auth_build_authorize_url(McpAuthUrlReq.{}, out[..]) == -1;
+  #assert mcp_auth_build_authorize_url(req, out[0..<20]) == -1;
+
+  // DCR JSON includes refresh_token grant type (SEP-2207)
+  n = mcp_auth_write_dcr_body("coax-client", "http://127.0.0.1:8080/cb", "client_secret_post", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"client_name\":\"coax-client\",\"redirect_uris\":[\"http://127.0.0.1:8080/cb\"],\"grant_types\":[\"authorization_code\",\"refresh_token\"],\"response_types\":[\"code\"],\"token_endpoint_auth_method\":\"client_secret_post\"}";
+  n = mcp_auth_write_dcr_body("c", "http://127.0.0.1/cb", "", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"client_name\":\"c\",\"redirect_uris\":[\"http://127.0.0.1/cb\"],\"grant_types\":[\"authorization_code\",\"refresh_token\"],\"response_types\":[\"code\"]}";
+  #assert mcp_auth_write_dcr_body("", "http://127.0.0.1/cb", "", out[..]) == -1;
+  #assert mcp_auth_write_dcr_body("c", "", "", out[..]) == -1;
+  #assert mcp_auth_write_dcr_body("c", "http://127.0.0.1/cb", "", out[0..<10]) == -1;
+
+  // Basic auth header: RFC 6749 §2.3.1 url-encodes id & secret then base64("id:secret")
+  n = mcp_auth_write_basic_header("pre-registered-client", "pre-registered-secret", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "Authorization: Basic cHJlLXJlZ2lzdGVyZWQtY2xpZW50OnByZS1yZWdpc3RlcmVkLXNlY3JldA==\r\n";
+  // Special characters in id/secret are percent-encoded before colon join
+  n = mcp_auth_write_basic_header("a:b", "c d", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "Authorization: Basic YSUzQWI6YyUyMGQ=\r\n";
+  #assert mcp_auth_write_basic_header("", "s", out[..]) == -1;
+  #assert mcp_auth_write_basic_header("id", "s", out[0..<20]) == -1;
+
+  // Token form bodies for BASIC, POST, and NONE auth methods
+  tr := McpTokenReq.{
+    grant_type = "authorization_code",
+    code = "code1",
+    redirect_uri = "http://localhost/cb",
+    code_verifier = "verif1",
+    resource = "http://localhost:8000/mcp",
+    client_id = "cid",
+    client_secret = "sec",
+    auth_method = MCP_TOKEN_AUTH_BASIC
+  };
+  n = mcp_auth_write_token_form(tr, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "grant_type=authorization_code&code=code1&redirect_uri=http%3A%2F%2Flocalhost%2Fcb&code_verifier=verif1&resource=http%3A%2F%2Flocalhost%3A8000%2Fmcp";
+
+  tr.auth_method = MCP_TOKEN_AUTH_POST;
+  n = mcp_auth_write_token_form(tr, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "grant_type=authorization_code&code=code1&redirect_uri=http%3A%2F%2Flocalhost%2Fcb&code_verifier=verif1&resource=http%3A%2F%2Flocalhost%3A8000%2Fmcp&client_id=cid&client_secret=sec";
+
+  tr.auth_method = MCP_TOKEN_AUTH_NONE;
+  tr.resource = "";
+  n = mcp_auth_write_token_form(tr, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "grant_type=authorization_code&code=code1&redirect_uri=http%3A%2F%2Flocalhost%2Fcb&code_verifier=verif1&client_id=cid";
+
+  #assert mcp_auth_write_token_form(McpTokenReq.{}, out[..]) == -1;
+  #assert mcp_auth_write_token_form(tr, out[0..<10]) == -1;
+}
+
+#test "auth_wire PRM parser enforces RFC 8707 resource match, token response parser, and resource-server helpers" {
+  prm: [1] McpPrmMeta;
+  good_prm := "{\"resource\":\"http://localhost:8080/mcp\",\"authorization_servers\":[\"http://localhost:9000/t1\"],\"scopes_supported\":[\"mcp:basic\",\"mcp:read\",\"mcp:write\"]}";
+  #assert mcp_auth_parse_prm("http://localhost:8080/mcp", good_prm, prm[..]);
+  #assert prm[0].ok && !prm[0].resource_mismatch;
+  #assert cast(string) prm[0].resource_buf[0..<prm[0].resource_len] == "http://localhost:8080/mcp";
+  #assert cast(string) prm[0].auth_server_buf[0..<prm[0].auth_server_len] == "http://localhost:9000/t1";
+  #assert cast(string) prm[0].scopes_buf[0..<prm[0].scopes_len] == "mcp:basic mcp:read mcp:write";
+
+  // Resource mismatch MUST fail with resource_mismatch=true
+  bad_res_prm := "{\"resource\":\"https://evil.example.com/mcp\",\"authorization_servers\":[\"http://localhost:9000\"]}";
+  #assert !mcp_auth_parse_prm("http://localhost:8080/mcp", bad_res_prm, prm[..]);
+  #assert !prm[0].ok && prm[0].resource_mismatch;
+
+  // Missing authorization_servers or malformed JSON fails
+  #assert !mcp_auth_parse_prm("http://localhost:8080/mcp", "{}", prm[..]);
+  #assert !mcp_auth_parse_prm("http://localhost:8080/mcp", "{\"authorization_servers\":[]}", prm[..]);
+  #assert !mcp_auth_parse_prm("http://localhost:8080/mcp", "{\"authorization_servers\":[123]}", prm[..]);
+  #assert !mcp_auth_parse_prm("http://localhost:8080/mcp", "not-json", prm[..]);
+  #assert !mcp_auth_parse_prm("http://localhost:8080/mcp", "[]", prm[..]);
+
+  // Token response parser
+  tok: [1] McpTokenResp;
+  #assert mcp_auth_parse_token_resp("{\"access_token\":\"tok_123\",\"token_type\":\"Bearer\",\"refresh_token\":\"ref_1\",\"scope\":\"mcp:basic\",\"expires_in\":3600}", tok[..]);
+  #assert tok[0].ok && cast(string) tok[0].access_token_buf[0..<tok[0].access_token_len] == "tok_123";
+  #assert cast(string) tok[0].refresh_token_buf[0..<tok[0].refresh_token_len] == "ref_1";
+  #assert cast(string) tok[0].scope_buf[0..<tok[0].scope_len] == "mcp:basic";
+  #assert tok[0].expires_in == 3600;
+  #assert !mcp_auth_parse_token_resp("{\"token_type\":\"Bearer\"}", tok[..]);
+  #assert !mcp_auth_parse_token_resp("{\"access_token\":\"\"}", tok[..]);
+  #assert !mcp_auth_parse_token_resp("[]", tok[..]);
+  #assert !mcp_auth_parse_token_resp("{bad", tok[..]);
+
+  // Resource-server helpers: Bearer extraction, scope check, audience check, PRM writer, origin extractor
+  #assert mcp_auth_extract_bearer("Bearer abc.def_123") == "abc.def_123";
+  #assert mcp_auth_extract_bearer("bearer   tok1 ") == "tok1";
+  #assert mcp_auth_extract_bearer("Basic dXNlcjpwYXNz") == "";
+  #assert mcp_auth_extract_bearer("Bearer ") == "";
+  #assert mcp_auth_extract_bearer("Bearer a b") == "";
+  #assert mcp_auth_extract_bearer("Short") == "";
+
+  #assert mcp_auth_has_all_scopes("mcp:basic mcp:write", "mcp:basic");
+  #assert mcp_auth_has_all_scopes("mcp:basic mcp:write", "mcp:write mcp:basic");
+  #assert mcp_auth_has_all_scopes("mcp:basic", "");
+  #assert !mcp_auth_has_all_scopes("mcp:basic", "mcp:basic mcp:write");
+  #assert !mcp_auth_has_all_scopes("", "mcp:basic");
+
+  #assert mcp_auth_audience_matches("https://mcp.example.com/mcp", "https://MCP.example.com/mcp");
+  #assert !mcp_auth_audience_matches("https://mcp.example.com/mcp", "https://evil.example.com/mcp");
+
+  out: [512] u8;
+  n := mcp_auth_write_prm_json("http://127.0.0.1:8080/mcp", "http://127.0.0.1:9000", "mcp:basic mcp:write", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"resource\":\"http://127.0.0.1:8080/mcp\",\"authorization_servers\":[\"http://127.0.0.1:9000\"],\"scopes_supported\":[\"mcp:basic\",\"mcp:write\"],\"bearer_methods_supported\":[\"header\"]}";
+  n = mcp_auth_write_prm_json("http://127.0.0.1:8080/mcp", "http://127.0.0.1:9000", "", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"resource\":\"http://127.0.0.1:8080/mcp\",\"authorization_servers\":[\"http://127.0.0.1:9000\"],\"bearer_methods_supported\":[\"header\"]}";
+  #assert mcp_auth_write_prm_json("", "http://a", "", out[..]) == -1;
+  #assert mcp_auth_write_prm_json("http://a", "", "", out[..]) == -1;
+  #assert mcp_auth_write_prm_json("http://a", "http://b", "", out[0..<10]) == -1;
+
+  n = mcp_auth_origin_url("http://127.0.0.1:8080/mcp/v1?x=1", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "http://127.0.0.1:8080";
+  n = mcp_auth_origin_url("https://auth.example.com", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://auth.example.com";
+  #assert mcp_auth_origin_url("://bad", out[..]) == -1;
+  #assert mcp_auth_origin_url("http://127.0.0.1:8080/mcp", out[0..<5]) == -1;
+}
+
+#test "auth_wire boundary, capacity, and malformed-input coverage" {
+  out: [2048] u8;
+
+  // Percent-decode boundary: %00 (hi=0, lo=0), '+' capacity exhaustion
+  n := mcp_auth_percent_decode("%00", false, out[..]);
+  #assert n == 1 && out[0] == 0;
+  #assert mcp_auth_percent_decode("+", true, out[0..<0]) == -1;
+  #assert mcp_auth_percent_decode("a+", true, out[0..<1]) == -1;
+
+  // Callback parser: '?' at index 0, two '?', trailing '&', 1-char key, empty values, empty query, bare '='
+  cb: [1] McpAuthCallback;
+  #assert mcp_auth_parse_callback_url("?x=1&code=a+b&state=c+d&iss=e+f&error=g+h&", cb[..]);
+  #assert cb[0].ok && cast(string) cb[0].code_buf[0..<cb[0].code_len] == "a b";
+  #assert cast(string) cb[0].state_buf[0..<cb[0].state_len] == "c d";
+  #assert cast(string) cb[0].iss_buf[0..<cb[0].iss_len] == "e f";
+  #assert cast(string) cb[0].error_buf[0..<cb[0].error_len] == "g h";
+  #assert mcp_auth_parse_callback_url("a?code=x?y", cb[..]);
+  #assert cb[0].ok && cast(string) cb[0].code_buf[0..<cb[0].code_len] == "x?y";
+  #assert mcp_auth_parse_callback_url("?code=&state=&iss=&error=&=ignored", cb[..]);
+  #assert cb[0].ok && cb[0].has_code && cb[0].code_len == 0 && cb[0].has_state && cb[0].state_len == 0;
+  #assert cb[0].has_iss && cb[0].iss_len == 0 && cb[0].has_error && cb[0].error_len == 0;
+  #assert !mcp_auth_parse_callback_url("/cb?", cb[..]);
+  #assert !mcp_auth_parse_callback_url("/cb?#frag", cb[..]);
+  #assert !mcp_auth_parse_callback_url("#frag?code=1", cb[..]);
+
+  // Direct append_qparam / append_fparam empty-value coverage
+  qpos: [1] int;
+  #assert mcp_auth_append_qparam(out[0..<3], qpos[..], "?", "k", "") && qpos[0] == 3 && cast(string) out[0..<3] == "?k=";
+  fpos: [1] int; ffirst := [1] bool.[true];
+  #assert mcp_auth_append_fparam(out[0..<2], fpos[..], ffirst[..], "k", "") && fpos[0] == 2 && cast(string) out[0..<2] == "k=";
+
+  // Authorize URL: individual missing required fields, 1-char values with exact match, exact capacity sweep
+  base_req := McpAuthUrlReq.{
+    auth_endpoint = "a", client_id = "c", redirect_uri = "r",
+    state = "s", code_challenge = "h", resource = "u", scope = "p"
+  };
+  r_no_ep := base_req; r_no_ep.auth_endpoint = "";
+  #assert mcp_auth_build_authorize_url(r_no_ep, out[..]) == -1;
+  r_no_cid := base_req; r_no_cid.client_id = "";
+  #assert mcp_auth_build_authorize_url(r_no_cid, out[..]) == -1;
+  r_no_redir := base_req; r_no_redir.redirect_uri = "";
+  #assert mcp_auth_build_authorize_url(r_no_redir, out[..]) == -1;
+  r_no_ch := base_req; r_no_ch.code_challenge = "";
+  #assert mcp_auth_build_authorize_url(r_no_ch, out[..]) == -1;
+  full_au := mcp_auth_build_authorize_url(base_req, out[..]);
+  #assert full_au > 0 && cast(string) out[0..<full_au] == "a?response_type=code&client_id=c&redirect_uri=r&code_challenge=h&code_challenge_method=S256&state=s&resource=u&scope=p";
+  for cap: 0..<full_au {
+    #assert mcp_auth_build_authorize_url(base_req, out[0..<cap]) == -1;
+  }
+
+  // DCR 1-char token_auth_method exact check
+  n = mcp_auth_write_dcr_body("c", "r", "n", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"client_name\":\"c\",\"redirect_uris\":[\"r\"],\"grant_types\":[\"authorization_code\",\"refresh_token\"],\"response_types\":[\"code\"],\"token_endpoint_auth_method\":\"n\"}";
+
+  // Basic header: 1-char id, empty & 1-char secret, raw overflow, exact capacity sweep
+  n = mcp_auth_write_basic_header("a", "", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "Authorization: Basic YTo=\r\n";
+  full_bh := mcp_auth_write_basic_header("a", "b", out[..]);
+  #assert full_bh > 0 && cast(string) out[0..<full_bh] == "Authorization: Basic YTpi\r\n";
+  for cap: 0..<full_bh {
+    #assert mcp_auth_write_basic_header("a", "b", out[0..<cap]) == -1;
+  }
+  big_id: [1024] u8;
+  for i: 0..<1024 { big_id[i] = 'a'; }
+  #assert mcp_auth_write_basic_header(cast(string) big_id[0..<1023], "", out[..]) == -1;
+  #assert mcp_auth_write_basic_header(cast(string) big_id[0..<1022], "x", out[..]) > 0;
+  #assert mcp_auth_write_basic_header(cast(string) big_id[0..<1022], "xy", out[..]) == -1;
+  #assert mcp_auth_write_basic_header(cast(string) big_id[..], "x", out[..]) == -1;
+
+  // Token form: individual missing fields, 1-char values with exact match, empty optional fields, exact capacity sweep
+  tr_min := McpTokenReq.{ grant_type = "g", code = "c", auth_method = MCP_TOKEN_AUTH_POST };
+  n = mcp_auth_write_token_form(tr_min, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "grant_type=g&code=c";
+  tr_min.auth_method = MCP_TOKEN_AUTH_NONE;
+  n = mcp_auth_write_token_form(tr_min, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "grant_type=g&code=c";
+  tr_no_gt := tr_min; tr_no_gt.grant_type = "";
+  #assert mcp_auth_write_token_form(tr_no_gt, out[..]) == -1;
+  tr_no_code := tr_min; tr_no_code.code = "";
+  #assert mcp_auth_write_token_form(tr_no_code, out[..]) == -1;
+  tr_1 := McpTokenReq.{
+    grant_type = "g", code = "c", redirect_uri = "r", code_verifier = "v",
+    resource = "u", client_id = "i", client_secret = "s", auth_method = MCP_TOKEN_AUTH_POST
+  };
+  full_tf := mcp_auth_write_token_form(tr_1, out[..]);
+  #assert full_tf > 0 && cast(string) out[0..<full_tf] == "grant_type=g&code=c&redirect_uri=r&code_verifier=v&resource=u&client_id=i&client_secret=s";
+  for cap: 0..<full_tf {
+    #assert mcp_auth_write_token_form(tr_1, out[0..<cap]) == -1;
+  }
+  tr_1.auth_method = MCP_TOKEN_AUTH_NONE;
+  full_tf2 := mcp_auth_write_token_form(tr_1, out[..]);
+  #assert full_tf2 > 0 && cast(string) out[0..<full_tf2] == "grant_type=g&code=c&redirect_uri=r&code_verifier=v&resource=u&client_id=i";
+  for cap: 0..<full_tf2 {
+    #assert mcp_auth_write_token_form(tr_1, out[0..<cap]) == -1;
+  }
+
+  // PRM parser edge cases
+  prm: [1] McpPrmMeta;
+  #assert mcp_auth_parse_prm("http://localhost/mcp", "{\"authorization_servers\":[\"a\"]}", prm[..]);
+  #assert prm[0].ok && prm[0].auth_server_len == 1 && prm[0].scopes_len == 0;
+  #assert mcp_auth_parse_prm("http://localhost/mcp", "{\"resource\":123,\"authorization_servers\":[\"http://a\"],\"scopes_supported\":123}", prm[..]);
+  #assert !mcp_auth_parse_prm("http://localhost/mcp", "{\"resource\":\"\",\"authorization_servers\":[\"http://a\"]}", prm[..]) && !prm[0].resource_mismatch;
+  #assert !mcp_auth_parse_prm("http://localhost/mcp", "{\"resource\":\"a\",\"authorization_servers\":[\"http://a\"]}", prm[..]) && prm[0].resource_mismatch;
+  #assert !mcp_auth_parse_prm("http://localhost/mcp", "{\"authorization_servers\":123}", prm[..]);
+  #assert !mcp_auth_parse_prm("http://localhost/mcp", "{\"authorization_servers\":[\"\"]}", prm[..]);
+  #assert mcp_auth_parse_prm("http://localhost/mcp", "{\"authorization_servers\":[\"http://a\"],\"scopes_supported\":[\"\",\"a\"]}", prm[..]);
+  #assert prm[0].ok && cast(string) prm[0].scopes_buf[0..<prm[0].scopes_len] == "a";
+
+  // Token response parser edge cases & struct reset on reuse
+  tok: [1] McpTokenResp;
+  #assert mcp_auth_parse_token_resp("{\"access_token\":\"a\",\"refresh_token\":\"r\",\"scope\":\"s\",\"expires_in\":1}", tok[..]);
+  #assert tok[0].ok && tok[0].access_token_len == 1 && tok[0].refresh_token_len == 1 && tok[0].scope_len == 1 && tok[0].expires_in == 1;
+  #assert mcp_auth_parse_token_resp("{\"access_token\":\"b\",\"refresh_token\":\"\",\"scope\":\"\",\"expires_in\":0}", tok[..]);
+  #assert tok[0].ok && tok[0].refresh_token_len == 0 && tok[0].scope_len == 0 && tok[0].expires_in == 0;
+  #assert mcp_auth_parse_token_resp("{\"access_token\":\"b\",\"refresh_token\":1,\"scope\":2,\"expires_in\":-5}", tok[..]);
+  #assert tok[0].ok && tok[0].refresh_token_len == 0 && tok[0].scope_len == 0 && tok[0].expires_in == 0;
+  #assert !mcp_auth_parse_token_resp("{\"access_token\":123}", tok[..]);
+  #assert !tok[0].ok && tok[0].access_token_len == 0;
+
+  // Bearer extraction exact boundaries (length 7/8, tab, 0x20/0x21/0x7E/0x7F)
+  #assert mcp_auth_extract_bearer("Bearer x") == "x";
+  #assert mcp_auth_extract_bearer("Bearer\tx") == "x";
+  #assert mcp_auth_extract_bearer("Bearer:x") == "";
+  #assert mcp_auth_extract_bearer("Bearer !~") == "!~";
+  del_hdr := [8] u8.['B','e','a','r','e','r',' ',0x7F];
+  #assert mcp_auth_extract_bearer(cast(string) del_hdr[..]) == "";
+  ctl_hdr := [8] u8.['B','e','a','r','e','r',' ',0x1F];
+  #assert mcp_auth_extract_bearer(cast(string) ctl_hdr[..]) == "";
+
+  // Trailing spaces & 1-char scope list
+  #assert mcp_auth_has_all_scopes("a", "a ");
+  n = mcp_auth_write_prm_json("http://a", "http://b", "a", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"resource\":\"http://a\",\"authorization_servers\":[\"http://b\"],\"scopes_supported\":[\"a\"],\"bearer_methods_supported\":[\"header\"]}";
+  n = mcp_auth_write_prm_json("http://a", "http://b", "a ", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"resource\":\"http://a\",\"authorization_servers\":[\"http://b\"],\"scopes_supported\":[\"a\"],\"bearer_methods_supported\":[\"header\"]}";
+
+  // Origin URL edge cases (no authority, empty host)
+  #assert mcp_auth_origin_url("mailto:a@b", out[..]) == -1;
+  #assert mcp_auth_origin_url("http:///path", out[..]) == -1;
+}
+
+// --- Percent decoding & OAuth callback URL parser ---
+
+mcp_auth_hex_val :: (c: u8) -> int #effects(all) {
+  if c >= '0' && c <= '9' { return cast(int) c - '0'; }
+  if c >= 'A' && c <= 'F' { return cast(int) c - 'A' + 10; }
+  if c >= 'a' && c <= 'f' { return cast(int) c - 'a' + 10; }
+  return -1;
+}
+
+mcp_auth_percent_decode :: (src: string, plus_as_space: bool, out: [] u8) -> int #effects(all) {
+  i := 0;
+  o := 0;
+  while i < src.count {
+    c := src[i];
+    if c == '%' {
+      if i + 2 >= src.count { return -1; }
+      hi := mcp_auth_hex_val(src[i + 1]);
+      lo := mcp_auth_hex_val(src[i + 2]);
+      if hi < 0 || lo < 0 { return -1; }
+      if o >= out.count { return -1; }
+      out[o] = cast(u8) ((hi << 4) | lo);
+      o += 1;
+      i += 3;
+    } else if plus_as_space && c == '+' {
+      if o >= out.count { return -1; }
+      out[o] = ' ';
+      o += 1;
+      i += 1;
+    } else {
+      if o >= out.count { return -1; }
+      out[o] = c;
+      o += 1;
+      i += 1;
+    }
+  }
+  return o;
+}
+
+mcp_auth_parse_callback_url :: (url_or_target: string, out: [] McpAuthCallback) -> bool #effects(all) {
+  out[0] = McpAuthCallback.{};
+  q := -1;
+  end := url_or_target.count;
+  for i: 0..<url_or_target.count {
+    if url_or_target[i] == '#' { end = i; break; }
+    if q == -1 && url_or_target[i] == '?' { q = i + 1; }
+  }
+  if q == -1 || q >= end { return false; }
+
+  i := q;
+  while i < end { // mutant: equivalent (when i == end, eq == amp so inner if is skipped and i becomes end + 1)
+    amp := end;
+    for j: i..<end { if url_or_target[j] == '&' { amp = j; break; } }
+    eq := i;
+    while eq < amp && url_or_target[eq] != '=' { eq += 1; }
+    if eq < amp {
+      key := url_or_target[i..<eq];
+      val := url_or_target[eq + 1..<amp];
+      if key == "code" {
+        vn := mcp_auth_percent_decode(val, true, out[0].code_buf[..]);
+        if vn < 0 { return false; }
+        out[0].code_len = vn;
+        out[0].has_code = true;
+      } else if key == "state" {
+        vn := mcp_auth_percent_decode(val, true, out[0].state_buf[..]);
+        if vn < 0 { return false; }
+        out[0].state_len = vn;
+        out[0].has_state = true;
+      } else if key == "iss" {
+        vn := mcp_auth_percent_decode(val, true, out[0].iss_buf[..]);
+        if vn < 0 { return false; }
+        out[0].iss_len = vn;
+        out[0].has_iss = true;
+      } else if key == "error" {
+        vn := mcp_auth_percent_decode(val, true, out[0].error_buf[..]);
+        if vn < 0 { return false; }
+        out[0].error_len = vn;
+        out[0].has_error = true;
+      }
+    }
+    i = amp + 1;
+  }
+  out[0].ok = true;
+  return true;
+}
+
+// --- Authorize URL, DCR body, Basic header, and token form writers ---
+
+mcp_auth_append_qparam :: (out: [] u8, pos: [] int, sep: string, key: string, val: string) -> bool #effects(all) {
+  if !mcp_auth_buf_put(out, pos, sep) { return false; }
+  if !mcp_auth_buf_put(out, pos, key) { return false; }
+  if !mcp_auth_buf_put(out, pos, "=") { return false; }
+  n := wos_percent_encode(val, out[pos[0]..<out.count]);
+  if n < 0 { return false; }
+  pos[0] += n;
+  return true;
+}
+
+mcp_auth_build_authorize_url :: (req: McpAuthUrlReq, out: [] u8) -> int #effects(all) {
+  if req.auth_endpoint.count == 0 || req.client_id.count == 0 || req.redirect_uri.count == 0 || req.code_challenge.count == 0 {
+    return -1;
+  }
+  has_q := false;
+  for c: req.auth_endpoint { if c == '?' { has_q = true; break; } }
+  pos: [1] int;
+  if !mcp_auth_buf_put(out, pos[..], req.auth_endpoint) { return -1; }
+  first_sep := ifx has_q then "&" else "?";
+  if !mcp_auth_append_qparam(out, pos[..], first_sep, "response_type", "code") { return -1; }
+  if !mcp_auth_append_qparam(out, pos[..], "&", "client_id", req.client_id) { return -1; }
+  if !mcp_auth_append_qparam(out, pos[..], "&", "redirect_uri", req.redirect_uri) { return -1; }
+  if !mcp_auth_append_qparam(out, pos[..], "&", "code_challenge", req.code_challenge) { return -1; }
+  if !mcp_auth_append_qparam(out, pos[..], "&", "code_challenge_method", "S256") { return -1; }
+  if req.state.count > 0 {
+    if !mcp_auth_append_qparam(out, pos[..], "&", "state", req.state) { return -1; }
+  }
+  if req.resource.count > 0 {
+    if !mcp_auth_append_qparam(out, pos[..], "&", "resource", req.resource) { return -1; }
+  }
+  if req.scope.count > 0 {
+    if !mcp_auth_append_qparam(out, pos[..], "&", "scope", req.scope) { return -1; }
+  }
+  return pos[0];
+}
+
+mcp_auth_write_dcr_body :: (client_name: string, redirect_uri: string, token_auth_method: string, out: [] u8) -> int #effects(all) {
+  if client_name.count == 0 || redirect_uri.count == 0 { return -1; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "client_name"); jo_str(o[..], client_name);
+  jo_key(o[..], "redirect_uris"); jo_arr(o[..]); jo_str(o[..], redirect_uri); jo_end(o[..]);
+  jo_key(o[..], "grant_types"); jo_arr(o[..]); jo_str(o[..], "authorization_code"); jo_str(o[..], "refresh_token"); jo_end(o[..]);
+  jo_key(o[..], "response_types"); jo_arr(o[..]); jo_str(o[..], "code"); jo_end(o[..]);
+  if token_auth_method.count > 0 {
+    jo_key(o[..], "token_endpoint_auth_method"); jo_str(o[..], token_auth_method);
+  }
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+mcp_auth_write_basic_header :: (client_id: string, client_secret: string, out: [] u8) -> int #effects(all) {
+  if client_id.count == 0 { return -1; }
+  raw: [1024] u8;
+  n1 := wos_percent_encode(client_id, raw[..]);
+  if n1 <= 0 || n1 + 1 >= raw.count { return -1; } // mutant: equivalent (client_id.count > 0 so wos_percent_encode returns >= 1 or -1)
+  raw[n1] = ':';
+  n2 := wos_percent_encode(client_secret, raw[n1 + 1..<raw.count]);
+  if n2 < 0 { return -1; }
+  raw_len := n1 + 1 + n2;
+
+  pos: [1] int;
+  if !mcp_auth_buf_put(out, pos[..], "Authorization: Basic ") { return -1; }
+  r := base64_encode_checked(cast(string) raw[0..<raw_len], out[pos[0]..<out.count], false);
+  if r.error != NC_OK { return -1; }
+  pos[0] += r.written;
+  if !mcp_auth_buf_put(out, pos[..], "\r\n") { return -1; }
+  return pos[0];
+}
+
+mcp_auth_append_fparam :: (out: [] u8, pos: [] int, first: [] bool, key: string, val: string) -> bool #effects(all) {
+  if !first[0] {
+    if !mcp_auth_buf_put(out, pos, "&") { return false; }
+  }
+  first[0] = false;
+  if !mcp_auth_buf_put(out, pos, key) { return false; }
+  if !mcp_auth_buf_put(out, pos, "=") { return false; }
+  n := wos_percent_encode(val, out[pos[0]..<out.count]);
+  if n < 0 { return false; }
+  pos[0] += n;
+  return true;
+}
+
+mcp_auth_write_token_form :: (req: McpTokenReq, out: [] u8) -> int #effects(all) {
+  if req.grant_type.count == 0 || req.code.count == 0 { return -1; }
+  pos: [1] int;
+  first := [1] bool.[true];
+  if !mcp_auth_append_fparam(out, pos[..], first[..], "grant_type", req.grant_type) { return -1; }
+  if !mcp_auth_append_fparam(out, pos[..], first[..], "code", req.code) { return -1; }
+  if req.redirect_uri.count > 0 {
+    if !mcp_auth_append_fparam(out, pos[..], first[..], "redirect_uri", req.redirect_uri) { return -1; }
+  }
+  if req.code_verifier.count > 0 {
+    if !mcp_auth_append_fparam(out, pos[..], first[..], "code_verifier", req.code_verifier) { return -1; }
+  }
+  if req.resource.count > 0 {
+    if !mcp_auth_append_fparam(out, pos[..], first[..], "resource", req.resource) { return -1; }
+  }
+  if req.auth_method == MCP_TOKEN_AUTH_POST {
+    if req.client_id.count > 0 {
+      if !mcp_auth_append_fparam(out, pos[..], first[..], "client_id", req.client_id) { return -1; }
+    }
+    if req.client_secret.count > 0 {
+      if !mcp_auth_append_fparam(out, pos[..], first[..], "client_secret", req.client_secret) { return -1; }
+    }
+  } else if req.auth_method == MCP_TOKEN_AUTH_NONE {
+    if req.client_id.count > 0 {
+      if !mcp_auth_append_fparam(out, pos[..], first[..], "client_id", req.client_id) { return -1; }
+    }
+  }
+  return pos[0];
+}
+
+// --- PRM & Token response JSON parsers ---
+
+mcp_auth_parse_prm :: (mcp_server_url: string, prm_json: string, out: [] McpPrmMeta) -> bool #effects(all) {
+  out[0] = McpPrmMeta.{};
+  d: [1] Jv;
+  nodes: [256] JvNode;
+  if !jv_parse(d[..], prm_json, nodes[..]) { return false; }
+  if jv_kind(d[0], 0) != JV_OBJECT { return false; }
+
+  // RFC 9728 / MCP: validate PRM resource matches MCP server URL (RFC 8707)
+  res_n := jv_get(d[0], 0, "resource");
+  if jv_kind(d[0], res_n) == JV_STRING {
+    rn := jv_unescape(jv_raw(d[0], res_n), out[0].resource_buf[..]);
+    if rn <= 0 { return false; }
+    out[0].resource_len = rn;
+    res_str := cast(string) out[0].resource_buf[0..<rn];
+    if !mcp_uri_resource_matches(mcp_server_url, res_str) {
+      out[0].resource_mismatch = true;
+      return false;
+    }
+  }
+
+  as_arr := jv_get(d[0], 0, "authorization_servers");
+  if jv_kind(d[0], as_arr) != JV_ARRAY { return false; }
+  if jv_len(d[0], as_arr) == 0 { return false; }
+  as0 := jv_at(d[0], as_arr, 0);
+  if jv_kind(d[0], as0) != JV_STRING { return false; }
+  an := jv_unescape(jv_raw(d[0], as0), out[0].auth_server_buf[..]);
+  if an <= 0 { return false; }
+  out[0].auth_server_len = an;
+
+  sc_arr := jv_get(d[0], 0, "scopes_supported");
+  if jv_kind(d[0], sc_arr) == JV_ARRAY {
+    pos: [1] int;
+    tmp: [256] u8;
+    for i: 0..<jv_len(d[0], sc_arr) {
+      el := jv_at(d[0], sc_arr, i);
+      if jv_kind(d[0], el) == JV_STRING {
+        sn := jv_unescape(jv_raw(d[0], el), tmp[..]);
+        if sn > 0 { // mutant: equivalent (sn == 0 is a no-op in mcp_scope_append_unique)
+          _ = mcp_scope_append_unique(cast(string) tmp[0..<sn], out[0].scopes_buf[..], pos[..]);
+        }
+      }
+    }
+    out[0].scopes_len = pos[0];
+  }
+
+  out[0].ok = true;
+  return true;
+}
+
+mcp_auth_parse_token_resp :: (json: string, out: [] McpTokenResp) -> bool #effects(all) {
+  out[0] = McpTokenResp.{};
+  d: [1] Jv;
+  nodes: [128] JvNode;
+  if !jv_parse(d[..], json, nodes[..]) { return false; }
+  if jv_kind(d[0], 0) != JV_OBJECT { return false; }
+
+  at_n := jv_get(d[0], 0, "access_token");
+  if jv_kind(d[0], at_n) != JV_STRING { return false; }
+  an := jv_unescape(jv_raw(d[0], at_n), out[0].access_token_buf[..]);
+  if an <= 0 { return false; }
+  out[0].access_token_len = an;
+
+  rt_n := jv_get(d[0], 0, "refresh_token");
+  if jv_kind(d[0], rt_n) == JV_STRING {
+    rn := jv_unescape(jv_raw(d[0], rt_n), out[0].refresh_token_buf[..]);
+    if rn > 0 { out[0].refresh_token_len = rn; } // mutant: equivalent (out[0].refresh_token_len is already 0)
+  }
+
+  sc_n := jv_get(d[0], 0, "scope");
+  if jv_kind(d[0], sc_n) == JV_STRING {
+    sn := jv_unescape(jv_raw(d[0], sc_n), out[0].scope_buf[..]);
+    if sn > 0 { out[0].scope_len = sn; } // mutant: equivalent (out[0].scope_len is already 0)
+  }
+
+  exp_n := jv_get(d[0], 0, "expires_in");
+  if jv_kind(d[0], exp_n) == JV_NUMBER {
+    ev := mcp_http_parse_uint(jv_raw(d[0], exp_n));
+    if ev > 0 { out[0].expires_in = ev; } // mutant: equivalent (out[0].expires_in is already 0)
+  }
+
+  out[0].ok = true;
+  return true;
+}
+
+// --- Resource-server helpers ---
+
+mcp_auth_extract_bearer :: (auth_header: string) -> string #effects(all) {
+  if auth_header.count < 8 { return ""; }
+  if !mcp_http_eq_ci(auth_header[0..<6], "Bearer") { return ""; }
+  if auth_header[6] != ' ' && auth_header[6] != '\t' { return ""; }
+  tok := mcp_http_trim_ows(auth_header[7..<auth_header.count]);
+  if tok.count == 0 { return ""; }
+  for c: tok {
+    if c <= 0x20 || c >= 0x7F { return ""; }
+  }
+  return tok;
+}
+
+mcp_auth_has_all_scopes :: (granted: string, required: string) -> bool #effects(all) {
+  i := 0;
+  while i < required.count {
+    while i < required.count && required[i] == ' ' { i += 1; }
+    s := i;
+    while i < required.count && required[i] != ' ' { i += 1; }
+    if i > s {
+      if !mcp_scope_list_contains(granted, required[s..<i]) { return false; }
+    }
+  }
+  return true;
+}
+
+mcp_auth_audience_matches :: (resource_url: string, aud: string) -> bool #effects(all) {
+  return mcp_uri_resource_matches(resource_url, aud);
+}
+
+mcp_auth_write_prm_json :: (resource_url: string, auth_server_url: string, scopes_supported: string, out: [] u8) -> int #effects(all) {
+  if resource_url.count == 0 || auth_server_url.count == 0 { return -1; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "resource"); jo_str(o[..], resource_url);
+  jo_key(o[..], "authorization_servers"); jo_arr(o[..]); jo_str(o[..], auth_server_url); jo_end(o[..]);
+  if scopes_supported.count > 0 {
+    jo_key(o[..], "scopes_supported"); jo_arr(o[..]);
+    i := 0;
+    while i < scopes_supported.count {
+      while i < scopes_supported.count && scopes_supported[i] == ' ' { i += 1; }
+      s := i;
+      while i < scopes_supported.count && scopes_supported[i] != ' ' { i += 1; }
+      if i > s { jo_str(o[..], scopes_supported[s..<i]); }
+    }
+    jo_end(o[..]);
+  }
+  jo_key(o[..], "bearer_methods_supported"); jo_arr(o[..]); jo_str(o[..], "header"); jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+mcp_auth_origin_url :: (url: string, out: [] u8) -> int #effects(all) {
+  u := mcp_uri_parse(url);
+  if !u.has_authority || u.host_to <= u.host_from { return -1; }
+  origin := url[0..<u.path_from];
+  pos: [1] int;
+  if !mcp_auth_buf_put(out, pos[..], origin) { return -1; }
+  return pos[0];
+}

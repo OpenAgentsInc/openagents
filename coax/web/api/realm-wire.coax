@@ -51,8 +51,9 @@ rlw_error_words :: (answer: string, out: [] u8) -> int #export_c #effects(all) {
   mark := "\"error\": \"";
   o: [1] Jo; aw_at(o[..], out, 0);
   at := -1;
-  for i: 0..<answer.count - mark.count + 1 { if at < 0 && answer[i..<i + mark.count] == mark { at = i + mark.count; } }
-  if at < 0 { jo_put(o[..], "error"); return aw_len(o[..]); }
+  // mark has length 10, so once assigned at >= 10 (never 0 or 1); at < 0, <= 0, and < 1 agree.
+  for i: 0..<answer.count - mark.count + 1 { if at < 0 && answer[i..<i + mark.count] == mark { at = i + mark.count; } } // mutant: equivalent
+  if at < 0 { jo_put(o[..], "error"); return aw_len(o[..]); } // mutant: equivalent
   n := 0;
   while at + n < answer.count && answer[at + n] != '"' && n < RLW_WORDS { n += 1; }
   jo_put(o[..], answer[at..<at + n]);
@@ -95,6 +96,8 @@ rlw_error_words :: (answer: string, out: [] u8) -> int #export_c #effects(all) {
   b: [256] u8;
   n := rlw_error_words("{\"error\": \"say what to make\"}", b[..]);
   #assert cast(string) b[0..<n] == "say what to make";
+  n = rlw_error_words("\"error\": \"at zero\"", b[..]);
+  #assert cast(string) b[0..<n] == "at zero";
   n = rlw_error_words("{\"rev\": 2, \"error\": \"changed since\", \"x\": \"y\"}", b[..]);
   #assert cast(string) b[0..<n] == "changed since";
   n = rlw_error_words("{\"error\":\"not asked\"}", b[..]);

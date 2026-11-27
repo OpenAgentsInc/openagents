@@ -1,0 +1,65 @@
+// Chapter 5: A sandbox and approvals — Bypass-immune permission inner wall,
+// denial circuit breaker, two-phase claim/deliver, fail-closed shell AST +
+// bare-git sandbox (`openagents/core/permissions.coax`, `openagents/core/shell_sandbox.coax`),
+// and bypass-immune WalletPay / Vault gates (`openagents/core/members.coax`).
+#import "Basic";
+#load "../../openagents/core/permissions.coax";
+#load "../../openagents/core/shell_sandbox.coax";
+#load "../../openagents/core/members.coax";
+
+beh_name :: (b: int) -> string {
+  if b == OA_MP_PBEH_ALLOW { return "allow"; }
+  if b == OA_MP_PBEH_ASK { return "ask"; }
+  if b == OA_MP_PBEH_DENY { return "deny"; }
+  return "other";
+}
+
+// book:begin example
+main :: () {
+  // 1. Protected path safety feeds bypass-immune 1g safetyCheck — even in BYPASS mode
+  ps_hook := flawed_check_path_safety_for_auto_edit("/repo/.git/hooks/pre-commit");
+  ps_wt := flawed_check_path_safety_for_auto_edit("/repo/.claude/worktrees/wt1/main.coax");
+  dt: [1] FlawedDenialTracker;
+  v_bypass := flawed_eval_permission_outer(FlawedOuterInput.{
+    inner = FlawedInnerInput.{
+      mode = FLAWED_PMODE_BYPASS,
+      tool_behavior = FLAWED_PBEH_ASK,
+      is_safety_check = true,
+      classifier_approvable = ps_hook.classifier_approvable,
+    },
+  }, dt[..]);
+  print("path safety: git_hook_safe=% worktree_safe=% bypass_verdict=%\n",
+    ps_hook.safe, ps_wt.safe, beh_name(cast(int) v_bypass.behavior));
+
+  // 2. Two-phase ResolveOnce prevents duplicate approval delivery across concurrent racers
+  ro: [1] FlawedResolveOnce;
+  c1 := flawed_resolve_claim(ro[..], 1);
+  c2 := flawed_resolve_claim(ro[..], 2);
+  d1 := flawed_resolve_deliver(ro[..], FLAWED_PBEH_ALLOW);
+  print("resolve_once: racer1_claim=% racer2_claim=% delivered=%\n", c1, c2, d1);
+
+  // 3. Denial circuit breaker trips after 3 consecutive auto-classifier blocks
+  for i: 0..<3 { flawed_denial_record_block(dt[..]); }
+  print("denial breaker: blocks=% fallback_to_ask=%\n",
+    dt[0].consecutive, flawed_denial_should_fallback(dt[..]));
+
+  // 4. Shell AST fail-closed parse, HackerOne #3543050 env strip, sandbox & bare-git guards
+  ast := flawed_classify_parse_result(FLAWED_PARSE_ABORTED, 10, 5);
+  strip_term := flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, true, "TERM");
+  use_sb := flawed_should_use_sandbox(true, false, false, false, true, true);
+  bg_exist := flawed_bare_git_action(true);
+  bg_new := flawed_bare_git_action(false);
+  print("shell sandbox: aborted_too_complex=% strip_after_wrapper=% sandbox=% bare_git_deny=% bare_git_scrub=%\n",
+    ast == FLAWED_AST_TOO_COMPLEX, strip_term, use_sb,
+    bg_exist == FLAWED_BAREGIT_DENY_WRITE, bg_new == FLAWED_BAREGIT_POST_SCRUB);
+
+  // 5. OpenAgents member pack bypass-immunity: WalletPay & vault get ALWAYS ask in BYPASS,
+  //    and DENY in non-interactive PLAN/DONT_ASK modes
+  wp_bypass := oa_member_tool_permission("WalletPay", "lnbc100n...", OA_MP_PMODE_BYPASS, true, true);
+  wp_plan := oa_member_tool_permission("WalletPay", "lnbc100n...", OA_MP_PMODE_PLAN, true, true);
+  vault_bypass := oa_member_tool_permission("OpenAgentsCli", "vault get api-key", OA_MP_PMODE_BYPASS, true, true);
+  vault_status := oa_member_tool_permission("OpenAgentsCli", "vault status", OA_MP_PMODE_DEFAULT, false, false);
+  print("member gates: WalletPay(bypass=% plan=%) vault(get_bypass=% status_default=%)\n",
+    beh_name(wp_bypass), beh_name(wp_plan), beh_name(vault_bypass), beh_name(vault_status));
+}
+// book:end example

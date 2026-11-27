@@ -1,0 +1,85 @@
+// Chapter 3: Keep the prefix stable — Prompt-cache splitting, context freeze,
+// 12-dimension cache-break forensics (`openagents/core/prompt_cache.coax`,
+// `openagents/core/prompt_context.coax`), and cloud cache TTL expiry
+// (`coax/lib/agent/engine/cache-policy.coax`, adopted by `openagents/runtime/oa-worker.coax`).
+#import "Basic";
+#load "../../openagents/core/prompt_context.coax";
+#load "../../coax/lib/agent/engine/cache-policy.coax";
+
+strat_name :: (s: u8) -> string {
+  if s == FLAWED_STRAT_GLOBAL { return "global"; }
+  if s == FLAWED_STRAT_TOOL_BASED { return "tool_based"; }
+  return "org_fallback";
+}
+
+break_name :: (r: u8) -> string {
+  if r == FLAWED_BREAK_NONE { return "none"; }
+  if r == FLAWED_BREAK_CLIENT { return "client"; }
+  if r == FLAWED_BREAK_TTL_5M { return "ttl_5m"; }
+  if r == FLAWED_BREAK_TTL_1H { return "ttl_1h"; }
+  if r == FLAWED_BREAK_SERVER { return "server"; }
+  return "unknown";
+}
+
+ttl_name :: (c: int) -> string {
+  if c == CP_CACHE_WARM { return "warm"; }
+  if c == CP_CACHE_EXPIRED { return "expired"; }
+  return "expired_compact";
+}
+
+// book:begin example
+main :: () {
+  st: [1] FlawedSessionState;
+  _ = flawed_state_init(st[..], "/repo", "claude-opus-4-7");
+  ctx: [1] FlawedContextCache;
+  _ = flawed_ctx_snapshot_git(ctx[..], "M openagents/core/prompt_cache.coax", true, false, true);
+  _ = flawed_ctx_snapshot_user(ctx[..], st[..], "# OpenAgents Rules", "2026-11-26", false);
+
+  // Midnight date rollover leaves cached prefix intact until explicit boundary clear
+  rolled := flawed_ctx_check_date_rollover(ctx[..], "2026-11-27");
+  print("context freeze: git_cached=% user_cached=% midnight_rollover_detected=%\n",
+    ctx[0].git_cached, ctx[0].user_ctx_cached, rolled);
+
+  // Compact capability-pack prompt profile for minimal local / cloud turns
+  pb: [1024] u8;
+  pn := oa_build_prompt_profile("macOS", OA_CAP_CODER | OA_CAP_WALLET, pb[..]);
+  print("prompt profile bytes=%\n", pn);
+
+  // Assemble tool pool with 1 built-in + 1 deferred MCP -> keeps global cache scope
+  bi: [1] FlawedToolSpec;
+  bi[0] = flawed_tool_defaults("Read", FLAWED_TOOL_SRC_BUILTIN);
+  mcps: [1] FlawedToolSpec;
+  mcps[0] = flawed_tool_defaults("mcp__fs__stat", FLAWED_TOOL_SRC_MCP);
+  mcps[0].should_defer = true;
+  pctx: [1] FlawedToolPermContext;
+  pool: [1] FlawedToolPool;
+  _ = flawed_assemble_tool_pool(pool[..], pctx[..], bi[..], mcps[..]);
+  needs_tb := flawed_needs_tool_based_cache_marker(pool[..]);
+
+  sb: [4] FlawedSysBlock;
+  sb[0] = FlawedSysBlock.{kind = FLAWED_SBLK_BILLING, tag_id = 1};
+  sb[1] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 2};
+  sb[2] = FlawedSysBlock.{kind = FLAWED_SBLK_BOUNDARY, tag_id = 3};
+  sb[3] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 4};
+  w := flawed_split_sys_prompt_prefix(sb[..], 4, flawed_should_use_global_cache_scope(true, false), needs_tb);
+  print("wire split: strategy=% needs_tool_marker=% blocks=%\n", strat_name(w.strategy), needs_tb, w.count);
+
+  // 2-phase cache-break forensics: turn 1 warm hit; turn 2 mutating tools_hash -> CLIENT break
+  tr: [1] FlawedCacheBreakTracker;
+  s1 := FlawedPromptStateSnap.{system_hash = 101, tools_hash = 202, global_strategy = w.strategy};
+  s2 := s1;
+  s2.tools_hash = 203;
+  m1 := flawed_cbd_record(tr[..], 1, s1);
+  c1 := flawed_cbd_check(tr[..], 1, 50000, 1000, false);
+  m2 := flawed_cbd_record(tr[..], 1, s2);
+  c2 := flawed_cbd_check(tr[..], 1, 10000, 1000, false);
+  print("forensics turn 1: diff_mask=% break=%\n", m1, break_name(c1.reason));
+  print("forensics turn 2: diff_mask=% break=%\n", m2, break_name(c2.reason));
+
+  // Cloud prompt-cache 5-minute TTL + idle compaction eligibility (coax/lib/agent/engine/cache-policy.coax)
+  t_warm := cp_cache_status(1000, 200000, 0, 12000, 24000, true);
+  t_exp := cp_cache_status(1000, 301000, 0, 12000, 8000, true);
+  t_cmp := cp_cache_status(1000, 301000, 0, 12000, 24000, true);
+  print("cloud ttl: 199s=% 300s_8k=% 300s_24k=%\n", ttl_name(t_warm), ttl_name(t_exp), ttl_name(t_cmp));
+}
+// book:end example

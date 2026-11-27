@@ -1,0 +1,4 @@
+detect ok=true pack0=capability_author pack1=general hint=custom_api_tool reason=missing_capability
+perms list_plan=allow draft_unapproved=ask draft_approved=allow eval_plan=deny refuse_traversal=deny refuse_newline=deny
+draft name=linear-meeting-tickets desc=Turn meeting notes into Linear tickets pass_card=true fail_card=true
+ok=true

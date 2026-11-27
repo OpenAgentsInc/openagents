@@ -38,7 +38,7 @@
 // disputes, resolvers, cancellation, refunds, replacement invoices, payee
 // payment_received, close, and every on-chain or other rail.
 //   coax/bin/coax test coax/lib/nostr/mkt/order.coax --library
-#load "../../../lib/x402/settle.coax";
+#load "../../x402/settle.coax";
 #load "../../kept.coax";
 #load "../../../tests/nostr/mkt_order_fixtures.coax";
 #authority;

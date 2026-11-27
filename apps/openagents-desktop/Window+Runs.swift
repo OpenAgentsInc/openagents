@@ -46,6 +46,7 @@ extension CoderWindow {
                 r.stopGen &+= 1
                 r.autoRecoveries = 0
                 r.recoverGen &+= 1
+                r.lastCrashSignature = nil
             }
             self.followUpBegan(r)
             self.markUnread(r)
@@ -79,11 +80,15 @@ extension CoderWindow {
             forceStopRun(r)
             return
         }
-        let reason = r.worker.lastEndState ?? "exited"
-        let maxAutoRecoveries = 2
-        if r.autoRecoveries < maxAutoRecoveries {
+        let reason = r.worker.formattedEndReason
+        let isFatal = r.worker.isFatalCrash
+        let crashSig = isFatal ? r.worker.crashSignature : nil
+        let repeatedFatal = isFatal && crashSig != nil && r.lastCrashSignature == crashSig
+        let maxAutoRecoveries = isFatal ? 1 : 2
+        if !repeatedFatal && r.autoRecoveries < maxAutoRecoveries {
             r.autoRecoveries += 1
             r.recoverGen &+= 1
+            if let crashSig { r.lastCrashSignature = crashSig }
             let gen = r.recoverGen
             let attempt = r.autoRecoveries
             let delay: TimeInterval = attempt == 1 ? 0.6 : 1.5
@@ -109,12 +114,20 @@ extension CoderWindow {
             }
             return
         }
+        NSLog("OpenAgents: %@ worker failed mid-turn (%@; recoveries=%d, repeatedFatal=%d)", r.worker.program, reason, r.autoRecoveries, repeatedFatal ? 1 : 0)
+        r.lastCrashSignature = nil
         let label = r.worker.program == "oa-worker" ? "OpenAgents" : r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "OpenAgents"
-        cd_failed(r.page, "\(label) could not recover after an unexpected interruption (\(reason)).")
+        let msg = isFatal
+            ? "\(label) worker crashed (\(reason))."
+            : "\(label) could not recover after an unexpected interruption (\(reason))."
+        cd_failed(r.page, msg)
+        #if OA_FULL
+        if stillShown { _ = cd_br_human_takeover(r.page) }
+        #endif
         if stillShown { self.recallDue = true }
         r.endTurn()
         self.markUnread(r)
-        self.notifyTurnFailed(chatID: stillShown ? self.chat : r.chat, detail: "\(label) interrupted (\(reason)).", isActiveChat: stillShown)
+        self.notifyTurnFailed(chatID: stillShown ? self.chat : r.chat, detail: msg, isActiveChat: stillShown)
         self.pump(r)
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
@@ -138,6 +151,7 @@ extension CoderWindow {
         r.stopGen &+= 1
         r.autoRecoveries = 0
         r.recoverGen &+= 1
+        r.lastCrashSignature = nil
         r.worker.gone = nil
         r.worker.line = nil
         if r.worker.alive { r.worker.stop(forget: false) }
@@ -211,9 +225,26 @@ extension CoderWindow {
             // an ended sub-agent's run is kept until the message ends: a reopened Coder reads it again
             if cd_agent_running(page, j) == 0 { r.agents[j] = nil; one.gone = nil; one.line = nil; one.stop(forget: false) }
         }
+        drainSubagentWorktreeCleanups(r, cwd: cwd)
         let n = cd_answer_line(page, &out, Int32(out.count)); r.worker.write(out, count: Int(n))
         checkRunNotifications(r)
         wake()
+    }
+    /// Drains finished background subagents that ran in isolated git worktrees and performs
+    /// fail-closed worktree + ephemeral branch cleanup off the main thread (#14121).
+    private func drainSubagentWorktreeCleanups(_ r: CoderRun, cwd: String) {
+        var pBuf = [CChar](repeating: 0, count: 1024)
+        var bBuf = [CChar](repeating: 0, count: 256)
+        var hBuf = [CChar](repeating: 0, count: 128)
+        while cd_agent_wt_cleanup_next(r.page, &pBuf, Int32(pBuf.count), &bBuf, Int32(bBuf.count), &hBuf, Int32(hBuf.count)) != 0 {
+            let wtPath = String(cString: pBuf)
+            let wtBranch = String(cString: bBuf)
+            let wtHead = String(cString: hBuf)
+            guard !wtPath.isEmpty else { continue }
+            DispatchQueue.global(qos: .utility).async {
+                _ = ChatWorktree.cleanupSubagent(repoCwd: cwd, path: wtPath, branch: wtBranch, origHead: wtHead)
+            }
+        }
     }
     /// Configures a delegated sub-agent worker based on cd_agent_engine (#14053, opt-in gated #14071):
     /// 0 = oa-worker (default), 1 = claudeworker, 2 = agyworker, 3 = codex, 4 = cursor (agyworker ACP).
@@ -230,15 +261,11 @@ extension CoderWindow {
         case 3:
             one.program = "oa-worker"
             for (k, v) in AgentSettings.workerEnv() { one.extraEnv[k] = v }
-            #if OA_FULL
             if let bin = ExternalProviders.codexBinaryPath() { one.extraEnv["CODER_CODEX_BIN"] = bin }
-            #endif
             one.extraEnv["CODER_PROVIDER"] = "codex"
         case 4:
             one.program = "agyworker"
-            #if OA_FULL
             if let bin = ExternalProviders.cursorBinaryPath() { one.extraEnv["CODER_AGY_BIN"] = bin }
-            #endif
             one.extraEnv["CODER_ACP_PROVIDER"] = "cursor"
         default:
             one.program = "oa-worker"
@@ -248,6 +275,11 @@ extension CoderWindow {
                 one.extraEnv["PSIONIC_MODEL"] = LocalModelStore.entry.id
                 one.extraEnv["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
             }
+        }
+        if foremanServer.port > 0 {
+            one.extraEnv["OA_SESSION_BUS_URL"] = foremanServer.baseURL
+            one.extraEnv["OA_SESSION_BUS_TOKEN"] = foremanServer.operatorToken
+            one.extraEnv["OA_CURRENT_SESSION_ID"] = "local:chat:" + (chat ?? run.session)
         }
     }
     /// Sub-agent j's worker lines go to its run's page.
@@ -264,6 +296,7 @@ extension CoderWindow {
         if !isRecovery {
             r.autoRecoveries = 0
             r.recoverGen &+= 1
+            r.lastCrashSignature = nil
         }
         r.startedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         let shown = r === run
@@ -285,7 +318,6 @@ extension CoderWindow {
         }
         let useFlawed = cd_model_flawed(r.page) != 0
         let useAgy = !useFlawed && cd_model_agy(r.page) != 0
-        #if OA_FULL
         let useInkling = !useFlawed && !useAgy && cd_model_inkling(r.page) != 0
         let useHybrid = FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0
         let provKind = cd_model_provider(r.page)
@@ -301,13 +333,8 @@ extension CoderWindow {
             wake()
             return
         }
-        #else
-        let useInkling = !useFlawed && !useAgy
-        let useHybrid = false
-        #endif
         let flawedWantsLocal = AgentSettings.pageNeedsLocal(r.page)
         if useInkling || useHybrid || flawedWantsLocal {
-            #if OA_FULL
             if useHybrid {
                 let snap = ExecutorModelStore.scan()
                 if !snap.selectable {
@@ -335,27 +362,6 @@ extension CoderWindow {
                 wake()
                 return
             }
-            #else
-            if !LocalModelStore.isSelectable {
-                let cur = LocalModelStore.entry
-                let why: String
-                if !LocalModelStore.isAppleSilicon {
-                    why = "Inkling 2 Mini requires an Apple Silicon Mac (macOS arm64)."
-                } else if !LocalModelStore.hardwareSupported {
-                    why = "\(cur.name) requires at least \(cur.minRamGB) GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected). Switch to a smaller quant in Settings → Models → Local Model."
-                } else if LocalModelStore.isVerifying {
-                    why = "\(cur.name) is verifying its SHA-256 checksum. Please wait a moment."
-                } else if LocalModelStore.isDownloading {
-                    why = "\(cur.name) is still downloading (\(LocalModelStore.statusSummary()))."
-                } else {
-                    why = "\(cur.name) is not ready (\(LocalModelStore.statusSummary())). Download, import, or verify it in Settings → Models → Local Model."
-                }
-                cd_failed(r.page, why)
-                if shown && LocalModelStore.anyVariantSupported && !LocalModelStore.isDownloading && !LocalModelStore.isVerifying { manageLocalModels() }
-                wake()
-                return
-            }
-            #endif
             r.startingWorker = true
             let gen = r.startGen
             if !LocalModelServer.shared.isReady {
@@ -400,13 +406,7 @@ extension CoderWindow {
         launchWorker(r, useFlawed: useFlawed, useAgy: useAgy, needsRecall: needsRecall)
     }
     private func launchWorker(_ r: CoderRun, useFlawed: Bool, useAgy: Bool, needsRecall: Bool) {
-        #if OA_FULL
         let resolved = resolveProviderWorker(r)
-        #else
-        // Primary chat always runs on OpenAgents Core (oa-worker); no primary-turn agyworker escape hatch (#14070).
-        let _ = useAgy
-        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = ("oa-worker", 8, nil)
-        #endif
         let wantProgram = resolved.program
         let switchedProvider = r.lastProviderKind >= 0 && r.lastProviderKind != resolved.providerKind
         let switchedProgram = r.worker.program != wantProgram || switchedProvider
@@ -517,7 +517,6 @@ extension CoderWindow {
             syncLocalState(on: back)
             if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
             cd_cloud_authed_set(back, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
-            #if OA_FULL
             if ComposerModelVisibility.showOtherModels {
                 if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
                 if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
@@ -526,10 +525,6 @@ extension CoderWindow {
                 cd_claude(back, 0)
             }
             cd_settings_gemini(back, FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "") : "")
-            #else
-            cd_claude(back, 0)
-            cd_settings_gemini(back, "")
-            #endif
             CoderProbes.apply(back)
             syncSkillsNote(for: back, isForeman: FeatureFlags.isOn(.foreman) && t.chat == Foreman.chatID)
             var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
@@ -567,9 +562,7 @@ extension CoderWindow {
         }
         syncPhoneRuns()
         cd_chats(page, chatLines)
-        #if OA_FULL
         syncForemanUI()
-        #endif
         updateDockBadge()
     }
     /// Every daemon run this Coder holds: each chat's worker and sub-agents, in view or out, and the
@@ -1049,6 +1042,7 @@ extension CoderWindow {
             if cd_agent_running(page, j) == 0 { r.agents[j] = nil; one.gone = nil; one.line = nil; one.stop(forget: false) }
             else { one.follow() }
         }
+        drainSubagentWorktreeCleanups(r, cwd: r.folder.path)
     }
     /// True when `name` is an auto-generated internal worktree branch (e.g. `coder/<uuid>`).
     private static func isAutoWorktreeBranch(_ name: String) -> Bool {
@@ -1256,7 +1250,6 @@ extension CoderWindow {
     }
     var isForemanShown: Bool { chat == Foreman.chatID }
     func syncFromDaemon() {
-        #if OA_FULL
         daemonClient.readForeman { [weak self] state in
             guard let self, let rawTier = state?.tier, let tier = ForemanTier(rawValue: rawTier) else { return }
             if self.foremanTier != tier {
@@ -1266,7 +1259,6 @@ extension CoderWindow {
                 self.wake()
             }
         }
-        #endif
         daemonClient.listSessionMeta { [weak self] items in
             guard let self, !items.isEmpty else { return }
             var changed = false
@@ -1291,14 +1283,11 @@ extension CoderWindow {
             }
         }
     }
-    #if OA_FULL
     func syncForemanUI() {
         let busy = runs[Foreman.chatID] != nil || (chat == Foreman.chatID && cd_running(page) != 0)
         cd_foreman(page, busy ? 1 : 0, Int32(foremanTier.rawValue))
     }
-    #endif
     func syncSkillsNote(for pagePtr: UnsafeMutableRawPointer, isForeman: Bool) {
-        #if OA_FULL
         let base = FeatureFlags.isOn(.mcp) ? coderSkillsNote(repoFolder: folder) : ""
         if isForeman && FeatureFlags.isOn(.foreman) {
             let note = Foreman.systemPrompt(tier: foremanTier, workspace: folder.path, chatCount: store.orderedList.count, runningCount: runningCount, baseSkills: base)
@@ -1306,9 +1295,6 @@ extension CoderWindow {
         } else {
             cd_skills(pagePtr, base)
         }
-        #else
-        cd_skills(pagePtr, "")
-        #endif
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
         var env: [String: String] = [:]
@@ -1329,7 +1315,11 @@ extension CoderWindow {
                 env["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
             }
         }
-        #if OA_FULL
+        if foremanServer.port > 0 {
+            env["OA_SESSION_BUS_URL"] = foremanServer.baseURL
+            env["OA_SESSION_BUS_TOKEN"] = foremanServer.operatorToken
+            env["OA_CURRENT_SESSION_ID"] = "local:chat:" + ((r === run ? chat : r.chat) ?? r.session)
+        }
         if FeatureFlags.isOn(.mcp) {
             for (k, v) in McpServerStore.workerEnv() { env[k] = v }
         }
@@ -1376,12 +1366,6 @@ extension CoderWindow {
                 }
             }
         }
-        #else
-        if cd_model_inkling(r.page) != 0 {
-            env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
-            env["PSIONIC_MODEL"] = LocalModelStore.entry.id
-        }
-        #endif
         let cwd = (r === run ? folder : r.folder).path
         let changed = r.worker.extraEnv != env || ChatWorktree.caches(for: r.worker.folder) != ChatWorktree.caches(for: cwd)
         r.worker.extraEnv = env
@@ -1403,9 +1387,7 @@ extension CoderWindow {
             }
         }
         cd_chats(page, chatLines)
-        #if OA_FULL
         syncForemanUI()
-        #endif
         wake()
     }
     /// The shown chat's reply goes on out of view: its run moves to a page with no window and the
@@ -1423,11 +1405,9 @@ extension CoderWindow {
         syncLocalState(on: back)
         if ComposerModelVisibility.showOtherModels {
             syncAntigravityModels(on: back)
-            #if OA_FULL
             if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
             if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
             if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: back) }
-            #endif
         } else {
             cd_claude(back, 0)
         }
@@ -1440,9 +1420,7 @@ extension CoderWindow {
         configureWorkerEnv(run, isForeman: false)
         syncSkillsNote(for: page, isForeman: false)
         cd_chats(page, chatLines)
-        #if OA_FULL
         syncForemanUI()
-        #endif
         wake()
         return true
     }
@@ -1450,25 +1428,19 @@ extension CoderWindow {
     func finish(_ id: String) {
         guard let back = runs.removeValue(forKey: id) else { return }
         captureTurnCheckpoint(for: back)
-        #if OA_FULL
         let cost = Int(cd_cost_usd_micros(back.page))
-        #endif
         back.stop(); cd_close(back.page)
-        #if OA_FULL
         _ = foremanEvents.emit(type: "chat.finished", chatID: id, data: [
             "title": store.title(id) ?? "Chat",
             "cost_usd_micros": cost
         ])
-        #endif
         if id != chat { unread.insert(id) }
         needsAttention.remove(id)
         notifyTurnCompleted(chatID: id, isActiveChat: id == chat)
         maybeRefineTitleAfterTurn(chatID: id)
         cd_chats(page, chatLines)
         if cd_dashboard_shown(page) != 0 { syncDashboard() }
-        #if OA_FULL
         syncForemanUI()
-        #endif
         wake()
     }
 }

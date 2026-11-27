@@ -53,7 +53,7 @@ def build_worker() -> Path:
     out = REPO / f"coax/web/build/tools/mcworker-{digest}"
     with tempfile.TemporaryDirectory(prefix="coder-fu-build-") as th:
         env = dict(os.environ, COAX=str(coax), BROWSER="/usr/bin/true", HOME=th)
-        res = subprocess.run([str(REPO / "coax/web/tool.sh"), str(REPO / "coder/tui/mcworker.coax")], cwd=str(REPO), env=env,
+        res = subprocess.run([str(REPO / "coax/web/tool.sh"), str(REPO / "openagents/workers/legacy/mcworker.coax")], cwd=str(REPO), env=env,
                              stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False, timeout=900)
     if not out.exists():
         sys.stderr.write(res.stdout[-4000:] + res.stderr[-4000:])

@@ -1,0 +1,6 @@
+context freeze: git_cached=true user_cached=true midnight_rollover_detected=true
+prompt profile bytes=463
+wire split: strategy=global needs_tool_marker=false blocks=3
+forensics turn 1: diff_mask=0 break=none
+forensics turn 2: diff_mask=2 break=client
+cloud ttl: 199s=warm 300s_8k=expired 300s_24k=expired_compact

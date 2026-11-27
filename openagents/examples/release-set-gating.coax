@@ -1,0 +1,63 @@
+// Runnable example for The OpenAgents Book Chapter 76: Releases from one source.
+// Exercises the production #authority release-set gating policy
+// (coax/web/release-set-policy.coax) and Desktop v1 SemVer/platform policy
+// (coax/lib/agent/desktop/release-v1-policy.coax): ordered API -> rooms -> page
+// promotion and reverse rollback, single-commit provenance, wire/pin
+// compatibility, staging lock discipline, canary regression scoring, and
+// fail-closed refusals on seeded builds, moved staging, mismatched pins,
+// held locks, canary regressions, and invalid 0.0.0 SemVer versions.
+//   coax/bin/coax run openagents/examples/release-set-gating.coax
+#import "Basic";
+#load "../../coax/web/release-set-policy.coax";
+#load "../../coax/lib/agent/desktop/release-v1-policy.coax";
+
+// book:begin release-set-gating
+rsg_run :: () -> bool {
+  // 1. Ordered release progression (api -> rooms -> page -> done) and reverse rollback.
+  s0 := rs_next(0); s1 := rs_next(1); s2 := rs_next(3); s3 := rs_next(7);
+  b0 := rs_back(7); b1 := rs_back(3); b2 := rs_back(1);
+  one_set := rs_one_set(true, true, true, false);
+  own := RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 6, wire_hi = 6};
+  shard := RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 5, wire_hi = 7};
+  pins_ok := rs_pins_match(own, shard) && rs_pins_ship(3, 3) && rs_wire_ship(3, 3, 6, 5);
+  prom_ok := rs_promote("01bdb405f0-20261126", "01bdb405f0-20261126");
+  print("order=%,%,%,% rollback=%,%,% one_set=% pins_ok=% promote_ok=%\n",
+    rs_part(s0), rs_part(s1), rs_part(s2), s3 == RS_DONE,
+    rs_part(b0), rs_part(b1), rs_part(b2), one_set, pins_ok, prom_ok == RS_P_OK);
+
+  // 2. Canary comparison: healthy canary passes; shared background slowness does not stop release.
+  others := RsShard.{tick_p95_us = 600, refused_ds = 4, seated = 32, unsaved_ms = 5000, windows = 30};
+  canary_ok := RsShard.{tick_p95_us = 640, refused_ds = 5, seated = 32, unsaved_ms = 5200, windows = 30};
+  c_pass := rs_canary(canary_ok, others);
+  plat_win := rv1_parse_platform("windows");
+  ver_ok := rv1_version_valid("1.0.0-rc.1");
+  print("canary_pass=% win_plat=% win_ext=% semver_ok=%\n",
+    c_pass == 0, rv1_platform_name(plat_win), rv1_archive_ext(plat_win), ver_ok);
+
+  // 3. Fail-closed refusals: seeded build, moved staging, mismatched wire/pins, held staging lock,
+  // canary crash + slow tick + fewer seats, and 0.0.0 SemVer version.
+  ref_seeded := rs_promote("01bdb405f0-seeded", "01bdb405f0-seeded") == RS_P_SEEDED;
+  ref_moved := rs_promote("01bdb405f0-1", "de2783f887-2") == RS_P_MOVED;
+  ref_pins := !rs_pins_match(own, RsPins.{engine = 5, rules = 9, content = 3, wire_lo = 6, wire_hi = 6});
+  ref_wire := !rs_wire_ship(2, 3, 6, 5);
+  ref_lock := !rs_lock_may(rs_lock(true, "tok-a", "tok-b", 50, 100, true, true));
+  bad_c := canary_ok; bad_c.crashes = 1; bad_c.tick_p95_us = 9000; bad_c.seated = 0;
+  c_bits := rs_canary(bad_c, others);
+  wbuf: [128] u8;
+  c_words := rs_c_words(c_bits, wbuf[..]);
+  ref_ver0 := !rv1_version_valid("0.0.0");
+  print("refuse seeded=% moved=% pins=% wire=% lock=% canary=% ver0=%\n",
+    ref_seeded, ref_moved, ref_pins, ref_wire, ref_lock, c_words, ref_ver0);
+
+  return s0 == RS_API && s1 == RS_ROOMS && s2 == RS_PAGE && s3 == RS_DONE &&
+         b0 == RS_PAGE && b1 == RS_ROOMS && b2 == RS_API && one_set && pins_ok &&
+         prom_ok == RS_P_OK && c_pass == 0 && plat_win == RV1_PLAT_WINDOWS && ver_ok &&
+         ref_seeded && ref_moved && ref_pins && ref_wire && ref_lock &&
+         c_words == "crashed,slower-tick,fewer-seats" && ref_ver0;
+}
+// book:end release-set-gating
+
+main :: () {
+  ok := rsg_run();
+  print("ok=%\n", ok);
+}

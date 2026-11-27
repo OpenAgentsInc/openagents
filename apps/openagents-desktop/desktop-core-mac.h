@@ -34,6 +34,7 @@ int64_t oa_dc_wt_make(coax_string chat, coax_string path, coax_string source, co
 int64_t oa_dc_wt_hydrate(coax_string chat, coax_string path, coax_string source, coax_string branch);
 int64_t oa_dc_wt_changes(coax_string chat, coax_string path, coax_string source, coax_string branch);
 int64_t oa_dc_wt_remove(coax_string chat, coax_string path, coax_string source, coax_string branch, coax_v_s64 out_changes);
+int64_t oa_dc_subagent_wt_cleanup(coax_string repo_cwd, coax_string wt_path, coax_string wt_branch, coax_string orig_head);
 int64_t oa_dc_new_id(coax_v_u8 out);
 int64_t oa_dc_daemon_dir(coax_v_u8 out);
 int64_t oa_dc_daemon_socket(coax_string dir, coax_v_u8 out);

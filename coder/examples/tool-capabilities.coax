@@ -1,0 +1,68 @@
+// Chapter 4: Tools as typed capabilities — Fail-closed tool defaults, UNC path
+// guard, blanket MCP deny rules, partitioned cache-stable tool pool assembly
+// (`openagents/core/tool.coax`, `openagents/core/tool_exec.coax`) and closed
+// member-pack allowlists (`openagents/core/members.coax`, adopted by `openagents/runtime/oa-worker.coax`).
+#import "Basic";
+#load "../../openagents/core/tool_exec.coax";
+#load "../../openagents/core/members.coax";
+
+// book:begin example
+main :: () {
+  // 1. Fail-closed defaults: new tools default to mutating, non-concurrent, non-read-only
+  edit_arr: [1] FlawedToolSpec;
+  edit_arr[0] = flawed_tool_defaults("Edit", FLAWED_TOOL_SRC_BUILTIN);
+  _ = flawed_tool_add_field(edit_arr[..], "path", FLAWED_FIELD_STRING, true);
+  edit := edit_arr[0];
+  read := flawed_tool_defaults("Read", FLAWED_TOOL_SRC_BUILTIN);
+  read.read_only = true;
+  read.concurrency_safe = true;
+  print("defaults: Edit(ro=%,conc=%) Read(ro=%,conc=%)\n",
+    edit.read_only, edit.concurrency_safe, read.read_only, read.concurrency_safe);
+
+  // 2. UNC path guard blocks SMB credential leak paths (\\host\share and //host/share)
+  print("unc guard: smb_bs=% smb_fs=% posix=%\n",
+    flawed_is_unc_path("\\\\attacker\\share\\a.txt"),
+    flawed_is_unc_path("//attacker/share/a.txt"),
+    flawed_is_unc_path("/repo/coder/book/README.md"));
+
+  // 3. Blanket deny rule ("mcp__danger") blocks mcp__danger__exec while keeping mcp__safe__list
+  //    and built-ins cannot be shadowed by an MCP tool with the same name.
+  pctx: [1] FlawedToolPermContext;
+  _ = flawed_perm_ctx_init(pctx[..], OA_MP_PMODE_DEFAULT, false);
+  _ = flawed_perm_add_deny(pctx[..], "mcp__danger");
+
+  bi: [2] FlawedToolSpec;
+  bi[0] = read;
+  bi[1] = edit;
+  mcps: [3] FlawedToolSpec;
+  mcps[0] = flawed_tool_defaults("mcp__danger__exec", FLAWED_TOOL_SRC_MCP);
+  mcps[1] = flawed_tool_defaults("mcp__safe__list", FLAWED_TOOL_SRC_MCP);
+  mcps[2] = flawed_tool_defaults("Read", FLAWED_TOOL_SRC_MCP); // shadow attempt
+
+  pool: [1] FlawedToolPool;
+  _ = flawed_assemble_tool_pool(pool[..], pctx[..], bi[..], mcps[..]);
+  print("pool assembled: count=% built_in_edit_idx=% mcp_safe_idx=% mcp_danger_idx=%\n",
+    pool[0].count,
+    flawed_pool_find(pool[..], "Edit"),
+    flawed_pool_find(pool[..], "mcp__safe__list"),
+    flawed_pool_find(pool[..], "mcp__danger__exec"));
+
+  // 4. Concurrency batching: [Read, Read, Edit, Read] -> [conc(2), serial(1), conc(1)]
+  calls: [4] FlawedBatchCall;
+  calls[0] = FlawedBatchCall.{id = 1, valid_input = true, concurrency_safe = true};
+  calls[1] = FlawedBatchCall.{id = 2, valid_input = true, concurrency_safe = true};
+  calls[2] = FlawedBatchCall.{id = 3, valid_input = true, concurrency_safe = false};
+  calls[3] = FlawedBatchCall.{id = 4, valid_input = true, concurrency_safe = true};
+  batches: [4] FlawedExecBatch;
+  nb := flawed_partition_tool_calls(calls[..], 4, batches[..]);
+  print("batches=%: b0(conc=%,len=%) b1(conc=%,len=%) b2(conc=%,len=%)\n",
+    nb, batches[0].is_concurrent, batches[0].count,
+    batches[1].is_concurrent, batches[1].count,
+    batches[2].is_concurrent, batches[2].count);
+
+  // 5. Member pack closed CLI allowlist & argument sanitization
+  packs := oa_member_packs_from_flags(true, true, true, false);
+  print("member packs mask=% cli(nostr)=% cli(rm)=% arg_newline_safe=%\n",
+    packs, oa_cli_subcmd_allowed("nostr"), oa_cli_subcmd_allowed("rm"), oa_cli_arg_safe("status\nrm -rf /"));
+}
+// book:end example

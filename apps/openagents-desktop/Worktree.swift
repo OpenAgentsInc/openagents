@@ -213,6 +213,26 @@ struct ChatWorktree: Codable, Equatable {
         }
     }
 
+    /// Fail-closed cleanup for an isolated background subagent worktree (#14121).
+    /// Removes the worktree and ephemeral branch only when git status is clean and no commits were made.
+    @discardableResult
+    static func cleanupSubagent(repoCwd: String, path: String, branch: String, origHead: String) -> Removal {
+        let rc: Int64 = DesktopCore.withCoaxString(repoCwd) { r in
+            DesktopCore.withCoaxString(path) { p in
+                DesktopCore.withCoaxString(branch) { b in
+                    DesktopCore.withCoaxString(origHead) { h in
+                        oa_dc_subagent_wt_cleanup(r, p, b, h)
+                    }
+                }
+            }
+        }
+        switch rc {
+        case 1: return .removed
+        case 2: return .gone
+        default: return .kept(changes: -1)
+        }
+    }
+
     static func clonePaths(repo: String) -> [String] {
         var buf = [UInt8](repeating: 0, count: 65536)
         let n: Int64 = DesktopCore.withCoaxString(repo) { r in

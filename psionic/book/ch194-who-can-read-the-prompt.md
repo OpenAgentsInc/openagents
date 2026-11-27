@@ -30,7 +30,7 @@ The library is [`peer/trust.coax`](../lib/peer/trust.coax). It is an
 person's data. It reuses chapter 189's solver
 ([`place.coax`](../lib/place.coax)) for placement, the consent gate of
 [Coder chapter 18](../../coder/book/ch018-consent-before-sharing.md)
-([`harness/consent.coax`](../lib/harness/consent.coax)) for data-class
+([`consent.coax`](../../coax/lib/agent/engine/consent.coax)) for data-class
 labels and grants, chapter 188's session keys for links, and chapter
 195's audits as evidence. The examples are
 [`prompt-trust.coax`](../examples/prompt-trust.coax) and

@@ -19,6 +19,10 @@ final class CoderWorker {
     private(set) var failure: String?
     /// Last terminal state observed when the worker exited (e.g. "lost", "exited", "exit-15").
     private(set) var lastEndState: String?
+    /// Last process exit code (or 128 + signal on uncaught signal) observed when the worker exited.
+    private(set) var lastExitCode: Int32?
+    /// Last sanitized stderr line captured from the exited worker (e.g. coax trap location).
+    private(set) var lastEndDetail: String?
 
     private(set) var runID: String?
     private var tail: DispatchSourceTimer?
@@ -42,7 +46,14 @@ final class CoderWorker {
             }
         }
     }
-    static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
+    static var hasClaude: Bool {
+        let fm = FileManager.default
+        if path.split(separator: ":").contains(where: { fm.isExecutableFile(atPath: $0 + "/claude") }) {
+            return true
+        }
+        let localFallback = fm.homeDirectoryForCurrentUser.path + "/.claude/local/claude"
+        return fm.isExecutableFile(atPath: localFallback)
+    }
     static var hasAntigravity: Bool { CoderAntigravity.resolvedBinaryPath() != nil }
 
     private var defaultAgentID: String {
@@ -69,42 +80,45 @@ final class CoderWorker {
             "OA_DESKTOP_VERSION": BundleMetadata.currentUpdateIdentifier,
         ]
         for (k, v) in extraEnv { env[k] = v }
-        #if OA_FULL
         // oasim (the iOS Simulator's command, #13811) is in Contents/Resources: on the PATH after the person's own
         if let res = Bundle.main.resourcePath, FileManager.default.isExecutableFile(atPath: res + "/oasim"), let p = env["PATH"], !p.split(separator: ":").contains(Substring(res)) { env["PATH"] = p + ":" + res }
-        #endif
         for (k, v) in ChatWorktree.caches(for: folder) where env[k] == nil && ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
-        #if OA_FULL
         if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
-        #endif
         return (env, ["CODER_CLAUDE_KEY"])
     }
 
-    /// Resolves the executable path for `program`. For daemon-owned runs, prefers an immutable
-    /// versioned copy under `~/.openagents/environment/bin/<versionID>/<program>` (materializing
-    /// atomically from `Bundle.main` if needed) so replacing `/Applications/OpenAgents.app` never
-    /// pulls binaries out from under active workers (#14095).
-    private func resolvedProgramPath(forDaemon: Bool) -> String? {
-        guard let bundled = Bundle.main.path(forResource: program, ofType: nil) else { return nil }
-        guard forDaemon else { return bundled }
+    /// Atomically materializes one bundled executable into the immutable versioned daemon bin folder.
+    /// Compares size + modificationDate (falling back to byte-for-byte equality when timestamps differ)
+    /// so same-size 16KB page-aligned arm64 Mach-O rebuilds never serve a stale crashing binary.
+    private func materializeForDaemon(_ binName: String) -> String? {
+        guard let bundled = Bundle.main.path(forResource: binName, ofType: nil) else { return nil }
         let fm = FileManager.default
         let verID = BundleMetadata.currentUpdateIdentifier
         let dir = fm.homeDirectoryForCurrentUser
             .appendingPathComponent(".openagents/environment/bin/\(verID)", isDirectory: true)
-        let dst = dir.appendingPathComponent(program)
+        let dst = dir.appendingPathComponent(binName)
+        let srcAttrs = try? fm.attributesOfItem(atPath: bundled)
+        let srcSize = (srcAttrs?[.size] as? NSNumber)?.int64Value
+        let srcMod = srcAttrs?[.modificationDate] as? Date
         if fm.isExecutableFile(atPath: dst.path) {
-            let srcSize = (try? fm.attributesOfItem(atPath: bundled)[.size] as? NSNumber)?.int64Value
-            let dstSize = (try? fm.attributesOfItem(atPath: dst.path)[.size] as? NSNumber)?.int64Value
+            let dstAttrs = try? fm.attributesOfItem(atPath: dst.path)
+            let dstSize = (dstAttrs?[.size] as? NSNumber)?.int64Value
+            let dstMod = dstAttrs?[.modificationDate] as? Date
             if let srcSize, let dstSize, srcSize == dstSize {
-                return dst.path
+                let sameMod = (srcMod != nil && dstMod != nil && srcMod == dstMod)
+                if sameMod || fm.contentsEqual(atPath: bundled, andPath: dst.path) {
+                    return dst.path
+                }
             }
         }
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        let tmp = dir.appendingPathComponent(".\(program).new.\(getpid()).\(UUID().uuidString.prefix(6))")
+        let tmp = dir.appendingPathComponent(".\(binName).new.\(getpid()).\(UUID().uuidString.prefix(6))")
         try? fm.removeItem(at: tmp)
         do {
             try fm.copyItem(at: URL(fileURLWithPath: bundled), to: tmp)
-            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmp.path)
+            var attrs: [FileAttributeKey: Any] = [.posixPermissions: 0o755]
+            if let srcMod { attrs[.modificationDate] = srcMod }
+            try fm.setAttributes(attrs, ofItemAtPath: tmp.path)
             if rename(tmp.path, dst.path) == 0 {
                 return dst.path
             }
@@ -115,10 +129,26 @@ final class CoderWorker {
         return bundled
     }
 
+    /// Resolves the executable path for `program`. For daemon-owned runs, prefers an immutable
+    /// versioned copy under `~/.openagents/environment/bin/<versionID>/<program>` (materializing
+    /// atomically from `Bundle.main` if needed) so replacing `/Applications/OpenAgents.app` never
+    /// pulls binaries out from under active workers (#14095). For `claudeworker`, also materializes
+    /// sibling `gitguard` beside it so its PreToolUse Bash guard resolves cleanly (#14104).
+    private func resolvedProgramPath(forDaemon: Bool) -> String? {
+        guard let bundled = Bundle.main.path(forResource: program, ofType: nil) else { return nil }
+        guard forDaemon else { return bundled }
+        if program == "claudeworker" {
+            _ = materializeForDaemon("gitguard")
+        }
+        return materializeForDaemon(program) ?? bundled
+    }
+
     func start() -> Bool {
         guard !alive else { return true }
         failure = nil
         lastEndState = nil
+        lastExitCode = nil
+        lastEndDetail = nil
         guard let bundledPath = resolvedProgramPath(forDaemon: false) else { failure = "This build of OpenAgents is missing its \(program)."; return false }
         if let daemon = CoderWorker.daemon, daemon.ownsRuns {
             let daemonPath = resolvedProgramPath(forDaemon: true) ?? bundledPath
@@ -132,24 +162,51 @@ final class CoderWorker {
     /// for a reason other than the run limit (the send still goes through; the reason is logged).
     private func startChild(_ path: String) -> Bool {
         if let why = failure { NSLog("Coder: the background service did not start a worker (%@); starting it directly", why) }
-        let p = Process(), into = Pipe(), out = Pipe()
+        let p = Process(), into = Pipe(), out = Pipe(), errPipe = Pipe()
         p.executableURL = URL(fileURLWithPath: path)
         p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         p.standardInput = into
         p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
+        p.standardError = errPipe
         var env = ProcessInfo.processInfo.environment
         let (set, unset) = environment()
         for (k, v) in set { env[k] = v }
         for k in unset { env.removeValue(forKey: k) }
         p.environment = env
+        let errLock = NSLock()
+        var errTail = Data()
+        errPipe.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty { handle.readabilityHandler = nil; return }
+            errLock.lock()
+            errTail.append(chunk)
+            if errTail.count > 4096 { errTail.removeFirst(errTail.count - 4096) }
+            errLock.unlock()
+        }
         out.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let bytes = handle.availableData
             if bytes.isEmpty { handle.readabilityHandler = nil; return }
             DispatchQueue.main.async { self?.read(bytes) }
         }
         p.terminationHandler = { [weak self] ended in
-            DispatchQueue.main.async { guard let self, self.process === ended else { return }; self.lastEndState = "exit-\(ended.terminationStatus)"; self.process = nil; self.input = nil; self.gone?() }
+            errPipe.fileHandleForReading.readabilityHandler = nil
+            let remErr = (try? errPipe.fileHandleForReading.readToEnd()) ?? Data()
+            errLock.lock()
+            if !remErr.isEmpty {
+                errTail.append(remErr)
+                if errTail.count > 4096 { errTail.removeFirst(errTail.count - 4096) }
+            }
+            let detail = Self.sanitizeStderrDetail(String(decoding: errTail, as: UTF8.self))
+            errLock.unlock()
+            let code: Int32 = ended.terminationReason == .uncaughtSignal ? (128 + ended.terminationStatus) : ended.terminationStatus
+            DispatchQueue.main.async {
+                guard let self, self.process === ended else { return }
+                self.lastExitCode = code
+                self.lastEndDetail = detail
+                self.lastEndState = "exit-\(code)"
+                self.process = nil; self.input = nil
+                self.gone?()
+            }
         }
         do { try p.run() } catch { failure = failure ?? "The worker did not start: \(error.localizedDescription)"; return false }
         process = p; input = into.fileHandleForWriting; held = Data(); failure = nil
@@ -159,11 +216,7 @@ final class CoderWorker {
     private func startRun(_ path: String, _ daemon: CoderDaemonClient) -> Bool {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let hadPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        #if OA_FULL
         let claudeKey = CoderKey.current ?? ""
-        #else
-        let claudeKey = ""
-        #endif
         let extra = extraEnvLines()
         var idBuf = [UInt8](repeating: 0, count: 128)
         var failBuf = [UInt8](repeating: 0, count: 512)
@@ -207,6 +260,8 @@ final class CoderWorker {
         guard !alive else { completion(true); return }
         failure = nil
         lastEndState = nil
+        lastExitCode = nil
+        lastEndDetail = nil
         guard let bundledPath = resolvedProgramPath(forDaemon: false) else { failure = "This build of OpenAgents is missing its \(program)."; completion(false); return }
         if let daemon = CoderWorker.daemon, daemon.ownsRuns {
             let daemonPath = resolvedProgramPath(forDaemon: true) ?? bundledPath
@@ -219,11 +274,7 @@ final class CoderWorker {
     private func startRunAsync(_ path: String, _ daemon: CoderDaemonClient, completion: @escaping (Bool) -> Void) {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let hadPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        #if OA_FULL
         let claudeKey = CoderKey.current ?? ""
-        #else
-        let claudeKey = ""
-        #endif
         let extra = extraEnvLines()
         let prog = program
         let fld = folder
@@ -279,6 +330,8 @@ final class CoderWorker {
     func attach(_ id: String, from: UInt64) {
         guard CoderWorker.daemon != nil else { return }
         lastEndState = nil
+        lastExitCode = nil
+        lastEndDetail = nil
         runID = id; offset = from; tailHeld = Data()
         touch(force: true)
     }
@@ -398,6 +451,117 @@ final class CoderWorker {
         return s.isEmpty ? nil : s
     }
 
+    static func signalName(forExitCode code: Int32) -> String? {
+        guard code > 128 else { return nil }
+        switch code - 128 {
+        case 4: return "SIGILL"
+        case 5: return "SIGTRAP"
+        case 6: return "SIGABRT"
+        case 8: return "SIGFPE"
+        case 9: return "SIGKILL"
+        case 10: return "SIGBUS"
+        case 11: return "SIGSEGV"
+        case 13: return "SIGPIPE"
+        case 15: return "SIGTERM"
+        default: return "signal \(code - 128)"
+        }
+    }
+
+    static func sanitizeStderrDetail(_ raw: String) -> String? {
+        let lines = raw.split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard var last = lines.last else { return nil }
+        // Trim long worktree prefixes down to the repo-relative source path when present.
+        if let range = last.range(of: "/coder/") {
+            last = String(last[last.index(after: range.lowerBound)...])
+        } else if let range = last.range(of: "/coax/") {
+            last = String(last[last.index(after: range.lowerBound)...])
+        } else if let range = last.range(of: "/openagents/") {
+            last = String(last[last.index(after: range.lowerBound)...])
+        }
+        if last.count > 180 { last = String(last.prefix(180)) + "…" }
+        return last
+    }
+
+    /// Reads the exit code from `runs/<id>.state` and the last stderr line from `runs/<id>.err`
+    /// written by `coder-host` (host-runs.coax dr_finish) when a daemon-owned worker ends.
+    static func runEndDiagnostics(_ id: String) -> (exitCode: Int32?, detail: String?) {
+        guard let daemon else { return (nil, nil) }
+        var exitCode: Int32?
+        let statePath = DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.withCoaxString(".state") { cext in
+                    DesktopCore.callString(4096) { oa_dc_run_file(cdir, cid, cext, $0) }
+                }
+            }
+        }
+        if !statePath.isEmpty,
+           let data = try? Data(contentsOf: URL(fileURLWithPath: statePath)),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let ex = obj["exit"] as? NSNumber {
+            exitCode = ex.int32Value
+        }
+        var detail: String?
+        let errPath = DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.withCoaxString(".err") { cext in
+                    DesktopCore.callString(4096) { oa_dc_run_file(cdir, cid, cext, $0) }
+                }
+            }
+        }
+        if !errPath.isEmpty,
+           let data = try? Data(contentsOf: URL(fileURLWithPath: errPath)),
+           !data.isEmpty {
+            detail = sanitizeStderrDetail(String(decoding: data, as: UTF8.self))
+        }
+        return (exitCode, detail)
+    }
+
+    /// True when the worker terminated due to a deterministic fatal crash/trap (SIGABRT/SIGSEGV/etc.)
+    /// rather than a transient daemon restart ("lost") or graceful exit.
+    var isFatalCrash: Bool {
+        if let code = lastExitCode, code > 128 {
+            let sig = code - 128
+            if sig == 4 || sig == 5 || sig == 6 || sig == 8 || sig == 10 || sig == 11 {
+                return true
+            }
+        }
+        if let d = lastEndDetail?.lowercased() {
+            if d.contains("slice out of bounds") || d.contains("index out of bounds")
+                || d.contains("coax_trap") || d.contains("stack overflow")
+                || d.contains("fatal error") || d.contains("assertion failed") {
+                return true
+            }
+        }
+        return false
+    }
+
+    var crashSignature: String {
+        let codePart = lastExitCode.map { String($0) } ?? (lastEndState ?? "exited")
+        let detailPart = lastEndDetail ?? ""
+        return "\(program)|\(codePart)|\(detailPart)"
+    }
+
+    var formattedEndReason: String {
+        var parts: [String] = []
+        if let code = lastExitCode {
+            if let sig = Self.signalName(forExitCode: code) {
+                parts.append("\(sig), exit \(code)")
+            } else if code != 0 {
+                parts.append("exit \(code)")
+            } else {
+                parts.append(lastEndState ?? "exited")
+            }
+        } else {
+            parts.append(lastEndState ?? "exited")
+        }
+        if let detail = lastEndDetail, !detail.isEmpty {
+            return "\(parts.joined(separator: ", ")): \(detail)"
+        }
+        return parts.joined(separator: ", ")
+    }
+
     private func touch(force: Bool = false) {
         guard let id = runID, let daemon = CoderWorker.daemon, force || Date().timeIntervalSince(touched) > 1 else { return }
         touched = Date()
@@ -434,9 +598,17 @@ final class CoderWorker {
             if quiet % 10 != 0 { return }
             DispatchQueue.main.async { [weak self] in self?.touch() }
             if let state = CoderWorker.runState(id), state != "running", state != "stopping" {
+                // Drain any final lines written just before the worker exited so a completed turn's
+                // `ended` event is never lost to the 300ms poll window and misreported as a crash.
+                let finalLines = self.readLines(out)
+                let diag = CoderWorker.runEndDiagnostics(id)
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.runID == id else { return }
+                    for l in finalLines { self.line?(l) }
+                    guard self.runID == id else { return }
                     self.lastEndState = state
+                    self.lastExitCode = diag.exitCode
+                    self.lastEndDetail = diag.detail
                     self.tail?.cancel(); self.tail = nil
                     self.runID = nil
                     self.gone?()
@@ -504,7 +676,6 @@ final class CoderWorker {
     }
 }
 
-#if OA_FULL
 enum CoderKey {
     static var file: URL {
         let p = DesktopCore.withCoaxString("claude-key") { cn in
@@ -607,7 +778,6 @@ enum CoderGemini {
 }
 
 func coderApplyOpenRouter(_ page: UnsafeMutableRawPointer?) { cd_openrouter(page, CoderOpenRouter.main, CoderOpenRouter.sub) }
-#endif
 
 /// What the bundled workers report about this Mac, asked of the workers themselves so the app and a
 /// run never disagree: the sign-in Gemini models run on (`mcworker --auth`: Vertex AI from a service
@@ -646,14 +816,10 @@ enum CoderProbes {
     }
     static var geminiReady: Bool { geminiAuth.kind == "vertex" || geminiAuth.kind == "key" }
     private static func readAuth() -> (kind: String, text: String) {
-        #if OA_MINIMAL
-        return ("none", "")
-        #else
         let line = ask("mcworker", ["--auth"], timeout: 10)
         let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
         guard let kind = parts.first, kind == "vertex" || kind == "key" else { return ("none", "") }
         return (kind, parts.count > 1 ? parts[1] : "")
-        #endif
     }
     static func refreshGeminiAuth(_ done: @escaping () -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
@@ -911,7 +1077,6 @@ enum CoderAntigravity {
     }
 }
 
-#if OA_FULL
 /// What a chat is told about the tools the app ships (ple-run; docs/desktop/steer-ple-from-chat.md):
 /// the words are Coax's (dc_tools_note); this finds the program. Gym is experimental, and so is this.
 func coderToolsNote() -> String {
@@ -931,7 +1096,3 @@ func coderToolsNote() -> String {
 func coderSkillsNote(repoFolder: URL? = nil) -> String {
     return SkillsCatalog.enabledSkillsNote(repoFolder: repoFolder)
 }
-#else
-func coderToolsNote() -> String { "" }
-func coderSkillsNote(repoFolder: URL? = nil) -> String { "" }
-#endif

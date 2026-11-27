@@ -17,6 +17,8 @@
 #load "../../../coax/lib/agent/environment/phone-agent-policy.coax";
 #load "../../../coax/lib/agent/environment/remote-reliability.coax";
 #load "../../../coax/lib/agent/environment/route-policy.coax";
+#load "../../../coax/lib/agent/desktop/full-auto.coax";
+#load "../../../coax/lib/agent/desktop/voice-duplex.coax";
 
 mc_copy :: (out: [] u8, s: string) -> int #effects(all) {
   if s.count > out.count { return -1; }
@@ -77,6 +79,50 @@ mc_route_select :: (
 
 mc_cred_audience_ok :: (presented_aud: int, expected_aud: int, now_ms: int, expires_ms: int) -> bool #export_c #effects(all) {
   return rp_cred_audience_ok(presented_aud, expected_aud, now_ms, expires_ms);
+}
+
+// #authority Full Auto & Bi-Directional Voice Duplex C ABI exports (#14063, #14065, #14068).
+mc_fa_should_gate :: (full_auto: bool, approval_mode: bool, agy_mode: int, session_allow: bool) -> bool #export_c #effects(all) {
+  pol := FaPolicy.{full_auto = full_auto, auto_answer_questions = true, unrestricted_paths = true};
+  return fa_should_gate(pol, approval_mode, agy_mode, session_allow);
+}
+
+mc_fa_decide_prompt :: (full_auto: bool, auto_answer_questions: bool, kind: int) -> int #export_c #effects(all) {
+  pol := FaPolicy.{full_auto = full_auto, auto_answer_questions = auto_answer_questions, unrestricted_paths = true};
+  return fa_decide_prompt(pol, kind);
+}
+
+// Advances VdState packed in `state_io` [0:state, 1:speech_seen, 2:silence_ms, 3:barge_frames,
+// 4:silence_commit_ms, 5:vad_floor_bp, 6:barge_floor_bp] by dt_ms at normalized rms_bp (0..10000).
+mc_vd_vad_step :: (state_io: [] int, rms_bp: int, dt_ms: int) -> int #export_c #effects(all) {
+  if state_io.count < 7 { return VD_EV_NONE; }
+  st: [1] VdState;
+  st[0] = VdState.{
+    state = state_io[0],
+    speech_seen = state_io[1] != 0,
+    silence_ms = state_io[2],
+    barge_frames = state_io[3],
+    silence_commit_ms = ifx state_io[4] > 0 then state_io[4] else VD_DEFAULT_SILENCE_MS,
+    vad_floor_bp = ifx state_io[5] > 0 then state_io[5] else 800,
+    barge_floor_bp = ifx state_io[6] > 0 then state_io[6] else 2200,
+  };
+  ev := vd_vad_step(st[..], rms_bp, dt_ms);
+  state_io[0] = st[0].state;
+  state_io[1] = ifx st[0].speech_seen then 1 else 0;
+  state_io[2] = st[0].silence_ms;
+  state_io[3] = st[0].barge_frames;
+  state_io[4] = st[0].silence_commit_ms;
+  state_io[5] = st[0].vad_floor_bp;
+  state_io[6] = st[0].barge_floor_bp;
+  return ev;
+}
+
+mc_vd_sanitize_speech :: (src: string, out: [] u8) -> int #export_c #effects(all) {
+  return vd_sanitize_speech(src, out);
+}
+
+mc_vd_sentence_end :: (src: string) -> int #export_c #effects(all) {
+  return vd_sentence_end(src);
 }
 
 // Builds a bounded, policy-checked EaRequest JSON payload using caller-owned scratch q.
@@ -404,4 +450,35 @@ mc_dm_view_valid :: (v: [] DmView, host: string, method: string, raw: string) ->
   #assert mc_route_select(true, false, 1000, true, true, 0, true, true, 0, 16000) == RP_ROUTE_TAILNET;
   #assert mc_cred_audience_ok(RP_AUD_TAILNET_GRANT, RP_AUD_TAILNET_GRANT, 100, 200);
   #assert !mc_cred_audience_ok(RP_AUD_PAIRING_BOOTSTRAP, RP_AUD_TAILNET_GRANT, 100, 200);
+}
+
+#test "client-core: Full Auto, Bi-Directional Voice Duplex, Usage & Introspection daemon RPCs (#14068)" {
+  #assert !mc_fa_should_gate(true, true, 1, false);
+  #assert mc_fa_should_gate(false, true, 0, false);
+  #assert mc_fa_decide_prompt(true, true, FA_KIND_APPROVAL) == FA_DECIDE_AUTO_ALLOW;
+  #assert mc_fa_decide_prompt(true, true, FA_KIND_QUESTION) == FA_DECIDE_AUTO_ALLOW;
+  #assert mc_fa_decide_prompt(true, false, FA_KIND_QUESTION) == FA_DECIDE_PROMPT;
+  #assert mc_fa_decide_prompt(false, true, FA_KIND_APPROVAL) == FA_DECIDE_PROMPT;
+
+  st := [7] int.[VD_STATE_LISTENING, 0, 0, 0, 1200, 800, 2200];
+  #assert mc_vd_vad_step(st[..], 900, 100) == VD_EV_NONE && st[1] == 1;
+  #assert mc_vd_vad_step(st[..], 100, 1200) == VD_EV_AUTO_SEND && st[0] == VD_STATE_THINKING;
+  st[0] = VD_STATE_SPEAKING; st[3] = 0;
+  #assert mc_vd_vad_step(st[..], 2500, 50) == VD_EV_NONE;
+  #assert mc_vd_vad_step(st[..], 2500, 50) == VD_EV_NONE;
+  #assert mc_vd_vad_step(st[..], 2500, 50) == VD_EV_BARGE_IN && st[0] == VD_STATE_LISTENING;
+
+  sb: [64] u8;
+  sn := mc_vd_sanitize_speech("**Done!** `ok`", sb[..]);
+  #assert cast(string) sb[0..<sn] == "Done! ok";
+  #assert mc_vd_sentence_end("Ready. Next") == 6 && mc_vd_sentence_end("Wait") == 0;
+
+  dq: [1] DmRequest;
+  out: [4096] u8;
+  for meth: [4] string.["GetUsage", "ListIntrospection", "ReadIntrospection", "SendSessionCommand"] {
+    dn := mc_dm_request(dq[..], meth, "tui:tmux:main:0.0", "0123456789abcdef0123456789abcdef", "send", "", "ls -la", -1, -1, 1700000000, 1700000120, out[..]);
+    #assert dn > 0;
+    back: [1] DmRequest;
+    #assert dm_read(cast(string) out[0..<dn], back[..]) && cast(string) back[0].method[0..<back[0].nm] == meth;
+  }
 }

@@ -1,0 +1,46 @@
+// C ABI compilation unit for oa-api Tier 1 Cloud Tools (#14127).
+#load "../../lib/cloud/tool-wire.coax";
+
+cld_c_tool_admit :: (kind: int, verified: bool, account: string, limited: bool, frozen: bool) -> bool #export_c #effects(all) {
+  return cld_tool_admit(kind, verified, account, limited, frozen);
+}
+
+cld_c_target_valid :: (target: string, host: string) -> bool #export_c #effects(all) {
+  return cld_target_valid(target, host);
+}
+
+cld_c_tool_req_read :: (raw: string, allow_local_fetch: bool, out: [] CldToolReq) -> bool #export_c #effects(all) {
+  return cld_tool_req_read(raw, allow_local_fetch, out);
+}
+
+cld_c_tool_res_write :: (tool: string, ok: bool, output: string, err: string, out: [] u8) -> int #export_c #effects(all) {
+  return cld_tool_res_write(tool, ok, output, err, out);
+}
+
+cld_c_format_exa :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #export_c #effects(all) {
+  return cld_format_exa(raw, nodes, out);
+}
+
+cld_c_format_gh_tree :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #export_c #effects(all) {
+  return cld_format_gh_tree(raw, nodes, out);
+}
+
+cld_c_format_gh_search :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #export_c #effects(all) {
+  return cld_format_gh_search(raw, nodes, out);
+}
+
+cld_c_format_gh_issues :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #export_c #effects(all) {
+  return cld_format_gh_issues(raw, nodes, out);
+}
+
+cld_c_format_gh_pr :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #export_c #effects(all) {
+  return cld_format_gh_pr(raw, nodes, out);
+}
+
+#test "cloud tools C ABI unit forwards admission, request decoding, and response writing" {
+  #assert cld_c_tool_admit(2, true, "acct_1", false, false);
+  req: [1] CldToolReq;
+  #assert cld_c_tool_req_read("{\"tool\":\"github_tree\",\"arguments\":{\"repo\":\"OpenAgentsInc/openagents\"}}", false, req[..]);
+  out: [512] u8;
+  #assert cld_c_tool_res_write("github_tree", true, "d coax\n", "", out[..]) > 0;
+}

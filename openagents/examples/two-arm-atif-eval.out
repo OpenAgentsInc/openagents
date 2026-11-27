@@ -1,0 +1,4 @@
+atif ok=true steps=4 digest=788e7160d63e2821 gate_pass=true
+refusals tamper_atif_ok=false tamper_code=8 regressed_code=3 heldout_code=4
+nip_eval verified=true pass=true bad_coverage_refused=true
+ok=true

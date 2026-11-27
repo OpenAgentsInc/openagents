@@ -1,0 +1,1198 @@
+// Bounded JSON Schema Draft 2020-12 validator & SEP-2243 x-mcp-header static
+// analyzer operating directly on borrowed Jv trees. Never mutates or
+// dereferences $schema/$defs/$ref in place (preserves schemas verbatim per
+// json-schema-2020-12-preservation and json-schema-ref-no-deref).
+// Pure caller-buffer #authority module.
+#load "../json/json.coax";
+#load "headers.coax";
+#authority;
+
+MCP_SCHEMA_MAX_DEPTH :: 16;
+MCP_SCHEMA_MAX_REFS :: 16;
+MCP_MAX_HEADER_PARAMS :: 32;
+MCP_MAX_HEADER_DEPTH :: 8;
+
+MCP_HTYPE_STRING :: 1;
+MCP_HTYPE_INTEGER :: 2;
+MCP_HTYPE_BOOLEAN :: 3;
+
+McpHeaderParam :: struct {
+  name_node: int;
+  value_type: int;
+  depth: int;
+  path_nodes: [MCP_MAX_HEADER_DEPTH] int;
+}
+
+McpHeaderScan :: struct {
+  ok: bool;
+  count: int;
+  params: [MCP_MAX_HEADER_PARAMS] McpHeaderParam;
+}
+
+McpHeaderArgVal :: struct {
+  ok: bool;
+  present: bool;
+  written: int;
+}
+
+#test "SEP-2243 x-mcp-header static analyzer accepts nested properties and extracts typed values" {
+  snodes: [128] JvNode; sdoc: [1] Jv;
+  schema := "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"region\":{\"type\":\"string\",\"x-mcp-header\":\"Region\"},\"nested\":{\"type\":\"object\",\"properties\":{\"limit\":{\"type\":\"integer\",\"x-mcp-header\":\"Limit\"},\"dry\":{\"type\":\"boolean\",\"x-mcp-header\":\"Dry-Run\"}}},\"query\":{\"type\":\"string\"}}}";
+  #assert jv_parse(sdoc[..], schema, snodes[..]);
+  scan := mcp_schema_scan_headers(sdoc[0], 0);
+  #assert scan.ok && scan.count == 3;
+  #assert jv_raw(sdoc[0], scan.params[0].name_node) == "Region" && scan.params[0].value_type == MCP_HTYPE_STRING && scan.params[0].depth == 1;
+  #assert jv_raw(sdoc[0], scan.params[1].name_node) == "Limit" && scan.params[1].value_type == MCP_HTYPE_INTEGER && scan.params[1].depth == 2;
+  #assert jv_raw(sdoc[0], scan.params[2].name_node) == "Dry-Run" && scan.params[2].value_type == MCP_HTYPE_BOOLEAN && scan.params[2].depth == 2;
+
+  // Extract arguments for tools/call
+  anodes: [64] JvNode; adoc: [1] Jv;
+  args := "{\"region\":\"us-west1\",\"nested\":{\"limit\":42.0,\"dry\":true},\"query\":\"SELECT 1\"}";
+  #assert jv_parse(adoc[..], args, anodes[..]);
+  out: [64] u8;
+
+  v0 := mcp_schema_extract_header_arg(sdoc[0], scan.params[0], adoc[0], 0, out[..]);
+  #assert v0.ok && v0.present && cast(string) out[0..<v0.written] == "us-west1";
+  v1 := mcp_schema_extract_header_arg(sdoc[0], scan.params[1], adoc[0], 0, out[..]);
+  #assert v1.ok && v1.present && cast(string) out[0..<v1.written] == "42";
+  v2 := mcp_schema_extract_header_arg(sdoc[0], scan.params[2], adoc[0], 0, out[..]);
+  #assert v2.ok && v2.present && cast(string) out[0..<v2.written] == "true";
+
+  // Absent or null arguments are omitted (ok = true, present = false)
+  #assert jv_parse(adoc[..], "{\"region\":null,\"nested\":{}}", anodes[..]);
+  v0 = mcp_schema_extract_header_arg(sdoc[0], scan.params[0], adoc[0], 0, out[..]);
+  #assert v0.ok && !v0.present;
+  v1 = mcp_schema_extract_header_arg(sdoc[0], scan.params[1], adoc[0], 0, out[..]);
+  #assert v1.ok && !v1.present;
+
+  // Out-of-safe-range integer fails extraction
+  #assert jv_parse(adoc[..], "{\"nested\":{\"limit\":9007199254740992}}", anodes[..]);
+  v1 = mcp_schema_extract_header_arg(sdoc[0], scan.params[1], adoc[0], 0, out[..]);
+  #assert !v1.ok;
+}
+
+#test "SEP-2243 x-mcp-header analyzer rejects invalid names, duplicates, number type, and non-static paths" {
+  snodes: [128] JvNode; sdoc: [1] Jv;
+  bad := [14] string.[
+    // Empty header name
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"x-mcp-header\":\"\"}}}",
+    // Invalid tchar (space, CR/LF, colon)
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"x-mcp-header\":\"Bad Name\"}}}",
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"x-mcp-header\":\"Bad\\r\\n\"}}}",
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"x-mcp-header\":\"Bad:Name\"}}}",
+    // Non-string x-mcp-header
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"x-mcp-header\":123}}}",
+    // Case-insensitive duplicate header names
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"x-mcp-header\":\"Region\"},\"b\":{\"type\":\"string\",\"x-mcp-header\":\"region\"}}}",
+    // Forbidden type: number, object, array, missing type, type array
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\",\"x-mcp-header\":\"Rate\"}}}",
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"object\",\"x-mcp-header\":\"Obj\"}}}",
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":[\"string\",\"null\"],\"x-mcp-header\":\"Opt\"}}}",
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"x-mcp-header\":\"NoType\"}}}",
+    // Forbidden non-statically-reachable locations: items, oneOf, $defs, $ref
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"x-mcp-header\":\"Item\"}}}}",
+    "{\"type\":\"object\",\"oneOf\":[{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"x-mcp-header\":\"One\"}}}]}",
+    "{\"$defs\":{\"x\":{\"type\":\"string\",\"x-mcp-header\":\"Def\"}},\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"#/$defs/x\"}}}",
+    "{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"#/$defs/x\",\"type\":\"string\",\"x-mcp-header\":\"Ref\"}}}"
+  ];
+  for s: bad {
+    #assert jv_parse(sdoc[..], s, snodes[..]);
+    #assert !mcp_schema_scan_headers(sdoc[0], 0).ok;
+  }
+}
+
+#test "Draft 2020-12 validator checks types, objects, arrays, strings, numbers, combinators, and $defs/$ref" {
+  snodes: [256] JvNode; sdoc: [1] Jv;
+  inodes: [128] JvNode; idoc: [1] Jv;
+
+  // Boolean schemas
+  #assert jv_parse(sdoc[..], "true", snodes[..]) && jv_parse(idoc[..], "123", inodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "false", snodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // Object with required, additionalProperties: false, integer bounds, string UTF-8 length, enum, const, $ref
+  schema := "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$defs\":{\"tag\":{\"type\":\"string\",\"minLength\":2,\"maxLength\":5}},\"type\":\"object\",\"required\":[\"name\",\"count\"],\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4},\"count\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":10,\"multipleOf\":2},\"mode\":{\"enum\":[\"fast\",\"safe\"]},\"ver\":{\"const\":1},\"tags\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/tag\"},\"minItems\":1,\"maxItems\":3,\"uniqueItems\":true}}}";
+  #assert jv_parse(sdoc[..], schema, snodes[..]);
+
+  // Valid instance (note: "世界" is 2 UTF-8 codepoints, 6 bytes -> passes maxLength: 4!)
+  #assert jv_parse(idoc[..], "{\"name\":\"世界\",\"count\":4,\"mode\":\"fast\",\"ver\":1,\"tags\":[\"ab\",\"cd\"]}", inodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // Invalid instances
+  invalid := [12] string.[
+    "[]",
+    "{\"name\":\"a\"}",                                     // missing required count
+    "{\"name\":\"a\",\"count\":2,\"extra\":1}",            // additionalProperties: false
+    "{\"name\":\"\",\"count\":2}",                         // minLength: 1
+    "{\"name\":\"abcde\",\"count\":2}",                    // maxLength: 4
+    "{\"name\":\"a\",\"count\":3}",                        // multipleOf: 2
+    "{\"name\":\"a\",\"count\":-2}",                       // minimum: 0
+    "{\"name\":\"a\",\"count\":12}",                       // maximum: 10
+    "{\"name\":\"a\",\"count\":2.5}",                      // not integer
+    "{\"name\":\"a\",\"count\":2,\"mode\":\"other\"}",     // enum mismatch
+    "{\"name\":\"a\",\"count\":2,\"ver\":2}",              // const mismatch
+    "{\"name\":\"a\",\"count\":2,\"tags\":[\"ab\",\"ab\"]}"// uniqueItems violation
+  ];
+  for raw: invalid {
+    #assert jv_parse(idoc[..], raw, inodes[..]);
+    #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  }
+
+  // Combinators: allOf, anyOf, oneOf, not, if/then/else, type array, exclusive bounds
+  combo := "{\"oneOf\":[{\"type\":[\"integer\",\"null\"],\"exclusiveMinimum\":0,\"exclusiveMaximum\":5},{\"type\":\"string\"}],\"not\":{\"const\":\"banned\"}}";
+  #assert jv_parse(sdoc[..], combo, snodes[..]);
+  #assert jv_parse(idoc[..], "3", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "null", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "\"ok\"", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "0", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "5", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "\"banned\"", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // Cyclic $ref is bounded and refuses safely without infinite recursion
+  cyc := "{\"$defs\":{\"loop\":{\"$ref\":\"#/$defs/loop\"}},\"$ref\":\"#/$defs/loop\"}";
+  #assert jv_parse(sdoc[..], cyc, snodes[..]) && jv_parse(idoc[..], "1", inodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+}
+
+#test "mcp_schema_format_int boundaries and buffer limits" {
+  buf: [32] u8;
+  n := mcp_schema_format_int(0, buf[..]);
+  #assert n == 1 && cast(string) buf[0..<n] == "0";
+  n = mcp_schema_format_int(0, buf[0..<1]);
+  #assert n == 1 && buf[0] == '0';
+  #assert mcp_schema_format_int(0, buf[0..<0]) == -1;
+
+  n = mcp_schema_format_int(1, buf[..]);
+  #assert n == 1 && cast(string) buf[0..<n] == "1";
+  n = mcp_schema_format_int(42, buf[..]);
+  #assert n == 2 && cast(string) buf[0..<n] == "42";
+  n = mcp_schema_format_int(1234567890, buf[..]);
+  #assert n == 10 && cast(string) buf[0..<n] == "1234567890";
+
+  n = mcp_schema_format_int(-1, buf[0..<2]);
+  #assert n == 2 && cast(string) buf[0..<n] == "-1";
+  #assert mcp_schema_format_int(-1, buf[0..<1]) == -1;
+  n = mcp_schema_format_int(-42, buf[..]);
+  #assert n == 3 && cast(string) buf[0..<n] == "-42";
+  n = mcp_schema_format_int(-9007199254740991, buf[..]);
+  #assert n == 17 && cast(string) buf[0..<n] == "-9007199254740991";
+}
+
+#test "mcp_dec_parse, mcp_dec_cmp, mcp_dec_is_multiple boundaries" {
+  // Invalid inputs
+  bad := [12] string.["", "-", "a", "-a", "1.", "1.a", "1e", "1e+", "1e-", "1ea", "1x", "1.2x"];
+  for s: bad {
+    #assert !mcp_dec_parse(s).ok;
+  }
+
+  // Zero variants
+  z0 := mcp_dec_parse("0");
+  #assert z0.ok && !z0.neg && z0.mant == 0 && z0.exp == 0;
+  z1 := mcp_dec_parse("-0.00e5");
+  #assert z1.ok && !z1.neg && z1.mant == 0 && z1.exp == 0;
+  #assert mcp_dec_cmp(z0, z1) == 0;
+
+  // Integers, trailing zeros, >15 digits
+  d10 := mcp_dec_parse("10");
+  #assert d10.ok && !d10.neg && d10.mant == 1 && d10.exp == 1;
+  d15 := mcp_dec_parse("123456789012345");
+  #assert d15.ok && d15.mant == 123456789012345 && d15.exp == 0;
+  d16 := mcp_dec_parse("1234567890123456");
+  #assert d16.ok && d16.mant == 123456789012345 && d16.exp == 1;
+
+  // Fractional & exponents
+  df := mcp_dec_parse("0.05");
+  #assert df.ok && !df.neg && df.mant == 5 && df.exp == -2;
+  df2 := mcp_dec_parse("1.2345678901234567");
+  #assert df2.ok && df2.mant == 123456789012345 && df2.exp == -14;
+  de1 := mcp_dec_parse("1E+2");
+  #assert de1.ok && de1.mant == 1 && de1.exp == 2;
+  de2 := mcp_dec_parse("-2.5e-3");
+  #assert de2.ok && de2.neg && de2.mant == 25 && de2.exp == -4;
+  de_big := mcp_dec_parse("1e100000");
+  #assert de_big.ok && de_big.exp == 10000;
+
+  // mcp_dec_cmp
+  a := mcp_dec_parse("10"); b := mcp_dec_parse("2");
+  na := mcp_dec_parse("-10"); nb := mcp_dec_parse("-2");
+  #assert mcp_dec_cmp(a, b) == 1 && mcp_dec_cmp(b, a) == -1;
+  #assert mcp_dec_cmp(na, nb) == -1 && mcp_dec_cmp(nb, na) == 1;
+  #assert mcp_dec_cmp(na, b) == -1 && mcp_dec_cmp(b, na) == 1;
+  #assert mcp_dec_cmp(z0, b) == -1 && mcp_dec_cmp(b, z0) == 1;
+  #assert mcp_dec_cmp(z0, nb) == 1 && mcp_dec_cmp(nb, z0) == -1;
+
+  c1 := mcp_dec_parse("1.5"); c2 := mcp_dec_parse("1.50"); c3 := mcp_dec_parse("1.51");
+  nc1 := mcp_dec_parse("-1.5"); nc3 := mcp_dec_parse("-1.51");
+  #assert mcp_dec_cmp(c1, c2) == 0;
+  #assert mcp_dec_cmp(c1, c3) == -1 && mcp_dec_cmp(c3, c1) == 1;
+  #assert mcp_dec_cmp(nc1, nc3) == 1 && mcp_dec_cmp(nc3, nc1) == -1;
+  #assert mcp_dec_cmp(mcp_dec_parse("10"), mcp_dec_parse("12")) == -1;
+  #assert mcp_dec_cmp(mcp_dec_parse("12"), mcp_dec_parse("10")) == 1;
+
+  // mcp_dec_is_multiple
+  inv := mcp_dec_parse("");
+  #assert !mcp_dec_is_multiple(inv, b);
+  #assert !mcp_dec_is_multiple(b, inv);
+  #assert !mcp_dec_is_multiple(b, z0);
+  #assert !mcp_dec_is_multiple(b, nb);
+  #assert mcp_dec_is_multiple(z0, b);
+  #assert mcp_dec_is_multiple(mcp_dec_parse("0.5"), mcp_dec_parse("0.25"));
+  #assert !mcp_dec_is_multiple(mcp_dec_parse("0.5"), mcp_dec_parse("1"));
+  #assert mcp_dec_is_multiple(mcp_dec_parse("1.5"), mcp_dec_parse("0.5"));
+  #assert mcp_dec_is_multiple(mcp_dec_parse("10"), mcp_dec_parse("0.5"));
+  #assert !mcp_dec_is_multiple(mcp_dec_parse("10"), mcp_dec_parse("3"));
+  #assert mcp_dec_is_multiple(mcp_dec_parse("-6"), mcp_dec_parse("3"));
+  #assert !mcp_dec_is_multiple(mcp_dec_parse("1e-20"), mcp_dec_parse("1"));
+  #assert !mcp_dec_is_multiple(mcp_dec_parse("1e20"), mcp_dec_parse("1"));
+}
+
+#test "mcp_utf8_codepoints, mcp_jv_equal, mcp_schema_type_matches, mcp_schema_resolve_ref" {
+  #assert mcp_utf8_codepoints("") == 0;
+  #assert mcp_utf8_codepoints("abc") == 3;
+  #assert mcp_utf8_codepoints("é") == 1;
+  #assert mcp_utf8_codepoints("世界") == 2;
+  #assert mcp_utf8_codepoints("😀") == 1;
+
+  an: [64] JvNode; ad: [1] Jv;
+  bn: [64] JvNode; bd: [1] Jv;
+  #assert jv_parse(ad[..], "{\"a\":[1,true,false,null,\"hi\"],\"b\":2}", an[..]);
+  #assert jv_parse(bd[..], "{\"b\":2.0,\"a\":[1.0,true,false,null,\"hi\"]}", bn[..]);
+  #assert mcp_jv_equal(ad[0], 0, bd[0], 0, 0);
+  #assert !mcp_jv_equal(ad[0], 0, bd[0], 0, MCP_SCHEMA_MAX_DEPTH + 1);
+  #assert !mcp_jv_equal(ad[0], -1, bd[0], -1, 0);
+
+  #assert jv_parse(bd[..], "{\"b\":2,\"a\":[1,true,false,null,\"no\"]}", bn[..]);
+  #assert !mcp_jv_equal(ad[0], 0, bd[0], 0, 0);
+  #assert jv_parse(bd[..], "{\"b\":2,\"a\":[1]}", bn[..]);
+  #assert !mcp_jv_equal(ad[0], 0, bd[0], 0, 0);
+  #assert jv_parse(bd[..], "{\"b\":2}", bn[..]);
+  #assert !mcp_jv_equal(ad[0], 0, bd[0], 0, 0);
+  #assert jv_parse(bd[..], "{\"c\":2,\"a\":[1,true,false,null,\"hi\"]}", bn[..]);
+  #assert !mcp_jv_equal(ad[0], 0, bd[0], 0, 0);
+
+  // mcp_schema_type_matches
+  #assert jv_parse(ad[..], "[null,true,false,\"s\",[],{},1.5,42.0]", an[..]);
+  #assert mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 0), "null");
+  #assert mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 1), "boolean");
+  #assert mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 2), "boolean");
+  #assert !mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 0), "boolean");
+  #assert mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 3), "string");
+  #assert mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 4), "array");
+  #assert mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 5), "object");
+  #assert mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 6), "number");
+  #assert !mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 6), "integer");
+  #assert mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 7), "integer");
+  #assert !mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 3), "integer");
+  #assert !mcp_schema_type_matches(ad[0], jv_at(ad[0], 0, 0), "bogus");
+
+  // mcp_schema_resolve_ref
+  #assert jv_parse(ad[..], "{\"$defs\":{\"a/b\":{\"c~d\":{\"type\":\"string\"},\"n\":1}}}", an[..]);
+  #assert mcp_schema_resolve_ref(ad[0], 0, "#") == 0;
+  #assert mcp_schema_resolve_ref(ad[0], 0, "") == -1;
+  #assert mcp_schema_resolve_ref(ad[0], 0, "#a") == -1;
+  #assert mcp_schema_resolve_ref(ad[0], 0, "a/b") == -1;
+  #assert mcp_schema_resolve_ref(ad[0], 0, "#/$defs/a~1b/c~0d") >= 0;
+  #assert mcp_schema_resolve_ref(ad[0], 0, "#/$defs/a~1b/n/x") == -1;
+  #assert mcp_schema_resolve_ref(ad[0], 0, "#/$defs/missing") == -1;
+}
+
+#test "mcp_schema_scan_headers and extract_header_arg edge cases" {
+  snodes: [256] JvNode; sdoc: [1] Jv;
+  bad_doc: Jv;
+  #assert !mcp_schema_scan_headers(bad_doc, 0).ok;
+  #assert jv_parse(sdoc[..], "{\"type\":\"object\"}", snodes[..]);
+  #assert !mcp_schema_scan_headers(sdoc[0], -1).ok;
+
+  // x-mcp-header at root (depth 0) is rejected
+  #assert jv_parse(sdoc[..], "{\"type\":\"string\",\"x-mcp-header\":\"Root\"}", snodes[..]);
+  #assert !mcp_schema_scan_headers(sdoc[0], 0).ok;
+
+  // Array without x-mcp-header is accepted
+  #assert jv_parse(sdoc[..], "{\"type\":\"object\",\"required\":[\"a\"],\"properties\":{\"a\":{\"type\":\"string\",\"x-mcp-header\":\"A\"}}}", snodes[..]);
+  scan := mcp_schema_scan_headers(sdoc[0], 0);
+  #assert scan.ok && scan.count == 1;
+
+  // Depth 8 accepted, depth 9 rejected
+  d8 := "{\"properties\":{\"p1\":{\"properties\":{\"p2\":{\"properties\":{\"p3\":{\"properties\":{\"p4\":{\"properties\":{\"p5\":{\"properties\":{\"p6\":{\"properties\":{\"p7\":{\"properties\":{\"p8\":{\"type\":\"string\",\"x-mcp-header\":\"H8\"}}}}}}}}}}}}}}}}}";
+  #assert jv_parse(sdoc[..], d8, snodes[..]);
+  scan = mcp_schema_scan_headers(sdoc[0], 0);
+  #assert scan.ok && scan.count == 1 && scan.params[0].depth == 8;
+
+  d9 := "{\"properties\":{\"p1\":{\"properties\":{\"p2\":{\"properties\":{\"p3\":{\"properties\":{\"p4\":{\"properties\":{\"p5\":{\"properties\":{\"p6\":{\"properties\":{\"p7\":{\"properties\":{\"p8\":{\"properties\":{\"p9\":{\"type\":\"string\",\"x-mcp-header\":\"H9\"}}}}}}}}}}}}}}}}}}}";
+  #assert jv_parse(sdoc[..], d9, snodes[..]);
+  scan = mcp_schema_scan_headers(sdoc[0], 0);
+  #assert !scan.ok && scan.count == 0;
+
+  // MCP_SCHEMA_MAX_DEPTH (16) accepted, 17 fails
+  deep16 := "[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]";
+  #assert jv_parse(sdoc[..], deep16, snodes[..]);
+  #assert mcp_schema_scan_headers(sdoc[0], 0).ok;
+  deep17 := "[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]";
+  #assert jv_parse(sdoc[..], deep17, snodes[..]);
+  #assert !mcp_schema_scan_headers(sdoc[0], 0).ok;
+
+  // Extract edge cases
+  #assert jv_parse(sdoc[..], "{\"properties\":{\"s\":{\"type\":\"string\",\"x-mcp-header\":\"S\"},\"b\":{\"type\":\"boolean\",\"x-mcp-header\":\"B\"},\"i\":{\"type\":\"integer\",\"x-mcp-header\":\"I\"}}}", snodes[..]);
+  scan = mcp_schema_scan_headers(sdoc[0], 0);
+  #assert scan.ok && scan.count == 3;
+
+  anodes: [64] JvNode; adoc: [1] Jv;
+  out: [16] u8;
+  // Invalid args_doc or args_root -> ok && !present
+  v := mcp_schema_extract_header_arg(sdoc[0], scan.params[0], bad_doc, 0, out[..]);
+  #assert v.ok && !v.present;
+  #assert jv_parse(adoc[..], "123", anodes[..]);
+  v = mcp_schema_extract_header_arg(sdoc[0], scan.params[0], adoc[0], -1, out[..]);
+  #assert v.ok && !v.present;
+  v = mcp_schema_extract_header_arg(sdoc[0], scan.params[0], adoc[0], 0, out[..]);
+  #assert v.ok && !v.present;
+
+  // Type mismatches & buffer limits & false & negative int
+  #assert jv_parse(adoc[..], "{\"s\":1,\"b\":\"no\",\"i\":\"no\"}", anodes[..]);
+  #assert !mcp_schema_extract_header_arg(sdoc[0], scan.params[0], adoc[0], 0, out[..]).ok;
+  #assert !mcp_schema_extract_header_arg(sdoc[0], scan.params[1], adoc[0], 0, out[..]).ok;
+  #assert !mcp_schema_extract_header_arg(sdoc[0], scan.params[2], adoc[0], 0, out[..]).ok;
+
+  #assert jv_parse(adoc[..], "{\"s\":\"hello\",\"b\":false,\"i\":-7}", anodes[..]);
+  #assert !mcp_schema_extract_header_arg(sdoc[0], scan.params[0], adoc[0], 0, out[0..<2]).ok;
+  #assert !mcp_schema_extract_header_arg(sdoc[0], scan.params[1], adoc[0], 0, out[0..<4]).ok;
+  v = mcp_schema_extract_header_arg(sdoc[0], scan.params[1], adoc[0], 0, out[0..<5]);
+  #assert v.ok && v.present && cast(string) out[0..<v.written] == "false";
+  #assert !mcp_schema_extract_header_arg(sdoc[0], scan.params[2], adoc[0], 0, out[0..<1]).ok;
+  v = mcp_schema_extract_header_arg(sdoc[0], scan.params[2], adoc[0], 0, out[0..<2]);
+  #assert v.ok && v.present && cast(string) out[0..<v.written] == "-7";
+
+  bad_param := scan.params[0];
+  bad_param.value_type = 99;
+  #assert !mcp_schema_extract_header_arg(sdoc[0], bad_param, adoc[0], 0, out[..]).ok;
+}
+
+#test "mcp_schema_validate comprehensive keywords and error paths" {
+  snodes: [256] JvNode; sdoc: [1] Jv;
+  inodes: [128] JvNode; idoc: [1] Jv;
+  bad_doc: Jv;
+
+  #assert jv_parse(sdoc[..], "true", snodes[..]) && jv_parse(idoc[..], "1", inodes[..]);
+  #assert !mcp_schema_validate(bad_doc, 0, idoc[0], 0);
+  #assert !mcp_schema_validate(sdoc[0], 0, bad_doc, 0);
+  #assert !mcp_schema_validate(sdoc[0], -1, idoc[0], 0);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], -1);
+
+  // Non-object/non-bool schema
+  #assert jv_parse(sdoc[..], "123", snodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // $ref error paths
+  bad_refs := [3] string.["{\"$ref\":123}", "{\"$ref\":\"\"}", "{\"$ref\":\"#/$defs/nope\"}"];
+  for r: bad_refs {
+    #assert jv_parse(sdoc[..], r, snodes[..]);
+    #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  }
+
+  // type & enum & required error paths
+  bad_kw := [4] string.["{\"type\":123}", "{\"enum\":123}", "{\"required\":123}", "{\"allOf\":123}"];
+  #assert jv_parse(idoc[..], "{}", inodes[..]);
+  for r: bad_kw {
+    #assert jv_parse(sdoc[..], r, snodes[..]);
+    #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  }
+  bad_comb := [2] string.["{\"anyOf\":123}", "{\"oneOf\":123}"];
+  for r: bad_comb {
+    #assert jv_parse(sdoc[..], r, snodes[..]);
+    #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  }
+
+  // minProperties, maxProperties, additionalProperties schema
+  #assert jv_parse(sdoc[..], "{\"minProperties\":1,\"maxProperties\":2,\"additionalProperties\":{\"type\":\"integer\"}}", snodes[..]);
+  #assert jv_parse(idoc[..], "{}", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "{\"a\":1}", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "{\"a\":1,\"b\":2}", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "{\"a\":1,\"b\":2,\"c\":3}", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "{\"a\":\"x\"}", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // minItems, maxItems, uniqueItems: false, items fail
+  #assert jv_parse(sdoc[..], "{\"minItems\":1,\"maxItems\":2,\"uniqueItems\":false,\"items\":{\"type\":\"integer\"}}", snodes[..]);
+  #assert jv_parse(idoc[..], "[]", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "[1,1]", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "[1,2,3]", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "[\"x\"]", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // allOf, anyOf, oneOf (2 hits), if/then/else
+  #assert jv_parse(sdoc[..], "{\"allOf\":[{\"minimum\":1},{\"maximum\":5}]}", snodes[..]);
+  #assert jv_parse(idoc[..], "3", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "6", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  #assert jv_parse(sdoc[..], "{\"anyOf\":[{\"const\":1},{\"const\":2}]}", snodes[..]);
+  #assert jv_parse(idoc[..], "2", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "3", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  #assert jv_parse(sdoc[..], "{\"oneOf\":[{\"minimum\":0},{\"maximum\":10}]}", snodes[..]);
+  #assert jv_parse(idoc[..], "5", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  #assert jv_parse(sdoc[..], "{\"if\":{\"minimum\":10},\"then\":{\"multipleOf\":5},\"else\":{\"multipleOf\":2}}", snodes[..]);
+  #assert jv_parse(idoc[..], "15", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "12", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "4", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "3", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+}
+
+#test "json_schema boundary and mutation-killing invariants" {
+  // bad_doc with ok=false and count=1 kills || -> &&
+  bad_doc: Jv;
+  bad_doc.count = 1;
+  #assert !mcp_schema_scan_headers(bad_doc, 0).ok;
+
+  snodes: [256] JvNode; sdoc: [1] Jv;
+  inodes: [128] JvNode; idoc: [1] Jv;
+  #assert jv_parse(sdoc[..], "true", snodes[..]) && jv_parse(idoc[..], "1", inodes[..]);
+  #assert !mcp_schema_validate(bad_doc, 0, idoc[0], 0);
+  #assert !mcp_schema_validate(sdoc[0], 0, bad_doc, 0);
+
+  // 1 valid header followed by 1 invalid header resets count to 0
+  #assert jv_parse(sdoc[..], "{\"properties\":{\"a\":{\"type\":\"string\",\"x-mcp-header\":\"A\"},\"b\":{\"type\":\"number\",\"x-mcp-header\":\"B\"}}}", snodes[..]);
+  sc := mcp_schema_scan_headers(sdoc[0], 0);
+  #assert !sc.ok && sc.count == 0;
+
+  // 32 headers accepted, 33 rejected
+  h32 := "{\"properties\":{\"h0\":{\"type\":\"string\",\"x-mcp-header\":\"H0\"},\"h1\":{\"type\":\"string\",\"x-mcp-header\":\"H1\"},\"h2\":{\"type\":\"string\",\"x-mcp-header\":\"H2\"},\"h3\":{\"type\":\"string\",\"x-mcp-header\":\"H3\"},\"h4\":{\"type\":\"string\",\"x-mcp-header\":\"H4\"},\"h5\":{\"type\":\"string\",\"x-mcp-header\":\"H5\"},\"h6\":{\"type\":\"string\",\"x-mcp-header\":\"H6\"},\"h7\":{\"type\":\"string\",\"x-mcp-header\":\"H7\"},\"h8\":{\"type\":\"string\",\"x-mcp-header\":\"H8\"},\"h9\":{\"type\":\"string\",\"x-mcp-header\":\"H9\"},\"h10\":{\"type\":\"string\",\"x-mcp-header\":\"H10\"},\"h11\":{\"type\":\"string\",\"x-mcp-header\":\"H11\"},\"h12\":{\"type\":\"string\",\"x-mcp-header\":\"H12\"},\"h13\":{\"type\":\"string\",\"x-mcp-header\":\"H13\"},\"h14\":{\"type\":\"string\",\"x-mcp-header\":\"H14\"},\"h15\":{\"type\":\"string\",\"x-mcp-header\":\"H15\"},\"h16\":{\"type\":\"string\",\"x-mcp-header\":\"H16\"},\"h17\":{\"type\":\"string\",\"x-mcp-header\":\"H17\"},\"h18\":{\"type\":\"string\",\"x-mcp-header\":\"H18\"},\"h19\":{\"type\":\"string\",\"x-mcp-header\":\"H19\"},\"h20\":{\"type\":\"string\",\"x-mcp-header\":\"H20\"},\"h21\":{\"type\":\"string\",\"x-mcp-header\":\"H21\"},\"h22\":{\"type\":\"string\",\"x-mcp-header\":\"H22\"},\"h23\":{\"type\":\"string\",\"x-mcp-header\":\"H23\"},\"h24\":{\"type\":\"string\",\"x-mcp-header\":\"H24\"},\"h25\":{\"type\":\"string\",\"x-mcp-header\":\"H25\"},\"h26\":{\"type\":\"string\",\"x-mcp-header\":\"H26\"},\"h27\":{\"type\":\"string\",\"x-mcp-header\":\"H27\"},\"h28\":{\"type\":\"string\",\"x-mcp-header\":\"H28\"},\"h29\":{\"type\":\"string\",\"x-mcp-header\":\"H29\"},\"h30\":{\"type\":\"string\",\"x-mcp-header\":\"H30\"},\"h31\":{\"type\":\"string\",\"x-mcp-header\":\"H31\"}}}";
+  #assert jv_parse(sdoc[..], h32, snodes[..]);
+  sc = mcp_schema_scan_headers(sdoc[0], 0);
+  #assert sc.ok && sc.count == 32;
+
+  h33 := "{\"properties\":{\"h0\":{\"type\":\"string\",\"x-mcp-header\":\"H0\"},\"h1\":{\"type\":\"string\",\"x-mcp-header\":\"H1\"},\"h2\":{\"type\":\"string\",\"x-mcp-header\":\"H2\"},\"h3\":{\"type\":\"string\",\"x-mcp-header\":\"H3\"},\"h4\":{\"type\":\"string\",\"x-mcp-header\":\"H4\"},\"h5\":{\"type\":\"string\",\"x-mcp-header\":\"H5\"},\"h6\":{\"type\":\"string\",\"x-mcp-header\":\"H6\"},\"h7\":{\"type\":\"string\",\"x-mcp-header\":\"H7\"},\"h8\":{\"type\":\"string\",\"x-mcp-header\":\"H8\"},\"h9\":{\"type\":\"string\",\"x-mcp-header\":\"H9\"},\"h10\":{\"type\":\"string\",\"x-mcp-header\":\"H10\"},\"h11\":{\"type\":\"string\",\"x-mcp-header\":\"H11\"},\"h12\":{\"type\":\"string\",\"x-mcp-header\":\"H12\"},\"h13\":{\"type\":\"string\",\"x-mcp-header\":\"H13\"},\"h14\":{\"type\":\"string\",\"x-mcp-header\":\"H14\"},\"h15\":{\"type\":\"string\",\"x-mcp-header\":\"H15\"},\"h16\":{\"type\":\"string\",\"x-mcp-header\":\"H16\"},\"h17\":{\"type\":\"string\",\"x-mcp-header\":\"H17\"},\"h18\":{\"type\":\"string\",\"x-mcp-header\":\"H18\"},\"h19\":{\"type\":\"string\",\"x-mcp-header\":\"H19\"},\"h20\":{\"type\":\"string\",\"x-mcp-header\":\"H20\"},\"h21\":{\"type\":\"string\",\"x-mcp-header\":\"H21\"},\"h22\":{\"type\":\"string\",\"x-mcp-header\":\"H22\"},\"h23\":{\"type\":\"string\",\"x-mcp-header\":\"H23\"},\"h24\":{\"type\":\"string\",\"x-mcp-header\":\"H24\"},\"h25\":{\"type\":\"string\",\"x-mcp-header\":\"H25\"},\"h26\":{\"type\":\"string\",\"x-mcp-header\":\"H26\"},\"h27\":{\"type\":\"string\",\"x-mcp-header\":\"H27\"},\"h28\":{\"type\":\"string\",\"x-mcp-header\":\"H28\"},\"h29\":{\"type\":\"string\",\"x-mcp-header\":\"H29\"},\"h30\":{\"type\":\"string\",\"x-mcp-header\":\"H30\"},\"h31\":{\"type\":\"string\",\"x-mcp-header\":\"H31\"},\"h32\":{\"type\":\"string\",\"x-mcp-header\":\"H32\"}}}";
+  #assert jv_parse(sdoc[..], h33, snodes[..]);
+  sc = mcp_schema_scan_headers(sdoc[0], 0);
+  #assert !sc.ok && sc.count == 0;
+
+  // Non-properties nesting depth 16 accepted, 17 rejected
+  obj16 := "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{}}}}}}}}}}}}}}}}}";
+  #assert jv_parse(sdoc[..], obj16, snodes[..]);
+  #assert mcp_schema_scan_headers(sdoc[0], 0).ok;
+  obj17 := "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{}}}}}}}}}}}}}}}}}}";
+  #assert jv_parse(sdoc[..], obj17, snodes[..]);
+  #assert !mcp_schema_scan_headers(sdoc[0], 0).ok;
+
+  // extract_header_arg with bad_doc.count = 1
+  out: [16] u8;
+  p0 := McpHeaderParam.{name_node = 1, value_type = MCP_HTYPE_STRING, depth = 0};
+  ev := mcp_schema_extract_header_arg(sdoc[0], p0, bad_doc, 0, out[..]);
+  #assert ev.ok && !ev.present;
+
+  // mcp_dec_parse digit & exponent boundaries
+  #assert mcp_dec_parse("9").ok && !mcp_dec_parse(":").ok && !mcp_dec_parse("1:").ok;
+  #assert mcp_dec_parse("1.9").ok && !mcp_dec_parse("1.:").ok && !mcp_dec_parse("1.0:").ok;
+  #assert mcp_dec_parse("1e0").ok && mcp_dec_parse("1e9").ok && !mcp_dec_parse("1e:").ok && !mcp_dec_parse("1e0:").ok && !mcp_dec_parse("1e/").ok;
+  d01 := mcp_dec_parse("0.10");
+  #assert d01.ok && d01.mant == 1 && d01.exp == -1;
+  d001 := mcp_dec_parse("0000000000000001");
+  #assert d001.ok && d001.mant == 1 && d001.exp == 0;
+
+  // mcp_dec_cmp & mcp_dec_is_multiple boundaries
+  #assert mcp_dec_cmp(mcp_dec_parse("1"), mcp_dec_parse("10")) == -1;
+  #assert mcp_dec_cmp(mcp_dec_parse("101"), mcp_dec_parse("99")) == 1;
+  #assert mcp_dec_cmp(mcp_dec_parse("99"), mcp_dec_parse("101")) == -1;
+  #assert mcp_dec_cmp(mcp_dec_parse("100"), mcp_dec_parse("101")) == -1;
+  #assert mcp_dec_cmp(mcp_dec_parse("101"), mcp_dec_parse("100")) == 1;
+  #assert mcp_dec_is_multiple(mcp_dec_parse("9000000000000000"), mcp_dec_parse("1"));
+  #assert !mcp_dec_is_multiple(mcp_dec_parse("9000000000000010"), mcp_dec_parse("1"));
+
+  // mcp_jv_equal exact depth, empty strings, index 0 diffs, kind mismatch
+  #assert jv_parse(sdoc[..], "\"\"", snodes[..]) && jv_parse(idoc[..], "\"\"", inodes[..]);
+  #assert mcp_jv_equal(sdoc[0], 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH);
+  #assert jv_parse(sdoc[..], "\"ab\"", snodes[..]) && jv_parse(idoc[..], "\"xb\"", inodes[..]);
+  #assert !mcp_jv_equal(sdoc[0], 0, idoc[0], 0, 0);
+  #assert jv_parse(sdoc[..], "[1,2]", snodes[..]) && jv_parse(idoc[..], "[9,2]", inodes[..]);
+  #assert !mcp_jv_equal(sdoc[0], 0, idoc[0], 0, 0);
+  #assert jv_parse(sdoc[..], "1", snodes[..]) && jv_parse(idoc[..], "\"1\"", inodes[..]);
+  #assert !mcp_jv_equal(sdoc[0], 0, idoc[0], 0, 0);
+  #assert jv_parse(sdoc[..], "[1]", snodes[..]) && jv_parse(idoc[..], "[1]", inodes[..]);
+  #assert mcp_jv_equal(sdoc[0], 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1);
+  #assert !mcp_jv_equal(sdoc[0], 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH);
+  #assert jv_parse(sdoc[..], "{\"a\":1}", snodes[..]) && jv_parse(idoc[..], "{\"a\":1}", inodes[..]);
+  #assert mcp_jv_equal(sdoc[0], 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1);
+  #assert !mcp_jv_equal(sdoc[0], 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH);
+
+  // mcp_schema_resolve_ref "#/" and trailing '~'
+  #assert jv_parse(sdoc[..], "{\"\":{\"a~\":1}}", snodes[..]);
+  #assert mcp_schema_resolve_ref(sdoc[0], 0, "#/") > 0;
+  #assert mcp_schema_resolve_ref(sdoc[0], 0, "#//a~") > 0;
+
+  // validate exact boundaries: minLength only, maxLength only, minimum/maximum exact, minItems/maxItems, minProperties/maxProperties
+  #assert jv_parse(sdoc[..], "{\"minLength\":0}", snodes[..]) && jv_parse(idoc[..], "\"\"", inodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"maxLength\":0}", snodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "\"a\"", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  #assert jv_parse(sdoc[..], "{\"minimum\":0,\"maximum\":10}", snodes[..]);
+  #assert jv_parse(idoc[..], "0", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "10", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  #assert jv_parse(sdoc[..], "{\"minItems\":1,\"maxItems\":1}", snodes[..]);
+  #assert jv_parse(idoc[..], "[1]", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"minItems\":0,\"maxItems\":0}", snodes[..]);
+  #assert jv_parse(idoc[..], "[]", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "[1]", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  #assert jv_parse(sdoc[..], "{\"minProperties\":0,\"maxProperties\":0}", snodes[..]);
+  #assert jv_parse(idoc[..], "{}", inodes[..]) && mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(idoc[..], "{\"a\":1}", inodes[..]) && !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // required index 0, allOf index 0, anyOf index 0, oneOf single element, properties non-object
+  #assert jv_parse(sdoc[..], "{\"required\":[\"a\",\"b\"]}", snodes[..]) && jv_parse(idoc[..], "{\"b\":1}", inodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"allOf\":[false,true]}", snodes[..]) && jv_parse(idoc[..], "1", inodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"anyOf\":[true,false]}", snodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"oneOf\":[true]}", snodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"properties\":123,\"additionalProperties\":false}", snodes[..]) && jv_parse(idoc[..], "{\"a\":1}", inodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // Exact depth & refs boundaries in mcp_schema_validate_at
+  #assert jv_parse(sdoc[..], "true", snodes[..]) && jv_parse(idoc[..], "1", inodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH + 1, 0);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, 0, MCP_SCHEMA_MAX_REFS);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, 0, MCP_SCHEMA_MAX_REFS + 1);
+
+  // depth + 1 and refs + 1 exact boundary checks for combinators & $ref
+  #assert jv_parse(sdoc[..], "{\"$defs\":{\"t\":true},\"$ref\":\"#/$defs/t\"}", snodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, 0, MCP_SCHEMA_MAX_REFS - 1);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, 0, MCP_SCHEMA_MAX_REFS);
+
+  #assert jv_parse(sdoc[..], "{\"items\":true}", snodes[..]) && jv_parse(idoc[..], "[1]", inodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+
+  #assert jv_parse(sdoc[..], "{\"properties\":{\"a\":true}}", snodes[..]) && jv_parse(idoc[..], "{\"a\":1}", inodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+
+  #assert jv_parse(sdoc[..], "{\"additionalProperties\":true}", snodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+
+  #assert jv_parse(sdoc[..], "{\"allOf\":[true]}", snodes[..]) && jv_parse(idoc[..], "1", inodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+
+  #assert jv_parse(sdoc[..], "{\"anyOf\":[true]}", snodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+
+  #assert jv_parse(sdoc[..], "{\"oneOf\":[true]}", snodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+
+  #assert jv_parse(sdoc[..], "{\"not\":false}", snodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+  #assert jv_parse(sdoc[..], "{\"not\":true}", snodes[..]);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+
+  #assert jv_parse(sdoc[..], "{\"if\":true,\"else\":false}", snodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+
+  #assert jv_parse(sdoc[..], "{\"if\":true,\"then\":{\"allOf\":[true]}}", snodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 2, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+
+  #assert jv_parse(sdoc[..], "{\"if\":false,\"else\":true}", snodes[..]);
+  #assert mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH - 1, 0);
+  #assert !mcp_schema_validate_at(sdoc[0], 0, 0, idoc[0], 0, MCP_SCHEMA_MAX_DEPTH, 0);
+
+  // Additional exact boundary kills:
+  // mcp_dec_cmp(1, 0) and (0, 1)
+  #assert mcp_dec_cmp(mcp_dec_parse("1"), mcp_dec_parse("0")) == 1;
+  #assert mcp_dec_cmp(mcp_dec_parse("0"), mcp_dec_parse("1")) == -1;
+
+  // mcp_schema_resolve_ref with ~1 at end of segment
+  #assert jv_parse(sdoc[..], "{\"$defs\":{\"a/\":1}}", snodes[..]);
+  #assert mcp_schema_resolve_ref(sdoc[0], 0, "#/$defs/a~1") >= 0;
+
+  // Empty string & empty key in extract_header_arg, mcp_jv_equal, required, properties
+  #assert jv_parse(sdoc[..], "{\"properties\":{\"\":{\"type\":\"string\",\"x-mcp-header\":\"E\"}}}", snodes[..]);
+  sc = mcp_schema_scan_headers(sdoc[0], 0);
+  #assert sc.ok && sc.count == 1;
+  #assert jv_parse(idoc[..], "{\"\":\"\"}", inodes[..]);
+  ev = mcp_schema_extract_header_arg(sdoc[0], sc.params[0], idoc[0], 0, out[..]);
+  #assert ev.ok && ev.present && ev.written == 0;
+  #assert mcp_jv_equal(idoc[0], 0, idoc[0], 0, 0);
+  #assert jv_parse(sdoc[..], "{\"required\":[\"\"],\"properties\":{\"\":{\"type\":\"string\"}}}", snodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // $ref to "#" (target == 0)
+  #assert jv_parse(sdoc[..], "{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"#\"}}}", snodes[..]);
+  #assert jv_parse(idoc[..], "{\"a\":{}}", inodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // Non-integer fallback values for minLength/maxLength/minItems/maxItems/minProperties/maxProperties
+  #assert jv_parse(sdoc[..], "{\"minLength\":\"x\"}", snodes[..]) && jv_parse(idoc[..], "\"\"", inodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"maxLength\":\"x\"}", snodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"minItems\":\"x\"}", snodes[..]) && jv_parse(idoc[..], "[]", inodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"maxItems\":\"x\"}", snodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"minProperties\":\"x\"}", snodes[..]) && jv_parse(idoc[..], "{}", inodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"maxProperties\":\"x\"}", snodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // const / enum / uniqueItems at exact depth 16 (kills 0 -> 1 in mcp_jv_equal(..., 0))
+  #assert jv_parse(idoc[..], "[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]", inodes[..]);
+  #assert jv_parse(sdoc[..], "{\"const\":[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]}", snodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"enum\":[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]}", snodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+  #assert jv_parse(sdoc[..], "{\"uniqueItems\":true}", snodes[..]);
+  #assert jv_parse(idoc[..], "[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]],[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]", inodes[..]);
+  #assert !mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+
+  // Exact depth 16 and refs 16 from top-level mcp_schema_validate (kills 0 -> 1 in validate)
+  #assert jv_parse(sdoc[..], "{\"$defs\":{\"r1\":{\"$ref\":\"#/$defs/r2\"},\"r2\":{\"$ref\":\"#/$defs/r3\"},\"r3\":{\"$ref\":\"#/$defs/r4\"},\"r4\":{\"$ref\":\"#/$defs/r5\"},\"r5\":{\"$ref\":\"#/$defs/r6\"},\"r6\":{\"$ref\":\"#/$defs/r7\"},\"r7\":{\"$ref\":\"#/$defs/r8\"},\"r8\":{\"$ref\":\"#/$defs/r9\"},\"r9\":{\"$ref\":\"#/$defs/r10\"},\"r10\":{\"$ref\":\"#/$defs/r11\"},\"r11\":{\"$ref\":\"#/$defs/r12\"},\"r12\":{\"$ref\":\"#/$defs/r13\"},\"r13\":{\"$ref\":\"#/$defs/r14\"},\"r14\":{\"$ref\":\"#/$defs/r15\"},\"r15\":{\"$ref\":\"#/$defs/r16\"},\"r16\":true},\"$ref\":\"#/$defs/r1\"}", snodes[..]);
+  #assert jv_parse(idoc[..], "1", inodes[..]);
+  #assert mcp_schema_validate(sdoc[0], 0, idoc[0], 0);
+}
+
+// --- SEP-2243 x-mcp-header static analyzer ---
+
+mcp_schema_walk_headers :: (d: Jv, node: int, reachable: bool, depth: int, path: [] int, out: [] McpHeaderScan) -> bool #effects(all) {
+  if !jv_ok(d, node) || depth > MCP_SCHEMA_MAX_DEPTH { return false; }
+  k := jv_kind(d, node);
+  if k == JV_ARRAY {
+    for i: 0..<jv_len(d, node) {
+      if !mcp_schema_walk_headers(d, jv_at(d, node, i), false, depth + 1, path, out) { return false; }
+    }
+    return true;
+  }
+  if k != JV_OBJECT { return true; }
+
+  has_ref := jv_get(d, node, "$ref") >= 0; // mutant: equivalent (jv_get returns -1 or child index >= 1)
+  eff_reach := reachable && !has_ref;
+
+  hdr_n := jv_get(d, node, "x-mcp-header");
+  if hdr_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if !eff_reach || depth == 0 || depth > MCP_MAX_HEADER_DEPTH { return false; } // mutant: equivalent (next_reach already false for depth > 8)
+    if jv_kind(d, hdr_n) != JV_STRING { return false; }
+    hbuf: [256] u8;
+    hlen := jv_str(d, hdr_n, hbuf[..]);
+    if hlen < 0 { return false; } // mutant: equivalent (hlen == 0 rejected by mcp_http_token_ok; < 0 only on >256B overflow)
+    hname := cast(string) hbuf[0..<hlen];
+    if !mcp_http_token_ok(hname) { return false; }
+
+    // Check case-insensitive uniqueness across already-collected headers.
+    for i: 0..<out[0].count {
+      ebuf: [256] u8;
+      elen := jv_str(d, out[0].params[i].name_node, ebuf[..]);
+      if elen > 0 && mcp_header_name_eq_ci(hname, cast(string) ebuf[0..<elen]) { return false; } // mutant: equivalent (stored header names are non-empty)
+    }
+
+    // Type MUST be primitive string, integer, or boolean (number is forbidden).
+    tn := jv_get(d, node, "type");
+    if jv_kind(d, tn) != JV_STRING { return false; }
+    vtype: int;
+    if jv_raw_eq(jv_raw(d, tn), "string") { vtype = MCP_HTYPE_STRING; }
+    else if jv_raw_eq(jv_raw(d, tn), "integer") { vtype = MCP_HTYPE_INTEGER; }
+    else if jv_raw_eq(jv_raw(d, tn), "boolean") { vtype = MCP_HTYPE_BOOLEAN; }
+    else { return false; }
+
+    if out[0].count >= MCP_MAX_HEADER_PARAMS { return false; }
+    idx := out[0].count;
+    out[0].params[idx] = McpHeaderParam.{name_node = hdr_n, value_type = vtype, depth = depth};
+    for p: 0..<depth { out[0].params[idx].path_nodes[p] = path[p]; }
+    out[0].count += 1;
+  }
+
+  for i: 0..<jv_len(d, node) {
+    child := jv_at(d, node, i);
+    ck := jv_key(d, child);
+    if ck == "properties" && jv_kind(d, child) == JV_OBJECT {
+      for j: 0..<jv_len(d, child) {
+        prop := jv_at(d, child, j);
+        next_reach := eff_reach && depth < MCP_MAX_HEADER_DEPTH; // mutant: equivalent (depth > MCP_MAX_HEADER_DEPTH also rejects in child)
+        if depth < MCP_MAX_HEADER_DEPTH { path[depth] = prop; }
+        if !mcp_schema_walk_headers(d, prop, next_reach, depth + 1, path, out) { return false; }
+      }
+    } else {
+      // Every other keyword (items, oneOf, anyOf, allOf, not, if/then/else, $defs, etc.)
+      // is NOT statically reachable for x-mcp-header.
+      if !mcp_schema_walk_headers(d, child, false, depth + 1, path, out) { return false; }
+    }
+  }
+  return true;
+}
+
+mcp_schema_scan_headers :: (schema_doc: Jv, schema_root: int) -> McpHeaderScan #effects(all) {
+  out: [1] McpHeaderScan;
+  if !schema_doc.ok || !jv_ok(schema_doc, schema_root) { return out[0]; }
+  path: [MCP_MAX_HEADER_DEPTH] int;
+  if mcp_schema_walk_headers(schema_doc, schema_root, true, 0, path[..], out[..]) {
+    out[0].ok = true;
+  } else {
+    out[0].count = 0;
+  }
+  return out[0];
+}
+
+mcp_schema_format_int :: (v: int, out: [] u8) -> int #effects(all) {
+  tmp: [32] u8; n := 0;
+  neg := v < 0;
+  u := ifx neg then -v else v;
+  if u == 0 { tmp[0] = '0'; n = 1; }
+  while u > 0 { tmp[n] = cast(u8) ('0' + u % 10); n += 1; u /= 10; }
+  need := n + (ifx neg then 1 else 0);
+  if need > out.count { return -1; }
+  p := 0;
+  if neg { out[0] = '-'; p = 1; }
+  for i: 0..<n { out[p + i] = tmp[n - 1 - i]; }
+  return need;
+}
+
+mcp_schema_extract_header_arg :: (schema_doc: Jv, param: McpHeaderParam, args_doc: Jv, args_root: int, out: [] u8) -> McpHeaderArgVal #effects(all) {
+  res: McpHeaderArgVal;
+  if !args_doc.ok || !jv_ok(args_doc, args_root) { res.ok = true; return res; }
+  cur := args_root;
+  for step: 0..<param.depth {
+    if jv_kind(args_doc, cur) != JV_OBJECT { res.ok = true; return res; }
+    kbuf: [256] u8;
+    klen := jv_unescape(jv_key(schema_doc, param.path_nodes[step]), kbuf[..]);
+    if klen < 0 { return res; }
+    cur = jv_get(args_doc, cur, cast(string) kbuf[0..<klen]);
+    if cur < 0 { res.ok = true; return res; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+  }
+  ck := jv_kind(args_doc, cur);
+  if ck == JV_NULL { res.ok = true; return res; }
+
+  if param.value_type == MCP_HTYPE_STRING {
+    if ck != JV_STRING { return res; }
+    w := jv_str(args_doc, cur, out);
+    if w < 0 { return res; }
+    res.ok = true; res.present = true; res.written = w;
+    return res;
+  }
+  if param.value_type == MCP_HTYPE_BOOLEAN {
+    if ck != JV_TRUE && ck != JV_FALSE { return res; }
+    s := ifx ck == JV_TRUE then "true" else "false";
+    if s.count > out.count { return res; }
+    for i: 0..<s.count { out[i] = s[i]; }
+    res.ok = true; res.present = true; res.written = s.count;
+    return res;
+  }
+  if param.value_type == MCP_HTYPE_INTEGER {
+    if ck != JV_NUMBER { return res; }
+    iv: [1] int;
+    if !mcp_parse_json_safe_int(jv_raw(args_doc, cur), iv[..]) { return res; }
+    w := mcp_schema_format_int(iv[0], out);
+    if w < 0 { return res; } // mutant: equivalent (format_int returns -1 or >= 1)
+    res.ok = true; res.present = true; res.written = w;
+    return res;
+  }
+  return res;
+}
+
+// --- Bounded JSON Schema Draft 2020-12 validator ---
+
+// Exact decimal representation for bounded numeric comparison: value = sign * mant * 10^exp (or exact int).
+// Scaled to a common decimal exponent for exact comparison without floating-point drift on typical JSON numbers.
+McpDecNum :: struct {
+  ok: bool;
+  neg: bool;
+  mant: int; // non-negative integer mantissa (up to 15 digits)
+  exp: int;  // power of 10
+}
+
+mcp_dec_parse :: (raw: string) -> McpDecNum #effects(all) {
+  r: McpDecNum;
+  if raw.count == 0 { return r; }
+  i := 0; neg := false;
+  if raw[0] == '-' { neg = true; i = 1; }
+  if i >= raw.count || raw[i] < '0' || raw[i] > '9' { return r; } // mutant: equivalent (':' fails while <= '9' and i != raw.count)
+
+  mant := 0; digs := 0; ex := 0; seen := false;
+  while i < raw.count && raw[i] >= '0' && raw[i] <= '9' {
+    d := cast(int) (raw[i] - '0');
+    if d != 0 || seen {
+      seen = true;
+      if digs < 15 { mant = mant * 10 + d; digs += 1; } else { ex += 1; }
+    }
+    i += 1;
+  }
+  if i < raw.count && raw[i] == '.' {
+    i += 1;
+    if i >= raw.count || raw[i] < '0' || raw[i] > '9' { return r; } // mutant: equivalent (':' fails while <= '9' and i != raw.count)
+    while i < raw.count && raw[i] >= '0' && raw[i] <= '9' {
+      d := cast(int) (raw[i] - '0');
+      if d != 0 || seen {
+        seen = true;
+        if digs < 15 { mant = mant * 10 + d; digs += 1; ex -= 1; }
+      } else {
+        ex -= 1;
+      }
+      i += 1;
+    }
+  }
+  if i < raw.count && (raw[i] == 'e' || raw[i] == 'E') {
+    i += 1; eneg := false;
+    if i < raw.count && (raw[i] == '+' || raw[i] == '-') { eneg = raw[i] == '-'; i += 1; }
+    if i >= raw.count || raw[i] < '0' || raw[i] > '9' { return r; } // mutant: equivalent (':' fails while <= '9' and i != raw.count)
+    e := 0;
+    while i < raw.count && raw[i] >= '0' && raw[i] <= '9' {
+      if e < 10000 { e = e * 10 + cast(int) (raw[i] - '0'); }
+      i += 1;
+    }
+    ex = ifx eneg then ex - e else ex + e;
+  }
+  if i != raw.count { return r; }
+  if mant == 0 { return McpDecNum.{ok = true, neg = false, mant = 0, exp = 0}; }
+  while mant % 10 == 0 { mant /= 10; ex += 1; }
+  return McpDecNum.{ok = true, neg = neg, mant = mant, exp = ex};
+}
+
+mcp_dec_cmp :: (a: McpDecNum, b: McpDecNum) -> int #effects(all) {
+  if a.mant == 0 && b.mant == 0 { return 0; }
+  if a.neg != b.neg { return ifx a.neg then -1 else 1; }
+  // Same sign, both non-zero: compare magnitudes via order of magnitude first.
+  am := a.mant; ae := a.exp; bm := b.mant; be := b.exp;
+  // Normalize digit counts for order comparison.
+  ad := 0; t := am; while t > 0 { ad += 1; t /= 10; }
+  bd := 0; t = bm; while t > 0 { bd += 1; t /= 10; }
+  ao := ad + ae; bo := bd + be;
+  mag := 0;
+  if ao < bo { mag = -1; }
+  else if ao > bo { mag = 1; }
+  else {
+    // Align exponents (difference is at most 15).
+    while ae > be && am < 1000000000000000 { am *= 10; ae -= 1; } // mutant: equivalent (ao == bo guarantees ae - be <= 14 and am < 10^15)
+    while be > ae && bm < 1000000000000000 { bm *= 10; be -= 1; } // mutant: equivalent (ao == bo guarantees be - ae <= 14 and bm < 10^15)
+    if am < bm { mag = -1; } else if am > bm { mag = 1; }
+  }
+  return ifx a.neg then -mag else mag;
+}
+
+mcp_dec_is_multiple :: (val: McpDecNum, div: McpDecNum) -> bool #effects(all) {
+  if !val.ok || !div.ok || div.mant == 0 || div.neg { return false; }
+  if val.mant == 0 { return true; }
+  vm := val.mant; ve := val.exp; dm := div.mant; de := div.exp;
+  if ve < de { return false; }
+  if ve > de { // mutant: equivalent (ve == de gives diff == 0, loop runs 0 times)
+    diff := ve - de;
+    for k: 0..<diff {
+      if vm > 900000000000000 { return false; }
+      vm *= 10;
+    }
+  }
+  return vm % dm == 0;
+}
+
+mcp_utf8_codepoints :: (s: string) -> int #effects(all) {
+  cp := 0;
+  for c: s {
+    // Count leading bytes (anything not 10xxxxxx).
+    if (c & 0xC0) != 0x80 { cp += 1; }
+  }
+  return cp;
+}
+
+mcp_jv_equal :: (a: Jv, an: int, b: Jv, bn: int, depth: int) -> bool #effects(all) {
+  if depth > MCP_SCHEMA_MAX_DEPTH { return false; }
+  ka := jv_kind(a, an); kb := jv_kind(b, bn);
+  if ka != kb || ka == 0 { return false; }
+  if ka == JV_NULL || ka == JV_TRUE || ka == JV_FALSE { return true; }
+  if ka == JV_NUMBER {
+    da := mcp_dec_parse(jv_raw(a, an));
+    db := mcp_dec_parse(jv_raw(b, bn));
+    return da.ok && db.ok && mcp_dec_cmp(da, db) == 0; // mutant: equivalent (jv_parse validates JV_NUMBER so da.ok/db.ok are always true)
+  }
+  if ka == JV_STRING {
+    ba: [1024] u8; bb: [1024] u8;
+    na := jv_str(a, an, ba[..]); nb := jv_str(b, bn, bb[..]);
+    if na < 0 || nb < 0 || na != nb { return false; } // mutant: equivalent (na/nb >= 0 for <=1024B strings)
+    for i: 0..<na { if ba[i] != bb[i] { return false; } }
+    return true;
+  }
+  if ka == JV_ARRAY {
+    n := jv_len(a, an);
+    if n != jv_len(b, bn) { return false; }
+    for i: 0..<n {
+      if !mcp_jv_equal(a, jv_at(a, an, i), b, jv_at(b, bn, i), depth + 1) { return false; }
+    }
+    return true;
+  }
+  if ka == JV_OBJECT {
+    n := jv_len(a, an);
+    if n != jv_len(b, bn) { return false; }
+    for i: 0..<n {
+      ca := jv_at(a, an, i);
+      kbuf: [256] u8;
+      klen := jv_unescape(jv_key(a, ca), kbuf[..]);
+      if klen < 0 { return false; } // mutant: equivalent (defensive >256B key overflow guard)
+      cb := jv_get(b, bn, cast(string) kbuf[0..<klen]);
+      if cb < 0 || !mcp_jv_equal(a, ca, b, cb, depth + 1) { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    }
+    return true;
+  }
+  return false; // mutant: equivalent (unreachable: all JV_* kinds handled above)
+}
+
+mcp_schema_type_matches :: (d: Jv, node: int, tname: string) -> bool #effects(all) {
+  k := jv_kind(d, node);
+  if tname == "null" { return k == JV_NULL; }
+  if tname == "boolean" { return k == JV_TRUE || k == JV_FALSE; }
+  if tname == "string" { return k == JV_STRING; }
+  if tname == "array" { return k == JV_ARRAY; }
+  if tname == "object" { return k == JV_OBJECT; }
+  if tname == "number" { return k == JV_NUMBER; }
+  if tname == "integer" {
+    if k != JV_NUMBER { return false; }
+    dn := mcp_dec_parse(jv_raw(d, node));
+    return dn.ok && dn.exp >= 0;
+  }
+  return false;
+}
+
+// Resolves local JSON Pointer ($ref starting with "#/") within schema_doc.
+mcp_schema_resolve_ref :: (sd: Jv, root: int, ref_str: string) -> int #effects(all) {
+  if ref_str == "#" { return root; }
+  if ref_str.count < 2 || ref_str[0] != '#' || ref_str[1] != '/' { return -1; }
+  cur := root;
+  i := 2;
+  while i <= ref_str.count {
+    seg_start := i;
+    while i < ref_str.count && ref_str[i] != '/' { i += 1; }
+    seg := ref_str[seg_start..<i];
+    // Unescape RFC 6901 (~1 -> '/', ~0 -> '~').
+    key: [256] u8; kl := 0;
+    j := 0;
+    while j < seg.count {
+      if kl >= key.count { return -1; } // mutant: equivalent (defensive >256B pointer segment overflow guard)
+      if seg[j] == '~' && j + 1 < seg.count {
+        if seg[j + 1] == '1' { key[kl] = '/'; kl += 1; j += 2; continue; }
+        if seg[j + 1] == '0' { key[kl] = '~'; kl += 1; j += 2; continue; }
+      }
+      key[kl] = seg[j]; kl += 1; j += 1;
+    }
+    if jv_kind(sd, cur) != JV_OBJECT { return -1; }
+    cur = jv_get(sd, cur, cast(string) key[0..<kl]);
+    if cur < 0 { return -1; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if i == ref_str.count { break; }
+    i += 1;
+  }
+  return cur;
+}
+
+mcp_schema_validate_at :: (sd: Jv, sroot: int, snode: int, id: Jv, inode: int, depth: int, refs: int) -> bool #effects(all) {
+  if depth > MCP_SCHEMA_MAX_DEPTH || refs > MCP_SCHEMA_MAX_REFS { return false; }
+  sk := jv_kind(sd, snode);
+  if sk == JV_TRUE { return true; }
+  if sk != JV_OBJECT { return false; }
+
+  // $ref
+  ref_n := jv_get(sd, snode, "$ref");
+  if ref_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if jv_kind(sd, ref_n) != JV_STRING { return false; }
+    rbuf: [256] u8;
+    rlen := jv_str(sd, ref_n, rbuf[..]);
+    if rlen <= 0 { return false; } // mutant: equivalent (empty $ref also rejected by resolve_ref)
+    target := mcp_schema_resolve_ref(sd, sroot, cast(string) rbuf[0..<rlen]);
+    if target < 0 { return false; }
+    if !mcp_schema_validate_at(sd, sroot, target, id, inode, depth + 1, refs + 1) { return false; }
+  }
+
+  // type
+  type_n := jv_get(sd, snode, "type");
+  if type_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    tk := jv_kind(sd, type_n);
+    if tk == JV_STRING {
+      if !mcp_schema_type_matches(id, inode, jv_raw(sd, type_n)) { return false; }
+    } else if tk == JV_ARRAY {
+      matched := false;
+      for i: 0..<jv_len(sd, type_n) {
+        el := jv_at(sd, type_n, i);
+        if jv_kind(sd, el) == JV_STRING && mcp_schema_type_matches(id, inode, jv_raw(sd, el)) { matched = true; break; }
+      }
+      if !matched { return false; }
+    } else {
+      return false;
+    }
+  }
+
+  // const
+  const_n := jv_get(sd, snode, "const");
+  if const_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if !mcp_jv_equal(sd, const_n, id, inode, 0) { return false; }
+  }
+
+  // enum
+  enum_n := jv_get(sd, snode, "enum");
+  if enum_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if jv_kind(sd, enum_n) != JV_ARRAY { return false; }
+    found := false;
+    for i: 0..<jv_len(sd, enum_n) {
+      if mcp_jv_equal(sd, jv_at(sd, enum_n, i), id, inode, 0) { found = true; break; }
+    }
+    if !found { return false; }
+  }
+
+  ik := jv_kind(id, inode);
+
+  // String keywords
+  if ik == JV_STRING {
+    min_l := jv_get(sd, snode, "minLength");
+    max_l := jv_get(sd, snode, "maxLength");
+    if min_l >= 0 || max_l >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      sbuf: [4096] u8;
+      slen := jv_str(id, inode, sbuf[..]);
+      if slen < 0 { return false; } // mutant: equivalent (defensive >4096B string overflow guard)
+      cps := mcp_utf8_codepoints(cast(string) sbuf[0..<slen]);
+      if min_l >= 0 && cps < jv_int(sd, min_l, 0) { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      if max_l >= 0 && cps > jv_int(sd, max_l, -1) { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    }
+  }
+
+  // Numeric keywords
+  if ik == JV_NUMBER {
+    val := mcp_dec_parse(jv_raw(id, inode));
+    if !val.ok { return false; } // mutant: equivalent (jv_parse validates JV_NUMBER so val.ok is always true)
+    min_n := jv_get(sd, snode, "minimum");
+    if min_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      b := mcp_dec_parse(jv_raw(sd, min_n));
+      if !b.ok || mcp_dec_cmp(val, b) < 0 { return false; }
+    }
+    max_n := jv_get(sd, snode, "maximum");
+    if max_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      b := mcp_dec_parse(jv_raw(sd, max_n));
+      if !b.ok || mcp_dec_cmp(val, b) > 0 { return false; }
+    }
+    emin_n := jv_get(sd, snode, "exclusiveMinimum");
+    if emin_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      b := mcp_dec_parse(jv_raw(sd, emin_n));
+      if !b.ok || mcp_dec_cmp(val, b) <= 0 { return false; }
+    }
+    emax_n := jv_get(sd, snode, "exclusiveMaximum");
+    if emax_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      b := mcp_dec_parse(jv_raw(sd, emax_n));
+      if !b.ok || mcp_dec_cmp(val, b) >= 0 { return false; }
+    }
+    mul_n := jv_get(sd, snode, "multipleOf");
+    if mul_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      b := mcp_dec_parse(jv_raw(sd, mul_n));
+      if !mcp_dec_is_multiple(val, b) { return false; }
+    }
+  }
+
+  // Array keywords
+  if ik == JV_ARRAY {
+    alen := jv_len(id, inode);
+    min_i := jv_get(sd, snode, "minItems");
+    if min_i >= 0 && alen < jv_int(sd, min_i, 0) { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    max_i := jv_get(sd, snode, "maxItems");
+    if max_i >= 0 && alen > jv_int(sd, max_i, -1) { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    uniq := jv_get(sd, snode, "uniqueItems");
+    if uniq >= 0 && jv_kind(sd, uniq) == JV_TRUE { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      for i: 0..<alen {
+        for j: i + 1..<alen {
+          if mcp_jv_equal(id, jv_at(id, inode, i), id, jv_at(id, inode, j), 0) { return false; }
+        }
+      }
+    }
+    items_n := jv_get(sd, snode, "items");
+    if items_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      for i: 0..<alen {
+        if !mcp_schema_validate_at(sd, sroot, items_n, id, jv_at(id, inode, i), depth + 1, refs) { return false; }
+      }
+    }
+  }
+
+  // Object keywords
+  if ik == JV_OBJECT {
+    olen := jv_len(id, inode);
+    min_p := jv_get(sd, snode, "minProperties");
+    if min_p >= 0 && olen < jv_int(sd, min_p, 0) { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    max_p := jv_get(sd, snode, "maxProperties");
+    if max_p >= 0 && olen > jv_int(sd, max_p, -1) { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+
+    req_n := jv_get(sd, snode, "required");
+    if req_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      if jv_kind(sd, req_n) != JV_ARRAY { return false; }
+      for i: 0..<jv_len(sd, req_n) {
+        rn := jv_at(sd, req_n, i);
+        kbuf: [256] u8;
+        klen := jv_str(sd, rn, kbuf[..]);
+        if klen < 0 || jv_get(id, inode, cast(string) kbuf[0..<klen]) < 0 { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+      }
+    }
+
+    props_n := jv_get(sd, snode, "properties");
+    addl_n := jv_get(sd, snode, "additionalProperties");
+    for i: 0..<olen {
+      child := jv_at(id, inode, i);
+      kbuf: [256] u8;
+      klen := jv_unescape(jv_key(id, child), kbuf[..]);
+      if klen < 0 { return false; } // mutant: equivalent (defensive >256B key overflow guard)
+      kstr := cast(string) kbuf[0..<klen];
+      ps := ifx jv_kind(sd, props_n) == JV_OBJECT then jv_get(sd, props_n, kstr) else -1;
+      if ps >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+        if !mcp_schema_validate_at(sd, sroot, ps, id, child, depth + 1, refs) { return false; }
+      } else if addl_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+        if !mcp_schema_validate_at(sd, sroot, addl_n, id, child, depth + 1, refs) { return false; }
+      }
+    }
+  }
+
+  // Combinators: allOf, anyOf, oneOf, not, if/then/else
+  all_n := jv_get(sd, snode, "allOf");
+  if all_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if jv_kind(sd, all_n) != JV_ARRAY { return false; }
+    for i: 0..<jv_len(sd, all_n) {
+      if !mcp_schema_validate_at(sd, sroot, jv_at(sd, all_n, i), id, inode, depth + 1, refs) { return false; }
+    }
+  }
+  any_n := jv_get(sd, snode, "anyOf");
+  if any_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if jv_kind(sd, any_n) != JV_ARRAY { return false; }
+    ok_any := false;
+    for i: 0..<jv_len(sd, any_n) {
+      if mcp_schema_validate_at(sd, sroot, jv_at(sd, any_n, i), id, inode, depth + 1, refs) { ok_any = true; break; }
+    }
+    if !ok_any { return false; }
+  }
+  one_n := jv_get(sd, snode, "oneOf");
+  if one_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if jv_kind(sd, one_n) != JV_ARRAY { return false; }
+    hits := 0;
+    for i: 0..<jv_len(sd, one_n) {
+      if mcp_schema_validate_at(sd, sroot, jv_at(sd, one_n, i), id, inode, depth + 1, refs) { hits += 1; }
+    }
+    if hits != 1 { return false; }
+  }
+  not_n := jv_get(sd, snode, "not");
+  if not_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if mcp_schema_validate_at(sd, sroot, not_n, id, inode, depth + 1, refs) { return false; }
+  }
+  if_n := jv_get(sd, snode, "if");
+  if if_n >= 0 { // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    if mcp_schema_validate_at(sd, sroot, if_n, id, inode, depth + 1, refs) {
+      then_n := jv_get(sd, snode, "then");
+      if then_n >= 0 && !mcp_schema_validate_at(sd, sroot, then_n, id, inode, depth + 1, refs) { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    } else {
+      else_n := jv_get(sd, snode, "else");
+      if else_n >= 0 && !mcp_schema_validate_at(sd, sroot, else_n, id, inode, depth + 1, refs) { return false; } // mutant: equivalent (jv_get returns -1 or child index >= 1)
+    }
+  }
+
+  return true;
+}
+
+mcp_schema_validate :: (schema_doc: Jv, schema_root: int, inst_doc: Jv, inst_node: int) -> bool #effects(all) {
+  if !schema_doc.ok || !inst_doc.ok || !jv_ok(schema_doc, schema_root) || !jv_ok(inst_doc, inst_node) { return false; }
+  return mcp_schema_validate_at(schema_doc, schema_root, schema_root, inst_doc, inst_node, 0, 0);
+}

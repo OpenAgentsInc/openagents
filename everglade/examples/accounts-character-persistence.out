@@ -1,0 +1,4 @@
+id_new=true id_linked=true id_frozen=true bind_ok=true refresh_ok=true refuse_stolen=true replay=true clock=true revoked=true
+cls=srd-ranger xp=950 lvl=3 ck_xp=2700 ck_lvl=4 refuse_xp_drop=true
+ck=applied dup=duplicate fence=fenced conflict=conflict regression=regression
+ok=true

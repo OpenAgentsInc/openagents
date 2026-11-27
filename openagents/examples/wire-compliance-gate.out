@@ -1,0 +1,4 @@
+descriptor err=true types=1 exact=true list=true
+pinned_wire version=7 min=5 content_rev0=1 content_rev7=7 ok=true
+refuse unk_key=true missing=true no_msg=true proto2=true empty=true prefix=true
+ok=true

@@ -7,9 +7,19 @@ import UniformTypeIdentifiers
 
 struct GpuRootHostView: UIViewControllerRepresentable {
     @ObservedObject var store: AppStore
+    @ObservedObject var account: MobileAccountController
+    @ObservedObject var cloudChat: MobileCloudChat
+    @ObservedObject var wallet: MobileWalletController
+    @ObservedObject var shell: MobileShellState
 
     func makeUIViewController(context: Context) -> GpuRootViewController {
-        GpuRootViewController(store: store)
+        GpuRootViewController(
+            store: store,
+            account: account,
+            cloudChat: cloudChat,
+            wallet: wallet,
+            shell: shell
+        )
     }
 
     func updateUIViewController(_ uiViewController: GpuRootViewController, context: Context) {
@@ -20,6 +30,10 @@ struct GpuRootHostView: UIViewControllerRepresentable {
 @MainActor
 final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrollViewDelegate, KitAccessSource, PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
     private let store: AppStore
+    private let account: MobileAccountController
+    private let cloudChat: MobileCloudChat
+    private let wallet: MobileWalletController
+    private let shell: MobileShellState
     private let dictation = VoiceDictationController()
     private var cancellables: Set<AnyCancellable> = []
 
@@ -39,9 +53,23 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
 
     private lazy var editor: ComposerEditor = ComposerEditor(style: editorStyle())
 
-    init(store: AppStore) {
+    init(
+        store: AppStore,
+        account: MobileAccountController,
+        cloudChat: MobileCloudChat,
+        wallet: MobileWalletController,
+        shell: MobileShellState
+    ) {
         self.store = store
+        self.account = account
+        self.cloudChat = cloudChat
+        self.wallet = wallet
+        self.shell = shell
         super.init(nibName: nil, bundle: nil)
+    }
+
+    private var isCloudActive: Bool {
+        account.isLoggedIn && (shell.preferCloudMode || store.activeComputer == nil)
     }
 
     required init?(coder: NSCoder) {
@@ -141,11 +169,43 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             }
             .store(in: &cancellables)
 
+        dictation.speechRate = store.store.voiceSpeechRate
+        dictation.vadSilenceCommitMs = Int64(store.store.voiceVadSilenceMs)
+        store.onAssistantStreamUpdate = { [weak self] _, itemID, text, complete in
+            guard let self, self.dictation.isDuplexActive else { return }
+            self.dictation.feedAssistantStream(itemID: itemID, fullText: text, complete: complete)
+            self.markDirtyAndWake()
+        }
+
         dictation.objectWillChange
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in
                     self?.markDirtyAndWake()
                 }
+            }
+            .store(in: &cancellables)
+
+        account.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.markDirtyAndWake() }
+            }
+            .store(in: &cancellables)
+
+        cloudChat.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.markDirtyAndWake() }
+            }
+            .store(in: &cancellables)
+
+        wallet.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.markDirtyAndWake() }
+            }
+            .store(in: &cancellables)
+
+        shell.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.markDirtyAndWake() }
             }
             .store(in: &cancellables)
 
@@ -268,11 +328,15 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         }
     }
 
-    // MARK: - AntigravityStore -> Coax GPU Surface Sync
+    // MARK: - AppStore + Account + CloudChat + Wallet -> Coax GPU Surface Sync
 
     private func syncStoreToGpu(_ surface: UnsafeMutableRawPointer) {
-        let computer = store.activeComputer
+        let cloudMode = isCloudActive
+        let computer = cloudMode ? nil : store.activeComputer
         let reachCode: Int32 = {
+            if cloudMode {
+                return cloudChat.isStreamConnected ? OA_IOS_REACH_OK : OA_IOS_REACH_CHECKING
+            }
             guard let computer else { return OA_IOS_REACH_UNKNOWN }
             switch computer.reachability {
             case .reachable: return OA_IOS_REACH_OK
@@ -282,11 +346,21 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             }
         }()
 
-        let activeSession = store.activeSession
-        let sessionTitle = activeSession.map { store.displayTitle(for: $0) } ?? ""
-        let computerName = computer?.name ?? ""
+        let activeSession = cloudMode ? nil : store.activeSession
+        let activeIntro = cloudMode ? nil : store.activeIntrospectSession
+        let activeCloud = cloudMode ? cloudChat.activeConversation : nil
+        let sessionTitle: String = {
+            if let activeCloud {
+                return activeCloud.title
+            }
+            if let intro = activeIntro {
+                return "\(intro.title) · \(intro.harness)"
+            }
+            return activeSession.map { store.displayTitle(for: $0) } ?? ""
+        }()
+        let computerName = cloudMode ? "OpenAgents Cloud" : (computer?.name ?? "")
         let pairedCount = Int32(store.computers.filter { $0.paired != nil || $0.isLocalMac }.count)
-        let workspaceName = store.workspaceName
+        let workspaceName = cloudMode ? (activeCloud?.workspace ?? "") : store.workspaceName
 
         oa_ios_set_header(
             surface,
@@ -295,14 +369,27 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             workspaceName,
             reachCode,
             pairedCount,
-            activeSession != nil ? 1 : 0,
-            store.hasOlderMessages ? 1 : 0,
-            store.hasMoreSessions ? 1 : 0
+            (activeSession != nil || activeIntro != nil || activeCloud != nil) ? 1 : 0,
+            (!cloudMode && store.hasOlderMessages) ? 1 : 0,
+            (!cloudMode && store.hasMoreSessions) ? 1 : 0
         )
 
-        let bannerErr = dictation.errorMessage ?? store.bannerError ?? store.rateLimitBanner?.message ?? ""
+        oa_ios_set_account_wallet(
+            surface,
+            account.sidebarLabel,
+            account.isLoggedIn ? 1 : 0,
+            wallet.sidebarLabel,
+            wallet.ready ? 1 : 0
+        )
+
+        let bannerErr = dictation.errorMessage ?? (cloudMode ? cloudChat.lastError : nil) ?? store.bannerError ?? store.rateLimitBanner?.message ?? ""
         let toast = store.statusToast ?? ""
         oa_ios_set_banners(surface, bannerErr, Int32(store.pendingOutbox.count), toast)
+
+        // Full Auto policy chip (default ON) + Always-On Usage HUD strip + Bi-Directional Voice state (#14068)
+        oa_ios_set_full_auto(surface, store.fullAutoEnabled ? 1 : 0)
+        oa_ios_set_usage(surface, store.usageStripSummary, Int32(store.usageStripPercent))
+        oa_ios_set_voice_duplex(surface, dictation.duplexState.rawValue, dictation.audioLevel)
 
         if let pending = store.pendingInteraction {
             oa_ios_set_approval(surface, 1, pending.prompt, pending.warning)
@@ -313,13 +400,6 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         } else {
             oa_ios_set_approval(surface, 0, "", "")
             oa_ios_approval_options_clear(surface)
-        }
-
-        if let usage = store.activeUsage, usage.totalTokens > 0 {
-            let pct = Int32(max(0, min(100, Int(usage.contextPercent.rounded()))))
-            oa_ios_set_usage(surface, "\(pct)% · \(usage.summaryLabel)", pct)
-        } else {
-            oa_ios_set_usage(surface, "", 0)
         }
         oa_ios_set_queued(surface, store.queuedDraft ?? "")
 
@@ -365,9 +445,9 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             dictation.isListening ? 1 : 0
         )
 
-        let isBusy = activeSession?.busy == true
-        let isAwaiting = store.isAwaitingTurnStart || store.isSending
-        let liveStatus = store.activeTurnLiveStatus
+        let isBusy = cloudMode ? cloudChat.isSending : (activeSession?.busy == true)
+        let isAwaiting = cloudMode ? cloudChat.isSending : (store.isAwaitingTurnStart || store.isSending)
+        let liveStatus = cloudMode ? nil : store.activeTurnLiveStatus
         let elapsedSecs: Int32 = {
             if let started = liveStatus?.startedAt {
                 return Int32(max(0, Date().timeIntervalSince(started)))
@@ -377,14 +457,38 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         let workLabel = liveStatus?.phaseLabel ?? (isAwaiting && !isBusy ? "Sending…" : "Working")
         oa_ios_set_working(surface, isBusy ? 1 : 0, isAwaiting ? 1 : 0, elapsedSecs, workLabel)
 
-        // Sessions list for GPU sidebar (Working + Recents)
+        // Sessions list for GPU sidebar (Working + Recents + Synced Cloud Chats)
         oa_ios_sessions_clear(surface)
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        var pushedCount = 0
+        if account.isLoggedIn {
+            for conv in cloudChat.conversations.prefix(32) where !conv.archived {
+                let sid = "cloud:\(conv.id)"
+                let age = Self.relativeAge(nowMs: nowMs, atMs: conv.updatedAtMs)
+                let isCurrent = cloudMode && cloudChat.activeConversationID == conv.id
+                oa_ios_sessions_push(
+                    surface,
+                    sid,
+                    conv.title,
+                    conv.workspace.isEmpty ? "Cloud" : conv.workspace,
+                    conv.model,
+                    age,
+                    (isCurrent && cloudChat.isSending) ? 1 : 0,
+                    isCurrent ? 1 : 0,
+                    0,
+                    0
+                )
+                if let last = conv.turns.last {
+                    oa_ios_session_set_preview(surface, sid, last.userText, "", last.output)
+                }
+                pushedCount += 1
+            }
+        }
         let orderedSessions = store.workingSessions + store.recentSessions
-        for session in orderedSessions.prefix(64) {
+        for session in orderedSessions.prefix(max(0, 64 - pushedCount)) {
             let title = store.displayTitle(for: session)
-            let repo = store.sessionMetaByID[session.id]?.folder ?? workspaceName
-            let branch = session.model.isEmpty ? "antigravity" : session.model
+            let repo = store.sessionMetaByID[session.id]?.folder ?? store.workspaceName
+            let branch = session.model.isEmpty ? "openagents" : session.model
             let attention = !session.interactionID.isEmpty
             let statusText = attention ? "Needs you" : Self.relativeAge(nowMs: nowMs, atMs: session.updatedAtMs)
             oa_ios_sessions_push(
@@ -395,11 +499,11 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
                 branch,
                 statusText,
                 session.busy ? 1 : 0,
-                session.id == store.activeSessionID ? 1 : 0,
+                (!cloudMode && session.id == store.activeSessionID) ? 1 : 0,
                 attention ? 1 : 0,
                 0
             )
-            if session.id == store.activeSessionID {
+            if !cloudMode && session.id == store.activeSessionID {
                 let lastAsk = store.items.last(where: { $0.role == .user }).map { ParsedUserMessage.parse($0.text).text } ?? ""
                 let lastTool = store.items.last(where: { $0.role == .tool }).map {
                     let target = $0.path.isEmpty ? $0.text : $0.path
@@ -412,11 +516,76 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             }
         }
 
+        // Universal Introspection sidebar rows: TUI & Terminal + Other Harnesses + Machines (#14068)
+        oa_ios_intro_clear(surface)
+        for intro in store.introspectSessions.prefix(48) {
+            let kindCode: Int32 = intro.kind == .tui ? OA_IOS_INTRO_TUI : OA_IOS_INTRO_HARNESS
+            let statusText = intro.status.isEmpty ? Self.relativeAge(nowMs: nowMs, atMs: intro.updatedAtMs) : intro.status
+            let shortCwd = intro.cwd.split(separator: "/").last.map(String.init) ?? intro.cwd
+            oa_ios_intro_push(
+                surface,
+                kindCode,
+                intro.id,
+                intro.title,
+                intro.harness,
+                shortCwd,
+                statusText,
+                intro.busy ? 1 : 0,
+                intro.id == store.activeIntrospectSession?.id ? 1 : 0
+            )
+        }
+
+        oa_ios_machines_clear(surface)
+        if account.isLoggedIn {
+            oa_ios_machines_push(
+                surface,
+                MobileCloudChat.cloudMachineID,
+                "OpenAgents Cloud",
+                account.email.isEmpty ? "openagents.com" : account.email,
+                cloudChat.isStreamConnected ? OA_IOS_REACH_OK : OA_IOS_REACH_CHECKING,
+                Int32(cloudChat.conversations.count),
+                cloudMode ? 1 : 0
+            )
+        }
+        for comp in store.computers.prefix(15) {
+            let compReach: Int32 = {
+                switch comp.reachability {
+                case .reachable: return OA_IOS_REACH_OK
+                case .checking: return OA_IOS_REACH_CHECKING
+                case .refused, .unreachable: return OA_IOS_REACH_BAD
+                case .unknown: return comp.canSendRPC ? OA_IOS_REACH_CHECKING : OA_IOS_REACH_UNKNOWN
+                }
+            }()
+            let detail = comp.dns.isEmpty ? comp.ip : comp.dns
+            let sessCnt = Int32(store.machineSessionCounts[comp.id] ?? (comp.id == store.activeComputerID ? store.sessions.count : 0))
+            oa_ios_machines_push(
+                surface,
+                comp.id,
+                comp.name,
+                detail,
+                compReach,
+                sessCnt,
+                (!cloudMode && comp.id == store.activeComputerID) ? 1 : 0
+            )
+        }
+
         // Transcript items
-        let sessionChanged = store.activeSessionID != lastSyncedSessionID
-        lastSyncedSessionID = store.activeSessionID
+        let currentViewKey: String? = {
+            if cloudMode {
+                return activeCloud.map { "cloud:\($0.id)" } ?? "cloud:new"
+            }
+            return activeIntro.map { "intro:\($0.id)" } ?? store.activeSessionID
+        }()
+        let sessionChanged = currentViewKey != lastSyncedSessionID
+        lastSyncedSessionID = currentViewKey
         oa_ios_items_clear(surface, sessionChanged ? 1 : 0)
-        for item in store.items.suffix(192) {
+        let displayItems: [TranscriptItem] = {
+            if cloudMode {
+                return activeCloud.map { cloudChat.transcriptItems(for: $0) } ?? []
+            }
+            return store.items
+        }()
+        for item in displayItems.suffix(192) {
             let roleCode: Int32
             let displayText: String
             switch item.role {
@@ -473,7 +642,8 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         // Picker catalogs: Models, Efforts, Modes
         oa_ios_models_clear(surface)
         for m in store.availableModels.prefix(24) {
-            let detail = m.supportsThinking ? "\(m.family) · Reasoning" : m.family
+            var detail = m.isLocalFreeCompute ? "\(m.family) · $0 Local" : m.family
+            if m.supportsThinking { detail += " · Reasoning" }
             oa_ios_models_push(surface, m.id, m.label, detail, m.id == store.selectedModelID ? 1 : 0)
         }
 
@@ -542,14 +712,36 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
                 _ = editor.resignFirstResponder()
             }
             oa_ios_blur(surface)
-            Task { await store.sendMessage() }
+            if isCloudActive {
+                let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !prompt.isEmpty {
+                    store.draftText = ""
+                    _ = oa_ios_draft_set(surface, "")
+                    editor.set("")
+                    Task { await cloudChat.sendCloudMessage(prompt) }
+                }
+            } else {
+                Task { await store.sendMessage() }
+            }
         case OA_IOS_ACT_STOP:
-            Task { await store.stopActiveTurn() }
+            dictation.stopSpeakingImmediate()
+            if !isCloudActive {
+                Task { await store.stopActiveTurn() }
+            }
         case OA_IOS_ACT_NEW_CHAT:
-            store.startNewChat()
+            if isCloudActive {
+                cloudChat.startNewCloudChat()
+            } else {
+                store.startNewChat()
+            }
             _ = focusComposer()
         case OA_IOS_ACT_SELECT_SESSION:
-            if let session = store.sessions.first(where: { $0.id == arg }) {
+            if arg.hasPrefix("cloud:") {
+                let cid = String(arg.dropFirst("cloud:".count))
+                shell.preferCloudMode = true
+                cloudChat.selectConversation(cid)
+            } else if let session = store.sessions.first(where: { $0.id == arg }) {
+                shell.preferCloudMode = false
                 store.selectSession(session)
             }
         case OA_IOS_ACT_OPEN_COMPUTERS:
@@ -633,6 +825,50 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             if arg == "1" {
                 dismissKeyboard(surface)
             }
+        case OA_IOS_ACT_TOGGLE_FULL_AUTO:
+            store.toggleFullAuto()
+        case OA_IOS_ACT_OPEN_USAGE:
+            dismissKeyboard(surface)
+            store.isUsagePresented = true
+            Task { await store.refreshUsage() }
+        case OA_IOS_ACT_TOGGLE_LIVE_VOICE:
+            dismissKeyboard(surface)
+            dictation.speechRate = store.store.voiceSpeechRate
+            dictation.vadSilenceCommitMs = Int64(store.store.voiceVadSilenceMs)
+            dictation.toggleLiveVoice(
+                onPartial: { [weak self] spoken in
+                    self?.store.draftText = spoken
+                    self?.markDirtyAndWake()
+                },
+                onAutoSend: { [weak self] spoken in
+                    guard let self else { return }
+                    self.store.draftText = ""
+                    self.markDirtyAndWake()
+                    Task { await self.store.sendMessage(overrideText: spoken, overrideAttachments: []) }
+                },
+                onBargeIn: { [weak self] in
+                    guard let self else { return }
+                    self.markDirtyAndWake()
+                    Task { await self.store.stopActiveTurn() }
+                }
+            )
+        case OA_IOS_ACT_SELECT_INTRO:
+            shell.preferCloudMode = false
+            store.selectIntrospectSessionByID(arg)
+        case OA_IOS_ACT_SELECT_MACHINE:
+            if arg == MobileCloudChat.cloudMachineID {
+                shell.preferCloudMode = true
+                Task { await cloudChat.refreshConversations() }
+            } else {
+                shell.preferCloudMode = false
+                store.selectMachineByID(arg)
+            }
+        case OA_IOS_ACT_OPEN_ACCOUNT:
+            dismissKeyboard(surface)
+            shell.isAccountPresented = true
+        case OA_IOS_ACT_OPEN_WALLET:
+            dismissKeyboard(surface)
+            shell.isWalletPresented = true
         default:
             break
         }
@@ -742,8 +978,14 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
                 self?.markDirtyAndWake()
             })
         }
-        sheet.addAction(UIAlertAction(title: "Antigravity Hub", style: .default) { [weak self] _ in
+        sheet.addAction(UIAlertAction(title: "Agent Hub", style: .default) { [weak self] _ in
             self?.store.isHubPresented = true
+        })
+        sheet.addAction(UIAlertAction(title: "Account & Cloud", style: .default) { [weak self] _ in
+            self?.shell.isAccountPresented = true
+        })
+        sheet.addAction(UIAlertAction(title: "Spark Wallet", style: .default) { [weak self] _ in
+            self?.shell.isWalletPresented = true
         })
         sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         if let popover = sheet.popoverPresentationController {

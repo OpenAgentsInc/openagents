@@ -17,7 +17,7 @@
 // exposure, five data classes.
 #authority;
 #load "../place.coax";
-#load "../harness/consent.coax";
+#load "../../../coax/lib/agent/engine/consent.coax";
 #load "../../tests/peer-trust-checks.coax";  // the checks' pipeline walk, brute-force placer and hand-worked fleet
 
 #test "a tier comes only from recorded evidence" {

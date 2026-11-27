@@ -149,18 +149,17 @@ cp_env_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   _ = coder_page_env_device_add(s, "npub1iphone", "iPhone 16 Pro", "Tailscale · 100.90.0.20");
   coder_page_env_pair_code_set(s, "PAIR-9942");
 
-  // Search hides Connections when environments & pairing flags are off, and finds them when on.
+  // Settings -> Connections is promoted into --minimal and always visible/searchable (#14066).
   hits: [CP_SET_HITS] int;
   es := cp_set_entries();
-  #assert cp_set_hits_in("connections", hits[..], false) == 0 && !cp_set_page_ok(false, CP_PG_CONNECTIONS);
-  ef := dc_flag_bit(DC_FLAG_ENVIRONMENTS) | dc_flag_bit(DC_FLAG_PAIRING);
-  hn := cp_set_hits_flags("connections", hits[..], ef);
+  #assert cp_set_page_ok(false, CP_PG_CONNECTIONS);
+  hn := cp_set_hits_flags("connections", hits[..], 0);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_CONNECTIONS;
-  hn = cp_set_hits_flags("tailscale", hits[..], dc_flag_bit(DC_FLAG_PAIRING));
+  hn = cp_set_hits_flags("tailscale", hits[..], 0);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_CONNECTIONS;
-  hn = cp_set_hits_flags("keep awake", hits[..], dc_flag_bit(DC_FLAG_ENVIRONMENTS));
+  hn = cp_set_hits_flags("keep awake", hits[..], 0);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_CONNECTIONS && es[hits[0]].id == "set.env.awake";
-  #assert cp_set_page_ok_flags(ef, CP_PG_CONNECTIONS);
+  #assert cp_set_page_ok_flags(0, CP_PG_CONNECTIONS);
 
   // Open Settings -> Connections and render a frame cleanly.
   coder_page_settings_open(s, CP_PG_CONNECTIONS, "");

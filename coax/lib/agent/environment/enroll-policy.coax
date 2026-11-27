@@ -1,0 +1,75 @@
+// WorkOS-compatible computer enrollment admission & validation policy.
+#authority;
+
+EA_ONLINE_WINDOW_MS :: 120000;
+
+// Verified person accounts (including WorkOS L1 and email L1) may enroll and
+// manage their own computers unless limited or frozen.
+ea_enroll_admit :: (kind: int, verified: bool, account: string, limited: bool, frozen: bool) -> bool #effects(all) {
+  return kind == 2 && verified && account.count > 0 && !limited && !frozen;
+}
+
+ea_enroll_os_ok :: (os: string) -> bool #effects(all) {
+  return os == "" || os == "macos" || os == "linux" || os == "windows";
+}
+
+ea_enroll_relay_ok :: (relay: string) -> bool #effects(all) {
+  if relay.count < 8 || relay.count > 256 { return false; }
+  for c: relay { if c < 33 || c == 127 { return false; } }
+  if cast(string) relay[0..<6] == "wss://" { return true; }
+  if relay.count >= 14 && (cast(string) relay[0..<14] == "ws://127.0.0.1" || cast(string) relay[0..<14] == "ws://localhost") { return true; }
+  return false;
+}
+
+ea_enroll_online :: (last_seen_ms: int, now_ms: int) -> bool #effects(all) {
+  return last_seen_ms > 0 && now_ms >= last_seen_ms && now_ms - last_seen_ms <= EA_ONLINE_WINDOW_MS;
+}
+
+eae_ws_id_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > 64 { return false; }
+  for c: s {
+    if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+  }
+  return true;
+}
+
+#test "enrollment admission requires verified non-limited non-frozen person account" {
+  #assert ea_enroll_admit(2, true, "a", false, false);
+  #assert ea_enroll_admit(2, true, "acct_1", false, false);
+  #assert !ea_enroll_admit(2, false, "acct_1", false, false);
+  #assert !ea_enroll_admit(2, true, "", false, false);
+  #assert !ea_enroll_admit(2, true, "acct_1", true, false);
+  #assert !ea_enroll_admit(2, true, "acct_1", false, true);
+  for k: 0..<6 { if k != 2 { #assert !ea_enroll_admit(k, true, "acct_1", false, false); } }
+}
+
+#test "enrollment OS, relay, online window, and workspace ID boundaries hold strictly" {
+  #assert ea_enroll_os_ok("") && ea_enroll_os_ok("macos") && ea_enroll_os_ok("linux") && ea_enroll_os_ok("windows");
+  #assert !ea_enroll_os_ok("darwin") && !ea_enroll_os_ok("plan9");
+  #assert ea_enroll_relay_ok("wss://a!");
+  #assert !ea_enroll_relay_ok("wss://a");
+  #assert ea_enroll_relay_ok("wss://relay.openagents.com");
+  #assert ea_enroll_relay_ok("ws://127.0.0.1") && ea_enroll_relay_ok("ws://localhost");
+  #assert !ea_enroll_relay_ok("ws://127.0.0.") && !ea_enroll_relay_ok("ws://localhos");
+  #assert !ea_enroll_relay_ok("ws://evil.example.com") && !ea_enroll_relay_ok("wss://a b");
+  bad_del := [8] u8.['w', 's', 's', ':', '/', '/', 'a', 127];
+  #assert !ea_enroll_relay_ok(cast(string) bad_del[..]);
+  bad_sp := [8] u8.['w', 's', 's', ':', '/', '/', 'a', 32];
+  #assert !ea_enroll_relay_ok(cast(string) bad_sp[..]);
+  max_r: [257] u8;
+  for i: 0..<max_r.count { max_r[i] = 'a'; }
+  max_r[0] = 'w'; max_r[1] = 's'; max_r[2] = 's'; max_r[3] = ':'; max_r[4] = '/'; max_r[5] = '/';
+  #assert ea_enroll_relay_ok(cast(string) max_r[0..<256]) && !ea_enroll_relay_ok(cast(string) max_r[..]);
+  #assert ea_enroll_online(1, 1) && ea_enroll_online(1000, 121000);
+  #assert !ea_enroll_online(0, 0) && !ea_enroll_online(0, 1000) && !ea_enroll_online(1001, 1000) && !ea_enroll_online(1000, 121001);
+  ws65: [65] u8;
+  for i: 0..<ws65.count { ws65[i] = 'a'; }
+  #assert !eae_ws_id_ok("") && eae_ws_id_ok("a") && eae_ws_id_ok(cast(string) ws65[0..<64]) && !eae_ws_id_ok(cast(string) ws65[..]);
+  #assert eae_ws_id_ok("AZaz09-_.x") && !eae_ws_id_ok("a/b");
+}
+
+#forall "workspace ID byte acceptance matches exact character set" ch: u8 {
+  ok := (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.';
+  b := [1] u8.[ch];
+  #assert eae_ws_id_ok(cast(string) b[..]) == ok;
+}

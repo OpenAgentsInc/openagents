@@ -1,25 +1,22 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, swiftc and codesign; holds no logic)
-# Builds OpenAgents.app for this Mac: the page (app.coax / app-v1.coax) compiled to C on the shared
+# Builds OpenAgents.app for this Mac: the page (app.coax) compiled to C on the shared
 # component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the
-# component shader emitted as Metal, the Inky local worker (coder/tui/inky.coax) it talks to, and the daemon (coder/tui/host.coax) that runs it.
-#   apps/openagents-desktop/build.sh [--minimal|--full] [--fast] [--open]
-#   OA_RELEASE_MINIMAL=0 apps/openagents-desktop/build.sh          builds the full developer app
+# component shader emitted as Metal, the workers it talks to, and the daemon (openagents/daemon/host.coax) that runs it.
+#   apps/openagents-desktop/build.sh [--fast] [--open]
 #   CODER_BUILD=/tmp/coder apps/openagents-desktop/build.sh        builds into another folder
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 coax="${COAX:-$repo/coax/bin/coax}"
-minimal="${OA_RELEASE_MINIMAL:-1}"
 swift_opt="-O"
 open_app=0
 for arg in "$@"; do
   case "$arg" in
-    --minimal) minimal=1 ;;
-    --full) minimal=0 ;;
+    --minimal|--full) ;;  # unified build profile (#14116); kept as compatibility aliases
     --fast) swift_opt="-Onone" ;;
     --open) open_app=1 ;;
-    *) echo "build.sh: unknown argument: $arg (usage: build.sh [--minimal|--full] [--fast] [--open])" >&2; exit 2 ;;
+    *) echo "build.sh: unknown argument: $arg (usage: build.sh [--fast] [--open])" >&2; exit 2 ;;
   esac
 done
 work="${CODER_BUILD:-$here/build}"   # CODER_BUILD=DIR builds a second copy and leaves a running OpenAgents's files alone
@@ -40,7 +37,7 @@ obj_stale() {
   for dep in "$@"; do [[ -e "$dep" && "$dep" -nt "$obj" ]] && return 0; done
   return 1
 }
-build_sig="$minimal|$swift_opt|$(/usr/bin/clang --version | head -n 1)"
+build_sig="unified|$swift_opt|$(/usr/bin/clang --version | head -n 1)"
 if [[ "${OA_CLEAN_BUILD:-0}" == "1" || "$(cat "$work/c/.build-sig" 2>/dev/null || true)" != "$build_sig" ]]; then
   rm -rf "$work/c"
   mkdir -p "$work/c"
@@ -48,23 +45,16 @@ if [[ "${OA_CLEAN_BUILD:-0}" == "1" || "$(cat "$work/c/.build-sig" 2>/dev/null |
 fi
 source "$here/sign.sh"
 sign_prepare "$work"
-if [[ "$minimal" == "1" ]]; then
-  swift_defs+=(-D OA_MINIMAL -D OA_WALLET -Xcc -DOA_MINIMAL -Xcc -DOA_WALLET)
-else
-  swift_defs+=(-D OA_FULL -D OA_WALLET -Xcc -DOA_FULL -Xcc -DOA_WALLET)
-fi
+swift_defs=(-D OA_WALLET -Xcc -DOA_WALLET)
 app_coax="$here/app.coax"
-if [[ "$minimal" == "1" && -f "$here/app-v1.coax" ]]; then
-  app_coax="$here/app-v1.coax"
-fi
 # Build independent Coax workers & Psionic Metal runtime in parallel with page C/Swift compiles.
 # COAX_TOOL_BUILD_ONLY=1 compiles without executing workers (prevents 0-byte .ajr leaks).
 worker_pids=()
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" < /dev/null > /dev/null & worker_pids+=($!)
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/runtime/oa-worker.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/workers/gitguard.coax" < /dev/null > /dev/null & worker_pids+=($!)
 # claudeworker ships in --minimal too: a chat may hand a task to Claude Code as a sub-agent (GitHub #14104)
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null & worker_pids+=($!)
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/workers/claudeworker.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/daemon/host.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX="$coax" "$repo/psionic/platform/inkling-build.sh" "$work/psionic-inkling" > /dev/null & worker_pids+=($!)
 
 gen_pids=()
@@ -197,6 +187,8 @@ core_swift=(
   "$here/Window+Worktrees.swift" "$here/Worker.swift" "$here/Worktree.swift" "$here/KeepAwake.swift"
   "$here/Window+GitDiff.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"
   "$here/AgentSettings.swift" "$here/TitleGenerator.swift" "$here/Window+Usage.swift" "$here/Window+Voice.swift"
+  "$here/Window+Environments.swift" "$here/Window+Introspect.swift"
+  "$here/Foreman.swift" "$here/ForemanOperator.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift"
   "$here/Window+Wallet.swift"
   "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift"
   "$repo/apps/shared/host/apple/BreezKey.swift" "$repo/apps/shared/host/apple/BIP39.swift"
@@ -204,8 +196,7 @@ core_swift=(
 )
 swift_files=("${core_swift[@]}")
 
-if [[ "$minimal" != "1" ]]; then
-  "$coax" c "$repo/metaverse/rh-flythrough.coax" --library --header "$work/c/rh-flythrough.h" > "$work/c/rh-flythrough.c"
+"$coax" c "$repo/metaverse/rh-flythrough.coax" --library --header "$work/c/rh-flythrough.h" > "$work/c/rh-flythrough.c"
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/rh-flythrough.c" -o "$work/c/rh-flythrough-all.o"
   ld -r "$work/c/rh-flythrough-all.o" -exported_symbol '_oa_dc_rh3d_*' -o "$work/c/rh-flythrough.o"
   "$coax" metal "$repo/metaverse-engine/gpu/model-view-shader.coax" --vertex mv_vs --fragment mv_fs -o "$res/Components/metaverse-model.metal" 2> "$work/c/metaverse-model.metal.bind"
@@ -216,6 +207,11 @@ if [[ "$minimal" != "1" ]]; then
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/metaverse-viewer.c" -o "$work/c/metaverse-viewer-all.o"
   ld -r "$work/c/metaverse-viewer-all.o" -exported_symbol '_oa_mv_*' -o "$work/c/metaverse-viewer.o"
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$here" -c "$here/mv_host.c" -o "$work/c/mv_host.o"
+  if [[ ! -s "$repo/gamebuilder/build/stamp.coax" ]]; then
+    mkdir -p "$repo/gamebuilder/build"
+    gb_sha="$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo "0000000000")"
+    printf 'GB_COMMIT :: "%s";\nGB_DIRTY :: false;\n' "${gb_sha:0:10}" > "$repo/gamebuilder/build/stamp.coax"
+  fi
   if obj_stale "$work/c/gamebuilder-core.o" "$repo/gamebuilder/core/desktop-bridge.coax" "$repo/gamebuilder/core/controls.coax" "$repo/gamebuilder/core/editor.coax" "$repo/gamebuilder/core/commands.coax" "$repo/gamebuilder/core/world.coax"; then
     "$coax" c "$repo/gamebuilder/core/desktop-bridge.coax" --run-steps 250000000 --library --header "$work/c/gamebuilder-core.h" > "$work/c/gamebuilder-core.c"
     /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/gamebuilder-core.c" -o "$work/c/gamebuilder-core-all.o"
@@ -238,25 +234,22 @@ if [[ "$minimal" != "1" ]]; then
   )
   full_swift=(
     "$here/ScheduledTasks.swift" "$here/ThreadProof.swift" "$here/CapabilityStudio.swift" "$here/AgentsPage.swift"
-    "$here/Window+Foreman.swift" "$here/Window+Customize.swift" "$here/Window+Environments.swift"
+    "$here/Window+Foreman.swift" "$here/Window+Customize.swift"
     "$here/Window+McpSkills.swift" "$here/Window+Providers.swift"
     "$here/Window+Simulator.swift" "$here/Window+Terminal.swift"
     "$here/GameBuilderSession.swift" "$here/GtaWorkbenchSession.swift" "$here/MetaverseViewportView.swift" "$here/Window+Metaverse.swift"
     "$here/SceneModel.swift" "$here/SceneView.swift" "$here/ScenePanelView.swift"
     "$here/GymDiscovery.swift" "$here/GymBenchmarkView.swift" "$here/GymTerminalBenchView.swift" "$here/GymGBenchView.swift"
     "$here/RhFlythroughView.swift" "$here/GymWorkbenchView.swift" "$here/GymWorkbenchView+Plan.swift" "$here/Window+Gym.swift"
-    "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift"
     "$here/Window+WalletRPC.swift"
     "$here/Window+Rich.swift"
     "$here/Window+Scheduled.swift" "$here/Window+Preview.swift" "$here/Window+Forge.swift"
     "$here/BrowserViewportView.swift" "$here/Window+Browser.swift"
-    "$here/Foreman.swift" "$here/ForemanOperator.swift"
   )
   swift_files+=("${full_swift[@]}")
   link_flags+=(
     -framework CoreMedia -framework CoreVideo -framework WebKit -framework ModelIO
   )
-fi
 
 xcrun -sdk macosx swiftc "$swift_opt" -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 ${swift_defs[@]+"${swift_defs[@]}"} -import-objc-header "$here/Bridge.h" \
   "${swift_files[@]}" \
@@ -264,9 +257,7 @@ xcrun -sdk macosx swiftc "$swift_opt" -swift-version 5 -suppress-warnings -parse
   "${link_flags[@]}" \
   -o "$stage_app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$stage_app/Contents/Info.plist"
-build_profile="full"; [[ "$minimal" == "1" ]] && build_profile="minimal"
 /usr/libexec/PlistBuddy -c "Delete :OAProfile" "$stage_app/Contents/Info.plist" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :OAProfile string $build_profile" "$stage_app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Delete :OABuildDate" "$stage_app/Contents/Info.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :OABuildDate string $(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$stage_app/Contents/Info.plist"
 if build_sha="$(git -C "$repo" rev-parse HEAD 2>/dev/null)"; then
@@ -292,14 +283,13 @@ cp "$repo/components/icons/"*.svg "$res/Components/icons/"
 cp "$repo/components/NOTICE" "$res/Components/NOTICE"
 cp "$repo/metaverse/stage-resources/bip39-english.txt" "$res/bip39-english.txt"
 
-if [[ "$minimal" != "1" ]]; then
-  full_pids=()
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null & full_pids+=($!)
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oasim.coax" < /dev/null > /dev/null & full_pids+=($!)
+full_pids=()
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/workers/agyworker.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/device/oasim.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null & full_pids+=($!)
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/lean-run.coax" < /dev/null > /dev/null & full_pids+=($!)
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/tbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/lean/lean-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/tbench/tbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/gbench/gbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/proof-export.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/capability-eval.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/agents-catalog.coax" < /dev/null > /dev/null & full_pids+=($!)
@@ -345,7 +335,6 @@ if [[ "$minimal" != "1" ]]; then
   chmod +x "$res/foreman-ctl"
   mkdir -p "$res/fixtures"
   [[ -f "$repo/metaverse-engine/fixtures/ple-data-hall-sample.ple-scene.json" ]] && cp "$repo/metaverse-engine/fixtures/ple-data-hall-sample.ple-scene.json" "$res/fixtures/ple-data-hall-sample.ple-scene.json"
-fi
 
 sign_bundle "$stage_app" "$work"
 rm -rf "$work/OpenAgents.app.old"

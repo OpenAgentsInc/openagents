@@ -46,6 +46,7 @@ OaAgentDef :: struct {
   color: [OA_AGENT_COLOR_MAX] u8; ncolor: int;
   memory_scope: int;
   isolation_worktree: bool;
+  git: [8] u8; ngit: int;   // the file's own default git rule: none, commit or push ("" = the usual default; #14104)
   background: bool;
   omit_claudemd: bool;
   one_shot: bool;
@@ -321,6 +322,10 @@ oa_agents_parse_markdown :: (src: string, fallback_name: string, source_tier: u8
         d.background = oa_parse_bool_word(val);
       } else if oa_ag_eq_ci(key, "isolation") {
         d.isolation_worktree = oa_ag_eq_ci(val, "worktree");
+      } else if oa_ag_eq_ci(key, "git") {
+        if oa_ag_eq_ci(val, "none") { d.ngit = oa_ag_copy(d.git[..], "none"); }
+        else if oa_ag_eq_ci(val, "commit") { d.ngit = oa_ag_copy(d.git[..], "commit"); }
+        else if oa_ag_eq_ci(val, "push") { d.ngit = oa_ag_copy(d.git[..], "push"); }
       } else if oa_ag_eq_ci(key, "color") {
         d.ncolor = oa_ag_copy(d.color[..], val);
       } else if oa_ag_eq_ci(key, "memory") {
@@ -714,6 +719,12 @@ oa_agent_build_fork_user_turn :: (tool_ids: [] string, directive: string, out: [
   #assert cast(string) cdef[0].model[0..<cdef[0].nmodel] == "gemini-4-carbon";
   #assert cdef[0].permission_mode == FLAWED_PMODE_PLAN && cdef[0].background && cdef[0].isolation_worktree;
   #assert cdef[0].memory_scope == OA_AGENT_MEM_PROJECT && cdef[0].read_only;
+  // a file's own git rule (#14104): none, commit or push; anything else is no rule of its own
+  #assert cdef[0].ngit == 0;
+  gdef: [1] OaAgentDef;
+  #assert oa_agents_parse_markdown("---\nname: shipper\ndescription: Ships\ngit: Commit\n---\nShip it.", "fallback", FLAWED_ASRC_PROJECT, gdef[..]);
+  #assert cast(string) gdef[0].git[0..<gdef[0].ngit] == "commit";
+  #assert oa_agents_parse_markdown("---\nname: odd\ndescription: Odd\ngit: force\n---\nx", "fallback", FLAWED_ASRC_PROJECT, gdef[..]) && gdef[0].ngit == 0;
   #assert oa_agents_upsert(reg[..], cdef[0]);
   #assert reg[0].count == 5;
 

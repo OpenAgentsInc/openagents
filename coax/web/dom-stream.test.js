@@ -201,12 +201,13 @@ test("non-retryable 404 SSE response terminates without reconnecting", async () 
   });
 
   const events = [];
+  const decoder = new TextDecoder();
   const pool = createStreamPool({
     fetchImpl: (path, init) => fetch(srv.baseUrl + path, init),
     baseBackoffMs: 20,
-    onEvent(kind, status) {
+    onEvent(kind, status, bytes) {
       const rel = kind - DOM_STREAM_BASE;
-      events.push({ slot: Math.floor(rel / 4), phase: rel % 4, status });
+      events.push({ slot: Math.floor(rel / 4), phase: rel % 4, status, text: bytes ? decoder.decode(bytes) : "" });
     },
   });
 
@@ -215,6 +216,8 @@ test("non-retryable 404 SSE response terminates without reconnecting", async () 
     await waitFor(() => events.some((e) => e.slot === 3 && e.phase === DOM_STREAM_ERROR && e.status === 404));
     await new Promise((r) => setTimeout(r, 80));
     assert.equal(calls, 1);
+    const errEv = events.find((e) => e.slot === 3 && e.phase === DOM_STREAM_ERROR);
+    assert.equal(errEv.text, '{"error":"not found"}');
   } finally {
     pool.stopAll();
     await srv.close();

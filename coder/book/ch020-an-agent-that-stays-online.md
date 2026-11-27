@@ -461,7 +461,7 @@ before its Worker ended.
 
 ### A browser uses this computer
 
-`coder host` ([host.coax](../../coder/tui/host.coax)) lets the realm
+`coder host` ([host.coax](../../openagents/daemon/host.coax)) lets the realm
 builder on openagents.com run jobs on your computer, with your Claude Code
 or Codex login, without that login leaving the computer. The browser and
 the computer talk through a Nostr relay, `wss://relay.openagents.com` by
@@ -534,7 +534,7 @@ compile-time budget. Coder's own build stays as fast as before.
 
 Every rule a browser meets is in two `#authority` files, each checked by
 `coax mutate` with no mutant left alive.
-[host_grants.coax](../../coder/tui/host_grants.coax) holds the grant
+[host_grants.coax](../../openagents/daemon/host_grants.coax) holds the grant
 record: pairing waits and limits, allow, deny, forget and epochs, what
 `browser.status` answers, the refusal code for each admission verdict, that
 only the key that started a thread may read or stop it, the two-job limit,
@@ -544,10 +544,10 @@ verdicts, the roots, the `--realm-tools` exception, and Codex's sandbox.
 
 `coder host call OP --host KEY --browser-key FILE ...` is a stand-in
 browser: it sends one request and prints the reply's body. The smoke,
-[host_smoke.coax](../../coder/tui/host_smoke.coax), runs the relay and
+[host_smoke.coax](../../openagents/daemon/tests/host_smoke.coax), runs the relay and
 `coder host` as child processes and plays the browser with it. It runs a
 job on the echo engine first. Then it serves the same host on the claude
-engine, with [claude_standin.coax](../../coder/tui/claude_standin.coax)
+engine, with [claude_standin.coax](../../openagents/workers/tests/claude_standin.coax)
 first on `PATH` as `claude`. The stand-in speaks Claude Code's stream-json
 control protocol with no login and no model. Its realm job calls
 `realm_show`, a shell command, a file write and `realm_world_place`. The smoke

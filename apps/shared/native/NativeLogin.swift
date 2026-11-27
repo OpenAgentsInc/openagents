@@ -232,7 +232,7 @@ import CoreText
         } else if action==9 {
             editor.resignFirstResponder()
             let emailHint=text(1).trimmingCharacters(in:.whitespacesAndNewlines)
-            let alert=UIAlertController(title:"Email & Password",message:"Sign in or create an account.",preferredStyle:.alert)
+            let alert=UIAlertController(title:"Email & Password",message:"Sign in or create an account.",preferredStyle:.alert) // stock: system secure-text email+password alert
             alert.addTextField { tf in tf.placeholder="you@example.com";tf.keyboardType = .emailAddress;tf.autocapitalizationType = .none;tf.text=emailHint }
             alert.addTextField { tf in tf.placeholder="Password";tf.isSecureTextEntry=true }
             let submit:(Bool)->Void={ [weak self,weak alert] reg in
@@ -284,7 +284,7 @@ import CoreText
         case .needOrg(let orgPending,let orgs):
             guard !orgs.isEmpty else {reply(action,false,"No organization available for this account.");return}
             let picked:String?=await withCheckedContinuation { cont in
-                let sheet=UIAlertController(title:"Choose an organization",message:nil,preferredStyle:.actionSheet)
+                let sheet=UIAlertController(title:"Choose an organization",message:nil,preferredStyle:.actionSheet) // stock: system organization picker action sheet
                 for org in orgs {sheet.addAction(UIAlertAction(title:org.name,style:.default) { _ in cont.resume(returning:org.id) })}
                 sheet.addAction(UIAlertAction(title:"Cancel",style:.cancel) { _ in cont.resume(returning:nil) })
                 if let pop=sheet.popoverPresentationController {pop.sourceView=self.view;pop.sourceRect=CGRect(x:self.view.bounds.midX,y:self.view.bounds.midY,width:1,height:1)}
@@ -298,7 +298,7 @@ import CoreText
             } catch {reply(action,false,error.localizedDescription)}
         case .verifyEmail(let emailPending):
             let entered:String?=await withCheckedContinuation { cont in
-                let alert=UIAlertController(title:"Verify your email",message:"Enter the 6-digit verification code sent to your email.",preferredStyle:.alert)
+                let alert=UIAlertController(title:"Verify your email",message:"Enter the 6-digit verification code sent to your email.",preferredStyle:.alert) // stock: system email verification code alert
                 alert.addTextField { tf in tf.placeholder="123456";tf.keyboardType = .numberPad }
                 alert.addAction(UIAlertAction(title:"Verify",style:.default) { _ in cont.resume(returning:alert.textFields?.first?.text) })
                 alert.addAction(UIAlertAction(title:"Cancel",style:.cancel) { _ in cont.resume(returning:nil) })

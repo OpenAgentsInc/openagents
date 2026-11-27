@@ -1,6 +1,6 @@
-# Flawed (`flawed/`)
+# OpenAgents Core (`openagents/core/`)
 
-Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter from the `cc` reverse-engineering manuscript (`~/work/cc/book`), replacing TypeScript/Bun/React/Zod workarounds with checked native Coax primitives (`@id` nominal types, generational `Handle(T)`, `#authority;` zero-survivor mutation boundaries, caller-owned bounded buffers, and zero-dependency state machines).
+Pure Coax autonomous coding agent core (`agent-core` bounded context), paired with the unified agent runtime (`openagents/runtime/`), resident daemon (`openagents/daemon/`), and external delegated workers (`openagents/workers/`). Built with checked native Coax primitives (`@id` nominal types, generational `Handle(T)`, `#authority;` zero-survivor mutation boundaries, caller-owned bounded buffers, and zero-dependency state machines).
 
 ## Chapter Progress
 
@@ -34,10 +34,9 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 ## Verification
 
 ```sh
-./coax/bin/coax test flawed/core.coax --library
-./coax/bin/coax mutate flawed/ids.coax --root-only
-./coax/bin/coax mutate flawed/scheduler.coax --root-only
+./coax/bin/coax test openagents/core/core.coax --library
+./coax/bin/coax test openagents/runtime/oa-worker.coax --library
+./coax/bin/coax mutate openagents/core/ids.coax --root-only
+./coax/bin/coax mutate openagents/core/scheduler.coax --root-only
 ./coax/web/tool.sh layer-check
-./coax/web/tool.sh flawed/tools/flawed-cli.coax selftest
-./coax/web/tool.sh flawed/tools/flawed-cli.coax inspect flawed/README.md
 ```

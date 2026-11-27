@@ -1,12 +1,12 @@
 ---
 trigger: glob
-globs: "apps/openagents-desktop/**, apps/shared/**, coax/lib/agent/desktop/**, coder/tui/**"
+globs: "apps/openagents-desktop/**, apps/shared/**, coax/lib/agent/desktop/**, openagents/runtime/**, openagents/daemon/**, openagents/workers/**"
 description: OpenAgents Desktop --minimal build/install contract, live UI E2E verification, and worker hygiene.
 ---
 
 # OpenAgents Desktop & Worker Rules
 
-- **`--minimal` is the primary build:** `apps/openagents-desktop/build.sh` and `install.sh` default to `--minimal`. Never build `--full` unless explicitly requested. Remember `--minimal` runs `inky` (`coax/lib/inky/`, `coder/tui/inky.coax`) for local Inkling and `agyworker` (`coder/tui/agyworker.coax`) for Antigravity — NOT `mcworker`.
+- **`--minimal` is the primary build:** `apps/openagents-desktop/build.sh` and `install.sh` default to `--minimal`. Never build `--full` unless explicitly requested. Remember `--minimal` runs `oa-worker` (`openagents/runtime/oa-worker.coax`), `claudeworker` (`openagents/workers/claudeworker.coax`), `gitguard` (`openagents/workers/gitguard.coax`), and `coder-host` (`openagents/daemon/host.coax`) — NOT legacy `mcworker`.
 - **Single canonical install path:** Never hand-copy an uncommitted local build into `/Applications/OpenAgents.app` (the 15-minute LaunchAgent and concurrent `install.sh` runs overwrite it from `origin/main`). Always commit + push to `origin/main` first, then run `apps/openagents-desktop/install.sh` (verify exit code `0`, not deferred exit `4`; if deferred by idle/stale runs and user requested immediate install, inspect and use `OA_INSTALL_FORCE=1`).
 - **Verify installed version truthfully:** Read `/Applications/OpenAgents.app/Contents/Info.plist` keys `OACommit`, `OAProfile`, and `CFBundleVersion` — never guess from `ls -ld OpenAgents.app` mtime.
 - **No unasked feature flags:** User-requested core flows land enabled in `--minimal` by default unless the user explicitly asks to gate them behind `coax/lib/agent/desktop/flags.coax`.

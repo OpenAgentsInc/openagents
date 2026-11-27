@@ -1,0 +1,303 @@
+// OpenAgents Cloud Tier 1 tool wire codecs, OpenAI/Gemini tool schema catalog,
+// and Exa / GitHub REST response sanitizers (#14127).
+#load "tool-policy.coax";
+#load "../json/json.coax";
+
+CLD_TOOL_REQ_SCHEMA :: "openagents.cloud.tool.req.v1alpha1";
+CLD_TOOL_RES_SCHEMA :: "openagents.cloud.tool.res.v1alpha1";
+
+CldToolReq :: struct {
+  kind: int;
+  tool: [32] u8; tool_n: int;
+  repo: [160] u8; repo_n: int;
+  path: [512] u8; path_n: int;
+  ref: [128] u8; ref_n: int;
+  query: [256] u8; query_n: int;
+  url: [1024] u8; url_n: int;
+  state: [16] u8; state_n: int;
+  num: int;
+  from_line: int;
+  to_line: int;
+}
+
+ctw_copy :: (out: [] u8, src: string) -> int #effects(all) {
+  n := ifx src.count > out.count then out.count else src.count;
+  for i: 0..<n { out[i] = src[i]; }
+  return n;
+}
+
+// Parse POST /api/tools/cloud/v1 JSON body: {"tool":"...","arguments":{...}}
+// Also accepts flat top-level arguments when "arguments" is absent.
+cld_tool_req_read :: (raw: string, allow_local_fetch: bool, out: [] CldToolReq) -> bool #effects(all) {
+  out[0] = CldToolReq.{};
+  if raw.count < 2 || raw.count > 8192 { return false; }
+  d: [1] Jv; nodes: [128] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  v := d[0];
+  tn := jv_str(v, jv_get(v, 0, "tool"), out[0].tool[..]);
+  if tn < 1 { return false; }
+  out[0].tool_n = tn;
+  tk := cld_tool_kind(cast(string) out[0].tool[0..<tn]);
+  if tk == CLD_TOOL_NONE { return false; }
+  out[0].kind = tk;
+
+  args := jv_get(v, 0, "arguments");
+  if args < 0 { args = 0; }
+  if jv_kind(v, args) != JV_OBJECT { return false; }
+
+  if tk == CLD_TOOL_WEB_SEARCH {
+    qn := jv_str(v, jv_get(v, args, "query"), out[0].query[..]);
+    if qn < 1 || qn > 256 { return false; }
+    out[0].query_n = qn;
+    nr := jv_int(v, jv_get(v, args, "num_results"), 5);
+    out[0].num = ifx nr < 1 then 1 else ifx nr > 8 then 8 else nr;
+    return true;
+  }
+  if tk == CLD_TOOL_WEB_FETCH {
+    un := jv_str(v, jv_get(v, args, "url"), out[0].url[..]);
+    if un < 11 || !cld_fetch_url_valid(cast(string) out[0].url[0..<un], allow_local_fetch) { return false; }
+    out[0].url_n = un;
+    return true;
+  }
+
+  // All github_* tools require a strict owner/repo slug.
+  rn := jv_str(v, jv_get(v, args, "repo"), out[0].repo[..]);
+  if rn < 3 || !cld_repo_valid(cast(string) out[0].repo[0..<rn]) { return false; }
+  out[0].repo_n = rn;
+
+  ref_node := jv_get(v, args, "ref");
+  if ref_node >= 0 {
+    rfn := jv_str(v, ref_node, out[0].ref[..]);
+    if rfn < 0 || !cld_ref_valid(cast(string) out[0].ref[0..<rfn]) { return false; }
+    out[0].ref_n = rfn;
+  }
+
+  if tk == CLD_TOOL_GH_TREE {
+    pn_node := jv_get(v, args, "path");
+    if pn_node >= 0 {
+      pn := jv_str(v, pn_node, out[0].path[..]);
+      if pn < 0 || !cld_rel_path_valid(cast(string) out[0].path[0..<pn], true) { return false; }
+      out[0].path_n = pn;
+    }
+    return true;
+  }
+  if tk == CLD_TOOL_GH_READ_FILE {
+    pn := jv_str(v, jv_get(v, args, "path"), out[0].path[..]);
+    if pn < 1 || !cld_rel_path_valid(cast(string) out[0].path[0..<pn], false) { return false; }
+    out[0].path_n = pn;
+    fl := jv_int(v, jv_get(v, args, "from_line"), 1);
+    tl := jv_int(v, jv_get(v, args, "to_line"), 0);
+    out[0].from_line = ifx fl < 1 then 1 else fl;
+    out[0].to_line = ifx tl < 0 then 0 else tl;
+    return true;
+  }
+  if tk == CLD_TOOL_GH_SEARCH {
+    qn := jv_str(v, jv_get(v, args, "query"), out[0].query[..]);
+    if qn < 1 || qn > 256 { return false; }
+    out[0].query_n = qn;
+    return true;
+  }
+  if tk == CLD_TOOL_GH_ISSUES {
+    sn_node := jv_get(v, args, "state");
+    if sn_node >= 0 {
+      sn := jv_str(v, sn_node, out[0].state[..]);
+      st := ifx sn > 0 then cast(string) out[0].state[0..<sn] else "";
+      if st != "open" && st != "closed" && st != "all" { return false; }
+      out[0].state_n = sn;
+    } else {
+      out[0].state_n = ctw_copy(out[0].state[..], "open");
+    }
+    return true;
+  }
+  if tk == CLD_TOOL_GH_PR {
+    prn := jv_int(v, jv_get(v, args, "number"), 0);
+    if prn < 1 || prn > 999999 { return false; }
+    out[0].num = prn;
+    return true;
+  }
+  return false;
+}
+
+// Write closed POST /api/tools/cloud/v1 response envelope.
+cld_tool_res_write :: (tool: string, ok: bool, output: string, err: string, out: [] u8) -> int #effects(all) {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], CLD_TOOL_RES_SCHEMA);
+  jo_key(o[..], "tool"); jo_str(o[..], tool);
+  jo_key(o[..], "ok"); jo_bool(o[..], ok);
+  if ok {
+    jo_key(o[..], "output"); jo_str(o[..], output);
+  } else {
+    jo_key(o[..], "error"); jo_str(o[..], err);
+  }
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// OpenAI/Gemini Chat Completions function-calling tool definitions for Web /chat Tier 1 tools.
+CLD_WEB_TOOLS_JSON :: "[{\"type\":\"function\",\"function\":{\"name\":\"web_search\",\"description\":\"Search the live web using Exa and return top titles, URLs, and snippets.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"description\":\"Search query\"},\"num_results\":{\"type\":\"integer\",\"description\":\"Number of results (1-8)\"}},\"required\":[\"query\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"web_fetch\",\"description\":\"Fetch and read the text contents of a public https:// web page.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\",\"description\":\"Public https:// URL to fetch\"}},\"required\":[\"url\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"github_tree\",\"description\":\"List files and folders in a GitHub repository directory.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"repo\":{\"type\":\"string\",\"description\":\"owner/repo slug\"},\"path\":{\"type\":\"string\",\"description\":\"Relative directory path (empty for root)\"},\"ref\":{\"type\":\"string\",\"description\":\"Optional branch, tag, or commit SHA\"}},\"required\":[\"repo\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"github_read_file\",\"description\":\"Read a file from a GitHub repository with optional line range.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"repo\":{\"type\":\"string\",\"description\":\"owner/repo slug\"},\"path\":{\"type\":\"string\",\"description\":\"Relative file path\"},\"ref\":{\"type\":\"string\",\"description\":\"Optional branch, tag, or commit SHA\"},\"from_line\":{\"type\":\"integer\"},\"to_line\":{\"type\":\"integer\"}},\"required\":[\"repo\",\"path\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"github_search_code\",\"description\":\"Search code inside a GitHub repository.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"repo\":{\"type\":\"string\",\"description\":\"owner/repo slug\"},\"query\":{\"type\":\"string\",\"description\":\"Code search query\"}},\"required\":[\"repo\",\"query\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"github_list_issues\",\"description\":\"List recent issues and pull requests in a GitHub repository.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"repo\":{\"type\":\"string\",\"description\":\"owner/repo slug\"},\"state\":{\"type\":\"string\",\"description\":\"open, closed, or all\"}},\"required\":[\"repo\"]}}},{\"type\":\"function\",\"function\":{\"name\":\"github_get_pr\",\"description\":\"Read a pull request title, state, body, and changed files in a GitHub repository.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"repo\":{\"type\":\"string\",\"description\":\"owner/repo slug\"},\"number\":{\"type\":\"integer\",\"description\":\"Pull request number\"}},\"required\":[\"repo\",\"number\"]}}}]";
+
+// Sanitize Exa /search response JSON into concise markdown text for the model.
+cld_format_exa :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #effects(all) {
+  d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  v := d[0];
+  arr := jv_get(v, 0, "results");
+  if jv_kind(v, arr) != JV_ARRAY { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  cnt := jv_len(v, arr);
+  if cnt > 8 { cnt = 8; }
+  if cnt == 0 { jo_put(o[..], "No web results found.\n"); return ifx o[0].bad then -1 else o[0].n; }
+  for i: 0..<cnt {
+    item := jv_at(v, arr, i);
+    tb: [200] u8; tn := jv_str(v, jv_get(v, item, "title"), tb[..]);
+    ub: [512] u8; un := jv_str(v, jv_get(v, item, "url"), ub[..]);
+    sb: [400] u8; sn := jv_str(v, jv_get(v, item, "text"), sb[..]);
+    if sn < 1 {
+      hl := jv_get(v, item, "highlights");
+      if jv_kind(v, hl) == JV_ARRAY && jv_len(v, hl) > 0 {
+        sn = jv_str(v, jv_at(v, hl, 0), sb[..]);
+      }
+    }
+    jo_put(o[..], "- ");
+    jo_put(o[..], ifx tn > 0 then cast(string) tb[0..<tn] else "(untitled)");
+    if un > 0 { jo_put(o[..], " — "); jo_put(o[..], cast(string) ub[0..<un]); }
+    jo_put(o[..], "\n");
+    if sn > 0 {
+      cap := ifx sn > 280 then 280 else sn;
+      jo_put(o[..], "  "); jo_put(o[..], cast(string) sb[0..<cap]); jo_put(o[..], "\n");
+    }
+  }
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Sanitize GitHub GET /repos/{owner}/{repo}/contents/{path} array response into directory listing.
+cld_format_gh_tree :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #effects(all) {
+  d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes) { return -1; }
+  v := d[0];
+  o: [1] Jo; jo_start(o[..], out);
+  if jv_kind(v, 0) == JV_OBJECT {
+    pb: [512] u8; pn := jv_str(v, jv_get(v, 0, "path"), pb[..]);
+    tb: [32] u8; tn := jv_str(v, jv_get(v, 0, "type"), tb[..]);
+    jo_put(o[..], ifx tn > 0 then cast(string) tb[0..<tn] else "file");
+    jo_put(o[..], " ");
+    jo_put(o[..], ifx pn > 0 then cast(string) pb[0..<pn] else ".");
+    jo_put(o[..], "\n");
+    return ifx o[0].bad then -1 else o[0].n;
+  }
+  if jv_kind(v, 0) != JV_ARRAY { return -1; }
+  cnt := jv_len(v, 0);
+  if cnt > 120 { cnt = 120; }
+  for i: 0..<cnt {
+    item := jv_at(v, 0, i);
+    tb: [32] u8; tn := jv_str(v, jv_get(v, item, "type"), tb[..]);
+    pb: [512] u8; pn := jv_str(v, jv_get(v, item, "path"), pb[..]);
+    if pn < 1 { continue; }
+    kind_c := ifx tn > 0 && cast(string) tb[0..<tn] == "dir" then "d " else "f ";
+    jo_put(o[..], kind_c); jo_put(o[..], cast(string) pb[0..<pn]); jo_put(o[..], "\n");
+  }
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Sanitize GitHub GET /search/code response into path list.
+cld_format_gh_search :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #effects(all) {
+  d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  v := d[0];
+  arr := jv_get(v, 0, "items");
+  if jv_kind(v, arr) != JV_ARRAY { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  cnt := jv_len(v, arr);
+  if cnt > 25 { cnt = 25; }
+  if cnt == 0 { jo_put(o[..], "No code matches found.\n"); return ifx o[0].bad then -1 else o[0].n; }
+  for i: 0..<cnt {
+    item := jv_at(v, arr, i);
+    pb: [512] u8; pn := jv_str(v, jv_get(v, item, "path"), pb[..]);
+    if pn > 0 { jo_put(o[..], cast(string) pb[0..<pn]); jo_put(o[..], "\n"); }
+  }
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Sanitize GitHub GET /repos/{owner}/{repo}/issues response.
+cld_format_gh_issues :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #effects(all) {
+  d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes) || jv_kind(d[0], 0) != JV_ARRAY { return -1; }
+  v := d[0];
+  o: [1] Jo; jo_start(o[..], out);
+  cnt := jv_len(v, 0);
+  if cnt > 25 { cnt = 25; }
+  if cnt == 0 { jo_put(o[..], "No issues found.\n"); return ifx o[0].bad then -1 else o[0].n; }
+  for i: 0..<cnt {
+    item := jv_at(v, 0, i);
+    num := jv_int(v, jv_get(v, item, "number"), 0);
+    st_b: [16] u8; st_n := jv_str(v, jv_get(v, item, "state"), st_b[..]);
+    ti_b: [200] u8; ti_n := jv_str(v, jv_get(v, item, "title"), ti_b[..]);
+    is_pr := jv_get(v, item, "pull_request") >= 0;
+    if num <= 0 { continue; }
+    jo_put(o[..], ifx is_pr then "PR #" else "#");
+    jo_int(o[..], num);
+    jo_put(o[..], " ["); jo_put(o[..], ifx st_n > 0 then cast(string) st_b[0..<st_n] else "open"); jo_put(o[..], "] ");
+    jo_put(o[..], ifx ti_n > 0 then cast(string) ti_b[0..<ti_n] else "");
+    jo_put(o[..], "\n");
+  }
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Sanitize GitHub GET /repos/{owner}/{repo}/pulls/{number} response.
+cld_format_gh_pr :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #effects(all) {
+  d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  v := d[0];
+  num := jv_int(v, jv_get(v, 0, "number"), 0);
+  ti_b: [240] u8; ti_n := jv_str(v, jv_get(v, 0, "title"), ti_b[..]);
+  st_b: [32] u8; st_n := jv_str(v, jv_get(v, 0, "state"), st_b[..]);
+  bd_b: [4096] u8; bd_n := jv_str(v, jv_get(v, 0, "body"), bd_b[..]);
+  adds := jv_int(v, jv_get(v, 0, "additions"), 0);
+  dels := jv_int(v, jv_get(v, 0, "deletions"), 0);
+  files := jv_int(v, jv_get(v, 0, "changed_files"), 0);
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "PR #"); jo_int(o[..], num);
+  jo_put(o[..], " ["); jo_put(o[..], ifx st_n > 0 then cast(string) st_b[0..<st_n] else "open"); jo_put(o[..], "] ");
+  jo_put(o[..], ifx ti_n > 0 then cast(string) ti_b[0..<ti_n] else ""); jo_put(o[..], "\n");
+  jo_put(o[..], "Files: "); jo_int(o[..], files); jo_put(o[..], " (+"); jo_int(o[..], adds); jo_put(o[..], " / -"); jo_int(o[..], dels); jo_put(o[..], ")\n");
+  if bd_n > 0 { jo_put(o[..], "\n"); jo_put(o[..], cast(string) bd_b[0..<bd_n]); jo_put(o[..], "\n"); }
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "cloud tool codec parses every Tier 1 tool, blocks unsafe paths/URLs, and formats Exa & GitHub replies" {
+  req: [1] CldToolReq;
+  #assert cld_tool_req_read("{\"tool\":\"web_search\",\"arguments\":{\"query\":\"OpenAgents Coax\",\"num_results\":3}}", false, req[..]);
+  #assert req[0].kind == CLD_TOOL_WEB_SEARCH && req[0].num == 3 && cast(string) req[0].query[0..<req[0].query_n] == "OpenAgents Coax";
+  #assert cld_tool_req_read("{\"tool\":\"web_fetch\",\"arguments\":{\"url\":\"https://openagents.com/docs\"}}", false, req[..]);
+  #assert !cld_tool_req_read("{\"tool\":\"web_fetch\",\"arguments\":{\"url\":\"http://169.254.169.254/latest\"}}", false, req[..]);
+  #assert cld_tool_req_read("{\"tool\":\"github_tree\",\"arguments\":{\"repo\":\"OpenAgentsInc/openagents\",\"path\":\"coax/web\",\"ref\":\"main\"}}", false, req[..]);
+  #assert !cld_tool_req_read("{\"tool\":\"github_read_file\",\"arguments\":{\"repo\":\"OpenAgentsInc/openagents\",\"path\":\"../secret\"}}", false, req[..]);
+  #assert cld_tool_req_read("{\"tool\":\"github_read_file\",\"arguments\":{\"repo\":\"OpenAgentsInc/openagents\",\"path\":\"AGENTS.md\",\"from_line\":1,\"to_line\":40}}", false, req[..]);
+  #assert req[0].from_line == 1 && req[0].to_line == 40;
+  #assert cld_tool_req_read("{\"tool\":\"github_search_code\",\"arguments\":{\"repo\":\"OpenAgentsInc/openagents\",\"query\":\"wos_pipes\"}}", false, req[..]);
+  #assert cld_tool_req_read("{\"tool\":\"github_list_issues\",\"arguments\":{\"repo\":\"OpenAgentsInc/openagents\"}}", false, req[..]);
+  #assert cast(string) req[0].state[0..<req[0].state_n] == "open";
+  #assert cld_tool_req_read("{\"tool\":\"github_get_pr\",\"arguments\":{\"repo\":\"OpenAgentsInc/openagents\",\"number\":14127}}", false, req[..]) && req[0].num == 14127;
+  #assert !cld_tool_req_read("{\"tool\":\"bash\",\"arguments\":{\"cmd\":\"rm -rf /\"}}", false, req[..]);
+
+  // Verify tool schema JSON itself parses cleanly
+  d: [1] Jv; nodes: [512] JvNode;
+  #assert jv_parse(d[..], CLD_WEB_TOOLS_JSON, nodes[..]) && jv_kind(d[0], 0) == JV_ARRAY && jv_len(d[0], 0) == 7;
+
+  // Formatters
+  out: [4096] u8;
+  n := cld_format_exa("{\"results\":[{\"title\":\"OpenAgents\",\"url\":\"https://openagents.com\",\"text\":\"AI platform\"}]}", nodes[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "- OpenAgents — https://openagents.com\n  AI platform\n";
+  n = cld_format_gh_tree("[{\"type\":\"dir\",\"path\":\"coax\"},{\"type\":\"file\",\"path\":\"AGENTS.md\"}]", nodes[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "d coax\nf AGENTS.md\n";
+  n = cld_format_gh_search("{\"items\":[{\"path\":\"coax/web/api/integrations.c\"}]}", nodes[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "coax/web/api/integrations.c\n";
+  n = cld_format_gh_issues("[{\"number\":14127,\"state\":\"open\",\"title\":\"Phase 3\"}]", nodes[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "#14127 [open] Phase 3\n";
+  n = cld_format_gh_pr("{\"number\":42,\"state\":\"open\",\"title\":\"Add tools\",\"additions\":10,\"deletions\":2,\"changed_files\":3,\"body\":\"Details\"}", nodes[..], out[..]);
+  #assert n > 0;
+  n = cld_tool_res_write("github_tree", true, "d coax\n", "", out[..]);
+  #assert n > 0;
+}

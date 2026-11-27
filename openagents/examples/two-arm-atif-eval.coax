@@ -1,0 +1,122 @@
+// Runnable example for The OpenAgents Book Chapter 45: A two-arm run.
+// Exercises the production two-arm ATIF-v1.8 trajectory log & SHA-256 steps
+// digest verifier (coax/lib/nostr/atif/log.coax), #authority promotion gate
+// (coax/lib/agent/desktop/capability-gate.coax), verdict card formatter
+// (coax/lib/agent/desktop/capability-author.coax), and independent NIP-EVAL
+// two-arm coverage verification (coax/lib/nostr/eval/report.coax):
+//   - Recording a deterministic 4-step baseline-vs-candidate ATIF-v1.8 log,
+//     verifying its SHA-256 `steps_digest`, promoting the winning candidate, and
+//     rendering its verdict card.
+//   - Proving fail-closed refusals on a 1-byte tampered ATIF log (`CAP_FAIL_ATIF_UNVERIFIED`),
+//     overall regression (`CAP_FAIL_REGRESSED`), held-out regression (`CAP_FAIL_HELDOUT_REGRESSED`),
+//     and NIP-EVAL arm coverage sum mismatch (`EV_COVERAGE`).
+//   coax/bin/coax run openagents/examples/two-arm-atif-eval.coax
+#import "Basic";
+#load "../../coax/lib/agent/desktop/capability-author.coax";
+#load "../../coax/lib/nostr/eval/report.coax";
+
+// book:begin two-arm-atif-eval
+tae_run :: () -> bool {
+  // 1. Build canonical 4-step two-arm ATIF-v1.8 log and compute SHA-256 steps_digest.
+  log_buf: [CE_BUF] u8;
+  used := 0;
+  line_b: [CE_LINE] u8;
+  step_b: [CE_LINE] u8;
+  scratch: [CE_LINE] u8;
+
+  hdr := AtifSessionHeader.{
+    trajectory_id = "fast-lint",
+    session_id = "fast-lint",
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "capability-eval",
+    model_name = "two-arm-eval",
+    cwd = ".",
+    git_branch = "",
+    source_harness = "openagents-desktop",
+    created_at = "2026-11-26T00:00:00Z"
+  };
+  sn := atif_write_session_line(hdr, line_b[..]);
+  used = ce_append(log_buf[..], used, cast(string) line_b[0..<sn]);
+
+  hasher: [1] AtifStepsHasher;
+  atif_steps_hash_init(hasher[..]);
+  msgs := [4] string.[
+    "arm=baseline case=positive exit=1",
+    "arm=candidate case=positive exit=0",
+    "arm=baseline case=heldout exit=0",
+    "arm=candidate case=heldout exit=0"
+  ];
+  for k: 0..<4 {
+    st := AtifStep.{
+      step_id = k + 1,
+      source = ATIF_SOURCE_AGENT,
+      message = msgs[k],
+      model_name = "two-arm-eval"
+    };
+    jn := atif_write_step_json(st, step_b[..]);
+    _ = atif_steps_hash_step(hasher[..], cast(string) step_b[0..<jn], scratch[..]);
+    ln := atif_write_step_line(cast(string) step_b[0..<jn], line_b[..]);
+    used = ce_append(log_buf[..], used, cast(string) line_b[0..<ln]);
+  }
+  en := atif_write_end_line("2026-11-26T00:00:01Z", ATIF_STATE_ENDED, line_b[..]);
+  used = ce_append(log_buf[..], used, cast(string) line_b[0..<en]);
+
+  digest: [64] u8;
+  _ = atif_steps_hash_final(hasher[..], digest[..]);
+  digest_str := cast(string) digest[0..<64];
+  vsum := atif_verify_log(cast(string) log_buf[0..<used], digest_str);
+
+  // 2. Evaluate passing two-arm summary through #authority gate & format verdict card.
+  pass_sum := CapEvalSummary.{
+    total_cases = 2, heldout_cases = 1,
+    baseline_passed = 1, candidate_passed = 2,
+    baseline_heldout_passed = 1, candidate_heldout_passed = 1,
+    candidate_latency_ms = 25, max_latency_ms = 500,
+    atif_verified = vsum.ok && vsum.step_count == 4
+  };
+  v_pass := cap_admit_promotion(pass_sum);
+  print("atif ok=% steps=% digest=% gate_pass=%\n",
+    vsum.ok, vsum.step_count, digest_str[0..<16], v_pass == CAP_PASS);
+
+  // 3. Fail-closed refusals: 1-byte tampered ATIF log, overall regression, held-out regression.
+  tampered: [CE_BUF] u8;
+  for i: 0..<used { tampered[i] = log_buf[i]; }
+  for i: 0..<used {
+    if tampered[i] == '1' && i > sn { tampered[i] = '0'; break; }
+  }
+  vbad := atif_verify_log(cast(string) tampered[0..<used], digest_str);
+  tamper_sum := pass_sum;
+  tamper_sum.atif_verified = vbad.ok;
+  v_tamper := cap_admit_promotion(tamper_sum);
+
+  reg_sum := pass_sum;
+  reg_sum.baseline_passed = 2; reg_sum.candidate_passed = 1;
+  v_reg := cap_admit_promotion(reg_sum);
+
+  ho_sum := pass_sum;
+  ho_sum.candidate_heldout_passed = 0;
+  v_ho := cap_admit_promotion(ho_sum);
+  print("refusals tamper_atif_ok=% tamper_code=% regressed_code=% heldout_code=%\n",
+    vbad.ok, v_tamper, v_reg, v_ho);
+
+  // 4. Independent NIP-EVAL check: two-arm coverage sums verified vs mismatched.
+  held := [2] string.[EV_T_SUITE, EV_T_PART];
+  trusted := [1] string.[EV_T_E1];
+  rep_ok := eval_report(EV_T_REPORT, held[..], trusted[..]);
+  bad_cov_buf: [4096] u8;
+  bad_cov_json := ts_swap(EV_T_REPORT, "\"completed\":9", "\"completed\":8", bad_cov_buf[..]);
+  rep_bad := eval_report(bad_cov_json, held[..], trusted[..]);
+  print("nip_eval verified=% pass=% bad_coverage_refused=%\n",
+    rep_ok.code == EV_VERIFIED, rep_ok.verdict == EV_PASS, rep_bad.code == EV_COVERAGE);
+
+  return vsum.ok && vsum.step_count == 4 && v_pass == CAP_PASS &&
+         !vbad.ok && v_tamper == CAP_FAIL_ATIF_UNVERIFIED &&
+         v_reg == CAP_FAIL_REGRESSED && v_ho == CAP_FAIL_HELDOUT_REGRESSED &&
+         rep_ok.code == EV_VERIFIED && rep_ok.verdict == EV_PASS && rep_bad.code == EV_COVERAGE;
+}
+// book:end two-arm-atif-eval
+
+main :: () {
+  ok := tae_run();
+  print("ok=%\n", ok);
+}

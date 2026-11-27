@@ -4,7 +4,7 @@
 > coordination ([`openagents/core/subagent.coax`](../../openagents/core/subagent.coax),
 > [`openagents/core/agents.coax`](../../openagents/core/agents.coax),
 > [`openagents/core/swarm.coax`](../../openagents/core/swarm.coax),
-> [`coder/tui/oa-subagent.coax`](../../coder/tui/oa-subagent.coax), `#14096`),
+> [`coder/tui/oa-subagent.coax`](../../openagents/runtime/oa-subagent.coax), `#14096`),
 > model tier selection ([`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)),
 > and Desktop visibility panes ([`apps/openagents-desktop/page/dashboard.coax`](../../apps/openagents-desktop/page/dashboard.coax),
 > [`apps/openagents-desktop/page/chats.coax`](../../apps/openagents-desktop/page/chats.coax))
@@ -53,7 +53,7 @@ A plan for what this chapter ships once the draft is approved:
 It builds on what exists today:
 
 - [`openagents/core/subagent.coax`](../../openagents/core/subagent.coax), [`openagents/core/agents.coax`](../../openagents/core/agents.coax), and [`openagents/core/swarm.coax`](../../openagents/core/swarm.coax) (CC-parity subagent spawn, `SendMessage`, `TaskStop`, `TaskOutput`, and worktree isolation, `#14096`)
-- [`coder/tui/oa-subagent.coax`](../../coder/tui/oa-subagent.coax)
+- [`coder/tui/oa-subagent.coax`](../../openagents/runtime/oa-subagent.coax)
 - [`apps/openagents-desktop/page/dashboard.coax`](../../apps/openagents-desktop/page/dashboard.coax) and [`apps/openagents-desktop/page/chats.coax`](../../apps/openagents-desktop/page/chats.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
 - [`coax/lib/agent/observe/processes.coax`](../../coax/lib/agent/observe/processes.coax)

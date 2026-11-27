@@ -1,0 +1,846 @@
+// Microcoder's gateway plan and conversation for mcworker.coax: the
+// credentials this machine has (as the desktop Lab reads them: files under
+// ~/work/.secrets, else OPENROUTER_API_KEY and GEMINI_API_KEY from the
+// environment, go into curl's child environment only, through
+// Gateway.key_value, and Vertex's token is minted by gcloud with the
+// service-account key file and a gcloud config of its own, set in gcloud's
+// environment only), the plan built from them (Vertex Gemini, then the
+// Gemini API, then OpenRouter), and the earlier turns told to each run.
+//
+// Vertex (GitHub #13231): the service account, project and location are the
+// ones ~/.openagents/coder/antigravity.env names for Coder's Antigravity
+// engine (GOOGLE_APPLICATION_CREDENTIALS, a path; GOOGLE_CLOUD_PROJECT;
+// GOOGLE_CLOUD_LOCATION), read the way that engine reads them: a variable
+// already in this process's environment wins over the file. Without them,
+// ~/work/.secrets/vertex-sa-inference.json, openagentsgemini, global. The
+// owner's --model (gemini-4-argon, gemini-4-carbon, gemini-4-hydrogen; Hydrogen
+// by default) goes to Vertex's native streamGenerateContent, which reports
+// thoughts and cached tokens; recorded answers (GW_REPLAY) stay on the
+// OpenAI endpoint they were recorded from.
+
+#load "run.coax";
+#load "../gateway/vertex.coax";
+#load "../gateway/openrouter.coax";
+#load "../gateway/psionic.coax";
+#load "../sys/fs.coax";
+#load "../sys/tool.coax";                  // tool_err, tool_errln (the Vertex-skipped note)
+
+MK_SECRETS :: "/work/.secrets/";                          // under $HOME
+MK_VERTEX_KEYFILE :: "/work/.secrets/vertex-sa-inference.json";
+MK_GCLOUD_CONFIG :: "/.cache/openagents/coder-gcloud";
+MK_GCLOUDS :: [5] string.["/google-cloud-sdk/bin/gcloud", "/.nix-profile/bin/gcloud", "/opt/homebrew/bin/gcloud", "/usr/local/bin/gcloud", "/run/current-system/sw/bin/gcloud"];   // the first two under $HOME
+MK_GCLOUDS_HOME :: 2;
+MK_AGY_ENV :: "/.openagents/coder/antigravity.env";      // under $HOME: the Antigravity engine's Google Cloud sign-in
+MK_CODER_OPENROUTER_KEY :: "/Library/Application Support/Coder/openrouter-key";   // under $HOME: the key set with Coder > OpenRouter (the key alone); it wins over openrouter.env
+MK_CODER_GEMINI_KEY :: "/Library/Application Support/Coder/gemini-key";           // under $HOME: the key set in Settings > Models > Gemini API key (the key alone); it wins over openagents-gemini-provider.env
+MK_OPENROUTER_PREFIX :: "openrouter:";   // a model "openrouter:VENDOR/MODEL" runs on OpenRouter only, as VENDOR/MODEL
+MK_TURNS :: 6;                   // earlier turns each run is told
+MK_TURN_TEXT :: 8000;            // bytes of each earlier task and reply told to a run (a sub-agent's reply keeps as much); a longer one ends in MK_CUT
+MK_CUT :: " [cut here: the rest is not kept]";   // so the model knows its own earlier reply goes on, and doesn't hunt for the rest
+
+MkKeys :: struct {
+  read: bool;
+  vx: [1] GwVertex;
+  or_key: [512] u8; nor: int;
+  gm_key: [512] u8; ngm: int;
+  gm_from: int;                  // where the Gemini API key came from: MK_KEY_SETTINGS, MK_KEY_SECRETS, MK_KEY_ENV (0: none)
+  keyfile: [1200] u8; nkf: int;
+  gcloud: [1200] u8; ngc: int;
+  config: [1200] u8; ncf: int;
+  gurl: [512] u8;
+  orh: [2] string;               // OpenRouter's headers: the plan keeps them
+  ormodel: [256] u8;             // the picked OpenRouter model, copied: the plan keeps it past the task line
+  vmodel: [128] u8;              // the picked Vertex model, copied: survives mcworker's per-line stdin arena reset
+  none: [1] string;              // no headers, also kept
+  told: bool;                    // why Vertex was skipped went to stderr
+  pbase: [512] u8; purl: [600] u8; pmodel: [256] u8;   // the psionic engine's server
+  project: [128] u8; location: [64] u8;                // Vertex's, when antigravity.env or the environment names them
+}
+
+mk_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+mk_exists :: (path: string) -> bool { return fs_exists(path); }
+
+// The text cut to fit, at a UTF-8 boundary.
+mk_keep :: (dst: [] u8, s: string) -> int {
+  n := ifx s.count < dst.count then s.count else dst.count;
+  while n > 0 && n < s.count && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  for i: 0..<n { dst[i] = s[i]; }
+  return n;
+}
+
+// NAME=value from an env file's text ("" when absent); an export prefix and quotes are dropped.
+mk_env_value :: (text: string, name: string) -> string {
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    if line.count > 7 && cast(string) line[0..<7] == "export " { line = cast(string) line[7..<line.count]; }
+    if line.count > name.count && cast(string) line[0..<name.count] == name && line[name.count] == '=' {
+      v := cast(string) line[name.count + 1..<line.count];
+      while v.count > 0 && (v[v.count - 1] == 13 || v[v.count - 1] == ' ') { v = cast(string) v[0..<v.count - 1]; }
+      if v.count >= 2 && (v[0] == '"' || v[0] == '\'') && v[v.count - 1] == v[0] { v = cast(string) v[1..<v.count - 1]; }
+      return v;
+    }
+    at = e + 1;
+  }
+  return "";
+}
+
+// One secret from an env file under ~/work/.secrets into dst; the file's bytes are wiped.
+mk_secret :: (home: string, file: string, name: string, dst: [] u8) -> int {
+  path: [1400] u8; buf: [8192] u8;
+  np := mk_cat(path[..], mk_cat(path[..], mk_cat(path[..], 0, home), MK_SECRETS), file);
+  nf := fs_read(cast(string) path[0..<np], buf[..]);
+  v := mk_env_value(cast(string) buf[0..<ifx nf > 0 then nf else 0], name);
+  n := ifx v.count <= dst.count then mk_cat(dst, 0, v) else 0;
+  for i: 0..<buf.count { buf[i] = 0; }
+  return n;
+}
+
+// A key file that holds the key alone (Coder's own, mode 600) into dst, trimmed; 0 when there is none.
+// The file's bytes are wiped.
+mk_coder_key :: (home: string, file: string, dst: [] u8) -> int {
+  path: [1400] u8; buf: [1024] u8;
+  nf := fs_read(cast(string) path[0..<mk_cat(path[..], mk_cat(path[..], 0, home), file)], buf[..]);
+  v := mk_trim(cast(string) buf[0..<ifx nf > 0 then nf else 0]);
+  n := ifx v.count <= dst.count then mk_cat(dst, 0, v) else 0;
+  for i: 0..<buf.count { buf[i] = 0; }
+  return n;
+}
+mk_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == 9 || s[a] == 10 || s[a] == 13) { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == 9 || s[b - 1] == 10 || s[b - 1] == 13) { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+// The OpenRouter model a model names ("openrouter:VENDOR/MODEL"), "" when it names none.
+mk_openrouter_model :: (model: string) -> string {
+  p := MK_OPENROUTER_PREFIX;
+  if model.count <= p.count || cast(string) model[0..<p.count] != p { return ""; }
+  return cast(string) model[p.count..<model.count];
+}
+
+// NAME's value: this process's environment first, then the Antigravity file's text; "" for neither.
+mk_agy_value :: (agy: string, name: string, out: [] u8) -> string {
+  e := cl_getenv(name, out);
+  if e.count > 0 { return e; }
+  v := mk_env_value(agy, name);
+  if v.count == 0 || v.count > out.count { return ""; }
+  return cast(string) out[0..<mk_cat(out, 0, v)];
+}
+
+// Vertex's project and location, each "" for the default, into k (copied into its buffers).
+mk_vertex_place :: (k: [] MkKeys, project: string, location: string) {
+  k[0].vx[0].project = GW_VERTEX_PROJECT; k[0].vx[0].location = GW_VERTEX_LOCATION;
+  if project.count > 0 && project.count <= k[0].project.count { k[0].vx[0].project = cast(string) k[0].project[0..<mk_cat(k[0].project[..], 0, project)]; }
+  if location.count > 0 && location.count <= k[0].location.count { k[0].vx[0].location = cast(string) k[0].location[0..<mk_cat(k[0].location[..], 0, location)]; }
+}
+
+// The credentials this machine has, read once.
+mk_keys :: (k: [] MkKeys) {
+  if k[0].read { return; }
+  k[0].read = true;
+  k[0].vx[0].project = GW_VERTEX_PROJECT; k[0].vx[0].location = GW_VERTEX_LOCATION;
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { return; }
+  k[0].nor = mk_coder_key(home, MK_CODER_OPENROUTER_KEY, k[0].or_key[..]);
+  if k[0].nor == 0 { k[0].nor = mk_secret(home, "openrouter.env", GW_OPENROUTER_KEY_ENV, k[0].or_key[..]); }
+  // the desktop app on Linux and Windows hands its kept key over in the environment (GitHub #13782)
+  if k[0].nor == 0 { k[0].nor = cl_getenv(GW_OPENROUTER_KEY_ENV, k[0].or_key[..]).count; }
+  k[0].ngm = mk_coder_key(home, MK_CODER_GEMINI_KEY, k[0].gm_key[..]);
+  if k[0].ngm > 0 { k[0].gm_from = MK_KEY_SETTINGS; }
+  if k[0].ngm == 0 { k[0].ngm = mk_secret(home, "openagents-gemini-provider.env", "GEMINI_API_KEY", k[0].gm_key[..]); if k[0].ngm > 0 { k[0].gm_from = MK_KEY_SECRETS; } }
+  if k[0].ngm == 0 { k[0].ngm = cl_getenv("GEMINI_API_KEY", k[0].gm_key[..]).count; if k[0].ngm > 0 { k[0].gm_from = MK_KEY_ENV; } }
+  ap: [1400] u8; ab: [4096] u8;
+  na := fs_read(cast(string) ap[0..<mk_cat(ap[..], mk_cat(ap[..], 0, home), MK_AGY_ENV)], ab[..]);
+  agy := cast(string) ab[0..<ifx na > 0 then na else 0];
+  pb2: [128] u8; lb2: [64] u8;
+  mk_vertex_place(k, mk_agy_value(agy, "GOOGLE_CLOUD_PROJECT", pb2[..]), mk_agy_value(agy, "GOOGLE_CLOUD_LOCATION", lb2[..]));
+  kb: [1200] u8; named := mk_env_value(agy, "GOOGLE_APPLICATION_CREDENTIALS");
+  if named.count > 0 && named.count <= kb.count && mk_exists(named) { k[0].nkf = mk_cat(k[0].keyfile[..], 0, named); }
+  else {
+    kf := mk_cat(k[0].keyfile[..], mk_cat(k[0].keyfile[..], 0, home), MK_VERTEX_KEYFILE);
+    if mk_exists(cast(string) k[0].keyfile[0..<kf]) { k[0].nkf = kf; }
+  }
+  for i: 0..<ab.count { ab[i] = 0; }
+  gclouds := MK_GCLOUDS;
+  for g, i: gclouds {
+    n := ifx i < MK_GCLOUDS_HOME then mk_cat(k[0].gcloud[..], mk_cat(k[0].gcloud[..], 0, home), g) else mk_cat(k[0].gcloud[..], 0, g);
+    if mk_exists(cast(string) k[0].gcloud[0..<n]) { k[0].ngc = n; break; }
+  }
+  k[0].ncf = mk_cat(k[0].config[..], mk_cat(k[0].config[..], 0, home), MK_GCLOUD_CONFIG);
+}
+
+// ---------------------------------------------------------------- which sign-in Gemini runs on
+
+// Where a Gemini API key came from.
+MK_KEY_SETTINGS :: 1; MK_KEY_SECRETS :: 2; MK_KEY_ENV :: 3;
+// How Vertex would be reached: not at all, the environment's credentials (ADC), or the service
+// account key file through gcloud. The same tests mk_vertex makes, without minting a token.
+MK_VX_NONE :: 0; MK_VX_ADC :: 1; MK_VX_KEYFILE :: 2;
+mk_vertex_how :: (k: [] MkKeys) -> int {
+  t: [16] u8; c: [16] u8;
+  if cl_getenv("VERTEX_ACCESS_TOKEN", t[..]).count > 0 || cl_getenv("GOOGLE_APPLICATION_CREDENTIALS", c[..]).count > 0 { return MK_VX_ADC; }
+  if k[0].nkf > 0 && k[0].ngc > 0 { return MK_VX_KEYFILE; }
+  return MK_VX_NONE;
+}
+
+// The sign-in a Gemini model runs on, as mk_plan orders them (Vertex first, then a Gemini API
+// key), for a person: "vertex<TAB>Vertex AI (project P)", "key<TAB>API key ending 1a2b (Settings)",
+// or "none<TAB>". vx: MK_VX_*; tail: the key's last four bytes; from: MK_KEY_*. Into out.
+mk_auth_text :: (vx: int, project: string, from: int, tail: string, out: [] u8) -> string {
+  n := 0;
+  if vx != MK_VX_NONE {
+    n = mk_cat(out, n, "vertex\tVertex AI (");
+    n = mk_cat(out, n, ifx vx == MK_VX_ADC then "ADC, project " else "service account, project ");
+    n = mk_cat(out, n, project); n = mk_cat(out, n, ")");
+    return cast(string) out[0..<n];
+  }
+  if from == 0 || tail.count == 0 { return cast(string) out[0..<mk_cat(out, 0, "none\t")]; }
+  n = mk_cat(out, n, "key\tAPI key ending "); n = mk_cat(out, n, tail);
+  n = mk_cat(out, n, ifx from == MK_KEY_SETTINGS then " (Settings)" else ifx from == MK_KEY_SECRETS then " (~/work/.secrets)" else " (GEMINI_API_KEY)");
+  return cast(string) out[0..<n];
+}
+mk_auth :: (k: [] MkKeys, out: [] u8) -> string {
+  mk_keys(k);
+  tail := ifx k[0].ngm >= 4 then cast(string) k[0].gm_key[k[0].ngm - 4..<k[0].ngm] else "";
+  return mk_auth_text(mk_vertex_how(k), k[0].vx[0].project, k[0].gm_from, tail, out);
+}
+
+// Vertex's token: from the environment when it has one, else from the key file through gcloud.
+mk_vertex :: (k: [] MkKeys) -> string {
+  t: [16] u8; c: [16] u8;
+  if cl_getenv("VERTEX_ACCESS_TOKEN", t[..]).count > 0 || cl_getenv("GOOGLE_APPLICATION_CREDENTIALS", c[..]).count > 0 { return gw_vertex_token(k[0].vx[..]); }
+  if k[0].nkf == 0 { return "no Vertex key file"; }
+  if k[0].ngc == 0 { return "gcloud isn't installed"; }
+  return gw_vertex_token_file(k[0].vx[..], cast(string) k[0].gcloud[0..<k[0].ngc], cast(string) k[0].keyfile[0..<k[0].nkf], cast(string) k[0].config[0..<k[0].ncf]);
+}
+
+// The Vertex model for the owner's --model: a Gemini name without "google/", else Hydrogen.
+mk_vertex_model :: (model: string) -> string {
+  m := gw_gemini_model(model);
+  if m.count > 7 && m[0..<7] == "gemini-" { return m; }
+  return gw_gemini_model(GW_VERTEX_FLASH);
+}
+
+// How long a call may stay silent, by effort (GitHub #13231): at low, Flash, Argon and Carbon
+// answer an 11K-token prompt in 3-7 s; at medium they can think for minutes.
+mk_first_limit_ms :: (effort: string) -> int {
+  if effort == "medium" { return 240000; }
+  if effort == "high" { return 290000; }
+  return 90000;
+}
+MK_IDLE_LIMIT_MS :: 90000;
+MK_RETRIES :: 3;
+
+// The plan's retries and silence limits for a run at effort.
+mk_plan_limits :: (p: [] GwPlan, effort: string) {
+  p[0].retries = MK_RETRIES; p[0].backoff_ms = 2000;
+  p[0].first_limit_ms = mk_first_limit_ms(effort); p[0].idle_limit_ms = MK_IDLE_LIMIT_MS;
+}
+
+// The plan for one message: every gateway with a credential, Vertex first. How many.
+mk_plan :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, model: string) -> int {
+  gw_plan_init(p, pb);
+  none := k[0].none[0..<0];
+  // a replay of recorded answers (GW_REPLAY): Vertex's wire, with no credential, since nothing is sent
+  rb: [1024] u8;
+  if gw_env("GW_REPLAY", rb[..]).count > 0 { x := gw_plan_add(p, gw_vertex(k[0].vx[..]), GW_VERTEX_FLASH, none); return p[0].n; }
+  // a picked OpenRouter model: OpenRouter alone, never another model in its place
+  picked := mk_openrouter_model(model);
+  if picked.count > 0 { return mk_plan_openrouter(k, p, picked); }
+  why := mk_vertex(k);
+  if why.count == 0 {
+    vm_raw := mk_vertex_model(model);
+    vm := cast(string) k[0].vmodel[0..<mk_cat(k[0].vmodel[..], 0, vm_raw)];
+    x := gw_plan_add(p, gw_vertex_native(k[0].vx[..], vm), vm, none);
+  }
+  else if !k[0].told { k[0].told = true; tool_err("microcoder: Vertex skipped: "); tool_errln(why); }
+  if k[0].ngm > 0 {
+    g := gw_gemini(GW_GEMINI_FLASH, true, k[0].gurl[..]); g.key_value = cast(string) k[0].gm_key[0..<k[0].ngm];
+    x := gw_plan_add(p, g, GW_GEMINI_FLASH, none);
+  }
+  if k[0].nor > 0 {
+    g := gw_openrouter(false); g.key_value = cast(string) k[0].or_key[0..<k[0].nor];
+    k[0].orh = GW_OPENROUTER_HEADERS;
+    x := gw_plan_add(p, g, GW_OPENROUTER_FLASH, k[0].orh[..]);
+  }
+  return p[0].n;
+}
+
+// The plan for a picked OpenRouter model (after gw_plan_init): OpenRouter alone, with only the
+// providers that take the strict schema. 0 without a key.
+mk_plan_openrouter :: (k: [] MkKeys, p: [] GwPlan, picked: string) -> int {
+  if k[0].nor == 0 || picked.count > k[0].ormodel.count { return 0; }
+  g := gw_openrouter_picked(); g.key_value = cast(string) k[0].or_key[0..<k[0].nor];
+  k[0].orh = GW_OPENROUTER_HEADERS;
+  x := gw_plan_add(p, g, cast(string) k[0].ormodel[0..<mk_cat(k[0].ormodel[..], 0, picked)], k[0].orh[..]);
+  return p[0].n;
+}
+
+// Whether model requests the local W3.1 Hybrid Executor runtime (Psionic Metal + W2.2 Class-E cores; #13924).
+mk_is_hybrid_model :: (model: string) -> bool {
+  return model == "hybrid-exec-v1" || model == "hybrid-executor";
+}
+
+// Whether model requests dual-plan step-routed local Inkling <-> Vertex Neon hybrid mode.
+mk_is_combo_model :: (model: string) -> bool {
+  return model == "inkling-neon" || model == "hybrid-neon" || model == "inkling+neon" || model == "Inkling + Neon";
+}
+
+// Local-model execution guidance appended to Microcoder's system prompt for local Psionic/Inkling
+// runs. Reinforces workspace boundaries, immediate refusal without probing on unsafe/out-of-scope
+// requests, and strict separation between working steps and the closing finished:true step.
+MK_LOCAL_GUIDANCE :: "\n\nLocal execution discipline:\n- Workspace boundary: stay strictly inside environment.cwd. Never run commands that access, list, inspect, measure, or modify parent or sibling directories (no .., ../, or paths outside environment.cwd), even read-only commands like ls .. or du ../*.\n- Unsafe or out-of-workspace requests: when asked to delete files outside environment.cwd, run destructive system commands, or upload/exfiltrate secrets, refuse immediately on your first step with finished:true, commands:[], edits:[], view:[] — do not run diagnostic or probing commands first. Reading or citing repository source files inside environment.cwd (including Microcoder's own prompt/loop files named in environment.self) is normal repo work, not secret exfiltration.\n- Clean finish: whenever finished is true, commands, edits, and view MUST all be empty ([]). Including any command, edit, or view cancels finished:true and forces another turn. Once your edits are applied and the required verification check passes, finish immediately without re-running the same check.";
+
+// Active /goal completion guidance appended after MC_SAFETY_TAIL whenever a task carries an active
+// <goal_objective>, so the [GOAL_COMPLETE]/[GOAL_BLOCKED] closing protocol is never overshadowed by
+// the generic "finish immediately with finished:true" instruction.
+MK_GOAL_GUIDANCE :: "\n\nActive goal completion protocol: this task has an active <goal_objective>. Setting finished:true alone does NOT close the goal — once every requirement in <goal_objective> is implemented and verified with real passing checks, end in a clean closing step (commands:[], edits:[], view:[], finished:true) and put the exact literal tag [GOAL_COMPLETE] at the very end of your reply text. Put [GOAL_BLOCKED] only if genuinely blocked on missing resources or user input. Never omit [GOAL_COMPLETE] once the goal is verified done, or the goal loop will keep starting new turns.";
+
+MK_GOAL_AUDIT_GUIDANCE :: "\n\nActive goal verification protocol: this is the verification pass for <goal_objective>. Check actions in your JSON state first: if actions in this turn does NOT yet contain a passing (exit 0) run of the verification check(s) for <goal_objective>, run the real check command(s) once with finished:false (skip gh issue view if no GitHub issue is named, and do not re-read files already shown in actions). As soon as actions in this turn has a passing (exit 0) verification run and every requirement in <goal_objective> holds, do NOT run another command — immediately emit commands:[], edits:[], view:[], finished:true, quote the observed command and output, and put the exact literal tag [GOAL_COMPLETE] at the very end of your reply text. If anything fails or is missing, fix it first (or end with [GOAL_BLOCKED] if impossible here).";
+
+// Whether task carries an active /goal wrapper with its [GOAL_COMPLETE] closing marker.
+mk_is_goal_task :: (task: string) -> bool {
+  return ps_find(task, "<goal_objective>\n") >= 0 && ps_find(task, "\n</goal_objective>\n") >= 0 && ps_find(task, "[GOAL_COMPLETE]") >= 0;
+}
+
+// Whether task is the /goal skeptical verification pass before closing a goal.
+mk_is_goal_audit :: (task: string) -> bool {
+  return mk_is_goal_task(task) && ps_find(task, "You said the goal above is done. Before it closes, check the work") >= 0;
+}
+
+// System-prompt guidance for an active /goal turn ("" for non-goal tasks).
+mk_goal_guidance :: (task: string) -> string {
+  if mk_is_goal_audit(task) { return MK_GOAL_AUDIT_GUIDANCE; }
+  if mk_is_goal_task(task) { return MK_GOAL_GUIDANCE; }
+  return "";
+}
+
+// System-prompt guidance for local Psionic/Inkling runs ("" for cloud-only runs).
+mk_local_guidance :: (local: bool, combo: bool) -> string {
+  if local || combo { return MK_LOCAL_GUIDANCE; }
+  return "";
+}
+
+// Picks the local Psionic model name: explicit hybrid req_model wins, else peer_model,
+// PSIONIC_MODEL env, explicit non-empty req_model (e.g. "inkling-2-mini"), or "local".
+mk_local_model_pick :: (req_model: string, peer_model: string, env_model: string) -> string {
+  if mk_is_hybrid_model(req_model) { return req_model; }
+  if peer_model.count > 0 { return peer_model; }
+  if env_model.count > 0 { return env_model; }
+  if req_model.count > 0 { return req_model; }
+  return "local";
+}
+
+// Per-turn step tracker for local Psionic/Inkling runs: breaks redundant verification/command
+// loops where a small local model keeps re-running an already-passing check without intervening
+// edits, and reminds an audit turn to close once its verification check has exited 0.
+MkLocalGuard :: struct {
+  active: bool;
+  goal_task: bool;
+  goal_audit: bool;
+  pass_checks: int;          // passing check commands since the last edit/write or failure
+  last_cmd: [256] u8;
+  nlast_cmd: int;
+  repeat_pass_cmd: bool;     // latest step re-ran the identical passing command with no edit since
+  step_passed_check: bool;   // latest step ran a passing check command
+  step_failed: bool;         // latest step had any non-zero exit or timeout
+  step_changed: bool;        // latest step ran an edit or file-writing shell command
+  step_cmds: int;
+  audit_noted: bool;
+  spin_notes: int;
+}
+
+mk_lg_init :: (g: [] MkLocalGuard, active: bool, task: string) {
+  g[0] = MkLocalGuard.{
+    active = active,
+    goal_task = mk_is_goal_task(task),
+    goal_audit = mk_is_goal_audit(task),
+  };
+}
+
+// Conservative check for shell commands that write or mutate workspace files (redirection, tee,
+// sed -i, rm, mv, cp, mkdir, touch, patch, git checkout/apply). Used only to avoid mistaking a
+// write+test step for a read-only redundant verification spin.
+mk_cmd_writes :: (cmd: string) -> bool {
+  if ps_find(cmd, ">") >= 0 { return true; }
+  if ps_find(cmd, "tee ") >= 0 || ps_find(cmd, "sed -i") >= 0 { return true; }
+  if ps_find(cmd, "rm ") >= 0 || ps_find(cmd, "mv ") >= 0 || ps_find(cmd, "cp ") >= 0 { return true; }
+  if ps_find(cmd, "mkdir ") >= 0 || ps_find(cmd, "touch ") >= 0 || ps_find(cmd, "patch ") >= 0 { return true; }
+  if ps_find(cmd, "git checkout") >= 0 || ps_find(cmd, "git apply") >= 0 { return true; }
+  return false;
+}
+
+// Records one completed MR_COMMAND from a model step (steps > 0 ignores step-0 seed lookups).
+mk_lg_command :: (g: [] MkLocalGuard, steps: int, cmd: string, exit: int, timed_out: bool) {
+  if !g[0].active || steps <= 0 { return; }
+  is_edit := cmd.count >= 5 && cast(string) cmd[0..<5] == "edit ";
+  is_write := is_edit || mk_cmd_writes(cmd);
+  g[0].step_cmds += 1;
+  if exit != 0 || timed_out {
+    g[0].step_failed = true;
+    g[0].pass_checks = 0;
+    g[0].nlast_cmd = 0;
+    g[0].audit_noted = false;
+    g[0].spin_notes = 0;
+    return;
+  }
+  if is_write {
+    g[0].step_changed = true;
+    g[0].pass_checks = 0;
+    g[0].nlast_cmd = 0;
+    g[0].audit_noted = false;
+    g[0].spin_notes = 0;
+  }
+  is_check := !is_edit && (mc_cmd_kind(cmd) & MC_CMD_CHECK) != 0;
+  if is_check {
+    g[0].step_passed_check = true;
+    g[0].pass_checks += 1;
+  }
+  if !is_write {
+    if g[0].nlast_cmd > 0 && cmd.count <= g[0].last_cmd.count && cast(string) g[0].last_cmd[0..<g[0].nlast_cmd] == cmd {
+      g[0].repeat_pass_cmd = true;
+    } else {
+      g[0].nlast_cmd = mk_keep(g[0].last_cmd[..], cmd);
+    }
+  }
+}
+
+MK_NOTE_AUDIT_VERIFIED :: "VERIFICATION ALREADY PASSED IN THIS AUDIT TURN (exit 0 above). Do NOT re-run passing tests without editing first. If every requirement in <goal_objective> holds, emit commands:[], edits:[], view:[], finished:true now, quote the observed command and output, and end your reply with [GOAL_COMPLETE]. Only edit if a requirement is genuinely missing.";
+MK_NOTE_GOAL_REPEAT :: "That check/command ALREADY exited 0 with no edits since. Do NOT run it again. If every requirement in <goal_objective> is satisfied, emit commands:[], edits:[], view:[], finished:true now and end your reply with [GOAL_COMPLETE].";
+MK_NOTE_LOCAL_REPEAT :: "That command ALREADY exited 0 with no edits since. Do NOT run it again. If the task is complete, emit commands:[], edits:[], view:[], finished:true now with a concise reply.";
+
+// Consumes the latest step's command observations right before the next deferred model call and
+// returns an anti-spin / verification-complete note when appropriate ("" otherwise).
+mk_lg_note :: (g: [] MkLocalGuard) -> string {
+  cmds := g[0].step_cmds;
+  failed := g[0].step_failed;
+  changed := g[0].step_changed;
+  passed_check := g[0].step_passed_check;
+  repeated := g[0].repeat_pass_cmd;
+  g[0].step_cmds = 0;
+  g[0].step_failed = false;
+  g[0].step_changed = false;
+  g[0].step_passed_check = false;
+  g[0].repeat_pass_cmd = false;
+  if !g[0].active || cmds == 0 || failed || changed { return ""; }
+  if g[0].goal_audit && passed_check && !g[0].audit_noted {
+    g[0].audit_noted = true;
+    return MK_NOTE_AUDIT_VERIFIED;
+  }
+  if (repeated || (passed_check && g[0].pass_checks >= 2)) && g[0].spin_notes < 2 {
+    g[0].spin_notes += 1;
+    return ifx g[0].goal_task then MK_NOTE_GOAL_REPEAT else MK_NOTE_LOCAL_REPEAT;
+  }
+  return "";
+}
+
+// Parses a positive integer environment variable, returning fallback when unset or invalid.
+mk_env_int :: (name: string, fallback: int) -> int {
+  b: [32] u8;
+  s := gw_env(name, b[..]);
+  if s.count == 0 { return fallback; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return fallback; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+// Whether a local psionic/Inkling server is explicitly configured and reachable for free sub-agents.
+mk_local_subagent_ready :: () -> bool {
+  eb: [16] u8;
+  flag := gw_env("MC_DELEGATE_INKLING", eb[..]);
+  if flag == "0" { return false; }
+  pb: [1024] u8;
+  peers_raw := gw_env("PSIONIC_PEERS", pb[..]);
+  if peers_raw.count > 0 {
+    peers: [8] GwPsionicPeer;
+    np := gw_psionic_parse_peers(peers_raw, peers[..]);
+    for i: 0..<np { if gw_psionic_up(peers[i].base) { return true; } }
+    return false;
+  }
+  ub: [512] u8;
+  base := gw_env("PSIONIC_BASE_URL", ub[..]);
+  if base.count == 0 && flag != "1" { return false; }
+  if base.count == 0 { base = GW_PSIONIC_DEFAULT_BASE; }
+  while base.count > 0 && base[base.count - 1] == '/' { base = cast(string) base[0..<base.count - 1]; }
+  return gw_psionic_up(base);
+}
+
+// The psionic engine's plan: one keyless gateway, the Chat Completions server
+// on this machine at PSIONIC_BASE_URL (http://127.0.0.1:8080 by default), or a reachable
+// peer from PSIONIC_PEERS ("http://host1:port#model1,http://host2:port#model2"),
+// with explicit req_model (e.g. "hybrid-exec-v1"), else peer model, PSIONIC_MODEL or "local".
+// "" when the plan is made, else why not.
+mk_plan_local :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, why: [] u8) -> string {
+  return mk_plan_local_for(k, p, pb, "", why);
+}
+mk_plan_local_for :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, req_model: string, why: [] u8) -> string {
+  gw_plan_init(p, pb);
+  rb: [1024] u8; replaying := gw_env("GW_REPLAY", rb[..]).count > 0;    // recorded answers: no server to ask
+  base := "";
+  peer_model := "";
+  peers_buf: [1024] u8;
+  peers_raw := gw_env("PSIONIC_PEERS", peers_buf[..]);
+  if peers_raw.count > 0 {
+    peers: [8] GwPsionicPeer;
+    np := gw_psionic_parse_peers(peers_raw, peers[..]);
+    if np > 0 {
+      seed := cxproc_now_ms();
+      if seed < 0 { seed = -seed; }
+      start := seed % np;
+      for off: 0..<np {
+        idx := (start + off) % np;
+        if replaying || gw_psionic_up(peers[idx].base) {
+          nb := mk_keep(k[0].pbase[..], peers[idx].base);
+          base = cast(string) k[0].pbase[0..<nb];
+          if peers[idx].model.count > 0 {
+            nm := mk_keep(k[0].pmodel[..], peers[idx].model);
+            peer_model = cast(string) k[0].pmodel[0..<nm];
+          }
+          break;
+        }
+      }
+      if base.count == 0 {
+        n := mk_cat(why, 0, "No PSIONIC_PEERS server answered /v1/models ("); n = mk_cat(why, n, peers_raw); n = mk_cat(why, n, ").");
+        return cast(string) why[0..<n];
+      }
+    }
+  }
+  if base.count == 0 {
+    base = gw_psionic_base(k[0].pbase[..]);
+    if !replaying && !gw_psionic_up(base) {
+      n := mk_cat(why, 0, "No model server answers at "); n = mk_cat(why, n, base);
+      n = mk_cat(why, n, "/v1/models. Start one there (psionic, llama-server or any Chat Completions server), or set PSIONIC_BASE_URL.");
+      return cast(string) why[0..<n];
+    }
+  }
+  env_buf: [256] u8;
+  env_model := gw_env("PSIONIC_MODEL", env_buf[..]);
+  picked := mk_local_model_pick(req_model, peer_model, env_model);
+  model := cast(string) k[0].pmodel[0..<mk_keep(k[0].pmodel[..], picked)];
+  sb: [16] u8; strict_env := gw_env("PSIONIC_STRICT_SCHEMA", sb[..]);
+  is_inkling_m := model == "inkling-2-mini" || (model.count > 15 && cast(string) model[0..<15] == "inkling-2-mini-");
+  use_strict := strict_env != "0" && (strict_env == "1" || is_inkling_m || model == "hybrid-exec-v1" || mk_is_hybrid_model(req_model) || peer_model.count > 0);
+  if use_strict {
+    x := gw_plan_add(p, gw_psionic_strict(base, k[0].purl[..]), model, k[0].none[0..<0]);
+  }
+  x := gw_plan_add(p, gw_psionic(base, k[0].purl[..]), model, k[0].none[0..<0]);
+  return "";
+}
+
+// ---------------------------------------------------------------- the conversation
+
+// Earlier turns, oldest first: turn i's task at slot 2i, its reply at 2i+1.
+MkTurns :: struct {
+  text: [2 * MK_TURNS * MK_TURN_TEXT] u8;
+  n: [2 * MK_TURNS] int;
+  turns: int;
+  cur: [MK_TURN_TEXT] u8; ncur: int;    // the running turn's task
+}
+mk_slot :: (h: [] MkTurns, k: int) -> [] u8 { return h[0].text[k * MK_TURN_TEXT..<(k + 1) * MK_TURN_TEXT]; }
+mk_text :: (h: [] MkTurns, k: int) -> string { return cast(string) h[0].text[k * MK_TURN_TEXT..<k * MK_TURN_TEXT + h[0].n[k]]; }
+
+// A turn's text into its slot: whole when it fits, else its start and MK_CUT.
+mk_keep_turn :: (dst: [] u8, s: string) -> int {
+  if s.count <= dst.count { return mk_keep(dst, s); }
+  n := mk_keep(dst[0..<dst.count - MK_CUT.count], s);
+  for i: 0..<MK_CUT.count { dst[n + i] = MK_CUT[i]; }
+  return n + MK_CUT.count;
+}
+
+// Remembers the running turn with its reply; the oldest goes when there are MK_TURNS.
+mk_remember :: (h: [] MkTurns, reply: string) {
+  if h[0].turns == MK_TURNS {
+    for k: 2..<2 * MK_TURNS { h[0].n[k - 2] = mk_keep(mk_slot(h, k - 2), mk_text(h, k)); }
+    h[0].turns -= 1;
+  }
+  k := 2 * h[0].turns;
+  h[0].n[k] = mk_keep_turn(mk_slot(h, k), cast(string) h[0].cur[0..<h[0].ncur]);
+  h[0].n[k + 1] = mk_keep_turn(mk_slot(h, k + 1), reply);
+  h[0].turns += 1;
+}
+
+// Remembers a run that ended, however it ended: a stopped or failed turn keeps its task, so the
+// next message ("go", "try again") is read with it. With no reply text it says how it ended.
+mk_end_note :: (ending: string) -> string {
+  if ending == "stopped" { return "[stopped by the user before a reply]"; }
+  if ending == "failed" { return "[the run failed before a reply]"; }
+  return "[the run ended before a reply]";
+}
+mw_remember_end :: (h: [] MkTurns, ending: int, text: string) {
+  if text.count > 0 { mk_remember(h, text); return; }
+  mk_remember(h, mk_end_note(mc_ending_name(ending)));
+}
+
+// A command's time limit in a Coder run (GitHub #13325): 120 s, where the loop's own is 30 s.
+// A unit's checks often take a minute or more; in #13231's H6 the model spent 5 to 8 calls
+// starting them in the background and polling. STOP waits for a running command to end.
+MK_COMMAND_SECONDS :: 120;
+
+// Self-knowledge line included in environment.self when cwd is an openagents checkout (#13978),
+// so questions about Microcoder's own prompt and behavior have a direct repository answer.
+MK_SELF_KNOWLEDGE :: "This workspace is an openagents checkout: Microcoder's system prompt is MC_SYSTEM in coax/lib/microcoder/loop.coax, its run loop is coax/lib/microcoder/run.coax, and its worker is coder/tui/mcworker.coax. Questions about your own prompt or behavior are normal repository questions — inspect and cite these files directly.";
+
+mk_join_rel :: (out: [] u8, dir: string, rel: string) -> string {
+  n := mk_cat(out, 0, dir);
+  if n > 0 && out[n - 1] != '/' { n = mk_cat(out, n, "/"); }
+  n = mk_cat(out, n, rel);
+  return cast(string) out[0..<n];
+}
+
+mk_parent_dir :: (dir: string) -> string {
+  end := dir.count;
+  while end > 0 && dir[end - 1] == '/' { end -= 1; }
+  i := end;
+  while i > 0 && dir[i - 1] != '/' { i -= 1; }
+  if i == 0 { return ""; }
+  if i == 1 { return "/"; }
+  return cast(string) dir[0..<i - 1];
+}
+
+// True when cwd (or an ancestor up to 6 levels) is an openagents checkout holding Microcoder's prompt and loop.
+mk_is_openagents_checkout :: (cwd: string) -> bool {
+  cur := cwd;
+  p1: [1400] u8; p2: [1400] u8;
+  for depth: 0..<6 {
+    if cur.count == 0 { return false; }
+    if mk_exists(mk_join_rel(p1[..], cur, "coax/lib/microcoder/loop.coax")) &&
+       mk_exists(mk_join_rel(p2[..], cur, "coax/lib/microcoder/run.coax")) {
+      return true;
+    }
+    cur = mk_parent_dir(cur);
+  }
+  return false;
+}
+
+mk_self_note :: (is_openagents: bool) -> string {
+  return ifx is_openagents then MK_SELF_KNOWLEDGE else "";
+}
+
+// The facts a run is told: the machine, the folder, a command's time limit (when the run has
+// its own), optional self-knowledge for openagents checkouts, and the conversation so far.
+// When they don't fit o, the oldest turns go first.
+mk_facts :: (h: [] MkTurns, os: string, cwd: string, command_seconds: int, o: [] u8) -> string {
+  return mk_facts_ex(h, os, cwd, command_seconds, "", o);
+}
+mk_facts_ex :: (h: [] MkTurns, os: string, cwd: string, command_seconds: int, self_note: string, o: [] u8) -> string {
+  for first: 0..<h[0].turns + 1 { // mutant: equivalent (first > turns takes the same empty-conversation branch as first == turns)
+    n := mk_facts_from(h, first, os, cwd, command_seconds, self_note, o);
+    if n != -1 { return cast(string) o[0..<n]; }
+  }
+  return "{\"os\":\"macOS\"}";
+}
+mk_facts_from :: (h: [] MkTurns, first: int, os: string, cwd: string, command_seconds: int, self_note: string, o: [] u8) -> int {
+  n := json_raw(o, 0, "{\"os\":"); n = json_write_string(o, n, os);
+  n = json_raw(o, n, ",\"app\":\"Coder in the terminal\",\"cwd\":");
+  n = json_write_string(o, n, cwd);
+  if command_seconds > 0 { n = json_raw(o, n, ",\"command_seconds\":"); n = json_write_int(o, n, command_seconds); }
+  if self_note.count > 0 { n = json_raw(o, n, ",\"self\":"); n = json_write_string(o, n, self_note); }
+  if h[0].turns > first {
+    n = json_raw(o, n, ",\"conversation\":[");
+    for i: first..<h[0].turns {
+      if i > first { n = json_raw(o, n, ","); }
+      n = json_raw(o, n, "{\"user\":"); n = json_write_string(o, n, mk_text(h, 2 * i));
+      n = json_raw(o, n, ",\"you\":"); n = json_write_string(o, n, mk_text(h, 2 * i + 1));
+      n = json_raw(o, n, "}");
+    }
+    n = json_raw(o, n, "]");
+  }
+  return json_raw(o, n, "}");
+}
+
+#test "the conversation keeps the last turns, oldest first, and goes into the facts" {
+  h: [1] MkTurns; o: [4096] u8;
+  #assert mk_facts(h[..], "macOS", "/w", 0, o[..]) == "{\"os\":\"macOS\",\"app\":\"Coder in the terminal\",\"cwd\":\"/w\"}";
+  #assert mk_facts(h[..], "Linux", "/w", MK_COMMAND_SECONDS, o[..]) == "{\"os\":\"Linux\",\"app\":\"Coder in the terminal\",\"cwd\":\"/w\",\"command_seconds\":120}";
+  for i: 0..<MK_TURNS + 2 {
+    tb: [8] u8; tb[0] = cast(u8) ('a' + i);
+    h[0].ncur = mk_keep(h[0].cur[..], cast(string) tb[0..<1]);
+    mk_remember(h[..], "r");
+  }
+  #assert h[0].turns == MK_TURNS && mk_text(h[..], 0) == "c" && mk_text(h[..], 2 * MK_TURNS - 2) == "h";
+  f := mk_facts(h[..], "Linux", "/w", 0, o[..]);
+  #assert cl_count(cl_raw(f, "conversation")) == MK_TURNS;
+}
+
+#test "a long reply is told whole up to MK_TURN_TEXT and then says it was cut; facts that overflow drop the oldest turns, not all" {
+  h: [1] MkTurns;
+  long: [3000] u8; for i: 0..<long.count { long[i] = 'x'; } long[2990] = 'E';
+  h[0].ncur = mk_keep(h[0].cur[..], "list three options");
+  mk_remember(h[..], cast(string) long[..]);                       // 3,000 bytes: the old 1,200 cut it
+  #assert mk_text(h[..], 1).count == 3000 && mk_text(h[..], 1)[2990] == 'E';
+  big: [MK_TURN_TEXT + 500] u8; for i: 0..<big.count { big[i] = 'y'; }
+  h[0].ncur = mk_keep(h[0].cur[..], "again");
+  mk_remember(h[..], cast(string) big[..]);
+  r := mk_text(h[..], 3);
+  #assert r.count == MK_TURN_TEXT && cast(string) r[r.count - MK_CUT.count..<r.count] == MK_CUT;
+  o: [6000] u8;                                                    // room for the newest turn only
+  f := mk_facts(h[..], "macOS", "/w", 0, o[..]);
+  #assert cl_raw(f, "conversation").count == 0 && json_valid(f);   // neither fits: no conversation, still the facts
+  o2: [10000] u8;                                                 // the newest fits, not both
+  f = mk_facts(h[..], "macOS", "/w", 0, o2[..]);
+  #assert cl_count(cl_raw(f, "conversation")) == 1 && cl_raw(f, "cwd") == "\"/w\"";   // the oldest went, the newest stayed
+}
+
+#test "Vertex from antigravity.env: its project and location, the defaults without them; the model and its limits" {
+  k: [1] MkKeys;
+  agy := "# agy\nAGY_ADC_AUTH=1\nGOOGLE_APPLICATION_CREDENTIALS=/k/sa.json\nGOOGLE_CLOUD_PROJECT=p-test-only\nGOOGLE_CLOUD_LOCATION=us\n";
+  mk_vertex_place(k[..], mk_env_value(agy, "GOOGLE_CLOUD_PROJECT"), mk_env_value(agy, "GOOGLE_CLOUD_LOCATION"));
+  #assert k[0].vx[0].project == "p-test-only" && k[0].vx[0].location == "us" && mk_env_value(agy, "GOOGLE_APPLICATION_CREDENTIALS") == "/k/sa.json";
+  #assert gw_vertex_native_url(k[0].vx[..], "gemini-4-argon") == "https://aiplatform.us.rep.googleapis.com/v1/projects/p-test-only/locations/us/publishers/google/models/gemini-4-argon:streamGenerateContent?alt=sse";
+  mk_vertex_place(k[..], "", "");
+  #assert k[0].vx[0].project == GW_VERTEX_PROJECT && k[0].vx[0].location == GW_VERTEX_LOCATION;
+  #assert mk_vertex_model("gemini-4-carbon") == "gemini-4-carbon" && mk_vertex_model("google/gemini-4-argon") == "gemini-4-argon";
+  #assert mk_vertex_model("") == "gemini-4-hydrogen" && mk_vertex_model("claude-sonnet-5-5") == "gemini-4-hydrogen";
+  p: [1] GwPlan;
+  mk_plan_limits(p[..], "low");
+  #assert p[0].retries == MK_RETRIES && p[0].first_limit_ms == 90000 && p[0].idle_limit_ms == MK_IDLE_LIMIT_MS;
+  #assert mk_first_limit_ms("medium") == 240000 && mk_first_limit_ms("high") == 290000 && mk_first_limit_ms("") == 90000;
+}
+
+#test "a picked OpenRouter model: named by its prefix, run on OpenRouter alone with require_parameters, none without a key" {
+  #assert mk_openrouter_model("openrouter:deepseek/deepseek-v4.1-flash-1017") == "deepseek/deepseek-v4.1-flash-1017";
+  #assert mk_openrouter_model("gemini-4-neon") == "" && mk_openrouter_model("openrouter:") == "" && mk_openrouter_model("google/gemini-4-neon") == "";
+  #assert mk_trim("  sk-or-v1-abc\n") == "sk-or-v1-abc" && mk_trim("\n") == "";
+  k: [1] MkKeys; p: [1] GwPlan; pb: [1] GwPlanBuffers;
+  gw_plan_init(p[..], pb[..]);
+  #assert mk_plan_openrouter(k[..], p[..], "deepseek/deepseek-v4.1-flash-1017") == 0;
+  k[0].nor = mk_cat(k[0].or_key[..], 0, "sk-or-test-only");
+  #assert mk_plan_openrouter(k[..], p[..], "deepseek/deepseek-v4.1-flash-1017") == 1;
+  a := p[0].attempts[0];
+  #assert a.gateway.name == "openrouter" && a.model == "deepseek/deepseek-v4.1-flash-1017" && (a.gateway.flags & GW_CHAT_REQUIRE_PARAMS) != 0 && a.gateway.key_value == "sk-or-test-only";
+}
+
+#test "env files: export prefixes, quotes and carriage returns" {
+  #assert mk_env_value("A=1\nexport KEY=\"v w\"\r\nB=2", "KEY") == "v w";
+  #assert mk_env_value("KEYS=x\nKEY='y'", "KEY") == "y";
+  #assert mk_env_value("OTHER=1", "KEY") == "";
+}
+
+#test "the sign-in Gemini runs on: Vertex first, then the API key and where it came from" {
+  o: [256] u8;
+  #assert mk_auth_text(MK_VX_KEYFILE, "openagentsgemini", MK_KEY_SECRETS, "1a2b", o[..]) == "vertex\tVertex AI (service account, project openagentsgemini)";
+  #assert mk_auth_text(MK_VX_ADC, "p", 0, "", o[..]) == "vertex\tVertex AI (ADC, project p)";
+  #assert mk_auth_text(MK_VX_NONE, "p", MK_KEY_SETTINGS, "1a2b", o[..]) == "key\tAPI key ending 1a2b (Settings)";
+  #assert mk_auth_text(MK_VX_NONE, "p", MK_KEY_SECRETS, "9z9z", o[..]) == "key\tAPI key ending 9z9z (~/work/.secrets)";
+  #assert mk_auth_text(MK_VX_NONE, "p", MK_KEY_ENV, "abcd", o[..]) == "key\tAPI key ending abcd (GEMINI_API_KEY)";
+  #assert mk_auth_text(MK_VX_NONE, "p", 0, "", o[..]) == "none\t";
+}
+
+#test "local and active-goal guidance selection covers workspace boundaries, refusals, clean finish, and goal audit" {
+  #assert mk_local_guidance(false, false) == "";
+  lg_local := mk_local_guidance(true, false);
+  lg_combo := mk_local_guidance(false, true);
+  #assert lg_local == MK_LOCAL_GUIDANCE && lg_combo == MK_LOCAL_GUIDANCE;
+  #assert ps_find(lg_local, "Workspace boundary") >= 0 && ps_find(lg_local, "refuse immediately") >= 0 && ps_find(lg_local, "commands:[], edits:[], view:[]") >= 0;
+
+  #assert !mk_is_goal_task("Fix calc.py so python3 -m unittest passes.");
+  #assert !mk_is_goal_task("Mention <goal_objective>\nfoo\n</goal_objective>\n without completion tag");
+  #assert mk_goal_guidance("Fix calc.py") == "";
+
+  goal_start := "<goal_objective>\nCreate todo.py\n</goal_objective>\nWork autonomously. Include [GOAL_COMPLETE] at the end of your reply.";
+  #assert mk_is_goal_task(goal_start) && !mk_is_goal_audit(goal_start);
+  #assert mk_goal_guidance(goal_start) == MK_GOAL_GUIDANCE && ps_find(mk_goal_guidance(goal_start), "[GOAL_COMPLETE]") >= 0;
+
+  goal_audit := "<goal_objective>\nCreate todo.py\n</goal_objective>\nYou said the goal above is done. Before it closes, check the work as a skeptical reviewer. End with [GOAL_COMPLETE].";
+  #assert mk_is_goal_task(goal_audit) && mk_is_goal_audit(goal_audit);
+  #assert mk_goal_guidance(goal_audit) == MK_GOAL_AUDIT_GUIDANCE && ps_find(mk_goal_guidance(goal_audit), "gh issue view") >= 0 && ps_find(mk_goal_guidance(goal_audit), "[GOAL_COMPLETE]") >= 0;
+}
+
+#test "local Psionic model selection honors hybrid, peer, env, task model, then local fallback" {
+  #assert mk_local_model_pick("hybrid-exec-v1", "peer-m", "env-m") == "hybrid-exec-v1";
+  #assert mk_local_model_pick("inkling-2-mini", "peer-m", "env-m") == "peer-m";
+  #assert mk_local_model_pick("inkling-2-mini", "", "env-m") == "env-m";
+  #assert mk_local_model_pick("inkling-2-mini", "", "") == "inkling-2-mini";
+  #assert mk_local_model_pick("", "", "") == "local";
+}
+
+#test "local anti-spin guard nudges verified audit turns and repeated passing checks without interfering with edits or failures" {
+  g: [1] MkLocalGuard;
+  audit := "<goal_objective>\nCreate todo.py\n</goal_objective>\nYou said the goal above is done. Before it closes, check the work as a skeptical reviewer. End with [GOAL_COMPLETE].";
+  mk_lg_init(g[..], true, audit);
+  // Step-0 seed commands are ignored.
+  mk_lg_command(g[..], 0, "python3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == "";
+  // Step 1 on audit turn runs passing unittest -> immediate verification-passed note.
+  mk_lg_command(g[..], 1, "cat SKILL.md", 0, false);
+  mk_lg_command(g[..], 1, "python3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == MK_NOTE_AUDIT_VERIFIED;
+  // Step 2 re-runs passing unittest without edits -> repeat-check note.
+  mk_lg_command(g[..], 2, "python3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == MK_NOTE_GOAL_REPEAT;
+
+  // Regular task: write+test step does not trigger; re-running same check without edits triggers; failure or edit resets cleanly.
+  goal := "<goal_objective>\nCreate todo.py\n</goal_objective>\nInclude [GOAL_COMPLETE] at the end.";
+  mk_lg_init(g[..], true, goal);
+  mk_lg_command(g[..], 1, "cat > todo.py <<'EOF'\nEOF\npython3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == "";
+  mk_lg_command(g[..], 2, "python3 -m unittest", 0, false);
+  #assert mk_lg_note(g[..]) == MK_NOTE_GOAL_REPEAT;
+  mk_lg_command(g[..], 3, "edit todo.py", 0, false);
+  mk_lg_command(g[..], 3, "python3 -m unittest", 0, false);
+  #assert mk_lg_note(g[..]) == "";
+  mk_lg_command(g[..], 4, "python3 -m unittest", 1, false);
+  #assert mk_lg_note(g[..]) == "";
+
+  // Non-goal local task: identical passing read command repeated twice breaks spin.
+  mk_lg_init(g[..], true, "Write ready to notes.txt");
+  mk_lg_command(g[..], 1, "cat notes.txt", 0, false);
+  #assert mk_lg_note(g[..]) == "";
+  mk_lg_command(g[..], 2, "cat notes.txt", 0, false);
+  #assert mk_lg_note(g[..]) == MK_NOTE_LOCAL_REPEAT;
+  // Inactive guard (cloud runs) never emits notes.
+  mk_lg_init(g[..], false, audit);
+  mk_lg_command(g[..], 1, "python3 -m unittest -v", 0, false);
+  #assert mk_lg_note(g[..]) == "";
+}
+
+#test "openagents checkout self-knowledge goes into environment.self and local guidance permits repo self-inspection (#13978)" {
+  pbuf: [256] u8;
+  #assert mk_join_rel(pbuf[..], "", "a") == "a" && mk_join_rel(pbuf[..], "a", "b") == "a/b";
+  #assert mk_join_rel(pbuf[..], "/repo", "coax/lib/microcoder/loop.coax") == "/repo/coax/lib/microcoder/loop.coax";
+  #assert mk_join_rel(pbuf[..], "/repo/", "coax/lib/microcoder/run.coax") == "/repo/coax/lib/microcoder/run.coax";
+  #assert mk_parent_dir("") == "" && mk_parent_dir("/") == "" && mk_parent_dir("a/") == "" && mk_parent_dir("ab") == "";
+  #assert mk_parent_dir("/a") == "/" && mk_parent_dir("/a/") == "/" && mk_parent_dir("a/b") == "a";
+  #assert mk_parent_dir("/a/b/c") == "/a/b" && mk_parent_dir("/a/b/") == "/a";
+  #assert mk_self_note(false) == "" && mk_self_note(true) == MK_SELF_KNOWLEDGE;
+  #assert ps_find(MK_SELF_KNOWLEDGE, "coax/lib/microcoder/loop.coax") >= 0;
+  #assert ps_find(MK_SELF_KNOWLEDGE, "MC_SYSTEM") >= 0;
+  #assert ps_find(MK_SELF_KNOWLEDGE, "coax/lib/microcoder/run.coax") >= 0;
+  #assert ps_find(MK_LOCAL_GUIDANCE, "environment.self") >= 0;
+
+  h: [1] MkTurns; o: [4096] u8; tiny: [8] u8; ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  f_plain := mk_facts_ex(h[..], "macOS", "/tmp/other", 1, mk_self_note(false), o[..]);
+  #assert json_valid(f_plain) && cl_raw(f_plain, "self").count == 0 && cl_raw(f_plain, "command_seconds") == "1";
+  f_tiny_self := mk_facts_ex(h[..], "macOS", "/tmp/other", 0, "x", o[..]);
+  #assert json_valid(f_tiny_self) && cl_str(ar[..], f_tiny_self, "self") == "x";
+  #assert mk_facts_ex(h[..], "macOS", "/tmp/other", 0, "", tiny[..]) == "{\"os\":\"macOS\"}";
+  ar[0].at = 0; ar[0].full = false;
+  f_self := mk_facts_ex(h[..], "macOS", "/work/openagents", MK_COMMAND_SECONDS, mk_self_note(true), o[..]);
+  #assert json_valid(f_self) && cl_str(ar[..], f_self, "self") == MK_SELF_KNOWLEDGE;
+
+  // Tight buffer drops oldest turns while keeping environment.self intact.
+  h[0].ncur = mk_keep(h[0].cur[..], "Hello everyone, how is it GOING TODAY!");
+  mk_remember(h[..], "Hello! Doing well — how can I help today?");
+  f_conv := mk_facts_ex(h[..], "macOS", "/work/openagents", MK_COMMAND_SECONDS, mk_self_note(true), o[..]);
+  #assert json_valid(f_conv) && cl_count(cl_raw(f_conv, "conversation")) == 1;
+  ar[0].at = 0; ar[0].full = false;
+  #assert cl_str(ar[..], f_conv, "self") == MK_SELF_KNOWLEDGE;
+}
+
+#test "Vertex model copied into MkKeys.vmodel survives caller arena overwrite" {
+  k: [1] MkKeys;
+  arena: [64] u8;
+  src := "gemini-4-neon";
+  for c, i: src { arena[i] = c; }
+  vm_raw := mk_vertex_model(cast(string) arena[0..<src.count]);
+  vm := cast(string) k[0].vmodel[0..<mk_cat(k[0].vmodel[..], 0, vm_raw)];
+  // Simulate mcworker resetting its per-line stdin arena on the next message.
+  for i: 0..<src.count { arena[i] = 'X'; }
+  #assert vm == "gemini-4-neon";
+}

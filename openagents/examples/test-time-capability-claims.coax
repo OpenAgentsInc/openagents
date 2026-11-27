@@ -1,0 +1,95 @@
+// Runnable example for The OpenAgents Book Chapter 43: Test-time capabilities.
+// Exercises the production #authority NIP-EVAL report & admission reader
+// (coax/lib/nostr/eval/report.coax) alongside the local #authority promotion
+// gate vocabulary (coax/lib/agent/desktop/capability-gate.coax):
+//   - Reading a verified `openagents.eval-report.v1` claim (subject, baseline,
+//     held suite/partition digests, trusted evaluator, pass verdict) and
+//     admitting it via `openagents.eval-admission.v1`.
+//   - Proving fail-closed refusals when suite digest is unheld (`unverifiable`),
+//     evaluator is untrusted (`untrusted`), baseline is removed while a comparison
+//     measurement remains (`measurement`), or an admission is expired/untrusted/wrong-subject.
+//   coax/bin/coax run openagents/examples/test-time-capability-claims.coax
+#import "Basic";
+#load "../../coax/lib/nostr/eval/report.coax";
+#load "../../coax/lib/agent/desktop/capability-gate.coax";
+
+ttc_ev_name :: (c: u32) -> string {
+  if c == EV_VERIFIED { return "verified"; }
+  if c == EV_UNVERIFIABLE { return "unverifiable"; }
+  if c == EV_UNTRUSTED { return "untrusted"; }
+  if c == EV_COVERAGE { return "coverage"; }
+  if c == EV_MEASUREMENT { return "measurement"; }
+  return "other";
+}
+
+ttc_ea_name :: (c: u32) -> string {
+  if c == EA_OK { return "ok"; }
+  if c == EA_ISSUER { return "issuer"; }
+  if c == EA_EXPIRED { return "expired"; }
+  if c == EA_UNVERIFIED { return "unverified"; }
+  if c == EA_SUBJECT { return "subject"; }
+  if c == EA_VERDICT { return "verdict"; }
+  return "other";
+}
+
+// book:begin test-time-capability-claims
+ttc_run :: () -> bool {
+  held := [2] string.[EV_T_SUITE, EV_T_PART];
+  trusted := [1] string.[EV_T_E1];
+  ops := [1] string.["op"];
+
+  // 1. Read verified claim and admit it under operator policy.
+  view := eval_report(EV_T_REPORT, held[..], trusted[..]);
+  seen := [1] EvalSeen.[EvalSeen.{digest = EV_T_R1, view = view}];
+  admit_ok := eval_admit(EV_T_ADMIT, seen[..], ops[..], 1790000000);
+  print("claim code=% subject=% verdict_pass=% admit=%\n",
+    ttc_ev_name(view.code), view.subject, view.verdict == EV_PASS, ttc_ea_name(admit_ok));
+
+  // 2. Report refusals: unheld suite, untrusted evaluator, comparison without baseline.
+  v_unverif := eval_report(EV_T_REPORT, held[0..<1], trusted[..]);
+  v_untrust := eval_report(EV_T_REPORT, held[..], trusted[0..<0]);
+
+  b1: [4096] u8;
+  b2: [4096] u8;
+  no_base := ts_swap(EV_T_REPORT, "\"baseline\":{\"definition\":{\"id\":\"x:pkg/base\"}}", "\"baseline\":null", b1[..]);
+  no_base_cov := ts_swap(no_base, "\"baseline\":{\"planned\":10,\"attempted\":10,\"completed\":7,\"refused\":0,\"failed\":3,\"cancelled\":0,\"unknown\":0,\"excluded\":0}", "\"baseline\":null", b2[..]);
+  v_nobase := eval_report(no_base_cov, held[..], trusted[..]);
+  print("report_refusals unheld=% untrusted=% no_baseline=%\n",
+    ttc_ev_name(v_unverif.code), ttc_ev_name(v_untrust.code), ttc_ev_name(v_nobase.code));
+
+  // 3. Admission refusals: expired, untrusted issuer, unverified report, wrong subject, failing verdict.
+  ea_exp := eval_admit(EV_T_ADMIT, seen[..], ops[..], 1790090000);
+  no_ops := [1] string.["other"];
+  ea_iss := eval_admit(EV_T_ADMIT, seen[..], no_ops[..], 1790000000);
+  bad_seen := [1] EvalSeen.[EvalSeen.{digest = EV_T_R1, view = EvalView.{code = EV_UNVERIFIABLE, verdict = EV_PASS, subject = "x:pkg/agent"}}];
+  ea_unv := eval_admit(EV_T_ADMIT, bad_seen[..], ops[..], 1790000000);
+  wrong_subj := [1] EvalSeen.[EvalSeen.{digest = EV_T_R1, view = EvalView.{code = EV_VERIFIED, verdict = EV_PASS, subject = "x:pkg/other"}}];
+  ea_sub := eval_admit(EV_T_ADMIT, wrong_subj[..], ops[..], 1790000000);
+  fail_seen := [1] EvalSeen.[EvalSeen.{digest = EV_T_R1, view = EvalView.{code = EV_VERIFIED, verdict = EV_FAIL, subject = "x:pkg/agent"}}];
+  ea_ver := eval_admit(EV_T_ADMIT, fail_seen[..], ops[..], 1790000000);
+  print("admit_refusals expired=% issuer=% unverified=% subject=% verdict=%\n",
+    ttc_ea_name(ea_exp), ttc_ea_name(ea_iss), ttc_ea_name(ea_unv), ttc_ea_name(ea_sub), ttc_ea_name(ea_ver));
+
+  // 4. Local #authority promotion gate mirrors the evidence requirement.
+  s_ok := CapEvalSummary.{
+    total_cases = 10, heldout_cases = 3, baseline_passed = 7, candidate_passed = 9,
+    baseline_heldout_passed = 2, candidate_heldout_passed = 3, atif_verified = true
+  };
+  s_no_atif := s_ok;
+  s_no_atif.atif_verified = false;
+  g_ok := cap_admit_promotion(s_ok);
+  g_bad := cap_admit_promotion(s_no_atif);
+  print("local_gate pass_code=% unverified_code=%\n", g_ok, g_bad);
+
+  return view.code == EV_VERIFIED && view.verdict == EV_PASS && view.subject == "x:pkg/agent" &&
+         admit_ok == EA_OK && v_unverif.code == EV_UNVERIFIABLE && v_untrust.code == EV_UNTRUSTED &&
+         v_nobase.code == EV_MEASUREMENT && ea_exp == EA_EXPIRED && ea_iss == EA_ISSUER &&
+         ea_unv == EA_UNVERIFIED && ea_sub == EA_SUBJECT && ea_ver == EA_VERDICT &&
+         g_ok == CAP_PASS && g_bad == CAP_FAIL_ATIF_UNVERIFIED;
+}
+// book:end test-time-capability-claims
+
+main :: () {
+  ok := ttc_run();
+  print("ok=%\n", ok);
+}

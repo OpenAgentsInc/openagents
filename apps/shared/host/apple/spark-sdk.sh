@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Firm reason: 5 (thin wrapper caching and compiling pinned Breez Spark Swift SDK modules for macOS; holds no logic)
-# Prepares ~/.cache/openagents/breez-sdk-spark/0.27.2/macos-arm64/ containing:
-#   - breez_sdk_sparkFFI.framework (from pinned 0.27.2 xcframework, SHA-256 verified)
-#   - BigNumber.swiftmodule + libBigNumber.a
-#   - BreezSdkSpark.swiftmodule + libBreezSdkSpark.a
-# Prints the macos-arm64 cache directory on stdout.
+# Firm reason: 5 (thin wrapper caching and compiling pinned Breez Spark Swift SDK modules for macOS and iOS; holds no logic)
+# Modes:
+#   spark-sdk.sh                       -> builds macOS arm64 static libs/modules and prints cache dir
+#   spark-sdk.sh --ios-package <dest>  -> stages a local SwiftPM package (breez_sdk_sparkFFI.xcframework + BigNumber + BreezSdkSpark) for Xcode iOS/Simulator builds
 set -euo pipefail
+
+MODE="macos"
+IOS_PKG_DEST=""
+if [[ "${1:-}" == "--ios-package" ]]; then
+  MODE="ios-package"
+  IOS_PKG_DEST="${2:?missing destination directory for --ios-package}"
+fi
 
 VER="0.27.2"
 FFI_URL="https://github.com/breez/breez-sdk-spark-swift/releases/download/${VER}/breez_sdk_sparkFFI.xcframework.zip"
@@ -18,7 +23,7 @@ OUT="$CACHE_ROOT/macos-arm64"
 SRC="$CACHE_ROOT/src"
 STAMP="$OUT/.built-macos14-arm64-v1"
 
-if [[ -f "$STAMP" && -d "$OUT/breez_sdk_sparkFFI.framework" && -f "$OUT/libBreezSdkSpark.a" && -f "$OUT/libBigNumber.a" ]]; then
+if [[ "$MODE" == "macos" && -f "$STAMP" && -d "$OUT/breez_sdk_sparkFFI.framework" && -f "$OUT/libBreezSdkSpark.a" && -f "$OUT/libBigNumber.a" ]]; then
   echo "$OUT"
   exit 0
 fi
@@ -30,22 +35,32 @@ REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 MAIN_REPO="$(cd "$(git -C "$REPO_ROOT" rev-parse --git-common-dir)/.." 2>/dev/null && pwd || echo "$REPO_ROOT")"
 LOCAL_SPM="$MAIN_REPO/apps/openagents-ios/build-device/SourcePackages"
 
-if [[ ! -d "$OUT/breez_sdk_sparkFFI.framework" ]]; then
-  LOCAL_FW="$LOCAL_SPM/artifacts/breez-sdk-spark-swift/breez_sdk_sparkFFI/breez_sdk_sparkFFI.xcframework/macos-arm64_x86_64/breez_sdk_sparkFFI.framework"
-  if [[ -d "$LOCAL_FW" ]]; then
-    cp -R "$LOCAL_FW" "$OUT/breez_sdk_sparkFFI.framework"
-  else
-    ZIP="$SRC/breez_sdk_sparkFFI.xcframework.zip"
-    curl -fsSL "$FFI_URL" -o "$ZIP"
-    ACTUAL="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
-    if [[ "$ACTUAL" != "$FFI_SHA" ]]; then
-      echo "spark-sdk.sh: SHA-256 mismatch for breez_sdk_sparkFFI.xcframework.zip (got $ACTUAL)" >&2
-      rm -f "$ZIP"
-      exit 1
-    fi
-    rm -rf "$SRC/xcframework"
+ensure_xcframework() {
+  if [[ -d "$SRC/xcframework/breez_sdk_sparkFFI.xcframework" ]]; then
+    return 0
+  fi
+  LOCAL_XCFW="$LOCAL_SPM/artifacts/breez-sdk-spark-swift/breez_sdk_sparkFFI/breez_sdk_sparkFFI.xcframework"
+  if [[ -d "$LOCAL_XCFW" ]]; then
     mkdir -p "$SRC/xcframework"
-    ditto -x -k "$ZIP" "$SRC/xcframework"
+    cp -R "$LOCAL_XCFW" "$SRC/xcframework/breez_sdk_sparkFFI.xcframework"
+    return 0
+  fi
+  ZIP="$SRC/breez_sdk_sparkFFI.xcframework.zip"
+  curl -fsSL "$FFI_URL" -o "$ZIP"
+  ACTUAL="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
+  if [[ "$ACTUAL" != "$FFI_SHA" ]]; then
+    echo "spark-sdk.sh: SHA-256 mismatch for breez_sdk_sparkFFI.xcframework.zip (got $ACTUAL)" >&2
+    rm -f "$ZIP"
+    exit 1
+  fi
+  rm -rf "$SRC/xcframework"
+  mkdir -p "$SRC/xcframework"
+  ditto -x -k "$ZIP" "$SRC/xcframework"
+}
+
+if [[ "$MODE" == "ios-package" || ! -d "$OUT/breez_sdk_sparkFFI.framework" ]]; then
+  ensure_xcframework
+  if [[ ! -d "$OUT/breez_sdk_sparkFFI.framework" && -d "$SRC/xcframework/breez_sdk_sparkFFI.xcframework/macos-arm64_x86_64/breez_sdk_sparkFFI.framework" ]]; then
     cp -R "$SRC/xcframework/breez_sdk_sparkFFI.xcframework/macos-arm64_x86_64/breez_sdk_sparkFFI.framework" "$OUT/breez_sdk_sparkFFI.framework"
   fi
 fi
@@ -69,6 +84,50 @@ if [[ ! -f "$SRC/Swift-Big-Number-Core.swift" ]]; then
     curl -fsSL "$BIGINT_ZIP_URL" | tar -xz -C "$SRC"
     cp "$SRC/Swift-BigInt-2.4.0/Sources/BigNumber/Swift-Big-Number-Core.swift" "$SRC/"
   fi
+fi
+
+if [[ "$MODE" == "ios-package" ]]; then
+  mkdir -p "$IOS_PKG_DEST/Sources/BigNumber" "$IOS_PKG_DEST/Sources/BreezSdkSpark"
+  if [[ ! -d "$IOS_PKG_DEST/breez_sdk_sparkFFI.xcframework" ]]; then
+    cp -R "$SRC/xcframework/breez_sdk_sparkFFI.xcframework" "$IOS_PKG_DEST/breez_sdk_sparkFFI.xcframework"
+  fi
+  cp -f "$SRC/Swift-Big-Number-Core.swift" "$IOS_PKG_DEST/Sources/BigNumber/Swift-Big-Number-Core.swift"
+  cp -f "$SRC/breez_sdk_spark.swift" "$IOS_PKG_DEST/Sources/BreezSdkSpark/breez_sdk_spark.swift"
+  cp -f "$SRC/breez_sdk_spark_bindings.swift" "$IOS_PKG_DEST/Sources/BreezSdkSpark/breez_sdk_spark_bindings.swift"
+  chmod u+w "$IOS_PKG_DEST/Sources/BigNumber/Swift-Big-Number-Core.swift" \
+            "$IOS_PKG_DEST/Sources/BreezSdkSpark/breez_sdk_spark.swift" \
+            "$IOS_PKG_DEST/Sources/BreezSdkSpark/breez_sdk_spark_bindings.swift"
+  cat > "$IOS_PKG_DEST/Package.swift" <<'EOF'
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "SparkSDK",
+    platforms: [.iOS(.v16), .macOS(.v14)],
+    products: [
+        .library(name: "BreezSdkSpark", targets: ["BreezSdkSpark"]),
+        .library(name: "BigNumber", targets: ["BigNumber"]),
+    ],
+    targets: [
+        .binaryTarget(
+            name: "breez_sdk_sparkFFI",
+            path: "breez_sdk_sparkFFI.xcframework"
+        ),
+        .target(
+            name: "BigNumber",
+            path: "Sources/BigNumber"
+        ),
+        .target(
+            name: "BreezSdkSpark",
+            dependencies: ["breez_sdk_sparkFFI", "BigNumber"],
+            path: "Sources/BreezSdkSpark",
+            swiftSettings: [.unsafeFlags(["-suppress-warnings"])]
+        ),
+    ]
+)
+EOF
+  echo "$IOS_PKG_DEST"
+  exit 0
 fi
 
 # 1. Compile BigNumber module

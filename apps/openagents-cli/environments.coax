@@ -1,0 +1,155 @@
+// Enrolled computers (environments): list, enroll (with auto-discovered local git workspace),
+// and remove. Uses the same account session/NIP-98 transport as `projects`.
+#load "../../coax/lib/agent/environment/enroll-wire.coax";
+
+environments_usage :: () {
+  print("%\n", "Enrolled computers (login first; --origin and --profile choose the account):");
+  print("%\n", "  environments list [--detail]");
+  print("%\n", "  environments enroll --host HEX --grant HEX [--epoch N] [--relay URL] [--name LABEL] [--workspace DIR]");
+  print("%\n", "  environments remove --host HEX");
+}
+
+ecli_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+ecli_git :: (dir: string, arg1: string, arg2: string, arg3: string, out: [] u8) -> int {
+  err: [256] u8;
+  nargs := ifx arg3 != "" then 6 else ifx arg2 != "" then 5 else 4;
+  args := [6] string.["git", "-C", dir, arg1, arg2, arg3];
+  res := proc_run(args[0..<nargs], 3000, out, err[..]);
+  if res.started != 0 || res.timed_out || res.status != 0 || res.out_n < 1 { return 0; }
+  t := ecli_trim(cast(string) out[0..<res.out_n]);
+  for i: 0..<t.count { out[i] = t[i]; }
+  return t.count;
+}
+
+ecli_detect_os :: (out: [] u8) -> string {
+  err: [128] u8;
+  args := [2] string.["uname", "-s"];
+  res := proc_run(args[..], 2000, out, err[..]);
+  if res.started != 0 || res.status != 0 || res.out_n < 1 { return ""; }
+  u := ecli_trim(cast(string) out[0..<res.out_n]);
+  if u == "Darwin" { return "macos"; }
+  if u == "Linux" { return "linux"; }
+  return "";
+}
+
+ecli_basename :: (path: string) -> string {
+  e := path.count;
+  while e > 1 && path[e - 1] == '/' { e -= 1; }
+  s := e;
+  while s > 0 && path[s - 1] != '/' { s -= 1; }
+  return cast(string) path[s..<e];
+}
+
+ecli_safe_ws_id :: (name: string, out: [] u8) -> int {
+  n := 0;
+  for c: name {
+    if n >= 64 || n >= out.count { break; }
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
+    out[n] = ifx ok then c else '-';
+    n += 1;
+  }
+  if n == 0 && out.count >= 4 { out[0] = 'r'; out[1] = 'o'; out[2] = 'o'; out[3] = 't'; n = 4; }
+  return n;
+}
+
+environments_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  out: [HTTP_BODY_MAX] u8;
+  if verb == "list" {
+    path := ifx args_has(a, "--detail") then "/api/chat/environments/v1?detail=1" else "/api/chat/environments/v1";
+    res := api_send_wait(a, profile, "GET", path, "", "Content-Type: application/json", "", CLI_HTTP_MS, out[..]);
+    if !api_ok(res) { return api_fail(r, res, cast(string) out[0..<res.n]); }
+    print("%\n", cast(string) out[0..<res.n]);
+    return EXIT_OK;
+  }
+  if verb == "remove" {
+    host := args_value(a, "--host", "");
+    if !ea_id(host, 64) { return fail(r, EXIT_USAGE, "environments remove requires --host <64-hex>"); }
+    body: [256] u8;
+    o: [1] Jo; jo_start(o[..], body[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "schema"); jo_str(o[..], EA_ENROLL);
+    jo_key(o[..], "host_pubkey"); jo_str(o[..], host);
+    jo_end(o[..]);
+    res := api_send_wait(a, profile, "POST", "/api/chat/environments/v1/remove", jo_text(o[..]), "Content-Type: application/json", "", CLI_HTTP_MS, out[..]);
+    if !api_ok(res) { return api_fail(r, res, cast(string) out[0..<res.n]); }
+    print("%\n", cast(string) out[0..<res.n]);
+    return EXIT_OK;
+  }
+  if verb == "enroll" {
+    host := args_value(a, "--host", "");
+    grant := args_value(a, "--grant", "");
+    if !ea_id(host, 64) || !ea_id(grant, 64) {
+      return fail(r, EXIT_USAGE, "environments enroll requires --host <64-hex> and --grant <64-hex>");
+    }
+    relay := args_value(a, "--relay", "wss://relay.openagents.com");
+    if !ea_enroll_relay_ok(relay) { return fail(r, EXIT_USAGE, "--relay must be a wss:// or loopback ws:// URL"); }
+    ep_s := args_value(a, "--epoch", "0");
+    epoch := 0;
+    for c: ep_s {
+      if c < '0' || c > '9' { return fail(r, EXIT_USAGE, "--epoch must be a non-negative integer"); }
+      epoch = epoch * 10 + cast(int) (c - '0');
+    }
+    hname: [80] u8;
+    label := args_value(a, "--name", "");
+    if label == "" {
+      hn := cxcli_hostname(hname[..]);
+      label = ifx hn > 0 then ecli_trim(cast(string) hname[0..<hn]) else "My Computer";
+    }
+    os_buf: [64] u8;
+    os_s := args_value(a, "--os", ecli_detect_os(os_buf[..]));
+    if !ea_enroll_os_ok(os_s) { os_s = ""; }
+    ws_dir := args_value(a, "--workspace", ".");
+    top_buf: [512] u8;
+    top_n := ecli_git(ws_dir, "rev-parse", "--show-toplevel", "", top_buf[..]);
+    rem_buf: [256] u8;
+    br_buf: [96] u8;
+    ws_id_buf: [64] u8;
+    has_ws := top_n > 0;
+    rem_n := ifx has_ws then ecli_git(ws_dir, "remote", "get-url", "origin", rem_buf[..]) else 0;
+    br_n := ifx has_ws then ecli_git(ws_dir, "rev-parse", "--abbrev-ref", "HEAD", br_buf[..]) else 0;
+    body: [4096] u8;
+    o: [1] Jo; jo_start(o[..], body[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "schema"); jo_str(o[..], EA_ENROLL);
+    jo_key(o[..], "host_pubkey"); jo_str(o[..], host);
+    jo_key(o[..], "display_name"); jo_str(o[..], label);
+    jo_key(o[..], "grant_id"); jo_str(o[..], grant);
+    jo_key(o[..], "epoch"); jo_int(o[..], epoch);
+    jo_key(o[..], "relay"); jo_str(o[..], relay);
+    jo_key(o[..], "os"); jo_str(o[..], os_s);
+    jo_key(o[..], "workspaces"); jo_arr(o[..]);
+    if has_ws {
+      top_s := cast(string) top_buf[0..<top_n];
+      bname := ecli_basename(top_s);
+      ws_id_n := ecli_safe_ws_id(bname, ws_id_buf[..]);
+      jo_obj(o[..]);
+      jo_key(o[..], "workspace_id"); jo_str(o[..], cast(string) ws_id_buf[0..<ws_id_n]);
+      jo_key(o[..], "name"); jo_str(o[..], ifx bname.count > 0 then bname else "workspace");
+      jo_key(o[..], "local_path"); jo_str(o[..], top_s);
+      if rem_n > 0 { jo_key(o[..], "repo_remote"); jo_str(o[..], cast(string) rem_buf[0..<rem_n]); }
+      if br_n > 0 { jo_key(o[..], "branch"); jo_str(o[..], cast(string) br_buf[0..<br_n]); }
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    jo_end(o[..]);
+    if o[0].bad { return fail(r, EXIT_USAGE, "enrollment request too large"); }
+    res := api_send_wait(a, profile, "POST", "/api/chat/environments/v1", jo_text(o[..]), "Content-Type: application/json", "", CLI_HTTP_MS, out[..]);
+    if !api_ok(res) { return api_fail(r, res, cast(string) out[0..<res.n]); }
+    print("%\n", cast(string) out[0..<res.n]);
+    return EXIT_OK;
+  }
+  return fail(r, EXIT_USAGE, "environments list|enroll|remove");
+}
+
+#test "CLI workspace ID sanitizer converts unsafe characters cleanly" {
+  b: [64] u8;
+  n := ecli_safe_ws_id("my repo/1", b[..]);
+  #assert n == 9 && cast(string) b[0..<n] == "my-repo-1" && eae_ws_id_ok(cast(string) b[0..<n]);
+  #assert ecli_basename("/Users/chris/work/openagents/") == "openagents";
+}

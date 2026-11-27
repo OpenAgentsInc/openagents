@@ -166,7 +166,7 @@ ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gat
   native_tc := (g.flags & GW_CHAT_TOOL_ERROR) != 0;
   drop_tools := disable_tools && !native_tc;
   tool_choice := ifx disable_tools && native_tc then "none" else "";
-  tbuf: [8192] u8;
+  tbuf: [16384] u8;
   tools := ik_prompt_tools_for_mode(ik_loop_profile(l), drop_tools, l[0].hybrid_exec, tbuf[..]);
 
   // Adaptive effort scheduling (Level 1): during pure early discovery (steps 1..3 before any edit)

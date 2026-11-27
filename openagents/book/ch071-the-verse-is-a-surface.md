@@ -1,7 +1,19 @@
 # 71. The Metaverse is a surface
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` Metaverse & GameBuilder
+> surface routing policy ([`coax/lib/agent/desktop/metaverse-route.coax`](../../coax/lib/agent/desktop/metaverse-route.coax),
+> `#14038`–`#14046`), embedded Desktop Metaverse pane
+> ([`apps/openagents-desktop/page/metaversepane.coax`](../../apps/openagents-desktop/page/metaversepane.coax)),
+> and pinned Everglade session wire codec ([`everglade/shared/everglade-wire.coax`](../../everglade/shared/everglade-wire.coax))
+> run on `cpu`, grounded by
+> [`openagents/examples/metaverse-surface-routing.coax`](../examples/metaverse-surface-routing.coax)
+> and [`openagents/examples/metaverse-surface-routing.out`](../examples/metaverse-surface-routing.out),
+> and are consumed by [`apps/openagents-desktop/host-core.coax`](../../apps/openagents-desktop/host-core.coax),
+> [`apps/openagents-desktop/desktop-core.coax`](../../apps/openagents-desktop/desktop-core.coax),
+> [`apps/openagents-desktop/page/metaversepane.coax`](../../apps/openagents-desktop/page/metaversepane.coax),
+> and [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax).
+> Remaining: headless Chrome `web` `coax drive` cross-surface chat-panel
+> continuation with `/chat` in one session and in-world Gym/wallet panels.
 
 ## Premise
 
@@ -76,20 +88,28 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** a `coax drive` case in headless Chrome: open a realm, open the
-  chat panel, send `hello` to a fake runtime with a recorded reply, then
-  open `/chat` in the same session.
-- **Trace:** `tap` the panel, `type hello`, `tap` send, then `state
-  transcript` in the world and on `/chat`. Both print `you: hello` and the
-  same reply, in one conversation with one ID.
-- **Refusal:** a grant revoked from `/chat` is revoked in the world too. The
-  panel's next action that needs it is refused with the same message chat
-  shows.
-- **Independent check:** the realm session's frames are compared with the
-  bytes listed in
-  [`everglade-session-v7.json`](../../proto/verse/everglade-session-v7.json),
-  and the chat side gives the transcript that chapter 6's case
-  expects.
+- **Source:** [`coax/lib/agent/desktop/metaverse-route.coax`](../../coax/lib/agent/desktop/metaverse-route.coax),
+  [`apps/openagents-desktop/page/metaversepane.coax`](../../apps/openagents-desktop/page/metaversepane.coax),
+  [`everglade/shared/everglade-wire.coax`](../../everglade/shared/everglade-wire.coax),
+  [`openagents/examples/metaverse-surface-routing.coax`](../examples/metaverse-surface-routing.coax),
+  and [`openagents/examples/metaverse-surface-routing.out`](../examples/metaverse-surface-routing.out)
+  (remaining: headless Chrome `web` `coax drive` realm-to-`/chat` continuation).
+- **Trace:** classifies first-party realm URLs (`https://openagents.com/realms/everglade` →
+  `pane=1`, `kind=6`, `badge=RLM`, `ro=true`), GameBuilder play URIs
+  (`openagents://gamebuilder/play/everglade` → `pane=1`, `kind=7`, `mode=2`,
+  `badge=GB`), and `.glb` models (`badge=GLB`) into `MV_PANE_METAVERSE`, keeps
+  plain notes in `MV_PANE_FILE`, downgrades when surface flags are off
+  (`reason=flag_off`), and admits safe relative `.gltf` texture URIs.
+- **Refusal:** path traversal (`../secrets/town.glb`) fails closed with
+  `MV_PANE_REJECT`/`unsafe_path`; untrusted external URLs
+  (`https://evil.example/payload.glb`) fail closed with
+  `MV_PANE_REJECT`/`untrusted_external_url`; external-scheme, absolute, and
+  traversing `.gltf` resource URIs refuse (`false`).
+- **Independent check:** `coax/bin/coax run openagents/examples/metaverse-surface-routing.coax`
+  and `--release` match [`openagents/examples/metaverse-surface-routing.out`](../examples/metaverse-surface-routing.out),
+  alongside `#authority` checks in [`coax/lib/agent/desktop/metaverse-route.coax`](../../coax/lib/agent/desktop/metaverse-route.coax)
+  and Everglade session wire profile checks against
+  [`everglade-session-v7.json`](../../proto/verse/everglade-session-v7.json).
 
 Planned paths: none. The Metaverse surface is a realm route in
 [`apps/openagents-web`](../../apps/openagents-web) over
@@ -112,3 +132,56 @@ Planned paths: none. The Metaverse surface is a realm route in
   - [Building the OpenAgents Metaverse Engine](../../metaverse-engine/book/README.md)
   - [Building Everglade](../../everglade/book/README.md)
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P1, P13
+
+## Source listing
+
+Run the Chapter 71 example in [`openagents/examples/metaverse-surface-routing.coax`](../examples/metaverse-surface-routing.coax) (committed transcript [`openagents/examples/metaverse-surface-routing.out`](../examples/metaverse-surface-routing.out)):
+
+<!-- source: openagents/examples/metaverse-surface-routing.coax metaverse-surface-routing -->
+```jai
+msr_run :: () -> bool {
+  // 1. Canonical routes with all desktop surface flags enabled.
+  r_realm := mv_route_classify("https://openagents.com/realms/everglade", DC_FLAGS_ALL);
+  r_play := mv_route_classify("openagents://gamebuilder/play/everglade", DC_FLAGS_ALL);
+  r_glb := mv_route_classify("assets/scenes/town.glb", DC_FLAGS_ALL);
+  r_txt := mv_route_classify("notes/readme.md", DC_FLAGS_ALL);
+  print("realm pane=% kind=% badge=% ro=% reason=%\n",
+    r_realm.pane, r_realm.kind, r_realm.badge, r_realm.read_only, r_realm.reason);
+  print("play pane=% kind=% mode=% badge=% ro=% glb_badge=% txt_pane=%\n",
+    r_play.pane, r_play.kind, r_play.mode, r_play.badge, r_play.read_only, r_glb.badge, r_txt.pane);
+
+  // 2. Feature-flag downgrade (falls back to file pane with reason=flag_off) + safe relative glTF URI.
+  r_gated := mv_route_classify("https://openagents.com/realms/everglade", 0);
+  uri_ok := mv_gltf_external_uri_safe("textures/stone_albedo.png");
+  print("gated pane=% reason=% safe_uri=%\n", r_gated.pane, r_gated.reason, uri_ok);
+
+  // 3. Fail-closed security refusals: path traversal, untrusted external URL, unsafe glTF external URIs.
+  r_trav := mv_route_classify("../secrets/town.glb", DC_FLAGS_ALL);
+  r_ext := mv_route_classify("https://evil.example/payload.glb", DC_FLAGS_ALL);
+  uri_http := mv_gltf_external_uri_safe("https://evil.example/a.bin");
+  uri_abs := mv_gltf_external_uri_safe("/etc/passwd");
+  uri_trav := mv_gltf_external_uri_safe("../secret.bin");
+  print("refuse trav=(%,%) ext=(%,%) uri=(%,%,%)\n",
+    r_trav.pane == MV_PANE_REJECT, r_trav.reason,
+    r_ext.pane == MV_PANE_REJECT, r_ext.reason,
+    !uri_http, !uri_abs, !uri_trav);
+
+  return r_realm.pane == MV_PANE_METAVERSE && r_realm.kind == MV_KIND_REALM && r_realm.badge == "RLM" && r_realm.read_only &&
+         r_play.pane == MV_PANE_METAVERSE && r_play.kind == MV_KIND_GAMEBUILDER && r_play.mode == MV_MODE_PLAY &&
+         r_glb.pane == MV_PANE_METAVERSE && r_glb.kind == MV_KIND_MODEL && r_glb.badge == "GLB" &&
+         r_txt.pane == MV_PANE_FILE && r_gated.pane == MV_PANE_FILE && r_gated.reason == "flag_off" &&
+         uri_ok && r_trav.pane == MV_PANE_REJECT && r_trav.reason == "unsafe_path" &&
+         r_ext.pane == MV_PANE_REJECT && r_ext.reason == "untrusted_external_url" &&
+         !uri_http && !uri_abs && !uri_trav;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/metaverse-surface-routing.coax`, identical in `--release`):
+
+```text
+realm pane=1 kind=6 badge=RLM ro=true reason=ok
+play pane=1 kind=7 mode=2 badge=GB ro=true glb_badge=GLB txt_pane=0
+gated pane=0 reason=flag_off safe_uri=true
+refuse trav=(true,unsafe_path) ext=(true,untrusted_external_url) uri=(true,true,true)
+ok=true
+```

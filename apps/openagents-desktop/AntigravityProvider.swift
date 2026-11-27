@@ -1194,7 +1194,6 @@ final class AntigravityAuthManager {
 // MARK: - Usage Limits Prober (Disabled for Google ToS Compliance — #13995)
 
 enum AntigravityUsageLimitsProber {
-    #if OA_FULL
     /// Compliance (#13995): OpenAgents follows Google's approved T3 Code architecture
     /// (app -> official unmodified `agy acp` binary -> Google API) and NEVER extracts
     /// Antigravity OAuth tokens from profile files or macOS Keychain to call private
@@ -1202,7 +1201,6 @@ enum AntigravityUsageLimitsProber {
     static func probeQuotaWindows(for _: ProviderInstanceConfig, completion: @escaping (UsageAccountSnapshot?) -> Void) {
         completion(nil)
     }
-    #endif
 }
 
 // MARK: - Antigravity Skills Discovery (100% Port of AntigravitySkills.ts)
@@ -2035,9 +2033,7 @@ extension CoderWindow {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.syncProvidersSettingsPage()
-                #if OA_FULL
                 if FeatureFlags.isOn(.modelsAgy) { self.syncAntigravitySettings() }
-                #endif
                 if ComposerModelVisibility.showOtherModels {
                     self.syncAntigravityModels(on: self.page)
                     for r in self.runs.values where r.page != self.page { self.syncAntigravityModels(on: r.page) }

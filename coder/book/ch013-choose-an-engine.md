@@ -235,7 +235,7 @@ held: 22/22 right on mammoth-1, mean probability of the right picks 0.95
 train: 22/22 right on mammoth-1, mean probability of the right picks 0.92
 ```
 
-[route-labels.tsv](../../coder/tui/route-labels.tsv) is the labelled set:
+[route-labels.tsv](../../coder/tui/tests/route-labels.tsv) is the labelled set:
 44 messages, 22 to tune and 22 held out, 16 for Claude Code, 16 for Codex
 and 12 for Microcoder. It is the desktop Lab's set with its labels renamed.
 No message in it needs the psionic engine, so that answer has no check yet.

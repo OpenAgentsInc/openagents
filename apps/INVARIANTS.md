@@ -26,10 +26,10 @@ in the explicit `context` view, labeled inert context, with UTF-8-safe
 parts and bounded pages. They never replace the last human request or
 become executable historical calls. Ambiguous/incomplete native ID-prefix
 searches refuse selection.
-Checks: `coder/tui/session-reader-checks.coax` (branch/compaction/snips,
+Checks: `coder/tui/tests/session-reader-checks.coax` (branch/compaction/snips,
 parallel recovery, non-rendered attachment links, UTF-8 and bounded pages),
-`session-reader-registration-checks.coax` (shared catalog and typed
-requests), and `session-reader-oracle.py` (independent graph and native
+`coder/tui/tests/session-reader-registration-checks.coax` (shared catalog and typed
+requests), and `coder/tui/tests/session-reader-oracle.py` (independent graph and native
 MCP/CLI comparisons and a fresh actual Coder Codex chat; only aggregate
 observations leave its private inputs).
 
@@ -238,7 +238,7 @@ The product's submission fence is unchanged. See
 
 ## OpenAgents Desktop worker mounts core tools and workspace awareness unconditionally on every normal turn
 
-`coder/tui/oa-worker.coax` never strips the 8 core tools (`Read`, `Edit`, `Write`, `Bash`,
+`openagents/runtime/oa-worker.coax` never strips the 8 core tools (`Read`, `Edit`, `Write`, `Bash`,
 `Glob`, `Grep`, `TodoWrite`, `WebFetch`) or the `Working directory:` workspace context based
 on heuristic keyword matching or message-text classification (`fww_turn_no_tools` returns
 `true` strictly for explicit `force_wrapup_once` wrap-up turns). Optional heavy packs
@@ -249,7 +249,7 @@ System One routing (`fww_route_auto_plan_ex`) always receives the detected enclo
 repository name (`fww_detect_repo_name`, resolving linked worktree `.git` pointer files) so
 natural-language workspace prompts inside a repo are never misrouted as non-repo general
 chat.
-Checks: `coax/bin/coax test coder/tui/oa-worker.coax --library` (wired into
+Checks: `coax/bin/coax test openagents/runtime/oa-worker.coax --library` (wired into
 `evals/openagents-desktop/run.sh --tier 0`) and Tier 2 live regression task
 `evals/openagents-desktop/tier2/tasks/f5_summarize_open_issues_no_jargon.json`.
 

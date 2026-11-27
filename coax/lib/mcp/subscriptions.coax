@@ -1,0 +1,394 @@
+// MCP dual-era subscriptions:
+//  - 2026-07-28: subscriptions/listen (POST SSE filter),
+//    notifications/subscriptions/acknowledged, subscriptionId-tagged routing,
+//    and SubscriptionsListenResult graceful completion.
+//  - 2025-11-25: resources/subscribe & resources/unsubscribe tracking table.
+// Pure zero-heap #authority module.
+#load "types.coax";
+#load "jsonrpc.coax";
+#authority;
+
+MCP_SUB_MAX_LISTENERS :: 16;
+MCP_SUB_MAX_URIS :: 8;
+MCP_SUB_ID_MAX :: 64;
+MCP_SUB_URI_MAX :: 256;
+MCP_LEGACY_SUB_MAX :: 32;
+
+// Notification event kinds routed to subscriptions/listen listeners.
+MCP_NOTIF_TOOLS_CHANGED :: 1;
+MCP_NOTIF_RESOURCES_CHANGED :: 2;
+MCP_NOTIF_PROMPTS_CHANGED :: 3;
+MCP_NOTIF_RESOURCE_UPDATED :: 4;
+
+McpSubFilter :: struct {
+  ok: bool;
+  tools_list_changed: bool;
+  resources_list_changed: bool;
+  prompts_list_changed: bool;
+  uri_count: int;
+  uri_lens: [MCP_SUB_MAX_URIS] int;
+  uris: [MCP_SUB_MAX_URIS][MCP_SUB_URI_MAX] u8;
+}
+
+McpSubListener :: struct {
+  active: bool;
+  id_len: int;
+  id: [MCP_SUB_ID_MAX] u8;
+  filter: McpSubFilter;
+}
+
+McpSubTable :: struct {
+  count: int;
+  listeners: [MCP_SUB_MAX_LISTENERS] McpSubListener;
+}
+
+McpLegacyResSubs :: struct {
+  count: int;
+  lens: [MCP_LEGACY_SUB_MAX] int;
+  uris: [MCP_LEGACY_SUB_MAX][MCP_SUB_URI_MAX] u8;
+}
+
+#test "2026-07-28 subscriptions/listen parsing, acknowledgment, routing, and graceful close" {
+  buf: [1024] u8; o: [1] Jo; nodes: [64] JvNode; d: [1] Jv;
+
+  // Parse official SubscriptionsListenRequest/listen-for-list-changes.json params shape.
+  #assert jv_parse(d[..], "{\"notifications\":{\"toolsListChanged\":true,\"resourcesListChanged\":false,\"promptsListChanged\":true,\"resourceSubscriptions\":[\"file:///project/config.json\",\"file:///a.txt\"]}}", nodes[..]);
+  f := mcp_sub_parse_listen_params(d[0], 0);
+  #assert f.ok && f.tools_list_changed && !f.resources_list_changed && f.prompts_list_changed && f.uri_count == 2;
+
+  // Emit notifications/subscriptions/acknowledged matching official golden example.
+  jo_start(o[..], buf[..]);
+  mcp_sub_write_acknowledged(o[..], "listen-1", f);
+  #assert !o[0].bad;
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/subscriptions/acknowledged\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/subscriptionId\":\"listen-1\"},\"notifications\":{\"toolsListChanged\":true,\"promptsListChanged\":true,\"resourceSubscriptions\":[\"file:///project/config.json\",\"file:///a.txt\"]}}}";
+
+  // Emit graceful SubscriptionsListenResult close frame.
+  jo_start(o[..], buf[..]);
+  mcp_sub_write_listen_closed(o[..], "listen-1");
+  #assert !o[0].bad;
+  #assert jo_text(o[..]) == "{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/subscriptionId\":\"listen-1\"}}";
+
+  // Emit list_changed and resource_updated notifications (2026 with subscriptionId vs 2025 without).
+  jo_start(o[..], buf[..]);
+  mcp_sub_write_list_changed(o[..], "notifications/tools/list_changed", "l");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/subscriptionId\":\"l\"}}}";
+
+  jo_start(o[..], buf[..]);
+  mcp_sub_write_list_changed(o[..], "notifications/tools/list_changed", "");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}";
+
+  jo_start(o[..], buf[..]);
+  mcp_sub_write_resource_updated(o[..], "file:///project/config.json", "l");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/resources/updated\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/subscriptionId\":\"l\"},\"uri\":\"file:///project/config.json\"}}";
+
+  jo_start(o[..], buf[..]);
+  mcp_sub_write_resource_updated(o[..], "file:///project/config.json", "");
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/resources/updated\",\"params\":{\"uri\":\"file:///project/config.json\"}}";
+
+  // Register listener, check routing predicates, duplicate rejection, and removal.
+  tab: [1] McpSubTable;
+  mcp_sub_table_init(tab[..]);
+  #assert mcp_sub_add_listener(tab[..], "listen-1", f);
+  #assert !mcp_sub_add_listener(tab[..], "listen-1", f); // duplicate id
+  #assert !mcp_sub_add_listener(tab[..], "", f);
+
+  #assert mcp_sub_listener_wants(tab[0].listeners[0], MCP_NOTIF_TOOLS_CHANGED, "");
+  #assert !mcp_sub_listener_wants(tab[0].listeners[0], MCP_NOTIF_RESOURCES_CHANGED, "");
+  #assert mcp_sub_listener_wants(tab[0].listeners[0], MCP_NOTIF_PROMPTS_CHANGED, "");
+  #assert mcp_sub_listener_wants(tab[0].listeners[0], MCP_NOTIF_RESOURCE_UPDATED, "file:///project/config.json");
+  #assert mcp_sub_listener_wants(tab[0].listeners[0], MCP_NOTIF_RESOURCE_UPDATED, "file:///a.txt");
+  #assert !mcp_sub_listener_wants(tab[0].listeners[0], MCP_NOTIF_RESOURCE_UPDATED, "file:///other.txt");
+  #assert !mcp_sub_listener_wants(tab[0].listeners[0], 99, "");
+
+  // Listener with resourcesListChanged=true acknowledges it too.
+  f2 := McpSubFilter.{ ok = true, resources_list_changed = true };
+  jo_start(o[..], buf[..]);
+  mcp_sub_write_acknowledged(o[..], "l2", f2);
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/subscriptions/acknowledged\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/subscriptionId\":\"l2\"},\"notifications\":{\"resourcesListChanged\":true}}}";
+  #assert mcp_sub_add_listener(tab[..], "l2", f2);
+  #assert mcp_sub_listener_wants(tab[0].listeners[1], MCP_NOTIF_RESOURCES_CHANGED, "");
+  #assert tab[0].count == 2;
+
+  #assert mcp_sub_remove_listener(tab[..], "listen-1");
+  #assert !mcp_sub_remove_listener(tab[..], "listen-1");
+  #assert tab[0].count == 1;
+  #assert !mcp_sub_listener_wants(tab[0].listeners[0], MCP_NOTIF_TOOLS_CHANGED, ""); // inactive slot
+
+  // Reuse freed slot + verify capacity limit (16) and id length ceiling (64).
+  id65: [MCP_SUB_ID_MAX + 1] u8;
+  for i: 0..<id65.count { id65[i] = 'a'; }
+  #assert mcp_sub_add_listener(tab[..], cast(string) id65[0..<MCP_SUB_ID_MAX], f2);
+  #assert !mcp_sub_add_listener(tab[..], cast(string) id65[..], f2);
+  mcp_sub_table_init(tab[..]);
+  idbuf: [4] u8;
+  for i: 0..<MCP_SUB_MAX_LISTENERS {
+    idbuf[0] = 's';
+    idbuf[1] = cast(u8) ('a' + i);
+    #assert mcp_sub_add_listener(tab[..], cast(string) idbuf[0..<2], f2);
+  }
+  #assert !mcp_sub_add_listener(tab[..], "overflow", f2);
+
+  // Empty notifications object is valid; resourcesListChanged:true parses cleanly; malformed listen params are rejected.
+  #assert jv_parse(d[..], "{\"notifications\":{\"resourcesListChanged\":true}}", nodes[..]);
+  #assert mcp_sub_parse_listen_params(d[0], 0).resources_list_changed;
+  #assert jv_parse(d[..], "{\"notifications\":{}}", nodes[..]);
+  f_empty := mcp_sub_parse_listen_params(d[0], 0);
+  #assert f_empty.ok && !f_empty.tools_list_changed && !f_empty.resources_list_changed && !f_empty.prompts_list_changed && f_empty.uri_count == 0;
+
+  bad_listen := [10] string.[
+    "[]",
+    "{}",
+    "{\"notifications\":[]}",
+    "{\"notifications\":{\"toolsListChanged\":\"yes\"}}",
+    "{\"notifications\":{\"resourcesListChanged\":1}}",
+    "{\"notifications\":{\"promptsListChanged\":null}}",
+    "{\"notifications\":{\"resourceSubscriptions\":{}}}",
+    "{\"notifications\":{\"resourceSubscriptions\":[123]}}",
+    "{\"notifications\":{\"resourceSubscriptions\":[\"\"]}}",
+    "{\"notifications\":{\"resourceSubscriptions\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\"]}}"
+  ];
+  for s: bad_listen {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_sub_parse_listen_params(d[0], 0).ok;
+  }
+
+  // Exact MCP_SUB_MAX_URIS (8) and exact MCP_SUB_URI_MAX (256) vs 257.
+  #assert jv_parse(d[..], "{\"notifications\":{\"resourceSubscriptions\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\"]}}", nodes[..]);
+  #assert mcp_sub_parse_listen_params(d[0], 0).ok;
+
+  uri_json: [360] u8;
+  jo_start(o[..], uri_json[..]);
+  jo_obj(o[..]); jo_key(o[..], "notifications"); jo_obj(o[..]); jo_key(o[..], "resourceSubscriptions"); jo_arr(o[..]);
+  u257: [MCP_SUB_URI_MAX + 1] u8;
+  for i: 0..<u257.count { u257[i] = 'u'; }
+  jo_str(o[..], cast(string) u257[0..<MCP_SUB_URI_MAX]);
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  #assert mcp_sub_parse_listen_params(d[0], 0).ok;
+
+  jo_start(o[..], uri_json[..]);
+  jo_obj(o[..]); jo_key(o[..], "notifications"); jo_obj(o[..]); jo_key(o[..], "resourceSubscriptions"); jo_arr(o[..]);
+  jo_str(o[..], cast(string) u257[..]);
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  #assert !mcp_sub_parse_listen_params(d[0], 0).ok;
+}
+
+#test "2025-11-25 legacy resource subscription table is idempotent and bounded" {
+  st: [1] McpLegacyResSubs;
+  mcp_legacy_sub_init(st[..]);
+  #assert !mcp_legacy_sub_has(st[0], "file:///a");
+  #assert mcp_legacy_sub_add(st[..], "file:///a");
+  #assert mcp_legacy_sub_add(st[..], "file:///a"); // idempotent
+  #assert st[0].count == 1 && mcp_legacy_sub_has(st[0], "file:///a");
+  #assert !mcp_legacy_sub_has(st[0], "xile:///a"); // first-byte diff
+  #assert mcp_legacy_sub_add(st[..], "x:///longer");
+  #assert st[0].count == 2;
+  #assert mcp_legacy_sub_remove(st[..], "file:///a");
+  #assert st[0].count == 1 && !mcp_legacy_sub_has(st[0], "file:///a") && mcp_legacy_sub_has(st[0], "x:///longer");
+  #assert !mcp_legacy_sub_remove(st[..], "file:///missing");
+
+  // Reject empty or oversize URI; accept exact max.
+  #assert !mcp_legacy_sub_add(st[..], "");
+  u257: [MCP_SUB_URI_MAX + 1] u8;
+  for i: 0..<u257.count { u257[i] = 'r'; }
+  #assert mcp_legacy_sub_add(st[..], cast(string) u257[0..<MCP_SUB_URI_MAX]);
+  #assert !mcp_legacy_sub_add(st[..], cast(string) u257[..]);
+
+  // Fill to exact MCP_LEGACY_SUB_MAX capacity, then refuse next.
+  mcp_legacy_sub_init(st[..]);
+  ub: [4] u8;
+  for i: 0..<MCP_LEGACY_SUB_MAX {
+    ub[0] = 'u';
+    ub[1] = cast(u8) ('A' + (i / 10));
+    ub[2] = cast(u8) ('0' + (i % 10));
+    #assert mcp_legacy_sub_add(st[..], cast(string) ub[0..<3]);
+  }
+  #assert st[0].count == MCP_LEGACY_SUB_MAX;
+  #assert !mcp_legacy_sub_add(st[..], "uZ9");
+}
+
+mcp_sub_bytes_eq :: (buf: [] const u8, n: int, s: string) -> bool #effects(all) {
+  if n != s.count { return false; }
+  for i: 0..<n {
+    if buf[i] != s[i] { return false; }
+  }
+  return true;
+}
+
+mcp_sub_table_init :: (tab: [] McpSubTable) #effects(all) {
+  tab[0] = McpSubTable.{};
+}
+
+mcp_sub_parse_listen_params :: (d: Jv, params_node: int) -> McpSubFilter #effects(all) {
+  r: McpSubFilter;
+  if jv_kind(d, params_node) != JV_OBJECT { return r; }
+  nn := jv_get(d, params_node, "notifications");
+  if jv_kind(d, nn) != JV_OBJECT { return r; }
+
+  b: [1] bool;
+  if !mcp_parse_opt_bool_field(d, nn, "toolsListChanged", b[..]) { return r; }
+  r.tools_list_changed = b[0];
+  if !mcp_parse_opt_bool_field(d, nn, "resourcesListChanged", b[..]) { return r; }
+  r.resources_list_changed = b[0];
+  if !mcp_parse_opt_bool_field(d, nn, "promptsListChanged", b[..]) { return r; }
+  r.prompts_list_changed = b[0];
+
+  rs := jv_get(d, nn, "resourceSubscriptions");
+  if rs != -1 {
+    if jv_kind(d, rs) != JV_ARRAY { return r; }
+    n := jv_len(d, rs);
+    if n > MCP_SUB_MAX_URIS { return r; }
+    for i: 0..<n {
+      ent := jv_at(d, rs, i);
+      if jv_kind(d, ent) != JV_STRING { return r; }
+      u := jv_raw(d, ent);
+      if u.count == 0 || u.count > MCP_SUB_URI_MAX { return r; }
+      r.uri_lens[i] = u.count;
+      for j: 0..<u.count { r.uris[i][j] = u[j]; }
+    }
+    r.uri_count = n;
+  }
+
+  r.ok = true;
+  return r;
+}
+
+mcp_sub_add_listener :: (tab: [] McpSubTable, sub_id: string, filter: McpSubFilter) -> bool #effects(all) {
+  if sub_id.count == 0 || sub_id.count > MCP_SUB_ID_MAX { return false; }
+  free_idx := -1;
+  for i: 0..<MCP_SUB_MAX_LISTENERS {
+    if tab[0].listeners[i].active {
+      if mcp_sub_bytes_eq(tab[0].listeners[i].id[..], tab[0].listeners[i].id_len, sub_id) { return false; }
+    } else if free_idx == -1 {
+      free_idx = i;
+    }
+  }
+  if free_idx == -1 { return false; }
+  tab[0].listeners[free_idx].active = true;
+  tab[0].listeners[free_idx].id_len = sub_id.count;
+  for i: 0..<sub_id.count { tab[0].listeners[free_idx].id[i] = sub_id[i]; }
+  tab[0].listeners[free_idx].filter = filter;
+  tab[0].count += 1;
+  return true;
+}
+
+mcp_sub_remove_listener :: (tab: [] McpSubTable, sub_id: string) -> bool #effects(all) {
+  for i: 0..<MCP_SUB_MAX_LISTENERS {
+    if tab[0].listeners[i].active && mcp_sub_bytes_eq(tab[0].listeners[i].id[..], tab[0].listeners[i].id_len, sub_id) {
+      tab[0].listeners[i].active = false;
+      tab[0].count -= 1;
+      return true;
+    }
+  }
+  return false;
+}
+
+mcp_sub_listener_wants :: (l: McpSubListener, notif_kind: int, uri: string) -> bool #effects(all) {
+  if !l.active { return false; }
+  if notif_kind == MCP_NOTIF_TOOLS_CHANGED { return l.filter.tools_list_changed; }
+  if notif_kind == MCP_NOTIF_RESOURCES_CHANGED { return l.filter.resources_list_changed; }
+  if notif_kind == MCP_NOTIF_PROMPTS_CHANGED { return l.filter.prompts_list_changed; }
+  if notif_kind == MCP_NOTIF_RESOURCE_UPDATED {
+    for i: 0..<l.filter.uri_count {
+      if mcp_sub_bytes_eq(l.filter.uris[i][..], l.filter.uri_lens[i], uri) { return true; }
+    }
+  }
+  return false;
+}
+
+mcp_sub_write_acknowledged :: (o: [] Jo, sub_id: string, f: McpSubFilter) #effects(all) {
+  jrpc_write_notification(o, "notifications/subscriptions/acknowledged");
+  jo_key(o, "params"); jo_obj(o);
+  jo_key(o, "_meta"); jo_obj(o);
+  jo_key(o, MCP_META_SUBSCRIPTION_ID); jo_str(o, sub_id);
+  jo_end(o);
+  jo_key(o, "notifications"); jo_obj(o);
+  if f.tools_list_changed { jo_key(o, "toolsListChanged"); jo_bool(o, true); }
+  if f.resources_list_changed { jo_key(o, "resourcesListChanged"); jo_bool(o, true); }
+  if f.prompts_list_changed { jo_key(o, "promptsListChanged"); jo_bool(o, true); }
+  if f.uri_count != 0 {
+    jo_key(o, "resourceSubscriptions"); jo_arr(o);
+    ubuf: [MCP_SUB_URI_MAX] u8;
+    for i: 0..<f.uri_count {
+      un := f.uri_lens[i];
+      for j: 0..<un { ubuf[j] = f.uris[i][j]; }
+      jo_str(o, cast(string) ubuf[0..<un]);
+    }
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_end(o);
+  jo_end(o);
+}
+
+mcp_sub_write_listen_closed :: (o: [] Jo, sub_id: string) #effects(all) {
+  jo_obj(o);
+  mcp_write_result_type(o, true, false);
+  jo_key(o, "_meta"); jo_obj(o);
+  jo_key(o, MCP_META_SUBSCRIPTION_ID); jo_str(o, sub_id);
+  jo_end(o);
+  jo_end(o);
+}
+
+mcp_sub_write_list_changed :: (o: [] Jo, method: string, sub_id: string) #effects(all) {
+  jrpc_write_notification(o, method);
+  if sub_id.count != 0 {
+    jo_key(o, "params"); jo_obj(o);
+    jo_key(o, "_meta"); jo_obj(o);
+    jo_key(o, MCP_META_SUBSCRIPTION_ID); jo_str(o, sub_id);
+    jo_end(o);
+    jo_end(o);
+  }
+  jo_end(o);
+}
+
+mcp_sub_write_resource_updated :: (o: [] Jo, uri: string, sub_id: string) #effects(all) {
+  jrpc_write_notification(o, "notifications/resources/updated");
+  jo_key(o, "params"); jo_obj(o);
+  if sub_id.count != 0 {
+    jo_key(o, "_meta"); jo_obj(o);
+    jo_key(o, MCP_META_SUBSCRIPTION_ID); jo_str(o, sub_id);
+    jo_end(o);
+  }
+  jo_key(o, "uri"); jo_str(o, uri);
+  jo_end(o);
+  jo_end(o);
+}
+
+mcp_legacy_sub_init :: (st: [] McpLegacyResSubs) #effects(all) {
+  st[0] = McpLegacyResSubs.{};
+}
+
+mcp_legacy_sub_has :: (st: McpLegacyResSubs, uri: string) -> bool #effects(all) {
+  for i: 0..<st.count {
+    if mcp_sub_bytes_eq(st.uris[i][..], st.lens[i], uri) { return true; }
+  }
+  return false;
+}
+
+mcp_legacy_sub_add :: (st: [] McpLegacyResSubs, uri: string) -> bool #effects(all) {
+  if uri.count == 0 || uri.count > MCP_SUB_URI_MAX { return false; }
+  if mcp_legacy_sub_has(st[0], uri) { return true; }
+  if st[0].count >= MCP_LEGACY_SUB_MAX { return false; }
+  idx := st[0].count;
+  st[0].lens[idx] = uri.count;
+  for i: 0..<uri.count { st[0].uris[idx][i] = uri[i]; }
+  st[0].count += 1;
+  return true;
+}
+
+mcp_legacy_sub_remove :: (st: [] McpLegacyResSubs, uri: string) -> bool #effects(all) {
+  for i: 0..<st[0].count {
+    if mcp_sub_bytes_eq(st[0].uris[i][..], st[0].lens[i], uri) {
+      last := st[0].count - 1;
+      if i != last {
+        st[0].lens[i] = st[0].lens[last];
+        for j: 0..<st[0].lens[last] { st[0].uris[i][j] = st[0].uris[last][j]; }
+      }
+      st[0].count -= 1;
+      return true;
+    }
+  }
+  return false;
+}

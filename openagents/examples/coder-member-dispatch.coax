@@ -1,0 +1,85 @@
+// Runnable example for The OpenAgents Book Chapter 24: Coder as a member.
+// Exercises the production router (coax/lib/agent/router/decide.coax) dispatching
+// a repository task to the native `coder` member pack alongside the #authority
+// member permission boundary (openagents/core/members.coax):
+//   - Routing "fix the typo in README.md" for repo `openagents` to native `coder`
+//     with `explicit_delegate=none` and constructing the member-pack bitmask.
+//   - Allowing read-only member tools (`WalletStatus`, `KnowledgeSearch`,
+//     `OpenAgentsCli tasks list`) even in `PLAN` mode.
+//   - Proving bypass-immune `WalletPay` and `OpenAgentsCli` secret/signing refusals:
+//     ALWAYS `ASK` even under `BYPASS` + `bypass_danger` + `session_allow`, and
+//     `DENY` in non-interactive `PLAN` / `DONT_ASK` modes.
+//   - Refusing disallowed CLI subcommands and newline-injected arguments even in `BYPASS`.
+//   coax/bin/coax run openagents/examples/coder-member-dispatch.coax
+#import "Basic";
+#load "../../openagents/core/members.coax";
+#load "../../coax/lib/agent/router/decide.coax";
+
+cmd_beh_name :: (b: int) -> string {
+  if b == OA_MP_PBEH_ALLOW { return "allow"; }
+  if b == OA_MP_PBEH_ASK { return "ask"; }
+  if b == OA_MP_PBEH_DENY { return "deny"; }
+  return "unknown";
+}
+
+// book:begin coder-member-dispatch
+cmd_run :: () -> bool {
+  // 1. Route a repository task to native OpenAgents Core Coder member pack.
+  q: [1] Rtr2PlanRequest;
+  p: [1] Rtr2Plan;
+  w: [1] Rtr2Work;
+  q[0] = Rtr2PlanRequest.{
+    text = "fix the typo in README.md",
+    repo = "openagents",
+    local_inkling_ready = true,
+    cloud_ready = true
+  };
+  rtr2_decide_mock(
+    q[..],
+    "primary_pack=coder,compute_tier=cloud_fast,explicit_delegate=none,difficulty=1,effort=low,missing_capability=50,missing_capability_kind=none",
+    0, p[..], w[..]
+  );
+  base_mask := oa_member_packs_from_flags(true, true, true, true);
+  full_mask := base_mask | OA_PACK_AGENTS | OA_PACK_KNOWLEDGE | OA_PACK_CAPABILITY;
+  print("route ok=% pack=% tier=% delegate=% packs_mask=% agent_wt=%\n",
+    p[0].ok, p[0].capability_packs[0], p[0].compute_tier, p[0].explicit_delegate,
+    full_mask, oa_member_is_agent_tool("EnterWorktree"));
+
+  // 2. Read-only member tools allow in PLAN; mutating CLI asks in DEFAULT and denies in PLAN.
+  b_wstat := oa_member_tool_permission("WalletStatus", "", OA_MP_PMODE_PLAN, false, false);
+  b_kb := oa_member_tool_permission("KnowledgeSearch", "episode 289", OA_MP_PMODE_PLAN, false, false);
+  b_cli_ro := oa_member_tool_permission("OpenAgentsCli", "tasks list", OA_MP_PMODE_PLAN, false, false);
+  b_cli_mut_def := oa_member_tool_permission("OpenAgentsCli", "tasks create fix", OA_MP_PMODE_DEFAULT, false, false);
+  b_cli_mut_plan := oa_member_tool_permission("OpenAgentsCli", "tasks create fix", OA_MP_PMODE_PLAN, false, false);
+  print("reads wallet_status=% kb_search=% cli_list=% cli_create_def=% cli_create_plan=%\n",
+    cmd_beh_name(b_wstat), cmd_beh_name(b_kb), cmd_beh_name(b_cli_ro),
+    cmd_beh_name(b_cli_mut_def), cmd_beh_name(b_cli_mut_plan));
+
+  // 3. Bypass-immune WalletPay + vault/nostr signing + disallowed/injected CLI refusals.
+  pay_immune := oa_member_is_bypass_immune("WalletPay", "lnbc100n1...");
+  b_pay_bypass := oa_member_tool_permission("WalletPay", "lnbc100n1...", OA_MP_PMODE_BYPASS, true, true);
+  b_pay_plan := oa_member_tool_permission("WalletPay", "lnbc100n1...", OA_MP_PMODE_PLAN, true, true);
+  b_pay_dont := oa_member_tool_permission("WalletPay", "lnbc100n1...", OA_MP_PMODE_DONT_ASK, true, true);
+  b_vault_bypass := oa_member_tool_permission("OpenAgentsCli", "vault get api_key", OA_MP_PMODE_BYPASS, true, true);
+  b_nostr_plan := oa_member_tool_permission("OpenAgentsCli", "nostr publish hello", OA_MP_PMODE_PLAN, true, true);
+  b_bad_sub := oa_member_tool_permission("OpenAgentsCli", "rm -rf /", OA_MP_PMODE_BYPASS, true, true);
+  b_bad_nl := oa_member_tool_permission("OpenAgentsCli", "tasks list\nrm", OA_MP_PMODE_BYPASS, true, true);
+  print("wallet_pay immune=% bypass=% plan=% dont_ask=%\n",
+    pay_immune, cmd_beh_name(b_pay_bypass), cmd_beh_name(b_pay_plan), cmd_beh_name(b_pay_dont));
+  print("cli_guards vault_bypass=% nostr_plan=% bad_sub=% bad_newline=%\n",
+    cmd_beh_name(b_vault_bypass), cmd_beh_name(b_nostr_plan),
+    cmd_beh_name(b_bad_sub), cmd_beh_name(b_bad_nl));
+
+  return p[0].ok && p[0].capability_packs[0] == "coder" && p[0].explicit_delegate == "none" &&
+         full_mask == 127 && b_wstat == OA_MP_PBEH_ALLOW && b_kb == OA_MP_PBEH_ALLOW &&
+         b_cli_ro == OA_MP_PBEH_ALLOW && b_cli_mut_def == OA_MP_PBEH_ASK && b_cli_mut_plan == OA_MP_PBEH_DENY &&
+         pay_immune && b_pay_bypass == OA_MP_PBEH_ASK && b_pay_plan == OA_MP_PBEH_DENY && b_pay_dont == OA_MP_PBEH_DENY &&
+         b_vault_bypass == OA_MP_PBEH_ASK && b_nostr_plan == OA_MP_PBEH_DENY &&
+         b_bad_sub == OA_MP_PBEH_DENY && b_bad_nl == OA_MP_PBEH_DENY;
+}
+// book:end coder-member-dispatch
+
+main :: () {
+  ok := cmd_run();
+  print("ok=%\n", ok);
+}

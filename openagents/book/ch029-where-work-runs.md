@@ -49,7 +49,7 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`coder/tui/host.coax`](../../coder/tui/host.coax)
+- [`coder/tui/host.coax`](../../openagents/daemon/host.coax)
 - [`coder/tui/daemon.coax`](../../coder/tui/daemon.coax)
 - [`coax/lib/nostr/host`](../../coax/lib/nostr/host)
 - [`coax/lib/nostr/reach`](../../coax/lib/nostr/reach)

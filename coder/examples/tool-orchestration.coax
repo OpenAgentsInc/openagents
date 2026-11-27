@@ -1,0 +1,59 @@
+// Chapter 8: Programs as tool calls — Hook-vs-rule arbitration,
+// StreamingToolExecutor 3-level AbortController tree, Stage A/B output spill
+// budget (`openagents/core/tool_exec.coax`, `openagents/core/tool_spill.coax`),
+// and multi-pack member admission (`openagents/core/members.coax`).
+#import "Basic";
+#load "../../openagents/core/tool_exec.coax";
+#load "../../openagents/core/tool_spill.coax";
+#load "../../openagents/core/members.coax";
+
+arb_name :: (a: u8) -> string {
+  if a == FLAWED_ARB_ALLOW { return "allow"; }
+  if a == FLAWED_ARB_DENY { return "deny"; }
+  return "ask";
+}
+
+dec_name :: (d: u8) -> string {
+  if d == FLAWED_DEC_KEPT { return "kept"; }
+  if d == FLAWED_DEC_REPLACED { return "replaced"; }
+  return "unseen";
+}
+
+// book:begin example
+main :: () {
+  // 1. inc-4788 invariant: PreToolUse hook ALLOW never overrides an explicit settings DENY rule
+  a_deny := flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ALLOW, false, false, false, FLAWED_RULE_DENY);
+  a_allow := flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ALLOW, false, false, false, FLAWED_RULE_NONE);
+  print("hook arbitration: allow_vs_deny=% allow_vs_none=%\n",
+    arb_name(a_deny.action), arb_name(a_allow.action));
+
+  // 2. StreamingToolExecutor: two concurrent Bash calls; error in slot 0 cancels sibling
+  //    without aborting the entire turn (3-level AbortController isolation)
+  ste: [1] FlawedStreamingExecutor;
+  _ = flawed_ste_add(ste[..], 1, true, true, true, FLAWED_INTERRUPT_BLOCK);
+  _ = flawed_ste_add(ste[..], 2, true, true, true, FLAWED_INTERRUPT_BLOCK);
+  started := flawed_ste_process_queue(ste[..]);
+  _ = flawed_ste_complete(ste[..], 0, true);
+  print("streaming executor: started=% sibling_aborted=% turn_aborted=% slot1_aborted=%\n",
+    started, ste[0].sibling_aborted, ste[0].turn_aborted, ste[0].slots[1].aborted);
+
+  // 3. Stage A spill opt-out (unbounded Read keeps full bytes) vs Stage B per-message budget
+  stage_a_read := flawed_classify_stage_a_spill(500000, false, FLAWED_RESULT_UNBOUNDED, 1000);
+  stage_a_bash := flawed_classify_stage_a_spill(500000, false, 30000, 1000);
+  rs: [1] FlawedReplacementState;
+  cands: [2] FlawedBudgetCandidate;
+  cands[0] = FlawedBudgetCandidate.{tool_use_id = 10, size_chars = 150000, is_unbounded = true};
+  cands[1] = FlawedBudgetCandidate.{tool_use_id = 11, size_chars = 250000, is_unbounded = false};
+  replaced := flawed_enforce_message_budget(rs[..], cands[..], 2, FLAWED_DEFAULT_MSG_BUDGET_CHARS, FLAWED_PREVIEW_SIZE_BYTES);
+  print("spill budget: read_keep=% bash_spill=% stage_b_replaced=% id10=% id11=%\n",
+    stage_a_read == FLAWED_SPILL_KEEP, stage_a_bash == FLAWED_SPILL_PERSIST,
+    replaced, dec_name(flawed_rstate_lookup(rs[..], 10)), dec_name(flawed_rstate_lookup(rs[..], 11)));
+
+  // 4. Multi-pack orchestration: read-only GameBuilder inspect vs mutating build in default mode
+  gb_inspect := oa_member_tool_permission("GameBuilder", "inspect realm-1", OA_MP_PMODE_DEFAULT, false, false);
+  gb_build := oa_member_tool_permission("GameBuilder", "build realm-1", OA_MP_PMODE_DEFAULT, false, false);
+  gb_bad := oa_member_tool_permission("GameBuilder", "drop-table", OA_MP_PMODE_BYPASS, true, true);
+  print("member dispatch: inspect_allow=% build_ask=% unknown_deny=%\n",
+    gb_inspect == OA_MP_PBEH_ALLOW, gb_build == OA_MP_PBEH_ASK, gb_bad == OA_MP_PBEH_DENY);
+}
+// book:end example

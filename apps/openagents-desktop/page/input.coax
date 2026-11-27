@@ -57,6 +57,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_flag(s, DC_FLAG_TERMINAL) && cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
   if act >= CP_CKPT_DIFF && act <= CP_CKPT_DIFF_ALL { return cp_flag(s, DC_FLAG_GIT) && cp_ckpt_press(s, act, surface_id(s[0].surface[..], row)); }   // Per-turn checkpoints (checkpoint.coax; #13872)
   if act >= CP_SB_VIEW_ACTIVE_ACT && act <= CP_SB_SNOOZED_TOGGLE { return cp_sb_press(s, act, surface_id(s[0].surface[..], row)); }   // Sidebar working/snoozed shelf, archive, bulk, load more & undo (sidebar_groups.coax; #13875, #14025)
+  if act >= CP_IS_ACT_FIRST && act <= CP_IS_ACT_LAST { return cp_introspect_press(s, act, surface_id(s[0].surface[..], row)); }   // Universal Introspection sidebar sections & live inspector (introspect.coax; #14066)
   if act >= CP_FIND_PREV && act <= CP_MINIMAP_TRACK { return cp_find_press(s, act); }   // In-thread Find & Minimap (find.coax; #13876)
   if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882, #14065)
   if act >= CP_RICH_STASH_POP && act <= CP_RICH_SIDE_OPEN_MAIN { return cp_flag(s, DC_FLAG_RICH) && cp_rich_press(s, act, surface_id(s[0].surface[..], row)); } // Rich composer & Side Chat (rich.coax; #13884)
@@ -202,11 +203,12 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
         if cp_sb_chat_click(s, q) { return true; }
         s[0].side_drawer = false;
         if id == cast(string) s[0].current[0..<s[0].current_n] {
-          if s[0].dash[0].open || s[0].wallet[0].open { s[0].dash[0].open = false; s[0].wallet[0].open = false; return true; }
+          if s[0].dash[0].open || s[0].wallet[0].open || s[0].introspect[0].open { s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false; return true; }
           return false;
         }
         s[0].dash[0].open = false;
         s[0].wallet[0].open = false;
+        s[0].introspect[0].open = false;
         s[0].open = q; s[0].ask = CP_ASK_OPEN; return true;
       }
     }
@@ -231,14 +233,14 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
     return cp_send(s);
   }
-  if act == CP_NEW { s[0].side_drawer = false; s[0].wallet[0].open = false; return cp_new(s); }
-  if act == CP_DASHBOARD { s[0].wallet[0].open = false; return cp_dashboard_open(s); }
+  if act == CP_NEW { s[0].side_drawer = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false; return cp_new(s); }
+  if act == CP_DASHBOARD { s[0].wallet[0].open = false; s[0].introspect[0].open = false; return cp_dashboard_open(s); }
   if act == CP_DASH_CHAT { return cp_dash_press(s, surface_id(s[0].surface[..], row)); }
   if act == CP_WALLET_TOGGLE { return cp_wallet_pane_toggle(s); }
   if act == CP_WALLET_ACT { return cp_wallet_pane_press(s, surface_id(s[0].surface[..], row)); }
   if act == CP_PALETTE { cp_palette_show(s, APP_PAL_SESSIONS); return true; }
-  if act == CP_FOREMAN { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].ask = CP_ASK_FOREMAN; return true; }
-  if act == CP_GYM { if !cp_flag(s, DC_FLAG_GYM) { return false; } s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].ask = CP_ASK_GYM; return true; }
+  if act == CP_FOREMAN { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false; s[0].ask = CP_ASK_FOREMAN; return true; }
+  if act == CP_GYM { if !cp_flag(s, DC_FLAG_GYM) { return false; } s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false; s[0].ask = CP_ASK_GYM; return true; }
   if act == CP_UPDATE { s[0].ask = CP_ASK_UPDATE; return true; }
   if act == CP_SIDE_TOGGLE {
     if s[0].win_w > 0 && s[0].win_w < cast(f32) CP_SIDE_FROM {
@@ -634,6 +636,7 @@ cp_scroll_under :: (s: [] CoderPage) -> int {
   if s[0].side > 0 && s[0].px < s[0].side { return CP_SCR_SIDE; }
   if s[0].wallet[0].open { return CP_SCR_WALLET; }
   if s[0].dash[0].open { return CP_SCR_DASH; }
+  if s[0].introspect[0].open { return CP_SCR_INTROSPECT; }
   if s[0].gym_open && s[0].gym_mode == CP_GYM_LEAN { return CP_SCR_LEAN; }
   if cp_forge_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_FORGE; }
   if cp_side_chat_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_SIDE_CHAT; }
@@ -662,6 +665,7 @@ cp_scroll_at :: (s: [] CoderPage, view: int, delta: f32, kind: int, time: f64) {
   if view == CP_SCR_SIDE { s[0].side_scroll = ui_scroll_by(s[0].side_scr[..], scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), delta, s[0].side_content, s[0].side_view, kind, time, r); return; }
   if view == CP_SCR_WALLET { cp_wallet_pane_scroll(s, delta); return; }
   if view == CP_SCR_DASH { cp_dash_scroll(s, delta); return; }
+  if view == CP_SCR_INTROSPECT { cp_introspect_scroll(s, delta); return; }
   // the code review moves as the deltas come, the platform's own coast included
   if view == CP_SCR_FORGE { cp_forge_scroll(s, delta); return; }
   if view == CP_SCR_LEAN { _ = cp_lean_wheel(s, -delta); return; }

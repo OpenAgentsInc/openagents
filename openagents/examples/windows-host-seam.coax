@@ -1,0 +1,59 @@
+// Runnable example for The OpenAgents Book Chapter 77: A Windows host.
+// Exercises the shipped OpenAgents Desktop Windows OS seam
+// (coax/lib/agent/desktop/os-windows.coax, #13782/#14046) alongside the shared
+// #authority host conformance receipt check (metaverse-engine/host/conformance.coax):
+// Windows path normalization, Git-for-Windows worker PATH construction with
+// case/slash deduplication, robocopy folder-clone argv & status rules, and
+// exact host conformance probe admission with fail-closed refusals on bad
+// robocopy status, case-sensitive mismatches, and tampered conformance receipts.
+//   coax/bin/coax run openagents/examples/windows-host-seam.coax
+#import "Basic";
+#load "../../coax/lib/agent/desktop/os-windows.coax";
+#load "../../metaverse-engine/host/conformance.coax";
+
+// book:begin windows-host-seam
+whs_run :: () -> bool {
+  // 1. Shipped Desktop Windows seam: worker PATH assembly (Git for Windows + dedup) and robocopy argv.
+  pbuf: [2 * DC_PATH] u8;
+  wpath := dcwin_worker_path("C:/Users/alice", "C:/Program Files", "c:\\program files\\git\\cmd;C:\\Windows\\system32", pbuf[..]);
+  fb: [DC_PATH] u8; tb: [DC_PATH] u8;
+  argv: [DCWIN_ROBOCOPY_ARGS] string;
+  dcwin_robocopy_argv("C:/repo/coax/bin", "C:/wt/a/coax/bin", fb[..], tb[..], argv[..]);
+  rc_ok := dcwin_robocopy_ok(0) && dcwin_robocopy_ok(1) && dcwin_robocopy_ok(7);
+  print("worker_path=%\n", wpath);
+  print("robocopy bin=% src=% dst=% guard=% ok=%\n", argv[0], argv[1], argv[2], argv[6], rc_ok);
+
+  // 2. Shared Metaverse Engine host conformance receipt check (metaverse-engine/host/conformance.coax).
+  assets := [2][8] int.[[8] int.[7, 0, 4, 0, 0, 0, 4, 3541452541], [8] int.[7, 1, 0, 0, 0, 0, 0, 2166136261]];
+  frames := [2][8] int.[[8] int.[1, 1134559232, 1127481344, 1073741824, 0, 1, 0, 0], [8] int.[1, 1134559232, 1127481344, 1073741824, 1015021568, 1, 0, 0]];
+  events := [13][8] int.[
+    [8] int.[2, -6, 15, 1, 0, 0, 0, 0], [8] int.[2, -6, 15, 0, 0, 0, 0, 0], [8] int.[2, 128578, 0, 1, 0, 0, 0, 0], [8] int.[5, 1, 0, 0, 0, 0, 0, 0],
+    [8] int.[6, 1107296256, 0, 0, 0, 0, 0, 0], [8] int.[3, 1103626240, 1116274688, 0, 0, 17, 0, 0], [8] int.[3, 1103626240, 1116274688, 2, 0, 17, 0, 0],
+    [8] int.[3, 1096810496, 1099956224, 0, 1, 19, 0, 0], [8] int.[3, 1096810496, 1099956224, 2, 1, 19, 0, 0],
+    [8] int.[4, 901, 0, 0, 0, 0, 7, 2634860734], [8] int.[4, 901, 0, 0, 0, 0, 128, 794728389], [8] int.[4, 900, 0, 0, 0, 0, 4, 3469047761], [8] int.[8, 3, 0, 0, 0, 0, 0, 0]
+  ];
+  conf_ok := hc_core(1, 73, 0, 0, assets[..], frames[..], events[..]);
+
+  // 3. Fail-closed refusals: robocopy error exit (>= 8 or -1), POSIX case mismatch,
+  // dropped conformance frame, wrong host version, and 1-word tampered event probe.
+  ref_rc := !dcwin_robocopy_ok(8) && !dcwin_robocopy_ok(-1);
+  ref_posix_case := !dc_same_dir("/usr/bin", "/usr/BIN", false);
+  ref_dropped := !hc_core(1, 73, 1, 0, assets[..], frames[..], events[..]);
+  ref_ver := !hc_core(2, 73, 0, 0, assets[..], frames[..], events[..]);
+  bad_ev := events;
+  bad_ev[0][1] += 1;
+  ref_tamper := !hc_core(1, 73, 0, 0, assets[..], frames[..], bad_ev[..]);
+  print("conformance ok=% refuse=(rc=%,case=%,dropped=%,ver=%,tamper=%)\n",
+    conf_ok, ref_rc, ref_posix_case, ref_dropped, ref_ver, ref_tamper);
+
+  return wpath == "C:/Users/alice/.local/bin;C:/Program Files/Git/usr/bin;c:\\program files\\git\\cmd;C:\\Windows\\system32" &&
+         argv[0] == "robocopy" && argv[1] == "C:\\repo\\coax\\bin" && argv[2] == "C:\\wt\\a\\coax\\bin" &&
+         argv[6] == "/XJ" && rc_ok && conf_ok &&
+         ref_rc && ref_posix_case && ref_dropped && ref_ver && ref_tamper;
+}
+// book:end windows-host-seam
+
+main :: () {
+  ok := whs_run();
+  print("ok=%\n", ok);
+}

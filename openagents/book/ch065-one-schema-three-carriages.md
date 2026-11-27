@@ -1,8 +1,19 @@
 # 65. One schema, three carriages
 
-> **Status: planned.** This chapter is an outline: it lists what it will
-> say and build. Its draft is not written, and paths marked planned do not
-> exist.
+> **Status: partly implemented.** `#import_proto` binary protobuf codecs
+> ([`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax),
+> [`coax/lib/proto/wire.coax`](../../coax/lib/proto/wire.coax)), the `#authority`
+> protobuf JSON mapper runtime ([`coax/lib/proto/json.coax`](../../coax/lib/proto/json.coax)),
+> and `#authority` descriptor provenance fingerprinting
+> ([`coax/lib/proto/fingerprint.coax`](../../coax/lib/proto/fingerprint.coax))
+> run on `cpu`, grounded by
+> [`openagents/examples/schema-three-carriages.coax`](../examples/schema-three-carriages.coax)
+> and [`openagents/examples/schema-three-carriages.out`](../examples/schema-three-carriages.out),
+> and are consumed by [`coax/lib/compiler/compiler.coax`](../../coax/lib/compiler/compiler.coax),
+> [`coax/lib/repo/wire.coax`](../../coax/lib/repo/wire.coax),
+> and [`apps/openagents-cli/agent.coax`](../../apps/openagents-cli/agent.coax).
+> Remaining: graduating all spec-sketch NIP records onto `.proto` schemas and
+> wiring end-to-end Release-to-signed-Nostr-event carriage fixtures.
 
 ## Premise
 
@@ -82,18 +93,29 @@ Where the schemas stand today:
 
 ### The chapter's check
 
-- **Source:** the worked example's fixture: one `Release` message, its NIP
-  JSON, the signed event, and the message read back from that event.
-- **Trace:** byte for byte: the message, the JSON with amounts as decimal
-  strings, the event's ID and signature, and the message parsed back, equal
-  to the first.
-- **Refusal:** the event with one content byte changed fails its check over
-  the received bytes. JSON with an amount written as a number is refused at
-  parsing, and the reader names the field.
-- **Independent check:** the signed event matches the one written by
-  [`ext_release_vectors.py`](../../coax/tests/nostr/ext_release_vectors.py)
-  from NIP-01, BIP-340 and NIP-EXT, and Python's protobuf `json_format`
-  reads the same JSON to the same message.
+- **Source:** [`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax),
+  [`coax/lib/proto/json.coax`](../../coax/lib/proto/json.coax),
+  [`coax/lib/proto/wire.coax`](../../coax/lib/proto/wire.coax),
+  [`coax/lib/proto/fingerprint.coax`](../../coax/lib/proto/fingerprint.coax),
+  [`openagents/examples/schema-three-carriages.coax`](../examples/schema-three-carriages.coax),
+  and [`openagents/examples/schema-three-carriages.out`](../examples/schema-three-carriages.out)
+  (remaining: full NIP-EXT `Release` three-carriage fixture across Nostr event + HTTP + binary).
+- **Trace:** encodes and decodes a `27`-byte binary protobuf
+  `openagents.account.v1alpha1.GrantRequest` (`per_day=50000`, `per_payment=10000`,
+  `days=90`), writes the canonical JSON carriage with 64-bit sat amounts quoted
+  as decimal strings and bytes as padded base64 (`"sats_per_day":"50000"`,
+  `"digest":"AP8BPg=="`), parses the quoted 64-bit integer back into `4` bytes
+  of protobuf scalar wire, and seals a `400`-byte `coax-proto-v4` descriptor
+  provenance header.
+- **Refusal:** truncated protobuf bytes fail with `AG_BAD_WIRE`; negative,
+  fractional, plus-prefixed, and null JSON scalars fail with `PJ_VALUE`; node
+  exhaustion fails with `PJ_LIMIT`; short provenance buffers fail with
+  `fingerprint output budget`.
+- **Independent check:** `coax/bin/coax run openagents/examples/schema-three-carriages.coax`
+  and `--release` match [`openagents/examples/schema-three-carriages.out`](../examples/schema-three-carriages.out),
+  alongside `#authority` checks in [`coax/lib/proto/json.coax`](../../coax/lib/proto/json.coax)
+  and [`coax/lib/proto/fingerprint.coax`](../../coax/lib/proto/fingerprint.coax),
+  and NIP-EXT vector checks in [`ext_release_vectors.py`](../../coax/tests/nostr/ext_release_vectors.py).
 
 Planned paths: none. Schemas go in [`proto/`](../../proto).
 
@@ -114,3 +136,82 @@ Planned paths: none. Schemas go in [`proto/`](../../proto).
 1. Which record is the worked example: a release, which is public, or a grant,
    which is private?
 2. Do chapters show schema text, or only link to `proto/`?
+
+## Source listing
+
+Run the Chapter 65 example in [`openagents/examples/schema-three-carriages.coax`](../examples/schema-three-carriages.coax) (committed transcript [`openagents/examples/schema-three-carriages.out`](../examples/schema-three-carriages.out)):
+
+<!-- source: openagents/examples/schema-three-carriages.coax schema-three-carriages -->
+```jai
+s3c_run :: () -> bool {
+  // 1. Binary protobuf carriage: generated #import_proto codec for agents.proto.
+  q: AwRequest;
+  q.name_n = aw_text(q.name[..], "Ledger Agent");
+  q.mask = ag_bit(AG_WALLET_SPEND);
+  q.per_day = 50000;
+  q.per_payment = 10000;
+  q.days = 90;
+  bin_wire: [AW_MAX] u8;
+  bn := aw_request_write(q, bin_wire[..]);
+  dec := aw_request_read(bin_wire[0..<bn]);
+  print("binary bytes=% verdict=% per_day=% per_payment=% days=%\n",
+    bn, dec.verdict, dec.per_day, dec.per_payment, dec.days);
+
+  // 2. JSON carriage: 64-bit sat amounts as decimal strings + binary digest as padded base64,
+  // then parsed directly back into protobuf wire scalar bytes.
+  jbuf: [256] u8; o: [1] Jo;
+  jo_start(o[..], jbuf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "agent_name"); jo_str(o[..], cast(string) dec.name[0..<dec.name_n]);
+  jo_key(o[..], "sats_per_day"); pj_u64(o[..], cast(u64) dec.per_day, true);
+  digest := [4] u8.[0, 255, 1, 62];
+  jo_key(o[..], "digest"); pj_b64(o[..], digest[..]);
+  jo_end(o[..]);
+  jtext := jo_text(o[..]);
+
+  nodes: [32] JvNode; d: [1] Jv;
+  perr := pj_parse(d[..], jtext, nodes[..]);
+  sats_node := jv_get(d[0], 0, "sats_per_day");
+  sats_num := pj_integer(d[0], sats_node, 4); // protobuf uint64 (type 4)
+  pb_field: [32] u8;
+  pb_n := pj_scalar(d[0], sats_node, 4, pb_field[..], 0, 1, false);
+  print("json=% parse_err=% sats_u64=% scalar_bytes=%\n",
+    jtext, perr, sats_num.raw, pb_n);
+
+  // 3. Reproducible descriptor provenance envelope (coax-proto-v4).
+  env: [1024] u8;
+  fp := F_package("account-agents.pb", "AW", "coax0 0.52.0", "wire", "importer", "fingerprint", "BODY", env[..]);
+  print("provenance ok=% header_bytes=% total_bytes=%\n",
+    fp.error == "", fp.provenance, fp.written);
+
+  // 4. Fail-closed refusals: corrupt wire, negative uint64, fractional int, node limit, short provenance buffer.
+  bad_wire := [2] u8.[0x0a, 0x7f];
+  ref_wire := aw_request_read(bad_wire[..]).verdict == AG_BAD_WIRE;
+  bad_nodes: [8] JvNode; bd: [1] Jv;
+  _ := pj_parse(bd[..], "[\"-1\",1.5,\"+5\",null]", bad_nodes[..]);
+  ref_neg := pj_integer(bd[0], jv_at(bd[0], 0, 0), 4).error == PJ_VALUE;
+  ref_frac := pj_integer(bd[0], jv_at(bd[0], 0, 1), 4).error == PJ_VALUE;
+  ref_plus := pj_integer(bd[0], jv_at(bd[0], 0, 2), 4).error == PJ_VALUE;
+  ref_null := pj_scalar(bd[0], jv_at(bd[0], 0, 3), 4, pb_field[..], 0, 1, true) == -PJ_VALUE;
+  tiny_nodes: [3] JvNode;
+  ref_limit := pj_parse(bd[..], "[1,2,3,4]", tiny_nodes[..]) == PJ_LIMIT;
+  ref_fp := F_package("account-agents.pb", "AW", "coax0 0.52.0", "wire", "importer", "fingerprint", "BODY", env[0..<64]).error == "fingerprint output budget";
+  print("refuse wire=% neg=% frac=% plus=% null=% limit=% fp_budget=%\n",
+    ref_wire, ref_neg, ref_frac, ref_plus, ref_null, ref_limit, ref_fp);
+
+  return bn > 0 && dec.verdict == AG_OK && dec.per_day == 50000 && !o[0].bad &&
+         perr == 0 && sats_num.error == 0 && sats_num.raw == 50000 && pb_n == 4 &&
+         fp.error == "" && fp.written > fp.provenance &&
+         ref_wire && ref_neg && ref_frac && ref_plus && ref_null && ref_limit && ref_fp;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/schema-three-carriages.coax`, identical in `--release`):
+
+```text
+binary bytes=27 verdict=0 per_day=50000 per_payment=10000 days=90
+json={"agent_name":"Ledger Agent","sats_per_day":"50000","digest":"AP8BPg=="} parse_err=0 sats_u64=50000 scalar_bytes=4
+provenance ok=true header_bytes=400 total_bytes=405
+refuse wire=true neg=true frac=true plus=true null=true limit=true fp_budget=true
+ok=true
+```

@@ -102,7 +102,7 @@ app_side_row_status :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title
     wx := x + w - a.side_pad - ww - (ifx mark_unread then dot_inset + a.gap else 0.0f32);
     _ := sheet_text(sh, m, -1, wx, ty + (tf.line - s.small.line) / 2, s.small.line, s.small.face, ifx attention then s.ink else s.faint, word);
   }
-  if busy { activity(sh, s, x + w - a.side_pad - a.icon, y + (h - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion); }
+  if busy { activity_tinted(sh, s, x + w - a.side_pad - a.icon, y + (h - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion, s.faint); }
   else if mark_unread { sheet_fill(sh, x + w - a.side_pad - dot_inset, ifx ww > 0 then ty + (tf.line - dot) / 2 else y + (h - dot) / 2, dot, dot, dot / 2, s.accent); }   // beside its word, on the title's line
   if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
   return h;
@@ -139,6 +139,7 @@ APP_SIDE_STATUS_NONE :: 0;
 APP_SIDE_STATUS_APPROVAL :: 1;   // amber dot: waiting for tool/permission approval (#14025)
 APP_SIDE_STATUS_INPUT :: 2;      // indigo/cyan dot: waiting for user question/input (#14025)
 APP_SIDE_STATUS_FAILED :: 3;     // red dot: last turn failed (#14025)
+APP_SIDE_STATUS_ONLINE :: 4;     // green dot: online remote machine or live session (#14066)
 
 // One row of a history list.
 AppSideRow :: struct {
@@ -232,7 +233,8 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   r1_right := irx;
   if !off && r.status_kind != APP_SIDE_STATUS_NONE {
     dot := a.dot;
-    cue_c := ifx r.status_kind == APP_SIDE_STATUS_APPROVAL then rgba(245, 158, 11, 0.95f32)
+    cue_c := ifx r.status_kind == APP_SIDE_STATUS_ONLINE then s.success
+             else ifx r.status_kind == APP_SIDE_STATUS_APPROVAL then rgba(245, 158, 11, 0.95f32)
              else ifx r.status_kind == APP_SIDE_STATUS_INPUT then rgba(99, 102, 241, 0.95f32)
              else rgba(239, 68, 68, 0.95f32);
     if r1_right - dot > ix0 + 24.0f32 {
@@ -242,7 +244,7 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   } else if busy {
     spin_s := 11.0f32;
     if r1_right - spin_s > ix0 + 24.0f32 {
-      activity(sh, s, r1_right - spin_s, sy1 + (s.small.line - spin_s) / 2.0f32, spin_s, f[0].clock, f[0].reduced_motion);
+      activity_tinted(sh, s, r1_right - spin_s, sy1 + (s.small.line - spin_s) / 2.0f32, spin_s, f[0].clock, f[0].reduced_motion, s.faint);
       r1_right -= spin_s + 8.0f32;
     }
   } else if mark_unread {
@@ -310,7 +312,7 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
 app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, title: string, detail: string, list_action: int) -> f32 {
   if r.card { return app_side_row_card(f, r, x, y, w, title, list_action); }
   act := ifx r.action >= 0 then r.action else list_action;
-  if r.icon < 0 && r.trail_icon < 0 && r.indent == 0.0f32 && !r.tree_line && !r.quiet {
+  if r.icon < 0 && r.trail_icon < 0 && r.indent == 0.0f32 && !r.tree_line && !r.quiet && r.status_kind == APP_SIDE_STATUS_NONE {
     return app_side_row_status(f, r.id, x, y, w, title, detail, r.status, r.attention, r.state, r.unread, act);
   }
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
@@ -356,6 +358,17 @@ app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   tf := ifx a.side_text.line > 0 then a.side_text else s.body;
   lines := tf.line + (ifx detail.count > 0 then s.small.line else 0.0f32);
   ty := y + (h - lines) / 2.0f32;
+  if !off && r.status_kind != APP_SIDE_STATUS_NONE {
+    cue_c := ifx r.status_kind == APP_SIDE_STATUS_ONLINE then s.success
+             else ifx r.status_kind == APP_SIDE_STATUS_APPROVAL then rgba(245, 158, 11, 0.95f32)
+             else ifx r.status_kind == APP_SIDE_STATUS_INPUT then rgba(99, 102, 241, 0.95f32)
+             else rgba(239, 68, 68, 0.95f32);
+    sdot := 6.0f32;
+    if rx - sdot > tx + 24.0f32 {
+      sheet_fill(sh, rx - sdot, y + (h - sdot) / 2.0f32, sdot, sdot, sdot / 2.0f32, cue_c);
+      rx -= sdot + 6.0f32;
+    }
+  }
   if expands && busy {
     ww := ifx word.count > 0 then measure_width(m, s.small.face, word) else 0.0f32;
     if ww > 0 && ww + 6.0f32 < (rx - tx) / 2.0f32 {
@@ -369,7 +382,7 @@ app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
     }
   } else {
     if busy {
-      activity(sh, s, rx - a.icon, y + (h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
+      activity_tinted(sh, s, rx - a.icon, y + (h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion, s.faint);
       rx -= a.icon + a.gap;
     }
     if mark_unread {

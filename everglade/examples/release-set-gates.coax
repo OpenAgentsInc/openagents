@@ -1,0 +1,58 @@
+// Runnable example for Everglade Book Chapter 31: Ship it.
+// Exercises the single release-set policy (coax/web/release-set-policy.coax:
+// forward deploy order, reverse rollback order, wire & three-pin compatibility,
+// pinned staging promotion, staging lock arbitration, and canary regression verdicts)
+// plus pre-release fault qualification slices (coax/web/room/mmo-fault-policy.coax).
+//   coax/bin/coax run everglade/examples/release-set-gates.coax
+#import "Basic";
+#load "../../coax/web/release-set-policy.coax";
+#load "../../coax/web/room/mmo-fault-policy.coax";
+
+// book:begin release-set-gates
+ship_run :: () -> bool {
+  // 1. Strict deploy order: API -> rooms -> page; rollback reverses: page -> rooms -> API.
+  order_ok := rs_next(0) == RS_API && rs_next(1) == RS_ROOMS && rs_next(3) == RS_PAGE && rs_next(7) == RS_DONE;
+  skip_refused := !rs_may(RS_PAGE, 1) && !rs_may(RS_ROOMS, 0);
+  back_ok := rs_back(7) == RS_PAGE && rs_back(3) == RS_ROOMS && rs_back(1) == RS_API;
+  print("order_ok=% skip_refused=% rollback_order_ok=%\n", order_ok, skip_refused, back_ok);
+
+  // 2. Wire and three-pin gates: a page never ships ahead of any live shard.
+  own := RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 5, wire_hi = 6};
+  prev := RsPins.{engine = 3, rules = 9, content = 2, wire_lo = 5, wire_hi = 5};
+  page := RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 6, wire_hi = 6};
+  pins_all := rs_pins_match(page, own) && rs_pins_ship(6, 6) && rs_wire_ship(6, 6, 6, 5);
+  lag_refused := !rs_pins_ship(5, 6) && !rs_wire_ship(5, 6, 6, 5);
+  beside_ok := rs_pins_beside(prev, own, prev) && !rs_pins_beside(RsPins.{engine = 3, rules = 9, content = 3}, own, prev);
+  print("pins_all=% lag_refused=% prev_pins_beside=%\n", pins_all, lag_refused, beside_ok);
+
+  // 3. Staging promotion pin and staging lock (soak yields to release; another release blocks).
+  p_ok := rs_promote("01bdb405f0-20261113", "01bdb405f0-20261113") == RS_P_OK;
+  p_moved := rs_promote("01bdb405f0-20261113", "de2783f887-20261113") == RS_P_MOVED;
+  p_seeded := rs_promote("01bdb405f0-seeded", "01bdb405f0-seeded") == RS_P_SEEDED;
+  lk_held := rs_lock(true, "tok-a", "tok-b", 50, 100, true, true);
+  soak_yield := rs_lock_yields(lk_held, "soak 8da7b1d5e7", "release-set 1.2");
+  rel_block := !rs_lock_yields(lk_held, "release-set 1.1", "release-set 1.2");
+  print("promote_ok=% refuse_moved=% refuse_seeded=% soak_yields=% release_blocks=%\n",
+    p_ok, p_moved, p_seeded, soak_yield, rel_block);
+
+  // 4. Canary verdict vs peer shards + pre-release fault qualification fail-closed check.
+  peers := RsShard.{tick_p50_us = 450, tick_p95_us = 600, ticks_ds = 300, refused_ds = 4, seated = 32, unsaved_ms = 5000, windows = 30};
+  good := RsShard.{tick_p50_us = 480, tick_p95_us = 640, ticks_ds = 300, refused_ds = 5, seated = 32, unsaved_ms = 5200, windows = 30};
+  bad := good; bad.crashes = 1; bad.tick_p95_us = 20600; bad.version_refused = 1;
+  words: [120] u8;
+  v_good := rs_canary(good, peers);
+  v_bad := rs_canary(bad, peers);
+  why := rs_c_words(v_bad, words[..]);
+  qual_ok := mq_slice("durable") == 0 && mq_pass(0, 0, false, false, true) && !mq_pass(0, 0, true, false, true);
+  print("canary_good=% canary_bad_why=% qual_fail_closed=%\n", v_good == 0, why, qual_ok);
+
+  return order_ok && skip_refused && back_ok && pins_all && lag_refused && beside_ok &&
+         p_ok && p_moved && p_seeded && soak_yield && rel_block &&
+         v_good == 0 && v_bad == RS_C_CRASH + RS_C_TICK + RS_C_VERSION && qual_ok;
+}
+// book:end release-set-gates
+
+main :: () {
+  ok := ship_run();
+  print("ok=%\n", ok);
+}

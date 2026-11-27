@@ -1,7 +1,17 @@
 # 14. A typed plan
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The typed `openagents.router.v2alpha1`
+> `RoutePlan` schema ([`coax/lib/agent/router/wire.coax`](../../coax/lib/agent/router/wire.coax)),
+> `#authority` eligibility and plan-selection policy
+> ([`coax/lib/agent/router/policy.coax`](../../coax/lib/agent/router/policy.coax)),
+> and mock/offline decision runner ([`coax/lib/agent/router/decide.coax`](../../coax/lib/agent/router/decide.coax),
+> [`router.coax`](../../coax/lib/agent/router/router.coax), `#14056`, `#14071`)
+> run on `cpu`, grounded by [`openagents/examples/typed-route-plan.coax`](../examples/typed-route-plan.coax)
+> and [`openagents/examples/typed-route-plan.out`](../examples/typed-route-plan.out),
+> and are consumed by [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax)
+> and [`apps/openagents-desktop/page/agent_settings.coax`](../../apps/openagents-desktop/page/agent_settings.coax).
+> Remaining: multi-step grant-carrying program plans and step-log replay in
+> `openagents/agent/plan.coax`.
 
 ## Premise
 
@@ -41,8 +51,9 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`coax/lib/agent/router/router.coax`](../../coax/lib/agent/router/router.coax) (`openagents.router.v2alpha1` typed `RoutePlan`, `#14056`)
-- [`coax/lib/agent/router/policy.coax`](../../coax/lib/agent/router/policy.coax)
+- [`coax/lib/agent/router/wire.coax`](../../coax/lib/agent/router/wire.coax) (`openagents.router.v2alpha1` `Rtr2PlanRequest` and `Rtr2Plan` JSON/protobuf codec, `#14056`)
+- [`coax/lib/agent/router/policy.coax`](../../coax/lib/agent/router/policy.coax) (`#authority` `rtr2_eligible` and `rtr2_pick` plan rules)
+- [`coax/lib/agent/router/decide.coax`](../../coax/lib/agent/router/decide.coax) and [`coax/lib/agent/router/router.coax`](../../coax/lib/agent/router/router.coax) (`rtr2_decide_mock`, `rtr2_decide_offline`, and `router.coax plan`)
 - [`openagents/core/query_loop.coax`](../../openagents/core/query_loop.coax)
 - [`openagents/core/members.coax`](../../openagents/core/members.coax) (`#authority` member packs and bypass-immune money approval checks, `#14057`)
 - [`coax/lib/nostr/cj`](../../coax/lib/nostr/cj)
@@ -57,18 +68,28 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the plan type and executor in `openagents/agent/plan.coax`,
-  run with fake members that return recorded results.
-- **Trace:** a one-step plan hands a question to the answers member with a
-  read grant. The log prints the plan value, then one line for the step and
-  its result. Replaying the logged plan prints the same log bytes.
-- **Refusal:** a plan whose step needs a grant you haven't given stops
-  before any step runs and prints `refused: step 1 (coder) needs grant
-  repo.write`. A plan type with a money step and no approval step fails
-  the Coax check at build time, so no such plan is ever built.
-- **Independent check:** a table of plans and their expected verdicts
-  (run or refused, and the reason), written by hand before the executor.
-  The build failure comes from the compiler, not the executor.
+- **Source:** [`coax/lib/agent/router/wire.coax`](../../coax/lib/agent/router/wire.coax),
+  [`coax/lib/agent/router/policy.coax`](../../coax/lib/agent/router/policy.coax),
+  [`coax/lib/agent/router/decide.coax`](../../coax/lib/agent/router/decide.coax),
+  [`openagents/examples/typed-route-plan.coax`](../examples/typed-route-plan.coax),
+  and [`openagents/examples/typed-route-plan.out`](../examples/typed-route-plan.out)
+  (remaining: multi-step grant-carrying executor in `openagents/agent/plan.coax`).
+- **Trace:** constructs a typed `Rtr2Plan` for `"What did we decide in episode 289?"`
+  (`pack=knowledge`, `tier=local_inkling`, `delegate=none`, `effort=low`,
+  `difficulty=1`), round-trips it through `rtr2_plan_write` and `rtr2_plan_read`
+  with byte-identical replay (`replay_exact=true`), and selects a deterministic
+  offline fallback plan (`door=fallback`, `pack=coder`, `tier=local_inkling`,
+  `reasons=door_unavailable,user_pref_local`) when `user_compute_pref="local"`.
+- **Refusal:** an empty task fails closed with `no_task`; missing compute tiers
+  fail closed with `no_compute`; a door safety block fails closed with
+  `refused_by_door`; an unopted-in external delegate (`allow_local_harnesses=false`)
+  refuses delegation (`none/delegate_unavailable`); and an unknown pack in JSON
+  is refused by `rtr2_plan_request_read`.
+- **Independent check:** `coax/bin/coax run openagents/examples/typed-route-plan.coax`
+  and `--release` match [`openagents/examples/typed-route-plan.out`](../examples/typed-route-plan.out),
+  alongside `#authority` mutation checks and `#forall` fuzzing across 512 readiness
+  and preference combinations in [`coax/lib/agent/router/policy.coax`](../../coax/lib/agent/router/policy.coax)
+  and [`coax/lib/agent/router/decide.coax`](../../coax/lib/agent/router/decide.coax).
 
 Planned paths: `openagents/agent/plan.coax`.
 
@@ -88,3 +109,106 @@ Planned paths: `openagents/agent/plan.coax`.
 1. The audit's plan carries a budget. Our rule is that we impose no limits on
    a run and show any limit the user sets. Should a plan carry only limits the
    user set?
+
+## Source listing
+
+Run the Chapter 14 example in [`openagents/examples/typed-route-plan.coax`](../examples/typed-route-plan.coax) (committed transcript [`openagents/examples/typed-route-plan.out`](../examples/typed-route-plan.out)):
+
+<!-- source: openagents/examples/typed-route-plan.coax typed-route-plan -->
+```jai
+trp_run :: () -> bool {
+  q: [1] Rtr2PlanRequest;
+  p: [1] Rtr2Plan;
+  w: [1] Rtr2Work;
+
+  // 1. Typed RoutePlan for a knowledge question + byte-identical JSON replay.
+  q[0] = Rtr2PlanRequest.{
+    text = "What did we decide in episode 289?",
+    local_inkling_ready = true,
+    cloud_ready = true
+  };
+  rtr2_decide_mock(
+    q[..],
+    "primary_pack=knowledge,compute_tier=local_inkling,explicit_delegate=none,difficulty=1,effort=low,missing_capability=50,missing_capability_kind=none",
+    0, p[..], w[..]
+  );
+  j1: [RTR2_PLAN_MAX] u8;
+  n1 := rtr2_plan_write(p[..], j1[..]);
+  s1 := cast(string) j1[0..<n1];
+
+  nodes: [1024] JvNode;
+  wire: [RTR2_PLAN_MAX] u8;
+  p2: [1] Rtr2Plan;
+  rd_ok := rtr2_plan_read(s1, nodes[..], wire[..], p2[..]);
+  j2: [RTR2_PLAN_MAX] u8;
+  n2 := rtr2_plan_write(p2[..], j2[..]);
+  replay_exact := rd_ok && n1 > 0 && n1 == n2 && s1 == cast(string) j2[0..<n2];
+  print("plan1 ok=% pack=% tier=% delegate=% effort=% difficulty=% replay_exact=%\n",
+    p[0].ok, p[0].capability_packs[0], p[0].compute_tier, p[0].explicit_delegate,
+    p[0].effort, p[0].difficulty, replay_exact);
+
+  // 2. Deterministic offline fallback + user_compute_pref="local" override.
+  q[0] = Rtr2PlanRequest.{
+    text = "fix the bug in app.coax",
+    repo = "openagents",
+    local_inkling_ready = true,
+    cloud_ready = true,
+    user_compute_pref = "local"
+  };
+  rtr2_decide_offline(q[..], p[..]);
+  print("offline ok=% door=% pack=% tier=% reasons=%,%\n",
+    p[0].ok, p[0].door, p[0].capability_packs[0], p[0].compute_tier,
+    p[0].reasons[0], p[0].reasons[1]);
+
+  // 3. Fail-closed refusals: empty task, no compute, safety block, unopted delegate, bad JSON pack.
+  q_empty: [1] Rtr2PlanRequest;
+  q_empty[0] = Rtr2PlanRequest.{local_inkling_ready = true, cloud_ready = true};
+  p_empty: [1] Rtr2Plan;
+  rtr2_decide_mock(q_empty[..], "", 0, p_empty[..], w[..]);
+
+  q_nocpu: [1] Rtr2PlanRequest;
+  q_nocpu[0] = Rtr2PlanRequest.{text = "hi"};
+  p_nocpu: [1] Rtr2Plan;
+  rtr2_decide_mock(q_nocpu[..], "", 0, p_nocpu[..], w[..]);
+
+  q_safe: [1] Rtr2PlanRequest;
+  q_safe[0] = Rtr2PlanRequest.{text = "blocked input", local_inkling_ready = true, cloud_ready = true};
+  p_safe: [1] Rtr2Plan;
+  rtr2_decide_mock(q_safe[..], "fail=safety", 0, p_safe[..], w[..]);
+
+  q_del: [1] Rtr2PlanRequest;
+  q_del[0] = Rtr2PlanRequest.{
+    text = "use claude to fix this",
+    local_inkling_ready = true,
+    cloud_ready = true,
+    allow_local_harnesses = false
+  };
+  q_del[0].available_delegates[0] = "claude";
+  q_del[0].navailable_delegates = 1;
+  p_del: [1] Rtr2Plan;
+  rtr2_decide_mock(q_del[..], "primary_pack=coder,explicit_delegate=claude,difficulty=2,effort=medium", 0, p_del[..], w[..]);
+
+  q_bad: [1] Rtr2PlanRequest;
+  bad_pack_ok := rtr2_plan_request_read("{\"text\":\"hi\",\"available_packs\":[\"bogus\"]}", nodes[..], wire[..], q_bad[..]);
+
+  print("refuse_empty=% refuse_compute=% refuse_safety=% refuse_delegate=%/% refuse_bad_pack=%\n",
+    p_empty[0].error, p_nocpu[0].error, p_safe[0].error,
+    p_del[0].explicit_delegate, p_del[0].reasons[0], !bad_pack_ok);
+
+  return replay_exact && p[0].ok && p[0].capability_packs[0] == "coder" && p[0].compute_tier == "local_inkling" &&
+         !p_empty[0].ok && p_empty[0].error == "no_task" &&
+         !p_nocpu[0].ok && p_nocpu[0].error == "no_compute" &&
+         !p_safe[0].ok && p_safe[0].error == "refused_by_door" &&
+         p_del[0].ok && p_del[0].explicit_delegate == "none" && p_del[0].reasons[0] == "delegate_unavailable" &&
+         !bad_pack_ok;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/typed-route-plan.coax`, identical in `--release`):
+
+```text
+plan1 ok=true pack=knowledge tier=local_inkling delegate=none effort=low difficulty=1 replay_exact=true
+offline ok=true door=fallback pack=coder tier=local_inkling reasons=door_unavailable,user_pref_local
+refuse_empty=no_task refuse_compute=no_compute refuse_safety=refused_by_door refuse_delegate=none/delegate_unavailable refuse_bad_pack=true
+ok=true
+```

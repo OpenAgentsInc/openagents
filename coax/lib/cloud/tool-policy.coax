@@ -1,0 +1,244 @@
+// OpenAgents Cloud Tier 1 tool allowlist, argument validation, SSRF guards, and execution target routing (#14127).
+#authority;
+
+CLD_TOOL_NONE          :: 0;
+CLD_TOOL_WEB_SEARCH    :: 1;
+CLD_TOOL_WEB_FETCH     :: 2;
+CLD_TOOL_GH_TREE       :: 3;
+CLD_TOOL_GH_READ_FILE  :: 4;
+CLD_TOOL_GH_SEARCH     :: 5;
+CLD_TOOL_GH_ISSUES     :: 6;
+CLD_TOOL_GH_PR         :: 7;
+
+CLD_TARGET_NONE     :: 0;
+CLD_TARGET_AUTO     :: 1;
+CLD_TARGET_CLOUD    :: 2;
+CLD_TARGET_COMPUTER :: 3;
+CLD_TARGET_SANDBOX  :: 4;
+
+cld_tool_kind :: (name: string) -> int #effects(all) {
+  if name == "web_search" { return CLD_TOOL_WEB_SEARCH; }
+  if name == "web_fetch" { return CLD_TOOL_WEB_FETCH; }
+  if name == "github_tree" { return CLD_TOOL_GH_TREE; }
+  if name == "github_read_file" { return CLD_TOOL_GH_READ_FILE; }
+  if name == "github_search_code" { return CLD_TOOL_GH_SEARCH; }
+  if name == "github_list_issues" { return CLD_TOOL_GH_ISSUES; }
+  if name == "github_get_pr" { return CLD_TOOL_GH_PR; }
+  return CLD_TOOL_NONE;
+}
+
+cld_target_kind :: (name: string) -> int #effects(all) {
+  if name.count == 0 || name == "auto" { return CLD_TARGET_AUTO; }
+  if name == "cloud" { return CLD_TARGET_CLOUD; }
+  if name == "computer" { return CLD_TARGET_COMPUTER; }
+  if name == "sandbox" { return CLD_TARGET_SANDBOX; }
+  return CLD_TARGET_NONE;
+}
+
+cld_hex64 :: (s: string) -> bool #effects(all) {
+  if s.count != 64 { return false; }
+  for c: s {
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+  }
+  return true;
+}
+
+cld_target_valid :: (target: string, host: string) -> bool #effects(all) {
+  tk := cld_target_kind(target);
+  if tk == CLD_TARGET_NONE { return false; }
+  if tk == CLD_TARGET_COMPUTER { return cld_hex64(host); }
+  return host.count == 0;
+}
+
+// Person accounts (including WorkOS L1) may call Tier 1 read-only cloud tools unless limited or frozen.
+cld_tool_admit :: (kind: int, verified: bool, account: string, limited: bool, frozen: bool) -> bool #effects(all) {
+  return kind == 2 && verified && account.count > 0 && !limited && !frozen;
+}
+
+cld_slug_char :: (c: u8) -> bool #effects(all) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
+}
+
+// Strict GitHub owner/repo slug: two nonempty safe segments separated by exactly one '/'.
+cld_repo_valid :: (repo: string) -> bool #effects(all) {
+  if repo.count < 3 || repo.count > 160 || repo[0] == '/' || repo[repo.count - 1] == '/' { return false; }
+  slash := -1;
+  for c, i: repo {
+    if c == '/' {
+      if slash >= 0 { return false; } // mutant: equivalent (repo[0] != '/', so slash is always -1 or >= 1)
+      slash = i;
+    } else if !cld_slug_char(c) {
+      return false;
+    }
+  }
+  if slash < 0 { return false; } // mutant: equivalent (repo[0] != '/', so slash is never 0)
+  owner := cast(string) repo[0..<slash];
+  name := cast(string) repo[slash + 1..<repo.count];
+  if owner == "." || owner == ".." || name == "." || name == ".." { return false; }
+  return true;
+}
+
+// Safe repository-relative path: no leading '/', no '\\', no control chars, no '..' segment.
+cld_rel_path_valid :: (path: string, allow_empty: bool) -> bool #effects(all) {
+  if path.count == 0 { return allow_empty; }
+  if path.count > 512 || path[0] == '/' || path[path.count - 1] == '/' { return false; }
+  seg_start := 0;
+  for i: 0..<path.count + 1 {
+    if i < path.count {
+      c := path[i];
+      if c < 33 || c == 127 || c == '\\' || c == '?' || c == '#' || c == '%' { return false; }
+      if c != '/' { continue; }
+    }
+    seg_len := i - seg_start;
+    if seg_len == 0 { return false; }
+    seg := cast(string) path[seg_start..<i];
+    if seg == "." || seg == ".." { return false; }
+    seg_start = i + 1;
+  }
+  return true;
+}
+
+// Safe git branch/tag/SHA ref (empty defaults to repo default branch).
+cld_ref_valid :: (ref: string) -> bool #effects(all) {
+  if ref.count == 0 { return true; }
+  if ref.count > 128 || ref[0] == '/' || ref[ref.count - 1] == '/' || ref[0] == '-' || ref[0] == '.' { return false; }
+  for i: 0..<ref.count {
+    c := ref[i];
+    if !(cld_slug_char(c) || c == '/') { return false; }
+    if i > 0 && ((c == '.' && ref[i - 1] == '.') || (c == '/' && ref[i - 1] == '/')) { return false; } // mutant: equivalent (ref[0] is never '.' or '/' from line 104, so i > 0 is guaranteed when c is '.' or '/')
+  }
+  return true;
+}
+
+cld_prefix :: (s: string, p: string) -> bool #effects(all) {
+  if s.count < p.count { return false; }
+  for i: 0..<p.count { if s[i] != p[i] { return false; } }
+  return true;
+}
+
+// Strict public web_fetch URL validator (SSRF guard):
+//   - Requires https:// with public host (or http://127.0.0.1:/http://localhost: only when allow_local)
+//   - Blocks userinfo '@', control/space/'\\' bytes, IPv6 brackets, loopback, link-local, RFC1918, and .internal/.local hosts.
+cld_fetch_url_valid :: (url: string, allow_local: bool) -> bool #effects(all) {
+  if url.count < 11 || url.count > 1024 { return false; }
+  for c: url { if c < 33 || c == 127 || c == '\\' { return false; } }
+  if allow_local && (cld_prefix(url, "http://127.0.0.1:") || cld_prefix(url, "http://localhost:")) {
+    return true;
+  }
+  if !cld_prefix(url, "https://") { return false; }
+  host_end := 8;
+  while host_end < url.count && url[host_end] != '/' && url[host_end] != '?' && url[host_end] != '#' {
+    if url[host_end] == '@' || url[host_end] == '[' || url[host_end] == ']' { return false; }
+    host_end += 1;
+  }
+  h_only := host_end;
+  for i: 8..<host_end { if url[i] == ':' { h_only = i; break; } }
+  host := cast(string) url[8..<h_only];
+  if host.count < 3 || host[0] == '.' || host[host.count - 1] == '.' { return false; }
+  has_dot := false;
+  for c: host { if c == '.' { has_dot = true; break; } }
+  if !has_dot { return false; }
+  if host == "localhost" || cld_prefix(host, "127.") || cld_prefix(host, "10.") ||
+     cld_prefix(host, "169.254.") || cld_prefix(host, "192.168.") || cld_prefix(host, "0.") { return false; }
+  if cld_prefix(host, "172.") {
+    // Block RFC1918 172.16.0.0/12 (172.16.* .. 172.31.*).
+    if host.count >= 8 && host[6] == '.' && ((host[4] == '1' && host[5] >= '6' && host[5] <= '9') || // mutant: equivalent (host never contains byte 58 ':' because line 135 splits before ':')
+       (host[4] == '2' && host[5] >= '0' && host[5] <= '9') || (host[4] == '3' && (host[5] == '0' || host[5] == '1'))) { // mutant: equivalent (host never contains byte 58 ':' because line 135 splits before ':')
+      return false;
+    }
+  }
+  if host.count >= 7 && cast(string) host[host.count - 6..<host.count] == ".local" { return false; }
+  if host.count >= 10 && cast(string) host[host.count - 9..<host.count] == ".internal" { return false; }
+  return true;
+}
+
+#test "cloud tool allowlist, execution targets, and person admission enforce exact boundaries" {
+  #assert cld_tool_kind("web_search") == CLD_TOOL_WEB_SEARCH;
+  #assert cld_tool_kind("web_fetch") == CLD_TOOL_WEB_FETCH;
+  #assert cld_tool_kind("github_tree") == CLD_TOOL_GH_TREE;
+  #assert cld_tool_kind("github_read_file") == CLD_TOOL_GH_READ_FILE;
+  #assert cld_tool_kind("github_search_code") == CLD_TOOL_GH_SEARCH;
+  #assert cld_tool_kind("github_list_issues") == CLD_TOOL_GH_ISSUES;
+  #assert cld_tool_kind("github_get_pr") == CLD_TOOL_GH_PR;
+  #assert cld_tool_kind("") == CLD_TOOL_NONE && cld_tool_kind("bash") == CLD_TOOL_NONE;
+
+  #assert cld_target_kind("") == CLD_TARGET_AUTO && cld_target_kind("auto") == CLD_TARGET_AUTO;
+  #assert cld_target_kind("cloud") == CLD_TARGET_CLOUD && cld_target_kind("computer") == CLD_TARGET_COMPUTER;
+  #assert cld_target_kind("sandbox") == CLD_TARGET_SANDBOX && cld_target_kind("other") == CLD_TARGET_NONE;
+
+  h64 := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert cld_target_valid("", "") && cld_target_valid("auto", "") && cld_target_valid("cloud", "") && cld_target_valid("sandbox", "");
+  #assert cld_target_valid("computer", h64);
+  #assert !cld_target_valid("computer", "") && !cld_target_valid("computer", "0123456789abcdef");
+  #assert !cld_target_valid("computer", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde:");
+  #assert !cld_target_valid("computer", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg");
+  #assert !cld_target_valid("cloud", h64) && !cld_target_valid("other", "");
+
+  #assert cld_tool_admit(2, true, "a", false, false);
+  #assert !cld_tool_admit(1, true, "a", false, false) && !cld_tool_admit(2, false, "a", false, false);
+  #assert !cld_tool_admit(2, true, "", false, false) && !cld_tool_admit(2, true, "a", true, false) && !cld_tool_admit(2, true, "a", false, true);
+
+  #assert cld_slug_char('a') && cld_slug_char('z') && cld_slug_char('A') && cld_slug_char('Z') && cld_slug_char('0') && cld_slug_char('9') && cld_slug_char('-') && cld_slug_char('_') && cld_slug_char('.');
+  #assert !cld_slug_char('{') && !cld_slug_char('[') && !cld_slug_char(':') && !cld_slug_char('`') && !cld_slug_char('@') && !cld_slug_char('/');
+}
+
+#test "repo slug, relative path, and git ref validators block traversal and control bytes" {
+  #assert cld_repo_valid("a/b") && cld_repo_valid("OpenAgentsInc/openagents") && cld_repo_valid("org-1/repo_2.0") && cld_repo_valid("zZ9/aA0");
+  #assert !cld_repo_valid("ab") && !cld_repo_valid("abc") && !cld_repo_valid("/ab") && !cld_repo_valid("ab/") && !cld_repo_valid("a/b/c");
+  #assert !cld_repo_valid("./b") && !cld_repo_valid("../b") && !cld_repo_valid("a/.") && !cld_repo_valid("a/..") && !cld_repo_valid("a/b c");
+  big_r: [161] u8; big_r[0] = 'a'; big_r[1] = '/'; for i: 2..<big_r.count { big_r[i] = 'x'; }
+  #assert cld_repo_valid(cast(string) big_r[0..<160]) && !cld_repo_valid(cast(string) big_r[..]);
+
+  #assert cld_rel_path_valid("", true) && !cld_rel_path_valid("", false);
+  #assert cld_rel_path_valid("0", false) && cld_rel_path_valid("0/a0", false) && cld_rel_path_valid("a", false);
+  #assert cld_rel_path_valid("README.md", false) && cld_rel_path_valid("coax/web/api/api.c", false) && cld_rel_path_valid("a!b", false);
+  #assert !cld_rel_path_valid("/etc/passwd", false) && !cld_rel_path_valid("a/", false) && !cld_rel_path_valid("a//b", false);
+  #assert !cld_rel_path_valid(".", false) && !cld_rel_path_valid("..", false) && !cld_rel_path_valid("a/../b", false) && !cld_rel_path_valid("a/./b", false);
+  #assert !cld_rel_path_valid("?a", false) && !cld_rel_path_valid("\\a", false) && !cld_rel_path_valid("a\\b", false) && !cld_rel_path_valid("a?b", false) && !cld_rel_path_valid("a#b", false) && !cld_rel_path_valid("a%20b", false) && !cld_rel_path_valid("a b", false);
+  del_p := [2] u8.['a', 127]; #assert !cld_rel_path_valid(cast(string) del_p[..], false);
+  big_p: [513] u8; for i: 0..<big_p.count { big_p[i] = 'a'; }
+  #assert cld_rel_path_valid(cast(string) big_p[0..<512], false) && !cld_rel_path_valid(cast(string) big_p[..], false);
+
+  #assert cld_ref_valid("") && cld_ref_valid("main") && cld_ref_valid("feat/cloud-p3") && cld_ref_valid("v1.2.3") && cld_ref_valid("a.");
+  #assert !cld_ref_valid("/main") && !cld_ref_valid("main/") && !cld_ref_valid("-main") && !cld_ref_valid(".main") && !cld_ref_valid("?main");
+  #assert !cld_ref_valid("a..b") && !cld_ref_valid("a..x") && !cld_ref_valid("a//b") && !cld_ref_valid("a b");
+  big_f: [129] u8; for i: 0..<big_f.count { big_f[i] = 'a'; }
+  #assert cld_ref_valid(cast(string) big_f[0..<128]) && !cld_ref_valid(cast(string) big_f[..]);
+}
+
+#test "web_fetch SSRF guard allows public https and blocks loopback, metadata, RFC1918, and internal hosts" {
+  #assert cld_prefix("abc", "abc") && !cld_prefix("ab", "abc") && !cld_prefix("xbc", "abc");
+  #assert cld_fetch_url_valid("https://a.b", false);
+  #assert cld_fetch_url_valid("https://a.b/!", false);
+  #assert cld_fetch_url_valid("https://a.b?x=1", false) && cld_fetch_url_valid("https://a.b#top", false);
+  #assert cld_fetch_url_valid("https://docs.openagents.com/guide?x=1#top", false);
+  #assert cld_fetch_url_valid("https://example.com:8443/path", false);
+  #assert cld_fetch_url_valid("https://172.15.0.1/ok", false) && cld_fetch_url_valid("https://172.32.0.1/ok", false);
+  #assert cld_fetch_url_valid("https://172.160.0.1/ok", false) && cld_fetch_url_valid("https://172.1/ok", false);
+  #assert cld_fetch_url_valid("https://172.1a.0.1/ok", false) && cld_fetch_url_valid("https://172.2a.0.1/ok", false);
+  #assert !cld_fetch_url_valid("https://@a.b/x", false) && !cld_fetch_url_valid("https://:a.b/x", false);
+  #assert !cld_fetch_url_valid("https://a.local?x=1", false) && !cld_fetch_url_valid("https://a.local#top", false);
+  #assert !cld_fetch_url_valid("https://a.local:8443/x", false);
+  #assert !cld_fetch_url_valid("https://a.", false) && !cld_fetch_url_valid("https://.a.b", false) && !cld_fetch_url_valid("https://a.b.", false);
+  #assert !cld_fetch_url_valid("https://intranet/x", false);
+  #assert !cld_fetch_url_valid("http://example.com/x", false);
+  #assert !cld_fetch_url_valid("http://127.0.0.1:8080/x", false);
+  #assert cld_fetch_url_valid("http://127.0.0.1:8080/x", true) && cld_fetch_url_valid("http://localhost:8080/x", true);
+  #assert !cld_fetch_url_valid("https://user@example.com/x", false) && !cld_fetch_url_valid("https://a[b.com/x", false) && !cld_fetch_url_valid("https://a]b.com/x", false);
+  #assert !cld_fetch_url_valid("https://localhost/x", false) && !cld_fetch_url_valid("https://localhost:8443/x", false) && !cld_fetch_url_valid("https://127.0.0.1/x", false);
+  #assert !cld_fetch_url_valid("https://10.0.0.1/x", false) && !cld_fetch_url_valid("https://169.254.169.254/latest", false);
+  #assert !cld_fetch_url_valid("https://192.168.1.1/x", false) && !cld_fetch_url_valid("https://0.0.0.0/x", false);
+  #assert !cld_fetch_url_valid("https://172.16.1/x", false) && !cld_fetch_url_valid("https://172.19.1/x", false);
+  #assert !cld_fetch_url_valid("https://172.20.1/x", false) && !cld_fetch_url_valid("https://172.29.1/x", false);
+  #assert !cld_fetch_url_valid("https://172.30.1/x", false) && !cld_fetch_url_valid("https://172.31.1/x", false);
+  #assert !cld_fetch_url_valid("https://a.internal/x", false) && !cld_fetch_url_valid("https://a.local/x", false);
+  #assert cld_fetch_url_valid("https://ab.co/x", false) && cld_fetch_url_valid("https://abcd.co/x", false);
+  #assert !cld_fetch_url_valid("https://example.com/a b", false) && !cld_fetch_url_valid("https://example.com/a\\b", false);
+  del_u := "https://a.b/x";
+  du: [14] u8; for i: 0..<13 { du[i] = del_u[i]; } du[13] = 127;
+  #assert !cld_fetch_url_valid(cast(string) du[..], false);
+  big_u: [1025] u8; pre := "https://a.b/";
+  for i: 0..<pre.count { big_u[i] = pre[i]; }
+  for i: pre.count..<big_u.count { big_u[i] = 'x'; }
+  #assert cld_fetch_url_valid(cast(string) big_u[0..<1024], false) && !cld_fetch_url_valid(cast(string) big_u[..], false);
+}

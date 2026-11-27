@@ -23,10 +23,13 @@ animated_frame :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,w:f32,h:f32,progress:f32,high
  _:=sheet_box(sh,lx,ty,w-off*2,h-off*2,0,0,opacity(s.surface,p*s.animated.frame_wash),s.surface);
 }
 // A05: opposite quarter arcs, one half-turn per 500ms. Reduced motion is still.
-activity :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,seconds:f32,reduced:bool) {
+activity_tinted :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,seconds:f32,reduced:bool,color:Rgba) {
  start:=ifx reduced then 0.0f32 else seconds;quarter:=s.animated.activity_sweep;
- sh[0].nu=prim_ring(sh[0].under,sh[0].nu,x,y,size,size,s.animated.activity_stroke,opacity(s.accent,s.animated.activity_wash));
- for i:0..<2 {a:=start+cast(f32)i/2;sh[0].nu=prim_arc(sh[0].under,sh[0].nu,x,y,size,size,s.animated.activity_stroke,a,quarter,s.accent);}
+ sh[0].nu=prim_ring(sh[0].under,sh[0].nu,x,y,size,size,s.animated.activity_stroke,opacity(color,s.animated.activity_wash));
+ for i:0..<2 {a:=start+cast(f32)i/2;sh[0].nu=prim_arc(sh[0].under,sh[0].nu,x,y,size,size,s.animated.activity_stroke,a,quarter,color);}
+}
+activity :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,seconds:f32,reduced:bool) {
+ activity_tinted(sh,s,x,y,size,seconds,reduced,s.accent);
 }
 // A09: progress-squared round-cap ring. Shared primitive; no bespoke shader.
 progress_ring :: (sh:[]Sheet,s:UiSkin,x:f32,y:f32,size:f32,progress:f32) {

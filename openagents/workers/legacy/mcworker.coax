@@ -1,0 +1,669 @@
+// DEPRECATED (2026-11-22, #13978/#13983): mcworker is deprecated for local Inkling 2 Mini
+// and excluded from OpenAgents Desktop v1.0 (--minimal) release builds.
+// Use coder/tui/inky.coax (coax/lib/inky/, spec: docs/coder/inky-spec.md) instead.
+// Kept strictly in --full developer builds for legacy cloud model comparisons until retirement.
+//
+// Microcoder as a process for Coder's TUI (microcoder.coax): it reads one
+// JSON object a line on stdin and writes one a line on stdout, like the
+// Claude and Codex CLIs the other engines drive.
+//
+//   in   {"task":"...","cwd":"/path"}    a message: one Microcoder run
+//        {"task":...,"local":true}        the same on the model server on this machine (psionic)
+//        {"stop":true}                    STOP the run
+//        {"forget":true}                  forget the conversation
+//        {"recall":[{"task":T,"reply":R}]}   the conversation is these turns now (a chat the owner opened again)
+//        {"task":...,"agents":true}       the owner runs sub-agents: a step may delegate tasks ({"kind":"delegate","tasks":[...],"ticket":N}) and waits for {"results":[{"exit":N,"output":O}],"ticket":N}
+//        {"task":...,"agents":true,"claude":true}   a task's level may also be haiku, sonnet, opus or fable: the owner runs those in Claude Code
+//        {"task":...,"gated":true,"edits":true}   as gated, but edits are not refused
+//        {"task":...,"unlimited":true}            the run has no budget: no model call, command, view or time limit ends it
+//        {"task":...,"gated":true}        each command waits for an answer: {"answer":true,"ticket":N} or {"answer":false,"ticket":N,"why":"..."}
+//        {"task":...,"model":"gemini-4-argon","effort":"low"}   the owner's model and thinking level (Hydrogen and low by default)
+//        {"task":...,"model":"openrouter:VENDOR/MODEL"}   the owner's model on OpenRouter alone (the key Coder set, else openrouter.env)
+//        {"task":...,"agents":true,"openrouter":"VENDOR/MODEL"}   a task's level may also be openrouter: the owner runs it on that model
+//        {"task":...,"intel":true}        the Coax compiler answers the action's questions, and an edit may name the hash it read
+//        {"task":...,"memory_dir":"PATH"} every run has the working memory and its finish rule (GitHub #13730: it is the one
+//                                          record that outlives compaction); its folder is "memory_dir", else the session's
+//                                          (~/.openagents/coder/sessions/ID.workmem, ID the "session" or this worker's)
+//        {"task":...,"coax":"PATH"}       the compiler intel asks ("" or none: the library's own search)
+//        {"embed":"TEXT","query":true}    a Vertex embedding of TEXT (a query's when query is set, else a document's)
+//        {"task":...,"steerable":false}   the turn takes no steers (a sub-agent's: no person watches it)
+//        {"steer":"TEXT","id":"I","turn":N}   more input for the running turn: taken between its steps (GitHub #13715)
+//        {"steer":"TEXT","id":"I","parent":true}   a parent run's note to this sub-agent: taken though "steerable":false (#13776)
+//        {"interrupt":true,"resubmit":true}   end the running turn; with resubmit its untaken steers start the next
+//        {"queue":"add","id":"I","text":"T","message":{TASK}}   a follow-up: a turn of its own once this worker is idle
+//        {"queue":"open|update|delete|move|promote|pause|resume|clear|list",...}   the follow-up queue (mcworker-queue.coax)
+//   out  {"kind":"ready"}
+//        {"kind":"reply","text":"..."}    more of the reply as it streams
+//        {"kind":"thought","text":"..."}  streamed reasoning deltas for the current step (GitHub #13671)
+//        {"kind":"attempt","gateway":"vertex","model":"...","outcome":"done","status":200,"usd_micros":717}
+//        {"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"..."}
+//        {"kind":"view","path":"a.txt","found":true}
+//        {"kind":"ask","command":"rm -rf build","ticket":N}   a gated run's command, waiting for its answer
+//        {"kind":"ended","ending":"finished","text":"..."}
+//        {"kind":"aware","intel":{...},"memory":{...}}   after "ended", for a run with intel or memory (aware.coax mc_aw_report)
+//        {"kind":"embedding","values":[...]} or {"kind":"embedding","error":"..."}
+//        {"kind":"turn","turn":N,"source":"message|queue|resubmit","id":"I","text":"T"}   a turn starts
+//        {"kind":"steer","id":"I","status":"accepted|rejected|applied|queued|resubmitted","turn":N,...}
+//        {"kind":"queue","paused":B,"reason":"R","active":"I","items":[...]}   the whole queue, after each change
+//        {"kind":"queue_refused","op":"O","id":"I","reason":"R"}
+//        {"kind":"stop_agent","agent":N}             the run stops sub-agent N (a delegated task with resume and stop)
+//
+// Follow-ups (GitHub #13715, #13716). A steer goes into the running turn: the loop takes it before
+// its next model call, as a step of its own (steer.coax), and a turn about to finish with one held
+// goes on. One that cannot be taken is rejected with why: no_active_turn (nothing runs),
+// expected_turn_mismatch (it names another turn), active_turn_not_steerable ("steerable":false),
+// invalid or full. The queue (mcworker-queue.coax) holds follow-ups; when no turn runs and it is not
+// paused, its head starts, announced by a turn line with source queue. A turn that fails or is
+// stopped pauses the queue (error, interrupted), and the steers it never took head the queue
+// (status queued), unless an interrupt resubmits them as a turn of their own. Approval answers are
+// lines of their own (answer): a queued follow-up never answers an ask, and none starts while a
+// turn waits on one, since that turn still runs.
+// A running command holds none of these up (GitHub #13750): the run reads a command between
+// polls (run.coax), so this loop reads its input while the command runs, a steer or queue op is
+// answered at once, and an interrupt kills the command's process group and ends the turn.
+// A steer that comes while the run waits on its sub-agents' results (GitHub #13766) is held as
+// any is; its owner sees it accepted and answers the delegate line at once, each sub-agent as it
+// is, and the run's next step takes the steer.
+//
+// Every line each way is written and read by coax/lib/agent/engine/mcworker-wire.coax, the one
+// codec the owners load too (Protocol C11, GitHub #13250; proto/coder/microcoder-worker-lines-v1.json).
+//
+// Each run's facts carry the earlier turns as "conversation". A command's long output is saved whole
+// in the folder beside the journal (worker-N.out/RUN-STEP-K.txt), which the run's views may read. Credentials as
+// the desktop Lab reads them (microcoder_keys.coax): into curl's and gcloud's
+// child environments only, never this process's.
+//
+// The run and its buffers are tool_main's locals and every call into the
+// loop is made from tool_main itself: the checker's storage budget (E0381)
+// does not reach a McRun through a struct held two calls deep.
+//
+//   coax/web/tool.sh coder/tui/mcworker.coax
+
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/microcoder/keys.coax";
+#load "../../../coax/lib/agent/engine/mcworker-wire.coax";
+#load "../../../coax/lib/agent/engine/mcworker-queue.coax";
+#load "../../../coax/lib/sys/fs.coax";
+cxproc_wall_us :: ()->int #foreign #effects(all);
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+MW_LINE :: 1048576;
+
+mw_send :: (o: [] u8, n: int) {
+  if n < 0 || n >= o.count { return; }
+  o[n] = 10;
+  r := cxterm_write(o[0..<n + 1]);
+}
+
+mw_event :: (e: McRunEvent, o: [] u8) {
+  n := 0;
+  if e.kind == MR_REPLY { n = mww_reply(o, e.text); }
+  else if e.kind == MR_ATTEMPT {
+    u := e.log.usage;
+    values := [7] int.[
+      ifx (u.observed & 1) != 0 then u.input_tokens else -1,
+      ifx (u.observed & 2) != 0 then u.output_tokens else -1,
+      ifx (u.observed & 4) != 0 then u.cached_tokens else -1,
+      ifx (u.observed & 8) != 0 then u.reasoning_tokens else -1,
+      ifx (u.observed & 16) != 0 then u.cache_write_tokens else -1,
+      e.log.cost_usd_micros, e.log.card_usd_micros];
+    n = mww_attempt(o, e.log.gateway, e.log.model, e.log.requested_effort, gw_outcome_name(e.log.outcome), e.log.status, values[..]);
+    mw_send(o, n);
+    if e.log.outcome == GW_OUT_DONE {
+      out_toks := ifx (u.observed & 2) != 0 then u.output_tokens else e.log.output_tokens;
+      ttft := ifx e.log.first_ms > 0 then e.log.first_ms else ifx e.log.first_ms == 0 then 1 else -1;
+      dec := ifx e.log.first_ms >= 0 && e.log.latency_ms > e.log.first_ms then e.log.latency_ms - e.log.first_ms else e.log.latency_ms;
+      if ttft > 0 || (out_toks > 0 && dec > 0) { mw_send(o, mww_stats(o, ttft, dec, out_toks)); }
+    }
+    return;
+  }
+  else if e.kind == MR_COMMAND {
+    // an oasim command's line is followed by its device line (GitHub #13811)
+    mw_send(o, mww_command(o, e.text, e.exit, e.timed_out, e.output));
+    n = mww_device_of(o, e.text, e.exit, e.output);
+    if n <= 0 { return; }
+  }
+  else if e.kind == MR_VIEW { n = mww_view(o, e.text, e.found); }
+  else if e.kind == MR_ASK { n = mww_ask(o, e.text, e.ticket); }
+  else if e.kind == MR_DELEGATE { n = mww_delegate(o, e.text, e.ticket); }
+  else if e.kind == MR_STOP_AGENT { n = mww_stop_agent(o, e.agent); }
+  else if e.kind == MR_THOUGHT { n = mww_thought(o, e.text); }
+  else if e.kind == MR_TODOS { n = mww_todos(o, e.text); }
+  else if e.kind == MR_ENDED { n = mww_ended(o, mc_ending_name(e.ending), e.text); }
+  else { return; }
+  mw_send(o, n);
+}
+
+mw_ended :: (o: [] u8, ending: string, text: string) { mw_send(o, mww_ended(o, ending, text)); }
+
+// An embedding from Vertex (gemini-embedding-001, 256 dimensions) for
+// Coder's memory (chapter 19): {"kind":"embedding","values":[...]}, or
+// with "error" when there is none. The token goes into curl's environment
+// only, as for a run. GW_REPLAY and GW_RECORD apply as for any request.
+MW_EMBED_MODEL :: "gemini-embedding-001";
+MW_EMBED_LOCATION :: "us-central1";
+MW_EMBED_DIMENSIONS :: 256;
+mw_embed :: (k: [] MkKeys, text: string, query: bool, o: [] u8) {
+  rb: [1024] u8; replaying := gw_env("GW_REPLAY", rb[..]).count > 0;
+  why := ifx replaying then "" else mk_vertex(k);
+  if why.count > 0 { mw_send(o, mww_embedding_error(o, why)); return; }
+  ub: [512] u8;
+  u := mk_cat(ub[..], 0, "https://"); u = mk_cat(ub[..], u, MW_EMBED_LOCATION); u = mk_cat(ub[..], u, "-aiplatform.googleapis.com/v1/projects/");
+  u = mk_cat(ub[..], u, GW_VERTEX_PROJECT); u = mk_cat(ub[..], u, "/locations/"); u = mk_cat(ub[..], u, MW_EMBED_LOCATION);
+  u = mk_cat(ub[..], u, "/publishers/google/models/"); u = mk_cat(ub[..], u, MW_EMBED_MODEL); u = mk_cat(ub[..], u, ":predict");
+  bb: [40000] u8;
+  b := json_raw(bb[..], 0, "{\"instances\":[{\"content\":"); b = json_write_string(bb[..], b, cast(string) text[0..<ifx text.count > 8000 then 8000 else text.count]);
+  b = json_raw(bb[..], b, ifx query then ",\"task_type\":\"RETRIEVAL_QUERY\"}]" else ",\"task_type\":\"RETRIEVAL_DOCUMENT\"}]");
+  b = json_raw(bb[..], b, ",\"parameters\":{\"outputDimensionality\":"); b = json_write_int(bb[..], b, MW_EMBED_DIMENSIONS); b = json_raw(bb[..], b, "}}");
+  c: GwClient; c.url = cast(string) ub[0..<u]; c.key_env = GW_VERTEX_KEY_ENV; c.key_value = cast(string) k[0].vx[0].token[0..<k[0].vx[0].nt]; c.max_time_s = 60;
+  st: [1] GwStream; none: [1] string;
+  e := gw_start(c, cast(string) bb[0..<b], none[0..<0], st[..]);
+  body: [262144] u8; nb := 0;
+  if e.count == 0 {
+    line: [65536] u8;
+    for guard: 0..<10000000 {
+      r := gw_poll(st[..], line[..]);
+      if r.kind == GW_END { break; }
+      if r.kind == GW_IDLE { x := cxproc_sleep_ms(5); continue; }
+      if r.kind == GW_LINE { nb = mk_cat(body[..], nb, r.text); nb = mk_cat(body[..], nb, "\n"); }
+    }
+  }
+  status := st[0].status;
+  gw_close(st[..]);
+  resp := cast(string) body[0..<nb];
+  values := cl_raw(resp, "predictions.0.embeddings.values");
+  if e.count > 0 || status != 200 || values.count < 2 || values[0] != '[' {
+    eb: [600] u8; m := mk_cat(eb[..], 0, ifx e.count > 0 then e else "Vertex gave no embedding");
+    if e.count == 0 { tb: [24] u8; m = mk_cat(eb[..], m, " (status "); m = mk_cat(eb[..], m, gw_digits(tb[..], status)); m = mk_cat(eb[..], m, ")"); }
+    mw_send(o, mww_embedding_error(o, cast(string) eb[0..<m])); return;
+  }
+  // one line: Vertex pretty-prints the list
+  mw_send(o, mww_embedding(o, values));
+}
+
+// After a run's end: its compiler and memory counts, when it had a mode on.
+// s copied into b (a worker's own memory session name).
+mw_keep_session :: (b: [] u8, s: string) -> string { n := ifx s.count < b.count then s.count else b.count; for i: 0..<n { b[i] = s[i]; } return cast(string) b[0..<n]; }
+
+mw_aware :: (run: [] McRun, o: [] u8) {
+  if run[0].aw.count == 0 { return; }
+  line := mc_aw_report(run[0].aw, run[0].l[..], o);
+  if line.count > 0 { mw_send(o, line.count); }
+}
+
+
+// ---------------------------------------------------------------- follow-ups (GitHub #13715, #13716)
+
+MW_SRC_MESSAGE :: 0; MW_SRC_QUEUE :: 1; MW_SRC_RESUBMIT :: 2;
+MwFollow :: struct {
+  turn: int;                       // turns started by this worker; the running one's number
+  steerable: bool;                 // the running turn takes steers
+  starting: bool;                  // a turn line went out and its run has not started yet
+  src: int; src_id: [MWQ_ID] u8; nsrc_id: int; src_text: [MWQ_TEXT] u8; nsrc_text: int;   // where the next turn comes from
+  last: [MWQ_MESSAGE] u8; nlast: int;           // the running (or last) turn's task object
+  resubmit: [MWQ_MESSAGE] u8; nresubmit: int;   // an interrupt's resubmitted turn, waiting to start
+  resubmit_due: bool;              // the run is being interrupted to resubmit its steers
+  force_head: bool;                // the queue's head starts next, paused or not (promote now)
+  qbuf: [MWQ_FILE] u8; qarena: [MWQ_MESSAGE + MWQ_TEXT] u8;
+}
+mw_src_name :: (src: int) -> string { return ifx src == MW_SRC_QUEUE then "queue" else ifx src == MW_SRC_RESUBMIT then "resubmit" else "message"; }
+
+// The whole queue goes out, after it is written to its file.
+mw_queue_changed :: (q: [] MwQueue, f: [] MwFollow, o: [] u8) {
+  ok := mwq_save(q, f[0].qbuf[..]);
+  mw_send(o, mwq_line(q, o));
+}
+
+// The running turn's task object with text as its task: what a steer that never reached the model
+// runs as, at the queue's head or resubmitted. "" when there is no turn to copy.
+mw_task_with :: (f: [] MwFollow, text: string, out: [] u8) -> string {
+  if f[0].nlast == 0 { return ""; }
+  ab: [MWQ_MESSAGE] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  t: [1] McTask; last := cast(string) f[0].last[0..<f[0].nlast];
+  if !mww_task_read(ar[..], last, t[..]) { t[0] = McTask.{cwd = cl_str(ar[..], last, "cwd"), session = cl_str(ar[..], last, "session"), sandbox = "danger-full-access"}; }
+  t[0].task = text;
+  n := mww_task(out, t[0]);
+  return ifx n < 2 then "" else cast(string) out[0..<n - 1];
+}
+
+// A turn starts: its number and source go out, and its task object is kept.
+mw_turn_begin :: (f: [] MwFollow, msg: string, o: [] u8) {
+  f[0].turn += 1;
+  mw_send(o, mww_turn(o, f[0].turn, mw_src_name(f[0].src), cast(string) f[0].src_id[0..<f[0].nsrc_id], cast(string) f[0].src_text[0..<f[0].nsrc_text]));
+  f[0].nlast = ifx msg.count <= f[0].last.count then mk_keep(f[0].last[..], msg) else 0;
+  st := cl_bool(msg, "steerable");
+  f[0].steerable = !st.ok || st.value;
+  f[0].starting = true;
+  f[0].src = MW_SRC_MESSAGE; f[0].nsrc_id = 0; f[0].nsrc_text = 0;
+}
+
+// The steers the loop took since the last look go out as applied, and join the turn's task in the
+// conversation the next turns are told.
+mw_drained :: (st: [] McSteers, h: [] MkTurns, f: [] MwFollow, o: [] u8) {
+  for i: 0..<st[0].nd {
+    mw_send(o, mww_steered(o, mc_steer_done_id(st, i), "applied", f[0].turn, "", st[0].done[i].step, ""));
+    t := mc_steer_done_text(st, i);
+    if h[0].ncur + 2 < h[0].cur.count { h[0].cur[h[0].ncur] = 10; h[0].cur[h[0].ncur + 1] = 10; h[0].ncur += 2; h[0].ncur += mk_keep(h[0].cur[h[0].ncur..<h[0].cur.count], t); }
+  }
+  st[0].nd = 0;
+}
+
+// A turn ended (ending as mc_ending_name says it). The steers it never took are resubmitted (an
+// interrupt that asked), or head the queue; a stopped turn pauses the queue (interrupted), unless
+// the person asked for the head to start now, and a failed one pauses it (error).
+mw_turn_end :: (ending: string, st: [] McSteers, q: [] MwQueue, f: [] MwFollow, o: [] u8) {
+  f[0].starting = false;
+  mwq_ended(q);
+  if st[0].n > 0 && f[0].resubmit_due {
+    jb: [MWQ_MESSAGE] u8; text := mc_steer_join(st, jb[..]);
+    m := mw_task_with(f, text, f[0].resubmit[..]);
+    f[0].nresubmit = m.count;
+    if m.count > 0 {
+      f[0].nsrc_id = mk_keep(f[0].src_id[..], mc_steer_id(st, 0)); f[0].nsrc_text = mk_keep(f[0].src_text[..], text);
+      for i: 0..<st[0].n { mw_send(o, mww_steered(o, mc_steer_id(st, i), "resubmitted", f[0].turn, "", 0, "")); }
+      mc_steer_clear(st);
+    }
+  }
+  // what is left heads the queue, oldest first
+  i := st[0].n - 1;
+  while i >= 0 {
+    mb: [MWQ_MESSAGE] u8; m := mw_task_with(f, mc_steer_text(st, i), mb[..]);
+    why := ifx m.count > 0 then mwq_add_first(q, mc_steer_id(st, i), mc_steer_text(st, i), m) else "invalid";
+    mw_send(o, mww_steered(o, mc_steer_id(st, i), ifx why.count == 0 then "queued" else "rejected", f[0].turn, why, 0, ""));
+    i -= 1;
+  }
+  had := st[0].n > 0;
+  mc_steer_clear(st);
+  f[0].resubmit_due = false;
+  if ending == "stopped" && f[0].nresubmit == 0 && !f[0].force_head { mwq_pause(q, "interrupted"); }
+  else if ending == "failed" || ending == "no_capacity" || ending == "bad_replies" { mwq_pause(q, "error"); }
+  mw_queue_changed(q, f, o);
+}
+
+// When no turn runs: the next turn's task object into line (an interrupt's resubmitted steers, else
+// the queue's head unless it is paused). Its length; 0 for none.
+mw_dispatch :: (q: [] MwQueue, f: [] MwFollow, line: [] u8, o: [] u8) -> int {
+  if f[0].nresubmit > 0 {
+    n := mk_keep(line, cast(string) f[0].resubmit[0..<f[0].nresubmit]);
+    f[0].nresubmit = 0; f[0].src = MW_SRC_RESUBMIT;
+    return n;
+  }
+  if q[0].n == 0 || (q[0].paused && !f[0].force_head) { return 0; }
+  n := mk_keep(line, mwq_message(q, 0));
+  f[0].src = MW_SRC_QUEUE;
+  f[0].nsrc_id = mk_keep(f[0].src_id[..], mwq_id(q, 0)); f[0].nsrc_text = mk_keep(f[0].src_text[..], mwq_text(q, 0));
+  f[0].force_head = false;
+  x := mwq_start_head(q);
+  mw_queue_changed(q, f, o);
+  return n;
+}
+
+// A steer for the running turn: held, or rejected with why.
+mw_steer :: (running: bool, req: [] MwwRequest, st: [] McSteers, f: [] MwFollow, o: [] u8) {
+  why := "";
+  if !running || f[0].starting { why = "no_active_turn"; }
+  else if req[0].turn.ok && req[0].turn.value != f[0].turn { why = "expected_turn_mismatch"; }
+  // a sub-agent's turn takes no person's steers, but takes its parent run's notes (GitHub #13776)
+  else if !f[0].steerable && !req[0].parent { why = "active_turn_not_steerable"; }
+  else { why = mc_steer_add(st, req[0].id, req[0].text); }
+  // an accepted steer says its words, for an owner that did not send it (the paired phone's, GitHub #13713)
+  mw_send(o, mww_steered(o, req[0].id, ifx why.count == 0 then "accepted" else "rejected", f[0].turn, why, 0, ifx why.count == 0 then req[0].text else ""));
+}
+
+// A queue op. True when the running turn is to stop (promote now while a turn runs).
+mw_queue_op :: (running: bool, req: [] MwwRequest, q: [] MwQueue, f: [] MwFollow, home: string, o: [] u8) -> bool {
+  op := req[0].op; id := req[0].id; why := "";
+  stop := false;
+  if op == "open" {
+    pb: [4096] u8; path := mwq_path(home, req[0].key, pb[..]);
+    if path.count == 0 { why = "invalid"; }
+    else if cast(string) q[0].path[0..<q[0].npath] != path {
+      ok := mwq_save(q, f[0].qbuf[..]);
+      if q[0].npath == 0 && q[0].n > 0 { q[0].npath = mk_keep(q[0].path[..], path); }
+      else { ok = mwq_load(q, path, f[0].qbuf[..], f[0].qarena[..]); }
+    }
+  }
+  else if op == "add" { why = mwq_add(q, id, req[0].text, req[0].message); }
+  else if op == "update" { why = mwq_update(q, id, req[0].text, req[0].message); }
+  else if op == "delete" { why = mwq_delete(q, id); }
+  else if op == "move" { why = mwq_move(q, id, ifx req[0].to.ok then req[0].to.value else 0); }
+  else if op == "promote" {
+    why = mwq_move(q, id, 0);
+    if why.count == 0 && req[0].now { f[0].force_head = true; stop = running; }
+  }
+  else if op == "pause" { mwq_pause(q, "user"); }
+  else if op == "resume" { mwq_resume(q); }
+  else if op == "clear" { mwq_clear(q); }
+  else if op != "list" { why = "invalid"; }
+  if why.count > 0 { mw_send(o, mww_queue_refused(o, op, id, why)); return false; }
+  mw_queue_changed(q, f, o);
+  return stop;
+}
+
+// mcworker --auth: the sign-in a Gemini model would run on (mk_auth), one line, and exit; the
+// desktop app's Settings > Models and its send check read it. Nothing is sent anywhere.
+mw_auth_asked :: () -> bool {
+  a: [1] Args;
+  if !args_load(a[..]) { return false; }
+  for i: 0..<args_count(a[..]) { if args_at(a[..], i) == "--auth" { return true; } }
+  return false;
+}
+mw_auth :: () -> int {
+  k: [1] MkKeys; o: [512] u8;
+  t := mk_auth(k[..], o[..]);
+  n := t.count; o[n] = 10;
+  _ = cxterm_write(o[0..<n + 1]);
+  for i: 0..<k[0].gm_key.count { k[0].gm_key[i] = 0; }
+  for i: 0..<k[0].or_key.count { k[0].or_key[i] = 0; }
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  if mw_auth_asked() { return mw_auth(); }
+  run: [1] McRun; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
+  aw: [1] McAware; mdirb: [4096] u8; coaxb: [4096] u8; homeb: [4096] u8; sbuf: [256] u8;   // the compiler's answers and the working memory (#13444, #13445)
+  plan: [1] GwPlan; pb: [1] GwPlanBuffers; bench: [1] GwBench;
+  plan_cloud: [1] GwPlan; hy: [1] McHybrid; lguard: [1] MkLocalGuard;
+  k: [1] MkKeys; h: [1] MkTurns;
+  facts: [MC_FACTS_BYTES] u8;
+  line: [MW_LINE] u8; nl := 0;
+  out: [MW_LINE] u8;
+  ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  task: [16384] u8; cwd: [4096] u8;profilebuf:[64]u8;
+  journal:[1]JfWriter;defer jf_close(journal[..]);
+  jp:[4096]u8;homebuf:[4096]u8;home:=cl_getenv("CODER_HOME",homebuf[..]);
+  if home.count==0 {home=cl_getenv("HOME",homebuf[..]);}
+  path:[4096]u8;pn:=json_raw(path[..],0,home);pn=json_raw(path[..],pn,"/.openagents/coder/sessions");
+  if home.count==0 || pn<0 || !fs_mkdir(cast(string)path[0..<pn]) {return 1;}
+  jn:=json_raw(jp[..],0,cast(string)path[0..<pn]);jn=json_raw(jp[..],jn,"/worker-");jn=json_write_int(jp[..],jn,cxproc_wall_us());jn=json_raw(jp[..],jn,".ajr");
+  if jn<0 {return 1;}
+  // long outputs are saved whole beside the journal, one file each, for the model to view by range (GitHub #13325)
+  // Journal file opens lazily on the first real turn (before jf_context) to avoid 0-byte .ajr leaks.
+  spill:[4096]u8;sn:=json_raw(spill[..],0,cast(string)jp[0..<jn-4]);sn=json_raw(spill[..],sn,".out");
+  run[0].spill_dir=ifx sn<0 then "" else cast(string)spill[0..<sn];
+  running := false;
+  hybrid_on := false;
+  req: [1] MwwRequest;
+  st: [1] McSteers; q: [1] MwQueue; f: [1] MwFollow;
+  run[0].steers = st[..];
+  mw_send(out[..], mww_ready(out[..]));
+  while true {
+    // the run's events first, then whatever stdin has
+    ended := "";
+    if running {
+      if run[0].call_due {
+        if hybrid_on {
+          use_cloud := mc_hybrid_select(run[0].l[..], hy[..], cxproc_now_ms());
+          run[0].p = ifx use_cloud then plan_cloud[..] else plan[..];
+        } else if lguard[0].active {
+          note := mk_lg_note(lguard[..]);
+          if note.count > 0 { mc_note(run[0].l[0].st[..], note); }
+        }
+      }
+      ev: [32] McRunEvent;
+      n := mc_run_poll(run[..], ev[..]);
+      for i: 0..<n {
+        if lguard[0].active && ev[i].kind == MR_COMMAND {
+          mk_lg_command(lguard[..], run[0].l[0].steps, ev[i].text, ev[i].exit, ev[i].timed_out);
+        }
+        if hybrid_on {
+          if ev[i].kind == MR_ATTEMPT && ev[i].log.gateway != "psionic" {
+            c := ifx ev[i].log.cost_usd_micros > 0 then ev[i].log.cost_usd_micros else (ifx ev[i].log.card_usd_micros > 0 then ev[i].log.card_usd_micros else 0);
+            hy[0].cloud_cost_micros += c;
+            if c > 0 { hy[0].last_cloud_micros = c; }
+          } else if ev[i].kind == MR_COMMAND {
+            is_edit := ev[i].text.count >= 5 && cast(string) ev[i].text[0..<5] == "edit ";
+            if is_edit {
+              hy[0].step_had_edit = true;
+              if ev[i].exit == 0 && !ev[i].timed_out { hy[0].had_edit = true; }
+            } else {
+              hy[0].step_cmds += 1;
+            }
+            if ev[i].exit != 0 || ev[i].timed_out { hy[0].step_failed = true; }
+          } else if ev[i].kind == MR_VIEW {
+            hy[0].step_views += 1;
+          }
+        }
+        if ev[i].kind == MR_ENDED {
+          if hybrid_on && !hy[0].escalated && (ev[i].ending == MC_END_NO_CAPACITY || ev[i].ending == MC_END_BAD_REPLIES) {
+            run[0].ended = false; run[0].l[0].ending = MC_END_NONE; run[0].l[0].why = ""; run[0].l[0].bad = 0;
+            hy[0].local_steps = hy[0].local_max;
+            run[0].call_due = true;
+            continue;
+          }
+          running = false; hybrid_on = false; ended = mc_ending_name(ev[i].ending);
+          mw_remember_end(h[..], ev[i].ending, ev[i].text);
+        }
+        mw_event(ev[i], out[..]);
+        if ev[i].kind == MR_ENDED { mw_aware(run[..], out[..]); }
+      }
+      mw_drained(st[..], h[..], f[..], out[..]);
+    }
+    // a turn line went out and its run never started (it ended at once), or the run ended
+    if !running && f[0].starting && ended.count == 0 { ended = "failed"; }
+    if ended.count > 0 { mw_turn_end(ended, st[..], q[..], f[..], out[..]); }
+    // idle: an interrupt's resubmitted steers, or the queue's head, is the next line
+    fed := false;
+    if !running && nl == 0 { nl = mw_dispatch(q[..], f[..], line[..], out[..]); fed = nl > 0; }
+    if !fed {
+      b := cxterm_byte(ifx running then 10 else 200);
+      if b == -2 { break; }          // stdin closed: the TUI is gone
+      got_line := false;
+      while b >= 0 {
+        if b == 10 { got_line = true; break; }
+        if nl < line.count { line[nl] = cast,trunc(u8) b; nl += 1; }
+        b = cxterm_byte(0);
+      }
+      if b == -2 && !got_line { break; }
+      if !got_line { continue; }
+    }
+    msg := cast(string) line[0..<nl];
+    nl = 0;
+    ar[0].at = 0; ar[0].full = false;
+    what := mww_request(ar[..], msg, req[..]);
+    if what == MWW_STEER { mw_steer(running, req[..], st[..], f[..], out[..]); continue; }
+    if what == MWW_QUEUE {
+      if !mw_queue_op(running, req[..], q[..], f[..], home, out[..]) { continue; }
+      what = MWW_STOP;     // promote now: the running turn stops, and the head starts next
+    }
+    if what == MWW_INTERRUPT {
+      if !running { continue; }
+      f[0].resubmit_due = req[0].resubmit;
+      what = MWW_STOP;
+    }
+    if what == MWW_STOP {
+      if running {
+        ev: [32] McRunEvent;
+        n := mc_run_stop(run[..], ev[..]);
+        ending := "stopped";
+        for i: 0..<n { mw_event(ev[i], out[..]); if ev[i].kind == MR_ENDED { ending = mc_ending_name(ev[i].ending); mw_aware(run[..], out[..]); } }
+        running = false;
+        mw_turn_end(ending, st[..], q[..], f[..], out[..]);
+      }
+      continue;
+    }
+    if what == MWW_FORGET { h[0].turns = 0; continue; }
+    if what == MWW_RECALL {
+      // a chat opened again: these are its turns now (the newest MK_TURNS are kept)
+      if !running {
+        h[0].turns = 0;
+        for i: 0..<cl_count(req[0].recall) {
+          one := cl_json(req[0].recall, cl_item(req[0].recall, i));
+          ar[0].at = 0; ar[0].full = false;
+          h[0].ncur = mk_keep(h[0].cur[..], cl_str(ar[..], one, "task"));
+          mk_remember(h[..], cl_str(ar[..], one, "reply"));
+        }
+      }
+      continue;
+    }
+    if what == MWW_EMBED {
+      mk_keys(k[..]);
+      mw_embed(k[..], req[0].text, req[0].query, out[..]);
+      continue;
+    }
+    if what == MWW_RESULTS {
+      if running {
+        ev: [32] McRunEvent;
+        ticket := req[0].ticket;
+        n := mc_run_delegated(run[..], ifx ticket.ok then ticket.value else 0, req[0].results, ev[..]);
+        e := "";
+        for i: 0..<n {
+          if ev[i].kind == MR_ENDED { running = false; e = mc_ending_name(ev[i].ending); }
+          mw_event(ev[i], out[..]);
+          if ev[i].kind == MR_ENDED { mw_aware(run[..], out[..]); }
+        }
+        mw_drained(st[..], h[..], f[..], out[..]);
+        if e.count > 0 { mw_turn_end(e, st[..], q[..], f[..], out[..]); }
+      }
+      continue;
+    }
+    if what == MWW_ANSWER {
+      if running {
+        ev: [32] McRunEvent;
+        ticket := req[0].ticket;
+        n := mc_run_answer_owned(run[..], ifx ticket.ok then ticket.value else 0, req[0].allow, req[0].why, ev[..]);
+        e := "";
+        for i: 0..<n {
+          if lguard[0].active && ev[i].kind == MR_COMMAND {
+            mk_lg_command(lguard[..], run[0].l[0].steps, ev[i].text, ev[i].exit, ev[i].timed_out);
+          }
+          if ev[i].kind == MR_ENDED {
+            running = false; e = mc_ending_name(ev[i].ending);
+            mw_remember_end(h[..], ev[i].ending, ev[i].text);
+          }
+          mw_event(ev[i], out[..]);
+          if ev[i].kind == MR_ENDED { mw_aware(run[..], out[..]); }
+        }
+        mw_drained(st[..], h[..], f[..], out[..]);
+        if e.count > 0 { mw_turn_end(e, st[..], q[..], f[..], out[..]); }
+      }
+      continue;
+    }
+    t := req[0].task;
+    if what != MWW_TASK || running { continue; }
+    mw_turn_begin(f[..], msg, out[..]);
+    incoming_cwd := req[0].cwd;
+    if t.count>task.count || incoming_cwd.count==0 || incoming_cwd.count>cwd.count {mw_ended(out[..],"failed","task or workspace exceeds the declared worker bounds");continue;}
+    tn := mk_keep(task[..], t);
+    cn := mk_keep(cwd[..], incoming_cwd);
+    tk := cast(string) task[0..<tn]; cd := cast(string) cwd[0..<cn];
+    mk_keys(k[..]);
+    req_model := ifx req[0].model.count > 0 then req[0].model else cl_str(ar[..], msg, "model");
+    hybrid := mk_is_hybrid_model(req_model);
+    combo := mk_is_combo_model(req_model);
+    combo_active := false;
+    local := req[0].local || hybrid;
+    if combo {
+      wb: [512] u8; lwhy := mk_plan_local_for(k[..], plan[..], pb[..], "inkling-2-mini", wb[..]);
+      cn_cloud := mk_plan(k[..], plan_cloud[..], pb[..], "gemini-4-neon");
+      if lwhy.count == 0 && cn_cloud > 0 {
+        combo_active = true;
+      } else if cn_cloud > 0 {
+        // Local server unavailable: fall back cleanly to Vertex Neon alone
+        _ = mk_plan(k[..], plan[..], pb[..], "gemini-4-neon");
+      } else if lwhy.count == 0 {
+        // Cloud unavailable: run local alone
+        local = true;
+      } else {
+        mw_ended(out[..], "no_capacity", lwhy); continue;
+      }
+    } else if local {
+      wb: [512] u8; why := mk_plan_local_for(k[..], plan[..], pb[..], ifx hybrid then "hybrid-exec-v1" else req_model, wb[..]);
+      if why.count > 0 { mw_ended(out[..], "no_capacity", why); continue; }
+    } else if mk_plan(k[..], plan[..], pb[..], req_model) == 0 {
+      if mk_openrouter_model(req_model).count > 0 { mw_ended(out[..], "no_capacity", "There is no OpenRouter key. Set one with Coder > OpenRouter Models, or add ~/work/.secrets/openrouter.env."); continue; }
+      mw_ended(out[..], "no_capacity", "Microcoder has no model to call here: set an OpenRouter key in settings, or add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.");
+      continue;
+    }
+    h[0].ncur = mk_keep(h[0].cur[..], tk);
+    self_note := mk_self_note(mk_is_openagents_checkout(cd));
+    fx := mk_facts_ex(h[..], ifx tool_os() == TOOL_LINUX then "Linux" else "macOS", cd, MK_COMMAND_SECONDS, self_note, facts[..]);
+    mc_init(run[0].l[..], sb[..], lb[..], fx, tk, "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
+    run[0].gated = req[0].gated; run[0].asking = false; run[0].delegating = false; run[0].delegated = false; run[0].edits_free = req[0].edits; run[0].unbounded = req[0].unlimited;
+    profile := req[0].sandbox;
+    if profile.count==0 {profile="danger-full-access";}
+    np:=mk_keep(profilebuf[..],profile);run[0].profile=cast(string)profilebuf[0..<np];
+    run[0].ceiling=3;
+    if req[0].policy_on {
+      ceiling := req[0].ceiling;
+      if !ceiling.ok || ceiling.value<0 || ceiling.value>3 {mw_ended(out[..],"failed","invalid frozen effect ceiling");continue;}
+      run[0].ceiling=ceiling.value;
+    }
+    if profile!="danger-full-access" && profile!="read-only" && profile!="workspace-write" {mw_ended(out[..],"failed","unknown sandbox profile");continue;}
+    // the compiler's answers, off unless the message turns them on; the working memory, on in every
+    // run (GitHub #13730). A message that asks for the memory ("memory":true) gets the session's
+    // folder, and a failure to open it fails the run, as before. Otherwise the folder is this
+    // worker's own for this working directory (WORKER-HASH.workmem: sub-agents of one chat run in
+    // workers of their own and never share one), and a memory that can't open leaves the run without it.
+    intel := cl_bool(msg, "intel"); asked := cl_bool(msg, "memory"); asked_mem := asked.ok && asked.value;
+    run[0].aw = aw[0..<0];
+    mdir := cl_str(ar[..], msg, "memory_dir");
+    if mdir.count == 0 {
+      session := cl_str(ar[..], msg, "session");
+      if !asked_mem || session.count == 0 || ps_find(session, "/") >= 0 || session == "." || session == ".." {
+        fold := 7; for c: cd { fold = (fold * 31 + cast(int) c) % 1000000007; }
+        sb2: [256] u8; sk := json_raw(sb2[..], 0, fs_base(cast(string) jp[0..<jn - 4])); sk = json_raw(sb2[..], sk, "-"); sk = json_write_int(sb2[..], sk, fold);
+        session = ifx sk > 0 then mw_keep_session(sbuf[..], cast(string) sb2[0..<sk]) else fs_base(cast(string) jp[0..<jn - 4]);
+      }
+      mdir = wmf_dir(home, session, homeb[..]);
+    }
+    nm := mk_keep(mdirb[..], mdir); nx := mk_keep(coaxb[..], cl_str(ar[..], msg, "coax"));
+    why := mc_aw_start(aw[..], run[0].l[..], lb[..], intel.ok && intel.value, true, cast(string) coaxb[0..<nx], cast(string) mdirb[0..<nm], cd, run[0].profile);
+    if why.count > 0 && !asked_mem { why = mc_aw_start(aw[..], run[0].l[..], lb[..], intel.ok && intel.value, false, cast(string) coaxb[0..<nx], "", cd, run[0].profile); }
+    if why.count > 0 { mw_ended(out[..], "failed", why); continue; }
+    if aw[0].intel || aw[0].memory { run[0].aw = aw[..]; }
+    inkling_sub := req[0].agents && !local && !combo_active && mk_local_subagent_ready();
+    if req[0].agents && !mc_agents_ex(run[0].l[..], lb[..], req[0].claude, req[0].openrouter, inkling_sub) { mw_ended(out[..], "failed", "the sub-agents' schema does not fit"); continue; }
+    if req[0].no_ask && !mc_no_ask(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the no-ask schema does not fit"); continue; }
+    if req[0].device && !mc_device(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the device schema does not fit"); continue; }
+    _ = mc_run_load_instructions(run[0].l[..], lb[..], cd);
+    if hybrid {
+      _ = mc_instructions(run[0].l[..], lb[..], "\n\nHybrid Executor (hybrid-exec-v1): structured edits are pre-verified by compiled Class-E dense F64 weight cores (oa-exec-json-schema, oa-exec-diff-verify) before touching disk, emitting Ch 234 replayable trace digests. Prefer targeted edits over whole-file rewrites.");
+    }
+    lg := mk_local_guidance(local, combo_active);
+    if lg.count > 0 { _ = mc_instructions(run[0].l[..], lb[..], lg); }
+    gg := mk_goal_guidance(tk);
+    if gg.count > 0 { _ = mc_instructions(run[0].l[..], lb[..], gg); }
+    if !journal[0].opened {
+      if !jf_open(journal[..], cast(string) jp[0..<jn]) { mw_ended(out[..], "failed", "durable journal failed to open; no request or tool started"); continue; }
+      mw_send(out[..], mww_journal(out[..], cast(string) jp[0..<jn]));
+    }
+    context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
+    nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,req[0].session);
+    nc=json_raw(context[..],nc,",\"policy\":");policy:=req[0].policy;nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");
+    nc=json_raw(context[..],nc,",\"sandbox\":");nc=json_write_string(context[..],nc,run[0].profile);
+    nc=json_raw(context[..],nc,",\"system\":");nc=json_write_string(context[..],nc,run[0].l[0].system);
+    nc=json_raw(context[..],nc,",\"schema\":");nc=json_write_string(context[..],nc,run[0].l[0].schema);
+    nc=json_raw(context[..],nc,ifx run[0].gated then ",\"gated\":true}" else ",\"gated\":false}");
+    if nc<0 || !jf_context(journal[..],cast(string)context[0..<nc]) {mw_ended(out[..],"failed","durable context failed; no request or tool started");continue;}
+    plan[0].journal=journal[..];
+    effort := req[0].effort;
+    if effort != "medium" && effort != "high" { effort = "low"; }
+    mk_plan_limits(plan[..], effort);
+    hybrid_on = combo_active;
+    mk_lg_init(lguard[..], local && !combo_active, tk);
+    run[0].defer_call = combo_active || lguard[0].active;
+    if combo_active {
+      plan_cloud[0].journal = journal[..];
+      mk_plan_limits(plan_cloud[..], effort);
+      lsteps := mk_env_int("MC_HYBRID_LOCAL_STEPS", MC_HYBRID_LOCAL_DEFAULT_STEPS);
+      lms := mk_env_int("MC_HYBRID_LOCAL_MS", MC_HYBRID_LOCAL_DEFAULT_MS);
+      ff_b: [16] u8; ff := gw_env("MC_HYBRID_FREE_FINISH", ff_b[..]) != "0";
+      mc_hybrid_init(hy[..], lsteps, lms, ff, cxproc_now_ms());
+      hy[0].cloud_budget_micros = mk_env_int("MC_HYBRID_CLOUD_BUDGET_MICROS", 0);
+    }
+    // before the first call, what the task names is looked up: its files viewed (anchored on task symbols), its code names found (GitHub #13325)
+    rpb: [1024] u8;
+    run[0].seed = !local || gw_env("GW_REPLAY", rpb[..]).count == 0;
+    run[0].command_seconds = MK_COMMAND_SECONDS;
+    mc_steer_clear(st[..]); st[0].nd = 0;
+    mc_run_start(run[..], plan[..], bench[..], cd, effort);
+    running = true;
+    f[0].starting = false;
+  }
+  if running { ev: [32] McRunEvent; n := mc_run_stop(run[..], ev[..]); }
+  return 0;
+}

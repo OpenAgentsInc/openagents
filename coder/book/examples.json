@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "examples": [
+    {
+      "source": "coder/examples/query-loop.coax",
+      "chapter": "coder/book/ch001-the-simplest-loop.md",
+      "stdout": "coder/examples/query-loop.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/transcript-log.coax",
+      "chapter": "coder/book/ch002-model-visible-means-logged.md",
+      "stdout": "coder/examples/transcript-log.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/prompt-cache.coax",
+      "chapter": "coder/book/ch003-keep-the-prefix-stable.md",
+      "stdout": "coder/examples/prompt-cache.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/tool-capabilities.coax",
+      "chapter": "coder/book/ch004-tools-as-typed-capabilities.md",
+      "stdout": "coder/examples/tool-capabilities.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/sandbox-approvals.coax",
+      "chapter": "coder/book/ch005-a-sandbox-and-approvals.md",
+      "stdout": "coder/examples/sandbox-approvals.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/prompt-boundaries.coax",
+      "chapter": "coder/book/ch006-a-document-tries-to-become-the-system-prompt.md",
+      "stdout": "coder/examples/prompt-boundaries.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/compaction-pipeline.coax",
+      "chapter": "coder/book/ch007-condense-the-history.md",
+      "stdout": "coder/examples/compaction-pipeline.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/tool-orchestration.coax",
+      "chapter": "coder/book/ch008-programs-as-tool-calls.md",
+      "stdout": "coder/examples/tool-orchestration.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/protocols.coax",
+      "chapter": "coder/book/ch016-speak-the-protocols.md",
+      "stdout": "coder/examples/protocols.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/consent-gate.coax",
+      "chapter": "coder/book/ch018-consent-before-sharing.md",
+      "stdout": "coder/examples/consent-gate.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/memory-lifecycle.coax",
+      "chapter": "coder/book/ch019-remember-a-fact-then-revise-it.md",
+      "stdout": "coder/examples/memory-lifecycle.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/measure-atif.coax",
+      "chapter": "coder/book/ch021-measure-the-harness.md",
+      "stdout": "coder/examples/measure-atif.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "coder/examples/candidate-eval.coax",
+      "chapter": "coder/book/ch022-generate-candidates-then-check-them.md",
+      "stdout": "coder/examples/candidate-eval.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    }
+  ]
+}

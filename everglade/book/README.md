@@ -1,11 +1,11 @@
 # Building Everglade
 
-**Status: active.** Chapters 1 to 25 and 33 are written (Chapters 4, 14, and
-33 are implemented with runnable examples, refusals, and exact transcripts;
-Chapters 1–3, 5–13, and 15–25 are partly implemented). They copy listings from
-source between `// book:begin` and `// book:end` markers. The
-[contents](SUMMARY.md) list them. Chapters 26 to 32 (city, multi-room shards,
-accounts, shipping, and live operations) are planned.
+**Status: active.** All 33 chapters are written (Chapters 4, 14, and 33 are
+implemented with runnable examples, refusals, and exact transcripts; Chapters
+1–3, 5–13, and 15–32 are partly implemented, with runnable Coax examples and
+exact transcripts for Chapters 26–32). Listings are copied from source between
+`// book:begin` and `// book:end` markers. The [contents](SUMMARY.md) list
+every chapter.
 
 ## Start here
 
@@ -227,11 +227,16 @@ something you can walk around in and test.
     from the SRD's speeds, Fire Breath as SRD rules, a druid's Shapechange,
     Dragon Lab and riding the dragon as a mount.
 
-Parts I through V exist today. Parts VI and VII are in progress: an armoured
-guard on the path to test NPC pathing and aggro, and the Ranger's longbow to
-attack him with. Parts VIII and IX are planned. Part X has begun with the
-druid's dragon at `/druid` and Dragon Lab at `/dragon-lab`, where you arrive as
-the dragon.
+Parts I through V exist today. Parts VI and VII cover the patrolling path guard
+and Ranger action combat. Parts VIII and IX are partly implemented with
+runnable Coax examples for the city clearing/plot grid, shared townspeople
+roster and guard-guide AI, content-driven quests and item ledger, multi-room
+sharding and five-step travel, Nostr/device-bound accounts and fenced
+checkpoints, single release-set gates, and live SLO/moderation/soak operations
+(with live Everglade II city interiors, daily NPC schedules, player-to-player
+trade wire commands, and 150-player zones still in progress). Part X has begun
+with the druid's dragon at `/druid` and Dragon Lab at `/dragon-lab`, where you
+arrive as the dragon.
 
 ## Where the other books come in
 
@@ -365,12 +370,12 @@ agree with it (`python3 psionic/tests/book.py --book everglade`).
 | [23. Mouse look and the crosshair](ch023-mouse-look-and-the-crosshair.md) | Partly implemented: mouse-look-crosshair-v1 |
 | [24. The longbow](ch024-the-longbow.md) | Partly implemented: longbow-archery-v1 |
 | [25. Cast while you run](ch025-cast-while-you-run.md) | Partly implemented: cast-while-running-v1 |
-| 26. Walk into a city | Planned |
-| 27. Townspeople | Planned |
-| 28. Interactions | Planned |
-| 29. Many rooms | Planned |
-| 30. Accounts and persistence | Planned |
-| 31. Ship it | Planned |
-| 32. Run a live world | Planned |
+| [26. Walk into a city](ch026-walk-into-a-city.md) | Partly implemented: city-clearing-plots-v1 |
+| [27. Townspeople](ch027-townspeople.md) | Partly implemented: townspeople-speakers-guide-v1 |
+| [28. Interactions](ch028-interactions.md) | Partly implemented: quests-dialogue-ledger-v1 |
+| [29. Many rooms](ch029-many-rooms.md) | Partly implemented: multi-room-shards-travel-v1 |
+| [30. Accounts and persistence](ch030-accounts-and-persistence.md) | Partly implemented: accounts-character-persistence-v1 |
+| [31. Ship it](ch031-ship-it.md) | Partly implemented: release-set-canary-rollback-v1 |
+| [32. Run a live world](ch032-run-a-live-world.md) | Partly implemented: live-world-slo-mod-soak-v1 |
 | [33. Let's build a dragon](ch033-lets-build-a-dragon.md) | Runnable: dragon-shapechange-flight-v1 |
 

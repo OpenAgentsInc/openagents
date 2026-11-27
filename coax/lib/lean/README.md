@@ -1,7 +1,7 @@
 # `coax/lib/lean/` — Lean 4 & Riemann Hypothesis Gym Core
 
 Pure Coax modules powering the OpenAgents Desktop Lean 4 Gym (`Gym -> Lean`),
-the `lean-run` CLI (`coder/tui/lean-run.coax`), and the interactive Riemann
+the `lean-run` CLI (`coax/lib/lean/lean-run.coax`), and the interactive Riemann
 Hypothesis Proof Workbench (Epic #13943; `docs/lean/`).
 
 | Module | Role |

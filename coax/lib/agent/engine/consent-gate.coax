@@ -2,7 +2,7 @@
 // any owner: a message of session content (a task to route, a log to read)
 // goes to System One only under a grant recorded for it, and each send or
 // refusal is logged in the hash-chained ledger first
-// (psionic/lib/harness/consent.coax). The owner names its ledger; Coder's is
+// (coax/lib/agent/engine/consent.coax). The owner names its ledger; Coder's is
 // ~/.openagents/coder/consent/events.jsonl, and the Metaverse Engine's chat uses the
 // same one. Moved from coder/tui/gate.coax and memory.coax.
 //
@@ -10,7 +10,7 @@
 //   cg_route           System One's pick for a task (route.coax), its question gated
 //   gt_open, gt_save   the ledger read and replayed, and new events appended
 
-#load "../../../../psionic/lib/harness/consent.coax";
+#load "consent.coax";
 #load "route.coax";
 
 cg_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }

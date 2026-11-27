@@ -6,7 +6,7 @@
 > and [`openagents/core/extensions.coax`](../../openagents/core/extensions.coax)
 > pass on `cpu` (0 surviving mutants on `members.coax`), mounting `OA_PACK_COAX_INTEL`,
 > `OA_PACK_WALLET`, `OA_PACK_CLI`, `OA_PACK_METAVERSE`, and `OA_PACK_AGENTS`
-> into [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax). Remaining:
+> into [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax). Remaining:
 > dynamic NIP-CAP `DiscoveryHead` catalog syncing and mobile/web member-list
 > surfaces (`openagents/agent/members.coax`).
 

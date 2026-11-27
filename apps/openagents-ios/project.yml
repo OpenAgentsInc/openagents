@@ -3,11 +3,14 @@ options:
   bundleIdPrefix: com.openagents
   deploymentTarget:
     iOS: "18.0"
+packages:
+  SparkSDK:
+    path: Generated/SparkSDK
 settings:
   base:
     DEVELOPMENT_TEAM: HQWSG26L43
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1428"
+    CURRENT_PROJECT_VERSION: "1431"
     OA_IOS_BUNDLE_ID: com.openagents.app
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "18.0"
@@ -19,20 +22,32 @@ targets:
     type: application
     platform: iOS
     sources:
-      # iOS GPU surface controller + pure-black native modal sheets (GitHub #14023).
+      # iOS GPU surface controller + pure-black native modal sheets (Account, Wallet, Cloud, Computers, Workspace, Usage).
       - Sources
-      # Shared cross-Apple Antigravity client engine & modal inspector sheets.
+      # Shared cross-Apple client engine & modal inspector sheets.
       - ../shared/antigravity/Swift
+      # Shared Apple Account, Passkey, DeviceKey & Spark Wallet hosts (shared 1:1 with Desktop).
+      - ../shared/host/apple/AppAuth.swift
+      - ../shared/host/apple/DeviceKey.swift
+      - ../shared/host/apple/BIP39.swift
+      - ../shared/host/apple/BreezKey.swift
+      - ../shared/host/apple/WalletKeychain.swift
+      - ../shared/host/apple/SparkWallet.swift
+      - ../shared/native/AppAccount.swift
+      - ../shared/native/AppHTTP.swift
+      - ../shared/native/KitPasskey.swift
       # Shared Tailscale IP/MagicDNS/TXT/direct-grant/push wire rules (Foundation-only).
       - ../shared/native/AppTailnet.swift
       # Shared UIKit text editor overlay & VoiceOver bridge over the Metal GPU surface.
       - ../shared/native/KitEditor.swift
       - ../shared/native/KitAccess.swift
-      # Unified compiled Coax C library (client-core + host-tables + gpu-page -> Generated/gallery.c).
+      # Unified compiled Coax C library (client-core + wallet + nip06 + cloud-chat-wire + host-tables + gpu-page -> Generated/gallery.c).
       - path: Generated/gallery.c
         compilerFlags: "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"
       - path: ../shared/antigravity/client-core-bridge.c
         compilerFlags: "-IGenerated -I../shared/native -I../shared/antigravity"
+      - path: cloud-chat-bridge.c
+        compilerFlags: "-IGenerated"
       # Shared Coax GPU component carrier, glyph/SVG atlas setup, and Apple Metal UIKit host.
       - path: gpu-carrier.c
         compilerFlags: "-IGenerated -I../shared/host/linux -I../shared/host/apple -Wno-unused-function"
@@ -41,7 +56,12 @@ targets:
       - path: Generated/Components
         type: folder
         buildPhase: resources
+      - path: Generated/bip39-english.txt
+        buildPhase: resources
       - OpenAgents/Assets.xcassets
+    dependencies:
+      - package: SparkSDK
+        product: BreezSdkSpark
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(OA_IOS_BUNDLE_ID)"
@@ -53,9 +73,9 @@ targets:
         CODE_SIGN_ENTITLEMENTS: OpenAgents/OpenAgents.entitlements
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_CFBundleDisplayName: OpenAgents
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "OpenAgents discovers your Mac nearby so it can connect to Antigravity over Tailscale."
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "OpenAgents uses the microphone when you tap Voice Dictation to speak prompts to Antigravity."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "OpenAgents transcribes spoken prompts into the Antigravity composer when you use Voice Dictation."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "OpenAgents discovers your Mac nearby so it can connect to OpenAgents Desktop over Tailscale."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "OpenAgents uses the microphone when you tap Voice Dictation or Live Voice to speak prompts to OpenAgents."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "OpenAgents transcribes spoken prompts into the OpenAgents composer when you use Voice Dictation."
         INFOPLIST_KEY_NSCameraUsageDescription: "OpenAgents uses the camera to scan Tailscale pairing QR codes from your Mac."
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
@@ -85,7 +105,7 @@ targets:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - UITests/AntigravityUITests.swift
+      - UITests/OpenAgentsUITests.swift
     dependencies:
       - target: OpenAgents
     settings:

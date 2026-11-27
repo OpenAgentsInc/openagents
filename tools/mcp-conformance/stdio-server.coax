@@ -1,0 +1,194 @@
+// Dual-era (2025-11-25 + 2026-07-28) Coax MCP stdio reference server for
+// Phase 2 interop testing with Coax stdio_client.coax and @modelcontextprotocol/inspector.
+// Build & run via: coax/web/tool.sh tools/mcp-conformance/stdio-server.coax [--2025-only | --2026-only]
+#load "../../coax/lib/mcp/stdio_server.coax";
+
+STDIO_SRV_LINE_MAX :: 262144;
+STDIO_SRV_OUT_MAX :: 262144;
+STDIO_SRV_NODES :: 2048;
+
+mcp_fmt_int :: (v: int, out: [] u8) -> string {
+  if out.count < 24 { return "0"; }
+  neg := v < 0;
+  x := ifx neg then -v else v;
+  tmp: [24] u8;
+  k := 0;
+  while true {
+    tmp[k] = cast,trunc(u8) ('0' + (x % 10));
+    k += 1;
+    x /= 10;
+    if x == 0 { break; }
+  }
+  n := 0;
+  if neg { out[n] = '-'; n += 1; }
+  for i: 0..<k { out[n] = tmp[k - 1 - i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+mcp_starts_with :: (s: string, prefix: string) -> bool {
+  if prefix.count > s.count { return false; }
+  for i: 0..<prefix.count { if s[i] != prefix[i] { return false; } }
+  return true;
+}
+
+mcp_concat2 :: (a: string, b: string, out: [] u8) -> string {
+  n := 0;
+  for c: a { if n < out.count { out[n] = c; n += 1; } }
+  for c: b { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+mcp_concat3 :: (a: string, b: string, c: string, out: [] u8) -> string {
+  n := 0;
+  for ch: a { if n < out.count { out[n] = ch; n += 1; } }
+  for ch: b { if n < out.count { out[n] = ch; n += 1; } }
+  for ch: c { if n < out.count { out[n] = ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+mcp_setup_server :: (srv: [] McpServerCore, support_2025: bool, support_2026: bool) {
+  mcp_server_init(srv, McpImplInfo.{ name = "coax-mcp-stdio", version = "0.2.0" }, support_2025, support_2026);
+  srv[0].instructions = "Coax native MCP stdio reference server (2025-11-25 + 2026-07-28).";
+  srv[0].caps.completions = true;
+  srv[0].caps.logging = true;
+
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "echo",
+    description = "Echoes the provided message back to the caller.",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{\"message\":{\"type\":\"string\"}},\"required\":[\"message\"]}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "add",
+    description = "Adds two integers a and b and returns their sum.",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\"},\"b\":{\"type\":\"integer\"}},\"required\":[\"a\",\"b\"]}"
+  });
+  _ = mcp_server_add_tool(srv, McpToolDef.{
+    name = "fail",
+    description = "Always returns a tool execution error (isError: true).",
+    input_schema_json = "{\"type\":\"object\",\"properties\":{}}"
+  });
+
+  _ = mcp_server_add_resource(srv, McpResourceDef.{
+    uri = "memo://hello",
+    name = "hello",
+    description = "Static greeting memo resource",
+    mime_type = "text/plain"
+  });
+  _ = mcp_server_add_template(srv, McpResourceTemplateDef.{
+    uri_template = "memo://{id}",
+    name = "memo-item",
+    description = "Dynamic memo resource by id",
+    mime_type = "text/plain"
+  });
+
+  greet := McpPromptDef.{ name = "greet", description = "Creates a personalized greeting prompt", arg_count = 1 };
+  greet.args[0] = McpPromptArg.{ name = "name", description = "Name to greet", required = true };
+  _ = mcp_server_add_prompt(srv, greet);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) {
+    mcp_stdio_log("failed to load argv");
+    return 2;
+  }
+  only_2025 := args_has(a[..], "--2025-only");
+  only_2026 := args_has(a[..], "--2026-only");
+  support_2025 := !only_2026;
+  support_2026 := !only_2025;
+
+  srv: [1] McpServerCore;
+  mcp_setup_server(srv[..], support_2025, support_2026);
+  mcp_stdio_log("coax-mcp-stdio ready on stdin/stdout");
+
+  line_buf: [STDIO_SRV_LINE_MAX] u8;
+  out_buf: [STDIO_SRV_OUT_MAX] u8;
+  scratch: [STDIO_SRV_OUT_MAX + 1] u8;
+  nodes: [STDIO_SRV_NODES] JvNode;
+  doc: [1] Jv;
+  dp: [1] McpDispatch;
+  tmp: [4096] u8;
+  tmp2: [4096] u8;
+  sc_buf: [256] u8;
+
+  while true {
+    st := mcp_stdio_server_step(srv[..], line_buf[..], nodes[..], doc[..], out_buf[..], scratch[..], -1, dp[..]);
+    if st == MCP_STDIO_EOF || st == MCP_STDIO_IO_ERR { break; }
+    if st != MCP_STDIO_STEP_DISPATCH { continue; }
+
+    d := doc[0];
+    act := dp[0].action;
+
+    if act == MCP_DISP_CALL_TOOL {
+      tname := srv[0].tools[dp[0].tool_idx].name;
+      if dp[0].meta.progress_token_kind != MCP_PTOK_NONE {
+        _ = mcp_stdio_send_progress(
+          dp[0].meta.progress_token_kind,
+          dp[0].meta.progress_token_int,
+          dp[0].meta.progress_token_str,
+          "1", "1", "executing tool",
+          out_buf[..], scratch[..]
+        );
+      }
+
+      if tname == "echo" {
+        mn := jv_get(d, dp[0].arguments_node, "message");
+        mlen := jv_str(d, mn, tmp[..]);
+        msg_s := ifx mlen >= 0 then cast(string) tmp[0..<mlen] else "";
+        if !mcp_stdio_reply_tool_text(d, dp[0], msg_s, false, out_buf[..], scratch[..]) { break; }
+      } else if tname == "add" {
+        an := jv_get(d, dp[0].arguments_node, "a");
+        bn := jv_get(d, dp[0].arguments_node, "b");
+        av: [1] int; bv: [1] int;
+        if !jrpc_exact_int(d, an, av[..]) || !jrpc_exact_int(d, bn, bv[..]) {
+          if !mcp_stdio_reply_tool_text(d, dp[0], "a and b must be integers", true, out_buf[..], scratch[..]) { break; }
+        } else {
+          sum := av[0] + bv[0];
+          sum_s := mcp_fmt_int(sum, tmp[..]);
+          o: [1] Jo;
+          jo_start(o[..], sc_buf[..]);
+          jo_obj(o[..]); jo_key(o[..], "sum"); jo_int(o[..], sum); jo_end(o[..]);
+          blocks := [1] McpContent.[McpContent.{ kind = MCP_CONTENT_TEXT, text = sum_s }];
+          if !mcp_stdio_reply_tool_result(d, dp[0], blocks[..], false, jo_text(o[..]), out_buf[..], scratch[..]) { break; }
+        }
+      } else if tname == "fail" {
+        if !mcp_stdio_reply_tool_text(d, dp[0], "intentional tool error", true, out_buf[..], scratch[..]) { break; }
+      } else {
+        if !mcp_stdio_reply_error(d, MCP_ERR_INVALID_PARAMS, "Unknown tool", out_buf[..], scratch[..]) { break; }
+      }
+    } else if act == MCP_DISP_READ_RESOURCE {
+      body := ifx dp[0].uri == "memo://hello"
+              then "Hello from Coax MCP stdio server!"
+              else mcp_concat2("Memo item: ", dp[0].uri, tmp[..]);
+      res := [1] McpResourceContents.[McpResourceContents.{
+        uri = dp[0].uri,
+        mime_type = "text/plain",
+        text = body
+      }];
+      if !mcp_stdio_reply_resources(d, dp[0], res[..], McpCacheHint.{}, out_buf[..], scratch[..]) { break; }
+    } else if act == MCP_DISP_GET_PROMPT {
+      nn := jv_get(d, dp[0].arguments_node, "name");
+      wlen := jv_str(d, nn, tmp[..]);
+      who := ifx wlen >= 0 then cast(string) tmp[0..<wlen] else "";
+      txt := mcp_concat3("Hello, ", who, "!", tmp2[..]);
+      msgs := [1] McpPromptMessage.[McpPromptMessage.{
+        is_assistant = false,
+        content = McpContent.{ kind = MCP_CONTENT_TEXT, text = txt }
+      }];
+      if !mcp_stdio_reply_prompt(d, dp[0], "Greeting prompt", msgs[..], out_buf[..], scratch[..]) { break; }
+    } else if act == MCP_DISP_COMPLETE {
+      candidates := [3] string.["alice", "bob", "coax"];
+      matched: [3] string;
+      mc := 0;
+      for cand: candidates {
+        if mcp_starts_with(cand, dp[0].complete_req.arg_value) {
+          matched[mc] = cand;
+          mc += 1;
+        }
+      }
+      if !mcp_stdio_reply_complete(d, dp[0], matched[0..<mc], true, mc, false, out_buf[..], scratch[..]) { break; }
+    }
+  }
+  mcp_stdio_log("coax-mcp-stdio shutting down cleanly");
+  return 0;
+}

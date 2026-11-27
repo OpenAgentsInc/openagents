@@ -1,0 +1,75 @@
+// Runnable example for Everglade Book Chapter 26: Walk into a city.
+// Exercises Everglade's forest clearing & floor levelling (everglade/world/clearing.coax),
+// the 16-plot town grid and Housewright staged construction (everglade/world/town.coax,
+// everglade/world/housewright.coax, metaverse-engine/world/plots.coax), and named city
+// gates & fail-closed point lookups (everglade/world/town-points.coax).
+//   coax/bin/coax run everglade/examples/city-town-plots.coax
+#import "Basic";
+#load "../../everglade/world/clearing.coax";
+#load "../../metaverse-engine/world/plots.coax" as plots;
+#load "../../everglade/world/housewright.coax" as hw;
+#load "../../everglade/world/town.coax" as town;
+#load "../../everglade/world/town-points.coax";
+
+// book:begin city-town-plots
+city_run :: () -> bool {
+  // 1. Level a buildable city clearing out of rolling forest hills (ground 7.5 m -> floor -2.0 m).
+  c := Clearing.{cx = 34.0, cz = -114.0, radius = 36.0, edge = 8.0, rag = 0.25, slope = 20.0, ring = 12.0};
+  open_mid := clearing_open(c, 34.0, -114.0);
+  open_far := clearing_open(c, 34.0 + 50.0, -114.0);
+  floor_mid := clearing_floor(c, 34.0, -114.0, 7.5, -2.0);
+  floor_far := clearing_floor(c, 34.0 + 60.0, -114.0, 7.5, -2.0);
+  ring_at := clearing_ring(c, c.cx + clearing_edge(c, c.cx + 40.0, c.cz) + 4.0, c.cz);
+  print("clearing_mid_open=% far_open=% floor_mid_dm=% floor_far_dm=% ring_gt90=%\n",
+    open_mid == 1.0, open_far == 0.0, cast(int) (floor_mid * 10.0), cast(int) (floor_far * 10.0), ring_at > 0.9);
+
+  // 2. Claim Everglade's 4x4 town grid (16 plots of 10 m on 12 m pitch -> 2 m street lanes).
+  g := town.town_grid(34.0, -114.0);
+  b: [1] plots.PlotBook;
+  b[0] = town.town_book(g, 0.0);
+  founder_name := plots.pl_owner_name(b[..], town.TOWN_FOUNDER);
+  in_lane := plots.pl_at(g, 34.0, -114.0);
+  p5 := plots.pl_centre(g, town.TOWN_FOUNDER);
+  on_plot5 := plots.pl_at(g, p5[0], p5[1]);
+  // At workday 3.4: houses rise at their own tier pace (some finished, some building, some waiting).
+  fin := 0; mid := 0; wait := 0;
+  t_mid := 3.4 * hw.HW_WORKDAY_S;
+  for i: 0..<town.TOWN_PLOTS {
+    prog := plots.pl_progress(b[0].site[i], t_mid);
+    if prog == f32(b[0].site[i].stages) { fin += 1; }
+    else if prog > 0.0 { mid += 1; }
+    else { wait += 1; }
+  }
+  done_days := cast(int) (plots.pl_all_done(b[..]) / hw.HW_WORKDAY_S + 0.5);
+  print("plots=% founder=% lane_at=% plot5_at=% day34_fin=% mid=% wait=% all_done_days=%\n",
+    plots.pl_count(g), founder_name, in_lane, on_plot5, fin, mid, wait, done_days);
+
+  // 3. Named gates and city landmarks resolve deterministically; unknown names fail closed.
+  gate := eg_point("gate-south");
+  commons := eg_point("commons");
+  unknown := eg_point("the-old-spawn");
+  print("gate_south=% z=% commons=% unknown_refused=%\n",
+    gate.found, cast(int) gate.z, commons.found, !unknown.found);
+
+  // 4. Refusals: claiming a taken plot, holding a second plot, or building on another's plot.
+  rb: [1] plots.PlotBook;
+  rb[0] = plots.pl_book(g);
+  ok1 := plots.pl_claim(rb[..], 5, 101, "Finn Barrow");
+  dup_plot := plots.pl_claim(rb[..], 5, 102, "Greta Lark");
+  dup_owner := plots.pl_claim(rb[..], 6, 101, "Finn again");
+  wrong_builder := plots.pl_site(rb[..], 5, 102, town.town_site(g, 5, 0.0));
+  print("claim_ok=% refuse_taken=% refuse_second=% refuse_non_owner=% refused_count=%\n",
+    ok1, !dup_plot, !dup_owner, !wrong_builder, rb[0].refused);
+
+  return open_mid == 1.0 && open_far == 0.0 && floor_mid == -2.0 && floor_far == 7.5 &&
+         ring_at > 0.9 && plots.pl_count(g) == 16 && in_lane == -1 && on_plot5 == 5 &&
+         fin >= 3 && mid >= 5 && wait >= 1 && done_days == 14 &&
+         gate.found && commons.found && !unknown.found &&
+         ok1 && !dup_plot && !dup_owner && !wrong_builder && rb[0].refused == 3;
+}
+// book:end city-town-plots
+
+main :: () {
+  ok := city_run();
+  print("ok=%\n", ok);
+}

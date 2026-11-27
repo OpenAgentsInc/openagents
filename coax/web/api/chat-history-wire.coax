@@ -32,8 +32,34 @@ chh_read :: (raw:string)->ChatHistory {
   h.ok=true;return h;
 }
 #test "the shared history codec escapes titles and omits another account" {
-  rows:=[2]ChatHistoryRow.[ChatHistoryRow.{owner="acct_a",id="42",title="A \"chat\"",model="m",folder="Code",updated_ms=12},ChatHistoryRow.{owner="acct_b",id="43",title="private"}];
+  rows:=[2]ChatHistoryRow.[ChatHistoryRow.{owner="acct_a",id="42",title="A \"chat\"",model="m",folder="Code",updated_ms=12,busy=true},ChatHistoryRow.{owner="acct_b",id="43",title="private"}];
   out:[4096]u8;n:=chh_write(2,"acct_a",rows[..],out[..]);#assert n>0;
-  h:=chh_read(cast(string)out[0..<n]);#assert h.ok && h.n==1 && cast(string)h.items[0].title[0..<h.items[0].title_n]=="A \"chat\"";
+  h:=chh_read(cast(string)out[0..<n]);
+  #assert h.ok && h.n==1 && cast(string)h.items[0].title[0..<h.items[0].title_n]=="A \"chat\"";
+  #assert cast(string)h.items[0].model[0..<h.items[0].model_n]=="m" && cast(string)h.items[0].folder[0..<h.items[0].folder_n]=="Code";
+  #assert h.items[0].updated_ms==12 && h.items[0].busy;
   #assert chh_write(0,"acct_a",rows[..],out[..])== -1 && !chh_read("{}").ok;
+  small:[8]u8;#assert chh_write(2,"acct_a",rows[..],small[..])== -1;
+  // boundary: 1-char id, empty optional strings, busy=false, non-integer float updated_ms fallback 0
+  min_row:=[1]ChatHistoryRow.[ChatHistoryRow.{owner="acct_a",id="1",title="",model="",folder="",updated_ms=0,busy=false}];
+  nm:=chh_write(2,"acct_a",min_row[..],out[..]);#assert nm>0;
+  hm:=chh_read(cast(string)out[0..<nm]);#assert hm.ok && hm.n==1 && !hm.items[0].busy && hm.items[0].title_n==0 && hm.items[0].model_n==0 && hm.items[0].folder_n==0;
+  hf:=chh_read("{\"schema\":\"openagents.chat.history.v1\",\"chats\":[{\"id\":\"1\",\"title\":\"\",\"model\":\"\",\"folder\":\"\",\"updated_ms\":1.5,\"busy\":false}]}");
+  #assert hf.ok && hf.items[0].updated_ms==0;
+  // CHH_MAX=60 accepted on write and read, 61 refused on both
+  r61:[61]ChatHistoryRow;for i:0..<61 {r61[i]=ChatHistoryRow.{owner="acct_a",id="x",updated_ms=i};}
+  big:[16384]u8;n60:=chh_write(2,"acct_a",r61[0..<60],big[..]);#assert n60>0 && chh_read(cast(string)big[0..<n60]).ok;
+  #assert chh_write(2,"acct_a",r61[..],big[..])== -1;
+  o61:[1]Jo;b61:[8192]u8;jo_start(o61[..],b61[..]);jo_obj(o61[..]);jo_key(o61[..],"schema");jo_str(o61[..],CHH_SCHEMA);jo_key(o61[..],"chats");jo_arr(o61[..]);
+  for i:0..<61 {jo_raw(o61[..],"{\"id\":\"1\",\"title\":\"\",\"model\":\"\",\"folder\":\"\",\"updated_ms\":1,\"busy\":false}");}jo_end(o61[..]);jo_end(o61[..]);
+  #assert !chh_read(cast(string)b61[0..<o61[0].n]).ok;
+  // individual malformed envelope / row / field refusals
+  #assert !chh_read("[]").ok && !chh_read("{\"schema\":\"bad\",\"chats\":[]}").ok && !chh_read("{\"schema\":\"openagents.chat.history.v1\",\"chats\":{}}").ok;
+  #assert !chh_read("{\"schema\":\"openagents.chat.history.v1\",\"chats\":[1]}").ok;
+  #assert !chh_read("{\"schema\":\"openagents.chat.history.v1\",\"chats\":[{\"id\":\"1\",\"title\":\"\",\"model\":\"\",\"folder\":\"\",\"updated_ms\":\"1\",\"busy\":false}]}").ok;
+  #assert !chh_read("{\"schema\":\"openagents.chat.history.v1\",\"chats\":[{\"id\":\"1\",\"title\":\"\",\"model\":\"\",\"folder\":\"\",\"updated_ms\":1,\"busy\":1}]}").ok;
+  #assert !chh_read("{\"schema\":\"openagents.chat.history.v1\",\"chats\":[{\"id\":\"\",\"title\":\"\",\"model\":\"\",\"folder\":\"\",\"updated_ms\":1,\"busy\":false}]}").ok;
+  #assert !chh_read("{\"schema\":\"openagents.chat.history.v1\",\"chats\":[{\"id\":\"1\",\"title\":1,\"model\":\"\",\"folder\":\"\",\"updated_ms\":1,\"busy\":false}]}").ok;
+  #assert !chh_read("{\"schema\":\"openagents.chat.history.v1\",\"chats\":[{\"id\":\"1\",\"title\":\"\",\"model\":1,\"folder\":\"\",\"updated_ms\":1,\"busy\":false}]}").ok;
+  #assert !chh_read("{\"schema\":\"openagents.chat.history.v1\",\"chats\":[{\"id\":\"1\",\"title\":\"\",\"model\":\"\",\"folder\":1,\"updated_ms\":1,\"busy\":false}]}").ok;
 }

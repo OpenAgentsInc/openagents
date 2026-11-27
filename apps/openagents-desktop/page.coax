@@ -46,6 +46,7 @@
 #load "page/checks/providers-settings-checks.coax" #test;
 #load "page/checks/voice-checks.coax" #test;
 #load "page/checks/environments-checks.coax" #test;
+#load "page/checks/introspect-checks.coax" #test;
 #load "page/checks/rich-checks.coax" #test;
 #load "page/checks/scheduled-checks.coax" #test;
 #load "page/checks/preview-checks.coax" #test;

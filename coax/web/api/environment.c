@@ -102,22 +102,104 @@ bool environment_route(const request *q) {
   if(environment_task_route(q))return true;
   bool workspace=!strcmp(q->path,"/api/chat/environment/workspace/v1");
   bool accounts=!strcmp(q->path,"/api/chat/environment/accounts/v1"),station=!strcmp(q->path,"/api/chat/environment/station/v1");
-  bool list=!strcmp(q->path,"/api/chat/environments/v1"),call=!strcmp(q->path,"/api/chat/environment/v1");
+  bool list=!strcmp(q->path,"/api/chat/environments/v1"),remove_env=!strcmp(q->path,"/api/chat/environments/v1/remove"),call=!strcmp(q->path,"/api/chat/environment/v1");
   call=call || accounts || station || workspace;
   if(workspace && strcmp(q->method,"POST")){api_error(q->fd,405,"POST this.");return true;}
-  if (!list && !call) return false;
+  if(remove_env && strcmp(q->method,"POST")){api_error(q->fd,405,"POST this.");return true;}
+  if (!list && !remove_env && !call) return false;
   const auth_principal *p=auth_principal_of(q);
   if (!p || !ea_account(p->kind,es(p->account),es(p->account))) {api_error(q->fd,401,"Log in first.");return true;}
-  if (((list || station) && strcmp(q->method,"GET")) || (call && strcmp(q->method,"GET") && strcmp(q->method,"POST"))) {api_error(q->fd,405,(list || station) ? "GET this":"POST this");return true;}
+  bool post=!strcmp(q->method,"POST");
+  if ((station && post) || (!post && strcmp(q->method,"GET"))) {api_error(q->fd,405,station ? "GET this":"GET or POST this");return true;}
+  if (post && (list || remove_env) && !auth_same_site(q)) {api_error(q->fd,403,"Cross-site write refused.");return true;}
   PGconn *db=api_db();if (!db) {api_error(q->fd,503,"Connection storage unavailable.");return true;}
   if (!api_limit(db,"environment-call",p->account,(int)ea_rate(),NULL)) {api_error(q->fd,429,"Try again shortly.");return true;}
+  if (post && list) {
+    if (!ea_enroll_admit_c(p->kind,p->level>=1,es(p->account),p->limited,p->frozen!=0)) {api_error(q->fd,403,"This account cannot enroll computers.");return true;}
+    coax_t_EaEnrollRequest *req=calloc(1,sizeof *req);
+    if (!req) {api_error(q->fd,503,"Memory unavailable.");return true;}
+    bool ok=ea_enroll_read_c((coax_string){q->body,(int64_t)q->body_len},(coax_v_t_EaEnrollRequest){req,1});
+    if (!ok) {free(req);api_error(q->fd,400,"Invalid computer enrollment payload.");return true;}
+    char host_s[65]={0},grant_s[65]={0},label_s[81]={0},relay_s[257]={0},os_s[17]={0},epoch_s[32]={0},now_s[32]={0};
+    memcpy(host_s,req->host.e,64);memcpy(grant_s,req->grant.e,64);
+    memcpy(label_s,req->label.e,(size_t)req->nl);memcpy(relay_s,req->relay.e,(size_t)req->nrelay);
+    memcpy(os_s,req->os.e,(size_t)req->nos);
+    snprintf(epoch_s,sizeof epoch_s,"%lld",(long long)req->epoch);
+    long long now_ms=(long long)api_now_ms();snprintf(now_s,sizeof now_s,"%lld",now_ms);
+    unsigned char *ws_json=calloc(1,16385),*out=calloc(1,32768);
+    if (!ws_json || !out) {free(ws_json);free(out);free(req);api_error(q->fd,503,"Memory unavailable.");return true;}
+    int64_t wn=ea_enroll_workspaces_write_c((coax_v_t_EaWorkspaceEntry){req->workspaces.e,16},req->nws,(coax_v_u8){ws_json,16384});
+    if (wn<2) {free(ws_json);free(out);free(req);api_error(q->fd,400,"Workspace list too large.");return true;}
+    ws_json[wn]=0;
+    const char *chk_args[]={host_s,grant_s,p->account};
+    PGresult *chk=PQexecParams(db,"SELECT 1 FROM chat.environment_connections_v1 WHERE host_pubkey=$1 AND grant_id=$2 AND account<>$3 LIMIT 1",3,NULL,chk_args,NULL,NULL,0);
+    if (!chk || PQresultStatus(chk)!=PGRES_TUPLES_OK) {PQclear(chk);free(ws_json);free(out);free(req);api_error(q->fd,503,"Connection storage unavailable.");return true;}
+    if (PQntuples(chk)>0) {PQclear(chk);free(ws_json);free(out);free(req);api_error(q->fd,409,"This computer grant is already enrolled on another account.");return true;}
+    PQclear(chk);
+    const char *up_args[]={p->account,host_s,label_s,grant_s,epoch_s,relay_s,os_s,(const char *)ws_json,now_s};
+    PGresult *up=PQexecParams(db,
+      "INSERT INTO chat.environment_connections_v1(account,host_pubkey,display_name,grant_id,epoch,relay,os,workspaces_json,last_seen_ms) "
+      "VALUES($1,$2,$3,$4,$5::bigint,$6,$7,$8,$9::bigint) "
+      "ON CONFLICT(account,host_pubkey) DO UPDATE SET display_name=EXCLUDED.display_name,grant_id=EXCLUDED.grant_id,epoch=EXCLUDED.epoch,relay=EXCLUDED.relay,os=EXCLUDED.os,workspaces_json=EXCLUDED.workspaces_json,last_seen_ms=EXCLUDED.last_seen_ms",
+      9,NULL,up_args,NULL,NULL,0);
+    bool saved=up && PQresultStatus(up)==PGRES_COMMAND_OK;PQclear(up);
+    int64_t rn=saved?ea_enroll_reply_write_c((coax_v_t_EaEnrollRequest){req,1},now_ms,(coax_v_u8){out,32768}):-1;
+    free(ws_json);free(req);
+    if (!saved || rn<1) {free(out);api_error(q->fd,503,"Computer enrollment could not be saved.");return true;}
+    env_reply(q->fd,out,(size_t)rn);free(out);return true;
+  }
+  if (remove_env) {
+    if (!ea_enroll_admit_c(p->kind,p->level>=1,es(p->account),p->limited,p->frozen!=0)) {api_error(q->fd,403,"This account cannot change enrolled computers.");return true;}
+    unsigned char host_b[65]={0};
+    if (!ea_enroll_remove_read_c((coax_string){q->body,(int64_t)q->body_len},(coax_v_u8){host_b,64})) {api_error(q->fd,400,"Invalid computer removal payload.");return true;}
+    const char *del_args[]={p->account,(const char *)host_b};
+    PGresult *db1=PQexecParams(db,"DELETE FROM projects.environment_bindings_v1 WHERE account=$1 AND host_pubkey=$2",2,NULL,del_args,NULL,NULL,0);
+    PQclear(db1);
+    PGresult *dr=PQexecParams(db,"DELETE FROM chat.environment_connections_v1 WHERE account=$1 AND host_pubkey=$2 RETURNING host_pubkey",2,NULL,del_args,NULL,NULL,0);
+    bool ok=dr && PQresultStatus(dr)==PGRES_TUPLES_OK;int gone=ok?PQntuples(dr):0;PQclear(dr);
+    if (!ok) {api_error(q->fd,503,"Connection storage unavailable.");return true;}
+    if (gone<1) {api_error(q->fd,404,"Environment not found.");return true;}
+    char rep[160];int rn=snprintf(rep,sizeof rep,"{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"removed\":true,\"host_pubkey\":\"%s\"}",(const char *)host_b);
+    env_reply(q->fd,rep,(size_t)rn);return true;
+  }
   char host[65]={0};if (call) api_query(q,"host",host,sizeof host);
   const char *args[]={p->account,host};
   PGresult *r=PQexecParams(db,list ?
-    "SELECT host_pubkey,display_name,grant_id,epoch,relay FROM chat.environment_connections_v1 WHERE account=$1 ORDER BY display_name LIMIT 64":
+    "SELECT host_pubkey,display_name,grant_id,epoch,relay,os,workspaces_json,last_seen_ms FROM chat.environment_connections_v1 WHERE account=$1 ORDER BY display_name LIMIT 64":
     "SELECT host_pubkey,display_name,grant_id,epoch,relay FROM chat.environment_connections_v1 WHERE account=$1 AND host_pubkey=$2",list ? 1:2,NULL,args,NULL,NULL,0);
   if (PQresultStatus(r)!=PGRES_TUPLES_OK) {PQclear(r);api_error(q->fd,503,"Connection storage unavailable.");return true;}
   if (list) {
+    char as_q[16]={0},detail_q[8]={0};api_query(q,"as",as_q,sizeof as_q);api_query(q,"detail",detail_q,sizeof detail_q);
+    long long now_ms=(long long)api_now_ms();
+    if (!strcmp(as_q,"lines")) {
+      unsigned char *out=calloc(1,65536),*one=calloc(1,8192);
+      if (!out || !one) {free(out);free(one);PQclear(r);api_error(q->fd,503,"Memory unavailable.");return true;}
+      size_t used=0;int nrows=PQntuples(r);
+      for (int i=0;i<nrows;i++) {
+        int64_t n=ea_catalog_lines_entry_write_c(es(PQgetvalue(r,i,0)),es(PQgetvalue(r,i,1)),es(PQgetvalue(r,i,5)),atoll(PQgetvalue(r,i,7)),now_ms,es(PQgetvalue(r,i,6)),(coax_v_u8){one,8192});
+        if (n>0 && used+(size_t)n<65536) {memcpy(out+used,one,(size_t)n);used+=(size_t)n;}
+      }
+      PQclear(r);free(one);
+      api_respond(q->fd,200,"text/plain; charset=utf-8","Cache-Control: no-store\r\nVary: Cookie, Authorization\r\n",out,used);
+      free(out);return true;
+    }
+    if (!strcmp(detail_q,"1")) {
+      coax_string entries[64];char *owned[64]={0};int count=0;bool ok=true;
+      unsigned char *one=calloc(1,24576),*out=calloc(1,262144);
+      if (!one || !out) ok=false;
+      int nrows=PQntuples(r);
+      for (int i=0;ok && i<nrows && i<64;i++) {
+        int64_t n=ea_catalog_v2_entry_write_c(es(PQgetvalue(r,i,0)),es(PQgetvalue(r,i,1)),es(PQgetvalue(r,i,5)),es(PQgetvalue(r,i,4)),atoll(PQgetvalue(r,i,7)),now_ms,es(PQgetvalue(r,i,6)),(coax_v_u8){one,24575});
+        if (n<1) {ok=false;break;}
+        one[n]=0;owned[count]=strdup((const char *)one);if (!owned[count]) {ok=false;break;}
+        entries[count]=es(owned[count]);count++;
+      }
+      int64_t total=ok?ea_catalog_v2_wrap_c((coax_v_string){entries,count},(coax_v_u8){out,262144}):-1;
+      for (int i=0;i<count;i++) free(owned[i]);
+      free(one);PQclear(r);
+      if (total<1) api_error(q->fd,503,"Connection list unavailable.");else env_reply(q->fd,out,(size_t)total);
+      free(out);return true;
+    }
     coax_t_EaCatalog *c=calloc(1,sizeof *c);unsigned char out[16384];
     if (!c) {PQclear(r);api_error(q->fd,503,"Memory unavailable.");return true;}
     c->n=PQntuples(r);for (int i=0;i<c->n;i++) {memcpy(c->entries.e[i].host.e,PQgetvalue(r,i,0),64);c->entries.e[i].nl=(int64_t)strlen(PQgetvalue(r,i,1));memcpy(c->entries.e[i].label.e,PQgetvalue(r,i,1),(size_t)c->entries.e[i].nl);}

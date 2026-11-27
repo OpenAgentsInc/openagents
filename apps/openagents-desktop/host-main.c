@@ -169,6 +169,9 @@ typedef struct {
   char agy_worker_bin[OA_PATH];
   char flawed_worker_bin[OA_PATH];   // the Flawed agent's worker ("" when this build has none)
   char daemon_bin[OA_PATH];
+  int claude_probed;
+  int claude_ready;
+  char claude_status[160];
   char agy_bin[OA_PATH];
   char agy_model[128];
   int agy_mode;
@@ -1135,22 +1138,31 @@ static int flawed_wanted(DesktopApp *a) {
   (void)a; return 0;
 #endif
 }
-// The folder that holds the claude command (Claude Code): on PATH, or in ~/.local/bin where its
-// installer puts it. A sub-agent on a Claude level runs in it, through claudeworker (GitHub #14104).
+// The folder that holds the claude command (Claude Code): on PATH, or where its installers put it.
+// A sub-agent on a Claude level runs in it, through claudeworker (GitHub #14104).
 static int claude_cli_dir(char *out, size_t cap) {
 #ifdef _WIN32
   static const char *const NAMES[] = {"claude.exe", "claude.cmd"};
   const char sep = ';', slash = '\\';
   const char *home = getenv("USERPROFILE");
+  char own[OA_PATH] = {0}, dir[OA_PATH], full[OA_PATH + 32];
+  if (home && home[0]) snprintf(own, sizeof own, "%s%c.local%cbin", home, slash, slash);
+  const char *passes[2] = { getenv("PATH"), own };
+  int npasses = 2;
 #else
   static const char *const NAMES[] = {"claude"};
   const char sep = ':', slash = '/';
   const char *home = getenv("HOME");
+  char own1[OA_PATH] = {0}, own2[OA_PATH] = {0}, dir[OA_PATH], full[OA_PATH + 32];
+  if (home && home[0]) {
+    snprintf(own1, sizeof own1, "%s/.local/bin", home);
+    snprintf(own2, sizeof own2, "%s/.claude/local", home);
+  }
+  const char *passes[5] = { getenv("PATH"), own1, own2, "/opt/homebrew/bin", "/usr/local/bin" };
+  int npasses = 5;
 #endif
-  char own[OA_PATH] = {0}, dir[OA_PATH], full[OA_PATH + 32];
-  if (home && home[0]) snprintf(own, sizeof own, "%s%c.local%cbin", home, slash, slash);
-  for (int pass = 0; pass < 2; pass++) {
-    const char *p = pass == 0 ? getenv("PATH") : own;
+  for (int pass = 0; pass < npasses; pass++) {
+    const char *p = passes[pass];
     while (p && *p) {
       const char *e = strchr(p, sep);
       size_t n = e ? (size_t)(e - p) : strlen(p);
@@ -1168,10 +1180,99 @@ static int claude_cli_dir(char *out, size_t cap) {
   return 0;
 }
 // Whether a sub-agent can run in Claude Code here: claudeworker is beside the app and the claude
-// command is installed. Whether Claude Code is signed in is its own to say, when a task runs.
+// command is installed (and signed in once probed).
 static int claude_sub_ready(DesktopApp *a) {
+  if (a->claude_probed) return a->claude_ready;
   char dir[OA_PATH];
   return a->claude_worker_bin[0] != '\0' && claude_cli_dir(dir, sizeof dir);
+}
+// Probes `claudeworker --auth` (never opens a browser, hard 5s deadline) and updates
+// Settings > Agent's Claude availability & sign-in status (#14104).
+static void claude_probe_auth(DesktopApp *a) {
+  a->claude_probed = 1;
+  a->claude_ready = 0;
+  if (!a->claude_worker_bin[0]) {
+    snprintf(a->claude_status, sizeof a->claude_status, "Not bundled in this build");
+    if (a->page) { cd_claude_sub(a->page, 0); cd_claude_status(a->page, a->claude_status); }
+    return;
+  }
+#ifndef _WIN32
+  int pfd[2];
+  char buf[1024] = {0};
+  size_t bn = 0;
+  if (pipe(pfd) == 0) {
+    pid_t pid = fork();
+    if (pid == 0) {
+      int devnull = open("/dev/null", O_RDWR);
+      if (devnull >= 0) { dup2(devnull, 0); dup2(devnull, 2); if (devnull > 2) close(devnull); }
+      dup2(pfd[1], 1);
+      close(pfd[0]); close(pfd[1]);
+      setenv("SSH_CONNECTION", "1", 1);
+      setenv("BROWSER", "/usr/bin/true", 1);
+      setenv("NO_OPEN_BROWSER", "1", 1);
+      char cdir[OA_PATH] = {0};
+      if (claude_cli_dir(cdir, sizeof cdir)) {
+        const char *oldp = getenv("PATH");
+        char newp[OA_PATH * 2];
+        snprintf(newp, sizeof newp, "%s:%s", cdir, oldp ? oldp : "/usr/bin:/bin");
+        setenv("PATH", newp, 1);
+      }
+      char *argv[] = { a->claude_worker_bin, "--auth", NULL };
+      execv(a->claude_worker_bin, argv);
+      _exit(127);
+    }
+    close(pfd[1]);
+    if (pid > 0) {
+      struct timespec t0, now;
+      clock_gettime(CLOCK_MONOTONIC, &t0);
+      while (bn + 1 < sizeof buf) {
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long elapsed = (now.tv_sec - t0.tv_sec) * 1000L + (now.tv_nsec - t0.tv_nsec) / 1000000L;
+        if (elapsed >= 5000) break;
+        struct pollfd fds = { .fd = pfd[0], .events = POLLIN };
+        int r = poll(&fds, 1, (int)(5000 - elapsed));
+        if (r <= 0) break;
+        ssize_t got = read(pfd[0], buf + bn, sizeof buf - 1 - bn);
+        if (got <= 0) break;
+        bn += (size_t)got;
+        if (memchr(buf, '\n', bn)) break;
+      }
+      int st = 0;
+      if (waitpid(pid, &st, WNOHANG) == 0) {
+        kill(pid, SIGKILL);
+        waitpid(pid, &st, 0);
+      }
+    }
+    close(pfd[0]);
+  }
+  buf[bn] = '\0';
+  if (strstr(buf, "\"ready\":true")) a->claude_ready = 1;
+  const char *lp = strstr(buf, "\"label\":\"");
+  if (lp) {
+    lp += 9;
+    size_t out_i = 0;
+    while (*lp && *lp != '"' && out_i + 1 < sizeof a->claude_status) {
+      if (*lp == '\\' && lp[1]) { lp++; }
+      a->claude_status[out_i++] = *lp++;
+    }
+    a->claude_status[out_i] = '\0';
+  } else {
+    char dir[OA_PATH];
+    int has_cli = claude_cli_dir(dir, sizeof dir);
+    a->claude_ready = has_cli;
+    snprintf(a->claude_status, sizeof a->claude_status, "%s",
+      has_cli ? "Installed · Sign-in status unknown" : "Not installed (`claude` command not found)");
+  }
+#else
+  char dir[OA_PATH];
+  a->claude_ready = claude_cli_dir(dir, sizeof dir);
+  snprintf(a->claude_status, sizeof a->claude_status, "%s",
+    a->claude_ready ? "Installed" : "Not installed (`claude` command not found)");
+#endif
+  if (a->page) {
+    cd_claude_sub(a->page, a->claude_ready);
+    cd_claude_status(a->page, a->claude_status);
+  }
 }
 // Settings > Agent, kept across launches: the page's settings as numbers, in its order.
 static void agent_prefs_keep(DesktopApp *a) {
@@ -1235,6 +1336,8 @@ static size_t flawed_env(DesktopApp *a, char *out, size_t cap) {
 #undef FL_PICK
   // Settings > Agent > Allow delegating to other local harnesses (GitHub #14071): off unless the person turned it on
   if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "OA_ALLOW_LOCAL_HARNESSES=%d\n", v[20] ? 1 : 0);
+  // Settings > Agent > Most a sub-agent may do with git (GitHub #14104)
+  if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "OA_SUBAGENT_GIT_MAX=%s\n", v[21] == 2 ? "none" : v[21] == 1 ? "commit" : "push");
   return (n > 0 && (size_t)n < cap) ? (size_t)n : 0;
 }
 
@@ -1403,6 +1506,12 @@ static void pump_subagents(DesktopApp *a) {
       oa_core_subagent_stop(vc(a), i, 1);
       a->sub_active[i] = 0;
       a->sub_agent_id[i] = -1;
+    }
+  }
+  char wt_path[OA_PATH] = {0}, wt_branch[256] = {0}, wt_head[128] = {0};
+  while (cd_agent_wt_cleanup_next(a->page, wt_path, (int)sizeof(wt_path), wt_branch, (int)sizeof(wt_branch), wt_head, (int)sizeof(wt_head))) {
+    if (wt_path[0]) {
+      oa_core_subagent_wt_cleanup(cs(effective_cwd(a)), cs(wt_path), cs(wt_branch), cs(wt_head));
     }
   }
 }
@@ -2478,6 +2587,10 @@ static void handle_action(DesktopApp *a, int act) {
     case 190: case 197:
       agent_prefs_keep(a);
       if (a->worker_is_agy == 4 && oa_core_worker_alive(vc(a)) && !cd_running(a->page)) oa_core_worker_stop(vc(a), 0);
+      if (!a->test_mode) claude_probe_auth(a);
+      break;
+    case 196:
+      if (!a->test_mode) claude_probe_auth(a);
       break;
     case 14: cd_zoom(a->page, 1); break;
     case 15: cd_zoom(a->page, -1); break;
@@ -2702,9 +2815,7 @@ static void handle_action(DesktopApp *a, int act) {
     case 160: local_start_download(a); break;
     case 161: local_cancel_download(a); break;
     case 162:
-#ifdef OA_FULL
       agy_connect_start(a);
-#endif
       break;
     case 163: oa_core_worktrees_set(cs("newChatWorktree"), cd_worktree(a->page) != 0 ? 1 : 0); break;
     case 216: refresh_dashboard(a); break;   // CP_ASK_DASHBOARD
@@ -3075,12 +3186,7 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
     int tid = cd_term_new_tab(a->page, "smoke", tmp);
     int pty_pid = -1;
     int pty_h = cd_pty_spawn(NULL, tmp, 80, 24, &pty_pid);
-#ifdef OA_MINIMAL
-    // The minimal build leaves the terminal pane out (page/v1-stubs.coax): only the PTY is checked.
-    if (tid < 0 || pty_h < 0) {
-#else
     if (tid <= 0 || pty_h < 0) {
-#endif
       fprintf(stderr, "smoke: cd_pty_spawn failed (tid=%d, h=%d)\n", tid, pty_h);
       return 1;
     }
@@ -3357,7 +3463,13 @@ static int run_flawed(DesktopApp *a) {
 // with "Allow delegating to other local harnesses" off: no Claude sub-agent may start. =two asks
 // for two Claude sub-agents in one message: both must run at the same time. =stop stops the turn
 // while its Claude sub-agent runs a long command: nothing of it may be left running. =file has the
-// sub-agent write a file: it must land in the chat's working folder (--cwd).
+// sub-agent write a file: it must land in the chat's working folder (--cwd). =missing and =unauthed
+// are run with a HOME (and for =missing a PATH) where the claude command is absent or not signed in:
+// the probe must say which, no Claude sub-agent may start, and the chat must say why. =routed sends
+// "Use Claude to ..." on Auto with no word about tools: the router's plan must start the sub-agent.
+// =own asks for a general-purpose sub-agent on Local: it must run in oa-worker on the local model.
+// =gitcap sets Settings > Agent > Most a sub-agent may do with git to Neither and asks a Claude
+// sub-agent to commit, in a --cwd that is a git repository with one commit: no commit may be made.
 static int run_delegate_claude_turn(DesktopApp *a, int mode);
 // Whatever the check found, none of its workers is left running.
 static int run_delegate_claude(DesktopApp *a, int mode) {
@@ -3370,7 +3482,10 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
   int allow = mode != 2;
   if (!oa_core_init(vc(a), cs(""), cs(""))) return flow_fail("init", "the chat store did not open");
   if (!a->flawed_worker_bin[0]) return flow_fail("worker", "oa-worker is not beside the app");
-  if (!claude_sub_ready(a)) return flow_fail("claude", a->claude_worker_bin[0] ? "the claude command is not installed" : "claudeworker is not beside the app");
+  // =missing and =unauthed are run in a HOME and PATH where the claude command is absent, or has no
+  // sign-in: the probe must say so, no Claude worker may start, and the chat must say why.
+  int unavailable = mode == 6 || mode == 7;
+  if (!unavailable && !claude_sub_ready(a)) return flow_fail("claude", a->claude_worker_bin[0] ? "the claude command is not installed" : "claudeworker is not beside the app");
   if (a->daemon_bin[0]) oa_core_daemon_ensure(vc(a), cs(a->daemon_bin), 1500);
   flow_ok("service", oa_core_daemon_owns_runs(vc(a)) ? "workers start through the resident host service" : "no resident host service: workers start directly");
   a->page = cd_open_ex(a->resources, 1, FLOW_W, FLOW_H);
@@ -3383,16 +3498,36 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
   int have = cd_flawed_prefs_get(a->page, v, 32);
   if (have < 21) return flow_fail("settings", "the page has no setting for delegating to other local harnesses");
   v[20] = allow ? 1 : 0;
+  if (mode == 10) {
+    if (have < 22) return flow_fail("settings", "the page has no setting for the most a sub-agent may do with git");
+    v[21] = 2;   // Neither
+  }
   cd_flawed_prefs_set(a->page, v, have);
-  cd_claude_sub(a->page, 1);
-  if (!cd_pick_model(a->page, "oa:local")) return flow_fail("model", "the page did not pick Local");
+  if (unavailable) {
+    claude_probe_auth(a);
+    const char *want = mode == 6 ? "Not installed" : "Not signed in";
+    if (a->claude_ready || !strstr(a->claude_status, want)) {
+      fprintf(stderr, "delegate-claude-test: the probe said: %s\n", a->claude_status);
+      return flow_fail("probe", mode == 6 ? "the probe did not say the claude command is not installed (run this case with claude off PATH and an empty HOME)"
+                                           : "the probe did not say Claude Code is not signed in (run this case with an empty HOME)");
+    }
+    flow_ok("probe", a->claude_status);
+  } else {
+    cd_claude_sub(a->page, 1);
+  }
+  // =routed: on Auto, with no word about tools: the router's plan names Claude as the delegate
+  if (!cd_pick_model(a->page, mode == 8 ? "oa:auto" : "oa:local")) return flow_fail("model", "the page did not pick its model");
   flow_ok("settings", allow ? "delegating to other local harnesses is on" : "delegating to other local harnesses is off");
   const char *ask_text =
-      mode == 3 ? "Call your Agent tool twice in the same message, both with subagent_type claude-haiku. The first prompt: Reply with exactly the word KIWI and nothing else. The second prompt: Reply with exactly the word PLUM and nothing else. Then tell me both words the sub-agents replied with."
+      mode == 10 ? "Use your Agent tool once, with subagent_type claude-haiku, git set to commit, and this prompt: Create a file named oa-git-check.txt that holds the one word GUAVA, then commit it with git. Then tell me whether the sub-agent made the commit. Do not run git yourself and do not commit anything yourself."
+    : mode == 9 ? "Use your Agent tool once, with subagent_type general-purpose and this prompt: Reply with exactly the word KIWI and nothing else. Then tell me the word the sub-agent replied with."
+    : mode == 8 ? "Use Claude to reply with exactly the word KIWI and nothing else. Then tell me the word it replied with."
+    : mode == 3 ? "Call your Agent tool twice in the same message, both with subagent_type claude-haiku. The first prompt: Reply with exactly the word KIWI and nothing else. The second prompt: Reply with exactly the word PLUM and nothing else. Then tell me both words the sub-agents replied with."
     : mode == 5 ? "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Create a file named oa-delegate-check.txt in the current folder that holds the one word GUAVA. Then reply with the word DONE. Then tell me what the sub-agent replied."
     : mode == 4 ? "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Run this exact shell command in the foreground and wait for it to end: for i in $(seq 1 120); do sleep 1; done; echo OA_STOP_MARKER. Then reply with the word DONE. Then tell me what the sub-agent replied."
     : "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Reply with exactly the word KIWI and nothing else. Then tell me the word the sub-agent replied with.";
   if (!cd_set_text(a->page, ask_text) || !cd_submit(a->page)) return flow_fail("send", "the draft was not sent");
+  int ran_own = 0;   // a sub-agent started in oa-worker, the chat's own agent
   int ran_claude = 0, approved = 0, saw_running = 0, ended = 0, most = 0, stop_at = -1, stopped = 0;
   for (int t = 0; t < 60000 && !ended; t++) {   // ten minutes at most
     pump_host(a);
@@ -3406,6 +3541,7 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
     }
     int now = 0;
     for (int i = 0; i < OA_SUBAGENTS; i++) {
+      if (a->sub_active[i] && cd_agent_engine(a->page, a->sub_agent_id[i]) == 0) ran_own = 1;
       if (a->sub_active[i] && cd_agent_engine(a->page, a->sub_agent_id[i]) == 1) {
         now++;
         if (!ran_claude) {
@@ -3442,6 +3578,31 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
       return flow_fail("off", "the reply does not name the setting that turns delegating on");
     }
     flow_ok("off", "the reply names the setting that turns delegating on");
+  } else if (mode == 10) {
+    // =gitcap: Settings says a sub-agent may neither commit nor push; the delegation asks for a commit.
+    // --cwd is a git repository with one commit: it must still have exactly one.
+    char cmd[OA_PATH + 96];
+    snprintf(cmd, sizeof cmd, "test \"$(git -C '%s' rev-list --count HEAD 2>/dev/null)\" = 1", effective_cwd(a));
+    if (!ran_claude) { fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : ""); return flow_fail("gitcap", "no sub-agent started in Claude Code"); }
+    if (system(cmd) != 0) fprintf(stderr, "delegate-claude-test: chat as kept:\n%.6000s\n", n > 0 ? a->save_buf : "");
+    if (system(cmd) != 0) return flow_fail("gitcap", "a commit was made though Settings allows a sub-agent neither a commit nor a push (see the chat above for who made it; --cwd must be a repository with one commit)");
+    flow_ok("gitcap", "the sub-agent made no commit: Settings allows it neither a commit nor a push");
+  } else if (mode == 9) {
+    // =own: a chat on the local model hands a task to a sub-agent of its own kind, with no cloud sign-in needed
+    if (ran_claude) return flow_fail("own", "the sub-agent ran in Claude Code, which nobody asked for");
+    if (!ran_own || !ask || !strstr(ask, "KIWI")) {
+      fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : "");
+      return flow_fail("own", !ran_own ? "no sub-agent started in oa-worker" : "the chat does not hold the sub-agent's word");
+    }
+    flow_ok("own", "a local chat's own sub-agent ran on the local model and its word came back");
+  } else if (unavailable) {
+    if (ran_claude) return flow_fail("unavailable", "a Claude sub-agent started though Claude Code cannot run here");
+    flow_ok("unavailable", "no Claude sub-agent started");
+    if (n <= 0 || !strstr(a->save_buf, "not available on this computer")) {
+      fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : "");
+      return flow_fail("unavailable", "the chat does not say that Claude Code is not available on this computer");
+    }
+    flow_ok("unavailable", "the chat says Claude Code is not available on this computer");
   } else if (mode == 4) {
     if (!stopped) return flow_fail("stop", "no Claude sub-agent started, so nothing was stopped");
     for (int k = 0; k < 300; k++) { pump_host(a); cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f); flow_sleep_ms(10); }
@@ -3867,6 +4028,11 @@ static int oa_main(int argc, char **argv) {
     else if (strcmp(argv[i], "--delegate-claude-test=two") == 0) delegate_test = 3;
     else if (strcmp(argv[i], "--delegate-claude-test=stop") == 0) delegate_test = 4;
     else if (strcmp(argv[i], "--delegate-claude-test=file") == 0) delegate_test = 5;
+    else if (strcmp(argv[i], "--delegate-claude-test=missing") == 0) delegate_test = 6;
+    else if (strcmp(argv[i], "--delegate-claude-test=unauthed") == 0) delegate_test = 7;
+    else if (strcmp(argv[i], "--delegate-claude-test=routed") == 0) delegate_test = 8;
+    else if (strcmp(argv[i], "--delegate-claude-test=own") == 0) delegate_test = 9;
+    else if (strcmp(argv[i], "--delegate-claude-test=gitcap") == 0) delegate_test = 10;
     else if (strcmp(argv[i], "--input-test") == 0) input = 1;
     else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     else if (strcmp(argv[i], "--resources") == 0 && i + 1 < argc) snprintf(app.resources, sizeof(app.resources), "%s", argv[++i]);
@@ -3952,7 +4118,7 @@ static int oa_main(int argc, char **argv) {
     local_sync(&app);
   }
   cd_claude(app.page, ((dc_flags & (1LL << 1)) && app.claude_worker_bin[0]) ? 1 : 0);
-  cd_claude_sub(app.page, claude_sub_ready(&app));
+  claude_probe_auth(&app);
   agent_prefs_load(&app);
   if (dc_flags & (1LL << 1)) {
     // each Claude model's thinking level, as Settings > Models kept it (four digits, 0 low to 4 max)
@@ -3969,9 +4135,7 @@ static int oa_main(int argc, char **argv) {
     }
   }
   cd_agy(app.page, ((dc_flags & (1LL << 3)) && app.agy_worker_bin[0]) ? 1 : 0);
-#ifdef OA_FULL
-  agy_connect_sync(&app);   // developer full profile only; release uses cloud-first OpenAgents onboarding (#14087)
-#endif
+  agy_connect_sync(&app);
   set_folder(&app, app.folder);
   cd_worktree_set(app.page, oa_core_worktrees_get(cs("newChatWorktree")) ? 1 : 0);
   refresh_settings_info(&app);

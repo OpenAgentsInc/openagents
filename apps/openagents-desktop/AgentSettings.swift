@@ -105,6 +105,9 @@ enum AgentSettings {
 
     private static var cachedAuthStatus: String = "Checking…"
     private static var probingAuth = false
+    private static var cachedClaudeStatus: String = ""
+    private static var cachedClaudeReady: Bool = false
+    private static var cachedClaudeProbed: Bool = false
 
     private static func getInt(_ key: String, default def: Int) -> Int {
         migrateIfNeeded()
@@ -314,6 +317,24 @@ enum AgentSettings {
 
     static var authStatus: String { cachedAuthStatus }
 
+    /// Live Claude Code availability & login summary shown in Settings > Agent (#14104).
+    static var claudeStatus: String {
+        if !cachedClaudeStatus.isEmpty { return cachedClaudeStatus }
+        let claudeWorker = (Bundle.main.resourcePath ?? "") + "/claudeworker"
+        if !FileManager.default.isExecutableFile(atPath: claudeWorker) {
+            return "Not bundled in this build"
+        }
+        return CoderWorker.hasClaude ? "Checking sign-in…" : "Not installed (`claude` command not found)"
+    }
+
+    /// True when `claudeworker` is bundled and `claude` is installed (and signed in once probed).
+    static var claudeSubReady: Bool {
+        let claudeWorker = (Bundle.main.resourcePath ?? "") + "/claudeworker"
+        guard FileManager.default.isExecutableFile(atPath: claudeWorker) else { return false }
+        if cachedClaudeProbed { return cachedClaudeReady }
+        return CoderWorker.hasClaude
+    }
+
     private static func cloudAuthEnv() -> [String: String] {
         var env: [String: String] = ["OA_CLOUD_ORIGIN": MacAccount.origin]
         if let tok = MacAccount.shared.store.load()?.access, !tok.isEmpty {
@@ -354,9 +375,27 @@ enum AgentSettings {
                     status = label.isEmpty ? "No credentials configured" : label
                 }
             }
+            let claudeLine = CoderProbes.ask(
+                "claudeworker",
+                ["--auth"],
+                env: ["SSH_CONNECTION": "1", "BROWSER": "/usr/bin/true", "NO_OPEN_BROWSER": "1"],
+                timeout: 6
+            )
+            var claudeReady = false
+            var claudeLabel = CoderWorker.hasClaude ? "Installed · Sign-in status unknown" : "Not installed (`claude` command not found)"
+            if !claudeLine.isEmpty, let cdata = claudeLine.data(using: .utf8),
+               let cobj = try? JSONSerialization.jsonObject(with: cdata) as? [String: Any] {
+                claudeReady = (cobj["ready"] as? Bool) ?? false
+                if let lbl = cobj["label"] as? String, !lbl.isEmpty {
+                    claudeLabel = lbl
+                }
+            }
             DispatchQueue.main.async {
                 probingAuth = false
                 cachedAuthStatus = status
+                cachedClaudeReady = claudeReady
+                cachedClaudeStatus = claudeLabel
+                cachedClaudeProbed = true
                 done()
             }
         }
@@ -525,9 +564,9 @@ enum AgentSettings {
         cd_flawed_info(page, authStatus, keyLabel, baseURLLabel, customModel, toolsSummary, limitsSummary)
         cd_permit_full_auto_set(page, isFullAuto ? 1 : 0)
         // Whether a sub-agent can run in Claude Code here: claudeworker is in the app and the
-        // claude command is installed (GitHub #14104). The opt-in above decides whether it may.
-        let claudeWorker = (Bundle.main.resourcePath ?? "") + "/claudeworker"
-        cd_claude_sub(page, (FileManager.default.isExecutableFile(atPath: claudeWorker) && CoderWorker.hasClaude) ? 1 : 0)
+        // claude command is installed & signed in (GitHub #14104). The opt-in above decides whether it may.
+        cd_claude_sub(page, claudeSubReady ? 1 : 0)
+        cd_claude_status(page, claudeStatus)
     }
 
     static func readBack(from page: UnsafeMutableRawPointer?) {
@@ -721,9 +760,21 @@ extension CoderWindow {
 
     func flawedPrefsChanged() {
         let prevBackend = AgentSettings.backend
+        let prevAllowHarnesses = AgentSettings.allowLocalHarnesses
+        let prevPermMode = AgentSettings.permissionMode
+        let prevBypass = AgentSettings.bypassDanger
         AgentSettings.readBack(from: page)
         syncFlawedSettingsAll()
-        if AgentSettings.backend != prevBackend {
+        // Restart an idle oa-worker when settings read from its launch environment change
+        // (allow_local_harnesses, permission mode, bypass_danger) so the next turn honors them immediately.
+        if (AgentSettings.allowLocalHarnesses != prevAllowHarnesses
+            || AgentSettings.permissionMode != prevPermMode
+            || AgentSettings.bypassDanger != prevBypass)
+            && run.worker.program == "oa-worker" && run.worker.alive && cd_running(page) == 0 {
+            run.worker.stop(forget: false)
+            recallDue = true
+        }
+        if AgentSettings.backend != prevBackend || AgentSettings.allowLocalHarnesses != prevAllowHarnesses {
             checkFlawedAuth(showToast: false)
         }
     }

@@ -909,4 +909,127 @@ final class MobileCoreTests: XCTestCase {
         let reloaded = devStore.loadPendingOutbox()
         XCTAssertEqual(reloaded, [msg])
     }
+
+    @MainActor
+    func testDesktopParityFullAutoUsageIntrospectionAndVoiceDuplex() throws {
+        let work = try XCTUnwrap(MobileCoreWork())
+        let cmd = String(repeating: "f", count: 32)
+        let nowMs: Int64 = 1_790_000_000_000
+        let host = String(repeating: "a", count: 64)
+
+        // 1. Coax #authority Full Auto policy: default ON suppresses approvals & questions; OFF prompts
+        XCTAssertEqual(MobileCore.fullAutoDecidePrompt(fullAuto: true, autoAnswerQuestions: true, kind: 0), 1)
+        XCTAssertEqual(MobileCore.fullAutoDecidePrompt(fullAuto: true, autoAnswerQuestions: true, kind: 1), 1)
+        XCTAssertEqual(MobileCore.fullAutoDecidePrompt(fullAuto: true, autoAnswerQuestions: false, kind: 1), 0)
+        XCTAssertEqual(MobileCore.fullAutoDecidePrompt(fullAuto: false, autoAnswerQuestions: true, kind: 0), 0)
+        XCTAssertFalse(MobileCore.fullAutoShouldGate(fullAuto: true, approvalMode: true))
+        XCTAssertTrue(MobileCore.fullAutoShouldGate(fullAuto: false, approvalMode: true))
+
+        // 2. OpenAgents Core & local $0 compute catalog + pricing (#14068, #14072)
+        let catalog = AntigravityModelOption.fallbackCatalog
+        XCTAssertTrue(catalog.contains(where: { $0.id == "oa:auto" }))
+        XCTAssertTrue(catalog.contains(where: { $0.id == "oa:gemini-4-neon" }))
+        let localModel = try XCTUnwrap(catalog.first(where: { $0.id == "oa:inkling-2-mini" }))
+        XCTAssertTrue(localModel.isLocalFreeCompute)
+        let stats = SessionUsageStats(inputTokens: 100_000, outputTokens: 10_000, cachedTokens: 20_000, thoughtTokens: 0)
+        XCTAssertEqual(stats.estimatedCostMicros(model: "oa:inkling-2-mini"), 0)
+        XCTAssertEqual(stats.formattedCost(model: "oa:inkling-2-mini"), "$0.00 local")
+        XCTAssertGreaterThan(stats.estimatedCostMicros(model: "oa:gemini-4-neon"), 0)
+
+        // 3. New #14068 daemon wire RPCs encode & validate cleanly via Coax
+        for method in ["GetUsage", "ListIntrospection", "ReadIntrospection"] {
+            let encoded = try XCTUnwrap(MobileCore.encodeDaemonRequest(
+                work: work, method: method, session: "tmux:dev:0.0"
+            ), "Failed to encode read daemon method \(method)")
+            XCTAssertTrue(String(decoding: encoded, as: UTF8.self).contains("\"\(method)\""))
+        }
+        let sendCmd = try XCTUnwrap(MobileCore.encodeDaemonRequest(
+            work: work,
+            method: "SendSessionCommand",
+            session: "tmux:dev:0.0",
+            command: cmd,
+            title: "send",
+            text: "git status",
+            issuedMs: nowMs,
+            expiresMs: nowMs + 60_000
+        ))
+        let sendStr = String(decoding: sendCmd, as: UTF8.self)
+        XCTAssertTrue(sendStr.contains("\"SendSessionCommand\""))
+        XCTAssertTrue(sendStr.contains("\"git status\""))
+
+        // 4. UsageDashboardSnapshot & IntrospectSession decoding from daemon metadata records
+        let usageRaw = """
+        {"schema":"openagents.environment.daemon.v1alpha1","ok":true,"host":"\(host)","label":"Studio","method":"GetUsage","pid":123,"started_at":1790000000,"paired_devices":1,"active_slots":1,"max_slots":4,"relay":"","workspace":"/repo","foreman":{"tier":1,"active_runs":1,"total_sessions":2,"workspace":"/repo","prompt":"{\\"today_usd_micros\\":420000,\\"month_usd_micros\\":12800000,\\"today_tokens\\":500000,\\"local_usd_micros\\":0,\\"binding_pct\\":68,\\"binding_label\\":\\"antigravity\\",\\"local_ready\\":true}","updated":0},"sessions_meta":[{"id":"quota:antigravity","title":"Antigravity|Pro|observed|6800|14400","folder":"5h window","pinned":false,"archived":false,"updated":1790000010}]}
+        """
+        let usageView = try XCTUnwrap(ParsedDaemonView.parse(Data(usageRaw.utf8)))
+        let snap = UsageDashboardSnapshot.fromDaemonView(usageView)
+        XCTAssertEqual(snap.todayUsdMicros, 420_000)
+        XCTAssertEqual(snap.monthUsdMicros, 12_800_000)
+        XCTAssertEqual(snap.bindingPercent, 68)
+        XCTAssertEqual(snap.quotas.count, 1)
+        XCTAssertEqual(snap.quotas[0].provider, "Antigravity")
+        XCTAssertEqual(snap.quotas[0].usedPercent, 68)
+        XCTAssertEqual(UsageDashboardSnapshot.formatUsd(micros: 420_000), "$0.42")
+
+        let introRaw = """
+        {"schema":"openagents.environment.daemon.v1alpha1","ok":true,"host":"\(host)","label":"Studio","method":"ListIntrospection","pid":123,"started_at":1790000000,"paired_devices":1,"active_slots":0,"max_slots":4,"relay":"","workspace":"/repo","foreman":{"tier":1,"active_runs":0,"total_sessions":0,"workspace":"/repo","prompt":"","updated":0},"sessions_meta":[{"id":"tui:tmux:dev:0.0","title":"dev:0.0|tmux|running","folder":"/Users/dev/openagents|zsh","pinned":true,"archived":true,"updated":1790000020},{"id":"harness:claude:abc123","title":"Refactor iOS|claude|idle","folder":"/Users/dev/openagents|Claude Code","pinned":false,"archived":true,"updated":1790000015}]}
+        """
+        let introView = try XCTUnwrap(ParsedDaemonView.parse(Data(introRaw.utf8)))
+        let introList = IntrospectSession.listFromDaemonView(introView, machineID: host, machineLabel: "Studio")
+        XCTAssertEqual(introList.count, 2)
+        XCTAssertEqual(introList[0].kind, .tui)
+        XCTAssertEqual(introList[0].harness, "tmux")
+        XCTAssertTrue(introList[0].busy)
+        XCTAssertEqual(introList[1].kind, .harness)
+        XCTAssertEqual(introList[1].harness, "claude")
+
+        // 5. Coax #authority Bi-Directional Voice Duplex: VAD silence auto-send & 3-frame barge-in + sentence chunker
+        var vd: [Int64] = [1, 0, 0, 0, 1200, 800, 2200] // VD_LISTENING
+        XCTAssertEqual(MobileCore.voiceDuplexVadStep(state: &vd, rmsBp: 1500, dtMs: 100), 0) // speech detected
+        XCTAssertEqual(MobileCore.voiceDuplexVadStep(state: &vd, rmsBp: 100, dtMs: 600), 0)  // 600ms silence (< 1200ms)
+        XCTAssertEqual(MobileCore.voiceDuplexVadStep(state: &vd, rmsBp: 100, dtMs: 700), 1)  // 1300ms silence -> VD_EV_AUTO_SEND!
+
+        var vdSpeak: [Int64] = [3, 0, 0, 0, 1200, 800, 2200] // VD_SPEAKING
+        XCTAssertEqual(MobileCore.voiceDuplexVadStep(state: &vdSpeak, rmsBp: 3000, dtMs: 50), 0) // frame 1
+        XCTAssertEqual(MobileCore.voiceDuplexVadStep(state: &vdSpeak, rmsBp: 3000, dtMs: 50), 0) // frame 2
+        XCTAssertEqual(MobileCore.voiceDuplexVadStep(state: &vdSpeak, rmsBp: 3000, dtMs: 50), 2) // frame 3 -> VD_EV_BARGE_IN!
+
+        let sanitized = VoiceDictationController.sanitizeForSpeech("**Done!** Check https://example.com/a and:\n```swift\nlet x = 1\n```")
+        XCTAssertFalse(sanitized.contains("*"))
+        XCTAssertFalse(sanitized.contains("```"))
+        XCTAssertFalse(sanitized.contains("https://"))
+        XCTAssertTrue(sanitized.contains("Code block omitted"))
+
+        var streamBuf = "First sentence is ready. Second sentence is still streaming"
+        let firstBatch = VoiceDictationController.extractCompleteSentences(from: &streamBuf, flushAll: false)
+        XCTAssertEqual(firstBatch, ["First sentence is ready."])
+        XCTAssertEqual(streamBuf, "Second sentence is still streaming")
+        let finalBatch = VoiceDictationController.extractCompleteSentences(from: &streamBuf, flushAll: true)
+        XCTAssertEqual(finalBatch, ["Second sentence is still streaming"])
+
+        // 6. AntigravityStore Full Auto defaults ON and suppresses pendingInteraction until toggled OFF
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("oa-fullauto-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let devStore = MobileDeviceStore(
+            tailnetBookURL: tmpDir.appendingPathComponent("book.json"),
+            cacheURL: tmpDir.appendingPathComponent("cache.json"),
+            pairedFileURL: tmpDir.appendingPathComponent("paired.json")
+        )
+        devStore.resetForTests()
+        let store = AntigravityStore(store: devStore)
+        XCTAssertTrue(store.fullAutoEnabled)
+        let sid = "0123456789abcdef0123456789abcdef"
+        store.sessions = [
+            ChatSessionSummary(
+                id: sid, workspaceID: "openagents", title: "Test", managed: true, control: "available",
+                generation: 1, revision: 1, busy: true, interactionID: "int-1", updatedAtMs: nowMs,
+                model: "oa:auto", effort: "high", mode: "auto", desktopSurface: false, note: ""
+            )
+        ]
+        store.activeSessionID = sid
+        XCTAssertNil(store.pendingInteraction, "Full Auto ON must suppress pending approval UI")
+        store.setFullAuto(false)
+        XCTAssertNotNil(store.pendingInteraction, "Full Auto OFF must expose pending approval UI")
+    }
 }

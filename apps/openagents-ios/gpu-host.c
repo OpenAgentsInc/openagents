@@ -229,6 +229,12 @@ void oa_ios_set_header(void *surface, const char *computer, const char *session_
   ios_set_header(oa_state(c), oa_str(computer), oa_str(session_title), oa_str(workspace), reachability, paired_count, has_active != 0, has_older != 0, has_more_sessions != 0);
   oa_changed(c);
 }
+void oa_ios_set_account_wallet(void *surface, const char *account_label, int account_logged_in, const char *wallet_label, int wallet_ready) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_set_account_wallet(oa_state(c), oa_str(account_label), account_logged_in != 0, oa_str(wallet_label), wallet_ready != 0);
+  oa_changed(c);
+}
 void oa_ios_set_banners(void *surface, const char *error, int outbox_count, const char *toast) {
   IosGpuHost *c = surface;
   if (!c) return;
@@ -266,10 +272,36 @@ void oa_ios_set_usage(void *surface, const char *summary, int context_pct) {
   ios_set_usage(oa_state(c), oa_str(summary), context_pct);
   oa_changed(c);
 }
+void oa_ios_set_full_auto(void *surface, int on) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_set_full_auto(oa_state(c), on != 0);
+  oa_changed(c);
+}
+void oa_ios_set_voice_duplex(void *surface, int state, float level) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_set_voice_duplex(oa_state(c), state, level);
+  oa_changed(c);
+}
 void oa_ios_set_queued(void *surface, const char *text) {
   IosGpuHost *c = surface;
   if (!c) return;
   ios_set_queued(oa_state(c), oa_str(text));
+  oa_changed(c);
+}
+void oa_ios_intro_clear(void *surface) { IosGpuHost *c = surface; if (c) { ios_intro_clear(oa_state(c)); oa_changed(c); } }
+void oa_ios_intro_push(void *surface, int kind, const char *id, const char *title, const char *harness, const char *cwd, const char *status, int busy, int current) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_intro_push(oa_state(c), kind, oa_str(id), oa_str(title), oa_str(harness), oa_str(cwd), oa_str(status), busy != 0, current != 0);
+  oa_changed(c);
+}
+void oa_ios_machines_clear(void *surface) { IosGpuHost *c = surface; if (c) { ios_machines_clear(oa_state(c)); oa_changed(c); } }
+void oa_ios_machines_push(void *surface, const char *id, const char *name, const char *detail, int reachability, int session_count, int current) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_machines_push(oa_state(c), oa_str(id), oa_str(name), oa_str(detail), reachability, session_count, current != 0);
   oa_changed(c);
 }
 

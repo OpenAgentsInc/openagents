@@ -252,7 +252,7 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   _ = coaxial_chatweb_frame(s, 0.016, true);
   #assert s[0].cc[0].core_model == 3 && cwc_model_id(s[0].cc[..]) == "google/gemini-4-argon";
 
-  // Type and submit prompt -> pushes /chat/cnv_..., opens POST /api/chat/complete on Slot 4 + write-through sync.
+  // Type and submit prompt -> pushes /chat/cnv_..., opens POST /api/v1/inference on Slot 4 + write-through sync.
   cw_test_type(s, "composer", "Show a coax function");
   cw_test_enter(s, "composer");
   _ = coaxial_chatweb_frame(s, 0.016, true);
@@ -260,12 +260,19 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
 
   go := cw_test_go(s);
   #assert go.count == 42 && cast(string) go[0..<10] == "/chat/cnv_" && coaxial_chatweb_go_push(s);
-  ci := cwc_t_find_open(ops[..], "/api/chat/complete");
+  ci := cwc_t_find_open(ops[..], "/api/v1/inference");
   si := cwc_t_find_open(ops[..], "/api/chat/v2/sync");
   #assert ci >= 0 && ops[0].opens[ci].slot == CWC_TURN_SLOT;
   #assert sc_contains(cast(string) ops[0].opens[ci].body[0..<ops[0].opens[ci].body_n], "\"model\":\"google/gemini-4-argon\"");
   #assert sc_contains(cast(string) ops[0].opens[ci].body[0..<ops[0].opens[ci].body_n], "\"stream\":true");
   #assert si >= 0 && sc_contains(cast(string) ops[0].opens[si].body[0..<ops[0].opens[si].body_n], CC_SYNC_SCHEMA);
+  // Fresh conversation must NOT open /stream before /api/chat/v2/sync persists it (zero 404 race).
+  #assert cwc_t_find_open(ops[..], "/stream") < 0;
+  // Once /api/chat/v2/sync returns 200, conv.stream attaches cleanly.
+  cwc_t_http_reply(s, ops[0].opens[si].slot, 200, "{\"ok\":true}");
+  ops[0].open_n = 0;
+  cwc_t_drain(s, ops[..]);
+  #assert cwc_t_find_open(ops[..], "/stream") >= 0;
 
   // Verify ZERO 1Hz /api/chat/turn or /local/* polling over 120 frames (>10 simulated seconds)!
   for f: 0..<120 { _ = coaxial_chatweb_frame(s, 0.1, true); }
@@ -305,6 +312,48 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   // Answer Copy button copies markdown text cleanly.
   cw_test_press(s, "cc.copy.1");
   #assert coaxial_chatweb_clip(s) > 0 && sc_contains(cast(string) s[0].clip[0..<s[0].clip_n], "## Demo");
+}
+
+#test "14094 Story+Scene: /api/v1/inference 402/429 error extraction, /sync fallback, and cross-reload op/conv ID uniqueness" {
+  e2: [1] CwTest; u := e2[0].s[..];
+  ops2: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  cw_test_path(u, "/chat");
+  cwc_t_drain(u, ops2[..]);
+  li2 := cwc_t_find_open(ops2[..], "/api/chat/v2/conversations");
+  lb2: [256] u8;
+  cwc_t_http_reply(u, ops2[0].opens[li2].slot, 200, cwc_t_list_json(lb2[..], ""));
+  cwc_t_drain(u, ops2[..]);
+  ops2[0].open_n = 0;
+  cw_test_type(u, "composer", "sup");
+  cw_test_enter(u, "composer");
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  cwc_t_drain(u, ops2[..]);
+  ops2[0].open_n = 0;
+  cwc_t_stream_ev(u, CWC_TURN_SLOT, UI_SUB_PHASE_ERROR, 402, "{\"error\":\"add credit: POST /api/v1/inference/credit\"}");
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  cwc_t_drain(u, ops2[..]);
+  #assert sc_contains(cast(string) u[0].cc[0].error[0..<u[0].cc[0].error_n], "No hosted inference credit (0 sats)");
+  // Before sync completed, failure write-through uses idempotent /api/chat/v2/sync (never 404 /events).
+  #assert cwc_t_find_open(ops2[..], "/api/chat/v2/sync") >= 0 && cwc_t_find_open(ops2[..], "/events") < 0;
+  // 429 extracts exact server JSON error message.
+  cw_test_type(u, "composer", "again");
+  cw_test_enter(u, "composer");
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  cwc_t_stream_ev(u, CWC_TURN_SLOT, UI_SUB_PHASE_ERROR, 429, "{\"error\":\"this account's 500 requests for today are used up\"}");
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  #assert cast(string) u[0].cc[0].error[0..<u[0].cc[0].error_n] == "this account's 500 requests for today are used up";
+  // Distinct browser wall-clock seed_epoch values produce non-colliding conv IDs and sync operation IDs across reloads.
+  u[0].cc[0].seed_epoch = 1795753000; u[0].cc[0].op_seq = 0; u[0].cc[0].id_seq = 0;
+  op1: [64] u8; id1: [36] u8;
+  on1 := cwc_make_op(u[0].cc[..], "sync", op1[..]);
+  in1 := cwc_make_id(u[0].cc[..], "cnv_", id1[..]);
+  u[0].cc[0].seed_epoch = 1795753001; u[0].cc[0].op_seq = 0; u[0].cc[0].id_seq = 0;
+  op2: [64] u8; id2: [36] u8;
+  on2 := cwc_make_op(u[0].cc[..], "sync", op2[..]);
+  in2 := cwc_make_id(u[0].cc[..], "cnv_", id2[..]);
+  #assert on1 > 0 && on2 > 0 && cast(string) op1[0..<on1] != cast(string) op2[0..<on2];
+  #assert in1 == 36 && in2 == 36 && cast(string) id1[0..<in1] != cast(string) id2[0..<in2];
 }
 
 #test "14094 Story+Scene+Play: live Desktop observation, Last-Event-ID reconnect with zero duplicates, and Stop turn steering" {
@@ -556,4 +605,141 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   }
   #assert tl_replay_compare(tls[0..<1], tls[1..<2]) == -1;
   #assert cnt_n > 0 && cast(string) cnt_b[0..<cnt_n] != "0" && has_step0;
+}
+
+#test "14127 Story+Scene+Play: Tier 1 Cloud Tool Loop executes github_tree via /api/tools/cloud/v1 with Project context and renders tool cards" #steps 120000000 {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  // Seed account Project with GitHub repo URL + enrolled computer in SettingsWeb.
+  sw_acct_projects_read(s[0].set[..], 200, "project prj_11111111111111111111111111111111|3|OpenAgents|https://github.com/OpenAgentsInc/openagents.git|1\n");
+  sw_envs_read(s[0].set[..], 200, "env aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|Mac Studio|darwin|1|1000|1|OpenAgentsInc/openagents\n");
+  cw_test_path(s, "/chat?project=prj_11111111111111111111111111111111");
+  cwc_t_drain(s, ops[..]);
+
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  lb: [256] u8;
+  cwc_t_http_reply(s, ops[0].opens[li].slot, 200, cwc_t_list_json(lb[..], ""));
+  cwc_t_drain(s, ops[..]);
+  ops[0].open_n = 0; ops[0].close_n = 0;
+
+  // Verify HUD displays Project repo slug and Target selector.
+  t := s[0].tree[..];
+  #assert sc_by_text(t, "Project · OpenAgents · OpenAgentsInc/openagents") >= 0;
+  #assert sc_by_text(t, "Target: Auto") >= 0;
+
+  // Send a prompt: request to /api/v1/inference must include Tier 1 tools + active repo in system prompt.
+  cw_test_type(s, "composer", "List the root files in my repo");
+  cw_test_enter(s, "composer");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  inf := cwc_t_find_open(ops[..], "/api/v1/inference");
+  #assert inf >= 0 && ops[0].opens[inf].slot == CWC_TURN_SLOT;
+  req_body := cast(string) ops[0].opens[inf].body[0..<ops[0].opens[inf].body_n];
+  #assert sc_contains(req_body, "github_tree") && sc_contains(req_body, "OpenAgentsInc/openagents");
+  ops[0].open_n = 0;
+
+  // Model emits a streamed github_tree tool_call and closes cleanly.
+  tc_sse := "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_gh1\",\"function\":{\"name\":\"github_tree\",\"arguments\":\"{\\\"repo\\\":\\\"OpenAgentsInc/openagents\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_OPEN, 200, "");
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, tc_sse);
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_END, 200, "");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+
+  // Web dispatches POST /api/tools/cloud/v1 and shows running tool card in transcript.
+  ti := cwc_t_find_open(ops[..], "/api/tools/cloud/v1");
+  #assert ti >= 0 && s[0].cc[0].tool_running;
+  tbody := cast(string) ops[0].opens[ti].body[0..<ops[0].opens[ti].body_n];
+  #assert sc_contains(tbody, "\"tool\":\"github_tree\"") && sc_contains(tbody, "OpenAgentsInc/openagents");
+  #assert sc_by_text(t, "github_tree · running") >= 0;
+
+  // Deliver tool output -> card turns done, continuation /api/v1/inference opens with tool result!
+  tool_slot := ops[0].opens[ti].slot;
+  ops[0].open_n = 0;
+  cwc_t_http_reply(s, tool_slot, 200, "{\"schema\":\"openagents.cloud.tool.res.v1alpha1\",\"tool\":\"github_tree\",\"ok\":true,\"output\":\"d coax\\nf AGENTS.md\\n\"}");
+  cwc_t_drain(s, ops[..]);
+
+  inf2 := cwc_t_find_open(ops[..], "/api/v1/inference");
+  #assert inf2 >= 0 && ops[0].opens[inf2].slot == CWC_TURN_SLOT && !s[0].cc[0].tool_running && s[0].cc[0].web_streaming;
+  req2 := cast(string) ops[0].opens[inf2].body[0..<ops[0].opens[inf2].body_n];
+  #assert sc_contains(req2, "\"role\":\"tool\"") && sc_contains(req2, "call_gh1") && sc_contains(req2, "AGENTS.md");
+  #assert sc_by_text(t, "github_tree · done") >= 0;
+
+  // Stream final answer -> turn completes cleanly.
+  ans_sse := "data: {\"choices\":[{\"delta\":{\"content\":\"Root contains **coax/** and **AGENTS.md**.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_OPEN, 200, "");
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, ans_sse);
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_END, 200, "");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert !s[0].cc[0].web_streaming && !s[0].cc[0].tool_running && s[0].cc[0].error_n == 0;
+  #assert sc_by_text(t, "AGENTS.md") >= 0;
+}
+
+#test "14127 Story+Scene+Play: Execution Target switcher pins Tier 2 Computer submit and sends inline Approve/Deny RespondTask" #steps 120000000 {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  sw_envs_read(s[0].set[..], 200, "env aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|Mac Studio|darwin|1|1000|1|OpenAgentsInc/openagents\n");
+  cw_test_path(s, "/chat");
+  cwc_t_drain(s, ops[..]);
+
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  lb: [256] u8;
+  cwc_t_http_reply(s, ops[0].opens[li].slot, 200, cwc_t_list_json(lb[..], ""));
+  cwc_t_drain(s, ops[..]);
+  ops[0].open_n = 0;
+
+  // Open Target menu and pick enrolled computer "Mac Studio".
+  cw_test_press(s, "cc.target");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_find(t, "cc.tgt.env.0") >= 0 && tr_find(t, "cc.tgt.cloud") >= 0 && tr_find(t, "cc.tgt.sandbox") >= 0;
+  cw_test_press(s, "cc.tgt.env.0");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].cc[0].target_kind == CLD_TARGET_COMPUTER && sc_by_text(t, "Target: Mac Studio") >= 0;
+
+  // Sending a message dispatches to POST /api/chat/submit/v2alpha1?host=<64hex>.
+  cw_test_type(s, "composer", "Run coax test locally");
+  cw_test_enter(s, "composer");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  sub := cwc_t_find_open(ops[..], "/api/chat/submit/v2alpha1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  #assert sub >= 0 && s[0].cc[0].remote_running;
+  sbody := cast(string) ops[0].opens[sub].body[0..<ops[0].opens[sub].body_n];
+  #assert sc_contains(sbody, "Run coax test locally");
+
+  // Deliver 202 response with conversation_id & turn_id -> subscribes to live conversation stream.
+  sub_slot := ops[0].opens[sub].slot;
+  ops[0].open_n = 0;
+  cwc_t_http_reply(s, sub_slot, 202, "{\"conversation_id\":\"cnv_77777777777777777777777777777777\",\"turn_id\":\"trn_88888888888888888888888888888888\",\"revision\":1}");
+  cwc_t_drain(s, ops[..]);
+  #assert cwc_active_id(s[0].cc[..]) == "cnv_77777777777777777777777777777777";
+
+  // Simulate a pending approval event from the computer -> Approve / Deny buttons render and send RespondTask!
+  aev := CcEvent.{
+    conversation = "cnv_77777777777777777777777777777777",
+    turn = "trn_88888888888888888888888888888888",
+    sequence = 2,
+    kind = CC_EV_APPROVAL,
+    tool_id = "int_shell_1",
+    tool_name = "bash",
+    tool_args = "{\"cmd\":\"coax test\"}",
+    approval_status = "pending",
+    compute = "local",
+    source_device = "Mac Studio"
+  };
+  cwc_apply_event(s[0].cc[..], aev, true);
+  s[0].cc[0].dirty = true;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "cc.appr.ok.2") >= 0 && tr_find(t, "cc.appr.no.2") >= 0;
+
+  ops[0].open_n = 0;
+  cw_test_press(s, "cc.appr.ok.2");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  ap := cwc_t_find_open(ops[..], "/api/chat/task/v1alpha1?host=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  #assert ap >= 0;
+  abody := cast(string) ops[0].opens[ap].body[0..<ops[0].opens[ap].body_n];
+  #assert sc_contains(abody, "\"method\":\"RespondTask\"") && sc_contains(abody, "\"allow\":true") && sc_contains(abody, "\"interaction_id\":\"int_shell_1\"");
 }

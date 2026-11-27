@@ -1,0 +1,4 @@
+caller unsigned=true get=true post=true record_seen=true
+grant wire_bytes=46 verdict=0 name=Partner Runner host_ok=true agent=true scope=true spend=true
+refuse nip98=(true,true,true) grant=(pay=true,day=true,scope=true,revoked=true,host=true,wire=true)
+ok=true

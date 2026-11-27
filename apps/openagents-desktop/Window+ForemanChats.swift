@@ -146,14 +146,11 @@ extension CoderWindow {
         return ForemanResponse(status: 200, body: body)
     }
 
-    func foremanCreateChat(_ payload: [String: Any]) -> ForemanResponse {
-        if foremanTier == .observe {
-            return ForemanResponse(status: 403, body: ["error": "Foreman is in Observe (read-only) tier. Switch to Managed or Autonomous tier to create chats."])
-        }
+    func foremanCreateChat(_ payload: [String: Any], attributePrefix: Bool = true) -> ForemanResponse {
         guard let prompt = payload["prompt"] as? String, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return ForemanResponse(status: 400, body: ["error": "prompt is required"])
         }
-        let folderPath = (payload["folder"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? folder.path
+        let folderPath = (payload["folder"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (payload["cwd"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? folder.path
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: folderPath, isDirectory: &isDir), isDir.boolValue else {
             return ForemanResponse(status: 400, body: ["error": "folder does not exist: \(folderPath)"])
@@ -161,15 +158,21 @@ extension CoderWindow {
         guard let back = cd_headless() else {
             return ForemanResponse(status: 500, body: ["error": "could not allocate headless chat page"])
         }
-        cd_skills(back, coderSkillsNote())
-        coderApplyClaude(back)
+        cd_flags_set(back, FeatureFlags.mask)
+        AgentSettings.apply(to: back)
+        cd_skills(back, FeatureFlags.isOn(.mcp) ? coderSkillsNote() : "")
+        if ComposerModelVisibility.showOtherModels {
+            if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
+            if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
+        } else {
+            cd_claude(back, 0)
+        }
         syncLocalState(on: back)
         if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
-        coderApplyOpenRouter(back)
         if let budgetUSD = payload["budget_usd"] as? Double, budgetUSD > 0 {
             _ = cd_set_budget_usd_micros(back, Int64((budgetUSD * 1_000_000.0).rounded()))
         }
-        let attributed = "[From Foreman]\n" + prompt
+        let attributed = attributePrefix ? ("[From Foreman]\n" + prompt) : prompt
         guard cd_set_text(back, attributed) != 0, cd_submit(back) != 0 else {
             cd_close(back)
             return ForemanResponse(status: 500, body: ["error": "failed to submit prompt to new chat"])
@@ -184,7 +187,8 @@ extension CoderWindow {
         let moved = CoderRun(page: back, folder: folderURL)
         moved.chat = id
         wire(moved)
-        store.registerChat(id: id, title: title, folder: folderURL.path, managedBy: Foreman.managedTag)
+        configureWorkerEnv(moved, isForeman: false)
+        store.registerChat(id: id, title: title, folder: folderURL.path, managedBy: attributePrefix ? Foreman.managedTag : nil)
         if (payload["pin"] as? Bool) == true && !store.isPinned(id) {
             store.togglePin(id)
         }
@@ -194,6 +198,7 @@ extension CoderWindow {
             guard let self, cd_running(moved.page) != 0 else { return }
             var out = [CChar](repeating: 0, count: 262144)
             moved.worker.folder = moved.folder.path
+            self.configureWorkerEnv(moved, isForeman: false)
             if moved.worker.start() {
                 let n = cd_task(moved.page, moved.session, moved.folder.path, &out, Int32(out.count))
                 moved.worker.write(out, count: Int(n))
@@ -208,13 +213,16 @@ extension CoderWindow {
         _ = foremanEvents.emit(type: "chat.created", chatID: id, data: ["title": store.title(id) ?? title, "folder": folderURL.path])
         _ = foremanEvents.emit(type: "chat.started", chatID: id, data: ["title": store.title(id) ?? title])
         if (payload["open"] as? Bool) == true { open(id) }
-        cd_chats(page, chatLines); syncForemanUI(); wake()
+        cd_chats(page, chatLines)
+        syncForemanUI()
+        wake()
         return ForemanResponse(status: 200, body: [
             "ok": true,
             "chat_id": id,
+            "session_id": "local:chat:\(id)",
             "title": store.title(id) ?? title,
             "folder": folderURL.path,
-            "managed_by": Foreman.managedTag,
+            "managed_by": attributePrefix ? Foreman.managedTag : "",
             "pinned": store.isPinned(id),
             "status": "running"
         ])
@@ -224,20 +232,11 @@ extension CoderWindow {
         if id == Foreman.chatID {
             return ForemanResponse(status: 400, body: ["error": "cannot \(action) the Foreman chat itself"])
         }
-        switch foremanTier {
-        case .observe:
-            return ForemanResponse(status: 403, body: ["error": "Foreman is in Observe (read-only) tier; \(action) is not allowed."])
-        case .managed:
-            if !store.isManagedByForeman(id) {
-                return ForemanResponse(status: 403, body: ["error": "Chat \(id) is user-created. In Managed tier, Foreman can only \(action) Foreman-managed chats. Switch to Autonomous tier to control all chats."])
-            }
-            return nil
-        case .autonomous:
-            return nil
-        }
+        // Borderless Session Control (#14067): zero Foreman/Worker tier 403 walls when commanding sessions.
+        return nil
     }
 
-    func foremanSendChat(_ payload: [String: Any]) -> ForemanResponse {
+    func foremanSendChat(_ payload: [String: Any], attributePrefix: Bool = true) -> ForemanResponse {
         guard let id = payload["chat_id"] as? String, !id.isEmpty else {
             return ForemanResponse(status: 400, body: ["error": "chat_id is required"])
         }
@@ -259,13 +258,13 @@ extension CoderWindow {
                 stopRun(back); keep(back); back.stop(); cd_close(back.page)
             }
         }
-        let attributed = "[From Foreman]\n" + message
+        let attributed = attributePrefix ? ("[From Foreman]\n" + message) : message
         if id == chat {
             guard cd_set_text(page, attributed) != 0, cd_submit(page) != 0 else {
                 return ForemanResponse(status: 500, body: ["error": "failed to submit message to shown chat"])
             }
             wake()
-            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "status": "running"])
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "session_id": "local:chat:\(id)", "status": "running"])
         }
         guard let saved = store.text(id) else {
             return ForemanResponse(status: 404, body: ["error": "chat not found: \(id)"])
@@ -273,11 +272,17 @@ extension CoderWindow {
         guard let back = cd_headless() else {
             return ForemanResponse(status: 500, body: ["error": "could not allocate headless chat page"])
         }
-        cd_skills(back, coderSkillsNote())
-        coderApplyClaude(back)
+        cd_flags_set(back, FeatureFlags.mask)
+        AgentSettings.apply(to: back)
+        cd_skills(back, FeatureFlags.isOn(.mcp) ? coderSkillsNote() : "")
+        if ComposerModelVisibility.showOtherModels {
+            if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
+            if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
+        } else {
+            cd_claude(back, 0)
+        }
         syncLocalState(on: back)
         if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
-        coderApplyOpenRouter(back)
         guard cd_load(back, saved) != 0 else {
             cd_close(back)
             return ForemanResponse(status: 500, body: ["error": "could not load saved chat \(id)"])
@@ -286,6 +291,7 @@ extension CoderWindow {
         let moved = CoderRun(page: back, folder: URL(fileURLWithPath: folderPath))
         moved.chat = id
         wire(moved)
+        configureWorkerEnv(moved, isForeman: false)
         guard cd_set_text(back, attributed) != 0, cd_submit(back) != 0 else {
             moved.stop(); cd_close(back)
             return ForemanResponse(status: 500, body: ["error": "failed to submit follow-up message"])
@@ -294,6 +300,7 @@ extension CoderWindow {
             var out = [CChar](repeating: 0, count: 262144)
             moved.worker.folder = moved.folder.path
             moved.worker.program = cd_model_agy(back) != 0 ? "agyworker" : cd_model_claude(back) != 0 ? "claudeworker" : "oa-worker"
+            configureWorkerEnv(moved, isForeman: false)
             if moved.worker.start() {
                 var rn = cd_recall_line(back, &out, Int32(out.count))
                 if rn == 0 { rn = cd_forget_line(&out, Int32(out.count)) }
@@ -308,8 +315,10 @@ extension CoderWindow {
         runs[id] = moved
         keep(moved)
         _ = foremanEvents.emit(type: "chat.started", chatID: id, data: ["title": store.title(id) ?? "Chat"])
-        cd_chats(page, chatLines); syncForemanUI(); wake()
-        return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "status": "running"])
+        cd_chats(page, chatLines)
+        syncForemanUI()
+        wake()
+        return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "session_id": "local:chat:\(id)", "status": "running"])
     }
 
     func foremanControlChat(_ payload: [String: Any]) -> ForemanResponse {
@@ -334,7 +343,9 @@ extension CoderWindow {
                 return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "status": "already_idle"])
             }
             _ = foremanEvents.emit(type: "chat.stopped", chatID: id, data: ["title": store.title(id) ?? "Chat"])
-            cd_chats(page, chatLines); syncForemanUI(); wake()
+            cd_chats(page, chatLines)
+            syncForemanUI()
+            wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "action": "stop", "status": "stopped"])
         case "pin":
             if !store.isPinned(id) { store.togglePin(id) }

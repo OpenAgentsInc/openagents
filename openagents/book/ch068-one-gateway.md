@@ -1,7 +1,18 @@
 # 68. One gateway
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The multi-provider gateway replay, rates card,
+> and failover planner ([`coax/lib/gateway/plan.coax`](../../coax/lib/gateway/plan.coax),
+> [`rates.coax`](../../coax/lib/gateway/rates.coax),
+> [`card.coax`](../../coax/lib/gateway/card.coax),
+> [`gateway.coax`](../../coax/lib/gateway/gateway.coax)) run on `cpu`, grounded by
+> [`openagents/examples/gateway-failover-rates.coax`](../examples/gateway-failover-rates.coax)
+> and [`openagents/examples/gateway-failover-rates.out`](../examples/gateway-failover-rates.out),
+> and are consumed by [`coax/lib/microcoder/run.coax`](../../coax/lib/microcoder/run.coax),
+> [`coax/lib/microcoder/loop.coax`](../../coax/lib/microcoder/loop.coax),
+> [`coax/lib/rlm/model.coax`](../../coax/lib/rlm/model.coax),
+> and [`coax/web/agent/chat-micro.coax`](../../coax/web/agent/chat-micro.coax).
+> Remaining: routing every member through one unified job-order policy table and
+> checking live provider-reported cost reconciliation against the card end-to-end.
 
 ## Premise
 
@@ -63,7 +74,7 @@ It builds on what exists today:
 - [`coax/lib/gateway/card.coax`](../../coax/lib/gateway/card.coax) (OpenAgents Cloud model catalog & retail pricing cards, `#14069`)
 - [`coax/lib/gateway/plan.coax`](../../coax/lib/gateway/plan.coax)
 - [`coax/lib/gateway/rates.coax`](../../coax/lib/gateway/rates.coax)
-- [`openagents/core/wire.coax`](../../openagents/core/wire.coax) and [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) (OpenAgents Cloud gateway wiring, `#14070`)
+- [`openagents/core/wire.coax`](../../openagents/core/wire.coax) and [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax) (OpenAgents Cloud gateway wiring, `#14070`)
 - [`apps/openagents-desktop/page/usage.coax`](../../apps/openagents-desktop/page/usage.coax) and [`apps/openagents-desktop/Window+Usage.swift`](../../apps/openagents-desktop/Window+Usage.swift) (Always-On Usage HUD & `$0.00` local compute enforcement, `#14064`, `#14072`)
 - [`coax/lib/gateway/anthropic.coax`](../../coax/lib/gateway/anthropic.coax)
 - [`coax/lib/gateway/openai.coax`](../../coax/lib/gateway/openai.coax)
@@ -81,21 +92,26 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the routing policy in
-  [`plan.coax`](../../coax/lib/gateway/plan.coax) and
-  [`rates.coax`](../../coax/lib/gateway/rates.coax), with fake providers
-  that replay the recorded streams in
-  [`coax/lib/gateway/fixtures/`](../../coax/lib/gateway/fixtures) and the
-  controlled clock.
-- **Trace:** a conversation call goes to Vertex first and records the route,
-  the time and the cost. The fake Vertex then answers that the account is
-  out of credits, and the next call fails over to OpenRouter and records
-  that route.
-- **Refusal:** with every route down, the call fails with an error that
-  lists each route tried and why. It never returns an empty answer.
-- **Independent check:** the cost of each call is worked out by hand from
-  the token counts in the recorded stream and the published rates, and
-  compared with the usage the provider reported.
+- **Source:** [`coax/lib/gateway/plan.coax`](../../coax/lib/gateway/plan.coax),
+  [`coax/lib/gateway/rates.coax`](../../coax/lib/gateway/rates.coax),
+  [`coax/lib/gateway/card.coax`](../../coax/lib/gateway/card.coax),
+  [`coax/lib/gateway/gateway.coax`](../../coax/lib/gateway/gateway.coax),
+  [`openagents/examples/gateway-failover-rates.coax`](../examples/gateway-failover-rates.coax),
+  and [`openagents/examples/gateway-failover-rates.out`](../examples/gateway-failover-rates.out).
+- **Trace:** replays the recorded `GW_FX_VERTEX_GEMINI_4_CARBON` stream
+  (`in=61`, `out=13`), prices it on the rates card (`micros=504`, `msats=504` at
+  \$100k/BTC; cached-input pricing `3720000` micro-USD), formats a secret-free
+  attempt log line, benches `vertex` on HTTP `402` to fail over (`GW_NEXT`) to
+  `openrouter`, checks 4× backoff (`2000,8000,30000`), and detects a first-token
+  stall (`stall=1`).
+- **Refusal:** a failure after the first token (`first=true`) never retries
+  (`GW_END_PASS`); zero attempts remaining returns `GW_END_PASS` rather than an
+  empty answer; an unpriced model off the card returns `card_usd_micros=-1`;
+  HTTP `402` is never retried on the same gateway (`retryable_402=false`).
+- **Independent check:** `coax/bin/coax run openagents/examples/gateway-failover-rates.coax`
+  and `--release` match [`openagents/examples/gateway-failover-rates.out`](../examples/gateway-failover-rates.out),
+  and each cost matches hand-derived arithmetic from token counts (`61 * 4 + 13 * 20 = 504`
+  micro-USD) and the `#test` checks in [`rates.coax`](../../coax/lib/gateway/rates.coax).
 
 Planned paths: none. The gateway is [`coax/lib/gateway`](../../coax/lib/gateway).
 
@@ -118,3 +134,77 @@ Planned paths: none. The gateway is [`coax/lib/gateway`](../../coax/lib/gateway)
 
 1. What is the default order of providers for each job: decisions,
    conversation and long work?
+
+## Source listing
+
+Run the Chapter 68 example in [`openagents/examples/gateway-failover-rates.coax`](../examples/gateway-failover-rates.coax) (committed transcript [`openagents/examples/gateway-failover-rates.out`](../examples/gateway-failover-rates.out)):
+
+<!-- source: openagents/examples/gateway-failover-rates.coax gateway-failover-rates -->
+```jai
+gfr_run :: () -> bool {
+  // 1. Replay recorded Vertex Gemini 4 Carbon stream and price usage on the rates card.
+  r: [1] GwReplay;
+  fx := GW_FX_VERTEX_GEMINI_4_CARBON;
+  gw_replay(GW_WIRE_GEMINI, fx[..], r[..]);
+  priced := gw_price("vertex", "gemini-4-carbon", r[0].usage, 100000);
+
+  // Cached-input discount: 1M input (600k cached), 100k output on Gemini 4 Carbon.
+  cached_u := GwUsage.{ok = true, input_tokens = 1000000, cached_tokens = 600000, output_tokens = 100000};
+  cached_p := gw_price("vertex", "gemini-4-carbon", cached_u, 100000);
+
+  log_entry := GwAttemptLog.{
+    gateway = "vertex", model = "gemini-4-carbon", outcome = GW_OUT_DONE, status = 200,
+    first_ms = 120, latency_ms = 410,
+    input_tokens = priced.input_tokens, output_tokens = priced.output_tokens,
+    card_usd_micros = priced.card_usd_micros, cost_msats = priced.cost_msats, cost_usd_micros = -1
+  };
+  lbuf: [256] u8;
+  line := gw_attempt_line(log_entry, lbuf[..]);
+  print("replay done=% in=% out=% micros=% msats=% cached_micros=%\n",
+    r[0].done, priced.input_tokens, priced.output_tokens,
+    priced.card_usd_micros, priced.cost_msats, cached_p.card_usd_micros);
+  print("log=%\n", line);
+
+  // 2. Failover & session benching: 402 out-of-credits benches Vertex and falls through to OpenRouter;
+  // exponential backoff grows 4x capped at 30000 ms; stall detector flags silent calls.
+  bench: [1] GwBench;
+  ref_402 := GwEvent.{kind = GW_EV_REFUSED, status = 402};
+  dec_failover := gw_plan_decide(ref_402, false, 1);
+  benched_402 := gw_bench_status(402);
+  if benched_402 { gw_bench(bench[..], "vertex"); }
+  vertex_benched := gw_benched(bench[..], "vertex");
+  openrouter_ready := !gw_benched(bench[..], "openrouter");
+  bo0 := gw_backoff(2000, 0);
+  bo1 := gw_backoff(2000, 1);
+  bo2 := gw_backoff(2000, 2);
+  stall_first := gw_stall(5000, 10000, 1000, -1, 6000);
+  print("failover next=% benched=(vertex=%,openrouter=%) backoff=%,%,% stall=%\n",
+    dec_failover == GW_NEXT, vertex_benched, !openrouter_ready, bo0, bo1, bo2, stall_first);
+
+  // 3. Fail-closed refusals: mid-stream cut after first token never retries;
+  // zero attempts left returns GW_END_PASS; unknown model returns -1 micro-USD.
+  dec_after_tok := gw_plan_decide(GwEvent.{kind = GW_EV_REFUSED, status = 500}, true, 2);
+  dec_exhausted := gw_plan_decide(GwEvent.{kind = GW_EV_REFUSED, status = 503}, false, 0);
+  off_card := gw_price("openai", "gpt-5.4-mini", r[0].usage, 100000);
+  print("refuse cut=% exhausted=% off_card=% retryable_402=%\n",
+    dec_after_tok == GW_END_PASS, dec_exhausted == GW_END_PASS,
+    off_card.card_usd_micros, gw_retryable(402));
+
+  return r[0].done == 1 && priced.input_tokens == 61 && priced.output_tokens == 13 &&
+         priced.card_usd_micros == 504 && priced.cost_msats == 504 &&
+         dec_failover == GW_NEXT && benched_402 && vertex_benched && openrouter_ready &&
+         bo0 == 2000 && bo1 == 8000 && bo2 == 30000 && stall_first == GW_STALL_FIRST &&
+         dec_after_tok == GW_END_PASS && dec_exhausted == GW_END_PASS &&
+         off_card.card_usd_micros == -1 && !gw_retryable(402);
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/gateway-failover-rates.coax`, identical in `--release`):
+
+```text
+replay done=1 in=61 out=13 micros=504 msats=504 cached_micros=3720000
+log=gateway=vertex model=gemini-4-carbon outcome=done status=200 first_ms=120 ms=410 in=61 out=13 card_usd_micros=504 msats=504 cost_usd_micros=-1
+failover next=true benched=(vertex=true,openrouter=false) backoff=2000,8000,30000 stall=1
+refuse cut=true exhausted=true off_card=-1 retryable_402=false
+ok=true
+```

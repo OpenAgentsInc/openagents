@@ -428,13 +428,8 @@ final class PleSceneMetalView: NSView {
     }
 
     private func setupMetal() {
-        #if OA_FULL
         guard let dev = MetaverseGpuCoordinator.shared.device,
               let queue = MetaverseGpuCoordinator.shared.queue else { return }
-        #else
-        guard let dev = MTLCreateSystemDefaultDevice(),
-              let queue = dev.makeCommandQueue() else { return }
-        #endif
         self.device = dev
         self.commandQueue = queue
 

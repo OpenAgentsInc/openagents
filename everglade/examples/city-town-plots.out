@@ -1,0 +1,5 @@
+clearing_mid_open=true far_open=true floor_mid_dm=-20 floor_far_dm=75 ring_gt90=true
+plots=16 founder=Finn Barrow lane_at=-1 plot5_at=5 day34_fin=5 mid=9 wait=2 all_done_days=14
+gate_south=true z=-56 commons=true unknown_refused=true
+claim_ok=true refuse_taken=true refuse_second=true refuse_non_owner=true refused_count=3
+ok=true

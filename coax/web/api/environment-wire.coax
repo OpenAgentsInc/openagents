@@ -1,6 +1,7 @@
 // API effects call the one typed codec and bounded process library. Broker
 // credentials are installed server files and never part of an app response.
 #load "../../lib/agent/environment/wire.coax";
+#load "../../lib/agent/environment/enroll-wire.coax";
 #load "../../lib/agent/accounts/wire.coax";
 #load "../../lib/agent/workspace/wire.coax";
 #load "../../lib/sys/proc.coax";
@@ -8,6 +9,17 @@
 #load "task-access-policy.coax";
 #load "account-chat-task-route.coax";
 #load "../../lib/agent/environment/transcript-recovery-policy.coax";
+
+ea_enroll_admit_c :: (kind: int, verified: bool, account: string, limited: bool, frozen: bool) -> bool #export_c #effects(all) { return ea_enroll_admit(kind, verified, account, limited, frozen); }
+ea_enroll_online_c :: (last_seen_ms: int, now_ms: int) -> bool #export_c #effects(all) { return ea_enroll_online(last_seen_ms, now_ms); }
+ea_enroll_read_c :: (raw: string, req: [] EaEnrollRequest) -> bool #export_c #effects(all) { return ea_enroll_read(raw, req); }
+ea_enroll_remove_read_c :: (raw: string, host_out: [] u8) -> bool #export_c #effects(all) { return ea_enroll_remove_read(raw, host_out); }
+ea_enroll_workspaces_write_c :: (ws: [] EaWorkspaceEntry, nws: int, out: [] u8) -> int #export_c #effects(all) { return ea_enroll_workspaces_write(ws, nws, out); }
+ea_enroll_workspaces_parse_c :: (raw: string, out: [] EaWorkspaceEntry) -> int #export_c #effects(all) { return ea_enroll_workspaces_parse(raw, out); }
+ea_enroll_reply_write_c :: (req: [] EaEnrollRequest, last_seen_ms: int, out: [] u8) -> int #export_c #effects(all) { return ea_enroll_reply_write(req, last_seen_ms, out); }
+ea_catalog_v2_entry_write_c :: (host: string, label: string, os: string, relay: string, last_seen_ms: int, now_ms: int, workspaces_json: string, out: [] u8) -> int #export_c #effects(all) { return ea_catalog_v2_entry_write(host, label, os, relay, last_seen_ms, now_ms, workspaces_json, out); }
+ea_catalog_v2_wrap_c :: (entries: [] string, out: [] u8) -> int #export_c #effects(all) { return ea_catalog_v2_wrap(entries, out); }
+ea_catalog_lines_entry_write_c :: (host: string, label: string, os: string, last_seen_ms: int, now_ms: int, workspaces_json: string, out: [] u8) -> int #export_c #effects(all) { return ea_catalog_lines_entry_write(host, label, os, last_seen_ms, now_ms, workspaces_json, out); }
 ea_payload_file :: (path:string,body:string)->bool #export_c #effects(all) {return fs_write(path,body);}
 ea_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,input:string,program:string,out:[]u8)->int #export_c #effects(all) {
   return ea_proxy_named(host,grant,epoch,relay,keyfile,input,program,"rpc",out);

@@ -121,11 +121,11 @@ host_home="$run_dir/coder-home"
 worker_dir="$run_dir/workers"
 mkdir -p "$host_home" "$worker_dir"
 compiler_hash="$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" bash "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" </dev/null >/dev/null
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" bash "$repo/coax/web/tool.sh" "$repo/openagents/runtime/oa-worker.coax" </dev/null >/dev/null
 cp -f "$repo/coax/web/build/tools/oa-worker-$compiler_hash" "$worker_dir/oa-worker"
 chmod 755 "$worker_dir/oa-worker"
-CODER_HOME="$host_home" bash "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" --help >/dev/null
-grant_json="$(CODER_HOME="$host_home" bash "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" direct-grant \
+CODER_HOME="$host_home" bash "$repo/coax/web/tool.sh" "$repo/openagents/daemon/host.coax" --help >/dev/null
+grant_json="$(CODER_HOME="$host_home" bash "$repo/coax/web/tool.sh" "$repo/openagents/daemon/host.coax" direct-grant \
   --device 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
   --workspace "$repo" --label "E2E Real Host" --client-label "OpenAgents iOS E2E")"
 /usr/bin/python3 -c '
@@ -137,7 +137,7 @@ assert not d.get("refused"), d
 print("    real coder-host direct-grant verified: host=" + d["host"][:12] + "...")
 ' "$grant_json"
 
-CODER_HOME="$host_home" CODER_WORKER_DIR="$worker_dir" bash "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" serve --no-relay --for 45 >"$run_dir/coder-host.log" 2>&1 &
+CODER_HOME="$host_home" CODER_WORKER_DIR="$worker_dir" bash "$repo/coax/web/tool.sh" "$repo/openagents/daemon/host.coax" serve --no-relay --for 45 >"$run_dir/coder-host.log" 2>&1 &
 p_real_host=$!
 sock="$host_home/.openagents/coder/host/service.sock"
 for _ in $(seq 1 80); do

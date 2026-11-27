@@ -145,7 +145,7 @@ cp_set_page_ok_flags :: (flags: int, page: int) -> bool {
   if page == CP_PG_USAGE { return true; }
   if page == CP_PG_MCP || page == CP_PG_SKILLS { return dc_flag_on(flags, DC_FLAG_MCP); }
   if page == CP_PG_VOICE { return true; }
-  if page == CP_PG_CONNECTIONS { return dc_flag_on(flags, DC_FLAG_ENVIRONMENTS) || dc_flag_on(flags, DC_FLAG_PAIRING); }
+  if page == CP_PG_CONNECTIONS { return true; }
   if page == CP_PG_SCHED { return dc_flag_on(flags, DC_FLAG_SCHEDULED); }
   if page == CP_PG_APPEARANCE || page == CP_PG_KEYBINDINGS { return dc_flag_on(flags, DC_FLAG_CUSTOMIZE); }
   return false;
@@ -160,9 +160,6 @@ cp_set_entry_ok_flags :: (flags: int, e: CpSetEntry) -> bool {
     if e.id == "set.agy.status" || e.id == "set.agy.mode" || e.id == "set.agy.model" || e.id == "set.agy.auth" { return dc_flag_on(flags, DC_FLAG_MODELS_ANTIGRAVITY); }
     if e.id == "set.codex" || e.id == "set.cursor" || e.id == "set.acp" { return dc_flag_on(flags, DC_FLAG_MODELS_EXTERNAL); }
     if e.id == "set.exec.hybrid" || e.id == "set.exec.modules" || e.id == "set.pylon.state" || e.id == "set.pylon.contrib" || e.id == "set.pylon.sats" || e.id == "set.pylon.release" { return dc_flag_on(flags, DC_FLAG_MODELS_EXECUTOR); }
-  } else if e.page == CP_PG_CONNECTIONS {
-    if e.id == "set.env.active" || e.id == "set.env.awake" { return dc_flag_on(flags, DC_FLAG_ENVIRONMENTS); }
-    if e.id == "set.env.expose" || e.id == "set.env.pair" { return dc_flag_on(flags, DC_FLAG_PAIRING); }
   } else if e.page == CP_PG_ABOUT {
     if e.id == "set.update.all" { return dc_flag_on(flags, DC_FLAG_SCHEDULED); }
   }
@@ -337,8 +334,8 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if vf == 0 || vf == 1 { s[0].voice[0].strip_fillers = (vf == 1); s[0].ask = CP_ASK_VOICE_PREFS; return true; }
   if id == "set.voice.mic.a" || id == "set.voice.mic" { s[0].ask = CP_ASK_VOICE_MIC; return true; }
   if id == "set.voice.dict.a" || id == "set.voice.dict" { s[0].ask = CP_ASK_VOICE_DICT; return true; }
-  // Settings -> Connections (#13883)
-  if (cp_flag(s, DC_FLAG_ENVIRONMENTS) || cp_flag(s, DC_FLAG_PAIRING)) && cp_env_settings_press(s, id) { return true; }
+  // Settings -> Connections (#13883, promoted to --minimal in #14066)
+  if cp_env_settings_press(s, id) { return true; }
   // Settings -> Scheduled Tasks & About -> Update Everything (#13885)
   if cp_flag(s, DC_FLAG_SCHEDULED) && cp_settings_sched_press(s, id) { return true; }
   // Settings -> Appearance & Keybindings (#13887)

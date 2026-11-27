@@ -1,0 +1,5 @@
+derived id=docs.transcripts.289 kind=transcript valid=true sha256=ba7816bf8f01cfea fm_bytes=97 refuse_id=true refuse_ver=true
+ingest admitted=3 refused=2 resolved=1 id=statistics.mmd-estimators version=2 kind=method trust=admitted digest=92b7aeb9a48bdc3a
+wire_schema=openagents.knowledge.v1alpha1 json_ok=true
+untrusted=candidate withdrawn_ver=1 equivocation_resolved=0 author_vec_refused=1
+ok=true

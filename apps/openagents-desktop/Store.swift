@@ -1,14 +1,6 @@
 // Firm reason: 6 (Swift-to-C host wrapper over coax/lib/agent/desktop/store.coax; GitHub #13794).
 import AppKit
 
-#if !OA_FULL
-enum Foreman {
-    static let chatID = "foreman"
-    static let title = "Foreman"
-    static let managedTag = "foreman"
-}
-#endif
-
 /// One kept chat in the list.
 struct CoderChat: Codable {
     var id: String
@@ -177,6 +169,12 @@ final class CoderStore {
     func meta(_ id: String) -> CoderChat? { list.first { $0.id == id } }
     func isPinned(_ id: String) -> Bool { list.first { $0.id == id }?.pinned != nil }
     func isManagedByForeman(_ id: String) -> Bool { list.first { $0.id == id }?.managedBy == Foreman.managedTag }
+
+    /// Absolute filesystem path to a persisted chat's JSON transcript on disk.
+    func chatFilePath(_ id: String) -> String? {
+        guard !id.isEmpty, !id.contains("/"), !id.contains("\\"), id != ".", id != ".." else { return nil }
+        return dir.appendingPathComponent(id + ".json").path
+    }
 
     func togglePin(_ id: String) {
         _ = core { d in

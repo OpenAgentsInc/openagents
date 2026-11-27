@@ -1,0 +1,365 @@
+// Streamable HTTP/1.1 MCP Server transport (2025-11-25 stateful + 2026-07-28 stateless).
+// Thin #effects adapter over coax/platform/socket-server-native.c (cxsrv_*),
+// coax/lib/mcp/http_wire.coax, server_core.coax, event_store.coax, and headers.coax.
+#load "http_wire.coax";
+#load "server_core.coax";
+#load "event_store.coax";
+
+CXSRV_NONE :: 0;
+CXSRV_EOF :: -1;
+CXSRV_ERROR :: -3;
+CXSRV_FULL :: -6;
+
+cxsrv_listen :: (port: int) -> int #foreign #effects(all);
+cxsrv_bound_port :: () -> int #foreign #effects(all);
+cxsrv_poll :: (timeout_ms: int) -> int #foreign #effects(all);
+cxsrv_accept :: () -> int #foreign #effects(all);
+cxsrv_read :: (h: int) -> int #foreign #effects(all);
+cxsrv_byte :: (h: int, i: int) -> int #foreign #effects(all);
+cxsrv_write :: (h: int, byte: int) -> int #foreign #effects(all);
+cxsrv_flush :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsrv_close :: (h: int) -> int #foreign #effects(all);
+cxsrv_now_s :: () -> int #foreign #effects(all);
+
+MCP_HTTP_MAX_CONNS :: 32;
+MCP_HTTP_MAX_SESSIONS :: 32;
+MCP_HTTP_CONN_BUF :: 65536;
+MCP_HTTP_MAX_BODY :: 65536;
+MCP_HTTP_FLUSH_MS :: 5000;
+MCP_HTTP_KEEPALIVE_S :: 15;
+
+// Step event kinds returned to host loop
+MCP_HTTP_EV_NONE :: 0;
+MCP_HTTP_EV_POST :: 1;     // Host should handle req (POST JSON-RPC) on conn_idx
+MCP_HTTP_EV_GET_SSE :: 2;  // Standalone GET SSE stream opened on conn_idx
+MCP_HTTP_EV_CUSTOM_GET :: 3; // Custom GET route (e.g. /.well-known/oauth-protected-resource)
+
+McpHttpSession :: struct {
+  active: bool;
+  id_len: int;
+  id_buf: [64] u8;
+  proto_len: int;
+  proto_buf: [32] u8;
+}
+
+McpHttpConn :: struct {
+  active: bool;
+  h: int = -1;
+  is_sse: bool;
+  sse_stream_id: int;
+  last_ping_s: int;
+  in_len: int;
+  in_buf: [MCP_HTTP_CONN_BUF] u8;
+}
+
+McpHttpServer :: struct {
+  port: int;
+  mcp_path: string = "/mcp";
+  prm_path: string;
+  allow_localhost_origin: bool = true;
+  allowed_origins: [8] string;
+  allowed_origin_count: int;
+  next_session_seq: int = 1;
+  next_stream_seq: int = 1;
+  conns: [MCP_HTTP_MAX_CONNS] McpHttpConn;
+  sessions: [MCP_HTTP_MAX_SESSIONS] McpHttpSession;
+  core: [1] McpServerCore;
+  events: [1] McpEventStore;
+  // Scratch buffers for request parsing and response serialization
+  chunk_buf: [MCP_HTTP_MAX_BODY] u8;
+  out_buf: [131072] u8;
+  sse_buf: [65536] u8;
+}
+
+McpHttpEvent :: struct {
+  kind: int;
+  conn_idx: int;
+  h: int;
+  req: McpHttpRequest;
+}
+
+mcp_http_server_init :: (s: [] McpHttpServer, info: McpImplInfo, caps: McpServerCaps, instructions: string) {
+  s[0] = McpHttpServer.{};
+  s[0].mcp_path = "/mcp";
+  s[0].allow_localhost_origin = true;
+  s[0].next_session_seq = 1;
+  s[0].next_stream_seq = 1;
+  for i: 0..<MCP_HTTP_MAX_CONNS { s[0].conns[i].h = -1; }
+  mcp_server_init(s[0].core[..], info, true, true);
+  s[0].core[0].caps = caps;
+  s[0].core[0].instructions = instructions;
+  mcp_evstore_init(s[0].events[..], MCP_EVSTORE_DATA_CAP);
+}
+
+mcp_http_server_listen :: (s: [] McpHttpServer, port: int) -> int {
+  rc := cxsrv_listen(port);
+  if rc != 0 { return rc; }
+  s[0].port = cxsrv_bound_port();
+  return 0;
+}
+
+// --- Low-level socket write helpers ---
+
+mcp_http_send_raw :: (h: int, data: string) -> bool {
+  for i: 0..<data.count {
+    if cxsrv_write(h, cast(int) data[i]) != 0 { return false; }
+  }
+  return cxsrv_flush(h, MCP_HTTP_FLUSH_MS) == 0;
+}
+
+mcp_http_send_response :: (s: [] McpHttpServer, h: int, status: int, reason: string, ct: string, extra_headers: string, body: string) -> bool {
+  n := mcp_http_write_response(status, reason, ct, extra_headers, body, s[0].out_buf[..]);
+  if n < 0 { return false; }
+  return mcp_http_send_raw(h, cast(string) s[0].out_buf[0..<n]);
+}
+
+mcp_http_send_sse_start :: (s: [] McpHttpServer, h: int, extra_headers: string) -> bool {
+  n := mcp_http_write_sse_headers(extra_headers, s[0].out_buf[..]);
+  if n < 0 { return false; }
+  return mcp_http_send_raw(h, cast(string) s[0].out_buf[0..<n]);
+}
+
+mcp_http_send_sse_event :: (s: [] McpHttpServer, h: int, id: string, event_name: string, retry_ms: int, data: string) -> bool {
+  ne := mcp_http_write_sse_event(id, event_name, retry_ms, data, s[0].sse_buf[..]);
+  if ne < 0 { return false; }
+  nc := mcp_http_write_chunk(cast(string) s[0].sse_buf[0..<ne], s[0].out_buf[..]);
+  if nc < 0 { return false; }
+  return mcp_http_send_raw(h, cast(string) s[0].out_buf[0..<nc]);
+}
+
+mcp_http_send_sse_keepalive :: (s: [] McpHttpServer, h: int) -> bool {
+  ne := mcp_http_write_sse_keepalive(s[0].sse_buf[..]);
+  if ne < 0 { return false; }
+  nc := mcp_http_write_chunk(cast(string) s[0].sse_buf[0..<ne], s[0].out_buf[..]);
+  if nc < 0 { return false; }
+  return mcp_http_send_raw(h, cast(string) s[0].out_buf[0..<nc]);
+}
+
+mcp_http_send_sse_end :: (s: [] McpHttpServer, h: int) -> bool {
+  nc := mcp_http_write_chunk_end(s[0].out_buf[..]);
+  if nc < 0 { return false; }
+  return mcp_http_send_raw(h, cast(string) s[0].out_buf[0..<nc]);
+}
+
+// --- Session management ---
+
+mcp_http_session_create :: (s: [] McpHttpServer, proto: string) -> string {
+  slot := -1;
+  for i: 0..<MCP_HTTP_MAX_SESSIONS {
+    if !s[0].sessions[i].active { slot = i; break; }
+  }
+  if slot < 0 { slot = 0; } // evict oldest if full
+  seq := s[0].next_session_seq;
+  s[0].next_session_seq += 1;
+  // Format "mcp-sess-<seq>"
+  n := mcp_http_append(s[0].sessions[slot].id_buf[..], 0, "mcp-sess-");
+  n = mcp_http_append_int(s[0].sessions[slot].id_buf[..], n, seq);
+  s[0].sessions[slot].id_len = n;
+  pl := ifx proto.count < 32 then proto.count else 32;
+  for i: 0..<pl { s[0].sessions[slot].proto_buf[i] = proto[i]; }
+  s[0].sessions[slot].proto_len = pl;
+  s[0].sessions[slot].active = true;
+  return cast(string) s[0].sessions[slot].id_buf[0..<n];
+}
+
+mcp_http_session_find :: (s: [] McpHttpServer, sid: string) -> int {
+  if sid.count <= 0 { return -1; }
+  for i: 0..<MCP_HTTP_MAX_SESSIONS {
+    if s[0].sessions[i].active {
+      cur := cast(string) s[0].sessions[i].id_buf[0..<s[0].sessions[i].id_len];
+      if cur == sid { return i; }
+    }
+  }
+  return -1;
+}
+
+mcp_http_session_delete :: (s: [] McpHttpServer, sid: string) -> bool {
+  idx := mcp_http_session_find(s, sid);
+  if idx < 0 { return false; }
+  s[0].sessions[idx].active = false;
+  return true;
+}
+
+// --- Connection management ---
+
+mcp_http_conn_close :: (s: [] McpHttpServer, idx: int) {
+  if idx < 0 || idx >= MCP_HTTP_MAX_CONNS { return; }
+  if s[0].conns[idx].active && s[0].conns[idx].h >= 0 {
+    _ = cxsrv_close(s[0].conns[idx].h);
+  }
+  s[0].conns[idx].active = false;
+  s[0].conns[idx].h = -1;
+  s[0].conns[idx].is_sse = false;
+  s[0].conns[idx].in_len = 0;
+}
+
+mcp_http_accept_all :: (s: [] McpHttpServer) {
+  while true {
+    h := cxsrv_accept();
+    if h <= 0 { break; }
+    slot := -1;
+    for i: 0..<MCP_HTTP_MAX_CONNS {
+      if !s[0].conns[i].active { slot = i; break; }
+    }
+    if slot < 0 {
+      _ = cxsrv_close(h);
+      continue;
+    }
+    s[0].conns[slot].active = true;
+    s[0].conns[slot].h = h;
+    s[0].conns[slot].is_sse = false;
+    s[0].conns[slot].sse_stream_id = 0;
+    s[0].conns[slot].last_ping_s = cxsrv_now_s();
+    s[0].conns[slot].in_len = 0;
+  }
+}
+
+// Broadcasts an SSE event (e.g. notification) to all open standalone GET SSE streams.
+mcp_http_broadcast_sse :: (s: [] McpHttpServer, event_id: string, data: string) {
+  for i: 0..<MCP_HTTP_MAX_CONNS {
+    if s[0].conns[i].active && s[0].conns[i].is_sse {
+      if !mcp_http_send_sse_event(s, s[0].conns[i].h, event_id, "message", -1, data) {
+        mcp_http_conn_close(s, i);
+      } else {
+        s[0].conns[i].last_ping_s = cxsrv_now_s();
+      }
+    }
+  }
+}
+
+// Polls the HTTP server and returns the next actionable host event (POST or GET SSE).
+// Handles Origin DNS-rebinding protection (403), DELETE session, 404/405/413/400,
+// and SSE keep-alives / disconnect cleanup automatically.
+mcp_http_server_step :: (s: [] McpHttpServer, timeout_ms: int) -> McpHttpEvent {
+  _ = cxsrv_poll(timeout_ms);
+  mcp_http_accept_all(s);
+  now_s := cxsrv_now_s();
+
+  for i: 0..<MCP_HTTP_MAX_CONNS {
+    if !s[0].conns[i].active { continue; }
+    h := s[0].conns[i].h;
+    n := cxsrv_read(h);
+    if n == CXSRV_EOF || n == CXSRV_ERROR {
+      mcp_http_conn_close(s, i);
+      continue;
+    }
+    if s[0].conns[i].is_sse {
+      if now_s - s[0].conns[i].last_ping_s >= MCP_HTTP_KEEPALIVE_S {
+        if !mcp_http_send_sse_keepalive(s, h) {
+          mcp_http_conn_close(s, i);
+        } else {
+          s[0].conns[i].last_ping_s = now_s;
+        }
+      }
+      continue;
+    }
+    if n > 0 {
+      if s[0].conns[i].in_len + n > MCP_HTTP_CONN_BUF {
+        _ = mcp_http_send_response(s, h, 413, "Payload Too Large", "text/plain", "", "Request too large");
+        mcp_http_conn_close(s, i);
+        continue;
+      }
+      for k: 0..<n {
+        s[0].conns[i].in_buf[s[0].conns[i].in_len + k] = cast(u8) cxsrv_byte(h, k);
+      }
+      s[0].conns[i].in_len += n;
+    }
+    if s[0].conns[i].in_len == 0 { continue; }
+
+    raw := cast(string) s[0].conns[i].in_buf[0..<s[0].conns[i].in_len];
+    req: [1] McpHttpRequest;
+    rc := mcp_http_parse_req(raw, MCP_HTTP_MAX_BODY, s[0].chunk_buf[..], req[..]);
+    if rc == MCP_HTTP_NEED_MORE { continue; }
+    if rc == MCP_HTTP_TOO_LARGE {
+      _ = mcp_http_send_response(s, h, 413, "Payload Too Large", "text/plain", "", "Payload Too Large");
+      mcp_http_conn_close(s, i);
+      continue;
+    }
+    if rc != MCP_HTTP_OK {
+      _ = mcp_http_send_response(s, h, 400, "Bad Request", "text/plain", "", "Bad Request");
+      mcp_http_conn_close(s, i);
+      continue;
+    }
+
+    // Origin & Host DNS-rebinding guard (required by MCP Streamable HTTP spec)
+    has_origin := false;
+    origin := "";
+    for hi: 0..<req[0].header_count {
+      if mcp_http_eq_ci(req[0].headers[hi].name, "Origin") {
+        has_origin = true;
+        origin = req[0].headers[hi].value;
+        break;
+      }
+    }
+    if !mcp_origin_check(has_origin, origin, s[0].allowed_origins[0..<s[0].allowed_origin_count], s[0].allow_localhost_origin) {
+      _ = mcp_http_send_response(s, h, 403, "Forbidden", "application/json", "", "{\"error\":\"Forbidden Origin\"}");
+      mcp_http_conn_close(s, i);
+      continue;
+    }
+    host_hdr := mcp_http_header_get(req[0], "Host");
+    if host_hdr.count > 0 && s[0].allow_localhost_origin {
+      // Strip optional :port (handling [::1]:port)
+      honly := host_hdr;
+      if host_hdr[0] == '[' {
+        rb := -1;
+        for hk: 0..<host_hdr.count { if host_hdr[hk] == ']' { rb = hk; break; } }
+        if rb > 0 { honly = host_hdr[0..<rb + 1]; }
+      } else {
+        col := -1;
+        for hk: 0..<host_hdr.count { if host_hdr[hk] == ':' { col = hk; break; } }
+        if col >= 0 { honly = host_hdr[0..<col]; }
+      }
+      if !mcp_http_eq_ci(honly, "localhost") && honly != "127.0.0.1" && honly != "[::1]" {
+        _ = mcp_http_send_response(s, h, 403, "Forbidden", "application/json", "", "{\"error\":\"Forbidden Host\"}");
+        mcp_http_conn_close(s, i);
+        continue;
+      }
+    }
+
+    // Optional custom GET route (e.g. RFC 9728 /.well-known/oauth-protected-resource)
+    if s[0].prm_path.count > 0 && req[0].method == "GET" && req[0].path == s[0].prm_path {
+      return McpHttpEvent.{ kind = MCP_HTTP_EV_CUSTOM_GET, conn_idx = i, h = h, req = req[0] };
+    }
+
+    // Route check
+    if req[0].path != s[0].mcp_path {
+      _ = mcp_http_send_response(s, h, 404, "Not Found", "text/plain", "", "Not Found");
+      mcp_http_conn_close(s, i);
+      continue;
+    }
+
+    if req[0].method == "DELETE" {
+      sid := mcp_http_header_get(req[0], "Mcp-Session-Id");
+      if sid.count > 0 && mcp_http_session_delete(s, sid) {
+        _ = mcp_http_send_response(s, h, 200, "OK", "", "", "");
+      } else {
+        _ = mcp_http_send_response(s, h, 404, "Not Found", "", "", "");
+      }
+      mcp_http_conn_close(s, i);
+      continue;
+    }
+
+    if req[0].method == "GET" {
+      accept := mcp_http_header_get(req[0], "Accept");
+      if !mcp_http_accepts(accept, "text/event-stream") {
+        _ = mcp_http_send_response(s, h, 405, "Method Not Allowed", "", "", "");
+        mcp_http_conn_close(s, i);
+        continue;
+      }
+      s[0].conns[i].is_sse = true;
+      s[0].conns[i].sse_stream_id = s[0].next_stream_seq;
+      s[0].next_stream_seq += 1;
+      s[0].conns[i].last_ping_s = now_s;
+      return McpHttpEvent.{ kind = MCP_HTTP_EV_GET_SSE, conn_idx = i, h = h, req = req[0] };
+    }
+
+    if req[0].method == "POST" {
+      return McpHttpEvent.{ kind = MCP_HTTP_EV_POST, conn_idx = i, h = h, req = req[0] };
+    }
+
+    _ = mcp_http_send_response(s, h, 405, "Method Not Allowed", "", "Allow: GET, POST, DELETE\r\n", "");
+    mcp_http_conn_close(s, i);
+  }
+
+  return McpHttpEvent.{ kind = MCP_HTTP_EV_NONE, conn_idx = -1, h = -1 };
+}

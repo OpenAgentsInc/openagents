@@ -1,0 +1,71 @@
+// Runnable example for The OpenAgents Book Chapter 10: Mobile and other native hosts.
+// Exercises the production #authority phone-to-host engine convergence policy
+// (coax/lib/agent/environment/phone-agent-policy.coax): converging primary mobile
+// chats onto OpenAgents Core (oa-worker), mapping legacy cloud/local model IDs,
+// clamping effort levels, enforcing opt-in external harness delegation, and
+// refusing invalid catalog slugs.
+//   coax/bin/coax run openagents/examples/phone-host-agent-policy.coax
+#import "Basic";
+#load "../../coax/lib/agent/environment/phone-agent-policy.coax";
+
+// book:begin phone-host-agent-policy
+phap_run :: () -> bool {
+  // 1. Converged host with OpenAgents Core + local Inkling + opt-out harnesses.
+  f := PaFacts.{claude = true, gemini = true, agy = true, inkling = true, core = true, core_local = true, allow_local_harnesses = false};
+  offered: [5] int;
+  n_off := pa_offer(f, offered[..]);
+
+  p_auto := pa_pick(f, "oa:auto");
+  p_legacy := pa_pick(f, "gemini-4-neon");
+  p_local := pa_pick(f, "oa:inkling-2-mini");
+  eff_local := pa_effort(p_local.engine, p_local.model, "xhigh");
+  print("offer=%:% auto=%/% legacy=%/% local=%/% effort=%\n",
+    n_off, PA_ENGINE_NAME[offered[0]],
+    PA_ENGINE_NAME[p_auto.engine], pa_core_task_model(p_auto.model),
+    PA_ENGINE_NAME[p_legacy.engine], pa_core_task_model(p_legacy.model),
+    PA_ENGINE_NAME[p_local.engine], pa_core_task_model(p_local.model), eff_local);
+
+  // 2. External harnesses never hijack primary chat when OpenAgents Core is ready;
+  // sub-agent delegation stays gated behind explicit allow_local_harnesses opt-in.
+  p_claude := pa_pick(f, "claude-sonnet-4-5");
+  note_buf: [256] u8;
+  note := pa_note(p_claude, note_buf[..]);
+  sub_core := pa_subagent_harness_allowed(f, PA_CORE);
+  sub_agy_off := pa_subagent_harness_allowed(f, PA_AGY);
+  sub_claude_off := pa_subagent_harness_allowed(f, PA_CLAUDE);
+
+  f_opt := f;
+  f_opt.allow_local_harnesses = true;
+  sub_agy_on := pa_subagent_harness_allowed(f_opt, PA_AGY);
+  sub_claude_on := pa_subagent_harness_allowed(f_opt, PA_CLAUDE);
+  print("fallback=% label=% note=%\n", p_claude.fell_back, pa_label(p_claude), note);
+  print("subagent core=% off=(agy=%,claude=%) on=(agy=%,claude=%)\n",
+    sub_core, sub_agy_off, sub_claude_off, sub_agy_on, sub_claude_on);
+
+  // 3. Refusals: missing local runtime falls back to cloud; bare/flag/malformed slugs refuse.
+  f_nolocal := f;
+  f_nolocal.core_local = false;
+  p_nolocal := pa_pick(f_nolocal, "oa:inkling-2-mini");
+  slug_ok := pa_agy_catalog_slug_ok("oa:gemini-4-neon");
+  slug_bad_sentinel := pa_agy_catalog_slug_ok("default");
+  slug_bad_flag := pa_agy_catalog_slug_ok("-flag");
+  slug_bad_space := pa_agy_catalog_slug_ok("oa:bad slug");
+  print("refuse_nolocal=%/% slug_ok=% refuse_slug=(%,%,%)\n",
+    p_nolocal.fell_back, p_nolocal.model, slug_ok,
+    !slug_bad_sentinel, !slug_bad_flag, !slug_bad_space);
+
+  return n_off == 1 && offered[0] == PA_CORE &&
+         p_auto.engine == PA_CORE && pa_core_task_model(p_auto.model) == "oa:auto" &&
+         p_legacy.engine == PA_CORE && pa_core_task_model(p_legacy.model) == "oa:cloud" &&
+         p_local.engine == PA_CORE && pa_core_task_model(p_local.model) == "oa:local" &&
+         eff_local == "high" && p_claude.fell_back && p_claude.engine == PA_CORE &&
+         sub_core && !sub_agy_off && !sub_claude_off && sub_agy_on && sub_claude_on &&
+         p_nolocal.fell_back && p_nolocal.model == "oa:auto" &&
+         slug_ok && !slug_bad_sentinel && !slug_bad_flag && !slug_bad_space;
+}
+// book:end phone-host-agent-policy
+
+main :: () {
+  ok := phap_run();
+  print("ok=%\n", ok);
+}

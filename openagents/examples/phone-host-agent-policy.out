@@ -1,0 +1,5 @@
+offer=1:OpenAgents Core auto=OpenAgents Core/oa:auto legacy=OpenAgents Core/oa:cloud local=OpenAgents Core/oa:local effort=high
+fallback=true label=OpenAgents Auto note=Claude Code isn't set up on this computer, so this chat runs on OpenAgents Auto.
+subagent core=true off=(agy=false,claude=false) on=(agy=true,claude=true)
+refuse_nolocal=true/oa:auto slug_ok=true refuse_slug=(true,true,true)
+ok=true

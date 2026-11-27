@@ -1,10 +1,21 @@
 # 10. Mobile and other native hosts
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. Chapters 1–3 already share `apps/shared/chat/screen.coax`
-> between desktop (`apps/openagents-desktop`, primary) and iOS
-> (`apps/openagents-ios`); this chapter finishes full host parity across iOS,
-> Linux desktop, and Android.
+> **Status: partly implemented.** The unified desktop/iOS GPU host carrier
+> ([`apps/openagents-ios/ios-app.coax`](../../apps/openagents-ios/ios-app.coax),
+> [`apps/openagents-ios/gpu-page.coax`](../../apps/openagents-ios/gpu-page.coax),
+> [`apps/openagents-ios/gpu-host.c`](../../apps/openagents-ios/gpu-host.c))
+> and the `#authority` phone-to-host engine convergence policy
+> ([`coax/lib/agent/environment/phone-agent-policy.coax`](../../coax/lib/agent/environment/phone-agent-policy.coax),
+> `#14060`, `#14073`) run on `cpu`, grounded by
+> [`openagents/examples/phone-host-agent-policy.coax`](../examples/phone-host-agent-policy.coax)
+> and [`openagents/examples/phone-host-agent-policy.out`](../examples/phone-host-agent-policy.out),
+> and are consumed by [`openagents/daemon/host.coax`](../../openagents/daemon/host.coax),
+> [`openagents/daemon/host-phone.coax`](../../openagents/daemon/host-phone.coax),
+> [`apps/shared/antigravity/client-core.coax`](../../apps/shared/antigravity/client-core.coax),
+> and [`apps/openagents-ios/Sources/GpuRootViewController.swift`](../../apps/openagents-ios/Sources/GpuRootViewController.swift).
+> Remaining: running chapter 6's `coax drive` acceptance case and native
+> accessibility UI tests across `macos-arm64`, `ios-simulator`, `ios-device`,
+> Linux Wayland, and `android-emulator` (`#14068`).
 
 ## Premise
 
@@ -113,14 +124,29 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the lean app's shared module, built for each host, and
-  chapter 6's `openagents/examples/cases/chat-page.ops`.
-- **Trace:** chapter 6's trace, byte for byte after each host's name line,
-  on `macos-arm64`, then on `android-emulator`.
-- **Refusal:** a host that lacks an operation the case uses refuses it by
-  name and is not named as a target.
-- **Independent check:** each platform's own UI test reads the chat page
-  through its accessibility tree with no `coax drive`.
+- **Source:** [`coax/lib/agent/environment/phone-agent-policy.coax`](../../coax/lib/agent/environment/phone-agent-policy.coax),
+  [`apps/openagents-ios/ios-app.coax`](../../apps/openagents-ios/ios-app.coax),
+  [`apps/openagents-ios/gpu-page.coax`](../../apps/openagents-ios/gpu-page.coax),
+  [`openagents/examples/phone-host-agent-policy.coax`](../examples/phone-host-agent-policy.coax),
+  and [`openagents/examples/phone-host-agent-policy.out`](../examples/phone-host-agent-policy.out)
+  (remaining: chapter 6's `openagents/examples/cases/chat-page.ops` across
+  `macos-arm64`, `ios-simulator`, `ios-device`, and `android-emulator`).
+- **Trace:** offers solely `OpenAgents Core` (`offer=1:OpenAgents Core`) when
+  `oa-worker` is available, maps `oa:auto`, legacy `gemini-4-neon`, and `$0`
+  `oa:inkling-2-mini` onto `PA_CORE` wire model IDs (`oa:auto`, `oa:cloud`,
+  `oa:local`), clamps local `xhigh` effort to `high`, and emits the fallback
+  notice when an external harness is asked for primary chat.
+- **Refusal:** `pa_subagent_harness_allowed` refuses `PA_AGY` and `PA_CLAUDE`
+  while `allow_local_harnesses=false`; missing local runtime falls back to
+  `oa:auto`; `pa_agy_catalog_slug_ok` refuses bare sentinels (`default`),
+  leading dashes (`-flag`), and whitespace (`oa:bad slug`). On native hosts, a
+  host lacking a `coax drive` operation refuses it by name and is not named as
+  a target.
+- **Independent check:** `coax/bin/coax run openagents/examples/phone-host-agent-policy.coax`
+  and `--release` match [`openagents/examples/phone-host-agent-policy.out`](../examples/phone-host-agent-policy.out),
+  alongside `#authority` tests and mutation checks in
+  [`coax/lib/agent/environment/phone-agent-policy.coax`](../../coax/lib/agent/environment/phone-agent-policy.coax)
+  (remaining: each platform's own accessibility UI test with no `coax drive`).
 
 Planned paths: none. The desktop app is
 [`apps/openagents-desktop`](../../apps/openagents-desktop/README.md); hosts
@@ -146,3 +172,75 @@ extend [`apps/shared/host`](../../apps/shared/host).
    conversation through our service, readable by the server at first
    (chapter 35). Confirm that, and say which collections get end-to-end
    encryption first.
+
+## Source listing
+
+Run the Chapter 10 example in [`openagents/examples/phone-host-agent-policy.coax`](../examples/phone-host-agent-policy.coax) (committed transcript [`openagents/examples/phone-host-agent-policy.out`](../examples/phone-host-agent-policy.out)):
+
+<!-- source: openagents/examples/phone-host-agent-policy.coax phone-host-agent-policy -->
+```jai
+phap_run :: () -> bool {
+  // 1. Converged host with OpenAgents Core + local Inkling + opt-out harnesses.
+  f := PaFacts.{claude = true, gemini = true, agy = true, inkling = true, core = true, core_local = true, allow_local_harnesses = false};
+  offered: [5] int;
+  n_off := pa_offer(f, offered[..]);
+
+  p_auto := pa_pick(f, "oa:auto");
+  p_legacy := pa_pick(f, "gemini-4-neon");
+  p_local := pa_pick(f, "oa:inkling-2-mini");
+  eff_local := pa_effort(p_local.engine, p_local.model, "xhigh");
+  print("offer=%:% auto=%/% legacy=%/% local=%/% effort=%\n",
+    n_off, PA_ENGINE_NAME[offered[0]],
+    PA_ENGINE_NAME[p_auto.engine], pa_core_task_model(p_auto.model),
+    PA_ENGINE_NAME[p_legacy.engine], pa_core_task_model(p_legacy.model),
+    PA_ENGINE_NAME[p_local.engine], pa_core_task_model(p_local.model), eff_local);
+
+  // 2. External harnesses never hijack primary chat when OpenAgents Core is ready;
+  // sub-agent delegation stays gated behind explicit allow_local_harnesses opt-in.
+  p_claude := pa_pick(f, "claude-sonnet-4-5");
+  note_buf: [256] u8;
+  note := pa_note(p_claude, note_buf[..]);
+  sub_core := pa_subagent_harness_allowed(f, PA_CORE);
+  sub_agy_off := pa_subagent_harness_allowed(f, PA_AGY);
+  sub_claude_off := pa_subagent_harness_allowed(f, PA_CLAUDE);
+
+  f_opt := f;
+  f_opt.allow_local_harnesses = true;
+  sub_agy_on := pa_subagent_harness_allowed(f_opt, PA_AGY);
+  sub_claude_on := pa_subagent_harness_allowed(f_opt, PA_CLAUDE);
+  print("fallback=% label=% note=%\n", p_claude.fell_back, pa_label(p_claude), note);
+  print("subagent core=% off=(agy=%,claude=%) on=(agy=%,claude=%)\n",
+    sub_core, sub_agy_off, sub_claude_off, sub_agy_on, sub_claude_on);
+
+  // 3. Refusals: missing local runtime falls back to cloud; bare/flag/malformed slugs refuse.
+  f_nolocal := f;
+  f_nolocal.core_local = false;
+  p_nolocal := pa_pick(f_nolocal, "oa:inkling-2-mini");
+  slug_ok := pa_agy_catalog_slug_ok("oa:gemini-4-neon");
+  slug_bad_sentinel := pa_agy_catalog_slug_ok("default");
+  slug_bad_flag := pa_agy_catalog_slug_ok("-flag");
+  slug_bad_space := pa_agy_catalog_slug_ok("oa:bad slug");
+  print("refuse_nolocal=%/% slug_ok=% refuse_slug=(%,%,%)\n",
+    p_nolocal.fell_back, p_nolocal.model, slug_ok,
+    !slug_bad_sentinel, !slug_bad_flag, !slug_bad_space);
+
+  return n_off == 1 && offered[0] == PA_CORE &&
+         p_auto.engine == PA_CORE && pa_core_task_model(p_auto.model) == "oa:auto" &&
+         p_legacy.engine == PA_CORE && pa_core_task_model(p_legacy.model) == "oa:cloud" &&
+         p_local.engine == PA_CORE && pa_core_task_model(p_local.model) == "oa:local" &&
+         eff_local == "high" && p_claude.fell_back && p_claude.engine == PA_CORE &&
+         sub_core && !sub_agy_off && !sub_claude_off && sub_agy_on && sub_claude_on &&
+         p_nolocal.fell_back && p_nolocal.model == "oa:auto" &&
+         slug_ok && !slug_bad_sentinel && !slug_bad_flag && !slug_bad_space;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/phone-host-agent-policy.coax`, identical in `--release`):
+
+```text
+offer=1:OpenAgents Core auto=OpenAgents Core/oa:auto legacy=OpenAgents Core/oa:cloud local=OpenAgents Core/oa:local effort=high
+fallback=true label=OpenAgents Auto note=Claude Code isn't set up on this computer, so this chat runs on OpenAgents Auto.
+subagent core=true off=(agy=false,claude=false) on=(agy=true,claude=true)
+refuse_nolocal=true/oa:auto slug_ok=true refuse_slug=(true,true,true)
+ok=true
+```

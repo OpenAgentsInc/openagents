@@ -1,0 +1,5 @@
+step 1 (2 tools): cont=next_turn turn=2 terminal=false
+step 2 (withheld PTL=true): cont=reactive_compact turn=2 task_budget=7500
+step 3 (1 tool): cont=next_turn turn=3 terminal=false
+step 4 (reply): terminal=true reason=completed save_cache_safe=true notify_done=true
+max_turns cap (2): terminal=true reason=max_turns turn=3

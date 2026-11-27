@@ -6,7 +6,7 @@
 > `dictate`, `transcribe`, `realm`, `vault`, `tasks`), rejects unsafe argument
 > characters, enforces bypass-immune interactive approval for vault secret
 > reads and Nostr signing/publishing, and runs inside
-> [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) beside the
+> [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax) beside the
 > command table and MCP server in [`apps/openagents-cli/`](../../apps/openagents-cli).
 > Remaining: auto-generating NIP-CAP descriptors for every command in
 > `openagents/agent/members/cli.coax`.

@@ -1,7 +1,22 @@
 # 25. Other engines
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` engine availability,
+> cooldown failover, and decision-door routing policies
+> ([`coax/lib/agent/engine/availability-policy.coax`](../../coax/lib/agent/engine/availability-policy.coax),
+> [`route-policy.coax`](../../coax/lib/agent/engine/route-policy.coax)),
+> unified engine interface ([`engine.coax`](../../coax/lib/agent/engine/engine.coax)),
+> native choice gating ([`coax/lib/agent/router/native-choice.coax`](../../coax/lib/agent/router/native-choice.coax)),
+> and external engine workers ([`openagents/workers/agyworker.coax`](../../openagents/workers/agyworker.coax),
+> [`coax/lib/agent/claude`](../../coax/lib/agent/claude),
+> [`coax/lib/agent/codex`](../../coax/lib/agent/codex),
+> [`coax/lib/agent/cursor`](../../coax/lib/agent/cursor)) run on `cpu`, grounded by
+> [`openagents/examples/engine-availability-routing.coax`](../examples/engine-availability-routing.coax)
+> and [`openagents/examples/engine-availability-routing.out`](../examples/engine-availability-routing.out),
+> and are consumed by [`coax/lib/agent/engine/availability.coax`](../../coax/lib/agent/engine/availability.coax),
+> [`coax/lib/agent/engine/route.coax`](../../coax/lib/agent/engine/route.coax),
+> and [`coax/lib/agent/router/wire.coax`](../../coax/lib/agent/router/wire.coax).
+> Remaining: cross-engine recorded-stream parity fixtures comparing every
+> external adapter's result fields one-by-one against chapter 24's Coder member.
 
 ## Premise
 
@@ -52,11 +67,11 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) and [`coax/lib/agent/router/native-choice.coax`](../../coax/lib/agent/router/native-choice.coax) (native default + opt-in external delegation gating, `#14071`)
+- [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax) and [`coax/lib/agent/router/native-choice.coax`](../../coax/lib/agent/router/native-choice.coax) (native default + opt-in external delegation gating, `#14071`)
 - [`coax/lib/agent/claude`](../../coax/lib/agent/claude)
 - [`coax/lib/agent/codex`](../../coax/lib/agent/codex)
 - [`coax/lib/agent/cursor`](../../coax/lib/agent/cursor)
-- [`coder/tui/agyworker.coax`](../../coder/tui/agyworker.coax)
+- [`coder/tui/agyworker.coax`](../../openagents/workers/agyworker.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
 - [`coax/lib/agent/engine/availability-policy.coax`](../../coax/lib/agent/engine/availability-policy.coax)
 
@@ -69,19 +84,25 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the engine field in the plan and the engine policy, over the
-  engines in `coax/lib/agent/engine/`, each replaying a recorded session.
-- **Trace:** "do it with Codex" builds a plan with the engine set to
-  Codex. The recorded Codex session runs, the result comes back in the
-  same shape as Coder's own, and the log names Codex as the engine that
-  ran.
-- **Refusal:** when the computer's owner does not allow the named engine,
-  the plan is refused with a reason that names the owner's policy, and no
-  engine starts. When the named engine is at its limit, the next one in
-  the policy takes over, and the log names it.
-- **Independent check:** each engine's recorded stream matches its format's
-  registered fixture, and the result's fields are compared one by one with
-  chapter 24's Coder result.
+- **Source:** [`coax/lib/agent/engine/availability-policy.coax`](../../coax/lib/agent/engine/availability-policy.coax),
+  [`coax/lib/agent/engine/route-policy.coax`](../../coax/lib/agent/engine/route-policy.coax),
+  [`openagents/examples/engine-availability-routing.coax`](../examples/engine-availability-routing.coax),
+  and [`openagents/examples/engine-availability-routing.out`](../examples/engine-availability-routing.out)
+  (remaining: end-to-end recorded session replay parity across all engine adapters).
+- **Trace:** parses engine allowlists (`def=15`, `pair=3`, `all=31`), honors
+  explicit preference `"codex"` (`pick=codex`), fails over to `claude` when
+  Codex is blocked by cooldown, keeps `antigravity` deferred unless alone or
+  preferred, maps difficulty tiers `0..4` (`haiku`, `sonnet`, `opus`), and
+  admits loopback and opt-in HTTPS decision doors.
+- **Refusal:** duplicate or unknown allowlists (`codex,codex`, `unknown`,
+  `cursor`) return `0` and never widen; corrupted >7-day cooldown resets
+  exclude the engine; invalid masks return `-1`; unopted remote, plaintext
+  remote HTTP, and credential-bearing URLs are refused by `cr_endpoint`.
+- **Independent check:** `coax/bin/coax run openagents/examples/engine-availability-routing.coax`
+  and `--release` match [`openagents/examples/engine-availability-routing.out`](../examples/engine-availability-routing.out),
+  alongside exhaustive subset `#test` and `#forall` URL byte-admission checks
+  in [`availability-policy.coax`](../../coax/lib/agent/engine/availability-policy.coax)
+  and [`route-policy.coax`](../../coax/lib/agent/engine/route-policy.coax).
 
 Planned paths: none. The engines are
 [`coax/lib/agent/engine/`](../../coax/lib/agent/engine): one interface
@@ -108,3 +129,69 @@ chapter 13's member list, with no engine code in `openagents/`.
 
 1. Which engines does 1.0 name? The Coax tree drives Claude Code, Codex and
    Cursor. The old tree also drove Grok Build, OpenCode and Devin.
+
+## Source listing
+
+Run the Chapter 25 example in [`openagents/examples/engine-availability-routing.coax`](../examples/engine-availability-routing.coax) (committed transcript [`openagents/examples/engine-availability-routing.out`](../examples/engine-availability-routing.out)):
+
+<!-- source: openagents/examples/engine-availability-routing.coax engine-availability-routing -->
+```jai
+ear_run :: () -> bool {
+  // 1. Allowlist parsing and explicit Codex selection ("do it with Codex").
+  def_mask := ca_allowed("");
+  pair_mask := ca_allowed("claude,codex");
+  all_mask := ca_allowed("antigravity,claude,codex,micro,psionic");
+  pick_codex := ca_pick(ca_index("codex"), pair_mask);
+
+  // 2. Cooldown failover: Codex is rate-limited until t=180; at t=150 it is blocked,
+  // so healthy mask drops Codex and fails over to Claude; at t=180 Codex recovers.
+  codex_cool := ca_blocked(100, 180, 150);
+  codex_ready := !ca_blocked(100, 180, 180);
+  failover := ca_pick(ca_index("codex"), pair_mask & (31 ^ (1 << ca_index("codex"))));
+  agy_only := ca_pick(-1, 16);
+  agy_deferred := ca_pick(-1, 17);
+  print("masks def=% pair=% all=% pick=% failover=% agy=(only=%,deferred=%)\n",
+    def_mask, pair_mask, all_mask, ear_name(pick_codex), ear_name(failover),
+    ear_name(agy_only), ear_name(agy_deferred));
+
+  // 3. Auto-routing verbs, difficulty model mapping, and loopback vs remote door admission.
+  auto_run := cr_auto("run", "");
+  auto_fork := cr_auto("fork", "");
+  m_low := cr_model("claude", 0);
+  m_mid := cr_model("claude", 2);
+  m_hi := cr_model("claude", 4);
+  ep_local := cr_endpoint("http://127.0.0.1:8793/v1/systemone", false);
+  ep_remote_ok := cr_endpoint("https://api.openagents.com/v1/systemone", true);
+  print("route auto_run=% fork_keeps_parent=% claude_tiers=%,%,% ep=(local=%,remote=%)\n",
+    auto_run, !auto_fork, m_low, m_mid, m_hi, ep_local, ep_remote_ok);
+
+  // 4. Fail-closed refusals: bad/duplicate allowlists never widen, out-of-range cooldown blocks,
+  // invalid mask returns -1, and remote/plaintext/credentialed endpoints refuse.
+  ref_dup := ca_allowed("codex,codex") == 0;
+  ref_unk := ca_allowed("unknown") == 0 && ca_allowed("cursor") == 0;
+  ref_corrupt_cd := ca_blocked(100, 604901, 604901);
+  ref_mask := ca_pick(0, 47) == -1;
+  ref_remote_off := !cr_endpoint("https://api.openagents.com/v1/systemone", false);
+  ref_http_remote := !cr_endpoint("http://api.openagents.com/v1/systemone", true);
+  ref_creds := !cr_endpoint("https://user@api.openagents.com/v1/systemone", true);
+  print("refuse dup=% unk=% corrupt_cd=% mask=% remote_off=% http=% creds=%\n",
+    ref_dup, ref_unk, ref_corrupt_cd, ref_mask, ref_remote_off, ref_http_remote, ref_creds);
+
+  return def_mask == 15 && pair_mask == 3 && all_mask == 31 &&
+         pick_codex == 1 && codex_cool && codex_ready && failover == 0 &&
+         agy_only == 4 && agy_deferred == 0 &&
+         auto_run && !auto_fork && m_low == "haiku" && m_mid == "sonnet" && m_hi == "opus" &&
+         ep_local && ep_remote_ok &&
+         ref_dup && ref_unk && ref_corrupt_cd && ref_mask &&
+         ref_remote_off && ref_http_remote && ref_creds;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/engine-availability-routing.coax`, identical in `--release`):
+
+```text
+masks def=15 pair=3 all=31 pick=codex failover=claude agy=(only=antigravity,deferred=claude)
+route auto_run=true fork_keeps_parent=true claude_tiers=haiku,sonnet,opus ep=(local=true,remote=true)
+refuse dup=true unk=true corrupt_cd=true mask=true remote_off=true http=true creds=true
+ok=true
+```

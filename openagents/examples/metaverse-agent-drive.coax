@@ -1,0 +1,66 @@
+// Runnable example for The OpenAgents Book Chapter 72: Agents you can meet.
+// Exercises the production Metaverse Engine agent driver (metaverse-engine/agent/drive.coax)
+// and read-only local agent process observer (coax/lib/agent/observe/processes.coax):
+// projecting player, guard, and working-agent actors into the world semantic tree,
+// issuing walk-to/quiet/stop commands and HUD tap-target lookups, observing local
+// running agents by executable basename without reading argv or prompts, and
+// proving fail-closed refusals on unknown targets, world-entity widget taps,
+// malformed process lines, and non-agent binaries.
+//   coax/bin/coax run openagents/examples/metaverse-agent-drive.coax
+#import "Basic";
+#load "../../metaverse-engine/agent/drive.coax";
+#load "../../coax/lib/agent/observe/processes.coax";
+
+// book:begin metaverse-agent-drive
+mad_run :: () -> bool {
+  // 1. Populate a realm frame with you, a town guard, a working agent actor, and an approval button.
+  d: [1] Drive;
+  d[0].on = true;
+  drv_frame(d[..], 800, 400, 2, false);
+  _ := drv_put(d[..], DRV_PLAYER, "you", -1, "Ash", 0, 0, 0, 10, 12, false);
+  _ = drv_put(d[..], DRV_NPC, "guard", -1, "Guard", 3, 0, 4, -1, -1, false);
+  _ = drv_put(d[..], DRV_NPC, "coder", 1, "Coder Agent", 6, 0, 0, -1, -1, false);
+  t := drv_trace(d[..]);
+  uit_part(t, "agent");
+  panel := uit_put(t, UIT_NONE, UIT_PANEL, 0, 0, 400, 200, "card");
+  uit_add(t, panel, UIT_BUTTON, 20, 20, 140, 120, "Approve");
+
+  // Note: Drive reuses its single output buffer d[0].out across commands, so inspect each answer in turn.
+  tree_has_agent := cp_has(drv_tree(d[..], false), "coder-1 npc \"Coder Agent\"");
+  btn_ok := drv_target(d[..], "agent.approve") == "40 35";
+  walk_ok := drv_command(d[..], "walk-to coder-1", 0) == "walk-to coder-1: going";
+  busy_ok := drv_command(d[..], "quiet", 0) == "busy: walk-to coder-1";
+  stop_ok := drv_command(d[..], "stop", 0) == "none: idle, stopped";
+  quiet_ok := drv_command(d[..], "quiet", 0) == "quiet";
+  print("world entities=% tree_agent=% btn=% walk=% busy=% stop=% quiet=%\n",
+    d[0].n, tree_has_agent, btn_ok, walk_ok, busy_ok, stop_ok, quiet_ok);
+
+  // 2. Read-only local agent observation (executable basenames only; never argv/prompts).
+  inv: [1] LaInventory;
+  ok1 := la_process_line(inv[..], "  42  12 /usr/local/bin/coder-abc123");
+  ok2 := la_process_line(inv[..], "  84  12 /opt/tools/codex");
+  ok_ign := la_process_line(inv[..], "  99  12 /usr/bin/node");
+  print("observe ok=%,%,% count=% engines=%,%\n",
+    ok1, ok2, ok_ign, inv[0].n,
+    LA_NAMES[inv[0].agents[0].engine], LA_NAMES[inv[0].agents[1].engine]);
+
+  // 3. Fail-closed refusals: world entity is not a HUD widget, unknown widget,
+  // bad hit coordinates, ambiguous/non-agent binary, and invalid PID 0 process line.
+  ref_world_tap := cp_has(drv_target(d[..], "coder-1"), "is in the world");
+  ref_unk_tap := cp_has(drv_target(d[..], "missing.btn"), "no missing.btn");
+  ref_bad_hit := cp_has(drv_command(d[..], "hit 1 -2", 0), "hit X Y");
+  ref_ambig := la_engine("/usr/local/bin/agent") == -1;
+  ref_bad_pid := !la_process_line(inv[..], "  0  1 /usr/bin/claude");
+  print("refuse world_tap=% unk_tap=% bad_hit=% ambig=% bad_pid=%\n",
+    ref_world_tap, ref_unk_tap, ref_bad_hit, ref_ambig, ref_bad_pid);
+
+  return d[0].n == 3 && tree_has_agent && btn_ok && walk_ok && busy_ok && stop_ok && quiet_ok &&
+         ok1 && ok2 && ok_ign && inv[0].n == 2 &&
+         ref_world_tap && ref_unk_tap && ref_bad_hit && ref_ambig && ref_bad_pid;
+}
+// book:end metaverse-agent-drive
+
+main :: () {
+  ok := mad_run();
+  print("ok=%\n", ok);
+}

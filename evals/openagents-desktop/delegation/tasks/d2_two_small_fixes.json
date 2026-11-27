@@ -1,0 +1,48 @@
+{
+  "id": "d2_two_small_fixes",
+  "category": "delegation_simple",
+  "fixture": "twobugs",
+  "description": "Two sub-agents, one small fix each",
+  "budget_usd_micros": 500000,
+  "timeout_s": 420,
+  "steps": [
+    {
+      "send": "Delegate the fix of mod_a.py to one sub-agent and the fix of mod_b.py to another (each has a failing test beside it). When both are done, run `python3 -m unittest` yourself and report."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_mod_a.py",
+        "test_mod_b.py"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "head",
+      "moved": false
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

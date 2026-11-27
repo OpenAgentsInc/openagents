@@ -355,3 +355,25 @@ int64_t oa_mobile_route_select(
 int oa_mobile_cred_audience_ok(int64_t presented_aud, int64_t expected_aud, int64_t now_ms, int64_t expires_ms) {
     return mc_cred_audience_ok(presented_aud, expected_aud, now_ms, expires_ms) ? 1 : 0;
 }
+
+int oa_mobile_fa_should_gate(int full_auto, int approval_mode, int64_t agy_mode, int session_allow) {
+    return mc_fa_should_gate(full_auto != 0, approval_mode != 0, agy_mode, session_allow != 0) ? 1 : 0;
+}
+
+int64_t oa_mobile_fa_decide_prompt(int full_auto, int auto_answer_questions, int64_t kind) {
+    return mc_fa_decide_prompt(full_auto != 0, auto_answer_questions != 0, kind);
+}
+
+int64_t oa_mobile_vd_vad_step(int64_t state_io[7], int64_t rms_bp, int64_t dt_ms) {
+    if (!state_io) return 0;
+    return mc_vd_vad_step((coax_v_s64){ state_io, 7 }, rms_bp, dt_ms);
+}
+
+int64_t oa_mobile_vd_sanitize_speech(const char *src, uint8_t *out, int64_t cap) {
+    if (!out || cap <= 0) return 0;
+    return mc_vd_sanitize_speech(oa_mc_cstr(src), oa_mc_out(out, cap));
+}
+
+int64_t oa_mobile_vd_sentence_end(const char *src) {
+    return mc_vd_sentence_end(oa_mc_cstr(src));
+}

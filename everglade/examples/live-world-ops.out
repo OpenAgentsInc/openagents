@@ -1,0 +1,5 @@
+slo_pass=true slo_miss_caught=true
+alert_silent=true drain_quiet=true sick_bits=22 db_alert=true crash_1h=true maint_on=true
+mod_ok=true refuse_nonmod=true refuse_self=true refuse_noreason=true mute_ms=3600000 speak_muted=true ticket_banned=true
+soak_pass=true soak_bad_why=slow-tick,leak,astray
+ok=true

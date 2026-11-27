@@ -1,0 +1,4 @@
+hook arbitration: allow_vs_deny=deny allow_vs_none=allow
+streaming executor: started=2 sibling_aborted=true turn_aborted=false slot1_aborted=true
+spill budget: read_keep=true bash_spill=true stage_b_replaced=1 id10=kept id11=replaced
+member dispatch: inspect_allow=true build_ask=true unknown_deny=true

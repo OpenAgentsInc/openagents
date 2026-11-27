@@ -1,0 +1,660 @@
+// Pure #authority HTTP/1.1 wire parser, chunked decoder, and Streamable HTTP / SSE
+// response serializer for MCP (2025-11-25 stateful + 2026-07-28 stateless).
+// Zero heap allocation; all slices borrow caller-owned buffers.
+#authority;
+#load "../json/json.coax";
+
+MCP_HTTP_MAX_HEADERS :: 48;
+
+// Incremental parse status codes
+MCP_HTTP_OK :: 0;
+MCP_HTTP_NEED_MORE :: 1;
+MCP_HTTP_BAD_REQ :: -1;
+MCP_HTTP_TOO_LARGE :: -2;
+
+McpHttpHeader :: struct {
+  name: string;
+  value: string;
+}
+
+McpHttpRequest :: struct {
+  method: string;
+  target: string;
+  path: string;
+  query: string;
+  version: string;
+  headers: [MCP_HTTP_MAX_HEADERS] McpHttpHeader;
+  header_count: int;
+  content_length: int;
+  has_content_length: bool;
+  is_chunked: bool;
+  header_end: int;   // byte offset immediately after \r\n\r\n
+  total_len: int;    // total bytes consumed from raw buffer (for keep-alive pipelining)
+  body: string;      // borrowed slice (identity) or decoded into chunk_out (chunked)
+}
+
+#test "http_wire parses HTTP/1.1 requests, headers, query, Content-Length, and chunked bodies" {
+  req: [1] McpHttpRequest;
+  chunk_buf: [256] u8;
+
+  // Incomplete headers -> NEED_MORE
+  #assert mcp_http_parse_req("POST /mcp HTTP/1.1\r\nHost: localhost\r\n", 1024, chunk_buf[..], req[..]) == MCP_HTTP_NEED_MORE;
+
+  // Complete GET request with query and mixed-case headers
+  raw_get := "GET /mcp?foo=bar HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nAccept: text/event-stream\r\nMcp-Session-Id: sess-1\r\n\r\n";
+  #assert mcp_http_parse_req(raw_get, 1024, chunk_buf[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].method == "GET" && req[0].target == "/mcp?foo=bar";
+  #assert req[0].path == "/mcp" && req[0].query == "foo=bar" && req[0].version == "HTTP/1.1";
+  #assert req[0].header_count == 3 && req[0].body == "" && req[0].total_len == raw_get.count;
+  #assert mcp_http_header_get(req[0], "host") == "127.0.0.1:8080";
+  #assert mcp_http_header_get(req[0], "MCP-SESSION-ID") == "sess-1";
+  #assert mcp_http_header_get(req[0], "Missing") == "";
+
+  // POST with Content-Length: incomplete body -> NEED_MORE, complete -> OK
+  raw_post_part := "POST /mcp HTTP/1.1\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 11\r\n\r\n{\"a\":";
+  #assert mcp_http_parse_req(raw_post_part, 1024, chunk_buf[..], req[..]) == MCP_HTTP_NEED_MORE;
+
+  raw_post := "POST /mcp HTTP/1.1\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 11\r\n\r\n{\"a\":12345}";
+  #assert mcp_http_parse_req(raw_post, 1024, chunk_buf[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].body == "{\"a\":12345}" && req[0].total_len == raw_post.count;
+  #assert mcp_http_is_json_ct(mcp_http_header_get(req[0], "content-type"));
+  #assert !mcp_http_is_json_ct("text/plain");
+  #assert !mcp_http_is_json_ct("application/jsonx");
+
+  // Body exceeding max_body -> TOO_LARGE
+  #assert mcp_http_parse_req(raw_post, 5, chunk_buf[..], req[..]) == MCP_HTTP_TOO_LARGE;
+
+  // Chunked POST body
+  raw_chunk := "POST /mcp HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\n{\"id\"\r\n4;ext=1\r\n:42}\r\n0\r\n\r\n";
+  #assert mcp_http_parse_req(raw_chunk, 1024, chunk_buf[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].is_chunked && req[0].body == "{\"id\":42}" && req[0].total_len == raw_chunk.count;
+
+  // Incomplete chunked body -> NEED_MORE
+  #assert mcp_http_parse_req("POST /mcp HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nabc", 1024, chunk_buf[..], req[..]) == MCP_HTTP_NEED_MORE;
+
+  // Malformed request line, bad version, negative Content-Length, conflicting CL+TE -> BAD_REQ
+  #assert mcp_http_parse_req("BADLINE\r\n\r\n", 1024, chunk_buf[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("GET / HTTP/2.0\r\n\r\n", 1024, chunk_buf[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("POST / HTTP/1.1\r\nContent-Length: -1\r\n\r\n", 1024, chunk_buf[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("POST / HTTP/1.1\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", 1024, chunk_buf[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("GET / HTTP/1.1\r\nBadHeaderNoColon\r\n\r\n", 1024, chunk_buf[..], req[..]) == MCP_HTTP_BAD_REQ;
+}
+
+#test "http_wire Accept matching, response writers, SSE framing, and chunk encoding" {
+  #assert mcp_http_accepts("application/json, text/event-stream", "application/json");
+  #assert mcp_http_accepts("application/json, text/event-stream", "text/event-stream");
+  #assert mcp_http_accepts("text/event-stream;q=0.9, application/*;q=0.8", "application/json");
+  #assert mcp_http_accepts("*/*", "text/event-stream");
+  #assert !mcp_http_accepts("application/json", "text/event-stream");
+  #assert !mcp_http_accepts("text/html", "application/json");
+  #assert !mcp_http_accepts("", "application/json");
+
+  out: [512] u8;
+  tiny: [8] u8;
+
+  // Standard JSON HTTP response
+  n := mcp_http_write_response(200, "OK", "application/json", "Mcp-Session-Id: s1\r\n", "{\"ok\":true}", out[..]);
+  #assert n > 0;
+  #assert cast(string) out[0..<n] == "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nMcp-Session-Id: s1\r\nConnection: close\r\n\r\n{\"ok\":true}";
+  #assert mcp_http_write_response(200, "OK", "application/json", "", "{}", tiny[..]) == -1;
+
+  // 202 Accepted empty body
+  n2 := mcp_http_write_response(202, "Accepted", "", "", "", out[..]);
+  #assert n2 > 0 && cast(string) out[0..<n2] == "HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+  // SSE headers
+  nh := mcp_http_write_sse_headers("Mcp-Session-Id: s1\r\n", out[..]);
+  #assert nh > 0;
+  #assert cast(string) out[0..<nh] == "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nX-Accel-Buffering: no\r\nTransfer-Encoding: chunked\r\nMcp-Session-Id: s1\r\nConnection: close\r\n\r\n";
+  #assert mcp_http_write_sse_headers("", tiny[..]) == -1;
+
+  // SSE event with id, event, retry, and multi-line data
+  ne := mcp_http_write_sse_event("ev-1", "message", 2500, "line1\nline2", out[..]);
+  #assert ne > 0 && cast(string) out[0..<ne] == "id: ev-1\nevent: message\nretry: 2500\ndata: line1\ndata: line2\n\n";
+  // Empty data still emits priming event (for SEP-1699 polling)
+  np := mcp_http_write_sse_event("p-1", "", 1000, "", out[..]);
+  #assert np > 0 && cast(string) out[0..<np] == "id: p-1\nretry: 1000\ndata: \n\n";
+  // Injection refusal
+  #assert mcp_http_write_sse_event("bad\nid", "", -1, "x", out[..]) == -1;
+  #assert mcp_http_write_sse_event("ok", "bad\rev", -1, "x", out[..]) == -1;
+  #assert mcp_http_write_sse_event("ok", "", -1, "x", tiny[..]) == -1;
+
+  // Keep-alive comment
+  nk := mcp_http_write_sse_keepalive(out[..]);
+  #assert nk == 14 && cast(string) out[0..<nk] == ": keep-alive\n\n";
+  #assert mcp_http_write_sse_keepalive(tiny[..]) == -1;
+
+  // Chunked framing
+  nc := mcp_http_write_chunk("hello world!", out[..]);
+  #assert nc > 0 && cast(string) out[0..<nc] == "c\r\nhello world!\r\n";
+  #assert mcp_http_write_chunk("", out[..]) == 0;
+  #assert mcp_http_write_chunk("hello", tiny[..]) == -1;
+  nce := mcp_http_write_chunk_end(out[..]);
+  #assert nce == 5 && cast(string) out[0..<nce] == "0\r\n\r\n";
+}
+
+#test "http_wire boundary, edge-case, and refusal coverage" {
+  // mcp_http_lower exact ASCII boundaries: '@'(64), 'A'(65), 'Z'(90), '['(91)
+  #assert mcp_http_lower('@') == '@';
+  #assert mcp_http_lower('A') == 'a';
+  #assert mcp_http_lower('Z') == 'z';
+  #assert mcp_http_lower('[') == '[';
+
+  // mcp_http_eq_ci index 0 difference and length mismatch
+  #assert !mcp_http_eq_ci("a", "b");
+  #assert !mcp_http_eq_ci("ab", "a");
+  #assert mcp_http_eq_ci("AbZ", "aBz");
+
+  // mcp_http_trim_ows: spaces, tabs, adjacent chars '!'(33) and '\n'(10), empty, all-ws
+  #assert mcp_http_trim_ows("") == "";
+  #assert mcp_http_trim_ows(" \t ") == "";
+  #assert mcp_http_trim_ows("\t !x! \t") == "!x!";
+  #assert mcp_http_trim_ows("\nx\n") == "\nx\n";
+  #assert mcp_http_trim_ows("x ") == "x";
+  #assert mcp_http_trim_ows("x\t") == "x";
+  #assert mcp_http_trim_ows("x\t\t ") == "x";
+
+  // mcp_http_parse_uint boundaries
+  #assert mcp_http_parse_uint("") == -1;
+  #assert mcp_http_parse_uint("0") == 0;
+  #assert mcp_http_parse_uint("9") == 9;
+  #assert mcp_http_parse_uint("/") == -1;
+  #assert mcp_http_parse_uint(":") == -1;
+  #assert mcp_http_parse_uint("900000000000000000") == 900000000000000000;
+  #assert mcp_http_parse_uint("9000000000000000000") == 9000000000000000000;
+  #assert mcp_http_parse_uint("9000000000000000010") == -1;
+
+  // mcp_http_parse_hex boundaries
+  #assert mcp_http_parse_hex("") == -1;
+  #assert mcp_http_parse_hex("0") == 0;
+  #assert mcp_http_parse_hex("9") == 9;
+  #assert mcp_http_parse_hex("/") == -1;
+  #assert mcp_http_parse_hex(":") == -1;
+  #assert mcp_http_parse_hex("a") == 10;
+  #assert mcp_http_parse_hex("f") == 15;
+  #assert mcp_http_parse_hex("`") == -1;
+  #assert mcp_http_parse_hex("g") == -1;
+  #assert mcp_http_parse_hex("A") == 10;
+  #assert mcp_http_parse_hex("F") == 15;
+  #assert mcp_http_parse_hex("@") == -1;
+  #assert mcp_http_parse_hex("G") == -1;
+  #assert mcp_http_parse_hex("1aF0") == 6896;
+  #assert mcp_http_parse_hex("6f05b59d3b20000") == 500000000000000000;
+  #assert mcp_http_parse_hex("6f05b59d3b200000") == 8000000000000000000;
+  #assert mcp_http_parse_hex("6f05b59d3b200010") == -1;
+
+  // mcp_http_append / int / hex boundaries
+  b3: [3] u8;
+  b4: [4] u8;
+  #assert mcp_http_append(b3[..], -1, "a") == -1;
+  #assert mcp_http_append(b3[..], 0, "abc") == 3;
+  #assert mcp_http_append(b3[..], 0, "abcd") == -1;
+  #assert mcp_http_append_int(b3[..], -1, 0) == -1;
+  #assert mcp_http_append_int(b3[..], 0, -1) == -1;
+  #assert mcp_http_append_int(b3[..], 0, 0) == 1 && cast(string) b3[0..<1] == "0";
+  #assert mcp_http_append_int(b3[..], 0, 123) == 3 && cast(string) b3[0..<3] == "123";
+  #assert mcp_http_append_int(b3[..], 0, 1234) == -1;
+  #assert mcp_http_append_hex(b3[..], -1, 0) == -1;
+  #assert mcp_http_append_hex(b3[..], 0, -1) == -1;
+  #assert mcp_http_append_hex(b3[..], 0, 0) == 1 && cast(string) b3[0..<1] == "0";
+  #assert mcp_http_append_hex(b3[..], 0, 0x1af) == 3 && cast(string) b3[0..<3] == "1af";
+  #assert mcp_http_append_hex(b3[..], 0, 0x1000) == -1;
+  #assert mcp_http_append_hex(b4[..], 1, 0x20) == 3 && cast(string) b4[1..<3] == "20";
+
+  // mcp_http_find_crlf boundaries
+  #assert mcp_http_find_crlf("", 0) == -1;
+  #assert mcp_http_find_crlf("\r", 0) == -1;
+  #assert mcp_http_find_crlf("\rX", 0) == -1;
+  #assert mcp_http_find_crlf("X\n", 0) == -1;
+  #assert mcp_http_find_crlf("\r\n", 0) == 0;
+  #assert mcp_http_find_crlf("ab\r\n", 0) == 2;
+  #assert mcp_http_find_crlf("ab\r\n", 2) == 2;
+
+  // mcp_http_decode_chunked edge cases
+  cbuf: [8] u8;
+  dlen: [1] int;
+  clen: [1] int;
+  #assert mcp_http_decode_chunked("5", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_decode_chunked("1\r\na\r\n", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_decode_chunked("\r\n", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_decode_chunked(";ext\r\n", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_decode_chunked("ZZ\r\n", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_decode_chunked("0\r\n", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_decode_chunked("0\r\nX-Tr: 1\r\n\r\n", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_OK;
+  #assert dlen[0] == 0 && clen[0] == 14;
+  #assert mcp_http_decode_chunked("0\r\nX-Tr: 1", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_decode_chunked("4\r\nabcd\r\n0\r\n\r\n", 4, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_OK;
+  #assert dlen[0] == 4 && cast(string) cbuf[0..<4] == "abcd";
+  #assert mcp_http_decode_chunked("8\r\n12345678\r\n0\r\n\r\n", 16, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_OK;
+  #assert dlen[0] == 8 && cast(string) cbuf[0..<8] == "12345678";
+  #assert mcp_http_decode_chunked("5\r\nabcde\r\n0\r\n\r\n", 4, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_TOO_LARGE;
+  #assert mcp_http_decode_chunked("9\r\n123456789\r\n0\r\n\r\n", 16, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_TOO_LARGE;
+  #assert mcp_http_decode_chunked("3\r\nabc\r", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_decode_chunked("3\r\nabcXY", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_decode_chunked("3\r\nabc\rX", 8, cbuf[..], dlen[..], clen[..]) == MCP_HTTP_BAD_REQ;
+
+  // mcp_http_parse_req edge cases
+  req: [1] McpHttpRequest;
+  ch: [64] u8;
+  #assert mcp_http_parse_req("\r\n\r", 64, ch[..], req[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_parse_req("GET / HTTP/1.1\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_parse_req("\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("\r\nGET / HTTP/1.1\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("GET /", 64, ch[..], req[..]) == MCP_HTTP_NEED_MORE;
+  #assert mcp_http_parse_req(" GET / HTTP/1.1\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req(" / HTTP/1.1\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("GET  HTTP/1.1\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("GET / \r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("A / HTTP/1.1\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].method == "A";
+  #assert mcp_http_parse_req("GET / HTTP/1.0\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].version == "HTTP/1.0" && req[0].header_end == 18 && req[0].path == "/" && req[0].query == "" && req[0].body == "";
+  #assert mcp_http_parse_req("GET ?q=1 HTTP/1.1\r\nX:v\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].path == "" && req[0].query == "q=1" && mcp_http_header_get(req[0], "X") == "v";
+  // Reuse req[0] to verify path/query/body reset
+  #assert mcp_http_parse_req("GET /p HTTP/1.1\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].path == "/p" && req[0].query == "" && req[0].body == "";
+  #assert mcp_http_parse_req("GET / HTTP/1.1\r\n:v\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("GET / HTTP/1.1\r\n:a:b\r\n\r\n", 64, ch[..], req[..]) == MCP_HTTP_BAD_REQ;
+  // Duplicate Content-Length: matching OK, mismatching BAD_REQ, exact max_body OK
+  #assert mcp_http_parse_req("POST / HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\nhi", 2, ch[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].body == "hi";
+  #assert mcp_http_parse_req("POST / HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 3\r\n\r\nhi", 8, ch[..], req[..]) == MCP_HTTP_BAD_REQ;
+  #assert mcp_http_parse_req("POST / HTTP/1.1\r\nContent-Length: 0\r\n\r\n", 0, ch[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].body == "";
+  // Too many headers: 48 OK, 49 TOO_LARGE
+  hbuf: [512] u8;
+  hp := mcp_http_append(hbuf[..], 0, "GET / HTTP/1.1\r\n");
+  for i: 0..<MCP_HTTP_MAX_HEADERS { hp = mcp_http_append(hbuf[..], hp, "a:1\r\n"); }
+  hp48 := mcp_http_append(hbuf[..], hp, "\r\n");
+  #assert mcp_http_parse_req(cast(string) hbuf[0..<hp48], 64, ch[..], req[..]) == MCP_HTTP_OK;
+  #assert req[0].header_count == MCP_HTTP_MAX_HEADERS;
+  hp49 := mcp_http_append(hbuf[..], hp, "b:2\r\n\r\n");
+  #assert mcp_http_parse_req(cast(string) hbuf[0..<hp49], 64, ch[..], req[..]) == MCP_HTTP_TOO_LARGE;
+
+  // Media type & Accept edge cases
+  #assert !mcp_http_is_json_ct(";charset=utf-8");
+  #assert mcp_http_is_json_ct("APPLICATION/JSON");
+  #assert !mcp_http_accepts(";q=1", "application/json");
+  #assert !mcp_http_accepts(";x", ";x");
+  #assert !mcp_http_accepts("text/*", "application/json");
+  #assert !mcp_http_accepts("a/*", "a");
+  #assert !mcp_http_accepts("/*", "/json");
+  #assert mcp_http_accepts("a/*", "a/b");
+  #assert mcp_http_accepts("x/y,a/b", "a/b");
+  #assert !mcp_http_accepts("a/b,", "");
+
+  // Response / SSE / chunk single-byte & NUL/CR edge cases
+  out: [512] u8;
+  n1 := mcp_http_write_response(200, "OK", "a", "X", "b", out[..]);
+  #assert n1 > 0 && cast(string) out[0..<n1] == "HTTP/1.1 200 OK\r\nContent-Type: a\r\nContent-Length: 1\r\nXConnection: close\r\n\r\nb";
+  ns1 := mcp_http_write_sse_headers("X", out[..]);
+  #assert ns1 > 0 && cast(string) out[0..<ns1] == "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nX-Accel-Buffering: no\r\nTransfer-Encoding: chunked\r\nXConnection: close\r\n\r\n";
+  ne0 := mcp_http_write_sse_event("", "", -1, "x", out[..]);
+  #assert ne0 > 0 && cast(string) out[0..<ne0] == "data: x\n\n";
+  ne1 := mcp_http_write_sse_event("1", "e", 0, "d", out[..]);
+  #assert ne1 > 0 && cast(string) out[0..<ne1] == "id: 1\nevent: e\nretry: 0\ndata: d\n\n";
+  #assert mcp_http_write_sse_event("a", "", -1, "x\ry", out[..]) == -1;
+  nul_arr: [2] u8;
+  nul_arr[0] = 'a';
+  nul_arr[1] = 0;
+  nul_s := cast(string) nul_arr[..];
+  #assert mcp_http_write_sse_event(nul_s, "", -1, "x", out[..]) == -1;
+  #assert mcp_http_write_sse_event("a", nul_s, -1, "x", out[..]) == -1;
+  #assert mcp_http_write_sse_event("a", "", -1, nul_s, out[..]) == -1;
+  nc1 := mcp_http_write_chunk("a", out[..]);
+  #assert nc1 == 6 && cast(string) out[0..<nc1] == "1\r\na\r\n";
+}
+
+// --- Internal ASCII helpers ---
+
+mcp_http_lower :: (c: u8) -> u8 #effects(traps) {
+  if c >= 'A' && c <= 'Z' { return c + 32; }
+  return c;
+}
+
+mcp_http_eq_ci :: (a: string, b: string) -> bool #effects(reads, traps) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    if mcp_http_lower(a[i]) != mcp_http_lower(b[i]) { return false; }
+  }
+  return true;
+}
+
+mcp_http_trim_ows :: (s: string) -> string #effects(reads, traps) {
+  a := 0;
+  while a < s.count && (s[a] == ' ' || s[a] == '\t') { a += 1; }
+  b := s.count;
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t') { b -= 1; }
+  return s[a..<b];
+}
+
+mcp_http_parse_uint :: (s: string) -> int #effects(reads, traps) {
+  if s.count == 0 { return -1; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return -1; }
+    if v > 900000000000000000 { return -1; }
+    v = v * 10 + cast(int)(c - '0');
+  }
+  return v;
+}
+
+mcp_http_parse_hex :: (s: string) -> int #effects(reads, traps) {
+  if s.count == 0 { return -1; }
+  v := 0;
+  for c: s {
+    d: int;
+    if c >= '0' && c <= '9' { d = cast(int)(c - '0'); }
+    else if c >= 'a' && c <= 'f' { d = 10 + cast(int)(c - 'a'); }
+    else if c >= 'A' && c <= 'F' { d = 10 + cast(int)(c - 'A'); }
+    else { return -1; }
+    if v > 500000000000000000 { return -1; }
+    v = v * 16 + d;
+  }
+  return v;
+}
+
+mcp_http_append :: (out: [] u8, at: int, s: string) -> int #effects(reads, writes, traps) {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+
+mcp_http_append_int :: (out: [] u8, at: int, val: int) -> int #effects(reads, writes, traps) {
+  if at < 0 || val < 0 { return -1; }
+  if val == 0 { return mcp_http_append(out, at, "0"); }
+  tmp: [24] u8;
+  n := 0;
+  x := val;
+  while x > 0 {
+    tmp[n] = cast(u8)('0' + (x % 10));
+    x /= 10;
+    n += 1;
+  }
+  if at + n > out.count { return -1; }
+  for i: 0..<n { out[at + i] = tmp[n - 1 - i]; }
+  return at + n;
+}
+
+MCP_HTTP_HEX :: "0123456789abcdef";
+
+mcp_http_append_hex :: (out: [] u8, at: int, val: int) -> int #effects(reads, writes, traps) {
+  if at < 0 || val < 0 { return -1; }
+  if val == 0 { return mcp_http_append(out, at, "0"); }
+  tmp: [20] u8;
+  n := 0;
+  x := val;
+  while x > 0 {
+    tmp[n] = MCP_HTTP_HEX[x % 16];
+    x /= 16;
+    n += 1;
+  }
+  if at + n > out.count { return -1; }
+  for i: 0..<n { out[at + i] = tmp[n - 1 - i]; }
+  return at + n;
+}
+
+mcp_http_find_crlf :: (s: string, from: int) -> int #effects(reads, traps) {
+  i := from;
+  while i + 1 < s.count {
+    if s[i] == '\r' && s[i + 1] == '\n' { return i; }
+    i += 1;
+  }
+  return -1;
+}
+
+// --- Public request parser ---
+
+mcp_http_header_get :: (req: McpHttpRequest, name: string) -> string #effects(reads, traps) {
+  for i: 0..<req.header_count {
+    if mcp_http_eq_ci(req.headers[i].name, name) { return req.headers[i].value; }
+  }
+  return "";
+}
+
+mcp_http_decode_chunked :: (raw: string, max_body: int, out: [] u8, decoded_len_out: [] int, consumed_out: [] int) -> int #effects(reads, writes, traps) {
+  pos := 0;
+  used := 0;
+  while pos != raw.count {
+    eol := mcp_http_find_crlf(raw, pos);
+    if eol == -1 { return MCP_HTTP_NEED_MORE; }
+    line := raw[pos..<eol];
+    // Strip optional chunk extensions (;...)
+    sz_str := mcp_http_trim_ows(mcp_http_before_semi(line));
+    sz := mcp_http_parse_hex(sz_str);
+    if sz < 0 { return MCP_HTTP_BAD_REQ; }
+    pos = eol + 2;
+    if sz == 0 {
+      // Skip optional trailer lines until empty CRLF
+      while pos != raw.count {
+        teol := mcp_http_find_crlf(raw, pos);
+        if teol == -1 { return MCP_HTTP_NEED_MORE; }
+        if teol == pos {
+          pos = teol + 2;
+          decoded_len_out[0] = used;
+          consumed_out[0] = pos;
+          return MCP_HTTP_OK;
+        }
+        pos = teol + 2;
+      }
+      return MCP_HTTP_NEED_MORE;
+    }
+    if used + sz > max_body || used + sz > out.count { return MCP_HTTP_TOO_LARGE; }
+    if pos + sz + 2 > raw.count { return MCP_HTTP_NEED_MORE; }
+    if raw[pos + sz] != '\r' || raw[pos + sz + 1] != '\n' { return MCP_HTTP_BAD_REQ; }
+    for i: 0..<sz { out[used + i] = raw[pos + i]; }
+    used += sz;
+    pos += sz + 2;
+  }
+  return MCP_HTTP_NEED_MORE;
+}
+
+mcp_http_parse_req :: (raw: string, max_body: int, chunk_out: [] u8, out: [] McpHttpRequest) -> int #effects(reads, writes, traps) {
+  out[0] = McpHttpRequest.{};
+  // Find end of header block (\r\n\r\n)
+  hend := -1;
+  i := 0;
+  while i + 3 < raw.count {
+    if raw[i] == '\r' && raw[i + 1] == '\n' && raw[i + 2] == '\r' && raw[i + 3] == '\n' {
+      hend = i + 4;
+      break;
+    }
+    i += 1;
+  }
+  if hend == -1 { return MCP_HTTP_NEED_MORE; }
+
+  // Request line
+  rl_end := mcp_http_find_crlf(raw, 0);
+  rline := raw[0..<rl_end];
+  sp1 := -1;
+  sp2: int;
+  for k: 0..<rline.count {
+    if rline[k] == ' ' {
+      if sp1 < 0 { sp1 = k; }
+      else { sp2 = k; break; }
+    }
+  }
+  if sp1 <= 0 || sp2 <= sp1 + 1 { return MCP_HTTP_BAD_REQ; }
+  out[0].method = rline[0..<sp1];
+  out[0].target = rline[sp1 + 1..<sp2];
+  out[0].version = rline[sp2 + 1..<rline.count];
+  if out[0].version != "HTTP/1.1" && out[0].version != "HTTP/1.0" { return MCP_HTTP_BAD_REQ; }
+
+  // Split target into path and query
+  q := -1;
+  for k: 0..<out[0].target.count {
+    if out[0].target[k] == '?' { q = k; break; }
+  }
+  if q >= 0 {
+    out[0].path = out[0].target[0..<q];
+    out[0].query = out[0].target[q + 1..<out[0].target.count];
+  } else {
+    out[0].path = out[0].target;
+  }
+
+  // Parse headers
+  pos := rl_end + 2;
+  while pos != hend - 2 {
+    eol := mcp_http_find_crlf(raw, pos);
+    hline := raw[pos..<eol];
+    colon := 0;
+    for k: 0..<hline.count { if hline[k] == ':' { colon = k; break; } }
+    if colon == 0 { return MCP_HTTP_BAD_REQ; }
+    hname := hline[0..<colon];
+    hval := mcp_http_trim_ows(hline[colon + 1..<hline.count]);
+    if out[0].header_count >= MCP_HTTP_MAX_HEADERS { return MCP_HTTP_TOO_LARGE; }
+    out[0].headers[out[0].header_count] = McpHttpHeader.{ name = hname, value = hval };
+    out[0].header_count += 1;
+
+    if mcp_http_eq_ci(hname, "Content-Length") {
+      cl := mcp_http_parse_uint(hval);
+      if cl < 0 { return MCP_HTTP_BAD_REQ; }
+      if out[0].has_content_length && out[0].content_length != cl { return MCP_HTTP_BAD_REQ; }
+      out[0].has_content_length = true;
+      out[0].content_length = cl;
+    } else if mcp_http_eq_ci(hname, "Transfer-Encoding") {
+      if mcp_http_eq_ci(hval, "chunked") { out[0].is_chunked = true; }
+    }
+    pos = eol + 2;
+  }
+
+  if out[0].has_content_length && out[0].is_chunked { return MCP_HTTP_BAD_REQ; }
+  out[0].header_end = hend;
+
+  if out[0].is_chunked {
+    dlen: [1] int;
+    clen: [1] int;
+    rc := mcp_http_decode_chunked(raw[hend..<raw.count], max_body, chunk_out, dlen[..], clen[..]);
+    if rc != MCP_HTTP_OK { return rc; }
+    out[0].body = cast(string) chunk_out[0..<dlen[0]];
+    out[0].total_len = hend + clen[0];
+    return MCP_HTTP_OK;
+  }
+
+  if out[0].has_content_length {
+    if out[0].content_length > max_body { return MCP_HTTP_TOO_LARGE; }
+    if hend + out[0].content_length > raw.count { return MCP_HTTP_NEED_MORE; }
+    out[0].body = raw[hend..<hend + out[0].content_length];
+    out[0].total_len = hend + out[0].content_length;
+    return MCP_HTTP_OK;
+  }
+
+  out[0].total_len = hend;
+  return MCP_HTTP_OK;
+}
+
+// --- Media type helpers ---
+
+mcp_http_before_semi :: (s: string) -> string #effects(reads, traps) {
+  for i: 0..<s.count { if s[i] == ';' { return s[0..<i]; } }
+  return s;
+}
+
+mcp_http_is_json_ct :: (ct: string) -> bool #effects(reads, traps) {
+  return mcp_http_eq_ci(mcp_http_trim_ows(mcp_http_before_semi(ct)), "application/json");
+}
+
+// True when Accept header permits the requested media type (e.g. "application/json" or "text/event-stream").
+mcp_http_accepts :: (accept: string, media_type: string) -> bool #effects(reads, traps) {
+  // Find slash in media_type for type/* wildcard match
+  mt_slash := 0;
+  for i: 1..<media_type.count { if media_type[i] == '/' { mt_slash = i; break; } }
+
+  pos := 0;
+  while pos < accept.count {
+    comma := accept.count;
+    for i: pos..<accept.count { if accept[i] == ',' { comma = i; break; } }
+    tok := mcp_http_trim_ows(mcp_http_before_semi(accept[pos..<comma]));
+    if mcp_http_eq_ci(tok, media_type) || tok == "*/*" { return true; }
+    if mt_slash > 0 && tok.count == mt_slash + 2 && tok[mt_slash] == '/' && tok[mt_slash + 1] == '*' {
+      if mcp_http_eq_ci(tok[0..<mt_slash], media_type[0..<mt_slash]) { return true; }
+    }
+    pos = comma + 1;
+  }
+  return false;
+}
+
+// --- Response & SSE writers ---
+
+mcp_http_write_response :: (status: int, reason: string, content_type: string, extra_headers: string, body: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := mcp_http_append(out, 0, "HTTP/1.1 ");
+  n = mcp_http_append_int(out, n, status);
+  n = mcp_http_append(out, n, " ");
+  n = mcp_http_append(out, n, reason);
+  n = mcp_http_append(out, n, "\r\n");
+  if content_type.count > 0 {
+    n = mcp_http_append(out, n, "Content-Type: ");
+    n = mcp_http_append(out, n, content_type);
+    n = mcp_http_append(out, n, "\r\n");
+  }
+  n = mcp_http_append(out, n, "Content-Length: ");
+  n = mcp_http_append_int(out, n, body.count);
+  n = mcp_http_append(out, n, "\r\n");
+  n = mcp_http_append(out, n, extra_headers);
+  n = mcp_http_append(out, n, "Connection: close\r\n\r\n");
+  n = mcp_http_append(out, n, body);
+  return n;
+}
+
+mcp_http_write_sse_headers :: (extra_headers: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := mcp_http_append(out, 0, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nX-Accel-Buffering: no\r\nTransfer-Encoding: chunked\r\n");
+  n = mcp_http_append(out, n, extra_headers);
+  n = mcp_http_append(out, n, "Connection: close\r\n\r\n");
+  return n;
+}
+
+mcp_http_has_ctrl :: (s: string) -> bool #effects(reads) {
+  for c: s { if c == '\r' || c == '\n' || c == 0 { return true; } }
+  return false;
+}
+
+// Formats a single SSE event block. Pass "" to omit id/event, or retry_ms < 0 to omit retry.
+mcp_http_write_sse_event :: (id: string, event_name: string, retry_ms: int, data: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  if mcp_http_has_ctrl(id) || mcp_http_has_ctrl(event_name) { return -1; }
+  for c: data { if c == '\r' || c == 0 { return -1; } }
+  n := 0;
+  if id.count > 0 {
+    n = mcp_http_append(out, n, "id: ");
+    n = mcp_http_append(out, n, id);
+    n = mcp_http_append(out, n, "\n");
+  }
+  if event_name.count > 0 {
+    n = mcp_http_append(out, n, "event: ");
+    n = mcp_http_append(out, n, event_name);
+    n = mcp_http_append(out, n, "\n");
+  }
+  if retry_ms >= 0 {
+    n = mcp_http_append(out, n, "retry: ");
+    n = mcp_http_append_int(out, n, retry_ms);
+    n = mcp_http_append(out, n, "\n");
+  }
+  from := 0;
+  for i: 0..<data.count + 1 {
+    if i == data.count || data[i] == '\n' {
+      n = mcp_http_append(out, n, "data: ");
+      n = mcp_http_append(out, n, data[from..<i]);
+      n = mcp_http_append(out, n, "\n");
+      from = i + 1;
+    }
+  }
+  n = mcp_http_append(out, n, "\n");
+  return n;
+}
+
+mcp_http_write_sse_keepalive :: (out: [] u8) -> int #effects(reads, writes, traps) {
+  return mcp_http_append(out, 0, ": keep-alive\n\n");
+}
+
+mcp_http_write_chunk :: (data: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  if data.count == 0 { return 0; }
+  n := mcp_http_append_hex(out, 0, data.count);
+  n = mcp_http_append(out, n, "\r\n");
+  n = mcp_http_append(out, n, data);
+  n = mcp_http_append(out, n, "\r\n");
+  return n;
+}
+
+mcp_http_write_chunk_end :: (out: [] u8) -> int #effects(reads, writes, traps) {
+  return mcp_http_append(out, 0, "0\r\n\r\n");
+}

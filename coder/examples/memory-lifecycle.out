@@ -1,0 +1,5 @@
+core memory: proj_dir=false user_dir=true path_ok=true path_escape=false fork_edit=true fork_outside=false dream_run=true secret_caught=true
+remember: build=ok ed1=ok ed2=ok look_editor=conflict
+revise: resolve=ok duplicate=same
+citation drift: before_update=stale stale_revise=source fresh_revise=ok after_update=served
+forget & replay: forget=ok look_editor=forgotten holds_vim=false holds_helix=false verify=ok replay=ok same=true

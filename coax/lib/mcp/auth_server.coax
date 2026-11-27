@@ -1,0 +1,141 @@
+// MCP OAuth 2.1 Resource Server middleware & RFC 9728 PRM responder.
+// Thin #effects adapter wiring coax/lib/mcp/auth_policy.coax, auth_wire.coax,
+// http_server.coax, and coax/lib/workos/jwt.coax.
+// Supports:
+//   - RFC 9728 GET /.well-known/oauth-protected-resource[...] JSON endpoint
+//   - Bearer token extraction + opaque token registry OR RS256 JWKS verification
+//   - RFC 8707 canonical audience check (resource URL match)
+//   - Scope enforcement with RFC 6750 401 invalid_token & 403 insufficient_scope
+//     WWW-Authenticate Bearer challenges including resource_metadata
+#load "auth_wire.coax";
+#load "http_server.coax";
+#load "../workos/jwt.coax";
+
+MCP_AUTH_MAX_TOKENS :: 16;
+
+McpAuthOpaqueToken :: struct {
+  active: bool;
+  token: string;
+  scopes: string;
+  audience: string;
+  subject: string;
+}
+
+McpAuthServer :: struct {
+  enabled: bool;
+  resource_url: string;       // e.g. "http://127.0.0.1:18421/mcp"
+  prm_url: string;            // e.g. "http://127.0.0.1:18421/.well-known/oauth-protected-resource/mcp"
+  auth_server_url: string;    // e.g. "http://127.0.0.1:18422"
+  scopes_supported: string;   // space-delimited
+  default_required_scopes: string;
+  jwks_json: string;          // optional RS256 JWKS for JWT verification
+  jwt_issuer: string;         // expected JWT iss (when jwks_json is set)
+  tokens: [MCP_AUTH_MAX_TOKENS] McpAuthOpaqueToken;
+  token_count: int;
+  scratch: [2048] u8;
+  www_buf: [1024] u8;
+}
+
+McpAuthDecision :: struct {
+  allowed: bool;
+  http_status: int;   // 200, 401, or 403
+  subject: string;
+  scopes: string;
+}
+
+mcp_auth_server_init :: (as: [] McpAuthServer, resource_url: string, prm_url: string, auth_server_url: string, scopes_supported: string, default_required_scopes: string) {
+  as[0] = McpAuthServer.{};
+  as[0].enabled = true;
+  as[0].resource_url = resource_url;
+  as[0].prm_url = prm_url;
+  as[0].auth_server_url = auth_server_url;
+  as[0].scopes_supported = scopes_supported;
+  as[0].default_required_scopes = default_required_scopes;
+}
+
+mcp_auth_server_add_token :: (as: [] McpAuthServer, token: string, scopes: string, audience: string, subject: string) -> bool {
+  if as[0].token_count >= MCP_AUTH_MAX_TOKENS || token.count == 0 { return false; }
+  idx := as[0].token_count;
+  as[0].tokens[idx] = McpAuthOpaqueToken.{
+    active = true,
+    token = token,
+    scopes = scopes,
+    audience = audience,
+    subject = subject
+  };
+  as[0].token_count += 1;
+  return true;
+}
+
+// Serves GET /.well-known/oauth-protected-resource[...] with RFC 9728 JSON metadata.
+mcp_auth_server_handle_prm :: (as: [] McpAuthServer, srv: [] McpHttpServer, h: int) -> bool {
+  n := mcp_auth_write_prm_json(as[0].resource_url, as[0].auth_server_url, as[0].scopes_supported, as[0].scratch[..]);
+  if n < 0 {
+    _ = mcp_http_send_response(srv, h, 500, "Internal Server Error", "application/json", "", "{\"error\":\"prm_encode_failed\"}");
+    return false;
+  }
+  return mcp_http_send_response(srv, h, 200, "OK", "application/json", "", cast(string) as[0].scratch[0..<n]);
+}
+
+mcp_auth_server_send_challenge :: (as: [] McpAuthServer, srv: [] McpHttpServer, h: int, status: int, err: string, scope: string) {
+  reason := ifx status == 403 then "Forbidden" else "Unauthorized";
+  hdr_pos := mcp_http_append(as[0].www_buf[..], 0, "WWW-Authenticate: ");
+  wn := mcp_auth_format_www_auth(as[0].prm_url, err, scope, as[0].www_buf[hdr_pos..<as[0].www_buf.count]);
+  extra := "";
+  if wn > 0 {
+    end := mcp_http_append(as[0].www_buf[..], hdr_pos + wn, "\r\n");
+    if end > 0 { extra = cast(string) as[0].www_buf[0..<end]; }
+  }
+  body := ifx status == 403
+    then "{\"error\":\"insufficient_scope\",\"error_description\":\"Token lacks required scope\"}"
+    else "{\"error\":\"invalid_token\",\"error_description\":\"Missing or invalid Bearer token\"}";
+  _ = mcp_http_send_response(srv, h, status, reason, "application/json", extra, body);
+}
+
+// Evaluates an incoming HTTP request's Authorization: Bearer token against opaque tokens
+// (or optional RS256 JWKS) + RFC 8707 audience + required scopes.
+// If unauthorized/forbidden, writes the exact 401/403 WWW-Authenticate response onto `h`.
+mcp_auth_server_authorize :: (as: [] McpAuthServer, srv: [] McpHttpServer, h: int, req: McpHttpRequest, required_scopes: string) -> McpAuthDecision {
+  if !as[0].enabled {
+    return McpAuthDecision.{ allowed = true, http_status = 200 };
+  }
+  need_sc := ifx required_scopes.count > 0 then required_scopes else as[0].default_required_scopes;
+
+  auth_hdr := mcp_http_header_get(req, "Authorization");
+  tok := mcp_auth_extract_bearer(auth_hdr);
+  if tok.count == 0 {
+    mcp_auth_server_send_challenge(as, srv, h, 401, "invalid_token", need_sc);
+    return McpAuthDecision.{ allowed = false, http_status = 401 };
+  }
+
+  // 1. Check registered opaque tokens (constant-time comparison via wos_state_equal)
+  for i: 0..<as[0].token_count {
+    t := as[0].tokens[i];
+    if t.active && wos_state_equal(tok, t.token) {
+      if t.audience.count > 0 && !mcp_auth_audience_matches(as[0].resource_url, t.audience) {
+        mcp_auth_server_send_challenge(as, srv, h, 401, "invalid_token", need_sc);
+        return McpAuthDecision.{ allowed = false, http_status = 401 };
+      }
+      if !mcp_auth_has_all_scopes(t.scopes, need_sc) {
+        mcp_auth_server_send_challenge(as, srv, h, 403, "insufficient_scope", need_sc);
+        return McpAuthDecision.{ allowed = false, http_status = 403 };
+      }
+      return McpAuthDecision.{ allowed = true, http_status = 200, subject = t.subject, scopes = t.scopes };
+    }
+  }
+
+  // 2. Optional RS256 JWT verification via WorkOS JWKS verifier
+  if as[0].jwks_json.count > 0 {
+    claims: [1] WosJwtClaims;
+    now_s := cxsrv_now_s();
+    jrc := wos_jwt_verify_session(tok, as[0].jwks_json, as[0].jwt_issuer, now_s, claims[..]);
+    if jrc == WOS_JWT_OK {
+      sub_n := mcp_http_append(as[0].scratch[..], 0, cast(string) claims[0].sub[0..<claims[0].sub_n]);
+      sub := ifx sub_n > 0 then cast(string) as[0].scratch[0..<sub_n] else "";
+      return McpAuthDecision.{ allowed = true, http_status = 200, subject = sub };
+    }
+  }
+
+  mcp_auth_server_send_challenge(as, srv, h, 401, "invalid_token", need_sc);
+  return McpAuthDecision.{ allowed = false, http_status = 401 };
+}

@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "kind": "book-routes-qualification-index",
+  "date": "2026-11-26",
+  "observed_revision": "da6ab05135e414fb2736a1e9f9744463548288b8",
+  "passed": true,
+  "profiles_verified": 8,
+  "profiles_deferred_to_parallel_sync": [
+    {
+      "id": "coder-harness-memory",
+      "book": "coder",
+      "reason": "Verified separately by the parallel Coder book sync commit; intentionally skipped here to preserve non-overlapping ownership."
+    }
+  ],
+  "fresh_step_mode_executions": 53,
+  "fresh_total_wall_seconds": 78.05,
+  "retained_step_mode_observations": 53,
+  "example_executions_during_retention": 0,
+  "retained_total_wall_seconds": 6.765,
+  "tools": {
+    "coax": {
+      "sha256": "8a8bcc05b49468bf40c17400ab7eb677e41bfe24549617d60f3ca9a54fbfd7aa",
+      "version": "coax0 0.52.0"
+    },
+    "cc": {
+      "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+      "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+    },
+    "python": {
+      "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+      "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+    }
+  },
+  "target": {
+    "system": "Darwin",
+    "release": "25.4.0",
+    "machine": "arm64",
+    "SDKROOT": "",
+    "MACOSX_DEPLOYMENT_TARGET": ""
+  },
+  "runner_sha256": "36ff17103b29a508e536431f65b14c34ea99aae980e77a6416960aa2408d4a06",
+  "runner_tests": {
+    "command": "python3 -m unittest scripts/tests/test_book_routes.py",
+    "passed": 27,
+    "failed": 0,
+    "test_sha256": "462860d671a700d5268378a9e1358cbdbddd4058a4f4acb9dba6ae35faf30d67"
+  },
+  "coax_book_examples": {
+    "command": "timeout 300 bash coax/book/check-examples.sh",
+    "status": "passed",
+    "exit_status": 0,
+    "units": 119,
+    "wall_seconds": 78.201,
+    "scope": "debug, release, checks, ch17_glow Metal emission, ch27_frontend, ch20_interop (C + Swift), ch15_requests mutation gate, ch24_workflow native host, and structure",
+    "script_sha256": "d2142e9babf911eb37724c5e1466ff9e7ba15e0da4809e761fdf9beb4f14ce4d"
+  },
+  "routes": [
+    {
+      "id": "coax-current-ffi",
+      "book": "coax",
+      "title": "Current Coax and a local C boundary",
+      "status": "passed",
+      "fresh_executed": 7,
+      "fresh_wall_seconds": 4.341,
+      "retained_verified": 7,
+      "retained_executed": 0,
+      "retained_wall_seconds": 0.766,
+      "record": "docs/verification/book-routes-2026-11-26/coax-current-ffi.json",
+      "record_sha256": "3b048b7cb14118f5bde123fb32fc899a0f932b1b3c42193658a5078005a7a595",
+      "raw_receipt_integrity_sha256": "3545ff75e2b6459d29613a39ec9e4a75ba88e626a500939deabb1eb88c93488e"
+    },
+    {
+      "id": "aethyr-core-replay",
+      "book": "metaverse-engine",
+      "title": "Metaverse Engine fixed steps, input and replay",
+      "status": "passed",
+      "fresh_executed": 6,
+      "fresh_wall_seconds": 4.51,
+      "retained_verified": 6,
+      "retained_executed": 0,
+      "retained_wall_seconds": 0.67,
+      "record": "docs/verification/book-routes-2026-11-26/aethyr-core-replay.json",
+      "record_sha256": "1656c33caf0ace9a54c3219dfb25c4e06fa9dc9bce207994dd83a42fd6d49356",
+      "raw_receipt_integrity_sha256": "5011159ecfe2e2de5b8da2c5964f645feb657d6fe051a675fae7329573b728d8"
+    },
+    {
+      "id": "psionic-public-models",
+      "book": "psionic",
+      "title": "Train and resume a tiny module, then inspect MLP and CNN models",
+      "status": "passed",
+      "fresh_executed": 6,
+      "fresh_wall_seconds": 23.631,
+      "retained_verified": 6,
+      "retained_executed": 0,
+      "retained_wall_seconds": 0.808,
+      "record": "docs/verification/book-routes-2026-11-26/psionic-public-models.json",
+      "record_sha256": "af3cb989db8020ed47734bc6aea6dc3e5128b9f9e35dc786b52aee2c9d8725db",
+      "raw_receipt_integrity_sha256": "478da205cea00f499708519f23b38deeb952a05f884e01a45a5174b2ff67919f"
+    },
+    {
+      "id": "nostr-event-client",
+      "book": "nostr",
+      "title": "Sign and verify an event, then replay a client connection",
+      "status": "passed",
+      "fresh_executed": 4,
+      "fresh_wall_seconds": 14.296,
+      "retained_verified": 4,
+      "retained_executed": 0,
+      "retained_wall_seconds": 0.637,
+      "record": "docs/verification/book-routes-2026-11-26/nostr-event-client.json",
+      "record_sha256": "8d9b86dd65d3473904a8bbdf4e98a860465286d84a39a2017cebc05c35e96578",
+      "raw_receipt_integrity_sha256": "9e14146cda0f6ecfb85ef12a31677ad6080989fb4a950f84ad4fd3a85e605bcc"
+    },
+    {
+      "id": "executor-network-flywheel",
+      "book": "psionic",
+      "title": "Executor Network: exact replay, 3-leg settlement, and quarantined decentralized training",
+      "status": "passed",
+      "fresh_executed": 10,
+      "fresh_wall_seconds": 5.568,
+      "retained_verified": 10,
+      "retained_executed": 0,
+      "retained_wall_seconds": 1.13,
+      "record": "docs/verification/book-routes-2026-11-26/executor-network-flywheel.json",
+      "record_sha256": "bfd1279dd7af2e144f1e55a3e5174a52e6047762e88ce48c468470dca5872bef",
+      "raw_receipt_integrity_sha256": "aaf622e47e377e1b7d6ae593ac3ca72e1e8d4df9a474a0abc8b741d5f8c7b442"
+    },
+    {
+      "id": "bitcoin-crypto-settlement",
+      "book": "bitcoin",
+      "title": "Bitcoin: HMAC-SHA256, BIP-340 Schnorr verification, addresses, and 3-leg settlement",
+      "status": "passed",
+      "fresh_executed": 8,
+      "fresh_wall_seconds": 8.417,
+      "retained_verified": 8,
+      "retained_executed": 0,
+      "retained_wall_seconds": 0.928,
+      "record": "docs/verification/book-routes-2026-11-26/bitcoin-crypto-settlement.json",
+      "record_sha256": "8288fd6dc6ad2c3e58af528f2992b19bea62b2881eda8eac33d27e3eba9bab6f",
+      "raw_receipt_integrity_sha256": "1a0f805c6237697ba60d705297bad0c714418472f81cf7b957d2fbffaa5bc5ef"
+    },
+    {
+      "id": "everglade-world-srd-dragon",
+      "book": "everglade",
+      "title": "Everglade: terrain seams, SRD d20 rolls, and Adult Red Dragon flight & Shapechange",
+      "status": "passed",
+      "fresh_executed": 6,
+      "fresh_wall_seconds": 5.791,
+      "retained_verified": 6,
+      "retained_executed": 0,
+      "retained_wall_seconds": 1.008,
+      "record": "docs/verification/book-routes-2026-11-26/everglade-world-srd-dragon.json",
+      "record_sha256": "5d26fc3247331e85652dbf2c6b8e8d0f8fcb7a8078120ce938b363d70e9419bb",
+      "raw_receipt_integrity_sha256": "1df9dfc7678e3a9a084173a1c6dece98370fcf94d4732b1763a0ca98f25fbde0"
+    },
+    {
+      "id": "openagents-app-economy",
+      "book": "openagents",
+      "title": "OpenAgents: chat screen state, signed module registry, and capability economy E2E",
+      "status": "passed",
+      "fresh_executed": 6,
+      "fresh_wall_seconds": 11.496,
+      "retained_verified": 6,
+      "retained_executed": 0,
+      "retained_wall_seconds": 0.818,
+      "record": "docs/verification/book-routes-2026-11-26/openagents-app-economy.json",
+      "record_sha256": "204af9bd3add764045550f9fc3cb68ea238a2b7752f5f3e28454521619474dfc",
+      "raw_receipt_integrity_sha256": "90415fcc241c8f6a97f2e451e0d05f093f806fc1afe9acc831d0aff154e49fd6"
+    }
+  ],
+  "real_gitbook_publication_performed": false,
+  "live_body_parity_claimed": false,
+  "limits": [
+    "Bounded native teaching/workflow routes on CPU; no whole-book, GPU kernel, live relay, live Bitcoin wallet, or production deployment qualification.",
+    "Raw stdout/stderr .assets directories are intentionally excluded from git per #13840 (docs/verification/.gitignore and pp_verif_bloat); SHA-256 digests of every stdout, stderr, expected fixture, input source closure, and raw runner receipt are bound in each JSON record.",
+    "coder-harness-memory (the 9th catalog route) is intentionally excluded from this batch and verified separately by the parallel Coder book sync.",
+    "Git HEAD at observation identifies the base commit; recorded per-file SHA-256 hashes identify the actual checked-out inputs."
+  ],
+  "integrity_sha256": "7093c71904e69c70775b8e4d40b8fe532ad2f59b37ad17ef7e630701541d7830"
+}

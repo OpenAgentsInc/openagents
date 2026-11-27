@@ -71,7 +71,7 @@ ar_origin_ok :: (o: string) -> bool #effects(all) {
 // (Coder's realm tools pass --origin for the dev server the page is on).
 #test "an explicit origin is kept for a profile without one, as login keeps it" {
   s := "https://staging.openagents.com";
-  for d: [6] string.["whoami", "account", "access", "realm", "admin", "projects"] { #assert ar_keep_origin(d, s, false, "file", 0); }
+  for d: [7] string.["whoami", "account", "access", "realm", "admin", "projects", "environments"] { #assert ar_keep_origin(d, s, false, "file", 0); }
   #assert ar_keep_origin("realm", s, false, "keychain", 0) && !ar_keep_origin("access", "http://127.0.0.1:8800", false, "file", 0) && !ar_keep_origin("realm", "http://localhost:9538", false, "file", 0);
   #assert !ar_keep_origin("realm", s, true, "file", 0) && !ar_keep_origin("realm", s, false, "env", 0) && !ar_keep_origin("realm", s, false, "", 0);
   #assert !ar_keep_origin("realm", s, false, "file", 1) && !ar_keep_origin("realm", s, false, "file", 4) && !ar_keep_origin("realm", s, false, "file", -1);
@@ -81,7 +81,7 @@ ar_origin_ok :: (o: string) -> bool #effects(all) {
 ar_keep_origin :: (domain: string, origin: string, saved: bool, key_from: string, code: int) -> bool #effects(all) {
   if code != 0 || saved || !ar_origin_ok(origin) || !ar_starts(origin, "https://") { return false; }   // 0: EXIT_OK; a dev server's http:// isn't kept
   if key_from != "file" && key_from != "keychain" { return false; }
-  return domain == "whoami" || domain == "account" || domain == "access" || domain == "realm" || domain == "admin" || domain == "projects";
+  return domain == "whoami" || domain == "account" || domain == "access" || domain == "realm" || domain == "admin" || domain == "projects" || domain == "environments";
 }
 
 // What a server said, with the server: "https://openagents.com: invite only",

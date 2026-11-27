@@ -13,6 +13,8 @@
 # moved: verse/ -> metaverse/
 # moved: aethyr/forge/ -> metaverse-engine/editor/
 # moved: aethyr/ -> metaverse-engine/
+# moved: coder/tui/ -> openagents/workers/tests/
+# moved: coder/tui/ -> coder/tui/tests/
 # base: 0c2f9f4cdaff0e9f392a334a288537c452921185
 apps/openagents-ios/tools/app_store.py
 apps/openagents-web/.dev/nostr/test.py
@@ -397,12 +399,12 @@ coax/web/room/build.sh
 coax/web/room/deploy.sh
 coax/web/smoke-compare.sh
 coax/web/tests/smoke_compare_test.sh
-coder/tui/claude_stub.py
-coder/tui/filter_eval.py
-coder/tui/inject_lab.py
-coder/tui/local_model.py
-coder/tui/route_eval.py
-coder/tui/smoke.py
+openagents/workers/tests/claude_stub.py
+coder/tui/tests/filter_eval.py
+coder/tui/tests/inject_lab.py
+coder/tui/tests/local_model.py
+coder/tui/tests/route_eval.py
+coder/tui/tests/smoke.py
 psionic/fixtures/robotics/locomotion-gaussian/coefficient-inline.py
 psionic/fixtures/robotics/locomotion-gaussian/endpoint-derivation.py
 psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fifth-attempt.driver.py

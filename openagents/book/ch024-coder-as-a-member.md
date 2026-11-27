@@ -1,7 +1,17 @@
 # 24. Coder as a member
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The unified pure-Coax OpenAgents Core runtime
+> ([`openagents/core/core.coax`](../../openagents/core/core.coax),
+> [`query_loop.coax`](../../openagents/core/query_loop.coax),
+> [`wire.coax`](../../openagents/core/wire.coax)), `#authority` member pack
+> dispatch and bypass-immune permission policy
+> ([`openagents/core/members.coax`](../../openagents/core/members.coax), `#14057`),
+> and native Desktop worker ([`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax))
+> run on `cpu`, grounded by [`openagents/examples/coder-member-dispatch.coax`](../examples/coder-member-dispatch.coax)
+> and [`openagents/examples/coder-member-dispatch.out`](../examples/coder-member-dispatch.out),
+> and are adopted by [`apps/openagents-desktop/Window+Runs.swift`](../../apps/openagents-desktop/Window+Runs.swift).
+> Remaining: standalone fixture-repo worktree/push adapter and `openagents.exec.v1`
+> protobuf codec in `openagents/agent/members/coder.coax`.
 
 ## Premise
 
@@ -49,8 +59,9 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`openagents/core/core.coax`](../../openagents/core/core.coax) and [`openagents/core/query_loop.coax`](../../openagents/core/query_loop.coax) (the unified 24-layer pure-Coax runtime, `#14050`–`#14057`)
-- [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) (native OpenAgents Core worker replacing deprecated `coax/lib/microcoder`, `#13983`)
+- [`openagents/core/members.coax`](../../openagents/core/members.coax) (`#authority` member packs and bypass-immune `WalletPay`, vault, and Nostr signing guards, `#14057`)
+- [`openagents/core/core.coax`](../../openagents/core/core.coax), [`openagents/core/query_loop.coax`](../../openagents/core/query_loop.coax), and [`openagents/core/wire.coax`](../../openagents/core/wire.coax) (the unified 24-layer pure-Coax runtime, `#14050`–`#14057`)
+- [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax) (native OpenAgents Core worker replacing deprecated `coax/lib/microcoder`, `#13983`)
 - [`coax/lib/inky/`](../../coax/lib/inky) (local `Inkling-2-Mini` coding agent loop)
 - [`coder/tui/coder.coax`](../../coder/tui/coder.coax)
 - [`coax/lib/agent`](../../coax/lib/agent)
@@ -65,19 +76,27 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the adapter in `openagents/agent/members/coder.coax`, with a
-  fake engine that replays a recorded Coder session on a fixture
-  repository.
-- **Trace:** "fix the typo in the README" routes to Coder with a grant for
-  the fixture repository. The result shows the change, the checks that
-  ran and that they passed. The fixture remote receives one push.
-- **Refusal:** a recorded run whose checks fail returns a red result that
-  names the failing check, and the fixture remote is unchanged. A task
-  with no repository grant is refused before Coder starts.
-- **Independent check:** the fixture repository's own tests, run directly,
-  and `git log` on the fixture remote. The hand-labeled rows that separate
-  "work on my repository" from a question about code are scored by chapter
-  16's eval tool.
+- **Source:** [`openagents/core/members.coax`](../../openagents/core/members.coax),
+  [`coax/lib/agent/router/decide.coax`](../../coax/lib/agent/router/decide.coax),
+  [`openagents/examples/coder-member-dispatch.coax`](../examples/coder-member-dispatch.coax),
+  and [`openagents/examples/coder-member-dispatch.out`](../examples/coder-member-dispatch.out)
+  (remaining: standalone fixture-repo push adapter in `openagents/agent/members/coder.coax`).
+- **Trace:** routes `"fix the typo in README.md"` (`repo=openagents`) to native
+  `pack=coder` (`tier=cloud_fast`, `delegate=none`), constructs the full 7-pack
+  member bitmask (`127`, including worktree agent tools), allows read-only
+  `WalletStatus`, `KnowledgeSearch`, and `OpenAgentsCli tasks list` in `PLAN`
+  mode, and gates mutating `OpenAgentsCli tasks create` behind `ask` in `DEFAULT`
+  and `deny` in `PLAN`.
+- **Refusal:** `WalletPay` is bypass-immune (`immune=true`), refusing auto-approval
+  with `ask` even under `BYPASS` + `bypass_danger` + `session_allow` and `deny`
+  in `PLAN` and `DONT_ASK`; `OpenAgentsCli vault get` and `nostr publish` enforce
+  the same bypass-immune boundary; and disallowed subcommands (`rm -rf /`) or
+  newline-injected arguments (`tasks list\nrm`) are refused with `deny` even in
+  `BYPASS`.
+- **Independent check:** `coax/bin/coax run openagents/examples/coder-member-dispatch.coax`
+  and `--release` match [`openagents/examples/coder-member-dispatch.out`](../examples/coder-member-dispatch.out),
+  alongside `#forall` proofs and zero-surviving-mutant `#authority` checks in
+  [`openagents/core/members.coax`](../../openagents/core/members.coax).
 
 Planned paths: `openagents/agent/members/coder.coax`.
 
@@ -97,3 +116,75 @@ Planned paths: `openagents/agent/members/coder.coax`.
   - `programs/solve-issue.json` at `coder-v1.0.0`
   - [Coder book, plan: OpenAgents and Coder](../../coder/book/PLAN.md#openagents-and-coder)
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P3
+
+## Source listing
+
+Run the Chapter 24 example in [`openagents/examples/coder-member-dispatch.coax`](../examples/coder-member-dispatch.coax) (committed transcript [`openagents/examples/coder-member-dispatch.out`](../examples/coder-member-dispatch.out)):
+
+<!-- source: openagents/examples/coder-member-dispatch.coax coder-member-dispatch -->
+```jai
+cmd_run :: () -> bool {
+  // 1. Route a repository task to native OpenAgents Core Coder member pack.
+  q: [1] Rtr2PlanRequest;
+  p: [1] Rtr2Plan;
+  w: [1] Rtr2Work;
+  q[0] = Rtr2PlanRequest.{
+    text = "fix the typo in README.md",
+    repo = "openagents",
+    local_inkling_ready = true,
+    cloud_ready = true
+  };
+  rtr2_decide_mock(
+    q[..],
+    "primary_pack=coder,compute_tier=cloud_fast,explicit_delegate=none,difficulty=1,effort=low,missing_capability=50,missing_capability_kind=none",
+    0, p[..], w[..]
+  );
+  base_mask := oa_member_packs_from_flags(true, true, true, true);
+  full_mask := base_mask | OA_PACK_AGENTS | OA_PACK_KNOWLEDGE | OA_PACK_CAPABILITY;
+  print("route ok=% pack=% tier=% delegate=% packs_mask=% agent_wt=%\n",
+    p[0].ok, p[0].capability_packs[0], p[0].compute_tier, p[0].explicit_delegate,
+    full_mask, oa_member_is_agent_tool("EnterWorktree"));
+
+  // 2. Read-only member tools allow in PLAN; mutating CLI asks in DEFAULT and denies in PLAN.
+  b_wstat := oa_member_tool_permission("WalletStatus", "", OA_MP_PMODE_PLAN, false, false);
+  b_kb := oa_member_tool_permission("KnowledgeSearch", "episode 289", OA_MP_PMODE_PLAN, false, false);
+  b_cli_ro := oa_member_tool_permission("OpenAgentsCli", "tasks list", OA_MP_PMODE_PLAN, false, false);
+  b_cli_mut_def := oa_member_tool_permission("OpenAgentsCli", "tasks create fix", OA_MP_PMODE_DEFAULT, false, false);
+  b_cli_mut_plan := oa_member_tool_permission("OpenAgentsCli", "tasks create fix", OA_MP_PMODE_PLAN, false, false);
+  print("reads wallet_status=% kb_search=% cli_list=% cli_create_def=% cli_create_plan=%\n",
+    cmd_beh_name(b_wstat), cmd_beh_name(b_kb), cmd_beh_name(b_cli_ro),
+    cmd_beh_name(b_cli_mut_def), cmd_beh_name(b_cli_mut_plan));
+
+  // 3. Bypass-immune WalletPay + vault/nostr signing + disallowed/injected CLI refusals.
+  pay_immune := oa_member_is_bypass_immune("WalletPay", "lnbc100n1...");
+  b_pay_bypass := oa_member_tool_permission("WalletPay", "lnbc100n1...", OA_MP_PMODE_BYPASS, true, true);
+  b_pay_plan := oa_member_tool_permission("WalletPay", "lnbc100n1...", OA_MP_PMODE_PLAN, true, true);
+  b_pay_dont := oa_member_tool_permission("WalletPay", "lnbc100n1...", OA_MP_PMODE_DONT_ASK, true, true);
+  b_vault_bypass := oa_member_tool_permission("OpenAgentsCli", "vault get api_key", OA_MP_PMODE_BYPASS, true, true);
+  b_nostr_plan := oa_member_tool_permission("OpenAgentsCli", "nostr publish hello", OA_MP_PMODE_PLAN, true, true);
+  b_bad_sub := oa_member_tool_permission("OpenAgentsCli", "rm -rf /", OA_MP_PMODE_BYPASS, true, true);
+  b_bad_nl := oa_member_tool_permission("OpenAgentsCli", "tasks list\nrm", OA_MP_PMODE_BYPASS, true, true);
+  print("wallet_pay immune=% bypass=% plan=% dont_ask=%\n",
+    pay_immune, cmd_beh_name(b_pay_bypass), cmd_beh_name(b_pay_plan), cmd_beh_name(b_pay_dont));
+  print("cli_guards vault_bypass=% nostr_plan=% bad_sub=% bad_newline=%\n",
+    cmd_beh_name(b_vault_bypass), cmd_beh_name(b_nostr_plan),
+    cmd_beh_name(b_bad_sub), cmd_beh_name(b_bad_nl));
+
+  return p[0].ok && p[0].capability_packs[0] == "coder" && p[0].explicit_delegate == "none" &&
+         full_mask == 127 && b_wstat == OA_MP_PBEH_ALLOW && b_kb == OA_MP_PBEH_ALLOW &&
+         b_cli_ro == OA_MP_PBEH_ALLOW && b_cli_mut_def == OA_MP_PBEH_ASK && b_cli_mut_plan == OA_MP_PBEH_DENY &&
+         pay_immune && b_pay_bypass == OA_MP_PBEH_ASK && b_pay_plan == OA_MP_PBEH_DENY && b_pay_dont == OA_MP_PBEH_DENY &&
+         b_vault_bypass == OA_MP_PBEH_ASK && b_nostr_plan == OA_MP_PBEH_DENY &&
+         b_bad_sub == OA_MP_PBEH_DENY && b_bad_nl == OA_MP_PBEH_DENY;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/coder-member-dispatch.coax`, identical in `--release`):
+
+```text
+route ok=true pack=coder tier=cloud_fast delegate=none packs_mask=127 agent_wt=true
+reads wallet_status=allow kb_search=allow cli_list=allow cli_create_def=ask cli_create_plan=deny
+wallet_pay immune=true bypass=ask plan=deny dont_ask=deny
+cli_guards vault_bypass=ask nostr_plan=deny bad_sub=deny bad_newline=deny
+ok=true
+```

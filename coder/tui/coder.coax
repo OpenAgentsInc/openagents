@@ -2129,9 +2129,9 @@ cd_cmd_bench :: (suite: string, json: bool) -> int {
   if repo.count == 0 { tool_errln("coder bench: run it through coder/tui/coder.sh, which names the checkout"); return 2; }
   cb: [4200] u8; cn := cd_cat(cb[..], cd_cat(cb[..], 0, repo), "/coax/bin/coax");
   argv: [3] string; na := 3;
-  if k == 0 { argv[0] = cast(string) cb[0..<cn]; argv[1] = "run"; argv[2] = "psionic/examples/measure-harness.coax"; }
+  if k == 0 { argv[0] = cast(string) cb[0..<cn]; argv[1] = "run"; argv[2] = "coder/examples/measure-atif.coax"; }
   else if k == 1 { argv[0] = cast(string) cb[0..<cn]; argv[1] = "test"; argv[2] = "coder/tui/coder.coax"; }
-  else if k == 2 { argv[0] = "python3"; argv[1] = "coder/tui/smoke.py"; na = 2; }
+  else if k == 2 { argv[0] = "python3"; argv[1] = "coder/tui/tests/smoke.py"; na = 2; }
   else { argv[0] = "coax/web/tool.sh"; argv[1] = "coder/tests/repository.coax"; argv[2] = "offline"; }
   if !json { lb: [256] u8; ln := cd_cat(lb[..], 0, "Running "); ln = cd_cat(lb[..], ln, names[k]); ln = cd_cat(lb[..], ln, ": "); ln = cd_cat(lb[..], ln, about[k]); cd_outln(cast(string) lb[0..<ln]); }
   // The journey invokes the compiler as a child too. tool.sh's default
@@ -2616,7 +2616,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "apple-fm" { return cd_cmd_apple_fm(cd_positional(args, 1)); }
   if verb == "usage" { return cd_cmd_usage(json); }
   if verb == "models" { return cd_models(); }
-  if verb == "host" { tool_errln("coder host is a tool of its own: coder/tui/coder.sh host ... (coder/tui/host.coax)"); return 2; }
+  if verb == "host" { tool_errln("coder host is a tool of its own: coder/tui/coder.sh host ... (openagents/daemon/host.coax)"); return 2; }
   if verb == "stop" { return cd_cmd_stop(cd_positional(args, 1), json); }
   if verb == "mcp" { hp := args_value(args, "--http", ""); if hp.count > 0 { return cd_cmd_mcp_http(cd_atoi(hp)); } return cd_cmd_mcp(); }
   if verb == "acp" {

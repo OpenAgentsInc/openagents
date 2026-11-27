@@ -143,8 +143,9 @@ and cost per run. This chapter did not rerun these numbers.
 
 ## What Coder takes
 
-- **MCP as the extension boundary.** Coder already speaks an MCP subset in
-  [`psionic/lib/harness/protocols.coax`](../../psionic/lib/harness/protocols.coax)
+- **MCP as the extension boundary.** Coder already speaks MCP in
+  [`coax/lib/mcp/`](../../coax/lib/mcp/README.md) and
+  [`coder/tui/mcp.coax`](../../coder/tui/mcp.coax)
   and serves in-process MCP tools to Claude Code in
   [`coax/lib/agent/claude/mcp.coax`](../../coax/lib/agent/claude/mcp.coax).
   Goose shows the rest of the shape: one typed config per transport, built-in
@@ -234,7 +235,8 @@ and cost per run. This chapter did not rerun these numbers.
 - [`.github/workflows/model-toolcall-conformance.yml`](https://github.com/block/goose/blob/0909288ed4a2053b10540bfcf6dbee3b0de66126/.github/workflows/model-toolcall-conformance.yml)
 - [`goose-self-test.yaml`](https://github.com/block/goose/blob/0909288ed4a2053b10540bfcf6dbee3b0de66126/goose-self-test.yaml)
 - [`evals/harbor/README.md`](https://github.com/block/goose/blob/0909288ed4a2053b10540bfcf6dbee3b0de66126/evals/harbor/README.md)
-- Coder: [`psionic/lib/harness/protocols.coax`](../../psionic/lib/harness/protocols.coax),
+- Coder: [`coax/lib/mcp/`](../../coax/lib/mcp/README.md),
+  [`coder/tui/mcp.coax`](../../coder/tui/mcp.coax),
   [`coax/lib/agent/claude/mcp.coax`](../../coax/lib/agent/claude/mcp.coax),
   [`coax/lib/microcoder/state.coax`](../../coax/lib/microcoder/state.coax).
 - [Chapter plan](PLAN.md), Part VII; the shape follows the

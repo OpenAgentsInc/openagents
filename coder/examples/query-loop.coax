@@ -1,0 +1,74 @@
+// Chapter 1: The simplest loop — OpenAgents Core heartbeat query state machine
+// (`openagents/core/query_loop.coax`, adopted by `openagents/runtime/oa-worker.coax`).
+#import "Basic";
+#load "../../openagents/core/query_loop.coax";
+
+cont_name :: (c: u8) -> string {
+  if c == FLAWED_CONT_NEXT_TURN { return "next_turn"; }
+  if c == FLAWED_CONT_REACTIVE_COMPACT { return "reactive_compact"; }
+  if c == FLAWED_CONT_COLLAPSE_DRAIN { return "collapse_drain"; }
+  if c == FLAWED_CONT_MAX_TOKENS_ESCALATE { return "max_tokens_escalate"; }
+  if c == FLAWED_CONT_MAX_TOKENS_RECOVERY { return "max_tokens_recovery"; }
+  if c == FLAWED_CONT_STOP_HOOK_BLOCKING { return "stop_hook"; }
+  if c == FLAWED_CONT_TOKEN_BUDGET { return "token_budget"; }
+  return "none";
+}
+
+term_name :: (t: u8) -> string {
+  if t == FLAWED_TERM_COMPLETED { return "completed"; }
+  if t == FLAWED_TERM_MAX_TURNS { return "max_turns"; }
+  if t == FLAWED_TERM_ABORTED_STREAMING { return "aborted_streaming"; }
+  if t == FLAWED_TERM_BLOCKING_LIMIT { return "blocking_limit"; }
+  if t == FLAWED_TERM_PROMPT_TOO_LONG { return "prompt_too_long"; }
+  if t == FLAWED_TERM_STOP_HOOK_PREVENTED { return "stop_hook_prevented"; }
+  return "other";
+}
+
+// book:begin example
+main :: () {
+  cfg := FlawedQueryConfig.{
+    auto_compact_enabled = true,
+    reactive_compact_enabled = true,
+    otk_slot_enabled = true,
+    is_main_or_sdk_source = true,
+    max_turns = 3,
+  };
+  st: [1] FlawedQueryState;
+  st[0] = flawed_query_state_init(10000);
+  bt: [1] FlawedBudgetTracker;
+
+  // Step 1: model requests 2 tools -> advance turn_count 1 -> 2
+  d1 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{observed_tool_uses = 2});
+  print("step 1 (2 tools): cont=% turn=% terminal=%\n", cont_name(d1.cont), st[0].turn_count, d1.is_terminal);
+
+  // Step 2: withheld Prompt-Too-Long error -> reactive compact retry; turn_count stays 2
+  withheld := flawed_should_withhold_stream_error(cfg, FLAWED_SERR_PROMPT_TOO_LONG);
+  d2 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{
+    stream_error = FLAWED_SERR_PROMPT_TOO_LONG,
+    reactive_compact_ok = true,
+    reactive_reclaimed_tokens = 2500,
+  });
+  print("step 2 (withheld PTL=%): cont=% turn=% task_budget=%\n",
+    withheld, cont_name(d2.cont), st[0].turn_count, st[0].task_budget_remaining);
+
+  // Step 3: tool rollover advances turn_count 2 -> 3
+  d3 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{observed_tool_uses = 1});
+  print("step 3 (1 tool): cont=% turn=% terminal=%\n", cont_name(d3.cont), st[0].turn_count, d3.is_terminal);
+
+  // Step 4: clean reply terminates and saves CacheSafeParams
+  d4 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{});
+  print("step 4 (reply): terminal=% reason=% save_cache_safe=% notify_done=%\n",
+    d4.is_terminal, term_name(d4.terminal), d4.save_cache_safe_params, d4.notify_commands_completed);
+
+  // Separate bounded loop hitting max_turns = 2 cleanly refuses infinite rollovers
+  cap_cfg := cfg;
+  cap_cfg.max_turns = 2;
+  cap_st: [1] FlawedQueryState;
+  cap_st[0] = flawed_query_state_init(0);
+  cap_bt: [1] FlawedBudgetTracker;
+  _ = flawed_query_step(cap_st[..], cap_bt[..], cap_cfg, FlawedStepObservation.{observed_tool_uses = 1});
+  d_cap := flawed_query_step(cap_st[..], cap_bt[..], cap_cfg, FlawedStepObservation.{observed_tool_uses = 1});
+  print("max_turns cap (2): terminal=% reason=% turn=%\n",
+    d_cap.is_terminal, term_name(d_cap.terminal), cap_st[0].turn_count);
+}
+// book:end example

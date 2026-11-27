@@ -1,0 +1,5 @@
+joined=true gen=1 xp=50 refuse_elsewhere=true
+steps_ok=true cut_refused=true new_gen=2 old_fenced=true route=1 xp=125
+pre_crash_aborted=true steps=1 post_crash_forward=true steps=1 final_gen=3
+refuse_full=true still_plays=true final_xp=150
+ok=true

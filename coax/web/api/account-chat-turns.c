@@ -8,6 +8,7 @@
 #include "projects-wire.generated.h"
 #include "environment-process.h"
 #include "auth-policy.generated.h"
+#include "cloud-tools-wire.generated.h"
 #include <stdlib.h>
 #include <string.h>
 #define CT_CAP (1u<<20)
@@ -80,7 +81,18 @@ static void submit(const request *q,PGconn *db,const auth_principal *p,const cha
  if(fresh){const char *cv[]={cid,p->account,project,title,legacy,legacy_revision,legacy_record,ms};if(!exec_sql(db,"INSERT INTO chat.conversations_v2(id,account,project,revision,title,legacy_thread,legacy_revision,legacy_record,created_ms,updated_ms) VALUES($1,$2,nullif($3,''),1,$4,nullif($5,''),CASE WHEN $5<>'' THEN $6::bigint END,$7,$8::bigint,$8::bigint)",8,cv)){goto done;}}
  else {const char *cv[]={p->account,cid,revision,ms};if(!exec_sql(db,"UPDATE chat.conversations_v2 SET revision=$3::bigint,updated_ms=$4::bigint WHERE account=$1 AND id=$2",4,cv)){goto done;}}
  const char *tv[]={tid,p->account,cid,revision,op,hash,canonical_request,(char *)out,context.snapshot_id,context.snapshot,ms,(char *)native,admitted_for};
- if(!exec_sql(db,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,snapshot_id,snapshot_json,state,model,provider,effort,created_ms,updated_ms,native_input_json,admitted_for) VALUES($1,$2,$3,$4::bigint,$5,$6,$7,$8,nullif($9,''),$10,1,'google/gemini-4-hydrogen','google','low',$11::bigint,$11::bigint,$12,$13)",13,tv)||!operation_save(db,p->account,op,q->path,hash,tid)||!cloud_emit_account_event(db,p->account,cid,tid,fresh?"conversation_created":"turn_started",title,"cloud","google/gemini-4-hydrogen",0,false,false,"web",before+1,now)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
+ char pin_host[66]={0},pin_name[81]={0},pin_ws[72]={0};
+ api_query(q,"host",pin_host,sizeof pin_host);
+ if(*pin_host){
+  if(!cld_c_target_valid(ts("computer"),ts(pin_host))){status=400;why="Invalid target computer.";goto done;}
+  const char *pv[]={p->account,pin_host};PGresult *pr=PQexecParams(db,"SELECT display_name FROM chat.environment_connections_v1 WHERE account=$1 AND host_pubkey=$2",2,NULL,pv,NULL,NULL,0);
+  bool found=tuples(pr)&&PQntuples(pr)==1;if(found)snprintf(pin_name,sizeof pin_name,"%s",PQgetvalue(pr,0,0));PQclear(pr);
+  if(!found){status=404;why="Target computer not found.";goto done;}
+  snprintf(pin_ws,sizeof pin_ws,"host:%s",pin_host);
+ }
+ if(!exec_sql(db,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,snapshot_id,snapshot_json,state,model,provider,effort,created_ms,updated_ms,native_input_json,admitted_for) VALUES($1,$2,$3,$4::bigint,$5,$6,$7,$8,nullif($9,''),$10,1,'google/gemini-4-hydrogen','google','low',$11::bigint,$11::bigint,$12,$13)",13,tv)||!operation_save(db,p->account,op,q->path,hash,tid))goto done;
+ if(*pin_host){const char *up[]={p->account,tid,pin_name,pin_ws};if(!exec_sql(db,"UPDATE chat.turns_v2 SET compute='local',source_device=$3,workspace=$4 WHERE account=$1 AND id=$2",4,up))goto done;}
+ if(!cloud_emit_account_event(db,p->account,cid,tid,fresh?"conversation_created":"turn_started",title,*pin_host?"local":"cloud","google/gemini-4-hydrogen",0,false,false,*pin_host?pin_name:"web",before+1,now)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
  r=turn_row(db,p->account,tid,false);n=control(r,v,out,CT_CAP);if(n<1){goto done;}(void)chat_wake();reply(q,202,out,(size_t)n);goto replied;
  done: if(tx)exec_sql(db,"ROLLBACK",0,NULL);refuse(q,status,why);
  replied: if(tx)exec_sql(db,"ROLLBACK",0,NULL);PQclear(c);PQclear(r);free(legacy_record);free(canonical_request);projects_context_free(&context);free(s);free(h);free(v);free(out);free(native);

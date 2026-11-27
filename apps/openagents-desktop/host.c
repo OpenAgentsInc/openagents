@@ -439,6 +439,7 @@ void cd_agent_failed(void *page, int agent, const char *why) { CoderHost *c = pa
 int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_agent_answer_line(cd_state(c), agent, (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude(cd_state(c), on != 0); }
 void cd_claude_sub(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude_sub(cd_state(c), on != 0); }
+void cd_claude_status(void *page, const char *status) { CoderHost *c = page; if (c) { coder_page_set_claude_status(cd_state(c), cd_string(status)); cd_changed(c); } }
 void cd_agy(void *page, int on) { CoderHost *c = page; if (c) { coder_page_set_agy(cd_state(c), on != 0); cd_changed(c); } }
 void cd_agy_models_clear(void *page) { CoderHost *c = page; if (c) coder_page_agy_models_clear(cd_state(c)); }
 int cd_agy_models_add(void *page, const char *inst_id, const char *inst_name, const char *slug, const char *name, int efforts_mask, int default_effort, int is_default) {
@@ -502,6 +503,17 @@ int cd_agent_running(void *page, int agent) { CoderHost *c = page; return c && c
 int cd_background_agents(void *page) { CoderHost *c = page; if (!c) return 0; int n = (int)coder_page_background_agents(cd_state(c)); if (n > 0) cd_changed(c); return n; }
 int cd_agent_cancel(void *page, int agent) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_agent_cancel(cd_state(c), agent); }
 int cd_stop_agent(void *page) { CoderHost *c = page; return c ? (int)coder_page_stop_agent(cd_state(c)) : -1; }
+int cd_agent_wt_cleanup_next(void *page, char *path_out, int path_cap, char *branch_out, int branch_cap, char *head_out, int head_cap) {
+  CoderHost *c = page;
+  if (!c || !path_out || path_cap <= 1 || !branch_out || branch_cap <= 1 || !head_out || head_cap <= 1) return 0;
+  path_out[0] = 0; branch_out[0] = 0; head_out[0] = 0;
+  return coder_page_agent_wt_cleanup_take(
+    cd_state(c),
+    (coax_v_u8){(uint8_t *)path_out, path_cap},
+    (coax_v_u8){(uint8_t *)branch_out, branch_cap},
+    (coax_v_u8){(uint8_t *)head_out, head_cap}
+  ) ? 1 : 0;
+}
 // Kept chats (page.coax): the list, the chat that is shown, and a chat's text each way.
 static int cd_text_out(int n, char *out, int cap) { if (n < 0 || n >= cap) n = 0; out[n] = 0; return n; }
 void cd_chats(void *page, const char *list) { CoderHost *c = page; if (c) { coder_page_chats(cd_state(c), cd_string(list)); cd_changed(c); } }
@@ -2473,6 +2485,84 @@ int cd_br_save_session(void *page, char *out, int cap) {
 int cd_br_load_session(void *page, const char *json) {
   CoderHost *c = page; if (!c || !json) return 0;
   int r = (int)coder_page_br_load_session(cd_state(c), cd_string(json));
+  cd_woke(c);
+  return r;
+}
+// Universal Introspection sidebar sections & live output inspector (page/introspect.coax; #14066).
+int cd_introspect_set_tui(void *page, const char *tmux_raw, const char *ps_raw, int allow_ext) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = (int)coder_page_introspect_set_tui(cd_state(c), cd_string(tmux_raw), cd_string(ps_raw), allow_ext != 0);
+  cd_woke(c);
+  return r;
+}
+int cd_introspect_set_harnesses(void *page, const char *harness_tsv, const char *ps_raw, int allow_ext) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = (int)coder_page_introspect_set_harnesses(cd_state(c), cd_string(harness_tsv), cd_string(ps_raw), allow_ext != 0);
+  cd_woke(c);
+  return r;
+}
+int cd_introspect_set_machines(void *page, const char *machines_tsv, const char *remote_sessions_tsv) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = (int)coder_page_introspect_set_machines(cd_state(c), cd_string(machines_tsv), cd_string(remote_sessions_tsv));
+  cd_woke(c);
+  return r;
+}
+int cd_introspect_set_output(void *page, const char *session_id, const char *output, const char *status, int loading) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = coder_page_introspect_set_output(cd_state(c), cd_string(session_id), cd_string(output), cd_string(status), loading != 0) ? 1 : 0;
+  cd_woke(c);
+  return r;
+}
+int cd_introspect_active_id(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_introspect_active_id(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_introspect_active_kind(void *page) {
+  CoderHost *c = page; return c ? (int)coder_page_introspect_active_kind(cd_state(c)) : -1;
+}
+int cd_introspect_active_is_machine(void *page) {
+  CoderHost *c = page; return c && coder_page_introspect_active_is_machine(cd_state(c)) ? 1 : 0;
+}
+int cd_introspect_shown(void *page) {
+  CoderHost *c = page; return c && coder_page_introspect_shown(cd_state(c)) ? 1 : 0;
+}
+void cd_introspect_close(void *page) {
+  CoderHost *c = page; if (c) { coder_page_introspect_close(cd_state(c)); cd_woke(c); }
+}
+int cd_introspect_output(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_introspect_output(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_introspect_counts(void *page, int out4[4]) {
+  CoderHost *c = page;
+  if (!c || !out4) return 0;
+  int64_t tmp[4] = {0, 0, 0, 0};
+  if (!coder_page_introspect_counts(cd_state(c), (coax_v_s64){tmp, 4})) return 0;
+  for (int i = 0; i < 4; i++) out4[i] = (int)tmp[i];
+  return 1;
+}
+int cd_introspect_can_command(void *page) {
+  CoderHost *c = page; return c && coder_page_introspect_can_command(cd_state(c)) ? 1 : 0;
+}
+int cd_introspect_cmd(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_introspect_cmd(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_introspect_set_cmd(void *page, const char *text) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = coder_page_introspect_set_cmd(cd_state(c), cd_string(text)) ? 1 : 0;
+  cd_woke(c);
+  return r;
+}
+int cd_introspect_submit(void *page) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = coder_page_introspect_submit(cd_state(c)) ? 1 : 0;
+  cd_woke(c);
+  return r;
+}
+int cd_introspect_cmd_done(void *page, const char *session_id, const char *note, int failed) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = coder_page_introspect_cmd_done(cd_state(c), cd_string(session_id), cd_string(note), failed != 0) ? 1 : 0;
   cd_woke(c);
   return r;
 }

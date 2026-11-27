@@ -34,9 +34,7 @@ extension CoderWindow {
     /// HEAD's short commit, "" outside a repository. Read again when a reply ends.
     func refreshBranch() {
         cd_branch(page, ChatWorktree.shown(CoderWindow.gitBranch(folder)))
-        #if OA_FULL
         refreshGitStatus()
-        #endif
     }
     static func gitBranch(_ folder: URL) -> String {
         var dir = folder.standardizedFileURL
@@ -139,9 +137,7 @@ extension CoderWindow {
     /// File > Dashboard (Command-D / Control-D): empty home screen listing active running chats.
     func openDashboard() {
         if settingsOpen { closeSettings() }
-        #if OA_FULL
         closeGym()
-        #endif
         cd_dashboard_open(page, 1)
         syncDashboard()
         wake()
@@ -162,22 +158,16 @@ extension CoderWindow {
     func open(_ id: String) {
         cd_dashboard_open(page, 0)
         if id == Foreman.chatID {
-            #if OA_FULL
             openForeman()
-            #endif
             return
         }
         if id == chat {
-            #if OA_FULL
             closeGym()
-            #endif
             clearViewedChatBadges(id); focusComposer(); wake(); return
         }
         let prevKey = chat ?? ""
         chatDrafts[prevKey] = draft
-        #if OA_FULL
         closeGym()
-        #endif
         guard detach() else { return }
         if let back = runs[id] {
             guard cd_take(page, back.page) != 0 else { return }
@@ -195,9 +185,7 @@ extension CoderWindow {
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
             cd_chats(page, chatLines)
-            #if OA_FULL
             syncForemanUI()
-            #endif
             updateDockBadge()
             focusComposer(); wake()
             return
@@ -214,9 +202,7 @@ extension CoderWindow {
         _ = cd_set_text(page, chatDrafts[id] ?? "")
         configureWorkerEnv(run, isForeman: false)
         syncSkillsNote(for: page, isForeman: false)
-        #if OA_FULL
         syncForemanUI()
-        #endif
         if clearedUnread { cd_chats(page, chatLines) }
         updateDockBadge()
         var isFolder: ObjCBool = false
@@ -230,6 +216,26 @@ extension CoderWindow {
     /// The chat that is shown, when it is kept: File > Rename Chat acts on it.
     var canRename: Bool { chat != nil && chat != Foreman.chatID }
     func renameShown() { if let id = chat, id != Foreman.chatID { rename(id) } }
+    /// Whether the shown chat has a kept ID/path that can be copied for another agent to reference.
+    var canCopyChatReference: Bool { chat != nil }
+    func copyShownChatID() { if let id = chat { copyChatID(id) } }
+    func copyShownChatPath() { if let id = chat { copyChatPath(id) } }
+    func copyChatID(_ id: String) {
+        guard !id.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(id, forType: .string)
+        cd_toast(page, "Copied chat ID", 0)
+        wake()
+    }
+    func copyChatPath(_ id: String) {
+        guard let path = store.chatFilePath(id) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(path, forType: .string)
+        cd_toast(page, "Copied chat path", 0)
+        wake()
+    }
     var canFork: Bool { chat != Foreman.chatID && (chat != nil || savedText(of: page) != nil) }
     func forkShown() { guard canFork else { return }; fork(chat) }
     /// Forks a chat (the shown chat when `id == nil` or `id == chat`, or a sidebar chat by id) into a
@@ -326,9 +332,7 @@ extension CoderWindow {
             if id == self.chat {
                 guard cd_running(self.page) == 0 else { return }
                 self.chat = nil; _ = cd_new(self.page); cd_current(self.page, "")
-                #if OA_FULL
                 self.syncForemanUI()
-                #endif
             }
             guard !self.busy(id) else { return }
             let snapMeta = self.store.meta(id)
@@ -360,9 +364,7 @@ extension CoderWindow {
         if id == chat {
             guard cd_running(page) == 0 else { return }
             chat = nil; _ = cd_new(page); cd_current(page, "")
-            #if OA_FULL
             syncForemanUI()
-            #endif
         }
         store.setArchived(id, true)
         daemonClient.updateSessionMeta(sessionID: id, archived: true)
@@ -389,9 +391,7 @@ extension CoderWindow {
         cd_sb_now_ms(page, nowMs)
         if id == chat && cd_running(page) == 0 {
             chat = nil; _ = cd_new(page); cd_current(page, "")
-            #if OA_FULL
             syncForemanUI()
-            #endif
         }
         cd_chats(page, chatLines)
         cd_toast(page, "Snoozed “" + (store.title(id) ?? "Chat") + "”", 0)
@@ -475,9 +475,7 @@ extension CoderWindow {
             for id in ids {
                 if id == chat && cd_running(page) == 0 {
                     chat = nil; _ = cd_new(page); cd_current(page, "")
-                    #if OA_FULL
                     syncForemanUI()
-                    #endif
                 }
                 store.setArchived(id, true)
                 daemonClient.updateSessionMeta(sessionID: id, archived: true)
@@ -503,9 +501,7 @@ extension CoderWindow {
             for id in ids {
                 if id == chat && cd_running(page) == 0 {
                     chat = nil; _ = cd_new(page); cd_current(page, "")
-                    #if OA_FULL
                     syncForemanUI()
-                    #endif
                 }
                 if let m = store.meta(id), let t = store.text(id) { snaps.append((meta: m, text: t)) }
                 unread.remove(id)
@@ -577,9 +573,7 @@ extension CoderWindow {
         // chat's first message and a Foreman chat start before they have an id (#13755)
         if r.bound != id { r.bound = id; bindQueue(r) }
         cd_chats(page, chatLines)
-        #if OA_FULL
         syncForemanUI()
-        #endif
         if !closing && id != Foreman.chatID {
             if existingMeta == nil && !autoTitledChats.contains(id) {
                 let firstAsk = ThreadTitlePrompts.extractConversation(fromChatJSON: text)?.firstAsk ?? title
@@ -749,9 +743,7 @@ extension CoderWindow {
             daemonClient.updateSessionMeta(sessionID: chatID, title: cleaned)
             if chatID != Foreman.chatID { cloudSync.syncMeta(chatID: chatID, title: cleaned) }
             cd_chats(page, chatLines)
-            #if OA_FULL
             syncForemanUI()
-            #endif
             wake()
         }
     }

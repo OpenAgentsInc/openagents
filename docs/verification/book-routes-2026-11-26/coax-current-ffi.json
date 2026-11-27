@@ -1,0 +1,265 @@
+{
+  "schema_version": 1,
+  "kind": "book-route-qualification-record",
+  "route": {
+    "id": "coax-current-ffi",
+    "book": "coax",
+    "title": "Current Coax and a local C boundary",
+    "scope": "Run current strings, explicit error results and shared source identities, then call emitted Coax from C through a local-file/protobuf workflow. The capstone checks stale completion, failure and timeout paths in C debug and optimized builds.",
+    "limitations": [
+      "Selected current-language examples do not qualify every Coax feature or chapter. Generic constraints, ownership and other targets retain their own evidence.",
+      "The file effect is temporary and local. Decoded protobuf bytes do not authorize a HUD action. General fallible foreign results and asynchronous ownership remain separate completion work.",
+      "Teaching examples do not record new product adoption or qualify an app, browser, deployment or full compiler."
+    ]
+  },
+  "status": "passed",
+  "observed_revision": "da6ab05135e414fb2736a1e9f9744463548288b8",
+  "started_at": "2026-11-27T04:40:57.669054+00:00",
+  "finished_at": "2026-11-27T04:41:02.009850+00:00",
+  "wall_seconds": 4.341,
+  "executed_runs": 7,
+  "retained_runs": 0,
+  "route_definition_sha256": "87a2b1a892977570fad3b27d2cbda7cde723eec1441127c91147545856ac58cd",
+  "runner_sha256": "36ff17103b29a508e536431f65b14c34ea99aae980e77a6416960aa2408d4a06",
+  "tools": {
+    "coax": {
+      "sha256": "8a8bcc05b49468bf40c17400ab7eb677e41bfe24549617d60f3ca9a54fbfd7aa",
+      "version": "coax0 0.52.0"
+    },
+    "cc": {
+      "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+      "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+    },
+    "python": {
+      "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+      "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+    },
+    "command": {
+      "sha256": "2c9bd30bc768f8ee44742705071558e81365487b4c8e00cd79519a8c2d83f9d6",
+      "version": "GNU bash, version 5.3.20(1)-release (aarch64-apple-darwin25.6.0)\nCopyright (C) 2025 Free Software Foundation, Inc.\nLicense GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n\nThis is free software; you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law."
+    }
+  },
+  "target": {
+    "system": "Darwin",
+    "release": "25.4.0",
+    "machine": "arm64",
+    "SDKROOT": "",
+    "MACOSX_DEPLOYMENT_TARGET": ""
+  },
+  "raw_receipt": {
+    "file_sha256": "06e60d6de43eccfe8e87856e9fed89763a242c1505dc56d05a10e92fb61b2264",
+    "integrity_sha256": "3545ff75e2b6459d29613a39ec9e4a75ba88e626a500939deabb1eb88c93488e"
+  },
+  "retention_verification": {
+    "status": "passed",
+    "started_at": "2026-11-27T04:45:02.192204+00:00",
+    "finished_at": "2026-11-27T04:45:02.958067+00:00",
+    "wall_seconds": 0.766,
+    "executed_runs": 0,
+    "retained_runs": 7,
+    "raw_receipt_file_sha256": "df5f206bbe06e570aa2c764e1a84dbd7e88998a857eabdf57c0aed15da23a4ed",
+    "raw_receipt_integrity_sha256": "4297a5156e2de10d25c4d08b009383e40b674eae9a02e7c9bfe262d1c7c7ce7f"
+  },
+  "steps": [
+    {
+      "key": "hello:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.383,
+      "recipe_sha256": "3ea90e985a1628d04f68f4494f2adee533353fc8219a869d5b741a78ecb83215",
+      "closure_sha256": "bdbb9db5c0f27351c33d493d998b50ec4a1b5d17912983d507c162f255ae0852",
+      "input_count": 2,
+      "inputs": {
+        "coax/book/examples/ch01_hello_name.coax": "27ae8de57888be74620fec1e4670db76a25cbcd72ff13e2c18f60c1b8bf006a0",
+        "coax/book/examples/ch01_hello_name.out": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee"
+      },
+      "expected": {
+        "stdout": "coax/book/examples/ch01_hello_name.out",
+        "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee",
+        "bytes": 13
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "hello:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.286,
+      "recipe_sha256": "a1b62774d984bc5de2e9736b466b2e82b46d59064b412c720f6943f489506cc8",
+      "closure_sha256": "bdbb9db5c0f27351c33d493d998b50ec4a1b5d17912983d507c162f255ae0852",
+      "input_count": 2,
+      "inputs": {
+        "coax/book/examples/ch01_hello_name.coax": "27ae8de57888be74620fec1e4670db76a25cbcd72ff13e2c18f60c1b8bf006a0",
+        "coax/book/examples/ch01_hello_name.out": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee"
+      },
+      "expected": {
+        "stdout": "coax/book/examples/ch01_hello_name.out",
+        "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee",
+        "bytes": 13
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "error-results:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.262,
+      "recipe_sha256": "30375b35ee2d21c4934db3a39e4b86dc5074a16716238876ed1feba3e57c110c",
+      "closure_sha256": "579bbd1b8dd8f48e43544303d2ab8213cc86cb7814bac66d4f170de78b00cf17",
+      "input_count": 2,
+      "inputs": {
+        "coax/book/examples/ch07_ports3.coax": "8b0553ac08aabbcd183aa2cae6738f3794f5f3e05724f2ed4a10671d56c8e411",
+        "coax/book/examples/ch07_ports3.out": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a"
+      },
+      "expected": {
+        "stdout": "coax/book/examples/ch07_ports3.out",
+        "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a",
+        "bytes": 86
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "error-results:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.282,
+      "recipe_sha256": "60b75cdabe180f268d59984b516e3ba4ce04e39cb6808173bb832198f676dd5b",
+      "closure_sha256": "579bbd1b8dd8f48e43544303d2ab8213cc86cb7814bac66d4f170de78b00cf17",
+      "input_count": 2,
+      "inputs": {
+        "coax/book/examples/ch07_ports3.coax": "8b0553ac08aabbcd183aa2cae6738f3794f5f3e05724f2ed4a10671d56c8e411",
+        "coax/book/examples/ch07_ports3.out": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a"
+      },
+      "expected": {
+        "stdout": "coax/book/examples/ch07_ports3.out",
+        "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a",
+        "bytes": 86
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "source-modules:debug",
+      "mode": "debug",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.289,
+      "recipe_sha256": "33929f95867216aef6b673d4d1ff0ca6baa1547bdb0629c4e6f3010e91beebed",
+      "closure_sha256": "ddcd884dbba7fa58a45215f8840ffd752399fc264ef8ef7046d9c2d27b8e440a",
+      "input_count": 4,
+      "inputs": {
+        "coax/book/examples/ch10_sources.coax": "2371d24ad95d42f4608c0a5916e6c98d8d489cd7ef1258695ac5f02365c3b469",
+        "coax/book/examples/ch10_sources.out": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+        "coax/book/examples/lib/ch10_numbers.coax": "460f36d4405b1538d2e1105780b767838b52e61550fc17546fe7fffb364b2e7c",
+        "coax/book/examples/lib/ch10_types.coax": "8c9f635a7bc70ee9c4409dea93594665275490c2d3d54726a06e59621eca702d"
+      },
+      "expected": {
+        "stdout": "coax/book/examples/ch10_sources.out",
+        "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+        "bytes": 3
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "source-modules:release",
+      "mode": "release",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 0.355,
+      "recipe_sha256": "82caeba2b0a3ea5dd47804cebece27ea502930d09b2ec273eb4aef0bb1004798",
+      "closure_sha256": "ddcd884dbba7fa58a45215f8840ffd752399fc264ef8ef7046d9c2d27b8e440a",
+      "input_count": 4,
+      "inputs": {
+        "coax/book/examples/ch10_sources.coax": "2371d24ad95d42f4608c0a5916e6c98d8d489cd7ef1258695ac5f02365c3b469",
+        "coax/book/examples/ch10_sources.out": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+        "coax/book/examples/lib/ch10_numbers.coax": "460f36d4405b1538d2e1105780b767838b52e61550fc17546fe7fffb364b2e7c",
+        "coax/book/examples/lib/ch10_types.coax": "8c9f635a7bc70ee9c4409dea93594665275490c2d3d54726a06e59621eca702d"
+      },
+      "expected": {
+        "stdout": "coax/book/examples/ch10_sources.out",
+        "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+        "bytes": 3
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "local-c-workflow:native",
+      "mode": "native",
+      "status": "passed",
+      "exit_status": 0,
+      "seconds": 1.083,
+      "recipe_sha256": "e052089d0647840f8a17db5490c774ddbaa5a7b453bace59fe95a24d405aaf8c",
+      "closure_sha256": "b38cb512adb060677a42a861a246aca3dab9fdc6aafe227e001af8449a90d8cd",
+      "input_count": 6,
+      "inputs": {
+        "coax/book/examples/ch24_workflow/host.c": "35673a0cc2fb6569249f32f9afd5355906dafc09f0d359324820a3beff49be9f",
+        "coax/book/examples/ch24_workflow/run.out": "71e8f259d44444bd24c6c798f44c5aee4c99800db87de20c688f4b60318dd771",
+        "coax/book/examples/ch24_workflow/run.sh": "99fc2122e03c12416020556bf6eda716df9bbb479d90a8a99baf93cb87d4dc32",
+        "coax/book/examples/ch24_workflow/workflow.coax": "59f28db78898c5c01385b2e3560975f8f686745e51eec13e1709b23aaca9cfa7",
+        "coax/book/examples/lib/ch15_request_policy.coax": "e34ee2617d675b4bccd8721321ee3cea036d4175065952daa996468c978bd71f",
+        "proto/descriptors/ios-home.pb": "9ced28885e6dcb2c970d05ce084ee0afa4ce539d4f79d6d3d0b2396fb74bb899"
+      },
+      "expected": {
+        "stdout": "coax/book/examples/ch24_workflow/run.out",
+        "sha256": "71e8f259d44444bd24c6c798f44c5aee4c99800db87de20c688f4b60318dd771",
+        "exit_status": 0
+      },
+      "stdout": {
+        "sha256": "71e8f259d44444bd24c6c798f44c5aee4c99800db87de20c688f4b60318dd771",
+        "bytes": 164
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    }
+  ],
+  "revision_scope": "Git HEAD at observation; source hashes, not a claim that the worktree is clean or published.",
+  "scope": "Exact selected native examples and declared workflow, not all book capabilities, product adoption, live transport, browser rendering or production deployment.",
+  "integrity_sha256": "58334f796a227cc7f3a9e14037bb66552eea788c7a04fadfba6e3f26396013fa"
+}

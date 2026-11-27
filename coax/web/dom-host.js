@@ -318,6 +318,10 @@ function streamOpen(urlAt, urlLen, bodyAt, bodyLen) {
   const body = new Uint8Array(memory.buffer, bodyAt, bodyLen).slice(), mine = new AbortController();
   stream = mine;
   const live = () => stream === mine;
+  if (url.startsWith("/local/") && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    queueMicrotask(() => { if (live()) { stream = null; x.dom_event(state, 5, 404, 0); shown(); own.after?.(); } });
+    return;
+  }
   (async () => {
     let status = 0;
     try {

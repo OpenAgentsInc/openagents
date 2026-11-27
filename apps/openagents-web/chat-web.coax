@@ -132,6 +132,14 @@ CF_DECIDE :: 25;        // Accept or Decline on a visitor's idea for the realm i
 CF_LIFE :: 26;          // Home & Account: lifecycle, credit balance, and holdings (/api/auth/life?as=lines)
 CF_ORGS :: 27;          // Home & Account: WorkOS organizations (/api/auth/workos/orgs?as=lines)
 CF_ORG_SWITCH :: 28;    // Home & Account: switch active WorkOS organization (/api/auth/workos/orgs/switch?as=lines)
+CF_ENVS :: 29;          // Home & Sidebar: enrolled computers (/api/chat/environments/v1?as=lines)
+CF_ACCT_PROJECTS :: 30; // Home & Sidebar: account-owned private Projects (/api/projects/v1?as=lines)
+CF_NEW_PROJECT :: 31;   // Home: create an account-owned private Project (POST /api/projects/v1)
+CF_GH_STATUS :: 32;     // Home & Account: GitHub via WorkOS Pipes status (/api/integrations/github/status?as=lines)
+CF_GH_CONNECT :: 33;    // Home & Account: start WorkOS Pipes GitHub OAuth (POST /api/integrations/github/connect)
+CF_GH_REPOS :: 34;      // Home & Account: list connected GitHub repos (/api/integrations/github/repos?as=lines)
+CF_GH_DISCONNECT :: 35; // Home & Account: disconnect GitHub (POST /api/integrations/github/disconnect)
+CW_GO :: 2048;          // bytes of a browser navigation URL (supports external WorkOS Pipes OAuth URLs)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 // A world step's realm tool (turn.coax WT_TOOL; a size is a set), for its icon and how a run of them is named: the
 // world's own, then a realm's (a switch of its lists, a pane shown, its asks, a look at the screen; #13528).
@@ -270,6 +278,10 @@ ChatWeb :: struct {
   page: int;                         // what the shell shows beside its side: SS_CHATS (the chat), SS_HOME (Home Dashboard, at /) or SW_PAGE (Settings)
   set: [1] SettingsWeb;              // Settings: the section shown, account metadata, orgs, life, limits, about
   org_switch_due: int;               // 1-based index of WorkOS org to switch to when free (0 none)
+  new_proj_due: bool;                // Create Project requested from Home Dashboard
+  new_proj_seq: int;                 // Monotonic counter for Project create operation IDs
+  gh_connect_due: bool;              // Connect GitHub via WorkOS Pipes requested
+  gh_disconnect_due: bool;           // Disconnect GitHub via WorkOS Pipes requested
   here: int;                         // the side alone on a place's page (SS_SIDE): the place it lights (ss_side_place), else -2
   side_closed: bool;                 // the side is put away (kept in this browser)
   mob_side_open: bool;               // mobile overlay drawer open (<= 760px; #13929)
@@ -278,7 +290,7 @@ ChatWeb :: struct {
   projects: [SS_WORLDS_MAX] SsWorld; projects_n: int; projects_asked: bool;   // the projects they are in, under Projects
   shut: int;                         // the side's folds shut: bit k for place k (kept in this browser)
   out_due: bool;                     // Log out was pressed: it goes when no other request is out
-  go: [CW_HELD] u8; go_n: int; go_push: bool;   // an address for the host: pushed (the shell stays) or gone to
+  go: [CW_GO] u8; go_n: int; go_push: bool;   // an address for the host: pushed (the shell stays) or gone to
   held: [CW_HELD] u8; held_n: int;   // the page held beside the side (SS_HELD): its address
   held_k: int;                       // which frame holds it: each page moved to is a new frame (its id ends in this)
   held_drawn: bool;                  // the page has drawn: the loading screen is gone
@@ -451,6 +463,12 @@ cw_side :: (s: [] ChatWeb) {
       }
     }
     if open && k == SS_PROJECTS {
+      for ap: 0..<s[0].set[0].naprojs {
+        apid := cast(string) s[0].set[0].aproj_id[ap][0..<s[0].set[0].aproj_id_n[ap]];
+        ahref: [64] u8; ahn := cw_put(ahref[..], 0, "/chat?project="); ahn = cw_put(ahref[..], ahn, apid);
+        aidb: [UI_ID] u8;
+        _ = k_sub_place(t, u, tr_join(aidb[..], "aproject.", ap), cast(string) s[0].set[0].aproj_name[ap][0..<s[0].set[0].aproj_name_n[ap]], cast(string) ahref[0..<ahn]);
+      }
       for p: 0..<s[0].projects_n {   // each project they are in, opening its page
         pid := cast(string) s[0].projects[p].id[0..<s[0].projects[p].id_n];
         href: [80] u8; hn := ss_project_href(pid, href[..]);
@@ -467,6 +485,14 @@ cw_side :: (s: [] ChatWeb) {
       }
     }
     tr_close(t);
+  }
+  if s[0].set[0].nenvs > 0 {
+    _ = k_side_mark(t, "side.envs", "Computers", s[0].set[0].nenvs);
+    for e: 0..<s[0].set[0].nenvs {
+      ehref: [96] u8; ehn := cw_put(ehref[..], 0, "/chat?host="); ehn = cw_put(ehref[..], ehn, cast(string) s[0].set[0].env_host[e][..]);
+      eidb: [UI_ID] u8;
+      _ = k_sub_place(t, u, tr_join(eidb[..], "env.", e), cast(string) s[0].set[0].env_name[e][0..<s[0].set[0].env_name_n[e]], cast(string) ehref[0..<ehn]);
+    }
   }
   k_side_end(t);
   w := k_who(t, u, "who", cast(string) s[0].me[0..<s[0].me_n], ifx s[0].me_n > 0 then "/settings" else "/login", true);
@@ -722,7 +748,7 @@ cw_build :: (s: [] ChatWeb) {
         }
       }
       k_select_end(t, s[0].menu);
-      active_stream := s[0].cc[0].web_streaming || s[0].cc[0].remote_running;
+      active_stream := s[0].cc[0].web_streaming || s[0].cc[0].tool_running || s[0].cc[0].remote_running;
       k_composer_end(t, u, "composer", ifx active_stream then "Stop" else "Send", active_stream || cw_has_words(s));
     }
     tr_close(t);
@@ -1132,7 +1158,7 @@ cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
 // Takes the message: it goes into the transcript, without the space around it, the field is cleared,
 // and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
 cw_background_read :: (kind:int)->bool {
-  return kind==CF_LIST || kind==CF_LOG || kind==CF_CLAUDE || kind==CF_IMPORT || kind==CF_ACCOUNT || kind==CF_AGENTS || kind==CF_WHO || kind==CF_WORLDS || kind==CF_PROJECTS || kind==CF_LIFE || kind==CF_ORGS;
+  return kind==CF_LIST || kind==CF_LOG || kind==CF_CLAUDE || kind==CF_IMPORT || kind==CF_ACCOUNT || kind==CF_AGENTS || kind==CF_WHO || kind==CF_WORLDS || kind==CF_PROJECTS || kind==CF_LIFE || kind==CF_ORGS || kind==CF_ENVS || kind==CF_ACCT_PROJECTS || kind==CF_GH_STATUS || kind==CF_GH_REPOS;
 }
 cw_send :: (s: [] ChatWeb) {
   if s[0].live || !cw_has_words(s) { return; }
@@ -1424,6 +1450,7 @@ cw_end :: (s: [] ChatWeb, status: int) {
   if kind == CF_WHO {
     s[0].me_n = ifx status == 200 then ss_who_read(body, s[0].me[..]) else 0;
     if status == 200 { sw_account_read(s[0].set[..], body); } else { sw_account_read(s[0].set[..], ""); }
+    if !s[0].set[0].admin { s[0].known = false; s[0].known_asked = true; }
   } else if kind == CF_WORLDS {
     s[0].worlds_n = ifx status == 200 then ss_worlds_read(body, s[0].worlds[..]) else 0;
   } else if kind == CF_PROJECTS {
@@ -1440,8 +1467,48 @@ cw_end :: (s: [] ChatWeb, status: int) {
     sw_orgs_read(s[0].set[..], status, body);
   } else if kind == CF_ORG_SWITCH {
     sw_org_switch_read(s[0].set[..], status, body);
+  } else if kind == CF_ENVS {
+    sw_envs_read(s[0].set[..], status, body);
+  } else if kind == CF_ACCT_PROJECTS {
+    sw_acct_projects_read(s[0].set[..], status, body);
+  } else if kind == CF_NEW_PROJECT {
+    s[0].set[0].new_proj_busy = false;
+    if status == 200 || status == 201 {
+      s[0].set[0].new_proj_open = false;
+      s[0].set[0].new_proj_name_n = 0;
+      s[0].set[0].new_proj_repo_n = 0;
+      s[0].set[0].new_proj_note_n = sw_put(s[0].set[0].new_proj_note[..], 0, "Project created.");
+      s[0].set[0].aprojs_asked = false;
+    } else {
+      s[0].set[0].new_proj_note_n = sw_put(s[0].set[0].new_proj_note[..], 0, "Could not create project. Check the repository URL.");
+    }
+  } else if kind == CF_GH_STATUS {
+    sw_gh_status_read(s[0].set[..], status, body);
+  } else if kind == CF_GH_REPOS {
+    sw_gh_repos_read(s[0].set[..], status, body);
+  } else if kind == CF_GH_CONNECT {
+    ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
+    url := cl_str(ar[..], body, "url");
+    if status == 200 && url.count >= 10 && url.count <= CW_GO {
+      s[0].set[0].gh_note_n = sw_put(s[0].set[0].gh_note[..], 0, "Redirecting to GitHub...");
+      cw_go_to(s, url, false);
+    } else {
+      err := cl_str(ar[..], body, "error");
+      s[0].set[0].gh_note_n = sw_put(s[0].set[0].gh_note[..], 0, ifx err.count > 0 then err else "Could not start GitHub connection.");
+    }
+  } else if kind == CF_GH_DISCONNECT {
+    if status == 200 {
+      s[0].set[0].gh_connected = false;
+      s[0].set[0].gh_login_n = 0;
+      s[0].set[0].gh_scopes_n = 0;
+      s[0].set[0].gh_nrepos = 0;
+      s[0].set[0].gh_repos_asked = false;
+      s[0].set[0].gh_note_n = sw_put(s[0].set[0].gh_note[..], 0, "GitHub disconnected.");
+    } else {
+      s[0].set[0].gh_note_n = sw_put(s[0].set[0].gh_note[..], 0, "Could not disconnect GitHub.");
+    }
   } else if kind == CF_OUT {
-    if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; s[0].projects_n = 0; sw_account_read(s[0].set[..], ""); s[0].set[0].life_asked = false; s[0].set[0].orgs_asked = false; cw_go_to(s, "/", false); }   // logged out: the public home page
+    if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; s[0].projects_n = 0; sw_account_read(s[0].set[..], ""); s[0].set[0].life_asked = false; s[0].set[0].orgs_asked = false; s[0].set[0].envs_asked = false; s[0].set[0].nenvs = 0; s[0].set[0].aprojs_asked = false; s[0].set[0].naprojs = 0; s[0].set[0].gh_asked = false; s[0].set[0].gh_connected = false; s[0].set[0].gh_repos_asked = false; s[0].set[0].gh_nrepos = 0; cw_go_to(s, "/", false); }   // logged out: the public home page
   } else if kind == CF_ACCOUNT {
     s[0].known = status == 200; s[0].known_asked = true;
     if status == 200 { cw_account(s, body, "claude."); }
@@ -1555,12 +1622,39 @@ cw_tick :: (s: [] ChatWeb) {
   if s[0].flight != CF_NONE { return; }
   if s[0].out_due { if cw_go(s, CF_OUT, "/api/auth/logout?as=lines", "{}") { s[0].out_due = false; } return; }
   if ci_tick(s) { return; }   // Accept or Decline on a visitor's idea, as soon as the page is free
-  if !s[0].me_asked && s[0].known_asked { if cw_go(s, CF_WHO, "/api/auth/account?as=lines", "") { s[0].me_asked = true; } return; }
+  if !s[0].me_asked { if cw_go(s, CF_WHO, "/api/auth/account?as=lines", "") { s[0].me_asked = true; } return; }
+  if !s[0].known_asked && s[0].set[0].admin { if cw_go(s, CF_ACCOUNT, "/api/chat/account", "") { s[0].known_asked = true; } return; }
   if !s[0].worlds_asked && s[0].me_n > 0 { if cw_go(s, CF_WORLDS, "/api/worlds", "") { s[0].worlds_asked = true; } return; }
   if !s[0].projects_asked && s[0].me_n > 0 { if cw_go(s, CF_PROJECTS, "/api/projects", "") { s[0].projects_asked = true; } return; }
+  if !s[0].set[0].aprojs_asked && s[0].me_n > 0 { if cw_go(s, CF_ACCT_PROJECTS, "/api/projects/v1?as=lines", "") { s[0].set[0].aprojs_asked = true; } return; }
+  if !s[0].set[0].envs_asked && s[0].me_n > 0 { if cw_go(s, CF_ENVS, "/api/chat/environments/v1?as=lines", "") { s[0].set[0].envs_asked = true; } return; }
   // Settings: the limits and the release, once each, when its page is open
   if s[0].page == SW_PAGE && !s[0].set[0].limits_asked { if cw_go(s, CF_LIMITS, "/api/auth/limits?as=lines", "") { s[0].set[0].limits_asked = true; } return; }
   if s[0].page == SW_PAGE && !s[0].set[0].about_asked { if cw_go(s, CF_ABOUT, "/build/about.txt", "") { s[0].set[0].about_asked = true; } return; }
+  // Home Dashboard: inline create account Project (POST /api/projects/v1)
+  if s[0].new_proj_due && s[0].set[0].new_proj_name_n > 0 {
+    s[0].new_proj_seq += 1;
+    body: [512] u8; opb: [48] u8; num: [24] u8;
+    opn := cw_put(opb[..], 0, "web_prj_");
+    opn = cw_put(opb[..], opn, tr_join(num[..], "", s[0].cc[0].seed_epoch));
+    opn = cw_put(opb[..], opn, "_");
+    opn = cw_put(opb[..], opn, tr_join(num[..], "", s[0].new_proj_seq));
+    n := json_raw(body[..], 0, "{\"operation_id\":");
+    n = json_write_string(body[..], n, cast(string) opb[0..<opn]);
+    n = json_raw(body[..], n, ",\"value\":{\"name\":");
+    n = json_write_string(body[..], n, cast(string) s[0].set[0].new_proj_name[0..<s[0].set[0].new_proj_name_n]);
+    if s[0].set[0].new_proj_repo_n > 0 {
+      n = json_raw(body[..], n, ",\"repo_url\":");
+      n = json_write_string(body[..], n, cast(string) s[0].set[0].new_proj_repo[0..<s[0].set[0].new_proj_repo_n]);
+    }
+    n = json_raw(body[..], n, "}}");
+    if cw_go(s, CF_NEW_PROJECT, "/api/projects/v1", cast(string) body[0..<n]) {
+      s[0].new_proj_due = false;
+      s[0].set[0].new_proj_busy = true;
+      s[0].set[0].new_proj_note_n = sw_put(s[0].set[0].new_proj_note[..], 0, "Creating project...");
+    }
+    return;
+  }
   // Home Dashboard & Account Settings: account lifecycle/credit, WorkOS organizations, and org switches
   if s[0].org_switch_due > 0 && s[0].org_switch_due <= s[0].set[0].norgs {
     k := s[0].org_switch_due - 1;
@@ -1575,8 +1669,19 @@ cw_tick :: (s: [] ChatWeb) {
     return;
   }
   on_acct_dash := s[0].page == SS_HOME || (s[0].page == SW_PAGE && s[0].set[0].section == SW_ACCOUNT);
+  if s[0].gh_connect_due {
+    ret := ifx s[0].page == SS_HOME then "{\"return_to\":\"/?github=connected\"}" else "{\"return_to\":\"/settings/account?github=connected\"}";
+    if cw_go(s, CF_GH_CONNECT, "/api/integrations/github/connect", ret) { s[0].gh_connect_due = false; }
+    return;
+  }
+  if s[0].gh_disconnect_due {
+    if cw_go(s, CF_GH_DISCONNECT, "/api/integrations/github/disconnect", "{}") { s[0].gh_disconnect_due = false; }
+    return;
+  }
   if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].life_asked { if cw_go(s, CF_LIFE, "/api/auth/life?as=lines", "") { s[0].set[0].life_asked = true; } return; }
   if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].orgs_asked { if cw_go(s, CF_ORGS, "/api/auth/workos/orgs?as=lines", "") { s[0].set[0].orgs_asked = true; } return; }
+  if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].gh_asked { if cw_go(s, CF_GH_STATUS, "/api/integrations/github/status?as=lines", "") { s[0].set[0].gh_asked = true; } return; }
+  if on_acct_dash && s[0].me_n > 0 && s[0].set[0].gh_connected && !s[0].set[0].gh_repos_asked { if cw_go(s, CF_GH_REPOS, "/api/integrations/github/repos?as=lines", "") { s[0].set[0].gh_repos_asked = true; } return; }
   // a card waits for the turn to end, so a running session's tool calls stay the transcript's last message
   if s[0].card_due_n > 0 && !s[0].live && !s[0].lrun {
     url: [96] u8;
@@ -1647,16 +1752,50 @@ cw_connect :: (s: [] ChatWeb) {
 
 // ---------------------------------------------------------------- the face's calls
 
+cw_sync_cloud_context :: (s: [] ChatWeb) {
+  c := s[0].cc[..];
+  sw := s[0].set[..];
+  c[0].gh_connected = sw[0].gh_connected;
+  cwc_clear_envs(c);
+  for i: 0..<sw[0].nenvs {
+    cwc_put_env(c, cast(string) sw[0].env_host[i][..], cast(string) sw[0].env_name[i][0..<sw[0].env_name_n[i]], sw[0].env_online[i]);
+  }
+  if c[0].sel_project_n == 36 {
+    sp := cast(string) c[0].sel_project[0..<36];
+    for i: 0..<sw[0].naprojs {
+      if sw[0].aproj_id_n[i] == 36 && cast(string) sw[0].aproj_id[i][0..<36] == sp {
+        cwc_set_project_info(c, cast(string) sw[0].aproj_name[i][0..<sw[0].aproj_name_n[i]],
+                             cast(string) sw[0].aproj_repo[i][0..<sw[0].aproj_repo_n[i]], sw[0].aproj_rev[i]);
+        break;
+      }
+    }
+  } else {
+    c[0].proj_name_n = 0; c[0].proj_repo_n = 0; c[0].proj_rev = 0;
+  }
+  if c[0].sel_host_n == 64 {
+    sh := cast(string) c[0].sel_host[0..<64];
+    for i: 0..<sw[0].nenvs {
+      if cast(string) sw[0].env_host[i][..] == sh {
+        cwc_set_host_info(c, cast(string) sw[0].env_name[i][0..<sw[0].env_name_n[i]], sw[0].env_online[i]);
+        break;
+      }
+    }
+  } else {
+    c[0].host_name_n = 0; c[0].host_online = false;
+  }
+}
+
 coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   if !s[0].ready {
     n := mono_frames(s[0].sets[..]);
     s[0].ready = true; s[0].dirty = true;
-    asked := cw_go(s, CF_ACCOUNT, "/api/chat/account", "");
+    if cw_go(s, CF_WHO, "/api/auth/account?as=lines", "") { s[0].me_asked = true; }
   }
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].time += step;
   s[0].cc[0].now_ms = cast(int) (s[0].time * 1000.0) + 1;
+  cw_sync_cloud_context(s);
   if s[0].cc[0].dirty { s[0].dirty = true; s[0].cc[0].dirty = false; }
   cw_sync_cloud_nav(s);
   cw_tick(s);
@@ -1678,7 +1817,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   return bytes;
 }
 // Whether the host is to call again next frame: something changed or is moving, or a Claude turn is at work.
-coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].cc[0].dirty || s[0].animating || s[0].cc[0].web_streaming || s[0].cc[0].remote_running || (s[0].live && s[0].turn > 0) || (s[0].local >= 0 && !s[0].local_off)); }
+coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].cc[0].dirty || s[0].animating || s[0].cc[0].web_streaming || s[0].cc[0].tool_running || s[0].cc[0].remote_running || (s[0].live && s[0].turn > 0) || (s[0].local >= 0 && !s[0].local_off)); }
 coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   if kind >= UI_SUB_EVENT_BASE {
@@ -1775,6 +1914,19 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     for i: 0..<n { s[0].key[i] = s[0].inbox[i]; s[0].inbox[i] = 0; }   // the key doesn't stay in the inbox
     s[0].key_n = n;
   }
+  else if kind == CW_INPUT && id == "sw.proj.name" {
+    n := ifx length < 0 then 0 else ifx length > 80 then 80 else length;
+    for i: 0..<n { s[0].set[0].new_proj_name[i] = s[0].inbox[i]; }
+    s[0].set[0].new_proj_name_n = n;
+  }
+  else if kind == CW_INPUT && id == "sw.proj.repo" {
+    n := ifx length < 0 then 0 else ifx length > 160 then 160 else length;
+    for i: 0..<n { s[0].set[0].new_proj_repo[i] = s[0].inbox[i]; }
+    s[0].set[0].new_proj_repo_n = n;
+  }
+  else if kind == CW_SUBMIT && (id == "sw.proj.name" || id == "sw.proj.repo") {
+    if s[0].set[0].new_proj_name_n > 0 && !s[0].set[0].new_proj_busy { s[0].new_proj_due = true; }
+  }
   else if kind == CW_SUBMIT && id == "composer" {
     if cw_is_cloud(s) {
       if cwc_send(s[0].cc[..], cast(string) s[0].draft[0..<s[0].draft_n]) {
@@ -1789,7 +1941,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   else if kind == CW_CLICK && id == "composer.talk" { cw_talk(s); }
   else if kind == CW_CLICK && id == "composer.send" {
     if cw_is_cloud(s) {
-      if s[0].cc[0].web_streaming || s[0].cc[0].remote_running { cwc_stop(s[0].cc[..]); }
+      if s[0].cc[0].web_streaming || s[0].cc[0].tool_running || s[0].cc[0].remote_running { cwc_stop(s[0].cc[..]); }
       else if cwc_send(s[0].cc[..], cast(string) s[0].draft[0..<s[0].draft_n]) {
         s[0].draft_n = 0; s[0].menu = false;
         dm_value(s[0].dom[..], "composer", "");
@@ -1812,7 +1964,21 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_CLICK && (id == "fold.chats.b" || id == "fold.projects.b" || id == "fold.worlds.b") {
     k := ifx id == "fold.chats.b" then SS_CHATS else ifx id == "fold.projects.b" then SS_PROJECTS else SS_WORLDS;
-    s[0].shut ^= 1 << k; cw_keep(s);
+    has_items := ifx k == SS_CHATS then ((s[0].cloud_mode && s[0].cc[0].conv_n > 0) || (s[0].local == 1 && !s[0].local_off && s[0].ns + s[0].nc > 0))
+      else ifx k == SS_PROJECTS then (s[0].projects_n + s[0].set[0].naprojs > 0) else s[0].worlds_n > 0;
+    if has_items {
+      s[0].shut ^= 1 << k; cw_keep(s);
+    } else if k == SS_CHATS {
+      if s[0].page != SS_CHATS {
+        if !cw_keeps(s, "/chat") { cw_to_chat(s); }
+      } else {
+        s[0].shut ^= 1 << k; cw_keep(s);
+      }
+    } else {
+      hrefs := SS_HREFS;
+      url := hrefs[k];
+      if !cw_keeps(s, url) { cw_go_to(s, url, false); }
+    }
   }
   else if kind == CW_CLICK && (id == "fold.projects.add" || id == "fold.worlds.add") {
     news := SS_NEW_HREFS; url := news[ifx id == "fold.worlds.add" then SS_WORLDS else SS_PROJECTS];
@@ -2042,20 +2208,22 @@ cw_test_has :: (s: string, part: string) -> bool {
   while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
   return false;
 }
-// The page as it opens: its first frame, and the account's answer.
+// The page as it opens: its first frame, who is logged in, and (for admins) the Claude account status.
 cw_test_open :: (s: [] ChatWeb, account: string) {
   n := coaxial_chatweb_frame(s, 0.016, true);
-  cw_test_answer(s, 200, account);
-  n = coaxial_chatweb_frame(s, 0.016, true);
-  // then who is logged in, for the side's foot
+  // who is logged in first (public route, never 403 for non-admins)
   if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/auth/account?as=lines" { cw_test_answer(s, 200, CW_TEST_WHO); n = coaxial_chatweb_frame(s, 0.016, true); }
+  // then, because CW_TEST_WHO is an admin, the Claude account status
+  if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/chat/account" { cw_test_answer(s, 200, account); n = coaxial_chatweb_frame(s, 0.016, true); }
   // then the worlds they may edit, under Worlds
   if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/worlds" { cw_test_answer(s, 200, CW_TEST_WORLDS); n = coaxial_chatweb_frame(s, 0.016, true); }
   // then the projects they are in, under Projects
   // (a frame that takes no time, so the page's clock stands where the checks after it expect)
   if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/projects" { cw_test_answer(s, 200, CW_TEST_PROJECTS); n = coaxial_chatweb_frame(s, 0.0, true); }
+  if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/projects/v1?as=lines" { cw_test_answer(s, 200, ""); n = coaxial_chatweb_frame(s, 0.0, true); }
+  if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/chat/environments/v1?as=lines" { cw_test_answer(s, 200, ""); n = coaxial_chatweb_frame(s, 0.0, true); }
 }
-CW_TEST_WHO :: "logged_in 1\naccount acct_1\nkind email\nemail a•••@example.com\n";
+CW_TEST_WHO :: "logged_in 1\naccount acct_1\nkind email\nadmin 1\nemail a•••@example.com\n";
 CW_TEST_WORLDS :: "world splice Splice\n";
 CW_TEST_PROJECTS :: "project coax Coax\n";
 cw_test_door :: (s: [] ChatWeb) -> string { return cast(string) s[0].door[0..<s[0].door_n]; }
@@ -2063,22 +2231,33 @@ cw_test_body :: (s: [] ChatWeb) -> string { return cast(string) s[0].request[0..
 cw_test_press :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_CLICK, dm_find(s[0].dom[..], id), 0); }
 cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMIT, dm_find(s[0].dom[..], id), 0); }
 
-#test "the page opens on the composer, asks for the account, and Send is off until there are words" {
+#test "the page opens on the composer, asks who is logged in first, only asks /api/chat/account for admins, and Send is off until there are words" {
   h: [1] CwTest; s := h[0].s[..];
   n := coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
   #assert n > 0 && t[0].lost == 0 && tr_class(t, 0) == "chat" && tr_find(t, "log") < 0 && tr_find(t, "settings.title") < 0;
-  #assert coaxial_chatweb_asking(s) && coaxial_chatweb_ask(s) == 0 && cw_test_door(s) == "/api/chat/account";
+  #assert coaxial_chatweb_asking(s) && coaxial_chatweb_ask(s) == 0 && cw_test_door(s) == "/api/auth/account?as=lines";
   #assert t[0].nodes[tr_find(t, "composer")].tag == TG_TEXTAREA && tr_has(t, tr_find(t, "composer"), AT_FOCUS);
   #assert tr_attr_of(t, tr_find(t, "settings"), AT_LABEL) == "Settings" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 4 Hydrogen";
   #assert tr_has(t, tr_find(t, "composer.send"), AT_DISABLED);
+  cw_test_answer(s, 200, CW_TEST_WHO);
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/chat/account";
   cw_test_answer(s, 200, "{\"claude\":null}");
   #assert s[0].known && s[0].claude == CA_NONE && !coaxial_chatweb_asking(s);
   cw_test_type(s, "composer", "  \n ");
   n = coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_has(s[0].tree[..], tr_find(s[0].tree[..], "composer.send"), AT_DISABLED);
   cw_test_enter(s, "composer");
-  #assert s[0].sends == 0 && (!coaxial_chatweb_asking(s) || cw_test_door(s) == "/api/auth/account?as=lines");   // only who is logged in, for the side
+  #assert s[0].sends == 0 && (!coaxial_chatweb_asking(s) || cw_test_door(s) == "/api/worlds");
+  // Non-admin (e.g. WorkOS L1 user) never calls admin-only /api/chat/account on boot or Settings!
+  na: [1] CwTest; u := na[0].s[..];
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  #assert cw_test_door(u) == "/api/auth/account?as=lines";
+  cw_test_answer(u, 200, "logged_in 1\naccount acct_wos\nkind person\nlevel L1\nvia workos\nprimary chris@openagents.com\n");
+  #assert u[0].known_asked && !u[0].known && !u[0].set[0].admin;
+  _ = coaxial_chatweb_frame(u, 0.016, true);
+  #assert cw_test_door(u) != "/api/chat/account";
 }
 
 #test "a message goes into the transcript, the field clears, and Gemini is asked with the conversation" {
@@ -3096,7 +3275,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
 }
 #test "busy turns cannot start another message and every background read defers it" #steps 80000000 #traversal 536870912 {
  h:[1]CwTest;s:=h[0].s[..];s[0].live=true;s[0].turn=1;s[0].draft_n=cw_put(s[0].draft[..],0,"wait");cw_send(s);#assert s[0].flight==CF_NONE && s[0].count==0 && s[0].draft_n==4 && !s[0].send_due;
- for kind:[11]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS] {
+ for kind:[15]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS,CF_ENVS,CF_ACCT_PROJECTS,CF_GH_STATUS,CF_GH_REPOS] {
   f:[1]CwTest;a:=f[0].s[..];a[0].flight=kind;a[0].draft_n=cw_put(a[0].draft[..],0,"wait");cw_send(a);#assert a[0].send_due && a[0].count==0 && a[0].draft_n==4 && a[0].flight==kind;
  }
 }
@@ -3186,7 +3365,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
  }
 }
 #test "hosted audit: every deferred read resumes after failure, while an unqueued draft stays put" #steps 300000000 #traversal 536870912 {
- for kind:[11]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS] {
+ for kind:[15]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS,CF_ENVS,CF_ACCT_PROJECTS,CF_GH_STATUS,CF_GH_REPOS] {
   h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"queued");s[0].flight=kind;s[0].send_due=true;
   cw_end(s,500);#assert !s[0].send_due && s[0].live && s[0].flight==CF_COMPLETE && cw_text(s,0)=="queued";
   quiet:[1]CwTest;q:=quiet[0].s[..];q[0].draft_n=cw_put(q[0].draft[..],0,"unsent");q[0].flight=kind;
@@ -3359,11 +3538,11 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
 #test "a message sent in the page's first moment, while the account is still being read, goes when that read is back" {
   h: [1] CwTest; s := h[0].s[..];
   n := coaxial_chatweb_frame(s, 0.016, true);
-  #assert s[0].flight == CF_ACCOUNT;
+  #assert s[0].flight == CF_WHO;
   coaxial_chatweb_asked(s);
   cw_test_type(s, "composer", "hello");
   cw_test_enter(s, "composer");
-  #assert s[0].send_due && s[0].count == 0 && s[0].flight == CF_ACCOUNT;
+  #assert s[0].send_due && s[0].count == 0 && s[0].flight == CF_WHO;
   cw_test_answer(s, 404, "{\"error\":\"not found\"}");
   #assert !s[0].send_due && s[0].count == 2 && cw_text(s, 0) == "hello" && s[0].flight == CF_COMPLETE && cw_test_door(s) == "/api/chat/complete";
 }
@@ -3483,6 +3662,17 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   cw_test_path(s, "/");
   cw_test_press(s, "fold.chats.add");
   #assert s[0].page == SS_CHATS && cw_test_go(s) == "/chat" && coaxial_chatweb_go_push(s);
+  // Empty sidebar folds navigate directly to their section instead of silently toggling nothing
+  te: [1] CwTest; e := te[0].s[..];
+  cw_test_path(e, "/");
+  cw_test_press(e, "fold.chats.b");
+  #assert e[0].page == SS_CHATS && cw_test_go(e) == "/chat" && coaxial_chatweb_go_push(e);
+  coaxial_chatweb_go_done(e);
+  cw_test_press(e, "fold.projects.b");
+  #assert e[0].page == SS_HELD && cw_test_go(e) == "/projects" && coaxial_chatweb_go_push(e);
+  coaxial_chatweb_go_done(e);
+  cw_test_press(e, "fold.worlds.b");
+  #assert e[0].page == SS_HELD && cw_test_go(e) == "/worlds" && coaxial_chatweb_go_push(e);
 }
 
 #test "at / the shell shows the side and the logged-in home dashboard; New chat and the mark move between Home and Chat without leaving the page" #steps 200000000 #traversal 536870912 {

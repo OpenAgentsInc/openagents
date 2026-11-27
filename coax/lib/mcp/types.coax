@@ -1,0 +1,1080 @@
+// MCP core protocol types, capabilities, implementation info, annotations,
+// icons, content blocks, resource contents, log levels, CacheableResult,
+// and 2026-07-28 per-request _meta parsing/writing. Pure #authority module.
+#load "version.coax";
+#load "../json/json.coax";
+#authority;
+
+// Result discriminators (2026-07-28).
+MCP_RESULT_COMPLETE :: "complete";
+MCP_RESULT_INPUT_REQUIRED :: "input_required";
+
+// CacheableResult scopes (SEP-2549).
+MCP_CACHE_NONE :: 0;
+MCP_CACHE_PUBLIC :: 1;
+MCP_CACHE_PRIVATE :: 2;
+
+// RFC 5424 logging levels (ordered by severity: debug=0 .. emergency=7).
+MCP_LOG_NONE :: -1;
+MCP_LOG_DEBUG :: 0;
+MCP_LOG_INFO :: 1;
+MCP_LOG_NOTICE :: 2;
+MCP_LOG_WARNING :: 3;
+MCP_LOG_ERROR :: 4;
+MCP_LOG_CRITICAL :: 5;
+MCP_LOG_ALERT :: 6;
+MCP_LOG_EMERGENCY :: 7;
+
+// Audience bitmask for Annotations.
+MCP_AUDIENCE_USER :: 1;
+MCP_AUDIENCE_ASSISTANT :: 2;
+
+// Content block kinds.
+MCP_CONTENT_TEXT :: 1;
+MCP_CONTENT_IMAGE :: 2;
+MCP_CONTENT_AUDIO :: 3;
+MCP_CONTENT_RESOURCE :: 4;
+MCP_CONTENT_RESOURCE_LINK :: 5;
+
+// Resource contents kinds.
+MCP_RES_TEXT :: 1;
+MCP_RES_BLOB :: 2;
+
+// Progress token kinds.
+MCP_PTOK_NONE :: 0;
+MCP_PTOK_INT :: 1;
+MCP_PTOK_STR :: 2;
+
+McpImplInfo :: struct {
+  name: string;
+  version: string;
+  title: string;
+  description: string;
+  website_url: string;
+}
+
+McpIcon :: struct {
+  src: string;
+  mime_type: string;
+  sizes_json: string; // Optional raw JSON string array, e.g. "[\"48x48\"]"
+  theme: string;      // Optional: "light" | "dark"
+}
+
+McpClientCaps :: struct {
+  elicitation: bool;
+  elicitation_form: bool;
+  elicitation_url: bool;
+  sampling: bool;
+  sampling_context: bool;
+  sampling_tools: bool;
+  roots: bool;
+  roots_list_changed: bool;
+  extensions_json: string; // Optional raw JSON object for capabilities.extensions
+}
+
+McpServerCaps :: struct {
+  tools: bool;
+  tools_list_changed: bool;
+  resources: bool;
+  resources_subscribe: bool;
+  resources_list_changed: bool;
+  prompts: bool;
+  prompts_list_changed: bool;
+  completions: bool;
+  logging: bool;
+  extensions_json: string; // Optional raw JSON object for capabilities.extensions
+}
+
+McpCacheHint :: struct {
+  has_ttl: bool;
+  ttl_ms: int;
+  scope: int; // MCP_CACHE_NONE | MCP_CACHE_PUBLIC | MCP_CACHE_PRIVATE
+}
+
+McpAnnotations :: struct {
+  audience_mask: int;  // bitmask of MCP_AUDIENCE_*
+  has_priority: bool;
+  priority_raw: string; // JSON number literal e.g. "0.8" (0.0..1.0)
+  last_modified: string;
+}
+
+McpResourceContents :: struct {
+  kind: int;      // MCP_RES_TEXT | MCP_RES_BLOB
+  uri: string;
+  mime_type: string;
+  text: string;   // used when kind == MCP_RES_TEXT
+  blob: string;   // base64, used when kind == MCP_RES_BLOB
+}
+
+McpContent :: struct {
+  kind: int;      // MCP_CONTENT_*
+  text: string;
+  data: string;   // base64 for image/audio
+  mime_type: string;
+  uri: string;    // for resource_link
+  name: string;   // for resource_link
+  title: string;  // for resource_link
+  description: string; // for resource_link
+  resource: McpResourceContents; // for MCP_CONTENT_RESOURCE
+  annotations: McpAnnotations;
+}
+
+McpRequestMeta :: struct {
+  ok: bool;
+  has_protocol_version: bool;
+  protocol_version: string;
+  has_client_caps: bool;
+  client_caps: McpClientCaps;
+  has_client_info: bool;
+  client_info: McpImplInfo;
+  log_level: int = MCP_LOG_NONE;
+  progress_token_kind: int;
+  progress_token_int: int;
+  progress_token_str: string;
+  subscription_id: string;
+}
+
+#test "log level parsing, formatting, and RFC 5424 severity filtering are exact" {
+  names := [8] string.["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"];
+  for i: 0..<8 {
+    lvl := mcp_log_level_parse(names[i]);
+    #assert lvl == i;
+    #assert mcp_log_level_name(lvl) == names[i];
+  }
+  #assert mcp_log_level_parse("") == MCP_LOG_NONE;
+  #assert mcp_log_level_parse("warn") == MCP_LOG_NONE;
+  #assert mcp_log_level_parse("INFO") == MCP_LOG_NONE;
+  #assert mcp_log_level_name(MCP_LOG_NONE) == "";
+  #assert mcp_log_level_name(8) == "";
+
+  // Severity threshold: message emitted iff msg_level >= min_level (and both valid).
+  #assert mcp_log_level_allows(MCP_LOG_DEBUG, MCP_LOG_DEBUG);
+  #assert mcp_log_level_allows(MCP_LOG_EMERGENCY, MCP_LOG_EMERGENCY);
+  #assert mcp_log_level_allows(MCP_LOG_WARNING, MCP_LOG_WARNING);
+  #assert mcp_log_level_allows(MCP_LOG_WARNING, MCP_LOG_ERROR);
+  #assert !mcp_log_level_allows(MCP_LOG_WARNING, MCP_LOG_INFO);
+  #assert !mcp_log_level_allows(MCP_LOG_NONE, MCP_LOG_ERROR);
+  #assert !mcp_log_level_allows(MCP_LOG_DEBUG, MCP_LOG_NONE);
+  #assert !mcp_log_level_allows(8, MCP_LOG_EMERGENCY);
+  #assert !mcp_log_level_allows(MCP_LOG_DEBUG, 8);
+}
+
+#test "implementation info, icons, and cache hints round-trip cleanly" {
+  buf: [512] u8; o: [1] Jo; nodes: [64] JvNode; d: [1] Jv;
+
+  info := McpImplInfo.{
+    name = "OpenAgents",
+    version = "1.2.3",
+    title = "T",
+    description = "D",
+    website_url = "U"
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_impl_info(o[..], info);
+  #assert !o[0].bad;
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  parsed: [1] McpImplInfo;
+  #assert mcp_parse_impl_info(d[0], 0, parsed[..]);
+  #assert parsed[0].name == "OpenAgents" && parsed[0].version == "1.2.3";
+  #assert parsed[0].title == "T" && parsed[0].description == "D" && parsed[0].website_url == "U";
+
+  // Minimal impl info (only required name + version), re-using dirty parsed[0].
+  min_info := McpImplInfo.{ name = "Min", version = "0.1" };
+  jo_start(o[..], buf[..]);
+  mcp_write_impl_info(o[..], min_info);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"name\":\"Min\",\"version\":\"0.1\"}";
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  #assert mcp_parse_impl_info(d[0], 0, parsed[..]);
+  #assert parsed[0].name == "Min" && parsed[0].version == "0.1" && parsed[0].title == "";
+
+  // Reject malformed impl info (non-object, missing name/version, non-string field).
+  bad_info := [10] string.[
+    "[]",
+    "{\"version\":\"1\"}",
+    "{\"name\":\"\",\"version\":\"1\"}",
+    "{\"name\":\"x\"}",
+    "{\"name\":\"x\",\"version\":\"\"}",
+    "{\"name\":1,\"version\":\"1\"}",
+    "{\"name\":\"x\",\"version\":1}",
+    "{\"name\":\"x\",\"version\":\"1\",\"title\":5}",
+    "{\"name\":\"x\",\"version\":\"1\",\"description\":5}",
+    "{\"name\":\"x\",\"version\":\"1\",\"websiteUrl\":5}"
+  ];
+  for s: bad_info {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_parse_impl_info(d[0], 0, parsed[..]);
+  }
+
+  // Icon writer (1-byte optional fields kill count > 1).
+  ic := McpIcon.{ src = "https://example.com/i.png", mime_type = "m", sizes_json = "0", theme = "d" };
+  jo_start(o[..], buf[..]);
+  mcp_write_icon(o[..], ic);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"src\":\"https://example.com/i.png\",\"mimeType\":\"m\",\"sizes\":0,\"theme\":\"d\"}";
+  ic_min := McpIcon.{ src = "https://example.com/a.svg" };
+  jo_start(o[..], buf[..]);
+  mcp_write_icon(o[..], ic_min);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"src\":\"https://example.com/a.svg\"}";
+
+  // CacheableResult + resultType writer & parser.
+  #assert mcp_cache_scope_parse("public") == MCP_CACHE_PUBLIC;
+  #assert mcp_cache_scope_parse("private") == MCP_CACHE_PRIVATE;
+  #assert mcp_cache_scope_parse("other") == MCP_CACHE_NONE;
+  #assert mcp_cache_scope_name(MCP_CACHE_PUBLIC) == "public";
+  #assert mcp_cache_scope_name(MCP_CACHE_PRIVATE) == "private";
+  #assert mcp_cache_scope_name(MCP_CACHE_NONE) == "";
+
+  hint := McpCacheHint.{ has_ttl = true, ttl_ms = 60000, scope = MCP_CACHE_PRIVATE };
+  jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  mcp_write_result_type(o[..], true, false);
+  mcp_write_cache_hint(o[..], hint);
+  jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"resultType\":\"complete\",\"ttlMs\":60000,\"cacheScope\":\"private\"}";
+
+  // Empty cache hint omits both fields.
+  jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  mcp_write_cache_hint(o[..], McpCacheHint.{});
+  jo_end(o[..]);
+  #assert jo_text(o[..]) == "{}";
+
+  #assert jv_parse(d[..], "{\"resultType\":\"complete\",\"ttlMs\":60000,\"cacheScope\":\"private\"}", nodes[..]);
+  ch: [1] McpCacheHint;
+  #assert mcp_parse_cache_hint(d[0], 0, ch[..]);
+  #assert ch[0].has_ttl && ch[0].ttl_ms == 60000 && ch[0].scope == MCP_CACHE_PRIVATE;
+
+  // Re-parse empty object into dirty ch[0] verifies reset.
+  #assert jv_parse(d[..], "{}", nodes[..]);
+  #assert mcp_parse_cache_hint(d[0], 0, ch[..]) && !ch[0].has_ttl && ch[0].ttl_ms == 0 && ch[0].scope == MCP_CACHE_NONE;
+
+  // Input required resultType vs legacy (omitted).
+  jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  mcp_write_result_type(o[..], true, true);
+  jo_end(o[..]);
+  #assert jo_text(o[..]) == "{\"resultType\":\"input_required\"}";
+
+  jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  mcp_write_result_type(o[..], false, false);
+  jo_end(o[..]);
+  #assert jo_text(o[..]) == "{}";
+
+  // Cache hint validation rejects negative ttlMs, non-integer ttlMs, or invalid scope.
+  #assert jv_parse(d[..], "{\"ttlMs\":-1}", nodes[..]);
+  #assert !mcp_parse_cache_hint(d[0], 0, ch[..]);
+  #assert jv_parse(d[..], "{\"ttlMs\":1.5}", nodes[..]);
+  #assert !mcp_parse_cache_hint(d[0], 0, ch[..]);
+  #assert jv_parse(d[..], "{\"ttlMs\":\"60\"}", nodes[..]);
+  #assert !mcp_parse_cache_hint(d[0], 0, ch[..]);
+  #assert jv_parse(d[..], "{\"cacheScope\":\"shared\"}", nodes[..]);
+  #assert !mcp_parse_cache_hint(d[0], 0, ch[..]);
+  #assert jv_parse(d[..], "{\"cacheScope\":1}", nodes[..]);
+  #assert !mcp_parse_cache_hint(d[0], 0, ch[..]);
+  #assert jv_parse(d[..], "[]", nodes[..]);
+  #assert !mcp_parse_cache_hint(d[0], 0, ch[..]);
+  // Zero and 1 ttlMs are valid.
+  #assert jv_parse(d[..], "{\"ttlMs\":0,\"cacheScope\":\"public\"}", nodes[..]);
+  #assert mcp_parse_cache_hint(d[0], 0, ch[..]) && ch[0].has_ttl && ch[0].ttl_ms == 0 && ch[0].scope == MCP_CACHE_PUBLIC;
+  #assert jv_parse(d[..], "{\"ttlMs\":1}", nodes[..]);
+  #assert mcp_parse_cache_hint(d[0], 0, ch[..]) && ch[0].has_ttl && ch[0].ttl_ms == 1;
+}
+
+#test "client and server capabilities round-trip and match official 2026-07-28 examples" {
+  buf: [512] u8; o: [1] Jo; nodes: [64] JvNode; d: [1] Jv;
+
+  // Full client capabilities.
+  cc := McpClientCaps.{
+    elicitation = true,
+    elicitation_form = true,
+    elicitation_url = true,
+    sampling = true,
+    sampling_context = true,
+    sampling_tools = true,
+    roots = true,
+    roots_list_changed = true,
+    extensions_json = "{\"io.modelcontextprotocol/ui\":{\"mimeTypes\":[\"text/html;profile=mcp-app\"]}}"
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_client_caps(o[..], cc);
+  #assert !o[0].bad;
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  pc: [1] McpClientCaps;
+  #assert mcp_parse_client_caps(d[0], 0, pc[..]);
+  #assert pc[0].elicitation && pc[0].elicitation_form && pc[0].elicitation_url;
+  #assert pc[0].sampling && pc[0].sampling_context && pc[0].sampling_tools;
+  #assert pc[0].roots && pc[0].roots_list_changed;
+
+  // Official example: implicit form-only elicitation ("elicitation": {}).
+  #assert jv_parse(d[..], "{\"elicitation\":{}}", nodes[..]);
+  #assert mcp_parse_client_caps(d[0], 0, pc[..]);
+  #assert pc[0].elicitation && pc[0].elicitation_form && !pc[0].elicitation_url;
+
+  // URL-only elicitation does NOT imply form mode.
+  #assert jv_parse(d[..], "{\"elicitation\":{\"url\":{}}}", nodes[..]);
+  #assert mcp_parse_client_caps(d[0], 0, pc[..]);
+  #assert pc[0].elicitation && !pc[0].elicitation_form && pc[0].elicitation_url;
+
+  // Form-only explicit elicitation.
+  #assert jv_parse(d[..], "{\"elicitation\":{\"form\":{}}}", nodes[..]);
+  #assert mcp_parse_client_caps(d[0], 0, pc[..]);
+  #assert pc[0].elicitation && pc[0].elicitation_form && !pc[0].elicitation_url;
+
+  // Empty client capabilities and malformed client capabilities.
+  #assert jv_parse(d[..], "{}", nodes[..]);
+  #assert mcp_parse_client_caps(d[0], 0, pc[..]);
+  #assert !pc[0].elicitation && !pc[0].sampling && !pc[0].roots;
+
+  bad_cc := [5] string.[
+    "[]",
+    "{\"elicitation\":true}",
+    "{\"sampling\":[]}",
+    "{\"roots\":1}",
+    "{\"roots\":{\"listChanged\":\"yes\"}}"
+  ];
+  for s: bad_cc {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_parse_client_caps(d[0], 0, pc[..]);
+  }
+
+  // Full server capabilities.
+  sc := McpServerCaps.{
+    tools = true,
+    tools_list_changed = true,
+    resources = true,
+    resources_subscribe = true,
+    resources_list_changed = true,
+    prompts = true,
+    prompts_list_changed = true,
+    completions = true,
+    logging = true,
+    extensions_json = "{\"io.modelcontextprotocol/tasks\":{}}"
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_server_caps(o[..], sc);
+  #assert !o[0].bad;
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  ps: [1] McpServerCaps;
+  #assert mcp_parse_server_caps(d[0], 0, ps[..]);
+  #assert ps[0].tools && ps[0].tools_list_changed;
+  #assert ps[0].resources && ps[0].resources_subscribe && ps[0].resources_list_changed;
+  #assert ps[0].prompts && ps[0].prompts_list_changed;
+  #assert ps[0].completions && ps[0].logging;
+
+  // Explicit empty sampling/roots and false boolean fields on capabilities.
+  #assert jv_parse(d[..], "{\"sampling\":{},\"roots\":{}}", nodes[..]);
+  #assert mcp_parse_client_caps(d[0], 0, pc[..]);
+  #assert pc[0].sampling && !pc[0].sampling_context && !pc[0].sampling_tools && pc[0].roots && !pc[0].roots_list_changed;
+  #assert jv_parse(d[..], "{\"roots\":{\"listChanged\":false}}", nodes[..]);
+  #assert mcp_parse_client_caps(d[0], 0, pc[..]) && pc[0].roots && !pc[0].roots_list_changed;
+
+  // Minimal server capabilities (flags false -> empty objects when capability enabled) + dirty reset check.
+  sc_min := McpServerCaps.{ tools = true, resources = true, prompts = true };
+  jo_start(o[..], buf[..]);
+  mcp_write_server_caps(o[..], sc_min);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"tools\":{},\"resources\":{},\"prompts\":{}}";
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  #assert mcp_parse_server_caps(d[0], 0, ps[..]);
+  #assert ps[0].tools && !ps[0].tools_list_changed && ps[0].resources && !ps[0].resources_subscribe && !ps[0].resources_list_changed && ps[0].prompts && !ps[0].prompts_list_changed && !ps[0].completions && !ps[0].logging;
+
+  #assert jv_parse(d[..], "{\"resources\":{\"subscribe\":true}}", nodes[..]);
+  #assert mcp_parse_server_caps(d[0], 0, ps[..]) && !ps[0].tools && ps[0].resources && ps[0].resources_subscribe && !ps[0].resources_list_changed;
+  #assert jv_parse(d[..], "{\"tools\":{\"listChanged\":false}}", nodes[..]);
+  #assert mcp_parse_server_caps(d[0], 0, ps[..]) && ps[0].tools && !ps[0].tools_list_changed;
+
+  // 1-byte extensions_json tests.
+  cc_e := McpClientCaps.{ extensions_json = "0" };
+  jo_start(o[..], buf[..]);
+  mcp_write_client_caps(o[..], cc_e);
+  #assert jo_text(o[..]) == "{\"extensions\":0}";
+  sc_e := McpServerCaps.{ extensions_json = "0" };
+  jo_start(o[..], buf[..]);
+  mcp_write_server_caps(o[..], sc_e);
+  #assert jo_text(o[..]) == "{\"extensions\":0}";
+
+  // Malformed server capabilities.
+  bad_sc := [9] string.[
+    "[]",
+    "{\"tools\":1}",
+    "{\"tools\":{\"listChanged\":\"yes\"}}",
+    "{\"resources\":1}",
+    "{\"resources\":{\"subscribe\":1}}",
+    "{\"resources\":{\"listChanged\":1}}",
+    "{\"prompts\":1}",
+    "{\"prompts\":{\"listChanged\":1}}",
+    "{\"completions\":true}"
+  ];
+  for s: bad_sc {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_parse_server_caps(d[0], 0, ps[..]);
+  }
+  #assert jv_parse(d[..], "{\"logging\":false}", nodes[..]);
+  #assert !mcp_parse_server_caps(d[0], 0, ps[..]);
+}
+
+#test "content blocks, resource contents, and annotations match 2026-07-28 golden shapes" {
+  buf: [1024] u8; o: [1] Jo; nodes: [64] JvNode; d: [1] Jv;
+
+  // Text content with annotations.
+  tc := McpContent.{
+    kind = MCP_CONTENT_TEXT,
+    text = "Tool result text",
+    annotations = McpAnnotations.{
+      audience_mask = MCP_AUDIENCE_USER | MCP_AUDIENCE_ASSISTANT,
+      has_priority = true,
+      priority_raw = "0.8",
+      last_modified = "2025-05-03T14:30:00Z"
+    }
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_content(o[..], tc);
+  #assert !o[0].bad;
+  #assert jo_text(o[..]) == "{\"type\":\"text\",\"text\":\"Tool result text\",\"annotations\":{\"audience\":[\"user\",\"assistant\"],\"priority\":0.8,\"lastModified\":\"2025-05-03T14:30:00Z\"}}";
+
+  // Image content.
+  ic := McpContent.{ kind = MCP_CONTENT_IMAGE, data = "iVBORw==", mime_type = "image/png" };
+  jo_start(o[..], buf[..]);
+  mcp_write_content(o[..], ic);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"type\":\"image\",\"data\":\"iVBORw==\",\"mimeType\":\"image/png\"}";
+
+  // Audio content.
+  ac := McpContent.{ kind = MCP_CONTENT_AUDIO, data = "UklGRg==", mime_type = "audio/wav" };
+  jo_start(o[..], buf[..]);
+  mcp_write_content(o[..], ac);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"type\":\"audio\",\"data\":\"UklGRg==\",\"mimeType\":\"audio/wav\"}";
+
+  // Embedded text resource content.
+  rc := McpContent.{
+    kind = MCP_CONTENT_RESOURCE,
+    resource = McpResourceContents.{
+      kind = MCP_RES_TEXT,
+      uri = "file:///a.txt",
+      mime_type = "text/plain",
+      text = "hello"
+    }
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_content(o[..], rc);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"type\":\"resource\",\"resource\":{\"uri\":\"file:///a.txt\",\"mimeType\":\"text/plain\",\"text\":\"hello\"}}";
+
+  // Blob resource contents.
+  bc := McpResourceContents.{ kind = MCP_RES_BLOB, uri = "file:///a.png", mime_type = "image/png", blob = "AAAA" };
+  jo_start(o[..], buf[..]);
+  mcp_write_resource_contents(o[..], bc);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"uri\":\"file:///a.png\",\"mimeType\":\"image/png\",\"blob\":\"AAAA\"}";
+  // Resource without optional mimeType.
+  bc_no_mime := McpResourceContents.{ kind = MCP_RES_TEXT, uri = "memo://1", text = "hi" };
+  jo_start(o[..], buf[..]);
+  mcp_write_resource_contents(o[..], bc_no_mime);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"uri\":\"memo://1\",\"text\":\"hi\"}";
+
+  // ResourceLink content.
+  rl := McpContent.{
+    kind = MCP_CONTENT_RESOURCE_LINK,
+    uri = "file:///main.rs",
+    name = "main.rs",
+    title = "Main",
+    description = "Entry point",
+    mime_type = "text/x-rust"
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_content(o[..], rl);
+  #assert !o[0].bad;
+  #assert jo_text(o[..]) == "{\"type\":\"resource_link\",\"uri\":\"file:///main.rs\",\"name\":\"main.rs\",\"title\":\"Main\",\"description\":\"Entry point\",\"mimeType\":\"text/x-rust\"}";
+
+  // ResourceLink with only required fields.
+  rl_min := McpContent.{ kind = MCP_CONTENT_RESOURCE_LINK, uri = "file:///x", name = "x" };
+  jo_start(o[..], buf[..]);
+  mcp_write_content(o[..], rl_min);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"type\":\"resource_link\",\"uri\":\"file:///x\",\"name\":\"x\"}";
+
+  // Annotations with single audience role.
+  ann_u := McpAnnotations.{ audience_mask = MCP_AUDIENCE_USER };
+  jo_start(o[..], buf[..]);
+  mcp_write_annotations(o[..], ann_u);
+  #assert jo_text(o[..]) == "{\"audience\":[\"user\"]}";
+  ann_a := McpAnnotations.{ audience_mask = MCP_AUDIENCE_ASSISTANT };
+  jo_start(o[..], buf[..]);
+  mcp_write_annotations(o[..], ann_a);
+  #assert jo_text(o[..]) == "{\"audience\":[\"assistant\"]}";
+
+  // Single-field annotations kill || -> && on mcp_annotations_present and 1-char strings.
+  ann_p := McpContent.{ kind = MCP_CONTENT_TEXT, text = "a", annotations = McpAnnotations.{ has_priority = true, priority_raw = "0.5" } };
+  jo_start(o[..], buf[..]);
+  mcp_write_content(o[..], ann_p);
+  #assert jo_text(o[..]) == "{\"type\":\"text\",\"text\":\"a\",\"annotations\":{\"priority\":0.5}}";
+
+  ann_l := McpContent.{ kind = MCP_CONTENT_TEXT, text = "b", annotations = McpAnnotations.{ last_modified = "Z" } };
+  jo_start(o[..], buf[..]);
+  mcp_write_content(o[..], ann_l);
+  #assert jo_text(o[..]) == "{\"type\":\"text\",\"text\":\"b\",\"annotations\":{\"lastModified\":\"Z\"}}";
+
+  // 1-char mimeType/title/description on resource contents and resource link.
+  bc_1 := McpResourceContents.{ kind = MCP_RES_TEXT, uri = "u", mime_type = "m", text = "t" };
+  jo_start(o[..], buf[..]);
+  mcp_write_resource_contents(o[..], bc_1);
+  #assert jo_text(o[..]) == "{\"uri\":\"u\",\"mimeType\":\"m\",\"text\":\"t\"}";
+  rl_1 := McpContent.{ kind = MCP_CONTENT_RESOURCE_LINK, uri = "u", name = "n", title = "t", description = "d", mime_type = "m" };
+  jo_start(o[..], buf[..]);
+  mcp_write_content(o[..], rl_1);
+  #assert jo_text(o[..]) == "{\"type\":\"resource_link\",\"uri\":\"u\",\"name\":\"n\",\"title\":\"t\",\"description\":\"d\",\"mimeType\":\"m\"}";
+
+  // Round-trip parse resource contents (text, blob, invalid).
+  pr: [1] McpResourceContents;
+  #assert jv_parse(d[..], "{\"uri\":\"file:///a.txt\",\"mimeType\":\"text/plain\",\"text\":\"hi\"}", nodes[..]);
+  #assert mcp_parse_resource_contents(d[0], 0, pr[..]) && pr[0].kind == MCP_RES_TEXT && pr[0].uri == "file:///a.txt" && pr[0].text == "hi" && pr[0].mime_type == "text/plain";
+  #assert jv_parse(d[..], "{\"uri\":\"file:///a.png\",\"blob\":\"AA==\"}", nodes[..]);
+  #assert mcp_parse_resource_contents(d[0], 0, pr[..]) && pr[0].kind == MCP_RES_BLOB && pr[0].blob == "AA==" && pr[0].mime_type == "";
+
+  bad_rc := [8] string.[
+    "[]",
+    "{\"text\":\"hi\"}",
+    "{\"uri\":\"\",\"text\":\"hi\"}",
+    "{\"uri\":\"file:///a\"}",
+    "{\"uri\":\"file:///a\",\"text\":\"x\",\"blob\":\"y\"}",
+    "{\"uri\":\"file:///a\",\"text\":1}",
+    "{\"uri\":\"file:///a\",\"blob\":1}",
+    "{\"uri\":\"file:///a\",\"text\":\"x\",\"mimeType\":1}"
+  ];
+  for s: bad_rc {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_parse_resource_contents(d[0], 0, pr[..]);
+  }
+}
+
+#test "2026-07-28 per-request _meta parsing and writing preserves all reserved keys" {
+  buf: [512] u8; o: [1] Jo; nodes: [64] JvNode; d: [1] Jv;
+
+  // Write full 2026-07-28 _meta block.
+  meta_in := McpRequestMeta.{
+    has_protocol_version = true,
+    protocol_version = MCP_V_2026_07_28,
+    has_client_caps = true,
+    client_caps = McpClientCaps.{ elicitation = true, elicitation_form = true },
+    has_client_info = true,
+    client_info = McpImplInfo.{ name = "ExampleClient", version = "1.0.0" },
+    log_level = MCP_LOG_WARNING,
+    progress_token_kind = MCP_PTOK_STR,
+    progress_token_str = "pt-1",
+    subscription_id = "listen-1"
+  };
+  jo_start(o[..], buf[..]);
+  mcp_write_request_meta(o[..], meta_in);
+  #assert !o[0].bad;
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+
+  m := mcp_parse_request_meta(d[0], 0);
+  #assert m.ok;
+  #assert m.has_protocol_version && m.protocol_version == "2026-07-28";
+  #assert m.has_client_caps && m.client_caps.elicitation && m.client_caps.elicitation_form;
+  #assert m.has_client_info && m.client_info.name == "ExampleClient" && m.client_info.version == "1.0.0";
+  #assert m.log_level == MCP_LOG_WARNING;
+  #assert m.progress_token_kind == MCP_PTOK_STR && m.progress_token_str == "pt-1";
+  #assert m.subscription_id == "listen-1";
+
+  // Integer progressToken.
+  meta_int := McpRequestMeta.{ progress_token_kind = MCP_PTOK_INT, progress_token_int = 42 };
+  jo_start(o[..], buf[..]);
+  mcp_write_request_meta(o[..], meta_int);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"progressToken\":42}";
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  m = mcp_parse_request_meta(d[0], 0);
+  #assert m.ok && m.progress_token_kind == MCP_PTOK_INT && m.progress_token_int == 42;
+
+  // Missing _meta node (-1) yields empty ok metadata.
+  m = mcp_parse_request_meta(d[0], -1);
+  #assert m.ok && !m.has_protocol_version && m.log_level == MCP_LOG_NONE && m.progress_token_kind == MCP_PTOK_NONE;
+
+  // Malformed _meta fields are rejected.
+  bad_meta := [11] string.[
+    "[]",
+    "{\"io.modelcontextprotocol/protocolVersion\":123}",
+    "{\"io.modelcontextprotocol/clientCapabilities\":[]}",
+    "{\"io.modelcontextprotocol/clientInfo\":{}}",
+    "{\"io.modelcontextprotocol/logLevel\":\"bogus\"}",
+    "{\"io.modelcontextprotocol/logLevel\":1}",
+    "{\"progressToken\":true}",
+    "{\"progressToken\":1.5}",
+    "{\"progressToken\":null}",
+    "{\"io.modelcontextprotocol/subscriptionId\":1}",
+    "{\"io.modelcontextprotocol/subscriptionId\":\"\"}"
+  ];
+  for s: bad_meta {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_parse_request_meta(d[0], 0).ok;
+  }
+
+  // Log level debug (0) + 1-char subscriptionId + invalid log level omitted on write.
+  meta_dbg := McpRequestMeta.{ log_level = MCP_LOG_DEBUG, subscription_id = "s" };
+  jo_start(o[..], buf[..]);
+  mcp_write_request_meta(o[..], meta_dbg);
+  #assert jo_text(o[..]) == "{\"io.modelcontextprotocol/logLevel\":\"debug\",\"io.modelcontextprotocol/subscriptionId\":\"s\"}";
+  meta_bad_lvl := McpRequestMeta.{ log_level = 99 };
+  jo_start(o[..], buf[..]);
+  mcp_write_request_meta(o[..], meta_bad_lvl);
+  #assert jo_text(o[..]) == "{}";
+
+  // Empty _meta object parses cleanly with all fields absent.
+  #assert jv_parse(d[..], "{}", nodes[..]);
+  m = mcp_parse_request_meta(d[0], 0);
+  #assert m.ok && !m.has_protocol_version && !m.has_client_caps && !m.has_client_info && m.log_level == MCP_LOG_NONE && m.progress_token_kind == MCP_PTOK_NONE && m.subscription_id == "";
+
+  // Integer progressToken == 0 must parse as valid int (not rejected as float/bad).
+  #assert jv_parse(d[..], "{\"progressToken\":0}", nodes[..]);
+  m = mcp_parse_request_meta(d[0], 0);
+  #assert m.ok && m.progress_token_kind == MCP_PTOK_INT && m.progress_token_int == 0;
+}
+
+mcp_log_level_parse :: (s: string) -> int #effects(all) {
+  if s == "debug" { return MCP_LOG_DEBUG; }
+  if s == "info" { return MCP_LOG_INFO; }
+  if s == "notice" { return MCP_LOG_NOTICE; }
+  if s == "warning" { return MCP_LOG_WARNING; }
+  if s == "error" { return MCP_LOG_ERROR; }
+  if s == "critical" { return MCP_LOG_CRITICAL; }
+  if s == "alert" { return MCP_LOG_ALERT; }
+  if s == "emergency" { return MCP_LOG_EMERGENCY; }
+  return MCP_LOG_NONE;
+}
+
+mcp_log_level_name :: (lvl: int) -> string #effects(all) {
+  if lvl == MCP_LOG_DEBUG { return "debug"; }
+  if lvl == MCP_LOG_INFO { return "info"; }
+  if lvl == MCP_LOG_NOTICE { return "notice"; }
+  if lvl == MCP_LOG_WARNING { return "warning"; }
+  if lvl == MCP_LOG_ERROR { return "error"; }
+  if lvl == MCP_LOG_CRITICAL { return "critical"; }
+  if lvl == MCP_LOG_ALERT { return "alert"; }
+  if lvl == MCP_LOG_EMERGENCY { return "emergency"; }
+  return "";
+}
+
+mcp_log_level_allows :: (min_level: int, msg_level: int) -> bool #effects(all) {
+  if min_level < MCP_LOG_DEBUG || msg_level > MCP_LOG_EMERGENCY { return false; }
+  return msg_level >= min_level;
+}
+
+mcp_cache_scope_parse :: (s: string) -> int #effects(all) {
+  if s == "public" { return MCP_CACHE_PUBLIC; }
+  if s == "private" { return MCP_CACHE_PRIVATE; }
+  return MCP_CACHE_NONE;
+}
+
+mcp_cache_scope_name :: (scope: int) -> string #effects(all) {
+  if scope == MCP_CACHE_PUBLIC { return "public"; }
+  if scope == MCP_CACHE_PRIVATE { return "private"; }
+  return "";
+}
+
+mcp_write_result_type :: (o: [] Jo, modern: bool, input_required: bool) #effects(all) {
+  if !modern { return; }
+  jo_key(o, "resultType");
+  if input_required { jo_str(o, MCP_RESULT_INPUT_REQUIRED); } else { jo_str(o, MCP_RESULT_COMPLETE); }
+}
+
+mcp_write_cache_hint :: (o: [] Jo, h: McpCacheHint) #effects(all) {
+  if h.has_ttl { jo_key(o, "ttlMs"); jo_int(o, h.ttl_ms); }
+  sname := mcp_cache_scope_name(h.scope);
+  if sname.count != 0 { jo_key(o, "cacheScope"); jo_str(o, sname); } // mutant: equivalent (sname is "" or len>=6)
+}
+
+mcp_parse_cache_hint :: (d: Jv, obj: int, out: [] McpCacheHint) -> bool #effects(all) {
+  out[0] = McpCacheHint.{};
+  if jv_kind(d, obj) != JV_OBJECT { return false; }
+  tn := jv_get(d, obj, "ttlMs");
+  if tn != -1 {
+    if jv_kind(d, tn) != JV_NUMBER { return false; }
+    raw := jv_raw(d, tn);
+    v := jv_int(d, tn, 0);
+    if v < 0 || (v == 0 && raw != "0") { return false; }
+    out[0].has_ttl = true;
+    out[0].ttl_ms = v;
+  }
+  sn := jv_get(d, obj, "cacheScope");
+  if sn != -1 {
+    if jv_kind(d, sn) != JV_STRING { return false; }
+    sc := mcp_cache_scope_parse(jv_raw(d, sn));
+    if sc == MCP_CACHE_NONE { return false; }
+    out[0].scope = sc;
+  }
+  return true;
+}
+
+mcp_write_impl_info :: (o: [] Jo, info: McpImplInfo) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "name"); jo_str(o, info.name);
+  jo_key(o, "version"); jo_str(o, info.version);
+  if info.title.count != 0 { jo_key(o, "title"); jo_str(o, info.title); }
+  if info.description.count != 0 { jo_key(o, "description"); jo_str(o, info.description); }
+  if info.website_url.count != 0 { jo_key(o, "websiteUrl"); jo_str(o, info.website_url); }
+  jo_end(o);
+}
+
+mcp_parse_impl_info :: (d: Jv, obj: int, out: [] McpImplInfo) -> bool #effects(all) {
+  out[0] = McpImplInfo.{};
+  if jv_kind(d, obj) != JV_OBJECT { return false; }
+  nn := jv_get(d, obj, "name");
+  vn := jv_get(d, obj, "version");
+  if jv_kind(d, nn) != JV_STRING || jv_kind(d, vn) != JV_STRING { return false; }
+  name := jv_raw(d, nn);
+  ver := jv_raw(d, vn);
+  if name.count == 0 || ver.count == 0 { return false; }
+  out[0].name = name;
+  out[0].version = ver;
+  tn := jv_get(d, obj, "title");
+  if tn != -1 {
+    if jv_kind(d, tn) != JV_STRING { return false; }
+    out[0].title = jv_raw(d, tn);
+  }
+  dn := jv_get(d, obj, "description");
+  if dn != -1 {
+    if jv_kind(d, dn) != JV_STRING { return false; }
+    out[0].description = jv_raw(d, dn);
+  }
+  wn := jv_get(d, obj, "websiteUrl");
+  if wn != -1 {
+    if jv_kind(d, wn) != JV_STRING { return false; }
+    out[0].website_url = jv_raw(d, wn);
+  }
+  return true;
+}
+
+mcp_write_icon :: (o: [] Jo, ic: McpIcon) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "src"); jo_str(o, ic.src);
+  if ic.mime_type.count != 0 { jo_key(o, "mimeType"); jo_str(o, ic.mime_type); }
+  if ic.sizes_json.count != 0 { jo_key(o, "sizes"); jo_raw(o, ic.sizes_json); }
+  if ic.theme.count != 0 { jo_key(o, "theme"); jo_str(o, ic.theme); }
+  jo_end(o);
+}
+
+mcp_write_client_caps :: (o: [] Jo, c: McpClientCaps) #effects(all) {
+  jo_obj(o);
+  if c.elicitation {
+    jo_key(o, "elicitation"); jo_obj(o);
+    if c.elicitation_form { jo_key(o, "form"); jo_obj(o); jo_end(o); }
+    if c.elicitation_url { jo_key(o, "url"); jo_obj(o); jo_end(o); }
+    jo_end(o);
+  }
+  if c.sampling {
+    jo_key(o, "sampling"); jo_obj(o);
+    if c.sampling_context { jo_key(o, "context"); jo_obj(o); jo_end(o); }
+    if c.sampling_tools { jo_key(o, "tools"); jo_obj(o); jo_end(o); }
+    jo_end(o);
+  }
+  if c.roots {
+    jo_key(o, "roots"); jo_obj(o);
+    if c.roots_list_changed { jo_key(o, "listChanged"); jo_bool(o, true); }
+    jo_end(o);
+  }
+  if c.extensions_json.count != 0 {
+    jo_key(o, "extensions"); jo_raw(o, c.extensions_json);
+  }
+  jo_end(o);
+}
+
+mcp_parse_client_caps :: (d: Jv, obj: int, out: [] McpClientCaps) -> bool #effects(all) {
+  out[0] = McpClientCaps.{};
+  if jv_kind(d, obj) != JV_OBJECT { return false; }
+
+  en := jv_get(d, obj, "elicitation");
+  if en != -1 {
+    if jv_kind(d, en) != JV_OBJECT { return false; }
+    out[0].elicitation = true;
+    fn := jv_get(d, en, "form");
+    un := jv_get(d, en, "url");
+    if fn != -1 { out[0].elicitation_form = true; }
+    if un != -1 { out[0].elicitation_url = true; }
+    // Per MCP spec (ClientCapabilities/elicitation-form-only-implicit.json):
+    // empty "elicitation": {} implicitly advertises form mode.
+    if fn == -1 && un == -1 { out[0].elicitation_form = true; }
+  }
+
+  sn := jv_get(d, obj, "sampling");
+  if sn != -1 {
+    if jv_kind(d, sn) != JV_OBJECT { return false; }
+    out[0].sampling = true;
+    if jv_get(d, sn, "context") != -1 { out[0].sampling_context = true; }
+    if jv_get(d, sn, "tools") != -1 { out[0].sampling_tools = true; }
+  }
+
+  rn := jv_get(d, obj, "roots");
+  if rn != -1 {
+    if jv_kind(d, rn) != JV_OBJECT { return false; }
+    out[0].roots = true;
+    lcn := jv_get(d, rn, "listChanged");
+    if lcn != -1 {
+      lk := jv_kind(d, lcn);
+      if lk != JV_TRUE && lk != JV_FALSE { return false; }
+      out[0].roots_list_changed = lk == JV_TRUE;
+    }
+  }
+  return true;
+}
+
+mcp_write_server_caps :: (o: [] Jo, s: McpServerCaps) #effects(all) {
+  jo_obj(o);
+  if s.tools {
+    jo_key(o, "tools"); jo_obj(o);
+    if s.tools_list_changed { jo_key(o, "listChanged"); jo_bool(o, true); }
+    jo_end(o);
+  }
+  if s.resources {
+    jo_key(o, "resources"); jo_obj(o);
+    if s.resources_subscribe { jo_key(o, "subscribe"); jo_bool(o, true); }
+    if s.resources_list_changed { jo_key(o, "listChanged"); jo_bool(o, true); }
+    jo_end(o);
+  }
+  if s.prompts {
+    jo_key(o, "prompts"); jo_obj(o);
+    if s.prompts_list_changed { jo_key(o, "listChanged"); jo_bool(o, true); }
+    jo_end(o);
+  }
+  if s.completions {
+    jo_key(o, "completions"); jo_obj(o); jo_end(o);
+  }
+  if s.logging {
+    jo_key(o, "logging"); jo_obj(o); jo_end(o);
+  }
+  if s.extensions_json.count != 0 {
+    jo_key(o, "extensions"); jo_raw(o, s.extensions_json);
+  }
+  jo_end(o);
+}
+
+mcp_parse_opt_bool_field :: (d: Jv, obj: int, key: string, out_val: [] bool) -> bool #effects(all) {
+  n := jv_get(d, obj, key);
+  if n == -1 { out_val[0] = false; return true; }
+  k := jv_kind(d, n);
+  if k != JV_TRUE && k != JV_FALSE { return false; }
+  out_val[0] = k == JV_TRUE;
+  return true;
+}
+
+mcp_parse_server_caps :: (d: Jv, obj: int, out: [] McpServerCaps) -> bool #effects(all) {
+  out[0] = McpServerCaps.{};
+  if jv_kind(d, obj) != JV_OBJECT { return false; }
+  b: [1] bool;
+
+  tn := jv_get(d, obj, "tools");
+  if tn != -1 {
+    if jv_kind(d, tn) != JV_OBJECT { return false; }
+    out[0].tools = true;
+    if !mcp_parse_opt_bool_field(d, tn, "listChanged", b[..]) { return false; }
+    out[0].tools_list_changed = b[0];
+  }
+
+  rn := jv_get(d, obj, "resources");
+  if rn != -1 {
+    if jv_kind(d, rn) != JV_OBJECT { return false; }
+    out[0].resources = true;
+    if !mcp_parse_opt_bool_field(d, rn, "subscribe", b[..]) { return false; }
+    out[0].resources_subscribe = b[0];
+    if !mcp_parse_opt_bool_field(d, rn, "listChanged", b[..]) { return false; }
+    out[0].resources_list_changed = b[0];
+  }
+
+  pn := jv_get(d, obj, "prompts");
+  if pn != -1 {
+    if jv_kind(d, pn) != JV_OBJECT { return false; }
+    out[0].prompts = true;
+    if !mcp_parse_opt_bool_field(d, pn, "listChanged", b[..]) { return false; }
+    out[0].prompts_list_changed = b[0];
+  }
+
+  cn := jv_get(d, obj, "completions");
+  if cn != -1 {
+    if jv_kind(d, cn) != JV_OBJECT { return false; }
+    out[0].completions = true;
+  }
+
+  ln := jv_get(d, obj, "logging");
+  if ln != -1 {
+    if jv_kind(d, ln) != JV_OBJECT { return false; }
+    out[0].logging = true;
+  }
+  return true;
+}
+
+mcp_annotations_present :: (a: McpAnnotations) -> bool #effects(all) {
+  return a.audience_mask != 0 || a.has_priority || a.last_modified.count != 0;
+}
+
+mcp_write_annotations :: (o: [] Jo, a: McpAnnotations) #effects(all) {
+  jo_obj(o);
+  if a.audience_mask != 0 {
+    jo_key(o, "audience"); jo_arr(o);
+    if (a.audience_mask & MCP_AUDIENCE_USER) != 0 { jo_str(o, "user"); }
+    if (a.audience_mask & MCP_AUDIENCE_ASSISTANT) != 0 { jo_str(o, "assistant"); }
+    jo_end(o);
+  }
+  if a.has_priority { jo_key(o, "priority"); jo_raw(o, a.priority_raw); }
+  if a.last_modified.count != 0 { jo_key(o, "lastModified"); jo_str(o, a.last_modified); }
+  jo_end(o);
+}
+
+mcp_write_resource_contents :: (o: [] Jo, rc: McpResourceContents) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "uri"); jo_str(o, rc.uri);
+  if rc.mime_type.count != 0 { jo_key(o, "mimeType"); jo_str(o, rc.mime_type); }
+  if rc.kind == MCP_RES_BLOB {
+    jo_key(o, "blob"); jo_str(o, rc.blob);
+  } else {
+    jo_key(o, "text"); jo_str(o, rc.text);
+  }
+  jo_end(o);
+}
+
+mcp_parse_resource_contents :: (d: Jv, obj: int, out: [] McpResourceContents) -> bool #effects(all) {
+  out[0] = McpResourceContents.{};
+  if jv_kind(d, obj) != JV_OBJECT { return false; }
+  un := jv_get(d, obj, "uri");
+  if jv_kind(d, un) != JV_STRING { return false; }
+  uri := jv_raw(d, un);
+  if uri.count == 0 { return false; }
+  out[0].uri = uri;
+
+  mn := jv_get(d, obj, "mimeType");
+  if mn != -1 {
+    if jv_kind(d, mn) != JV_STRING { return false; }
+    out[0].mime_type = jv_raw(d, mn);
+  }
+
+  tn := jv_get(d, obj, "text");
+  bn := jv_get(d, obj, "blob");
+  if tn != -1 && bn != -1 { return false; }
+  if tn != -1 {
+    if jv_kind(d, tn) != JV_STRING { return false; }
+    out[0].kind = MCP_RES_TEXT;
+    out[0].text = jv_raw(d, tn);
+    return true;
+  }
+  if bn != -1 { // mutant: equivalent (bn==-1 returns false either way via jv_kind(d,-1)!=JV_STRING)
+    if jv_kind(d, bn) != JV_STRING { return false; }
+    out[0].kind = MCP_RES_BLOB;
+    out[0].blob = jv_raw(d, bn);
+    return true;
+  }
+  return false;
+}
+
+mcp_write_content :: (o: [] Jo, c: McpContent) #effects(all) {
+  jo_obj(o);
+  if c.kind == MCP_CONTENT_TEXT {
+    jo_key(o, "type"); jo_str(o, "text");
+    jo_key(o, "text"); jo_str(o, c.text);
+  } else if c.kind == MCP_CONTENT_IMAGE {
+    jo_key(o, "type"); jo_str(o, "image");
+    jo_key(o, "data"); jo_str(o, c.data);
+    jo_key(o, "mimeType"); jo_str(o, c.mime_type);
+  } else if c.kind == MCP_CONTENT_AUDIO {
+    jo_key(o, "type"); jo_str(o, "audio");
+    jo_key(o, "data"); jo_str(o, c.data);
+    jo_key(o, "mimeType"); jo_str(o, c.mime_type);
+  } else if c.kind == MCP_CONTENT_RESOURCE {
+    jo_key(o, "type"); jo_str(o, "resource");
+    jo_key(o, "resource"); mcp_write_resource_contents(o, c.resource);
+  } else {
+    jo_key(o, "type"); jo_str(o, "resource_link");
+    jo_key(o, "uri"); jo_str(o, c.uri);
+    jo_key(o, "name"); jo_str(o, c.name);
+    if c.title.count != 0 { jo_key(o, "title"); jo_str(o, c.title); }
+    if c.description.count != 0 { jo_key(o, "description"); jo_str(o, c.description); }
+    if c.mime_type.count != 0 { jo_key(o, "mimeType"); jo_str(o, c.mime_type); }
+  }
+  if mcp_annotations_present(c.annotations) {
+    jo_key(o, "annotations"); mcp_write_annotations(o, c.annotations);
+  }
+  jo_end(o);
+}
+
+mcp_write_request_meta :: (o: [] Jo, m: McpRequestMeta) #effects(all) {
+  jo_obj(o);
+  if m.has_protocol_version {
+    jo_key(o, MCP_META_PROTOCOL_VERSION); jo_str(o, m.protocol_version);
+  }
+  if m.has_client_info {
+    jo_key(o, MCP_META_CLIENT_INFO); mcp_write_impl_info(o, m.client_info);
+  }
+  if m.has_client_caps {
+    jo_key(o, MCP_META_CLIENT_CAPABILITIES); mcp_write_client_caps(o, m.client_caps);
+  }
+  if m.log_level != MCP_LOG_NONE {
+    lname := mcp_log_level_name(m.log_level);
+    if lname.count != 0 { jo_key(o, MCP_META_LOG_LEVEL); jo_str(o, lname); } // mutant: equivalent (lname is "" or len>=4)
+  }
+  if m.progress_token_kind == MCP_PTOK_INT {
+    jo_key(o, "progressToken"); jo_int(o, m.progress_token_int);
+  } else if m.progress_token_kind == MCP_PTOK_STR {
+    jo_key(o, "progressToken"); jo_str(o, m.progress_token_str);
+  }
+  if m.subscription_id.count != 0 {
+    jo_key(o, MCP_META_SUBSCRIPTION_ID); jo_str(o, m.subscription_id);
+  }
+  jo_end(o);
+}
+
+mcp_parse_request_meta :: (d: Jv, meta_node: int) -> McpRequestMeta #effects(all) {
+  r: McpRequestMeta;
+  if meta_node < 0 { r.ok = true; return r; }
+  if jv_kind(d, meta_node) != JV_OBJECT { return r; }
+
+  vn := jv_get(d, meta_node, MCP_META_PROTOCOL_VERSION);
+  if vn != -1 {
+    if jv_kind(d, vn) != JV_STRING { return r; }
+    r.has_protocol_version = true;
+    r.protocol_version = jv_raw(d, vn);
+  }
+
+  cn := jv_get(d, meta_node, MCP_META_CLIENT_CAPABILITIES);
+  if cn != -1 {
+    cc: [1] McpClientCaps;
+    if !mcp_parse_client_caps(d, cn, cc[..]) { return r; }
+    r.has_client_caps = true;
+    r.client_caps = cc[0];
+  }
+
+  in_n := jv_get(d, meta_node, MCP_META_CLIENT_INFO);
+  if in_n != -1 {
+    ci: [1] McpImplInfo;
+    if !mcp_parse_impl_info(d, in_n, ci[..]) { return r; }
+    r.has_client_info = true;
+    r.client_info = ci[0];
+  }
+
+  ln := jv_get(d, meta_node, MCP_META_LOG_LEVEL);
+  if ln != -1 {
+    if jv_kind(d, ln) != JV_STRING { return r; }
+    lvl := mcp_log_level_parse(jv_raw(d, ln));
+    if lvl == MCP_LOG_NONE { return r; }
+    r.log_level = lvl;
+  }
+
+  pt := jv_get(d, meta_node, "progressToken");
+  if pt != -1 {
+    pk := jv_kind(d, pt);
+    if pk == JV_STRING {
+      r.progress_token_kind = MCP_PTOK_STR;
+      r.progress_token_str = jv_raw(d, pt);
+    } else if pk == JV_NUMBER {
+      raw := jv_raw(d, pt);
+      v := jv_int(d, pt, 0);
+      if v == 0 && raw != "0" && raw != "-0" { return r; }
+      r.progress_token_kind = MCP_PTOK_INT;
+      r.progress_token_int = v;
+    } else {
+      return r;
+    }
+  }
+
+  sn := jv_get(d, meta_node, MCP_META_SUBSCRIPTION_ID);
+  if sn != -1 {
+    if jv_kind(d, sn) != JV_STRING { return r; }
+    sid := jv_raw(d, sn);
+    if sid.count == 0 { return r; }
+    r.subscription_id = sid;
+  }
+
+  r.ok = true;
+  return r;
+}

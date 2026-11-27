@@ -1,0 +1,71 @@
+// Runnable example for The OpenAgents Book Chapter 44: Cases and graders.
+// Exercises the production #authority promotion gate (coax/lib/agent/desktop/capability-gate.coax)
+// enforcing reach (should-fire positive cases), restraint (should-not-fire held-out
+// cases), cost/latency budgets, and slug safety:
+//   - Passing a 6-case fixture (4 should-fire + 2 should-not-fire held-out) where
+//     candidate lifts total passes from 2/6 to 5/6 while holding 2/2 on held-out.
+//   - Proving fail-closed refusals for empty suites, missing held-out/restraint
+//     cases, held-out regression despite higher total score, zero passes, cost/latency
+//     overruns, and invalid capability slugs.
+//   coax/bin/coax run openagents/examples/capability-cases-gate.coax
+#import "Basic";
+#load "../../coax/lib/agent/desktop/capability-gate.coax";
+
+// book:begin capability-cases-gate
+ccg_run :: () -> bool {
+  // 1. 6-case suite: 4 should-fire positive cases + 2 should-not-fire held-out cases.
+  suite := CapEvalSummary.{
+    total_cases = 6,
+    heldout_cases = 2,
+    baseline_passed = 2,
+    candidate_passed = 5,
+    baseline_heldout_passed = 2,
+    candidate_heldout_passed = 2,
+    candidate_cost_micros = 400,
+    max_cost_micros = 500,
+    candidate_latency_ms = 850,
+    max_latency_ms = 1200,
+    atif_verified = true
+  };
+  v_ok := cap_admit_promotion(suite);
+  print("suite total=% heldout=% base=% cand=% code=% label=%\n",
+    suite.total_cases, suite.heldout_cases, suite.baseline_passed, suite.candidate_passed,
+    v_ok, cap_verdict_label(v_ok));
+
+  // 2. Fail-closed suite & grader refusals.
+  s_empty := suite; s_empty.total_cases = 0;
+  s_no_ho := suite; s_no_ho.heldout_cases = 0;
+  s_ho_reg := suite; s_ho_reg.candidate_heldout_passed = 1; // total still 5 > 2, but restraint regressed!
+  s_zero := suite; s_zero.baseline_passed = 0; s_zero.candidate_passed = 0; s_zero.baseline_heldout_passed = 0; s_zero.candidate_heldout_passed = 0;
+  s_cost := suite; s_cost.candidate_cost_micros = 501;
+  s_lat := suite; s_lat.candidate_latency_ms = 1201;
+
+  v_empty := cap_admit_promotion(s_empty);
+  v_no_ho := cap_admit_promotion(s_no_ho);
+  v_ho_reg := cap_admit_promotion(s_ho_reg);
+  v_zero := cap_admit_promotion(s_zero);
+  v_cost := cap_admit_promotion(s_cost);
+  v_lat := cap_admit_promotion(s_lat);
+
+  print("refuse empty=% no_heldout=% heldout_regressed=% zero_pass=% cost=% latency=%\n",
+    v_empty, v_no_ho, v_ho_reg, v_zero, v_cost, v_lat);
+
+  // 3. Capability slug hygiene.
+  slug_good := cap_valid_slug("repo-map-v1");
+  slug_bad_path := cap_valid_slug("../escape");
+  slug_bad_dash := cap_valid_slug("repo--map");
+  print("slugs valid=% reject_path=% reject_double_dash=%\n",
+    slug_good, !slug_bad_path, !slug_bad_dash);
+
+  return v_ok == CAP_PASS &&
+         v_empty == CAP_FAIL_NO_CASES && v_no_ho == CAP_FAIL_NO_HELDOUT &&
+         v_ho_reg == CAP_FAIL_HELDOUT_REGRESSED && v_zero == CAP_FAIL_ZERO_PASS &&
+         v_cost == CAP_FAIL_COST_BUDGET && v_lat == CAP_FAIL_LATENCY_BUDGET &&
+         slug_good && !slug_bad_path && !slug_bad_dash;
+}
+// book:end capability-cases-gate
+
+main :: () {
+  ok := ccg_run();
+  print("ok=%\n", ok);
+}

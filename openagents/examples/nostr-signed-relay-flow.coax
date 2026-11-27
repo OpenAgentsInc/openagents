@@ -1,0 +1,81 @@
+// Runnable example for The OpenAgents Book Chapter 62: Signed JSON over WebSockets.
+// Exercises the production #authority Nostr NIP-01 event verifier, message
+// framing codec, and relay state machine (coax/lib/nostr/event.coax,
+// message.coax, relay.coax): verifying a signed BIP-340 event frame, writing
+// client EVENT frames, acknowledging publish OK and subscription EVENT/EOSE
+// transitions, and proving fail-closed refusals on tampered event IDs, forged
+// signatures, stale relay generations, unknown subscriptions, and prefixless OK refusals.
+//   coax/bin/coax run openagents/examples/nostr-signed-relay-flow.coax
+#run_steps 500000;
+#import "Basic";
+#load "../../coax/lib/nostr/message.coax";
+#load "../../coax/lib/nostr/relay.coax";
+
+// book:begin nostr-signed-relay-flow
+nsrf_run :: () -> bool {
+  // 1. Read & BIP-340-verify a real captured relay EVENT frame + wrap a client EVENT frame.
+  line1 := nm_line(COAX_RELAY, 1);
+  frame1 := COAX_RELAY[line1.from..<line1.to];
+  m_ev := nostr_message_read(frame1);
+  scratch: [4096] u8;
+  ev := nostr_message_event_verify_vartime(frame1, scratch[..], false);
+
+  ev_out: [4096] u8;
+  ev_n := nostr_message_write_event(NE_FIXTURE, ev_out[..], false);
+  ok_frame := nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"\"]");
+  print("verify ok=% verified=% kind=% sub=% client_frame_bytes=% ok_accepted=%\n",
+    m_ev.error == NM_OK && ev.error == NE_OK, ev.verified, ev.kind,
+    nm_text(m_ev, m_ev.sub), ev_n, ok_frame.error == NM_OK && ok_frame.accepted);
+
+  // 2. Drive the #authority Relay state machine: subscribe, publish, ack OK, deliver, dedup, EOSE.
+  r: [1] Relay;
+  sub_slot := rl_subscribe(r[..]);
+  pub_slot := rl_publish(r[..], ev.id[..]);
+  gen := rl_start(r[..], 100);
+  opened := rl_opened(r[..], gen, 200);
+  out_req := rl_next(r[..], 200);
+  out_pub := rl_next(r[..], 250);
+  sub_buf: [24] u8;
+  sub_id := rl_sub_text(sub_slot, 1, sub_buf[..]);
+
+  d_ack := rl_input(r[..], gen, RlIn.{kind = RL_IN_OK, id = ev.id, accepted = true});
+  d_ev1 := rl_input(r[..], gen, RlIn.{kind = RL_IN_EVENT, sub = sub_id, id = ev.id, created_at = ev.created_at, verified = true});
+  d_dup := rl_input(r[..], gen, RlIn.{kind = RL_IN_EVENT, sub = sub_id, id = ev.id, created_at = ev.created_at, verified = true});
+  d_eose := rl_input(r[..], gen, RlIn.{kind = RL_IN_EOSE, sub = sub_id});
+  print("relay open=% out=(req=%,ev=%) sub=% ack=% deliver=% dup=% eose=%\n",
+    opened, out_req.kind == RL_OUT_REQ, out_pub.kind == RL_OUT_EVENT,
+    sub_id, d_ack == RL_ACK, d_ev1 == RL_DELIVER, d_dup == RL_DUPLICATE, d_eose == RL_EOSE);
+
+  // 3. Fail-closed refusals: tampered event ID, unverified/forged relay event, stale gen,
+  // unknown sub, and refusal OK without machine prefix.
+  tampered: [1024] u8;
+  tn := line1.to - line1.from;
+  for i: 0..<tn { tampered[i] = COAX_RELAY[line1.from + i]; }
+  tampered[23] = '9'; // flip first hex nibble of event id
+  ev_tamper := nostr_message_event_verify_vartime(cast(string) tampered[0..<tn], scratch[..], false);
+
+  forged_id := ev.id;
+  forged_id[0] ^= 1;
+  d_forged := rl_input(r[..], gen, RlIn.{kind = RL_IN_EVENT, sub = sub_id, id = forged_id, created_at = ev.created_at, verified = false});
+  d_stale := rl_input(r[..], gen - 1, RlIn.{kind = RL_IN_EVENT, sub = sub_id, id = forged_id, created_at = ev.created_at, verified = true});
+  d_unk := rl_input(r[..], gen, RlIn.{kind = RL_IN_EVENT, sub = "s9.1", id = forged_id, created_at = ev.created_at, verified = true});
+  bad_ok := nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"no prefix\"]");
+  print("refuse tamper_id=% forged=% stale=% unk_sub=% bad_ok=%\n",
+    ev_tamper.error == NE_ID && !ev_tamper.verified,
+    d_forged == RL_FORGED && r[0].forged == 1,
+    d_stale == RL_STALE, d_unk == RL_UNKNOWN, bad_ok.error == NM_MESSAGE);
+
+  return m_ev.error == NM_OK && ev.error == NE_OK && ev.verified && ev_n == NE_FIXTURE.count + 10 &&
+         ok_frame.error == NM_OK && ok_frame.accepted && pub_slot == 0 && opened &&
+         out_req.kind == RL_OUT_REQ && out_pub.kind == RL_OUT_EVENT &&
+         d_ack == RL_ACK && d_ev1 == RL_DELIVER && d_dup == RL_DUPLICATE && d_eose == RL_EOSE &&
+         ev_tamper.error == NE_ID && !ev_tamper.verified &&
+         d_forged == RL_FORGED && r[0].forged == 1 && d_stale == RL_STALE &&
+         d_unk == RL_UNKNOWN && bad_ok.error == NM_MESSAGE;
+}
+// book:end nostr-signed-relay-flow
+
+main :: () {
+  ok := nsrf_run();
+  print("ok=%\n", ok);
+}

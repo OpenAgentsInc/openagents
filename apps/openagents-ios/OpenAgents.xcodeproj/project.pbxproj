@@ -10,36 +10,54 @@
 		0ACE2BBE3D3C6C261E063A77 /* VoiceDictationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA582415B707553CC69B42D0 /* VoiceDictationController.swift */; };
 		1310BBEABAF2BF245999C552 /* TurnNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF75972EB91F08AA7258E690 /* TurnNotifications.swift */; };
 		1CB465FA16809D46124EE8FB /* MobileCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A57A0784FAE75887DF978AA /* MobileCoreTests.swift */; };
+		2235B2825A9E8635D08276EA /* MobileCloudChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 618389525D4ABD68D46E4F1A /* MobileCloudChat.swift */; };
 		2532B1492C46FB5FF5FC185B /* client-core-bridge.c in Sources */ = {isa = PBXBuildFile; fileRef = 4816780D18116F36BC64FAB4 /* client-core-bridge.c */; settings = {COMPILER_FLAGS = "-IGenerated -I../shared/native -I../shared/antigravity"; }; };
 		2DA485D5475D62C7827367D5 /* gallery.c in Sources */ = {isa = PBXBuildFile; fileRef = 550581B2872EB638FBFB4619 /* gallery.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
 		3E1BB32DBE1808DEB0DE0442 /* OpenAgentsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5684048ECE9B6A5A07A1A32 /* OpenAgentsApp.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
 		49C5FB7F0DD3F81A8340206B /* AntigravityMicBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE61A35811EA0DECDCCC3B68 /* AntigravityMicBridge.swift */; };
-		4A4C87C34B5D31FC95B08E22 /* AntigravityUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4302BB64CF0054147A815C77 /* AntigravityUITests.swift */; };
 		4ECFED6148E9991057C9B489 /* AppTailnet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA188800B3779561759002D1 /* AppTailnet.swift */; };
 		4F98D1706FADE33ADACD9EF8 /* KitAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6814741495C5632686563D9 /* KitAccess.swift */; };
+		52B07FEA6249CA52F8B1B3AE /* MobileWalletController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7287092EC54ECECF2E2805B9 /* MobileWalletController.swift */; };
+		55C7103AC4F893754D02C347 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = D93485E80682BE91725B68FB /* BIP39.swift */; };
+		58472AD8DEBC81F28924E13F /* WalletKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D759EDF65C9ADB23FF318E /* WalletKeychain.swift */; };
 		5C21B7DFF80CB41747AF722E /* AntigravityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20226403F7BAEDD42024016 /* AntigravityStore.swift */; };
 		5C96DB10B6CD92128B9C2742 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5538DB00D5A68418CBB22FB6 /* Theme.swift */; };
+		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
 		63D5565E7BCE75C15F6DB147 /* SubagentInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D728B0A86567364624E6281 /* SubagentInspectorView.swift */; };
 		648E3A615EE750839E3C3E37 /* AntigravityCoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FBE70263670522E72EA62B /* AntigravityCoreBridge.swift */; };
 		6DCB41E0F004FB684F7E4DB8 /* SubagentSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03EC037264A73F6485FB7E0 /* SubagentSheetView.swift */; };
+		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
 		7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0368202C3F17310FAA5C61 /* KitEditor.swift */; };
 		7A8A2263317533EB39DA3239 /* TailscaleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 726690D9A677800DC6CF816E /* TailscaleClient.swift */; };
+		7AD3562212739D9331D9535D /* AppAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B5B40FB5A03D1054E56FC0E /* AppAccount.swift */; };
 		860FDD09B1FAC4A337F20EE0 /* gpu-carrier.c in Sources */ = {isa = PBXBuildFile; fileRef = B54FA4F3CD334853AD93403E /* gpu-carrier.c */; settings = {COMPILER_FLAGS = "-IGenerated -I../shared/host/linux -I../shared/host/apple -Wno-unused-function"; }; };
+		8AC17B8699E0E506A46A2B2E /* UsageDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DC268B267684D5B3F9F304A /* UsageDashboardView.swift */; };
 		93651B6C5140A76D2BA49D75 /* ComputersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6B44D6D148FD2FE7114EDA7 /* ComputersView.swift */; };
+		93EB5486574ED467A074D84B /* KitPasskey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB401C7AEDFAADE5726A7289 /* KitPasskey.swift */; };
 		9ACF93FBF39B83D0E6C83A4E /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2055820A908A3ED4ED7700E /* RootView.swift */; };
 		9B0F2297177548B9AB906CAE /* TranscriptComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3910F4F2AED640680442F26E /* TranscriptComponents.swift */; };
+		9D277FECD7983C700B492B16 /* OpenAgentsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D220059D60690578918F03F6 /* OpenAgentsUITests.swift */; };
 		9E1ABF34D99A2E76EADBD26E /* AntigravityAuthController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3518305F3A8357FA6408C662 /* AntigravityAuthController.swift */; };
 		AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */ = {isa = PBXBuildFile; fileRef = C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */; settings = {COMPILER_FLAGS = "-I../shared/host/linux -I../shared/host/apple"; }; };
 		B0CEB25BD90B8113A7F51348 /* LocalSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2086FFF800C089354F9D2A16 /* LocalSocketClient.swift */; };
 		B13262169DAC791C7B35D1DC /* AntigravityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05D634FD7CBC7EF5C7288D42 /* AntigravityModels.swift */; };
 		B28B53A86E4D0AE06A310EAB /* QRPairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1BE8E51A3C87E0B2C7064E /* QRPairingView.swift */; };
 		B49F2E2FC541077DACD298F1 /* AntigravityHubViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C1651B48AF360A149787DF /* AntigravityHubViews.swift */; };
+		BF5EC622EB983A325EF6CE55 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = D79FDEBAC162398B2D4E656F /* bip39-english.txt */; };
 		C789B2E23521F07A4F8AA6D8 /* Components in Resources */ = {isa = PBXBuildFile; fileRef = 346439B2CDF1C4DE6F844825 /* Components */; };
+		CB3230FC56FD01D7C47CB2C3 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2FEE5DB88D6342EC654DE0 /* AccountView.swift */; };
+		D2336215C40E814FC1DD3C62 /* MobileAccountController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72E06FF982F973DDE2F2AA7E /* MobileAccountController.swift */; };
+		D38DBFEE13298B529A87BFC5 /* WalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9135D4060FA77EEADD9B7EE9 /* WalletView.swift */; };
+		D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */; };
+		D47BA8DAD5AE028953ABC374 /* SparkWallet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA40AEA4A96E6DF00B9AEB74 /* SparkWallet.swift */; };
 		D978BD4A07012F57FEB48628 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE9AB74571A2D644A737D80A /* WorkspaceView.swift */; };
 		DF7430FD2D7DB0CBD92F8716 /* DeviceIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E68397D481DF6327425CD56 /* DeviceIdentityStore.swift */; };
+		E8D14808E8C466711BCB3EB7 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FEFA66D7647AB48D8FD7CE /* BreezKey.swift */; };
+		EACCDF372C9B7D3E4A54D946 /* cloud-chat-bridge.c in Sources */ = {isa = PBXBuildFile; fileRef = B9A62D01F6742CC09FE1BA96 /* cloud-chat-bridge.c */; settings = {COMPILER_FLAGS = "-IGenerated"; }; };
 		EB560D35AED796C8CF0E1D62 /* GpuRootViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 416EC9E05EB2CFA4018DC3FD /* GpuRootViewController.swift */; };
 		EB803950CFB8551A0C17A7B2 /* WorkspaceInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9BFD9DD305E80C186761C6 /* WorkspaceInspectorView.swift */; };
+		FD7E4A9C679B91D89A1D3D7B /* AppHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C02A25433276C58798C0279 /* AppHTTP.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,40 +81,69 @@
 		05D634FD7CBC7EF5C7288D42 /* AntigravityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityModels.swift; sourceTree = "<group>"; };
 		0D728B0A86567364624E6281 /* SubagentInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentInspectorView.swift; sourceTree = "<group>"; };
 		1A57A0784FAE75887DF978AA /* MobileCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCoreTests.swift; sourceTree = "<group>"; };
+		1C02A25433276C58798C0279 /* AppHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppHTTP.swift; sourceTree = "<group>"; };
 		2086FFF800C089354F9D2A16 /* LocalSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSocketClient.swift; sourceTree = "<group>"; };
 		285CD8F8F9EFEFB6BCC6933D /* OpenAgentsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		346439B2CDF1C4DE6F844825 /* Components */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Components; path = Generated/Components; sourceTree = SOURCE_ROOT; };
 		3518305F3A8357FA6408C662 /* AntigravityAuthController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityAuthController.swift; sourceTree = "<group>"; };
 		3910F4F2AED640680442F26E /* TranscriptComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptComponents.swift; sourceTree = "<group>"; };
+		3DC268B267684D5B3F9F304A /* UsageDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageDashboardView.swift; sourceTree = "<group>"; };
 		416EC9E05EB2CFA4018DC3FD /* GpuRootViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpuRootViewController.swift; sourceTree = "<group>"; };
-		4302BB64CF0054147A815C77 /* AntigravityUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityUITests.swift; sourceTree = "<group>"; };
 		4816780D18116F36BC64FAB4 /* client-core-bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "client-core-bridge.c"; sourceTree = "<group>"; };
 		550581B2872EB638FBFB4619 /* gallery.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = gallery.c; sourceTree = "<group>"; };
 		5538DB00D5A68418CBB22FB6 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		57FBE70263670522E72EA62B /* AntigravityCoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityCoreBridge.swift; sourceTree = "<group>"; };
 		5E68397D481DF6327425CD56 /* DeviceIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentityStore.swift; sourceTree = "<group>"; };
+		618389525D4ABD68D46E4F1A /* MobileCloudChat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCloudChat.swift; sourceTree = "<group>"; };
 		726690D9A677800DC6CF816E /* TailscaleClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailscaleClient.swift; sourceTree = "<group>"; };
+		7287092EC54ECECF2E2805B9 /* MobileWalletController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWalletController.swift; sourceTree = "<group>"; };
+		72E06FF982F973DDE2F2AA7E /* MobileAccountController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAccountController.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8E9BFD9DD305E80C186761C6 /* WorkspaceInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceInspectorView.swift; sourceTree = "<group>"; };
 		910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9135D4060FA77EEADD9B7EE9 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletView.swift; sourceTree = "<group>"; };
+		9B5B40FB5A03D1054E56FC0E /* AppAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAccount.swift; sourceTree = "<group>"; };
+		9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
 		A6814741495C5632686563D9 /* KitAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitAccess.swift; sourceTree = "<group>"; };
 		AE1BE8E51A3C87E0B2C7064E /* QRPairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRPairingView.swift; sourceTree = "<group>"; };
 		B2055820A908A3ED4ED7700E /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		B54FA4F3CD334853AD93403E /* gpu-carrier.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "gpu-carrier.c"; sourceTree = "<group>"; };
+		B9A62D01F6742CC09FE1BA96 /* cloud-chat-bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "cloud-chat-bridge.c"; sourceTree = "<group>"; };
+		BB401C7AEDFAADE5726A7289 /* KitPasskey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitPasskey.swift; sourceTree = "<group>"; };
+		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
 		C20226403F7BAEDD42024016 /* AntigravityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityStore.swift; sourceTree = "<group>"; };
 		C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ComponentsHost.m; sourceTree = "<group>"; };
 		CA188800B3779561759002D1 /* AppTailnet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTailnet.swift; sourceTree = "<group>"; };
 		CE61A35811EA0DECDCCC3B68 /* AntigravityMicBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityMicBridge.swift; sourceTree = "<group>"; };
 		CE9AB74571A2D644A737D80A /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		D03EC037264A73F6485FB7E0 /* SubagentSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentSheetView.swift; sourceTree = "<group>"; };
+		D220059D60690578918F03F6 /* OpenAgentsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAgentsUITests.swift; sourceTree = "<group>"; };
+		D79FDEBAC162398B2D4E656F /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
+		D93485E80682BE91725B68FB /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
+		DA40AEA4A96E6DF00B9AEB74 /* SparkWallet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkWallet.swift; sourceTree = "<group>"; };
+		DB2FEE5DB88D6342EC654DE0 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		E6B44D6D148FD2FE7114EDA7 /* ComputersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputersView.swift; sourceTree = "<group>"; };
+		E7FEFA66D7647AB48D8FD7CE /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
 		EA582415B707553CC69B42D0 /* VoiceDictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceDictationController.swift; sourceTree = "<group>"; };
 		EF75972EB91F08AA7258E690 /* TurnNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnNotifications.swift; sourceTree = "<group>"; };
 		F2C1651B48AF360A149787DF /* AntigravityHubViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityHubViews.swift; sourceTree = "<group>"; };
 		F5684048ECE9B6A5A07A1A32 /* OpenAgentsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAgentsApp.swift; sourceTree = "<group>"; };
+		F8D759EDF65C9ADB23FF318E /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
+		F902FDCB1546A61687742533 /* SparkSDK */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SparkSDK; path = Generated/SparkSDK; sourceTree = SOURCE_ROOT; };
 		FB0368202C3F17310FAA5C61 /* KitEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitEditor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		EAD68FE7753AB46CBC2F55C3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0794091F4CF17BC790C02CDB /* antigravity */ = {
@@ -108,10 +155,18 @@
 			path = ../shared/antigravity;
 			sourceTree = "<group>";
 		};
+		52DF7E5BD93B7E949DFB9BFC /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				F902FDCB1546A61687742533 /* SparkSDK */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
 		590F600B15BC35D82ABFEEAB /* UITests */ = {
 			isa = PBXGroup;
 			children = (
-				4302BB64CF0054147A815C77 /* AntigravityUITests.swift */,
+				D220059D60690578918F03F6 /* OpenAgentsUITests.swift */,
 			);
 			path = UITests;
 			sourceTree = "<group>";
@@ -119,9 +174,24 @@
 		5B366C12F710C7D176CACD52 /* Generated */ = {
 			isa = PBXGroup;
 			children = (
+				D79FDEBAC162398B2D4E656F /* bip39-english.txt */,
 				550581B2872EB638FBFB4619 /* gallery.c */,
 			);
 			path = Generated;
+			sourceTree = "<group>";
+		};
+		61353A3754B849E19D09A2E0 /* apple */ = {
+			isa = PBXGroup;
+			children = (
+				BF0AAC9508FA4369A9715A69 /* AppAuth.swift */,
+				D93485E80682BE91725B68FB /* BIP39.swift */,
+				E7FEFA66D7647AB48D8FD7CE /* BreezKey.swift */,
+				9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */,
+				DA40AEA4A96E6DF00B9AEB74 /* SparkWallet.swift */,
+				F8D759EDF65C9ADB23FF318E /* WalletKeychain.swift */,
+			);
+			name = apple;
+			path = ../shared/host/apple;
 			sourceTree = "<group>";
 		};
 		956B19516518C8B6A6AB7CBA /* Tests */ = {
@@ -145,9 +215,12 @@
 		ABD48D4B1B28A57624675E53 /* native */ = {
 			isa = PBXGroup;
 			children = (
+				9B5B40FB5A03D1054E56FC0E /* AppAccount.swift */,
+				1C02A25433276C58798C0279 /* AppHTTP.swift */,
 				CA188800B3779561759002D1 /* AppTailnet.swift */,
 				A6814741495C5632686563D9 /* KitAccess.swift */,
 				FB0368202C3F17310FAA5C61 /* KitEditor.swift */,
+				BB401C7AEDFAADE5726A7289 /* KitPasskey.swift */,
 			);
 			name = native;
 			path = ../shared/native;
@@ -178,13 +251,19 @@
 		D411ABA85AD90CB7E64D6DB3 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				DB2FEE5DB88D6342EC654DE0 /* AccountView.swift */,
 				E6B44D6D148FD2FE7114EDA7 /* ComputersView.swift */,
 				416EC9E05EB2CFA4018DC3FD /* GpuRootViewController.swift */,
+				72E06FF982F973DDE2F2AA7E /* MobileAccountController.swift */,
+				618389525D4ABD68D46E4F1A /* MobileCloudChat.swift */,
+				7287092EC54ECECF2E2805B9 /* MobileWalletController.swift */,
 				F5684048ECE9B6A5A07A1A32 /* OpenAgentsApp.swift */,
 				B2055820A908A3ED4ED7700E /* RootView.swift */,
 				D03EC037264A73F6485FB7E0 /* SubagentSheetView.swift */,
 				EF75972EB91F08AA7258E690 /* TurnNotifications.swift */,
+				3DC268B267684D5B3F9F304A /* UsageDashboardView.swift */,
 				EA582415B707553CC69B42D0 /* VoiceDictationController.swift */,
+				9135D4060FA77EEADD9B7EE9 /* WalletView.swift */,
 				CE9AB74571A2D644A737D80A /* WorkspaceView.swift */,
 			);
 			path = Sources;
@@ -201,13 +280,16 @@
 		FBEEA9C0EAC50ADFE9507F40 = {
 			isa = PBXGroup;
 			children = (
+				B9A62D01F6742CC09FE1BA96 /* cloud-chat-bridge.c */,
 				346439B2CDF1C4DE6F844825 /* Components */,
 				C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */,
 				B54FA4F3CD334853AD93403E /* gpu-carrier.c */,
 				0794091F4CF17BC790C02CDB /* antigravity */,
+				61353A3754B849E19D09A2E0 /* apple */,
 				5B366C12F710C7D176CACD52 /* Generated */,
 				ABD48D4B1B28A57624675E53 /* native */,
 				EBA77022E6429671290CDE34 /* OpenAgents */,
+				52DF7E5BD93B7E949DFB9BFC /* Packages */,
 				D411ABA85AD90CB7E64D6DB3 /* Sources */,
 				BB3607D4A161C78CF3745562 /* Swift */,
 				956B19516518C8B6A6AB7CBA /* Tests */,
@@ -225,6 +307,7 @@
 			buildPhases = (
 				3021F9601449A7901737DC0B /* Sources */,
 				9EB07DEE9BD5341EBD04A0A2 /* Resources */,
+				EAD68FE7753AB46CBC2F55C3 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -232,6 +315,7 @@
 			);
 			name = OpenAgents;
 			packageProductDependencies = (
+				6A07344B6842FB168B7EEED5 /* BreezSdkSpark */,
 			);
 			productName = OpenAgents;
 			productReference = 8229C5D27BC40A99010E48D9 /* OpenAgents.app */;
@@ -306,6 +390,9 @@
 			);
 			mainGroup = FBEEA9C0EAC50ADFE9507F40;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AD3390F9D36B728FE1547611 /* XCLocalSwiftPackageReference "Generated/SparkSDK" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A399D11B8F0035506E68EDB0 /* Products */;
 			projectDirPath = "";
@@ -325,6 +412,7 @@
 			files = (
 				43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */,
 				C789B2E23521F07A4F8AA6D8 /* Components in Resources */,
+				BF5EC622EB983A325EF6CE55 /* bip39-english.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -335,33 +423,49 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CB3230FC56FD01D7C47CB2C3 /* AccountView.swift in Sources */,
 				9E1ABF34D99A2E76EADBD26E /* AntigravityAuthController.swift in Sources */,
 				648E3A615EE750839E3C3E37 /* AntigravityCoreBridge.swift in Sources */,
 				B49F2E2FC541077DACD298F1 /* AntigravityHubViews.swift in Sources */,
 				49C5FB7F0DD3F81A8340206B /* AntigravityMicBridge.swift in Sources */,
 				B13262169DAC791C7B35D1DC /* AntigravityModels.swift in Sources */,
 				5C21B7DFF80CB41747AF722E /* AntigravityStore.swift in Sources */,
+				7AD3562212739D9331D9535D /* AppAccount.swift in Sources */,
+				6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */,
+				FD7E4A9C679B91D89A1D3D7B /* AppHTTP.swift in Sources */,
 				4ECFED6148E9991057C9B489 /* AppTailnet.swift in Sources */,
+				55C7103AC4F893754D02C347 /* BIP39.swift in Sources */,
+				E8D14808E8C466711BCB3EB7 /* BreezKey.swift in Sources */,
 				AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */,
 				93651B6C5140A76D2BA49D75 /* ComputersView.swift in Sources */,
 				DF7430FD2D7DB0CBD92F8716 /* DeviceIdentityStore.swift in Sources */,
+				D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */,
 				EB560D35AED796C8CF0E1D62 /* GpuRootViewController.swift in Sources */,
 				4F98D1706FADE33ADACD9EF8 /* KitAccess.swift in Sources */,
 				7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */,
+				93EB5486574ED467A074D84B /* KitPasskey.swift in Sources */,
 				B0CEB25BD90B8113A7F51348 /* LocalSocketClient.swift in Sources */,
+				D2336215C40E814FC1DD3C62 /* MobileAccountController.swift in Sources */,
+				2235B2825A9E8635D08276EA /* MobileCloudChat.swift in Sources */,
+				52B07FEA6249CA52F8B1B3AE /* MobileWalletController.swift in Sources */,
 				3E1BB32DBE1808DEB0DE0442 /* OpenAgentsApp.swift in Sources */,
 				B28B53A86E4D0AE06A310EAB /* QRPairingView.swift in Sources */,
 				9ACF93FBF39B83D0E6C83A4E /* RootView.swift in Sources */,
+				D47BA8DAD5AE028953ABC374 /* SparkWallet.swift in Sources */,
 				63D5565E7BCE75C15F6DB147 /* SubagentInspectorView.swift in Sources */,
 				6DCB41E0F004FB684F7E4DB8 /* SubagentSheetView.swift in Sources */,
 				7A8A2263317533EB39DA3239 /* TailscaleClient.swift in Sources */,
 				5C96DB10B6CD92128B9C2742 /* Theme.swift in Sources */,
 				9B0F2297177548B9AB906CAE /* TranscriptComponents.swift in Sources */,
 				1310BBEABAF2BF245999C552 /* TurnNotifications.swift in Sources */,
+				8AC17B8699E0E506A46A2B2E /* UsageDashboardView.swift in Sources */,
 				0ACE2BBE3D3C6C261E063A77 /* VoiceDictationController.swift in Sources */,
+				58472AD8DEBC81F28924E13F /* WalletKeychain.swift in Sources */,
+				D38DBFEE13298B529A87BFC5 /* WalletView.swift in Sources */,
 				EB803950CFB8551A0C17A7B2 /* WorkspaceInspectorView.swift in Sources */,
 				D978BD4A07012F57FEB48628 /* WorkspaceView.swift in Sources */,
 				2532B1492C46FB5FF5FC185B /* client-core-bridge.c in Sources */,
+				EACCDF372C9B7D3E4A54D946 /* cloud-chat-bridge.c in Sources */,
 				2DA485D5475D62C7827367D5 /* gallery.c in Sources */,
 				860FDD09B1FAC4A337F20EE0 /* gpu-carrier.c in Sources */,
 			);
@@ -371,7 +475,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4A4C87C34B5D31FC95B08E22 /* AntigravityUITests.swift in Sources */,
+				9D277FECD7983C700B492B16 /* OpenAgentsUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -420,9 +524,9 @@
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan Tailscale pairing QR codes from your Mac.";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents discovers your Mac nearby so it can connect to Antigravity over Tailscale.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents uses the microphone when you tap Voice Dictation to speak prompts to Antigravity.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OpenAgents transcribes spoken prompts into the Antigravity composer when you use Voice Dictation.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents discovers your Mac nearby so it can connect to OpenAgents Desktop over Tailscale.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents uses the microphone when you tap Voice Dictation or Live Voice to speak prompts to OpenAgents.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OpenAgents transcribes spoken prompts into the OpenAgents composer when you use Voice Dictation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -518,7 +622,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1428;
+				CURRENT_PROJECT_VERSION = 1431;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -566,9 +670,9 @@
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan Tailscale pairing QR codes from your Mac.";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents discovers your Mac nearby so it can connect to Antigravity over Tailscale.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents uses the microphone when you tap Voice Dictation to speak prompts to Antigravity.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OpenAgents transcribes spoken prompts into the Antigravity composer when you use Voice Dictation.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents discovers your Mac nearby so it can connect to OpenAgents Desktop over Tailscale.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents uses the microphone when you tap Voice Dictation or Live Voice to speak prompts to OpenAgents.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OpenAgents transcribes spoken prompts into the OpenAgents composer when you use Voice Dictation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -630,7 +734,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1428;
+				CURRENT_PROJECT_VERSION = 1431;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -738,6 +842,20 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		AD3390F9D36B728FE1547611 /* XCLocalSwiftPackageReference "Generated/SparkSDK" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Generated/SparkSDK;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6A07344B6842FB168B7EEED5 /* BreezSdkSpark */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BreezSdkSpark;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D73FDB66A38EC188DC701EB0 /* Project object */;
 }

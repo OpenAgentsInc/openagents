@@ -641,7 +641,13 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/deepseek/flash-plan.coax",
+        "psionic/lib/devstral.coax",
+        "psionic/lib/gptoss/device-choice.coax",
+        "psionic/lib/mistral-small.coax",
+        "psionic/lib/nemotron-lightning.coax"
+      ]
     },
     {
       "number": 34,
@@ -666,7 +672,13 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/device/int8-device.coax",
+        "psionic/lib/fast-encoder.coax",
+        "psionic/lib/speculation-gate.coax",
+        "psionic/lib/throughput-gate.coax",
+        "psionic/lib/train-compare.coax"
+      ]
     },
     {
       "number": 35,
@@ -689,7 +701,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/data/feed.coax",
+        "psionic/lib/startup.coax"
+      ]
     },
     {
       "number": 36,
@@ -875,7 +890,9 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/platform/serve-build.sh"
+      ]
     },
     {
       "number": 44,
@@ -990,7 +1007,9 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/quantized.coax"
+      ]
     },
     {
       "number": 49,
@@ -1104,7 +1123,16 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/book-search/encoder.coax",
+        "psionic/lib/book-search/hnsw.coax",
+        "psionic/lib/byte-lm.coax",
+        "psionic/lib/conformer.coax",
+        "psionic/lib/darcy.coax",
+        "psionic/lib/data/pack.coax",
+        "psionic/lib/diffusion.coax",
+        "psionic/lib/fast-encoder.coax"
+      ]
     },
     {
       "number": 54,
@@ -1148,7 +1176,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/tools/book-search.coax"
+      ]
     },
     {
       "number": 56,
@@ -1197,7 +1227,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/lib/agent/engine/memory.coax"
+      ]
     },
     {
       "number": 58,
@@ -1432,7 +1464,12 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/device/delta-chunks-plan.coax",
+        "psionic/lib/device/int8-device.coax",
+        "psionic/lib/device/mxfp4-mma-plan.coax",
+        "psionic/lib/device/tiled-attention-plan.coax"
+      ]
     },
     {
       "number": 69,
@@ -1457,7 +1494,9 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/gptoss/device-mma.coax"
+      ]
     },
     {
       "number": 70,
@@ -1510,7 +1549,9 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/gptoss/device-host.coax"
+      ]
     },
     {
       "number": 72,
@@ -1623,7 +1664,9 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/draft-head.coax"
+      ]
     },
     {
       "number": 77,
@@ -1771,7 +1814,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/mistral-small.coax",
+        "psionic/lib/sparse-attention.coax"
+      ]
     },
     {
       "number": 83,
@@ -1821,7 +1867,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/deepseek/v2-types.coax",
+        "psionic/lib/mistral-small.coax"
+      ]
     },
     {
       "number": 85,
@@ -1850,7 +1899,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/expert-mesh.coax",
+        "psionic/lib/expert-stream.coax"
+      ]
     },
     {
       "number": 86,
@@ -1900,7 +1952,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/chonk-mesh.coax",
+        "psionic/lib/draft-length-run.coax"
+      ]
     },
     {
       "number": 88,
@@ -1921,7 +1976,7 @@
     },
     {
       "number": 89,
-      "title": "DeepSeek\u2019s front door",
+      "title": "DeepSeek’s front door",
       "file": "ch089-deepseeks-front-door.md",
       "status": "implemented",
       "profile": "original V4.1 text tokenizer and bounded recipe/stream",
@@ -2145,7 +2200,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/deepseek/flash-split.coax",
+        "psionic/lib/deepseek/flash-stages.coax",
+        "psionic/lib/deepseek/recipe.coax"
+      ]
     },
     {
       "number": 101,
@@ -2364,7 +2423,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/construction-study.coax"
+      ]
     },
     {
       "number": 111,
@@ -2439,7 +2500,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/trainer-compiled.coax"
+      ]
     },
     {
       "number": 115,
@@ -2486,7 +2549,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/fully-sharded.coax"
+      ]
     },
     {
       "number": 117,
@@ -2656,7 +2721,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/trainer.coax"
+      ]
     },
     {
       "number": 122,
@@ -2748,7 +2815,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/harness/loop.coax",
+        "psionic/lib/nanochat/sft.coax"
+      ]
     },
     {
       "number": 127,
@@ -2799,7 +2869,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/nanochat/continue.coax",
+        "psionic/lib/nanochat/sft.coax"
+      ]
     },
     {
       "number": 129,
@@ -2848,7 +2921,10 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/transformer/device-group.coax",
+        "psionic/lib/transformer/profile-kernels.coax"
+      ]
     },
     {
       "number": 130,
@@ -2951,7 +3027,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/expert-mesh.coax",
+        "psionic/lib/fully-sharded.coax",
+        "psionic/lib/tensor-parallel.coax"
+      ]
     },
     {
       "number": 134,
@@ -3023,7 +3103,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/nanochat/prefer.coax"
+      ]
     },
     {
       "number": 137,
@@ -3073,7 +3155,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/nanochat/rollouts.coax"
+      ]
     },
     {
       "number": 139,
@@ -3126,7 +3210,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/distill-mammoth.coax"
+      ]
     },
     {
       "number": 141,
@@ -3183,7 +3269,13 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/conformer.coax",
+        "psionic/lib/image-codec.coax",
+        "psionic/lib/operator-registry.coax",
+        "psionic/lib/see.coax",
+        "psionic/lib/tensor-template.coax"
+      ]
     },
     {
       "number": 143,
@@ -3216,7 +3308,12 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/model-io/layer-map.coax",
+        "psionic/lib/qwen-tokens.coax",
+        "psionic/lib/radio.coax",
+        "psionic/lib/startup.coax"
+      ]
     },
     {
       "number": 144,
@@ -3275,7 +3372,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/observe-contracts.coax"
+      ]
     },
     {
       "number": 146,
@@ -3342,7 +3441,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/motionbricks.coax"
+      ]
     },
     {
       "number": 149,
@@ -3369,7 +3470,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/motion-verse.coax"
+      ]
     },
     {
       "number": 150,
@@ -3449,7 +3552,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/listen.coax",
+        "psionic/lib/parakeet.coax",
+        "psionic/lib/parakeet/plan.coax"
+      ]
     },
     {
       "number": 153,
@@ -3810,7 +3917,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/nemotron-lightning.coax"
+      ]
     },
     {
       "number": 164,
@@ -3864,7 +3973,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/cosmos.coax"
+      ]
     },
     {
       "number": 166,
@@ -4123,7 +4234,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/peer/meshllm.coax"
+      ]
     },
     {
       "number": 174,
@@ -4187,7 +4300,10 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/serve-fault.coax",
+        "psionic/lib/serve-pages.coax"
+      ]
     },
     {
       "number": 176,
@@ -4237,7 +4353,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/serve-rollout.coax"
+      ]
     },
     {
       "number": 178,
@@ -4261,7 +4379,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/serve-rollout.coax",
+        "psionic/lib/stage-package.coax"
+      ]
     },
     {
       "number": 179,
@@ -4309,7 +4430,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/serve-fault.coax",
+        "psionic/lib/peer/audit.coax",
+        "psionic/lib/peer/meshllm.coax"
+      ]
     },
     {
       "number": 181,
@@ -4332,7 +4457,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/serve-client.coax"
+      ]
     },
     {
       "number": 182,
@@ -4411,7 +4538,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/voice-steer.coax"
+      ]
     },
     {
       "number": 185,
@@ -4466,7 +4595,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/deepseek/flash-split.coax",
+        "psionic/lib/place.coax",
+        "psionic/lib/stage-package.coax"
+      ]
     },
     {
       "number": 187,
@@ -4515,7 +4648,13 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-cli/pylon.coax",
+        "coax/web/project/landing-nostr.coax",
+        "psionic/lib/pylon/decision.coax",
+        "psionic/lib/pylon/text-probe-policy.coax",
+        "psionic/lib/peer/meshllm.coax"
+      ]
     },
     {
       "number": 189,
@@ -4539,7 +4678,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/large4-mesh.coax",
+        "psionic/lib/peer/trust.coax",
+        "psionic/lib/stage-life.coax"
+      ]
     },
     {
       "number": 190,
@@ -4597,7 +4740,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/large4-mesh.coax"
+      ]
     },
     {
       "number": 192,
@@ -4697,7 +4842,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/mesh/witness.coax",
+        "psionic/lib/peer/pay.coax"
+      ]
     },
     {
       "number": 196,
@@ -4726,7 +4874,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-cli/pylon-settle.coax",
+        "psionic/tools/executor-settle-e2e.coax"
+      ]
     },
     {
       "number": 197,
@@ -4785,7 +4936,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/chonk-mesh.coax"
+      ]
     },
     {
       "number": 199,
@@ -5138,7 +5291,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/distill.coax"
+      ]
     },
     {
       "number": 223,
@@ -5635,7 +5790,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/post-train.coax",
+        "psionic/lib/students.coax",
+        "psionic/lib/trace-distill-policy.coax"
+      ]
     },
     {
       "number": 247,
@@ -5961,7 +6120,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/comparator.coax",
+        "psionic/lib/robotics/world-rollout-types.coax",
+        "psionic/lib/robotics/world-rollout.coax"
+      ]
     },
     {
       "number": 260,
@@ -6195,7 +6358,7 @@
       ],
       "adopted_by": [
         "coax/lib/inky/loop.coax",
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -6222,7 +6385,11 @@
       ],
       "adopted_by": [
         "apps/openagents-desktop/page/models.coax",
-        "apps/openagents-desktop/host-core.coax"
+        "apps/openagents-desktop/host-core.coax",
+        "apps/openagents-desktop/build.sh",
+        "apps/openagents-desktop/desktop-core.coax",
+        "apps/openagents-desktop/AppDelegate.swift",
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {

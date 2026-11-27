@@ -25,10 +25,15 @@ standalone `everglade-desktop` and `everglade-mobile` shells retired in `#13856`
      `everglade/range/` modules; extract standalone runnable examples to promote
      them to implemented.
 3. **City, live operations & beasts (Ch 26–33 + Appendix A):**
-   - Fill in planned chapters 26–32 (city, townspeople, multi-room shards,
-     accounts, shipping, live operations) as their modules stabilize, keeping
-     `ch033-lets-build-a-dragon.md` synced with `rules/srd/dragon-actions.coax`,
-     `everglade/mounts.coax`, and `gamebuilder/tools/dragon-bake.coax`.
+   - Chapters 26–32 are written and partly implemented with runnable Coax
+     examples (`everglade/examples/*.coax`) covering clearing/plots, townspeople
+     & guard-guide AI, quests & item ledger, multi-room travel, accounts &
+     fenced checkpoints, release-set gates, and live SLO/moderation/soak
+     operations; promote them to implemented once live Everglade II city
+     interiors, daily NPC routines, player-to-player trade wire commands, and
+     150-player zones ship, keeping `ch033-lets-build-a-dragon.md` synced with
+     `rules/srd/dragon-actions.coax`, `everglade/mounts.coax`, and
+     `gamebuilder/tools/dragon-bake.coax`.
 
 ## Chapter Table
 
@@ -59,11 +64,11 @@ standalone `everglade-desktop` and `everglade-mobile` shells retired in `#13856`
 | [23. Mouse look and the crosshair](ch023-mouse-look-and-the-crosshair.md) | VII | Partly implemented |
 | [24. The longbow](ch024-the-longbow.md) | VII | Partly implemented |
 | [25. Cast while you run](ch025-cast-while-you-run.md) | VII | Partly implemented |
-| 26. Walk into a city | VIII | Planned |
-| 27. Townspeople | VIII | Planned |
-| 28. Interactions | VIII | Planned |
-| 29. Many rooms | IX | Planned |
-| 30. Accounts and persistence | IX | Planned |
-| 31. Ship it | IX | Planned |
-| 32. Run a live world | IX | Planned |
+| [26. Walk into a city](ch026-walk-into-a-city.md) | VIII | Partly implemented |
+| [27. Townspeople](ch027-townspeople.md) | VIII | Partly implemented |
+| [28. Interactions](ch028-interactions.md) | VIII | Partly implemented |
+| [29. Many rooms](ch029-many-rooms.md) | IX | Partly implemented |
+| [30. Accounts and persistence](ch030-accounts-and-persistence.md) | IX | Partly implemented |
+| [31. Ship it](ch031-ship-it.md) | IX | Partly implemented |
+| [32. Run a live world](ch032-run-a-live-world.md) | IX | Partly implemented |
 | [33. Let's build a dragon](ch033-lets-build-a-dragon.md) | X | Implemented |

@@ -1,0 +1,592 @@
+// MCP 2026-07-28 Multi Round-Trip Requests (SEP-2322):
+// InputRequiredResult, InputRequests, InputResponses codecs, client capability
+// gating (-32021), and AES-256-GCM authenticated requestState sealing with AAD
+// binding (method, request digest, principal) and TTL expiry checks.
+// Pure zero-heap #authority module.
+#load "types.coax";
+#load "jsonrpc.coax";
+#load "../crypto/aes_gcm.coax";
+#load "../encoding/base64.coax";
+#authority;
+
+MCP_MRTR_KEY_LEN :: 32;
+MCP_MRTR_NONCE_LEN :: 12;
+MCP_MRTR_TAG_LEN :: 16;
+MCP_MRTR_HDR_LEN :: 12; // round(be32) || expires_ms(be64)
+MCP_MRTR_MAX_STATE :: 512;
+MCP_MRTR_MAX_AAD :: 256;
+MCP_MRTR_MAX_REQS :: 8;
+MCP_MRTR_PREFIX :: "mrtr1.";
+
+// Client capability check outcomes for MRTR input requests.
+MCP_CAP_OK :: 0;
+MCP_CAP_MISSING_ELICIT_FORM :: 1;
+MCP_CAP_MISSING_ELICIT_URL :: 2;
+MCP_CAP_MISSING_SAMPLING :: 3;
+MCP_CAP_MISSING_ROOTS :: 4;
+
+// Elicitation modes for capability gating.
+MCP_MRTR_ELICIT_FORM :: 1;
+MCP_MRTR_ELICIT_URL :: 2;
+
+McpInputRequest :: struct {
+  key: string;
+  method: string;
+  params_json: string; // Optional JSON object for params
+}
+
+McpMrtrUnsealed :: struct {
+  ok: bool;
+  expired: bool;
+  round: int;
+  expires_ms: int;
+  state_len: int;
+}
+
+McpInputRequiredParsed :: struct {
+  ok: bool;
+  has_requests: bool;
+  req_count: int;
+  req_nodes: [MCP_MRTR_MAX_REQS] int;
+  has_state: bool;
+  request_state: string;
+}
+
+#test "MRTR method gating and capability checking enforce SEP-2322 rules" {
+  // Only tools/call, resources/read, prompts/get allow MRTR InputRequiredResult.
+  #assert mcp_mrtr_method_allowed("tools/call");
+  #assert mcp_mrtr_method_allowed("resources/read");
+  #assert mcp_mrtr_method_allowed("prompts/get");
+  #assert !mcp_mrtr_method_allowed("tools/list");
+  #assert !mcp_mrtr_method_allowed("server/discover");
+  #assert !mcp_mrtr_method_allowed("completion/complete");
+  #assert !mcp_mrtr_method_allowed("");
+
+  // Allowed input request methods.
+  #assert mcp_mrtr_input_method_ok("elicitation/create");
+  #assert mcp_mrtr_input_method_ok("sampling/createMessage");
+  #assert mcp_mrtr_input_method_ok("roots/list");
+  #assert !mcp_mrtr_input_method_ok("tools/call");
+  #assert !mcp_mrtr_input_method_ok("");
+
+  // Capability checks against client capabilities.
+  none_caps := McpClientCaps.{};
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_FORM, none_caps) == MCP_CAP_MISSING_ELICIT_FORM;
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_URL, none_caps) == MCP_CAP_MISSING_ELICIT_URL;
+  #assert mcp_mrtr_check_capability("sampling/createMessage", 0, none_caps) == MCP_CAP_MISSING_SAMPLING;
+  #assert mcp_mrtr_check_capability("roots/list", 0, none_caps) == MCP_CAP_MISSING_ROOTS;
+  #assert mcp_mrtr_check_capability("unknown", 0, none_caps) == MCP_CAP_OK;
+
+  form_only := McpClientCaps.{ elicitation = true, elicitation_form = true };
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_FORM, form_only) == MCP_CAP_OK;
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_URL, form_only) == MCP_CAP_MISSING_ELICIT_URL;
+
+  url_only := McpClientCaps.{ elicitation = true, elicitation_url = true };
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_URL, url_only) == MCP_CAP_OK;
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_FORM, url_only) == MCP_CAP_MISSING_ELICIT_FORM;
+
+  // Elicitation flag false even if sub-flags somehow true still denies.
+  bad_elicit := McpClientCaps.{ elicitation = false, elicitation_form = true, elicitation_url = true };
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_FORM, bad_elicit) == MCP_CAP_MISSING_ELICIT_FORM;
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_URL, bad_elicit) == MCP_CAP_MISSING_ELICIT_URL;
+
+  full_caps := McpClientCaps.{ elicitation = true, elicitation_form = true, elicitation_url = true, sampling = true, roots = true };
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_FORM, full_caps) == MCP_CAP_OK;
+  #assert mcp_mrtr_check_capability("elicitation/create", MCP_MRTR_ELICIT_URL, full_caps) == MCP_CAP_OK;
+  #assert mcp_mrtr_check_capability("sampling/createMessage", 0, full_caps) == MCP_CAP_OK;
+  #assert mcp_mrtr_check_capability("roots/list", 0, full_caps) == MCP_CAP_OK;
+
+  // Verify -32021 MissingRequiredClientCapabilityError wire formatting for all 4 capability kinds.
+  nodes: [16] JvNode; d: [1] Jv; buf: [512] u8; o: [1] Jo;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\"}", nodes[..]);
+  req := jrpc_classify(d[0]);
+
+  jo_start(o[..], buf[..]);
+  mcp_mrtr_write_missing_cap_error(o[..], d[0], req, MCP_CAP_MISSING_ELICIT_FORM);
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32021,\"message\":\"Missing required client capability\",\"data\":{\"requiredCapabilities\":{\"elicitation\":{\"form\":{}}}}}}";
+
+  jo_start(o[..], buf[..]);
+  mcp_mrtr_write_missing_cap_error(o[..], d[0], req, MCP_CAP_MISSING_ELICIT_URL);
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32021,\"message\":\"Missing required client capability\",\"data\":{\"requiredCapabilities\":{\"elicitation\":{\"url\":{}}}}}}";
+
+  jo_start(o[..], buf[..]);
+  mcp_mrtr_write_missing_cap_error(o[..], d[0], req, MCP_CAP_MISSING_SAMPLING);
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32021,\"message\":\"Missing required client capability\",\"data\":{\"requiredCapabilities\":{\"sampling\":{}}}}}";
+
+  jo_start(o[..], buf[..]);
+  mcp_mrtr_write_missing_cap_error(o[..], d[0], req, MCP_CAP_MISSING_ROOTS);
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32021,\"message\":\"Missing required client capability\",\"data\":{\"requiredCapabilities\":{\"roots\":{}}}}}";
+}
+
+#test "AES-256-GCM sealed requestState binds method, request, principal, round, and expiry" {
+  // Direct AAD layout & exact-capacity check (kills symmetric seal/unseal AAD mutations).
+  aad_buf: [32] u8;
+  for i: 0..<32 { aad_buf[i] = 255; }
+  an := mcp_mrtr_build_aad("tools/call", "b1", "u1", aad_buf[0..<22]);
+  #assert an == 22 && cast(string) aad_buf[0..<6] == "mrtr1.";
+  #assert cast(string) aad_buf[6..<16] == "tools/call" && aad_buf[16] == 0;
+  #assert cast(string) aad_buf[17..<19] == "b1" && aad_buf[19] == 0;
+  #assert cast(string) aad_buf[20..<22] == "u1";
+  #assert mcp_mrtr_build_aad("tools/call", "b1", "u1", aad_buf[0..<21]) == -1;
+
+  key: [MCP_MRTR_KEY_LEN] u8;
+  nonce: [MCP_MRTR_NONCE_LEN] u8;
+  for i: 0..<MCP_MRTR_KEY_LEN { key[i] = cast(u8) (i + 1); }
+  for i: 0..<MCP_MRTR_NONCE_LEN { nonce[i] = cast(u8) (100 + i); }
+
+  state_in := "step=2;user=alice";
+  tok: [256] u8;
+  tn := mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "deploy:sha1", "user-42", 2, 50000, state_in, tok[..]);
+  #assert tn > 6 && cast(string) tok[0..<6] == "mrtr1.";
+  // Exact-fit output buffer succeeds; 1 byte short fails.
+  #assert mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "deploy:sha1", "user-42", 2, 50000, state_in, tok[0..<tn]) == tn;
+  #assert mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "deploy:sha1", "user-42", 2, 50000, state_in, tok[0..<tn - 1]) == -1;
+
+  tok_s := cast(string) tok[0..<tn];
+  plain: [MCP_MRTR_MAX_STATE + 16] u8;
+  u := mcp_mrtr_unseal_state(key[..], tok_s, "tools/call", "deploy:sha1", "user-42", 50000, plain[0..<state_in.count]);
+  #assert u.ok && !u.expired && u.round == 2 && u.expires_ms == 50000 && u.state_len == state_in.count;
+  #assert cast(string) plain[0..<u.state_len] == state_in;
+
+  // Output buffer 1 byte too small for unsealed state fails cleanly.
+  #assert !mcp_mrtr_unseal_state(key[..], tok_s, "tools/call", "deploy:sha1", "user-42", 1000, plain[0..<state_in.count - 1]).ok;
+
+  // Expiry boundary: now_ms == expires_ms allowed; expires_ms + 1 rejected; expires_ms == 1 expires at now_ms == 2.
+  u_exp := mcp_mrtr_unseal_state(key[..], tok_s, "tools/call", "deploy:sha1", "user-42", 50001, plain[..]);
+  #assert !u_exp.ok && u_exp.expired;
+  tn_e1 := mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "b", "p", 0, 1, "", tok[..]);
+  #assert tn_e1 > 6;
+  #assert mcp_mrtr_unseal_state(key[..], cast(string) tok[0..<tn_e1], "tools/call", "b", "p", 1, plain[..]).ok;
+  #assert mcp_mrtr_unseal_state(key[..], cast(string) tok[0..<tn_e1], "tools/call", "b", "p", 2, plain[..]).expired;
+
+  // Tamper resistance: flipping any byte in token fails!
+  tok[10] ^= 1;
+  #assert !mcp_mrtr_unseal_state(key[..], cast(string) tok[0..<tn], "tools/call", "deploy:sha1", "user-42", 1000, plain[..]).ok;
+  tok[10] ^= 1;
+
+  // Cross-context replay rejected: wrong method, wrong binding, wrong principal, wrong key.
+  #assert !mcp_mrtr_unseal_state(key[..], tok_s, "resources/read", "deploy:sha1", "user-42", 1000, plain[..]).ok;
+  #assert !mcp_mrtr_unseal_state(key[..], tok_s, "tools/call", "other:sha2", "user-42", 1000, plain[..]).ok;
+  #assert !mcp_mrtr_unseal_state(key[..], tok_s, "tools/call", "deploy:sha1", "user-99", 1000, plain[..]).ok;
+  key[0] ^= 1;
+  #assert !mcp_mrtr_unseal_state(key[..], tok_s, "tools/call", "deploy:sha1", "user-42", 1000, plain[..]).ok;
+  key[0] ^= 1;
+
+  // Empty state payload (state_len == 0) and exact MCP_MRTR_MAX_STATE (512) succeed; 513 refuses.
+  empty_tok: [128] u8;
+  etn := mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "b", "p", 0, 0, "", empty_tok[..]);
+  #assert etn > 6;
+  u0 := mcp_mrtr_unseal_state(key[..], cast(string) empty_tok[0..<etn], "tools/call", "b", "p", 0, plain[0..<0]);
+  #assert u0.ok && !u0.expired && u0.round == 0 && u0.expires_ms == 0 && u0.state_len == 0;
+
+  big_state: [MCP_MRTR_MAX_STATE + 1] u8;
+  for i: 0..<big_state.count { big_state[i] = 's'; }
+  big_tok: [1024] u8;
+  btn := mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "b", "p", 1, 100, cast(string) big_state[0..<MCP_MRTR_MAX_STATE], big_tok[..]);
+  #assert btn > 6;
+  ub := mcp_mrtr_unseal_state(key[..], cast(string) big_tok[0..<btn], "tools/call", "b", "p", 100, plain[..]);
+  #assert ub.ok && ub.state_len == MCP_MRTR_MAX_STATE;
+  #assert mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "b", "p", 1, 100, cast(string) big_state[..], big_tok[..]) == -1;
+
+  // Invalid inputs on seal & unseal (key/nonce len, negative round/expiry, AAD overflow, bad prefix/base64/truncated).
+  #assert mcp_mrtr_seal_state(key[0..<31], nonce[..], "tools/call", "b", "p", 1, 10, "x", tok[..]) == -1;
+  #assert mcp_mrtr_seal_state(key[..], nonce[0..<11], "tools/call", "b", "p", 1, 10, "x", tok[..]) == -1;
+  #assert mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "b", "p", -1, 10, "x", tok[..]) == -1;
+  #assert mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "b", "p", 1, -1, "x", tok[..]) == -1;
+  long_aad: [MCP_MRTR_MAX_AAD] u8;
+  for i: 0..<long_aad.count { long_aad[i] = 'a'; }
+  #assert mcp_mrtr_seal_state(key[..], nonce[..], cast(string) long_aad[..], "b", "p", 1, 10, "x", tok[..]) == -1;
+  #assert !mcp_mrtr_unseal_state(key[0..<31], tok_s, "tools/call", "deploy:sha1", "user-42", 1000, plain[..]).ok;
+  #assert !mcp_mrtr_unseal_state(key[..], "mrtr1", "tools/call", "b", "p", 0, plain[..]).ok;
+  #assert !mcp_mrtr_unseal_state(key[..], "mrtr2.AAAA", "tools/call", "b", "p", 0, plain[..]).ok;
+  #assert !mcp_mrtr_unseal_state(key[..], "mrtr1.@@@", "tools/call", "b", "p", 0, plain[..]).ok;
+  #assert !mcp_mrtr_unseal_state(key[..], "mrtr1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "tools/call", "b", "p", 0, plain[..]).ok; // 39 bytes < 40 (nonce+hdr+tag)
+  #assert !mcp_mrtr_unseal_state(key[..], tok_s, cast(string) long_aad[..], "b", "p", 0, plain[..]).ok;
+  // Oversize base64 (> MAX_STATE + 40 = 552 bytes -> 553 bytes = 740 b64 chars) refused cleanly on unseal.
+  over_tok: [746] u8;
+  pfx := MCP_MRTR_PREFIX;
+  for i: 0..<6 { over_tok[i] = pfx[i]; }
+  for i: 6..<744 { over_tok[i] = 'A'; }
+  over_tok[744] = '=';
+  over_tok[745] = '=';
+  #assert !mcp_mrtr_unseal_state(key[..], cast(string) over_tok[..], "tools/call", "b", "p", 0, plain[..]).ok;
+
+  // Big-endian integer round-trip boundary check covering MSB byte 0 (0x0102030405060708).
+  hi_exp := 0x0102030405060708;
+  hi_round := 0x01020304;
+  tn_hi := mcp_mrtr_seal_state(key[..], nonce[..], "tools/call", "b", "p", hi_round, hi_exp, "z", tok[..]);
+  #assert tn_hi > 6;
+  u_hi := mcp_mrtr_unseal_state(key[..], cast(string) tok[0..<tn_hi], "tools/call", "b", "p", hi_exp, plain[..]);
+  #assert u_hi.ok && u_hi.round == hi_round && u_hi.expires_ms == hi_exp && u_hi.state_len == 1 && plain[0] == 'z';
+}
+
+#test "InputRequiredResult wire codec and InputResponses validation match 2026-07-28 examples" {
+  buf: [1024] u8; o: [1] Jo; nodes: [64] JvNode; d: [1] Jv;
+
+  // Write InputRequiredResult with both inputRequests and requestState.
+  reqs := [2] McpInputRequest.[
+    McpInputRequest.{ key = "e1", method = "elicitation/create", params_json = "{\"message\":\"Name?\",\"requestedSchema\":{\"type\":\"object\"}}" },
+    McpInputRequest.{ key = "r1", method = "roots/list", params_json = "" }
+  ];
+  jo_start(o[..], buf[..]);
+  #assert mcp_mrtr_write_input_required(o[..], reqs[..], "mrtr1.tok");
+  #assert !o[0].bad;
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  p := mcp_mrtr_parse_input_required(d[0], 0);
+  #assert p.ok && p.has_requests && p.req_count == 2 && p.has_state && p.request_state == "mrtr1.tok";
+  #assert jv_key(d[0], p.req_nodes[0]) == "e1" && jv_key(d[0], p.req_nodes[1]) == "r1";
+
+  // Write InputRequiredResult with requestState only (official example: input-required-result-with-request-state-only.json).
+  jo_start(o[..], buf[..]);
+  #assert mcp_mrtr_write_input_required(o[..], reqs[0..<0], "s");
+  #assert jo_text(o[..]) == "{\"resultType\":\"input_required\",\"requestState\":\"s\"}";
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  p = mcp_mrtr_parse_input_required(d[0], 0);
+  #assert p.ok && !p.has_requests && p.req_count == 0 && p.has_state && p.request_state == "s";
+
+  // Write InputRequiredResult with inputRequests only (no requestState).
+  jo_start(o[..], buf[..]);
+  #assert mcp_mrtr_write_input_required(o[..], reqs[0..<1], "");
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  p = mcp_mrtr_parse_input_required(d[0], 0);
+  #assert p.ok && p.has_requests && p.req_count == 1 && !p.has_state;
+
+  // Reject writing InputRequiredResult with neither inputRequests nor requestState.
+  jo_start(o[..], buf[..]);
+  #assert !mcp_mrtr_write_input_required(o[..], reqs[0..<0], "");
+
+  // Reject invalid InputRequiredResult payloads.
+  bad_ir := [11] string.[
+    "[]",
+    "{\"resultType\":\"complete\",\"requestState\":\"x\"}",
+    "{\"resultType\":\"input_required\"}",
+    "{\"resultType\":\"input_required\",\"requestState\":123}",
+    "{\"resultType\":\"input_required\",\"requestState\":\"\"}",
+    "{\"resultType\":\"input_required\",\"inputRequests\":[]}",
+    "{\"resultType\":\"input_required\",\"inputRequests\":{}}",
+    "{\"resultType\":\"input_required\",\"inputRequests\":{\"k\":123}}",
+    "{\"resultType\":\"input_required\",\"inputRequests\":{\"k\":{\"method\":\"tools/call\"}}}",
+    "{\"resultType\":\"input_required\",\"inputRequests\":{\"k\":{\"method\":\"elicitation/create\",\"params\":123}}}",
+    "{\"resultType\":\"input_required\",\"inputRequests\":{\"a\":{\"method\":\"roots/list\"},\"b\":{\"method\":\"roots/list\"},\"c\":{\"method\":\"roots/list\"},\"d\":{\"method\":\"roots/list\"},\"e\":{\"method\":\"roots/list\"},\"f\":{\"method\":\"roots/list\"},\"g\":{\"method\":\"roots/list\"},\"h\":{\"method\":\"roots/list\"},\"i\":{\"method\":\"roots/list\"}}}"
+  ];
+  for s: bad_ir {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_mrtr_parse_input_required(d[0], 0).ok;
+  }
+
+  // Exact MCP_MRTR_MAX_REQS (8) succeeds.
+  #assert jv_parse(d[..], "{\"resultType\":\"input_required\",\"inputRequests\":{\"a\":{\"method\":\"roots/list\"},\"b\":{\"method\":\"roots/list\"},\"c\":{\"method\":\"roots/list\"},\"d\":{\"method\":\"roots/list\"},\"e\":{\"method\":\"roots/list\"},\"f\":{\"method\":\"roots/list\"},\"g\":{\"method\":\"roots/list\"},\"h\":{\"method\":\"roots/list\"}}}", nodes[..]);
+  #assert mcp_mrtr_parse_input_required(d[0], 0).ok;
+
+  // Missing inputResponses returns -1.
+  #assert jv_parse(d[..], "{}", nodes[..]);
+  #assert mcp_mrtr_find_input_response(d[0], 0, "g") == -1;
+
+  // Validate InputResponses entries and lookup helper.
+  #assert jv_parse(d[..], "{\"inputResponses\":{\"g\":{\"action\":\"accept\",\"content\":{\"name\":\"octocat\"}},\"d\":{\"action\":\"decline\"},\"c\":{\"action\":\"cancel\"},\"s\":{\"role\":\"assistant\",\"content\":{\"type\":\"text\",\"text\":\"Paris\"},\"model\":\"m\"},\"r\":{\"roots\":[{\"uri\":\"file:///a\"}]}}}", nodes[..]);
+  #assert mcp_mrtr_find_input_response(d[0], 0, "g") != -1;
+  #assert mcp_mrtr_find_input_response(d[0], 0, "missing") == -1;
+  #assert mcp_mrtr_find_input_response(d[0], -1, "g") == -1;
+
+  #assert mcp_mrtr_validate_input_response(d[0], "elicitation/create", mcp_mrtr_find_input_response(d[0], 0, "g"));
+  #assert mcp_mrtr_validate_input_response(d[0], "elicitation/create", mcp_mrtr_find_input_response(d[0], 0, "d"));
+  #assert mcp_mrtr_validate_input_response(d[0], "elicitation/create", mcp_mrtr_find_input_response(d[0], 0, "c"));
+  #assert mcp_mrtr_validate_input_response(d[0], "sampling/createMessage", mcp_mrtr_find_input_response(d[0], 0, "s"));
+  #assert mcp_mrtr_validate_input_response(d[0], "roots/list", mcp_mrtr_find_input_response(d[0], 0, "r"));
+
+  // Invalid InputResponses entries are rejected.
+  bad_elicit := [4] string.[
+    "[]",
+    "{}",
+    "{\"action\":\"maybe\"}",
+    "{\"action\":\"accept\",\"content\":123}"
+  ];
+  for s: bad_elicit {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_mrtr_validate_input_response(d[0], "elicitation/create", 0);
+  }
+  bad_samp := [5] string.[
+    "[]",
+    "{\"content\":{\"type\":\"text\",\"text\":\"x\"},\"model\":\"m\"}",
+    "{\"role\":\"system\",\"content\":{\"type\":\"text\",\"text\":\"x\"},\"model\":\"m\"}",
+    "{\"role\":\"assistant\",\"model\":\"m\"}",
+    "{\"role\":\"assistant\",\"content\":{\"type\":\"text\",\"text\":\"x\"}}"
+  ];
+  for s: bad_samp {
+    #assert jv_parse(d[..], s, nodes[..]);
+    #assert !mcp_mrtr_validate_input_response(d[0], "sampling/createMessage", 0);
+  }
+  #assert jv_parse(d[..], "{\"role\":\"user\",\"content\":[],\"model\":\"m\"}", nodes[..]);
+  #assert mcp_mrtr_validate_input_response(d[0], "sampling/createMessage", 0);
+  #assert jv_parse(d[..], "{\"role\":\"assistant\",\"content\":123,\"model\":\"m\"}", nodes[..]);
+  #assert !mcp_mrtr_validate_input_response(d[0], "sampling/createMessage", 0);
+  #assert jv_parse(d[..], "{\"roots\":{}}", nodes[..]);
+  #assert !mcp_mrtr_validate_input_response(d[0], "roots/list", 0);
+  #assert !mcp_mrtr_validate_input_response(d[0], "unknown", 0);
+}
+
+mcp_mrtr_method_allowed :: (method: string) -> bool #effects(all) {
+  return method == "tools/call" || method == "resources/read" || method == "prompts/get";
+}
+
+mcp_mrtr_input_method_ok :: (method: string) -> bool #effects(all) {
+  return method == "elicitation/create" || method == "sampling/createMessage" || method == "roots/list";
+}
+
+mcp_mrtr_check_capability :: (input_method: string, elicit_mode: int, caps: McpClientCaps) -> int #effects(all) {
+  if input_method == "elicitation/create" {
+    if elicit_mode == MCP_MRTR_ELICIT_URL {
+      if caps.elicitation && caps.elicitation_url { return MCP_CAP_OK; }
+      return MCP_CAP_MISSING_ELICIT_URL;
+    }
+    if caps.elicitation && caps.elicitation_form { return MCP_CAP_OK; }
+    return MCP_CAP_MISSING_ELICIT_FORM;
+  }
+  if input_method == "sampling/createMessage" {
+    if caps.sampling { return MCP_CAP_OK; }
+    return MCP_CAP_MISSING_SAMPLING;
+  }
+  if input_method == "roots/list" {
+    if caps.roots { return MCP_CAP_OK; }
+    return MCP_CAP_MISSING_ROOTS;
+  }
+  return MCP_CAP_OK;
+}
+
+mcp_mrtr_write_missing_cap_error :: (o: [] Jo, d: Jv, req: JrpcMessage, missing_cap: int) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "jsonrpc"); jo_str(o, "2.0");
+  jrpc_write_id(o, d, req);
+  jo_key(o, "error"); jo_obj(o);
+  jo_key(o, "code"); jo_int(o, MCP_ERR_MISSING_CAPABILITY);
+  jo_key(o, "message"); jo_str(o, "Missing required client capability");
+  jo_key(o, "data"); jo_obj(o);
+  jo_key(o, "requiredCapabilities"); jo_obj(o);
+  if missing_cap == MCP_CAP_MISSING_ELICIT_FORM {
+    jo_key(o, "elicitation"); jo_obj(o); jo_key(o, "form"); jo_obj(o); jo_end(o); jo_end(o);
+  } else if missing_cap == MCP_CAP_MISSING_ELICIT_URL {
+    jo_key(o, "elicitation"); jo_obj(o); jo_key(o, "url"); jo_obj(o); jo_end(o); jo_end(o);
+  } else if missing_cap == MCP_CAP_MISSING_SAMPLING {
+    jo_key(o, "sampling"); jo_obj(o); jo_end(o);
+  } else {
+    jo_key(o, "roots"); jo_obj(o); jo_end(o);
+  }
+  jo_end(o);
+  jo_end(o);
+  jo_end(o);
+  jo_end(o);
+}
+
+mcp_mrtr_build_aad :: (method: string, req_binding: string, principal: string, out: [] u8) -> int #effects(all) {
+  need := 6 + method.count + 1 + req_binding.count + 1 + principal.count;
+  if need > out.count { return -1; }
+  pos := 0;
+  pfx := MCP_MRTR_PREFIX;
+  for i: 0..<6 { out[pos] = pfx[i]; pos += 1; }
+  for i: 0..<method.count { out[pos] = method[i]; pos += 1; }
+  out[pos] = 0; pos += 1;
+  for i: 0..<req_binding.count { out[pos] = req_binding[i]; pos += 1; }
+  out[pos] = 0; pos += 1;
+  for i: 0..<principal.count { out[pos] = principal[i]; pos += 1; }
+  return pos;
+}
+
+mcp_mrtr_put_be32 :: (out: [] u8, off: int, v: int) #effects(all) {
+  u := cast(u64) v;
+  out[off] = cast(u8) ((u >> 24) & 255);
+  out[off + 1] = cast(u8) ((u >> 16) & 255);
+  out[off + 2] = cast(u8) ((u >> 8) & 255);
+  out[off + 3] = cast(u8) (u & 255);
+}
+
+mcp_mrtr_get_be32 :: (b: [] const u8, off: int) -> int #effects(all) {
+  v := ((cast(u64) b[off]) << 24) | ((cast(u64) b[off + 1]) << 16) | ((cast(u64) b[off + 2]) << 8) | cast(u64) b[off + 3];
+  return cast(int) v;
+}
+
+mcp_mrtr_put_be64 :: (out: [] u8, off: int, v: int) #effects(all) {
+  u := cast(u64) v;
+  for i: 0..<8 {
+    out[off + i] = cast(u8) ((u >> cast(u64) ((7 - i) * 8)) & 255);
+  }
+}
+
+mcp_mrtr_get_be64 :: (b: [] const u8, off: int) -> int #effects(all) {
+  u: u64 = cast(u64) b[off];
+  for i: 1..<8 {
+    u = (u << 8) | cast(u64) b[off + i];
+  }
+  return cast(int) u;
+}
+
+// Seals MRTR requestState using AES-256-GCM bound to (method, req_binding, principal).
+mcp_mrtr_seal_state :: (key: [] u8, nonce: [] u8, method: string, req_binding: string, principal: string, round: int, expires_ms: int, state: string, out: [] u8) -> int #effects(all) {
+  if key.count != MCP_MRTR_KEY_LEN || nonce.count != MCP_MRTR_NONCE_LEN { return -1; }
+  if round < 0 || expires_ms < 0 || state.count > MCP_MRTR_MAX_STATE { return -1; }
+  aad: [MCP_MRTR_MAX_AAD] u8;
+  aad_len := mcp_mrtr_build_aad(method, req_binding, principal, aad[..]);
+  if aad_len == -1 { return -1; }
+
+  pt_len := MCP_MRTR_HDR_LEN + state.count;
+  raw_len := MCP_MRTR_NONCE_LEN + pt_len + MCP_MRTR_TAG_LEN;
+  b64_len := base64_encode_size(raw_len);
+  total := 6 + b64_len;
+  if out.count < total { return -1; }
+
+  pt: [MCP_MRTR_HDR_LEN + MCP_MRTR_MAX_STATE] u8;
+  defer { secure_zero(pt[..]); #assert crypto_zeroed(pt[..]); }
+  mcp_mrtr_put_be32(pt[..], 0, round);
+  mcp_mrtr_put_be64(pt[..], 4, expires_ms);
+  for i: 0..<state.count { pt[MCP_MRTR_HDR_LEN + i] = state[i]; }
+
+  raw: [MCP_MRTR_NONCE_LEN + MCP_MRTR_HDR_LEN + MCP_MRTR_MAX_STATE + MCP_MRTR_TAG_LEN] u8;
+  defer { secure_zero(raw[..]); #assert crypto_zeroed(raw[..]); }
+  for i: 0..<MCP_MRTR_NONCE_LEN { raw[i] = nonce[i]; }
+  cn := aes256_gcm_seal(key, nonce, aad[0..<aad_len], pt[0..<pt_len], raw[MCP_MRTR_NONCE_LEN..<raw_len]);
+  #assert cn == pt_len + MCP_MRTR_TAG_LEN;
+
+  pfx := MCP_MRTR_PREFIX;
+  for i: 0..<6 { out[i] = pfx[i]; }
+  r := base64_encode_checked(cast(string) raw[0..<raw_len], out[6..<total], false);
+  #assert r.error == NC_OK;
+  return 6 + r.written;
+}
+
+// Verifies GCM authentication tag, AAD binding, and TTL expiry on a sealed requestState token.
+mcp_mrtr_unseal_state :: (key: [] u8, token: string, method: string, req_binding: string, principal: string, now_ms: int, state_out: [] u8) -> McpMrtrUnsealed #effects(all) {
+  res: McpMrtrUnsealed;
+  if key.count != MCP_MRTR_KEY_LEN || token.count < 6 { return res; } // mutant: equivalent (len 6 has empty body failing raw_len < min_raw)
+  if token[0..<6] != MCP_MRTR_PREFIX { return res; }
+  aad: [MCP_MRTR_MAX_AAD] u8;
+  aad_len := mcp_mrtr_build_aad(method, req_binding, principal, aad[..]);
+  if aad_len == -1 { return res; } // mutant: equivalent (aad_len==-1 would fail GCM auth anyway)
+
+  body := token[6..<token.count];
+  raw_len := base64_decode_size(body);
+  min_raw := MCP_MRTR_NONCE_LEN + MCP_MRTR_HDR_LEN + MCP_MRTR_TAG_LEN;
+  if raw_len < min_raw { return res; }
+  pt_len := raw_len - MCP_MRTR_NONCE_LEN - MCP_MRTR_TAG_LEN;
+  st_len := pt_len - MCP_MRTR_HDR_LEN;
+  if st_len > MCP_MRTR_MAX_STATE || state_out.count < st_len { return res; }
+
+  raw: [MCP_MRTR_NONCE_LEN + MCP_MRTR_HDR_LEN + MCP_MRTR_MAX_STATE + MCP_MRTR_TAG_LEN] u8;
+  defer { secure_zero(raw[..]); #assert crypto_zeroed(raw[..]); }
+  dec := base64_decode_checked(body, raw[0..<raw_len], false);
+  #assert dec.error == NC_OK;
+
+  pt: [MCP_MRTR_HDR_LEN + MCP_MRTR_MAX_STATE] u8;
+  defer { secure_zero(pt[..]); #assert crypto_zeroed(pt[..]); }
+  open_n := aes256_gcm_open(key, raw[0..<MCP_MRTR_NONCE_LEN], aad[0..<aad_len], raw[MCP_MRTR_NONCE_LEN..<raw_len], pt[0..<pt_len]);
+  if open_n != pt_len { return res; }
+
+  round := mcp_mrtr_get_be32(pt[..], 0);
+  expires_ms := mcp_mrtr_get_be64(pt[..], 4);
+  if expires_ms != 0 && now_ms > expires_ms {
+    res.expired = true;
+    return res;
+  }
+
+  for i: 0..<st_len { state_out[i] = pt[MCP_MRTR_HDR_LEN + i]; }
+  res.ok = true;
+  res.round = round;
+  res.expires_ms = expires_ms;
+  res.state_len = st_len;
+  return res;
+}
+
+mcp_mrtr_write_input_required :: (o: [] Jo, reqs: [] McpInputRequest, request_state: string) -> bool #effects(all) {
+  if reqs.count == 0 && request_state.count == 0 { return false; }
+  jo_obj(o);
+  mcp_write_result_type(o, true, true);
+  if reqs.count != 0 {
+    jo_key(o, "inputRequests"); jo_obj(o);
+    for r: reqs {
+      jo_key(o, r.key); jo_obj(o);
+      jo_key(o, "method"); jo_str(o, r.method);
+      if r.params_json.count != 0 {
+        jo_key(o, "params"); jo_raw(o, r.params_json);
+      }
+      jo_end(o);
+    }
+    jo_end(o);
+  }
+  if request_state.count != 0 {
+    jo_key(o, "requestState"); jo_str(o, request_state);
+  }
+  jo_end(o);
+  return true;
+}
+
+mcp_mrtr_parse_input_required :: (d: Jv, result_node: int) -> McpInputRequiredParsed #effects(all) {
+  r: McpInputRequiredParsed;
+  if jv_kind(d, result_node) != JV_OBJECT { return r; }
+  rt := jv_get(d, result_node, "resultType");
+  if jv_kind(d, rt) != JV_STRING || jv_raw(d, rt) != MCP_RESULT_INPUT_REQUIRED { return r; }
+
+  ir := jv_get(d, result_node, "inputRequests");
+  if ir != -1 {
+    if jv_kind(d, ir) != JV_OBJECT { return r; }
+    n := jv_len(d, ir);
+    if n == 0 || n > MCP_MRTR_MAX_REQS { return r; }
+    for i: 0..<n {
+      ent := jv_at(d, ir, i);
+      if jv_kind(d, ent) != JV_OBJECT { return r; }
+      mn := jv_get(d, ent, "method");
+      if jv_kind(d, mn) != JV_STRING || !mcp_mrtr_input_method_ok(jv_raw(d, mn)) { return r; }
+      pn := jv_get(d, ent, "params");
+      if pn != -1 && jv_kind(d, pn) != JV_OBJECT { return r; }
+      r.req_nodes[i] = ent;
+    }
+    r.has_requests = true;
+    r.req_count = n;
+  }
+
+  rs := jv_get(d, result_node, "requestState");
+  if rs != -1 {
+    if jv_kind(d, rs) != JV_STRING { return r; }
+    st := jv_raw(d, rs);
+    if st.count == 0 { return r; }
+    r.has_state = true;
+    r.request_state = st;
+  }
+
+  if !r.has_requests && !r.has_state { return r; }
+  r.ok = true;
+  return r;
+}
+
+mcp_mrtr_find_input_response :: (d: Jv, params_node: int, key: string) -> int #effects(all) {
+  if jv_kind(d, params_node) != JV_OBJECT { return -1; }
+  ir := jv_get(d, params_node, "inputResponses");
+  if jv_kind(d, ir) != JV_OBJECT { return -1; }
+  return jv_get(d, ir, key);
+}
+
+mcp_mrtr_validate_input_response :: (d: Jv, input_method: string, resp_node: int) -> bool #effects(all) {
+  if jv_kind(d, resp_node) != JV_OBJECT { return false; }
+  if input_method == "elicitation/create" {
+    an := jv_get(d, resp_node, "action");
+    if jv_kind(d, an) != JV_STRING { return false; }
+    act := jv_raw(d, an);
+    if act != "accept" && act != "decline" && act != "cancel" { return false; }
+    cn := jv_get(d, resp_node, "content");
+    if cn != -1 && jv_kind(d, cn) != JV_OBJECT { return false; }
+    return true;
+  }
+  if input_method == "sampling/createMessage" {
+    rn := jv_get(d, resp_node, "role");
+    if jv_kind(d, rn) != JV_STRING { return false; }
+    role := jv_raw(d, rn);
+    if role != "assistant" && role != "user" { return false; }
+    cn := jv_get(d, resp_node, "content");
+    ck := jv_kind(d, cn);
+    if ck != JV_OBJECT && ck != JV_ARRAY { return false; }
+    mn := jv_get(d, resp_node, "model");
+    return jv_kind(d, mn) == JV_STRING;
+  }
+  if input_method == "roots/list" {
+    rn := jv_get(d, resp_node, "roots");
+    return jv_kind(d, rn) == JV_ARRAY;
+  }
+  return false;
+}

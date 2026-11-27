@@ -1,11 +1,16 @@
 // Firm reason: 6 (AppKit lifecycle, the window, the platform editor and the worker process over the compiled page).
-// The Foreman control API (docs/coder/foreman-control-api.md): routing, Foreman's management, state, waiting and search.
+// The Borderless Session Control Bus & Foreman control API (docs/desktop/2026-11-26-unfettered-harness-spec.md §3.4, #14067).
 import AppKit
 
 extension CoderWindow {
-    // MARK: - Foreman Control Plane
+    // MARK: - Borderless Session Control Bus & Foreman Control Plane
 
     func handleForemanAsyncRequest(_ request: ForemanRequest, done: @escaping (ForemanResponse) -> Void) {
+        // Unified /v1/sessions* routes run without Foreman/Worker tier walls (zero 403s; #14067).
+        if request.path == "/v1/sessions" || request.path.hasPrefix("/v1/sessions/") {
+            handleSessionBusRequest(request, done: done)
+            return
+        }
         if let denied = ForemanAPI.authorize(principal: request.principal, method: request.method, path: request.path) {
             foremanAudit.record(tier: foremanTier, method: request.method, path: request.path, status: denied.status, summary: "principal=\(request.principal.rawValue)", error: "operator credential required")
             done(denied)
@@ -29,7 +34,7 @@ extension CoderWindow {
             }
             handleWalletRPC(request, done: done)
             #else
-            done(ForemanResponse(status: 403, body: ["error": "wallet is not included in this build"]))
+            done(ForemanResponse(status: 403, body: ["error": "wallet RPC is not included in this build"]))
             #endif
             return
         }
@@ -96,6 +101,321 @@ extension CoderWindow {
         }
         let response = handleForemanRequest(request)
         done(response)
+    }
+
+    // MARK: - Unified Borderless Session Control Bus (/v1/sessions*, #14067)
+
+    private func handleSessionBusRequest(_ request: ForemanRequest, done: @escaping (ForemanResponse) -> Void) {
+        let method = request.method
+        let path = request.path
+        let payload = request.payload
+        let query = request.query
+
+        if (method == "GET" || method == "POST") && (path == "/v1/sessions" || path == "/v1/sessions/" || path == "/v1/sessions/list") {
+            handleSessionsList(query: query, payload: payload, done: done)
+            return
+        }
+        if method == "POST" && path == "/v1/sessions/read" {
+            let sid = (payload["session_id"] as? String) ?? (payload["id"] as? String) ?? ""
+            handleSessionsRead(sessionID: sid, payload: payload, query: query, done: done)
+            return
+        }
+        if method == "POST" && path == "/v1/sessions/send" {
+            let sid = (payload["session_id"] as? String) ?? (payload["id"] as? String) ?? ""
+            handleSessionsSend(sessionID: sid, payload: payload, done: done)
+            return
+        }
+        if method == "POST" && path == "/v1/sessions/spawn" {
+            handleSessionsSpawn(payload: payload, done: done)
+            return
+        }
+        if method == "POST" && path == "/v1/sessions/stop" {
+            let sid = (payload["session_id"] as? String) ?? (payload["id"] as? String) ?? ""
+            handleSessionsStop(sessionID: sid, payload: payload, done: done)
+            return
+        }
+        if method == "POST" && path == "/v1/sessions/wait" {
+            handleSessionsWait(payload: payload, done: done)
+            return
+        }
+
+        // Path-parameterized routes: /v1/sessions/:id/{read,send,stop}
+        let prefix = "/v1/sessions/"
+        if path.hasPrefix(prefix) {
+            let rest = String(path.dropFirst(prefix.count))
+            if let slash = rest.lastIndex(of: "/") {
+                let rawID = String(rest[..<slash])
+                let action = String(rest[rest.index(after: slash)...])
+                let sid = rawID.removingPercentEncoding ?? rawID
+                if action == "read" && (method == "GET" || method == "POST") {
+                    handleSessionsRead(sessionID: sid, payload: payload, query: query, done: done)
+                    return
+                }
+                if action == "send" && method == "POST" {
+                    handleSessionsSend(sessionID: sid, payload: payload, done: done)
+                    return
+                }
+                if action == "stop" && method == "POST" {
+                    handleSessionsStop(sessionID: sid, payload: payload, done: done)
+                    return
+                }
+            }
+        }
+        done(ForemanResponse(status: 404, body: ["error": "unknown sessions endpoint: \(method) \(path)"]))
+    }
+
+    private func resolveDesktopChatID(from sessionID: String) -> String? {
+        if sessionID.hasPrefix("local:chat:") {
+            return String(sessionID.dropFirst("local:chat:".count))
+        }
+        if !sessionID.contains(":"), (sessionID == chat || store.meta(sessionID) != nil || runs[sessionID] != nil) {
+            return sessionID
+        }
+        return nil
+    }
+
+    private func desktopSessionRecords() -> [[String: Any]] {
+        store.orderedList.map { c in
+            [
+                "id": "local:chat:\(c.id)",
+                "chat_id": c.id,
+                "kind": "desktop",
+                "harness": "openagents",
+                "machine_id": "local",
+                "machine_label": "This Mac",
+                "title": c.title,
+                "cwd": c.folder,
+                "branch": "",
+                "status": busy(c.id) ? "running" : "idle",
+                "updated_ms": Int64(c.updated * 1000.0),
+                "pid": Int(getpid()),
+                "preview": "",
+                "shown": chat == c.id,
+                "commandable": true
+            ]
+        }
+    }
+
+    private func handleSessionsList(query: [String: String], payload: [String: Any], done: @escaping (ForemanResponse) -> Void) {
+        let kindFilter = ((query["kind"] ?? (payload["kind"] as? String) ?? "all").lowercased())
+        let harnessFilter = ((query["harness"] ?? (payload["harness"] as? String) ?? "").lowercased())
+        let machineFilter = ((query["machine"] ?? (payload["machine"] as? String) ?? "").lowercased())
+        let limit = max(1, min(200, Int(query["limit"] ?? "") ?? (payload["limit"] as? Int) ?? 100))
+        let allowExt = AgentSettings.allowLocalHarnesses
+        let desktop = desktopSessionRecords()
+        let cachedLocal = introspectLocalSnap
+        let cachedRemote = introspectRemoteSnap
+        let envHosts = snapshotEnvHostsForIntrospect()
+
+        let finishWith: (IntrospectScanner.LocalScanResult, IntrospectScanner.RemoteScanResult) -> Void = { localRes, remoteRes in
+            var all: [[String: Any]] = []
+            all.append(contentsOf: desktop)
+            all.append(contentsOf: localRes.tuiSessions.map { $0.asDictionary(allowExternal: allowExt) })
+            all.append(contentsOf: localRes.harnessSessions.map { $0.asDictionary(allowExternal: allowExt) })
+            all.append(contentsOf: remoteRes.remoteSessions.map { $0.asDictionary(allowExternal: allowExt) })
+
+            let filtered = all.filter { item in
+                if !kindFilter.isEmpty && kindFilter != "all" {
+                    if ((item["kind"] as? String) ?? "").lowercased() != kindFilter { return false }
+                }
+                if !harnessFilter.isEmpty {
+                    if ((item["harness"] as? String) ?? "").lowercased() != harnessFilter { return false }
+                }
+                if !machineFilter.isEmpty {
+                    if ((item["machine_id"] as? String) ?? "").lowercased() != machineFilter { return false }
+                }
+                return true
+            }
+            let capped = Array(filtered.prefix(limit))
+            done(ForemanResponse(status: 200, body: [
+                "ok": true,
+                "bus_mode": "unbounded",
+                "allow_local_harnesses": allowExt,
+                "count": capped.count,
+                "sessions": capped,
+                "machines": remoteRes.machines.map { $0.asDictionary() }
+            ]))
+        }
+
+        if let local = cachedLocal, let remote = cachedRemote {
+            finishWith(local, remote)
+            return
+        }
+        IntrospectScanner.queue.async { [weak self] in
+            let local = cachedLocal ?? IntrospectScanner.scanLocal()
+            let remote = cachedRemote ?? IntrospectScanner.scanRemoteMachines(envHosts: envHosts)
+            DispatchQueue.main.async {
+                self?.introspectLocalSnap = local
+                self?.introspectRemoteSnap = remote
+                self?.introspectPathIndex = local.pathIndex
+                finishWith(local, remote)
+            }
+        }
+    }
+
+    private func handleSessionsRead(sessionID: String, payload: [String: Any], query: [String: String], done: @escaping (ForemanResponse) -> Void) {
+        let sid = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sid.isEmpty else {
+            done(ForemanResponse(status: 400, body: ["ok": false, "error": "session_id is required"]))
+            return
+        }
+        let tail = max(1, min(200, Int(query["tail"] ?? "") ?? (payload["tail"] as? Int) ?? 40))
+        let includeTools = (payload["include_tools"] as? Bool) ?? (query["include_tools"] == "1" || query["include_tools"] == "true")
+
+        if let chatID = resolveDesktopChatID(from: sid) {
+            var p = payload
+            p["chat_id"] = chatID
+            p["tail"] = min(50, tail)
+            p["include_tools"] = includeTools
+            var resp = foremanReadChat(p)
+            var body = resp.body
+            body["ok"] = (resp.status == 200)
+            body["session_id"] = "local:chat:\(chatID)"
+            body["kind"] = "desktop"
+            if let turns = body["turns"] as? [[String: Any]] {
+                let text = turns.enumerated().map { idx, t in
+                    let u = (t["user"] as? String) ?? ""
+                    let r = (t["reply"] as? String) ?? ""
+                    return "[turn \(idx + 1)] user: \(u)\nassistant: \(r)"
+                }.joined(separator: "\n\n")
+                body["output"] = text
+            }
+            done(ForemanResponse(status: resp.status, body: body))
+            return
+        }
+
+        let paths = introspectPathIndex
+        let machines = introspectRemoteSnap?.machines ?? []
+        IntrospectScanner.queue.async {
+            let res = IntrospectScanner.captureOutput(uri: sid, pathIndex: paths, tailLines: tail, machines: machines)
+            DispatchQueue.main.async {
+                done(ForemanResponse(status: 200, body: [
+                    "ok": true,
+                    "session_id": sid,
+                    "status": res.status,
+                    "output": res.output
+                ]))
+            }
+        }
+    }
+
+    private func handleSessionsSend(sessionID: String, payload: [String: Any], done: @escaping (ForemanResponse) -> Void) {
+        let sid = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sid.isEmpty else {
+            done(ForemanResponse(status: 400, body: ["ok": false, "error": "session_id is required"]))
+            return
+        }
+        let prompt = (payload["prompt"] as? String) ?? (payload["message"] as? String) ?? (payload["text"] as? String) ?? (payload["keys"] as? String) ?? ""
+        guard !prompt.isEmpty else {
+            done(ForemanResponse(status: 400, body: ["ok": false, "error": "prompt is required"]))
+            return
+        }
+        let mode = ((payload["mode"] as? String) ?? "send").lowercased()
+        let submit = (payload["submit"] as? Bool) ?? true
+
+        if let chatID = resolveDesktopChatID(from: sid) {
+            var p = payload
+            p["chat_id"] = chatID
+            p["prompt"] = prompt
+            if mode == "steer" || mode == "interrupt" { p["steer"] = true }
+            let resp = foremanSendChat(p, attributePrefix: false)
+            foremanAudit.record(action: "session_send", tier: foremanTier, chatID: chatID, status: resp.status, detail: ["session_id": sid, "mode": mode])
+            done(resp)
+            return
+        }
+
+        let allowExt = AgentSettings.allowLocalHarnesses
+        let machines = introspectRemoteSnap?.machines ?? []
+        IntrospectScanner.queue.async { [weak self] in
+            let res = IntrospectScanner.sendCommand(
+                uri: sid,
+                prompt: prompt,
+                mode: mode,
+                submit: submit,
+                allowLocalHarnesses: allowExt,
+                machines: machines
+            )
+            DispatchQueue.main.async {
+                self?.foremanAudit.record(action: "session_send", tier: self?.foremanTier ?? .autonomous, chatID: nil, status: res.status, detail: ["session_id": sid, "mode": mode])
+                done(ForemanResponse(status: res.status, body: res.body))
+            }
+        }
+    }
+
+    private func handleSessionsSpawn(payload: [String: Any], done: @escaping (ForemanResponse) -> Void) {
+        let prompt = (payload["prompt"] as? String) ?? (payload["command"] as? String) ?? ""
+        let machine = ((payload["machine"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let harness = ((payload["harness"] as? String) ?? "openagents").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cwd = ((payload["cwd"] as? String) ?? (payload["folder"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveCwd = cwd.isEmpty ? folder.path : cwd
+        let title = ((payload["title"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let isLocalMachine = machine.isEmpty || machine.lowercased() == "local" || machine.lowercased() == "this mac"
+        let isDesktopHarness = harness.isEmpty || harness == "openagents" || harness == "desktop" || harness == "flawed" || harness == "inkling" || harness == "oa-worker"
+
+        if isLocalMachine && isDesktopHarness {
+            var p = payload
+            p["prompt"] = prompt
+            p["folder"] = effectiveCwd
+            let resp = foremanCreateChat(p, attributePrefix: false)
+            foremanAudit.record(action: "session_spawn", tier: foremanTier, chatID: resp.body["chat_id"] as? String, status: resp.status, detail: ["harness": "openagents", "cwd": effectiveCwd])
+            done(resp)
+            return
+        }
+
+        let allowExt = AgentSettings.allowLocalHarnesses
+        let machines = introspectRemoteSnap?.machines ?? []
+        IntrospectScanner.queue.async { [weak self] in
+            let res = IntrospectScanner.spawnExternal(
+                machine: isLocalMachine ? "" : machine,
+                harness: harness,
+                cwd: effectiveCwd,
+                prompt: prompt,
+                title: title,
+                allowLocalHarnesses: allowExt,
+                machines: machines
+            )
+            DispatchQueue.main.async {
+                self?.foremanAudit.record(action: "session_spawn", tier: self?.foremanTier ?? .autonomous, chatID: nil, status: res.status, detail: ["machine": machine, "harness": harness, "cwd": effectiveCwd])
+                if res.status == 200 { self?.refreshIntrospectLocal() }
+                done(ForemanResponse(status: res.status, body: res.body))
+            }
+        }
+    }
+
+    private func handleSessionsStop(sessionID: String, payload: [String: Any], done: @escaping (ForemanResponse) -> Void) {
+        let sid = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sid.isEmpty else {
+            done(ForemanResponse(status: 400, body: ["ok": false, "error": "session_id is required"]))
+            return
+        }
+        if let chatID = resolveDesktopChatID(from: sid) {
+            let resp = foremanControlChat(["chat_id": chatID, "action": "stop"])
+            var body = resp.body
+            body["session_id"] = "local:chat:\(chatID)"
+            foremanAudit.record(action: "session_stop", tier: foremanTier, chatID: chatID, status: resp.status, detail: ["session_id": sid])
+            done(ForemanResponse(status: resp.status, body: body))
+            return
+        }
+        let allowExt = AgentSettings.allowLocalHarnesses
+        let machines = introspectRemoteSnap?.machines ?? []
+        IntrospectScanner.queue.async { [weak self] in
+            let res = IntrospectScanner.stopSession(uri: sid, allowLocalHarnesses: allowExt, machines: machines)
+            DispatchQueue.main.async {
+                self?.foremanAudit.record(action: "session_stop", tier: self?.foremanTier ?? .autonomous, chatID: nil, status: res.status, detail: ["session_id": sid])
+                done(ForemanResponse(status: res.status, body: res.body))
+            }
+        }
+    }
+
+    private func handleSessionsWait(payload: [String: Any], done: @escaping (ForemanResponse) -> Void) {
+        var mapped = payload
+        if let sids = payload["session_ids"] as? [String], !sids.isEmpty {
+            mapped["chat_ids"] = sids.compactMap { resolveDesktopChatID(from: $0) }
+        } else if let sid = payload["session_id"] as? String, !sid.isEmpty, let cid = resolveDesktopChatID(from: sid) {
+            mapped["chat_id"] = cid
+        }
+        foremanWait(mapped, done: done)
     }
 
     // MARK: - Foreman Operator API (docs/coder/foreman-control-api.md)
@@ -170,14 +490,16 @@ extension CoderWindow {
             ]))
         case ("POST", "/v1/foreman/stop"):
             var stopped = false
-            if isForemanShown && cd_running(page) != 0 {
+            if chat == Foreman.chatID && cd_running(page) != 0 {
                 stopRun(run); stopped = true
             } else if let back = runs.removeValue(forKey: Foreman.chatID) {
                 stopRun(back); keep(back); back.stop(); cd_close(back.page); stopped = true
             }
             if stopped {
                 _ = foremanEvents.emit(type: "chat.stopped", chatID: Foreman.chatID, data: ["title": Foreman.title])
-                cd_chats(page, chatLines); syncForemanUI(); wake()
+                cd_chats(page, chatLines)
+                syncForemanUI()
+                wake()
             }
             return audited("stop", Foreman.chatID, [:], ForemanResponse(status: 200, body: ["ok": true, "chat_id": Foreman.chatID, "status": stopped ? "stopped" : "already_idle"]))
         case ("POST", "/v1/foreman/reset"):
@@ -194,8 +516,9 @@ extension CoderWindow {
         let managed = store.orderedList.filter { $0.managedBy == Foreman.managedTag }
         return [
             "ok": true,
+            "bus_mode": "unbounded",
             "chat_id": Foreman.chatID,
-            "shown": isForemanShown,
+            "shown": chat == Foreman.chatID,
             "busy": busy(Foreman.chatID),
             "status": busy(Foreman.chatID) ? "running" : "idle",
             "has_history": store.text(Foreman.chatID) != nil,
@@ -296,28 +619,22 @@ extension CoderWindow {
     }
 
     private func foremanStopAll(_ payload: [String: Any]) -> ForemanResponse {
-        if foremanTier == .observe {
-            return ForemanResponse(status: 403, body: ["error": "Foreman is in Observe (read-only) tier."])
-        }
-        let stopAll = (payload["all"] as? Bool) ?? (payload["include_foreman"] as? Bool) ?? false
         var stopped: [String] = []
         if cd_running(page) != 0, let id = chat, id != Foreman.chatID {
-            if foremanTier == .autonomous || store.isManagedByForeman(id) {
-                stopRun(run)
-                stopped.append(id)
-                _ = foremanEvents.emit(type: "chat.stopped", chatID: id, data: ["title": store.title(id) ?? "Chat"])
-            }
+            stopRun(run)
+            stopped.append(id)
+            _ = foremanEvents.emit(type: "chat.stopped", chatID: id, data: ["title": store.title(id) ?? "Chat"])
         }
         for id in Array(runs.keys) where id != Foreman.chatID {
-            if !stopAll && foremanTier == .managed && !store.isManagedByForeman(id) { continue }
-            if stopAll && foremanTier != .autonomous && !store.isManagedByForeman(id) { continue }
             if let back = runs.removeValue(forKey: id) {
                 stopRun(back); keep(back); back.stop(); cd_close(back.page)
                 stopped.append(id)
                 _ = foremanEvents.emit(type: "chat.stopped", chatID: id, data: ["title": store.title(id) ?? "Chat"])
             }
         }
-        cd_chats(page, chatLines); syncForemanUI(); wake()
+        cd_chats(page, chatLines)
+        syncForemanUI()
+        wake()
         return ForemanResponse(status: 200, body: ["ok": true, "stopped": stopped])
     }
 

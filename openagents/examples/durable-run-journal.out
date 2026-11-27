@@ -1,0 +1,4 @@
+frame0 ok=true bytes=96 seq=1 sha256=67a58013fb5ada87 py_vec=true
+replay seq=3 head=11e2162bb682e54f kinds=5,10,7 bin_exact=true
+refuse poison=true tamper=true trunc=true order=true overlap=true
+ok=true

@@ -1,0 +1,90 @@
+// Chapter 21: Measure the harness — ATIF-v1.8 trajectory logging, canonical
+// steps_digest verification, openagents.atif-manifest.v1 emission
+// (`coax/lib/nostr/atif/log.coax`), and #authority gBench scoring / Wilson 95%
+// CI / distillation license gating (`coax/lib/gbench/policy.coax`).
+#import "Basic";
+#load "../../coax/lib/nostr/atif/log.coax";
+#load "../../coax/lib/gbench/policy.coax";
+
+// book:begin example
+main :: () {
+  // 1. Emit a valid ATIF-v1.8 session -> 2 steps -> end trajectory log
+  buf: [4096] u8;
+  n := 0;
+  k := atif_write_session_line(AtifSessionHeader.{
+    trajectory_id = "traj-coder-ch21",
+    session_id = "sess-coder-ch21",
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "oa-worker",
+    model_name = "inkling-2-mini",
+    cwd = "/repo",
+    git_branch = "main",
+    source_harness = "openagents-core",
+    created_at = "2026-11-26T00:00:00Z",
+  }, buf[n..<buf.count]);
+  n += k;
+
+  sb: [1024] u8;
+  sn := atif_write_step_json(AtifStep.{
+    step_id = 1,
+    timestamp = "2026-11-26T00:00:01Z",
+    source = ATIF_SOURCE_USER,
+    message = "Run openagents/core/query_loop.coax checks",
+  }, sb[..]);
+  n += atif_write_step_line(cast(string) sb[0..<sn], buf[n..<buf.count]);
+
+  sn = atif_write_step_json(AtifStep.{
+    step_id = 2,
+    timestamp = "2026-11-26T00:00:02Z",
+    source = ATIF_SOURCE_AGENT,
+    message = "All checks passed.",
+    model_name = "inkling-2-mini",
+    tool_calls_json = "[{\"tool_call_id\":\"c1\",\"function_name\":\"Bash\",\"arguments\":{\"cmd\":\"coax test\"}}]",
+    observation_json = "{\"results\":[{\"source_call_id\":\"c1\",\"content\":\"ok\"}]}",
+    metrics = AtifMetrics.{has_prompt = true, prompt_tokens = 420, has_completion = true, completion_tokens = 38, has_cost = true, cost_usd_micros = 0},
+  }, sb[..]);
+  n += atif_write_step_line(cast(string) sb[0..<sn], buf[n..<buf.count]);
+  n += atif_write_end_line("2026-11-26T00:00:03Z", ATIF_STATE_ENDED, buf[n..<buf.count]);
+
+  // 2. Verify log lifecycle + canonical SHA-256 steps_digest and emit manifest
+  sum := atif_verify_log(cast(string) buf[0..<n], "");
+  art: [71] u8;
+  _ = atif_artifact_digest(cast(string) buf[0..<n], art[..]);
+  mbuf: [2048] u8;
+  mn := atif_write_manifest(AtifManifestInput.{
+    trajectory_id = "traj-coder-ch21",
+    session_id = "sess-coder-ch21",
+    schema_version = ATIF_SCHEMA_VERSION,
+    form = "log",
+    artifact_digest = cast(string) art[..],
+    artifact_size = n,
+    steps_digest = cast(string) sum.steps_digest[..],
+    step_count = sum.step_count,
+    state = ATIF_STATE_ENDED,
+    coverage = ATIF_COV_COMPLETE,
+  }, mbuf[..]);
+  print("atif log: ok=% steps=% faults=% manifest_bytes=% digest=%\n",
+    sum.ok, sum.step_count, sum.faults, mn, cast(string) sum.steps_digest[0..<16]);
+
+  // 3. Verifier catches lifecycle faults (e.g. a step arriving after end)
+  corrupt: [4096] u8;
+  cn := atif_copy_str(corrupt[..], cast(string) buf[0..<n]);
+  cn += atif_copy_str(corrupt[cn..<corrupt.count], "{\"record\":\"step\",\"step\":{\"step_id\":3,\"source\":\"user\",\"message\":\"late\"}}\n");
+  bad := atif_verify_log(cast(string) corrupt[0..<cn], "");
+  print("atif fault check: ok=% faults=%\n", bad.ok, bad.faults);
+
+  // 4. #authority gBench outcome classification, integer Wilson 95% CI, scaffold lock & license gate
+  out_pass := gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 10, exit_code = GB_EXIT_OK});
+  out_infra := gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 10, harness_errors = 1, exit_code = GB_EXIT_OK});
+  w := gb_wilson_95(24, 30);
+  print("gbench score: pass=% infra=% rate_bps=% wilson_95=[%,%] scaffolds_same=% scaffolds_diff=%\n",
+    gb_status_label(out_pass), gb_status_label(out_infra), gb_rate_bps(24, 30),
+    w.low_bps, w.high_bps,
+    gb_scaffolds_match("sc_965cd8ee", "sc_965cd8ee"),
+    gb_scaffolds_match("sc_965cd8ee", "sc_deadbeef"));
+  print("distill gate: gsm8k=% gpqa=% aime=%\n",
+    gb_distill_reason(gb_admit_distill_suite("gsm8k")),
+    gb_distill_reason(gb_admit_distill_suite("gpqa")),
+    gb_distill_reason(gb_admit_distill_suite("aime")));
+}
+// book:end example

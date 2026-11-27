@@ -12,7 +12,7 @@
 #load "../../coax/lib/agent/engine/micro-observation.coax";
 
 CD_MC_TOOL :: "/coax/web/tool.sh";              // under the repo
-CD_MC_WORKER :: "/coder/tui/mcworker.coax";
+CD_MC_WORKER :: "/openagents/workers/legacy/mcworker.coax";
 
 // Starts the worker on the first message; later messages go to the same one.
 cd_micro_send :: (a: [] App, msg: string) {

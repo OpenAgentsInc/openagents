@@ -1,0 +1,62 @@
+// Chapter 2: Model-visible means logged — Append-only transcript DAG
+// (`openagents/core/transcript_dag.coax`) + durable AJR1 hash-chained journal
+// (`coax/lib/agent/journal.coax`, adopted by `openagents/runtime/oa-worker.coax` & `openagents/daemon/host.coax`).
+#import "Basic";
+#load "../../openagents/core/transcript_dag.coax";
+#load "../../coax/lib/agent/journal.coax";
+
+hex8 :: (h: [32] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<8 {
+    out[2 * i] = digits[cast(int) (h[i] >> 4)];
+    out[2 * i + 1] = digits[cast(int) (h[i] & 15)];
+  }
+  return cast(string) out[0..<16];
+}
+
+// book:begin example
+main :: () {
+  // Part A: Append-only transcript DAG with sidechain isolation, snipping, and compact boundary
+  dag: [1] FlawedTranscriptDag;
+  flawed_dag_init(dag[..], 42);
+  _ = flawed_dag_append(dag[..], 10, -1, FLAWED_ROLE_USER, FLAWED_SYS_NONE, false, 100);
+  _ = flawed_dag_append(dag[..], 11, -1, FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, false, 200);
+  // Sidechain subagent message does NOT advance main-chain last_uuid
+  _ = flawed_dag_append(dag[..], 90, 11, FLAWED_ROLE_USER, FLAWED_SYS_NONE, true, 250);
+  _ = flawed_dag_append(dag[..], 12, -1, FLAWED_ROLE_USER, FLAWED_SYS_NONE, false, 300);
+  snipped := flawed_dag_mark_snipped(dag[..], 11);
+  _ = flawed_dag_append(dag[..], 13, -1, FLAWED_ROLE_SYSTEM, FLAWED_SYS_COMPACT_BOUNDARY, false, 400);
+  _ = flawed_dag_append(dag[..], 14, -1, FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, false, 500);
+  print("dag: session=% entries=% main_head=% sidechain_in_main=% snipped_11=%\n",
+    dag[0].session_id, dag[0].count, dag[0].head_uuid, flawed_dag_has_main_uuid(dag[..], 90), snipped);
+  print("dag lookup: uuid_10=% uuid_13_boundary=% uuid_14=%\n",
+    flawed_dag_find_main(dag[..], 10), flawed_dag_find_main(dag[..], 13), flawed_dag_find_main(dag[..], 14));
+
+  // Part B: Durable AJR1 hash-chained journal frames — intent committed only after sync
+  state: AjState;
+  f0: [256] u8;
+  p0 := aj_prepare(state, AjKind.command_intent, 0, "coax test openagents/core/query_loop.coax", f0[..], false);
+  failed := aj_commit(state, f0[0..<p0.count], false);
+  print("ajr1 sync-fail: poisoned=% seq=% retry_prepare_ok=%\n",
+    failed.failed, failed.sequence, aj_prepare(failed, AjKind.context, 0, "", f0[..], false).ok);
+
+  s1 := aj_commit(state, f0[0..<p0.count], true);
+  r0 := aj_read(state, f0[0..<p0.count]);
+  hb: [16] u8;
+  print("ajr1 frame 0: ok=% bytes=% seq=% head=%\n", r0.ok, p0.count, s1.sequence, hex8(s1.head, hb[..]));
+
+  // Tampering a single payload byte is refused immediately by aj_read
+  tampered := f0;
+  tampered[AJ_HEADER] ^= 1;
+  r_bad := aj_read(state, tampered[0..<p0.count]);
+  print("ajr1 tamper check: read_ok=%\n", r_bad.ok);
+
+  // Chained frame 1 links to frame 0's digest
+  f1: [256] u8;
+  p1 := aj_prepare(s1, AjKind.model_reply, 1, "all tests passed", f1[..], false);
+  s2 := aj_commit(s1, f1[0..<p1.count], true);
+  r1 := aj_read(s1, f1[0..<p1.count]);
+  print("ajr1 frame 1: ok=% seq=% replay_out_of_order_ok=% head=%\n",
+    r1.ok, s2.sequence, aj_read(state, f1[0..<p1.count]).ok, hex8(s2.head, hb[..]));
+}
+// book:end example

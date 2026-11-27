@@ -1,0 +1,4 @@
+order=api,rooms,page,true rollback=page,rooms,api one_set=true pins_ok=true promote_ok=true
+canary_pass=true win_plat=windows win_ext=.zip semver_ok=true
+refuse seeded=true moved=true pins=true wire=true lock=true canary=crashed,slower-tick,fewer-seats ver0=true
+ok=true

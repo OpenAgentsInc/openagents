@@ -121,6 +121,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
       || name == "coder-host"
       || name == "oa-worker"
       || name == "claudeworker"
+      || name == "agyworker"   // the unified build (#14116) stages it on Linux
       || name == "inky"
       || name == "psionic-inkling-serve"
       || name == "inkling-kernels-cuda.cu"
@@ -287,7 +288,7 @@ vbc_scan_link_output :: (platform: int, stage: int, output: string, label: strin
   // Linux & Windows allowlists
   #assert vbc_resource_allowed(VBC_LINUX, "OpenAgents") && vbc_resource_allowed(VBC_LINUX, "inky") && vbc_resource_allowed(VBC_LINUX, "psionic-inkling-serve");
   #assert vbc_resource_allowed(VBC_LINUX, "inkling-kernels-cuda.cu") && vbc_resource_allowed(VBC_LINUX, "inkling-kernels-vulkan.spv");
-  #assert !vbc_resource_allowed(VBC_LINUX, "mcworker") && vbc_resource_allowed(VBC_LINUX, "claudeworker") && !vbc_resource_allowed(VBC_LINUX, "agyworker");
+  #assert !vbc_resource_allowed(VBC_LINUX, "mcworker") && vbc_resource_allowed(VBC_LINUX, "claudeworker") && vbc_resource_allowed(VBC_LINUX, "agyworker");
 
   #assert vbc_resource_allowed(VBC_WINDOWS, "OpenAgents.exe") && vbc_resource_allowed(VBC_WINDOWS, "inky.exe") && vbc_resource_allowed(VBC_WINDOWS, "psionic-inkling-serve.exe");
   #assert vbc_resource_allowed(VBC_WINDOWS, "gitguard.exe") && vbc_resource_allowed(VBC_WINDOWS, "inkling-kernels-cuda.cu");

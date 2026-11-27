@@ -163,8 +163,14 @@ public actor OASparkWallet {
         if let storageDir {
             dir = storageDir
         } else {
+            #if os(macOS)
             dir = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".openagents/wallet/spark-mainnet", isDirectory: true)
+            #else
+            let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? FileManager.default.temporaryDirectory
+            dir = base.appendingPathComponent("openagents/wallet/spark-mainnet", isDirectory: true)
+            #endif
         }
         try await open(mnemonic: mnemonic, storageDir: dir, readOnly: readOnly)
     }

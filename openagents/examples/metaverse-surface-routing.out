@@ -1,0 +1,5 @@
+realm pane=1 kind=6 badge=RLM ro=true reason=ok
+play pane=1 kind=7 mode=2 badge=GB ro=true glb_badge=GLB txt_pane=0
+gated pane=0 reason=flag_off safe_uri=true
+refuse trav=(true,unsafe_path) ext=(true,untrusted_external_url) uri=(true,true,true)
+ok=true

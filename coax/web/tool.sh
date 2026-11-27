@@ -10,7 +10,7 @@
 # for wss:// and https:// (coax/lib/net/relay_conn.coax, http.coax). A
 # "// tool.sh: run-steps N" line in the tool's own file gives the compiler a
 # larger compile-time budget (coax --run-steps), for a tool that loads the
-# secp256k1 tables (coder/tui/host.coax). A "// tool.sh: release" line in the
+# secp256k1 tables (openagents/daemon/host.coax). A "// tool.sh: release" line in the
 # tool's own file emits release C (coax c --release: no checked-arithmetic
 # traps), for a long numerical tool such as a training run (psionic/examples/fit-mnist.coax).
 # A "// tool.sh: stack-gib N" line gives tool_main an N GiB stack (address space, committed
@@ -71,6 +71,11 @@ if [[ -n "$why" ]]; then
   if grep -qs '^// tool.sh: tls' "${near[@]}"; then
     # shellcheck source=/dev/null
     source "$p/tls-env.sh"; tls=("$p/tls-native.c" $CXTLS_CFLAGS); libs+=($CXTLS_LIBS)
+  fi
+  if grep -qs '^// tool.sh: server' "${near[@]}"; then
+    # shellcheck source=/dev/null
+    [[ ${#tls[@]} -gt 0 ]] || { source "$p/tls-env.sh"; tls=("$p/tls-native.c" $CXTLS_CFLAGS); libs+=($CXTLS_LIBS); }
+    tls+=("$p/socket-server-native.c")
   fi
   steps=(); n="$(sed -n 's|^// tool.sh: run-steps \([0-9][0-9]*\)$|\1|p' "$src" | head -n 1)"; [[ -z "$n" ]] || steps=(--run-steps "$n")
   release=(); ! grep -qs '^// tool.sh: release$' "$src" || release=(--release)

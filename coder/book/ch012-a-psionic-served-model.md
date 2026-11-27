@@ -23,7 +23,7 @@ production for OpenAgents Desktop and `oa-worker`:
   quantizations, and hot-swappable LoRA adapters, `#14028`) with a 32,768-token
   Q8S/Q8_0 KV cache, FlashAttention, post-decode KV cache retention
   (`0fe366840e`), and zero API keys or outbound traffic.
-- **32K local budget tuning in `oa-worker` (`#14055`):** `coder/tui/oa-worker.coax`
+- **32K local budget tuning in `oa-worker` (`#14055`):** `openagents/runtime/oa-worker.coax`
   applies local-aware read/tool budgets (`FWW_LOCAL_TOOL_OUT_MAX = 8192`,
   `FWW_READ_LOCAL_LINES = 200`, `FWW_TURN_TOOLS_BUDGET_LOCAL = 16384`) and
   five-layer compaction so Inkling 2 Mini stays responsive inside 32K context.
@@ -33,19 +33,19 @@ production for OpenAgents Desktop and `oa-worker`:
   billed).
 
 The CLI path below documents the original `--engine psionic` adapter shared
-with legacy Microcoder.
+with the deprecated Microcoder loop (superseded in desktop and resident host
+deployments by `oa-worker`).
 
-Psionic serves models on this machine and on Pylons. This chapter runs
-Microcoder on one and measures what owning both the harness and the server
-buys.
+Psionic serves models on this machine and on Pylons. This chapter runs local
+inference on one and measures what owning both the harness and the server buys.
 
-## The engine
+## The CLI adapter (legacy `--engine psionic`)
 
-The psionic engine is Microcoder (chapter 9) with a different plan. Coder's
-terminal UI and `coder run` send Microcoder's worker the task with
-`"local": true`, and the worker builds a plan of one gateway
+The `--engine psionic` CLI verb invokes the legacy Microcoder worker
+(`openagents/workers/legacy/mcworker.coax`, superseded by `openagents/runtime/oa-worker.coax` for
+OpenAgents Desktop) with `"local": true`, building a plan of one gateway
 (`mk_plan_local` in
-[microcoder_keys.coax](../../coder/tui/microcoder_keys.coax)):
+[microcoder_keys.coax](../../coax/lib/microcoder/keys.coax)):
 
 - The base URL is `PSIONIC_BASE_URL`, or `http://127.0.0.1:8080`.
 - The model is `PSIONIC_MODEL`, or `local`.
@@ -69,14 +69,14 @@ conversation.
 
 ## The check
 
-[local_model.py](../../coder/tui/local_model.py) is a stand-in server for
+[local_model.py](../../coder/tui/tests/local_model.py) is a stand-in server for
 tests. It lists one model and answers with Microcoder's action as text:
 first a command, `echo local-step`, then, once the state holds that
 command, the reply `local-ok`. The offline smoke starts it, runs `coder run
 --json` against it in a fresh `HOME`, and checks the log's lines in order:
 
 ```sh
-python3 coder/tui/smoke.py
+python3 coder/tui/tests/smoke.py
 ```
 
 ```text
@@ -118,7 +118,7 @@ ok   status of an unknown ID exits 6
 
 ## Hybrid executor models (`hybrid-exec-v1`, W3.1 / W6.1)
 
-In addition to plain local or Pylon inference, Microcoder and OpenAgents
+In addition to plain local or Pylon inference, `oa-worker` and OpenAgents
 Desktop run the live **hybrid executor** ([Psionic chapter 236](../../psionic/book/ch236-a-frozen-exact-core-with-a-learned-interface.md),
 [`psionic/lib/executor-desktop.coax`](../../psionic/lib/executor-desktop.coax),
 [`coax/lib/agent/desktop/executor-store.coax`](../../coax/lib/agent/desktop/executor-store.coax)):
@@ -130,7 +130,7 @@ hallucinations; [W3.1 verification record](../../docs/verification/executor-w31-
 
 ## Sources
 
-- `coder/tui/oa-worker.coax`, `coder/tui/inky.coax`, `psionic/lib/executor-desktop.coax`.
-- `coder/tui/microcoder_keys.coax` (`mk_plan_local`), `coder/tui/mcworker.coax`,
-  `coder/tui/local_model.py`.
+- `openagents/runtime/oa-worker.coax`, `openagents/workers/legacy/inky.coax`, `psionic/lib/executor-desktop.coax`.
+- `coax/lib/microcoder/keys.coax` (`mk_plan_local`), `openagents/workers/legacy/mcworker.coax` (legacy CLI adapter),
+  `coder/tui/tests/local_model.py`.
 - `coax/lib/gateway/psionic.coax`, `coax/lib/gateway/pylon.coax`.

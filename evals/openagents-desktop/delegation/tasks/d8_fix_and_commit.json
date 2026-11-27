@@ -1,0 +1,50 @@
+{
+  "id": "d8_fix_and_commit",
+  "category": "delegation_git",
+  "fixture": "twobugs",
+  "description": "One sub-agent fixes a bug and commits it, because the message asks for the commit",
+  "budget_usd_micros": 500000,
+  "timeout_s": 420,
+  "steps": [
+    {
+      "send": "Hand this whole task to one sub-agent and wait for it. Do not do the work yourself. The task: fix mod_a.py so its test passes, and have the sub-agent commit the fix itself. It must not push. When it is done, tell me what it did."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "wire_count",
+      "kind": "delegate",
+      "main_only": true,
+      "min": 1
+    },
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q test_mod_a",
+      "restore": [
+        "test_mod_a.py"
+      ]
+    },
+    {
+      "type": "head",
+      "moved": true,
+      "committed": [
+        "mod_a.py"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_*.py"
+      ]
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ]
+}

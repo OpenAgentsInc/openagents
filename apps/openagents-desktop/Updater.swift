@@ -1199,7 +1199,6 @@ final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
     }
 }
 
-#if OA_FULL
 // MARK: - Executor Release Auto-Distribution & Pylon Dashboard (W6.3, #13928)
 
 /// Signed `openagents.executor-release.v1` auto-distribution & local Pylon/settlement
@@ -1316,7 +1315,6 @@ enum ExecutorReleaseUpdater {
         return lastMessage
     }
 }
-#endif
 
 // MARK: - Hex Helpers
 

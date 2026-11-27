@@ -1,0 +1,585 @@
+// coder host against a local Coax relay (coax/relay), in a fresh CODER_HOME.
+// A stand-in browser key (`coder host call`, the codec in
+// coax/lib/nostr/host/browser.coax) asks to pair, is refused a thread before
+// it is allowed, is allowed with `coder host allow`, reads its grant from
+// browser.status, runs a thread on the echo engine, reads its steps and
+// stops it. Then the same host serves on the claude engine with a stand-in
+// `claude` (coder/tui/claude_standin.coax, no login, no model): a realm job
+// reads and edits the realm through the realm tools while the read ceiling
+// refuses its shell command and its file write, and a long job is stopped
+// while it runs. Then, on that host, the phone's view of a Coder session (GitHub #13713), sent as
+// OpenAgents Mobile sends it (coder host rpc and daemon-rpc over the relay with the paired key):
+// the folder list, a session opened in a folder, its thinking, a running sub-agent call's start
+// and call count, the sub-agent's own transcript (ReadSubagent), Foreman (ReadForeman) and the
+// end of the turn, on the stand-in's "delegate" turn. Then a Coder Desktop chat whose worker the daemon
+// runs, on the phone: listed, read with its sub-agent, steered, stopped and followed up (GitHub #13713),
+// under the title Coder shows; and once Coder forgets its runs, still listed and read from the chat
+// Coder saved, read only (GitHub #13755).
+// An unpaired key is refused, a forgotten key is refused
+// revoked, and browser.status keeps answering for the pairing (allowed, then denied).
+// The relay and `coder host` run as child processes (coax/lib/sys/proc.coax).
+//
+//   TMPDIR=/tmp coax/web/tool.sh coder/tui/host_smoke.coax   from the repository root; exit 0 when every check passes
+//   (a short TMPDIR: the host's service socket path must fit macOS's 104 bytes)
+//
+// A host to point a browser or another harness at, by hand (a relay URL
+// names a host, never an IP literal: relay_uri.coax refuses ws://127.0.0.1):
+//
+//   nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
+//   OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
+//   CODER_HOME=/tmp/host-home coder/tui/coder.sh host allow ID    # when the browser's request shows
+
+#load "host-smoke-driver.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  s_b: [1] Sm; s := s_b[..];
+  rb: [1024] u8; repo := proc_getenv("CODER_REPO", rb[..]);
+  cb: [1024] u8; if repo.count == 0 { repo = fs_cwd(cb[..]); }
+  s[0].nrepo = sm_cat(s[0].repo[..], 0, repo);
+  n := sm_cat(s[0].coder[..], 0, repo); s[0].ncoder = sm_cat(s[0].coder[..], n, "/coder/tui/coder.sh");
+  if !fs_exists(sm_str(s[0].coder[..], s[0].ncoder)) { tool_errln("host_smoke: run it from the repository root (coder/tui/coder.sh not found)"); return 2; }
+  tb: [1024] u8; tmp := fs_temp("coder-host-smoke.", tb[..]);
+  if tmp.count == 0 { tool_errln("host_smoke: no temporary folder"); return 1; }
+  // the host's service socket lives under this folder, and a Unix socket path is at most 104 bytes on macOS
+  if tmp.count > 48 { tool_errln("host_smoke: the temporary folder path is too long for the host's socket; run it with TMPDIR=/tmp"); return 2; }
+  s[0].ntmp = sm_cat(s[0].tmp[..], 0, tmp);
+  hb: [1100] u8; home := sm_in_tmp(s, "home", hb[..]); s[0].nhome = sm_cat(s[0].home[..], 0, home);
+  ok := fs_mkdir(home);
+
+  // the relay, built into the temporary folder, on a port picked from the clock
+  relay_b: [1100] u8; relay_bin := sm_in_tmp(s, "relay", relay_b[..]);
+  rp_b: [1] Rp; rp := rp_b[..];
+  build := [2] string.["nostr/relay/build.sh", relay_bin];
+  sm_exec(s, rp, build[..], 600000);
+  if rp[0].status != 0 { tool_errln("host_smoke: nostr/relay/build.sh failed"); tool_errln(sm_text(rp)); return 1; }
+  port := 20000 + (proc_now_ms() / 7) % 30000;
+  pb: [16] u8; ports := sm_itoa(port, pb[..]);
+  un := sm_cat(s[0].url[..], 0, "ws://localhost:"); s[0].nurl = sm_cat(s[0].url[..], un, ports);   // a host name: relay URLs never take an IP literal
+  url := sm_str(s[0].url[..], s[0].nurl);
+  // Three resident starts replay the relay's last two minutes of requests.
+  // Give this lifecycle fixture its bounded burst budget; relay-rate policy
+  // has its own default-limit checks and production limits are unchanged.
+  rargv := [9] string.[relay_bin, "--listen", "127.0.0.1", "--port", ports, "--url", url, "--rate", "240,240,240"];
+  relay := sm_spawn(s, rargv[..], true);
+  if relay < 0 { tool_errln("host_smoke: the relay did not start"); return 1; }
+  proc_sleep(500);
+  sm_env(s, 0, "CODER_HOME", home); sm_env(s, 1, "BROWSER", "/usr/bin/true"); sm_env(s, 2, "NO_OPEN_BROWSER", "1");
+  sm_env(s, 11, "HOME", home);
+  sm_env(s, 3, "OPENAGENTS_NIP_HOST_RELAY", url); sm_env(s, 4, "CODER_REALM_TOOLS", "0"); sm_env(s, 5, "CODER_USAGE_KEYCHAIN", "0");
+
+  serve := -1;
+  // the host key: builds the host tool on first use
+  ka := [1] string.["key"]; sm_host(s, rp, ka[..]);
+  t := sm_text(rp);
+  nl := 0; while nl < t.count && t[nl] != '\n' { nl += 1; }
+  npub := ifx nl < t.count then cast(string) t[nl + 1..<t.count] else "";
+  sm_check(s, rp[0].status == 0 && nl == 64 && npub.count > 5 && cast(string) npub[0..<5] == "npub1", "coder host key prints the host key as 64 hex and an npub");
+  if nl == 64 { kx := sm_cat(s[0].key[..], 0, cast(string) t[0..<64]); }
+  s[0].nnpub = sm_cat(s[0].npub[..], 0, npub);
+  mb: [1200] u8; mo: [16] u8;
+  sm_check(s, sm_mode(s, sm_in_home(s, ".openagents/coder/host/key", mb[..]), mo[..]) == "600", "the host key file is mode 600");
+
+  // Coder itself, built now: a job's `coder run` would otherwise rebuild it while the host waits
+  pre := [3] string.[sm_str(s[0].coder[..], s[0].ncoder), "ls", "--json"];
+  sm_exec(s, rp, pre[..], 600000);
+  sargv := [6] string.[sm_str(s[0].coder[..], s[0].ncoder), "host", "--engine", "echo", "--for", "240"];
+  serve = sm_spawn(s, sargv[..], false);
+  shown: [8192] u8; ns := 0; first: [1024] u8; nfirst := 0; lines := 0;
+  line: [4096] u8;
+  while serve >= 0 {
+    k := proc_line(serve, 300000, line[..]);
+    if k < 0 { break; }
+    if lines == 0 { nfirst = sm_cat(first[..], 0, cast(string) line[0..<k]); }
+    lines += 1;
+    ns = sm_cat(shown[..], ns, cast(string) line[0..<k]); ns = sm_cat(shown[..], ns, "\n");
+    if sm_has(cast(string) line[0..<k], "Listening") { break; }
+  }
+  fl := cast(string) first[0..<nfirst];
+  sm_check(s, sm_has(fl, sm_key(s)) && s[0].nnpub > 0 && sm_has(fl, sm_str(s[0].npub[..], s[0].nnpub)), "coder host serves and prints its npub and hex key");
+  sm_check(s, sm_has(cast(string) shown[0..<ns], "Settings, This machine"), "it says where to paste the key");
+
+  bkb: [1100] u8; bk := sm_in_tmp(s, "browser.key", bkb[..]);
+  okb: [1100] u8; other := sm_in_tmp(s, "other.key", okb[..]);
+  b1: [256] u8; b2: [256] u8;
+
+  e1 := [2] string.["--label", "Smoke browser"];
+  sm_call(s, rp, "browser.request", bk, e1[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.kind", "browser_request") && rp_is(rp, "result.outcome.state", "asked"), "a browser asks to pair");
+  pairing_b: [64] u8; pairing := rp_s(rp, "result.outcome.request", pairing_b[..]);
+  pr: [64] u8; pn := sm_cat(pr[..], 0, pairing); pairing = cast(string) pr[0..<pn];
+  e2 := [2] string.["--request", pairing];
+  sm_call(s, rp, "browser.status", bk, e2[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "asked"), "it waits: browser.status says asked");
+  fake := "abababababababababababababababababababababababababababababababab";
+  e3 := [8] string.["--text", "Add a well", "--realm", "garden", "--grant", fake, "--epoch", "0"];
+  sm_call(s, rp, "thread.run", bk, e3[..]);
+  sm_check2(s, rp_refused(rp, "forbidden"), "a thread before it is allowed is refused", rp_s(rp, "result.code", b1[..]));
+  la := [2] string.["list", "--json"]; sm_host(s, rp, la[..]);
+  sm_check(s, rp_count(rp, "waiting") == 1 && rp_is(rp, "waiting.0.label", "Smoke browser"), "coder host list shows it waiting");
+  aa := [2] string.["allow", ifx pairing.count >= 8 then cast(string) pairing[0..<8] else "none"]; sm_host(s, rp, aa[..]);
+  sm_check(s, rp[0].status == 0 && sm_has(sm_text(rp), "Allowed Smoke browser"), "coder host allow allows it");
+  sm_call(s, rp, "browser.status", bk, e2[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "allowed") && rp_is(rp, "result.outcome.grant.rights.0", "observe") && rp_is(rp, "result.outcome.grant.rights.1", "operate") && rp_count(rp, "result.outcome.grant.rights") == 2, "browser.status hands it the grant");
+  gb: [64] u8; gs := rp_s(rp, "result.outcome.grant.grant", gb[..]);
+  grant_b: [64] u8; gn := sm_cat(grant_b[..], 0, gs); grant := cast(string) grant_b[0..<gn];
+  eb: [24] u8; epoch := sm_itoa(rp_i(rp, "result.outcome.grant.epoch"), eb[..]);
+
+  // The routed input profile has real HOST admission and durable file ownership.
+  // Its preparation methods never invoke an agent, even when the binding names Codex.
+  sm_host(s,rp,la[..]);device_buf:[64]u8;device:=rp_s(rp,"browsers.0.key",device_buf[..]);
+  fixture:[16384]u8;fixture_n:=fs_read("proto/coder/environment-execution-v1alpha1.json",fixture[..]);fixture_doc:[1]Jv;fixture_nodes:[256]JvNode;
+  if fixture_n<1 || !jv_parse(fixture_doc[..],cast(string)fixture[0..<fixture_n],fixture_nodes[..]) {return 2;}
+  packet_bytes:[32768]u8;json:[1]Jo;jo_start(json[..],packet_bytes[..]);jv_write(fixture_doc[0],jv_get(fixture_doc[0],0,"binding"),json[..]);binding:[1]ExBinding;binding_arena:[1024]u8;
+  if !ex_binding_read(jo_text(json[..]),binding[..],binding_arena[..]) {return 2;}binding[0].host=sm_key(s);binding[0].issued=cxproc_wall_us()/1000;binding[0].expires=ea_deadline(binding[0].issued);binding[0].report_at=binding[0].issued;
+  prepare_buf:[1200]u8;prepare_file:=sm_in_tmp(s,"execution-prepare.json",prepare_buf[..]);made:=ex_binding_write(binding[0],packet_bytes[..]);if made<1 || !fs_write(prepare_file,cast(string)packet_bytes[0..<made]) {return 2;}
+  sm_execution(s,rp,bk,grant,epoch,prepare_file);sm_check(s,rp[0].status==4,"a paired browser still needs the explicitly enabled environment scope");
+  workspace_path:[1200]u8;workspace:=sm_in_tmp(s,"execution-workspace",workspace_path[..]);if !fs_mkdir_private(workspace) {return 2;}
+  enable:=[9]string.["environment-enable","--device",device,"--grant",grant,"--workspace",workspace,"--label","Execution smoke workspace"];sm_host(s,rp,enable[..]);sm_check(s,rp[0].status==0,"the operator explicitly enables this grant's workspace");
+  sm_execution(s,rp,bk,grant,epoch,prepare_file);sm_check(s,rp[0].status==0 && rp_i(rp,"retained_bytes")==0 && rp_kind(rp,"complete")==JV_FALSE,"signed PrepareTask admits an empty stage without starting an agent");
+  jo_start(json[..],packet_bytes[..]);jv_write(fixture_doc[0],jv_get(fixture_doc[0],0,"chunk"),json[..]);chunk:[1]ExChunk;chunk_arena:[8192]u8;if !ex_chunk_read(jo_text(json[..]),chunk[..],chunk_arena[..]) {return 2;}
+  complete_input:=chunk[0].text;chunk[0].issued=binding[0].issued;chunk[0].expires=binding[0].expires;chunk[0].text=cast(string)complete_input[0..<100];
+  chunk_path:[1200]u8;chunk_file:=sm_in_tmp(s,"execution-chunk.json",chunk_path[..]);made=ex_chunk_write(chunk[0],packet_bytes[..]);if made<1 || !fs_write(chunk_file,cast(string)packet_bytes[0..<made]) {return 2;}
+  sm_execution(s,rp,bk,grant,epoch,chunk_file);sm_check(s,rp[0].status==0 && rp_i(rp,"retained_bytes")==100 && rp_kind(rp,"complete")==JV_FALSE,"a signed input range reaches the actual resident store");
+  sm_stop(serve);serve=sm_serve(s,sargv[2..<sargv.count]);sm_check(s,serve>=0,"the resident restarts with its existing host key and grant");
+  read_path:[1200]u8;read_file:=sm_in_tmp(s,"execution-read.json",read_path[..]);made=exp_read_write(binding[0].task,packet_bytes[..]);if made<1 || !fs_write(read_file,cast(string)packet_bytes[0..<made]) {return 2;}
+  sm_execution(s,rp,bk,grant,epoch,read_file);sm_check(s,rp[0].status==0 && rp_i(rp,"retained_bytes")==100,"ReadTaskInput reconstructs the same partial input after restart");
+  sm_execution(s,rp,bk,grant,epoch,chunk_file);sm_check(s,rp[0].status==0 && rp_kind(rp,"replay")==JV_TRUE && rp_i(rp,"retained_bytes")==100,"retrying the same signed command reconciles its durable receipt");
+  chunk[0].command="11111111111111111111111111111111";chunk[0].offset=100;chunk[0].text=cast(string)complete_input[100..<complete_input.count];made=ex_chunk_write(chunk[0],packet_bytes[..]);if made<1 || !fs_write(chunk_file,cast(string)packet_bytes[0..<made]) {return 2;}
+  sm_execution(s,rp,bk,grant,epoch,chunk_file);sm_check(s,rp[0].status==0 && rp_kind(rp,"complete")==JV_TRUE && rp_i(rp,"retained_bytes")==complete_input.count,"the final signed range verifies the complete admitted input");
+  source_path:[1600]u8;source_n:=sm_cat(source_path[..],0,sm_home(s));source_n=sm_cat(source_path[..],source_n,"/.openagents/coder/host/execution-input/");source_n=sm_cat(source_path[..],source_n,grant);source_n=sm_cat(source_path[..],source_n,"/");source_n=sm_cat(source_path[..],source_n,binding[0].task);source_n=sm_cat(source_path[..],source_n,"/input.json");source:[8192]u8;source_size:=fs_read(cast(string)source_path[0..<source_n],source[..]);
+  sm_check(s,source_size==complete_input.count && cast(string)source[0..<ifx source_size>0 then source_size else 0]==complete_input,"the CLI-reported completion is backed by exact retained bytes");
+
+  e4 := [8] string.["--text", "Add a well by the oak", "--realm", "garden", "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.run", bk, e4[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.kind", "dispatched") && rp_is(rp, "result.outcome.operation", "thread.run"), "thread.run starts a job");
+  thb: [64] u8; ts := rp_s(rp, "result.outcome.reference", thb[..]);
+  th_b: [64] u8; tn := sm_cat(th_b[..], 0, ts); thread := cast(string) th_b[0..<tn];
+  steps_b: [1] Rp; steps := steps_b[..]; finished := false;
+  e5 := [8] string.["--thread", thread, "--after", "0", "--grant", grant, "--epoch", epoch];
+  for attempt: 0..<30 {
+    sm_call(s, steps, "thread.read", bk, e5[..]);
+    if rp_good(steps) && !rp_is(steps, "result.outcome.state", "running") { finished = true; break; }
+    proc_sleep(1000);
+  }
+  sm_check(s, finished && rp_is(steps, "result.outcome.state", "finished"), "thread.read follows it to finished");
+  kinds: [256] u8; nk := 0; count := rp_count(steps, "result.outcome.steps");
+  for i: 0..<(ifx count > 0 then count else 0) {
+    pb2: [64] u8; pn2 := sm_cat(pb2[..], 0, "result.outcome.steps."); ib: [8] u8; pn2 = sm_cat(pb2[..], pn2, sm_itoa(i, ib[..])); pn2 = sm_cat(pb2[..], pn2, ".kind");
+    kb: [32] u8; if nk > 0 { nk = sm_cat(kinds[..], nk, ","); }
+    nk = sm_cat(kinds[..], nk, rp_s(steps, cast(string) pb2[0..<pn2], kb[..]));
+  }
+  ks := cast(string) kinds[0..<nk];
+  kc: [300] u8; kcn := sm_cat(kc[..], 0, "its steps: "); kcn = sm_cat(kc[..], kcn, ks);
+  last_end := ks.count >= 3 && cast(string) ks[ks.count - 3..<ks.count] == "end";
+  sm_check(s, ks.count >= 4 && cast(string) ks[0..<4] == "user" && sm_has(ks, "reply") && last_end, cast(string) kc[0..<kcn]);
+  ub: [4096] u8; user := rp_s(steps, "result.outcome.steps.0.text", ub[..]);
+  sm_check(s, sm_has(user, "garden") && sm_has(user, "Add a well by the oak"), "the job was told the realm and the words");
+  nb: [24] u8; next := sm_itoa(rp_i(steps, "result.outcome.next"), nb[..]);
+  e6 := [8] string.["--thread", thread, "--after", next, "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.read", bk, e6[..]);
+  sm_check(s, rp_good(rp) && rp_count(rp, "result.outcome.steps") == 0, "thread.read after next returns no steps");
+  e7 := [6] string.["--thread", thread, "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.stop", bk, e7[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.kind", "dispatched") && rp_is(rp, "result.outcome.operation", "thread.stop"), "thread.stop answers dispatched");
+  // the job's session ran on the host's engine
+  sb: [1200] u8; sessions := sm_in_home(s, ".openagents/coder/sessions", sb[..]);
+  ls_b: [1] FsList; nl2 := fs_list(sessions, ls_b[..]); head_echo := false;
+  for i: 0..<(ifx nl2 > 0 then nl2 else 0) {
+    name := fs_entry(ls_b[..], i);
+    if name.count > 6 && cast(string) name[name.count - 6..<name.count] == ".jsonl" {
+      fb: [1400] u8; fn := sm_cat(fb[..], 0, sessions); fn = sm_cat(fb[..], fn, "/"); fn = sm_cat(fb[..], fn, name);
+      body: [8192] u8; bn := fs_read(cast(string) fb[0..<fn], body[..]);
+      e := 0; while e < bn && body[e] != '\n' { e += 1; }
+      if bn > 0 && sm_has(cast(string) body[0..<e], "\"engine\":\"echo\"") { head_echo = true; }
+    }
+  }
+  sm_check(s, head_echo, "the job ran on the host's engine");
+
+  // The claude engine, with a stand-in `claude` first on PATH: a realm job under the read ceiling.
+  sm_stop(serve); serve = -1;
+  binb: [1100] u8; bin := sm_in_tmp(s, "bin", binb[..]); ok = fs_mkdir(bin);
+  clb: [1200] u8; claude := sm_in_tmp(s, "bin/claude", clb[..]);
+  wr: [4096] u8; wn := sm_cat(wr[..], 0, "#!/bin/sh\nexec "); wn = sm_cat(wr[..], wn, sm_repo(s)); wn = sm_cat(wr[..], wn, "/coax/web/tool.sh ");
+  wn = sm_cat(wr[..], wn, sm_repo(s)); wn = sm_cat(wr[..], wn, "/openagents/workers/tests/claude_standin.coax \"$@\"\n");
+  chm := [3] string.["chmod", "755", claude];
+  ok = fs_write(claude, cast(string) wr[0..<wn]); sm_exec(s, rp, chm[..], 10000);
+  // built now, so the job doesn't wait on its first build
+  pre2 := [3] string.["coax/web/tool.sh", "openagents/workers/tests/claude_standin.coax", "--version"]; sm_exec(s, rp, pre2[..], 600000);
+  specb: [1100] u8; spec := sm_in_tmp(s, "spec.txt", specb[..]);
+  ok = fs_write(spec, "realm\nname Smoke Realm\nground forest\ntime day\nrev 1\nfeature trees pine 6\n");
+  outb: [1100] u8; sout := sm_in_tmp(s, "standin.jsonl", outb[..]);
+  markb: [1100] u8; mark := sm_in_tmp(s, "ran-a-command", markb[..]);
+  pathb: [8192] u8; path0: [8192] u8; pp := sm_cat(pathb[..], 0, bin); pp = sm_cat(pathb[..], pp, ":"); pp = sm_cat(pathb[..], pp, proc_getenv("PATH", path0[..]));
+  sm_env(s, 6, "PATH", cast(string) pathb[0..<pp]); sm_env(s, 7, "CLAUDE_STANDIN_SPEC", spec);
+  sm_env(s, 8, "CLAUDE_STANDIN_OUT", sout); sm_env(s, 9, "CLAUDE_STANDIN_MARK", mark); sm_env(s, 10, "CLAUDE_STANDIN_SECONDS", "90");
+  cargs := [6] string.["--engine", "claude", "--for", "300", "--relay", url];
+  serve = sm_serve(s, cargs[..]);
+  sm_check(s, serve >= 0, "coder host serves on the claude engine (a stand-in claude, no login)");
+  r1 := [8] string.["--text", "Add a crate by the pines", "--realm", "built", "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.run", bk, r1[..]);
+  rth: [64] u8; rts := rp_s(rp, "result.outcome.reference", rth[..]); rt_b: [64] u8; rtn := sm_cat(rt_b[..], 0, rts); rthread := cast(string) rt_b[0..<rtn];
+  sm_check(s, rp_good(rp) && rtn == 32, "a realm request starts a job on the claude engine");
+  r2 := [8] string.["--thread", rthread, "--after", "0", "--grant", grant, "--epoch", epoch];
+  done := sm_follow(s, steps, bk, r2[..]);
+  sb2: [65536] u8; st2 := sm_steps(steps, sb2[..]);
+  sm_check2(s, done && rp_is(steps, "result.outcome.state", "finished"), "the realm job finishes", rp_s(steps, "result.outcome.state", b1[..]));
+  sm_check(s, sm_has(st2, "tool: mcp__openagents__realm_show") && sm_has(st2, "tool: mcp__openagents__realm_world_place"), "its steps show the realm tools it called");
+  sm_check(s, sm_has(st2, "approval: mcp__openagents__realm_world_place: run"), "the ceiling lets the realm edit run (--realm-tools)");
+  sm_check(s, sm_has(st2, "approval: Bash(touch") && sm_has(st2, "): refuse") && sm_has(st2, "approval: Write(note.txt): refuse"), "the ceiling refuses its shell command and its file write, and the browser sees it");
+  spb: [4096] u8; spn := fs_read(spec, spb[..]); spt := ifx spn > 0 then cast(string) spb[0..<spn] else "";
+  sm_check(s, sm_has(spt, "rev 2\n") && sm_has(spt, "placed crate 4 -2 0"), "the realm's spec has the edit (rev 2, a crate placed)");
+  nwb: [1200] u8;
+  sm_check(s, !fs_exists(mark) && !fs_exists(sm_in_home(s, ".openagents/coder/host/work/note.txt", nwb[..])), "nothing it was refused ran: no command, no file");
+  // a long job, stopped while it runs
+  r3 := [8] string.["--text", "Tidy the paths, slowly", "--realm", "built", "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.run", bk, r3[..]);
+  lth: [64] u8; lts := rp_s(rp, "result.outcome.reference", lth[..]); lt_b: [64] u8; ltn := sm_cat(lt_b[..], 0, lts); lthread := cast(string) lt_b[0..<ltn];
+  r4 := [8] string.["--thread", lthread, "--after", "0", "--grant", grant, "--epoch", epoch];
+  working := false;
+  for attempt: 0..<40 {
+    sm_call(s, rp, "thread.read", bk, r4[..]);
+    if rp_is(rp, "result.outcome.state", "running") && attempt >= 2 { working = true; break; }
+    proc_sleep(1000);
+  }
+  sm_check(s, working, "a long job runs");
+  r5 := [6] string.["--thread", lthread, "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.stop", bk, r5[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.operation", "thread.stop"), "thread.stop on the running job answers dispatched");
+  stopped := sm_follow(s, steps, bk, r4[..]);
+  sm_check2(s, stopped && rp_is(steps, "result.outcome.state", "stopped"), "the job stops", rp_s(steps, "result.outcome.state", b1[..]));
+  sm_check(s, sm_has(sm_steps(steps, sb2[..]), "Working on it"), "what it said before it stopped comes in as a step");
+  sob: [8192] u8; son := fs_read(sout, sob[..]);
+  sm_check(s, son > 0 && sm_has(cast(string) sob[0..<son], "\"interrupted\":true"), "the engine was interrupted, not left running");
+  // The phone's view of a Coder session on this computer (GitHub #13713), sent as the phone sends
+  // it (coder host rpc and daemon-rpc over the relay with the paired key): the projects a session
+  // may open in, one opened in a folder, its thinking, its running sub-agent call with when it
+  // began and its calls counted, the sub-agent's own transcript, Foreman, and the end of the turn.
+  apps_b:[1300]u8;apps_dir:=sm_in_tmp(s,"execution-workspace/apps",apps_b[..]);ok=fs_mkdir(apps_dir);
+  // the folders are the projects Coder's chats work in (chats/index.json, bc5d4bce66): one chat in apps
+  ix:[4096]u8;sm_coder_chats(s,"index.json",sm_chat_index(apps_dir,ix[..]));
+  rq_b:[1200]u8;rq_file:=sm_in_tmp(s,"environment-request.json",rq_b[..]);er:[1]EaRequest;
+  sm_ea(er[..],"DescribeEnvironment","");sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  has_apps:=false;for i:0..<(ifx rp_count(rp,"folders")>0 then rp_count(rp,"folders") else 0) {fb3:[64]u8;pb3:[24]u8;pn3:=sm_cat(pb3[..],0,"folders.");ib3:[8]u8;pn3=sm_cat(pb3[..],pn3,sm_itoa(i,ib3[..]));if rp_s(rp,cast(string)pb3[0..<pn3],fb3[..])=="apps" {has_apps=true;}}
+  sm_check_or(s,rp[0].ok && has_apps,"the phone sees the workspace's folders (DescribeEnvironment folders)",sm_text(rp));
+  sid_b:[64]u8;sid:=sm_hex32(1,sid_b[..]);cmd_b:[64]u8;cmd:=sm_hex32(2,cmd_b[..]);
+  sm_ea(er[..],"OpenSession",sid);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nt=ea_copy(er[0].text[..],"Please delegate the test survey to a sub-agent");er[0].nf=ea_copy(er[0].folder[..],"apps");
+  er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the phone opens a Coder session in the folder it chose (OpenSession folder)",sm_text(rp));
+  task_id:[128]u8;ntask:=0;thought:=false;started:=false;counted:=false;
+  for attempt:0..<40 {
+    sm_ea(er[..],"ReadSession",sid);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+    if rp_count(rp,"thoughts")>0 && sm_has(sm_text(rp),"A sub-agent can survey the tests.") {thought=true;}
+    for i:0..<(ifx rp_count(rp,"items")>0 then rp_count(rp,"items") else 0) {
+      pb4:[32]u8;pn4:=sm_cat(pb4[..],0,"items.");ib4:[8]u8;pn4=sm_cat(pb4[..],pn4,sm_itoa(i,ib4[..]));base:=cast(string)pb4[0..<pn4];
+      kb4:[64]u8;kn4:=sm_cat(kb4[..],0,base);kn4=sm_cat(kb4[..],kn4,".tool_name");
+      if !rp_is(rp,cast(string)kb4[0..<kn4],"Task") {continue;}
+      kn4=sm_cat(kb4[..],0,base);kn4=sm_cat(kb4[..],kn4,".item_id");tb4:[128]u8;ntask=sm_cat(task_id[..],0,rp_s(rp,cast(string)kb4[0..<kn4],tb4[..]));
+      kn4=sm_cat(kb4[..],0,base);kn4=sm_cat(kb4[..],kn4,".started_at_ms");if rp_i(rp,cast(string)kb4[0..<kn4])>1700000000000 {started=true;}
+      kn4=sm_cat(kb4[..],0,base);kn4=sm_cat(kb4[..],kn4,".subagent_calls");if rp_i(rp,cast(string)kb4[0..<kn4])>=1 {counted=true;}
+    }
+    if thought && started && counted {break;}
+    proc_sleep(500);
+  }
+  sm_check_or(s,thought,"the phone reads the session's thinking (ReadSession thoughts)",sm_text(rp));
+  sm_check_or(s,ntask>0 && started,"the running sub-agent call says when it began (started_at_ms), so the phone counts its seconds",sm_text(rp));
+  sm_check_or(s,counted,"the sub-agent call counts its agent's calls (subagent_calls)",sm_text(rp));
+  sm_ea(er[..],"ReadSubagent",sid);er[0].nit=ea_copy(er[0].item[..],cast(string)task_id[0..<ntask]);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sub_text:=sm_text(rp);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"method","ReadSubagent") && rp_kind(rp,"complete")==JV_FALSE && sm_has(sub_text,"Looking at the tests first.") && sm_has(sub_text,"\"tool_name\":\"Bash\"") && sm_has(sub_text,"a_test.coax"),"the phone reads the running sub-agent's own transcript: its words, its call and that call's result (ReadSubagent)",sub_text);
+  sm_daemon_rpc(s,rp,bk,grant,epoch,rq_file,"{\"schema\":\"openagents.environment.daemon.v1alpha1\",\"method\":\"ReadForeman\"}");
+  sm_check_or(s,rp[0].ok && rp_kind(rp,"foreman.tier")==JV_NUMBER,"the phone reads Foreman from the daemon (ReadForeman)",sm_text(rp));
+  turn_done:=false;
+  for attempt:0..<40 {
+    sm_ea(er[..],"ReadSession",sid);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+    if rp_kind(rp,"sessions.0.busy")==JV_FALSE && sm_has(sm_text(rp),"The sub-agent found two tests.") {turn_done=true;break;}
+    proc_sleep(1000);
+  }
+  sm_check_or(s,turn_done,"the turn ends with the agent's answer",sm_text(rp));
+  sm_ea(er[..],"ReadSubagent",sid);er[0].nit=ea_copy(er[0].item[..],cast(string)task_id[0..<ntask]);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_kind(rp,"complete")==JV_TRUE && rp_count(rp,"items")==3 && sm_has(sm_text(rp),"\"tool_name\":\"Read\""),"the finished sub-agent's transcript is whole and says it is done",sm_text(rp));
+  so2:[8192]u8;sn2:=fs_read(sout,so2[..]);
+  sm_check(s,sn2>0 && sm_has(cast(string)so2[0..<sn2],"execution-workspace/apps"),"the session's agent ran in the folder the phone chose");
+  // A Coder Desktop chat on the phone (GitHub #13713): the daemon runs its worker (a stand-in
+  // mcworker, coder/tui/mcworker_standin.sh) and its sub-agent's, as Coder Desktop starts them; the
+  // phone lists the chat, reads its transcript and the sub-agent's, steers its turn, stops it and
+  // sends a follow-up the worker starts at once.
+  sm_desktop(s,rp,bk,grant,epoch,rq_file,apps_dir);
+  sm_call(s, rp, "thread.read", other, e5[..]);
+  sm_check2(s, rp_refused(rp, "forbidden"), "an unpaired key is refused", rp_s(rp, "result.code", b1[..]));
+  sm_call(s, rp, "browser.status", bk, e2[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "allowed") && rp_is(rp, "result.outcome.grant.grant", grant), "browser.status keeps answering allowed for the pairing while the grant lasts");
+  fa := [2] string.["forget", ifx grant.count >= 8 then cast(string) grant[0..<8] else "none"]; sm_host(s, rp, fa[..]);
+  sm_check(s, rp[0].status == 0 && sm_has(sm_text(rp), "Revoked"), "coder host forget revokes it");
+  sm_execution(s,rp,bk,grant,epoch,read_file);sm_check(s,rp[0].status==4,"a revoked grant cannot inspect staged input");
+  sm_call(s, rp, "thread.read", bk, e5[..]);
+  sm_check2(s, rp_refused(rp, "revoked"), "a forgotten key is refused", rp_s(rp, "result.code", b2[..]));
+  sm_call(s, rp, "browser.status", bk, e2[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "denied") && rp_kind(rp, "result.outcome.grant") == JV_NULL, "browser.status says denied once forgotten, with no grant");
+  e8 := [2] string.["--label", "Smoke again"];
+  sm_call(s, rp, "browser.request", bk, e8[..]);
+  asked_again:=rp_good(rp) && rp_is(rp, "result.outcome.state", "asked");
+  if !asked_again {
+    code:[32]u8;sm_out("re-pair exit: ");sm_out(sm_itoa(rp[0].status,code[..]));sm_out("; reply: ");sm_out(sm_text(rp));sm_out("\n");
+    for i:0..<32 {got:=proc_line(serve,0,line[..]);if got<0 {break;}sm_out("resident: ");sm_out(cast(string)line[0..<got]);sm_out("\n");}
+  }
+  sm_check(s, asked_again, "the forgotten browser can ask again");
+  none: [1] string;
+  sm_call(s, rp, "browser.forget", bk, none[0..<0]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.kind", "forgotten"), "browser.forget answers forgotten");
+  sm_host(s, rp, la[..]);
+  sm_check(s, rp_count(rp, "waiting") == 0 && rp_count(rp, "browsers") == 0, "nothing is waiting or allowed after browser.forget");
+  sm_check(s, sm_mode(s, sm_in_home(s, ".openagents/coder/host/state.json", mb[..]), mo[..]) == "600", "state.json is mode 600");
+
+  resident_error:[8192]u8;tail:=proc_stderr(serve,resident_error[..]);if tail.count>0 {sm_out("resident stderr: ");sm_out(tail);sm_out("\n");}
+  if serve >= 0 { k := proc_kill(serve, PROC_SIGTERM); w := proc_wait(serve, 10000); d := proc_release(serve); }
+  k2 := proc_kill(relay, PROC_SIGTERM); w2 := proc_wait(relay, 10000); d2 := proc_release(relay);
+  cb2: [24] u8; fb2: [24] u8;
+  sm_out(ifx s[0].fails > 0 then "FAILED: " else "passed: "); sm_out(sm_itoa(s[0].fails, fb2[..])); sm_out(" failures of ");
+  sm_out(sm_itoa(s[0].checks, cb2[..])); sm_out(" checks\n");
+  if s[0].fails > 0 { sm_out("work folder: "); sm_out(sm_tmp(s)); sm_out("\n"); }
+  return ifx s[0].fails > 0 then 1 else 0;
+}
+
+// ---------------------------------------------------------------- a Coder Desktop chat on the phone (GitHub #13713)
+
+// A worker run the daemon starts as Coder Desktop starts one: its spec, an empty input, StartRun on
+// the local socket, then its first lines.
+sm_run :: (s:[]Sm,rp:[]Rp,id:string,program:string,cwd:string,lines:string) {
+  pb:[1300]u8;n:=sm_cat(pb[..],0,".openagents/coder/host/runs/");n=sm_cat(pb[..],n,id);base:=cast(string)pb[0..<n];
+  spec_b:[1400]u8;sn:=sm_cat(spec_b[..],0,base);sn=sm_cat(spec_b[..],sn,".spec");fb:[1600]u8;spec:=sm_in_home(s,cast(string)spec_b[0..<sn],fb[..]);
+  body:[4096]u8;bn:=sm_cat(body[..],0,"{\"program\":\"");bn=sm_cat(body[..],bn,program);bn=sm_cat(body[..],bn,"\",\"cwd\":\"");bn=sm_cat(body[..],bn,cwd);bn=sm_cat(body[..],bn,"\",\"env\":[],\"unset\":[]}");
+  ok:=fs_write(spec,cast(string)body[0..<bn]);
+  in_b:[1400]u8;inn:=sm_cat(in_b[..],0,base);inn=sm_cat(in_b[..],inn,".in");ib:[1600]u8;input:=sm_in_home(s,cast(string)in_b[0..<inn],ib[..]);ok=fs_write(input,"");
+  rb:[1300]u8;req:=sm_in_tmp(s,"start-run.json",rb[..]);
+  q:[512]u8;qn:=sm_cat(q[..],0,"{\"schema\":\"openagents.environment.daemon.v1alpha1\",\"method\":\"StartRun\",\"run_id\":\"");qn=sm_cat(q[..],qn,id);qn=sm_cat(q[..],qn,"\"}");ok=fs_write(req,cast(string)q[0..<qn]);
+  args:=[3]string.["local-rpc","--request-file",req];sm_host(s,rp,args[..]);
+  ok=fs_append(input,lines);
+}
+// The index of session id in the reply's sessions, or -1.
+sm_session_at :: (rp:[]Rp,id:string)->int {
+  for i:0..<(ifx rp_count(rp,"sessions")>0 then rp_count(rp,"sessions") else 0) {pb:[48]u8;pn:=sm_cat(pb[..],0,"sessions.");ib:[8]u8;pn=sm_cat(pb[..],pn,sm_itoa(i,ib[..]));pn=sm_cat(pb[..],pn,".session_id");if rp_is(rp,cast(string)pb[0..<pn],id) {return i;}}
+  return -1;
+}
+sm_session_field :: (i:int,name:string,out:[]u8)->string {pn:=sm_cat(out,0,"sessions.");ib:[8]u8;pn=sm_cat(out,pn,sm_itoa(i,ib[..]));pn=sm_cat(out,pn,".");pn=sm_cat(out,pn,name);return cast(string)out[0..<pn];}
+sm_desktop :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string,apps_dir:string) {
+  mb:[1300]u8;mcw:=sm_in_tmp(s,"bin/mcworker",mb[..]);
+  wr:[2048]u8;wn:=sm_cat(wr[..],0,"#!/bin/sh\nexec /bin/sh ");wn=sm_cat(wr[..],wn,sm_repo(s));wn=sm_cat(wr[..],wn,"/openagents/workers/legacy/mcworker_standin.sh\n");
+  ok:=fs_write(mcw,cast(string)wr[0..<wn]);chm:=[3]string.["chmod","755",mcw];sm_exec(s,rp,chm[..],10000);
+  rdb:[1300]u8;ok=fs_mkdir_private(sm_in_home(s,".openagents/coder/host/runs",rdb[..]));
+  pidb:[64]u8;parent:=sm_hex32(31,pidb[..]);
+  sidb:[64]u8;sub:=sm_hex32(37,sidb[..]);
+  s2b:[64]u8;sub2:=sm_hex32(39,s2b[..]);
+  t:[4096]u8;tn:=sm_cat(t[..],0,"{\"task\":\"Please survey the tests\",\"session\":\"coder-desktop-smoke\",\"cwd\":\"");tn=sm_cat(t[..],tn,apps_dir);
+  tn=sm_cat(t[..],tn,"\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"agents\":true}\n{\"queue\":\"open\",\"key\":\"");tn=sm_cat(t[..],tn,SM_CHAT);tn=sm_cat(t[..],tn,"\"}\n");
+  sm_run(s,rp,parent,mcw,apps_dir,cast(string)t[0..<tn]);
+  sm_check_or(s,rp[0].status==0 && sm_has(sm_text(rp),"\"started\""),"Coder Desktop's chat runs in the daemon (StartRun on the local socket)",sm_text(rp));
+  tn=sm_cat(t[..],0,"{\"task\":\"Skills note.\\nSurvey the tests\",\"session\":\"coder-desktop-smoke-agent-0-a1\",\"cwd\":\"");tn=sm_cat(t[..],tn,apps_dir);
+  tn=sm_cat(t[..],tn,"\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"steerable\":false}\n");
+  proc_sleep(300);
+  sm_run(s,rp,sub,mcw,apps_dir,cast(string)t[0..<tn]);
+  // the second task's sub-agent, started after the first as Coder starts them in order
+  tn=sm_cat(t[..],0,"{\"task\":\"Skills note.\\nSurvey the docs\",\"session\":\"coder-desktop-smoke-agent-1-a2\",\"cwd\":\"");tn=sm_cat(t[..],tn,apps_dir);
+  tn=sm_cat(t[..],tn,"\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"steerable\":false}\n");
+  proc_sleep(300);
+  sm_run(s,rp,sub2,mcw,apps_dir,cast(string)t[0..<tn]);
+  // the chat as Coder keeps it in its list (chats/index.json), under the title it shows
+  sm_coder_chats(s,"index.json",sm_chat_index(apps_dir,t[..]));
+  db:[64]u8;dn:=sm_cat(db[..],0,"desktop-");dn=sm_cat(db[..],dn,SM_CHAT_HEX);desk:=cast(string)db[0..<dn];
+  er:[1]EaRequest;listed:=false;busy:=false;generation:=0;fb:[64]u8;
+  for attempt:0..<30 {
+    sm_ea(er[..],"ListSessions","");sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+    i:=sm_session_at(rp,desk);
+    if i>=0 {listed=rp_is(rp,sm_session_field(i,"surface",fb[..]),"coder-desktop");busy=rp_kind(rp,sm_session_field(i,"busy",fb[..]))==JV_TRUE;generation=rp_i(rp,sm_session_field(i,"generation",fb[..]));
+      if listed && busy && rp_is(rp,sm_session_field(i,"title",fb[..]),SM_CHAT_TITLE) {break;}}
+    proc_sleep(500);
+  }
+  sm_check_or(s,listed && busy && generation>0,"the phone lists the running Coder Desktop chat (ListSessions surface coder-desktop, busy)",sm_text(rp));
+  ti:=sm_session_at(rp,desk);
+  sm_check_or(s,ti>=0 && rp_is(rp,sm_session_field(ti,"title",fb[..]),SM_CHAT_TITLE),"the phone shows the chat under the title Coder shows, not its first message",sm_text(rp));
+  task_id:[128]u8;ntask:=0;thought:=false;counted:=false;started:=false;tasks:=0;first_id:[128]u8;nfirst:=0;
+  for attempt:0..<30 {
+    sm_ea(er[..],"ReadSession",desk);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);tasks=0;
+    thought=rp_count(rp,"thoughts")>0 && sm_has(sm_text(rp),"A sub-agent can survey the tests.");
+    for i:0..<(ifx rp_count(rp,"items")>0 then rp_count(rp,"items") else 0) {
+      pb:[32]u8;pn:=sm_cat(pb[..],0,"items.");ib:[8]u8;pn=sm_cat(pb[..],pn,sm_itoa(i,ib[..]));base:=cast(string)pb[0..<pn];
+      kb:[64]u8;kn:=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".tool_name");if !rp_is(rp,cast(string)kb[0..<kn],"Task") {continue;}
+      tasks+=1;
+      kn=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".item_id");tb:[128]u8;ntask=sm_cat(task_id[..],0,rp_s(rp,cast(string)kb[0..<kn],tb[..]));
+      if tasks==1 {nfirst=sm_cat(first_id[..],0,cast(string)task_id[0..<ntask]);}
+      kn=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".subagent_calls");counted=rp_i(rp,cast(string)kb[0..<kn])>=1;
+      kn=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".started_at_ms");started=rp_i(rp,cast(string)kb[0..<kn])>1700000000000;
+    }
+    if thought && counted && started {break;}
+    proc_sleep(500);
+  }
+  sm_check_or(s,thought && sm_has(sm_text(rp),"Please survey the tests"),"the phone reads the chat's message and thinking from its worker's lines (ReadSession)",sm_text(rp));
+  sm_check_or(s,ntask>0 && counted && started,"the chat's sub-agent call counts its agent's calls and says when it began",sm_text(rp));
+  sm_check_or(s,tasks==2,"a delegated task that resumes the chat's sub-agent (waits for it again) is no new sub-agent call (#13766)",sm_text(rp));
+  sm_ea(er[..],"ReadSubagent",desk);er[0].nit=ea_copy(er[0].item[..],cast(string)task_id[0..<ntask]);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_kind(rp,"complete")==JV_FALSE && sm_has(sm_text(rp),"Looking at the tests first.") && sm_has(sm_text(rp),"\"tool_name\":\"Bash\"") && sm_has(sm_text(rp),"a_test.coax"),"the phone reads the chat's running sub-agent's own transcript (ReadSubagent)",sm_text(rp));
+  sm_stop_one(s,rp,bk,grant,epoch,rq_file,desk,generation,cast(string)first_id[0..<nfirst],cast(string)task_id[0..<ntask],sub,sub2);
+  // a steer for the running turn
+  cb:[64]u8;cmd:=sm_hex32(41,cb[..]);
+  sm_ea(er[..],"SendMessage",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nt=ea_copy(er[0].text[..],"Use the b fixtures too");er[0].generation=generation;
+  er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the phone's SendMessage on the running chat is accepted",sm_text(rp));
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the same SendMessage again is answered, not sent twice",sm_text(rp));
+  steered:=false;
+  for attempt:0..<30 {
+    sm_ea(er[..],"ReadSession",desk);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+    if sm_has(sm_text(rp),"Use the b fixtures too") && sm_has(sm_text(rp),"Taking that into account.") {steered=true;break;}
+    proc_sleep(500);
+  }
+  sm_check_or(s,steered,"the worker took it as a steer into the running turn, and the phone reads it in place",sm_text(rp));
+  ob:[1600]u8;ofn:=sm_cat(ob[..],0,".openagents/coder/host/runs/");ofn=sm_cat(ob[..],ofn,parent);ofn=sm_cat(ob[..],ofn,".out");opb:[1700]u8;out_path:=sm_in_home(s,cast(string)ob[0..<ofn],opb[..]);
+  outb:[65536]u8;on:=fs_read(out_path,outb[..]);outs:=ifx on>0 then cast(string)outb[0..<on] else "";
+  sm_check_or(s,sm_has(outs,"\"status\":\"accepted\"") && sm_has(outs,"\"text\":\"Use the b fixtures too\""),"the worker's accepted steer carries its words, which Coder Desktop shows",outs);
+  // Stop
+  cmd=sm_hex32(43,cb[..]);
+  sm_ea(er[..],"StopTurn",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].generation=generation;er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the phone's StopTurn on the chat is accepted",sm_text(rp));
+  stopped:=false;
+  for attempt:0..<30 {
+    sm_ea(er[..],"ReadSession",desk);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);i:=sm_session_at(rp,desk);
+    if i>=0 && rp_kind(rp,sm_session_field(i,"busy",fb[..]))==JV_FALSE && sm_has(sm_text(rp),"Stopped") {stopped=true;break;}
+    proc_sleep(500);
+  }
+  sm_check_or(s,stopped,"the chat's turn stops and the phone reads it stopped",sm_text(rp));
+  sfb:[1600]u8;sfn:=sm_cat(sfb[..],0,".openagents/coder/host/runs/");sfn=sm_cat(sfb[..],sfn,sub);sfn=sm_cat(sfb[..],sfn,".state");spb:[1700]u8;sub_state:=sm_in_home(s,cast(string)sfb[0..<sfn],spb[..]);
+  sub_done:=false;stb:[512]u8;
+  for attempt:0..<20 {sn:=fs_read(sub_state,stb[..]);if sn>0 && (sm_has(cast(string)stb[0..<sn],"\"exited\"") || sm_has(cast(string)stb[0..<sn],"\"stopped\"")) {sub_done=true;break;}proc_sleep(500);}
+  sm_check(s,sub_done,"its sub-agent's worker was stopped too");
+  // a follow-up, started at once
+  cmd=sm_hex32(47,cb[..]);
+  sm_ea(er[..],"SendMessage",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nt=ea_copy(er[0].text[..],"Run the tests again");er[0].generation=generation;
+  er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the phone's follow-up on the idle chat is accepted",sm_text(rp));
+  followed:=false;
+  for attempt:0..<30 {
+    sm_ea(er[..],"ReadSession",desk);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);i:=sm_session_at(rp,desk);
+    if i>=0 && rp_kind(rp,sm_session_field(i,"busy",fb[..]))==JV_FALSE && sm_has(sm_text(rp),"Run the tests again") && sm_has(sm_text(rp),"Follow-up done.") {followed=true;break;}
+    proc_sleep(500);
+  }
+  sm_check_or(s,followed,"the worker starts the follow-up as a turn of the chat and the phone reads its answer",sm_text(rp));
+  ifb:[1600]u8;ifn:=sm_cat(ifb[..],0,".openagents/coder/host/runs/");ifn=sm_cat(ifb[..],ifn,parent);ifn=sm_cat(ifb[..],ifn,".in");ipb:[1700]u8;in_path:=sm_in_home(s,cast(string)ifb[0..<ifn],ipb[..]);
+  inb:[65536]u8;inn:=fs_read(in_path,inb[..]);ins:=ifx inn>0 then cast(string)inb[0..<inn] else "";
+  cwd_b:[1400]u8;cwn:=sm_cat(cwd_b[..],0,"\"cwd\":\"");cwn=sm_cat(cwd_b[..],cwn,apps_dir);
+  sm_check_or(s,sm_has(ins,SM_CHAT_OPEN) && sm_has(ins,"\"message\":{\"task\":\"Run the tests again\",\"session\":\"coder-desktop-smoke\"") && sm_has(ins,cast(string)cwd_b[0..<cwn]) && sm_has(ins,"{\"queue\":\"promote\""),"the follow-up is the chat's queue item with the chat's own session and folder, so Coder Desktop shows it",ins);
+  sm_run_rpc(s,rp,"ForgetRun",sub2);
+  sm_saved(s,rp,bk,grant,epoch,rq_file,apps_dir,parent,sub,desk);
+}
+
+// A run's state file names it running (or exited/stopped when done is set), within ten seconds.
+sm_run_state :: (s:[]Sm,id:string,done:bool)->bool {
+  fb:[1600]u8;fn:=sm_cat(fb[..],0,".openagents/coder/host/runs/");fn=sm_cat(fb[..],fn,id);fn=sm_cat(fb[..],fn,".state");pb:[1700]u8;path:=sm_in_home(s,cast(string)fb[0..<fn],pb[..]);
+  for attempt:0..<20 {
+    b:[512]u8;n:=fs_read(path,b[..]);t:=ifx n>0 then cast(string)b[0..<n] else "";
+    if done && (sm_has(t,"\"exited\"") || sm_has(t,"\"stopped\"")) {return true;}
+    if !done && sm_has(t,"\"running\"") {return true;}
+    proc_sleep(500);
+  }
+  return false;
+}
+// The phone stops one sub-agent of the running chat (StopSubagent, GitHub #13776): the second
+// task's (keep_item's sibling stop_item), while the first and the turn keep running.
+sm_stop_one :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string,desk:string,generation:int,keep_item:string,stop_item:string,keep:string,stop:string) {
+  er:[1]EaRequest;cb:[64]u8;fb:[64]u8;
+  sm_check(s,keep_item.count>0 && stop_item.count>0 && keep_item!=stop_item && sm_run_state(s,keep,false) && sm_run_state(s,stop,false),"the chat runs two sub-agents, each its own call");
+  // an item that is no sub-agent call is refused, and nothing is written
+  cmd:=sm_hex32(57,cb[..]);
+  sm_ea(er[..],"StopSubagent",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nit=ea_copy(er[0].item[..],"0:0");er[0].generation=generation;er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp_is(rp,"error","not_found"),"a StopSubagent naming the chat's message, not a sub-agent call, is refused not_found",sm_text(rp));
+  cmd=sm_hex32(59,cb[..]);
+  sm_ea(er[..],"StopSubagent",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nit=ea_copy(er[0].item[..],stop_item);er[0].generation=generation;er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the phone's StopSubagent on the chat's second sub-agent is accepted",sm_text(rp));
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the same StopSubagent again is answered, not sent twice",sm_text(rp));
+  sm_check(s,sm_run_state(s,stop,true),"that sub-agent's worker stops");
+  sm_check(s,sm_run_state(s,keep,false),"its sibling's worker keeps running");
+  // the phone reads the stopped one done, its sibling and the turn still running
+  done:=false;i:=0;
+  for attempt:0..<20 {
+    sm_ea(er[..],"ReadSubagent",desk);er[0].nit=ea_copy(er[0].item[..],stop_item);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+    if rp[0].ok && rp_kind(rp,"complete")==JV_TRUE {done=true;break;}
+    proc_sleep(500);
+  }
+  sm_check_or(s,done,"the phone reads the stopped sub-agent as done",sm_text(rp));
+  sm_ea(er[..],"ReadSubagent",desk);er[0].nit=ea_copy(er[0].item[..],keep_item);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_kind(rp,"complete")==JV_FALSE,"the phone reads its sibling still working",sm_text(rp));
+  sm_ea(er[..],"ListSessions","");sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);i=sm_session_at(rp,desk);
+  sm_check_or(s,i>=0 && rp_kind(rp,sm_session_field(i,"busy",fb[..]))==JV_TRUE,"the chat's turn keeps running",sm_text(rp));
+  // a sub-agent that has already ended is not stopped again: a new command is refused conflict
+  cmd=sm_hex32(61,cb[..]);
+  sm_ea(er[..],"StopSubagent",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nit=ea_copy(er[0].item[..],stop_item);er[0].generation=generation;er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp_is(rp,"error","conflict"),"a StopSubagent for a sub-agent that has ended is refused conflict",sm_text(rp));
+}
+
+// ---------------------------------------------------------------- a Coder Desktop chat after its runs (GitHub #13755)
+
+SM_CHAT :: "c0ffee00-1111-4222-8333-444455556666";
+SM_CHAT_HEX :: "c0ffee00111142228333444455556666";
+SM_CHAT_TITLE :: "Survey with the b fixtures";
+SM_CHAT_OPEN :: "{\"queue\":\"open\",\"key\":\"c0ffee00-1111-4222-8333-444455556666\"}";
+// Coder's chat list as Coder Desktop writes it (Store.swift): this chat, in apps_dir.
+sm_chat_index :: (apps_dir:string,out:[]u8)->string {
+  n:=sm_cat(out,0,"[{\"id\":\"");n=sm_cat(out,n,SM_CHAT);n=sm_cat(out,n,"\",\"title\":\"");n=sm_cat(out,n,SM_CHAT_TITLE);
+  n=sm_cat(out,n,"\",\"created\":1795136276.5,\"updated\":1795136300.25,\"folder\":\"");n=sm_cat(out,n,apps_dir);n=sm_cat(out,n,"\",\"managed_by\":\"foreman\"}]");
+  return cast(string)out[0..<n];
+}
+// A file in Coder's chats folder (~/Library/Application Support/Coder/chats).
+sm_coder_chats :: (s:[]Sm,name:string,text:string) {
+  parts:=[4]string.["Library","Library/Application Support","Library/Application Support/Coder","Library/Application Support/Coder/chats"];
+  for p:parts {db:[1400]u8;d:=sm_in_home(s,p,db[..]);if !fs_exists(d) {ok:=fs_mkdir(d);}}
+  nb:[1400]u8;nn:=sm_cat(nb[..],0,"Library/Application Support/Coder/chats/");nn=sm_cat(nb[..],nn,name);pb:[1600]u8;
+  ok:=fs_write(sm_in_home(s,cast(string)nb[0..<nn],pb[..]),text);
+}
+// A run's StopRun or ForgetRun on the local socket, as Coder Desktop sends it.
+sm_run_rpc :: (s:[]Sm,rp:[]Rp,method:string,id:string) {
+  rb:[1300]u8;req:=sm_in_tmp(s,"run-rpc.json",rb[..]);
+  q:[512]u8;qn:=sm_cat(q[..],0,"{\"schema\":\"openagents.environment.daemon.v1alpha1\",\"method\":\"");qn=sm_cat(q[..],qn,method);qn=sm_cat(q[..],qn,"\",\"run_id\":\"");qn=sm_cat(q[..],qn,id);qn=sm_cat(q[..],qn,"\"}");
+  ok:=fs_write(req,cast(string)q[0..<qn]);
+  args:=[3]string.["local-rpc","--request-file",req];sm_host(s,rp,args[..]);
+}
+// Coder saves the chat (persist.coax's text), stops and forgets its runs, as it does when a chat's
+// worker is done: the phone still lists the chat under its title and reads it from what Coder saved.
+sm_saved :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string,apps_dir:string,parent:string,sub:string,desk:string) {
+  sm_coder_chats(s,"c0ffee00-1111-4222-8333-444455556666.json","{\"v\":1,\"cost_usd_micros\":0,\"budget_usd_micros\":0,\"model\":\"\",\"turns\":[{\"ask\":\"Please survey the tests\",\"reply\":\"Taking that into account.\",\"cut\":false,\"state\":3,\"model\":\"\",\"note\":\"\",\"steers\":[\"Use the b fixtures too\"],\"more\":0,\"earlier\":0,\"cmds\":[{\"text\":\"A sub-agent can survey the tests.\",\"out\":\"A sub-agent can survey the tests.\",\"read\":false,\"failed\":false,\"thought\":true,\"took\":0}],\"agents\":[{\"level\":\"hydrogen\",\"task\":\"Survey the tests\",\"state\":3,\"reply\":\"Looking at the tests first.\",\"more\":0,\"earlier\":0,\"after\":1,\"rows\":[{\"text\":\"ls\",\"out\":\"a_test.coax\",\"read\":false,\"failed\":false,\"took\":0}],\"calls\":1,\"took\":3}]},{\"ask\":\"Run the tests again\",\"reply\":\"Follow-up done.\",\"cut\":false,\"state\":1,\"model\":\"\",\"note\":\"\",\"more\":0,\"earlier\":0,\"cmds\":[],\"agents\":[]}]}");
+  ids:=[2]string.[parent,sub];
+  for id:ids {sm_run_rpc(s,rp,"StopRun",id);}
+  forgot:=0;
+  for attempt:0..<40 {
+    forgot=0;
+    for id:ids {sm_run_rpc(s,rp,"ForgetRun",id);if rp[0].status==0 && sm_has(sm_text(rp),"\"forgotten\"") {forgot+=1;}}
+    pb:[1300]u8;pn:=sm_cat(pb[..],0,".openagents/coder/host/runs/");pn=sm_cat(pb[..],pn,parent);pn=sm_cat(pb[..],pn,".out");fb:[1400]u8;
+    if !fs_exists(sm_in_home(s,cast(string)pb[0..<pn],fb[..])) {break;}
+    proc_sleep(500);
+  }
+  pb:[1300]u8;pn:=sm_cat(pb[..],0,".openagents/coder/host/runs/");pn=sm_cat(pb[..],pn,parent);pn=sm_cat(pb[..],pn,".out");ob:[1400]u8;
+  sm_check(s,!fs_exists(sm_in_home(s,cast(string)pb[0..<pn],ob[..])),"Coder forgets the chat's runs: their files are gone");
+  er:[1]EaRequest;fb:[64]u8;
+  sm_ea(er[..],"ListSessions","");sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  i:=sm_session_at(rp,desk);
+  sm_check_or(s,i>=0 && rp_is(rp,sm_session_field(i,"title",fb[..]),SM_CHAT_TITLE) && rp_kind(rp,sm_session_field(i,"busy",fb[..]))==JV_FALSE && rp_is(rp,sm_session_field(i,"control",fb[..]),"observe-only"),
+    "with no run left, the phone still lists the chat under its title, read only",sm_text(rp));
+  sm_ea(er[..],"ReadSession",desk);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  t:=sm_text(rp);
+  sm_check_or(s,rp[0].ok && sm_has(t,"Please survey the tests") && sm_has(t,"Use the b fixtures too") && sm_has(t,"A sub-agent can survey the tests.") && sm_has(t,"Taking that into account.") && sm_has(t,"Stopped") && sm_has(t,"Run the tests again") && sm_has(t,"Follow-up done."),
+    "the phone reads the stopped chat from what Coder saved: its messages, steer, thinking, replies and the stop",t);
+  task_id:[128]u8;ntask:=0;
+  for k:0..<(ifx rp_count(rp,"items")>0 then rp_count(rp,"items") else 0) {
+    kb:[64]u8;ib:[8]u8;kn:=sm_cat(kb[..],0,"items.");kn=sm_cat(kb[..],kn,sm_itoa(k,ib[..]));base:=cast(string)kb[0..<kn];
+    nb:[80]u8;nn:=sm_cat(nb[..],0,base);nn=sm_cat(nb[..],nn,".tool_name");if !rp_is(rp,cast(string)nb[0..<nn],"Task") {continue;}
+    nn=sm_cat(nb[..],0,base);nn=sm_cat(nb[..],nn,".item_id");tb:[128]u8;ntask=sm_cat(task_id[..],0,rp_s(rp,cast(string)nb[0..<nn],tb[..]));
+  }
+  sm_ea(er[..],"ReadSubagent",desk);er[0].nit=ea_copy(er[0].item[..],cast(string)task_id[0..<ntask]);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,ntask>0 && rp[0].ok && sm_has(sm_text(rp),"Looking at the tests first.") && sm_has(sm_text(rp),"a_test.coax"),"the phone reads the saved chat's sub-agent's own rows (ReadSubagent)",sm_text(rp));
+  cb:[64]u8;cmd:=sm_hex32(53,cb[..]);
+  sm_ea(er[..],"SendMessage",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nt=ea_copy(er[0].text[..],"Once more");er[0].generation=1;
+  er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,!rp[0].ok || !rp_is(rp,"command_status","accepted"),"a message to a saved chat with no run is refused, not written anywhere",sm_text(rp));
+}

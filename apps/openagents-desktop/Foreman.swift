@@ -54,7 +54,7 @@ enum ForemanTier: Int, CaseIterable {
            let t = ForemanTier(rawValue: UserDefaults.standard.integer(forKey: Foreman.tierDefaultsKey)) {
             return t
         }
-        return .managed
+        return .autonomous
     }
 
     func save() {
@@ -458,7 +458,13 @@ final class ForemanControlServer {
             if let colon = line.firstIndex(of: ":") {
                 let k = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
                 let v = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-                if k == "x-foreman-token" { suppliedToken = v }
+                if k == "x-session-bus-token" || k == "x-foreman-token" {
+                    suppliedToken = v
+                } else if k == "authorization", suppliedToken.isEmpty {
+                    if v.lowercased().hasPrefix("bearer ") {
+                        suppliedToken = String(v.dropFirst(7)).trimmingCharacters(in: .whitespaces)
+                    }
+                }
             }
         }
         guard let principal = ForemanAPI.principal(for: suppliedToken, foremanToken: token, operatorToken: operatorToken) else {
@@ -481,7 +487,7 @@ final class ForemanControlServer {
             let sem = DispatchSemaphore(value: 0)
             var done = false
             let waitCap: Double
-            if path == "/v1/wait" || path == "/v1/foreman/wait" {
+            if path == "/v1/wait" || path == "/v1/foreman/wait" || path == "/v1/sessions/wait" {
                 let requested = (payload["timeout_seconds"] as? Double) ?? Double((payload["timeout_seconds"] as? Int) ?? 60)
                 waitCap = min(315, max(5, requested + 15))
             } else {

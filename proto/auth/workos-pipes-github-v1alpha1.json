@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenAgents WorkOS Pipes GitHub Integration v1alpha1",
+  "description": "Closed JSON shapes for /api/integrations/github/{status,connect,repos,disconnect}. Never contains OAuth access or refresh tokens.",
+  "type": "object",
+  "required": ["schema", "provider"],
+  "properties": {
+    "schema": {
+      "enum": [
+        "openagents.integrations.github.status.v1alpha1",
+        "openagents.integrations.github.connect.v1alpha1",
+        "openagents.integrations.github.repos.v1alpha1",
+        "openagents.integrations.github.disconnect.v1alpha1"
+      ]
+    },
+    "provider": { "const": "github" },
+    "connected": { "type": "boolean" },
+    "disconnected": { "type": "boolean" },
+    "scopes": { "type": "string" },
+    "account_login": { "type": "string" },
+    "url": { "type": "string", "minLength": 10, "maxLength": 2048 },
+    "repos": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["full_name", "default_branch", "private", "html_url", "clone_url", "updated_at"],
+        "properties": {
+          "full_name": { "type": "string" },
+          "default_branch": { "type": "string" },
+          "private": { "type": "boolean" },
+          "html_url": { "type": "string" },
+          "clone_url": { "type": "string" },
+          "updated_at": { "type": "string" }
+        }
+      }
+    }
+  }
+}

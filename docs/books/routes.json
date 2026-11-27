@@ -493,12 +493,12 @@
     },
     {
       "id": "coder-harness-memory",
-      "title": "Coder: bounded agent loop, exact transcript logging, and revocable memory",
+      "title": "Coder: openagents/core query loop, transcript DAG + AJR1 journal, and memory lifecycle",
       "book": "coder",
-      "scope": "Run the CPU Coder book examples in debug and release: Ch 1 bounded turn loop, Ch 2 model-visible transcript logging, and Ch 19 structured memory with revision and refusal.",
+      "scope": "Run the CPU Coder book examples in debug and release against the real product modules: Ch 1 openagents/core/query_loop.coax turn state machine, Ch 2 transcript_dag.coax + AJR1 hash-chained journal.coax, and Ch 19 openagents/core/memory.coax governance + hash-chained remember/revise/forget memory log.",
       "limitations": [
-        "Runs scripted local turns and in-memory facts with no external model API, GPU inference, or shell subprocesses.",
-        "Does not qualify live oa-worker/Inky coding benchmarks (gBench / Terminal-Bench) or desktop host integration."
+        "Runs scripted local turns, in-memory DAG/journal frames, and in-memory facts with no external model API, GPU inference, or shell subprocesses.",
+        "Does not qualify live oa-worker coding benchmarks (gBench / Terminal-Bench) or desktop host integration."
       ],
       "prerequisites": {
         "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
@@ -516,15 +516,15 @@
         "coder/book/ch019-remember-a-fact-then-revise-it.md"
       ],
       "evidence": [
-        "psionic/book/examples.json",
+        "coder/book/examples.json",
         "coder/book/chapters.json"
       ],
       "steps": [
         {
-          "id": "harness-loop",
+          "id": "query-loop",
           "kind": "coax-run",
-          "source": "psionic/examples/harness-loop.coax",
-          "stdout": "psionic/fixtures/harness-loop.out",
+          "source": "coder/examples/query-loop.coax",
+          "stdout": "coder/examples/query-loop.out",
           "exit_status": 0,
           "modes": [
             "debug",
@@ -533,10 +533,10 @@
           "timeout": 120
         },
         {
-          "id": "harness-log",
+          "id": "transcript-log",
           "kind": "coax-run",
-          "source": "psionic/examples/harness-log.coax",
-          "stdout": "psionic/fixtures/harness-log.out",
+          "source": "coder/examples/transcript-log.coax",
+          "stdout": "coder/examples/transcript-log.out",
           "exit_status": 0,
           "modes": [
             "debug",
@@ -545,10 +545,10 @@
           "timeout": 120
         },
         {
-          "id": "memory-revise",
+          "id": "memory-lifecycle",
           "kind": "coax-run",
-          "source": "psionic/examples/memory.coax",
-          "stdout": "psionic/fixtures/memory/memory.out",
+          "source": "coder/examples/memory-lifecycle.coax",
+          "stdout": "coder/examples/memory-lifecycle.out",
           "exit_status": 0,
           "modes": [
             "debug",

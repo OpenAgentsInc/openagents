@@ -1,0 +1,95 @@
+2026-11-02 INFO request 1912 ok
+2026-11-02 ERROR request 4893 failed
+2026-11-04 INFO request 9812 ok
+2026-11-06 INFO request 7257 ok
+2026-11-09 INFO request 7514 ok
+2026-11-09 INFO request 6180 ok
+2026-11-01 INFO request 6618 ok
+2026-11-03 WARN slow request 7080 (no error)
+2026-11-01 ERROR request 3364 failed
+2026-11-07 ERROR request 9769 failed
+2026-11-03 INFO request 7850 ok
+2026-11-07 INFO request 2850 ok
+2026-11-08 INFO request 7669 ok
+2026-11-09 INFO request 2255 ok
+2026-11-02 INFO request 3200 ok
+2026-11-02 INFO request 4798 ok
+2026-11-06 INFO request 8625 ok
+2026-11-06 INFO request 6205 ok
+2026-11-02 WARN slow request 8754 (no error)
+2026-11-03 WARN slow request 4930 (no error)
+2026-11-09 INFO request 4710 ok
+2026-11-01 INFO request 9915 ok
+2026-11-01 INFO request 5846 ok
+2026-11-09 INFO request 1523 ok
+2026-11-02 ERROR request 2789 failed
+2026-11-05 INFO request 6115 ok
+2026-11-02 INFO request 4930 ok
+2026-11-06 INFO request 7981 ok
+2026-11-09 INFO request 1145 ok
+2026-11-08 INFO request 8258 ok
+2026-11-01 WARN slow request 4623 (no error)
+2026-11-06 INFO request 5978 ok
+2026-11-05 INFO request 4426 ok
+2026-11-09 WARN slow request 7157 (no error)
+2026-11-07 INFO request 6829 ok
+2026-11-04 INFO request 9318 ok
+2026-11-05 INFO request 9775 ok
+2026-11-05 INFO request 6585 ok
+2026-11-03 ERROR request 1976 failed
+2026-11-04 ERROR request 9164 failed
+2026-11-01 INFO request 8191 ok
+2026-11-01 INFO request 4068 ok
+2026-11-06 INFO request 7352 ok
+2026-11-09 INFO request 2813 ok
+2026-11-05 INFO request 6276 ok
+2026-11-07 ERROR request 2451 failed
+2026-11-01 INFO request 2922 ok
+2026-11-03 ERROR request 2703 failed
+2026-11-09 INFO request 7899 ok
+2026-11-09 INFO request 2321 ok
+2026-11-04 INFO request 9998 ok
+2026-11-02 INFO request 8969 ok
+2026-11-05 INFO request 5720 ok
+2026-11-06 INFO request 7366 ok
+2026-11-07 WARN slow request 9540 (no error)
+2026-11-05 INFO request 9443 ok
+2026-11-07 INFO request 9530 ok
+2026-11-03 INFO request 7774 ok
+2026-11-04 INFO request 7302 ok
+2026-11-08 INFO request 1809 ok
+2026-11-01 INFO request 3374 ok
+2026-11-05 ERROR request 6466 failed
+2026-11-07 INFO request 7761 ok
+2026-11-08 ERROR request 1396 failed
+2026-11-04 ERROR request 6874 failed
+2026-11-06 ERROR request 8046 failed
+2026-11-05 INFO request 4850 ok
+2026-11-01 INFO request 7933 ok
+2026-11-03 INFO request 3633 ok
+2026-11-07 WARN slow request 6217 (no error)
+2026-11-01 ERROR request 4672 failed
+2026-11-06 INFO request 5452 ok
+2026-11-05 INFO request 5716 ok
+2026-11-06 WARN slow request 4208 (no error)
+2026-11-08 INFO request 2929 ok
+2026-11-03 INFO request 1749 ok
+2026-11-08 WARN slow request 5230 (no error)
+2026-11-06 INFO request 9274 ok
+2026-11-04 INFO request 3305 ok
+2026-11-04 INFO request 8608 ok
+2026-11-06 WARN slow request 4782 (no error)
+2026-11-06 ERROR request 7082 failed
+2026-11-06 ERROR request 3358 failed
+2026-11-08 INFO request 7614 ok
+2026-11-06 INFO request 4101 ok
+2026-11-08 INFO request 8353 ok
+2026-11-07 INFO request 8192 ok
+2026-11-06 ERROR request 2559 failed
+2026-11-03 INFO request 2728 ok
+2026-11-03 ERROR request 1173 failed
+2026-11-05 WARN slow request 2786 (no error)
+2026-11-02 INFO request 5462 ok
+2026-11-02 INFO request 2950 ok
+2026-11-04 WARN slow request 5092 (no error)
+2026-11-08 INFO request 3280 ok

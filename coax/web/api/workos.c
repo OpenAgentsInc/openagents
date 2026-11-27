@@ -82,6 +82,78 @@ static void workos_http(const char *method, const char *url, const char *body, s
     .allow_http_local = workos_allow_local(),
   };
   http_client_send(&req, res);
+  explicit_bzero(auth_hdr, sizeof auth_hdr);
+}
+
+const char *workos_pipes_base_url(void) { return workos_base_url(); }
+bool workos_pipes_allow_local(void) { return workos_allow_local(); }
+bool workos_pipes_configured(void) { return workos_api_key()[0] != 0; }
+
+bool workos_lookup_identity(PGconn *db, const char *account, char uid_out[128], char org_out[128]) {
+  uid_out[0] = 0;
+  org_out[0] = 0;
+  if (!db || !account || !*account) return false;
+  const char *v[1] = {account};
+  PGresult *r = PQexecParams(
+      db,
+      "SELECT workos_user_id, coalesce(last_organization_id, '') FROM auth.workos_identities "
+      "WHERE account = $1 ORDER BY last_seen_at DESC LIMIT 1",
+      1, NULL, v, NULL, NULL, 0);
+  bool ok = r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+  if (ok) {
+    snprintf(uid_out, 128, "%s", PQgetvalue(r, 0, 0));
+    snprintf(org_out, 128, "%s", PQgetvalue(r, 0, 1));
+  }
+  PQclear(r);
+  return ok && uid_out[0] != 0;
+}
+
+void workos_api_request(const char *method, const char *url, const char *body, size_t body_len, void *http_res) {
+  workos_http(method, url, body, body_len, true, (http_client_res *)http_res);
+}
+
+bool workos_pipes_github_token(PGconn *db, const char *account, char *token_out, size_t token_cap, char *err_out, size_t err_cap) {
+  if (token_out && token_cap) token_out[0] = 0;
+  if (err_out && err_cap) err_out[0] = 0;
+  if (!token_out || token_cap < 16) return false;
+  if (!workos_pipes_configured()) {
+    if (err_out && err_cap) snprintf(err_out, err_cap, "WorkOS Pipes is not configured.");
+    return false;
+  }
+  char uid[128] = "", org[128] = "";
+  if (!workos_lookup_identity(db, account, uid, org)) {
+    if (err_out && err_cap) snprintf(err_out, err_cap, "Sign in with WorkOS to connect GitHub.");
+    return false;
+  }
+  uint8_t url_b[512], body_b[512];
+  int64_t un = 0, bn = 0;
+  if (!wos_c_build_pipes_token(
+          cs(workos_base_url()), cs("github"), cs(uid), cs(org),
+          (coax_v_u8){url_b, (int64_t)sizeof url_b - 1}, (coax_v_u8){body_b, (int64_t)sizeof body_b - 1},
+          (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1})) {
+    if (err_out && err_cap) snprintf(err_out, err_cap, "Could not build WorkOS Pipes token request.");
+    return false;
+  }
+  url_b[un] = 0;
+  body_b[bn] = 0;
+  http_client_res res;
+  workos_http("POST", (const char *)url_b, (const char *)body_b, (size_t)bn, true, &res);
+  bool ok = false;
+  if (res.status == 200 && res.body && res.body_len > 0) {
+    int64_t tn = wos_c_pipes_parse_token(
+        (coax_string){res.body, (int64_t)res.body_len},
+        (coax_v_u8){(uint8_t *)token_out, (int64_t)token_cap - 1});
+    if (tn > 0) {
+      token_out[tn] = 0;
+      ok = true;
+    }
+  }
+  if (!ok && err_out && err_cap) {
+    snprintf(err_out, err_cap, res.status == 404 || res.status == 200 ? "GitHub is not connected." : "GitHub token unavailable.");
+  }
+  if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
+  http_client_res_free(&res);
+  return ok;
 }
 
 static bool same_site_next(const char *s) {
@@ -190,6 +262,20 @@ static void workos_sync_external_id(const char *wos_uid, const char *acct) {
   http_client_res_free(&res);
 }
 
+static bool workos_new_account_id(char out[40]) {
+  unsigned char raw[17];
+  if (!auth_random(raw, sizeof raw)) return false;
+  static const char alpha[] = "abcdefghijklmnopqrstuvwxyz234567";
+  memcpy(out, "acct_", 5);
+  for (int i = 0; i < 26; i++) {
+    unsigned bit = (unsigned)(5 * i);
+    unsigned v = (((unsigned)raw[bit / 8] << 8) | (unsigned)raw[bit / 8 + 1]) >> (11 - (bit % 8));
+    out[5 + i] = alpha[v & 31];
+  }
+  out[31] = 0;
+  return true;
+}
+
 // Resolves/links acct_ for a WorkOS user, enforcing email_verified=true for auto-linking.
 static bool resolve_workos_account(PGconn *db, const char *wos_uid, const char *raw_email, bool email_verified,
                                    const char *provider, const char *org_id,
@@ -212,33 +298,150 @@ static bool resolve_workos_account(PGconn *db, const char *wos_uid, const char *
     PQclear(t);
   }
 
-  PQclear(PQexec(db, "BEGIN"));
-  const char *v[7] = {
-    wos_uid,
-    (email_verified && have_lookups) ? all_lookups : NULL,
-    (email_verified && have_lookups) ? primary_lookup : NULL,
-    email_verified ? "t" : "f",
-    team ? "t" : "f",
-    provider ? provider : "",
-    org_id ? org_id : "",
-  };
-  PGresult *r = PQexecParams(
-      db,
-      "SELECT acct, made, auto_linked, coalesce(email_id::text, '') "
-      "FROM workos.account_resolve($1, $2::text[], $3, $4::boolean, $5::boolean, $6, $7)",
-      7, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
-    api_log("workos: account_resolve failed: %s", PQerrorMessage(db));
-    PQclear(r);
-    PQclear(PQexec(db, "ROLLBACK"));
+  const char *prov = provider ? provider : "";
+  const char *org = org_id ? org_id : "";
+  char email_id[24] = "";
+
+  PGresult *tx = PQexec(db, "BEGIN");
+  if (!tx || PQresultStatus(tx) != PGRES_COMMAND_OK) {
+    if (tx) PQclear(tx);
+    explicit_bzero(norm_email, sizeof norm_email);
     return false;
   }
-  snprintf(acct_out, 40, "%s", PQgetvalue(r, 0, 0));
-  *made_out = !strcmp(PQgetvalue(r, 0, 1), "t");
-  *auto_linked_out = !strcmp(PQgetvalue(r, 0, 2), "t");
-  char email_id[24] = "";
-  snprintf(email_id, sizeof email_id, "%s", PQgetvalue(r, 0, 3));
-  PQclear(r);
+  PQclear(tx);
+
+  // 1. Existing link by workos_user_id (skip deleted/merged tombstones).
+  const char *v1[1] = {wos_uid};
+  PGresult *r = PQexecParams(
+      db,
+      "SELECT wi.account "
+      "  FROM auth.workos_identities wi "
+      "  JOIN auth.accounts acc ON acc.id = wi.account "
+      " WHERE wi.workos_user_id = $1 "
+      "   AND acc.deleted_at IS NULL "
+      "   AND acc.merged_into IS NULL "
+      " LIMIT 1",
+      1, NULL, v1, NULL, NULL, 0);
+  if (!r || PQresultStatus(r) != PGRES_TUPLES_OK) {
+    api_log("workos: account lookup failed: %s", PQerrorMessage(db));
+    if (r) PQclear(r);
+    PQclear(PQexec(db, "ROLLBACK"));
+    explicit_bzero(norm_email, sizeof norm_email);
+    return false;
+  }
+  if (PQntuples(r) == 1) {
+    snprintf(acct_out, 40, "%s", PQgetvalue(r, 0, 0));
+    PQclear(r);
+    const char *uv[3] = {wos_uid, prov, org};
+    PGresult *ur = PQexecParams(
+        db,
+        "UPDATE auth.workos_identities "
+        "   SET last_seen_at = now(), "
+        "       provider = coalesce(nullif($2, ''), provider), "
+        "       last_organization_id = coalesce(nullif($3, ''), last_organization_id) "
+        " WHERE workos_user_id = $1",
+        3, NULL, uv, NULL, NULL, 0);
+    if (!ur || PQresultStatus(ur) != PGRES_COMMAND_OK) {
+      api_log("workos: identity touch failed: %s", PQerrorMessage(db));
+      if (ur) PQclear(ur);
+      PQclear(PQexec(db, "ROLLBACK"));
+      explicit_bzero(norm_email, sizeof norm_email);
+      return false;
+    }
+    PQclear(ur);
+  } else {
+    PQclear(r);
+    // 2. Auto-link by verified email ONLY when email_verified = true.
+    bool linked = false;
+    if (email_verified && have_lookups) {
+      const char *ev[1] = {all_lookups};
+      PGresult *er = PQexecParams(
+          db,
+          "SELECT e.account, e.id::text "
+          "  FROM auth.emails e "
+          "  JOIN auth.accounts acc ON acc.id = e.account "
+          " WHERE e.lookup = ANY($1::text[]) "
+          "   AND acc.deleted_at IS NULL "
+          "   AND acc.merged_into IS NULL "
+          " ORDER BY e.is_primary DESC, e.id ASC "
+          " LIMIT 1",
+          1, NULL, ev, NULL, NULL, 0);
+      if (!er || PQresultStatus(er) != PGRES_TUPLES_OK) {
+        api_log("workos: email lookup failed: %s", PQerrorMessage(db));
+        if (er) PQclear(er);
+        PQclear(PQexec(db, "ROLLBACK"));
+        explicit_bzero(norm_email, sizeof norm_email);
+        return false;
+      }
+      if (PQntuples(er) == 1) {
+        snprintf(acct_out, 40, "%s", PQgetvalue(er, 0, 0));
+        snprintf(email_id, sizeof email_id, "%s", PQgetvalue(er, 0, 1));
+        linked = true;
+        *auto_linked_out = true;
+      }
+      PQclear(er);
+    }
+    if (!linked) {
+      // 3. Provision a brand-new acct_ (for new users or unverified emails — never merges on unverified email).
+      if (!workos_new_account_id(acct_out)) {
+        PQclear(PQexec(db, "ROLLBACK"));
+        explicit_bzero(norm_email, sizeof norm_email);
+        return false;
+      }
+      const char *av[2] = {acct_out, team ? "t" : "f"};
+      PGresult *ar = PQexecParams(
+          db,
+          "INSERT INTO auth.accounts (id, kind, team, verse_account) "
+          "VALUES ($1, 'person', $2::boolean, $1)",
+          2, NULL, av, NULL, NULL, 0);
+      if (!ar || PQresultStatus(ar) != PGRES_COMMAND_OK) {
+        api_log("workos: account insert failed: %s", PQerrorMessage(db));
+        if (ar) PQclear(ar);
+        PQclear(PQexec(db, "ROLLBACK"));
+        explicit_bzero(norm_email, sizeof norm_email);
+        return false;
+      }
+      PQclear(ar);
+      if (email_verified && primary_lookup[0]) {
+        const char *emv[2] = {acct_out, primary_lookup};
+        PGresult *emr = PQexecParams(
+            db,
+            "INSERT INTO auth.emails (account, lookup, sealed, is_primary, verified_at) "
+            "VALUES ($1, $2, '', true, now()) "
+            "RETURNING id::text",
+            2, NULL, emv, NULL, NULL, 0);
+        if (!emr || PQresultStatus(emr) != PGRES_TUPLES_OK || PQntuples(emr) != 1) {
+          api_log("workos: email insert failed: %s", PQerrorMessage(db));
+          if (emr) PQclear(emr);
+          PQclear(PQexec(db, "ROLLBACK"));
+          explicit_bzero(norm_email, sizeof norm_email);
+          return false;
+        }
+        snprintf(email_id, sizeof email_id, "%s", PQgetvalue(emr, 0, 0));
+        PQclear(emr);
+      }
+      *made_out = true;
+    }
+    const char *iv[4] = {wos_uid, acct_out, prov, org};
+    PGresult *ir = PQexecParams(
+        db,
+        "INSERT INTO auth.workos_identities (workos_user_id, account, provider, last_organization_id) "
+        "VALUES ($1, $2, nullif($3, ''), nullif($4, '')) "
+        "ON CONFLICT (workos_user_id) DO UPDATE "
+        "  SET account = EXCLUDED.account, "
+        "      provider = coalesce(EXCLUDED.provider, auth.workos_identities.provider), "
+        "      last_organization_id = coalesce(EXCLUDED.last_organization_id, auth.workos_identities.last_organization_id), "
+        "      last_seen_at = now()",
+        4, NULL, iv, NULL, NULL, 0);
+    if (!ir || PQresultStatus(ir) != PGRES_COMMAND_OK) {
+      api_log("workos: identity link failed: %s", PQerrorMessage(db));
+      if (ir) PQclear(ir);
+      PQclear(PQexec(db, "ROLLBACK"));
+      explicit_bzero(norm_email, sizeof norm_email);
+      return false;
+    }
+    PQclear(ir);
+  }
 
   if (*made_out && email_verified && have_email && email_id[0]) {
     char sealed[1200], ad[96];
@@ -1311,6 +1514,94 @@ static void route_orgs_switch(const request *q, PGconn *db, const char *body) {
   auth_answer(q, 200, NULL, json, lines);
 }
 
+// Idempotent event ingestion for both webhooks and Events API polling (plain SQL; zero PL/pgSQL).
+static bool workos_upsert_event(PGconn *db, const char *ev_id, const char *ev_type, const char *raw_json, bool *applied_out) {
+  *applied_out = false;
+  if (!ev_id || !*ev_id || !ev_type || !*ev_type || !raw_json) return false;
+  PGresult *tx = PQexec(db, "BEGIN");
+  if (!tx || PQresultStatus(tx) != PGRES_COMMAND_OK) { if (tx) PQclear(tx); return false; }
+  PQclear(tx);
+
+  const char *iv[3] = {ev_id, ev_type, raw_json};
+  PGresult *ir = PQexecParams(
+      db,
+      "INSERT INTO workos.events (id, event, _raw) VALUES ($1, $2, $3::jsonb) ON CONFLICT (id) DO NOTHING RETURNING id",
+      3, NULL, iv, NULL, NULL, 0);
+  if (!ir || PQresultStatus(ir) != PGRES_TUPLES_OK) {
+    if (ir) PQclear(ir);
+    PQclear(PQexec(db, "ROLLBACK"));
+    return false;
+  }
+  if (PQntuples(ir) == 0) {
+    PQclear(ir);
+    PQclear(PQexec(db, "COMMIT"));
+    *applied_out = false;
+    return true;
+  }
+  PQclear(ir);
+
+  const char *sql = NULL;
+  if (!strcmp(ev_type, "user.created") || !strcmp(ev_type, "user.updated")) {
+    sql = "INSERT INTO workos.users (id, _raw, updated_at, deleted_at) "
+          "SELECT d->>'id', d, now(), NULL FROM (SELECT ($1::jsonb)->'data' d) s WHERE d IS NOT NULL AND coalesce(d->>'id', '') <> '' "
+          "ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = NULL";
+  } else if (!strcmp(ev_type, "user.deleted")) {
+    sql = "INSERT INTO workos.users (id, _raw, updated_at, deleted_at) "
+          "SELECT d->>'id', d, now(), now() FROM (SELECT ($1::jsonb)->'data' d) s WHERE d IS NOT NULL AND coalesce(d->>'id', '') <> '' "
+          "ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = coalesce(workos.users.deleted_at, now())";
+  } else if (!strcmp(ev_type, "organization.created") || !strcmp(ev_type, "organization.updated")) {
+    sql = "INSERT INTO workos.organizations (id, _raw, updated_at, deleted_at) "
+          "SELECT d->>'id', d, now(), NULL FROM (SELECT ($1::jsonb)->'data' d) s WHERE d IS NOT NULL AND coalesce(d->>'id', '') <> '' "
+          "ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = NULL";
+  } else if (!strcmp(ev_type, "organization.deleted")) {
+    sql = "INSERT INTO workos.organizations (id, _raw, updated_at, deleted_at) "
+          "SELECT d->>'id', d, now(), now() FROM (SELECT ($1::jsonb)->'data' d) s WHERE d IS NOT NULL AND coalesce(d->>'id', '') <> '' "
+          "ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = coalesce(workos.organizations.deleted_at, now())";
+  } else if (!strcmp(ev_type, "organization_membership.created") || !strcmp(ev_type, "organization_membership.updated")) {
+    sql = "INSERT INTO workos.organization_memberships (id, _raw, updated_at, deleted_at) "
+          "SELECT d->>'id', d, now(), NULL FROM (SELECT ($1::jsonb)->'data' d) s WHERE d IS NOT NULL AND coalesce(d->>'id', '') <> '' "
+          "ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = NULL";
+  } else if (!strcmp(ev_type, "organization_membership.deleted")) {
+    sql = "INSERT INTO workos.organization_memberships (id, _raw, updated_at, deleted_at) "
+          "SELECT d->>'id', d, now(), now() FROM (SELECT ($1::jsonb)->'data' d) s WHERE d IS NOT NULL AND coalesce(d->>'id', '') <> '' "
+          "ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = coalesce(workos.organization_memberships.deleted_at, now())";
+  } else if (!strcmp(ev_type, "session.created")) {
+    sql = "INSERT INTO workos.sessions (id, _raw, updated_at, deleted_at) "
+          "SELECT d->>'id', d, now(), NULL FROM (SELECT ($1::jsonb)->'data' d) s WHERE d IS NOT NULL AND coalesce(d->>'id', '') <> '' "
+          "ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = NULL";
+  } else if (!strcmp(ev_type, "session.revoked")) {
+    sql = "INSERT INTO workos.sessions (id, _raw, updated_at, deleted_at) "
+          "SELECT d->>'id', d, now(), now() FROM (SELECT ($1::jsonb)->'data' d) s WHERE d IS NOT NULL AND coalesce(d->>'id', '') <> '' "
+          "ON CONFLICT (id) DO UPDATE SET _raw = EXCLUDED._raw, updated_at = now(), deleted_at = coalesce(workos.sessions.deleted_at, now())";
+  }
+  if (sql) {
+    const char *rv[1] = {raw_json};
+    PGresult *mr = PQexecParams(db, sql, 1, NULL, rv, NULL, NULL, 0);
+    if (!mr || PQresultStatus(mr) != PGRES_COMMAND_OK) {
+      if (mr) PQclear(mr);
+      PQclear(PQexec(db, "ROLLBACK"));
+      return false;
+    }
+    PQclear(mr);
+  }
+
+  const char *av[1] = {ev_id};
+  PGresult *ar = PQexecParams(db, "UPDATE workos.events SET applied_at = now() WHERE id = $1", 1, NULL, av, NULL, NULL, 0);
+  if (!ar || PQresultStatus(ar) != PGRES_COMMAND_OK) {
+    if (ar) PQclear(ar);
+    PQclear(PQexec(db, "ROLLBACK"));
+    return false;
+  }
+  PQclear(ar);
+
+  PGresult *cm = PQexec(db, "COMMIT");
+  bool ok = cm && PQresultStatus(cm) == PGRES_COMMAND_OK;
+  if (cm) PQclear(cm);
+  if (!ok) { PQclear(PQexec(db, "ROLLBACK")); return false; }
+  *applied_out = true;
+  return true;
+}
+
 // Applies local session revocation when WorkOS notifies session.revoked or user.deleted.
 static void apply_event_side_effects(PGconn *db, const char *ev_type, const char *ev_json) {
   if (strcmp(ev_type, "session.revoked") && strcmp(ev_type, "user.deleted")) return;
@@ -1325,7 +1616,11 @@ static void apply_event_side_effects(PGconn *db, const char *ev_type, const char
     for (int i = 0; i < PQntuples(r); i++) {
       const char *acct = PQgetvalue(r, i, 0);
       const char *av[1] = {acct};
-      PQclear(PQexecParams(db, "SELECT auth.sessions_end_all($1)", 1, NULL, av, NULL, NULL, 0));
+      PQclear(PQexecParams(
+          db,
+          "WITH bump AS (UPDATE auth.accounts SET session_epoch = session_epoch + 1 WHERE id = $1) "
+          "DELETE FROM auth.sessions WHERE account = $1",
+          1, NULL, av, NULL, NULL, 0));
       auth_audit(db, acct, NULL, !strcmp(ev_type, "user.deleted") ? "workos.user_deleted" : "workos.session_revoked", "ok", NULL);
     }
   }
@@ -1349,18 +1644,22 @@ static void route_webhook(const request *q, PGconn *db, const char *body) {
   const char *v[1] = {body};
   PGresult *r = PQexecParams(
       db,
-      "SELECT coalesce(($1::jsonb)->>'id', ''), coalesce(($1::jsonb)->>'event', ''), "
-      "       workos.upsert_event(coalesce(($1::jsonb)->>'id', ''), coalesce(($1::jsonb)->>'event', ''), $1::jsonb)",
+      "SELECT coalesce(($1::jsonb)->>'id', ''), coalesce(($1::jsonb)->>'event', '')",
       1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || !PQgetvalue(r, 0, 0)[0]) {
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || !PQgetvalue(r, 0, 0)[0] || !PQgetvalue(r, 0, 1)[0]) {
     PQclear(r);
     auth_refuse(q, 400, "Malformed webhook event.");
     return;
   }
-  char ev_type[128];
+  char ev_id[128], ev_type[128];
+  snprintf(ev_id, sizeof ev_id, "%s", PQgetvalue(r, 0, 0));
   snprintf(ev_type, sizeof ev_type, "%s", PQgetvalue(r, 0, 1));
-  bool applied = !strcmp(PQgetvalue(r, 0, 2), "t");
   PQclear(r);
+  bool applied = false;
+  if (!workos_upsert_event(db, ev_id, ev_type, body, &applied)) {
+    auth_refuse(q, 400, "Malformed webhook event.");
+    return;
+  }
   if (applied) apply_event_side_effects(db, ev_type, body);
   api_json(q->fd, 200, applied ? "{\"ok\":true,\"applied\":true}" : "{\"ok\":true,\"applied\":false}");
 }
@@ -1514,11 +1813,8 @@ char *workos_poll_events(PGconn *db, const char *day) {
       const char *eraw = PQgetvalue(er, i, 2);
       if (!eid[0] || !etype[0]) continue;
       snprintf(last_id, sizeof last_id, "%s", eid);
-      const char *uv[3] = {eid, etype, eraw};
-      PGresult *ur = PQexecParams(db, "SELECT workos.upsert_event($1, $2, $3::jsonb)", 3, NULL, uv, NULL, NULL, 0);
-      bool did = PQresultStatus(ur) == PGRES_TUPLES_OK && PQntuples(ur) == 1 && !strcmp(PQgetvalue(ur, 0, 0), "t");
-      PQclear(ur);
-      if (did) {
+      bool did = false;
+      if (workos_upsert_event(db, eid, etype, eraw, &did) && did) {
         applied++;
         apply_event_side_effects(db, etype, eraw);
       }

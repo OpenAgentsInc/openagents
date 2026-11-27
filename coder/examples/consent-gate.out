@@ -1,0 +1,7 @@
+t1 send without grant: why=none sink_msgs=0
+t2-t3 grant=ok send_covered=ok sink_msgs=1
+t4 mixed=classes minimized_parts=1 redacted_send=ok sink_msgs=2
+t7-t8 wrong_person=person revoke=ok prior_sends=2 prior_bytes=86 after_revoke=revoked
+ledger: verify=ok events=7 replay=ok head=b99897b05c56ca95
+tamper verify: why=digest at_event=2
+member bypass-immune: WalletPay=true nostr_publish=true nostr_status=false

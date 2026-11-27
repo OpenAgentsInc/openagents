@@ -1,0 +1,79 @@
+// Chapter 19: Remember a fact, then revise it — OpenAgents Core memory trust &
+// governance (`openagents/core/memory.coax`) paired with the hash-chained
+// memory event log backing `coax/lib/agent/engine/memory-log.coax` &
+// `coder/tui/memory.coax` (`coax/lib/agent/engine/memory.coax`).
+#import "Basic";
+#load "../../openagents/core/memory.coax";
+#load "../../coax/lib/agent/engine/memory.coax";
+#load "../../psionic/tests/harness-memory-checks.coax";
+
+mm_st :: (s: MmStatus) -> string {
+  names := [13] string.["ok", "capacity", "shape", "reason", "source", "same", "missing", "sequence", "link", "content", "digest", "redacted", "exposed"];
+  return names[cast(int) s];
+}
+
+mm_sv :: (s: MmServe) -> string {
+  names := [7] string.["served", "missing", "forgotten", "conflict", "early", "expired", "stale"];
+  return names[cast(int) s];
+}
+
+// book:begin example
+main :: () {
+  // Part A: OpenAgents Core memory governance (`openagents/core/memory.coax`)
+  // Project settings cannot hijack autoMemoryDirectory; team memory blocks leaked secrets
+  proj_dir_ok := flawed_auto_mem_dir_source_trusted(FLAWED_SET_SRC_PROJECT);
+  user_dir_ok := flawed_auto_mem_dir_source_trusted(FLAWED_SET_SRC_USER);
+  path_safe := flawed_validate_memory_path("/home/u/.claude/projects/openagents/memory");
+  path_escape := flawed_validate_memory_path("/home/u/.ssh/../.ssh");
+  fork_edit := flawed_mem_fork_tool_allowed(FLAWED_MTOOL_EDIT, false, false, true, true);
+  fork_write_outside := flawed_mem_fork_tool_allowed(FLAWED_MTOOL_WRITE, false, true, true, true);
+  dream_verdict := flawed_dream_eval_gates(true, 24, 24, FLAWED_DREAM_SCAN_COOLDOWN_MS, 5, 5, FLAWED_DREAM_LOCK_STALE_MS, true);
+  secret_caught := flawed_team_mem_has_secret("token AKIA0000000000000000");
+  print("core memory: proj_dir=% user_dir=% path_ok=% path_escape=% fork_edit=% fork_outside=% dream_run=% secret_caught=%\n",
+    proj_dir_ok, user_dir_ok, path_safe, path_escape, fork_edit, fork_write_outside,
+    dream_verdict == FLAWED_DREAM_RUN, secret_caught);
+
+  // Part B: Hash-chained event log (`memory-log.coax` / `coder remember`, `revise`, `forget`)
+  ev: [16] MmEvent;
+  by: [512] u8;
+  fs: [16] MmFact;
+  l := [1] MmLog.[MmLog.{events = ev[..], bytes = by[..]}];
+  t := [1] MmTable.[MmTable.{facts = fs[..]}];
+  ids := MC_IDS; hd := MC_HEADS; old := MC_OLD; new := MC_NEW;
+  p := mc_passages(ids[..], hd[..], old[..]);
+  q := mc_passages(ids[..], hd[..], new[..]);
+  me := MC_ME;
+
+  // 1. Remember a cited build fact + two conflicting user editor facts
+  s1 := mm_remember(l[..], t[..], mc_cite(old[0], 0, 23), p);
+  s2 := mm_remember(l[..], t[..], mc_event("editor", MmScope.user, 1, "vim", 161, 0, 1000), p);
+  s3 := mm_remember(l[..], t[..], mc_event("editor", MmScope.user, 1, "helix", 162, 0, 1000), p);
+  lk_conflict := mm_look(t[0], "editor", MmScope.user, me, 3, p);
+  print("remember: build=% ed1=% ed2=% look_editor=%\n",
+    mm_st(s1), mm_st(s2), mm_st(s3), mm_sv(lk_conflict.serve));
+
+  // 2. Resolve conflict by explicit revision; duplicate identical revision is refused
+  s4 := mm_revise(l[..], t[..], mc_event("editor", MmScope.user, 1, "helix", 163, 0, 1000), MmReason.resolve, p);
+  s4_dup := mm_revise(l[..], t[..], mc_event("editor", MmScope.user, 1, "helix", 163, 0, 1000), MmReason.correction, p);
+  print("revise: resolve=% duplicate=%\n", mm_st(s4), mm_st(s4_dup));
+
+  // 3. Cited README changes -> old fact goes stale; revising from old bytes is refused; new bytes succeed
+  lk_stale := mm_look(t[0], "build", MmScope.project, me, 5, q);
+  s5_old := mm_revise(l[..], t[..], mc_cite(old[0], 0, 23), MmReason.update, q);
+  s5_new := mm_revise(l[..], t[..], mc_cite(new[0], 0, 30), MmReason.update, q);
+  lk_fresh := mm_look(t[0], "build", MmScope.project, me, 6, q);
+  print("citation drift: before_update=% stale_revise=% fresh_revise=% after_update=%\n",
+    mm_sv(lk_stale.serve), mm_st(s5_old), mm_st(s5_new), mm_sv(lk_fresh.serve));
+
+  // 4. Forget scrubs bytes from the log, tombstones the key, and keeps the hash chain verifiable
+  s6 := mm_forget(l[..], t[..], "editor", MmScope.user, 1, q);
+  lk_gone := mm_look(t[0], "editor", MmScope.user, me, 7, q);
+  v := mm_verify(l[0]);
+  gs: [16] MmFact;
+  u := [1] MmTable.[MmTable.{facts = gs[..]}];
+  rp := mm_replay(l[0], u[..]);
+  print("forget & replay: forget=% look_editor=% holds_vim=% holds_helix=% verify=% replay=% same=%\n",
+    mm_st(s6), mm_sv(lk_gone.serve), mc_holds(l[0], "vim"), mc_holds(l[0], "helix"),
+    mm_st(v.status), mm_st(rp.status), mc_same_table(t[0], u[0]));
+}
+// book:end example

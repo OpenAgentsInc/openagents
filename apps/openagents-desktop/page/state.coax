@@ -277,13 +277,17 @@ CpAgent :: struct {
   model_ovr: [64] u8; model_ovr_n: int;               // optional model override from Agent tool (#14096)
   wt_path: [256] u8; wt_path_n: int;                  // isolated worktree cwd when isolation=="worktree" (#14096)
   wt_branch: [96] u8; wt_branch_n: int;               // isolated worktree branch name (#14096)
+  wt_orig_head: [64] u8; wt_orig_head_n: int;         // base HEAD commit at isolated worktree creation (#14121)
+  wt_cleanup_due: bool;                               // finished background isolated subagent awaits fail-closed worktree cleanup (#14121)
   allowed_tools: [192] u8; allowed_tools_n: int;      // CSV tool allowlist (#14096)
   disallowed_tools: [192] u8; disallowed_tools_n: int;// CSV tool denylist (#14096)
   task_long_at: int; task_long_n: int;                // full prompt in CoderPage.long_buf when > CP_AGENT_TASK (#14096)
   fork_ctx_path: [256] u8; fork_ctx_path_n: int;      // FORK_AGENT cache-exact context snapshot path (#14096)
   is_background: bool; omit_claudemd: bool; read_only: bool; is_cc_agent: bool; is_fork: bool;
+  git: int;                                           // what it may do with git: 0 none, 1 commit, 2 push (CP_AGENT_GIT; #14104)
   tokens_in: int; tokens_out: int;
 }
+CP_AGENT_GIT :: [3] string.["none", "commit", "push"];
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
 CpTurn :: struct {
   head: int; tail: int; ncmds: int;   // its own commands, file reads and thoughts, oldest first: the first's and last's places in the page's calls, plus 1
@@ -551,6 +555,7 @@ CoderPage :: struct {
   lean: [1] CpLeanRh;          // Lean 4 & Riemann Hypothesis Proof Workbench (gym-lean*.coax; #13946)
   dash: [1] CpDash;            // Dashboard empty home screen showing active running chats (dashboard.coax)
   wallet: [1] CpWalletPane;    // Bitcoin Spark & read-only Nostr key pair wallet pane (walletpane.coax)
+  introspect: [1] CpIntrospect; // Universal Introspection sidebar sections & live inspector (introspect.coax; #14066)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them
@@ -722,6 +727,7 @@ cp_init :: (s: [] CoderPage) {
   cp_br_init(s);
   cp_dash_init(s);
   cp_wallet_pane_init(s);
+  cp_introspect_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {
@@ -791,7 +797,7 @@ cp_side_busy :: (s: [] CoderPage) -> bool {
   for q: 0..<s[0].nchats {
     if s[0].chats[q].busy { return true; }
   }
-  return false;
+  return cp_introspect_side_busy(s);
 }
 cp_full :: (s: [] CoderPage) -> bool { return s[0].nturns >= s[0].turns.count; }
 cp_clamp :: (s: [] CoderPage) {
