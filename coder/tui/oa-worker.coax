@@ -24,6 +24,7 @@
 #load "../../coax/lib/agent/custom-system-prompt.coax";
 #load "../../coax/lib/agent/router/decide.coax";
 #load "../../coax/lib/agent/desktop/metaverse-route.coax";
+#load "../../coax/lib/agent/desktop/capability-author.coax";
 #load "../../coax/lib/microcoder/steer.coax";
 #load "../../openagents/core/core.coax";
 #load "../../openagents/knowledge/index.coax";
@@ -2114,6 +2115,8 @@ fww_active_packs :: (cwd: string, include_coax_intel: bool) -> int {
   }
   mask := oa_member_packs_from_flags(include_coax_intel, has_wallet, has_cli, has_mv);
   if has_kb { mask |= OA_PACK_KNOWLEDGE; }
+  cap_env := fww_trim(cl_getenv("OA_CAPABILITY_TOOLS", eb[..]));
+  if cap_env != "0" && cap_env != "false" { mask |= OA_PACK_CAPABILITY; }
   return mask;
 }
 
@@ -2216,6 +2219,17 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   cs := csys_block("\n\n# ", csys_read(cspath, csbuf[..]), csblk[..]);
   if cs.count > 0 {
     n = fww_cat(out, n, cs);
+  }
+
+  // Live per-turn local Skills repertoire (#14059): newly promoted skills activate immediately next turn.
+  sk_u_b: [FS_PATH_MAX] u8; sk_w_b: [FS_PATH_MAX] u8;
+  sk_u := fww_cap_skills_dir(home, sk_u_b[..]);
+  sk_w := ifx cwd.count > 0 then fs_join(cwd, ".claude/skills", sk_w_b[..]) else "";
+  sk_p_b: [8192] u8;
+  sk_budget := flawed_skill_listing_budget(200000, 0);
+  sk_n := ce_build_skills_prompt(sk_u, sk_w, sk_budget, sk_p_b[..]);
+  if sk_n > 0 {
+    n = fww_cat(out, n, cast(string) sk_p_b[0..<sk_n]);
   }
   return n;
 }
@@ -4468,6 +4482,199 @@ fww_tool_cli :: (cwd: string, args_json: string, out_res: [] u8, is_err: [] bool
   return n;
 }
 
+// Conversational Capability Authoring helpers & member tools (#14059):
+// Always mounted in OpenAgents Core chat without DC_FLAG_CAPABILITIES gating.
+fww_cap_skills_dir :: (home: string, out: [] u8) -> string {
+  eb: [FS_PATH_MAX] u8;
+  ov := fww_trim(cl_getenv("OA_SKILLS_DIR", eb[..]));
+  if ov.count > 0 {
+    n := fww_keep(out, ov);
+    return cast(string) out[0..<n];
+  }
+  if home.count == 0 { return ""; }
+  return fs_join(home, ".claude/skills", out);
+}
+
+fww_cap_exp_dir :: (home: string, out: [] u8) -> string {
+  eb: [FS_PATH_MAX] u8;
+  ov := fww_trim(cl_getenv("OA_CAP_EXP_DIR", eb[..]));
+  if ov.count > 0 {
+    n := fww_keep(out, ov);
+    return cast(string) out[0..<n];
+  }
+  if home.count == 0 { return ""; }
+  return fs_join(home, ".openagents/capabilities/experiments", out);
+}
+
+fww_cap_staging_dir :: (home: string, out: [] u8) -> string {
+  eb: [FS_PATH_MAX] u8;
+  ov := fww_trim(cl_getenv("OA_CAP_STAGING_DIR", eb[..]));
+  if ov.count > 0 {
+    n := fww_keep(out, ov);
+    return cast(string) out[0..<n];
+  }
+  if home.count == 0 { return ""; }
+  return fs_join(home, ".openagents/capabilities/staging", out);
+}
+
+// Offline missing-capability detector (Episode 289 P9) when no System One door answered.
+// Returns capability category hint ("web_automation", "messaging_integration", "calendar_email",
+// "media_smart_home") and matched keyword in `out_kw`, or "" when covered by built-in packs.
+fww_detect_missing_capability :: (tk: string, out_kw: [] u8, out_kw_n: [] int) -> string {
+  out_kw_n[0] = 0;
+  web_kws := [6] string.["linear", "jira", "notion", "salesforce", "airtable", "asana"];
+  for i: 0..<web_kws.count {
+    if fww_contains_ci(tk, web_kws[i]) {
+      out_kw_n[0] = fww_keep(out_kw, web_kws[i]);
+      return "web_automation";
+    }
+  }
+  msg_kws := [4] string.["slack", "discord", "telegram", "whatsapp"];
+  for i: 0..<msg_kws.count {
+    if fww_contains_ci(tk, msg_kws[i]) {
+      out_kw_n[0] = fww_keep(out_kw, msg_kws[i]);
+      return "messaging_integration";
+    }
+  }
+  cal_kws := [3] string.["google calendar", "gmail", "outlook"];
+  for i: 0..<cal_kws.count {
+    if fww_contains_ci(tk, cal_kws[i]) {
+      out_kw_n[0] = fww_keep(out_kw, cal_kws[i]);
+      return "calendar_email";
+    }
+  }
+  med_kws := [3] string.["spotify", "philips hue", "homekit"];
+  for i: 0..<med_kws.count {
+    if fww_contains_ci(tk, med_kws[i]) {
+      out_kw_n[0] = fww_keep(out_kw, med_kws[i]);
+      return "media_smart_home";
+    }
+  }
+  return "";
+}
+
+fww_append_cap_author_prompt :: (dst: [] u8, at: int, missing_hint: string, is_author_pack: bool) -> int {
+  if missing_hint.count == 0 && !is_author_pack { return at; }
+  n := at;
+  if missing_hint.count > 0 {
+    n = fww_cat(dst, n, "\n\n[Missing Capability Detected: ");
+    n = fww_cat(dst, n, missing_hint);
+    n = fww_cat(dst, n, " — Capability Authoring Pack Active]");
+  } else {
+    n = fww_cat(dst, n, "\n\n[Capability Authoring Pack Active]");
+  }
+  n = fww_cat(dst, n, "\nThis request requires authoring or extending an OpenAgents local capability/skill. Follow the Episode 289 two-arm ATIF authoring loop directly in chat:\n");
+  n = fww_cat(dst, n, "1. Conduct a concise authoring interview (at most 2-3 crisp questions or confirm defaults for slug, goal, inputs, outputs, non-goals, and 1 positive + 1 held-out verification case).\n");
+  n = fww_cat(dst, n, "2. Call `CapabilityDraft` to write the candidate `SKILL.md` into staging.\n");
+  n = fww_cat(dst, n, "3. Call `CapabilityEval` with real two-arm shell checks (`pos_base`, `pos_cand`, `neg_base`, `neg_cand`) to record verified `ATIF-v1.8` logs and enforce the `#authority` promotion gate (`capability-gate.coax`).\n");
+  n = fww_cat(dst, n, "4. Render the returned `#authority` Promotion Verdict Card (including `steps_digest` and evidence path). Passing skills promote into the local Skills repertoire and activate immediately on the very next turn; failing candidates are rejected with preserved ATIF evidence.\n");
+  return n;
+}
+
+fww_tool_capability :: (cwd: string, home: string, name: string, args_json: string, out_res: [] u8, is_err: [] bool) -> int {
+  is_err[0] = false;
+  sk_u_b: [FS_PATH_MAX] u8; sk_w_b: [FS_PATH_MAX] u8;
+  sk_u := fww_cap_skills_dir(home, sk_u_b[..]);
+  sk_w := ifx cwd.count > 0 then fs_join(cwd, ".claude/skills", sk_w_b[..]) else "";
+
+  if name == "CapabilityList" {
+    n := ce_list_skills_json(sk_u, sk_w, out_res);
+    if n <= 0 { is_err[0] = true; return fww_keep(out_res, "Failed to list local skills."); }
+    return n;
+  }
+
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Invalid JSON arguments for Capability tool.");
+  }
+
+  slug_b: [96] u8;
+  sn := jv_str(d[0], jv_get(d[0], 0, "slug"), slug_b[..]);
+  slug := ifx sn > 0 then cast(string) slug_b[0..<sn] else "";
+  if !cap_valid_slug(slug) {
+    is_err[0] = true;
+    return fww_keep(out_res, "Invalid capability slug (use lowercase [a-z0-9-], 2..48 chars).");
+  }
+
+  stg_root_b: [FS_PATH_MAX] u8; stg_dir_b: [FS_PATH_MAX] u8;
+  stg_root := fww_cap_staging_dir(home, stg_root_b[..]);
+  stg_dir := fs_join(stg_root, slug, stg_dir_b[..]);
+
+  if name == "CapabilityDraft" {
+    gb: [1024] u8; ib: [1024] u8; ob: [1024] u8; ngb: [1024] u8; insb: [4096] u8;
+    gn := jv_str(d[0], jv_get(d[0], 0, "goal"), gb[..]);
+    in_n := jv_str(d[0], jv_get(d[0], 0, "inputs"), ib[..]);
+    on_n := jv_str(d[0], jv_get(d[0], 0, "outputs"), ob[..]);
+    ng_n := jv_str(d[0], jv_get(d[0], 0, "nongoals"), ngb[..]);
+    ins_n := jv_str(d[0], jv_get(d[0], 0, "instructions"), insb[..]);
+    err := ce_write_draft_ex(
+      slug,
+      ifx gn > 0 then cast(string) gb[0..<gn] else "",
+      ifx in_n > 0 then cast(string) ib[0..<in_n] else "",
+      ifx on_n > 0 then cast(string) ob[0..<on_n] else "",
+      ifx ng_n > 0 then cast(string) ngb[0..<ng_n] else "",
+      ifx ins_n > 0 then cast(string) insb[0..<ins_n] else "",
+      stg_dir
+    );
+    if err.count > 0 {
+      is_err[0] = true;
+      return fww_keep(out_res, err);
+    }
+    md_b: [FS_PATH_MAX] u8;
+    md_p := fs_join(stg_dir, "SKILL.md", md_b[..]);
+    o: [1] Jo; jo_start(o[..], out_res);
+    jo_obj(o[..]);
+    jo_key(o[..], "ok"); jo_bool(o[..], true);
+    jo_key(o[..], "slug"); jo_str(o[..], slug);
+    jo_key(o[..], "skill_md"); jo_str(o[..], md_p);
+    jo_end(o[..]);
+    return ifx !o[0].bad then o[0].n else fww_keep(out_res, "{}");
+  }
+
+  // CapabilityEval: real two-arm ATIF-v1.8 comparison + #authority promotion gate + verdict card
+  sm_b: [FS_PATH_MAX] u8;
+  sm_n := jv_str(d[0], jv_get(d[0], 0, "skill_md"), sm_b[..]);
+  sm_p := ifx sm_n > 0 then cast(string) sm_b[0..<sm_n] else fs_join(stg_dir, "SKILL.md", sm_b[..]);
+
+  pb_b: [2048] u8; pc_b: [2048] u8; nb_b: [2048] u8; nc_b: [2048] u8;
+  pbn := jv_str(d[0], jv_get(d[0], 0, "pos_base"), pb_b[..]);
+  pcn := jv_str(d[0], jv_get(d[0], 0, "pos_cand"), pc_b[..]);
+  nbn := jv_str(d[0], jv_get(d[0], 0, "neg_base"), nb_b[..]);
+  ncn := jv_str(d[0], jv_get(d[0], 0, "neg_cand"), nc_b[..]);
+  if pbn <= 0 || pcn <= 0 || nbn <= 0 || ncn <= 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "CapabilityEval requires pos_base, pos_cand, neg_base, and neg_cand commands.");
+  }
+  max_lat := jv_int(d[0], jv_get(d[0], 0, "max_latency_ms"), 0);
+  exp_b: [FS_PATH_MAX] u8;
+  exp_dir := fww_cap_exp_dir(home, exp_b[..]);
+
+  jb: [4096] u8; jn: [1] int;
+  v := ce_run_two_arm(
+    slug, sm_p,
+    cast(string) pb_b[0..<pbn], cast(string) pc_b[0..<pcn],
+    cast(string) nb_b[0..<nbn], cast(string) nc_b[0..<ncn],
+    sk_u, exp_dir, max_lat, jb[..], jn[..]
+  );
+  if v < 0 {
+    is_err[0] = true;
+    return fww_keep(out_res, "CapabilityEval failed to execute two-arm comparison (check skill_md path).");
+  }
+  json_str := cast(string) jb[0..<jn[0]];
+  card_b: [4096] u8;
+  cn := ce_format_verdict_card(json_str, card_b[..]);
+  n := 0;
+  if cn > 0 {
+    n = fww_cat(out_res, n, cast(string) card_b[0..<cn]);
+    n = fww_cat(out_res, n, "\n```json\n");
+    n = fww_cat(out_res, n, json_str);
+    n = fww_cat(out_res, n, "```\n");
+    return n;
+  }
+  return fww_keep(out_res, json_str);
+}
+
 // Shared Knowledge Base member tools (#14058):
 // - KnowledgeSearch: hybrid lexical (BM25) + dense semantic retrieval over docs/, */book/, docs/transcripts/, NIP-KB
 // - KnowledgeGet: exact cited excerpt by source_path or NIP-KB entry_id
@@ -5157,11 +5364,14 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     if r[0].nactive_pack > 0 && cast(string) r[0].active_pack[0..<r[0].nactive_pack] == "knowledge" {
       ln_sys = fww_cat(base_sys_b[..], ln_sys, "\n\n[Knowledge Pack Active] Answer questions about docs, books, transcripts, or past decisions using KnowledgeSearch (and KnowledgeGet for exact excerpts) in one fast turn with file:line citations instead of running repo-wide Grep/Bash loops.\n");
     }
-    if r[0].nmissing_cap_hint > 0 {
-      ln_sys = fww_cat(base_sys_b[..], ln_sys, "\n\n[Missing Capability Detected: ");
-      ln_sys = fww_cat(base_sys_b[..], ln_sys, cast(string) r[0].missing_cap_hint[0..<r[0].nmissing_cap_hint]);
-      ln_sys = fww_cat(base_sys_b[..], ln_sys, "] This request needs an integration not currently mounted. Offer to author a new OpenAgents capability/skill with the user.\n");
-    }
+    is_cap_pack := r[0].nactive_pack > 0 && cast(string) r[0].active_pack[0..<r[0].nactive_pack] == "capability_author";
+    mh_str := cast(string) r[0].missing_cap_hint[0..<r[0].nmissing_cap_hint];
+    ln_sys = fww_append_cap_author_prompt(base_sys_b[..], ln_sys, mh_str, is_cap_pack);
+    sk_lu_b: [FS_PATH_MAX] u8; sk_lw_b: [FS_PATH_MAX] u8; sk_lp_b: [1024] u8;
+    sk_lu := fww_cap_skills_dir(cast(string) r[0].home[0..<r[0].nhome], sk_lu_b[..]);
+    sk_lw := ifx cwd_now.count > 0 then fs_join(cwd_now, ".claude/skills", sk_lw_b[..]) else "";
+    sk_ln := ce_build_skills_prompt(sk_lu, sk_lw, 1024, sk_lp_b[..]);
+    if sk_ln > 0 { ln_sys = fww_cat(base_sys_b[..], ln_sys, cast(string) sk_lp_b[0..<sk_ln]); }
     sys = cast(string) base_sys_b[0..<ln_sys];
     max_sys := ifx r[0].ctx_recoveries >= 2 then 2048 else 4096;
     if sys.count > max_sys {
@@ -5368,6 +5578,9 @@ fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
   else if name == "KnowledgeGet" {
     n = jv_str(d[0], jv_get(d[0], 0, "target"), out);
   }
+  else if name == "CapabilityDraft" || name == "CapabilityEval" {
+    n = jv_str(d[0], jv_get(d[0], 0, "slug"), out);
+  }
   else {
     n = jv_str(d[0], jv_get(d[0], 0, "file_path"), out);
     if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "file"), out); }
@@ -5385,7 +5598,7 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   is_err := [1] bool.[false];
 
   if r[0].subagent_read_only {
-    if name == "Edit" || name == "Write" || name == "CoaxReplace" || name == "WalletPay" || name == "EnterWorktree" || name == "ExitWorktree" {
+    if name == "Edit" || name == "Write" || name == "CoaxReplace" || name == "WalletPay" || name == "EnterWorktree" || name == "ExitWorktree" || name == "CapabilityDraft" || name == "CapabilityEval" {
       r[0].acc[0].tools[idx].done = true;
       r[0].acc[0].tools[idx].is_error = true;
       r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Tool denied: this subagent is strictly read-only.");
@@ -5494,6 +5707,9 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   else if oa_member_is_knowledge_tool(name) {
     rn = fww_tool_knowledge(cwd, name, args, b[0].kb_idx[..], r[0].acc[0].tools[idx].res[..], is_err[..]);
+  }
+  else if oa_member_is_capability_tool(name) {
+    rn = fww_tool_capability(cwd, cast(string) r[0].home[0..<r[0].nhome], name, args, r[0].acc[0].tools[idx].res[..], is_err[..]);
   }
   else if name == "TaskStop" {
     rn = fww_tool_task_stop(r, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
@@ -6684,6 +6900,103 @@ tool_main :: () -> int #export_c #effects(all) {
     return 0;
   }
 
+  if fww_flag_asked("--selftest-capability") {
+    tmp_b: [FS_PATH_MAX] u8;
+    tmp := fs_temp("oa-cap-e2e-", tmp_b[..]);
+    if tmp.count == 0 { print("FAIL: fs_temp failed\n"); return 1; }
+    defer { _ = fs_remove(tmp); }
+    cwd_b: [FS_PATH_MAX] u8;
+    cwd := fs_cwd(cwd_b[..]);
+
+    // 1. Missing capability detection on "turn my meeting notes into Linear tickets"
+    kw_b: [64] u8; kw_n := [1] int.[0];
+    hint := fww_detect_missing_capability("turn my meeting notes into Linear tickets", kw_b[..], kw_n[..]);
+    if hint != "web_automation" || cast(string) kw_b[0..<kw_n[0]] != "linear" {
+      print("FAIL: missing capability detection got hint=% kw=%\n", hint, cast(string) kw_b[0..<kw_n[0]]);
+      return 1;
+    }
+    sku_b: [FS_PATH_MAX] u8; sku := fs_join(tmp, ".claude/skills", sku_b[..]);
+    if ce_skills_dir_covers(sku, "linear") {
+      print("FAIL: linear should not be covered before promotion\n");
+      return 1;
+    }
+    // Verify interview protocol prompt is emitted for missing capability
+    ip_b: [4096] u8;
+    ip_n := fww_append_cap_author_prompt(ip_b[..], 0, hint, true);
+    if !fww_contains_ci(cast(string) ip_b[0..<ip_n], "CapabilityDraft") || !fww_contains_ci(cast(string) ip_b[0..<ip_n], "CapabilityEval") {
+      print("FAIL: interview prompt missing CapabilityDraft/CapabilityEval\n");
+      return 1;
+    }
+    print("OK 1/5 missing capability detected (hint=% kw=%)\n", hint, cast(string) kw_b[0..<kw_n[0]]);
+
+    // 2. Draft candidate SKILL.md via CapabilityDraft tool (using tmp as home -> isolated skills & staging)
+    res_b: [16384] u8;
+    is_err := [1] bool.[false];
+    n_dr := fww_tool_capability(cwd, tmp, "CapabilityDraft",
+      "{\"slug\":\"linear-meeting-tickets\",\"goal\":\"Turn meeting notes into structured Linear tickets\",\"inputs\":\"raw meeting notes markdown\",\"outputs\":\"Linear issue JSON payloads\",\"nongoals\":\"never delete existing issues\"}",
+      res_b[..], is_err[..]);
+    if is_err[0] || !fww_contains_ci(cast(string) res_b[0..<n_dr], "linear-meeting-tickets/SKILL.md") {
+      print("FAIL: CapabilityDraft: %\n", cast(string) res_b[0..<n_dr]);
+      return 1;
+    }
+    print("OK 2/5 CapabilityDraft wrote staged SKILL.md\n");
+
+    // 3. Real two-arm ATIF-v1.8 comparison & #authority promotion via CapabilityEval
+    n_ev := fww_tool_capability(cwd, tmp, "CapabilityEval",
+      "{\"slug\":\"linear-meeting-tickets\",\"pos_base\":\"exit 1\",\"pos_cand\":\"printf '{\\\"title\\\":\\\"Ship Phase 4B\\\"}' | grep -q title\",\"neg_base\":\"exit 0\",\"neg_cand\":\"exit 0\"}",
+      res_b[..], is_err[..]);
+    ev_s := cast(string) res_b[0..<n_ev];
+    if is_err[0] || !fww_contains_ci(ev_s, "**PROMOTED**") || !fww_contains_ci(ev_s, "ATIF-v1.8 Digest") || !fww_contains_ci(ev_s, "\"atif_verified\":true") {
+      print("FAIL: CapabilityEval promotion: %\n", ev_s);
+      return 1;
+    }
+    print("OK 3/5 CapabilityEval two-arm ATIF-v1.8 verified & PROMOTED\n");
+
+    // 4. Immediate next-turn activation: skill is now in prompt, CapabilityList, and covers "linear"
+    if !ce_skills_dir_covers(sku, "linear") {
+      print("FAIL: promoted skill does not cover linear on next turn\n");
+      return 1;
+    }
+    c_cfg: [1] FwConfig;
+    fww_load_config(c_cfg[..]);
+    sys_b: [65536] u8;
+    sys_n := fww_build_system_prompt(c_cfg[..], tmp, tmp, sys_b[..]);
+    if !fww_contains_ci(cast(string) sys_b[0..<sys_n], "Active Local Skills") || !fww_contains_ci(cast(string) sys_b[0..<sys_n], "linear-meeting-tickets") {
+      print("FAIL: next-turn system prompt did not immediately activate linear-meeting-tickets\n");
+      return 1;
+    }
+    n_ls := fww_tool_capability(cwd, tmp, "CapabilityList", "{}", res_b[..], is_err[..]);
+    if is_err[0] || !fww_contains_ci(cast(string) res_b[0..<n_ls], "linear-meeting-tickets") || !fww_contains_ci(cast(string) res_b[0..<n_ls], "\"atif_verified\":true") {
+      print("FAIL: CapabilityList: %\n", cast(string) res_b[0..<n_ls]);
+      return 1;
+    }
+    print("OK 4/5 Next turn immediately sees linear-meeting-tickets in system prompt & CapabilityList\n");
+
+    // 5. Failing/regressed candidate is REJECTED by #authority gate with preserved ATIF digest
+    _ = fww_tool_capability(cwd, tmp, "CapabilityDraft",
+      "{\"slug\":\"linear-broken\",\"goal\":\"Broken candidate\"}", res_b[..], is_err[..]);
+    n_rej := fww_tool_capability(cwd, tmp, "CapabilityEval",
+      "{\"slug\":\"linear-broken\",\"pos_base\":\"exit 0\",\"pos_cand\":\"exit 0\",\"neg_base\":\"exit 0\",\"neg_cand\":\"exit 1\"}",
+      res_b[..], is_err[..]);
+    rej_s := cast(string) res_b[0..<n_rej];
+    if is_err[0] || !fww_contains_ci(rej_s, "**REJECTED**") || !fww_contains_ci(rej_s, "\"promoted\":false") || !fww_contains_ci(rej_s, "\"atif_verified\":true") {
+      print("FAIL: CapabilityEval rejection: %\n", rej_s);
+      return 1;
+    }
+    bad_p_b: [FS_PATH_MAX] u8;
+    if fs_exists(fs_join(sku, "linear-broken", bad_p_b[..])) {
+      print("FAIL: rejected skill was erroneously installed\n");
+      return 1;
+    }
+    exp_p_b: [FS_PATH_MAX] u8;
+    if !fs_exists(fs_join(tmp, ".openagents/capabilities/experiments/linear-broken-rejected.atif.jsonl", exp_p_b[..])) {
+      print("FAIL: rejected ATIF log missing\n");
+      return 1;
+    }
+    print("OK 5/5 Regressed candidate REJECTED with preserved ATIF-v1.8 digest\n");
+    return 0;
+  }
+
   homebuf: [4096] u8;
   home := cl_getenv("CODER_HOME", homebuf[..]);
   if home.count == 0 { home = cl_getenv("HOME", homebuf[..]); }
@@ -6885,6 +7198,19 @@ tool_main :: () -> int #export_c #effects(all) {
         run[0].nactive_tier = fww_keep(run[0].active_tier[..], plan[0].compute_tier);
         if plan[0].missing_capability_hint.count > 0 {
           run[0].nmissing_cap_hint = fww_keep(run[0].missing_cap_hint[..], plan[0].missing_capability_hint);
+        } else if !plan[0].continue_active {
+          kw_b: [64] u8; kw_n := [1] int.[0];
+          off_hint := fww_detect_missing_capability(tk, kw_b[..], kw_n[..]);
+          if off_hint.count > 0 {
+            sku_b: [FS_PATH_MAX] u8; skw_b: [FS_PATH_MAX] u8;
+            sku := fww_cap_skills_dir(home, sku_b[..]);
+            skw := ifx cd.count > 0 then fs_join(cd, ".claude/skills", skw_b[..]) else "";
+            kw_s := cast(string) kw_b[0..<kw_n[0]];
+            if !ce_skills_dir_covers(sku, kw_s) && !ce_skills_dir_covers(skw, kw_s) {
+              run[0].nmissing_cap_hint = fww_keep(run[0].missing_cap_hint[..], off_hint);
+              run[0].nactive_pack = fww_keep(run[0].active_pack[..], "capability_author");
+            }
+          }
         }
         if plan[0].compute_tier == "local_inkling" && local_ready {
           picked_model = "oa:local";
@@ -7014,11 +7340,8 @@ tool_main :: () -> int #export_c #effects(all) {
     if run[0].nactive_pack > 0 && cast(string) run[0].active_pack[0..<run[0].nactive_pack] == "knowledge" {
       run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n[Knowledge Pack Active] Answer questions about docs, books, transcripts, or past decisions using KnowledgeSearch (and KnowledgeGet for exact excerpts) in one fast turn with file:line citations instead of running repo-wide Grep/Bash loops.\n");
     }
-    if run[0].nmissing_cap_hint > 0 {
-      run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n[Missing Capability Detected: ");
-      run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].missing_cap_hint[0..<run[0].nmissing_cap_hint]);
-      run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "] This request needs an integration not currently mounted. Offer to author a new OpenAgents capability/skill with the user.\n");
-    }
+    is_cap_p := run[0].nactive_pack > 0 && cast(string) run[0].active_pack[0..<run[0].nactive_pack] == "capability_author";
+    run[0].nsys = fww_append_cap_author_prompt(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].missing_cap_hint[0..<run[0].nmissing_cap_hint], is_cap_p);
     if auth[0].backend != FLAWED_BE_LOCAL && cfg[0].auto_compact && hist[0].nmsgs >= 6 {
       est_tok := fww_estimate_prompt_tokens(hist[..], run[0].nsys, false, false);
       if cp_cache_status(hist[0].last_cloud_turn_ms, proc_now_ms(), 0, hist[0].last_cached_tok, est_tok, true) == CP_CACHE_EXPIRED_COMPACT {
@@ -7937,14 +8260,22 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_tool_target("GameBuilder", "{\"action\":\"build\",\"target\":\"scrappers-arena/level-1\"}", tb[..]) == "build scrappers-arena/level-1";
   #assert fww_tool_target("KnowledgeSearch", "{\"query\":\"episode 289\"}", tb[..]) == "episode 289";
   #assert fww_tool_target("KnowledgeGet", "{\"target\":\"docs.transcripts.289\"}", tb[..]) == "docs.transcripts.289";
+  #assert fww_tool_target("CapabilityDraft", "{\"slug\":\"linear-tickets\",\"goal\":\"x\"}", tb[..]) == "linear-tickets";
+  #assert fww_tool_target("CapabilityEval", "{\"slug\":\"linear-tickets\",\"pos_base\":\"exit 1\"}", tb[..]) == "linear-tickets";
 
-  packs_all := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE | OA_PACK_KNOWLEDGE;
+  kw_b: [64] u8; kw_n := [1] int.[0];
+  #assert fww_detect_missing_capability("turn my meeting notes into Linear tickets", kw_b[..], kw_n[..]) == "web_automation" && cast(string) kw_b[0..<kw_n[0]] == "linear";
+  #assert fww_detect_missing_capability("post release notes to Slack", kw_b[..], kw_n[..]) == "messaging_integration" && cast(string) kw_b[0..<kw_n[0]] == "slack";
+  #assert fww_detect_missing_capability("fix bug in policy.coax", kw_b[..], kw_n[..]) == "";
+
+  packs_all := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE | OA_PACK_KNOWLEDGE | OA_PACK_CAPABILITY;
   mp_n := fww_build_gemini_body_packs(cfg[..], h_code[..], "high", full_sys, false, packs_all, b_code[..]);
   #assert mp_n > 0;
   mp_s := cast(string) b_code[0..<mp_n];
   #assert fww_contains_ci(mp_s, "WalletStatus") && fww_contains_ci(mp_s, "WalletPay");
   #assert fww_contains_ci(mp_s, "OpenAgentsCli") && fww_contains_ci(mp_s, "MetaverseRoute") && fww_contains_ci(mp_s, "GameBuilder");
   #assert fww_contains_ci(mp_s, "KnowledgeSearch") && fww_contains_ci(mp_s, "KnowledgeGet");
+  #assert fww_contains_ci(mp_s, "CapabilityDraft") && fww_contains_ci(mp_s, "CapabilityEval") && fww_contains_ci(mp_s, "CapabilityList");
 
   mr_out: [4096] u8;
   mr_err := [1] bool.[false];

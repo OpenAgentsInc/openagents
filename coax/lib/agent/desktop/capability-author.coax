@@ -1,0 +1,544 @@
+// Local Capability Authoring, Two-Arm ATIF-v1.8 Eval Runner & Live Skills Repertoire (#13896, #14059).
+//
+// Shared pure-Coax library loaded by both `capability-eval.coax` (CLI) and `coder/tui/oa-worker.coax`
+// (conversational `capability_author` pack in OpenAgents Core chat — no feature-flag gate):
+//   - `ce_write_draft` / `ce_write_draft_ex`: writes structured SKILL.md draft (goal, inputs,
+//     outputs, non-goals, optional usage instructions) into staging.
+//   - `ce_run_two_arm`: executes real baseline vs. candidate commands via /bin/sh, measures real
+//     candidate latency via `proc_now_ms()`, records & verifies canonical `ATIF-v1.8` logs and
+//     SHA-256 `steps_digest` (`coax/lib/nostr/atif/log.coax`), enforces `#authority`
+//     `capability-gate.coax` (`cap_admit_promotion`), promotes passing capabilities into
+//     `<skills_dir>/<slug>/{SKILL.md, eval.atif.jsonl, evidence.json}`, or preserves rejected
+//     evidence `<exp_dir>/<slug>-rejected.{json, atif.jsonl}` with verified ATIF digest.
+//   - `ce_format_verdict_card`: renders the `#authority` Markdown promotion verdict card for chat.
+//   - `ce_list_skills_json`, `ce_build_skills_prompt`, `ce_skills_cover_text`: live per-turn
+//     scanner of promoted local Skills (`~/.claude/skills/` + workspace `.claude/skills/`) so
+//     promoted capabilities become immediately usable on the very next turn with zero restart.
+//
+//   coax/bin/coax test coax/lib/agent/desktop/capability-author.coax --library
+#load "capability-gate.coax";
+#load "../../nostr/atif/log.coax";
+#load "../../sys/fs.coax";
+#load "../../sys/proc.coax";
+
+CE_BUF :: 131072;
+CE_LINE :: 16384;
+
+ce_append :: (dst: [] u8, used: int, src: string) -> int {
+  if used < 0 || used + src.count > dst.count { return -1; }
+  for i: 0..<src.count { dst[used + i] = src[i]; }
+  return used + src.count;
+}
+
+ce_append_int :: (dst: [] u8, used: int, v: int) -> int {
+  if used < 0 { return -1; }
+  b: [32] u8;
+  n := 0;
+  x := v;
+  neg := false;
+  if x < 0 { neg = true; x = -x; }
+  if x == 0 { b[0] = '0'; n = 1; }
+  while x > 0 { b[n] = cast(u8) ('0' + (x % 10)); n += 1; x /= 10; }
+  u := used;
+  if neg { u = ce_append(dst, u, "-"); }
+  for i: 0..<n {
+    if u >= dst.count { return -1; }
+    dst[u] = b[n - 1 - i];
+    u += 1;
+  }
+  return u;
+}
+
+ce_append_json_str :: (dst: [] u8, used: int, s: string) -> int {
+  u := ce_append(dst, used, "\"");
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '"' { u = ce_append(dst, u, "\\\""); }
+    else if c == '\\' { u = ce_append(dst, u, "\\\\"); }
+    else if c == '\n' { u = ce_append(dst, u, "\\n"); }
+    else if c == '\r' { u = ce_append(dst, u, "\\r"); }
+    else if c == '\t' { u = ce_append(dst, u, "\\t"); }
+    else if c < 32 { u = ce_append(dst, u, " "); }
+    else {
+      if u < 0 || u >= dst.count { return -1; }
+      dst[u] = c;
+      u += 1;
+    }
+  }
+  return ce_append(dst, u, "\"");
+}
+
+ce_parse_int :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  v := 0;
+  for i: 0..<s.count {
+    if s[i] < '0' || s[i] > '9' { return 0; }
+    v = v * 10 + cast(int) (s[i] - '0');
+  }
+  return v;
+}
+
+ce_lower :: (c: u8) -> u8 {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+ce_contains_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  for i: 0..<(hay.count - needle.count + 1) {
+    ok := true;
+    for j: 0..<needle.count {
+      if ce_lower(hay[i + j]) != ce_lower(needle[j]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+ce_starts :: (s: string, pre: string) -> bool {
+  if s.count < pre.count { return false; }
+  for i: 0..<pre.count { if s[i] != pre[i] { return false; } }
+  return true;
+}
+
+ce_trim :: (s: string) -> string {
+  a := 0;
+  b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+// Parse frontmatter `name:` and `description:` from a SKILL.md text.
+ce_parse_skill_meta :: (md: string, out_name: [] u8, out_name_n: [] int, out_desc: [] u8, out_desc_n: [] int) {
+  out_name_n[0] = 0;
+  out_desc_n[0] = 0;
+  if !ce_starts(md, "---\n") && !ce_starts(md, "---\r\n") { return; }
+  i := 0;
+  while i < md.count && md[i] != '\n' { i += 1; }
+  if i < md.count { i += 1; }
+  while i < md.count {
+    ls := i;
+    while i < md.count && md[i] != '\n' { i += 1; }
+    line := ce_trim(cast(string) md[ls..<i]);
+    if i < md.count { i += 1; }
+    if line == "---" { break; }
+    if ce_starts(line, "name:") && out_name_n[0] == 0 {
+      v := ce_trim(cast(string) line[5..<line.count]);
+      n := ifx v.count < out_name.count then v.count else out_name.count;
+      for k: 0..<n { out_name[k] = v[k]; }
+      out_name_n[0] = n;
+    } else if ce_starts(line, "description:") && out_desc_n[0] == 0 {
+      v := ce_trim(cast(string) line[12..<line.count]);
+      n := ifx v.count < out_desc.count then v.count else out_desc.count;
+      for k: 0..<n { out_desc[k] = v[k]; }
+      out_desc_n[0] = n;
+    }
+  }
+}
+
+ce_run_sh :: (cmd: string, out_buf: [] u8, out_n: [] int) -> int {
+  argv := [3] string.["/bin/sh", "-c", cmd];
+  ebuf: [512] u8;
+  r := proc_run(argv[..], 30000, out_buf, ebuf[..]);
+  out_n[0] = r.out_n;
+  if r.started != 0 || r.timed_out { return -1; }
+  return r.status;
+}
+
+ce_write_draft_ex :: (slug: string, goal: string, inputs: string, outputs: string, nongoals: string, instructions: string, out_dir: string) -> string {
+  if !cap_valid_slug(slug) { return "invalid capability slug (use lowercase [a-z0-9-], 2..48 chars)"; }
+  _ = fs_mkdir_all(out_dir);
+  buf: [CE_BUF] u8;
+  n := 0;
+  n = ce_append(buf[..], n, "---\nname: ");
+  n = ce_append(buf[..], n, slug);
+  n = ce_append(buf[..], n, "\ndescription: ");
+  n = ce_append(buf[..], n, ifx goal.count > 0 then goal else "Local authored capability");
+  n = ce_append(buf[..], n, "\n---\n\n# ");
+  n = ce_append(buf[..], n, slug);
+  n = ce_append(buf[..], n, "\n\n## Goal\n");
+  n = ce_append(buf[..], n, ifx goal.count > 0 then goal else "(unspecified)");
+  n = ce_append(buf[..], n, "\n\n## Inputs\n");
+  n = ce_append(buf[..], n, ifx inputs.count > 0 then inputs else "(unspecified)");
+  n = ce_append(buf[..], n, "\n\n## Outputs\n");
+  n = ce_append(buf[..], n, ifx outputs.count > 0 then outputs else "(unspecified)");
+  n = ce_append(buf[..], n, "\n\n## Non-Goals & Constraints\n");
+  n = ce_append(buf[..], n, ifx nongoals.count > 0 then nongoals else "(none)");
+  if instructions.count > 0 {
+    n = ce_append(buf[..], n, "\n\n## Instructions\n");
+    n = ce_append(buf[..], n, instructions);
+  }
+  n = ce_append(buf[..], n, "\n");
+  if n < 0 { return "SKILL.md buffer overflow"; }
+
+  pb: [FS_PATH_MAX] u8;
+  skill_path := fs_join(out_dir, "SKILL.md", pb[..]);
+  if !fs_replace_durable(skill_path, cast(string) buf[0..<n]) { return "failed to write SKILL.md"; }
+  return "";
+}
+
+ce_write_draft :: (slug: string, goal: string, inputs: string, outputs: string, nongoals: string, out_dir: string) -> string {
+  return ce_write_draft_ex(slug, goal, inputs, outputs, nongoals, "", out_dir);
+}
+
+ce_run_two_arm :: (
+  slug: string,
+  skill_md_path: string,
+  pos_base: string,
+  pos_cand: string,
+  neg_base: string,
+  neg_cand: string,
+  skills_dir: string,
+  exp_dir: string,
+  max_latency_ms: int,
+  out_json: [] u8,
+  out_json_n: [] int
+) -> int {
+  if !cap_valid_slug(slug) { return -1; }
+  skill_buf: [65536] u8;
+  skill_n := fs_read(skill_md_path, skill_buf[..]);
+  if skill_n <= 0 { return -2; }
+
+  ob: [4096] u8;
+  on: [1] int;
+  pos_base_rc := ce_run_sh(pos_base, ob[..], on[..]);
+  t_cand0 := proc_now_ms();
+  pos_cand_rc := ce_run_sh(pos_cand, ob[..], on[..]);
+  t_cand1 := proc_now_ms();
+  neg_base_rc := ce_run_sh(neg_base, ob[..], on[..]);
+  t_cand2 := proc_now_ms();
+  neg_cand_rc := ce_run_sh(neg_cand, ob[..], on[..]);
+  t_cand3 := proc_now_ms();
+
+  cand_lat_ms := (t_cand1 - t_cand0) + (t_cand3 - t_cand2);
+  if cand_lat_ms < 1 { cand_lat_ms = 1; }
+
+  base_pos_ok := ifx pos_base_rc == 0 then 1 else 0;
+  cand_pos_ok := ifx pos_cand_rc == 0 then 1 else 0;
+  base_neg_ok := ifx neg_base_rc == 0 then 1 else 0;
+  cand_neg_ok := ifx neg_cand_rc == 0 then 1 else 0;
+
+  // Build canonical ATIF-v1.8 trace of all four two-arm executions.
+  log_buf: [CE_BUF] u8;
+  used := 0;
+  line_b: [CE_LINE] u8;
+  step_b: [CE_LINE] u8;
+  scratch: [CE_LINE] u8;
+
+  hdr := AtifSessionHeader.{
+    trajectory_id = slug,
+    session_id = slug,
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "capability-eval",
+    model_name = "two-arm-eval",
+    cwd = ".",
+    git_branch = "",
+    source_harness = "openagents-desktop",
+    created_at = "2026-11-26T00:00:00Z"
+  };
+  sn := atif_write_session_line(hdr, line_b[..]);
+  if sn <= 0 { return -3; }
+  used = ce_append(log_buf[..], used, cast(string) line_b[0..<sn]);
+
+  hasher: [1] AtifStepsHasher;
+  atif_steps_hash_init(hasher[..]);
+
+  labels := [4] string.["arm=baseline case=positive", "arm=candidate case=positive", "arm=baseline case=heldout", "arm=candidate case=heldout"];
+  rcs := [4] int.[pos_base_rc, pos_cand_rc, neg_base_rc, neg_cand_rc];
+  msg_b: [256] u8;
+  for k: 0..<4 {
+    mn := 0;
+    mn = ce_append(msg_b[..], mn, labels[k]);
+    mn = ce_append(msg_b[..], mn, " exit=");
+    mn = ce_append_int(msg_b[..], mn, rcs[k]);
+    st := AtifStep.{
+      step_id = k + 1,
+      source = ATIF_SOURCE_AGENT,
+      message = cast(string) msg_b[0..<mn],
+      model_name = "two-arm-eval"
+    };
+    jn := atif_write_step_json(st, step_b[..]);
+    if jn <= 0 { return -4; }
+    if atif_steps_hash_step(hasher[..], cast(string) step_b[0..<jn], scratch[..]) != ATIF_DIGEST_OK { return -5; }
+    ln := atif_write_step_line(cast(string) step_b[0..<jn], line_b[..]);
+    used = ce_append(log_buf[..], used, cast(string) line_b[0..<ln]);
+  }
+  en := atif_write_end_line("2026-11-26T00:00:01Z", ATIF_STATE_ENDED, line_b[..]);
+  used = ce_append(log_buf[..], used, cast(string) line_b[0..<en]);
+  if used < 0 { return -6; }
+
+  digest: [64] u8;
+  if atif_steps_hash_final(hasher[..], digest[..]) != ATIF_DIGEST_OK { return -7; }
+  digest_str := cast(string) digest[0..<64];
+  log_str := cast(string) log_buf[0..<used];
+  vsum := atif_verify_log(log_str, digest_str);
+
+  summary := CapEvalSummary.{
+    total_cases = 2,
+    heldout_cases = 1,
+    baseline_passed = base_pos_ok + base_neg_ok,
+    candidate_passed = cand_pos_ok + cand_neg_ok,
+    baseline_heldout_passed = base_neg_ok,
+    candidate_heldout_passed = cand_neg_ok,
+    candidate_cost_micros = 0,
+    max_cost_micros = 0,
+    candidate_latency_ms = cand_lat_ms,
+    max_latency_ms = max_latency_ms,
+    atif_verified = vsum.ok && vsum.step_count == 4
+  };
+  verdict_code := cap_admit_promotion(summary);
+  verdict := cap_verdict_label(verdict_code);
+  promoted := verdict_code == CAP_PASS;
+
+  dest_b: [FS_PATH_MAX] u8;
+  dest_path := "";
+  if promoted {
+    sd_b: [FS_PATH_MAX] u8;
+    sdir := fs_join(skills_dir, slug, sd_b[..]);
+    _ = fs_mkdir_all(sdir);
+    sm_b: [FS_PATH_MAX] u8;
+    sm_p := fs_join(sdir, "SKILL.md", sm_b[..]);
+    if !fs_replace_durable(sm_p, cast(string) skill_buf[0..<skill_n]) { return -8; }
+    at_b: [FS_PATH_MAX] u8;
+    at_p := fs_join(sdir, "eval.atif.jsonl", at_b[..]);
+    if !fs_replace_durable(at_p, log_str) { return -9; }
+    dest_path = fs_join(sdir, "evidence.json", dest_b[..]);
+  } else {
+    _ = fs_mkdir_all(exp_dir);
+    af_b: [128] u8; af_n := ce_append(af_b[..], 0, slug); af_n = ce_append(af_b[..], af_n, "-rejected.atif.jsonl");
+    at_b: [FS_PATH_MAX] u8;
+    at_p := fs_join(exp_dir, cast(string) af_b[0..<af_n], at_b[..]);
+    if !fs_replace_durable(at_p, log_str) { return -10; }
+    ef_b: [128] u8; ef_n := ce_append(ef_b[..], 0, slug); ef_n = ce_append(ef_b[..], ef_n, "-rejected.json");
+    dest_path = fs_join(exp_dir, cast(string) ef_b[0..<ef_n], dest_b[..]);
+  }
+
+  jn := 0;
+  jn = ce_append(out_json, jn, "{\"slug\":");
+  jn = ce_append_json_str(out_json, jn, slug);
+  jn = ce_append(out_json, jn, ",\"promoted\":");
+  jn = ce_append(out_json, jn, ifx promoted then "true" else "false");
+  jn = ce_append(out_json, jn, ",\"verdict_code\":");
+  jn = ce_append_int(out_json, jn, verdict_code);
+  jn = ce_append(out_json, jn, ",\"verdict\":");
+  jn = ce_append_json_str(out_json, jn, verdict);
+  jn = ce_append(out_json, jn, ",\"baseline_passed\":");
+  jn = ce_append_int(out_json, jn, summary.baseline_passed);
+  jn = ce_append(out_json, jn, ",\"candidate_passed\":");
+  jn = ce_append_int(out_json, jn, summary.candidate_passed);
+  jn = ce_append(out_json, jn, ",\"baseline_heldout_passed\":");
+  jn = ce_append_int(out_json, jn, summary.baseline_heldout_passed);
+  jn = ce_append(out_json, jn, ",\"candidate_heldout_passed\":");
+  jn = ce_append_int(out_json, jn, summary.candidate_heldout_passed);
+  jn = ce_append(out_json, jn, ",\"candidate_latency_ms\":");
+  jn = ce_append_int(out_json, jn, summary.candidate_latency_ms);
+  jn = ce_append(out_json, jn, ",\"atif_verified\":");
+  jn = ce_append(out_json, jn, ifx summary.atif_verified then "true" else "false");
+  jn = ce_append(out_json, jn, ",\"steps_digest\":");
+  jn = ce_append_json_str(out_json, jn, digest_str);
+  jn = ce_append(out_json, jn, ",\"evidence_path\":");
+  jn = ce_append_json_str(out_json, jn, dest_path);
+  jn = ce_append(out_json, jn, "}\n");
+  if jn < 0 { return -11; }
+  _ = fs_replace_durable(dest_path, cast(string) out_json[0..<jn]);
+  out_json_n[0] = jn;
+  return verdict_code;
+}
+
+// Render a crisp #authority Promotion Verdict Card (Markdown) from `ce_run_two_arm` JSON output.
+ce_format_verdict_card :: (verdict_json: string, out: [] u8) -> int {
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], verdict_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return 0; }
+  slug_b: [64] u8; verd_b: [256] u8; dig_b: [96] u8; ev_b: [1024] u8;
+  sn := jv_str(d[0], jv_get(d[0], 0, "slug"), slug_b[..]);
+  vn := jv_str(d[0], jv_get(d[0], 0, "verdict"), verd_b[..]);
+  dn := jv_str(d[0], jv_get(d[0], 0, "steps_digest"), dig_b[..]);
+  en := jv_str(d[0], jv_get(d[0], 0, "evidence_path"), ev_b[..]);
+  promoted := jv_bool(d[0], jv_get(d[0], 0, "promoted"));
+  atif_ok := jv_bool(d[0], jv_get(d[0], 0, "atif_verified"));
+  bp := jv_int(d[0], jv_get(d[0], 0, "baseline_passed"), 0);
+  cp := jv_int(d[0], jv_get(d[0], 0, "candidate_passed"), 0);
+  bh := jv_int(d[0], jv_get(d[0], 0, "baseline_heldout_passed"), 0);
+  ch := jv_int(d[0], jv_get(d[0], 0, "candidate_heldout_passed"), 0);
+  lat := jv_int(d[0], jv_get(d[0], 0, "candidate_latency_ms"), 0);
+
+  n := 0;
+  n = ce_append(out, n, "### Capability Promotion Verdict (`#authority`)\n");
+  n = ce_append(out, n, "- **Skill:** `");
+  if sn > 0 { n = ce_append(out, n, cast(string) slug_b[0..<sn]); }
+  n = ce_append(out, n, "`\n- **Status:** ");
+  n = ce_append(out, n, ifx promoted then "**PROMOTED** (active immediately on the next turn)" else "**REJECTED** (not installed; evidence preserved)");
+  n = ce_append(out, n, "\n- **Gate Verdict:** ");
+  if vn > 0 { n = ce_append(out, n, cast(string) verd_b[0..<vn]); }
+  n = ce_append(out, n, "\n- **Two-Arm Score:** baseline ");
+  n = ce_append_int(out, n, bp);
+  n = ce_append(out, n, "/2 -> candidate ");
+  n = ce_append_int(out, n, cp);
+  n = ce_append(out, n, "/2 (held-out: baseline ");
+  n = ce_append_int(out, n, bh);
+  n = ce_append(out, n, "/1 -> candidate ");
+  n = ce_append_int(out, n, ch);
+  n = ce_append(out, n, "/1)\n- **Candidate Latency:** ");
+  n = ce_append_int(out, n, lat);
+  n = ce_append(out, n, " ms\n- **ATIF-v1.8 Digest:** `");
+  if dn > 0 { n = ce_append(out, n, cast(string) dig_b[0..<dn]); }
+  n = ce_append(out, n, ifx atif_ok then "` (verified)\n- **Evidence:** `" else "` (UNVERIFIED)\n- **Evidence:** `");
+  if en > 0 { n = ce_append(out, n, cast(string) ev_b[0..<en]); }
+  n = ce_append(out, n, "`\n");
+  return ifx n < 0 then 0 else n;
+}
+
+// Scan one skills root (`<dir>/<slug>/SKILL.md`) and append entries to a JSON writer or prompt.
+ce_list_skills_dir_json :: (dir: string, source_label: string, o: [] Jo, count_out: [] int) {
+  if dir.count == 0 || fs_kind(dir) != FS_DIR { return; }
+  fl: [1] FsList;
+  nf := fs_list(dir, fl[..]);
+  if nf <= 0 { return; }
+  sub_b: [FS_PATH_MAX] u8;
+  md_b: [FS_PATH_MAX] u8;
+  ev_b: [FS_PATH_MAX] u8;
+  raw: [8192] u8;
+  nb: [64] u8; nn: [1] int;
+  db: [256] u8; dn: [1] int;
+  for i: 0..<nf {
+    slug := fs_entry(fl[..], i);
+    if !cap_valid_slug(slug) { continue; }
+    sdir := fs_join(dir, slug, sub_b[..]);
+    if fs_kind(sdir) != FS_DIR { continue; }
+    md_p := fs_join(sdir, "SKILL.md", md_b[..]);
+    if fs_kind(md_p) != FS_FILE { continue; }
+    nr := fs_read(md_p, raw[..]);
+    if nr <= 0 { continue; }
+    ce_parse_skill_meta(cast(string) raw[0..<nr], nb[..], nn[..], db[..], dn[..]);
+    ev_p := fs_join(sdir, "eval.atif.jsonl", ev_b[..]);
+    has_atif := fs_kind(ev_p) == FS_FILE;
+
+    jo_obj(o);
+    jo_key(o, "slug"); jo_str(o, slug);
+    jo_key(o, "name"); jo_str(o, ifx nn[0] > 0 then cast(string) nb[0..<nn[0]] else slug);
+    jo_key(o, "description"); jo_str(o, ifx dn[0] > 0 then cast(string) db[0..<dn[0]] else "");
+    jo_key(o, "source"); jo_str(o, source_label);
+    jo_key(o, "path"); jo_str(o, md_p);
+    jo_key(o, "atif_verified"); jo_bool(o, has_atif);
+    jo_end(o);
+    count_out[0] += 1;
+  }
+}
+
+ce_list_skills_json :: (user_skills_dir: string, workspace_skills_dir: string, out: [] u8) -> int {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "skills");
+  jo_arr(o[..]);
+  cnt := [1] int.[0];
+  ce_list_skills_dir_json(user_skills_dir, "user", o[..], cnt[..]);
+  if workspace_skills_dir.count > 0 && workspace_skills_dir != user_skills_dir {
+    ce_list_skills_dir_json(workspace_skills_dir, "workspace", o[..], cnt[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "count"); jo_int(o[..], cnt[0]);
+  jo_end(o[..]);
+  return ifx o[0].bad then 0 else o[0].n;
+}
+
+ce_append_skills_dir_prompt :: (dir: string, out: [] u8, at: [] int, cap: int, count_out: [] int) {
+  if dir.count == 0 || fs_kind(dir) != FS_DIR { return; }
+  fl: [1] FsList;
+  nf := fs_list(dir, fl[..]);
+  if nf <= 0 { return; }
+  sub_b: [FS_PATH_MAX] u8;
+  md_b: [FS_PATH_MAX] u8;
+  raw: [8192] u8;
+  nb: [64] u8; nn: [1] int;
+  db: [256] u8; dn: [1] int;
+  for i: 0..<nf {
+    if at[0] + 120 >= cap { break; }
+    slug := fs_entry(fl[..], i);
+    if !cap_valid_slug(slug) { continue; }
+    sdir := fs_join(dir, slug, sub_b[..]);
+    if fs_kind(sdir) != FS_DIR { continue; }
+    md_p := fs_join(sdir, "SKILL.md", md_b[..]);
+    if fs_kind(md_p) != FS_FILE { continue; }
+    nr := fs_read(md_p, raw[..]);
+    if nr <= 0 { continue; }
+    ce_parse_skill_meta(cast(string) raw[0..<nr], nb[..], nn[..], db[..], dn[..]);
+    if count_out[0] == 0 {
+      n := ce_append(out, at[0], "\n\n# Active Local Skills\nRead a skill's SKILL.md via Read when its task matches:\n");
+      if n < 0 { return; }
+      at[0] = n;
+    }
+    u := at[0];
+    u = ce_append(out, u, "- `");
+    u = ce_append(out, u, ifx nn[0] > 0 then cast(string) nb[0..<nn[0]] else slug);
+    u = ce_append(out, u, "` (");
+    u = ce_append(out, u, md_p);
+    u = ce_append(out, u, ")");
+    if dn[0] > 0 {
+      u = ce_append(out, u, ": ");
+      dlim := ifx dn[0] > 140 then 140 else dn[0];
+      u = ce_append(out, u, cast(string) db[0..<dlim]);
+    }
+    u = ce_append(out, u, "\n");
+    if u < 0 || u > cap { break; }
+    at[0] = u;
+    count_out[0] += 1;
+  }
+}
+
+// Build live per-turn local skills listing bounded by `budget` (respecting `flawed_skill_listing_budget`).
+ce_build_skills_prompt :: (user_skills_dir: string, workspace_skills_dir: string, budget: int, out: [] u8) -> int {
+  cap := ifx budget > 0 && budget < out.count then budget else out.count;
+  at := [1] int.[0];
+  cnt := [1] int.[0];
+  ce_append_skills_dir_prompt(user_skills_dir, out, at[..], cap, cnt[..]);
+  if workspace_skills_dir.count > 0 && workspace_skills_dir != user_skills_dir {
+    ce_append_skills_dir_prompt(workspace_skills_dir, out, at[..], cap, cnt[..]);
+  }
+  return at[0];
+}
+
+// Check if any installed skill in `dir` already covers a keyword (e.g. "linear", "slack").
+ce_skills_dir_covers :: (dir: string, keyword: string) -> bool {
+  if dir.count == 0 || keyword.count == 0 || fs_kind(dir) != FS_DIR { return false; }
+  fl: [1] FsList;
+  nf := fs_list(dir, fl[..]);
+  if nf <= 0 { return false; }
+  sub_b: [FS_PATH_MAX] u8;
+  md_b: [FS_PATH_MAX] u8;
+  raw: [4096] u8;
+  for i: 0..<nf {
+    slug := fs_entry(fl[..], i);
+    if !cap_valid_slug(slug) { continue; }
+    sdir := fs_join(dir, slug, sub_b[..]);
+    if fs_kind(sdir) != FS_DIR { continue; }
+    md_p := fs_join(sdir, "SKILL.md", md_b[..]);
+    if fs_kind(md_p) != FS_FILE { continue; }
+    if ce_contains_ci(slug, keyword) { return true; }
+    nr := fs_read(md_p, raw[..]);
+    if nr > 0 && ce_contains_ci(cast(string) raw[0..<nr], keyword) { return true; }
+  }
+  return false;
+}
+
+#test "capability-author: SKILL.md frontmatter parser and #authority verdict card renderer" {
+  md := "---\nname: linear-meeting-tickets\ndescription: Turn meeting notes into Linear tickets\n---\n\n# linear-meeting-tickets\n";
+  nb: [64] u8; nn: [1] int;
+  db: [256] u8; dn: [1] int;
+  ce_parse_skill_meta(md, nb[..], nn[..], db[..], dn[..]);
+  #assert cast(string) nb[0..<nn[0]] == "linear-meeting-tickets";
+  #assert cast(string) db[0..<dn[0]] == "Turn meeting notes into Linear tickets";
+
+  vjson := "{\"slug\":\"linear-meeting-tickets\",\"promoted\":true,\"verdict_code\":0,\"verdict\":\"PROMOTED: candidate passed two-arm eval and held-out gate\",\"baseline_passed\":1,\"candidate_passed\":2,\"baseline_heldout_passed\":1,\"candidate_heldout_passed\":1,\"candidate_latency_ms\":42,\"atif_verified\":true,\"steps_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"evidence_path\":\"/skills/linear-meeting-tickets/evidence.json\"}";
+  card: [2048] u8;
+  cn := ce_format_verdict_card(vjson, card[..]);
+  cs := cast(string) card[0..<cn];
+  #assert cn > 0 && ce_contains_ci(cs, "PROMOTED") && ce_contains_ci(cs, "linear-meeting-tickets");
+  #assert ce_contains_ci(cs, "0123456789abcdef") && ce_contains_ci(cs, "42 ms") && ce_contains_ci(cs, "next turn");
+
+  rjson := "{\"slug\":\"broken-skill\",\"promoted\":false,\"verdict_code\":3,\"verdict\":\"REJECTED: candidate regressed below baseline\",\"baseline_passed\":2,\"candidate_passed\":1,\"baseline_heldout_passed\":1,\"candidate_heldout_passed\":0,\"candidate_latency_ms\":19,\"atif_verified\":true,\"steps_digest\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"evidence_path\":\"/exp/broken-skill-rejected.json\"}";
+  rn := ce_format_verdict_card(rjson, card[..]);
+  rs := cast(string) card[0..<rn];
+  #assert rn > 0 && ce_contains_ci(rs, "REJECTED") && ce_contains_ci(rs, "broken-skill") && ce_contains_ci(rs, "fedcba9876543210");
+}
