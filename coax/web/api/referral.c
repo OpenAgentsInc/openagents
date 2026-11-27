@@ -1366,7 +1366,13 @@ bool referral_on_github_linked(PGconn *db, const char *acct, const char *gh_id, 
   PGresult *cm = PQexec(db, "COMMIT");
   bool ok = cm && PQresultStatus(cm) == PGRES_COMMAND_OK;
   if (cm) PQclear(cm);
-  if (!ok) { PQclear(PQexec(db, "ROLLBACK")); return false; }
+  if (!ok) {
+    fprintf(stderr, "referral_gh_link_err acct=%s gh_id=%s stage=commit err=%.200s\n", acct, gh_id, PQerrorMessage(db));
+    PQclear(PQexec(db, "ROLLBACK"));
+    return false;
+  }
+  fprintf(stderr, "referral_gh_link acct=%s gh_id=%s already_claimed=%d denied=%d act=%d newly_micros=%lld\n",
+          acct, gh_id, already_claimed ? 1 : 0, denied ? 1 : 0, act, newly);
   if (newly_granted_out) *newly_granted_out = newly;
   if (already_claimed_out) *already_claimed_out = already_claimed;
   return true;
