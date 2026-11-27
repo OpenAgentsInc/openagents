@@ -15,12 +15,16 @@
 #load "../kit/settings.coax";
 #load "../kit/work.coax";
 #load "../kit/listing.coax";
+#load "../kit/apps-sdk.coax";
 #load "../backend/dom.coax";
 
 WG_INBOX :: 4096;      // a press's or a field's text from the host
 WG_DRAFT :: 1024;
 WG_SENT :: 4;          // messages the composer has sent, kept
-WG_CSS :: 40960;
+WG_CSS :: 65536;
+WG_AS_SNIPPET :: "#load \"components/kit/apps-sdk.coax\";\n\n_ = as_card_open(t, \"card\", \"Cloud\", \"Live\");\n_ = as_button(t, \"run\", \"Start\", AS_PRIMARY,\n  AS_SOLID, AS_MD, true, IC_PLAY, false, false);\nas_card_end(t);";
+WG_AS_TARGETS :: [3] string.["Cloud", "Sandbox", "Local"];
+WG_AS_TARGET_DESC :: [3] string.["Managed OpenAgents Cloud runners with instant SSE sync.", "Isolated GCE container VM with GitHub repo workspace.", "Your enrolled Mac or Linux workstation over local daemon."];
 WG_CLICK :: 1; WG_INPUT :: 2; WG_SUBMIT :: 3;
 WG_ROWS :: [3] string.["Zero-base the chat", "Why the runner ran out of memory", "Port the frames to SVG"];
 WG_ROW_META :: [3] string.["Opus 5.5 · Nov 11 21:40", "Sonnet 5.5 · Nov 11 14:02", "Haiku 5.5 · Nov 10 09:15"];
@@ -34,6 +38,15 @@ WG_CODE :: "dm_flush :: (d: [] Dom, t: [] Tree, sets: [] AfSettings) -> int {\n 
 
 WebPage :: struct {
   ready: bool; time: f32; dirty: bool; animating: bool;
+  as_presses: int;
+  as_pill: bool;
+  as_busy: bool;
+  as_alert_gone: bool;
+  as_invalid: bool;
+  as_sw: [2] bool;
+  as_chk: [2] bool;
+  as_seg: int;
+  as_copied: bool;
   presses: int;
   tool_open: bool;
   work: [4] bool;                    // the work log's run, group, refused row and its Show all are open
@@ -63,16 +76,255 @@ wg_section :: (t: [] Tree, id: string, title: string, note: string) -> int {
   return i;
 }
 
+wg_as_section :: (t: [] Tree, id: string, title: string, sub: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+  i := tr_open(t, id, TG_SECTION, "as-sec");
+  _ = tr_open(t, tr_cat(ida[..], id, ".hd"), TG_DIV, "as-sec-head");
+  _ = tr_leaf(t, tr_cat(idb[..], id, ".h"), TG_H2, "as-h2", title);
+  if sub.count > 0 { _ = tr_leaf(t, tr_cat(idc[..], id, ".s"), TG_P, "as-sub", sub); }
+  tr_close(t);
+  return i;
+}
+
+wg_as_swatch :: (t: [] Tree, id: string, chip_cls: string, name: string, value: string) {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+  _ = tr_open(t, id, TG_DIV, "as-swatch");
+  _ = tr_open(t, tr_cat(ida[..], id, ".c"), TG_DIV, chip_cls);
+  tr_close(t);
+  _ = tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_SPAN, "as-swatch-n", name);
+  _ = tr_leaf(t, tr_cat(idc[..], id, ".v"), TG_SPAN, "as-swatch-v", value);
+  tr_close(t);
+}
+
+wg_as_showcase :: (s: [] WebPage) {
+  t := s[0].tree[..];
+  buf: [UI_ID] u8; buf2: [UI_ID] u8;
+  pill := s[0].as_pill;
+  busy := s[0].as_busy;
+
+  _ = tr_open(t, "as.root", TG_DIV, "as-root");
+
+  // Hero
+  _ = tr_open(t, "as.hero", TG_HEADER, "as-hero");
+  _ = tr_open(t, "as.hero.top", TG_DIV, "as-hero-top");
+  _ = tr_open(t, "as.hero.badges", TG_DIV, "as-row");
+  _ = as_badge(t, "as.hero.b0", "Dark Mode", AS_DISCOVERY, AS_SOFT, AS_MD, true, false);
+  _ = as_badge(t, "as.hero.b1", "Coax DOM Kit", AS_INFO, AS_SOFT, AS_MD, true, false);
+  _ = as_badge(t, "as.hero.b2", "755 SVG Icons", AS_SUCCESS, AS_SOFT, AS_MD, true, true);
+  tr_close(t);
+  _ = tr_open(t, "as.hero.links", TG_DIV, "as-row");
+  _ = as_link(t, "as.hero.mono", "Mono Frames ↓", "#mono-frames", false);
+  _ = as_link(t, "as.hero.gpu", "GPU + motion →", "/components-gpu", false);
+  tr_close(t);
+  tr_close(t);
+  _ = tr_leaf(t, "as.h1", TG_H1, "as-h1", "Apps SDK UI · Coax Components");
+  _ = tr_leaf(t, "as.lede", TG_P, "as-lede", "Dark-mode primitives powering OpenAgents Web (components/skin/apps-sdk.coax and components/kit/apps-sdk.coax). Compiled Coax WebAssembly renders real semantic DOM with zero WebGPU overhead.");
+  tr_close(t);
+
+  // 1. Buttons & Icon Buttons
+  _ = wg_as_section(t, "as.buttons", "Buttons", "Solid, soft, outline, and ghost variants across semantic colors, sizes, pills, icon-only, and loading states.");
+  _ = tr_open(t, "as.buttons.bar", TG_DIV, "as-demo-bar");
+  _ = tr_leaf(t, "as.btn.count", TG_SPAN, "as-sub", tr_cat(buf2[..], tr_join(buf[..], "Interactive clicks: ", s[0].as_presses), ifx pill then " · Pill ON" else " · Rounded"));
+  _ = tr_open(t, "as.buttons.toggles", TG_DIV, "as-row");
+  _ = as_button(t, "as.btn.pill", ifx pill then "Pill: On" else "Pill: Off", AS_SECONDARY, AS_OUTLINE, AS_SM, pill, IC_SPARKLES, false, false);
+  _ = as_button(t, "as.btn.busy", ifx busy then "Stop loading" else "Test loading", AS_INFO, AS_SOFT, AS_SM, pill, IC_BOLT, false, false);
+  tr_close(t);
+  tr_close(t);
+
+  _ = tr_open(t, "as.buttons.solid", TG_DIV, "as-row");
+  _ = as_button(t, "as.btn.primary", "Start session", AS_PRIMARY, AS_SOLID, AS_MD, pill, IC_PLAY, false, busy);
+  _ = as_button(t, "as.btn.secondary", "New project", AS_SECONDARY, AS_SOLID, AS_MD, pill, IC_PLUS, false, false);
+  _ = as_button(t, "as.btn.info", "Connect GitHub", AS_INFO, AS_SOLID, AS_MD, pill, IC_LINK, false, false);
+  _ = as_button(t, "as.btn.success", "Deploy live", AS_SUCCESS, AS_SOLID, AS_MD, pill, IC_CHECK, false, false);
+  _ = as_button(t, "as.btn.warning", "Retry", AS_WARNING, AS_SOLID, AS_MD, pill, IC_WARNING, false, false);
+  _ = as_button(t, "as.btn.danger", "Delete", AS_DANGER, AS_SOLID, AS_MD, pill, IC_TRASH, false, false);
+  _ = as_button(t, "as.btn.discovery", "Upgrade", AS_DISCOVERY, AS_SOLID, AS_MD, pill, IC_SPARKLES, false, false);
+  tr_close(t);
+
+  _ = tr_open(t, "as.buttons.soft", TG_DIV, "as-row");
+  _ = as_button(t, "as.btn.soft.pri", "Soft primary", AS_PRIMARY, AS_SOFT, AS_MD, pill, -1, false, false);
+  _ = as_button(t, "as.btn.soft.info", "Soft info", AS_INFO, AS_SOFT, AS_MD, pill, IC_INFO, false, false);
+  _ = as_button(t, "as.btn.soft.ok", "Soft success", AS_SUCCESS, AS_SOFT, AS_MD, pill, IC_CHECK_CIRCLE, false, false);
+  _ = as_button(t, "as.btn.soft.err", "Soft danger", AS_DANGER, AS_SOFT, AS_MD, pill, IC_ERROR, false, false);
+  _ = as_button(t, "as.btn.out.pri", "Outline", AS_PRIMARY, AS_OUTLINE, AS_MD, pill, -1, false, false);
+  _ = as_button(t, "as.btn.out.info", "Outline info", AS_INFO, AS_OUTLINE, AS_MD, pill, -1, false, false);
+  _ = as_button(t, "as.btn.ghost", "Ghost", AS_SECONDARY, AS_GHOST, AS_MD, pill, IC_SETTINGS, false, false);
+  _ = as_button(t, "as.btn.off", "Disabled", AS_PRIMARY, AS_SOLID, AS_MD, pill, -1, true, false);
+  tr_close(t);
+
+  _ = tr_open(t, "as.buttons.sizes", TG_DIV, "as-row");
+  _ = as_button(t, "as.btn.sm", "Small", AS_SECONDARY, AS_OUTLINE, AS_SM, pill, -1, false, false);
+  _ = as_button(t, "as.btn.md", "Medium", AS_SECONDARY, AS_OUTLINE, AS_MD, pill, -1, false, false);
+  _ = as_button(t, "as.btn.lg", "Large", AS_SECONDARY, AS_OUTLINE, AS_LG, pill, -1, false, false);
+  _ = as_button(t, "as.btn.xl", "Extra large", AS_PRIMARY, AS_SOLID, AS_XL, pill, IC_ARROW_RIGHT, false, false);
+  _ = as_icon_button(t, "as.ib.copy", IC_COPY, "Copy", AS_SECONDARY, AS_OUTLINE, AS_MD, pill, false);
+  _ = as_icon_button(t, "as.ib.search", IC_SEARCH, "Search", AS_SECONDARY, AS_SOFT, AS_MD, pill, false);
+  _ = as_icon_button(t, "as.ib.set", IC_SETTINGS, "Settings", AS_SECONDARY, AS_GHOST, AS_MD, pill, false);
+  _ = as_icon_button(t, "as.ib.del", IC_TRASH, "Delete", AS_DANGER, AS_SOFT, AS_MD, pill, false);
+  tr_close(t);
+  tr_close(t);
+
+  // 2. Badges & Avatars
+  _ = wg_as_section(t, "as.badges", "Badges & Avatars", "Compact status indicators and user/agent presence avatars.");
+  _ = tr_open(t, "as.badges.grid", TG_DIV, "as-grid2");
+  _ = as_card_open(t, "as.badges.card", "Badges", "Soft · Solid · Outline · Status dot");
+  _ = tr_open(t, "as.badges.r1", TG_DIV, "as-row");
+  _ = as_badge(t, "as.bg.live", "Connected", AS_SUCCESS, AS_SOFT, AS_MD, true, true);
+  _ = as_badge(t, "as.bg.sync", "Syncing", AS_INFO, AS_SOFT, AS_MD, true, true);
+  _ = as_badge(t, "as.bg.warn", "Sandbox idle", AS_WARNING, AS_SOFT, AS_MD, true, true);
+  _ = as_badge(t, "as.bg.caut", "Rate limit", AS_CAUTION, AS_SOFT, AS_MD, false, false);
+  _ = as_badge(t, "as.bg.err", "Offline", AS_DANGER, AS_SOFT, AS_MD, true, true);
+  _ = as_badge(t, "as.bg.disc", "v1.0.0", AS_DISCOVERY, AS_SOFT, AS_MD, true, false);
+  tr_close(t);
+  _ = tr_open(t, "as.badges.r2", TG_DIV, "as-row");
+  _ = as_badge(t, "as.bg.s0", "Primary", AS_PRIMARY, AS_SOLID, AS_SM, false, false);
+  _ = as_badge(t, "as.bg.s1", "Cloud", AS_INFO, AS_SOLID, AS_SM, false, false);
+  _ = as_badge(t, "as.bg.s2", "Paid", AS_SUCCESS, AS_SOLID, AS_SM, false, false);
+  _ = as_badge(t, "as.bg.o0", "Outline", AS_SECONDARY, AS_OUTLINE, AS_MD, false, false);
+  _ = as_badge(t, "as.bg.o1", "Promo", AS_DISCOVERY, AS_OUTLINE, AS_MD, true, false);
+  tr_close(t);
+  as_card_end(t);
+
+  _ = as_card_open(t, "as.avatars.card", "Avatars & Presence", "Sizes · Shapes · Stacked group");
+  _ = tr_open(t, "as.av.r1", TG_DIV, "as-row");
+  _ = as_avatar(t, "as.av.sm", "OA", AS_PRIMARY, AS_SOLID, AS_SM, false, false);
+  _ = as_avatar(t, "as.av.md", "CD", AS_INFO, AS_SOFT, AS_MD, false, true);
+  _ = as_avatar(t, "as.av.lg", "AG", AS_DISCOVERY, AS_SOFT, AS_LG, false, true);
+  _ = as_avatar(t, "as.av.sq", "VM", AS_SUCCESS, AS_SOFT, AS_LG, true, false);
+  _ = as_avatar_group_open(t, "as.av.grp");
+  _ = as_avatar(t, "as.av.g0", "CD", AS_INFO, AS_SOLID, AS_MD, false, false);
+  _ = as_avatar(t, "as.av.g1", "OA", AS_DISCOVERY, AS_SOLID, AS_MD, false, false);
+  _ = as_avatar(t, "as.av.g2", "WK", AS_WARNING, AS_SOFT, AS_MD, false, false);
+  _ = as_avatar(t, "as.av.g3", "+4", AS_SECONDARY, AS_SOFT, AS_MD, false, false);
+  as_avatar_group_end(t);
+  tr_close(t);
+  as_card_end(t);
+  tr_close(t);
+  tr_close(t);
+
+  // 3. Alerts
+  _ = wg_as_section(t, "as.alerts", "Alerts", "Semantic feedback banners with accessible alert semantics and actions.");
+  _ = tr_open(t, "as.alerts.col", TG_DIV, "as-col");
+  if !s[0].as_alert_gone {
+    _ = as_alert_open(t, "as.al.info", "Cloud sandbox ready", "GCE container runner is warmed and syncing with your GitHub workspace.", AS_INFO, AS_SOFT, IC_INFO);
+    _ = tr_open(t, "as.al.info.act", TG_DIV, "as-alert-act");
+    _ = as_button(t, "as.alert.dismiss", "Dismiss", AS_INFO, AS_GHOST, AS_SM, false, IC_X_CROSSED, false, false);
+    tr_close(t);
+    as_alert_end(t);
+  } else {
+    _ = tr_open(t, "as.al.rest.row", TG_DIV, "as-row");
+    _ = tr_leaf(t, "as.al.rest.msg", TG_SPAN, "as-sub", "Info alert dismissed.");
+    _ = as_button(t, "as.alert.restore", "Restore alert", AS_SECONDARY, AS_OUTLINE, AS_SM, false, -1, false, false);
+    tr_close(t);
+  }
+  _ = as_alert_open(t, "as.al.ok", "Referral credit unlocked", "$10.00 promotional credit applied after your first qualifying paid top-up.", AS_SUCCESS, AS_SOFT, IC_CHECK_CIRCLE);
+  as_alert_end(t);
+  _ = as_alert_open(t, "as.al.warn", "Approaching daily spend limit", "You have used 85% of your configured Cloud sandbox allowance.", AS_WARNING, AS_SOFT, IC_WARNING);
+  as_alert_end(t);
+  _ = as_alert_open(t, "as.al.err", "Session token expired", "Sign in again with your passkey or email code to resume syncing.", AS_DANGER, AS_SOFT, IC_ERROR);
+  as_alert_end(t);
+  tr_close(t);
+  tr_close(t);
+
+  // 4. Forms & Selection Controls
+  _ = wg_as_section(t, "as.forms", "Forms & Selection Controls", "Real browser inputs, validation states, switches, checkboxes, and segmented controls.");
+  _ = tr_open(t, "as.forms.grid", TG_DIV, "as-grid2");
+
+  _ = as_card_open(t, "as.form.card", "Inputs & Textarea", "Outline · Soft · Pill · Validation");
+  _ = as_field_open(t, "as.f.search", "Repository filter");
+  _ = as_input(t, "as.in.search", "Search repositories or threads…", "search", AS_OUTLINE, AS_LG, true, IC_SEARCH, false, false);
+  as_field_end(t, "as.f.search", "Matches GitHub repos linked via WorkOS Pipes.", false);
+
+  _ = as_field_open(t, "as.f.email", "Invite email");
+  _ = as_input(t, "as.in.email", "teammate@openagents.com", "email", AS_OUTLINE, AS_LG, false, IC_MAIL, s[0].as_invalid, false);
+  as_field_end(t, "as.f.email", ifx s[0].as_invalid then "Enter a valid work or personal email address." else "They receive $10 promo credit after their first paid top-up.", s[0].as_invalid);
+
+  _ = as_field_open(t, "as.f.notes", "System instructions");
+  _ = as_textarea(t, "as.ta.notes", "Describe repository conventions, build targets, or verification commands…", "3", AS_SOFT, false, false);
+  as_field_end(t, "as.f.notes", "", false);
+
+  _ = tr_open(t, "as.form.acts", TG_DIV, "as-row");
+  _ = as_button(t, "as.form.invalid", ifx s[0].as_invalid then "Clear error" else "Toggle validation error", AS_DANGER, AS_SOFT, AS_SM, false, -1, false, false);
+  tr_close(t);
+  as_card_end(t);
+
+  _ = as_card_open(t, "as.sel.card", "Selection Controls", "Switch · Checkbox · Segmented");
+  _ = as_switch(t, "as.sw.0", "Auto-sync across Web, iOS, and Desktop", "Stream thread deltas in real time over SSE.", s[0].as_sw[0], false);
+  _ = as_switch(t, "as.sw.1", "Auto-start Cloud sandbox on repo attach", "Provision a fresh container VM when a repo is picked.", s[0].as_sw[1], false);
+  _ = as_divider(t, "as.sel.div1");
+  _ = as_checkbox(t, "as.chk.0", "Include verification screenshots in handoff", "Attach headless capture artifacts automatically.", s[0].as_chk[0], false);
+  _ = as_checkbox(t, "as.chk.1", "Require explicit approval before git push", "Pause and prompt before pushing to origin/main.", s[0].as_chk[1], false);
+  _ = as_divider(t, "as.sel.div2");
+  _ = tr_leaf(t, "as.seg.lbl", TG_SPAN, "as-label", "Execution target");
+  _ = as_seg_open(t, "as.seg", "Execution target", AS_MD, true);
+  targets := WG_AS_TARGETS;
+  ticons := [3] int.[IC_GLOBE, IC_SHIELD_CHECK, IC_TERMINAL];
+  for k: 0..<3 { _ = as_seg_item(t, tr_join(buf[..], "as.seg.", k), targets[k], ticons[k], k == s[0].as_seg); }
+  as_seg_end(t);
+  descs := WG_AS_TARGET_DESC;
+  _ = tr_leaf(t, "as.seg.desc", TG_P, "as-sub", descs[s[0].as_seg]);
+  as_card_end(t);
+
+  tr_close(t);
+  tr_close(t);
+
+  // 5. Surfaces, Streaming & Empty State
+  _ = wg_as_section(t, "as.surfaces", "Surfaces, Streaming & Code", "Elevated cards, spinner/shimmer indicators, links, copyable code blocks, and empty states.");
+  _ = tr_open(t, "as.surf.grid", TG_DIV, "as-grid2");
+
+  _ = as_card_open(t, "as.stream.card", "Live Agent Feedback", "Spinner · ShimmerText · TextLink");
+  _ = tr_open(t, "as.stream.row", TG_DIV, "as-row");
+  _ = as_spinner(t, "as.sp.sm", false);
+  _ = as_shimmer(t, "as.sh.0", "Compiling Coax component tree and syncing workspace…");
+  tr_close(t);
+  _ = tr_open(t, "as.stream.links", TG_DIV, "as-row");
+  _ = as_link(t, "as.lk.books", "OpenAgents Books", "/books", false);
+  _ = as_link(t, "as.lk.chat", "Open Cloud Chat", "/chat", true);
+  tr_close(t);
+  _ = as_code(t, "as.code", "coax", WG_AS_SNIPPET, s[0].as_copied);
+  as_card_end(t);
+
+  _ = as_empty_open(t, "as.empty", IC_FOLDER, "No cloud sandboxes running", "Pick a GitHub repository or start a session to spin up an isolated workspace container.");
+  _ = as_button(t, "as.empty.cta", "Create workspace", AS_PRIMARY, AS_SOLID, AS_MD, true, IC_PLUS, false, false);
+  as_empty_end(t);
+
+  tr_close(t);
+  tr_close(t);
+
+  // 6. Dark-Mode Token Swatches
+  _ = wg_as_section(t, "as.tokens", "Dark-Mode Design Tokens", "Obsidian surface ladder and WCAG AA semantic colors from components/skin/apps-sdk.coax.");
+  _ = tr_open(t, "as.swatches", TG_DIV, "as-swatches");
+  wg_as_swatch(t, "as.sw.s0", "as-swatch-chip as-sw-surface", "Surface", "#0d0d0d");
+  wg_as_swatch(t, "as.sw.s1", "as-swatch-chip as-sw-surf2", "Secondary", "#161616");
+  wg_as_swatch(t, "as.sw.s2", "as-swatch-chip as-sw-elev", "Elevated", "#1c1c1c");
+  wg_as_swatch(t, "as.sw.s3", "as-swatch-chip as-sw-elev2", "Elevated 2", "#282828");
+  wg_as_swatch(t, "as.sw.t0", "as-swatch-chip as-sw-text", "Text", "#ffffff");
+  wg_as_swatch(t, "as.sw.t1", "as-swatch-chip as-sw-text2", "Text Muted", "#afafaf");
+  wg_as_swatch(t, "as.sw.c0", "as-swatch-chip as-sw-info", "Info", "#0285ff");
+  wg_as_swatch(t, "as.sw.c1", "as-swatch-chip as-sw-success", "Success", "#00a240");
+  wg_as_swatch(t, "as.sw.c2", "as-swatch-chip as-sw-warning", "Warning", "#e25507");
+  wg_as_swatch(t, "as.sw.c3", "as-swatch-chip as-sw-danger", "Danger", "#e02e2a");
+  wg_as_swatch(t, "as.sw.c4", "as-swatch-chip as-sw-discovery", "Discovery", "#924ff7");
+  tr_close(t);
+  tr_close(t);
+
+  tr_close(t); // as.root
+}
+
 wg_build :: (s: [] WebPage) {
   t := s[0].tree[..]; u := s[0].ui[..];
   buf: [UI_ID] u8; buf2: [UI_ID] u8;
   tr_begin(t);
-  page := tr_open(t, "page", TG_MAIN, "page");
+  page := tr_open(t, "page", TG_MAIN, "as-page");
+
+  wg_as_showcase(s);
+
+  _ = tr_open(t, "mono-frames", TG_DIV, "as-legacy-wrap");
 
   top := tr_open(t, "top", TG_DIV, "col");
-  hd := k_header(t, u, "title", "Components");
+  hd := k_header(t, u, "title", "Mono Frames (Legacy)");
   tr_close(t);
-  lede := tr_leaf(t, "lede", TG_P, "lede", "The components the OpenAgents chat is being rebuilt from: a small set, each a frame around content, in black, white and grey. The browser draws them, so the text here is real text: select it, search it, zoom it, have it read aloud.");
+  lede := tr_leaf(t, "lede", TG_P, "lede", "The earlier monochrome ARWES framed set (components/kit/frames.coax + components/skin/mono.coax), kept live below alongside the new Apps SDK UI kit.");
   bar := tr_open(t, "top.bar", TG_DIV, "rowf");
   rp := k_button(t, u, "replay", "Replay", BS_PLAIN);
   gpu:=k_go(t,"gallery.gpu","GPU + motion →","/components-gpu");
@@ -312,7 +564,8 @@ wg_build :: (s: [] WebPage) {
   tr_close(t);
   tr_close(t);
 
-  tr_close(t);
+  tr_close(t); // mono-frames
+  tr_close(t); // page
 }
 
 wg_id_is :: (id: string, part: string) -> bool { return id.count >= part.count && cast(string) id[0..<part.count] == part; }
@@ -362,6 +615,22 @@ wg_click :: (s: [] WebPage, id: string) {
   else if id == "st.side.sw" { s[0].switched = !s[0].switched; }
   else if id == "dock.sw.0" { s[0].lit[0] = !s[0].lit[0]; }
   else if id == "dock.sw.1" { s[0].lit[1] = !s[0].lit[1]; }
+  else if id == "as.btn.pill" { s[0].as_pill = !s[0].as_pill; }
+  else if id == "as.btn.busy" { s[0].as_busy = !s[0].as_busy; }
+  else if id == "as.btn.primary" || id == "as.btn.secondary" || id == "as.btn.info" || id == "as.btn.success" || id == "as.btn.warning" || id == "as.btn.danger" || id == "as.btn.discovery" || id == "as.empty.cta" { s[0].as_presses += 1; }
+  else if id == "as.alert.dismiss" { s[0].as_alert_gone = true; }
+  else if id == "as.alert.restore" { s[0].as_alert_gone = false; }
+  else if id == "as.form.invalid" { s[0].as_invalid = !s[0].as_invalid; }
+  else if id == "as.sw.0" { s[0].as_sw[0] = !s[0].as_sw[0]; }
+  else if id == "as.sw.1" { s[0].as_sw[1] = !s[0].as_sw[1]; }
+  else if id == "as.chk.0" { s[0].as_chk[0] = !s[0].as_chk[0]; }
+  else if id == "as.chk.1" { s[0].as_chk[1] = !s[0].as_chk[1]; }
+  else if wg_index(id, "as.seg.") >= 0 && wg_index(id, "as.seg.") < 3 { s[0].as_seg = wg_index(id, "as.seg."); }
+  else if id == "as.code.copy" {
+    s[0].as_copied = true;
+    s[0].clip_n = 0;
+    for c: WG_AS_SNIPPET { if s[0].clip_n < WG_DRAFT { s[0].clip[s[0].clip_n] = c; s[0].clip_n += 1; } }
+  }
 }
 
 // ---------------------------------------------------------------- the face's calls
@@ -371,6 +640,8 @@ coaxial_kit_frame :: (s: [] WebPage, dt: f32, reduced: bool) -> int #export_c #e
   if s.count < 1 { return 0; }
   if !s[0].ready {
     n := mono_frames(s[0].sets[..]);
+    s[0].as_sw[0] = true;
+    s[0].as_chk[0] = true;
     s[0].ready = true; s[0].dirty = true;
   }
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
@@ -379,6 +650,7 @@ coaxial_kit_frame :: (s: [] WebPage, dt: f32, reduced: bool) -> int #export_c #e
   d := s[0].dom[..];
   if !d[0].styled {
     n := mono_button_css(s[0].css[..], mono_page_css(s[0].css[..], mono_work_css(s[0].css[..], mono_set_css(s[0].css[..], mono_dock_css(s[0].css[..], mono_css(s[0].css[..]))))));
+    n = apps_sdk_css(s[0].css[..], n);
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   ui_begin(s[0].ui[..], s[0].time, reduced);
@@ -533,4 +805,38 @@ WgTest :: struct { s: [1] WebPage; }
 #test "GPU gallery navigation is a real anchor with the shared Go component" {
  s:[1]WebPage;_:=coaxial_kit_frame(s[..],0.016,true);t:=s[0].tree[..];a:=tr_find(t,"gallery.gpu");
  #assert a>=0 && t[0].nodes[a].tag==TG_A && tr_attr_of(t,a,AT_HREF)=="/components-gpu";
+}
+
+#test "Apps SDK UI dark-mode showcase renders interactive controls and updates live state" {
+  h: [1] WgTest; s := h[0].s[..];
+  n := coaxial_kit_frame(s, 0.016, true);
+  t := s[0].tree[..]; d := s[0].dom[..];
+  #assert n > 12000 && t[0].lost == 0 && t[0].depth == 0;
+  #assert tr_find(t, "as.root") > 0 && tr_find(t, "as.btn.primary") > 0 && tr_find(t, "as.al.err") > 0;
+  #assert tr_attr_of(t, tr_find(t, "as.sw.0"), AT_CHECKED) == "true" && tr_attr_of(t, tr_find(t, "as.sw.1"), AT_CHECKED) == "false";
+  #assert tr_attr_of(t, tr_find(t, "as.seg.0"), AT_CHECKED) == "true";
+
+  // Interactive button press, pill toggle, loading state
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.btn.primary"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.btn.pill"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.btn.busy"), 0);
+  _ = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].as_presses == 1 && s[0].as_pill && s[0].as_busy;
+  #assert tr_has(t, tr_find(t, "as.btn.primary"), AT_DISABLED) && tr_attr_of(t, tr_find(t, "as.btn.primary"), AT_STATE) == "busy";
+
+  // Switch, checkbox, segmented control, validation toggle, alert dismiss/restore, code copy
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.sw.0"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.chk.1"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.seg.2"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.form.invalid"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.alert.dismiss"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.code.copy"), 0);
+  _ = coaxial_kit_frame(s, 0.016, true);
+  #assert !s[0].as_sw[0] && s[0].as_chk[1] && s[0].as_seg == 2 && s[0].as_invalid && s[0].as_alert_gone && s[0].as_copied;
+  #assert tr_attr_of(t, tr_find(t, "as.in.email"), AT_INVALID) == "true" && tr_find(t, "as.al.info") < 0 && tr_find(t, "as.alert.restore") > 0;
+  #assert tr_text_of(t, tr_find(t, "as.code.copy.l")) == "Copied" && coaxial_kit_clip(s) == WG_AS_SNIPPET.count;
+
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.alert.restore"), 0);
+  _ = coaxial_kit_frame(s, 0.016, true);
+  #assert !s[0].as_alert_gone && tr_find(t, "as.al.info") > 0;
 }

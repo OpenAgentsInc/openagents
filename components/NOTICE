@@ -55,3 +55,8 @@ Third-party material in the Zeron-fork UI (zeron/, ../backend/gpu-shader.coax, f
 6. icons/sidebar-left.svg, icons/archive.svg, icons/share.svg, icons/flag.svg and icons/x.svg: Apps SDK UI (https://github.com/openai/apps-sdk-ui), MIT License,
    Copyright (c) 2025 OpenAI; the same files as ../icons/apps-sdk/ (see
    ../icons/NOTICE). The permission notice is the same as in 1 above.
+
+7. skin/apps-sdk.coax and kit/apps-sdk.coax: dark-mode design tokens and basic
+   component styles ported to Coax from @openai/apps-sdk-ui 0.2.2
+   (https://github.com/openai/apps-sdk-ui), MIT License, Copyright (c) 2025 OpenAI.
+   The permission notice is the same as in 1 above.

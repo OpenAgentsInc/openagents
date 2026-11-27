@@ -62,7 +62,8 @@ components 260000
 # 144,443 with the work log (#13481); 150,246 with the entries /projects and /worlds are built from (components/kit/listing.coax
 # and mono_page_css, #13483), on a Linux build host; about 6% room.
 # 161,580 with the slider's two ends in words and why it stops at each (k_slider_ends, #13686), measured 2026-11-18 on a Linux build host; about 5% room.
-kit 170000
+# 221,437 with the dark-mode Apps SDK UI skin (components/skin/apps-sdk.coax), basic Coax DOM kit (components/kit/apps-sdk.coax), and interactive showcase at /components, measured 2026-11-27 on macOS; about 10% room.
+kit 245000
 # The editor shell ?edit opens over an engine page (metaverse-engine/editor/shell.coax, #13416): the frames set, the dock,
 # the browser backend, the world edit codec and the editor model's: 103,413 bytes measured 2026-11-13 on a Mac; about 8% room.
 # With the viewport's strip (E8, #13417: tool, grid, Add, fly, pause, step, simulate): 106,452 bytes measured 2026-11-13 on a Mac; about 11% room.

@@ -1,0 +1,427 @@
+// Apps SDK UI Coax Web Component Kit — basic primitives built on components/core/tree.coax,
+// components/core/icons.coax (755 Apps SDK UI SVG icons), and components/skin/apps-sdk.coax.
+// Intended as the primary foundation for OpenAgents Web pages (/components, /chat, /settings, /projects).
+//   coax/bin/coax test components/kit/apps-sdk.coax --library
+#load "../core/tree.coax";
+#load "../core/icons.coax";
+#load "../skin/apps-sdk.coax";
+
+AS_ID_CAP :: 96;
+
+// Semantic colors (matching @openai/apps-sdk-ui)
+AS_PRIMARY :: 0;
+AS_SECONDARY :: 1;
+AS_INFO :: 2;
+AS_SUCCESS :: 3;
+AS_WARNING :: 4;
+AS_CAUTION :: 5;
+AS_DANGER :: 6;
+AS_DISCOVERY :: 7;
+
+// Variants
+AS_SOLID :: 0;
+AS_SOFT :: 1;
+AS_OUTLINE :: 2;
+AS_GHOST :: 3;
+
+// Control sizes
+AS_SM :: 0;
+AS_MD :: 1;
+AS_LG :: 2;
+AS_XL :: 3;
+
+as_color_cls :: (c: int) -> string {
+  if c == AS_SECONDARY { return "as-c-secondary"; }
+  if c == AS_INFO { return "as-c-info"; }
+  if c == AS_SUCCESS { return "as-c-success"; }
+  if c == AS_WARNING { return "as-c-warning"; }
+  if c == AS_CAUTION { return "as-c-caution"; }
+  if c == AS_DANGER { return "as-c-danger"; }
+  if c == AS_DISCOVERY { return "as-c-discovery"; }
+  return "as-c-primary";
+}
+
+as_variant_cls :: (v: int) -> string {
+  if v == AS_SOFT { return "as-v-soft"; }
+  if v == AS_OUTLINE { return "as-v-outline"; }
+  if v == AS_GHOST { return "as-v-ghost"; }
+  return "as-v-solid";
+}
+
+as_size_cls :: (s: int) -> string {
+  if s == AS_SM { return "as-s-sm"; }
+  if s == AS_LG { return "as-s-lg"; }
+  if s == AS_XL { return "as-s-xl"; }
+  return "as-s-md";
+}
+
+as_cat :: (out: [] u8, a: string, b: string) -> string {
+  n := as_put(out, 0, a);
+  n = as_put(out, n, b);
+  return cast(string) out[0..<n];
+}
+
+as_cls3 :: (out: [] u8, a: string, b: string, c: string) -> string {
+  n := as_put(out, 0, a);
+  if b.count > 0 { n = as_put(out, n, " "); n = as_put(out, n, b); }
+  if c.count > 0 { n = as_put(out, n, " "); n = as_put(out, n, c); }
+  return cast(string) out[0..<n];
+}
+
+// Apps SDK SVG icon node (<svg class="as-ic"><use href="/build/icons/NAME.svg#i"/></svg>).
+as_icon :: (t: [] Tree, id: string, icon: int, cls: string) -> int {
+  ida: [AS_ID_CAP] u8; href: [AS_ID_CAP] u8; cb: [64] u8;
+  i := tr_open(t, id, TG_SVG, ifx cls.count > 0 then as_cls3(cb[..], "as-ic", cls, "") else "as-ic");
+  tr_attr(t, i, AT_HIDDEN, "true");
+  u := tr_open(t, as_cat(ida[..], id, ".u"), TG_USE, "");
+  hn := ic_href(icon, href[..]);
+  tr_attr(t, u, AT_HREF, cast(string) href[0..<hn]);
+  tr_close(t);
+  tr_close(t);
+  return i;
+}
+
+// Spinner indicator.
+as_spinner :: (t: [] Tree, id: string, large: bool) -> int {
+  i := tr_open(t, id, TG_SPAN, ifx large then "as-spin as-s-lg" else "as-spin");
+  tr_attr(t, i, AT_ROLE, "status");
+  tr_attr(t, i, AT_LABEL, "Loading");
+  tr_close(t);
+  return i;
+}
+
+// ShimmerText (streaming / thinking text effect).
+as_shimmer :: (t: [] Tree, id: string, text: string) -> int {
+  return tr_leaf(t, id, TG_SPAN, "as-shimmer", text);
+}
+
+// TextLink.
+as_link :: (t: [] Tree, id: string, label: string, href: string, external: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_A, "as-link");
+  tr_attr(t, i, AT_HREF, href);
+  _ = tr_leaf(t, as_cat(ida[..], id, ".t"), TG_SPAN, "", label);
+  if external { _ = as_icon(t, as_cat(idb[..], id, ".ic"), IC_LINK_EXTERNAL_WEBSITE, "as-ic-sm"); }
+  tr_close(t);
+  return i;
+}
+
+// Divider.
+as_divider :: (t: [] Tree, id: string) -> int {
+  i := tr_open(t, id, TG_HR, "as-divider");
+  tr_close(t);
+  return i;
+}
+
+// Button (color x variant x size x pill x optional leading icon x disabled x loading).
+as_button :: (t: [] Tree, id: string, label: string, color: int, variant: int, size: int, pill: bool, icon: int, disabled: bool, loading: bool) -> int {
+  cb: [128] u8; ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  n := as_put(cb[..], 0, "as-btn ");
+  n = as_put(cb[..], n, as_variant_cls(variant));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_color_cls(color));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_size_cls(size));
+  if pill { n = as_put(cb[..], n, " as-pill"); }
+  i := tr_open(t, id, TG_BUTTON, cast(string) cb[0..<n]);
+  tr_attr(t, i, AT_TYPE, "button");
+  if disabled || loading { tr_attr(t, i, AT_DISABLED, ""); }
+  if loading { tr_attr(t, i, AT_STATE, "busy"); }
+  if loading {
+    _ = as_spinner(t, as_cat(ida[..], id, ".sp"), false);
+  } else if icon >= 0 {
+    _ = as_icon(t, as_cat(ida[..], id, ".ic"), icon, ifx size == AS_SM then "as-ic-sm" else "");
+  }
+  _ = tr_leaf(t, as_cat(idb[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
+  return i;
+}
+
+// Uniform icon-only button.
+as_icon_button :: (t: [] Tree, id: string, icon: int, label: string, color: int, variant: int, size: int, pill: bool, disabled: bool) -> int {
+  cb: [128] u8; ida: [AS_ID_CAP] u8;
+  n := as_put(cb[..], 0, "as-btn as-icon-only ");
+  n = as_put(cb[..], n, as_variant_cls(variant));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_color_cls(color));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_size_cls(size));
+  if pill { n = as_put(cb[..], n, " as-pill"); }
+  i := tr_open(t, id, TG_BUTTON, cast(string) cb[0..<n]);
+  tr_attr(t, i, AT_TYPE, "button");
+  tr_attr(t, i, AT_LABEL, label);
+  tr_attr(t, i, AT_TITLE, label);
+  if disabled { tr_attr(t, i, AT_DISABLED, ""); }
+  _ = as_icon(t, as_cat(ida[..], id, ".ic"), icon, ifx size == AS_SM then "as-ic-sm" else "");
+  tr_close(t);
+  return i;
+}
+
+// Badge (small status label).
+as_badge :: (t: [] Tree, id: string, label: string, color: int, variant: int, size: int, pill: bool, dot: bool) -> int {
+  cb: [128] u8; ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  n := as_put(cb[..], 0, "as-badge ");
+  n = as_put(cb[..], n, as_variant_cls(variant));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_color_cls(color));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_size_cls(size));
+  if pill { n = as_put(cb[..], n, " as-pill"); }
+  i := tr_open(t, id, TG_SPAN, cast(string) cb[0..<n]);
+  if dot {
+    d := tr_open(t, as_cat(ida[..], id, ".d"), TG_SPAN, "as-dot");
+    tr_attr(t, d, AT_HIDDEN, "true");
+    tr_close(t);
+  }
+  _ = tr_leaf(t, as_cat(idb[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
+  return i;
+}
+
+// Alert banner (call as_alert_actions_begin / as_alert_end to close; danger automatically gets role="alert").
+as_alert_open :: (t: [] Tree, id: string, title: string, desc: string, color: int, variant: int, icon: int) -> int {
+  cb: [128] u8; ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8;
+  n := as_put(cb[..], 0, "as-alert ");
+  n = as_put(cb[..], n, as_variant_cls(variant));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_color_cls(color));
+  i := tr_open(t, id, TG_DIV, cast(string) cb[0..<n]);
+  if color == AS_DANGER { tr_attr(t, i, AT_ROLE, "alert"); }
+  if icon >= 0 { _ = as_icon(t, as_cat(ida[..], id, ".ic"), icon, "as-alert-ic"); }
+  _ = tr_open(t, as_cat(idb[..], id, ".b"), TG_DIV, "as-alert-body");
+  if title.count > 0 { _ = tr_leaf(t, as_cat(idc[..], id, ".t"), TG_P, "as-alert-title", title); }
+  if desc.count > 0 { _ = tr_leaf(t, as_cat(idd[..], id, ".d"), TG_P, "as-alert-desc", desc); }
+  tr_close(t); // body
+  return i;
+}
+as_alert_end :: (t: [] Tree) { tr_close(t); }
+
+// Avatar & AvatarGroup.
+as_avatar :: (t: [] Tree, id: string, initials: string, color: int, variant: int, size: int, square: bool, online: bool) -> int {
+  cb: [128] u8; ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  n := as_put(cb[..], 0, "as-avatar ");
+  n = as_put(cb[..], n, as_variant_cls(variant));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_color_cls(color));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_size_cls(size));
+  if square { n = as_put(cb[..], n, " as-sq"); }
+  i := tr_open(t, id, TG_SPAN, cast(string) cb[0..<n]);
+  tr_attr(t, i, AT_LABEL, initials);
+  _ = tr_leaf(t, as_cat(ida[..], id, ".t"), TG_SPAN, "", initials);
+  if online {
+    d := tr_open(t, as_cat(idb[..], id, ".on"), TG_SPAN, "as-avatar-dot");
+    tr_attr(t, d, AT_HIDDEN, "true");
+    tr_close(t);
+  }
+  tr_close(t);
+  return i;
+}
+as_avatar_group_open :: (t: [] Tree, id: string) -> int { return tr_open(t, id, TG_DIV, "as-avatars"); }
+as_avatar_group_end :: (t: [] Tree) { tr_close(t); }
+
+// Field container (label + control + hint/error).
+as_field_open :: (t: [] Tree, id: string, label: string) -> int {
+  ida: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_DIV, "as-field");
+  if label.count > 0 { _ = tr_leaf(t, as_cat(ida[..], id, ".lbl"), TG_SPAN, "as-label", label); }
+  return i;
+}
+as_field_end :: (t: [] Tree, id: string, hint: string, invalid: bool) {
+  ida: [AS_ID_CAP] u8;
+  if hint.count > 0 {
+    _ = tr_leaf(t, as_cat(ida[..], id, ".hint"), TG_SPAN, ifx invalid then "as-hint as-err" else "as-hint", hint);
+  }
+  tr_close(t);
+}
+
+// Single-line Input inside Apps SDK container.
+as_input :: (t: [] Tree, id: string, placeholder: string, input_type: string, variant: int, size: int, pill: bool, icon: int, invalid: bool, disabled: bool) -> int {
+  cb: [128] u8; ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  n := as_put(cb[..], 0, "as-in-wrap ");
+  n = as_put(cb[..], n, as_variant_cls(variant));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_size_cls(size));
+  if pill { n = as_put(cb[..], n, " as-pill"); }
+  w := tr_open(t, as_cat(ida[..], id, ".w"), TG_DIV, cast(string) cb[0..<n]);
+  if invalid { tr_attr(t, w, AT_INVALID, "true"); }
+  if disabled { tr_attr(t, w, AT_STATE, "disabled"); }
+  if icon >= 0 { _ = as_icon(t, as_cat(idb[..], id, ".ic"), icon, "as-ic-sm"); }
+  inp := tr_open(t, id, TG_INPUT, "");
+  tr_attr(t, inp, AT_TYPE, ifx input_type.count > 0 then input_type else "text");
+  tr_attr(t, inp, AT_PLACEHOLDER, placeholder);
+  tr_attr(t, inp, AT_LABEL, placeholder);
+  if invalid { tr_attr(t, inp, AT_INVALID, "true"); }
+  if disabled { tr_attr(t, inp, AT_DISABLED, ""); }
+  tr_close(t);
+  tr_close(t);
+  return inp;
+}
+
+// Multi-line Textarea inside Apps SDK container.
+as_textarea :: (t: [] Tree, id: string, placeholder: string, rows: string, variant: int, invalid: bool, disabled: bool) -> int {
+  cb: [64] u8; ida: [AS_ID_CAP] u8;
+  w := tr_open(t, as_cat(ida[..], id, ".w"), TG_DIV, as_cls3(cb[..], "as-ta-wrap", as_variant_cls(variant), ""));
+  if invalid { tr_attr(t, w, AT_INVALID, "true"); }
+  ta := tr_open(t, id, TG_TEXTAREA, "");
+  tr_attr(t, ta, AT_PLACEHOLDER, placeholder);
+  tr_attr(t, ta, AT_LABEL, placeholder);
+  tr_attr(t, ta, AT_ROWS, ifx rows.count > 0 then rows else "3");
+  if invalid { tr_attr(t, ta, AT_INVALID, "true"); }
+  if disabled { tr_attr(t, ta, AT_DISABLED, ""); }
+  tr_close(t);
+  tr_close(t);
+  return ta;
+}
+
+// Switch (role="switch", aria-checked).
+as_switch :: (t: [] Tree, id: string, label: string, desc: string, checked: bool, disabled: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8; ide: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_BUTTON, "as-switch");
+  tr_attr(t, i, AT_TYPE, "button");
+  tr_attr(t, i, AT_ROLE, "switch");
+  tr_attr(t, i, AT_CHECKED, ifx checked then "true" else "false");
+  if disabled { tr_attr(t, i, AT_DISABLED, ""); }
+  tk := tr_open(t, as_cat(ida[..], id, ".tk"), TG_SPAN, "as-sw-track");
+  tr_attr(t, tk, AT_HIDDEN, "true");
+  th := tr_open(t, as_cat(idb[..], id, ".th"), TG_SPAN, "as-sw-thumb");
+  tr_close(t);
+  tr_close(t);
+  _ = tr_open(t, as_cat(idc[..], id, ".tx"), TG_SPAN, "as-ctl-txt");
+  _ = tr_leaf(t, as_cat(idd[..], id, ".l"), TG_SPAN, "as-ctl-lbl", label);
+  if desc.count > 0 { _ = tr_leaf(t, as_cat(ide[..], id, ".d"), TG_SPAN, "as-ctl-desc", desc); }
+  tr_close(t);
+  tr_close(t);
+  return i;
+}
+
+// Checkbox (role="checkbox", aria-checked).
+as_checkbox :: (t: [] Tree, id: string, label: string, desc: string, checked: bool, disabled: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8; ide: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_BUTTON, "as-check");
+  tr_attr(t, i, AT_TYPE, "button");
+  tr_attr(t, i, AT_ROLE, "checkbox");
+  tr_attr(t, i, AT_CHECKED, ifx checked then "true" else "false");
+  if disabled { tr_attr(t, i, AT_DISABLED, ""); }
+  bx := tr_open(t, as_cat(ida[..], id, ".bx"), TG_SPAN, "as-chk-box");
+  tr_attr(t, bx, AT_HIDDEN, "true");
+  if checked { _ = as_icon(t, as_cat(idb[..], id, ".ck"), IC_CHECK, "as-ic-sm"); }
+  tr_close(t);
+  _ = tr_open(t, as_cat(idc[..], id, ".tx"), TG_SPAN, "as-ctl-txt");
+  _ = tr_leaf(t, as_cat(idd[..], id, ".l"), TG_SPAN, "as-ctl-lbl", label);
+  if desc.count > 0 { _ = tr_leaf(t, as_cat(ide[..], id, ".d"), TG_SPAN, "as-ctl-desc", desc); }
+  tr_close(t);
+  tr_close(t);
+  return i;
+}
+
+// SegmentedControl (role="radiogroup" + role="radio" items).
+as_seg_open :: (t: [] Tree, id: string, label: string, size: int, pill: bool) -> int {
+  cb: [64] u8;
+  n := as_put(cb[..], 0, "as-seg ");
+  n = as_put(cb[..], n, as_size_cls(size));
+  if pill { n = as_put(cb[..], n, " as-pill"); }
+  i := tr_open(t, id, TG_DIV, cast(string) cb[0..<n]);
+  tr_attr(t, i, AT_ROLE, "radiogroup");
+  tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+as_seg_item :: (t: [] Tree, id: string, label: string, icon: int, selected: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_BUTTON, "as-seg-btn");
+  tr_attr(t, i, AT_TYPE, "button");
+  tr_attr(t, i, AT_ROLE, "radio");
+  tr_attr(t, i, AT_CHECKED, ifx selected then "true" else "false");
+  if icon >= 0 { _ = as_icon(t, as_cat(ida[..], id, ".ic"), icon, "as-ic-sm"); }
+  _ = tr_leaf(t, as_cat(idb[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
+  return i;
+}
+as_seg_end :: (t: [] Tree) { tr_close(t); }
+
+// Elevated Card container.
+as_card_open :: (t: [] Tree, id: string, title: string, meta: string) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_DIV, "as-card");
+  if title.count > 0 || meta.count > 0 {
+    _ = tr_open(t, as_cat(ida[..], id, ".hd"), TG_DIV, "as-card-head");
+    if title.count > 0 { _ = tr_leaf(t, as_cat(idb[..], id, ".t"), TG_H3, "as-card-title", title); }
+    if meta.count > 0 { _ = tr_leaf(t, as_cat(idc[..], id, ".m"), TG_SPAN, "as-card-meta", meta); }
+    tr_close(t);
+  }
+  return i;
+}
+as_card_end :: (t: [] Tree) { tr_close(t); }
+
+// CodeBlock with language label and Copy button.
+as_code :: (t: [] Tree, id: string, lang: string, code: string, copied: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8; ide: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_DIV, "as-code");
+  _ = tr_open(t, as_cat(ida[..], id, ".hd"), TG_DIV, "as-code-hd");
+  _ = tr_leaf(t, as_cat(idb[..], id, ".lang"), TG_SPAN, "as-code-lang", lang);
+  _ = as_button(t, as_cat(idc[..], id, ".copy"), ifx copied then "Copied" else "Copy", AS_SECONDARY, AS_GHOST, AS_SM, false, ifx copied then IC_CHECK else IC_COPY, false, false);
+  tr_close(t);
+  _ = tr_open(t, as_cat(idd[..], id, ".pre"), TG_PRE, "");
+  _ = tr_leaf(t, as_cat(ide[..], id, ".c"), TG_CODE, "", code);
+  tr_close(t);
+  tr_close(t);
+  return i;
+}
+
+// EmptyMessage with icon badge, heading, description, and optional action slot.
+as_empty_open :: (t: [] Tree, id: string, icon: int, title: string, desc: string) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_DIV, "as-empty");
+  if icon >= 0 {
+    _ = tr_open(t, as_cat(ida[..], id, ".icw"), TG_DIV, "as-empty-ic");
+    _ = as_icon(t, as_cat(idb[..], id, ".ic"), icon, "as-ic-lg");
+    tr_close(t);
+  }
+  _ = tr_leaf(t, as_cat(idc[..], id, ".t"), TG_H3, "as-empty-t", title);
+  if desc.count > 0 { _ = tr_leaf(t, as_cat(idd[..], id, ".d"), TG_P, "as-empty-d", desc); }
+  return i;
+}
+as_empty_end :: (t: [] Tree) { tr_close(t); }
+
+#test "apps-sdk kit builds every basic component with valid ARIA and zero lost nodes" {
+  t: [1] Tree;
+  tr_begin(t[..]);
+  _ = tr_open(t[..], "root", TG_MAIN, "as-root");
+  b := as_button(t[..], "b.pri", "Continue", AS_PRIMARY, AS_SOLID, AS_MD, true, IC_ARROW_RIGHT, false, false);
+  #assert tr_class(t[..], b) == "as-btn as-v-solid as-c-primary as-s-md as-pill";
+  bl := as_button(t[..], "b.busy", "Saving", AS_INFO, AS_SOFT, AS_LG, false, -1, false, true);
+  #assert tr_has(t[..], bl, AT_DISABLED) && tr_attr_of(t[..], bl, AT_STATE) == "busy";
+  ib := as_icon_button(t[..], "b.ic", IC_COPY, "Copy", AS_SECONDARY, AS_GHOST, AS_SM, true, false);
+  #assert tr_attr_of(t[..], ib, AT_LABEL) == "Copy";
+  bg := as_badge(t[..], "bg.ok", "Live", AS_SUCCESS, AS_SOFT, AS_MD, true, true);
+  #assert tr_class(t[..], bg) == "as-badge as-v-soft as-c-success as-s-md as-pill";
+  al := as_alert_open(t[..], "al.err", "Rate limit", "Try again shortly.", AS_DANGER, AS_SOFT, IC_ERROR);
+  as_alert_end(t[..]);
+  #assert tr_attr_of(t[..], al, AT_ROLE) == "alert";
+  _ = as_avatar_group_open(t[..], "av.g");
+  _ = as_avatar(t[..], "av.1", "CD", AS_INFO, AS_SOFT, AS_MD, false, true);
+  as_avatar_group_end(t[..]);
+  _ = as_field_open(t[..], "f.email", "Email");
+  inp := as_input(t[..], "in.email", "you@openagents.com", "email", AS_OUTLINE, AS_LG, false, IC_MAIL, true, false);
+  as_field_end(t[..], "f.email", "Enter a valid address", true);
+  #assert tr_attr_of(t[..], inp, AT_INVALID) == "true";
+  _ = as_textarea(t[..], "ta.bio", "Notes", "3", AS_SOFT, false, false);
+  sw := as_switch(t[..], "sw.1", "Auto-place", "Use enrolled Mac", true, false);
+  #assert tr_attr_of(t[..], sw, AT_ROLE) == "switch" && tr_attr_of(t[..], sw, AT_CHECKED) == "true";
+  ck := as_checkbox(t[..], "ck.1", "Commit footer", "Add referral link", false, false);
+  #assert tr_attr_of(t[..], ck, AT_ROLE) == "checkbox" && tr_attr_of(t[..], ck, AT_CHECKED) == "false";
+  _ = as_seg_open(t[..], "seg.1", "Target", AS_MD, true);
+  s0 := as_seg_item(t[..], "seg.1.0", "Cloud", IC_GLOBE, true);
+  s1 := as_seg_item(t[..], "seg.1.1", "Local", IC_TERMINAL, false);
+  as_seg_end(t[..]);
+  #assert tr_attr_of(t[..], s0, AT_CHECKED) == "true" && tr_attr_of(t[..], s1, AT_CHECKED) == "false";
+  _ = as_card_open(t[..], "c.1", "Workspace", "Connected");
+  _ = as_shimmer(t[..], "sh.1", "Thinking…");
+  _ = as_link(t[..], "lk.1", "Docs", "/books", false);
+  as_card_end(t[..]);
+  _ = as_code(t[..], "cd.1", "coax", "x := 1;", false);
+  _ = as_empty_open(t[..], "em.1", IC_FOLDER, "No projects yet", "Create one to start.");
+  as_empty_end(t[..]);
+  tr_close(t[..]);
+  #assert t[0].lost == 0 && t[0].depth == 0 && t[0].n > 40;
+}
