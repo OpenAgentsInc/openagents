@@ -1,0 +1,401 @@
+// The simulator helper end to end (docs/desktop/ios-simulator-spec.md section 11, "Helper";
+// GitHub #13811), on a Mac with Xcode. It creates its own device (oa-simhost-check-PID, never one
+// of the person's), starts a helper from the given oasim with a throwaway home and its own socket,
+// and talks to it as the app (client "app", the person) and as an agent (client "oasim", a chat):
+//   hello and capabilities; list holds the device; boot; screenshot is a PNG of the point size;
+//   an agent's control op is parked and the app is asked; "Don't allow" refuses it; "Allow for
+//   this chat" lets the next run; set_appearance changes the next screenshot; revoke refuses the
+//   chat's next op; contested while a fake dev.sh lock on the device is held; the helper killed
+//   and started again by the next oasim command; shutdown; the device deleted.
+// Every line each client wrote and read goes to --wire-log (for proto/coder/sim-host-lines-v1.json).
+//   coax/web/tool.sh coder/tui/oasim.coax help    # builds oasim
+//   coax/web/tool.sh coder/tui/simhost-check.coax OASIM [--device UDID] [--wire-log PATH]
+// --device uses a device the caller made (left booted, not deleted) instead of creating one.
+#import "Basic";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+#load "../../sys/proc.coax";
+#load "../../net/socket_foreign.coax";
+#load "sim-wire.coax";
+#load "sim-devices.coax";
+
+cxproc_self_pid :: () -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+SK_PATH :: 1024;
+SkConn :: struct { h: int; buf: [SW_LINE] u8; n: int; who: [16] u8; who_n: int; }
+SkRun :: struct {
+  oasim: [SK_PATH] u8; oasim_n: int; home: [SK_PATH] u8; home_n: int; sock: [SK_PATH] u8; sock_n: int;
+  log: [SK_PATH] u8; log_n: int; udid: [64] u8; udid_n: int; name: [128] u8; name_n: int;
+  failed: int; passed: int; helper: int;
+  line: [SW_LINE] u8; m: [1] SwMsg; why: [1] SwText;
+}
+sk_s :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+sk_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+sk_int :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  t: [24] u8; n := 0; x := ifx v < 0 then -v else v;
+  while x > 0 { t[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  k := 0; if v < 0 { out[0] = '-'; k = 1; }
+  for i: 0..<n { out[k + i] = t[n - 1 - i]; }
+  return cast(string) out[0..<k + n];
+}
+sk_say :: (s: string) { b: [8192] u8; n := sk_put(b[..], 0, s); n = sk_put(b[..], n, "\n"); _ = cxterm_write(b[0..<n]); }
+sk_check :: (r: [] SkRun, ok: bool, what: string) {
+  b: [1024] u8; n := sk_put(b[..], 0, ifx ok then "ok   " else "FAIL "); n = sk_put(b[..], n, what);
+  sk_say(cast(string) b[0..<n]);
+  if ok { r[0].passed += 1; } else { r[0].failed += 1; }
+}
+sk_log :: (r: [] SkRun, who: string, dir: string, line: string) {
+  if r[0].log_n == 0 { return; }
+  b: [SW_LINE] u8; n := sk_put(b[..], 0, who); n = sk_put(b[..], n, "\t"); n = sk_put(b[..], n, dir); n = sk_put(b[..], n, "\t"); n = sk_put(b[..], n, line); n = sk_put(b[..], n, "\n");
+  _ = fs_append(sk_s(r[0].log[..], r[0].log_n), cast(string) b[0..<n]);
+}
+
+sk_open :: (r: [] SkRun, c: [] SkConn, who: string) -> bool {
+  for ch: sk_s(r[0].sock[..], r[0].sock_n) { _ = cxsock_host_push(cast(int) ch); }
+  c[0].h = cxsock_connect_unix(3000); c[0].n = 0; c[0].who_n = sk_put(c[0].who[..], 0, who);
+  return c[0].h >= 0;
+}
+sk_send :: (r: [] SkRun, c: [] SkConn, m: [] SwMsg) -> bool {
+  n := sw_write(m, r[0].line[..]);
+  if n < 0 { return false; }
+  sk_log(r, sk_s(c[0].who[..], c[0].who_n), "out", sk_s(r[0].line[..], n));
+  for b: r[0].line[0..<n] { _ = cxsock_write(c[0].h, cast(int) b); }
+  _ = cxsock_write(c[0].h, 10);
+  return cxsock_flush(c[0].h, 5000) >= 0;
+}
+// The next line from the helper into r.m (and r.line), within wait_ms. False when none came.
+sk_next :: (r: [] SkRun, c: [] SkConn, wait_ms: int) -> bool {
+  deadline := proc_now_ms() + wait_ms;
+  while true {
+    for i: 0..<c[0].n {
+      if c[0].buf[i] != 10 { continue; }
+      k := sk_put(r[0].line[..], 0, cast(string) c[0].buf[0..<i]);
+      rest := c[0].n - i - 1;
+      for j: 0..<rest { c[0].buf[j] = c[0].buf[i + 1 + j]; }
+      c[0].n = rest;
+      sk_log(r, sk_s(c[0].who[..], c[0].who_n), "in", sk_s(r[0].line[..], k));
+      if !sw_read(sk_s(r[0].line[..], k), r[0].m[..], r[0].why[..]) { sk_say(sw_why(r[0].why[..])); return false; }
+      return true;
+    }
+    left := deadline - proc_now_ms();
+    if left <= 0 { return false; }
+    got := cxsock_read(c[0].h, ifx left > 500 then 500 else left);
+    if got == -2 { continue; }
+    if got < 0 { return false; }
+    for i: 0..<got { if c[0].n < SW_LINE { c[0].buf[c[0].n] = cast(u8) cxsock_byte(c[0].h, i); c[0].n += 1; } }
+  }
+  return false;
+}
+// Waits for the reply to id (events before it are passed over). False on none.
+sk_reply :: (r: [] SkRun, c: [] SkConn, id: int, wait_ms: int) -> bool {
+  deadline := proc_now_ms() + wait_ms;
+  while proc_now_ms() < deadline {
+    if !sk_next(r, c, deadline - proc_now_ms()) { return false; }
+    if !sw_has(r[0].m[..], SW_F_EVENT) && sw_int(r[0].m[..], SW_F_ID, -1) == id { return true; }
+  }
+  return false;
+}
+sk_event :: (r: [] SkRun, c: [] SkConn, event: string, wait_ms: int) -> bool {
+  deadline := proc_now_ms() + wait_ms;
+  while proc_now_ms() < deadline {
+    if !sk_next(r, c, deadline - proc_now_ms()) { return false; }
+    if sw_str(r[0].m[..], SW_F_EVENT) == event { return true; }
+  }
+  return false;
+}
+sk_ask :: (m: [] SwMsg, id: int, op: string) { sw_clear(m); sw_set_int(m, SW_F_ID, id); _ = sw_set_str(m, SW_F_OP, op); }
+sk_hello :: (r: [] SkRun, c: [] SkConn, client: string, chat: string) -> bool {
+  m: [1] SwMsg; sk_ask(m[..], 1, "hello"); _ = sw_set_str(m[..], SW_F_CLIENT, client); sw_set_int(m[..], SW_F_VERSION, 1);
+  if chat.count > 0 { _ = sw_set_str(m[..], SW_F_CHAT, chat); _ = sw_set_str(m[..], SW_F_ENGINE, "Microcoder"); }
+  return sk_send(r, c, m[..]) && sk_reply(r, c, 1, 20000) && sw_bool(r[0].m[..], SW_F_OK);
+}
+sk_udid :: (r: [] SkRun) -> string { return sk_s(r[0].udid[..], r[0].udid_n); }
+sk_ok :: (r: [] SkRun) -> bool { return sw_bool(r[0].m[..], SW_F_OK); }
+sk_code :: (r: [] SkRun) -> string { return sw_str(r[0].m[..], SW_F_CODE); }
+
+// Runs oasim with this check's socket and home; its exit status (out holds its output).
+sk_oasim :: (r: [] SkRun, words: [] string, out: [] u8) -> int {
+  // always this check's own device: never one of the person's
+  p := proc_new();
+  hb: [SK_PATH] u8; sb: [SK_PATH] u8;
+  hn := sk_put(hb[..], 0, "OA_SIM_HOME="); hn = sk_put(hb[..], hn, sk_s(r[0].home[..], r[0].home_n));
+  sn := sk_put(sb[..], 0, "OA_SIM_SOCKET="); sn = sk_put(sb[..], sn, sk_s(r[0].sock[..], r[0].sock_n));
+  ok := p >= 0 && proc_arg(p, sk_s(r[0].oasim[..], r[0].oasim_n));
+  for w: words { ok = ok && proc_arg(p, w); }
+  ok = ok && proc_arg(p, "--device") && proc_arg(p, sk_udid(r));
+  ob: [128] u8; ok = ok && proc_env(p, cast(string) hb[0..<hn]) && proc_env(p, cast(string) sb[0..<sn]) && proc_env(p, sk_only(r, ob[..])) && proc_env(p, "OA_SIM_CHAT=check-chat-2") && proc_start(p) == 0;
+  if !ok { if p >= 0 { _ = proc_release(p); } return -1; }
+  n := 0;
+  while true {
+    k := proc_line(p, 60000, out[n..<out.count]);
+    if k < 0 { break; }
+    n += k;
+  }
+  if n < out.count { out[n] = 0; }
+  st := proc_wait(p, 60000); _ = proc_release(p);
+  return st;
+}
+// OA_SIM_ONLY=UDID: the helper lists this check's device alone, never the person's
+sk_only :: (r: [] SkRun, out: [] u8) -> string { n := sk_put(out, 0, "OA_SIM_ONLY="); n = sk_put(out, n, sk_udid(r)); return cast(string) out[0..<n]; }
+sk_simctl :: (a: [] string, out: [] u8) -> ProcRun { err: [4096] u8; return proc_run(a, 240000, out, err[..]); }
+sk_png_size :: (path: string, w: [] int, h: [] int) -> bool {
+  b: [32] u8; n := fs_read_at(path, 0, b[..]);
+  if n < 24 || b[1] != 'P' || b[2] != 'N' || b[3] != 'G' { return false; }
+  w[0] = (cast(int) b[16] << 24) | (cast(int) b[17] << 16) | (cast(int) b[18] << 8) | cast(int) b[19];
+  h[0] = (cast(int) b[20] << 24) | (cast(int) b[21] << 16) | (cast(int) b[22] << 8) | cast(int) b[23];
+  return true;
+}
+
+sk_main :: (r: [] SkRun, a: [] Args) {
+  pb: [24] u8; pid := sk_int(cxproc_self_pid(), pb[..]);
+  tb: [SK_PATH] u8; tmp := proc_getenv("TMPDIR", tb[..]); if tmp.count == 0 { tmp = "/tmp"; }
+  r[0].home_n = sk_put(r[0].home[..], 0, tmp); if tmp[tmp.count - 1] != '/' { r[0].home_n = sk_put(r[0].home[..], r[0].home_n, "/"); }
+  r[0].home_n = sk_put(r[0].home[..], r[0].home_n, "oa-simhost-check-"); r[0].home_n = sk_put(r[0].home[..], r[0].home_n, pid);
+  _ = fs_mkdir_private(sk_s(r[0].home[..], r[0].home_n));
+  r[0].sock_n = sk_put(r[0].sock[..], 0, sk_s(r[0].home[..], r[0].home_n)); r[0].sock_n = sk_put(r[0].sock[..], r[0].sock_n, "/s.sock");
+  own := args_value(a, "--device", "");
+  made := own.count == 0;
+  out: [262144] u8;
+  if made {
+    r[0].name_n = sk_put(r[0].name[..], 0, "oa-simhost-check-"); r[0].name_n = sk_put(r[0].name[..], r[0].name_n, pid);
+    cr := [5] string.["xcrun", "simctl", "create", sk_s(r[0].name[..], r[0].name_n), "iPhone 17"];
+    x := sk_simctl(cr[..], out[..]);
+    u := cast(string) out[0..<x.out_n]; while u.count > 0 && (u[u.count - 1] == '\n' || u[u.count - 1] == ' ') { u = u[0..<u.count - 1]; }
+    sk_check(r, x.status == 0 && u.count == 36, "simctl create a throwaway iPhone 17");
+    if x.status != 0 || u.count != 36 { return; }
+    r[0].udid_n = sk_put(r[0].udid[..], 0, u);
+  } else { r[0].udid_n = sk_put(r[0].udid[..], 0, own); }
+  defer {
+    if made {
+      sd := [4] string.["xcrun", "simctl", "shutdown", sk_udid(r)]; _ = sk_simctl(sd[..], out[..]);
+      dl := [4] string.["xcrun", "simctl", "delete", sk_udid(r)]; x := sk_simctl(dl[..], out[..]);
+      sk_check(r, x.status == 0, "the throwaway device deleted");
+    }
+  }
+
+  // the helper, from the given oasim
+  ob: [128] u8;
+  hp := proc_new();
+  ok := hp >= 0 && proc_arg(hp, sk_s(r[0].oasim[..], r[0].oasim_n)) && proc_arg(hp, "serve") && proc_arg(hp, "--home") && proc_arg(hp, sk_s(r[0].home[..], r[0].home_n))
+        && proc_arg(hp, "--socket") && proc_arg(hp, sk_s(r[0].sock[..], r[0].sock_n)) && proc_env(hp, sk_only(r, ob[..])) && proc_start(hp) == 0;
+  sk_check(r, ok, "the helper started");
+  if !ok { return; }
+  defer { _ = proc_kill(hp, PROC_SIGKILL); _ = proc_wait(hp, 5000); _ = proc_release(hp); }
+  app: [1] SkConn;
+  up := false; t0 := proc_now_ms();
+  while !up && proc_now_ms() - t0 < 10000 { up = sk_open(r, app[..], "app"); if !up { proc_sleep(100); } }
+  sk_check(r, up, "the helper's socket answers");
+  if !up { return; }
+  sk_check(r, sk_hello(r, app[..], "app", ""), "hello as the app");
+  sk_check(r, sw_display(r[0].m[..]).count > 0 && sw_str(r[0].m[..], SW_F_XCODE).count > 0, "hello names capabilities and Xcode");
+  indigo := sw_input(r[0].m[..]) == "indigo"; frames := sw_display(r[0].m[..]) == "frames";
+  m: [1] SwMsg;
+  sk_ask(m[..], 2, "subscribe"); sk_check(r, sk_send(r, app[..], m[..]) && sk_reply(r, app[..], 2, 5000) && sk_ok(r), "subscribe");
+  sk_ask(m[..], 3, "list");
+  ok = sk_send(r, app[..], m[..]) && sk_reply(r, app[..], 3, 20000) && sk_ok(r);
+  found := false; for i: 0..<r[0].m[0].ndevs { if sw_dev_udid(r[0].m[..], i) == sk_udid(r) { found = true; } }
+  sk_check(r, ok && found, "list holds the device");
+
+  // boot
+  sk_ask(m[..], 4, "boot"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  t0 = proc_now_ms();
+  ok = sk_send(r, app[..], m[..]) && sk_reply(r, app[..], 4, 240000) && sk_ok(r);
+  tbuf: [24] u8; bw: [256] u8; bn := sk_put(bw[..], 0, "boot (the person's pane) in "); bn = sk_put(bw[..], bn, sk_int((proc_now_ms() - t0) / 1000, tbuf[..])); bn = sk_put(bw[..], bn, " s");
+  sk_check(r, ok && proc_now_ms() - t0 < 180000, cast(string) bw[0..<bn]);
+  if !ok { sk_say(sk_s(r[0].line[..], sw_write(r[0].m[..], r[0].line[..]))); return; }
+  pw := r[0].m[0].size_w; ph := r[0].m[0].size_h;
+  sk_check(r, pw > 100.0 && ph > 100.0 && sw_num(r[0].m[..], SW_F_SCALE) >= 2.0, "boot says the screen's points and scale");
+
+  // a screenshot of the point size
+  sb: [SK_PATH] u8; sn := sk_put(sb[..], 0, sk_s(r[0].home[..], r[0].home_n)); sn = sk_put(sb[..], sn, "/one.png");
+  sk_ask(m[..], 5, "screenshot"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_OUT, cast(string) sb[0..<sn]);
+  ok = sk_send(r, app[..], m[..]) && sk_reply(r, app[..], 5, 60000) && sk_ok(r);
+  w: [1] int; h: [1] int;
+  sk_check(r, ok && sk_png_size(cast(string) sb[0..<sn], w[..], h[..]) && w[0] == cast(int) pw && h[0] == cast(int) ph, "screenshot is a PNG of the point size");
+  one := fs_size(cast(string) sb[0..<sn]);
+
+  // an agent asks; the person refuses, then allows for the chat
+  ag: [1] SkConn;
+  sk_check(r, sk_open(r, ag[..], "agent") && sk_hello(r, ag[..], "oasim", "check-chat"), "hello as an agent in a chat");
+  sk_ask(m[..], 10, "set_appearance"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_STATE, "dark");
+  ok = sk_send(r, ag[..], m[..]);
+  sk_check(r, ok && sk_event(r, app[..], "ask", 5000) && sw_str(r[0].m[..], SW_F_CHAT) == "check-chat" && sw_str(r[0].m[..], SW_F_DEVICE) == sk_udid(r), "the app is asked for the chat and device");
+  sk_ask(m[..], 6, "deny"); _ = sw_set_str(m[..], SW_F_CHAT, "check-chat"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_SCOPE, "once");
+  ok = sk_send(r, app[..], m[..]) && sk_reply(r, app[..], 6, 5000) && sk_ok(r);
+  sk_check(r, ok && sk_reply(r, ag[..], 10, 5000) && !sk_ok(r) && sk_code(r) == "denied", "Don't allow refuses the parked op");
+  sk_ask(m[..], 7, "grant"); _ = sw_set_str(m[..], SW_F_CHAT, "check-chat"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_SCOPE, "chat");
+  sk_check(r, sk_send(r, app[..], m[..]) && sk_reply(r, app[..], 7, 5000) && sk_ok(r), "Allow for this chat");
+  sk_ask(m[..], 11, "set_appearance"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_STATE, "dark");
+  ok = sk_send(r, ag[..], m[..]) && sk_reply(r, ag[..], 11, 30000) && sk_ok(r);
+  sk_check(r, ok, "the chat's next control op runs");
+  sk_check(r, sk_event(r, app[..], "agent", 5000) && sw_str(r[0].m[..], SW_F_OP) == "set_appearance", "the app sees the agent's op");
+  sk_ask(m[..], 12, "appearance"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  sk_check(r, sk_send(r, ag[..], m[..]) && sk_reply(r, ag[..], 12, 30000) && sw_str(r[0].m[..], SW_F_APPEARANCE) == "dark", "appearance reads dark");
+  sn = sk_put(sb[..], 0, sk_s(r[0].home[..], r[0].home_n)); sn = sk_put(sb[..], sn, "/two.png");
+  sk_ask(m[..], 13, "screenshot"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_OUT, cast(string) sb[0..<sn]); sw_set_num(m[..], SW_F_SCALE, 0.5);
+  ok = sk_send(r, ag[..], m[..]) && sk_reply(r, ag[..], 13, 60000) && sk_ok(r);
+  sk_check(r, ok && sk_png_size(cast(string) sb[0..<sn], w[..], h[..]) && w[0] == cast(int) (pw / 2.0), "an agent's screenshot at scale 0.5");
+  sk_check(r, one > 0 && fs_size(cast(string) sb[0..<sn]) > 0 && fs_size(cast(string) sb[0..<sn]) != one, "the screen changed");
+  sk_ask(m[..], 14, "open_url"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_URL, "https://example.com");
+  sk_check(r, sk_send(r, ag[..], m[..]) && sk_reply(r, ag[..], 14, 60000) && sk_ok(r), "open_url");
+  sk_ask(m[..], 15, "launch"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_APP_PATH, "/Applications/Safari.app");
+  sk_check(r, sk_send(r, ag[..], m[..]) && sk_reply(r, ag[..], 15, 10000) && !sk_ok(r) && sk_code(r) == "install_refused", "launch of an .app outside the chat's folders is refused");
+  sk_ask(m[..], 16, "shutdown"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  sk_check(r, sk_send(r, ag[..], m[..]) && sk_reply(r, ag[..], 16, 10000) && !sk_ok(r) && sk_code(r) == "denied", "an agent can't shut down a device the person booted");
+
+  if indigo { sk_input(r, app[..], ag[..], cast(string) sb[0..<sn], frames); }
+
+  // contested: a fake dev.sh lock on the device's name
+  hb: [SK_PATH] u8; home := proc_getenv("HOME", hb[..]);
+  lb: [SK_PATH] u8; ln := sk_put(lb[..], 0, home); ln = sk_put(lb[..], ln, "/.openagents/ios-dev");
+  _ = fs_mkdir(cast(string) lb[0..<ln]);
+  slug: [128] u8; ln = sk_put(lb[..], ln, "/sim-"); ln = sk_put(lb[..], ln, sd_slug(sk_s(r[0].name[..], r[0].name_n), slug[..])); ln = sk_put(lb[..], ln, ".lock");
+  if made && fs_write(cast(string) lb[0..<ln], "") && fs_try_lock(cast(string) lb[0..<ln]) {
+    sk_ask(m[..], 17, "open_url"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_URL, "https://example.com");
+    sk_check(r, sk_send(r, ag[..], m[..]) && sk_reply(r, ag[..], 17, 10000) && !sk_ok(r) && sk_code(r) == "contested", "contested while dev.sh's lock is held");
+    _ = fs_unlock(); _ = fs_remove(cast(string) lb[0..<ln]);
+  }
+
+  // revoke: the chat's next op is refused
+  sk_ask(m[..], 8, "revoke"); _ = sw_set_str(m[..], SW_F_CHAT, "check-chat"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  sk_check(r, sk_send(r, app[..], m[..]) && sk_reply(r, app[..], 8, 5000) && sk_ok(r), "revoke (Stop)");
+  sk_check(r, sk_event(r, ag[..], "revoked", 5000), "the agent hears it was revoked");
+  sk_ask(m[..], 18, "set_appearance"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_STATE, "light");
+  _ = sk_send(r, ag[..], m[..]);
+  sk_check(r, sk_event(r, app[..], "ask", 5000), "after Stop the chat must be asked again");
+  sk_ask(m[..], 9, "deny"); _ = sw_set_str(m[..], SW_F_CHAT, "check-chat"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_SCOPE, "once");
+  _ = sk_send(r, app[..], m[..]); _ = sk_reply(r, app[..], 9, 5000);
+  sk_check(r, sk_reply(r, ag[..], 18, 5000) && sk_code(r) == "denied", "and refused");
+  _ = cxsock_close(ag[0].h); _ = cxsock_close(app[0].h);
+
+  // the helper killed; the next oasim command starts one again
+  _ = proc_kill(hp, PROC_SIGKILL); _ = proc_wait(hp, 5000);
+  w1 := [1] string.["list"]; st := sk_oasim(r, w1[..], out[..]);
+  sk_check(r, st == 0 && sd_find(cast(string) out[0..<cstr_len(out[..])], sk_udid(r), 0) >= 0, "the helper killed, the next oasim list starts it again");
+  w2 := [2] string.["set_appearance", "light"]; st = sk_oasim(r, w2[..], out[..]);
+  if st != 1 { sk_say(cast(string) out[0..<cstr_len(out[..])]); }
+  sk_check(r, st == 1 && sd_find(cast(string) out[0..<cstr_len(out[..])], "no_grant", 0) >= 0, "an oasim control op with no app to ask is refused no_grant");
+
+  // shutdown, by the person
+  re: [1] SkConn;
+  if sk_open(r, re[..], "app") && sk_hello(r, re[..], "app", "") {
+    proj := args_value(a, "--project", ""); scheme := args_value(a, "--scheme", "");
+    if proj.count > 0 {
+      // oasim run: build, launch the .app from our DerivedData, a screenshot; the person allowed its chat
+      sk_ask(m[..], 19, "grant"); _ = sw_set_str(m[..], SW_F_CHAT, "check-chat-2"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_SCOPE, "chat");
+      sk_check(r, sk_send(r, re[..], m[..]) && sk_reply(r, re[..], 19, 5000) && sk_ok(r), "the person allows the oasim chat");
+      w3 := [5] string.["run", "--project", proj, "--scheme", scheme]; st = sk_oasim(r, w3[..], out[..]);
+      said := cast(string) out[0..<cstr_len(out[..])];
+      if st != 0 { sk_say(said); }
+      sk_check(r, st == 0 && sd_find(said, "\"path\":", 0) >= 0, "oasim run builds, launches and takes a screenshot");
+    }
+    sk_ask(m[..], 20, "shutdown"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+    sk_check(r, !made || (sk_send(r, re[..], m[..]) && sk_reply(r, re[..], 20, 120000) && sk_ok(r)), "shutdown from the pane");
+    sk_ask(m[..], 21, "quit"); _ = sk_send(r, re[..], m[..]); _ = sk_reply(r, re[..], 21, 5000);
+    _ = cxsock_close(re[0].h);
+  } else { sk_check(r, false, "the restarted helper answers the app"); }
+}
+// A screenshot by client c into the check's folder: its bytes, or -1.
+sk_shot :: (r: [] SkRun, c: [] SkConn, id: int, name: string, pb: [] u8) -> int {
+  n := sk_put(pb, 0, sk_s(r[0].home[..], r[0].home_n)); n = sk_put(pb, n, name);
+  mm: [1] SwMsg; sk_ask(mm[..], id, "screenshot"); _ = sw_set_str(mm[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(mm[..], SW_F_OUT, cast(string) pb[0..<n]);
+  if !(sk_send(r, c, mm[..]) && sk_reply(r, c, id, 30000) && sk_ok(r)) { return -1; }
+  return fs_size(cast(string) pb[0..<n]);
+}
+// Phase 1: the agent's touches and keys, and the person's finger (spec 4.3, 7.2), when the helper
+// has SimulatorKit's input. Settings' rows are where an iPhone 17 on iOS 26 draws them.
+sk_input :: (r: [] SkRun, app: [] SkConn, ag: [] SkConn, dir: string, frames: bool) {
+  m: [1] SwMsg; w: [1] int; h: [1] int;
+  pb: [SK_PATH] u8;
+  sk_ask(m[..], 30, "button"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_NAME, "HOME");
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 30, 10000) && sk_ok(r), "button HOME");
+  sk_ask(m[..], 31, "launch"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_BUNDLE, "com.apple.Preferences");
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 31, 60000) && sk_ok(r), "launch Settings by its bundle");
+  proc_sleep(2500);
+  before := sk_shot(r, ag, 32, "/settings.png", pb[..]);
+  sk_ask(m[..], 33, "tap"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); sw_set_num(m[..], SW_F_X, 101.0); sw_set_num(m[..], SW_F_Y, 406.0);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 33, 10000) && sk_ok(r), "tap Settings' General row");
+  proc_sleep(1500);
+  after := sk_shot(r, ag, 34, "/general.png", pb[..]);
+  sk_check(r, before > 0 && after > 0 && before != after, "the tap opened another page");
+  sk_ask(m[..], 35, "tap"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); sw_set_num(m[..], SW_F_X, 9999.0); sw_set_num(m[..], SW_F_Y, 1.0);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 35, 10000) && !sk_ok(r) && sk_code(r) == "out_of_bounds", "a tap off the screen is refused");
+  sk_ask(m[..], 36, "swipe"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  sw_set_num(m[..], SW_F_X, 200.0); sw_set_num(m[..], SW_F_Y, 700.0); sw_set_num(m[..], SW_F_X2, 200.0); sw_set_num(m[..], SW_F_Y2, 300.0); sw_set_num(m[..], SW_F_DURATION, 0.3);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 36, 10000) && sk_ok(r), "swipe");
+  proc_sleep(1500);
+  scrolled := sk_shot(r, ag, 45, "/scrolled.png", pb[..]);
+  sk_check(r, scrolled > 0 && scrolled != after, "the swipe scrolled the page");
+  sk_ask(m[..], 37, "touch_path"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  _ = sw_add_point(m[..], SW_F_POINTS, SwPoint.{x = 200.0, y = 300.0}); _ = sw_add_point(m[..], SW_F_POINTS, SwPoint.{x = 200.0, y = 400.0, dt_ms = 16.0}); _ = sw_add_point(m[..], SW_F_POINTS, SwPoint.{x = 200.0, y = 500.0, dt_ms = 16.0});
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 37, 10000) && sk_ok(r), "touch_path");
+  sk_ask(m[..], 38, "press_key"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_KEY, "return"); sw_set_int(m[..], SW_F_COUNT, 2);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 38, 10000) && sk_ok(r), "press_key return twice");
+  sk_ask(m[..], 39, "text"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_TEXT, "Hello, simulator!");
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 39, 10000) && sk_ok(r), "text typed key by key");
+  sk_ask(m[..], 40, "touch2_path"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_add_point(m[..], SW_F_POINTS2, SwPoint.{x = 100.0, y = 100.0, x2 = 200.0, y2 = 200.0});
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 40, 10000) && sk_ok(r), "touch2_path, two fingers");
+  // the person's finger stops an agent's gesture and holds agent input for 1.5 s
+  sk_ask(m[..], 41, "swipe"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  sw_set_num(m[..], SW_F_X, 200.0); sw_set_num(m[..], SW_F_Y, 300.0); sw_set_num(m[..], SW_F_X2, 200.0); sw_set_num(m[..], SW_F_Y2, 700.0); sw_set_num(m[..], SW_F_DURATION, 3.0);
+  ok := sk_send(r, ag, m[..]);
+  proc_sleep(400);
+  for ph: 0..<2 {
+    sk_ask(m[..], 0, "touch"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_PHASE, ifx ph == 0 then "down" else "up");
+    sw_set_int(m[..], SW_F_POINTER, 0); sw_set_num(m[..], SW_F_X, 300.0); sw_set_num(m[..], SW_F_Y, 300.0);
+    ok = ok && sk_send(r, app, m[..]);
+  }
+  sk_check(r, ok && sk_reply(r, ag, 41, 5000) && !sk_ok(r) && sk_code(r) == "interrupted" && sw_has(r[0].m[..], SW_F_INTERRUPTED), "the person's touch interrupts the agent's swipe");
+  sk_ask(m[..], 42, "tap"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); sw_set_num(m[..], SW_F_X, 10.0); sw_set_num(m[..], SW_F_Y, 10.0);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 42, 5000) && sk_code(r) == "interrupted", "and holds the agent's next op");
+  // Phase 3: the screen's accessibility, the log, the keyboard, a quarter turn and back, a recording
+  proc_sleep(1600);   // the person's hold ends
+  sk_ask(m[..], 46, "describe"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  ok = sk_send(r, ag, m[..]) && sk_reply(r, ag, 46, 15000) && sk_ok(r) && sw_has(r[0].m[..], SW_F_LINES);
+  if !ok { proc_sleep(500); ok = sk_send(r, ag, m[..]) && sk_reply(r, ag, 46, 15000) && sk_ok(r) && sw_has(r[0].m[..], SW_F_LINES); }
+  sk_check(r, ok, "describe: the screen's accessibility as lines");
+  sk_ask(m[..], 47, "logs"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_BUNDLE, "com.apple.Preferences"); sw_set_int(m[..], SW_F_SINCE, 60);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 47, 60000) && sk_ok(r) && sw_has(r[0].m[..], SW_F_LINES), "logs of Settings");
+  sk_ask(m[..], 48, "set_keyboard"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_STATE, "show");
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 48, 10000) && sk_ok(r), "set_keyboard show");
+  sk_ask(m[..], 49, "rotate"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_DIRECTION, "left");
+  ok = sk_send(r, ag, m[..]) && sk_reply(r, ag, 49, 10000) && sk_ok(r);
+  sk_ask(m[..], 50, "rotate"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_DIRECTION, "right");
+  sk_check(r, ok && sk_send(r, ag, m[..]) && sk_reply(r, ag, 50, 10000) && sk_ok(r), "rotate left and back");
+  rn := sk_put(pb[..], 0, sk_s(r[0].home[..], r[0].home_n)); rn = sk_put(pb[..], rn, "/check.mp4");
+  sk_ask(m[..], 51, "record_start"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_OUT, cast(string) pb[0..<rn]);
+  ok = sk_send(r, ag, m[..]) && sk_reply(r, ag, 51, 10000) && sk_ok(r);
+  proc_sleep(2000);
+  sk_ask(m[..], 52, "record_stop"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  sk_check(r, ok && sk_send(r, ag, m[..]) && sk_reply(r, ag, 52, 30000) && sk_ok(r) && sw_str(r[0].m[..], SW_F_PATH) == cast(string) pb[0..<rn] && fs_size(cast(string) pb[0..<rn]) > 0, "record start and stop: a video");
+  if frames {
+    // a frame the pane already has is not written again
+    proc_sleep(1600);
+    n := sk_put(pb[..], 0, sk_s(r[0].home[..], r[0].home_n)); n = sk_put(pb[..], n, "/frame.png");
+    sk_ask(m[..], 43, "screenshot"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_OUT, cast(string) pb[0..<n]);
+    ok = sk_send(r, app, m[..]) && sk_reply(r, app, 43, 10000) && sk_ok(r) && sw_has(r[0].m[..], SW_F_GEN) && sw_has(r[0].m[..], SW_F_PATH);
+    gen := sw_int(r[0].m[..], SW_F_GEN, -1);
+    sk_ask(m[..], 44, "screenshot"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_OUT, cast(string) pb[0..<n]); sw_set_int(m[..], SW_F_GEN, gen);
+    ok = ok && sk_send(r, app, m[..]) && sk_reply(r, app, 44, 10000) && sk_ok(r) && sw_int(r[0].m[..], SW_F_GEN, -1) == gen && !sw_has(r[0].m[..], SW_F_PATH);
+    sk_check(r, ok, "a frame from the framebuffer names its gen, and an unchanged one is not written");
+  }
+}
+cstr_len :: (b: [] u8) -> int { n := 0; while n < b.count && b[n] != 0 { n += 1; } return n; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: simhost-check OASIM [--device UDID] [--wire-log PATH] [--project P --scheme S]"); return 2; }
+  r: [1] SkRun;
+  rb: [SK_PATH] u8; real := fs_realpath(args_at(a[..], 0), rb[..]);
+  r[0].oasim_n = sk_put(r[0].oasim[..], 0, real);
+  lg := args_value(a[..], "--wire-log", "");
+  if lg.count > 0 { r[0].log_n = sk_put(r[0].log[..], 0, lg); _ = fs_write(lg, ""); }
+  sk_main(r[..], a[..]);
+  b: [128] u8; x: [24] u8; y: [24] u8;
+  n := sk_put(b[..], 0, sk_int(r[0].passed, x[..])); n = sk_put(b[..], n, " passed, "); n = sk_put(b[..], n, sk_int(r[0].failed, y[..])); n = sk_put(b[..], n, " failed");
+  sk_say(cast(string) b[0..<n]);
+  return ifx r[0].failed == 0 && r[0].passed > 0 then 0 else 1;
+}

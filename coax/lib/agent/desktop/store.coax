@@ -8,7 +8,7 @@
 // (claude-key, openrouter-key: mode 600, one trimmed line) and its settings are here as well.
 //   coax/bin/coax test coax/lib/agent/desktop/store.coax --library
 #load "os.coax";
-#load "../../../../coder/tui/desktop-store.coax";
+#load "index.coax";
 
 DC_CHATS :: 1024;
 DC_INDEX_MAX :: 2097152;

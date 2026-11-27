@@ -57,9 +57,9 @@ inputs_schema="7"
 fixed=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto ':(glob)coax/*' scripts/coax-release.sh coax/lib/crypto/sha256-kernel.coax
        coax/platform coax/web/tool.sh coax/lib/crypto/entropy.coax coax/lib/sys coax/lib/net
        coax/lib/nostr/nip06.coax pay metaverse/stage-resources/bip39-english.txt
-       openagents/core openagents/knowledge
+       openagents/core openagents/runtime openagents/daemon openagents/workers openagents/knowledge
        apps/shared/auth apps/shared/host apps/shared/native components/chat components/fonts components/icons components/NOTICE apps/openagents-desktop/native psionic/platform psionic/lib/inkling)
-roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/agyworker.coax coder/tui/gitguard.coax coder/tui/claudeworker.coax coder/tui/oasim.coax coder/tui/lean-run.coax coder/tui/tbench-run.coax coder/tui/gbench-run.coax metaverse/rh-flythrough.coax)
+roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax openagents/daemon/host.coax openagents/runtime/oa-worker.coax openagents/workers/agyworker.coax openagents/workers/gitguard.coax openagents/workers/claudeworker.coax coax/lib/agent/device/oasim.coax coax/lib/lean/lean-run.coax coax/lib/tbench/tbench-run.coax coax/lib/gbench/gbench-run.coax metaverse/rh-flythrough.coax)
 mkdir -p "$state"
 
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') coder-release: $*"; }
@@ -109,7 +109,7 @@ coder_pids() {
     pgrep -f "^$legacy_app/Contents/MacOS/Coder" || true; } | sort -u
 }
 
-# The resident daemon: one program (coder/tui/host.coax), shipped in Coder as coder-host and run at login
+# The resident daemon: one program (openagents/daemon/host.coax), shipped in Coder as coder-host and run at login
 # by com.openagents.coax.environment from ~/.openagents/bin/openagents-environment.
 env_label="${CODER_ENV_LABEL:-com.openagents.coax.environment}"
 env_plist="$HOME/Library/LaunchAgents/$env_label.plist"

@@ -34,6 +34,10 @@
 // rollback, the World and its save and load) reach neither durable context (LC_DURABLE: the character
 // record and the item ledger) through contexts.txt's "may load" lists, no allowlist line excuses a load
 // from one into the other, and no non-Coax file they own names a durable table or its rules' header.
+// And one for the Coder TUI boundary, with no allowlist (#14118): no file outside coder/tui/ may
+// #load any file in coder/tui/, and no shipped Desktop/daemon/macOS build script may compile a binary
+// out of coder/tui/. Shared libraries live in coax/lib/; OpenAgents core, runtime, daemon, and workers
+// live in openagents/{core,runtime,daemon,workers}/.
 // Support code is a test, check, tool, example or book file, which may load what it exercises:
 //   a path with a folder named tests, test, tools, examples, book, fixtures, fuzz or lab;
 //   a file named test_X, test-X, check-X, check.E, checks.E, X_test.E, X-test.E, X-check.E,
@@ -930,6 +934,68 @@ lc_durable_files :: (files: string, m: LcCtxMap, body: [] u8, run: LcRun, checke
   return bad;
 }
 
+// ---- Coder TUI boundary (#14118)
+
+LC_TUI_BUILD_SCRIPTS :: [7] string.[
+  "apps/openagents-desktop/build.sh",
+  "apps/openagents-desktop/linux/build.sh",
+  "apps/openagents-desktop/windows/build.sh",
+  "apps/openagents-desktop/install.sh",
+  "apps/openagents-macos/install.sh",
+  "apps/openagents-macos/package-dmg.sh",
+  "coax/web/api/deploy.sh",
+];
+
+// No file outside coder/tui/ may #load any file under coder/tui/ (#14118).
+lc_tui_boundary :: (loads: string, run: LcRun) -> int {
+  bad := 0;
+  i := 0;
+  while i < loads.count {
+    j := i;
+    while j < loads.count && loads[j] != '\n' { j += 1; }
+    l := lc_parse(cast(string) loads[i..<j]); i = j + 1;
+    if !l.ok || lc_starts(l.from, "coder/tui/") { continue; }
+    to_b: [1024] u8;
+    to := lc_resolve(lc_dir(l.from), l.rel, to_b[..]);
+    if to.count == 0 || !lc_starts(to, "coder/tui/") { continue; }
+    bad += 1;
+    if !run.quiet {
+      print("FAIL tui-boundary: %:% loads % (nothing outside coder/tui/ may #load from coder/tui/; move shared code to coax/lib/ or openagents/, #14118)\n", l.from, l.line, to);
+    }
+  }
+  return bad;
+}
+
+// First 1-based non-comment line in a shell build script mentioning "coder/tui/", or 0 (#14118).
+lc_tui_build_line :: (src: string) -> int {
+  i := 0; line := 1;
+  while i < src.count {
+    j := i;
+    while j < src.count && src[j] != '\n' { j += 1; }
+    row := lc_trim(cast(string) src[i..<j]);
+    if row.count > 0 && row[0] != '#' && lc_has(row, "coder/tui/") { return line; }
+    i = j + 1; line += 1;
+  }
+  return 0;
+}
+
+// Shipped Desktop/daemon/macOS build scripts never compile binaries out of coder/tui/ (#14118).
+lc_tui_builds_fs :: (body: [] u8, run: LcRun) -> int {
+  bad := 0;
+  for path: LC_TUI_BUILD_SCRIPTS {
+    n := fs_read(path, body);
+    if n < 0 { continue; }
+    line := lc_tui_build_line(cast(string) body[0..<n]);
+    if line > 0 {
+      bad += 1;
+      if !run.quiet {
+        print("FAIL tui-boundary: %:% references coder/tui/ (shipped Desktop/daemon binaries must build from openagents/ or coax/lib/, #14118)\n", path, line);
+      }
+    }
+  }
+  return bad;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) { tool_errln("usage: coax/web/tool.sh layer-check [--base REV] [--consumers]"); return 2; }
@@ -1028,6 +1094,9 @@ tool_main :: () -> int #export_c #effects(all) {
     page_room += lc_page_room(loads, cast(string) pg_roots[0..<pg_rn], run);
   }
   bad += page_room;
+  // Coder TUI boundary: nothing outside coder/tui/ may #load from coder/tui/ or build shipped binaries from it (#14118)
+  tui_boundary := lc_tui_boundary(loads, run) + lc_tui_builds_fs(body[..], run);
+  bad += tui_boundary;
   // authoring never writes durable state (#13431)
   durable_checked: [1] int; durable := lc_durable_contexts(ctxs, run) + lc_durable_allow(allow, ctxs, run);
   {
@@ -1075,7 +1144,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
   print("layer-check: durable % (none allowed): % authoring contexts reach neither % nor %, and % of their non-Coax sources name no durable table\n", durable, LC_AUTHORING.count, LC_DURABLE[0], LC_DURABLE[1], durable_checked[0]);
   total := found[1] + found[2] + found[3] + found[4];
-  print("layer-check: engine-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), room-v1 % (none allowed), page-room % in % page modules (none allowed), no-consumer modules: % with no line (none allowed), % adopted, % the book's, % built by name, % a pipeline's (%), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, room_v1, page_room, page_roots_n, cons_counts[0], cons_counts[1], cons_counts[2], cons_counts[3], cons_counts[4], LC_CONSUMERS, bad);
+  print("layer-check: engine-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), room-v1 % (none allowed), page-room % in % page modules (none allowed), tui-boundary % (none allowed), no-consumer modules: % with no line (none allowed), % adopted, % the book's, % built by name, % a pipeline's (%), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, room_v1, page_room, page_roots_n, tui_boundary, cons_counts[0], cons_counts[1], cons_counts[2], cons_counts[3], cons_counts[4], LC_CONSUMERS, bad);
   return ifx bad == 0 then 0 else 1;
 }
 
@@ -1098,6 +1167,16 @@ LC_T_ALLOW :: "# seed\nengine-up metaverse-engine/net/latency.coax -> everglade/
   #assert lc_resolve("a", "../../b.coax", o[..]) == "" && lc_resolve("a", "/Users/x/b.coax", o[..]) == "";
   #assert lc_dir("metaverse-engine/net/latency.coax") == "metaverse-engine/net" && lc_dir("a.coax") == "";
   #assert lc_cmp("metaverse-engine/a", "metaverse-engine/b") < 0 && lc_cmp("metaverse-engine/a", "metaverse-engine/a") == 0 && lc_cmp("metaverse-engine/a/b", "metaverse-engine/a") > 0;
+}
+#test "tui-boundary: nothing outside coder/tui/ may load or build shipped binaries from coder/tui/" {
+  good := "coder/tui/coder.coax:5:#load \"diff.coax\";\ncoder/tui/tests/input-checks.coax:1:#load \"../coder.coax\";\ncoax/lib/agent/desktop/store.coax:11:#load \"index.coax\";\n";
+  bad_lib := "coax/lib/agent/desktop/store.coax:11:#load \"../../../../coder/tui/desktop-store.coax\";\n";
+  bad_cli := "apps/openagents-cli/mcp.coax:19:#load \"../../coder/tui/oasim-mcp.coax\";\n";
+  #assert lc_tui_boundary(good, LC_T_QUIET) == 0;
+  #assert lc_tui_boundary(bad_lib, LC_T_QUIET) == 1;
+  #assert lc_tui_boundary(bad_cli, LC_T_QUIET) == 1;
+  #assert lc_tui_build_line("# comment coder/tui/host.coax\ncoax c openagents/daemon/host.coax\n") == 0;
+  #assert lc_tui_build_line("#!/bin/sh\ncoax c coder/tui/oa-worker.coax\n") == 2;
 }
 #test "support code: tests, checks, tools, examples, the book and programs" {
   #assert lc_support_path("metaverse-engine/tests/walk.coax") && lc_support_path("metaverse-engine/render/tools/bake.coax") && lc_support_path("metaverse-engine/examples/one-press.coax") && lc_support_path("metaverse-engine/book/tools/x.coax") && lc_support_path("metaverse-engine/lab/physics-lab.coax") && lc_support_path("metaverse-engine/space/fixtures/a.coax");

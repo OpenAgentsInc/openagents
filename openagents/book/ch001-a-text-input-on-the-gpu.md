@@ -3,7 +3,7 @@
 > **Status: partly implemented.** The shared Coax chat screen module
 > (`apps/shared/chat/screen.coax`), the primary desktop consumer
 > (`apps/openagents-desktop/page.coax`), and the mobile consumer
-> (`apps/openagents-ios/composer_screen.coax`) pass their `#test` checks for
+> (`apps/openagents-ios/gpu-page.coax`) pass their `#test` checks for
 > the `tree` / `type composer.input hello` / `state draft` / `counts` trace
 > and duplicate-ID refusal on `cpu`, beside
 > `openagents/examples/cases/composer-type.ops`. Remaining for native hosts
@@ -78,7 +78,7 @@ and nothing is submitted to the GPU.
 
 ## What we build
 
-Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), consumed by the primary desktop app ([`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax)) and the mobile app ([`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax)):
+Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), consumed by the primary desktop app ([`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax)) and the mobile app ([`apps/openagents-ios/gpu-page.coax`](../../apps/openagents-ios/gpu-page.coax)):
 
 - The shared compiled Coax chat screen with a GPU composer surface, consumed
   by desktop as the primary host and by mobile as a second native host.
@@ -108,7 +108,7 @@ It builds on what exists today:
 
 - **Source:** [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
   [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
-  [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax),
+  [`apps/openagents-ios/gpu-page.coax`](../../apps/openagents-ios/gpu-page.coax),
   [`openagents/examples/composer-input.coax`](../examples/composer-input.coax),
   and [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops).
 - **Trace:** committed debug/release stdout in [`openagents/examples/composer-input.out`](../examples/composer-input.out)
@@ -128,7 +128,7 @@ It builds on what exists today:
   `coax/bin/coax test openagents/examples/composer-input.coax`, and
   `coax/bin/coax test apps/shared/chat/screen.coax`.
 
-Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax), [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops). The primary app is
+Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax), [`apps/openagents-ios/gpu-page.coax`](../../apps/openagents-ios/gpu-page.coax), [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops). The primary app is
 [`apps/openagents-desktop`](../../apps/openagents-desktop), mobile consumes the
 same shared logic in [`apps/openagents-ios`](../../apps/openagents-ios), and
 components extend [`components/`](../../components).
@@ -238,4 +238,4 @@ bad_field=no such field
 ok=true
 ```
 
-Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.
+Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/gpu-page.coax`.

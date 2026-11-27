@@ -2,7 +2,7 @@
 # Firm reason: 5 (thin wrapper around coax, clang, swiftc and codesign; holds no logic)
 # Builds OpenAgents.app for this Mac: the page (app.coax) compiled to C on the shared
 # component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the
-# component shader emitted as Metal, the workers it talks to, and the daemon (coder/tui/host.coax) that runs it.
+# component shader emitted as Metal, the workers it talks to, and the daemon (openagents/daemon/host.coax) that runs it.
 #   apps/openagents-desktop/build.sh [--fast] [--open]
 #   CODER_BUILD=/tmp/coder apps/openagents-desktop/build.sh        builds into another folder
 set -euo pipefail
@@ -50,11 +50,11 @@ app_coax="$here/app.coax"
 # Build independent Coax workers & Psionic Metal runtime in parallel with page C/Swift compiles.
 # COAX_TOOL_BUILD_ONLY=1 compiles without executing workers (prevents 0-byte .ajr leaks).
 worker_pids=()
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" < /dev/null > /dev/null & worker_pids+=($!)
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/runtime/oa-worker.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/workers/gitguard.coax" < /dev/null > /dev/null & worker_pids+=($!)
 # claudeworker ships in --minimal too: a chat may hand a task to Claude Code as a sub-agent (GitHub #14104)
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null & worker_pids+=($!)
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/workers/claudeworker.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/daemon/host.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX="$coax" "$repo/psionic/platform/inkling-build.sh" "$work/psionic-inkling" > /dev/null & worker_pids+=($!)
 
 gen_pids=()
@@ -279,12 +279,12 @@ cp "$repo/components/NOTICE" "$res/Components/NOTICE"
 cp "$repo/metaverse/stage-resources/bip39-english.txt" "$res/bip39-english.txt"
 
 full_pids=()
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null & full_pids+=($!)
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oasim.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/workers/agyworker.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/device/oasim.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null & full_pids+=($!)
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/lean-run.coax" < /dev/null > /dev/null & full_pids+=($!)
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/tbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
-  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/lean/lean-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/tbench/tbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/gbench/gbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/proof-export.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/capability-eval.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/agents-catalog.coax" < /dev/null > /dev/null & full_pids+=($!)

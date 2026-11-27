@@ -9,7 +9,7 @@
 > Skills scanning ([`coax/lib/agent/desktop/capability-author.coax`](../../coax/lib/agent/desktop/capability-author.coax)),
 > grounded by [`openagents/examples/capability-authoring-interview.coax`](../examples/capability-authoring-interview.coax)
 > and [`openagents/examples/capability-authoring-interview.out`](../examples/capability-authoring-interview.out),
-> and wired directly into [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax).
+> and wired directly into [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax).
 > Remaining: dedicated interactive approval-sheet UI (`coax drive` trace) and
 > third-party OAuth vault binding in `openagents/eval/author/`.
 
@@ -65,7 +65,7 @@ It builds on what exists today:
 - [`coax/lib/agent/desktop/capability-gate.coax`](../../coax/lib/agent/desktop/capability-gate.coax) (`#authority` slug validation and promotion gate)
 - [`openagents/core/members.coax`](../../openagents/core/members.coax) (`#authority` `OA_PACK_CAPABILITY`: `CapabilityDraft`, `CapabilityEval`, `CapabilityList`)
 - [`coax/lib/agent/router/policy.coax`](../../coax/lib/agent/router/policy.coax) (missing-capability detection activating `capability_author`)
-- [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) (Episode 289 P5/P9/P15 conversational authoring interview and immediate next-turn local Skills activation)
+- [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax) (Episode 289 P5/P9/P15 conversational authoring interview and immediate next-turn local Skills activation)
 - [`coder/tui/coder.coax`](../../coder/tui/coder.coax)
 - [`coax/lib/nostr/cj`](../../coax/lib/nostr/cj)
 - [`coax/lib/nostr/ext`](../../coax/lib/nostr/ext)

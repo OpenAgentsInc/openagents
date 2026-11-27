@@ -57,12 +57,12 @@ app_src="$app_dir/app.coax"
 "$coax" c "$repo/pay/wallet-backup.coax" --library --header "$work/c/pay-wallet-backup.h" > "$work/c/pay-wallet-backup.c"
 "$coax" c "$repo/pay/wallet-rpc.coax" --library --header "$work/c/pay-wallet-rpc.h" > "$work/c/pay-wallet-rpc.c"
 wallet_srcs=("$work/c/pay-wallet.c" "$work/c/pay-wallet-backup.c" "$work/c/pay-wallet-rpc.c")
-"$coax" c "$repo/coder/tui/inky.coax" --library > "$work/c/inky.c"
-"$coax" c "$repo/coder/tui/mcworker.coax" --library > "$work/c/mcworker.c"
-"$coax" c "$repo/coder/tui/claudeworker.coax" --library > "$work/c/claudeworker.c"
-"$coax" c "$repo/coder/tui/agyworker.coax" --library > "$work/c/agyworker.c"
-"$coax" c "$repo/coder/tui/gitguard.coax" --library > "$work/c/gitguard.c"
-"$coax" c "$repo/coder/tui/host.coax" --run-steps 250000000 --library > "$work/c/coder-host.c"
+"$coax" c "$repo/openagents/workers/legacy/inky.coax" --library > "$work/c/inky.c"
+"$coax" c "$repo/openagents/workers/legacy/mcworker.coax" --library > "$work/c/mcworker.c"
+"$coax" c "$repo/openagents/workers/claudeworker.coax" --library > "$work/c/claudeworker.c"
+"$coax" c "$repo/openagents/workers/agyworker.coax" --library > "$work/c/agyworker.c"
+"$coax" c "$repo/openagents/workers/gitguard.coax" --library > "$work/c/gitguard.c"
+"$coax" c "$repo/openagents/daemon/host.coax" --run-steps 250000000 --library > "$work/c/coder-host.c"
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs \
   -o "$work/res/components.spv" 2> "$work/res/components.spv.bindings"
 "$coax" spirv "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs \

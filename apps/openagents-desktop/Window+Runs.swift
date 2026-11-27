@@ -46,6 +46,7 @@ extension CoderWindow {
                 r.stopGen &+= 1
                 r.autoRecoveries = 0
                 r.recoverGen &+= 1
+                r.lastCrashSignature = nil
             }
             self.followUpBegan(r)
             self.markUnread(r)
@@ -79,11 +80,15 @@ extension CoderWindow {
             forceStopRun(r)
             return
         }
-        let reason = r.worker.lastEndState ?? "exited"
-        let maxAutoRecoveries = 2
-        if r.autoRecoveries < maxAutoRecoveries {
+        let reason = r.worker.formattedEndReason
+        let isFatal = r.worker.isFatalCrash
+        let crashSig = isFatal ? r.worker.crashSignature : nil
+        let repeatedFatal = isFatal && crashSig != nil && r.lastCrashSignature == crashSig
+        let maxAutoRecoveries = isFatal ? 1 : 2
+        if !repeatedFatal && r.autoRecoveries < maxAutoRecoveries {
             r.autoRecoveries += 1
             r.recoverGen &+= 1
+            if let crashSig { r.lastCrashSignature = crashSig }
             let gen = r.recoverGen
             let attempt = r.autoRecoveries
             let delay: TimeInterval = attempt == 1 ? 0.6 : 1.5
@@ -109,12 +114,20 @@ extension CoderWindow {
             }
             return
         }
+        NSLog("OpenAgents: %@ worker failed mid-turn (%@; recoveries=%d, repeatedFatal=%d)", r.worker.program, reason, r.autoRecoveries, repeatedFatal ? 1 : 0)
+        r.lastCrashSignature = nil
         let label = r.worker.program == "oa-worker" ? "OpenAgents" : r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "OpenAgents"
-        cd_failed(r.page, "\(label) could not recover after an unexpected interruption (\(reason)).")
+        let msg = isFatal
+            ? "\(label) worker crashed (\(reason))."
+            : "\(label) could not recover after an unexpected interruption (\(reason))."
+        cd_failed(r.page, msg)
+        #if OA_FULL
+        if stillShown { _ = cd_br_human_takeover(r.page) }
+        #endif
         if stillShown { self.recallDue = true }
         r.endTurn()
         self.markUnread(r)
-        self.notifyTurnFailed(chatID: stillShown ? self.chat : r.chat, detail: "\(label) interrupted (\(reason)).", isActiveChat: stillShown)
+        self.notifyTurnFailed(chatID: stillShown ? self.chat : r.chat, detail: msg, isActiveChat: stillShown)
         self.pump(r)
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
@@ -138,6 +151,7 @@ extension CoderWindow {
         r.stopGen &+= 1
         r.autoRecoveries = 0
         r.recoverGen &+= 1
+        r.lastCrashSignature = nil
         r.worker.gone = nil
         r.worker.line = nil
         if r.worker.alive { r.worker.stop(forget: false) }
@@ -265,6 +279,7 @@ extension CoderWindow {
         if !isRecovery {
             r.autoRecoveries = 0
             r.recoverGen &+= 1
+            r.lastCrashSignature = nil
         }
         r.startedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         let shown = r === run

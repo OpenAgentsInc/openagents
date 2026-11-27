@@ -219,7 +219,7 @@
       "check": "coax/bin/coax test coax/lib/agent/workspace/wire.coax --library",
       "step": "new",
       "files": [
-        "coder/tui/host-workspace.coax",
+        "openagents/daemon/host-workspace.coax",
         "coax/lib/agent/workspace/native.coax",
         "apps/shared/app/workspace/"
       ],
@@ -4265,7 +4265,7 @@
         "coder/tui/daemon.coax",
         "coder/tui/credential.coax",
         "coder/tui/plugins.coax",
-        "coder/tui/host.coax",
+        "openagents/daemon/host.coax",
         "coder/tui/route.coax",
         "coder/tui/router.coax",
         "coder/tui/gate.coax",
@@ -4278,10 +4278,10 @@
       "tests": [
         "proto/coder/cli-json-v1.json",
         "coax/lib/agent/cli/cli-json-goldens.coax",
-        "coder/tui/smoke.py",
-        "coder/tui/host_smoke.coax",
+        "coder/tui/tests/smoke.py",
+        "openagents/daemon/tests/host_smoke.coax",
         "coder/tests/repository-v2.coax",
-        "coder/tui/observability-checks.coax"
+        "coder/tui/tests/observability-checks.coax"
       ],
       "note": "What the Coder CLI prints for --json: usage, ls, status, import, run|fork --detach, stop, replay, bench, plugins, credential, queue, daemon, jobs, host list, decide, policy, router, consent, remember, revise, forget and recall (#13250, C8). json-output.coax writes each; it also writes the Router's log lines (router/log.jsonl, the same lines router --json prints), the sources file's entries, the daemon's job file and heartbeat, and reads the session rows for coder mcp, the local sessions route, a remote status line and the chat page. The fixture holds outputs the built CLI printed in a throwaway home; decide has only its error outputs there (no recorded System One answer exists). run, log and attach print openagents.session.v1 lines; route prints coder.route.v2; agents prints openagents.coder.agents.v1."
     },
@@ -4295,15 +4295,15 @@
       "step": "new",
       "files": [
         "coax/lib/agent/device/sim-host.coax",
-        "coder/tui/oasim.coax",
-        "coder/tui/simhost-check.coax"
+        "coax/lib/agent/device/oasim.coax",
+        "coax/lib/agent/device/simhost-check.coax"
       ],
       "tests": [
         "proto/coder/sim-host-lines-v1.json",
         "coax/lib/agent/device/sim-wire-checks.coax",
-        "coder/tui/simhost-check.coax"
+        "coax/lib/agent/device/simhost-check.coax"
       ],
-      "note": "What the iOS Simulator helper (oasim serve) and its clients, OpenAgents Desktop's pane and oasim's verbs, say over its Unix socket, one JSON object a line each way (docs/desktop/ios-simulator-spec.md 7.4; GitHub #13811). sim-wire.coax writes and reads every request, reply and event for both ends. The fixture holds the lines coder/tui/simhost-check.coax's two connections (the app and an agent) wrote and read against a helper built from this tree on a throwaway simulator; the check reads each and writes it back to the same bytes. oasim build's state files (~/.openagents/sim/builds/ID.state) are build_status reply lines of this wire."
+      "note": "What the iOS Simulator helper (oasim serve) and its clients, OpenAgents Desktop's pane and oasim's verbs, say over its Unix socket, one JSON object a line each way (docs/desktop/ios-simulator-spec.md 7.4; GitHub #13811). sim-wire.coax writes and reads every request, reply and event for both ends. The fixture holds the lines coax/lib/agent/device/simhost-check.coax's two connections (the app and an agent) wrote and read against a helper built from this tree on a throwaway simulator; the check reads each and writes it back to the same bytes. oasim build's state files (~/.openagents/sim/builds/ID.state) are build_status reply lines of this wire."
     },
     {
       "id": "microcoder-worker-lines-v1",
@@ -4314,8 +4314,8 @@
       "check": "coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/coder/microcoder-worker-lines-v1.json",
       "step": "C11",
       "files": [
-        "coder/tui/mcworker.coax",
-        "coder/tui/agyworker.coax",
+        "openagents/workers/legacy/mcworker.coax",
+        "openagents/workers/agyworker.coax",
         "coax/lib/agent/engine/mcworker-client.coax",
         "coder/tui/microcoder.coax",
         "coax/lib/agent/engine/run.coax",
@@ -4325,7 +4325,7 @@
         "coax/lib/agent/engine/mcworker-profile.coax",
         "coder/tests/journal-worker.coax"
       ],
-      "note": "What Microcoder's worker (coder/tui/mcworker.coax) and its owners say over the worker's stdin and stdout, one JSON object a line: task, answer, stop, forget, embed one way; journal, ready, reply, attempt, command, view, ask, ended, embedding the other. mcworker-wire.coax writes and reads every line for both ends. The attempt line is coder.observability.v2's record with a null engine, written by stream.coax's cst_attempt. The profile holds 137 lines that the Coder CLI and the worker wrote before the codec, with the model's and Vertex's answers replayed from recordings in the repository or scripted; the check reads each and writes it back to the same bytes."
+      "note": "What Microcoder's worker (openagents/workers/legacy/mcworker.coax) and its owners say over the worker's stdin and stdout, one JSON object a line: task, answer, stop, forget, embed one way; journal, ready, reply, attempt, command, view, ask, ended, embedding the other. mcworker-wire.coax writes and reads every line for both ends. The attempt line is coder.observability.v2's record with a null engine, written by stream.coax's cst_attempt. The profile holds 137 lines that the Coder CLI and the worker wrote before the codec, with the model's and Vertex's answers replayed from recordings in the repository or scripted; the check reads each and writes it back to the same bytes."
     },
     {
       "id": "worldbuilder-wire-v1alpha1",
@@ -4555,7 +4555,7 @@
       "step": "C1",
       "files": [
         "proto/coder/session-log-v1.json",
-        "coder/tui/host-tasks.coax",
+        "openagents/daemon/host-tasks.coax",
         "coax/lib/agent/environment/transcript-client.coax",
         "apps/openagents-cli/task-transcript.coax"
       ],
@@ -4684,12 +4684,12 @@
         "proto/coder/router-v1alpha1.json",
         "coax/web/api/router.c",
         "coax/web/api/router-wire.coax",
-        "coder/tui/host-tasks.coax"
+        "openagents/daemon/host-tasks.coax"
       ],
       "tests": [
         "proto/coder/router-v1alpha1.json",
         "coax/lib/agent/router/wire-goldens.coax",
-        "coder/tui/task-host-smoke.coax"
+        "openagents/daemon/tests/task-host-smoke.coax"
       ],
       "note": "The delegation router's output: which computer, coding agent, model and effort take the task, the decision model's answers, what code ruled out and why what runs differs from the answer. Alpha; coder.route.v3 will be a projection of it. wire.coax writes it through the generated JSON mapper; the goldens tool writes and reads back 2,048 fuzzed decisions."
     },
@@ -4703,19 +4703,19 @@
       "step": "new",
       "files": [
         "proto/coder/router-v1alpha1.json",
-        "coder/tui/host-station.coax",
+        "openagents/daemon/host-station.coax",
         "coax/web/api/environment.c",
         "coax/web/api/environment-wire.coax",
         "coax/web/api/environment-broker-fixture.coax",
-        "coder/tui/host-tasks.coax"
+        "openagents/daemon/host-tasks.coax"
       ],
       "tests": [
         "proto/coder/router-v1alpha1.json",
         "coax/lib/agent/router/wire-goldens.coax",
         "coax/web/api/tests/history_checks.coax",
-        "coder/tui/task-host-smoke.coax"
+        "openagents/daemon/tests/task-host-smoke.coax"
       ],
-      "note": "A connected computer's own report for the delegation router: its host key and its Station (OS, disk, memory, load, agents installed and logged in, running work, repositories). The resident service answers DescribeStation with it (coder/tui/host-station.coax, collected by coax/lib/agent/router/station.coax); GET /api/chat/environment/station/v1 carries it to the iPhone app, which routes on it."
+      "note": "A connected computer's own report for the delegation router: its host key and its Station (OS, disk, memory, load, agents installed and logged in, running work, repositories). The resident service answers DescribeStation with it (openagents/daemon/host-station.coax, collected by coax/lib/agent/router/station.coax); GET /api/chat/environment/station/v1 carries it to the iPhone app, which routes on it."
     },
     {
       "id": "openagents.router.describe.v1alpha1",
@@ -4727,8 +4727,8 @@
       "step": "new",
       "files": [
         "proto/coder/router-v1alpha1.json",
-        "coder/tui/host-station.coax",
-        "coder/tui/host.coax"
+        "openagents/daemon/host-station.coax",
+        "openagents/daemon/host.coax"
       ],
       "tests": [
         "proto/coder/router-v1alpha1.json",
@@ -4746,7 +4746,7 @@
       "step": "new",
       "files": [
         "proto/coder/router-v2alpha1.json",
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ],
       "tests": [
         "proto/coder/router-v2alpha1.json",
@@ -4764,7 +4764,7 @@
       "step": "new",
       "files": [
         "proto/coder/router-v2alpha1.json",
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ],
       "tests": [
         "proto/coder/router-v2alpha1.json",
@@ -4989,7 +4989,7 @@
         "proto/coder/dictation-v1.json",
         "coax/lib/local/local-goldens.coax"
       ],
-      "note": "`openagents dictate --events|--json`, one JSON object a line (#13250, C7; profile cli-local). coax/lib/local/dictation-wire.coax writes it for the CLI and reads it for Coder's terminal dictation. The fixture holds lines real runs printed, every type and every status state; apps/openagents-cli/tests/dictate-check.coax and coder/tui/dictation_check.coax run the CLI and Coder end to end."
+      "note": "`openagents dictate --events|--json`, one JSON object a line (#13250, C7; profile cli-local). coax/lib/local/dictation-wire.coax writes it for the CLI and reads it for Coder's terminal dictation. The fixture holds lines real runs printed, every type and every status state; apps/openagents-cli/tests/dictate-check.coax and coder/tui/tests/dictation_check.coax run the CLI and Coder end to end."
     },
     {
       "id": "openagents.dictation.stream.v1",
@@ -5017,7 +5017,7 @@
       "check": "coax/web/tool.sh coax/lib/agent/observe/session-reader-goldens.coax proto/coder/session-reader-v1.json",
       "step": "C10",
       "tests": [
-        "coder/tui/session-reader-oracle.py",
+        "coder/tui/tests/session-reader-oracle.py",
         "coax/lib/agent/observe/session-reader-goldens.coax"
       ],
       "note": "What coder session-read, the coder_session_read tool and coder mcp answer about another tool's conversations (profile coder-session-reader). claude-history.coax holds every opening of the envelope and writes a page; coder/tui/session-reader.coax adds a list's rows. The fixture is replies the Coder CLI printed, with the transcripts it read: the check holds each reply's keys to its message and requires the writer's exact bytes from the transcript. Its readers are models and MCP clients. docs/protocol/coder-session-reader-v1.md.",
@@ -5225,11 +5225,11 @@
       "owner": "coder",
       "schema": "",
       "codec": "coder/tui/mcp.coax",
-      "check": "coax/bin/coax test coder/tui/mcp-external-checks.coax",
+      "check": "coax/bin/coax test coder/tui/tests/mcp-external-checks.coax",
       "step": "C13",
       "tests": [
         "proto/external/model-context-protocol.json",
-        "coder/tui/mcp-external-checks.coax"
+        "coder/tui/tests/mcp-external-checks.coax"
       ],
       "note": "MCP JSON-RPC on stdio for coder mcp. Anticorruption layer: coder/tui/mcp.coax is the only file that parses this format, and its output is our own record types and tool calls."
     },
@@ -6135,7 +6135,7 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/host-profile.coax proto/coder/environment-host-v1alpha1.json",
       "step": "new",
       "files": [
-        "coder/tui/host-environment.coax"
+        "openagents/daemon/host-environment.coax"
       ],
       "tests": [
         "coax/lib/agent/environment/host-profile.coax"
@@ -6151,11 +6151,11 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/execution-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-execution.coax",
+        "openagents/daemon/host-execution.coax",
         "coax/lib/agent/environment/preparation-store.coax",
         "coax/lib/agent/environment/task-store.coax",
         "coax/lib/agent/environment/task-wire.coax",
-        "coder/tui/host-tasks.coax",
+        "openagents/daemon/host-tasks.coax",
         "coax/web/api/account-chat-tasks.c",
         "coax/web/api/account-chat-task-route.coax",
         "apps/shared/chat-task-app.coax",
@@ -6165,9 +6165,9 @@
         "coax/lib/agent/environment/execution-checks.coax",
         "coax/lib/agent/environment/execution-profile.coax",
         "proto/coder/environment-execution-v1alpha1.json",
-        "coder/tui/host_smoke.coax",
+        "openagents/daemon/tests/host_smoke.coax",
         "coax/lib/agent/environment/preparation-store-oracle.coax",
-        "coder/tui/task-host-smoke.coax",
+        "openagents/daemon/tests/task-host-smoke.coax",
         "coax/web/api/tests/native_chat_checks.coax",
         "apps/shared/chat-task-checks.coax",
         "coax/native/chat-task-integration.coax",
@@ -6188,7 +6188,7 @@
         "coax/lib/agent/environment/preparation-store.coax",
         "coax/lib/agent/environment/task-store.coax",
         "coax/lib/agent/environment/task-input.coax",
-        "coder/tui/host-tasks.coax",
+        "openagents/daemon/host-tasks.coax",
         "coax/web/api/account-chat-turns.c",
         "coax/web/api/account-chat-task-policy.coax",
         "apps/openagents-cli/chat.coax",
@@ -6201,9 +6201,9 @@
         "coax/lib/agent/environment/execution-checks.coax",
         "coax/lib/agent/environment/execution-profile.coax",
         "proto/coder/environment-execution-v1alpha1.json",
-        "coder/tui/host_smoke.coax",
+        "openagents/daemon/tests/host_smoke.coax",
         "coax/lib/agent/environment/preparation-store-oracle.coax",
-        "coder/tui/task-host-smoke.coax",
+        "openagents/daemon/tests/task-host-smoke.coax",
         "coax/web/api/tests/durable_chat_checks.coax",
         "coax/web/api/tests/native_chat_checks.coax"
       ],
@@ -6218,7 +6218,7 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/execution-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-execution.coax",
+        "openagents/daemon/host-execution.coax",
         "coax/lib/agent/environment/preparation-store.coax",
         "coax/web/api/account-chat-tasks.c",
         "coax/web/api/account-chat-task-worker-policy.coax"
@@ -6227,7 +6227,7 @@
         "coax/lib/agent/environment/execution-checks.coax",
         "coax/lib/agent/environment/execution-profile.coax",
         "proto/coder/environment-execution-v1alpha1.json",
-        "coder/tui/host_smoke.coax",
+        "openagents/daemon/tests/host_smoke.coax",
         "coax/lib/agent/environment/preparation-store-oracle.coax",
         "coax/lib/agent/environment/preparation-profile.coax",
         "coax/web/api/tests/native_chat_checks.coax"
@@ -6256,8 +6256,8 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/task-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-tasks.coax",
-        "coder/tui/host-execution.coax",
+        "openagents/daemon/host-tasks.coax",
+        "openagents/daemon/host-execution.coax",
         "coax/lib/agent/environment/task-store.coax",
         "coax/web/api/environment.c",
         "coax/web/api/environment-wire.coax",
@@ -6269,7 +6269,7 @@
       ],
       "tests": [
         "coax/lib/agent/environment/task-store-oracle.coax",
-        "coder/tui/task-host-smoke.coax",
+        "openagents/daemon/tests/task-host-smoke.coax",
         "proto/coder/environment-task-v1alpha1.json",
         "coax/web/api/tests/task_checks.coax",
         "coax/web/api/tests/environment_proxy.c",
@@ -6293,8 +6293,8 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/task-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-tasks.coax",
-        "coder/tui/host-execution.coax",
+        "openagents/daemon/host-tasks.coax",
+        "openagents/daemon/host-execution.coax",
         "coax/lib/agent/environment/task-store.coax",
         "coax/web/api/environment.c",
         "coax/web/api/environment-wire.coax",
@@ -6307,7 +6307,7 @@
       ],
       "tests": [
         "coax/lib/agent/environment/task-store-oracle.coax",
-        "coder/tui/task-host-smoke.coax",
+        "openagents/daemon/tests/task-host-smoke.coax",
         "proto/coder/environment-task-v1alpha1.json",
         "coax/web/api/tests/task_checks.coax",
         "coax/web/api/tests/environment_proxy.c",
@@ -6329,8 +6329,8 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/transcript-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-transcript.coax",
-        "coder/tui/host-execution.coax",
+        "openagents/daemon/host-transcript.coax",
+        "openagents/daemon/host-execution.coax",
         "coax/web/api/environment.c",
         "apps/openagents-cli/tasks.coax",
         "coax/lib/agent/environment/transcript-client.coax",
@@ -6343,7 +6343,7 @@
         "proto/coder/environment-transcript-v1alpha1.json",
         "coax/lib/agent/environment/transcript-profile.coax",
         "coax/lib/agent/environment/transcript-store-oracle.coax",
-        "coder/tui/task-host-smoke.coax",
+        "openagents/daemon/tests/task-host-smoke.coax",
         "coax/web/api/tests/task_checks.coax",
         "coax/web/api/tests/environment_proxy.c",
         "coax/web/api/tests/native_chat_checks.coax",
@@ -6366,7 +6366,7 @@
       "step": "new",
       "files": [
         "coax/lib/agent/environment/transcript-store.coax",
-        "coder/tui/host-transcript.coax",
+        "openagents/daemon/host-transcript.coax",
         "coax/lib/agent/environment/transcript-client.coax",
         "apps/openagents-cli/task-transcript.coax",
         "coax/lib/agent/environment/chat-capture.coax",
@@ -6377,7 +6377,7 @@
         "proto/coder/environment-transcript-v1alpha1.json",
         "coax/lib/agent/environment/transcript-profile.coax",
         "coax/lib/agent/environment/transcript-store-oracle.coax",
-        "coder/tui/task-host-smoke.coax",
+        "openagents/daemon/tests/task-host-smoke.coax",
         "coax/web/api/tests/task_checks.coax",
         "coax/web/api/tests/environment_proxy.c",
         "coax/web/api/tests/native_chat_checks.coax",
@@ -6395,8 +6395,8 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/transcript-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-transcript.coax",
-        "coder/tui/host-execution.coax",
+        "openagents/daemon/host-transcript.coax",
+        "openagents/daemon/host-execution.coax",
         "coax/web/api/environment.c",
         "apps/openagents-cli/tasks.coax",
         "coax/lib/agent/environment/transcript-client.coax",
@@ -6409,7 +6409,7 @@
         "proto/coder/environment-transcript-v1alpha1.json",
         "coax/lib/agent/environment/transcript-profile.coax",
         "coax/lib/agent/environment/transcript-store-oracle.coax",
-        "coder/tui/task-host-smoke.coax",
+        "openagents/daemon/tests/task-host-smoke.coax",
         "coax/web/api/tests/task_checks.coax",
         "coax/web/api/tests/environment_proxy.c",
         "coax/web/api/tests/native_chat_checks.coax",
@@ -6444,8 +6444,8 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/offer-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-offers.coax",
-        "coder/tui/host-execution.coax",
+        "openagents/daemon/host-offers.coax",
+        "openagents/daemon/host-execution.coax",
         "coax/web/api/environment.c",
         "apps/openagents-cli/task-models.coax",
         "coax/web/api/account-chat-tasks.c",
@@ -6453,7 +6453,7 @@
       ],
       "tests": [
         "coax/lib/agent/environment/offer-profile.coax",
-        "coder/tui/task-host-smoke.coax",
+        "openagents/daemon/tests/task-host-smoke.coax",
         "coax/web/api/tests/task_checks.coax",
         "coax/web/api/tests/environment_proxy.c",
         "coax/web/api/tests/native_chat_checks.coax"
@@ -6469,8 +6469,8 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/offer-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-offers.coax",
-        "coder/tui/host-execution.coax",
+        "openagents/daemon/host-offers.coax",
+        "openagents/daemon/host-execution.coax",
         "coax/web/api/environment.c",
         "apps/openagents-cli/task-models.coax",
         "coax/web/api/account-chat-tasks.c",
@@ -6478,7 +6478,7 @@
       ],
       "tests": [
         "coax/lib/agent/environment/offer-profile.coax",
-        "coder/tui/task-host-smoke.coax",
+        "openagents/daemon/tests/task-host-smoke.coax",
         "coax/web/api/tests/task_checks.coax",
         "coax/web/api/tests/environment_proxy.c",
         "coax/web/api/tests/native_chat_checks.coax"
@@ -6520,12 +6520,12 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/preparation-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-execution.coax"
+        "openagents/daemon/host-execution.coax"
       ],
       "tests": [
         "proto/coder/environment-preparation-v1alpha1.json",
         "coax/lib/agent/environment/preparation-profile.coax",
-        "coder/tui/host_smoke.coax"
+        "openagents/daemon/tests/host_smoke.coax"
       ],
       "note": "ReadTaskInput observes the current grant's own input preparation after restart; no task execution."
     },
@@ -6538,14 +6538,14 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/preparation-profile.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-execution.coax",
+        "openagents/daemon/host-execution.coax",
         "coax/lib/agent/environment/preparation-store.coax"
       ],
       "tests": [
         "proto/coder/environment-preparation-v1alpha1.json",
         "coax/lib/agent/environment/preparation-profile.coax",
         "coax/lib/agent/environment/preparation-store-oracle.coax",
-        "coder/tui/host_smoke.coax"
+        "openagents/daemon/tests/host_smoke.coax"
       ],
       "note": "Exact retained bytes and verified completion; no model/provider readiness or start implied."
     },
@@ -6589,7 +6589,7 @@
       "check": "coax/web/tool.sh coax/lib/agent/environment/profile.coax proto/coder/environment-runtime-v1alpha1.json",
       "step": "new",
       "files": [
-        "coder/tui/host-environment.coax",
+        "openagents/daemon/host-environment.coax",
         "apps/shared/environment-app.coax",
         "coax/web/api/environment.c",
         "coax/web/api/environment-wire.coax"
@@ -6617,7 +6617,7 @@
       "check": "coax/bin/coax test coax/lib/agent/environment/wire.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-environment.coax",
+        "openagents/daemon/host-environment.coax",
         "coax/lib/agent/environment/host-wire.coax",
         "coax/web/api/environment.c",
         "coax/web/api/environment-wire.coax",
@@ -6634,7 +6634,7 @@
       "check": "coax/bin/coax test coax/lib/agent/environment/wire.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-environment.coax",
+        "openagents/daemon/host-environment.coax",
         "coax/lib/agent/environment/host-wire.coax",
         "coax/web/api/environment.c",
         "coax/web/api/environment-wire.coax",
@@ -6654,7 +6654,7 @@
         "coax/web/api/environment.c",
         "coax/web/api/environment-wire.coax",
         "apps/shared/environment-app.coax",
-        "coder/tui/host-environment.coax"
+        "openagents/daemon/host-environment.coax"
       ]
     },
     {
@@ -6737,7 +6737,7 @@
         "apps/shared/app/usage/flow.coax",
         "apps/shared/app/usage/sdk.coax",
         "coax/lib/agent/environment/local-request.coax",
-        "coder/tui/host-providers.coax",
+        "openagents/daemon/host-providers.coax",
         "coax/web/api/environment.c"
       ],
       "note": "Separate provider-account profile; no Runtime v1alpha1 or HOST identity changes. Provider tokens stay on the computer."
@@ -6754,7 +6754,7 @@
         "apps/shared/app/usage/flow.coax",
         "apps/shared/app/usage/sdk.coax",
         "coax/lib/agent/environment/local-request.coax",
-        "coder/tui/host-providers.coax",
+        "openagents/daemon/host-providers.coax",
         "coax/web/api/environment.c"
       ],
       "note": "Separate provider-account profile; no Runtime v1alpha1 or HOST identity changes. Provider tokens stay on the computer.",
@@ -6769,7 +6769,7 @@
       "check": "coax/bin/coax test coax/lib/agent/accounts/wire.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-providers.coax",
+        "openagents/daemon/host-providers.coax",
         "coax/web/api/environment.c"
       ],
       "note": "Separate provider-account profile; no Runtime v1alpha1 or HOST identity changes. Provider tokens stay on the computer."
@@ -6783,7 +6783,7 @@
       "check": "coax/bin/coax test coax/lib/agent/accounts/wire.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-providers.coax",
+        "openagents/daemon/host-providers.coax",
         "coax/web/api/environment.c"
       ],
       "note": "Separate provider-account profile; no Runtime v1alpha1 or HOST identity changes. Provider tokens stay on the computer."
@@ -6797,10 +6797,10 @@
       "check": "coax/bin/coax test coax/lib/agent/accounts/wire.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-providers.coax",
+        "openagents/daemon/host-providers.coax",
         "coax/lib/agent/accounts/claude.coax",
         "coder/tui/usage.coax",
-        "coder/tui/smoke.py"
+        "coder/tui/tests/smoke.py"
       ]
     },
     {
@@ -6812,7 +6812,7 @@
       "check": "coax/bin/coax test coax/lib/agent/accounts/wire.coax",
       "step": "new",
       "files": [
-        "coder/tui/host-providers.coax",
+        "openagents/daemon/host-providers.coax",
         "coax/lib/agent/accounts/claude.coax"
       ]
     },
@@ -7632,7 +7632,7 @@
         "openagents/knowledge/index.coax",
         "openagents/knowledge/nipkb.coax",
         "openagents/knowledge/kb-tool.coax",
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ],
       "tests": [
         "openagents/knowledge/record.coax",

@@ -63,7 +63,7 @@ It builds on what exists today:
 - [`coax/lib/gateway/card.coax`](../../coax/lib/gateway/card.coax) (OpenAgents Cloud model catalog & retail pricing cards, `#14069`)
 - [`coax/lib/gateway/plan.coax`](../../coax/lib/gateway/plan.coax)
 - [`coax/lib/gateway/rates.coax`](../../coax/lib/gateway/rates.coax)
-- [`openagents/core/wire.coax`](../../openagents/core/wire.coax) and [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) (OpenAgents Cloud gateway wiring, `#14070`)
+- [`openagents/core/wire.coax`](../../openagents/core/wire.coax) and [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax) (OpenAgents Cloud gateway wiring, `#14070`)
 - [`apps/openagents-desktop/page/usage.coax`](../../apps/openagents-desktop/page/usage.coax) and [`apps/openagents-desktop/Window+Usage.swift`](../../apps/openagents-desktop/Window+Usage.swift) (Always-On Usage HUD & `$0.00` local compute enforcement, `#14064`, `#14072`)
 - [`coax/lib/gateway/anthropic.coax`](../../coax/lib/gateway/anthropic.coax)
 - [`coax/lib/gateway/openai.coax`](../../coax/lib/gateway/openai.coax)

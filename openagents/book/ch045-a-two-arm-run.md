@@ -11,7 +11,7 @@
 > ([`coax/lib/nostr/eval/report.coax`](../../coax/lib/nostr/eval/report.coax))
 > run on `cpu`, grounded by [`openagents/examples/two-arm-atif-eval.coax`](../examples/two-arm-atif-eval.coax)
 > and [`openagents/examples/two-arm-atif-eval.out`](../examples/two-arm-atif-eval.out),
-> and are adopted by [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax)
+> and are adopted by [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax)
 > and [`apps/openagents-desktop/CapabilityStudio.swift`](../../apps/openagents-desktop/CapabilityStudio.swift).
 > Remaining: hosted sandboxed multi-case statistical uncertainty reporting and
 > gate-digest pinning in `openagents/eval/run.coax`.

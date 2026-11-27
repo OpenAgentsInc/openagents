@@ -8,7 +8,7 @@
 > [`replay-check.coax`](../../coax/lib/agent/router/replay-check.coax), `#14056`,
 > `#14071`) passes on `cpu` (`66/66` dev, `30/31` held-out) and routes native
 > OpenAgents Core vs opt-in external delegation in
-> [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax). Remaining:
+> [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax). Remaining:
 > mobile/web front integration and live multi-door latency benchmarking in
 > `openagents/agent/front/`.
 

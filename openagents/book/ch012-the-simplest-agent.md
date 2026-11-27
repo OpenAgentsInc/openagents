@@ -4,7 +4,7 @@
 > ([`openagents/core/core.coax`](../../openagents/core/core.coax),
 > [`openagents/core/query_loop.coax`](../../openagents/core/query_loop.coax),
 > [`openagents/core/wire.coax`](../../openagents/core/wire.coax)) and native
-> worker ([`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax),
+> worker ([`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax),
 > `#14050`–`#14053`) ship and pass their `#test` checks on `cpu`, driving
 > [`apps/openagents-desktop`](../../apps/openagents-desktop) behind the
 > OpenAgents Cloud gateway and local `psionic-inkling-serve`. Remaining: wiring
@@ -60,7 +60,7 @@ A plan for what this chapter ships once the draft is approved:
 It builds on what exists today:
 
 - [`openagents/core/core.coax`](../../openagents/core/core.coax), [`openagents/core/query_loop.coax`](../../openagents/core/query_loop.coax), and [`openagents/core/wire.coax`](../../openagents/core/wire.coax) (unified 24-layer pure-Coax runtime, `#14050`–`#14057`)
-- [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) (native worker running behind Desktop and CLI)
+- [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax) (native worker running behind Desktop and CLI)
 - [`coax/lib/gateway`](../../coax/lib/gateway)
 - [`coax/lib/agent/journal.coax`](../../coax/lib/agent/journal.coax)
 - [`apps/openagents-cli`](../../apps/openagents-cli)

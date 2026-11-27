@@ -47,8 +47,8 @@ mobile devices.
   Metal.
 - **Resident `coder-host` converged onto `oa-worker` (`#14073`, `#14060`):**
   [`apps/openagents-desktop/DaemonClient.swift`](../../apps/openagents-desktop/DaemonClient.swift),
-  [`coder/tui/host.coax`](../../coder/tui/host.coax), and
-  [`coder/tui/host-phone.coax`](../../coder/tui/host-phone.coax) let runs
+  [`openagents/daemon/host.coax`](../../openagents/daemon/host.coax), and
+  [`openagents/daemon/host-phone.coax`](../../openagents/daemon/host-phone.coax) let runs
   survive closing `OpenAgents.app`, reattach to live streams, and deliver Stop
   to host-owned runs.
   [`coax/lib/agent/environment/phone-agent-policy.coax`](../../coax/lib/agent/environment/phone-agent-policy.coax)
@@ -56,8 +56,8 @@ mobile devices.
   `oa:gemini-4-neon`, optional `$0` `oa:inkling-2-mini`) as the primary engine
   across local and Tailscale-connected hosts.
 - **Opt-in Claude sub-agent delegation (`#14104`):**
-  [`coder/tui/claudeworker.coax`](../../coder/tui/claudeworker.coax) and
-  [`coder/tui/oa-subagent.coax`](../../coder/tui/oa-subagent.coax) ship on
+  [`openagents/workers/claudeworker.coax`](../../openagents/workers/claudeworker.coax) and
+  [`openagents/runtime/oa-subagent.coax`](../../openagents/runtime/oa-subagent.coax) ship on
   macOS `--minimal` and Linux with a non-interactive `--auth` probe (hard 5 s
   deadline, `SSH_CONNECTION=1`, `NO_OPEN_BROWSER=1`), live sign-in status in
   `Settings -> Agent`, mapped permission modes (`Allow All -> bypassPermissions`,
@@ -67,7 +67,7 @@ mobile devices.
 - **Conversational capability authoring & two-arm ATIF-v1.8 evals (`#14059`):**
   [`coax/lib/agent/desktop/capability-author.coax`](../../coax/lib/agent/desktop/capability-author.coax)
   and `OA_PACK_CAPABILITY` (`openagents/core/members.coax`,
-  `coder/tui/oa-worker.coax`) let OpenAgents draft a `SKILL.md` in chat, run a
+  `openagents/runtime/oa-worker.coax`) let OpenAgents draft a `SKILL.md` in chat, run a
   real baseline-vs-candidate two-arm eval measuring latency via `proc_now_ms()`
   and canonical `ATIF-v1.8` SHA-256 `steps_digest`, render an `#authority`
   Promotion Verdict Card, and activate promoted local skills on the next turn
@@ -93,7 +93,7 @@ mobile devices.
   Terminal-Bench 4.1, and ATIF-v1.8 scorecards (`evals/session-history/`).
 - **iOS Desktop parity (`#14068`):**
   [`apps/openagents-ios/gpu-page.coax`](../../apps/openagents-ios/gpu-page.coax)
-  and [`coder/tui/host-antigravity-ext.coax`](../../coder/tui/host-antigravity-ext.coax)
+  and [`openagents/daemon/host-antigravity-ext.coax`](../../openagents/daemon/host-antigravity-ext.coax)
   bring Full Auto (`full-auto.coax`), the Always-On Usage HUD (`GetUsage`),
   Universal Introspection sidebar sections with Tailscale command dispatch
   (`ListIntrospection`, `ReadIntrospection`, `SendSessionCommand`), and
@@ -112,7 +112,7 @@ coax/bin/coax test coax/lib/agent/desktop/operator-vault.coax --library
 coax/bin/coax test coax/lib/agent/environment/phone-agent-policy.coax --library
 coax/bin/coax test apps/openagents-desktop/page/checks/introspect-checks.coax --library
 coax/bin/coax test apps/openagents-desktop/page/checks/agents-checks.coax --library
-coax/bin/coax test coder/tui/claudeworker.coax --library
+coax/bin/coax test openagents/workers/claudeworker.coax --library
 ```
 
 ## Still open

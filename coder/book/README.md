@@ -122,7 +122,7 @@ The [registry](chapters.json) names each chapter’s sources and qualified targe
 | [36. A terminal UI](ch036-a-terminal-ui.md) | Implemented: three agents inline, themes, job status, macOS terminal |
 | [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) | Partly implemented: vt-text-v1, bounded CPU |
 | [38. Drive Cursor](ch038-drive-cursor.md) | Partly implemented: cursor-agent 2026.10.14-941492e ACP |
-| [39. Drive Antigravity](ch039-drive-antigravity.md) | Implemented: `agy` ACP + `coder/tui/agyworker.coax` with T3 quirk fixes, prompt-cache expiry/idle compaction, and opt-in subagent delegation |
+| [39. Drive Antigravity](ch039-drive-antigravity.md) | Implemented: `agy` ACP + `openagents/workers/agyworker.coax` with T3 quirk fixes, prompt-cache expiry/idle compaction, and opt-in subagent delegation |
 | [40. The desktop app](ch040-the-desktop-app.md) | Implemented: unified `apps/openagents-desktop/` (`OpenAgents.app`, `--minimal`/`--full`, macOS Metal + Linux/Windows Vulkan, modular `page/*.coax`) |
 | [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) | Implemented: `mcworker-wire.coax` JSON-lines protocol driving `oa-worker`, `oa-subagent`, `inky`, `agyworker`, `claudeworker`, and legacy `mcworker` |
 | [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) | Partly implemented: Linux/Windows Vulkan, resident coder-host (oa-worker), Universal Introspection (#14066), Claude delegation (#14104), Full Auto (#14063), capability authoring (#14059), Metaverse/Browser panes (#14040, #14105), and iOS parity (#14068); #14067 borderless control, Android parity, and UI consent/memory open |

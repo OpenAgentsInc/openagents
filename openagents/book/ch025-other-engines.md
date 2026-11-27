@@ -52,11 +52,11 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) and [`coax/lib/agent/router/native-choice.coax`](../../coax/lib/agent/router/native-choice.coax) (native default + opt-in external delegation gating, `#14071`)
+- [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax) and [`coax/lib/agent/router/native-choice.coax`](../../coax/lib/agent/router/native-choice.coax) (native default + opt-in external delegation gating, `#14071`)
 - [`coax/lib/agent/claude`](../../coax/lib/agent/claude)
 - [`coax/lib/agent/codex`](../../coax/lib/agent/codex)
 - [`coax/lib/agent/cursor`](../../coax/lib/agent/cursor)
-- [`coder/tui/agyworker.coax`](../../coder/tui/agyworker.coax)
+- [`coder/tui/agyworker.coax`](../../openagents/workers/agyworker.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
 - [`coax/lib/agent/engine/availability-policy.coax`](../../coax/lib/agent/engine/availability-policy.coax)
 

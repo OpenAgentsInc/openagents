@@ -9,7 +9,7 @@
 > and [`openagents/examples/test-time-capability-claims.out`](../examples/test-time-capability-claims.out),
 > and are adopted by [`openagents/registry/registry.coax`](../../openagents/registry/registry.coax),
 > [`coax/lib/agent/desktop/capability-author.coax`](../../coax/lib/agent/desktop/capability-author.coax),
-> and [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax). Remaining:
+> and [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax). Remaining:
 > unified `openagents.eval.v1` protobuf schemas and cross-claim policy records in
 > `openagents/eval/`.
 

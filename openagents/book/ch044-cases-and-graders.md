@@ -7,7 +7,7 @@
 > run on `cpu`, grounded by [`openagents/examples/capability-cases-gate.coax`](../examples/capability-cases-gate.coax)
 > and [`openagents/examples/capability-cases-gate.out`](../examples/capability-cases-gate.out),
 > and are consumed by [`coax/lib/agent/desktop/capability-eval.coax`](../../coax/lib/agent/desktop/capability-eval.coax)
-> and [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax). Remaining:
+> and [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax). Remaining:
 > signed standalone NIP-EVAL suite packaging, typed-decision graders, and
 > cross-case state-leakage linting in `openagents/eval/suite.coax`.
 
@@ -63,7 +63,7 @@ It builds on what exists today:
 - [`coax/lib/agent/desktop/capability-author.coax`](../../coax/lib/agent/desktop/capability-author.coax) (positive + held-out two-arm shell case runner)
 - [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval)
 - [`coax/lib/systemone`](../../coax/lib/systemone)
-- [`coder/tui/filter_eval.py`](../../coder/tui/filter_eval.py)
+- [`coder/tui/filter_eval.py`](../../coder/tui/tests/filter_eval.py)
 
 On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 

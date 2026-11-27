@@ -23,7 +23,7 @@ and the `/v1/responses` + strict JSON-schema server
     [`apps/openagents-desktop/Window+Dialogs.swift`](../../apps/openagents-desktop/Window+Dialogs.swift),
     [`apps/openagents-desktop/Window+Runs.swift`](../../apps/openagents-desktop/Window+Runs.swift),
     [`apps/openagents-desktop/page/usage.coax`](../../apps/openagents-desktop/page/usage.coax),
-    [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax),
+    [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax),
     [`apps/openagents-desktop/AppDelegate.swift`](../../apps/openagents-desktop/AppDelegate.swift)
 
 ```shell

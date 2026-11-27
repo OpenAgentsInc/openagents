@@ -72,7 +72,7 @@
 #                                         against production's commit PROD (#13266)
 #   coax/remote/check.sh counts BASE      no allowlist count raised since BASE (coax/remote/counts.sh)
 #   coax/remote/check.sh coder            Coder's own checks (coax test coder/tui/coder.coax), its
-#                                         offline smoke (coder/tui/smoke.py, about 10 minutes) and
+#                                         offline smoke (coder/tui/tests/smoke.py, about 10 minutes) and
 #                                         Coder Desktop's Tier 0 and Tier 1 replay evals (the page's
 #                                         tests and evals/openagents-desktop/tier1/replay_test.coax, #13705)
 #                                         and its page checks under 85% of the value slots (page-slots.sh, #13767)
@@ -212,7 +212,7 @@ api() { step api coax/web/api/test.sh --part "$1" || status=1; }
 # this job: the smoke failed on main for six days (the worker's journal line, 410e68f65b) unseen.
 coder() {
   step coder-checks coax/bin/coax test coder/tui/coder.coax || status=1
-  step coder-smoke python3 coder/tui/smoke.py || status=1
+  step coder-smoke python3 coder/tui/tests/smoke.py || status=1
   desktop_core
   # Coder Desktop's evals that need no model or window (#13705): replay_test.coax loads page.coax,
   # so this runs the page's own tests too; the host scenarios drive the real page headless on the
@@ -241,10 +241,10 @@ desktop_linux() {
 }
 # The Windows app (#13782): build.sh cross-compiles it and mcworker with zig (from nix on a host).
 windows_build() { step windows-build apps/openagents-desktop/windows/build.sh --check || status=1; }
-desktop_core_touched() { grep -Eq '^(coax/lib/agent/desktop/|coax/lib/agent/environment/daemon-wire\.coax|coder/tui/desktop-store\.coax|coax/lib/(sys|net|json|text)/|coax/lib/crypto/(ed25519|sha256|entropy|rand_foreign)|coax/platform/|proto/coder/desktop-update)' "$out/changed"; }
-desktop_touched() { grep -Eq '^(apps/openagents-desktop|evals/openagents-desktop|components)/' "$out/changed"; }
+desktop_core_touched() { grep -Eq '^(coax/lib/agent/desktop/|coax/lib/agent/environment/daemon-wire\.coax|coax/lib/(sys|net|json|text)/|coax/lib/crypto/(ed25519|sha256|entropy|rand_foreign)|coax/platform/|proto/coder/desktop-update)' "$out/changed"; }
+desktop_touched() { grep -Eq '^(apps/openagents-desktop|evals/openagents-desktop|components|openagents/(core|runtime|daemon|workers))/' "$out/changed"; }
 coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)
-  grep -Eq '^coder/' "$out/changed" && return 0
+  grep -Eq '^(coder|openagents/(runtime|daemon|workers))/' "$out/changed" && return 0
   affected_files || return 0
   grep -qxF coder/tui/coder.coax "$out/affected"
 }

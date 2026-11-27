@@ -63,7 +63,7 @@ It builds on what exists today:
 - [`apps/openagents-desktop/page/permit.coax`](../../apps/openagents-desktop/page/permit.coax) (interactive Desktop approval cards & Full Auto mode, `#14063`)
 - [`coax/web/api/agent-policy.coax`](../../coax/web/api/agent-policy.coax) and [`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax)
 - [`coder/tui/approvals.coax`](../../coder/tui/approvals.coax)
-- [`coder/tui/host_grants.coax`](../../coder/tui/host_grants.coax)
+- [`coder/tui/host_grants.coax`](../../openagents/daemon/host_grants.coax)
 - [`coax/lib/nostr/cap`](../../coax/lib/nostr/cap)
 - [`coax/lib/nostr/nipkeys.coax`](../../coax/lib/nostr/nipkeys.coax)
 

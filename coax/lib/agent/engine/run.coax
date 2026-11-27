@@ -56,7 +56,7 @@ TR_MEMORY_MAX :: 8192;       // remembered facts ahead of a first message (Coder
 TR_TOOL_ARGS :: 65536;
 TR_STOP_MS :: 5000;          // an interrupt not answered by then ends the engine
 TR_MC_TOOL :: "/coax/web/tool.sh";              // Microcoder's worker: under the repo
-TR_MC_WORKER :: "/coder/tui/mcworker.coax";
+TR_MC_WORKER :: "/openagents/workers/legacy/mcworker.coax";
 
 // An Edit or a Write waiting for its result, to log as a diff.
 TrEdit :: struct {

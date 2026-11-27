@@ -34,10 +34,11 @@ final class CoderRun {
     var needsVersionRecycle = false    // true when reattached to a worker from an older app version; recycled once its turn ends
     var autoRecoveries: Int = 0        // bounded mid-turn worker crash/lost-daemon auto-recovery counter (#14095)
     var recoverGen: UInt64 = 0
+    var lastCrashSignature: String?    // deduplicates deterministic fatal worker crashes so we never loop blindly
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         stopRequestedAt = 0; stopGen &+= 1
-        autoRecoveries = 0; recoverGen &+= 1
+        autoRecoveries = 0; recoverGen &+= 1; lastCrashSignature = nil
         needsVersionRecycle = false
         endTurn()
         worker.gone = nil; worker.line = nil; worker.stop()

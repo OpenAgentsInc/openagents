@@ -12,7 +12,7 @@
       "source": [
         "apps/shared/chat/screen.coax",
         "apps/openagents-desktop/page.coax",
-        "apps/openagents-ios/composer_screen.coax",
+        "apps/openagents-ios/gpu-page.coax",
         "openagents/examples/cases/composer-type.ops",
         "openagents/examples/composer-input.coax",
         "openagents/examples/composer-input.out"
@@ -34,7 +34,7 @@
       "source": [
         "apps/shared/chat/screen.coax",
         "apps/openagents-desktop/page.coax",
-        "apps/openagents-ios/composer_screen.coax",
+        "apps/openagents-ios/gpu-page.coax",
         "openagents/examples/cases/send.ops",
         "openagents/examples/chat-screen-flow.coax",
         "openagents/examples/chat-screen-flow.out"
@@ -56,7 +56,7 @@
       "source": [
         "apps/shared/chat/screen.coax",
         "apps/openagents-desktop/page.coax",
-        "apps/openagents-ios/composer_screen.coax",
+        "apps/openagents-ios/gpu-page.coax",
         "openagents/examples/cases/transcript.ops",
         "openagents/examples/transcript-scroll.coax",
         "openagents/examples/transcript-scroll.out"
@@ -137,7 +137,7 @@
       ],
       "adopted_by": [
         "apps/shared/app/core/host.coax",
-        "apps/openagents-ios/host.c"
+        "apps/openagents-ios/gpu-host.c"
       ]
     },
     {
@@ -253,7 +253,7 @@
         "openagents/core/core.coax",
         "openagents/core/query_loop.coax",
         "openagents/core/wire.coax",
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ],
       "qualified_targets": [
         "cpu"
@@ -280,7 +280,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax",
+        "openagents/runtime/oa-worker.coax",
         "openagents/core/wire.coax"
       ]
     },
@@ -305,7 +305,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax",
+        "openagents/runtime/oa-worker.coax",
         "apps/openagents-desktop/page/agent_settings.coax"
       ]
     },
@@ -329,7 +329,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax",
+        "openagents/runtime/oa-worker.coax",
         "apps/openagents-desktop/page/agent_settings.coax"
       ]
     },
@@ -366,7 +366,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax",
+        "openagents/runtime/oa-worker.coax",
         "apps/openagents-desktop/page/permit.coax"
       ]
     },
@@ -433,7 +433,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -457,7 +457,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -489,7 +489,7 @@
         "openagents/core/core.coax",
         "openagents/core/query_loop.coax",
         "openagents/core/wire.coax",
-        "coder/tui/oa-worker.coax",
+        "openagents/runtime/oa-worker.coax",
         "openagents/examples/coder-member-dispatch.coax",
         "openagents/examples/coder-member-dispatch.out"
       ],
@@ -527,7 +527,7 @@
         "openagents/core/subagent.coax",
         "openagents/core/agents.coax",
         "openagents/core/swarm.coax",
-        "coder/tui/oa-subagent.coax",
+        "openagents/runtime/oa-subagent.coax",
         "coax/lib/agent/tier.coax"
       ],
       "qualified_targets": [
@@ -572,7 +572,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -666,7 +666,7 @@
       "adopted_by": [
         "apps/openagents-desktop/Window+WalletRPC.swift",
         "apps/openagents-desktop/page/walletpane.coax",
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -803,7 +803,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax",
+        "openagents/runtime/oa-worker.coax",
         "openagents/core/wire.coax",
         "coax/lib/agent/desktop/capability-eval.coax"
       ]
@@ -829,7 +829,7 @@
       "adopted_by": [
         "openagents/registry/registry.coax",
         "coax/lib/agent/desktop/capability-author.coax",
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -852,7 +852,7 @@
       ],
       "adopted_by": [
         "coax/lib/agent/desktop/capability-eval.coax",
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -878,7 +878,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax",
+        "openagents/runtime/oa-worker.coax",
         "apps/openagents-desktop/CapabilityStudio.swift"
       ]
     },

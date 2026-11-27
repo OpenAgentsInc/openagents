@@ -27,8 +27,8 @@ one small step at a time.
 > shipped, CPU-tested Coax modules across **Coax Web / Coax UI**
 > ([`components/ui/`](../../components/ui), [`apps/openagents-web/demos/docs-starter/`](../../apps/openagents-web/demos/docs-starter)),
 > the unified 24-layer pure-Coax agent core ([`openagents/core/`](../../openagents/core),
-> [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax),
-> [`coder/tui/oa-subagent.coax`](../../coder/tui/oa-subagent.coax)),
+> [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax),
+> [`coder/tui/oa-subagent.coax`](../../openagents/runtime/oa-subagent.coax)),
 > the typed router ([`coax/lib/agent/router/`](../../coax/lib/agent/router)),
 > the shared knowledge base ([`openagents/knowledge/`](../../openagents/knowledge)),
 > the Desktop + Apple Breez Spark wallet and `#authority` money rules

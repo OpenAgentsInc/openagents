@@ -121,12 +121,12 @@ fi
 # 5. Build workers, gitguard and resident daemon beside OpenAgents unless --no-worker is passed.
 if [[ "$want_worker" == 1 ]]; then
   coax_hash="$(sha256sum "$coax" | cut -d " " -f 1)"
-  worker_pairs=("oa-worker:oa-worker" "claudeworker:claudeworker" "agyworker:agyworker" "gitguard:gitguard" "host:coder-host")
+  worker_pairs=("openagents/runtime/oa-worker.coax:oa-worker:oa-worker" "openagents/workers/claudeworker.coax:claudeworker:claudeworker" "openagents/workers/agyworker.coax:agyworker:agyworker" "openagents/workers/gitguard.coax:gitguard:gitguard" "openagents/daemon/host.coax:host:coder-host")
   rm -f "$work/inky" "$work/mcworker"
   for pair in "${worker_pairs[@]}"; do
-    src_name="${pair%%:*}"; dst_name="${pair##*:}"
-    if [[ -f "$repo/coder/tui/$src_name.coax" ]]; then
-      COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/$src_name.coax" build-only < /dev/null > "$work/.$dst_name.log" 2>&1 || true
+    IFS=: read -r src_rel src_name dst_name <<< "$pair"
+    if [[ -f "$repo/$src_rel" ]]; then
+      COAX="$coax" "$repo/coax/web/tool.sh" "$repo/$src_rel" build-only < /dev/null > "$work/.$dst_name.log" 2>&1 || true
       built="$repo/coax/web/build/tools/$src_name-$coax_hash"
       # beside, then renamed over: a running daemon (coder-host serve outlives the app) keeps its old file
       if [[ -x "$built" ]]; then

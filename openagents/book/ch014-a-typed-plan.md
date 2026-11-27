@@ -8,7 +8,7 @@
 > [`router.coax`](../../coax/lib/agent/router/router.coax), `#14056`, `#14071`)
 > run on `cpu`, grounded by [`openagents/examples/typed-route-plan.coax`](../examples/typed-route-plan.coax)
 > and [`openagents/examples/typed-route-plan.out`](../examples/typed-route-plan.out),
-> and are consumed by [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax)
+> and are consumed by [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax)
 > and [`apps/openagents-desktop/page/agent_settings.coax`](../../apps/openagents-desktop/page/agent_settings.coax).
 > Remaining: multi-step grant-carrying program plans and step-log replay in
 > `openagents/agent/plan.coax`.

@@ -20,7 +20,7 @@ tool_main :: ()->int #export_c #effects(all) {
   jw_reply(p,"{\"rationale\":\"write\",\"commands\":[\"printf once > worker.txt\"],\"view\":[\"worker.txt\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
   p=fs_join(dir,"2.http",pb[..]);jw_reply(p,"{\"rationale\":\"done\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}");
   h:=proc_new();#assert h>=0;
-  #assert proc_arg(h,"coax/web/tool.sh") && proc_arg(h,"coder/tui/mcworker.coax");
+  #assert proc_arg(h,"coax/web/tool.sh") && proc_arg(h,"openagents/workers/legacy/mcworker.coax");
   env:[1500]u8;
   for name:[2]string.["HOME=","CODER_HOME="] {n:=json_raw(env[..],0,name);n=json_raw(env[..],n,home);#assert proc_env(h,cast(string)env[0..<n]);}
   n:=json_raw(env[..],0,"GW_REPLAY=");n=json_raw(env[..],n,dir);#assert proc_env(h,cast(string)env[0..<n]);

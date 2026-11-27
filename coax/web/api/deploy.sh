@@ -112,7 +112,7 @@ done
 # The authenticated connection broker uses the same Coax HOST carriage as the computers.
 mkdir -p "$stage/host"
 cp "$work/source/coax/platform/"*.c "$work/source/coax/platform/"*.h "$work/source/coax/platform/"*.inc "$stage/host/"
-"$work/source/coax/bin/coax" c "$work/source/coder/tui/host.coax" --run-steps 250000000 --library > "$stage/host/environment.c"
+"$work/source/coax/bin/coax" c "$work/source/openagents/daemon/host.coax" --run-steps 250000000 --library > "$stage/host/environment.c"
 "$work/source/coax/bin/coax" c "$work/source/coax/lib/crypto/entropy.coax" --library --header "$stage/host/entropy-policy.h" > "$stage/host/entropy.c"
 fi
 if [[ -n "$prepare" ]]; then

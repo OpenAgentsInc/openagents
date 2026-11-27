@@ -22,9 +22,9 @@ trap 'rm -rf "$stage"' EXIT
 
 echo "==> [1/4] Building bundled coder-host, oa-worker, and agyworker"
 compiler_hash="$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
-COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" build-only </dev/null >/dev/null 2>&1 || true
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" </dev/null >/dev/null
-COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" </dev/null >/dev/null
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/daemon/host.coax" build-only </dev/null >/dev/null 2>&1 || true
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/runtime/oa-worker.coax" </dev/null >/dev/null
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/workers/agyworker.coax" </dev/null >/dev/null
 cp -f "$repo/coax/web/build/tools/host-$compiler_hash" "$stage/coder-host"
 cp -f "$repo/coax/web/build/tools/oa-worker-$compiler_hash" "$stage/oa-worker"
 cp -f "$repo/coax/web/build/tools/agyworker-$compiler_hash" "$stage/agyworker"

@@ -16,7 +16,7 @@ compiler_hash="$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
 
 echo "==> Building coder-host (~/.openagents/bin/coder-host)"
 mkdir -p "$HOME/.openagents/bin"
-COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" build-only </dev/null >/dev/null 2>&1 || true
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/daemon/host.coax" build-only </dev/null >/dev/null 2>&1 || true
 host_built="$repo/coax/web/build/tools/host-$compiler_hash"
 test -x "$host_built"
 cp -f "$host_built" "$HOME/.openagents/bin/coder-host.tmp"
@@ -24,7 +24,7 @@ chmod 755 "$HOME/.openagents/bin/coder-host.tmp"
 mv -f "$HOME/.openagents/bin/coder-host.tmp" "$HOME/.openagents/bin/coder-host"
 
 echo "==> Building oa-worker (~/.openagents/bin/oa-worker)"
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" </dev/null >/dev/null
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/runtime/oa-worker.coax" </dev/null >/dev/null
 oa_built="$repo/coax/web/build/tools/oa-worker-$compiler_hash"
 test -x "$oa_built"
 cp -f "$oa_built" "$HOME/.openagents/bin/oa-worker.tmp"
@@ -32,7 +32,7 @@ chmod 755 "$HOME/.openagents/bin/oa-worker.tmp"
 mv -f "$HOME/.openagents/bin/oa-worker.tmp" "$HOME/.openagents/bin/oa-worker"
 
 echo "==> Building agyworker (~/.openagents/bin/agyworker)"
-COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" </dev/null >/dev/null
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/openagents/workers/agyworker.coax" </dev/null >/dev/null
 agy_built="$repo/coax/web/build/tools/agyworker-$compiler_hash"
 test -x "$agy_built"
 cp -f "$agy_built" "$HOME/.openagents/bin/agyworker.tmp"

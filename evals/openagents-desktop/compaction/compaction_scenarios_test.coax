@@ -15,7 +15,7 @@
 
 #load "../../../coax/lib/sys/tool.coax";
 #load "scenarios.coax";
-#load "../../../coder/tui/microcoder_keys.coax";
+#load "../../../coax/lib/microcoder/keys.coax";
 
 CC_STEPS :: 200;
 

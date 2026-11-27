@@ -6,7 +6,7 @@
 > [`wire.coax`](../../openagents/core/wire.coax)), `#authority` member pack
 > dispatch and bypass-immune permission policy
 > ([`openagents/core/members.coax`](../../openagents/core/members.coax), `#14057`),
-> and native Desktop worker ([`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax))
+> and native Desktop worker ([`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax))
 > run on `cpu`, grounded by [`openagents/examples/coder-member-dispatch.coax`](../examples/coder-member-dispatch.coax)
 > and [`openagents/examples/coder-member-dispatch.out`](../examples/coder-member-dispatch.out),
 > and are adopted by [`apps/openagents-desktop/Window+Runs.swift`](../../apps/openagents-desktop/Window+Runs.swift).
@@ -61,7 +61,7 @@ It builds on what exists today:
 
 - [`openagents/core/members.coax`](../../openagents/core/members.coax) (`#authority` member packs and bypass-immune `WalletPay`, vault, and Nostr signing guards, `#14057`)
 - [`openagents/core/core.coax`](../../openagents/core/core.coax), [`openagents/core/query_loop.coax`](../../openagents/core/query_loop.coax), and [`openagents/core/wire.coax`](../../openagents/core/wire.coax) (the unified 24-layer pure-Coax runtime, `#14050`–`#14057`)
-- [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax) (native OpenAgents Core worker replacing deprecated `coax/lib/microcoder`, `#13983`)
+- [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax) (native OpenAgents Core worker replacing deprecated `coax/lib/microcoder`, `#13983`)
 - [`coax/lib/inky/`](../../coax/lib/inky) (local `Inkling-2-Mini` coding agent loop)
 - [`coder/tui/coder.coax`](../../coder/tui/coder.coax)
 - [`coax/lib/agent`](../../coax/lib/agent)

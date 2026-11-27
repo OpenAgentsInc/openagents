@@ -132,13 +132,13 @@ ios_start :: (s: [] IosSession, repo: string, app_path: string, device: string, 
   bj: [1] Jo;
   jo_start(bj[..], build_cmd[..]);
   jo_put(bj[..], "'"); jo_put(bj[..], repo); jo_put(bj[..], "/coax/web/tool.sh' '");
-  jo_put(bj[..], repo); jo_put(bj[..], "/coder/tui/oasim.coax' help >/dev/null 2>&1 || true");
+  jo_put(bj[..], repo); jo_put(bj[..], "/coax/lib/agent/device/oasim.coax' help >/dev/null 2>&1 || true");
   _ = da_run_sh(cast(string) build_cmd[0..<bj[0].n], 30000);
 
   h := proc_new();
   if h < 0 { return false; }
   _ = proc_arg(h, da_cat(b1[..], repo, "/coax/web/tool.sh"));
-  _ = proc_arg(h, da_cat(b1[..], repo, "/coder/tui/oasim.coax"));
+  _ = proc_arg(h, da_cat(b1[..], repo, "/coax/lib/agent/device/oasim.coax"));
   _ = proc_arg(h, "serve");
   _ = proc_env(h, da_cat(b1[..], "OA_SIM_HOME=", da_slice(s[0].sim_home[..], s[0].sim_home_n)));
   _ = proc_env(h, da_cat(b1[..], "OA_SIM_SOCKET=", da_slice(s[0].sock_path[..], s[0].sock_n)));

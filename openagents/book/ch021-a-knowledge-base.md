@@ -8,7 +8,7 @@
 > and CLI/eval harness ([`openagents/knowledge/kb-tool.coax`](../../openagents/knowledge/kb-tool.coax))
 > run on `cpu`, grounded by [`openagents/examples/knowledge-base-records.coax`](../examples/knowledge-base-records.coax)
 > and [`openagents/examples/knowledge-base-records.out`](../examples/knowledge-base-records.out),
-> and are mounted in [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax)
+> and are mounted in [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax)
 > as `OA_PACK_KNOWLEDGE` (`KnowledgeSearch`, `KnowledgeGet`). Remaining: live
 > multi-relay NIP-KB sync (`openagents/knowledge/relay-sync.coax`) and evidence-gated
 > import of legacy benchmark method notes.

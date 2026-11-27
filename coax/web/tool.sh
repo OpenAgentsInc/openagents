@@ -10,7 +10,7 @@
 # for wss:// and https:// (coax/lib/net/relay_conn.coax, http.coax). A
 # "// tool.sh: run-steps N" line in the tool's own file gives the compiler a
 # larger compile-time budget (coax --run-steps), for a tool that loads the
-# secp256k1 tables (coder/tui/host.coax). A "// tool.sh: release" line in the
+# secp256k1 tables (openagents/daemon/host.coax). A "// tool.sh: release" line in the
 # tool's own file emits release C (coax c --release: no checked-arithmetic
 # traps), for a long numerical tool such as a training run (psionic/examples/fit-mnist.coax).
 # A "// tool.sh: stack-gib N" line gives tool_main an N GiB stack (address space, committed

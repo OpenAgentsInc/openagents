@@ -45,7 +45,7 @@ The psionic engine is Microcoder (chapter 9) with a different plan. Coder's
 terminal UI and `coder run` send Microcoder's worker the task with
 `"local": true`, and the worker builds a plan of one gateway
 (`mk_plan_local` in
-[microcoder_keys.coax](../../coder/tui/microcoder_keys.coax)):
+[microcoder_keys.coax](../../coax/lib/microcoder/keys.coax)):
 
 - The base URL is `PSIONIC_BASE_URL`, or `http://127.0.0.1:8080`.
 - The model is `PSIONIC_MODEL`, or `local`.
@@ -69,7 +69,7 @@ conversation.
 
 ## The check
 
-[local_model.py](../../coder/tui/local_model.py) is a stand-in server for
+[local_model.py](../../coder/tui/tests/local_model.py) is a stand-in server for
 tests. It lists one model and answers with Microcoder's action as text:
 first a command, `echo local-step`, then, once the state holds that
 command, the reply `local-ok`. The offline smoke starts it, runs `coder run

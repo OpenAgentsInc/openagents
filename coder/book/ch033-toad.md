@@ -212,5 +212,5 @@ from the published standards and checked against libghostty as an oracle
 - [src/toad/widgets/prompt.py](https://github.com/batrachianai/toad/blob/dd4f90e8b3700c3de80ad4b0eaa488ad0105e2c1/src/toad/widgets/prompt.py)
 - [src/toad/db.py](https://github.com/batrachianai/toad/blob/dd4f90e8b3700c3de80ad4b0eaa488ad0105e2c1/src/toad/db.py)
 - [src/toad/cli.py](https://github.com/batrachianai/toad/blob/dd4f90e8b3700c3de80ad4b0eaa488ad0105e2c1/src/toad/cli.py)
-- Coder's side: [coder/tui/coder.coax](../tui/coder.coax), [coax/lib/tui/tui.coax](../../coax/lib/tui/tui.coax), [coax/lib/microcoder/tools.coax](../../coax/lib/microcoder/tools.coax), [coder/tui/smoke.py](../tui/smoke.py).
+- Coder's side: [coder/tui/coder.coax](../tui/coder.coax), [coax/lib/tui/tui.coax](../../coax/lib/tui/tui.coax), [coax/lib/microcoder/tools.coax](../../coax/lib/microcoder/tools.coax), [coder/tui/smoke.py](../tui/tests/smoke.py).
 - [Chapter plan](PLAN.md), Part VII; chapters [36](ch036-a-terminal-ui.md) and [37](ch037-a-terminal-inside-the-agent.md).

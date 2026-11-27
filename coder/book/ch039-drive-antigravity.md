@@ -188,7 +188,7 @@ Cursor's `session/load` forks as well.
 
 ## Routing and desktop worker (`agyworker.coax`, `#13802`, `#14024`, `#14031`, `#14053`, `#14071`)
 
-On desktop, [`coder/tui/agyworker.coax`](../../coder/tui/agyworker.coax)
+On desktop, [`coder/tui/agyworker.coax`](../../openagents/workers/agyworker.coax)
 exposes `agy acp` over the shared `mcworker-wire.coax` JSON-lines protocol with
 mid-turn steer (`session/prompt` without cancel), Edit-from-here rollback, and
 reactive wakeup holds. Three follow-ups hardened the driver:

@@ -107,11 +107,11 @@ text, a command and its output, a file viewed, the ending), and
 partial action as the bytes arrive.
 
 Coder runs the loop in a worker process of its own,
-[coder/tui/mcworker.coax](../../coder/tui/mcworker.coax), and talks to it in
+[coder/tui/mcworker.coax](../../openagents/workers/legacy/mcworker.coax), and talks to it in
 JSON lines the way it talks to the Claude Code and Codex CLIs. The worker
 keeps the conversation (the last six turns, each cut to 1,200 bytes, passed
 as `conversation` in the facts) and owns the credentials.
-[microcoder_keys.coax](../../coder/tui/microcoder_keys.coax) reads them as
+[microcoder_keys.coax](../../coax/lib/microcoder/keys.coax) reads them as
 the desktop Lab does: files under `~/work/.secrets` go into curl's child
 environment only, and Vertex's token is minted by gcloud from a
 service-account key file with a gcloud config of its own. The plan is every

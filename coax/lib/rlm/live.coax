@@ -4,7 +4,7 @@
 // (low); --max-depth, --max-turns, --max-calls, --max-usd, --max-minutes over the caller's defaults.
 
 #load "run.coax";
-#load "../../../coder/tui/microcoder_keys.coax";
+#load "../microcoder/keys.coax";
 #load "../sys/args.coax";
 
 RlmLive :: struct {

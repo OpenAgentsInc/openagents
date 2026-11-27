@@ -137,14 +137,24 @@ def coax_bin() -> Path:
     return Path(os.environ.get("COAX", str(REPO_ROOT / "coax/bin/coax")))
 
 
+WORKER_SOURCES = {
+    "oa-worker": "openagents/runtime/oa-worker.coax",
+    "claudeworker": "openagents/workers/claudeworker.coax",
+    "agyworker": "openagents/workers/agyworker.coax",
+    "gitguard": "openagents/workers/gitguard.coax",
+    "mcworker": "openagents/workers/legacy/mcworker.coax",
+    "inky": "openagents/workers/legacy/inky.coax",
+}
+
+
 def build_worker(name: str) -> Path:
-    """Builds coder/tui/<name>.coax with coax/web/tool.sh as apps/coder-desktop/build.sh does."""
+    """Builds a worker binary with coax/web/tool.sh as apps/openagents-desktop/build.sh does."""
     coax = coax_bin()
     if not coax.exists():
         raise RuntimeError(f"no coax compiler at {coax}; run coax/build.sh first")
     digest = hashlib.sha256(coax.read_bytes()).hexdigest()
     out = REPO_ROOT / f"coax/web/build/tools/{name}-{digest}"
-    src = REPO_ROOT / f"coder/tui/{name}.coax"
+    src = REPO_ROOT / WORKER_SOURCES.get(name, f"openagents/workers/{name}.coax")
     if not out.exists() or out.stat().st_mtime < newest_source(out):
         env = dict(os.environ, COAX=str(coax), BROWSER="/usr/bin/true")
         # tool.sh runs the image once after building it; stdin is empty so it exits at once,

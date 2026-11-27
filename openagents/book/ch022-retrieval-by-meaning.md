@@ -8,7 +8,7 @@
 > and the 12-case retrieval eval harness ([`openagents/knowledge/kb-tool.coax`](../../openagents/knowledge/kb-tool.coax))
 > run on `cpu`, grounded by [`openagents/examples/knowledge-semantic-retrieval.coax`](../examples/knowledge-semantic-retrieval.coax)
 > and [`openagents/examples/knowledge-semantic-retrieval.out`](../examples/knowledge-semantic-retrieval.out),
-> and power `KnowledgeSearch` in [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax).
+> and power `KnowledgeSearch` in [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax).
 > Remaining: hosted/Psionic neural embedding models and typed decision reranking
 > in `openagents/knowledge/gateway-embed.coax`.
 

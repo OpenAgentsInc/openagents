@@ -32,7 +32,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/mcworker.coax"
+        "openagents/workers/legacy/mcworker.coax"
       ]
     },
     {
@@ -62,7 +62,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/mcworker.coax"
+        "openagents/workers/legacy/mcworker.coax"
       ]
     },
     {
@@ -115,7 +115,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/mcworker.coax"
+        "openagents/workers/legacy/mcworker.coax"
       ]
     },
     {
@@ -144,7 +144,7 @@
         "cpu"
       ],
       "adopted_by": [
-        "coder/tui/mcworker.coax"
+        "openagents/workers/legacy/mcworker.coax"
       ]
     },
     {
@@ -253,19 +253,19 @@
         "coax/lib/microcoder/tools_smoke.coax",
         "coax/lib/microcoder/tools_smoke.sh",
         "coax/lib/inky/loop.coax",
-        "coder/tui/inky.coax",
+        "openagents/workers/legacy/inky.coax",
         "openagents/core/core.coax",
         "openagents/core/query_loop.coax",
-        "coder/tui/oa-worker.coax",
-        "coder/tui/mcworker.coax",
-        "coder/tui/microcoder_keys.coax",
+        "openagents/runtime/oa-worker.coax",
+        "openagents/workers/legacy/mcworker.coax",
+        "coax/lib/microcoder/keys.coax",
         "coder/tui/microcoder.coax"
       ],
       "qualified_targets": [
         "macos-arm64"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -344,12 +344,12 @@
         "psionic:176"
       ],
       "source": [
-        "coder/tui/oa-worker.coax",
-        "coder/tui/inky.coax",
+        "openagents/runtime/oa-worker.coax",
+        "openagents/workers/legacy/inky.coax",
         "psionic/lib/executor-desktop.coax",
-        "coder/tui/microcoder_keys.coax",
-        "coder/tui/mcworker.coax",
-        "coder/tui/local_model.py",
+        "coax/lib/microcoder/keys.coax",
+        "openagents/workers/legacy/mcworker.coax",
+        "coder/tui/tests/local_model.py",
         "coax/lib/gateway/psionic.coax"
       ],
       "qualified_targets": [
@@ -379,9 +379,9 @@
         "coax/lib/agent/router/wire.coax",
         "coax/lib/agent/engine/route.coax",
         "coder/tui/route.coax",
-        "coder/tui/route-labels.tsv",
-        "coder/tui/route_eval.py",
-        "coder/tui/route-door-eval.coax",
+        "coder/tui/tests/route-labels.tsv",
+        "coder/tui/tests/route_eval.py",
+        "coder/tui/tests/route-door-eval.coax",
         "coax/lib/systemone/transport.coax",
         "coax/lib/systemone/gemini.coax"
       ],
@@ -389,7 +389,7 @@
         "macos-arm64"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -408,17 +408,17 @@
         "openagents/core/subagent.coax",
         "openagents/core/agents.coax",
         "openagents/core/tasks.coax",
-        "coder/tui/oa-subagent.coax",
+        "openagents/runtime/oa-subagent.coax",
         "apps/openagents-desktop/page/goal.coax",
         "coder/tui/session.coax",
         "coder/tui/coder.coax",
-        "coder/tui/smoke.py"
+        "coder/tui/tests/smoke.py"
       ],
       "qualified_targets": [
         "macos-arm64"
       ],
       "adopted_by": [
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
@@ -435,7 +435,7 @@
       "source": [
         "coder/tui/plugins.coax",
         "coder/tui/coder.coax",
-        "coder/tui/smoke.py",
+        "coder/tui/tests/smoke.py",
         "coax/lib/nostr/event.coax"
       ],
       "qualified_targets": [
@@ -488,7 +488,7 @@
       "source": [
         "coder/tui/router.coax",
         "coder/tui/coder.coax",
-        "coder/tui/smoke.py"
+        "coder/tui/tests/smoke.py"
       ],
       "qualified_targets": [
         "macos-arm64"
@@ -562,9 +562,9 @@
       ],
       "source": [
         "coder/tui/router.coax",
-        "coder/tui/smoke.py",
-        "coder/tui/host.coax",
-        "coder/tui/host_smoke.coax",
+        "coder/tui/tests/smoke.py",
+        "openagents/daemon/host.coax",
+        "openagents/daemon/tests/host_smoke.coax",
         "coax/lib/nostr/host/browser.coax"
       ],
       "qualified_targets": [
@@ -653,7 +653,7 @@
         "apps/openagents-cli/coder.coax",
         "coder/tui/coder.coax",
         "coder/tui/session.coax",
-        "coder/tui/smoke.py",
+        "coder/tui/tests/smoke.py",
         "coder/tests/repository.coax"
       ],
       "qualified_targets": [
@@ -901,10 +901,10 @@
         "coder/tui/coder.sh",
         "coder/tui/codex.coax",
         "coder/tui/microcoder.coax",
-        "coder/tui/mcworker.coax",
+        "openagents/workers/legacy/mcworker.coax",
         "coder/tui/diff.coax",
         "coder/tui/session.coax",
-        "coder/tui/smoke.py"
+        "coder/tui/tests/smoke.py"
       ],
       "qualified_targets": [
         "macos-arm64"
@@ -922,7 +922,7 @@
         "coder/tui/term.coax",
         "coax/lib/tui/vt.coax",
         "coder/tui/coder.coax",
-        "coder/tui/smoke.py"
+        "coder/tui/tests/smoke.py"
       ],
       "qualified_targets": [
         "cpu"
@@ -961,7 +961,7 @@
       "title": "Drive Antigravity",
       "file": "ch039-drive-antigravity.md",
       "status": "implemented",
-      "profile": "`agy` ACP + `coder/tui/agyworker.coax` with T3 quirk fixes, prompt-cache expiry/idle compaction, and opt-in subagent delegation",
+      "profile": "`agy` ACP + `openagents/workers/agyworker.coax` with T3 quirk fixes, prompt-cache expiry/idle compaction, and opt-in subagent delegation",
       "depends_on": [
         5,
         13,
@@ -973,9 +973,9 @@
         "coax/lib/agent/engine/cursor.coax",
         "coax/lib/agent/cursor/client.coax",
         "coax/lib/agent/cursor/transport.coax",
-        "coder/tui/agyworker.coax",
+        "openagents/workers/agyworker.coax",
         "coder/tui/cursor.coax",
-        "coder/tui/agy_standin.coax",
+        "openagents/workers/tests/agy_standin.coax",
         "coder/tui/coder.coax"
       ],
       "qualified_targets": [
@@ -1035,12 +1035,12 @@
       ],
       "source": [
         "coax/lib/agent/engine/mcworker-wire.coax",
-        "coder/tui/oa-worker.coax",
-        "coder/tui/oa-subagent.coax",
-        "coder/tui/inky.coax",
-        "coder/tui/agyworker.coax",
-        "coder/tui/mcworker.coax",
-        "coder/tui/claudeworker.coax",
+        "openagents/runtime/oa-worker.coax",
+        "openagents/runtime/oa-subagent.coax",
+        "openagents/workers/legacy/inky.coax",
+        "openagents/workers/agyworker.coax",
+        "openagents/workers/legacy/mcworker.coax",
+        "openagents/workers/claudeworker.coax",
         "apps/openagents-desktop/page.coax",
         "apps/openagents-desktop/Worker.swift"
       ],
@@ -1075,10 +1075,10 @@
         "apps/openagents-desktop/page/environments.coax",
         "apps/openagents-desktop/Window+Introspect.swift",
         "apps/openagents-desktop/DaemonClient.swift",
-        "coder/tui/host.coax",
-        "coder/tui/host-phone.coax",
-        "coder/tui/claudeworker.coax",
-        "coder/tui/oa-subagent.coax",
+        "openagents/daemon/host.coax",
+        "openagents/daemon/host-phone.coax",
+        "openagents/workers/claudeworker.coax",
+        "openagents/runtime/oa-subagent.coax",
         "coax/lib/agent/desktop/full-auto.coax",
         "coax/lib/agent/desktop/operator-vault.coax",
         "coax/lib/agent/desktop/capability-author.coax",
@@ -1099,8 +1099,8 @@
       "adopted_by": [
         "apps/openagents-desktop/Window.swift",
         "apps/openagents-desktop/page.coax",
-        "coder/tui/oa-worker.coax",
-        "coder/tui/host-antigravity-ext.coax"
+        "openagents/runtime/oa-worker.coax",
+        "openagents/daemon/host-antigravity-ext.coax"
       ]
     },
     {

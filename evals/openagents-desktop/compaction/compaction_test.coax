@@ -10,7 +10,7 @@
 //   C8: Full-flush compaction (`mc_compact(st, 0)`) recovery after context-limit error
 
 #load "../../../coax/lib/sys/tool.coax";
-#load "../../../coder/tui/microcoder_keys.coax";
+#load "../../../coax/lib/microcoder/keys.coax";
 #load "../../../coax/lib/agent/engine/mcworker-wire.coax";
 
 CE_Harness :: struct {

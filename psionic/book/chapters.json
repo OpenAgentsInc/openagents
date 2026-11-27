@@ -6195,7 +6195,7 @@
       ],
       "adopted_by": [
         "coax/lib/inky/loop.coax",
-        "coder/tui/oa-worker.coax"
+        "openagents/runtime/oa-worker.coax"
       ]
     },
     {
