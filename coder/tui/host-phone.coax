@@ -468,11 +468,14 @@ ph_inkling_server_files :: (bin_out: [] u8, bin_n: [] int, metal_out: [] u8, met
   }
   return false;
 }
-ph_inkling_ready :: () -> bool {
-  wb: [1400] u8; if ph_worker("inky", wb[..]).count == 0 { return false; }
+ph_inkling_assets_ready :: () -> bool {
   ub: [512] u8; if proc_getenv("PSIONIC_BASE_URL", ub[..]).count > 0 { return true; }
   bin: [1400] u8; met: [1400] u8; bn: [1] int; mn: [1] int;
   return ph_inkling_manifest_ok() && ph_inkling_server_files(bin[..], bn[..], met[..], mn[..]);
+}
+ph_inkling_ready :: () -> bool {
+  wb: [1400] u8; if ph_worker("inky", wb[..]).count == 0 { return false; }
+  return ph_inkling_assets_ready();
 }
 ph_parse_port :: (raw: string) -> int {
   v := 0; digits := 0;
@@ -569,6 +572,48 @@ ph_inkling_ensure :: (out: [] u8) -> string {
   return ph_inkling_url(target, out);
 }
 
+// Whether OpenAgents Core (`oa-worker`) is installed and ready on this computer (#14060, #14073).
+// Checks `oa-worker --auth` ("ready":true) or local Inkling readiness so cloud + local turns run
+// through the unified 24-layer OpenAgents Core daemon.
+ph_core_ready :: (core_local_ok: bool) -> bool {
+  wb: [1400] u8; oa := ph_worker("oa-worker", wb[..]);
+  if oa.count == 0 { return false; }
+  if core_local_ok { return true; }
+  h := proc_new();
+  if h < 0 { return false; }
+  defer { _ = proc_release(h); }
+  hb: [1024] u8; home := ph_home(hb[..]); had: [8192] u8; pb: [2 * DC_PATH] u8;
+  path := ph_worker_path(home, proc_getenv("PATH", had[..]), pb[..]);
+  eb: [9000] u8;
+  ok := proc_arg(h, oa) && proc_arg(h, "--auth");
+  en := hs_cat(eb[..], 0, "PATH="); en = hs_cat(eb[..], en, path); ok = ok && proc_env(h, cast(string) eb[0..<en]);
+  if home.count > 0 {
+    en = hs_cat(eb[..], 0, "HOME="); en = hs_cat(eb[..], en, home); ok = ok && proc_env(h, cast(string) eb[0..<en]);
+    en = hs_cat(eb[..], 0, "CODER_HOME="); en = hs_cat(eb[..], en, home); ok = ok && proc_env(h, cast(string) eb[0..<en]);
+  }
+  if !ok || proc_start(h) != 0 { return false; }
+  _ = proc_close_stdin(h);
+  out: [1024] u8; on := 0; deadline := proc_now_ms() + 10000;
+  while proc_now_ms() < deadline {
+    left := proc_left(deadline, proc_now_ms());
+    ln := cxproc_read_line(h, ifx left > 500 then 500 else left);
+    if ln == PROC_TIMEOUT || ln == PROC_TOO_LONG { continue; }
+    if ln < 0 { break; }
+    if ln > 2 && ln < out.count {
+      for i: 0..<ln { out[i] = cast(u8) cxproc_line_byte(h, i); }
+      if ph_line_is_json_obj(out[..], ln) { on = ln; break; }
+    }
+  }
+  _ = proc_wait(h, 500);
+  if on < 2 { return false; }
+  rd := cl_bool(cast(string) out[0..<on], "ready");
+  return rd.ok && rd.value;
+}
+ph_allow_local_harnesses :: () -> bool {
+  b: [16] u8; v := proc_getenv("OA_ALLOW_LOCAL_HARNESSES", b[..]);
+  return v == "1" || v == "true";
+}
+
 // Whether Microcoder has a Gemini sign-in here: `mcworker --auth` says vertex or key (legacy fallback).
 ph_gemini_ready :: () -> bool {
   wb: [1400] u8; mc := ph_worker("mcworker", wb[..]); if mc.count == 0 { return false; }
@@ -607,10 +652,16 @@ ph_tick :: (h: [] HsHost) {
       if raw_probe.count >= 2 { ph_record_agy_probe_meta(p, raw_probe); }
       agy_ok := raw_probe.count >= 2 && ph_parse_agy_probe(raw_probe, p[0].agy_models[..], nm[..]);
       if agy_ok { p[0].agy_nmodels = nm[0]; } else { p[0].agy_nmodels = 0; }
+      ink_assets := ph_inkling_assets_ready();
+      ink := ph_inkling_ready();
+      core_ok := ph_core_ready(ink_assets);
       p[0].facts = PaFacts.{
+        core = core_ok,
+        core_local = ink_assets,
+        allow_local_harnesses = ph_allow_local_harnesses(),
         agy = agy_ok,
-        inkling = ph_inkling_ready(),
-        gemini = ifx agy_ok then false else ph_gemini_ready(),
+        inkling = ink,
+        gemini = ifx core_ok || agy_ok then false else ph_gemini_ready(),
         claude = ph_claude_found(),
       };
       p[0].at = now;
@@ -636,7 +687,10 @@ ph_tick :: (h: [] HsHost) {
       }
     }
     // No agyworker available: refresh non-agy facts without blocking.
-    p[0].facts = PaFacts.{agy = false, inkling = ph_inkling_ready(), gemini = ph_gemini_ready(), claude = ph_claude_found()};
+    ink_assets := ph_inkling_assets_ready();
+    ink := ph_inkling_ready();
+    core_ok := ph_core_ready(ink_assets);
+    p[0].facts = PaFacts.{core = core_ok, core_local = ink_assets, allow_local_harnesses = ph_allow_local_harnesses(), agy = false, inkling = ink, gemini = ifx core_ok then false else ph_gemini_ready(), claude = ph_claude_found()};
     p[0].at = now;
   }
 }
@@ -645,11 +699,17 @@ ph_facts :: (h: [] HsHost) -> PaFacts {
   p := h[0].phone[..]; now := cxproc_now_ms();
   // Once warmed, return cached facts immediately; ph_tick refreshes asynchronously every PH_FACTS_MS (#14000).
   if p[0].known { return p[0].facts; }
+  ink_assets := ph_inkling_assets_ready();
+  ink := ph_inkling_ready();
+  core_ok := ph_core_ready(ink_assets);
   agy := ph_agy_ready(p);
   f := PaFacts.{
+    core = core_ok,
+    core_local = ink_assets,
+    allow_local_harnesses = ph_allow_local_harnesses(),
     agy = agy,
-    inkling = ph_inkling_ready(),
-    gemini = ifx agy then false else ph_gemini_ready(),
+    inkling = ink,
+    gemini = ifx core_ok || agy then false else ph_gemini_ready(),
     claude = ph_claude_found(),
   };
   p[0].facts = f; p[0].at = now; p[0].known = true;
@@ -680,7 +740,17 @@ ph_offer :: (h: [] HsHost, v: [] EaView) {
   o[0].default_level = 4; // "high" (index 4 in PA_EFFORT_ID)
   f := ph_facts(h);
   p := h[0].phone[..];
-  // 1. Gemini 4 Neon first when Antigravity is ready.
+  // 0. Unified OpenAgents Core (`oa-worker`) first whenever available (#14060, #14073).
+  if f.core {
+    ph_offer_add_model(o[..], PA_CORE_DEFAULT, "OpenAgents Auto", 4 | 8 | 16 | 32);
+    ph_offer_add_model(o[..], PA_CORE_NEON, "OpenAgents Cloud · Gemini 4 Neon", 4 | 8 | 16 | 32);
+    if f.core_local {
+      ph_offer_add_model(o[..], PA_CORE_INKLING, "OpenAgents Local · Inkling 2 Mini", 4 | 8 | 16);
+    }
+    v[0].offer = o[0];
+    return;
+  }
+  // 1. Gemini 4 Neon first when Antigravity is ready (legacy fallback when oa-worker is absent).
   if f.agy {
     neon_added := false;
     for i: 0..<p[0].agy_nmodels {
@@ -736,6 +806,7 @@ ph_offer :: (h: [] HsHost, v: [] EaView) {
 // (including Claude 5.5 via ACP, GPT-OSS, Orchestrator, Enterprise Gateway) routes directly to PA_AGY.
 ph_pick :: (h: [] HsHost, want: string) -> PaPick {
   f := ph_facts(h);
+  if f.core { return pa_pick(f, want); }
   if f.agy && want.count > 0 {
     p := h[0].phone[..];
     for i: 0..<p[0].agy_nmodels {
@@ -747,9 +818,9 @@ ph_pick :: (h: [] HsHost, want: string) -> PaPick {
   return pa_pick(f, want);
 }
 
-// Populate remote host & Antigravity version/capability handshake on DescribeEnvironment (#14004).
-PH_HOST_VERSION :: "2.1.0";
-PH_CAPABILITIES :: "[\"wire.v2\",\"agy.dynamic_models\",\"agy.interactive_permit\",\"agy.attachments\",\"agy.modes\",\"agy.update\",\"tailnet.push.v2\",\"ws.files.v1\",\"env.artifacts.v1\",\"env.swarms.v1\",\"env.automations.v1\",\"env.extensibility.v1\",\"env.voice.v1\"]";
+// Populate remote host & OpenAgents Core / Antigravity version/capability handshake on DescribeEnvironment (#14004, #14060).
+PH_HOST_VERSION :: "2.2.0";
+PH_CAPABILITIES :: "[\"wire.v2\",\"oa.core.v1\",\"agy.dynamic_models\",\"agy.interactive_permit\",\"agy.attachments\",\"agy.modes\",\"agy.update\",\"tailnet.push.v2\",\"ws.files.v1\",\"env.artifacts.v1\",\"env.swarms.v1\",\"env.automations.v1\",\"env.extensibility.v1\",\"env.voice.v1\"]";
 
 ph_describe_meta :: (h: [] HsHost, v: [] EaView) {
   f := ph_facts(h);
@@ -823,6 +894,7 @@ ph_base :: (id: string) -> int {
   return ifx v.ok && v.value > 0 then v.value else 0;
 }
 ph_engine_name :: (engine: int) -> string {
+  if engine == PA_CORE { return PA_CORE_ID; }
   if engine == PA_AGY { return PA_AGY_ID; }
   if engine == PA_INKLING { return "inkling"; }
   return "micro";
@@ -888,15 +960,17 @@ ph_engine :: (id: string) -> int {
   if n < 1 { return PA_NONE; }
   ar_b: [256] u8; ar := [1] ClArena.[ClArena.{buf = ar_b[..]}];
   e := cl_str(ar[..], cast(string) b[0..<n], "engine");
-  return ifx e == "micro" then PA_MICRO else ifx e == PA_AGY_ID then PA_AGY else ifx e == "inkling" then PA_INKLING else PA_NONE;
+  return ifx e == PA_CORE_ID then PA_CORE else ifx e == "micro" then PA_MICRO else ifx e == PA_AGY_ID then PA_AGY else ifx e == "inkling" then PA_INKLING else PA_NONE;
 }
 // The task line of a phone's message: Desktop's settings for a chat of its own, with optional mode & attachments.
 ph_task_full :: (text: string, id: string, cwd: string, engine: int, model: string, effort: string, mode: string, attachments: string, out: [] u8) -> int {
   sb: [64] u8; sn := hs_cat(sb[..], 0, PH_SESSION); sn = hs_cat(sb[..], sn, id);
   eff := pa_effort(engine, model, effort);
+  wire_model := ifx engine == PA_CORE then pa_core_task_model(model) else ifx engine == PA_INKLING then PA_INKLING_ID else model;
+  is_local := engine == PA_INKLING || (engine == PA_CORE && pa_core_local_model(model));
   t := McTask.{task = text, session = cast(string) sb[0..<sn], cwd = cwd, sandbox = "danger-full-access", ceiling = 3,
-               local = engine == PA_INKLING, gated = true, edits = true, unlimited = true, no_ask = true,
-               model = ifx engine == PA_INKLING then PA_INKLING_ID else model, effort = eff,
+               local = is_local, gated = true, edits = true, unlimited = true, no_ask = true,
+               model = wire_model, effort = eff,
                mode = ifx ea_mode_ok(mode) then mode else "",
                attachments = attachments};
   return mww_task(out, t);
@@ -904,7 +978,7 @@ ph_task_full :: (text: string, id: string, cwd: string, engine: int, model: stri
 ph_task :: (text: string, id: string, cwd: string, engine: int, model: string, effort: string, out: [] u8) -> int {
   return ph_task_full(text, id, cwd, engine, model, effort, "", "", out);
 }
-// What the worker starts with: bundled agyworker, inky, or mcworker with Desktop's PATH and engine env.
+// What the worker starts with: unified OpenAgents Core (`oa-worker`), or fallback agyworker/inky/mcworker.
 ph_spec :: (h: [] HsHost, id: string, engine: int, model: string, effort: string, cwd: string, skip: int) -> string {
   return ph_spec_mode_resume(h, id, engine, model, effort, "auto", cwd, skip, "");
 }
@@ -912,7 +986,7 @@ ph_spec_mode :: (h: [] HsHost, id: string, engine: int, model: string, effort: s
   return ph_spec_mode_resume(h, id, engine, model, effort, mode, cwd, skip, "");
 }
 ph_spec_mode_resume :: (h: [] HsHost, id: string, engine: int, model: string, effort: string, mode: string, cwd: string, skip: int, resume_id: string) -> string {
-  wname := ifx engine == PA_AGY then "agyworker" else ifx engine == PA_INKLING then "inky" else "mcworker";
+  wname := ifx engine == PA_CORE then "oa-worker" else ifx engine == PA_AGY then "agyworker" else ifx engine == PA_INKLING then "inky" else "mcworker";
   wb: [1400] u8; program := ph_worker(wname, wb[..]);
   if program.count == 0 { return "invalid-program"; }
   hb: [1024] u8; home := ph_home(hb[..]); had: [8192] u8; pb: [2 * DC_PATH] u8;
@@ -922,7 +996,37 @@ ph_spec_mode_resume :: (h: [] HsHost, id: string, engine: int, model: string, ef
   jo_key(o[..], "program"); jo_str(o[..], program); jo_key(o[..], "cwd"); jo_str(o[..], cwd);
   jo_key(o[..], "env"); jo_arr(o[..]);
   jo_str(o[..], cast(string) eb[0..<en]);
-  if engine == PA_INKLING {
+  if engine == PA_CORE {
+    if home.count > 0 {
+      en = hs_cat(eb[..], 0, "HOME="); en = hs_cat(eb[..], en, home); jo_str(o[..], cast(string) eb[0..<en]);
+      en = hs_cat(eb[..], 0, "CODER_HOME="); en = hs_cat(eb[..], en, home); jo_str(o[..], cast(string) eb[0..<en]);
+    }
+    if pa_core_local_model(model) {
+      ub: [512] u8; base := ph_inkling_ensure(ub[..]);
+      en = hs_cat(eb[..], 0, "PSIONIC_BASE_URL="); en = hs_cat(eb[..], en, base); jo_str(o[..], cast(string) eb[0..<en]);
+      jo_str(o[..], "PSIONIC_MODEL=inkling-2-mini");
+    } else if h.count > 0 && h[0].phone[0].facts.core_local {
+      // On oa:auto / cloud, attach PSIONIC_BASE_URL without blocking 12s cold-booting Metal if already running.
+      eb_u: [512] u8; env_url := proc_getenv("PSIONIC_BASE_URL", eb_u[..]);
+      if env_url.count > 0 {
+        en = hs_cat(eb[..], 0, "PSIONIC_BASE_URL="); en = hs_cat(eb[..], en, env_url); jo_str(o[..], cast(string) eb[0..<en]);
+        jo_str(o[..], "PSIONIC_MODEL=inkling-2-mini");
+      } else {
+        port := ph_inkling_saved_port();
+        if ph_inkling_health(port) {
+          ub: [512] u8; base := ph_inkling_url(port, ub[..]);
+          en = hs_cat(eb[..], 0, "PSIONIC_BASE_URL="); en = hs_cat(eb[..], en, base); jo_str(o[..], cast(string) eb[0..<en]);
+          jo_str(o[..], "PSIONIC_MODEL=inkling-2-mini");
+        }
+      }
+    }
+    if ph_allow_local_harnesses() { jo_str(o[..], "OA_ALLOW_LOCAL_HARNESSES=1"); }
+    core_keys := [3] string.["OPENAGENTS_API_URL", "GEMINI_API_KEY", "OA_AGENT_ROUTER_DOOR"];
+    for ck: core_keys {
+      vb: [512] u8; val := proc_getenv(ck, vb[..]);
+      if val.count > 0 { en = hs_cat(eb[..], 0, ck); en = hs_cat(eb[..], en, "="); en = hs_cat(eb[..], en, val); jo_str(o[..], cast(string) eb[0..<en]); }
+    }
+  } else if engine == PA_INKLING {
     ub: [512] u8; base := ph_inkling_ensure(ub[..]);
     en = hs_cat(eb[..], 0, "PSIONIC_BASE_URL="); en = hs_cat(eb[..], en, base); jo_str(o[..], cast(string) eb[0..<en]);
     jo_str(o[..], "PSIONIC_MODEL=inkling-2-mini");
@@ -1107,6 +1211,13 @@ ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: str
   ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && t[0].local && t[0].model == "inkling-2-mini" && t[0].effort == "medium";
   n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_MICRO, "gemini-4-neon", "high", out[..]);
   ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && !t[0].local && t[0].model == "gemini-4-neon" && t[0].effort == "low";
+  // OpenAgents Core (oa-worker) task lines: oa:auto, oa:gemini-4-neon -> oa:cloud, oa:inkling-2-mini -> oa:local (#14060, #14073)
+  n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_CORE, "oa:auto", "high", out[..]);
+  ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && !t[0].local && t[0].model == "oa:auto" && t[0].effort == "high";
+  n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_CORE, "oa:gemini-4-neon", "xhigh", out[..]);
+  ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && !t[0].local && t[0].model == "oa:cloud" && t[0].effort == "xhigh";
+  n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_CORE, "oa:inkling-2-mini", "", out[..]);
+  ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && t[0].local && t[0].model == "oa:local" && t[0].effort == "medium";
 }
 #test "agy probe json extracts full dynamic ACP catalog with Gemini 4 Neon first, empty thinking ladder preserved, and rejects unauthenticated" {
   raw := "{\"authStatus\":\"authenticated\",\"version\":\"1.5.14\",\"authMethod\":\"oauth-personal\",\"models\":[{\"slug\":\"gemini-3.8-flash\",\"name\":\"Gemini 3.8 Flash\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\"]},{\"slug\":\"gemini-pro-orchestrator\",\"name\":\"Gemini Pro Orchestrator\",\"thinking\":false,\"thoughtLevels\":[]},{\"slug\":\"claude-opus-5-5\",\"name\":\"Claude Opus 5.5\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\",\"max\"]},{\"slug\":\"gemini-4-neon\",\"name\":\"Gemini 4 Neon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\",\"xhigh\"]}]}";

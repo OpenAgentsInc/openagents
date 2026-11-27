@@ -156,7 +156,7 @@ sc_launch_run :: (h: [] HsHost, prompt: string, folder: string, out_id: [] u8) -
   cwd := ifx folder.count > 0 then folder else ph_home(hb[..]);
   if !dr_dir() { return ""; }
   pick := pa_pick(ph_facts(h), "");
-  engine := ifx pick.engine == PA_AGY || pick.engine == PA_INKLING || pick.engine == PA_MICRO then pick.engine else PA_MICRO;
+  engine := ifx pick.engine == PA_CORE || pick.engine == PA_AGY || pick.engine == PA_INKLING || pick.engine == PA_MICRO then pick.engine else PA_MICRO;
   model := ifx pick.engine == engine then pick.model else "";
   eff := pa_effort(engine, model, "");
   line: [EX_INPUT_MAX + 4096] u8;
