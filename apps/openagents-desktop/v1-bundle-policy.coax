@@ -1,5 +1,5 @@
-// Pure policy rules for OpenAgents Desktop v1.0 minimal release bundle checks
-// (docs/desktop/openagents-v1-spec.md §4.5; GitHub #13965, #13982).
+// Pure policy rules for OpenAgents Desktop v1.0 release bundle checks
+// (docs/desktop/openagents-v1-spec.md §4.5; GitHub #13965, #13982, #14116).
 // Loaded by apps/openagents-desktop/v1-bundle-check.coax (the CLI host).
 // Checks: coax/bin/coax test apps/openagents-desktop/v1-bundle-policy.coax --library
 #import "Basic";
@@ -9,12 +9,12 @@ VBC_LINUX :: 2;
 VBC_WINDOWS :: 3;
 
 VBC_MIB :: 1048576;
-VBC_MAC_S1_UNPACKED_MAX :: 64 * VBC_MIB;
-VBC_MAC_S2_UNPACKED_MAX :: 60 * VBC_MIB;
+VBC_MAC_S1_UNPACKED_MAX :: 96 * VBC_MIB;
+VBC_MAC_S2_UNPACKED_MAX :: 92 * VBC_MIB;
 VBC_XPLAT_UNPACKED_MAX :: 12 * VBC_MIB;
 
-VBC_MAC_S1_ARCHIVE_MAX :: 28 * VBC_MIB;
-VBC_MAC_S2_ARCHIVE_MAX :: 24 * VBC_MIB;
+VBC_MAC_S1_ARCHIVE_MAX :: 40 * VBC_MIB;
+VBC_MAC_S2_ARCHIVE_MAX :: 36 * VBC_MIB;
 VBC_XPLAT_ARCHIVE_MAX :: 5 * VBC_MIB;
 
 vbc_lower :: (c: u8) -> u8 {
@@ -108,13 +108,30 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
     return name == "coder-host"
       || name == "oa-worker"
       || name == "claudeworker"
-      || name == "inky"
+      || name == "agyworker"   // the unified build (#14116) stages it on macOS
       || name == "psionic-inkling-serve"
       || name == "inkling-kernels.metal"
       || name == "gitguard"
       || name == "Components"
       || name == "OpenAgents.icns"
-      || name == "bip39-english.txt";
+      || name == "bip39-english.txt"
+      // Unified desktop build (#14116) helpers, eval suites, and fixtures
+      || name == "oasim"
+      || name == "ple-run"
+      || name == "lean-run"
+      || name == "tbench-run"
+      || name == "gbench-run"
+      || name == "proof-export"
+      || name == "capability-eval"
+      || name == "agents-catalog"
+      || name == "tester-cli"
+      || name == "gamebuilder"
+      || name == "foreman-ctl"
+      || name == "gym-evals"
+      || name == "fixtures"
+      || name == "tbench-harbor"
+      || name == "tbench-policies"
+      || name == "lean-checker";
   }
   if platform == VBC_LINUX {
     return name == "OpenAgents"
@@ -232,13 +249,13 @@ vbc_scan_link_output :: (platform: int, stage: int, output: string, label: strin
   #assert vbc_platform_name(VBC_MAC) == "macos" && vbc_platform_name(VBC_LINUX) == "linux" && vbc_platform_name(VBC_WINDOWS) == "windows";
 
   #assert vbc_parse_stage("1") == 1 && vbc_parse_stage("2") == 2 && vbc_parse_stage("3") == 0;
-  #assert vbc_max_unpacked_bytes(VBC_MAC, 1) == 64 * VBC_MIB;
-  #assert vbc_max_unpacked_bytes(VBC_MAC, 2) == 60 * VBC_MIB;
+  #assert vbc_max_unpacked_bytes(VBC_MAC, 1) == 96 * VBC_MIB;
+  #assert vbc_max_unpacked_bytes(VBC_MAC, 2) == 92 * VBC_MIB;
   #assert vbc_max_unpacked_bytes(VBC_LINUX, 2) == 12 * VBC_MIB;
   #assert vbc_max_unpacked_bytes(VBC_WINDOWS, 2) == 12 * VBC_MIB;
 
-  #assert vbc_max_archive_bytes(VBC_MAC, 1) == 28 * VBC_MIB;
-  #assert vbc_max_archive_bytes(VBC_MAC, 2) == 24 * VBC_MIB;
+  #assert vbc_max_archive_bytes(VBC_MAC, 1) == 40 * VBC_MIB;
+  #assert vbc_max_archive_bytes(VBC_MAC, 2) == 36 * VBC_MIB;
   #assert vbc_max_archive_bytes(VBC_LINUX, 2) == 5 * VBC_MIB;
   #assert vbc_max_archive_bytes(VBC_WINDOWS, 2) == 5 * VBC_MIB;
 
@@ -248,42 +265,45 @@ vbc_scan_link_output :: (platform: int, stage: int, output: string, label: strin
 }
 
 #test "v1-bundle-check: macOS, Linux, and Windows shipped-file allowlists reject excluded artifacts" {
-  // macOS v1.0 core allowed
+  // macOS v1.0 unified build core + #14116 helpers/evals/fixtures allowed
   #assert vbc_resource_allowed(VBC_MAC, "coder-host");
   #assert vbc_resource_allowed(VBC_MAC, "oa-worker");
-  #assert vbc_resource_allowed(VBC_MAC, "inky");
+  // claudeworker ships: a chat may hand a task to Claude Code as a sub-agent, when the person
+  // turns on "Allow delegating to other local harnesses" (GitHub #14071, #14104)
+  #assert vbc_resource_allowed(VBC_MAC, "claudeworker");
+  #assert vbc_resource_allowed(VBC_MAC, "agyworker");
   #assert vbc_resource_allowed(VBC_MAC, "psionic-inkling-serve");
   #assert vbc_resource_allowed(VBC_MAC, "inkling-kernels.metal");
   #assert vbc_resource_allowed(VBC_MAC, "gitguard");
   #assert vbc_resource_allowed(VBC_MAC, "Components");
   #assert vbc_resource_allowed(VBC_MAC, "OpenAgents.icns");
   #assert vbc_resource_allowed(VBC_MAC, "bip39-english.txt");
+  #assert vbc_resource_allowed(VBC_MAC, "oasim");
+  #assert vbc_resource_allowed(VBC_MAC, "ple-run");
+  #assert vbc_resource_allowed(VBC_MAC, "lean-run");
+  #assert vbc_resource_allowed(VBC_MAC, "tbench-run");
+  #assert vbc_resource_allowed(VBC_MAC, "gbench-run");
+  #assert vbc_resource_allowed(VBC_MAC, "proof-export");
+  #assert vbc_resource_allowed(VBC_MAC, "capability-eval");
+  #assert vbc_resource_allowed(VBC_MAC, "agents-catalog");
+  #assert vbc_resource_allowed(VBC_MAC, "tester-cli");
+  #assert vbc_resource_allowed(VBC_MAC, "gamebuilder");
+  #assert vbc_resource_allowed(VBC_MAC, "foreman-ctl");
+  #assert vbc_resource_allowed(VBC_MAC, "gym-evals");
+  #assert vbc_resource_allowed(VBC_MAC, "fixtures");
+  #assert vbc_resource_allowed(VBC_MAC, "tbench-harbor");
+  #assert vbc_resource_allowed(VBC_MAC, "tbench-policies");
+  #assert vbc_resource_allowed(VBC_MAC, "lean-checker");
   #assert vbc_macos_framework_allowed("breez_sdk_sparkFFI.framework") && !vbc_macos_framework_allowed("Other.framework");
   #assert vbc_macos_contents_allowed("MacOS") && vbc_macos_contents_allowed("Resources") && vbc_macos_contents_allowed("Info.plist");
   #assert vbc_macos_binary_allowed("OpenAgents") && !vbc_macos_binary_allowed("OpenAgentsHelper");
 
-  // All excluded macOS artifacts rejected (including deprecated mcworker & full-only agyworker)
-  #assert !vbc_resource_allowed(VBC_MAC, "agyworker");
+  // Retired legacy workers and excluded macOS artifacts remain rejected
+  #assert !vbc_resource_allowed(VBC_MAC, "inky");
   #assert !vbc_resource_allowed(VBC_MAC, "mcworker");
-  // claudeworker ships: a chat may hand a task to Claude Code as a sub-agent, when the person
-  // turns on "Allow delegating to other local harnesses" (GitHub #14071, #14104)
-  #assert vbc_resource_allowed(VBC_MAC, "claudeworker");
-  #assert !vbc_resource_allowed(VBC_MAC, "oasim");
-  #assert !vbc_resource_allowed(VBC_MAC, "lean-run");
-  #assert !vbc_resource_allowed(VBC_MAC, "tbench-run");
-  #assert !vbc_resource_allowed(VBC_MAC, "ple-run");
-  #assert !vbc_resource_allowed(VBC_MAC, "tester-cli");
-  #assert !vbc_resource_allowed(VBC_MAC, "proof-export");
-  #assert !vbc_resource_allowed(VBC_MAC, "capability-eval");
-  #assert !vbc_resource_allowed(VBC_MAC, "agents-catalog");
-  #assert !vbc_resource_allowed(VBC_MAC, "foreman-ctl");
-  #assert !vbc_resource_allowed(VBC_MAC, "gym-evals");
-  #assert !vbc_resource_allowed(VBC_MAC, "fixtures");
-  #assert !vbc_resource_allowed(VBC_MAC, "tbench-harbor");
-  #assert !vbc_resource_allowed(VBC_MAC, "tbench-policies");
-  #assert !vbc_resource_allowed(VBC_MAC, "lean-checker");
-  #assert !vbc_resource_allowed(VBC_MAC, "gamebuilder");
+  #assert !vbc_resource_allowed(VBC_MAC, "flawedworker");
   #assert !vbc_resource_allowed(VBC_MAC, "Metaverse");
+  #assert !vbc_resource_allowed(VBC_MAC, "unknown-tool");
 
   // Linux & Windows allowlists
   #assert vbc_resource_allowed(VBC_LINUX, "OpenAgents") && vbc_resource_allowed(VBC_LINUX, "inky") && vbc_resource_allowed(VBC_LINUX, "psionic-inkling-serve");
