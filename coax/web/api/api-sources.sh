@@ -13,7 +13,7 @@
 # listed in API_COAX_WRAPPED instead, so its generated C is made but not linked twice.
 API_C="api.c config.c http_client.c queue.c stream.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c villa.c chat.c chat-history.c account-chat-library.c account-chat.c account-chat-turns.c account-chat-wire-unit.c projects.c projects-wire-unit.c environment.c environment-wire-unit.c realms.c
   access.c makers.c inference.c mesh.c mesh-gemini-unit.c router.c router-wire-unit.c
-  anime.c seats.c nostr.c email.c jobs.c relay.c verse_packs.c worldbuilder.c auth.c workos.c workos-sdk-unit.c auth-identity.c account-settings.c nostr-messaging.c nostr-messaging-unit.c auth-seal-unit.c
+  anime.c seats.c nostr.c email.c jobs.c relay.c verse_packs.c worldbuilder.c auth.c workos.c workos-sdk-unit.c integrations.c auth-identity.c account-settings.c nostr-messaging.c nostr-messaging-unit.c auth-seal-unit.c
   lnaddr.c lnaddr-unit.c agents.c agent-wire-unit.c agent-attest-unit.c auth-recover.c auth-life.c
   auth-recover-crypto-unit.c auth-device.c auth-device-crypto-unit.c push.c passkeys.c passkey-verify-unit.c
   wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c worlds.c splice-world-unit.c scripts.c script-job-run.c script-store-unit.c"

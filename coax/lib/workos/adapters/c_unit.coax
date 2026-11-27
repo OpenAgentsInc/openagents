@@ -17,6 +17,9 @@
 #load "../gen/svc_organizations.coax";
 #load "../gen/svc_organization_membership.coax";
 #load "../gen/svc_webhooks.coax";
+#load "../gen/svc_pipes.coax";
+#load "../pipes_policy.coax";
+#load "../pipes_wire.coax";
 
 // C-callable request builders returning bytes written into url_out / body_out (or -1 on error).
 wos_c_build_magic_auth :: (base_url: string, email: string, url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int) -> bool #export_c #effects(all) {
@@ -184,6 +187,102 @@ wos_c_build_list_connections :: (base_url: string, domain: string, url_out: [] u
   empty: [1] u8; bn: [1] int;
   r := wos_sso_list_connections(base_url, WosP_SsoListConnections.{domain = domain}, scratch[..]);
   return wos_c_export_req(r, scratch[..], url_out, empty[0..<0], url_n, bn[..]);
+}
+
+// ---- WorkOS Pipes GitHub integration C ABI (#14126) ----
+
+wos_c_pipes_admit :: (kind: int, verified: bool, account: string, limited: bool, frozen: bool) -> bool #export_c #effects(all) {
+  return wos_pipes_admit(kind, verified, account, limited, frozen);
+}
+
+wos_c_pipes_return_to_ok :: (origin: string, url: string) -> bool #export_c #effects(all) {
+  return wos_pipes_return_to_ok(origin, url);
+}
+
+wos_c_pipes_connect_req_read :: (raw: string, out: [] u8) -> int #export_c #effects(all) {
+  return wos_pipes_connect_req_read(raw, out);
+}
+
+wos_c_build_pipes_authorize :: (
+  base_url: string, provider: string, user_id: string, org_id: string, return_to: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  if !wos_pipes_provider_ok(provider) || user_id.count == 0 { return false; }
+  scratch: [4096] u8;
+  r := wos_pipes_authorize_data_integration(
+    base_url,
+    WosP_PipesAuthorizeDataIntegration.{
+      slug = provider, user_id = user_id, organization_id = org_id, return_to = return_to,
+    },
+    scratch[..],
+  );
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
+wos_c_build_pipes_token :: (
+  base_url: string, provider: string, user_id: string, org_id: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  if !wos_pipes_provider_ok(provider) || user_id.count == 0 { return false; }
+  scratch: [2048] u8;
+  r := wos_pipes_get_access_token(
+    base_url,
+    WosP_PipesGetAccessToken.{provider = provider, user_id = user_id, organization_id = org_id},
+    scratch[..],
+  );
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
+wos_c_build_pipes_providers :: (base_url: string, user_id: string, org_id: string, url_out: [] u8, url_n: [] int) -> bool #export_c #effects(all) {
+  if user_id.count == 0 { return false; }
+  scratch: [2048] u8;
+  empty: [1] u8; bn: [1] int;
+  r := wos_pipes_list_user_data_providers(
+    base_url,
+    WosP_PipesListUserDataProviders.{user_id = user_id, organization_id = org_id},
+    scratch[..],
+  );
+  return wos_c_export_req(r, scratch[..], url_out, empty[0..<0], url_n, bn[..]);
+}
+
+wos_c_build_pipes_disconnect :: (base_url: string, user_id: string, provider: string, org_id: string, url_out: [] u8, url_n: [] int) -> bool #export_c #effects(all) {
+  if !wos_pipes_provider_ok(provider) || user_id.count == 0 { return false; }
+  scratch: [2048] u8;
+  empty: [1] u8; bn: [1] int;
+  r := wos_pipes_delete_user_connected_account(
+    base_url,
+    WosP_PipesDeleteUserConnectedAccount.{user_id = user_id, slug = provider, organization_id = org_id},
+    scratch[..],
+  );
+  return wos_c_export_req(r, scratch[..], url_out, empty[0..<0], url_n, bn[..]);
+}
+
+wos_c_pipes_parse_authorize_url :: (raw: string, allow_local: bool, out: [] u8) -> int #export_c #effects(all) {
+  return wos_pipes_parse_authorize_url(raw, allow_local, out);
+}
+
+wos_c_pipes_parse_token :: (raw: string, token_out: [] u8) -> int #export_c #effects(all) {
+  return wos_pipes_parse_token(raw, token_out);
+}
+
+wos_c_pipes_parse_provider_connected :: (raw: string, slug: string, scopes_out: [] u8, scopes_n: [] int) -> bool #export_c #effects(all) {
+  return wos_pipes_parse_provider_connected(raw, slug, scopes_out, scopes_n);
+}
+
+wos_c_pipes_status_write :: (connected: bool, provider: string, scopes: string, login: string, as_lines: bool, out: [] u8) -> int #export_c #effects(all) {
+  return wos_pipes_status_write(connected, provider, scopes, login, as_lines, out);
+}
+
+wos_c_pipes_connect_write :: (provider: string, url: string, out: [] u8) -> int #export_c #effects(all) {
+  return wos_pipes_connect_write(provider, url, out);
+}
+
+wos_c_pipes_disconnect_write :: (provider: string, disconnected: bool, out: [] u8) -> int #export_c #effects(all) {
+  return wos_pipes_disconnect_write(provider, disconnected, out);
+}
+
+wos_c_pipes_repos_filter :: (github_json: string, as_lines: bool, nodes: [] JvNode, out: [] u8) -> int #export_c #effects(all) {
+  return wos_pipes_repos_filter(github_json, as_lines, nodes, out);
 }
 
 wos_c_export_req :: (r: WosReq, scratch: [] u8, url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int) -> bool #effects(all) {

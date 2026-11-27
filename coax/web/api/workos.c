@@ -82,6 +82,78 @@ static void workos_http(const char *method, const char *url, const char *body, s
     .allow_http_local = workos_allow_local(),
   };
   http_client_send(&req, res);
+  explicit_bzero(auth_hdr, sizeof auth_hdr);
+}
+
+const char *workos_pipes_base_url(void) { return workos_base_url(); }
+bool workos_pipes_allow_local(void) { return workos_allow_local(); }
+bool workos_pipes_configured(void) { return workos_api_key()[0] != 0; }
+
+bool workos_lookup_identity(PGconn *db, const char *account, char uid_out[128], char org_out[128]) {
+  uid_out[0] = 0;
+  org_out[0] = 0;
+  if (!db || !account || !*account) return false;
+  const char *v[1] = {account};
+  PGresult *r = PQexecParams(
+      db,
+      "SELECT workos_user_id, coalesce(last_organization_id, '') FROM auth.workos_identities "
+      "WHERE account = $1 ORDER BY last_seen_at DESC LIMIT 1",
+      1, NULL, v, NULL, NULL, 0);
+  bool ok = r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+  if (ok) {
+    snprintf(uid_out, 128, "%s", PQgetvalue(r, 0, 0));
+    snprintf(org_out, 128, "%s", PQgetvalue(r, 0, 1));
+  }
+  PQclear(r);
+  return ok && uid_out[0] != 0;
+}
+
+void workos_api_request(const char *method, const char *url, const char *body, size_t body_len, void *http_res) {
+  workos_http(method, url, body, body_len, true, (http_client_res *)http_res);
+}
+
+bool workos_pipes_github_token(PGconn *db, const char *account, char *token_out, size_t token_cap, char *err_out, size_t err_cap) {
+  if (token_out && token_cap) token_out[0] = 0;
+  if (err_out && err_cap) err_out[0] = 0;
+  if (!token_out || token_cap < 16) return false;
+  if (!workos_pipes_configured()) {
+    if (err_out && err_cap) snprintf(err_out, err_cap, "WorkOS Pipes is not configured.");
+    return false;
+  }
+  char uid[128] = "", org[128] = "";
+  if (!workos_lookup_identity(db, account, uid, org)) {
+    if (err_out && err_cap) snprintf(err_out, err_cap, "Sign in with WorkOS to connect GitHub.");
+    return false;
+  }
+  uint8_t url_b[512], body_b[512];
+  int64_t un = 0, bn = 0;
+  if (!wos_c_build_pipes_token(
+          cs(workos_base_url()), cs("github"), cs(uid), cs(org),
+          (coax_v_u8){url_b, (int64_t)sizeof url_b - 1}, (coax_v_u8){body_b, (int64_t)sizeof body_b - 1},
+          (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1})) {
+    if (err_out && err_cap) snprintf(err_out, err_cap, "Could not build WorkOS Pipes token request.");
+    return false;
+  }
+  url_b[un] = 0;
+  body_b[bn] = 0;
+  http_client_res res;
+  workos_http("POST", (const char *)url_b, (const char *)body_b, (size_t)bn, true, &res);
+  bool ok = false;
+  if (res.status == 200 && res.body && res.body_len > 0) {
+    int64_t tn = wos_c_pipes_parse_token(
+        (coax_string){res.body, (int64_t)res.body_len},
+        (coax_v_u8){(uint8_t *)token_out, (int64_t)token_cap - 1});
+    if (tn > 0) {
+      token_out[tn] = 0;
+      ok = true;
+    }
+  }
+  if (!ok && err_out && err_cap) {
+    snprintf(err_out, err_cap, res.status == 404 || res.status == 200 ? "GitHub is not connected." : "GitHub token unavailable.");
+  }
+  if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
+  http_client_res_free(&res);
+  return ok;
 }
 
 static bool same_site_next(const char *s) {

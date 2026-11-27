@@ -135,6 +135,11 @@ CF_ORG_SWITCH :: 28;    // Home & Account: switch active WorkOS organization (/a
 CF_ENVS :: 29;          // Home & Sidebar: enrolled computers (/api/chat/environments/v1?as=lines)
 CF_ACCT_PROJECTS :: 30; // Home & Sidebar: account-owned private Projects (/api/projects/v1?as=lines)
 CF_NEW_PROJECT :: 31;   // Home: create an account-owned private Project (POST /api/projects/v1)
+CF_GH_STATUS :: 32;     // Home & Account: GitHub via WorkOS Pipes status (/api/integrations/github/status?as=lines)
+CF_GH_CONNECT :: 33;    // Home & Account: start WorkOS Pipes GitHub OAuth (POST /api/integrations/github/connect)
+CF_GH_REPOS :: 34;      // Home & Account: list connected GitHub repos (/api/integrations/github/repos?as=lines)
+CF_GH_DISCONNECT :: 35; // Home & Account: disconnect GitHub (POST /api/integrations/github/disconnect)
+CW_GO :: 2048;          // bytes of a browser navigation URL (supports external WorkOS Pipes OAuth URLs)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 // A world step's realm tool (turn.coax WT_TOOL; a size is a set), for its icon and how a run of them is named: the
 // world's own, then a realm's (a switch of its lists, a pane shown, its asks, a look at the screen; #13528).
@@ -275,6 +280,8 @@ ChatWeb :: struct {
   org_switch_due: int;               // 1-based index of WorkOS org to switch to when free (0 none)
   new_proj_due: bool;                // Create Project requested from Home Dashboard
   new_proj_seq: int;                 // Monotonic counter for Project create operation IDs
+  gh_connect_due: bool;              // Connect GitHub via WorkOS Pipes requested
+  gh_disconnect_due: bool;           // Disconnect GitHub via WorkOS Pipes requested
   here: int;                         // the side alone on a place's page (SS_SIDE): the place it lights (ss_side_place), else -2
   side_closed: bool;                 // the side is put away (kept in this browser)
   mob_side_open: bool;               // mobile overlay drawer open (<= 760px; #13929)
@@ -283,7 +290,7 @@ ChatWeb :: struct {
   projects: [SS_WORLDS_MAX] SsWorld; projects_n: int; projects_asked: bool;   // the projects they are in, under Projects
   shut: int;                         // the side's folds shut: bit k for place k (kept in this browser)
   out_due: bool;                     // Log out was pressed: it goes when no other request is out
-  go: [CW_HELD] u8; go_n: int; go_push: bool;   // an address for the host: pushed (the shell stays) or gone to
+  go: [CW_GO] u8; go_n: int; go_push: bool;   // an address for the host: pushed (the shell stays) or gone to
   held: [CW_HELD] u8; held_n: int;   // the page held beside the side (SS_HELD): its address
   held_k: int;                       // which frame holds it: each page moved to is a new frame (its id ends in this)
   held_drawn: bool;                  // the page has drawn: the loading screen is gone
@@ -1151,7 +1158,7 @@ cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
 // Takes the message: it goes into the transcript, without the space around it, the field is cleared,
 // and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
 cw_background_read :: (kind:int)->bool {
-  return kind==CF_LIST || kind==CF_LOG || kind==CF_CLAUDE || kind==CF_IMPORT || kind==CF_ACCOUNT || kind==CF_AGENTS || kind==CF_WHO || kind==CF_WORLDS || kind==CF_PROJECTS || kind==CF_LIFE || kind==CF_ORGS || kind==CF_ENVS || kind==CF_ACCT_PROJECTS;
+  return kind==CF_LIST || kind==CF_LOG || kind==CF_CLAUDE || kind==CF_IMPORT || kind==CF_ACCOUNT || kind==CF_AGENTS || kind==CF_WHO || kind==CF_WORLDS || kind==CF_PROJECTS || kind==CF_LIFE || kind==CF_ORGS || kind==CF_ENVS || kind==CF_ACCT_PROJECTS || kind==CF_GH_STATUS || kind==CF_GH_REPOS;
 }
 cw_send :: (s: [] ChatWeb) {
   if s[0].live || !cw_has_words(s) { return; }
@@ -1475,8 +1482,33 @@ cw_end :: (s: [] ChatWeb, status: int) {
     } else {
       s[0].set[0].new_proj_note_n = sw_put(s[0].set[0].new_proj_note[..], 0, "Could not create project. Check the repository URL.");
     }
+  } else if kind == CF_GH_STATUS {
+    sw_gh_status_read(s[0].set[..], status, body);
+  } else if kind == CF_GH_REPOS {
+    sw_gh_repos_read(s[0].set[..], status, body);
+  } else if kind == CF_GH_CONNECT {
+    ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
+    url := cl_str(ar[..], body, "url");
+    if status == 200 && url.count >= 10 && url.count <= CW_GO {
+      s[0].set[0].gh_note_n = sw_put(s[0].set[0].gh_note[..], 0, "Redirecting to GitHub...");
+      cw_go_to(s, url, false);
+    } else {
+      err := cl_str(ar[..], body, "error");
+      s[0].set[0].gh_note_n = sw_put(s[0].set[0].gh_note[..], 0, ifx err.count > 0 then err else "Could not start GitHub connection.");
+    }
+  } else if kind == CF_GH_DISCONNECT {
+    if status == 200 {
+      s[0].set[0].gh_connected = false;
+      s[0].set[0].gh_login_n = 0;
+      s[0].set[0].gh_scopes_n = 0;
+      s[0].set[0].gh_nrepos = 0;
+      s[0].set[0].gh_repos_asked = false;
+      s[0].set[0].gh_note_n = sw_put(s[0].set[0].gh_note[..], 0, "GitHub disconnected.");
+    } else {
+      s[0].set[0].gh_note_n = sw_put(s[0].set[0].gh_note[..], 0, "Could not disconnect GitHub.");
+    }
   } else if kind == CF_OUT {
-    if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; s[0].projects_n = 0; sw_account_read(s[0].set[..], ""); s[0].set[0].life_asked = false; s[0].set[0].orgs_asked = false; s[0].set[0].envs_asked = false; s[0].set[0].nenvs = 0; s[0].set[0].aprojs_asked = false; s[0].set[0].naprojs = 0; cw_go_to(s, "/", false); }   // logged out: the public home page
+    if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; s[0].projects_n = 0; sw_account_read(s[0].set[..], ""); s[0].set[0].life_asked = false; s[0].set[0].orgs_asked = false; s[0].set[0].envs_asked = false; s[0].set[0].nenvs = 0; s[0].set[0].aprojs_asked = false; s[0].set[0].naprojs = 0; s[0].set[0].gh_asked = false; s[0].set[0].gh_connected = false; s[0].set[0].gh_repos_asked = false; s[0].set[0].gh_nrepos = 0; cw_go_to(s, "/", false); }   // logged out: the public home page
   } else if kind == CF_ACCOUNT {
     s[0].known = status == 200; s[0].known_asked = true;
     if status == 200 { cw_account(s, body, "claude."); }
@@ -1637,8 +1669,19 @@ cw_tick :: (s: [] ChatWeb) {
     return;
   }
   on_acct_dash := s[0].page == SS_HOME || (s[0].page == SW_PAGE && s[0].set[0].section == SW_ACCOUNT);
+  if s[0].gh_connect_due {
+    ret := ifx s[0].page == SS_HOME then "{\"return_to\":\"/?github=connected\"}" else "{\"return_to\":\"/settings/account?github=connected\"}";
+    if cw_go(s, CF_GH_CONNECT, "/api/integrations/github/connect", ret) { s[0].gh_connect_due = false; }
+    return;
+  }
+  if s[0].gh_disconnect_due {
+    if cw_go(s, CF_GH_DISCONNECT, "/api/integrations/github/disconnect", "{}") { s[0].gh_disconnect_due = false; }
+    return;
+  }
   if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].life_asked { if cw_go(s, CF_LIFE, "/api/auth/life?as=lines", "") { s[0].set[0].life_asked = true; } return; }
   if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].orgs_asked { if cw_go(s, CF_ORGS, "/api/auth/workos/orgs?as=lines", "") { s[0].set[0].orgs_asked = true; } return; }
+  if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].gh_asked { if cw_go(s, CF_GH_STATUS, "/api/integrations/github/status?as=lines", "") { s[0].set[0].gh_asked = true; } return; }
+  if on_acct_dash && s[0].me_n > 0 && s[0].set[0].gh_connected && !s[0].set[0].gh_repos_asked { if cw_go(s, CF_GH_REPOS, "/api/integrations/github/repos?as=lines", "") { s[0].set[0].gh_repos_asked = true; } return; }
   // a card waits for the turn to end, so a running session's tool calls stay the transcript's last message
   if s[0].card_due_n > 0 && !s[0].live && !s[0].lrun {
     url: [96] u8;
@@ -3198,7 +3241,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
 }
 #test "busy turns cannot start another message and every background read defers it" #steps 80000000 #traversal 536870912 {
  h:[1]CwTest;s:=h[0].s[..];s[0].live=true;s[0].turn=1;s[0].draft_n=cw_put(s[0].draft[..],0,"wait");cw_send(s);#assert s[0].flight==CF_NONE && s[0].count==0 && s[0].draft_n==4 && !s[0].send_due;
- for kind:[13]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS,CF_ENVS,CF_ACCT_PROJECTS] {
+ for kind:[15]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS,CF_ENVS,CF_ACCT_PROJECTS,CF_GH_STATUS,CF_GH_REPOS] {
   f:[1]CwTest;a:=f[0].s[..];a[0].flight=kind;a[0].draft_n=cw_put(a[0].draft[..],0,"wait");cw_send(a);#assert a[0].send_due && a[0].count==0 && a[0].draft_n==4 && a[0].flight==kind;
  }
 }
@@ -3288,7 +3331,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
  }
 }
 #test "hosted audit: every deferred read resumes after failure, while an unqueued draft stays put" #steps 300000000 #traversal 536870912 {
- for kind:[13]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS,CF_ENVS,CF_ACCT_PROJECTS] {
+ for kind:[15]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS,CF_ENVS,CF_ACCT_PROJECTS,CF_GH_STATUS,CF_GH_REPOS] {
   h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"queued");s[0].flight=kind;s[0].send_due=true;
   cw_end(s,500);#assert !s[0].send_due && s[0].live && s[0].flight==CF_COMPLETE && cw_text(s,0)=="queued";
   quiet:[1]CwTest;q:=quiet[0].s[..];q[0].draft_n=cw_put(q[0].draft[..],0,"unsent");q[0].flight=kind;

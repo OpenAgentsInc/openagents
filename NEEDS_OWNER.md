@@ -230,4 +230,13 @@ group. Install it from that group; the handoff records the delivery and checks.
 4. **Phase 5 follow-up — `gamebuilder.org` cutover & legacy email-code retirement (#14102):**
    - [ ] After `openagents.com` runs stably on WorkOS, add `gamebuilder.org` callback URI in WorkOS Dashboard, flip `OA_WORKOS_GAMEBUILDER_ENABLED=1`, and follow `docs/auth/2026-11-26-workos-cutover-runbook.md` §5 (keeping Resend strictly for first-party security notices).
 
+## WorkOS Pipes — GitHub integration provider (#14126, 2026-11-26)
+
+OpenAgents API (`/api/integrations/github/{status,connect,repos,disconnect}`) and Web Home/Settings UI wire WorkOS Pipes for user-authorized GitHub repository browsing and read-only cloud tools (zero GitHub tokens stored in OpenAgents Postgres or browser storage).
+
+- [ ] In the **WorkOS Staging** and **WorkOS Production** dashboards, open **Pipes → Providers → GitHub** and enable the GitHub provider (with your GitHub OAuth App / GitHub App client ID + secret and read scopes `repo, read:user` or `public_repo, read:user` depending on private repo support).
+- [ ] Verify the WorkOS Pipes redirect callback URL is registered on the GitHub App/OAuth App per the WorkOS Pipes GitHub setup card.
+- [ ] After enabling GitHub in WorkOS Staging, click **Connect GitHub** on `https://staging.openagents.com/` or `https://staging.openagents.com/settings/account` and confirm repositories load in the New Project quick-picker.
+
+
 

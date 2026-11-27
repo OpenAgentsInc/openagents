@@ -181,6 +181,22 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
     if w[0].new_proj_name_n > 0 && !w[0].new_proj_busy { s[0].new_proj_due = true; }
     return true;
   }
+  if id == "sw.gh.connect" { s[0].gh_connect_due = true; w[0].gh_note_n = sw_put(w[0].gh_note[..], 0, "Connecting GitHub..."); return true; }
+  if id == "sw.gh.disconnect" { s[0].gh_disconnect_due = true; w[0].gh_note_n = sw_put(w[0].gh_note[..], 0, "Disconnecting GitHub..."); return true; }
+  gh_pk := cw_number(id, "sw.proj.pick.");
+  if gh_pk >= 0 {
+    if gh_pk < w[0].gh_nrepos {
+      rname := cast(string) w[0].gh_repo_name[gh_pk][0..<w[0].gh_repo_name_n[gh_pk]];
+      w[0].new_proj_repo_n = sw_put(w[0].new_proj_repo[..], 0, rname);
+      slash := -1;
+      for i: 0..<rname.count { if rname[i] == '/' { slash = i; } }
+      short_name := ifx slash >= 0 && slash + 1 < rname.count then cast(string) rname[slash + 1..<rname.count] else rname;
+      w[0].new_proj_name_n = sw_put(w[0].new_proj_name[..], 0, short_name);
+      dm_value(s[0].dom[..], "sw.proj.name", cast(string) w[0].new_proj_name[0..<w[0].new_proj_name_n]);
+      dm_value(s[0].dom[..], "sw.proj.repo", cast(string) w[0].new_proj_repo[0..<w[0].new_proj_repo_n]);
+    }
+    return true;
+  }
   org_k := cw_number(id, "sw.org.");
   if org_k >= 0 { if org_k < w[0].norgs { s[0].org_switch_due = org_k + 1; } return true; }
   if id == "set.side" { s[0].side_closed = !s[0].side_closed; cw_keep(s); return true; }
@@ -414,4 +430,50 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   while coaxial_chatweb_asking(s) { cw_test_answer(s, 404, ""); n = coaxial_chatweb_frame(s, 0.016, true); }
   cw_test_press(s, "set.out"); n = coaxial_chatweb_frame(s, 0.016, true);
   #assert cw_test_door(s) == "/api/auth/logout?as=lines";
+}
+
+#test "Settings & Home: GitHub via WorkOS Pipes connects, quick-picks repos into New Project, and disconnects" #steps 200000000 #traversal 536870912 {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  cw_test_path(s, "/");
+  t := s[0].tree[..];
+  // Drain dashboard reads: life, orgs, github status (disconnected)
+  for i: 0..<6 {
+    n := coaxial_chatweb_frame(s, 0.016, true);
+    if !coaxial_chatweb_asking(s) { break; }
+    door := cw_test_door(s);
+    if door == "/api/integrations/github/status?as=lines" {
+      cw_test_answer(s, 200, "connected 0\nprovider github\n");
+    } else {
+      cw_test_answer(s, 200, "");
+    }
+  }
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "sw.gh.connect") >= 0 && tr_find(t, "sw.gh.disconnect") < 0;
+  // Connect GitHub navigates to WorkOS Pipes authorize URL
+  cw_test_press(s, "sw.gh.connect");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/api/integrations/github/connect";
+  cw_test_answer(s, 200, "{\"schema\":\"openagents.integrations.github.connect.v1alpha1\",\"provider\":\"github\",\"url\":\"https://api.workos.com/pipes/oauth/start?state=xyz\"}");
+  #assert cw_test_go(s) == "https://api.workos.com/pipes/oauth/start?state=xyz" && !coaxial_chatweb_go_push(s);
+  coaxial_chatweb_go_done(s);
+  // Once connected, repos load and quick-pick fills New Project inputs
+  sw_gh_status_read(s[0].set[..], 200, "connected 1\nprovider github\nlogin octocat\nscopes repo\n");
+  s[0].set[0].gh_repos_asked = false;
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/api/integrations/github/repos?as=lines";
+  cw_test_answer(s, 200, "repo OpenAgentsInc/openagents|main|0|https://github.com/OpenAgentsInc/openagents\n");
+  cw_test_press(s, "sw.proj.toggle");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "sw.proj.pick.0") >= 0 && tr_find(t, "sw.gh.disconnect") >= 0;
+  cw_test_press(s, "sw.proj.pick.0");
+  #assert cast(string) s[0].set[0].new_proj_name[0..<s[0].set[0].new_proj_name_n] == "openagents";
+  #assert cast(string) s[0].set[0].new_proj_repo[0..<s[0].set[0].new_proj_repo_n] == "OpenAgentsInc/openagents";
+  // Disconnect clears connected state and repos
+  if coaxial_chatweb_asking(s) { cw_test_answer(s, 404, ""); }
+  cw_test_press(s, "sw.gh.disconnect");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/api/integrations/github/disconnect";
+  cw_test_answer(s, 200, "{\"schema\":\"openagents.integrations.github.disconnect.v1alpha1\",\"provider\":\"github\",\"disconnected\":true}");
+  #assert !s[0].set[0].gh_connected && s[0].set[0].gh_nrepos == 0;
 }

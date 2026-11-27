@@ -1,0 +1,286 @@
+// WorkOS Pipes GitHub integration wire codec (#14126):
+// Parses WorkOS Pipes authorize/token/providers responses and sanitizes GitHub /user/repos
+// into closed OpenAgents JSON and ?as=lines envelopes. Never writes any OAuth token.
+#load "pipes_policy.coax";
+#load "../json/json.coax";
+
+WOS_PIPES_STATUS_SCHEMA     :: "openagents.integrations.github.status.v1alpha1";
+WOS_PIPES_CONNECT_SCHEMA    :: "openagents.integrations.github.connect.v1alpha1";
+WOS_PIPES_REPOS_SCHEMA      :: "openagents.integrations.github.repos.v1alpha1";
+WOS_PIPES_DISCONNECT_SCHEMA :: "openagents.integrations.github.disconnect.v1alpha1";
+WOS_PIPES_REPOS_MAX         :: 50;
+
+wpw_copy :: (out: [] u8, src: string) -> int #effects(all) {
+  if src.count > out.count { return -1; }
+  for i: 0..<src.count { out[i] = src[i]; }
+  return src.count;
+}
+
+wpw_string :: (v: Jv, node: int, out: [] u8) -> int #effects(all) {
+  return jv_str(v, node, out);
+}
+
+wpw_fields :: (v: Jv, obj: int, allowed: [] string) -> bool #effects(all) {
+  if obj < 0 || jv_kind(v, obj) != JV_OBJECT { return false; }
+  for i: 0..<jv_len(v, obj) {
+    at := jv_at(v, obj, i);
+    found := false;
+    for k: allowed {
+      if jv_key(v, at) == k {
+        if jv_get(v, obj, k) != at { return false; }
+        found = true;
+      }
+    }
+    if !found { return false; }
+  }
+  return true;
+}
+
+wpw_line_safe :: (s: string, out: [] u8) -> int #effects(all) {
+  n := 0;
+  for c: s {
+    if n >= out.count { break; }
+    out[n] = ifx c == '|' || c == '\n' || c == '\r' || c == 0 then ' ' else c;
+    n += 1;
+  }
+  return n;
+}
+
+// Parse optional return_to from POST /api/integrations/github/connect body.
+// Empty body or "{}" succeeds with out_n = 0. Unknown keys are refused.
+wos_pipes_connect_req_read :: (raw: string, out: [] u8) -> int #effects(all) {
+  if raw.count == 0 { return 0; }
+  if raw.count > 1024 { return -1; }
+  d: [1] Jv; nodes: [32] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return -1; }
+  v := d[0];
+  keys := [1] string.["return_to"];
+  if !wpw_fields(v, 0, keys[..]) { return -1; }
+  rt := jv_get(v, 0, "return_to");
+  if rt < 0 { return 0; }
+  return wpw_string(v, rt, out);
+}
+
+// Parse WorkOS Pipes POST /data-integrations/{slug}/authorize reply -> {"url":"..."}.
+wos_pipes_parse_authorize_url :: (raw: string, allow_local: bool, out: [] u8) -> int #effects(all) {
+  if raw.count < 2 || raw.count > 16384 { return -1; }
+  d: [1] Jv; nodes: [64] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return -1; }
+  n := wpw_string(d[0], jv_get(d[0], 0, "url"), out);
+  if n < 10 || !wos_pipes_auth_url_ok(cast(string) out[0..<n], allow_local) { return -1; }
+  return n;
+}
+
+// Parse WorkOS Pipes POST /data-integrations/{provider}/token reply.
+// Supports both canonical WorkOS Pipes shape:
+//   {"active":true,"access_token":{"access_token":"gho_...","scopes":[...]}}
+// and flat string shape:
+//   {"active":true,"access_token":"gho_..."}
+// Returns token length (>0) or -1 if inactive/missing/error.
+wos_pipes_parse_token :: (raw: string, token_out: [] u8) -> int #effects(all) {
+  if raw.count < 2 || raw.count > 16384 { return -1; }
+  d: [1] Jv; nodes: [128] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return -1; }
+  v := d[0];
+  act := jv_get(v, 0, "active");
+  if act >= 0 && jv_kind(v, act) == JV_FALSE { return -1; }
+  err := jv_get(v, 0, "error");
+  if err >= 0 && jv_kind(v, err) == JV_STRING { return -1; }
+  at := jv_get(v, 0, "access_token");
+  if at < 0 { return -1; }
+  tok_node := ifx jv_kind(v, at) == JV_OBJECT then jv_get(v, at, "access_token") else at;
+  n := wpw_string(v, tok_node, token_out);
+  return ifx n > 0 then n else -1;
+}
+
+// Parse WorkOS Pipes GET /user_management/users/{user_id}/data_providers response.
+// Finds provider matching `slug` (e.g. "github") and inspects `connected_account`.
+wos_pipes_parse_provider_connected :: (raw: string, slug: string, scopes_out: [] u8, scopes_n: [] int) -> bool #effects(all) {
+  if scopes_n.count > 0 { scopes_n[0] = 0; }
+  if raw.count < 2 || raw.count > 65536 { return false; }
+  d: [1] Jv; nodes: [1024] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  arr := jv_get(v, 0, "data");
+  if jv_kind(v, arr) != JV_ARRAY { return false; }
+  cnt := jv_len(v, arr);
+  for i: 0..<cnt {
+    item := jv_at(v, arr, i);
+    sbuf: [32] u8;
+    sn := wpw_string(v, jv_get(v, item, "slug"), sbuf[..]);
+    if sn != slug.count || cast(string) sbuf[0..<sn] != slug { continue; }
+    ca := jv_get(v, item, "connected_account");
+    if ca < 0 || jv_kind(v, ca) != JV_OBJECT { return false; }
+    st_node := jv_get(v, ca, "state");
+    if st_node >= 0 && jv_kind(v, st_node) == JV_STRING {
+      st_buf: [32] u8;
+      stn := wpw_string(v, st_node, st_buf[..]);
+      st := cast(string) st_buf[0..<stn];
+      if st != "connected" && st != "active" { return false; }
+    }
+    sc := jv_get(v, ca, "scopes");
+    if jv_kind(v, sc) == JV_ARRAY && scopes_n.count > 0 {
+      pos := 0;
+      sc_cnt := jv_len(v, sc);
+      for j: 0..<sc_cnt {
+        one: [64] u8;
+        on := wpw_string(v, jv_at(v, sc, j), one[..]);
+        if on > 0 {
+          if pos > 0 && pos < scopes_out.count { scopes_out[pos] = ','; pos += 1; }
+          for k: 0..<on { if pos < scopes_out.count { scopes_out[pos] = one[k]; pos += 1; } }
+        }
+      }
+      scopes_n[0] = pos;
+    }
+    return true;
+  }
+  return false;
+}
+
+// Write GET /api/integrations/github/status response (JSON or ?as=lines).
+wos_pipes_status_write :: (connected: bool, provider: string, scopes: string, login: string, as_lines: bool, out: [] u8) -> int #effects(all) {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  if as_lines {
+    sl: [128] u8; sln := wpw_line_safe(login, sl[..]);
+    sc: [256] u8; scn := wpw_line_safe(scopes, sc[..]);
+    jo_put(o[..], "connected "); jo_put(o[..], ifx connected then "1\n" else "0\n");
+    jo_put(o[..], "provider "); jo_put(o[..], provider); jo_put(o[..], "\n");
+    if sln > 0 { jo_put(o[..], "login "); jo_put(o[..], cast(string) sl[0..<sln]); jo_put(o[..], "\n"); }
+    if scn > 0 { jo_put(o[..], "scopes "); jo_put(o[..], cast(string) sc[0..<scn]); jo_put(o[..], "\n"); }
+    return ifx o[0].bad then -1 else o[0].n;
+  }
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], WOS_PIPES_STATUS_SCHEMA);
+  jo_key(o[..], "provider"); jo_str(o[..], provider);
+  jo_key(o[..], "connected"); jo_bool(o[..], connected);
+  jo_key(o[..], "scopes"); jo_str(o[..], scopes);
+  jo_key(o[..], "account_login"); jo_str(o[..], login);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+wos_pipes_connect_write :: (provider: string, url: string, out: [] u8) -> int #effects(all) {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], WOS_PIPES_CONNECT_SCHEMA);
+  jo_key(o[..], "provider"); jo_str(o[..], provider);
+  jo_key(o[..], "url"); jo_str(o[..], url);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+wos_pipes_disconnect_write :: (provider: string, disconnected: bool, out: [] u8) -> int #effects(all) {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], WOS_PIPES_DISCONNECT_SCHEMA);
+  jo_key(o[..], "provider"); jo_str(o[..], provider);
+  jo_key(o[..], "disconnected"); jo_bool(o[..], disconnected);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Sanitize raw GitHub GET /user/repos JSON array into closed OpenAgents JSON or ?as=lines.
+// Only full_name, default_branch, private, html_url, clone_url, updated_at are emitted.
+wos_pipes_repos_filter :: (github_json: string, as_lines: bool, nodes: [] JvNode, out: [] u8) -> int #effects(all) {
+  if github_json.count < 2 { return -1; }
+  d: [1] Jv;
+  if !jv_parse(d[..], github_json, nodes) || jv_kind(d[0], 0) != JV_ARRAY { return -1; }
+  v := d[0];
+  cnt := jv_len(v, 0);
+  if cnt > WOS_PIPES_REPOS_MAX { cnt = WOS_PIPES_REPOS_MAX; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  if !as_lines {
+    jo_obj(o[..]);
+    jo_key(o[..], "schema"); jo_str(o[..], WOS_PIPES_REPOS_SCHEMA);
+    jo_key(o[..], "provider"); jo_str(o[..], "github");
+    jo_key(o[..], "repos"); jo_arr(o[..]);
+  }
+  for i: 0..<cnt {
+    item := jv_at(v, 0, i);
+    if jv_kind(v, item) != JV_OBJECT { continue; }
+    fn_b: [160] u8; fn_n := wpw_string(v, jv_get(v, item, "full_name"), fn_b[..]);
+    if fn_n < 3 { continue; }
+    br_b: [96] u8; br_n := wpw_string(v, jv_get(v, item, "default_branch"), br_b[..]);
+    if br_n < 1 { br_n = wpw_copy(br_b[..], "main"); }
+    hu_b: [256] u8; hu_n := wpw_string(v, jv_get(v, item, "html_url"), hu_b[..]);
+    if hu_n < 0 { hu_n = 0; }
+    cu_b: [256] u8; cu_n := wpw_string(v, jv_get(v, item, "clone_url"), cu_b[..]);
+    if cu_n < 0 { cu_n = 0; }
+    up_b: [64] u8; up_n := wpw_string(v, jv_get(v, item, "updated_at"), up_b[..]);
+    if up_n < 0 { up_n = 0; }
+    priv := jv_bool(v, jv_get(v, item, "private"));
+    if as_lines {
+      sfn: [160] u8; sfnn := wpw_line_safe(cast(string) fn_b[0..<fn_n], sfn[..]);
+      sbr: [96] u8; sbrn := wpw_line_safe(cast(string) br_b[0..<br_n], sbr[..]);
+      shu: [256] u8; shun := wpw_line_safe(cast(string) hu_b[0..<hu_n], shu[..]);
+      jo_put(o[..], "repo "); jo_put(o[..], cast(string) sfn[0..<sfnn]);
+      jo_put(o[..], "|"); jo_put(o[..], cast(string) sbr[0..<sbrn]);
+      jo_put(o[..], "|"); jo_put(o[..], ifx priv then "1" else "0");
+      jo_put(o[..], "|"); jo_put(o[..], cast(string) shu[0..<shun]);
+      jo_put(o[..], "\n");
+    } else {
+      jo_obj(o[..]);
+      jo_key(o[..], "full_name"); jo_str(o[..], cast(string) fn_b[0..<fn_n]);
+      jo_key(o[..], "default_branch"); jo_str(o[..], cast(string) br_b[0..<br_n]);
+      jo_key(o[..], "private"); jo_bool(o[..], priv);
+      jo_key(o[..], "html_url"); jo_str(o[..], cast(string) hu_b[0..<hu_n]);
+      jo_key(o[..], "clone_url"); jo_str(o[..], cast(string) cu_b[0..<cu_n]);
+      jo_key(o[..], "updated_at"); jo_str(o[..], cast(string) up_b[0..<up_n]);
+      jo_end(o[..]);
+    }
+  }
+  if !as_lines {
+    jo_end(o[..]);
+    jo_end(o[..]);
+  }
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "WorkOS Pipes codec parses authorize, token, providers and sanitizes GitHub repos" {
+  out: [4096] u8;
+  #assert wos_pipes_connect_req_read("", out[..]) == 0;
+  #assert wos_pipes_connect_req_read("{}", out[..]) == 0;
+  n := wos_pipes_connect_req_read("{\"return_to\":\"/settings/account\"}", out[..]);
+  #assert n == 17 && cast(string) out[0..<n] == "/settings/account";
+  #assert wos_pipes_connect_req_read("{\"evil\":1}", out[..]) < 0;
+  n = wos_pipes_parse_authorize_url("{\"url\":\"https://api.workos.com/pipes/oauth/123\"}", false, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://api.workos.com/pipes/oauth/123";
+  #assert wos_pipes_parse_authorize_url("{\"url\":\"http://evil.com/x\"}", false, out[..]) < 0;
+  // Nested and flat token shapes + inactive refusal
+  n = wos_pipes_parse_token("{\"active\":true,\"access_token\":{\"access_token\":\"gho_test_token_123\",\"scopes\":[\"repo\"]}}", out[..]);
+  #assert n == 18 && cast(string) out[0..<n] == "gho_test_token_123";
+  n = wos_pipes_parse_token("{\"active\":true,\"access_token\":\"gho_flat_456\"}", out[..]);
+  #assert n == 12 && cast(string) out[0..<n] == "gho_flat_456";
+  #assert wos_pipes_parse_token("{\"active\":false,\"error\":\"needs_reauthorization\"}", out[..]) < 0;
+  // Provider status parsing
+  sc: [256] u8; scn: [1] int;
+  prov := "{\"data\":[{\"slug\":\"github\",\"connected_account\":{\"state\":\"connected\",\"scopes\":[\"repo\",\"read:user\"]}}]}";
+  #assert wos_pipes_parse_provider_connected(prov, "github", sc[..], scn[..]) && cast(string) sc[0..<scn[0]] == "repo,read:user";
+  #assert !wos_pipes_parse_provider_connected("{\"data\":[{\"slug\":\"github\",\"connected_account\":{\"state\":\"needs_reauthorization\"}}]}", "github", sc[..], scn[..]);
+  #assert !wos_pipes_parse_provider_connected("{\"data\":[{\"slug\":\"github\",\"connected_account\":null}]}", "github", sc[..], scn[..]);
+  // Status + connect + disconnect writers
+  n = wos_pipes_status_write(true, "github", "repo,read:user", "octocat", true, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "connected 1\nprovider github\nlogin octocat\nscopes repo,read:user\n";
+  n = wos_pipes_status_write(true, "github", "repo", "octocat", false, out[..]);
+  #assert n > 0;
+  n = wos_pipes_connect_write("github", "https://api.workos.com/pipes/1", out[..]);
+  #assert n > 0;
+  n = wos_pipes_disconnect_write("github", true, out[..]);
+  #assert n > 0;
+  // GitHub repos sanitization strips unexpected fields and preserves allowed fields
+  gh := "[{\"full_name\":\"OpenAgentsInc/openagents\",\"default_branch\":\"main\",\"private\":false,\"html_url\":\"https://github.com/OpenAgentsInc/openagents\",\"clone_url\":\"https://github.com/OpenAgentsInc/openagents.git\",\"updated_at\":\"2026-11-26T10:00:00Z\",\"secret_field\":\"NEVER_EMIT\"}]";
+  nodes: [512] JvNode;
+  n = wos_pipes_repos_filter(gh, false, nodes[..], out[..]);
+  #assert n > 0;
+  d: [1] Jv;
+  #assert jv_parse(d[..], cast(string) out[0..<n], nodes[..]);
+  #assert jv_raw(d[0], jv_get(d[0], 0, "schema")) == WOS_PIPES_REPOS_SCHEMA;
+  #assert jv_raw(d[0], jv_path(d[0], 0, "repos[0].full_name")) == "OpenAgentsInc/openagents";
+  #assert jv_path(d[0], 0, "repos[0].secret_field") < 0;
+  n = wos_pipes_repos_filter(gh, true, nodes[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "repo OpenAgentsInc/openagents|main|0|https://github.com/OpenAgentsInc/openagents\n";
+}

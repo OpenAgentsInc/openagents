@@ -7707,6 +7707,78 @@
         "coax/web/api/migrations/0220_cloud_projects_environments.sql"
       ],
       "note": "Project-to-repository normalization and explicit + auto-matched computer workspace bindings (GET/POST /api/projects/v1/{id}/bindings; #14125)."
+    },
+    {
+      "id": "openagents.integrations.github.status.v1alpha1",
+      "kind": "profile",
+      "owner": "identity",
+      "schema": "proto/auth/workos-pipes-github-v1alpha1.json",
+      "codec": "coax/lib/workos/pipes_wire.coax",
+      "check": "coax/bin/coax test coax/lib/workos/pipes_wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/lib/workos/pipes_policy.coax",
+        "coax/lib/workos/adapters/c_unit.coax",
+        "coax/web/api/integrations.c",
+        "coax/web/api/workos.c"
+      ],
+      "tests": [
+        "coax/lib/workos/pipes_policy.coax",
+        "coax/lib/workos/pipes_wire.coax",
+        "coax/web/api/tests/github_pipes_e2e_test.sh"
+      ],
+      "note": "WorkOS Pipes GitHub integration status envelope (GET /api/integrations/github/status; #14126)."
+    },
+    {
+      "id": "openagents.integrations.github.connect.v1alpha1",
+      "kind": "profile",
+      "owner": "identity",
+      "schema": "proto/auth/workos-pipes-github-v1alpha1.json",
+      "codec": "coax/lib/workos/pipes_wire.coax",
+      "check": "coax/bin/coax test coax/lib/workos/pipes_wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/integrations.c"
+      ],
+      "tests": [
+        "coax/lib/workos/pipes_wire.coax",
+        "coax/web/api/tests/github_pipes_e2e_test.sh"
+      ],
+      "note": "WorkOS Pipes GitHub authorize URL envelope (POST /api/integrations/github/connect; #14126)."
+    },
+    {
+      "id": "openagents.integrations.github.repos.v1alpha1",
+      "kind": "profile",
+      "owner": "identity",
+      "schema": "proto/auth/workos-pipes-github-v1alpha1.json",
+      "codec": "coax/lib/workos/pipes_wire.coax",
+      "check": "coax/bin/coax test coax/lib/workos/pipes_wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/integrations.c"
+      ],
+      "tests": [
+        "coax/lib/workos/pipes_wire.coax",
+        "coax/web/api/tests/github_pipes_e2e_test.sh"
+      ],
+      "note": "Sanitized GitHub repositories list fetched using transient WorkOS Pipes token (GET /api/integrations/github/repos; #14126)."
+    },
+    {
+      "id": "openagents.integrations.github.disconnect.v1alpha1",
+      "kind": "profile",
+      "owner": "identity",
+      "schema": "proto/auth/workos-pipes-github-v1alpha1.json",
+      "codec": "coax/lib/workos/pipes_wire.coax",
+      "check": "coax/bin/coax test coax/lib/workos/pipes_wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/integrations.c"
+      ],
+      "tests": [
+        "coax/lib/workos/pipes_wire.coax",
+        "coax/web/api/tests/github_pipes_e2e_test.sh"
+      ],
+      "note": "WorkOS Pipes GitHub disconnect confirmation (POST /api/integrations/github/disconnect; #14126)."
     }
   ]
 }

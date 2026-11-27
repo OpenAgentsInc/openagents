@@ -1,0 +1,120 @@
+// WorkOS Pipes integration admission, provider allowlist, and redirect validation policy (#14126).
+#authority;
+
+// Closed allowlist of external data integration providers exposed via WorkOS Pipes.
+wos_pipes_provider_ok :: (provider: string) -> bool #effects(all) {
+  return provider == "github";
+}
+
+// Verified person accounts (including WorkOS L1) may manage integrations unless limited or frozen.
+wos_pipes_admit :: (kind: int, verified: bool, account: string, limited: bool, frozen: bool) -> bool #effects(all) {
+  return kind == 2 && verified && account.count > 0 && !limited && !frozen;
+}
+
+wpp_has_prefix :: (s: string, p: string) -> bool #effects(all) {
+  if s.count < p.count { return false; }
+  for i: 0..<p.count { if s[i] != p[i] { return false; } }
+  return true;
+}
+
+wpp_safe_url_bytes :: (s: string) -> bool #effects(all) {
+  for c: s {
+    if c < 33 || c == 127 || c == '\\' { return false; }
+  }
+  return true;
+}
+
+// Validate return_to for POST /api/integrations/github/connect:
+//   - empty string: valid (server defaults to <origin>/settings/account?github=connected)
+//   - relative same-site path starting with '/' (not '//'), no '..', max 256 bytes
+//   - full URL matching exact server origin + '/' (no cross-origin open redirect)
+wos_pipes_return_to_ok :: (origin: string, url: string) -> bool #effects(all) {
+  if url.count == 0 { return true; }
+  if url.count > 256 || !wpp_safe_url_bytes(url) { return false; }
+  path := "";
+  if url[0] == '/' {
+    if url.count > 1 && url[1] == '/' { return false; }
+    path = url;
+  } else {
+    if origin.count < 8 || url.count <= origin.count || !wpp_has_prefix(url, origin) || url[origin.count] != '/' { return false; }
+    path = cast(string) url[origin.count..<url.count];
+  }
+  for i: 0..<path.count - 1 { // mutant: equivalent (path[0] is always '/' from both branches above, so index 0 can never be '.')
+    if path[i] == '.' && path[i + 1] == '.' { return false; }
+  }
+  return true;
+}
+
+// Validate authorize URL returned by WorkOS Pipes (https://, or loopback http:// for local tests).
+wos_pipes_auth_url_ok :: (url: string, allow_local: bool) -> bool #effects(all) {
+  if url.count < 10 || url.count > 2048 || !wpp_safe_url_bytes(url) { return false; }
+  if wpp_has_prefix(url, "https://") { return true; }
+  if allow_local && (wpp_has_prefix(url, "http://127.0.0.1:") || wpp_has_prefix(url, "http://localhost:")) { return true; }
+  return false;
+}
+
+#test "WorkOS Pipes provider allowlist and person admission enforce exact boundaries" {
+  #assert wos_pipes_provider_ok("github");
+  #assert !wos_pipes_provider_ok("") && !wos_pipes_provider_ok("gitlab") && !wos_pipes_provider_ok("github/..");
+  #assert wos_pipes_admit(2, true, "a", false, false);
+  #assert !wos_pipes_admit(2, false, "a", false, false);
+  #assert !wos_pipes_admit(2, true, "", false, false);
+  #assert !wos_pipes_admit(2, true, "a", true, false);
+  #assert !wos_pipes_admit(2, true, "a", false, true);
+  for k: 0..<6 { if k != 2 { #assert !wos_pipes_admit(k, true, "a", false, false); } }
+  // Direct prefix helper boundary assertions (equal length, shorter, first-byte mismatch).
+  #assert wpp_has_prefix("abc", "abc") && wpp_has_prefix("abcd", "abc");
+  #assert !wpp_has_prefix("ab", "abc") && !wpp_has_prefix("xbc", "abc") && !wpp_has_prefix("abx", "abc");
+}
+
+#test "return_to blocks open redirects, protocol-relative URLs, traversal, and control bytes" {
+  orig := "https://staging.openagents.com";
+  #assert wos_pipes_return_to_ok(orig, "");
+  #assert wos_pipes_return_to_ok(orig, "/");
+  #assert wos_pipes_return_to_ok(orig, "/settings/account?github=connected");
+  #assert wos_pipes_return_to_ok(orig, "/chat");
+  #assert wos_pipes_return_to_ok(orig, "/a/b");
+  #assert wos_pipes_return_to_ok(orig, "/.a");
+  #assert wos_pipes_return_to_ok(orig, "/a.");
+  #assert wos_pipes_return_to_ok(orig, "/a./b");
+  #assert wos_pipes_return_to_ok(orig, "https://staging.openagents.com/settings/account");
+  #assert !wos_pipes_return_to_ok(orig, "https://staging.openagents.com/settings/../admin");
+  #assert wos_pipes_return_to_ok("http://a", "http://a/");
+  #assert !wos_pipes_return_to_ok("http://", "http:///x");
+  #assert !wos_pipes_return_to_ok(orig, "//");
+  #assert !wos_pipes_return_to_ok(orig, "//evil.com/steal");
+  #assert !wos_pipes_return_to_ok(orig, "https://evil.com/steal");
+  #assert !wos_pipes_return_to_ok(orig, "https://staging.openagents.com");
+  #assert !wos_pipes_return_to_ok(orig, "https://staging.openagents.com.evil.com/x");
+  #assert !wos_pipes_return_to_ok(orig, "/..");
+  #assert !wos_pipes_return_to_ok(orig, "/..a");
+  #assert !wos_pipes_return_to_ok(orig, "/settings/../admin");
+  #assert !wos_pipes_return_to_ok(orig, "/settings/a\\b");
+  #assert !wos_pipes_return_to_ok(orig, "/settings/a b");
+  #assert wos_pipes_return_to_ok(orig, "/a!b");
+  del_b := [3] u8.['/', 'a', 127];
+  #assert !wos_pipes_return_to_ok(orig, cast(string) del_b[..]);
+  long_p: [257] u8;
+  long_p[0] = '/';
+  for i: 1..<long_p.count { long_p[i] = 'a'; }
+  #assert wos_pipes_return_to_ok(orig, cast(string) long_p[0..<256]);
+  #assert !wos_pipes_return_to_ok(orig, cast(string) long_p[..]);
+}
+
+#test "Pipes authorize URL requires https unless loopback testing is explicitly allowed" {
+  #assert wos_pipes_auth_url_ok("https://ab", false);
+  #assert !wos_pipes_auth_url_ok("https://a", false);
+  #assert wos_pipes_auth_url_ok("https://api.workos.com/pipes/oauth/start?state=1", false);
+  #assert !wos_pipes_auth_url_ok("http://api.workos.com/pipes/oauth/start", false);
+  #assert !wos_pipes_auth_url_ok("http://127.0.0.1:9999/oauth", false);
+  #assert wos_pipes_auth_url_ok("http://127.0.0.1:9999/oauth", true);
+  #assert wos_pipes_auth_url_ok("http://localhost:9999/oauth", true);
+  #assert !wos_pipes_auth_url_ok("http://evil.com:9999/oauth", true);
+  #assert !wos_pipes_auth_url_ok("https://api.workos.com/a b", false);
+  long_u: [2049] u8;
+  p := "https://a/";
+  for i: 0..<p.count { long_u[i] = p[i]; }
+  for i: p.count..<long_u.count { long_u[i] = 'x'; }
+  #assert wos_pipes_auth_url_ok(cast(string) long_u[0..<2048], false);
+  #assert !wos_pipes_auth_url_ok(cast(string) long_u[..], false);
+}

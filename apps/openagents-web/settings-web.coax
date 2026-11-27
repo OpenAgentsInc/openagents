@@ -26,6 +26,7 @@ SW_KEYS :: 4;
 SW_ORGS :: 8; SW_ORG_ID :: 64; SW_ORG_NAME :: 80;
 SW_ENVS :: 16; SW_ENV_NAME :: 80; SW_ENV_REPO :: 96;
 SW_APROJS :: 24; SW_APROJ_NAME :: 80;
+SW_GH_REPOS :: 8; SW_GH_NAME :: 96; SW_GH_BRANCH :: 48;
 SW_LIMITS :: 16; SW_LIMIT_WHAT :: 96; SW_LIMIT_PER :: 24;
 SW_REPO :: "https://github.com/OpenAgentsInc/openagents";
 
@@ -75,6 +76,17 @@ SettingsWeb :: struct {
   new_proj_name: [80] u8; new_proj_name_n: int;
   new_proj_repo: [160] u8; new_proj_repo_n: int;
   new_proj_note: [128] u8; new_proj_note_n: int;
+  // GitHub via WorkOS Pipes (/api/integrations/github/status?as=lines & /repos?as=lines)
+  gh_asked: bool; gh_state: int;   // 0 pending, 1 read, -1 unavailable
+  gh_connected: bool;
+  gh_login: [64] u8; gh_login_n: int;
+  gh_scopes: [128] u8; gh_scopes_n: int;
+  gh_note: [128] u8; gh_note_n: int;
+  gh_repos_asked: bool; gh_repos_state: int;
+  gh_repo_name: [SW_GH_REPOS] [SW_GH_NAME] u8; gh_repo_name_n: [SW_GH_REPOS] int;
+  gh_repo_branch: [SW_GH_REPOS] [SW_GH_BRANCH] u8; gh_repo_branch_n: [SW_GH_REPOS] int;
+  gh_repo_priv: [SW_GH_REPOS] bool;
+  gh_nrepos: int;
   // the limits we enforce on logging in
   limits_asked: bool; limits_state: int;   // 0 not back yet, 1 read, -1 not to be had
   nl: int;
@@ -307,6 +319,50 @@ sw_acct_projects_read :: (s: [] SettingsWeb, status: int, body: string) {
     s[0].aproj_repo_n[k] = sw_put(s[0].aproj_repo[k][..], 0, cast(string) line[f[3]..<g[3]]);
     s[0].aproj_envs[k] = sw_parse_int(cast(string) line[f[4]..<g[4]], 0);
     s[0].naprojs += 1;
+  }
+}
+// GitHub integration status lines (/api/integrations/github/status?as=lines):
+//   connected 0|1, provider github, login <user>, scopes <csv>
+sw_gh_status_read :: (s: [] SettingsWeb, status: int, body: string) {
+  s[0].gh_state = ifx status == 200 then 1 else -1;
+  s[0].gh_connected = false; s[0].gh_login_n = 0; s[0].gh_scopes_n = 0;
+  if status != 200 { return; }
+  at := 0;
+  while at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line == "connected 1" { s[0].gh_connected = true; }
+    else if line.count > 6 && cast(string) line[0..<6] == "login " { s[0].gh_login_n = sw_put(s[0].gh_login[..], 0, cast(string) line[6..<line.count]); }
+    else if line.count > 7 && cast(string) line[0..<7] == "scopes " { s[0].gh_scopes_n = sw_put(s[0].gh_scopes[..], 0, cast(string) line[7..<line.count]); }
+  }
+}
+// GitHub repositories lines (/api/integrations/github/repos?as=lines):
+//   repo <full_name>|<default_branch>|<private_0_1>|<html_url>
+sw_gh_repos_read :: (s: [] SettingsWeb, status: int, body: string) {
+  s[0].gh_repos_state = ifx status == 200 then 1 else -1;
+  s[0].gh_nrepos = 0;
+  if status != 200 { return; }
+  at := 0;
+  while at < body.count && s[0].gh_nrepos < SW_GH_REPOS {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count < 10 || cast(string) line[0..<5] != "repo " { continue; }
+    f: [4] int; g: [4] int; nf := 0; p := 5;
+    while nf < 4 && p <= line.count {
+      q := p;
+      while q < line.count && (line[q] != '|' || nf == 3) { q += 1; }
+      f[nf] = p; g[nf] = q; nf += 1; p = q + 1;
+    }
+    if nf < 3 || g[0] <= f[0] { continue; }
+    k := s[0].gh_nrepos;
+    s[0].gh_repo_name_n[k] = sw_put(s[0].gh_repo_name[k][..], 0, cast(string) line[f[0]..<g[0]]);
+    s[0].gh_repo_branch_n[k] = sw_put(s[0].gh_repo_branch[k][..], 0, cast(string) line[f[1]..<g[1]]);
+    s[0].gh_repo_priv[k] = cast(string) line[f[2]..<g[2]] == "1";
+    s[0].gh_nrepos += 1;
   }
 }
 // The limits' lines: "limit NAME|MAX|PER|WHAT" each. A line that isn't one is passed over.
@@ -554,10 +610,52 @@ sw_projects_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
       bx := k_button(t, u, "sw.proj.toggle", "Cancel", BS_PLAIN);
       k_set_row_end(t);
     }
+    if s[0].gh_nrepos > 0 {
+      idg: [UI_ID] u8;
+      if sw_row(s, t, u, tr_cat(idg[..], id, ".ghpick"), "Pick from GitHub", "Choose a repository from your connected GitHub account to fill the form.") {
+        max_pick := ifx s[0].gh_nrepos > 6 then 6 else s[0].gh_nrepos;
+        for g: 0..<max_pick {
+          pbid: [UI_ID] u8;
+          rname := cast(string) s[0].gh_repo_name[g][0..<s[0].gh_repo_name_n[g]];
+          bp := k_button(t, u, tr_join(pbid[..], "sw.proj.pick.", g), rname, BS_PLAIN);
+        }
+        k_set_row_end(t);
+      }
+    }
   }
   if s[0].new_proj_note_n > 0 {
     idst: [UI_ID] u8;
     sw_fact(s, t, u, tr_cat(idst[..], id, ".note"), "Status", cast(string) s[0].new_proj_note[0..<s[0].new_proj_note_n]);
+  }
+  sw_group_end(s, t);
+}
+
+sw_github_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
+  if s[0].gh_state == 0 && !s[0].gh_connected { return; }
+  sw_group(s, t, u, id, "GitHub");
+  idr: [UI_ID] u8;
+  if s[0].gh_connected {
+    about: [220] u8; num: [24] u8; n := sw_put(about[..], 0, "Connected via WorkOS Pipes");
+    if s[0].gh_login_n > 0 { n = sw_put(about[..], n, " as @"); n = sw_put(about[..], n, cast(string) s[0].gh_login[0..<s[0].gh_login_n]); }
+    if s[0].gh_nrepos > 0 {
+      n = sw_put(about[..], n, " · "); n = sw_put(about[..], n, tr_join(num[..], "", s[0].gh_nrepos));
+      n = sw_put(about[..], n, ifx s[0].gh_nrepos == 1 then " repo loaded" else " repos loaded");
+    }
+    if s[0].gh_scopes_n > 0 { n = sw_put(about[..], n, " · scopes: "); n = sw_put(about[..], n, cast(string) s[0].gh_scopes[0..<s[0].gh_scopes_n]); }
+    if sw_row(s, t, u, tr_cat(idr[..], id, ".conn"), "GitHub account", cast(string) about[0..<n]) {
+      bd := k_button(t, u, "sw.gh.disconnect", "Disconnect", BS_PLAIN);
+      k_set_row_end(t);
+    }
+  } else {
+    if sw_row(s, t, u, tr_cat(idr[..], id, ".conn"), "Connect GitHub",
+      "Authorize GitHub via WorkOS Pipes to pick repositories for Projects and let Cloud Chat read your code. OpenAgents never stores your GitHub token.") {
+      bc := k_button(t, u, "sw.gh.connect", "Connect GitHub", BS_PRIMARY);
+      k_set_row_end(t);
+    }
+  }
+  if s[0].gh_note_n > 0 {
+    idn: [UI_ID] u8;
+    sw_fact(s, t, u, tr_cat(idn[..], id, ".note"), "Status", cast(string) s[0].gh_note[0..<s[0].gh_note_n]);
   }
   sw_group_end(s, t);
 }
@@ -627,6 +725,7 @@ sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: in
   sw_group_end(s, t);
   sw_envs_group(s, t, u, "home.envs");
   sw_projects_group(s, t, u, "home.projects");
+  sw_github_group(s, t, u, "home.github");
   sw_orgs_group(s, t, u, "home.orgs");
   sw_group(s, t, u, "home.quick", "Quick actions & settings");
   sw_link(s, t, u, "home.go.chat", "Cloud Chat", "Start a new conversation or resume your synced chats.", "Open Chat", "/chat");
@@ -688,6 +787,7 @@ sw_account :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string) {
   if sw_row(s, t, u, "acct.out", "Log out", "Log out of this browser.") { b := k_button(t, u, "set.out", "Log out", BS_PLAIN); k_set_row_end(t); }
   sw_group_end(s, t);
   sw_envs_group(s, t, u, "acct.envs");
+  sw_github_group(s, t, u, "acct.github");
   sw_orgs_group(s, t, u, "acct.orgs");
   sw_group(s, t, u, "acct.more", "More of your account");
   sw_link(s, t, u, "acct.security", "Security", "How you log in: your email, keys and passkeys.", "Open", "/settings/security");
@@ -890,7 +990,15 @@ sw_test_build :: (x: [] SwTest, who: string) {
   #assert tr_attr_of(t, tr_find(t, "home.projects.go.0"), AT_HREF) == "/chat?project=prj_0123456789abcdef0123456789abcdef";
   #assert tr_find(t, "sw.proj.toggle") > 0;
   s[0].new_proj_open = true;
+  sw_gh_status_read(s, 200, "connected 1\nprovider github\nlogin octocat\nscopes repo,read:user\n");
+  sw_gh_repos_read(s, 200, "repo OpenAgentsInc/openagents|main|0|https://github.com/OpenAgentsInc/openagents\nrepo OpenAgentsInc/private-ops|main|1|https://github.com/OpenAgentsInc/private-ops\n");
+  #assert s[0].gh_connected && s[0].gh_nrepos == 2 && s[0].gh_repo_priv[1];
   tr_begin(t); ui_begin(u, 0, true);
   sw_home(s, t, u, "chris@openagents.com", 0, 0);
   #assert tr_find(t, "sw.proj.name") > 0 && tr_find(t, "sw.proj.repo") > 0 && tr_find(t, "sw.proj.create") > 0;
+  #assert tr_find(t, "sw.proj.pick.0") > 0 && tr_find(t, "sw.proj.pick.1") > 0 && tr_find(t, "sw.gh.disconnect") > 0;
+  sw_gh_status_read(s, 200, "connected 0\nprovider github\n");
+  tr_begin(t); ui_begin(u, 0, true);
+  sw_home(s, t, u, "chris@openagents.com", 0, 0);
+  #assert tr_find(t, "sw.gh.connect") > 0 && tr_find(t, "sw.gh.disconnect") < 0;
 }
