@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 5 (CLI helper script for the arxiv skill: fetches arXiv metadata, PDF text, and LaTeX source into ~/.openagents/papers/)
 """OpenAgents arXiv paper helper (pure Python 3 stdlib).
 
 Makes discovering, caching, searching, and reading full arXiv papers effortless for agents:

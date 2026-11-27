@@ -1,3 +1,4 @@
+# Firm reason: 5 (Paper-Lab eval fixture: a tiny Python project the live agent edits in a temp repo)
 def parse_window_seconds(spec: str) -> int:
     """Parse duration like '30s', '5m', '2h' into integer seconds."""
     s = spec.strip().lower()

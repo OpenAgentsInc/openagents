@@ -1,3 +1,4 @@
+# Firm reason: 5 (Paper-Lab eval fixture: a tiny Python project the live agent edits in a temp repo)
 """Wire frame codec: format is `<len>:<escaped_payload>:<crc>` where `:` and `\\` in payload are backslash-escaped."""
 
 

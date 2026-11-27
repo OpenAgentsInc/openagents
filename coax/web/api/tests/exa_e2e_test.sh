@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (end-to-end shell test for the metered Exa web search & MCP proxy route)
 # End-to-end integration test for central metered Exa search, fetch, and MCP
 # (/api/v1/search, /api/v1/fetch, /api/v1/mcp/exa) — Issues #14114, #14115.
 set -euo pipefail

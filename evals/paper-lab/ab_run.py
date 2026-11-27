@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 5 (Paper-Lab paired A/B eval runner driving tier2/run_tasks.py and computing verdict reports)
 """Paper-Lab: Rapid paired A/B evaluation runner for research paper hypotheses.
 
 Runs BASE (control env) vs EXP (paper mechanism env, e.g. OA_EXP_MEMTRACE=1)

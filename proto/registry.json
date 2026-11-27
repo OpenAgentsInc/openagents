@@ -4012,6 +4012,7 @@
         "coax/web/api/admin.c",
         "coax/web/api/analytics.c",
         "coax/web/api/drops.c",
+        "coax/web/api/exa.c",
         "coax/web/api/inference.c",
         "coax/web/api/private.c",
         "coax/web/api/room.c",

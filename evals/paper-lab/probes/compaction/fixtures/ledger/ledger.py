@@ -1,3 +1,4 @@
+# Firm reason: 5 (Paper-Lab eval fixture: a tiny Python project the live agent edits in a temp repo)
 def apply_fee(amount_cents: int, bps: int) -> int:
     """Return net amount after subtracting fee = round-down(amount_cents * bps / 10000)."""
     # BUG: mistakenly adds fee instead of subtracting it
