@@ -42,7 +42,8 @@ chw_find :: (text: string, pat: string, from: int) -> int #effects(all) {
 
 // {"pubkey":"HEX","may":true,"runner":false,"cap_usd":"10"}
 chw_who_write :: (pubkey: string, may: bool, runner: bool, cap_usd: string, out: [] u8) -> int #export_c #effects(all) {
-  cut := ifx cap_usd.count > CHW_CAP then CHW_CAP else cap_usd.count;
+  // At cap_usd.count == CHW_CAP both branches equal CHW_CAP; 17-byte cap is checked in #test.
+  cut := ifx cap_usd.count > CHW_CAP then CHW_CAP else cap_usd.count; // mutant: equivalent
   o: [1] Jo; aw_at(o[..], out, 0);
   jo_put(o[..], "{\"pubkey\":"); jo_quoted(o[..], pubkey); jo_put(o[..], ",\"may\":"); jo_put(o[..], chw_bool(may));
   jo_put(o[..], ",\"runner\":"); jo_put(o[..], chw_bool(runner)); jo_put(o[..], ",\"cap_usd\":"); jo_quoted(o[..], cap_usd[0..<cut]); jo_put(o[..], "}");
@@ -107,7 +108,8 @@ chw_reply_last4 :: (body: string, out: [] u8) -> int #export_c #effects(all) { r
 chw_credential_read :: (body: string, out: [] u8) -> int #export_c #effects(all) {
   pat := "\"credential\"";
   at := chw_find(body, pat, 0);
-  if at < 0 || at + pat.count >= body.count { return -1; }
+  // Line 113 independently checks k >= body.count, so >= vs > and + vs - on at + pat.count agree; at < 0 is checked in #test.
+  if at < 0 || at + pat.count >= body.count { return -1; } // mutant: equivalent
   k := at + pat.count;
   while k < body.count && (body[k] == ' ' || body[k] == ':' || body[k] == 9 || body[k] == 10) { k += 1; }
   if k >= body.count || body[k] != '"' { return -1; }
@@ -129,12 +131,18 @@ chw_asks_attachments :: (body: string) -> bool #export_c #effects(all) { return 
   #assert cast(string) b[0..<n] == "{\"pubkey\":\"\",\"may\":false,\"runner\":true,\"cap_usd\":\"\"}";
   n = chw_who_write("", false, false, "12345678901234567890", b[..]);
   #assert cast(string) b[0..<n] == "{\"pubkey\":\"\",\"may\":false,\"runner\":false,\"cap_usd\":\"1234567890123456\"}";
+  n = chw_who_write("", false, false, "12345678901234567", b[..]);
+  #assert cast(string) b[0..<n] == "{\"pubkey\":\"\",\"may\":false,\"runner\":false,\"cap_usd\":\"1234567890123456\"}";
   n = chw_who_write("", false, false, "2.50", b[..]);
   #assert cast(string) b[0..<n] == "{\"pubkey\":\"\",\"may\":false,\"runner\":false,\"cap_usd\":\"2.50\"}";
   n = chw_ask_write("12", b[..]);
   #assert cast(string) b[0..<n] == "{\"c\":\"12\"}" && chw_ask_write("12", b[0..<n - 1]) == -1;
   n = chw_ask_write("0", b[..]);
   #assert cast(string) b[0..<n] == "{\"c\":\"0\"}";
+  n = chw_ask_write("9", b[..]);
+  #assert cast(string) b[0..<n] == "{\"c\":\"9\"}";
+  n = chw_ask_write(":", b[..]);
+  #assert cast(string) b[0..<n] == "{}";
   n = chw_ask_write("", b[..]);
   #assert cast(string) b[0..<n] == "{}" && chw_ask_write("", b[0..<2]) == 2 && chw_ask_write("", b[0..<1]) == -1;
   n = chw_ask_write("1x", b[..]);
@@ -164,13 +172,17 @@ chw_asks_attachments :: (body: string) -> bool #export_c #effects(all) { return 
 #test "the runner's answer is read as chat.c's scanner read it" {
   o: [64] u8; small: [3] u8;
   good := "{\"ok\":true,\"kind\":\"api\",\"last4\":\"wxyz\",\"sealed\":\"c2VhbGVk\"}";
-  #assert chw_reply_ok(good) && !chw_reply_ok("{\"ok\":false,\"reason\":\"no\"}") && !chw_reply_ok("{\"ok\": true}") && !chw_reply_ok("") && chw_reply_ok("x\"ok\":truely");
+  #assert chw_reply_ok(good) && chw_reply_ok("\"ok\":true") && !chw_reply_ok("xok\":true") && !chw_reply_ok("{\"ok\":false,\"reason\":\"no\"}") && !chw_reply_ok("{\"ok\": true}") && !chw_reply_ok("") && chw_reply_ok("x\"ok\":truely");
   n := chw_reply_last4(good, o[..]);
   #assert cast(string) o[0..<n] == "wxyz";
   n = chw_reply_sealed(good, o[..]);
   #assert cast(string) o[0..<n] == "c2VhbGVk";
   #assert chw_reply_reason(good, o[..]) == 0 && chw_reply_reason("", o[..]) == 0;
   // spaces before the quote, not before the colon
+  n = chw_reply_reason("\"reason\": \"ok\"", o[..]);
+  #assert cast(string) o[0..<n] == "ok";
+  n = chw_reply_reason("{\"reason\":\"\\a", o[..]);
+  #assert cast(string) o[0..<n] == "a";
   n = chw_reply_reason("{\"ok\":false,\"reason\":  \"the key was refused\"}", o[..]);
   #assert cast(string) o[0..<n] == "the key was refused";
   #assert chw_reply_reason("{\"reason\" : \"x\"}", o[..]) == 0 && chw_reply_reason("{\"reason\":7}", o[..]) == 0 && chw_reply_reason("{\"reason\":null}", o[..]) == 0 && chw_reply_reason("{\"reason\":", o[..]) == 0 && chw_reply_reason("{\"reason\":\t\"x\"}", o[..]) == 0;
@@ -204,5 +216,6 @@ chw_asks_attachments :: (body: string) -> bool #export_c #effects(all) { return 
   #assert chw_credential_read("{\"credential\":\r\"x\"}", o[..]) == -1;
   // one that does not fit is refused; one that just fits is taken
   #assert chw_credential_read("{\"credential\":\"abcde\"}", small[..]) == -1 && chw_credential_read("{\"credential\":\"abcd\"}", small[..]) == 4;
+  #assert chw_credential_read("\"credential\":\"a\"", o[..]) == 1 && chw_credential_read("xxxxxxxxxxx\"a\"", o[..]) == -1;
   #assert chw_asks_attachments("{\"model\":\"m\",\"attachments\":{\"world\":\"w\",\"ids\":[1]}}") && chw_asks_attachments("\"attachments\"") && !chw_asks_attachments("{\"attachment\":1}") && !chw_asks_attachments("") && !chw_asks_attachments("\"attachments");
 }

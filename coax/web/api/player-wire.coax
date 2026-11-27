@@ -167,6 +167,8 @@ plw_list_none_write :: (out: [] u8) -> int #export_c #effects(all) {
   #assert plw_maintenance_write("Moving the rooms: back in 10 minutes.", 1762190600000, b[0..<n - 1]) == -1;
   n = plw_maintenance_write("", 0, b[..]);
   #assert cast(string) b[0..<n] == "{\"error\":\"maintenance\",\"maintenance\":\"\",\"until_ms\":0,\"retry_ms\":30000}";
+  n = plw_maintenance_write("x", 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"maintenance: x\",\"maintenance\":\"x\",\"until_ms\":0,\"retry_ms\":30000}";
   w: [160] u8; for i: 0..<160 { w[i] = 'a'; }
   n = plw_maintenance_write(cast(string) w[..], 999999999999999, b[0..<511]);
   #assert n == 2 * 160 + 86;
@@ -247,4 +249,17 @@ plw_list_none_write :: (out: [] u8) -> int #export_c #effects(all) {
   // a name's escape the same way
   n = plw_ticket_write("t", "p", false, false, cast(string) odd[0..<3], 5, -1, -1, 0, "", "", false, "", 0, false, false, "", false, "", false, "", "", "", b[..]);
   #assert cast(string) b[0..<n] == "{\"ticket\":\"t\",\"id\":\"p\",\"account\":false,\"admin\":false,\"name\":\"a\\\"\\\\\",\"expires\":5}";
+  // exact plw_esc boundaries: 20 quotes into PLW_NAME (40 bytes, drops trailing x), ctrl 0x10, 41-byte name/by, 393-byte key, 1-byte optional fields
+  q21: [21] u8; for i: 0..<20 { q21[i] = '"'; } q21[20] = 'x';
+  n = plw_ticket_write("t", "p", false, false, cast(string) q21[..], 5, -1, -1, 0, "l", "k", false, "r", 1, true, false, "", false, "", false, "a", "b", "x", b[..]);
+  #assert cast(string) b[0..<n] == "{\"ticket\":\"t\",\"id\":\"p\",\"account\":false,\"admin\":false,\"name\":\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\",\"expires\":5,\"look\":\"l\",\"class\":\"k\",\"room\":\"r\",\"shard\":1,\"full\":true,\"asked\":\"a\",\"by\":\"b\",\"blocked\":\"x\"}";
+  c16 := [1] u8.[16];
+  n = plw_who_write(cast(string) c16[..], "", "", false, false, "", false, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"key\":\"\\u0010\",\"auto\":\"\",\"npub\":\"\",\"site\":false,\"good\":false,\"after\":\"\"}";
+  n41: [41] u8; for i: 0..<41 { n41[i] = 'a'; }
+  n = plw_ticket_write("t", "p", false, false, cast(string) n41[..], 5, -1, -1, 0, "", "", false, "r", 1, true, false, "", false, "", false, "a", cast(string) n41[..], "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"ticket\":\"t\",\"id\":\"p\",\"account\":false,\"admin\":false,\"name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expires\":5,\"room\":\"r\",\"shard\":1,\"full\":true,\"asked\":\"a\",\"by\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
+  k393: [393] u8; for i: 0..<393 { k393[i] = 'a'; }
+  n = plw_who_write(cast(string) k393[..], "", "", false, false, "", false, "", b[..]);
+  #assert n == 67 + 392;
 }

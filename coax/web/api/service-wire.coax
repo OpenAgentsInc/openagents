@@ -91,6 +91,8 @@ svw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
   // a quote, a backslash and a control byte in the policy's words are dropped
   n = svw_wanted_end(svw_wanted_write("k", 0, "a\"b\\c\nd", "e\"f", 0, b[..]), b[..]);
   #assert cast(string) b[0..<n] == "[{\"key\":\"k\",\"title\":\"abcd\",\"do\":\"ef\"}]";
+  n = svw_wanted_end(svw_wanted_write("s", 1, "w", "t", 0, b[..]), b[..]);
+  #assert cast(string) b[0..<n] == "[{\"key\":\"s:1\",\"title\":\"shard 1: w\",\"do\":\"t\"}]";
   #assert svw_wanted_write("k", 0, "what", "todo", 0, b[0..<10]) == -1 && svw_wanted_end(0, b[0..<1]) == -1 && svw_wanted_end(-1, b[..]) == -1;
 }
 #test "the job's result and a refusal" {

@@ -89,7 +89,25 @@ ms_itoa :: (v: int, out: [] u8) -> string {
   for i: 0..<n { out[k + i] = tmp[n - 1 - i]; }
   return cast(string) out[0..<k + n];
 }
-#test "numbers as text" { b: [32] u8; #assert ms_itoa(0, b[..]) == "0" && ms_itoa(4096, b[..]) == "4096" && ms_itoa(-7, b[..]) == "-7"; }
+#test "numbers as text" {
+  b: [32] u8; b20: [20] u8; b21: [21] u8;
+  #assert ms_itoa(0, b[..]) == "0" && ms_itoa(4096, b[..]) == "4096" && ms_itoa(-7, b[..]) == "-7";
+  #assert ms_itoa(1, b20[..]) == "" && ms_itoa(1, b21[..]) == "1";
+  // ms_put / ms_keep exact capacity and overflow
+  tb: [4] u8; ts: [2] MsText; ts[0].bytes = tb[..];
+  ms_put(ts[..], "ab"); ms_put(ts[..], "cd");
+  #assert !ts[0].full && ms_text(ts[..]) == "abcd";
+  ts[0].used = 2;
+  #assert ms_keep(ts[..], "cde") == "" && ts[0].full && !ts[1].full && ts[0].used == 2;
+  // ms_starts, ms_has, ms_after, ms_item, ms_items boundary cases
+  #assert ms_starts("ab", "ab") && !ms_starts("xb", "ab");
+  #assert ms_has("a", "") && !ms_has("ab", "z") && ms_has("ab", "a");
+  #assert ms_after("--f x", "--f") == "x" && ms_after("--f  x", "--f") == "";
+  #assert ms_item(",b", 0) == "" && ms_item(",b", 1) == "b" && ms_item("a", 1) == "";
+  #assert ms_items("") == 0 && ms_items("a") == 1;
+  sb: [32] u8; #assert ms_slug("a/b/c.coax", sb[..]) == "a_b_c.coax" && ms_slug("a/b", sb[0..<2]) == "a_";
+  pb: [64] u8; #assert ms_part_file("st", "parts", "a/b.coax", 2, ".meta", pb[..]) == "st/parts/a_b.coax.part2.meta";
+}
 ms_starts :: (s: string, word: string) -> bool {
   if word.count > s.count { return false; }
   for i: 0..<word.count { if s[i] != word[i] { return false; } }
@@ -107,7 +125,8 @@ ms_has :: (hay: string, needle: string) -> bool {
 // The word after `flag ` in line, or "".
 ms_after :: (line: string, flag: string) -> string {
   i := 0;
-  while i + flag.count + 1 <= line.count {
+  // At i + flag.count + 1 == line.count, any trailing value slice is empty, same as the fallback "".
+  while i + flag.count + 1 <= line.count { // mutant: equivalent
     if cast(string) line[i..<i + flag.count] == flag && line[i + flag.count] == ' ' {
       e := i + flag.count + 1;
       while e < line.count && line[e] != ' ' { e += 1; }
@@ -136,7 +155,8 @@ ms_items :: (list: string) -> int {
 }
 // A suite path as one file name: '/' becomes '_'.
 ms_slug :: (path: string, out: [] u8) -> string {
-  n := ifx path.count < out.count then path.count else out.count;
+  // At path.count == out.count both branches return the same length.
+  n := ifx path.count < out.count then path.count else out.count; // mutant: equivalent
   for i: 0..<n { out[i] = ifx path[i] == '/' then '_' else path[i]; }
   return cast(string) out[0..<n];
 }
@@ -145,14 +165,16 @@ ms_slug :: (path: string, out: [] u8) -> string {
 // "PATH  BUDGET [--library] [--root-only] [--run-steps N] ...  #authority FILE,FILE".
 ms_suites :: (list: string, only: string, keep: [] MsText, out: [] MsSuite) -> int {
   n := 0; i := 0;
-  while i < list.count && n < out.count {
+  // At i == list.count the empty line has no #authority and skips; n < out.count is checked in #test.
+  while i < list.count && n < out.count { // mutant: equivalent
     j := i;
     while j < list.count && list[j] != '\n' { j += 1; }
     line := cast(string) list[i..<j]; i = j + 1;
     units := ms_after(line, " #authority");
     if units.count == 0 || ms_has(line, "(skipped here") { continue; }
     e := 0;
-    while e < line.count && line[e] != ' ' { e += 1; }
+    // line contains " #authority ", so a space always precedes line.count.
+    while e < line.count && line[e] != ' ' { e += 1; } // mutant: equivalent
     path := cast(string) line[0..<e];
     if path.count == 0 { continue; }
     if only.count > 0 {
@@ -174,6 +196,10 @@ ms_suites :: (list: string, only: string, keep: [] MsText, out: [] MsSuite) -> i
   #assert s[0].nunits == 2 && ms_item(s[0].units, 1) == "rules/srd/b.coax";
   #assert s[1].path == "pay/w.coax" && !s[1].library && s[1].root_only && s[1].run_steps == "50" && s[1].nunits == 1;
   #assert ms_suites(list, "pay/w.coax", k[..], s[..]) == 1 && s[0].path == "pay/w.coax";
+  one_s: [1] MsSuite;
+  #assert ms_suites(list, "", k[..], one_s[..]) == 1;
+  #assert ms_suites("  #authority a.coax\nx  #authority x", "", k[..], s[..]) == 1 && s[0].path == "x";
+  #assert ms_suites(list, "x", k[..], s[..]) == 0;
 }
 
 // The native counts of a part's output: its `native-mutants agree=A limits=L disagree=D
@@ -182,7 +208,8 @@ MsNative :: struct { agree: int; limits: int; disagree: int; apart: int; units: 
 // The digits after key in line, -1 when key isn't there or no digit follows.
 ms_field :: (line: string, key: string) -> int {
   i := 0;
-  while i + key.count <= line.count {
+  // At i + key.count == line.count no digit can follow, returning -1 either way.
+  while i + key.count <= line.count { // mutant: equivalent
     if cast(string) line[i..<i + key.count] == key {
       e := i + key.count; v := 0; any := false;
       while e < line.count && line[e] >= '0' && line[e] <= '9' && v < 100000000000 { v = v * 10 + cast(int)(line[e] - '0'); e += 1; any = true; }
@@ -195,7 +222,8 @@ ms_field :: (line: string, key: string) -> int {
 ms_native :: (out: string) -> MsNative {
   n: MsNative;
   i := 0;
-  while i < out.count {
+  // At i == out.count the line is empty and matches nothing, so `<=` changes nothing.
+  while i < out.count { // mutant: equivalent
     j := i;
     while j < out.count && out[j] != '\n' { j += 1; }
     line := cast(string) out[i..<j]; i = j + 1;
@@ -211,8 +239,13 @@ ms_native :: (out: string) -> MsNative {
   n := ms_native(out);
   #assert n.units == 2 && n.agree == 15 && n.limits == 1 && n.disagree == 3 && n.apart == 2;
   #assert ms_field("a=1 b=22", " b=") == 22 && ms_field("a=1", "c=") == -1 && ms_field("a=", "a=") == -1;
+  #assert ms_field("a=1", "a=") == 1 && ms_field("a=9:", "a=") == 9 && ms_field("a=1000000000009", "a=") == 100000000000;
   e := ms_native("4 mutants, 4 killed, 0 survived\n");
   #assert e.units == 0 && e.agree == 0;
+  z := ms_native("x\nnative-mutants agree=0 limits=0 disagree=0 not-compared=0");
+  #assert z.units == 1 && z.agree == 0;
+  bad_fields := "native-mutants agree=x limits=0 disagree=0 not-compared=0\nnative-mutants agree=0 limits=x disagree=0 not-compared=0\nnative-mutants agree=0 limits=0 disagree=x not-compared=0\nnative-mutants agree=0 limits=0 disagree=0 not-compared=x\n";
+  #assert ms_native(bad_fields).units == 0;
 }
 
 // The number that ends right before word in line ("17 killed" for " killed"), -1 when none does.

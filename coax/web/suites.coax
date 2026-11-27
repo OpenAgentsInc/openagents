@@ -105,7 +105,8 @@ su_base :: (path: string) -> string {
 }
 su_dir :: (path: string) -> string {
   to := 0;
-  for i: 0..<path.count { if path[i] == '/' { to = i; } }
+  // At i == 0, path[0] == '/' writes to = 0, which equals the initial value 0.
+  for i: 0..<path.count { if path[i] == '/' { to = i; } } // mutant: equivalent
   return path[0..<to];
 }
 
@@ -116,7 +117,8 @@ su_norm :: (dir: string, rel: string, out: [] u8) -> string {
   for pass: 0..<2 {
     s := ifx pass == 0 then dir else rel;
     i := 0;
-    while i <= s.count {
+    // At i == s.count, part is empty and skipped; i advances past s.count.
+    while i <= s.count { // mutant: equivalent
       j := i;
       while j < s.count && s[j] != '/' { j += 1; }
       part := s[i..<j];
@@ -151,7 +153,8 @@ su_test_load :: (text: string, j: int) -> bool {
 // those checks run when this file is tested, and need its declarations.
 su_has_tests :: (text: string) -> bool {
   i := 0;
-  while i < text.count {
+  // At i == text.count the inner loops and su_starts do nothing and i advances past count.
+  while i < text.count { // mutant: equivalent
     j := i;
     while j < text.count && su_space(text[j]) { j += 1; }
     for word: [2] string.["#test", "#forall"] {
@@ -167,7 +170,8 @@ su_has_tests :: (text: string) -> bool {
 // An `#authority` directive at a line's start: the file decides money, admission or policy.
 su_has_authority :: (text: string) -> bool {
   i := 0;
-  while i < text.count {
+  // At i == text.count the inner loops and su_starts do nothing and i advances past count.
+  while i < text.count { // mutant: equivalent
     j := i;
     while j < text.count && su_space(text[j]) { j += 1; }
     if su_starts(text, j, "#authority") && (j + 10 >= text.count || !su_ident(text[j + 10])) { return true; }
@@ -178,13 +182,15 @@ su_has_authority :: (text: string) -> bool {
 }
 #test "an #authority line marks a file; a mention in a comment or another word does not" {
   #assert su_has_authority("#import \"Basic\";\n#authority;\n") && su_has_authority("  #authority;");
-  #assert !su_has_authority("// #authority;\n") && !su_has_authority("#authorityx;\n") && !su_has_authority("");
+  #assert su_has_authority("#authority") && su_has_authority(" #authority") && su_has_authority("x\n#authority");
+  #assert !su_has_authority("// #authority;\n") && !su_has_authority("#authorityx;\n") && !su_has_authority("#authorityx") && !su_has_authority("") && !su_has_authority("   ") && !su_has_authority("a");
 }
 
 // A `main ::` declaration at a line's start: the file is a program.
 su_has_main :: (text: string) -> bool {
   i := 0;
-  while i < text.count {
+  // At i == text.count the inner loops and su_starts do nothing and i advances past count.
+  while i < text.count { // mutant: equivalent
     j := i;
     while j < text.count && su_space(text[j]) { j += 1; }
     if su_starts(text, j, "main") {
@@ -200,7 +206,8 @@ su_has_main :: (text: string) -> bool {
 
 #test "a file with main :: at a line's start is a program; a name that only begins with main is not" {
   #assert su_has_main("x :: 1;\nmain :: () { }\n") && su_has_main("  main  :: () {}");
-  #assert !su_has_main("main_loop :: () {}\n// main\n") && !su_has_main("x := main;\n") && !su_has_main("");
+  #assert su_has_main("main:: ()") && su_has_main(" main ::");
+  #assert !su_has_main("main_loop :: () {}\n// main\n") && !su_has_main("x := main;\n") && !su_has_main("") && !su_has_main("   ") && !su_has_main("main   ") && !su_has_main("abc");
 }
 
 // The `coax test` line in the first SU_HEAD_LINES lines that names a file
@@ -243,7 +250,8 @@ su_fragment_root :: (path: string) -> SuFragment {
 su_head :: (text: string, base: string) -> SuHead {
   h: SuHead;
   i := 0; line := 0;
-  while i < text.count && line < SU_HEAD_LINES {
+  // At i == text.count the empty line checks nothing and exits; line < SU_HEAD_LINES is checked in #test.
+  while i < text.count && line < SU_HEAD_LINES { // mutant: equivalent
     e := i;
     while e < text.count && text[e] != '\n' { e += 1; }
     l := text[i..<e];
@@ -271,7 +279,8 @@ su_head :: (text: string, base: string) -> SuHead {
             // a quoted phrase is how a person runs a part by hand; the suite runs whole
             z = y + 1;
             while z < l.count && l[z] != '"' { z += 1; }
-            if z < l.count { z += 1; }
+            // At z == l.count incrementing z past count still exits the outer while w < l.count loop.
+            if z < l.count { z += 1; } // mutant: equivalent
           } else if word == "--only" { only = l[y..<z]; } else { native = l[y..<z]; }
           x = z;
         }
@@ -375,7 +384,8 @@ su_input :: (path: string) -> bool {
 // against the build's own commands.
 su_web_input :: (path: string, faces: bool) -> bool {
   if su_input(path) { return true; }
-  if faces && path.count > 2 && (su_starts(path, path.count - 2, ".c") || su_starts(path, path.count - 2, ".h")) { return false; }
+  // Every root below is >= 6 bytes, so path.count <= 3 returns false either way.
+  if faces && path.count > 2 && (su_starts(path, path.count - 2, ".c") || su_starts(path, path.count - 2, ".h")) { return false; } // mutant: equivalent
   roots := [11] string.["coax/platform/", "coax/lib/", "coax/web/", "apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "psionic/", "proto/", "protocol/"];
   for r: roots { if su_starts(path, 0, r) { return true; } }
   return false;
@@ -383,7 +393,7 @@ su_web_input :: (path: string, faces: bool) -> bool {
 
 #test "a changed file that isn't Coax changes a suite only through the compiler, a descriptor or a native suite's C" {
   #assert su_input("coax/src/check.cpp") && su_input("coax/bootstrap/checker.c") && su_input("coax/build.sh") && su_input("coax/web/native-check.c");
-  #assert su_input("metaverse/voice.pb") && su_input("os/wire/desk.pb");
+  #assert su_input("metaverse/voice.pb") && su_input("os/wire/desk.pb") && su_input("a.pb") && !su_input(".pb");
   #assert !su_input("metaverse-engine/host/frame.c") && !su_input("apps/openagents-web/wasm-budgets.txt") && !su_input("coax/web/tool.sh");
   #assert !su_input("apps/everglade-desktop/Sources/Workshop.swift") && !su_input("coax/remote/after.sh") && !su_input("pb") && !su_input(".gitignore");
 }
@@ -400,16 +410,35 @@ su_web_input :: (path: string, faces: bool) -> bool {
   #assert su_norm("apps/openagents-web", "font.coax", b[..]) == "apps/openagents-web/font.coax";
   #assert su_norm("metaverse", "../../x.coax", b[..]) == "";
   #assert su_base("everglade/world/plan.coax") == "plan.coax" && su_dir("everglade/world/plan.coax") == "everglade/world";
+  #assert su_base("/a") == "a" && su_dir("/a") == "";
+  // su_keep capacity and overflow, su_ident / su_space boundaries, su_norm capacity and 256-segment cap
+  ab: [4] u8; ar: [2] SuArena; ar[0].bytes = ab[..];
+  #assert su_keep(ar[..], "ab") == "ab" && su_keep(ar[..], "cd") == "cd" && !ar[0].full;
+  ar[0].used = 2;
+  #assert su_keep(ar[..], "cde") == "" && ar[0].full && !ar[1].full;
+  #assert su_ident('a') && su_ident('z') && !su_ident('`') && !su_ident('{');
+  #assert su_ident('A') && su_ident('Z') && !su_ident('@') && !su_ident('[');
+  #assert su_ident('0') && su_ident('9') && !su_ident('/') && !su_ident(':');
+  #assert su_ident('_') && !su_ident('^') && su_space(' ') && su_space('\t') && su_space('\r') && !su_space('\n') && !su_space(14);
+  b4: [4] u8;
+  #assert su_norm("a", "bc", b4[..]) == "a/bc" && su_norm("a", "bcd", b4[..]) == "";
+  deep: [513] u8;
+  for k: 0..<513 { deep[k] = ifx k % 2 == 0 then 'a' else '/'; }
+  big: [1024] u8;
+  #assert su_norm("", cast(string) deep[0..<511], big[..]).count == 511 && su_norm("", cast(string) deep[0..<513], big[..]) == "";
+  #assert !su_contains("abc", "") && su_contains("abc", "a") && su_contains("ab", "b") && !su_contains("a", "ab");
 }
 #test "a suite has a #test or #forall at a line's start; a word that only begins so does not count" {
   #assert su_has_tests("x :: 1;\n#test \"a\" { }\n") && su_has_tests("  #forall a: 0..<3 { }");
+  #assert su_has_tests("#test") && su_has_tests(" #test") && !su_has_tests("   ") && !su_has_tests("abc");
   #assert !su_has_tests("// #testing\n#tests_off :: 1;\n") && !su_has_tests("x := \"#test\";\n");
   #assert su_has_tests("#load \"tests/codec.coax\" #test;\n") && !su_has_tests("#load \"codec.coax\";\n") && !su_has_tests("#load \"a.coax\"; // #test\n");
+  #assert su_has_tests("#load \"a.coax\" #test") && !su_test_load("#load \"a.coax\n\" #test", 0) && !su_has_tests("#load \"a.coax") && !su_has_tests("#load \"a.coax\"   ") && !su_has_tests("#load \"a\" #testx;") && !su_has_tests("#load \"a\" #testx");
 }
 #test "the header's own coax test line carries the budget and flags; another file's does not" {
   t := "// Everglade.\n//   coax/bin/coax test apps/openagents-web/everglade.coax --steps 2000000000\n#load \"x.coax\";\n";
   h := su_head(t, "everglade.coax");
-  #assert h.found && h.steps == "2000000000" && !h.library;
+  #assert h.found && h.steps == "2000000000" && !h.library && !h.root_only;
   #assert !su_head(t, "fairy.coax").found;
   l := su_head("//   coax/bin/coax test --library metaverse/water.coax --steps 500000000\n", "water.coax");
   #assert l.found && l.library && l.steps == "500000000";
@@ -428,6 +457,21 @@ su_web_input :: (path: string, faces: bool) -> bool {
   // a quoted phrase is not passed on, and the words in it are not read as options
   q := su_head("// coax test five.coax --only \"5E --library MMO\" --steps 7\n", "five.coax");
   #assert q.found && q.only == "" && !q.library && q.steps == "7";
+  // boundary cases: byte 0, no newline, non-coax-test line, --root-only, .coax length 5, quoted --only edges, --steps boundaries, 80-line limit
+  #assert su_head("coax test a.coax --root-only ", "a.coax").root_only && !su_head("012345678 a.coax", "a.coax").found;
+  #assert su_head("coax testa.coax", "a.coax").found && su_head("coax test .coax a.coax", "a.coax").found;
+  #assert su_head("coax test a.coax --only", "a.coax").found && su_head("coax test a.coax --only \"\" --library", "a.coax").library;
+  #assert su_head("coax test a.coax --only \"a\"--library", "a.coax").library && su_head("coax test a.coax --only \"unterminated", "a.coax").found;
+  #assert su_head("coax test a.coax --steps   ", "a.coax").steps == "" && su_head("coax test a.coax --steps 9:", "a.coax").steps == "9";
+  #assert su_head("coax test a.coax --steps 9 --steps x", "a.coax").steps == "9" && su_head("\ncoax test a.coax", "a.coax").found;
+  hdr: [120] u8;
+  for idx: 0..<80 { hdr[idx] = '\n'; }
+  tail := "coax test a.coax";
+  for idx: 0..<tail.count { hdr[79 + idx] = tail[idx]; }
+  #assert su_head(cast(string) hdr[0..<79 + tail.count], "a.coax").found;
+  hdr[79] = '\n';
+  for idx: 0..<tail.count { hdr[80 + idx] = tail[idx]; }
+  #assert !su_head(cast(string) hdr[0..<80 + tail.count], "a.coax").found;
 }
 #test "loads: each #load's repo path, comments and strings that only mention it left out" {
   keep: [4096] u8; a: [1] SuArena; a[0].bytes = keep[..]; loads: [8] string; tests: [8] bool;
@@ -627,7 +671,8 @@ su_native_build :: (coax: string, root: string, dir: string, s: Suite, out: [] u
 
 su_contains :: (hay: string, needle: string) -> bool {
   if needle.count == 0 { return false; }
-  for i: 0..<hay.count - needle.count + 1 { if su_starts(hay, i, needle) { return true; } }
+  // su_starts returns false whenever i + needle.count > hay.count, so widening the upper bound changes nothing.
+  for i: 0..<hay.count - needle.count + 1 { if su_starts(hay, i, needle) { return true; } } // mutant: equivalent
   return false;
 }
 

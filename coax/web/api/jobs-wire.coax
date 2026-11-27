@@ -20,7 +20,8 @@ jbw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
 }
 // A whole number as SQL prints it: digits, at most 19, with a leading minus allowed.
 jbw_number :: (s: string) -> bool #effects(all) {
-  from := ifx s.count > 0 && s[0] == '-' then 1 else 0;
+  // For 1-byte strings: "-" fails either way (empty after minus vs non-digit), and digits have s[0] != '-'.
+  from := ifx s.count > 0 && s[0] == '-' then 1 else 0; // mutant: equivalent
   if s.count - from < 1 || s.count - from > 19 { return false; }
   for i: from..<s.count { if s[i] < '0' || s[i] > '9' { return false; } }
   return true;
@@ -65,10 +66,12 @@ jbw_run_result :: (r: [] JbwRun, body: string) -> string #effects(all) { return 
 jbw_read_run :: (body: string, nodes: [] JvNode, r: [] JbwRun) -> bool #effects(all) {
   r[0] = JbwRun.{};
   d: [1] Jv;
-  if !jv_parse(d[..], body, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  // Both invalid JSON and non-object roots fail jv_get("job") below and return false either way.
+  if !jv_parse(d[..], body, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return false; } // mutant: equivalent
   j := d[0];
   jn := jv_str(j, jv_get(j, 0, "job"), r[0].name[..]); sn := jv_str(j, jv_get(j, 0, "state"), r[0].state[..]);
-  dn := 0; if jv_get(j, 0, "day") >= 0 { dn = jv_str(j, jv_get(j, 0, "day"), r[0].day[..]); }
+  // Node 0 is the root object, so jv_get(j, 0, "day") is -1 or >= 1 (never 0).
+  dn := 0; if jv_get(j, 0, "day") >= 0 { dn = jv_str(j, jv_get(j, 0, "day"), r[0].day[..]); } // mutant: equivalent
   res := jv_get(j, 0, "result"); kind := jv_kind(j, res);
   if jn < 1 || sn < 1 || dn < 0 || (kind != JV_OBJECT && kind != JV_NULL) { r[0] = JbwRun.{}; return false; }
   r[0].name_n = jn; r[0].state_n = sn; r[0].day_n = dn;
@@ -99,4 +102,11 @@ jbw_read_run :: (body: string, nodes: [] JvNode, r: [] JbwRun) -> bool #effects(
   #assert !jbw_read_run("{\"job\":\"heartbeat\",\"state\":\"ran\",\"result\":7}", nodes[..], r[..]) && !jbw_read_run("{\"state\":\"ran\",\"result\":null}", nodes[..], r[..]) && !jbw_read_run("[]", nodes[..], r[..]);
   n = jbw_error_write("no such job", b[..]);
   #assert cast(string) b[0..<n] == "{\"error\":\"no such job\"}";
+  // boundary cases: 19-digit signed/unsigned numbers, digit '9' vs ':', 1-byte day/result/job/state, cleared output on failure
+  #assert jbw_sweep_write("d", "1234567890123456789", "-1234567890123456789", "9", "0", "0", "0", b[..]) > 0;
+  #assert jbw_sweep_write("d", ":", "0", "0", "0", "0", "0", b[..]) == -1;
+  n = jbw_run_write("j", "d", "s", "0", b[..]);
+  #assert cast(string) b[0..<n] == "{\"job\":\"j\",\"day\":\"d\",\"state\":\"s\",\"result\":0}";
+  #assert jbw_read_run("{\"job\":\"j\",\"state\":\"s\",\"result\":null}", nodes[..], r[..]) && jbw_run_job(r[..]) == "j" && jbw_run_state(r[..]) == "s";
+  #assert !jbw_read_run("{\"job\":\"x\",\"state\":\"s\",\"result\":7}", nodes[..], r[..]) && r[0].name[0] == 0;
 }

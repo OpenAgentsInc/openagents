@@ -508,7 +508,8 @@ mww_ended :: (o: [] u8, ending: string, text: string) -> int {
 // tabs and line ends are dropped, and bytes after MWW_EMBED_MOST are cut.
 mww_embedding :: (o: [] u8, values: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"embedding\",\"values\":");
-  if n < 0 { return -1; }
+  // json_raw returns -1 or 29 (the prefix length), never 0 or 1.
+  if n < 0 { return -1; } // mutant: equivalent
   kept := 0;
   for ch: values {
     if ch != 32 && ch != 10 && ch != 13 && ch != 9 && kept < MWW_EMBED_MOST {
@@ -1024,4 +1025,65 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   dn := mww_delegate_ex(o[..], "[{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"task\":\"scan\"}]", 7, true);
   #assert dn > 0 && mww_read(ar[..], cast(string) o[0..<dn], l[..]) == MWW_DELEGATE;
   #assert l[0].ticket.ok && l[0].ticket.value == 7 && l[0].wait_all.ok && l[0].wait_all.value;
+}
+
+#test "microcoder worker lines: optional single-byte fields, tool metadata, meta lines, and refusal edges" {
+  ab: [4096] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  o: [2048] u8; r: [1] MwwRequest; back: [1] McTask; l: [1] MwwLine;
+  // mww_task / mww_request / mww_task_read: mode, attachments, 1-byte optional strings, is_fork, fork_context_path
+  t := McTask.{
+    task = "t", session = "s", cwd = "/", sandbox = "r", policy = true, allow = 0, ceiling = 1, roots = "/",
+    mode = "a", attachments = "0", subagent_type = "E", agent_id = "i",
+    allowed_tools = "R", disallowed_tools = "W", git = "c", is_fork = true, fork_context_path = "p",
+  };
+  n := mww_task(o[..], t);
+  #assert cast(string) o[0..<n] == "{\"task\":\"t\",\"session\":\"s\",\"cwd\":\"/\",\"sandbox\":\"r\",\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":1,\"roots\":\"/\"},\"mode\":\"a\",\"attachments\":0,\"subagent_type\":\"E\",\"agent_id\":\"i\",\"allowed_tools\":\"R\",\"disallowed_tools\":\"W\",\"git\":\"c\",\"is_fork\":true,\"fork_context_path\":\"p\"}\n";
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && r[0].mode == "a" && r[0].attachments == "" && r[0].is_fork && r[0].fork_context_path == "p";
+  ar[0].at = 0;
+  #assert mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].mode == "a" && back[0].attachments == "" && back[0].allowed_tools == "R" && back[0].disallowed_tools == "W" && back[0].is_fork && back[0].fork_context_path == "p";
+  // attachments as array vs object/string, and explicit false booleans for omit_claudemd/read_only/is_subagent/is_fork
+  ar[0].at = 0;
+  arr_msg := "{\"task\":\"t\",\"mode\":\"plan\",\"attachments\":[{\"name\":\"a\"}],\"omit_claudemd\":false,\"read_only\":false,\"is_subagent\":false,\"is_fork\":false,\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":0,\"roots\":\"\"}}";
+  #assert mww_request(ar[..], arr_msg, r[..]) == MWW_TASK && r[0].mode == "plan" && r[0].attachments == "[{\"name\":\"a\"}]" && !r[0].omit_claudemd && !r[0].read_only && !r[0].is_subagent && !r[0].is_fork;
+  ar[0].at = 0;
+  #assert mww_task_read(ar[..], arr_msg, back[..]) && back[0].attachments == "[{\"name\":\"a\"}]" && !back[0].omit_claudemd && !back[0].read_only && !back[0].is_subagent && !back[0].is_fork;
+  ar[0].at = 0;
+  obj_msg := "{\"task\":\"t\",\"attachments\":{},\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":0,\"roots\":\"\"}}";
+  #assert mww_request(ar[..], obj_msg, r[..]) == MWW_TASK && r[0].attachments == "" && mww_task_read(ar[..], obj_msg, back[..]) && back[0].attachments == "";
+  // 1-char optional fields in mww_answer, mww_steer, mww_queue, mww_todos, mww_permit_warn, mww_steered
+  n = mww_answer(o[..], false, 1, "x"); #assert cast(string) o[0..<n] == "{\"answer\":false,\"ticket\":1,\"why\":\"x\"}\n";
+  n = mww_steer(o[..], "s", "t", 1); #assert cast(string) o[0..<n] == "{\"steer\":\"t\",\"id\":\"s\",\"turn\":1}\n";
+  n = mww_queue(o[..], "add", "i", "t", "0", 0, false, "k"); #assert cast(string) o[0..<n] == "{\"queue\":\"add\",\"id\":\"i\",\"key\":\"k\",\"text\":\"t\",\"message\":0}\n";
+  n = mww_todos(o[..], ""); #assert cast(string) o[0..<n] == "{\"kind\":\"todos\",\"todos\":[]}";
+  n = mww_todos(o[..], "0"); #assert cast(string) o[0..<n] == "{\"kind\":\"todos\",\"todos\":0}";
+  n = mww_permit_warn(o[..], 1, false, "T", "c", "!", "[]"); #assert cast(string) o[0..<n] == "{\"kind\":\"permit\",\"ticket\":1,\"question\":false,\"title\":\"T\",\"command\":\"c\",\"warning\":\"!\",\"options\":[]}";
+  n = mww_steered(o[..], "i", "s", 1, "r", 1, "t"); #assert cast(string) o[0..<n] == "{\"kind\":\"steer\",\"id\":\"i\",\"status\":\"s\",\"turn\":1,\"reason\":\"r\",\"step\":1,\"text\":\"t\"}";
+  // mww_command_tool, mww_ask_tool, mww_meta, reasoning_tokens
+  ar[0].at = 0;
+  n = mww_command_tool(o[..], "c", 0, false, "o", "t", "i", "p", "d");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"command\",\"command\":\"c\",\"exit\":0,\"timed_out\":false,\"output\":\"o\",\"tool\":\"t\",\"id\":\"i\",\"path\":\"p\",\"diff\":\"d\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_COMMAND && l[0].tool == "t" && l[0].id == "i" && l[0].path == "p" && l[0].diff == "d";
+  n = mww_ask_tool(o[..], "c", 1, "t", "i", "p");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"ask\",\"command\":\"c\",\"ticket\":1,\"tool\":\"t\",\"id\":\"i\",\"path\":\"p\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_ASK && l[0].tool == "t" && l[0].id == "i" && l[0].path == "p";
+  n = mww_meta(o[..], "", ""); #assert cast(string) o[0..<n] == "{\"kind\":\"meta\"}";
+  n = mww_meta(o[..], "T", "0"); #assert cast(string) o[0..<n] == "{\"kind\":\"meta\",\"title\":\"T\",\"commands\":0}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_META && l[0].kind == MWW_META && l[0].title == "T" && l[0].commands == "0";
+  #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"reasoning_tokens\":7}", l[..]) == MWW_ATTEMPT && l[0].reasoning_tokens.ok && l[0].reasoning_tokens.value == 7;
+  // mww_embedding exact buffer overflow, mww_attempt_again missing status
+  exact: [30] u8;
+  #assert mww_embedding(exact[..], "[1]") == -1;
+  o2: [2048] u8;
+  #assert mww_attempt_again(ar[..], "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\"}", o2[..]) == -1;
+}
+
+#test "mww_attempt_again rejects valid JSON over JSON_MAX_STRING" {
+  ab: [128] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  // A valid JSON attempt with a >65536-byte string fails json_valid (JSON_MAX_STRING) while cl_str (CL_DOC_MAX) still parses kind/schema.
+  big_attempt: [66000] u8;
+  ba := json_raw(big_attempt[..], 0, "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"gateway\":\"vertex\",\"model\":\"m\",\"requested_effort\":\"low\",\"outcome\":\"rate_limited\",\"status\":429,\"pad\":\"");
+  for idx: 0..<65537 { big_attempt[ba] = 'a'; ba += 1; }
+  ba = json_raw(big_attempt[..], ba, "\"}");
+  o2: [2048] u8;
+  #assert mww_attempt_again(ar[..], cast(string) big_attempt[0..<ba], o2[..]) == -1;
 }
