@@ -161,11 +161,13 @@ hosts() {   # name zone status ip, one host a line
     --format='value(name,zone.basename(),status,networkInterfaces[0].accessConfigs[0].natIP)' 2> /dev/null | sort
 }
 ready() { ssh_to "$1" "$2" 'test -f /var/lib/oa-remote-ready && touch ~/busy' < /dev/null 2> /dev/null; }
-wait_ready() {   # name zone: the host's address once its setup is done (first boot: Nix, Bun, the clone)
-  local name="$1" zone="$2" ip="" until=$(( $(now) + 1500 ))
+wait_ready() {   # name zone [seconds]: the host's address once its setup is done (first boot: Nix, Bun, the clone)
+  local name="$1" zone="$2" max="${3:-1500}" ip="" st="" began until
+  began=$(now); until=$(( began + max ))
   while (( $(now) < until )); do
-    ip="$(gcloud compute instances describe "$name" --zone "$zone" --project "$project" --format='value(networkInterfaces[0].accessConfigs[0].natIP)' 2> /dev/null)"
+    read -r st ip < <(gcloud compute instances describe "$name" --zone "$zone" --project "$project" --format='value(status,networkInterfaces[0].accessConfigs[0].natIP)' 2> /dev/null) || { st=""; ip=""; }
     [[ -n "$ip" ]] && ready "$name" "$ip" && { echo "$ip"; return 0; }
+    if (( $(now) - began > 30 )) && [[ "$st" == TERMINATED || "$st" == STOPPED ]]; then return 1; fi
     sleep 10
   done
   return 1
@@ -193,7 +195,7 @@ create() {   # name: a new spot host, in each zone in turn
 # A host with a free slot: a running one, else a stopped one started, else a
 # new one (within OA_REMOTE_MAX_HOSTS and the budget). Prints "name ip".
 acquire() {
-  local list name zone status ip best="" stopped="" count=0 free avoided=""
+  local list name zone status ip best="" count=0 free avoided="" stopped_list=()
   list="$(hosts)" || return 1
   while read -r name zone status ip; do
     [[ -n "$name" ]] || continue
@@ -205,7 +207,7 @@ acquire() {
       if (( free > 0 )); then echo "$name $ip"; return 0; fi
       [[ -n "$best" ]] || best="$name $ip"
     elif [[ "$status" == TERMINATED || "$status" == STOPPED ]]; then
-      [[ -n "$stopped" ]] || stopped="$name $zone"
+      stopped_list+=("$name $zone")
     fi
   done <<< "$list"
   [[ -z "$avoided" ]] || { echo "$avoided"; return 0; }
@@ -214,14 +216,19 @@ acquire() {
     [[ -n "$best" ]] && { echo "$best"; return 0; }
     return 1
   fi
-  if [[ -n "$stopped" ]]; then
-    read -r name zone <<< "$stopped"
-    say "starting $name in $zone"
-    if gcloud compute instances start "$name" --zone "$zone" --project "$project" > /dev/null 2>&1; then
-      record start "$name" 0 "started (its time is its jobs' and their idle minutes)"
-      ip="$(wait_ready "$name" "$zone")" && { echo "$name $ip"; return 0; }
-    fi
-    say "could not start $name (spot capacity?)"
+  if (( ${#stopped_list[@]} > 0 )); then
+    local entry failed_zones=""
+    for entry in "${stopped_list[@]}"; do
+      read -r name zone <<< "$entry"
+      [[ " $failed_zones " != *" $zone "* ]] || continue
+      say "starting $name in $zone"
+      if gcloud compute instances start "$name" --zone "$zone" --project "$project" > /dev/null 2>&1; then
+        record start "$name" 0 "started (its time is its jobs' and their idle minutes)"
+        ip="$(wait_ready "$name" "$zone" 240)" && { echo "$name $ip"; return 0; }
+      fi
+      say "could not start $name (spot capacity?)"
+      failed_zones="$failed_zones $zone"
+    done
   elif (( count < max_hosts )); then
     name="oa-build-$((count + 1))"
     if zone="$(create "$name")"; then
