@@ -101,6 +101,7 @@ HOME_LINKS = [
     "work/.secrets/vertex-sa-inference.json",
     "work/.secrets/openrouter.env",
     "work/.secrets/openagents-gemini-provider.env",
+    "work/.secrets/exa.env",
     "google-cloud-sdk",
     "Library/Application Support/Coder/openrouter-key",
     ".openagents/coder/antigravity.env",
@@ -220,10 +221,14 @@ def parse_psionic_server_log(text: str) -> dict[str, Any]:
     reqs = 0
     prefill_s = 0.0
     decode_s = 0.0
+    prompt_toks = 0
+    cached_toks = 0
     gen_toks = 0
     reason_toks = 0
     for m in _PSIONIC_REQ_RE.finditer(text):
         reqs += 1
+        prompt_toks += int(m.group(1))
+        cached_toks += int(m.group(2))
         prefill_s += float(m.group(3))
         gen_toks += int(m.group(4))
         reason_toks += int(m.group(5))
@@ -232,6 +237,8 @@ def parse_psionic_server_log(text: str) -> dict[str, Any]:
         "server_requests": reqs,
         "prefill_ms": int(round(prefill_s * 1000.0)),
         "decode_ms": int(round(decode_s * 1000.0)),
+        "server_prompt_tokens": prompt_toks,
+        "server_cached_tokens": cached_toks,
         "server_gen_tokens": gen_toks,
         "server_reason_tokens": reason_toks,
         "pure_decode_tps": round(gen_toks / decode_s, 2) if decode_s > 0.001 and gen_toks > 0 else 0.0,
@@ -421,7 +428,7 @@ class Sandbox:
                     GIT_COMMITTER_NAME="eval", GIT_COMMITTER_EMAIL="eval@example.invalid")
 
     def worker_env(self, psionic_base_url: str = "", model: str = DEFAULT_MODEL, effort: str = "",
-                   subagents: bool = True, subagent_effort: str = "") -> dict[str, str]:
+                   subagents: bool = True, subagent_effort: str = "", extra_env: dict[str, str] | None = None) -> dict[str, str]:
         env = {k: v for k, v in os.environ.items() if not k.startswith(("CODER_", "GW_", "CLAUDE", "PSIONIC_", "MC_DELEGATE_", "OA_", "FLAWED_"))}
         # no __pycache__ from the agent's own test runs: it would count as files the task changed
         env.update(HOME=str(self.home), BROWSER="/usr/bin/true", TMPDIR=str(self.root / "tmp"), PYTHONDONTWRITEBYTECODE="1")
@@ -441,6 +448,23 @@ class Sandbox:
             env["OA_AGENT_MODEL"] = model
         elif model:
             env["OA_AGENT_MODEL"] = model
+        # Allow callers (e.g. local oa-api metered search proxy E2E evals or paper-lab OA_EXP_* flags)
+        # to pass explicit overrides into the sandboxed worker.
+        for k in ("OA_AGENT_BACKEND", "OA_CLOUD_ORIGIN", "OA_CLOUD_BASE_URL", "OA_CLOUD_TOKEN", "OA_CLOUD_AUTH_HEADER",
+                  "OA_CLOUD_KEY_PATH", "OA_CLOUD_SIGNER",
+                  "OA_EXA_DIRECT", "OA_EXA_BASE_URL", "OA_EXA_NO_FALLBACK", "EXA_API_KEY"):
+            v = os.environ.get(k, "")
+            if v:
+                env[k] = v
+        for k, v in os.environ.items():
+            if k.startswith("OA_EXP_") and v != "":
+                env[k] = v
+        if extra_env:
+            for k, v in extra_env.items():
+                if v == "":
+                    env.pop(k, None)
+                else:
+                    env[k] = v
         (self.root / "tmp").mkdir(exist_ok=True)
         return env
 
@@ -538,12 +562,12 @@ def snapshot(d: Path) -> dict[str, str]:
 
 class Driver:
     def __init__(self, sb: Sandbox, worker: Path, claude_worker: Path | None, log_path: Path, psionic_base_url: str = "", model: str = DEFAULT_MODEL, effort: str = "",
-                 subagents: bool = True, subagent_effort: str = ""):
+                 subagents: bool = True, subagent_effort: str = "", extra_env: dict[str, str] | None = None):
         args = [str(HOST_DRIVER_BIN), "--worker", str(worker)]
         if claude_worker:
             args += ["--claude-worker", str(claude_worker)]
         self.log = open(log_path, "w")
-        self.p = subprocess.Popen(args, cwd=str(sb.root), env=sb.worker_env(psionic_base_url, model, effort, subagents=subagents, subagent_effort=subagent_effort), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.p = subprocess.Popen(args, cwd=str(sb.root), env=sb.worker_env(psionic_base_url, model, effort, subagents=subagents, subagent_effort=subagent_effort, extra_env=extra_env), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=self.log, text=True, bufsize=1)
 
     def cmd(self, line: str) -> dict[str, Any]:
@@ -625,7 +649,8 @@ def compute_ttft_ms(lines: list[dict[str, Any]]) -> int:
 
 def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: Path | None, gcloud_cache: Path,
              keep: bool, model: str = "", psionic_base_url: str = "", timeout_floor: int = 0,
-             include_na: bool = False, effort: str = "", subagents: bool = True, subagent_effort: str = "") -> dict[str, Any]:
+             include_na: bool = False, effort: str = "", subagents: bool = True, subagent_effort: str = "",
+             extra_env: dict[str, str] | None = None) -> dict[str, Any]:
     case_dir.mkdir(parents=True, exist_ok=True)
     eff_model = model or DEFAULT_MODEL
     if eff_model in ("inkling-2-mini", "inkling") and not include_na and task["id"] in INKLING_NOT_APPLICABLE_TASKS:
@@ -678,7 +703,8 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
     reloads = 0
     d = Driver(sb, worker, claude_worker if task.get("claude") else None, case_dir / "driver.log",
                psionic_base_url=psionic_base_url, model=eff_model, effort=effort,
-               subagents=subagents, subagent_effort=subagent_effort)
+               subagents=subagents, subagent_effort=subagent_effort, extra_env=extra_env)
+    compactions = 0
     try:
         must(d.cmd(f"WIRE_LOG {wire}"), "WIRE_LOG")
         open_slot(d, sb, task, session, bool(task.get("claude")), eff_model)
@@ -692,6 +718,24 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
                 st, to = pump_until_idle(d, deadline)
                 states.append(st)
                 timed_out = timed_out or to
+            elif "compact" in step and step["compact"]:
+                cmd_str = "/compact all" if step["compact"] == "all" else "/compact"
+                must(d.cmd(f"SET_TEXT 0 {esc(cmd_str)}"), "SET_TEXT")
+                must(d.cmd("SUBMIT 0"), "SUBMIT")
+                st, to = pump_until_idle(d, deadline)
+                states.append({"compact": cmd_str, **st})
+                compactions += 1
+                timed_out = timed_out or to
+            elif "mutate_file" in step:
+                mf = step["mutate_file"]
+                mp = sb.repo / mf["path"]
+                mp.parent.mkdir(parents=True, exist_ok=True)
+                mp.write_text(mf["content"])
+                states.append({"mutate_file": mf["path"]})
+            elif "shell" in step:
+                sr = subprocess.run(step["shell"], shell=True, cwd=str(sb.repo), env=sb.git_env(),
+                                    capture_output=True, text=True, timeout=60)
+                states.append({"shell": step["shell"], "exit": sr.returncode})
             elif "goal" in step:
                 must(d.cmd(f"GOAL_SET 0 {esc(step['goal'])}"), "GOAL_SET")
                 st, to = pump_until_idle(d, deadline)
@@ -737,6 +781,7 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
     passed = all(g["pass"] for g in grades) and bool(grades)
     known = task.get("known_failure")
     toks = ctx.tokens()
+    cache_hit_pct = round(100.0 * toks["cached"] / toks["input"], 1) if toks["input"] > 0 else 0.0
     ttft_ms = compute_ttft_ms(lines)
     decode_tps = round(toks["output"] / max(0.001, wall_ms / 1000.0), 2)
     result = {
@@ -757,7 +802,9 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
         "page_cost_usd_micros": final.get("cost_usd_micros"),
         "budget_usd_micros": budget,
         "attempts": len(attempts),
+        "compactions": compactions,
         "tokens": toks,
+        "cache_hit_pct": cache_hit_pct,
         "models": sorted({a.get("model", "") for a in attempts if a.get("model")}) or [eff_model],
         "turns": ctx.count_to_worker("task", main_only=True),
         "agent_tasks": ctx.count_to_worker("task", main_only=False) - ctx.count_to_worker("task", main_only=True),
@@ -828,13 +875,19 @@ class Ctx:
         return sum(max(0, int(a.get("usd_micros") or 0)) for a in self.attempts)
 
     def tokens(self) -> dict[str, int]:
-        t = {"input": 0, "output": 0, "cached": 0}
+        t = {"input": 0, "output": 0, "cached": 0, "cache_write": 0}
         for a in self.attempts:
-            for k, keys in (("input", ("in_tokens", "input_tokens")), ("output", ("out_tokens", "output_tokens")), ("cached", ("cached_tokens",))):
+            for k, keys in (
+                ("input", ("in_tokens", "input_tokens")),
+                ("output", ("out_tokens", "output_tokens")),
+                ("cached", ("cached_tokens", "cached_input_tokens")),
+                ("cache_write", ("cache_write_tokens",)),
+            ):
                 for key in keys:
                     v = a.get(key)
                     if isinstance(v, int) and v > 0:
                         t[k] += v
+                        break
         return t
 
     def from_worker(self, kind: str, main_only: bool = False) -> list[dict[str, Any]]:
@@ -942,6 +995,22 @@ def g_no_command_matching(g, c):
     return not hits, "none" if not hits else f"commands: {hits[:5]}"
 
 
+def g_command_matching(g, c):
+    """Asserts at least `min` (default 1) worker command rows match any substring in `text` (and optionally exit == 0)."""
+    want_exit = g.get("exit")
+    cmds = c.from_worker("command", g.get("main_only", False))
+    hits = []
+    for m in cmds:
+        cmd = m.get("command", "")
+        if any(s in cmd for s in g["text"]):
+            if want_exit is None or m.get("exit") == want_exit:
+                hits.append(cmd)
+    lo = int(g.get("min", 1))
+    hi = g.get("max")
+    ok = len(hits) >= lo and (hi is None or len(hits) <= int(hi))
+    return ok, f"{len(hits)} matching command(s): {hits[:4]}"
+
+
 def g_reply_contains(g, c):
     text = c.last_reply() if g.get("last") else c.replies()
     miss = [s for s in g["text"] if (s.lower() not in text.lower() if g.get("ci", True) else s not in text)]
@@ -949,8 +1018,9 @@ def g_reply_contains(g, c):
 
 
 def g_reply_not_contains(g, c):
-    text = c.replies()
-    hits = [s for s in g["text"] if s in text]
+    text = c.last_reply() if g.get("last") else c.replies()
+    ci = bool(g.get("ci", False))
+    hits = [s for s in g["text"] if (s.lower() in text.lower() if ci else s in text)]
     return not hits, "absent" if not hits else f"reply has {hits}"
 
 
@@ -1035,7 +1105,7 @@ def g_diff_max_files(g, c):
 
 
 GRADERS = {
-    "command": g_command, "file_exists": g_file_exists, "file_contains": g_file_contains, "file_absent": g_file_absent, "files_unchanged": g_files_unchanged,
+    "command": g_command, "command_matching": g_command_matching, "file_exists": g_file_exists, "file_contains": g_file_contains, "file_absent": g_file_absent, "files_unchanged": g_files_unchanged,
     "outside_unchanged": g_outside_unchanged, "no_guard_trips": g_no_guard_trips, "no_command_matching": g_no_command_matching,
     "reply_contains": g_reply_contains, "reply_not_contains": g_reply_not_contains, "wire_count": g_wire_count,
     "recall_sent": g_recall_sent, "task_line": g_task_line, "state": g_state, "budget_stop": g_budget_stop, "not_timed_out": g_not_timed_out,
@@ -1066,8 +1136,17 @@ def main() -> int:
     ap.add_argument("--no-subagents", dest="subagents", action="store_false", help="disable Agent subagent delegation tools for A/B comparison")
     ap.add_argument("--subagent-effort", default="", help="child subagent reasoning effort override (low|medium|high)")
     ap.add_argument("-j", "--workers", type=int, default=1, help="number of parallel task workers (default 1)")
+    ap.add_argument("--env", action="append", default=[], help="extra env override KEY=VAL passed to worker (repeatable; e.g. --env OA_EXP_MEMTRACE=1)")
     ap.add_argument("--allow-dirty-host", action="store_true", help="allow local Metal benchmarks even when competing GPU/LLM servers or host pressure are detected")
     args = ap.parse_args()
+
+    extra_env: dict[str, str] = {}
+    for item in args.env:
+        if "=" not in item:
+            print(f"invalid --env {item!r} (expected KEY=VAL)", file=sys.stderr)
+            return 2
+        k, v = item.split("=", 1)
+        extra_env[k.strip()] = v.strip()
 
     eff_model = args.model or DEFAULT_MODEL
     is_local = eff_model in LOCAL_MODELS
@@ -1130,6 +1209,7 @@ def main() -> int:
     print_lock = threading.Lock()
     server_meta: dict[str, Any] = {"engine": "psionic-metal" if is_local else "cloud", "worker": args.worker, "ctx": args.ctx if is_local else None,
                                    "subagents": bool(args.subagents), "subagent_effort": args.subagent_effort or "",
+                                   "exp_env": extra_env,
                                    "server_boot_ms": 0, "server_reused": False, "peak_rss_mb": 0,
                                    "host_preflight": preflight_meta, "host_clean": bool(preflight_meta.get("clean", True)),
                                    "mid_run_interference": []}
@@ -1150,7 +1230,7 @@ def main() -> int:
                 log_off0 = srv.log_offset() if is_local else 0
                 r = run_task(t, run_dir / "cases" / t["id"], worker, claude_worker, gcloud_cache, args.keep,
                              eff_model, psionic_base_url=srv.base_url, timeout_floor=timeout_floor, include_na=args.include_na, effort=args.effort,
-                             subagents=bool(args.subagents), subagent_effort=args.subagent_effort)
+                             subagents=bool(args.subagents), subagent_effort=args.subagent_effort, extra_env=extra_env)
                 srv.sample_rss()
                 if is_local and not r.get("not_applicable"):
                     r["effective_tps"] = r.get("decode_tps", 0.0)
@@ -1162,6 +1242,11 @@ def main() -> int:
                         r["server_gen_tokens"] = srv_stats["server_gen_tokens"]
                         r["server_reason_tokens"] = srv_stats["server_reason_tokens"]
                         r["pure_decode_tps"] = srv_stats["pure_decode_tps"]
+                        if srv_stats["server_cached_tokens"] > 0 and r["tokens"].get("cached", 0) == 0:
+                            r["tokens"]["cached"] = srv_stats["server_cached_tokens"]
+                            denom = max(r["tokens"].get("input", 0), srv_stats["server_prompt_tokens"])
+                            if denom > 0:
+                                r["cache_hit_pct"] = round(100.0 * srv_stats["server_cached_tokens"] / denom, 1)
                     post_procs = hc.sample_processes()
                     hits = hc.detect_midrun_interference(
                         pre_procs, post_procs, own_pid=os.getpid(), own_port=srv_port, own_server_pid=srv_pid,
@@ -1264,6 +1349,7 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: 
         "worker": meta.get("worker", "mcworker"),
         "subagents": meta.get("subagents", True),
         "subagent_effort": meta.get("subagent_effort", ""),
+        "exp_env": meta.get("exp_env", {}),
         "ctx": meta.get("ctx"),
         "server_boot_ms": meta.get("server_boot_ms", 0),
         "peak_rss_mb": meta.get("peak_rss_mb", 0),
@@ -1296,7 +1382,7 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: 
         "cases": [{k: r.get(k) for k in ("id", "category", "group", "passed", "not_applicable", "not_applicable_reason",
                                          "known_failure", "cost_usd_micros", "wall_ms", "prefill_ms", "decode_ms",
                                          "tool_and_overhead_ms", "ttft_ms", "decode_tps", "pure_decode_tps",
-                                         "tokens", "attempts", "turns", "tool_calls", "guard_trips", "goal_status")} for r in results],
+                                         "tokens", "cache_hit_pct", "compactions", "attempts", "turns", "tool_calls", "guard_trips", "goal_status")} for r in results],
     }
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     rows = ["| task | category | result | wall | ttft | tokens (in/out) | tok/s | attempts | turns | commands |",

@@ -273,7 +273,7 @@ flawed_wire_tool_permission :: (tool_name: string, target: string, pmode: int, b
     }
     return FLAWED_PBEH_ASK;
   }
-  if tool_name == "WebFetch" {
+  if tool_name == "WebFetch" || tool_name == "WebSearch" {
     if pmode == FLAWED_PMODE_AUTO || pmode == FLAWED_PMODE_ACCEPT_EDITS || pmode == FLAWED_PMODE_DONT_ASK || session_allow {
       return FLAWED_PBEH_ALLOW;
     }
@@ -450,7 +450,7 @@ flawed_wire_parse_openai_sse :: (data_json: string, out_ev: [] FlawedWireSseEven
 }
 
 flawed_wire_tool_is_concurrency_safe :: (name: string) -> bool #effects(reads, traps) {
-  return name == "Read" || name == "Glob" || name == "Grep" || name == "WebFetch" ||
+  return name == "Read" || name == "Glob" || name == "Grep" || name == "WebFetch" || name == "WebSearch" ||
          name == "Agent" || name == "Task" || name == "TaskOutput" ||
          name == "CoaxDefines" || name == "CoaxUses" || name == "CoaxChecks" || name == "CoaxExports" ||
          name == "CoaxShow" || name == "CoaxCheck" || name == "CoaxExplain" || name == "CoaxVocab" ||
@@ -479,11 +479,11 @@ flawed_wire_write_tool_one :: (o: [] Jo, gemini_fmt: bool, name: string, desc: s
   }
 }
 
-FLAWED_WIRE_NTOOLS :: 8;
+FLAWED_WIRE_NTOOLS :: 9;
 FLAWED_WIRE_NINTEL :: 12;
 
 flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, disallowed_csv: string, packs_mask: int) -> int #effects(all) {
-  names := [FLAWED_WIRE_NTOOLS] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch"];
+  names := [FLAWED_WIRE_NTOOLS] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch", "WebSearch"];
   descs := [FLAWED_WIRE_NTOOLS] string.[
     "Read a file with 1-based line numbers (default 600 lines on cloud, 300 local), or read an image/screenshot natively (PNG, JPEG, GIF, WebP, BMP, TIFF, HEIC — automatically resized and returned visually). Pass offset and limit for larger text files. Prefer Read over cat/head/tail/sed.",
     "Exact string replacement in an existing file (read the file first). Preserve exact indentation after the line-number tab prefix; never include line numbers. Keep each Edit surgical: use only the changed lines plus 2-3 unique context lines (avoid replacing large unmodified blocks; split multi-hunk refactors into multiple small parallel Edit calls) or set replace_all: true.",
@@ -492,7 +492,8 @@ flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: strin
     "Find files matching a glob pattern (e.g. **/*.coax, src/*.swift). Prefer Glob over find/ls.",
     "Search file contents with ripgrep using compact relative paths. Use output_mode: files_with_matches for broad file discovery, or content (with path/glob filter) for matching lines with -C/-A/-B context and -i case-insensitive matching.",
     "Update the task checklist displayed to the user.",
-    "Fetch text content from an http(s) URL (SSRF-protected).",
+    "Fetch clean readable text/markdown from an http(s) URL (HTML or PDF, SSRF-protected) via OpenAgents Exa fetch with curl fallback. Pass optional query to extract focused passages from long pages/papers, or max_characters (default 10000, max 24000).",
+    "Search the web via OpenAgents Exa search and return clean highlights and URLs for current information, docs, news, or research. Supports optional allowed_domains or blocked_domains (mutually exclusive), num_results (1-10), and category.",
   ];
   schemas := [FLAWED_WIRE_NTOOLS] string.[
     "{\"type\":\"object\",\"properties\":{\"file_path\":{\"type\":\"string\"},\"offset\":{\"type\":\"integer\"},\"limit\":{\"type\":\"integer\"}},\"required\":[\"file_path\"]}",
@@ -502,7 +503,8 @@ flawed_wire_write_tools_packs :: (o: [] Jo, gemini_fmt: bool, allowed_csv: strin
     "{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"}},\"required\":[\"pattern\"]}",
     "{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"glob\":{\"type\":\"string\"},\"type\":{\"type\":\"string\"},\"output_mode\":{\"type\":\"string\",\"enum\":[\"content\",\"files_with_matches\",\"count\"]},\"context\":{\"type\":\"integer\"},\"-C\":{\"type\":\"integer\"},\"-A\":{\"type\":\"integer\"},\"-B\":{\"type\":\"integer\"},\"case_insensitive\":{\"type\":\"boolean\"},\"-i\":{\"type\":\"boolean\"},\"head_limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"}},\"required\":[\"pattern\"]}",
     "{\"type\":\"object\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"},\"activeForm\":{\"type\":\"string\"}},\"required\":[\"content\",\"status\"]}}},\"required\":[\"todos\"]}",
-    "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}},\"required\":[\"url\"]}",
+    "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\",\"description\":\"Public http(s) URL to fetch (HTML or PDF)\"},\"query\":{\"type\":\"string\",\"description\":\"Optional focus query to extract relevant passages/highlights from a long page or PDF\"},\"max_characters\":{\"type\":\"integer\",\"description\":\"Maximum characters to return (200-24000, default 10000)\"}},\"required\":[\"url\"]}",
+    "{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"description\":\"Natural language search query\"},\"allowed_domains\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Only include results from these domains\"},\"blocked_domains\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Exclude results from these domains\"},\"num_results\":{\"type\":\"integer\",\"description\":\"Number of results to return (1-10, default 8)\"},\"category\":{\"type\":\"string\",\"enum\":[\"company\",\"research paper\",\"news\",\"personal site\",\"financial report\",\"people\",\"tweet\",\"github\",\"pdf\"]}},\"required\":[\"query\"]}",
   ];
   intel_names := [FLAWED_WIRE_NINTEL] string.[
     "CoaxDefines", "CoaxUses", "CoaxChecks", "CoaxExports",
@@ -928,14 +930,19 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   d: [1] Jv;
   sb: [512] u8;
 
-  // Gemini format with 1 tool disallowed -> 7 declarations inside [{"functionDeclarations":[...]}]
+  // Gemini format with 1 tool disallowed -> 8 declarations inside [{"functionDeclarations":[...]}]
   jo_start(o[..], buf[..]);
   n1 := flawed_wire_write_tools(o[..], true, "", "WebFetch");
-  #assert !o[0].bad && n1 == 7 && jv_parse(d[..], jo_text(o[..]), nodes[..]) && jv_kind(d[0], 0) == JV_ARRAY && jv_len(d[0], 0) == 1;
+  #assert !o[0].bad && n1 == 8 && jv_parse(d[..], jo_text(o[..]), nodes[..]) && jv_kind(d[0], 0) == JV_ARRAY && jv_len(d[0], 0) == 1;
   decls := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
-  #assert jv_kind(d[0], decls) == JV_ARRAY && jv_len(d[0], decls) == 7;
+  #assert jv_kind(d[0], decls) == JV_ARRAY && jv_len(d[0], decls) == 8;
   t0 := jv_at(d[0], decls, 0);
   #assert jv_str(d[0], jv_get(d[0], t0, "name"), sb[..]) == 4 && cast(string) sb[0..<4] == "Read";
+  t7 := jv_at(d[0], decls, 7);
+  #assert jv_str(d[0], jv_get(d[0], t7, "name"), sb[..]) == 9 && cast(string) sb[0..<9] == "WebSearch";
+  #assert flawed_wire_tool_is_concurrency_safe("WebSearch");
+  #assert flawed_wire_tool_permission("WebSearch", "exa docs", FLAWED_PMODE_AUTO, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("WebSearch", "exa docs", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ASK;
   #assert jv_str(d[0], jv_get(d[0], t0, "description"), sb[..]) > 10;
   #assert jv_kind(d[0], jv_get(d[0], t0, "parameters")) == JV_OBJECT;
 
@@ -954,41 +961,41 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   jo_start(o[..], buf[..]);
   #assert flawed_wire_write_tools(o[..], false, "NoSuch", "") == 0 && !o[0].bad && jo_text(o[..]) == "[]";
 
-  // Coax compiler-backed intelligence tools (#14054): 8 base + 12 Coax intel = 20 tools
+  // Coax compiler-backed intelligence tools (#14054): 9 base + 12 Coax intel = 21 tools
   intel_buf: [24576] u8;
   intel_nodes: [1024] JvNode;
   jo_start(o[..], intel_buf[..]);
   n3 := flawed_wire_write_tools_ex(o[..], true, "", "", true);
-  #assert !o[0].bad && n3 == 20 && jv_parse(d[..], jo_text(o[..]), intel_nodes[..]);
+  #assert !o[0].bad && n3 == 21 && jv_parse(d[..], jo_text(o[..]), intel_nodes[..]);
   decls3 := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
-  #assert jv_len(d[0], decls3) == 20;
-  t8 := jv_at(d[0], decls3, 8);
-  #assert jv_str(d[0], jv_get(d[0], t8, "name"), sb[..]) == 11 && cast(string) sb[0..<11] == "CoaxDefines";
-  t19 := jv_at(d[0], decls3, 19);
-  #assert jv_str(d[0], jv_get(d[0], t19, "name"), sb[..]) == 11 && cast(string) sb[0..<11] == "CoaxReplace";
+  #assert jv_len(d[0], decls3) == 21;
+  t9 := jv_at(d[0], decls3, 9);
+  #assert jv_str(d[0], jv_get(d[0], t9, "name"), sb[..]) == 11 && cast(string) sb[0..<11] == "CoaxDefines";
+  t20 := jv_at(d[0], decls3, 20);
+  #assert jv_str(d[0], jv_get(d[0], t20, "name"), sb[..]) == 11 && cast(string) sb[0..<11] == "CoaxReplace";
 
   jo_start(o[..], intel_buf[..]);
   n4 := flawed_wire_write_tools_ex(o[..], false, "CoaxDefines,CoaxUses,CoaxCheck", "", true);
   #assert !o[0].bad && n4 == 3 && jv_parse(d[..], jo_text(o[..]), intel_nodes[..]) && jv_len(d[0], 0) == 3;
 
-  // Member tool packs (#14057): Wallet (4) + CLI (1) + Metaverse/GameBuilder (2) + Coax intel (12) + Base (8) = 27
+  // Member tool packs (#14057): Wallet (4) + CLI (1) + Metaverse/GameBuilder (2) + Coax intel (12) + Base (9) = 28
   all_buf: [32768] u8;
   all_nodes: [1536] JvNode;
   jo_start(o[..], all_buf[..]);
   n5 := flawed_wire_write_tools_packs(o[..], true, "", "", OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE);
-  #assert !o[0].bad && n5 == 27 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
+  #assert !o[0].bad && n5 == 28 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
   decls5 := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
-  #assert jv_len(d[0], decls5) == 27;
-  t20 := jv_at(d[0], decls5, 20);
-  #assert jv_str(d[0], jv_get(d[0], t20, "name"), sb[..]) == 12 && cast(string) sb[0..<12] == "WalletStatus";
-  t23 := jv_at(d[0], decls5, 23);
-  #assert jv_str(d[0], jv_get(d[0], t23, "name"), sb[..]) == 9 && cast(string) sb[0..<9] == "WalletPay";
+  #assert jv_len(d[0], decls5) == 28;
+  t21 := jv_at(d[0], decls5, 21);
+  #assert jv_str(d[0], jv_get(d[0], t21, "name"), sb[..]) == 12 && cast(string) sb[0..<12] == "WalletStatus";
   t24 := jv_at(d[0], decls5, 24);
-  #assert jv_str(d[0], jv_get(d[0], t24, "name"), sb[..]) == 13 && cast(string) sb[0..<13] == "OpenAgentsCli";
+  #assert jv_str(d[0], jv_get(d[0], t24, "name"), sb[..]) == 9 && cast(string) sb[0..<9] == "WalletPay";
   t25 := jv_at(d[0], decls5, 25);
-  #assert jv_str(d[0], jv_get(d[0], t25, "name"), sb[..]) == 14 && cast(string) sb[0..<14] == "MetaverseRoute";
+  #assert jv_str(d[0], jv_get(d[0], t25, "name"), sb[..]) == 13 && cast(string) sb[0..<13] == "OpenAgentsCli";
   t26 := jv_at(d[0], decls5, 26);
-  #assert jv_str(d[0], jv_get(d[0], t26, "name"), sb[..]) == 11 && cast(string) sb[0..<11] == "GameBuilder";
+  #assert jv_str(d[0], jv_get(d[0], t26, "name"), sb[..]) == 14 && cast(string) sb[0..<14] == "MetaverseRoute";
+  t27 := jv_at(d[0], decls5, 27);
+  #assert jv_str(d[0], jv_get(d[0], t27, "name"), sb[..]) == 11 && cast(string) sb[0..<11] == "GameBuilder";
 
   // Disallow filter applies to member packs too
   jo_start(o[..], all_buf[..]);
@@ -1017,18 +1024,18 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   // Subagent delegation pack (OA_PACK_AGENTS): Agent, SendMessage, TaskStop, TaskOutput, EnterWorktree, ExitWorktree (#14096)
   jo_start(o[..], all_buf[..]);
   n7 := flawed_wire_write_tools_packs(o[..], true, "", "", OA_PACK_AGENTS);
-  #assert !o[0].bad && n7 == 14 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
+  #assert !o[0].bad && n7 == 15 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
   decls7 := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
-  #assert jv_len(d[0], decls7) == 14;
-  t_ag := jv_at(d[0], decls7, 8);
+  #assert jv_len(d[0], decls7) == 15;
+  t_ag := jv_at(d[0], decls7, 9);
   #assert jv_str(d[0], jv_get(d[0], t_ag, "name"), sb[..]) == 5 && cast(string) sb[0..<5] == "Agent";
-  t_ex := jv_at(d[0], decls7, 13);
+  t_ex := jv_at(d[0], decls7, 14);
   #assert jv_str(d[0], jv_get(d[0], t_ex, "name"), sb[..]) == 12 && cast(string) sb[0..<12] == "ExitWorktree";
 
   // OpenAI format + disallow filtering strips Agent on child subagents
   jo_start(o[..], all_buf[..]);
   n8 := flawed_wire_write_tools_packs(o[..], false, "", "Agent,EnterWorktree,ExitWorktree", OA_PACK_AGENTS);
-  #assert !o[0].bad && n8 == 11 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]) && jv_len(d[0], 0) == 11;
+  #assert !o[0].bad && n8 == 12 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]) && jv_len(d[0], 0) == 12;
 
   // Concurrency safety & permissions for subagent + worktree tools
   #assert flawed_wire_tool_is_concurrency_safe("Agent") && flawed_wire_tool_is_concurrency_safe("Read");
@@ -1046,12 +1053,12 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   // Shared Knowledge Base pack (OA_PACK_KNOWLEDGE): KnowledgeSearch, KnowledgeGet (#14058)
   jo_start(o[..], all_buf[..]);
   n9 := flawed_wire_write_tools_packs(o[..], true, "", "", OA_PACK_KNOWLEDGE);
-  #assert !o[0].bad && n9 == 10 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
+  #assert !o[0].bad && n9 == 11 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
   decls9 := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
-  #assert jv_len(d[0], decls9) == 10;
-  t_ks := jv_at(d[0], decls9, 8);
+  #assert jv_len(d[0], decls9) == 11;
+  t_ks := jv_at(d[0], decls9, 9);
   #assert jv_str(d[0], jv_get(d[0], t_ks, "name"), sb[..]) == 15 && cast(string) sb[0..<15] == "KnowledgeSearch";
-  t_kg := jv_at(d[0], decls9, 9);
+  t_kg := jv_at(d[0], decls9, 10);
   #assert jv_str(d[0], jv_get(d[0], t_kg, "name"), sb[..]) == 12 && cast(string) sb[0..<12] == "KnowledgeGet";
   jo_start(o[..], all_buf[..]);
   n10 := flawed_wire_write_tools_packs(o[..], false, "KnowledgeSearch,KnowledgeGet", "KnowledgeGet", OA_PACK_KNOWLEDGE);
@@ -1063,14 +1070,14 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   // Conversational Capability Authoring pack (OA_PACK_CAPABILITY): CapabilityDraft, CapabilityEval, CapabilityList (#14059)
   jo_start(o[..], all_buf[..]);
   n11 := flawed_wire_write_tools_packs(o[..], true, "", "", OA_PACK_CAPABILITY);
-  #assert !o[0].bad && n11 == 11 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
+  #assert !o[0].bad && n11 == 12 && jv_parse(d[..], jo_text(o[..]), all_nodes[..]);
   decls11 := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
-  #assert jv_len(d[0], decls11) == 11;
-  t_cd := jv_at(d[0], decls11, 8);
+  #assert jv_len(d[0], decls11) == 12;
+  t_cd := jv_at(d[0], decls11, 9);
   #assert jv_str(d[0], jv_get(d[0], t_cd, "name"), sb[..]) == 15 && cast(string) sb[0..<15] == "CapabilityDraft";
-  t_ce := jv_at(d[0], decls11, 9);
+  t_ce := jv_at(d[0], decls11, 10);
   #assert jv_str(d[0], jv_get(d[0], t_ce, "name"), sb[..]) == 14 && cast(string) sb[0..<14] == "CapabilityEval";
-  t_cl := jv_at(d[0], decls11, 10);
+  t_cl := jv_at(d[0], decls11, 11);
   #assert jv_str(d[0], jv_get(d[0], t_cl, "name"), sb[..]) == 14 && cast(string) sb[0..<14] == "CapabilityList";
   jo_start(o[..], all_buf[..]);
   n12 := flawed_wire_write_tools_packs(o[..], false, "CapabilityDraft,CapabilityEval,CapabilityList", "CapabilityEval", OA_PACK_CAPABILITY);

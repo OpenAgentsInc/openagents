@@ -1,0 +1,11 @@
+2026-10-01T00:00:01Z INFO boot ledger-worker-01
+2026-10-01T00:00:02Z INFO loaded 1280 accounts
+2026-10-01T00:00:03Z WARN slow checkpoint 412ms
+2026-10-01T00:00:04Z INFO batch #101 ok
+2026-10-01T00:00:05Z INFO batch #102 ok
+2026-10-01T00:00:06Z WARN retryable lock contention on shard-2
+2026-10-01T00:00:07Z INFO batch #103 ok
+2026-10-01T00:00:08Z INFO batch #104 ok
+2026-10-01T00:00:09Z WARN slow checkpoint 509ms
+2026-10-01T00:00:10Z INFO batch #105 ok
+2026-10-01T00:00:11Z INFO shutdown clean

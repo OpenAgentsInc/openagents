@@ -323,6 +323,10 @@ enum AgentSettings {
         if FileManager.default.fileExists(atPath: keyPath) {
             env["OA_CLOUD_KEY_PATH"] = keyPath
         }
+        let penv = ProcessInfo.processInfo.environment
+        for k in ["OA_CLOUD_BASE_URL", "OA_EXA_BASE_URL", "OA_EXA_DIRECT", "EXA_API_KEY"] {
+            if let v = penv[k], !v.isEmpty { env[k] = v }
+        }
         return env
     }
 
@@ -861,7 +865,7 @@ extension CoderWindow {
         var d = CoderDialog(
             size: .md,
             title: "Tool rules & extra directories",
-            body: "Comma-separated built-in tool names: Read, Edit, Write, Bash, Glob, Grep, TodoWrite, WebFetch. Disallowed tools always win over allowed tools."
+            body: "Comma-separated built-in tool names: Read, Edit, Write, Bash, Glob, Grep, TodoWrite, WebFetch, WebSearch. Disallowed tools always win over allowed tools."
         )
         d.fields = [
             .init(label: "Allowed tools (empty = all)", value: AgentSettings.allowedTools, hint: "e.g. Read,Glob,Grep,Edit"),

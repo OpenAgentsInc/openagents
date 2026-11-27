@@ -1,0 +1,32 @@
+{
+  "id": "p_cmp_02_state_time_disorder",
+  "category": "compaction",
+  "fixture": "ledger",
+  "description": "Avoid state-time disorder across compaction: recall Phase 1 completion & ref code without duplicating work",
+  "budget_usd_micros": 150000,
+  "timeout_s": 240,
+  "steps": [
+    {
+      "send": "We are doing a two-phase fix in this repository following our staged migration checklist across multiple billing components so each step is auditable independently before final release. For Phase 1 ONLY (tracking reference FEE-309): fix `apply_fee` in `ledger.py` so `test_apply_fee` passes (do NOT touch `reconcile_batch` yet), append one line `- PHASE1: apply_fee fixed` to `PROGRESS.md`, and run `python3 -m unittest test_ledger.TestLedger.test_apply_fee`. Do NOT repeat the tracking reference in your reply."
+    },
+    {
+      "send": "Read `noise.log` and report how many WARN lines appear in it."
+    },
+    {
+      "compact": "all"
+    },
+    {
+      "send": "Now complete Phase 2: without redoing Phase 1 or duplicating the PHASE1 line in `PROGRESS.md`, fix `reconcile_batch` in `ledger.py` so `python3 -m unittest -q` passes, append `- PHASE2: reconcile_batch fixed` to `PROGRESS.md`, and in your final reply state the exact Phase 1 tracking reference code from turn 1."
+    }
+  ],
+  "graders": [
+    {"type": "command", "run": "python3 -m unittest -q", "restore": ["test_ledger.py"]},
+    {
+      "type": "command",
+      "run": "python3 -c \"t=open('PROGRESS.md').read(); assert t.count('PHASE1') == 1 and t.count('PHASE2') == 1, t\""
+    },
+    {"type": "reply_contains", "text": ["FEE-309"], "last": true, "ci": false},
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

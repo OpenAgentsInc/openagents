@@ -1,0 +1,38 @@
+{
+  "id": "w2_websearch_domain_filter",
+  "category": "web_search",
+  "fixture": "blank",
+  "description": "Uses WebSearch with allowed_domains filtering on docs.exa.ai / exa.ai to look up /search parameters",
+  "steps": [
+    {
+      "send": "Use WebSearch restricted to allowed_domains [\"exa.ai\", \"docs.exa.ai\"] to look up the Exa /search API request parameters for restricting or excluding domains. Name the exact JSON parameter names and cite the docs URL."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command_matching",
+      "text": ["WebSearch "],
+      "exit": 0,
+      "min": 1
+    },
+    {
+      "type": "reply_contains",
+      "text": ["includeDomains", "excludeDomains", "exa.ai"],
+      "ci": true
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 150000,
+  "timeout_s": 120
+}

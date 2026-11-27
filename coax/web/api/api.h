@@ -140,6 +140,9 @@ bool scripts_publish_ok(const request *q, PGconn *db, const char *id, const char
 bool worlds_route(const request *q);       // worlds.c: a world's document by ID, its edits, its dev and live revisions and its imported assets (world-policy.coax)
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app
+bool inference_auth_caller(const request *q, char who[65], bool *free_key);   // inference.c: NIP-98 or account session auth
+void inference_rate_refresh(PGconn *db);   // inference.c: refresh BTC/USD rate from Spark wallet when stale
+bool exa_route(const request *q);         // exa.c: POST /api/v1/search, /api/v1/fetch, /api/v1/mcp/exa (#14114, #14115)
 void inference_upstream_init(void);        // inference.c: what the model calls remember about Vertex's two endpoints, shared by the workers
 bool inference_ask(const request *q, const char *pubkey, bool free_key);   // inference.c: the same ask for a caller another route named (chat.c)
 typedef struct {

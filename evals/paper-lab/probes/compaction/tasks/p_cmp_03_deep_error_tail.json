@@ -1,0 +1,28 @@
+{
+  "id": "p_cmp_03_deep_error_tail",
+  "category": "compaction",
+  "fixture": "parser_diag",
+  "description": "Preserve critical diagnostic token at the tail of a 500+ byte tool output across forced compaction",
+  "budget_usd_micros": 150000,
+  "timeout_s": 240,
+  "steps": [
+    {
+      "send": "Run `python3 diag.py` to capture the one-shot diagnostic report (it self-deletes after running). Do NOT edit any files yet and do NOT quote or repeat any tokens/hints from the script output — reply ONLY with `Diagnostic executed.`."
+    },
+    {
+      "send": "Read `NOTES.md` and tell me which team maintains this module."
+    },
+    {
+      "compact": "all"
+    },
+    {
+      "send": "Now fix `parser.py` so `python3 -m unittest -q` passes, and write `REPORT.txt` containing the exact `DIAG_TOKEN=...` captured from the one-shot diagnostic output in turn 1."
+    }
+  ],
+  "graders": [
+    {"type": "command", "run": "python3 -m unittest -q", "restore": ["test_parser.py"]},
+    {"type": "file_contains", "path": "REPORT.txt", "text": ["DELTA-8841"]},
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

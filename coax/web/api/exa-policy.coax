@@ -1,0 +1,301 @@
+// OpenAgents Exa central metered proxy policy (#14114, #14115, docs/exa/SPEC.md):
+//   - Shared-key parameter clamping (numResults, maxCharacters, URL batch size, search type)
+//   - Domain & category validation
+//   - SSRF URL safety guard for /api/v1/fetch and web_fetch_exa
+//   - Exact integer decimal parser for Exa's costDollars.total -> upstream_usd_micros
+//   - Exact ceiling retail markup arithmetic matching SQL inference.search_finish
+#authority;
+
+EXA_DEFAULT_NUM_RESULTS :: 8;
+EXA_MAX_NUM_RESULTS :: 10;
+EXA_DEFAULT_MAX_CHARS :: 3000;
+EXA_MIN_MAX_CHARS :: 200;
+EXA_MAX_MAX_CHARS :: 24000;
+EXA_MAX_URLS :: 5;
+EXA_MAX_DOMAINS :: 20;
+EXA_MAX_QUERY_BYTES :: 2000;
+EXA_DEFAULT_MARKUP_BPS :: 2500;
+
+exa_clamp_num_results :: (n: int) -> int #export_c #effects(all) {
+  if n <= 0 { return EXA_DEFAULT_NUM_RESULTS; }
+  if n > EXA_MAX_NUM_RESULTS { return EXA_MAX_NUM_RESULTS; }
+  return n;
+}
+
+exa_clamp_max_chars :: (n: int) -> int #export_c #effects(all) {
+  if n <= 0 { return EXA_DEFAULT_MAX_CHARS; }
+  if n < EXA_MIN_MAX_CHARS { return EXA_MIN_MAX_CHARS; }
+  if n > EXA_MAX_MAX_CHARS { return EXA_MAX_MAX_CHARS; }
+  return n;
+}
+
+exa_valid_url_count :: (n: int) -> bool #export_c #effects(all) {
+  return n >= 1 && n <= EXA_MAX_URLS;
+}
+
+exa_valid_search_type :: (s: string) -> bool #export_c #effects(all) {
+  return s == "" || s == "auto" || s == "fast";
+}
+
+exa_valid_category :: (s: string) -> bool #export_c #effects(all) {
+  return s == "" || s == "company" || s == "research paper" || s == "news" ||
+         s == "personal site" || s == "financial report" || s == "people" ||
+         s == "tweet" || s == "github" || s == "pdf";
+}
+
+exa_lower_ascii :: (c: u8) -> u8 #effects(all) {
+  if c >= 'A' && c <= 'Z' { return cast(u8) (c + 32); }
+  return c;
+}
+
+exa_starts_ci :: (s: string, pre: string) -> bool #effects(all) {
+  if s.count < pre.count { return false; }
+  for i: 0..<pre.count {
+    if exa_lower_ascii(s[i]) != exa_lower_ascii(pre[i]) { return false; }
+  }
+  return true;
+}
+
+exa_ends_ci :: (s: string, suf: string) -> bool #effects(all) {
+  if s.count < suf.count { return false; }
+  off := s.count - suf.count;
+  for i: 0..<suf.count {
+    if exa_lower_ascii(s[off + i]) != exa_lower_ascii(suf[i]) { return false; }
+  }
+  return true;
+}
+
+exa_eq_ci :: (a: string, b: string) -> bool #effects(all) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    if exa_lower_ascii(a[i]) != exa_lower_ascii(b[i]) { return false; }
+  }
+  return true;
+}
+
+// Validates a bare hostname/domain for includeDomains/excludeDomains (no scheme, path, or whitespace).
+exa_valid_domain :: (s: string) -> bool #export_c #effects(all) {
+  if s.count < 3 || s.count > 253 { return false; }
+  if s[0] == '.' || s[0] == '-' || s[s.count - 1] == '.' || s[s.count - 1] == '-' { return false; }
+  has_dot := false;
+  prev_dot := false;
+  for i: 0..<s.count {
+    c := exa_lower_ascii(s[i]);
+    if c == '.' {
+      if prev_dot { return false; }
+      has_dot = true;
+      prev_dot = true;
+    } else if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' {
+      prev_dot = false;
+    } else {
+      return false;
+    }
+  }
+  return has_dot;
+}
+
+// Parse a decimal octet in host[at..end) for RFC1918 172.16.0.0/12 check.
+exa_is_172_private :: (host: string) -> bool #effects(all) {
+  if !exa_starts_ci(host, "172.") { return false; }
+  i := 4;
+  val := 0;
+  digits := 0;
+  while i < host.count && host[i] >= '0' && host[i] <= '9' {
+    val = val * 10 + cast(int) (host[i] - '0');
+    digits += 1;
+    i += 1;
+    if digits > 3 { return false; }
+  }
+  if digits == 0 || i >= host.count || host[i] != '.' { return false; }
+  return val >= 16 && val <= 31;
+}
+
+// SSRF guard for /api/v1/fetch URLs: only public http(s) URLs are allowed.
+exa_url_safe :: (url: string) -> bool #export_c #effects(all) {
+  if url.count < 10 || url.count > 2048 { return false; }
+  at := 0;
+  if exa_starts_ci(url, "https://") { at = 8; }
+  else if exa_starts_ci(url, "http://") { at = 7; }
+  else { return false; }
+
+  // Reject whitespace or control characters anywhere in URL
+  for i: 0..<url.count {
+    if url[i] <= 32 || url[i] == 127 { return false; }
+  }
+
+  end := at;
+  while end < url.count && url[end] != '/' && url[end] != '?' && url[end] != '#' {
+    if url[end] == '@' { return false; } // disallow userinfo host confusion
+    if url[end] == ':' { break; }
+    end += 1;
+  }
+  if end <= at { return false; }
+  host := cast(string) url[at..<end];
+  if host[0] == '[' { return false; } // reject bracketed IPv6 literals (::1, fe80::, fc00::)
+  if exa_eq_ci(host, "localhost") || exa_ends_ci(host, ".localhost") ||
+     exa_ends_ci(host, ".local") || exa_ends_ci(host, ".internal") {
+    return false;
+  }
+  if exa_starts_ci(host, "127.") || exa_starts_ci(host, "10.") ||
+     exa_starts_ci(host, "192.168.") || exa_starts_ci(host, "169.254.") ||
+     exa_starts_ci(host, "0.") || exa_is_172_private(host) {
+    return false;
+  }
+  // Must contain a dot (reject bare intranet hostnames like http://metadata)
+  has_dot := false;
+  for i: 0..<host.count {
+    if host[i] == '.' { has_dot = true; break; }
+  }
+  return has_dot;
+}
+
+// Exact integer decimal parser for Exa's costDollars.total (JSON number string -> USD micros, ceiling).
+// Caps at $100.00 (100_000_000 micros) and returns 0 for non-positive or malformed inputs.
+exa_cost_dollars_to_micros :: (s: string) -> int #export_c #effects(all) {
+  if s.count == 0 { return 0; }
+  i := 0;
+  while i < s.count && (s[i] == ' ' || s[i] == '\t') { i += 1; }
+  if i >= s.count || s[i] == '-' { return 0; }
+  if s[i] == '+' { i += 1; }
+
+  // Read up to 12 significant digits + track decimal point position and exponent.
+  mantissa := 0;
+  sig_digits := 0;
+  frac_digits := 0;
+  seen_dot := false;
+  seen_digit := false;
+  extra_nonzero := false;
+
+  while i < s.count {
+    c := s[i];
+    if c >= '0' && c <= '9' {
+      seen_digit = true;
+      d := cast(int) (c - '0');
+      if sig_digits < 12 {
+        if mantissa > 0 || d > 0 {
+          mantissa = mantissa * 10 + d;
+          sig_digits += 1;
+        }
+        if seen_dot { frac_digits += 1; }
+      } else {
+        if d > 0 { extra_nonzero = true; }
+        if !seen_dot { frac_digits -= 1; }
+      }
+      i += 1;
+    } else if c == '.' && !seen_dot {
+      seen_dot = true;
+      i += 1;
+    } else {
+      break;
+    }
+  }
+  if !seen_digit { return 0; }
+
+  exp10 := 0;
+  if i < s.count && (s[i] == 'e' || s[i] == 'E') {
+    i += 1;
+    neg_exp := false;
+    if i < s.count && (s[i] == '-' || s[i] == '+') {
+      neg_exp = s[i] == '-';
+      i += 1;
+    }
+    ed := 0;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      if exp10 < 100 { exp10 = exp10 * 10 + cast(int) (s[i] - '0'); }
+      ed += 1;
+      i += 1;
+    }
+    if ed == 0 { return 0; }
+    if neg_exp { exp10 = -exp10; }
+  }
+  while i < s.count && (s[i] == ' ' || s[i] == '\t') { i += 1; }
+  if i != s.count { return 0; }
+
+  if mantissa == 0 && !extra_nonzero { return 0; }
+
+  // Value in micros = mantissa * 10^(6 + exp10 - frac_digits)
+  scale := 6 + exp10 - frac_digits;
+  if scale > 9 { return 100000000; }
+  if scale < -15 { return ifx mantissa > 0 || extra_nonzero then 1 else 0; }
+
+  res := mantissa;
+  if scale >= 0 {
+    for k: 0..<scale {
+      if res > 10000000 { return 100000000; }
+      res = res * 10;
+    }
+    if extra_nonzero && res < 100000000 { res += 1; }
+  } else {
+    div_steps := -scale;
+    rem_nonzero := extra_nonzero;
+    for k: 0..<div_steps {
+      if (res % 10) != 0 { rem_nonzero = true; }
+      res = res / 10;
+    }
+    if rem_nonzero { res += 1; }
+  }
+  if res > 100000000 { return 100000000; }
+  return res;
+}
+
+// Compute billed retail micros matching SQL inference.search_finish.
+exa_retail_micros :: (upstream_micros: int, markup_bps: int, fallback_retail: int, http_status: int) -> int #export_c #effects(all) {
+  if http_status != 200 { return 0; }
+  bps := ifx markup_bps > 0 then markup_bps else 0;
+  if upstream_micros > 0 {
+    return (upstream_micros * (10000 + bps) + 9999) / 10000;
+  }
+  return ifx fallback_retail > 0 then fallback_retail else 0;
+}
+
+#test "exa-policy: clamping, search type, category, and domain validation" {
+  #assert exa_clamp_num_results(0) == 8 && exa_clamp_num_results(-5) == 8;
+  #assert exa_clamp_num_results(1) == 1 && exa_clamp_num_results(5) == 5 && exa_clamp_num_results(10) == 10 && exa_clamp_num_results(99) == 10;
+
+  #assert exa_clamp_max_chars(0) == 3000 && exa_clamp_max_chars(-1) == 3000;
+  #assert exa_clamp_max_chars(50) == 200 && exa_clamp_max_chars(4000) == 4000 && exa_clamp_max_chars(99999) == 24000;
+
+  #assert !exa_valid_url_count(0) && exa_valid_url_count(1) && exa_valid_url_count(5) && !exa_valid_url_count(6);
+
+  #assert exa_valid_search_type("") && exa_valid_search_type("auto") && exa_valid_search_type("fast");
+  #assert !exa_valid_search_type("deep") && !exa_valid_search_type("deep-reasoning") && !exa_valid_search_type("neural");
+
+  #assert exa_valid_category("") && exa_valid_category("company") && exa_valid_category("research paper");
+  #assert exa_valid_category("news") && exa_valid_category("personal site") && exa_valid_category("people");
+  #assert exa_valid_category("github") && exa_valid_category("pdf") && !exa_valid_category("invalid");
+
+  #assert exa_valid_domain("docs.exa.ai") && exa_valid_domain("github.com") && exa_valid_domain("sub-1.example.org");
+  #assert !exa_valid_domain("") && !exa_valid_domain("localhost") && !exa_valid_domain(".exa.ai") && !exa_valid_domain("exa.ai.");
+  #assert !exa_valid_domain("https://exa.ai") && !exa_valid_domain("exa..ai") && !exa_valid_domain("exa.ai/path");
+}
+
+#test "exa-policy: SSRF URL safety blocks private, loopback, link-local, userinfo, and non-http" {
+  #assert exa_url_safe("https://docs.exa.ai/reference/search");
+  #assert exa_url_safe("http://example.com/page?q=1");
+  #assert exa_url_safe("https://172.15.0.1/ok") && exa_url_safe("https://172.32.0.1/ok");
+  #assert !exa_url_safe("file:///etc/passwd") && !exa_url_safe("ftp://example.com/a");
+  #assert !exa_url_safe("http://localhost:8080/") && !exa_url_safe("https://sub.localhost/");
+  #assert !exa_url_safe("http://127.0.0.1/admin") && !exa_url_safe("http://169.254.169.254/latest/meta-data");
+  #assert !exa_url_safe("http://10.0.0.1/") && !exa_url_safe("http://192.168.1.1/") && !exa_url_safe("http://172.16.0.1/") && !exa_url_safe("http://172.31.255.1/");
+  #assert !exa_url_safe("http://[::1]/") && !exa_url_safe("http://metadata.google.internal/");
+  #assert !exa_url_safe("http://user@example.com/") && !exa_url_safe("http://metadata/compute") && !exa_url_safe("https://example.com/a b");
+}
+
+#test "exa-policy: exact costDollars decimal parsing and retail ceiling markup" {
+  #assert exa_cost_dollars_to_micros("0") == 0 && exa_cost_dollars_to_micros("0.0") == 0;
+  #assert exa_cost_dollars_to_micros("-0.01") == 0 && exa_cost_dollars_to_micros("") == 0 && exa_cost_dollars_to_micros("abc") == 0;
+  #assert exa_cost_dollars_to_micros("0.005") == 5000;
+  #assert exa_cost_dollars_to_micros("0.0125") == 12500;
+  #assert exa_cost_dollars_to_micros("0.001") == 1000;
+  #assert exa_cost_dollars_to_micros("1.5") == 1500000;
+  #assert exa_cost_dollars_to_micros("0.0000001") == 1;
+  #assert exa_cost_dollars_to_micros("5e-3") == 5000;
+  #assert exa_cost_dollars_to_micros("1.25e-2") == 12500;
+  #assert exa_cost_dollars_to_micros("250") == 100000000;
+
+  #assert exa_retail_micros(5000, 2500, 6250, 200) == 6250;
+  #assert exa_retail_micros(1000, 2500, 1250, 200) == 1250;
+  #assert exa_retail_micros(1, 2500, 6250, 200) == 2; // ceil(1 * 1.25) = 2
+  #assert exa_retail_micros(0, 2500, 6250, 200) == 6250; // fallback when costDollars omitted
+  #assert exa_retail_micros(5000, 2500, 6250, 502) == 0; // non-200 never charged
+}

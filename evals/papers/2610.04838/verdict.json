@@ -1,0 +1,112 @@
+{
+  "created": "2026-11-27T05:10:14Z",
+  "git_sha": "fb614edecc",
+  "run_dir": "/Users/christopherdavid/.openagents/worktrees/openagents-f007af61/e270feec-cc80-46d2-898d-c63490ca05f7/evals/openagents-desktop/results/paper-lab/2610.04838-20261127T050833Z-fb614edecc",
+  "verdict": "NEEDS-HARDER-PROBES",
+  "verdict_reason": "Baseline already passed >=85% with 0 rescues; harden probes before concluding.",
+  "hypothesis": {
+    "paper_id": "2610.04838",
+    "name": "MemTrace Live State-Consistent Compaction",
+    "claim": "Re-hashing tracked workspace files and invalidating superseded command verdicts at compaction boundaries prevents stale-file and stale-test-pass hallucinations.",
+    "axes": [
+      "stale_state_hard"
+    ],
+    "base_env": {},
+    "exp_env": {
+      "OA_EXP_MEMTRACE": "1"
+    },
+    "models": [
+      "gemini-4-neon"
+    ],
+    "trials": 1,
+    "effort": "low",
+    "worker": "oa-worker"
+  },
+  "models": [
+    {
+      "model": "gemini-4-neon",
+      "trials": 1,
+      "paired": {
+        "rescued": 0,
+        "preserved": 2,
+        "damaged": 0,
+        "still_failed": 0,
+        "net_gain": 0
+      },
+      "base": {
+        "total_trials_cases": 2,
+        "passed": 2,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 32025,
+        "output_tokens": 1559,
+        "total_tokens": 33584,
+        "cached_tokens": 6858,
+        "cache_hit_pct": 21.4,
+        "cost_usd_micros": 99915,
+        "wall_ms": 32630,
+        "turns": 6,
+        "tool_calls": 2,
+        "pass_pow_k_pct": 100.0
+      },
+      "exp": {
+        "total_trials_cases": 2,
+        "passed": 2,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 31665,
+        "output_tokens": 936,
+        "total_tokens": 32601,
+        "cached_tokens": 6962,
+        "cache_hit_pct": 22.0,
+        "cost_usd_micros": 89194,
+        "wall_ms": 85961,
+        "turns": 6,
+        "tool_calls": 2,
+        "pass_pow_k_pct": 100.0
+      },
+      "deltas": {
+        "pass_at_1_pp": 0.0,
+        "pass_pow_k_pp": 0.0,
+        "cache_hit_pp": 0.6,
+        "tokens_pct": -2.9,
+        "wall_pct": 163.4,
+        "cost_pct": -10.7,
+        "turns_delta": 0,
+        "tool_calls_delta": 0
+      },
+      "tasks": [
+        {
+          "id": "p_sth_01_budgeted_stale_verdict",
+          "axis": "stale_state_hard",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 17790,
+          "exp_wall_ms_avg": 40036,
+          "base_tokens_avg": 17115,
+          "exp_tokens_avg": 16916,
+          "base_cost_micros_avg": 50315,
+          "exp_cost_micros_avg": 47057
+        },
+        {
+          "id": "p_sth_02_external_config_drift",
+          "axis": "stale_state_hard",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 14840,
+          "exp_wall_ms_avg": 45925,
+          "base_tokens_avg": 16469,
+          "exp_tokens_avg": 15685,
+          "base_cost_micros_avg": 49600,
+          "exp_cost_micros_avg": 42137
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "service": "edge-gw",
+  "retries": 3,
+  "timeout_ms": 1500
+}

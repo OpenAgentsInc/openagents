@@ -180,6 +180,11 @@ FwConfig :: struct {
   allow_local_harnesses: bool; // Opt-in (default Off): allow external local harness sub-agent delegates (#14071)
   subagents_enabled: bool;     // Default On (OA_AGENT_SUBAGENTS=0 disables OA_PACK_AGENTS & catalog prompt for A/B evals)
   subagent_effort: [32] u8; nsubagent_effort: int; // Optional child subagent effort override (OA_SUBAGENT_EFFORT)
+  exp_compact_preserve: bool;  // Default On (OA_EXP_COMPACT_PRESERVE=0 disables): structured entity/state-preserving compaction (Compact-Bench 2610.31710)
+  exp_memtrace: bool;          // Paper-Lab OA_EXP_MEMTRACE: live hash-validated trace restoration at compaction (MemTrace 2610.04838)
+  exp_pmcoder: bool;           // Paper-Lab OA_EXP_PMCODER: cache-safe in-distribution anti-spiral phase grounding (PMCoder 2608.06811)
+  exp_obs_mask: bool;          // Paper-Lab OA_EXP_OBS_MASK: epoch-aligned anchor-preserving observation masking (Complexity Trap 2508.21433)
+  exp_edit_ground: bool;       // Paper-Lab OA_EXP_EDIT_GROUND: instant post-Edit/Write syntax grounding (PMCoder 2608.06811 III-E)
   max_turns: int;             // 0 = unlimited (capped at 64 safety)
   max_budget_micros: int;     // 0 = unlimited
   budget_s: int;              // 0 = no wall-clock pacing budget (set via FLAWED_BUDGET_S)
@@ -222,6 +227,8 @@ fww_env_bool2 :: (primary: string, legacy: string, fallback: bool) -> bool {
   if v == "0" || v == "false" || v == "no" || v == "off" { return false; }
   return fallback;
 }
+
+FWW_DEFAULT_EXP_COMPACT_PRESERVE :: true; // Shipped from Compact-Bench (arXiv:2610.31710)
 
 fww_load_config :: (cfg: [] FwConfig) {
   cfg[0] = FwConfig.{};
@@ -291,6 +298,11 @@ fww_load_config :: (cfg: [] FwConfig) {
   cfg[0].subagents_enabled = fww_env_bool2("OA_AGENT_SUBAGENTS", "FLAWED_SUBAGENTS", true);
   se := fww_getenv2("OA_SUBAGENT_EFFORT", "FLAWED_SUBAGENT_EFFORT", b[..]);
   cfg[0].nsubagent_effort = fww_keep(cfg[0].subagent_effort[..], se);
+  cfg[0].exp_compact_preserve = fww_env_bool("OA_EXP_COMPACT_PRESERVE", FWW_DEFAULT_EXP_COMPACT_PRESERVE);
+  cfg[0].exp_memtrace = fww_env_bool("OA_EXP_MEMTRACE", false);
+  cfg[0].exp_pmcoder = fww_env_bool("OA_EXP_PMCODER", false);
+  cfg[0].exp_obs_mask = fww_env_bool("OA_EXP_OBS_MASK", false);
+  cfg[0].exp_edit_ground = fww_env_bool("OA_EXP_EDIT_GROUND", false);
   cfg[0].max_turns = fww_env_int2("OA_AGENT_MAX_TURNS", "FLAWED_MAX_TURNS", 0);
   cfg[0].max_budget_micros = fww_env_int2("OA_AGENT_MAX_BUDGET_MICROS", "FLAWED_MAX_BUDGET_MICROS", 0);
   cfg[0].budget_s = fww_env_int2("OA_AGENT_BUDGET_S", "FLAWED_BUDGET_S", 0);
@@ -1035,6 +1047,25 @@ FwMsg :: struct {
   nblocks: int;
 }
 
+FWW_TRACE_MAX_FILES :: 24;
+FWW_TRACE_MAX_CMDS  :: 16;
+
+FwTraceFile :: struct {
+  path: [256] u8; npath: int;
+  disk_hash: int;
+  exists_then: bool;
+  edited: bool;
+  seq: int;
+}
+
+FwTraceCmd :: struct {
+  cmd: [160] u8; ncmd: int;
+  exit_ok: bool;
+  seq: int;
+  edit_epoch: int;
+  repo_hash: int;
+}
+
 FwHist :: struct {
   msgs: [FWW_MAX_MSGS] FwMsg;
   nmsgs: int;
@@ -1049,6 +1080,14 @@ FwHist :: struct {
   last_cached_tok: int;
   last_cloud_turn_ms: int;
   compact_count: int;
+  exp_compact_preserve: bool;
+  exp_memtrace: bool;
+  exp_obs_mask: bool;
+  trace_cwd: [FS_PATH_MAX] u8; ntrace_cwd: int;
+  trace_files: [FWW_TRACE_MAX_FILES] FwTraceFile; ntrace_files: int;
+  trace_cmds: [FWW_TRACE_MAX_CMDS] FwTraceCmd; ntrace_cmds: int;
+  trace_seq: int;
+  trace_edit_epoch: int;
 }
 
 fww_slab_put :: (h: [] FwHist, s: string, out_at: [] int) -> int {
@@ -1080,6 +1119,237 @@ fww_hist_clear :: (h: [] FwHist) {
   h[0].total_cost_micros = 0;
   h[0].compact_count = 0;
   h[0].last_cached_tok = 0;
+}
+
+fww_hist_clear_traces :: (h: [] FwHist) {
+  h[0].ntrace_files = 0;
+  h[0].ntrace_cmds = 0;
+  h[0].trace_seq = 0;
+  h[0].trace_edit_epoch = 0;
+}
+
+// Fast FNV-1a hash of a byte slice (used by MemTrace state-consistent trace validation).
+fww_trace_hash_bytes :: (s: string) -> int {
+  hv := 2166136261;
+  for i: 0..<s.count {
+    hv = ((hv ^ cast(int) s[i]) * 16777619) & 0x7FFFFFFF;
+  }
+  return hv;
+}
+
+// Hash a live workspace file on disk (up to 65536 bytes). Sets out_exists[0] = true iff readable.
+fww_trace_hash_file :: (cwd: string, path: string, out_exists: [] bool) -> int {
+  out_exists[0] = false;
+  if path.count == 0 { return 0; }
+  pb: [FS_PATH_MAX] u8;
+  full := ifx path[0] == '/' then path else (ifx cwd.count > 0 then fs_join(cwd, path, pb[..]) else path);
+  if !fs_exists(full) { return 0; }
+  rb: [65536] u8;
+  n := fs_read(full, rb[..]);
+  if n < 0 { return 0; }
+  out_exists[0] = true;
+  return fww_trace_hash_bytes(cast(string) rb[0..<n]);
+}
+
+// Composite hash over all currently tracked workspace files on disk.
+fww_trace_live_repo_hash :: (h: [] FwHist) -> int {
+  cwd := cast(string) h[0].trace_cwd[0..<h[0].ntrace_cwd];
+  acc := 1469598103 & 0x7FFFFFFF;
+  ex := [1] bool.[false];
+  for i: 0..<h[0].ntrace_files {
+    fp := cast(string) h[0].trace_files[i].path[0..<h[0].trace_files[i].npath];
+    fh := fww_trace_hash_file(cwd, fp, ex[..]);
+    acc = ((acc ^ (ifx ex[0] then fh else 0x5A5A5A5A)) * 16777619) & 0x7FFFFFFF;
+  }
+  return acc;
+}
+
+// Record a file observation (Read) or mutation (Edit/Write) with its live on-disk hash.
+fww_trace_record_file :: (h: [] FwHist, cwd: string, path: string, edited: bool) {
+  if path.count == 0 { return; }
+  if cwd.count > 0 { h[0].ntrace_cwd = fww_keep(h[0].trace_cwd[..], cwd); }
+  h[0].trace_seq += 1;
+  if edited { h[0].trace_edit_epoch += 1; }
+  ex := [1] bool.[false];
+  dh := fww_trace_hash_file(cwd, path, ex[..]);
+  for i: 0..<h[0].ntrace_files {
+    if cast(string) h[0].trace_files[i].path[0..<h[0].trace_files[i].npath] == path {
+      h[0].trace_files[i].disk_hash = dh;
+      h[0].trace_files[i].exists_then = ex[0];
+      if edited { h[0].trace_files[i].edited = true; }
+      h[0].trace_files[i].seq = h[0].trace_seq;
+      return;
+    }
+  }
+  idx := h[0].ntrace_files;
+  if idx >= FWW_TRACE_MAX_FILES {
+    idx = FWW_TRACE_MAX_FILES - 1;
+    for k: 0..<FWW_TRACE_MAX_FILES - 1 { h[0].trace_files[k] = h[0].trace_files[k + 1]; }
+  } else {
+    h[0].ntrace_files += 1;
+  }
+  h[0].trace_files[idx] = FwTraceFile.{disk_hash = dh, exists_then = ex[0], edited = edited, seq = h[0].trace_seq};
+  h[0].trace_files[idx].npath = fww_keep(h[0].trace_files[idx].path[..], path);
+}
+
+// Record a Bash command verdict bound to the current edit_epoch and live tracked-file hash.
+fww_trace_record_cmd :: (h: [] FwHist, cmd: string, exit_ok: bool) {
+  if cmd.count == 0 { return; }
+  h[0].trace_seq += 1;
+  rh := fww_trace_live_repo_hash(h);
+  // Upsert by command string so the latest run of the same command supersedes earlier runs.
+  for i: 0..<h[0].ntrace_cmds {
+    if cast(string) h[0].trace_cmds[i].cmd[0..<h[0].trace_cmds[i].ncmd] == cmd {
+      h[0].trace_cmds[i].exit_ok = exit_ok;
+      h[0].trace_cmds[i].seq = h[0].trace_seq;
+      h[0].trace_cmds[i].edit_epoch = h[0].trace_edit_epoch;
+      h[0].trace_cmds[i].repo_hash = rh;
+      return;
+    }
+  }
+  idx := h[0].ntrace_cmds;
+  if idx >= FWW_TRACE_MAX_CMDS {
+    idx = FWW_TRACE_MAX_CMDS - 1;
+    for k: 0..<FWW_TRACE_MAX_CMDS - 1 { h[0].trace_cmds[k] = h[0].trace_cmds[k + 1]; }
+  } else {
+    h[0].ntrace_cmds += 1;
+  }
+  h[0].trace_cmds[idx] = FwTraceCmd.{exit_ok = exit_ok, seq = h[0].trace_seq, edit_epoch = h[0].trace_edit_epoch, repo_hash = rh};
+  h[0].trace_cmds[idx].ncmd = fww_keep(h[0].trace_cmds[idx].cmd[..], cmd);
+}
+
+// Classifier for Compact-Bench recurring high-value exact tokens (paths, hex SHAs, KEY=VAL, UPPER_SNAKE, TICKET-123, numbers >=4 digits).
+fww_is_tok_char :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+      || c == '_' || c == '-' || c == '/' || c == '.' || c == ':' || c == '=';
+}
+
+fww_is_high_value_tok :: (tok: string) -> bool {
+  if tok.count < 4 || tok.count > 72 { return false; }
+  has_digit := false;
+  has_upper := false;
+  has_lower := false;
+  has_slash := false;
+  has_dot := false;
+  has_under := false;
+  has_dash := false;
+  has_eq := false;
+  all_hex := true;
+  all_digits := true;
+  for i: 0..<tok.count {
+    c := tok[i];
+    if c >= '0' && c <= '9' { has_digit = true; } else { all_digits = false; }
+    if c >= 'A' && c <= 'Z' { has_upper = true; }
+    if c >= 'a' && c <= 'z' { has_lower = true; }
+    if c == '/' { has_slash = true; }
+    if c == '.' { has_dot = true; }
+    if c == '_' { has_under = true; }
+    if c == '-' { has_dash = true; }
+    if c == '=' { has_eq = true; }
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) { all_hex = false; }
+  }
+  // Hex SHA >= 7 chars (must contain both hex letter and digit so plain words don't match)
+  if all_hex && tok.count >= 7 && has_digit && (has_lower || has_upper) { return true; }
+  // File path or dotted filename (e.g. config/rate_limits.json, ledger.py, RELEASE_NOTE.md)
+  if has_dot && (has_lower || has_upper) && tok[0] != '.' && tok[tok.count - 1] != '.' { return true; }
+  if has_slash && (has_lower || has_upper) && tok.count >= 5 { return true; }
+  // KEY=VALUE pairs (e.g. DIAG_TOKEN=DELTA-8841)
+  if has_eq && tok[0] != '=' && tok[tok.count - 1] != '=' { return true; }
+  // UPPER_SNAKE_CASE or TICKET-123 identifiers
+  if has_upper && !has_lower && (has_under || has_dash) && tok.count >= 5 { return true; }
+  if has_upper && has_digit && (has_dash || has_under) { return true; }
+  // Exact 4+ digit numeric constants/thresholds (e.g. 4250, 8841)
+  if all_digits && tok.count >= 4 { return true; }
+  return false;
+}
+
+fww_buf_has_tok :: (buf: [] u8, n: int, tok: string) -> bool {
+  if tok.count == 0 || n < tok.count { return false; }
+  lim := n - tok.count + 1;
+  for i: 0..<lim {
+    ok := true;
+    for j: 0..<tok.count { if buf[i + j] != tok[j] { ok = false; break; } }
+    if ok { return true; }
+  }
+  return false;
+}
+
+fww_extract_anchors_from_text :: (src: string, dst: [] u8, at: int, lim: int, count_io: [] int) -> int {
+  n := at;
+  i := 0;
+  while i < src.count && n + 80 < lim && count_io[0] < 40 {
+    while i < src.count && !fww_is_tok_char(src[i]) { i += 1; }
+    s0 := i;
+    while i < src.count && fww_is_tok_char(src[i]) { i += 1; }
+    e0 := i;
+    while e0 > s0 && (src[e0 - 1] == '.' || src[e0 - 1] == ':' || src[e0 - 1] == '-' || src[e0 - 1] == '/') { e0 -= 1; }
+    while s0 < e0 && (src[s0] == '.' || src[s0] == ':' || src[s0] == '-') { s0 += 1; }
+    if e0 > s0 {
+      tok := cast(string) src[s0..<e0];
+      if fww_is_high_value_tok(tok) && !fww_buf_has_tok(dst, n, tok) {
+        if count_io[0] > 0 { n = fww_cat(dst, n, ", "); }
+        n = fww_cat(dst, n, tok);
+        count_io[0] += 1;
+      }
+    }
+  }
+  return n;
+}
+
+// Live MemTrace validator: re-hashes tracked files on disk (when trace_cwd is set) and flags stale files / superseded command verdicts.
+fww_emit_memtrace_report :: (h: [] FwHist, dst: [] u8, at: int, lim: int) -> int {
+  if h[0].ntrace_files == 0 && h[0].ntrace_cmds == 0 { return at; }
+  n := at;
+  cwd := cast(string) h[0].trace_cwd[0..<h[0].ntrace_cwd];
+  check_disk := cwd.count > 0;
+  any_drift := false;
+  ex := [1] bool.[false];
+  n = fww_cat(dst, n, "[MemTrace Live State-Consistency Report — validated against current workspace]\n");
+  for i: 0..<h[0].ntrace_files {
+    if n + 140 >= lim { break; }
+    tf := h[0].trace_files[i];
+    fp := cast(string) tf.path[0..<tf.npath];
+    drifted := false;
+    if check_disk {
+      cur_h := fww_trace_hash_file(cwd, fp, ex[..]);
+      drifted = (ex[0] != tf.exists_then) || (ex[0] && cur_h != tf.disk_hash);
+    }
+    if drifted {
+      any_drift = true;
+      n = fww_cat(dst, n, "- FILE STALE / MODIFIED ON DISK (MUST RE-READ before trusting old values): ");
+      n = fww_cat(dst, n, fp);
+      n = fww_cat(dst, n, "\n");
+    } else if tf.edited {
+      n = fww_cat(dst, n, "- FILE EDITED & ALIGNED ON DISK (DONE — do not redo): ");
+      n = fww_cat(dst, n, fp);
+      n = fww_cat(dst, n, "\n");
+    } else {
+      n = fww_cat(dst, n, "- FILE ALIGNED (unchanged since read): ");
+      n = fww_cat(dst, n, fp);
+      n = fww_cat(dst, n, "\n");
+    }
+  }
+  live_repo_h := ifx check_disk then fww_trace_live_repo_hash(h) else 0;
+  for i: 0..<h[0].ntrace_cmds {
+    if n + 160 >= lim { break; }
+    tc := h[0].trace_cmds[i];
+    cs := cast(string) tc.cmd[0..<tc.ncmd];
+    superseded := (tc.edit_epoch != h[0].trace_edit_epoch) || (check_disk && tc.repo_hash != live_repo_h) || any_drift;
+    if superseded {
+      n = fww_cat(dst, n, "- CMD SUPERSEDED / INVALIDATED (workspace changed after run — MUST RE-RUN before claiming pass): `");
+      n = fww_cat(dst, n, cs);
+      n = fww_cat(dst, n, "` (prior exit=");
+      n = fww_cat(dst, n, ifx tc.exit_ok then "OK" else "ERR");
+      n = fww_cat(dst, n, ")\n");
+    } else {
+      n = fww_cat(dst, n, "- CMD VALID (workspace unchanged, exit=");
+      n = fww_cat(dst, n, ifx tc.exit_ok then "OK" else "ERR");
+      n = fww_cat(dst, n, "): `");
+      n = fww_cat(dst, n, cs);
+      n = fww_cat(dst, n, "`\n");
+    }
+  }
+  return n;
 }
 
 fww_hist_push_user :: (h: [] FwHist, text: string) {
@@ -1338,6 +1608,52 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
     sum_n = fww_cat(tmp_buf, 0, "[Compacted earlier conversation context — ");
     sum_n = fww_put_int(tmp_buf, sum_n, keep_from);
     sum_n = fww_cat(tmp_buf, sum_n, " earlier messages summarized]\n");
+
+    use_preserve := h[0].exp_compact_preserve || h[0].exp_memtrace;
+    if use_preserve {
+      // Structured State & Exact Recurring-Detail Anchors (Compact-Bench 2610.31710)
+      anc_b: [2048] u8;
+      anc_n := 0;
+      anc_cnt := [1] int.[0];
+      for i: 0..<keep_from {
+        msg := h[0].msgs[i];
+        for b: 0..<msg.nblocks {
+          bk := msg.blocks[b];
+          if (bk.kind == FWW_MB_TEXT || bk.kind == FWW_MB_TOOL_RES || bk.kind == FWW_MB_TOOL_USE) && bk.text_n > 0 {
+            txt := fww_slab_str(h, bk.text_at, bk.text_n);
+            if msg.role == FWW_MROLE_USER { txt = fww_unwrap_slash_cmd(txt); }
+            anc_n = fww_extract_anchors_from_text(txt, anc_b[..], anc_n, 1800, anc_cnt[..]);
+          }
+        }
+      }
+      if anc_n > 0 && sum_n + anc_n + 64 < body_lim {
+        sum_n = fww_cat(tmp_buf, sum_n, "[Preserved Exact Identifiers & Paths]: ");
+        sum_n = fww_cat(tmp_buf, sum_n, cast(string) anc_b[0..<anc_n]);
+        sum_n = fww_cat(tmp_buf, sum_n, "\n");
+      }
+      // Explicit Completed-Edits list to prevent State-Time Disorder
+      wrote_hdr := false;
+      for i: 0..<h[0].ntrace_files {
+        if h[0].trace_files[i].edited && sum_n + 120 < body_lim {
+          if !wrote_hdr {
+            sum_n = fww_cat(tmp_buf, sum_n, "[Completed Edits (DONE — do not redo)]: ");
+            wrote_hdr = true;
+          } else {
+            sum_n = fww_cat(tmp_buf, sum_n, ", ");
+          }
+          sum_n = fww_cat(tmp_buf, sum_n, cast(string) h[0].trace_files[i].path[0..<h[0].trace_files[i].npath]);
+        }
+      }
+      if wrote_hdr { sum_n = fww_cat(tmp_buf, sum_n, "\n"); }
+    }
+    if h[0].exp_memtrace && sum_n + 256 < body_lim {
+      sum_n = fww_emit_memtrace_report(h, tmp_buf, sum_n, body_lim);
+    }
+
+    user_cap := ifx use_preserve then 640 else 220;
+    asst_cap := ifx use_preserve then 360 else 220;
+    arg_cap  := ifx use_preserve then 140 else 96;
+    res_cap  := ifx use_preserve then 360 else 140;
     for i: 0..<keep_from {
       if sum_n + 160 >= body_lim { break; }
       msg := h[0].msgs[i];
@@ -1347,7 +1663,8 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
           bk := msg.blocks[b];
           if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
             txt := fww_slab_str(h, bk.text_at, bk.text_n);
-            take := fww_utf8_cut(txt, 220);
+            if use_preserve { txt = fww_unwrap_slash_cmd(txt); }
+            take := fww_utf8_cut(txt, user_cap);
             sum_n = fww_cat(tmp_buf, sum_n, cast(string) txt[0..<take]);
             break;
           }
@@ -1361,14 +1678,14 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
           bk := msg.blocks[b];
           if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
             txt := fww_slab_str(h, bk.text_at, bk.text_n);
-            take := fww_utf8_cut(txt, 220);
+            take := fww_utf8_cut(txt, asst_cap);
             sum_n = fww_cat(tmp_buf, sum_n, cast(string) txt[0..<take]);
             sum_n = fww_cat(tmp_buf, sum_n, " ");
             wrote = true;
           } else if bk.kind == FWW_MB_TOOL_USE {
             nm := fww_slab_str(h, bk.name_at, bk.name_n);
             ag := fww_slab_str(h, bk.text_at, bk.text_n);
-            take := fww_utf8_cut(ag, 96);
+            take := fww_utf8_cut(ag, arg_cap);
             sum_n = fww_cat(tmp_buf, sum_n, "[");
             sum_n = fww_cat(tmp_buf, sum_n, nm);
             sum_n = fww_cat(tmp_buf, sum_n, "(");
@@ -1386,12 +1703,16 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
           if bk.kind == FWW_MB_TOOL_RES {
             nm := fww_slab_str(h, bk.name_at, bk.name_n);
             res := fww_slab_str(h, bk.text_at, bk.text_n);
-            take := fww_utf8_cut(res, 140);
             sum_n = fww_cat(tmp_buf, sum_n, "ToolResult(");
             sum_n = fww_cat(tmp_buf, sum_n, ifx nm.count > 0 then nm else "tool");
             if bk.is_error { sum_n = fww_cat(tmp_buf, sum_n, ",err"); }
             sum_n = fww_cat(tmp_buf, sum_n, "): ");
-            sum_n = fww_cat(tmp_buf, sum_n, cast(string) res[0..<take]);
+            if use_preserve && res.count > res_cap {
+              sum_n = fww_shrink_head_tail(tmp_buf, sum_n, res, res_cap, "mid");
+            } else {
+              take := fww_utf8_cut(res, res_cap);
+              sum_n = fww_cat(tmp_buf, sum_n, cast(string) res[0..<take]);
+            }
             sum_n = fww_cat(tmp_buf, sum_n, "\n");
           }
         }
@@ -1588,8 +1909,88 @@ fww_emergency_compact :: (h: [] FwHist, level: int, ctx_win: int, tmp_buf: [] u8
       || fww_hist_compact_ex(h, 0, 0, 0, cap, 0, tmp_buf);
 }
 
+// Complexity Trap (arXiv:2508.21433) Epoch-Aligned Anchor-Preserving Observation Masking:
+// Keeps user intent, assistant thoughts, tool-use arguments, and the most recent M tool-result turns intact,
+// while batch-masking older bulky TOOL_RES observations once accumulated unmasked bytes cross an epoch threshold.
+// Batching by epoch preserves prompt-cache prefix stability between epochs while cutting multi-turn input tokens.
+fww_obs_mask_epoch :: (h: [] FwHist, is_local: bool) -> bool {
+  keep_m := ifx is_local then 2 else 3;
+  epoch_thresh := ifx is_local then 4096 else 12288;
+  min_blk := 512;
+
+  // Count total TOOL_RESULTS messages so we know which ones sit outside the recent M window.
+  tot_tr := 0;
+  for i: 0..<h[0].nmsgs {
+    if h[0].msgs[i].role == FWW_MROLE_TOOL_RESULTS { tot_tr += 1; }
+  }
+  if tot_tr <= keep_m { return false; }
+  mask_limit := tot_tr - keep_m;
+
+  // Pass 1: measure accumulated unmasked older observation bytes.
+  seen_tr := 0;
+  unmasked_bytes := 0;
+  for i: 0..<h[0].nmsgs {
+    if h[0].msgs[i].role != FWW_MROLE_TOOL_RESULTS { continue; }
+    if seen_tr >= mask_limit { break; }
+    seen_tr += 1;
+    for b: 0..<h[0].msgs[i].nblocks {
+      bk := h[0].msgs[i].blocks[b];
+      if bk.kind == FWW_MB_TOOL_RES && bk.text_n > min_blk {
+        txt := fww_slab_str(h, bk.text_at, bk.text_n);
+        if !flawed_aw_starts(txt, "[Observation masked:") {
+          unmasked_bytes += bk.text_n;
+        }
+      }
+    }
+  }
+  if unmasked_bytes < epoch_thresh { return false; }
+
+  // Pass 2: replace older bulky TOOL_RES blocks with compact anchor-preserving stubs.
+  masked_any := false;
+  seen_tr = 0;
+  stub: [768] u8;
+  anc_b: [384] u8;
+  for i: 0..<h[0].nmsgs {
+    if h[0].msgs[i].role != FWW_MROLE_TOOL_RESULTS { continue; }
+    if seen_tr >= mask_limit { break; }
+    seen_tr += 1;
+    for b: 0..<h[0].msgs[i].nblocks {
+      bk := h[0].msgs[i].blocks[b];
+      if bk.kind != FWW_MB_TOOL_RES || bk.text_n <= min_blk { continue; }
+      txt := fww_slab_str(h, bk.text_at, bk.text_n);
+      if flawed_aw_starts(txt, "[Observation masked:") { continue; }
+      nm := fww_slab_str(h, bk.name_at, bk.name_n);
+      anc_cnt := [1] int.[0];
+      anc_n := fww_extract_anchors_from_text(txt, anc_b[..], 0, 320, anc_cnt[..]);
+      sn := fww_cat(stub[..], 0, "[Observation masked: ");
+      sn = fww_cat(stub[..], sn, ifx nm.count > 0 then nm else "tool");
+      if bk.is_error { sn = fww_cat(stub[..], sn, ",err"); }
+      sn = fww_cat(stub[..], sn, ", ");
+      sn = fww_put_int(stub[..], sn, bk.text_n);
+      sn = fww_cat(stub[..], sn, " bytes omitted");
+      if anc_n > 0 {
+        sn = fww_cat(stub[..], sn, " | anchors: ");
+        sn = fww_cat(stub[..], sn, cast(string) anc_b[0..<anc_n]);
+      }
+      sn = fww_cat(stub[..], sn, "; re-run tool if full output needed]");
+      if h[0].nslab + sn + 64 < FWW_SLAB {
+        a0 := [1] int.[0];
+        new_n := fww_slab_put(h, cast(string) stub[0..<sn], a0[..]);
+        h[0].msgs[i].blocks[b].text_at = a0[0];
+        h[0].msgs[i].blocks[b].text_n = new_n;
+        masked_any = true;
+      }
+    }
+  }
+  return masked_any;
+}
+
 // Pre-flight context budget guard: guarantees prompt fits inside ctx_win BEFORE sending HTTP request.
 fww_ensure_context_fits :: (h: [] FwHist, sys_n: int, ctx_win: int, is_local: bool, no_tools: bool, auto_compact: bool, tmp_buf: [] u8) -> bool {
+  did := false;
+  if h[0].exp_obs_mask && fww_obs_mask_epoch(h, is_local) {
+    did = true;
+  }
   auto_th := ifx is_local then (ctx_win * 60) / 100 else flawed_auto_compact_threshold(flawed_effective_context_window(ctx_win, 32768, 0), 0);
   hard_lim := ifx is_local then ctx_win - (ifx ctx_win >= 16384 then 3584 else ctx_win / 4) else ctx_win - 49152;
   if hard_lim < 1536 { hard_lim = 1536; }
@@ -1601,9 +2002,8 @@ fww_ensure_context_fits :: (h: [] FwHist, sys_n: int, ctx_win: int, is_local: bo
   est := fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
   need_auto := auto_compact && est >= auto_th;
   need_hard := est >= hard_lim || near_msgs || near_slab || near_body;
-  if !need_auto && !need_hard { return false; }
+  if !need_auto && !need_hard { return did; }
 
-  did := false;
   // Layer 1: Microcompact old tool results in-place (only when not already at message-slot limit).
   if !near_msgs && fww_hist_compact_ex(h, 0, 2, 512, 0, 0, tmp_buf) {
     did = true;
@@ -2130,6 +2530,7 @@ fww_build_local_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, pla
   n = fww_cat(out, n, platform);
   n = fww_cat(out, n, "\n\nRules:\n");
   n = fww_cat(out, n, "- Use Read, Edit, Write, Glob, and Grep for files; use Bash for running tests and builds.\n");
+  n = fww_cat(out, n, "- Use WebSearch for current web information, docs, or external research, and cite source URLs in your answer.\n");
   n = fww_cat(out, n, "- Always Read a file before calling Edit. Keep edits minimal and exact.\n");
   n = fww_cat(out, n, "- Run the relevant test command after editing to verify your fix, then answer concisely.\n");
   n = fww_cat(out, n, "- Never repeat an identical tool call. If stuck, try a different approach or report clearly.\n");
@@ -2154,6 +2555,7 @@ fww_build_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, platform:
   n = fww_cat(out, n, "- Maximize parallel tool calls: emit ALL independent Read, Grep, Glob, Coax*, or Edit calls together in a single response instead of one call per turn.\n");
   n = fww_cat(out, n, "- Prefer compiler-backed Coax intelligence tools (`CoaxDefines`, `CoaxUses`, `CoaxShow`, `CoaxCheck`, `CoaxChecks`, `CoaxExports`, `CoaxEffects`, `CoaxDepends`, `CoaxLoaders`, `CoaxExplain`, `CoaxVocab`, `CoaxReplace`) over raw `Grep`/`Read` whenever querying or checking Coax symbols in a Coax repo.\n");
   n = fww_cat(out, n, "- Prefer dedicated tools over Bash: Read (not cat/head/tail/sed — Read also natively reads PNG/JPEG/GIF/WebP/BMP/TIFF/HEIC images and screenshots directly without scripts), Edit (not sed/awk), Write (not heredoc), Glob (not find/ls), Grep (not rg/grep). Reserve Bash for builds, tests, git, and scripts.\n");
+  n = fww_cat(out, n, "- For live web lookups, external API docs, news, or research, use `WebSearch` (Exa-backed; supports `allowed_domains`/`blocked_domains` and `category`, e.g. `research paper`) and cite source URLs in your answer; use `WebFetch` to read clean Markdown/text from any HTML or PDF URL (pass optional `query` to extract relevant passages from long documents). For deep full-paper arXiv reading/searching, use the `arxiv` skill (`.agents/skills/arxiv/scripts/arxiv_paper.py fetch <id>`) to cache clean Markdown + line-numbered TOC and inspect with `Read`/`Grep`.\n");
   n = fww_cat(out, n, "- Keep exploration tightly bounded: read only the target file(s) and direct callers/tests needed for the task (typically 2-4 turns). Do not read peripheral docs, unrelated modules, or deep git history once you know enough to write your first working change.\n");
   n = fww_cat(out, n, "- Derive root causes and general invariants thoroughly before patching: fix the underlying invariant across multiple sequential, concurrent, or interleaved operations and edge cases (never just a single repro symptom). Batch independent edits cleanly, run targeted build/test checks right after editing, and fuzz boundary/malformed/stress inputs before finishing.\n");
   n = fww_cat(out, n, "- Think concisely and iterate from real execution: do not spend long blocks mentally simulating every case in isolation before running code. Once you have the core model, write your deliverable implementation and a comprehensive test script early so real execution exposes subtle edge cases with plenty of time left to fix them. For search or optimization tasks, write the first valid working output to the target path immediately before running slower refinement passes, and keep scripts fast (<30s).\n");
@@ -4056,27 +4458,109 @@ fww_url_safe :: (url: string) -> bool {
   return true;
 }
 
-fww_tool_webfetch :: (args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
-  is_err[0] = false;
-  nodes: [128] JvNode; d: [1] Jv;
-  if !jv_parse(d[..], args_json, nodes[..]) {
-    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for WebFetch.");
+// Unescape a JSON string node into `out`, truncating cleanly at UTF-8 boundaries if larger than `out`
+// (unlike `jv_str`, which returns -1 on overflow).
+fww_jv_str_trunc :: (d: Jv, at: int, out: [] u8) -> int {
+  if jv_kind(d, at) != JV_STRING || out.count == 0 { return 0; }
+  raw := jv_raw(d, at);
+  n := 0;
+  i := 0;
+  while i < raw.count && n < out.count {
+    c := raw[i];
+    if c != '\\' {
+      out[n] = c; n += 1; i += 1; continue;
+    }
+    if i + 1 >= raw.count { break; }
+    e := raw[i + 1];
+    if e != 'u' {
+      b := jv_escape_byte(e);
+      if b < 0 { break; }
+      out[n] = cast(u8) b; n += 1; i += 2; continue;
+    }
+    if i + 6 > raw.count || n + 4 > out.count { break; }
+    cp := jv_u4(raw, i + 2);
+    if cp < 0 { break; }
+    i += 6;
+    if cp >= 0xd800 && cp <= 0xdbff {
+      jv_high := cp; cp = 0xfffd;
+      if raw.count - i >= 6 && raw[i] == '\\' && raw[i + 1] == 'u' {
+        low := jv_u4(raw, i + 2);
+        if low >= 0xdc00 && low <= 0xdfff {
+          cp = 0x10000 + ((jv_high - 0xd800) << 10) + (low - 0xdc00);
+          i += 6;
+        }
+      }
+    } else if cp >= 0xdc00 && cp <= 0xdfff { cp = 0xfffd; }
+    k := jv_utf8(cp, out, n);
+    if k < 0 { break; }
+    n = k;
   }
-  ub: [2048] u8;
-  un := jv_str(d[0], jv_get(d[0], 0, "url"), ub[..]);
-  if un <= 0 { is_err[0] = true; return fww_keep(out_res, "WebFetch requires url."); }
-  url := cast(string) ub[0..<un];
+  return n;
+}
 
-  lbl_b: [2100] u8;
-  ln := fww_cat(lbl_b[..], 0, "WebFetch ");
-  ln = fww_cat(lbl_b[..], ln, url);
-  label := cast(string) lbl_b[0..<ln];
+// Format Exa /contents or OpenAgents /api/v1/fetch JSON into clean readable markdown without 4 KiB truncation.
+fww_webfetch_format_result :: (resp_json: string, out_res: [] u8) -> int {
+  nodes: [1024] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], resp_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return 0; }
+  v := d[0];
+  res := jv_get(v, 0, "results");
+  if jv_kind(v, res) != JV_ARRAY || jv_len(v, res) <= 0 { return 0; }
+  item := jv_at(v, res, 0);
+  if jv_kind(v, item) != JV_OBJECT { return 0; }
 
-  if !fww_url_safe(url) {
-    is_err[0] = true;
-    fww_send(wire_out, mww_command(wire_out, label, 1, false, "Blocked by SSRF guard."));
-    return fww_keep(out_res, "WebFetch blocked: private/local/non-HTTP(S) URL.");
+  n := 0;
+  tb: [512] u8; ub: [2048] u8; pb: [64] u8; ab: [256] u8;
+  tn := fww_jv_str_trunc(v, jv_get(v, item, "title"), tb[..]);
+  un := fww_jv_str_trunc(v, jv_get(v, item, "url"), ub[..]);
+  pn := fww_jv_str_trunc(v, jv_get(v, item, "publishedDate"), pb[..]);
+  an := fww_jv_str_trunc(v, jv_get(v, item, "author"), ab[..]);
+
+  if tn > 0 {
+    n = fww_cat(out_res, n, "# ");
+    n = fww_cat(out_res, n, cast(string) tb[0..<tn]);
+    n = fww_cat(out_res, n, "\n");
   }
+  if un > 0 {
+    n = fww_cat(out_res, n, "URL: ");
+    n = fww_cat(out_res, n, cast(string) ub[0..<un]);
+    n = fww_cat(out_res, n, "\n");
+  }
+  if pn > 0 {
+    n = fww_cat(out_res, n, "Published: ");
+    n = fww_cat(out_res, n, cast(string) pb[0..<pn]);
+    n = fww_cat(out_res, n, "\n");
+  }
+  if an > 0 {
+    n = fww_cat(out_res, n, "Author: ");
+    n = fww_cat(out_res, n, cast(string) ab[0..<an]);
+    n = fww_cat(out_res, n, "\n");
+  }
+
+  has_body := false;
+  hl := jv_get(v, item, "highlights");
+  if jv_kind(v, hl) == JV_ARRAY && jv_len(v, hl) > 0 {
+    hlen := jv_len(v, hl);
+    for j: 0..<hlen {
+      if n + 4 >= out_res.count { break; }
+      n = fww_cat(out_res, n, ifx j == 0 then "\n" else "\n\n");
+      hn := fww_jv_str_trunc(v, jv_at(v, hl, j), out_res[n..<out_res.count]);
+      if hn > 0 { n += hn; has_body = true; }
+    }
+  }
+  if !has_body {
+    tx_node := jv_get(v, item, "text");
+    if jv_kind(v, tx_node) != JV_STRING { tx_node = jv_get(v, item, "summary"); }
+    if jv_kind(v, tx_node) == JV_STRING && n + 2 < out_res.count {
+      n = fww_cat(out_res, n, "\n");
+      tx := fww_jv_str_trunc(v, tx_node, out_res[n..<out_res.count]);
+      if tx > 0 { n += tx; has_body = true; }
+    }
+  }
+  if !has_body { return 0; }
+  return n;
+}
+
+fww_tool_webfetch_curl :: (url: string, out_res: [] u8, is_err: [] bool) -> int {
   h := proc_new();
   n := 0;
   exit_code := 1;
@@ -4101,7 +4585,528 @@ fww_tool_webfetch :: (args_json: string, out_res: [] u8, is_err: [] bool, wire_o
   }
   is_err[0] = exit_code != 0;
   if n == 0 { n = fww_keep(out_res, ifx exit_code == 0 then "(empty response)" else "Failed to fetch URL."); }
-  fww_send(wire_out, mww_command(wire_out, label, exit_code, false, cast(string) out_res[0..<n]));
+  return n;
+}
+
+// Upgraded WebFetch tool:
+// Primary: OpenAgents Cloud metered POST /api/v1/fetch (or local BYOK Exa /contents), returning clean Markdown/text
+// for both HTML pages and PDFs, with optional `query` highlight extraction and `max_characters` (200..24000).
+// Fallback: SSRF-guarded direct `curl` when Exa is not configured or returns no content.
+fww_tool_webfetch :: (args_json: string, auth: [] FwAuth, raw_b: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for WebFetch.");
+  }
+  v := d[0];
+  ub: [2048] u8;
+  un := jv_str(v, jv_get(v, 0, "url"), ub[..]);
+  if un <= 0 { is_err[0] = true; return fww_keep(out_res, "WebFetch requires url."); }
+  url := cast(string) ub[0..<un];
+
+  qb: [1024] u8;
+  qn := jv_str(v, jv_get(v, 0, "query"), qb[..]);
+  focus_query := ifx qn > 0 then fww_trim(cast(string) qb[0..<qn]) else "";
+
+  max_chars := jv_int(v, jv_get(v, 0, "max_characters"), 10000);
+  if max_chars <= 0 { max_chars = 10000; }
+  if max_chars < 200 { max_chars = 200; }
+  if max_chars > 24000 { max_chars = 24000; }
+
+  lbl_b: [2100] u8;
+  ln := fww_cat(lbl_b[..], 0, "WebFetch ");
+  ln = fww_cat(lbl_b[..], ln, url);
+  label := cast(string) lbl_b[0..<ln];
+
+  if !fww_url_safe(url) {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "Blocked by SSRF guard."));
+    return fww_keep(out_res, "WebFetch blocked: private/local/non-HTTP(S) URL.");
+  }
+
+  co_b: [16] u8; dir_b: [16] u8; nf_b: [16] u8; exa_key_b: [512] u8;
+  curl_only := fww_trim(cl_getenv("OA_WEBFETCH_CURL_ONLY", co_b[..])) == "1";
+  force_direct := fww_trim(cl_getenv("OA_EXA_DIRECT", dir_b[..])) == "1";
+  no_fallback := fww_trim(cl_getenv("OA_EXA_NO_FALLBACK", nf_b[..])) == "1";
+
+  if !curl_only {
+    home_b: [FS_PATH_MAX] u8;
+    home := fww_trim(cl_getenv("HOME", home_b[..]));
+    exa_key_n := fww_discover_exa_key(home, exa_key_b[..]);
+    exa_key := cast(string) exa_key_b[0..<exa_key_n];
+
+    ours_auth: [1] FwAuth;
+    has_ours := false;
+    if !force_direct {
+      if auth[0].backend == FLAWED_BE_OURS && (auth[0].nkey > 0 || auth[0].nours_cli > 0) {
+        ours_auth[0] = auth[0];
+        has_ours = true;
+      } else {
+        has_ours = fww_try_ours_auth(home, ours_auth[..]);
+      }
+    }
+    use_direct := force_direct || (!has_ours && exa_key.count > 0);
+
+    if use_direct || has_ours {
+      raw_n := [1] int.[0];
+      http_code := 0;
+      tag := (fww_str_hash(url) & 0x7fffffff) + 100000;
+
+      for attempt: 0..<2 {
+        if attempt == 1 {
+          if use_direct || no_fallback || exa_key.count == 0 || http_code != 404 { break; }
+          use_direct = true;
+        }
+        url_b: [1024] u8;
+        url_n := 0;
+        if use_direct {
+          eb: [512] u8;
+          ebase := flawed_aw_trim_slash(fww_trim(cl_getenv("OA_EXA_BASE_URL", eb[..])));
+          if ebase.count == 0 { ebase = "https://api.exa.ai"; }
+          url_n = fww_cat(url_b[..], 0, ebase);
+          url_n = fww_cat(url_b[..], url_n, "/contents");
+        } else {
+          b1: [512] u8; b2: [512] u8; b3: [512] u8; ob: [512] u8;
+          on := fww_websearch_cloud_base(
+            cl_getenv("OA_CLOUD_BASE_URL", b1[..]),
+            cl_getenv("OA_CLOUD_ORIGIN", b2[..]),
+            cl_getenv("OPENAGENTS_API_ORIGIN", b3[..]),
+            ob[..]
+          );
+          url_n = fww_cat(url_b[..], 0, cast(string) ob[0..<on]);
+          url_n = fww_cat(url_b[..], url_n, "/api/v1/fetch");
+        }
+        endpoint := cast(string) url_b[0..<url_n];
+
+        body_b: [4096] u8;
+        jo: [1] Jo;
+        jo_start(jo[..], body_b[..]);
+        jo_obj(jo[..]);
+        jo_key(jo[..], "urls"); jo_arr(jo[..]); jo_str(jo[..], url); jo_end(jo[..]);
+        if use_direct {
+          if focus_query.count > 0 {
+            jo_key(jo[..], "highlights"); jo_obj(jo[..]);
+            jo_key(jo[..], "query"); jo_str(jo[..], focus_query);
+            jo_key(jo[..], "maxCharacters"); jo_int(jo[..], max_chars);
+            jo_end(jo[..]);
+          } else {
+            jo_key(jo[..], "text"); jo_obj(jo[..]);
+            jo_key(jo[..], "maxCharacters"); jo_int(jo[..], max_chars);
+            jo_end(jo[..]);
+          }
+        } else {
+          jo_key(jo[..], "max_characters"); jo_int(jo[..], max_chars);
+          if focus_query.count > 0 {
+            jo_key(jo[..], "query"); jo_str(jo[..], focus_query);
+          }
+        }
+        jo_end(jo[..]);
+        if jo[0].bad { break; }
+        req_body := jo_text(jo[..]);
+
+        hdr_b: [4200] u8;
+        hdr_n := 0;
+        if use_direct {
+          hdr_n = fww_cat(hdr_b[..], 0, "x-api-key: ");
+          hdr_n = fww_cat(hdr_b[..], hdr_n, exa_key);
+        } else if ours_auth[0].nours_cli > 0 && ours_auth[0].nkey == 0 {
+          sig_b: [4096] u8;
+          sn := fww_sign_ours_nip98(ours_auth[..], endpoint, req_body, sig_b[..]);
+          if sn <= 0 {
+            if !no_fallback && exa_key.count > 0 { http_code = 404; continue; }
+            break;
+          }
+          hdr_n = fww_cat(hdr_b[..], 0, "Authorization: ");
+          hdr_n = fww_cat(hdr_b[..], hdr_n, cast(string) sig_b[0..<sn]);
+        } else if ours_auth[0].ours_is_header {
+          hdr_n = fww_cat(hdr_b[..], 0, "Authorization: ");
+          hdr_n = fww_cat(hdr_b[..], hdr_n, cast(string) ours_auth[0].key[0..<ours_auth[0].nkey]);
+        } else {
+          hdr_n = fww_cat(hdr_b[..], 0, "Authorization: Bearer ");
+          hdr_n = fww_cat(hdr_b[..], hdr_n, cast(string) ours_auth[0].key[0..<ours_auth[0].nkey]);
+        }
+        auth_hdr := cast(string) hdr_b[0..<hdr_n];
+
+        http_code = fww_websearch_http_post(endpoint, auth_hdr, false, req_body, tag + attempt, raw_b[..], raw_n[..]);
+        if http_code != 404 { break; }
+      }
+
+      if http_code == 200 && raw_n[0] > 0 {
+        fn := fww_webfetch_format_result(cast(string) raw_b[0..<raw_n[0]], out_res);
+        if fn > 0 {
+          is_err[0] = false;
+          fww_send(wire_out, mww_command(wire_out, label, 0, false, cast(string) out_res[0..<fn]));
+          return fn;
+        }
+      } else if no_fallback && (http_code == 401 || http_code == 402 || http_code == 429) {
+        is_err[0] = true;
+        en := 0;
+        if http_code == 401 { en = fww_keep(out_res, "WebFetch authentication failed (HTTP 401). Run `openagents login` or sign in to OpenAgents Desktop."); }
+        else if http_code == 402 { en = fww_keep(out_res, "WebFetch requires OpenAgents credit (HTTP 402). Add credit via POST /api/v1/inference/credit or in Desktop Account Settings."); }
+        else { en = fww_keep(out_res, "WebFetch daily limit or rate limit reached (HTTP 429). Try again later."); }
+        fww_send(wire_out, mww_command(wire_out, label, 1, false, cast(string) out_res[0..<en]));
+        return en;
+      }
+    }
+  }
+
+  // Fallback to direct SSRF-guarded curl for raw text/JSON endpoints or environments without Exa.
+  n := fww_tool_webfetch_curl(url, out_res, is_err);
+  fww_send(wire_out, mww_command(wire_out, label, ifx is_err[0] then 1 else 0, false, cast(string) out_res[0..<n]));
+  return n;
+}
+
+// Format Exa / OpenAgents /api/v1/search JSON response into clean markdown for LLM context (#14113).
+fww_websearch_format_results :: (resp_json: string, out_res: [] u8) -> int {
+  nodes: [1024] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], resp_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return 0; }
+  v := d[0];
+  res := jv_get(v, 0, "results");
+  if jv_kind(v, res) != JV_ARRAY { return 0; }
+  cnt := jv_len(v, res);
+  if cnt <= 0 { return 0; }
+  n := 0;
+  tb: [512] u8; ub: [2048] u8; pb: [64] u8; ab: [256] u8; hb: [4096] u8;
+  for i: 0..<cnt {
+    item := jv_at(v, res, i);
+    if jv_kind(v, item) != JV_OBJECT { continue; }
+    if n > 0 { n = fww_cat(out_res, n, "\n\n---\n\n"); }
+    tn := jv_str(v, jv_get(v, item, "title"), tb[..]);
+    un := jv_str(v, jv_get(v, item, "url"), ub[..]);
+    pn := jv_str(v, jv_get(v, item, "publishedDate"), pb[..]);
+    an := jv_str(v, jv_get(v, item, "author"), ab[..]);
+    n = fww_cat(out_res, n, "Title: ");
+    n = fww_cat(out_res, n, ifx tn > 0 then cast(string) tb[0..<tn] else "N/A");
+    n = fww_cat(out_res, n, "\nURL: ");
+    n = fww_cat(out_res, n, ifx un > 0 then cast(string) ub[0..<un] else "");
+    if pn > 0 {
+      n = fww_cat(out_res, n, "\nPublished: ");
+      n = fww_cat(out_res, n, cast(string) pb[0..<pn]);
+    }
+    if an > 0 {
+      n = fww_cat(out_res, n, "\nAuthor: ");
+      n = fww_cat(out_res, n, cast(string) ab[0..<an]);
+    }
+    hl := jv_get(v, item, "highlights");
+    if jv_kind(v, hl) == JV_ARRAY && jv_len(v, hl) > 0 {
+      n = fww_cat(out_res, n, "\nHighlights:\n");
+      hlen := jv_len(v, hl);
+      for j: 0..<hlen {
+        hn := jv_str(v, jv_at(v, hl, j), hb[..]);
+        if hn > 0 {
+          if j > 0 { n = fww_cat(out_res, n, "\n"); }
+          n = fww_cat(out_res, n, cast(string) hb[0..<hn]);
+        }
+      }
+    } else {
+      tx := jv_str(v, jv_get(v, item, "text"), hb[..]);
+      if tx <= 0 { tx = jv_str(v, jv_get(v, item, "summary"), hb[..]); }
+      if tx > 0 {
+        n = fww_cat(out_res, n, "\nText:\n");
+        n = fww_cat(out_res, n, cast(string) hb[0..<tx]);
+      }
+    }
+    if n + 256 >= out_res.count { break; }
+  }
+  return n;
+}
+
+// Resolve OpenAgents Cloud origin for /api/v1/search in precedence order:
+// OA_CLOUD_BASE_URL -> OA_CLOUD_ORIGIN -> OPENAGENTS_API_ORIGIN -> https://openagents.com
+fww_websearch_cloud_base :: (base_url_env: string, cloud_origin_env: string, api_origin_env: string, out: [] u8) -> int {
+  b := flawed_aw_trim_slash(fww_trim(base_url_env));
+  if b.count == 0 { b = flawed_aw_trim_slash(fww_trim(cloud_origin_env)); }
+  if b.count == 0 { b = flawed_aw_trim_slash(fww_trim(api_origin_env)); }
+  if b.count == 0 { b = "https://openagents.com"; }
+  return fww_keep(out, b);
+}
+
+// Discover local BYOK EXA_API_KEY from env or standard secret paths.
+fww_discover_exa_key :: (home: string, out_key: [] u8) -> int {
+  k := fww_trim(cl_getenv("EXA_API_KEY", out_key));
+  if k.count > 0 { return fww_keep(out_key, k); }
+  if home.count > 0 {
+    pb: [1024] u8;
+    n := fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/exa-key", pb[..]), out_key);
+    if n > 0 { return n; }
+    n = fww_read_trimmed_file(fs_join(home, ".openagents/exa-key", pb[..]), out_key);
+    if n > 0 { return n; }
+    n = fww_read_env_file_key(fs_join(home, "work/.secrets/exa.env", pb[..]), "EXA_API_KEY", out_key);
+    if n > 0 { return n; }
+  }
+  return 0;
+}
+
+// Execute one WebSearch HTTP POST via curl writing body to a temp file (avoids proc_line 4 KiB line limits
+// on multi-KB minified Exa JSON responses). Returns HTTP status code (0 on transport error) and body bytes in raw_b.
+fww_websearch_http_post :: (
+  endpoint: string, auth_hdr: string, use_direct: bool, req_body: string, tag: int,
+  raw_b: [] u8, out_raw_n: [] int
+) -> int {
+  out_raw_n[0] = 0;
+  now_ms := proc_now_ms();
+  req_p: [160] u8;
+  rn := fww_cat(req_p[..], 0, "/tmp/oa-ws-req-");
+  rn = fww_put_int(req_p[..], rn, now_ms);
+  rn = fww_cat(req_p[..], rn, "-");
+  rn = fww_put_int(req_p[..], rn, tag);
+  rn = fww_cat(req_p[..], rn, ".json");
+  req_path := cast(string) req_p[0..<rn];
+
+  resp_p: [160] u8;
+  pn := fww_cat(resp_p[..], 0, "/tmp/oa-ws-resp-");
+  pn = fww_put_int(resp_p[..], pn, now_ms);
+  pn = fww_cat(resp_p[..], pn, "-");
+  pn = fww_put_int(resp_p[..], pn, tag);
+  pn = fww_cat(resp_p[..], pn, ".json");
+  resp_path := cast(string) resp_p[0..<pn];
+
+  if !fs_write(req_path, req_body) { return 0; }
+  at_b: [176] u8;
+  an := fww_cat(at_b[..], 0, "@");
+  an = fww_cat(at_b[..], an, req_path);
+  data_arg := cast(string) at_b[0..<an];
+
+  code_b: [64] u8;
+  code_n := 0;
+  exit_code := 1;
+  h := proc_new();
+  if h >= 0 {
+    ok := proc_arg(h, "curl") && proc_arg(h, "-sS") &&
+          proc_arg(h, "-o") && proc_arg(h, resp_path) &&
+          proc_arg(h, "-w") && proc_arg(h, "%{http_code}\n") &&
+          proc_arg(h, "--max-time") && proc_arg(h, "25") &&
+          proc_arg(h, "-X") && proc_arg(h, "POST") &&
+          proc_arg(h, "-H") && proc_arg(h, "Content-Type: application/json") &&
+          proc_arg(h, "-H") && proc_arg(h, auth_hdr);
+    if ok && use_direct {
+      ok = proc_arg(h, "-H") && proc_arg(h, "Exa-Beta: dynamic-highlights-2026-08-28");
+    }
+    if ok {
+      ok = proc_arg(h, "--data-binary") && proc_arg(h, data_arg) && proc_arg(h, "--") && proc_arg(h, endpoint);
+    }
+    if ok && proc_start(h) == 0 {
+      _ = proc_close_stdin(h);
+      lbuf: [128] u8;
+      deadline := proc_now_ms() + 27000;
+      while proc_now_ms() < deadline {
+        r := proc_line(h, 250, lbuf[..]);
+        if r == PROC_EOF { break; }
+        if r == PROC_TIMEOUT { continue; }
+        if r < 0 { break; }
+        if code_n == 0 && r > 0 { code_n = fww_keep(code_b[..], cast(string) lbuf[0..<r]); }
+      }
+      exit_code = proc_wait(h, 2000);
+    }
+    _ = proc_release(h);
+  }
+  _ = fs_remove(req_path);
+
+  http_code := 0;
+  if exit_code == 0 && code_n > 0 {
+    cs := fww_trim(cast(string) code_b[0..<code_n]);
+    for ci: 0..<cs.count {
+      c := cs[ci];
+      if c >= '0' && c <= '9' { http_code = http_code * 10 + cast(int) (c - '0'); }
+      else { http_code = 0; break; }
+    }
+  }
+  got := fs_read(resp_path, raw_b);
+  _ = fs_remove(resp_path);
+  if got > 0 { out_raw_n[0] = got; }
+  return http_code;
+}
+
+// Native WebSearch tool (#14113, docs/exa/SPEC.md):
+// Primary: OpenAgents Cloud metered POST /api/v1/search (Bearer token or NIP-98).
+// Fallback: local BYOK EXA_API_KEY direct POST /search when OA_EXA_DIRECT=1, no OpenAgents login,
+// or the configured Cloud origin does not yet serve /api/v1/search (HTTP 404).
+fww_tool_websearch :: (args_json: string, auth: [] FwAuth, raw_b: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for WebSearch.");
+  }
+  v := d[0];
+  qb: [2048] u8;
+  qn := jv_str(v, jv_get(v, 0, "query"), qb[..]);
+  if qn <= 0 { is_err[0] = true; return fww_keep(out_res, "WebSearch requires query."); }
+  query := fww_trim(cast(string) qb[0..<qn]);
+  if query.count == 0 { is_err[0] = true; return fww_keep(out_res, "WebSearch requires non-empty query."); }
+
+  num_res := jv_int(v, jv_get(v, 0, "num_results"), 8);
+  if num_res <= 0 { num_res = 8; }
+  if num_res > 10 { num_res = 10; }
+  cb: [64] u8;
+  cn := jv_str(v, jv_get(v, 0, "category"), cb[..]);
+  category := ifx cn > 0 then fww_trim(cast(string) cb[0..<cn]) else "";
+
+  inc_node := jv_get(v, 0, "allowed_domains");
+  if inc_node < 0 { inc_node = jv_get(v, 0, "include_domains"); }
+  exc_node := jv_get(v, 0, "blocked_domains");
+  if exc_node < 0 { exc_node = jv_get(v, 0, "exclude_domains"); }
+  has_inc := jv_kind(v, inc_node) == JV_ARRAY && jv_len(v, inc_node) > 0;
+  has_exc := jv_kind(v, exc_node) == JV_ARRAY && jv_len(v, exc_node) > 0;
+  if has_inc && has_exc {
+    is_err[0] = true;
+    return fww_keep(out_res, "WebSearch error: allowed_domains and blocked_domains cannot both be set.");
+  }
+
+  lbl_b: [2100] u8;
+  ln := fww_cat(lbl_b[..], 0, "WebSearch ");
+  ln = fww_cat(lbl_b[..], ln, query);
+  label := cast(string) lbl_b[0..<ln];
+
+  // Resolve route: OpenAgents Cloud (/api/v1/search) vs local BYOK EXA_API_KEY direct.
+  dir_b: [16] u8;
+  nf_b: [16] u8;
+  exa_key_b: [512] u8;
+  force_direct := fww_trim(cl_getenv("OA_EXA_DIRECT", dir_b[..])) == "1";
+  no_fallback := fww_trim(cl_getenv("OA_EXA_NO_FALLBACK", nf_b[..])) == "1";
+
+  home_b: [FS_PATH_MAX] u8;
+  home := fww_trim(cl_getenv("HOME", home_b[..]));
+  exa_key_n := fww_discover_exa_key(home, exa_key_b[..]);
+  exa_key := cast(string) exa_key_b[0..<exa_key_n];
+
+  ours_auth: [1] FwAuth;
+  has_ours := false;
+  if !force_direct {
+    if auth[0].backend == FLAWED_BE_OURS && (auth[0].nkey > 0 || auth[0].nours_cli > 0) {
+      ours_auth[0] = auth[0];
+      has_ours = true;
+    } else {
+      has_ours = fww_try_ours_auth(home, ours_auth[..]);
+    }
+  }
+  use_direct := force_direct || (!has_ours && exa_key.count > 0);
+  if !use_direct && !has_ours {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "No OpenAgents login or EXA_API_KEY configured."));
+    return fww_keep(out_res, "WebSearch requires an OpenAgents login (run `openagents login` or sign in to Desktop) or EXA_API_KEY.");
+  }
+
+  raw_n := [1] int.[0];
+  http_code := 0;
+  tag := fww_str_hash(query) & 0x7fffffff;
+
+  for attempt: 0..<2 {
+    if attempt == 1 {
+      if use_direct || no_fallback || exa_key.count == 0 || http_code != 404 { break; }
+      use_direct = true;
+    }
+    // Build endpoint URL.
+    url_b: [1024] u8;
+    url_n := 0;
+    if use_direct {
+      eb: [512] u8;
+      ebase := flawed_aw_trim_slash(fww_trim(cl_getenv("OA_EXA_BASE_URL", eb[..])));
+      if ebase.count == 0 { ebase = "https://api.exa.ai"; }
+      url_n = fww_cat(url_b[..], 0, ebase);
+      url_n = fww_cat(url_b[..], url_n, "/search");
+    } else {
+      b1: [512] u8; b2: [512] u8; b3: [512] u8; ob: [512] u8;
+      on := fww_websearch_cloud_base(
+        cl_getenv("OA_CLOUD_BASE_URL", b1[..]),
+        cl_getenv("OA_CLOUD_ORIGIN", b2[..]),
+        cl_getenv("OPENAGENTS_API_ORIGIN", b3[..]),
+        ob[..]
+      );
+      url_n = fww_cat(url_b[..], 0, cast(string) ob[0..<on]);
+      url_n = fww_cat(url_b[..], url_n, "/api/v1/search");
+    }
+    endpoint := cast(string) url_b[0..<url_n];
+
+    // Encode JSON request body.
+    body_b: [8192] u8;
+    jo: [1] Jo;
+    jo_start(jo[..], body_b[..]);
+    jo_obj(jo[..]);
+    jo_key(jo[..], "query"); jo_str(jo[..], query);
+    if use_direct {
+      jo_key(jo[..], "type"); jo_str(jo[..], "auto");
+      jo_key(jo[..], "numResults"); jo_int(jo[..], num_res);
+      jo_key(jo[..], "contents"); jo_raw(jo[..], "{\"highlights\":{\"dynamic\":true}}");
+    } else {
+      jo_key(jo[..], "num_results"); jo_int(jo[..], num_res);
+    }
+    if category.count > 0 {
+      jo_key(jo[..], "category"); jo_str(jo[..], category);
+    }
+    if has_inc {
+      jo_key(jo[..], ifx use_direct then "includeDomains" else "allowed_domains");
+      jo_raw(jo[..], jv_raw(v, inc_node));
+    } else if has_exc {
+      jo_key(jo[..], ifx use_direct then "excludeDomains" else "blocked_domains");
+      jo_raw(jo[..], jv_raw(v, exc_node));
+    }
+    jo_end(jo[..]);
+    if jo[0].bad {
+      is_err[0] = true;
+      return fww_keep(out_res, "WebSearch error: request payload too large.");
+    }
+    req_body := jo_text(jo[..]);
+
+    // Build Authorization or x-api-key header.
+    hdr_b: [4200] u8;
+    hdr_n := 0;
+    if use_direct {
+      hdr_n = fww_cat(hdr_b[..], 0, "x-api-key: ");
+      hdr_n = fww_cat(hdr_b[..], hdr_n, exa_key);
+    } else if ours_auth[0].nours_cli > 0 && ours_auth[0].nkey == 0 {
+      sig_b: [4096] u8;
+      sn := fww_sign_ours_nip98(ours_auth[..], endpoint, req_body, sig_b[..]);
+      if sn <= 0 {
+        if !no_fallback && exa_key.count > 0 { http_code = 404; continue; }
+        is_err[0] = true;
+        return fww_keep(out_res, "WebSearch error: failed to sign OpenAgents Cloud request (run `openagents login`).");
+      }
+      hdr_n = fww_cat(hdr_b[..], 0, "Authorization: ");
+      hdr_n = fww_cat(hdr_b[..], hdr_n, cast(string) sig_b[0..<sn]);
+    } else if ours_auth[0].ours_is_header {
+      hdr_n = fww_cat(hdr_b[..], 0, "Authorization: ");
+      hdr_n = fww_cat(hdr_b[..], hdr_n, cast(string) ours_auth[0].key[0..<ours_auth[0].nkey]);
+    } else {
+      hdr_n = fww_cat(hdr_b[..], 0, "Authorization: Bearer ");
+      hdr_n = fww_cat(hdr_b[..], hdr_n, cast(string) ours_auth[0].key[0..<ours_auth[0].nkey]);
+    }
+    auth_hdr := cast(string) hdr_b[0..<hdr_n];
+
+    http_code = fww_websearch_http_post(endpoint, auth_hdr, use_direct, req_body, tag + attempt, raw_b[..], raw_n[..]);
+    if http_code != 404 { break; }
+  }
+
+  resp_body := cast(string) raw_b[0..<raw_n[0]];
+  n := 0;
+  if http_code == 0 {
+    is_err[0] = true;
+    n = fww_keep(out_res, "WebSearch failed: could not reach search service.");
+  } else if http_code == 401 {
+    is_err[0] = true;
+    n = fww_keep(out_res, "WebSearch authentication failed (HTTP 401). Run `openagents login` or sign in to OpenAgents Desktop.");
+  } else if http_code == 402 {
+    is_err[0] = true;
+    n = fww_keep(out_res, "WebSearch requires OpenAgents credit (HTTP 402). Add credit via POST /api/v1/inference/credit or in Desktop Account Settings.");
+  } else if http_code == 429 {
+    is_err[0] = true;
+    n = fww_keep(out_res, "WebSearch daily limit or rate limit reached (HTTP 429). Try again later.");
+  } else if http_code != 200 {
+    is_err[0] = true;
+    eb_err: [512] u8;
+    en_err := fww_extract_err_msg(resp_body, eb_err[..]);
+    n = fww_cat(out_res, 0, "WebSearch failed (HTTP ");
+    n = fww_put_int(out_res, n, http_code);
+    if en_err > 0 {
+      n = fww_cat(out_res, n, "): ");
+      n = fww_cat(out_res, n, cast(string) eb_err[0..<en_err]);
+    } else {
+      n = fww_cat(out_res, n, ").");
+    }
+  } else {
+    n = fww_websearch_format_results(resp_body, out_res);
+    if n == 0 { n = fww_keep(out_res, "No search results found. Please try a different query."); }
+  }
+  fww_send(wire_out, mww_command(wire_out, label, ifx is_err[0] then 1 else 0, false, cast(string) out_res[0..<n]));
   return n;
 }
 
@@ -5066,6 +6071,10 @@ FwRun :: struct {
   time_warn_stage: int;
   calm_steps: int;
   force_low_once: bool;
+  pm_fail_streak: int;
+  pm_last_edit_hash: int;
+  pm_same_file_churn: int;
+  pm_backtracks: int;
   active_pack: [32] u8; nactive_pack: int;
   active_tier: [32] u8; nactive_tier: int;
   missing_cap_hint: [64] u8; nmissing_cap_hint: int;
@@ -5546,6 +6555,7 @@ fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
   n := 0;
   if name == "Bash" { n = jv_str(d[0], jv_get(d[0], 0, "command"), out); }
   else if name == "WebFetch" { n = jv_str(d[0], jv_get(d[0], 0, "url"), out); }
+  else if name == "WebSearch" { n = jv_str(d[0], jv_get(d[0], 0, "query"), out); }
   else if name == "WalletPay" || name == "WalletQuote" {
     db: [512] u8; rb: [256] u8;
     dn := jv_str(d[0], jv_get(d[0], 0, "destination"), db[..]);
@@ -5588,6 +6598,70 @@ fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
     if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "target"), out); }
   }
   return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+
+// PMCoder (arXiv:2608.06811 III-E) Edit Integrity Grounding: zero-LLM-cost syntax check after Edit/Write.
+fww_edit_integrity_json_ok :: (body: string) -> bool {
+  if body.count == 0 || body.count > 65536 { return true; }
+  nodes: [4096] JvNode; d: [1] Jv;
+  return jv_parse(d[..], body, nodes[..]);
+}
+
+fww_edit_integrity_check :: (cwd: string, raw_path: string, out_res: [] u8, at: int) -> int {
+  if raw_path.count == 0 || at + 256 >= out_res.count { return at; }
+  ext_b: [32] u8;
+  ext := fww_path_ext_lower(raw_path, ext_b[..]);
+  if ext != "json" && ext != "py" { return at; }
+  full_b: [FS_PATH_MAX] u8;
+  full := fww_resolve_path(cwd, raw_path, full_b[..]);
+  if full.count == 0 { return at; }
+
+  if ext == "json" {
+    fbuf: [65536] u8;
+    fn := fs_read(full, fbuf[..]);
+    if fn > 0 && fn < fbuf.count && !fww_edit_integrity_json_ok(cast(string) fbuf[0..<fn]) {
+      rn := fww_cat(out_res, at, "\n[Edit Integrity WARNING: ");
+      rn = fww_cat(out_res, rn, raw_path);
+      rn = fww_cat(out_res, rn, " contains invalid JSON syntax after edit. Fix the JSON syntax immediately before continuing.]");
+      return rn;
+    }
+    return at;
+  }
+
+  // Python AST syntax check (argv-only, zero .pyc side effects, ~20ms)
+  ph := proc_new();
+  if ph < 0 { return at; }
+  py_chk := "import ast,sys\ntry:\n ast.parse(open(sys.argv[1],'rb').read(),sys.argv[1])\nexcept SyntaxError as e:\n print(f'SyntaxError line {e.lineno}: {e.msg}')\n sys.exit(1)\n";
+  ok := proc_arg(ph, "python3") && proc_arg(ph, "-c") && proc_arg(ph, py_chk) && proc_arg(ph, full) && proc_cwd(ph, cwd);
+  eb: [512] u8;
+  en := 0;
+  bad := false;
+  if ok && proc_start(ph) == 0 {
+    _ = proc_close_stdin(ph);
+    lbuf: [512] u8;
+    deadline := proc_now_ms() + 1500;
+    while proc_now_ms() < deadline && en + 1 < eb.count {
+      r := proc_line(ph, 100, lbuf[..]);
+      if r == PROC_EOF || r < 0 { break; }
+      if r == PROC_TIMEOUT { continue; }
+      en = fww_cat(eb[..], en, cast(string) lbuf[0..<r]);
+      en = fww_cat(eb[..], en, " ");
+    }
+    ec := proc_wait(ph, 400);
+    if ec != 0 { bad = true; }
+  }
+  _ = proc_release(ph);
+  if bad {
+    rn := fww_cat(out_res, at, "\n[Edit Integrity WARNING: Python syntax error in ");
+    rn = fww_cat(out_res, rn, raw_path);
+    if en > 0 {
+      rn = fww_cat(out_res, rn, ": ");
+      rn = fww_cat(out_res, rn, fww_trim(cast(string) eb[0..<en]));
+    }
+    rn = fww_cat(out_res, rn, " — fix this syntax error immediately before running tests.]");
+    return rn;
+  }
+  return at;
 }
 
 // Execute one tool call (after permission check passed). Returns true if async (Bash running).
@@ -5664,11 +6738,25 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   else if name == "Edit" {
     rn = fww_tool_edit(cwd, args, fww_fc(b), r[0].read_dedup[..], b[0].file_buf[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out);
-    if !is_err[0] { for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; } }
+    if !is_err[0] {
+      for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; }
+      if cfg[0].exp_edit_ground {
+        tp_b: [512] u8;
+        tp := fww_tool_target(name, args, tp_b[..]);
+        rn = fww_edit_integrity_check(cwd, tp, r[0].acc[0].tools[idx].res[..], rn);
+      }
+    }
   }
   else if name == "Write" {
     rn = fww_tool_write(cwd, args, fww_fc(b), r[0].read_dedup[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out);
-    if !is_err[0] { for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; } }
+    if !is_err[0] {
+      for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; }
+      if cfg[0].exp_edit_ground {
+        tp_b: [512] u8;
+        tp := fww_tool_target(name, args, tp_b[..]);
+        rn = fww_edit_integrity_check(cwd, tp, r[0].acc[0].tools[idx].res[..], rn);
+      }
+    }
   }
   else if name == "Glob" || name == "Grep" {
     qh := fww_tool_sig_hash(name, args);
@@ -5689,7 +6777,8 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     }
   }
   else if name == "TodoWrite" { rn = fww_tool_todos(args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
-  else if name == "WebFetch" { rn = fww_tool_webfetch(args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "WebFetch" { rn = fww_tool_webfetch(args, auth, b[0].file_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "WebSearch" { rn = fww_tool_websearch(args, auth, b[0].file_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
   else if fww_is_coax_intel_tool(name) {
     rn = fww_tool_coax_intel(cwd, name, args, r[0].acc[0].tools[idx].res[..], is_err[..], out);
     if name == "CoaxReplace" && !is_err[0] {
@@ -5837,18 +6926,31 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   for ti: 0..<r[0].acc[0].ntools {
     nm_ti := cast(string) r[0].acc[0].tools[ti].name[0..<r[0].acc[0].tools[ti].nname];
     err_ti := r[0].acc[0].tools[ti].is_error;
+    ar_ti := cast(string) r[0].acc[0].tools[ti].args[0..<r[0].acc[0].tools[ti].nargs];
+    pt_b: [512] u8;
+    tgt_ti := fww_tool_target(nm_ti, ar_ti, pt_b[..]);
     if err_ti { step_had_err = true; }
     if (nm_ti == "Edit" || nm_ti == "Write") && !err_ti {
-      ar_ti := cast(string) r[0].acc[0].tools[ti].args[0..<r[0].acc[0].tools[ti].nargs];
-      pt_b: [512] u8;
-      tgt_ti := fww_tool_target(nm_ti, ar_ti, pt_b[..]);
+      if cfg[0].exp_memtrace || cfg[0].exp_compact_preserve {
+        fww_trace_record_file(h, cast(string) r[0].cwd[0..<r[0].ncwd], tgt_ti, true);
+      }
+      if cfg[0].exp_pmcoder && tgt_ti.count > 0 {
+        eh := fww_trace_hash_bytes(tgt_ti);
+        if eh == r[0].pm_last_edit_hash { r[0].pm_same_file_churn += 1; }
+        else { r[0].pm_last_edit_hash = eh; r[0].pm_same_file_churn = 1; }
+      }
       if !fww_is_scratch_path(tgt_ti) {
         step_had_edit = true;
       }
+    } else if nm_ti == "Read" && !err_ti && (cfg[0].exp_memtrace || cfg[0].exp_compact_preserve) {
+      fww_trace_record_file(h, cast(string) r[0].cwd[0..<r[0].ncwd], tgt_ti, false);
     }
     if nm_ti == "Bash" {
       step_had_bash = true;
       if err_ti { step_bash_ok = false; }
+      if cfg[0].exp_memtrace || cfg[0].exp_compact_preserve {
+        fww_trace_record_cmd(h, tgt_ti, !err_ti);
+      }
     }
     nb_ti := r[0].acc[0].tools[ti].nres;
     step_tot_bytes += nb_ti;
@@ -5859,7 +6961,12 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   if step_had_edit { r[0].has_edited = true; r[0].last_bash_ok = false; }
   else if !r[0].has_edited { r[0].read_only_steps += 1; }
-  if step_had_bash { r[0].last_bash_ok = step_bash_ok; }
+  if step_had_bash {
+    r[0].last_bash_ok = step_bash_ok;
+    if cfg[0].exp_pmcoder {
+      if step_bash_ok { r[0].pm_fail_streak = 0; } else { r[0].pm_fail_streak += 1; }
+    }
+  }
   r[0].last_step_had_err = step_had_err;
   if r[0].has_edited { r[0].post_edit_steps += 1; }
   r[0].turn_tool_bytes += step_tot_bytes;
@@ -6008,6 +7115,14 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
               nudge = "<system-reminder>Your edits and post-audit verification checks are green. Stop here and reply concisely — do NOT run redundant extra checks or gold-plate.</system-reminder>";
             }
           }
+        }
+      }
+      if nudge.count == 0 && cfg[0].exp_pmcoder {
+        if (r[0].pm_fail_streak >= 2 || (r[0].pm_same_file_churn >= 2 && step_had_err)) && r[0].pm_backtracks < 3 {
+          r[0].pm_backtracks += 1;
+          nudge = "<system-reminder>[PMCoder Phase: BACKTRACK] Repeated test failure or single-file edit churn detected. STOP patching local symptoms. Run `git diff`, trace the shared root invariant across ALL coupled files/modules in the repo, and fix the underlying invariant cleanly before re-running the full test suite. Do not conclude while tests fail.</system-reminder>";
+        } else if r[0].has_edited && !r[0].last_bash_ok && !step_had_bash && r[0].post_edit_steps >= 2 && r[0].pm_backtracks == 0 {
+          nudge = "<system-reminder>[PMCoder Phase: VERIFICATION] You have edited files without fresh verification. Run the full test/reproduction command now to ground your changes against execution.</system-reminder>";
         }
       }
       if nudge.count > 0 {
@@ -6634,13 +7749,37 @@ fww_stop_active :: (r: [] FwRun, out: [] u8) {
 }
 
 // Handle inline slash commands (/compact, /clear, /cost, /status). Returns true if handled locally.
+// Unwrap Desktop's "Skills installed on this computer...\n\nThe message:\n" prefix so slash commands
+// (/compact, /clear, /cost, /status) work identically whether or not skills are mounted.
+fww_unwrap_slash_cmd :: (tk: string) -> string {
+  marker := "\n\nThe message:\n";
+  if flawed_aw_starts(tk, "Skills installed on this computer.") && tk.count > marker.count {
+    lim := tk.count - marker.count;
+    for p: 0..<lim {
+      ok := true;
+      for j: 0..<marker.count { if tk[p + j] != marker[j] { ok = false; break; } }
+      if ok { return fww_trim(cast(string) tk[p + marker.count..<tk.count]); }
+    }
+  }
+  return fww_trim(tk);
+}
+
 fww_handle_slash :: (tk: string, r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, out: [] u8) -> bool {
-  cmd := fww_trim(tk);
+  cmd := fww_unwrap_slash_cmd(tk);
   if cmd == "/clear" {
     fww_hist_clear(h);
+    fww_hist_clear_traces(h);
     for di: 0..<r[0].read_dedup.count { r[0].read_dedup[di] = FwReadDedup.{}; }
     r[0].ngit_snap = 0; r[0].ngit_snap_cwd = 0;
     fww_send(out, mww_ended(out, "finished", "Cleared Flawed conversation history."));
+    return true;
+  }
+  if cmd == "/compact all" {
+    if fww_hist_compact_ex(h, -1, 0, 0, 0, 10240, b[0].compact_buf[..]) {
+      fww_send(out, mww_ended(out, "finished", "Compacted full conversation history."));
+    } else {
+      fww_send(out, mww_ended(out, "finished", "Conversation is already empty."));
+    }
     return true;
   }
   if cmd == "/compact" {
@@ -7278,6 +8417,14 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].time_warn_stage = 0;
     run[0].calm_steps = 0;
     run[0].force_low_once = false;
+    run[0].pm_fail_streak = 0;
+    run[0].pm_last_edit_hash = 0;
+    run[0].pm_same_file_churn = 0;
+    run[0].pm_backtracks = 0;
+    hist[0].exp_compact_preserve = cfg[0].exp_compact_preserve;
+    hist[0].exp_memtrace = cfg[0].exp_memtrace;
+    hist[0].exp_obs_mask = cfg[0].exp_obs_mask;
+    if cd.count > 0 { hist[0].ntrace_cwd = fww_keep(hist[0].trace_cwd[..], cd); }
     for qi: 0..<run[0].query_dedup.count { run[0].query_dedup[qi] = 0; }
 
     // Handle local slash commands instantaneously
@@ -8127,13 +9274,24 @@ tool_main :: () -> int #export_c #effects(all) {
     g_decls := jv_get(d[0], jv_at(d[0], g_tools, 0), "functionDeclarations");
     #assert jv_len(d[0], g_decls) == FLAWED_WIRE_NTOOLS;
     if pi == 0 {
-      core_tools := [8] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch"];
+      core_tools := [9] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch", "WebSearch"];
       sb: [64] u8;
       for tn, ti: core_tools {
         nn := jv_str(d[0], jv_get(d[0], jv_at(d[0], g_decls, ti), "name"), sb[..]);
         #assert cast(string) sb[0..<nn] == tn;
       }
       #assert fww_contains_ci(cast(string) b_wire[0..<gn], "Working directory: /repo/openagents");
+      // Verify WebSearch target extraction and result formatter (#14113)
+      ws_tb: [128] u8;
+      #assert fww_tool_target("WebSearch", "{\"query\":\"coax compiler\"}", ws_tb[..]) == "coax compiler";
+      ws_out: [2048] u8;
+      ws_n := fww_websearch_format_results(
+        "{\"results\":[{\"title\":\"Exa Docs\",\"url\":\"https://docs.exa.ai\",\"publishedDate\":\"2026-11-10\",\"author\":\"Exa\",\"highlights\":[\"Fast semantic search.\"]}]}",
+        ws_out[..],
+      );
+      ws_txt := cast(string) ws_out[0..<ws_n];
+      #assert ws_n > 0 && fww_contains_ci(ws_txt, "Title: Exa Docs") && fww_contains_ci(ws_txt, "URL: https://docs.exa.ai") && fww_contains_ci(ws_txt, "Fast semantic search.");
+      #assert fww_websearch_format_results("{\"results\":[]}", ws_out[..]) == 0;
     }
   }
 
@@ -8413,4 +9571,151 @@ tool_main :: () -> int #export_c #effects(all) {
   fww_hist_push_user(fh_child[..], cast(string) dir_b[0..<dn_f]);
   #assert fww_fork_guard_tripped(fr[..], fh_child[..]);
   #assert !fww_has_active_local_subs(fr[..]);
+}
+
+#test "flawedworker: WebSearch cloud base URL precedence and Exa JSON formatter (#14113)" {
+  ob: [256] u8;
+  n1 := fww_websearch_cloud_base("https://a.example/", "https://b.example", "https://c.example", ob[..]);
+  #assert cast(string) ob[0..<n1] == "https://a.example";
+  n2 := fww_websearch_cloud_base("", "http://127.0.0.1:8787/", "https://c.example", ob[..]);
+  #assert cast(string) ob[0..<n2] == "http://127.0.0.1:8787";
+  n3 := fww_websearch_cloud_base("", "", "https://staging.openagents.com/", ob[..]);
+  #assert cast(string) ob[0..<n3] == "https://staging.openagents.com";
+  n4 := fww_websearch_cloud_base("", "", "", ob[..]);
+  #assert cast(string) ob[0..<n4] == "https://openagents.com";
+
+  // Verify highlights + summary fallback formatting
+  sample := "{\"results\":[{\"title\":\"Exa Search Docs\",\"url\":\"https://docs.exa.ai/reference/search\",\"publishedDate\":\"2026-08-28\",\"author\":\"Exa\",\"highlights\":[\"POST /search supports includeDomains and excludeDomains.\"]},{\"title\":\"MCP Spec\",\"url\":\"https://modelcontextprotocol.io/specification\",\"summary\":\"Streamable HTTP transport.\"}]}";
+  out_b: [4096] u8;
+  fn := fww_websearch_format_results(sample, out_b[..]);
+  out_s := cast(string) out_b[0..<fn];
+  #assert fn > 0;
+  #assert fww_contains_ci(out_s, "Title: Exa Search Docs");
+  #assert fww_contains_ci(out_s, "URL: https://docs.exa.ai/reference/search");
+  #assert fww_contains_ci(out_s, "includeDomains and excludeDomains");
+  #assert fww_contains_ci(out_s, "Streamable HTTP transport.");
+
+  // Verify WebFetch Exa /contents formatter (full text, highlights, and clean UTF-8 truncation)
+  fetch_sample := "{\"results\":[{\"title\":\"Memory Paper\",\"url\":\"https://arxiv.org/pdf/2505.00675\",\"publishedDate\":\"2025-05-01\",\"author\":\"Du et al.\",\"text\":\"Six atomic operations: Consolidation, Updating, Indexing, Forgetting, Retrieval, and Condensation.\"}]}";
+  wf_b: [2048] u8;
+  wfn := fww_webfetch_format_result(fetch_sample, wf_b[..]);
+  wfs := cast(string) wf_b[0..<wfn];
+  #assert wfn > 0;
+  #assert fww_contains_ci(wfs, "# Memory Paper");
+  #assert fww_contains_ci(wfs, "Six atomic operations");
+
+  // Verify truncation does not drop content when buffer is smaller than JSON text
+  tiny_b: [120] u8;
+  tn := fww_webfetch_format_result(fetch_sample, tiny_b[..]);
+  #assert tn > 0 && tn <= tiny_b.count;
+  #assert fww_contains_ci(cast(string) tiny_b[0..<tn], "Six atomic");
+
+  // Verify highlights-based fetch response
+  hl_sample := "{\"results\":[{\"title\":\"Memory Paper\",\"url\":\"https://arxiv.org/abs/2505.00675\",\"highlights\":[\"Parametric memory lives in weights.\",\"Contextual memory lives outside weights.\"]}]}";
+  hfn := fww_webfetch_format_result(hl_sample, wf_b[..]);
+  hfs := cast(string) wf_b[0..<hfn];
+  #assert hfn > 0;
+  #assert fww_contains_ci(hfs, "Parametric memory");
+  #assert fww_contains_ci(hfs, "Contextual memory");
+}
+
+#test "flawedworker: paper-lab OA_EXP_COMPACT_PRESERVE (default-on) and OA_EXP_MEMTRACE live validation" {
+  // 0. Verify default enables OA_EXP_COMPACT_PRESERVE (shipped from Compact-Bench 2610.31710).
+  #assert FWW_DEFAULT_EXP_COMPACT_PRESERVE == true;
+
+  // 1. Structured entity/state-preserving compaction retains deep identifiers past byte 220 and tool output tails.
+  h: [1] FwHist;
+  tmp: [65536] u8;
+  long_req := "Please review the repository history carefully and prepare an upcoming maintenance update. There is plenty of background narrative here so that the exact critical identifiers sit well beyond byte 240 of this message: target commit 9f4c2b8e1a for ticket OA-7429 updating config/rate_limits.json with key BURST_QUOTA_V3 set to 4250.";
+  fww_hist_push_user(h[..], long_req);
+  fww_hist_push_assistant_text(h[..], "Acknowledged, inspecting workspace now.");
+  // Add a ToolResult with 300 bytes of banner noise followed by a critical tail token
+  h[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+  a0 := [1] int.[0];
+  nm_n := fww_slab_put(h[..], "Bash", a0[..]); nm_at := a0[0];
+  banner := "INFO step 1/5 initializing diagnostic pipeline... INFO step 2/5 loading schema... INFO step 3/5 checking codecs... INFO step 4/5 scanning inputs... INFO step 5/5 finalizing... RESULT: DIAG_TOKEN=DELTA-8841 in parser.py";
+  tx_n := fww_slab_put(h[..], banner, a0[..]); tx_at := a0[0];
+  h[0].msgs[2].blocks[0] = FwBlock.{kind = FWW_MB_TOOL_RES, name_at = nm_at, name_n = nm_n, text_at = tx_at, text_n = tx_n};
+  h[0].nmsgs = 3;
+
+  // Run with OA_EXP_COMPACT_PRESERVE enabled
+  h[0].exp_compact_preserve = true;
+  ok_p := fww_hist_compact_ex(h[..], -1, 0, 0, 0, 10240, tmp[..]);
+  #assert ok_p && h[0].nmsgs == 1;
+  s_p := fww_slab_str(h[..], h[0].msgs[0].blocks[0].text_at, h[0].msgs[0].blocks[0].text_n);
+  #assert fww_contains_ci(s_p, "[Preserved Exact Identifiers & Paths]");
+  #assert fww_contains_ci(s_p, "9f4c2b8e1a");
+  #assert fww_contains_ci(s_p, "OA-7429");
+  #assert fww_contains_ci(s_p, "config/rate_limits.json");
+  #assert fww_contains_ci(s_p, "BURST_QUOTA_V3");
+  #assert fww_contains_ci(s_p, "4250");
+  #assert fww_contains_ci(s_p, "DIAG_TOKEN=DELTA-8841");
+
+  // 2. MemTrace state-consistency validation (pure compile-time check of edit-epoch superseding & alignment)
+  h2: [1] FwHist;
+  h2[0].exp_memtrace = true;
+  h2[0].trace_files[0] = FwTraceFile.{disk_hash = fww_trace_hash_bytes("MAX_RETRIES = 3\n"), exists_then = true, edited = false, seq = 1};
+  h2[0].trace_files[0].npath = fww_keep(h2[0].trace_files[0].path[..], "config.py");
+  h2[0].ntrace_files = 1;
+  h2[0].trace_cmds[0] = FwTraceCmd.{exit_ok = true, seq = 2, edit_epoch = 0, repo_hash = 0};
+  h2[0].trace_cmds[0].ncmd = fww_keep(h2[0].trace_cmds[0].cmd[..], "python3 -m unittest -q");
+  h2[0].ntrace_cmds = 1;
+  h2[0].trace_edit_epoch = 0;
+  fww_hist_push_user(h2[..], "Check config.py and run tests.");
+  fww_hist_push_assistant_text(h2[..], "Tests pass.");
+
+  rep1: [4096] u8;
+  rn1 := fww_emit_memtrace_report(h2[..], rep1[..], 0, 4096);
+  rs1 := cast(string) rep1[0..<rn1];
+  #assert fww_contains_ci(rs1, "FILE ALIGNED");
+  #assert fww_contains_ci(rs1, "CMD VALID");
+
+  // Simulate post-test edit incrementing edit_epoch before compaction
+  h2[0].trace_files[0].edited = true;
+  h2[0].trace_edit_epoch = 1;
+  ok_m := fww_hist_compact_ex(h2[..], -1, 0, 0, 0, 10240, tmp[..]);
+  #assert ok_m && h2[0].nmsgs == 1;
+  s_m := fww_slab_str(h2[..], h2[0].msgs[0].blocks[0].text_at, h2[0].msgs[0].blocks[0].text_n);
+  #assert fww_contains_ci(s_m, "FILE EDITED & ALIGNED ON DISK");
+  #assert fww_contains_ci(s_m, "CMD SUPERSEDED / INVALIDATED");
+  // 3. Verify Desktop skills-prefixed slash command unwrapping
+  #assert fww_unwrap_slash_cmd("/compact all") == "/compact all";
+  #assert fww_unwrap_slash_cmd("Skills installed on this computer.\n- foo: bar\n\nThe message:\n/compact all") == "/compact all";
+  #assert fww_unwrap_slash_cmd("Skills installed on this computer.\n- foo: bar\n\nThe message:\n/clear") == "/clear";
+
+  // 4. Verify Complexity Trap (2508.21433) epoch-aligned observation masking preserves recent M tool turns & extracts anchors.
+  h3: [1] FwHist;
+  h3[0].exp_obs_mask = true;
+  fww_hist_push_user(h3[..], "Inspect four large logs.");
+  big_obs: [5000] u8;
+  bn := fww_cat(big_obs[..], 0, "HEADER ");
+  while bn < 4500 { bn = fww_cat(big_obs[..], bn, "verbose noise line 000000000000000000000000000000\n"); }
+  bn = fww_cat(big_obs[..], bn, "CRITICAL_KEY_V9=ALPHA-9921 in services/worker.py\n");
+  big_s := cast(string) big_obs[0..<bn];
+  for step: 0..<4 {
+    fww_hist_push_assistant_text(h3[..], "Reading log.");
+    mi := h3[0].nmsgs;
+    h3[0].msgs[mi] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+    a1 := [1] int.[0];
+    nm_n3 := fww_slab_put(h3[..], "Read", a1[..]); nm_at3 := a1[0];
+    tx_n3 := fww_slab_put(h3[..], big_s, a1[..]); tx_at3 := a1[0];
+    h3[0].msgs[mi].blocks[0] = FwBlock.{kind = FWW_MB_TOOL_RES, name_at = nm_at3, name_n = nm_n3, text_at = tx_at3, text_n = tx_n3};
+    h3[0].nmsgs += 1;
+  }
+  // Local mode keeps M=2 recent tool turns and masks the older 2 (>4096 bytes) while preserving CRITICAL_KEY_V9=ALPHA-9921.
+  did_mask := fww_obs_mask_epoch(h3[..], true);
+  #assert did_mask;
+  old_tr := fww_slab_str(h3[..], h3[0].msgs[2].blocks[0].text_at, h3[0].msgs[2].blocks[0].text_n);
+  rec_tr := fww_slab_str(h3[..], h3[0].msgs[8].blocks[0].text_at, h3[0].msgs[8].blocks[0].text_n);
+  #assert flawed_aw_starts(old_tr, "[Observation masked: Read, ");
+  #assert fww_contains_ci(old_tr, "CRITICAL_KEY_V9=ALPHA-9921");
+  #assert fww_contains_ci(old_tr, "services/worker.py");
+  #assert rec_tr.count == big_s.count;
+  // Calling again immediately is a no-op (cache-stable between epochs!).
+  #assert !fww_obs_mask_epoch(h3[..], true);
+
+  // 5. Verify PMCoder III-E Edit Integrity JSON check catches malformed JSON and passes valid JSON.
+  #assert fww_edit_integrity_json_ok("{\"ok\": true, \"n\": 42}");
+  #assert !fww_edit_integrity_json_ok("{\"ok\": true, \"n\": 42,}");
+  #assert !fww_edit_integrity_json_ok("{\"unclosed\": [1, 2");
 }

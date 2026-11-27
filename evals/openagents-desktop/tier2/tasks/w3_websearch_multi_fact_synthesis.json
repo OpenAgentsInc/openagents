@@ -1,0 +1,38 @@
+{
+  "id": "w3_websearch_multi_fact_synthesis",
+  "category": "web_search",
+  "fixture": "blank",
+  "description": "Uses WebSearch to verify current Model Context Protocol Streamable HTTP transport and Exa contents endpoint, synthesizing with citations",
+  "steps": [
+    {
+      "send": "Use WebSearch to confirm (1) what HTTP transport replaced HTTP+SSE in the 2025 Model Context Protocol specification, and (2) what REST endpoint path Exa uses to fetch page contents for a list of URLs. Give a brief answer with source URLs."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command_matching",
+      "text": ["WebSearch "],
+      "exit": 0,
+      "min": 1
+    },
+    {
+      "type": "reply_contains",
+      "text": ["Streamable HTTP", "/contents", "https://"],
+      "ci": true
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 150000,
+  "timeout_s": 120
+}

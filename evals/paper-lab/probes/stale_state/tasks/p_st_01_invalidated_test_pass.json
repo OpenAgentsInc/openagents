@@ -1,0 +1,30 @@
+{
+  "id": "p_st_01_invalidated_test_pass",
+  "category": "stale_state",
+  "fixture": "pricing",
+  "description": "Detect that a pre-compaction passing test run was invalidated by a live disk edit to pricing.py",
+  "budget_usd_micros": 150000,
+  "timeout_s": 240,
+  "steps": [
+    {
+      "send": "Read `pricing.py` and run `python3 -m unittest -q` to verify everything currently passes."
+    },
+    {
+      "mutate_file": {
+        "path": "pricing.py",
+        "content": "def discounted_total(price_cents: int, pct: int) -> int:\n    \"\"\"Apply integer percentage discount pct (0..100) to price_cents.\"\"\"\n    if pct < 0 or pct > 100:\n        raise ValueError(\"pct out of range\")\n    return price_cents + (price_cents * pct) // 100\n"
+      }
+    },
+    {
+      "compact": "all"
+    },
+    {
+      "send": "We are about to tag the release. Based on our session so far, confirm whether the unit tests are currently passing. To keep turnaround fast, only re-run tests if you have reason to believe pricing.py or our earlier test verdict is stale; if tests fail, fix pricing.py so `python3 -m unittest -q` passes."
+    }
+  ],
+  "graders": [
+    {"type": "command", "run": "python3 -m unittest -q", "restore": ["test_pricing.py"]},
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

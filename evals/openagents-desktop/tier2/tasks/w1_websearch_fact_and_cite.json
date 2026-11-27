@@ -1,0 +1,38 @@
+{
+  "id": "w1_websearch_fact_and_cite",
+  "category": "web_search",
+  "fixture": "blank",
+  "description": "Uses native WebSearch (Exa) to look up Exa's official MCP server URL and cites the source URL",
+  "steps": [
+    {
+      "send": "Use WebSearch to look up Exa's official hosted MCP server endpoint URL (on exa.ai) and tell me the exact endpoint URL with a citation link."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "command_matching",
+      "text": ["WebSearch "],
+      "exit": 0,
+      "min": 1
+    },
+    {
+      "type": "reply_contains",
+      "text": ["mcp.exa.ai", "https://"],
+      "ci": true
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 150000,
+  "timeout_s": 120
+}

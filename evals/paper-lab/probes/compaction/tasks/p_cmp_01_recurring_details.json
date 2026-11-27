@@ -1,0 +1,35 @@
+{
+  "id": "p_cmp_01_recurring_details",
+  "category": "compaction",
+  "fixture": "rate_limits",
+  "description": "Preserve 5 exact identifiers buried past byte 250 across forced full compaction",
+  "budget_usd_micros": 150000,
+  "timeout_s": 240,
+  "steps": [
+    {
+      "send": "We are preparing a scheduled maintenance rollout for the Edge Gateway service after reviewing quarterly traffic spikes across multiple regional clusters and verifying backwards compatibility with existing clients. Please keep these exact rollout parameters in mind for our upcoming edit step: baseline commit SHA 9f4c2b8e1a, tracking ticket OA-7429, target file config/rate_limits.json, exact new JSON key BURST_QUOTA_V3, and exact integer value 4250. Do NOT edit any files yet and do NOT echo or repeat those parameters back — first read README.md and reply with ONLY the owning team name in one short sentence."
+    },
+    {
+      "send": "List the files in this repository."
+    },
+    {
+      "compact": "all"
+    },
+    {
+      "send": "Now apply the maintenance rollout specified in turn 1: update config/rate_limits.json to add the exact new quota key and integer value, and write RELEASE_NOTE.md citing the exact baseline commit SHA, tracking ticket ID, quota key name, and integer value."
+    }
+  ],
+  "graders": [
+    {
+      "type": "command",
+      "run": "python3 -c \"import json; d=json.load(open('config/rate_limits.json')); assert d.get('BURST_QUOTA_V3') == 4250, d\""
+    },
+    {
+      "type": "file_contains",
+      "path": "RELEASE_NOTE.md",
+      "text": ["9f4c2b8e1a", "OA-7429", "BURST_QUOTA_V3", "4250"]
+    },
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

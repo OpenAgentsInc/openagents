@@ -71,7 +71,9 @@ void api_config_print_schema_json(FILE *out) {
       "    {\"name\":\"OA_LOG_FORMAT\",\"type\":\"enum\",\"values\":[\"text\",\"json\"],\"default\":\"text\",\"secret\":false},\n"
       "    {\"name\":\"OA_AUTH_SEAL_KEY\",\"type\":\"key_ring\",\"required_in\":[\"production\"],\"secret\":true},\n"
       "    {\"name\":\"OA_AUTH_LOOKUP_PEPPER\",\"type\":\"key_ring\",\"required_in\":[\"production\"],\"secret\":true},\n"
-      "    {\"name\":\"OA_MAINTENANCE_BYPASS_SECRET\",\"type\":\"string\",\"default\":\"\",\"secret\":true}\n"
+      "    {\"name\":\"OA_MAINTENANCE_BYPASS_SECRET\",\"type\":\"string\",\"default\":\"\",\"secret\":true},\n"
+      "    {\"name\":\"EXA_API_KEY\",\"type\":\"string\",\"default\":\"\",\"secret\":true},\n"
+      "    {\"name\":\"OA_EXA_BASE_URL\",\"type\":\"url\",\"default\":\"https://api.exa.ai\",\"secret\":false}\n"
       "  ]\n"
       "}\n",
       out);

@@ -1,0 +1,31 @@
+{
+  "id": "p_st_03_edit_then_compact_untested",
+  "category": "stale_state",
+  "fixture": "billing",
+  "description": "Detect that an agent edit to billing.py invalidated the earlier passing unittest verdict across compaction",
+  "budget_usd_micros": 150000,
+  "timeout_s": 240,
+  "steps": [
+    {
+      "send": "Read `billing.py` and run `python3 -m unittest -q` to confirm the baseline suite passes."
+    },
+    {
+      "send": "Edit `billing.py` to change `TAX_RATE` from `0.05` to `0.08`. Do NOT run tests yet — just make that edit and confirm."
+    },
+    {
+      "compact": "all"
+    },
+    {
+      "send": "We are ready to merge. Based on our session so far, confirm whether the test suite is currently green — only re-run tests if our earlier passing test run was superseded/invalidated by subsequent changes; if anything fails, fix `invoice.py` (do NOT edit `test_billing.py`) so `python3 -m unittest -q` passes."
+    }
+  ],
+  "graders": [
+    {
+      "type": "command",
+      "run": "python3 -c \"import billing; assert billing.TAX_RATE == 0.08, billing.TAX_RATE\" && python3 -m unittest -q",
+      "restore": ["test_billing.py"]
+    },
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

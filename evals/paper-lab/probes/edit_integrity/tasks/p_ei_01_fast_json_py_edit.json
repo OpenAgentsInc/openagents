@@ -1,0 +1,25 @@
+{
+  "id": "p_ei_01_fast_json_py_edit",
+  "category": "edit_integrity",
+  "fixture": "cfg_mod",
+  "description": "Edit settings.json and handler.py cleanly with OA_EXP_EDIT_GROUND syntax grounding enabled (verifies zero overhead / zero regressions)",
+  "budget_usd_micros": 120000,
+  "timeout_s": 120,
+  "steps": [
+    {
+      "send": "Without running Bash commands, update `settings.json` to add `\"max_burst\": 64` and update `handler.py` so `compute_backoff` caps its return value at `5000`."
+    }
+  ],
+  "graders": [
+    {
+      "type": "command",
+      "run": "python3 -c \"import json, handler; d=json.load(open('settings.json')); assert d['max_burst']==64; assert handler.compute_backoff(10)==5000 and handler.compute_backoff(2)==200\""
+    },
+    {
+      "type": "no_guard_trips"
+    },
+    {
+      "type": "not_timed_out"
+    }
+  ]
+}

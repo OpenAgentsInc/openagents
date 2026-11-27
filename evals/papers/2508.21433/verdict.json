@@ -1,0 +1,112 @@
+{
+  "created": "2026-11-27T05:13:48Z",
+  "git_sha": "fb614edecc",
+  "run_dir": "/Users/christopherdavid/.openagents/worktrees/openagents-f007af61/e270feec-cc80-46d2-898d-c63490ca05f7/evals/openagents-desktop/results/paper-lab/2508.21433-20261127T051023Z-fb614edecc",
+  "verdict": "KILL-CLOUD",
+  "verdict_reason": "Prompt-cache trap on cloud: total tokens fell -41.0% and wall -60.4%, but cache hit rate dropped -26.0 pp (83.2% -> 57.2%), raising USD cost +22.3% ($0.4740 -> $0.5798) with 1 damaged case (budget cap hit earlier). Keep off on cloud; candidate for local 32K Inkling only.",
+  "hypothesis": {
+    "paper_id": "2508.21433",
+    "name": "The Complexity Trap: Epoch-Aligned Observation Masking",
+    "claim": "Batch-masking older verbose tool observations outside a rolling window while preserving user intent, assistant reasoning, tool args, and extracted anchors cuts input tokens and cost without losing accuracy.",
+    "axes": [
+      "long_obs"
+    ],
+    "base_env": {},
+    "exp_env": {
+      "OA_EXP_OBS_MASK": "1"
+    },
+    "models": [
+      "gemini-4-neon"
+    ],
+    "trials": 1,
+    "effort": "low",
+    "worker": "oa-worker"
+  },
+  "models": [
+    {
+      "model": "gemini-4-neon",
+      "trials": 1,
+      "paired": {
+        "rescued": 0,
+        "preserved": 1,
+        "damaged": 1,
+        "still_failed": 0,
+        "net_gain": -1
+      },
+      "base": {
+        "total_trials_cases": 2,
+        "passed": 2,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 675945,
+        "output_tokens": 3273,
+        "total_tokens": 679218,
+        "cached_tokens": 562443,
+        "cache_hit_pct": 83.2,
+        "cost_usd_micros": 473966,
+        "wall_ms": 194851,
+        "turns": 11,
+        "tool_calls": 5,
+        "pass_pow_k_pct": 100.0
+      },
+      "exp": {
+        "total_trials_cases": 2,
+        "passed": 1,
+        "pass_at_1_pct": 50.0,
+        "input_tokens": 398151,
+        "output_tokens": 2293,
+        "total_tokens": 400444,
+        "cached_tokens": 227751,
+        "cache_hit_pct": 57.2,
+        "cost_usd_micros": 579758,
+        "wall_ms": 77168,
+        "turns": 10,
+        "tool_calls": 2,
+        "pass_pow_k_pct": 50.0
+      },
+      "deltas": {
+        "pass_at_1_pp": -50.0,
+        "pass_pow_k_pp": -50.0,
+        "cache_hit_pp": -26.0,
+        "tokens_pct": -41.0,
+        "wall_pct": -60.4,
+        "cost_pct": 22.3,
+        "turns_delta": -1,
+        "tool_calls_delta": -3
+      },
+      "tasks": [
+        {
+          "id": "p_lo_01_multi_log_audit",
+          "axis": "long_obs",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 0,
+          "base_pass_all": true,
+          "exp_pass_all": false,
+          "delta_passes": -1,
+          "base_wall_ms_avg": 131671,
+          "exp_wall_ms_avg": 41595,
+          "base_tokens_avg": 385076,
+          "exp_tokens_avg": 214759,
+          "base_cost_micros_avg": 260669,
+          "exp_cost_micros_avg": 313201
+        },
+        {
+          "id": "p_lo_02_noisy_trace_audit",
+          "axis": "long_obs",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 63180,
+          "exp_wall_ms_avg": 35573,
+          "base_tokens_avg": 294142,
+          "exp_tokens_avg": 185685,
+          "base_cost_micros_avg": 213297,
+          "exp_cost_micros_avg": 266557
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "id": "p_sth_02_external_config_drift",
+  "category": "stale_state_hard",
+  "fixture": "deploy_cfg",
+  "description": "External disk mutation changes config.py before compaction; agent only re-reads if compaction flags drift",
+  "budget_usd_micros": 150000,
+  "timeout_s": 180,
+  "steps": [
+    {
+      "send": "Read `config.py` and summarize the current `MAX_RETRIES`, `TIMEOUT_MS`, and `REGION` settings."
+    },
+    {
+      "mutate_file": {
+        "path": "config.py",
+        "content": "MAX_RETRIES = 9\nTIMEOUT_MS = 4500\nREGION = \"eu-central-1\"\n"
+      }
+    },
+    {
+      "compact": "all"
+    },
+    {
+      "send": "To avoid redundant tool calls, answer directly from our earlier context UNLESS the compacted state explicitly warns that `config.py` changed or is stale on disk (in which case re-read `config.py` first). Report the exact current `MAX_RETRIES`, `TIMEOUT_MS`, and `REGION`."
+    }
+  ],
+  "graders": [
+    {
+      "type": "reply_contains",
+      "text": [
+        "9",
+        "4500",
+        "eu-central-1"
+      ]
+    },
+    {
+      "type": "no_guard_trips"
+    },
+    {
+      "type": "not_timed_out"
+    }
+  ]
+}

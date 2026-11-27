@@ -1,0 +1,3 @@
+MAX_RETRIES = 3
+REGION = "us-east-1"
+SCHEMA_VER = 1

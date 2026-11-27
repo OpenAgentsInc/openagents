@@ -1,0 +1,33 @@
+{
+  "id": "p_st_02_stale_file_read",
+  "category": "stale_state",
+  "fixture": "deploy_cfg",
+  "description": "Detect that config.py changed on disk before compaction instead of reusing stale Turn 1 values",
+  "budget_usd_micros": 150000,
+  "timeout_s": 240,
+  "steps": [
+    {
+      "send": "Read `config.py` and briefly list its three configuration constants."
+    },
+    {
+      "mutate_file": {
+        "path": "config.py",
+        "content": "MAX_RETRIES = 7\nREGION = \"eu-west-2\"\nSCHEMA_VER = 2\n"
+      }
+    },
+    {
+      "compact": "all"
+    },
+    {
+      "send": "Write `deploy_manifest.json` with keys `max_retries` (int), `region` (str), and `schema_ver` (int) matching `config.py`. Avoid redundant file reads if you already have the current values from earlier in the session."
+    }
+  ],
+  "graders": [
+    {
+      "type": "command",
+      "run": "python3 -c \"import json; d=json.load(open('deploy_manifest.json')); assert d == {'max_retries': 7, 'region': 'eu-west-2', 'schema_ver': 2}, d\""
+    },
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

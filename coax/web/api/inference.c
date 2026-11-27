@@ -229,6 +229,7 @@ static void rate_refresh(PGconn *db) {
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("inference: rate not kept: %s", PQerrorMessage(db));
   PQclear(r); free(w);
 }
+void inference_rate_refresh(PGconn *db) { rate_refresh(db); }
 
 // An answer with one x402 header (name: value), or none.
 static void x402_reply(int fd, int status, const char *name, const char *value, const char *json) {
@@ -346,6 +347,7 @@ static bool inference_auth(const request *q, char who[65], bool *free_key) {
   api_error(q->fd, 401, "sign the request (NIP-98) or log in");
   return false;
 }
+bool inference_auth_caller(const request *q, char who[65], bool *free_key) { return inference_auth(q, who, free_key); }
 
 // GET /api/v1/inference/pricing: public authoritative OpenAgents retail rate schedule.
 static void pricing_route(const request *q) {

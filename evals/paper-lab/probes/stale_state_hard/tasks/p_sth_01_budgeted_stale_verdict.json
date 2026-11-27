@@ -1,0 +1,40 @@
+{
+  "id": "p_sth_01_budgeted_stale_verdict",
+  "category": "stale_state_hard",
+  "fixture": "pricing",
+  "description": "Pre-compaction test pass is invalidated by external mutation; agent is asked NOT to re-run tools unless context indicates staleness",
+  "budget_usd_micros": 150000,
+  "timeout_s": 180,
+  "steps": [
+    {
+      "send": "Read `pricing.py` and run `python3 -m unittest -q`. Confirm whether all tests pass."
+    },
+    {
+      "mutate_file": {
+        "path": "pricing.py",
+        "content": "DISCOUNT_CAP = 0.10\n\ndef apply_discount(amount: float, pct: float) -> float:\n    eff = min(max(pct, 0.0), DISCOUNT_CAP)\n    return round(amount * (1.0 - eff), 2)\n"
+      }
+    },
+    {
+      "compact": "all"
+    },
+    {
+      "send": "To save time, do NOT re-read files or re-run tests unless the compacted context explicitly flags them as stale, modified, or superseded. Answer directly: what is the current `DISCOUNT_CAP` in `pricing.py`, and does `python3 -m unittest -q` currently pass or fail?"
+    }
+  ],
+  "graders": [
+    {
+      "type": "reply_contains",
+      "text": [
+        "0.10",
+        "fail"
+      ]
+    },
+    {
+      "type": "no_guard_trips"
+    },
+    {
+      "type": "not_timed_out"
+    }
+  ]
+}

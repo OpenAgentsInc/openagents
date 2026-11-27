@@ -1,0 +1,19 @@
+{
+  "id": "p_sp_01_coupled_three_file_invariant",
+  "category": "anti_spiral",
+  "fixture": "pipeline",
+  "description": "Fix coupled escaping/length/checksum invariant across codec.py and validator.py without breaking wire contract",
+  "budget_usd_micros": 150000,
+  "timeout_s": 240,
+  "steps": [
+    {
+      "send": "Run `python3 -m unittest -q`, diagnose the root cause across the framing modules (`codec.py`, `validator.py`, `router.py`), and fix the bugs so all tests in `test_pipeline.py` pass without editing `test_pipeline.py`."
+    }
+  ],
+  "graders": [
+    {"type": "command", "run": "python3 -m unittest -q", "restore": ["test_pipeline.py"]},
+    {"type": "files_unchanged", "paths": ["test_pipeline.py"]},
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

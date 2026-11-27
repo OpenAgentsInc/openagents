@@ -1,0 +1,112 @@
+{
+  "created": "2026-11-27T05:03:27Z",
+  "git_sha": "fb614edecc",
+  "run_dir": "/Users/christopherdavid/.openagents/worktrees/openagents-f007af61/e270feec-cc80-46d2-898d-c63490ca05f7/evals/openagents-desktop/results/paper-lab/2608.06811-20261127T050150Z-fb614edecc",
+  "verdict": "NEEDS-HARDER-PROBES",
+  "verdict_reason": "Baseline already passed >=85% with 0 rescues; harden probes before concluding.",
+  "hypothesis": {
+    "paper_id": "2608.06811",
+    "name": "PMCoder Anti-Spiral Phase Grounding",
+    "claim": "Cache-safe in-distribution BACKTRACK and VERIFICATION reminders on repeated failure/churn rescue coupled multi-file bugs without breaking prompt cache.",
+    "axes": [
+      "anti_spiral"
+    ],
+    "base_env": {},
+    "exp_env": {
+      "OA_EXP_PMCODER": "1"
+    },
+    "models": [
+      "gemini-4-neon"
+    ],
+    "trials": 1,
+    "effort": "low",
+    "worker": "oa-worker"
+  },
+  "models": [
+    {
+      "model": "gemini-4-neon",
+      "trials": 1,
+      "paired": {
+        "rescued": 0,
+        "preserved": 2,
+        "damaged": 0,
+        "still_failed": 0,
+        "net_gain": 0
+      },
+      "base": {
+        "total_trials_cases": 2,
+        "passed": 2,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 46531,
+        "output_tokens": 3027,
+        "total_tokens": 49558,
+        "cached_tokens": 23455,
+        "cache_hit_pct": 50.4,
+        "cost_usd_micros": 118153,
+        "wall_ms": 45520,
+        "turns": 2,
+        "tool_calls": 10,
+        "pass_pow_k_pct": 100.0
+      },
+      "exp": {
+        "total_trials_cases": 2,
+        "passed": 2,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 46631,
+        "output_tokens": 3154,
+        "total_tokens": 49785,
+        "cached_tokens": 22016,
+        "cache_hit_pct": 47.2,
+        "cost_usd_micros": 124458,
+        "wall_ms": 54848,
+        "turns": 2,
+        "tool_calls": 10,
+        "pass_pow_k_pct": 100.0
+      },
+      "deltas": {
+        "pass_at_1_pp": 0.0,
+        "pass_pow_k_pp": 0.0,
+        "cache_hit_pp": -3.2,
+        "tokens_pct": 0.5,
+        "wall_pct": 20.5,
+        "cost_pct": 5.3,
+        "turns_delta": 0,
+        "tool_calls_delta": 0
+      },
+      "tasks": [
+        {
+          "id": "p_sp_01_coupled_three_file_invariant",
+          "axis": "anti_spiral",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 25498,
+          "exp_wall_ms_avg": 26026,
+          "base_tokens_avg": 26601,
+          "exp_tokens_avg": 26583,
+          "base_cost_micros_avg": 61917,
+          "exp_cost_micros_avg": 66623
+        },
+        {
+          "id": "p_sp_02_trap_ttl_cache",
+          "axis": "anti_spiral",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 20022,
+          "exp_wall_ms_avg": 28822,
+          "base_tokens_avg": 22957,
+          "exp_tokens_avg": 23202,
+          "base_cost_micros_avg": 56236,
+          "exp_cost_micros_avg": 57835
+        }
+      ]
+    }
+  ]
+}

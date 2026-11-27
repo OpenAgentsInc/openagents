@@ -1,0 +1,54 @@
+{
+  "id": "p_lo_02_noisy_trace_audit",
+  "category": "long_obs",
+  "fixture": "pipeline_logs",
+  "description": "Read 4 bulky pipeline trace dumps across sequential turns, then fix normalizer.py and report exact incident/digest/release tokens",
+  "budget_usd_micros": 250000,
+  "timeout_s": 240,
+  "steps": [
+    {
+      "send": "Read `traces/run_a.txt` with Read and note the EVENT line."
+    },
+    {
+      "send": "Now Read `traces/run_b.txt` with Read and note the EVENT line."
+    },
+    {
+      "send": "Now Read `traces/run_c.txt` with Read and note the EVENT line."
+    },
+    {
+      "send": "Now Read `traces/run_d.txt` with Read and note the EVENT line."
+    },
+    {
+      "send": "Update `normalizer.py` so `MAX_ITEMS` and `clamp_batch` pass `python3 -m unittest -q`, and include the exact `INCIDENT_ID`, `AUDIT_DIGEST`, and `RELEASE_TAG` from the traces in your final reply."
+    }
+  ],
+  "graders": [
+    {
+      "type": "command",
+      "run": "python3 -m unittest -q",
+      "restore": [
+        "test_normalizer.py"
+      ]
+    },
+    {
+      "type": "reply_contains",
+      "text": [
+        "INC-5509",
+        "f3b7d10a8e",
+        "rel-2026.11-rc4"
+      ]
+    },
+    {
+      "type": "files_unchanged",
+      "paths": [
+        "test_normalizer.py"
+      ]
+    },
+    {
+      "type": "no_guard_trips"
+    },
+    {
+      "type": "not_timed_out"
+    }
+  ]
+}

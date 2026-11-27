@@ -1,0 +1,128 @@
+{
+  "created": "2026-11-27T04:54:45Z",
+  "git_sha": "fb614edecc",
+  "run_dir": "/Users/christopherdavid/.openagents/worktrees/openagents-f007af61/e270feec-cc80-46d2-898d-c63490ca05f7/evals/openagents-desktop/results/paper-lab/2610.31710-20261127T045129Z-fb614edecc",
+  "verdict": "SHIP",
+  "verdict_reason": "Clean win (+2 rescued, 0 damaged, wall -12.2%, cache +0.1 pp).",
+  "hypothesis": {
+    "paper_id": "2610.31710",
+    "name": "Compact-Bench Entity & State-Preserving Compaction",
+    "claim": "Preserving high-value exact identifiers, completed edits, and tool-output tails across compaction rescues recurring-detail and state-time-disorder failures without hurting latency or prompt cache.",
+    "axes": [
+      "compaction"
+    ],
+    "base_env": {},
+    "exp_env": {
+      "OA_EXP_COMPACT_PRESERVE": "1"
+    },
+    "models": [
+      "gemini-4-neon"
+    ],
+    "trials": 1,
+    "effort": "low",
+    "worker": "oa-worker"
+  },
+  "models": [
+    {
+      "model": "gemini-4-neon",
+      "trials": 1,
+      "paired": {
+        "rescued": 2,
+        "preserved": 1,
+        "damaged": 0,
+        "still_failed": 0,
+        "net_gain": 2
+      },
+      "base": {
+        "total_trials_cases": 3,
+        "passed": 1,
+        "pass_at_1_pct": 33.3,
+        "input_tokens": 132811,
+        "output_tokens": 3718,
+        "total_tokens": 136529,
+        "cached_tokens": 54495,
+        "cache_hit_pct": 41.0,
+        "cost_usd_micros": 298892,
+        "wall_ms": 154796,
+        "turns": 12,
+        "tool_calls": 16,
+        "pass_pow_k_pct": 33.3
+      },
+      "exp": {
+        "total_trials_cases": 3,
+        "passed": 3,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 123570,
+        "output_tokens": 3537,
+        "total_tokens": 127107,
+        "cached_tokens": 50842,
+        "cache_hit_pct": 41.1,
+        "cost_usd_micros": 278863,
+        "wall_ms": 135914,
+        "turns": 12,
+        "tool_calls": 16,
+        "pass_pow_k_pct": 100.0
+      },
+      "deltas": {
+        "pass_at_1_pp": 66.7,
+        "pass_pow_k_pp": 66.7,
+        "cache_hit_pp": 0.1,
+        "tokens_pct": -6.9,
+        "wall_pct": -12.2,
+        "cost_pct": -6.7,
+        "turns_delta": 0,
+        "tool_calls_delta": 0
+      },
+      "tasks": [
+        {
+          "id": "p_cmp_01_recurring_details",
+          "axis": "compaction",
+          "trials": 1,
+          "base_passed": 0,
+          "exp_passed": 1,
+          "base_pass_all": false,
+          "exp_pass_all": true,
+          "delta_passes": 1,
+          "base_wall_ms_avg": 32050,
+          "exp_wall_ms_avg": 42952,
+          "base_tokens_avg": 29762,
+          "exp_tokens_avg": 36228,
+          "base_cost_micros_avg": 70808,
+          "exp_cost_micros_avg": 83304
+        },
+        {
+          "id": "p_cmp_02_state_time_disorder",
+          "axis": "compaction",
+          "trials": 1,
+          "base_passed": 0,
+          "exp_passed": 1,
+          "base_pass_all": false,
+          "exp_pass_all": true,
+          "delta_passes": 1,
+          "base_wall_ms_avg": 73502,
+          "exp_wall_ms_avg": 53119,
+          "base_tokens_avg": 58859,
+          "exp_tokens_avg": 56002,
+          "base_cost_micros_avg": 129311,
+          "exp_cost_micros_avg": 118318
+        },
+        {
+          "id": "p_cmp_03_deep_error_tail",
+          "axis": "compaction",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 49244,
+          "exp_wall_ms_avg": 39843,
+          "base_tokens_avg": 47908,
+          "exp_tokens_avg": 34877,
+          "base_cost_micros_avg": 98773,
+          "exp_cost_micros_avg": 77241
+        }
+      ]
+    }
+  ]
+}

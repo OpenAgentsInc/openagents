@@ -1,0 +1,19 @@
+{
+  "id": "p_sp_02_trap_ttl_cache",
+  "category": "anti_spiral",
+  "fixture": "ttl_cache",
+  "description": "Fix absolute-TTL boundary and LRU eviction invariants across cache_store.py and evictor.py",
+  "budget_usd_micros": 150000,
+  "timeout_s": 240,
+  "steps": [
+    {
+      "send": "Run `python3 -m unittest -q`, diagnose all failures across `cache_store.py` and `evictor.py`, and fix them cleanly without modifying `test_cache.py`."
+    }
+  ],
+  "graders": [
+    {"type": "command", "run": "python3 -m unittest -q", "restore": ["test_cache.py"]},
+    {"type": "files_unchanged", "paths": ["test_cache.py"]},
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

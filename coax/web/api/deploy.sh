@@ -97,7 +97,7 @@ else
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in nostr-messaging projects-wire auth-identity-policy auth-identity-wire account-settings-wire account-chat-library-wire nip98 mesh-policy mesh-gemini router-wire caller-policy route-policy config-policy log-context maintenance-policy http-client-policy queue-policy lock-policy stream-policy anime-director-policy seat-policy progress-policy item-policy moderation-policy character-policy worldbuilder-policy npc-personas auth-policy account-chat-wire environment-wire chat-history-wire auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto auth-push ticket-sign service-policy service-wire realm-wire seat-wire jobs-wire email-wire packs-wire error-wire mesh-wire auth-wire auth-recover-wire auth-life-wire auth-device-wire passkeys-wire chat-wire player-wire rooms-wire lnaddr-wire makers-wire worldbuilder-wire world-policy script-store inference-upstream-policy; do
+for m in nostr-messaging projects-wire auth-identity-policy auth-identity-wire account-settings-wire account-chat-library-wire nip98 mesh-policy mesh-gemini router-wire caller-policy route-policy config-policy log-context maintenance-policy http-client-policy queue-policy lock-policy stream-policy anime-director-policy seat-policy progress-policy item-policy moderation-policy character-policy worldbuilder-policy npc-personas auth-policy account-chat-wire environment-wire chat-history-wire auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto auth-push ticket-sign service-policy service-wire realm-wire seat-wire jobs-wire email-wire packs-wire error-wire mesh-wire auth-wire auth-recover-wire auth-life-wire auth-device-wire passkeys-wire chat-wire player-wire rooms-wire lnaddr-wire makers-wire worldbuilder-wire world-policy script-store inference-upstream-policy exa-policy; do
   src="$m"; [[ "$m" != account-chat-wire ]] || src=account-chat-service
   "$work/source/coax/bin/coax" c "$here/$src.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
@@ -202,6 +202,8 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   env+="~OA_ROOM_CHECKPOINTS=1"
   # Email through Resend (email.c): the key, and on staging the only address mail may go to (the owner's).
   if gcloud secrets describe openagents-resend-api-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_RESEND_API_KEY=openagents-resend-api-key:latest"; fi
+  # Exa central metered web search & MCP proxy (exa.c, #14114, #14115).
+  if gcloud secrets describe oa-exa-api-key --project "$project" >/dev/null 2>&1; then secrets+=",EXA_API_KEY=oa-exa-api-key:latest"; fi
   # Seat tickets (player.c room_ticket): the key oa-room checks them with (coax/web/room/room-ticket.coax).
   if gcloud secrets describe oa-room-ticket-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest"; fi
   # Room keys (#13260, docs/deployment/room-keys.md): the v5 ticket signing key and the room-write master

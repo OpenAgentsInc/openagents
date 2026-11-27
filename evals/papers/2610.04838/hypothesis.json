@@ -1,0 +1,18 @@
+{
+  "paper_id": "2610.04838",
+  "name": "MemTrace Live State-Consistent Compaction",
+  "claim": "Re-hashing tracked workspace files and invalidating superseded command verdicts at compaction boundaries prevents stale-file and stale-test-pass hallucinations.",
+  "axes": [
+    "stale_state_hard"
+  ],
+  "base_env": {},
+  "exp_env": {
+    "OA_EXP_MEMTRACE": "1"
+  },
+  "models": [
+    "gemini-4-neon"
+  ],
+  "trials": 1,
+  "effort": "low",
+  "worker": "oa-worker"
+}

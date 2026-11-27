@@ -299,6 +299,7 @@ if [ "$TIER" = "0" ] || [ "$TIER" = "all" ]; then
   run_case 0 "page_coax_tests" coax/bin/coax test apps/openagents-desktop/page.coax --library
   run_case 0 "oa_worker_tests" coax/bin/coax test coder/tui/oa-worker.coax --library
   run_case 0 "openagents_core_wire_tests" coax/bin/coax test openagents/core/wire.coax --library
+  run_case 0 "exa_policy_tests" coax/bin/coax test coax/web/api/exa-policy.coax --library
   run_case 0 "router_policy_tests" coax/bin/coax test coax/lib/agent/router/policy.coax --library
   run_case 0 "mcworker_wire_tests" coax/bin/coax test coax/lib/agent/engine/mcworker-wire.coax --library
   run_case 0 "microcoder_tools_smoke" bash coax/lib/microcoder/tools_smoke.sh

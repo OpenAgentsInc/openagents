@@ -1,0 +1,96 @@
+{
+  "created": "2026-11-27T05:15:14Z",
+  "git_sha": "fb614edecc",
+  "run_dir": "/Users/christopherdavid/.openagents/worktrees/openagents-f007af61/e270feec-cc80-46d2-898d-c63490ca05f7/evals/openagents-desktop/results/paper-lab/2608.06811-edit-ground-20261127T051415Z-fb614edecc",
+  "verdict": "NEEDS-HARDER-PROBES",
+  "verdict_reason": "Baseline already passed >=85% with 0 rescues; harden probes before concluding.",
+  "hypothesis": {
+    "paper_id": "2608.06811-edit-ground",
+    "name": "PMCoder III-E Post-Edit Syntax Grounding",
+    "claim": "Zero-LLM-cost native JSON and Python AST syntax grounding after Edit/Write adds negligible latency, preserves prompt cache, and catches malformed edits immediately.",
+    "axes": [
+      "edit_integrity"
+    ],
+    "base_env": {},
+    "exp_env": {
+      "OA_EXP_EDIT_GROUND": "1"
+    },
+    "models": [
+      "gemini-4-neon"
+    ],
+    "trials": 1,
+    "effort": "low",
+    "worker": "oa-worker"
+  },
+  "models": [
+    {
+      "model": "gemini-4-neon",
+      "trials": 1,
+      "paired": {
+        "rescued": 0,
+        "preserved": 1,
+        "damaged": 0,
+        "still_failed": 0,
+        "net_gain": 0
+      },
+      "base": {
+        "total_trials_cases": 1,
+        "passed": 1,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 12379,
+        "output_tokens": 628,
+        "total_tokens": 13007,
+        "cached_tokens": 3623,
+        "cache_hit_pct": 29.3,
+        "cost_usd_micros": 36231,
+        "wall_ms": 14472,
+        "turns": 1,
+        "tool_calls": 2,
+        "pass_pow_k_pct": 100.0
+      },
+      "exp": {
+        "total_trials_cases": 1,
+        "passed": 1,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 12357,
+        "output_tokens": 632,
+        "total_tokens": 12989,
+        "cached_tokens": 3608,
+        "cache_hit_pct": 29.2,
+        "cost_usd_micros": 36268,
+        "wall_ms": 13614,
+        "turns": 1,
+        "tool_calls": 2,
+        "pass_pow_k_pct": 100.0
+      },
+      "deltas": {
+        "pass_at_1_pp": 0.0,
+        "pass_pow_k_pp": 0.0,
+        "cache_hit_pp": -0.1,
+        "tokens_pct": -0.1,
+        "wall_pct": -5.9,
+        "cost_pct": 0.1,
+        "turns_delta": 0,
+        "tool_calls_delta": 0
+      },
+      "tasks": [
+        {
+          "id": "p_ei_01_fast_json_py_edit",
+          "axis": "edit_integrity",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 14472,
+          "exp_wall_ms_avg": 13614,
+          "base_tokens_avg": 13007,
+          "exp_tokens_avg": 12989,
+          "base_cost_micros_avg": 36231,
+          "exp_cost_micros_avg": 36268
+        }
+      ]
+    }
+  ]
+}
