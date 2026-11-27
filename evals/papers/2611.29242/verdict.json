@@ -1,0 +1,120 @@
+{
+  "created": "2026-11-27T05:53:53Z",
+  "git_sha": "59f705073c",
+  "run_dir": "/Users/christopherdavid/.openagents/worktrees/openagents-f007af61/e270feec-cc80-46d2-898d-c63490ca05f7/evals/openagents-desktop/results/paper-lab/2611.29242-20261127T055137Z-59f705073c",
+  "verdict": "NEEDS-HARDER-PROBES",
+  "verdict_reason": "Baseline already passed >=85% with 0 rescues; harden probes before concluding.",
+  "hypothesis": {
+    "paper_id": "2611.29242",
+    "name": "DepSync Post-Edit Consumer Impact Hint",
+    "claim": "Appending untouched sibling consumer references after Edit cuts producer-to-consumer propagation omissions",
+    "axes": [
+      "dep_sync"
+    ],
+    "base_env": {},
+    "exp_env": {
+      "OA_EXP_DEP_SYNC": "1"
+    },
+    "models": [
+      "gemini-4-neon"
+    ],
+    "trials": 1,
+    "effort": "low",
+    "worker": "oa-worker"
+  },
+  "models": [
+    {
+      "model": "gemini-4-neon",
+      "trials": 1,
+      "paired": {
+        "rescued": 0,
+        "preserved": 2,
+        "damaged": 0,
+        "still_failed": 0,
+        "net_gain": 0
+      },
+      "base": {
+        "total_trials_cases": 2,
+        "passed": 2,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 50267,
+        "uncached_input_tokens": 29597,
+        "output_tokens": 3490,
+        "total_tokens": 53757,
+        "cached_tokens": 20670,
+        "cache_hit_pct": 41.1,
+        "pv_cost_c01": 45624.0,
+        "pv_cost_c10": 64227.0,
+        "cost_usd_micros": 144242,
+        "wall_ms": 70974,
+        "turns": 2,
+        "tool_calls": 12,
+        "pass_pow_k_pct": 100.0
+      },
+      "exp": {
+        "total_trials_cases": 2,
+        "passed": 2,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 49759,
+        "uncached_input_tokens": 32505,
+        "output_tokens": 3244,
+        "total_tokens": 53003,
+        "cached_tokens": 17254,
+        "cache_hit_pct": 34.7,
+        "pv_cost_c01": 47206.4,
+        "pv_cost_c10": 62735.0,
+        "cost_usd_micros": 148764,
+        "wall_ms": 78605,
+        "turns": 2,
+        "tool_calls": 12,
+        "pass_pow_k_pct": 100.0
+      },
+      "deltas": {
+        "pass_at_1_pp": 0.0,
+        "pass_pow_k_pp": 0.0,
+        "cache_hit_pp": -6.4,
+        "tokens_pct": -1.4,
+        "pv_c01_pct": 3.5,
+        "pv_c10_pct": -2.3,
+        "wall_pct": 10.8,
+        "cost_pct": 3.1,
+        "turns_delta": 0,
+        "tool_calls_delta": 0
+      },
+      "tasks": [
+        {
+          "id": "p_ds_01_ast_transformer_omission",
+          "axis": "dep_sync",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 29010,
+          "exp_wall_ms_avg": 24379,
+          "base_tokens_avg": 26284,
+          "exp_tokens_avg": 25819,
+          "base_cost_micros_avg": 66976,
+          "exp_cost_micros_avg": 68649
+        },
+        {
+          "id": "p_ds_02_serializer_omission",
+          "axis": "dep_sync",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 41964,
+          "exp_wall_ms_avg": 54226,
+          "base_tokens_avg": 27473,
+          "exp_tokens_avg": 27184,
+          "base_cost_micros_avg": 77266,
+          "exp_cost_micros_avg": 80115
+        }
+      ]
+    }
+  ]
+}

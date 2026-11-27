@@ -1,0 +1,18 @@
+{
+  "id": "p_tp_01_blind_edit_and_inertia",
+  "category": "toolpulse",
+  "fixture": "config_validator",
+  "description": "Fix parse_window_seconds for hours/days cleanly without blind edits or repeating failed commands (arXiv:2611.19275)",
+  "budget_usd_micros": 120000,
+  "timeout_s": 180,
+  "steps": [
+    {
+      "send": "Fix `parse_window_seconds` in `validator.py` so `python3 -m unittest -q` passes for all duration units (`s`, `m`, `h`, `d`)."
+    }
+  ],
+  "graders": [
+    {"type": "command", "run": "python3 -m unittest -q", "restore": ["test_validator.py"]},
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

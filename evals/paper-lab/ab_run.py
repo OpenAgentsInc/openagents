@@ -233,19 +233,26 @@ def aggregate_model_trials(
         tot_in = sum(t["total_input_tokens"] for t in trials)
         tot_out = sum(t["total_output_tokens"] for t in trials)
         tot_cached = sum(t["total_cached_tokens"] for t in trials)
+        tot_uncached = max(0, tot_in - tot_cached)
         tot_cost = sum(t["cost_usd_micros"] for t in trials)
         tot_wall = sum(t["wall_ms"] for t in trials)
         tot_turns = sum(t["turns"] for t in trials)
         tot_tools = sum(t["tool_calls"] for t in trials)
+        # arXiv:2611.22238 Eq. 1 three-stream price vector: U + c*C + p*O (p=4)
+        pv_c01 = round(tot_uncached + 0.1 * tot_cached + 4.0 * tot_out, 1)
+        pv_c10 = round(tot_uncached + 1.0 * tot_cached + 4.0 * tot_out, 1)
         return {
             "total_trials_cases": tot_cases,
             "passed": tot_pass,
             "pass_at_1_pct": round(100.0 * tot_pass / tot_cases, 1) if tot_cases else 0.0,
             "input_tokens": tot_in,
+            "uncached_input_tokens": tot_uncached,
             "output_tokens": tot_out,
             "total_tokens": tot_in + tot_out,
             "cached_tokens": tot_cached,
             "cache_hit_pct": round(100.0 * tot_cached / tot_in, 1) if tot_in else 0.0,
+            "pv_cost_c01": pv_c01,
+            "pv_cost_c10": pv_c10,
             "cost_usd_micros": tot_cost,
             "wall_ms": tot_wall,
             "turns": tot_turns,
@@ -267,6 +274,8 @@ def aggregate_model_trials(
         "pass_pow_k_pp": round(e_agg["pass_pow_k_pct"] - b_agg["pass_pow_k_pct"], 1),
         "cache_hit_pp": round(e_agg["cache_hit_pct"] - b_agg["cache_hit_pct"], 1),
         "tokens_pct": pct_delta(b_agg["total_tokens"], e_agg["total_tokens"]),
+        "pv_c01_pct": pct_delta(b_agg["pv_cost_c01"], e_agg["pv_cost_c01"]),
+        "pv_c10_pct": pct_delta(b_agg["pv_cost_c10"], e_agg["pv_cost_c10"]),
         "wall_pct": pct_delta(b_agg["wall_ms"], e_agg["wall_ms"]),
         "cost_pct": pct_delta(b_agg["cost_usd_micros"], e_agg["cost_usd_micros"]),
         "turns_delta": e_agg["turns"] - b_agg["turns"],
@@ -308,6 +317,7 @@ def decide_verdict(model_reports: list[dict[str, Any]], max_wall_pct: float, max
             and p["net_gain"] >= 0
             and r["exp"]["passed"] > 0
             and (d["tokens_pct"] <= -15.0 or d["cost_pct"] <= -15.0)
+            and d["cost_pct"] <= 0.0
             and d["wall_pct"] <= max_wall_pct
         )
 
@@ -332,11 +342,12 @@ def decide_verdict(model_reports: list[dict[str, Any]], max_wall_pct: float, max
 
     if local_r and cloud_r:
         lw = all(model_wins(r) for r in local_r)
+        lw_eff = all(model_wins(r) or model_efficiency_wins(r) for r in local_r)
         cw = all(model_wins(r) for r in cloud_r)
         if lw and cw:
             return "SHIP", "Positive net rescues with zero damaged cases and acceptable latency/cache tax on both local and cloud models."
-        if lw and not cw:
-            return "LOCAL-ONLY", "Clean win on local 32K Inkling without net benefit on cloud; gate behind local/small-context mode."
+        if lw_eff and not cw:
+            return "LOCAL-ONLY", "Clean accuracy or efficiency win on local 32K Inkling without net benefit on cloud; gate behind local/small-context mode."
         if cw and not lw:
             return "ITERATE", "Clean win on cloud model but not yet on local 32K Inkling; inspect damaged/failed local traces."
         if any(model_mixed(r) for r in model_reports):
@@ -383,6 +394,8 @@ def render_verdict_md(record: dict[str, Any]) -> str:
             f"| Pass@1 | {b['passed']}/{b['total_trials_cases']} ({b['pass_at_1_pct']:.1f}%) | {e['passed']}/{e['total_trials_cases']} ({e['pass_at_1_pct']:.1f}%) | **{d['pass_at_1_pp']:+.1f} pp** |",
             f"| Pass^{mr['trials']} (all trials) | {b['pass_pow_k_pct']:.1f}% | {e['pass_pow_k_pct']:.1f}% | {d['pass_pow_k_pp']:+.1f} pp |",
             f"| Prompt Cache Hit Rate | {b['cache_hit_pct']:.1f}% ({b['cached_tokens']}/{b['input_tokens']}) | {e['cache_hit_pct']:.1f}% ({e['cached_tokens']}/{e['input_tokens']}) | {d['cache_hit_pp']:+.1f} pp |",
+            f"| Price-Vector (c=0.1 cloud) | {b['pv_cost_c01']:,.0f} u | {e['pv_cost_c01']:,.0f} u | {d['pv_c01_pct']:+.1f}% |",
+            f"| Price-Vector (c=1.0 local) | {b['pv_cost_c10']:,.0f} u | {e['pv_cost_c10']:,.0f} u | {d['pv_c10_pct']:+.1f}% |",
             f"| Total Tokens (in+out) | {b['total_tokens']:,} ({b['input_tokens']:,}in/{b['output_tokens']:,}out) | {e['total_tokens']:,} ({e['input_tokens']:,}in/{e['output_tokens']:,}out) | {d['tokens_pct']:+.1f}% |",
             f"| Wall Time (sum) | {b['wall_ms'] / 1000:.1f} s | {e['wall_ms'] / 1000:.1f} s | {d['wall_pct']:+.1f}% |",
             f"| Cost (USD) | {usd(b['cost_usd_micros'])} | {usd(e['cost_usd_micros'])} | {d['cost_pct']:+.1f}% |",
@@ -419,12 +432,16 @@ def main() -> int:
     ap.add_argument("--effort", default="medium", help="Reasoning effort override (default medium for fast iteration)")
     ap.add_argument("--timeout-floor", type=int, default=-1)
     ap.add_argument("-j", "--workers", type=int, default=3, help="Parallel task workers for cloud runs (default 3)")
+    ap.add_argument("--cache-isolated", action="store_true", help="Force serial task execution (-j 1) to prevent sibling prefix-cache cross-warming (arXiv:2611.22238 Sec. 2)")
     ap.add_argument("--max-wall-pct", type=float, default=35.0, help="Max allowed wall-time regression pct for SHIP")
     ap.add_argument("--max-cache-drop-pp", type=float, default=10.0, help="Max allowed cache-hit drop in percentage points for SHIP")
     ap.add_argument("--calibrate-base", action="store_true", help="Run ONLY BASE arm to verify probe difficulty band (20-70 pct)")
     ap.add_argument("--allow-dirty-host", action="store_true")
+    ap.add_argument("--merge-verdict", action="store_true", help="Merge new model reports into existing evals/papers/<paper>/verdict.json")
     ap.add_argument("--no-save-verdict", action="store_true", help="Do not write evals/papers/<paper>/verdict.{json,md}")
     args = ap.parse_args()
+    if args.cache_isolated:
+        args.workers = 1
 
     axes = [a.strip() for a in args.axis.split(",") if a.strip()]
     models = [m.strip() for m in args.models.split(",") if m.strip()]
@@ -477,6 +494,15 @@ def main() -> int:
             exp_trials.append(e_sum)
         model_reports.append(aggregate_model_trials(model, base_trials, exp_trials))
 
+    paper_dir = PAPERS_OUT_DIR / args.paper
+    existing_verdict_p = paper_dir / "verdict.json"
+    if args.merge_verdict and existing_verdict_p.exists():
+        prev = json.loads(existing_verdict_p.read_text())
+        new_models_set = {m["model"] for m in model_reports}
+        kept = [m for m in prev.get("models", []) if m.get("model") not in new_models_set]
+        model_reports = kept + model_reports
+        hypothesis["models"] = [m["model"] for m in model_reports]
+
     verdict, reason = decide_verdict(model_reports, args.max_wall_pct, args.max_cache_drop_pp)
     record = {
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -492,7 +518,6 @@ def main() -> int:
     (run_root / "verdict.md").write_text(md)
 
     if not args.no_save_verdict:
-        paper_dir = PAPERS_OUT_DIR / args.paper
         paper_dir.mkdir(parents=True, exist_ok=True)
         (paper_dir / "hypothesis.json").write_text(json.dumps(hypothesis, indent=2) + "\n")
         (paper_dir / "verdict.json").write_text(json.dumps(record, indent=2) + "\n")

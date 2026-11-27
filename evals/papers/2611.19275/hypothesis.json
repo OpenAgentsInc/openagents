@@ -1,0 +1,18 @@
+{
+  "paper_id": "2611.19275",
+  "name": "ToolPulse Deterministic Runtime Cueing",
+  "claim": "Zero-LLM-cost Blind-Edit and Failure-Inertia verbal reminders preserve pass rate with negligible token/latency tax",
+  "axes": [
+    "toolpulse"
+  ],
+  "base_env": {},
+  "exp_env": {
+    "OA_EXP_TOOLPULSE": "1"
+  },
+  "models": [
+    "gemini-4-neon"
+  ],
+  "trials": 1,
+  "effort": "low",
+  "worker": "oa-worker"
+}

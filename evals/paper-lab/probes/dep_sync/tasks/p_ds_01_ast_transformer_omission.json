@@ -1,0 +1,21 @@
+{
+  "id": "p_ds_01_ast_transformer_omission",
+  "category": "dep_sync",
+  "fixture": "query_ast",
+  "description": "Add null_handling to AggNode & SQL compiler without omitting NodeTransformer propagation (arXiv:2611.29242 Kysely pattern)",
+  "budget_usd_micros": 150000,
+  "timeout_s": 180,
+  "steps": [
+    {
+      "send": "Add an optional `null_handling: Optional[str] = None` field to `AggNode` in `nodes.py` (supporting values like `'IGNORE NULLS'` or `'RESPECT NULLS'`), and update `compile_agg` in `compiler.py` so when `node.null_handling` is set it renders `f'{node.func}({node.expr}) {node.null_handling}'`. Run `python3 -m unittest -q` to verify."
+    }
+  ],
+  "graders": [
+    {
+      "type": "command",
+      "run": "python3 -c \"from nodes import AggNode; from compiler import compile_agg; from transformer import NodeTransformer; n = AggNode(func='first_value', expr=' amount ', null_handling='IGNORE NULLS'); assert compile_agg(n) == 'first_value( amount ) IGNORE NULLS'; c = NodeTransformer().clone_node(n); assert getattr(c, 'null_handling', None) == 'IGNORE NULLS', f'transformer dropped null_handling: {c}'; assert compile_agg(c) == 'FIRST_VALUE(amount) IGNORE NULLS'\""
+    },
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}

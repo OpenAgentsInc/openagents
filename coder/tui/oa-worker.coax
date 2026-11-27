@@ -183,8 +183,12 @@ FwConfig :: struct {
   exp_compact_preserve: bool;  // Default On (OA_EXP_COMPACT_PRESERVE=0 disables): structured entity/state-preserving compaction (Compact-Bench 2610.31710)
   exp_memtrace: bool;          // Paper-Lab OA_EXP_MEMTRACE: live hash-validated trace restoration at compaction (MemTrace 2610.04838)
   exp_pmcoder: bool;           // Paper-Lab OA_EXP_PMCODER: cache-safe in-distribution anti-spiral phase grounding (PMCoder 2608.06811)
-  exp_obs_mask: bool;          // Paper-Lab OA_EXP_OBS_MASK: epoch-aligned anchor-preserving observation masking (Complexity Trap 2508.21433)
+  exp_obs_mask: bool;          // Paper-Lab OA_EXP_OBS_MASK: break-even epoch observation masking (2508.21433 + 2611.22238)
+  exp_obs_mask_c_pct: int;     // Paper-Lab OA_EXP_OBS_MASK_C_PCT: cached-token price ratio pct (-1 = auto: 100 local, 10 cloud)
   exp_edit_ground: bool;       // Paper-Lab OA_EXP_EDIT_GROUND: instant post-Edit/Write syntax grounding (PMCoder 2608.06811 III-E)
+  exp_dep_sync: bool;          // Paper-Lab OA_EXP_DEP_SYNC: post-Edit consumer impact hint (Edit-Induced Dependency Mismatch 2611.29242)
+  exp_toolpulse: bool;         // Paper-Lab OA_EXP_TOOLPULSE: deterministic Blind-Edit / Failure-Inertia / Repetition cueing (ToolPulse 2611.19275)
+  exp_faith_check: bool;       // Paper-Lab OA_EXP_FAITH_CHECK: end-of-turn receipt grounding check (2611.25760 + Epistemic Guard 2611.27095)
   max_turns: int;             // 0 = unlimited (capped at 64 safety)
   max_budget_micros: int;     // 0 = unlimited
   budget_s: int;              // 0 = no wall-clock pacing budget (set via FLAWED_BUDGET_S)
@@ -302,7 +306,11 @@ fww_load_config :: (cfg: [] FwConfig) {
   cfg[0].exp_memtrace = fww_env_bool("OA_EXP_MEMTRACE", false);
   cfg[0].exp_pmcoder = fww_env_bool("OA_EXP_PMCODER", false);
   cfg[0].exp_obs_mask = fww_env_bool("OA_EXP_OBS_MASK", false);
+  cfg[0].exp_obs_mask_c_pct = fww_env_int("OA_EXP_OBS_MASK_C_PCT", -1);
   cfg[0].exp_edit_ground = fww_env_bool("OA_EXP_EDIT_GROUND", false);
+  cfg[0].exp_dep_sync = fww_env_bool("OA_EXP_DEP_SYNC", false);
+  cfg[0].exp_toolpulse = fww_env_bool("OA_EXP_TOOLPULSE", false);
+  cfg[0].exp_faith_check = fww_env_bool("OA_EXP_FAITH_CHECK", false);
   cfg[0].max_turns = fww_env_int2("OA_AGENT_MAX_TURNS", "FLAWED_MAX_TURNS", 0);
   cfg[0].max_budget_micros = fww_env_int2("OA_AGENT_MAX_BUDGET_MICROS", "FLAWED_MAX_BUDGET_MICROS", 0);
   cfg[0].budget_s = fww_env_int2("OA_AGENT_BUDGET_S", "FLAWED_BUDGET_S", 0);
@@ -1083,6 +1091,7 @@ FwHist :: struct {
   exp_compact_preserve: bool;
   exp_memtrace: bool;
   exp_obs_mask: bool;
+  exp_obs_mask_c_pct: int;
   trace_cwd: [FS_PATH_MAX] u8; ntrace_cwd: int;
   trace_files: [FWW_TRACE_MAX_FILES] FwTraceFile; ntrace_files: int;
   trace_cmds: [FWW_TRACE_MAX_CMDS] FwTraceCmd; ntrace_cmds: int;
@@ -1909,10 +1918,24 @@ fww_emergency_compact :: (h: [] FwHist, level: int, ctx_win: int, tmp_buf: [] u8
       || fww_hist_compact_ex(h, 0, 0, 0, cap, 0, tmp_buf);
 }
 
-// Complexity Trap (arXiv:2508.21433) Epoch-Aligned Anchor-Preserving Observation Masking:
+// Context Has a Price (arXiv:2611.22238 Eq. 2) closed-form break-even check for observation removal:
+// Removing B bytes before a suffix of S bytes with R remaining requests and cached-token price ratio c = cache_c_pct / 100
+// pays iff: R * c * B > (1 - c) * S.
+fww_obs_mask_break_even :: (removed_b: int, suffix_b: int, rem_turns: int, cache_c_pct: int) -> bool {
+  if removed_b <= 0 || rem_turns <= 0 { return false; }
+  c := cache_c_pct;
+  if c < 0 { c = 10; }
+  if c >= 100 { return true; } // No prefix-cache discount (c=1.0, e.g. local 32K): any removal saves compute/window.
+  if c == 0 { return false; }
+  // Scale down to KiB-ish units to prevent any overflow on large trajectories.
+  rb := (removed_b + 63) / 64;
+  sb := (suffix_b + 63) / 64;
+  return rem_turns * c * rb > (100 - c) * sb;
+}
+
+// Complexity Trap (arXiv:2508.21433) + Context Has a Price (arXiv:2611.22238) Break-Even Epoch Observation Masking:
 // Keeps user intent, assistant thoughts, tool-use arguments, and the most recent M tool-result turns intact,
-// while batch-masking older bulky TOOL_RES observations once accumulated unmasked bytes cross an epoch threshold.
-// Batching by epoch preserves prompt-cache prefix stability between epochs while cutting multi-turn input tokens.
+// while batch-masking older bulky TOOL_RES observations ONLY when the break-even inequality R*c*B > (1-c)*S holds.
 fww_obs_mask_epoch :: (h: [] FwHist, is_local: bool) -> bool {
   keep_m := ifx is_local then 2 else 3;
   epoch_thresh := ifx is_local then 4096 else 12288;
@@ -1926,9 +1949,10 @@ fww_obs_mask_epoch :: (h: [] FwHist, is_local: bool) -> bool {
   if tot_tr <= keep_m { return false; }
   mask_limit := tot_tr - keep_m;
 
-  // Pass 1: measure accumulated unmasked older observation bytes.
+  // Pass 1: measure accumulated unmasked older observation bytes (B) AND suffix bytes (S) after first mutation point.
   seen_tr := 0;
   unmasked_bytes := 0;
+  first_mut_msg := -1;
   for i: 0..<h[0].nmsgs {
     if h[0].msgs[i].role != FWW_MROLE_TOOL_RESULTS { continue; }
     if seen_tr >= mask_limit { break; }
@@ -1938,12 +1962,28 @@ fww_obs_mask_epoch :: (h: [] FwHist, is_local: bool) -> bool {
       if bk.kind == FWW_MB_TOOL_RES && bk.text_n > min_blk {
         txt := fww_slab_str(h, bk.text_at, bk.text_n);
         if !flawed_aw_starts(txt, "[Observation masked:") {
+          if first_mut_msg < 0 { first_mut_msg = i; }
           unmasked_bytes += bk.text_n;
         }
       }
     }
   }
-  if unmasked_bytes < epoch_thresh { return false; }
+  if unmasked_bytes < epoch_thresh || first_mut_msg < 0 { return false; }
+
+  // Measure suffix bytes S from first_mut_msg onward (tokens whose prefix cache entry will be rebuilt once).
+  suffix_bytes := 0;
+  for i: first_mut_msg..<h[0].nmsgs {
+    for b: 0..<h[0].msgs[i].nblocks {
+      bk := h[0].msgs[i].blocks[b];
+      suffix_bytes += bk.text_n + bk.name_n + 16;
+    }
+  }
+  if suffix_bytes > unmasked_bytes { suffix_bytes -= unmasked_bytes; } else { suffix_bytes = 0; }
+  est_r := 28 - tot_tr;
+  if est_r < 8 { est_r = 8; }
+  c_pct := h[0].exp_obs_mask_c_pct;
+  if c_pct <= 0 { c_pct = ifx is_local then 100 else 10; }
+  if !fww_obs_mask_break_even(unmasked_bytes, suffix_bytes, est_r, c_pct) { return false; }
 
   // Pass 2: replace older bulky TOOL_RES blocks with compact anchor-preserving stubs.
   masked_any := false;
@@ -6075,6 +6115,16 @@ FwRun :: struct {
   pm_last_edit_hash: int;
   pm_same_file_churn: int;
   pm_backtracks: int;
+  // Paper-Lab OA_EXP_DEP_SYNC (2611.29242) + OA_EXP_TOOLPULSE (2611.19275) + OA_EXP_FAITH_CHECK (2611.25760/2611.27095)
+  dep_edited_hashes: [16] int; ndep_edited: int;
+  tp_viewed_files: [32] int; ntp_viewed: int;
+  tp_last_err_sig: int;
+  tp_err_inertia_cnt: int;
+  faith_retries: int;
+  faith_ran_test: bool;
+  faith_last_test_ok: bool;
+  faith_edited_after_test: bool;
+  faith_failed_edit_path: [256] u8; nfaith_failed_edit_path: int;
   active_pack: [32] u8; nactive_pack: int;
   active_tier: [32] u8; nactive_tier: int;
   missing_cap_hint: [64] u8; nmissing_cap_hint: int;
@@ -6664,6 +6714,309 @@ fww_edit_integrity_check :: (cwd: string, raw_path: string, out_res: [] u8, at: 
   return at;
 }
 
+// Edit-Induced Dependency Mismatch (arXiv:2611.29242) Post-Edit Consumer Impact Hint (OA_EXP_DEP_SYNC):
+// Extracts modified/added code identifiers from an Edit diff and scans sibling source files in cwd
+// to surface untouched consumer paths in-distribution (zero LLM calls, zero subprocesses, cache-safe).
+fww_dep_is_ident_char :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+fww_dep_is_stopword :: (s: string) -> bool {
+  if s.count < 4 || s.count > 48 { return true; }
+  if s[0] >= '0' && s[0] <= '9' { return true; }
+  return s == "return" || s == "import" || s == "from" || s == "class" || s == "async" || s == "await"
+      || s == "const" || s == "export" || s == "struct" || s == "string" || s == "float" || s == "false"
+      || s == "true" || s == "None" || s == "True" || s == "False" || s == "self" || s == "this"
+      || s == "while" || s == "break" || s == "continue" || s == "raise" || s == "except" || s == "finally"
+      || s == "yield" || s == "assert" || s == "print" || s == "super" || s == "value" || s == "error"
+      || s == "result" || s == "index" || s == "count" || s == "length" || s == "default" || s == "other"
+      || s == "function" || s == "interface" || s == "public" || s == "private" || s == "static" || s == "typedef"
+      || s == "kwargs" || s == "args" || s == "dict" || s == "list" || s == "tuple" || s == "bool" || s == "Optional";
+}
+
+fww_dep_str_has_ident :: (hay: string, ident: string) -> bool {
+  if ident.count == 0 || hay.count < ident.count { return false; }
+  i := 0;
+  lim := hay.count - ident.count;
+  while i <= lim {
+    m := true;
+    for j: 0..<ident.count {
+      if hay[i + j] != ident[j] { m = false; break; }
+    }
+    if m {
+      left_ok := i == 0 || !fww_dep_is_ident_char(hay[i - 1]);
+      right_ok := i + ident.count >= hay.count || !fww_dep_is_ident_char(hay[i + ident.count]);
+      if left_ok && right_ok { return true; }
+    }
+    i += 1;
+  }
+  return false;
+}
+
+fww_dep_extract_symbols :: (old_s: string, new_s: string, out_buf: [] u8, starts: [] int, lens: [] int, max_syms: int) -> int {
+  nsyms := 0;
+  ob_at := 0;
+  // Pass 1: identifiers added in new_s (not in old_s) — e.g. new fields, keys, arguments, methods.
+  // Pass 2: identifiers defined in old_s or new_s (following def/class/fn/func) whose contract may have changed.
+  for pass: 0..<2 {
+    src := ifx pass == 0 then new_s else old_s;
+    i := 0;
+    while i < src.count && nsyms < max_syms {
+      while i < src.count && !fww_dep_is_ident_char(src[i]) { i += 1; }
+      st := i;
+      while i < src.count && fww_dep_is_ident_char(src[i]) { i += 1; }
+      if i <= st { continue; }
+      tok := cast(string) src[st..<i];
+      if fww_dep_is_stopword(tok) { continue; }
+      take := false;
+      if pass == 0 {
+        if !fww_dep_str_has_ident(old_s, tok) { take = true; }
+        else if st >= 4 && cast(string) src[st - 4..<st] == "def " { take = true; }
+        else if st >= 6 && cast(string) src[st - 6..<st] == "class " { take = true; }
+        else if st >= 3 && cast(string) src[st - 3..<st] == "fn " { take = true; }
+      } else {
+        if !fww_dep_str_has_ident(new_s, tok) { take = true; }
+        else if st >= 4 && cast(string) src[st - 4..<st] == "def " { take = true; }
+        else if st >= 6 && cast(string) src[st - 6..<st] == "class " { take = true; }
+      }
+      if !take { continue; }
+      dup := false;
+      for k: 0..<nsyms {
+        if cast(string) out_buf[starts[k]..<starts[k] + lens[k]] == tok { dup = true; break; }
+      }
+      if dup || ob_at + tok.count + 2 > out_buf.count { continue; }
+      starts[nsyms] = ob_at;
+      lens[nsyms] = tok.count;
+      for j: 0..<tok.count { out_buf[ob_at + j] = tok[j]; }
+      ob_at += tok.count;
+      nsyms += 1;
+    }
+  }
+  return nsyms;
+}
+
+fww_dep_is_source_ext :: (ext: string) -> bool {
+  return ext == "py" || ext == "coax" || ext == "ts" || ext == "tsx" || ext == "js" || ext == "rs" || ext == "go";
+}
+
+fww_tp_has_hash :: (slots: [] int, n: int, h: int) -> bool {
+  if h == 0 { return false; }
+  lim := ifx n < slots.count then n else slots.count;
+  for i: 0..<lim { if slots[i] == h { return true; } }
+  return false;
+}
+
+fww_tp_add_hash :: (slots: [] int, n: [] int, h: int) {
+  if h == 0 || fww_tp_has_hash(slots, n[0], h) { return; }
+  if n[0] < slots.count {
+    slots[n[0]] = h;
+    n[0] += 1;
+  }
+}
+
+fww_dep_sync_check :: (cwd: string, raw_path: string, args_json: string, edited_hashes: [] int, nedited: int, out_res: [] u8, at: int) -> int {
+  if raw_path.count == 0 || cwd.count == 0 || at + 384 >= out_res.count { return at; }
+  ext_b: [32] u8;
+  ext := fww_path_ext_lower(raw_path, ext_b[..]);
+  if !fww_dep_is_source_ext(ext) { return at; }
+  // Skip test files — editing a test rarely has downstream production consumers.
+  base := fww_path_basename(raw_path);
+  if flawed_aw_starts(base, "test_") || fww_contains_ci(base, "_test.") || fww_contains_ci(base, ".test.") { return at; }
+
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) { return at; }
+  old_b: [4096] u8; new_b: [4096] u8;
+  on := jv_str(d[0], jv_get(d[0], 0, "old_string"), old_b[..]);
+  nn := jv_str(d[0], jv_get(d[0], 0, "new_string"), new_b[..]);
+  if on <= 0 && nn <= 0 { return at; }
+
+  sym_buf: [512] u8;
+  starts: [8] int;
+  lens: [8] int;
+  nsyms := fww_dep_extract_symbols(cast(string) old_b[0..<on], cast(string) new_b[0..<nn], sym_buf[..], starts[..], lens[..], 4);
+  edit_full_b: [FS_PATH_MAX] u8;
+  edit_full := fww_resolve_path(cwd, raw_path, edit_full_b[..]);
+  // Also harvest top-level class/def/struct declarations from the edited file itself so narrow field-addition edits
+  // still find downstream consumers referencing the enclosing type/function (e.g. AggNode in transformer.py).
+  if nsyms < 8 && edit_full.count > 0 {
+    ebuf: [16384] u8;
+    en := fs_read(edit_full, ebuf[..]);
+    if en > 0 && en < ebuf.count {
+      nsyms_base := nsyms;
+      // Scan line starts for "class ", "def ", "fn ", or " :: struct"
+      eb_s := cast(string) ebuf[0..<en];
+      ob_at := ifx nsyms > 0 then starts[nsyms - 1] + lens[nsyms - 1] else 0;
+      p := 0;
+      while p < eb_s.count && nsyms < 8 {
+        ls := p;
+        while p < eb_s.count && eb_s[p] != '\n' { p += 1; }
+        le := p;
+        if p < eb_s.count && eb_s[p] == '\n' { p += 1; }
+        line := cast(string) eb_s[ls..<le];
+        name_st := -1;
+        if flawed_aw_starts(line, "class ") { name_st = 6; }
+        else if flawed_aw_starts(line, "def ") { name_st = 4; }
+        else if flawed_aw_starts(line, "fn ") { name_st = 3; }
+        if name_st >= 0 && name_st < line.count {
+          ne := name_st;
+          while ne < line.count && fww_dep_is_ident_char(line[ne]) { ne += 1; }
+          if ne > name_st {
+            tok := cast(string) line[name_st..<ne];
+            if !fww_dep_is_stopword(tok) && ob_at + tok.count + 2 <= sym_buf.count {
+              dup := false;
+              for k: 0..<nsyms {
+                if cast(string) sym_buf[starts[k]..<starts[k] + lens[k]] == tok { dup = true; break; }
+              }
+              if !dup {
+                starts[nsyms] = ob_at;
+                lens[nsyms] = tok.count;
+                for j: 0..<tok.count { sym_buf[ob_at + j] = tok[j]; }
+                ob_at += tok.count;
+                nsyms += 1;
+              }
+            }
+          }
+        }
+      }
+      _ = nsyms_base;
+    }
+  }
+  if nsyms == 0 { return at; }
+
+  // Walk sibling source files in cwd (capped at 40 files, zero subprocesses).
+  list_b: [4096] u8;
+  lat := [1] int.[0];
+  lhits := [1] int.[0];
+  pat_b: [32] u8;
+  pn := fww_cat(pat_b[..], 0, "*.");
+  pn = fww_cat(pat_b[..], pn, ext);
+  fww_glob_walk(cwd, "", cast(string) pat_b[0..<pn], 0, list_b[..], lat[..], lhits[..], 40);
+  if lat[0] <= 0 { return at; }
+
+  hits_b: [768] u8;
+  hn := 0;
+  nfiles_hit := 0;
+  fbuf: [32768] u8;
+  pos := 0;
+  while pos < lat[0] && nfiles_hit < 5 {
+    nl := pos;
+    while nl < lat[0] && list_b[nl] != '\n' { nl += 1; }
+    rel := cast(string) list_b[pos..<nl];
+    pos = nl + 1;
+    if rel.count == 0 { continue; }
+    rb := fww_path_basename(rel);
+    if flawed_aw_starts(rb, "test_") || fww_contains_ci(rb, "_test.") || fww_contains_ci(rb, ".test.") { continue; }
+    cand_b: [FS_PATH_MAX] u8;
+    cand := fww_resolve_path(cwd, rel, cand_b[..]);
+    if cand == edit_full { continue; }
+    if fww_tp_has_hash(edited_hashes, nedited, fww_str_hash(cand)) { continue; }
+    fn := fs_read(cand, fbuf[..]);
+    if fn <= 0 || fn >= fbuf.count { continue; }
+    body := cast(string) fbuf[0..<fn];
+    matched_sym := "";
+    for k: 0..<nsyms {
+      sy := cast(string) sym_buf[starts[k]..<starts[k] + lens[k]];
+      if fww_dep_str_has_ident(body, sy) { matched_sym = sy; break; }
+    }
+    if matched_sym.count > 0 {
+      if nfiles_hit > 0 { hn = fww_cat(hits_b[..], hn, ", "); }
+      hn = fww_cat(hits_b[..], hn, rel);
+      hn = fww_cat(hits_b[..], hn, " (");
+      hn = fww_cat(hits_b[..], hn, matched_sym);
+      hn = fww_cat(hits_b[..], hn, ")");
+      nfiles_hit += 1;
+    }
+  }
+  if nfiles_hit == 0 { return at; }
+
+  rn := fww_cat(out_res, at, "\n[Consumer Impact (DepSync): edited symbol(s) also referenced in untouched file(s): ");
+  rn = fww_cat(out_res, rn, cast(string) hits_b[0..<hn]);
+  rn = fww_cat(out_res, rn, ". Inspect every consumer path (transformers, handlers, serializers, alternate callers) before finishing — do not rely on pre-edit assumptions.]");
+  return rn;
+}
+
+// ToolPulse (arXiv:2611.19275 Eq. 8-9) Error Signature for Failure Inertia detection:
+// Normalizes digits out of the diagnostic line so identical failures at slightly shifted lines/PIDs still match.
+fww_tp_err_sig :: (tool_name: string, res: string) -> int {
+  if res.count == 0 { return fww_str_hash(tool_name); }
+  // Pick the first line containing a diagnostic keyword, or fall back to the first non-empty line.
+  best_s := 0;
+  best_e := 0;
+  first_s := 0;
+  first_e := 0;
+  p := 0;
+  while p < res.count {
+    ls := p;
+    while p < res.count && res[p] != '\n' { p += 1; }
+    le := p;
+    if p < res.count && res[p] == '\n' { p += 1; }
+    line := fww_trim(cast(string) res[ls..<le]);
+    if line.count == 0 { continue; }
+    if first_e == 0 { first_s = ls; first_e = le; }
+    if fww_contains_ci(line, "error") || fww_contains_ci(line, "exception") || fww_contains_ci(line, "failed")
+       || fww_contains_ci(line, "not found") || fww_contains_ci(line, "denied") || fww_contains_ci(line, "mismatch") {
+      best_s = ls;
+      best_e = le;
+      break;
+    }
+  }
+  if best_e == 0 { best_s = first_s; best_e = first_e; }
+  norm: [256] u8;
+  nn := fww_cat(norm[..], 0, tool_name);
+  nn = fww_cat(norm[..], nn, "|");
+  for i: best_s..<best_e {
+    if nn >= norm.count { break; }
+    c := res[i];
+    if c >= '0' && c <= '9' { continue; }
+    if c == '\r' || c == '\t' { c = ' '; }
+    norm[nn] = c;
+    nn += 1;
+  }
+  return fww_str_hash(cast(string) norm[0..<nn]);
+}
+
+// Unfaithful Work Reports (arXiv:2611.25760) + Epistemic Guard (arXiv:2611.27095) End-of-Turn Receipt Grounding:
+// Verifies final assistant claims about passing tests/checks or completed file edits against deterministic turn receipts.
+fww_faith_claims_tests_pass :: (reply: string) -> bool {
+  // Guard against negated statements ("tests did not pass", "failing tests")
+  if fww_contains_ci(reply, "did not pass") || fww_contains_ci(reply, "do not pass")
+     || fww_contains_ci(reply, "not passing") || fww_contains_ci(reply, "still fail")
+     || fww_contains_ci(reply, "tests fail") || fww_contains_ci(reply, "test fail") {
+    return false;
+  }
+  return fww_contains_ci(reply, "all tests pass") || fww_contains_ci(reply, "tests pass")
+      || fww_contains_ci(reply, "tests are passing") || fww_contains_ci(reply, "all checks pass")
+      || fww_contains_ci(reply, "unit tests pass") || fww_contains_ci(reply, "test suite pass")
+      || fww_contains_ci(reply, "0 failed") || fww_contains_ci(reply, "all green")
+      || fww_contains_ci(reply, "passed successfully") || fww_contains_ci(reply, "verified passing");
+}
+
+fww_faith_check_reply :: (reply: string, has_edited: bool, ran_test: bool, last_test_ok: bool, edited_after_test: bool, failed_edit_path: string, out_msg: [] u8) -> int {
+  if reply.count == 0 { return 0; }
+  if fww_faith_claims_tests_pass(reply) {
+    if ran_test && !last_test_ok {
+      return fww_keep(out_msg, "[Receipt Grounding Check (FaithCheck)] Your reply states that tests/checks pass, but the most recent Bash command in this turn exited with an error. Run the test suite to verify the actual current status, fix any failure, and report only verified tool results.");
+    }
+    if edited_after_test {
+      return fww_keep(out_msg, "[Receipt Grounding Check (FaithCheck)] Your reply states that tests pass, but you edited file(s) AFTER your last Bash verification command. Re-run the test suite now against the current files on disk before reporting that tests pass.");
+    }
+    if !ran_test {
+      return fww_keep(out_msg, "[Receipt Grounding Check (FaithCheck)] Your reply states that tests/checks pass, but no Bash test/verification command was executed in this turn. Either run the test command now to verify, or state plainly that tests were not run.");
+    }
+  }
+  if failed_edit_path.count > 0 {
+    fb := fww_path_basename(failed_edit_path);
+    if fb.count > 0 && fww_contains_ci(reply, fb)
+       && (fww_contains_ci(reply, "updated") || fww_contains_ci(reply, "fixed") || fww_contains_ci(reply, "edited") || fww_contains_ci(reply, "modified") || fww_contains_ci(reply, "applied")) {
+      rn := fww_cat(out_msg, 0, "[Receipt Grounding Check (FaithCheck)] Your reply claims ");
+      rn = fww_cat(out_msg, rn, fb);
+      rn = fww_cat(out_msg, rn, " was updated/fixed, but the last Edit/Write to that file FAILED and no subsequent edit succeeded. Re-inspect and apply the edit cleanly (or report the failure honestly) before concluding.");
+      return rn;
+    }
+  }
+  return 0;
+}
+
 // Execute one tool call (after permission check passed). Returns true if async (Bash running).
 fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, idx: int, out: [] u8) -> bool {
   name := cast(string) r[0].acc[0].tools[idx].name[0..<r[0].acc[0].tools[idx].nname];
@@ -6735,25 +7088,61 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       r[0].acc[0].tools[idx].nimg = img_b64_n[0];
       r[0].acc[0].ntool_img_slab = img_at + img_b64_n[0];
     }
-  }
-  else if name == "Edit" {
-    rn = fww_tool_edit(cwd, args, fww_fc(b), r[0].read_dedup[..], b[0].file_buf[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out);
-    if !is_err[0] {
-      for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; }
-      if cfg[0].exp_edit_ground {
-        tp_b: [512] u8;
-        tp := fww_tool_target(name, args, tp_b[..]);
-        rn = fww_edit_integrity_check(cwd, tp, r[0].acc[0].tools[idx].res[..], rn);
+    if !is_err[0] && cfg[0].exp_toolpulse {
+      tp_b: [512] u8; full_b: [FS_PATH_MAX] u8;
+      tp := fww_tool_target(name, args, tp_b[..]);
+      fp := fww_resolve_path(cwd, tp, full_b[..]);
+      if fp.count > 0 {
+        nv := [1] int.[r[0].ntp_viewed];
+        fww_tp_add_hash(r[0].tp_viewed_files[..], nv[..], fww_str_hash(fp));
+        r[0].ntp_viewed = nv[0];
       }
     }
   }
+  else if name == "Edit" {
+    tp_b: [512] u8; full_b: [FS_PATH_MAX] u8;
+    tp := fww_tool_target(name, args, tp_b[..]);
+    fp := fww_resolve_path(cwd, tp, full_b[..]);
+    blind_edit := cfg[0].exp_toolpulse && fp.count > 0 && !fww_tp_has_hash(r[0].tp_viewed_files[..], r[0].ntp_viewed, fww_str_hash(fp));
+    rn = fww_tool_edit(cwd, args, fww_fc(b), r[0].read_dedup[..], b[0].file_buf[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out);
+    if !is_err[0] {
+      for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; }
+      if fp.count > 0 {
+        ne := [1] int.[r[0].ndep_edited];
+        fww_tp_add_hash(r[0].dep_edited_hashes[..], ne[..], fww_str_hash(fp));
+        r[0].ndep_edited = ne[0];
+      }
+      if cfg[0].exp_edit_ground {
+        rn = fww_edit_integrity_check(cwd, tp, r[0].acc[0].tools[idx].res[..], rn);
+      }
+      if cfg[0].exp_dep_sync {
+        rn = fww_dep_sync_check(cwd, tp, args, r[0].dep_edited_hashes[..], r[0].ndep_edited, r[0].acc[0].tools[idx].res[..], rn);
+      }
+    }
+    if blind_edit {
+      rn = fww_cat(r[0].acc[0].tools[idx].res[..], rn, "\n[ToolPulse: Blind Edit — you edited ");
+      rn = fww_cat(r[0].acc[0].tools[idx].res[..], rn, tp);
+      rn = fww_cat(r[0].acc[0].tools[idx].res[..], rn, " without reading it first. Inspect the file with Read before making further edits.]");
+    }
+  }
   else if name == "Write" {
+    tp_b: [512] u8; full_b: [FS_PATH_MAX] u8;
+    tp := fww_tool_target(name, args, tp_b[..]);
+    fp := fww_resolve_path(cwd, tp, full_b[..]);
     rn = fww_tool_write(cwd, args, fww_fc(b), r[0].read_dedup[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out);
     if !is_err[0] {
       for qi: 0..<r[0].query_dedup.count { r[0].query_dedup[qi] = 0; }
+      if fp.count > 0 {
+        ne := [1] int.[r[0].ndep_edited];
+        fww_tp_add_hash(r[0].dep_edited_hashes[..], ne[..], fww_str_hash(fp));
+        r[0].ndep_edited = ne[0];
+        if cfg[0].exp_toolpulse {
+          nv := [1] int.[r[0].ntp_viewed];
+          fww_tp_add_hash(r[0].tp_viewed_files[..], nv[..], fww_str_hash(fp));
+          r[0].ntp_viewed = nv[0];
+        }
+      }
       if cfg[0].exp_edit_ground {
-        tp_b: [512] u8;
-        tp := fww_tool_target(name, args, tp_b[..]);
         rn = fww_edit_integrity_check(cwd, tp, r[0].acc[0].tools[idx].res[..], rn);
       }
     }
@@ -6939,8 +7328,23 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
         if eh == r[0].pm_last_edit_hash { r[0].pm_same_file_churn += 1; }
         else { r[0].pm_last_edit_hash = eh; r[0].pm_same_file_churn = 1; }
       }
+      if cfg[0].exp_toolpulse {
+        // State-changing action resets Failure Inertia (ToolPulse Eq. 9: z_j in L_change)
+        r[0].tp_last_err_sig = 0;
+        r[0].tp_err_inertia_cnt = 0;
+      }
+      if cfg[0].exp_faith_check {
+        r[0].faith_edited_after_test = true;
+        if r[0].nfaith_failed_edit_path > 0 && fww_path_basename(tgt_ti) == fww_path_basename(cast(string) r[0].faith_failed_edit_path[0..<r[0].nfaith_failed_edit_path]) {
+          r[0].nfaith_failed_edit_path = 0;
+        }
+      }
       if !fww_is_scratch_path(tgt_ti) {
         step_had_edit = true;
+      }
+    } else if (nm_ti == "Edit" || nm_ti == "Write") && err_ti {
+      if cfg[0].exp_faith_check && tgt_ti.count > 0 {
+        r[0].nfaith_failed_edit_path = fww_keep(r[0].faith_failed_edit_path[..], tgt_ti);
       }
     } else if nm_ti == "Read" && !err_ti && (cfg[0].exp_memtrace || cfg[0].exp_compact_preserve) {
       fww_trace_record_file(h, cast(string) r[0].cwd[0..<r[0].ncwd], tgt_ti, false);
@@ -6950,6 +7354,22 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       if err_ti { step_bash_ok = false; }
       if cfg[0].exp_memtrace || cfg[0].exp_compact_preserve {
         fww_trace_record_cmd(h, tgt_ti, !err_ti);
+      }
+      if cfg[0].exp_faith_check {
+        r[0].faith_ran_test = true;
+        r[0].faith_last_test_ok = !err_ti;
+        r[0].faith_edited_after_test = false;
+      }
+    }
+    if cfg[0].exp_toolpulse && err_ti {
+      esig := fww_tp_err_sig(nm_ti, cast(string) r[0].acc[0].tools[ti].res[0..<r[0].acc[0].tools[ti].nres]);
+      if esig != 0 && esig == r[0].tp_last_err_sig {
+        r[0].tp_err_inertia_cnt += 1;
+        r[0].acc[0].tools[ti].nres = fww_cat(r[0].acc[0].tools[ti].res[..], r[0].acc[0].tools[ti].nres,
+          "\n[ToolPulse: Failure Inertia — identical error repeated with no code change in between. Diagnose the root cause and apply a concrete change before retrying.]");
+      } else {
+        r[0].tp_last_err_sig = esig;
+        r[0].tp_err_inertia_cnt = 0;
       }
     }
     nb_ti := r[0].acc[0].tools[ti].nres;
@@ -7407,6 +7827,23 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     }
     err := fww_start_request(r, cfg, auth, h, b, out);
     if err.count == 0 { return ""; }
+  }
+
+  // End-of-turn Receipt Grounding Check (OA_EXP_FAITH_CHECK: arXiv:2611.25760 + Epistemic Guard 2611.27095):
+  // If final assistant prose asserts tests pass or an edit succeeded in contradiction to executed tool receipts,
+  // trigger at most ONE silent verification/correction turn.
+  if cfg[0].exp_faith_check && r[0].faith_retries == 0 && !r[0].force_wrapup_once
+     && r[0].acc[0].ntext > 0 && h[0].nmsgs < FWW_MAX_MSGS - 2 {
+    fmsg: [512] u8;
+    f_reply := cast(string) r[0].acc[0].text[0..<r[0].acc[0].ntext];
+    f_fail_p := cast(string) r[0].faith_failed_edit_path[0..<r[0].nfaith_failed_edit_path];
+    fn := fww_faith_check_reply(f_reply, r[0].has_edited, r[0].faith_ran_test, r[0].faith_last_test_ok, r[0].faith_edited_after_test, f_fail_p, fmsg[..]);
+    if fn > 0 {
+      r[0].faith_retries += 1;
+      fww_hist_push_user(h, cast(string) fmsg[0..<fn]);
+      err := fww_start_request(r, cfg, auth, h, b, out);
+      if err.count == 0 { return ""; }
+    }
   }
 
   // Otherwise finish the turn!
@@ -8421,9 +8858,19 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].pm_last_edit_hash = 0;
     run[0].pm_same_file_churn = 0;
     run[0].pm_backtracks = 0;
+    run[0].ndep_edited = 0;
+    run[0].ntp_viewed = 0;
+    run[0].tp_last_err_sig = 0;
+    run[0].tp_err_inertia_cnt = 0;
+    run[0].faith_retries = 0;
+    run[0].faith_ran_test = false;
+    run[0].faith_last_test_ok = false;
+    run[0].faith_edited_after_test = false;
+    run[0].nfaith_failed_edit_path = 0;
     hist[0].exp_compact_preserve = cfg[0].exp_compact_preserve;
     hist[0].exp_memtrace = cfg[0].exp_memtrace;
     hist[0].exp_obs_mask = cfg[0].exp_obs_mask;
+    hist[0].exp_obs_mask_c_pct = cfg[0].exp_obs_mask_c_pct;
     if cd.count > 0 { hist[0].ntrace_cwd = fww_keep(hist[0].trace_cwd[..], cd); }
     for qi: 0..<run[0].query_dedup.count { run[0].query_dedup[qi] = 0; }
 
@@ -9718,4 +10165,49 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_edit_integrity_json_ok("{\"ok\": true, \"n\": 42}");
   #assert !fww_edit_integrity_json_ok("{\"ok\": true, \"n\": 42,}");
   #assert !fww_edit_integrity_json_ok("{\"unclosed\": [1, 2");
+
+  // 6. Verify Context Has a Price (2611.22238) break-even masking rule R*c*B > (1-c)*S:
+  // Local (c=100%): any positive removal pays.
+  #assert fww_obs_mask_break_even(4096, 16384, 10, 100);
+  // Cloud (c=10%): removing 4KB before a 20KB suffix over 10 remaining turns loses (10*10*64 < 90*313) -> MUST NOT MASK.
+  #assert !fww_obs_mask_break_even(4096, 20000, 10, 10);
+  // Cloud (c=10%): removing a huge 64KB block early before a 10KB suffix over 20 remaining turns pays -> MASKS.
+  #assert fww_obs_mask_break_even(65536, 10240, 20, 10);
+
+  // 7. Verify DepSync (2611.29242) extracts added fields & modified def names from Edit diffs.
+  sym_b: [256] u8; st_a: [8] int; ln_a: [8] int;
+  nsy := fww_dep_extract_symbols(
+    "def build_node(name):\n  return Node(name=name)",
+    "def build_node(name, null_policy=None):\n  return Node(name=name, null_policy=null_policy)",
+    sym_b[..], st_a[..], ln_a[..], 6
+  );
+  #assert nsy >= 2;
+  got_np := false; got_bn := false;
+  for k: 0..<nsy {
+    sy := cast(string) sym_b[st_a[k]..<st_a[k] + ln_a[k]];
+    if sy == "null_policy" { got_np = true; }
+    if sy == "build_node" { got_bn = true; }
+  }
+  #assert got_np && got_bn;
+
+  // 8. Verify ToolPulse (2611.19275) error signature normalizes line numbers for Failure Inertia.
+  s_err1 := fww_tp_err_sig("Bash", "Traceback:\n  File \"a.py\", line 14\nValueError: bad quota 42\n");
+  s_err2 := fww_tp_err_sig("Bash", "Traceback:\n  File \"a.py\", line 29\nValueError: bad quota 99\n");
+  s_err3 := fww_tp_err_sig("Bash", "Traceback:\n  File \"a.py\", line 29\nKeyError: missing_key\n");
+  #assert s_err1 != 0 && s_err1 == s_err2 && s_err1 != s_err3;
+
+  // 9. Verify FaithCheck (2611.25760 + 2611.27095) flags ungrounded test-pass & failed-edit claims, allows honest replies.
+  f_out: [512] u8;
+  // Claiming tests pass when last test failed -> flagged
+  #assert fww_faith_check_reply("Done! All tests pass now.", true, true, false, false, "", f_out[..]) > 0;
+  // Claiming tests pass after editing post-test -> flagged
+  #assert fww_faith_check_reply("Updated billing.py and all tests pass.", true, true, true, true, "", f_out[..]) > 0;
+  // Claiming tests pass when no test ran -> flagged
+  #assert fww_faith_check_reply("All unit tests pass.", true, false, false, true, "", f_out[..]) > 0;
+  // Claiming a file was updated when its last Edit failed -> flagged
+  #assert fww_faith_check_reply("I updated pricing.py cleanly.", false, false, false, false, "src/pricing.py", f_out[..]) > 0;
+  // Verified passing tests after edits -> clean (0)
+  #assert fww_faith_check_reply("Updated pricing.py and all tests pass.", true, true, true, false, "", f_out[..]) == 0;
+  // Honest report stating tests failed -> clean (0)
+  #assert fww_faith_check_reply("Tests fail with AssertionError on line 12.", true, true, false, false, "", f_out[..]) == 0;
 }

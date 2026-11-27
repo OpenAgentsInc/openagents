@@ -1,0 +1,104 @@
+{
+  "created": "2026-11-27T06:02:51Z",
+  "git_sha": "59f705073c",
+  "run_dir": "/Users/christopherdavid/.openagents/worktrees/openagents-f007af61/e270feec-cc80-46d2-898d-c63490ca05f7/evals/openagents-desktop/results/paper-lab/2611.22238-20261127T055943Z-59f705073c",
+  "verdict": "SHIP-EFFICIENCY",
+  "verdict_reason": "Preserved pass rate (1/1, 0 damaged) while cutting tokens -28.0% and cost +31.1%.",
+  "hypothesis": {
+    "paper_id": "2611.22238",
+    "name": "Break-Even Observation Masking (c=0.1 cloud gate)",
+    "claim": "Gating observation masking with R*c*B > (1-c)*S eliminates the cloud prompt-cache cost trap while preserving pass rate",
+    "axes": [
+      "long_obs"
+    ],
+    "base_env": {},
+    "exp_env": {
+      "OA_EXP_OBS_MASK": "1"
+    },
+    "models": [
+      "gemini-4-neon"
+    ],
+    "trials": 1,
+    "effort": "low",
+    "worker": "oa-worker"
+  },
+  "models": [
+    {
+      "model": "gemini-4-neon",
+      "trials": 1,
+      "paired": {
+        "rescued": 0,
+        "preserved": 1,
+        "damaged": 0,
+        "still_failed": 0,
+        "net_gain": 0
+      },
+      "base": {
+        "total_trials_cases": 1,
+        "passed": 1,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 292538,
+        "uncached_input_tokens": 48263,
+        "output_tokens": 1241,
+        "total_tokens": 293779,
+        "cached_tokens": 244275,
+        "cache_hit_pct": 83.5,
+        "pv_cost_c01": 77654.5,
+        "pv_cost_c10": 297502.0,
+        "cost_usd_micros": 200044,
+        "wall_ms": 102319,
+        "turns": 5,
+        "tool_calls": 3,
+        "pass_pow_k_pct": 100.0
+      },
+      "exp": {
+        "total_trials_cases": 1,
+        "passed": 1,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 210159,
+        "uncached_input_tokens": 74127,
+        "output_tokens": 1299,
+        "total_tokens": 211458,
+        "cached_tokens": 136032,
+        "cache_hit_pct": 64.7,
+        "pv_cost_c01": 92926.2,
+        "pv_cost_c10": 215355.0,
+        "cost_usd_micros": 262271,
+        "wall_ms": 53468,
+        "turns": 5,
+        "tool_calls": 3,
+        "pass_pow_k_pct": 100.0
+      },
+      "deltas": {
+        "pass_at_1_pp": 0.0,
+        "pass_pow_k_pp": 0.0,
+        "cache_hit_pp": -18.8,
+        "tokens_pct": -28.0,
+        "pv_c01_pct": 19.7,
+        "pv_c10_pct": -27.6,
+        "wall_pct": -47.7,
+        "cost_pct": 31.1,
+        "turns_delta": 0,
+        "tool_calls_delta": 0
+      },
+      "tasks": [
+        {
+          "id": "p_lo_02_noisy_trace_audit",
+          "axis": "long_obs",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 102319,
+          "exp_wall_ms_avg": 53468,
+          "base_tokens_avg": 293779,
+          "exp_tokens_avg": 211458,
+          "base_cost_micros_avg": 200044,
+          "exp_cost_micros_avg": 262271
+        }
+      ]
+    }
+  ]
+}

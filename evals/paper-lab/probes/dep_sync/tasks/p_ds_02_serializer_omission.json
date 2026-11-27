@@ -1,0 +1,21 @@
+{
+  "id": "p_ds_02_serializer_omission",
+  "category": "dep_sync",
+  "fixture": "event_bus",
+  "description": "Add priority field to Event & emit_high without omitting replay.py round-trip serialization (arXiv:2611.29242)",
+  "budget_usd_micros": 150000,
+  "timeout_s": 180,
+  "steps": [
+    {
+      "send": "Add `priority: int = 0` to `Event` in `event.py`, and add `emit_high(kind: str, payload: str) -> Event` in `emitter.py` that returns an `Event` with `priority=10`. Run `python3 -m unittest -q` to verify."
+    }
+  ],
+  "graders": [
+    {
+      "type": "command",
+      "run": "python3 -c \"from emitter import emit_high, emit_event; from replay import serialize_event, deserialize_event; ev = emit_high('alert', 'disk'); assert ev.priority == 10; rt = deserialize_event(serialize_event(ev)); assert rt.priority == 10, f'replay dropped priority: {rt}'; ev0 = emit_event('ping', 'ok'); assert deserialize_event(serialize_event(ev0)).priority == 0\""
+    },
+    {"type": "no_guard_trips"},
+    {"type": "not_timed_out"}
+  ]
+}
