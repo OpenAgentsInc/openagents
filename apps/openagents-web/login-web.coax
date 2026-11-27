@@ -201,8 +201,8 @@ lw_submit_code :: (s: [] LoginWeb) {
 lw_css :: (out: [] u8, at: int) -> int {
   n := at;
   n = as_put(out, n, "*,*::before,*::after{box-sizing:border-box}");
-  n = as_put(out, n, "html,body{margin:0;min-height:100%;background:#000000;color:#ededed;font-family:var(--font-sans);-webkit-font-smoothing:antialiased}");
-  n = as_put(out, n, ".lw-page{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;background:#000000;position:relative}");
+  n = as_put(out, n, "html,body,#coaxial-root{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#000000;color:#ededed;font-family:var(--font-sans);-webkit-font-smoothing:antialiased}");
+  n = as_put(out, n, ".lw-page{position:fixed;inset:0;height:100dvh;width:100%;overflow:hidden;overscroll-behavior:none;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;background:#000000}");
   n = as_put(out, n, ".lw-box{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:stretch;gap:10px}");
   n = as_put(out, n, ".lw-head{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:10px;text-align:center}");
   n = as_put(out, n, ".lw-brand{display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:#ededed;font:600 22px/1.1 var(--font-sans);letter-spacing:-.025em}");
