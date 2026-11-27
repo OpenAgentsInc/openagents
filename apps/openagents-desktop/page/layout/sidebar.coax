@@ -461,7 +461,7 @@ cp_side_foreman :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32, cur: strin
   froom := sw - a.side_pad - tx - badge_w;
   if froom > 0 { _ := sheet_text(f[0].sheet, f[0].m, -1, tx, sy + (fh - tf.line) / 2, tf.line, tf.face, k.ink, app_fit(f, tf.face, "Foreman", froom)); }
   if f_busy {
-    activity(f[0].sheet, k, sw - a.side_pad - a.icon, sy + (fh - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion);
+    activity_tinted(f[0].sheet, k, sw - a.side_pad - a.icon, sy + (fh - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion, k.faint);
   } else {
     tw := measure_width(f[0].m, k.small.face, tier_lbl);
     _ := sheet_text(f[0].sheet, f[0].m, -1, sw - a.side_pad - tw, sy + (fh - k.small.line) / 2, k.small.line, k.small.face, ifx managed_busy > 0 then k.muted else k.faint, tier_lbl);

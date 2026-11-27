@@ -102,7 +102,7 @@ app_side_row_status :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title
     wx := x + w - a.side_pad - ww - (ifx mark_unread then dot_inset + a.gap else 0.0f32);
     _ := sheet_text(sh, m, -1, wx, ty + (tf.line - s.small.line) / 2, s.small.line, s.small.face, ifx attention then s.ink else s.faint, word);
   }
-  if busy { activity(sh, s, x + w - a.side_pad - a.icon, y + (h - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion); }
+  if busy { activity_tinted(sh, s, x + w - a.side_pad - a.icon, y + (h - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion, s.faint); }
   else if mark_unread { sheet_fill(sh, x + w - a.side_pad - dot_inset, ifx ww > 0 then ty + (tf.line - dot) / 2 else y + (h - dot) / 2, dot, dot, dot / 2, s.accent); }   // beside its word, on the title's line
   if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
   return h;
@@ -244,7 +244,7 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   } else if busy {
     spin_s := 11.0f32;
     if r1_right - spin_s > ix0 + 24.0f32 {
-      activity(sh, s, r1_right - spin_s, sy1 + (s.small.line - spin_s) / 2.0f32, spin_s, f[0].clock, f[0].reduced_motion);
+      activity_tinted(sh, s, r1_right - spin_s, sy1 + (s.small.line - spin_s) / 2.0f32, spin_s, f[0].clock, f[0].reduced_motion, s.faint);
       r1_right -= spin_s + 8.0f32;
     }
   } else if mark_unread {
@@ -382,7 +382,7 @@ app_side_row_item :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
     }
   } else {
     if busy {
-      activity(sh, s, rx - a.icon, y + (h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
+      activity_tinted(sh, s, rx - a.icon, y + (h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion, s.faint);
       rx -= a.icon + a.gap;
     }
     if mark_unread {
