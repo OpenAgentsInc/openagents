@@ -62,7 +62,10 @@ static int native_preflight(native_turn *n,const char *conversation){
  if(!h||!intent||!select||!body||!out||!ctn_init((coax_v_t_CtnRouter){h,1},ts(n->raw),(int64_t)api_now_ms()))goto done;
  coax_string text=h->q.e[0].text,summary=h->q.e[0].summary;int64_t size=ctn_intent_begin((coax_v_t_CtnIntent){intent,1},text,summary,tb(body,262144));if(size<1)goto done;
  char *answer=NULL;size_t count=0;long status=native_decide(tn(body,size),&answer,&count);int work=(int)ctn_intent_finish((coax_v_t_CtnIntent){intent,1},status,tn(answer?answer:"",count));free(answer);if(work==0){result=0;goto done;}if(work<0)goto done;
- const char *args[]={n->m.account};PGresult *r=PQexecParams(model_db(&n->m),"SELECT host_pubkey,grant_id,epoch,relay,display_name FROM chat.environment_connections_v1 WHERE account=$1 ORDER BY host_pubkey LIMIT 17",1,NULL,args,NULL,NULL,0);
+ char pinned_host[65]={0};
+ {const char *wv[]={n->m.account,n->m.turn};PGresult *wr=PQexecParams(model_db(&n->m),"SELECT coalesce(workspace,'') FROM chat.turns_v2 WHERE account=$1 AND id=$2",2,NULL,wv,NULL,NULL,0);
+  if(tuples(wr)&&PQntuples(wr)==1){const char *ws=PQgetvalue(wr,0,0);if(!strncmp(ws,"host:",5)&&strlen(ws)==69)snprintf(pinned_host,sizeof pinned_host,"%s",ws+5);}PQclear(wr);}
+ const char *args[]={n->m.account,pinned_host};PGresult *r=PQexecParams(model_db(&n->m),"SELECT host_pubkey,grant_id,epoch,relay,display_name FROM chat.environment_connections_v1 WHERE account=$1 AND ($2='' OR host_pubkey=$2) ORDER BY host_pubkey LIMIT 17",2,NULL,args,NULL,NULL,0);
  if(!tuples(r)||PQntuples(r)>16){PQclear(r);goto done;}int total=PQntuples(r);for(int i=0;i<total;i++)if(!native_connection_read(&connections[i],r,i)){PQclear(r);goto done;}PQclear(r);
  const char *key=getenv("OA_ENV_BROKER_KEY_FILE"),*program=getenv("OA_ENV_BROKER_PROGRAM");if(!key||!*key)goto done;
  double deadline=api_now_ms()+180000;

@@ -262,6 +262,7 @@ static const auth_rule RULES[] = {
   R("POST", "/api/integrations/github/connect", false, AP_HUMAN, "start WorkOS Pipes GitHub OAuth connection"),
   R("GET",  "/api/integrations/github/repos", false, AP_ACCOUNT, "user GitHub repositories via transient WorkOS Pipes token"),
   R("POST", "/api/integrations/github/disconnect", false, AP_HUMAN, "disconnect WorkOS Pipes GitHub integration"),
+  R("POST", "/api/tools/cloud/v1", false, AP_HUMAN, "Tier 1 instant cloud tools (web_search, web_fetch, github_*)"),
   R("GET",  "/api/chat/environment/v1", false, AP_ACCOUNT, "read-only admitted environment methods"),
   R("POST", "/api/chat/environment/v1", false, AP_HUMAN, "supervised environment commands under the current HOST grant"),
   R("GET",  "/api/chat/environment/station/v1", false, AP_ACCOUNT, "an enrolled computer's own report for the delegation router: read-only, under its HOST grant"),

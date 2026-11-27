@@ -78,6 +78,7 @@ bool account_chat_route(const request *q); // account-owned mobile chat
 bool account_thread_id(char out[25]); // platform entropy for the shared saved-chat identity
 bool environment_route(const request *q); // account-owned computer connections
 bool integrations_route(const request *q); // WorkOS Pipes GitHub integration (integrations.c)
+bool cloud_tools_route(const request *q); // Tier 1 Instant Cloud Tools (cloud-tools.c)
 bool account_chat_library_route(const request *q);
 bool chat_history_route(const request *q); // read-only account history
 void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)

@@ -17,6 +17,8 @@
 #load "../../../components/ui/kit/virtual_list.coax";
 #load "../../../components/ui/kit/stream_markdown.coax";
 #load "../../../coax/web/api/account-chat-cloud-wire.coax";
+#load "../../../coax/lib/gateway/tool-conversation.coax";
+#load "../../../coax/lib/cloud/tool-wire.coax";
 
 // Unified OpenAgents Core compute/model menu (replaces legacy 11-model zoo).
 CWC_MODELS :: 5;
@@ -75,6 +77,16 @@ CWC_MSG_META_OK    :: 17;
 CWC_MSG_META_ERR   :: 18;
 CWC_MSG_STOP_OK    :: 19;
 CWC_MSG_STOP_ERR   :: 20;
+CWC_MSG_TOOL_OK    :: 21;
+CWC_MSG_TOOL_ERR   :: 22;
+CWC_MSG_SUBMIT_OK  :: 23;
+CWC_MSG_SUBMIT_ERR :: 24;
+CWC_MSG_APPR_OK    :: 25;
+CWC_MSG_APPR_ERR   :: 26;
+
+CWC_TOOL_MAX_STEPS :: 5;
+CWC_TOOL_RX_BUF    :: 32768;
+CWC_MAX_ENVS       :: 16;
 
 // Stream slot partitioning over #14089's 16 multiplexed slots (0..15).
 // Slots 0..3: UiRuntime keyed SSE subscriptions (account feed + active conversation).
@@ -204,6 +216,20 @@ ChatCloud :: struct {
   // Optional selected account Project (?project=prj_...) & enrolled computer (?host=<64hex>) context.
   sel_project: [36] u8; sel_project_n: int;
   sel_host: [64] u8; sel_host_n: int;
+  // Phase 3 (#14127): Execution Target selector & synced Project / Computer / GitHub context.
+  target_kind: int;    // CLD_TARGET_AUTO (0), CLD_TARGET_CLOUD (1), CLD_TARGET_COMPUTER (2), CLD_TARGET_SANDBOX (3)
+  target_menu: bool;
+  proj_name: [80] u8; proj_name_n: int;
+  proj_repo: [128] u8; proj_repo_n: int;
+  proj_rev: int;
+  host_name: [80] u8; host_name_n: int;
+  host_online: bool;
+  gh_connected: bool;
+  env_n: int;
+  env_host: [CWC_MAX_ENVS][64] u8;
+  env_name: [CWC_MAX_ENVS][80] u8;
+  env_name_n: [CWC_MAX_ENVS] int;
+  env_online: [CWC_MAX_ENVS] bool;
 
   // Navigation push request for host (e.g., /chat/cnv_<32hex>).
   push_url: [80] u8; push_url_n: int;
@@ -235,7 +261,7 @@ ChatCloud :: struct {
   copied_msg: int;
   copied_until_ms: int;
 
-  // Active Web-initiated streaming turn on CWC_TURN_SLOT.
+  // Active Web-initiated streaming turn on CWC_TURN_SLOT + Tier 1 tool-calling loop (#14127).
   web_streaming: bool;
   web_turn_id: [36] u8; web_turn_n: int;
   web_msg_idx: int;
@@ -245,6 +271,15 @@ ChatCloud :: struct {
   web_in_tok: int;
   web_out_tok: int;
   web_cached_tok: int;
+  tool_step: [1] GwToolStep;
+  tool_conv: [1] GwToolConversation;
+  tool_pool: [65536] u8;
+  tool_round: int;
+  tool_running: bool;
+  tool_call_idx: int;
+  tool_call_n: int;
+  tool_seq: int;
+  tool_text_at: int;
 
   // Remote/Desktop live turn observation state.
   remote_running: bool;
@@ -259,10 +294,11 @@ ChatCloud :: struct {
   // Cloud Usage HUD (#14072 parity).
   usage: [1] CwcUsage;
 
-  // Concurrent HTTP Command slot state (slots 5..15) with dedicated 256 KB buffers for list & detail.
+  // Concurrent HTTP Command slot state (slots 5..15) with dedicated buffers for list (1), detail (2), and cloud tool output (3).
   http_slots: [CWC_HTTP_COUNT] CwcHttpSlot;
   list_rx: [CWC_HTTP_BIG] u8;
   detail_rx: [CWC_HTTP_BIG] u8;
+  tool_rx: [CWC_TOOL_RX_BUF] u8;
 
   // Reusable scratch buffers (kept in state instead of WASM stack frames).
   jv_nodes: [8192] JvNode;
@@ -588,6 +624,7 @@ cwc_flush_effects :: (c: [] ChatCloud) {
     body := ui_cmd_body(rt, ci);
     rk := ifx cmd.kind == UI_CMD_HTTP_GET && cmd.ok_tag == CWC_MSG_LIST_OK then 1
           else ifx cmd.kind == UI_CMD_HTTP_GET && cmd.ok_tag == CWC_MSG_DETAIL_OK then 2
+          else ifx cmd.kind == UI_CMD_HTTP_POST && cmd.ok_tag == CWC_MSG_TOOL_OK then 3
           else 0;
     // Find a free HTTP slot.
     hs := -1;
@@ -644,6 +681,14 @@ cwc_clear_transcript :: (c: [] ChatCloud) {
   c[0].web_streaming = false;
   c[0].web_turn_n = 0;
   c[0].web_sse_n = 0;
+  c[0].tool_running = false;
+  c[0].tool_round = 0;
+  c[0].tool_call_idx = 0;
+  c[0].tool_call_n = 0;
+  c[0].tool_seq = 0;
+  c[0].tool_text_at = 0;
+  gwt_step_begin(c[0].tool_step[..]);
+  c[0].tool_conv[0] = GwToolConversation.{};
   c[0].remote_running = false;
   c[0].active_turn_n = 0;
   c[0].error_n = 0;
@@ -724,8 +769,13 @@ cwc_route_path :: (c: [] ChatCloud, raw_path: string) -> bool {
   if pn == 36 && cast(string) pbuf[0..<4] == "prj_" { c[0].sel_project_n = cwc_put(c[0].sel_project[..], 0, cast(string) pbuf[0..<36]); }
   else if pn == 0 && cwc_query_param(raw_path, "host", pbuf[0..<1]) > 0 { c[0].sel_project_n = 0; }
   hbuf: [68] u8; hn := cwc_query_param(raw_path, "host", hbuf[..]);
-  if hn == 64 { c[0].sel_host_n = cwc_put(c[0].sel_host[..], 0, cast(string) hbuf[0..<64]); }
-  else if pn == 36 { c[0].sel_host_n = 0; }
+  if hn == 64 && cld_hex64(cast(string) hbuf[0..<64]) {
+    c[0].sel_host_n = cwc_put(c[0].sel_host[..], 0, cast(string) hbuf[0..<64]);
+    c[0].target_kind = CLD_TARGET_COMPUTER;
+  } else if pn == 36 {
+    c[0].sel_host_n = 0;
+    if c[0].target_kind == CLD_TARGET_COMPUTER { c[0].target_kind = CLD_TARGET_AUTO; }
+  }
   m := ui_route_match("/chat/:id", raw_path);
   if m.matched {
     cid := ui_route_param("/chat/:id", raw_path, m, "id");
@@ -1412,7 +1462,389 @@ cwc_emit_sync :: (c: [] ChatCloud, cid: string, tid: string, title: string, user
                   cast(string) url[0..<un], cast(string) c[0].scratch_b[0..<bn], 0, CWC_MSG_SYNC_OK, CWC_MSG_SYNC_ERR, "");
 }
 
-// Starts a live Web streaming turn on CWC_TURN_SLOT (POST /api/chat/complete) + write-through sync.
+// ---- Phase 3 (#14127): Context Sync, Execution Target, Tier 1 Tool Loop & Tier 2 Computer Dispatch
+
+cwc_extract_repo_slug :: (raw: string, out: [] u8) -> int {
+  if raw.count == 0 { return 0; }
+  lo := 0; hi := raw.count;
+  while lo < hi && (raw[lo] == ' ' || raw[lo] == '\t') { lo += 1; }
+  while hi > lo && (raw[hi - 1] == ' ' || raw[hi - 1] == '\t' || raw[hi - 1] == '/') { hi -= 1; }
+  s := cast(string) raw[lo..<hi];
+  if s.count > 19 && cast(string) s[0..<19] == "https://github.com/" { s = cast(string) s[19..<s.count]; }
+  else if s.count > 18 && cast(string) s[0..<18] == "http://github.com/" { s = cast(string) s[18..<s.count]; }
+  else if s.count > 15 && cast(string) s[0..<15] == "git@github.com:" { s = cast(string) s[15..<s.count]; }
+  if s.count > 4 && cast(string) s[s.count - 4..<s.count] == ".git" { s = cast(string) s[0..<s.count - 4]; }
+  if s.count > 0 && s[s.count - 1] == '/' { s = cast(string) s[0..<s.count - 1]; }
+  if !cld_repo_valid(s) { return 0; }
+  return cwc_put(out, 0, s);
+}
+
+cwc_set_project_info :: (c: [] ChatCloud, name: string, repo_raw: string, rev: int) {
+  c[0].proj_name_n = cwc_put(c[0].proj_name[..], 0, name);
+  c[0].proj_repo_n = cwc_extract_repo_slug(repo_raw, c[0].proj_repo[..]);
+  c[0].proj_rev = ifx rev > 0 then rev else 1;
+}
+
+cwc_set_host_info :: (c: [] ChatCloud, name: string, online: bool) {
+  c[0].host_name_n = cwc_put(c[0].host_name[..], 0, name);
+  c[0].host_online = online;
+}
+
+cwc_clear_envs :: (c: [] ChatCloud) { c[0].env_n = 0; }
+
+cwc_put_env :: (c: [] ChatCloud, host: string, name: string, online: bool) {
+  if c[0].env_n >= CWC_MAX_ENVS || host.count != 64 { return; }
+  k := c[0].env_n;
+  _ = cwc_put(c[0].env_host[k][..], 0, host);
+  c[0].env_name_n[k] = cwc_put(c[0].env_name[k][..], 0, name);
+  c[0].env_online[k] = online;
+  c[0].env_n += 1;
+}
+
+cwc_target_label :: (c: [] ChatCloud, out: [] u8) -> string {
+  n := cwc_put(out, 0, "Target: ");
+  if c[0].target_kind == CLD_TARGET_CLOUD {
+    n = cwc_put(out, n, "Cloud");
+  } else if c[0].target_kind == CLD_TARGET_SANDBOX {
+    n = cwc_put(out, n, "Sandbox");
+  } else if c[0].target_kind == CLD_TARGET_COMPUTER && c[0].sel_host_n == 64 {
+    if c[0].host_name_n > 0 {
+      n = cwc_put(out, n, cast(string) c[0].host_name[0..<c[0].host_name_n]);
+    } else {
+      n = cwc_put(out, n, cast(string) c[0].sel_host[0..<8]);
+    }
+  } else {
+    n = cwc_put(out, n, "Auto");
+  }
+  return cast(string) out[0..<n];
+}
+
+cwc_build_system_prompt :: (c: [] ChatCloud, out: [] u8) -> string {
+  n := cwc_put(out, 0, "You are OpenAgents, a helpful, concise AI coding and research assistant with live Tier 1 cloud tools: web_search, web_fetch, github_tree, github_read_file, github_search_code, github_list_issues, and github_get_pr. Use these tools proactively whenever the user asks about live web information, URLs, or GitHub repositories. Use Markdown and fenced code blocks with language names.");
+  if c[0].proj_name_n > 0 || c[0].proj_repo_n > 0 {
+    n = cwc_put(out, n, "\nActive project: ");
+    if c[0].proj_name_n > 0 { n = cwc_put(out, n, cast(string) c[0].proj_name[0..<c[0].proj_name_n]); }
+    else { n = cwc_put(out, n, cast(string) c[0].sel_project[0..<c[0].sel_project_n]); }
+    if c[0].proj_repo_n > 0 {
+      n = cwc_put(out, n, " (GitHub repo: ");
+      n = cwc_put(out, n, cast(string) c[0].proj_repo[0..<c[0].proj_repo_n]);
+      n = cwc_put(out, n, "). Use repo=\"");
+      n = cwc_put(out, n, cast(string) c[0].proj_repo[0..<c[0].proj_repo_n]);
+      n = cwc_put(out, n, "\" with github_* tools to inspect files, search code, list issues, or read PRs.");
+    }
+  }
+  if c[0].gh_connected {
+    n = cwc_put(out, n, "\nThe user's GitHub account is connected (private repository reads enabled).");
+  }
+  if c[0].env_n > 0 {
+    n = cwc_put(out, n, "\nEnrolled user computers available via the Target selector: ");
+    for i: 0..<c[0].env_n {
+      if i > 0 { n = cwc_put(out, n, ", "); }
+      n = cwc_put(out, n, cast(string) c[0].env_name[i][0..<c[0].env_name_n[i]]);
+    }
+    n = cwc_put(out, n, ".");
+  }
+  if c[0].tool_round >= CWC_TOOL_MAX_STEPS {
+    n = cwc_put(out, n, "\nYou have reached the tool call limit for this turn. Answer the user directly from the tool results already gathered.");
+  }
+  return cast(string) out[0..<n];
+}
+
+cwc_emit_tool_event :: (c: [] ChatCloud, ev_kind: int, tool_id: string, tool_name: string, tool_args: string, text: string, failed: bool) {
+  cid := cwc_active_id(c);
+  tid := cast(string) c[0].web_turn_id[0..<c[0].web_turn_n];
+  c[0].tool_seq += 1;
+  e: [1] CcEvent;
+  e[0] = CcEvent.{
+    conversation = cid,
+    turn = tid,
+    sequence = c[0].tool_seq,
+    kind = ev_kind,
+    state = CT_RUNNING,
+    text = text,
+    tool_id = tool_id,
+    tool_name = tool_name,
+    tool_args = tool_args,
+    failed = failed,
+    compute = "cloud",
+    model = cwc_model_id(c),
+    source_device = "web",
+    created_at_ms = c[0].now_ms
+  };
+  cwc_apply_event(c, e[0], false);
+  if cid.count == 36 && tid.count == 36 && c[0].conv_persisted {
+    en := cc_event_write(e[..], c[0].scratch_c[..]);
+    if en > 0 {
+      ev_arr := [1] string.[cast(string) c[0].scratch_c[0..<en]];
+      op_b: [64] u8; op_n := cwc_make_op(c, "tev", op_b[..]);
+      req: [1] CcSyncReq;
+      req[0] = CcSyncReq.{
+        operation = cast(string) op_b[0..<op_n],
+        conversation = cid,
+        turn = tid,
+        compute = "cloud",
+        model = cwc_model_id(c),
+        source_device = "web",
+        state = CT_RUNNING
+      };
+      bn := cc_sync_write(req[..], ev_arr[..], c[0].scratch_b[..]);
+      if bn > 0 {
+        url: [128] u8;
+        un := cwc_put(url[..], 0, "/api/chat/v2/conversations/");
+        un = cwc_put(url[..], un, cid);
+        un = cwc_put(url[..], un, "/events");
+        _ = ui_cmd_emit(c[0].rt[..], c[0].comp_composer, cast(string) op_b[0..<op_n], UI_CMD_HTTP_POST, UI_CMD_QUEUE,
+                        cast(string) url[0..<un], cast(string) c[0].scratch_b[0..<bn], 0, CWC_MSG_SYNC_OK, CWC_MSG_SYNC_ERR, "");
+      }
+    }
+  }
+}
+
+cwc_start_inference_step :: (c: [] ChatCloud) -> bool {
+  sys_b: [2048] u8;
+  sys_s := cwc_build_system_prompt(c, sys_b[..]);
+  msgs := gwt_conversation_messages(c[0].tool_conv[..]);
+  if msgs.count == 0 { return false; }
+  req := GwRequest.{
+    model = cwc_model_id(c),
+    system = sys_s,
+    messages = msgs,
+    tools = ifx c[0].tool_round < CWC_TOOL_MAX_STEPS then CLD_WEB_TOOLS_JSON else "",
+    stream = true
+  };
+  bn := gw_chat_body(req, 0, c[0].scratch_a[..]);
+  if bn <= 0 { return false; }
+  c[0].web_streaming = true;
+  c[0].web_sse_n = 0;
+  c[0].web_err_n = 0;
+  c[0].web_ps[0] = GwParse.{};
+  gwt_step_begin(c[0].tool_step[..]);
+  idx := c[0].web_msg_idx;
+  c[0].tool_text_at = ifx idx >= 0 && idx < c[0].msg_n then c[0].msgs[idx].text_n else 0;
+  cwc_queue_open(c, CWC_TURN_SLOT, "/api/v1/inference", cast(string) c[0].scratch_a[0..<bn], "", 0);
+  return true;
+}
+
+cwc_finish_web_turn :: (c: [] ChatCloud, ok: bool) {
+  c[0].web_streaming = false;
+  c[0].tool_running = false;
+  _ = smd_finish(c[0].live_md[..]);
+  idx := c[0].web_msg_idx;
+  out_text := "";
+  if idx >= 0 && idx < c[0].msg_n {
+    c[0].msgs[idx].running = false;
+    c[0].msgs[idx].failed = !ok;
+    c[0].msgs[idx].in_tokens = c[0].web_in_tok;
+    c[0].msgs[idx].out_tokens = c[0].web_out_tok;
+    c[0].msgs[idx].cached_tokens = c[0].web_cached_tok;
+    out_text = cwc_msg_text(c, idx);
+  }
+  cid := cwc_active_id(c);
+  tid := cast(string) c[0].web_turn_id[0..<c[0].web_turn_n];
+  c[0].tool_seq += 1;
+  if cid.count == 36 && tid.count == 36 && c[0].auth_state != CWC_AUTH_ANON {
+    cwc_emit_sync(c, cid, tid, "", "", out_text,
+                  ifx ok then CT_COMPLETED else CT_FAILED,
+                  ifx ok then "end_turn" else "error",
+                  cast(string) c[0].error[0..<c[0].error_n],
+                  ifx ok then CC_EV_COMPLETED else CC_EV_FAILED,
+                  ifx c[0].tool_seq > 3 then c[0].tool_seq else 3, c[0].conv_persisted);
+    cwc_fetch_usage(c);
+  }
+  si := cwc_find_conv(c, cid);
+  if si >= 0 { c[0].convs[si].working = false; c[0].convs[si].active_turn_n = 0; }
+  cwc_reconcile_subs(c);
+  cwc_flush_effects(c);
+  c[0].dirty = true;
+}
+
+cwc_dispatch_next_tool :: (c: [] ChatCloud) {
+  while c[0].tool_call_idx < c[0].tool_call_n {
+    call := c[0].tool_conv[0].calls[c[0].tool_conv[0].batch + c[0].tool_call_idx];
+    if cld_tool_kind(call.name) == CLD_TOOL_NONE {
+      why := "Tool not in Tier 1 cloud allowlist.";
+      cwc_emit_tool_event(c, CC_EV_TOOL_RESULT, call.call_id, call.name, "", why, true);
+      _ = gwt_conversation_result(c[0].tool_conv[..], GwToolResult.{call_id = call.call_id, output = why, is_error = true});
+      c[0].tool_call_idx += 1;
+      continue;
+    }
+    o: [1] Jo; jo_start(o[..], c[0].scratch_b[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "tool"); jo_str(o[..], call.name);
+    jo_key(o[..], "arguments"); jo_raw(o[..], ifx call.input_json.count >= 2 then call.input_json else "{}");
+    jo_end(o[..]);
+    if o[0].bad {
+      why := "Tool arguments exceeded request buffer.";
+      cwc_emit_tool_event(c, CC_EV_TOOL_RESULT, call.call_id, call.name, "", why, true);
+      _ = gwt_conversation_result(c[0].tool_conv[..], GwToolResult.{call_id = call.call_id, output = why, is_error = true});
+      c[0].tool_call_idx += 1;
+      continue;
+    }
+    op_b: [64] u8; op_n := cwc_make_op(c, "tool", op_b[..]);
+    _ = ui_cmd_emit(c[0].rt[..], c[0].comp_composer, cast(string) op_b[0..<op_n], UI_CMD_HTTP_POST, UI_CMD_QUEUE,
+                    "/api/tools/cloud/v1", cast(string) c[0].scratch_b[0..<o[0].n], 0, CWC_MSG_TOOL_OK, CWC_MSG_TOOL_ERR, "");
+    cwc_flush_effects(c);
+    c[0].dirty = true;
+    return;
+  }
+
+  // All tool calls in this batch have settled: advance round and stream the continuation.
+  c[0].tool_running = false;
+  c[0].tool_round += 1;
+  tid := cast(string) c[0].web_turn_id[0..<c[0].web_turn_n];
+  am := CwcMsg.{kind = CWC_M_ASSISTANT, text_at = 0, text_n = 0, running = true, sequence = c[0].tool_seq + 1};
+  am.turn_n = cwc_put(am.turn[..], 0, tid);
+  am.compute_n = cwc_put(am.compute[..], 0, "cloud");
+  am.model_n = cwc_put(am.model[..], 0, cwc_model_id(c));
+  am.dev_n = cwc_put(am.device[..], 0, "web");
+  c[0].web_msg_idx = cwc_append_msg(c, am);
+  smd_reset(c[0].live_md[..], 0, true);
+  if c[0].vl[0].pinned_bottom { vl_scroll_to_bottom(c[0].vl[..]); }
+  if !cwc_start_inference_step(c) {
+    c[0].error_n = cwc_put(c[0].error[..], 0, "Tool results exceeded conversation buffer.");
+    cwc_finish_web_turn(c, false);
+    return;
+  }
+  cwc_flush_effects(c);
+  c[0].dirty = true;
+}
+
+cwc_on_tool_reply :: (c: [] ChatCloud, http_ok: bool, status: int, body: string) {
+  if !c[0].tool_running || c[0].tool_call_idx >= c[0].tool_call_n { return; }
+  call := c[0].tool_conv[0].calls[c[0].tool_conv[0].batch + c[0].tool_call_idx];
+  tool_ok := false;
+  res_n := 0;
+  d: [1] Jv;
+  if body.count > 0 && jv_parse(d[..], body, c[0].jv_nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
+    v := d[0];
+    tool_ok = http_ok && jv_kind(v, jv_get(v, 0, "ok")) == JV_TRUE;
+    if tool_ok {
+      res_n = cwc_jv_str_into(v, jv_get(v, 0, "output"), c[0].scratch_b[..]);
+    } else {
+      res_n = cwc_jv_str_into(v, jv_get(v, 0, "error"), c[0].scratch_b[..]);
+    }
+  }
+  if res_n <= 0 {
+    if tool_ok {
+      res_n = cwc_put(c[0].scratch_b[..], 0, "(empty output)");
+    } else if body.count > 0 && body[0] != '{' {
+      cap := ifx body.count > 512 then 512 else body.count;
+      res_n = cwc_put(c[0].scratch_b[..], 0, cast(string) body[0..<cap]);
+    } else if status == 401 {
+      res_n = cwc_put(c[0].scratch_b[..], 0, "Sign in required to run cloud tools.");
+    } else {
+      res_n = cwc_put(c[0].scratch_b[..], 0, "Cloud tool execution failed.");
+    }
+  }
+  // Cap tool output stored in GwToolConversation pool to 12 KB so multi-step turns fit comfortably.
+  pool_cap := ifx res_n > 12288 then 12288 else res_n;
+  res_s := cast(string) c[0].scratch_b[0..<pool_cap];
+  cwc_emit_tool_event(c, CC_EV_TOOL_RESULT, call.call_id, call.name, "", res_s, !tool_ok);
+  _ = gwt_conversation_result(c[0].tool_conv[..], GwToolResult.{call_id = call.call_id, output = res_s, is_error = !tool_ok});
+  c[0].tool_call_idx += 1;
+  cwc_dispatch_next_tool(c);
+}
+
+cwc_send_computer :: (c: [] ChatCloud, prompt: string) -> bool {
+  if c[0].sel_host_n != 64 { return false; }
+  op_b: [64] u8; op_n := cwc_make_op(c, "sub", op_b[..]);
+  cid := ifx c[0].conv_persisted && c[0].active_id_n == 36 then cwc_active_id(c) else "";
+  rev := ifx cid.count == 36 then c[0].active_revision else 0;
+  prj := ifx c[0].sel_project_n == 36 && c[0].proj_rev > 0 then cast(string) c[0].sel_project[0..<36] else "";
+  prev := ifx prj.count == 36 then c[0].proj_rev else -1;
+  texts := [1] string.[prompt];
+  bn := ct_submit_write(cast(string) op_b[0..<op_n], cid, rev, prj, prev, "", -1, texts[..], c[0].scratch_a[..]);
+  if bn <= 0 {
+    c[0].error_n = cwc_put(c[0].error[..], 0, "Computer turn request could not be encoded.");
+    c[0].dirty = true;
+    return false;
+  }
+  dev := ifx c[0].host_name_n > 0 then cast(string) c[0].host_name[0..<c[0].host_name_n]
+         else cast(string) c[0].sel_host[0..<8];
+  usp := cwc_pool_put(c, prompt);
+  um := CwcMsg.{kind = CWC_M_USER, text_at = usp.at, text_n = usp.n, sequence = 1};
+  um.dev_n = cwc_put(um.device[..], 0, "web");
+  _ = cwc_append_msg(c, um);
+  am := CwcMsg.{kind = CWC_M_ASSISTANT, text_at = 0, text_n = 0, running = true, sequence = 2};
+  am.compute_n = cwc_put(am.compute[..], 0, "local");
+  am.dev_n = cwc_put(am.device[..], 0, dev);
+  c[0].web_msg_idx = cwc_append_msg(c, am);
+  vl_scroll_to_bottom(c[0].vl[..]);
+
+  c[0].remote_running = true;
+  c[0].remote_device_n = cwc_put(c[0].remote_device[..], 0, dev);
+  c[0].remote_compute_n = cwc_put(c[0].remote_compute[..], 0, "local");
+  c[0].active_compute_n = cwc_put(c[0].active_compute[..], 0, "local");
+  c[0].active_device_n = cwc_put(c[0].active_device[..], 0, dev);
+  c[0].error_n = 0;
+
+  url: [128] u8;
+  un := cwc_put(url[..], 0, "/api/chat/submit/v2alpha1?host=");
+  un = cwc_put(url[..], un, cast(string) c[0].sel_host[0..<64]);
+  _ = ui_cmd_emit(c[0].rt[..], c[0].comp_composer, cast(string) op_b[0..<op_n], UI_CMD_HTTP_POST, UI_CMD_QUEUE,
+                  cast(string) url[0..<un], cast(string) c[0].scratch_a[0..<bn], 0, CWC_MSG_SUBMIT_OK, CWC_MSG_SUBMIT_ERR, "");
+  cwc_flush_effects(c);
+  c[0].dirty = true;
+  return true;
+}
+
+cwc_send_approval :: (c: [] ChatCloud, msg_idx: int, allow: bool) {
+  if msg_idx < 0 || msg_idx >= c[0].msg_n { return; }
+  host_b: [64] u8; host_n := 0;
+  if c[0].sel_host_n == 64 {
+    host_n = cwc_put(host_b[..], 0, cast(string) c[0].sel_host[0..<64]);
+  } else if c[0].env_n > 0 {
+    host_n = cwc_put(host_b[..], 0, cast(string) c[0].env_host[0][..]);
+  }
+  if host_n != 64 {
+    c[0].error_n = cwc_put(c[0].error[..], 0, "No enrolled computer selected for approval response.");
+    c[0].dirty = true;
+    return;
+  }
+  m := c[0].msgs[msg_idx];
+  // Extract 32-hex task_id from turn ("trn_<32hex>") or generate deterministic 32-hex command_id.
+  task_id: [32] u8;
+  if m.turn_n == 36 && cast(string) m.turn[0..<4] == "trn_" {
+    _ = cwc_put(task_id[..], 0, cast(string) m.turn[4..<36]);
+  } else if c[0].active_turn_n == 36 && cast(string) c[0].active_turn_id[0..<4] == "trn_" {
+    _ = cwc_put(task_id[..], 0, cast(string) c[0].active_turn_id[4..<36]);
+  } else {
+    _ = cwc_put(task_id[..], 0, "00000000000000000000000000000000");
+  }
+  cmd_full: [36] u8;
+  _ = cwc_make_id(c, "cmd_", cmd_full[..]);
+  inter := ifx m.tool_id_n > 0 then cast(string) m.tool_id[0..<m.tool_id_n] else "approval";
+  rev := ifx c[0].active_revision > 0 then c[0].active_revision else 1;
+  issued := ifx c[0].now_ms > 0 then c[0].now_ms else 1;
+
+  o: [1] Jo; jo_start(o[..], c[0].scratch_b[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "openagents.environment.execution.task-request.v1alpha1");
+  jo_key(o[..], "method"); jo_str(o[..], "RespondTask");
+  jo_key(o[..], "task_id"); jo_str(o[..], cast(string) task_id[..]);
+  jo_key(o[..], "command_id"); jo_str(o[..], cast(string) cmd_full[4..<36]);
+  jo_key(o[..], "expected_revision"); jo_int(o[..], rev);
+  jo_key(o[..], "interaction_id"); jo_str(o[..], inter);
+  jo_key(o[..], "allow"); jo_bool(o[..], allow);
+  jo_key(o[..], "issued_at_ms"); jo_int(o[..], issued);
+  jo_key(o[..], "expires_at_ms"); jo_int(o[..], issued + 300000);
+  jo_key(o[..], "route_decision"); jo_raw(o[..], "null");
+  jo_end(o[..]);
+  if o[0].bad { return; }
+
+  c[0].msgs[msg_idx].appr_n = cwc_put(c[0].msgs[msg_idx].approval[..], 0, ifx allow then "approved" else "denied");
+  url: [128] u8;
+  un := cwc_put(url[..], 0, "/api/chat/task/v1alpha1?host=");
+  un = cwc_put(url[..], un, cast(string) host_b[..]);
+  op_b: [64] u8; op_n := cwc_make_op(c, "appr", op_b[..]);
+  _ = ui_cmd_emit(c[0].rt[..], c[0].comp_transcript, cast(string) op_b[0..<op_n], UI_CMD_HTTP_POST, UI_CMD_QUEUE,
+                  cast(string) url[0..<un], cast(string) c[0].scratch_b[0..<o[0].n], 0, CWC_MSG_APPR_OK, CWC_MSG_APPR_ERR, "");
+  cwc_flush_effects(c);
+  c[0].dirty = true;
+}
+
+// Starts a live Web streaming turn on CWC_TURN_SLOT (POST /api/v1/inference with Tier 1 tools)
+// or submits a durable turn pinned to an enrolled computer (POST /api/chat/submit/v2alpha1?host=...).
 cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
   cwc_init(c);
   if c[0].auth_state == CWC_AUTH_ANON {
@@ -1420,13 +1852,19 @@ cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
     c[0].dirty = true;
     return false;
   }
-  if c[0].web_streaming { return false; }
+  if c[0].web_streaming || c[0].tool_running || c[0].remote_running { return false; }
 
   lo := 0; hi := raw_prompt.count;
   while lo < hi && (raw_prompt[lo] == ' ' || raw_prompt[lo] == '\n' || raw_prompt[lo] == '\t' || raw_prompt[lo] == '\r') { lo += 1; }
   while hi > lo && (raw_prompt[hi - 1] == ' ' || raw_prompt[hi - 1] == '\n' || raw_prompt[hi - 1] == '\t' || raw_prompt[hi - 1] == '\r') { hi -= 1; }
   if lo >= hi { return false; }
   prompt := cast(string) raw_prompt[lo..<hi];
+  c[0].target_menu = false;
+
+  // Tier 2: explicit enrolled computer execution via durable turns_v2 + host pinning.
+  if c[0].target_kind == CLD_TARGET_COMPUTER && c[0].sel_host_n == 64 {
+    return cwc_send_computer(c, prompt);
+  }
 
   // Allocate conversation ID on first message and push /chat/<cid>.
   fresh_conv := c[0].active_id_n != 36;
@@ -1476,7 +1914,7 @@ cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
   c[0].convs[si].updated_at_ms = c[0].now_ms;
   cwc_sort_convs(c);
 
-  // Build Chat Completions streaming request from newest messages fitting 40 KB.
+  // Build Chat Completions streaming request from newest messages fitting 40 KB (reserve room for tool loop).
   hist: [64] GwMessage;
   hist_n := 0;
   hist_bytes := 0;
@@ -1500,31 +1938,27 @@ cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
     tmp := hist[a]; hist[a] = hist[b]; hist[b] = tmp;
   }
 
-  req := GwRequest.{
-    model = cwc_model_id(c),
-    system = "You are OpenAgents, a helpful, concise AI assistant. Use Markdown for structured answers and fenced code blocks with language names for code.",
-    messages = hist[0..<hist_n],
-    stream = true
-  };
-  bn := gw_chat_body(req, 0, c[0].scratch_a[..]);
-  if bn <= 0 {
-    c[0].error_n = cwc_put(c[0].error[..], 0, "Message could not be encoded.");
-    c[0].dirty = true;
-    return false;
-  }
-
-  // Start live SSE token stream on CWC_TURN_SLOT + write-through sync to Postgres.
-  c[0].web_streaming = true;
-  c[0].web_sse_n = 0;
-  c[0].web_err_n = 0;
+  c[0].tool_round = 0;
+  c[0].tool_running = false;
+  c[0].tool_call_idx = 0;
+  c[0].tool_call_n = 0;
+  c[0].tool_seq = 2;
   c[0].web_in_tok = 0;
   c[0].web_out_tok = 0;
   c[0].web_cached_tok = 0;
   c[0].error_n = 0;
-  c[0].web_ps[0] = GwParse.{};
   smd_reset(c[0].live_md[..], 0, true);
 
-  cwc_queue_open(c, CWC_TURN_SLOT, "/api/v1/inference", cast(string) c[0].scratch_a[0..<bn], "", 0);
+  if !gwt_conversation_begin(c[0].tool_conv[..], c[0].tool_pool[..], CWC_TOOL_MAX_STEPS, hist[0..<hist_n]) || !cwc_start_inference_step(c) {
+    c[0].error_n = cwc_put(c[0].error[..], 0, "Message could not be encoded.");
+    if c[0].web_msg_idx >= 0 && c[0].web_msg_idx < c[0].msg_n {
+      c[0].msgs[c[0].web_msg_idx].running = false;
+      c[0].msgs[c[0].web_msg_idx].failed = true;
+    }
+    c[0].dirty = true;
+    return false;
+  }
+
   cwc_emit_sync(c, cid, tid, cast(string) c[0].active_title[0..<c[0].active_title_n],
                 prompt, "", CT_RUNNING, "", "", CC_EV_USER_MESSAGE, 1, false);
   cwc_reconcile_subs(c);
@@ -1533,11 +1967,18 @@ cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
   return true;
 }
 
-// Stops either an active Web stream or a remotely-running Desktop/Cloud turn.
+// Stops either an active Web stream / tool run or a remotely-running Desktop/Cloud turn.
 cwc_stop :: (c: [] ChatCloud) {
-  if c[0].web_streaming {
+  if c[0].web_streaming || c[0].tool_running {
     cwc_queue_close(c, CWC_TURN_SLOT);
     c[0].web_streaming = false;
+    c[0].tool_running = false;
+    for k: 0..<CWC_HTTP_COUNT {
+      if c[0].http_slots[k].busy && c[0].http_slots[k].rx_kind == 3 {
+        c[0].http_slots[k].busy = false;
+        cwc_queue_close(c, CWC_HTTP_BASE + k);
+      }
+    }
     _ = smd_finish(c[0].live_md[..]);
     idx := c[0].web_msg_idx;
     partial := ifx idx >= 0 && idx < c[0].msg_n then cwc_msg_text(c, idx) else "";
@@ -1545,7 +1986,7 @@ cwc_stop :: (c: [] ChatCloud) {
     cid := cwc_active_id(c);
     tid := cast(string) c[0].web_turn_id[0..<c[0].web_turn_n];
     if cid.count == 36 && tid.count == 36 {
-      cwc_emit_sync(c, cid, tid, "", "", partial, CT_CANCELLED, "user_stop", "", CC_EV_CANCELLED, 3, c[0].conv_persisted);
+      cwc_emit_sync(c, cid, tid, "", "", partial, CT_CANCELLED, "user_stop", "", CC_EV_CANCELLED, ifx c[0].tool_seq > 3 then c[0].tool_seq + 1 else 3, c[0].conv_persisted);
     }
     si := cwc_find_conv(c, cid);
     if si >= 0 { c[0].convs[si].working = false; c[0].convs[si].active_turn_n = 0; }
@@ -1568,7 +2009,7 @@ cwc_stop :: (c: [] ChatCloud) {
   }
 }
 
-// Handles live SSE token chunks from POST /api/chat/complete on CWC_TURN_SLOT.
+// Handles live SSE token & tool-call chunks from POST /api/v1/inference on CWC_TURN_SLOT.
 cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string) {
   if !c[0].web_streaming { return; }
   if phase == UI_SUB_PHASE_OPEN { return; }
@@ -1578,7 +2019,7 @@ cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string
       return;
     }
     for ch: payload {
-      if c[0].web_sse_n >= CWC_SSE_BUF { c[0].web_sse_n = 0; }
+      if c[0].web_sse_n >= CWC_SSE_BUF { c[0].web_sse_n = 0; _ = gwt_step_fail(c[0].tool_step[..]); }
       c[0].web_sse[c[0].web_sse_n] = ch;
       c[0].web_sse_n += 1;
       n := c[0].web_sse_n;
@@ -1595,10 +2036,12 @@ cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string
           while e < lines.count && lines[e] != '\n' { e += 1; }
           ev := gw_sse_line(sse[..], cast(string) lines[at..<e]);
           if ev.ready {
+            if ev.truncated { _ = gwt_step_fail(c[0].tool_step[..]); }
             ar: [1] ClArena; ar[0].buf = c[0].scratch_c[..];
             out: [16] GwEvent;
             gn := gw_chat_chunk(c[0].web_ps[..], ar[..], ev.data, out[..]);
             for k: 0..<gn {
+              _ = gwt_step_feed(c[0].tool_step[..], out[k]);
               if out[k].kind == GW_EV_TEXT && out[k].text.count > 0 {
                 idx := c[0].web_msg_idx;
                 if idx >= 0 && idx < c[0].msg_n {
@@ -1621,9 +2064,9 @@ cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string
                 };
                 cwc_apply_event(c, tev, false);
               } else if out[k].kind == GW_EV_DONE && out[k].usage.ok {
-                if out[k].usage.input_tokens > 0 { c[0].web_in_tok = out[k].usage.input_tokens; }
-                if out[k].usage.output_tokens > 0 { c[0].web_out_tok = out[k].usage.output_tokens; }
-                if out[k].usage.cached_tokens > 0 { c[0].web_cached_tok = out[k].usage.cached_tokens; }
+                if out[k].usage.input_tokens > 0 { c[0].web_in_tok += out[k].usage.input_tokens; }
+                if out[k].usage.output_tokens > 0 { c[0].web_out_tok += out[k].usage.output_tokens; }
+                if out[k].usage.cached_tokens > 0 { c[0].web_cached_tok += out[k].usage.cached_tokens; }
               } else if out[k].kind == GW_EV_REFUSED {
                 c[0].error_n = cwc_put(c[0].error[..], 0, ifx out[k].reason.count > 0 then out[k].reason else "Model stopped early.");
               }
@@ -1637,11 +2080,49 @@ cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string
     return;
   }
 
-  // END or ERROR on CWC_TURN_SLOT: finalize StreamMd and write through to Postgres.
-  c[0].web_streaming = false;
-  _ = smd_finish(c[0].live_md[..]);
-  idx := c[0].web_msg_idx;
+  // END or ERROR on CWC_TURN_SLOT: flush gw_chat_end, check for sealed Tier 1 tool calls, else finalize turn.
   ok := phase == UI_SUB_PHASE_END && status == 200 && c[0].error_n == 0;
+  if ok && !c[0].tool_step[0].done {
+    last: [1] GwEvent;
+    k := gw_chat_end(c[0].web_ps[..], last[..]);
+    if k > 0 {
+      _ = gwt_step_feed(c[0].tool_step[..], last[0]);
+      if last[0].kind == GW_EV_DONE && last[0].usage.ok {
+        if last[0].usage.input_tokens > 0 { c[0].web_in_tok += last[0].usage.input_tokens; }
+        if last[0].usage.output_tokens > 0 { c[0].web_out_tok += last[0].usage.output_tokens; }
+        if last[0].usage.cached_tokens > 0 { c[0].web_cached_tok += last[0].usage.cached_tokens; }
+      }
+    }
+  }
+  sealed := gwt_step_end(c[0].tool_step[..], ok && c[0].web_sse_n == 0);
+  if sealed && c[0].tool_step[0].n > 0 && c[0].tool_round < CWC_TOOL_MAX_STEPS {
+    idx := c[0].web_msg_idx;
+    said := "";
+    if idx >= 0 && idx < c[0].msg_n {
+      full := cwc_msg_text(c, idx);
+      if c[0].tool_text_at <= full.count { said = cast(string) full[c[0].tool_text_at..<full.count]; }
+      c[0].msgs[idx].running = false;
+    }
+    if gwt_conversation_calls(c[0].tool_conv[..], c[0].tool_step[..], said) {
+      c[0].web_streaming = false;
+      c[0].tool_running = true;
+      c[0].tool_call_idx = 0;
+      c[0].tool_call_n = c[0].tool_step[0].n;
+      for ti: 0..<c[0].tool_call_n {
+        tc := gwt_step_call(c[0].tool_step[..], ti);
+        cwc_emit_tool_event(c, CC_EV_TOOL_CALL, tc.call_id, tc.name, tc.input_json, "", false);
+      }
+      if c[0].vl[0].pinned_bottom { vl_scroll_to_bottom(c[0].vl[..]); }
+      cwc_dispatch_next_tool(c);
+      return;
+    }
+    c[0].error_n = cwc_put(c[0].error[..], 0, "Tool conversation limit reached.");
+    ok = false;
+  } else if !sealed && ok && c[0].tool_step[0].tools {
+    c[0].error_n = cwc_put(c[0].error[..], 0, "The model tool call did not complete cleanly.");
+    ok = false;
+  }
+
   if !ok && c[0].error_n == 0 {
     if phase == UI_SUB_PHASE_ERROR && c[0].web_err_n == 0 && payload.count > 0 && payload != "closed" && payload != "interrupted" {
       c[0].web_err_n = cwc_put(c[0].web_err[..], 0, payload);
@@ -1670,30 +2151,7 @@ cwc_web_turn_event :: (c: [] ChatCloud, phase: int, status: int, payload: string
       c[0].error_n = cwc_put(c[0].error[..], 0, "The model request failed. Try again.");
     }
   }
-  out_text := "";
-  if idx >= 0 && idx < c[0].msg_n {
-    c[0].msgs[idx].running = false;
-    c[0].msgs[idx].failed = !ok;
-    c[0].msgs[idx].in_tokens = c[0].web_in_tok;
-    c[0].msgs[idx].out_tokens = c[0].web_out_tok;
-    c[0].msgs[idx].cached_tokens = c[0].web_cached_tok;
-    out_text = cwc_msg_text(c, idx);
-  }
-  cid := cwc_active_id(c);
-  tid := cast(string) c[0].web_turn_id[0..<c[0].web_turn_n];
-  if cid.count == 36 && tid.count == 36 && c[0].auth_state != CWC_AUTH_ANON {
-    cwc_emit_sync(c, cid, tid, "", "", out_text,
-                  ifx ok then CT_COMPLETED else CT_FAILED,
-                  ifx ok then "end_turn" else "error",
-                  cast(string) c[0].error[0..<c[0].error_n],
-                  ifx ok then CC_EV_COMPLETED else CC_EV_FAILED, 3, c[0].conv_persisted);
-    cwc_fetch_usage(c);
-  }
-  si := cwc_find_conv(c, cid);
-  if si >= 0 { c[0].convs[si].working = false; c[0].convs[si].active_turn_n = 0; }
-  cwc_reconcile_subs(c);
-  cwc_flush_effects(c);
-  c[0].dirty = true;
+  cwc_finish_web_turn(c, ok);
 }
 
 // ---- Metadata Mutations (Pin, Rename, Archive) via #authority cc_meta_write
@@ -1841,6 +2299,51 @@ cwc_drain_msgs :: (c: [] ChatCloud) {
     } else if msg.tag == CWC_MSG_STOP_OK {
       c[0].remote_running = false;
       c[0].dirty = true;
+    } else if msg.tag == CWC_MSG_SUBMIT_OK {
+      d: [1] Jv;
+      if payload.count > 0 && jv_parse(d[..], payload, c[0].jv_nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
+        v := d[0];
+        cid_b: [36] u8; cid_n := cwc_jv_str_into(v, jv_get(v, 0, "conversation_id"), cid_b[..]);
+        tid_b: [36] u8; tid_n := cwc_jv_str_into(v, jv_get(v, 0, "turn_id"), tid_b[..]);
+        rev := jv_int(v, jv_get(v, 0, "revision"), 1);
+        if cid_n == 36 {
+          c[0].active_id_n = cwc_put(c[0].active_id[..], 0, cast(string) cid_b[0..<36]);
+          c[0].conv_persisted = true;
+          c[0].active_revision = rev;
+          un := cwc_put(c[0].push_url[..], 0, "/chat/");
+          c[0].push_url_n = cwc_put(c[0].push_url[..], un, cwc_active_id(c));
+          _ = ui_provide_str(rt, c[0].comp_root, "conv.active", cwc_active_id(c));
+        }
+        if tid_n == 36 {
+          c[0].active_turn_n = cwc_put(c[0].active_turn_id[..], 0, cast(string) tid_b[0..<36]);
+          if c[0].web_msg_idx >= 0 && c[0].web_msg_idx < c[0].msg_n {
+            c[0].msgs[c[0].web_msg_idx].turn_n = cwc_put(c[0].msgs[c[0].web_msg_idx].turn[..], 0, cast(string) tid_b[0..<36]);
+          }
+        }
+        cwc_reconcile_subs(c);
+      }
+      c[0].dirty = true;
+    } else if msg.tag == CWC_MSG_SUBMIT_ERR {
+      c[0].remote_running = false;
+      if c[0].web_msg_idx >= 0 && c[0].web_msg_idx < c[0].msg_n {
+        c[0].msgs[c[0].web_msg_idx].running = false;
+        c[0].msgs[c[0].web_msg_idx].failed = true;
+      }
+      said := "";
+      if payload.count > 0 {
+        ar: [1] ClArena; ar[0].buf = c[0].scratch_c[..];
+        said = cl_str(ar[..], payload, "error");
+      }
+      c[0].error_n = cwc_put(c[0].error[..], 0, ifx said.count > 0 then said else "Could not dispatch turn to enrolled computer.");
+      c[0].dirty = true;
+    } else if msg.tag == CWC_MSG_APPR_ERR {
+      said := "";
+      if payload.count > 0 {
+        ar: [1] ClArena; ar[0].buf = c[0].scratch_c[..];
+        said = cl_str(ar[..], payload, "error");
+      }
+      c[0].error_n = cwc_put(c[0].error[..], 0, ifx said.count > 0 then said else "Could not deliver approval decision.");
+      c[0].dirty = true;
     }
   }
   cwc_flush_effects(c);
@@ -1875,6 +2378,8 @@ cwc_on_stream_event :: (c: [] ChatCloud, kind: int, status: int, payload: string
         c[0].http_slots[hs].rx_n = cwc_put(c[0].list_rx[..], c[0].http_slots[hs].rx_n, payload);
       } else if rk == 2 {
         c[0].http_slots[hs].rx_n = cwc_put(c[0].detail_rx[..], c[0].http_slots[hs].rx_n, payload);
+      } else if rk == 3 {
+        c[0].http_slots[hs].rx_n = cwc_put(c[0].tool_rx[..], c[0].http_slots[hs].rx_n, payload);
       } else {
         c[0].http_slots[hs].rx_n = cwc_put(c[0].http_slots[hs].small_buf[..], c[0].http_slots[hs].rx_n, payload);
       }
@@ -1887,11 +2392,17 @@ cwc_on_stream_event :: (c: [] ChatCloud, kind: int, status: int, payload: string
     rx_n := c[0].http_slots[hs].rx_n;
     c[0].http_slots[hs].busy = false;
     ok := phase == UI_SUB_PHASE_END && st >= 200 && st < 300;
-    // Large payloads (> UI_MSG_POOL = 4096) decode directly from their dedicated 256 KB buffer!
-    if rk == 1 || rk == 2 {
-      body := ifx rk == 1 then cast(string) c[0].list_rx[0..<rx_n] else cast(string) c[0].detail_rx[0..<rx_n];
+    // Large payloads (> UI_MSG_POOL = 4096) decode directly from their dedicated buffers!
+    if rk == 1 || rk == 2 || rk == 3 {
       rt := c[0].rt[..];
       _ = ui_cmd_complete(rt, rid, ok, st, "");
+      if rk == 3 {
+        body := cast(string) c[0].tool_rx[0..<rx_n];
+        cwc_on_tool_reply(c, ok, st, body);
+        cwc_drain_msgs(c);
+        return true;
+      }
+      body := ifx rk == 1 then cast(string) c[0].list_rx[0..<rx_n] else cast(string) c[0].detail_rx[0..<rx_n];
       if ok {
         c[0].auth_state = CWC_AUTH_IN;
         _ = ui_provide_int(rt, c[0].comp_root, "auth.state", CWC_AUTH_IN);
@@ -1981,7 +2492,53 @@ cwc_on_click :: (c: [] ChatCloud, id: string) -> bool {
     c[0].dirty = true;
     return true;
   }
-  k := cwc_index_after(id, "cc.open.");
+  if id == "cc.target" {
+    c[0].target_menu = !c[0].target_menu;
+    c[0].dirty = true;
+    return true;
+  }
+  if id == "cc.tgt.auto" {
+    c[0].target_kind = CLD_TARGET_AUTO;
+    c[0].sel_host_n = 0;
+    c[0].target_menu = false;
+    c[0].dirty = true;
+    return true;
+  }
+  if id == "cc.tgt.cloud" {
+    c[0].target_kind = CLD_TARGET_CLOUD;
+    c[0].sel_host_n = 0;
+    c[0].target_menu = false;
+    c[0].dirty = true;
+    return true;
+  }
+  if id == "cc.tgt.sandbox" {
+    c[0].target_kind = CLD_TARGET_SANDBOX;
+    c[0].sel_host_n = 0;
+    c[0].target_menu = false;
+    c[0].dirty = true;
+    return true;
+  }
+  k := cwc_index_after(id, "cc.tgt.env.");
+  if k >= 0 && k < c[0].env_n {
+    c[0].target_kind = CLD_TARGET_COMPUTER;
+    c[0].sel_host_n = cwc_put(c[0].sel_host[..], 0, cast(string) c[0].env_host[k][..]);
+    c[0].host_name_n = cwc_put(c[0].host_name[..], 0, cast(string) c[0].env_name[k][0..<c[0].env_name_n[k]]);
+    c[0].host_online = c[0].env_online[k];
+    c[0].target_menu = false;
+    c[0].dirty = true;
+    return true;
+  }
+  k = cwc_index_after(id, "cc.appr.ok.");
+  if k >= 0 && k < c[0].msg_n {
+    cwc_send_approval(c, k, true);
+    return true;
+  }
+  k = cwc_index_after(id, "cc.appr.no.");
+  if k >= 0 && k < c[0].msg_n {
+    cwc_send_approval(c, k, false);
+    return true;
+  }
+  k = cwc_index_after(id, "cc.open.");
   if k >= 0 && k < c[0].conv_n {
     cid := cast(string) c[0].convs[k].id[0..<c[0].convs[k].id_n];
     cwc_open_conversation(c, cid, true);
@@ -2118,14 +2675,47 @@ cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
   }
   _ = tr_leaf(t, "cc.hud.tier", TG_SPAN, ifx is_local then "cc-pill cc-pill-local" else "cc-pill", cast(string) pill[0..<pn]);
 
+  // Execution Target selector pill (#14127): Auto | Cloud | <Enrolled Computer> | Sandbox
+  tlb: [96] u8;
+  tbtn := tr_leaf(t, "cc.target", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_COMPUTER then "cc-pill cc-pill-local cc-tbtn" else "cc-pill cc-tbtn", cwc_target_label(c, tlb[..]));
+  tr_attr(t, tbtn, AT_EXPANDED, ifx c[0].target_menu then "true" else "false");
+  tr_attr(t, tbtn, AT_LABEL, "Select execution target");
+  if c[0].target_menu {
+    tm := tr_open(t, "cc.target.menu", TG_DIV, "cc-tmenu");
+    tr_attr(t, tm, AT_ROLE, "menu");
+    _ = tr_leaf(t, "cc.tgt.auto", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_AUTO then "cc-sbtn cc-topt-on" else "cc-sbtn", "Auto");
+    _ = tr_leaf(t, "cc.tgt.cloud", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_CLOUD then "cc-sbtn cc-topt-on" else "cc-sbtn", "Cloud (Tools)");
+    eb: [48] u8;
+    for ei: 0..<c[0].env_n {
+      en_s := ifx c[0].env_name_n[ei] > 0 then cast(string) c[0].env_name[ei][0..<c[0].env_name_n[ei]] else cast(string) c[0].env_host[ei][0..<8];
+      sel_e := c[0].target_kind == CLD_TARGET_COMPUTER && c[0].sel_host_n == 64 &&
+               cast(string) c[0].sel_host[0..<64] == cast(string) c[0].env_host[ei][..];
+      _ = tr_leaf(t, tr_join(eb[..], "cc.tgt.env.", ei), TG_BUTTON, ifx sel_e then "cc-sbtn cc-topt-on" else "cc-sbtn", en_s);
+    }
+    _ = tr_leaf(t, "cc.tgt.sandbox", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_SANDBOX then "cc-sbtn cc-topt-on" else "cc-sbtn", "Cloud Sandbox");
+    tr_close(t);
+  }
+
   if c[0].sel_project_n > 0 {
-    pb: [64] u8; pbn := cwc_put(pb[..], 0, "Project · ");
-    pbn = cwc_put(pb[..], pbn, cast(string) c[0].sel_project[0..<ifx c[0].sel_project_n > 12 then 12 else c[0].sel_project_n]);
+    pb: [160] u8; pbn := cwc_put(pb[..], 0, "Project · ");
+    if c[0].proj_name_n > 0 {
+      pbn = cwc_put(pb[..], pbn, cast(string) c[0].proj_name[0..<c[0].proj_name_n]);
+      if c[0].proj_repo_n > 0 {
+        pbn = cwc_put(pb[..], pbn, " · ");
+        pbn = cwc_put(pb[..], pbn, cast(string) c[0].proj_repo[0..<c[0].proj_repo_n]);
+      }
+    } else {
+      pbn = cwc_put(pb[..], pbn, cast(string) c[0].sel_project[0..<ifx c[0].sel_project_n > 12 then 12 else c[0].sel_project_n]);
+    }
     _ = tr_leaf(t, "cc.hud.project", TG_SPAN, "cc-pill", cast(string) pb[0..<pbn]);
   }
   if c[0].sel_host_n == 64 {
-    hb: [48] u8; hbn := cwc_put(hb[..], 0, "Computer · ");
-    hbn = cwc_put(hb[..], hbn, cast(string) c[0].sel_host[0..<8]);
+    hb: [96] u8; hbn := cwc_put(hb[..], 0, "Computer · ");
+    if c[0].host_name_n > 0 {
+      hbn = cwc_put(hb[..], hbn, cast(string) c[0].host_name[0..<c[0].host_name_n]);
+    } else {
+      hbn = cwc_put(hb[..], hbn, cast(string) c[0].sel_host[0..<8]);
+    }
     _ = tr_leaf(t, "cc.hud.host", TG_SPAN, "cc-pill cc-pill-local", cast(string) hb[0..<hbn]);
   }
 
@@ -2252,10 +2842,20 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
         diff_s := cwc_msg_extra(c, k);
         if diff_s.count > 0 { cwc_draw_diff(t, id, diff_s); }
       }
+      if m.appr_n > 0 && cast(string) m.approval[0..<m.appr_n] == "pending" {
+        arow := tr_open(t, tr_cat(b2[..], id, ".appr"), TG_DIV, "cc-cacts");
+        _ = tr_leaf(t, tr_join(b3[..], "cc.appr.ok.", k), TG_BUTTON, "cc-sbtn cc-topt-on", "Approve");
+        _ = tr_leaf(t, tr_join(b3[..], "cc.appr.no.", k), TG_BUTTON, "cc-sbtn", "Deny");
+        tr_close(t);
+        _ = arow;
+      }
       tr_close(t);
       tr_close(t);
       continue;
     }
+
+    // Skip empty non-running assistant placeholders (e.g. step 0 emitted tool calls before answering).
+    if !m.running && txt.count == 0 { continue; }
 
     // CWC_M_ASSISTANT: incremental StreamMd for live message, StreamMd render for visible completed items.
     item := tr_open(t, tr_cat(b2[..], id, ".row"), TG_DIV, "cc-row");
@@ -2326,6 +2926,7 @@ cwc_css :: (out: [] u8, at: int) -> int {
   n := at;
   n = mc(out, n, ".cc-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line-dim);background:var(--surface)}");
   n = mc(out, n, ".cc-pill{font:500 11px/1.2 var(--mono);letter-spacing:.08em;padding:4px 8px;border:1px solid var(--line-dim);color:var(--ink-muted)}");
+  n = mc(out, n, ".cc-tbtn{background:none;cursor:pointer}.cc-tbtn:hover{border-color:var(--line-bright);color:var(--ink)}.cc-tmenu{display:flex;flex-wrap:wrap;gap:4px}.cc-topt-on{border-color:var(--line-bright);color:var(--ink-bright)}");
   n = mc(out, n, ".cc-pill-local{border-color:var(--line);color:var(--ink)}.cc-pill-live{border-color:var(--line-bright);color:var(--ink-bright)}");
   n = mc(out, n, ".cc-recon{border-style:dashed;color:var(--ink)}");
   n = mc(out, n, ".cc-sbar{display:flex;gap:6px;padding:6px 8px;align-items:center}");

@@ -7779,6 +7779,44 @@
         "coax/web/api/tests/github_pipes_e2e_test.sh"
       ],
       "note": "WorkOS Pipes GitHub disconnect confirmation (POST /api/integrations/github/disconnect; #14126)."
+    },
+    {
+      "id": "openagents.cloud.tool.req.v1alpha1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/cloud/tools-v1alpha1.json",
+      "codec": "coax/lib/cloud/tool-wire.coax",
+      "check": "coax/bin/coax test coax/lib/cloud/tool-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/lib/cloud/tool-policy.coax",
+        "coax/web/api/cloud-tools-wire.coax",
+        "coax/web/api/cloud-tools.c"
+      ],
+      "tests": [
+        "coax/lib/cloud/tool-policy.coax",
+        "coax/lib/cloud/tool-wire.coax",
+        "coax/web/api/cloud-tools-wire.coax"
+      ],
+      "note": "Tier 1 Instant Cloud Tools request envelope (POST /api/tools/cloud/v1; #14127)."
+    },
+    {
+      "id": "openagents.cloud.tool.res.v1alpha1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/cloud/tools-v1alpha1.json",
+      "codec": "coax/lib/cloud/tool-wire.coax",
+      "check": "coax/bin/coax test coax/lib/cloud/tool-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/cloud-tools-wire.coax",
+        "coax/web/api/cloud-tools.c"
+      ],
+      "tests": [
+        "coax/lib/cloud/tool-wire.coax",
+        "coax/web/api/cloud-tools-wire.coax"
+      ],
+      "note": "Tier 1 Instant Cloud Tools response envelope (POST /api/tools/cloud/v1; #14127)."
     }
   ]
 }

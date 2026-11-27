@@ -748,7 +748,7 @@ cw_build :: (s: [] ChatWeb) {
         }
       }
       k_select_end(t, s[0].menu);
-      active_stream := s[0].cc[0].web_streaming || s[0].cc[0].remote_running;
+      active_stream := s[0].cc[0].web_streaming || s[0].cc[0].tool_running || s[0].cc[0].remote_running;
       k_composer_end(t, u, "composer", ifx active_stream then "Stop" else "Send", active_stream || cw_has_words(s));
     }
     tr_close(t);
@@ -1752,6 +1752,39 @@ cw_connect :: (s: [] ChatWeb) {
 
 // ---------------------------------------------------------------- the face's calls
 
+cw_sync_cloud_context :: (s: [] ChatWeb) {
+  c := s[0].cc[..];
+  sw := s[0].set[..];
+  c[0].gh_connected = sw[0].gh_connected;
+  cwc_clear_envs(c);
+  for i: 0..<sw[0].nenvs {
+    cwc_put_env(c, cast(string) sw[0].env_host[i][..], cast(string) sw[0].env_name[i][0..<sw[0].env_name_n[i]], sw[0].env_online[i]);
+  }
+  if c[0].sel_project_n == 36 {
+    sp := cast(string) c[0].sel_project[0..<36];
+    for i: 0..<sw[0].naprojs {
+      if sw[0].aproj_id_n[i] == 36 && cast(string) sw[0].aproj_id[i][0..<36] == sp {
+        cwc_set_project_info(c, cast(string) sw[0].aproj_name[i][0..<sw[0].aproj_name_n[i]],
+                             cast(string) sw[0].aproj_repo[i][0..<sw[0].aproj_repo_n[i]], sw[0].aproj_rev[i]);
+        break;
+      }
+    }
+  } else {
+    c[0].proj_name_n = 0; c[0].proj_repo_n = 0; c[0].proj_rev = 0;
+  }
+  if c[0].sel_host_n == 64 {
+    sh := cast(string) c[0].sel_host[0..<64];
+    for i: 0..<sw[0].nenvs {
+      if cast(string) sw[0].env_host[i][..] == sh {
+        cwc_set_host_info(c, cast(string) sw[0].env_name[i][0..<sw[0].env_name_n[i]], sw[0].env_online[i]);
+        break;
+      }
+    }
+  } else {
+    c[0].host_name_n = 0; c[0].host_online = false;
+  }
+}
+
 coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   if !s[0].ready {
@@ -1762,6 +1795,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].time += step;
   s[0].cc[0].now_ms = cast(int) (s[0].time * 1000.0) + 1;
+  cw_sync_cloud_context(s);
   if s[0].cc[0].dirty { s[0].dirty = true; s[0].cc[0].dirty = false; }
   cw_sync_cloud_nav(s);
   cw_tick(s);
@@ -1783,7 +1817,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   return bytes;
 }
 // Whether the host is to call again next frame: something changed or is moving, or a Claude turn is at work.
-coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].cc[0].dirty || s[0].animating || s[0].cc[0].web_streaming || s[0].cc[0].remote_running || (s[0].live && s[0].turn > 0) || (s[0].local >= 0 && !s[0].local_off)); }
+coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].cc[0].dirty || s[0].animating || s[0].cc[0].web_streaming || s[0].cc[0].tool_running || s[0].cc[0].remote_running || (s[0].live && s[0].turn > 0) || (s[0].local >= 0 && !s[0].local_off)); }
 coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   if kind >= UI_SUB_EVENT_BASE {
@@ -1907,7 +1941,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   else if kind == CW_CLICK && id == "composer.talk" { cw_talk(s); }
   else if kind == CW_CLICK && id == "composer.send" {
     if cw_is_cloud(s) {
-      if s[0].cc[0].web_streaming || s[0].cc[0].remote_running { cwc_stop(s[0].cc[..]); }
+      if s[0].cc[0].web_streaming || s[0].cc[0].tool_running || s[0].cc[0].remote_running { cwc_stop(s[0].cc[..]); }
       else if cwc_send(s[0].cc[..], cast(string) s[0].draft[0..<s[0].draft_n]) {
         s[0].draft_n = 0; s[0].menu = false;
         dm_value(s[0].dom[..], "composer", "");

@@ -477,6 +477,7 @@ static void dispatch(client *cl, request *qp) {
   ROUTE(account_chat_route);
   ROUTE(environment_route);
   ROUTE(integrations_route);
+  ROUTE(cloud_tools_route);
   ROUTE(account_chat_library_route);
   ROUTE(chat_history_route);
   ROUTE(chat_route);   // before the rooms: /api/chat/state etc. are /chat's, any other /api/chat/<room> a room's
