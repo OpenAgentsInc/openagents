@@ -209,9 +209,9 @@ lw_css :: (out: [] u8, at: int) -> int {
   n = as_put(out, n, ".lw-mark{width:22px;height:22px;display:block}");
   n = as_put(out, n, ".lw-sub{margin:0;font:400 13px/1.4 var(--font-sans);color:#818181}");
   n = as_put(out, n, ".lw-oauth{display:flex;flex-direction:column;gap:8px;width:100%}");
-  n = as_put(out, n, ".lw-oauth .as-btn{position:relative;width:100%;height:40px;border-radius:8px;background:#111111;color:#ededed;box-shadow:inset 0 0 0 1px #2c2c2c;font:500 13.5px/1 var(--font-sans);justify-content:center}");
+  n = as_put(out, n, ".lw-oauth .as-btn{width:100%;height:40px;border-radius:8px;background:#111111;color:#ededed;box-shadow:inset 0 0 0 1px #2c2c2c;font:500 13.5px/1 var(--font-sans);justify-content:center;gap:8px}");
   n = as_put(out, n, ".lw-oauth .as-btn:hover{background:#191919;box-shadow:inset 0 0 0 1px #404040}");
-  n = as_put(out, n, ".lw-oauth .as-btn .si-mark{position:absolute;left:13px;width:18px;height:18px;display:block;color:#ededed;flex:none}");
+  n = as_put(out, n, ".lw-oauth .as-btn .si-mark{width:18px;height:18px;display:block;color:#ededed;flex:none}");
   n = as_put(out, n, ".lw-or{display:flex;align-items:center;gap:12px;margin:6px 0;color:#656565;font:500 11px/1 var(--font-sans);letter-spacing:.08em;text-transform:uppercase}");
   n = as_put(out, n, ".lw-or::before,.lw-or::after{content:'';flex:1;height:1px;background:#1b1b1b}");
   n = as_put(out, n, ".lw-box .as-in-wrap{height:40px;border-radius:8px;background:#0a0a0a;box-shadow:inset 0 0 0 1px #2c2c2c}");
