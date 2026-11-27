@@ -177,6 +177,7 @@ ChatCloud :: struct {
   auth_state: int;
   dirty: bool;
   now_ms: int;
+  seed_epoch: int;
   op_seq: int;
   id_seq: int;
   core_model: int;
@@ -334,9 +335,10 @@ cwc_make_id :: (c: [] ChatCloud, prefix: string, out: [] u8) -> int {
   c[0].id_seq += 1;
   n := cwc_put(out, 0, prefix);
   hex := "0123456789abcdef";
-  // Deterministic 32-hex ID from now_ms, id_seq, and active count (safe in native tests & WASM).
-  v1 := c[0].now_ms * 1000003 + c[0].id_seq * 9176 + 0x14094;
-  v2 := c[0].id_seq * 2654435761 + c[0].conv_n * 31 + c[0].msg_n * 7 + 0x9e3779b9;
+  // Deterministic in native tests (seed_epoch == 0); unique across browser reloads via coaxial_now_seconds().
+  se := c[0].seed_epoch & 0x7fffffff;
+  v1 := (se << 24) ^ (c[0].now_ms * 1000003 + c[0].id_seq * 9176 + 0x14094);
+  v2 := (se * 2654435761) ^ (c[0].id_seq * 2654435761 + c[0].conv_n * 31 + c[0].msg_n * 7 + 0x9e3779b9);
   for i: 0..<16 {
     if n < out.count { out[n] = hex[(v1 >> ((15 - i) * 4)) & 15]; n += 1; }
   }
@@ -349,6 +351,12 @@ cwc_make_id :: (c: [] ChatCloud, prefix: string, out: [] u8) -> int {
 cwc_make_op :: (c: [] ChatCloud, tag: string, out: [] u8) -> int {
   c[0].op_seq += 1;
   n := cwc_put(out, 0, "web_");
+  if c[0].seed_epoch > 0 {
+    n = cwc_put_int(out, n, c[0].seed_epoch);
+    n = cwc_put(out, n, "_");
+    n = cwc_put_int(out, n, c[0].now_ms);
+    n = cwc_put(out, n, "_");
+  }
   n = cwc_put(out, n, tag);
   n = cwc_put(out, n, "_");
   n = cwc_put_int(out, n, c[0].op_seq);

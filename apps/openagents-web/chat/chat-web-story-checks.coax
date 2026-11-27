@@ -312,8 +312,9 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   // Answer Copy button copies markdown text cleanly.
   cw_test_press(s, "cc.copy.1");
   #assert coaxial_chatweb_clip(s) > 0 && sc_contains(cast(string) s[0].clip[0..<s[0].clip_n], "## Demo");
+}
 
-  // Error extraction on POST /api/v1/inference: 402 credit prompt, 429 daily limit, and idempotent /sync fallback before conv_persisted.
+#test "14094 Story+Scene: /api/v1/inference 402/429 error extraction, /sync fallback, and cross-reload op/conv ID uniqueness" {
   e2: [1] CwTest; u := e2[0].s[..];
   ops2: [1] CwcTestLog;
   _ = coaxial_chatweb_frame(u, 0.016, true);
@@ -342,6 +343,17 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   cwc_t_stream_ev(u, CWC_TURN_SLOT, UI_SUB_PHASE_ERROR, 429, "{\"error\":\"this account's 500 requests for today are used up\"}");
   _ = coaxial_chatweb_frame(u, 0.016, true);
   #assert cast(string) u[0].cc[0].error[0..<u[0].cc[0].error_n] == "this account's 500 requests for today are used up";
+  // Distinct browser wall-clock seed_epoch values produce non-colliding conv IDs and sync operation IDs across reloads.
+  u[0].cc[0].seed_epoch = 1795753000; u[0].cc[0].op_seq = 0; u[0].cc[0].id_seq = 0;
+  op1: [64] u8; id1: [36] u8;
+  on1 := cwc_make_op(u[0].cc[..], "sync", op1[..]);
+  in1 := cwc_make_id(u[0].cc[..], "cnv_", id1[..]);
+  u[0].cc[0].seed_epoch = 1795753001; u[0].cc[0].op_seq = 0; u[0].cc[0].id_seq = 0;
+  op2: [64] u8; id2: [36] u8;
+  on2 := cwc_make_op(u[0].cc[..], "sync", op2[..]);
+  in2 := cwc_make_id(u[0].cc[..], "cnv_", id2[..]);
+  #assert on1 > 0 && on2 > 0 && cast(string) op1[0..<on1] != cast(string) op2[0..<on2];
+  #assert in1 == 36 && in2 == 36 && cast(string) id1[0..<in1] != cast(string) id2[0..<in2];
 }
 
 #test "14094 Story+Scene+Play: live Desktop observation, Last-Event-ID reconnect with zero duplicates, and Stop turn steering" {

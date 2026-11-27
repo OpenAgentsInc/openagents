@@ -23,6 +23,8 @@ IMPORT("dom_keep") void dom_keep(uint32_t at, uint32_t len);
 // An address on this site: pushed, the page stays and the address bar shows it (the app shell drew it);
 // else the browser goes there.
 IMPORT("dom_go") void dom_go(uint32_t at, uint32_t len, uint32_t push);
+// Wall-clock Unix seconds from dom-wire.js so client-minted chat IDs and sync operation IDs never collide across page reloads.
+IMPORT("coaxial_now_seconds") int64_t coaxial_now_seconds(void);
 
 static coax_v_t_ChatWeb at(uint32_t state) { return (coax_v_t_ChatWeb){(coax_t_ChatWeb *)(uintptr_t)state, 1}; }
 static coax_t_ChatWeb *raw(uint32_t state) { return (coax_t_ChatWeb *)(uintptr_t)state; }
@@ -63,7 +65,10 @@ static void asks(uint32_t state) {
 
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_ChatWeb); }
 // A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_ChatWeb(raw(state)); }
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) {
+  coax_default_t_ChatWeb(raw(state));
+  raw(state)->cc.e[0].seed_epoch = coaxial_now_seconds();
+}
 // One frame: bytes of commands at dom_out to apply, 0 for none, -1 to clear the page and ask again.
 EXPORT("dom_frame") int32_t dom_frame(uint32_t state, float dt, uint32_t reduced) {
   int32_t n = (int32_t)coaxial_chatweb_frame(at(state), dt, reduced != 0);
