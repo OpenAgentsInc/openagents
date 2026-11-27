@@ -295,6 +295,8 @@ static const auth_rule RULES[] = {
   R("*",    "/api/verse/packs/", true, AP_GUEST, "private human packs, a key a session (verse_packs.c: the first address, kept)"),
   R("*",    "/api/villa/", true, AP_GUEST, "the villa (villa.c)"),
   R("*",    "/memorial", true, AP_PUBLIC, "a memorial's page (villa.c)"),
+  R("*",    "/chat/", true, AP_PUBLIC, "unified cloud chat SPA deep links (/chat/<uuid> or /chat/cnv_<32hex>)"),
+  R("*",    "/r/",    true, AP_PUBLIC, "referral invite SPA deep links (/r/<code>)"),
   // ---- Lightning Addresses (lnaddr.c, #13208): wallets ask without a credential; the holder's routes
   R("GET",  "/.well-known/lnurlp/", true, AP_PUBLIC, "LUD-16 lookups, capped per network address there"),
   R("GET",  "/lnurlp/", true, AP_PUBLIC, "LNURL-pay callbacks and LUD-21 verify, capped there"),

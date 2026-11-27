@@ -50,6 +50,7 @@
 //   private human packs            /api/metaverse/packs/<name>, /api/metaverse/packs/fetch/<sid>, per-session keys; /api/verse/packs/ kept (verse_packs.c)
 #include "api.h"
 #include "config.h"
+#include "http_client.h"
 #include "queue.h"
 #include "stream.h"
 #include "error-wire.generated.h"
@@ -434,6 +435,97 @@ static bool maintenance_gate(const request *q) {
   return true;
 }
 
+static bool spa_hex(char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }
+
+static bool spa_valid_conv_id(const char *s, size_t n) {
+  if (n != 36) return false;
+  if (s[8] == '-' && s[13] == '-' && s[18] == '-' && s[23] == '-') {
+    for (size_t i = 0; i < 36; i++) {
+      if (i == 8 || i == 13 || i == 18 || i == 23) continue;
+      if (!spa_hex(s[i])) return false;
+    }
+    return true;
+  }
+  if (memcmp(s, "cnv_", 4) != 0) return false;
+  for (size_t i = 4; i < 36; i++) if (!spa_hex(s[i])) return false;
+  return true;
+}
+
+static bool spa_valid_ref_token(const char *s, size_t n) {
+  if (n < 1 || n > 39) return false;
+  for (size_t i = 0; i < n; i++) {
+    char c = s[i];
+    bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static void spa_serve_entry(const request *q, int slot, const char *entry) {
+  static char cache[2][32768];
+  static size_t cache_len[2];
+  static double cache_at[2];
+  double now = api_now_ms();
+  if (cache_len[slot] == 0 || now - cache_at[slot] > 15000.0) {
+    char url[512];
+    snprintf(url, sizeof url, "%s%s", auth_origin(), entry);
+    const char *hdrs[] = {"User-Agent: openagents-api/spa", NULL};
+    http_client_req req = {
+      .method = "GET", .url = url, .headers = hdrs,
+      .connect_timeout_ms = 2000, .total_timeout_ms = 4000,
+      .max_response_bytes = sizeof cache[slot] - 1,
+    };
+    http_client_res res = {0};
+    http_client_send(&req, &res);
+    if (res.status == 200 && res.body && res.body_len > 0 && res.body_len < sizeof cache[slot]) {
+      memcpy(cache[slot], res.body, res.body_len);
+      cache[slot][res.body_len] = 0;
+      cache_len[slot] = res.body_len;
+      cache_at[slot] = now;
+    }
+    http_client_res_free(&res);
+  }
+  if (cache_len[slot] > 0) {
+    api_respond(q->fd, 200, "text/html; charset=utf-8", "Cache-Control: no-cache\r\n", cache[slot], cache_len[slot]);
+    return;
+  }
+  static const char fallback[] =
+    "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+    "<title>OpenAgents</title><style>html,body{margin:0;height:100%;background:#000;color:#ededed}</style></head>"
+    "<body><main id=\"coaxial-root\"></main><script type=\"module\" src=\"/coaxial/dom-host.js\" data-app=\"chat-web\" data-root=\"coaxial-root\"></script></body></html>";
+  api_respond(q->fd, 200, "text/html; charset=utf-8", "Cache-Control: no-cache\r\n", fallback, sizeof fallback - 1);
+}
+
+static bool spa_deep_link(const request *q) {
+  if (strcmp(q->method, "GET") != 0 && strcmp(q->method, "HEAD") != 0) return false;
+  if (!strncmp(q->path, "/chat/", 6)) {
+    const char *seg = q->path + 6;
+    size_t n = strlen(seg);
+    if (n > 0 && seg[n - 1] == '/') n--;
+    if (spa_valid_conv_id(seg, n)) {
+      spa_serve_entry(q, 0, "/chat/index.html");
+      return true;
+    }
+    static const char nf[] =
+      "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+      "<title>Not found · OpenAgents</title><style>html,body{margin:0;height:100%;background:#000;color:#ededed;font-family:ui-sans-serif,-apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center}main{text-align:center}h1{margin:0 0 8px;font-size:28px}p{margin:0 0 20px;color:#818181}a{color:#0a0a0a;background:#ededed;padding:9px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13.5px}</style></head>"
+      "<body><main><h1>404</h1><p>This conversation could not be found.</p><a href=\"/chat\">Back to Chat</a></main></body></html>";
+    api_respond(q->fd, 404, "text/html; charset=utf-8", "Cache-Control: no-store\r\n", nf, sizeof nf - 1);
+    return true;
+  }
+  if (!strncmp(q->path, "/r/", 3)) {
+    const char *seg = q->path + 3;
+    size_t n = strlen(seg);
+    if (n > 0 && seg[n - 1] == '/') n--;
+    if (spa_valid_ref_token(seg, n)) {
+      spa_serve_entry(q, 1, "/r/index.html");
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
 static void dispatch(client *cl, request *qp) {
   request q = *qp;
   route_at = "maintenance_gate";
@@ -492,6 +584,7 @@ static void dispatch(client *cl, request *qp) {
   ROUTE(private_route);
   ROUTE(drops_route);
   ROUTE(villa_route);
+  if (spa_deep_link(&q)) return;
   ROUTE(admin_route);
   api_error(cl->fd, 404, "not found");
 }

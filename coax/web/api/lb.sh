@@ -366,42 +366,44 @@ for pm in m["pathMatchers"]:
     else:
         print(f"url map: {pm['name']} /verse stays as it is: https://{host}/metaverse doesn't answer yet. Run lb.sh again after the release that has it.")
 # Unified cloud chat (/chat/<uuid> or /chat/cnv_<32hex>) and referral (/r/<code>) SPA deep links:
-# exact static files (/chat/index.html, /chat/index.md, /chat/, /r/index.html, /r/) pass straight
-# through to the bucket; single-segment dynamic paths rewrite at the edge via pathTemplateRewrite
-# so GCS serves index.html with HTTP 200 on every browser refresh (customErrorResponsePolicy does
-# not intercept GCS notFoundPage 404s on backendBuckets).
+# exact static files (/chat/, /chat/index.html, /chat/index.md, /r/, /r/index.html) go directly to
+# the bucket; dynamic sub-paths under /chat/ and /r/ route to oa-api (Classic EXTERNAL GFE does
+# not execute pathTemplateRewrite or customErrorResponsePolicy on backendBuckets), where
+# spa_deep_link_route serves the live hashed index.html with HTTP 200.
 for pm in m["pathMatchers"]:
     if pm["name"] not in ("production", "staging"): continue
     rules = pm.setdefault("routeRules", [])
     bucket = f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendBuckets/" + ("coaxial-openagents-web" if pm["name"] == "production" else "coaxial-openagents-web-staging")
-    for prefix, exacts, tmpls, entry in (
+    svc = f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendServices/" + ("oa-api" if pm["name"] == "production" else "oa-api-staging")
+    for prefix, exacts, old_tmpls in (
         ("/chat/", [{"fullPathMatch": "/chat/"}, {"fullPathMatch": "/chat/index.html"}, {"fullPathMatch": "/chat/index.md"}],
-         [{"pathTemplateMatch": "/chat/{id}"}, {"pathTemplateMatch": "/chat/{id}/"}], "/chat/index.html"),
+         [{"pathTemplateMatch": "/chat/{id}"}, {"pathTemplateMatch": "/chat/{id}/"}]),
         ("/r/", [{"fullPathMatch": "/r/"}, {"fullPathMatch": "/r/index.html"}],
-         [{"pathTemplateMatch": "/r/{code}"}, {"pathTemplateMatch": "/r/{code}/"}], "/r/index.html"),
+         [{"pathTemplateMatch": "/r/{code}"}, {"pathTemplateMatch": "/r/{code}/"}]),
     ):
-        # Remove any stale prefixMatch /chat/ or /r/ customErrorResponsePolicy rules from earlier runs.
         for r in list(rules):
-            if r.get("matchRules") == [{"prefixMatch": prefix}] and r.get("customErrorResponsePolicy"):
+            if r.get("matchRules") == old_tmpls:
+                rules.remove(r); changed = True
+            elif r.get("matchRules") == [{"prefixMatch": prefix}] and r.get("customErrorResponsePolicy"):
                 rules.remove(r); changed = True
             elif r.get("service") == bucket and not r.get("customErrorResponsePolicy") and len(r.get("matchRules", [])) > 1:
                 keep = [x for x in r.get("matchRules", []) if x.get("prefixMatch") != prefix]
                 if keep != r.get("matchRules", []) and keep:
                     r["matchRules"] = keep; changed = True
         ex_rule = next((r for r in rules if r.get("matchRules") == exacts), None)
-        rw_rule = next((r for r in rules if r.get("matchRules") == tmpls), None)
-        rw_action = {"urlRewrite": {"pathTemplateRewrite": entry}}
+        dyn_match = [{"prefixMatch": prefix}]
+        dyn_rule = next((r for r in rules if r.get("matchRules") == dyn_match), None)
         need_ex = not (ex_rule and ex_rule.get("service") == bucket and not ex_rule.get("routeAction"))
-        need_rw = not (rw_rule and rw_rule.get("service") == bucket and rw_rule.get("routeAction") == rw_action)
-        order_bad = (ex_rule is not None and rw_rule is not None and ex_rule["priority"] >= rw_rule["priority"])
-        if need_ex or need_rw or order_bad:
+        need_dyn = not (dyn_rule and dyn_rule.get("service") == svc and not dyn_rule.get("routeAction"))
+        order_bad = (ex_rule is not None and dyn_rule is not None and ex_rule["priority"] >= dyn_rule["priority"])
+        if need_ex or need_dyn or order_bad:
             if ex_rule: rules.remove(ex_rule)
-            if rw_rule: rules.remove(rw_rule)
+            if dyn_rule: rules.remove(dyn_rule)
             ex_new = {"matchRules": exacts, "service": bucket}
             place(rules, ex_new)
-            place(rules, {"matchRules": tmpls, "service": bucket, "routeAction": rw_action}, after=ex_new)
+            place(rules, {"matchRules": dyn_match, "service": svc}, after=ex_new)
             changed = True
-            print(f"url map: {pm['name']} {prefix}* pathTemplateRewrite to {entry} (200)")
+            print(f"url map: {pm['name']} {prefix}* SPA deep links routed to {svc.split('/')[-1]}")
 # The coder service is retired (docs/2026-10-28-coder-service-deprecation.md): whatever no rule
 # names is the site's bucket, so an unknown path gets the Coax 404.
 for pm in m["pathMatchers"]:
