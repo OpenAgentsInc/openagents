@@ -42,6 +42,83 @@ wos_c_build_auth_magic :: (
   return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
 }
 
+wos_c_build_auth_password :: (
+  base_url: string, client_id: string, api_key: string, email: string, password: string,
+  ip_address: string, user_agent: string, radar_attempt_id: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  scratch: [4096] u8;
+  r := wos_user_management_authenticate_with_password(
+    base_url, client_id, api_key,
+    WosP_UserManagementAuthenticateWithPassword.{
+      email = email, password = password, ip_address = ip_address,
+      user_agent = user_agent, radar_auth_attempt_id = radar_attempt_id,
+    },
+    scratch[..],
+  );
+  ok := wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+  for i: 0..<scratch.count { scratch[i] = 0; }
+  return ok;
+}
+
+wos_c_build_create_user_password :: (
+  base_url: string, email: string, password: string, ip_address: string, user_agent: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  scratch: [4096] u8;
+  r := wos_user_management_create_user(
+    base_url,
+    WosP_UserManagementCreateUser.{
+      email = email, password = password, ip_address = ip_address, user_agent = user_agent,
+    },
+    scratch[..],
+  );
+  ok := wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+  for i: 0..<scratch.count { scratch[i] = 0; }
+  return ok;
+}
+
+wos_c_build_password_reset :: (
+  base_url: string, email: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  scratch: [2048] u8;
+  r := wos_user_management_reset_password(base_url, WosP_UserManagementResetPassword.{email = email}, scratch[..]);
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
+wos_c_build_password_reset_confirm :: (
+  base_url: string, token: string, new_password: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  scratch: [2048] u8;
+  r := wos_user_management_confirm_password_reset(
+    base_url,
+    WosP_UserManagementConfirmPasswordReset.{token = token, new_password = new_password},
+    scratch[..],
+  );
+  ok := wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+  for i: 0..<scratch.count { scratch[i] = 0; }
+  return ok;
+}
+
+wos_c_build_auth_email_verify :: (
+  base_url: string, client_id: string, api_key: string, pending_token: string, code: string,
+  ip_address: string, user_agent: string,
+  url_out: [] u8, body_out: [] u8, url_n: [] int, body_n: [] int,
+) -> bool #export_c #effects(all) {
+  scratch: [4096] u8;
+  r := wos_user_management_authenticate_with_email_verification(
+    base_url, client_id, api_key,
+    WosP_UserManagementAuthenticateWithEmailVerification.{
+      code = code, pending_authentication_token = pending_token,
+      ip_address = ip_address, user_agent = user_agent,
+    },
+    scratch[..],
+  );
+  return wos_c_export_req(r, scratch[..], url_out, body_out, url_n, body_n);
+}
+
 wos_c_build_auth_code :: (
   base_url: string, client_id: string, api_key: string, code: string, code_verifier: string,
   ip_address: string, user_agent: string,
@@ -136,4 +213,14 @@ wos_c_export_req :: (r: WosReq, scratch: [] u8, url_out: [] u8, body_out: [] u8,
   #assert !wos_c_build_delete_user("", "..", ub[..], un[..]);
   #assert wos_c_build_list_events("", "user.created,user.updated", "evt_1", 100, ub[..], un[..]);
   #assert wos_c_build_list_connections("", "acme.com", ub[..], un[..]);
+  #assert wos_c_build_auth_password("", "client_01", "sk_1", "a@b.co", "secret123", "1.1.1.1", "OA", "rad_1", ub[..], bb[..], un[..], bn[..]);
+  #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/authenticate";
+  #assert wos_c_build_create_user_password("", "a@b.co", "secret123", "1.1.1.1", "OA", ub[..], bb[..], un[..], bn[..]);
+  #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/users";
+  #assert wos_c_build_password_reset("", "a@b.co", ub[..], bb[..], un[..], bn[..]);
+  #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/password_reset";
+  #assert wos_c_build_password_reset_confirm("", "tok_1", "newsecret123", ub[..], bb[..], un[..], bn[..]);
+  #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/password_reset/confirm";
+  #assert wos_c_build_auth_email_verify("", "client_01", "sk_1", "pat_1", "123456", "1.1.1.1", "OA", ub[..], bb[..], un[..], bn[..]);
+  #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/authenticate";
 }

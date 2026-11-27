@@ -138,8 +138,20 @@ func offline(_ dir: URL) async {
     // WorkOS Phase 4 (#14101): config, Magic Auth + multi-org selection, PKCE S256 + state guard +
     // /api/auth/workos/exchange (OA-Device-Key + 0600 file), SSO discovery, orgs switch, and
     // single-flight refresh preserving tokens on 429/503/offline while revoking on 401.
-    fake.answers["/api/auth/workos/config"] = [(200, "{\"enabled\":true,\"client_id\":\"client_01TEST\",\"providers\":[\"magic\",\"google\",\"github\",\"apple\",\"sso\"]}")]
-    guard let wcfg = try? await me.auth.workosConfig(), wcfg.enabled, wcfg.clientID == "client_01TEST", wcfg.providers.contains("apple") else { fail("workos config") }
+    fake.answers["/api/auth/workos/config"] = [(200, "{\"enabled\":true,\"client_id\":\"client_01TEST\",\"providers\":[\"magic\",\"password\",\"google\",\"github\",\"apple\",\"sso\"]}")]
+    guard let wcfg = try? await me.auth.workosConfig(), wcfg.enabled, wcfg.clientID == "client_01TEST", wcfg.providers.contains("apple"), wcfg.providers.contains("password") else { fail("workos config") }
+
+    // WorkOS Email + Password login, register (verify-email), and reset
+    fake.answers["/api/auth/workos/password/register"] = [(200, "{\"state\":\"verify-email\",\"pending\":\"wv_pw\"}")]
+    fake.answers["/api/auth/workos/password/login"] = [(200, "{\"state\":\"need-org\",\"pending\":\"wo_pw\",\"organizations\":[{\"id\":\"org_1\",\"name\":\"Acme\"}]}")]
+    fake.answers["/api/auth/workos/password/reset"] = [(200, "{\"state\":\"sent\"}")]
+    guard case .verifyEmail(let vPend) = try? await me.auth.workosPasswordRegister(email: "pw@acme.test", password: "correct horse battery"),
+          vPend == "wv_pw" else { fail("workos password register verify-email") }
+    let pwRegReq = fake.asked.last { $0.url?.path == "/api/auth/workos/password/register" }
+    guard pwRegReq?.value(forHTTPHeaderField: "OA-Device-Key")?.count == 130 else { fail("workos password register missing OA-Device-Key") }
+    guard case .needOrg(let pwPend, let pwOrgs) = try? await me.auth.workosPasswordLogin(email: "pw@acme.test", password: "correct horse battery"),
+          pwPend == "wo_pw", pwOrgs.count == 1 else { fail("workos password login need-org") }
+    do { try await me.auth.workosPasswordReset(email: "pw@acme.test") } catch { fail("workos password reset: \(error)") }
 
     fake.answers["/api/auth/workos/magic/start"] = [(200, "{\"state\":\"sent\",\"pending\":\"wp_1\"}")]
     fake.answers["/api/auth/workos/magic/verify"] = [(200, "{\"state\":\"need-org\",\"pending\":\"wo_1\",\"organizations\":[{\"id\":\"org_1\",\"name\":\"Acme\"},{\"id\":\"org_2\",\"name\":\"Beta\"}]}")]

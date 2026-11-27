@@ -155,6 +155,7 @@ final class AppAuth: @unchecked Sendable {
     enum WorkOSAuthResult: Equatable {
         case loggedIn(Tokens)
         case needOrg(pending: String, organizations: [WorkOSOrg])
+        case verifyEmail(pending: String)
     }
     struct WorkOSDiscovery: Equatable { let sso: Bool; let connectionID: String; let organizationID: String; let organizationName: String }
     struct WorkOSPKCE: Equatable {
@@ -191,6 +192,23 @@ final class AppAuth: @unchecked Sendable {
     func workosMagicVerify(code: String, pending: String) async throws -> WorkOSAuthResult {
         let answer = try await said { try await self.post("/api/auth/workos/magic/verify", ["code": code, "pending": pending, "client": "app"]) }
         return try parseWorkOSAuthResult(answer)
+    }
+
+    /// Signs in with WorkOS Email + Password, binding the Option A1 L1 session to this device key.
+    func workosPasswordLogin(email: String, password: String) async throws -> WorkOSAuthResult {
+        let answer = try await said { try await self.post("/api/auth/workos/password/login", ["email": email, "password": password, "client": "app"]) }
+        return try parseWorkOSAuthResult(answer)
+    }
+
+    /// Creates a WorkOS Email + Password user and mints a device-bound Option A1 L1 session.
+    func workosPasswordRegister(email: String, password: String) async throws -> WorkOSAuthResult {
+        let answer = try await said { try await self.post("/api/auth/workos/password/register", ["email": email, "password": password, "client": "app"]) }
+        return try parseWorkOSAuthResult(answer)
+    }
+
+    /// Requests a WorkOS password reset email (generic 200 avoids email enumeration).
+    func workosPasswordReset(email: String) async throws {
+        _ = try await said { try await self.post("/api/auth/workos/password/reset", ["email": email]) }
     }
 
     /// Completes multi-organization selection after a `needOrg` response.
@@ -332,6 +350,9 @@ final class AppAuth: @unchecked Sendable {
     }
 
     private func parseWorkOSAuthResult(_ answer: [String: Any]) throws -> WorkOSAuthResult {
+        if (answer["state"] as? String) == "verify-email", let pending = answer["pending"] as? String, !pending.isEmpty {
+            return .verifyEmail(pending: pending)
+        }
         if (answer["state"] as? String) == "need-org", let pending = answer["pending"] as? String, !pending.isEmpty {
             let raw = answer["organizations"] as? [[String: Any]] ?? []
             let orgs: [WorkOSOrg] = raw.compactMap { row in

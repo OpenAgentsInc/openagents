@@ -34,7 +34,7 @@ cid = sys.argv[2]
 assert d.get("enabled") is True, f"WorkOS not enabled: {d}"
 assert d.get("client_id") == cid, f"client_id mismatch: got {d.get('client_id')} want {cid}"
 provs = set(d.get("providers") or [])
-for req in ("magic", "google", "github", "apple", "sso"):
+for req in ("magic", "password", "google", "github", "apple", "sso"):
     assert req in provs, f"missing provider {req} in {provs}"
 print(f"  ok: /api/auth/workos/config enabled=true client_id={cid} providers={sorted(provs)}")
 PY

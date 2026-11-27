@@ -14,6 +14,8 @@ alu_code :: (f: [] AlFlow, text: string) -> bool #export_c #effects(all) { retur
 alu_workos_org :: (f: [] AlFlow, org_id: string) -> bool #export_c #effects(all) { return alf_workos_org(f, org_id); }
 alu_workos_exchange :: (f: [] AlFlow, code: string, verifier: string, redirect_uri: string) -> bool #export_c #effects(all) { return alf_workos_exchange(f, code, verifier, redirect_uri); }
 alu_workos_sso :: (f: [] AlFlow, email: string) -> bool #export_c #effects(all) { return alf_workos_sso(f, email); }
+alu_workos_password_login :: (f: [] AlFlow, email: string, password: string) -> bool #export_c #effects(all) { return alf_workos_password_login(f, email, password); }
+alu_workos_password_register :: (f: [] AlFlow, email: string, password: string) -> bool #export_c #effects(all) { return alf_workos_password_register(f, email, password); }
 alu_back :: (f: [] AlFlow) #export_c #effects(all) { alf_back(f); }
 alu_key :: (f: [] AlFlow) -> bool #export_c #effects(all) { return alf_key(f); }
 alu_who :: (f: [] AlFlow, now_ms: int) -> bool #export_c #effects(all) { return alf_who(f, now_ms); }

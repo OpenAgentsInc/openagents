@@ -360,8 +360,46 @@ static void finish_workos_auth_api(const request *q, PGconn *db, long status, co
     auth_answer(q, 200, hdr[0] ? hdr : NULL, json, lines);
     return;
   }
+  if (status == 403 && err.code_n == 27 && !memcmp(err.code.e, "email_verification_required", 27) && err.pending_n > 0) {
+    char pat[512], email[300] = "";
+    int64_t pn = err.pending_n < (int64_t)sizeof pat - 1 ? err.pending_n : (int64_t)sizeof pat - 1;
+    memcpy(pat, err.pending_auth_token.e, (size_t)pn);
+    pat[pn] = 0;
+    if (body && body_len > 0) {
+      const char *ev[1] = {body};
+      PGresult *er = PQexecParams(db, "SELECT coalesce(($1::jsonb)->>'email', '')", 1, NULL, ev, NULL, NULL, 0);
+      if (PQresultStatus(er) == PGRES_TUPLES_OK && PQntuples(er) == 1) snprintf(email, sizeof email, "%s", PQgetvalue(er, 0, 0));
+      PQclear(er);
+    }
+    char id[33], pend[65], psha[65];
+    if (!auth_random_hex(id, 16) || !auth_random_hex(pend, 32)) { auth_refuse(q, 503, "No randomness here. Try again."); return; }
+    auth_sha_hex(pend, psha);
+    const char *pv[5] = {id, psha, email[0] ? email : NULL, pat, app ? "app" : "web"};
+    PGresult *pr = PQexecParams(
+        db,
+        "INSERT INTO auth.workos_pending (id, kind, token_sha256, email, pending_auth_token, client, expires_at) "
+        "VALUES ($1, 'magic', $2, $3, $4, $5, now() + interval '10 minutes')",
+        5, NULL, pv, NULL, NULL, 0);
+    bool ok = PQresultStatus(pr) == PGRES_COMMAND_OK;
+    PQclear(pr);
+    if (!ok) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
+    char hdr[320] = "", json[300], lines[240];
+    if (!app) {
+      snprintf(hdr, sizeof hdr, "Set-Cookie: %s=%s; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax\r\n",
+               WOS_PENDING_COOKIE, pend);
+      snprintf(json, sizeof json, "{\"state\":\"verify-email\",\"expires_in\":600,\"tries\":5}");
+      snprintf(lines, sizeof lines, "state verify-email\nexpires_in 600\ntries 5\n");
+    } else {
+      snprintf(json, sizeof json, "{\"state\":\"verify-email\",\"pending\":\"%s\",\"expires_in\":600,\"tries\":5}", pend);
+      snprintf(lines, sizeof lines, "state verify-email\npending %s\nexpires_in 600\ntries 5\n", pend);
+    }
+    auth_answer(q, 200, hdr[0] ? hdr : NULL, json, lines);
+    return;
+  }
 
-  char msg[260] = "That code isn't right. Try again.";
+  char msg[260] = "Sign-in didn't work. Try again.";
+  if (action && strstr(action, "magic")) snprintf(msg, sizeof msg, "That code isn't right. Try again.");
+  else if (action && strstr(action, "password")) snprintf(msg, sizeof msg, "Invalid email or password.");
   if (err.message_n > 0) {
     int64_t mn = err.message_n < (int64_t)sizeof msg - 1 ? err.message_n : (int64_t)sizeof msg - 1;
     memcpy(msg, err.message.e, (size_t)mn);
@@ -379,9 +417,9 @@ static void route_config(const request *q) {
   char json[512], lines[512], cid_esc[200];
   auth_json_esc(on ? workos_client_id() : "", cid_esc, sizeof cid_esc);
   snprintf(json, sizeof json,
-           "{\"enabled\":%s,\"client_id\":\"%s\",\"providers\":[\"magic\",\"google\",\"github\",\"apple\",\"sso\"]}",
+           "{\"enabled\":%s,\"client_id\":\"%s\",\"providers\":[\"magic\",\"password\",\"google\",\"github\",\"apple\",\"sso\"]}",
            on ? "true" : "false", cid_esc);
-  snprintf(lines, sizeof lines, "enabled %d\nclient_id %s\nproviders magic,google,github,apple,sso\n",
+  snprintf(lines, sizeof lines, "enabled %d\nclient_id %s\nproviders magic,password,google,github,apple,sso\n",
            on ? 1 : 0, on ? workos_client_id() : "");
   auth_answer(q, 200, NULL, json, lines);
 }
@@ -468,6 +506,7 @@ static void route_magic_verify(const request *q, PGconn *db, const char *body) {
   bool app = !strcmp(client, "app");
 
   // Prefer pending cookie/token binding; allow explicit email for stateless native clients.
+  char email_verify_pat[512] = "";
   auth_cookie(q, WOS_PENDING_COOKIE, pend, sizeof pend);
   if (!pend[0]) auth_json_str(body, q->body_len, "pending", pend, sizeof pend);
   if (strlen(pend) == 64) {
@@ -475,30 +514,38 @@ static void route_magic_verify(const request *q, PGconn *db, const char *body) {
     const char *pv[1] = {psha};
     PGresult *pr = PQexecParams(
         db,
-        "SELECT coalesce(email, ''), client FROM auth.workos_pending "
+        "SELECT coalesce(email, ''), client, coalesce(pending_auth_token, '') FROM auth.workos_pending "
         "WHERE kind = 'magic' AND token_sha256 = $1 AND spent_at IS NULL AND expires_at > now()",
         1, NULL, pv, NULL, NULL, 0);
     if (PQresultStatus(pr) == PGRES_TUPLES_OK && PQntuples(pr) == 1) {
       snprintf(email, sizeof email, "%s", PQgetvalue(pr, 0, 0));
       if (!strcmp(PQgetvalue(pr, 0, 1), "app")) app = true;
+      snprintf(email_verify_pat, sizeof email_verify_pat, "%s", PQgetvalue(pr, 0, 2));
     }
     PQclear(pr);
   }
-  if (!email[0]) {
+  if (!email[0] && !email_verify_pat[0]) {
     char raw_e[400] = "";
     if (auth_json_str(body, q->body_len, "email", raw_e, sizeof raw_e)) auth_normal_email(raw_e, email, sizeof email);
   }
-  if (!email[0]) { auth_refuse(q, 409, "Ask for a code in this browser first."); return; }
+  if (!email[0] && !email_verify_pat[0]) { auth_refuse(q, 409, "Ask for a code in this browser first."); return; }
 
   char ip[128], ua[256];
   radar_context(q, ip, ua);
   uint8_t url_b[512], req_b[2048];
   int64_t un = 0, bn = 0;
-  if (!wos_c_build_auth_magic(cs(workos_base_url()), cs(workos_client_id()), cs(workos_api_key()),
-                              cs(email), cs(code), cs(ip), cs(ua), cs(radar_id),
-                              (coax_v_u8){url_b, (int64_t)sizeof url_b - 1},
-                              (coax_v_u8){req_b, (int64_t)sizeof req_b - 1},
-                              (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1})) {
+  bool built = email_verify_pat[0]
+    ? wos_c_build_auth_email_verify(cs(workos_base_url()), cs(workos_client_id()), cs(workos_api_key()),
+                                    cs(email_verify_pat), cs(code), cs(ip), cs(ua),
+                                    (coax_v_u8){url_b, (int64_t)sizeof url_b - 1},
+                                    (coax_v_u8){req_b, (int64_t)sizeof req_b - 1},
+                                    (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1})
+    : wos_c_build_auth_magic(cs(workos_base_url()), cs(workos_client_id()), cs(workos_api_key()),
+                             cs(email), cs(code), cs(ip), cs(ua), cs(radar_id),
+                             (coax_v_u8){url_b, (int64_t)sizeof url_b - 1},
+                             (coax_v_u8){req_b, (int64_t)sizeof req_b - 1},
+                             (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1});
+  if (!built) {
     auth_refuse(q, 500, "That didn't work. Try again.");
     return;
   }
@@ -513,6 +560,228 @@ static void route_magic_verify(const request *q, PGconn *db, const char *body) {
   }
   finish_workos_auth_api(q, db, res.status, res.body, res.body_len, app, "login.workos_magic", WOS_PENDING_COOKIE);
   http_client_res_free(&res);
+}
+
+static void route_password_login(const request *q, PGconn *db, const char *body) {
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  char raw_email[400] = "", email[300] = "", password[260] = "", radar_id[128] = "", client[16] = "web";
+  if (!auth_json_str(body, q->body_len, "email", raw_email, sizeof raw_email) || !auth_normal_email(raw_email, email, sizeof email)) {
+    auth_refuse(q, 400, "Type your email address.");
+    return;
+  }
+  if (!auth_json_str(body, q->body_len, "password", password, sizeof password) || !password[0]) {
+    explicit_bzero(password, sizeof password);
+    auth_refuse(q, 400, "Type your password.");
+    return;
+  }
+  auth_json_str(body, q->body_len, "client", client, sizeof client);
+  auth_json_str(body, q->body_len, "radar_auth_attempt_id", radar_id, sizeof radar_id);
+  bool app = !strcmp(client, "app");
+
+  char ipk[65]; auth_visitor_key(q, ipk);
+  long long left_ms = 0;
+  if (!api_limit(db, "workos_magic_ip", ipk, 30, &left_ms)) {
+    explicit_bzero(password, sizeof password);
+    auth_refuse(q, 429, "Too many sign-in attempts from here. Try again in a minute.");
+    return;
+  }
+
+  char ip[128], ua[256];
+  radar_context(q, ip, ua);
+  uint8_t url_b[512], req_b[2048];
+  int64_t un = 0, bn = 0;
+  bool built = wos_c_build_auth_password(cs(workos_base_url()), cs(workos_client_id()), cs(workos_api_key()),
+                                         cs(email), cs(password), cs(ip), cs(ua), cs(radar_id),
+                                         (coax_v_u8){url_b, (int64_t)sizeof url_b - 1},
+                                         (coax_v_u8){req_b, (int64_t)sizeof req_b - 1},
+                                         (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1});
+  explicit_bzero(password, sizeof password);
+  if (!built) {
+    explicit_bzero(req_b, sizeof req_b);
+    auth_refuse(q, 500, "That didn't work. Try again.");
+    return;
+  }
+  url_b[un] = 0; req_b[bn] = 0;
+  http_client_res res;
+  workos_http("POST", (const char *)url_b, (const char *)req_b, (size_t)bn, true, &res);
+  explicit_bzero(req_b, sizeof req_b);
+  finish_workos_auth_api(q, db, res.status, res.body, res.body_len, app, "login.workos_password", NULL);
+  http_client_res_free(&res);
+}
+
+static void route_password_register(const request *q, PGconn *db, const char *body) {
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  char raw_email[400] = "", email[300] = "", password[260] = "", radar_id[128] = "", client[16] = "web";
+  if (!auth_json_str(body, q->body_len, "email", raw_email, sizeof raw_email) || !auth_normal_email(raw_email, email, sizeof email)) {
+    auth_refuse(q, 400, "Type your email address.");
+    return;
+  }
+  if (!auth_json_str(body, q->body_len, "password", password, sizeof password) || strlen(password) < 8) {
+    explicit_bzero(password, sizeof password);
+    auth_refuse(q, 400, "Use a password of at least 8 characters.");
+    return;
+  }
+  auth_json_str(body, q->body_len, "client", client, sizeof client);
+  auth_json_str(body, q->body_len, "radar_auth_attempt_id", radar_id, sizeof radar_id);
+  bool app = !strcmp(client, "app");
+
+  char ipk[65]; auth_visitor_key(q, ipk);
+  long long left_ms = 0;
+  if (!api_limit(db, "workos_magic_ip", ipk, 30, &left_ms)) {
+    explicit_bzero(password, sizeof password);
+    auth_refuse(q, 429, "Too many sign-in attempts from here. Try again in a minute.");
+    return;
+  }
+
+  char ip[128], ua[256];
+  radar_context(q, ip, ua);
+  uint8_t url_b[512], req_b[2048];
+  int64_t un = 0, bn = 0;
+  bool built = wos_c_build_create_user_password(cs(workos_base_url()), cs(email), cs(password), cs(ip), cs(ua),
+                                                (coax_v_u8){url_b, (int64_t)sizeof url_b - 1},
+                                                (coax_v_u8){req_b, (int64_t)sizeof req_b - 1},
+                                                (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1});
+  if (!built) {
+    explicit_bzero(password, sizeof password);
+    explicit_bzero(req_b, sizeof req_b);
+    auth_refuse(q, 500, "That didn't work. Try again.");
+    return;
+  }
+  url_b[un] = 0; req_b[bn] = 0;
+  http_client_res cres;
+  workos_http("POST", (const char *)url_b, (const char *)req_b, (size_t)bn, true, &cres);
+  explicit_bzero(req_b, sizeof req_b);
+  if (cres.status < 200 || cres.status >= 300) {
+    coax_t_WosApiError err;
+    memset(&err, 0, sizeof err);
+    wos_parse_api_error(cres.status, (coax_string){cres.body ? cres.body : "", (int64_t)cres.body_len}, cs(""), cs(""),
+                        (coax_v_t_WosApiError){&err, 1});
+    char msg[260] = "Could not create account. Try signing in or using an email code.";
+    if (err.message_n > 0) {
+      int64_t mn = err.message_n < (int64_t)sizeof msg - 1 ? err.message_n : (int64_t)sizeof msg - 1;
+      memcpy(msg, err.message.e, (size_t)mn);
+      msg[mn] = 0;
+    }
+    int st = (cres.status == 400 || cres.status == 409 || cres.status == 422 || cres.status == 429) ? (int)cres.status : 502;
+    http_client_res_free(&cres);
+    explicit_bzero(password, sizeof password);
+    auth_refuse(q, st, msg);
+    return;
+  }
+  http_client_res_free(&cres);
+
+  // Immediately authenticate the newly created user with their password.
+  built = wos_c_build_auth_password(cs(workos_base_url()), cs(workos_client_id()), cs(workos_api_key()),
+                                    cs(email), cs(password), cs(ip), cs(ua), cs(radar_id),
+                                    (coax_v_u8){url_b, (int64_t)sizeof url_b - 1},
+                                    (coax_v_u8){req_b, (int64_t)sizeof req_b - 1},
+                                    (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1});
+  explicit_bzero(password, sizeof password);
+  if (!built) {
+    explicit_bzero(req_b, sizeof req_b);
+    auth_refuse(q, 500, "Account created, but sign-in didn't finish. Log in now.");
+    return;
+  }
+  url_b[un] = 0; req_b[bn] = 0;
+  http_client_res ares;
+  workos_http("POST", (const char *)url_b, (const char *)req_b, (size_t)bn, true, &ares);
+  explicit_bzero(req_b, sizeof req_b);
+  finish_workos_auth_api(q, db, ares.status, ares.body, ares.body_len, app, "login.workos_password_register", NULL);
+  http_client_res_free(&ares);
+}
+
+static void route_password_reset(const request *q, PGconn *db, const char *body) {
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  char raw_email[400] = "", email[300] = "";
+  if (!auth_json_str(body, q->body_len, "email", raw_email, sizeof raw_email) || !auth_normal_email(raw_email, email, sizeof email)) {
+    auth_refuse(q, 400, "Type your email address.");
+    return;
+  }
+  char ipk[65]; auth_visitor_key(q, ipk);
+  long long left_ms = 0;
+  if (!api_limit(db, "workos_magic_ip", ipk, 30, &left_ms)) {
+    auth_refuse(q, 429, "Too many reset requests from here. Try again in a minute.");
+    return;
+  }
+  uint8_t url_b[512], req_b[1024];
+  int64_t un = 0, bn = 0;
+  if (!wos_c_build_password_reset(cs(workos_base_url()), cs(email),
+                                  (coax_v_u8){url_b, (int64_t)sizeof url_b - 1},
+                                  (coax_v_u8){req_b, (int64_t)sizeof req_b - 1},
+                                  (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1})) {
+    auth_refuse(q, 400, "That isn't an email address.");
+    return;
+  }
+  url_b[un] = 0; req_b[bn] = 0;
+  http_client_res res;
+  workos_http("POST", (const char *)url_b, (const char *)req_b, (size_t)bn, true, &res);
+  long st = res.status;
+  http_client_res_free(&res);
+  if (st == 429) {
+    auth_refuse(q, 429, "Too many reset requests. Try again shortly.");
+    return;
+  }
+  auth_audit(db, NULL, NULL, "workos.password_reset", "ok", NULL);
+  // Generic response avoids email enumeration even when WorkOS returns 404.
+  auth_answer(q, 200, NULL,
+              "{\"state\":\"sent\",\"message\":\"If an account exists for that email, we sent a password reset link.\"}",
+              "state sent\nmessage If an account exists for that email, we sent a password reset link.\n");
+}
+
+static void route_password_reset_confirm(const request *q, PGconn *db, const char *body) {
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  char token[512] = "", new_pw[260] = "";
+  if (!auth_json_str(body, q->body_len, "token", token, sizeof token) || !token[0]) {
+    auth_refuse(q, 400, "Missing password reset token.");
+    return;
+  }
+  if (!auth_json_str(body, q->body_len, "new_password", new_pw, sizeof new_pw) || strlen(new_pw) < 8) {
+    explicit_bzero(new_pw, sizeof new_pw);
+    auth_refuse(q, 400, "Use a password of at least 8 characters.");
+    return;
+  }
+  char ipk[65]; auth_visitor_key(q, ipk);
+  long long left_ms = 0;
+  if (!api_limit(db, "workos_magic_ip", ipk, 30, &left_ms)) {
+    explicit_bzero(new_pw, sizeof new_pw);
+    auth_refuse(q, 429, "Too many attempts from here. Try again in a minute.");
+    return;
+  }
+  uint8_t url_b[512], req_b[2048];
+  int64_t un = 0, bn = 0;
+  bool built = wos_c_build_password_reset_confirm(cs(workos_base_url()), cs(token), cs(new_pw),
+                                                  (coax_v_u8){url_b, (int64_t)sizeof url_b - 1},
+                                                  (coax_v_u8){req_b, (int64_t)sizeof req_b - 1},
+                                                  (coax_v_s64){&un, 1}, (coax_v_s64){&bn, 1});
+  explicit_bzero(new_pw, sizeof new_pw);
+  if (!built) {
+    explicit_bzero(req_b, sizeof req_b);
+    auth_refuse(q, 400, "Invalid password reset request.");
+    return;
+  }
+  url_b[un] = 0; req_b[bn] = 0;
+  http_client_res res;
+  workos_http("POST", (const char *)url_b, (const char *)req_b, (size_t)bn, true, &res);
+  explicit_bzero(req_b, sizeof req_b);
+  if (res.status >= 200 && res.status < 300) {
+    http_client_res_free(&res);
+    auth_audit(db, NULL, NULL, "workos.password_reset_confirm", "ok", NULL);
+    auth_answer(q, 200, NULL, "{\"state\":\"reset\"}", "state reset\n");
+    return;
+  }
+  coax_t_WosApiError err;
+  memset(&err, 0, sizeof err);
+  wos_parse_api_error(res.status, (coax_string){res.body ? res.body : "", (int64_t)res.body_len}, cs(""), cs(""),
+                      (coax_v_t_WosApiError){&err, 1});
+  char msg[260] = "That reset link isn't valid or has expired.";
+  if (err.message_n > 0) {
+    int64_t mn = err.message_n < (int64_t)sizeof msg - 1 ? err.message_n : (int64_t)sizeof msg - 1;
+    memcpy(msg, err.message.e, (size_t)mn);
+    msg[mn] = 0;
+  }
+  int st = (res.status == 400 || res.status == 401 || res.status == 404 || res.status == 422 || res.status == 429) ? (int)res.status : 502;
+  http_client_res_free(&res);
+  auth_refuse(q, st, msg);
 }
 
 static bool discover_sso_connection(PGconn *db, const char *domain, char conn_id[128], char conn_name[128], char org_id[128]) {
@@ -612,7 +881,7 @@ static void route_oauth_start(const request *q, PGconn *db) {
   else if (!strcasecmp(provider, "apple")) snprintf(provider, sizeof provider, "AppleOAuth");
   else if (!strcasecmp(provider, "sso")) provider[0] = 0;
 
-  // Reject any password or phone provider attempts explicitly.
+  // Reject any unsupported OAuth/phone provider attempts explicitly (passwords use /password/*).
   if (provider[0] && strcmp(provider, "GoogleOAuth") && strcmp(provider, "GitHubOAuth") && strcmp(provider, "AppleOAuth")) {
     auth_refuse(q, 400, "Unsupported sign-in provider.");
     return;
@@ -1352,6 +1621,10 @@ bool workos_route(const request *q, PGconn *db, const char *op) {
   if (!body) { auth_refuse(q, 500, "Out of memory."); return true; }
   if (!strcmp(sub, "magic/start")) route_magic_start(q, db, body);
   else if (!strcmp(sub, "magic/verify")) route_magic_verify(q, db, body);
+  else if (!strcmp(sub, "password/login")) route_password_login(q, db, body);
+  else if (!strcmp(sub, "password/register")) route_password_register(q, db, body);
+  else if (!strcmp(sub, "password/reset")) route_password_reset(q, db, body);
+  else if (!strcmp(sub, "password/reset/confirm")) route_password_reset_confirm(q, db, body);
   else if (!strcmp(sub, "org/select")) route_org_select(q, db, body);
   else if (!strcmp(sub, "sso/discover")) route_sso_discover(q, db, body);
   else if (!strcmp(sub, "device/start")) route_device_start(q, db);
@@ -1359,7 +1632,8 @@ bool workos_route(const request *q, PGconn *db, const char *op) {
   else if (!strcmp(sub, "orgs/switch")) route_orgs_switch(q, db, body);
   else if (!strcmp(sub, "webhook")) route_webhook(q, db, body);
   else if (!strcmp(sub, "action")) route_action(q, db, body);
-  else { free(body); return false; }
+  else { explicit_bzero(body, q->body_len); free(body); return false; }
+  explicit_bzero(body, q->body_len);
   free(body);
   return true;
 }

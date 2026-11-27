@@ -229,6 +229,51 @@ import CoreText
                     self.reply(action,false,msg=="Sign-in cancelled." ? "":msg)
                 }
             }
+        } else if action==9 {
+            editor.resignFirstResponder()
+            let emailHint=text(1).trimmingCharacters(in:.whitespacesAndNewlines)
+            let alert=UIAlertController(title:"Email & Password",message:"Sign in or create an account.",preferredStyle:.alert)
+            alert.addTextField { tf in tf.placeholder="you@example.com";tf.keyboardType = .emailAddress;tf.autocapitalizationType = .none;tf.text=emailHint }
+            alert.addTextField { tf in tf.placeholder="Password";tf.isSecureTextEntry=true }
+            let submit:(Bool)->Void={ [weak self,weak alert] reg in
+                guard let self,let fields=alert?.textFields else {return}
+                let addr=(fields[0].text ?? "").trimmingCharacters(in:.whitespacesAndNewlines)
+                let pw=fields[1].text ?? ""
+                fields[1].text=""
+                guard !addr.isEmpty else {self.reply(9,false,"Enter your email address.");return}
+                guard !pw.isEmpty else {self.reply(9,false,"Enter your password.");return}
+                self.work=Task { [weak self] in
+                    guard let self else {return}
+                    do {
+                        let res=reg ? (try await self.auth.workosPasswordRegister(email:addr,password:pw)) : (try await self.auth.workosPasswordLogin(email:addr,password:pw))
+                        guard !Task.isCancelled else {return}
+                        await self.handleWorkOSResult(res,action:9)
+                    } catch {
+                        guard !Task.isCancelled else {return}
+                        self.reply(9,false,error.localizedDescription)
+                    }
+                }
+            }
+            alert.addAction(UIAlertAction(title:"Log In",style:.default) { _ in submit(false) })
+            alert.addAction(UIAlertAction(title:"Create Account",style:.default) { _ in submit(true) })
+            alert.addAction(UIAlertAction(title:"Reset Password",style:.default) { [weak self,weak alert] _ in
+                guard let self else {return}
+                let addr=(alert?.textFields?.first?.text ?? "").trimmingCharacters(in:.whitespacesAndNewlines)
+                guard !addr.isEmpty else {self.reply(9,false,"Enter your email address.");return}
+                self.work=Task { [weak self] in
+                    guard let self else {return}
+                    do {
+                        try await self.auth.workosPasswordReset(email:addr)
+                        guard !Task.isCancelled else {return}
+                        self.reply(9,false,"If an account exists for that email, we sent a password reset link.")
+                    } catch {
+                        guard !Task.isCancelled else {return}
+                        self.reply(9,false,error.localizedDescription)
+                    }
+                }
+            })
+            alert.addAction(UIAlertAction(title:"Cancel",style:.cancel) { [weak self] _ in self?.reply(9,false,"") })
+            present(alert,animated:true)
         }
     }
     private func handleWorkOSResult(_ res:AppAuth.WorkOSAuthResult,action:Int32) async {
@@ -250,6 +295,19 @@ import CoreText
                 _ = try await auth.workosSelectOrg(pending:orgPending,organizationID:orgID)
                 guard auth.loggedIn else {reply(action,false,"The login could not be saved on this device. Try again.");return}
                 reply(action,true,"");finish()
+            } catch {reply(action,false,error.localizedDescription)}
+        case .verifyEmail(let emailPending):
+            let entered:String?=await withCheckedContinuation { cont in
+                let alert=UIAlertController(title:"Verify your email",message:"Enter the 6-digit verification code sent to your email.",preferredStyle:.alert)
+                alert.addTextField { tf in tf.placeholder="123456";tf.keyboardType = .numberPad }
+                alert.addAction(UIAlertAction(title:"Verify",style:.default) { _ in cont.resume(returning:alert.textFields?.first?.text) })
+                alert.addAction(UIAlertAction(title:"Cancel",style:.cancel) { _ in cont.resume(returning:nil) })
+                self.present(alert,animated:true)
+            }
+            guard let code=entered?.trimmingCharacters(in:.whitespacesAndNewlines),!code.isEmpty else {reply(action,false,"");return}
+            do {
+                let next=try await auth.workosMagicVerify(code:code,pending:emailPending)
+                await handleWorkOSResult(next,action:action)
             } catch {reply(action,false,error.localizedDescription)}
         }
     }

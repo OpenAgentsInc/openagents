@@ -72,6 +72,9 @@ import Foundation
                 case .needOrg(let tok, let orgs):
                     if mine == attempt { pending = nil; pendingOrgToken = tok; pendingOrgs = orgs }
                     return .said("Choose an organization to finish signing in.")
+                case .verifyEmail(let nextPending):
+                    if mine == attempt { pending = nextPending; pendingWorkOS = true }
+                    return .said("Enter the 6-digit verification code sent to your email.")
                 }
             }
             _ = try await auth.emailVerify(code: trimmed, pending: handle)
@@ -101,6 +104,30 @@ import Foundation
             case .needOrg(let tok, let orgs):
                 if mine == attempt { pendingOrgToken = tok; pendingOrgs = orgs }
                 return .said("Choose an organization to finish signing in.")
+            case .verifyEmail(let nextPending):
+                if mine == attempt { pending = nextPending; pendingWorkOS = true }
+                return .said("Enter the 6-digit verification code sent to your email.")
+            }
+        } catch { return .said(AppAccount.words(error)) }
+    }
+
+    /// Signs in or creates an account with WorkOS Email + Password (handles verify-email and need-org).
+    func passwordAuth(email: String, password: String, register: Bool) async -> Answer {
+        attempt += 1; let mine = attempt; pending = nil; pendingWorkOS = false; pendingOrgToken = nil; pendingOrgs = []
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let res = register
+                ? try await auth.workosPasswordRegister(email: trimmed, password: password)
+                : try await auth.workosPasswordLogin(email: trimmed, password: password)
+            switch res {
+            case .loggedIn:
+                return .done
+            case .needOrg(let tok, let orgs):
+                if mine == attempt { pendingOrgToken = tok; pendingOrgs = orgs }
+                return .said("Choose an organization to finish signing in.")
+            case .verifyEmail(let nextPending):
+                if mine == attempt { pending = nextPending; pendingWorkOS = true }
+                return .said("Enter the 6-digit verification code sent to your email.")
             }
         } catch { return .said(AppAccount.words(error)) }
     }

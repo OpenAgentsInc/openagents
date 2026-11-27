@@ -30,6 +30,7 @@ ALF_S_NONE :: 0; ALF_S_EMAIL_START :: 1; ALF_S_EMAIL_VERIFY :: 2; ALF_S_CHALLENG
 ALF_S_REFRESH :: 5; ALF_S_WHO :: 6; ALF_S_LOGOUT :: 7;
 ALF_S_WORKOS_CONFIG :: 8; ALF_S_WORKOS_MAGIC_START :: 9; ALF_S_WORKOS_MAGIC_VERIFY :: 10;
 ALF_S_WORKOS_ORG_SELECT :: 11; ALF_S_WORKOS_EXCHANGE :: 12; ALF_S_WORKOS_SSO :: 13;
+ALF_S_WORKOS_PW_LOGIN :: 14; ALF_S_WORKOS_PW_REGISTER :: 15;
 ALF_PATH :: 64; ALF_BODY :: 512; ALF_WORDS :: 400; ALF_WHO :: 160; ALF_PENDING :: 160;
 ALF_SENT :: "We sent a 6-digit code to your email. Type it here.";
 ALF_CHOOSE_ORG :: "Choose an organization to finish signing in.";
@@ -134,6 +135,21 @@ alf_workos_sso :: (f: [] AlFlow, email: string) -> bool #effects(all) {
   if !ok { alf_say(f, "Type your work email."); }
   return ok;
 }
+// Sign in with WorkOS Email + Password (device-bound Option A1 L1 tokens).
+alf_workos_password_login :: (f: [] AlFlow, email: string, password: string) -> bool #effects(all) {
+  f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false;
+  ok := alf_request(f, ALF_S_WORKOS_PW_LOGIN, ALF_POST, "/api/auth/workos/password/login", al_workos_password_body(email, password, f[0].body[..]), ALF_AUTH_NONE, true);
+  if !ok { alf_say(f, "Type your email and password."); }
+  return ok;
+}
+// Register a WorkOS Email + Password user (device-bound Option A1 L1 tokens).
+alf_workos_password_register :: (f: [] AlFlow, email: string, password: string) -> bool #effects(all) {
+  f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false;
+  if password.count < 8 { alf_say(f, "Use a password of at least 8 characters."); return false; }
+  ok := alf_request(f, ALF_S_WORKOS_PW_REGISTER, ALF_POST, "/api/auth/workos/password/register", al_workos_password_body(email, password, f[0].body[..]), ALF_AUTH_NONE, true);
+  if !ok { alf_say(f, "Type your email and password."); }
+  return ok;
+}
 // "Use another email": back to the email, the code/org selection forgotten.
 alf_back :: (f: [] AlFlow) #effects(all) {
   if f[0].state == ALF_CODE || f[0].state == ALF_ORG { f[0].state = ALF_OUT; f[0].pending_n = 0; f[0].words_n = 0; }
@@ -197,9 +213,17 @@ alf_answer :: (f: [] AlFlow, status: int, answer: string, now_ms: int) -> bool #
     if ok { n := al_field(answer, "pending", f[0].pending[..]); if n > 0 { f[0].pending_n = n; f[0].state = ALF_CODE; alf_say(f, ALF_SENT); return false; } }
     alf_refused(f, status, answer); return false;
   }
-  if step == ALF_S_EMAIL_VERIFY || step == ALF_S_KEY_LOGIN || step == ALF_S_WORKOS_MAGIC_VERIFY || step == ALF_S_WORKOS_ORG_SELECT || step == ALF_S_WORKOS_EXCHANGE {
+  if step == ALF_S_EMAIL_VERIFY || step == ALF_S_KEY_LOGIN || step == ALF_S_WORKOS_MAGIC_VERIFY || step == ALF_S_WORKOS_ORG_SELECT || step == ALF_S_WORKOS_EXCHANGE || step == ALF_S_WORKOS_PW_LOGIN || step == ALF_S_WORKOS_PW_REGISTER {
+    if step == ALF_S_WORKOS_PW_LOGIN || step == ALF_S_WORKOS_PW_REGISTER {
+      for i: 0..<f[0].body.count { f[0].body[i] = 0; }
+      f[0].body_n = 0;
+    }
     if ok {
-      if (step == ALF_S_WORKOS_MAGIC_VERIFY || step == ALF_S_WORKOS_EXCHANGE) {
+      if (step == ALF_S_WORKOS_PW_LOGIN || step == ALF_S_WORKOS_PW_REGISTER) {
+        vn := al_workos_verify_email(answer, f[0].pending[..]);
+        if vn > 0 { f[0].pending_n = vn; f[0].state = ALF_CODE; f[0].workos_enabled = true; alf_say(f, ALF_SENT); return false; }
+      }
+      if (step == ALF_S_WORKOS_MAGIC_VERIFY || step == ALF_S_WORKOS_EXCHANGE || step == ALF_S_WORKOS_PW_LOGIN || step == ALF_S_WORKOS_PW_REGISTER) {
         on := al_workos_need_org(answer, f[0].pending[..]);
         if on > 0 { f[0].pending_n = on; f[0].state = ALF_ORG; alf_say(f, ALF_CHOOSE_ORG); return false; }
       }
@@ -356,4 +380,15 @@ ALF_T_ME :: "{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[\"m...@b.co\
   // Enterprise SSO domain discovery
   #assert alf_workos_sso(g[..], "alice@acme.test") && alf_path(g[..]) == "/api/auth/workos/sso/discover";
   #assert !alf_answer(g[..], 200, "{\"sso\":true,\"connection_id\":\"conn_acme\"}", 0) && alf_sso_conn(g[..]) == "conn_acme";
+  // Email + Password login & register (handles verify-email -> code & wipes request body after response)
+  h: [1] AlFlow; alf_open(h[..], "");
+  #assert !alf_workos_password_register(h[..], "pw@acme.test", "short");
+  #assert alf_workos_password_register(h[..], "pw@acme.test", "correcthorse") && alf_path(h[..]) == "/api/auth/workos/password/register" && h[0].device;
+  #assert !alf_answer(h[..], 200, "{\"state\":\"verify-email\",\"pending\":\"wv_1\"}", 3000) && h[0].state == ALF_CODE && h[0].body_n == 0;
+  #assert alf_code(h[..], "654321") && alf_path(h[..]) == "/api/auth/workos/magic/verify" && h[0].device;
+  #assert alf_answer(h[..], 200, ALF_T_LOGIN, 3000) && h[0].state == ALF_IN && h[0].keep;
+  #assert !alf_answer(h[..], 200, ALF_T_ME, 3000) && alf_who_text(h[..]) == "m...@b.co";
+  p: [1] AlFlow; alf_open(p[..], "");
+  #assert alf_workos_password_login(p[..], "pw@acme.test", "correcthorse") && alf_path(p[..]) == "/api/auth/workos/password/login" && p[0].device;
+  #assert !alf_answer(p[..], 200, "{\"state\":\"need-org\",\"pending\":\"wo_p\",\"organizations\":[{\"id\":\"org_1\",\"name\":\"Acme\"}]}", 0) && p[0].state == ALF_ORG && p[0].body_n == 0;
 }

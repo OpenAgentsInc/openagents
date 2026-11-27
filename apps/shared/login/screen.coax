@@ -55,10 +55,10 @@ LG_STEP_EMAIL :: 0; LG_STEP_CODE :: 1;
 LG_FIELD_NONE :: 0; LG_FIELD_EMAIL :: 1; LG_FIELD_CODE :: 2;
 // What a row dispatches when pressed (its action in the semantic table).
 LG_HIT_EMAIL :: 1; LG_HIT_CODE :: 2; LG_HIT_SEND :: 3; LG_HIT_VERIFY :: 4; LG_HIT_RESEND :: 5; LG_HIT_CHANGE :: 6; LG_HIT_KEY :: 7; LG_HIT_CLOSE :: 8;
-LG_HIT_APPLE :: 9; LG_HIT_GOOGLE :: 10; LG_HIT_GITHUB :: 11; LG_HIT_SSO :: 12;
+LG_HIT_APPLE :: 9; LG_HIT_GOOGLE :: 10; LG_HIT_GITHUB :: 11; LG_HIT_SSO :: 12; LG_HIT_PW :: 13;
 // What the host is asked to do.
 LG_ACT_NONE :: 0; LG_ACT_START :: 1; LG_ACT_VERIFY :: 2; LG_ACT_KEY :: 3; LG_ACT_CLOSE :: 4;
-LG_ACT_APPLE :: 5; LG_ACT_GOOGLE :: 6; LG_ACT_GITHUB :: 7; LG_ACT_SSO :: 8;
+LG_ACT_APPLE :: 5; LG_ACT_GOOGLE :: 6; LG_ACT_GITHUB :: 7; LG_ACT_SSO :: 8; LG_ACT_PW :: 9;
 
 // One generation of the surface's arrays.
 LgGeneration :: struct { under: [LG_UNDER] Prim; over: [LG_OVER] Prim; hits: [LG_HITS] SheetHit; pool: [LG_POOL] u8; rows: [LG_ROWS] El; }
@@ -203,10 +203,25 @@ lg_layout :: (s: [] LoginScreen, f: [] UiFrame, w: f32, h: f32) -> f32 {
     _ := ctx_link(f, "login.change", x + cw + k.space - lw, y, "Change email", "Change email", state, LG_HIT_CHANGE);
   } else if s[0].card {
     _ := ctx_link(f, "login.close", x - k.space, y, "Cancel", "Cancel", state, LG_HIT_CLOSE);
-    if !s[0].no_key {
+    if s[0].workos && !s[0].no_key {
+      pw_w := form_link_width(m, k, "Password");
+      _ := ctx_link(f, "login.password", x + (cw - pw_w) / 2, y, "Password", "Email and password", state, LG_HIT_PW);
+      lw := form_link_width(m, k, "Use a Nostr key");
+      _ := ctx_link(f, "login.key", x + cw + k.space - lw, y, "Use a Nostr key", "Nostr key", state, LG_HIT_KEY);
+    } else if s[0].workos {
+      pw_w := form_link_width(m, k, "Use password");
+      _ := ctx_link(f, "login.password", x + cw + k.space - pw_w, y, "Use password", "Email and password", state, LG_HIT_PW);
+    } else if !s[0].no_key {
       lw := form_link_width(m, k, "Use a Nostr key");
       _ := ctx_link(f, "login.key", x + cw + k.space - lw, y, "Use a Nostr key", "Nostr key", state, LG_HIT_KEY);
     }
+  } else if s[0].workos && !s[0].no_key {
+    _ := ctx_link(f, "login.password", x - k.space, y, "Use password", "Email and password", state, LG_HIT_PW);
+    lw := form_link_width(m, k, "Use a Nostr key");
+    _ := ctx_link(f, "login.key", x + cw + k.space - lw, y, "Use a Nostr key", "Nostr key", state, LG_HIT_KEY);
+  } else if s[0].workos {
+    pw_w := form_link_width(m, k, "Use password");
+    _ := ctx_link(f, "login.password", x + (cw - pw_w) / 2, y, "Use password", "Email and password", state, LG_HIT_PW);
   } else if !s[0].no_key {
     lw := form_link_width(m, k, "Use a Nostr key");
     _ := ctx_link(f, "login.key", x + (cw - lw) / 2, y, "Use a Nostr key", "Nostr key", state, LG_HIT_KEY);
@@ -253,6 +268,7 @@ lg_press :: (s: [] LoginScreen, kind: int) -> bool {
   if kind == LG_HIT_GOOGLE && s[0].step == LG_STEP_EMAIL && s[0].workos { s[0].focus = LG_FIELD_NONE; lg_note(s, "", false); s[0].busy = LG_ACT_GOOGLE; s[0].action = LG_ACT_GOOGLE; return true; }
   if kind == LG_HIT_GITHUB && s[0].step == LG_STEP_EMAIL && s[0].workos { s[0].focus = LG_FIELD_NONE; lg_note(s, "", false); s[0].busy = LG_ACT_GITHUB; s[0].action = LG_ACT_GITHUB; return true; }
   if kind == LG_HIT_SSO && s[0].step == LG_STEP_EMAIL && s[0].workos { s[0].focus = LG_FIELD_NONE; lg_note(s, "", false); s[0].busy = LG_ACT_SSO; s[0].action = LG_ACT_SSO; return true; }
+  if kind == LG_HIT_PW && s[0].step == LG_STEP_EMAIL && s[0].workos { s[0].focus = LG_FIELD_NONE; lg_note(s, "", false); s[0].busy = LG_ACT_PW; s[0].action = LG_ACT_PW; return true; }
   if kind == LG_HIT_CLOSE && s[0].card { s[0].focus = LG_FIELD_NONE; s[0].action = LG_ACT_CLOSE; return true; }
   return false;
 }
@@ -728,4 +744,10 @@ lg_test_has :: (s: [] LoginScreen, id: string, state: int) -> bool { t := [1] El
   #assert lg_test_tap(s[..], "login.google") && login_action(s[..]) == LG_ACT_GOOGLE;
   login_reply(s[..], LG_ACT_GOOGLE, true, "");
   #assert s[0].done && s[0].busy == LG_ACT_NONE;
+  // Password link in WorkOS mode triggers LG_ACT_PW
+  p: [1] LoginScreen; lg_test_atlas(p[0].atlas[..]);
+  login_workos(p[..], true); login_env(p[..], 59, 34, 0, true, true);
+  _ := lg_test_frame(p[..], o[..]);
+  #assert p[0].refused == 0 && lg_find(p[..], "login.password") >= 0;
+  #assert lg_test_tap(p[..], "login.password") && login_action(p[..]) == LG_ACT_PW;
 }

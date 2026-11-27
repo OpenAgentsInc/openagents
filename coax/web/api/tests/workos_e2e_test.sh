@@ -354,6 +354,60 @@ st, _, check_del = req(f"{EMU}/user_management/users/{purge_wos_uid}", headers={
 assert st == 404, f"expected WorkOS user {purge_wos_uid} to be deleted (404), got {st}: {check_del}"
 print(f"  ok: 30-day auth-sweep tombstoned {purge_acct} and propagated DELETE /user_management/users/{purge_wos_uid}")
 
+# (12) Email + Password register (with 6-digit email verification), wrong password 401, valid login (L1 + L2-fresh preserved), reset & confirm
+pw_email = "pwuser@acme.test"
+st, _, body = req(f"{API}/api/auth/workos/password/register", "POST", {"email": pw_email, "password": "short"}, {"Origin": API})
+assert st == 400, (st, body)
+st, hdrs, body = req(f"{API}/api/auth/workos/password/register", "POST", {"email": pw_email, "password": "correct horse battery staple"}, {"Origin": API})
+assert st == 200, (st, body)
+reg_d = json.loads(body)
+if reg_d.get("state") == "verify-email":
+    ev_cookie = (hdrs.get("Set-Cookie") or hdrs.get("set-cookie") or "").split(";", 1)[0]
+    assert "__Host-oa_wos_pending=" in ev_cookie, hdrs
+    st, _, evs = req(f"{EMU}/events?events=email_verification.created", headers={"Authorization": "Bearer sk_test_default"})
+    assert st == 200, (st, evs)
+    vcode = ""
+    for item in json.loads(evs).get("data") or []:
+        if (item.get("data") or {}).get("email") == pw_email:
+            vcode = (item.get("data") or {}).get("code") or ""
+    assert len(vcode) == 6, (vcode, evs)
+    st, hdrs, body = req(f"{API}/api/auth/workos/magic/verify", "POST", {"code": vcode}, {"Origin": API, "Cookie": ev_cookie})
+    assert st == 200, (st, body)
+    reg_d = json.loads(body)
+assert reg_d["state"] == "logged-in" and reg_d["account"].startswith("acct_"), reg_d
+pw_cookie = (hdrs.get("Set-Cookie") or hdrs.get("set-cookie") or "").split(";", 1)[0]
+assert "__Host-oa_session=oas_" in pw_cookie, hdrs
+
+# Wrong password refused with 401
+st, _, body = req(f"{API}/api/auth/workos/password/login", "POST", {"email": pw_email, "password": "wrong password"}, {"Origin": API})
+assert st == 401, (st, body)
+
+# Valid password login mints L1 session and preserves L2-fresh gate
+st, hdrs, body = req(f"{API}/api/auth/workos/password/login", "POST", {"email": pw_email, "password": "correct horse battery staple"}, {"Origin": API})
+assert st == 200 and json.loads(body)["account"] == reg_d["account"], (st, body)
+pw_cookie2 = (hdrs.get("Set-Cookie") or hdrs.get("set-cookie") or "").split(";", 1)[0]
+st, _, me_pw = req(f"{API}/api/auth/account", headers={"Cookie": pw_cookie2})
+assert st == 200 and json.loads(me_pw)["level"] == "L1" and json.loads(me_pw)["via"] == "workos", (st, me_pw)
+st, _, _ = req(f"{API}/api/wallet/backup", "POST", {"ciphertext": "abc"}, {"Origin": API, "Cookie": pw_cookie2})
+assert st == 401, f"expected 401 L2-fresh refusal on password L1 session, got {st}"
+
+# Password reset returns generic 200 even for unknown email (no enumeration)
+st, _, rbody = req(f"{API}/api/auth/workos/password/reset", "POST", {"email": "nobody@acme.test"}, {"Origin": API})
+assert st == 200 and json.loads(rbody)["state"] == "sent", (st, rbody)
+st, _, rbody = req(f"{API}/api/auth/workos/password/reset", "POST", {"email": pw_email}, {"Origin": API})
+assert st == 200 and json.loads(rbody)["state"] == "sent", (st, rbody)
+
+# Confirm password reset via emulate's issued reset token, then log in with the new password
+st, _, pr = req(f"{EMU}/user_management/password_reset", "POST", {"email": pw_email}, {"Authorization": "Bearer sk_test_default"})
+assert st in (200, 201), (st, pr)
+pr_tok = json.loads(pr).get("password_reset_token") or ""
+if pr_tok:
+    st, _, cb = req(f"{API}/api/auth/workos/password/reset/confirm", "POST", {"token": pr_tok, "new_password": "new stronger passphrase 2026"}, {"Origin": API})
+    assert st == 200 and json.loads(cb)["state"] == "reset", (st, cb)
+    st, _, nb = req(f"{API}/api/auth/workos/password/login", "POST", {"email": pw_email, "password": "new stronger passphrase 2026"}, {"Origin": API})
+    assert st == 200 and json.loads(nb)["account"] == reg_d["account"], (st, nb)
+print("  ok: WorkOS Email+Password register, bad-pw 401, L1 login, no-enum reset, and reset/confirm verified")
+
 print("oa-api WorkOS E2E: ALL CHECKS PASSED")
 PY
 

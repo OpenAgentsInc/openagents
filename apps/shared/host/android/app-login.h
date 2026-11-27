@@ -21,6 +21,7 @@
 enum {
   OA_LOGIN_EMAIL = 1, OA_LOGIN_CODE = 2, OA_LOGIN_KEY = 3, OA_LOGIN_LOGOUT = 4, OA_LOGIN_BACK = 5, OA_LOGIN_WHO = 6,
   OA_LOGIN_WORKOS_OAUTH = 7, OA_LOGIN_WORKOS_CALLBACK = 8, OA_LOGIN_WORKOS_ORG = 9, OA_LOGIN_WORKOS_SSO = 10,
+  OA_LOGIN_WORKOS_PW_LOGIN = 11, OA_LOGIN_WORKOS_PW_REGISTER = 12,
 };
 
 /* Starts the login's thread. dir: the app's files folder (ANativeActivity's internalDataPath);

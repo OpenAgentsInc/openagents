@@ -11,7 +11,7 @@
 Do **not** flip `OA_WORKOS_ENABLED=1` in production until every box below is green:
 
 1. **Phase 0 Owner Provisioning (`NEEDS_OWNER.md`, #14097):**
-   - Staging and production WorkOS environments exist with Magic Auth, Google OAuth, GitHub OAuth, Apple OAuth (iOS Guideline 4.8), Enterprise SSO, Optional Organizations, Radar, and AuthKit Actions enabled; Passwords and Phone/SMS/Radar-SMS explicitly **disabled** (D3).
+   - Staging and production WorkOS environments exist with Magic Auth, Email + Password, Google OAuth, GitHub OAuth, Apple OAuth (iOS Guideline 4.8), Enterprise SSO, Optional Organizations, Radar, and AuthKit Actions enabled; Phone/SMS/Radar-SMS explicitly **disabled** (D3).
    - All 4 staging and 4 production Secret Manager secrets exist and are bound strictly to `157437760789-compute@developer.gserviceaccount.com`.
    - `coax/web/api/workos-env-check.sh --staging` passes.
 2. **Staging End-to-End Verification (`staging.openagents.com`):**

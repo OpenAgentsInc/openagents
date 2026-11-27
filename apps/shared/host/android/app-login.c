@@ -344,6 +344,14 @@ static void *main_loop(void *unused) {
         char arg[140]; snprintf(arg, sizeof arg, "sso:%.*s", cn, conn);
         workos_start_oauth(arg, (int)strlen(arg));
       }
+    } else if (kind == OA_LOGIN_WORKOS_PW_LOGIN || kind == OA_LOGIN_WORKOS_PW_REGISTER) {
+      const char *nl = memchr(text, '\n', (size_t)tn);
+      if (nl) {
+        int en = (int)(nl - text);
+        int pn = tn - en - 1;
+        coax_string em = S(text, en), pw = S(nl + 1, pn);
+        run(kind == OA_LOGIN_WORKOS_PW_LOGIN ? alu_workos_password_login(F(), em, pw) : alu_workos_password_register(F(), em, pw));
+      }
     }
     memset(text, 0, sizeof text);
     publish(false);

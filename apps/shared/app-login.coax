@@ -307,6 +307,9 @@ al_t_login :: () -> string #effects(all) { return "{\"state\":\"logged-in\",\"ac
   n = al_workos_sso_body(" a@b ", out[..]);
   #assert cast(string) out[0..<n] == "{\"email\":\"a@b\"}";
   #assert al_workos_sso_body("ab", out[..]) == -1 && al_workos_sso_body("a@b", out[0..<5]) == -1;
+  n = al_workos_password_body(" a@b ", "s", out[..]);
+  #assert cast(string) out[0..<n] == "{\"client\":\"app\",\"email\":\"a@b\",\"password\":\"s\"}";
+  #assert al_workos_password_body("ab", "s", out[..]) == -1 && al_workos_password_body("a@b", "", out[..]) == -1 && al_workos_password_body("a@b", "s", out[0..<10]) == -1;
   cid: [64] u8;
   n = al_workos_config("{\"enabled\":true,\"client_id\":\"client_01\"}", cid[..]);
   #assert n == 9 && cast(string) cid[0..<n] == "client_01";
@@ -317,6 +320,11 @@ al_t_login :: () -> string #effects(all) { return "{\"state\":\"logged-in\",\"ac
   #assert al_workos_need_org("{\"state\":\"need-orgx\",\"pending\":\"wo_9\"}", p[..]) == -1;
   #assert al_workos_need_org("{\"state\":\"logged-i\",\"pending\":\"wo_9\"}", p[..]) == -1;
   #assert al_workos_need_org("{\"state\":\"need-org\"}", p[..]) == -1 && al_workos_need_org("bad", p[..]) == -1;
+  n = al_workos_verify_email("{\"state\":\"verify-email\",\"pending\":\"wv_9\"}", p[..]);
+  #assert n == 4 && cast(string) p[0..<n] == "wv_9";
+  #assert al_workos_verify_email("{\"state\":\"verify-emailx\",\"pending\":\"wv_9\"}", p[..]) == -1;
+  #assert al_workos_verify_email("{\"state\":\"need-org1234\",\"pending\":\"wv_9\"}", p[..]) == -1;
+  #assert al_workos_verify_email("{\"state\":\"verify-email\"}", p[..]) == -1 && al_workos_verify_email("bad", p[..]) == -1;
   cn: [64] u8;
   n = al_workos_sso_conn("{\"sso\":true,\"connection_id\":\"conn_1\"}", cn[..]);
   #assert n == 6 && cast(string) cn[0..<n] == "conn_1";
@@ -402,6 +410,13 @@ al_workos_sso_body :: (email: string, out: [] u8) -> int #effects(all) {
   jo_obj(o[..]); jo_key(o[..], "email"); jo_str(o[..], e); jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
 }
+al_workos_password_body :: (email: string, password: string, out: [] u8) -> int #effects(all) {
+  e := al_trim(email);
+  if e.count < 3 || password.count == 0 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "client"); jo_str(o[..], "app"); jo_key(o[..], "email"); jo_str(o[..], e); jo_key(o[..], "password"); jo_str(o[..], password); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
 // Reads GET /api/auth/workos/config: client_id length when enabled and non-empty, else -1.
 al_workos_config :: (answer: string, client_id_out: [] u8) -> int #effects(all) {
   nodes: [AL_NODES] JvNode; d: [1] Jv;
@@ -416,6 +431,15 @@ al_workos_need_org :: (answer: string, pending_out: [] u8) -> int #effects(all) 
   st: [16] u8;
   sn := al_str(d[0], "state", st[..]);
   if sn != 8 || cast(string) st[0..<8] != "need-org" { return -1; }
+  return al_str(d[0], "pending", pending_out);
+}
+// Reads a `verify-email` response: pending token length when state == "verify-email", else -1.
+al_workos_verify_email :: (answer: string, pending_out: [] u8) -> int #effects(all) {
+  nodes: [AL_NODES] JvNode; d: [1] Jv;
+  _ = jv_parse(d[..], answer, nodes[..]);
+  st: [16] u8;
+  sn := al_str(d[0], "state", st[..]);
+  if sn != 12 || cast(string) st[0..<12] != "verify-email" { return -1; }
   return al_str(d[0], "pending", pending_out);
 }
 // Reads POST /api/auth/workos/sso/discover: connection_id length when sso == true, else -1.

@@ -226,14 +226,14 @@ final class MacAccount: @unchecked Sendable {
         let alert = NSAlert()
         alert.messageText = "Log in to OpenAgents"
         alert.informativeText = wos.enabled
-            ? "Enter your email for a 6-digit code, or continue with Google, GitHub, Apple, Enterprise SSO, Passkey, or this Mac's key."
+            ? "Enter your email for a 6-digit code, or continue with Email & Password, Google, GitHub, Apple, Enterprise SSO, Passkey, or this Mac's key."
             : "Enter your email and we'll send you a code."
         let email = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
         email.placeholderString = "you@example.com"
         email.setAccessibilityIdentifier("account.email")
         alert.accessoryView = email
         alert.addButton(withTitle: "Send Code")
-        if wos.enabled { alert.addButton(withTitle: "Google / GitHub / Apple / SSO…") }
+        if wos.enabled { alert.addButton(withTitle: "Password / Google / GitHub / Apple / SSO…") }
         alert.addButton(withTitle: "Log In with Passkey")
         alert.addButton(withTitle: "Log In with This Mac's Key")
         alert.addButton(withTitle: "Cancel")
@@ -267,7 +267,8 @@ final class MacAccount: @unchecked Sendable {
     @MainActor private func showWorkOSProviders(clientID: String, emailHint: String) async {
         let alert = NSAlert()
         alert.messageText = "Continue with…"
-        alert.informativeText = "Choose a provider. Sign-in opens in a system browser sheet (ASWebAuthenticationSession) using PKCE."
+        alert.informativeText = "Choose Email & Password, or an OAuth/SSO provider (system browser sheet using PKCE)."
+        alert.addButton(withTitle: "Email & Password…")
         alert.addButton(withTitle: "Google")
         alert.addButton(withTitle: "GitHub")
         alert.addButton(withTitle: "Apple")
@@ -275,10 +276,11 @@ final class MacAccount: @unchecked Sendable {
         alert.addButton(withTitle: "Cancel")
         let idx = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
         switch idx {
-        case 0: await loginWithWorkOSOAuth(clientID: clientID, provider: "GoogleOAuth", connectionID: nil, loginHint: emailHint)
-        case 1: await loginWithWorkOSOAuth(clientID: clientID, provider: "GitHubOAuth", connectionID: nil, loginHint: emailHint)
-        case 2: await loginWithWorkOSOAuth(clientID: clientID, provider: "AppleOAuth", connectionID: nil, loginHint: emailHint)
-        case 3:
+        case 0: await askPassword(emailHint: emailHint)
+        case 1: await loginWithWorkOSOAuth(clientID: clientID, provider: "GoogleOAuth", connectionID: nil, loginHint: emailHint)
+        case 2: await loginWithWorkOSOAuth(clientID: clientID, provider: "GitHubOAuth", connectionID: nil, loginHint: emailHint)
+        case 3: await loginWithWorkOSOAuth(clientID: clientID, provider: "AppleOAuth", connectionID: nil, loginHint: emailHint)
+        case 4:
             var addr = emailHint
             if addr.isEmpty {
                 let ask = NSAlert()
@@ -305,6 +307,52 @@ final class MacAccount: @unchecked Sendable {
         }
     }
 
+    @MainActor private func askPassword(emailHint: String) async {
+        let alert = NSAlert()
+        alert.messageText = "Email & Password"
+        alert.informativeText = "Sign in or create an account with your email and password."
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 280, height: 56))
+        stack.orientation = .vertical
+        stack.spacing = 8
+        let email = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        email.placeholderString = "you@example.com"
+        email.stringValue = emailHint
+        let pw = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        pw.placeholderString = "Password"
+        stack.addArrangedSubview(email)
+        stack.addArrangedSubview(pw)
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Log In")
+        alert.addButton(withTitle: "Create Account")
+        alert.addButton(withTitle: "Reset Password")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = emailHint.isEmpty ? email : pw
+        let idx = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        let addr = email.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secret = pw.stringValue
+        pw.stringValue = ""
+        guard !addr.isEmpty else { return }
+        do {
+            if idx == 0 || idx == 1 {
+                let res = idx == 0
+                    ? try await auth.workosPasswordLogin(email: addr, password: secret)
+                    : try await auth.workosPasswordRegister(email: addr, password: secret)
+                switch res {
+                case .loggedIn:
+                    forgetShown()
+                    await look()
+                case .needOrg(let pending, let orgs):
+                    await pickWorkOSOrg(pending: pending, organizations: orgs)
+                case .verifyEmail(let pending):
+                    await askCode(address: addr, pending: pending, workos: true)
+                }
+            } else if idx == 2 {
+                try await auth.workosPasswordReset(email: addr)
+                note("If an account exists for that email, we sent a password reset link.")
+            }
+        } catch { say(error) }
+    }
+
     @MainActor func loginWithWorkOSOAuth(clientID: String, provider: String?, connectionID: String?, loginHint: String?) async {
         do {
             let pkce = try AppAuth.workosPKCEStart(
@@ -319,6 +367,8 @@ final class MacAccount: @unchecked Sendable {
                 await look()
             case .needOrg(let pending, let orgs):
                 await pickWorkOSOrg(pending: pending, organizations: orgs)
+            case .verifyEmail(let pending):
+                await askCode(address: loginHint ?? "your email", pending: pending, workos: true)
             }
         } catch {
             if case AppAuth.Failure.said(let msg) = error, msg == "Sign-in cancelled." { return }
@@ -387,6 +437,8 @@ final class MacAccount: @unchecked Sendable {
                     await look()
                 case .needOrg(let orgPending, let orgs):
                     await pickWorkOSOrg(pending: orgPending, organizations: orgs)
+                case .verifyEmail(let nextPending):
+                    await askCode(address: address, pending: nextPending, workos: true)
                 }
             } else {
                 try await auth.emailVerify(code: entered, pending: pending)
