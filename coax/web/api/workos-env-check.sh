@@ -39,6 +39,10 @@ for req in ("magic", "password", "google", "github", "apple", "sso"):
 print(f"  ok: /api/auth/workos/config enabled=true client_id={cid} providers={sorted(provs)}")
 PY
 
+  if [[ "$exp_gb" == "skip" ]]; then
+    echo "  ok: staging has no OA_API_SITE_ORIGINS (gamebuilder.org is production-only)"
+    return 0
+  fi
   echo "==> Checking gamebuilder.org isolation (expect enabled=${exp_gb})"
   gb_out="$(curl -sS -w '\n%{http_code}' -H "Origin: https://gamebuilder.org" "${api_origin}/api/auth/workos/config")"
   gb_code="$(printf '%s\n' "$gb_out" | tail -n 1)"
@@ -90,7 +94,7 @@ case "$mode" in
   --staging)
     check_secrets "-staging"
     cid="$(gcloud secrets versions access latest --secret=oa-workos-client-id-staging --project "$project")"
-    check_jwks_and_config "https://staging.openagents.com" "${OA_WORKOS_BASE_URL:-https://api.workos.com}" "$cid" "$expect_gb"
+    check_jwks_and_config "https://staging.openagents.com" "${OA_WORKOS_BASE_URL:-https://api.workos.com}" "$cid" "skip"
     ;;
   --production)
     check_secrets ""
