@@ -195,6 +195,54 @@ static void workos_gh_parse_profile(PGconn *db, const char *body, char gh_id[64]
   PQclear(r);
 }
 
+static bool workos_email_owned_by_other(PGconn *db, const char *raw_email, const char *self_acct) {
+  if (!db || !raw_email || !*raw_email) return false;
+  char norm[300] = "", all_lookups[512] = "", primary_lookup[80] = "";
+  if (!auth_normal_email(raw_email, norm, sizeof norm)) return true;
+  bool ok_lk = auth_lookups(norm, all_lookups, sizeof all_lookups, primary_lookup);
+  explicit_bzero(norm, sizeof norm);
+  if (!ok_lk) return true;
+  const char *v[2] = {all_lookups, self_acct ? self_acct : ""};
+  PGresult *r = PQexecParams(
+      db,
+      "SELECT EXISTS ("
+      "  SELECT 1 FROM auth.emails e "
+      "  JOIN auth.accounts a ON a.id = e.account "
+      " WHERE e.lookup = ANY($1::text[]) "
+      "   AND e.account <> $2 "
+      "   AND a.deleted_at IS NULL "
+      "   AND a.merged_into IS NULL"
+      ")",
+      2, NULL, v, NULL, NULL, 0);
+  bool owned = true; // fail-closed if query errors
+  if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+    owned = !strcmp(PQgetvalue(r, 0, 0), "t");
+  }
+  if (r) PQclear(r);
+  return owned;
+}
+
+static void workos_finish_link_redirect(const request *q, PGconn *db, const char *link_account, const char *session,
+                                        const char *next_path, const char *gh_id, const char *gh_login,
+                                        long long newly, bool already_claimed, const char *via) {
+  char detail[320], login_esc[128];
+  auth_json_esc(gh_login ? gh_login : "", login_esc, sizeof login_esc);
+  snprintf(detail, sizeof detail,
+           "{\"github_id\":\"%s\",\"github_login\":\"%s\",\"granted_micros\":%lld,\"already_claimed\":%s,\"via\":\"%s\"}",
+           gh_id ? gh_id : "", login_esc, newly, already_claimed ? "true" : "false", via ? via : "oauth");
+  auth_audit(db, link_account, session, "onboarding.github_link", "ok", detail);
+  char dest[320] = "/chat";
+  int64_t dn = ap_post_login_dest(true, cs(next_path), (coax_v_u8){(uint8_t *)dest, (int64_t)sizeof dest - 1});
+  if (dn > 0) dest[dn] = 0;
+  else snprintf(dest, sizeof dest, "/chat");
+  char hdr[600];
+  snprintf(hdr, sizeof hdr,
+           "Location: %s\r\n"
+           "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n",
+           dest, WOS_STATE_COOKIE);
+  api_respond(q->fd, 303, "text/plain", hdr, "", 0);
+}
+
 static void workos_log_err(PGconn *db, const char *acct, const char *session, const char *event,
                            const char *stage, int http_status, const char *detail) {
   const char *st = stage ? stage : "unknown";
@@ -1494,41 +1542,36 @@ static void route_callback(const request *q, PGconn *db) {
       if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
       http_client_res_free(&res);
       if (linked) {
-        char detail[256], login_esc[128];
-        auth_json_esc(gh_login, login_esc, sizeof login_esc);
-        snprintf(detail, sizeof detail, "{\"github_id\":\"%s\",\"github_login\":\"%s\",\"granted_micros\":%lld,\"already_claimed\":%s}",
-                 gh_id, login_esc, newly, already_claimed ? "true" : "false");
-        auth_audit(db, link_account, link_p->session, "onboarding.github_link", "ok", detail);
-        char dest[320] = "/chat";
-        int64_t dn = ap_post_login_dest(true, cs(next_path), (coax_v_u8){(uint8_t *)dest, (int64_t)sizeof dest - 1});
-        if (dn > 0) dest[dn] = 0;
-        else snprintf(dest, sizeof dest, "/chat");
-        char hdr[600];
-        snprintf(hdr, sizeof hdr,
-                 "Location: %s\r\n"
-                 "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n",
-                 dest, WOS_STATE_COOKIE);
-        api_respond(q->fd, 303, "text/plain", hdr, "", 0);
+        workos_finish_link_redirect(q, db, link_account, link_p->session, next_path, gh_id, gh_login, newly, already_claimed, "oauth");
         return;
       }
     } else {
       // Log exact WorkOS error code/message (never secrets/tokens) so Cloud Logging + auth.audit show root cause.
-      char werr[256] = "workos_auth_failed", wcode[96] = "";
+      char werr[256] = "workos_auth_failed", wcode[96] = "", pat[512] = "", evid[128] = "", ev_email[300] = "";
       if (res.body && res.body_len > 0) {
         const char *ev[1] = {res.body};
         PGresult *er = PQexecParams(
             db,
             "WITH d AS (SELECT $1::jsonb j) "
-            "SELECT coalesce(j->>'code', j->>'error', ''), coalesce(j->>'message', j->>'error_description', '') FROM d",
+            "SELECT coalesce(j->>'code', j->>'error', ''), "
+            "       coalesce(j->>'message', j->>'error_description', ''), "
+            "       coalesce(j->>'pending_authentication_token', ''), "
+            "       coalesce(j->>'email_verification_id', ''), "
+            "       coalesce(j->>'email', '') "
+            "FROM d",
             1, NULL, ev, NULL, NULL, 0);
         if (PQresultStatus(er) == PGRES_TUPLES_OK && PQntuples(er) == 1) {
           snprintf(wcode, sizeof wcode, "%s", PQgetvalue(er, 0, 0));
           snprintf(werr, sizeof werr, "code=%s msg=%.160s", wcode[0] ? wcode : "-", PQgetvalue(er, 0, 1));
+          snprintf(pat, sizeof pat, "%s", PQgetvalue(er, 0, 2));
+          snprintf(evid, sizeof evid, "%s", PQgetvalue(er, 0, 3));
+          snprintf(ev_email, sizeof ev_email, "%s", PQgetvalue(er, 0, 4));
         }
         PQclear(er);
       }
       workos_log_err(db, link_account, link_p->session, "onboarding.github_link", "workos_authenticate", res.status, werr);
-      // If WorkOS returned 403 organization_selection_required, user.id is already authenticated — still link GitHub!
+
+      // Case 1: 403 organization_selection_required — user.id is already authenticated; link GitHub directly.
       if (res.status == 403 && res.body && res.body_len > 0 && !strcmp(wcode, "organization_selection_required")) {
         char wos_uid[128] = "";
         const char *uv[1] = {res.body};
@@ -1542,26 +1585,110 @@ static void route_callback(const request *q, PGconn *db) {
           bool linked = workos_link_github_account(db, link_account, wos_uid, res.body, gh_id, gh_login, &newly, &already_claimed);
           explicit_bzero(res.body, res.body_len);
           http_client_res_free(&res);
+          explicit_bzero(pat, sizeof pat);
           if (linked) {
-            char detail[256], login_esc[128];
-            auth_json_esc(gh_login, login_esc, sizeof login_esc);
-            snprintf(detail, sizeof detail, "{\"github_id\":\"%s\",\"github_login\":\"%s\",\"granted_micros\":%lld,\"already_claimed\":%s,\"via\":\"org_select_403\"}",
-                     gh_id, login_esc, newly, already_claimed ? "true" : "false");
-            auth_audit(db, link_account, link_p->session, "onboarding.github_link", "ok", detail);
-            char dest[320] = "/chat";
-            int64_t dn = ap_post_login_dest(true, cs(next_path), (coax_v_u8){(uint8_t *)dest, (int64_t)sizeof dest - 1});
-            if (dn > 0) dest[dn] = 0;
-            else snprintf(dest, sizeof dest, "/chat");
-            char hdr[600];
-            snprintf(hdr, sizeof hdr,
-                     "Location: %s\r\n"
-                     "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n",
-                     dest, WOS_STATE_COOKIE);
-            api_respond(q->fd, 303, "text/plain", hdr, "", 0);
+            workos_finish_link_redirect(q, db, link_account, link_p->session, next_path, gh_id, gh_login, newly, already_claimed, "org_select_403");
+            return;
+          }
+          res.body = NULL; res.body_len = 0;
+        }
+      }
+
+      // Case 2: 400/403 email_verification_required — happens when a user previously abandoned Magic Auth
+      // or connects a GitHub account whose email isn't yet verified in WorkOS. The user is already
+      // authenticated on OpenAgents (link_account) and just authorized GitHub; resolve cleanly server-side
+      // whenever the email does not belong to any other OpenAgents account.
+      if ((res.status == 400 || res.status == 403) && !strcmp(wcode, "email_verification_required") && evid[0]) {
+        uint8_t ev_url[512]; int64_t ev_un = 0;
+        char ev_uid[128] = "", ev_code[32] = "";
+        if (wos_c_build_get_email_verification(cs(workos_base_url()), cs(evid),
+                                               (coax_v_u8){ev_url, (int64_t)sizeof ev_url - 1}, (coax_v_s64){&ev_un, 1})) {
+          ev_url[ev_un] = 0;
+          http_client_res evres = {0};
+          workos_http("GET", (const char *)ev_url, NULL, 0, true, &evres);
+          if (evres.status == 200 && evres.body && evres.body_len > 0) {
+            const char *gv[1] = {evres.body};
+            PGresult *gr = PQexecParams(
+                db,
+                "WITH d AS (SELECT $1::jsonb j) "
+                "SELECT coalesce(j->>'user_id', ''), coalesce(j->>'code', ''), coalesce(j->>'email', '') FROM d",
+                1, NULL, gv, NULL, NULL, 0);
+            if (PQresultStatus(gr) == PGRES_TUPLES_OK && PQntuples(gr) == 1) {
+              snprintf(ev_uid, sizeof ev_uid, "%s", PQgetvalue(gr, 0, 0));
+              snprintf(ev_code, sizeof ev_code, "%s", PQgetvalue(gr, 0, 1));
+              if (!ev_email[0] && PQgetvalue(gr, 0, 2)[0]) snprintf(ev_email, sizeof ev_email, "%s", PQgetvalue(gr, 0, 2));
+            }
+            PQclear(gr);
+          } else {
+            workos_log_err(db, link_account, link_p->session, "onboarding.github_link", "get_email_verification", evres.status, evid);
+          }
+          if (evres.body && evres.body_len > 0) explicit_bzero(evres.body, evres.body_len);
+          http_client_res_free(&evres);
+        }
+
+        // Sub-path 2a: If WorkOS already attached the GitHub identity to ev_uid, link without touching email verification.
+        if (ev_uid[0]) {
+          char gh_id[64] = "", gh_login[64] = "";
+          long long newly = 0;
+          bool already_claimed = false;
+          if (workos_link_github_account(db, link_account, ev_uid, NULL, gh_id, gh_login, &newly, &already_claimed)) {
+            if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
+            http_client_res_free(&res);
+            explicit_bzero(pat, sizeof pat); explicit_bzero(ev_code, sizeof ev_code);
+            workos_finish_link_redirect(q, db, link_account, link_p->session, next_path, gh_id, gh_login, newly, already_claimed, "email_verify_identities");
             return;
           }
         }
+
+        // Sub-path 2b: Auto-complete WorkOS email verification ONLY if ev_email does not belong to another OpenAgents account.
+        if (pat[0] && ev_code[0]) {
+          if (workos_email_owned_by_other(db, ev_email, link_account)) {
+            workos_log_err(db, link_account, link_p->session, "onboarding.github_link", "email_verify_other_acct", 403, "email belongs to another account");
+          } else {
+            uint8_t vu_b[512], vr_b[2048];
+            int64_t vun = 0, vbn = 0;
+            if (wos_c_build_auth_email_verify(cs(workos_base_url()), cs(workos_client_id()), cs(workos_api_key()),
+                                              cs(pat), cs(ev_code), cs(ip), cs(ua),
+                                              (coax_v_u8){vu_b, (int64_t)sizeof vu_b - 1},
+                                              (coax_v_u8){vr_b, (int64_t)sizeof vr_b - 1},
+                                              (coax_v_s64){&vun, 1}, (coax_v_s64){&vbn, 1})) {
+              vu_b[vun] = 0; vr_b[vbn] = 0;
+              http_client_res vres = {0};
+              workos_http("POST", (const char *)vu_b, (const char *)vr_b, (size_t)vbn, true, &vres);
+              explicit_bzero(vr_b, sizeof vr_b);
+              bool v_ok = (vres.status >= 200 && vres.status < 300) || vres.status == 403;
+              if (v_ok && vres.body && vres.body_len > 0) {
+                char wos_uid2[128] = "";
+                const char *uv2[1] = {vres.body};
+                PGresult *ur2 = PQexecParams(db, "SELECT coalesce(($1::jsonb)->'user'->>'id', '')", 1, NULL, uv2, NULL, NULL, 0);
+                if (PQresultStatus(ur2) == PGRES_TUPLES_OK && PQntuples(ur2) == 1) snprintf(wos_uid2, sizeof wos_uid2, "%s", PQgetvalue(ur2, 0, 0));
+                PQclear(ur2);
+                if (!wos_uid2[0] && ev_uid[0]) snprintf(wos_uid2, sizeof wos_uid2, "%s", ev_uid);
+                char gh_id[64] = "", gh_login[64] = "";
+                long long newly = 0;
+                bool already_claimed = false;
+                bool linked = workos_link_github_account(db, link_account, wos_uid2, vres.body, gh_id, gh_login, &newly, &already_claimed);
+                explicit_bzero(vres.body, vres.body_len);
+                http_client_res_free(&vres);
+                if (linked) {
+                  if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
+                  http_client_res_free(&res);
+                  explicit_bzero(pat, sizeof pat); explicit_bzero(ev_code, sizeof ev_code);
+                  workos_finish_link_redirect(q, db, link_account, link_p->session, next_path, gh_id, gh_login, newly, already_claimed, "email_verify_auto");
+                  return;
+                }
+              } else {
+                workos_log_err(db, link_account, link_p->session, "onboarding.github_link", "email_verify_auto_auth", vres.status, "authenticate_with_email_verification failed");
+                if (vres.body && vres.body_len > 0) explicit_bzero(vres.body, vres.body_len);
+                http_client_res_free(&vres);
+              }
+            }
+          }
+        }
+        explicit_bzero(ev_code, sizeof ev_code);
       }
+
+      explicit_bzero(pat, sizeof pat);
       if (res.body && res.body_len > 0) explicit_bzero(res.body, res.body_len);
       http_client_res_free(&res);
     }

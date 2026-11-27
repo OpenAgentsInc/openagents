@@ -183,6 +183,14 @@ wos_c_build_get_user_identities :: (base_url: string, workos_user_id: string, ur
   return wos_c_export_req(r, scratch[..], url_out, empty[0..<0], url_n, bn[..]);
 }
 
+wos_c_build_get_email_verification :: (base_url: string, email_verification_id: string, url_out: [] u8, url_n: [] int) -> bool #export_c #effects(all) {
+  if email_verification_id.count == 0 { return false; }
+  scratch: [2048] u8;
+  empty: [1] u8; bn: [1] int;
+  r := wos_user_management_get_email_verification(base_url, WosP_UserManagementGetEmailVerification.{id = email_verification_id}, scratch[..]);
+  return wos_c_export_req(r, scratch[..], url_out, empty[..], url_n, bn[..]);
+}
+
 wos_c_is_github_provider :: (p: string) -> bool #effects(all) {
   return p == "GithubOAuth" || p == "GitHubOAuth" || p == "github" || p == "GitHub" || p == "github_oauth";
 }
@@ -360,6 +368,10 @@ wos_c_export_req :: (r: WosReq, scratch: [] u8, url_out: [] u8, body_out: [] u8,
   #assert wos_c_build_get_user_identities("", "user_1", ub[..], un[..]);
   #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/users/user_1/identities";
   #assert !wos_c_build_get_user_identities("", "", ub[..], un[..]) && !wos_c_build_get_user_identities("", "..", ub[..], un[..]);
+  #assert wos_c_build_get_email_verification("", "ev_1", ub[..], un[..]);
+  #assert cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/email_verification/ev_1";
+  #assert wos_c_build_get_email_verification("", "a", ub[..], un[..]) && cast(string) ub[0..<un[0]] == "https://api.workos.com/user_management/email_verification/a";
+  #assert !wos_c_build_get_email_verification("", "", ub[..], un[..]) && !wos_c_build_get_email_verification("", "..", ub[..], un[..]);
   idb: [64] u8;
   idn := wos_c_parse_github_idp_id("[{\"idp_id\":\"9988\",\"type\":\"OAuth\",\"provider\":\"GoogleOAuth\"},{\"idp_id\":\"583231\",\"type\":\"OAuth\",\"provider\":\"GithubOAuth\"}]", idb[..]);
   #assert idn == 6 && cast(string) idb[0..<idn] == "583231";

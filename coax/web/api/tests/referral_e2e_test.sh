@@ -180,6 +180,16 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/wos/data-integrations/users/") and "/providers" in p:
             self.send_json(200, {"data": [{"slug": "github", "connected": True, "scopes": ["read:user"]}]})
             return
+        # WorkOS Email Verification record (used when GitHub OAuth returns 403 email_verification_required)
+        if p == "/wos/user_management/email_verification/ev_unverified_1":
+            self.send_json(200, {
+                "object": "email_verification",
+                "id": "ev_unverified_1",
+                "user_id": "wos_ev_user_1",
+                "email": "abandoned-magic@example.com",
+                "code": "654321",
+            })
+            return
         # WorkOS User Identities (fallback when oauth_tokens is omitted)
         if p.startswith("/wos/user_management/users/") and p.endswith("/identities"):
             uid = p.split("/")[4]
@@ -203,6 +213,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             auth = self.headers.get("Authorization", "")
             tok = auth.split(" ", 1)[1] if auth.startswith("Bearer ") else ""
+            if tok == "gho_ev_user_1" and p == "/gh/user":
+                self.send_json(200, {
+                    "id": 777002, "login": "abandoned-magic-gh",
+                    "avatar_url": "https://avatars.githubusercontent.com/u/777002",
+                    "created_at": iso_days_ago(400), "public_repos": 5, "followers": 3,
+                })
+                return
             prof = get_profile(tok)
             if not prof:
                 self.send_json(401, {"message": "Bad credentials"})
@@ -231,7 +248,27 @@ class Handler(BaseHTTPRequestHandler):
         body = self.read_json()
         # WorkOS OAuth code exchange (used by onboarding link=1 and Google OAuth login)
         if p == "/wos/user_management/authenticate":
+            grant_type = body.get("grant_type", "")
             code = body.get("code", "")
+            if grant_type == "urn:workos:oauth:grant-type:email-verification:code":
+                if body.get("pending_authentication_token") == "pat_ev_1" and code == "654321":
+                    self.send_json(200, {
+                        "user": {"id": "wos_ev_user_1", "email": "abandoned-magic@example.com", "email_verified": True},
+                        "authentication_method": "GitHubOAuth",
+                        "oauth_tokens": {"access_token": "gho_ev_user_1"},
+                    })
+                    return
+                self.send_json(400, {"code": "invalid_code", "message": "Invalid verification code"})
+                return
+            if code == "gh_link_email_verify_code":
+                self.send_json(403, {
+                    "code": "email_verification_required",
+                    "message": "Email ownership must be verified before authentication.",
+                    "pending_authentication_token": "pat_ev_1",
+                    "email": "abandoned-magic@example.com",
+                    "email_verification_id": "ev_unverified_1",
+                })
+                return
             if code == "gh_link_identities_code":
                 # Deliberately omit oauth_tokens so fallback via /identities + public /user/<id> is exercised!
                 self.send_json(200, {
@@ -773,7 +810,20 @@ j2_after = json.loads(body)
 assert st == 200 and j2_after["account"] == A_OB2 and j2_after["github_connected"] is True and j2_after["github_login"] == "onboard-shared" and j2_after["onboarding_required"] is False and j2_after["promo_micros"] == 0, j2_after
 dup_reason = psql(f"SELECT status || ':' || reason FROM referral.grants WHERE account_id = '{A_OB2}' AND kind = 'github_connect';")
 assert dup_reason == "void:github_already_claimed", dup_reason
-print("  ok  Flow 10: mandatory GitHub onboarding (/onboarding gate, identities fallback, $10 first link, $0 duplicate GH ID)")
+
+# 6. Account A_OB3 hits WorkOS 403 email_verification_required on GitHub link (e.g. abandoned Magic Auth
+#    before Google login) -> server auto-resolves via GET /email_verification/{id} + authenticate_with_email_verification,
+#    links GitHub seamlessly with zero error, and grants $10.00!
+A_OB3, c_ob3 = make_user("ob3", None, pubkey="93"*32)
+st, body, _ = http("GET", "/api/auth/workos/oauth/start?provider=GitHubOAuth&link=1&next=/chat&mode=json", cookie=c_ob3)
+assert st == 200, (st, body)
+st3 = parse_qs(_up(json.loads(body)["url"]).query)["state"][0]
+st, _, h3 = http_noredir("GET", f"/api/auth/workos/callback?code=gh_link_email_verify_code&state={st3}", cookie=f"{c_ob3}; __Host-oa_wos_state={st3}")
+assert st == 303 and h3.get("Location") == "/chat", (st, h3)
+st, body, _ = http("GET", "/api/auth/account", cookie=c_ob3)
+j3_after = json.loads(body)
+assert st == 200 and j3_after["account"] == A_OB3 and j3_after["github_connected"] is True and j3_after["github_login"] == "abandoned-magic-gh" and j3_after["onboarding_required"] is False and j3_after["promo_micros"] == 10000000, j3_after
+print("  ok  Flow 10: mandatory GitHub onboarding (/onboarding gate, identities fallback, 403 email_verification_required auto-resolve, $10 first link, $0 duplicate GH ID)")
 PY
 
 # Clean shutdown & assert ZERO ASan/UBSan diagnostics
