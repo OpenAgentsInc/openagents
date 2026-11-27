@@ -1512,22 +1512,33 @@ final class MobileCloudChat: ObservableObject {
                 backoffMs = 1000
                 var evID: Int64 = -1
                 var dataLines: [String] = []
-                for try await line in bytes.lines {
+                var lineBuf: [UInt8] = []
+                lineBuf.reserveCapacity(1024)
+                // Read raw bytes instead of bytes.lines: Foundation's AsyncBytes.lines skips
+                // empty lines, dropping SSE "\n\n" frame boundaries.
+                for try await byte in bytes {
                     if Task.isCancelled { break }
-                    if line.isEmpty {
-                        if !dataLines.isEmpty {
-                            let payload = dataLines.joined(separator: "\n")
-                            await handleAccountSSEPayload(id: evID, payload: payload)
+                    if byte == 0x0A {
+                        if lineBuf.last == 0x0D { lineBuf.removeLast() }
+                        let line = String(decoding: lineBuf, as: UTF8.self)
+                        lineBuf.removeAll(keepingCapacity: true)
+                        if line.isEmpty {
+                            if !dataLines.isEmpty {
+                                let payload = dataLines.joined(separator: "\n")
+                                await handleAccountSSEPayload(id: evID, payload: payload)
+                            }
+                            evID = -1
+                            dataLines = []
+                        } else if line.hasPrefix("id:") {
+                            if let parsed = Int64(line.dropFirst(3).trimmingCharacters(in: .whitespaces)) {
+                                evID = parsed
+                            }
+                        } else if line.hasPrefix("data:") {
+                            let d = line.hasPrefix("data: ") ? String(line.dropFirst(6)) : String(line.dropFirst(5))
+                            dataLines.append(d)
                         }
-                        evID = -1
-                        dataLines = []
-                    } else if line.hasPrefix("id:") {
-                        if let parsed = Int64(line.dropFirst(3).trimmingCharacters(in: .whitespaces)) {
-                            evID = parsed
-                        }
-                    } else if line.hasPrefix("data:") {
-                        let d = line.hasPrefix("data: ") ? String(line.dropFirst(6)) : String(line.dropFirst(5))
-                        dataLines.append(d)
+                    } else if lineBuf.count < 262_144 {
+                        lineBuf.append(byte)
                     }
                 }
             } catch {
@@ -1596,22 +1607,31 @@ final class MobileCloudChat: ObservableObject {
                 backoffMs = 1000
                 var evID: Int64 = -1
                 var dataLines: [String] = []
-                for try await line in bytes.lines {
+                var lineBuf: [UInt8] = []
+                lineBuf.reserveCapacity(1024)
+                for try await byte in bytes {
                     if Task.isCancelled { break }
-                    if line.isEmpty {
-                        if !dataLines.isEmpty {
-                            let payload = dataLines.joined(separator: "\n")
-                            await handleConversationSSEEvent(convID: convID, id: evID, payload: payload)
+                    if byte == 0x0A {
+                        if lineBuf.last == 0x0D { lineBuf.removeLast() }
+                        let line = String(decoding: lineBuf, as: UTF8.self)
+                        lineBuf.removeAll(keepingCapacity: true)
+                        if line.isEmpty {
+                            if !dataLines.isEmpty {
+                                let payload = dataLines.joined(separator: "\n")
+                                await handleConversationSSEEvent(convID: convID, id: evID, payload: payload)
+                            }
+                            evID = -1
+                            dataLines = []
+                        } else if line.hasPrefix("id:") {
+                            if let parsed = Int64(line.dropFirst(3).trimmingCharacters(in: .whitespaces)) {
+                                evID = parsed
+                            }
+                        } else if line.hasPrefix("data:") {
+                            let d = line.hasPrefix("data: ") ? String(line.dropFirst(6)) : String(line.dropFirst(5))
+                            dataLines.append(d)
                         }
-                        evID = -1
-                        dataLines = []
-                    } else if line.hasPrefix("id:") {
-                        if let parsed = Int64(line.dropFirst(3).trimmingCharacters(in: .whitespaces)) {
-                            evID = parsed
-                        }
-                    } else if line.hasPrefix("data:") {
-                        let d = line.hasPrefix("data: ") ? String(line.dropFirst(6)) : String(line.dropFirst(5))
-                        dataLines.append(d)
+                    } else if lineBuf.count < 262_144 {
+                        lineBuf.append(byte)
                     }
                 }
             } catch {

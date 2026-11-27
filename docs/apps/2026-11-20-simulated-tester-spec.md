@@ -582,3 +582,36 @@ Build in small vertical slices, starting **proto-first** and landing Coax `#test
 - **Resource contention in concurrent multi-tester runs:** Running multiple testers simultaneously (e.g., 2–4 multiplayer seats or parallel Desktop + iOS Simulator testers) requires strict non-overlapping `TargetBinding` leases (unique simulator UDIDs, temp `HOME`/worktree dirs, isolated ports, separate test accounts) and host CPU/GPU slot awareness so parallel seats do not starve each other's frame rates.
 - **Physical iOS device provisioning:** Phase 2B requires a dedicated tethered test iPhone/iPad with WebDriverAgent signing (tracked in `NEEDS_OWNER.md` when Phase 2B starts). Until provisioned, `ios-device` cells report `blocked` honestly.
 - **Model cost & flakiness in live runs:** Live and hybrid runs enforce strict per-invocation wall-time, turn, and USD caps, with monotonic child-budget enforcement. A failed live run allows at most one diagnostic rerun while preserving the first failure as a flake — never overwriting a failure into a clean pass.
+
+---
+
+## 14. Multi-Surface Simulated-User Sync Runner (`--target sync`)
+
+Implemented across `coax/lib/agent/tester/sync-policy.coax` (`#authority`, zero surviving mutants), `apps/shared/tester/sync-catalog.coax`, `apps/shared/tester/adapter-sync.coax`, `coax/lib/agent/desktop/agents-catalog.coax` (`cross-surface-sync-tester` coordinator), and `apps/shared/tester/cli.coax`.
+
+### 14.1 Policy & Scenarios
+- **`sync-policy.coax` (`#authority`):** Enforces 3-seat admission (`ts_three_seat_admit` with pairwise disjoint `ArBinding` leases), cross-surface conversation convergence (`ts_sync_converged` including strict `$0` local compute provenance), SSE delivery latency SLA (`ts_fanout_sla_ok`), idempotent offline outbox replay + `409` conflict + gapless `Last-Event-ID` catch-up (`ts_replay_ok`), strict cross-account isolation (`ts_isolation_ok`), and `AgentBarrier` release (`ts_barrier_ok`).
+- **8 required cross-surface sync scenarios (`SYNC_SCENARIO_COUNT = 8`):**
+  1. `sync.identity.three-client-login` — Shared real Postgres 16 + `oa-api` + `apps/openagents-web` (`--mode local` via `serve.sh --fresh`, or `--origin` in `--mode live`); boots Web (headless WebGPU Chrome), isolated macOS Desktop (`OpenAgents.app` with `OPENAGENTS_API_ORIGIN`, zero focus steal), and Cloud-mode iOS Simulator (`OpenAgents.app` via isolated `oasim` with `OA_API_BASE`, zero `Simulator.app` window), proving identical `acct_` identity and disjoint leases.
+  2. `sync.chat.web-to-desktop-and-ios` — Web creates conversation & turn on `/chat` -> Postgres `LISTEN/NOTIFY` SSE fanout -> Desktop materializes in `CoderStore` & iOS converges; side-by-side screenshots captured.
+  3. `sync.chat.desktop-to-web-and-ios` — Desktop syncs a local `$0` compute turn (`inkling-2-mini`, thought + `tool_call` + reply) with negative `cost_msat > 0` refusal (`400`) -> Web & iOS converge at strict `$0`.
+  4. `sync.chat.ios-to-web-and-desktop` — iOS Simulator posts mobile follow-up turn -> Web & Desktop receive live SSE in monotonic chronological order with zero duplicates.
+  5. `sync.meta.rename-pin-archive` — Web renames + pins -> Desktop & iOS converge; iOS unpins + archives -> Web & Desktop converge.
+  6. `sync.projects.and-environments` — Web creates repo-bound Project; Desktop enrolls isolated zero-Tailscale workstation; Web & iOS see both and `POST /api/chat/placement/v1` resolves tier 2 enrolled computer.
+  7. `sync.offline.replay-and-reconnect` — Idempotent retry (`200 replayed:true`, `0` duplicates), mutated payload conflict (`409`), and gapless `Last-Event-ID` SSE reconnect.
+  8. `sync.isolation.cross-account-boundary` — Second account (`bob`) gets `404`/`403` and `0` rows across Alice's conversations, streams, projects, and enrolled computers.
+
+### 14.2 CLI Invocation
+```sh
+# Static checks (desktop + ios-sim + web + sync catalogs & policies)
+coax/web/tool.sh apps/shared/tester/cli.coax --checks
+
+# Full 3-surface local E2E run (ephemeral Postgres 16 + oa-api + Web + Desktop + iOS Simulator)
+coax/web/tool.sh apps/shared/tester/cli.coax \
+  --target sync --mode local \
+  --desktop-app /Applications/OpenAgents.app \
+  --ios-app apps/openagents-ios/build/Build/Products/Debug-iphonesimulator/OpenAgents.app \
+  --device "Coax Native Starter" \
+  --out build/tester-runs/sync-local-001
+```
+

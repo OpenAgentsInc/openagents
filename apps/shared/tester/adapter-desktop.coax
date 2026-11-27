@@ -61,6 +61,7 @@ DaSession :: struct {
   act_seq: int;
   started_ms: int;
   mode: [32] u8; mode_n: int;
+  api_origin: [256] u8; api_origin_n: int;
 }
 
 da_slice :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
@@ -130,6 +131,7 @@ da_stage :: (s: [] DaSession, repo: string, built_app: string, out_dir: string, 
   s[0].seq = 0;
   s[0].act_seq = 0;
   s[0].started_ms = proc_now_ms();
+  s[0].api_origin_n = 0;
 
   b1: [1] DaBuf;
   b_stage: [1] DaBuf;
@@ -184,7 +186,9 @@ da_stage :: (s: [] DaSession, repo: string, built_app: string, out_dir: string, 
   jo_put(cj[..], "/Contents/Info.plist'");
   if mode == "local" {
     router := da_cat(b3[..], repo, "/evals/openagents-desktop/tier3/mock_router.py");
-    jo_put(cj[..], " && cp '");
+    jo_put(cj[..], " && if [ -f '");
+    jo_put(cj[..], staged_app);
+    jo_put(cj[..], "/Contents/Resources/mcworker' ]; then cp '");
     jo_put(cj[..], staged_app);
     jo_put(cj[..], "/Contents/Resources/mcworker' '");
     jo_put(cj[..], staged_app);
@@ -195,7 +199,7 @@ da_stage :: (s: [] DaSession, repo: string, built_app: string, out_dir: string, 
     jo_put(cj[..], staged_app);
     jo_put(cj[..], "/Contents/Resources/mcworker' && chmod +x '");
     jo_put(cj[..], staged_app);
-    jo_put(cj[..], "/Contents/Resources/mcworker'");
+    jo_put(cj[..], "/Contents/Resources/mcworker'; fi");
   }
   jo_put(cj[..], " && codesign --force --sign - '");
   jo_put(cj[..], staged_app);
@@ -217,6 +221,11 @@ da_stage :: (s: [] DaSession, repo: string, built_app: string, out_dir: string, 
 }
 
 da_launch :: (s: [] DaSession) -> bool {
+  return da_launch_with_origin(s, "");
+}
+
+da_launch_with_origin :: (s: [] DaSession, api_origin: string) -> bool {
+  s[0].api_origin_n = da_copy_into(s[0].api_origin[..], api_origin);
   sock := da_slice(s[0].sock_path[..], s[0].sock_n);
   _ = fs_remove(sock);
   h := proc_new();
@@ -237,6 +246,10 @@ da_launch :: (s: [] DaSession) -> bool {
   _ = proc_env(h, "CODER_UPDATE_URL=");
   _ = proc_env(h, "BROWSER=/usr/bin/true");
   _ = proc_env(h, "LANG=en_US.UTF-8");
+  if api_origin.count > 0 {
+    _ = proc_env(h, da_cat(b[..], "OPENAGENTS_API_ORIGIN=", api_origin));
+    _ = proc_env(h, "OA_FLAGS=account,environments");
+  }
   _ = proc_env(h, da_cat(b[..], "CODER_T3_SOCKET=", sock));
   _ = proc_env(h, da_cat(b[..], "CODER_T3_WORKERS=", da_slice(s[0].workers_file[..], s[0].workers_n)));
   _ = proc_env(h, da_cat(b[..], "CODER_T3_RECORD=", da_slice(s[0].record_dir[..], s[0].record_n)));

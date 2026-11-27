@@ -94,8 +94,11 @@ final class AgentsPageController: NSObject {
             return
         }
 
+        let cardCount = max(3, definitions.count)
+        let extraH = CGFloat(cardCount - 3) * 86
+        let winH: CGFloat = 520 + extraH
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: winH),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -104,17 +107,17 @@ final class AgentsPageController: NSObject {
         win.isReleasedWhenClosed = false
         win.center()
 
-        let root = NSView(frame: win.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 680, height: 520))
+        let root = NSView(frame: win.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 680, height: winH))
         root.autoresizingMask = [.width, .height]
 
         let header = NSTextField(labelWithString: "Built-in Agents (\(definitions.count) proto-first AgentDefinition records)")
-        header.frame = NSRect(x: 16, y: 484, width: 648, height: 22)
+        header.frame = NSRect(x: 16, y: winH - 36, width: 648, height: 22)
         header.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
         header.autoresizingMask = [.width, .minYMargin]
         root.addSubview(header)
 
         // Render cards directly from loaded Coax AgentDefinition records
-        var y: CGFloat = 398
+        var y: CGFloat = winH - 122
         for def in definitions {
             let box = NSBox(frame: NSRect(x: 16, y: y, width: 648, height: 78))
             box.boxType = .custom
@@ -147,6 +150,9 @@ final class AgentsPageController: NSObject {
             } else if def.agent_id == "game-builder" {
                 btn.title = "Open GameBuilder"
                 btn.action = #selector(launchGameBuilder(_:))
+            } else if def.agent_id == "cross-surface-sync-tester" {
+                btn.title = "Run Sync Suite"
+                btn.action = #selector(launchSyncTester(_:))
             } else {
                 btn.title = "Launch"
             }
@@ -162,7 +168,7 @@ final class AgentsPageController: NSObject {
         root.addSubview(targetLbl)
 
         let popup = NSPopUpButton(frame: NSRect(x: 110, y: 192, width: 150, height: 26), pullsDown: false)
-        popup.addItems(withTitles: ["desktop", "ios-sim", "web"])
+        popup.addItems(withTitles: ["desktop", "ios-sim", "web", "sync"])
         root.addSubview(popup)
         targetPopup = popup
 
@@ -234,6 +240,11 @@ final class AgentsPageController: NSObject {
         win.openGameBuilderStudio()
         win.show()
         appendLog("[game-builder] Acquired #authority target lease '\(target)' (\(invID)) and opened GameBuilder Studio pane.\n")
+    }
+
+    @objc private func launchSyncTester(_ sender: Any?) {
+        targetPopup?.selectItem(withTitle: "sync")
+        launchTester(sender)
     }
 
     @objc private func launchTester(_ sender: Any?) {

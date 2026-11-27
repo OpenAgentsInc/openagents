@@ -5,7 +5,8 @@
 //   coax/web/tool.sh apps/shared/tester/cli.coax --checks
 //   coax/web/tool.sh apps/shared/tester/cli.coax --selftest --target desktop [--out DIR] [--app PATH]
 //   coax/web/tool.sh apps/shared/tester/cli.coax --target desktop --mode local [--only ID] [--out DIR] [--app PATH]
-#load "adapter-web.coax";
+//   coax/web/tool.sh apps/shared/tester/cli.coax --target sync --mode local [--origin URL] [--desktop-app PATH] [--ios-app PATH] [--device NAME] [--out DIR]
+#load "adapter-sync.coax";
 #load "../../openagents-desktop/tests/tester/catalog.coax";
 #load "../../openagents-ios/Tests/tester/catalog.coax";
 #load "../../openagents-web/tests/tester/catalog.coax";
@@ -1337,6 +1338,9 @@ tool_main :: () -> int #export_c #effects(all) {
   only := "";
   out_dir := "";
   app_path := "";
+  desktop_app := "";
+  ios_app := "";
+  origin := "";
   device := "OpenAgents Sidebar Regression";
   bundle_id := "com.openagents.app";
 
@@ -1350,6 +1354,9 @@ tool_main :: () -> int #export_c #effects(all) {
     else if arg == "--only" && i + 1 < a[0].n { i += 1; only = args_at(a[..], i); }
     else if arg == "--out" && i + 1 < a[0].n { i += 1; out_dir = args_at(a[..], i); }
     else if arg == "--app" && i + 1 < a[0].n { i += 1; app_path = args_at(a[..], i); }
+    else if arg == "--desktop-app" && i + 1 < a[0].n { i += 1; desktop_app = args_at(a[..], i); }
+    else if arg == "--ios-app" && i + 1 < a[0].n { i += 1; ios_app = args_at(a[..], i); }
+    else if arg == "--origin" && i + 1 < a[0].n { i += 1; origin = args_at(a[..], i); }
     else if arg == "--device" && i + 1 < a[0].n { i += 1; device = args_at(a[..], i); }
     else if arg == "--bundle" && i + 1 < a[0].n { i += 1; bundle_id = args_at(a[..], i); }
     i += 1;
@@ -1359,26 +1366,57 @@ tool_main :: () -> int #export_c #effects(all) {
     d := dt_agent_definition();
     id := ios_agent_definition();
     wd := web_agent_definition();
+    sd := sync_agent_definition();
     jb: [AR_WIRE_BUF] u8;
-    if ar_write_def(d, jb[..]) <= 0 || ar_write_def(id, jb[..]) <= 0 || ar_write_def(wd, jb[..]) <= 0 {
+    if ar_write_def(d, jb[..]) <= 0 || ar_write_def(id, jb[..]) <= 0 || ar_write_def(wd, jb[..]) <= 0 || ar_write_def(sd, jb[..]) <= 0 {
       tool_errln("tester --checks: failed to encode AgentDefinition");
+      return 1;
+    }
+    wb := ArBinding.{device_lease = "headless-chrome-webgpu", account_lease = "seat:web", workspace_dir = "/tmp/check/web"};
+    db := ArBinding.{device_lease = "mac-desktop-scratch", account_lease = "seat:desktop", workspace_dir = "/tmp/check/desktop"};
+    ib := ArBinding.{device_lease = "ios-sim:check", account_lease = "seat:ios", workspace_dir = "/tmp/check/ios"};
+    if ts_three_seat_admit(wb, db, ib, "local", "") != "" {
+      tool_errln("tester --checks: sync three-seat policy rejected valid bindings");
       return 1;
     }
     ib1: [32] u8;
     ib2: [32] u8;
     ib3: [32] u8;
+    ib4: [32] u8;
     t_out("tester --checks: ok (");
     t_out(da_int_str(DT_SCENARIO_COUNT, ib1[..]));
     t_out(" desktop + ");
     t_out(da_int_str(IOS_SCENARIO_COUNT, ib2[..]));
     t_out(" ios-sim + ");
     t_out(da_int_str(WEB_SCENARIO_COUNT, ib3[..]));
-    t_outln(" web scenarios registered, agent definitions & schemas valid)");
+    t_out(" web + ");
+    t_out(da_int_str(SYNC_SCENARIO_COUNT, ib4[..]));
+    t_outln(" sync scenarios registered, agent definitions & schemas valid)");
     return 0;
   }
 
   cwd_buf: [DA_PATH] u8;
   repo := fs_cwd(cwd_buf[..]);
+
+  if target == "sync" {
+    b_da: [1] DaBuf;
+    if desktop_app.count == 0 {
+      desktop_app = ifx app_path.count > 0 then app_path else "/Applications/OpenAgents.app";
+      if !fs_exists(desktop_app) {
+        desktop_app = da_cat(b_da[..], repo, "/apps/openagents-desktop/build/OpenAgents.app");
+      }
+    }
+    b_ia: [1] DaBuf;
+    if ios_app.count == 0 {
+      ios_app = da_cat(b_ia[..], repo, "/apps/openagents-ios/build/Build/Products/Debug-iphonesimulator/OpenAgents.app");
+    }
+    b_out: [1] DaBuf;
+    if out_dir.count == 0 {
+      ib: [32] u8;
+      out_dir = da_cat3(b_out[..], repo, "/build/tester-runs/sync-", da_int_str(proc_now_ms() % 1000000, ib[..]));
+    }
+    return sync_run_suite(repo, mode, origin, desktop_app, ios_app, device, bundle_id, only, out_dir);
+  }
 
   if target == "web" {
     b_out: [1] DaBuf;
@@ -1499,7 +1537,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
 
   if target != "desktop" {
-    tool_errln("tester: supported targets are desktop and ios-sim (web follows in Phase 3)");
+    tool_errln("tester: supported targets are desktop, ios-sim, web, and sync");
     return 2;
   }
   b_app: [1] DaBuf;

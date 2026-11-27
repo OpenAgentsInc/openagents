@@ -1,0 +1,230 @@
+// Multi-Surface Simulated-User Synchronization & Barrier Policy
+// (docs/apps/2026-11-20-simulated-tester-spec.md §5.1, §8.2).
+//
+// Decides:
+//   1. Three-seat admission across Web, macOS Desktop, and iOS Simulator:
+//      valid mode ("local" | "live"), non-empty origin in live mode, and pairwise
+//      disjoint ArBinding leases (device_lease, account_lease, workspace_dir).
+//   2. Cross-surface conversation convergence across all three seats:
+//      conversation ID, title, turn count, monotonic revision, pinned/archived
+//      metadata, and strict $0 local compute provenance (cost_msat == 0).
+//   3. Real-time SSE fanout latency SLA bounds.
+//   4. Idempotent offline outbox replay, payload conflict rejection (409), and
+//      gapless Last-Event-ID catch-up.
+//   5. Strict cross-account isolation (403/404 and zero leaked rows).
+//   6. Barrier release via ar_barrier_eval.
+#load "../registry/policy.coax";
+#authority;
+
+TsSeatView :: struct {
+  conv_id: string;
+  title: string;
+  turns: int;
+  revision: int;
+  pinned: bool;
+  archived: bool;
+  cost_msat: int;
+}
+
+// Admits a 3-seat sync run across Web, Desktop, and iOS.
+// Returns "" on admission, else "bad_mode", "missing_origin", or "lease_conflict".
+ts_three_seat_admit :: (web_b: ArBinding, desk_b: ArBinding, ios_b: ArBinding, mode: string, origin: string) -> string #effects(all) {
+  if mode != "local" && mode != "live" { return "bad_mode"; }
+  if mode == "live" && origin.count == 0 { return "missing_origin"; }
+  if ar_bindings_conflict(web_b, desk_b) { return "lease_conflict"; }
+  if ar_bindings_conflict(web_b, ios_b) { return "lease_conflict"; }
+  if ar_bindings_conflict(desk_b, ios_b) { return "lease_conflict"; }
+  return "";
+}
+
+#test "ts_three_seat_admit enforces mode, live origin, and pairwise disjoint leases" {
+  wb := ArBinding.{device_lease = "headless-chrome-webgpu", account_lease = "seat:web", workspace_dir = "/tmp/sync/web"};
+  db := ArBinding.{device_lease = "mac-desktop-scratch", account_lease = "seat:desktop", workspace_dir = "/tmp/sync/desktop"};
+  ib := ArBinding.{device_lease = "ios-sim:starter", account_lease = "seat:ios", workspace_dir = "/tmp/sync/ios"};
+
+  #assert ts_three_seat_admit(wb, db, ib, "local", "") == "";
+  #assert ts_three_seat_admit(wb, db, ib, "local", "http://127.0.0.1:9400") == "";
+  #assert ts_three_seat_admit(wb, db, ib, "live", "https://openagents.com") == "";
+
+  #assert ts_three_seat_admit(wb, db, ib, "", "https://openagents.com") == "bad_mode";
+  #assert ts_three_seat_admit(wb, db, ib, "staging", "https://staging.openagents.com") == "bad_mode";
+  #assert ts_three_seat_admit(wb, db, ib, "live", "") == "missing_origin";
+
+  // Pairwise lease collisions: web-desk, web-ios, desk-ios.
+  db_dup := db; db_dup.workspace_dir = wb.workspace_dir;
+  #assert ts_three_seat_admit(wb, db_dup, ib, "local", "") == "lease_conflict";
+  ib_dup_w := ib; ib_dup_w.account_lease = wb.account_lease;
+  #assert ts_three_seat_admit(wb, db, ib_dup_w, "local", "") == "lease_conflict";
+  ib_dup_d := ib; ib_dup_d.device_lease = db.device_lease;
+  #assert ts_three_seat_admit(wb, db, ib_dup_d, "local", "") == "lease_conflict";
+}
+
+// Verifies that Web, Desktop, and iOS converged on the exact conversation state.
+// Returns "" when converged, else the first divergence code.
+ts_sync_converged :: (
+  expected_conv: string,
+  expected_title: string,
+  expected_turns: int,
+  expected_rev: int,
+  expected_pinned: bool,
+  expected_archived: bool,
+  local_zero_cost: bool,
+  web_view: TsSeatView,
+  desk_view: TsSeatView,
+  ios_view: TsSeatView
+) -> string #effects(all) {
+  if web_view.conv_id != expected_conv || desk_view.conv_id != expected_conv || ios_view.conv_id != expected_conv {
+    return "conv_mismatch";
+  }
+  if web_view.title != expected_title || desk_view.title != expected_title || ios_view.title != expected_title {
+    return "title_mismatch";
+  }
+  if web_view.turns != expected_turns || desk_view.turns != expected_turns || ios_view.turns != expected_turns {
+    return "turns_mismatch";
+  }
+  if web_view.revision < expected_rev || desk_view.revision < expected_rev || ios_view.revision < expected_rev {
+    return "rev_lag";
+  }
+  if web_view.pinned != expected_pinned || desk_view.pinned != expected_pinned || ios_view.pinned != expected_pinned {
+    return "pin_mismatch";
+  }
+  if web_view.archived != expected_archived || desk_view.archived != expected_archived || ios_view.archived != expected_archived {
+    return "archive_mismatch";
+  }
+  if local_zero_cost && (web_view.cost_msat != 0 || desk_view.cost_msat != 0 || ios_view.cost_msat != 0) {
+    return "local_cost_nonzero";
+  }
+  return "";
+}
+
+#test "ts_sync_converged catches every single-seat divergence across all fields" {
+  base := TsSeatView.{
+    conv_id = "cnv_001", title = "Sync Chat", turns = 2, revision = 3,
+    pinned = true, archived = false, cost_msat = 0
+  };
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, base, base) == "";
+  // Higher revision than expected is valid (monotonic convergence).
+  ahead := base; ahead.revision = 4;
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, ahead, ahead, ahead) == "";
+  // Non-zero cost allowed when local_zero_cost is false (cloud turns).
+  cloud := base; cloud.cost_msat = 1250;
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, false, cloud, cloud, cloud) == "";
+
+  // conv_mismatch on each seat
+  w := base; w.conv_id = "cnv_x";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, w, base, base) == "conv_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, w, base) == "conv_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, base, w) == "conv_mismatch";
+
+  // title_mismatch on each seat
+  t := base; t.title = "Other";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, t, base, base) == "title_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, t, base) == "title_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, base, t) == "title_mismatch";
+
+  // turns_mismatch on each seat
+  tn := base; tn.turns = 1;
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, tn, base, base) == "turns_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, tn, base) == "turns_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, base, tn) == "turns_mismatch";
+
+  // rev_lag on each seat (boundary expected_rev - 1)
+  rl := base; rl.revision = 2;
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, rl, base, base) == "rev_lag";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, rl, base) == "rev_lag";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, base, rl) == "rev_lag";
+
+  // pin_mismatch on each seat
+  pm := base; pm.pinned = false;
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, pm, base, base) == "pin_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, pm, base) == "pin_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, base, pm) == "pin_mismatch";
+
+  // archive_mismatch on each seat
+  am := base; am.archived = true;
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, am, base, base) == "archive_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, am, base) == "archive_mismatch";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, base, am) == "archive_mismatch";
+
+  // local_cost_nonzero on each seat (+1 and -1)
+  lc := base; lc.cost_msat = 1;
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, lc, base, base) == "local_cost_nonzero";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, lc, base) == "local_cost_nonzero";
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, base, base, lc) == "local_cost_nonzero";
+  lc_neg := base; lc_neg.cost_msat = -1;
+  #assert ts_sync_converged("cnv_001", "Sync Chat", 2, 3, true, false, true, lc_neg, base, base) == "local_cost_nonzero";
+}
+
+// Verifies SSE fanout latency is non-negative and within positive SLA max_ms.
+ts_fanout_sla_ok :: (latency_ms: int, max_ms: int) -> bool #effects(all) {
+  return max_ms > 0 && latency_ms >= 0 && latency_ms <= max_ms;
+}
+
+#test "ts_fanout_sla_ok enforces non-negative bounded latency and positive SLA" {
+  #assert ts_fanout_sla_ok(0, 1);
+  #assert ts_fanout_sla_ok(0, 3000);
+  #assert ts_fanout_sla_ok(42, 3000);
+  #assert ts_fanout_sla_ok(3000, 3000);
+  #assert !ts_fanout_sla_ok(3001, 3000);
+  #assert !ts_fanout_sla_ok(-1, 3000);
+  #assert !ts_fanout_sla_ok(0, 0);
+  #assert !ts_fanout_sla_ok(0, -10);
+}
+
+// Verifies offline outbox idempotent replay (200 + replayed=true + 0 duplicates),
+// conflicting payload rejection (409), and gapless Last-Event-ID catch-up (0 missed).
+ts_replay_ok :: (replay_http: int, replayed_flag: bool, dup_rows: int, conflict_http: int, missed_sse: int) -> bool #effects(all) {
+  return replay_http == 200 && replayed_flag && dup_rows == 0 && conflict_http == 409 && missed_sse == 0;
+}
+
+#test "ts_replay_ok enforces idempotent 200 replay, zero duplicates, 409 conflict, and zero missed SSE" {
+  #assert ts_replay_ok(200, true, 0, 409, 0);
+  #assert !ts_replay_ok(201, true, 0, 409, 0);
+  #assert !ts_replay_ok(199, true, 0, 409, 0);
+  #assert !ts_replay_ok(200, false, 0, 409, 0);
+  #assert !ts_replay_ok(200, true, 1, 409, 0);
+  #assert !ts_replay_ok(200, true, -1, 409, 0);
+  #assert !ts_replay_ok(200, true, 0, 408, 0);
+  #assert !ts_replay_ok(200, true, 0, 410, 0);
+  #assert !ts_replay_ok(200, true, 0, 409, 1);
+  #assert !ts_replay_ok(200, true, 0, 409, -1);
+}
+
+// Verifies strict cross-account isolation: foreign resources denied (403/404) and zero leaked rows.
+ts_isolation_ok :: (foreign_conv_http: int, foreign_list_count: int, foreign_env_http: int, foreign_proj_count: int) -> bool #effects(all) {
+  conv_denied := foreign_conv_http == 403 || foreign_conv_http == 404;
+  env_denied := foreign_env_http == 403 || foreign_env_http == 404;
+  return conv_denied && foreign_list_count == 0 && env_denied && foreign_proj_count == 0;
+}
+
+#forall "ts_isolation_ok accepts only 403/404 denials with zero leaked rows" bits: 0..<4 {
+  c_http := ifx (bits & 1) != 0 then 403 else 404;
+  e_http := ifx (bits & 2) != 0 then 403 else 404;
+  #assert ts_isolation_ok(c_http, 0, e_http, 0);
+}
+
+#test "ts_isolation_ok rejects any non-403/404 response or leaked list count" {
+  #assert !ts_isolation_ok(200, 0, 404, 0);
+  #assert !ts_isolation_ok(402, 0, 404, 0);
+  #assert !ts_isolation_ok(405, 0, 404, 0);
+  #assert !ts_isolation_ok(404, 1, 404, 0);
+  #assert !ts_isolation_ok(404, -1, 404, 0);
+  #assert !ts_isolation_ok(404, 0, 200, 0);
+  #assert !ts_isolation_ok(404, 0, 402, 0);
+  #assert !ts_isolation_ok(404, 0, 405, 0);
+  #assert !ts_isolation_ok(404, 0, 403, 1);
+  #assert !ts_isolation_ok(404, 0, 403, -1);
+}
+
+// Verifies an AgentBarrier released cleanly before its deadline.
+ts_barrier_ok :: (expected: int, arrived: int, now_ms: int, deadline_ms: int) -> bool #effects(all) {
+  return ar_barrier_eval(expected, arrived, now_ms, deadline_ms) == AR_BARRIER_RELEASED;
+}
+
+#test "ts_barrier_ok delegates to ar_barrier_eval and requires AR_BARRIER_RELEASED" {
+  #assert ts_barrier_ok(3, 3, 500, 500);
+  #assert ts_barrier_ok(3, 4, 200, 500);
+  #assert !ts_barrier_ok(3, 2, 200, 500);
+  #assert !ts_barrier_ok(3, 3, 501, 500);
+  #assert !ts_barrier_ok(0, 0, 200, 500);
+}

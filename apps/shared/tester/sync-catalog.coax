@@ -1,0 +1,106 @@
+// Cross-Surface Simulated-User Sync Surface Register & Built-in Coordinator Agent Definition
+// (docs/apps/2026-11-20-simulated-tester-spec.md §5.1, §8.2).
+#load "../../../coax/lib/agent/tester/schema.coax";
+#load "../../../coax/lib/agent/tester/sync-policy.coax";
+
+SYNC_SCENARIO_COUNT :: 8;
+
+SyncScenario :: struct {
+  id: string;
+  area: string;
+  title: string;
+  required: bool;
+}
+
+sync_scenarios :: () -> [SYNC_SCENARIO_COUNT] SyncScenario {
+  return [SYNC_SCENARIO_COUNT] SyncScenario.[
+    SyncScenario.{
+      id = "sync.identity.three-client-login",
+      area = "identity",
+      title = "Boot Web, Desktop, and iOS against shared Postgres+oa-api, authenticate all 3 seats to same acct_ with disjoint leases",
+      required = true
+    },
+    SyncScenario.{
+      id = "sync.chat.web-to-desktop-and-ios",
+      area = "chat-sync",
+      title = "Web creates conversation & turn on /chat -> Postgres LISTEN/NOTIFY SSE fanout -> Desktop & iOS materialize & capture screenshots",
+      required = true
+    },
+    SyncScenario.{
+      id = "sync.chat.desktop-to-web-and-ios",
+      area = "chat-sync",
+      title = "Desktop syncs local $0 compute turn (prompt + thought + tool_call + reply) -> Web & iOS receive live SSE and strict $0 provenance",
+      required = true
+    },
+    SyncScenario.{
+      id = "sync.chat.ios-to-web-and-desktop",
+      area = "chat-sync",
+      title = "iOS Simulator posts mobile follow-up turn -> Web & Desktop receive live SSE in monotonic sequence with zero duplicates",
+      required = true
+    },
+    SyncScenario.{
+      id = "sync.meta.rename-pin-archive",
+      area = "metadata",
+      title = "Web renames + pins conversation -> Desktop & iOS converge; iOS unpins + archives -> Web & Desktop converge",
+      required = true
+    },
+    SyncScenario.{
+      id = "sync.projects.and-environments",
+      area = "projects-env",
+      title = "Web creates repo-bound Project; Desktop enrolls workstation in Cloud (zero Tailscale); Web & iOS see both & placement resolves computer",
+      required = true
+    },
+    SyncScenario.{
+      id = "sync.offline.replay-and-reconnect",
+      area = "resilience",
+      title = "Idempotent outbox replay (200 replayed:true, 0 dups), conflicting payload 409, and gapless Last-Event-ID SSE catch-up",
+      required = true
+    },
+    SyncScenario.{
+      id = "sync.isolation.cross-account-boundary",
+      area = "isolation",
+      title = "Second account (bob) gets zero visibility or write access to Alice's conversations, streams, projects, or enrolled computers",
+      required = true
+    }
+  ];
+}
+
+sync_agent_definition :: () -> ArDefRecord {
+  return ArDefRecord.{
+    agent_id = "cross-surface-sync-tester",
+    name = "Cross-Surface Sync Tester",
+    description = "Deterministic multi-seat coordinator verifying real-time Postgres LISTEN/NOTIFY SSE synchronization across Web, macOS Desktop, and iOS Simulator with AgentBarrier checkpoints",
+    version = 1,
+    kind = "coordinator",
+    execution_mode = "deterministic",
+    runtime = "coax-tool:apps/shared/tester/cli.coax",
+    input_contract = "tester.run_request.v1",
+    output_contract = TESTER_RESULT_SCHEMA,
+    max_depth = 3,
+    max_concurrency = 4,
+    budget = ArBudget.{wall_ms = 300000, turns = 0, tokens = 0, cost_usd_e6 = 0},
+    model_hint = ""
+  };
+}
+
+#test "sync surface register has 8 unique required scenarios and valid coordinator definition" {
+  sc := sync_scenarios();
+  for i: 0..<SYNC_SCENARIO_COUNT {
+    #assert sc[i].id.count > 0 && sc[i].area.count > 0 && sc[i].title.count > 0 && sc[i].required;
+    for j: i + 1..<SYNC_SCENARIO_COUNT {
+      #assert sc[i].id != sc[j].id;
+    }
+  }
+  d := sync_agent_definition();
+  #assert d.agent_id == "cross-surface-sync-tester";
+  #assert ar_kind_of(d.kind) == AR_KIND_COORDINATOR;
+  #assert ar_mode_of(d.execution_mode) == AR_MODE_DETERMINISTIC;
+  #assert d.runtime == "coax-tool:apps/shared/tester/cli.coax";
+  #assert d.version == 1 && d.max_depth == 3 && d.max_concurrency == 4;
+  #assert d.budget.wall_ms == 300000 && d.budget.turns == 0 && d.budget.tokens == 0 && d.budget.cost_usd_e6 == 0;
+
+  wb := ArBinding.{device_lease = "headless-chrome-webgpu", account_lease = "seat:web", workspace_dir = "/tmp/s/web"};
+  db := ArBinding.{device_lease = "mac-desktop-scratch", account_lease = "seat:desktop", workspace_dir = "/tmp/s/desktop"};
+  ib := ArBinding.{device_lease = "ios-sim:starter", account_lease = "seat:ios", workspace_dir = "/tmp/s/ios"};
+  #assert ts_three_seat_admit(wb, db, ib, "local", "") == "";
+}

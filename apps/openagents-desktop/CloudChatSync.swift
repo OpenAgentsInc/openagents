@@ -767,24 +767,35 @@ final class CloudChatSync: @unchecked Sendable {
                 var evID: Int64 = -1
                 var evName = ""
                 var dataLines: [String] = []
-                for try await line in bytes.lines {
+                var lineBuf: [UInt8] = []
+                lineBuf.reserveCapacity(1024)
+                // Read raw bytes instead of bytes.lines: Foundation's AsyncBytes.lines skips
+                // empty lines, which drops SSE "\n\n" frame boundaries and stalls live sync.
+                for try await byte in bytes {
                     if Task.isCancelled { break }
-                    if line.isEmpty {
-                        if !dataLines.isEmpty {
-                            let payload = dataLines.joined(separator: "\n")
-                            await handleSSEEvent(id: evID, event: evName, data: payload)
+                    if byte == 0x0A {
+                        if lineBuf.last == 0x0D { lineBuf.removeLast() }
+                        let line = String(decoding: lineBuf, as: UTF8.self)
+                        lineBuf.removeAll(keepingCapacity: true)
+                        if line.isEmpty {
+                            if !dataLines.isEmpty {
+                                let payload = dataLines.joined(separator: "\n")
+                                await handleSSEEvent(id: evID, event: evName, data: payload)
+                            }
+                            evID = -1; evName = ""; dataLines = []
+                        } else if line.hasPrefix(":") {
+                            continue
+                        } else if line.hasPrefix("id:") {
+                            let raw = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
+                            if let parsed = Int64(raw) { evID = parsed }
+                        } else if line.hasPrefix("event:") {
+                            evName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+                        } else if line.hasPrefix("data:") {
+                            let d = line.hasPrefix("data: ") ? String(line.dropFirst(6)) : String(line.dropFirst(5))
+                            dataLines.append(d)
                         }
-                        evID = -1; evName = ""; dataLines = []
-                    } else if line.hasPrefix(":") {
-                        continue
-                    } else if line.hasPrefix("id:") {
-                        let raw = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
-                        if let parsed = Int64(raw) { evID = parsed }
-                    } else if line.hasPrefix("event:") {
-                        evName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
-                    } else if line.hasPrefix("data:") {
-                        let d = line.hasPrefix("data: ") ? String(line.dropFirst(6)) : String(line.dropFirst(5))
-                        dataLines.append(d)
+                    } else if lineBuf.count < 262_144 {
+                        lineBuf.append(byte)
                     }
                 }
             } catch {

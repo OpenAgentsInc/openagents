@@ -1,0 +1,1574 @@
+// Multi-Surface Simulated-User Synchronization Harness (Web + macOS Desktop + iOS Simulator)
+// (docs/apps/2026-11-20-simulated-tester-spec.md §5.1, §8.2).
+//
+// Coordinates 3 real client surfaces against a shared real Postgres 16 + oa-api backend
+// (via serve.sh --fresh in --mode local, or an explicit --origin in --mode live):
+//   - Seat 1 (Web):     apps/openagents-web in headless WebGPU Chrome (shot --eval --keep)
+//   - Seat 2 (Desktop): isolated scratch OpenAgents.app (OPENAGENTS_API_ORIGIN, zero focus steal)
+//   - Seat 3 (iOS):     Cloud-mode OpenAgents.app on headless CoreSimulator via oasim (OA_API_BASE)
+//
+// Enforces #authority sync-policy.coax admission, convergence, SSE fanout SLA, offline replay,
+// cross-account isolation, and AgentBarrier checkpoints, and always tears down every child cleanly.
+#load "adapter-web.coax";
+#load "sync-catalog.coax";
+#load "../../../coax/web/api/account-chat-cloud-wire.coax";
+
+SYNC_SSE_BUF :: 32768;
+SYNC_HTTP_BUF :: 65536;
+
+SyncSseConn :: struct {
+  h: int;
+  buf: [SYNC_SSE_BUF] u8;
+  n: int;
+  eof: bool;
+  status: int;
+}
+
+SyncSeatBuf :: struct {
+  conv: [64] u8; conv_n: int;
+  title: [192] u8; title_n: int;
+  view: TsSeatView;
+  ok: bool;
+}
+
+SyncShots :: struct {
+  web: [128] u8; wn: int;
+  desk: [128] u8; dn: int;
+  ios: [128] u8; in_: int;
+  shot: [128] u8; shot_n: int;
+  fail: [128] u8; fail_n: int;
+  summary: [512] u8; summary_n: int;
+  latency_ms: int;
+}
+
+SyncCtx :: struct {
+  repo: [DA_PATH] u8; repo_n: int;
+  out_dir: [DA_PATH] u8; out_n: int;
+  mode: [32] u8; mode_n: int;
+  origin: [256] u8; origin_n: int;
+  desktop_app: [DA_PATH] u8; desktop_app_n: int;
+  ios_app: [DA_PATH] u8; ios_app_n: int;
+  device: [128] u8; device_n: int;
+  bundle_id: [128] u8; bundle_n: int;
+
+  barriers_file: [DA_PATH] u8; barriers_n: int;
+  obs_file: [DA_PATH] u8; obs_n: int;
+  act_file: [DA_PATH] u8; act_n: int;
+  res_file: [DA_PATH] u8; res_n: int;
+
+  web: [1] WebSession;
+  desk: [1] DaSession;
+  ios: [1] IosSession;
+  desk_sse: [1] SyncSseConn;
+  ios_sse: [1] SyncSseConn;
+
+  web_started: bool;
+  desk_started: bool;
+  ios_started: bool;
+  port: int;
+  log_offset: int;
+  started_ms: int;
+
+  alice_acct: [64] u8; alice_acct_n: int;
+  desk_token: [256] u8; desk_token_n: int;
+  desk_refresh: [256] u8; desk_refresh_n: int;
+  ios_token: [256] u8; ios_token_n: int;
+  bob_acct: [64] u8; bob_acct_n: int;
+  bob_token: [256] u8; bob_token_n: int;
+
+  conv_id: [64] u8; conv_id_n: int;
+  proj_id: [64] u8; proj_id_n: int;
+  host_pubkey: [64] u8; host_pubkey_n: int;
+  last_sse_id: int;
+  last_rev: int;
+  desk_turn_count: int;
+  fanout_web_ms: int;
+  fanout_desk_ms: int;
+  fanout_ios_ms: int;
+  fanout_meta_ms: int;
+}
+
+sy_find :: (hay: string, needle: string) -> int {
+  if needle.count == 0 { return 0; }
+  if needle.count > hay.count { return -1; }
+  limit := hay.count - needle.count + 1;
+  for i: 0..<limit {
+    if hay[i..<i + needle.count] == needle { return i; }
+  }
+  return -1;
+}
+
+sy_has :: (hay: string, needle: string) -> bool {
+  return sy_find(hay, needle) >= 0;
+}
+
+sy_parse_int :: (s: string) -> int {
+  if s.count == 0 { return -1; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+sy_parse_port :: (url: string) -> int {
+  colon := -1;
+  for i: 0..<url.count {
+    if url[i] == ':' { colon = i; }
+  }
+  if colon < 0 || colon + 1 >= url.count { return -1; }
+  end := colon + 1;
+  while end < url.count && url[end] >= '0' && url[end] <= '9' { end += 1; }
+  return sy_parse_int(url[colon + 1..<end]);
+}
+
+sy_unix_seconds :: () -> int {
+  out: [64] u8;
+  err: [128] u8;
+  argv := [2] string.["/bin/date", "+%s"];
+  r := proc_run(argv[..], 3000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.out_n <= 0 { return 1795700000; }
+  n := r.out_n;
+  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' ') { n -= 1; }
+  v := sy_parse_int(cast(string) out[0..<n]);
+  return ifx v > 0 then v else 1795700000;
+}
+
+// Perform one HTTP request via curl (works on both http://127.0.0.1 and https:// live origins).
+// Writes status code to status_out[0] and response body into resp_out; returns body byte length or -1.
+sy_http :: (method: string, url: string, body: string, bearer: string, extra_hdr: string, status_out: [] int, resp_out: [] u8) -> int {
+  status_out[0] = 0;
+  args: [16] string;
+  ac := 0;
+  args[ac] = "/usr/bin/curl"; ac += 1;
+  args[ac] = "-sS"; ac += 1;
+  args[ac] = "--max-time"; ac += 1;
+  args[ac] = "15"; ac += 1;
+  args[ac] = "-X"; ac += 1;
+  args[ac] = method; ac += 1;
+  args[ac] = "-H"; ac += 1;
+  args[ac] = "Content-Type: application/json"; ac += 1;
+
+  bh: [320] u8;
+  if bearer.count > 0 {
+    bj: [1] Jo;
+    jo_start(bj[..], bh[..]);
+    jo_put(bj[..], "Authorization: Bearer ");
+    jo_put(bj[..], bearer);
+    args[ac] = "-H"; ac += 1;
+    args[ac] = cast(string) bh[0..<bj[0].n]; ac += 1;
+  }
+  if extra_hdr.count > 0 {
+    args[ac] = "-H"; ac += 1;
+    args[ac] = extra_hdr; ac += 1;
+  }
+  if body.count > 0 {
+    args[ac] = "-d"; ac += 1;
+    args[ac] = body; ac += 1;
+  }
+  args[ac] = "-w"; ac += 1;
+  args[ac] = "\n%{http_code}"; ac += 1;
+  args[ac] = url; ac += 1;
+
+  raw: [SYNC_HTTP_BUF] u8;
+  err: [1024] u8;
+  r := proc_run(args[0..<ac], 20000, raw[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.out_n < 3 { return -1; }
+  end := r.out_n;
+  while end > 0 && (raw[end - 1] == '\n' || raw[end - 1] == '\r') { end -= 1; }
+  last_nl := -1;
+  for i: 0..<end {
+    if raw[i] == '\n' { last_nl = i; }
+  }
+  if last_nl < 0 {
+    status_out[0] = sy_parse_int(cast(string) raw[0..<end]);
+    return 0;
+  }
+  status_out[0] = sy_parse_int(cast(string) raw[last_nl + 1..<end]);
+  bn := da_copy_into(resp_out, cast(string) raw[0..<last_nl]);
+  return bn;
+}
+
+// Open a live SSE stream over native Coax cxsock (127.0.0.1:<port>) with Bearer auth and optional Last-Event-ID.
+sy_sse_open :: (c: [] SyncSseConn, port: int, path: string, bearer: string, last_id: string, timeout_ms: int) -> bool {
+  c[0].h = -1;
+  c[0].n = 0;
+  c[0].eof = false;
+  c[0].status = 0;
+  if port <= 0 { return false; }
+  for b: "127.0.0.1" { _ = cxsock_host_push(cast(int) b); }
+  h := cxsock_connect(port, timeout_ms);
+  if h < 0 { return false; }
+  c[0].h = h;
+
+  req: [2048] u8;
+  j: [1] Jo;
+  jo_start(j[..], req[..]);
+  jo_put(j[..], "GET "); jo_put(j[..], path); jo_put(j[..], " HTTP/1.1\r\nHost: 127.0.0.1:");
+  jo_int(j[..], port);
+  jo_put(j[..], "\r\nAccept: text/event-stream\r\nConnection: close\r\n");
+  if bearer.count > 0 {
+    jo_put(j[..], "Authorization: Bearer ");
+    jo_put(j[..], bearer);
+    jo_put(j[..], "\r\n");
+  }
+  if last_id.count > 0 {
+    jo_put(j[..], "Last-Event-ID: ");
+    jo_put(j[..], last_id);
+    jo_put(j[..], "\r\n");
+  }
+  jo_put(j[..], "\r\n");
+
+  for ch: cast(string) req[0..<j[0].n] {
+    if cxsock_write(h, cast(int) ch) != 0 { _ = cxsock_close(h); c[0].h = -1; return false; }
+  }
+  if cxsock_flush(h, timeout_ms) != 0 { _ = cxsock_close(h); c[0].h = -1; return false; }
+
+  deadline := proc_now_ms() + timeout_ms;
+  head_end := -1;
+  while head_end < 0 && proc_now_ms() < deadline {
+    left := deadline - proc_now_ms();
+    if left < 50 { left = 50; }
+    got := cxsock_read(h, left);
+    if got == -2 { continue; }
+    if got <= 0 { c[0].eof = true; break; }
+    for i: 0..<got {
+      if c[0].n < SYNC_SSE_BUF { c[0].buf[c[0].n] = cast,trunc(u8) cxsock_byte(h, i); c[0].n += 1; }
+    }
+    if c[0].n >= 4 {
+      for i: 0..<c[0].n - 3 {
+        if c[0].buf[i] == '\r' && c[0].buf[i + 1] == '\n' && c[0].buf[i + 2] == '\r' && c[0].buf[i + 3] == '\n' {
+          head_end = i; break;
+        }
+      }
+    }
+  }
+  if head_end < 0 { _ = cxsock_close(h); c[0].h = -1; return false; }
+  if head_end >= 12 { c[0].status = sy_parse_int(cast(string) c[0].buf[9..<12]); }
+  body_start := head_end + 4;
+  rem := c[0].n - body_start;
+  for i: 0..<rem { c[0].buf[i] = c[0].buf[body_start + i]; }
+  c[0].n = rem;
+  return c[0].status == 200;
+}
+
+sy_sse_close :: (c: [] SyncSseConn) {
+  if c[0].h >= 0 { _ = cxsock_close(c[0].h); c[0].h = -1; }
+}
+
+sy_sse_next_frame :: (c: [] SyncSseConn, out: [] u8, timeout_ms: int) -> int {
+  if c[0].h < 0 { return -1; }
+  deadline := proc_now_ms() + timeout_ms;
+  while true {
+    sep := -1;
+    if c[0].n >= 2 {
+      for i: 0..<c[0].n - 1 {
+        if c[0].buf[i] == '\n' && c[0].buf[i + 1] == '\n' { sep = i; break; }
+      }
+    }
+    if sep >= 0 {
+      n := ifx sep < out.count then sep else out.count;
+      for i: 0..<n { out[i] = c[0].buf[i]; }
+      rem := c[0].n - (sep + 2);
+      for i: 0..<rem { c[0].buf[i] = c[0].buf[sep + 2 + i]; }
+      c[0].n = rem;
+      return n;
+    }
+    if c[0].eof { return 0; }
+    left := deadline - proc_now_ms();
+    if left <= 0 { return -1; }
+    got := cxsock_read(c[0].h, ifx left > 500 then 500 else left);
+    if got == -2 { continue; }
+    if got <= 0 { c[0].eof = true; return 0; }
+    for i: 0..<got {
+      if c[0].n < SYNC_SSE_BUF { c[0].buf[c[0].n] = cast,trunc(u8) cxsock_byte(c[0].h, i); c[0].n += 1; }
+    }
+  }
+  return -1;
+}
+
+sy_sse_id :: (frame: string) -> int {
+  if frame.count < 5 { return -1; }
+  for i: 0..<frame.count - 4 {
+    if (i == 0 || frame[i - 1] == '\n') &&
+       frame[i] == 'i' && frame[i + 1] == 'd' && frame[i + 2] == ':' && frame[i + 3] == ' ' {
+      j := i + 4;
+      while j < frame.count && frame[j] >= '0' && frame[j] <= '9' { j += 1; }
+      if j > i + 4 { return sy_parse_int(frame[i + 4..<j]); }
+    }
+  }
+  return -1;
+}
+
+// Wait for an SSE frame matching want1 (and optional want2), capturing its id in id_out[0].
+sy_sse_wait :: (c: [] SyncSseConn, want1: string, want2: string, frame_out: [] u8, id_out: [] int, timeout_ms: int) -> int {
+  id_out[0] = -1;
+  deadline := proc_now_ms() + timeout_ms;
+  while proc_now_ms() < deadline {
+    left := deadline - proc_now_ms();
+    if left <= 0 { break; }
+    n := sy_sse_next_frame(c, frame_out, left);
+    if n <= 0 { break; }
+    s := cast(string) frame_out[0..<n];
+    eid := sy_sse_id(s);
+    if eid > 0 { id_out[0] = eid; }
+    if sy_has(s, want1) && (want2.count == 0 || sy_has(s, want2)) {
+      return n;
+    }
+  }
+  return -1;
+}
+
+// Record an AgentBarrier checkpoint to barriers.jsonl and evaluate #authority ts_barrier_ok.
+sy_barrier :: (ctx: [] SyncCtx, barrier_id: string, expected: int, arrived: int, deadline_ms: int) -> bool {
+  now_ms := proc_now_ms();
+  released := ts_barrier_ok(expected, arrived, now_ms, deadline_ms);
+  rec := ArBarrierRecord.{
+    barrier_id = barrier_id,
+    root_session_id = "sess-cross-surface-sync",
+    expected = expected,
+    arrived = arrived,
+    deadline_ms = deadline_ms - ctx[0].started_ms,
+    released = released
+  };
+  jb: [AR_WIRE_BUF] u8;
+  n := ar_write_barrier(rec, jb[..]);
+  if n > 0 { da_append_line(da_slice(ctx[0].barriers_file[..], ctx[0].barriers_n), cast(string) jb[0..<n]); }
+  return released;
+}
+
+sy_record_result :: (ctx: [] SyncCtx, r: TsResult) {
+  jb: [TS_BUF] u8;
+  n := ts_write_result(r, jb[..]);
+  if n > 0 { da_append_line(da_slice(ctx[0].res_file[..], ctx[0].res_n), cast(string) jb[0..<n]); }
+}
+
+// Authenticate an app seat via real POST /api/auth/email/start + serve.log dev code + POST /api/auth/email/verify.
+sy_email_login_app :: (ctx: [] SyncCtx, email: string, token_out: [] u8, refresh_out: [] u8, acct_out: [] u8, token_n: [] int, refresh_n: [] int, acct_n: [] int) -> bool {
+  token_n[0] = 0; refresh_n[0] = 0; acct_n[0] = 0;
+  origin := da_slice(ctx[0].origin[..], ctx[0].origin_n);
+  slog := da_slice(ctx[0].web[0].serve_log[..], ctx[0].web[0].serve_log_n);
+  if slog.count == 0 { return false; }
+
+  // Record current serve.log length so we only match the brand-new code generated by this call.
+  prev_size := fs_size(slog);
+  if prev_size < 0 { prev_size = 0; }
+
+  body: [256] u8;
+  bj: [1] Jo;
+  jo_start(bj[..], body[..]);
+  jo_obj(bj[..]);
+  jo_key(bj[..], "email"); jo_str(bj[..], email);
+  jo_key(bj[..], "client"); jo_str(bj[..], "app");
+  jo_end(bj[..]);
+
+  u1: [1] DaBuf;
+  st: [1] int;
+  resp: [SYNC_HTTP_BUF] u8;
+  rn := sy_http("POST", da_cat(u1[..], origin, "/api/auth/email/start"), cast(string) body[0..<bj[0].n], "", "", st[..], resp[..]);
+  if rn <= 0 || st[0] != 200 { return false; }
+
+  nodes: [128] JvNode;
+  doc: [1] Jv;
+  if !jv_parse(doc[..], cast(string) resp[0..<rn], nodes[..]) { return false; }
+  pend: [128] u8;
+  pn := jv_str(doc[0], jv_get(doc[0], 0, "pending"), pend[..]);
+  if pn <= 0 { return false; }
+
+  // Poll serve.log up to 6s for "dev server login code for <email>: <6digits>".
+  marker_b: [160] u8;
+  mj: [1] Jo;
+  jo_start(mj[..], marker_b[..]);
+  jo_put(mj[..], "dev server login code for ");
+  jo_put(mj[..], email);
+  jo_put(mj[..], ": ");
+  marker := cast(string) marker_b[0..<mj[0].n];
+
+  code: [6] u8;
+  got_code := false;
+  log_buf: [65536] u8;
+  deadline := proc_now_ms() + 6000;
+  while proc_now_ms() < deadline {
+    ln := fs_read(slog, log_buf[..]);
+    if ln > prev_size {
+      tail := cast(string) log_buf[prev_size..<ln];
+      at := sy_find(tail, marker);
+      if at >= 0 && at + marker.count + 6 <= tail.count {
+        off := at + marker.count;
+        all_dig := true;
+        for k: 0..<6 {
+          c := tail[off + k];
+          if c < '0' || c > '9' { all_dig = false; break; }
+          code[k] = c;
+        }
+        if all_dig {
+          ctx[0].log_offset = ln;
+          got_code = true;
+          break;
+        }
+      }
+    }
+    proc_sleep(100);
+  }
+  if !got_code { return false; }
+
+  // Verify the 6-digit code to mint real oa_at_ / oa_rt_ / acct_ session.
+  vbody: [512] u8;
+  vj: [1] Jo;
+  jo_start(vj[..], vbody[..]);
+  jo_obj(vj[..]);
+  jo_key(vj[..], "code"); jo_str(vj[..], cast(string) code[..]);
+  jo_key(vj[..], "pending"); jo_str(vj[..], cast(string) pend[0..<pn]);
+  jo_end(vj[..]);
+
+  rn2 := sy_http("POST", da_cat(u1[..], origin, "/api/auth/email/verify"), cast(string) vbody[0..<vj[0].n], "", "", st[..], resp[..]);
+  if rn2 <= 0 || st[0] != 200 { return false; }
+  if !jv_parse(doc[..], cast(string) resp[0..<rn2], nodes[..]) { return false; }
+  tn := jv_str(doc[0], jv_get(doc[0], 0, "access_token"), token_out);
+  refn := jv_str(doc[0], jv_get(doc[0], 0, "refresh_token"), refresh_out);
+  an := jv_str(doc[0], jv_get(doc[0], 0, "account"), acct_out);
+  if tn <= 0 || an <= 0 { return false; }
+  token_n[0] = tn;
+  refresh_n[0] = ifx refn > 0 then refn else 0;
+  acct_n[0] = an;
+  return true;
+}
+
+// Write real AppAuth.Tokens JSON into Desktop's isolated $HOME/.openagents/desktop/login.json (mode 0600).
+sy_write_desktop_login :: (home_dir: string, access: string, refresh: string, acct: string) -> bool {
+  b1: [1] DaBuf;
+  b2: [1] DaBuf;
+  dir := da_cat(b1[..], home_dir, "/.openagents/desktop");
+  _ = fs_mkdir_all(dir);
+  _ = fs_mkdir_all(da_cat(b2[..], home_dir, "/Library/Application Support/Coder/chats"));
+  path := da_cat(b2[..], dir, "/login.json");
+  // Swift JSONDecoder default Date encoding = seconds since 2001-01-01T00:00:00Z (CFAbsoluteTime).
+  until_cf := sy_unix_seconds() - 978307200 + 3500;
+  jb: [1024] u8;
+  j: [1] Jo;
+  jo_start(j[..], jb[..]);
+  jo_obj(j[..]);
+  jo_key(j[..], "access"); jo_str(j[..], access);
+  jo_key(j[..], "refresh"); jo_str(j[..], refresh);
+  jo_key(j[..], "accessUntil"); jo_int(j[..], until_cf);
+  jo_key(j[..], "account"); jo_str(j[..], acct);
+  jo_end(j[..]);
+  if j[0].bad { return false; }
+  if !fs_write(path, cast(string) jb[0..<j[0].n]) { return false; }
+  ch: [512] u8;
+  cj: [1] Jo;
+  jo_start(cj[..], ch[..]);
+  jo_put(cj[..], "chmod 600 '"); jo_put(cj[..], path); jo_put(cj[..], "'");
+  _ = da_run_sh(cast(string) ch[0..<cj[0].n], 2000);
+  return true;
+}
+
+// Parse GET /api/chat/v2/conversations/:id JSON into SyncSeatBuf (TsSeatView).
+sy_parse_conv_detail :: (raw: string, out: [] SyncSeatBuf) -> bool {
+  out[0].ok = false;
+  nodes: [2048] JvNode;
+  doc: [1] Jv;
+  if !jv_parse(doc[..], raw, nodes[..]) { return false; }
+  conv := jv_get(doc[0], 0, "conversation");
+  turns := jv_get(doc[0], 0, "turns");
+  if conv < 0 || turns < 0 { return false; }
+  cn := jv_str(doc[0], jv_get(doc[0], conv, "id"), out[0].conv[..]);
+  tn := jv_str(doc[0], jv_get(doc[0], conv, "title"), out[0].title[..]);
+  if cn <= 0 { return false; }
+  out[0].conv_n = cn;
+  out[0].title_n = ifx tn > 0 then tn else 0;
+  out[0].view = TsSeatView.{
+    conv_id = cast(string) out[0].conv[0..<out[0].conv_n],
+    title = cast(string) out[0].title[0..<out[0].title_n],
+    turns = jv_len(doc[0], turns),
+    revision = jv_int(doc[0], jv_get(doc[0], conv, "revision"), 0),
+    pinned = jv_bool(doc[0], jv_get(doc[0], conv, "pinned")),
+    archived = jv_bool(doc[0], jv_get(doc[0], conv, "archived")),
+    cost_msat = jv_int(doc[0], jv_get(doc[0], conv, "cost_msat"), 0)
+  };
+  out[0].ok = true;
+  return true;
+}
+
+// Fetch GET /api/chat/v2/conversations/:id as a seat (using bearer) and populate SyncSeatBuf.
+sy_fetch_seat_view :: (origin: string, cid: string, bearer: string, out: [] SyncSeatBuf, raw_out: [] u8, raw_n: [] int) -> bool {
+  raw_n[0] = 0;
+  ub: [1] DaBuf;
+  url := da_cat3(ub[..], origin, "/api/chat/v2/conversations/", cid);
+  st: [1] int;
+  n := sy_http("GET", url, "", bearer, "", st[..], raw_out);
+  if n <= 0 || st[0] != 200 { out[0].ok = false; return false; }
+  raw_n[0] = n;
+  return sy_parse_conv_detail(cast(string) raw_out[0..<n], out);
+}
+
+// Wait for the real running Desktop OpenAgents.app CloudChatSync SSE loop to materialize
+// conv_id + expected title/content/archived state in CoderStore on disk.
+sy_wait_desktop_materialized :: (ctx: [] SyncCtx, cid: string, want_title: string, want_text: string, want_archived: bool, timeout_ms: int) -> bool {
+  home := da_slice(ctx[0].desk[0].home_dir[..], ctx[0].desk[0].home_n);
+  b1: [1] DaBuf;
+  b2: [1] DaBuf;
+  b3: [1] DaBuf;
+  idx_path := da_cat(b1[..], home, "/Library/Application Support/Coder/chats/index.json");
+  chat_path := da_cat3(b2[..], home, "/Library/Application Support/Coder/chats/", da_cat(b3[..], cid, ".json"));
+  meta_path := da_cat(b3[..], home, "/Library/Application Support/Coder/chats/sidebar-meta.json");
+
+  buf: [65536] u8;
+  deadline := proc_now_ms() + timeout_ms;
+  while proc_now_ms() < deadline {
+    n_idx := fs_read(idx_path, buf[..]);
+    idx_ok := n_idx > 0 && sy_has(cast(string) buf[0..<n_idx], cid) && (want_title.count == 0 || sy_has(cast(string) buf[0..<n_idx], want_title));
+    if idx_ok {
+      text_ok := true;
+      if want_text.count > 0 {
+        n_ch := fs_read(chat_path, buf[..]);
+        text_ok = n_ch > 0 && sy_has(cast(string) buf[0..<n_ch], want_text);
+      }
+      arch_ok := true;
+      if want_archived {
+        n_m := fs_read(meta_path, buf[..]);
+        arch_ok = n_m > 0 && sy_has(cast(string) buf[0..<n_m], cid);
+      }
+      if text_ok && arch_ok { return true; }
+    }
+    proc_sleep(200);
+  }
+  return false;
+}
+
+// Capture synchronized screenshots from Desktop + iOS (Web shot is already captured by web_eval).
+sy_capture_desk_ios :: (ctx: [] SyncCtx, prefix: string, shots: [] SyncShots) {
+  b1: [1] DaBuf;
+  b2: [1] DaBuf;
+  obs_d: [1] TsObservation;
+  active: [1] bool;
+  if ctx[0].desk_started {
+    dname := da_cat(b1[..], prefix, "-desktop");
+    if da_observe(ctx[0].desk[..], dname, prefix, obs_d[..], active[..]) && obs_d[0].screenshot_ref.count > 0 {
+      shots[0].dn = da_copy_into(shots[0].desk[..], obs_d[0].screenshot_ref);
+    }
+  }
+  obs_i: [1] TsObservation;
+  if ctx[0].ios_started {
+    iname := da_cat(b2[..], prefix, "-ios");
+    if ios_observe(ctx[0].ios[..], iname, prefix, obs_i[..]) && obs_i[0].screenshot_ref.count > 0 {
+      shots[0].in_ = da_copy_into(shots[0].ios[..], obs_i[0].screenshot_ref);
+    }
+  }
+}
+
+sy_cleanup :: (ctx: [] SyncCtx) {
+  sy_sse_close(ctx[0].desk_sse[..]);
+  sy_sse_close(ctx[0].ios_sse[..]);
+  if ctx[0].desk_started {
+    _ = da_stop(ctx[0].desk[..]);
+    ctx[0].desk_started = false;
+  }
+  if ctx[0].ios_started {
+    ios_terminate_app(ctx[0].ios[..]);
+    ios_stop(ctx[0].ios[..]);
+    ctx[0].ios_started = false;
+  }
+  web_stop_browser(da_slice(ctx[0].repo[..], ctx[0].repo_n));
+  if ctx[0].web_started {
+    web_stop(ctx[0].web[..]);
+    ctx[0].web_started = false;
+  }
+}
+
+sy_finish_result :: (ctx: [] SyncCtx, t0: int, sc_id: string, verdict: string, steps: int, first_failure: string, summary: string, shot_ref: string, res_out: [] TsResult, shot_out: [] SyncShots) {
+  shot_out[0].fail_n = da_copy_into(shot_out[0].fail[..], first_failure);
+  shot_out[0].summary_n = da_copy_into(shot_out[0].summary[..], summary);
+  shot_out[0].shot_n = da_copy_into(shot_out[0].shot[..], shot_ref);
+  out_r := TsResult.{
+    scenario_id = sc_id,
+    client_id = "sync-coordinator",
+    target = "sync-3-surface",
+    mode = da_slice(ctx[0].mode[..], ctx[0].mode_n),
+    verdict = verdict,
+    duration_ms = proc_now_ms() - t0,
+    steps_run = steps,
+    first_failure = cast(string) shot_out[0].fail[0..<shot_out[0].fail_n],
+    summary = cast(string) shot_out[0].summary[0..<shot_out[0].summary_n],
+    screenshot_ref = cast(string) shot_out[0].shot[0..<shot_out[0].shot_n],
+    cleanup = "ok"
+  };
+  sy_record_result(ctx, out_r);
+  res_out[0] = out_r;
+}
+
+sy_js_post_and_get :: (post_url: string, body_json: string, get_url: string, out: [] u8) -> string {
+  j: [1] Jo;
+  jo_start(j[..], out);
+  jo_put(j[..], "(async () => { const r = await fetch(");
+  jo_str(j[..], post_url);
+  jo_put(j[..], ",{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:");
+  jo_str(j[..], body_json);
+  jo_put(j[..], "}); const d = await fetch(");
+  jo_str(j[..], get_url);
+  jo_put(j[..], ",{credentials:'include'}); return JSON.stringify({st:r.status,detail:await d.json()}); })()");
+  return cast(string) out[0..<j[0].n];
+}
+
+// Execute one of the 8 cross-surface sync scenarios against live Web + Desktop + iOS + Postgres + oa-api.
+sy_run_scenario :: (ctx: [] SyncCtx, sc_id: string, res_out: [] TsResult, shot_out: [] SyncShots) {
+  t0 := proc_now_ms();
+  shot_out[0] = SyncShots.{latency_ms = -1};
+  verdict := "pass";
+  steps := 0;
+  first_fail := "";
+  summary := "";
+  shot_ref := "";
+
+  origin := da_slice(ctx[0].origin[..], ctx[0].origin_n);
+  repo := da_slice(ctx[0].repo[..], ctx[0].repo_n);
+  out_dir := da_slice(ctx[0].out_dir[..], ctx[0].out_n);
+
+  if sc_id == "sync.identity.three-client-login" {
+    steps = 6;
+    b1: [1] DaBuf;
+    b2: [1] DaBuf;
+    b3: [1] DaBuf;
+    web_dir := da_cat(b1[..], out_dir, "/web");
+    desk_dir := da_cat(b2[..], out_dir, "/desktop");
+    ios_dir := da_cat(b3[..], out_dir, "/ios");
+
+    // 1. Enforce #authority 3-seat admission policy BEFORE starting any surface.
+    wb := ArBinding.{device_lease = "headless-chrome-webgpu", account_lease = "seat:web", workspace_dir = web_dir};
+    db := ArBinding.{device_lease = "mac-desktop-scratch", account_lease = "seat:desktop", workspace_dir = desk_dir};
+    ib := ArBinding.{device_lease = da_slice(ctx[0].device[..], ctx[0].device_n), account_lease = "seat:ios", workspace_dir = ios_dir};
+    admit_err := ts_three_seat_admit(wb, db, ib, da_slice(ctx[0].mode[..], ctx[0].mode_n), origin);
+    if admit_err.count > 0 {
+      sy_finish_result(ctx, t0, sc_id, "infrastructure-fail", steps, admit_err, "ts_three_seat_admit refused 3-seat bindings", "", res_out, shot_out); return;
+    }
+
+    // 2. Start real Postgres 16 + oa-api + apps/openagents-web (or attach to --origin in --mode live).
+    if !web_start_live_api(ctx[0].web[..], repo, out_dir, origin) {
+      sy_finish_result(ctx, t0, sc_id, "infrastructure-fail", steps, "serve-start", "failed to boot real Postgres 16 + oa-api + apps/openagents-web", "", res_out, shot_out); return;
+    }
+    ctx[0].web_started = true;
+    ctx[0].origin_n = da_copy_into(ctx[0].origin[..], da_slice(ctx[0].web[0].base_url[..], ctx[0].web[0].base_n));
+    origin = da_slice(ctx[0].origin[..], ctx[0].origin_n);
+    ctx[0].port = sy_parse_port(origin);
+
+    // 3. Web seat: open /chat in headless WebGPU Chrome, verify real authenticated acct_.
+    ev_out: [16384] u8;
+    wobs: [1] TsObservation;
+    wn := web_eval(ctx[0].web[..], "/chat", "1280x820", "sync-01-web", 2500,
+      "(async () => { const r = await fetch('/api/auth/account', {credentials:'include'}); return await r.text(); })()",
+      ev_out[..], wobs[..]);
+    if wn <= 0 {
+      sy_finish_result(ctx, t0, sc_id, "infrastructure-fail", steps, "web-eval-auth", "headless WebGPU Chrome failed to load /chat and query /api/auth/account", "", res_out, shot_out); return;
+    }
+    shot_out[0].wn = da_copy_into(shot_out[0].web[..], wobs[0].screenshot_ref);
+
+    wnodes: [256] JvNode;
+    wdoc: [1] Jv;
+    web_acct: [64] u8;
+    web_acct_n := 0;
+    if jv_parse(wdoc[..], cast(string) ev_out[0..<wn], wnodes[..]) && jv_bool(wdoc[0], jv_get(wdoc[0], 0, "logged_in")) {
+      web_acct_n = jv_str(wdoc[0], jv_get(wdoc[0], 0, "account"), web_acct[..]);
+    }
+    if web_acct_n <= 0 {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "web-not-logged-in", "Web /chat session did not report logged_in=true with an acct_ id", wobs[0].screenshot_ref, res_out, shot_out); return;
+    }
+    ctx[0].alice_acct_n = da_copy_into(ctx[0].alice_acct[..], cast(string) web_acct[0..<web_acct_n]);
+
+    // 4. Desktop seat: authenticate independent app session for ada@example.com, write login.json, stage & launch scratch OpenAgents.app.
+    dt_n: [1] int; dr_n: [1] int; da_n: [1] int;
+    desk_acct: [64] u8;
+    if !sy_email_login_app(ctx, "ada@example.com", ctx[0].desk_token[..], ctx[0].desk_refresh[..], desk_acct[..], dt_n[..], dr_n[..], da_n[..]) {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "desktop-auth", "Desktop seat failed real /api/auth/email/start + verify flow for ada@example.com", "", res_out, shot_out); return;
+    }
+    ctx[0].desk_token_n = dt_n[0];
+    ctx[0].desk_refresh_n = dr_n[0];
+
+    if !da_stage(ctx[0].desk[..], repo, da_slice(ctx[0].desktop_app[..], ctx[0].desktop_app_n), out_dir, "sync") {
+      sy_finish_result(ctx, t0, sc_id, "infrastructure-fail", steps, "desktop-stage", "failed to stage isolated scratch OpenAgents.app", "", res_out, shot_out); return;
+    }
+    if !sy_write_desktop_login(
+      da_slice(ctx[0].desk[0].home_dir[..], ctx[0].desk[0].home_n),
+      da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n),
+      da_slice(ctx[0].desk_refresh[..], ctx[0].desk_refresh_n),
+      cast(string) desk_acct[0..<da_n[0]]
+    ) {
+      sy_finish_result(ctx, t0, sc_id, "infrastructure-fail", steps, "desktop-login-store", "failed to write isolated Desktop login.json", "", res_out, shot_out); return;
+    }
+    if !da_launch_with_origin(ctx[0].desk[..], origin) {
+      sy_finish_result(ctx, t0, sc_id, "infrastructure-fail", steps, "desktop-launch", "failed to launch isolated OpenAgents.app with OPENAGENTS_API_ORIGIN", "", res_out, shot_out); return;
+    }
+    ctx[0].desk_started = true;
+    dobs: [1] TsObservation;
+    dactive: [1] bool;
+    d_obs_ok := da_observe(ctx[0].desk[..], "sync-01-desktop", "Desktop logged in", dobs[..], dactive[..]);
+    if !d_obs_ok || dactive[0] {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, ifx dactive[0] then "desktop-focus-steal" else "desktop-observe", ifx dactive[0] then "scratch Desktop app stole macOS focus" else "Desktop probe observe failed", "", res_out, shot_out); return;
+    }
+    shot_out[0].dn = da_copy_into(shot_out[0].desk[..], dobs[0].screenshot_ref);
+
+    // 5. iOS Simulator seat: authenticate independent mobile session, set OA_API_BASE, boot+install+launch fresh Cloud-mode app via oasim.
+    it_n: [1] int; ir_n: [1] int; ia_n: [1] int;
+    ios_ref: [256] u8;
+    ios_acct: [64] u8;
+    if !sy_email_login_app(ctx, "ada@example.com", ctx[0].ios_token[..], ios_ref[..], ios_acct[..], it_n[..], ir_n[..], ia_n[..]) {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "ios-auth", "iOS seat failed real /api/auth/email/start + verify flow for ada@example.com", "", res_out, shot_out); return;
+    }
+    ctx[0].ios_token_n = it_n[0];
+
+    if !ios_start(ctx[0].ios[..], repo, da_slice(ctx[0].ios_app[..], ctx[0].ios_app_n),
+                  da_slice(ctx[0].device[..], ctx[0].device_n), da_slice(ctx[0].bundle_id[..], ctx[0].bundle_n), out_dir) {
+      sy_finish_result(ctx, t0, sc_id, "infrastructure-fail", steps, "ios-simhost", "failed to start isolated oasim serve", "", res_out, shot_out); return;
+    }
+    ctx[0].ios_started = true;
+    rep: [DA_REPLY] u8;
+    ok_boot := ios_act(ctx[0].ios[..], "boot", "ios-sim", "", 500, rep[..]);
+    ex_i: [1024] u8; ji: [1] Jo; jo_start(ji[..], ex_i[..]);
+    jo_put(ji[..], "\"app_path\":"); jo_str(ji[..], da_slice(ctx[0].ios_app[..], ctx[0].ios_app_n));
+    ok_inst := ok_boot && ios_act(ctx[0].ios[..], "install", "ios-sim", cast(string) ex_i[0..<ji[0].n], 500, rep[..]);
+    ok_api := ok_inst && ios_set_api_base(ctx[0].ios[..], origin);
+    ex_l: [512] u8; jl: [1] Jo; jo_start(jl[..], ex_l[..]);
+    jo_put(jl[..], "\"bundle_id\":"); jo_str(jl[..], da_slice(ctx[0].bundle_id[..], ctx[0].bundle_n));
+    ok_lnch := ok_api && ios_act(ctx[0].ios[..], "launch", "ios-app", cast(string) ex_l[0..<jl[0].n], 500, rep[..]);
+    proc_sleep(2000);
+    iobs: [1] TsObservation;
+    ok_ishot := ok_lnch && ios_observe(ctx[0].ios[..], "sync-01-ios", "iOS Cloud-mode launch", iobs[..]);
+    if !ok_ishot {
+      sy_finish_result(ctx, t0, sc_id, "infrastructure-fail", steps, "ios-launch", "failed to boot, set OA_API_BASE, install, launch, or screenshot Cloud-mode iOS app", "", res_out, shot_out); return;
+    }
+    shot_out[0].in_ = da_copy_into(shot_out[0].ios[..], iobs[0].screenshot_ref);
+
+    // 6. Verify all 3 seats share the exact same acct_ identity & open live SSE streams on /api/chat/v2/stream.
+    alice := da_slice(ctx[0].alice_acct[..], ctx[0].alice_acct_n);
+    d_acct_s := cast(string) desk_acct[0..<da_n[0]];
+    i_acct_s := cast(string) ios_acct[0..<ia_n[0]];
+    if alice != d_acct_s || alice != i_acct_s {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "account-id-mismatch", "Web, Desktop, and iOS did not authenticate to the same acct_ identity", "", res_out, shot_out); return;
+    }
+    sse_ok1 := sy_sse_open(ctx[0].desk_sse[..], ctx[0].port, "/api/chat/v2/stream", da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), "", 5000);
+    sse_ok2 := sy_sse_open(ctx[0].ios_sse[..], ctx[0].port, "/api/chat/v2/stream", da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), "", 5000);
+    fbuf: [4096] u8;
+    f1 := ifx sse_ok1 then sy_sse_next_frame(ctx[0].desk_sse[..], fbuf[..], 3000) else -1;
+    f2 := ifx sse_ok2 then sy_sse_next_frame(ctx[0].ios_sse[..], fbuf[..], 3000) else -1;
+    if !sse_ok1 || !sse_ok2 || f1 <= 0 || f2 <= 0 {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "sse-open-failed", "failed to open live /api/chat/v2/stream SSE listeners for Desktop and iOS", "", res_out, shot_out); return;
+    }
+    bar_ok := sy_barrier(ctx, "barrier-01-three-client-login", 3, 3, proc_now_ms() + 5000);
+    if !bar_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "barrier-timeout", "three-client login AgentBarrier did not release", "", res_out, shot_out); return;
+    }
+    sb: [512] u8; sj: [1] Jo; jo_start(sj[..], sb[..]);
+    jo_put(sj[..], "all 3 seats booted & authenticated to ");
+    jo_put(sj[..], alice);
+    jo_put(sj[..], " with disjoint leases, zero focus steal, and live SSE streams");
+    sy_finish_result(ctx, t0, sc_id, "pass", steps, "", cast(string) sb[0..<sj[0].n], wobs[0].screenshot_ref, res_out, shot_out); return;
+  } else if sc_id == "sync.chat.web-to-desktop-and-ios" {
+    steps = 5;
+    cid := "cnv_510c0000000000000000000000000001";
+    ctx[0].conv_id_n = da_copy_into(ctx[0].conv_id[..], cid);
+    title := "Cross-Surface Launch Thread";
+    prompt := "Hello from Web simulated user";
+    reply_txt := "Acknowledged on OpenAgents Cloud from Web.";
+
+    // Web creates conversation & turn on /chat via headless Chrome fetch + reloads /chat/<cid>
+    // using the shared #authority account-chat-cloud-wire.coax codec.
+    w_ev := [1] CcEvent.[CcEvent.{
+      conversation = cid, turn = "trn_510c0000000000000000000000000001", sequence = 1,
+      kind = CC_EV_COMPLETED, state = CT_COMPLETED, text = reply_txt,
+      compute = "cloud", model = "google/gemini-4-neon", cost_msat = 420,
+      source_device = "web", workspace = "/web", stop_reason = "end_turn", created_at_ms = 1795700000001
+    }];
+    w_ev_buf: [4096] u8;
+    w_ev_n := cc_event_write(w_ev[..], w_ev_buf[..]);
+    w_evs := [1] string.[cast(string) w_ev_buf[0..<w_ev_n]];
+    w_req := [1] CcSyncReq.[CcSyncReq.{
+      operation = "op_sync_web_1", conversation = cid, turn = "trn_510c0000000000000000000000000001",
+      title = title, has_pinned = true, pinned = false, has_archived = true, archived = false,
+      compute = "cloud", model = "google/gemini-4-neon", cost_msat = 420,
+      source_device = "web", workspace = "/web", user_text = prompt,
+      state = CT_COMPLETED, output = reply_txt, stop_reason = "end_turn",
+      has_usage = true, usage = CtUsage.{input = 24, output = 12, cache_read = 0, cache_write = 0, reasoning = 4}
+    }];
+    w_body_buf: [8192] u8;
+    w_body_n := cc_sync_write(w_req[..], w_evs[..], w_body_buf[..]);
+    js_buf: [16384] u8;
+    js_create := sy_js_post_and_get("/api/chat/v2/sync", cast(string) w_body_buf[0..<w_body_n], "/api/chat/v2/conversations/cnv_510c0000000000000000000000000001", js_buf[..]);
+
+    t_send := proc_now_ms();
+    ev_out: [32768] u8;
+    wobs: [1] TsObservation;
+    wn := web_eval(ctx[0].web[..], "/chat", "1280x820", "sync-02-web-post", 1500, js_create, ev_out[..], wobs[..]);
+
+    // Measure live Postgres LISTEN/NOTIFY SSE fanout on Desktop & iOS listeners.
+    fbuf: [8192] u8;
+    id_d: [1] int; id_i: [1] int;
+    fd := sy_sse_wait(ctx[0].desk_sse[..], "conversation_created", cid, fbuf[..], id_d[..], 4000);
+    fi := sy_sse_wait(ctx[0].ios_sse[..], "conversation_created", cid, fbuf[..], id_i[..], 4000);
+    lat_ms := proc_now_ms() - t_send;
+    ctx[0].fanout_web_ms = lat_ms;
+    shot_out[0].latency_ms = lat_ms;
+    if id_d[0] > ctx[0].last_sse_id { ctx[0].last_sse_id = id_d[0]; }
+
+    // Reload Web /chat/<cid> to verify real Web UI renders the synced conversation & capture screenshot.
+    wdet_out: [32768] u8;
+    wn2 := web_eval(ctx[0].web[..], "/chat/cnv_510c0000000000000000000000000001", "1280x820", "sync-02-web", 2500,
+      "(async () => { const d = await fetch('/api/chat/v2/conversations/cnv_510c0000000000000000000000000001',{credentials:'include'}); return await d.text(); })()",
+      wdet_out[..], wobs[..]);
+    shot_out[0].wn = da_copy_into(shot_out[0].web[..], wobs[0].screenshot_ref);
+
+    // Wait for real Desktop OpenAgents.app CloudChatSync SSE to materialize conv in CoderStore on disk!
+    desk_mat := sy_wait_desktop_materialized(ctx, cid, title, prompt, false, 8000);
+    sy_capture_desk_ios(ctx, "sync-02", shot_out);
+
+    // Read canonical views from all 3 seats and enforce #authority ts_sync_converged.
+    wv: [1] SyncSeatBuf; dv: [1] SyncSeatBuf; iv: [1] SyncSeatBuf;
+    raw_d: [SYNC_HTTP_BUF] u8; raw_i: [SYNC_HTTP_BUF] u8;
+    dn: [1] int; in_n: [1] int;
+    w_ok := wn2 > 0 && sy_parse_conv_detail(cast(string) wdet_out[0..<wn2], wv[..]);
+    d_ok := desk_mat && sy_fetch_seat_view(origin, cid, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), dv[..], raw_d[..], dn[..]);
+    i_ok := sy_fetch_seat_view(origin, cid, da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), iv[..], raw_i[..], in_n[..]);
+
+    conv_err := ifx w_ok && d_ok && i_ok then ts_sync_converged(cid, title, 1, 1, false, false, false, wv[0].view, dv[0].view, iv[0].view) else "seat_read_failed";
+    sla_ok := fd > 0 && fi > 0 && ts_fanout_sla_ok(lat_ms, 15000);
+    bar_ok := sy_barrier(ctx, "barrier-02-web-to-desktop-ios", 3, ifx (conv_err.count == 0 && sla_ok) then 3 else 1, proc_now_ms() + 5000);
+    if wn <= 0 || fd <= 0 || fi <= 0 {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "sse-fanout-missing", "Web conversation creation did not fan out live SSE to Desktop and iOS listeners", "", res_out, shot_out); return;
+    } else if !desk_mat {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "desktop-not-materialized", "running OpenAgents.app Desktop CloudChatSync did not materialize Web conversation into CoderStore", "", res_out, shot_out); return;
+    } else if conv_err.count > 0 || !bar_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, conv_err, "Web/Desktop/iOS failed ts_sync_converged after Web conversation creation", "", res_out, shot_out); return;
+    } else {
+      ctx[0].last_rev = wv[0].view.revision;
+      _ = reply_txt;
+      sy_finish_result(ctx, t0, sc_id, "pass", steps, "", "Web created conv+turn -> live Postgres SSE fanout -> Desktop materialized in CoderStore & all 3 seats converged", wobs[0].screenshot_ref, res_out, shot_out); return;
+    }
+  } else if sc_id == "sync.chat.desktop-to-web-and-ios" {
+    steps = 5;
+    cid := da_slice(ctx[0].conv_id[..], ctx[0].conv_id_n);
+    title := "Cross-Surface Launch Thread";
+
+    // Negative guard: local compute with non-zero cost_msat must be refused with HTTP 400.
+    // Built with Jo using CC_SYNC_SCHEMA because cc_sync_write itself refuses local cost_msat != 0.
+    bad_buf: [2048] u8;
+    bj: [1] Jo;
+    jo_start(bj[..], bad_buf[..]);
+    jo_obj(bj[..]);
+    jo_key(bj[..], "schema"); jo_str(bj[..], CC_SYNC_SCHEMA);
+    jo_key(bj[..], "operation_id"); jo_str(bj[..], "op_sync_bad_local");
+    jo_key(bj[..], "conversation_id"); jo_str(bj[..], cid);
+    jo_key(bj[..], "turn_id"); jo_str(bj[..], "trn_510c0000000000000000000000000099");
+    jo_key(bj[..], "title"); jo_str(bj[..], "");
+    jo_key(bj[..], "pinned"); jo_null(bj[..]);
+    jo_key(bj[..], "archived"); jo_null(bj[..]);
+    jo_key(bj[..], "compute"); jo_str(bj[..], "local");
+    jo_key(bj[..], "model"); jo_str(bj[..], "inkling-2-mini");
+    jo_key(bj[..], "cost_msat"); jo_int(bj[..], 5);
+    jo_key(bj[..], "source_device"); jo_str(bj[..], "mac-desktop");
+    jo_key(bj[..], "workspace"); jo_str(bj[..], "/tmp/sync");
+    jo_key(bj[..], "user_text"); jo_str(bj[..], "bad");
+    jo_key(bj[..], "attachments"); jo_raw(bj[..], "[]");
+    jo_key(bj[..], "state"); jo_str(bj[..], "completed");
+    jo_key(bj[..], "output"); jo_str(bj[..], "bad");
+    jo_key(bj[..], "stop_reason"); jo_str(bj[..], "end_turn");
+    jo_key(bj[..], "error"); jo_str(bj[..], "");
+    jo_key(bj[..], "usage"); jo_null(bj[..]);
+    jo_key(bj[..], "events"); jo_raw(bj[..], "[]");
+    jo_end(bj[..]);
+    bad_local := cast(string) bad_buf[0..<bj[0].n];
+    u1: [1] DaBuf;
+    st_bad: [1] int;
+    rbuf: [SYNC_HTTP_BUF] u8;
+    _ = sy_http("POST", da_cat(u1[..], origin, "/api/chat/v2/sync"), bad_local, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), "", st_bad[..], rbuf[..]);
+
+    // Desktop syncs a real local $0 compute turn (prompt + thought + tool_call + assistant reply) via cc_sync_write.
+    t2_id := "trn_510c0000000000000000000000000002";
+    e1 := [1] CcEvent.[CcEvent.{
+      conversation = cid, turn = t2_id, sequence = 1, kind = CC_EV_THINKING_DELTA, state = CT_RUNNING,
+      text = "Inspecting local Metal shader bindings", compute = "local", model = "inkling-2-mini",
+      cost_msat = 0, source_device = "mac-desktop", workspace = "/tmp/sync-repo", created_at_ms = 1795700001001
+    }];
+    e2 := [1] CcEvent.[CcEvent.{
+      conversation = cid, turn = t2_id, sequence = 2, kind = CC_EV_TOOL_CALL, state = CT_RUNNING,
+      text = "read_file", tool_id = "call_local_1", tool_name = "read_file", tool_args = "{\"path\":\"gpu.metal\"}",
+      approval_status = "approved", compute = "local", model = "inkling-2-mini",
+      cost_msat = 0, source_device = "mac-desktop", workspace = "/tmp/sync-repo", created_at_ms = 1795700001002
+    }];
+    e3 := [1] CcEvent.[CcEvent.{
+      conversation = cid, turn = t2_id, sequence = 3, kind = CC_EV_COMPLETED, state = CT_COMPLETED,
+      text = "Local Inkling 2 Mini verified Metal kernel at $0.", compute = "local", model = "inkling-2-mini",
+      cost_msat = 0, source_device = "mac-desktop", workspace = "/tmp/sync-repo", stop_reason = "end_turn", created_at_ms = 1795700001003
+    }];
+    eb1: [4096] u8; eb2: [4096] u8; eb3: [4096] u8;
+    en1 := cc_event_write(e1[..], eb1[..]);
+    en2 := cc_event_write(e2[..], eb2[..]);
+    en3 := cc_event_write(e3[..], eb3[..]);
+    d_evs := [3] string.[cast(string) eb1[0..<en1], cast(string) eb2[0..<en2], cast(string) eb3[0..<en3]];
+    d_req := [1] CcSyncReq.[CcSyncReq.{
+      operation = "op_sync_desk_local_2", conversation = cid, turn = t2_id,
+      compute = "local", model = "inkling-2-mini", cost_msat = 0,
+      source_device = "mac-desktop", workspace = "/tmp/sync-repo",
+      user_text = "Inspect local Metal kernel", state = CT_COMPLETED,
+      output = "Local Inkling 2 Mini verified Metal kernel at $0.", stop_reason = "end_turn",
+      has_usage = true, usage = CtUsage.{input = 48, output = 22, cache_read = 0, cache_write = 0, reasoning = 10}
+    }];
+    d_body_buf: [16384] u8;
+    d_body_n := cc_sync_write(d_req[..], d_evs[..], d_body_buf[..]);
+    local_turn := cast(string) d_body_buf[0..<d_body_n];
+
+    t_push := proc_now_ms();
+    st_ok: [1] int;
+    rn := sy_http("POST", da_cat(u1[..], origin, "/api/chat/v2/sync"), local_turn, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), "", st_ok[..], rbuf[..]);
+
+    fbuf: [8192] u8;
+    id_i: [1] int; id_d: [1] int;
+    fi := sy_sse_wait(ctx[0].ios_sse[..], "turn_completed", "\"compute\":\"local\"", fbuf[..], id_i[..], 3000);
+    lat_ms := proc_now_ms() - t_push;
+    fd := sy_sse_wait(ctx[0].desk_sse[..], "turn_completed", cid, fbuf[..], id_d[..], 3000);
+    ctx[0].fanout_desk_ms = lat_ms;
+    shot_out[0].latency_ms = lat_ms;
+    if id_d[0] > ctx[0].last_sse_id { ctx[0].last_sse_id = id_d[0]; }
+
+    // Verify Web seat reads Turn 2 + local $0 provenance & capture all 3 screenshots.
+    wdet: [32768] u8;
+    wobs: [1] TsObservation;
+    wn := web_eval(ctx[0].web[..], "/chat/cnv_510c0000000000000000000000000001", "1280x820", "sync-03-web", 2000,
+      "(async () => { const d = await fetch('/api/chat/v2/conversations/cnv_510c0000000000000000000000000001',{credentials:'include'}); return await d.text(); })()",
+      wdet[..], wobs[..]);
+    shot_out[0].wn = da_copy_into(shot_out[0].web[..], wobs[0].screenshot_ref);
+    sy_capture_desk_ios(ctx, "sync-03", shot_out);
+
+    wv: [1] SyncSeatBuf; dv: [1] SyncSeatBuf; iv: [1] SyncSeatBuf;
+    raw_d: [SYNC_HTTP_BUF] u8; raw_i: [SYNC_HTTP_BUF] u8;
+    dn: [1] int; in_n: [1] int;
+    w_ok := wn > 0 && sy_parse_conv_detail(cast(string) wdet[0..<wn], wv[..]);
+    d_ok := sy_fetch_seat_view(origin, cid, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), dv[..], raw_d[..], dn[..]);
+    i_ok := sy_fetch_seat_view(origin, cid, da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), iv[..], raw_i[..], in_n[..]);
+    rich_ok := dn[0] > 0 && sy_has(cast(string) raw_d[0..<dn[0]], "thinking_delta") && sy_has(cast(string) raw_d[0..<dn[0]], "tool_call") && sy_has(cast(string) raw_d[0..<dn[0]], "inkling-2-mini");
+
+    conv_err := ifx w_ok && d_ok && i_ok then ts_sync_converged(cid, title, 2, ctx[0].last_rev + 1, false, false, true, wv[0].view, dv[0].view, iv[0].view) else "seat_read_failed";
+    sla_ok := fi > 0 && fd > 0 && ts_fanout_sla_ok(lat_ms, 3000);
+    bar_ok := sy_barrier(ctx, "barrier-03-desktop-local-turn", 3, ifx (conv_err.count == 0 && sla_ok && rich_ok && st_bad[0] == 400) then 3 else 1, proc_now_ms() + 5000);
+    if st_bad[0] != 400 {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "local-cost-not-rejected", "compute=local with cost_msat=5 was not refused with 400", "", res_out, shot_out); return;
+    } else if rn <= 0 || st_ok[0] != 200 || !sla_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "desktop-local-sse", "Desktop local $0 sync failed or exceeded SSE fanout SLA", "", res_out, shot_out); return;
+    } else if !rich_ok || conv_err.count > 0 || !bar_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, conv_err, "Web/Desktop/iOS failed strict $0 local compute convergence or missing thought/tool_call events", "", res_out, shot_out); return;
+    } else {
+      ctx[0].last_rev = wv[0].view.revision;
+      ib: [32] u8;
+      sb: [512] u8; sj: [1] Jo; jo_start(sj[..], sb[..]);
+      jo_put(sj[..], "Desktop local $0 turn (thought+tool_call+reply) fanned out in ");
+      jo_put(sj[..], da_int_str(lat_ms, ib[..]));
+      jo_put(sj[..], " ms; local cost_msat=5 refused (400); all 3 seats converged at $0");
+      sy_finish_result(ctx, t0, sc_id, "pass", steps, "", cast(string) sb[0..<sj[0].n], wobs[0].screenshot_ref, res_out, shot_out); return;
+    }
+  } else if sc_id == "sync.chat.ios-to-web-and-desktop" {
+    steps = 5;
+    cid := da_slice(ctx[0].conv_id[..], ctx[0].conv_id_n);
+    title := "Cross-Surface Launch Thread";
+
+    // iOS Simulator seat posts Turn 3 (mobile follow-up) via real /api/chat/v2/sync using cc_sync_write.
+    t3_id := "trn_510c0000000000000000000000000003";
+    i_ev := [1] CcEvent.[CcEvent.{
+      conversation = cid, turn = t3_id, sequence = 1, kind = CC_EV_COMPLETED, state = CT_COMPLETED,
+      text = "Mobile follow-up synced across Web and Desktop.", compute = "cloud", model = "google/gemini-4-neon",
+      cost_msat = 310, source_device = "ios-mobile", workspace = "Cloud", stop_reason = "end_turn", created_at_ms = 1795700002001
+    }];
+    i_ev_buf: [4096] u8;
+    i_ev_n := cc_event_write(i_ev[..], i_ev_buf[..]);
+    i_evs := [1] string.[cast(string) i_ev_buf[0..<i_ev_n]];
+    i_req := [1] CcSyncReq.[CcSyncReq.{
+      operation = "op_sync_ios_turn_3", conversation = cid, turn = t3_id,
+      compute = "cloud", model = "google/gemini-4-neon", cost_msat = 310,
+      source_device = "ios-mobile", workspace = "Cloud",
+      user_text = "Mobile follow-up from iPhone simulator", state = CT_COMPLETED,
+      output = "Mobile follow-up synced across Web and Desktop.", stop_reason = "end_turn",
+      has_usage = true, usage = CtUsage.{input = 30, output = 16, cache_read = 0, cache_write = 0, reasoning = 2}
+    }];
+    i_body_buf: [8192] u8;
+    i_body_n := cc_sync_write(i_req[..], i_evs[..], i_body_buf[..]);
+    ios_turn := cast(string) i_body_buf[0..<i_body_n];
+
+    t_push := proc_now_ms();
+    u1: [1] DaBuf;
+    st_ok: [1] int;
+    rbuf: [SYNC_HTTP_BUF] u8;
+    rn := sy_http("POST", da_cat(u1[..], origin, "/api/chat/v2/sync"), ios_turn, da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), "", st_ok[..], rbuf[..]);
+
+    fbuf: [8192] u8;
+    id_d: [1] int; id_i: [1] int;
+    fd := sy_sse_wait(ctx[0].desk_sse[..], "turn_completed", "\"source_device\":\"ios-mobile\"", fbuf[..], id_d[..], 3000);
+    lat_ms := proc_now_ms() - t_push;
+    fi := sy_sse_wait(ctx[0].ios_sse[..], "turn_completed", cid, fbuf[..], id_i[..], 3000);
+    ctx[0].fanout_ios_ms = lat_ms;
+    shot_out[0].latency_ms = lat_ms;
+    if id_d[0] > ctx[0].last_sse_id { ctx[0].last_sse_id = id_d[0]; }
+
+    // Wait for running Desktop OpenAgents.app CloudChatSync to materialize Turn 3 into CoderStore on disk!
+    desk_mat := sy_wait_desktop_materialized(ctx, cid, title, "Mobile follow-up from iPhone simulator", false, 8000);
+
+    wdet: [32768] u8;
+    wobs: [1] TsObservation;
+    wn := web_eval(ctx[0].web[..], "/chat/cnv_510c0000000000000000000000000001", "1280x820", "sync-04-web", 2000,
+      "(async () => { const d = await fetch('/api/chat/v2/conversations/cnv_510c0000000000000000000000000001',{credentials:'include'}); return await d.text(); })()",
+      wdet[..], wobs[..]);
+    shot_out[0].wn = da_copy_into(shot_out[0].web[..], wobs[0].screenshot_ref);
+    sy_capture_desk_ios(ctx, "sync-04", shot_out);
+
+    wv: [1] SyncSeatBuf; dv: [1] SyncSeatBuf; iv: [1] SyncSeatBuf;
+    raw_d: [SYNC_HTTP_BUF] u8; raw_i: [SYNC_HTTP_BUF] u8;
+    dn: [1] int; in_n: [1] int;
+    w_ok := wn > 0 && sy_parse_conv_detail(cast(string) wdet[0..<wn], wv[..]);
+    d_ok := desk_mat && sy_fetch_seat_view(origin, cid, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), dv[..], raw_d[..], dn[..]);
+    i_ok := sy_fetch_seat_view(origin, cid, da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), iv[..], raw_i[..], in_n[..]);
+
+    // Verify monotonic chronological order (Turn 1 -> Turn 2 -> Turn 3).
+    ord_ok := false;
+    if dn[0] > 0 {
+      rs := cast(string) raw_d[0..<dn[0]];
+      p1 := sy_find(rs, "Hello from Web simulated user");
+      p2 := sy_find(rs, "Inspect local Metal kernel");
+      p3 := sy_find(rs, "Mobile follow-up from iPhone simulator");
+      ord_ok = p1 >= 0 && p2 > p1 && p3 > p2;
+    }
+    conv_err := ifx w_ok && d_ok && i_ok then ts_sync_converged(cid, title, 3, ctx[0].last_rev + 1, false, false, false, wv[0].view, dv[0].view, iv[0].view) else "seat_read_failed";
+    sla_ok := fd > 0 && fi > 0 && ts_fanout_sla_ok(lat_ms, 3000);
+    bar_ok := sy_barrier(ctx, "barrier-04-ios-to-web-desktop", 3, ifx (conv_err.count == 0 && sla_ok && ord_ok) then 3 else 1, proc_now_ms() + 5000);
+    if rn <= 0 || st_ok[0] != 200 || !sla_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "ios-sse-fanout", "iOS follow-up turn failed or exceeded SSE fanout SLA", "", res_out, shot_out); return;
+    } else if !desk_mat {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "desktop-turn3-missing", "Desktop CloudChatSync did not materialize iOS Turn 3 into CoderStore", "", res_out, shot_out); return;
+    } else if !ord_ok || conv_err.count > 0 || !bar_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, ifx !ord_ok then "turn-order" else conv_err, "3-turn chronological order or convergence check failed after iOS follow-up", "", res_out, shot_out); return;
+    } else {
+      ctx[0].last_rev = wv[0].view.revision;
+      ib: [32] u8;
+      sb: [512] u8; sj: [1] Jo; jo_start(sj[..], sb[..]);
+      jo_put(sj[..], "iOS Turn 3 fanned out live in ");
+      jo_put(sj[..], da_int_str(lat_ms, ib[..]));
+      jo_put(sj[..], " ms; Desktop materialized & all 3 seats converged on 3 ordered turns");
+      sy_finish_result(ctx, t0, sc_id, "pass", steps, "", cast(string) sb[0..<sj[0].n], wobs[0].screenshot_ref, res_out, shot_out); return;
+    }
+  } else if sc_id == "sync.meta.rename-pin-archive" {
+    steps = 6;
+    cid := da_slice(ctx[0].conv_id[..], ctx[0].conv_id_n);
+    new_title := "Synced Cross-Surface Thread";
+
+    // Phase A: Web renames + pins via /api/chat/v2/conversations/:id/meta using cc_meta_write.
+    ma_req := [1] CcMetaReq.[CcMetaReq.{
+      operation = "op_sync_meta_web_1", has_title = true, title = new_title,
+      has_pinned = true, pinned = true, has_archived = true, archived = false
+    }];
+    ma_buf: [1024] u8;
+    ma_n := cc_meta_write(ma_req[..], ma_buf[..]);
+    js_mbuf: [4096] u8;
+    js_meta := sy_js_post_and_get("/api/chat/v2/conversations/cnv_510c0000000000000000000000000001/meta", cast(string) ma_buf[0..<ma_n], "/api/chat/v2/conversations/cnv_510c0000000000000000000000000001", js_mbuf[..]);
+    ev_out: [16384] u8;
+    wobs: [1] TsObservation;
+    wn_a := web_eval(ctx[0].web[..], "/chat/cnv_510c0000000000000000000000000001", "1280x820", "sync-05-web-pin", 1500, js_meta, ev_out[..], wobs[..]);
+
+    fbuf: [8192] u8;
+    id_d1: [1] int; id_i1: [1] int;
+    fd1 := sy_sse_wait(ctx[0].desk_sse[..], "conversation_updated", "\"pinned\":true", fbuf[..], id_d1[..], 4000);
+    fi1 := sy_sse_wait(ctx[0].ios_sse[..], "conversation_updated", "\"pinned\":true", fbuf[..], id_i1[..], 4000);
+    if id_d1[0] > ctx[0].last_sse_id { ctx[0].last_sse_id = id_d1[0]; }
+
+    desk_mat_a := sy_wait_desktop_materialized(ctx, cid, new_title, "", false, 8000);
+    wv_a: [1] SyncSeatBuf; dv_a: [1] SyncSeatBuf; iv_a: [1] SyncSeatBuf;
+    raw_w: [SYNC_HTTP_BUF] u8; raw_d: [SYNC_HTTP_BUF] u8; raw_i: [SYNC_HTTP_BUF] u8;
+    dn_r: [1] int; in_r: [1] int;
+    wn_det_a := web_eval(ctx[0].web[..], "/chat/cnv_510c0000000000000000000000000001", "1280x820", "sync-05-web", 1500,
+      "(async () => { const d = await fetch('/api/chat/v2/conversations/cnv_510c0000000000000000000000000001',{credentials:'include'}); return await d.text(); })()",
+      raw_w[..], wobs[..]);
+    shot_out[0].wn = da_copy_into(shot_out[0].web[..], wobs[0].screenshot_ref);
+    ok_a1 := wn_det_a > 0 && sy_parse_conv_detail(cast(string) raw_w[0..<wn_det_a], wv_a[..]);
+    ok_a2 := desk_mat_a && sy_fetch_seat_view(origin, cid, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), dv_a[..], raw_d[..], dn_r[..]);
+    ok_a3 := sy_fetch_seat_view(origin, cid, da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), iv_a[..], raw_i[..], in_r[..]);
+    err_a := ifx ok_a1 && ok_a2 && ok_a3 then ts_sync_converged(cid, new_title, 3, ctx[0].last_rev + 1, true, false, false, wv_a[0].view, dv_a[0].view, iv_a[0].view) else "meta_a_read_failed";
+
+    // Phase B: iOS unpins + archives via POST /api/chat/v2/conversations/:id/meta using cc_meta_write.
+    mb_req := [1] CcMetaReq.[CcMetaReq.{
+      operation = "op_sync_meta_ios_2", has_title = false,
+      has_pinned = true, pinned = false, has_archived = true, archived = true
+    }];
+    mb_buf: [1024] u8;
+    mb_n := cc_meta_write(mb_req[..], mb_buf[..]);
+    meta_b := cast(string) mb_buf[0..<mb_n];
+    t_b := proc_now_ms();
+    st_b: [1] int;
+    rbuf: [SYNC_HTTP_BUF] u8;
+    ub1: [1] DaBuf; ub2: [1] DaBuf;
+    meta_url := da_cat3(ub1[..], origin, "/api/chat/v2/conversations/", da_cat(ub2[..], cid, "/meta"));
+    rn_b2 := sy_http("POST", meta_url, meta_b, da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), "", st_b[..], rbuf[..]);
+
+    id_d2: [1] int; id_i2: [1] int;
+    fd2 := sy_sse_wait(ctx[0].desk_sse[..], "conversation_updated", "\"archived\":true", fbuf[..], id_d2[..], 3000);
+    lat_b := proc_now_ms() - t_b;
+    fi2 := sy_sse_wait(ctx[0].ios_sse[..], "conversation_updated", "\"archived\":true", fbuf[..], id_i2[..], 3000);
+    ctx[0].fanout_meta_ms = lat_b;
+    shot_out[0].latency_ms = lat_b;
+    if id_d2[0] > ctx[0].last_sse_id { ctx[0].last_sse_id = id_d2[0]; }
+
+    desk_mat_b := sy_wait_desktop_materialized(ctx, cid, new_title, "", true, 8000);
+    sy_capture_desk_ios(ctx, "sync-05", shot_out);
+
+    wn_det_b := web_eval(ctx[0].web[..], "/chat/cnv_510c0000000000000000000000000001", "1280x820", "sync-05-web-arch", 1500,
+      "(async () => { const d = await fetch('/api/chat/v2/conversations/cnv_510c0000000000000000000000000001',{credentials:'include'}); return await d.text(); })()",
+      raw_w[..], wobs[..]);
+    wv_b: [1] SyncSeatBuf; dv_b: [1] SyncSeatBuf; iv_b: [1] SyncSeatBuf;
+    ok_b1 := wn_det_b > 0 && sy_parse_conv_detail(cast(string) raw_w[0..<wn_det_b], wv_b[..]);
+    ok_b2 := desk_mat_b && sy_fetch_seat_view(origin, cid, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), dv_b[..], raw_d[..], dn_r[..]);
+    ok_b3 := sy_fetch_seat_view(origin, cid, da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), iv_b[..], raw_i[..], in_r[..]);
+    err_b := ifx ok_b1 && ok_b2 && ok_b3 then ts_sync_converged(cid, new_title, 3, wv_a[0].view.revision + 1, false, true, false, wv_b[0].view, dv_b[0].view, iv_b[0].view) else "meta_b_read_failed";
+
+    bar_ok := sy_barrier(ctx, "barrier-05-meta-rename-pin-archive", 3, ifx (err_a.count == 0 && err_b.count == 0 && fd1 > 0 && fi1 > 0 && fd2 > 0 && fi2 > 0) then 3 else 1, proc_now_ms() + 5000);
+    if wn_a <= 0 || fd1 <= 0 || fi1 <= 0 || err_a.count > 0 {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, ifx err_a.count > 0 then err_a else "meta-pin-sse", "Web rename+pin did not converge cleanly across Desktop and iOS", "", res_out, shot_out); return;
+    } else if rn_b2 <= 0 || st_b[0] != 200 || fd2 <= 0 || fi2 <= 0 || err_b.count > 0 || !bar_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, ifx err_b.count > 0 then err_b else "meta-archive-sse", "iOS unpin+archive did not converge cleanly across Web and Desktop", "", res_out, shot_out); return;
+    } else {
+      ctx[0].last_rev = wv_b[0].view.revision;
+      ib: [32] u8;
+      sb: [512] u8; sj: [1] Jo; jo_start(sj[..], sb[..]);
+      jo_put(sj[..], "Web rename+pin & iOS unpin+archive converged across all 3 seats + Desktop CoderStore (");
+      jo_put(sj[..], da_int_str(lat_b, ib[..]));
+      jo_put(sj[..], " ms SSE)");
+      sy_finish_result(ctx, t0, sc_id, "pass", steps, "", cast(string) sb[0..<sj[0].n], wobs[0].screenshot_ref, res_out, shot_out); return;
+    }
+  } else if sc_id == "sync.projects.and-environments" {
+    steps = 5;
+    // 1. Web creates a Cloud Project bound to openagentsinc/openagents.
+    ev_out: [32768] u8;
+    wobs: [1] TsObservation;
+    js_proj := "(async () => { const r = await fetch('/api/projects/v1',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation_id:'op_sync_proj_1',value:{name:'OpenAgents Sync Repo',description:'3-surface sync project',repo_url:'https://github.com/openagentsinc/openagents',instructions:'Keep Web, Desktop, and iOS synchronized.'}})}); return JSON.stringify({st:r.status,body:await r.json()}); })()";
+    wn := web_eval(ctx[0].web[..], "/projects", "1280x820", "sync-06-web-projects", 2500, js_proj, ev_out[..], wobs[..]);
+    shot_out[0].wn = da_copy_into(shot_out[0].web[..], wobs[0].screenshot_ref);
+
+    pnodes: [512] JvNode;
+    pdoc: [1] Jv;
+    prj_st := 0;
+    if wn > 0 && jv_parse(pdoc[..], cast(string) ev_out[0..<wn], pnodes[..]) {
+      prj_st = jv_int(pdoc[0], jv_get(pdoc[0], 0, "st"), 0);
+      pn := jv_str(pdoc[0], jv_path(pdoc[0], 0, "body.data.id"), ctx[0].proj_id[..]);
+      if pn > 0 { ctx[0].proj_id_n = pn; }
+    }
+
+    // 2. Desktop enrolls its isolated workstation into OpenAgents Cloud (zero Tailscale) with matching repo.
+    host_pk := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    grant_id := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    ctx[0].host_pubkey_n = da_copy_into(ctx[0].host_pubkey[..], host_pk);
+    enroll_body := "{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"SimSync Studio Mac\",\"grant_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"epoch\":1,\"relay\":\"wss://relay.openagents.com\",\"os\":\"macos\",\"workspaces\":[{\"workspace_id\":\"openagents\",\"name\":\"openagents\",\"local_path\":\"/tmp/oa-sim-sync\",\"repo_remote\":\"https://github.com/openagentsinc/openagents\",\"repo_canonical\":\"github.com/openagentsinc/openagents\",\"branch\":\"main\"}]}";
+    u1: [1] DaBuf;
+    st_en: [1] int;
+    rbuf: [SYNC_HTTP_BUF] u8;
+    en_n := sy_http("POST", da_cat(u1[..], origin, "/api/chat/environments/v1"), enroll_body, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), "", st_en[..], rbuf[..]);
+
+    // 3. Web verifies it sees both the Project and online enrolled Desktop computer.
+    wchk: [32768] u8;
+    wn2 := web_eval(ctx[0].web[..], "/projects", "1280x820", "sync-06-web", 2000,
+      "(async () => { const p = await (await fetch('/api/projects/v1',{credentials:'include'})).text(); const e = await (await fetch('/api/chat/environments/v1?detail=1',{credentials:'include'})).text(); return p + '\\n---\\n' + e; })()",
+      wchk[..], wobs[..]);
+    shot_out[0].wn = da_copy_into(shot_out[0].web[..], wobs[0].screenshot_ref);
+    web_sees := wn2 > 0 && sy_has(cast(string) wchk[0..<wn2], "OpenAgents Sync Repo") && sy_has(cast(string) wchk[0..<wn2], "SimSync Studio Mac") && sy_has(cast(string) wchk[0..<wn2], "\"online\":true");
+
+    // 4. iOS verifies it sees both the Project and online enrolled Desktop computer.
+    st_ip: [1] int; st_ie: [1] int;
+    ip_buf: [SYNC_HTTP_BUF] u8; ie_buf: [SYNC_HTTP_BUF] u8;
+    ip_n := sy_http("GET", da_cat(u1[..], origin, "/api/projects/v1"), "", da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), "", st_ip[..], ip_buf[..]);
+    ie_n := sy_http("GET", da_cat(u1[..], origin, "/api/chat/environments/v1?detail=1"), "", da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), "", st_ie[..], ie_buf[..]);
+    ios_sees := st_ip[0] == 200 && ip_n > 0 && sy_has(cast(string) ip_buf[0..<ip_n], "OpenAgents Sync Repo") &&
+                st_ie[0] == 200 && ie_n > 0 && sy_has(cast(string) ie_buf[0..<ie_n], "SimSync Studio Mac") && sy_has(cast(string) ie_buf[0..<ie_n], "\"online\":true");
+
+    // 5. Verify POST /api/chat/placement/v1 resolves code-execution prompt for the Project to the enrolled computer (tier=2).
+    pbody: [512] u8; pj: [1] Jo; jo_start(pj[..], pbody[..]);
+    jo_obj(pj[..]);
+    jo_key(pj[..], "prompt"); jo_str(pj[..], "run tests and edit files in this git repo");
+    jo_key(pj[..], "project_id"); jo_str(pj[..], da_slice(ctx[0].proj_id[..], ctx[0].proj_id_n));
+    jo_key(pj[..], "size"); jo_str(pj[..], "small");
+    jo_end(pj[..]);
+    st_pl: [1] int;
+    pl_n := sy_http("POST", da_cat(u1[..], origin, "/api/chat/placement/v1"), cast(string) pbody[0..<pj[0].n], da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), "", st_pl[..], rbuf[..]);
+    pl_ok := false;
+    if st_pl[0] == 200 && pl_n > 0 {
+      pl_s := cast(string) rbuf[0..<pl_n];
+      pl_ok = sy_has(pl_s, "\"tier\":2") && sy_has(pl_s, host_pk) && sy_has(pl_s, "SimSync Studio Mac");
+    }
+
+    sy_capture_desk_ios(ctx, "sync-06", shot_out);
+    bar_ok := sy_barrier(ctx, "barrier-06-projects-and-environments", 3, ifx (prj_st == 201 && st_en[0] == 200 && web_sees && ios_sees && pl_ok) then 3 else 1, proc_now_ms() + 5000);
+    _ = grant_id; _ = en_n;
+    if prj_st != 201 || ctx[0].proj_id_n == 0 {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "project-create", "Web failed to create repo-bound Cloud Project via POST /api/projects/v1", "", res_out, shot_out); return;
+    } else if st_en[0] != 200 {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "env-enroll", "Desktop failed Cloud computer enrollment via POST /api/chat/environments/v1", "", res_out, shot_out); return;
+    } else if !web_sees || !ios_sees {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "env-visibility", "Web or iOS did not see both the Cloud Project and online enrolled Desktop computer", "", res_out, shot_out); return;
+    } else if !pl_ok || !bar_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "placement-tier2", "POST /api/chat/placement/v1 did not resolve tier=2 enrolled computer for repo-matched project", "", res_out, shot_out); return;
+    } else {
+      sy_finish_result(ctx, t0, sc_id, "pass", steps, "", "Web created repo-bound Project, Desktop enrolled zero-Tailscale workstation, Web & iOS see both, placement resolved tier=2 computer", wobs[0].screenshot_ref, res_out, shot_out); return;
+    }
+  } else if sc_id == "sync.offline.replay-and-reconnect" {
+    steps = 5;
+    cid := da_slice(ctx[0].conv_id[..], ctx[0].conv_id_n);
+    title := "Synced Cross-Surface Thread";
+
+    // 1. Disconnect Desktop SSE listener at cursor_before to simulate offline gap.
+    cursor_before := ctx[0].last_sse_id;
+    sy_sse_close(ctx[0].desk_sse[..]);
+
+    // 2. Push offline turn (Turn 4) once via cc_sync_write, then replay exact same operation_id (200 replayed:true, 0 duplicates).
+    t4_id := "trn_510c0000000000000000000000000004";
+    o_ev := [1] CcEvent.[CcEvent.{
+      conversation = cid, turn = t4_id, sequence = 1, kind = CC_EV_COMPLETED, state = CT_COMPLETED,
+      text = "Delivered via idempotent offline outbox.", compute = "local", model = "inkling-2-mini",
+      cost_msat = 0, source_device = "mac-desktop", workspace = "/tmp/sync-repo", stop_reason = "end_turn", created_at_ms = 1795700003001
+    }];
+    o_ev_buf: [4096] u8;
+    o_ev_n := cc_event_write(o_ev[..], o_ev_buf[..]);
+    o_evs := [1] string.[cast(string) o_ev_buf[0..<o_ev_n]];
+    o_req := [1] CcSyncReq.[CcSyncReq.{
+      operation = "op_sync_offline_4", conversation = cid, turn = t4_id,
+      compute = "local", model = "inkling-2-mini", cost_msat = 0,
+      source_device = "mac-desktop", workspace = "/tmp/sync-repo",
+      user_text = "Offline queued turn", state = CT_COMPLETED,
+      output = "Delivered via idempotent offline outbox.", stop_reason = "end_turn"
+    }];
+    o_body_buf: [8192] u8;
+    o_body_n := cc_sync_write(o_req[..], o_evs[..], o_body_buf[..]);
+    offline_body := cast(string) o_body_buf[0..<o_body_n];
+
+    c_evs: [1] string;
+    c_req := [1] CcSyncReq.[CcSyncReq.{
+      operation = "op_sync_offline_4", conversation = cid, turn = t4_id,
+      compute = "local", model = "inkling-2-mini", cost_msat = 0,
+      source_device = "mac-desktop", workspace = "/tmp/sync-repo",
+      user_text = "MUTATED PAYLOAD", state = CT_COMPLETED,
+      output = "Mutated", stop_reason = "end_turn"
+    }];
+    c_body_buf: [4096] u8;
+    c_body_n := cc_sync_write(c_req[..], c_evs[0..<0], c_body_buf[..]);
+    conflict_body := cast(string) c_body_buf[0..<c_body_n];
+
+    u1: [1] DaBuf;
+    st1: [1] int; st_rep: [1] int; st_conf: [1] int;
+    rb1: [SYNC_HTTP_BUF] u8; rb_rep: [SYNC_HTTP_BUF] u8; rb_conf: [SYNC_HTTP_BUF] u8;
+    _ = sy_http("POST", da_cat(u1[..], origin, "/api/chat/v2/sync"), offline_body, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), "", st1[..], rb1[..]);
+    rep_n := sy_http("POST", da_cat(u1[..], origin, "/api/chat/v2/sync"), offline_body, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), "", st_rep[..], rb_rep[..]);
+    replayed_flag := rep_n > 0 && sy_has(cast(string) rb_rep[0..<rep_n], "\"replayed\":true");
+    _ = sy_http("POST", da_cat(u1[..], origin, "/api/chat/v2/sync"), conflict_body, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), "", st_conf[..], rb_conf[..]);
+
+    // 3. Reconnect Desktop SSE listener with Last-Event-ID: <cursor_before> (precedence over ?after=0) and verify gapless catch-up!
+    cbuf: [32] u8;
+    cursor_s := da_int_str(cursor_before, cbuf[..]);
+    reopened := sy_sse_open(ctx[0].desk_sse[..], ctx[0].port, "/api/chat/v2/stream?after=0", da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), cursor_s, 5000);
+    fbuf: [8192] u8;
+    _ = ifx reopened then sy_sse_next_frame(ctx[0].desk_sse[..], fbuf[..], 3000) else -1; // retry: 3000
+    catch_n := ifx reopened then sy_sse_next_frame(ctx[0].desk_sse[..], fbuf[..], 3000) else -1;
+    catch_s := ifx catch_n > 0 then cast(string) fbuf[0..<catch_n] else "";
+    catch_id := sy_sse_id(catch_s);
+    missed_sse := ifx (reopened && catch_n > 0 && catch_id > cursor_before && sy_has(catch_s, "turn_completed")) then 0 else 1;
+    if catch_id > ctx[0].last_sse_id { ctx[0].last_sse_id = catch_id; }
+
+    // 4. Verify 0 duplicate rows (exact 4 turns) and all 3 seats converged at $0 local provenance.
+    wv: [1] SyncSeatBuf; dv: [1] SyncSeatBuf; iv: [1] SyncSeatBuf;
+    raw_w: [SYNC_HTTP_BUF] u8; raw_d: [SYNC_HTTP_BUF] u8; raw_i: [SYNC_HTTP_BUF] u8;
+    dn: [1] int; in_n: [1] int;
+    wobs: [1] TsObservation;
+    wn := web_eval(ctx[0].web[..], "/chat/cnv_510c0000000000000000000000000001", "1280x820", "sync-07-web", 1500,
+      "(async () => { const d = await fetch('/api/chat/v2/conversations/cnv_510c0000000000000000000000000001',{credentials:'include'}); return await d.text(); })()",
+      raw_w[..], wobs[..]);
+    shot_out[0].wn = da_copy_into(shot_out[0].web[..], wobs[0].screenshot_ref);
+    w_ok := wn > 0 && sy_parse_conv_detail(cast(string) raw_w[0..<wn], wv[..]);
+    d_ok := sy_fetch_seat_view(origin, cid, da_slice(ctx[0].desk_token[..], ctx[0].desk_token_n), dv[..], raw_d[..], dn[..]);
+    i_ok := sy_fetch_seat_view(origin, cid, da_slice(ctx[0].ios_token[..], ctx[0].ios_token_n), iv[..], raw_i[..], in_n[..]);
+    dup_rows := ifx d_ok then (dv[0].view.turns - 4) else 1;
+    if dup_rows < 0 { dup_rows = -dup_rows; }
+
+    rep_policy_ok := ts_replay_ok(st_rep[0], replayed_flag, dup_rows, st_conf[0], missed_sse);
+    conv_err := ifx w_ok && d_ok && i_ok then ts_sync_converged(cid, title, 4, ctx[0].last_rev + 1, false, true, true, wv[0].view, dv[0].view, iv[0].view) else "seat_read_failed";
+    bar_ok := sy_barrier(ctx, "barrier-07-offline-replay-reconnect", 3, ifx (st1[0] == 200 && rep_policy_ok && conv_err.count == 0) then 3 else 1, proc_now_ms() + 5000);
+    if st1[0] != 200 || !rep_policy_ok || conv_err.count > 0 || !bar_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, ifx !rep_policy_ok then "replay-policy" else conv_err, "offline idempotent replay, 409 conflict, or Last-Event-ID gapless SSE catch-up failed", "", res_out, shot_out); return;
+    } else {
+      ctx[0].last_rev = wv[0].view.revision;
+      sy_finish_result(ctx, t0, sc_id, "pass", steps, "", "idempotent retry (200 replayed:true, 0 dups), mutated payload (409), and gapless Last-Event-ID catch-up converged all 3 seats", wobs[0].screenshot_ref, res_out, shot_out); return;
+    }
+  } else if sc_id == "sync.isolation.cross-account-boundary" {
+    steps = 6;
+    cid := da_slice(ctx[0].conv_id[..], ctx[0].conv_id_n);
+    prj := da_slice(ctx[0].proj_id[..], ctx[0].proj_id_n);
+
+    // 1. Authenticate second account Bob via real /api/auth/email/start + verify.
+    bt_n: [1] int; br_n: [1] int; ba_n: [1] int;
+    bob_ref: [256] u8;
+    if !sy_email_login_app(ctx, "bob-sync@openagents.test", ctx[0].bob_token[..], bob_ref[..], ctx[0].bob_acct[..], bt_n[..], br_n[..], ba_n[..]) {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "bob-auth", "failed to authenticate second simulated account (bob-sync@openagents.test)", "", res_out, shot_out); return;
+    }
+    ctx[0].bob_token_n = bt_n[0];
+    ctx[0].bob_acct_n = ba_n[0];
+    alice := da_slice(ctx[0].alice_acct[..], ctx[0].alice_acct_n);
+    bob := da_slice(ctx[0].bob_acct[..], ctx[0].bob_acct_n);
+    btok := da_slice(ctx[0].bob_token[..], ctx[0].bob_token_n);
+
+    // 2. Bob attempts to read/stream/mutate Alice's conversation, list chats, read/list projects, and remove Alice's enrolled computer.
+    u1: [1] DaBuf; u2: [1] DaBuf;
+    rbuf: [SYNC_HTTP_BUF] u8;
+    st_conv: [1] int; st_stream: [1] int; st_meta: [1] int;
+    st_list: [1] int; st_prj_get: [1] int; st_prj_list: [1] int; st_env_rm: [1] int; st_env_list: [1] int;
+
+    _ = sy_http("GET", da_cat3(u1[..], origin, "/api/chat/v2/conversations/", cid), "", btok, "", st_conv[..], rbuf[..]);
+    _ = sy_http("GET", da_cat3(u1[..], origin, "/api/chat/v2/conversations/", da_cat(u2[..], cid, "/stream")), "", btok, "", st_stream[..], rbuf[..]);
+    bob_meta_req := [1] CcMetaReq.[CcMetaReq.{operation = "op_bob_hack", has_title = true, title = "Hacked"}];
+    bob_meta_buf: [512] u8;
+    bob_meta_n := cc_meta_write(bob_meta_req[..], bob_meta_buf[..]);
+    _ = sy_http("POST", da_cat3(u1[..], origin, "/api/chat/v2/conversations/", da_cat(u2[..], cid, "/meta")),
+                cast(string) bob_meta_buf[0..<bob_meta_n],
+                btok, "", st_meta[..], rbuf[..]);
+
+    ln := sy_http("GET", da_cat(u1[..], origin, "/api/chat/v2/conversations"), "", btok, "", st_list[..], rbuf[..]);
+    foreign_list_count := -1;
+    if st_list[0] == 200 && ln > 0 {
+      nodes: [256] JvNode; doc: [1] Jv;
+      if jv_parse(doc[..], cast(string) rbuf[0..<ln], nodes[..]) {
+        foreign_list_count = jv_len(doc[0], jv_get(doc[0], 0, "conversations"));
+      }
+    }
+
+    _ = sy_http("GET", da_cat3(u1[..], origin, "/api/projects/v1/", prj), "", btok, "", st_prj_get[..], rbuf[..]);
+    pln := sy_http("GET", da_cat(u1[..], origin, "/api/projects/v1"), "", btok, "", st_prj_list[..], rbuf[..]);
+    foreign_proj_count := -1;
+    if st_prj_list[0] == 200 && pln > 0 {
+      nodes: [256] JvNode; doc: [1] Jv;
+      if jv_parse(doc[..], cast(string) rbuf[0..<pln], nodes[..]) {
+        foreign_proj_count = jv_len(doc[0], jv_get(doc[0], 0, "data"));
+      }
+    }
+
+    rm_body := "{\"schema\":\"openagents.environment.enroll.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
+    _ = sy_http("POST", da_cat(u1[..], origin, "/api/chat/environments/v1/remove"), rm_body, btok, "", st_env_rm[..], rbuf[..]);
+    eln := sy_http("GET", da_cat(u1[..], origin, "/api/chat/environments/v1?detail=1"), "", btok, "", st_env_list[..], rbuf[..]);
+    env_zero := false;
+    if st_env_list[0] == 200 && eln > 0 {
+      nodes: [256] JvNode; doc: [1] Jv;
+      if jv_parse(doc[..], cast(string) rbuf[0..<eln], nodes[..]) {
+        env_zero = jv_len(doc[0], jv_get(doc[0], 0, "environments")) == 0;
+      }
+    }
+
+    iso_ok := bob != alice &&
+              ts_isolation_ok(st_conv[0], foreign_list_count, st_env_rm[0], foreign_proj_count) &&
+              (st_stream[0] == 403 || st_stream[0] == 404) &&
+              (st_meta[0] == 403 || st_meta[0] == 404) &&
+              (st_prj_get[0] == 403 || st_prj_get[0] == 404) &&
+              env_zero;
+    bar_ok := sy_barrier(ctx, "barrier-08-cross-account-isolation", 2, ifx iso_ok then 2 else 0, proc_now_ms() + 5000);
+    if !iso_ok || !bar_ok {
+      sy_finish_result(ctx, t0, sc_id, "product-fail", steps, "cross-account-leak", "cross-account isolation check failed for Bob against Alice's chats, streams, projects, or computers", "", res_out, shot_out); return;
+    } else {
+      sy_finish_result(ctx, t0, sc_id, "pass", steps, "", "Bob received 404 on Alice's conv/stream/meta/project/computer and 0 rows on list endpoints (strict cross-account isolation)", "", res_out, shot_out); return;
+    }
+  } else {
+    sy_finish_result(ctx, t0, sc_id, "unqualified", 0, "unknown-scenario", "unknown sync scenario id", "", res_out, shot_out); return;
+  }
+  _ = verdict; _ = first_fail; _ = summary; _ = shot_ref;
+}
+
+sy_write_reports :: (ctx: [] SyncCtx, results: [] TsResult, shots: [] SyncShots, count: int) {
+  out_dir := da_slice(ctx[0].out_dir[..], ctx[0].out_n);
+  b: [1] DaBuf;
+  jb: [AR_WIRE_BUF] u8;
+  dn := ar_write_def(sync_agent_definition(), jb[..]);
+  if dn > 0 { _ = fs_write(da_cat(b[..], out_dir, "/agent-definition.json"), cast(string) jb[0..<dn]); }
+  inv := ArInvRecord.{
+    invocation_id = "inv-sync-3surface",
+    root_session_id = "sess-cross-surface-sync",
+    parent_invocation_id = "",
+    agent_id = "cross-surface-sync-tester",
+    depth = 0,
+    target_kind = "sync-3-surface",
+    seat = "coordinator",
+    device_lease = da_slice(ctx[0].device[..], ctx[0].device_n),
+    account_lease = da_slice(ctx[0].alice_acct[..], ctx[0].alice_acct_n),
+    workspace_dir = out_dir,
+    budget = sync_agent_definition().budget,
+    seed = 1,
+    state = "completed",
+    evidence_dir = out_dir
+  };
+  in_n := ar_write_inv(inv, jb[..]);
+  if in_n > 0 { _ = fs_write(da_cat(b[..], out_dir, "/agent-invocation.json"), cast(string) jb[0..<in_n]); }
+
+  passed := 0; failed := 0; infra := 0;
+  for i: 0..<count {
+    if results[i].verdict == "pass" { passed += 1; }
+    else if results[i].verdict == "product-fail" { failed += 1; }
+    else { infra += 1; }
+  }
+
+  rj: [65536] u8;
+  j: [1] Jo;
+  jo_start(j[..], rj[..]);
+  jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], TESTER_REPORT_SCHEMA);
+  jo_key(j[..], "target"); jo_str(j[..], "sync-3-surface");
+  jo_key(j[..], "mode"); jo_str(j[..], da_slice(ctx[0].mode[..], ctx[0].mode_n));
+  jo_key(j[..], "origin"); jo_str(j[..], da_slice(ctx[0].origin[..], ctx[0].origin_n));
+  jo_key(j[..], "account_id"); jo_str(j[..], da_slice(ctx[0].alice_acct[..], ctx[0].alice_acct_n));
+  jo_key(j[..], "total"); jo_int(j[..], count);
+  jo_key(j[..], "passed"); jo_int(j[..], passed);
+  jo_key(j[..], "product_failed"); jo_int(j[..], failed);
+  jo_key(j[..], "other_failed"); jo_int(j[..], infra);
+  jo_key(j[..], "fanout_ms"); jo_obj(j[..]);
+  jo_key(j[..], "web_to_desk_ios"); jo_int(j[..], ctx[0].fanout_web_ms);
+  jo_key(j[..], "desk_to_web_ios"); jo_int(j[..], ctx[0].fanout_desk_ms);
+  jo_key(j[..], "ios_to_web_desk"); jo_int(j[..], ctx[0].fanout_ios_ms);
+  jo_key(j[..], "meta_converge"); jo_int(j[..], ctx[0].fanout_meta_ms);
+  jo_end(j[..]);
+  jo_key(j[..], "results"); jo_arr(j[..]);
+  rb: [TS_BUF] u8;
+  for i: 0..<count {
+    rn := ts_write_result(results[i], rb[..]);
+    if rn > 0 { jo_raw(j[..], cast(string) rb[0..<rn]); }
+  }
+  jo_end(j[..]);
+  jo_end(j[..]);
+  jo_put(j[..], "\n");
+  _ = fs_write(da_cat(b[..], out_dir, "/report.json"), cast(string) rj[0..<j[0].n]);
+
+  // Write dark-mode side-by-side Web / Desktop / iOS report.html
+  rh: [65536] u8;
+  hj: [1] Jo;
+  jo_start(hj[..], rh[..]);
+  ib: [32] u8;
+  jo_put(hj[..], "<!doctype html><html><head><meta charset='utf-8'><title>OpenAgents 3-Surface Simulated-User Sync Report</title>");
+  jo_put(hj[..], "<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:1200px;margin:24px auto;padding:0 16px;background:#0b0c0f;color:#e6e8ec}h1{font-size:22px;margin-bottom:6px}.meta{color:#9ca3af;font-size:13px;margin-bottom:18px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #232730;padding:10px;text-align:left;vertical-align:top}th{background:#14171f;color:#cbd5e1}.pass{color:#4ade80;font-weight:600}.fail{color:#f87171;font-weight:600}.shots{display:flex;gap:8px;flex-wrap:wrap}.shots a{color:#7cb7ff;text-decoration:none;font-size:12px;display:inline-flex;flex-direction:column;gap:4px}.shots img{height:96px;border:1px solid #2b303c;border-radius:4px;background:#000}code{color:#c4b5fd}</style></head><body>");
+  jo_put(hj[..], "<h1>OpenAgents Cross-Surface Simulated-User Sync Report</h1><p class='meta'>Surfaces: Web (headless WebGPU Chrome) &middot; macOS Desktop (OpenAgents.app) &middot; iOS Simulator (Cloud Mode) &middot; Mode: ");
+  jo_put(hj[..], da_slice(ctx[0].mode[..], ctx[0].mode_n));
+  jo_put(hj[..], " &middot; Account: <code>");
+  jo_put(hj[..], da_slice(ctx[0].alice_acct[..], ctx[0].alice_acct_n));
+  jo_put(hj[..], "</code> &middot; Passed: <strong>");
+  jo_put(hj[..], da_int_str(passed, ib[..]));
+  jo_put(hj[..], " / ");
+  jo_put(hj[..], da_int_str(count, ib[..]));
+  jo_put(hj[..], "</strong> &middot; SSE Fanout (Desktop&rarr;iOS/Web: ");
+  jo_put(hj[..], da_int_str(ctx[0].fanout_desk_ms, ib[..]));
+  jo_put(hj[..], " ms, iOS&rarr;Desktop/Web: ");
+  jo_put(hj[..], da_int_str(ctx[0].fanout_ios_ms, ib[..]));
+  jo_put(hj[..], " ms, Meta: ");
+  jo_put(hj[..], da_int_str(ctx[0].fanout_meta_ms, ib[..]));
+  jo_put(hj[..], " ms)</p><table><thead><tr><th>Scenario</th><th>Verdict</th><th>Duration</th><th>SSE</th><th>Summary</th><th>Side-by-Side (Web / Desktop / iOS)</th></tr></thead><tbody>");
+  for i: 0..<count {
+    cls := ifx results[i].verdict == "pass" then "pass" else "fail";
+    jo_put(hj[..], "<tr><td><code>"); jo_put(hj[..], results[i].scenario_id);
+    jo_put(hj[..], "</code></td><td class='"); jo_put(hj[..], cls); jo_put(hj[..], "'>");
+    jo_put(hj[..], results[i].verdict); jo_put(hj[..], "</td><td>");
+    jo_put(hj[..], da_int_str(results[i].duration_ms, ib[..])); jo_put(hj[..], " ms</td><td>");
+    if shots[i].latency_ms >= 0 {
+      jo_put(hj[..], da_int_str(shots[i].latency_ms, ib[..])); jo_put(hj[..], " ms");
+    } else {
+      jo_put(hj[..], "-");
+    }
+    jo_put(hj[..], "</td><td>"); jo_put(hj[..], results[i].summary); jo_put(hj[..], "</td><td><div class='shots'>");
+    if shots[i].wn > 0 {
+      ws := cast(string) shots[i].web[0..<shots[i].wn];
+      jo_put(hj[..], "<a href='"); jo_put(hj[..], ws); jo_put(hj[..], "'><img src='"); jo_put(hj[..], ws); jo_put(hj[..], "' alt='Web'><span>Web</span></a>");
+    }
+    if shots[i].dn > 0 {
+      ds := cast(string) shots[i].desk[0..<shots[i].dn];
+      jo_put(hj[..], "<a href='"); jo_put(hj[..], ds); jo_put(hj[..], "'><img src='"); jo_put(hj[..], ds); jo_put(hj[..], "' alt='Desktop'><span>Desktop</span></a>");
+    }
+    if shots[i].in_ > 0 {
+      is_ := cast(string) shots[i].ios[0..<shots[i].in_];
+      jo_put(hj[..], "<a href='"); jo_put(hj[..], is_); jo_put(hj[..], "'><img src='"); jo_put(hj[..], is_); jo_put(hj[..], "' alt='iOS'><span>iOS</span></a>");
+    }
+    if shots[i].wn == 0 && shots[i].dn == 0 && shots[i].in_ == 0 { jo_put(hj[..], "-"); }
+    jo_put(hj[..], "</div></td></tr>");
+  }
+  jo_put(hj[..], "</tbody></table></body></html>\n");
+  _ = fs_write(da_cat(b[..], out_dir, "/report.html"), cast(string) rh[0..<hj[0].n]);
+}
+
+sync_run_suite :: (
+  repo: string,
+  mode: string,
+  origin: string,
+  desktop_app: string,
+  ios_app: string,
+  device: string,
+  bundle_id: string,
+  only: string,
+  out_dir: string
+) -> int {
+  ctx: [1] SyncCtx;
+  ctx[0].repo_n = da_copy_into(ctx[0].repo[..], repo);
+  ctx[0].out_n = da_copy_into(ctx[0].out_dir[..], out_dir);
+  ctx[0].mode_n = da_copy_into(ctx[0].mode[..], mode);
+  ctx[0].origin_n = da_copy_into(ctx[0].origin[..], origin);
+  ctx[0].desktop_app_n = da_copy_into(ctx[0].desktop_app[..], desktop_app);
+  ctx[0].ios_app_n = da_copy_into(ctx[0].ios_app[..], ios_app);
+  ctx[0].device_n = da_copy_into(ctx[0].device[..], device);
+  ctx[0].bundle_n = da_copy_into(ctx[0].bundle_id[..], bundle_id);
+  ctx[0].desk_sse[0].h = -1;
+  ctx[0].ios_sse[0].h = -1;
+  ctx[0].started_ms = proc_now_ms();
+  ctx[0].fanout_web_ms = -1;
+  ctx[0].fanout_desk_ms = -1;
+  ctx[0].fanout_ios_ms = -1;
+  ctx[0].fanout_meta_ms = -1;
+
+  b1: [1] DaBuf;
+  _ = fs_mkdir_all(out_dir);
+  _ = fs_mkdir_all(da_cat(b1[..], out_dir, "/screenshots"));
+  ctx[0].barriers_n = da_copy_into(ctx[0].barriers_file[..], da_cat(b1[..], out_dir, "/barriers.jsonl"));
+  ctx[0].obs_n = da_copy_into(ctx[0].obs_file[..], da_cat(b1[..], out_dir, "/observations.jsonl"));
+  ctx[0].act_n = da_copy_into(ctx[0].act_file[..], da_cat(b1[..], out_dir, "/actions.jsonl"));
+  ctx[0].res_n = da_copy_into(ctx[0].res_file[..], da_cat(b1[..], out_dir, "/results.jsonl"));
+  _ = fs_write(da_slice(ctx[0].barriers_file[..], ctx[0].barriers_n), "");
+  _ = fs_write(da_slice(ctx[0].obs_file[..], ctx[0].obs_n), "");
+  _ = fs_write(da_slice(ctx[0].act_file[..], ctx[0].act_n), "");
+  _ = fs_write(da_slice(ctx[0].res_file[..], ctx[0].res_n), "");
+
+  if !fs_exists(desktop_app) {
+    tool_err("sync-tester: OpenAgents Desktop app not found at ");
+    tool_errln(desktop_app);
+    return 1;
+  }
+  if !fs_exists(ios_app) {
+    tool_err("sync-tester: OpenAgents iOS simulator app not found at ");
+    tool_errln(ios_app);
+    return 1;
+  }
+
+  sc := sync_scenarios();
+  results: [SYNC_SCENARIO_COUNT] TsResult;
+  shots: [SYNC_SCENARIO_COUNT] SyncShots;
+  rc := 0; passed := 0; failed := 0;
+  boot_ok := true;
+
+  for k: 0..<SYNC_SCENARIO_COUNT {
+    if only.count > 0 && k > 0 && sc[k].id != only { continue; }
+    if k > 0 && !boot_ok {
+      shots[rc] = SyncShots.{latency_ms = -1};
+      results[rc] = TsResult.{
+        scenario_id = sc[k].id, client_id = "sync-coordinator", target = "sync-3-surface",
+        mode = mode, verdict = "blocked", duration_ms = 0, steps_run = 0,
+        first_failure = "boot-failed", summary = "blocked because sync.identity.three-client-login did not pass",
+        cleanup = "ok"
+      };
+      sy_record_result(ctx[..], results[rc]);
+    } else {
+      sy_run_scenario(ctx[..], sc[k].id, results[rc..<rc + 1], shots[rc..<rc + 1]);
+      if k == 0 && results[rc].verdict != "pass" { boot_ok = false; }
+    }
+    if results[rc].verdict == "pass" { passed += 1; } else { failed += 1; }
+    print("%  %  (% ms)  %\n", results[rc].verdict, results[rc].scenario_id, results[rc].duration_ms, results[rc].summary);
+    rc += 1;
+  }
+
+  sy_cleanup(ctx[..]);
+  sy_write_reports(ctx[..], results[..], shots[..], rc);
+  print("\nSummary: % passed, % failed. Report: %/report.html\n", passed, failed, out_dir);
+  return ifx failed == 0 then 0 else 1;
+}

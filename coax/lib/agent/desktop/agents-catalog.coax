@@ -14,8 +14,8 @@
 #load "../tester/schema.coax";
 #load "../../sys/tool.coax";
 
-ac_builtin_defs :: () -> [3] ArDefRecord {
-  return [3] ArDefRecord.[
+ac_builtin_defs :: () -> [4] ArDefRecord {
+  return [4] ArDefRecord.[
     ArDefRecord.{
       agent_id = "coder",
       name = "Coder",
@@ -60,6 +60,21 @@ ac_builtin_defs :: () -> [3] ArDefRecord {
       max_concurrency = 1,
       budget = ArBudget.{wall_ms = 600000, turns = 24, tokens = 200000, cost_usd_e6 = 3000000},
       model_hint = "default"
+    },
+    ArDefRecord.{
+      agent_id = "cross-surface-sync-tester",
+      name = "Cross-Surface Sync Tester",
+      description = "Deterministic multi-seat coordinator verifying real-time Postgres LISTEN/NOTIFY SSE synchronization across Web, macOS Desktop, and iOS Simulator with AgentBarrier checkpoints.",
+      version = 1,
+      kind = "coordinator",
+      execution_mode = "deterministic",
+      runtime = "coax-tool:apps/shared/tester/cli.coax",
+      input_contract = "tester.run_request.v1",
+      output_contract = TESTER_RESULT_SCHEMA,
+      max_depth = 3,
+      max_concurrency = 4,
+      budget = ArBudget.{wall_ms = 300000, turns = 0, tokens = 0, cost_usd_e6 = 0},
+      model_hint = ""
     }
   ];
 }
@@ -73,11 +88,11 @@ tool_main :: () -> int #export_c #effects(all) {
     defs := ac_builtin_defs();
     buf: [AR_WIRE_BUF] u8;
     print("[\n");
-    for i: 0..<3 {
+    for i: 0..<4 {
       n := ar_write_def(defs[i], buf[..]);
       if n <= 0 { tool_errln("agents-catalog: failed to encode AgentDefinition"); return 1; }
       print("  %", cast(string) buf[0..<n]);
-      if i < 2 { print(",\n"); } else { print("\n"); }
+      if i < 3 { print(",\n"); } else { print("\n"); }
     }
     print("]\n");
     return 0;
@@ -108,12 +123,15 @@ tool_main :: () -> int #export_c #effects(all) {
   if cmd == "selftest" {
     defs := ac_builtin_defs();
     buf: [AR_WIRE_BUF] u8;
-    for i: 0..<3 {
+    for i: 0..<4 {
       n := ar_write_def(defs[i], buf[..]);
       if n <= 0 { tool_errln("selftest: ar_write_def failed"); return 1; }
     }
     if defs[2].runtime != "coax-metaverse:gamebuilder-core" || defs[2].input_contract != "desktop.metaverse.edit.v1" || defs[2].output_contract != "desktop.metaverse.session.v1" {
       tool_errln("selftest: game-builder definition contract mismatch"); return 1;
+    }
+    if defs[3].agent_id != "cross-surface-sync-tester" || ar_kind_of(defs[3].kind) != AR_KIND_COORDINATOR || ar_mode_of(defs[3].execution_mode) != AR_MODE_DETERMINISTIC {
+      tool_errln("selftest: cross-surface-sync-tester definition contract mismatch"); return 1;
     }
     // Verify #authority lease conflict detection on overlapping device_lease (including GameBuilder targets)
     l1 := ArBinding.{device_lease = "sim-udid-1", workspace_dir = "/tmp/ws1"};
@@ -126,7 +144,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if ar_bindings_conflict(l1, l3) { tool_errln("selftest: disjoint leases should not conflict"); return 1; }
     if !ar_bindings_conflict(g1, g2) { tool_errln("selftest: overlapping gamebuilder lease should conflict"); return 1; }
     if ar_bindings_conflict(g1, g3) { tool_errln("selftest: disjoint gamebuilder leases should not conflict"); return 1; }
-    print("agents-catalog selftest: PASS (definitions=3 lease_policy=ok)\n");
+    print("agents-catalog selftest: PASS (definitions=4 lease_policy=ok)\n");
     return 0;
   }
 

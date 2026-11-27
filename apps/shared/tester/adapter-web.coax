@@ -10,12 +10,15 @@ WebSession :: struct {
   repo_dir: [DA_PATH] u8; repo_n: int;
   out_dir: [DA_PATH] u8; out_n: int;
   base_url: [128] u8; base_n: int;
+  serve_log: [DA_PATH] u8; serve_log_n: int;
+  serve_pid_file: [DA_PATH] u8; serve_pid_n: int;
   obs_file: [DA_PATH] u8; obs_n: int;
   act_file: [DA_PATH] u8; act_n: int;
   res_file: [DA_PATH] u8; res_n: int;
   last_shot: [256] u8; last_shot_n: int;
   serve_h: int;
   port: int;
+  live_mode: bool;
   seq: int;
   act_seq: int;
   started_ms: int;
@@ -24,6 +27,9 @@ WebSession :: struct {
 web_start :: (s: [] WebSession, repo: string, out_dir: string) -> bool {
   s[0].repo_n = da_copy_into(s[0].repo_dir[..], repo);
   s[0].out_n = da_copy_into(s[0].out_dir[..], out_dir);
+  s[0].serve_log_n = 0;
+  s[0].serve_pid_n = 0;
+  s[0].live_mode = false;
   s[0].serve_h = -1;
   s[0].seq = 0;
   s[0].act_seq = 0;
@@ -72,19 +78,176 @@ web_start :: (s: [] WebSession, repo: string, out_dir: string) -> bool {
     proc_sleep(200);
   }
   if !ready {
-    tool_errln("web-adapter: coax/web/serve.sh did not become ready within 15s");
+    tool_errln("web-adapter: coax/web/serve.sh did not become ready within 25s");
     return false;
   }
   return true;
 }
 
+// Start apps/openagents-web with a real ephemeral Postgres 16 + oa-api backend via serve.sh --fresh,
+// or attach to an explicit live origin when live_origin is non-empty (--mode live).
+web_start_live_api :: (s: [] WebSession, repo: string, out_dir: string, live_origin: string) -> bool {
+  s[0].repo_n = da_copy_into(s[0].repo_dir[..], repo);
+  s[0].out_n = da_copy_into(s[0].out_dir[..], out_dir);
+  s[0].serve_log_n = 0;
+  s[0].serve_pid_n = 0;
+  s[0].serve_h = -1;
+  s[0].seq = 0;
+  s[0].act_seq = 0;
+  s[0].started_ms = proc_now_ms();
+  s[0].port = 0;
+  s[0].live_mode = live_origin.count > 0;
+
+  b1: [1] DaBuf;
+  _ = fs_mkdir_all(out_dir);
+  _ = fs_mkdir_all(da_cat(b1[..], out_dir, "/screenshots"));
+  s[0].obs_n = da_copy_into(s[0].obs_file[..], da_cat(b1[..], out_dir, "/observations.jsonl"));
+  s[0].act_n = da_copy_into(s[0].act_file[..], da_cat(b1[..], out_dir, "/actions.jsonl"));
+  s[0].res_n = da_copy_into(s[0].res_file[..], da_cat(b1[..], out_dir, "/results.jsonl"));
+
+  if live_origin.count > 0 {
+    end := live_origin.count;
+    while end > 1 && live_origin[end - 1] == '/' { end -= 1; }
+    s[0].base_n = da_copy_into(s[0].base_url[..], live_origin[0..<end]);
+    cmd: [512] u8;
+    cj: [1] Jo;
+    jo_start(cj[..], cmd[..]);
+    jo_put(cj[..], "curl -sf --max-time 8 '");
+    jo_put(cj[..], da_slice(s[0].base_url[..], s[0].base_n));
+    jo_put(cj[..], "/api/playtest/health' >/dev/null 2>&1 || curl -sf --max-time 8 '");
+    jo_put(cj[..], da_slice(s[0].base_url[..], s[0].base_n));
+    jo_put(cj[..], "/' >/dev/null 2>&1");
+    if !da_run_sh(cast(string) cmd[0..<cj[0].n], 12000) {
+      tool_errln("web-adapter: live origin did not respond to health probe");
+      return false;
+    }
+    return true;
+  }
+
+  s[0].port = 9200 + (proc_now_ms() % 650);
+  pb: [32] u8;
+  pstr := da_int_str(s[0].port, pb[..]);
+  s[0].base_n = da_copy_into(s[0].base_url[..], da_cat(b1[..], "http://127.0.0.1:", pstr));
+
+  b2: [1] DaBuf;
+  b3: [1] DaBuf;
+  b4: [1] DaBuf;
+  shome := da_cat(b2[..], out_dir, "/serve-home");
+  _ = fs_mkdir_all(shome);
+  slog := da_cat(b3[..], out_dir, "/serve.log");
+  s[0].serve_log_n = da_copy_into(s[0].serve_log[..], slog);
+  _ = fs_write(slog, "");
+  spid := da_cat(b4[..], out_dir, "/serve.pid");
+  s[0].serve_pid_n = da_copy_into(s[0].serve_pid_file[..], spid);
+  _ = fs_remove(spid);
+
+  // Launch serve.sh --fresh --build true with OA_SERVE_NO_CODER=1 OA_SERVE_NO_ROOM=1 OA_SERVE_NO_MIRROR=1
+  // and isolated HOME + OA_SERVE_CLI=/nonexistent so owner's ~/.openagents is never read
+  // and coax serve skips background whole-site rebuilds while driving /chat and /projects.
+  scmd: [2048] u8;
+  sj: [1] Jo;
+  jo_start(sj[..], scmd[..]);
+  jo_put(sj[..], "echo $$ > '");
+  jo_put(sj[..], spid);
+  jo_put(sj[..], "'; exec '");
+  jo_put(sj[..], repo);
+  jo_put(sj[..], "/coax/web/serve.sh' '");
+  jo_put(sj[..], repo);
+  jo_put(sj[..], "/apps/openagents-web' --fresh --build true --listen '127.0.0.1:");
+  jo_put(sj[..], pstr);
+  jo_put(sj[..], "' > '");
+  jo_put(sj[..], slog);
+  jo_put(sj[..], "' 2>&1");
+
+  h := proc_new();
+  if h < 0 { return false; }
+  _ = proc_arg(h, "/bin/sh");
+  _ = proc_arg(h, "-c");
+  _ = proc_arg(h, cast(string) scmd[0..<sj[0].n]);
+  _ = proc_env(h, da_cat(b1[..], "HOME=", shome));
+  _ = proc_env(h, "OA_SERVE_NO_CODER=1");
+  _ = proc_env(h, "OA_SERVE_NO_ROOM=1");
+  _ = proc_env(h, "OA_SERVE_NO_MIRROR=1");
+  _ = proc_env(h, "OA_SERVE_FRESH=1");
+  _ = proc_env(h, "OA_SERVE_CLI=/nonexistent");
+  _ = proc_env(h, "OA_SERVE_EMAIL=ada@example.com");
+  _ = proc_quiet(h);
+  if proc_start(h) != 0 { _ = proc_release(h); return false; }
+  s[0].serve_h = h;
+
+  // Poll until BOTH Postgres-backed /api/playtest/health AND /chat return 200 (allow up to 240s for cold API compile + migrations).
+  hcmd: [512] u8;
+  hj: [1] Jo;
+  jo_start(hj[..], hcmd[..]);
+  jo_put(hj[..], "curl -sf --max-time 2 '");
+  jo_put(hj[..], da_slice(s[0].base_url[..], s[0].base_n));
+  jo_put(hj[..], "/api/playtest/health' >/dev/null 2>&1 && curl -sf --max-time 2 '");
+  jo_put(hj[..], da_slice(s[0].base_url[..], s[0].base_n));
+  jo_put(hj[..], "/chat' >/dev/null 2>&1");
+
+  deadline := proc_now_ms() + 240000;
+  ready := false;
+  while proc_now_ms() < deadline {
+    if proc_wait(h, 0) != PROC_RUNNING { break; }
+    if da_run_sh(cast(string) hcmd[0..<hj[0].n], 3000) { ready = true; break; }
+    proc_sleep(400);
+  }
+  if !ready {
+    tool_errln("web-adapter: serve.sh --fresh (oa-api + Postgres 16) did not become ready within 240s");
+    web_stop(s);
+    return false;
+  }
+  return true;
+}
+
+web_stop_browser :: (repo: string) {
+  b1: [1] DaBuf;
+  out: [512] u8;
+  err: [512] u8;
+  argv := [3] string.[da_cat(b1[..], repo, "/coax/web/tool.sh"), "shot", "--stop"];
+  _ = proc_run(argv[..], 10000, out[..], err[..]);
+}
+
 web_stop :: (s: [] WebSession) {
+  // Gracefully terminate serve.sh + test.sh --serve + ephemeral postgres/oa-api without touching any other processes.
+  if s[0].serve_pid_n > 0 {
+    pfile := da_slice(s[0].serve_pid_file[..], s[0].serve_pid_n);
+    pbuf: [64] u8;
+    pn := fs_read(pfile, pbuf[..]);
+    if pn > 0 {
+      while pn > 0 && (pbuf[pn - 1] == '\n' || pbuf[pn - 1] == '\r' || pbuf[pn - 1] == ' ') { pn -= 1; }
+      if pn > 0 {
+        kcmd: [1024] u8;
+        kj: [1] Jo;
+        jo_start(kj[..], kcmd[..]);
+        jo_put(kj[..], "P=");
+        jo_put(kj[..], cast(string) pbuf[0..<pn]);
+        jo_put(kj[..], "; CH=$(pgrep -P \"$P\" 2>/dev/null || true); kill -TERM \"$P\" 2>/dev/null || true; for c in $CH; do kill -TERM \"$c\" 2>/dev/null || true; done; ");
+        if s[0].serve_log_n > 0 {
+          jo_put(kj[..], "W=$(sed -n 's|.*its log: \\(.*/oa-api-test\\.[^/]*\\)/api\\.log).*|\\1|p' '");
+          jo_put(kj[..], da_slice(s[0].serve_log[..], s[0].serve_log_n));
+          jo_put(kj[..], "' | head -n 1); ");
+          jo_put(kj[..], "for _ in 1 2 3 4 5 6 7 8; do [ -z \"$W\" ] || ! pgrep -f \"$W\" >/dev/null 2>&1 && break; sleep 0.25; done; ");
+          jo_put(kj[..], "if [ -n \"$W\" ]; then pkill -TERM -f \"$W\" 2>/dev/null || true; fi");
+        }
+        _ = da_run_sh(cast(string) kcmd[0..<kj[0].n], 6000);
+      }
+    }
+  }
   if s[0].serve_h >= 0 {
-    _ = proc_kill(s[0].serve_h, PROC_SIGTERM);
-    _ = proc_wait(s[0].serve_h, 2000);
+    st := proc_wait(s[0].serve_h, 4000);
+    if st == PROC_RUNNING {
+      _ = proc_kill(s[0].serve_h, PROC_SIGTERM);
+      st = proc_wait(s[0].serve_h, 2500);
+    }
+    if st == PROC_RUNNING {
+      _ = proc_kill(s[0].serve_h, PROC_SIGKILL);
+      _ = proc_wait(s[0].serve_h, 1000);
+    }
     _ = proc_release(s[0].serve_h);
     s[0].serve_h = -1;
   }
+  if s[0].serve_pid_n > 0 { _ = fs_remove(da_slice(s[0].serve_pid_file[..], s[0].serve_pid_n)); }
 }
 
 web_shot :: (s: [] WebSession, route: string, viewport: string, shot_name: string, wait_ms: int, obs_out: [] TsObservation) -> bool {
@@ -156,4 +319,85 @@ web_record_result :: (s: [] WebSession, r: TsResult) {
   jb: [TS_BUF] u8;
   jn := ts_write_result(r, jb[..]);
   if jn > 0 { da_append_line(da_slice(s[0].res_file[..], s[0].res_n), cast(string) jb[0..<jn]); }
+}
+
+// Run headless Chrome via `coax/web/tool.sh shot URL OUT.png WxH WAIT_MS [--eval JS] --keep`,
+// capture the screenshot, and copy the JS return value into eval_out (returning byte length, or -1 on error).
+web_eval :: (s: [] WebSession, route: string, viewport: string, shot_name: string, wait_ms: int, js: string, eval_out: [] u8, obs_out: [] TsObservation) -> int {
+  s[0].seq += 1;
+  s[0].act_seq += 1;
+  b1: [1] DaBuf;
+  b2: [1] DaBuf;
+  b3: [1] DaBuf;
+  b4: [1] DaBuf;
+  rel := da_cat3(b1[..], "screenshots/", shot_name, ".png");
+  full := da_cat3(b2[..], da_slice(s[0].out_dir[..], s[0].out_n), "/", rel);
+  url := da_cat(b3[..], da_slice(s[0].base_url[..], s[0].base_n), route);
+  tool := da_cat(b4[..], da_slice(s[0].repo_dir[..], s[0].repo_n), "/coax/web/tool.sh");
+  wb: [32] u8;
+  wstr := da_int_str(wait_ms, wb[..]);
+
+  out: [65536] u8;
+  err: [4096] u8;
+  r: ProcRun;
+  if js.count > 0 {
+    argv := [9] string.[tool, "shot", url, full, viewport, wstr, "--eval", js, "--keep"];
+    r = proc_run(argv[..], 45000, out[..], err[..]);
+  } else {
+    argv := [7] string.[tool, "shot", url, full, viewport, wstr, "--keep"];
+    r = proc_run(argv[..], 45000, out[..], err[..]);
+  }
+
+  shot_ok := r.started == 0 && r.status == 0 && fs_exists(full) && fs_size(full) > 1500;
+  s[0].last_shot_n = ifx shot_ok then da_copy_into(s[0].last_shot[..], rel) else 0;
+
+  val_n := -1;
+  if shot_ok {
+    // shot prints "<eval_value>\n<full>\n" (or just "<full>\n" if no --eval).
+    // Strip trailing newline(s), then strip the trailing "<full>" line.
+    end := r.out_n;
+    while end > 0 && (out[end - 1] == '\n' || out[end - 1] == '\r') { end -= 1; }
+    // Find start of last line.
+    last_nl := -1;
+    for i: 0..<end {
+      if out[i] == '\n' { last_nl = i; }
+    }
+    if last_nl >= 0 {
+      val_end := last_nl;
+      while val_end > 0 && out[val_end - 1] == '\r' { val_end -= 1; }
+      val_n = da_copy_into(eval_out, cast(string) out[0..<val_end]);
+    } else if js.count == 0 {
+      val_n = 0;
+    } else {
+      val_n = da_copy_into(eval_out, cast(string) out[0..<end]);
+    }
+  }
+
+  ib: [32] u8;
+  aid_buf: [1] DaBuf;
+  aid := da_cat(aid_buf[..], "web-eval-", da_int_str(s[0].act_seq, ib[..]));
+  a := TsAction.{
+    action_id = aid, source_seq = s[0].seq, op = "eval", target = route,
+    text = viewport, x = 0, y = 0, lease_ms = ifx wait_ms > 1000 then 1000 else wait_ms,
+    ts_ms = proc_now_ms() - s[0].started_ms, ok = shot_ok,
+    detail = ifx shot_ok then "web_eval ok" else "web_eval failed"
+  };
+  jb: [TS_BUF] u8;
+  jn := ts_write_action(a, jb[..]);
+  if jn > 0 { da_append_line(da_slice(s[0].act_file[..], s[0].act_n), cast(string) jb[0..<jn]); }
+
+  o := TsObservation.{
+    client_id = "web-1", target = "web", mode = ifx s[0].live_mode then "live" else "local",
+    seq = s[0].seq, ts_ms = proc_now_ms() - s[0].started_ms,
+    width = ifx viewport == "393x852" then 393 else 1280,
+    height = ifx viewport == "393x852" then 852 else 820,
+    scale_x100 = 200,
+    screenshot_ref = da_slice(s[0].last_shot[..], s[0].last_shot_n),
+    running = true, settings_page = -1, composer_focused = false,
+    composer_text = "", window_title = route, summary = shot_name
+  };
+  obs_out[0] = o;
+  on := ts_write_obs(o, jb[..]);
+  if on > 0 { da_append_line(da_slice(s[0].obs_file[..], s[0].obs_n), cast(string) jb[0..<on]); }
+  return val_n;
 }

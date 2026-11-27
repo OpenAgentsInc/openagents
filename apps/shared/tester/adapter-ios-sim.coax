@@ -260,3 +260,69 @@ ios_record_result :: (s: [] IosSession, r: TsResult) {
   jn := ts_write_result(r, jb[..]);
   if jn > 0 { da_append_line(da_slice(s[0].res_file[..], s[0].res_n), cast(string) jb[0..<jn]); }
 }
+
+// Resolve simulator UDID for s.device via xcrun simctl list devices available.
+ios_resolve_udid :: (s: [] IosSession) -> bool {
+  if s[0].udid_n == 36 { return true; }
+  dev := da_slice(s[0].device[..], s[0].device_n);
+  if dev.count == 36 && dev[8] == '-' && dev[13] == '-' && dev[18] == '-' && dev[23] == '-' {
+    s[0].udid_n = da_copy_into(s[0].udid[..], dev);
+    return true;
+  }
+  cmd: [1024] u8;
+  j: [1] Jo;
+  jo_start(j[..], cmd[..]);
+  jo_put(j[..], "xcrun simctl list devices available | grep -F '");
+  jo_put(j[..], dev);
+  jo_put(j[..], " (' | sed -E 's/.*\\(([0-9A-F-]{36})\\).*/\\1/' | head -n 1");
+  out: [256] u8;
+  err: [512] u8;
+  argv := [3] string.["/bin/sh", "-c", cast(string) cmd[0..<j[0].n]];
+  r := proc_run(argv[..], 10000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.out_n < 36 { return false; }
+  // Trim trailing whitespace/newlines.
+  n := r.out_n;
+  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' ') { n -= 1; }
+  if n != 36 { return false; }
+  s[0].udid_n = da_copy_into(s[0].udid[..], cast(string) out[0..<n]);
+  return true;
+}
+
+// Point the iOS Simulator app at origin (OA_API_BASE + OAAPIOrigin) and clear demo flags for pure Cloud mode.
+ios_set_api_base :: (s: [] IosSession, origin: string) -> bool {
+  if origin.count == 0 { return false; }
+  if !ios_resolve_udid(s) {
+    tool_errln("ios-sim-adapter: failed to resolve simulator UDID for OA_API_BASE");
+    return false;
+  }
+  udid := da_slice(s[0].udid[..], s[0].udid_n);
+  bid := da_slice(s[0].bundle_id[..], s[0].bundle_n);
+  out: [512] u8;
+  err: [512] u8;
+  w1 := [9] string.["xcrun", "simctl", "spawn", udid, "defaults", "write", bid, "OA_API_BASE", origin];
+  r1 := proc_run(w1[..], 10000, out[..], err[..]);
+  if r1.started != 0 || r1.status != 0 {
+    tool_errln("ios-sim-adapter: failed to write OA_API_BASE default");
+    return false;
+  }
+  w2 := [9] string.["xcrun", "simctl", "spawn", udid, "defaults", "write", bid, "OAAPIOrigin", origin];
+  r2 := proc_run(w2[..], 10000, out[..], err[..]);
+  if r2.started != 0 || r2.status != 0 { return false; }
+  // Ensure demo preview toggles are off so the app runs 100% live against OA_API_BASE.
+  d1 := [8] string.["xcrun", "simctl", "spawn", udid, "defaults", "delete", bid, "OADemoPreview"];
+  _ = proc_run(d1[..], 5000, out[..], err[..]);
+  d2 := [8] string.["xcrun", "simctl", "spawn", udid, "defaults", "delete", bid, "OADemoConversation"];
+  _ = proc_run(d2[..], 5000, out[..], err[..]);
+  return true;
+}
+
+// Terminate the iOS app cleanly inside the simulator without touching Simulator.app.
+ios_terminate_app :: (s: [] IosSession) {
+  if !ios_resolve_udid(s) { return; }
+  udid := da_slice(s[0].udid[..], s[0].udid_n);
+  bid := da_slice(s[0].bundle_id[..], s[0].bundle_n);
+  out: [256] u8;
+  err: [256] u8;
+  argv := [5] string.["xcrun", "simctl", "terminate", udid, bid];
+  _ = proc_run(argv[..], 5000, out[..], err[..]);
+}
