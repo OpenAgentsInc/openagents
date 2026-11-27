@@ -1,4 +1,4 @@
-# Dissecting an Agentic Coding Tool
+# Reverse Engineering Claude Code
 
 > **A bottom-up, building-blocks reverse-engineering guide to the Claude Code codebase (2.1.88 through 2.1.331).**
 

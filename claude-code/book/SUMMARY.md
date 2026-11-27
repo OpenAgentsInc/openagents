@@ -1,4 +1,4 @@
-# Dissecting an Agentic Coding Tool
+# Reverse Engineering Claude Code
 
 - [Introduction](README.md)
 - [Architecture Map](ARCHITECTURE_MAP.md)

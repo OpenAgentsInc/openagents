@@ -14,7 +14,7 @@ publication cannot replace a successful receipt.
 | Bitcoin | [`bitcoin.json`](bitcoin.json): latest publication, from commit `c466f49635`; offline route `bitcoin-crypto-settlement` qualified on `coax0 0.52.0`; live GitBook republish awaits owner credentials. |
 | Everglade | Published natively via Coax Web SSR (`/books/everglade`); offline route `everglade-world-srd-dragon` qualified on `coax0 0.52.0`; GitBook space not yet provisioned. |
 | OpenAgents | Published natively via Coax Web SSR (`/books/openagents`); offline route `openagents-app-economy` qualified on `coax0 0.52.0`; GitBook space not yet provisioned. |
-| Dissecting an Agentic Coding Tool (`claude-code`) | Published natively via Coax Web SSR (`/books/claude-code`); 25 `written` external-survey chapters checked by `psionic/tests/book.py --book claude-code`; GitBook space not yet provisioned. |
+| Reverse Engineering Claude Code (`claude-code`) | Published natively via Coax Web SSR (`/books/claude-code`); 25 `written` external-survey chapters checked by `psionic/tests/book.py --book claude-code`; GitBook space not yet provisioned. |
 
 This table says nothing about whether an older live book exists. Existing
 publication inventory checks and retained historical records keep their stated

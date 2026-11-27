@@ -16,7 +16,7 @@ reference.
 | [Bitcoin From Scratch](../../bitcoin/book/README.md) | Bitcoin and Lightning, from SHA-256 to channels | understand or check how money moves |
 | [Nostr From Scratch](../../nostr/book/README.md) | A Nostr client, a relay and the NIPs OpenAgents uses | understand identity, events and markets |
 | [The OpenAgents Book](../../openagents/book/README.md) | OpenAgents Desktop (`apps/openagents-desktop/`), iOS, and Coax Web/UI SSR apps on compiled Coax, `openagents/core/` (`oa-worker`/`Inky`), WorkOS hybrid auth, Breez Spark Bitcoin/Lightning wallet, and the Episode 289 capability economy | build the product apps or the agent |
-| [Dissecting an Agentic Coding Tool](../../claude-code/book/README.md) | A 25-chapter bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase (`status: written`, external survey) | study a production TypeScript coding-agent harness in depth |
+| [Reverse Engineering Claude Code](../../claude-code/book/README.md) | A 25-chapter bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase (`status: written`, external survey) | study a production TypeScript coding-agent harness in depth |
 
 ## The argument
 
@@ -133,7 +133,7 @@ Coder, and the shared cryptography moved from Nostr to Bitcoin.
 | SRD rules as code | Everglade Part V | Metaverse Engine |
 | Everglade, the game | Everglade | The Metaverse Engine 58 and 101, Psionic 28–32 |
 | Robots and spacecraft | Metaverse Engine Parts IV–V | Coax 34–39, Psionic XVIII |
-| The agent harness | Coder (with [Dissecting an Agentic Coding Tool](../../claude-code/book/README.md) for the full Claude Code teardown) | Psionic XXI, OpenAgents 24–28 |
+| The agent harness | Coder (with [Reverse Engineering Claude Code](../../claude-code/book/README.md) for the full Claude Code teardown) | Psionic XXI, OpenAgents 24–28 |
 | Language features and compile limits | Coax | every book |
 
 ## Capstones
