@@ -537,7 +537,7 @@ mono_switch_css :: (out: [] u8, at: int) -> int {
 // beside the body in the room right of the side, groups of rows in a frame, and the switch. Bytes written in all.
 mono_set_css :: (out: [] u8, at: int) -> int {
   n := at;
-  n = mc(out, n, ".st{display:flex;align-items:flex-start;min-height:100dvh}.side~.st{margin-left:300px}.ib[data-state=side]~.st>.st-nav{padding-top:56px}.sec>.st{min-height:0;border:1px solid var(--line-dim)}");
+  n = mc(out, n, ".st{display:flex;align-items:flex-start;min-height:100dvh}.side~.st{margin-left:300px}.ib[data-state=side]~.st>.st-nav,.ib[data-state=side]~.st>.st-b:first-child{padding-top:56px}.sec>.st{min-height:0;border:1px solid var(--line-dim)}");
   n = mc(out, n, ".st-nav{position:sticky;top:0;flex:none;width:220px;height:100dvh;overflow-y:auto;box-sizing:border-box;padding:16px 8px;display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--line-dim)}");
   n = mc(out, n, ".st-nav .row{padding:7px 10px}.st-nav .row-t{font-size:13px}");
   // the section shown: bright on the raised surface, with no frame under it (as the side's current place)
@@ -555,7 +555,7 @@ mono_set_css :: (out: [] u8, at: int) -> int {
   n = mono_switch_css(out, n);
   // narrower: the section list goes above the body; with no side, the page has the whole width; a row's control goes under it
   n = mc(out, n, "@media (max-width:1060px){.st{flex-direction:column;align-items:stretch}.st-nav{position:static;width:auto;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line-dim)}}");
-  n = mc(out, n, "@media (max-width:760px){.side~.st{margin-left:0}}@media (max-width:600px){.st-b{padding:18px 16px 64px}.st-r{flex-direction:column;align-items:stretch;gap:10px}.st-c{max-width:none;justify-content:flex-start}.st-c .field{width:100%}}");
+  n = mc(out, n, "@media (max-width:760px){.side~.st{margin-left:0}.mob-top~.st{padding-top:52px}}@media (max-width:600px){.st-b{padding:18px 16px 64px}.st-r{flex-direction:column;align-items:stretch;gap:10px}.st-c{max-width:none;justify-content:flex-start}.st-c .field{width:100%}}");
   return n;
 }
 // The work log's rules (components/kit/work.coax, #13481), after the page's: an agent's tool calls as quiet rows

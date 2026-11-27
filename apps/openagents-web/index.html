@@ -21,7 +21,7 @@ html:not(.gpu) body{overflow:auto}
 a{color:var(--light)}
 a:hover{color:var(--accent)}
 /* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
-.inside canvas,.inside body>main{display:none}.inside #home-root{position:fixed;inset:0;background:#000;z-index:30}
+.inside body{overflow:auto}.inside canvas,.inside body>main{display:none}.inside #home-root{position:fixed;inset:0;overflow-y:auto;background:#000;z-index:30}
 .gpu body>main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
 </style>
 </head>
@@ -43,7 +43,7 @@ knows who is here: someone logged in gets the app shell instead (docs/app-shell.
 <template id="public-engine"><script type="module" src="/coaxial/host.js" data-app="newland"></script></template>
 <script type="module">
 // Who is here decides the page, with one small request before any engine loads. Someone logged in gets the app
-// shell (chat-web: the side, and nothing beside it on this page); anyone else the public home page above.
+// shell (chat-web: the side and Home Dashboard on /); anyone else the public home page above.
 let inside = false;
 try {
   const r = await fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(3000) });

@@ -23,6 +23,7 @@ SW_SLUGS :: [5] string.["account", "models", "appearance", "limits", "about"];
 SW_PAGE :: 9;          // the shell's page value for Settings (beside site-side's SS_HOME and SS_CHATS)
 SW_EMAILS :: 4; SW_EMAIL :: 96;
 SW_KEYS :: 4;
+SW_ORGS :: 8; SW_ORG_ID :: 64; SW_ORG_NAME :: 80;
 SW_LIMITS :: 16; SW_LIMIT_WHAT :: 96; SW_LIMIT_PER :: 24;
 SW_REPO :: "https://github.com/OpenAgentsInc/openagents";
 
@@ -30,8 +31,27 @@ SettingsWeb :: struct {
   section: int;                      // the section shown (SW_*)
   // the account, as /api/auth/account?as=lines says
   logged: bool; read: bool; admin: bool;
+  account: [48] u8; account_n: int;
+  kind: [24] u8; kind_n: int;
+  level: [8] u8; level_n: int;
+  via: [32] u8; via_n: int;
+  primary: [SW_EMAIL] u8; primary_n: int;
   email: [SW_EMAILS] [SW_EMAIL] u8; email_n: [SW_EMAILS] int; emails: int;   // emails listed; emails counts them all
   key: [SW_KEYS] [64] u8; keys: int; nkeys: int;   // keys as hex; nkeys counts them all
+  // account status and holdings, as /api/auth/life?as=lines says
+  life_asked: bool; life_state: int;   // 0 not back yet, 1 read, -1 not to be had
+  frozen: [16] u8; frozen_n: int;
+  purge_at: [32] u8; purge_at_n: int;
+  strong: bool; limited: bool; fresh: bool;
+  life_agents: int; life_agents_paused: int; life_worlds: int; life_saves: int;
+  credit_msat: int;
+  // WorkOS organizations, as /api/auth/workos/orgs?as=lines says
+  orgs_asked: bool; orgs_state: int;   // 0 not back yet, 1 read, -1 not to be had
+  active_org: [SW_ORG_ID] u8; active_org_n: int;
+  org_id: [SW_ORGS] [SW_ORG_ID] u8; org_id_n: [SW_ORGS] int;
+  org_name: [SW_ORGS] [SW_ORG_NAME] u8; org_name_n: [SW_ORGS] int;
+  norgs: int; total_orgs: int;
+  org_note: [96] u8; org_note_n: int;
   // the limits we enforce on logging in
   limits_asked: bool; limits_state: int;   // 0 not back yet, 1 read, -1 not to be had
   nl: int;
@@ -49,6 +69,21 @@ sw_put :: (out: [] u8, at: int, text: string) -> int {
   n := at;
   for c: text { if n < out.count { out[n] = c; n += 1; } }
   return n;
+}
+sw_parse_int :: (text: string, fallback: int) -> int {
+  if text.count == 0 { return fallback; }
+  neg := false; i := 0;
+  if text[0] == '-' { neg = true; i = 1; }
+  if i >= text.count { return fallback; }
+  v := 0;
+  while i < text.count {
+    c := text[i];
+    if c < '0' || c > '9' { return fallback; }
+    if v > 900000000000000000 { return fallback; }
+    v = v * 10 + cast(int) (c - '0');
+    i += 1;
+  }
+  return ifx neg then -v else v;
 }
 
 // The section an address is: /settings and /settings/ are Account, /settings/SLUG its section, with or
@@ -77,9 +112,11 @@ sw_href :: (k: int, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
-// The account's lines: logged in or not, admin, the emails (masked by the API) and the keys.
+// The account's lines: logged in or not, account id, kind, assurance level, sign-in method, admin, primary email,
+// masked emails and Nostr keys.
 sw_account_read :: (s: [] SettingsWeb, body: string) {
   s[0].logged = false; s[0].admin = false; s[0].emails = 0; s[0].nkeys = 0; s[0].keys = 0; s[0].read = true;
+  s[0].account_n = 0; s[0].kind_n = 0; s[0].level_n = 0; s[0].via_n = 0; s[0].primary_n = 0;
   at := 0;
   while at < body.count {
     e := at;
@@ -87,6 +124,11 @@ sw_account_read :: (s: [] SettingsWeb, body: string) {
     line := cast(string) body[at..<e];
     if line == "logged_in 1" { s[0].logged = true; }
     if line == "admin 1" { s[0].admin = true; }
+    if line.count > 8 && cast(string) line[0..<8] == "account " { s[0].account_n = sw_put(s[0].account[..], 0, cast(string) line[8..<line.count]); }
+    if line.count > 5 && cast(string) line[0..<5] == "kind " { s[0].kind_n = sw_put(s[0].kind[..], 0, cast(string) line[5..<line.count]); }
+    if line.count > 6 && cast(string) line[0..<6] == "level " { s[0].level_n = sw_put(s[0].level[..], 0, cast(string) line[6..<line.count]); }
+    if line.count > 4 && cast(string) line[0..<4] == "via " { s[0].via_n = sw_put(s[0].via[..], 0, cast(string) line[4..<line.count]); }
+    if line.count > 8 && cast(string) line[0..<8] == "primary " { s[0].primary_n = sw_put(s[0].primary[..], 0, cast(string) line[8..<line.count]); }
     if line.count > 6 && cast(string) line[0..<6] == "email " {
       if s[0].emails < SW_EMAILS { k := s[0].emails; s[0].email_n[k] = sw_put(s[0].email[k][..], 0, cast(string) line[6..<line.count]); }
       s[0].emails += 1;
@@ -97,6 +139,93 @@ sw_account_read :: (s: [] SettingsWeb, body: string) {
     }
     at = e + 1;
   }
+}
+// Account lifecycle and holdings lines (/api/auth/life?as=lines).
+sw_life_read :: (s: [] SettingsWeb, status: int, body: string) {
+  s[0].life_state = ifx status == 200 then 1 else -1;
+  s[0].frozen_n = 0; s[0].purge_at_n = 0;
+  s[0].strong = false; s[0].limited = false; s[0].fresh = false;
+  s[0].life_agents = 0; s[0].life_agents_paused = 0; s[0].life_worlds = 0; s[0].life_saves = 0;
+  s[0].credit_msat = -1;
+  if status != 200 { return; }
+  at := 0;
+  while at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count > 7 && cast(string) line[0..<7] == "frozen " { s[0].frozen_n = sw_put(s[0].frozen[..], 0, cast(string) line[7..<line.count]); }
+    else if line.count > 9 && cast(string) line[0..<9] == "purge_at " {
+      v := cast(string) line[9..<line.count];
+      if v != "-" { s[0].purge_at_n = sw_put(s[0].purge_at[..], 0, v); }
+    }
+    else if line == "strong 1" { s[0].strong = true; }
+    else if line == "limited 1" { s[0].limited = true; }
+    else if line == "fresh 1" { s[0].fresh = true; }
+    else if line.count > 7 && cast(string) line[0..<7] == "agents " { s[0].life_agents = sw_parse_int(cast(string) line[7..<line.count], 0); }
+    else if line.count > 14 && cast(string) line[0..<14] == "agents_paused " { s[0].life_agents_paused = sw_parse_int(cast(string) line[14..<line.count], 0); }
+    else if line.count > 7 && cast(string) line[0..<7] == "worlds " { s[0].life_worlds = sw_parse_int(cast(string) line[7..<line.count], 0); }
+    else if line.count > 6 && cast(string) line[0..<6] == "saves " { s[0].life_saves = sw_parse_int(cast(string) line[6..<line.count], 0); }
+    else if line.count > 12 && cast(string) line[0..<12] == "credit_msat " { s[0].credit_msat = sw_parse_int(cast(string) line[12..<line.count], -1); }
+  }
+}
+// WorkOS organizations lines (/api/auth/workos/orgs?as=lines).
+sw_orgs_read :: (s: [] SettingsWeb, status: int, body: string) {
+  s[0].orgs_state = ifx status == 200 then 1 else -1;
+  s[0].active_org_n = 0; s[0].norgs = 0; s[0].total_orgs = 0;
+  if status != 200 { return; }
+  at := 0;
+  while at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count > 23 && cast(string) line[0..<23] == "active_organization_id " {
+      s[0].active_org_n = sw_put(s[0].active_org[..], 0, cast(string) line[23..<line.count]);
+    } else if line.count > 4 && cast(string) line[0..<4] == "org " {
+      rest := cast(string) line[4..<line.count];
+      sp := 0;
+      while sp < rest.count && rest[sp] != ' ' { sp += 1; }
+      oid := cast(string) rest[0..<sp];
+      oname := ifx sp + 1 < rest.count then cast(string) rest[sp + 1..<rest.count] else oid;
+      if oid.count > 0 {
+        if s[0].norgs < SW_ORGS {
+          k := s[0].norgs;
+          s[0].org_id_n[k] = sw_put(s[0].org_id[k][..], 0, oid);
+          s[0].org_name_n[k] = sw_put(s[0].org_name[k][..], 0, oname);
+          s[0].norgs += 1;
+        }
+        s[0].total_orgs += 1;
+      }
+    }
+  }
+}
+// Answer to POST /api/auth/workos/orgs/switch?as=lines.
+sw_org_switch_read :: (s: [] SettingsWeb, status: int, body: string) {
+  if status == 200 {
+    at := 0;
+    while at < body.count {
+      e := at;
+      while e < body.count && body[e] != '\n' { e += 1; }
+      line := cast(string) body[at..<e];
+      at = e + 1;
+      if line.count >= 23 && cast(string) line[0..<23] == "active_organization_id " {
+        s[0].active_org_n = sw_put(s[0].active_org[..], 0, cast(string) line[23..<line.count]);
+      }
+    }
+    s[0].org_note_n = sw_put(s[0].org_note[..], 0, "Active organization updated.");
+    return;
+  }
+  err := "";
+  at := 0;
+  while at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count > 6 && cast(string) line[0..<6] == "error " { err = cast(string) line[6..<line.count]; break; }
+  }
+  s[0].org_note_n = sw_put(s[0].org_note[..], 0, ifx err.count > 0 then err else "Could not switch organization.");
 }
 // The limits' lines: "limit NAME|MAX|PER|WHAT" each. A line that isn't one is passed over.
 sw_limits_read :: (s: [] SettingsWeb, status: int, body: string) {
@@ -188,8 +317,171 @@ sw_link :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string, name: string, a
   k_set_row_end(t);
 }
 
-// Account: who is logged in (the name the side's foot shows, every email, every key), Log out, and the pages
-// that hold the rest of the account.
+// Account formatting helpers shared by Home Dashboard (/) and Account Settings (/settings/account).
+sw_via_label :: (via: string) -> string {
+  if via == "workos" { return "WorkOS"; }
+  if via == "email" { return "Email code"; }
+  if via == "nostr" { return "Nostr key"; }
+  if via == "passkey" { return "Passkey"; }
+  if via == "phone" { return "Phone app"; }
+  return ifx via.count > 0 then via else "Session";
+}
+sw_state_badge :: (s: [] SettingsWeb) -> string {
+  fr := cast(string) s[0].frozen[0..<s[0].frozen_n];
+  if fr == "delete" { return "Deleting"; }
+  if fr == "freeze" { return "Frozen"; }
+  if s[0].limited { return "Limited"; }
+  return "Active";
+}
+sw_status_line :: (s: [] SettingsWeb, out: [] u8) -> string {
+  n := sw_put(out, 0, "Signed in via ");
+  n = sw_put(out, n, sw_via_label(cast(string) s[0].via[0..<s[0].via_n]));
+  if s[0].level_n > 0 { n = sw_put(out, n, " · "); n = sw_put(out, n, cast(string) s[0].level[0..<s[0].level_n]); }
+  if s[0].strong { n = sw_put(out, n, " (strong credential)"); }
+  if s[0].admin { n = sw_put(out, n, " · Admin"); }
+  fr := cast(string) s[0].frozen[0..<s[0].frozen_n];
+  if fr == "freeze" { n = sw_put(out, n, ". Account is frozen."); }
+  else if fr == "delete" {
+    n = sw_put(out, n, ". Scheduled for deletion");
+    if s[0].purge_at_n > 0 { n = sw_put(out, n, " ("); n = sw_put(out, n, cast(string) s[0].purge_at[0..<s[0].purge_at_n]); n = sw_put(out, n, ")"); }
+    n = sw_put(out, n, ".");
+  } else if cast(string) s[0].level[0..<s[0].level_n] == "L1" && !s[0].strong {
+    n = sw_put(out, n, ". Add a passkey or Nostr key in Security for L2 wallet and agent actions.");
+  }
+  return cast(string) out[0..<n];
+}
+sw_emails_line :: (s: [] SettingsWeb, out: [] u8) -> string {
+  n := 0; num: [24] u8;
+  for k: 0..<s[0].emails { if k < SW_EMAILS { if n > 0 { n = sw_put(out, n, ", "); } n = sw_put(out, n, cast(string) s[0].email[k][0..<s[0].email_n[k]]); } }
+  if s[0].emails > SW_EMAILS { n = sw_put(out, n, ", and "); n = sw_put(out, n, tr_join(num[..], "", s[0].emails - SW_EMAILS)); n = sw_put(out, n, " more"); }
+  return ifx s[0].emails == 0 then "None. You log in with a key." else cast(string) out[0..<n];
+}
+sw_keys_line :: (s: [] SettingsWeb, out: [] u8) -> string {
+  m := 0; num: [24] u8;
+  for k: 0..<s[0].keys {
+    short: [40] u8; c := ss_npub_short(cast(string) s[0].key[k][0..<64], short[..]);
+    if c > 0 { if m > 0 { m = sw_put(out, m, ", "); } m = sw_put(out, m, cast(string) short[0..<c]); }
+  }
+  if s[0].nkeys > SW_KEYS { m = sw_put(out, m, ", and "); m = sw_put(out, m, tr_join(num[..], "", s[0].nkeys - SW_KEYS)); m = sw_put(out, m, " more"); }
+  return ifx m == 0 then "None yet." else cast(string) out[0..<m];
+}
+sw_credit_line :: (credit_msat: int, out: [] u8) -> string {
+  if credit_msat <= 0 { return "0 sats"; }
+  if credit_msat < 1000 { return "< 1 sat"; }
+  num: [24] u8;
+  sats := credit_msat / 1000;
+  n := sw_put(out, 0, tr_join(num[..], "", sats));
+  n = sw_put(out, n, ifx sats == 1 then " sat" else " sats");
+  return cast(string) out[0..<n];
+}
+sw_orgs_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string) {
+  if s[0].norgs == 0 && s[0].active_org_n == 0 { return; }
+  sw_group(s, t, u, id, "Organizations");
+  active := cast(string) s[0].active_org[0..<s[0].active_org_n];
+  if s[0].norgs == 0 {
+    ida: [UI_ID] u8; idv: [UI_ID] u8;
+    if sw_row(s, t, u, tr_cat(ida[..], id, ".cur"), "Active organization", "Current WorkOS organization context.") {
+      v := k_set_value(t, tr_cat(idv[..], id, ".cur.v"), active);
+      k_set_row_end(t);
+    }
+  }
+  for k: 0..<s[0].norgs {
+    oid := cast(string) s[0].org_id[k][0..<s[0].org_id_n[k]];
+    oname := cast(string) s[0].org_name[k][0..<s[0].org_name_n[k]];
+    is_cur := active.count > 0 && oid == active;
+    rid: [UI_ID] u8; bid: [UI_ID] u8; vid: [UI_ID] u8; rp: [UI_ID] u8;
+    if sw_row(s, t, u, tr_join(rid[..], tr_cat(rp[..], id, ".r."), k), oname, oid) {
+      if is_cur { v := k_set_value(t, tr_join(vid[..], tr_cat(rp[..], id, ".v."), k), "Active"); }
+      else { b := k_button(t, u, tr_join(bid[..], "sw.org.", k), "Switch", BS_PLAIN); }
+      k_set_row_end(t);
+    }
+  }
+  if s[0].org_note_n > 0 {
+    idn: [UI_ID] u8;
+    sw_fact(s, t, u, tr_cat(idn[..], id, ".note"), "Status", cast(string) s[0].org_note[0..<s[0].org_note_n]);
+  }
+  sw_group_end(s, t);
+}
+
+// Home Dashboard (/): login status, full identity & account overview, WorkOS organizations, and settings shortcuts.
+sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: int, worlds_n: int) {
+  p := k_set(t, "home");
+  crumb := ifx !s[0].logged then (ifx s[0].read then "Home · Not signed in" else "Home · Checking login")
+    else ifx s[0].admin then "Home · Signed in · Admin" else "Home · Signed in";
+  title := ifx s[0].primary_n > 0 then cast(string) s[0].primary[0..<s[0].primary_n]
+    else ifx who.count > 0 then who else "OpenAgents";
+  b := k_set_body(t, u, "home.b", crumb, title);
+  if !s[0].logged {
+    sw_group(s, t, u, "home.status", "Login status");
+    if sw_row(s, t, u, "home.status.in", "Not logged in", ifx s[0].read then "Sign in to view your account dashboard and manage your settings." else "Checking your session.") {
+      if s[0].read { g := k_go(t, "home.status.in.go", "Log in", "/login"); }
+      k_set_row_end(t);
+    }
+    sw_group_end(s, t);
+    tr_close(t); tr_close(t);
+    return;
+  }
+  sw_group(s, t, u, "home.status", "Your account");
+  st_buf: [240] u8;
+  if sw_row(s, t, u, "home.status.state", "Login status", sw_status_line(s, st_buf[..])) {
+    v := k_set_value(t, "home.status.state.v", sw_state_badge(s));
+    k_set_row_end(t);
+  }
+  if s[0].account_n > 0 {
+    kind := cast(string) s[0].kind[0..<s[0].kind_n];
+    kabout := ifx kind == "person" then "Person account" else ifx kind.count > 0 then kind else "OpenAgents account";
+    if sw_row(s, t, u, "home.status.acct", "Account ID", kabout) {
+      v := k_set_value(t, "home.status.acct.v", cast(string) s[0].account[0..<s[0].account_n]);
+      k_set_row_end(t);
+    }
+  }
+  if s[0].primary_n > 0 {
+    sw_fact(s, t, u, "home.status.primary", "Primary email", cast(string) s[0].primary[0..<s[0].primary_n]);
+  }
+  eline: [SW_EMAILS * (SW_EMAIL + 2) + 40] u8;
+  sw_fact(s, t, u, "home.status.emails", ifx s[0].emails == 1 then "Linked email" else "Linked emails", sw_emails_line(s, eline[..]));
+  kline: [SW_KEYS * 28 + 40] u8;
+  kstr := sw_keys_line(s, kline[..]);
+  if s[0].nkeys == 0 {
+    sw_link(s, t, u, "home.status.keys", "Nostr keys", kstr, "Add in Security", "/settings/security");
+  } else {
+    sw_fact(s, t, u, "home.status.keys", ifx s[0].nkeys == 1 then "Nostr key" else "Nostr keys", kstr);
+  }
+  if s[0].life_state == 1 && s[0].credit_msat >= 0 {
+    cbuf: [32] u8;
+    if sw_row(s, t, u, "home.status.credit", "Credit balance", "Available balance for hosted inference and services.") {
+      v := k_set_value(t, "home.status.credit.v", sw_credit_line(s[0].credit_msat, cbuf[..]));
+      k_set_row_end(t);
+    }
+  }
+  if s[0].life_state == 1 || projects_n > 0 || worlds_n > 0 {
+    ov: [160] u8; num: [24] u8; n := 0;
+    wc := ifx worlds_n > s[0].life_worlds then worlds_n else s[0].life_worlds;
+    n = sw_put(ov[..], n, tr_join(num[..], "", projects_n)); n = sw_put(ov[..], n, ifx projects_n == 1 then " project · " else " projects · ");
+    n = sw_put(ov[..], n, tr_join(num[..], "", wc)); n = sw_put(ov[..], n, ifx wc == 1 then " world · " else " worlds · ");
+    n = sw_put(ov[..], n, tr_join(num[..], "", s[0].life_agents)); n = sw_put(ov[..], n, ifx s[0].life_agents == 1 then " agent" else " agents");
+    if s[0].life_agents_paused > 0 { n = sw_put(ov[..], n, " ("); n = sw_put(ov[..], n, tr_join(num[..], "", s[0].life_agents_paused)); n = sw_put(ov[..], n, " paused)"); }
+    sw_fact(s, t, u, "home.status.overview", "Workspace", cast(string) ov[0..<n]);
+  }
+  sw_group_end(s, t);
+  sw_orgs_group(s, t, u, "home.orgs");
+  sw_group(s, t, u, "home.quick", "Quick actions & settings");
+  sw_link(s, t, u, "home.go.chat", "Cloud Chat", "Start a new conversation or resume your synced chats.", "Open Chat", "/chat");
+  sw_link(s, t, u, "home.go.account", "Account settings", "Profile details, connected credentials, appearance, and limits.", "Settings", "/settings/account");
+  sw_link(s, t, u, "home.go.models", "Agents and models", "Connect Claude credentials and choose default models.", "Open", "/settings/models");
+  sw_link(s, t, u, "home.go.security", "Security", "Manage passkeys, Nostr keys, linked emails, and recovery.", "Open", "/settings/security");
+  sw_link(s, t, u, "home.go.devices", "Devices", "Phones, desktops, and browser sessions signed in to your account.", "Open", "/settings/devices");
+  sw_link(s, t, u, "home.go.wallet", "Wallet", "Your wallet's daily limit and backup.", "Open", "/settings/wallet");
+  sw_link(s, t, u, "home.go.lightning", "Lightning Address", "Claim or manage your name@openagents.com payment address.", "Open", "/settings/lightning");
+  sw_link(s, t, u, "home.go.agents", "Agents", "Agents acting on your behalf and their permissions.", "Open", "/settings/agents");
+  sw_link(s, t, u, "home.go.data", "Your data", "Export what we hold about you, or freeze your account.", "Open", "/settings/data");
+  if sw_row(s, t, u, "home.out.row", "Log out", "Sign out of this browser.") { btn := k_button(t, u, "home.out", "Log out", BS_PLAIN); k_set_row_end(t); }
+  sw_group_end(s, t);
+  tr_close(t); tr_close(t);
+}
+
+// Account: who is logged in (the name the side's foot shows, account metadata, every email, every key),
+// WorkOS organizations, Log out, and the pages that hold the rest of the account.
 sw_account :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string) {
   if !sw_section(s, SW_ACCOUNT) { return; }
   sw_group(s, t, u, "acct", "You");
@@ -202,20 +494,37 @@ sw_account :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string) {
     return;
   }
   sw_fact(s, t, u, "acct.who", "Logged in as", who);
-  line: [SW_EMAILS * (SW_EMAIL + 2) + 40] u8; n := 0; num: [24] u8;
-  for k: 0..<s[0].emails { if k < SW_EMAILS { if n > 0 { n = sw_put(line[..], n, ", "); } n = sw_put(line[..], n, cast(string) s[0].email[k][0..<s[0].email_n[k]]); } }
-  if s[0].emails > SW_EMAILS { n = sw_put(line[..], n, ", and "); n = sw_put(line[..], n, tr_join(num[..], "", s[0].emails - SW_EMAILS)); n = sw_put(line[..], n, " more"); }
-  sw_fact(s, t, u, "acct.emails", ifx s[0].emails == 1 then "Email" else "Emails", ifx s[0].emails == 0 then "None. You log in with a key." else cast(string) line[0..<n]);
-  kl: [SW_KEYS * 28 + 40] u8; m := 0;
-  for k: 0..<s[0].keys {
-    short: [40] u8; c := ss_npub_short(cast(string) s[0].key[k][0..<64], short[..]);
-    if c > 0 { if m > 0 { m = sw_put(kl[..], m, ", "); } m = sw_put(kl[..], m, cast(string) short[0..<c]); }
+  st_buf: [240] u8;
+  if sw_row(s, t, u, "acct.status", "Login status", sw_status_line(s, st_buf[..])) {
+    v := k_set_value(t, "acct.status.v", sw_state_badge(s));
+    k_set_row_end(t);
   }
-  if s[0].nkeys > SW_KEYS { m = sw_put(kl[..], m, ", and "); m = sw_put(kl[..], m, tr_join(num[..], "", s[0].nkeys - SW_KEYS)); m = sw_put(kl[..], m, " more"); }
-  sw_fact(s, t, u, "acct.keys", ifx s[0].nkeys == 1 then "Key" else "Keys", ifx m == 0 then "None yet." else cast(string) kl[0..<m]);
+  if s[0].account_n > 0 {
+    kind := cast(string) s[0].kind[0..<s[0].kind_n];
+    kabout := ifx kind == "person" then "Person account" else ifx kind.count > 0 then kind else "OpenAgents account";
+    if sw_row(s, t, u, "acct.id", "Account ID", kabout) {
+      v := k_set_value(t, "acct.id.v", cast(string) s[0].account[0..<s[0].account_n]);
+      k_set_row_end(t);
+    }
+  }
+  if s[0].primary_n > 0 {
+    sw_fact(s, t, u, "acct.primary", "Primary email", cast(string) s[0].primary[0..<s[0].primary_n]);
+  }
+  line: [SW_EMAILS * (SW_EMAIL + 2) + 40] u8;
+  sw_fact(s, t, u, "acct.emails", ifx s[0].emails == 1 then "Email" else "Emails", sw_emails_line(s, line[..]));
+  kl: [SW_KEYS * 28 + 40] u8;
+  sw_fact(s, t, u, "acct.keys", ifx s[0].nkeys == 1 then "Key" else "Keys", sw_keys_line(s, kl[..]));
+  if s[0].life_state == 1 && s[0].credit_msat >= 0 {
+    cbuf: [32] u8;
+    if sw_row(s, t, u, "acct.credit", "Credit balance", "Available balance for hosted inference and services.") {
+      v := k_set_value(t, "acct.credit.v", sw_credit_line(s[0].credit_msat, cbuf[..]));
+      k_set_row_end(t);
+    }
+  }
   if s[0].admin { sw_fact(s, t, u, "acct.admin", "Admin", "You are an admin of this site."); }
   if sw_row(s, t, u, "acct.out", "Log out", "Log out of this browser.") { b := k_button(t, u, "set.out", "Log out", BS_PLAIN); k_set_row_end(t); }
   sw_group_end(s, t);
+  sw_orgs_group(s, t, u, "acct.orgs");
   sw_group(s, t, u, "acct.more", "More of your account");
   sw_link(s, t, u, "acct.security", "Security", "How you log in: your email, keys and passkeys.", "Open", "/settings/security");
   sw_link(s, t, u, "acct.devices", "Devices", "The phones and computers logged in to your account.", "Open", "/settings/devices");
@@ -363,4 +672,38 @@ sw_test_build :: (x: [] SwTest, who: string) {
   sw_about_read(s, 200, "commit 4f24ce93e9\ndate 2026-11-13\n");
   sw_test_build(x[..], "");
   #assert tr_text_of(t, tr_find(t, "about.release.a")) == "Commit 4f24ce93e9, built 2026-11-13" && tr_attr_of(t, tr_find(t, "about.release.go"), AT_HREF) == "https://github.com/OpenAgentsInc/openagents/commit/4f24ce93e9";
+}
+#test "home dashboard and enriched account show login status, primary email, account ID, credit balance, and WorkOS organizations" {
+  x: [1] SwTest; s := x[0].s[..]; t := x[0].t[..]; u := x[0].u[..];
+  sw_account_read(s, "logged_in 1\naccount acct_42\nkind person\nlevel L1\nvia workos\nadmin 1\nemail c•••@openagents.com\nprimary chris@openagents.com\n");
+  #assert s[0].logged && s[0].admin && cast(string) s[0].account[0..<s[0].account_n] == "acct_42";
+  #assert cast(string) s[0].kind[0..<s[0].kind_n] == "person" && cast(string) s[0].level[0..<s[0].level_n] == "L1";
+  #assert cast(string) s[0].via[0..<s[0].via_n] == "workos" && cast(string) s[0].primary[0..<s[0].primary_n] == "chris@openagents.com";
+  sw_life_read(s, 200, "account acct_42\nkind person\nfrozen no\nstrong 0\nagents 2\nagents_paused 1\ncredit_msat 250000\nworlds 3\nsaves 4\nlimited 0\nfresh 1\n");
+  #assert s[0].life_state == 1 && s[0].credit_msat == 250000 && s[0].life_agents == 2 && s[0].life_agents_paused == 1 && s[0].life_worlds == 3;
+  sw_orgs_read(s, 200, "active_organization_id org_1\norg org_1 OpenAgents Inc\norg org_2 Staging Lab\n");
+  #assert s[0].orgs_state == 1 && s[0].norgs == 2 && cast(string) s[0].active_org[0..<s[0].active_org_n] == "org_1";
+  #assert cast(string) s[0].org_name[0][0..<s[0].org_name_n[0]] == "OpenAgents Inc" && cast(string) s[0].org_id[1][0..<s[0].org_id_n[1]] == "org_2";
+  tr_begin(t); ui_begin(u, 0, true);
+  sw_home(s, t, u, "chris@openagents.com", 2, 1);
+  #assert t[0].depth == 0 && t[0].lost == 0;
+  #assert tr_text_of(t, tr_find(t, "home.b.crumb")) == "Home · Signed in · Admin";
+  #assert tr_text_of(t, tr_find(t, "home.b.t")) == "chris@openagents.com";
+  #assert tr_text_of(t, tr_find(t, "home.status.state.v")) == "Active";
+  #assert tr_text_of(t, tr_find(t, "home.status.acct.v")) == "acct_42";
+  #assert tr_text_of(t, tr_find(t, "home.status.primary.a")) == "chris@openagents.com";
+  #assert tr_text_of(t, tr_find(t, "home.status.credit.v")) == "250 sats";
+  #assert tr_text_of(t, tr_find(t, "home.status.overview.a")) == "2 projects · 3 worlds · 2 agents (1 paused)";
+  #assert tr_text_of(t, tr_find(t, "home.orgs.v.0")) == "Active" && tr_find(t, "sw.org.1") > 0;
+  #assert tr_attr_of(t, tr_find(t, "home.go.chat.go"), AT_HREF) == "/chat" && tr_attr_of(t, tr_find(t, "home.go.account.go"), AT_HREF) == "/settings/account";
+  #assert tr_find(t, "home.out") > 0;
+  // Switch org feedback
+  sw_org_switch_read(s, 200, "state switched\nactive_organization_id org_2\n");
+  #assert cast(string) s[0].active_org[0..<s[0].active_org_n] == "org_2" && cast(string) s[0].org_note[0..<s[0].org_note_n] == "Active organization updated.";
+  sw_org_switch_read(s, 403, "error You aren't a member.\n");
+  #assert cast(string) s[0].org_note[0..<s[0].org_note_n] == "You aren't a member.";
+  // Account section also shows Account ID, Primary email, Credit balance, and Organizations
+  sw_test_build(x[..], "chris@openagents.com");
+  #assert tr_text_of(t, tr_find(t, "acct.id.v")) == "acct_42" && tr_text_of(t, tr_find(t, "acct.primary.a")) == "chris@openagents.com";
+  #assert tr_text_of(t, tr_find(t, "acct.credit.v")) == "250 sats" && tr_find(t, "acct.orgs") > 0;
 }

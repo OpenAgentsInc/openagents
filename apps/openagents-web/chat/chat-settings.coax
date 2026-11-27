@@ -16,6 +16,11 @@ CS_LIMIT_VALUES :: [5] string.["16 KB", "48 KB", "128", "512 KB", "The newest 40
 // The model a new chat starts with: the one kept in this browser (Settings, Agents and models), else Gemini's first.
 cw_default :: (s: [] ChatWeb) -> int { k := s[0].set[0].kept_model - 1; return cw_usable(s, ifx k >= 0 then k else 0); }
 
+// The home dashboard beside the side at / (settings-web.coax sw_home).
+cw_home_page :: (s: [] ChatWeb) {
+  sw_home(s[0].set[..], s[0].tree[..], s[0].ui[..], cast(string) s[0].me[0..<s[0].me_n], s[0].projects_n, s[0].worlds_n);
+}
+
 // The page: its frame (settings-web.coax), and each section, of which only the one shown is drawn.
 cw_settings_page :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..]; w := s[0].set[..];
@@ -170,7 +175,9 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   if id == "settings" { cw_to_settings(s, SW_MODELS); again := cw_go(s, CF_ACCOUNT, "/api/chat/account", ""); return true; }
   k := cw_number(id, "set.nav.");
   if k >= 0 { if k < SW_SECTIONS { cw_to_settings(s, k); } return true; }
-  if id == "set.out" { s[0].out_due = true; return true; }
+  if id == "set.out" || id == "home.out" { s[0].out_due = true; return true; }
+  org_k := cw_number(id, "sw.org.");
+  if org_k >= 0 { if org_k < w[0].norgs { s[0].org_switch_due = org_k + 1; } return true; }
   if id == "set.side" { s[0].side_closed = !s[0].side_closed; cw_keep(s); return true; }
   // the menus: one open at a time; a choice is kept in this browser
   if id == "set.agent" { w[0].menu = ifx w[0].menu == CS_MENU_AGENT then CS_MENU_NONE else CS_MENU_AGENT; return true; }

@@ -129,6 +129,9 @@ CF_ABOUT :: 22;         // Settings, About: the release this page is from (/buil
 CF_PROJECTS :: 23;      // the projects the person is in, under Projects in the side (/api/projects)
 CF_HCALL :: 24;         // one request of a tool call a Gemini message made (chat-hosted.coax ch_path)
 CF_DECIDE :: 25;        // Accept or Decline on a visitor's idea for the realm in the editor (chat-ideas.coax)
+CF_LIFE :: 26;          // Home & Account: lifecycle, credit balance, and holdings (/api/auth/life?as=lines)
+CF_ORGS :: 27;          // Home & Account: WorkOS organizations (/api/auth/workos/orgs?as=lines)
+CF_ORG_SWITCH :: 28;    // Home & Account: switch active WorkOS organization (/api/auth/workos/orgs/switch?as=lines)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 // A world step's realm tool (turn.coax WT_TOOL; a size is a set), for its icon and how a run of them is named: the
 // world's own, then a realm's (a switch of its lists, a pane shown, its asks, a look at the screen; #13528).
@@ -264,8 +267,9 @@ ChatWeb :: struct {
   door: [96] u8; door_n: int;        // where the request goes, for the face
   clip: [CW_DRAFT] u8; clip_n: int;  // text for the host to copy, until it has
   copied: int; copied_at: f32;       // the answer last copied (its number + 1, 0 for none) and when
-  page: int;                         // what the shell shows beside its side: SS_CHATS (the chat), SS_HOME (a new chat, at /) or SW_PAGE (Settings)
-  set: [1] SettingsWeb;              // Settings: the section shown, its search, and what it has read
+  page: int;                         // what the shell shows beside its side: SS_CHATS (the chat), SS_HOME (Home Dashboard, at /) or SW_PAGE (Settings)
+  set: [1] SettingsWeb;              // Settings: the section shown, account metadata, orgs, life, limits, about
+  org_switch_due: int;               // 1-based index of WorkOS org to switch to when free (0 none)
   here: int;                         // the side alone on a place's page (SS_SIDE): the place it lights (ss_side_place), else -2
   side_closed: bool;                 // the side is put away (kept in this browser)
   mob_side_open: bool;               // mobile overlay drawer open (<= 760px; #13929)
@@ -293,7 +297,7 @@ ChatWeb :: struct {
 }
 
 cw_is_cloud :: (s: [] ChatWeb) -> bool {
-  return s[0].cloud_mode && (s[0].page == SS_CHATS || s[0].page == SS_HOME) && s[0].sel_n == 0 && s[0].wwire_n == 0;
+  return s[0].cloud_mode && s[0].page == SS_CHATS && s[0].sel_n == 0 && s[0].wwire_n == 0;
 }
 
 cw_sync_cloud_nav :: (s: [] ChatWeb) {
@@ -688,7 +692,7 @@ cw_build :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   tr_begin(t);
   s[0].marking = false;
-  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_SIDE || s[0].page == SW_PAGE || s[0].page == SS_HELD then "home" else "chat");
+  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_SIDE || s[0].page == SW_PAGE || s[0].page == SS_HELD || s[0].page == SS_HOME then "home" else "chat");
   cw_side(s);
   if s[0].page == SS_HELD {   // another page, held in a frame beside the side, under its loading screen until it draws
     ida: [UI_ID] u8;
@@ -697,7 +701,8 @@ cw_build :: (s: [] ChatWeb) {
     if !s[0].held_drawn { l := k_loading(t, u, "loading", name, cast(string) s[0].held_step[0..<s[0].held_step_n], s[0].held_share); }
     tr_close(t); return;
   }
-  if s[0].page == SS_SIDE { tr_close(t); return; }   // the editor's left: the side, and nothing beside it (the home page is a new chat)
+  if s[0].page == SS_SIDE { tr_close(t); return; }   // the editor's left: the side, and nothing beside it
+  if s[0].page == SS_HOME { cw_home_page(s); tr_close(t); return; }   // Home Dashboard, beside the side
   if s[0].page == SW_PAGE { cw_settings_page(s); tr_close(t); return; }   // Settings, beside the side
   if cw_is_cloud(s) {
     cwc_draw_hud(s[0].cc[..], t);
@@ -769,7 +774,7 @@ cw_build :: (s: [] ChatWeb) {
   stoppable := s[0].live && !s[0].stopping;
   // a session on this machine that is running: Stop, unless something is typed (it becomes its next turn)
   if s[0].lrun && !s[0].live { k_composer_end(t, u, "composer", ifx cw_has_words(s) then "Send" else "Stop", true); }
-  else { k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && (s[0].flight == CF_NONE || s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_AGENTS || s[0].flight == CF_WHO || s[0].flight == CF_WORLDS || s[0].flight == CF_PROJECTS))); }
+  else { k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && (s[0].flight == CF_NONE || cw_background_read(s[0].flight)))); }
   tr_close(t);
 }
 
@@ -1127,7 +1132,7 @@ cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
 // Takes the message: it goes into the transcript, without the space around it, the field is cleared,
 // and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
 cw_background_read :: (kind:int)->bool {
-  return kind==CF_LIST || kind==CF_LOG || kind==CF_CLAUDE || kind==CF_IMPORT || kind==CF_ACCOUNT || kind==CF_AGENTS || kind==CF_WHO || kind==CF_WORLDS || kind==CF_PROJECTS;
+  return kind==CF_LIST || kind==CF_LOG || kind==CF_CLAUDE || kind==CF_IMPORT || kind==CF_ACCOUNT || kind==CF_AGENTS || kind==CF_WHO || kind==CF_WORLDS || kind==CF_PROJECTS || kind==CF_LIFE || kind==CF_ORGS;
 }
 cw_send :: (s: [] ChatWeb) {
   if s[0].live || !cw_has_words(s) { return; }
@@ -1429,8 +1434,14 @@ cw_end :: (s: [] ChatWeb, status: int) {
     sw_limits_read(s[0].set[..], status, body);
   } else if kind == CF_ABOUT {
     sw_about_read(s[0].set[..], status, body);
+  } else if kind == CF_LIFE {
+    sw_life_read(s[0].set[..], status, body);
+  } else if kind == CF_ORGS {
+    sw_orgs_read(s[0].set[..], status, body);
+  } else if kind == CF_ORG_SWITCH {
+    sw_org_switch_read(s[0].set[..], status, body);
   } else if kind == CF_OUT {
-    if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; s[0].projects_n = 0; cw_go_to(s, "/", false); }   // logged out: the public home page
+    if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; s[0].projects_n = 0; sw_account_read(s[0].set[..], ""); s[0].set[0].life_asked = false; s[0].set[0].orgs_asked = false; cw_go_to(s, "/", false); }   // logged out: the public home page
   } else if kind == CF_ACCOUNT {
     s[0].known = status == 200; s[0].known_asked = true;
     if status == 200 { cw_account(s, body, "claude."); }
@@ -1550,6 +1561,22 @@ cw_tick :: (s: [] ChatWeb) {
   // Settings: the limits and the release, once each, when its page is open
   if s[0].page == SW_PAGE && !s[0].set[0].limits_asked { if cw_go(s, CF_LIMITS, "/api/auth/limits?as=lines", "") { s[0].set[0].limits_asked = true; } return; }
   if s[0].page == SW_PAGE && !s[0].set[0].about_asked { if cw_go(s, CF_ABOUT, "/build/about.txt", "") { s[0].set[0].about_asked = true; } return; }
+  // Home Dashboard & Account Settings: account lifecycle/credit, WorkOS organizations, and org switches
+  if s[0].org_switch_due > 0 && s[0].org_switch_due <= s[0].set[0].norgs {
+    k := s[0].org_switch_due - 1;
+    body: [SW_ORG_ID + 32] u8;
+    n := json_raw(body[..], 0, "{\"organization_id\":");
+    n = json_write_string(body[..], n, cast(string) s[0].set[0].org_id[k][0..<s[0].set[0].org_id_n[k]]);
+    n = json_raw(body[..], n, "}");
+    if cw_go(s, CF_ORG_SWITCH, "/api/auth/workos/orgs/switch?as=lines", cast(string) body[0..<n]) {
+      s[0].org_switch_due = 0;
+      s[0].set[0].org_note_n = sw_put(s[0].set[0].org_note[..], 0, "Switching organization...");
+    }
+    return;
+  }
+  on_acct_dash := s[0].page == SS_HOME || (s[0].page == SW_PAGE && s[0].set[0].section == SW_ACCOUNT);
+  if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].life_asked { if cw_go(s, CF_LIFE, "/api/auth/life?as=lines", "") { s[0].set[0].life_asked = true; } return; }
+  if on_acct_dash && s[0].me_n > 0 && !s[0].set[0].orgs_asked { if cw_go(s, CF_ORGS, "/api/auth/workos/orgs?as=lines", "") { s[0].set[0].orgs_asked = true; } return; }
   // a card waits for the turn to end, so a running session's tool calls stay the transcript's last message
   if s[0].card_due_n > 0 && !s[0].live && !s[0].lrun {
     url: [96] u8;
@@ -1796,9 +1823,9 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     cw_new_chat(s); cw_to_chat(s); dm_focus(s[0].dom[..], "composer");
   }
   // the side: home and the chat are drawn here, so their links stay in the shell; the other places are pages of their own
-  else if kind == CW_CLICK && id == "side.h.home" {   // home is a new chat, at /; logged out, the home page is the public one
+  else if kind == CW_CLICK && id == "side.h.home" {   // home is the logged-in Home Dashboard, at /; logged out, the home page is the public one
     if s[0].me_n == 0 { return; }
-    cw_new_chat(s); s[0].page = SS_HOME; cw_go_to(s, "/", true); dm_focus(s[0].dom[..], "composer");
+    s[0].page = SS_HOME; cw_go_to(s, "/", true);
   }
   else if kind == CW_CLICK && id == "side.mob" { s[0].mob_side_open = !s[0].mob_side_open; }
   else if kind == CW_CLICK && (id == "side.hide" || id == "side.show") {
@@ -3069,7 +3096,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
 }
 #test "busy turns cannot start another message and every background read defers it" #steps 80000000 #traversal 536870912 {
  h:[1]CwTest;s:=h[0].s[..];s[0].live=true;s[0].turn=1;s[0].draft_n=cw_put(s[0].draft[..],0,"wait");cw_send(s);#assert s[0].flight==CF_NONE && s[0].count==0 && s[0].draft_n==4 && !s[0].send_due;
- for kind:[9]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS] {
+ for kind:[11]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS] {
   f:[1]CwTest;a:=f[0].s[..];a[0].flight=kind;a[0].draft_n=cw_put(a[0].draft[..],0,"wait");cw_send(a);#assert a[0].send_due && a[0].count==0 && a[0].draft_n==4 && a[0].flight==kind;
  }
 }
@@ -3159,7 +3186,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
  }
 }
 #test "hosted audit: every deferred read resumes after failure, while an unqueued draft stays put" #steps 300000000 #traversal 536870912 {
- for kind:[9]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS] {
+ for kind:[11]int.[CF_LIST,CF_LOG,CF_CLAUDE,CF_IMPORT,CF_ACCOUNT,CF_AGENTS,CF_WHO,CF_WORLDS,CF_PROJECTS,CF_LIFE,CF_ORGS] {
   h:[1]CwTest;s:=h[0].s[..];s[0].draft_n=cw_put(s[0].draft[..],0,"queued");s[0].flight=kind;s[0].send_due=true;
   cw_end(s,500);#assert !s[0].send_due && s[0].live && s[0].flight==CF_COMPLETE && cw_text(s,0)=="queued";
   quiet:[1]CwTest;q:=quiet[0].s[..];q[0].draft_n=cw_put(q[0].draft[..],0,"unsent");q[0].flight=kind;
@@ -3458,15 +3485,41 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   #assert s[0].page == SS_CHATS && cw_test_go(s) == "/chat" && coaxial_chatweb_go_push(s);
 }
 
-#test "at / the shell shows the side and a new chat; New chat and the mark move between the two without leaving the page" {
+#test "at / the shell shows the side and the logged-in home dashboard; New chat and the mark move between Home and Chat without leaving the page" #steps 200000000 #traversal 536870912 {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   cw_test_path(s, "/");
   t := s[0].tree[..];
-  #assert s[0].page == SS_HOME && tr_class(t, 0) == "chat" && tr_find(t, "side") >= 0 && tr_find(t, "composer") >= 0 && s[0].count == 0 && !tr_has(t, tr_find(t, "fold.chats.b"), AT_CURRENT);
+  #assert s[0].page == SS_HOME && tr_class(t, 0) == "home" && tr_find(t, "side") >= 0 && tr_find(t, "home.b.t") >= 0 && tr_find(t, "home.status") >= 0 && tr_find(t, "composer") < 0 && !tr_has(t, tr_find(t, "fold.chats.b"), AT_CURRENT);
+  // Home Dashboard fetches lifecycle/credit and WorkOS orgs, displays them, and supports inline org switching
+  for i: 0..<4 {
+    n := coaxial_chatweb_frame(s, 0.016, true);
+    if coaxial_chatweb_asking(s) {
+      door := cw_test_door(s);
+      if door == "/api/auth/life?as=lines" { cw_test_answer(s, 200, "account acct_1\nkind person\nfrozen no\nstrong 0\nagents 1\nagents_paused 0\ncredit_msat 42000\nworlds 2\nsaves 1\nlimited 0\nfresh 1\n"); }
+      else if door == "/api/auth/workos/orgs?as=lines" { cw_test_answer(s, 200, "active_organization_id org_a\norg org_a Alpha Org\norg org_b Beta Org\n"); }
+      else { cw_test_answer(s, 404, ""); }
+    }
+  }
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(t, tr_find(t, "home.status.acct.v")) == "acct_1" && tr_text_of(t, tr_find(t, "home.status.credit.v")) == "42 sats";
+  #assert tr_text_of(t, tr_find(t, "home.orgs.v.0")) == "Active" && tr_find(t, "sw.org.1") >= 0;
+  cw_test_press(s, "sw.org.1");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/api/auth/workos/orgs/switch?as=lines" && cw_test_body(s) == "{\"organization_id\":\"org_b\"}";
+  cw_test_answer(s, 200, "state switched\nactive_organization_id org_b\n");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(t, tr_find(t, "home.orgs.v.1")) == "Active" && tr_text_of(t, tr_find(t, "home.orgs.note.a")) == "Active organization updated.";
+  // Quick action opens Account Settings inside the shell; Open Chat / New chat moves to /chat; mark returns to Home
+  cw_test_press(s, "home.go.account.go");
+  #assert s[0].page == SW_PAGE && s[0].set[0].section == SW_ACCOUNT && cw_test_go(s) == "/settings/account" && coaxial_chatweb_go_push(s);
+  coaxial_chatweb_go_done(s);
+  cw_test_press(s, "side.h.home");
+  #assert s[0].page == SS_HOME && cw_test_go(s) == "/" && coaxial_chatweb_go_push(s);
+  coaxial_chatweb_go_done(s);
   cw_test_press(s, "fold.chats.add");
   #assert s[0].page == SS_CHATS && cw_test_go(s) == "/chat" && coaxial_chatweb_go_push(s);
-  coaxial_chatweb_go_done(s); n := coaxial_chatweb_frame(s, 0.016, true);
+  coaxial_chatweb_go_done(s); n = coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_class(t, 0) == "chat" && tr_find(t, "composer") >= 0 && coaxial_chatweb_go_len(s) == 0;
   cw_test_press(s, "side.h.home");
   #assert s[0].page == SS_HOME && cw_test_go(s) == "/" && coaxial_chatweb_go_push(s);
@@ -3478,6 +3531,13 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   #assert cw_test_go(s) == "/projects/coax" && coaxial_chatweb_go_push(s) && s[0].page == SS_HELD;
   coaxial_chatweb_go_done(s); n = coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_text_of(t, tr_find(t, "loading.n")) == "Coax";
+  // Log out from Home Dashboard
+  cw_test_path(s, "/");
+  while coaxial_chatweb_asking(s) { cw_test_answer(s, 404, ""); n = coaxial_chatweb_frame(s, 0.016, true); }
+  cw_test_press(s, "home.out"); n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert cw_test_door(s) == "/api/auth/logout?as=lines";
+  cw_test_answer(s, 200, "");
+  #assert cw_test_go(s) == "/" && !coaxial_chatweb_go_push(s) && s[0].me_n == 0 && !s[0].set[0].logged;
   cw_test_path(s, "/chat");
   // in the editor's foot the address is the world's: the chat alone, as the editor draws the side itself
   cw_test_path(s, "/worlds/splice"); n = coaxial_chatweb_frame(s, 0.016, true);
