@@ -1,0 +1,4 @@
+worker_path=C:/Users/alice/.local/bin;C:/Program Files/Git/usr/bin;c:\program files\git\cmd;C:\Windows\system32
+robocopy bin=robocopy src=C:\repo\coax\bin dst=C:\wt\a\coax\bin guard=/XJ ok=true
+conformance ok=true refuse=(rc=true,case=true,dropped=true,ver=true,tamper=true)
+ok=true

@@ -1,0 +1,83 @@
+// Runnable example for The OpenAgents Book Chapter 65: One schema, three carriages.
+// Exercises the production protobuf binary codec (coax/web/api/agent-wire.coax),
+// #authority JSON mapper runtime (coax/lib/proto/json.coax), and #authority
+// reproducible descriptor fingerprint envelope (coax/lib/proto/fingerprint.coax):
+// carrying one grant shape across binary protobuf and canonical JSON (64-bit
+// amounts as decimal strings, bytes as padded base64), parsing JSON scalars
+// into protobuf wire bytes, sealing descriptor provenance, and proving
+// fail-closed refusals on corrupt wire bytes, out-of-range/invalid JSON scalars,
+// node-limit exhaustion, and output-budget truncation.
+//   coax/bin/coax run openagents/examples/schema-three-carriages.coax
+#import "Basic";
+#load "../../coax/web/api/agent-wire.coax";
+#load "../../coax/lib/proto/json.coax";
+#load "../../coax/lib/proto/fingerprint.coax";
+
+// book:begin schema-three-carriages
+s3c_run :: () -> bool {
+  // 1. Binary protobuf carriage: generated #import_proto codec for agents.proto.
+  q: AwRequest;
+  q.name_n = aw_text(q.name[..], "Ledger Agent");
+  q.mask = ag_bit(AG_WALLET_SPEND);
+  q.per_day = 50000;
+  q.per_payment = 10000;
+  q.days = 90;
+  bin_wire: [AW_MAX] u8;
+  bn := aw_request_write(q, bin_wire[..]);
+  dec := aw_request_read(bin_wire[0..<bn]);
+  print("binary bytes=% verdict=% per_day=% per_payment=% days=%\n",
+    bn, dec.verdict, dec.per_day, dec.per_payment, dec.days);
+
+  // 2. JSON carriage: 64-bit sat amounts as decimal strings + binary digest as padded base64,
+  // then parsed directly back into protobuf wire scalar bytes.
+  jbuf: [256] u8; o: [1] Jo;
+  jo_start(o[..], jbuf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "agent_name"); jo_str(o[..], cast(string) dec.name[0..<dec.name_n]);
+  jo_key(o[..], "sats_per_day"); pj_u64(o[..], cast(u64) dec.per_day, true);
+  digest := [4] u8.[0, 255, 1, 62];
+  jo_key(o[..], "digest"); pj_b64(o[..], digest[..]);
+  jo_end(o[..]);
+  jtext := jo_text(o[..]);
+
+  nodes: [32] JvNode; d: [1] Jv;
+  perr := pj_parse(d[..], jtext, nodes[..]);
+  sats_node := jv_get(d[0], 0, "sats_per_day");
+  sats_num := pj_integer(d[0], sats_node, 4); // protobuf uint64 (type 4)
+  pb_field: [32] u8;
+  pb_n := pj_scalar(d[0], sats_node, 4, pb_field[..], 0, 1, false);
+  print("json=% parse_err=% sats_u64=% scalar_bytes=%\n",
+    jtext, perr, sats_num.raw, pb_n);
+
+  // 3. Reproducible descriptor provenance envelope (coax-proto-v4).
+  env: [1024] u8;
+  fp := F_package("account-agents.pb", "AW", "coax0 0.52.0", "wire", "importer", "fingerprint", "BODY", env[..]);
+  print("provenance ok=% header_bytes=% total_bytes=%\n",
+    fp.error == "", fp.provenance, fp.written);
+
+  // 4. Fail-closed refusals: corrupt wire, negative uint64, fractional int, node limit, short provenance buffer.
+  bad_wire := [2] u8.[0x0a, 0x7f];
+  ref_wire := aw_request_read(bad_wire[..]).verdict == AG_BAD_WIRE;
+  bad_nodes: [8] JvNode; bd: [1] Jv;
+  _ := pj_parse(bd[..], "[\"-1\",1.5,\"+5\",null]", bad_nodes[..]);
+  ref_neg := pj_integer(bd[0], jv_at(bd[0], 0, 0), 4).error == PJ_VALUE;
+  ref_frac := pj_integer(bd[0], jv_at(bd[0], 0, 1), 4).error == PJ_VALUE;
+  ref_plus := pj_integer(bd[0], jv_at(bd[0], 0, 2), 4).error == PJ_VALUE;
+  ref_null := pj_scalar(bd[0], jv_at(bd[0], 0, 3), 4, pb_field[..], 0, 1, true) == -PJ_VALUE;
+  tiny_nodes: [3] JvNode;
+  ref_limit := pj_parse(bd[..], "[1,2,3,4]", tiny_nodes[..]) == PJ_LIMIT;
+  ref_fp := F_package("account-agents.pb", "AW", "coax0 0.52.0", "wire", "importer", "fingerprint", "BODY", env[0..<64]).error == "fingerprint output budget";
+  print("refuse wire=% neg=% frac=% plus=% null=% limit=% fp_budget=%\n",
+    ref_wire, ref_neg, ref_frac, ref_plus, ref_null, ref_limit, ref_fp);
+
+  return bn > 0 && dec.verdict == AG_OK && dec.per_day == 50000 && !o[0].bad &&
+         perr == 0 && sats_num.error == 0 && sats_num.raw == 50000 && pb_n == 4 &&
+         fp.error == "" && fp.written > fp.provenance &&
+         ref_wire && ref_neg && ref_frac && ref_plus && ref_null && ref_limit && ref_fp;
+}
+// book:end schema-three-carriages
+
+main :: () {
+  ok := s3c_run();
+  print("ok=%\n", ok);
+}

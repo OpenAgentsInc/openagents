@@ -1,12 +1,22 @@
 # 76. Releases from one source
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
-> Marked for a later rewrite: on 2026-11-15 the owner dropped over-the-air
-> Updates for the apps
-> ([#13645](https://github.com/OpenAgentsInc/openagents/issues/13645)). The
-> statements about over-the-air delivery are corrected below; the rest of the
-> chapter is unchanged.
+> **Status: partly implemented.** The `#authority` single-source release-set
+> ordering, build-pin, staging-lock, and canary-regression policy
+> ([`coax/web/release-set-policy.coax`](../../coax/web/release-set-policy.coax)),
+> `#authority` Desktop v1 SemVer/platform release policy
+> ([`coax/lib/agent/desktop/release-v1-policy.coax`](../../coax/lib/agent/desktop/release-v1-policy.coax)),
+> and Ed25519 update verifier ([`coax/lib/agent/desktop/update.coax`](../../coax/lib/agent/desktop/update.coax))
+> run on `cpu`, grounded by
+> [`openagents/examples/release-set-gating.coax`](../examples/release-set-gating.coax)
+> and [`openagents/examples/release-set-gating.out`](../examples/release-set-gating.out),
+> and are consumed by [`coax/web/release-set.coax`](../../coax/web/release-set.coax),
+> [`coax/web/release.sh`](../../coax/web/release.sh), and
+> [`apps/openagents-desktop/release-v1.coax`](../../apps/openagents-desktop/release-v1.coax).
+> Remaining: cross-host reproducible web-build byte comparison on a second host,
+> public store-driven `/download` generation, and signed `openagents.attest.v1`
+> Nostr release attestations. Note: on 2026-11-15 the owner dropped over-the-air
+> updates ([#13645](https://github.com/OpenAgentsInc/openagents/issues/13645));
+> native apps ship strictly through signed releases and store builds.
 
 ## Premise
 
@@ -79,13 +89,27 @@ It builds on what exists today:
 
 ### The chapter's check
 
-- **Source:** the provenance records the release scripts write.
-- **Trace:** for one commit, each platform's record: commit, compiler,
-  checks passed, targets qualified and where it is published.
-- **Refusal:** a build whose commit has no passing conformance run for its
-  target is refused for publishing.
-- **Independent check:** rebuild the web build from its record on a second
-  host and compare its bytes.
+- **Source:** [`coax/web/release-set-policy.coax`](../../coax/web/release-set-policy.coax),
+  [`coax/lib/agent/desktop/release-v1-policy.coax`](../../coax/lib/agent/desktop/release-v1-policy.coax),
+  [`coax/lib/agent/desktop/update.coax`](../../coax/lib/agent/desktop/update.coax),
+  [`openagents/examples/release-set-gating.coax`](../examples/release-set-gating.coax),
+  and [`openagents/examples/release-set-gating.out`](../examples/release-set-gating.out)
+  (remaining: second-host reproducible web build byte comparison).
+- **Trace:** enforces ordered progression (`api,rooms,page,true`) and reverse
+  rollback (`page,rooms,api`), verifies single-commit provenance (`one_set=true`),
+  build-pin/wire compatibility (`pins_ok=true`), pinned staging promotion
+  (`promote_ok=true`), healthy canary pass (`canary_pass=true`), and Desktop v1
+  Windows platform/SemVer admission (`win_plat=windows`, `win_ext=.zip`,
+  `semver_ok=true`).
+- **Refusal:** promoting a `-seeded` bad build fails with `RS_P_SEEDED`; moved
+  staging fails with `RS_P_MOVED`; mismatched engine pin or partial shard wire
+  coverage refuses page shipping; another holder's live staging lock refuses
+  (`rs_lock_may=false`); a regressing canary fails with
+  `crashed,slower-tick,fewer-seats`; and `0.0.0` fails `rv1_version_valid`.
+- **Independent check:** `coax/bin/coax run openagents/examples/release-set-gating.coax`
+  and `--release` match [`openagents/examples/release-set-gating.out`](../examples/release-set-gating.out),
+  alongside `#authority` mutation checks in [`coax/web/release-set-policy.coax`](../../coax/web/release-set-policy.coax)
+  and [`coax/lib/agent/desktop/release-v1-policy.coax`](../../coax/lib/agent/desktop/release-v1-policy.coax).
 
 On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
@@ -117,3 +141,63 @@ each app's own release script.
    download only?
 2. Which kinds of update may install on their own, and which ask the person
    first?
+
+## Source listing
+
+Run the Chapter 76 example in [`openagents/examples/release-set-gating.coax`](../examples/release-set-gating.coax) (committed transcript [`openagents/examples/release-set-gating.out`](../examples/release-set-gating.out)):
+
+<!-- source: openagents/examples/release-set-gating.coax release-set-gating -->
+```jai
+rsg_run :: () -> bool {
+  // 1. Ordered release progression (api -> rooms -> page -> done) and reverse rollback.
+  s0 := rs_next(0); s1 := rs_next(1); s2 := rs_next(3); s3 := rs_next(7);
+  b0 := rs_back(7); b1 := rs_back(3); b2 := rs_back(1);
+  one_set := rs_one_set(true, true, true, false);
+  own := RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 6, wire_hi = 6};
+  shard := RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 5, wire_hi = 7};
+  pins_ok := rs_pins_match(own, shard) && rs_pins_ship(3, 3) && rs_wire_ship(3, 3, 6, 5);
+  prom_ok := rs_promote("01bdb405f0-20261126", "01bdb405f0-20261126");
+  print("order=%,%,%,% rollback=%,%,% one_set=% pins_ok=% promote_ok=%\n",
+    rs_part(s0), rs_part(s1), rs_part(s2), s3 == RS_DONE,
+    rs_part(b0), rs_part(b1), rs_part(b2), one_set, pins_ok, prom_ok == RS_P_OK);
+
+  // 2. Canary comparison: healthy canary passes; shared background slowness does not stop release.
+  others := RsShard.{tick_p95_us = 600, refused_ds = 4, seated = 32, unsaved_ms = 5000, windows = 30};
+  canary_ok := RsShard.{tick_p95_us = 640, refused_ds = 5, seated = 32, unsaved_ms = 5200, windows = 30};
+  c_pass := rs_canary(canary_ok, others);
+  plat_win := rv1_parse_platform("windows");
+  ver_ok := rv1_version_valid("1.0.0-rc.1");
+  print("canary_pass=% win_plat=% win_ext=% semver_ok=%\n",
+    c_pass == 0, rv1_platform_name(plat_win), rv1_archive_ext(plat_win), ver_ok);
+
+  // 3. Fail-closed refusals: seeded build, moved staging, mismatched wire/pins, held staging lock,
+  // canary crash + slow tick + fewer seats, and 0.0.0 SemVer version.
+  ref_seeded := rs_promote("01bdb405f0-seeded", "01bdb405f0-seeded") == RS_P_SEEDED;
+  ref_moved := rs_promote("01bdb405f0-1", "de2783f887-2") == RS_P_MOVED;
+  ref_pins := !rs_pins_match(own, RsPins.{engine = 5, rules = 9, content = 3, wire_lo = 6, wire_hi = 6});
+  ref_wire := !rs_wire_ship(2, 3, 6, 5);
+  ref_lock := !rs_lock_may(rs_lock(true, "tok-a", "tok-b", 50, 100, true, true));
+  bad_c := canary_ok; bad_c.crashes = 1; bad_c.tick_p95_us = 9000; bad_c.seated = 0;
+  c_bits := rs_canary(bad_c, others);
+  wbuf: [128] u8;
+  c_words := rs_c_words(c_bits, wbuf[..]);
+  ref_ver0 := !rv1_version_valid("0.0.0");
+  print("refuse seeded=% moved=% pins=% wire=% lock=% canary=% ver0=%\n",
+    ref_seeded, ref_moved, ref_pins, ref_wire, ref_lock, c_words, ref_ver0);
+
+  return s0 == RS_API && s1 == RS_ROOMS && s2 == RS_PAGE && s3 == RS_DONE &&
+         b0 == RS_PAGE && b1 == RS_ROOMS && b2 == RS_API && one_set && pins_ok &&
+         prom_ok == RS_P_OK && c_pass == 0 && plat_win == RV1_PLAT_WINDOWS && ver_ok &&
+         ref_seeded && ref_moved && ref_pins && ref_wire && ref_lock &&
+         c_words == "crashed,slower-tick,fewer-seats" && ref_ver0;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/release-set-gating.coax`, identical in `--release`):
+
+```text
+order=api,rooms,page,true rollback=page,rooms,api one_set=true pins_ok=true promote_ok=true
+canary_pass=true win_plat=windows win_ext=.zip semver_ok=true
+refuse seeded=true moved=true pins=true wire=true lock=true canary=crashed,slower-tick,fewer-seats ver0=true
+ok=true
+```

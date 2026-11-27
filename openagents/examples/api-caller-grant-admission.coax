@@ -1,0 +1,78 @@
+// Runnable example for The OpenAgents Book Chapter 64: The OpenAgents API.
+// Exercises the production #authority API caller admission policy
+// (coax/web/api/caller-policy.coax), agent grant policy (agent-policy.coax),
+// and #import_proto binary protobuf codec (agent-wire.coax): admitting signed
+// NIP-98 reads and body-bound writes, round-tripping an openagents.account.v1alpha1
+// GrantRequest, enforcing IP CIDR, scope, and satoshi spend caps, and proving
+// fail-closed refusals on forged/unbound/replayed requests, over-cap spends,
+// missing scopes, revoked grants, and corrupt protobuf wire bytes.
+//   coax/bin/coax run openagents/examples/api-caller-grant-admission.coax
+#import "Basic";
+#load "../../coax/web/api/caller-policy.coax";
+#load "../../coax/web/api/agent-wire.coax";
+
+// book:begin api-caller-grant-admission
+acga_run :: () -> bool {
+  // 1. Caller authentication: unsigned -> player key; verified bound write -> signer + record seen ID.
+  c_unsigned := cp_caller(false, false, true, false, false);
+  c_get := cp_caller(true, true, true, false, true);
+  c_post := cp_caller(true, true, false, true, true);
+  wants_seen := cp_wants_seen(true, true, false, true);
+  print("caller unsigned=% get=% post=% record_seen=%\n",
+    c_unsigned == CP_PLAYER, c_get == CP_SIGNER, c_post == CP_SIGNER, wants_seen);
+
+  // 2. Round-trip an openagents.account.v1alpha1 GrantRequest via generated protobuf codec + policy check.
+  q: AwRequest;
+  q.name_n = aw_text(q.name[..], "Partner Runner");
+  q.mask = ag_bit(AG_PROFILE_READ) | ag_bit(AG_WALLET_SPEND);
+  q.per_day = 1000;
+  q.per_payment = 250;
+  q.days = 30;
+  q.hosts[0].n = aw_text(q.hosts[0].b[..], "203.0.113.0/24");
+  q.nhosts = 1;
+
+  wire: [AW_MAX] u8;
+  wn := aw_request_write(q, wire[..]);
+  dec := aw_request_read(wire[0..<wn]);
+  host_ok := ag_host_match("203.0.113.7", cast(string) dec.hosts[0].b[0..<dec.hosts[0].n]);
+  st_active := ag_state(1000, 1000 + 30 * AG_DAY_MS, 0, false, false);
+  v_agent := ag_agent(st_active, dec.nhosts, host_ok);
+  v_scope := ag_scope(dec.mask, AG_WALLET_SPEND);
+  v_spend := ag_spend(dec.mask, 200, dec.per_payment, dec.per_day, 500);
+  print("grant wire_bytes=% verdict=% name=% host_ok=% agent=% scope=% spend=%\n",
+    wn, dec.verdict, cast(string) dec.name[0..<dec.name_n], host_ok,
+    v_agent == AG_OK, v_scope == AG_OK, v_spend == AG_OK);
+
+  // 3. Fail-closed refusals: forged/unbound/replayed NIP-98, over-payment/over-day spend,
+  // missing scope, revoked grant, unlisted IP, and truncated protobuf wire.
+  ref_sig := cp_caller(true, false, true, false, true);
+  ref_unbound := cp_caller(true, true, false, false, true);
+  ref_replay := cp_caller(true, true, false, true, false);
+  ref_pay := ag_spend(dec.mask, 251, dec.per_payment, dec.per_day, 0);
+  ref_day := ag_spend(dec.mask, 200, dec.per_payment, dec.per_day, 900);
+  ref_noscope := ag_scope(ag_bit(AG_PROFILE_READ), AG_WALLET_SPEND);
+  ref_revoked := ag_agent(ag_state(1000, 999999999, 500, false, false), 0, true);
+  ref_host := ag_agent(AG_ACTIVE, 1, ag_host_match("198.51.100.9", "203.0.113.0/24"));
+  bad_wire := [2] u8.[0x0a, 0x7f];
+  ref_wire := aw_request_read(bad_wire[..]).verdict;
+  print("refuse nip98=(%,%,%) grant=(pay=%,day=%,scope=%,revoked=%,host=%,wire=%)\n",
+    ref_sig == CP_BAD_SIG && cp_refusal_text(ref_sig).count > 0,
+    ref_unbound == CP_UNBOUND, ref_replay == CP_REPLAY,
+    ref_pay == AG_OVER_PAYMENT && ag_status(ref_pay) == 403,
+    ref_day == AG_OVER_DAY, ref_noscope == AG_NO_SCOPE,
+    ref_revoked == AG_NOT_ACTIVE && ag_status(ref_revoked) == 401,
+    ref_host == AG_WRONG_HOST, ref_wire == AG_BAD_WIRE);
+
+  return c_unsigned == CP_PLAYER && c_get == CP_SIGNER && c_post == CP_SIGNER && wants_seen &&
+         wn > 0 && dec.verdict == AG_OK && host_ok &&
+         v_agent == AG_OK && v_scope == AG_OK && v_spend == AG_OK &&
+         ref_sig == CP_BAD_SIG && ref_unbound == CP_UNBOUND && ref_replay == CP_REPLAY &&
+         ref_pay == AG_OVER_PAYMENT && ref_day == AG_OVER_DAY && ref_noscope == AG_NO_SCOPE &&
+         ref_revoked == AG_NOT_ACTIVE && ref_host == AG_WRONG_HOST && ref_wire == AG_BAD_WIRE;
+}
+// book:end api-caller-grant-admission
+
+main :: () {
+  ok := acga_run();
+  print("ok=%\n", ok);
+}

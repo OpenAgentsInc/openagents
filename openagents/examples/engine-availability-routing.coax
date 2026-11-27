@@ -1,0 +1,74 @@
+// Runnable example for The OpenAgents Book Chapter 25: Other engines.
+// Exercises the production #authority engine availability & routing policies
+// (coax/lib/agent/engine/availability-policy.coax and route-policy.coax):
+// owner allowlists, explicit engine preference ("do it with Codex"), cooldown
+// failover, Antigravity opt-in gating, difficulty-to-model profiles, and
+// fail-closed refusals on unknown/duplicate allowlists, corrupted cooldowns,
+// and unopted or insecure remote decision endpoints.
+//   coax/bin/coax run openagents/examples/engine-availability-routing.coax
+#import "Basic";
+#load "../../coax/lib/agent/engine/availability-policy.coax";
+#load "../../coax/lib/agent/engine/route-policy.coax";
+
+ear_name :: (idx: int) -> string {
+  names := [5] string.["claude", "codex", "micro", "psionic", "antigravity"];
+  if idx < 0 || idx >= 5 { return "none"; }
+  return names[idx];
+}
+
+// book:begin engine-availability-routing
+ear_run :: () -> bool {
+  // 1. Allowlist parsing and explicit Codex selection ("do it with Codex").
+  def_mask := ca_allowed("");
+  pair_mask := ca_allowed("claude,codex");
+  all_mask := ca_allowed("antigravity,claude,codex,micro,psionic");
+  pick_codex := ca_pick(ca_index("codex"), pair_mask);
+
+  // 2. Cooldown failover: Codex is rate-limited until t=180; at t=150 it is blocked,
+  // so healthy mask drops Codex and fails over to Claude; at t=180 Codex recovers.
+  codex_cool := ca_blocked(100, 180, 150);
+  codex_ready := !ca_blocked(100, 180, 180);
+  failover := ca_pick(ca_index("codex"), pair_mask & (31 ^ (1 << ca_index("codex"))));
+  agy_only := ca_pick(-1, 16);
+  agy_deferred := ca_pick(-1, 17);
+  print("masks def=% pair=% all=% pick=% failover=% agy=(only=%,deferred=%)\n",
+    def_mask, pair_mask, all_mask, ear_name(pick_codex), ear_name(failover),
+    ear_name(agy_only), ear_name(agy_deferred));
+
+  // 3. Auto-routing verbs, difficulty model mapping, and loopback vs remote door admission.
+  auto_run := cr_auto("run", "");
+  auto_fork := cr_auto("fork", "");
+  m_low := cr_model("claude", 0);
+  m_mid := cr_model("claude", 2);
+  m_hi := cr_model("claude", 4);
+  ep_local := cr_endpoint("http://127.0.0.1:8793/v1/systemone", false);
+  ep_remote_ok := cr_endpoint("https://api.openagents.com/v1/systemone", true);
+  print("route auto_run=% fork_keeps_parent=% claude_tiers=%,%,% ep=(local=%,remote=%)\n",
+    auto_run, !auto_fork, m_low, m_mid, m_hi, ep_local, ep_remote_ok);
+
+  // 4. Fail-closed refusals: bad/duplicate allowlists never widen, out-of-range cooldown blocks,
+  // invalid mask returns -1, and remote/plaintext/credentialed endpoints refuse.
+  ref_dup := ca_allowed("codex,codex") == 0;
+  ref_unk := ca_allowed("unknown") == 0 && ca_allowed("cursor") == 0;
+  ref_corrupt_cd := ca_blocked(100, 604901, 604901);
+  ref_mask := ca_pick(0, 47) == -1;
+  ref_remote_off := !cr_endpoint("https://api.openagents.com/v1/systemone", false);
+  ref_http_remote := !cr_endpoint("http://api.openagents.com/v1/systemone", true);
+  ref_creds := !cr_endpoint("https://user@api.openagents.com/v1/systemone", true);
+  print("refuse dup=% unk=% corrupt_cd=% mask=% remote_off=% http=% creds=%\n",
+    ref_dup, ref_unk, ref_corrupt_cd, ref_mask, ref_remote_off, ref_http_remote, ref_creds);
+
+  return def_mask == 15 && pair_mask == 3 && all_mask == 31 &&
+         pick_codex == 1 && codex_cool && codex_ready && failover == 0 &&
+         agy_only == 4 && agy_deferred == 0 &&
+         auto_run && !auto_fork && m_low == "haiku" && m_mid == "sonnet" && m_hi == "opus" &&
+         ep_local && ep_remote_ok &&
+         ref_dup && ref_unk && ref_corrupt_cd && ref_mask &&
+         ref_remote_off && ref_http_remote && ref_creds;
+}
+// book:end engine-availability-routing
+
+main :: () {
+  ok := ear_run();
+  print("ok=%\n", ok);
+}

@@ -1,0 +1,53 @@
+// Runnable example for The OpenAgents Book Chapter 71: The Metaverse is a surface.
+// Exercises the production #authority Metaverse & GameBuilder surface routing
+// policy (coax/lib/agent/desktop/metaverse-route.coax) shared across macOS,
+// Linux, and Windows hosts: routing first-party realms, GameBuilder play/build
+// links, and local 3D models into the Metaverse pane, gating behind feature
+// flags, validating relative glTF resource URIs, and proving fail-closed
+// refusals on path traversal and untrusted external URLs.
+//   coax/bin/coax run openagents/examples/metaverse-surface-routing.coax
+#import "Basic";
+#load "../../coax/lib/agent/desktop/metaverse-route.coax";
+
+// book:begin metaverse-surface-routing
+msr_run :: () -> bool {
+  // 1. Canonical routes with all desktop surface flags enabled.
+  r_realm := mv_route_classify("https://openagents.com/realms/everglade", DC_FLAGS_ALL);
+  r_play := mv_route_classify("openagents://gamebuilder/play/everglade", DC_FLAGS_ALL);
+  r_glb := mv_route_classify("assets/scenes/town.glb", DC_FLAGS_ALL);
+  r_txt := mv_route_classify("notes/readme.md", DC_FLAGS_ALL);
+  print("realm pane=% kind=% badge=% ro=% reason=%\n",
+    r_realm.pane, r_realm.kind, r_realm.badge, r_realm.read_only, r_realm.reason);
+  print("play pane=% kind=% mode=% badge=% ro=% glb_badge=% txt_pane=%\n",
+    r_play.pane, r_play.kind, r_play.mode, r_play.badge, r_play.read_only, r_glb.badge, r_txt.pane);
+
+  // 2. Feature-flag downgrade (falls back to file pane with reason=flag_off) + safe relative glTF URI.
+  r_gated := mv_route_classify("https://openagents.com/realms/everglade", 0);
+  uri_ok := mv_gltf_external_uri_safe("textures/stone_albedo.png");
+  print("gated pane=% reason=% safe_uri=%\n", r_gated.pane, r_gated.reason, uri_ok);
+
+  // 3. Fail-closed security refusals: path traversal, untrusted external URL, unsafe glTF external URIs.
+  r_trav := mv_route_classify("../secrets/town.glb", DC_FLAGS_ALL);
+  r_ext := mv_route_classify("https://evil.example/payload.glb", DC_FLAGS_ALL);
+  uri_http := mv_gltf_external_uri_safe("https://evil.example/a.bin");
+  uri_abs := mv_gltf_external_uri_safe("/etc/passwd");
+  uri_trav := mv_gltf_external_uri_safe("../secret.bin");
+  print("refuse trav=(%,%) ext=(%,%) uri=(%,%,%)\n",
+    r_trav.pane == MV_PANE_REJECT, r_trav.reason,
+    r_ext.pane == MV_PANE_REJECT, r_ext.reason,
+    !uri_http, !uri_abs, !uri_trav);
+
+  return r_realm.pane == MV_PANE_METAVERSE && r_realm.kind == MV_KIND_REALM && r_realm.badge == "RLM" && r_realm.read_only &&
+         r_play.pane == MV_PANE_METAVERSE && r_play.kind == MV_KIND_GAMEBUILDER && r_play.mode == MV_MODE_PLAY &&
+         r_glb.pane == MV_PANE_METAVERSE && r_glb.kind == MV_KIND_MODEL && r_glb.badge == "GLB" &&
+         r_txt.pane == MV_PANE_FILE && r_gated.pane == MV_PANE_FILE && r_gated.reason == "flag_off" &&
+         uri_ok && r_trav.pane == MV_PANE_REJECT && r_trav.reason == "unsafe_path" &&
+         r_ext.pane == MV_PANE_REJECT && r_ext.reason == "untrusted_external_url" &&
+         !uri_http && !uri_abs && !uri_trav;
+}
+// book:end metaverse-surface-routing
+
+main :: () {
+  ok := msr_run();
+  print("ok=%\n", ok);
+}

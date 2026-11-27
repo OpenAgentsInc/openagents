@@ -1,0 +1,74 @@
+// Runnable example for The OpenAgents Book Chapter 59: One identity.
+// Exercises the production #authority identity spine across account key
+// provisioning (coax/web/api/auth-identity-policy.coax), Sans-I/O WorkOS PKCE
+// and multi-org auth flows (coax/lib/workos/flow.coax), and NIP-05 domain-to-key
+// verification (coax/lib/nostr/nip05.coax), including fail-closed refusals on
+// frozen accounts, OAuth state mismatch, HTTP redirects, and pubkey mismatch.
+//   coax/bin/coax run openagents/examples/one-identity-policy.coax
+#import "Basic";
+#load "../../coax/web/api/auth-identity-policy.coax";
+#load "../../coax/lib/workos/flow.coax";
+#load "../../coax/lib/nostr/nip05.coax";
+
+// book:begin one-identity-policy
+oip_run :: () -> bool {
+  // 1. Account identity provisioning & human session project alias policy.
+  p_create := ai_plan(true, false, false, false);
+  p_linked := ai_plan(true, false, false, true);
+  p_managed := ai_plan(true, false, true, true);
+  p_frozen := ai_plan(true, true, true, true);
+  alias_human := ai_project_alias(2, true, false, false, false);
+  alias_limited := ai_project_alias(2, true, true, false, false);
+  print("identity plan=(create=%,linked=%,managed=%,frozen=%) alias=(human=%,limited=%)\n",
+    p_create, p_linked, p_managed, p_frozen, alias_human, alias_limited);
+
+  // 2. WorkOS hybrid acct_ PKCE login + multi-org selection -> authenticated session.
+  f: [1] WosAuthFlow;
+  ver_ent: [32] u8; st_ent: [32] u8;
+  for i: 0..<32 { ver_ent[i] = cast(u8) (i + 1); st_ent[i] = cast(u8) (i + 65); }
+  url_buf: [1024] u8; scratch: [4096] u8;
+  un := wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "GoogleOAuth", "", "", "", "", ver_ent[..], st_ent[..], url_buf[..]);
+  st_copy: [WOS_STATE_LEN] u8;
+  for i: 0..<43 { st_copy[i] = f[0].oauth_state[i]; }
+  req := wos_flow_pkce_callback(f[..], "", "client_01", "", "code_ok", cast(string) st_copy[..], "", scratch[..]);
+  ver_zeroed := f[0].verifier_n == 0 && f[0].oauth_state_n == 0;
+  org_st := wos_flow_on_auth_response(f[..], 403, "{\"code\":\"organization_selection_required\",\"pending_authentication_token\":\"pat_42\"}", "", "");
+  org_req := wos_flow_select_org(f[..], "", "client_01", "", "org_oa", "203.0.113.7", "OpenAgents/1", scratch[..]);
+  auth_st := wos_flow_on_auth_response(f[..], 200, "{\"access_token\":\"at_oa\",\"refresh_token\":\"rt_oa\",\"organization_id\":\"org_oa\",\"user\":{\"id\":\"user_oa\"}}", "", "");
+  print("workos url_len=% cb_ok=% ver_zeroed=% org_step=% auth=% user=% org=%\n",
+    un, req.error == WOS_GEN_OK && req.public_auth, ver_zeroed,
+    org_st == WOS_FLOW_NEED_ORG_SELECT && org_req.error == WOS_GEN_OK,
+    auth_st == WOS_FLOW_AUTHENTICATED,
+    cast(string) f[0].user_id[0..<f[0].user_id_n],
+    cast(string) f[0].org_id[0..<f[0].org_id_n]);
+
+  // 3. NIP-05 identifier mapping and verification.
+  id := nip05_parse("bob@example.com");
+  n5_url_buf: [128] u8;
+  n5_un := nip05_url(id, n5_url_buf[..]);
+  bob_key := n5_key(N5_BOB);
+  ok_body := "{\"names\":{\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"}}";
+  n5_ok := nip05_check(id, 200, ok_body, bob_key[..]);
+  print("nip05 url=% check=%\n", cast(string) n5_url_buf[0..<n5_un], n5_ok);
+
+  // 4. Fail-closed refusals: bad OAuth state zeroes verifier; NIP-05 refuses redirect, mismatch, uppercase.
+  _ := wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "GoogleOAuth", "", "", "", "", ver_ent[..], st_ent[..], url_buf[..]);
+  bad_cb := wos_flow_pkce_callback(f[..], "", "client_01", "", "code_1", "wrong_state_value_0000000000000000000000000", "", scratch[..]);
+  ref_state := bad_cb.error == WOS_GEN_MISSING && f[0].state == WOS_FLOW_FAILED && f[0].verifier_n == 0;
+  ref_redir := nip05_check(id, 301, ok_body, bob_key[..]) == N5_REDIRECT;
+  other_key := n5_key("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9");
+  ref_mismatch := nip05_check(id, 200, ok_body, other_key[..]) == N5_MISMATCH;
+  ref_upper := nip05_parse("Bob@example.com").error == N5_IDENTIFIER;
+  print("refuse state=% redirect=% mismatch=% upper=%\n", ref_state, ref_redir, ref_mismatch, ref_upper);
+
+  return p_create == AI_CREATE && p_linked == AI_LINKED && p_managed == AI_MANAGED && p_frozen == AI_SKIP &&
+         alias_human && !alias_limited && un > 0 && req.error == WOS_GEN_OK && ver_zeroed &&
+         org_st == WOS_FLOW_NEED_ORG_SELECT && org_req.error == WOS_GEN_OK && auth_st == WOS_FLOW_AUTHENTICATED &&
+         n5_ok == N5_OK && ref_state && ref_redir && ref_mismatch && ref_upper;
+}
+// book:end one-identity-policy
+
+main :: () {
+  ok := oip_run();
+  print("ok=%\n", ok);
+}

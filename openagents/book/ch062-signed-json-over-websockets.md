@@ -1,7 +1,18 @@
 # 62. Signed JSON over WebSockets
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` NIP-01 event reader and
+> BIP-340 verifier ([`coax/lib/nostr/event.coax`](../../coax/lib/nostr/event.coax),
+> [`event_sign.coax`](../../coax/lib/nostr/event_sign.coax)), relay frame codec
+> ([`coax/lib/nostr/message.coax`](../../coax/lib/nostr/message.coax)), and
+> relay client state machine ([`coax/lib/nostr/relay.coax`](../../coax/lib/nostr/relay.coax))
+> run on `cpu`, grounded by
+> [`openagents/examples/nostr-signed-relay-flow.coax`](../examples/nostr-signed-relay-flow.coax)
+> and [`openagents/examples/nostr-signed-relay-flow.out`](../examples/nostr-signed-relay-flow.out),
+> and are consumed by [`apps/openagents-cli/relay.coax`](../../apps/openagents-cli/relay.coax),
+> [`apps/shared/nostr-feed.coax`](../../apps/shared/nostr-feed.coax),
+> and [`psionic/lib/pylon/run.coax`](../../psionic/lib/pylon/run.coax).
+> Remaining: publishing the operated OpenAgents agent-records relay limits table
+> and generating the complete data-class list directly from `proto/`.
 
 ## Premise
 
@@ -88,21 +99,27 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the short tour: one event, signed with a fixed test key and a
-  fixed `created_at`, published to two local relays from
-  [`relay_server.coax`](../../nostr/relay/relay_server.coax) and read back
-  from each.
-- **Trace:** the event's JSON, `["OK", <id>, true, ""]` from both relays,
-  then a `REQ` to each that returns the same event bytes followed by `EOSE`.
-- **Refusal:** the same event with one content byte changed after signing.
-  Each relay answers `false` with `invalid: event id does not match its
-  content`. With the ID fixed up and the old signature kept, it answers
-  `invalid: bad signature`.
-- **Independent check:** the ID and signature are recomputed by
-  [`event_reference.cjs`](../../coax/tests/nostr/event_reference.cjs) and
+- **Source:** [`coax/lib/nostr/event.coax`](../../coax/lib/nostr/event.coax),
+  [`coax/lib/nostr/message.coax`](../../coax/lib/nostr/message.coax),
+  [`coax/lib/nostr/relay.coax`](../../coax/lib/nostr/relay.coax),
+  [`openagents/examples/nostr-signed-relay-flow.coax`](../examples/nostr-signed-relay-flow.coax),
+  and [`openagents/examples/nostr-signed-relay-flow.out`](../examples/nostr-signed-relay-flow.out)
+  (remaining: live dual-relay tour over [`relay_server.coax`](../../nostr/relay/relay_server.coax)).
+- **Trace:** reads and BIP-340-verifies a captured kind `30617` relay `EVENT`
+  frame (`verified=true`), writes a `412`-byte client `["EVENT",...]` frame,
+  reads `["OK",<id>,true,""]`, and steps `Relay` through `REQ`, `EVENT` publish,
+  `RL_ACK`, `RL_DELIVER`, `RL_DUPLICATE`, and `RL_EOSE`.
+- **Refusal:** flipping one hex nibble in an event ID fails
+  `nostr_message_event_verify_vartime` with `NE_ID` (`verified=false`); an
+  unverified event fails `rl_input` with `RL_FORGED` (`forged=1`); a stale
+  connection generation fails with `RL_STALE`; an unknown subscription fails
+  with `RL_UNKNOWN`; a prefixless refusal `OK` fails with `NM_MESSAGE`.
+- **Independent check:** `coax/bin/coax run openagents/examples/nostr-signed-relay-flow.coax`
+  and `--release` match [`openagents/examples/nostr-signed-relay-flow.out`](../examples/nostr-signed-relay-flow.out),
+  and IDs/signatures/relay behavior are independently checked by
+  [`event_reference.cjs`](../../coax/tests/nostr/event_reference.cjs),
   [`event_sign_vectors.py`](../../coax/tests/nostr/event_sign_vectors.py),
-  which share no code with Coax, and the relay's answers by
-  [`relay_rust_differential.py`](../../coax/tests/nostr/relay_rust_differential.py).
+  and [`relay_rust_differential.py`](../../coax/tests/nostr/relay_rust_differential.py).
 
 Planned paths: none. The carriage is [`coax/lib/nostr`](../../coax/lib/nostr)
 and the relay in [`nostr/relay`](../../nostr/relay).
@@ -125,3 +142,81 @@ and the relay in [`nostr/relay`](../../nostr/relay).
   - [The OpenAgents Protocol](../../docs/protocol/openagents-protocol-spec.md), section 8, and [`proto/`](../../proto/README.md)
 - **Schemas:** [`proto/`](../../proto/README.md) defines every wire shape, by the [protocol specification](../../docs/protocol/openagents-protocol-spec.md); [`proto/registry.json`](../../proto/registry.json) lists each shape and its one codec
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P12
+
+## Source listing
+
+Run the Chapter 62 example in [`openagents/examples/nostr-signed-relay-flow.coax`](../examples/nostr-signed-relay-flow.coax) (committed transcript [`openagents/examples/nostr-signed-relay-flow.out`](../examples/nostr-signed-relay-flow.out)):
+
+<!-- source: openagents/examples/nostr-signed-relay-flow.coax nostr-signed-relay-flow -->
+```jai
+nsrf_run :: () -> bool {
+  // 1. Read & BIP-340-verify a real captured relay EVENT frame + wrap a client EVENT frame.
+  line1 := nm_line(COAX_RELAY, 1);
+  frame1 := COAX_RELAY[line1.from..<line1.to];
+  m_ev := nostr_message_read(frame1);
+  scratch: [4096] u8;
+  ev := nostr_message_event_verify_vartime(frame1, scratch[..], false);
+
+  ev_out: [4096] u8;
+  ev_n := nostr_message_write_event(NE_FIXTURE, ev_out[..], false);
+  ok_frame := nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"\"]");
+  print("verify ok=% verified=% kind=% sub=% client_frame_bytes=% ok_accepted=%\n",
+    m_ev.error == NM_OK && ev.error == NE_OK, ev.verified, ev.kind,
+    nm_text(m_ev, m_ev.sub), ev_n, ok_frame.error == NM_OK && ok_frame.accepted);
+
+  // 2. Drive the #authority Relay state machine: subscribe, publish, ack OK, deliver, dedup, EOSE.
+  r: [1] Relay;
+  sub_slot := rl_subscribe(r[..]);
+  pub_slot := rl_publish(r[..], ev.id[..]);
+  gen := rl_start(r[..], 100);
+  opened := rl_opened(r[..], gen, 200);
+  out_req := rl_next(r[..], 200);
+  out_pub := rl_next(r[..], 250);
+  sub_buf: [24] u8;
+  sub_id := rl_sub_text(sub_slot, 1, sub_buf[..]);
+
+  d_ack := rl_input(r[..], gen, RlIn.{kind = RL_IN_OK, id = ev.id, accepted = true});
+  d_ev1 := rl_input(r[..], gen, RlIn.{kind = RL_IN_EVENT, sub = sub_id, id = ev.id, created_at = ev.created_at, verified = true});
+  d_dup := rl_input(r[..], gen, RlIn.{kind = RL_IN_EVENT, sub = sub_id, id = ev.id, created_at = ev.created_at, verified = true});
+  d_eose := rl_input(r[..], gen, RlIn.{kind = RL_IN_EOSE, sub = sub_id});
+  print("relay open=% out=(req=%,ev=%) sub=% ack=% deliver=% dup=% eose=%\n",
+    opened, out_req.kind == RL_OUT_REQ, out_pub.kind == RL_OUT_EVENT,
+    sub_id, d_ack == RL_ACK, d_ev1 == RL_DELIVER, d_dup == RL_DUPLICATE, d_eose == RL_EOSE);
+
+  // 3. Fail-closed refusals: tampered event ID, unverified/forged relay event, stale gen,
+  // unknown sub, and refusal OK without machine prefix.
+  tampered: [1024] u8;
+  tn := line1.to - line1.from;
+  for i: 0..<tn { tampered[i] = COAX_RELAY[line1.from + i]; }
+  tampered[23] = '9'; // flip first hex nibble of event id
+  ev_tamper := nostr_message_event_verify_vartime(cast(string) tampered[0..<tn], scratch[..], false);
+
+  forged_id := ev.id;
+  forged_id[0] ^= 1;
+  d_forged := rl_input(r[..], gen, RlIn.{kind = RL_IN_EVENT, sub = sub_id, id = forged_id, created_at = ev.created_at, verified = false});
+  d_stale := rl_input(r[..], gen - 1, RlIn.{kind = RL_IN_EVENT, sub = sub_id, id = forged_id, created_at = ev.created_at, verified = true});
+  d_unk := rl_input(r[..], gen, RlIn.{kind = RL_IN_EVENT, sub = "s9.1", id = forged_id, created_at = ev.created_at, verified = true});
+  bad_ok := nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"no prefix\"]");
+  print("refuse tamper_id=% forged=% stale=% unk_sub=% bad_ok=%\n",
+    ev_tamper.error == NE_ID && !ev_tamper.verified,
+    d_forged == RL_FORGED && r[0].forged == 1,
+    d_stale == RL_STALE, d_unk == RL_UNKNOWN, bad_ok.error == NM_MESSAGE);
+
+  return m_ev.error == NM_OK && ev.error == NE_OK && ev.verified && ev_n == NE_FIXTURE.count + 10 &&
+         ok_frame.error == NM_OK && ok_frame.accepted && pub_slot == 0 && opened &&
+         out_req.kind == RL_OUT_REQ && out_pub.kind == RL_OUT_EVENT &&
+         d_ack == RL_ACK && d_ev1 == RL_DELIVER && d_dup == RL_DUPLICATE && d_eose == RL_EOSE &&
+         ev_tamper.error == NE_ID && !ev_tamper.verified &&
+         d_forged == RL_FORGED && r[0].forged == 1 && d_stale == RL_STALE &&
+         d_unk == RL_UNKNOWN && bad_ok.error == NM_MESSAGE;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/nostr-signed-relay-flow.coax`, identical in `--release`):
+
+```text
+verify ok=true verified=true kind=30617 sub=repo client_frame_bytes=412 ok_accepted=true
+relay open=true out=(req=true,ev=true) sub=s0.1 ack=true deliver=true dup=true eose=true
+refuse tamper_id=true forged=true stale=true unk_sub=true bad_ok=true
+ok=true
+```

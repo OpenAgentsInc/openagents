@@ -1,0 +1,76 @@
+// Runnable example for The OpenAgents Book Chapter 18: On the record.
+// Exercises the production #authority hash-chained durable AJR1 run journal
+// (coax/lib/agent/journal.coax): preparing and committing chained intent,
+// decision, and binary tool-output frames, verifying SHA-256 chain continuity
+// against the independent Python hashlib genesis vector, and proving fail-closed
+// refusals on unacknowledged appends, 1-byte tampering, truncation, out-of-order
+// replay, malformed metadata, and aliased buffers.
+//   coax/bin/coax run openagents/examples/durable-run-journal.coax
+#import "Basic";
+#load "../../coax/lib/agent/journal.coax";
+
+drj_hex8 :: (h: [32] u8, out: [] u8) -> string {
+  hex := "0123456789abcdef";
+  for i: 0..<8 {
+    out[i * 2] = hex[cast(int) (h[i] >> 4)];
+    out[i * 2 + 1] = hex[cast(int) (h[i] & 0x0f)];
+  }
+  return cast(string) out[0..<16];
+}
+
+// book:begin durable-run-journal
+drj_run :: () -> bool {
+  s0: AjState;
+  f0: [256] u8; f1: [256] u8; f2: [256] u8;
+
+  // 1. Frame 0: command_intent "echo hi" checked against independent Python hashlib vector.
+  p0 := aj_prepare(s0, AjKind.command_intent, 0, "echo hi", f0[..], false);
+  s1 := aj_commit(s0, f0[0..<p0.count], true);
+  py_vec := [32] u8.[0x67, 0xa5, 0x80, 0x13, 0xfb, 0x5a, 0xda, 0x87, 0x62, 0x26, 0x61, 0xd7, 0x68, 0x32, 0xab, 0x83,
+                     0x78, 0xcc, 0xad, 0xd2, 0xa9, 0xd5, 0xba, 0xea, 0xb1, 0xce, 0xe5, 0xb6, 0x25, 0x51, 0xee, 0x64];
+  vec_match := aj_same(s1.head, py_vec);
+  h0_buf: [16] u8;
+  print("frame0 ok=% bytes=% seq=% sha256=% py_vec=%\n",
+    p0.ok, p0.count, s1.sequence, drj_hex8(s1.head, h0_buf[..]), vec_match);
+
+  // 2. Frame 1 (decision) + Frame 2 (binary tool_output with NUL byte), then full replay from genesis.
+  p1 := aj_prepare(s1, AjKind.decision, 0, "pack=coder,tier=local", f1[..], false);
+  s2 := aj_commit(s1, f1[0..<p1.count], true);
+  bin := [4] u8.[0, 255, 10, 34];
+  p2 := aj_prepare(s2, AjKind.tool_output, 1, cast(string) bin[..], f2[..], false);
+  s3 := aj_commit(s2, f2[0..<p2.count], true);
+
+  r0 := aj_read(s0, f0[0..<p0.count]);
+  r1 := aj_read(r0.after, f1[0..<p1.count]);
+  r2 := aj_read(r1.after, f2[0..<p2.count]);
+  bin_exact := r2.ok && r2.count == 4 && f2[r2.at] == 0 && f2[r2.at + 1] == 255 && f2[r2.at + 2] == 10 && f2[r2.at + 3] == 34;
+  replay_ok := r0.ok && r1.ok && r2.ok && aj_same(r2.after.head, s3.head) && bin_exact;
+  h2_buf: [16] u8;
+  print("replay seq=% head=% kinds=%,%,% bin_exact=%\n",
+    r2.after.sequence, drj_hex8(r2.after.head, h2_buf[..]),
+    cast(int) r0.kind, cast(int) r1.kind, cast(int) r2.kind, bin_exact);
+
+  // 3. Fail-closed refusals: failed fsync poisons writer, 1-byte tamper, truncation, out-of-order, overlap.
+  poisoned := aj_commit(s0, f0[0..<p0.count], false);
+  after_poison := aj_prepare(poisoned, AjKind.context, 0, "after", f0[..], false);
+
+  tampered := f1;
+  tampered[AJ_HEADER] ^= 1;
+  rd_tamper := aj_read(s1, tampered[0..<p1.count]);
+  rd_trunc := aj_read(s1, f1[0..<p1.count - 1]);
+  rd_order := aj_read(s0, f1[0..<p1.count]);
+  ov_buf: [128] u8;
+  p_overlap := aj_prepare(s0, AjKind.context, 0, "alias", ov_buf[..], true);
+  print("refuse poison=% tamper=% trunc=% order=% overlap=%\n",
+    poisoned.failed && !after_poison.ok, !rd_tamper.ok, !rd_trunc.ok, !rd_order.ok, !p_overlap.ok);
+
+  return vec_match && replay_ok &&
+         poisoned.failed && !after_poison.ok &&
+         !rd_tamper.ok && !rd_trunc.ok && !rd_order.ok && !p_overlap.ok;
+}
+// book:end durable-run-journal
+
+main :: () {
+  ok := drj_run();
+  print("ok=%\n", ok);
+}

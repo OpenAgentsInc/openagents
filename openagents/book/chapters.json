@@ -20,7 +20,12 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-desktop/app.coax",
+        "apps/openagents-desktop/host.c",
+        "apps/openagents-ios/ios-app.coax",
+        "apps/openagents-ios/Sources/GpuRootViewController.swift"
+      ]
     },
     {
       "number": 2,
@@ -42,7 +47,12 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-desktop/app.coax",
+        "apps/openagents-desktop/host.c",
+        "apps/openagents-ios/ios-app.coax",
+        "apps/openagents-ios/Sources/GpuRootViewController.swift"
+      ]
     },
     {
       "number": 3,
@@ -64,7 +74,12 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-desktop/app.coax",
+        "apps/openagents-desktop/host.c",
+        "apps/openagents-ios/ios-app.coax",
+        "apps/openagents-ios/Sources/GpuRootViewController.swift"
+      ]
     },
     {
       "number": 4,
@@ -157,7 +172,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/shared/app/view/screens.coax"
+      ]
     },
     {
       "number": 8,
@@ -176,7 +193,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/shared/app/environment/bridge.coax",
+        "apps/shared/app/environment/view.coax"
+      ]
     },
     {
       "number": 9,
@@ -195,23 +215,38 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/shared/app/view/screens.coax"
+      ]
     },
     {
       "number": 10,
       "title": "Mobile and other native hosts",
       "file": "ch010-mobile-and-other-native-hosts.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         6,
         7,
         8,
         9
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/environment/phone-agent-policy.coax",
+        "apps/openagents-ios/ios-app.coax",
+        "apps/openagents-ios/gpu-page.coax",
+        "openagents/examples/phone-host-agent-policy.coax",
+        "openagents/examples/phone-host-agent-policy.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "openagents/daemon/host.coax",
+        "openagents/daemon/host-phone.coax",
+        "apps/shared/antigravity/client-core.coax",
+        "apps/openagents-ios/Sources/GpuRootViewController.swift"
+      ]
     },
     {
       "number": 11,
@@ -374,15 +409,27 @@
       "number": 18,
       "title": "On the record",
       "file": "ch018-on-the-record.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         14,
         17
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/journal.coax",
+        "coax/lib/agent/journal-flow.coax",
+        "coax/lib/agent/journal-file.coax",
+        "openagents/core/transcript_dag.coax",
+        "openagents/examples/durable-run-journal.coax",
+        "openagents/examples/durable-run-journal.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/gateway/plan.coax",
+        "coax/lib/inky/run.coax"
+      ]
     },
     {
       "number": 19,
@@ -504,14 +551,28 @@
       "number": 25,
       "title": "Other engines",
       "file": "ch025-other-engines.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         24
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/engine/availability-policy.coax",
+        "coax/lib/agent/engine/route-policy.coax",
+        "coax/lib/agent/engine/engine.coax",
+        "coax/lib/agent/router/native-choice.coax",
+        "openagents/workers/agyworker.coax",
+        "openagents/examples/engine-availability-routing.coax",
+        "openagents/examples/engine-availability-routing.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/agent/engine/availability.coax",
+        "coax/lib/agent/engine/route.coax",
+        "coax/lib/agent/router/wire.coax"
+      ]
     },
     {
       "number": 26,
@@ -1012,7 +1073,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-cli/main.coax",
+        "psionic/lib/peer/executor-release.coax",
+        "psionic/lib/peer/pay.coax"
+      ]
     },
     {
       "number": 55,
@@ -1033,7 +1098,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-cli/executor.coax",
+        "psionic/lib/peer/executor-release.coax"
+      ]
     },
     {
       "number": 56,
@@ -1095,15 +1163,28 @@
       "number": 59,
       "title": "One identity",
       "file": "ch059-one-identity.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         17,
         32
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/web/api/auth-identity-policy.coax",
+        "coax/lib/workos/flow.coax",
+        "coax/lib/nostr/nip05.coax",
+        "coax/lib/nostr/nip06.coax",
+        "openagents/examples/one-identity-policy.coax",
+        "openagents/examples/one-identity-policy.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/api/auth-identity.c",
+        "apps/openagents-cli/account.coax",
+        "apps/openagents-web/nostr-lab-keys.coax"
+      ]
     },
     {
       "number": 60,
@@ -1139,14 +1220,27 @@
       "number": 62,
       "title": "Signed JSON over WebSockets",
       "file": "ch062-signed-json-over-websockets.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         18
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/nostr/event.coax",
+        "coax/lib/nostr/message.coax",
+        "coax/lib/nostr/relay.coax",
+        "coax/lib/nostr/event_sign.coax",
+        "openagents/examples/nostr-signed-relay-flow.coax",
+        "openagents/examples/nostr-signed-relay-flow.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/relay.coax",
+        "apps/shared/nostr-feed.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
     },
     {
       "number": 63,
@@ -1167,42 +1261,85 @@
       "number": 64,
       "title": "The OpenAgents API",
       "file": "ch064-the-openagents-api.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         4,
         63
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/web/api/caller-policy.coax",
+        "coax/web/api/agent-policy.coax",
+        "coax/web/api/agent-wire.coax",
+        "coax/web/api/nip98.coax",
+        "openagents/examples/api-caller-grant-admission.coax",
+        "openagents/examples/api-caller-grant-admission.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/api/seats.c",
+        "coax/web/api/room.c",
+        "apps/openagents-cli/agent.coax",
+        "apps/openagents-web/agents.coax"
+      ]
     },
     {
       "number": 65,
       "title": "One schema, three carriages",
       "file": "ch065-one-schema-three-carriages.md",
-      "status": "planned",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         62,
         64
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/web/api/agent-wire.coax",
+        "coax/lib/proto/json.coax",
+        "coax/lib/proto/wire.coax",
+        "coax/lib/proto/fingerprint.coax",
+        "proto/registry.json",
+        "openagents/examples/schema-three-carriages.coax",
+        "openagents/examples/schema-three-carriages.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/compiler/compiler.coax",
+        "coax/lib/repo/wire.coax",
+        "apps/openagents-cli/agent.coax"
+      ]
     },
     {
       "number": 66,
       "title": "The compliance rule",
       "file": "ch066-the-compliance-rule.md",
-      "status": "planned",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         65
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/web/wire-check.coax",
+        "coax/lib/proto/importer.coax",
+        "coax/lib/proto/golden-keys.coax",
+        "everglade/shared/everglade-wire.coax",
+        "proto/registry.json",
+        "proto/wire-allowlist.txt",
+        "openagents/examples/wire-compliance-gate.coax",
+        "openagents/examples/wire-compliance-gate.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/prepush.coax",
+        "coax/remote/check.sh",
+        "coax/web/release.sh"
+      ]
     },
     {
       "number": 67,
@@ -1222,14 +1359,28 @@
       "number": 68,
       "title": "One gateway",
       "file": "ch068-one-gateway.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         15
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/gateway/plan.coax",
+        "coax/lib/gateway/rates.coax",
+        "coax/lib/gateway/card.coax",
+        "coax/lib/gateway/gateway.coax",
+        "openagents/examples/gateway-failover-rates.coax",
+        "openagents/examples/gateway-failover-rates.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/microcoder/run.coax",
+        "coax/lib/microcoder/loop.coax",
+        "coax/lib/rlm/model.coax",
+        "coax/web/agent/chat-micro.coax"
+      ]
     },
     {
       "number": 69,
@@ -1250,7 +1401,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/platform/hybrid-exec-bridge.coax",
+        "psionic/platform/hybrid-exec-host.c",
+        "coax/lib/microcoder/executor-guard.coax"
+      ]
     },
     {
       "number": 70,
@@ -1274,35 +1429,64 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-cli/pylon.coax",
+        "apps/openagents-cli/main.coax"
+      ]
     },
     {
       "number": 71,
       "title": "The Metaverse is a surface",
       "file": "ch071-the-verse-is-a-surface.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         10,
         12
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/desktop/metaverse-route.coax",
+        "apps/openagents-desktop/page/metaversepane.coax",
+        "everglade/shared/everglade-wire.coax",
+        "openagents/examples/metaverse-surface-routing.coax",
+        "openagents/examples/metaverse-surface-routing.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-desktop/host-core.coax",
+        "apps/openagents-desktop/desktop-core.coax",
+        "apps/openagents-desktop/page/metaversepane.coax",
+        "openagents/runtime/oa-worker.coax"
+      ]
     },
     {
       "number": 72,
       "title": "Agents you can meet",
       "file": "ch072-agents-you-can-meet.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         26,
         71
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "metaverse-engine/agent/drive.coax",
+        "coax/lib/agent/observe/processes.coax",
+        "openagents/core/agents.coax",
+        "openagents/examples/metaverse-agent-drive.coax",
+        "openagents/examples/metaverse-agent-drive.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/client/drive.coax",
+        "everglade/zone-drive.coax",
+        "coder/tui/coder.coax",
+        "coax/lib/agent/router/station.coax"
+      ]
     },
     {
       "number": 73,
@@ -1323,16 +1507,27 @@
       "number": 74,
       "title": "A decision in the world",
       "file": "ch074-a-decision-in-the-world.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         57,
         70,
         73
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "metaverse-engine/ai/decide.coax",
+        "metaverse-engine/core/replay.coax",
+        "metaverse-engine/core/decision-trace.coax",
+        "openagents/examples/world-guard-decision.coax",
+        "openagents/examples/world-guard-decision.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "everglade/npc/guard-replay.coax",
+        "metaverse-engine/ai/pilot.coax"
+      ]
     },
     {
       "number": 75,
@@ -1355,28 +1550,53 @@
       "number": 76,
       "title": "Releases from one source",
       "file": "ch076-releases-from-one-source.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         75
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/web/release-set-policy.coax",
+        "coax/lib/agent/desktop/release-v1-policy.coax",
+        "coax/lib/agent/desktop/update.coax",
+        "openagents/examples/release-set-gating.coax",
+        "openagents/examples/release-set-gating.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/web/release-set.coax",
+        "coax/web/release.sh",
+        "apps/openagents-desktop/release-v1.coax"
+      ]
     },
     {
       "number": 77,
       "title": "A Windows host",
       "file": "ch077-a-windows-host.md",
-      "status": "design draft",
-      "profile": "",
+      "status": "partly implemented",
+      "profile": "cpu",
       "depends_on": [
         70,
         75
       ],
-      "source": [],
-      "qualified_targets": [],
-      "adopted_by": []
+      "source": [
+        "coax/lib/agent/desktop/os-windows.coax",
+        "metaverse-engine/host/conformance.coax",
+        "apps/openagents-desktop/windows/main.c",
+        "apps/shared/host/windows/ui-host.c",
+        "openagents/examples/windows-host-seam.coax",
+        "openagents/examples/windows-host-seam.out"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/agent/desktop/os-posix.coax",
+        "apps/openagents-desktop/host-core.coax",
+        "apps/openagents-desktop/windows/build.sh"
+      ]
     },
     {
       "number": 78,

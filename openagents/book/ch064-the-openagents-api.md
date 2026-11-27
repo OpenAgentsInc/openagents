@@ -1,7 +1,21 @@
 # 64. The OpenAgents API
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` HTTP caller authentication
+> policy ([`coax/web/api/caller-policy.coax`](../../coax/web/api/caller-policy.coax)),
+> NIP-98 verifier ([`coax/web/api/nip98.coax`](../../coax/web/api/nip98.coax)),
+> `#authority` agent grant admission policy ([`coax/web/api/agent-policy.coax`](../../coax/web/api/agent-policy.coax)),
+> and generated `#import_proto` binary grant codec
+> ([`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax)) run on
+> `cpu`, grounded by
+> [`openagents/examples/api-caller-grant-admission.coax`](../examples/api-caller-grant-admission.coax)
+> and [`openagents/examples/api-caller-grant-admission.out`](../examples/api-caller-grant-admission.out),
+> and are consumed by [`coax/web/api/seats.c`](../../coax/web/api/seats.c),
+> [`coax/web/api/room.c`](../../coax/web/api/room.c),
+> [`apps/openagents-cli/agent.coax`](../../apps/openagents-cli/agent.coax),
+> and [`apps/openagents-web/agents.coax`](../../apps/openagents-web/agents.coax).
+> Remaining: moving legacy hand-packed site routes onto the shared `openagents.api.v1`
+> envelope, generating `openagents.discovery.v1` `ApiDocument`, and shipping a
+> loopback partner-app sample stream.
 
 ## Premise
 
@@ -97,19 +111,28 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** the sample partner app, run against the API on loopback with
-  an `oa_key_` key, a fake model service with recorded answers and the
-  controlled clock. It sends one message that needs an approval.
-- **Trace:** the stream in order: route, plan, approval, the approval's
-  answer, each step and the result, as exact JSON lines inside the envelope.
-- **Refusal:** a request with no credentials, a key whose grant lacks the
-  scope, and a request over the published limit. Each gets the envelope's
-  error with its code, and the over-limit error states the limit.
-- **Independent check:** the agent grant's bytes are decoded by Python's
-  protobuf library against
-  [`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto),
-  and the NIP-98 tags match the independent
-  [`nip98_tags.py`](../../coax/tests/nostr/nip98_tags.py).
+- **Source:** [`coax/web/api/caller-policy.coax`](../../coax/web/api/caller-policy.coax),
+  [`coax/web/api/agent-policy.coax`](../../coax/web/api/agent-policy.coax),
+  [`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax),
+  [`openagents/examples/api-caller-grant-admission.coax`](../examples/api-caller-grant-admission.coax),
+  and [`openagents/examples/api-caller-grant-admission.out`](../examples/api-caller-grant-admission.out)
+  (remaining: loopback partner-app SSE approval stream over `openagents.api.v1`).
+- **Trace:** admits unsigned reads as `CP_PLAYER`, verified NIP-98 reads and
+  body-bound writes as `CP_SIGNER` (`record_seen=true`), round-trips a `46`-byte
+  protobuf `openagents.account.v1alpha1.GrantRequest` (`verdict=0`,
+  `name=Partner Runner`), matches CIDR `203.0.113.0/24`, and admits a `200`-sat
+  spend within per-payment (`250`) and 24-hour (`1000`) caps.
+- **Refusal:** forged (`CP_BAD_SIG`), body-unbound write (`CP_UNBOUND`), and
+  replayed (`CP_REPLAY`) NIP-98 requests refuse without falling back to the
+  player key; over-payment (`403` `AG_OVER_PAYMENT`), over-day (`AG_OVER_DAY`),
+  missing scope (`AG_NO_SCOPE`), revoked grant (`401` `AG_NOT_ACTIVE`),
+  unlisted IP (`AG_WRONG_HOST`), and corrupt protobuf bytes (`AG_BAD_WIRE`)
+  all fail closed.
+- **Independent check:** `coax/bin/coax run openagents/examples/api-caller-grant-admission.coax`
+  and `--release` match [`openagents/examples/api-caller-grant-admission.out`](../examples/api-caller-grant-admission.out),
+  agent grant bytes decode under Python protobuf against
+  [`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto), and
+  NIP-98 tags match [`nip98_tags.py`](../../coax/tests/nostr/nip98_tags.py).
 
 Planned paths: none. The API is [`coax/web/api/`](../../coax/web/api), and new
 rules follow its [COAX.md](../../coax/web/api/COAX.md).
@@ -134,3 +157,78 @@ rules follow its [COAX.md](../../coax/web/api/COAX.md).
    already speak, so existing tools can point at it?
 2. What does API use cost a partner, and how does that sit with the author's
    share of paid calls?
+
+## Source listing
+
+Run the Chapter 64 example in [`openagents/examples/api-caller-grant-admission.coax`](../examples/api-caller-grant-admission.coax) (committed transcript [`openagents/examples/api-caller-grant-admission.out`](../examples/api-caller-grant-admission.out)):
+
+<!-- source: openagents/examples/api-caller-grant-admission.coax api-caller-grant-admission -->
+```jai
+acga_run :: () -> bool {
+  // 1. Caller authentication: unsigned -> player key; verified bound write -> signer + record seen ID.
+  c_unsigned := cp_caller(false, false, true, false, false);
+  c_get := cp_caller(true, true, true, false, true);
+  c_post := cp_caller(true, true, false, true, true);
+  wants_seen := cp_wants_seen(true, true, false, true);
+  print("caller unsigned=% get=% post=% record_seen=%\n",
+    c_unsigned == CP_PLAYER, c_get == CP_SIGNER, c_post == CP_SIGNER, wants_seen);
+
+  // 2. Round-trip an openagents.account.v1alpha1 GrantRequest via generated protobuf codec + policy check.
+  q: AwRequest;
+  q.name_n = aw_text(q.name[..], "Partner Runner");
+  q.mask = ag_bit(AG_PROFILE_READ) | ag_bit(AG_WALLET_SPEND);
+  q.per_day = 1000;
+  q.per_payment = 250;
+  q.days = 30;
+  q.hosts[0].n = aw_text(q.hosts[0].b[..], "203.0.113.0/24");
+  q.nhosts = 1;
+
+  wire: [AW_MAX] u8;
+  wn := aw_request_write(q, wire[..]);
+  dec := aw_request_read(wire[0..<wn]);
+  host_ok := ag_host_match("203.0.113.7", cast(string) dec.hosts[0].b[0..<dec.hosts[0].n]);
+  st_active := ag_state(1000, 1000 + 30 * AG_DAY_MS, 0, false, false);
+  v_agent := ag_agent(st_active, dec.nhosts, host_ok);
+  v_scope := ag_scope(dec.mask, AG_WALLET_SPEND);
+  v_spend := ag_spend(dec.mask, 200, dec.per_payment, dec.per_day, 500);
+  print("grant wire_bytes=% verdict=% name=% host_ok=% agent=% scope=% spend=%\n",
+    wn, dec.verdict, cast(string) dec.name[0..<dec.name_n], host_ok,
+    v_agent == AG_OK, v_scope == AG_OK, v_spend == AG_OK);
+
+  // 3. Fail-closed refusals: forged/unbound/replayed NIP-98, over-payment/over-day spend,
+  // missing scope, revoked grant, unlisted IP, and truncated protobuf wire.
+  ref_sig := cp_caller(true, false, true, false, true);
+  ref_unbound := cp_caller(true, true, false, false, true);
+  ref_replay := cp_caller(true, true, false, true, false);
+  ref_pay := ag_spend(dec.mask, 251, dec.per_payment, dec.per_day, 0);
+  ref_day := ag_spend(dec.mask, 200, dec.per_payment, dec.per_day, 900);
+  ref_noscope := ag_scope(ag_bit(AG_PROFILE_READ), AG_WALLET_SPEND);
+  ref_revoked := ag_agent(ag_state(1000, 999999999, 500, false, false), 0, true);
+  ref_host := ag_agent(AG_ACTIVE, 1, ag_host_match("198.51.100.9", "203.0.113.0/24"));
+  bad_wire := [2] u8.[0x0a, 0x7f];
+  ref_wire := aw_request_read(bad_wire[..]).verdict;
+  print("refuse nip98=(%,%,%) grant=(pay=%,day=%,scope=%,revoked=%,host=%,wire=%)\n",
+    ref_sig == CP_BAD_SIG && cp_refusal_text(ref_sig).count > 0,
+    ref_unbound == CP_UNBOUND, ref_replay == CP_REPLAY,
+    ref_pay == AG_OVER_PAYMENT && ag_status(ref_pay) == 403,
+    ref_day == AG_OVER_DAY, ref_noscope == AG_NO_SCOPE,
+    ref_revoked == AG_NOT_ACTIVE && ag_status(ref_revoked) == 401,
+    ref_host == AG_WRONG_HOST, ref_wire == AG_BAD_WIRE);
+
+  return c_unsigned == CP_PLAYER && c_get == CP_SIGNER && c_post == CP_SIGNER && wants_seen &&
+         wn > 0 && dec.verdict == AG_OK && host_ok &&
+         v_agent == AG_OK && v_scope == AG_OK && v_spend == AG_OK &&
+         ref_sig == CP_BAD_SIG && ref_unbound == CP_UNBOUND && ref_replay == CP_REPLAY &&
+         ref_pay == AG_OVER_PAYMENT && ref_day == AG_OVER_DAY && ref_noscope == AG_NO_SCOPE &&
+         ref_revoked == AG_NOT_ACTIVE && ref_host == AG_WRONG_HOST && ref_wire == AG_BAD_WIRE;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/api-caller-grant-admission.coax`, identical in `--release`):
+
+```text
+caller unsigned=true get=true post=true record_seen=true
+grant wire_bytes=46 verdict=0 name=Partner Runner host_ok=true agent=true scope=true spend=true
+refuse nip98=(true,true,true) grant=(pay=true,day=true,scope=true,revoked=true,host=true,wire=true)
+ok=true
+```

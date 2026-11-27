@@ -1,0 +1,5 @@
+binary bytes=27 verdict=0 per_day=50000 per_payment=10000 days=90
+json={"agent_name":"Ledger Agent","sats_per_day":"50000","digest":"AP8BPg=="} parse_err=0 sats_u64=50000 scalar_bytes=4
+provenance ok=true header_bytes=400 total_bytes=405
+refuse wire=true neg=true frac=true plus=true null=true limit=true fp_budget=true
+ok=true

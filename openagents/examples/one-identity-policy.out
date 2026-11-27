@@ -1,0 +1,5 @@
+identity plan=(create=3,linked=1,managed=2,frozen=0) alias=(human=true,limited=false)
+workos url_len=292 cb_ok=true ver_zeroed=true org_step=true auth=true user=user_oa org=org_oa
+nip05 url=https://example.com/.well-known/nostr.json?name=bob check=0
+refuse state=true redirect=true mismatch=true upper=true
+ok=true

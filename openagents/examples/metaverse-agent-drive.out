@@ -1,0 +1,4 @@
+world entities=3 tree_agent=true btn=true walk=true busy=true stop=true quiet=true
+observe ok=true,true,true count=2 engines=coder,codex
+refuse world_tap=true unk_tap=true bad_hit=true ambig=true bad_pid=true
+ok=true

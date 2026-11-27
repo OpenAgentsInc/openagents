@@ -1,0 +1,4 @@
+verify ok=true verified=true kind=30617 sub=repo client_frame_bytes=412 ok_accepted=true
+relay open=true out=(req=true,ev=true) sub=s0.1 ack=true deliver=true dup=true eose=true
+refuse tamper_id=true forged=true stale=true unk_sub=true bad_ok=true
+ok=true

@@ -1,0 +1,5 @@
+replay done=1 in=61 out=13 micros=504 msats=504 cached_micros=3720000
+log=gateway=vertex model=gemini-4-carbon outcome=done status=200 first_ms=120 ms=410 in=61 out=13 card_usd_micros=504 msats=504 cost_usd_micros=-1
+failover next=true benched=(vertex=true,openrouter=false) backoff=2000,8000,30000 stall=1
+refuse cut=true exhausted=true off_card=-1 retryable_402=false
+ok=true

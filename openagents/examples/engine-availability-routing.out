@@ -1,0 +1,4 @@
+masks def=15 pair=3 all=31 pick=codex failover=claude agy=(only=antigravity,deferred=claude)
+route auto_run=true fork_keeps_parent=true claude_tiers=haiku,sonnet,opus ep=(local=true,remote=true)
+refuse dup=true unk=true corrupt_cd=true mask=true remote_off=true http=true creds=true
+ok=true

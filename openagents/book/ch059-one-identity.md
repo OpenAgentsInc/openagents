@@ -1,7 +1,19 @@
 # 59. One identity
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The `#authority` identity provisioning policy
+> ([`coax/web/api/auth-identity-policy.coax`](../../coax/web/api/auth-identity-policy.coax)),
+> Sans-I/O WorkOS hybrid `acct_` PKCE and multi-org state machine
+> ([`coax/lib/workos/flow.coax`](../../coax/lib/workos/flow.coax), `#14099`),
+> and Nostr NIP-05/NIP-06 key tooling
+> ([`coax/lib/nostr/nip05.coax`](../../coax/lib/nostr/nip05.coax),
+> [`nip06.coax`](../../coax/lib/nostr/nip06.coax)) run on `cpu`, grounded by
+> [`openagents/examples/one-identity-policy.coax`](../examples/one-identity-policy.coax)
+> and [`openagents/examples/one-identity-policy.out`](../examples/one-identity-policy.out),
+> and are consumed by [`coax/web/api/auth-identity.c`](../../coax/web/api/auth-identity.c),
+> [`apps/openagents-cli/account.coax`](../../apps/openagents-cli/account.coax),
+> and [`apps/openagents-web/nostr-lab-keys.coax`](../../apps/openagents-web/nostr-lab-keys.coax).
+> Remaining: end-to-end 72-hour recovery cancellation UI and cross-surface
+> profile pages unifying web, native apps, and Metaverse.
 
 ## Premise
 
@@ -96,21 +108,28 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 
 ### The chapter's check
 
-- **Source:** a case in the shared app that logs in with an email code from
-  a fake mail service, adds a Nostr key, links one device key and approves
-  an agent grant with a scope, a spend cap and an expiry.
-- **Trace:** `state account` shows one account ID with three ways in and one
-  device. `state grant` prints the scope, the cap in millisats and the
-  expiry. A NIP-05 lookup against a fake domain with a recorded answer maps
-  the name to the key.
-- **Refusal:** the agent spends past its cap and is refused; after `clock`
-  moves past the expiry, every action is refused; a revoked grant is refused
-  at once. A recovery started from email stays pending at 71 hours, and a
-  staff request to skip the wait is refused.
-- **Independent check:** keys from a seed match the published test vectors
-  in NIP-06, and the agent's `auth` tag verifies under the independent
-  reader
-  [`coax/tests/nostr/nipoa_reference.py`](../../coax/tests/nostr/nipoa_reference.py).
+- **Source:** [`coax/web/api/auth-identity-policy.coax`](../../coax/web/api/auth-identity-policy.coax),
+  [`coax/lib/workos/flow.coax`](../../coax/lib/workos/flow.coax),
+  [`coax/lib/nostr/nip05.coax`](../../coax/lib/nostr/nip05.coax),
+  [`openagents/examples/one-identity-policy.coax`](../examples/one-identity-policy.coax),
+  and [`openagents/examples/one-identity-policy.out`](../examples/one-identity-policy.out)
+  (remaining: end-to-end 72-hour email recovery timer UI case).
+- **Trace:** plans identity provisioning (`AI_CREATE` for a live keyless
+  account, existing `AI_LINKED`/`AI_MANAGED` preserved, `AI_SKIP` for frozen),
+  runs WorkOS PKCE authorize → callback (zeroing transient verifier/state) →
+  HTTP 403 `organization_selection_required` → org selection → authenticated
+  `user_oa`/`org_oa`, and verifies `bob@example.com` via NIP-05 well-known URL
+  against Bob's pubkey (`check=0`).
+- **Refusal:** frozen accounts refuse provisioning (`AI_SKIP`); limited
+  sessions refuse account project alias (`alias=false`); OAuth state mismatch
+  fails closed and zeroes the PKCE verifier; NIP-05 refuses HTTP 301 redirects
+  (`N5_REDIRECT`), pubkey mismatches (`N5_MISMATCH`), and uppercase identifiers
+  (`N5_IDENTIFIER`).
+- **Independent check:** `coax/bin/coax run openagents/examples/one-identity-policy.coax`
+  and `--release` match [`openagents/examples/one-identity-policy.out`](../examples/one-identity-policy.out),
+  NIP-06 derivation matches published vectors in
+  [`coax/lib/nostr/nip06.coax`](../../coax/lib/nostr/nip06.coax), and NIP-OA
+  `auth` tags verify under [`coax/tests/nostr/nipoa_reference.py`](../../coax/tests/nostr/nipoa_reference.py).
 
 Planned paths: none. Identity extends the login in
 [`coax/web/api/`](../../coax/web/api) (chapter 5) and the keys in
@@ -134,3 +153,76 @@ Planned paths: none. Identity extends the login in
 
 1. When does a person who logged in by email get a Nostr key for signing
    public records, where is it made, and how do they take it with them?
+
+## Source listing
+
+Run the Chapter 59 example in [`openagents/examples/one-identity-policy.coax`](../examples/one-identity-policy.coax) (committed transcript [`openagents/examples/one-identity-policy.out`](../examples/one-identity-policy.out)):
+
+<!-- source: openagents/examples/one-identity-policy.coax one-identity-policy -->
+```jai
+oip_run :: () -> bool {
+  // 1. Account identity provisioning & human session project alias policy.
+  p_create := ai_plan(true, false, false, false);
+  p_linked := ai_plan(true, false, false, true);
+  p_managed := ai_plan(true, false, true, true);
+  p_frozen := ai_plan(true, true, true, true);
+  alias_human := ai_project_alias(2, true, false, false, false);
+  alias_limited := ai_project_alias(2, true, true, false, false);
+  print("identity plan=(create=%,linked=%,managed=%,frozen=%) alias=(human=%,limited=%)\n",
+    p_create, p_linked, p_managed, p_frozen, alias_human, alias_limited);
+
+  // 2. WorkOS hybrid acct_ PKCE login + multi-org selection -> authenticated session.
+  f: [1] WosAuthFlow;
+  ver_ent: [32] u8; st_ent: [32] u8;
+  for i: 0..<32 { ver_ent[i] = cast(u8) (i + 1); st_ent[i] = cast(u8) (i + 65); }
+  url_buf: [1024] u8; scratch: [4096] u8;
+  un := wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "GoogleOAuth", "", "", "", "", ver_ent[..], st_ent[..], url_buf[..]);
+  st_copy: [WOS_STATE_LEN] u8;
+  for i: 0..<43 { st_copy[i] = f[0].oauth_state[i]; }
+  req := wos_flow_pkce_callback(f[..], "", "client_01", "", "code_ok", cast(string) st_copy[..], "", scratch[..]);
+  ver_zeroed := f[0].verifier_n == 0 && f[0].oauth_state_n == 0;
+  org_st := wos_flow_on_auth_response(f[..], 403, "{\"code\":\"organization_selection_required\",\"pending_authentication_token\":\"pat_42\"}", "", "");
+  org_req := wos_flow_select_org(f[..], "", "client_01", "", "org_oa", "203.0.113.7", "OpenAgents/1", scratch[..]);
+  auth_st := wos_flow_on_auth_response(f[..], 200, "{\"access_token\":\"at_oa\",\"refresh_token\":\"rt_oa\",\"organization_id\":\"org_oa\",\"user\":{\"id\":\"user_oa\"}}", "", "");
+  print("workos url_len=% cb_ok=% ver_zeroed=% org_step=% auth=% user=% org=%\n",
+    un, req.error == WOS_GEN_OK && req.public_auth, ver_zeroed,
+    org_st == WOS_FLOW_NEED_ORG_SELECT && org_req.error == WOS_GEN_OK,
+    auth_st == WOS_FLOW_AUTHENTICATED,
+    cast(string) f[0].user_id[0..<f[0].user_id_n],
+    cast(string) f[0].org_id[0..<f[0].org_id_n]);
+
+  // 3. NIP-05 identifier mapping and verification.
+  id := nip05_parse("bob@example.com");
+  n5_url_buf: [128] u8;
+  n5_un := nip05_url(id, n5_url_buf[..]);
+  bob_key := n5_key(N5_BOB);
+  ok_body := "{\"names\":{\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"}}";
+  n5_ok := nip05_check(id, 200, ok_body, bob_key[..]);
+  print("nip05 url=% check=%\n", cast(string) n5_url_buf[0..<n5_un], n5_ok);
+
+  // 4. Fail-closed refusals: bad OAuth state zeroes verifier; NIP-05 refuses redirect, mismatch, uppercase.
+  _ := wos_flow_pkce_start(f[..], "", "client_01", "openagents://auth/callback", "GoogleOAuth", "", "", "", "", ver_ent[..], st_ent[..], url_buf[..]);
+  bad_cb := wos_flow_pkce_callback(f[..], "", "client_01", "", "code_1", "wrong_state_value_0000000000000000000000000", "", scratch[..]);
+  ref_state := bad_cb.error == WOS_GEN_MISSING && f[0].state == WOS_FLOW_FAILED && f[0].verifier_n == 0;
+  ref_redir := nip05_check(id, 301, ok_body, bob_key[..]) == N5_REDIRECT;
+  other_key := n5_key("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9");
+  ref_mismatch := nip05_check(id, 200, ok_body, other_key[..]) == N5_MISMATCH;
+  ref_upper := nip05_parse("Bob@example.com").error == N5_IDENTIFIER;
+  print("refuse state=% redirect=% mismatch=% upper=%\n", ref_state, ref_redir, ref_mismatch, ref_upper);
+
+  return p_create == AI_CREATE && p_linked == AI_LINKED && p_managed == AI_MANAGED && p_frozen == AI_SKIP &&
+         alias_human && !alias_limited && un > 0 && req.error == WOS_GEN_OK && ver_zeroed &&
+         org_st == WOS_FLOW_NEED_ORG_SELECT && org_req.error == WOS_GEN_OK && auth_st == WOS_FLOW_AUTHENTICATED &&
+         n5_ok == N5_OK && ref_state && ref_redir && ref_mismatch && ref_upper;
+}
+```
+
+Output (`coax/bin/coax run openagents/examples/one-identity-policy.coax`, identical in `--release`):
+
+```text
+identity plan=(create=3,linked=1,managed=2,frozen=0) alias=(human=true,limited=false)
+workos url_len=292 cb_ok=true ver_zeroed=true org_step=true auth=true user=user_oa org=org_oa
+nip05 url=https://example.com/.well-known/nostr.json?name=bob check=0
+refuse state=true redirect=true mismatch=true upper=true
+ok=true
+```

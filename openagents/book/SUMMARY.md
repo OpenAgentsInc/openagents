@@ -19,7 +19,7 @@
 - [7. History and the sidebar](ch007-history-and-the-sidebar.md) — partly implemented
 - [8. Environment and repository chips](ch008-environment-and-repository-chips.md) — partly implemented
 - [9. Settings](ch009-settings.md) — partly implemented
-- [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) — design draft
+- [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) — partly implemented
 - [11. The web](ch011-the-web.md) — partly implemented
 
 ## III. One general agent
@@ -30,7 +30,7 @@
 - [15. Decide before you generate](ch015-decide-before-you-generate.md) — partly implemented
 - [16. Measure the front](ch016-measure-the-front.md) — design draft
 - [17. Grants and approvals](ch017-grants-and-approvals.md) — partly implemented
-- [18. On the record](ch018-on-the-record.md) — design draft
+- [18. On the record](ch018-on-the-record.md) — partly implemented
 - [19. Conversation](ch019-conversation.md) — design draft
 - [20. Prepared answers](ch020-prepared-answers.md) — design draft
 - [21. A knowledge base](ch021-a-knowledge-base.md) — partly implemented
@@ -40,7 +40,7 @@
 ## IV. Capabilities on your devices
 
 - [24. Coder as a member](ch024-coder-as-a-member.md) — partly implemented
-- [25. Other engines](ch025-other-engines.md) — design draft
+- [25. Other engines](ch025-other-engines.md) — partly implemented
 - [26. Subagents you can see](ch026-subagents-you-can-see.md) — partly implemented
 - [27. Programs](ch027-programs.md) — design draft
 - [28. The command line behind the agent](ch028-the-command-line-behind-the-agent.md) — partly implemented
@@ -80,26 +80,26 @@
 - [56. Paid calls](ch056-paid-calls.md) — design draft
 - [57. Metering and receipts](ch057-metering-and-receipts.md) — design draft
 - [58. Payouts to authors](ch058-payouts-to-authors.md) — partly implemented
-- [59. One identity](ch059-one-identity.md) — design draft
+- [59. One identity](ch059-one-identity.md) — partly implemented
 - [60. Reputation from reproduced claims](ch060-reputation-from-reproduced-claims.md) — design draft
 - [61. Markets for work](ch061-markets-for-work.md) — design draft
-- [62. Signed JSON over WebSockets](ch062-signed-json-over-websockets.md) — design draft
+- [62. Signed JSON over WebSockets](ch062-signed-json-over-websockets.md) — partly implemented
 - [63. Every step is an event](ch063-every-step-is-an-event.md) — design draft
-- [64. The OpenAgents API](ch064-the-openagents-api.md) — design draft
-- [65. One schema, three carriages](ch065-one-schema-three-carriages.md) — planned
-- [66. The compliance rule](ch066-the-compliance-rule.md) — planned
+- [64. The OpenAgents API](ch064-the-openagents-api.md) — partly implemented
+- [65. One schema, three carriages](ch065-one-schema-three-carriages.md) — partly implemented
+- [66. The compliance rule](ch066-the-compliance-rule.md) — partly implemented
 - [67. Host it yourself](ch067-host-it-yourself.md) — design draft
-- [68. One gateway](ch068-one-gateway.md) — design draft
+- [68. One gateway](ch068-one-gateway.md) — partly implemented
 - [69. Models we serve](ch069-models-we-serve.md) — partly implemented
 - [70. Pylons](ch070-pylons.md) — partly implemented
 
 ## VII. Worlds and delivery
 
-- [71. The Metaverse is a surface](ch071-the-verse-is-a-surface.md) — design draft
-- [72. Agents you can meet](ch072-agents-you-can-meet.md) — design draft
+- [71. The Metaverse is a surface](ch071-the-verse-is-a-surface.md) — partly implemented
+- [72. Agents you can meet](ch072-agents-you-can-meet.md) — partly implemented
 - [73. Realms and makers](ch073-realms-and-makers.md) — design draft
-- [74. A decision in the world](ch074-a-decision-in-the-world.md) — design draft
+- [74. A decision in the world](ch074-a-decision-in-the-world.md) — partly implemented
 - [75. Cross-host conformance](ch075-cross-host-conformance.md) — design draft
-- [76. Releases from one source](ch076-releases-from-one-source.md) — design draft
-- [77. A Windows host](ch077-a-windows-host.md) — design draft
+- [76. Releases from one source](ch076-releases-from-one-source.md) — partly implemented
+- [77. A Windows host](ch077-a-windows-host.md) — partly implemented
 - [78. What 1.0 means](ch078-what-one-point-zero-means.md) — design draft

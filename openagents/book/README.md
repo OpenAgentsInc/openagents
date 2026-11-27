@@ -4,25 +4,39 @@ Building the OpenAgents apps, and the general agent behind them, in
 [Coax](../../coax/book/README.md) on [Coax Native](../../coax/native.md),
 one small step at a time.
 
-> **Status: 31 chapters partly implemented on CPU (`1–9`, `11–15`, `17`, `21–22`, `24`, `26`, `28`, `32–33`, `42–45`, `54–55`, `58`, `69–70`); 44 design drafts and 3 planned outlines (`35`, `65`, `66`).**
-> Chapters 1–9, 14, 21–22, 24, 42–45, 54–55, 58, and 69–70 each ship a runnable Coax example in [`openagents/examples/`](../examples/opening-case-runner.coax)
+> **Status: 45 chapters partly implemented on CPU (`1–15`, `17–18`, `21–22`, `24–26`, `28`, `32–33`, `42–45`, `54–55`, `58–59`, `62`, `64–66`, `68–72`, `74`, `76–77`); 32 design drafts and 1 planned outline (`35`).**
+> Chapters 1–10, 14, 18, 21–22, 24–25, 42–45, 54–55, 58–59, 62, 64–66, 68–72, 74, and 76–77 each ship a runnable Coax example in [`openagents/examples/`](../examples/opening-case-runner.coax)
 > with verified debug/release transcripts grounded in
 > [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
 > [`apps/shared/app/history/index.coax`](../../apps/shared/app/history/index.coax),
 > [`apps/shared/app/environment/select.coax`](../../apps/shared/app/environment/select.coax),
 > [`apps/shared/app/settings/identity.coax`](../../apps/shared/app/settings/identity.coax),
+> [`coax/lib/agent/environment/phone-agent-policy.coax`](../../coax/lib/agent/environment/phone-agent-policy.coax),
 > [`coax/lib/agent/router/decide.coax`](../../coax/lib/agent/router/decide.coax),
+> [`coax/lib/agent/journal.coax`](../../coax/lib/agent/journal.coax),
 > [`openagents/knowledge/nipkb.coax`](../../openagents/knowledge/nipkb.coax),
 > [`openagents/knowledge/embed.coax`](../../openagents/knowledge/embed.coax),
 > [`openagents/core/members.coax`](../../openagents/core/members.coax),
+> [`coax/lib/agent/engine/availability-policy.coax`](../../coax/lib/agent/engine/availability-policy.coax),
 > [`coax/lib/agent/desktop/capability-author.coax`](../../coax/lib/agent/desktop/capability-author.coax),
 > [`coax/lib/agent/desktop/capability-gate.coax`](../../coax/lib/agent/desktop/capability-gate.coax),
 > [`coax/lib/nostr/eval/report.coax`](../../coax/lib/nostr/eval/report.coax),
 > [`psionic/lib/peer/module-registry.coax`](../../psionic/lib/peer/module-registry.coax),
 > [`psionic/lib/peer/release-promote.coax`](../../psionic/lib/peer/release-promote.coax),
+> [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax),
+> [`coax/web/api/auth-identity-policy.coax`](../../coax/web/api/auth-identity-policy.coax),
+> [`coax/lib/nostr/relay.coax`](../../coax/lib/nostr/relay.coax),
+> [`coax/web/api/caller-policy.coax`](../../coax/web/api/caller-policy.coax),
+> [`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax),
+> [`coax/lib/proto/golden-keys.coax`](../../coax/lib/proto/golden-keys.coax),
+> [`coax/lib/gateway/plan.coax`](../../coax/lib/gateway/plan.coax),
 > [`psionic/lib/hybrid-exec.coax`](../../psionic/lib/hybrid-exec.coax),
-> [`psionic/lib/pylon/onboard.coax`](../../psionic/lib/pylon/onboard.coax), and
-> [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax).
+> [`psionic/lib/pylon/onboard.coax`](../../psionic/lib/pylon/onboard.coax),
+> [`coax/lib/agent/desktop/metaverse-route.coax`](../../coax/lib/agent/desktop/metaverse-route.coax),
+> [`metaverse-engine/agent/drive.coax`](../../metaverse-engine/agent/drive.coax),
+> [`metaverse-engine/ai/decide.coax`](../../metaverse-engine/ai/decide.coax),
+> [`coax/web/release-set-policy.coax`](../../coax/web/release-set-policy.coax), and
+> [`coax/lib/agent/desktop/os-windows.coax`](../../coax/lib/agent/desktop/os-windows.coax).
 > Chapters 11–13, 15, 17, 26, 28, and 32–33 are additionally backed by
 > shipped, CPU-tested Coax modules across **Coax Web / Coax UI**
 > ([`components/ui/`](../../components/ui), [`apps/openagents-web/demos/docs-starter/`](../../apps/openagents-web/demos/docs-starter)),
@@ -222,7 +236,7 @@ NIPs, old crates and protocol packages.
 | [7. History and the sidebar](ch007-history-and-the-sidebar.md) | Partly implemented: cpu |
 | [8. Environment and repository chips](ch008-environment-and-repository-chips.md) | Partly implemented: cpu |
 | [9. Settings](ch009-settings.md) | Partly implemented: cpu |
-| [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) | Unimplemented: design draft |
+| [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) | Partly implemented: cpu |
 | [11. The web](ch011-the-web.md) | Partly implemented: cpu |
 
 ### III. One general agent
@@ -235,7 +249,7 @@ NIPs, old crates and protocol packages.
 | [15. Decide before you generate](ch015-decide-before-you-generate.md) | Partly implemented: cpu |
 | [16. Measure the front](ch016-measure-the-front.md) | Unimplemented: design draft |
 | [17. Grants and approvals](ch017-grants-and-approvals.md) | Partly implemented: cpu |
-| [18. On the record](ch018-on-the-record.md) | Unimplemented: design draft |
+| [18. On the record](ch018-on-the-record.md) | Partly implemented: cpu |
 | [19. Conversation](ch019-conversation.md) | Unimplemented: design draft |
 | [20. Prepared answers](ch020-prepared-answers.md) | Unimplemented: design draft |
 | [21. A knowledge base](ch021-a-knowledge-base.md) | Partly implemented: cpu |
@@ -247,7 +261,7 @@ NIPs, old crates and protocol packages.
 | Chapter | Status |
 | --- | --- |
 | [24. Coder as a member](ch024-coder-as-a-member.md) | Partly implemented: cpu |
-| [25. Other engines](ch025-other-engines.md) | Unimplemented: design draft |
+| [25. Other engines](ch025-other-engines.md) | Partly implemented: cpu |
 | [26. Subagents you can see](ch026-subagents-you-can-see.md) | Partly implemented: cpu |
 | [27. Programs](ch027-programs.md) | Unimplemented: design draft |
 | [28. The command line behind the agent](ch028-the-command-line-behind-the-agent.md) | Partly implemented: cpu |
@@ -291,16 +305,16 @@ NIPs, old crates and protocol packages.
 | [56. Paid calls](ch056-paid-calls.md) | Unimplemented: design draft |
 | [57. Metering and receipts](ch057-metering-and-receipts.md) | Unimplemented: design draft |
 | [58. Payouts to authors](ch058-payouts-to-authors.md) | Partly implemented: cpu |
-| [59. One identity](ch059-one-identity.md) | Unimplemented: design draft |
+| [59. One identity](ch059-one-identity.md) | Partly implemented: cpu |
 | [60. Reputation from reproduced claims](ch060-reputation-from-reproduced-claims.md) | Unimplemented: design draft |
 | [61. Markets for work](ch061-markets-for-work.md) | Unimplemented: design draft |
-| [62. Signed JSON over WebSockets](ch062-signed-json-over-websockets.md) | Unimplemented: design draft |
+| [62. Signed JSON over WebSockets](ch062-signed-json-over-websockets.md) | Partly implemented: cpu |
 | [63. Every step is an event](ch063-every-step-is-an-event.md) | Unimplemented: design draft |
-| [64. The OpenAgents API](ch064-the-openagents-api.md) | Unimplemented: design draft |
-| [65. One schema, three carriages](ch065-one-schema-three-carriages.md) | Planned |
-| [66. The compliance rule](ch066-the-compliance-rule.md) | Planned |
+| [64. The OpenAgents API](ch064-the-openagents-api.md) | Partly implemented: cpu |
+| [65. One schema, three carriages](ch065-one-schema-three-carriages.md) | Partly implemented: cpu |
+| [66. The compliance rule](ch066-the-compliance-rule.md) | Partly implemented: cpu |
 | [67. Host it yourself](ch067-host-it-yourself.md) | Unimplemented: design draft |
-| [68. One gateway](ch068-one-gateway.md) | Unimplemented: design draft |
+| [68. One gateway](ch068-one-gateway.md) | Partly implemented: cpu |
 | [69. Models we serve](ch069-models-we-serve.md) | Partly implemented: cpu |
 | [70. Pylons](ch070-pylons.md) | Partly implemented: cpu |
 
@@ -308,12 +322,12 @@ NIPs, old crates and protocol packages.
 
 | Chapter | Status |
 | --- | --- |
-| [71. The Metaverse is a surface](ch071-the-verse-is-a-surface.md) | Unimplemented: design draft |
-| [72. Agents you can meet](ch072-agents-you-can-meet.md) | Unimplemented: design draft |
+| [71. The Metaverse is a surface](ch071-the-verse-is-a-surface.md) | Partly implemented: cpu |
+| [72. Agents you can meet](ch072-agents-you-can-meet.md) | Partly implemented: cpu |
 | [73. Realms and makers](ch073-realms-and-makers.md) | Unimplemented: design draft |
-| [74. A decision in the world](ch074-a-decision-in-the-world.md) | Unimplemented: design draft |
+| [74. A decision in the world](ch074-a-decision-in-the-world.md) | Partly implemented: cpu |
 | [75. Cross-host conformance](ch075-cross-host-conformance.md) | Unimplemented: design draft |
-| [76. Releases from one source](ch076-releases-from-one-source.md) | Unimplemented: design draft |
-| [77. A Windows host](ch077-a-windows-host.md) | Unimplemented: design draft |
+| [76. Releases from one source](ch076-releases-from-one-source.md) | Partly implemented: cpu |
+| [77. A Windows host](ch077-a-windows-host.md) | Partly implemented: cpu |
 | [78. What 1.0 means](ch078-what-one-point-zero-means.md) | Unimplemented: design draft |
 <!-- chapters:end -->

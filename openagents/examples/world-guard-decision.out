@@ -1,0 +1,4 @@
+guard ask=(status=0,req=1,live=true) admit=(status=0,kind=3,target=40) open=0
+fallback expired_mask=4 kind=2 at=(3,2) digest=3803845797
+refuse dup=true unsensed=true forbidden=true late=true stale=true xfer=true
+ok=true
