@@ -645,6 +645,31 @@ oa_agent_format_fork_directive :: (directive: string, out: [] u8) -> int #effect
   return n;
 }
 
+// Appends a worktree path-translation notice onto a forked child directive when running in an
+// isolated worktree whose root differs from the parent cwd (#14120).
+oa_agent_append_fork_wt_notice :: (out: [] u8, at: int, parent_cwd: string, wt_path: string) -> int #effects(reads, writes, traps) {
+  if at < 0 { return 0; }
+  if parent_cwd.count == 0 || wt_path.count == 0 || parent_cwd == wt_path { return at; }
+  n := oa_ag_cat(out, at, "\n\n[Worktree Path Translation] You are running in an isolated git worktree at `");
+  n = oa_ag_cat(out, n, wt_path);
+  n = oa_ag_cat(out, n, "`. File paths referenced in inherited parent history under `");
+  n = oa_ag_cat(out, n, parent_cwd);
+  n = oa_ag_cat(out, n, "` map to the corresponding relative paths under `");
+  n = oa_ag_cat(out, n, wt_path);
+  n = oa_ag_cat(out, n, "`. Perform all reads, edits, and commands inside this worktree root.");
+  return n;
+}
+
+// Formats a forked child directive with sentinel boilerplate and optional worktree path-translation
+// notice when `want_wt` is true and `wt_path` differs from `parent_cwd` (#14120).
+oa_agent_format_fork_directive_ex :: (directive: string, want_wt: bool, parent_cwd: string, wt_path: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := oa_agent_format_fork_directive(directive, out);
+  if want_wt {
+    n = oa_agent_append_fork_wt_notice(out, n, parent_cwd, wt_path);
+  }
+  return n;
+}
+
 // Appends one JSON-escaped string into dst[at..], returning new index.
 oa_ag_json_str :: (dst: [] u8, at: int, s: string) -> int #effects(reads, writes, traps) {
   n := oa_ag_cat(dst, at, "\"");
@@ -824,4 +849,28 @@ oa_agent_build_fork_user_turn :: (tool_ids: [] string, directive: string, out: [
   #assert nu1 > prefix_len && nu2 > prefix_len;
   #assert cast(string) s1[0..<prefix_len] == cast(string) s2[0..<prefix_len];
   #assert oa_agent_fork_blocked(false, s1) && oa_agent_fork_blocked(false, s2);
+}
+
+#test "agents: fork + worktree path-translation notice (#14120)" {
+  buf: [1024] u8;
+  // Direct notice helper boundaries: negative at -> 0, at == 0 appends exact notice, empty or equal paths -> unchanged
+  #assert oa_agent_append_fork_wt_notice(buf[..], -1, "/repo", "/wt/a") == 0;
+  want_notice := "\n\n[Worktree Path Translation] You are running in an isolated git worktree at `/wt/a`. File paths referenced in inherited parent history under `/repo` map to the corresponding relative paths under `/wt/a`. Perform all reads, edits, and commands inside this worktree root.";
+  n0 := oa_agent_append_fork_wt_notice(buf[..], 0, "/repo", "/wt/a");
+  #assert n0 == want_notice.count && cast(string) buf[0..<n0] == want_notice;
+  #assert oa_agent_append_fork_wt_notice(buf[..], 5, "", "/wt/a") == 5;
+  #assert oa_agent_append_fork_wt_notice(buf[..], 5, "/repo", "") == 5;
+  #assert oa_agent_append_fork_wt_notice(buf[..], 5, "/repo", "/repo") == 5;
+
+  // Format ex without worktree vs with worktree
+  d_plain: [1024] u8;
+  d_wt: [1024] u8;
+  np := oa_agent_format_fork_directive_ex("Audit auth", false, "/repo", "/wt/a", d_plain[..]);
+  nw := oa_agent_format_fork_directive_ex("Audit auth", true, "/repo", "/wt/a", d_wt[..]);
+  sp := cast(string) d_plain[0..<np];
+  sw := cast(string) d_wt[0..<nw];
+  #assert np > 0 && nw == np + want_notice.count;
+  #assert !oa_ag_contains_ci(sp, "[Worktree Path Translation]");
+  #assert cast(string) sw[0..<np] == sp && cast(string) sw[np..<nw] == want_notice;
+  #assert oa_agent_fork_blocked(false, sw);
 }

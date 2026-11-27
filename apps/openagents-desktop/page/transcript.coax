@@ -599,6 +599,8 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     if id_s.count > 0 { s[0].turns[i].agents[j].agent_id_n = cp_out(s[0].turns[i].agents[j].agent_id[..], id_s); }
     md_s := cl_str(ar[..], one, "model");
     if md_s.count > 0 { s[0].turns[i].agents[j].model_ovr_n = cp_out(s[0].turns[i].agents[j].model_ovr[..], md_s); }
+    ef_s := cl_str(ar[..], one, "effort");
+    if ef_s.count > 0 { s[0].turns[i].agents[j].effort_ovr_n = cp_out(s[0].turns[i].agents[j].effort_ovr[..], ef_s); }
     wp_s := cl_str(ar[..], one, "worktree_path");
     if wp_s.count > 0 { s[0].turns[i].agents[j].wt_path_n = cp_out(s[0].turns[i].agents[j].wt_path[..], wp_s); }
     wb_s := cl_str(ar[..], one, "worktree_branch");
@@ -618,7 +620,10 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     git_s := cl_str(ar[..], one, "git");
     s[0].turns[i].agents[j].git = ifx git_s == "push" then 2 else ifx git_s == "commit" then 1 else 0;
     fk_b := cl_bool(one, "is_fork");
-    if fk_b.ok && fk_b.value { s[0].turns[i].agents[j].is_fork = true; }
+    if fk_b.ok && fk_b.value {
+      s[0].turns[i].agents[j].is_fork = true;
+      s[0].turns[i].agents[j].is_cc_agent = true;
+    }
     fkp_s := cl_str(ar[..], one, "fork_context_path");
     if fkp_s.count > 0 { s[0].turns[i].agents[j].fork_ctx_path_n = cp_out(s[0].turns[i].agents[j].fork_ctx_path[..], fkp_s); }
     rtx_s := cl_str(ar[..], one, "resume_transcript_path");
@@ -918,9 +923,30 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
       transcript_path = cp_long_str(s, s[0].turns[i].agents[j].tx_path_at, s[0].turns[i].agents[j].tx_path_n),
       mode = cast(string) s[0].turns[i].agents[j].perm_mode[0..<s[0].turns[i].agents[j].perm_mode_n],
     };
-    if level == CP_LEVEL_INKLING { t.local = true; t.model = "inkling-2-mini"; }   // a local chat's sub-agent is local too
-    if s[0].turns[i].agents[j].model_ovr_n > 0 {
-      t.model = cast(string) s[0].turns[i].agents[j].model_ovr[0..<s[0].turns[i].agents[j].model_ovr_n];
+    if s[0].turns[i].agents[j].is_fork {
+      // Cache-exact FORK_AGENT (#14120): preserve exact parent model, effort, and local/cloud parity
+      // instead of overriding to CP_MODEL_NEON / "low".
+      pm := s[0].turns[i].model;
+      t.local = cp_is_inkling(s, pm) || cp_is_hybrid(s, pm) || cp_is_flawed_local(s, pm) || level == CP_LEVEL_INKLING;
+      p_mid := cp_model_id(s, pm);
+      if p_mid.count > 0 { t.model = p_mid; }
+      p_eff := cp_task_effort(s, pm);
+      if p_eff.count > 0 { t.effort = p_eff; }
+      if s[0].turns[i].agents[j].model_ovr_n > 0 {
+        t.model = cast(string) s[0].turns[i].agents[j].model_ovr[0..<s[0].turns[i].agents[j].model_ovr_n];
+        t.local = (t.model == "oa:local") || cp_is_inkling_id(t.model) || cp_flawed_find(t.model) == CP_FLAWED_START_LOCAL;
+      }
+      if s[0].turns[i].agents[j].effort_ovr_n > 0 {
+        t.effort = cast(string) s[0].turns[i].agents[j].effort_ovr[0..<s[0].turns[i].agents[j].effort_ovr_n];
+      }
+    } else {
+      if level == CP_LEVEL_INKLING { t.local = true; t.model = "inkling-2-mini"; }   // a local chat's sub-agent is local too
+      if s[0].turns[i].agents[j].model_ovr_n > 0 {
+        t.model = cast(string) s[0].turns[i].agents[j].model_ovr[0..<s[0].turns[i].agents[j].model_ovr_n];
+      }
+      if s[0].turns[i].agents[j].effort_ovr_n > 0 {
+        t.effort = cast(string) s[0].turns[i].agents[j].effort_ovr[0..<s[0].turns[i].agents[j].effort_ovr_n];
+      }
     }
     return mww_task(out, t);
   }

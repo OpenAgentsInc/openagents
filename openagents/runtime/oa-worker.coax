@@ -6396,6 +6396,18 @@ FwRun :: struct {
   routed_delegate: [32] u8; nrouted_delegate: int; // System One router explicit_delegate choice (e.g. "claude", #14104)
   is_subagent: bool;
   is_fork_child: bool;
+  fork_frozen: bool;
+  fork_parity_ok: bool;
+  fork_packs_mask: int;
+  fork_thinking_mode: int;
+  fork_local_max_tokens: int;
+  fork_allowed_tools: [512] u8; nfork_allowed_tools: int;
+  fork_disallowed_tools: [512] u8; nfork_disallowed_tools: int;
+  last_packs_mask: int;
+  last_sent_effort: [32] u8; nlast_sent_effort: int;
+  last_sent_thinking_mode: int;
+  last_sent_local_max_tokens: int;
+  last_sent_has_snapshot: bool;
   subagent_read_only: bool;
   subagent_git: [8] u8; nsubagent_git: int;   // "" for a chat's own run; none, commit or push for a sub-agent (mc_gg_refuse_publish)
   subagent_omit_claudemd: bool;
@@ -6629,6 +6641,74 @@ fww_is_scratch_path :: (path: string) -> bool {
   return flawed_aw_starts(path, "/tmp/") || flawed_aw_starts(path, "/var/tmp/") || flawed_aw_starts(path, "/private/tmp/");
 }
 
+// Pure request parameter resolver shared by fww_start_request and cache-parity #test checks (#14120).
+// Bypasses adaptive effort & local-32K high->low downgrades and freezes parent packs_mask (keeping
+// OA_PACK_AGENTS in serialized tool JSON while fww_advance_tools refuses recursive Agent calls),
+// tool allow/deny lists, and thinking config when is_fork_child && fork_frozen.
+fww_resolve_request_params :: (
+  r: [] FwRun,
+  cfg: [] FwConfig,
+  h: [] FwHist,
+  is_gem: bool,
+  is_local: bool,
+  ctx_win: int,
+  req_elapsed_s: int,
+  no_tools: bool,
+  base_packs_mask: int,
+  eff_cfg: [] FwConfig,
+  out_eff: [] u8,
+  out_eff_n: [] int,
+  out_packs_mask: [] int
+) {
+  raw_eff := cast(string) r[0].effort[0..<r[0].neffort];
+  eff := raw_eff;
+  frozen := r[0].is_fork_child && r[0].fork_frozen;
+  if !frozen {
+    eff = ifx is_gem
+          then fww_adaptive_effort(cfg[0].thinking_mode, raw_eff, r[0].step_num, h[0].nmsgs, r[0].has_edited, r[0].last_bash_ok, r[0].last_step_had_err, r[0].audit_done, r[0].finish_nudged, r[0].calm_steps, req_elapsed_s, cfg[0].budget_s, cfg[0].bare_mode)
+          else raw_eff;
+    // On 32K local Inkling 2 Mini in adaptive mode, map default "high" to "low" (gBench-proven Pareto champion: 100% seal_tools, 29-45% faster, no 8K thinking spirals).
+    if is_local && ctx_win <= 32768 && cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE && !cfg[0].bare_mode && eff == "high" {
+      eff = "low";
+    }
+    if is_gem && r[0].force_low_once && cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE && !cfg[0].bare_mode {
+      eff = "low";
+    }
+  }
+  r[0].force_low_once = false;
+  if r[0].calm_steps > 0 { r[0].calm_steps -= 1; }
+
+  packs_mask := ifx no_tools then 0 else base_packs_mask;
+  if !no_tools && !r[0].is_subagent && cfg[0].subagents_enabled { packs_mask |= OA_PACK_AGENTS; }
+  eff_cfg[0] = cfg[0];
+  if frozen {
+    packs_mask = ifx no_tools then 0 else r[0].fork_packs_mask;
+    eff_cfg[0].nallowed = fww_keep(eff_cfg[0].allowed_tools[..], cast(string) r[0].fork_allowed_tools[0..<r[0].nfork_allowed_tools]);
+    eff_cfg[0].ndisallowed = fww_keep(eff_cfg[0].disallowed_tools[..], cast(string) r[0].fork_disallowed_tools[0..<r[0].nfork_disallowed_tools]);
+    eff_cfg[0].thinking_mode = r[0].fork_thinking_mode;
+    if r[0].fork_local_max_tokens > 0 { eff_cfg[0].local_max_tokens = r[0].fork_local_max_tokens; }
+  } else if r[0].is_subagent {
+    if r[0].nsubagent_allowed > 0 {
+      eff_cfg[0].nallowed = fww_keep(eff_cfg[0].allowed_tools[..], cast(string) r[0].subagent_allowed[0..<r[0].nsubagent_allowed]);
+    }
+    if r[0].nsubagent_disallowed > 0 {
+      if eff_cfg[0].ndisallowed > 0 {
+        eff_cfg[0].ndisallowed = fww_cat(eff_cfg[0].disallowed_tools[..], eff_cfg[0].ndisallowed, ",");
+      }
+      eff_cfg[0].ndisallowed = fww_cat(eff_cfg[0].disallowed_tools[..], eff_cfg[0].ndisallowed, cast(string) r[0].subagent_disallowed[0..<r[0].nsubagent_disallowed]);
+    }
+  }
+
+  if !no_tools { r[0].last_packs_mask = packs_mask; }
+  r[0].nlast_sent_effort = fww_keep(r[0].last_sent_effort[..], eff);
+  r[0].last_sent_thinking_mode = eff_cfg[0].thinking_mode;
+  r[0].last_sent_local_max_tokens = eff_cfg[0].local_max_tokens;
+  r[0].last_sent_has_snapshot = true;
+
+  out_eff_n[0] = fww_keep(out_eff, eff);
+  out_packs_mask[0] = packs_mask;
+}
+
 // Launch one streaming LLM request for the current history. Returns "" on success or error reason.
 fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, out: [] u8) -> string {
   r[0].acc[0] = FwStreamAccum.{cur_tool_idx = -1};
@@ -6669,25 +6749,12 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     wire_model = cast(string) mdl_b[0..<n];
   }
   r[0].acc[0].nresp_model = fww_keep(r[0].acc[0].resp_model[..], wire_model);
-  raw_eff := cast(string) r[0].effort[0..<r[0].neffort];
   req_elapsed_s := ifx r[0].turn_start_ms > 0 then (r[0].req_start_ms - r[0].turn_start_ms) / 1000 else 0;
-  eff := ifx is_gem
-         then fww_adaptive_effort(cfg[0].thinking_mode, raw_eff, r[0].step_num, h[0].nmsgs, r[0].has_edited, r[0].last_bash_ok, r[0].last_step_had_err, r[0].audit_done, r[0].finish_nudged, r[0].calm_steps, req_elapsed_s, cfg[0].budget_s, cfg[0].bare_mode)
-         else raw_eff;
-  // On 32K local Inkling 2 Mini in adaptive mode, map default "high" to "low" (gBench-proven Pareto champion: 100% seal_tools, 29-45% faster, no 8K thinking spirals).
-  if is_local && ctx_win <= 32768 && cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE && !cfg[0].bare_mode && eff == "high" {
-    eff = "low";
-  }
-  if is_gem && r[0].force_low_once && cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE && !cfg[0].bare_mode {
-    eff = "low";
-  }
-  r[0].force_low_once = false;
-  if r[0].calm_steps > 0 { r[0].calm_steps -= 1; }
   base_sys_b: [4096] u8;
   full_sys := cast(string) r[0].sys_prompt[0..<r[0].nsys];
   sys := full_sys;
   cwd_now := cast(string) r[0].cwd[0..<r[0].ncwd];
-  if is_local && ctx_win <= 32768 {
+  if is_local && ctx_win <= 32768 && !(r[0].is_fork_child && r[0].fork_frozen) {
     platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
     ln_sys := fww_build_local_coding_system_prompt_core(cfg, cwd_now, platform, base_sys_b[..]);
     if r[0].nactive_pack > 0 && cast(string) r[0].active_pack[0..<r[0].nactive_pack] == "knowledge" {
@@ -6707,24 +6774,18 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       sc := fww_utf8_cut(sys, max_sys);
       sys = cast(string) sys[0..<sc];
     }
+    // Keep r[0].sys_prompt synchronized with the exact local wire prompt so any FORK_AGENT snapshot matches byte-for-byte.
+    r[0].nsys = fww_keep(r[0].sys_prompt[..], sys);
   }
   no_tools := fww_turn_no_tools(r[0].force_wrapup_once);
   include_coax_intel := !no_tools && !(is_local && ctx_win <= 32768) && fww_is_coax_repo(cwd_now);
-  packs_mask := ifx no_tools then 0 else fww_active_packs(cwd_now, include_coax_intel);
-  if !no_tools && !r[0].is_subagent && cfg[0].subagents_enabled { packs_mask |= OA_PACK_AGENTS; }
+  base_packs_mask := ifx no_tools then 0 else fww_active_packs(cwd_now, include_coax_intel);
   eff_cfg: [1] FwConfig;
-  eff_cfg[0] = cfg[0];
-  if r[0].is_subagent {
-    if r[0].nsubagent_allowed > 0 {
-      eff_cfg[0].nallowed = fww_keep(eff_cfg[0].allowed_tools[..], cast(string) r[0].subagent_allowed[0..<r[0].nsubagent_allowed]);
-    }
-    if r[0].nsubagent_disallowed > 0 {
-      if eff_cfg[0].ndisallowed > 0 {
-        eff_cfg[0].ndisallowed = fww_cat(eff_cfg[0].disallowed_tools[..], eff_cfg[0].ndisallowed, ",");
-      }
-      eff_cfg[0].ndisallowed = fww_cat(eff_cfg[0].disallowed_tools[..], eff_cfg[0].ndisallowed, cast(string) r[0].subagent_disallowed[0..<r[0].nsubagent_disallowed]);
-    }
-  }
+  eff_b: [32] u8; eff_n := [1] int.[0];
+  packs_out := [1] int.[0];
+  fww_resolve_request_params(r, cfg, h, is_gem, is_local, ctx_win, req_elapsed_s, no_tools, base_packs_mask, eff_cfg[..], eff_b[..], eff_n[..], packs_out[..]);
+  eff := cast(string) eff_b[0..<eff_n[0]];
+  packs_mask := packs_out[0];
   no_think := r[0].force_no_think_once;
   r[0].force_no_think_once = false;
 
@@ -7515,7 +7576,7 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
 
     // Parallel Agent/Task delegation batching (#14096): collect consecutive Agent calls & launch simultaneously
     if name == "Agent" || name == "Task" {
-      if r[0].is_subagent {
+      if r[0].is_subagent || r[0].is_fork_child {
         r[0].acc[0].tools[idx].done = true;
         r[0].acc[0].tools[idx].is_error = true;
         r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Nested subagent delegation is disabled inside subagents to prevent unbounded recursion.");
@@ -7530,7 +7591,7 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
         batch_end += 1;
       }
       home_s := cast(string) r[0].home[0..<r[0].nhome];
-      if fww_start_delegate_batch(r, cfg, h, home_s, idx, batch_end, out) {
+      if fww_start_delegate_batch(r, cfg, h, b, home_s, idx, batch_end, out) {
         return ""; // waiting asynchronously for MWW_RESULTS or local subprocesses
       }
       r[0].next_tool_idx = batch_end;
@@ -9298,6 +9359,100 @@ tool_main :: () -> int #export_c #effects(all) {
     return 0;
   }
 
+  if fww_flag_asked("--selftest-fork") {
+    tmp_b: [FS_PATH_MAX] u8;
+    tmp := fs_temp("oa-fork-e2e-", tmp_b[..]);
+    if tmp.count == 0 { print("FAIL: fs_temp failed\n"); return 1; }
+    defer { _ = fs_remove(tmp); }
+    home_b: [FS_PATH_MAX] u8; home_d := fs_join(tmp, "home", home_b[..]);
+    _ = fs_mkdir_all(home_d);
+
+    // 1. Real disk write & read of >44KB FORK_AGENT snapshot via FwBufs (no 32KB stack truncation)
+    r_p: [1] FwRun; cfg_p: [1] FwConfig; h_p: [1] FwHist; b1: [1] FwBufs;
+    cfg_p[0].thinking_mode = FLAWED_THINK_ADAPTIVE;
+    cfg_p[0].subagents_enabled = true;
+    r_p[0].nhome = fww_keep(r_p[0].home[..], home_d);
+    r_p[0].ncwd = fww_keep(r_p[0].cwd[..], "/repo/app");
+    r_p[0].nmodel = fww_keep(r_p[0].model[..], "oa:gemini-4-carbon");
+    r_p[0].neffort = fww_keep(r_p[0].effort[..], "high");
+    r_p[0].nlast_sent_effort = fww_keep(r_p[0].last_sent_effort[..], "high");
+    r_p[0].last_packs_mask = OA_PACK_AGENTS | OA_PACK_COAX_INTEL;
+    r_p[0].last_sent_thinking_mode = FLAWED_THINK_ADAPTIVE;
+    r_p[0].last_sent_has_snapshot = true;
+    for i: 0..<30000 { r_p[0].sys_prompt[i] = ifx i == 29999 then 'Z' else 'S'; }
+    r_p[0].nsys = 30000;
+    big_u: [14000] u8;
+    for i: 0..<14000 { big_u[i] = ifx i == 13999 then 'Q' else 'U'; }
+    fww_hist_push_user(h_p[..], cast(string) big_u[..]);
+    a0 := [1] int.[0];
+    h_p[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 2};
+    fa := FwBlock.{kind = FWW_MB_TOOL_USE};
+    fa.id_n = fww_slab_put(h_p[..], "fk_a", a0[..]); fa.id_at = a0[0];
+    fa.name_n = fww_slab_put(h_p[..], "Agent", a0[..]); fa.name_at = a0[0];
+    fa.text_n = fww_slab_put(h_p[..], "{\"description\":\"A\",\"prompt\":\"Check A\",\"fork\":true}", a0[..]); fa.text_at = a0[0];
+    fa.sig_n = fww_slab_put(h_p[..], "SIG_A", a0[..]); fa.sig_at = a0[0];
+    fb := FwBlock.{kind = FWW_MB_TOOL_USE};
+    fb.id_n = fww_slab_put(h_p[..], "fk_b", a0[..]); fb.id_at = a0[0];
+    fb.name_n = fww_slab_put(h_p[..], "Agent", a0[..]); fb.name_at = a0[0];
+    fb.text_n = fww_slab_put(h_p[..], "{\"description\":\"B\",\"prompt\":\"Check B\",\"fork\":true}", a0[..]); fb.text_at = a0[0];
+    fb.sig_n = fww_slab_put(h_p[..], "SIG_B", a0[..]); fb.sig_at = a0[0];
+    h_p[0].msgs[1].blocks[0] = fa;
+    h_p[0].msgs[1].blocks[1] = fb;
+    h_p[0].nmsgs = 2;
+
+    sib_ids := [2] string.["fk_a", "fk_b"];
+    sib_names := [2] string.["Agent", "Agent"];
+    fp_b: [FS_PATH_MAX] u8;
+    fp_n := fww_write_fork_context(home_d, "afork-selftest00000001", r_p[..], cfg_p[..], h_p[..], sib_ids[..], sib_names[..], b1[0].req_body[..], fp_b[..]);
+    if fp_n <= 0 { print("FAIL 1: fww_write_fork_context failed\n"); return 1; }
+    fp := cast(string) fp_b[0..<fp_n];
+    fsz := fs_size(fp);
+    if fsz <= 44000 { print("FAIL 1: expected >44KB fork file on disk, got %\n", fsz); return 1; }
+
+    r_c: [1] FwRun; cfg_c: [1] FwConfig; h_c: [1] FwHist;
+    r_c[0].is_subagent = true;
+    r_c[0].is_fork_child = true;
+    cfg_c[0].thinking_mode = FLAWED_THINK_OFF;
+    if !fww_load_fork_context(r_c[..], cfg_c[..], h_c[..], fp, b1[0].req_body[..], b1[0].compact_buf[..]) {
+      print("FAIL 1: fww_load_fork_context returned false\n"); return 1;
+    }
+    if !r_c[0].fork_frozen || !r_c[0].fork_parity_ok || r_c[0].nsys != 30000 || r_c[0].sys_prompt[29999] != 'Z' || h_c[0].nmsgs != 3 {
+      print("FAIL 1: hydrated fork state mismatch (nsys=% nmsgs=%)\n", r_c[0].nsys, h_c[0].nmsgs); return 1;
+    }
+    if !fww_msg_tools_valid(h_c[..], h_c[0].msgs[1], h_c[0].msgs[2]) {
+      print("FAIL 1: hydrated sibling tool_results failed fww_msg_tools_valid\n"); return 1;
+    }
+    print("OK 1/2 real disk >44KB FORK_AGENT write/load + 5-component parity check passed (% bytes)\n", fsz);
+
+    // 2. Real fww_start_delegate_batch in host mode emits exact parent model & effort on MWW_DELEGATE
+    //    and writes real fork-<aid>.json files on disk without downgrading effort or stripping Agent tools.
+    r_p[0].host_agents = true;
+    oa_agents_init_builtins(r_p[0].agent_reg[..]);
+    r_p[0].acc[0] = FwStreamAccum.{ntools = 2, cur_tool_idx = -1};
+    r_p[0].acc[0].tools[0].nid = fww_keep(r_p[0].acc[0].tools[0].id[..], "fk_a");
+    r_p[0].acc[0].tools[0].nname = fww_keep(r_p[0].acc[0].tools[0].name[..], "Agent");
+    r_p[0].acc[0].tools[0].nargs = fww_keep(r_p[0].acc[0].tools[0].args[..], "{\"description\":\"A\",\"prompt\":\"Check A\",\"fork\":true}");
+    r_p[0].acc[0].tools[1].nid = fww_keep(r_p[0].acc[0].tools[1].id[..], "fk_b");
+    r_p[0].acc[0].tools[1].nname = fww_keep(r_p[0].acc[0].tools[1].name[..], "Agent");
+    r_p[0].acc[0].tools[1].nargs = fww_keep(r_p[0].acc[0].tools[1].args[..], "{\"description\":\"B\",\"prompt\":\"Check B\",\"fork\":true}");
+    del_out: [65536] u8;
+    if !fww_start_delegate_batch(r_p[..], cfg_p[..], h_p[..], b1[..], home_d, 0, 2, del_out[..]) {
+      print("FAIL 2: fww_start_delegate_batch failed\n"); return 1;
+    }
+    del_s := cast(string) del_out[0..<del_out.count];
+    del_n := 0; while del_n < del_out.count && del_out[del_n] != 10 && del_out[del_n] != 0 { del_n += 1; }
+    del_line := cast(string) del_out[0..<del_n];
+    _ = del_s;
+    if !fww_contains_ci(del_line, "\"model\":\"oa:gemini-4-carbon\"") ||
+       !fww_contains_ci(del_line, "\"effort\":\"high\"") ||
+       !fww_contains_ci(del_line, "\"is_fork\":true") ||
+       fww_contains_ci(del_line, "\"disallowed_tools\":\"Agent") {
+      print("FAIL 2: MWW_DELEGATE missing exact fork model/effort or stripped Agent tools: %\n", del_line); return 1;
+    }
+    print("OK 2/2 fww_start_delegate_batch preserved exact parent model/effort/tools on MWW_DELEGATE\n");
+    return 0;
+  }
+
   homebuf: [4096] u8;
   home := cl_getenv("CODER_HOME", homebuf[..]);
   if home.count == 0 { home = cl_getenv("HOME", homebuf[..]); }
@@ -9557,6 +9712,10 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].host_claude = req[0].agents && req[0].claude && cfg[0].allow_local_harnesses;
     run[0].is_subagent = req[0].is_subagent;
     run[0].is_fork_child = req[0].is_fork;
+    if hist[0].nmsgs == 0 {
+      run[0].fork_frozen = false;
+      run[0].fork_parity_ok = false;
+    }
     run[0].subagent_read_only = req[0].read_only;
     // A sub-agent's git rule; one whose task line names none may not commit or push (#14104).
     run[0].nsubagent_git = fww_keep(run[0].subagent_git[..], ifx !req[0].is_subagent then "" else mc_gg_publish_rule(req[0].git));
@@ -9568,7 +9727,7 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].waiting_local_delegate = false;
     run[0].ndelegate_slots = 0;
     fww_load_agent_registry(run[0].agent_reg[..], cd, home);
-    if run[0].is_subagent && cfg[0].nsubagent_effort > 0 {
+    if run[0].is_subagent && !run[0].is_fork_child && cfg[0].nsubagent_effort > 0 {
       picked_effort = cast(string) cfg[0].subagent_effort[0..<cfg[0].nsubagent_effort];
     }
     run[0].nmodel = fww_keep(run[0].model[..], picked_model);
@@ -9644,7 +9803,17 @@ tool_main :: () -> int #export_c #effects(all) {
       _ = fww_emergency_compact(hist[..], 3, 0, bufs[0].compact_buf[..]);
     }
     if req[0].is_fork && req[0].fork_context_path.count > 0 && hist[0].nmsgs == 0 {
-      _ = fww_load_fork_context(hist[..], req[0].fork_context_path);
+      if fww_load_fork_context(run[..], cfg[..], hist[..], req[0].fork_context_path, bufs[0].req_body[..], bufs[0].compact_buf[..]) {
+        frozen_m := cast(string) run[0].model[0..<run[0].nmodel];
+        if frozen_m.count > 0 && frozen_m != picked_model {
+          fww_resolve_auth(cfg[..], home, frozen_m, auth[..], false);
+          if !auth[0].ok {
+            fww_send(out[..], mww_ended(out[..], "failed", cast(string) auth[0].label[0..<auth[0].nlabel]));
+            fww_turn_end("failed", st[..], q[..], f[..], out[..]);
+            continue;
+          }
+        }
+      }
     }
     if req[0].resume_transcript_path.count > 0 && hist[0].nmsgs == 0 {
       leaf_n := [1] int.[0];
@@ -9659,51 +9828,54 @@ tool_main :: () -> int #export_c #effects(all) {
     mc_steer_clear(st[..]); st[0].nd = 0;
 
     // Always assemble the workspace-aware system prompt (cwd, tool guidance, instructions, and
-    // cached git snapshot when inside a git repo). One-shot Explore/Plan subagents trim CLAUDE.md
-    // and git snapshot via subagent_omit_claudemd; parent turns mount the active subagent catalog (#14096).
-    if run[0].is_subagent && run[0].subagent_omit_claudemd {
-      platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
-      run[0].nsys = fww_build_coding_system_prompt_core(cfg[..], cd, platform, run[0].sys_prompt[..]);
-    } else {
-      run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
-      if !cfg[0].bare_mode && !run[0].is_subagent && repo_name.count > 0 {
-        if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
-          run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
-          run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
+    // cached git snapshot when inside a git repo). Frozen FORK_AGENT children skip rebuilding
+    // sys_prompt entirely so git_snap, CLAUDE.md, and subagent catalog bytes stay byte-identical
+    // to the parent's cached prompt (#14120).
+    if !(run[0].is_fork_child && run[0].fork_frozen) {
+      if run[0].is_subagent && run[0].subagent_omit_claudemd {
+        platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
+        run[0].nsys = fww_build_coding_system_prompt_core(cfg[..], cd, platform, run[0].sys_prompt[..]);
+      } else {
+        run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
+        if !cfg[0].bare_mode && !run[0].is_subagent && repo_name.count > 0 {
+          if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
+            run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
+            run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
+          }
+          if run[0].ngit_snap > 0 {
+            run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].git_snap[0..<run[0].ngit_snap]);
+          }
         }
-        if run[0].ngit_snap > 0 {
-          run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].git_snap[0..<run[0].ngit_snap]);
+      }
+      if run[0].is_subagent && run[0].nsubagent_type > 0 {
+        pi := oa_agents_find(run[0].agent_reg[..], cast(string) run[0].subagent_type[0..<run[0].nsubagent_type]);
+        if pi >= 0 && run[0].agent_reg[0].defs[pi].nprompt > 0 {
+          run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n# Subagent Persona Instructions\n");
+          run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].agent_reg[0].defs[pi].prompt[0..<run[0].agent_reg[0].defs[pi].nprompt]);
+          run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n");
+        }
+      } else if !run[0].is_subagent && cfg[0].subagents_enabled {
+        cat_b: [4096] u8;
+        cn_cat := oa_agent_build_catalog_prompt(run[0].agent_reg[..], cat_b[..]);
+        if cn_cat > 0 {
+          run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) cat_b[0..<cn_cat]);
         }
       }
-    }
-    if run[0].is_subagent && run[0].nsubagent_type > 0 {
-      pi := oa_agents_find(run[0].agent_reg[..], cast(string) run[0].subagent_type[0..<run[0].nsubagent_type]);
-      if pi >= 0 && run[0].agent_reg[0].defs[pi].nprompt > 0 {
-        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n# Subagent Persona Instructions\n");
-        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].agent_reg[0].defs[pi].prompt[0..<run[0].agent_reg[0].defs[pi].nprompt]);
-        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n");
+      if run[0].nactive_pack > 0 && cast(string) run[0].active_pack[0..<run[0].nactive_pack] == "knowledge" {
+        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n[Knowledge Pack Active] Answer questions about docs, books, transcripts, or past decisions using KnowledgeSearch (and KnowledgeGet for exact excerpts) in one fast turn with file:line citations instead of running repo-wide Grep/Bash loops.\n");
       }
-    } else if !run[0].is_subagent && cfg[0].subagents_enabled {
-      cat_b: [4096] u8;
-      cn_cat := oa_agent_build_catalog_prompt(run[0].agent_reg[..], cat_b[..]);
-      if cn_cat > 0 {
-        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) cat_b[0..<cn_cat]);
-      }
-    }
-    if run[0].nactive_pack > 0 && cast(string) run[0].active_pack[0..<run[0].nactive_pack] == "knowledge" {
-      run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n[Knowledge Pack Active] Answer questions about docs, books, transcripts, or past decisions using KnowledgeSearch (and KnowledgeGet for exact excerpts) in one fast turn with file:line citations instead of running repo-wide Grep/Bash loops.\n");
-    }
-    is_cap_p := run[0].nactive_pack > 0 && cast(string) run[0].active_pack[0..<run[0].nactive_pack] == "capability_author";
-    run[0].nsys = fww_append_cap_author_prompt(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].missing_cap_hint[0..<run[0].nmissing_cap_hint], is_cap_p);
-    if auth[0].backend != FLAWED_BE_LOCAL && cfg[0].auto_compact && hist[0].nmsgs >= 6 {
-      est_tok := fww_estimate_prompt_tokens(hist[..], run[0].nsys, false, false);
-      if cp_cache_status(hist[0].last_cloud_turn_ms, proc_now_ms(), 0, hist[0].last_cached_tok, est_tok, true) == CP_CACHE_EXPIRED_COMPACT {
-        _ = fww_hist_compact_ex(hist[..], 0, 2, 512, 0, 0, bufs[0].compact_buf[..]);
+      is_cap_p := run[0].nactive_pack > 0 && cast(string) run[0].active_pack[0..<run[0].nactive_pack] == "capability_author";
+      run[0].nsys = fww_append_cap_author_prompt(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].missing_cap_hint[0..<run[0].nmissing_cap_hint], is_cap_p);
+      if auth[0].backend != FLAWED_BE_LOCAL && cfg[0].auto_compact && hist[0].nmsgs >= 6 {
+        est_tok := fww_estimate_prompt_tokens(hist[..], run[0].nsys, false, false);
+        if cp_cache_status(hist[0].last_cloud_turn_ms, proc_now_ms(), 0, hist[0].last_cached_tok, est_tok, true) == CP_CACHE_EXPIRED_COMPACT {
+          _ = fww_hist_compact_ex(hist[..], 0, 2, 512, 0, 0, bufs[0].compact_buf[..]);
+        }
       }
     }
 
     // Honor a System One router plan that explicitly delegated this turn to Claude Code (#14104).
-    if fww_start_routed_claude_delegate(run[..], cfg[..], hist[..], home, tk, out[..]) {
+    if fww_start_routed_claude_delegate(run[..], cfg[..], hist[..], bufs[..], home, tk, out[..]) {
       run[0].active = true;
       f[0].starting = false;
       continue;
@@ -10779,32 +10951,289 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert !is_err[0] && on > 0 && fww_contains_ci(cast(string) ob[0..<on], "5 files inspected");
 }
 
-#test "flawedworker: cache-exact FORK_AGENT context snapshot, recursion guard & standalone subprocess state (#14096)" {
-  fh_parent: [1] FwHist;
-  fww_hist_push_user(fh_parent[..], "Inspect the auth layer");
-  fww_hist_push_assistant_text(fh_parent[..], "Found auth in openagents/core/wire.coax");
-  sibs := [2] string.["tc_a", "tc_b"];
-  fb1: [4096] u8; fb2: [4096] u8;
-  rd1 := fww_format_fork_context_json(fh_parent[..], sibs[..], fb1[..]);
-  rd2 := fww_format_fork_context_json(fh_parent[..], sibs[..], fb2[..]);
-  // Both fork context payloads are byte-identical (exact prompt-cache prefix parity across parallel fork children)
-  #assert rd1 > 0 && rd1 == rd2 && cast(string) fb1[0..<rd1] == cast(string) fb2[0..<rd2];
-  // Hydrate child history from fork context JSON
-  fh_child: [1] FwHist;
-  #assert fww_apply_fork_context_json(fh_child[..], cast(string) fb1[0..<rd1]);
-  #assert fh_child[0].nmsgs == 3;
-  #assert fww_contains_ci(fww_hist_msg_text(fh_child[..], 2), OA_FORK_PLACEHOLDER_RESULT);
-  // Compaction-resistant recursion guard blocks nested fork via either flag OR sentinel in history
-  fr: [1] FwRun;
-  #assert !fww_fork_guard_tripped(fr[..], fh_parent[..]);
-  fr[0].is_fork_child = true;
-  #assert fww_fork_guard_tripped(fr[..], fh_parent[..]);
-  fr[0].is_fork_child = false;
-  dir_b: [512] u8;
-  dn_f := oa_agent_format_fork_directive("check wire.coax", dir_b[..]);
-  fww_hist_push_user(fh_child[..], cast(string) dir_b[0..<dn_f]);
-  #assert fww_fork_guard_tripped(fr[..], fh_child[..]);
-  #assert !fww_has_active_local_subs(fr[..]);
+fww_find_bytes :: (hay: string, needle: string) -> int {
+  if needle.count == 0 || hay.count < needle.count { return -1; }
+  for i: 0..<(hay.count - needle.count + 1) {
+    if cast(string) hay[i..<(i + needle.count)] == needle { return i; }
+  }
+  return -1;
+}
+
+#test "flawedworker: cache-exact FORK_AGENT context snapshot, recursion guard & standalone subprocess state (#14096, #14120)" #steps 200000000 {
+
+  // 1. Build realistic multi-turn parent state with rich sys_prompt (git_snap + subagent catalog),
+  //    custom tool filters, thinking+sig, tool_use+sig, tool_result+image, and OA_PACK_AGENTS.
+  r_par: [1] FwRun;
+  cfg_par: [1] FwConfig;
+  h_par: [1] FwHist;
+  cfg_par[0].thinking_mode = FLAWED_THINK_ADAPTIVE;
+  cfg_par[0].subagents_enabled = true;
+  cfg_par[0].ndisallowed = fww_keep(cfg_par[0].disallowed_tools[..], "WalletPay");
+  r_par[0].nmodel = fww_keep(r_par[0].model[..], "oa:gemini-4-carbon");
+  r_par[0].neffort = fww_keep(r_par[0].effort[..], "high");
+  r_par[0].step_num = 2; // step 2 with nmsgs=3 keeps "high" in adaptive mode
+  r_par[0].nsys = fww_keep(r_par[0].sys_prompt[..], "You are OpenAgents.\n# Git Snapshot\nBranch: main\n# Subagent Delegation (`Agent` tool)\n- Available: Explore, Plan, general-purpose\n");
+  h_par[0].exp_obs_mask = true;
+  h_par[0].exp_obs_mask_c_pct = 25;
+  h_par[0].last_cloud_turn_ms = 1732690800000;
+  h_par[0].last_cached_tok = 9000;
+
+  fww_hist_push_user(h_par[..], "Inspect the auth and billing layers in parallel.");
+  a0 := [1] int.[0];
+  h_par[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 3};
+  b_th1 := FwBlock.{kind = FWW_MB_THINK};
+  b_th1.text_n = fww_slab_put(h_par[..], "First read wire.coax to see auth layout.", a0[..]); b_th1.text_at = a0[0];
+  b_th1.sig_n = fww_slab_put(h_par[..], "SIG_TH_1", a0[..]); b_th1.sig_at = a0[0];
+  b_tx1 := FwBlock.{kind = FWW_MB_TEXT};
+  b_tx1.text_n = fww_slab_put(h_par[..], "Reading wire.coax first.", a0[..]); b_tx1.text_at = a0[0];
+  b_tu1 := FwBlock.{kind = FWW_MB_TOOL_USE};
+  b_tu1.id_n = fww_slab_put(h_par[..], "tc_read_1", a0[..]); b_tu1.id_at = a0[0];
+  b_tu1.name_n = fww_slab_put(h_par[..], "Read", a0[..]); b_tu1.name_at = a0[0];
+  b_tu1.text_n = fww_slab_put(h_par[..], "{\"file_path\":\"openagents/core/wire.coax\"}", a0[..]); b_tu1.text_at = a0[0];
+  b_tu1.sig_n = fww_slab_put(h_par[..], "SIG_TU_1", a0[..]); b_tu1.sig_at = a0[0];
+  h_par[0].msgs[1].blocks[0] = b_th1;
+  h_par[0].msgs[1].blocks[1] = b_tx1;
+  h_par[0].msgs[1].blocks[2] = b_tu1;
+  h_par[0].nmsgs = 2;
+
+  h_par[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+  b_tr1 := FwBlock.{kind = FWW_MB_TOOL_RES, is_error = false};
+  b_tr1.id_n = fww_slab_put(h_par[..], "tc_read_1", a0[..]); b_tr1.id_at = a0[0];
+  b_tr1.name_n = fww_slab_put(h_par[..], "Read", a0[..]); b_tr1.name_at = a0[0];
+  b_tr1.text_n = fww_slab_put(h_par[..], "auth_token_header := \"Authorization\";", a0[..]); b_tr1.text_at = a0[0];
+  b_tr1.img_mime_n = fww_slab_put(h_par[..], "image/png", a0[..]); b_tr1.img_mime_at = a0[0];
+  b_tr1.img_n = fww_slab_put(h_par[..], "iVBORw0KGgo=", a0[..]); b_tr1.img_at = a0[0];
+  h_par[0].msgs[2].blocks[0] = b_tr1;
+  h_par[0].nmsgs = 3;
+
+  // Parent builds its live Gemini & OpenAI wire requests via the shared fww_resolve_request_params path
+  par_eff_cfg: [1] FwConfig;
+  par_eff_b: [32] u8; par_eff_n := [1] int.[0]; par_pm := [1] int.[0];
+  fww_resolve_request_params(r_par[..], cfg_par[..], h_par[..], true, false, 1048576, 10, false, OA_PACK_COAX_INTEL, par_eff_cfg[..], par_eff_b[..], par_eff_n[..], par_pm[..]);
+  par_eff := cast(string) par_eff_b[0..<par_eff_n[0]];
+  #assert par_eff == "high" && par_pm[0] == (OA_PACK_COAX_INTEL | OA_PACK_AGENTS);
+  #assert r_par[0].last_packs_mask == par_pm[0] && cast(string) r_par[0].last_sent_effort[0..<r_par[0].nlast_sent_effort] == "high";
+
+  par_sys := cast(string) r_par[0].sys_prompt[0..<r_par[0].nsys];
+  par_gem: [32768] u8;
+  n_par_gem := fww_build_gemini_body_packs(par_eff_cfg[..], h_par[..], par_eff, par_sys, false, par_pm[0], par_gem[..]);
+  #assert n_par_gem > 0;
+  par_gem_s := cast(string) par_gem[0..<n_par_gem];
+  #assert fww_contains_ci(par_gem_s, "\"name\":\"Agent\"") && !fww_contains_ci(par_gem_s, "\"name\":\"WalletPay\"");
+
+  par_oai: [32768] u8;
+  n_par_oai := fww_build_openai_body_packs(par_eff_cfg[..], h_par[..], "google/gemini-4-carbon", par_eff, par_sys, false, 32768, false, false, par_pm[0], par_oai[..]);
+  #assert n_par_oai > 0;
+  par_oai_s := cast(string) par_oai[0..<n_par_oai];
+
+  // 2. Parent model emits 2 parallel forked Agent tool calls (pushed to h_par before fww_start_delegate_batch)
+  h_par[0].msgs[3] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 4};
+  b_th2 := FwBlock.{kind = FWW_MB_THINK};
+  b_th2.text_n = fww_slab_put(h_par[..], "Spawning parallel forks A and B.", a0[..]); b_th2.text_at = a0[0];
+  b_th2.sig_n = fww_slab_put(h_par[..], "SIG_TH_2", a0[..]); b_th2.sig_at = a0[0];
+  b_tx2 := FwBlock.{kind = FWW_MB_TEXT};
+  b_tx2.text_n = fww_slab_put(h_par[..], "Forking auth and billing audits.", a0[..]); b_tx2.text_at = a0[0];
+  b_fa := FwBlock.{kind = FWW_MB_TOOL_USE};
+  b_fa.id_n = fww_slab_put(h_par[..], "tc_a", a0[..]); b_fa.id_at = a0[0];
+  b_fa.name_n = fww_slab_put(h_par[..], "Agent", a0[..]); b_fa.name_at = a0[0];
+  b_fa.text_n = fww_slab_put(h_par[..], "{\"description\":\"Audit A\",\"prompt\":\"Audit auth module A\",\"fork\":true}", a0[..]); b_fa.text_at = a0[0];
+  b_fa.sig_n = fww_slab_put(h_par[..], "SIG_FA", a0[..]); b_fa.sig_at = a0[0];
+  b_fb := FwBlock.{kind = FWW_MB_TOOL_USE};
+  b_fb.id_n = fww_slab_put(h_par[..], "tc_b", a0[..]); b_fb.id_at = a0[0];
+  b_fb.name_n = fww_slab_put(h_par[..], "Agent", a0[..]); b_fb.name_at = a0[0];
+  b_fb.text_n = fww_slab_put(h_par[..], "{\"description\":\"Audit B\",\"prompt\":\"Audit billing module B\",\"fork\":true}", a0[..]); b_fb.text_at = a0[0];
+  b_fb.sig_n = fww_slab_put(h_par[..], "SIG_FB", a0[..]); b_fb.sig_at = a0[0];
+  h_par[0].msgs[3].blocks[0] = b_th2;
+  h_par[0].msgs[3].blocks[1] = b_tx2;
+  h_par[0].msgs[3].blocks[2] = b_fa;
+  h_par[0].msgs[3].blocks[3] = b_fb;
+  h_par[0].nmsgs = 4;
+
+  // Serialize fork context twice -> byte-identical across sibling children
+  sib_ids := [2] string.["tc_a", "tc_b"];
+  sib_names := [2] string.["Agent", "Agent"];
+  snap1: [16384] u8; snap2: [16384] u8;
+  sn1 := fww_format_fork_context_json(r_par[..], cfg_par[..], h_par[..], sib_ids[..], sib_names[..], snap1[..]);
+  sn2 := fww_format_fork_context_json(r_par[..], cfg_par[..], h_par[..], sib_ids[..], sib_names[..], snap2[..]);
+  #assert sn1 > 0 && sn1 == sn2 && cast(string) snap1[0..<sn1] == cast(string) snap2[0..<sn2];
+  snap_s := cast(string) snap1[0..<sn1];
+
+  // 3. Hydrate Child A with intentionally conflicting child defaults (adaptive step 1, subagent_effort="low",
+  //    thinking_mode=OFF, OA_GENERAL_DISALLOWED) -> frozen fork overrides all to exact parent parity!
+  r_ch: [1] FwRun;
+  cfg_ch: [1] FwConfig;
+  h_ch: [1] FwHist;
+  scratch: [16384] u8;
+  tmp_san: [16384] u8;
+
+  cfg_ch[0].thinking_mode = FLAWED_THINK_OFF;
+  cfg_ch[0].subagents_enabled = false;
+  cfg_ch[0].nsubagent_effort = fww_keep(cfg_ch[0].subagent_effort[..], "low");
+  r_ch[0].is_subagent = true;
+  r_ch[0].is_fork_child = true;
+  r_ch[0].step_num = 1;
+  r_ch[0].force_low_once = true;
+  r_ch[0].nsubagent_disallowed = fww_keep(r_ch[0].subagent_disallowed[..], OA_GENERAL_DISALLOWED);
+  r_ch[0].nsys = fww_keep(r_ch[0].sys_prompt[..], "WRONG CHILD SYS");
+
+  #assert fww_apply_fork_context_json(r_ch[..], cfg_ch[..], h_ch[..], snap_s, scratch[..]);
+  #assert r_ch[0].fork_frozen && r_ch[0].fork_parity_ok;
+  #assert cast(string) r_ch[0].sys_prompt[0..<r_ch[0].nsys] == par_sys;
+  #assert r_ch[0].fork_packs_mask == par_pm[0];
+  #assert cast(string) r_ch[0].model[0..<r_ch[0].nmodel] == "oa:gemini-4-carbon";
+  #assert cast(string) r_ch[0].effort[0..<r_ch[0].neffort] == "high";
+  #assert r_ch[0].fork_thinking_mode == FLAWED_THINK_ADAPTIVE;
+  #assert h_ch[0].nmsgs == 5 && h_ch[0].exp_obs_mask && h_ch[0].exp_obs_mask_c_pct == 25;
+  #assert fww_msg_tools_valid(h_ch[..], h_ch[0].msgs[3], h_ch[0].msgs[4]);
+
+  // Push Child A directive with fork+worktree path-translation notice, then run fww_hist_sanitize
+  dir_a: [2048] u8;
+  dna := oa_agent_format_fork_directive_ex("Audit auth module A", true, "/repo", "/wt/a", dir_a[..]);
+  fww_hist_push_user(h_ch[..], cast(string) dir_a[0..<dna]);
+  fww_hist_sanitize(h_ch[..], tmp_san[..]);
+  #assert h_ch[0].nmsgs == 5 && fww_msg_tools_valid(h_ch[..], h_ch[0].msgs[3], h_ch[0].msgs[4]);
+
+  ch_eff_cfg: [1] FwConfig;
+  ch_eff_b: [32] u8; ch_eff_n := [1] int.[0]; ch_pm := [1] int.[0];
+  fww_resolve_request_params(r_ch[..], cfg_ch[..], h_ch[..], true, false, 1048576, 500, false, 0, ch_eff_cfg[..], ch_eff_b[..], ch_eff_n[..], ch_pm[..]);
+  ch_a_eff := cast(string) ch_eff_b[0..<ch_eff_n[0]];
+  #assert ch_a_eff == "high" && ch_pm[0] == par_pm[0] && ch_eff_cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE;
+
+  ch_a_gem: [32768] u8;
+  n_ch_a_gem := fww_build_gemini_body_packs(ch_eff_cfg[..], h_ch[..], ch_a_eff, cast(string) r_ch[0].sys_prompt[0..<r_ch[0].nsys], false, ch_pm[0], ch_a_gem[..]);
+  #assert n_ch_a_gem > 0;
+  ch_a_gem_s := cast(string) ch_a_gem[0..<n_ch_a_gem];
+
+  ch_a_oai: [32768] u8;
+  n_ch_a_oai := fww_build_openai_body_packs(ch_eff_cfg[..], h_ch[..], "google/gemini-4-carbon", ch_a_eff, cast(string) r_ch[0].sys_prompt[0..<r_ch[0].nsys], false, 32768, false, false, ch_pm[0], ch_a_oai[..]);
+  #assert n_ch_a_oai > 0;
+  ch_a_oai_s := cast(string) ch_a_oai[0..<n_ch_a_oai];
+
+  // 4. Hydrate parallel sibling Child B from the EXACT same fork snapshot + its own directive & worktree path
+  r_ch[0] = FwRun.{is_subagent = true, is_fork_child = true, step_num = 1};
+  #assert fww_apply_fork_context_json(r_ch[..], cfg_ch[..], h_ch[..], snap_s, scratch[..]);
+  dir_b: [2048] u8;
+  dnb := oa_agent_format_fork_directive_ex("Audit billing module B", true, "/repo", "/wt/b", dir_b[..]);
+  fww_hist_push_user(h_ch[..], cast(string) dir_b[0..<dnb]);
+  fww_hist_sanitize(h_ch[..], tmp_san[..]);
+  fww_resolve_request_params(r_ch[..], cfg_ch[..], h_ch[..], true, false, 1048576, 500, false, 0, ch_eff_cfg[..], ch_eff_b[..], ch_eff_n[..], ch_pm[..]);
+  ch_b_eff := cast(string) ch_eff_b[0..<ch_eff_n[0]];
+
+  ch_b_gem: [32768] u8;
+  n_ch_b_gem := fww_build_gemini_body_packs(ch_eff_cfg[..], h_ch[..], ch_b_eff, cast(string) r_ch[0].sys_prompt[0..<r_ch[0].nsys], false, ch_pm[0], ch_b_gem[..]);
+  #assert n_ch_b_gem > 0;
+  ch_b_gem_s := cast(string) ch_b_gem[0..<n_ch_b_gem];
+
+  ch_b_oai: [32768] u8;
+  n_ch_b_oai := fww_build_openai_body_packs(ch_eff_cfg[..], h_ch[..], "google/gemini-4-carbon", ch_b_eff, cast(string) r_ch[0].sys_prompt[0..<r_ch[0].nsys], false, 32768, false, false, ch_pm[0], ch_b_oai[..]);
+  #assert n_ch_b_oai > 0;
+  ch_b_oai_s := cast(string) ch_b_oai[0..<n_ch_b_oai];
+
+  // 5. BYTE-EXACT WIRE PREFIX EQUALITY — GEMINI NATIVE:
+  //    a) Parent vs Child A: byte-identical from byte 0 across systemInstruction, tools (incl. Agent), and msgs[0..2]
+  gem_gc_par := fww_find_bytes(par_gem_s, "],\"generationConfig\":");
+  gem_gc_cha := fww_find_bytes(ch_a_gem_s, "],\"generationConfig\":");
+  #assert gem_gc_par > 100 && gem_gc_cha > gem_gc_par;
+  #assert cast(string) ch_a_gem_s[0..<gem_gc_par] == cast(string) par_gem_s[0..<gem_gc_par];
+  //    And generationConfig (maxOutputTokens + thinkingConfig) is byte-identical too!
+  #assert cast(string) ch_a_gem_s[gem_gc_cha..<n_ch_a_gem] == cast(string) par_gem_s[gem_gc_par..<n_par_gem];
+
+  //    b) Child A vs Child B: byte-identical from byte 0 all the way through OA_AGENT_FORK_BOILERPLATE up to each child's directive!
+  sent_a_gem := fww_find_bytes(ch_a_gem_s, OA_AGENT_FORK_BOILERPLATE);
+  sent_b_gem := fww_find_bytes(ch_b_gem_s, OA_AGENT_FORK_BOILERPLATE);
+  #assert sent_a_gem > gem_gc_par && sent_a_gem == sent_b_gem;
+  rel_a_gem := fww_find_bytes(cast(string) ch_a_gem_s[sent_a_gem..<n_ch_a_gem], "Audit auth module A");
+  rel_b_gem := fww_find_bytes(cast(string) ch_b_gem_s[sent_b_gem..<n_ch_b_gem], "Audit billing module B");
+  #assert rel_a_gem > 0 && rel_a_gem == rel_b_gem;
+  idx_a_gem := sent_a_gem + rel_a_gem;
+  idx_b_gem := sent_b_gem + rel_b_gem;
+  #assert cast(string) ch_a_gem_s[0..<idx_a_gem] == cast(string) ch_b_gem_s[0..<idx_b_gem];
+  #assert fww_contains_ci(ch_a_gem_s, "[Worktree Path Translation]") && fww_contains_ci(ch_a_gem_s, "/wt/a");
+  #assert fww_contains_ci(ch_b_gem_s, "[Worktree Path Translation]") && fww_contains_ci(ch_b_gem_s, "/wt/b");
+
+  // 6. BYTE-EXACT WIRE PREFIX EQUALITY — OPENAI / PSIONIC:
+  //    a) Parent vs Child A: byte-identical from byte 0 across model, max_tokens, reasoning_effort, tools, system, msgs[0..2]
+  oai_par_pre := n_par_oai - 2; // strip trailing "]}" of messages array
+  #assert oai_par_pre > 100 && n_ch_a_oai > oai_par_pre;
+  #assert cast(string) ch_a_oai_s[0..<oai_par_pre] == cast(string) par_oai_s[0..<oai_par_pre];
+
+  //    b) Child A vs Child B: byte-identical from byte 0 through sibling role:tool placeholders & boilerplate!
+  sent_a_oai := fww_find_bytes(ch_a_oai_s, OA_AGENT_FORK_BOILERPLATE);
+  sent_b_oai := fww_find_bytes(ch_b_oai_s, OA_AGENT_FORK_BOILERPLATE);
+  #assert sent_a_oai > oai_par_pre && sent_a_oai == sent_b_oai;
+  rel_a_oai := fww_find_bytes(cast(string) ch_a_oai_s[sent_a_oai..<n_ch_a_oai], "Audit auth module A");
+  rel_b_oai := fww_find_bytes(cast(string) ch_b_oai_s[sent_b_oai..<n_ch_b_oai], "Audit billing module B");
+  #assert rel_a_oai > 0 && rel_a_oai == rel_b_oai;
+  idx_a_oai := sent_a_oai + rel_a_oai;
+  idx_b_oai := sent_b_oai + rel_b_oai;
+  #assert cast(string) ch_a_oai_s[0..<idx_a_oai] == cast(string) ch_b_oai_s[0..<idx_b_oai];
+
+  // 7. Local 32K Inkling: frozen fork bypasses local-32K high->low downgrade when parent sent extended high
+  cfg_loc_ch: [1] FwConfig;
+  cfg_loc_ch[0].thinking_mode = FLAWED_THINK_ADAPTIVE;
+  r_ch[0].fork_thinking_mode = FLAWED_THINK_EXTENDED;
+  r_ch[0].neffort = fww_keep(r_ch[0].effort[..], "high");
+  fww_resolve_request_params(r_ch[..], cfg_loc_ch[..], h_ch[..], false, true, 32768, 0, false, 0, ch_eff_cfg[..], ch_eff_b[..], ch_eff_n[..], ch_pm[..]);
+  #assert cast(string) ch_eff_b[0..<ch_eff_n[0]] == "high" && ch_eff_cfg[0].thinking_mode == FLAWED_THINK_EXTENDED;
+
+  // 8. Compaction-resistant recursion guard blocks nested fork via either flag OR sentinel in history
+  r_ch[0] = FwRun.{};
+  #assert !fww_fork_guard_tripped(r_ch[..], h_par[..]);
+  r_ch[0].is_fork_child = true;
+  #assert fww_fork_guard_tripped(r_ch[..], h_par[..]);
+  r_ch[0].is_fork_child = false;
+  #assert fww_fork_guard_tripped(r_ch[..], h_ch[..]);
+  #assert !fww_has_active_local_subs(r_ch[..]);
+
+  // 9. Runtime parity check rejects incomplete/mismatched snapshots (flawed_fork_cache_parity_ok -> false)
+  r_ch[0] = FwRun.{};
+  #assert !fww_apply_fork_context_json(r_ch[..], cfg_ch[..], h_ch[..], "{\"packs_mask\":1,\"model\":\"m\",\"effort\":\"high\",\"thinking_mode\":1,\"messages\":[{\"role\":\"user\",\"blocks\":[{\"kind\":\"text\",\"text\":\"hi\"}]}]}", scratch[..]);
+  #assert !r_ch[0].fork_frozen && !r_ch[0].fork_parity_ok;
+  // Mismatched sibling tool name fails fww_msg_tools_valid -> parity false
+  bad_sib := "{\"sys_prompt\":\"s\",\"packs_mask\":1,\"model\":\"m\",\"effort\":\"high\",\"thinking_mode\":1,\"allowed_tools\":\"\",\"disallowed_tools\":\"\",\"messages\":[{\"role\":\"user\",\"blocks\":[{\"kind\":\"text\",\"text\":\"hi\"}]},{\"role\":\"assistant\",\"blocks\":[{\"kind\":\"tool_use\",\"id\":\"t1\",\"name\":\"Agent\",\"text\":\"{}\"}]}],\"sibling_tools\":[{\"id\":\"t1\",\"name\":\"WrongTool\"}]}";
+  #assert !fww_apply_fork_context_json(r_ch[..], cfg_ch[..], h_ch[..], bad_sib, scratch[..]);
+  #assert !r_ch[0].fork_frozen && !r_ch[0].fork_parity_ok;
+}
+
+#test "flawedworker: large >40KB FORK_AGENT snapshot round-trips without 32KB truncation (#14120)" #steps 200000000 {
+  r_p: [1] FwRun;
+  cfg_p: [1] FwConfig;
+  h_p: [1] FwHist;
+  cfg_p[0].thinking_mode = FLAWED_THINK_ADAPTIVE;
+  r_p[0].nmodel = fww_keep(r_p[0].model[..], "oa:cloud");
+  r_p[0].neffort = fww_keep(r_p[0].effort[..], "high");
+  r_p[0].last_packs_mask = OA_PACK_AGENTS | OA_PACK_COAX_INTEL;
+  // Fill 30 KB sys_prompt + 14 KB history (>44 KB total JSON, well above old 32 KB stack buffer)
+  for i: 0..<30000 { r_p[0].sys_prompt[i] = ifx i == 29999 then 'Z' else 'S'; }
+  r_p[0].nsys = 30000;
+  big_u: [14000] u8;
+  for i: 0..<14000 { big_u[i] = ifx i == 13999 then 'Q' else 'U'; }
+  fww_hist_push_user(h_p[..], cast(string) big_u[..]);
+  a0 := [1] int.[0];
+  h_p[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+  tu := FwBlock.{kind = FWW_MB_TOOL_USE};
+  tu.id_n = fww_slab_put(h_p[..], "big_tc_1", a0[..]); tu.id_at = a0[0];
+  tu.name_n = fww_slab_put(h_p[..], "Agent", a0[..]); tu.name_at = a0[0];
+  tu.text_n = fww_slab_put(h_p[..], "{\"prompt\":\"check\"}", a0[..]); tu.text_at = a0[0];
+  h_p[0].msgs[1].blocks[0] = tu;
+  h_p[0].nmsgs = 2;
+
+  sib_ids := [1] string.["big_tc_1"];
+  sib_names := [1] string.["Agent"];
+  big_json: [65536] u8;
+  jn := fww_format_fork_context_json(r_p[..], cfg_p[..], h_p[..], sib_ids[..], sib_names[..], big_json[..]);
+  #assert jn > 44000;
+
+  r_c: [1] FwRun;
+  h_c: [1] FwHist;
+  big_scratch: [40960] u8;
+  #assert fww_apply_fork_context_json(r_c[..], cfg_p[..], h_c[..], cast(string) big_json[0..<jn], big_scratch[..]);
+  #assert r_c[0].fork_frozen && r_c[0].fork_parity_ok;
+  #assert r_c[0].nsys == 30000 && r_c[0].sys_prompt[29999] == 'Z';
+  #assert h_c[0].nmsgs == 3;
+  u_out := fww_hist_msg_text(h_c[..], 0);
+  #assert u_out.count == 14000 && u_out[13999] == 'Q';
+  #assert fww_msg_tools_valid(h_c[..], h_c[0].msgs[1], h_c[0].msgs[2]);
 }
 
 #test "flawedworker: WebSearch cloud base URL precedence and Exa JSON formatter (#14113)" {

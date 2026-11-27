@@ -913,3 +913,49 @@
   #assert back[0].resume_transcript_path == "/h/.openagents/subagents/s1/agent-aexp-1111222233334444.jsonl";
   #assert back[0].transcript_path == "/h/.openagents/subagents/s1/agent-aexp-1111222233334444.jsonl";
 }
+
+#test "sub-agents (#14120): FORK_AGENT preserves exact parent model, effort, and local/cloud parity instead of CP_MODEL_NEON/low" {
+  // 1. Cloud parent with high effort: fork inherits parent model + high effort (both when explicit and when omitted)
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  s[0].show_other_models = true;
+  #assert coder_page_pick_model(s, "oa:gemini-4-carbon");
+  s[0].effort = CP_EFFORT_HIGH;
+  #assert coder_page_set_text(s, "fork analysis") && coder_page_submit(s);
+  del := "{\"kind\":\"delegate\",\"wait_all\":true,\"ticket\":21,\"tasks\":[{\"level\":\"neon\",\"subagent_type\":\"fork\",\"agent_id\":\"afork-1111111111111111\",\"is_fork\":true,\"fork_context_path\":\"/tmp/fk1.json\",\"model\":\"oa:gemini-4-carbon\",\"effort\":\"high\",\"task\":\"Fork explicit\"},{\"level\":\"neon\",\"subagent_type\":\"fork\",\"agent_id\":\"afork-2222222222222222\",\"is_fork\":true,\"fork_context_path\":\"/tmp/fk2.json\",\"task\":\"Fork inherit\"},{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"agent_id\":\"aexp-3333333333333333\",\"read_only\":true,\"task\":\"Non-fork Explore\"}]}";
+  #assert coder_page_line(s, del) == MWW_DELEGATE && s[0].turns[0].nagents == 3;
+
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  // Fork #0: explicit parent model & effort preserved (not downgraded to CP_MODEL_NEON / "low")
+  n0 := coder_page_agent_task(s, 0, "s-fk", "/repo", out[..]);
+  #assert n0 > 0 && mww_task_read(ar[..], cast(string) out[0..<n0 - 1], back[..]);
+  #assert back[0].is_fork && back[0].model == "oa:gemini-4-carbon" && back[0].effort == "high" && !back[0].local;
+
+  // Fork #1: omitted model/effort inherits parent turn's exact model & effort
+  ar[0].at = 0;
+  n1 := coder_page_agent_task(s, 1, "s-fk", "/repo", out[..]);
+  #assert n1 > 0 && mww_task_read(ar[..], cast(string) out[0..<n1 - 1], back[..]);
+  #assert back[0].is_fork && back[0].model == "oa:gemini-4-carbon" && back[0].effort == "high" && !back[0].local;
+
+  // Non-fork #2: still uses fast default CP_MODEL_NEON / "low"
+  ar[0].at = 0;
+  n2 := coder_page_agent_task(s, 2, "s-fk", "/repo", out[..]);
+  #assert n2 > 0 && mww_task_read(ar[..], cast(string) out[0..<n2 - 1], back[..]);
+  #assert !back[0].is_fork && back[0].model == CP_MODEL_NEON && back[0].effort == "low" && !back[0].local;
+}
+
+#test "sub-agents (#14120): local Inkling FORK_AGENT preserves local=true, model, and effort parity" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  s[0].inkling = true;
+  s[0].show_other_models = false;
+  #assert coder_page_pick_model(s, "oa:local");
+  s[0].effort = CP_EFFORT_MEDIUM;
+  #assert coder_page_set_text(s, "local fork") && coder_page_submit(s);
+  del2 := "{\"kind\":\"delegate\",\"wait_all\":true,\"ticket\":22,\"tasks\":[{\"level\":\"inkling\",\"subagent_type\":\"fork\",\"agent_id\":\"afork-4444444444444444\",\"is_fork\":true,\"fork_context_path\":\"/tmp/fk4.json\",\"model\":\"oa:local\",\"effort\":\"medium\",\"task\":\"Local fork\"}]}";
+  #assert coder_page_line(s, del2) == MWW_DELEGATE && s[0].turns[0].nagents == 1;
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  n3 := coder_page_agent_task(s, 0, "s-fk-loc", "/repo", out[..]);
+  #assert n3 > 0 && mww_task_read(ar[..], cast(string) out[0..<n3 - 1], back[..]);
+  #assert back[0].is_fork && back[0].local && back[0].model == "oa:local" && back[0].effort == "medium";
+}

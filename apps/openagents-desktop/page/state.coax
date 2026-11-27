@@ -275,6 +275,7 @@ CpAgent :: struct {
   desc: [160] u8; desc_n: int;                        // short 3-5 word description from Agent tool (#14096)
   agent_id: [48] u8; agent_id_n: int;                 // stable agentId (a<prefix>-<16hex>; #14096)
   model_ovr: [64] u8; model_ovr_n: int;               // optional model override from Agent tool (#14096)
+  effort_ovr: [24] u8; effort_ovr_n: int;             // optional effort override from Agent tool / FORK_AGENT (#14120)
   wt_path: [256] u8; wt_path_n: int;                  // isolated worktree cwd when isolation=="worktree" (#14096)
   wt_branch: [96] u8; wt_branch_n: int;               // isolated worktree branch name (#14096)
   wt_orig_head: [64] u8; wt_orig_head_n: int;         // base HEAD commit at isolated worktree creation (#14121)

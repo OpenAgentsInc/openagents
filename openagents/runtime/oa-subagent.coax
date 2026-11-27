@@ -85,56 +85,397 @@ fww_fork_guard_tripped :: (r: [] FwRun, h: [] FwHist) -> bool {
   return false;
 }
 
-// Pure serializer for cache-exact FORK_AGENT context JSON (parent turns + byte-identical sibling placeholders).
-fww_format_fork_context_json :: (h: [] FwHist, tool_ids: [] string, out_json: [] u8) -> int {
-  ph_b: [2048] u8;
-  ph_n := oa_agent_build_fork_placeholders(tool_ids, ph_b[..]);
+// Pure serializer for cache-exact FORK_AGENT context snapshot (#14120).
+// Captures parent's exact rendered sys_prompt, packs_mask, model, effort, thinking config,
+// allowed/disallowed tools, observation-mask state, full structured FwHist messages (text,
+// thinking+sig, tool_use+id/name/args/sig, tool_result+id/name/text/is_error/image), and
+// ordered sibling_tools [{id, name}] for 1-to-1 paired TOOL_RESULTS placeholder hydration.
+fww_format_fork_context_json :: (
+  r: [] FwRun,
+  cfg: [] FwConfig,
+  h: [] FwHist,
+  sib_ids: [] string,
+  sib_names: [] string,
+  out_json: [] u8
+) -> int {
+  if r.count < 1 || cfg.count < 1 || h.count < 1 || out_json.count == 0 { return 0; }
+  eff_s := ifx r[0].nlast_sent_effort > 0
+           then cast(string) r[0].last_sent_effort[0..<r[0].nlast_sent_effort]
+           else cast(string) r[0].effort[0..<r[0].neffort];
+  think_mode := ifx r[0].last_sent_has_snapshot then r[0].last_sent_thinking_mode else cfg[0].thinking_mode;
+  loc_mtok := ifx r[0].last_sent_has_snapshot then r[0].last_sent_local_max_tokens else cfg[0].local_max_tokens;
   o: [1] Jo;
   jo_start(o[..], out_json);
   jo_obj(o[..]);
-  jo_key(o[..], "placeholders"); jo_raw(o[..], cast(string) ph_b[0..<ph_n]);
-  jo_key(o[..], "turns"); jo_arr(o[..]);
-  i := 0;
-  while i < h[0].nmsgs {
-    if h[0].msgs[i].role == FWW_MROLE_USER {
-      utxt := fww_hist_msg_text(h, i);
-      atxt := "";
-      j := i + 1;
-      while j < h[0].nmsgs && h[0].msgs[j].role != FWW_MROLE_USER {
-        if h[0].msgs[j].role == FWW_MROLE_ASSISTANT { atxt = fww_hist_msg_text(h, j); }
-        j += 1;
-      }
+  jo_key(o[..], "version"); jo_int(o[..], 2);
+  jo_key(o[..], "sys_prompt"); jo_str(o[..], cast(string) r[0].sys_prompt[0..<r[0].nsys]);
+  jo_key(o[..], "packs_mask"); jo_int(o[..], r[0].last_packs_mask);
+  jo_key(o[..], "model"); jo_str(o[..], cast(string) r[0].model[0..<r[0].nmodel]);
+  jo_key(o[..], "effort"); jo_str(o[..], eff_s);
+  jo_key(o[..], "thinking_mode"); jo_int(o[..], think_mode);
+  jo_key(o[..], "local_max_tokens"); jo_int(o[..], loc_mtok);
+  jo_key(o[..], "allowed_tools"); jo_str(o[..], cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed]);
+  jo_key(o[..], "disallowed_tools"); jo_str(o[..], cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed]);
+  jo_key(o[..], "exp_obs_mask"); jo_bool(o[..], h[0].exp_obs_mask);
+  jo_key(o[..], "exp_obs_mask_c_pct"); jo_int(o[..], h[0].exp_obs_mask_c_pct);
+  jo_key(o[..], "last_cloud_turn_ms"); jo_int(o[..], h[0].last_cloud_turn_ms);
+  jo_key(o[..], "last_cached_tok"); jo_int(o[..], h[0].last_cached_tok);
+
+  jo_key(o[..], "messages"); jo_arr(o[..]);
+  for i: 0..<h[0].nmsgs {
+    msg := h[0].msgs[i];
+    role_s := ifx msg.role == FWW_MROLE_USER then "user"
+              else ifx msg.role == FWW_MROLE_ASSISTANT then "assistant"
+              else ifx msg.role == FWW_MROLE_TOOL_RESULTS then "tool_results"
+              else "";
+    if role_s.count == 0 { continue; }
+    jo_obj(o[..]);
+    jo_key(o[..], "role"); jo_str(o[..], role_s);
+    jo_key(o[..], "blocks"); jo_arr(o[..]);
+    for bi: 0..<msg.nblocks {
+      bk := msg.blocks[bi];
+      k_s := ifx bk.kind == FWW_MB_TEXT then "text"
+             else ifx bk.kind == FWW_MB_THINK then "thinking"
+             else ifx bk.kind == FWW_MB_TOOL_USE then "tool_use"
+             else ifx bk.kind == FWW_MB_TOOL_RES then "tool_result"
+             else "";
+      if k_s.count == 0 { continue; }
       jo_obj(o[..]);
-      jo_key(o[..], "task"); jo_str(o[..], utxt);
-      jo_key(o[..], "reply"); jo_str(o[..], atxt);
+      jo_key(o[..], "kind"); jo_str(o[..], k_s);
+      if bk.id_n > 0 { jo_key(o[..], "id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n)); }
+      if bk.name_n > 0 { jo_key(o[..], "name"); jo_str(o[..], fww_slab_str(h, bk.name_at, bk.name_n)); }
+      jo_key(o[..], "text"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+      if bk.sig_n > 0 { jo_key(o[..], "sig"); jo_str(o[..], fww_slab_str(h, bk.sig_at, bk.sig_n)); }
+      if bk.img_n > 0 && bk.img_mime_n > 0 {
+        jo_key(o[..], "img_mime"); jo_str(o[..], fww_slab_str(h, bk.img_mime_at, bk.img_mime_n));
+        jo_key(o[..], "img"); jo_str(o[..], fww_slab_str(h, bk.img_at, bk.img_n));
+      }
+      if bk.kind == FWW_MB_TOOL_RES { jo_key(o[..], "is_error"); jo_bool(o[..], bk.is_error); }
       jo_end(o[..]);
-      i = j;
-    } else {
-      i += 1;
+    }
+    jo_end(o[..]);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+
+  // Ordered sibling_tools matching every TOOL_USE in the trailing ASSISTANT message so
+  // fww_msg_tools_valid passes 1-to-1 in the forked child (falling back to explicit args).
+  jo_key(o[..], "sibling_tools"); jo_arr(o[..]);
+  emitted_sibs := 0;
+  if h[0].nmsgs > 0 && h[0].msgs[h[0].nmsgs - 1].role == FWW_MROLE_ASSISTANT {
+    last_m := h[0].msgs[h[0].nmsgs - 1];
+    for bi: 0..<last_m.nblocks {
+      bk := last_m.blocks[bi];
+      if bk.kind != FWW_MB_TOOL_USE { continue; }
+      jo_obj(o[..]);
+      jo_key(o[..], "id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
+      nm := fww_slab_str(h, bk.name_at, bk.name_n);
+      jo_key(o[..], "name"); jo_str(o[..], ifx nm.count > 0 then nm else "Agent");
+      jo_end(o[..]);
+      emitted_sibs += 1;
+    }
+  }
+  if emitted_sibs == 0 {
+    for k: 0..<sib_ids.count {
+      jo_obj(o[..]);
+      jo_key(o[..], "id"); jo_str(o[..], sib_ids[k]);
+      nm := ifx k < sib_names.count && sib_names[k].count > 0 then sib_names[k] else "Agent";
+      jo_key(o[..], "name"); jo_str(o[..], nm);
+      jo_end(o[..]);
     }
   }
   jo_end(o[..]);
+
   jo_end(o[..]);
   return ifx o[0].bad then 0 else o[0].n;
 }
 
-// Pure hydrator for a forked child's history from serialized fork context JSON.
-fww_apply_fork_context_json :: (h: [] FwHist, raw: string) -> bool {
-  if raw.count < 2 { return false; }
-  turns := cl_raw(raw, "turns");
-  if turns.count > 1 && turns[0] == '[' {
-    fww_hist_recall(h, turns);
+// Pure hydrator for a forked child's exact frozen prompt-cache state & structured history (#14120).
+// Uses single-pass zero-allocation Json pull parsing over `messages` and `sibling_tools`, appends
+// ONE FWW_MROLE_TOOL_RESULTS message with paired {id, name, text=OA_FORK_PLACEHOLDER_RESULT} blocks,
+// and runs the #authority 5-component parity gate `flawed_fork_cache_parity_ok`.
+fww_apply_fork_context_json :: (
+  r: [] FwRun,
+  cfg: [] FwConfig,
+  h: [] FwHist,
+  raw: string,
+  scratch: [] u8
+) -> bool {
+  if r.count < 1 || cfg.count < 1 || h.count < 1 { return false; }
+  r[0].fork_frozen = false;
+  r[0].fork_parity_ok = false;
+  fww_hist_clear(h);
+  if raw.count < 2 || raw[0] != '{' || scratch.count == 0 { return false; }
+
+  ar := [1] ClArena.[ClArena.{buf = scratch}];
+
+  // 1. Frozen system prompt
+  sys_v := cl_at(raw, "sys_prompt");
+  has_sys := sys_v.ok && sys_v.tok == JSON_STRING;
+  ar[0].at = 0; ar[0].full = false;
+  sys_s := cl_text(ar[..], raw, sys_v);
+  same_sys := false;
+  if has_sys && !ar[0].full && sys_s.count <= r[0].sys_prompt.count {
+    r[0].nsys = fww_keep(r[0].sys_prompt[..], sys_s);
+    same_sys = r[0].nsys == sys_s.count;
   }
-  ph := cl_raw(raw, "placeholders");
-  if ph.count > 2 && ph[0] == '[' {
-    fww_hist_push_user(h, ph);
+
+  // 2. Frozen tool packs & allow/disallow filters
+  pm_v := cl_int(raw, "packs_mask");
+  has_packs := pm_v.ok;
+  if has_packs { r[0].fork_packs_mask = pm_v.value; }
+
+  al_v := cl_at(raw, "allowed_tools");
+  has_al := al_v.ok && al_v.tok == JSON_STRING;
+  ar[0].at = 0; ar[0].full = false;
+  al_s := cl_text(ar[..], raw, al_v);
+  al_ok := !has_al || (!ar[0].full && al_s.count <= r[0].fork_allowed_tools.count);
+  r[0].nfork_allowed_tools = ifx has_al && al_ok then fww_keep(r[0].fork_allowed_tools[..], al_s) else 0;
+
+  dl_v := cl_at(raw, "disallowed_tools");
+  has_dl := dl_v.ok && dl_v.tok == JSON_STRING;
+  ar[0].at = 0; ar[0].full = false;
+  dl_s := cl_text(ar[..], raw, dl_v);
+  dl_ok := !has_dl || (!ar[0].full && dl_s.count <= r[0].fork_disallowed_tools.count);
+  r[0].nfork_disallowed_tools = ifx has_dl && dl_ok then fww_keep(r[0].fork_disallowed_tools[..], dl_s) else 0;
+  use_exact_tools := has_packs && al_ok && dl_ok;
+
+  // 3. Frozen model
+  md_v := cl_at(raw, "model");
+  has_model := md_v.ok && md_v.tok == JSON_STRING;
+  ar[0].at = 0; ar[0].full = false;
+  md_s := cl_text(ar[..], raw, md_v);
+  same_model := false;
+  if has_model && !ar[0].full && md_s.count <= r[0].model.count {
+    if md_s.count > 0 { r[0].nmodel = fww_keep(r[0].model[..], md_s); }
+    same_model = md_s.count == 0 || cast(string) r[0].model[0..<r[0].nmodel] == md_s;
   }
-  return h[0].nmsgs > 0;
+
+  // 4. Frozen effort & thinking mode
+  ef_v := cl_at(raw, "effort");
+  has_eff := ef_v.ok && ef_v.tok == JSON_STRING;
+  ar[0].at = 0; ar[0].full = false;
+  ef_s := cl_text(ar[..], raw, ef_v);
+  tm_v := cl_int(raw, "thinking_mode");
+  has_tm := tm_v.ok;
+  if has_tm { r[0].fork_thinking_mode = tm_v.value; } else { r[0].fork_thinking_mode = cfg[0].thinking_mode; }
+  lmt_v := cl_int(raw, "local_max_tokens");
+  r[0].fork_local_max_tokens = ifx lmt_v.ok then lmt_v.value else 0;
+  same_thinking := false;
+  if has_tm && has_eff && !ar[0].full && ef_s.count <= r[0].effort.count {
+    if ef_s.count > 0 { r[0].neffort = fww_keep(r[0].effort[..], ef_s); }
+    same_thinking = ef_s.count == 0 || cast(string) r[0].effort[0..<r[0].neffort] == ef_s;
+  }
+
+  // 5. Cloned observation-mask / cache metadata + verbatim structured messages + paired sibling placeholders
+  om_v := cl_bool(raw, "exp_obs_mask");
+  if om_v.ok { h[0].exp_obs_mask = om_v.value; }
+  oc_v := cl_int(raw, "exp_obs_mask_c_pct");
+  if oc_v.ok { h[0].exp_obs_mask_c_pct = oc_v.value; }
+  ct_v := cl_int(raw, "last_cloud_turn_ms");
+  if ct_v.ok { h[0].last_cloud_turn_ms = ct_v.value; }
+  ck_v := cl_int(raw, "last_cached_tok");
+  if ck_v.ok { h[0].last_cached_tok = ck_v.value; }
+
+  msgs_raw := cl_raw(raw, "messages");
+  hist_ok := false;
+  if msgs_raw.count >= 2 && msgs_raw[0] == '[' {
+    hist_ok = true;
+    jm: [1] Json;
+    cl_parse(jm[..], msgs_raw);
+    if json_next(jm[..]) == JSON_ARRAY {
+      a0 := [1] int.[0];
+      while true {
+        tm := json_next(jm[..]);
+        if tm == JSON_ARRAY_END { break; }
+        if tm == JSON_ERROR || tm == JSON_END { hist_ok = false; break; }
+        mv := cl_value_here(jm[..]);
+        if !mv.ok { hist_ok = false; break; }
+        one := cl_json(msgs_raw, mv);
+        if h[0].nmsgs >= FWW_MAX_MSGS { hist_ok = false; break; }
+
+        ar[0].at = 0; ar[0].full = false;
+        role_s := cl_str(ar[..], one, "role");
+        role := ifx role_s == "user" then FWW_MROLE_USER
+                else ifx role_s == "assistant" then FWW_MROLE_ASSISTANT
+                else ifx role_s == "tool_results" then FWW_MROLE_TOOL_RESULTS
+                else 0;
+        if role == 0 { continue; }
+
+        mi := h[0].nmsgs;
+        h[0].msgs[mi] = FwMsg.{role = role};
+        nb := 0;
+        blks_raw := cl_raw(one, "blocks");
+        if blks_raw.count >= 2 && blks_raw[0] == '[' {
+          jb: [1] Json;
+          cl_parse(jb[..], blks_raw);
+          if json_next(jb[..]) == JSON_ARRAY {
+            while true {
+              tb := json_next(jb[..]);
+              if tb == JSON_ARRAY_END { break; }
+              if tb == JSON_ERROR || tb == JSON_END { hist_ok = false; break; }
+              bv := cl_value_here(jb[..]);
+              if !bv.ok { hist_ok = false; break; }
+              if nb >= FWW_MAX_BLOCKS { hist_ok = false; break; }
+              blk_s := cl_json(blks_raw, bv);
+
+              ar[0].at = 0; ar[0].full = false;
+              ks := cl_str(ar[..], blk_s, "kind");
+              bkind := ifx ks == "text" then FWW_MB_TEXT
+                       else ifx ks == "thinking" then FWW_MB_THINK
+                       else ifx ks == "tool_use" then FWW_MB_TOOL_USE
+                       else ifx ks == "tool_result" then FWW_MB_TOOL_RES
+                       else 0;
+              if bkind == 0 { continue; }
+
+              err_v := cl_bool(blk_s, "is_error");
+              bk := FwBlock.{kind = bkind, is_error = err_v.ok && err_v.value};
+
+              ar[0].at = 0; ar[0].full = false;
+              id_s := cl_str(ar[..], blk_s, "id");
+              if ar[0].full { hist_ok = false; break; }
+              if id_s.count > 0 {
+                bk.id_n = fww_slab_put(h, id_s, a0[..]); bk.id_at = a0[0];
+                if bk.id_n != id_s.count { hist_ok = false; break; }
+              }
+
+              ar[0].at = 0; ar[0].full = false;
+              nm_s := cl_str(ar[..], blk_s, "name");
+              if ar[0].full { hist_ok = false; break; }
+              if nm_s.count > 0 {
+                bk.name_n = fww_slab_put(h, nm_s, a0[..]); bk.name_at = a0[0];
+                if bk.name_n != nm_s.count { hist_ok = false; break; }
+              }
+
+              ar[0].at = 0; ar[0].full = false;
+              tx_s := cl_str(ar[..], blk_s, "text");
+              if ar[0].full { hist_ok = false; break; }
+              if tx_s.count > 0 {
+                bk.text_n = fww_slab_put(h, tx_s, a0[..]); bk.text_at = a0[0];
+                if bk.text_n != tx_s.count { hist_ok = false; break; }
+              }
+
+              ar[0].at = 0; ar[0].full = false;
+              sg_s := cl_str(ar[..], blk_s, "sig");
+              if ar[0].full { hist_ok = false; break; }
+              if sg_s.count > 0 {
+                bk.sig_n = fww_slab_put(h, sg_s, a0[..]); bk.sig_at = a0[0];
+                if bk.sig_n != sg_s.count { hist_ok = false; break; }
+              }
+
+              ar[0].at = 0; ar[0].full = false;
+              im_s := cl_str(ar[..], blk_s, "img_mime");
+              if ar[0].full { hist_ok = false; break; }
+              if im_s.count > 0 {
+                bk.img_mime_n = fww_slab_put(h, im_s, a0[..]); bk.img_mime_at = a0[0];
+                if bk.img_mime_n != im_s.count { hist_ok = false; break; }
+              }
+
+              ar[0].at = 0; ar[0].full = false;
+              ig_s := cl_str(ar[..], blk_s, "img");
+              if ar[0].full { hist_ok = false; break; }
+              if ig_s.count > 0 {
+                bk.img_n = fww_slab_put(h, ig_s, a0[..]); bk.img_at = a0[0];
+                if bk.img_n != ig_s.count { hist_ok = false; break; }
+              }
+
+              h[0].msgs[mi].blocks[nb] = bk;
+              nb += 1;
+            }
+          }
+        }
+        if !hist_ok { break; }
+        if nb > 0 {
+          h[0].msgs[mi].nblocks = nb;
+          h[0].nmsgs += 1;
+        }
+      }
+    } else {
+      hist_ok = false;
+    }
+  }
+  if h[0].nmsgs == 0 { hist_ok = false; }
+
+  // Append ONE FWW_MROLE_TOOL_RESULTS message with exact paired {id, name} for every sibling_tools[k].
+  sibs_raw := cl_raw(raw, "sibling_tools");
+  sibs_ok := true;
+  sib_nb := 0;
+  if sibs_raw.count >= 2 && sibs_raw[0] == '[' {
+    js: [1] Json;
+    cl_parse(js[..], sibs_raw);
+    if json_next(js[..]) == JSON_ARRAY {
+      mi := h[0].nmsgs;
+      if mi < FWW_MAX_MSGS {
+        h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS};
+        a0 := [1] int.[0];
+        while true {
+          ts := json_next(js[..]);
+          if ts == JSON_ARRAY_END { break; }
+          if ts == JSON_ERROR || ts == JSON_END { sibs_ok = false; break; }
+          sv := cl_value_here(js[..]);
+          if !sv.ok { sibs_ok = false; break; }
+          if sib_nb >= FWW_MAX_BLOCKS { sibs_ok = false; break; }
+          so := cl_json(sibs_raw, sv);
+
+          ar[0].at = 0; ar[0].full = false;
+          sid := cl_str(ar[..], so, "id");
+          snm := cl_str(ar[..], so, "name");
+          if ar[0].full { sibs_ok = false; break; }
+          if snm.count == 0 { snm = "Agent"; }
+
+          bk := FwBlock.{kind = FWW_MB_TOOL_RES, is_error = false};
+          if sid.count > 0 {
+            bk.id_n = fww_slab_put(h, sid, a0[..]); bk.id_at = a0[0];
+            if bk.id_n != sid.count { sibs_ok = false; break; }
+          }
+          bk.name_n = fww_slab_put(h, snm, a0[..]); bk.name_at = a0[0];
+          if bk.name_n != snm.count { sibs_ok = false; break; }
+          bk.text_n = fww_slab_put(h, OA_FORK_PLACEHOLDER_RESULT, a0[..]); bk.text_at = a0[0];
+          if bk.text_n != OA_FORK_PLACEHOLDER_RESULT.count { sibs_ok = false; break; }
+
+          h[0].msgs[mi].blocks[sib_nb] = bk;
+          sib_nb += 1;
+        }
+        if sibs_ok && sib_nb > 0 {
+          h[0].msgs[mi].nblocks = sib_nb;
+          h[0].nmsgs += 1;
+          if mi == 0 || h[0].msgs[mi - 1].role != FWW_MROLE_ASSISTANT || !fww_msg_tools_valid(h, h[0].msgs[mi - 1], h[0].msgs[mi]) {
+            sibs_ok = false;
+          }
+        }
+      } else {
+        sibs_ok = false;
+      }
+    } else {
+      sibs_ok = false;
+    }
+  }
+  // If trailing parent message had TOOL_USE blocks but no matching sibling placeholders were appended, parity fails.
+  if sib_nb == 0 && h[0].nmsgs > 0 && h[0].msgs[h[0].nmsgs - 1].role == FWW_MROLE_ASSISTANT && fww_msg_count_tool_use(h[0].msgs[h[0].nmsgs - 1]) > 0 {
+    sibs_ok = false;
+  }
+
+  cloned_replacements := hist_ok && sibs_ok;
+  parity := flawed_fork_cache_parity_ok(same_sys, use_exact_tools, same_model, same_thinking, cloned_replacements);
+  r[0].fork_parity_ok = parity;
+  r[0].fork_frozen = parity;
+  return parity;
 }
 
-// Writes cache-exact FORK_AGENT context to <home>/.openagents/subagents/fork-<aid>.json.
-fww_write_fork_context :: (home: string, aid: string, h: [] FwHist, tool_ids: [] string, out_path: [] u8) -> int {
-  if home.count == 0 || aid.count == 0 { return 0; }
+// Writes cache-exact FORK_AGENT context to <home>/.openagents/subagents/fork-<aid>.json using a
+// caller-supplied large buffer (e.g. FwBufs.req_body, 6 MiB) so prompts + history never truncate.
+fww_write_fork_context :: (
+  home: string,
+  aid: string,
+  r: [] FwRun,
+  cfg: [] FwConfig,
+  h: [] FwHist,
+  sib_ids: [] string,
+  sib_names: [] string,
+  work_buf: [] u8,
+  out_path: [] u8
+) -> int {
+  if home.count == 0 || aid.count == 0 || work_buf.count == 0 { return 0; }
   db: [FS_PATH_MAX] u8;
   sdir := fww_subagent_dir(home, db[..]);
   if sdir.count == 0 { return 0; }
@@ -143,20 +484,28 @@ fww_write_fork_context :: (home: string, aid: string, h: [] FwHist, tool_ids: []
   pn = fww_cat(out_path, pn, aid);
   pn = fww_cat(out_path, pn, ".json");
   path := cast(string) out_path[0..<pn];
-  buf: [32768] u8;
-  jn := fww_format_fork_context_json(h, tool_ids, buf[..]);
+  jn := fww_format_fork_context_json(r, cfg, h, sib_ids, sib_names, work_buf);
   if jn <= 0 { return 0; }
-  if !fs_write(path, cast(string) buf[0..<jn]) { return 0; }
+  if !fs_write(path, cast(string) work_buf[0..<jn]) { return 0; }
   return pn;
 }
 
-// Hydrates a forked child's history from its cache-exact fork context file.
-fww_load_fork_context :: (h: [] FwHist, fork_path: string) -> bool {
-  if fork_path.count == 0 || fs_kind(fork_path) != FS_FILE { return false; }
-  buf: [32768] u8;
-  rd := fs_read(fork_path, buf[..]);
-  if rd <= 0 { return false; }
-  return fww_apply_fork_context_json(h, cast(string) buf[0..<rd]);
+// Hydrates a forked child's frozen prompt-cache state & history from its fork context file using
+// caller-supplied large buffers (e.g. FwBufs.req_body + FwBufs.compact_buf).
+fww_load_fork_context :: (
+  r: [] FwRun,
+  cfg: [] FwConfig,
+  h: [] FwHist,
+  fork_path: string,
+  file_buf: [] u8,
+  scratch: [] u8
+) -> bool {
+  if fork_path.count == 0 || fs_kind(fork_path) != FS_FILE || file_buf.count == 0 || scratch.count == 0 { return false; }
+  sz := fs_size(fork_path);
+  if sz <= 0 || sz > file_buf.count { return false; }
+  rd := fs_read(fork_path, file_buf);
+  if rd != sz { return false; }
+  return fww_apply_fork_context_json(r, cfg, h, cast(string) file_buf[0..<rd], scratch);
 }
 
 // ---------------------------------------------------------------- custom agent discovery
@@ -1442,9 +1791,9 @@ fww_prepare_routed_claude_delegate :: (r: [] FwRun, h: [] FwHist, tk: string) ->
   return true;
 }
 // Launches a router-selected Claude delegation through the standard MWW_DELEGATE pipeline (#14104).
-fww_start_routed_claude_delegate :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: string, tk: string, out: [] u8) -> bool {
+fww_start_routed_claude_delegate :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, b: [] FwBufs, home: string, tk: string, out: [] u8) -> bool {
   if !fww_prepare_routed_claude_delegate(r, h, tk) { return false; }
-  return fww_start_delegate_batch(r, cfg, h, home, 0, 1, out);
+  return fww_start_delegate_batch(r, cfg, h, b, home, 0, 1, out);
 }
 #test "sub-agents (#14104): only a subagent_type that names Claude Code has a Claude level" {
   #assert fww_claude_level("claude-haiku") == "haiku" && fww_claude_level("Claude-Sonnet") == "sonnet" && fww_claude_level("claude") == "sonnet";
@@ -1461,7 +1810,7 @@ fww_start_routed_claude_delegate :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist
 // When r[0].host_agents is false (standalone CLI/SDK mode), spawns child oa-worker subprocesses
 // directly in parallel and polls them non-blockingly in fww_poll_local_subagents (#14096).
 // Returns true if waiting asynchronously for foreground subagent results.
-fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: string, batch_start: int, batch_end: int, out: [] u8) -> bool {
+fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, b: [] FwBufs, home: string, batch_start: int, batch_end: int, out: [] u8) -> bool {
   count := batch_end - batch_start;
   if count <= 0 { return false; }
   if count > FWW_MAX_DELEGATE_BATCH { count = FWW_MAX_DELEGATE_BATCH; }
@@ -1472,11 +1821,13 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
   jo_start(jo[..], tasks_buf[..]);
   jo_arr(jo[..]);
 
-  // Collect sibling tool_use_ids for cache-exact FORK_AGENT placeholder parity
+  // Collect sibling tool_use {id, name} pairs for cache-exact FORK_AGENT placeholder parity
   sib_ids: [FWW_MAX_DELEGATE_BATCH] string;
+  sib_names: [FWW_MAX_DELEGATE_BATCH] string;
   for k: 0..<count {
     tidx := batch_start + k;
     sib_ids[k] = cast(string) r[0].acc[0].tools[tidx].id[0..<r[0].acc[0].tools[tidx].nid];
+    sib_names[k] = cast(string) r[0].acc[0].tools[tidx].name[0..<r[0].acc[0].tools[tidx].nname];
   }
 
   r[0].ndelegate_slots = 0;
@@ -1597,46 +1948,62 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
     of_s_init := cast(string) r[0].subagents[rec_idx].output_file[0..<r[0].subagents[rec_idx].noutput_file];
     r[0].subagents[rec_idx].output_file_size_before = ifx of_s_init.count > 0 && fs_kind(of_s_init) == FS_FILE then fs_size(of_s_init) else 0;
 
-    // Optional cache-exact FORK_AGENT context file + sentinel-wrapped directive
+    // Optional cache-exact FORK_AGENT context file + sentinel-wrapped directive (+ worktree path notice)
     fork_path_b: [FS_PATH_MAX] u8;
     fork_path_n := 0;
-    eff_prompt_b: [16896] u8;
+    eff_prompt_b: [18432] u8;
     eff_prompt := ifx prompt_s.count > 0 then prompt_s else desc_s;
+    wt_path_s := cast(string) r[0].subagents[rec_idx].wt_path[0..<r[0].subagents[rec_idx].nwt_path];
     if is_fork {
-      fork_path_n = fww_write_fork_context(home, aid_s, h, sib_ids[0..<count], fork_path_b[..]);
-      fpn := oa_agent_format_fork_directive(eff_prompt, eff_prompt_b[..]);
+      fork_path_n = fww_write_fork_context(home, aid_s, r, cfg, h, sib_ids[0..<count], sib_names[0..<count], b[0].req_body[..], fork_path_b[..]);
+      fpn := oa_agent_format_fork_directive_ex(eff_prompt, want_wt, cwd, wt_path_s, eff_prompt_b[..]);
       eff_prompt = cast(string) eff_prompt_b[0..<fpn];
     }
     r[0].subagents[rec_idx].nlast_prompt = fww_keep(r[0].subagents[rec_idx].last_prompt[..], eff_prompt);
     fork_path_s := cast(string) fork_path_b[0..<fork_path_n];
 
+    // Resolve child model, effort, and tool filters: FORK_AGENT preserves exact parent parameters
+    // (no high->medium downgrade, no subagent_effort override, no OA_GENERAL_DISALLOWED stripping).
+    parent_model_s := cast(string) r[0].model[0..<r[0].nmodel];
+    parent_effort_s := ifx r[0].nlast_sent_effort > 0
+                       then cast(string) r[0].last_sent_effort[0..<r[0].nlast_sent_effort]
+                       else cast(string) r[0].effort[0..<r[0].neffort];
+    child_model := ifx is_fork then parent_model_s
+                   else ifx model_s.count > 0 then model_s
+                   else parent_model_s;
+    child_eff := ifx is_fork then parent_effort_s
+                 else ifx cfg[0].nsubagent_effort > 0 then cast(string) cfg[0].subagent_effort[0..<cfg[0].nsubagent_effort]
+                 else ifx def.read_only then "low"
+                 else ifx cast(string) r[0].effort[0..<r[0].neffort] == "high" then "medium"
+                 else cast(string) r[0].effort[0..<r[0].neffort];
+    child_allowed := ifx is_fork then cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed]
+                     else cast(string) def.allowed_tools[0..<def.nallowed];
+    child_disallowed := ifx is_fork then cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed]
+                        else cast(string) def.disallowed_tools[0..<def.ndisallowed];
+
     if !r[0].host_agents {
       // Standalone headless mode: spawn child oa-worker subprocess directly
       slot := -1;
       for si: 0..<FWW_MAX_DELEGATE_BATCH { if !r[0].local_subs[si].active { slot = si; break; } }
-      eff_cwd := ifx r[0].subagents[rec_idx].nwt_path > 0 then cast(string) r[0].subagents[rec_idx].wt_path[0..<r[0].subagents[rec_idx].nwt_path] else cwd;
+      eff_cwd := ifx r[0].subagents[rec_idx].nwt_path > 0 then wt_path_s else cwd;
       ph := ifx slot >= 0 then proc_new() else -1;
       started := false;
       if ph >= 0 {
         ok := proc_arg(ph, self_bin) && proc_cwd(ph, eff_cwd);
         if ok && proc_start(ph) == 0 {
           tb: [32768] u8;
-          child_eff := ifx cfg[0].nsubagent_effort > 0
-                       then cast(string) cfg[0].subagent_effort[0..<cfg[0].nsubagent_effort]
-                       else ifx (def.read_only && !is_fork) then "low"
-                       else ifx cast(string) r[0].effort[0..<r[0].neffort] == "high" then "medium"
-                       else cast(string) r[0].effort[0..<r[0].neffort];
           mt := McTask.{
             task = eff_prompt, session = ifx sid_s.count > 0 then sid_s else aid_s, cwd = eff_cwd,
+            local = is_fork && fww_run_is_local(r),
             sandbox = "danger-full-access", ceiling = 3, gated = false,
             edits = !(def.read_only && !is_fork), unlimited = true, no_ask = true, no_steer = false,
-            model = ifx model_s.count > 0 then model_s else cast(string) r[0].model[0..<r[0].nmodel],
+            model = child_model,
             effort = child_eff,
             mode = eff_perm_mode,
             subagent_type = ifx is_fork then "fork" else type_s,
             agent_id = aid_s,
-            allowed_tools = cast(string) def.allowed_tools[0..<def.nallowed],
-            disallowed_tools = cast(string) def.disallowed_tools[0..<def.ndisallowed],
+            allowed_tools = child_allowed,
+            disallowed_tools = child_disallowed,
             omit_claudemd = !is_fork && oa_agent_should_trim_claudemd(def),
             read_only = def.read_only && !is_fork,
             is_subagent = true,
@@ -1683,10 +2050,15 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
     jo_key(jo[..], "subagent_type"); jo_str(jo[..], ifx is_fork then "fork" else type_s);
     if desc_s.count > 0 { jo_key(jo[..], "description"); jo_str(jo[..], desc_s); }
     jo_key(jo[..], "agent_id"); jo_str(jo[..], aid_s);
-    if model_s.count > 0 { jo_key(jo[..], "model"); jo_str(jo[..], model_s); }
+    if is_fork {
+      if child_model.count > 0 { jo_key(jo[..], "model"); jo_str(jo[..], child_model); }
+      if child_eff.count > 0 { jo_key(jo[..], "effort"); jo_str(jo[..], child_eff); }
+    } else if model_s.count > 0 {
+      jo_key(jo[..], "model"); jo_str(jo[..], model_s);
+    }
     if is_bg { jo_key(jo[..], "run_in_background"); jo_bool(jo[..], true); }
-    if def.nallowed > 0 { jo_key(jo[..], "allowed_tools"); jo_str(jo[..], cast(string) def.allowed_tools[0..<def.nallowed]); }
-    if def.ndisallowed > 0 { jo_key(jo[..], "disallowed_tools"); jo_str(jo[..], cast(string) def.disallowed_tools[0..<def.ndisallowed]); }
+    if child_allowed.count > 0 { jo_key(jo[..], "allowed_tools"); jo_str(jo[..], child_allowed); }
+    if child_disallowed.count > 0 { jo_key(jo[..], "disallowed_tools"); jo_str(jo[..], child_disallowed); }
     if !is_fork && oa_agent_should_trim_claudemd(def) { jo_key(jo[..], "omit_claudemd"); jo_bool(jo[..], true); }
     if def.read_only && !is_fork { jo_key(jo[..], "read_only"); jo_bool(jo[..], true); }
     jo_key(jo[..], "git"); jo_str(jo[..], git_s);
