@@ -1,6 +1,6 @@
 # Paths through the books
 
-There are eight books. [The OpenAgents books](README.md) introduces them,
+There are nine books. [The OpenAgents books](README.md) introduces them,
 the argument they share and the order to read them in. This page gives a
 short core path in each book, and then the routes you can run from a
 terminal today.
@@ -20,6 +20,7 @@ chapters to read first. Chapter numbers are each book's own.
 | [Bitcoin](../../bitcoin/book/README.md) | 1–4, 13–16, 23, 24, 27–29, 34–36, 41, 43, 104–106, 108, 109, 113, 114 and 121 | Go from a signature to a Lightning/Spark payment under one seed. |
 | [Nostr](../../nostr/book/README.md) | Parts I–V (14–44), then 80, 82, 86, 100 and 102 | Sign and verify events, run a client and a relay, and follow one agent's or Pylon's job. |
 | [OpenAgents](../../openagents/book/README.md) | 1–6, 12–18, 32–33, 52, 54–55, 69–70 and 78 | Follow the product apps, Spark wallet, Gym, signed releases and the Pylon Executor Network (design drafts catching up to `main`). |
+| [Dissecting an Agentic Coding Tool](../../claude-code/book/README.md) | Prologue, 1–2, 4, 6–7, 9, 11, 15, 18, 22 and 25 | Trace a production TypeScript coding agent (Claude Code 2.1.88–2.1.331) from leaf primitives to query loop, compaction, permissions, MCP, subagents and cold start. |
 
 Paths by what you want to do:
 
@@ -34,8 +35,9 @@ Paths by what you want to do:
 
 ## Runnable routes
 
-All eight OpenAgents books have bounded CPU routes you can run from a clean
-checkout today: [The Coax Programming Language](../../coax/book/README.md),
+All eight Coax-implementation books have bounded CPU routes you can run from a clean
+checkout today (the ninth book, [Dissecting an Agentic Coding Tool](../../claude-code/book/README.md),
+is a `written` external-codebase survey with no runnable Coax examples): [The Coax Programming Language](../../coax/book/README.md),
 [Psionic: ML From Scratch](../../psionic/book/README.md),
 [Building the OpenAgents Metaverse Engine](../../metaverse-engine/book/README.md),
 [Nostr From Scratch](../../nostr/book/README.md),
@@ -92,15 +94,16 @@ stdout must match the linked fixture bytes. Standalone Coax examples run in
 debug and release. The C workflow runs once and itself executes two C builds.
 
 A chapter marked *(design draft)* or *(planned)* describes work that does not
-run yet. The chapter registries for all eight books
+run yet. The chapter registries for all nine books
 ([Coax](../../coax/book/chapters.json),
 [Psionic](../../psionic/book/chapters.json),
 [the Metaverse Engine](../../metaverse-engine/book/chapters.json),
 [Nostr](../../nostr/book/chapters.json),
 [Bitcoin](../../bitcoin/book/chapters.json),
 [Coder](../../coder/book/chapters.json),
-[Everglade](../../everglade/book/chapters.json), and
-[OpenAgents](../../openagents/book/chapters.json)) retain each named teaching
+[Everglade](../../everglade/book/chapters.json),
+[OpenAgents](../../openagents/book/chapters.json), and
+[Dissecting an Agentic Coding Tool](../../claude-code/book/chapters.json)) retain each named teaching
 scope, qualified targets and reviewed component adoption. See
 [completion milestones](completion.md) for the remaining integration, quality,
 target and application gates. The optional original-model route below retains

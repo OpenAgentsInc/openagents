@@ -17,4 +17,5 @@ python3 psionic/tests/book.py --book coder
 python3 psionic/tests/book.py --book bitcoin
 python3 psionic/tests/book.py --book openagents
 python3 psionic/tests/book.py --book everglade
+python3 psionic/tests/book.py --book claude-code
 python3 scripts/book_routes.py --check

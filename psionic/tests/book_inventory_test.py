@@ -43,10 +43,11 @@ class Inventory(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 book.example_inventory({"examples": [], "libraries": [library]}, {"library.coax"})
 
-    def test_all_eight_books_and_metaverse_engine_alias_registered(self):
+    def test_all_nine_books_and_aliases_registered(self):
         self.assertEqual(book.ALIASES.get("metaverse-engine"), "aethyr")
+        self.assertEqual(book.ALIASES.get("cc"), "claude-code")
         self.assertEqual(set(book.ALL_BOOKS),
-                         {"coax", "psionic", "aethyr", "nostr", "coder", "bitcoin", "openagents", "everglade"})
+                         {"coax", "psionic", "aethyr", "nostr", "coder", "bitcoin", "openagents", "everglade", "claude-code"})
         self.assertEqual(set(book.BOOKS), set(book.ALL_BOOKS) - {"coax"})
 
 

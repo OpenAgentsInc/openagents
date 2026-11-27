@@ -2,8 +2,8 @@
 
 > **Scope.** This plan was originally written on 2026-11-01 for four books:
 > Coax, Psionic, the OpenAgents Metaverse Engine and Nostr. Bitcoin, Coder,
-> Everglade and OpenAgents maintain their own plans in their book folders
-> (`PLAN.md`). For all eight books, start at [the OpenAgents books](README.md)
+> Everglade, OpenAgents and Claude Code maintain their own outlines/plans in their book folders
+> (`PLAN.md` / `OUTLINE.md`). For all nine books, start at [the OpenAgents books](README.md)
 > and the nine-route catalog in [routes.json](routes.json).
 
 Reconciled against `main` on 2026-11-01, starting at `6f4c722640`. This is the
@@ -206,7 +206,7 @@ producer identities; carry unchanged passing evidence rather than repeating
 whole-model or whole-book execution. Preserve dated records and failed results.
 The four tracks can advance in parallel around concrete shared consumers.
 
-Metadata-only checks across all eight books, without building a compiler or
+Metadata-only checks across all nine books, without building a compiler or
 running examples:
 
 ```shell

@@ -41,7 +41,7 @@ source, qualified targets and adoption. The registry check in
 status marker, the contents labels, the README's list or status table and, for
 Psionic, the plan.
 `check-structure.py` and `psionic/tests/book.py` run that comparison, so a
-status change must update all of them in one commit. To check all eight
+status change must update all of them in one commit. To check all nine
 registries and print their status counts:
 
 ```sh
@@ -53,7 +53,7 @@ teaching chapter: a worked calculation or trace, runnable source, a broken
 case with its diagnostic, and an independent check.
 
 `depends_on` records the minimum teaching prerequisites needed to follow the
-chapter. Each complete book graph must be acyclic; validate all eight together.
+chapter. Each complete book graph must be acyclic; validate all nine together.
 An integration chapter's references back to a library or future consumer
 belong in prose when they are not teaching prerequisites; do not create dependency cycles to
 describe those relationships. The registry regression checks are:
@@ -112,7 +112,7 @@ book's structure/claim gate before reading credentials or contacting GitBook.
 
 ## Publish the books
 
-All eight books publish natively via Coax Web static SSR (`apps/openagents-web/demos/docs-starter/build.coax` → `/books/<slug>`), and six also have GitBook spaces under `openagents.gitbook.io` (`scripts/publish-coax-book.py` accepts `--book metaverse-engine` as an alias for the historical `aethyr` GitBook space):
+All nine books publish natively via Coax Web static SSR (`apps/openagents-web/demos/docs-starter/build.coax` → `/books/<slug>`), and six also have GitBook spaces under `openagents.gitbook.io` (`scripts/publish-coax-book.py` accepts `--book metaverse-engine` as an alias for the historical `aethyr` GitBook space):
 
 | `--book` | Source | Space | Public book | Gate |
 |---|---|---|---|---|
@@ -124,6 +124,7 @@ All eight books publish natively via Coax Web static SSR (`apps/openagents-web/d
 | `bitcoin` | `bitcoin/book/` | `wmf6C6tD4ovtQQqoeMmP` | <https://openagents.gitbook.io/bitcoin-from-scratch> | `psionic/tests/book.py --book bitcoin` |
 | `everglade` (SSR) | `everglade/book/` | — (native Coax Web SSR) | `/books/everglade` | `psionic/tests/book.py --book everglade` |
 | `openagents` (SSR) | `openagents/book/` | — (native Coax Web SSR) | `/books/openagents` | `psionic/tests/book.py --book openagents` |
+| `claude-code` (`cc`, SSR) | `claude-code/book/` | — (native Coax Web SSR) | `/books/claude-code` | `psionic/tests/book.py --book claude-code` |
 
 Commit the reviewed changes, rebase on `origin/main`, run any checks affected
 by the rebase and push. The existing GitBook space can import the pushed

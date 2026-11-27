@@ -62,11 +62,11 @@ def problems(root):
 # target with no recorded run is not listed) and `adopted_by` (files outside
 # the book that use the chapter's code today). `psionic/tests/book.py` runs
 # the same checks for Psionic, the Metaverse Engine, Nostr, Coder, Bitcoin,
-# OpenAgents and Everglade (and delegates `coax` here).
+# OpenAgents, Everglade and Claude Code (and delegates `coax` here).
 BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "metaverse-engine/book", "nostr": "nostr/book",
          "coder": "coder/book", "bitcoin": "bitcoin/book", "openagents": "openagents/book",
-         "everglade": "everglade/book"}
-BOOK_ALIASES = {"metaverse-engine": "aethyr"}
+         "everglade": "everglade/book", "claude-code": "claude-code/book"}
+BOOK_ALIASES = {"metaverse-engine": "aethyr", "cc": "claude-code"}
 # A moved chapter keeps its number so the numbering stays 1..N; its title names
 # where it went and it has no file here.
 # A written chapter (Coder's Part VII) surveys another project: its profile

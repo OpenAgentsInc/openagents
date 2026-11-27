@@ -134,7 +134,7 @@ ds_build :: (s: [] DocsStarter) {
   bk_nav := tr_open(t, "ds.nav.books", TG_A, "row");
   tr_attr(t, bk_nav, AT_HREF, "/books");
   _ = tr_leaf(t, "ds.nav.books.t", TG_SPAN, "row-t", "Books");
-  _ = tr_leaf(t, "ds.nav.books.n", TG_SPAN, "meta", "/books · 8 books · 0 KB JS");
+  _ = tr_leaf(t, "ds.nav.books.n", TG_SPAN, "meta", "/books · 9 books · 0 KB JS");
   tr_close(t);
   tr_close(t);
 

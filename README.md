@@ -107,10 +107,11 @@ the argument the books share, the order to read them in and a
   OpenAgents' coding agent, built in Coax, and what we learn from every coding
   agent we can read.
 
-In progress: [**Building Everglade**](everglade/book/README.md), an MMORPG
-on the D&D 5E SRD with action combat and rooms of up to 16 players, built
-from scratch on the Metaverse Engine in Coax.
-Chapters 1 to 18 are drafted; none is complete yet.
+In progress and repository books:
+
+- [**Building Everglade**](everglade/book/README.md): an MMORPG on the D&D 5E SRD with action combat and rooms of up to 16 players, built from scratch on the Metaverse Engine in Coax.
+- [**The OpenAgents Book**](openagents/book/README.md): OpenAgents Desktop, iOS, Coax Web/UI SSR, Bitcoin/Lightning wallet, and the composable general agent.
+- [**Dissecting an Agentic Coding Tool**](claude-code/book/README.md): a 25-chapter bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase.
 
 For a short core path in each book, and routes you can run from a terminal
 (write current Coax, replay the engine core, run an original model, train a

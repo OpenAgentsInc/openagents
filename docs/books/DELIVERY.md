@@ -1,8 +1,9 @@
 # Supported routes and publication evidence
 
 The [route catalog](routes.json) and [reader paths](paths.md) define nine
-bounded native profiles covering all eight OpenAgents books (including the
-cross-book `executor-network-flywheel` capstone route). Their entry commands run
+bounded native profiles covering all eight Coax-implementation books (including the
+cross-book `executor-network-flywheel` capstone route; the ninth book, `claude-code/book`,
+is an external-codebase survey checked by `scripts/check-books.sh --check`). Their entry commands run
 existing Coax examples and one local C/protobuf boundary. They require no GPU,
 dataset download, user key, network service or visible browser. They do not
 complete the broader [application milestones](completion.md).

@@ -150,7 +150,7 @@ def load_manifest(root, path):
             raise RouteError('duplicate or invalid route ID')
         seen.add(key)
         if route.get('book') not in ('coax', 'aethyr', 'metaverse-engine', 'psionic', 'nostr',
-                                     'bitcoin', 'coder', 'everglade', 'openagents'):
+                                     'bitcoin', 'coder', 'everglade', 'openagents', 'claude-code'):
             raise RouteError('unknown book')
         if not route.get('title') or not route.get('scope') or not route.get('limitations'):
             raise RouteError('route needs a title, bounded scope and limitations')

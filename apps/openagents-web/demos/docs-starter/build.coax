@@ -2,8 +2,8 @@
 // Emits:
 //   - `/` (index.html): Native Coax SSR + hydrated Wasm (`docs-starter.wasm`)
 //   - `/docs/*`, `404.html`: Pure 0-KB-Wasm / 0-KB-JS static HTML using components/skin/mono.coax CSS + raw `.md` alternates.
-//   - `/books` and `/books/<book>/<chapter>`: All 8 repository books (coax/book, openagents/book,
-//     bitcoin/book, nostr/book, coder/book, psionic/book, metaverse-engine/book, everglade/book)
+//   - `/books` and `/books/<book>/<chapter>`: All 9 repository books (coax/book, openagents/book,
+//     bitcoin/book, nostr/book, coder/book, psionic/book, metaverse-engine/book, everglade/book, claude-code/book)
 //     rendered at build time with syntax highlighting, TOC sidebar, prev/next pager, raw `index.md`, and 0 KB JS/Wasm.
 // Run from the repository root:
 //   coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax [--serve] [--listen HOST:PORT]
@@ -18,7 +18,7 @@ DS_APP_DIR :: "apps/openagents-web/build/docs-starter";
 DS_BOOKS_DIR :: "apps/openagents-web/build/docs-starter/books";
 DS_BUILD_SRC :: "apps/openagents-web/demos/docs-starter/build.coax";
 
-DS_INDEX_MD :: "# Coax Web Starter\n\nHybrid starter: hydrated Coax Wasm on `/` and 0-KB-Wasm static SSR docs & books on `/docs/*` and `/books/*` reusing `components/skin/mono.coax`.\n\nRoutes:\n- `/` (hydrated Wasm)\n- `/docs/introduction` (0 KB Wasm)\n- `/docs/getting-started` (0 KB Wasm)\n- `/docs/roadmap` (0 KB Wasm)\n- `/books` (0 KB Wasm — all 8 OpenAgents books)\n- `/books/coax` (0 KB Wasm — The Coax Programming Language)\n";
+DS_INDEX_MD :: "# Coax Web Starter\n\nHybrid starter: hydrated Coax Wasm on `/` and 0-KB-Wasm static SSR docs & books on `/docs/*` and `/books/*` reusing `components/skin/mono.coax`.\n\nRoutes:\n- `/` (hydrated Wasm)\n- `/docs/introduction` (0 KB Wasm)\n- `/docs/getting-started` (0 KB Wasm)\n- `/docs/roadmap` (0 KB Wasm)\n- `/books` (0 KB Wasm — all 9 OpenAgents books)\n- `/books/coax` (0 KB Wasm — The Coax Programming Language)\n";
 
 BK_RAW_CAP :: 524288;
 BK_OUT_CAP :: 1048576;
@@ -129,7 +129,7 @@ ds_emit_book_chapter :: (w: [] BkWork, book_idx: int, active: int, out_dir: stri
   return true;
 }
 
-// Discovers and renders all 8 repository books under /books/<slug>/<chapter> with 0 KB JS/Wasm.
+// Discovers and renders all 9 repository books under /books/<slug>/<chapter> with 0 KB JS/Wasm.
 ds_emit_all_books :: () -> bool {
   if !ds_emit_books_css() { return false; }
   w: [1] BkWork;
@@ -208,7 +208,7 @@ ds_emit_all_books :: () -> bool {
   cbuf: [32] u8;
   tool_err("docs-starter: prerendered ");
   tool_err(tr_join(cbuf[..], "", total_rendered));
-  tool_errln(" book chapters across 8 books (0 KB JS/Wasm)");
+  tool_errln(" book chapters across 9 books (0 KB JS/Wasm)");
   return true;
 }
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Book tooling: closed example inventory, exact source listings, links and runs.
 
-One checker serves all eight OpenAgents books (`--book coax|psionic|aethyr|metaverse-engine|nostr|coder|bitcoin|openagents|everglade|all`).
-`coax` delegates to `coax/book/check-structure.py` and `metaverse-engine` aliases `aethyr`. Each non-Coax book keeps chapters as
+One checker serves all nine OpenAgents books (`--book coax|psionic|aethyr|metaverse-engine|nostr|coder|bitcoin|openagents|everglade|claude-code|cc|all`).
+`coax` delegates to `coax/book/check-structure.py`, `metaverse-engine` aliases `aethyr`, and `cc` aliases `claude-code`. Each non-Coax book keeps chapters as
 chNNN-slug.md, an examples.json inventory of its examples/*.coax programs, and
 a status marker on every design draft. Coder has no example programs of its
 own yet: the programs its chapters run are inventoried by another book.
@@ -50,9 +50,10 @@ BOOKS = {
     "bitcoin": ("bitcoin/book", "bitcoin/examples", "bitcoin/README.md", 0),
     "openagents": ("openagents/book", "openagents/examples", None, 0),
     "everglade": ("everglade/book", "everglade/examples", "everglade/README.md", 0),
+    "claude-code": ("claude-code/book", None, None, 0),
 }
-ALIASES = {"metaverse-engine": "aethyr"}
-ALL_BOOKS = ("coax", "psionic", "aethyr", "nostr", "coder", "bitcoin", "openagents", "everglade")
+ALIASES = {"metaverse-engine": "aethyr", "cc": "claude-code"}
+ALL_BOOKS = ("coax", "psionic", "aethyr", "nostr", "coder", "bitcoin", "openagents", "everglade", "claude-code")
 # Coder's chapters 1-22 moved from Psionic; their programs stay in Psionic's
 # inventory (and its closed-inventory check) until their code moves.
 BORROWED = {"coder": "psionic"}
@@ -60,6 +61,7 @@ BORROWED = {"coder": "psionic"}
 FENCES = {
     "coder": ("```json", "```sh"),
     "everglade": ("```json", "```sh", "```python"),
+    "claude-code": ("```ts", "```tsx", "```js", "```json", "```sh", "```bash", "```markdown", "```mermaid"),
 }
 # The Metaverse Engine's engine-core tasks each own one chapter, named in its status block.
 TASKS = {"aethyr": "apps/openagents-web/projects/verse/work/engine-core.json"}
@@ -165,7 +167,7 @@ def check(name="psionic"):
     else:
         manifest = json.loads(path(f"{book}/examples.json").read_text())
         assert manifest["schema"] == 1
-        actual = {str(p.relative_to(ROOT)) for p in (ROOT / programs).glob("*.coax")}
+        actual = {str(p.relative_to(ROOT)) for p in (ROOT / programs).glob("*.coax")} if programs else set()
         examples, libraries = example_inventory(manifest, actual)
         assert examples or least == 0, "empty example inventory"
     linked = set()

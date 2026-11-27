@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Publish a clean, pushed book written in Coax (`--book coax|psionic|metaverse-engine|aethyr|nostr|coder|bitcoin`) through its GitBook space's draft API.
-Note: `everglade` and `openagents` publish natively via Coax Web static SSR (`apps/openagents-web/demos/docs-starter/build.coax` -> `/books/<slug>`).
+Note: `everglade`, `openagents`, and `claude-code` publish natively via Coax Web static SSR (`apps/openagents-web/demos/docs-starter/build.coax` -> `/books/<slug>`).
 
 Standard-library maintenance tooling, never part of a compiler or app build.
 Existing pages keep their IDs/URLs. New SUMMARY sections become overview pages.
