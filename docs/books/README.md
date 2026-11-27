@@ -66,18 +66,23 @@ with them and never built on them.
 
 ## Reading order
 
-Start with the Coax book's Parts I–III. Every other book assumes them.
+Start with the Coax book's Parts I–III. Every other Coax-implementation book
+(eight of the nine books) assumes them; the ninth book,
+[Reverse Engineering Claude Code](../../claude-code/book/README.md), is a
+standalone TypeScript codebase survey that pairs directly with Coder.
 
 ```text
 Coax ──┬── Metaverse Engine ──── Everglade
-       ├── Psionic ─── Coder
-       └── Bitcoin ─── Nostr
+       ├── Psionic ─── Coder ── (companion: Reverse Engineering Claude Code)
+       ├── Bitcoin ─── Nostr
+       └── OpenAgents (product apps & capability economy across all of the above)
 ```
 
 - Metaverse Engine Part IV onward also needs Psionic chapters 3–6, 37 and 38.
 - Nostr needs Bitcoin Parts I–V.
 - Everglade's guard uses Psionic's decision chapters (28–32).
 - Coder's own engine uses models that Psionic serves.
+- OpenAgents ties the product apps (`apps/openagents-desktop/`, iOS, Coax Web), `openagents/core/`, WorkOS auth, Breez Spark wallet and capability economy together.
 
 [Paths through the books](paths.md) gives a short core path in each book
 and the routes you can run from a terminal today.
@@ -158,7 +163,7 @@ model books.
 - [Delivery and publication](DELIVERY.md): how routes and publications are
   checked.
 - [Reviews & audits](audits/2026-11-21-executor-network-flow-audit.md): the
-  2026-11-21 Executor Network flow audit across all eight books, the
+  2026-11-21 Executor Network flow audit across the eight Coax books, the
   [2026-11-20 holistic books audit](audits/2026-11-20-holistic-books-audit.md),
   and the [2026-11-09 review](audits/2026-11-09-holistic-review.md) with
   [per-book notes](audits/2026-11-09-per-book-notes.md).

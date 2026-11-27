@@ -490,7 +490,16 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-web/importworld.coax",
+        "apps/openagents-web/labs/bitcoin-lab.coax",
+        "apps/openagents-web/labs/valleylab.coax",
+        "apps/openagents-web/microduck-bay.coax",
+        "apps/openagents-web/microduck.coax",
+        "apps/openagents-web/nip01.coax",
+        "apps/openagents-web/pylon.coax",
+        "apps/openagents-web/speedrunhud.coax"
+      ]
     },
     {
       "number": 16,
@@ -627,7 +636,12 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "metaverse/demolish.coax",
+        "metaverse/water.coax",
+        "metaverse-engine/physics/gravity.coax",
+        "metaverse-engine/physics/sim/contact.coax"
+      ]
     },
     {
       "number": 19,
@@ -659,7 +673,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "metaverse-engine/physics/sim/bodies.coax"
+      ]
     },
     {
       "number": 21,
@@ -678,7 +694,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "metaverse-engine/lab/physics-kernel.coax",
+        "metaverse-engine/physics/sim/bodies.coax"
+      ]
     },
     {
       "number": 22,
@@ -711,7 +730,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "metaverse-engine/physics/sim/pbd.coax",
+        "metaverse-engine/physics/sim/sph.coax"
+      ]
     },
     {
       "number": 24,
@@ -748,7 +770,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "metaverse-engine/physics/afloat.coax"
+      ]
     },
     {
       "number": 26,
@@ -1166,7 +1190,11 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/web/room/build.sh",
+        "coax/web/room/encounter-sim.coax",
+        "metaverse-engine/net/realm.coax"
+      ]
     },
     {
       "number": 50,
@@ -1190,7 +1218,10 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-web/belt.coax",
+        "apps/openagents-web/stair.coax"
+      ]
     },
     {
       "number": 51,
@@ -1267,7 +1298,16 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "everglade/model/tools/pack-entry.coax",
+        "everglade/model/tools/people-kind.coax",
+        "gamebuilder/core/model.coax",
+        "metaverse/microduck-bay/crowd.coax",
+        "metaverse/native/wasm-run.coax",
+        "metaverse/splice-bots/tools/jam-route-walk.coax",
+        "metaverse/splice-bots/tools/jam-sounds-pack.coax",
+        "metaverse/splice-bots/tools/jam-tables-pack.coax"
+      ]
     },
     {
       "number": 54,
@@ -1424,7 +1464,9 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "everglade/model/item-op.coax"
+      ]
     },
     {
       "number": 59,
@@ -1699,7 +1741,13 @@
       "qualified_targets": [
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "metaverse/splice-bots/sound.coax",
+        "metaverse-engine/audio/build-sfx.coax",
+        "metaverse-engine/audio/everglade-mix.coax",
+        "metaverse-engine/audio/experimental-sfx.coax",
+        "metaverse-engine/audio/sfx-tool.coax"
+      ]
     },
     {
       "number": 69,
@@ -1795,7 +1843,16 @@
       "qualified_targets": [
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-web/gpu/fivelab-fx.coax",
+        "everglade/client/class-look.coax",
+        "everglade/client/gpu/everglade2-fx.coax",
+        "everglade/mounts.coax",
+        "everglade/zone.coax",
+        "metaverse-engine/fx/battle.coax",
+        "metaverse-engine/fx/flat.coax",
+        "metaverse-engine/fx/spell-light.coax"
+      ]
     },
     {
       "number": 73,
@@ -1920,7 +1977,12 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-web/myrealm.coax",
+        "apps/openagents-web/realm.coax",
+        "everglade/world/people.coax",
+        "metaverse/fairy-forest/talk.coax"
+      ]
     },
     {
       "number": 78,
@@ -2005,7 +2067,9 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "metaverse-engine/move/path-follower.coax"
+      ]
     },
     {
       "number": 81,
@@ -2176,7 +2240,13 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "everglade/shared/everglade-wire.coax",
+        "coax/web/room/room-input-policy.coax",
+        "metaverse-engine/net/diagnostics.coax",
+        "metaverse-engine/net/orbit-session.coax",
+        "metaverse-engine/net/spawn.coax"
+      ]
     },
     {
       "number": 87,
@@ -2198,7 +2268,15 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "apps/openagents-web/carriers/everglade.coax",
+        "apps/openagents-web/carriers/everglade5e.coax",
+        "apps/openagents-web/experimental-motion-native.coax",
+        "apps/openagents-web/experimental-rest-activity-native.coax",
+        "coax/web/room/build.sh",
+        "coax/web/room/room.coax",
+        "everglade/client/everglade-step.coax"
+      ]
     },
     {
       "number": 88,
@@ -2216,7 +2294,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/web/room/room.coax",
+        "coax/web/room/room-post.coax",
+        "coax/web/room/room-socket.coax"
+      ]
     },
     {
       "number": 89,
@@ -2237,7 +2319,16 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/web/room/room.coax",
+        "everglade/client/net-core.coax",
+        "everglade/server/creature-wire.coax",
+        "everglade/server/familiar-wire.coax",
+        "everglade/server/kit-wire.coax",
+        "everglade/server/mount-wire.coax",
+        "everglade/server/range-wire.coax",
+        "everglade/shared/everglade-link-wire.coax"
+      ]
     },
     {
       "number": 90,
@@ -2342,7 +2433,10 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/web/room/room.coax",
+        "coax/web/room/room-everglade.coax"
+      ]
     },
     {
       "number": 95,
@@ -2387,7 +2481,9 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/web/room/room.coax"
+      ]
     },
     {
       "number": 97,
@@ -2406,7 +2502,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/web/room/room.coax"
+      ]
     },
     {
       "number": 98,
@@ -2427,7 +2525,9 @@
         "cpu",
         "wasm"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/web/room/room.coax"
+      ]
     },
     {
       "number": 99,
@@ -2447,7 +2547,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/web/room/room.coax"
+      ]
     },
     {
       "number": 100,
@@ -2501,7 +2603,9 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/web/room/room.coax"
+      ]
     },
     {
       "number": 102,

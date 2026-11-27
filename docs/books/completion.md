@@ -1,91 +1,85 @@
-# Completing the four books
+# Completing the nine OpenAgents books
 
-> **Scope.** This plan was originally written on 2026-11-01 for four books:
-> Coax, Psionic, the OpenAgents Metaverse Engine and Nostr. Bitcoin, Coder,
-> Everglade, OpenAgents and Claude Code maintain their own outlines/plans in their book folders
-> (`PLAN.md` / `OUTLINE.md`). For all nine books, start at [the OpenAgents books](README.md)
-> and the nine-route catalog in [routes.json](routes.json).
+> **Scope.** Originally drafted on 2026-11-01 at `6f4c722640` for four books
+> (Coax, Psionic, the OpenAgents Metaverse Engine and Nostr), this roadmap now
+> tracks all **nine books** in the OpenAgents library — the eight
+> Coax-implementation books plus the companion external-codebase study
+> [Reverse Engineering Claude Code](../../claude-code/book/README.md). Each
+> book's chapter registry (`chapters.json`) remains authoritative for teaching
+> profiles, qualified targets, and direct adoption; start at
+> [the OpenAgents books](README.md) and the nine-route catalog in
+> [routes.json](routes.json).
 
-Reconciled against `main` on 2026-11-01, starting at `6f4c722640`. This is the
-shared delivery sequence for [Coax](../../coax/book/README.md),
-[Psionic](../../psionic/book/README.md), [the Metaverse Engine](../../metaverse-engine/book/README.md) and
-[Nostr](../../nostr/book/README.md). The [reader paths](paths.md) give smaller
-routes through capabilities that already run. Each book's chapter registry
-remains authoritative for its current teaching profiles.
+## Library status at a glance (nine books, 832 chapters)
 
-The follow-up review on 2026-11-01 uses `71c1d3fcdb` and the measured MNIST
-MLP in `063a1a589a`. It turns the broad milestones below into eight
-independently trackable issues. The books share this repository, so their
-tasks belong in `OpenAgentsInc/openagents`, beside the existing book epics
+Reconciled against `origin/main` chapter registries on 2026-11-27. **Four of
+the nine books now have 0 unimplemented chapters** (Everglade, Coder, Nostr,
+and Reverse Engineering Claude Code). Across the remaining five books, 107
+unimplemented chapters (71 design drafts, 36 planned) remain alongside the
+integration, hardware, and production gates on partly implemented chapters.
+
+| Book | Total | Implemented | Partly impl. | Design draft | Planned | Moved | Written | Unimplemented | Detailed plan |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| [The Coax Programming Language](../../coax/book/README.md) | 47 | 21 | 12 | 0 | 14 | 0 | 0 | 14 | [coax/book/PLAN.md](../../coax/book/PLAN.md) |
+| [Building the OpenAgents Metaverse Engine](../../metaverse-engine/book/README.md) | 103 | 14 | 57 | 32 | 0 | 0 | 0 | 32 | [metaverse-engine/book/PLAN.md](../../metaverse-engine/book/PLAN.md) |
+| [Building Everglade](../../everglade/book/README.md) | 33 | 3 | 30 | 0 | 0 | 0 | 0 | **0** | [everglade/book/PLAN.md](../../everglade/book/PLAN.md) |
+| [Psionic: ML From Scratch](../../psionic/book/README.md) | 274 | 146 | 104 | 7 | 0 | 17 | 0 | 7 | [psionic/book/PLAN.md](../../psionic/book/PLAN.md) |
+| [Coder: Coding Agents From Scratch](../../coder/book/README.md) | 43 | 11 | 20 | 0 | 0 | 0 | 12 | **0** | [coder/book/PLAN.md](../../coder/book/PLAN.md) |
+| [Bitcoin From Scratch](../../bitcoin/book/README.md) | 125 | 101 | 3 | 0 | 21 | 0 | 0 | 21 | [bitcoin/book/PLAN.md](../../bitcoin/book/PLAN.md) |
+| [Nostr From Scratch](../../nostr/book/README.md) | 104 | 88 | 1 | 0 | 0 | 15 | 0 | **0** | [nostr/book/COMPLETION.md](../../nostr/book/COMPLETION.md) |
+| [The OpenAgents Book](../../openagents/book/README.md) | 78 | 0 | 45 | 32 | 1 | 0 | 0 | 33 | [openagents/book/PLAN.md](../../openagents/book/PLAN.md) |
+| [Reverse Engineering Claude Code](../../claude-code/book/README.md) | 25 | 0 | 0 | 0 | 0 | 0 | 25 | **0** | [claude-code/book/OUTLINE.md](../../claude-code/book/OUTLINE.md) |
+| **Total** | **832** | **384** | **272** | **71** | **36** | **32** | **37** | **107** | — |
+
+The [reader paths](paths.md) and [supported-route catalog](routes.json) now
+provide **nine executable bounded CPU routes** covering every
+Coax-implementation book (`coax-current-ffi`, `aethyr-core-replay`,
+`psionic-public-models`, `nostr-event-client`, `executor-network-flywheel`,
+`bitcoin-crypto-settlement`, `coder-harness-memory`,
+`everglade-world-srd-dragon`, and `openagents-app-economy`).
+
+## Shared delivery issues (`#12624`–`#12631`) and historical baseline
+
+The 2026-11-01 review (using `71c1d3fcdb` and the measured MNIST MLP in
+`063a1a589a`) turned the first four books' cross-cutting milestones into eight
+independently trackable issues in `OpenAgentsInc/openagents`, beside the
+existing book epics
 [#12610](https://github.com/OpenAgentsInc/openagents/issues/12610) and
-[#12612](https://github.com/OpenAgentsInc/openagents/issues/12612).
-
-## The next structural work
-
-The largest gap is joining implemented components into complete supported
-workflows. More worked chapters help, but an operator, shader, signing vector
-or simulated scheduler does not establish a usable application. Complete a
-small route, measure it, then expand its supported profile. Keep four parallel
-tracks; the CNN work does not wait for all compiler or relay work to finish.
+[#12612](https://github.com/OpenAgentsInc/openagents/issues/12612). The largest
+gap remains joining implemented components into complete supported workflows:
+an operator, shader, signing vector, or simulated scheduler does not establish
+a usable application on its own.
 
 | Priority and issue | Independently reviewable tasks | Exit |
 | --- | --- | --- |
-| Delivered infrastructure: [Supported reader routes and delivery evidence, #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) | Give each book a clean-checkout entry command and observable application exit; bind evidence to source/compiler/target; run quick metadata checks; record published revision. | A reader can reproduce a named supported route, and a changed dependency invalidates only its affected evidence. |
+| Delivered infrastructure: [Supported reader routes and delivery evidence, #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) | Give each Coax book a clean-checkout entry command and observable application exit; bind evidence to source/compiler/target; run quick metadata checks; record published revision. Expanded from the original four routes to all nine routes in [routes.json](routes.json). | A reader can reproduce a named supported route, and a changed dependency invalidates only its affected evidence. |
 | Delivered bounded route: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Initial R2 native LP64 language, real file cleanup, B2 helper composition and generation-fenced typed System One/Lab ownership are integrated. The [closure record](../verification/coax-12625-closure-2026-11-02/README.md) binds focused checks, canonical compiler fixedpoints and matching-image analysis cost under the unchanged budget. | The original 130 cache/origin survivors are closed; final `CB_query` kills 371/371, authored baseline passes 1,256/1,256, all native/fixedpoint gates pass, and actual compiler cost is 1,036,428/1,048,576. The [closure handoff](handoff-2026-11-02-12625-closed.md) records the completed route. Whole-desktop E0381, normal full-release/cache and R0 physical/reviewer/page-golden gates remain separate; no general linear ownership is claimed. |
-| P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. A same-shape residual block and frozen CPU trial now pass; independent artifact-reader checks are recorded, with fresh training still open. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. The tiny CNN is a step toward ResNet/CIFAR, not that project's completion. |
+| P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. A same-shape residual block and frozen CPU trial pass; independent artifact-reader checks are recorded, with fresh reader-led training and ResNet/CIFAR acceptance still open. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. |
 | P2: [Useful single-GPU training, #12627](https://github.com/OpenAgentsInc/openagents/issues/12627) | Cooperative backward and resident whole-step state, precision/overflow/resume, then a frozen 10–50M decoder with independent baseline. | Quality, tokens/s, memory and startup are measured together on the 4080. Distributed scaling follows this useful baseline. |
 | P1: [Metaverse Engine shared rendering and playable route, #12628](https://github.com/OpenAgentsInc/openagents/issues/12628) | Common frame/pass/binding admission; migrate the Grid, then catalogue subsystems; qualify independent render profiles and resource refusals. | One playable route uses shared engine contracts on its declared native/browser targets; remaining private paths stay visible. |
 | P2: [Reproducible Forge artifacts, #12629](https://github.com/OpenAgentsInc/openagents/issues/12629) | Common invertible edits, stale-revision refusal, pinned document/engine/assets, reload, migration and isolated forks. | A later engine release cannot silently change a published world's pinned artifact. |
 | P1: [Nostr live consumers and evidence debt, #12630](https://github.com/OpenAgentsInc/openagents/issues/12630) | Close recorded pin/regression/settlement decisions, qualify complete signer/storage/transport profiles, migrate remaining actual consumers and connect applications individually. | Real consumer evidence covers its actual target and key boundary; offline traces and test keys retain their narrower claims. |
 | P1: [Production relay qualification, #12631](https://github.com/OpenAgentsInc/openagents/issues/12631) | Freeze required parity, qualify durable import/restart and production budgets, refresh differentials, shadow traffic and rehearse rollback. | Every production exit is evidenced before a separate owner-operated cutover. |
 
-[Issue #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) now has
-[executable bounded routes](routes.json), [delivery instructions](DELIVERY.md)
-and [retained qualification](../verification/book-routes-2026-11-01/README.md):
-23 native step/mode executions passed, then all 23 were retained with zero
-example executions. Publication identity tracking is implemented and tested;
-no real GitBook publication was performed for this change. These exits do
-not promote the separate application milestones below.
-
-Each issue has a task checklist and acceptance criteria. Execute it in bounded
-slices and retain failed results; do not mark an umbrella complete because one
-slice passes. The first Psionic slices delivered the MLP and reusable CPU convolution/CNN
-through the same training/state interfaces. Residual-model and unfamiliar-consumer
-acceptance come next. GPU and compiled-backward support must be qualified
-separately or refuse explicitly.
+[Issue #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) has
+[executable bounded routes](routes.json), [delivery instructions](DELIVERY.md),
+and [retained qualification](../verification/book-routes-2026-11-01/README.md)
+(initial 23 native step/mode executions passed and retained with zero example
+re-executions; all nine routes are checked via `scripts/book_routes.py --check`).
+Publication identity tracking is implemented and tested; all nine books publish
+via native Coax Web static SSR (`/books/<slug>`), and six also publish to
+GitBook spaces (see [`coax/book-maintenance.md`](../../coax/book-maintenance.md)).
 
 The [Coax issue execution map](coax-outcomes-request-ownership.md) preserves
 R2, analysis-cost, B2 and B3 identities and the independent R0 owner/reviewer
-gates. The initial tagged-result language and real file adapter now join typed
-System One/Lab request ownership, with actual native offline child traces and
-snapshot/transcript lifetime oracles. The bounded raw helper-return continuation
-preserves retained-only manual fallback. General ownership, broader roadmap R2
-forms and whole-desktop readiness remain open; the execution map names those
-boundaries separately from the delivered component route. The original 130
-cache/origin sharpness findings and final query scope are qualified with zero
-survivors; v6 native/fixedpoint, authored and actual-cost gates pass in the
-[current closure record](../verification/coax-12625-closure-2026-11-02/README.md).
-
-This ordering preserves completed work. B1 ownership qualification, generated
-realm shaders, API NIP-98 verification and the relay's wired operations already
-exist. The qualified analysis-cost candidate in the existing
-`book30-analysis-cost` task reports 1,010,708 steps; B1's older 1,047,475-step
-observation is historical, not a measurement of current main. Measure the exact
-current compiler before adding analysis. The later [delivered wide-store H qualification](../verification/coax-wide-retained-stores-2026-11-01/README.md) reports 1,035,932 steps, leaving 12,644; the integrated R2 route has its own matching-image measurement in the current qualification record. Forge currently pins the document
-revision but still plays it with the current engine, which is the concrete
-artifact gap for #12629. Nostr's frozen conformance example must not be relabeled
-as a current operational report.
-
-Later branches still matter: Metaverse Engine rigid/articulated worlds and simulator
-interfaces, Psionic import/fine-tune/serve and real Pylon game decisions, and
-Nostr treasury signing/recovery. They keep their existing prerequisites and
-owner actions below. Advance them through actual consumers rather than
-flattening them into a single chapter-count queue.
-
-The [2026-11-01 stopping-point handoff](handoff-2026-11-01-12625-12628.md)
-records the delivered polling, residual-model, dense-GPU and Grid-admission
-slices, the earlier unmerged B2 compiler cost blocker, and the untouched remaining
-queue. All agents in that team have stopped; Coder's chapter move is preserved.
+gates. The later
+[wide-store H qualification](../verification/coax-wide-retained-stores-2026-11-01/README.md)
+reports 1,035,932 steps (leaving 12,644 under the unchanged 1,048,576 budget),
+and the [current closure record](../verification/coax-12625-closure-2026-11-02/README.md)
+records the matching-image measurement for the integrated R2 route. The
+[2026-11-01 stopping-point handoff](handoff-2026-11-01-12625-12628.md) preserves
+the historical polling, residual-model, dense-GPU and Grid-admission slices and
+Coder's chapter move.
 
 ## What completion means
 
@@ -98,113 +92,128 @@ Keep four different questions separate:
 | Which code consumes its implemented components? | `adopted_by`, with the source-to-consumer scope explained in the book | Adoption of the entire chapter, live deployment or a successful acceptance project |
 | Is the intended application complete? | The milestone gates below and each chapter's explicit remaining-work section | Success inferred from a chapter count or a simulated stand-in |
 
-An empty adoption list means no reviewed consumer is recorded. It is not a
-claim that none exists. Record a real library, application, host or build-binding
-consumer; tests, teaching examples and fixture outputs belong in evidence.
-Direct component use can be recorded without promoting a chapter's status or
-adding a qualified target. A source load alone does not establish deployment.
+An empty `adopted_by` list means no reviewed direct consumer is recorded, not
+that none exists. Record only real library, application, host or build-binding
+consumers that directly load, call, or bind a chapter's source; tests, teaching
+examples and fixtures belong in evidence. `depends_on` names the minimum
+teaching prerequisites for a chapter's stated implementation and must stay
+acyclic across all nine books.
 
-`depends_on` names the minimum teaching prerequisites for the chapter's stated
-implementation. This graph must be acyclic across all four books. A later
-renderer, solver, importer or application may integrate an earlier component;
-describe that integration in the chapter/plan, without making the foundation
-depend on its future consumer. A forward reading reference is allowed.
+## Real engineering gates remaining by book
 
-## Coax: a dependable language and supported consumers
+### Books with remaining unimplemented chapters
 
-| Order | Existing chapters | Completion gate |
-| --- | --- | --- |
-| 1. Finish the current-language route | 5–10, 13–14, 16–20, 24–28 | Results/error handling, supported generic forms, memory/borrow boundaries, effects and target contracts have worked examples and diagnostics matching the compiler. Current limitations are visible before the reader uses a feature. |
-| 2. Close the remaining ownership and development-loop gaps | 6, 14–16, 19–20 and roadmap R0 | A real fallible asynchronous consumer demonstrates buffer lifetime, cancellation and cleanup; compiler analysis has measured headroom; physical-device and development-loop gates retain their own evidence. |
-| 3. Deliver physical-world language through consumers | 29–39 | Frames, clocks, bounded steps, integrators, replay, model import and supervision are used by a Metaverse Engine world and a Psionic control path, with refused misuse and independent checks. |
-| 4. Deliver simulation compute through a real solver | 40–43 | Layouts, compilation budgets, captured execution, buffer ownership and kernel derivatives serve a measured workload instead of parallel, unused abstractions. |
-| 5. Finish the remaining toolchain and distribution route | 44–47 | A clean-machine real-application bootstrap, supported artifacts and reload/inspection behavior pass their declared gates. |
+#### 1. The OpenAgents Book (33 unimplemented: 32 design drafts, 1 planned; 45 partly implemented)
 
-The retained-store B1 qualification is complete within its recorded boundary.
-Do not reopen it based on an older stopping-point report. B2's selected raw
-helper-write composition preserves retained-only manual fallback and does not
-discharge foreign retention or host lifetimes. The bounded canonical B3
-asynchronous owner and detached snapshots are integrated; broader B2,
-arbitrary owner-value copies, races and general lifetimes remain outside that
-profile. The
-[current boundary](../../coax/verification-retained-stores.md) records them.
+Product shipping in `apps/openagents-desktop/` (macOS Metal 4, Linux Vulkan,
+Windows Win32/Vulkan `#14046`), `apps/openagents-ios/`, `openagents/core/` and
+`openagents/runtime/oa-worker.coax`, Coax Web SSR (`components/ui/`), WorkOS
+hybrid `acct_` auth, Breez Spark wallet, and the capability economy (`#14060`)
+has moved ahead of the book's 4-rule chapter proofs:
 
-## Psionic: one complete model workflow
+- **Promote core app & runtime drafts (Ch 1–36):** bring the 45 partly
+  implemented chapters and remaining GPU-component, login, session, wallet, and
+  multi-platform host drafts to full 4-rule teaching status backed by runnable
+  examples and target receipts (`openagents/book/PLAN.md`).
+- **Close remaining planned product subsystems (Ch 20–22, 38–53, 60–61, 73):**
+  complete knowledge base (`openagents/knowledge/`), sandboxed plugin SDK, and
+  public Gym runner (`#14058`–`#14059`), keeping release/signing and Pylon
+  Executor Network chapters (Ch 54–58, 69–70, 76–78) synced with real builds.
+
+#### 2. The Metaverse Engine (32 design drafts; 14 implemented, 57 partly implemented)
 
 | Order | Existing chapters | Completion gate |
 | --- | --- | --- |
-| 1. Make a new model ordinary | 3–6, 38–40, 106–107, 114, 117–118, 121–124 | A new MLP and CNN use public modules, operators, autodiff, data, optimizers and checkpoints without runtime changes. The explicitly authored tensor IR is shared; arbitrary Coax extraction is not assumed. |
-| 2. Make single-GPU training useful | 115–116, 125–131 | A larger small decoder trains with measured quality, throughput and memory, cooperative backward kernels, mixed precision and a reproducible independent baseline. The existing tiny GPU run remains valid even though it is slower than the CPU. |
-| 3. Import, adapt and serve | 8, 79, 140, 172–181, 220–221 | A published model is imported, fine-tuned, saved, reloaded and served through real admission, cancellation, batching/cache and failure paths; toy/simulated serving results are not substituted. |
-| 4. Prove a low-pressure game use | 24–32, 215–225, 239–241 | A Pylon consumer preserves local play on timeout/cancel, measures quality and latency against a strong local rule, and enables remote-selected behavior only after its own usefulness gate. Existing Directions remains local-first with optional shadow calls. |
-| 5. Expand robotics and distribution from real consumers | 132–135, 167–171; the Metaverse Engine 17–37 | Neural actor/critic training uses a pinned real physical environment; batched contact/reset/sensor/replay behavior is checked before gait claims. Distributed training uses actual devices/interconnects and demonstrates failure recovery. |
+| 1. Consolidate a playable realm | 1–16, 56, 64, 65–69 | The Grid and real realms use shared clocks, state, input, replay, queries, collision, walking, camera, renderer, HUD (`1e37eb87d0`) and budgets, with recorded native/browser behavior and shared frame/pass/binding admission (#12628). |
+| 2. Make Forge artifacts reproducible | 51–55, 82–86 | Invertible edit replay, stale-revision refusal, and pinned document/engine/asset artifacts so later engine releases cannot silently alter published worlds (#12629). |
+| 3. Establish bounded physical worlds | 17–22, 31, 35–37 | A rigid/articulated contact scene imports, resets, batches and replays with measured resource use and a real Psionic controller/environment consumer (closing the Part IV physics drafts). |
+| 4. Broaden simulation, space and multiplayer | 23–50, 70–81, 86–103 | Qualify remaining physics/spacecraft/world-system drafts and promote the partly implemented Part XII multiplayer room chapters (86–101) with measured drift/soak exits. |
 
-The first bounded CPU MNIST MLP consumer is now measured in
-[chapter 118](../../psionic/book/ch118-one-trainer-for-every-model.md): public
-module/autodiff/trainer composition, caller-sized buffers, AdamW, a checked
-checkpoint replay and named inference export, with a frozen held-out quality
-rule. Its next bounded CPU CNN slice now reaches 88.5742% through reusable
-convolution/flatten layers and the same trainer, with independent gradients,
-replay and export checks. A public same-shape residual block now reaches
-87.3535% with the same trainer and named state; its earlier failed linear-head
-trial remains visible. A separate reader has reproduced retained MLP/CNN/residual
-artifact inference after a documented recipe gap was fixed. This advances the
-first milestone; fresh reader-led training, general CNN options, larger datasets,
-GPU efficiency and ResNet/CIFAR acceptance remain open. See the
-[residual delivery record](../verification/psionic-residual-framework-2026-11-01/README.md).
+The [native GPU record](../metaverse/native-gpu.md) documents generated Coax
+shaders; the [migration chapter](../../metaverse-engine/book/ch064-every-realm-runs-on-the-metaverse-engine.md)
+tracks adopted components separately from remaining private realm paths.
 
-The [framework acceptance projects](../../psionic/book/PLAN.md#a-framework-not-only-engines)
-remain the graduation gates. Original model inference, a tiny GPU training run,
-a simulated scheduler and a passing scalar LQR experiment are useful delivered
-profiles; none alone satisfies those projects. Additional model architectures,
-NVIDIA breadth, mesh inference and agent-harness chapters remain independent
-branches with their written prerequisites and acceptance criteria.
+#### 3. Bitcoin From Scratch (21 planned; 101 implemented, 3 partly implemented)
 
-## The Metaverse Engine: a complete playable engine route
+All cryptographic primitives, BIP-340/ECDSA signatures, Taproot, transactions,
+consensus building blocks, Lightning foundations, and `#authority` 3-leg
+Spark/Lightning settlement (Ch 123) are implemented. The 21 remaining planned
+chapters (`bitcoin/book/PLAN.md`) are the full-node operational and
+differential-verification gates:
 
-| Order | Existing chapters | Completion gate |
-| --- | --- | --- |
-| 1. Consolidate a playable realm | 1–16, 56, 64, 65–69 | The Grid uses shared clocks, state, input, replay, queries, collision, walking, camera, renderer, HUD and budgets, with recorded native/browser behavior. Move other realms over subsystem by subsystem. Live audio is qualified separately from offline synthesis. |
-| 2. Make Forge artifacts reproducible | 51–55, 82–86 | Edits share an invertible replay model; publication freezes document, engine build and assets; forks, save migration, host lifecycle and accessibility are checked on the usable route. |
-| 3. Establish bounded physical worlds | 17–22, 31, 35–37 | A rigid/articulated contact scene imports, resets, batches and replays with measured resource use and a real Psionic controller/environment consumer. |
-| 4. Broaden simulation and large worlds | 23–34, 38–50, 70–81 | Additional solvers, coupling, gradients, sensors, streaming and spacecraft fidelity qualify their own numerical/reference profiles. Genesis-scale scope remains a substantial later milestone. |
+- **Chain sync & pruning (Ch 64, 76, 78–80):** UTXO pruning, parallel script
+  checks/signature cache, `assumevalid`, AssumeUTXO snapshots, and full mainnet
+  IBD matching Bitcoin Core's UTXO set.
+- **Mempool & node operation (Ch 83–89, 92–93):** transaction relay/orphans,
+  RBF/TRUC, packages/CPFP/anchors, eviction/persistence, fee estimation, block
+  templates, node daemon lifecycle, notifications, and shadow mode beside
+  Bitcoin Core.
+- **Wallets, verification & OpenAgents integration (Ch 98–99, 110, 117–118, 120, 124):**
+  Miniscript, descriptor wallet on our node, chain watcher, differential and
+  Bitcoin Core functional test suites, formal properties, and running our node
+  on Pylons and Metaverse OS.
 
-The [native GPU record](../metaverse/native-gpu.md) already documents generated Coax
-shaders. The remaining rendering milestone is shared frame/pass/binding
-admission and independent references, not repeating that port. The
-[migration chapter](../../metaverse-engine/book/ch064-every-realm-runs-on-the-metaverse-engine.md) records
-both adopted components and remaining private paths; a migrated clock is not a
-whole migrated realm.
-
-While this follow-up was in progress, `1e37eb87d0` added the reusable monochrome
-HUD library and its recorded demo, moving chapter 15 forward. Preserve that
-component and its evidence in #12628; shared frame/pass/binding admission and
-complete realm adoption still need their own exits.
-
-## Nostr: finish real consumers and operational qualification
+#### 4. The Coax Programming Language (14 planned; 21 implemented, 12 partly implemented)
 
 | Order | Existing chapters | Completion gate |
 | --- | --- | --- |
-| 1. Close integration and evidence debt | 47, 52, 86, 97–104 | Live settlement uses the checked expiry rule; the changed NIP pin is reviewed; affected website and relay regressions have current evidence; current consumers and frozen teaching snapshots are labeled accurately. |
-| 2. Qualify complete consumer profiles | 1–36, 97–100 | Intended native/browser signing, verification, encrypted storage and transport profiles have matching source/target evidence and explicit secret-handling boundaries. Remaining runner/unlock migrations are completed without inferring them from API verification. |
-| 3. Finish the relay migration | 37–45, 103 | Required protocol wiring, production-sized persistence/tombstones, restart/import equality, shadow observations and rollback are qualified before the owner-operated cutover. Configurable host allocation alone does not prove production capacity. |
-| 4. Connect integrated applications | 75–102; the Metaverse Engine 49; Psionic 24–32 | Rooms/presence, wallet interactions, Pylons and agent execution run through real transports and consumers. Assumed hop delays and offline payment traces remain teaching examples. |
-| 5. Complete the treasury milestone | 104 | Actual signing, possession/recovery, relay carriage and independent signet recovery satisfy the chapter's remaining gates. |
+| 1. Keep the current-language guide exact | 5–10, 13–14, 16–20, 24–28 | Results/error handling, supported generic forms, memory/borrow boundaries, effects, build drivers (`coax/build.sh`, `tool.sh`, `wasm.sh`, `serve.sh`) and target contracts match the compiler. |
+| 2. Close ownership & development-loop gaps | 6, 14–16, 19–20, 41, 46 and roadmap R0 | Real fallible asynchronous consumer lifetime/cleanup, analysis headroom, R22 startup/kernel budgets, and physical-device/development-loop evidence. |
+| 3. Deliver physical-world language through consumers | 29–39 (planned: 31, 33–39) | Bounded control, replay/snapshots, robot model import, stamped sensors/actuators, fault replay, provenance, and robot/freighter capstones driven by Metaverse Engine and Psionic consumers. |
+| 4. Deliver simulation compute through a real solver | 40–43 (planned: 40, 42–43) | Logical tensors, device graphs/zero-copy buffers, and kernel derivatives serving a measured workload. |
+| 5. Finish the toolchain route | 44–47 (planned: 44–45, 47) | Self-hosted clean-machine bootstrap, live procedure-body replacement and state migration atop `coax serve` (Ch 46), and profiling-driven backends. |
 
-Recent relay index/delete/rate/COUNT/search/protection/proof-of-work wiring,
-host-supplied NIP-49 workspaces, streamed hashing and independent crypto
-crosschecks are completed work within their records. Preserve those results.
-The [Nostr completion route](../../nostr/book/COMPLETION.md) gives the detailed
-remaining application and protocol scope. Existing owner actions stay in
-[NEEDS_OWNER.md](../../NEEDS_OWNER.md).
+Retained-store B1/B2/B3 boundaries are recorded in
+[`coax/verification-retained-stores.md`](../../coax/verification-retained-stores.md).
+
+#### 5. Psionic: ML From Scratch (7 design drafts; 146 implemented, 104 partly implemented, 17 moved)
+
+All Core ML, Decision/Pylon, Inkling 2 Mini Metal 4/CUDA + Desktop (Ch
+266–271), Exact Compiled Weight Executors (Ch 226–238), and Byzantine-safe
+DiLoCo/Quarantine Optimizer (Ch 272–274) chapters are implemented. Only **7
+design drafts** remain — all in the physical robotics capstone (**Ch 256,
+260–265**):
+
+| Order | Existing chapters | Completion gate |
+| --- | --- | --- |
+| 1. Make a new model ordinary (#12626) | 3–6, 38–40, 106–107, 114, 117–118, 121–124 | Fresh reader-led training, general CNN/pooling options, larger datasets, and ResNet/CIFAR acceptance beyond the retained CPU MNIST MLP/CNN (88.5742%) and residual-block (87.3535%) records ([residual record](../verification/psionic-residual-framework-2026-11-01/README.md)). |
+| 2. Make single-GPU training useful (#12627) | 115–116, 125–131 | Cooperative backward kernels, mixed precision, resume, and a frozen 10–50M decoder measured against an independent baseline on RTX 4080. |
+| 3. Complete serving, mesh & large-model profiles | 41–43, 48, 50–51, 53, 68–69, 71, 74, 76, 78, 81–87, 99–102, 173–199 | Promote partly implemented serving scheduler/cache/failure paths, multi-device/mesh inference, and unmeasured original-weight profiles (Mammoth Metal, 120b GPU, DeepSeek V4.1 Flash, Mistral Large 4). |
+| 4. Prove low-pressure game & Pylon usefulness | 24–32, 215–225, 239–241 | Gate optional remote Pylon decisions against the strong deterministic local rule in Everglade Directions. |
+| 5. Deliver the Microduck robotics pipeline (7 drafts) | 132–135, 167–171, 256–265; Metaverse Engine 17–37 | Implement neural walking policy training, skill switching, vision/perception, policy export/supervision, real-robot commissioning, and multi-robot course repeatability (Ch 256, 260–265; see [framework acceptance projects](../../psionic/book/PLAN.md#a-framework-not-only-engines)). |
+
+### Books at 0 unimplemented chapters (maintenance & promotion gates)
+
+- **Nostr From Scratch (88 implemented, 1 partly implemented, 15 moved — 0 unimplemented):**
+  Close remaining live-consumer and operational gates tracked in `#12630`,
+  `#12631`, and [nostr/book/COMPLETION.md](../../nostr/book/COMPLETION.md):
+  settlement expiry wiring, NIP-KEYS pin review, hosted runner/unlock signer
+  cutovers (`OA_RUNNER_SIGNER=coax`, `COAXIAL_UNLOCK_SIGNER=coax`), production
+  relay persistence/shadow/rollback qualification, and Ch 104 treasury
+  recovery. Owner decisions stay in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
+- **Coder: Coding Agents From Scratch (11 implemented, 20 partly implemented, 12 written — 0 unimplemented):**
+  Keep the 20 partly implemented harness chapters synced with unified
+  `openagents/core/` (`oa-worker`), promote remaining bounded CLI/harness
+  chapters to full 4-rule teaching status, and maintain the 12 external-harness
+  `written` study chapters (`coder/book/PLAN.md`).
+- **Building Everglade (3 implemented, 30 partly implemented — 0 unimplemented):**
+  Upgrade the 30 partly implemented world/SRD/multiplayer/city chapters into
+  full 4-rule chapters with standalone runnable Coax/`gamebuilder` examples
+  alongside Ch 4, 14, and 33, once Everglade II city interiors, NPC routines,
+  player trade wire commands, and 150-player zone gates land
+  (`everglade/book/PLAN.md`).
+- **Reverse Engineering Claude Code (25 written — 0 unimplemented):**
+  Complete 25-chapter bottom-up teardown of Claude Code 2.1.88–2.1.331
+  (`status: written`, external survey; `claude-code/book/OUTLINE.md`). Maintain
+  revision pins and cross-links as new snapshots are surveyed; no Coax target
+  or `adopted_by` claims apply.
 
 ## Keep the reconciliation current
 
-Change a status only with its chapter marker, registry, contents and README/plan
-labels. For changed source, run the focused checks and retain their real
-producer identities; carry unchanged passing evidence rather than repeating
-whole-model or whole-book execution. Preserve dated records and failed results.
-The four tracks can advance in parallel around concrete shared consumers.
+Change a chapter's status only together with its chapter marker, registry
+entry, `SUMMARY.md` label, and README/plan row. For changed source, run focused
+checks and retain real producer identities; carry unchanged passing evidence
+rather than repeating whole-model or whole-book execution.
 
 Metadata-only checks across all nine books, without building a compiler or
 running examples:
@@ -213,7 +222,8 @@ running examples:
 scripts/check-books.sh --check
 ```
 
-These checks cover metadata, dependency cycles, adoption-path hygiene, local
-links and source listings. They do not prove that a consumer uses the whole
-profile or that a milestone is deployed. Review the actual source relationship
-and acceptance evidence before recording either claim.
+These checks cover metadata, dependency cycles across all nine books,
+adoption-path hygiene, local links, capability claims, and source listings.
+They do not prove that a consumer uses an entire chapter profile or that a
+milestone is deployed; review the actual source relationship and acceptance
+evidence before recording either claim.

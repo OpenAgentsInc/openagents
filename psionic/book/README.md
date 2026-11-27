@@ -105,7 +105,8 @@ do not declare evaluator transcripts or qualify native evidence merely by
 listing it; their separate native commands and receipts state that scope.
 The inventory tooling regression is `python3 psionic/tests/book_inventory_test.py`.
 
-To find a route through all eight books, see [Paths through the
+To find a route through all nine books (eight Coax-implementation books plus
+[Reverse Engineering Claude Code](../../claude-code/book/README.md)), see [Paths through the
 books](../../docs/books/paths.md). The [shared completion
 milestones](../../docs/books/completion.md) distinguish runnable teaching
 profiles from complete training, serving, game and robotics workflows.
@@ -130,7 +131,9 @@ This is a source inventory, not a new deployment or target qualification.
 | 37, 44, 46–47 | The native serving build emits the shared device kernels and memory plans. | Use of a common plan does not qualify every checkpoint or mean Mammoth is deployed on Metal. |
 | 66–67, 70, 79 | The resident device host composes kernels, prefill and replay; `serve-gptoss.sh` binds the Responses host. | The original 20b CUDA/Metal and Responses records retain their distinct supported scopes. |
 | 151 | Whisper's frontend loads the spectral component. | Spectral reuse does not implement the planned Parakeet chapters. |
+| 43, 55, 71, 175–181, 188, 196 | `serve-build.sh`, `book-search.coax`, `device-host.coax`, serving fault/rollout/client modules, `apps/openagents-cli/pylon.coax`, `coax/web/project/landing-nostr.coax`, `apps/openagents-cli/pylon-settle.coax` and `psionic/tools/executor-settle-e2e.coax` directly load or bind these components, alongside reviewed sibling-module `#load` consumers recorded in `chapters.json`. | Direct component reuse does not lift the remaining serving, mesh, or training gates in each chapter. |
 | 218 | The Pylon runner invokes the self-check component before advertisement. | A self-check is not remote attestation or proof of general model quality. |
+| 269–271 | OpenAgents Desktop (`apps/openagents-desktop/build.sh`, `page/models.coax`, `desktop-core.coax`, `host-core.coax`, `AppDelegate.swift`) and `openagents/runtime/oa-worker.coax` build, verify, and route local Inkling 2 Mini turns to `psionic-inkling-serve`. | Hardware, disk, and SHA-256 readiness gates stay enforced in `psionic/lib/inkling-desktop.coax`; legacy `mcworker` and standalone `inky` binaries are retired from Desktop bundles. |
 
 The source inventory also names principal runtime units for chapters that
 previously listed only a small example or no source. The trainer/framework,

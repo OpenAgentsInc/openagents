@@ -12,18 +12,24 @@ and the `/v1/responses` + strict JSON-schema server
 - Runnable verification example:
   [`psionic/examples/inkling-desktop.coax`](../examples/inkling-desktop.coax)
 - OpenAgents Desktop integration:
+  - Unified Desktop build (`apps/openagents-desktop/build.sh` `#14116`, with `--minimal` accepted as the default compatibility alias and clean staging `.app` assembly so retired `mcworker` / `inky` / `flawedworker` binaries never linger):
+    [`apps/openagents-desktop/build.sh`](../../apps/openagents-desktop/build.sh),
+    [`psionic/platform/inkling-build.sh`](../platform/inkling-build.sh)
   - Composer model picker, multi-variant GGUF/Maple catalog (`#14028`, `feff1652bc`), Linux/Windows variant picker (`3c3a222ce2`), and `--model inkling-2-mini` launch support:
     [`apps/openagents-desktop/page/models.coax`](../../apps/openagents-desktop/page/models.coax),
     [`apps/openagents-desktop/page/layout/conversation.coax`](../../apps/openagents-desktop/page/layout/conversation.coax),
+    [`apps/openagents-desktop/desktop-core.coax`](../../apps/openagents-desktop/desktop-core.coax),
     [`apps/openagents-desktop/host-core.coax`](../../apps/openagents-desktop/host-core.coax),
     [`apps/openagents-desktop/Window.swift`](../../apps/openagents-desktop/Window.swift)
   - Verified Local Models downloader & SHA-256 store (`~/.openagents/models/inkling-2-mini/`):
-    [`apps/openagents-desktop/LocalModels.swift`](../../apps/openagents-desktop/LocalModels.swift)
-  - Resident 32K-context Psionic Metal/CUDA server lifecycle, cloud-first `$0.00` local tier onboarding (`#14072`, `#14087`), and unified `openagents/core` (`oa-worker.coax`) + `Inky` (`coax/lib/inky/`) routing:
+    [`apps/openagents-desktop/LocalModels.swift`](../../apps/openagents-desktop/LocalModels.swift),
+    [`apps/openagents-desktop/host-main.c`](../../apps/openagents-desktop/host-main.c)
+  - Resident 32K-context Psionic Metal/CUDA server lifecycle, cloud-first `$0.00` local tier onboarding (`#14072`, `#14087`), and bundled `oa-worker` (`openagents/runtime/oa-worker.coax` on `openagents/core/`) routing:
     [`apps/openagents-desktop/Window+Dialogs.swift`](../../apps/openagents-desktop/Window+Dialogs.swift),
     [`apps/openagents-desktop/Window+Runs.swift`](../../apps/openagents-desktop/Window+Runs.swift),
     [`apps/openagents-desktop/page/usage.coax`](../../apps/openagents-desktop/page/usage.coax),
-    [`coder/tui/oa-worker.coax`](../../openagents/runtime/oa-worker.coax),
+    [`openagents/runtime/oa-worker.coax`](../../openagents/runtime/oa-worker.coax),
+    [`openagents/core/core.coax`](../../openagents/core/core.coax),
     [`apps/openagents-desktop/AppDelegate.swift`](../../apps/openagents-desktop/AppDelegate.swift)
 
 ```shell
@@ -173,17 +179,21 @@ inkling_desktop_summary :: (st: InklingDesktopStatus) -> string #effects(all) {
    immediately when installed, opens the Local Models manager when weights are
    not yet downloaded, or presents a clear 32 GB RAM notice on smaller Macs.
 3. **Resident Psionic Metal 4 / CUDA server (`LocalModelServer` & `host-main.c`)**:
-   launches the bundled `psionic-inkling-serve` (Metal 4 on macOS, CUDA on
-   Linux/Windows) on `http://127.0.0.1:18794` with `--ctx 32768` (aligned with
-   `coax/lib/gateway/card.coax`), logs stderr to
-   `~/.openagents/logs/psionic-inkling-serve.log`, detects port conflicts and
-   early exits immediately, routes the unified `openagents/core` worker
-   (`coder/tui/oa-worker.coax`, `#14050`–`#14053`) and `Inky`
-   (`coax/lib/inky/`; Microcoder `mcworker` is deprecated `#13983`) via
-   `PSIONIC_BASE_URL` + `PSIONIC_MODEL=inkling-2-mini`, enforces `$0.00` local
-   compute accounting in `page/usage.coax` beside OpenAgents Cloud onboarding
-   (`#14072`, `#14087`), and stops cleanly on app termination
-   (`AppDelegate.applicationWillTerminate`) or model deletion.
+   launches the bundled `psionic-inkling-serve` (built by
+   `psionic/platform/inkling-build.sh` with `inkling-kernels.metal` for Metal 4
+   on macOS, and CUDA on Linux/Windows) on `http://127.0.0.1:18794` (scanning
+   `18794..18857` if occupied, or respecting `OA_INKLING_PORT`) with
+   `--ctx 32768` (aligned with `coax/lib/gateway/card.coax`), logs stderr to
+   `~/.openagents/logs/inkling-serve.log` on macOS
+   (`~/.openagents/logs/psionic-inkling-serve.log` on Linux/Windows), detects
+   port conflicts and early exits immediately, routes the bundled `oa-worker`
+   (`openagents/runtime/oa-worker.coax`, powered by `openagents/core/core.coax`,
+   `#14050`–`#14053`, `#14118`; legacy `mcworker` `#13983` and standalone `inky` binaries
+   are retired from Desktop bundles while `coax/lib/inky/` remains the
+   standalone library) via `PSIONIC_BASE_URL`, `PSIONIC_MODEL`, and
+   `PSIONIC_CTX`, enforces `$0.00` local compute accounting in `page/usage.coax`
+   beside OpenAgents Cloud onboarding (`#14072`, `#14087`), and stops cleanly on
+   app termination (`AppDelegate.applicationWillTerminate`) or model deletion.
 
 <!-- source: psionic/examples/inkling-desktop.coax example -->
 ```jai
@@ -206,16 +216,23 @@ main :: () {
 ```text
 1. #authority checks & mutation sweep:
    coax/bin/coax test psionic/lib/inkling-desktop.coax -> 21 checks, 21 passed, 0 failed
+   coax/bin/coax run psionic/examples/inkling-desktop.coax -> matches exact transcript above
    coax/bin/coax mutate psionic/lib/inkling-desktop.coax --changed origin/main
    -> 72 mutants, 69 killed, 0 survived, 3 marked equivalent
-2. Live bundled mcworker + psionic-inkling-serve (--ctx 32768) on Apple M5 Max:
+2. Current OpenAgents Desktop bundle & oa-worker integration:
+   apps/openagents-desktop/build.sh (unified profile #14116, --minimal default alias)
+   bundles oa-worker (openagents/runtime/oa-worker.coax + openagents/core/core.coax),
+   claudeworker, gitguard, coder-host, psionic-inkling-serve, and inkling-kernels.metal.
+   AppDelegate.swift verifies the bundled oa-worker (`oa-worker --auth`,
+   `parent.program = "oa-worker"`) and LocalModelServer startup.
+   apps/openagents-desktop/check.sh -> builds OpenAgents.app and runs local-models-check.swift
+   coax/bin/coax test apps/openagents-desktop/page.coax --library -> passes
+3. Historical #13825 Metal 32K serving receipt on Apple M5 Max (pre-#13983/#14050
+   unification onto oa-worker; exercises the same psionic-inkling-serve --ctx 32768
+   /v1/responses + tool-use server path):
    HEALTH: {"status":"ok","engine":"psionic-metal"}
-   Microcoder tool-use turn reading temp workspace secret.txt:
    23 streamed events, tool executed (SAW_TOOL=True),
    {"kind":"ended","ending":"finished","text":"OPENAGENTS_INKLING_METAL_32K_OK"}
-3. OpenAgents Desktop build, checks, and Coax page suite:
-   apps/openagents-desktop/check.sh -> openagents-desktop check: ok (incl. 11/11 local-models-check)
-   coax/bin/coax test apps/openagents-desktop/page.coax --library -> 843 checks, 843 passed, 0 failed
 4. Book check:
    python3 psionic/tests/book.py --book psionic -> pass
 ```

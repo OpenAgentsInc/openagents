@@ -12,7 +12,9 @@ lets you write checks that the compiler runs for you.
 The [Introduction](introduction.md) explains why Coax exists. If you'd
 rather start typing, go straight to [Chapter 1](ch01-getting-started.md).
 
-Every other OpenAgents book is written in Coax and assumes Parts I–III of
+Every other Coax-implementation OpenAgents book (eight of the nine books; the
+ninth, [Reverse Engineering Claude Code](https://github.com/OpenAgentsInc/openagents/blob/main/claude-code/book/README.md),
+is a companion TypeScript codebase study) is written in Coax and assumes Parts I–III of
 this one. See [the OpenAgents books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/README.md) for the whole library and the order to read it in.
 
 ## Who this book is for
@@ -140,9 +142,12 @@ turn a library's bounded profile into the full chapter goal.
 | --- | --- |
 | [8. Generics](ch08-generics.md) | [`coax/lib/bounded.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/bounded.coax) supplies fixed-storage `Bounded` values to [`psionic/lib/shadow.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/lib/shadow.coax)'s model registry and [`metaverse/fairy-forest/forest.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/fairy-forest/forest.coax)'s blooms. It does not supply owning containers. |
 | [17. GPU programs](ch17-gpu.md) | The iOS app's [`generate.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-ios/generate.sh) emits its component and composition shaders as Metal with `coax metal`. This is the existing graphics shader path; it does not qualify every GPU profile in the chapter. |
+| [19. Builds](ch19-builds-hot-reload.md) | [`coax/build.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/build.sh), [`coax/web/tool.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/web/tool.sh), [`coax/web/wasm.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/web/wasm.sh) and [`coax/web/serve.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/web/serve.sh) are invoked directly by [`apps/openagents-ios/generate.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-ios/generate.sh), [`apps/openagents-desktop/build.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-desktop/build.sh), [`apps/openagents-desktop/install.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-desktop/install.sh), [`apps/openagents-web/build.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/build.sh) and [`gamebuilder/web/build.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/gamebuilder/web/build.sh). `build.coax` and live hot reload remain planned. |
 | [25. Voice](ch25-case-study-voice.md) | [`metaverse/platform/voice.c`](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/platform/voice.c) directly calls the generated C interfaces of `metaverse/voice.coax`, `voice-wire.coax`, `voice-floor.coax` and `voice-meter.coax`. The chapter's smaller `ch25_*` examples remain teaching programs. |
 | [26. Libraries](ch26-library-recipes.md) | [`coax/lib/sequence.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/sequence.coax) is loaded by [`metaverse/gpu/everglade-pass.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/gpu/everglade-pass.coax) to reverse diagnostic digits and by [`psionic/lib/serve-engine.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/lib/serve-engine.coax) to swap bytes during HTTP buffer rotation. These are synchronous caller-owned operations. |
 | [29. Frames](ch29-units-and-frames.md) | [`metaverse-engine/cam/spacecam.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/cam/spacecam.coax) uses typed world points and a floating origin; [`panda-fk-types.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/lib/robotics/panda-fk-types.coax) and [`panda-fk-math.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/lib/robotics/panda-fk-math.coax) use typed world positions and affine offsets. The chapter identifies the remaining untyped transforms, joints and spacecraft states. |
+| [30. Clocks](ch30-clocks-and-ticks.md) | [`coax/lib/clock.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/clock.coax) is loaded directly by [`metaverse-engine/space/ephemeris.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/space/ephemeris.coax) for typed UTC/TAI/TT/TDB instants. Compiler-enforced clock effects and `task @rate` remain planned. |
+| [41. Budgets](ch41-compile-budgets.md) | [`coax/web/wasm.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/web/wasm.sh)'s per-step cache and report driver are invoked by [`apps/openagents-web/build.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/build.sh), [`gamebuilder/web/build.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/gamebuilder/web/build.sh), [`coax/native/generate.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/native/generate.sh) and [`metaverse/gpu/everglade-pass.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/gpu/everglade-pass.coax). R22's general startup and kernel budgets remain planned. |
 
 ## Promoting a draft to a teaching chapter
 
@@ -180,7 +185,7 @@ its own prerequisites and consumer are ready.
    retain exact examples, diagnostics and the limits in
    [chapter 23](ch23-verification-boundaries.md). Keep source, target evidence
    and direct adoption separate in the registry and the
-   [paths through all eight books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
+   [paths through all nine books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
 2. **Finish shared application contracts.** Close the roadmap's remaining
    R0 device, frame-tail, development-loop and independent-review gates.
    Chapters [6](ch06-memory.md), [7](ch07-errors.md),
@@ -237,7 +242,7 @@ on your path.
 
 To write current Coax, build a playable realm, run an original model, train a
 small model or sign and verify a Nostr event, see
-[Paths through all eight books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
+[Paths through all nine books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
 
 
 - [Foreword](foreword.md) and [Introduction](introduction.md)
