@@ -76,12 +76,19 @@
     pointer-events: none;
     z-index: 0;
   }
+  .grid-veil {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.50);
+    pointer-events: none;
+    z-index: 0;
+  }
 
   .frame {
     position: relative;
     z-index: 1;
     width: 100%;
-    max-width: 672px;
+    max-width: 860px;
     height: 100dvh;
     display: flex;
     flex-direction: column;
@@ -223,8 +230,8 @@
     color: var(--white-45);
   }
 
-  @media (max-width: 672px) {
-    #grid-bg { display: none; }
+  @media (max-width: 860px) {
+    #grid-bg, .grid-veil { display: none; }
     .frame { border-left: 0; border-right: 0; }
     .brand-row svg { width: 32px; height: 32px; }
   }
@@ -233,7 +240,7 @@
   }
 
   .inside, .inside body { position: static; height: auto; overflow: auto; overscroll-behavior: auto; touch-action: auto; display: block; padding: 0; }
-  .inside #grid-bg, .inside .frame { display: none; }
+  .inside #grid-bg, .inside .grid-veil, .inside .frame { display: none; }
   .inside #home-root { position: fixed; inset: 0; overflow-y: auto; background: #000000; z-index: 30; text-align: left; }
 </style>
 <script>
@@ -253,6 +260,7 @@ window.__oaAccountP = fetch("/api/auth/account", { credentials: "same-origin", c
 </head>
 <body>
 <canvas id="grid-bg" aria-hidden="true"></canvas>
+<div class="grid-veil" aria-hidden="true"></div>
 <div class="frame">
   <main class="hero">
     <div class="brand-row">
