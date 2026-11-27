@@ -294,9 +294,7 @@
       "codec": "coax/native/account-view-wire.coax",
       "check": "coax/bin/coax test coax/native/account-view-wire.coax",
       "step": "13645",
-      "files": [
-        "apps/openagents-ios/app.coax"
-      ],
+      "files": [],
       "tests": [
         "coax/native/account-view-wire.coax"
       ],

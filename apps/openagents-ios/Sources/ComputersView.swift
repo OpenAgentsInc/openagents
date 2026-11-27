@@ -24,7 +24,7 @@ struct ComputersView: View {
                             Text("No Tailscale computers found yet")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(OATheme.textPrimary)
-                            Text("Run OpenAgents on your Mac (or coder host serve --no-relay) on the same Tailscale account, or add its MagicDNS name / 100.x IP below.")
+                            Text("Run OpenAgents Desktop on your Mac on the same Tailscale account, or add its MagicDNS name / 100.x IP below.")
                                 .font(.system(size: 13))
                                 .foregroundStyle(OATheme.textSecondary)
                         }
@@ -128,7 +128,7 @@ struct ComputersView: View {
                 } header: {
                     Text("Add by MagicDNS or Tailscale IP")
                 } footer: {
-                    Text("Direct grants and NIP-44 E2E RPCs travel straight over your Tailscale WireGuard tunnel on port 47109. Public relays are disabled.")
+                    Text("Direct grants and NIP-44 E2E RPCs travel straight over your Tailscale WireGuard tunnel on port 47109. For standalone cloud chat without a Mac, sign in under Account & Cloud.")
                 }
 
                 Section {
@@ -239,7 +239,7 @@ struct ComputersView: View {
                             .foregroundStyle(OATheme.textMuted)
                     }
                     if !meta.agyVersion.isEmpty {
-                        Text("agy \(meta.agyVersion)")
+                        Text("worker \(meta.agyVersion)")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundStyle(meta.agyUpdateAvailable ? OATheme.statusWarn : OATheme.textSecondary)
                     }
@@ -301,7 +301,7 @@ struct ComputersView: View {
                     } label: {
                         HStack(spacing: 4) {
                             if updating { ProgressView().controlSize(.mini) }
-                            Text(updating ? "Updating…" : (meta.agyUpdateAvailable ? "Update agy" : "Sync agy"))
+                            Text(updating ? "Updating…" : (meta.agyUpdateAvailable ? "Update host" : "Sync host"))
                         }
                         .font(.system(size: 11, weight: .medium))
                     }

@@ -1,7 +1,7 @@
 // Firm reason: 6 (XCUITest suite launching the native SwiftUI OpenAgents iOS app on Simulator and verifying both shell invariants and real end-to-end NIP-44 TCP conversations against legacy 16-key v1 and modern v2 Coax hosts).
 import XCTest
 
-final class AntigravityUITests: XCTestCase {
+final class OpenAgentsUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -96,17 +96,18 @@ final class AntigravityUITests: XCTestCase {
     }
 
     @MainActor
-    func testPureBlackAntigravityShellSidebarComputersWorkspaceAndComposer() {
+    func testPureBlackOpenAgentsShellSidebarAccountWalletComputersWorkspaceAndComposer() {
         let app = XCUIApplication()
         app.launchArguments = ["-OANoLocalNetworkBrowse", "-OAResetStateForTests"]
         app.launch()
 
-        // Top navigation bar & Antigravity onboarding state appear immediately.
+        // Top navigation bar & onboarding state appear immediately.
         let sidebarButton = app.buttons["nav.sidebar"]
         XCTAssertTrue(sidebarButton.waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["nav.computerPill"].exists)
         XCTAssertTrue(app.buttons["nav.workspace"].exists)
         XCTAssertTrue(app.buttons["nav.newChat"].exists)
+        XCTAssertTrue(app.buttons["chat.signIn"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["chat.connectTailscale"].waitForExistence(timeout: 5))
 
         // Composer exposes Attachment (+), Model, Effort, Review Mode, Live Voice, and Dictation controls,
@@ -132,10 +133,12 @@ final class AntigravityUITests: XCTestCase {
         app.buttons["workspace.done"].tap()
         XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
 
-        // Open sidebar and verify Dashboard + Universal Introspection sections + zero legacy Login / Projects / Foreman controls exist.
+        // Open sidebar and verify Dashboard + Account + Wallet + Universal Introspection sections.
         sidebarButton.tap()
         XCTAssertTrue(app.buttons["sidebar.newChat"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["sidebar.dashboard"].exists)
+        XCTAssertTrue(app.buttons["sidebar.account"].exists)
+        XCTAssertTrue(app.buttons["sidebar.wallet"].exists)
         XCTAssertTrue(app.buttons["sidebar.computers"].exists)
         for secID in ["side.sec.1", "side.sec.2", "side.sec.3", "side.sec.4"] {
             XCTAssertTrue(

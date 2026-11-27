@@ -56,6 +56,43 @@ public enum OABIP39 {
         return out.joined(separator: " ")
     }
 
+    /// Decodes a 12-word (16-byte) or 24-word (32-byte) BIP-39 mnemonic and verifies its SHA-256 checksum.
+    public static func entropy(mnemonic: String, words: [String]) -> Data? {
+        guard words.count == 2048 else { return nil }
+        let parts = mnemonic
+            .lowercased()
+            .split { $0.isWhitespace }
+            .map(String.init)
+        guard parts.count == 12 || parts.count == 24 else { return nil }
+        var indexByWord: [String: Int] = [:]
+        indexByWord.reserveCapacity(2048)
+        for (i, w) in words.enumerated() { indexByWord[w] = i }
+        var bits: [Bool] = []
+        bits.reserveCapacity(parts.count * 11)
+        for w in parts {
+            guard let idx = indexByWord[w] else { return nil }
+            for i in (0..<11).reversed() {
+                bits.append((idx >> i) & 1 == 1)
+            }
+        }
+        let entropyBytes = parts.count == 12 ? 16 : 32
+        let checksumBits = entropyBytes * 8 / 32
+        var entropy = Data(count: entropyBytes)
+        for b in 0..<entropyBytes {
+            var val: UInt8 = 0
+            for i in 0..<8 {
+                val = (val << 1) | (bits[b * 8 + i] ? 1 : 0)
+            }
+            entropy[b] = val
+        }
+        let hashByte = Array(SHA256.hash(data: entropy))[0]
+        for i in 0..<checksumBits {
+            let expected = ((hashByte >> (7 - i)) & 1) == 1
+            if bits[entropyBytes * 8 + i] != expected { return nil }
+        }
+        return entropy
+    }
+
     /// Generates 16 bytes (128 bits / 12 words) of OS-random entropy.
     public static func generateEntropy16() -> Data? {
         var bytes = [UInt8](repeating: 0, count: 16)

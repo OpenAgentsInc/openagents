@@ -229,6 +229,12 @@ void oa_ios_set_header(void *surface, const char *computer, const char *session_
   ios_set_header(oa_state(c), oa_str(computer), oa_str(session_title), oa_str(workspace), reachability, paired_count, has_active != 0, has_older != 0, has_more_sessions != 0);
   oa_changed(c);
 }
+void oa_ios_set_account_wallet(void *surface, const char *account_label, int account_logged_in, const char *wallet_label, int wallet_ready) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_set_account_wallet(oa_state(c), oa_str(account_label), account_logged_in != 0, oa_str(wallet_label), wallet_ready != 0);
+  oa_changed(c);
+}
 void oa_ios_set_banners(void *surface, const char *error, int outbox_count, const char *toast) {
   IosGpuHost *c = surface;
   if (!c) return;

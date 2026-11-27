@@ -52,6 +52,8 @@
 #define OA_IOS_ACT_TOGGLE_LIVE_VOICE 31
 #define OA_IOS_ACT_SELECT_INTRO 32
 #define OA_IOS_ACT_SELECT_MACHINE 33
+#define OA_IOS_ACT_OPEN_ACCOUNT 34
+#define OA_IOS_ACT_OPEN_WALLET 35
 
 // Introspection item kinds matching gpu-page.coax IOS_INTRO_*
 #define OA_IOS_INTRO_TUI 0
@@ -110,6 +112,7 @@ void oa_ios_scroll_top(void *surface);
 void oa_ios_scroll_bottom(void *surface);
 
 void oa_ios_set_header(void *surface, const char *computer, const char *session_title, const char *workspace, int reachability, int paired_count, int has_active, int has_older, int has_more_sessions);
+void oa_ios_set_account_wallet(void *surface, const char *account_label, int account_logged_in, const char *wallet_label, int wallet_ready);
 void oa_ios_set_banners(void *surface, const char *error, int outbox_count, const char *toast);
 void oa_ios_set_approval(void *surface, int active, const char *prompt, const char *warning);
 void oa_ios_approval_options_clear(void *surface);

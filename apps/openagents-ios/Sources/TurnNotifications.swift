@@ -31,9 +31,9 @@ final class TurnNotifications {
         let content = UNMutableNotificationContent()
         content.title = "OpenAgents"
         if kind == "approval" {
-            content.body = "Antigravity is waiting for your approval."
+            content.body = "OpenAgents is waiting for your approval."
         } else {
-            content.body = title.isEmpty ? "Antigravity finished your turn." : title
+            content.body = title.isEmpty ? "OpenAgents finished your turn." : title
         }
         content.sound = .default
 

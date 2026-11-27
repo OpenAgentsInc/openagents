@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper: compiles apps/openagents-ios/ios-app.coax to C, emits Metal shader + atlas assets, enforces 512 KB stack-frame budget).
-# Generates apps/openagents-ios/Generated/gallery.{c,h}, Generated/client_core.h, and Generated/Components/ (GitHub #14023).
-# Zero JavaScript, zero WebKit, zero WebAssembly, zero legacy AppCore/public-relay code.
+# Generates apps/openagents-ios/Generated/gallery.{c,h}, Generated/client_core.h, Generated/SparkSDK, and Generated/Components/.
+# Zero JavaScript, zero WebKit, zero WebAssembly.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 repo="$(pwd -P)"
 gen="$repo/apps/openagents-ios/Generated"
 mkdir -p "$gen/Components/fonts" "$gen/Components/icons"
 rm -f "$gen/client_core.c" "$gen/mobile_core.c" "$gen/mobile_core.h"
+
+# Stage pinned Breez Spark SDK local SwiftPM package (breez_sdk_sparkFFI.xcframework + BigNumber + BreezSdkSpark).
+"$repo/apps/shared/host/apple/spark-sdk.sh" --ios-package "$gen/SparkSDK" > /dev/null
+cp "$repo/metaverse/stage-resources/bip39-english.txt" "$gen/bip39-english.txt"
 
 coax="${COAX:-$repo/coax/bin/coax}"
 if [[ -x "$coax" ]]; then
