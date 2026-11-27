@@ -865,4 +865,16 @@ void cd_br_set_download(void *page, int active, const char *raw_name, int bytes,
 void cd_br_set_ext_texture(void *page, int slot, void *native_tex);
 int cd_br_save_session(void *page, char *out, int cap);
 int cd_br_load_session(void *page, const char *json);
+// Universal Introspection sidebar sections & live output inspector (page/introspect.coax; #14066).
+int cd_introspect_set_tui(void *page, const char *tmux_raw, const char *ps_raw, int allow_ext);
+int cd_introspect_set_harnesses(void *page, const char *harness_tsv, const char *ps_raw, int allow_ext);
+int cd_introspect_set_machines(void *page, const char *machines_tsv, const char *remote_sessions_tsv);
+int cd_introspect_set_output(void *page, const char *session_id, const char *output, const char *status, int loading);
+int cd_introspect_active_id(void *page, char *out, int cap);
+int cd_introspect_active_kind(void *page);
+int cd_introspect_active_is_machine(void *page);
+int cd_introspect_shown(void *page);
+void cd_introspect_close(void *page);
+int cd_introspect_output(void *page, char *out, int cap);
+int cd_introspect_counts(void *page, int out4[4]);
 #endif

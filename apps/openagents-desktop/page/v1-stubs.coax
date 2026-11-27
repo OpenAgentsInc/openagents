@@ -209,38 +209,7 @@ coder_page_skills_target :: (s: [] CoderPage) -> int #export_c #effects(all) { r
 coder_page_skills_toggle :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) { return false; }
 
 // (voice.coax promoted into --minimal; #14065)
-
-// ---- environments.coax stubs ----
-CpEnvState :: struct { unused: int; }
-cp_env_init :: (s: [] CoderPage) {}
-cp_env_settings_press :: (s: [] CoderPage, id: string) -> bool { return false; }
-cp_settings_connections :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -> f32 { return 0.0f32; }
-coder_page_env_active :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_env_add :: (s: [] CoderPage, kind: int, name: string, hostname: string, user: string, port: int, remote_folder: string) -> int #export_c #effects(all) { return -1; }
-coder_page_env_awake_active_set :: (s: [] CoderPage, active: bool) #export_c #effects(all) {}
-coder_page_env_clear_remote :: (s: [] CoderPage) #export_c #effects(all) {}
-coder_page_env_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_env_device_add :: (s: [] CoderPage, id: string, name: string, detail: string) -> int #export_c #effects(all) { return -1; }
-coder_page_env_device_clear :: (s: [] CoderPage) #export_c #effects(all) {}
-coder_page_env_device_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_env_device_id :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_env_device_revoke :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) { return false; }
-coder_page_env_device_target :: (s: [] CoderPage) -> int #export_c #effects(all) { return -1; }
-coder_page_env_expose_mode :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_env_expose_set :: (s: [] CoderPage, mode: int, status: string) #export_c #effects(all) {}
-coder_page_env_host :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_env_keep_awake :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
-coder_page_env_keep_awake_set :: (s: [] CoderPage, enabled: bool) #export_c #effects(all) {}
-coder_page_env_kind :: (s: [] CoderPage, idx: int) -> int #export_c #effects(all) { return 0; }
-coder_page_env_load_ssh_config :: (s: [] CoderPage, config: string) -> int #export_c #effects(all) { return 0; }
-coder_page_env_name :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_env_pair_code_set :: (s: [] CoderPage, code: string) #export_c #effects(all) {}
-coder_page_env_select :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) { return false; }
-coder_page_env_set_state :: (s: [] CoderPage, idx: int, state: int, error_msg: string) -> bool #export_c #effects(all) { return false; }
-coder_page_env_should_keep_awake :: (s: [] CoderPage, bg_running: int) -> bool #export_c #effects(all) { return false; }
-coder_page_env_target :: (s: [] CoderPage) -> int #export_c #effects(all) { return -1; }
-coder_page_env_win_to_wsl :: (path: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_env_wsl_to_win :: (path: string, distro: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
+// (environments.coax promoted into --minimal; #14066)
 
 // ---- rich.coax stubs ----
 CP_RICH_STASH_POP :: 290;

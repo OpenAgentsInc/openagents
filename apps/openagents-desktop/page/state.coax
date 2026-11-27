@@ -551,6 +551,7 @@ CoderPage :: struct {
   lean: [1] CpLeanRh;          // Lean 4 & Riemann Hypothesis Proof Workbench (gym-lean*.coax; #13946)
   dash: [1] CpDash;            // Dashboard empty home screen showing active running chats (dashboard.coax)
   wallet: [1] CpWalletPane;    // Bitcoin Spark & read-only Nostr key pair wallet pane (walletpane.coax)
+  introspect: [1] CpIntrospect; // Universal Introspection sidebar sections & live inspector (introspect.coax; #14066)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them
@@ -722,6 +723,7 @@ cp_init :: (s: [] CoderPage) {
   cp_br_init(s);
   cp_dash_init(s);
   cp_wallet_pane_init(s);
+  cp_introspect_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {
@@ -791,7 +793,7 @@ cp_side_busy :: (s: [] CoderPage) -> bool {
   for q: 0..<s[0].nchats {
     if s[0].chats[q].busy { return true; }
   }
-  return false;
+  return cp_introspect_side_busy(s);
 }
 cp_full :: (s: [] CoderPage) -> bool { return s[0].nturns >= s[0].turns.count; }
 cp_clamp :: (s: [] CoderPage) {

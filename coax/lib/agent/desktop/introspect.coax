@@ -1,0 +1,941 @@
+// Universal Introspection data model & parsers (docs/desktop/2026-11-26-unfettered-harness-spec.md §3.3, #14066).
+// Pure Coax types and zero-allocation parsers unifying sessions across:
+//   - IS_KIND_DESKTOP : local OpenAgents Desktop chats
+//   - IS_KIND_TUI     : local TUI / terminal / tmux panes & PTY processes
+//   - IS_KIND_HARNESS : other local harnesses (Claude Code, Codex, Antigravity, Cursor, OpenCode)
+//   - IS_KIND_REMOTE  : remote machines (Tailscale peers & SSH hosts) and their sessions
+//
+// Reconciled with #14071: external local harnesses are inspectable read-only by default and
+// only commandable/delegatable when allow_local_harnesses is opted in; core chat stays OpenAgents Core.
+//
+// Checks: coax/bin/coax test coax/lib/agent/desktop/introspect.coax
+
+// Session kinds.
+IS_KIND_DESKTOP :: 0;
+IS_KIND_TUI :: 1;
+IS_KIND_HARNESS :: 2;
+IS_KIND_REMOTE :: 3;
+
+// Harness / runtime identifiers.
+IS_HARNESS_UNKNOWN :: 0;
+IS_HARNESS_OPENAGENTS :: 1;
+IS_HARNESS_INKLING :: 2;
+IS_HARNESS_TMUX :: 3;
+IS_HARNESS_TUI :: 4;
+IS_HARNESS_CLAUDE :: 5;
+IS_HARNESS_CODEX :: 6;
+IS_HARNESS_AGY :: 7;
+IS_HARNESS_CURSOR :: 8;
+IS_HARNESS_OPENCODE :: 9;
+
+// Session lifecycle status.
+IS_ST_IDLE :: 0;
+IS_ST_RUNNING :: 1;
+IS_ST_WAITING :: 2;
+IS_ST_ERROR :: 3;
+
+// Remote machine connectivity status.
+IS_MACH_OFFLINE :: 0;
+IS_MACH_ONLINE :: 1;
+IS_MACH_CONNECTING :: 2;
+IS_MACH_ERROR :: 3;
+
+// Machine transport kind.
+IS_TRANS_LOCAL :: 0;
+IS_TRANS_TAILSCALE :: 1;
+IS_TRANS_SSH :: 2;
+IS_TRANS_BOAT :: 3;
+
+// Capacities (fixed-size buffers; zero heap allocation).
+IS_MAX_SESSIONS :: 48;
+IS_MAX_MACHINES :: 16;
+IS_ID_MAX :: 96;
+IS_TITLE_MAX :: 96;
+IS_CWD_MAX :: 160;
+IS_BRANCH_MAX :: 48;
+IS_MACHINE_ID_MAX :: 48;
+IS_MACHINE_LBL_MAX :: 64;
+IS_PREVIEW_MAX :: 160;
+IS_HOST_MAX :: 96;
+IS_USER_MAX :: 48;
+IS_OS_MAX :: 32;
+
+IntrospectSession :: struct {
+  id: [IS_ID_MAX] u8; id_n: int;
+  kind: int;                                         // IS_KIND_*
+  harness: int;                                      // IS_HARNESS_*
+  machine_id: [IS_MACHINE_ID_MAX] u8; machine_id_n: int;
+  machine_label: [IS_MACHINE_LBL_MAX] u8; machine_label_n: int;
+  title: [IS_TITLE_MAX] u8; title_n: int;
+  cwd: [IS_CWD_MAX] u8; cwd_n: int;
+  branch: [IS_BRANCH_MAX] u8; branch_n: int;
+  status: int;                                       // IS_ST_*
+  updated_ms: int;
+  pid: int;
+  preview: [IS_PREVIEW_MAX] u8; preview_n: int;
+  commandable: bool;
+}
+
+IntrospectMachine :: struct {
+  id: [IS_MACHINE_ID_MAX] u8; id_n: int;
+  label: [IS_MACHINE_LBL_MAX] u8; label_n: int;
+  host: [IS_HOST_MAX] u8; host_n: int;
+  user: [IS_USER_MAX] u8; user_n: int;
+  port: int;
+  transport: int;                                    // IS_TRANS_*
+  status: int;                                       // IS_MACH_*
+  session_count: int;
+  running_count: int;
+  os: [IS_OS_MAX] u8; os_n: int;
+}
+
+IntrospectSnapshot :: struct {
+  sessions: [IS_MAX_SESSIONS] IntrospectSession;
+  nsessions: int;
+  machines: [IS_MAX_MACHINES] IntrospectMachine;
+  nmachines: int;
+  updated_ms: int;
+}
+
+// ---------------------------------------------------------------- string & byte helpers
+
+is_str :: (buf: [] const u8, n: int) -> string {
+  k := n;
+  if k < 0 { k = 0; }
+  if k > buf.count { k = buf.count; }
+  return cast(string) buf[0..<k];
+}
+
+is_copy :: (out: [] u8, src: string) -> int {
+  n := 0;
+  for c: src {
+    if n >= out.count { break; }
+    out[n] = c;
+    n += 1;
+  }
+  return n;
+}
+
+is_put :: (out: [] u8, at: int, src: string) -> int {
+  n := at;
+  if n < 0 { n = 0; }
+  for c: src {
+    if n >= out.count { break; }
+    out[n] = c;
+    n += 1;
+  }
+  return n;
+}
+
+is_put_i :: (out: [] u8, at: int, val: int) -> int {
+  n := at;
+  if n < 0 || n >= out.count { return n; }
+  v := val;
+  if v < 0 {
+    out[n] = '-';
+    n += 1;
+    v = -v;
+    if v < 0 { return is_put(out, n, "0"); }
+  }
+  if v == 0 {
+    if n < out.count { out[n] = '0'; n += 1; }
+    return n;
+  }
+  dig: [24] u8;
+  d := 0;
+  while v > 0 && d < 24 {
+    dig[d] = cast(u8) ('0' + (v % 10));
+    v /= 10;
+    d += 1;
+  }
+  while d > 0 && n < out.count {
+    d -= 1;
+    out[n] = dig[d];
+    n += 1;
+  }
+  return n;
+}
+
+is_lower :: (c: u8) -> u8 {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+is_space :: (c: u8) -> bool {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+is_trim :: (s: string) -> string {
+  a := 0;
+  b := s.count;
+  while a < b && is_space(s[a]) { a += 1; }
+  while b > a && is_space(s[b - 1]) { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+is_eq_ci :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    if is_lower(a[i]) != is_lower(b[i]) { return false; }
+  }
+  return true;
+}
+
+is_contains_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  lim := hay.count - needle.count + 1;
+  for i: 0..<lim {
+    ok := true;
+    for j: 0..<needle.count {
+      if is_lower(hay[i + j]) != is_lower(needle[j]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+is_parse_int :: (s: string) -> int {
+  t := is_trim(s);
+  if t.count == 0 { return 0; }
+  neg := false;
+  i := 0;
+  if t[0] == '-' { neg = true; i = 1; }
+  if i >= t.count { return 0; }
+  v := 0;
+  while i < t.count {
+    c := t[i];
+    if c < '0' || c > '9' { return 0; }
+    v = v * 10 + cast(int) (c - '0');
+    i += 1;
+  }
+  return ifx neg then -v else v;
+}
+
+is_basename :: (path: string) -> string {
+  end := path.count;
+  while end > 1 && path[end - 1] == '/' { end -= 1; }
+  if end == 0 { return ""; }
+  if end == 1 && (path[0] == '/' || path[0] == '~') { return cast(string) path[0..<1]; }
+  start := end;
+  while start > 0 && path[start - 1] != '/' { start -= 1; }
+  return cast(string) path[start..<end];
+}
+
+// Collapse newlines/tabs/runs of spaces into a single clean line.
+is_single_line :: (src: string, out: [] u8) -> int {
+  n := 0;
+  gap := false;
+  for c: src {
+    if n >= out.count { break; }
+    if c == '\n' || c == '\r' || c == '\t' || c == ' ' {
+      if n > 0 { gap = true; }
+      continue;
+    }
+    if gap {
+      out[n] = ' '; n += 1; gap = false;
+      if n >= out.count { break; }
+    }
+    out[n] = c; n += 1;
+  }
+  return n;
+}
+
+// Read the next tab-delimited field in `line` starting at `pos[0]`, advancing `pos[0]`.
+is_next_tab :: (line: string, pos: [] int) -> string {
+  if pos.count < 1 { return ""; }
+  i := pos[0];
+  if i >= line.count { return ""; }
+  start := i;
+  while i < line.count && line[i] != '\t' { i += 1; }
+  pos[0] = ifx i < line.count then i + 1 else i;
+  return cast(string) line[start..<i];
+}
+
+// ---------------------------------------------------------------- labels & classification
+
+is_kind_label :: (kind: int) -> string {
+  if kind == IS_KIND_DESKTOP { return "Desktop"; }
+  if kind == IS_KIND_TUI { return "TUI & Terminal"; }
+  if kind == IS_KIND_HARNESS { return "Other Harness"; }
+  if kind == IS_KIND_REMOTE { return "Remote"; }
+  return "Session";
+}
+
+is_harness_key :: (h: int) -> string {
+  if h == IS_HARNESS_OPENAGENTS { return "openagents"; }
+  if h == IS_HARNESS_INKLING { return "inkling"; }
+  if h == IS_HARNESS_TMUX { return "tmux"; }
+  if h == IS_HARNESS_TUI { return "tui"; }
+  if h == IS_HARNESS_CLAUDE { return "claude"; }
+  if h == IS_HARNESS_CODEX { return "codex"; }
+  if h == IS_HARNESS_AGY { return "agy"; }
+  if h == IS_HARNESS_CURSOR { return "cursor"; }
+  if h == IS_HARNESS_OPENCODE { return "opencode"; }
+  return "terminal";
+}
+
+is_harness_label :: (h: int) -> string {
+  if h == IS_HARNESS_OPENAGENTS { return "OpenAgents"; }
+  if h == IS_HARNESS_INKLING { return "Inkling"; }
+  if h == IS_HARNESS_TMUX { return "tmux"; }
+  if h == IS_HARNESS_TUI { return "TUI"; }
+  if h == IS_HARNESS_CLAUDE { return "Claude Code"; }
+  if h == IS_HARNESS_CODEX { return "Codex"; }
+  if h == IS_HARNESS_AGY { return "Antigravity"; }
+  if h == IS_HARNESS_CURSOR { return "Cursor"; }
+  if h == IS_HARNESS_OPENCODE { return "OpenCode"; }
+  return "Terminal";
+}
+
+is_harness_is_external :: (h: int) -> bool {
+  return h == IS_HARNESS_CLAUDE || h == IS_HARNESS_CODEX || h == IS_HARNESS_AGY || h == IS_HARNESS_CURSOR || h == IS_HARNESS_OPENCODE;
+}
+
+is_harness_parse :: (raw: string) -> int {
+  t := is_trim(raw);
+  if t.count == 0 { return IS_HARNESS_UNKNOWN; }
+  base := is_basename(t);
+  if is_eq_ci(base, "claude") || is_contains_ci(base, "claudeworker") || is_contains_ci(t, "claude-code") { return IS_HARNESS_CLAUDE; }
+  if is_eq_ci(base, "codex") || is_contains_ci(base, "codex-cli") { return IS_HARNESS_CODEX; }
+  if is_eq_ci(base, "agy") || is_contains_ci(base, "antigravity") || is_contains_ci(base, "agyworker") { return IS_HARNESS_AGY; }
+  if is_eq_ci(base, "cursor") || is_eq_ci(base, "cursor-agent") || is_contains_ci(base, "cursor-acp") { return IS_HARNESS_CURSOR; }
+  if is_eq_ci(base, "opencode") { return IS_HARNESS_OPENCODE; }
+  if is_eq_ci(base, "inky") || is_contains_ci(base, "inkling") { return IS_HARNESS_INKLING; }
+  if is_eq_ci(base, "oa-worker") || is_eq_ci(base, "flawed") || is_eq_ci(base, "openagents") || is_contains_ci(base, "flawedworker") { return IS_HARNESS_OPENAGENTS; }
+  if is_eq_ci(base, "tmux") { return IS_HARNESS_TMUX; }
+  if is_eq_ci(base, "coder") || is_eq_ci(base, "tui") { return IS_HARNESS_TUI; }
+  return IS_HARNESS_UNKNOWN;
+}
+
+is_status_label :: (st: int) -> string {
+  if st == IS_ST_RUNNING { return "Running"; }
+  if st == IS_ST_WAITING { return "Waiting"; }
+  if st == IS_ST_ERROR { return "Error"; }
+  return "Idle";
+}
+
+is_status_parse :: (raw: string) -> int {
+  t := is_trim(raw);
+  if is_eq_ci(t, "running") || is_eq_ci(t, "active") || is_eq_ci(t, "busy") || t == "1" { return IS_ST_RUNNING; }
+  if is_eq_ci(t, "waiting") || is_eq_ci(t, "input") || is_eq_ci(t, "approval") || t == "2" { return IS_ST_WAITING; }
+  if is_eq_ci(t, "error") || is_eq_ci(t, "failed") || t == "3" { return IS_ST_ERROR; }
+  return IS_ST_IDLE;
+}
+
+is_machine_status_label :: (st: int) -> string {
+  if st == IS_MACH_ONLINE { return "Online"; }
+  if st == IS_MACH_CONNECTING { return "Connecting"; }
+  if st == IS_MACH_ERROR { return "Error"; }
+  return "Offline";
+}
+
+is_machine_status_parse :: (raw: string) -> int {
+  t := is_trim(raw);
+  if is_eq_ci(t, "online") || is_eq_ci(t, "connected") || is_eq_ci(t, "ready") || t == "1" { return IS_MACH_ONLINE; }
+  if is_eq_ci(t, "connecting") || t == "2" { return IS_MACH_CONNECTING; }
+  if is_eq_ci(t, "error") || is_eq_ci(t, "failed") || t == "3" { return IS_MACH_ERROR; }
+  return IS_MACH_OFFLINE;
+}
+
+is_transport_label :: (tr: int) -> string {
+  if tr == IS_TRANS_TAILSCALE { return "Tailscale"; }
+  if tr == IS_TRANS_SSH { return "SSH"; }
+  if tr == IS_TRANS_BOAT { return "Boat"; }
+  return "Local";
+}
+
+is_transport_parse :: (raw: string) -> int {
+  t := is_trim(raw);
+  if is_eq_ci(t, "tailscale") || is_eq_ci(t, "ts") || t == "1" { return IS_TRANS_TAILSCALE; }
+  if is_eq_ci(t, "ssh") || t == "2" { return IS_TRANS_SSH; }
+  if is_eq_ci(t, "boat") || t == "3" { return IS_TRANS_BOAT; }
+  return IS_TRANS_LOCAL;
+}
+
+is_is_plain_shell :: (cmd: string) -> bool {
+  b := is_basename(is_trim(cmd));
+  if b.count > 0 && b[0] == '-' { b = cast(string) b[1..<b.count]; }
+  return is_eq_ci(b, "zsh") || is_eq_ci(b, "bash") || is_eq_ci(b, "sh") || is_eq_ci(b, "fish") || is_eq_ci(b, "dash") || is_eq_ci(b, "login") || is_eq_ci(b, "tmux");
+}
+
+// Formats canonical session URI into `out`:
+//   IS_KIND_DESKTOP -> local:chat:<inner_id>
+//   IS_KIND_TUI     -> local:tmux:<inner_id> (when tmux) or local:tui:<inner_id>
+//   IS_KIND_HARNESS -> local:harness:<harness_key>:<inner_id>
+//   IS_KIND_REMOTE  -> remote:<machine_id>:<inner_id>
+is_format_uri :: (kind: int, harness: int, machine_id: string, inner_id: string, out: [] u8) -> int {
+  n := 0;
+  if kind == IS_KIND_DESKTOP {
+    n = is_put(out, n, "local:chat:");
+    n = is_put(out, n, inner_id);
+    return n;
+  }
+  if kind == IS_KIND_TUI {
+    n = is_put(out, n, ifx harness == IS_HARNESS_TMUX then "local:tmux:" else "local:tui:");
+    n = is_put(out, n, inner_id);
+    return n;
+  }
+  if kind == IS_KIND_HARNESS {
+    n = is_put(out, n, "local:harness:");
+    n = is_put(out, n, is_harness_key(harness));
+    n = is_put(out, n, ":");
+    n = is_put(out, n, inner_id);
+    return n;
+  }
+  n = is_put(out, n, "remote:");
+  n = is_put(out, n, ifx machine_id.count > 0 then machine_id else "peer");
+  n = is_put(out, n, ":");
+  n = is_put(out, n, inner_id);
+  return n;
+}
+
+// ---------------------------------------------------------------- parsers
+
+// Parses `tmux list-panes -a -F "#{session_name}\t#{window_index}\t#{pane_index}\t#{pane_pid}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t#{pane_active}"`.
+// Writes up to out.count sessions and returns the count written.
+is_parse_tmux_panes :: (raw: string, out: [] IntrospectSession) -> int {
+  if raw.count == 0 || out.count == 0 { return 0; }
+  n := 0;
+  pos := 0;
+  while pos < raw.count && n < out.count {
+    start := pos;
+    while pos < raw.count && raw[pos] != '\n' { pos += 1; }
+    end := pos;
+    if pos < raw.count && raw[pos] == '\n' { pos += 1; }
+    if end > start && raw[end - 1] == '\r' { end -= 1; }
+    line := cast(string) raw[start..<end];
+    if is_trim(line).count == 0 { continue; }
+
+    cur := [1] int.[0];
+    sess := is_trim(is_next_tab(line, cur[..]));
+    win := is_trim(is_next_tab(line, cur[..]));
+    pane := is_trim(is_next_tab(line, cur[..]));
+    pid_s := is_trim(is_next_tab(line, cur[..]));
+    cmd := is_trim(is_next_tab(line, cur[..]));
+    cwd := is_trim(is_next_tab(line, cur[..]));
+    ptitle := is_trim(is_next_tab(line, cur[..]));
+    active_s := is_trim(is_next_tab(line, cur[..]));
+    if sess.count == 0 || win.count == 0 || pane.count == 0 { continue; }
+
+    // Canonical target: <session>:<win>.<pane>
+    tb: [IS_ID_MAX] u8;
+    tn := is_put(tb[..], 0, sess);
+    tn = is_put(tb[..], tn, ":");
+    tn = is_put(tb[..], tn, win);
+    tn = is_put(tb[..], tn, ".");
+    tn = is_put(tb[..], tn, pane);
+    target := cast(string) tb[0..<tn];
+
+    // Deduplicate by target.
+    idb: [IS_ID_MAX] u8;
+    idn := is_format_uri(IS_KIND_TUI, IS_HARNESS_TMUX, "local", target, idb[..]);
+    id_s := cast(string) idb[0..<idn];
+    dup := false;
+    for k: 0..<n {
+      if is_str(out[k].id[..], out[k].id_n) == id_s { dup = true; break; }
+    }
+    if dup { continue; }
+
+    h := is_harness_parse(cmd);
+    if h == IS_HARNESS_UNKNOWN { h = IS_HARNESS_TMUX; }
+
+    item := IntrospectSession.{};
+    item.id_n = is_copy(item.id[..], id_s);
+    item.kind = IS_KIND_TUI;
+    item.harness = h;
+    item.machine_id_n = is_copy(item.machine_id[..], "local");
+    item.machine_label_n = is_copy(item.machine_label[..], "This Mac");
+    item.pid = is_parse_int(pid_s);
+    item.cwd_n = is_copy(item.cwd[..], cwd);
+    item.commandable = true;
+
+    // Title: "<session>:<win>.<pane> · <cmd>" (or target alone if cmd empty).
+    tt := 0;
+    tt = is_put(item.title[..], tt, target);
+    if cmd.count > 0 {
+      tt = is_put(item.title[..], tt, " · ");
+      tt = is_put(item.title[..], tt, is_basename(cmd));
+    }
+    item.title_n = tt;
+
+    // Preview carries pane title if informative, else cwd.
+    if ptitle.count > 0 && ptitle != target && ptitle != cmd {
+      item.preview_n = is_single_line(ptitle, item.preview[..]);
+    } else if cwd.count > 0 {
+      item.preview_n = is_copy(item.preview[..], cwd);
+    }
+
+    // Running if executing a non-shell foreground command (like claude/codex/inky/build) or marked active.
+    if cmd.count > 0 && !is_is_plain_shell(cmd) {
+      item.status = IS_ST_RUNNING;
+    } else if active_s == "1" {
+      item.status = IS_ST_IDLE;
+    } else {
+      item.status = IS_ST_IDLE;
+    }
+
+    out[n] = item;
+    n += 1;
+  }
+  return n;
+}
+
+// Parses process table TSV rows: `pid\ttty\tstat\tcomm\targs[\tcwd]`
+// Recognizes local TUI/agent processes (`coder`, `inky`, `oa-worker`, `claude`, `codex`, `agy`, `cursor`, `opencode`).
+// Skips PIDs already present in `skip_pids` (e.g. processes already captured as tmux panes).
+// Reconciled with #14071: external harnesses have `commandable = allow_external_command` (read-only unless opted in).
+is_parse_process_rows :: (raw: string, allow_external_command: bool, skip_pids: [] const int, out: [] IntrospectSession) -> int {
+  if raw.count == 0 || out.count == 0 { return 0; }
+  n := 0;
+  pos := 0;
+  while pos < raw.count && n < out.count {
+    start := pos;
+    while pos < raw.count && raw[pos] != '\n' { pos += 1; }
+    end := pos;
+    if pos < raw.count && raw[pos] == '\n' { pos += 1; }
+    if end > start && raw[end - 1] == '\r' { end -= 1; }
+    line := cast(string) raw[start..<end];
+    if is_trim(line).count == 0 { continue; }
+
+    cur := [1] int.[0];
+    pid_s := is_trim(is_next_tab(line, cur[..]));
+    tty_s := is_trim(is_next_tab(line, cur[..]));
+    stat_s := is_trim(is_next_tab(line, cur[..]));
+    comm_s := is_trim(is_next_tab(line, cur[..]));
+    args_s := is_trim(is_next_tab(line, cur[..]));
+    cwd_s := is_trim(is_next_tab(line, cur[..]));
+
+    pid := is_parse_int(pid_s);
+    if pid <= 1 || comm_s.count == 0 { continue; }
+
+    // Skip daemon / app-owned background worker subprocesses without interactive TTY unless explicitly external CLI.
+    skipped := false;
+    for sp: skip_pids {
+      if sp == pid { skipped = true; break; }
+    }
+    if skipped { continue; }
+
+    // Ignore Desktop's own bundled helper daemons/workers (coder-host, oa-worker in --worker mode, psionic-inkling-serve).
+    base := is_basename(comm_s);
+    if is_eq_ci(base, "coder-host") || is_eq_ci(base, "openagents-environment") || is_eq_ci(base, "psionic-inkling-serve") || is_eq_ci(base, "gitguard") {
+      continue;
+    }
+    if is_contains_ci(args_s, "--worker") || is_contains_ci(args_s, "serve --standby") {
+      continue;
+    }
+
+    h := is_harness_parse(base);
+    if h == IS_HARNESS_UNKNOWN && args_s.count > 0 {
+      // Check node/python/bun launched external harness CLIs (e.g. `node .../claude`, `node .../codex`).
+      if is_eq_ci(base, "node") || is_eq_ci(base, "bun") || is_eq_ci(base, "python3") || is_eq_ci(base, "python") {
+        if is_contains_ci(args_s, "/claude") || is_contains_ci(args_s, "@anthropic-ai/claude-code") { h = IS_HARNESS_CLAUDE; }
+        else if is_contains_ci(args_s, "/codex") || is_contains_ci(args_s, "@openai/codex") { h = IS_HARNESS_CODEX; }
+        else if is_contains_ci(args_s, "/opencode") { h = IS_HARNESS_OPENCODE; }
+      }
+    }
+    if h == IS_HARNESS_UNKNOWN || h == IS_HARNESS_TMUX { continue; }
+
+    // Local OpenAgents TUI requires an interactive TTY (not `??`).
+    is_ext := is_harness_is_external(h);
+    has_tty := tty_s.count > 0 && tty_s != "??" && tty_s != "?";
+    if !is_ext && !has_tty { continue; }
+
+    kind := ifx is_ext then IS_KIND_HARNESS else IS_KIND_TUI;
+    pid_buf: [24] u8;
+    pid_n := is_put_i(pid_buf[..], 0, pid);
+    inner := cast(string) pid_buf[0..<pid_n];
+
+    idb: [IS_ID_MAX] u8;
+    idn := is_format_uri(kind, h, "local", inner, idb[..]);
+    id_s := cast(string) idb[0..<idn];
+    dup := false;
+    for k: 0..<n {
+      if is_str(out[k].id[..], out[k].id_n) == id_s { dup = true; break; }
+    }
+    if dup { continue; }
+
+    item := IntrospectSession.{};
+    item.id_n = is_copy(item.id[..], id_s);
+    item.kind = kind;
+    item.harness = h;
+    item.machine_id_n = is_copy(item.machine_id[..], "local");
+    item.machine_label_n = is_copy(item.machine_label[..], "This Mac");
+    item.pid = pid;
+    item.cwd_n = is_copy(item.cwd[..], cwd_s);
+    item.commandable = ifx is_ext then allow_external_command else true;
+
+    // Title: "<Harness> (pid N)" or "<Harness> · <tty>".
+    tt := is_put(item.title[..], 0, is_harness_label(h));
+    if has_tty {
+      tt = is_put(item.title[..], tt, " · ");
+      tt = is_put(item.title[..], tt, tty_s);
+    } else {
+      tt = is_put(item.title[..], tt, " #");
+      tt = is_put_i(item.title[..], tt, pid);
+    }
+    item.title_n = tt;
+
+    if args_s.count > 0 {
+      item.preview_n = is_single_line(args_s, item.preview[..]);
+    }
+
+    // `stat` starting with 'R' or 'S'/'U' is live; 'Z'/'T' is stopped/error.
+    if stat_s.count > 0 && (stat_s[0] == 'Z' || stat_s[0] == 'X') {
+      item.status = IS_ST_ERROR;
+    } else if stat_s.count > 0 && stat_s[0] == 'T' {
+      item.status = IS_ST_WAITING;
+    } else {
+      item.status = IS_ST_RUNNING;
+    }
+
+    out[n] = item;
+    n += 1;
+  }
+  return n;
+}
+
+// Parses discovered local external harness session catalog rows (TSV):
+//   `harness\tinner_id\ttitle\tcwd\tbranch\tstatus\tupdated_ms\tpid\tpreview`
+// Reconciled with #14071: sets `commandable = allow_external_command`.
+is_parse_harness_rows :: (raw: string, allow_external_command: bool, out: [] IntrospectSession) -> int {
+  if raw.count == 0 || out.count == 0 { return 0; }
+  n := 0;
+  pos := 0;
+  while pos < raw.count && n < out.count {
+    start := pos;
+    while pos < raw.count && raw[pos] != '\n' { pos += 1; }
+    end := pos;
+    if pos < raw.count && raw[pos] == '\n' { pos += 1; }
+    if end > start && raw[end - 1] == '\r' { end -= 1; }
+    line := cast(string) raw[start..<end];
+    if is_trim(line).count == 0 { continue; }
+
+    cur := [1] int.[0];
+    h_s := is_trim(is_next_tab(line, cur[..]));
+    inner := is_trim(is_next_tab(line, cur[..]));
+    title_s := is_trim(is_next_tab(line, cur[..]));
+    cwd_s := is_trim(is_next_tab(line, cur[..]));
+    br_s := is_trim(is_next_tab(line, cur[..]));
+    st_s := is_trim(is_next_tab(line, cur[..]));
+    upd_s := is_trim(is_next_tab(line, cur[..]));
+    pid_s := is_trim(is_next_tab(line, cur[..]));
+    prev_s := is_trim(is_next_tab(line, cur[..]));
+    if inner.count == 0 { continue; }
+
+    h := is_harness_parse(h_s);
+    if h == IS_HARNESS_UNKNOWN { continue; }
+
+    idb: [IS_ID_MAX] u8;
+    idn := is_format_uri(IS_KIND_HARNESS, h, "local", inner, idb[..]);
+    id_s := cast(string) idb[0..<idn];
+    dup := false;
+    for k: 0..<n {
+      if is_str(out[k].id[..], out[k].id_n) == id_s { dup = true; break; }
+    }
+    if dup { continue; }
+
+    item := IntrospectSession.{};
+    item.id_n = is_copy(item.id[..], id_s);
+    item.kind = IS_KIND_HARNESS;
+    item.harness = h;
+    item.machine_id_n = is_copy(item.machine_id[..], "local");
+    item.machine_label_n = is_copy(item.machine_label[..], "This Mac");
+    if title_s.count > 0 {
+      item.title_n = is_single_line(title_s, item.title[..]);
+    } else if cwd_s.count > 0 {
+      item.title_n = is_copy(item.title[..], is_basename(cwd_s));
+    } else {
+      item.title_n = is_copy(item.title[..], is_harness_label(h));
+    }
+    item.cwd_n = is_copy(item.cwd[..], cwd_s);
+    item.branch_n = is_copy(item.branch[..], br_s);
+    item.status = is_status_parse(st_s);
+    item.updated_ms = is_parse_int(upd_s);
+    item.pid = is_parse_int(pid_s);
+    item.preview_n = is_single_line(prev_s, item.preview[..]);
+    item.commandable = allow_external_command;
+
+    out[n] = item;
+    n += 1;
+  }
+  return n;
+}
+
+// Parses remote machine rows (TSV):
+//   `id\tlabel\thost\tuser\tport\ttransport\tstatus\tsession_count\trunning_count\tos`
+is_parse_machines :: (raw: string, out: [] IntrospectMachine) -> int {
+  if raw.count == 0 || out.count == 0 { return 0; }
+  n := 0;
+  pos := 0;
+  while pos < raw.count && n < out.count {
+    start := pos;
+    while pos < raw.count && raw[pos] != '\n' { pos += 1; }
+    end := pos;
+    if pos < raw.count && raw[pos] == '\n' { pos += 1; }
+    if end > start && raw[end - 1] == '\r' { end -= 1; }
+    line := cast(string) raw[start..<end];
+    if is_trim(line).count == 0 { continue; }
+
+    cur := [1] int.[0];
+    id_s := is_trim(is_next_tab(line, cur[..]));
+    lbl_s := is_trim(is_next_tab(line, cur[..]));
+    host_s := is_trim(is_next_tab(line, cur[..]));
+    user_s := is_trim(is_next_tab(line, cur[..]));
+    port_s := is_trim(is_next_tab(line, cur[..]));
+    tr_s := is_trim(is_next_tab(line, cur[..]));
+    st_s := is_trim(is_next_tab(line, cur[..]));
+    sc_s := is_trim(is_next_tab(line, cur[..]));
+    rc_s := is_trim(is_next_tab(line, cur[..]));
+    os_s := is_trim(is_next_tab(line, cur[..]));
+    if id_s.count == 0 { continue; }
+
+    dup := false;
+    for k: 0..<n {
+      if is_str(out[k].id[..], out[k].id_n) == id_s { dup = true; break; }
+    }
+    if dup { continue; }
+
+    m := IntrospectMachine.{};
+    m.id_n = is_copy(m.id[..], id_s);
+    m.label_n = is_copy(m.label[..], ifx lbl_s.count > 0 then lbl_s else id_s);
+    m.host_n = is_copy(m.host[..], ifx host_s.count > 0 then host_s else id_s);
+    m.user_n = is_copy(m.user[..], user_s);
+    p := is_parse_int(port_s);
+    m.port = ifx p >= 1 && p <= 65535 then p else 22;
+    m.transport = is_transport_parse(tr_s);
+    m.status = is_machine_status_parse(st_s);
+    sc := is_parse_int(sc_s);
+    rc := is_parse_int(rc_s);
+    m.session_count = ifx sc > 0 then sc else 0;
+    m.running_count = ifx rc > 0 then rc else 0;
+    m.os_n = is_copy(m.os[..], os_s);
+
+    out[n] = m;
+    n += 1;
+  }
+  return n;
+}
+
+// Parses remote daemon session rows (TSV):
+//   `machine_id\tmachine_label\tinner_id\tharness\ttitle\tcwd\tbranch\tstatus\tupdated_ms\tpreview`
+is_parse_remote_sessions :: (raw: string, out: [] IntrospectSession) -> int {
+  if raw.count == 0 || out.count == 0 { return 0; }
+  n := 0;
+  pos := 0;
+  while pos < raw.count && n < out.count {
+    start := pos;
+    while pos < raw.count && raw[pos] != '\n' { pos += 1; }
+    end := pos;
+    if pos < raw.count && raw[pos] == '\n' { pos += 1; }
+    if end > start && raw[end - 1] == '\r' { end -= 1; }
+    line := cast(string) raw[start..<end];
+    if is_trim(line).count == 0 { continue; }
+
+    cur := [1] int.[0];
+    mid := is_trim(is_next_tab(line, cur[..]));
+    mlbl := is_trim(is_next_tab(line, cur[..]));
+    inner := is_trim(is_next_tab(line, cur[..]));
+    h_s := is_trim(is_next_tab(line, cur[..]));
+    title_s := is_trim(is_next_tab(line, cur[..]));
+    cwd_s := is_trim(is_next_tab(line, cur[..]));
+    br_s := is_trim(is_next_tab(line, cur[..]));
+    st_s := is_trim(is_next_tab(line, cur[..]));
+    upd_s := is_trim(is_next_tab(line, cur[..]));
+    prev_s := is_trim(is_next_tab(line, cur[..]));
+    if mid.count == 0 || inner.count == 0 { continue; }
+
+    h := is_harness_parse(h_s);
+    if h == IS_HARNESS_UNKNOWN { h = IS_HARNESS_OPENAGENTS; }
+
+    idb: [IS_ID_MAX] u8;
+    idn := is_format_uri(IS_KIND_REMOTE, h, mid, inner, idb[..]);
+    id_s := cast(string) idb[0..<idn];
+    dup := false;
+    for k: 0..<n {
+      if is_str(out[k].id[..], out[k].id_n) == id_s { dup = true; break; }
+    }
+    if dup { continue; }
+
+    item := IntrospectSession.{};
+    item.id_n = is_copy(item.id[..], id_s);
+    item.kind = IS_KIND_REMOTE;
+    item.harness = h;
+    item.machine_id_n = is_copy(item.machine_id[..], mid);
+    item.machine_label_n = is_copy(item.machine_label[..], ifx mlbl.count > 0 then mlbl else mid);
+    item.title_n = is_single_line(ifx title_s.count > 0 then title_s else inner, item.title[..]);
+    item.cwd_n = is_copy(item.cwd[..], cwd_s);
+    item.branch_n = is_copy(item.branch[..], br_s);
+    item.status = is_status_parse(st_s);
+    item.updated_ms = is_parse_int(upd_s);
+    item.preview_n = is_single_line(prev_s, item.preview[..]);
+    item.commandable = true;
+
+    out[n] = item;
+    n += 1;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- snapshot queries & aggregation
+
+is_count_kind :: (snap: [] const IntrospectSnapshot, kind: int) -> int {
+  if snap.count < 1 { return 0; }
+  cnt := 0;
+  for i: 0..<snap[0].nsessions {
+    if snap[0].sessions[i].kind == kind { cnt += 1; }
+  }
+  return cnt;
+}
+
+is_count_running :: (snap: [] const IntrospectSnapshot, kind: int) -> int {
+  if snap.count < 1 { return 0; }
+  cnt := 0;
+  for i: 0..<snap[0].nsessions {
+    if (kind < 0 || snap[0].sessions[i].kind == kind) && snap[0].sessions[i].status == IS_ST_RUNNING {
+      cnt += 1;
+    }
+  }
+  return cnt;
+}
+
+is_find_session :: (snap: [] const IntrospectSnapshot, id: string) -> int {
+  if snap.count < 1 || id.count == 0 { return -1; }
+  for i: 0..<snap[0].nsessions {
+    if is_str(snap[0].sessions[i].id[..], snap[0].sessions[i].id_n) == id { return i; }
+  }
+  return -1;
+}
+
+is_find_machine :: (snap: [] const IntrospectSnapshot, id: string) -> int {
+  if snap.count < 1 || id.count == 0 { return -1; }
+  for i: 0..<snap[0].nmachines {
+    if is_str(snap[0].machines[i].id[..], snap[0].machines[i].id_n) == id { return i; }
+  }
+  return -1;
+}
+
+// Recomputes per-machine session_count and running_count from discovered IS_KIND_REMOTE sessions.
+is_recount_machines :: (snap: [] IntrospectSnapshot) {
+  if snap.count < 1 { return; }
+  for mi: 0..<snap[0].nmachines {
+    mid := is_str(snap[0].machines[mi].id[..], snap[0].machines[mi].id_n);
+    sc := 0;
+    rc := 0;
+    for si: 0..<snap[0].nsessions {
+      s := snap[0].sessions[si];
+      if s.kind != IS_KIND_REMOTE { continue; }
+      if is_str(s.machine_id[..], s.machine_id_n) == mid {
+        sc += 1;
+        if s.status == IS_ST_RUNNING { rc += 1; }
+      }
+    }
+    if sc > snap[0].machines[mi].session_count { snap[0].machines[mi].session_count = sc; }
+    if rc > snap[0].machines[mi].running_count { snap[0].machines[mi].running_count = rc; }
+  }
+}
+
+// ---------------------------------------------------------------- unit checks
+
+#test "introspect: canonical URIs, labels, and harness classification" {
+  b: [IS_ID_MAX] u8;
+  n := is_format_uri(IS_KIND_DESKTOP, IS_HARNESS_OPENAGENTS, "local", "abc123", b[..]);
+  #assert cast(string) b[0..<n] == "local:chat:abc123";
+  n = is_format_uri(IS_KIND_TUI, IS_HARNESS_TMUX, "local", "dev:0.1", b[..]);
+  #assert cast(string) b[0..<n] == "local:tmux:dev:0.1";
+  n = is_format_uri(IS_KIND_TUI, IS_HARNESS_TUI, "local", "4242", b[..]);
+  #assert cast(string) b[0..<n] == "local:tui:4242";
+  n = is_format_uri(IS_KIND_HARNESS, IS_HARNESS_CLAUDE, "local", "sess-9", b[..]);
+  #assert cast(string) b[0..<n] == "local:harness:claude:sess-9";
+  n = is_format_uri(IS_KIND_REMOTE, IS_HARNESS_OPENAGENTS, "studio-mac", "r1", b[..]);
+  #assert cast(string) b[0..<n] == "remote:studio-mac:r1";
+
+  #assert is_harness_parse("/opt/homebrew/bin/claude") == IS_HARNESS_CLAUDE;
+  #assert is_harness_parse("codex") == IS_HARNESS_CODEX;
+  #assert is_harness_parse("antigravity") == IS_HARNESS_AGY;
+  #assert is_harness_parse("agy") == IS_HARNESS_AGY;
+  #assert is_harness_parse("cursor-agent") == IS_HARNESS_CURSOR;
+  #assert is_harness_parse("opencode") == IS_HARNESS_OPENCODE;
+  #assert is_harness_parse("inky") == IS_HARNESS_INKLING;
+  #assert is_harness_parse("oa-worker") == IS_HARNESS_OPENAGENTS;
+  #assert is_harness_parse("tmux") == IS_HARNESS_TMUX;
+  #assert is_harness_parse("coder") == IS_HARNESS_TUI;
+  #assert is_harness_parse("vim") == IS_HARNESS_UNKNOWN;
+
+  #assert is_harness_is_external(IS_HARNESS_CLAUDE) && is_harness_is_external(IS_HARNESS_CODEX) && is_harness_is_external(IS_HARNESS_AGY);
+  #assert !is_harness_is_external(IS_HARNESS_OPENAGENTS) && !is_harness_is_external(IS_HARNESS_TMUX) && !is_harness_is_external(IS_HARNESS_TUI);
+  #assert is_kind_label(IS_KIND_DESKTOP) == "Desktop" && is_kind_label(IS_KIND_TUI) == "TUI & Terminal";
+  #assert is_kind_label(IS_KIND_HARNESS) == "Other Harness" && is_kind_label(IS_KIND_REMOTE) == "Remote";
+  #assert is_basename("/Users/chris/work/openagents/") == "openagents";
+}
+
+#test "introspect: parse tmux list-panes output into IS_KIND_TUI sessions" {
+  raw := "dev\t0\t0\t12345\tzsh\t/Users/chris/work/openagents\tdev-shell\t1\ndev\t0\t1\t12346\tclaude\t/Users/chris/work/openagents\tClaude Refactor\t0\ndev\t0\t0\t12345\tzsh\t/Users/chris/work/openagents\tdup-ignored\t0\nbad-line-without-tabs\nbuild\t1\t0\t22222\tinky\t/tmp/demo\t\t1\n";
+  out: [8] IntrospectSession;
+  n := is_parse_tmux_panes(raw, out[..]);
+  #assert n == 3;
+
+  #assert is_str(out[0].id[..], out[0].id_n) == "local:tmux:dev:0.0";
+  #assert out[0].kind == IS_KIND_TUI && out[0].harness == IS_HARNESS_TMUX;
+  #assert out[0].pid == 12345 && out[0].status == IS_ST_IDLE && out[0].commandable;
+  #assert is_str(out[0].title[..], out[0].title_n) == "dev:0.0 · zsh";
+  #assert is_str(out[0].cwd[..], out[0].cwd_n) == "/Users/chris/work/openagents";
+  #assert is_str(out[0].preview[..], out[0].preview_n) == "dev-shell";
+
+  #assert is_str(out[1].id[..], out[1].id_n) == "local:tmux:dev:0.1";
+  #assert out[1].kind == IS_KIND_TUI && out[1].harness == IS_HARNESS_CLAUDE;
+  #assert out[1].pid == 12346 && out[1].status == IS_ST_RUNNING && out[1].commandable;
+  #assert is_str(out[1].preview[..], out[1].preview_n) == "Claude Refactor";
+
+  #assert is_str(out[2].id[..], out[2].id_n) == "local:tmux:build:1.0";
+  #assert out[2].harness == IS_HARNESS_INKLING && out[2].status == IS_ST_RUNNING;
+  #assert is_str(out[2].preview[..], out[2].preview_n) == "/tmp/demo";
+}
+
+#test "introspect: parse local process table skips daemon workers and respects allow_local_harnesses" {
+  raw := "12346\ttty001\tS+\tclaude\tclaude --resume s1\t/Users/chris/work/openagents\n20001\ttty002\tS+\tcoder\tcoder tui\t/Users/chris/work/openagents\n20002\t??\tSs\tcoder-host\tcoder-host serve --standby\t/\n20003\t??\tS\toa-worker\toa-worker --worker\t/tmp\n20004\ttty003\tR+\tnode\tnode /usr/local/lib/node_modules/@openai/codex/bin/codex\t/tmp/app\n20005\ttty004\tT\tagy\tagy chat\t/tmp/agy\n";
+  skip := [1] int.[12346];
+  out: [8] IntrospectSession;
+
+  // With allow_external_command == false (#14071 default), external harnesses are read-only (commandable == false).
+  n := is_parse_process_rows(raw, false, skip[..], out[..]);
+  #assert n == 3;
+  #assert out[0].kind == IS_KIND_TUI && out[0].harness == IS_HARNESS_TUI && out[0].pid == 20001 && out[0].commandable;
+  #assert is_str(out[0].id[..], out[0].id_n) == "local:tui:20001";
+  #assert out[1].kind == IS_KIND_HARNESS && out[1].harness == IS_HARNESS_CODEX && out[1].pid == 20004 && !out[1].commandable && out[1].status == IS_ST_RUNNING;
+  #assert out[2].kind == IS_KIND_HARNESS && out[2].harness == IS_HARNESS_AGY && out[2].pid == 20005 && !out[2].commandable && out[2].status == IS_ST_WAITING;
+
+  // With allow_external_command == true (opted in via Settings -> Agent), external harnesses become commandable.
+  n2 := is_parse_process_rows(raw, true, skip[..], out[..]);
+  #assert n2 == 3 && out[1].commandable && out[2].commandable;
+}
+
+#test "introspect: parse external harness catalog, remote machines, and remote sessions" {
+  h_tsv := "claude\tsess-a1\tFix Metal shader\t/Users/chris/work/openagents\tmain\trunning\t1700000100000\t4410\tCompiling gpu-shader.coax\ncodex\tsess-b2\tAudit API routes\t/Users/chris/work/api\tfeat/auth\tidle\t1700000050000\t0\tAll checks passed\nclaude\tsess-a1\tDuplicate\t/tmp\t\tidle\t0\t0\t\n";
+  m_tsv := "studio\tMac Studio\t100.88.1.10\tchris\t22\ttailscale\tonline\t0\t0\tmacOS\ngpu-box\tH100 Box\t100.88.1.42\troot\t2222\tssh\toffline\t0\t0\tlinux\n";
+  r_tsv := "studio\tMac Studio\tchat-99\topenagents\tTrain Inkling LoRA\t/Users/chris/openagents\tmain\trunning\t1700000200000\tstep 420/1000\nstudio\tMac Studio\tchat-98\tclaude\tDocs sync\t/Users/chris/openagents\tmain\tidle\t1700000150000\tdone\n";
+
+  snap: [1] IntrospectSnapshot;
+  nh := is_parse_harness_rows(h_tsv, false, snap[0].sessions[0..<IS_MAX_SESSIONS]);
+  #assert nh == 2;
+  #assert is_str(snap[0].sessions[0].id[..], snap[0].sessions[0].id_n) == "local:harness:claude:sess-a1";
+  #assert snap[0].sessions[0].harness == IS_HARNESS_CLAUDE && snap[0].sessions[0].status == IS_ST_RUNNING && !snap[0].sessions[0].commandable;
+  #assert snap[0].sessions[1].harness == IS_HARNESS_CODEX && snap[0].sessions[1].status == IS_ST_IDLE;
+
+  nr := is_parse_remote_sessions(r_tsv, snap[0].sessions[nh..<IS_MAX_SESSIONS]);
+  #assert nr == 2;
+  snap[0].nsessions = nh + nr;
+  snap[0].nmachines = is_parse_machines(m_tsv, snap[0].machines[..]);
+  #assert snap[0].nmachines == 2;
+  is_recount_machines(snap[..]);
+
+  #assert snap[0].machines[0].transport == IS_TRANS_TAILSCALE && snap[0].machines[0].status == IS_MACH_ONLINE;
+  #assert snap[0].machines[0].session_count == 2 && snap[0].machines[0].running_count == 1;
+  #assert snap[0].machines[1].transport == IS_TRANS_SSH && snap[0].machines[1].status == IS_MACH_OFFLINE && snap[0].machines[1].port == 2222;
+  #assert snap[0].machines[1].session_count == 0;
+
+  #assert is_count_kind(snap[..], IS_KIND_HARNESS) == 2;
+  #assert is_count_kind(snap[..], IS_KIND_REMOTE) == 2;
+  #assert is_count_running(snap[..], -1) == 2;
+  #assert is_find_session(snap[..], "remote:studio:chat-99") == 2;
+  #assert is_find_machine(snap[..], "gpu-box") == 1;
+}

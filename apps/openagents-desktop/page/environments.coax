@@ -541,8 +541,8 @@ cp_settings_connections :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: 
   sh := f[0].sheet;
   ev := s[0].env[..];
   y := y0;
-  has_env := cp_flag(s, DC_FLAG_ENVIRONMENTS);
-  has_pair := cp_flag(s, DC_FLAG_PAIRING);
+  has_env := true;
+  has_pair := true;
 
   y += set_page_head(f, "set.title", x, y, w, "Connections", "Remote SSH hosts, Boats, WSL2 backends, LAN/Tailscale pairing, and sleep prevention during active runs.") + t.block_gap;
 
@@ -659,8 +659,8 @@ cp_settings_connections :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: 
 cp_env_settings_press :: (s: [] CoderPage, id: string) -> bool {
   if s.count < 1 { return false; }
   ev := s[0].env[..];
-  has_env := cp_flag(s, DC_FLAG_ENVIRONMENTS);
-  has_pair := cp_flag(s, DC_FLAG_PAIRING);
+  has_env := true;
+  has_pair := true;
   if id == "set.env.active.a" { if !has_env { return false; } s[0].ask = CP_ASK_ENV_REFRESH; return true; }
   if id == "set.env.pair.a" {
     if !has_pair || cp_env_clamp_expose(ev[0].expose_mode) == CP_EXPOSE_LOCAL { return false; }

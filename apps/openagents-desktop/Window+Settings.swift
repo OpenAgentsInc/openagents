@@ -522,9 +522,9 @@ extension CoderWindow {
         syncWalletSettings()
         #endif
         if cd_settings_page(page) == 6 { refreshUsageDashboard() }
+        if cd_settings_page(page) == 10 { syncEnvironments() }
         #if OA_FULL
         if FeatureFlags.isOn(.mcp) { syncMcpSkills() }
-        if FeatureFlags.isOn(.environments) || FeatureFlags.isOn(.pairing) { syncEnvironments() }
         if FeatureFlags.isOn(.scheduled) { syncScheduledSettings() }
         if FeatureFlags.isOn(.modelsGemini) && (ComposerModelVisibility.showOtherModels || cd_settings_page(page) == 1) {
             CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }

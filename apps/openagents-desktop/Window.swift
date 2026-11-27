@@ -228,6 +228,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var previewLoadedURL = ""
     #endif
     var usageTimer: Timer?               // periodic always-on usage & limit-recovery refresh (Window+Usage.swift, #14064)
+    var introspectLocalTimer: Timer?     // 3s local tmux/TUI/harness introspection poll (Window+Introspect.swift, #14066)
+    var introspectRemoteTimer: Timer?    // 10s remote machines introspection poll (Window+Introspect.swift, #14066)
+    var introspectLocalBusy = false
+    var introspectRemoteBusy = false
+    var introspectOutputBusy = false
+    var introspectPathIndex: [String: String] = [:]
     var localModelsDialogState: LocalModelState? = nil // tracks open Local Models dialog for live progress updates (#13826)
     var localModelsDialogGen = 0
     let voice = CoderVoiceController()   // native & local voice dictation + bi-directional TTS (Window+Voice.swift, #14065)
@@ -345,6 +351,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         setupUsageDashboard()
         setupVoiceDictation()
         setupCloudChatSync()
+        syncEnvironments()
+        setupIntrospection()
         #if OA_FULL
         if FeatureFlags.isOn(.customize) { setupCustomize() }
         #endif
@@ -673,6 +681,14 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 83: editVoiceDictionary()
         case 84: chooseVoiceMicrophone()
         case 85: voicePrefsChanged()
+        case 90: envSelectChanged()
+        case 91: syncEnvironments()
+        case 92: envConnectOrFolder()
+        case 93: envExposureChanged()
+        case 94: envPairMobileDevice()
+        case 95: envRevokeDevice()
+        case 96: envKeepAwakeChanged()
+        case 250...254: introspectAsked(what)
         #if OA_FULL
         case 70: if FeatureFlags.isOn(.mcp) { mcpAddDialog() }
         case 71: if FeatureFlags.isOn(.mcp) { mcpToggleSelected() }
@@ -684,13 +700,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 77: if FeatureFlags.isOn(.modelsExternal) { manageAcpRegistry() }
         case 78: if FeatureFlags.isOn(.modelsExternal) { runMultiModelFanout() }
         case 79: if FeatureFlags.isOn(.modelsExternal) { openFanoutPicker() }
-        case 90: if FeatureFlags.isOn(.environments) { envSelectChanged() }
-        case 91: if FeatureFlags.isOn(.environments) || FeatureFlags.isOn(.pairing) { syncEnvironments() }
-        case 92: if FeatureFlags.isOn(.environments) { envConnectOrFolder() }
-        case 93: if FeatureFlags.isOn(.pairing) { envExposureChanged() }
-        case 94: if FeatureFlags.isOn(.pairing) { envPairMobileDevice() }
-        case 95: if FeatureFlags.isOn(.pairing) { envRevokeDevice() }
-        case 96: if FeatureFlags.isOn(.pairing) { envKeepAwakeChanged() }
         case 100: if FeatureFlags.isOn(.rich) { handleRichCompact() }
         case 101: if FeatureFlags.isOn(.rich) { handleRichClear() }
         case 102: if FeatureFlags.isOn(.rich) { handleRichReview() }
@@ -872,8 +881,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if FeatureFlags.isOn(.terminal) { syncTerminalFrame() }
         if FeatureFlags.isOn(.preview) { syncPreviewFrame() }
         if FeatureFlags.isOn(.browser) { placeBrowserViewport() }
-        if FeatureFlags.isOn(.pairing) { syncKeepAwake() }
         #endif
+        syncKeepAwake()
     }
 
     /// Whether quitting leaves the running messages going: the daemon runs their workers.
@@ -934,10 +943,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         #endif
         updater.stop()
         usageTimer?.invalidate(); usageTimer = nil
+        retireIntrospection()
+        retireEnvironments()
         #if OA_FULL
         stopAllTerminals()
         retirePreview()
-        retireEnvironments()
         foremanServer.stop()
         ForemanControlDescriptor.remove()
         #endif

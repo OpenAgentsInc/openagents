@@ -197,6 +197,7 @@ core_swift=(
   "$here/Window+Worktrees.swift" "$here/Worker.swift" "$here/Worktree.swift" "$here/KeepAwake.swift"
   "$here/Window+GitDiff.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"
   "$here/AgentSettings.swift" "$here/TitleGenerator.swift" "$here/Window+Usage.swift" "$here/Window+Voice.swift"
+  "$here/Window+Environments.swift" "$here/Window+Introspect.swift"
   "$here/Window+Wallet.swift"
   "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift"
   "$repo/apps/shared/host/apple/BreezKey.swift" "$repo/apps/shared/host/apple/BIP39.swift"
@@ -238,7 +239,7 @@ if [[ "$minimal" != "1" ]]; then
   )
   full_swift=(
     "$here/ScheduledTasks.swift" "$here/ThreadProof.swift" "$here/CapabilityStudio.swift" "$here/AgentsPage.swift"
-    "$here/Window+Foreman.swift" "$here/Window+Customize.swift" "$here/Window+Environments.swift"
+    "$here/Window+Foreman.swift" "$here/Window+Customize.swift"
     "$here/Window+McpSkills.swift" "$here/Window+Providers.swift"
     "$here/Window+Simulator.swift" "$here/Window+Terminal.swift"
     "$here/GameBuilderSession.swift" "$here/GtaWorkbenchSession.swift" "$here/MetaverseViewportView.swift" "$here/Window+Metaverse.swift"
