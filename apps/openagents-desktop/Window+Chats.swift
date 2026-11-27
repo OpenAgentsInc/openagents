@@ -134,6 +134,17 @@ extension CoderWindow {
         if cd_new(page) != 0 { _ = cd_set_text(page, ""); focusComposer() }
         wake()
     }
+    /// Handoff from global Quick Access panel (Tap Option twice, #14146) into the main window.
+    func submitQuickAccessPrompt(_ prompt: String) {
+        if settingsOpen { closeSettings() }
+        closeGym()
+        if cd_running(page) != 0 { newChat() }
+        if cd_set_text(page, prompt) != 0 {
+            _ = cd_submit(page)
+            act(cd_action(page))
+        }
+        wake()
+    }
     /// File > Dashboard (Command-D / Control-D): empty home screen listing active running chats.
     func openDashboard() {
         if settingsOpen { closeSettings() }

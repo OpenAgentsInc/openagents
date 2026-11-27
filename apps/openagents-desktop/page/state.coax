@@ -54,17 +54,20 @@ CP_CHATS :: 512;            // recent chats the sidebar lists (50 cap lifted in 
 CP_CHAT_ID :: 48;           // bytes of a chat's row id ("chat." and the host's id)
 CP_CHAT_TITLE :: 120;       // bytes of a chat's title: its first message on one line
 CP_SIDE :: 272;             // the sidebar's width until its edge is dragged (Zeron's)
+CP_SIDE_RAIL :: 64;         // collapsed desktop icon rail width (>= CP_SIDE_RAIL_FROM, #14139)
+CP_SIDE_RAIL_FROM :: 900;   // minimum window width to show the 64pt collapsed icon rail (#14139)
 CP_SIDE_LEAST :: 242; CP_SIDE_MOST :: 400;     // how narrow and wide a drag makes the sidebar
 CP_PANE_LEAST :: 360; CP_PANE_MOST :: 1080;     // and a sub-agent's transcript
 CP_TODOS_PANE :: 320;                           // compact right sidebar width when showing only the live task checklist
 CP_TODOS_PANE_LEAST :: 240; CP_TODOS_PANE_MOST :: 420;
 CP_PANE_MARGIN :: 240;      // how far out of view a transcript's row is still drawn
-CP_EDGE :: 4;               // how near a sidebar's edge a press takes hold of it
+CP_EDGE :: 8;               // 8pt invisible hit target centered on 1px split dividers (#14141)
 CP_SIDE_FROM :: 1080;       // the window width from which the sidebar shows; a narrower window has none
 CP_ZOOMS :: [8] f32.[0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];   // the text sizes Command-plus and Command-minus step through
 CP_ZOOM_USUAL :: 2;
 CP_BOTTOM :: 8;             // under the message bar
 CP_COLUMN :: 660;           // the conversation's widest column (Zeron's prose.measure)
+CP_COLUMN_WIDE :: 980;      // Wide transcript width option in Settings -> General (#14140)
 CP_FOLDER_TEXT :: 512;     // bytes of the working folder's name as shown
 CP_FOLDER_MOST :: 280;      // the working folder chip's greatest width; a longer name is cut with an ellipsis
 CP_BRANCH_TEXT :: 128;     // bytes of the folder's Git branch as shown
@@ -211,6 +214,32 @@ CP_WALLET_TOGGLE :: 409;    // sidebar footer Wallet icon: toggle Bitcoin Spark 
 CP_WALLET_ACT :: 410;       // Wallet pane button press (connect, refresh, copy npub/hex/addr)
 CP_CLOUD_LOGIN :: 520;      // cloud-first onboarding: Sign in to OpenAgents Cloud (#14087)
 CP_CLOUD_BYO :: 521;        // cloud-first onboarding: open Settings -> Agent for BYO key/endpoint (#14087)
+// Desktop UX & Panes roadmap (#14138-#14147): workspace modes, nav history, unified pane toggle.
+CP_MODE_CHAT :: 0; CP_MODE_CODE :: 1;
+CP_NAV_HIST_MAX :: 32;
+CP_NAV_CHAT :: 0; CP_NAV_DASHBOARD :: 1; CP_NAV_CATALOG :: 2; CP_NAV_WALLET :: 3; CP_NAV_INTROSPECT :: 4;
+CP_NAV_BACK :: 600;         // title bar < Back button / Cmd+[ (#14138)
+CP_NAV_FWD :: 601;          // title bar > Forward button / Cmd+] (#14138)
+CP_MODE_CHAT_ACT :: 602;    // [Chat | Code] segmented switch -> Chat mode (#14138)
+CP_MODE_CODE_ACT :: 603;    // [Chat | Code] segmented switch -> Code mode (#14138)
+CP_RIGHT_PANE_TOGGLE :: 604; // top-right unified right-pane inspector toggle / Opt+Cmd+S (#14138)
+// Unified Right-Pane dock & Bottom Terminal dock (#14141)
+CP_DOCK_AUTO :: 0; CP_DOCK_FILES :: 1; CP_DOCK_DIFFS :: 2; CP_DOCK_TERM :: 3; CP_DOCK_BROWSER :: 4; CP_DOCK_PREVIEW :: 5; CP_DOCK_SIM :: 6; CP_DOCK_WORLD :: 7; CP_DOCK_AGENT :: 8; CP_DOCK_ARTIFACTS :: 9;
+CP_DOCK_TAB_ACT :: 610;     // click a tab in the unified Right-Pane dock strip (coder.dock.tab.<kind>)
+CP_BOTTOM_DOCK_TOGGLE :: 611; // toggle bottom Terminal dock (Ctrl+`)
+CP_BOTTOM_DOCK_DEFAULT :: 240; CP_BOTTOM_DOCK_MIN :: 160; CP_BOTTOM_DOCK_MAX :: 420;
+// Inline Permission Mode & Message Action Bar (#14144)
+CP_PERM_ASK :: 0; CP_PERM_AUTO_EDIT :: 1; CP_PERM_FULL_AUTO :: 2;
+CP_PERM_CYCLE :: 630;       // cycle Ask -> Auto-edit -> Full Auto in composer footer
+CP_TURN_EDIT :: 631;        // Edit & resend on user message bubble (t<i>.edit)
+CP_TURN_RETRY :: 632;       // Retry / Regenerate on assistant turn (t<i>.retry)
+CP_TURN_FORK :: 633;        // Fork from assistant turn (t<i>.fork)
+CpNavEntry :: struct {
+  view: int;
+  chat_id: [CP_CHAT_ID] u8; chat_id_n: int;
+  catalog: int;
+  mode: int;
+}
 CP_AGY_IDLE :: 0; CP_AGY_BUSY :: 1; CP_AGY_FAILED :: 2;   // agy_conn: the onboarding's Antigravity connection
 CP_LOCAL_NOT_INSTALLED :: 0; CP_LOCAL_DOWNLOADING :: 1; CP_LOCAL_VERIFYING :: 2; CP_LOCAL_READY :: 3; CP_LOCAL_ERROR :: 4; CP_LOCAL_STARTING :: 5; CP_LOCAL_SERVER_ERROR :: 6;
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
@@ -423,6 +452,24 @@ CoderPage :: struct {
   long_buf: [] u8; long_n: int;   // CP_LONG_POOL bytes in the page's store
   agent_buf: [] u8; agent_n: int; // CP_AGENT_POOL bytes in the page's store: the sub-agents' replies
   side_w: f32; pane_user: f32; todos_pane_w: f32; drag: int; hover: int; win_w: f32; sides_due: bool; side_collapsed: bool; side_drawer: bool; cmd_hints: bool;
+  // Workspace mode & navigation history (#14138)
+  work_mode: int;
+  nav_hist: [CP_NAV_HIST_MAX] CpNavEntry; nav_n: int; nav_at: int; nav_suppress: bool;
+  last_right_pane: int;       // last active right-pane kind so Opt+Cmd+S / top-right toggle restores it
+  // Appearance & Desktop app preferences (#14140)
+  wide_transcript: bool;      // false = Narrow (660pt), true = Wide (980pt)
+  desktop_launch_login: bool; // Run OpenAgents on macOS login
+  desktop_menubar_icon: bool; // Show rich OpenAgents Menu Bar popover icon (default true)
+  desktop_quick_access: bool; // Enable global Tap-Option-twice Quick Access panel (default true)
+  // Unified Right-Pane dock & Bottom Terminal dock (#14141)
+  dock_active: int;           // CP_DOCK_* (0 = auto)
+  bottom_dock_open: bool;     // Bottom Terminal dock open under conversation
+  bottom_dock_h: f32;         // Bottom dock height in pt (clamped CP_BOTTOM_DOCK_MIN..MAX)
+  // Inline Permission Mode (#14144)
+  perm_mode: int;             // CP_PERM_ASK / _AUTO_EDIT / _FULL_AUTO
+  // First-class Sidebar Catalog Screens (#14145)
+  catalog_view: int;          // CP_CAT_NONE / _PROJECTS / _ARTIFACTS / _SCHEDULED / _PLUGINS
+  catalog_filter: int;        // Plugins filter: 0 All, 1 Connectors, 2 Skills
   clock: f32;                 // seconds the page has been drawn, for how long a tool call took
   scratch: [] u8;             // CP_SCRATCH bytes in the page's store
   zoom: int;                  // the text size, a row of CP_ZOOMS
@@ -563,6 +610,7 @@ CoderPage :: struct {
   dash: [1] CpDash;            // Dashboard empty home screen showing active running chats (dashboard.coax)
   wallet: [1] CpWalletPane;    // Bitcoin Spark & read-only Nostr key pair wallet pane (walletpane.coax)
   introspect: [1] CpIntrospect; // Universal Introspection sidebar sections & live inspector (introspect.coax; #14066)
+  art: [1] CpArtifacts;        // Artifacts pane (Code | Preview, versions) & Recent Artifacts strip (artifacts.coax; #14143)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them
@@ -634,7 +682,15 @@ CpCheckStore :: struct {
   scratch: [262144] u8;
 }
 cp_flag :: (s: [] CoderPage, flag: int) -> bool {
-  return s.count > 0 && dc_flag_on(s[0].flags, flag);
+  if s.count < 1 { return false; }
+  if dc_flag_on(s[0].flags, flag) { return true; }
+  // Graduate core Code Mode surfaces out of OA_EXPERIMENTAL when user is in </> Code mode (#14142).
+  if s[0].work_mode == CP_MODE_CODE {
+    if flag == DC_FLAG_GIT || flag == DC_FLAG_TERMINAL || flag == DC_FLAG_MCP || flag == DC_FLAG_VOICE || flag == DC_FLAG_USAGE || flag == DC_FLAG_SCHEDULED || flag == DC_FLAG_BROWSER {
+      return true;
+    }
+  }
+  return false;
 }
 // True whenever more than one model/agent is selectable in the composer picker
 // (always true since Flawed Agent models and local Inkling 2 Mini are both built-in).
@@ -748,9 +804,21 @@ cp_init :: (s: [] CoderPage) {
   cp_lean_init(s);
   cp_ps_init(s);
   cp_mv_init(s);
+  s[0].work_mode = CP_MODE_CHAT;
+  s[0].nav_n = 0; s[0].nav_at = -1; s[0].nav_suppress = false;
+  s[0].last_right_pane = 0;
+  s[0].wide_transcript = false;
+  s[0].desktop_launch_login = false;
+  s[0].desktop_menubar_icon = true;
+  s[0].desktop_quick_access = true;
+  s[0].dock_active = CP_DOCK_AUTO;
+  s[0].bottom_dock_open = false;
+  s[0].bottom_dock_h = cast(f32) CP_BOTTOM_DOCK_DEFAULT;
+  cp_nav_push(s, CP_NAV_CHAT, "", 0);
   cp_br_init(s);
   cp_dash_init(s);
   cp_wallet_pane_init(s);
+  cp_art_init(s);
   cp_introspect_init(s);
 }
 

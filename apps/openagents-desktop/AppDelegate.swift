@@ -6,6 +6,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     var main: CoderWindow?
     var extraWindows: [CoderWindow] = []
     private var statusItem: NSStatusItem?
+    private var trayPopover: NSPopover?
+    private var trayController: TrayPopoverController?
     private var opened: [URL] = []   // files & openagents:// URLs the Mac asked Coder to open before its window was up
     var accountStatusItem: NSMenuItem?
     var accountItems: [NSMenuItem] = []   // OpenAgents > Log In… and the rest: gated on .account (default ON; #14087)
@@ -37,14 +39,27 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "OpenAgents")
             image?.isTemplate = true
             button.image = image
+            button.target = self
+            button.action = #selector(toggleTrayPopover(_:))
         }
-        let menu = NSMenu()
-        let showItem = menu.addItem(withTitle: "Show OpenAgents", action: #selector(showWindow), keyEquivalent: "")
-        showItem.target = self
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit OpenAgents", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        statusItem.menu = menu
+        let trayVC = TrayPopoverController()
+        trayVC.onShowWindow = { [weak self] in self?.trayPopover?.performClose(nil); self?.showWindow() }
+        trayVC.onNewChat = { [weak self] in self?.trayPopover?.performClose(nil); self?.showWindow(); self?.main?.newChat() }
+        trayVC.onQuickAccess = { [weak self] in self?.trayPopover?.performClose(nil); QuickAccessController.shared.show() }
+        trayVC.onQuit = { [weak self] in self?.trayPopover?.performClose(nil); NSApp.terminate(nil) }
+        let pop = NSPopover()
+        pop.behavior = .transient
+        pop.contentSize = NSSize(width: 260, height: 188)
+        pop.contentViewController = trayVC
+        self.trayController = trayVC
+        self.trayPopover = pop
         self.statusItem = statusItem
+        // Global Quick Access panel (Tap Option twice, #14146)
+        QuickAccessController.shared.onSubmit = { [weak self] prompt in
+            self?.showWindow()
+            self?.main?.submitQuickAccessPrompt(prompt)
+        }
+        QuickAccessController.shared.startMonitoring()
         NSApp.activate(ignoringOtherApps: true)
         let early = opened; opened = []
         for url in early {
@@ -132,6 +147,16 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc private func showWindow() {
         NSApp.activate(ignoringOtherApps: true)
         main?.show()
+    }
+    @objc private func toggleTrayPopover(_ sender: Any?) {
+        guard let button = statusItem?.button, let pop = trayPopover else { return }
+        if pop.isShown {
+            pop.performClose(sender)
+        } else {
+            let runs = main?.runningCount ?? 0
+            trayController?.updateStatus(runs > 0 ? "\(runs) active run(s) · Tap ⌥×2 for Quick Access" : "Daemon ready · Tap ⌥×2 for Quick Access")
+            pop.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

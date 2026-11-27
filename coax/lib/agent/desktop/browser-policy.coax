@@ -383,6 +383,75 @@ br_helper_verify_manifest :: (
   return ed25519_sig_valid;
 }
 
+// ---- 7. Computer Use 5 Hard Safety Refusal Invariants (#14147) ----
+
+CU_OK               :: 0;
+CU_ERR_SECURE_INPUT :: 1;  // macOS Secure Input active (password/keychain field)
+CU_ERR_HUMAN_TYPING :: 2;  // human actively typing / keydown guard
+CU_ERR_OCCLUDED     :: 3;  // foreign window occludes target point/window
+CU_ERR_OFF_SPACE    :: 4;  // target window is off the active macOS Space or hidden
+CU_ERR_NO_CONSENT   :: 5;  // isolated explicit per-session consent not granted
+
+cu_safety_gate :: (
+  secure_input_active: bool,
+  human_typing_active: bool,
+  window_occluded: bool,
+  off_active_space: bool,
+  consent_granted: bool
+) -> int #effects() {
+  if !consent_granted { return CU_ERR_NO_CONSENT; }
+  if secure_input_active { return CU_ERR_SECURE_INPUT; }
+  if human_typing_active { return CU_ERR_HUMAN_TYPING; }
+  if off_active_space { return CU_ERR_OFF_SPACE; }
+  if window_occluded { return CU_ERR_OCCLUDED; }
+  return CU_OK;
+}
+
+// ---- 8. macOS Local Command Sandbox Policy (Seatbelt / Micro-VM Tier, #14147) ----
+
+MAC_SB_MODE_UNSANDBOXED :: 0;
+MAC_SB_MODE_SEATBELT    :: 1;
+MAC_SB_MODE_MICROVM     :: 2;
+
+mac_sandbox_validate_root :: (root: string) -> bool #effects(reads, traps) {
+  if root.count < 2 || root.count > 512 { return false; }
+  if root[0] != '/' { return false; }
+  if root == "/" || root == "/System" || root == "/Library" || root == "/Users" { return false; }
+  for i: 1..<root.count {
+    c := root[i];
+    // Reject control chars, quotes, backslashes, and S-expression delimiters to prevent Seatbelt injection.
+    if c < 0x20 || c == 0x7f || c == '"' || c == '\\' || c == '(' || c == ')' { return false; }
+    if i + 1 < root.count && c == '.' && root[i + 1] == '.' { return false; }
+  }
+  return true;
+}
+
+mac_sb_put :: (dst: [] u8, at: int, s: string) -> int #effects(reads, writes, traps) {
+  n := at;
+  for i: 0..<s.count {
+    if n < dst.count { dst[n] = s[i]; n += 1; }
+  }
+  return n;
+}
+
+// Emits a deterministic macOS Seatbelt workspace-write profile confining writes to workspace_root
+// and denying reads of sensitive credential directories (~/.ssh, ~/.aws, ~/.gnupg).
+// Returns byte count written (0 if workspace_root is invalid or buffer too small).
+mac_sandbox_seatbelt_profile :: (workspace_root: string, allow_network: bool, out: [] u8) -> int #effects(reads, writes, traps) {
+  if !mac_sandbox_validate_root(workspace_root) || out.count < 512 { return 0; }
+  n := 0;
+  n = mac_sb_put(out, n, "(version 1)\n(deny default)\n(allow process*)\n(allow sysctl-read)\n");
+  n = mac_sb_put(out, n, "(allow file-read*)\n");
+  n = mac_sb_put(out, n, "(deny file-read* (regex #\"/\\.ssh(/|$)\") (regex #\"/\\.aws(/|$)\") (regex #\"/\\.gnupg(/|$)\"))\n");
+  n = mac_sb_put(out, n, "(allow file-write* (subpath \"");
+  n = mac_sb_put(out, n, workspace_root);
+  n = mac_sb_put(out, n, "\") (subpath \"/tmp\") (subpath \"/private/tmp\"))\n");
+  if allow_network {
+    n = mac_sb_put(out, n, "(allow network*)\n");
+  }
+  return n;
+}
+
 // ---------------------------------------------------------------- checks
 
 #test "browser-policy: Human Supremacy takeover, concurrent lease arbitration, and approval gates" {
@@ -478,4 +547,85 @@ br_helper_verify_manifest :: (
   #assert !br_helper_verify_manifest(BR_HELPER_SCHEMA, "macos-arm64", "linux-x64", sha, sha, sig, true);
   #assert !br_helper_verify_manifest("wrong.schema", "macos-arm64", "macos-arm64", sha, sha, sig, true);
   #assert !br_helper_verify_manifest(BR_HELPER_SCHEMA, "macos-arm64", "macos-arm64", sha, sha, "short", true);
+}
+
+#test "browser-policy (#14147): 5 hard Computer Use safety refusal invariants fail closed" {
+  // All clear with explicit consent -> CU_OK
+  #assert cu_safety_gate(false, false, false, false, true) == CU_OK;
+  // 1. Missing consent refuses regardless of other flags
+  #assert cu_safety_gate(false, false, false, false, false) == CU_ERR_NO_CONSENT;
+  // 2. Secure Input active refuses
+  #assert cu_safety_gate(true, false, false, false, true) == CU_ERR_SECURE_INPUT;
+  // 3. Human actively typing refuses
+  #assert cu_safety_gate(false, true, false, false, true) == CU_ERR_HUMAN_TYPING;
+  // 4. Off active Space refuses
+  #assert cu_safety_gate(false, false, false, true, true) == CU_ERR_OFF_SPACE;
+  // 5. Foreign window occlusion refuses
+  #assert cu_safety_gate(false, false, true, false, true) == CU_ERR_OCCLUDED;
+}
+
+#test "browser-policy (#14147): macOS Seatbelt workspace-write profile validates root and blocks injection" {
+  buf: [1024] u8;
+  // Valid workspace path produces exact deterministic profile confining writes and blocking credential dirs.
+  n := mac_sandbox_seatbelt_profile("/Users/dev/work/openagents", false, buf[..]);
+  expected := "(version 1)\n(deny default)\n(allow process*)\n(allow sysctl-read)\n(allow file-read*)\n(deny file-read* (regex #\"/\\.ssh(/|$)\") (regex #\"/\\.aws(/|$)\") (regex #\"/\\.gnupg(/|$)\"))\n(allow file-write* (subpath \"/Users/dev/work/openagents\") (subpath \"/tmp\") (subpath \"/private/tmp\"))\n";
+  #assert n == expected.count;
+  #assert cast(string) buf[0..<n] == expected;
+  #assert buf[0] == '(';
+
+  n_net := mac_sandbox_seatbelt_profile("/Users/dev/work/openagents", true, buf[..]);
+  #assert n_net > n;
+  #assert br_contains_ci(cast(string) buf[0..<n_net], "(allow network*)");
+
+  // Buffer size boundary: 511 fails closed, 512 succeeds; mac_sb_put clamps at dst.count.
+  buf511: [511] u8;
+  buf512: [512] u8;
+  #assert mac_sandbox_seatbelt_profile("/Users/dev/work", false, buf511[..]) == 0;
+  #assert mac_sandbox_seatbelt_profile("/Users/dev/work", false, buf512[..]) > 0;
+  tiny: [3] u8;
+  #assert mac_sb_put(tiny[..], 0, "abcd") == 3;
+  #assert cast(string) tiny[0..<3] == "abc";
+
+  // Root length boundaries: <2 and >512 rejected; 2 and 512 accepted.
+  #assert !mac_sandbox_validate_root("");
+  #assert !mac_sandbox_validate_root("/");
+  #assert mac_sandbox_validate_root("/a");
+  max_ok: [512] u8;
+  max_ok[0] = '/';
+  for i: 1..<512 { max_ok[i] = 'a'; }
+  #assert mac_sandbox_validate_root(cast(string) max_ok[..]);
+  too_long: [513] u8;
+  too_long[0] = '/';
+  for i: 1..<513 { too_long[i] = 'a'; }
+  #assert !mac_sandbox_validate_root(cast(string) too_long[..]);
+
+  // Unsafe system roots and relative paths rejected.
+  #assert mac_sandbox_seatbelt_profile("/", false, buf[..]) == 0;
+  #assert mac_sandbox_seatbelt_profile("/System", false, buf[..]) == 0;
+  #assert !mac_sandbox_validate_root("/Library");
+  #assert !mac_sandbox_validate_root("/Users");
+  #assert mac_sandbox_seatbelt_profile("relative/path", false, buf[..]) == 0;
+
+  // Individual bad bytes and exact adjacent safe characters.
+  ctrl: [2] u8; ctrl[0] = '/'; ctrl[1] = 0x1f;
+  #assert !mac_sandbox_validate_root(cast(string) ctrl[..]);
+  #assert mac_sandbox_validate_root("/a b"); // 0x20 allowed
+  del_ch: [3] u8; del_ch[0] = '/'; del_ch[1] = 'a'; del_ch[2] = 0x7f;
+  #assert !mac_sandbox_validate_root(cast(string) del_ch[..]);
+  hi_ch: [3] u8; hi_ch[0] = '/'; hi_ch[1] = 'a'; hi_ch[2] = 0x80;
+  #assert mac_sandbox_validate_root(cast(string) hi_ch[..]);
+  #assert !mac_sandbox_validate_root("/tmp/foo\"bar");
+  #assert mac_sandbox_validate_root("/tmp/foo#bar"); // 0x23 allowed
+  #assert !mac_sandbox_validate_root("/tmp/foo\\bar");
+  #assert mac_sandbox_validate_root("/tmp/foo]bar"); // 0x5d allowed
+  #assert !mac_sandbox_validate_root("/tmp/foo(bar");
+  #assert !mac_sandbox_validate_root("/tmp/foo)bar");
+  #assert mac_sandbox_validate_root("/tmp/foo*bar"); // 0x2a allowed
+
+  // Dot-dot traversal rejected everywhere; single dots and double slashes allowed.
+  #assert !mac_sandbox_validate_root("/Users/dev/../etc");
+  #assert !mac_sandbox_validate_root("/Users/dev/..");
+  #assert !mac_sandbox_validate_root("/..x");
+  #assert mac_sandbox_validate_root("/Users/.config/app.");
+  #assert mac_sandbox_validate_root("/Users//dev/a.b");
 }

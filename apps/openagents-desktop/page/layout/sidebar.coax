@@ -46,6 +46,56 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
                      selected = sel};
 }
 
+// 28pt alpha scroll-edge fade mask into pure-black canvas/sidebar (#14139).
+cp_scroll_fade :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, bg: Rgba, top_on: bool, bottom_on: bool) {
+  if w <= 0 || h <= 0 { return; }
+  fade_h := 28.0f32;
+  if fade_h > h * 0.4f32 { fade_h = h * 0.4f32; }
+  steps := 4;
+  sh_step := fade_h / cast(f32) steps;
+  alphas := [4] f32.[0.85f32, 0.55f32, 0.28f32, 0.10f32];
+  if top_on {
+    for i: 0..<steps {
+      sheet_fill(sh, x, y + cast(f32) i * sh_step, w, sh_step + 0.5f32, 0, opacity(bg, alphas[i]));
+    }
+  }
+  if bottom_on {
+    for i: 0..<steps {
+      by := y + h - cast(f32) (i + 1) * sh_step;
+      sheet_fill(sh, x, by, w, sh_step + 0.5f32, 0, opacity(bg, alphas[i]));
+    }
+  }
+}
+
+// Collapsible 64pt desktop icon rail (#14139): keeps New, Search, Dashboard, and Settings one click away.
+cp_sidebar_rail :: (s: [] CoderPage, f: [] UiFrame, rail_w: f32, h: f32) {
+  k := f[0].skin; sh := f[0].sheet;
+  bg := ifx k.sidebar.a > 0 then k.sidebar else k.surface;
+  d := ifx s.count > 0 && s[0].d > 0.0f32 then s[0].d else 1.0f32;
+  sw := (snap(rail_w, d) - 1.0f32) / d;
+  if sw > 0.0f32 && h > 0.0f32 { sheet_fill(sh, 0, 0, sw, h, 0, bg); }
+  _ := cp_side_border(s, sh, rail_w, 0, h, k.menu_divider);
+  btn := 36.0f32;
+  bx := (sw - btn) * 0.5f32;
+  if bx < 4.0f32 { bx = 4.0f32; }
+  ry := cp_bar(s) + 10.0f32;
+  gap := 6.0f32;
+  keep := f[0].skin;
+  f[0].skin.app.icon_button = btn; f[0].skin.app.icon_well = btn;
+  _ := app_icon_button(f, "coder.rail.new", bx, ry, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET, 0, CP_NEW);
+  ry += btn + gap;
+  _ := app_icon_button(f, "coder.rail.search", bx, ry, ICON_MAGNIFER, "Search", APP_BUTTON_QUIET, 0, CP_PALETTE);
+  ry += btn + gap;
+  _ := app_icon_button(f, "coder.rail.dashboard", bx, ry, ICON_WIDGET, "Dashboard", APP_BUTTON_QUIET, ifx s[0].dash[0].open then EL_S_CURRENT else 0, CP_DASHBOARD);
+  ry += btn + gap;
+  // Bottom Settings icon pinned at the foot of the rail.
+  set_y := h - btn - 14.0f32;
+  if set_y > ry {
+    _ := app_icon_button(f, "coder.rail.settings", bx, set_y, ICON_SETTINGS, "Settings", APP_BUTTON_QUIET, ifx s[0].set_open then EL_S_CURRENT else 0, CP_SET_ACCOUNT);
+  }
+  f[0].skin = keep;
+}
+
 // One physical device pixel in page units (1pt fallback when s[0].d is unset in headless checks).
 cp_px :: (s: [] CoderPage) -> f32 {
   return ifx s.count > 0 && s[0].d > 0.0f32 then 1.0f32 / s[0].d else 1.0f32;
@@ -127,7 +177,7 @@ cp_side_action_keys :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon:
 cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool) {
   k := f[0].skin; a := k.app; sh := f[0].sheet;
   bg := ifx k.sidebar.a > 0 then k.sidebar else k.surface;
-  edge_c := ifx s[0].hover == 1 || s[0].drag == 1 then k.set.strong else k.menu_divider;
+  edge_c := ifx s[0].hover == 1 || s[0].drag == 1 then k.accent else k.menu_divider;
   d := ifx s.count > 0 && s[0].d > 0.0f32 then s[0].d else 1.0f32;
   sw := (snap(left, d) - 1.0f32) / d;
   if sw < 0.0f32 { sw = 0.0f32; }
@@ -138,13 +188,24 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   // under the window's title bar, which holds the sidebar's toggle (titlebar.coax)
   sy := cp_bar(s);
   loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
+  // Compact segmented [Chat | Code] switch top-right of the sidebar header bar (matching Claude Desktop, #14138)
+  if sw >= 270.0f32 {
+    cp_mode_switch(s, f, sw - 68.0f32, cp_bar_y(s, 24.0f32), 64.0f32, 24.0f32);
+  }
   sy += cp_side_action_keys(f, "coder.new", 0, sy, sw, ICON_COMPOSE, cp_tr(loc, "new_chat"), "N", s[0].ctrl_keys, 0, CP_NEW);
   dash_st := ifx s[0].dash[0].open then EL_S_CURRENT else 0;
   sy += cp_side_action_keys(f, "coder.dashboard", 0, sy, sw, ICON_WIDGET, cp_tr(loc, "dashboard"), "D", s[0].ctrl_keys, dash_st, CP_DASHBOARD);
   cur := cast(string) s[0].current[0..<s[0].current_n];
-  // Flag-gated sidebar destinations: Foreman stays at top; Gym and PRs & Issues live in the icon-only footer bar.
+  // Flag-gated sidebar destinations: Foreman stays right below Dashboard; Gym and PRs & Issues live in the icon-only footer bar.
   if cp_flag(s, DC_FLAG_FOREMAN) {
     sy += cp_side_foreman(s, f, sw, sy, cur, running);
+  }
+  // First-class Sidebar Catalog links in Chat mode (#14145)
+  if s[0].work_mode == CP_MODE_CHAT {
+    sy += cp_side_action_keys(f, "coder.cat.projects", 0, sy, sw, ICON_FOLDER, "Projects", "", s[0].ctrl_keys, ifx s[0].catalog_view == CP_CAT_PROJECTS then EL_S_CURRENT else 0, CP_CAT_OPEN_PROJECTS);
+    sy += cp_side_action_keys(f, "coder.cat.artifacts", 0, sy, sw, ICON_DOCUMENT, "Artifacts", "", s[0].ctrl_keys, ifx s[0].catalog_view == CP_CAT_ARTIFACTS then EL_S_CURRENT else 0, CP_CAT_OPEN_ARTIFACTS);
+    sy += cp_side_action_keys(f, "coder.cat.scheduled", 0, sy, sw, ICON_CHECKLIST, "Scheduled", "", s[0].ctrl_keys, ifx s[0].catalog_view == CP_CAT_SCHEDULED then EL_S_CURRENT else 0, CP_CAT_OPEN_SCHEDULED);
+    sy += cp_side_action_keys(f, "coder.cat.plugins", 0, sy, sw, ICON_GLOBAL, "Plugins", "", s[0].ctrl_keys, ifx s[0].catalog_view == CP_CAT_PLUGINS then EL_S_CURRENT else 0, CP_CAT_OPEN_PLUGINS);
   }
   sy += 4.0f32;
   sy += cp_sb_bulk_bar(s, f, sw, sy);
@@ -212,21 +273,47 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
         nrows += 1; visible_chats += 1;
       }
     }
-    // Single chronological list of all active chats, most recent message first.
+    // Mode-aware Recents (#14139): Chat mode shows a calm single-line Recents list;
+    // Code mode groups threads by repository/workspace folder.
     nrecent := 0;
     for q: 0..<s[0].nchats {
       if !s[0].chats[q].pinned && cp_sb_is_visible_active(s[0].chats[q], now_ms) && !cp_sb_is_working(s, q, cur, running) { nrecent += 1; }
     }
     if nrecent > 0 || s[0].chats_more > 0 {
-      if visible_chats < limit || (nrecent == 0 && s[0].chats_more > 0) {
-        rows[nrows] = AppSideRow.{id = "coder.chats", title = "Recents", heading = true};
-        nrows += 1;
-      }
-      for q: 0..<s[0].nchats {
-        if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
-        if visible_chats >= limit { hidden_chats += 1; continue; }
-        rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
-        nrows += 1; visible_chats += 1;
+      if s[0].work_mode == CP_MODE_CODE && nrecent > 0 {
+        // Group by repo folder label in order of most recent appearance.
+        used: [CP_CHATS] bool;
+        g_idx := 0;
+        for q0: 0..<s[0].nchats {
+          if used[q0] || s[0].chats[q0].pinned || !cp_sb_is_visible_active(s[0].chats[q0], now_ms) || cp_sb_is_working(s, q0, cur, running) { continue; }
+          if visible_chats >= limit || nrows >= rows.count { break; }
+          rb0: [64] u8; rn0 := ifx s[0].chats[q0].folder_n > 0 then cp_sb_folder_label(cast(string) s[0].chats[q0].folder[0..<s[0].chats[q0].folder_n], rb0[..]) else 0;
+          g_label := ifx rn0 > 0 then sheet_pool(f[0].sheet, cast(string) rb0[0..<rn0]) else "General";
+          gid_b: [32] u8; gn := el_put(gid_b[..], 0, "coder.repo."); gn = el_put_i(gid_b[..], gn, g_idx);
+          rows[nrows] = AppSideRow.{id = sheet_pool(f[0].sheet, cast(string) gid_b[0..<gn]), title = g_label, heading = true};
+          nrows += 1; g_idx += 1;
+          for q: q0..<s[0].nchats {
+            if used[q] || s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
+            rbq: [64] u8; rnq := ifx s[0].chats[q].folder_n > 0 then cp_sb_folder_label(cast(string) s[0].chats[q].folder[0..<s[0].chats[q].folder_n], rbq[..]) else 0;
+            q_label := ifx rnq > 0 then cast(string) rbq[0..<rnq] else "General";
+            if q_label != g_label { continue; }
+            used[q] = true;
+            if visible_chats >= limit || nrows >= rows.count { hidden_chats += 1; continue; }
+            rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
+            nrows += 1; visible_chats += 1;
+          }
+        }
+      } else {
+        if visible_chats < limit || (nrecent == 0 && s[0].chats_more > 0) {
+          rows[nrows] = AppSideRow.{id = "coder.chats", title = "Recents", heading = true};
+          nrows += 1;
+        }
+        for q: 0..<s[0].nchats {
+          if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
+          if visible_chats >= limit { hidden_chats += 1; continue; }
+          rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
+          nrows += 1; visible_chats += 1;
+        }
       }
     }
     // Collapsible Snoozed shelf (only shown when nsnoozed > 0 so no snoozed chat is ever unreachable; #14025).
@@ -294,6 +381,10 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   show_tail := (is_arch && visible_chats == 0) || (!is_arch && visible_chats == 0 && nworking == 0) || (!is_arch && s[0].chats_more > 0);
   tail := ifx show_tail then k.small.line + 2 * a.gap + bottom_pad else bottom_pad;
   s[0].side_content = app_side_window_at(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, s[0].side_scr[0].stretch, tail, CP_CHAT);
+  // 28pt scroll-edge alpha fade masks (#14139)
+  if s[0].side_view > 0 && s[0].side_content > s[0].side_view {
+    cp_scroll_fade(sh, 0, stop, sw, s[0].side_view, bg, s[0].side_scroll > 1.0f32, s[0].side_scroll + s[0].side_view < s[0].side_content - 1.0f32);
+  }
   if s[0].cmd_hints && s[0].side_view > 0 {
     at := scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view) + s[0].side_scr[0].stretch;
     uiframe_clip(f, 0, stop, sw, stop + s[0].side_view);

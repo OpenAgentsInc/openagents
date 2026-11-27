@@ -1,0 +1,129 @@
+// Coder Desktop page (../page.coax): First-class Sidebar Catalog Screens (#14145):
+// Projects, Artifacts, Scheduled Tasks, and Plugins (All | Connectors | Skills) rendered in a
+// responsive 2-column #111111 card grid on pure-black #000000 canvas.
+
+CP_CAT_NONE :: 0;
+CP_CAT_PROJECTS :: 1;
+CP_CAT_ARTIFACTS :: 2;
+CP_CAT_SCHEDULED :: 3;
+CP_CAT_PLUGINS :: 4;
+
+CP_CAT_OPEN_PROJECTS :: 640;
+CP_CAT_OPEN_ARTIFACTS :: 641;
+CP_CAT_OPEN_SCHEDULED :: 642;
+CP_CAT_OPEN_PLUGINS :: 643;
+CP_CAT_FILTER_ALL :: 644;
+CP_CAT_FILTER_CONN :: 645;
+CP_CAT_FILTER_SKILLS :: 646;
+
+cp_cat_title :: (cat: int) -> string {
+  if cat == CP_CAT_PROJECTS { return "Projects"; }
+  if cat == CP_CAT_ARTIFACTS { return "Artifacts"; }
+  if cat == CP_CAT_SCHEDULED { return "Scheduled"; }
+  if cat == CP_CAT_PLUGINS { return "Plugins"; }
+  return "";
+}
+
+cp_cat_open :: (s: [] CoderPage, cat: int) -> bool {
+  s[0].dash[0].open = false;
+  s[0].wallet[0].open = false;
+  s[0].introspect[0].open = false;
+  s[0].side_drawer = false;
+  s[0].catalog_view = cat;
+  cp_nav_push(s, CP_NAV_CATALOG, "", cat);
+  return true;
+}
+
+cp_cat_press :: (s: [] CoderPage, act: int) -> bool {
+  if act == CP_CAT_OPEN_PROJECTS { return cp_cat_open(s, CP_CAT_PROJECTS); }
+  if act == CP_CAT_OPEN_ARTIFACTS { return cp_cat_open(s, CP_CAT_ARTIFACTS); }
+  if act == CP_CAT_OPEN_SCHEDULED { return cp_cat_open(s, CP_CAT_SCHEDULED); }
+  if act == CP_CAT_OPEN_PLUGINS { return cp_cat_open(s, CP_CAT_PLUGINS); }
+  if act == CP_CAT_FILTER_ALL { s[0].catalog_filter = 0; return true; }
+  if act == CP_CAT_FILTER_CONN { s[0].catalog_filter = 1; return true; }
+  if act == CP_CAT_FILTER_SKILLS { s[0].catalog_filter = 2; return true; }
+  return false;
+}
+
+cp_cat_card :: (f: [] UiFrame, id: string, title: string, desc: string, badge: string, x: f32, y: f32, w: f32, h: f32, act: int) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  _ := sheet_box(sh, x, y, w, h, 12.0f32, k.border, k.surface, k.menu_divider);
+  _ := sheet_text(sh, m, -1, x + 14.0f32, y + 14.0f32, k.label.line, k.label.face, k.ink, app_fit(f, k.label.face, title, w - 28.0f32));
+  if desc.count > 0 {
+    _ := sheet_text(sh, m, -1, x + 14.0f32, y + 36.0f32, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, desc, w - 28.0f32));
+  }
+  if badge.count > 0 {
+    bw := ceil(measure_width(m, k.small.face, badge)) + 14.0f32;
+    _ := sheet_box(sh, x + 14.0f32, y + h - 28.0f32, bw, 20.0f32, 6.0f32, k.border, k.raised, k.menu_divider);
+    _ := sheet_text(sh, m, -1, x + 21.0f32, y + h - 26.0f32, k.small.line, k.small.face, k.muted, badge);
+  }
+  row := uiframe_semantic(f, id, EL_BUTTON, title, x, y, w, h, 0, act);
+  if act != 0 { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+}
+
+cp_catalog_screen :: (s: [] CoderPage, f: [] UiFrame, left: f32, window_w: f32, h: f32) {
+  cat := s[0].catalog_view;
+  if cat == CP_CAT_NONE { return; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  title := cp_cat_title(cat);
+  cp_header_bar(s, f, left, window_w, title, window_w - CP_CORNER);
+  top := cp_bar(s) + 24.0f32;
+  avail_w := window_w - left - 64.0f32;
+  if avail_w > 880.0f32 { avail_w = 880.0f32; }
+  if avail_w < 300.0f32 { avail_w = window_w - left - 24.0f32; }
+  cx0 := left + floor(((window_w - left) - avail_w) * 0.5f32);
+  y := top;
+  _ := sheet_text(sh, m, -1, cx0, y, k.set.title_line, k.set.title_face, k.ink, title);
+  y += k.set.title_line + 14.0f32;
+  // Filter pills for Plugins (All | Connectors | Skills)
+  if cat == CP_CAT_PLUGINS {
+    f_labels := [3] string.["All", "Connectors", "Skills"];
+    f_ids := [3] string.["coder.cat.filter.all", "coder.cat.filter.conn", "coder.cat.filter.skills"];
+    f_acts := [3] int.[CP_CAT_FILTER_ALL, CP_CAT_FILTER_CONN, CP_CAT_FILTER_SKILLS];
+    fx := cx0;
+    for fi: 0..<3 {
+      active := s[0].catalog_filter == fi;
+      fw := ceil(measure_width(m, k.small.face, f_labels[fi])) + 20.0f32;
+      _ := sheet_box(sh, fx, y, fw, 26.0f32, 8.0f32, k.border, ifx active then k.raised else k.surface, ifx active then k.accent else k.menu_divider);
+      _ := sheet_text(sh, m, -1, fx + 10.0f32, y + 5.0f32, k.small.line, k.small.face, ifx active then k.ink else k.muted, f_labels[fi]);
+      frow := uiframe_semantic(f, f_ids[fi], EL_BUTTON, f_labels[fi], fx, y, fw, 26.0f32, ifx active then EL_S_CURRENT else 0, f_acts[fi]);
+      sheet_hit(sh, UIFRAME_HIT, frow, 0, fx, y, fw, 26.0f32);
+      fx += fw + 8.0f32;
+    }
+    y += 38.0f32;
+  }
+  cols := ifx avail_w >= 560.0f32 then 2 else 1;
+  gap := 14.0f32;
+  card_w := floor((avail_w - cast(f32) (cols - 1) * gap) / cast(f32) cols);
+  card_h := 92.0f32;
+  if cat == CP_CAT_PROJECTS {
+    cp_cat_card(f, "coder.cat.proj.0", "Current Workspace", cast(string) s[0].folder[0..<s[0].folder_n], "Active", cx0, y, card_w, card_h, CP_FOLDER);
+    if cols == 2 {
+      cp_cat_card(f, "coder.cat.proj.1", "New Project Folder…", "Choose a local repository or workspace folder", "Local", cx0 + card_w + gap, y, card_w, card_h, CP_FOLDER);
+    }
+  } else if cat == CP_CAT_ARTIFACTS {
+    if s[0].art[0].n == 0 {
+      cp_cat_card(f, "coder.cat.art.empty", "No artifacts yet", "Artifacts created in chat appear here with Code/Preview and version history.", "Ready", cx0, y, card_w, card_h, 0);
+    } else {
+      for ai: 0..<s[0].art[0].n {
+        col := ai % cols; row_i := ai / cols;
+        ax := cx0 + cast(f32) col * (card_w + gap);
+        ay := y + cast(f32) row_i * (card_h + gap);
+        if ay + card_h > h - 16.0f32 { break; }
+        idb: [32] u8; idn := el_put(idb[..], 0, "coder.art.card."); idn = el_put_i(idb[..], idn, ai);
+        atitle := cast(string) s[0].art[0].items[ai].title[0..<s[0].art[0].items[ai].title_n];
+        cp_cat_card(f, sheet_pool(sh, cast(string) idb[0..<idn]), atitle, "Click to open in Artifacts pane", "Artifact", ax, ay, card_w, card_h, CP_ART_OPEN);
+      }
+    }
+  } else if cat == CP_CAT_SCHEDULED {
+    cp_cat_card(f, "coder.cat.sched.0", "Scheduled Automations", "Manage recurring cron tasks and HMAC-SHA256 webhooks", "Cron", cx0, y, card_w, card_h, CP_SET_ACCOUNT);
+  } else if cat == CP_CAT_PLUGINS {
+    if s[0].catalog_filter == 0 || s[0].catalog_filter == 1 {
+      cp_cat_card(f, "coder.cat.plug.mcp", "MCP Connectors", "Configure HTTP/Stdio MCP servers with OAuth PKCE", "Connector", cx0, y, card_w, card_h, CP_SET_ACCOUNT);
+    }
+    if s[0].catalog_filter == 0 || s[0].catalog_filter == 2 {
+      sx := ifx s[0].catalog_filter == 0 && cols == 2 then cx0 + card_w + gap else cx0;
+      cp_cat_card(f, "coder.cat.plug.skills", "Installed Skills", "Slash commands and reusable agent capabilities", "Skill", sx, y, card_w, card_h, CP_SET_ACCOUNT);
+    }
+  }
+}

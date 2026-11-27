@@ -332,6 +332,18 @@ cp_key_in :: (s: [] CoderPage, key: int, mods: int) -> bool {
   if !cp_overlay_open(s) && !s[0].set_open && key == 97 && mods == MOD_CMD && (which < 0 || (which == CP_ED_COMPOSER && eb_text(s[0].draft[..]).count == 0)) {
     if cp_sel_select_all(s) { return true; }
   }
+  // Navigation history Cmd+[ / Cmd+] (Ctrl+[ / Ctrl+] on Linux/Windows) and right-pane toggle Opt+Cmd+S (#14138).
+  if !cp_overlay_open(s) && !s[0].set_open {
+    nav_mod := ifx s[0].ctrl_keys then MOD_CTRL else MOD_CMD;
+    if key == '[' && mods == nav_mod { return cp_nav_go(s, -1); }
+    if key == ']' && mods == nav_mod { return cp_nav_go(s, 1); }
+    if (key == 's' || key == 'S') && mods == (nav_mod | MOD_ALT) { return cp_right_pane_toggle(s); }
+    if key == '`' && mods == MOD_CTRL && cp_flag(s, DC_FLAG_TERMINAL) {
+      s[0].bottom_dock_open = !s[0].bottom_dock_open;
+      if s[0].bottom_dock_open { s[0].term[0].open = true; }
+      return true;
+    }
+  }
   if cp_transcript_jump_key(s, which, key, mods) { return true; }
   if which < 0 { return false; }
   if which == CP_ED_FILE && s[0].fp[0].large_edit { return cp_fp_large_key(s, key, mods); }

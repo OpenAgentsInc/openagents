@@ -8,7 +8,7 @@
 
 // What a row is, as its item's code: a command (below), a chat (CP_PAL_CHAT + its place), a
 // settings entry, a model, a Foreman tier.
-CP_PAL_CHAT :: 1000; CP_PAL_FOREMAN :: 999; CP_PAL_SET :: 2000; CP_PAL_MODEL :: 3000; CP_PAL_TIER :: 4000;
+CP_PAL_CHAT :: 1000; CP_PAL_FOREMAN :: 999; CP_PAL_SET :: 2000; CP_PAL_MODEL :: 3000; CP_PAL_TIER :: 4000; CP_PAL_OUTLINE :: 9000;
 CP_PC_NEW :: 1; CP_PC_FOREMAN :: 2; CP_PC_FOLDER :: 3; CP_PC_SIDEBAR :: 4; CP_PC_MODEL :: 5; CP_PC_TIER :: 6; CP_PC_SETTINGS :: 7;
 CP_PC_DASHBOARD :: 45;
 CP_PC_BUDGET :: 8; CP_PC_GOAL :: 9; CP_PC_COPY :: 10; CP_PC_STOP :: 11; CP_PC_REVIEW :: 12; CP_PC_BIGGER :: 13; CP_PC_SMALLER :: 14;
@@ -113,6 +113,17 @@ cp_palette_fill :: (s: [] CoderPage) {
     cp_pal_cmd(p, "Next chat", "switch", "Ctrl Tab", -1, CP_PC_NEXT, 0);
     cp_pal_cmd(p, "Previous chat", "switch", "Ctrl Shift Tab", -1, CP_PC_PREV, 0);
   }
+  if s[0].nturns > 0 {
+    // Conversation Outline items (#14144): jump straight to any turn prompt via ⌘K.
+    max_ol := ifx s[0].nturns > 32 then 32 else s[0].nturns;
+    for oti: 0..<max_ol {
+      if s[0].turns[oti].ask_n > 0 {
+        ask := cast(string) s[0].turns[oti].ask[0..<s[0].turns[oti].ask_n];
+        take := ifx ask.count > 48 then 48 else ask.count;
+        cp_pal_cmd(p, cast(string) ask[0..<take], "outline jump prompt turn", "", ICON_CHATS, CP_PAL_OUTLINE + oti, 0);
+      }
+    }
+  }
   if has_foreman { cp_pal_cmd(p, "View Foreman audit log", "foreman history actions", "", -1, CP_PC_AUDIT, 0); }
   // settings: its pages and rows (settings.coax's search entries, filtered by feature flags)
   es := cp_set_entries(); names := CP_SET_NAME; icons := CP_SET_ICON;
@@ -191,6 +202,18 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
     if m >= cp_models(s) { return false; }
     s[0].model = m;
     if cp_is_inkling(s, m) && !s[0].inkling { s[0].ask = CP_ASK_LOCAL_DOWNLOAD; }
+    return true;
+  }
+  if c >= CP_PAL_OUTLINE && c < CP_PAL_OUTLINE + CP_TURNS {
+    ti := c - CP_PAL_OUTLINE;
+    cp_pal_leave_settings(s);
+    if ti >= 0 && ti < s[0].nturns {
+      s[0].stick = false;
+      s[0].glide_on = false;
+      target_y: f32 = 0.0f32;
+      for k_i: 0..<ti { target_y += ifx s[0].turns[k_i].h > 0 then s[0].turns[k_i].h else cast(f32) CP_ROW_ESTIMATE; }
+      s[0].scroll = scroll_clamp(target_y, s[0].content, s[0].view);
+    }
     return true;
   }
   if c >= CP_PAL_CONTENT {

@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 103;
+CP_SET_ENTRIES :: 107;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -135,7 +135,11 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.sysprompt", name = "Custom system prompt", terms = "custom system prompt global rules persona tone prepend append every chat"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.sysprompt.clear", name = "Clear custom system prompt", terms = "clear remove reset custom system prompt"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.sidebar.view", name = "Sidebar view", terms = "sidebar expanded condensed compact density rows single line"},
-    CpSetEntry.{page = CP_PG_GENERAL, id = "set.sidebar.archived", name = "Archived chats", terms = "archive archived chats hidden history restore view"}];
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.sidebar.archived", name = "Archived chats", terms = "archive archived chats hidden history restore view"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.transcript.width", name = "Transcript width", terms = "transcript width narrow wide column reading prose layout"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.desktop.startup", name = "Run on startup", terms = "desktop app startup login launch boot macos"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.desktop.menubar", name = "Menu bar icon", terms = "desktop app tray menu bar status icon popover"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.desktop.quickaccess", name = "Quick Access shortcut", terms = "desktop app quick access option double tap global hotkey floating panel"}];
 }
 // Whether a settings page is visible for the active flag bitmask.
 // Core release pages (flags == 0): General, Flawed, Providers, Models (Local), and About & updates.
@@ -253,6 +257,14 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   }
   nmode := cp_number(id, "set.notify.");
   if nmode >= CP_NOTIFY_OFF && nmode <= CP_NOTIFY_BOTH { s[0].notify_mode = nmode; s[0].ask = CP_ASK_NOTIFY; return true; }
+  tw := cp_number(id, "set.transcript.width.");
+  if tw == 0 || tw == 1 { s[0].wide_transcript = (tw == 1); return true; }
+  ds := cp_number(id, "set.desktop.startup.");
+  if ds == 0 || ds == 1 { s[0].desktop_launch_login = (ds == 1); return true; }
+  dm := cp_number(id, "set.desktop.menubar.");
+  if dm == 0 || dm == 1 { s[0].desktop_menubar_icon = (dm == 1); return true; }
+  dq := cp_number(id, "set.desktop.quickaccess.");
+  if dq == 0 || dq == 1 { s[0].desktop_quick_access = (dq == 1); return true; }
   ex := cp_number(id, "set.exp.");
   if ex == 0 || ex == 1 { coder_page_experimental_set(s, ex == 1); s[0].ask = CP_ASK_EXPERIMENTAL; return true; }
   if id == "set.instr.a" { s[0].ask = CP_ASK_INSTRUCTIONS; return true; }
@@ -490,6 +502,26 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].experimental then 1 else 0, action = CP_SET_ACT};
     rows[5].options[0] = "Off"; rows[5].options[1] = "On";
     y += cp_set_group(s, f, "set.general.group", x, y, w, rows[..]) + t.block_gap;
+    // Desktop app & reading layout settings (#14140)
+    y += set_section_head(f, "set.desktop.head", x, y, w, "Desktop app", "Reading width, macOS menu bar presence, and global Quick Access.") + t.section_gap;
+    drows: [4] SetRow;
+    drows[0] = SetRow.{id = "set.transcript.width", name = "Transcript width",
+      desc = ifx s[0].wide_transcript then "Wide (980pt) — roomier diffs, tables, and code blocks." else "Narrow (660pt) — calm prose reading column.",
+      kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].wide_transcript then 1 else 0, action = CP_SET_ACT};
+    drows[0].options[0] = "Narrow"; drows[0].options[1] = "Wide";
+    drows[1] = SetRow.{id = "set.desktop.quickaccess", name = "Quick Access shortcut",
+      desc = "Double-tap Option anywhere on macOS to summon floating Quick Access.",
+      kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].desktop_quick_access then 1 else 0, action = CP_SET_ACT};
+    drows[1].options[0] = "Off"; drows[1].options[1] = "Option ×2";
+    drows[2] = SetRow.{id = "set.desktop.menubar", name = "Menu bar icon",
+      desc = "Show live runs, timers, and quick actions in the macOS menu bar.",
+      kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].desktop_menubar_icon then 1 else 0, action = CP_SET_ACT};
+    drows[2].options[0] = "Off"; drows[2].options[1] = "On";
+    drows[3] = SetRow.{id = "set.desktop.startup", name = "Run on startup",
+      desc = "Start OpenAgents automatically when you sign in to macOS.",
+      kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].desktop_launch_login then 1 else 0, action = CP_SET_ACT};
+    drows[3].options[0] = "Off"; drows[3].options[1] = "On";
+    y += cp_set_group(s, f, "set.desktop.group", x, y, w, drows[..]) + t.block_gap;
     // Custom system prompt appended to every single system prompt (~/.openagents/system-prompt.md)
     y += set_section_head(f, "set.sysprompt.head", x, y, w, "Custom system prompt", "Extra instructions appended to every system prompt across OpenAgents and any connected external harnesses in every chat and folder.") + t.section_gap;
     sysp_val := ifx s[0].set_sysprompt_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt[0..<s[0].set_sysprompt_n]) else "Off";
@@ -828,16 +860,42 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     s[0].set_target_n = 0; s[0].set_due = true;
   }
 }
-// The settings screen in the window: the list at the chats' sidebar's width, the page beside it.
+// Floating centered Settings modal card over a dimmed scrim (#14140): preserves spatial context
+// while keeping the live Search nav on the left and scrollable settings detail on the right.
 cp_settings :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
+  k := f[0].skin; sh := f[0].sheet;
+  bar_h := cp_bar(s);
+  // Dimmed backdrop scrim (clicking outside the card dismisses Settings).
+  sheet_fill(sh, 0, 0, window_w, h, 0, rgba(0, 0, 0, 0.72f32));
+  srow := uiframe_semantic(f, "coder.settings.scrim", EL_BUTTON, "Close settings", 0, bar_h, window_w, h - bar_h, 0, CP_SET_BACK);
+  sheet_hit(sh, UIFRAME_HIT, srow, 0, 0, bar_h, window_w, h - bar_h);
+  // Centered floating #111111 modal card with crisp 1px #262626 border and 16pt radius.
+  mw := window_w - 80.0f32;
+  if mw > 940.0f32 { mw = 940.0f32; }
+  if mw < 560.0f32 { mw = window_w; }
+  mh := h - bar_h - 40.0f32;
+  if mh > 680.0f32 { mh = 680.0f32; }
+  if mh < 420.0f32 { mh = h - bar_h; }
+  mx := floor((window_w - mw) * 0.5f32);
+  if mx < 0.0f32 { mx = 0.0f32; }
+  my := bar_h + floor(((h - bar_h) - mh) * 0.5f32);
+  if my < bar_h { my = bar_h; }
+  _ := sheet_box(sh, mx, my, mw, mh, 16.0f32, k.border, k.surface, k.menu_divider);
+  _ := uiframe_semantic(f, "coder.settings.modal", EL_REGION, "Settings", mx, my, mw, mh, 0, 0);
+  // Left navigation column inside the modal card.
   spec := cp_sidebar_spec();
-  lw := ifx s[0].side_w > 0 then s[0].side_w else spec.default_w;
-  most := window_w - spec.main_min;
-  if lw > most { lw = ifx most > spec.min_w then most else spec.min_w; }
-  if lw > window_w { lw = window_w; }
+  lw := ifx s[0].side_w > 0 then s[0].side_w else 232.0f32;
+  if lw > 280.0f32 { lw = 280.0f32; }
+  most := mw - 360.0f32;
+  if lw > most { lw = ifx most > 180.0f32 then most else 180.0f32; }
   s[0].side = lw; s[0].pane_w = 0; s[0].col_w = 0;
-  cp_settings_page(s, f, lw, window_w - lw, h);
-  cp_settings_list(s, f, lw, h);
+  from := app_slide_mark(f);
+  cp_settings_page(s, f, lw, mw - lw, mh);
+  cp_settings_list(s, f, lw, mh);
+  app_slide(f, from, mx, my - bar_h);
+  // Adjust search box coordinates for the modal offset so click/IME targeting aligns cleanly.
+  s[0].set_box[0] += mx;
+  s[0].set_box[1] += my - bar_h;
   cp_ps_overlay(s, f, window_w, h);
 }
 
@@ -980,20 +1038,27 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   s[0].scroll = 40;
   #assert cp_settings_press(s, CP_SET_TOGGLE, "coder.me.settings") && s[0].set_open && coder_page_action(s) == CP_ASK_SETTINGS;
   #assert cp_set_test_frame(s, 1200, h);
-  #assert s[0].side == s[0].side_w && surface_find(s[0].surface[..], "coder.composer") < 0;
+  #assert surface_find(s[0].surface[..], "coder.settings.scrim") >= 0 && surface_find(s[0].surface[..], "coder.settings.modal") >= 0;
+  modal := cp_set_test_row(s, "coder.settings.modal");
+  #assert modal.x > 0 && modal.w <= 940.0f32 && surface_find(s[0].surface[..], "coder.composer") < 0;
   back := cp_set_test_row(s, "set.back");
-  #assert back.action == CP_SET_BACK && back.x < s[0].side;
+  #assert back.action == CP_SET_BACK && back.x >= modal.x && back.x < modal.x + s[0].side;
   for i: 0..<CP_SET_PAGES {
     pb: [16] u8; n := el_put(pb[..], 0, "set.page."); n = el_put_i(pb[..], n, i);
     #assert cp_set_test_row(s, cast(string) pb[0..<n]).action == CP_SET_PAGE;
   }
   me := cp_set_test_row(s, "set.me");
   t := cp_skin().set;
-  #assert me.action == CP_SET_TOGGLE && me.w <= 32.0f32 && me.y >= h - t.account - t.list_pad - 0.01 && me.y + me.h <= h - t.list_pad + 0.01;
-  #assert abs(me.y - gear.y) < 0.01;   // the settings footer stays where it was
+  #assert me.action == CP_SET_TOGGLE && me.w <= 32.0f32 && me.y >= modal.y && me.y + me.h <= modal.y + modal.h + 1.0f32;
   #assert cp_set_test_row(s, "set.title").w > 0 && cp_set_test_row(s, "set.folder.a").action == CP_SET_ACT;
-  // Back: the chat as it was
+  // Transcript width & Desktop app settings (#14140) render, toggle, and are searchable.
+  hits: [CP_SET_HITS] int;
+  #assert cp_set_hits("transcript width", hits[..]) > 0 && cp_set_hits("quick access", hits[..]) > 0;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.transcript.width.1") && s[0].wide_transcript;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.desktop.startup.1") && s[0].desktop_launch_login;
+  // Back: the chat as it was, now with Wide transcript column!
   #assert cp_settings_press(s, CP_SET_BACK, "set.back") && !s[0].set_open && s[0].scroll == 40;
+  #assert cp_set_test_frame(s, 1400, h) && s[0].col_w > cast(f32) CP_COLUMN;
   #assert coder_page_settings_page(s) == -1;
 }
 #test "settings: every page draws its rows, the search opens a row's page, and Account keeps its card beside or over the rows" {

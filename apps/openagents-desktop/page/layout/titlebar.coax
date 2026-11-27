@@ -27,10 +27,145 @@ cp_bar_toggle_x :: (s: [] CoderPage) -> f32 { return (ifx s[0].bar_full then CP_
 cp_bar_search_x :: (s: [] CoderPage, has_toggle: bool) -> f32 {
   return cp_bar_toggle_x(s) + (ifx has_toggle then CP_ISLAND_CONTROL + CP_BAR_GAP_PT / cp_scale(s) else 0.0f32);
 }
+cp_bar_back_x :: (s: [] CoderPage, has_toggle: bool) -> f32 {
+  return cp_bar_search_x(s, has_toggle) + CP_ISLAND_CONTROL + CP_BAR_GAP_PT / cp_scale(s);
+}
+cp_bar_fwd_x :: (s: [] CoderPage, has_toggle: bool) -> f32 {
+  return cp_bar_back_x(s, has_toggle) + CP_ISLAND_CONTROL + CP_BAR_GAP_PT / cp_scale(s);
+}
+cp_bar_mode_x :: (s: [] CoderPage, has_toggle: bool) -> f32 {
+  return cp_bar_fwd_x(s, has_toggle) + CP_ISLAND_CONTROL + (CP_BAR_GAP_PT + 4.0f32) / cp_scale(s);
+}
+CP_BAR_MODE_W :: 112.0f32;
 // Where the bar's controls at the left end, with the room past them: what shares the line starts past it.
-cp_bar_clear :: (s: [] CoderPage) -> f32 { return cp_bar_search_x(s, true) + CP_ISLAND_CONTROL + CP_BAR_ROW_PAD_PT / cp_scale(s); }
+cp_bar_clear :: (s: [] CoderPage) -> f32 {
+  return cp_bar_mode_x(s, true) + CP_BAR_MODE_W + CP_BAR_ROW_PAD_PT / cp_scale(s);
+}
 // A control on the bar's line, size tall, from the top: never above the window's edge.
 cp_bar_y :: (s: [] CoderPage, size: f32) -> f32 { y := cp_bar_line(s) - size / 2; return ifx y < 0 then 0.0f32 else y; }
+
+// Navigation history ring/stack (#14138): tracks recent views and chats for < / > and Cmd+[ / Cmd+].
+cp_nav_can_back :: (s: [] CoderPage) -> bool { return s.count > 0 && s[0].nav_n > 1 && s[0].nav_at > 0; }
+cp_nav_can_fwd :: (s: [] CoderPage) -> bool { return s.count > 0 && s[0].nav_at >= 0 && s[0].nav_at + 1 < s[0].nav_n; }
+cp_nav_entry_eq :: (a: CpNavEntry, b: CpNavEntry) -> bool {
+  if a.view != b.view || a.catalog != b.catalog || a.mode != b.mode || a.chat_id_n != b.chat_id_n { return false; }
+  for i: 0..<a.chat_id_n { if a.chat_id[i] != b.chat_id[i] { return false; } }
+  return true;
+}
+cp_nav_make :: (view: int, chat_id: string, catalog: int, mode: int) -> CpNavEntry {
+  e := CpNavEntry.{view = view, catalog = catalog, mode = mode};
+  e.chat_id_n = cp_out(e.chat_id[..], chat_id);
+  return e;
+}
+cp_nav_push :: (s: [] CoderPage, view: int, chat_id: string, catalog: int) {
+  if s.count < 1 || s[0].nav_suppress { return; }
+  e := cp_nav_make(view, chat_id, catalog, s[0].work_mode);
+  if s[0].nav_n > 0 && s[0].nav_at >= 0 && s[0].nav_at < s[0].nav_n {
+    if cp_nav_entry_eq(s[0].nav_hist[s[0].nav_at], e) { return; }
+  }
+  // Truncate forward tail when pushing from a back position.
+  next_n := ifx s[0].nav_at >= 0 && s[0].nav_at < s[0].nav_n then s[0].nav_at + 1 else s[0].nav_n;
+  if next_n >= CP_NAV_HIST_MAX {
+    for i: 1..<CP_NAV_HIST_MAX { s[0].nav_hist[i - 1] = s[0].nav_hist[i]; }
+    next_n = CP_NAV_HIST_MAX - 1;
+  }
+  s[0].nav_hist[next_n] = e;
+  s[0].nav_n = next_n + 1;
+  s[0].nav_at = next_n;
+}
+cp_nav_record_current :: (s: [] CoderPage) {
+  if s.count < 1 || s[0].nav_suppress { return; }
+  view := CP_NAV_CHAT;
+  if s[0].dash[0].open { view = CP_NAV_DASHBOARD; }
+  else if s[0].wallet[0].open { view = CP_NAV_WALLET; }
+  else if s[0].introspect[0].open { view = CP_NAV_INTROSPECT; }
+  cid := ifx view == CP_NAV_CHAT then cast(string) s[0].current[0..<s[0].current_n] else "";
+  cp_nav_push(s, view, cid, 0);
+}
+cp_nav_go :: (s: [] CoderPage, delta: int) -> bool {
+  if s.count < 1 || s[0].nav_n < 2 { return false; }
+  target := s[0].nav_at + delta;
+  if target < 0 || target >= s[0].nav_n { return false; }
+  s[0].nav_at = target;
+  e := s[0].nav_hist[target];
+  s[0].nav_suppress = true;
+  s[0].work_mode = e.mode;
+  s[0].dash[0].open = false;
+  s[0].wallet[0].open = false;
+  s[0].introspect[0].open = false;
+  s[0].catalog_view = CP_CAT_NONE;
+  if e.view == CP_NAV_CATALOG {
+    s[0].catalog_view = e.catalog;
+  } else if e.view == CP_NAV_DASHBOARD {
+    s[0].dash[0].open = true;
+    s[0].ask = CP_ASK_DASHBOARD;
+  } else if e.view == CP_NAV_WALLET {
+    s[0].wallet[0].open = true;
+    s[0].ask = CP_ASK_WALLET_OPEN;
+  } else if e.view == CP_NAV_INTROSPECT {
+    s[0].introspect[0].open = true;
+  } else {
+    cid := cast(string) e.chat_id[0..<e.chat_id_n];
+    cur := cast(string) s[0].current[0..<s[0].current_n];
+    if cid.count == 0 {
+      if cur.count > 0 || s[0].nturns > 0 { _ = cp_new(s); }
+    } else if cid != cur {
+      for q: 0..<s[0].nchats {
+        if cid == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] {
+          s[0].open = q;
+          s[0].ask = CP_ASK_OPEN;
+          break;
+        }
+      }
+    }
+  }
+  s[0].nav_suppress = false;
+  return true;
+}
+
+// Crisp segmented [Chat | </> Code] workspace mode pill in OpenAgents pure-black Geist skin (#14138).
+cp_mode_switch :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) {
+  if w < 64.0f32 || h < 18.0f32 { return; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  pad := 2.0f32;
+  r := 8.0f32;
+  _ := sheet_box(sh, x, y, w, h, r, k.border, k.surface, k.menu_divider);
+  seg_w := (w - 2.0f32 * pad) * 0.5f32;
+  seg_h := h - 2.0f32 * pad;
+  if seg_w <= 0 || seg_h <= 0 { return; }
+  is_code := s[0].work_mode == CP_MODE_CODE;
+  labels := [2] string.["Chat", "Code"];
+  ids := [2] string.["coder.mode.chat", "coder.mode.code"];
+  acts := [2] int.[CP_MODE_CHAT_ACT, CP_MODE_CODE_ACT];
+  icons := [2] int.[ICON_CHATS, ICON_TERMINAL];
+  for idx: 0..<2 {
+    sx := x + pad + cast(f32) idx * seg_w;
+    sy := y + pad;
+    active := (idx == 0 && !is_code) || (idx == 1 && is_code);
+    kk := uiframe_key(f, ids[idx]);
+    hv := uiframe_hover(f, kk, ids[idx]);
+    if active {
+      _ := sheet_box(sh, sx, sy, seg_w, seg_h, r - 2.0f32, k.border, k.raised, rgba_mix(k.menu_divider, k.accent, 0.35f32));
+    } else if hv > 0 {
+      sheet_fill(sh, sx, sy, seg_w, seg_h, r - 2.0f32, opacity(k.raised, 0.55f32 * hv));
+    }
+    ink := ifx active then k.ink else rgba_mix(k.muted, k.ink, hv);
+    tf := k.small;
+    tw := measure_width(m, tf.face, labels[idx]);
+    show_icon := seg_w >= tw + 26.0f32;
+    ico_sz := 12.0f32;
+    gap := 4.0f32;
+    tot_w := tw + (ifx show_icon then ico_sz + gap else 0.0f32);
+    cx := sx + (seg_w - tot_w) * 0.5f32;
+    if show_icon {
+      sheet_icon(sh, icons[idx], cx, sy + (seg_h - ico_sz) * 0.5f32, ico_sz, ifx active then k.accent else ink);
+      cx += ico_sz + gap;
+    }
+    _ := sheet_text(sh, m, -1, cx, sy + (seg_h - tf.line) * 0.5f32, tf.line, tf.face, ink, labels[idx]);
+    row := uiframe_semantic(f, ids[idx], EL_BUTTON, labels[idx], sx, sy, seg_w, seg_h, ifx active then EL_S_CURRENT else 0, acts[idx]);
+    sheet_hit(sh, UIFRAME_HIT, row, 0, sx, sy, seg_w, seg_h);
+  }
+}
 
 // Crisp single-physical-pixel horizontal border whose bottom edge aligns with edge_y (matching cp_side_border).
 cp_bar_border :: (s: [] CoderPage, sh: [] Sheet, x: f32, w: f32, edge_y: f32, color: Rgba) {
@@ -42,21 +177,21 @@ cp_bar_border :: (s: [] CoderPage, sh: [] Sheet, x: f32, w: f32, edge_y: f32, co
   if y1 > y0 && w > 0.0f32 { sheet_fill(sh, x, y0, w, y1 - y0, 0, color); }
 }
 
-// Full-width main-area header bar from `left` to `w`: opaque surface, crisp 1-physical-pixel bottom
-// border matching the sidebar divider, and the page or thread title on the top-left clear of controls.
-cp_header_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, title: string, right_limit: f32) {
+// Full-width main-area header bar from `left` to `w`: opaque surface, optional crisp 1-physical-pixel
+// bottom border matching the sidebar divider, and the page or thread title on the top-left clear of controls.
+cp_header_bar_styled :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, title: string, right_limit: f32, draw_border: bool) {
   k := f[0].skin; sh := f[0].sheet;
   bar_h := cp_bar(s);
   bw := w - left;
   if bw <= 0.0f32 || bar_h <= 0.0f32 { return; }
   bg := k.canvas;
   d := ifx s.count > 0 && s[0].d > 0.0f32 then s[0].d else 1.0f32;
-  bh := (snap(bar_h, d) - 1.0f32) / d;
+  bh := ifx draw_border then (snap(bar_h, d) - 1.0f32) / d else bar_h;
   if bh < 0.0f32 { bh = 0.0f32; }
   if bh > 0.0f32 { sheet_fill(sh, left, 0, bw, bh, 0, bg); }
-  cp_bar_border(s, sh, left, bw, bar_h, k.menu_divider);
+  if draw_border { cp_bar_border(s, sh, left, bw, bar_h, k.menu_divider); }
   if title.count > 0 {
-    tx := ifx left > 0.0f32 then left + 16.0f32 else cp_bar_clear(s);
+    tx := ifx left >= 180.0f32 then left + 16.0f32 else cp_bar_clear(s);
     room := right_limit - tx;
     if room > 16.0f32 {
       tf := k.title;
@@ -68,6 +203,9 @@ cp_header_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, title: stri
       _ := sheet_text(sh, f[0].m, -1, tx, ty, tf.line, tf.face, k.ink, fit);
     }
   }
+}
+cp_header_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, title: string, right_limit: f32) {
+  cp_header_bar_styled(s, f, left, w, title, right_limit, true);
 }
 
 // The island behind the bar's controls at the window's top left (zeron.island), toggle or not:
@@ -97,10 +235,19 @@ cp_title_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, toggle: bool) {
   by := cp_bar_y(s, CP_ISLAND_CONTROL);
   if has_toggle {
     _ := app_icon_button(f, "coder.side.toggle", cp_bar_toggle_x(s), by, k.app.icon_nav,
-                         ifx left > 0 then "Hide sidebar" else "Show sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
+                         ifx left >= 180.0f32 then "Hide sidebar" else "Show sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
   }
   _ := app_icon_button(f, "coder.search", cp_bar_search_x(s, has_toggle), by, ICON_MAGNIFER,
                        cp_tr(loc, "search"), APP_BUTTON_QUIET, 0, CP_PALETTE);
+  back_st := ifx cp_nav_can_back(s) then 0 else EL_S_DISABLED;
+  fwd_st := ifx cp_nav_can_fwd(s) then 0 else EL_S_DISABLED;
+  _ := app_icon_button(f, "coder.nav.back", cp_bar_back_x(s, has_toggle), by, ICON_BACK,
+                       "Back", APP_BUTTON_QUIET, back_st, CP_NAV_BACK);
+  _ := app_icon_button(f, "coder.nav.fwd", cp_bar_fwd_x(s, has_toggle), by, ICON_CHEVRON_RIGHT,
+                       "Forward", APP_BUTTON_QUIET, fwd_st, CP_NAV_FWD);
+  if left < 180.0f32 {
+    cp_mode_switch(s, f, cp_bar_mode_x(s, has_toggle), by, CP_BAR_MODE_W, CP_ISLAND_CONTROL);
+  }
   f[0].skin = keep;
 }
 

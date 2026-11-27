@@ -169,7 +169,7 @@ c_objs=(
   "$work/c/cloud-chat-wire.o"
 )
 link_flags=(
-  -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO
+  -framework AppKit -framework Carbon -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO
   -framework UniformTypeIdentifiers -framework CoreGraphics -framework CryptoKit -framework Security
   -framework AuthenticationServices -framework UserNotifications -framework IOKit -framework Speech -framework AVFoundation
   -I "$spark_sdk" -F "$spark_sdk"
@@ -177,7 +177,7 @@ link_flags=(
   -framework breez_sdk_sparkFFI -Xlinker -rpath -Xlinker @executable_path/../Frameworks
 )
 core_swift=(
-  "$here/Activation.swift" "$here/AntigravityProvider.swift" "$here/AppDelegate.swift" "$here/CloudChatSync.swift" "$here/DaemonClient.swift"
+  "$here/Activation.swift" "$here/AntigravityProvider.swift" "$here/AppDelegate.swift" "$here/QuickAccessPanel.swift" "$here/TrayPopover.swift" "$here/MacSandbox.swift" "$here/CloudChatSync.swift" "$here/DaemonClient.swift"
   "$here/DefaultsMigration.swift" "$here/DesktopCore.swift" "$here/LocalModels.swift"
   "$here/Notifications.swift" "$here/Store.swift" "$here/Updater.swift"
   "$here/Window.swift" "$here/Window+Attach.swift" "$here/Window+Chats.swift"

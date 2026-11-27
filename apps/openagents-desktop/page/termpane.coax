@@ -79,6 +79,9 @@ CpTermTab :: struct {
   lines: int;
   line_start: int;
   ansi_state: int;
+  ansi_sgr: [24] u8; ansi_sgr_n: int;
+  cur_fg: u8;                 // active ANSI SGR color code (0=default, 1..16=16-color OLED palette, #14142)
+  line_fg: [512] u8;          // per-line SGR foreground color ring
   scroll: f32; content: f32; view: f32;
   stick: bool;
   sel_a: int; sel_b: int; sel_on: bool;
@@ -301,6 +304,47 @@ cp_term_push_byte :: (t: [] CpTermPane, slot: int, ch: u8) {
 
 // Feeds raw PTY output bytes into tab slot, incrementally stripping ANSI CSI/OSC/ESC sequences
 // and handling carriage returns and backspaces across chunk boundaries.
+// Parse ANSI SGR sequence (\x1b[...m) into our 16-color OLED foreground code (#14142).
+cp_term_sgr_apply :: (t: [] CpTermPane, slot: int) {
+  n := t[0].tabs[slot].ansi_sgr_n;
+  if n == 0 { t[0].tabs[slot].cur_fg = 0; return; }
+  i := 0;
+  while i < n {
+    val := 0;
+    while i < n && t[0].tabs[slot].ansi_sgr[i] >= '0' && t[0].tabs[slot].ansi_sgr[i] <= '9' {
+      val = val * 10 + cast(int) (t[0].tabs[slot].ansi_sgr[i] - '0');
+      i += 1;
+    }
+    if val == 0 || val == 39 { t[0].tabs[slot].cur_fg = 0; }
+    else if val >= 30 && val <= 37 { t[0].tabs[slot].cur_fg = cast(u8) (val - 29); }
+    else if val >= 90 && val <= 97 { t[0].tabs[slot].cur_fg = cast(u8) (val - 81); }
+    if i < n && t[0].tabs[slot].ansi_sgr[i] == ';' { i += 1; }
+    else { break; }
+  }
+  if t[0].tabs[slot].cur_fg != 0 {
+    t[0].tabs[slot].line_fg[t[0].tabs[slot].lines & 511] = t[0].tabs[slot].cur_fg;
+  }
+}
+// Map ANSI SGR 16-color code (1..16) to crisp colors tuned for pure-black #000000 OLED (#14142).
+cp_term_sgr_color :: (k: UiSkin, code: u8) -> Rgba {
+  if code == 0 { return k.ink; }
+  if code == 1 { return hex(0x656565, 1); }  // 30 black/dim
+  if code == 2 { return hex(0xfb414a, 1); }  // 31 red
+  if code == 3 { return hex(0x34d399, 1); }  // 32 green
+  if code == 4 { return hex(0xfe9a00, 1); }  // 33 yellow
+  if code == 5 { return hex(0x346bf1, 1); }  // 34 blue
+  if code == 6 { return hex(0xad98fe, 1); }  // 35 magenta
+  if code == 7 { return hex(0x51a2ff, 1); }  // 36 cyan
+  if code == 8 { return hex(0xd4d4d8, 1); }  // 37 white
+  if code == 9 { return hex(0x818181, 1); }  // 90 bright black
+  if code == 10 { return hex(0xff6467, 1); } // 91 bright red
+  if code == 11 { return hex(0x4ade80, 1); } // 92 bright green
+  if code == 12 { return hex(0xffb900, 1); } // 93 bright yellow
+  if code == 13 { return hex(0x60a5fa, 1); } // 94 bright blue
+  if code == 14 { return hex(0xc4b5fd, 1); } // 95 bright magenta
+  if code == 15 { return hex(0x7dd3fc, 1); } // 96 bright cyan
+  return hex(0xffffff, 1);                   // 97 bright white
+}
 cp_term_feed_slot :: (t: [] CpTermPane, slot: int, bytes: [] u8) {
   if slot < 0 || slot >= t[0].ntabs || bytes.count <= 0 { return; }
   st := t[0].tabs[slot].ansi_state;
@@ -326,18 +370,35 @@ cp_term_feed_slot :: (t: [] CpTermPane, slot: int, bytes: [] u8) {
         cp_term_push_byte(t, slot, ' ');
         continue;
       }
-      if c == '\n' || c >= 0x20 { cp_term_push_byte(t, slot, c); }
+      if c == '\n' || c >= 0x20 {
+        if c == '\n' {
+          cp_term_push_byte(t, slot, c);
+          t[0].tabs[slot].line_fg[t[0].tabs[slot].lines & 511] = t[0].tabs[slot].cur_fg;
+        } else {
+          if t[0].tabs[slot].line_fg[t[0].tabs[slot].lines & 511] == 0 && t[0].tabs[slot].cur_fg != 0 {
+            t[0].tabs[slot].line_fg[t[0].tabs[slot].lines & 511] = t[0].tabs[slot].cur_fg;
+          }
+          cp_term_push_byte(t, slot, c);
+        }
+      }
       continue;
     }
     if st == CP_TERM_ANSI_ESC {
-      if c == '[' { st = CP_TERM_ANSI_CSI; }
+      if c == '[' { st = CP_TERM_ANSI_CSI; t[0].tabs[slot].ansi_sgr_n = 0; }
       else if c == ']' { st = CP_TERM_ANSI_OSC; }
       else if c == '(' || c == ')' || c == '*' || c == '+' { st = CP_TERM_ANSI_CHARSET; }
       else { st = CP_TERM_ANSI_NORMAL; }
       continue;
     }
     if st == CP_TERM_ANSI_CSI {
-      if c >= 0x40 && c <= 0x7e { st = CP_TERM_ANSI_NORMAL; }
+      if c >= 0x40 && c <= 0x7e {
+        if c == 'm' { cp_term_sgr_apply(t, slot); }
+        t[0].tabs[slot].ansi_sgr_n = 0;
+        st = CP_TERM_ANSI_NORMAL;
+      } else if t[0].tabs[slot].ansi_sgr_n < 24 {
+        t[0].tabs[slot].ansi_sgr[t[0].tabs[slot].ansi_sgr_n] = c;
+        t[0].tabs[slot].ansi_sgr_n += 1;
+      }
       continue;
     }
     if st == CP_TERM_ANSI_OSC {
@@ -808,10 +869,12 @@ cp_termpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   uiframe_clip(f, tx0, ty0, tx0 + tw0, ty0 + th0);
   ry := ty0 - t[0].tabs[slot].scroll;
   at := 0;
+  line_idx := 0;
   spans: [16] CpTermSpan;
   while true {
     end := at; while end < src.count && src[end] != '\n' { end += 1; }
     line := cast(string) src[at..<end];
+    l_ink := cp_term_sgr_color(k, t[0].tabs[slot].line_fg[line_idx & 511]);
     lrows := ifx line.count == 0 then 1 else (line.count + cols - 1) / cols;
     if ry + cast(f32) lrows * lh > ty0 && ry < ty0 + th0 {
       nspans := cp_term_scan_line(line, spans[..]);
@@ -833,7 +896,7 @@ cp_termpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
         }
         if c1 > c0 {
           seg := sheet_pool(sh, cast(string) line[c0..<c1]);
-          _ := sheet_text(sh, f[0].m, -1, tx0, row_y, lh, face, k.ink, seg);
+          _ := sheet_text(sh, f[0].m, -1, tx0, row_y, lh, face, l_ink, seg);
         }
         // register clickable link/path overlays on this row
         for si: 0..<nspans {
@@ -854,6 +917,7 @@ cp_termpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       }
     }
     ry += cast(f32) lrows * lh;
+    line_idx += 1;
     if end >= src.count { break; }
     at = end + 1;
   }

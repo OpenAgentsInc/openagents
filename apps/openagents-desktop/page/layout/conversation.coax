@@ -433,6 +433,10 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       f[0].skin.motion.enter = enter; if s[0].live_ask == i { s[0].live_ask = -1; }
       asked := s[0].copied_kind == CP_COPIED_ASK && s[0].copied_turn == i;
       u_hov := in_view && s[0].py >= y0 && s[0].py < y + lane;
+      // Hover-revealed Edit & resend action beside Copy on user bubbles (#14144)
+      if u_hov && !running {
+        _ := app_icon_button(f, cp_id(ib[..], i, ".edit"), x + cw - 2.0f32 * lane_btn - a.gap_small, y + lane_top, ICON_PEN, "Edit & resend", APP_BUTTON_QUIET, 0, CP_TURN_EDIT);
+      }
       y += cp_copy_lane(f, cp_id(ib[..], i, ".uc"), x + cw - lane_btn, y, u_hov || asked, asked, CP_COPY_ASK);
       // what it did on its way to the reply: one activity group (#13731)
       gh := cp_group(s, f, i, x, y, cw, top, bottom);
@@ -490,6 +494,11 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
             }
           }
           cp_info_button(f, info_id, info_x, y, q_vis, s[0].turns[i].info, CP_TURN_INFO);
+          // Inline Retry & Fork actions on completed assistant turns (#14144)
+          if !running && meta_right - info_x > 3.0f32 * lane_btn {
+            _ := app_icon_button(f, cp_id(ib[..], i, ".retry"), meta_right - 2.0f32 * lane_btn - a.gap_small, y + lane_top, ICON_ARROW_UP, "Retry", APP_BUTTON_QUIET, 0, CP_TURN_RETRY);
+            _ := app_icon_button(f, cp_id(ib[..], i, ".fork"), meta_right - lane_btn, y + lane_top, ICON_SHARE, "Fork", APP_BUTTON_QUIET, 0, CP_TURN_FORK);
+          }
           if has_quote { cp_quote_button(f, cp_id(ib[..], i, ".aq"), x + lane_btn + a.gap_small, y, q_vis); }
           y += cp_copy_lane(f, cp_id(ib[..], i, ".ac"), x, y, q_vis, did, CP_COPY_REPLY);
         } else { y += a.gap; }
@@ -656,6 +665,11 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   cp_sel_paint(s, f, CP_SEL_CONV, conv_nl, f[0].sheet[0].nl, conv_scroll);
   uiframe_unclip(f);
   s[0].content = new_content;
+  // 28pt scroll-edge alpha fade masks into #000000 canvas (#14139)
+  if s[0].nturns > 0 && s[0].view > 0 && s[0].content > s[0].view {
+    cp_scroll_fade(f[0].sheet, left, top, w - left, bottom - top, f[0].skin.canvas,
+                   s[0].scroll > 1.0f32, s[0].scroll + s[0].view < s[0].content - 1.0f32);
+  }
   app_scroll_rail(f, s[0].scr[..], w, top, s[0].scroll, s[0].content, s[0].view, s[0].view, s[0].now, s[0].reduced);
   cp_minimap_draw(s, f, w, 0.0f32, bottom);
   cp_find_bar(s, f, left, w, 0.0f32);
@@ -757,7 +771,8 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   has_mv := cp_mv_enabled(s);
   // Pack visible corner buttons right-to-left with no dead gaps.
   rx := w - CP_CORNER;
-  new_x: f32 = 0; copy_x: f32 = 0; rev_x: f32 = 0; term_x: f32 = 0; mv_x: f32 = 0; ft_x: f32 = 0;
+  pane_btn_x: f32 = 0; new_x: f32 = 0; copy_x: f32 = 0; rev_x: f32 = 0; term_x: f32 = 0; mv_x: f32 = 0; ft_x: f32 = 0;
+  rx -= side; pane_btn_x = rx;
   if has_new   { rx -= side; new_x = rx; }
   if has_copy  { rx -= side; copy_x = rx; }
   if review    { rx -= side; rev_x = rx; }
@@ -768,7 +783,7 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   home := s[0].nturns == 0 && cast(string) s[0].current[0..<s[0].current_n] != "chat.foreman";
   show_wt := home && !running;
   w_wt := ifx show_wt then cp_foot_checkbox_width(f, "New worktree") else 0.0f32;
-  min_left := ifx left > 0 then left + 16.0f32 else cp_bar_clear(s);
+  min_left := ifx left >= 180.0f32 then left + 16.0f32 else cp_bar_clear(s);
   wt_x: f32 = 0;
   wt_drawn := false;
   right_for_title := rx - a.gap;
@@ -786,7 +801,9 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   if cp_flag(s, DC_FLAG_GIT) && s[0].git[0].in_repo && git_right - git_min >= 120.0f32 {
     right_for_title = git_min - a.gap;
   }
-  cp_header_bar(s, f, left, w, title, right_for_title);
+  // Quiet empty-chat canvas (#14138): omit heavy bottom border on clean unscrolled empty Chat mode.
+  quiet_empty := home && s[0].work_mode == CP_MODE_CHAT && s[0].scroll <= 1.0f32;
+  cp_header_bar_styled(s, f, left, w, title, right_for_title, !quiet_empty);
   if wt_drawn {
     wy := cp_bar_y(s, k.cmp.chip_h);
     _ := cp_foot_checkbox(f, "coder.worktree", "Create a new git worktree for this chat", wt_x, wy, w_wt, "New worktree", s[0].new_chat_worktree, CP_WORKTREE_TOGGLE);
@@ -808,7 +825,7 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
     _ := app_icon_button(f, "coder.mv.toggle", mv_x, cy, ICON_WIDGET, ifx mv_shown then "Hide Metaverse pane" else "Show Metaverse pane", APP_BUTTON_QUIET, ifx mv_shown then EL_S_CURRENT else 0, CP_MV_TOGGLE);
   }
   ft_shown := cp_fp_shown(s);
-  _ := app_icon_button(f, "coder.ft.toggle", ft_x, cy, ICON_SIDEBAR_RIGHT, ifx ft_shown then "Hide file viewer" else "Show file viewer", APP_BUTTON_QUIET, 0, CP_FT_TOGGLE);
+  _ := app_icon_button(f, "coder.ft.toggle", ft_x, cy, ICON_FOLDER, ifx ft_shown then "Hide file viewer" else "Show file viewer", APP_BUTTON_QUIET, ifx ft_shown then EL_S_CURRENT else 0, CP_FT_TOGGLE);
   if has_copy {
     _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                          0, CP_COPY_ALL);
@@ -818,6 +835,11 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
     _ := app_icon_button(f, "coder.new", new_x, cy, ICON_COMPOSE, cp_tr(loc, "new_chat"), APP_BUTTON_QUIET,
                          ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   }
+  // Discoverable top-right right-pane toggle (Opt+Cmd+S / click, #14138)
+  any_pane := cp_other_pane_open(s);
+  _ := app_icon_button(f, "coder.pane.toggle", pane_btn_x, cy, ICON_SIDEBAR_RIGHT,
+                       ifx any_pane then "Hide workspace pane" else "Show workspace pane",
+                       APP_BUTTON_QUIET, ifx any_pane then EL_S_CURRENT else 0, CP_RIGHT_PANE_TOGGLE);
 }
 // True on a clean empty chat when neither OpenAgents Cloud / BYO cloud credentials nor local
 // Inkling weights are ready yet (unless the user explicitly opted into Developer -> Show other models
@@ -1096,6 +1118,9 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   }
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
+  if centred && s[0].art[0].n > 0 && foot_y + k.cmp.chip_h + 110.0f32 < h {
+    _ := cp_recent_artifacts_strip(s, f, x, foot_y + k.cmp.chip_h + 24.0f32, cw);
+  }
   if cp_models(s) > 0 && s[0].model_menu { cp_model_menu(s, f, x, cw, s[0].model_x, box_y, foot_y, h); }
   if s[0].effort_menu { cp_effort_menu(s, f, x, cw, s[0].effort_x, box_y, foot_y, h); }
   _ = m_x;
@@ -1389,6 +1414,15 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   if show_goal { other_right += w_goal + gap; }
   fw := ifx show_branch then w_folder else w_short;
   right_total := other_right + (ifx show_folder then fw + gap else 0.0f32);
+  // Inline Permission Mode chip below composer (Ask | Auto-edit | Full Auto, #14144)
+  if !running && !show_fu_draft {
+    pm_lbl := ifx s[0].perm_mode == CP_PERM_FULL_AUTO then "Full Auto" else ifx s[0].perm_mode == CP_PERM_AUTO_EDIT then "Auto-edit" else "Ask";
+    w_pm := cp_foot_chip_width(f, -1, pm_lbl, false);
+    if fx + w_pm + right_total <= end_x {
+      if fx > x + side { fx += gap; }
+      fx += cp_foot_chip(f, "coder.perm.mode", "Permission mode (Ask / Auto-edit / Full Auto)", fx, y, w_pm, -1, pm_lbl, false, ifx s[0].perm_mode != CP_PERM_ASK then EL_S_CURRENT else 0, CP_PERM_CYCLE);
+    }
+  }
   // Fresh Session toggle & Multi-model fan-out chips: gated by models.external
   if cp_flag(s, DC_FLAG_MODELS_EXTERNAL) && !running && (s[0].nturns > 0 || s[0].prov[0].fresh_session) {
     fresh_lbl := ifx s[0].prov[0].fresh_session then "Fresh ✓" else "Fresh";

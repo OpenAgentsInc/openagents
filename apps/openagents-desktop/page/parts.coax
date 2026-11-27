@@ -48,6 +48,8 @@
 #load "chats.coax";
 #load "dashboard.coax";
 #load "walletpane.coax";
+#load "artifacts.coax";
+#load "catalog.coax";
 #load "sidebar_groups.coax";
 #load "persist.coax";
 #load "input.coax";

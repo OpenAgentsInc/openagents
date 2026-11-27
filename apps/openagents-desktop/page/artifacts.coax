@@ -1,0 +1,154 @@
+// Coder Desktop page (../page.coax): Artifacts pane (Code | Preview, versions) and
+// Recent Artifacts home strip (#14143). Pure-black #000000 canvas + #111111 cards + #262626 borders.
+
+CP_ART_MAX :: 16;
+CP_ART_TITLE :: 96;
+CP_ART_BODY :: 4096;
+
+CP_ART_KIND_CODE :: 0;
+CP_ART_KIND_MD :: 1;
+CP_ART_KIND_HTML :: 2;
+CP_ART_KIND_SVG :: 3;
+CP_ART_KIND_CSV :: 4;
+
+CP_ART_OPEN :: 620;
+CP_ART_CLOSE :: 621;
+CP_ART_CODE :: 622;
+CP_ART_PREVIEW :: 623;
+CP_ART_NEXT_VER :: 624;
+
+CpArtifact :: struct {
+  title: [CP_ART_TITLE] u8; title_n: int;
+  kind: int;
+  version: int;
+  body: [CP_ART_BODY] u8; body_n: int;
+}
+
+CpArtifacts :: struct {
+  open: bool;
+  preview: bool;
+  active: int;
+  items: [CP_ART_MAX] CpArtifact;
+  n: int;
+  scroll: f32;
+}
+
+cp_art_init :: (s: [] CoderPage) {
+  s[0].art[0] = CpArtifacts.{};
+  s[0].art[0].preview = true;
+}
+
+cp_art_push :: (s: [] CoderPage, title: string, kind: int, body: string) -> int {
+  a := s[0].art[..];
+  idx := -1;
+  for i: 0..<a[0].n {
+    if cast(string) a[0].items[i].title[0..<a[0].items[i].title_n] == title { idx = i; break; }
+  }
+  if idx < 0 {
+    if a[0].n < CP_ART_MAX { idx = a[0].n; a[0].n += 1; a[0].items[idx].version = 1; }
+    else { idx = CP_ART_MAX - 1; a[0].items[idx].version += 1; }
+  } else {
+    a[0].items[idx].version += 1;
+  }
+  a[0].items[idx].title_n = cp_out(a[0].items[idx].title[..], title);
+  a[0].items[idx].kind = kind;
+  a[0].items[idx].body_n = cp_out(a[0].items[idx].body[..], body);
+  a[0].active = idx;
+  return idx;
+}
+
+cp_art_shown :: (s: [] CoderPage) -> bool {
+  return s.count > 0 && s[0].art[0].open && s[0].art[0].n > 0;
+}
+
+cp_art_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  a := s[0].art[..];
+  if act == CP_ART_CLOSE { a[0].open = false; return true; }
+  if act == CP_ART_CODE { a[0].preview = false; return true; }
+  if act == CP_ART_PREVIEW { a[0].preview = true; return true; }
+  if act == CP_ART_OPEN {
+    idx := cp_number(id, "coder.art.card.");
+    if idx >= 0 && idx < a[0].n {
+      a[0].active = idx;
+      a[0].open = true;
+      s[0].dock_active = CP_DOCK_ARTIFACTS;
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+// Compact 3-card Recent Artifacts strip rendered below the New Chat composer (#14143).
+cp_recent_artifacts_strip :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32) -> f32 {
+  a := s[0].art[..];
+  if a[0].n <= 0 || cw < 240.0f32 { return 0.0f32; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  _ := sheet_text(sh, m, -1, x, y, k.small.line, k.small.face, k.muted, "Recent artifacts");
+  cy := y + k.small.line + 8.0f32;
+  count := ifx a[0].n > 3 then 3 else a[0].n;
+  gap := 10.0f32;
+  card_w := floor((cw - cast(f32) (count - 1) * gap) / cast(f32) count);
+  card_h := 64.0f32;
+  for i: 0..<count {
+    idx := a[0].n - 1 - i;
+    cx := x + cast(f32) i * (card_w + gap);
+    _ := sheet_box(sh, cx, cy, card_w, card_h, 12.0f32, k.border, k.surface, k.menu_divider);
+    title := cast(string) a[0].items[idx].title[0..<a[0].items[idx].title_n];
+    fit := app_fit(f, k.label.face, title, card_w - 20.0f32);
+    _ := sheet_text(sh, m, -1, cx + 10.0f32, cy + 12.0f32, k.label.line, k.label.face, k.ink, fit);
+    vb: [24] u8; vn := el_put(vb[..], 0, "v"); vn = el_put_i(vb[..], vn, a[0].items[idx].version);
+    _ := sheet_text(sh, m, -1, cx + 10.0f32, cy + 36.0f32, k.small.line, k.small.face, k.muted, sheet_pool(sh, cast(string) vb[0..<vn]));
+    idb: [32] u8; idn := el_put(idb[..], 0, "coder.art.card."); idn = el_put_i(idb[..], idn, idx);
+    row := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<idn]), EL_BUTTON, title, cx, cy, card_w, card_h, 0, CP_ART_OPEN);
+    sheet_hit(sh, UIFRAME_HIT, row, 0, cx, cy, card_w, card_h);
+  }
+  return k.small.line + 8.0f32 + card_h;
+}
+
+// Right-dock Artifacts pane with [Code | Preview] segmented toggle and version badge (#14143).
+cp_artifacts_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  a := s[0].art[..];
+  if a[0].n <= 0 { return; }
+  idx := a[0].active;
+  if idx < 0 || idx >= a[0].n { idx = a[0].n - 1; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  sheet_fill(sh, px, 0, pw, h, 0, k.canvas);
+  cp_side_border_left(s, sh, px, 0, h, k.menu_divider);
+  hh := 38.0f32;
+  cp_bar_border(s, sh, px, pw, hh, k.menu_divider);
+  title := cast(string) a[0].items[idx].title[0..<a[0].items[idx].title_n];
+  _ := sheet_text(sh, m, -1, px + 12.0f32, (hh - k.title.line) * 0.5f32, k.title.line, k.title.face, k.ink, app_fit(f, k.title.face, title, pw - 160.0f32));
+  // [Code | Preview] toggle
+  tog_w := 116.0f32;
+  tog_x := px + pw - tog_w - 36.0f32;
+  tog_y := (hh - 24.0f32) * 0.5f32;
+  if tog_x > px + 80.0f32 {
+    _ := sheet_box(sh, tog_x, tog_y, tog_w, 24.0f32, 6.0f32, k.border, k.surface, k.menu_divider);
+    half := (tog_w - 4.0f32) * 0.5f32;
+    if !a[0].preview { _ := sheet_box(sh, tog_x + 2.0f32, tog_y + 2.0f32, half, 20.0f32, 4.0f32, k.border, k.raised, k.accent); }
+    else { _ := sheet_box(sh, tog_x + 2.0f32 + half, tog_y + 2.0f32, half, 20.0f32, 4.0f32, k.border, k.raised, k.accent); }
+    _ := sheet_text(sh, m, -1, tog_x + 12.0f32, tog_y + 4.0f32, k.small.line, k.small.face, ifx !a[0].preview then k.ink else k.muted, "Code");
+    _ := sheet_text(sh, m, -1, tog_x + half + 8.0f32, tog_y + 4.0f32, k.small.line, k.small.face, ifx a[0].preview then k.ink else k.muted, "Preview");
+    rc := uiframe_semantic(f, "coder.art.code", EL_BUTTON, "Code", tog_x + 2.0f32, tog_y + 2.0f32, half, 20.0f32, ifx !a[0].preview then EL_S_CURRENT else 0, CP_ART_CODE);
+    sheet_hit(sh, UIFRAME_HIT, rc, 0, tog_x + 2.0f32, tog_y + 2.0f32, half, 20.0f32);
+    rp := uiframe_semantic(f, "coder.art.preview", EL_BUTTON, "Preview", tog_x + 2.0f32 + half, tog_y + 2.0f32, half, 20.0f32, ifx a[0].preview then EL_S_CURRENT else 0, CP_ART_PREVIEW);
+    sheet_hit(sh, UIFRAME_HIT, rp, 0, tog_x + 2.0f32 + half, tog_y + 2.0f32, half, 20.0f32);
+  }
+  _ := app_icon_button(f, "coder.art.close", px + pw - 32.0f32, (hh - 24.0f32) * 0.5f32, ICON_CLOSE, "Close artifact", APP_BUTTON_QUIET, 0, CP_ART_CLOSE);
+  // Body content
+  body := cast(string) a[0].items[idx].body[0..<a[0].items[idx].body_n];
+  face := ifx a[0].preview && a[0].items[idx].kind == CP_ART_KIND_MD then k.body.face else k.mono.face;
+  lh := ifx a[0].preview && a[0].items[idx].kind == CP_ART_KIND_MD then k.body.line else k.mono.line;
+  uiframe_clip(f, px + 12.0f32, hh + 8.0f32, px + pw - 12.0f32, h - 8.0f32);
+  ry := hh + 12.0f32;
+  at := 0;
+  while at < body.count && ry < h - 8.0f32 {
+    end := at; while end < body.count && body[end] != '\n' { end += 1; }
+    line := cast(string) body[at..<end];
+    if line.count > 0 { _ := sheet_text(sh, m, -1, px + 12.0f32, ry, lh, face, k.ink, sheet_pool(sh, line)); }
+    ry += lh;
+    at = end + 1;
+  }
+  uiframe_unclip(f);
+}

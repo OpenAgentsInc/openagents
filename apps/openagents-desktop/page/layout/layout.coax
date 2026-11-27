@@ -15,7 +15,41 @@ cp_other_pane_open :: (s: [] CoderPage) -> bool {
   fp_vis := !s[0].fp[0].hidden && ((s[0].fp[0].open && (s[0].fp[0].mode != CP_FP_SCENE || cp_flag(s, DC_FLAG_SCENES))) || s[0].ft[0].open);
   mv_vis := cp_mv_enabled(s) && s[0].mv[0].open && !s[0].mv[0].hidden;
   br_vis := cp_br_shown(s);
-  return s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || fp_vis || mv_vis || br_vis || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open);
+  return s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || fp_vis || mv_vis || br_vis || cp_art_shown(s) || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open && !s[0].bottom_dock_open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open);
+}
+// Unified top-right inspector toggle (Opt+Cmd+S / top-right button, #14138):
+// if any right pane is open, hides it and remembers which pane was active; otherwise reopens it (defaulting to File Explorer / Diffs).
+cp_right_pane_toggle :: (s: [] CoderPage) -> bool {
+  if cp_other_pane_open(s) {
+    if cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open { s[0].last_right_pane = 1; s[0].forge[0].open = false; }
+    if cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open { s[0].last_right_pane = 2; s[0].rich[0].side_open = false; }
+    if cp_br_shown(s) { s[0].last_right_pane = 3; s[0].br[0].hidden = true; }
+    if cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open { s[0].last_right_pane = 4; s[0].preview[0].open = false; }
+    if cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open { s[0].last_right_pane = 5; s[0].term[0].open = false; }
+    if cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open { s[0].last_right_pane = 6; s[0].sim[0].open = false; }
+    if cp_mv_shown(s) { s[0].last_right_pane = 7; s[0].mv[0].hidden = true; }
+    if cp_fp_shown(s) { s[0].last_right_pane = 8; s[0].fp[0].hidden = true; }
+    if cp_flag(s, DC_FLAG_GIT) && s[0].review { s[0].last_right_pane = 9; s[0].review = false; }
+    if s[0].pane_open { s[0].last_right_pane = 10; s[0].pane_open = false; s[0].pane_manual = true; }
+    return true;
+  }
+  last := s[0].last_right_pane;
+  if last == 1 && cp_flag(s, DC_FLAG_FORGE) { s[0].forge[0].open = true; return true; }
+  if last == 2 && cp_flag(s, DC_FLAG_RICH) { s[0].rich[0].side_open = true; return true; }
+  if last == 3 && s[0].br[0].open { s[0].br[0].hidden = false; return true; }
+  if last == 4 && cp_flag(s, DC_FLAG_PREVIEW) { s[0].preview[0].open = true; return true; }
+  if last == 5 && cp_flag(s, DC_FLAG_TERMINAL) { s[0].term[0].open = true; return true; }
+  if last == 6 && cp_flag(s, DC_FLAG_SIMULATOR) { s[0].sim[0].open = true; return true; }
+  if last == 7 && cp_mv_enabled(s) && s[0].mv[0].open { s[0].mv[0].hidden = false; return true; }
+  if last == 9 && cp_flag(s, DC_FLAG_GIT) { s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; s[0].ask = CP_ASK_GIT_DIFF; return true; }
+  // Default restore/open: File Explorer (or Git Review in Code mode when edits exist).
+  if s[0].work_mode == CP_MODE_CODE && cp_flag(s, DC_FLAG_GIT) && cp_has_edits(s) && !s[0].fp[0].open && !s[0].ft[0].open {
+    s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; s[0].ask = CP_ASK_GIT_DIFF;
+    return true;
+  }
+  s[0].fp[0].hidden = false;
+  if !s[0].fp[0].open { s[0].ft[0].open = true; }
+  return true;
 }
 // Dynamic split-pane spec allowing wide monitors to drag the File Viewer wider while keeping CP_PANE_MAIN (#13992).
 cp_pane_spec_for :: (window_w: f32, left: f32) -> AppPaneSpec {
@@ -24,30 +58,98 @@ cp_pane_spec_for :: (window_w: f32, left: f32) -> AppPaneSpec {
   if dyn > sp.max_w { sp.max_w = dyn; }
   return sp;
 }
-// The right sidebar: the file pane or the code review when it shows, else the task list at the top
-// with any sub-agent's transcript underneath.
-cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
-  if cp_flag(s, DC_FLAG_FORGE) && cp_forge_shown(s) { cp_forge_pane(s, f, px, pw, h); return; }
-  if cp_flag(s, DC_FLAG_RICH) && cp_side_chat_shown(s) { cp_side_chat_pane(s, f, px, pw, h); return; }
-  if cp_br_shown(s) { cp_br_pane(s, f, px, pw, h); return; }
-  if cp_flag(s, DC_FLAG_PREVIEW) && cp_preview_shown(s) { cp_previewpane(s, f, px, pw, h); return; }
-  if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_shown(s) { cp_termpane(s, f, px, pw, h); return; }
-  if cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_shown(s) { cp_simpane(s, f, px, pw, h); return; }
-  if cp_mv_shown(s) { cp_mvpane(s, f, px, pw, h); return; }
-  if cp_fp_shown(s) { cp_filepane(s, f, px, pw, h); return; }
-  if cp_flag(s, DC_FLAG_GIT) && cp_review_shown(s) { cp_review(s, f, px, pw, h); return; }
-  py: f32 = 0.0f32;
-  if s[0].todos[0].n > 0 {
-    k := f[0].skin; a := k.app; sh := f[0].sheet;
-    if px > 0 { cp_side_border_left(s, sh, px, 0, h, k.menu_divider); }
-    top := ifx px > 0 then cast(f32) CP_CORNER else cp_bar(s);
-    inset := a.gap;
-    th := cp_todos_tray(s, f, px + inset, top, pw - 2 * inset, false);
-    s[0].todos[0].docked = true;
-    py = top + th;
-    if s[0].pane_open { sheet_fill(sh, px, py, pw, k.border, 0, k.menu_divider); py += a.gap_small; }
+// Right-Pane Dock tab switcher (#14141): renders clickable tabs when 2+ right panes are open simultaneously,
+// eliminating invisible if-else priority contention. Returns the header height consumed (0 when <= 1 pane open).
+cp_dock_is_open :: (s: [] CoderPage, kind: int) -> bool {
+  if kind == CP_DOCK_FILES { return !s[0].fp[0].hidden && (s[0].fp[0].open || s[0].ft[0].open); }
+  if kind == CP_DOCK_DIFFS { return cp_flag(s, DC_FLAG_GIT) && s[0].review; }
+  if kind == CP_DOCK_TERM { return cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open && !s[0].bottom_dock_open; }
+  if kind == CP_DOCK_BROWSER { return cp_br_shown(s); }
+  if kind == CP_DOCK_PREVIEW { return cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open; }
+  if kind == CP_DOCK_SIM { return cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open; }
+  if kind == CP_DOCK_WORLD { return cp_mv_shown(s); }
+  if kind == CP_DOCK_AGENT { return s[0].pane_open; }
+  if kind == CP_DOCK_ARTIFACTS { return cp_art_shown(s); }
+  return false;
+}
+cp_dock_bar :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32) -> f32 {
+  kinds := [9] int.[CP_DOCK_BROWSER, CP_DOCK_PREVIEW, CP_DOCK_ARTIFACTS, CP_DOCK_FILES, CP_DOCK_DIFFS, CP_DOCK_TERM, CP_DOCK_SIM, CP_DOCK_WORLD, CP_DOCK_AGENT];
+  names := [9] string.["Browser", "Preview", "Artifacts", "Files", "Diffs", "Terminal", "Sim", "3D", "Agent"];
+  open_k: [9] int; open_n := 0;
+  for i: 0..<9 { if cp_dock_is_open(s, kinds[i]) { open_k[open_n] = i; open_n += 1; } }
+  if open_n < 2 { return 0.0f32; }
+  if s[0].dock_active == CP_DOCK_AUTO || !cp_dock_is_open(s, s[0].dock_active) {
+    s[0].dock_active = kinds[open_k[0]];
   }
-  if s[0].pane_open { cp_pane(s, f, px, py, pw, h); }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  bh := 32.0f32;
+  sheet_fill(sh, px, 0, pw, bh, 0, k.canvas);
+  cp_side_border_left(s, sh, px, 0, bh, ifx s[0].hover == 2 || s[0].drag == 2 then k.accent else k.menu_divider);
+  cp_bar_border(s, sh, px, pw, bh, k.menu_divider);
+  tx := px + 8.0f32;
+  for idx: 0..<open_n {
+    ki := open_k[idx];
+    lbl := names[ki];
+    tw := ceil(measure_width(m, k.small.face, lbl)) + 16.0f32;
+    if tx + tw > px + pw - 32.0f32 { break; }
+    active := s[0].dock_active == kinds[ki];
+    idb: [32] u8; idn := el_put(idb[..], 0, "coder.dock.tab."); idn = el_put_i(idb[..], idn, kinds[ki]);
+    id := sheet_pool(sh, cast(string) idb[0..<idn]);
+    if active {
+      _ := sheet_box(sh, tx, 4.0f32, tw, bh - 8.0f32, 6.0f32, k.border, k.raised, rgba_mix(k.menu_divider, k.accent, 0.35f32));
+    }
+    _ := sheet_text(sh, m, -1, tx + 8.0f32, (bh - k.small.line) * 0.5f32, k.small.line, k.small.face, ifx active then k.ink else k.muted, lbl);
+    row := uiframe_semantic(f, id, EL_BUTTON, lbl, tx, 4.0f32, tw, bh - 8.0f32, ifx active then EL_S_CURRENT else 0, CP_DOCK_TAB_ACT);
+    sheet_hit(sh, UIFRAME_HIT, row, 0, tx, 4.0f32, tw, bh - 8.0f32);
+    tx += tw + 4.0f32;
+  }
+  return bh;
+}
+// The right sidebar: unified dock switcher + active pane, else the task list with any sub-agent's transcript.
+cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  bar_h := cp_dock_bar(s, f, px, pw);
+  from := app_slide_mark(f);
+  body_h := h - bar_h;
+  if body_h < 0.0f32 { body_h = 0.0f32; }
+  handled := false;
+  if bar_h > 0.0f32 {
+    if s[0].dock_active == CP_DOCK_FILES && cp_fp_shown(s) { cp_filepane(s, f, px, pw, body_h); handled = true; }
+    else if s[0].dock_active == CP_DOCK_DIFFS && cp_flag(s, DC_FLAG_GIT) && cp_review_shown(s) { cp_review(s, f, px, pw, body_h); handled = true; }
+    else if s[0].dock_active == CP_DOCK_TERM && cp_flag(s, DC_FLAG_TERMINAL) && cp_term_shown(s) { cp_termpane(s, f, px, pw, body_h); handled = true; }
+    else if s[0].dock_active == CP_DOCK_BROWSER && cp_br_shown(s) { cp_br_pane(s, f, px, pw, body_h); handled = true; }
+    else if s[0].dock_active == CP_DOCK_PREVIEW && cp_flag(s, DC_FLAG_PREVIEW) && cp_preview_shown(s) { cp_previewpane(s, f, px, pw, body_h); handled = true; }
+    else if s[0].dock_active == CP_DOCK_SIM && cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_shown(s) { cp_simpane(s, f, px, pw, body_h); handled = true; }
+    else if s[0].dock_active == CP_DOCK_WORLD && cp_mv_shown(s) { cp_mvpane(s, f, px, pw, body_h); handled = true; }
+    else if s[0].dock_active == CP_DOCK_AGENT && s[0].pane_open { cp_pane(s, f, px, 0, pw, body_h); handled = true; }
+    else if s[0].dock_active == CP_DOCK_ARTIFACTS && cp_art_shown(s) { cp_artifacts_pane(s, f, px, pw, body_h); handled = true; }
+  }
+  if !handled {
+    if cp_flag(s, DC_FLAG_FORGE) && cp_forge_shown(s) { cp_forge_pane(s, f, px, pw, body_h); }
+    else if cp_flag(s, DC_FLAG_RICH) && cp_side_chat_shown(s) { cp_side_chat_pane(s, f, px, pw, body_h); }
+    else if cp_art_shown(s) { cp_artifacts_pane(s, f, px, pw, body_h); }
+    else if cp_br_shown(s) { cp_br_pane(s, f, px, pw, body_h); }
+    else if cp_flag(s, DC_FLAG_PREVIEW) && cp_preview_shown(s) { cp_previewpane(s, f, px, pw, body_h); }
+    else if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_shown(s) && !s[0].bottom_dock_open { cp_termpane(s, f, px, pw, body_h); }
+    else if cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_shown(s) { cp_simpane(s, f, px, pw, body_h); }
+    else if cp_mv_shown(s) { cp_mvpane(s, f, px, pw, body_h); }
+    else if cp_fp_shown(s) { cp_filepane(s, f, px, pw, body_h); }
+    else if cp_flag(s, DC_FLAG_GIT) && cp_review_shown(s) { cp_review(s, f, px, pw, body_h); }
+    else {
+      py: f32 = 0.0f32;
+      if s[0].todos[0].n > 0 {
+        k := f[0].skin; a := k.app; sh := f[0].sheet;
+        if px > 0 { cp_side_border_left(s, sh, px, 0, body_h, ifx s[0].hover == 2 || s[0].drag == 2 then k.accent else k.menu_divider); }
+        top := ifx px > 0 then cast(f32) CP_CORNER else cp_bar(s);
+        inset := a.gap;
+        th := cp_todos_tray(s, f, px + inset, top, pw - 2 * inset, false);
+        s[0].todos[0].docked = true;
+        py = top + th;
+        if s[0].pane_open { sheet_fill(sh, px, py, pw, k.border, 0, k.menu_divider); py += a.gap_small; }
+      }
+      if s[0].pane_open { cp_pane(s, f, px, py, pw, body_h); }
+    }
+  }
+  if bar_h > 0.0f32 { app_slide(f, from, 0.0f32, bar_h); }
 }
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   s[0].win_w = window_w;
@@ -68,7 +170,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   est_left := ifx !s[0].side_collapsed && window_w >= cast(f32) CP_SIDE_FROM then (ifx s[0].side_w > 0 then s[0].side_w else cast(f32) CP_SIDE) else 0.0f32;
   pane_spec := ifx todos_only then cp_todos_pane_spec() else cp_pane_spec_for(window_w, est_left);
   pane_pref := ifx todos_only then s[0].todos_pane_w else s[0].pane_user;
-  shell := app_shell_layout(window_w, h, s[0].side_w, pane_pref, s[0].side_collapsed, 0.0f32, pane_any, cp_sidebar_spec(), pane_spec, CP_COLUMN, CP_PAD);
+  col_cap := ifx s[0].wide_transcript then cast(f32) CP_COLUMN_WIDE else cast(f32) CP_COLUMN;
+  shell := app_shell_layout(window_w, h, s[0].side_w, pane_pref, s[0].side_collapsed, 0.0f32, pane_any, cp_sidebar_spec(), pane_spec, col_cap, CP_PAD);
   // the sidebar and the pane slide open and shut (#13773): each is present 0 to 1 on a keyed row,
   // which keeps its width while it is shut, and the conversation's column follows them
   kd := f[0].keyed; sk := uiframe_key(f, "coder.shell.side"); pk := uiframe_key(f, "coder.shell.pane");
@@ -81,8 +184,12 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   right := pane_w * app_presence(f, pk, docked);
   if left < 0.5 { left = 0; }
   if right < 0.5 { right = 0; }
+  // Collapsible 64pt desktop icon rail (#14139): when user collapses the sidebar on desktop widths (>= CP_SIDE_RAIL_FROM),
+  // settle into a 64pt icon rail instead of vanishing to 0px (overlay drawer still takes precedence on narrow windows).
   narrow := window_w < cast(f32) CP_SIDE_FROM;
   if !narrow { s[0].side_drawer = false; }
+  rail_mode := s[0].side_collapsed && window_w >= cast(f32) CP_SIDE_RAIL_FROM && !(narrow && s[0].side_drawer) && !docked;
+  if rail_mode && left < cast(f32) CP_SIDE_RAIL { left = cast(f32) CP_SIDE_RAIL; }
   s[0].side = left; s[0].pane_w = ifx right > 0 then pane_w else 0.0f32; s[0].pane_x = window_w - right;
   s[0].gym_w = 0; s[0].gym_h = 0;
   toggle := left > 0 || (s[0].side_collapsed && !narrow) || narrow;
@@ -143,6 +250,17 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     cp_title_bar(s, f, ifx left > 0 then left else ifx narrow && s[0].side_drawer then cast(f32) CP_SIDE else 0.0f32, toggle);
     return;
   }
+  if s[0].catalog_view != CP_CAT_NONE {
+    running := cp_running(s);
+    cp_catalog_screen(s, f, left, window_w, h);
+    if rail_mode && left <= cast(f32) CP_SIDE_RAIL + 0.5f32 {
+      cp_sidebar_rail(s, f, cast(f32) CP_SIDE_RAIL, h);
+    } else if left > 0 {
+      from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0);
+    }
+    cp_title_bar(s, f, left, toggle);
+    return;
+  }
   if s[0].introspect[0].open {
     running := cp_running(s);
     cp_introspect_pane(s, f, left, window_w, h);
@@ -174,15 +292,36 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if docked && right > 0 { cp_side_pane(s, f, window_w - right, pane_w, h); }
   else if right > 0 { cp_side_border_left(s, f[0].sheet, window_w - right, 0, h, f[0].skin.menu_divider); }
   w := window_w - right;   // from here w is where the conversation's side ends
-  col := app_shell_column(left, w, CP_COLUMN, CP_PAD);
+  col := app_shell_column(left, w, col_cap, CP_PAD);
   cw := col.w; x := col.x;
   s[0].col_x = x; s[0].col_w = cw;
   running := cp_running(s); full := cp_full(s); exceeded := cp_flag(s, DC_FLAG_USAGE) && cp_budget_exceeded(s);
-  cp_conversation(s, f, left, w, x, cw, h, running, full, exceeded);
+  // Optional Bottom Terminal Dock (#14141): lets Terminal sit below the conversation while Diff/Files stay on the right.
+  bd_h: f32 = 0.0f32;
+  if s[0].bottom_dock_open && cp_flag(s, DC_FLAG_TERMINAL) && h > 420.0f32 {
+    bd_h = s[0].bottom_dock_h;
+    if bd_h < cast(f32) CP_BOTTOM_DOCK_MIN { bd_h = cast(f32) CP_BOTTOM_DOCK_MIN; }
+    if bd_h > cast(f32) CP_BOTTOM_DOCK_MAX { bd_h = cast(f32) CP_BOTTOM_DOCK_MAX; }
+    if bd_h > h * 0.45f32 { bd_h = floor(h * 0.45f32); }
+  }
+  main_h := h - bd_h;
+  cp_conversation(s, f, left, w, x, cw, main_h, running, full, exceeded);
   cp_corners(s, f, left, w, window_w, running, exceeded);
-  // the sidebar at its whole width, slid out to the left as it shuts; on narrow viewports (< CP_SIDE_FROM),
-  // render an overlay drawer with scrim when s[0].side_drawer is open (#14025).
-  if left > 0 {
+  if bd_h > 0.0f32 {
+    by := main_h;
+    bw := w - left;
+    sheet_fill(f[0].sheet, left, by, bw, bd_h, 0, f[0].skin.canvas);
+    cp_bar_border(s, f[0].sheet, left, bw, by + 1.0f32, f[0].skin.menu_divider);
+    _ := uiframe_semantic(f, "coder.bottom.dock", EL_REGION, "Bottom Terminal", left, by, bw, bd_h, 0, 0);
+    from_bd := app_slide_mark(f);
+    cp_termpane(s, f, left, bw, bd_h);
+    app_slide(f, from_bd, 0.0f32, by);
+  }
+  // the sidebar at its whole width, slid out to the left as it shuts; or 64pt icon rail when collapsed on desktop (#14139);
+  // on narrow viewports (< CP_SIDE_FROM), render an overlay drawer with scrim when s[0].side_drawer is open (#14025).
+  if rail_mode && left <= cast(f32) CP_SIDE_RAIL + 0.5f32 {
+    cp_sidebar_rail(s, f, cast(f32) CP_SIDE_RAIL, h);
+  } else if left > 0 {
     from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0);
   } else if narrow && s[0].side_drawer {
     dw := cast(f32) CP_SIDE;
@@ -194,6 +333,16 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     cp_sidebar(s, f, dw, h, running);
   }
   cp_title_bar(s, f, ifx left > 0 then left else ifx narrow && s[0].side_drawer then cast(f32) CP_SIDE else 0.0f32, toggle);
-  cp_composer(s, f, x, cw, h, running, full, exceeded);
+  cp_composer(s, f, x, cw, main_h, running, full, exceeded);
   cp_drop_overlay(s, f, window_w, h);
+  // Autonomous sessionHalo perimeter glow (#14146): 2px inset #346bf1 (or #fe9a00 awaiting approval)
+  // whenever Foreman, /goal autonomous loop, or Browser automation is actively running.
+  if s[0].foreman_busy || s[0].goal_status == CP_GOAL_ACTIVE {
+    halo_c := ifx s[0].permit[0].open then opacity(f[0].skin.warning, 0.85f32) else opacity(f[0].skin.accent, 0.72f32);
+    sh := f[0].sheet;
+    sheet_fill(sh, 0, 0, window_w, 2.0f32, 0, halo_c);
+    sheet_fill(sh, 0, h - 2.0f32, window_w, 2.0f32, 0, halo_c);
+    sheet_fill(sh, 0, 2.0f32, 2.0f32, h - 4.0f32, 0, halo_c);
+    sheet_fill(sh, window_w - 2.0f32, 2.0f32, 2.0f32, h - 4.0f32, 0, halo_c);
+  }
 }

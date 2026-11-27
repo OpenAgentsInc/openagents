@@ -262,10 +262,12 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
   cp_layout(s, f[..], 1400.0f32, 900.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
-  // it slides out (#13773), then the window goes idle with no sidebar
+  // it slides into the 64pt collapsed icon rail (#14139), then settles
   full := cast(f32) CP_SIDE;
-  #assert s[0].side > 0 && s[0].side < full;
-  #assert cp_test_settle(s, f[..], 1400.0f32, 900.0f32) <= 16 && s[0].side == 0;
+  rail := cast(f32) CP_SIDE_RAIL;
+  #assert s[0].side >= rail && s[0].side < full;
+  #assert cp_test_settle(s, f[..], 1400.0f32, 900.0f32) <= 16 && s[0].side == rail;
+  #assert surface_find(s[0].surface[..], "coder.rail.new") >= 0 && surface_find(s[0].surface[..], "coder.rail.settings") >= 0;
   row2 := surface_find(s[0].surface[..], "coder.side.toggle");
   #assert row2 >= 0 && surface_action(s[0].surface[..], row2) == CP_SIDE_TOGGLE;
   // Pressing again restores the persistent sidebar
@@ -275,11 +277,11 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   #assert uiframe_end(f[..], s[0].surface[..]);
   #assert s[0].side > 0 && s[0].side < full;
   #assert cp_test_settle(s, f[..], 1400.0f32, 900.0f32) <= 16 && s[0].side == full;
-  // with reduced motion it is gone at once
+  // with reduced motion it snaps to the 64pt rail at once
   #assert cp_press(s, surface_find(s[0].surface[..], "coder.side.toggle")) && s[0].side_collapsed;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.064, 0.016, true, false);
   cp_layout(s, f[..], 1400.0f32, 900.0f32);
-  #assert !uiframe_moving(f[..]) && uiframe_end(f[..], s[0].surface[..]) && s[0].side == 0;
+  #assert !uiframe_moving(f[..]) && uiframe_end(f[..], s[0].surface[..]) && s[0].side == rail;
 }
 #test "a trackpad flick coasts the transcript, a gesture stays with its view, and the system's momentum goes unused" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
@@ -343,16 +345,16 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert coder_page_bar_drags(s, 200, 10) && coder_page_bar_drags(s, 700, 30);
   #assert !coder_page_bar_drags(s, t.x + 4, t.y + 4) && !coder_page_bar_drags(s, sr.x + 4, sr.y + 4) && !coder_page_bar_drags(s, c.x + 4, c.y + 4);
   #assert !coder_page_bar_drags(s, 700, 38) && !coder_page_bar_drags(s, s[0].side, 10);
-  // collapsed: the toggle and search stay where they were, Show sidebar, with the island behind them and the lights
+  // collapsed: the toggle and search stay where they were, Show sidebar, with 64pt icon rail on wide desktop (#14139)
   #assert cp_press(s, surface_find(s[0].surface[..], "coder.side.toggle")) && s[0].side_collapsed;
-  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) < 60 && s[0].side == 0;
+  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) < 60 && s[0].side == cast(f32) CP_SIDE_RAIL;
   t = cp_bar_row(s, "coder.side.toggle");
   sr = cp_bar_row(s, "coder.search");
   #assert t.x == 88 && abs(t.y + t.h / 2 - 20) < 0.01 && cast(string) t.label[0..<t.label_n] == "Show sidebar";
   #assert sr.x == 88 + 24 + 4 && abs(sr.y + sr.h / 2 - 20) < 0.01;
   i := cp_island(s, true);
   #assert i.x == 6 && i.y == 4 && i.h == 32 && i.x + i.w == 88 + 24 + 4 + 24 + 10;   // zeron.island: inset 6, pad 4, two 24pt controls + 4pt gap
-  #assert cp_bar_row(s, "t0.u").y >= 38 && coder_page_bar_drags(s, 170, 20);
+  #assert cp_bar_row(s, "t0.u").y >= 38 && coder_page_bar_drags(s, 360, 20);
   // a narrow window (< CP_SIDE_FROM) keeps the sidebar toggle so users can open the overlay drawer (#14025)
   #assert cp_bar_draw(s, f[..], 900, 900) && surface_find(s[0].surface[..], "coder.side.toggle") >= 0 && cp_bar_row(s, "coder.search").x == 88 + 24 + 4;
   #assert cp_press(s, surface_find(s[0].surface[..], "coder.side.toggle")) && s[0].side_drawer;
@@ -448,9 +450,9 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert cp_bar_draw(s, f[..], 1400, 900);
   hd = cp_bar_row(s, "coder.header.title");
   #assert cast(string) hd.label[0..<hd.label_n] == "Refactor auth middleware";
-  // With sidebar collapsed, title shifts past cp_bar_clear and no dark-gray island pill is drawn behind the traffic lights.
+  // With sidebar collapsed on desktop, it settles into the 64pt rail, title shifts past cp_bar_clear, and no island pill is drawn.
   s[0].side_collapsed = true;
-  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) <= 60 && s[0].side == 0;
+  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) <= 60 && s[0].side == cast(f32) CP_SIDE_RAIL;
   hd = cp_bar_row(s, "coder.header.title");
   #assert hd.x == cp_bar_clear(s) && hd.x > 0;
   collapsed_sh := surface_sheet(s[0].surface[..]);
@@ -469,4 +471,153 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert cp_bar_draw(s, f[..], 1400, 900);
   hd = cp_bar_row(s, "coder.header.title");
   #assert cast(string) hd.label[0..<hd.label_n] == "Dashboard";
+}
+
+#test "P0.1 (#14138): quiet empty chat bar, Back/Forward history, [Chat | Code] mode switch, and right-pane toggle" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  coder_page_chats(s, "c1\tFirst thread\t0\t0\t0\t0\t0\t0\t/w/openagents\t1000\tmain\t0\nc2\tSecond thread\t0\t0\t0\t0\t0\t0\t/w/cc\t900\tmain\t0\n");
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  // Back/Forward start disabled with 1 history entry.
+  bk := cp_bar_row(s, "coder.nav.back");
+  fw := cp_bar_row(s, "coder.nav.fwd");
+  #assert (bk.state & EL_S_DISABLED) != 0 && (fw.state & EL_S_DISABLED) != 0;
+  // [Chat | Code] mode switch renders in the expanded sidebar and toggles work_mode.
+  m_chat := cp_bar_row(s, "coder.mode.chat");
+  m_code := cp_bar_row(s, "coder.mode.code");
+  #assert (m_chat.state & EL_S_CURRENT) != 0 && (m_code.state & EL_S_CURRENT) == 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.mode.code")) && s[0].work_mode == CP_MODE_CODE;
+  // Back returns to Chat mode; Forward returns to Code mode; Cmd+[ / Cmd+] work identically.
+  #assert cp_nav_can_back(s) && !cp_nav_can_fwd(s);
+  #assert coder_page_key(s, '[', MOD_CMD) && s[0].work_mode == CP_MODE_CHAT;
+  #assert cp_nav_can_fwd(s) && coder_page_key(s, ']', MOD_CMD) && s[0].work_mode == CP_MODE_CODE;
+  // Navigating to Dashboard and back pushes and restores cleanly.
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.dashboard")) && s[0].dash[0].open;
+  #assert cp_nav_go(s, -1) && !s[0].dash[0].open;
+  #assert cp_nav_go(s, 1) && s[0].dash[0].open;
+  #assert cp_nav_go(s, -1) && !s[0].dash[0].open;
+  // Top-right pane toggle opens and closes the right workspace pane, and Opt+Cmd+S toggles it.
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  pt := surface_find(s[0].surface[..], "coder.pane.toggle");
+  #assert pt >= 0 && !cp_other_pane_open(s);
+  #assert cp_press(s, pt) && cp_other_pane_open(s);
+  #assert coder_page_key(s, 's', MOD_CMD | MOD_ALT) && !cp_other_pane_open(s);
+  #assert coder_page_key(s, 's', MOD_CMD | MOD_ALT) && cp_other_pane_open(s);
+}
+
+#test "P0.2 (#14139): 64pt collapsed rail on desktop, mode-aware Chat recents vs repo-grouped Code sidebar" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  coder_page_chats(s, "c1\tBuild shell\t0\t0\t0\t0\t0\t0\t/Users/me/openagents\t2000\tmain\t0\nc2\tBook draft\t0\t0\t0\t0\t0\t0\t/Users/me/cc\t1500\tmain\t0\nc3\tSecond OA chat\t0\t0\t0\t0\t0\t0\t/Users/me/openagents\t1000\tfeat\t0\n");
+  // Chat mode: single Recents heading, no repo group headings.
+  s[0].work_mode = CP_MODE_CHAT;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  #assert surface_find(s[0].surface[..], "coder.chats") >= 0 && surface_find(s[0].surface[..], "coder.repo.0") < 0;
+  // Code mode: repo-grouped headings ("openagents" and "cc"), no flat "Recents" heading.
+  s[0].work_mode = CP_MODE_CODE;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  #assert surface_find(s[0].surface[..], "coder.chats") < 0;
+  r0 := cp_bar_row(s, "coder.repo.0");
+  r1 := cp_bar_row(s, "coder.repo.1");
+  #assert r0.x >= 0 && r1.x >= 0;
+  #assert cast(string) r0.label[0..<r0.label_n] == "openagents" && cast(string) r1.label[0..<r1.label_n] == "cc";
+  // Below CP_SIDE_RAIL_FROM (800pt), collapsed sidebar hides to 0px (overlay drawer only).
+  s[0].side_collapsed = true;
+  #assert cp_bar_draw(s, f[..], 800, 900) && cp_test_settle(s, f[..], 800, 900) <= 60 && s[0].side == 0;
+}
+
+#test "P1.1 (#14141): unified Right-Pane dock tab switcher, Bottom Terminal dock (Ctrl+`), and 8pt split divider" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  #assert CP_EDGE == 8;
+  // Open both Files and Diffs on the right: unified dock tab strip appears and switches active tab.
+  s[0].ft[0].open = true;
+  s[0].review = true;
+  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) <= 60;
+  t_files := surface_find(s[0].surface[..], "coder.dock.tab.1");
+  t_diffs := surface_find(s[0].surface[..], "coder.dock.tab.2");
+  #assert t_files >= 0 && t_diffs >= 0 && s[0].dock_active == CP_DOCK_FILES;
+  #assert cp_press(s, t_diffs) && s[0].dock_active == CP_DOCK_DIFFS;
+  // Ctrl+` toggles the Bottom Terminal Dock while keeping Diffs/Files visible on the right.
+  #assert coder_page_key(s, '`', MOD_CTRL) && s[0].bottom_dock_open;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  bd := cp_bar_row(s, "coder.bottom.dock");
+  #assert bd.h >= cast(f32) CP_BOTTOM_DOCK_MIN && bd.y + bd.h <= 900.5f32;
+  #assert coder_page_key(s, '`', MOD_CTRL) && !s[0].bottom_dock_open;
+}
+
+#test "P1.3 (#14143): Artifacts pane (Code | Preview, versions) and Recent Artifacts home strip" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  i0 := cp_art_push(s, "Architecture Diagram", CP_ART_KIND_MD, "# Overview\nNative Metal renderer.");
+  #assert i0 == 0 && s[0].art[0].items[0].version == 1;
+  _ := cp_art_push(s, "Architecture Diagram", CP_ART_KIND_MD, "# Overview v2\nUpdated.");
+  #assert s[0].art[0].n == 1 && s[0].art[0].items[0].version == 2;
+  // New Chat empty state renders the Recent Artifacts strip; clicking opens the Artifacts pane.
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  card := surface_find(s[0].surface[..], "coder.art.card.0");
+  #assert card >= 0 && cp_press(s, card) && cp_art_shown(s);
+  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) <= 60;
+  // [Code | Preview] toggle flips preview mode cleanly.
+  code_btn := surface_find(s[0].surface[..], "coder.art.code");
+  #assert code_btn >= 0 && s[0].art[0].preview;
+  #assert cp_press(s, code_btn) && !s[0].art[0].preview;
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.art.close")) && !cp_art_shown(s);
+}
+
+#test "P2.1 (#14144): inline Permission Mode chip, Message Action Bar (Edit/Retry/Fork), and ⌘K Outline" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  // Inline Permission Mode chip cycles Ask -> Auto-edit -> Full Auto -> Ask.
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  pm := surface_find(s[0].surface[..], "coder.perm.mode");
+  #assert pm >= 0 && s[0].perm_mode == CP_PERM_ASK;
+  #assert cp_press(s, pm) && s[0].perm_mode == CP_PERM_AUTO_EDIT;
+  #assert cp_press(s, pm) && s[0].perm_mode == CP_PERM_FULL_AUTO;
+  // Completed turn exposes Retry and Fork inline actions, and ⌘K includes Outline #1.
+  #assert coder_page_set_text(s, "Explain Metal shaders") && coder_page_submit(s);
+  s[0].turns[0].reply_n = cp_out(s[0].turns[0].reply[..], "Shaders run on GPU.");
+  s[0].turns[0].state = CP_DONE;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  #assert surface_find(s[0].surface[..], "t0.retry") >= 0 && surface_find(s[0].surface[..], "t0.fork") >= 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.fork")) && coder_page_action(s) == CP_ASK_FORK;
+  cp_palette_fill(s);
+  found_outline := false;
+  pal := cp_pal(s);
+  for pi: 0..<pal[0].n { if pal[0].items[pi].code == CP_PAL_OUTLINE { found_outline = true; } }
+  #assert found_outline;
+}
+
+#test "P2.2 (#14145): first-class Sidebar Catalog screens (Projects, Artifacts, Scheduled, Plugins) with nav history" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  // All 4 catalog links appear in Chat mode sidebar.
+  p_row := surface_find(s[0].surface[..], "coder.cat.plugins");
+  #assert surface_find(s[0].surface[..], "coder.cat.projects") >= 0 && surface_find(s[0].surface[..], "coder.cat.artifacts") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.cat.scheduled") >= 0 && p_row >= 0;
+  // Open Plugins catalog and switch All -> Skills filter.
+  #assert cp_press(s, p_row) && s[0].catalog_view == CP_CAT_PLUGINS;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  #assert surface_find(s[0].surface[..], "coder.cat.plug.mcp") >= 0 && surface_find(s[0].surface[..], "coder.cat.plug.skills") >= 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.cat.filter.skills")) && s[0].catalog_filter == 2;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  #assert surface_find(s[0].surface[..], "coder.cat.plug.mcp") < 0 && surface_find(s[0].surface[..], "coder.cat.plug.skills") >= 0;
+  // Back history returns cleanly to Chat canvas.
+  #assert cp_nav_go(s, -1) && s[0].catalog_view == CP_CAT_NONE;
+}
+
+#test "P3.1 (#14146): autonomous sessionHalo perimeter border renders during Foreman/goal runs" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  base_nu := surface_sheet(s[0].surface[..]).nu;
+  // Activating an autonomous /goal loop emits the 4-edge 2px inset sessionHalo perimeter.
+  s[0].goal_status = CP_GOAL_ACTIVE;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  halo_sh := surface_sheet(s[0].surface[..]);
+  #assert halo_sh.nu >= base_nu + 4;
+  top_edge := halo_sh.under[halo_sh.nu - 4];
+  #assert top_edge.x == 0 && top_edge.y == 0 && top_edge.w == 1400.0f32 && top_edge.h == 2.0f32;
 }

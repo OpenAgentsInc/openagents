@@ -203,12 +203,17 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
         if cp_sb_chat_click(s, q) { return true; }
         s[0].side_drawer = false;
         if id == cast(string) s[0].current[0..<s[0].current_n] {
-          if s[0].dash[0].open || s[0].wallet[0].open || s[0].introspect[0].open { s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false; return true; }
+          if s[0].dash[0].open || s[0].wallet[0].open || s[0].introspect[0].open {
+            s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false;
+            cp_nav_push(s, CP_NAV_CHAT, id, 0);
+            return true;
+          }
           return false;
         }
         s[0].dash[0].open = false;
         s[0].wallet[0].open = false;
         s[0].introspect[0].open = false;
+        cp_nav_push(s, CP_NAV_CHAT, id, 0);
         s[0].open = q; s[0].ask = CP_ASK_OPEN; return true;
       }
     }
@@ -233,11 +238,71 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
     return cp_send(s);
   }
-  if act == CP_NEW { s[0].side_drawer = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false; return cp_new(s); }
-  if act == CP_DASHBOARD { s[0].wallet[0].open = false; s[0].introspect[0].open = false; return cp_dashboard_open(s); }
+  if act == CP_NEW {
+    s[0].side_drawer = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false; s[0].catalog_view = CP_CAT_NONE;
+    ok := cp_new(s);
+    if ok { cp_nav_push(s, CP_NAV_CHAT, "", 0); }
+    return ok;
+  }
+  if act == CP_DASHBOARD {
+    s[0].wallet[0].open = false; s[0].introspect[0].open = false; s[0].catalog_view = CP_CAT_NONE;
+    ok := cp_dashboard_open(s);
+    if ok { cp_nav_push(s, CP_NAV_DASHBOARD, "", 0); }
+    return ok;
+  }
   if act == CP_DASH_CHAT { return cp_dash_press(s, surface_id(s[0].surface[..], row)); }
-  if act == CP_WALLET_TOGGLE { return cp_wallet_pane_toggle(s); }
+  if act == CP_WALLET_TOGGLE {
+    ok := cp_wallet_pane_toggle(s);
+    if ok { cp_nav_record_current(s); }
+    return ok;
+  }
   if act == CP_WALLET_ACT { return cp_wallet_pane_press(s, surface_id(s[0].surface[..], row)); }
+  if act == CP_NAV_BACK { return cp_nav_go(s, -1); }
+  if act == CP_NAV_FWD { return cp_nav_go(s, 1); }
+  if act == CP_MODE_CHAT_ACT {
+    if s[0].work_mode != CP_MODE_CHAT { s[0].work_mode = CP_MODE_CHAT; cp_nav_record_current(s); }
+    return true;
+  }
+  if act == CP_MODE_CODE_ACT {
+    if s[0].work_mode != CP_MODE_CODE { s[0].work_mode = CP_MODE_CODE; cp_nav_record_current(s); }
+    return true;
+  }
+  if act == CP_RIGHT_PANE_TOGGLE { return cp_right_pane_toggle(s); }
+  if act == CP_DOCK_TAB_ACT {
+    kind := cp_number(surface_id(s[0].surface[..], row), "coder.dock.tab.");
+    if kind >= CP_DOCK_FILES && kind <= CP_DOCK_ARTIFACTS { s[0].dock_active = kind; return true; }
+    return false;
+  }
+  if act == CP_BOTTOM_DOCK_TOGGLE {
+    if !cp_flag(s, DC_FLAG_TERMINAL) { return false; }
+    s[0].bottom_dock_open = !s[0].bottom_dock_open;
+    if s[0].bottom_dock_open { s[0].term[0].open = true; }
+    return true;
+  }
+  if act >= CP_ART_OPEN && act <= CP_ART_NEXT_VER { return cp_art_press(s, act, surface_id(s[0].surface[..], row)); }
+  if act == CP_PERM_CYCLE {
+    s[0].perm_mode = (s[0].perm_mode + 1) % 3;
+    return true;
+  }
+  if act == CP_TURN_EDIT {
+    turn := cp_number(surface_id(s[0].surface[..], row), "t");
+    if turn < 0 || turn >= s[0].nturns || cp_running(s) { return false; }
+    eb_set(s[0].draft[..], cast(string) s[0].turns[turn].ask[0..<s[0].turns[turn].ask_n]);
+    cp_ed_focus(s, CP_KB_COMPOSER);
+    return true;
+  }
+  if act == CP_TURN_RETRY {
+    turn := cp_number(surface_id(s[0].surface[..], row), "t");
+    if turn < 0 || turn >= s[0].nturns || cp_running(s) { return false; }
+    eb_set(s[0].draft[..], cast(string) s[0].turns[turn].ask[0..<s[0].turns[turn].ask_n]);
+    return cp_send(s);
+  }
+  if act == CP_TURN_FORK {
+    if cp_running(s) { return false; }
+    s[0].ask = CP_ASK_FORK;
+    return true;
+  }
+  if act >= CP_CAT_OPEN_PROJECTS && act <= CP_CAT_FILTER_SKILLS { return cp_cat_press(s, act); }
   if act == CP_PALETTE { cp_palette_show(s, APP_PAL_SESSIONS); return true; }
   if act == CP_FOREMAN { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false; s[0].ask = CP_ASK_FOREMAN; return true; }
   if act == CP_GYM { if !cp_flag(s, DC_FLAG_GYM) { return false; } s[0].dash[0].open = false; s[0].wallet[0].open = false; s[0].introspect[0].open = false; s[0].ask = CP_ASK_GYM; return true; }
