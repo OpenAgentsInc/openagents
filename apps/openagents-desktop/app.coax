@@ -4,7 +4,6 @@
 // carrier.c, host.c and App.swift are its host.
 #load "../../components/raster/host-tables.coax";
 #load "page.coax";
-#load "../../coax/lib/nostr/host/tailnet.coax";
 #load "../../coax/lib/image/image.coax";
 
 coder_img_info :: (src: [] u8, out_w: [] int, out_h: [] int, out_work: [] int) -> int #export_c #effects(all) {

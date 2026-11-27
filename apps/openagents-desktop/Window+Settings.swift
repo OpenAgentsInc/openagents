@@ -390,11 +390,6 @@ extension CoderWindow {
             stopGymRequests()
             closeGym()
         }
-        if FeatureFlags.isOn(.pairing) {
-            CoderTailnet.shared.start()
-        } else {
-            CoderTailnet.shared.stopListening()
-        }
         if FeatureFlags.isOn(.scheduled) {
             startScheduledAutomation()
         }

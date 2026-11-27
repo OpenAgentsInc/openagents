@@ -83,19 +83,21 @@ cp_env_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert coder_page_env_set_state(s, 1, CP_ENV_ST_CONNECTED, "");
   #assert s[0].env[0].envs[1].state == CP_ENV_ST_CONNECTED;
 
-  // Server exposure modes.
-  coder_page_env_expose_set(s, CP_EXPOSE_LAN, "LAN · 192.168.1.10:47109");
-  #assert coder_page_env_expose_mode(s) == CP_EXPOSE_LAN;
+  // Connection modes (Cloud-only / Local-only; legacy mode 2 clamped away).
+  #assert coder_page_env_expose_mode(s) == CP_EXPOSE_CLOUD;
+  #assert cp_env_expose_label(CP_EXPOSE_LOCAL) == "Local-only" && cp_env_expose_label(CP_EXPOSE_CLOUD) == "Cloud" && cp_env_expose_label(2) == "Local-only";
+  #assert cp_env_clamp_expose(2) == CP_EXPOSE_LOCAL;
   coder_page_env_expose_set(s, CP_EXPOSE_LOCAL, "Local-only");
   #assert coder_page_env_expose_mode(s) == CP_EXPOSE_LOCAL;
-  // Pairing is disabled when exposure is Local-only.
+  // Cloud linking is disabled when mode is Local-only.
   #assert !cp_env_settings_press(s, "set.env.pair.a");
-  coder_page_env_expose_set(s, CP_EXPOSE_TAILSCALE, "Tailscale · 100.64.0.1:47109");
+  coder_page_env_expose_set(s, CP_EXPOSE_CLOUD, "Cloud · OpenAgents Cloud");
+  #assert coder_page_env_expose_mode(s) == CP_EXPOSE_CLOUD;
   #assert cp_env_settings_press(s, "set.env.pair.a") && s[0].ask == CP_ASK_ENV_PAIR;
 
   // Authorized mobile devices & revocation.
-  d0 := coder_page_env_device_add(s, "npub1phonealpha", "Chris iPhone", "Tailscale · 100.64.0.2");
-  d1 := coder_page_env_device_add(s, "npub1ipadbeta", "Chris iPad", "Tailscale · 100.64.0.3");
+  d0 := coder_page_env_device_add(s, "npub1phonealpha", "Chris iPhone", "OpenAgents Cloud · iOS");
+  d1 := coder_page_env_device_add(s, "npub1ipadbeta", "Chris iPad", "OpenAgents Cloud · iPadOS");
   #assert d0 == 0 && d1 == 1 && coder_page_env_device_count(s) == 2;
   idbuf: [64] u8;
   idn := coder_page_env_device_id(s, 0, idbuf[..]);
@@ -145,17 +147,17 @@ cp_env_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
 #test "env: Settings -> Connections rows, search hits, and press actions" {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
-  _ = coder_page_env_load_ssh_config(s, "Host studio-mac\n  HostName 100.90.0.10\n  User chris\n");
-  _ = coder_page_env_device_add(s, "npub1iphone", "iPhone 16 Pro", "Tailscale · 100.90.0.20");
-  coder_page_env_pair_code_set(s, "PAIR-9942");
+  _ = coder_page_env_load_ssh_config(s, "Host studio-mac\n  HostName 10.0.0.10\n  User chris\n");
+  _ = coder_page_env_device_add(s, "npub1iphone", "iPhone 16 Pro", "OpenAgents Cloud · iOS");
+  coder_page_env_pair_code_set(s, "Cloud synced");
 
-  // Settings -> Connections is promoted into --minimal and always visible/searchable (#14066).
+  // Settings -> Connections is always visible/searchable (#14066).
   hits: [CP_SET_HITS] int;
   es := cp_set_entries();
   #assert cp_set_page_ok(false, CP_PG_CONNECTIONS);
   hn := cp_set_hits_flags("connections", hits[..], 0);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_CONNECTIONS;
-  hn = cp_set_hits_flags("tailscale", hits[..], 0);
+  hn = cp_set_hits_flags("cloud", hits[..], 0);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_CONNECTIONS;
   hn = cp_set_hits_flags("keep awake", hits[..], 0);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_CONNECTIONS && es[hits[0]].id == "set.env.awake";
@@ -167,11 +169,13 @@ cp_env_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   f: [1] UiFrame;
   #assert cp_env_test_frame(s, f[..], 1200, 800);
 
-  // Press actions dispatch expected CP_ASK_ENV_* asks.
+  // Press actions dispatch expected CP_ASK_ENV_* asks; only Local-only (0) and Cloud (1) modes exist.
   #assert cp_settings_press(s, CP_SET_ACT, "set.env.active.a") && s[0].ask == CP_ASK_ENV_REFRESH;
   #assert cp_settings_press(s, CP_SET_ACT, "set.env.item.1.0") && s[0].ask == CP_ASK_ENV_SELECT && coder_page_env_active(s) == 1;
   #assert cp_settings_press(s, CP_SET_ACT, "set.env.item.1.1") && s[0].ask == CP_ASK_ENV_CONNECT && coder_page_env_target(s) == 1;
-  #assert cp_settings_press(s, CP_SET_ACT, "set.env.expose.1") && s[0].ask == CP_ASK_ENV_EXPOSE && coder_page_env_expose_mode(s) == CP_EXPOSE_LAN;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.env.expose.0") && s[0].ask == CP_ASK_ENV_EXPOSE && coder_page_env_expose_mode(s) == CP_EXPOSE_LOCAL;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.env.expose.1") && s[0].ask == CP_ASK_ENV_EXPOSE && coder_page_env_expose_mode(s) == CP_EXPOSE_CLOUD;
+  #assert !cp_settings_press(s, CP_SET_ACT, "set.env.expose.2");
   #assert cp_settings_press(s, CP_SET_ACT, "set.env.dev.0.a") && s[0].ask == CP_ASK_ENV_REVOKE && coder_page_env_device_target(s) == 0;
   #assert cp_settings_press(s, CP_SET_ACT, "set.env.awake.0") && s[0].ask == CP_ASK_ENV_KEEP_AWAKE && !coder_page_env_keep_awake(s);
   #assert cp_settings_press(s, CP_SET_ACT, "set.env.awake.1") && s[0].ask == CP_ASK_ENV_KEEP_AWAKE && coder_page_env_keep_awake(s);

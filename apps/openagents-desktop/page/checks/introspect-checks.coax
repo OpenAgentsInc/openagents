@@ -1,6 +1,7 @@
-// Checks for page/introspect.coax: Universal Introspection sidebar sections
-// (TUI & Terminal, Other Harnesses, Machines), collapse/expand, source-preserving merges,
-// click-to-inspect live output pane, and #14071 opt-in read-only external harness notice (#14066).
+// Checks for page/introspect.coax: sidebar stays clean (zero external harness,
+// remote machine, or TUI discovery sections rendered in the sidebar), mesh peer
+// transports are rejected, live output inspector pane works when opened programmatically,
+// and direct command composer preserves chat draft and #14071 opt-in (#14066).
 #load "../parts.coax";
 #load "checks-kit.coax";
 
@@ -10,18 +11,18 @@ cp_is_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   return uiframe_end(f, s[0].surface[..]);
 }
 
-#test "introspect page: sidebar sections render when populated, collapse cleanly, and preserve independent sources" {
+#test "introspect page: sidebar never renders external harnesses, machines, or TUI sections and filters mesh transports" {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
   f: [1] UiFrame;
 
-  // Empty snapshot renders none of the 3 introspection sections.
+  // Empty snapshot renders none of the discovery sections.
   #assert cp_is_test_frame(s, f[..], 1280, 820);
   #assert surface_find(s[0].surface[..], "coder.is.sec.tui") < 0;
   #assert surface_find(s[0].surface[..], "coder.is.sec.harness") < 0;
   #assert surface_find(s[0].surface[..], "coder.is.sec.machines") < 0;
 
-  // Populate all three independent sources.
+  // Populate sources; mesh transport ("ts") is rejected while explicit SSH is accepted.
   tmux := "dev\t0\t0\t12345\tzsh\t/Users/chris/work/openagents\tdev-shell\t1\ndev\t0\t1\t12346\tclaude\t/Users/chris/work/openagents\tRefactor UI\t0\n";
   ps := "20001\ttty002\tS+\tcoder\tcoder tui\t/Users/chris/work/openagents\n12346\ttty001\tS+\tclaude\tclaude\t/Users/chris/work/openagents\n";
   #assert coder_page_introspect_set_tui(s, tmux, ps, false) == 3;
@@ -29,41 +30,31 @@ cp_is_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   har := "claude\tsess-a1\tFix Metal shader\t/Users/chris/work/openagents\tmain\trunning\t1700000100000\t4410\tCompiling\ncodex\tsess-b2\tAudit API\t/Users/chris/work/api\tfeat/auth\tidle\t1700000050000\t0\tDone\n";
   #assert coder_page_introspect_set_harnesses(s, har, "", false) == 2;
 
-  mach := "studio\tMac Studio\t100.88.1.10\tchris\t22\ttailscale\tonline\t0\t0\tmacOS\ngpu-box\tH100 Box\t100.88.1.42\troot\t2222\tssh\toffline\t0\t0\tlinux\n";
-  rem := "studio\tMac Studio\tchat-99\topenagents\tTrain Inkling\t/Users/chris/openagents\tmain\trunning\t1700000200000\tstep 420\n";
-  #assert coder_page_introspect_set_machines(s, mach, rem) == 2;
+  mach := "mesh-peer\tMesh Peer\t100.88.1.10\tchris\t22\tts\tonline\t0\t0\tmacOS\ngpu-box\tH100 Box\t10.0.0.42\troot\t2222\tssh\toffline\t0\t0\tlinux\n";
+  rem := "gpu-box\tH100 Box\tchat-99\topenagents\tTrain Inkling\t/Users/chris/openagents\tmain\trunning\t1700000200000\tstep 420\n";
+  #assert coder_page_introspect_set_machines(s, mach, rem) == 1;
 
   counts: [4] int;
   #assert coder_page_introspect_counts(s, counts[..]);
-  #assert counts[0] == 3 && counts[1] == 2 && counts[2] == 1 && counts[3] == 2;
+  #assert counts[0] == 3 && counts[1] == 2 && counts[2] == 1 && counts[3] == 1;
+  // Hidden sidebar sections never trigger sidebar spinner repaints.
+  #assert !cp_introspect_side_busy(s);
 
-  // Updating TUI does not clobber harnesses or remote machines.
+  // Updating TUI does not clobber other sources.
   #assert coder_page_introspect_set_tui(s, "dev\t0\t0\t12345\tzsh\t/Users/chris/work/openagents\tdev-shell\t1\n", "", false) == 1;
   #assert coder_page_introspect_counts(s, counts[..]);
-  #assert counts[0] == 1 && counts[1] == 2 && counts[2] == 1 && counts[3] == 2;
+  #assert counts[0] == 1 && counts[1] == 2 && counts[2] == 1 && counts[3] == 1;
 
-  // All 3 collapsible sections and their items appear in the sidebar.
+  // Sidebar stays clean: ZERO TUI, ZERO external harness, and ZERO machine rows appear in the sidebar.
   #assert cp_is_test_frame(s, f[..], 1280, 960);
-  tui_sec := surface_find(s[0].surface[..], "coder.is.sec.tui");
-  har_sec := surface_find(s[0].surface[..], "coder.is.sec.harness");
-  mac_sec := surface_find(s[0].surface[..], "coder.is.sec.machines");
-  #assert tui_sec >= 0 && har_sec >= 0 && mac_sec >= 0;
-  #assert surface_find(s[0].surface[..], "coder.is.m.0") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.is.m.1") >= 0;
-
-  // Collapsing TUI section hides its rows cleanly.
-  #assert cp_press(s, tui_sec) && s[0].introspect[0].tui_collapsed;
-  #assert cp_press(s, har_sec) && s[0].introspect[0].harness_collapsed;
-  #assert cp_press(s, mac_sec) && s[0].introspect[0].machines_collapsed;
-  #assert cp_is_test_frame(s, f[..], 1280, 960);
+  #assert surface_find(s[0].surface[..], "coder.is.sec.tui") < 0;
+  #assert surface_find(s[0].surface[..], "coder.is.sec.harness") < 0;
+  #assert surface_find(s[0].surface[..], "coder.is.sec.machines") < 0;
   #assert surface_find(s[0].surface[..], "coder.is.m.0") < 0;
-  // Re-expanding restores items.
-  #assert cp_press(s, surface_find(s[0].surface[..], "coder.is.sec.tui")) && !s[0].introspect[0].tui_collapsed;
-  #assert cp_press(s, surface_find(s[0].surface[..], "coder.is.sec.harness")) && !s[0].introspect[0].harness_collapsed;
-  #assert cp_press(s, surface_find(s[0].surface[..], "coder.is.sec.machines")) && !s[0].introspect[0].machines_collapsed;
+  #assert surface_find(s[0].surface[..], "coder.is.s.0") < 0;
 }
 
-#test "introspect page: click-to-inspect opens live output pane, enforces #14071 read-only note, and closes on chat click" {
+#test "introspect page: programmatic inspect opens live output pane, enforces #14071 read-only note, and closes cleanly" {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
   s[0].flawed[0].allow_local_harnesses = false;
@@ -71,13 +62,16 @@ cp_is_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
 
   har := "claude\tsess-a1\tFix Metal shader\t/Users/chris/work/openagents\tmain\trunning\t1700000100000\t4410\tCompiling\n";
   #assert coder_page_introspect_set_harnesses(s, har, "", false) == 1;
-  mach := "studio\tMac Studio\t100.88.1.10\tchris\t22\ttailscale\tonline\t0\t0\tmacOS\n";
+  mach := "studio\tMac Studio\t10.0.0.10\tchris\t22\tssh\tonline\t0\t0\tmacOS\n";
   #assert coder_page_introspect_set_machines(s, mach, "") == 1;
 
+  // Sidebar renders no external harness or machine rows.
   #assert cp_is_test_frame(s, f[..], 1280, 900);
-  srow := surface_find(s[0].surface[..], "coder.is.s.0");
-  #assert srow >= 0;
-  #assert cp_press(s, srow);
+  #assert surface_find(s[0].surface[..], "coder.is.s.0") < 0;
+  #assert surface_find(s[0].surface[..], "coder.is.m.0") < 0;
+
+  // Programmatic inspect still opens the live output pane cleanly.
+  #assert cp_introspect_open_session(s, 0);
   #assert coder_page_introspect_shown(s);
   #assert !coder_page_introspect_active_is_machine(s);
   #assert coder_page_introspect_active_kind(s) == IS_KIND_HARNESS;
@@ -96,16 +90,15 @@ cp_is_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "introspect.pane.output") >= 0;
   #assert surface_find(s[0].surface[..], "introspect.pane.readonly_note") >= 0;
 
-  // Copy & Refresh buttons dispatch host asks.
+  // Copy button dispatches host ask.
   cp_btn := surface_find(s[0].surface[..], "introspect.pane.copy");
   #assert cp_btn >= 0 && cp_press(s, cp_btn) && coder_page_action(s) == CP_ASK_INTROSPECT_COPY;
   obuf: [256] u8;
   on := coder_page_introspect_output(s, obuf[..]);
   #assert cast(string) obuf[0..<on] == "$ coax test gpu.coax\n4 checks, 4 passed\n";
 
-  // Clicking machine opens machine overview and Connect button dispatches CP_ASK_INTROSPECT_CONNECT.
-  mrow := surface_find(s[0].surface[..], "coder.is.m.0");
-  #assert mrow >= 0 && cp_press(s, mrow);
+  // Opening an SSH machine overview programmatically still dispatches CP_ASK_INTROSPECT_CONNECT.
+  #assert cp_introspect_open_machine(s, 0);
   #assert coder_page_introspect_shown(s) && coder_page_introspect_active_is_machine(s);
   #assert cp_is_test_frame(s, f[..], 1280, 900);
   #assert surface_find(s[0].surface[..], "introspect.mach.host") >= 0;
@@ -128,7 +121,7 @@ cp_is_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
 
   tmux := "dev\t0\t0\t12345\tzsh\t/Users/chris/work/openagents\tdev-shell\t1\n";
   har := "claude\tsess-a1\tFix Metal shader\t/Users/chris/work/openagents\tmain\trunning\t1700000100000\t4410\tCompiling\n";
-  mach := "studio\tMac Studio\t100.88.1.10\tchris\t22\ttailscale\tonline\t0\t0\tmacOS\n";
+  mach := "studio\tMac Studio\t10.0.0.10\tchris\t22\tssh\tonline\t0\t0\tmacOS\n";
   rem := "studio\tMac Studio\tchat-99\topenagents\tTrain Inkling\t/Users/chris/openagents\tmain\trunning\t1700000200000\tstep 420\n";
   #assert coder_page_introspect_set_tui(s, tmux, "", false) == 1;
   #assert coder_page_introspect_set_harnesses(s, har, "", false) == 1;

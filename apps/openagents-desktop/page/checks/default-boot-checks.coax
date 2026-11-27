@@ -178,17 +178,17 @@
   coder_page_voice_set_state(s[..], CP_VOICE_IDLE, "");
   #assert coder_page_voice_state(s[..]) == CP_VOICE_IDLE;
 
-  // Environments/Connections & Universal Introspection work with default flags (#14066).
-  #assert coder_page_env_load_ssh_config(s[..], "Host studio\n  HostName 100.88.1.10\n  User chris\n") == 1;
+  // Environments/Connections & live inspector work with default flags (#14066); sidebar stays clean.
+  #assert coder_page_env_load_ssh_config(s[..], "Host studio\n  HostName 10.0.0.10\n  User chris\n") == 1;
   #assert coder_page_env_count(s[..]) == 2;
   #assert coder_page_introspect_set_tui(s[..], "dev\t0\t0\t12345\tzsh\t/Users/chris/work/openagents\tdev-shell\t1\n", "", false) == 1;
   #assert coder_page_introspect_set_harnesses(s[..], "claude\ts1\tFix shader\t/Users/chris/work/openagents\tmain\trunning\t1700000100000\t4410\tCompiling\n", "", false) == 1;
-  #assert coder_page_introspect_set_machines(s[..], "studio\tMac Studio\t100.88.1.10\tchris\t22\ttailscale\tonline\t0\t0\tmacOS\n", "studio\tMac Studio\tr1\topenagents\tTrain\t/Users/chris/openagents\tmain\trunning\t1700000200000\tstep 1\n") == 1;
+  #assert coder_page_introspect_set_machines(s[..], "studio\tMac Studio\t10.0.0.10\tchris\t22\tssh\tonline\t0\t0\tmacOS\n", "studio\tMac Studio\tr1\topenagents\tTrain\t/Users/chris/openagents\tmain\trunning\t1700000200000\tstep 1\n") == 1;
   ic: [4] int;
   #assert coder_page_introspect_counts(s[..], ic[..]) && ic[0] == 1 && ic[1] == 1 && ic[2] == 1 && ic[3] == 1;
   #assert cp_introspect_open_session(s[..], 0) && coder_page_introspect_shown(s[..]);
   #assert coder_page_introspect_set_output(s[..], "local:tmux:dev:0.0", "hello from tmux\n", "Updated", false);
-  // Borderless Session Control UI Direct Command works unconditionally in --minimal (#14067).
+  // Borderless Session Control UI Direct Command works unconditionally (#14067).
   #assert coder_page_introspect_can_command(s[..]);
   #assert coder_page_introspect_set_cmd(s[..], "echo hi");
   #assert coder_page_introspect_submit(s[..]) && coder_page_action(s[..]) == CP_ASK_INTROSPECT_SEND;
@@ -200,12 +200,15 @@
   #assert !coder_page_introspect_shown(s[..]);
 
   // Sidebar bottom utility bar hides the wallet/archive icons and shows the bottom-right account credits pill;
-  // the Bitcoin Spark + read-only Nostr Wallet pane itself still works when toggled programmatically.
+  // sidebar renders zero external harness, machine, or TUI discovery sections.
   s[0].d = 1.0f32;
   f: [1] UiFrame;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0f32, 0.016f32, true, false);
   cp_layout(s[..], f[..], 1280.0f32, 820.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert surface_find(s[0].surface[..], "coder.is.sec.tui") < 0;
+  #assert surface_find(s[0].surface[..], "coder.is.sec.harness") < 0;
+  #assert surface_find(s[0].surface[..], "coder.is.sec.machines") < 0;
   #assert surface_find(s[0].surface[..], "coder.sb.archived") < 0;
   #assert surface_find(s[0].surface[..], "coder.wallet") < 0;
   #assert surface_find(s[0].surface[..], "coder.side.pill.usage") < 0;

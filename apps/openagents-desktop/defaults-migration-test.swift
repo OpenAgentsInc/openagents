@@ -24,11 +24,10 @@ struct DefaultsMigrationTest {
             exit(1)
         }
 
-        // Populate legacy com.openagents.coder settings, including tailnetPairing.
+        // Populate legacy com.openagents.coder settings.
         src.set(false, forKey: "chatWorktrees")
         src.set(2, forKey: "foremanTier")
         src.set(true, forKey: "foremanOperatorTierRaise")
-        src.set(false, forKey: "tailnetPairing")
         src.set("/tmp/my-repo", forKey: "folder")
         src.set(1, forKey: "zoom")
         src.set(Float(240.0), forKey: "sideWidth")
@@ -44,12 +43,11 @@ struct DefaultsMigrationTest {
         dst.synchronize()
 
         let count = DefaultsMigration.migrateIfNeeded(sourceSuite: srcSuite, destination: dst)
-        assert(count >= 11, "expected >= 11 migrated keys, got \(count)")
+        assert(count >= 10, "expected >= 10 migrated keys, got \(count)")
         assert(dst.bool(forKey: DefaultsMigration.sentinelKey) == true, "sentinel not set")
         assert(dst.object(forKey: "chatWorktrees") as? Bool == false, "chatWorktrees not migrated")
         assert(dst.integer(forKey: "foremanTier") == 2, "foremanTier not migrated")
         assert(dst.bool(forKey: "foremanOperatorTierRaise") == true, "foremanOperatorTierRaise not migrated")
-        assert(dst.object(forKey: "tailnetPairing") as? Bool == false, "tailnetPairing not migrated")
         assert(dst.string(forKey: "folder") == "/tmp/already-set", "existing destination key was overwritten")
         assert(dst.integer(forKey: "zoom") == 1, "zoom not migrated")
         assert(dst.float(forKey: "sideWidth") == 240.0, "sideWidth not migrated")

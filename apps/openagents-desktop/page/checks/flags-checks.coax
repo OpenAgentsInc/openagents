@@ -121,7 +121,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert cp_set_hits_flags("usage", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("voice", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("connections", hits[..], 0) >= 1;
-  #assert cp_set_hits_flags("tailscale", hits[..], 0) >= 1;
+  #assert cp_set_hits_flags("cloud", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("ssh", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("providers", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("antigravity", hits[..], 0) >= 1;
@@ -315,11 +315,11 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_ENVIRONMENTS));
   #assert cp_set_page_ok_flags(s[0].flags, CP_PG_CONNECTIONS);
   hits: [CP_SET_HITS] int;
-  #assert cp_set_hits_flags("keep awake", hits[..], s[0].flags) >= 1 && cp_set_hits_flags("tailscale", hits[..], s[0].flags) >= 1;
+  #assert cp_set_hits_flags("keep awake", hits[..], s[0].flags) >= 1 && cp_set_hits_flags("cloud", hits[..], s[0].flags) >= 1;
 
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_PAIRING));
   #assert cp_set_page_ok_flags(s[0].flags, CP_PG_CONNECTIONS);
-  #assert cp_set_hits_flags("tailscale", hits[..], s[0].flags) >= 1 && cp_set_hits_flags("keep awake", hits[..], s[0].flags) >= 1;
+  #assert cp_set_hits_flags("cloud", hits[..], s[0].flags) >= 1 && cp_set_hits_flags("keep awake", hits[..], s[0].flags) >= 1;
 
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_SCHEDULED));
   #assert cp_set_page_ok_flags(s[0].flags, CP_PG_SCHED) && cp_set_hits_flags("update everything", hits[..], s[0].flags) >= 1;

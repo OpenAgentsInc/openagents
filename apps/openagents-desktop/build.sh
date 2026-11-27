@@ -179,7 +179,7 @@ link_flags=(
 core_swift=(
   "$here/Activation.swift" "$here/AntigravityProvider.swift" "$here/AppDelegate.swift" "$here/CloudChatSync.swift" "$here/DaemonClient.swift"
   "$here/DefaultsMigration.swift" "$here/DesktopCore.swift" "$here/LocalModels.swift"
-  "$here/Notifications.swift" "$here/Store.swift" "$here/Tailnet.swift" "$repo/apps/shared/native/AppTailnet.swift" "$here/Updater.swift"
+  "$here/Notifications.swift" "$here/Store.swift" "$here/Updater.swift"
   "$here/Window.swift" "$here/Window+Attach.swift" "$here/Window+Chats.swift"
   "$here/Window+Dialogs.swift" "$here/Window+Files.swift" "$here/Window+FollowUps.swift"
   "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Runs.swift"

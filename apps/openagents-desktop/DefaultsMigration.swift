@@ -5,13 +5,12 @@ enum DefaultsMigration {
     static let legacySuite = "com.openagents.coder"
     static let sentinelKey = "migratedFromCoderDefaultsV1"
 
-    /// Known keys from Coder Desktop (including tailnetPairing) checked explicitly in addition to
+    /// Known keys from Coder Desktop checked explicitly in addition to
     /// every key present in the legacy persistent domain.
     static let knownKeys: [String] = [
         "chatWorktrees",
         "foremanTier",
         "foremanOperatorTierRaise",
-        "tailnetPairing",
         "folder",
         "zoom",
         "sideWidth",

@@ -31,9 +31,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
                 self?.main?.refreshCloudChatSync()
             }
         }
-        if FeatureFlags.isOn(.pairing) {
-            CoderTailnet.shared.start()   // a phone on your tailnet pairs with no code (Tailnet.swift, #13778)
-        }
         applyFlags()
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {

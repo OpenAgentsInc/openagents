@@ -1,4 +1,4 @@
-// Firm reason: 6 (~/.ssh/config + Boats discovery, SSH socket forwarding, and Tailnet/mobile pairing over page/environments.coax; GitHub #13883).
+// Firm reason: 6 (~/.ssh/config + Boats discovery, SSH socket forwarding, and Cloud connection preferences over page/environments.coax; GitHub #13883).
 import AppKit
 import Foundation
 
@@ -136,9 +136,27 @@ enum AuthorizedDeviceStore {
         // Best-effort notify bundled coder-host if it supports device revocation.
         if let host = Bundle.main.path(forResource: "coder-host", ofType: nil) {
             DispatchQueue.global(qos: .utility).async {
-                _ = CoderTailnet.output(host, ["revoke", id], timeout: 4)
+                runHelper(host, ["revoke", id], timeout: 4)
             }
         }
+    }
+
+    private static func runHelper(_ path: String, _ args: [String], timeout: TimeInterval) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        p.standardInput = FileHandle.nullDevice
+        var env = ProcessInfo.processInfo.environment
+        env["BROWSER"] = "/usr/bin/true"
+        env["SSH_CONNECTION"] = "1"
+        p.environment = env
+        do { try p.run() } catch { return }
+        let killer = DispatchWorkItem { if p.isRunning { p.terminate() } }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: killer)
+        p.waitUntilExit()
+        killer.cancel()
     }
 
     static func loadDevices(daemonClient: CoderDaemonClient) -> [AuthorizedMobileDevice] {
@@ -174,17 +192,17 @@ enum AuthorizedDeviceStore {
 enum ServerExposurePrefs {
     static let modeKey = "serverExposureMode"
 
+    /// 0 = Local-only, 1 = Cloud (default). Legacy values (> 1) map to Cloud.
     static var mode: Int32 {
         get {
             if let v = UserDefaults.standard.object(forKey: modeKey) as? Int {
-                return Int32(max(0, min(2, v)))
+                return v == 0 ? 0 : 1
             }
-            return CoderTailnet.enabled ? 2 : 0
+            return 1
         }
         set {
-            let clamped = max(0, min(2, Int(newValue)))
+            let clamped = newValue == 0 ? 0 : 1
             UserDefaults.standard.set(clamped, forKey: modeKey)
-            UserDefaults.standard.set(clamped != 0, forKey: CoderTailnet.enabledKey)
         }
     }
 }
@@ -215,23 +233,9 @@ extension CoderWindow {
             }
         }
 
-        // 3. Sync Server Exposure mode & live Tailnet status.
+        // 3. Sync Connection mode (Local-only vs Cloud).
         let mode = ServerExposurePrefs.mode
-        cd_env_expose_set(page, mode, exposureStatusFallback(mode))
-        CoderTailnet.shared.statusSnapshot { [weak self] status in
-            guard let self else { return }
-            let cur = ServerExposurePrefs.mode
-            let shown: String
-            if cur == 0 {
-                shown = "Local-only (127.0.0.1) — mobile pairing disabled."
-            } else if cur == 1 {
-                shown = "LAN — local network exposure enabled (\(status))."
-            } else {
-                shown = status
-            }
-            cd_env_expose_set(self.page, cur, shown)
-            self.wake()
-        }
+        cd_env_expose_set(page, mode, exposureStatus(mode))
 
         // 4. Sync authorized mobile devices.
         cd_env_device_clear(page)
@@ -246,12 +250,15 @@ extension CoderWindow {
         wake()
     }
 
-    private func exposureStatusFallback(_ mode: Int32) -> String {
-        switch mode {
-        case 0: return "Local-only (127.0.0.1) — mobile pairing disabled."
-        case 1: return "LAN — reachable on your local network."
-        default: return "Tailscale — checking tailnet status…"
+    private func exposureStatus(_ mode: Int32) -> String {
+        if mode == 0 {
+            return "Local-only (127.0.0.1) — cloud sync disabled."
         }
+        if FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn {
+            let acct = MacAccount.shared.title.isEmpty ? "Signed in" : MacAccount.shared.title
+            return "Cloud — connected via OpenAgents Cloud (\(acct))."
+        }
+        return "Cloud — sign in to OpenAgents Cloud in Settings -> Account."
     }
 
     private func envNameAt(_ idx: Int32) -> String {
@@ -332,38 +339,31 @@ extension CoderWindow {
         }
     }
 
-    /// Handles CP_ASK_ENV_EXPOSE (83): persists Server Exposure mode and reloads Tailnet.
+    /// Handles CP_ASK_ENV_EXPOSE (93): persists Cloud / Local-only connection mode.
     func envExposureChanged() {
         let mode = cd_env_expose_mode(page)
         ServerExposurePrefs.mode = mode
-        CoderTailnet.shared.reload()
         syncEnvironments()
     }
 
-    /// Handles CP_ASK_ENV_PAIR (84): creates a mobile pairing link and presents it in a dialog.
+    /// Handles CP_ASK_ENV_PAIR (94): explains OpenAgents Cloud linking for OpenAgents iOS.
     func envPairMobileDevice() {
-        cd_env_pair_code_set(page, "Generating…")
+        if FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn {
+            cd_env_pair_code_set(page, "Cloud synced")
+            wake()
+            present(.notice("OpenAgents Cloud Sync", "Your desktop connects through OpenAgents Cloud. Sign in with the same OpenAgents account in OpenAgents iOS to access your chats from your phone."))
+            return
+        }
+        cd_env_pair_code_set(page, "Sign in required")
         wake()
-        CoderTailnet.shared.createPairingLink { [weak self] link in
-            guard let self else { return }
-            guard let link, !link.isEmpty else {
-                cd_env_pair_code_set(self.page, "Unavailable")
-                self.present(.notice("Pairing Unavailable", "Could not generate a pairing link. Ensure the local daemon is running and Tailscale or LAN exposure is enabled."))
-                return
+        var d = CoderDialog(size: .md, title: "Sign In to OpenAgents Cloud", body: "OpenAgents connects Desktop and iOS through OpenAgents Cloud. Sign in to your OpenAgents account to sync across devices.")
+        d.buttons = [.init(title: "Cancel"), .init(title: "Log In…", kind: .primary)]
+        d.cancel = 0; d.confirm = 1
+        present(d) { [weak self] answer, _ in
+            if answer == 1 {
+                Task { @MainActor in await MacAccount.shared.showLogin() }
             }
-            let short = link.count > 28 ? String(link.prefix(24)) + "…" : link
-            cd_env_pair_code_set(self.page, short)
-            var d = CoderDialog(size: .md, title: "Pair Mobile Device", body: "Open this pairing link in OpenAgents iOS to authorize your phone (valid for 5 minutes):\n\n" + link)
-            d.buttons = [.init(title: "Copy Link", aside: true), .init(title: "Done", kind: .primary)]
-            d.cancel = 1; d.confirm = 1
-            self.present(d) { [weak self] answer, _ in
-                if answer == 0 {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(link, forType: .string)
-                    if let p = self?.page { cd_toast(p, "Pairing link copied", 0) }
-                }
-                self?.refocus()
-            }
+            self?.refocus()
         }
     }
 

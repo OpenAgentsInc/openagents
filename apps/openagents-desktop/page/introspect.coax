@@ -1,13 +1,13 @@
-// Coder Desktop page (../page.coax): Universal Introspection sidebar sections
-// (TUI & Terminal, Other Harnesses, Machines) and main-pane live output inspector
-// (docs/desktop/2026-11-26-unfettered-harness-spec.md §3.3, GitHub #14066).
-// Reconciled with #14071: external local harnesses are discovered strictly read-only
-// and default non-commandable unless opted in via Settings -> Agent.
+// Coder Desktop page (../page.coax): Live session output inspector pane & direct command
+// composer (docs/desktop/2026-11-26-unfettered-harness-spec.md §3.3, GitHub #14066).
+// Sidebar discovery sections (external harnesses, remote machine lists, TUI panes) are
+// omitted so the sidebar stays cleanly focused on OpenAgents chats.
+// Reconciled with #14071: external local harnesses default non-commandable unless opted in.
 
 CP_SCR_INTROSPECT :: 15;
 
 // Host asks (free after CP_ASK_BR_LAST :: 249).
-CP_ASK_INTROSPECT_REFRESH :: 250; // Re-scan local tmux/TUI/harnesses and remote machines
+CP_ASK_INTROSPECT_REFRESH :: 250; // Refresh local session introspection on demand
 CP_ASK_INTROSPECT_INSPECT :: 251; // Fetch/refresh live output for active_id
 CP_ASK_INTROSPECT_SEND :: 252;    // Send direct command/prompt/keystrokes to active_id (#14067)
 CP_ASK_INTROSPECT_CONNECT :: 253; // Connect or open Settings -> Connections for active machine
@@ -88,10 +88,6 @@ cp_introspect_harness_icon :: (h: int) -> int {
 
 cp_introspect_side_busy :: (s: [] CoderPage) -> bool {
   if s.count < 1 { return false; }
-  snap := s[0].introspect[0].snap[..];
-  for i: 0..<snap[0].nsessions {
-    if snap[0].sessions[i].status == IS_ST_RUNNING { return true; }
-  }
   return false;
 }
 
@@ -247,139 +243,11 @@ cp_introspect_session_row :: (s: [] CoderPage, f: [] UiFrame, idx: int, tree_lin
 
 // ---------------------------------------------------------------- sidebar sections
 
-// Appends Universal Introspection collapsible sections (TUI & Terminal, Other Harnesses,
-// Machines) to the sidebar row array whenever any items exist in each section.
+// Sidebar discovery sections are intentionally omitted so the Desktop sidebar shows only
+// OpenAgents chats, Dashboard, and Recents (no external harness or remote machine clutter).
 cp_introspect_sidebar_rows :: (s: [] CoderPage, f: [] UiFrame, rows: [] AppSideRow, nrows_in: int) -> int {
-  if s.count < 1 { return nrows_in; }
-  ip := s[0].introspect[..];
-  snap := ip[0].snap[..];
-  sh := f[0].sheet;
-  nrows := nrows_in;
-
-  // 1. TUI & Terminal (tmux panes + standalone TUI sessions)
-  ntui := is_count_kind(snap, IS_KIND_TUI);
-  if ntui > 0 && nrows < rows.count {
-    col := ip[0].tui_collapsed;
-    cb: [16] u8; cn := el_put_i(cb[..], 0, ntui);
-    tui_run := is_count_running(snap, IS_KIND_TUI) > 0;
-    rows[nrows] = AppSideRow.{
-      id = "coder.is.sec.tui",
-      title = "TUI & Terminal",
-      status = sheet_pool(sh, cast(string) cb[0..<cn]),
-      icon = ICON_TERMINAL,
-      state = EL_S_EXPANDS | (ifx !col then EL_S_EXPANDED else 0) | (ifx tui_run then EL_S_BUSY else 0),
-      trail_icon = ifx col then ICON_CHEVRON_RIGHT else ICON_CHEVRON,
-      action = CP_IS_TOGGLE_TUI
-    };
-    nrows += 1;
-    if !col {
-      for i: 0..<snap[0].nsessions {
-        if nrows >= rows.count { break; }
-        if snap[0].sessions[i].kind != IS_KIND_TUI { continue; }
-        rows[nrows] = cp_introspect_session_row(s, f, i, false);
-        nrows += 1;
-      }
-    }
-  }
-
-  // 2. Other Harnesses (Claude Code, Codex, Antigravity, Cursor, OpenCode — read-only discovery)
-  nhar := is_count_kind(snap, IS_KIND_HARNESS);
-  if nhar > 0 && nrows < rows.count {
-    col := ip[0].harness_collapsed;
-    cb: [16] u8; cn := el_put_i(cb[..], 0, nhar);
-    har_run := is_count_running(snap, IS_KIND_HARNESS) > 0;
-    rows[nrows] = AppSideRow.{
-      id = "coder.is.sec.harness",
-      title = "Other Harnesses",
-      status = sheet_pool(sh, cast(string) cb[0..<cn]),
-      icon = ICON_BOT,
-      state = EL_S_EXPANDS | (ifx !col then EL_S_EXPANDED else 0) | (ifx har_run then EL_S_BUSY else 0),
-      trail_icon = ifx col then ICON_CHEVRON_RIGHT else ICON_CHEVRON,
-      action = CP_IS_TOGGLE_HARNESS
-    };
-    nrows += 1;
-    if !col {
-      for i: 0..<snap[0].nsessions {
-        if nrows >= rows.count { break; }
-        if snap[0].sessions[i].kind != IS_KIND_HARNESS { continue; }
-        rows[nrows] = cp_introspect_session_row(s, f, i, false);
-        nrows += 1;
-      }
-    }
-  }
-
-  // 3. Machines (Tailscale peers, SSH hosts, Boats, and their remote sessions)
-  nmach := snap[0].nmachines;
-  if nmach > 0 && nrows < rows.count {
-    col := ip[0].machines_collapsed;
-    cb: [16] u8; cn := el_put_i(cb[..], 0, nmach);
-    rem_run := is_count_running(snap, IS_KIND_REMOTE) > 0;
-    rows[nrows] = AppSideRow.{
-      id = "coder.is.sec.machines",
-      title = "Machines",
-      status = sheet_pool(sh, cast(string) cb[0..<cn]),
-      icon = ICON_GLOBAL,
-      state = EL_S_EXPANDS | (ifx !col then EL_S_EXPANDED else 0) | (ifx rem_run then EL_S_BUSY else 0),
-      trail_icon = ifx col then ICON_CHEVRON_RIGHT else ICON_CHEVRON,
-      action = CP_IS_TOGGLE_MACHINES
-    };
-    nrows += 1;
-    if !col {
-      act_id := cp_introspect_active_id(s);
-      for mi: 0..<nmach {
-        if nrows >= rows.count { break; }
-        m := snap[0].machines[mi];
-        mid := is_str(m.id[..], m.id_n);
-        mname := is_str(m.label[..], m.label_n);
-        if mname.count == 0 { mname = is_str(m.host[..], m.host_n); }
-        m_col := ip[0].machine_collapsed[mi];
-        is_mcur := ip[0].open && ip[0].inspect_is_machine && mid.count > 0 && mid == act_id;
-        mb_id: [32] u8;
-        mn := el_put(mb_id[..], 0, "coder.is.m.");
-        mn = el_put_i(mb_id[..], mn, mi);
-
-        st_txt := "";
-        if m.session_count > 0 {
-          sb: [16] u8; sn := el_put_i(sb[..], 0, m.session_count);
-          st_txt = sheet_pool(sh, cast(string) sb[0..<sn]);
-        } else {
-          st_txt = is_machine_status_label(m.status);
-        }
-
-        mskind := APP_SIDE_STATUS_NONE;
-        if m.status == IS_MACH_ONLINE { mskind = APP_SIDE_STATUS_ONLINE; }
-        else if m.status == IS_MACH_CONNECTING { mskind = APP_SIDE_STATUS_APPROVAL; }
-        else if m.status == IS_MACH_ERROR { mskind = APP_SIDE_STATUS_FAILED; }
-
-        mstate := (ifx is_mcur then EL_S_CURRENT else 0) |
-                  (ifx m.session_count > 0 then (EL_S_EXPANDS | (ifx !m_col then EL_S_EXPANDED else 0)) else 0);
-        rows[nrows] = AppSideRow.{
-          id = sheet_pool(sh, cast(string) mb_id[0..<mn]),
-          title = sheet_pool(sh, mname),
-          status = st_txt,
-          icon = ICON_GLOBAL,
-          trail_icon = ifx m.session_count > 0 then (ifx m_col then ICON_CHEVRON_RIGHT else ICON_CHEVRON) else -1,
-          status_kind = mskind,
-          state = mstate,
-          quiet = m.status == IS_MACH_OFFLINE,
-          action = CP_IS_TOGGLE_MACHINE
-        };
-        nrows += 1;
-
-        if !m_col && m.session_count > 0 {
-          for si: 0..<snap[0].nsessions {
-            if nrows >= rows.count { break; }
-            if snap[0].sessions[si].kind != IS_KIND_REMOTE { continue; }
-            smid := is_str(snap[0].sessions[si].machine_id[..], snap[0].sessions[si].machine_id_n);
-            if smid != mid { continue; }
-            rows[nrows] = cp_introspect_session_row(s, f, si, true);
-            nrows += 1;
-          }
-        }
-      }
-    }
-  }
-  return nrows;
+  if s.count < 1 || f.count < 1 || rows.count < 0 { return nrows_in; }
+  return nrows_in;
 }
 
 // ---------------------------------------------------------------- actions & press dispatch
@@ -909,17 +777,21 @@ coder_page_introspect_set_machines :: (s: [] CoderPage, machines_tsv: string, re
   for i: 0..<old_n { old_m[i] = snap[0].machines[i]; old_col[i] = ip[0].machine_collapsed[i]; }
 
   new_m: [IS_MAX_MACHINES] IntrospectMachine;
-  nm := is_parse_machines(machines_tsv, new_m[..]);
-  for i: 0..<nm {
-    snap[0].machines[i] = new_m[i];
-    ip[0].machine_collapsed[i] = false;
+  parsed := is_parse_machines(machines_tsv, new_m[..]);
+  nm := 0;
+  for i: 0..<parsed {
+    // Only keep explicit SSH/Boat environments; ignore mesh peer transports.
+    if new_m[i].transport != IS_TRANS_SSH && new_m[i].transport != IS_TRANS_BOAT { continue; }
+    snap[0].machines[nm] = new_m[i];
+    ip[0].machine_collapsed[nm] = false;
     nid := is_str(new_m[i].id[..], new_m[i].id_n);
     for oi: 0..<old_n {
       if is_str(old_m[oi].id[..], old_m[oi].id_n) == nid {
-        ip[0].machine_collapsed[i] = old_col[oi];
+        ip[0].machine_collapsed[nm] = old_col[oi];
         break;
       }
     }
+    nm += 1;
   }
   for i: nm..<IS_MAX_MACHINES { snap[0].machines[i] = IntrospectMachine.{}; ip[0].machine_collapsed[i] = false; }
   snap[0].nmachines = nm;

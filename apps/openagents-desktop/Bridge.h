@@ -2,7 +2,6 @@
 #include "host.h"
 #include "desktop-core-mac.h"
 #include "cloud-chat-wire-mac.h"
-#include "../shared/native/tailnet-codec.h"
 #include "account-mac.h"
 #include "mv_host.h"
 #include "gb_host.h"

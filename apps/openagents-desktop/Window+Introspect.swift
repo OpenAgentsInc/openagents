@@ -1,10 +1,9 @@
-// Firm reason: 6 (macOS process/tmux polling, Tailscale peer discovery, and bounded read-only file tailing over page/introspect.coax; GitHub #14066).
+// Firm reason: 6 (macOS local OpenAgents TUI/tmux inspection over page/introspect.coax; GitHub #14066).
 import AppKit
 import Foundation
 
-/// Background platform-effect scanner for Universal Introspection (#14066).
-/// Reconciled with #14071: external local harnesses are discovered strictly read-only
-/// (bounded directory/tail reads and `ps`), never spawning external harness CLI binaries.
+/// On-demand platform-effect scanner for local OpenAgents TUI/tmux sessions (#14066).
+/// Never polls external third-party harnesses or mesh peer networks in the background.
 enum IntrospectScanner {
     static let queue = DispatchQueue(label: "openagents.coder.introspect", qos: .utility)
 
@@ -113,7 +112,6 @@ enum IntrospectScanner {
         var env = ProcessInfo.processInfo.environment
         env["BROWSER"] = "/usr/bin/true"
         env["SSH_CONNECTION"] = "1"
-        env["TAILSCALE_BE_CLI"] = "1"
         if env["TERM"]?.isEmpty != false { env["TERM"] = "dumb" }
         p.environment = env
         do { try p.run() } catch { return "" }
@@ -145,7 +143,6 @@ enum IntrospectScanner {
         var env = ProcessInfo.processInfo.environment
         env["BROWSER"] = "/usr/bin/true"
         env["SSH_CONNECTION"] = "1"
-        env["TAILSCALE_BE_CLI"] = "1"
         if env["TERM"]?.isEmpty != false { env["TERM"] = "dumb" }
         p.environment = env
         do { try p.run() } catch { return (false, -1, "", error.localizedDescription) }
@@ -196,15 +193,14 @@ enum IntrospectScanner {
         }
 
         let psRaw = scanProcessTable()
-        let (harnessTsv, pathIndex, harnessRecords) = scanExternalHarnessCatalog()
         let tuiRecords = buildTuiRecords(tmuxRaw: tmuxRaw, psRaw: psRaw)
         return LocalScanResult(
             tmuxRaw: tmuxRaw,
             psRaw: psRaw,
-            harnessTsv: harnessTsv,
-            pathIndex: pathIndex,
+            harnessTsv: "",
+            pathIndex: [:],
             tuiSessions: tuiRecords,
-            harnessSessions: harnessRecords
+            harnessSessions: []
         )
     }
 
@@ -293,152 +289,13 @@ enum IntrospectScanner {
             guard cols.count >= 4 else { continue }
             while idx < trimmed.endIndex && trimmed[idx].isWhitespace { idx = trimmed.index(after: idx) }
             let args = idx < trimmed.endIndex ? String(trimmed[idx...]) : String(cols[3])
-            // Fast pre-filter in Swift to keep TSV compact (Coax parser still does full classification).
+            // Only inspect OpenAgents local TUI processes (never third-party external harnesses).
             let lc = (String(cols[3]) + " " + args).lowercased()
-            let interesting = lc.contains("claude") || lc.contains("codex") || lc.contains("agy") ||
-                              lc.contains("antigravity") || lc.contains("cursor") || lc.contains("opencode") ||
-                              lc.contains("inky") || lc.contains("coder") || lc.contains("openagents")
+            let interesting = lc.contains("inky") || lc.contains("coder") || lc.contains("openagents")
             guard interesting else { continue }
             lines.append("\(cols[0])\t\(cols[1])\t\(cols[2])\t\(cleanField(String(cols[3])))\t\(cleanField(args))\t")
         }
         return lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
-    }
-
-    /// Strictly read-only, bounded inspection of known external harness session folders.
-    /// Never walks outside these explicit paths and never spawns external harness binaries (#14071).
-    private static func scanExternalHarnessCatalog() -> (String, [String: String], [SessionRecord]) {
-        let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser
-        var rows: [(updatedMs: Int64, line: String, uri: String, path: String, rec: SessionRecord)] = []
-
-        // 1. Claude Code transcripts under ~/.claude/projects/<encoded-cwd>/<session>.jsonl (bounded)
-        let claudeRoot = home.appendingPathComponent(".claude/projects", isDirectory: true)
-        if let projDirs = boundedRecentChildren(of: claudeRoot, maxCount: 10, wantDirectories: true) {
-            for pdir in projDirs {
-                if let files = boundedRecentChildren(of: pdir.url, maxCount: 3, wantDirectories: false, suffix: ".jsonl") {
-                    for f in files {
-                        let sid = f.url.deletingPathExtension().lastPathComponent
-                        guard !sid.isEmpty, !sid.hasPrefix("agent-") else { continue }
-                        let meta = extractJsonlMeta(url: f.url, fallbackCwd: decodeClaudeProjectDir(pdir.url.lastPathComponent))
-                        let uri = "local:harness:claude:\(sid)"
-                        let status = (Date().timeIntervalSince(f.mtime) < 90.0) ? "running" : "idle"
-                        let title = meta.title.isEmpty ? "Claude \(String(sid.prefix(8)))" : meta.title
-                        let ms = Int64(f.mtime.timeIntervalSince1970 * 1000)
-                        let line = "claude\t\(cleanField(sid))\t\(cleanField(title))\t\(cleanField(meta.cwd))\t\(cleanField(meta.branch))\t\(status)\t\(ms)\t0\t\(cleanField(meta.preview))"
-                        let rec = SessionRecord(id: uri, kind: "harness", harness: "claude", machineID: "local", machineLabel: "This Mac", title: cleanField(title), cwd: cleanField(meta.cwd), branch: cleanField(meta.branch), status: status, updatedMs: ms, pid: 0, preview: cleanField(meta.preview), isExternalHarness: true, localCommandable: false)
-                        rows.append((ms, line, uri, f.url.path, rec))
-                    }
-                }
-            }
-        }
-
-        // 2. Codex CLI transcripts under ~/.codex/sessions (bounded depth <= 3)
-        let codexRoot = home.appendingPathComponent(".codex/sessions", isDirectory: true)
-        for f in boundedRecentJsonlTree(root: codexRoot, maxDepth: 3, maxFiles: 8) {
-            let sid = f.url.deletingPathExtension().lastPathComponent
-            guard !sid.isEmpty else { continue }
-            let meta = extractJsonlMeta(url: f.url, fallbackCwd: "")
-            let uri = "local:harness:codex:\(sid)"
-            let status = (Date().timeIntervalSince(f.mtime) < 90.0) ? "running" : "idle"
-            let title = meta.title.isEmpty ? "Codex \(String(sid.prefix(12)))" : meta.title
-            let ms = Int64(f.mtime.timeIntervalSince1970 * 1000)
-            let line = "codex\t\(cleanField(sid))\t\(cleanField(title))\t\(cleanField(meta.cwd))\t\(cleanField(meta.branch))\t\(status)\t\(ms)\t0\t\(cleanField(meta.preview))"
-            let rec = SessionRecord(id: uri, kind: "harness", harness: "codex", machineID: "local", machineLabel: "This Mac", title: cleanField(title), cwd: cleanField(meta.cwd), branch: cleanField(meta.branch), status: status, updatedMs: ms, pid: 0, preview: cleanField(meta.preview), isExternalHarness: true, localCommandable: false)
-            rows.append((ms, line, uri, f.url.path, rec))
-        }
-
-        // 3. Antigravity conversations under ~/.gemini/antigravity/conversations (bounded)
-        let agyRoot = home.appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
-        if let convs = boundedRecentChildren(of: agyRoot, maxCount: 8, wantDirectories: nil) {
-            for c in convs {
-                let sid = c.url.deletingPathExtension().lastPathComponent
-                guard !sid.isEmpty, !sid.hasPrefix(".") else { continue }
-                let uri = "local:harness:agy:\(sid)"
-                let status = (Date().timeIntervalSince(c.mtime) < 90.0) ? "running" : "idle"
-                let ms = Int64(c.mtime.timeIntervalSince1970 * 1000)
-                let title = "Antigravity \(cleanField(String(sid.prefix(12))))"
-                let line = "agy\t\(cleanField(sid))\t\(title)\t\t\t\(status)\t\(ms)\t0\tConversation artifact"
-                let rec = SessionRecord(id: uri, kind: "harness", harness: "agy", machineID: "local", machineLabel: "This Mac", title: title, cwd: "", branch: "", status: status, updatedMs: ms, pid: 0, preview: "Conversation artifact", isExternalHarness: true, localCommandable: false)
-                rows.append((ms, line, uri, c.url.path, rec))
-            }
-        }
-
-        rows.sort { $0.updatedMs > $1.updatedMs }
-        let capped = Array(rows.prefix(18))
-        var idx: [String: String] = [:]
-        for r in capped { idx[r.uri] = r.path }
-        let tsv = capped.map(\.line).joined(separator: "\n") + (capped.isEmpty ? "" : "\n")
-        return (tsv, idx, capped.map(\.rec))
-    }
-
-    private struct DirEntry {
-        let url: URL
-        let mtime: Date
-    }
-
-    private static func boundedRecentChildren(of dir: URL, maxCount: Int, wantDirectories: Bool?, suffix: String? = nil) -> [DirEntry]? {
-        let fm = FileManager.default
-        guard let urls = try? fm.contentsOfDirectory(
-            at: dir,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return nil }
-        var out: [DirEntry] = []
-        for u in urls.prefix(200) {
-            if let suffix, !u.lastPathComponent.hasSuffix(suffix) { continue }
-            guard let vals = try? u.resourceValues(forKeys: [.contentModificationDateKey, .isDirectoryKey]) else { continue }
-            if let wantDir = wantDirectories, (vals.isDirectory ?? false) != wantDir { continue }
-            out.append(DirEntry(url: u, mtime: vals.contentModificationDate ?? .distantPast))
-        }
-        out.sort { $0.mtime > $1.mtime }
-        return Array(out.prefix(maxCount))
-    }
-
-    private static func boundedRecentJsonlTree(root: URL, maxDepth: Int, maxFiles: Int) -> [DirEntry] {
-        var collected: [DirEntry] = []
-        func walk(_ dir: URL, depth: Int) {
-            if depth > maxDepth || collected.count >= maxFiles * 3 { return }
-            guard let entries = boundedRecentChildren(of: dir, maxCount: 6, wantDirectories: nil) else { return }
-            for e in entries {
-                var isDir: ObjCBool = false
-                if FileManager.default.fileExists(atPath: e.url.path, isDirectory: &isDir), isDir.boolValue {
-                    if depth < maxDepth { walk(e.url, depth: depth + 1) }
-                } else if e.url.lastPathComponent.hasSuffix(".jsonl") {
-                    collected.append(e)
-                }
-            }
-        }
-        walk(root, depth: 0)
-        collected.sort { $0.mtime > $1.mtime }
-        return Array(collected.prefix(maxFiles))
-    }
-
-    private static func decodeClaudeProjectDir(_ slug: String) -> String {
-        guard slug.hasPrefix("-") else { return slug }
-        return "/" + slug.dropFirst().replacingOccurrences(of: "-", with: "/")
-    }
-
-    private static func extractJsonlMeta(url: URL, fallbackCwd: String) -> (title: String, cwd: String, branch: String, preview: String) {
-        let head = readBoundedSlice(url: url, fromEnd: false, maxBytes: 8192)
-        let tail = readBoundedSlice(url: url, fromEnd: true, maxBytes: 8192)
-        var title = ""
-        var cwd = fallbackCwd
-        var branch = ""
-        var preview = ""
-        for chunk in [head, tail] {
-            for line in chunk.split(whereSeparator: \.isNewline) {
-                guard line.first == "{",
-                      let data = String(line).data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-                if let c = obj["cwd"] as? String, !c.isEmpty { cwd = c }
-                if let b = obj["gitBranch"] as? String, !b.isEmpty { branch = b }
-                if let text = extractMessageText(from: obj), !text.isEmpty {
-                    if title.isEmpty { title = String(text.prefix(80)) }
-                    preview = String(text.prefix(120))
-                }
-            }
-        }
-        return (title, cwd, branch, preview)
     }
 
     private static func extractMessageText(from obj: [String: Any]) -> String? {
@@ -485,32 +342,7 @@ enum IntrospectScanner {
         var machines: [MachineRecord] = []
         var seen: Set<String> = []
 
-        // 1. Tailscale peers from `tailscale status --json` (3s hard timeout)
-        if let tsCli = CoderTailnet.cli,
-           let data = CoderTailnet.output(tsCli, ["status", "--json"], timeout: 3.0),
-           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let peers = root["Peer"] as? [String: Any] {
-            for (_, val) in peers {
-                guard let peer = val as? [String: Any] else { continue }
-                let hostName = cleanField((peer["HostName"] as? String) ?? "")
-                let dnsRaw = cleanField((peer["DNSName"] as? String) ?? "")
-                let dns = dnsRaw.hasSuffix(".") ? String(dnsRaw.dropLast()) : dnsRaw
-                let ips = (peer["TailscaleIPs"] as? [String]) ?? []
-                let ip = ips.first ?? dns
-                let id = !hostName.isEmpty ? hostName : (!dns.isEmpty ? dns : ip)
-                guard !id.isEmpty, !seen.contains(id.lowercased()) else { continue }
-                seen.insert(id.lowercased())
-                let online = (peer["Online"] as? Bool) ?? false
-                let os = cleanField((peer["OS"] as? String) ?? "")
-                let status = online ? "online" : "offline"
-                let addr = !ip.isEmpty ? ip : dns
-                let label = hostName.isEmpty ? id : hostName
-                rows.append("\(id)\t\(label)\t\(addr)\t\t22\ttailscale\t\(status)\t0\t0\t\(os)")
-                machines.append(MachineRecord(id: id, label: label, host: addr, user: "", port: 22, transport: "tailscale", status: status, os: os))
-            }
-        }
-
-        // 2. Configured SSH / Boat / WSL environments from page/environments.coax
+        // 1. Configured SSH / Boat / WSL environments from page/environments.coax
         for h in envHosts {
             let key = h.name.lowercased()
             guard !h.name.isEmpty, !seen.contains(key) else { continue }
@@ -964,25 +796,12 @@ enum IntrospectScanner {
 }
 
 extension CoderWindow {
-    /// Starts periodic local (3s) and remote (10s) introspection discovery timers (#14066).
+    /// Background polling of external harnesses and remote machines is intentionally disabled
+    /// so OpenAgents Desktop stays lightweight and keeps the sidebar focused on OpenAgents chats.
     func setupIntrospection() {
-        guard !TestLaunch.active else { return }
-        refreshIntrospectLocal()
-        refreshIntrospectRemote()
-
-        introspectLocalTimer?.invalidate()
-        introspectLocalTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.refreshIntrospectLocal()
-            if cd_introspect_shown(self.page) != 0 && cd_introspect_active_is_machine(self.page) == 0 {
-                self.refreshInspectedOutput()
-            }
-        }
-
-        introspectRemoteTimer?.invalidate()
-        introspectRemoteTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
-            self?.refreshIntrospectRemote()
-        }
+        retireIntrospection()
+        _ = cd_introspect_set_harnesses(page, "", "", 0)
+        _ = cd_introspect_set_machines(page, "", "")
     }
 
     func retireIntrospection() {
@@ -1014,7 +833,6 @@ extension CoderWindow {
     func refreshIntrospectLocal() {
         guard !introspectLocalBusy else { return }
         introspectLocalBusy = true
-        let allowExt: Int32 = AgentSettings.allowLocalHarnesses ? 1 : 0
         IntrospectScanner.queue.async { [weak self] in
             let res = IntrospectScanner.scanLocal()
             DispatchQueue.main.async {
@@ -1022,8 +840,8 @@ extension CoderWindow {
                 self.introspectLocalBusy = false
                 self.introspectLocalSnap = res
                 self.introspectPathIndex = res.pathIndex
-                _ = cd_introspect_set_tui(self.page, res.tmuxRaw, res.psRaw, allowExt)
-                _ = cd_introspect_set_harnesses(self.page, res.harnessTsv, res.psRaw, allowExt)
+                _ = cd_introspect_set_tui(self.page, res.tmuxRaw, res.psRaw, 0)
+                _ = cd_introspect_set_harnesses(self.page, "", "", 0)
                 self.wake()
             }
         }
@@ -1040,7 +858,7 @@ extension CoderWindow {
                 guard let self, !self.retired else { return }
                 self.introspectRemoteBusy = false
                 self.introspectRemoteSnap = res
-                _ = cd_introspect_set_machines(self.page, res.machinesTsv, res.remoteSessionsTsv)
+                _ = cd_introspect_set_machines(self.page, "", "")
                 self.wake()
             }
         }

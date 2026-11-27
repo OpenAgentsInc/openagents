@@ -220,8 +220,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var previewNavDelegate: PreviewNavigationDelegate?
     var previewLoadedURL = ""
     var usageTimer: Timer?               // periodic always-on usage & limit-recovery refresh (Window+Usage.swift, #14064)
-    var introspectLocalTimer: Timer?     // 3s local tmux/TUI/harness introspection poll (Window+Introspect.swift, #14066)
-    var introspectRemoteTimer: Timer?    // 10s remote machines introspection poll (Window+Introspect.swift, #14066)
+    var introspectLocalTimer: Timer?     // reserved local introspection timer (Window+Introspect.swift, #14066)
+    var introspectRemoteTimer: Timer?    // reserved remote introspection timer (Window+Introspect.swift, #14066)
     var introspectLocalBusy = false
     var introspectRemoteBusy = false
     var introspectOutputBusy = false
