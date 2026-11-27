@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OpenAgents — v1.0.0</title>
-<meta name="description" content="OpenAgents v1.0.0 — open-source agent workspace across Web, macOS, and iOS. Launching Monday, November 30 at 12:00 PM CT.">
+<title>OpenAgents</title>
+<meta name="description" content="OpenAgents — open-source agent workspace across Web, macOS, and iOS.">
 <link rel="canonical" href="https://openagents.com/">
 <link rel="alternate" type="text/markdown" href="/index.md">
 <meta name="theme-color" content="#000000">
@@ -12,71 +12,39 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenAgents">
-<meta property="og:title" content="OpenAgents — v1.0.0">
-<meta property="og:description" content="Open-source agent workspace across Web, macOS, and iOS. Launching Monday, November 30 at 12:00 PM CT.">
+<meta property="og:title" content="OpenAgents">
+<meta property="og:description" content="Open-source agent workspace across Web, macOS, and iOS.">
 <meta property="og:url" content="https://openagents.com/">
 <meta property="og:image" content="https://openagents.com/og/home.jpg">
 <meta property="og:image:alt" content="OpenAgents — open-source agent workspace across Web, macOS, and iOS">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="OpenAgents — v1.0.0">
-<meta name="twitter:description" content="Open-source agent workspace across Web, macOS, and iOS. Launching Monday, November 30 at 12:00 PM CT.">
+<meta name="twitter:title" content="OpenAgents">
+<meta name="twitter:description" content="Open-source agent workspace across Web, macOS, and iOS.">
 <meta name="twitter:image" content="https://openagents.com/og/home.jpg">
 <style>
-*,*::before,*::after{box-sizing:border-box}
-html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#000000;color:#ededed;font-family:ui-sans-serif,-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
-body{display:flex;align-items:center;justify-content:center;padding:32px 20px}
-.inside body{overflow:auto;display:block;padding:0}.inside body>main{display:none}.inside #home-root{position:fixed;inset:0;overflow-y:auto;background:#000000;z-index:30}
-main{width:100%;max-width:460px;text-align:center}
-h1{margin:0 0 10px;font-size:36px;font-weight:600;letter-spacing:-.03em;line-height:1.1;color:#ededed}
-.sub{margin:0 0 24px;font-size:15px;line-height:1.5;color:#818181}
-.cd{margin:0 0 26px;padding:16px 20px;border-radius:12px;background:#0a0a0a;border:1px solid #2c2c2c;font:500 13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#ededed}
-.cd strong{display:block;margin-bottom:4px;font:600 11px/1.2 ui-sans-serif,-apple-system,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#818181}
-ul{list-style:none;margin:0;padding:0;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
-a{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 20px;border-radius:8px;font-size:13.5px;font-weight:500;text-decoration:none}
-a.primary{background:#ededed;color:#0a0a0a;font-weight:600}
-a.primary:hover{background:#ffffff}
-a.secondary{background:#111111;color:#ededed;border:1px solid #2c2c2c}
-a.secondary:hover{background:#191919;border-color:#404040}
+html,body,#coaxial-root{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#000000;color:#ededed;color-scheme:dark}
+body{font-family:ui-sans-serif,-apple-system,system-ui,"Segoe UI",sans-serif;font-size:14px;line-height:1.5}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.inside,.inside body,.inside #coaxial-root{overflow:auto}
 </style>
 </head>
 <body>
-<main>
-<h1>OpenAgents</h1>
-<p class="sub">Your agents, everywhere. Cloud workspace across Web, macOS, and iOS.</p>
-<p class="cd"><strong>v1.0.0 Launch</strong><code id="oa-cd">Monday, November 30 · 12:00 PM CT</code></p>
-<ul>
-<li><a class="primary" href="/login">Log in</a></li>
-<li><a class="secondary" href="/chat">Open Chat</a></li>
-<li><a class="secondary" href="/components">Components</a></li>
-</ul>
-</main>
+<main id="coaxial-root"><h1 class="sr-only">OpenAgents</h1><p class="sr-only">Log in or create an account.</p></main>
 <script type="module">
-const el = document.getElementById("oa-cd");
-const target = Date.parse("2026-11-30T18:00:00Z");
-const tick = () => {
-  if (!el) return;
-  const rem = Math.max(0, target - Date.now());
-  if (rem === 0) { el.textContent = "Live now"; return; }
-  const d = Math.floor(rem / 86400000);
-  const h = Math.floor((rem % 86400000) / 3600000);
-  const m = Math.floor((rem % 3600000) / 60000);
-  const s = Math.floor((rem % 60000) / 1000);
-  el.textContent = `${d}d ${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s · Mon Nov 30, 12:00 PM CT`;
-};
-tick();
-setInterval(tick, 1000);
 let inside = false;
 try {
-  const r = await fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(3000) });
+  const r = await fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(1500) });
   inside = r.ok && (await r.json()).logged_in === true;
 } catch {}
-if (inside) {
-  document.documentElement.classList.add("inside");
-  const root = document.createElement("main"); root.id = "home-root"; document.body.appendChild(root);
-  const shell = document.createElement("script"); shell.type = "module"; shell.src = "/coaxial/dom-host.js";
-  shell.dataset.app = "chat-web"; shell.dataset.root = "home-root";
-  document.body.appendChild(shell);
-}
+const root = document.getElementById("coaxial-root");
+if (root) root.innerHTML = "";
+if (inside) document.documentElement.classList.add("inside");
+const s = document.createElement("script");
+s.type = "module";
+s.src = "/coaxial/dom-host.js";
+s.dataset.app = inside ? "chat-web" : "login-web";
+s.dataset.root = "coaxial-root";
+document.body.appendChild(s);
 </script>
 </body>
 </html>

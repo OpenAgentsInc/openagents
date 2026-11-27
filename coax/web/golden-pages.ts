@@ -65,8 +65,7 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   // /login/device with no code: what it says, and no account made (private.coax page 7).
   byAddress["login-device"] = {path:"/login/device",lit:0.002,settle:1500,blocks:4,module:"private"}
   byAddress["login-device-phone"] = {path:"/login/device",lit:0.002,settle:1500,blocks:4,module:"private",size:[390,844]}
-  byAddress["home"] = {path:"/",lit:0.004,settle:3000,blocks:4,module:"newland"}
-  byAddress["home-phone"] = {path:"/",lit:0.004,settle:3000,blocks:4,module:"newland",size:[390,844]}
+  // Note: / is now an Apps SDK UI Coax DOM page (login-web / chat-web, zero WebGPU canvas).
   // NIP guides are public Coaxial pages too. Every route must start and draw
   // during staging and production checks, with its own reviewed golden.
   const nipCatalog = join(ROOT, APP, "nip/catalog.json")

@@ -75,10 +75,9 @@ test("the check's server answers like the bucket", () => {
 })
 
 
-test("the public homepage and its phone view track the root HTML", () => {
-  expect(p.pages.home.path).toBe("/")
-  expect(p.pages["home-phone"].size).toEqual([390, 844])
-  expect(affected(["apps/openagents-web/index.html"], p)).toEqual(["home", "home-phone"])
+test("the root HTML is no longer a WebGPU newland golden and pageObjects matches index.html", () => {
+  expect(p.pages.home).toBeUndefined()
+  expect(p.pages["home-phone"]).toBeUndefined()
   expect(new RegExp(pageObjects("/")).test("index.html")).toBe(true)
 })
 
