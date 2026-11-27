@@ -67,7 +67,7 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, py: f32, pw: f32, h: f32) {
       y += app_button(f, cp_pane_id(ib[..], s, ".stop", -1), x, y, sw, -1, "Stop sub-agent", APP_BUTTON_DEFAULT, 0, CP_PANE_STOP) + a.gap;
     }
   }
-  else if state == CP_DONE && reply.count > 0 {
+  else if state == CP_DONE && reply.count > 0 && s[0].pane_doc.count > 0 {
     if s[0].pane_parsed != reply.count {
       s[0].pane_doc[0].n = 0; s[0].pane_doc[0].nb = 0; s[0].pane_doc[0].nr = 0; s[0].pane_doc[0].ni = 0; s[0].pane_doc[0].nlink = 0;
       s[0].pane_blocks = md_parse(s[0].pane_doc[..], reply, 0); s[0].pane_parsed = reply.count;

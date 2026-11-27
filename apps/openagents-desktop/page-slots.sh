@@ -13,8 +13,16 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 coax="${COAX:-$repo/coax/bin/coax}"
 limit=$((33554432 * 85 / 100))
-# the page's check files and Tier 1's replay checks, which load the page too
-if [ $# -eq 0 ]; then set -- "$here"/page/checks/*-checks.coax "$repo/evals/openagents-desktop/tier1/replay_test.coax"; fi
+# Tier 1 replay_test.coax loads page.coax, which already loads and runs the page's check files;
+# add only page/checks/*-checks.coax files not loaded by page.coax so shared library checks do not
+# re-run 45 times in the evaluator while keeping 100% check coverage under the 85% slot ceiling.
+if [ $# -eq 0 ]; then
+  files=("$repo/evals/openagents-desktop/tier1/replay_test.coax")
+  for f in "$here"/page/checks/*-checks.coax; do
+    grep -qF "page/checks/$(basename "$f")" "$here/page.coax" || files+=("$f")
+  done
+  set -- "${files[@]}"
+fi
 # Files run side by side, PAGE_SLOTS_JOBS at once (default: half the cores, at most 8); each is one
 # evaluator process. The report comes in the files' order.
 cores="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)"

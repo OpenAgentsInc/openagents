@@ -255,6 +255,9 @@ CpCheckLong :: struct {
   replies: [CP_CHECK_LONG_TURNS * 64] u8;
   calls: [64] CpCall;
   docs: [CP_CHECK_DOCS] MdDoc;
+  think: [2] MdDoc;
+  pane_doc: [1] MdDoc;
+  fp_md_doc: [1] MdDoc;
   long_buf: [4096] u8;
   agent_buf: [1] u8;
   arena: [65536] u8;
@@ -262,6 +265,7 @@ CpCheckLong :: struct {
 }
 cp_check_long :: (p: [] CoderPage, st: [] CpCheckLong) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[0..<0], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[0..<0], st[0].arena[..], st[0].scratch[..]);
+  cp_store_bind_aux(p, st[0].think[..], st[0].pane_doc[..], st[0].fp_md_doc[..]);
   p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;
   p[0].show_other_models = true;

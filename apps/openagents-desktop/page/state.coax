@@ -408,11 +408,11 @@ CoderPage :: struct {
   // was last drawn, its scroll, and its reply as a document
   pane_open: bool; pane_turn: int; pane_agent: int; pane_manual: bool;
   pane_x: f32; pane_w: f32; pane_scroll: f32; pane_content: f32; pane_view: f32; pane_stick: bool;
-  pane_doc: [1] MdDoc; pane_blocks: int; pane_parsed: int;
-  fp_md_doc: [1] MdDoc; fp_md_blocks: int; fp_md_fm_end: int;
+  pane_doc: [] MdDoc; pane_blocks: int; pane_parsed: int;
+  fp_md_doc: [] MdDoc; fp_md_blocks: int; fp_md_fm_end: int;
   // the chat's edits as a code review in the pane (#13696): shown, which tab shows, its scroll
   review: bool; pane_tab: int; review_scroll: f32; review_content: f32;
-  think: [2] MdDoc; think_at: int;   // the open thoughts' Markdown, parsed afresh each frame; two, so the frame before keeps its words
+  think: [] MdDoc; think_at: int;   // the open thoughts' Markdown, parsed afresh each frame; two, so the frame before keeps its words (in the page's store)
   // the sidebars' widths as dragged (#13670), 0 until then; which edge is held (1 the chats', 2 the
   // transcript's) or under the pointer; the window's width as last drawn; the host owes keeping them
   calls: [] CpCall; calls_n: int; calls_free: int; calls_order: int;   // every sub-agent's tool calls: how many places were ever used, the first free one plus 1
@@ -582,6 +582,9 @@ CpStore :: struct {
   replies: [CP_TURNS * CP_REPLY] u8;
   calls: [CP_AGENT_CALLS] CpCall;
   docs: [CP_DOCS] MdDoc;
+  think: [2] MdDoc;
+  pane_doc: [1] MdDoc;
+  fp_md_doc: [1] MdDoc;
   long_buf: [CP_LONG_POOL] u8;
   agent_buf: [CP_AGENT_POOL] u8;
   arena: [CP_ARENA] u8;
@@ -600,10 +603,14 @@ cp_store_bind :: (s: [] CoderPage, turns: [] CpTurn, agents: [] CpAgent, asks: [
   s[0].turns = turns; s[0].calls = calls; s[0].long_buf = long_buf; s[0].agent_buf = agent_buf; s[0].arena = arena; s[0].scratch = scratch;
   s[0].docs = docs[0..<(ifx docs.count > CP_DOCS then CP_DOCS else docs.count)];
 }
+cp_store_bind_aux :: (s: [] CoderPage, think: [] MdDoc, pane_doc: [] MdDoc, fp_md_doc: [] MdDoc) {
+  s[0].think = think; s[0].pane_doc = pane_doc; s[0].fp_md_doc = fp_md_doc;
+}
 // The host hands the page its storage, once, before anything else.
 coder_page_store :: (s: [] CoderPage, st: [] CpStore) #export_c #effects(all) {
   if s.count < 1 || st.count < 1 { return; }
   cp_store_bind(s, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
+  cp_store_bind_aux(s, st[0].think[..], st[0].pane_doc[..], st[0].fp_md_doc[..]);
 }
 // A check's storage: room for what a check's chat holds. A check that needs more binds its own.
 CP_CHECK_TURNS :: 8; CP_CHECK_CALLS :: 256; CP_CHECK_DOCS :: 8; CP_CHECK_LONG :: 262144; CP_CHECK_REPLIES :: 65536;
@@ -614,6 +621,9 @@ CpCheckStore :: struct {
   replies: [CP_CHECK_TURNS * CP_REPLY] u8;
   calls: [CP_CHECK_CALLS] CpCall;
   docs: [CP_CHECK_DOCS] MdDoc;
+  think: [2] MdDoc;
+  pane_doc: [1] MdDoc;
+  fp_md_doc: [1] MdDoc;
   long_buf: [CP_CHECK_LONG] u8;
   agent_buf: [CP_CHECK_REPLIES] u8;
   arena: [131072] u8;
@@ -630,6 +640,7 @@ cp_has_model_picker :: (s: [] CoderPage) -> bool {
 
 cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
+  cp_store_bind_aux(p, st[0].think[..], st[0].pane_doc[..], st[0].fp_md_doc[..]);
   p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;   // the checks see every feature; per-flag & release-set checks turn them off
   p[0].claude_sub = true;     // Claude Code can run a sub-agent here; a check of a computer without it turns this off
@@ -650,6 +661,7 @@ CpCheckLean :: struct {
   replies: [CP_CHECK_LEAN * CP_REPLY] u8;
   calls: [64] CpCall;
   docs: [CP_CHECK_LEAN] MdDoc;
+  think: [2] MdDoc;
   long_buf: [16384] u8;
   agent_buf: [16384] u8;
   arena: [131072] u8;
@@ -657,6 +669,7 @@ CpCheckLean :: struct {
 }
 cp_check_lean :: (p: [] CoderPage, st: [] CpCheckLean) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
+  cp_store_bind_aux(p, st[0].think[..], st[0].docs[0..<0], st[0].docs[0..<0]);
   p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;
   p[0].show_other_models = true;
@@ -674,6 +687,9 @@ CpCheckRows :: struct {
   replies: [2 * CP_REPLY] u8;
   calls: [640] CpCall;
   docs: [2] MdDoc;
+  think: [2] MdDoc;
+  pane_doc: [1] MdDoc;
+  fp_md_doc: [1] MdDoc;
   long_buf: [16384] u8;
   agent_buf: [16384] u8;
   arena: [131072] u8;
@@ -681,6 +697,7 @@ CpCheckRows :: struct {
 }
 cp_check_rows :: (p: [] CoderPage, st: [] CpCheckRows) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
+  cp_store_bind_aux(p, st[0].think[..], st[0].pane_doc[..], st[0].fp_md_doc[..]);
   p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;
   p[0].show_other_models = true;

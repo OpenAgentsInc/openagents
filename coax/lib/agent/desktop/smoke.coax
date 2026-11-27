@@ -117,11 +117,12 @@ smoke_local_model :: (root: string) -> int {
 }
 
 smoke_flags :: () -> int {
-  if dc_flags_resolve(false, 0, "", "", "") != 0 { return fail("flags: release default not zero"); }
+  r0 := dc_flags_resolve(false, 0, "", "", "");
+  if r0 != dc_flags_defaults() || !dc_flag_on(r0, DC_FLAG_ACCOUNT) || dc_flags_any_extra_model(r0) { return fail("flags: release default mismatch"); }
   if dc_flags_resolve(true, 0, "", "", "") != DC_FLAGS_ALL { return fail("flags: experimental alias"); }
   m := dc_flags_resolve(false, 0, "git", "", "--flag\nterminal");
   if !dc_flag_on(m, DC_FLAG_GIT) || !dc_flag_on(m, DC_FLAG_TERMINAL) || dc_flag_on(m, DC_FLAG_WALLET) { return fail("flags: env+cli resolve"); }
-  say("flags: 28 flags default off, experimental alias, OA_FLAGS and --flag");
+  say("flags: release defaults (account on, gated flags off), experimental alias, OA_FLAGS and --flag");
   return 0;
 }
 

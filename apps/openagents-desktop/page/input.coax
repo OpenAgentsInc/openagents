@@ -33,7 +33,7 @@ cp_open_url :: (s: [] CoderPage, pane: bool, i: int, n: int) -> bool {
 }
 cp_open_url_str :: (s: [] CoderPage) -> string {
   if s[0].open_url_term { return cp_term_click_url(s); }
-  if s[0].open_url_pane { return app_message_url(s[0].pane_doc[..], 0, s[0].pane_blocks, s[0].open_url); }
+  if s[0].open_url_pane { if s[0].pane_doc.count < 1 { return ""; } return app_message_url(s[0].pane_doc[..], 0, s[0].pane_blocks, s[0].open_url); }
   i := s[0].open_url_turn;
   if i >= 0 && i < s[0].nturns { return app_message_url(cp_doc(s, i), 0, s[0].turns[i].blocks, s[0].open_url); }
   return "";

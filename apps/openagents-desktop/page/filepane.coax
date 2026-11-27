@@ -144,6 +144,7 @@ cp_fp_md_parse :: (s: [] CoderPage) {
   raw := ifx fp[0].dirty && fp[0].text_n > 0 then cp_fp_text(s) else cast(string) fp[0].src;
   fm_end := cp_fp_md_frontmatter_end(raw);
   s[0].fp_md_fm_end = fm_end;
+  if s[0].fp_md_doc.count < 1 { s[0].fp_md_blocks = 0; return; }
   s[0].fp_md_doc[0] = MdDoc.{};
   s[0].fp_md_doc[0].keep_rules = true;
   body := ifx fm_end < raw.count then cast(string) raw[fm_end..<raw.count] else "";
@@ -1864,7 +1865,7 @@ cp_fp_md_view :: (s: [] CoderPage, f: [] UiFrame, fx: f32, body: f32, fw: f32, b
   }
 
   doc := s[0].fp_md_doc[..];
-  nb := s[0].fp_md_blocks;
+  nb := ifx doc.count > 0 then s[0].fp_md_blocks else 0;
   for b: 0..<nb {
     kind := doc[0].blocks[b].kind;
     hlvl := doc[0].blocks[b].heading;
