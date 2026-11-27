@@ -49,7 +49,7 @@ apps_sdk_css :: (out: [] u8, at: int) -> int {
   n = as_put(out, n, ".as-sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}");
   n = as_put(out, n, ".as-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}");
   n = as_put(out, n, ".as-col{display:flex;flex-direction:column;gap:12px}");
-  n = as_put(out, n, ".as-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}");
+  n = as_put(out, n, ".as-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}@media(max-width:720px){.as-grid2{grid-template-columns:1fr}}");
   n = as_put(out, n, ".as-grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}");
   n = as_put(out, n, ".as-ic{display:block;width:16px;height:16px;flex:none;color:currentColor}");
   n = as_put(out, n, ".as-ic-sm{width:14px;height:14px}.as-ic-lg{width:20px;height:20px}");
