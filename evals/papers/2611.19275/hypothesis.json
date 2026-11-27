@@ -1,7 +1,7 @@
 {
   "paper_id": "2611.19275",
   "name": "ToolPulse Deterministic Runtime Cueing",
-  "claim": "Zero-LLM-cost Blind-Edit and Failure-Inertia verbal reminders preserve pass rate with negligible token/latency tax",
+  "claim": "Zero-LLM-cost Blind-Edit and Failure-Inertia verbal reminders preserve pass rate with negligible token/cache tax",
   "axes": [
     "toolpulse"
   ],
@@ -10,7 +10,8 @@
     "OA_EXP_TOOLPULSE": "1"
   },
   "models": [
-    "gemini-4-neon"
+    "gemini-4-neon",
+    "inkling-2-mini"
   ],
   "trials": 1,
   "effort": "low",

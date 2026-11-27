@@ -1,6 +1,6 @@
 # Paper-Lab Verdict: DepSync Post-Edit Consumer Impact Hint (`arXiv:2611.29242`)
 
-- **Verdict:** **`NEEDS-HARDER-PROBES`** — Baseline already passed >=85% with 0 rescues; harden probes before concluding.
+- **Verdict:** **`ITERATE`** — Net rescues observed, but damaged cases or latency/cache tax exceeded ceiling; refine mechanism.
 - **Claim:** Appending untouched sibling consumer references after Edit cuts producer-to-consumer propagation omissions
 - **Axes:** `dep_sync`
 - **Base Env:** `{}`
@@ -30,3 +30,27 @@
 |---|---|---|---|---|---|---|
 | `p_ds_01_ast_transformer_omission` | `dep_sync` | 1/1 | 1/1 | +0 | 29.0 s | 24.4 s |
 | `p_ds_02_serializer_omission` | `dep_sync` | 1/1 | 1/1 | +0 | 42.0 s | 54.2 s |
+
+## Model: `inkling-2-mini` (`k=1` trial(s)/probe)
+
+**Paired 2×2 Matrix:** **Rescued `1`** | Preserved `0` | **Damaged `0`** | Still Failed `1` (Net `+1`)
+
+| Metric | BASE | EXP | Delta |
+|---|---|---|---|
+| Pass@1 | 0/2 (0.0%) | 1/2 (50.0%) | **+50.0 pp** |
+| Pass^1 (all trials) | 0.0% | 50.0% | +50.0 pp |
+| Prompt Cache Hit Rate | 82.9% (21903/26422) | 81.4% (45559/55988) | -1.5 pp |
+| Price-Vector (c=0.1 cloud) | 10,517 u | 23,837 u | +126.6% |
+| Price-Vector (c=1.0 local) | 30,230 u | 64,840 u | +114.5% |
+| Total Tokens (in+out) | 27,374 (26,422in/952out) | 58,201 (55,988in/2,213out) | +112.6% |
+| Wall Time (sum) | 36.1 s | 117.7 s | +225.5% |
+| Cost (USD) | $0.0000 | $0.0000 | +0.0% |
+| Cost / Solved Task | n/a | $0.0000 | — |
+| Turns / Tool Calls | 2 / 4 | 2 / 6 | +0 / +2 |
+
+### Per-Probe Breakdown
+
+| Probe | Axis | BASE | EXP | Delta | BASE wall | EXP wall |
+|---|---|---|---|---|---|---|
+| `p_ds_01_ast_transformer_omission` | `dep_sync` | 0/1 | 1/1 | +1 | 21.8 s | 84.4 s |
+| `p_ds_02_serializer_omission` | `dep_sync` | 0/1 | 0/1 | +0 | 14.3 s | 33.2 s |

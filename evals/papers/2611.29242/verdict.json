@@ -2,8 +2,8 @@
   "created": "2026-11-27T05:53:53Z",
   "git_sha": "59f705073c",
   "run_dir": "/Users/christopherdavid/.openagents/worktrees/openagents-f007af61/e270feec-cc80-46d2-898d-c63490ca05f7/evals/openagents-desktop/results/paper-lab/2611.29242-20261127T055137Z-59f705073c",
-  "verdict": "NEEDS-HARDER-PROBES",
-  "verdict_reason": "Baseline already passed >=85% with 0 rescues; harden probes before concluding.",
+  "verdict": "ITERATE",
+  "verdict_reason": "Net rescues observed, but damaged cases or latency/cache tax exceeded ceiling; refine mechanism.",
   "hypothesis": {
     "paper_id": "2611.29242",
     "name": "DepSync Post-Edit Consumer Impact Hint",
@@ -16,7 +16,8 @@
       "OA_EXP_DEP_SYNC": "1"
     },
     "models": [
-      "gemini-4-neon"
+      "gemini-4-neon",
+      "inkling-2-mini"
     ],
     "trials": 1,
     "effort": "low",
@@ -113,6 +114,99 @@
           "exp_tokens_avg": 27184,
           "base_cost_micros_avg": 77266,
           "exp_cost_micros_avg": 80115
+        }
+      ]
+    },
+    {
+      "model": "inkling-2-mini",
+      "trials": 1,
+      "paired": {
+        "rescued": 1,
+        "preserved": 0,
+        "damaged": 0,
+        "still_failed": 1,
+        "net_gain": 1
+      },
+      "base": {
+        "total_trials_cases": 2,
+        "passed": 0,
+        "pass_at_1_pct": 0.0,
+        "input_tokens": 26422,
+        "uncached_input_tokens": 4519,
+        "output_tokens": 952,
+        "total_tokens": 27374,
+        "cached_tokens": 21903,
+        "cache_hit_pct": 82.9,
+        "pv_cost_c01": 10517.3,
+        "pv_cost_c10": 30230.0,
+        "cost_usd_micros": 0,
+        "wall_ms": 36144,
+        "turns": 2,
+        "tool_calls": 4,
+        "pass_pow_k_pct": 0.0
+      },
+      "exp": {
+        "total_trials_cases": 2,
+        "passed": 1,
+        "pass_at_1_pct": 50.0,
+        "input_tokens": 55988,
+        "uncached_input_tokens": 10429,
+        "output_tokens": 2213,
+        "total_tokens": 58201,
+        "cached_tokens": 45559,
+        "cache_hit_pct": 81.4,
+        "pv_cost_c01": 23836.9,
+        "pv_cost_c10": 64840.0,
+        "cost_usd_micros": 0,
+        "wall_ms": 117660,
+        "turns": 2,
+        "tool_calls": 6,
+        "pass_pow_k_pct": 50.0
+      },
+      "deltas": {
+        "pass_at_1_pp": 50.0,
+        "pass_pow_k_pp": 50.0,
+        "cache_hit_pp": -1.5,
+        "tokens_pct": 112.6,
+        "pv_c01_pct": 126.6,
+        "pv_c10_pct": 114.5,
+        "wall_pct": 225.5,
+        "cost_pct": 0.0,
+        "turns_delta": 0,
+        "tool_calls_delta": 2
+      },
+      "tasks": [
+        {
+          "id": "p_ds_01_ast_transformer_omission",
+          "axis": "dep_sync",
+          "trials": 1,
+          "base_passed": 0,
+          "exp_passed": 1,
+          "base_pass_all": false,
+          "exp_pass_all": true,
+          "delta_passes": 1,
+          "base_wall_ms_avg": 21820,
+          "exp_wall_ms_avg": 84417,
+          "base_tokens_avg": 13821,
+          "exp_tokens_avg": 28994,
+          "base_cost_micros_avg": 0,
+          "exp_cost_micros_avg": 0
+        },
+        {
+          "id": "p_ds_02_serializer_omission",
+          "axis": "dep_sync",
+          "trials": 1,
+          "base_passed": 0,
+          "exp_passed": 0,
+          "base_pass_all": false,
+          "exp_pass_all": false,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 14324,
+          "exp_wall_ms_avg": 33243,
+          "base_tokens_avg": 13553,
+          "exp_tokens_avg": 29207,
+          "base_cost_micros_avg": 0,
+          "exp_cost_micros_avg": 0
         }
       ]
     }

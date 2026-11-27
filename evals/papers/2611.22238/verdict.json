@@ -2,8 +2,8 @@
   "created": "2026-11-27T06:02:51Z",
   "git_sha": "59f705073c",
   "run_dir": "/Users/christopherdavid/.openagents/worktrees/openagents-f007af61/e270feec-cc80-46d2-898d-c63490ca05f7/evals/openagents-desktop/results/paper-lab/2611.22238-20261127T055943Z-59f705073c",
-  "verdict": "SHIP-EFFICIENCY",
-  "verdict_reason": "Preserved pass rate (1/1, 0 damaged) while cutting tokens -28.0% and cost +31.1%.",
+  "verdict": "NEEDS-HARDER-PROBES",
+  "verdict_reason": "Baseline already passed >=85% with 0 rescues; harden probes before concluding.",
   "hypothesis": {
     "paper_id": "2611.22238",
     "name": "Break-Even Observation Masking (c=0.1 cloud gate)",
@@ -16,7 +16,8 @@
       "OA_EXP_OBS_MASK": "1"
     },
     "models": [
-      "gemini-4-neon"
+      "gemini-4-neon",
+      "inkling-2-mini"
     ],
     "trials": 1,
     "effort": "low",
@@ -97,6 +98,83 @@
           "exp_tokens_avg": 211458,
           "base_cost_micros_avg": 200044,
           "exp_cost_micros_avg": 262271
+        }
+      ]
+    },
+    {
+      "model": "inkling-2-mini",
+      "trials": 1,
+      "paired": {
+        "rescued": 0,
+        "preserved": 1,
+        "damaged": 0,
+        "still_failed": 0,
+        "net_gain": 0
+      },
+      "base": {
+        "total_trials_cases": 1,
+        "passed": 1,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 164902,
+        "uncached_input_tokens": 17935,
+        "output_tokens": 1634,
+        "total_tokens": 166536,
+        "cached_tokens": 146967,
+        "cache_hit_pct": 89.1,
+        "pv_cost_c01": 39167.7,
+        "pv_cost_c10": 171438.0,
+        "cost_usd_micros": 0,
+        "wall_ms": 81684,
+        "turns": 5,
+        "tool_calls": 2,
+        "pass_pow_k_pct": 100.0
+      },
+      "exp": {
+        "total_trials_cases": 1,
+        "passed": 1,
+        "pass_at_1_pct": 100.0,
+        "input_tokens": 111796,
+        "uncached_input_tokens": 34376,
+        "output_tokens": 1251,
+        "total_tokens": 113047,
+        "cached_tokens": 77420,
+        "cache_hit_pct": 69.3,
+        "pv_cost_c01": 47122.0,
+        "pv_cost_c10": 116800.0,
+        "cost_usd_micros": 0,
+        "wall_ms": 85129,
+        "turns": 5,
+        "tool_calls": 3,
+        "pass_pow_k_pct": 100.0
+      },
+      "deltas": {
+        "pass_at_1_pp": 0.0,
+        "pass_pow_k_pp": 0.0,
+        "cache_hit_pp": -19.8,
+        "tokens_pct": -32.1,
+        "pv_c01_pct": 20.3,
+        "pv_c10_pct": -31.9,
+        "wall_pct": 4.2,
+        "cost_pct": 0.0,
+        "turns_delta": 0,
+        "tool_calls_delta": 1
+      },
+      "tasks": [
+        {
+          "id": "p_lo_02_noisy_trace_audit",
+          "axis": "long_obs",
+          "trials": 1,
+          "base_passed": 1,
+          "exp_passed": 1,
+          "base_pass_all": true,
+          "exp_pass_all": true,
+          "delta_passes": 0,
+          "base_wall_ms_avg": 81684,
+          "exp_wall_ms_avg": 85129,
+          "base_tokens_avg": 166536,
+          "exp_tokens_avg": 113047,
+          "base_cost_micros_avg": 0,
+          "exp_cost_micros_avg": 0
         }
       ]
     }

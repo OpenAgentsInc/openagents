@@ -10,7 +10,8 @@
     "OA_EXP_DEP_SYNC": "1"
   },
   "models": [
-    "gemini-4-neon"
+    "gemini-4-neon",
+    "inkling-2-mini"
   ],
   "trials": 1,
   "effort": "low",

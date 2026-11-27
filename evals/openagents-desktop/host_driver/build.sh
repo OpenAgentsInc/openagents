@@ -27,6 +27,17 @@ if [ "$need_coax" -eq 1 ]; then
   "$coax" c "$repo/apps/openagents-desktop/app.coax" --library --header "$work/gallery.h" > "$work/gallery.c"
 fi
 
+if [ "$need_coax" -eq 0 ] && [ -x "$work/host_driver" ] \
+   && [ "$work/host_driver" -nt "$work/gallery.c" ] \
+   && [ "$work/host_driver" -nt "$work/gallery.h" ] \
+   && [ "$work/host_driver" -nt "$repo/apps/openagents-desktop/carrier.c" ] \
+   && [ "$work/host_driver" -nt "$here/ui_host_stub.c" ] \
+   && [ "$work/host_driver" -nt "$here/ui_host_stub.h" ] \
+   && [ "$work/host_driver" -nt "$here/host_driver.c" ] \
+   && [ "$work/host_driver" -nt "$here/build.sh" ]; then
+  exit 0
+fi
+
 # clang, or the C compiler when this clang has no C library headers (NixOS's unwrapped clang).
 cc_bin="${CC:-clang}"
 if ! printf '#include <signal.h>\n' | "$cc_bin" -x c -fsyntax-only - >/dev/null 2>&1; then cc_bin=cc; fi

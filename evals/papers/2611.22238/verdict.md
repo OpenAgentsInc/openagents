@@ -1,6 +1,6 @@
 # Paper-Lab Verdict: Break-Even Observation Masking (c=0.1 cloud gate) (`arXiv:2611.22238`)
 
-- **Verdict:** **`SHIP-EFFICIENCY`** — Preserved pass rate (1/1, 0 damaged) while cutting tokens -28.0% and cost +31.1%.
+- **Verdict:** **`NEEDS-HARDER-PROBES`** — Baseline already passed >=85% with 0 rescues; harden probes before concluding.
 - **Claim:** Gating observation masking with R*c*B > (1-c)*S eliminates the cloud prompt-cache cost trap while preserving pass rate
 - **Axes:** `long_obs`
 - **Base Env:** `{}`
@@ -29,3 +29,26 @@
 | Probe | Axis | BASE | EXP | Delta | BASE wall | EXP wall |
 |---|---|---|---|---|---|---|
 | `p_lo_02_noisy_trace_audit` | `long_obs` | 1/1 | 1/1 | +0 | 102.3 s | 53.5 s |
+
+## Model: `inkling-2-mini` (`k=1` trial(s)/probe)
+
+**Paired 2×2 Matrix:** **Rescued `0`** | Preserved `1` | **Damaged `0`** | Still Failed `0` (Net `+0`)
+
+| Metric | BASE | EXP | Delta |
+|---|---|---|---|
+| Pass@1 | 1/1 (100.0%) | 1/1 (100.0%) | **+0.0 pp** |
+| Pass^1 (all trials) | 100.0% | 100.0% | +0.0 pp |
+| Prompt Cache Hit Rate | 89.1% (146967/164902) | 69.3% (77420/111796) | -19.8 pp |
+| Price-Vector (c=0.1 cloud) | 39,168 u | 47,122 u | +20.3% |
+| Price-Vector (c=1.0 local) | 171,438 u | 116,800 u | -31.9% |
+| Total Tokens (in+out) | 166,536 (164,902in/1,634out) | 113,047 (111,796in/1,251out) | -32.1% |
+| Wall Time (sum) | 81.7 s | 85.1 s | +4.2% |
+| Cost (USD) | $0.0000 | $0.0000 | +0.0% |
+| Cost / Solved Task | $0.0000 | $0.0000 | — |
+| Turns / Tool Calls | 5 / 2 | 5 / 3 | +0 / +1 |
+
+### Per-Probe Breakdown
+
+| Probe | Axis | BASE | EXP | Delta | BASE wall | EXP wall |
+|---|---|---|---|---|---|---|
+| `p_lo_02_noisy_trace_audit` | `long_obs` | 1/1 | 1/1 | +0 | 81.7 s | 85.1 s |
