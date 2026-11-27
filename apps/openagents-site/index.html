@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OpenAgents — v1.0.0 Coming Soon</title>
-<meta name="description" content="OpenAgents v1.0.0 — open-source agent workspace across Web, macOS, and iOS. Launching Monday, November 30 at 12:00 PM CT.">
+<meta name="description" content="OpenAgents v1.0.0 — open-source agent workspace across web, mobile & desktop. Launching Monday, November 30 at 1:00 PM CT.">
 <meta name="theme-color" content="#000000">
 <meta name="color-scheme" content="dark">
 <link rel="canonical" href="https://openagents.com/">
@@ -13,14 +13,14 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenAgents">
 <meta property="og:title" content="OpenAgents — v1.0.0 Coming Soon">
-<meta property="og:description" content="Open-source agent workspace across Web, macOS, and iOS. Launching Monday, November 30 at 12:00 PM CT.">
+<meta property="og:description" content="Open-source agent workspace across web, mobile & desktop. Launching Monday, November 30 at 1:00 PM CT.">
 <meta property="og:url" content="https://openagents.com/">
 <meta property="og:image" content="https://openagents.com/og/home.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="OpenAgents — v1.0.0 Coming Soon">
-<meta name="twitter:description" content="Open-source agent workspace across Web, macOS, and iOS. Launching Monday, November 30 at 12:00 PM CT.">
+<meta name="twitter:description" content="Open-source agent workspace across web, mobile & desktop. Launching Monday, November 30 at 1:00 PM CT.">
 <meta name="twitter:image" content="https://openagents.com/og/home.jpg">
 <style>
   :root {
@@ -96,7 +96,7 @@
     align-items: center;
     gap: 14px;
     padding: 20px 28px 22px;
-    margin-bottom: clamp(28px, 4.5vh, 44px);
+    margin-bottom: 0;
     background: var(--surface);
     border: 1px solid var(--border-strong);
     border-radius: 18px;
@@ -168,20 +168,11 @@
     color: var(--muted);
     letter-spacing: -0.005em;
   }
-  .showcase {
-    width: 100%;
-    max-width: 1080px;
-    margin: 0 auto;
-  }
-  .showcase picture,
-  .showcase img {
-    display: block;
-    width: 100%;
-    height: auto;
-    border-radius: 14px;
-  }
   footer {
-    margin-top: clamp(28px, 4.5vh, 48px);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 24px;
     font-size: 12.5px;
     color: var(--dim);
     letter-spacing: -0.01em;
@@ -204,7 +195,7 @@
     <h1>OpenAgents</h1>
   </div>
 
-  <p class="subtitle">Open-source agent workspace across Web, macOS, and iOS.</p>
+  <p class="subtitle">Open-source agent workspace across web, mobile &amp; desktop.</p>
 
   <section class="launch-card" aria-label="OpenAgents v1.0.0 launch countdown">
     <div class="launch-badge">
@@ -232,21 +223,14 @@
         <span class="unit-label">Sec</span>
       </div>
     </div>
-    <p class="launch-date">Monday, November 30 &middot; 12:00 PM CT</p>
+    <p class="launch-date">Monday, November 30 &middot; 1:00 PM CT</p>
   </section>
-
-  <div class="showcase">
-    <picture>
-      <source srcset="/app-preview.webp" type="image/webp">
-      <img src="/app-preview.jpg" alt="OpenAgents on macOS and iOS showing a live agent session, unified git diff, and approval card" width="2400" height="1420">
-    </picture>
-  </div>
 </main>
 <footer>&copy; 2026 OpenAgents, Inc.</footer>
 <script>
 (() => {
-  // Monday, November 30, 2026 at 12:00:00 PM CST (UTC-06:00)
-  const targetMs = Date.parse('2026-11-30T12:00:00-06:00');
+  // Monday, November 30, 2026 at 1:00:00 PM CST (UTC-06:00)
+  const targetMs = Date.parse('2026-11-30T13:00:00-06:00');
   const dEl = document.getElementById('cd-days');
   const hEl = document.getElementById('cd-hours');
   const mEl = document.getElementById('cd-mins');
