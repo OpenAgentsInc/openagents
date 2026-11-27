@@ -1379,7 +1379,8 @@ final class MobileCloudChat: ObservableObject {
         if let hostPubkey, hostPubkey.count == 64 {
             query = "?host=\(hostPubkey)"
         } else {
-            query = "?target=sandbox&size=\(sandboxSize ?? "small")"
+            let encModel = selectedModelOption.wireModel.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? selectedModelOption.wireModel
+            query = "?target=sandbox&size=\(sandboxSize ?? "small")&model=\(encModel)"
         }
         guard let url = URL(string: auth.origin + "/api/chat/submit/v2alpha1" + query) else {
             lastError = "Invalid submit endpoint."
@@ -1765,16 +1766,28 @@ final class MobileCloudChat: ObservableObject {
             activeItems.append(CloudTranscriptItem(id: toolID, role: .tool, text: args, toolName: toolName, complete: false, startedAtMs: Int64(Date().timeIntervalSince1970 * 1000)))
             onConversationsUpdated?()
         case "tool_result":
-            let toolID = (ev["tool_id"] as? String) ?? ""
+            let toolID = (ev["tool_id"] as? String) ?? "\(turnID)-tool-\(id)"
             let failed = (ev["failed"] as? Bool) ?? false
+            let diff = ev["diff"] as? String
             if let idx = activeItems.firstIndex(where: { $0.id == toolID }) {
-                activeItems[idx].text = delta
+                if !delta.isEmpty { activeItems[idx].text = delta }
                 activeItems[idx].complete = true
                 activeItems[idx].failed = failed
-                if let diff = ev["diff"] as? String { activeItems[idx].diff = diff }
+                if let diff, !diff.isEmpty { activeItems[idx].diff = diff }
+            } else {
+                let toolName = (ev["tool_name"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) ?? "Tool"
+                var item = CloudTranscriptItem(id: toolID, role: .tool, text: delta, toolName: toolName, complete: true, failed: failed, startedAtMs: Int64(Date().timeIntervalSince1970 * 1000))
+                if let diff, !diff.isEmpty { item.diff = diff }
+                activeItems.append(item)
             }
             onConversationsUpdated?()
         case "completed", "failed", "cancelled":
+            if kind == "failed", !delta.isEmpty {
+                lastError = delta
+                if let idx = activeItems.lastIndex(where: { $0.role == .assistant && $0.text.isEmpty }) {
+                    activeItems[idx].text = delta
+                }
+            }
             finalizeAssistantItem(complete: true, failed: kind == "failed")
             if let lastA = activeItems.last(where: { $0.role == .assistant }) {
                 onAssistantStreamUpdate?(lastA.id, lastA.text, true)

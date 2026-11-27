@@ -13,7 +13,7 @@ extension CoderWindow {
         r.worker.line = { [weak self, weak r] text in
             guard let self, let r else { return }
             cd_line(r.page, text)
-            if let syncChatID = (r === self.run ? self.chat : r.chat) ?? r.pendingChat {
+            if !r.isCloudSandboxRun, let syncChatID = (r === self.run ? self.chat : r.chat) ?? r.pendingChat {
                 let syncFolder = (r === self.run ? self.folder : r.folder).path
                 let syncTitle = self.store.title(syncChatID) ?? "New chat"
                 let isLocal = r.worker.extraEnv["PSIONIC_BASE_URL"] != nil
@@ -130,6 +130,10 @@ extension CoderWindow {
     }
     /// Immediately terminates an unresponsive/stuck worker and finalizes the running turn as stopped.
     func forceStopRun(_ r: CoderRun) {
+        if r.isCloudSandboxRun {
+            stopCloudSandboxRun(r)
+            return
+        }
         r.startGen &+= 1
         r.startingWorker = false
         r.preparingWorktree = false
@@ -159,6 +163,10 @@ extension CoderWindow {
         wake()
     }
     func stopRun(_ r: CoderRun) {
+        if r.isCloudSandboxRun {
+            stopCloudSandboxRun(r)
+            return
+        }
         if r.startingWorker || r.preparingWorktree || !r.worker.alive {
             forceStopRun(r)
             return
@@ -268,6 +276,10 @@ extension CoderWindow {
             r.lastCrashSignature = nil
         }
         r.startedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+        if executionTarget == "Cloud Sandbox" {
+            sendCloudSandboxTask(r)
+            return
+        }
         let shown = r === run
         let needsRecall: Bool
         if shown {

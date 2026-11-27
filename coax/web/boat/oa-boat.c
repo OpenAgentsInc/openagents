@@ -105,6 +105,7 @@ static char g_backend[16] = "local";
 static char g_work_root[200] = "";
 static char g_gce_project[128] = "openagentsgemini";
 static char g_gce_zone[64] = "us-central1-a";
+static char g_gce_image[256] = "projects/openagentsgemini/global/images/family/oa-sandbox";
 static char g_gce_base[256] = "https://compute.googleapis.com/compute/v1";
 static char g_gce_token[512] = "";
 static char g_ssh_key_copy[256] = "";
@@ -146,8 +147,9 @@ static void mkdir_p(const char *path) {
   (void)mkdir(tmp, 0700);
 }
 
-static void reap_expired_locked(void) {
+static void reap_expired_locked(char del_ids[][16], int *del_n, int del_cap) {
   int64_t now = now_sec();
+  if (del_n) *del_n = 0;
   for (int i = 0; i < MAX_BOXES; i++) {
     if (!g_boxes[i].used) continue;
     if (bs_c_ttl_expired(g_boxes[i].state, g_boxes[i].started_s, g_boxes[i].ttl_s, now)) {
@@ -156,6 +158,10 @@ static void reap_expired_locked(void) {
       }
       g_boxes[i].started_s = 0;
       g_boxes[i].state = 6; // archived
+      if (del_ids && del_n && *del_n < del_cap && strcmp(g_backend, "gce") == 0) {
+        snprintf(del_ids[*del_n], 16, "%s", g_boxes[i].id);
+        (*del_n)++;
+      }
     }
   }
 }
@@ -324,17 +330,17 @@ static bool gce_create_vm(const box_rec *b) {
              "{\"key\":\"ssh-keys\",\"value\":\"user:%s user\"}]}",
              g_ssh_pubkey);
   }
-  // Debian 12 boot disk (autoDelete), no external IP (empty accessConfigs, Cloud NAT egress),
+  // Pre-baked oa-sandbox boot disk (autoDelete), no external IP (Cloud NAT egress),
   // no project-admin SA (empty serviceAccounts), labeled for reaper & billing.
   snprintf(body, sizeof body,
            "{\"name\":\"%s\",\"machineType\":\"zones/%s/machineTypes/%s\","
            "\"disks\":[{\"boot\":true,\"autoDelete\":true,\"initializeParams\":"
-           "{\"sourceImage\":\"projects/debian-cloud/global/images/family/debian-12\",\"diskSizeGb\":\"30\"}}],"
+           "{\"sourceImage\":\"%s\",\"diskSizeGb\":\"30\"}}],"
            "\"networkInterfaces\":[{\"network\":\"global/networks/default\"}],"
            "\"serviceAccounts\":[],"
            "\"tags\":{\"items\":[\"oa-boat-sandbox\"]},"
            "\"labels\":{\"oa-boat-id\":\"%s\",\"oa-boat-size\":\"%s\",\"oa-boat-sec\":\"0\"}%s}",
-           vm, g_gce_zone, mt, b->id, b->size, meta);
+           vm, g_gce_zone, mt, g_gce_image, b->id, b->size, meta);
   long code = 0;
   bool ok = gce_call_body("POST", path, body, &code, resp, sizeof resp);
   if (!ok) fprintf(stderr, "oa-boat: gce_create_vm(%s) failed HTTP %ld: %.300s\n", b->id, code, resp);
@@ -745,7 +751,7 @@ static void stream_attach(int fd, int proc_id, int64_t out_off, int64_t err_off,
   send_all(fd, line, (size_t)ln);
 
   uint8_t chunk[4096], frame[16384];
-  for (int ticks = 0; ticks < 6000; ticks++) {
+  for (int ticks = 0; ticks < 4800; ticks++) {
     bool sent_any = false;
     int ofd = open(out_path, O_RDONLY);
     if (ofd >= 0) {
@@ -792,6 +798,10 @@ static void stream_attach(int fd, int proc_id, int64_t out_off, int64_t err_off,
       nanosleep(&ts, NULL);
     }
   }
+  // Stream slice reached 120s while process is still running: emit explicit reconnect cursor.
+  ln = snprintf(line, sizeof line, "{\"type\":\"reconnect\",\"stdoutOffset\":%lld,\"stderrOffset\":%lld}\n",
+                (long long)out_off, (long long)err_off);
+  send_all(fd, line, (size_t)ln);
 }
 
 static void handle_client(int fd) {
@@ -874,10 +884,16 @@ static void handle_client(int fd) {
   if (strncmp(rel, "/api/v1", 7) == 0 && (rel[7] == '/' || rel[7] == 0)) rel += 7;
 
   char req_id[32];
+  char del_ids[MAX_BOXES][16];
+  int del_n = 0;
   pthread_mutex_lock(&g_mu);
   snprintf(req_id, sizeof req_id, "req_%d", g_next_req++);
-  reap_expired_locked();
+  reap_expired_locked(del_ids, &del_n, MAX_BOXES);
   pthread_mutex_unlock(&g_mu);
+  for (int i = 0; i < del_n; i++) {
+    fprintf(stderr, "oa-boat: TTL expired for %s — deleting GCE VM\n", del_ids[i]);
+    gce_instance_op(del_ids[i], "DELETE", "");
+  }
 
   if (strcmp(method, "GET") == 0 && (strcmp(path, "/health") == 0 || strcmp(rel, "/health") == 0)) {
     send_json(fd, 200, NULL, "{\"ok\":true}", 11);
@@ -1603,6 +1619,24 @@ static void *client_thread(void *arg) {
   return NULL;
 }
 
+static void *ttl_reaper_thread(void *arg) {
+  (void)arg;
+  for (;;) {
+    struct timespec ts = {30, 0};
+    nanosleep(&ts, NULL);
+    char del_ids[MAX_BOXES][16];
+    int del_n = 0;
+    pthread_mutex_lock(&g_mu);
+    reap_expired_locked(del_ids, &del_n, MAX_BOXES);
+    pthread_mutex_unlock(&g_mu);
+    for (int i = 0; i < del_n; i++) {
+      fprintf(stderr, "oa-boat: background reaper deleting expired GCE VM %s\n", del_ids[i]);
+      gce_instance_op(del_ids[i], "DELETE", "");
+    }
+  }
+  return NULL;
+}
+
 int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -1634,6 +1668,8 @@ int main(int argc, char **argv) {
   if (gp && *gp) snprintf(g_gce_project, sizeof g_gce_project, "%s", gp);
   const char *gz = getenv("OA_BOAT_GCE_ZONE");
   if (gz && *gz) snprintf(g_gce_zone, sizeof g_gce_zone, "%s", gz);
+  const char *gi = getenv("OA_BOAT_GCE_IMAGE");
+  if (gi && *gi) snprintf(g_gce_image, sizeof g_gce_image, "%s", gi);
   const char *gb = getenv("OA_BOAT_GCE_BASE");
   if (gb && *gb) snprintf(g_gce_base, sizeof g_gce_base, "%s", gb);
   const char *gt = getenv("OA_BOAT_GCE_TOKEN");
@@ -1655,7 +1691,11 @@ int main(int argc, char **argv) {
   sin.sin_port = htons((uint16_t)port);
   inet_pton(AF_INET, host, &sin.sin_addr);
   if (bind(srv, (struct sockaddr *)&sin, sizeof sin) < 0 || listen(srv, 64) < 0) { perror("bind/listen"); return 1; }
-  fprintf(stderr, "oa-boat: listening on %s:%d (backend=%s, max_active=%d)\n", host, port, g_backend, g_max_active);
+  {
+    pthread_t rth;
+    if (pthread_create(&rth, NULL, ttl_reaper_thread, NULL) == 0) pthread_detach(rth);
+  }
+  fprintf(stderr, "oa-boat: listening on %s:%d (backend=%s, max_active=%d, image=%s)\n", host, port, g_backend, g_max_active, g_gce_image);
 
   for (;;) {
     int cfd = accept(srv, NULL, NULL);

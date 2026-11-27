@@ -227,7 +227,9 @@ static void native_task_run(const request *q,const char *account,const char *tur
  done:native_reply(&n);if(fd>=0)unlink(n.file);if(n.m.db)PQfinish(n.m.db);free(n.raw);free(n.record);free(n.prior);free(n.stop_record);
 }
 static void model_run(const request *q,const char *account,const char *turn,const char *dispatch,const char *worker,const char *key,const char *input){
- PGconn *db=api_db_new();const char *v[]={account,turn};PGresult *r=db?PQexecParams(db,"SELECT EXISTS(SELECT 1 FROM chat.turn_tasks_v1 WHERE account=$1 AND turn=$2) OR EXISTS(SELECT 1 FROM chat.environment_connections_v1 WHERE account=$1) FROM chat.turns_v2 WHERE account=$1 AND id=$2",2,NULL,v,NULL,NULL,0):NULL;
- bool native=tuples(r)&&PQntuples(r)==1&&PQgetvalue(r,0,0)[0]=='t';bool available=tuples(r)&&PQntuples(r)==1;PQclear(r);if(db)PQfinish(db);if(!available){refuse(q,503,"Dispatch storage unavailable.");return;}if(!native){hosted_model_run(q,account,turn,dispatch,worker,key,input);return;}
+ PGconn *db=api_db_new();const char *v[]={account,turn};PGresult *r=db?PQexecParams(db,"SELECT EXISTS(SELECT 1 FROM chat.turn_tasks_v1 WHERE account=$1 AND turn=$2) OR EXISTS(SELECT 1 FROM chat.environment_connections_v1 WHERE account=$1), coalesce(compute,'') FROM chat.turns_v2 WHERE account=$1 AND id=$2",2,NULL,v,NULL,NULL,0):NULL;
+ bool available=tuples(r)&&PQntuples(r)==1;bool native=available&&PQgetvalue(r,0,0)[0]=='t';bool is_sandbox=available&&!strcmp(PQgetvalue(r,0,1),"sandbox");PQclear(r);if(db)PQfinish(db);if(!available){refuse(q,503,"Dispatch storage unavailable.");return;}
+ if(is_sandbox){refuse(q,409,"Cloud Sandbox turns execute via /api/chat/runner/sandbox/v1.");return;}
+ if(!native){hosted_model_run(q,account,turn,dispatch,worker,key,input);return;}
  signal(SIGCHLD,SIG_IGN);pid_t pid=fork();if(pid==0){native_task_run(q,account,turn,dispatch,worker,key,input);_exit(0);}if(pid<0)refuse(q,503,"Native worker unavailable; reconcile the saved turn.");
 }

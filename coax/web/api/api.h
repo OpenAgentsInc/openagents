@@ -258,6 +258,8 @@ bool auth_first_party(const request *q);   // auth.c: no Origin, ours, or a list
 bool auth_listed_site(const request *q);  // auth.c: the Origin is a listed first-party site (ap_site AP_SITE_LISTED), never ours or none
 const char *auth_origin(void);
 bool auth_account_has_github(PGconn *db, const char *account, char *login_out, size_t login_cap);
+bool auth_mint_sandbox_token(PGconn *db, const char *account, char token_out[160], char sid_out[40]);
+void auth_revoke_sandbox_token(PGconn *db, const char *sid);
 
 // Agents, their grants and keys, and `openagents login` (agents.c, agent-policy.coax, #13211).
 bool agents_init(void);                                      // its numbers against agent-policy.coax

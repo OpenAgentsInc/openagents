@@ -62,6 +62,7 @@
 #include <poll.h>
 #include "runner-sign.h"   // runner_coax_pubkey, runner_coax_auth: deploy.sh compiles runner-sign.coax
 #include "durable-runner-wire.h"
+#include "sandbox-policy.h"
 #include "runner-wire.h"   // the lines and bodies (rw_*_write): deploy.sh compiles runner-wire.coax
 #include <signal.h>
 #include <stdarg.h>
@@ -508,6 +509,7 @@ static long signed_post(const char *path,const char *body,long timeout,text *out
 }
 
 static long model_post(long long turn,const char *body,text *out){char path[128];snprintf(path,sizeof path,"/api/chat/runner/complete?t=%lld",turn);return signed_post(path,body,280,out);}
+#include "sandbox-runner.c"
 // The same signed transport, one run request only. Lost responses never repeat
 // model dispatch: the API owns its fence, progress and recovery.
 static void durable_turns(void){
@@ -517,6 +519,7 @@ static void durable_turns(void){
   int64_t n=cwr_write(1,cs(operation),cs(worker),cs(""),cs(""),(coax_v_u8){(uint8_t *)body,sizeof body-1});if(n<1)break;body[n]=0;
   text out={0};long status=signed_post("/api/chat/runner/v2alpha1",body,30,&out);coax_t_CtJob job;uint8_t arena[108];
   bool got=status==200&&cwr_job_read(cs(out.p?out.p:""),(coax_v_t_CtJob){&job,1},(coax_v_u8){arena,sizeof arena});free(out.p);if(!got||!job.has_work)break;
+  if(sandbox_try_run(worker,job.turn,job.dispatch))continue;
   snprintf(operation,sizeof operation,"run-%.60s-%d",worker,i);n=cwr_write(2,cs(operation),cs(worker),job.turn,job.dispatch,(coax_v_u8){(uint8_t *)body,sizeof body-1});if(n<1)break;body[n]=0;
   out=(text){0};status=signed_post("/api/chat/runner/v2alpha1",body,360,&out);free(out.p);
   if(status!=200)say("durable run: HTTP %ld; the saved attempt owns reconciliation",status);

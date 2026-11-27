@@ -133,7 +133,7 @@ swift_files=(
   "$here/Notifications.swift" "$here/Store.swift" "$here/Updater.swift"
   "$here/Window.swift" "$here/Window+Attach.swift" "$here/Window+Chats.swift"
   "$here/Window+Dialogs.swift" "$here/Window+Files.swift" "$here/Window+FollowUps.swift"
-  "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Runs.swift"
+  "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Runs.swift" "$here/Window+CloudSandbox.swift"
   "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Update.swift"
   "$here/Window+Worktrees.swift" "$here/Worker.swift" "$here/Worktree.swift" "$here/KeepAwake.swift"
   "$here/Window+GitDiff.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"

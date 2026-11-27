@@ -140,7 +140,7 @@ sb_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
 // 2. Clones/fetches repo (if provided) into /tmp/oa-wt-<turn>.
 // 3. Runs oa-worker --json --model <model> --prompt-file /tmp/oa-prompt-<turn>.txt.
 // 4. Cleans up prompt + ephemeral env in EXIT trap.
-sb_worker_command :: (turn_id: string, model: string, repo: string, ref: string, has_env: bool, out: [] u8) -> int #effects(all) {
+sb_worker_command :: (turn_id: string, model: string, repo: string, ref: string, has_env: bool, out: [] u8) -> int #export_c #effects(all) {
   if !sb_turn_id_ok(turn_id) { return -1; }
   if model.count > 0 && !sb_plain_ok(model, 64) { return -1; }
   if repo.count > 0 && !sb_repo_ok(repo) { return -1; } // mutant: equivalent (sb_repo_ok requires count >= 3; a 1-byte repo like "a" fails sb_repo_ok too, handled by the test below)

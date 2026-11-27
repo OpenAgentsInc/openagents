@@ -63,12 +63,16 @@ static void submit(const request *q,PGconn *db,const auth_principal *p,const cha
  if(prior==2){r=turn_row(db,p->account,tid,false);n=control(r,v,out,CT_CAP);if(n<1){goto done;}status=202;reply(q,status,out,(size_t)n);goto replied;}
  // A limited session submits only where ap_limited_write names this route (a GameBuilder build agent; never /api/chat/submit/v2alpha1).
  bool limited=p->limited&&!ap_limited_write(ts(q->method),ts(q->path));
- char pin_host[66]={0},pin_name[81]={0},pin_ws[72]={0},target[16]={0},sb_size[16]={0},place_reason[256]={0};
+ char pin_host[66]={0},pin_name[81]={0},pin_ws[320]={0},target[16]={0},sb_size[16]={0},req_model[96]={0},req_repo[130]={0},req_ref[130]={0},place_reason[256]={0};
  api_query(q,"host",pin_host,sizeof pin_host);
  api_query(q,"target",target,sizeof target);
  api_query(q,"size",sb_size,sizeof sb_size);
+ api_query(q,"model",req_model,sizeof req_model);
+ api_query(q,"repo",req_repo,sizeof req_repo);
+ api_query(q,"ref",req_ref,sizeof req_ref);
  bool is_sandbox=false,funded=act_funded_turn(p->kind,ts(p->account),p->team,ts(admitted_for));
- long long credit_msat=0,usd_per_btc=100000;
+ long long credit_msat=0,usd_per_btc=100000,promo_micros=0;
+ char promo_exp[40]={0};
  if(p->kind==2&&!limited&&p->frozen==0&&(*pin_host||!strcmp(target,"sandbox")||!strcmp(target,"auto"))){
   const char *who=p->pubkey[0]?p->pubkey:p->account;
   const char *cv[]={who,p->account};
@@ -76,11 +80,14 @@ static void submit(const request *q,PGconn *db,const auth_principal *p,const cha
   if(tuples(cr)&&PQntuples(cr)==1)credit_msat=number(cr,0,0);PQclear(cr);
   PGresult *br=PQexec(db,"SELECT usd_per_btc FROM inference.btc_usd LIMIT 1");
   if(tuples(br)&&PQntuples(br)==1&&number(br,0,0)>0)usd_per_btc=number(br,0,0);PQclear(br);
+  referral_promo_balance(db,who,&promo_micros,promo_exp);
+  if(promo_micros<=0&&strcmp(who,p->account)!=0)referral_promo_balance(db,p->account,&promo_micros,promo_exp);
+  bool promo_ok=promo_micros>=10000;
   if(!strcmp(target,"sandbox")){
    const char *sz=*sb_size?sb_size:"small";
-   int64_t adm=cp_c_sandbox_admit(ts(sz),(int64_t)credit_msat,(int64_t)usd_per_btc,p->team||p->admin);
+   int64_t adm=cp_c_sandbox_admit(ts(sz),(int64_t)credit_msat,(int64_t)usd_per_btc,p->team||p->admin||promo_ok);
    if(adm==400){status=400;why="Invalid sandbox size (use small, default, or large).";goto done;}
-   if(adm==402){status=402;why="Insufficient sats credit for Cloud Sandbox. Top up credit in Settings or run on an enrolled computer ($0).";goto done;}
+   if(adm==402){status=402;why="Insufficient credits for Cloud Sandbox. Manage credits in Settings or run on an enrolled computer ($0).";goto done;}
    funded=true;
   }else if(*pin_host||!strcmp(target,"auto")){
    funded=true;
@@ -117,12 +124,14 @@ static void submit(const request *q,PGconn *db,const auth_principal *p,const cha
   const char *sz=*sb_size?sb_size:"small";
   is_sandbox=true;
   snprintf(pin_name,sizeof pin_name,"cloud-sandbox");
-  snprintf(pin_ws,sizeof pin_ws,"sandbox:%s",sz);
+  if(*req_repo&&*req_ref)snprintf(pin_ws,sizeof pin_ws,"sandbox:%s:%s@%s",sz,req_repo,req_ref);
+  else if(*req_repo)snprintf(pin_ws,sizeof pin_ws,"sandbox:%s:%s",sz,req_repo);
+  else snprintf(pin_ws,sizeof pin_ws,"sandbox:%s",sz);
   snprintf(place_reason,sizeof place_reason,"Explicit Cloud Sandbox target selected");
  }else if(!strcmp(target,"auto")){
   const char *sz=*sb_size?sb_size:"small";
   if(cp_c_sandbox_rate_hr(ts(sz))<0){status=400;why="Invalid sandbox size (use small, default, or large).";goto done;}
-  bool sb_funded=cp_c_sandbox_admit(ts(sz),(int64_t)credit_msat,(int64_t)usd_per_btc,p->team||p->admin)==200;
+  bool sb_funded=cp_c_sandbox_admit(ts(sz),(int64_t)credit_msat,(int64_t)usd_per_btc,p->team||p->admin||promo_micros>=10000)==200;
   char cut_s[32];num(cut_s,now-120000LL);
   const char *ev[]={p->account,project,cut_s};
   PGresult *er=PQexecParams(db,
@@ -139,13 +148,16 @@ static void submit(const request *q,PGconn *db,const auth_principal *p,const cha
   int64_t wk=pl_c_classify_prompt(ts(canonical_request));
   int64_t tier=pl_c_decide_auto(wk,false,has_st,st_on,st_repo,false,st_act,2,20,8192,20480,sb_funded,tb(place_reason,sizeof place_reason-1));
   if(tier==2&&*cand_host){snprintf(pin_host,sizeof pin_host,"%s",cand_host);snprintf(pin_name,sizeof pin_name,"%s",cand_name);snprintf(pin_ws,sizeof pin_ws,"host:%s",cand_host);}
-  else if(tier==3){is_sandbox=true;snprintf(pin_name,sizeof pin_name,"cloud-sandbox");snprintf(pin_ws,sizeof pin_ws,"sandbox:%s",sz);}
+  else if(tier==3){is_sandbox=true;snprintf(pin_name,sizeof pin_name,"cloud-sandbox");if(*req_repo&&*req_ref)snprintf(pin_ws,sizeof pin_ws,"sandbox:%s:%s@%s",sz,req_repo,req_ref);else if(*req_repo)snprintf(pin_ws,sizeof pin_ws,"sandbox:%s:%s",sz,req_repo);else snprintf(pin_ws,sizeof pin_ws,"sandbox:%s",sz);}
  }else if(*target&&!cld_c_target_valid(ts(target),ts(""))){
   status=400;why="Invalid execution target.";goto done;
  }
- if(!exec_sql(db,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,snapshot_id,snapshot_json,state,model,provider,effort,created_ms,updated_ms,native_input_json,admitted_for) VALUES($1,$2,$3,$4::bigint,$5,$6,$7,$8,nullif($9,''),$10,1,'google/gemini-4-hydrogen','google','low',$11::bigint,$11::bigint,$12,$13)",13,tv)||!operation_save(db,p->account,op,q->path,hash,tid))goto done;
+ const char *turn_model=is_sandbox?"google/gemini-4-neon":"google/gemini-4-hydrogen";
+ if(*req_model&&strlen(req_model)<=64){bool mok=true;for(const char *mp=req_model;*mp;mp++){if(!((*mp>='a'&&*mp<='z')||(*mp>='A'&&*mp<='Z')||(*mp>='0'&&*mp<='9')||*mp=='-'||*mp=='_'||*mp=='.'||*mp=='/'))mok=false;}if(mok)turn_model=req_model;}
+ const char *tv14[]={tv[0],tv[1],tv[2],tv[3],tv[4],tv[5],tv[6],tv[7],tv[8],tv[9],tv[10],tv[11],tv[12],turn_model};
+ if(!exec_sql(db,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,snapshot_id,snapshot_json,state,model,provider,effort,created_ms,updated_ms,native_input_json,admitted_for) VALUES($1,$2,$3,$4::bigint,$5,$6,$7,$8,nullif($9,''),$10,1,$14,'google','medium',$11::bigint,$11::bigint,$12,$13)",14,tv14)||!operation_save(db,p->account,op,q->path,hash,tid))goto done;
  if(*pin_host||is_sandbox||*place_reason){const char *cmp=*pin_host?"local":is_sandbox?"sandbox":"cloud";const char *dev=(*pin_host||is_sandbox)?pin_name:"web";const char *up[]={p->account,tid,cmp,dev,pin_ws,place_reason};if(!exec_sql(db,"UPDATE chat.turns_v2 SET compute=$3,source_device=$4,workspace=$5,placement_reason=$6 WHERE account=$1 AND id=$2",6,up))goto done;}
- if(!cloud_emit_account_event(db,p->account,cid,tid,fresh?"conversation_created":"turn_started",title,*pin_host?"local":is_sandbox?"sandbox":"cloud","google/gemini-4-hydrogen",0,false,false,(*pin_host||is_sandbox)?pin_name:"web",before+1,now)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
+ if(!cloud_emit_account_event(db,p->account,cid,tid,fresh?"conversation_created":"turn_started",title,*pin_host?"local":is_sandbox?"sandbox":"cloud",turn_model,0,false,false,(*pin_host||is_sandbox)?pin_name:"web",before+1,now)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
  r=turn_row(db,p->account,tid,false);n=control(r,v,out,CT_CAP);if(n<1){goto done;}(void)chat_wake();reply(q,202,out,(size_t)n);goto replied;
  done: if(tx)exec_sql(db,"ROLLBACK",0,NULL);refuse(q,status,why);
  replied: if(tx)exec_sql(db,"ROLLBACK",0,NULL);PQclear(c);PQclear(r);free(legacy_record);free(canonical_request);projects_context_free(&context);free(s);free(h);free(v);free(out);free(native);
@@ -155,7 +167,18 @@ static void stop_turn(const request *q,PGconn *db,const auth_principal *p){
  coax_t_CtView *v=calloc(1,sizeof *v);unsigned char *out=calloc(1,CT_CAP);PGresult *r=NULL;int status=503;const char *why="Stop could not be saved.";bool tx=exec_sql(db,"BEGIN",0,NULL);char prior_id[37];if(!v||!out||!tx||!operation_lock(db,p->account,(char *)opb)){goto done;}
  r=turn_row(db,p->account,(char *)id,true);if(!tuples(r)){goto done;}if(PQntuples(r)!=1){status=404;why="not found";goto done;}if(!view(r,0,v)){goto done;}
  int prior=operation(db,p->account,(char *)opb,q->path,hash,prior_id);if(prior<0){goto done;}if(prior==0){status=409;why="Operation ID already has different contents.";goto done;}
- if(prior==1){coax_t_CtEvent event;coax_t_CtUsage usage={0};int result=(int)cta_event((coax_v_t_CtView){v,1},STOP,ts(""),ts(""),ts(""),false,(coax_v_t_CtUsage){&usage,1},(coax_v_t_CtEvent){&event,1});if(result!=2&&(result!=1||!save_view(db,r,v,&event))){goto done;}if(!operation_save(db,p->account,(char *)opb,q->path,hash,(char *)id)){goto done;}}
+ if(prior==1){
+  const char *sc[]={p->account,(char *)id};
+  PGresult *sr=PQexecParams(db,"SELECT coalesce(compute,'') FROM chat.turns_v2 WHERE account=$1 AND id=$2",2,NULL,sc,NULL,NULL,0);
+  bool is_sb=tuples(sr)&&PQntuples(sr)==1&&!strcmp(PQgetvalue(sr,0,0),"sandbox");
+  PQclear(sr);
+  if(is_sb){
+   if(!ct_terminal(v->state)){char ms[32];num(ms,(long long)api_now_ms());const char *su[]={p->account,(char *)id,ms};if(!exec_sql(db,"UPDATE chat.turns_v2 SET stop_requested=true,updated_ms=$3::bigint WHERE account=$1 AND id=$2",3,su))goto done;}
+   if(!operation_save(db,p->account,(char *)opb,q->path,hash,(char *)id)){goto done;}
+  }else{
+   coax_t_CtEvent event;coax_t_CtUsage usage={0};int result=(int)cta_event((coax_v_t_CtView){v,1},STOP,ts(""),ts(""),ts(""),false,(coax_v_t_CtUsage){&usage,1},(coax_v_t_CtEvent){&event,1});if(result!=2&&(result!=1||!save_view(db,r,v,&event))){goto done;}if(!operation_save(db,p->account,(char *)opb,q->path,hash,(char *)id)){goto done;}
+  }
+ }
  const char *wake[]={p->account,(char *)id};if(!exec_sql(db,"UPDATE chat.turn_tasks_v1 SET poll_after_ms=0 WHERE account=$1 AND turn=$2",2,wake)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;PQclear(r);r=turn_row(db,p->account,(char *)id,false);int64_t n=control(r,v,out,CT_CAP);if(n<1){goto done;}(void)chat_wake();reply(q,200,out,(size_t)n);goto finish;
  done: if(tx)exec_sql(db,"ROLLBACK",0,NULL);refuse(q,status,why);
  finish: PQclear(r);free(out);free(v);
@@ -215,7 +238,7 @@ static void claim(const request *q,PGconn *db,const char *key,const char *operat
  const char *op[]={key,operation};r=PQexecParams(db,"SELECT x.turn,t.conversation,x.dispatch,x.worker FROM chat.turn_claims_v2 x JOIN chat.turns_v2 t ON t.account=x.account AND t.id=x.turn WHERE x.runner_key=$1 AND x.operation=$2",2,NULL,op,NULL,NULL,0);if(!tuples(r)){goto done;}
  int64_t n=-1;if(PQntuples(r)){if(strcmp(PQgetvalue(r,0,3),worker)){status=409;why="Claim operation belongs to a different worker.";goto done;}n=cwr_job(ts(PQgetvalue(r,0,0)),ts(PQgetvalue(r,0,1)),ts(PQgetvalue(r,0,2)),tb(out,sizeof out));}
  else {
-  const char *clock[]={ms};job=PQexecParams(db,"SELECT t.account,t.id,x.turn IS NOT NULL,coalesce(x.poll_after_ms,0) FROM chat.turns_v2 t LEFT JOIN chat.turn_tasks_v1 x ON x.account=t.account AND x.turn=t.id WHERE (t.state=1 OR (t.state=2 AND x.turn IS NOT NULL)) AND (t.claim_until_ms IS NULL OR t.claim_until_ms<=$1::bigint) AND coalesce(x.poll_after_ms,0)<=$1::bigint ORDER BY t.updated_ms,t.id LIMIT 1 FOR UPDATE OF t SKIP LOCKED",1,NULL,clock,NULL,NULL,0);if(!tuples(job)){goto done;}
+  const char *clock[]={ms};job=PQexecParams(db,"SELECT t.account,t.id,x.turn IS NOT NULL,coalesce(x.poll_after_ms,0) FROM chat.turns_v2 t LEFT JOIN chat.turn_tasks_v1 x ON x.account=t.account AND x.turn=t.id WHERE (t.state=1 OR (t.state=2 AND x.turn IS NOT NULL)) AND (t.claim_until_ms IS NULL OR t.claim_until_ms<=$1::bigint) AND coalesce(x.poll_after_ms,0)<=$1::bigint AND coalesce(t.compute,'')<>'local' ORDER BY t.updated_ms,t.id LIMIT 1 FOR UPDATE OF t SKIP LOCKED",1,NULL,clock,NULL,NULL,0);if(!tuples(job)){goto done;}
   if(!PQntuples(job))n=cwr_job(ts(""),ts(""),ts(""),tb(out,sizeof out));
   else {PGresult *t=turn_row(db,PQgetvalue(job,0,0),PQgetvalue(job,0,1),true);bool available=tuples(t)&&PQntuples(t)==1&&ctn_claim(number(t,0,3),PQgetvalue(job,0,2)[0]=='t',number(job,0,3),nullable(t,0,26),now)&&api_object_id(dispatch,"run_");
    const char *v[]={PQgetvalue(job,0,0),PQgetvalue(job,0,1),worker,key,operation,dispatch,until,ms};
@@ -276,11 +299,12 @@ static void stream_events(const request *q,PGconn *db,const auth_principal *p){
   refuse(q,503,"Event stream unavailable.");
  }
 }
+static void sandbox_runner(const request *q, PGconn *db);
 bool account_chat_turn_route(const request *q){
  char v2_cid[37]={0};int v2=(int)cc_v2_route(ts(q->method),ts(q->path),tb(v2_cid,36));
  if(v2!=0)return account_chat_cloud_dispatch(q,v2,v2_cid);
- const char *path=q->path;int op=!strcmp(path,"/api/chat/submit/v2alpha1")?1:!strcmp(path,"/api/chat/stop/v2alpha1")?2:!strcmp(path,"/api/chat/turn/v2alpha1")?3:!strcmp(path,"/api/chat/events/v2alpha1")?4:!strcmp(path,"/api/chat/conversations/v2alpha1")?5:!strcmp(path,"/api/chat/conversation/v2alpha1")?6:!strcmp(path,"/api/chat/runner/v2alpha1")?7:!strcmp(path,"/api/chat/context/v2alpha1")?8:!strcmp(path,"/api/chat/input/v2alpha1")?9:!strcmp(path,"/api/chat/native-input/v1alpha1")?10:!strcmp(path,"/api/chat/turn-task/v1alpha1")?11:!strcmp(path,"/api/chat/events/stream/v2alpha1")?12:0;if(!op)return false;
- PGconn *db=api_db();if(!db){refuse(q,503,"Chat storage unavailable.");return true;}if(op==7){runner(q,db);return true;}
+ const char *path=q->path;int op=!strcmp(path,"/api/chat/submit/v2alpha1")?1:!strcmp(path,"/api/chat/stop/v2alpha1")?2:!strcmp(path,"/api/chat/turn/v2alpha1")?3:!strcmp(path,"/api/chat/events/v2alpha1")?4:!strcmp(path,"/api/chat/conversations/v2alpha1")?5:!strcmp(path,"/api/chat/conversation/v2alpha1")?6:!strcmp(path,"/api/chat/runner/v2alpha1")?7:!strcmp(path,"/api/chat/context/v2alpha1")?8:!strcmp(path,"/api/chat/input/v2alpha1")?9:!strcmp(path,"/api/chat/native-input/v1alpha1")?10:!strcmp(path,"/api/chat/turn-task/v1alpha1")?11:!strcmp(path,"/api/chat/events/stream/v2alpha1")?12:!strcmp(path,"/api/chat/runner/sandbox/v1")?13:0;if(!op)return false;
+ PGconn *db=api_db();if(!db){refuse(q,503,"Chat storage unavailable.");return true;}if(op==7){runner(q,db);return true;}if(op==13){sandbox_runner(q,db);return true;}
  const auth_principal *p=auth_principal_of(q);if(!p||!ctw_owns(p->kind,p->level,ts(p->account),ts(p->account))){refuse(q,401,"Log in first.");return true;}
  bool post=op<=2;if(strcmp(q->method,post?"POST":"GET")){refuse(q,405,post?"POST this":"GET this");return true;}if(post&&!auth_same_site(q)){refuse(q,403,"Cross-site write refused.");return true;}
  if(op==1)submit(q,db,p,"");else if(op==2)stop_turn(q,db,p);else if(op==3||op==4)read_turn(q,db,p,op==4);else if(op==5)conversation_index(q,db,p);else if(op==6)conversation_read(q,db,p);else if(op==12)stream_events(q,db,p);else read_admitted(q,db,p,op);return true;
@@ -335,5 +359,6 @@ static void hosted_model_run(const request *q,const char *account,const char *tu
  free(m.stream);
 }
 #include "account-chat-cloud.c"
+#include "account-chat-sandbox.c"
 #include "account-chat-tasks.c"
 #include "gamebuilder-agents.c"

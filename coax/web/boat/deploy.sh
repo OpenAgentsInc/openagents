@@ -49,8 +49,8 @@ gcloud run deploy "$service" \
   --network default --subnet default --vpc-egress private-ranges-only \
   --no-cpu-throttling \
   --allow-unauthenticated --port 8080 --cpu 1 --memory 512Mi \
-  --min-instances 0 --max-instances 1 --timeout 600 \
+  --min-instances 1 --max-instances 1 --timeout 600 \
   --set-secrets "OA_BOAT_API_KEY=oa-boat-api-key:latest,/var/run/oa-boat/ssh_key=oa-boat-ssh-key:latest" \
-  --set-env-vars "OA_BOAT_BACKEND=gce,OA_BOAT_GCE_PROJECT=$project,OA_BOAT_GCE_ZONE=$zone,OA_BOAT_MAX_ACTIVE=8,OA_BOAT_SSH_KEY_FILE=/var/run/oa-boat/ssh_key" \
+  --set-env-vars "OA_BOAT_BACKEND=gce,OA_BOAT_GCE_PROJECT=$project,OA_BOAT_GCE_ZONE=$zone,OA_BOAT_GCE_IMAGE=${OA_BOAT_GCE_IMAGE:-projects/$project/global/images/family/oa-sandbox},OA_BOAT_MAX_ACTIVE=8,OA_BOAT_SSH_KEY_FILE=/var/run/oa-boat/ssh_key" \
   --quiet
 echo "oa-boat: deployed $service ($tag)"

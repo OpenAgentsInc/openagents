@@ -237,6 +237,7 @@ static const auth_rule RULES[] = {
   R("*", "/api/chat/conversations/v2alpha1", false, AP_ACCOUNT, "owned durable conversation index"),
   R("*", "/api/chat/conversation/v2alpha1", false, AP_ACCOUNT, "paged owned durable conversation"),
   R("*", "/api/chat/runner/v2alpha1", false, AP_PUBLIC, "trusted signed runner only; fenced durable queue claims"),
+  R("POST", "/api/chat/runner/sandbox/v1", false, AP_PUBLIC, "trusted signed runner only; cloud sandbox lifecycle and event ingest"),
   // ---- unified cloud chat v2 (#14093): Desktop <-> Postgres <-> Web/Mobile live sync & SSE
   R("GET", "/api/chat/v2/", true, AP_ACCOUNT, "unified cloud chat v2 reads and live SSE streams"),
   R("POST", "/api/chat/v2/", true, AP_HUMAN, "unified cloud chat v2 idempotent sync, events, and metadata updates"),
@@ -1155,6 +1156,49 @@ static void logged_in(const request *q, PGconn *db, const char *acct, const char
 void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *via_id, const char *level,
                     bool app, bool made, const char *action, const char *extra_json, const char *extra_lines) {
   logged_in(q, db, acct, via_kind, via_id, level, app, made, action, extra_json, extra_lines, NULL);
+}
+
+// Mints a short-lived turn-scoped OpenAgents Cloud Bearer access token (oa_at_...) for a Cloud Sandbox
+// oa-worker running on behalf of `acct`. Zero raw provider keys ever leave oa-api; the session is
+// revoked immediately when the sandbox turn finishes (or expires automatically in 1 hour).
+bool auth_mint_sandbox_token(PGconn *db, const char *acct, char token_out[160], char sid_out[40]) {
+  token_out[0] = 0;
+  sid_out[0] = 0;
+  if (!db || !acct || !*acct) return false;
+  char tok[160], dig[65], rt[160], rtd[65], at[160], atd[65], fam[33];
+  if (!random_hex(tok, 32) || !new_token("oa_rt_", rt, sizeof rt, rtd) ||
+      !new_token("oa_at_", at, sizeof at, atd) || !random_hex(fam, 16)) {
+    return false;
+  }
+  sha_hex(tok, dig);
+  const char *v[8] = {dig, acct, "sandbox", NULL, "L1", "app", "Cloud Sandbox", ""};
+  PGresult *r = PQexecParams(db, "SELECT auth.session_new($1, $2, $3, $4::bigint, $5, $6, $7, $8)",
+                             8, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
+  if (ok) snprintf(sid_out, 40, "%s", PQgetvalue(r, 0, 0));
+  PQclear(r);
+  if (!ok || !sid_out[0]) {
+    explicit_bzero(tok, sizeof tok); explicit_bzero(rt, sizeof rt); explicit_bzero(at, sizeof at);
+    return false;
+  }
+  const char *w[4] = {sid_out, fam, rtd, atd};
+  PGresult *p = PQexecParams(db, "SELECT auth.app_pair($1, $2, $3, $4)", 4, NULL, w, NULL, NULL, 0);
+  ok = PQresultStatus(p) == PGRES_TUPLES_OK;
+  PQclear(p);
+  if (ok) snprintf(token_out, 160, "%s", at);
+  else {
+    const char *e[1] = {sid_out};
+    PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, e, NULL, NULL, 0));
+    sid_out[0] = 0;
+  }
+  explicit_bzero(tok, sizeof tok); explicit_bzero(rt, sizeof rt); explicit_bzero(at, sizeof at);
+  return ok;
+}
+
+void auth_revoke_sandbox_token(PGconn *db, const char *sid) {
+  if (!db || !sid || !*sid) return;
+  const char *e[1] = {sid};
+  PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, e, NULL, NULL, 0));
 }
 
 static char *body_text(const request *q) {

@@ -45,7 +45,8 @@ mkdir -p "$stage/src"
 "$repo/coax/bin/coax" c "$here/seat-runner-wire.coax" --library --header "$stage/src/seat-runner-wire.h" > "$stage/src/seat-runner-wire.c"
 # Durable account turns use the owned codec; the runner carries no provider key for them.
 "$repo/coax/bin/coax" c "$repo/coax/web/api/account-chat-turn-record.coax" --library --header "$stage/src/durable-runner-wire.h" > "$stage/src/durable-runner-wire.c"
-cp "$here/runner.c" "$here/chat-runner.c" "$here/seat-runner.c" "$here/engine-io.c" "$here/confine-native.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/process-native.h" "$stage/src/"
+"$repo/coax/bin/coax" c "$repo/coax/lib/boat/sandbox-policy.coax" --library --header "$stage/src/sandbox-policy.h" > "$stage/src/sandbox-policy.c"
+cp "$here/runner.c" "$here/sandbox-runner.c" "$here/chat-runner.c" "$here/seat-runner.c" "$here/engine-io.c" "$here/confine-native.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/process-native.h" "$stage/src/"
 # oa-seat, the hosted seats' engine (seat.coax, docs/metaverse/realm-seat.md slice 5): its C, the platform's C and the entropy policy
 mkdir -p "$stage/src/seat"
 "$repo/coax/bin/coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$stage/src/seat/entropy-policy.h" > "$stage/src/seat/entropy.c"
@@ -103,6 +104,12 @@ deploy() {  # service api-origin repos-secret model chat-suffix
     done
   fi
   local repo_url; repo_url="$(live_env "$1" OA_REPO_URL)"
+  local boat_url; boat_url="$(gcloud run services describe "oa-boat$5" --project "$project" --region "$region" --format='value(status.url)' 2>/dev/null || true)"
+  [[ -z "$boat_url" ]] && boat_url="$(live_env "$1" OA_BOAT_API_BASE)"
+  if gcloud secrets describe "oa-boat-api-key" --project "$project" >/dev/null 2>&1; then
+    gcloud secrets add-iam-policy-binding "oa-boat-api-key" --project "$project" --member "serviceAccount:$sa" --role roles/secretmanager.secretAccessor --quiet >/dev/null
+    secrets+=",OA_BOAT_API_KEY=oa-boat-api-key:latest"
+  fi
   # the indexed repo service's grant key (oa-repo-grant-key[-staging], made by coax/web/repo/vm-deploy.sh
   # create): with it and OA_REPO_URL, /chat reads the repository through oa-repo and makes no checkout
   if gcloud secrets describe "oa-repo-grant-key$5" --project "$project" >/dev/null 2>&1; then
@@ -116,7 +123,7 @@ deploy() {  # service api-origin repos-secret model chat-suffix
     --add-volume "name=sessions,type=cloud-storage,bucket=$project-oa-chat-sessions$5,mount-options=uid=1000;gid=1000" \
     --add-volume-mount volume=sessions,mount-path=/sessions \
     --set-secrets "$secrets" \
-    --set-env-vars "^|^OA_API_ORIGIN=$2|OA_AGENT_MODEL=$4|OA_AGENT_REPOS=$repos|OA_CHAT_SESSIONS=/sessions${repo_url:+|OA_REPO_URL=$repo_url}" --quiet 2>&1 | grep -E "ERROR|revision" || true
+    --set-env-vars "^|^OA_API_ORIGIN=$2|OA_AGENT_MODEL=$4|OA_AGENT_REPOS=$repos|OA_CHAT_SESSIONS=/sessions${repo_url:+|OA_REPO_URL=$repo_url}${boat_url:+|OA_BOAT_API_BASE=$boat_url}" --quiet 2>&1 | grep -E "ERROR|revision" || true
   gcloud run services add-iam-policy-binding "$1" --project "$project" --region "$region" \
     --member "serviceAccount:$invoker" --role roles/run.invoker --quiet >/dev/null
   echo "  ok    $1 ($n repositories)"

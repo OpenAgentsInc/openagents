@@ -1930,8 +1930,9 @@ cwc_send_durable :: (c: [] ChatCloud, prompt: string, sandbox: bool) -> bool {
   um := CwcMsg.{kind = CWC_M_USER, text_at = usp.at, text_n = usp.n, sequence = 1};
   um.dev_n = cwc_put(um.device[..], 0, "web");
   _ = cwc_append_msg(c, um);
-  am := CwcMsg.{kind = CWC_M_ASSISTANT, text_at = 0, text_n = 0, running = true, sequence = 2};
+  am := CwcMsg.{kind = CWC_M_ASSISTANT, text_at = 0, text_n = 0, running = true, sequence = 0};
   am.compute_n = cwc_put(am.compute[..], 0, cmp);
+  am.model_n = cwc_put(am.model[..], 0, cwc_model_id(c));
   am.dev_n = cwc_put(am.device[..], 0, dev);
   c[0].web_msg_idx = cwc_append_msg(c, am);
   vl_scroll_to_bottom(c[0].vl[..]);
@@ -1943,9 +1944,10 @@ cwc_send_durable :: (c: [] ChatCloud, prompt: string, sandbox: bool) -> bool {
   c[0].active_device_n = cwc_put(c[0].active_device[..], 0, dev);
   c[0].error_n = 0;
 
-  url: [128] u8; un := 0;
+  url: [192] u8; un := 0;
   if sandbox {
-    un = cwc_put(url[..], 0, "/api/chat/submit/v2alpha1?target=sandbox&size=small");
+    un = cwc_put(url[..], 0, "/api/chat/submit/v2alpha1?target=sandbox&size=small&model=");
+    un = cwc_put(url[..], un, cwc_model_id(c));
   } else {
     un = cwc_put(url[..], 0, "/api/chat/submit/v2alpha1?host=");
     un = cwc_put(url[..], un, cast(string) c[0].sel_host[0..<64]);
@@ -2490,7 +2492,8 @@ cwc_drain_msgs :: (c: [] ChatCloud) {
         v := d[0];
         cid_b: [36] u8; cid_n := cwc_jv_str_into(v, jv_get(v, 0, "conversation_id"), cid_b[..]);
         tid_b: [36] u8; tid_n := cwc_jv_str_into(v, jv_get(v, 0, "turn_id"), tid_b[..]);
-        rev := jv_int(v, jv_get(v, 0, "revision"), 1);
+        rev := jv_int(v, jv_get(v, 0, "conversation_revision"), -1);
+        if rev < 0 { rev = jv_int(v, jv_get(v, 0, "revision"), 1); }
         if cid_n == 36 {
           c[0].active_id_n = cwc_put(c[0].active_id[..], 0, cast(string) cid_b[0..<36]);
           c[0].conv_persisted = true;

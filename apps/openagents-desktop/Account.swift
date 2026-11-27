@@ -62,9 +62,10 @@ final class MacAccount: @unchecked Sendable {
     var projectsSummary: String { lock.lock(); defer { lock.unlock() }; return cachedProjectsSummary }
 
     var paidCreditLabel: String {
-        guard let msat = creditMsat else { return loggedIn ? "0 sats" : "Sign in to view" }
-        let sats = max(0, msat / 1000)
-        return "\(sats) sats"
+        guard let msat = creditMsat else { return loggedIn ? "$0.00 USD" : "Sign in to view" }
+        // Display in USD only (no bitcoin/sats units in v1.0 UI).
+        let dollars = max(0.0, Double(msat) / 1_000_000_000.0)
+        return String(format: "$%.2f USD", dollars)
     }
 
     var promoCreditLabel: String {

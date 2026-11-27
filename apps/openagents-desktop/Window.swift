@@ -35,11 +35,17 @@ final class CoderRun {
     var autoRecoveries: Int = 0        // bounded mid-turn worker crash/lost-daemon auto-recovery counter (#14095)
     var recoverGen: UInt64 = 0
     var lastCrashSignature: String?    // deduplicates deterministic fatal worker crashes so we never loop blindly
+    var cloudSandboxConvID: String?    // active oa-api conversation id when running on Cloud Sandbox (GCE oa-boat)
+    var cloudSandboxRevision: Int64 = 0
+    var cloudSandboxTurnID: String?
+    var cloudSandboxTask: Task<Void, Never>?
+    var isCloudSandboxRun: Bool { cloudSandboxTask != nil || cloudSandboxTurnID != nil }
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         stopRequestedAt = 0; stopGen &+= 1
         autoRecoveries = 0; recoverGen &+= 1; lastCrashSignature = nil
         needsVersionRecycle = false
+        cloudSandboxTask?.cancel(); cloudSandboxTask = nil; cloudSandboxTurnID = nil
         endTurn()
         worker.gone = nil; worker.line = nil; worker.stop()
         for one in agents.values { one.gone = nil; one.line = nil; one.stop() }
@@ -48,6 +54,7 @@ final class CoderRun {
     /// The message ended: nothing is left to attach to, and its sub-agents' runs go.
     func endTurn() {
         stopRequestedAt = 0; stopGen &+= 1
+        cloudSandboxTask?.cancel(); cloudSandboxTask = nil; cloudSandboxTurnID = nil
         let recycle = needsVersionRecycle
         needsVersionRecycle = false
         if let t = turn {
