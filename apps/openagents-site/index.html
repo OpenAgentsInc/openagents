@@ -194,6 +194,20 @@
   .inside body > main, .inside body > footer { display: none; }
   .inside #home-root { position: fixed; inset: 0; overflow-y: auto; background: #000; z-index: 30; text-align: left; }
 </style>
+<script>
+try {
+  const v = localStorage.getItem("oa_logged_in");
+  const ref = document.referrer || "";
+  const fromApp = ref.startsWith(location.origin + "/chat") || ref.startsWith(location.origin + "/login") || ref.startsWith(location.origin + "/settings");
+  if (v === "1" || fromApp || (v === null && localStorage.getItem("coaxial.dom.chat-web.kept"))) {
+    document.documentElement.classList.add("inside");
+  }
+} catch {}
+window.__oaAccountP = fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(3000) })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((j) => Boolean(j && j.logged_in === true))
+  .catch(() => false);
+</script>
 </head>
 <body>
 <main>
@@ -264,17 +278,16 @@
 })();
 </script>
 <script type="module">
-let inside = false;
-try {
-  const r = await fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(3000) });
-  inside = r.ok && (await r.json()).logged_in === true;
-} catch {}
+const inside = await (window.__oaAccountP ?? Promise.resolve(false));
+try { localStorage.setItem("oa_logged_in", inside ? "1" : "0"); } catch {}
 if (inside) {
   document.documentElement.classList.add("inside");
   const root = document.createElement("div"); root.id = "home-root"; document.body.appendChild(root);
   const shell = document.createElement("script"); shell.type = "module"; shell.src = "/coaxial/dom-host.js";
   shell.dataset.app = "chat-web"; shell.dataset.root = "home-root";
   document.body.appendChild(shell);
+} else {
+  document.documentElement.classList.remove("inside");
 }
 </script>
 </body>
