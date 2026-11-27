@@ -144,14 +144,44 @@ grep -q "CALL_SIMPLE_TEXT ok=true" <<<"$out_hc_2026"
 grep -q "RESOURCE_READ ok=true" <<<"$out_hc_2026"
 grep -q "PROMPT_GET ok=true" <<<"$out_hc_2026"
 
-echo "==> [8/8] @modelcontextprotocol/conformance client (non-auth suite) <-> Coax Streamable HTTP client"
+echo "==> [8/10] @modelcontextprotocol/conformance client --suite core (18/18: non-auth + OAuth 2.1) <-> Coax HTTP client"
 if command -v npx >/dev/null 2>&1 && [[ "${MCP_ALLOW_NPX:-0}" == "1" ]]; then
-  for scen in initialize tools_call elicitation-sep1034-client-defaults sse-retry; do
-    echo "--> client scenario: $scen"
-    npx -y @modelcontextprotocol/conformance client --command "$http_cli_bin" --scenario "$scen"
-  done
+  npx -y @modelcontextprotocol/conformance client --command "$http_cli_bin" --suite core
 else
-  echo "SKIP: set MCP_ALLOW_NPX=1 to run @modelcontextprotocol/conformance client scenarios"
+  echo "SKIP: set MCP_ALLOW_NPX=1 to run @modelcontextprotocol/conformance client --suite core"
 fi
 
-echo "ALL PHASE 2 + PHASE 3 + PHASE 4 CONFORMANCE CHECKS PASSED"
+echo "==> [9/10] @modelcontextprotocol/conformance client --suite backcompat (2/2) & --suite draft (3/3)"
+if command -v npx >/dev/null 2>&1 && [[ "${MCP_ALLOW_NPX:-0}" == "1" ]]; then
+  npx -y @modelcontextprotocol/conformance client --command "$http_cli_bin" --suite backcompat
+  npx -y @modelcontextprotocol/conformance client --command "$http_cli_bin" --suite draft
+else
+  echo "SKIP: set MCP_ALLOW_NPX=1 to run @modelcontextprotocol/conformance client backcompat & draft suites"
+fi
+
+echo "==> [10/10] Coax OAuth 2.1 Resource Server (auth_server.coax: PRM + 401 + 403 + 200)"
+auth_port="${MCP_AUTH_HTTP_PORT:-18425}"
+"$http_srv_bin" --port "$auth_port" --auth-token "valid-coax-tok" --auth-scope "mcp:basic" --auth-as "http://127.0.0.1:18426" >/tmp/coax-mcp-auth-srv.log 2>&1 &
+auth_pid=$!
+trap 'kill "$http_pid" "$auth_pid" 2>/dev/null || true' EXIT
+sleep 1
+curl -fsS "http://127.0.0.1:$auth_port/.well-known/oauth-protected-resource/mcp" | grep -q '"authorization_servers":\["http://127.0.0.1:18426"\]'
+unauth_code="$(curl -s -D /tmp/coax-mcp-401.hdr -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$auth_port/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}')"
+[[ "$unauth_code" == "401" ]]
+grep -qi 'WWW-Authenticate: Bearer.*resource_metadata="http://127.0.0.1:'"$auth_port"'/.well-known/oauth-protected-resource/mcp"' /tmp/coax-mcp-401.hdr
+low_code="$(curl -s -D /tmp/coax-mcp-403.hdr -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$auth_port/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -H "Authorization: Bearer low-scope-token" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"server/discover","params":{}}')"
+[[ "$low_code" == "403" ]]
+grep -qi 'WWW-Authenticate: Bearer.*error="insufficient_scope"' /tmp/coax-mcp-403.hdr
+curl -fsS -X POST "http://127.0.0.1:$auth_port/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Authorization: Bearer valid-coax-tok" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"server/discover","params":{}}' | grep -q '"supportedVersions":\["2026-07-28"'
+echo "AUTH_RESOURCE_SERVER ok=true"
+
+echo "ALL PHASE 2 + PHASE 3 + PHASE 4 + PHASE 5 CONFORMANCE CHECKS PASSED"

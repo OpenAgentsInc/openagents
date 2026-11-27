@@ -1,0 +1,665 @@
+// MCP OAuth 2.1 Client HTTP driver (2025-03-26 backcompat, 2025-11-25, 2026-07-28).
+// Thin #effects adapter wiring coax/lib/mcp/auth_policy.coax, auth_wire.coax,
+// http_client.coax, and coax/lib/workos/pkce.coax.
+// Supports:
+//   - RFC 9728 PRM discovery (WWW-Authenticate resource_metadata -> path -> root) + RFC 8707 resource guard
+//   - RFC 8414 & OIDC Discovery 1.0 + exact issuer & PKCE S256 validation
+//   - 2025-03-26 OAuth backcompat (root AS metadata & /authorize, /token, /register endpoint fallback)
+//   - Registration priority: Pre-registered -> CIMD -> DCR (with SEP-2207 refresh_token grant_type)
+//   - Token endpoint auth: client_secret_basic / client_secret_post / none
+//   - RFC 9207 exact callback `iss` validation + constant-time `state` verification
+//   - Scope selection (WWW-Authenticate -> PRM scopes_supported -> omit), offline_access gating,
+//     and 403 insufficient_scope union step-up with bounded retry counter
+#load "auth_wire.coax";
+#load "http_client.coax";
+
+MCP_AUTH_OK :: 0;
+MCP_AUTH_ERR_HTTP :: -10;
+MCP_AUTH_ERR_DISCOVERY :: -11;
+MCP_AUTH_ERR_RESOURCE_MISMATCH :: -12;
+MCP_AUTH_ERR_REGISTRATION :: -13;
+MCP_AUTH_ERR_AUTHORIZE :: -14;
+MCP_AUTH_ERR_CALLBACK :: -15;
+MCP_AUTH_ERR_TOKEN :: -16;
+MCP_AUTH_ERR_RETRY_LIMIT :: -17;
+MCP_AUTH_ERR_BUF :: -18;
+
+McpAuthClientConfig :: struct {
+  client_name: string = "coax-mcp-client";
+  redirect_uri: string = "http://127.0.0.1:3030/callback";
+  pre_client_id: string;
+  pre_client_secret: string;
+  cimd_url: string;
+  request_offline_access: bool;
+  max_scope_retries: int = MCP_DEFAULT_SCOPE_MAX_RETRIES;
+  timeout_ms: int = 10000;
+}
+
+McpAuthClient :: struct {
+  cfg: McpAuthClientConfig;
+  discovered: bool;
+  fallback_2025_03_26: bool;
+  cimd_supported: bool;
+  iss_param_supported: bool;
+  offline_access_supported: bool;
+  token_auth_mask: int;
+  dcr_token_auth: int;
+  scope_retries: int;
+  nonce_seq: int;
+
+  as_issuer_len: int;
+  as_issuer_buf: [MCP_AUTH_STR_CAP] u8;
+  auth_ep_len: int;
+  auth_ep_buf: [MCP_AUTH_STR_CAP] u8;
+  token_ep_len: int;
+  token_ep_buf: [MCP_AUTH_STR_CAP] u8;
+  reg_ep_len: int;
+  reg_ep_buf: [MCP_AUTH_STR_CAP] u8;
+  prm_scopes_len: int;
+  prm_scopes_buf: [MCP_AUTH_STR_CAP] u8;
+
+  client_id_len: int;
+  client_id_buf: [MCP_AUTH_STR_CAP] u8;
+  client_secret_len: int;
+  client_secret_buf: [MCP_AUTH_STR_CAP] u8;
+
+  granted_scopes_len: int;
+  granted_scopes_buf: [MCP_AUTH_STR_CAP] u8;
+  access_token_len: int;
+  access_token_buf: [MCP_AUTH_TOK_CAP] u8;
+  refresh_token_len: int;
+  refresh_token_buf: [MCP_AUTH_TOK_CAP] u8;
+
+  // Scratch wire buffers
+  wire_buf: [32768] u8;
+  head_buf: [16384] u8;
+  resp_buf: [65536] u8;
+  read_tmp: [8192] u8;
+  loc_buf: [2048] u8;
+  loc_len: int;
+  resp_len: int;
+  last_status: int;
+  chunk_stream: [1] McpChunkStream;
+  nodes: [512] JvNode;
+}
+
+mcp_ac_copy :: (dst: [] u8, src: string) -> int {
+  n := src.count;
+  if n > dst.count { n = dst.count; }
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+mcp_ac_as_issuer :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].as_issuer_buf[0..<ac[0].as_issuer_len]; }
+mcp_ac_auth_ep :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].auth_ep_buf[0..<ac[0].auth_ep_len]; }
+mcp_ac_token_ep :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].token_ep_buf[0..<ac[0].token_ep_len]; }
+mcp_ac_reg_ep :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].reg_ep_buf[0..<ac[0].reg_ep_len]; }
+mcp_ac_prm_scopes :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].prm_scopes_buf[0..<ac[0].prm_scopes_len]; }
+mcp_ac_client_id :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].client_id_buf[0..<ac[0].client_id_len]; }
+mcp_ac_client_secret :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].client_secret_buf[0..<ac[0].client_secret_len]; }
+mcp_ac_granted_scopes :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].granted_scopes_buf[0..<ac[0].granted_scopes_len]; }
+mcp_ac_access_token :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].access_token_buf[0..<ac[0].access_token_len]; }
+mcp_ac_resp_body :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].resp_buf[0..<ac[0].resp_len]; }
+mcp_ac_location :: (ac: [] McpAuthClient) -> string { return cast(string) ac[0].loc_buf[0..<ac[0].loc_len]; }
+
+mcp_auth_client_init :: (ac: [] McpAuthClient, cfg: McpAuthClientConfig) {
+  ac[0] = McpAuthClient.{};
+  ac[0].cfg = cfg;
+  if ac[0].cfg.client_name.count == 0 { ac[0].cfg.client_name = "coax-mcp-client"; }
+  if ac[0].cfg.redirect_uri.count == 0 { ac[0].cfg.redirect_uri = "http://127.0.0.1:3030/callback"; }
+  if ac[0].cfg.max_scope_retries <= 0 { ac[0].cfg.max_scope_retries = MCP_DEFAULT_SCOPE_MAX_RETRIES; }
+  if ac[0].cfg.timeout_ms <= 0 { ac[0].cfg.timeout_ms = 10000; }
+}
+
+// --- Low-level synchronous HTTP/1.1 request helper (does not follow 3xx redirects) ---
+
+mcp_ac_http_req :: (ac: [] McpAuthClient, method: string, url: string, extra_hdrs: string, body: string) -> int {
+  ac[0].resp_len = 0;
+  ac[0].loc_len = 0;
+  ac[0].last_status = 0;
+
+  u := mcp_http_parse_url(url);
+  if !u.ok { return MCP_AUTH_ERR_HTTP; }
+
+  host_hdr_buf: [320] u8;
+  hn := mcp_http_append(host_hdr_buf[..], 0, u.host);
+  default_port := ifx u.tls then 443 else 80;
+  if u.port != default_port {
+    hn = mcp_http_append(host_hdr_buf[..], hn, ":");
+    hn = mcp_http_append_int(host_hdr_buf[..], hn, u.port);
+  }
+  if hn < 0 { return MCP_AUTH_ERR_BUF; }
+  host_hdr := cast(string) host_hdr_buf[0..<hn];
+
+  wn := mcp_http_write_req(method, u.target, host_hdr, extra_hdrs, body, ac[0].wire_buf[..]);
+  if wn < 0 { return MCP_AUTH_ERR_BUF; }
+
+  for b: u.host {
+    r := ifx u.tls then cxtls_host_push(cast(int) b) else cxsock_host_push(cast(int) b);
+    if r != 0 { return MCP_AUTH_ERR_HTTP; }
+  }
+  h := ifx u.tls then cxtls_connect(u.port, ac[0].cfg.timeout_ms) else cxsock_connect(u.port, ac[0].cfg.timeout_ms);
+  if h < 0 { return MCP_AUTH_ERR_HTTP; }
+
+  if !mcp_hc_sock_send_all(u.tls, h, cast(string) ac[0].wire_buf[0..<wn], ac[0].cfg.timeout_ms) {
+    mcp_hc_sock_close(u.tls, h);
+    return MCP_AUTH_ERR_HTTP;
+  }
+
+  deadline := cxsock_now_ms() + ac[0].cfg.timeout_ms;
+  used := 0;
+  rh: [1] McpHttpRespHead;
+  head_ok := false;
+  while true {
+    left := deadline - cxsock_now_ms();
+    if left <= 0 { break; }
+    got := mcp_hc_sock_read_some(u.tls, h, ac[0].head_buf[used..<ac[0].head_buf.count], left);
+    if got == -2 { continue; }
+    if got <= 0 { break; }
+    used += got;
+    rc := mcp_http_parse_resp_head(cast(string) ac[0].head_buf[0..<used], rh[..]);
+    if rc == MCP_HTTP_OK { head_ok = true; break; }
+    if rc != MCP_HTTP_NEED_MORE { break; }
+  }
+  if !head_ok {
+    mcp_hc_sock_close(u.tls, h);
+    return MCP_AUTH_ERR_HTTP;
+  }
+
+  ac[0].last_status = rh[0].status;
+  loc := mcp_http_resp_header_get(rh[0], "Location");
+  if loc.count > 0 {
+    ac[0].loc_len = mcp_ac_copy(ac[0].loc_buf[..], loc);
+  }
+
+  // For redirects or 204, no need to wait for body
+  if (rh[0].status >= 300 && rh[0].status < 400) || rh[0].status == 204 {
+    mcp_hc_sock_close(u.tls, h);
+    return MCP_AUTH_OK;
+  }
+
+  init_body := cast(string) ac[0].head_buf[rh[0].header_end..<used];
+  body_len := 0;
+  if rh[0].is_chunked {
+    mcp_chunk_stream_init(ac[0].chunk_stream[..]);
+    done := false;
+    if init_body.count > 0 {
+      out_n: [1] int;
+      crc := mcp_chunk_stream_feed(ac[0].chunk_stream[..], init_body, ac[0].resp_buf[body_len..<ac[0].resp_buf.count], out_n[..]);
+      if crc == MCP_CS_ERROR { mcp_hc_sock_close(u.tls, h); return MCP_AUTH_ERR_HTTP; }
+      body_len += out_n[0];
+      if crc == MCP_CS_DONE { done = true; }
+    }
+    while !done {
+      left := deadline - cxsock_now_ms();
+      if left <= 0 { break; }
+      got := mcp_hc_sock_read_some(u.tls, h, ac[0].read_tmp[..], left);
+      if got == -2 { continue; }
+      if got <= 0 { break; }
+      out_n: [1] int;
+      crc := mcp_chunk_stream_feed(ac[0].chunk_stream[..], cast(string) ac[0].read_tmp[0..<got], ac[0].resp_buf[body_len..<ac[0].resp_buf.count], out_n[..]);
+      if crc == MCP_CS_ERROR { mcp_hc_sock_close(u.tls, h); return MCP_AUTH_ERR_HTTP; }
+      body_len += out_n[0];
+      if crc == MCP_CS_DONE { done = true; }
+    }
+  } else {
+    body_len = mcp_ac_copy(ac[0].resp_buf[..], init_body);
+    while true {
+      if rh[0].has_content_length && body_len >= rh[0].content_length { break; }
+      left := deadline - cxsock_now_ms();
+      if left <= 0 { break; }
+      got := mcp_hc_sock_read_some(u.tls, h, ac[0].resp_buf[body_len..<ac[0].resp_buf.count], left);
+      if got == -2 { continue; }
+      if got <= 0 { break; }
+      body_len += got;
+    }
+    if rh[0].has_content_length && body_len > rh[0].content_length {
+      body_len = rh[0].content_length;
+    }
+  }
+  mcp_hc_sock_close(u.tls, h);
+  ac[0].resp_len = body_len;
+  return MCP_AUTH_OK;
+}
+
+// --- Step 1: RFC 9728 PRM + RFC 8414 / OIDC AS Discovery (+ 2025-03-26 fallback) ---
+
+mcp_auth_discover :: (ac: [] McpAuthClient, mcp_url: string, www_auth_header: string) -> int {
+  w := mcp_www_auth_parse(www_auth_header);
+  www_prm := ifx w.ok && w.has_bearer && w.resource_metadata_to > w.resource_metadata_from
+    then www_auth_header[w.resource_metadata_from..<w.resource_metadata_to]
+    else "";
+
+  url_buf: [MCP_HTTP_URL_MAX] u8;
+  prm_found := false;
+  step := 0;
+  while true {
+    un := mcp_prm_discovery_url(mcp_url, www_prm, step, url_buf[..]);
+    if un < 0 { break; }
+    step += 1;
+    rc := mcp_ac_http_req(ac, "GET", cast(string) url_buf[0..<un], "Accept: application/json\r\n", "");
+    if rc == MCP_AUTH_OK && ac[0].last_status == 200 {
+      prm: [1] McpPrmMeta;
+      ok := mcp_auth_parse_prm(mcp_url, mcp_ac_resp_body(ac), prm[..]);
+      if prm[0].resource_mismatch {
+        return MCP_AUTH_ERR_RESOURCE_MISMATCH;
+      }
+      if ok {
+        ac[0].as_issuer_len = mcp_ac_copy(ac[0].as_issuer_buf[..], cast(string) prm[0].auth_server_buf[0..<prm[0].auth_server_len]);
+        ac[0].prm_scopes_len = mcp_ac_copy(ac[0].prm_scopes_buf[..], cast(string) prm[0].scopes_buf[0..<prm[0].scopes_len]);
+        prm_found = true;
+        break;
+      }
+    }
+  }
+
+  // If no PRM found, fall back to MCP server origin for 2025-03-26 backcompat discovery
+  if !prm_found {
+    on := mcp_auth_origin_url(mcp_url, ac[0].as_issuer_buf[..]);
+    if on <= 0 { return MCP_AUTH_ERR_DISCOVERY; }
+    ac[0].as_issuer_len = on;
+  }
+
+  // Discover AS metadata (RFC 8414 / OIDC Discovery 1.0)
+  issuer_copy: [MCP_AUTH_STR_CAP] u8;
+  iss_n := mcp_ac_copy(issuer_copy[..], mcp_ac_as_issuer(ac));
+  issuer := cast(string) issuer_copy[0..<iss_n];
+
+  as_found := false;
+  step = 0;
+  while true {
+    un := mcp_as_discovery_url(issuer, step, url_buf[..]);
+    if un < 0 { break; }
+    step += 1;
+    rc := mcp_ac_http_req(ac, "GET", cast(string) url_buf[0..<un], "Accept: application/json\r\n", "");
+    if rc == MCP_AUTH_OK && ac[0].last_status == 200 {
+      d: [1] Jv;
+      if jv_parse(d[..], mcp_ac_resp_body(ac), ac[0].nodes[..]) {
+        // In 2025-03-26 backcompat (no PRM), AS metadata at root may advertise a path-scoped issuer on the same origin
+        check_issuer := issuer;
+        meta_iss_buf: [MCP_AUTH_STR_CAP] u8;
+        if !prm_found && jv_kind(d[0], 0) == JV_OBJECT {
+          in_n := jv_get(d[0], 0, "issuer");
+          if in_n != -1 && jv_kind(d[0], in_n) == JV_STRING {
+            mn := jv_unescape(jv_raw(d[0], in_n), meta_iss_buf[..]);
+            if mn >= issuer.count && mcp_http_has_prefix(cast(string) meta_iss_buf[0..<mn], issuer) {
+              check_issuer = cast(string) meta_iss_buf[0..<mn];
+            }
+          }
+        }
+        m := mcp_as_metadata_validate(check_issuer, d[0]);
+        if m.ok {
+          ac[0].as_issuer_len = mcp_ac_copy(ac[0].as_issuer_buf[..], check_issuer);
+          an := jv_unescape(jv_raw(d[0], m.auth_endpoint_node), ac[0].auth_ep_buf[..]);
+          tn := jv_unescape(jv_raw(d[0], m.token_endpoint_node), ac[0].token_ep_buf[..]);
+          if an > 0 && tn > 0 {
+            ac[0].auth_ep_len = an;
+            ac[0].token_ep_len = tn;
+            if m.registration_endpoint_node != -1 {
+              rn := jv_unescape(jv_raw(d[0], m.registration_endpoint_node), ac[0].reg_ep_buf[..]);
+              if rn > 0 { ac[0].reg_ep_len = rn; }
+            }
+            ac[0].cimd_supported = m.cimd_supported;
+            ac[0].iss_param_supported = m.iss_param_supported;
+            ac[0].offline_access_supported = m.offline_access_supported;
+            ac[0].token_auth_mask = m.token_auth_mask;
+            as_found = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if !as_found {
+    if prm_found {
+      // Modern PRM server MUST provide valid AS metadata
+      return MCP_AUTH_ERR_DISCOVERY;
+    }
+    // 2025-03-26 endpoint fallback: <origin>/authorize, /token, /register
+    n1 := mcp_http_append(ac[0].auth_ep_buf[..], 0, issuer);
+    n1 = mcp_http_append(ac[0].auth_ep_buf[..], n1, "/authorize");
+    n2 := mcp_http_append(ac[0].token_ep_buf[..], 0, issuer);
+    n2 = mcp_http_append(ac[0].token_ep_buf[..], n2, "/token");
+    n3 := mcp_http_append(ac[0].reg_ep_buf[..], 0, issuer);
+    n3 = mcp_http_append(ac[0].reg_ep_buf[..], n3, "/register");
+    if n1 <= 0 || n2 <= 0 || n3 <= 0 { return MCP_AUTH_ERR_BUF; }
+    ac[0].auth_ep_len = n1;
+    ac[0].token_ep_len = n2;
+    ac[0].reg_ep_len = n3;
+    ac[0].token_auth_mask = MCP_TOKEN_AUTH_POST | MCP_TOKEN_AUTH_BASIC | MCP_TOKEN_AUTH_NONE;
+    ac[0].fallback_2025_03_26 = true;
+  }
+
+  ac[0].discovered = true;
+  return MCP_AUTH_OK;
+}
+
+// --- Step 2: Client Registration (Pre-registered -> CIMD -> DCR) ---
+
+mcp_ac_parse_auth_method_str :: (s: string) -> int {
+  if s == "client_secret_basic" { return MCP_TOKEN_AUTH_BASIC; }
+  if s == "client_secret_post" { return MCP_TOKEN_AUTH_POST; }
+  if s == "none" { return MCP_TOKEN_AUTH_NONE; }
+  return 0;
+}
+
+mcp_auth_ensure_client :: (ac: [] McpAuthClient) -> int {
+  if ac[0].client_id_len > 0 { return MCP_AUTH_OK; }
+
+  has_prereg := ac[0].cfg.pre_client_id.count > 0;
+  has_cimd := mcp_auth_cimd_url_ok(ac[0].cfg.cimd_url);
+  has_reg := ac[0].reg_ep_len > 0;
+  sel := mcp_auth_select_registration(has_prereg, ac[0].cimd_supported, has_cimd, has_reg);
+
+  if sel == MCP_REG_PRE_REGISTERED {
+    ac[0].client_id_len = mcp_ac_copy(ac[0].client_id_buf[..], ac[0].cfg.pre_client_id);
+    ac[0].client_secret_len = mcp_ac_copy(ac[0].client_secret_buf[..], ac[0].cfg.pre_client_secret);
+    return MCP_AUTH_OK;
+  }
+
+  if sel == MCP_REG_CIMD {
+    ac[0].client_id_len = mcp_ac_copy(ac[0].client_id_buf[..], ac[0].cfg.cimd_url);
+    ac[0].client_secret_len = 0;
+    ac[0].dcr_token_auth = MCP_TOKEN_AUTH_NONE;
+    return MCP_AUTH_OK;
+  }
+
+  if sel == MCP_REG_DCR {
+    want_method := "";
+    if (ac[0].token_auth_mask & MCP_TOKEN_AUTH_BASIC) != 0 { want_method = "client_secret_basic"; }
+    else if (ac[0].token_auth_mask & MCP_TOKEN_AUTH_POST) != 0 { want_method = "client_secret_post"; }
+    else if (ac[0].token_auth_mask & MCP_TOKEN_AUTH_NONE) != 0 { want_method = "none"; }
+
+    body_buf: [1024] u8;
+    bn := mcp_auth_write_dcr_body(ac[0].cfg.client_name, ac[0].cfg.redirect_uri, want_method, body_buf[..]);
+    if bn < 0 { return MCP_AUTH_ERR_BUF; }
+
+    reg_url_buf: [MCP_AUTH_STR_CAP] u8;
+    rn := mcp_ac_copy(reg_url_buf[..], mcp_ac_reg_ep(ac));
+    rc := mcp_ac_http_req(ac, "POST", cast(string) reg_url_buf[0..<rn],
+      "Content-Type: application/json\r\nAccept: application/json\r\n",
+      cast(string) body_buf[0..<bn]);
+    if rc != MCP_AUTH_OK || (ac[0].last_status != 200 && ac[0].last_status != 201) {
+      return MCP_AUTH_ERR_REGISTRATION;
+    }
+
+    d: [1] Jv;
+    if !jv_parse(d[..], mcp_ac_resp_body(ac), ac[0].nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+      return MCP_AUTH_ERR_REGISTRATION;
+    }
+    cid_n := jv_get(d[0], 0, "client_id");
+    if cid_n == -1 || jv_kind(d[0], cid_n) != JV_STRING { return MCP_AUTH_ERR_REGISTRATION; }
+    cn := jv_unescape(jv_raw(d[0], cid_n), ac[0].client_id_buf[..]);
+    if cn <= 0 { return MCP_AUTH_ERR_REGISTRATION; }
+    ac[0].client_id_len = cn;
+
+    cs_n := jv_get(d[0], 0, "client_secret");
+    if cs_n != -1 && jv_kind(d[0], cs_n) == JV_STRING {
+      sn := jv_unescape(jv_raw(d[0], cs_n), ac[0].client_secret_buf[..]);
+      if sn > 0 { ac[0].client_secret_len = sn; }
+    }
+
+    am_n := jv_get(d[0], 0, "token_endpoint_auth_method");
+    if am_n != -1 && jv_kind(d[0], am_n) == JV_STRING {
+      tmp: [64] u8;
+      mn := jv_unescape(jv_raw(d[0], am_n), tmp[..]);
+      if mn > 0 {
+        ac[0].dcr_token_auth = mcp_ac_parse_auth_method_str(cast(string) tmp[0..<mn]);
+      }
+    }
+    return MCP_AUTH_OK;
+  }
+
+  return MCP_AUTH_ERR_REGISTRATION;
+}
+
+// --- Step 3: PKCE + Authorize Redirect + RFC 9207 iss + Token Exchange ---
+
+mcp_ac_derive_entropy32 :: (ac: [] McpAuthClient, tag: string, seed_url: string, out32: [] u8) {
+  ac[0].nonce_seq += 1;
+  now := cxsock_now_ms();
+  in_buf: [256] u8;
+  n := mcp_http_append(in_buf[..], 0, tag);
+  n = mcp_http_append(in_buf[..], n, ":");
+  n = mcp_http_append_int(in_buf[..], n, now);
+  n = mcp_http_append(in_buf[..], n, ":");
+  n = mcp_http_append_int(in_buf[..], n, ac[0].nonce_seq);
+  n = mcp_http_append(in_buf[..], n, ":");
+  take := seed_url.count;
+  if n + take > in_buf.count { take = in_buf.count - n; }
+  for i: 0..<take { in_buf[n + i] = seed_url[i]; }
+  n += take;
+  _ = sha256_hash_checked(in_buf[0..<n], out32, false);
+}
+
+mcp_auth_authorize_and_exchange :: (ac: [] McpAuthClient, hc: [] McpHttpClient, mcp_url: string, scopes: string) -> int {
+  // 1. Generate PKCE verifier, S256 challenge, and OAuth state
+  ent_v: [32] u8;
+  ent_s: [32] u8;
+  mcp_ac_derive_entropy32(ac, "pkce", mcp_url, ent_v[..]);
+  mcp_ac_derive_entropy32(ac, "state", mcp_url, ent_s[..]);
+
+  verifier_buf: [64] u8;
+  vn := wos_pkce_verifier_from_entropy(ent_v[..], verifier_buf[..]);
+  if vn <= 0 { return MCP_AUTH_ERR_BUF; }
+  verifier := cast(string) verifier_buf[0..<vn];
+
+  chal_buf: [64] u8;
+  chn := wos_pkce_challenge(verifier, chal_buf[..]);
+  if chn <= 0 { return MCP_AUTH_ERR_BUF; }
+  challenge := cast(string) chal_buf[0..<chn];
+
+  state_buf: [64] u8;
+  stn := wos_state_from_entropy(ent_s[..], state_buf[..]);
+  if stn <= 0 { return MCP_AUTH_ERR_BUF; }
+  state := cast(string) state_buf[0..<stn];
+
+  // 2. Canonical RFC 8707 resource indicator
+  res_buf: [MCP_AUTH_STR_CAP] u8;
+  res_n := mcp_uri_canonical_resource(mcp_url, res_buf[..]);
+  resource := ifx res_n > 0 then cast(string) res_buf[0..<res_n] else mcp_url;
+
+  // 3. Build authorization URL and send GET (captures 302 Location redirect)
+  auth_url_buf: [MCP_HTTP_URL_MAX] u8;
+  aun := mcp_auth_build_authorize_url(McpAuthUrlReq.{
+    auth_endpoint = mcp_ac_auth_ep(ac),
+    client_id = mcp_ac_client_id(ac),
+    redirect_uri = ac[0].cfg.redirect_uri,
+    state = state,
+    code_challenge = challenge,
+    resource = resource,
+    scope = scopes
+  }, auth_url_buf[..]);
+  if aun < 0 { return MCP_AUTH_ERR_BUF; }
+
+  rc := mcp_ac_http_req(ac, "GET", cast(string) auth_url_buf[0..<aun], "Accept: text/html, application/json\r\n", "");
+  if rc != MCP_AUTH_OK || ac[0].last_status < 300 || ac[0].last_status >= 400 || ac[0].loc_len == 0 {
+    return MCP_AUTH_ERR_AUTHORIZE;
+  }
+
+  // 4. Parse callback URL, verify state (constant-time) and RFC 9207 exact iss
+  cb: [1] McpAuthCallback;
+  if !mcp_auth_parse_callback_url(mcp_ac_location(ac), cb[..]) {
+    return MCP_AUTH_ERR_CALLBACK;
+  }
+  if cb[0].has_error || !cb[0].has_code || cb[0].code_len == 0 {
+    return MCP_AUTH_ERR_CALLBACK;
+  }
+  if !cb[0].has_state || !wos_state_equal(cast(string) cb[0].state_buf[0..<cb[0].state_len], state) {
+    return MCP_AUTH_ERR_CALLBACK;
+  }
+  cb_iss := ifx cb[0].has_iss then cast(string) cb[0].iss_buf[0..<cb[0].iss_len] else "";
+  if !mcp_auth_validate_iss(ac[0].iss_param_supported, cb[0].has_iss, cb_iss, mcp_ac_as_issuer(ac)) {
+    return MCP_AUTH_ERR_CALLBACK;
+  }
+
+  // 5. Select token endpoint auth method
+  has_secret := ac[0].client_secret_len > 0;
+  method := mcp_auth_select_token_auth(ac[0].token_auth_mask, has_secret);
+  if ac[0].dcr_token_auth != 0 && (ac[0].token_auth_mask & ac[0].dcr_token_auth) != 0 {
+    if ac[0].dcr_token_auth == MCP_TOKEN_AUTH_NONE || has_secret {
+      method = ac[0].dcr_token_auth;
+    }
+  }
+  if method == 0 {
+    // Public client fallback when no secret was issued
+    method = MCP_TOKEN_AUTH_NONE;
+  }
+
+  hdr_buf: [2048] u8;
+  hn := mcp_http_append(hdr_buf[..], 0, "Content-Type: application/x-www-form-urlencoded\r\nAccept: application/json\r\n");
+  if method == MCP_TOKEN_AUTH_BASIC {
+    bn := mcp_auth_write_basic_header(mcp_ac_client_id(ac), mcp_ac_client_secret(ac), hdr_buf[hn..<hdr_buf.count]);
+    if bn < 0 { return MCP_AUTH_ERR_BUF; }
+    hn += bn;
+  }
+
+  form_buf: [4096] u8;
+  fn := mcp_auth_write_token_form(McpTokenReq.{
+    grant_type = "authorization_code",
+    code = cast(string) cb[0].code_buf[0..<cb[0].code_len],
+    redirect_uri = ac[0].cfg.redirect_uri,
+    code_verifier = verifier,
+    resource = resource,
+    client_id = mcp_ac_client_id(ac),
+    client_secret = mcp_ac_client_secret(ac),
+    auth_method = method
+  }, form_buf[..]);
+  if fn < 0 { return MCP_AUTH_ERR_BUF; }
+
+  tok_url_buf: [MCP_AUTH_STR_CAP] u8;
+  tun := mcp_ac_copy(tok_url_buf[..], mcp_ac_token_ep(ac));
+  rc2 := mcp_ac_http_req(ac, "POST", cast(string) tok_url_buf[0..<tun],
+    cast(string) hdr_buf[0..<hn],
+    cast(string) form_buf[0..<fn]);
+  if rc2 != MCP_AUTH_OK || ac[0].last_status < 200 || ac[0].last_status >= 300 {
+    return MCP_AUTH_ERR_TOKEN;
+  }
+
+  tresp: [1] McpTokenResp;
+  if !mcp_auth_parse_token_resp(mcp_ac_resp_body(ac), tresp[..]) {
+    return MCP_AUTH_ERR_TOKEN;
+  }
+  ac[0].access_token_len = mcp_ac_copy(ac[0].access_token_buf[..], cast(string) tresp[0].access_token_buf[0..<tresp[0].access_token_len]);
+  ac[0].refresh_token_len = mcp_ac_copy(ac[0].refresh_token_buf[..], cast(string) tresp[0].refresh_token_buf[0..<tresp[0].refresh_token_len]);
+  if tresp[0].scope_len > 0 {
+    ac[0].granted_scopes_len = mcp_ac_copy(ac[0].granted_scopes_buf[..], cast(string) tresp[0].scope_buf[0..<tresp[0].scope_len]);
+  } else {
+    ac[0].granted_scopes_len = mcp_ac_copy(ac[0].granted_scopes_buf[..], scopes);
+  }
+  mcp_hc_set_bearer(hc, mcp_ac_access_token(ac));
+  return MCP_AUTH_OK;
+}
+
+// --- 401 / 403 challenge handler + high-level MCP auth-aware wrappers ---
+
+mcp_auth_handle_challenge :: (ac: [] McpAuthClient, hc: [] McpHttpClient) -> int {
+  status := hc[0].last_http_status;
+  www_hdr := mcp_hc_www_auth(hc);
+  mcp_url := cast(string) hc[0].url_buf[0..<hc[0].url_len];
+
+  w := mcp_www_auth_parse(www_hdr);
+  www_sc := ifx w.ok && w.has_bearer && w.scope_to > w.scope_from
+    then www_hdr[w.scope_from..<w.scope_to]
+    else "";
+  www_err := ifx w.ok && w.has_bearer && w.error_to > w.error_from
+    then www_hdr[w.error_from..<w.error_to]
+    else "";
+
+  if status == 401 {
+    if !ac[0].discovered {
+      drc := mcp_auth_discover(ac, mcp_url, www_hdr);
+      if drc != MCP_AUTH_OK { return drc; }
+    }
+    rrc := mcp_auth_ensure_client(ac);
+    if rrc != MCP_AUTH_OK { return rrc; }
+
+    sc_buf: [MCP_AUTH_STR_CAP] u8;
+    sn := mcp_auth_select_initial_scopes(www_sc, mcp_ac_prm_scopes(ac),
+      ac[0].cfg.request_offline_access, ac[0].offline_access_supported, sc_buf[..]);
+    if sn < 0 { return MCP_AUTH_ERR_BUF; }
+    scopes := cast(string) sc_buf[0..<sn];
+    return mcp_auth_authorize_and_exchange(ac, hc, mcp_url, scopes);
+  }
+
+  if status == 403 {
+    if www_err != "insufficient_scope" && www_sc.count == 0 {
+      return MCP_AUTH_ERR_AUTHORIZE;
+    }
+    if !ac[0].discovered {
+      drc := mcp_auth_discover(ac, mcp_url, www_hdr);
+      if drc != MCP_AUTH_OK { return drc; }
+    }
+    rrc := mcp_auth_ensure_client(ac);
+    if rrc != MCP_AUTH_OK { return rrc; }
+
+    sc_buf: [MCP_AUTH_STR_CAP] u8;
+    sn := mcp_auth_step_up_scopes(mcp_ac_granted_scopes(ac), www_sc,
+      ac[0].scope_retries, ac[0].cfg.max_scope_retries, sc_buf[..]);
+    if sn < 0 { return MCP_AUTH_ERR_RETRY_LIMIT; }
+    ac[0].scope_retries += 1;
+    scopes := cast(string) sc_buf[0..<sn];
+    return mcp_auth_authorize_and_exchange(ac, hc, mcp_url, scopes);
+  }
+
+  return MCP_AUTH_ERR_HTTP;
+}
+
+mcp_auth_connect :: (ac: [] McpAuthClient, hc: [] McpHttpClient) -> int {
+  attempts := 0;
+  max_attempts := ac[0].cfg.max_scope_retries + 2;
+  while attempts < max_attempts {
+    attempts += 1;
+    rc := mcp_hc_connect(hc);
+    if rc == MCP_HC_OK { return MCP_HC_OK; }
+    if rc == MCP_HC_ERR_HTTP && (hc[0].last_http_status == 401 || hc[0].last_http_status == 403) {
+      arc := mcp_auth_handle_challenge(ac, hc);
+      if arc != MCP_AUTH_OK { return arc; }
+      // Reset core handshake state for clean retry with Bearer token
+      info := hc[0].core[0].client_info;
+      caps := hc[0].core[0].client_caps;
+      mcp_client_init(hc[0].core[..], info, caps);
+      hc[0].session_len = 0;
+      hc[0].proto_len = 0;
+      hc[0].connected = false;
+      continue;
+    }
+    return rc;
+  }
+  return MCP_AUTH_ERR_RETRY_LIMIT;
+}
+
+mcp_auth_tools_list :: (ac: [] McpAuthClient, hc: [] McpHttpClient, cursor: string) -> int {
+  attempts := 0;
+  max_attempts := ac[0].cfg.max_scope_retries + 2;
+  while attempts < max_attempts {
+    attempts += 1;
+    rc := mcp_hc_tools_list(hc, cursor);
+    if rc == MCP_HC_OK { return MCP_HC_OK; }
+    if rc == MCP_HC_ERR_HTTP && (hc[0].last_http_status == 401 || hc[0].last_http_status == 403) {
+      arc := mcp_auth_handle_challenge(ac, hc);
+      if arc != MCP_AUTH_OK { return arc; }
+      continue;
+    }
+    return rc;
+  }
+  return MCP_AUTH_ERR_RETRY_LIMIT;
+}
+
+mcp_auth_tools_call :: (ac: [] McpAuthClient, hc: [] McpHttpClient, name: string, args_json: string, extra_hdrs: string) -> int {
+  attempts := 0;
+  max_attempts := ac[0].cfg.max_scope_retries + 2;
+  while attempts < max_attempts {
+    attempts += 1;
+    rc := mcp_hc_tools_call(hc, name, args_json, extra_hdrs);
+    if rc == MCP_HC_OK { return MCP_HC_OK; }
+    if rc == MCP_HC_ERR_HTTP && (hc[0].last_http_status == 401 || hc[0].last_http_status == 403) {
+      arc := mcp_auth_handle_challenge(ac, hc);
+      if arc != MCP_AUTH_OK { return arc; }
+      continue;
+    }
+    return rc;
+  }
+  return MCP_AUTH_ERR_RETRY_LIMIT;
+}

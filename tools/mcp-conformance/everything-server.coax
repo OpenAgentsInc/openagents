@@ -2,7 +2,7 @@
 // Phase 3 Coax Streamable HTTP MCP Conformance Server (2025-11-25 + 2026-07-28).
 // Implements the MCP Everything conformance fixtures over coax/lib/mcp/http_server.coax.
 // Usage: everything-server [--port N]
-#load "../../coax/lib/mcp/http_server.coax";
+#load "../../coax/lib/mcp/auth_server.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";
 
@@ -680,6 +680,27 @@ tool_main :: () -> int #export_c #effects(all) {
     return 1;
   }
 
+  auth_srv: [1] McpAuthServer;
+  auth_tok := args_value(a[..], "--auth-token", "");
+  auth_scope := args_value(a[..], "--auth-scope", "mcp:basic");
+  auth_as := args_value(a[..], "--auth-as", "http://127.0.0.1:18422");
+  res_buf: [128] u8;
+  prm_buf: [192] u8;
+  if auth_tok.count > 0 {
+    rn := mcp_http_append(res_buf[..], 0, "http://127.0.0.1:");
+    rn = mcp_http_append_int(res_buf[..], rn, srv[0].port);
+    rn = mcp_http_append(res_buf[..], rn, "/mcp");
+    prn := mcp_http_append(prm_buf[..], 0, "http://127.0.0.1:");
+    prn = mcp_http_append_int(prm_buf[..], prn, srv[0].port);
+    prn = mcp_http_append(prm_buf[..], prn, "/.well-known/oauth-protected-resource/mcp");
+    res_url := cast(string) res_buf[0..<rn];
+    prm_url := cast(string) prm_buf[0..<prn];
+    srv[0].prm_path = "/.well-known/oauth-protected-resource/mcp";
+    mcp_auth_server_init(auth_srv[..], res_url, prm_url, auth_as, auth_scope, auth_scope);
+    _ = mcp_auth_server_add_token(auth_srv[..], auth_tok, auth_scope, res_url, "coax-user");
+    _ = mcp_auth_server_add_token(auth_srv[..], "low-scope-token", "other:scope", res_url, "coax-low");
+  }
+
   pbuf: [64] u8;
   pn := mcp_http_append(pbuf[..], 0, "READY http://127.0.0.1:");
   pn = mcp_http_append_int(pbuf[..], pn, srv[0].port);
@@ -688,13 +709,23 @@ tool_main :: () -> int #export_c #effects(all) {
 
   while true {
     ev := mcp_http_server_step(srv[..], 50);
-    if ev.kind == MCP_HTTP_EV_GET_SSE {
+    if ev.kind == MCP_HTTP_EV_CUSTOM_GET {
+      _ = mcp_auth_server_handle_prm(auth_srv[..], srv[..], ev.h);
+      mcp_http_conn_close(srv[..], ev.conn_idx);
+    } else if ev.kind == MCP_HTTP_EV_GET_SSE {
       if !mcp_http_send_sse_start(srv[..], ev.h, "") {
         mcp_http_conn_close(srv[..], ev.conn_idx);
       } else {
         _ = mcp_http_send_sse_keepalive(srv[..], ev.h);
       }
     } else if ev.kind == MCP_HTTP_EV_POST {
+      if auth_srv[0].enabled {
+        dec := mcp_auth_server_authorize(auth_srv[..], srv[..], ev.h, ev.req, "");
+        if !dec.allowed {
+          mcp_http_conn_close(srv[..], ev.conn_idx);
+          continue;
+        }
+      }
       es_handle_post(srv[..], st[..], ev);
     }
   }

@@ -48,7 +48,15 @@ Pure `#authority` Sans-I/O MCP protocol library supporting both **`2025-11-25`**
 | `http_client_wire.coax` | Pure `#authority` HTTP/1.1 URL parser, request serializer, response head parser, incremental chunked stream decoder (`McpChunkStream`), and incremental WHATWG SSE parser (`McpSseParser`) |
 | `http_client.coax` | Streamable HTTP/1.1 + SSE MCP client over `coax/lib/net/transport.coax` (TCP + TLS): dual-era `server/discover` → `initialize` fallback, direct JSON & streaming SSE POST responses, standalone `GET` SSE stream for bidirectional `2025-11-25` server→client requests (with SEP-1034 elicitation defaults), SEP-1699 `retry:` + `Last-Event-ID` polling reconnect, and `2026-07-28` SEP-2243 `Mcp-Method`/`Mcp-Name` headers |
 
-Phase 2–4 interop & conformance harnesses live in [`tools/mcp-conformance/`](../../tools/mcp-conformance/) (`stdio-server.coax`, `stdio-client.coax`, `everything-server.coax`, `everything-client.coax`, `run.sh`).
+## Phase 5 Modules — OAuth 2.1 Client & Resource Server (`#authority` wire + `#effects` adapters)
+
+| File | Responsibility |
+| --- | --- |
+| `auth_wire.coax` | Pure `#authority` OAuth 2.1 wire codecs: percent-decoding, callback query parser (`code`/`state`/`iss`/`error`), PKCE `S256` authorize URL builder, RFC 7591 DCR JSON writer (with `refresh_token`), RFC 6749 §2.3.1 Basic header & token form writers, RFC 9728 PRM parser (with RFC 8707 resource mismatch guard) & JSON writer, token response parser, Bearer extractor, and scope/audience checks |
+| `auth_client.coax` | OAuth 2.1 HTTP client driver wiring `auth_policy.coax`, `auth_wire.coax`, `http_client.coax`, and `coax/lib/workos/pkce.coax`: RFC 9728 PRM + RFC 8414/OIDC discovery, `2025-03-26` backcompat fallback, Pre-registered → CIMD → DCR priority, `client_secret_basic`/`client_secret_post`/`none` token auth, RFC 9207 `iss` verification, `offline_access` gating, and `401`/`403` `insufficient_scope` step-up with retry limit |
+| `auth_server.coax` | OAuth 2.1 Resource Server middleware & RFC 9728 `/.well-known/oauth-protected-resource` responder over `http_server.coax`: constant-time opaque token & RS256 JWKS verification, RFC 8707 audience check, and RFC 6750 `401`/`403` `WWW-Authenticate` challenges |
+
+Phase 2–5 interop & conformance harnesses live in [`tools/mcp-conformance/`](../../tools/mcp-conformance/) (`stdio-server.coax`, `stdio-client.coax`, `everything-server.coax`, `everything-client.coax`, `run.sh`).
 
 ## Verification
 
@@ -57,7 +65,7 @@ Run unit/property tests and mutation checks on every pure `#authority` module:
 ```bash
 for f in version jsonrpc uri_template headers json_schema auth_policy \
          types event_store mrtr subscriptions primitives server_core client_core memory_transport \
-         stdio_frame http_wire http_client_wire; do
+         stdio_frame http_wire http_client_wire auth_wire; do
   ./coax/bin/coax test coax/lib/mcp/$f.coax --library
   ./coax/bin/coax mutate coax/lib/mcp/$f.coax --root-only --native --jobs 8
 done

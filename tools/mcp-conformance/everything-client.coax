@@ -8,7 +8,7 @@
 //   - elicitation-sep1034-client-defaults
 //   - sse-retry
 //   - (default / --2026-suite): dual-era discovery, schema 2020-12 preservation, tools/resources/prompts
-#load "../../coax/lib/mcp/http_client.coax";
+#load "../../coax/lib/mcp/auth_client.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";
 
@@ -74,8 +74,65 @@ tool_main :: () -> int #export_c #effects(all) {
   }
 
   // Known 2025-11-25 conformance scenarios expect direct initialize without an extra server/discover POST
-  if !suite_2026 && (scenario == "initialize" || scenario == "tools_call" || scenario == "elicitation-sep1034-client-defaults" || scenario == "sse-retry") {
+  is_auth := scenario.count >= 5 && scenario[0..<5] == "auth/";
+  if !suite_2026 && (is_auth || scenario == "initialize" || scenario == "tools_call" || scenario == "elicitation-sep1034-client-defaults" || scenario == "sse-retry") {
     cli[0].prefer_legacy_2025 = true;
+  }
+
+  if is_auth {
+    ac: [1] McpAuthClient;
+    ctx_buf: [2048] u8;
+    ctx_str := proc_getenv("MCP_CONFORMANCE_CONTEXT", ctx_buf[..]);
+    pre_cid_buf: [256] u8;
+    pre_sec_buf: [256] u8;
+    pre_cid := "";
+    pre_sec := "";
+    if ctx_str.count > 0 {
+      cd: [1] Jv;
+      cnodes: [64] JvNode;
+      if jv_parse(cd[..], ctx_str, cnodes[..]) && jv_kind(cd[0], 0) == JV_OBJECT {
+        cid_n := jv_get(cd[0], 0, "client_id");
+        if cid_n != -1 && jv_kind(cd[0], cid_n) == JV_STRING {
+          n1 := jv_unescape(jv_raw(cd[0], cid_n), pre_cid_buf[..]);
+          if n1 > 0 { pre_cid = cast(string) pre_cid_buf[0..<n1]; }
+        }
+        sec_n := jv_get(cd[0], 0, "client_secret");
+        if sec_n != -1 && jv_kind(cd[0], sec_n) == JV_STRING {
+          n2 := jv_unescape(jv_raw(cd[0], sec_n), pre_sec_buf[..]);
+          if n2 > 0 { pre_sec = cast(string) pre_sec_buf[0..<n2]; }
+        }
+      }
+    }
+    cfg := McpAuthClientConfig.{
+      client_name = "coax-mcp-conformance-client",
+      redirect_uri = "http://127.0.0.1:3030/callback",
+      pre_client_id = pre_cid,
+      pre_client_secret = pre_sec,
+      cimd_url = ifx scenario == "auth/basic-cimd" then "https://conformance-test.local/client-metadata.json" else "",
+      request_offline_access = (scenario == "auth/offline-access-scope" || scenario == "auth/offline-access-not-supported"),
+      max_scope_retries = MCP_DEFAULT_SCOPE_MAX_RETRIES,
+      timeout_ms = 10000
+    };
+    mcp_auth_client_init(ac[..], cfg);
+
+    rc_a := mcp_auth_connect(ac[..], cli[..]);
+    if rc_a != MCP_HC_OK {
+      tool_errln("everything-client: auth connect failed");
+      return 1;
+    }
+    rc_l := mcp_auth_tools_list(ac[..], cli[..], "");
+    if rc_l != MCP_HC_OK {
+      tool_errln("everything-client: auth tools/list failed");
+      return 1;
+    }
+    rc_c := mcp_auth_tools_call(ac[..], cli[..], "test-tool", "{}", "");
+    if rc_c != MCP_HC_OK {
+      tool_errln("everything-client: auth tools/call failed");
+      return 1;
+    }
+    print("AUTH_OK scenario=%\n", scenario);
+    mcp_hc_close(cli[..]);
+    return 0;
   }
 
   rc := mcp_hc_connect(cli[..]);

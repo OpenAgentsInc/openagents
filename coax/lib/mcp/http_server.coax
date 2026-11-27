@@ -32,6 +32,7 @@ MCP_HTTP_KEEPALIVE_S :: 15;
 MCP_HTTP_EV_NONE :: 0;
 MCP_HTTP_EV_POST :: 1;     // Host should handle req (POST JSON-RPC) on conn_idx
 MCP_HTTP_EV_GET_SSE :: 2;  // Standalone GET SSE stream opened on conn_idx
+MCP_HTTP_EV_CUSTOM_GET :: 3; // Custom GET route (e.g. /.well-known/oauth-protected-resource)
 
 McpHttpSession :: struct {
   active: bool;
@@ -54,6 +55,7 @@ McpHttpConn :: struct {
 McpHttpServer :: struct {
   port: int;
   mcp_path: string = "/mcp";
+  prm_path: string;
   allow_localhost_origin: bool = true;
   allowed_origins: [8] string;
   allowed_origin_count: int;
@@ -312,6 +314,11 @@ mcp_http_server_step :: (s: [] McpHttpServer, timeout_ms: int) -> McpHttpEvent {
         mcp_http_conn_close(s, i);
         continue;
       }
+    }
+
+    // Optional custom GET route (e.g. RFC 9728 /.well-known/oauth-protected-resource)
+    if s[0].prm_path.count > 0 && req[0].method == "GET" && req[0].path == s[0].prm_path {
+      return McpHttpEvent.{ kind = MCP_HTTP_EV_CUSTOM_GET, conn_idx = i, h = h, req = req[0] };
     }
 
     // Route check
