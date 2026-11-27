@@ -1,0 +1,4 @@
+atif log: ok=true steps=2 faults=0 manifest_bytes=566 digest=a488ea07e62f6884
+atif fault check: ok=false faults=1
+gbench score: pass=PASS infra=INFRA_ERROR rate_bps=8000 wilson_95=[6269,9049] scaffolds_same=true scaffolds_diff=false
+distill gate: gsm8k=admitted_permissive gpqa=denied_canary_benchmark aime=denied_non_commercial_license

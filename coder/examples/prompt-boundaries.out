@@ -1,0 +1,5 @@
+hook trust gate: pre_trust=false post_trust=true managed_policy=true managed_repo=false
+hook merge: allow+deny_is_deny=true policy_config_change_vetoed=false
+repo settings trust: optin_proj=false optin_user=true auto_proj=false env_pre_trust=false
+http hook guard: ipv6_meta_blocked=true loopback_blocked=false crlf_clean=false normal_clean=true
+shell precheck: ifs_attack_safe=false git_status_safe=true

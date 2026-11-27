@@ -1,0 +1,5 @@
+window: effective=180000 auto_threshold=167000 above_auto=true at_blocking=false
+autocompact: initial_fire=true failures_after_3=3 tripped_fire=false
+ptl head-drop: groups_dropped=2 of 5 (reclaimed 30000 >= 25000)
+cleanup isolation: main_clears_user_ctx=true subagent_clears_user_ctx=false
+task budget: after_compact1=60000 after_compact2=45000 idle_compact_recommended=true

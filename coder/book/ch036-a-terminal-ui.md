@@ -22,7 +22,7 @@ coder/tui/coder.sh                       # Claude Code by default
 coder/tui/coder.sh --engine microcoder   # or codex, psionic, echo (offline)
 coder/tui/coder.sh --theme light         # for a light background; or CODER_THEME=light, or NO_COLOR=1 for none
 coder/tui/coder.sh resume                # this folder's newest session, to continue it; resume claude for Claude Code's
-python3 coder/tui/smoke.py               # the offline smoke, in a pseudo-terminal and then without one
+python3 coder/tui/tests/smoke.py               # the offline smoke, in a pseudo-terminal and then without one
 coax/web/tool.sh coder/tui/resize_check.coax   # narrow, shorten and widen a working session; no stale rows
 ```
 
@@ -130,7 +130,7 @@ list every window with a bar and its reset time:
     Week     ████████░░  84%  resets in 4d 17h
 ```
 
-Coder reads usage the way Zeron does. Claude's comes from
+Coder reads plan usage directly from each provider's usage endpoint. Claude's comes from
 `api.anthropic.com/api/oauth/usage` (the five-hour Session and the
 seven-day Week), read by the same code that reads the usage of a computer's
 Claude accounts for the phone (`coax/lib/agent/accounts/claude.coax`), in a

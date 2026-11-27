@@ -4,8 +4,7 @@
 One checker serves all nine OpenAgents books (`--book coax|psionic|aethyr|metaverse-engine|nostr|coder|bitcoin|openagents|everglade|claude-code|cc|all`).
 `coax` delegates to `coax/book/check-structure.py`, `metaverse-engine` aliases `aethyr`, and `cc` aliases `claude-code`. Each non-Coax book keeps chapters as
 chNNN-slug.md, an examples.json inventory of its examples/*.coax programs, and
-a status marker on every design draft. Coder has no example programs of its
-own yet: the programs its chapters run are inventoried by another book.
+a status marker on every design draft.
 Native-only library examples have a separate closed inventory with their
 host consumer and retained evidence; --coax replays runnable examples only.
 """
@@ -46,7 +45,7 @@ BOOKS = {
     "psionic": ("psionic/book", "psionic/examples", "psionic/README.md", 3),
     "aethyr": ("metaverse-engine/book", "metaverse-engine/examples", "metaverse-engine/README.md", 0),
     "nostr": ("nostr/book", "nostr/examples", "nostr/README.md", 0),
-    "coder": ("coder/book", None, None, 1),
+    "coder": ("coder/book", "coder/examples", None, 1),
     "bitcoin": ("bitcoin/book", "bitcoin/examples", "bitcoin/README.md", 0),
     "openagents": ("openagents/book", "openagents/examples", None, 0),
     "everglade": ("everglade/book", "everglade/examples", "everglade/README.md", 0),
@@ -54,9 +53,8 @@ BOOKS = {
 }
 ALIASES = {"metaverse-engine": "aethyr", "cc": "claude-code"}
 ALL_BOOKS = ("coax", "psionic", "aethyr", "nostr", "coder", "bitcoin", "openagents", "everglade", "claude-code")
-# Coder's chapters 1-22 moved from Psionic; their programs stay in Psionic's
-# inventory (and its closed-inventory check) until their code moves.
-BORROWED = {"coder": "psionic"}
+# Books whose example programs are inventoried by another book (currently none).
+BORROWED = {}
 # Fences a book may use besides jai, shell and text.
 FENCES = {
     "coder": ("```json", "```sh"),

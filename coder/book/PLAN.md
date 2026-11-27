@@ -18,10 +18,11 @@ together (see [What stays in Psionic](#what-stays-in-psionic)).
 
 The chapters moved here on 2026-11-01, renumbered: Psionic 200–207 are
 chapters 1–8, 208–210 are 14–16, 251 is 17, 213 and 214 are 18 and 19, 252 is
-20, and 211 and 212 are 21 and 22. Their code still lives in
-`psionic/lib/harness/` with its examples and fixtures under `psionic/`, and
-each chapter's registry entry names those paths; the code moves in a later
-commit, checked with the compiler.
+20, and 211 and 212 are 21 and 22. On 2026-11-27, the chapters retired their
+borrowed `psionic/examples/` detours and moved to Coder's own independent
+`coder/examples/` suite (`coder/book/examples.json`) exercising the live
+product runtime (`openagents/core/`, `coder/tui/`, `coax/lib/agent/`,
+`coax/lib/nostr/atif/`, and `coax/lib/gbench/`).
 
 ## OpenAgents and Coder
 
@@ -39,11 +40,13 @@ gives that a structure, and this book uses it to split the work:
 | Talks to people | yes, under per-channel rules | only through OpenAgents in shared channels; directly in a terminal the person opened |
 | Personality | general, the same everywhere | opinionated about code: small diffs, tests first, honest failures |
 
-Coder picks an engine per task: Microcoder (our loop on any model we can
-reach), a Psionic-served model, or the Claude Code or Codex that the person
-already uses. Driving those is a feature, not a competitor to them: a person
-can use the subscription they pay for, and later lend its spare capacity to
-the network.
+Coder runs primary turns on the unified pure-Coax `openagents/core/` harness
+(`openagents/runtime/oa-worker.coax`, superseding Inky and the deprecated Microcoder
+worker) over OpenAgents Cloud or a local Psionic-served model, and delegates
+opt-in subagents to the Claude Code, Codex, Cursor, or Antigravity CLIs that a
+person already uses. Driving those is a feature, not a competitor to them: a
+person can use the subscription they pay for, and later lend its spare capacity
+to the network.
 
 ## The CLI is the spine
 
@@ -78,11 +81,11 @@ grow together:
 
 ## II. Engines
 
-> **2026-11-26 unified runtime & desktop status:** Primary agent turns now run on the pure-Coax 24-layer **`openagents/core/`** runtime (`coder/tui/oa-worker.coax`, `#14050`–`#14057`), superseding Inky (`coax/lib/inky/`, `#13979`–`#13982`) and deprecated Microcoder (`#13983`). External CLIs (Claude Code, Codex, Cursor, Antigravity `coder/tui/agyworker.coax`) are opt-in delegated subagents (`#14053`, `#14071`). Also shipped: local Metal 4 / CUDA `psionic-inkling-serve` with 21-quant/LoRA (`#14028`) and `$0` local tier (`#14072`, `#14087`), `openagents.router.v2alpha1` `RoutePlan` (`#14056`), CC-parity subagents (`coder/tui/oa-subagent.coax`, `openagents/core/agents.coax`, `#14096`), `/goal` parity (`apps/openagents-desktop/page/goal.coax`, `#14086`), Git-backed Checkpoints (`#14026`), Full Auto (`#14063`), Usage HUD (`#14064`), Voice (`#14065`), File Viewer (`#13992`), Embedded Metaverse & Browser panes (`#14040`, `#14105`), and ATIF-v1.8 evals (`coax/lib/nostr/atif/`, `#13830`).
+> **2026-11-26 unified runtime & desktop status:** Primary agent turns now run on the pure-Coax 24-layer **`openagents/core/`** runtime (`openagents/runtime/oa-worker.coax`, `#14050`–`#14057`), superseding Inky (`coax/lib/inky/`, `#13979`–`#13982`) and deprecated Microcoder (`#13983`). External CLIs (Claude Code, Codex, Cursor, Antigravity `openagents/workers/agyworker.coax`) are opt-in delegated subagents (`#14053`, `#14071`). Also shipped: local Metal 4 / CUDA `psionic-inkling-serve` with 21-quant/LoRA (`#14028`) and `$0` local tier (`#14072`, `#14087`), `openagents.router.v2alpha1` `RoutePlan` (`#14056`), CC-parity subagents (`openagents/runtime/oa-subagent.coax`, `openagents/core/agents.coax`, `#14096`), `/goal` parity (`apps/openagents-desktop/page/goal.coax`, `#14086`), Git-backed Checkpoints (`#14026`), Full Auto (`#14063`), Usage HUD (`#14064`), Voice (`#14065`), File Viewer (`#13992`), Embedded Metaverse & Browser panes (`#14040`, `#14105`), and ATIF-v1.8 evals (`coax/lib/nostr/atif/`, `#13830`).
 
 | Chapter | What we build and check |
 | --- | --- |
-| [9. Microcoder](ch009-microcoder.md) — implemented | Our own loop: originally `coax/lib/microcoder/` (now deprecated, `#13983`), superseded by `coax/lib/inky/` and the unified 24-layer pure-Coax `openagents/core/` runtime (`coder/tui/oa-worker.coax`). |
+| [9. Microcoder](ch009-microcoder.md) — implemented | Our own loop: originally `coax/lib/microcoder/` (now deprecated, `#13983`), superseded by `coax/lib/inky/` and the unified 24-layer pure-Coax `openagents/core/` runtime (`openagents/runtime/oa-worker.coax`). |
 | [10. Drive Claude Code](ch010-drive-claude-code.md) — implemented | The `claude` CLI's stream-json protocol as a Coax state machine: queries, control frames, in-process MCP servers and approvals, checked against recorded fixtures. |
 | [11. Drive Codex](ch011-drive-codex.md) — partly implemented | `codex app-server` over JSON-RPC as a pull-based client: requests, server requests, approvals and recorded sessions replayed byte for byte. |
 | [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) — partly implemented | Local and hybrid Psionic serving (`psionic-inkling-serve` on Metal 4 and CUDA, 32K KV, 21-quant/LoRA, `hybrid-exec-v1`, `$0` local tier) plus `--engine psionic` and Pylon routing. |

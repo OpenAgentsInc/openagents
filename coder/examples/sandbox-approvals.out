@@ -1,0 +1,5 @@
+path safety: git_hook_safe=false worktree_safe=true bypass_verdict=ask
+resolve_once: racer1_claim=true racer2_claim=false delivered=true
+denial breaker: blocks=3 fallback_to_ask=true
+shell sandbox: aborted_too_complex=true strip_after_wrapper=false sandbox=true bare_git_deny=true bare_git_scrub=true
+member gates: WalletPay(bypass=ask plan=deny) vault(get_bypass=ask status_default=allow)

@@ -1,0 +1,4 @@
+mcp policy: sdk_allowed=true user_in_strict=false pre_trust_helper=false expired_32001=true expired_404_only=false
+mcp auth & search: xaa_refuse=true stepup_reconsent=true norm="claude_ai_Slack" score=18
+ndjson & stdout: escaped="a\u2028b" json_pass=true stray_divert=true
+control io: dup_dropped=true mcp_reply_before_work=true init_inline=true

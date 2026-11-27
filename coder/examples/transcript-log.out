@@ -1,0 +1,6 @@
+dag: session=42 entries=6 main_head=14 sidechain_in_main=false snipped_11=true
+dag lookup: uuid_10=0 uuid_13_boundary=4 uuid_14=5
+ajr1 sync-fail: poisoned=true seq=0 retry_prepare_ok=false
+ajr1 frame 0: ok=true bytes=130 seq=1 head=3d9589c59d217a7a
+ajr1 tamper check: read_ok=false
+ajr1 frame 1: ok=true seq=2 replay_out_of_order_ok=false head=5326063954cbb326
