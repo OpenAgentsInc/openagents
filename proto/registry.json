@@ -7499,6 +7499,128 @@
         "openagents/examples/capability-economy-e2e.coax"
       ],
       "note": "Idempotent Bitcoin/Lightning/Spark author payout settlement record (#14060); canonical key-sorted JCS enforcing paid + held == earned conservation and truthful real_bitcoin_moved proof."
+    },
+    {
+      "id": "openagents.chat.event.v2",
+      "kind": "profile",
+      "owner": "chat",
+      "schema": "proto/coder/account-chat-cloud-v2.json",
+      "codec": "coax/web/api/account-chat-cloud-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/account-chat-cloud-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/account-chat-turns.c",
+        "coax/web/api/stream.c"
+      ],
+      "tests": [
+        "coax/web/api/account-chat-cloud-wire.coax",
+        "coax/web/api/tests/cloud_chat_sync_checks.coax"
+      ],
+      "note": "Rich unified cloud chat turn event (thinking, tool calls/results, diffs, attachments, approvals/steers, usage/cost provenance) (#14093)."
+    },
+    {
+      "id": "openagents.chat.sync.v2",
+      "kind": "profile",
+      "owner": "chat",
+      "schema": "proto/coder/account-chat-cloud-v2.json",
+      "codec": "coax/web/api/account-chat-cloud-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/account-chat-cloud-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/account-chat-turns.c"
+      ],
+      "tests": [
+        "coax/web/api/account-chat-cloud-wire.coax",
+        "coax/web/api/tests/cloud_chat_sync_checks.coax"
+      ],
+      "note": "Idempotent write-through cloud chat sync envelope from Desktop oa-worker, Web, and Mobile (#14093)."
+    },
+    {
+      "id": "openagents.chat.sync-reply.v2",
+      "kind": "profile",
+      "owner": "chat",
+      "schema": "proto/coder/account-chat-cloud-v2.json",
+      "codec": "coax/web/api/account-chat-cloud-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/account-chat-cloud-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/account-chat-turns.c"
+      ],
+      "tests": [
+        "coax/web/api/account-chat-cloud-wire.coax",
+        "coax/web/api/tests/cloud_chat_sync_checks.coax"
+      ],
+      "note": "Idempotent cloud chat sync acknowledgement with conversation_id, turn_id, revision, last_event_id, and replayed flag (#14093)."
+    },
+    {
+      "id": "openagents.chat.meta.v2",
+      "kind": "profile",
+      "owner": "chat",
+      "schema": "proto/coder/account-chat-cloud-v2.json",
+      "codec": "coax/web/api/account-chat-cloud-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/account-chat-cloud-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/account-chat-turns.c"
+      ],
+      "tests": [
+        "coax/web/api/account-chat-cloud-wire.coax",
+        "coax/web/api/tests/cloud_chat_sync_checks.coax"
+      ],
+      "note": "Idempotent conversation title/pin/archive metadata update envelope (#14093)."
+    },
+    {
+      "id": "openagents.chat.account-event.v2",
+      "kind": "profile",
+      "owner": "chat",
+      "schema": "proto/coder/account-chat-cloud-v2.json",
+      "codec": "coax/web/api/account-chat-cloud-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/account-chat-cloud-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/account-chat-turns.c",
+        "coax/web/api/account-chat-library.c",
+        "coax/web/api/stream.c"
+      ],
+      "tests": [
+        "coax/web/api/account-chat-cloud-wire.coax",
+        "coax/web/api/tests/cloud_chat_sync_checks.coax"
+      ],
+      "note": "Account-wide live sidebar SSE event payload emitted by GET /api/chat/v2/stream (#14093)."
+    },
+    {
+      "id": "openagents.chat.conversations.v2",
+      "kind": "profile",
+      "owner": "chat",
+      "schema": "proto/coder/account-chat-cloud-v2.json",
+      "codec": "coax/web/api/account-chat-cloud-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/account-chat-cloud-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/account-chat-turns.c"
+      ],
+      "tests": [
+        "coax/web/api/account-chat-cloud-wire.coax",
+        "coax/web/api/tests/cloud_chat_sync_checks.coax"
+      ],
+      "note": "Unified cloud chat sidebar conversation list ordered by pinned and recency (#14093)."
+    },
+    {
+      "id": "openagents.chat.conversation.v2",
+      "kind": "profile",
+      "owner": "chat",
+      "schema": "proto/coder/account-chat-cloud-v2.json",
+      "codec": "coax/web/api/account-chat-cloud-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/account-chat-cloud-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/web/api/account-chat-turns.c"
+      ],
+      "tests": [
+        "coax/web/api/account-chat-cloud-wire.coax",
+        "coax/web/api/tests/cloud_chat_sync_checks.coax"
+      ],
+      "note": "Unified cloud chat full conversation snapshot with turns and rich event stream (#14093)."
     }
   ]
 }

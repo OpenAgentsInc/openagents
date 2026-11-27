@@ -16,6 +16,21 @@ extension CoderWindow {
                 ProviderInstancesStore.shared.refreshAll()
             }
             cd_line(r.page, text)
+            if let syncChatID = (r === self.run ? self.chat : r.chat) ?? r.pendingChat,
+               syncChatID != Foreman.chatID {
+                let syncFolder = (r === self.run ? self.folder : r.folder).path
+                let syncTitle = self.store.title(syncChatID) ?? "New chat"
+                let isLocal = r.worker.extraEnv["PSIONIC_BASE_URL"] != nil
+                let modelHint = isLocal ? (r.worker.extraEnv["PSIONIC_MODEL"] ?? LocalModelStore.entry.id) : "google/gemini-4-neon"
+                self.cloudSync.observeWorkerLine(
+                    chatID: syncChatID,
+                    title: syncTitle,
+                    folder: syncFolder,
+                    model: modelHint,
+                    isLocal: isLocal,
+                    line: text
+                )
+            }
             if r === self.run && self.speech.duplexEnabled,
                let data = text.data(using: .utf8),
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

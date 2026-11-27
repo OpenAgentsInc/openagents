@@ -1,0 +1,28 @@
+{
+  "title": "Unified Cloud Chat v2 Wire Profiles (#14093)",
+  "codec": "coax/web/api/account-chat-cloud-wire.coax",
+  "owner": "chat",
+  "schemas": [
+    "openagents.chat.event.v2",
+    "openagents.chat.sync.v2",
+    "openagents.chat.sync-reply.v2",
+    "openagents.chat.meta.v2",
+    "openagents.chat.account-event.v2",
+    "openagents.chat.conversations.v2",
+    "openagents.chat.conversation.v2"
+  ],
+  "routes": [
+    "GET /api/chat/v2/stream",
+    "GET /api/chat/v2/conversations",
+    "GET /api/chat/v2/conversations/:id",
+    "GET /api/chat/v2/conversations/:id/stream",
+    "POST /api/chat/v2/sync",
+    "POST /api/chat/v2/conversations/:id/events",
+    "POST /api/chat/v2/conversations/:id/meta"
+  ],
+  "invariants": {
+    "local_zero_cost": "When compute == \"local\", cost_msat MUST equal 0.",
+    "idempotent_sync": "POST /api/chat/v2/sync, /events, and /meta are keyed by (account, operation_id) with SHA-256 request digest verification (200 replay on match, 409 conflict on mismatch).",
+    "live_fanout": "Commits to chat.turn_events_v2 and chat.account_events_v2 notify oa_conv_events_v2 and oa_account_events_v2 for zero-poll SSE delivery with Last-Event-ID replay."
+  }
+}

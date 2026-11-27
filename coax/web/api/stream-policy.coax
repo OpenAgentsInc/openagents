@@ -162,6 +162,27 @@ sp_turn_id_valid :: (id: string) -> bool #export_c #effects(all) {
   return true;
 }
 
+sp_conv_id_valid :: (id: string) -> bool #export_c #effects(all) {
+  if id.count != 36 { return false; }
+  if id[0] != 'c' || id[1] != 'n' || id[2] != 'v' || id[3] != '_' { return false; }
+  for i: 4..<36 {
+    if !sp_is_lower_hex(id[i]) { return false; }
+  }
+  return true;
+}
+
+sp_acct_char_ok :: (c: u8) -> bool #effects(all) {
+  return sp_is_lower_alpha(c) || (c >= 'A' && c <= 'Z') || sp_is_digit(c) || c == '_' || c == '-' || c == '.' || c == ':';
+}
+
+sp_acct_id_valid :: (id: string) -> bool #export_c #effects(all) {
+  if id.count < 1 || id.count > 40 { return false; }
+  for c: id {
+    if !sp_acct_char_ok(c) { return false; }
+  }
+  return true;
+}
+
 // Postgres LISTEN/NOTIFY channel identifier: 1..63 chars, [a-z_][a-z0-9_]*.
 sp_channel_valid :: (channel: string) -> bool #export_c #effects(all) {
   if channel.count < 1 || channel.count > 63 { return false; }
@@ -182,6 +203,36 @@ sp_notify_parse :: (payload: string, turn_out: [] u8, seq_out: [] int) -> bool #
   seq := sp_parse_cursor(cast(string) payload[37..<payload.count]);
   if seq < 1 { return false; }
   for i: 0..<36 { turn_out[i] = turn[i]; }
+  seq_out[0] = seq;
+  return true;
+}
+
+// Parse Postgres NOTIFY payload "<conversation_id>|<event_id>" where event_id >= 1.
+sp_conv_notify_parse :: (payload: string, conv_out: [] u8, seq_out: [] int) -> bool #export_c #effects(all) {
+  if conv_out.count < 36 || seq_out.count < 1 { return false; }
+  if payload.count < 38 || payload[36] != '|' { return false; }
+  conv := cast(string) payload[0..<36];
+  if !sp_conv_id_valid(conv) { return false; }
+  seq := sp_parse_cursor(cast(string) payload[37..<payload.count]);
+  if seq < 1 { return false; }
+  for i: 0..<36 { conv_out[i] = conv[i]; }
+  seq_out[0] = seq;
+  return true;
+}
+
+// Parse Postgres NOTIFY payload "<account_id>|<event_id>" where event_id >= 1.
+sp_acct_notify_parse :: (payload: string, acct_out: [] u8, acct_len_out: [] int, seq_out: [] int) -> bool #export_c #effects(all) {
+  if acct_out.count < 40 || acct_len_out.count < 1 || seq_out.count < 1 { return false; }
+  bar := 0;
+  while bar < payload.count && payload[bar] != '|' {
+    if bar >= 40 || !sp_acct_char_ok(payload[bar]) { return false; }
+    bar += 1;
+  }
+  if bar == 0 || bar == payload.count { return false; }
+  seq := sp_parse_cursor(cast(string) payload[bar + 1..<payload.count]);
+  if seq < 1 { return false; }
+  for i: 0..<bar { acct_out[i] = payload[i]; }
+  acct_len_out[0] = bar;
   seq_out[0] = seq;
   return true;
 }
@@ -429,6 +480,45 @@ sp_sse_event_frame :: (out: [] u8, id: int, event_name: string, data: string) ->
   #assert !sp_notify_parse("trn_0123456789abcdef0123456789abcdef|0", tout[..], sout[..]);
   #assert !sp_notify_parse("trn_0123456789abcdef0123456789abcdef|abc", tout[..], sout[..]);
   #assert !sp_notify_parse("cnv_0123456789abcdef0123456789abcdef|1", tout[..], sout[..]);
+
+  // Conversation & account ID + NOTIFY parsing (#14093)
+  good_conv := "cnv_0123456789abcdef0123456789abcdef";
+  #assert sp_conv_id_valid(good_conv);
+  #assert !sp_conv_id_valid("cnv_0123456789abcdef0123456789abcde") && !sp_conv_id_valid("cnv_0123456789abcdef0123456789abcdef0");
+  #assert !sp_conv_id_valid("xnv_0123456789abcdef0123456789abcdef") && !sp_conv_id_valid("cxv_0123456789abcdef0123456789abcdef");
+  #assert !sp_conv_id_valid("cnx_0123456789abcdef0123456789abcdef") && !sp_conv_id_valid("cnv-0123456789abcdef0123456789abcdef");
+  #assert !sp_conv_id_valid("cnv_g123456789abcdef0123456789abcdef") && !sp_conv_id_valid("cnv_0123456789abcdeg0123456789abcdef");
+
+  cout: [36] u8;
+  #assert sp_conv_notify_parse("cnv_0123456789abcdef0123456789abcdef|1", cout[..], sout[..]) && cast(string) cout[0..<36] == good_conv && sout[0] == 1;
+  #assert sp_conv_notify_parse("cnv_0123456789abcdef0123456789abcdef|99", cout[..], sout[..]) && sout[0] == 99;
+  #assert !sp_conv_notify_parse("cnv_0123456789abcdef0123456789abcdef|1", cout[0..<35], sout[..]);
+  #assert !sp_conv_notify_parse("cnv_0123456789abcdef0123456789abcdef|1", cout[..], sout[0..<0]);
+  #assert !sp_conv_notify_parse("cnv_0123456789abcdef0123456789abcdef|", cout[..], sout[..]);
+  #assert !sp_conv_notify_parse("cnv_0123456789abcdef0123456789abcdef:1", cout[..], sout[..]);
+  #assert !sp_conv_notify_parse("cnv_0123456789abcdef0123456789abcdef|0", cout[..], sout[..]);
+  #assert !sp_conv_notify_parse("trn_0123456789abcdef0123456789abcdef|1", cout[..], sout[..]);
+
+  #assert sp_acct_id_valid("a") && sp_acct_id_valid("AZ_az-09.:") && sp_acct_id_valid("1234567890123456789012345678901234567890");
+  #assert !sp_acct_id_valid("") && !sp_acct_id_valid("12345678901234567890123456789012345678901");
+  #assert !sp_acct_id_valid("acct|bad") && !sp_acct_id_valid("acct@bad") && !sp_acct_id_valid("acct[bad") && !sp_acct_id_valid("acct/bad");
+
+  aout: [40] u8; alen: [1] int;
+  #assert sp_acct_notify_parse("a|1", aout[..], alen[..], sout[..]) && alen[0] == 1 && cast(string) aout[0..<1] == "a" && sout[0] == 1;
+  #assert sp_acct_notify_parse("1234567890123456789012345678901234567890|7", aout[..], alen[..], sout[..]) && alen[0] == 40 && sout[0] == 7;
+  #assert !sp_acct_notify_parse("12345678901234567890123456789012345678901|7", aout[..], alen[..], sout[..]);
+  #assert sp_acct_notify_parse("acct_0123456789abcdef0123456789abcdef|42", aout[..], alen[..], sout[..]) && alen[0] == 37 && cast(string) aout[0..<37] == "acct_0123456789abcdef0123456789abcdef" && sout[0] == 42;
+  #assert !sp_acct_notify_parse("a|1", aout[0..<39], alen[..], sout[..]);
+  #assert !sp_acct_notify_parse("a|1", aout[..], alen[0..<0], sout[..]);
+  #assert !sp_acct_notify_parse("a|1", aout[..], alen[..], sout[0..<0]);
+  #assert !sp_acct_notify_parse("|1", aout[..], alen[..], sout[..]);
+  #assert !sp_acct_notify_parse("a|", aout[..], alen[..], sout[..]);
+  #assert !sp_acct_notify_parse("a|0", aout[..], alen[..], sout[..]);
+  #assert !sp_acct_notify_parse("a|bad", aout[..], alen[..], sout[..]);
+  #assert !sp_acct_notify_parse("@a|1", aout[..], alen[..], sout[..]);
+  #assert !sp_acct_notify_parse("bad@acct|1", aout[..], alen[..], sout[..]);
+  #assert !sp_acct_notify_parse("nobar", aout[..], alen[..], sout[..]);
+  #assert !sp_acct_notify_parse("a12", aout[..], alen[..], sout[..]);
 }
 
 #test "SSE headers, retry, keepalive, and multi-line event framing" {

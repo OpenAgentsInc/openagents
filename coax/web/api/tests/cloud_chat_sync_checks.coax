@@ -1,0 +1,352 @@
+// Unified Cloud Chat Store & Live Sync end-to-end Postgres + SSE checks (#14093):
+//   - Auth, method, compute/cost provenance (local $0 strict enforcement), cross-account isolation
+//   - Desktop Cloud (google/gemini-4-neon) & Local $0 (inkling-2-mini) write-through sync via POST /api/chat/v2/sync & /events
+//   - Live Postgres LISTEN/NOTIFY fanout (<1s, zero polling) on GET /api/chat/v2/stream & GET /api/chat/v2/conversations/:id/stream
+//   - Rich events: thinking_delta, tool_call, tool_result with diff & attachments, approval, usage/cost provenance
+//   - Offline outbox idempotent retry (200 replayed:true, 0 duplicate rows) & payload mismatch conflict (409)
+//   - Metadata sync (/meta: rename, pin, archive), sidebar ordering, Last-Event-ID gapless replay, and library_updated trigger
+// tool.sh: tls
+#load "auth_harness.coax";
+
+CC_BUF_MAX :: 65536;
+
+CcConn :: struct {
+  h: int;
+  buf: [CC_BUF_MAX] u8;
+  n: int;
+  eof: bool;
+  status: int;
+  head_n: int;
+  head: [4096] u8;
+}
+
+cc_parse_port :: (url: string) -> int {
+  colon := -1;
+  for i: 0..<url.count {
+    if url[i] == ':' { colon = i; }
+  }
+  if colon < 0 || colon + 1 >= url.count { return -1; }
+  end := colon + 1;
+  while end < url.count && url[end] >= '0' && url[end] <= '9' { end += 1; }
+  return ap_whole(url[colon + 1..<end]);
+}
+
+cc_open_sse :: (c: [] CcConn, port: int, path: string, cookie: string, last_id: string, timeout_ms: int) -> bool {
+  c[0].h = -1; c[0].n = 0; c[0].eof = false; c[0].status = 0; c[0].head_n = 0;
+  for b: "127.0.0.1" { _ = cxsock_host_push(cast(int) b); }
+  h := cxsock_connect(port, timeout_ms);
+  if h < 0 { return false; }
+  c[0].h = h;
+
+  req: [1] Sb;
+  sb(req[..], "GET "); sb(req[..], path); sb(req[..], " HTTP/1.1\r\nHost: 127.0.0.1:"); sb_int(req[..], port);
+  sb(req[..], "\r\nConnection: close\r\n");
+  if cookie.count > 0 { sb(req[..], "Cookie: __Host-oa_session="); sb(req[..], cookie); sb(req[..], "\r\n"); }
+  if last_id.count > 0 { sb(req[..], "Last-Event-ID: "); sb(req[..], last_id); sb(req[..], "\r\n"); }
+  sb(req[..], "\r\n");
+
+  for ch: sb_text(req[..]) {
+    if cxsock_write(h, cast(int) ch) != 0 { _ = cxsock_close(h); c[0].h = -1; return false; }
+  }
+  if cxsock_flush(h, timeout_ms) != 0 { _ = cxsock_close(h); c[0].h = -1; return false; }
+
+  deadline := proc_now_ms() + timeout_ms;
+  head_end := -1;
+  while head_end < 0 && proc_now_ms() < deadline {
+    left := deadline - proc_now_ms();
+    if left < 1 { left = 1; }
+    got := cxsock_read(h, left);
+    if got == -2 { continue; }
+    if got <= 0 { c[0].eof = true; break; }
+    for i: 0..<got {
+      if c[0].n < CC_BUF_MAX { c[0].buf[c[0].n] = cast,trunc(u8) cxsock_byte(h, i); c[0].n += 1; }
+    }
+    if c[0].n >= 4 {
+      for i: 0..<c[0].n - 3 {
+        if c[0].buf[i] == '\r' && c[0].buf[i + 1] == '\n' && c[0].buf[i + 2] == '\r' && c[0].buf[i + 3] == '\n' {
+          head_end = i; break;
+        }
+      }
+    }
+  }
+  if head_end < 0 { _ = cxsock_close(h); c[0].h = -1; return false; }
+  hn := ifx head_end < c[0].head.count then head_end else c[0].head.count;
+  for i: 0..<hn { c[0].head[i] = c[0].buf[i]; }
+  c[0].head_n = hn;
+  head_str := cast(string) c[0].head[0..<hn];
+  if head_str.count >= 12 { c[0].status = ap_whole(head_str[9..<12]); }
+  body_start := head_end + 4;
+  rem := c[0].n - body_start;
+  for i: 0..<rem { c[0].buf[i] = c[0].buf[body_start + i]; }
+  c[0].n = rem;
+  return true;
+}
+
+cc_close_sse :: (c: [] CcConn) {
+  if c[0].h >= 0 { _ = cxsock_close(c[0].h); c[0].h = -1; }
+}
+
+cc_next_frame :: (c: [] CcConn, out: [] u8, timeout_ms: int) -> int {
+  deadline := proc_now_ms() + timeout_ms;
+  while true {
+    sep := -1;
+    if c[0].n >= 2 {
+      for i: 0..<c[0].n - 1 {
+        if c[0].buf[i] == '\n' && c[0].buf[i + 1] == '\n' { sep = i; break; }
+      }
+    }
+    if sep >= 0 {
+      n := ifx sep < out.count then sep else out.count;
+      for i: 0..<n { out[i] = c[0].buf[i]; }
+      rem := c[0].n - (sep + 2);
+      for i: 0..<rem { c[0].buf[i] = c[0].buf[sep + 2 + i]; }
+      c[0].n = rem;
+      return n;
+    }
+    if c[0].eof { return 0; }
+    left := deadline - proc_now_ms();
+    if left <= 0 { return -1; }
+    got := cxsock_read(c[0].h, left);
+    if got == -2 { continue; }
+    if got <= 0 { c[0].eof = true; return 0; }
+    for i: 0..<got {
+      if c[0].n < CC_BUF_MAX { c[0].buf[c[0].n] = cast,trunc(u8) cxsock_byte(c[0].h, i); c[0].n += 1; }
+    }
+  }
+  return -1;
+}
+
+cc_sse_id :: (frame: string) -> int {
+  if frame.count < 5 { return -1; }
+  for i: 0..<frame.count - 4 {
+    if (i == 0 || frame[i - 1] == '\n') &&
+       frame[i] == 'i' && frame[i + 1] == 'd' && frame[i + 2] == ':' && frame[i + 3] == ' ' {
+      j := i + 4;
+      while j < frame.count && frame[j] >= '0' && frame[j] <= '9' { j += 1; }
+      if j > i + 4 { return ap_whole(frame[i + 4..<j]); }
+    }
+  }
+  return -1;
+}
+
+cc_nostr_login :: (t: [] Ap, keyfile: string, cookie_out: [] u8, acct_out: [] u8) -> bool {
+  st := ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "", "", "");
+  if st != 200 { return false; }
+  chb: [128] u8; ch := ap_member(ap_body(t), "challenge", chb[..]);
+  if ch.count != 64 { return false; }
+  body: [1] Sb; sb(body[..], "{\"challenge\":\""); sb(body[..], ch); sb(body[..], "\",\"label\":\"cloudsync\"}");
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/auth/nostr");
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", sb_text(url[..]), sb_text(body[..]), true, sigb[..]);
+  ah: [1] Sb; sb(ah[..], "Authorization: Nostr "); sb(ah[..], sig);
+  st = ac_call(t, "POST", "/api/auth/nostr", sb_text(body[..]), sb_text(ah[..]), "", "");
+  if st != 200 { return false; }
+  ck := ac_cookie(t, "__Host-oa_session", cookie_out);
+  ac := ap_member(ap_body(t), "account", acct_out);
+  return ck.count > 0 && ac.count > 0;
+}
+
+cc_run_checks :: (t: [] Ap) {
+  port := cc_parse_port(t[0].api);
+  okb: [2048] u8; other_key := proc_getenv("OTHER_KEY", okb[..]);
+  c1b: [256] u8; a1b: [64] u8; c2b: [256] u8; a2b: [64] u8;
+  logged1 := cc_nostr_login(t, t[0].admin_key, c1b[..], a1b[..]);
+  logged2 := cc_nostr_login(t, other_key, c2b[..], a2b[..]);
+  ap_check(t, "cloud-chat: two test accounts log in over /api/auth/nostr", logged1 && logged2, ap_body(t));
+  if !logged1 || !logged2 { return; }
+
+  ck1_n := 0; while ck1_n < c1b.count && c1b[ck1_n] != 0 { ck1_n += 1; }
+  ck1 := cast(string) c1b[0..<ck1_n];
+  ac1_n := 0; while ac1_n < a1b.count && a1b[ac1_n] != 0 { ac1_n += 1; }
+  acct1 := cast(string) a1b[0..<ac1_n];
+  ck2_n := 0; while ck2_n < c2b.count && c2b[ck2_n] != 0 { ck2_n += 1; }
+  ck2 := cast(string) c2b[0..<ck2_n];
+
+  ck1_hdr: [1] Sb; ch1 := ac_cookie_header("__Host-oa_session", ck1, ck1_hdr[..]);
+  ck2_hdr: [1] Sb; ch2 := ac_cookie_header("__Host-oa_session", ck2, ck2_hdr[..]);
+  org_hdr: [1] Sb; sb(org_hdr[..], "Origin: "); sb(org_hdr[..], t[0].api);
+  origin_h := sb_text(org_hdr[..]);
+
+  // ---- 1. Auth, method, and local $0 provenance enforcement
+  ap_check(t, "cloud-chat: unauthenticated GET /api/chat/v2/stream is 401",
+           ap_call(t, "GET", "/api/chat/v2/stream", "", t[0].no[0..<0]) == 401, ap_body(t));
+  ap_check(t, "cloud-chat: unauthenticated GET /api/chat/v2/conversations is 401",
+           ap_call(t, "GET", "/api/chat/v2/conversations", "", t[0].no[0..<0]) == 401, ap_body(t));
+  ap_check(t, "cloud-chat: unauthenticated POST /api/chat/v2/sync is 401",
+           ap_call(t, "POST", "/api/chat/v2/sync", "{}", t[0].no[0..<0]) == 401, ap_body(t));
+  ap_check(t, "cloud-chat: GET /api/chat/v2/sync is 405",
+           ac_call(t, "GET", "/api/chat/v2/sync", "", ch1, "", "") == 405, ap_body(t));
+  ap_check(t, "cloud-chat: POST /api/chat/v2/stream is 405",
+           ac_call(t, "POST", "/api/chat/v2/stream", "", ch1, origin_h, "") == 405, ap_body(t));
+
+  bad_local := "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"op_bad_local_1\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"Bad\",\"pinned\":null,\"archived\":null,\"compute\":\"local\",\"model\":\"inkling-2-mini\",\"cost_msat\":1,\"source_device\":\"mac\",\"workspace\":\"/work\",\"user_text\":\"hi\",\"attachments\":[],\"state\":\"running\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}";
+  ap_check(t, "cloud-chat: compute=local with non-zero cost_msat is refused (400)",
+           ac_call(t, "POST", "/api/chat/v2/sync", bad_local, ch1, origin_h, "") == 400, ap_body(t));
+
+  // ---- 2. Open account-wide live SSE stream BEFORE pushing Desktop turns
+  acct_sse: [1] CcConn;
+  opened_acct := cc_open_sse(acct_sse[..], port, "/api/chat/v2/stream", ck1, "", 5000);
+  hd_acct := cast(string) acct_sse[0].head[0..<acct_sse[0].head_n];
+  frame: [16384] u8;
+  f_retry := ifx opened_acct then cc_next_frame(acct_sse[..], frame[..], 3000) else -1;
+  ap_check(t, "cloud-chat: GET /api/chat/v2/stream upgrades with canonical SSE headers + retry",
+           opened_acct && acct_sse[0].status == 200 &&
+           ap_has(hd_acct, "Content-Type: text/event-stream") &&
+           ap_has(hd_acct, "X-Accel-Buffering: no") &&
+           f_retry > 0 && cast(string) frame[0..<f_retry] == "retry: 3000", hd_acct);
+
+  // ---- 3. Desktop Cloud turn (google/gemini-4-neon, cost_msat=1250) with thinking, tool_call, tool_result+diff+attachments+approval+usage
+  cid1 := "cnv_14093000000000000000000000000001";
+  tid1 := "trn_14093000000000000000000000000001";
+  cloud_sync_body := "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"op_14093_cloud_1\",\"conversation_id\":\"cnv_14093000000000000000000000000001\",\"turn_id\":\"trn_14093000000000000000000000000001\",\"title\":\"Desktop Cloud Session\",\"pinned\":false,\"archived\":false,\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":1250,\"source_device\":\"mac-desktop\",\"workspace\":\"/work/openagents\",\"user_text\":\"Patch the router\",\"attachments\":[{\"name\":\"trace.png\",\"mime\":\"image/png\"}],\"state\":\"running\",\"output\":\"Working on patch\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":{\"input_tokens\":100,\"output_tokens\":40,\"cache_read_tokens\":12,\"cache_write_tokens\":0,\"reasoning_tokens\":15},\"events\":[{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_14093000000000000000000000000001\",\"turn_id\":\"trn_14093000000000000000000000000001\",\"sequence\":1,\"type\":\"thinking_delta\",\"state\":\"running\",\"text\":\"analyzing routes\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":0,\"source_device\":\"mac-desktop\",\"workspace\":\"/work/openagents\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":1700000000001},{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_14093000000000000000000000000001\",\"turn_id\":\"trn_14093000000000000000000000000001\",\"sequence\":2,\"type\":\"tool_result\",\"state\":\"running\",\"text\":\"patched\",\"tool_id\":\"call_42\",\"tool_name\":\"apply_patch\",\"tool_args\":\"{\\\"path\\\":\\\"route.coax\\\"}\",\"diff\":\"@@ -1 +1 @@\\n-old\\n+new\\n\",\"failed\":false,\"approval_status\":\"approved\",\"attachments\":[{\"name\":\"shot.png\",\"mime\":\"image/png\"}],\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":1250,\"source_device\":\"mac-desktop\",\"workspace\":\"/work/openagents\",\"usage\":{\"input_tokens\":100,\"output_tokens\":40,\"cache_read_tokens\":12,\"cache_write_tokens\":0,\"reasoning_tokens\":15},\"stop_reason\":\"\",\"created_at_ms\":1700000000002}]}";
+
+  t0 := proc_now_ms();
+  st1 := ac_call(t, "POST", "/api/chat/v2/sync", cloud_sync_body, ch1, origin_h, "");
+  ap_check(t, "cloud-chat: Desktop Cloud sync commits cleanly (200, replayed:false)",
+           st1 == 200 && ap_has(ap_body(t), cid1) && ap_has(ap_body(t), tid1) && ap_has(ap_body(t), "\"replayed\":false"), ap_body(t));
+
+  // Verify live LISTEN/NOTIFY fanout on already-open /api/chat/v2/stream!
+  fn_acct1 := cc_next_frame(acct_sse[..], frame[..], 3000);
+  lat_acct1 := proc_now_ms() - t0;
+  f1_s := ifx fn_acct1 > 0 then cast(string) frame[0..<fn_acct1] else "";
+  id1 := cc_sse_id(f1_s);
+  ap_check(t, "cloud-chat: /api/chat/v2/stream delivers conversation_created live via LISTEN/NOTIFY (<1s)",
+           fn_acct1 > 0 && lat_acct1 < 1000 && id1 > 0 &&
+           ap_has(f1_s, "event: conversation_created") &&
+           ap_has(f1_s, cid1) && ap_has(f1_s, "\"compute\":\"cloud\"") && ap_has(f1_s, "\"cost_msat\":1250"), f1_s);
+
+  // ---- 4. Open per-conversation SSE stream & test initial replay + live /events append
+  conv_sse: [1] CcConn;
+  opened_conv := cc_open_sse(conv_sse[..], port, "/api/chat/v2/conversations/cnv_14093000000000000000000000000001/stream", ck1, "", 5000);
+  cf0 := ifx opened_conv then cc_next_frame(conv_sse[..], frame[..], 3000) else -1;
+  cf1 := ifx opened_conv then cc_next_frame(conv_sse[..], frame[..], 3000) else -1;
+  cf1_s: [8192] u8; cf1_n := ifx cf1 > 0 && cf1 < 8192 then cf1 else 0;
+  for i: 0..<cf1_n { cf1_s[i] = frame[i]; }
+  cf2 := ifx opened_conv then cc_next_frame(conv_sse[..], frame[..], 3000) else -1;
+  cf2_str := ifx cf2 > 0 then cast(string) frame[0..<cf2] else "";
+  ap_check(t, "cloud-chat: /conversations/:id/stream replays committed thinking + tool_result+diff+attachments",
+           opened_conv && conv_sse[0].status == 200 && cf0 > 0 &&
+           ap_has(cast(string) cf1_s[0..<cf1_n], "thinking_delta") &&
+           ap_has(cf2_str, "event: chat_event") &&
+           ap_has(cf2_str, "apply_patch") && ap_has(cf2_str, "@@ -1 +1 @@") &&
+           ap_has(cf2_str, "shot.png") && ap_has(cf2_str, "\"approval_status\":\"approved\""), cf2_str);
+
+  // Append event 3 (completed) live to /conversations/:id/events while conv_sse is open!
+  append_body := "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"op_14093_cloud_done\",\"conversation_id\":\"cnv_14093000000000000000000000000001\",\"turn_id\":\"trn_14093000000000000000000000000001\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":1250,\"source_device\":\"mac-desktop\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"completed\",\"output\":\"Patch complete\",\"stop_reason\":\"end_turn\",\"error\":\"\",\"usage\":null,\"events\":[{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_14093000000000000000000000000001\",\"turn_id\":\"trn_14093000000000000000000000000001\",\"sequence\":3,\"type\":\"completed\",\"state\":\"completed\",\"text\":\"Patch complete\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":1250,\"source_device\":\"mac-desktop\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"end_turn\",\"created_at_ms\":1700000000003}]}";
+  t1 := proc_now_ms();
+  st_ev := ac_call(t, "POST", "/api/chat/v2/conversations/cnv_14093000000000000000000000000001/events", append_body, ch1, origin_h, "");
+  ap_check(t, "cloud-chat: POST /conversations/:id/events appends live turn completion (200)",
+           st_ev == 200 && ap_has(ap_body(t), "\"replayed\":false"), ap_body(t));
+
+  cf3 := cc_next_frame(conv_sse[..], frame[..], 3000);
+  lat_conv := proc_now_ms() - t1;
+  cf3_str := ifx cf3 > 0 then cast(string) frame[0..<cf3] else "";
+  ap_check(t, "cloud-chat: /conversations/:id/stream pushes newly appended event live via oa_conv_events_v2 (<1s)",
+           cf3 > 0 && lat_conv < 1000 && ap_has(cf3_str, "event: chat_event") && ap_has(cf3_str, "Patch complete"), cf3_str);
+
+  fn_acct2 := cc_next_frame(acct_sse[..], frame[..], 3000);
+  f2_s := ifx fn_acct2 > 0 then cast(string) frame[0..<fn_acct2] else "";
+  id2 := cc_sse_id(f2_s);
+  ap_check(t, "cloud-chat: /api/chat/v2/stream delivers turn_completed live",
+           fn_acct2 > 0 && id2 > id1 && ap_has(f2_s, "event: turn_completed") && ap_has(f2_s, cid1), f2_s);
+
+  cc_close_sse(conv_sse[..]);
+
+  // ---- 5. Cross-account isolation (Account 2 gets 404 on every Account 1 conversation route)
+  ap_check(t, "cloud-chat: stranger GET /conversations/:id is 404",
+           ac_call(t, "GET", "/api/chat/v2/conversations/cnv_14093000000000000000000000000001", "", ch2, "", "") == 404, ap_body(t));
+  ap_check(t, "cloud-chat: stranger GET /conversations/:id/stream is 404",
+           ac_call(t, "GET", "/api/chat/v2/conversations/cnv_14093000000000000000000000000001/stream", "", ch2, "", "") == 404, ap_body(t));
+  ap_check(t, "cloud-chat: stranger POST /conversations/:id/events is 404",
+           ac_call(t, "POST", "/api/chat/v2/conversations/cnv_14093000000000000000000000000001/events", append_body, ch2, origin_h, "") == 404, ap_body(t));
+
+  // ---- 6. Idempotent offline retry (zero duplicate rows!) & payload conflict (409)
+  st_rep := ac_call(t, "POST", "/api/chat/v2/sync", cloud_sync_body, ch1, origin_h, "");
+  ap_check(t, "cloud-chat: retrying identical sync operation_id returns 200 with replayed:true",
+           st_rep == 200 && ap_has(ap_body(t), "\"replayed\":true") && ap_has(ap_body(t), cid1), ap_body(t));
+
+  cnt_b: [64] u8;
+  turn_cnt := ap_sql(t, "SELECT count(*) FROM chat.turns_v2 WHERE id='trn_14093000000000000000000000000001'", cnt_b[..]);
+  ev_cnt_b: [64] u8;
+  ev_cnt := ap_sql(t, "SELECT count(*) FROM chat.turn_events_v2 WHERE turn='trn_14093000000000000000000000000001'", ev_cnt_b[..]);
+  ap_check(t, "cloud-chat: idempotent retry creates zero duplicate turns or events in Postgres",
+           turn_cnt == "1" && ev_cnt == "3", turn_cnt);
+
+  conflict_body := "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"op_14093_cloud_1\",\"conversation_id\":\"cnv_14093000000000000000000000000001\",\"turn_id\":\"trn_14093000000000000000000000000001\",\"title\":\"Mutated\",\"pinned\":false,\"archived\":false,\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":1250,\"source_device\":\"mac-desktop\",\"workspace\":\"/work/openagents\",\"user_text\":\"Different\",\"attachments\":[],\"state\":\"running\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}";
+  ap_check(t, "cloud-chat: same operation_id with different body returns 409 conflict",
+           ac_call(t, "POST", "/api/chat/v2/sync", conflict_body, ch1, origin_h, "") == 409, ap_body(t));
+
+  // ---- 7. Desktop Local $0 Inkling 2 Mini turn + /meta pin/rename + sidebar list ordering
+  cid2 := "cnv_14093000000000000000000000000002";
+  local_sync_body := "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"op_14093_local_1\",\"conversation_id\":\"cnv_14093000000000000000000000000002\",\"turn_id\":\"trn_14093000000000000000000000000002\",\"title\":\"Local Inkling Chat\",\"pinned\":false,\"archived\":false,\"compute\":\"local\",\"model\":\"inkling-2-mini\",\"cost_msat\":0,\"source_device\":\"mac-desktop\",\"workspace\":\"/work/local\",\"user_text\":\"Explain monads\",\"attachments\":[],\"state\":\"completed\",\"output\":\"A monad is a monoid...\",\"stop_reason\":\"end_turn\",\"error\":\"\",\"usage\":{\"input_tokens\":20,\"output_tokens\":30,\"cache_read_tokens\":null,\"cache_write_tokens\":null,\"reasoning_tokens\":5},\"events\":[]}";
+  st_loc := ac_call(t, "POST", "/api/chat/v2/sync", local_sync_body, ch1, origin_h, "");
+  ap_check(t, "cloud-chat: Desktop Local $0 inkling-2-mini sync commits cleanly (200)",
+           st_loc == 200 && ap_has(ap_body(t), cid2) && ap_has(ap_body(t), "\"replayed\":false"), ap_body(t));
+
+  fn_acct3 := cc_next_frame(acct_sse[..], frame[..], 3000);
+  f3_s := ifx fn_acct3 > 0 then cast(string) frame[0..<fn_acct3] else "";
+  id3 := cc_sse_id(f3_s);
+  ap_check(t, "cloud-chat: /api/chat/v2/stream delivers local $0 inkling-2-mini creation live",
+           fn_acct3 > 0 && id3 > id2 && ap_has(f3_s, "event: conversation_created") &&
+           ap_has(f3_s, "\"compute\":\"local\"") && ap_has(f3_s, "\"cost_msat\":0") && ap_has(f3_s, "inkling-2-mini"), f3_s);
+
+  meta_body := "{\"schema\":\"openagents.chat.meta.v2\",\"operation_id\":\"op_14093_meta_1\",\"title\":\"Pinned Inkling\",\"pinned\":true,\"archived\":false}";
+  st_meta := ac_call(t, "POST", "/api/chat/v2/conversations/cnv_14093000000000000000000000000002/meta", meta_body, ch1, origin_h, "");
+  ap_check(t, "cloud-chat: POST /conversations/:id/meta updates title & pinned (200)",
+           st_meta == 200 && ap_has(ap_body(t), "\"replayed\":false"), ap_body(t));
+  st_meta_rep := ac_call(t, "POST", "/api/chat/v2/conversations/cnv_14093000000000000000000000000002/meta", meta_body, ch1, origin_h, "");
+  ap_check(t, "cloud-chat: retrying identical /meta operation_id returns replayed:true",
+           st_meta_rep == 200 && ap_has(ap_body(t), "\"replayed\":true"), ap_body(t));
+
+  fn_acct4 := cc_next_frame(acct_sse[..], frame[..], 3000);
+  f4_s := ifx fn_acct4 > 0 then cast(string) frame[0..<fn_acct4] else "";
+  ap_check(t, "cloud-chat: /meta emits live conversation_updated on /api/chat/v2/stream",
+           fn_acct4 > 0 && ap_has(f4_s, "event: conversation_updated") && ap_has(f4_s, "Pinned Inkling") && ap_has(f4_s, "\"pinned\":true"), f4_s);
+
+  // ---- 8. Sidebar list & full conversation detail readback
+  st_list := ac_call(t, "GET", "/api/chat/v2/conversations", "", ch1, "", "");
+  ap_check(t, "cloud-chat: GET /api/chat/v2/conversations returns both Cloud & Local chats with provenance",
+           st_list == 200 && ap_has(ap_body(t), "Pinned Inkling") && ap_has(ap_body(t), "Desktop Cloud Session") &&
+           ap_has(ap_body(t), "\"compute\":\"local\"") && ap_has(ap_body(t), "\"compute\":\"cloud\""), ap_body(t));
+
+  st_det := ac_call(t, "GET", "/api/chat/v2/conversations/cnv_14093000000000000000000000000001", "", ch1, "", "");
+  ap_check(t, "cloud-chat: GET /api/chat/v2/conversations/:id returns full turns + rich events",
+           st_det == 200 && ap_has(ap_body(t), "Patch the router") && ap_has(ap_body(t), "Patch complete") &&
+           ap_has(ap_body(t), "apply_patch") && ap_has(ap_body(t), "@@ -1 +1 @@"), ap_body(t));
+
+  // ---- 9. Last-Event-ID gapless replay (header precedence over ?after=0) + cursor-ahead 409
+  cc_close_sse(acct_sse[..]);
+  id2_buf: [32] u8; id2_s := ap_num(id2, id2_buf[..]);
+  id1_line: [1] Sb; sb(id1_line[..], "id: "); sb_int(id1_line[..], id1); sb(id1_line[..], "\n");
+  id2_line: [1] Sb; sb(id2_line[..], "id: "); sb_int(id2_line[..], id2); sb(id2_line[..], "\n");
+  id3_line: [1] Sb; sb(id3_line[..], "id: "); sb_int(id3_line[..], id3); sb(id3_line[..], "\n");
+  replay_sse: [1] CcConn;
+  opened_rep := cc_open_sse(replay_sse[..], port, "/api/chat/v2/stream?after=0", ck1, id2_s, 5000);
+  _ = ifx opened_rep then cc_next_frame(replay_sse[..], frame[..], 3000) else -1; // retry
+  rf1 := ifx opened_rep then cc_next_frame(replay_sse[..], frame[..], 3000) else -1;
+  rf1_str := ifx rf1 > 0 then cast(string) frame[0..<rf1] else "";
+  ap_check(t, "cloud-chat: Last-Event-ID takes precedence over ?after=0 and resumes at id3",
+           opened_rep && rf1 > 0 &&
+           ap_has(rf1_str, sb_text(id3_line[..])) &&
+           !ap_has(rf1_str, sb_text(id1_line[..])) &&
+           !ap_has(rf1_str, sb_text(id2_line[..])), rf1_str);
+  cc_close_sse(replay_sse[..]);
+
+  ap_check(t, "cloud-chat: /conversations/:id/stream cursor ahead of committed events is 409",
+           ac_call(t, "GET", "/api/chat/v2/conversations/cnv_14093000000000000000000000000001/stream", "", ch1, "Last-Event-ID: 99999", "") == 409, ap_body(t));
+
+  // ---- 10. Verify account row lifecycle registration (auth.life_columns)
+  life_b: [64] u8;
+  life_cnt := ap_sql(t, "SELECT count(*) FROM auth.life_columns WHERE tbl IN ('chat.account_events_v2','chat.sync_operations_v2')", life_b[..]);
+  ap_check(t, "cloud-chat: new account-scoped tables are registered in auth.life_columns",
+           life_cnt == "2", life_cnt);
+
+  // Silence unused variable warning on acct1
+  _ = acct1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  cc_run_checks(t[..]);
+  return ap_done(t[..], "cloud chat sync");
+}

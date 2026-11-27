@@ -32,6 +32,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self?.refreshAccountMenu()
                 self?.main?.refreshAccountCredits()
+                self?.main?.refreshCloudChatSync()
             }
         }
         #if OA_FULL

@@ -147,6 +147,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     let foremanAudit = ForemanAuditLog()
     #endif
     let daemonClient = CoderDaemonClient()
+    lazy var cloudSync: CloudChatSync = CloudChatSync(
+        stateDir: MacAccount.folder.appendingPathComponent("cloud-sync", isDirectory: true),
+        originProvider: { MacAccount.shared.auth.origin },
+        isSignedIn: { FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn },
+        authorizer: { req in try await MacAccount.shared.auth.authorize(req) }
+    )
     private var lastForegroundRunning = false
     private var lastDashSyncAt = 0.0
     struct PhoneRunStamp: Equatable {
@@ -338,6 +344,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         setupProvidersSettings()
         setupUsageDashboard()
         setupVoiceDictation()
+        setupCloudChatSync()
         #if OA_FULL
         if FeatureFlags.isOn(.customize) { setupCustomize() }
         #endif

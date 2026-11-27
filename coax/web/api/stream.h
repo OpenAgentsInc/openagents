@@ -21,3 +21,6 @@ void stream_client_init(int send_fd);
 int stream_plane_run(int recv_fd, pid_t parent_pid);
 bool stream_handoff_turn_events(const request *q, const char *account, const char *turn,
                                 int64_t after_seq, int64_t turn_seq, int turn_state);
+bool stream_handoff_conv_events(const request *q, const char *account, const char *conversation,
+                                int64_t after_event_id);
+bool stream_handoff_account_events(const request *q, const char *account, int64_t after_id);

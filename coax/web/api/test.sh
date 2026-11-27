@@ -45,7 +45,7 @@ began=$SECONDS
 # and runs its share of the checks below. A check's share is its time on a
 # build host (oa-build-1, 2026-11-11, seconds): longest first, each to the part
 # with the least so far, so the parts take about as long as each other.
-API_PARTS="checks:20 py:721 room_checks:25 checkpoint2_checks:4 verse_packs:3 auth_checks:4 account_settings_checks:1 chat_library_checks:1 nostr_messaging_checks:5 history_checks:4 task_checks:30 projects_checks:4 projects_cli_checks:60 durable_chat_checks:45 durable_store_checks:2 stream_checks:3 auth_recover_checks:9 agent_checks:8
+API_PARTS="checks:20 py:721 room_checks:25 checkpoint2_checks:4 verse_packs:3 auth_checks:4 account_settings_checks:1 chat_library_checks:1 nostr_messaging_checks:5 history_checks:4 task_checks:30 projects_checks:4 projects_cli_checks:60 durable_chat_checks:45 durable_store_checks:2 stream_checks:3 cloud_chat_sync_checks:3 auth_recover_checks:9 agent_checks:8
   auth_life_checks:8 passkey_checks:8 lnaddr_checks:11 auth_device_checks:5 wallet_checks:6 realm_doc_checks:3 realm_record_checks:3 world_checks:8 worldbuilder_checks:8 script_checks:8 script_cli_checks:60 workers_checks:95 cli-auth:17 anime:13 realms:8 audit:1"
 part=""
 if [[ "${1:-}" == --part ]]; then part="${2:-}"; shift 2 || true; fi
@@ -534,7 +534,7 @@ if [[ -x "$cli_coax" ]]; then
   coax_failed=0
   # tests/script_cli_checks.coax drives the built CLI (#13467): built here when that check runs.
   realm_cli="$repo_root/apps/openagents-cli/build/openagents"
-  for f in room_checks checkpoint2_checks verse_packs auth_checks account_settings_checks chat_library_checks nostr_messaging_checks history_checks task_checks projects_checks projects_cli_checks durable_chat_checks durable_store_checks stream_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks worldbuilder_checks script_checks script_cli_checks workers_checks; do
+  for f in room_checks checkpoint2_checks verse_packs auth_checks account_settings_checks chat_library_checks nostr_messaging_checks history_checks task_checks projects_checks projects_cli_checks durable_chat_checks durable_store_checks stream_checks cloud_chat_sync_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks worldbuilder_checks script_checks script_cli_checks workers_checks; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
     runs "$f" || continue
     if [[ $f == script_cli_checks || $f == projects_cli_checks || $f == durable_chat_checks || $f == task_checks ]]; then

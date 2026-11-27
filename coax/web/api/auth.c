@@ -233,6 +233,9 @@ static const auth_rule RULES[] = {
   R("*", "/api/chat/conversations/v2alpha1", false, AP_ACCOUNT, "owned durable conversation index"),
   R("*", "/api/chat/conversation/v2alpha1", false, AP_ACCOUNT, "paged owned durable conversation"),
   R("*", "/api/chat/runner/v2alpha1", false, AP_PUBLIC, "trusted signed runner only; fenced durable queue claims"),
+  // ---- unified cloud chat v2 (#14093): Desktop <-> Postgres <-> Web/Mobile live sync & SSE
+  R("GET", "/api/chat/v2/", true, AP_ACCOUNT, "unified cloud chat v2 reads and live SSE streams"),
+  R("POST", "/api/chat/v2/", true, AP_HUMAN, "unified cloud chat v2 idempotent sync, events, and metadata updates"),
   // ---- a GameBuilder build agent: one durable turn on the hosted runner (gamebuilder-agents.c)
   R("POST", "/api/gamebuilder/agents/v1", false, AP_HUMAN, "start a build agent on a game; team-funded, free key, a limited session too (ap_limited_write)"),
   R("GET", "/api/gamebuilder/agent/v1", false, AP_ACCOUNT, "an owned build agent's turn: state and answer"),

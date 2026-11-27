@@ -1,6 +1,7 @@
 // Firm reason: 6 (PostgreSQL and authenticated HTTP effects; admission and bytes are shared Coax).
 #include "api.h"
 #include "account-chat-library-wire.generated.h"
+#include "account-chat-wire.generated.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -29,7 +30,29 @@ bool account_chat_library_route(const request *q) {
  const char *sv[]={p->account,rev,out,command,q->body};
  r=PQexecParams(db,"INSERT INTO chat.account_library_v1(account,revision,document) VALUES($1,$2::bigint,$3) ON CONFLICT(account) DO UPDATE SET revision=$2::bigint,document=$3",3,NULL,sv,NULL,NULL,0);if(PQresultStatus(r)!=PGRES_COMMAND_OK)goto done;PQclear(r);
  const char *receipt[]={p->account,command,q->body,out};
- r=PQexecParams(db,"INSERT INTO chat.account_library_commands_v1(account,command,request,response) VALUES($1,$2,$3,$4)",4,NULL,receipt,NULL,NULL,0);if(PQresultStatus(r)!=PGRES_COMMAND_OK)goto done;status=200;
+ r=PQexecParams(db,"INSERT INTO chat.account_library_commands_v1(account,command,request,response) VALUES($1,$2,$3,$4)",4,NULL,receipt,NULL,NULL,0);if(PQresultStatus(r)!=PGRES_COMMAND_OK)goto done;PQclear(r);r=NULL;
+ {
+  long long now=(long long)api_now_ms();char ms[32];snprintf(ms,sizeof ms,"%lld",now);
+  coax_t_CcAcctEvent aev={0};
+  aev.event_type=(coax_string){"library_updated",15};
+  aev.conversation=(coax_string){"",0};
+  aev.turn=(coax_string){"",0};
+  aev.title=(coax_string){"",0};
+  aev.compute=(coax_string){"",0};
+  aev.model=(coax_string){"",0};
+  aev.source_device=(coax_string){"",0};
+  aev.revision=snapshot->revision;
+  aev.updated_at_ms=now;
+  uint8_t evbuf[1024];
+  int64_t evn=cc_acct_event_write((coax_v_t_CcAcctEvent){&aev,1},(coax_v_u8){evbuf,(int64_t)(sizeof evbuf-1)});
+  if(evn>0){
+   evbuf[evn]=0;
+   const char *av[]={p->account,(char *)evbuf,ms};
+   r=PQexecParams(db,"INSERT INTO chat.account_events_v2(account,conversation,event_type,record,created_ms) VALUES($1,'','library_updated',$2,$3::bigint)",3,NULL,av,NULL,NULL,0);
+   if(PQresultStatus(r)!=PGRES_COMMAND_OK)goto done;
+  }
+ }
+ status=200;
  done:if(r){if(status==503){const char *state=PQresultErrorField(r,PG_DIAG_SQLSTATE);api_log("chat library storage SQLSTATE=%.5s",state?state:"none");}PQclear(r);}if(tx){r=PQexec(db,status==200?"COMMIT":"ROLLBACK");if(PQresultStatus(r)!=PGRES_COMMAND_OK)status=503;PQclear(r);}
  if((status==200 || status==409) && n>0)clreply(q,status,out,(size_t)n);else api_error(q->fd,status,"Library sync unavailable.");free(write);free(snapshot);free(out);return true;
 }

@@ -78,6 +78,7 @@ gen_pids=()
 "$coax" c "$repo/pay/wallet-backup.coax" --library --header "$work/c/pay-wallet-backup.h.tmp" > "$work/c/pay-wallet-backup.c.tmp" & gen_pids+=($!)
 "$coax" c "$repo/pay/wallet-rpc.coax" --library --header "$work/c/pay-wallet-rpc.h.tmp" > "$work/c/pay-wallet-rpc.c.tmp" & gen_pids+=($!)
 "$coax" c "$repo/coax/lib/nostr/nip06.coax" --library --header "$work/c/nip06.h.tmp" > "$work/c/nip06.c.tmp" & gen_pids+=($!)
+"$coax" c "$repo/coax/web/api/account-chat-cloud-wire.coax" --run-steps 250000000 --library --header "$work/c/cloud-chat-wire.h.tmp" > "$work/c/cloud-chat-wire.c.tmp" & gen_pids+=($!)
 for p in "${gen_pids[@]}"; do wait "$p"; done
 update_if_changed "$work/c/gallery.h.tmp" "$work/c/gallery.h"
 update_if_changed "$work/c/gallery.c.tmp" "$work/c/gallery.c"
@@ -95,6 +96,8 @@ update_if_changed "$work/c/pay-wallet-rpc.h.tmp" "$work/c/pay-wallet-rpc.h"
 update_if_changed "$work/c/pay-wallet-rpc.c.tmp" "$work/c/pay-wallet-rpc.c"
 update_if_changed "$work/c/nip06.h.tmp" "$work/c/nip06.h"
 update_if_changed "$work/c/nip06.c.tmp" "$work/c/nip06.c"
+update_if_changed "$work/c/cloud-chat-wire.h.tmp" "$work/c/cloud-chat-wire.h"
+update_if_changed "$work/c/cloud-chat-wire.c.tmp" "$work/c/cloud-chat-wire.c"
 if [[ ! -f "$work/c/desktop-core-unit.c" ]] || ! cmp -s "$here/desktop-core-unit.c" "$work/c/desktop-core-unit.c"; then
   cp "$here/desktop-core-unit.c" "$work/c/desktop-core-unit.c"
 fi
@@ -131,6 +134,9 @@ fi
 if obj_stale "$work/c/nip06-all.o" "$work/c/nip06.c" "$work/c/nip06.h"; then
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/nip06.c" -o "$work/c/nip06-all.o" & cc_pids+=($!)
 fi
+if obj_stale "$work/c/cloud-chat-wire-all.o" "$work/c/cloud-chat-wire.c" "$work/c/cloud-chat-wire.h"; then
+  /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/cloud-chat-wire.c" -o "$work/c/cloud-chat-wire-all.o" & cc_pids+=($!)
+fi
 dc_platform_hdrs=("$repo/coax/platform"/*.h)
 for _dc_f in process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c; do
   if obj_stale "$work/c/$_dc_f.o" "$repo/coax/platform/$_dc_f" "${dc_platform_hdrs[@]}"; then
@@ -157,6 +163,9 @@ fi
 if obj_stale "$work/c/nip06.o" "$work/c/nip06-all.o"; then
   ld -r "$work/c/nip06-all.o" -exported_symbol '_nip06_*' -o "$work/c/nip06.o"
 fi
+if obj_stale "$work/c/cloud-chat-wire.o" "$work/c/cloud-chat-wire-all.o"; then
+  ld -r "$work/c/cloud-chat-wire-all.o" -exported_symbol '_cc_*' -o "$work/c/cloud-chat-wire.o"
+fi
 
 spark_sdk="$("$repo/apps/shared/host/apple/spark-sdk.sh")"
 mkdir -p "$stage_app/Contents/Frameworks"
@@ -167,6 +176,7 @@ c_objs=(
   "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" "$work/c/desktop-core.o"
   "$work/c/lab-sign.o"
   "$work/c/pay-wallet.o" "$work/c/pay-wallet-backup.o" "$work/c/pay-wallet-rpc.o" "$work/c/nip06.o"
+  "$work/c/cloud-chat-wire.o"
 )
 link_flags=(
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO
@@ -177,7 +187,7 @@ link_flags=(
   -framework breez_sdk_sparkFFI -Xlinker -rpath -Xlinker @executable_path/../Frameworks
 )
 core_swift=(
-  "$here/Activation.swift" "$here/AntigravityProvider.swift" "$here/AppDelegate.swift" "$here/DaemonClient.swift"
+  "$here/Activation.swift" "$here/AntigravityProvider.swift" "$here/AppDelegate.swift" "$here/CloudChatSync.swift" "$here/DaemonClient.swift"
   "$here/DefaultsMigration.swift" "$here/DesktopCore.swift" "$here/LocalModels.swift"
   "$here/Notifications.swift" "$here/Store.swift" "$here/Tailnet.swift" "$repo/apps/shared/native/AppTailnet.swift" "$here/Updater.swift"
   "$here/Window.swift" "$here/Window+Attach.swift" "$here/Window+Chats.swift"

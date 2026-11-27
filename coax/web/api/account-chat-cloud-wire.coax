@@ -1,0 +1,1311 @@
+// Unified cloud chat v2 wire codecs and route matching (#14093).
+// Shared #authority boundary for Desktop oa-worker, oa-api Postgres, Web, and Mobile.
+// Enforces compute/cost provenance (compute == "local" => cost_msat == 0 strictly),
+// rich agent events (thinking, tool calls, diffs, attachments, approvals/steers, usage),
+// idempotent write-through sync envelopes, sidebar metadata, and account SSE events.
+// coax test coax/web/api/account-chat-cloud-wire.coax --library
+#load "account-chat-turn-record.coax";
+#authority;
+
+CC_EVENT_SCHEMA       :: "openagents.chat.event.v2";
+CC_SYNC_SCHEMA        :: "openagents.chat.sync.v2";
+CC_SYNC_REPLY_SCHEMA  :: "openagents.chat.sync-reply.v2";
+CC_META_SCHEMA        :: "openagents.chat.meta.v2";
+CC_ACCT_EVENT_SCHEMA  :: "openagents.chat.account-event.v2";
+CC_CONV_LIST_SCHEMA   :: "openagents.chat.conversations.v2";
+CC_CONV_DETAIL_SCHEMA :: "openagents.chat.conversation.v2";
+
+CC_EV_STARTED        :: 1;
+CC_EV_USER_MESSAGE   :: 2;
+CC_EV_TEXT_DELTA     :: 3;
+CC_EV_THINKING_DELTA :: 4;
+CC_EV_TOOL_CALL      :: 5;
+CC_EV_TOOL_PROGRESS  :: 6;
+CC_EV_TOOL_RESULT    :: 7;
+CC_EV_APPROVAL       :: 8;
+CC_EV_USAGE          :: 9;
+CC_EV_COMPLETED      :: 10;
+CC_EV_FAILED         :: 11;
+CC_EV_CANCELLED      :: 12;
+CC_EV_UNKNOWN        :: 13;
+
+CC_RT_NONE               :: 0;
+CC_RT_METHOD_NOT_ALLOWED :: -1;
+CC_RT_ACCT_STREAM        :: 1;
+CC_RT_CONV_LIST          :: 2;
+CC_RT_CONV_GET           :: 3;
+CC_RT_CONV_STREAM        :: 4;
+CC_RT_SYNC               :: 5;
+CC_RT_CONV_EVENTS        :: 6;
+CC_RT_CONV_META          :: 7;
+
+CC_TIME_MAX  :: 9007199254740991;
+CC_MAX_EVENTS :: 32;
+
+CcEvent :: struct {
+  conversation: string;
+  turn: string;
+  sequence: int;
+  kind: int;
+  state: int;
+  text: string;
+  tool_id: string;
+  tool_name: string;
+  tool_args: string;
+  diff: string;
+  failed: bool;
+  approval_status: string;
+  attachments: string;
+  compute: string;
+  model: string;
+  cost_msat: int;
+  source_device: string;
+  workspace: string;
+  has_usage: bool;
+  usage: CtUsage;
+  stop_reason: string;
+  created_at_ms: int;
+}
+
+CcSyncReq :: struct {
+  operation: string;
+  conversation: string;
+  turn: string;
+  title: string;
+  has_pinned: bool;
+  pinned: bool;
+  has_archived: bool;
+  archived: bool;
+  compute: string;
+  model: string;
+  cost_msat: int;
+  source_device: string;
+  workspace: string;
+  user_text: string;
+  attachments: string;
+  state: int;
+  output: string;
+  stop_reason: string;
+  error: string;
+  has_usage: bool;
+  usage: CtUsage;
+  event_count: int;
+  event_starts: [32] int;
+  event_ends: [32] int;
+}
+
+CcMetaReq :: struct {
+  operation: string;
+  has_title: bool;
+  title: string;
+  has_pinned: bool;
+  pinned: bool;
+  has_archived: bool;
+  archived: bool;
+}
+
+CcAcctEvent :: struct {
+  conversation: string;
+  turn: string;
+  event_type: string;
+  title: string;
+  compute: string;
+  model: string;
+  cost_msat: int;
+  pinned: bool;
+  archived: bool;
+  source_device: string;
+  revision: int;
+  updated_at_ms: int;
+}
+
+CcConvSummary :: struct {
+  id: string;
+  title: string;
+  revision: int;
+  pinned: bool;
+  archived: bool;
+  active_turn: string;
+  compute: string;
+  model: string;
+  cost_msat: int;
+  source_device: string;
+  workspace: string;
+  created_at_ms: int;
+  updated_at_ms: int;
+}
+
+CcTurnSummary :: struct {
+  id: string;
+  ordinal: int;
+  state: int;
+  compute: string;
+  model: string;
+  cost_msat: int;
+  source_device: string;
+  workspace: string;
+  user_text: string;
+  output: string;
+  attachments: string;
+  stop_reason: string;
+  error: string;
+  has_usage: bool;
+  usage: CtUsage;
+  sequence: int;
+  created_at_ms: int;
+  updated_at_ms: int;
+}
+
+cc_compute_valid :: (compute: string, cost_msat: int) -> bool #export_c #effects(all) {
+  if compute == "local" { return cost_msat == 0; }
+  if compute == "cloud" { return cost_msat >= 0 && cost_msat <= CC_TIME_MAX; }
+  return false;
+}
+
+cc_opt_compute_valid :: (compute: string, cost_msat: int) -> bool #effects(all) {
+  if compute.count == 0 { return cost_msat == 0; }
+  return cc_compute_valid(compute, cost_msat);
+}
+
+cc_event_kind_name :: (kind: int) -> string #export_c #effects(all) {
+  if kind == CC_EV_STARTED { return "started"; }
+  if kind == CC_EV_USER_MESSAGE { return "user_message"; }
+  if kind == CC_EV_TEXT_DELTA { return "text_delta"; }
+  if kind == CC_EV_THINKING_DELTA { return "thinking_delta"; }
+  if kind == CC_EV_TOOL_CALL { return "tool_call"; }
+  if kind == CC_EV_TOOL_PROGRESS { return "tool_progress"; }
+  if kind == CC_EV_TOOL_RESULT { return "tool_result"; }
+  if kind == CC_EV_APPROVAL { return "approval"; }
+  if kind == CC_EV_USAGE { return "usage"; }
+  if kind == CC_EV_COMPLETED { return "completed"; }
+  if kind == CC_EV_FAILED { return "failed"; }
+  if kind == CC_EV_CANCELLED { return "cancelled"; }
+  if kind == CC_EV_UNKNOWN { return "unknown"; }
+  return "";
+}
+
+cc_event_kind_of :: (name: string) -> int #export_c #effects(all) {
+  for k: CC_EV_STARTED..<CC_EV_UNKNOWN + 1 {
+    if cc_event_kind_name(k) == name { return k; }
+  }
+  return 0;
+}
+
+cc_approval_ok :: (status: string) -> bool #effects(all) {
+  return status.count == 0 || status == "requested" || status == "approved" || status == "denied" || status == "steered";
+}
+
+cc_acct_type_ok :: (kind: string) -> bool #effects(all) {
+  return kind == "conversation_created" || kind == "conversation_updated" || kind == "turn_started" || kind == "turn_completed" || kind == "turn_failed" || kind == "turn_cancelled" || kind == "library_updated";
+}
+
+cc_usage_ok :: (u: CtUsage) -> bool #effects(all) {
+  for n: [5] int.[u.input, u.output, u.cache_read, u.cache_write, u.reasoning] {
+    if n < -1 || n > CT_SEQUENCE_MAX { return false; }
+  }
+  return true;
+}
+
+cc_text_ok :: (text: string, maximum: int) -> bool #effects(all) {
+  if text.count == 0 { return true; }
+  return ct_valid_text(text, maximum);
+}
+
+cc_attachments_ok :: (raw: string) -> bool #export_c #effects(all) {
+  if raw.count == 0 { return true; }
+  if !ct_valid_text(raw, 65536) { return false; }
+  d: [1] Jv;
+  nodes: [512] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  if jv_kind(v, 0) != JV_ARRAY { return false; }
+  n := jv_len(v, 0);
+  if n > 16 { return false; }
+  for i: 0..<n {
+    if jv_kind(v, jv_at(v, 0, i)) != JV_OBJECT { return false; }
+  }
+  return true;
+}
+
+cc_read_str :: (v: Jv, at: int, arena: [] u8, pos: [] int, ok: [] bool) -> string #effects(all) {
+  if !ok[0] { return ""; }
+  if jv_kind(v, at) != JV_STRING { ok[0] = false; return ""; }
+  n := js_string(v, at, arena[pos[0]..<arena.count]);
+  if n < 0 { ok[0] = false; return ""; }
+  start := pos[0];
+  pos[0] += n;
+  return cast(string) arena[start..<start + n];
+}
+
+cc_read_bool :: (v: Jv, at: int, ok: [] bool) -> bool #effects(all) {
+  k := jv_kind(v, at);
+  if k == JV_TRUE { return true; }
+  if k != JV_FALSE { ok[0] = false; }
+  return false;
+}
+
+cc_event_valid :: (e: [] CcEvent) -> bool #export_c #effects(all) {
+  x := e[0];
+  if !ct_id(x.conversation, "cnv_", 32) || !ct_id(x.turn, "trn_", 32) { return false; }
+  if x.sequence < 1 || x.sequence > CT_SEQUENCE_MAX { return false; }
+  if x.kind < CC_EV_STARTED || x.kind > CC_EV_UNKNOWN { return false; }
+  if x.state < CT_QUEUED || x.state > CT_UNKNOWN { return false; }
+  if !cc_text_ok(x.text, 16384) || !cc_text_ok(x.tool_id, 128) || !cc_text_ok(x.tool_name, 128) { return false; }
+  if !cc_text_ok(x.tool_args, 16384) || !cc_text_ok(x.diff, 32768) { return false; }
+  if !cc_approval_ok(x.approval_status) || !cc_attachments_ok(x.attachments) { return false; }
+  if !cc_opt_compute_valid(x.compute, x.cost_msat) { return false; }
+  if !cc_text_ok(x.model, 160) || !cc_text_ok(x.source_device, 80) || !cc_text_ok(x.workspace, 512) || !cc_text_ok(x.stop_reason, 80) { return false; }
+  if x.has_usage && !cc_usage_ok(x.usage) { return false; }
+  if !ctr_time(x.created_at_ms) { return false; }
+  if x.kind == CC_EV_TOOL_CALL || x.kind == CC_EV_TOOL_PROGRESS || x.kind == CC_EV_TOOL_RESULT {
+    if x.tool_name.count == 0 { return false; }
+  }
+  if x.kind == CC_EV_APPROVAL && x.approval_status.count == 0 { return false; }
+  return true;
+}
+
+cc_event_write :: (e: [] CcEvent, out: [] u8) -> int #export_c #effects(all) {
+  if !cc_event_valid(e) { return -1; }
+  x := e[0];
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], CC_EVENT_SCHEMA);
+  jo_key(o[..], "conversation_id"); jo_str(o[..], x.conversation);
+  jo_key(o[..], "turn_id"); jo_str(o[..], x.turn);
+  jo_key(o[..], "sequence"); jo_int(o[..], x.sequence);
+  jo_key(o[..], "type"); jo_str(o[..], cc_event_kind_name(x.kind));
+  jo_key(o[..], "state"); jo_str(o[..], ct_state_name(x.state));
+  jo_key(o[..], "text"); jo_str(o[..], x.text);
+  jo_key(o[..], "tool_id"); jo_str(o[..], x.tool_id);
+  jo_key(o[..], "tool_name"); jo_str(o[..], x.tool_name);
+  jo_key(o[..], "tool_args"); jo_str(o[..], x.tool_args);
+  jo_key(o[..], "diff"); jo_str(o[..], x.diff);
+  jo_key(o[..], "failed"); jo_bool(o[..], x.failed);
+  jo_key(o[..], "approval_status"); jo_str(o[..], x.approval_status);
+  jo_key(o[..], "attachments");
+  if x.attachments.count == 0 { jo_raw(o[..], "[]"); } else { jo_raw(o[..], x.attachments); }
+  jo_key(o[..], "compute"); jo_str(o[..], x.compute);
+  jo_key(o[..], "model"); jo_str(o[..], x.model);
+  jo_key(o[..], "cost_msat"); jo_int(o[..], x.cost_msat);
+  jo_key(o[..], "source_device"); jo_str(o[..], x.source_device);
+  jo_key(o[..], "workspace"); jo_str(o[..], x.workspace);
+  jo_key(o[..], "usage");
+  if x.has_usage { ct_usage_at(o[..], x.usage); } else { jo_null(o[..]); }
+  jo_key(o[..], "stop_reason"); jo_str(o[..], x.stop_reason);
+  jo_key(o[..], "created_at_ms"); jo_int(o[..], x.created_at_ms);
+  jo_end(o[..]);
+  return ct_len(o[..]);
+}
+
+cc_event_read :: (raw: string, out: [] CcEvent, arena: [] u8) -> bool #export_c #effects(all) {
+  if raw.count > 131072 { return false; }
+  d: [1] Jv;
+  nodes: [512] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  keys := [22] string.[
+    "schema", "conversation_id", "turn_id", "sequence", "type", "state",
+    "text", "tool_id", "tool_name", "tool_args", "diff", "failed",
+    "approval_status", "attachments", "compute", "model", "cost_msat",
+    "source_device", "workspace", "usage", "stop_reason", "created_at_ms"
+  ];
+  if !js_fields(v, 0, keys[..]) || jv_len(v, 0) != 22 || jv_raw(v, jv_get(v, 0, "schema")) != CC_EVENT_SCHEMA { return false; }
+  pos := [1] int.[0];
+  ok := [1] bool.[true];
+  next: [1] CcEvent;
+  next[0].conversation = cc_read_str(v, jv_get(v, 0, "conversation_id"), arena, pos[..], ok[..]);
+  next[0].turn = cc_read_str(v, jv_get(v, 0, "turn_id"), arena, pos[..], ok[..]);
+  next[0].sequence = js_number(v, jv_get(v, 0, "sequence"));
+  next[0].kind = cc_event_kind_of(jv_raw(v, jv_get(v, 0, "type")));
+  next[0].state = ct_state_of(jv_raw(v, jv_get(v, 0, "state")));
+  next[0].text = cc_read_str(v, jv_get(v, 0, "text"), arena, pos[..], ok[..]);
+  next[0].tool_id = cc_read_str(v, jv_get(v, 0, "tool_id"), arena, pos[..], ok[..]);
+  next[0].tool_name = cc_read_str(v, jv_get(v, 0, "tool_name"), arena, pos[..], ok[..]);
+  next[0].tool_args = cc_read_str(v, jv_get(v, 0, "tool_args"), arena, pos[..], ok[..]);
+  next[0].diff = cc_read_str(v, jv_get(v, 0, "diff"), arena, pos[..], ok[..]);
+  next[0].failed = cc_read_bool(v, jv_get(v, 0, "failed"), ok[..]);
+  next[0].approval_status = cc_read_str(v, jv_get(v, 0, "approval_status"), arena, pos[..], ok[..]);
+  att := jv_get(v, 0, "attachments");
+  if jv_kind(v, att) != JV_ARRAY { return false; }
+  if jv_len(v, att) > 0 { next[0].attachments = jv_raw(v, att); }
+  next[0].compute = cc_read_str(v, jv_get(v, 0, "compute"), arena, pos[..], ok[..]);
+  next[0].model = cc_read_str(v, jv_get(v, 0, "model"), arena, pos[..], ok[..]);
+  next[0].cost_msat = js_number(v, jv_get(v, 0, "cost_msat"));
+  next[0].source_device = cc_read_str(v, jv_get(v, 0, "source_device"), arena, pos[..], ok[..]);
+  next[0].workspace = cc_read_str(v, jv_get(v, 0, "workspace"), arena, pos[..], ok[..]);
+  uat := jv_get(v, 0, "usage");
+  if jv_kind(v, uat) != JV_NULL {
+    u: [1] CtUsage;
+    if !ct_usage_read(v, uat, u[..]) { return false; }
+    next[0].has_usage = true;
+    next[0].usage = u[0];
+  }
+  next[0].stop_reason = cc_read_str(v, jv_get(v, 0, "stop_reason"), arena, pos[..], ok[..]);
+  next[0].created_at_ms = js_number(v, jv_get(v, 0, "created_at_ms"));
+  if !ok[0] || !cc_event_valid(next[..]) { return false; }
+  out[0] = next[0];
+  return true;
+}
+
+cc_sync_valid :: (r: [] CcSyncReq) -> bool #effects(all) {
+  x := r[0];
+  if x.operation.count < 1 || !ct_valid_text(x.operation, 80) { return false; }
+  if x.conversation.count > 0 && !ct_id(x.conversation, "cnv_", 32) { return false; }
+  if x.turn.count > 0 && !ct_id(x.turn, "trn_", 32) { return false; }
+  if !cc_text_ok(x.title, 160) || !cc_compute_valid(x.compute, x.cost_msat) { return false; }
+  if x.model.count < 1 || !ct_valid_text(x.model, 160) { return false; }
+  if !cc_text_ok(x.source_device, 80) || !cc_text_ok(x.workspace, 512) { return false; }
+  if !cc_text_ok(x.user_text, 32768) || !cc_attachments_ok(x.attachments) { return false; }
+  if x.state != 0 && (x.state < CT_QUEUED || x.state > CT_UNKNOWN) { return false; }
+  if !cc_text_ok(x.output, 131072) || !cc_text_ok(x.stop_reason, 80) || !cc_text_ok(x.error, 512) { return false; } // mutant: equivalent (js_utf8's internal 131072-byte buffer already enforces the exact output ceiling)
+  if x.has_usage && !cc_usage_ok(x.usage) { return false; }
+  return true;
+}
+
+cc_sync_write :: (r: [] CcSyncReq, events: [] string, out: [] u8) -> int #export_c #effects(all) {
+  if !cc_sync_valid(r) || events.count > CC_MAX_EVENTS { return -1; }
+  x := r[0];
+  ev: [1] CcEvent;
+  ea: [66820] u8;
+  for raw: events {
+    if !cc_event_read(raw, ev[..], ea[..]) { return -1; }
+    if ev[0].conversation != x.conversation || ev[0].turn != x.turn { return -1; }
+  }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], CC_SYNC_SCHEMA);
+  jo_key(o[..], "operation_id"); jo_str(o[..], x.operation);
+  jo_key(o[..], "conversation_id"); jo_str(o[..], x.conversation);
+  jo_key(o[..], "turn_id"); jo_str(o[..], x.turn);
+  jo_key(o[..], "title"); jo_str(o[..], x.title);
+  jo_key(o[..], "pinned"); if x.has_pinned { jo_bool(o[..], x.pinned); } else { jo_null(o[..]); }
+  jo_key(o[..], "archived"); if x.has_archived { jo_bool(o[..], x.archived); } else { jo_null(o[..]); }
+  jo_key(o[..], "compute"); jo_str(o[..], x.compute);
+  jo_key(o[..], "model"); jo_str(o[..], x.model);
+  jo_key(o[..], "cost_msat"); jo_int(o[..], x.cost_msat);
+  jo_key(o[..], "source_device"); jo_str(o[..], x.source_device);
+  jo_key(o[..], "workspace"); jo_str(o[..], x.workspace);
+  jo_key(o[..], "user_text"); jo_str(o[..], x.user_text);
+  jo_key(o[..], "attachments");
+  if x.attachments.count == 0 { jo_raw(o[..], "[]"); } else { jo_raw(o[..], x.attachments); }
+  jo_key(o[..], "state"); jo_str(o[..], ct_state_name(x.state));
+  jo_key(o[..], "output"); jo_str(o[..], x.output);
+  jo_key(o[..], "stop_reason"); jo_str(o[..], x.stop_reason);
+  jo_key(o[..], "error"); jo_str(o[..], x.error);
+  jo_key(o[..], "usage");
+  if x.has_usage { ct_usage_at(o[..], x.usage); } else { jo_null(o[..]); }
+  jo_key(o[..], "events");
+  jo_arr(o[..]);
+  for raw: events { jo_raw(o[..], raw); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ct_len(o[..]);
+}
+
+cc_sync_read :: (raw: string, out: [] CcSyncReq, arena: [] u8) -> bool #export_c #effects(all) {
+  if raw.count > 524288 { return false; }
+  d: [1] Jv;
+  nodes: [2048] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  keys := [20] string.[
+    "schema", "operation_id", "conversation_id", "turn_id", "title",
+    "pinned", "archived", "compute", "model", "cost_msat", "source_device",
+    "workspace", "user_text", "attachments", "state", "output",
+    "stop_reason", "error", "usage", "events"
+  ];
+  if !js_fields(v, 0, keys[..]) || jv_len(v, 0) != 20 || jv_raw(v, jv_get(v, 0, "schema")) != CC_SYNC_SCHEMA { return false; }
+  pos := [1] int.[0];
+  ok := [1] bool.[true];
+  next: [1] CcSyncReq;
+  next[0].operation = cc_read_str(v, jv_get(v, 0, "operation_id"), arena, pos[..], ok[..]);
+  next[0].conversation = cc_read_str(v, jv_get(v, 0, "conversation_id"), arena, pos[..], ok[..]);
+  next[0].turn = cc_read_str(v, jv_get(v, 0, "turn_id"), arena, pos[..], ok[..]);
+  next[0].title = cc_read_str(v, jv_get(v, 0, "title"), arena, pos[..], ok[..]);
+  pat := jv_get(v, 0, "pinned");
+  if jv_kind(v, pat) != JV_NULL { next[0].has_pinned = true; next[0].pinned = cc_read_bool(v, pat, ok[..]); }
+  aat := jv_get(v, 0, "archived");
+  if jv_kind(v, aat) != JV_NULL { next[0].has_archived = true; next[0].archived = cc_read_bool(v, aat, ok[..]); }
+  next[0].compute = cc_read_str(v, jv_get(v, 0, "compute"), arena, pos[..], ok[..]);
+  next[0].model = cc_read_str(v, jv_get(v, 0, "model"), arena, pos[..], ok[..]);
+  next[0].cost_msat = js_number(v, jv_get(v, 0, "cost_msat"));
+  next[0].source_device = cc_read_str(v, jv_get(v, 0, "source_device"), arena, pos[..], ok[..]);
+  next[0].workspace = cc_read_str(v, jv_get(v, 0, "workspace"), arena, pos[..], ok[..]);
+  next[0].user_text = cc_read_str(v, jv_get(v, 0, "user_text"), arena, pos[..], ok[..]);
+  att := jv_get(v, 0, "attachments");
+  if jv_kind(v, att) != JV_ARRAY { return false; }
+  if jv_len(v, att) > 0 { next[0].attachments = jv_raw(v, att); }
+  st_node := jv_get(v, 0, "state");
+  if jv_kind(v, st_node) != JV_STRING { return false; }
+  st_raw := jv_raw(v, st_node);
+  if st_raw.count > 0 {
+    next[0].state = ct_state_of(st_raw);
+    if next[0].state == 0 { return false; }
+  }
+  next[0].output = cc_read_str(v, jv_get(v, 0, "output"), arena, pos[..], ok[..]);
+  next[0].stop_reason = cc_read_str(v, jv_get(v, 0, "stop_reason"), arena, pos[..], ok[..]);
+  next[0].error = cc_read_str(v, jv_get(v, 0, "error"), arena, pos[..], ok[..]);
+  uat := jv_get(v, 0, "usage");
+  if jv_kind(v, uat) != JV_NULL {
+    u: [1] CtUsage;
+    if !ct_usage_read(v, uat, u[..]) { return false; }
+    next[0].has_usage = true;
+    next[0].usage = u[0];
+  }
+  if !ok[0] || !cc_sync_valid(next[..]) { return false; }
+  evs := jv_get(v, 0, "events");
+  if jv_kind(v, evs) != JV_ARRAY { return false; }
+  count := jv_len(v, evs);
+  if count > CC_MAX_EVENTS { return false; }
+  ev: [1] CcEvent;
+  ea: [66820] u8;
+  for i: 0..<count {
+    at := jv_at(v, evs, i);
+    item := jv_raw(v, at);
+    if !cc_event_read(item, ev[..], ea[..]) { return false; }
+    if ev[0].conversation != next[0].conversation || ev[0].turn != next[0].turn { return false; }
+    next[0].event_starts[i] = v.nodes[at].from;
+    next[0].event_ends[i] = v.nodes[at].to;
+  }
+  next[0].event_count = count;
+  out[0] = next[0];
+  return true;
+}
+
+cc_sync_reply_write :: (conversation: string, turn: string, revision: int, last_event_id: int, replayed: bool, out: [] u8) -> int #export_c #effects(all) {
+  if !ct_id(conversation, "cnv_", 32) || (turn.count > 0 && !ct_id(turn, "trn_", 32)) { return -1; }
+  if revision < 1 || revision > CT_SEQUENCE_MAX || last_event_id < 0 || last_event_id > CC_TIME_MAX { return -1; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], CC_SYNC_REPLY_SCHEMA);
+  jo_key(o[..], "conversation_id"); jo_str(o[..], conversation);
+  jo_key(o[..], "turn_id"); jo_str(o[..], turn);
+  jo_key(o[..], "revision"); jo_int(o[..], revision);
+  jo_key(o[..], "last_event_id"); jo_int(o[..], last_event_id);
+  jo_key(o[..], "replayed"); jo_bool(o[..], replayed);
+  jo_end(o[..]);
+  return ct_len(o[..]);
+}
+
+cc_meta_valid :: (r: [] CcMetaReq) -> bool #effects(all) {
+  x := r[0];
+  if x.operation.count < 1 || !ct_valid_text(x.operation, 80) { return false; }
+  if !x.has_title && !x.has_pinned && !x.has_archived { return false; }
+  if x.has_title && !cc_text_ok(x.title, 160) { return false; }
+  return true;
+}
+
+cc_meta_write :: (r: [] CcMetaReq, out: [] u8) -> int #export_c #effects(all) {
+  if !cc_meta_valid(r) { return -1; }
+  x := r[0];
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], CC_META_SCHEMA);
+  jo_key(o[..], "operation_id"); jo_str(o[..], x.operation);
+  jo_key(o[..], "title"); if x.has_title { jo_str(o[..], x.title); } else { jo_null(o[..]); }
+  jo_key(o[..], "pinned"); if x.has_pinned { jo_bool(o[..], x.pinned); } else { jo_null(o[..]); }
+  jo_key(o[..], "archived"); if x.has_archived { jo_bool(o[..], x.archived); } else { jo_null(o[..]); }
+  jo_end(o[..]);
+  return ct_len(o[..]);
+}
+
+cc_meta_read :: (raw: string, out: [] CcMetaReq, arena: [] u8) -> bool #export_c #effects(all) {
+  if raw.count > 4096 { return false; }
+  d: [1] Jv;
+  nodes: [16] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  keys := [5] string.["schema", "operation_id", "title", "pinned", "archived"];
+  if !js_fields(v, 0, keys[..]) || jv_len(v, 0) != 5 || jv_raw(v, jv_get(v, 0, "schema")) != CC_META_SCHEMA { return false; }
+  pos := [1] int.[0];
+  ok := [1] bool.[true];
+  next: [1] CcMetaReq;
+  next[0].operation = cc_read_str(v, jv_get(v, 0, "operation_id"), arena, pos[..], ok[..]);
+  tat := jv_get(v, 0, "title");
+  if jv_kind(v, tat) != JV_NULL { next[0].has_title = true; next[0].title = cc_read_str(v, tat, arena, pos[..], ok[..]); }
+  pat := jv_get(v, 0, "pinned");
+  if jv_kind(v, pat) != JV_NULL { next[0].has_pinned = true; next[0].pinned = cc_read_bool(v, pat, ok[..]); }
+  aat := jv_get(v, 0, "archived");
+  if jv_kind(v, aat) != JV_NULL { next[0].has_archived = true; next[0].archived = cc_read_bool(v, aat, ok[..]); }
+  if !ok[0] || !cc_meta_valid(next[..]) { return false; }
+  out[0] = next[0];
+  return true;
+}
+
+cc_acct_event_valid :: (e: [] CcAcctEvent) -> bool #effects(all) {
+  x := e[0];
+  if !cc_acct_type_ok(x.event_type) { return false; }
+  if x.event_type == "library_updated" {
+    if x.conversation.count != 0 { return false; }
+  } else {
+    if !ct_id(x.conversation, "cnv_", 32) { return false; }
+  }
+  if x.turn.count > 0 && !ct_id(x.turn, "trn_", 32) { return false; }
+  if !cc_text_ok(x.title, 160) || !cc_opt_compute_valid(x.compute, x.cost_msat) { return false; }
+  if !cc_text_ok(x.model, 160) || !cc_text_ok(x.source_device, 80) { return false; }
+  if x.revision < 0 || x.revision > CT_SEQUENCE_MAX || !ctr_time(x.updated_at_ms) { return false; }
+  return true;
+}
+
+cc_acct_event_write :: (e: [] CcAcctEvent, out: [] u8) -> int #export_c #effects(all) {
+  if !cc_acct_event_valid(e) { return -1; }
+  x := e[0];
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], CC_ACCT_EVENT_SCHEMA);
+  jo_key(o[..], "event_type"); jo_str(o[..], x.event_type);
+  jo_key(o[..], "conversation_id"); jo_str(o[..], x.conversation);
+  jo_key(o[..], "turn_id"); jo_str(o[..], x.turn);
+  jo_key(o[..], "title"); jo_str(o[..], x.title);
+  jo_key(o[..], "compute"); jo_str(o[..], x.compute);
+  jo_key(o[..], "model"); jo_str(o[..], x.model);
+  jo_key(o[..], "cost_msat"); jo_int(o[..], x.cost_msat);
+  jo_key(o[..], "pinned"); jo_bool(o[..], x.pinned);
+  jo_key(o[..], "archived"); jo_bool(o[..], x.archived);
+  jo_key(o[..], "source_device"); jo_str(o[..], x.source_device);
+  jo_key(o[..], "revision"); jo_int(o[..], x.revision);
+  jo_key(o[..], "updated_at_ms"); jo_int(o[..], x.updated_at_ms);
+  jo_end(o[..]);
+  return ct_len(o[..]);
+}
+
+cc_acct_event_read :: (raw: string, out: [] CcAcctEvent, arena: [] u8) -> bool #export_c #effects(all) {
+  if raw.count > 4096 { return false; }
+  d: [1] Jv;
+  nodes: [32] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  v := d[0];
+  keys := [13] string.[
+    "schema", "event_type", "conversation_id", "turn_id", "title", "compute",
+    "model", "cost_msat", "pinned", "archived", "source_device", "revision", "updated_at_ms"
+  ];
+  if !js_fields(v, 0, keys[..]) || jv_len(v, 0) != 13 || jv_raw(v, jv_get(v, 0, "schema")) != CC_ACCT_EVENT_SCHEMA { return false; }
+  pos := [1] int.[0];
+  ok := [1] bool.[true];
+  next: [1] CcAcctEvent;
+  next[0].event_type = cc_read_str(v, jv_get(v, 0, "event_type"), arena, pos[..], ok[..]);
+  next[0].conversation = cc_read_str(v, jv_get(v, 0, "conversation_id"), arena, pos[..], ok[..]);
+  next[0].turn = cc_read_str(v, jv_get(v, 0, "turn_id"), arena, pos[..], ok[..]);
+  next[0].title = cc_read_str(v, jv_get(v, 0, "title"), arena, pos[..], ok[..]);
+  next[0].compute = cc_read_str(v, jv_get(v, 0, "compute"), arena, pos[..], ok[..]);
+  next[0].model = cc_read_str(v, jv_get(v, 0, "model"), arena, pos[..], ok[..]);
+  next[0].cost_msat = js_number(v, jv_get(v, 0, "cost_msat"));
+  next[0].pinned = cc_read_bool(v, jv_get(v, 0, "pinned"), ok[..]);
+  next[0].archived = cc_read_bool(v, jv_get(v, 0, "archived"), ok[..]);
+  next[0].source_device = cc_read_str(v, jv_get(v, 0, "source_device"), arena, pos[..], ok[..]);
+  next[0].revision = js_number(v, jv_get(v, 0, "revision"));
+  next[0].updated_at_ms = js_number(v, jv_get(v, 0, "updated_at_ms"));
+  if !ok[0] || !cc_acct_event_valid(next[..]) { return false; }
+  out[0] = next[0];
+  return true;
+}
+
+cc_conv_summary_valid :: (c: [] CcConvSummary) -> bool #effects(all) {
+  x := c[0];
+  if !ct_id(x.id, "cnv_", 32) || !cc_text_ok(x.title, 160) { return false; }
+  if x.revision < 1 || x.revision > CT_SEQUENCE_MAX { return false; }
+  if x.active_turn.count > 0 && !ct_id(x.active_turn, "trn_", 32) { return false; }
+  if !cc_opt_compute_valid(x.compute, x.cost_msat) { return false; }
+  if !cc_text_ok(x.model, 160) || !cc_text_ok(x.source_device, 80) || !cc_text_ok(x.workspace, 512) { return false; }
+  if !ctr_time(x.created_at_ms) || !ctr_time(x.updated_at_ms) || x.updated_at_ms < x.created_at_ms { return false; }
+  return true;
+}
+
+cc_conv_summary_write :: (c: [] CcConvSummary, out: [] u8) -> int #export_c #effects(all) {
+  if !cc_conv_summary_valid(c) { return -1; }
+  x := c[0];
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "id"); jo_str(o[..], x.id);
+  jo_key(o[..], "title"); jo_str(o[..], x.title);
+  jo_key(o[..], "revision"); jo_int(o[..], x.revision);
+  jo_key(o[..], "pinned"); jo_bool(o[..], x.pinned);
+  jo_key(o[..], "archived"); jo_bool(o[..], x.archived);
+  jo_key(o[..], "active_turn_id"); ct_optional_text(o[..], x.active_turn);
+  jo_key(o[..], "compute"); jo_str(o[..], x.compute);
+  jo_key(o[..], "model"); jo_str(o[..], x.model);
+  jo_key(o[..], "cost_msat"); jo_int(o[..], x.cost_msat);
+  jo_key(o[..], "source_device"); jo_str(o[..], x.source_device);
+  jo_key(o[..], "workspace"); jo_str(o[..], x.workspace);
+  jo_key(o[..], "created_at_ms"); jo_int(o[..], x.created_at_ms);
+  jo_key(o[..], "updated_at_ms"); jo_int(o[..], x.updated_at_ms);
+  jo_end(o[..]);
+  return ct_len(o[..]);
+}
+
+cc_conv_list_write :: (items: [] string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], CC_CONV_LIST_SCHEMA);
+  jo_key(o[..], "conversations");
+  jo_arr(o[..]);
+  for item: items { jo_raw(o[..], item); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ct_len(o[..]);
+}
+
+cc_turn_summary_write :: (t: [] CcTurnSummary, out: [] u8) -> int #export_c #effects(all) {
+  x := t[0];
+  if !ct_id(x.id, "trn_", 32) || x.ordinal < 1 || x.ordinal > CT_SEQUENCE_MAX { return -1; }
+  if x.state < CT_QUEUED || x.state > CT_UNKNOWN || !cc_compute_valid(x.compute, x.cost_msat) { return -1; }
+  if !cc_text_ok(x.model, 160) || !cc_text_ok(x.source_device, 80) || !cc_text_ok(x.workspace, 512) { return -1; }
+  if !cc_text_ok(x.user_text, 32768) || !cc_text_ok(x.output, 131072) || !cc_attachments_ok(x.attachments) { return -1; } // mutant: equivalent (js_utf8's internal 131072-byte buffer already enforces the exact output ceiling)
+  if !cc_text_ok(x.stop_reason, 80) || !cc_text_ok(x.error, 512) { return -1; }
+  if x.has_usage && !cc_usage_ok(x.usage) { return -1; }
+  if x.sequence < 0 || x.sequence > CT_SEQUENCE_MAX || !ctr_time(x.created_at_ms) || !ctr_time(x.updated_at_ms) { return -1; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "id"); jo_str(o[..], x.id);
+  jo_key(o[..], "ordinal"); jo_int(o[..], x.ordinal);
+  jo_key(o[..], "state"); jo_str(o[..], ct_state_name(x.state));
+  jo_key(o[..], "compute"); jo_str(o[..], x.compute);
+  jo_key(o[..], "model"); jo_str(o[..], x.model);
+  jo_key(o[..], "cost_msat"); jo_int(o[..], x.cost_msat);
+  jo_key(o[..], "source_device"); jo_str(o[..], x.source_device);
+  jo_key(o[..], "workspace"); jo_str(o[..], x.workspace);
+  jo_key(o[..], "user_text"); jo_str(o[..], x.user_text);
+  jo_key(o[..], "output"); jo_str(o[..], x.output);
+  jo_key(o[..], "attachments");
+  if x.attachments.count == 0 { jo_raw(o[..], "[]"); } else { jo_raw(o[..], x.attachments); }
+  jo_key(o[..], "stop_reason"); jo_str(o[..], x.stop_reason);
+  jo_key(o[..], "error"); jo_str(o[..], x.error);
+  jo_key(o[..], "usage");
+  if x.has_usage { ct_usage_at(o[..], x.usage); } else { jo_null(o[..]); }
+  jo_key(o[..], "sequence"); jo_int(o[..], x.sequence);
+  jo_key(o[..], "created_at_ms"); jo_int(o[..], x.created_at_ms);
+  jo_key(o[..], "updated_at_ms"); jo_int(o[..], x.updated_at_ms);
+  jo_end(o[..]);
+  return ct_len(o[..]);
+}
+
+cc_conv_detail_write :: (c: [] CcConvSummary, turns: [] string, events: [] string, out: [] u8) -> int #export_c #effects(all) {
+  head: [2048] u8;
+  hn := cc_conv_summary_write(c, head[..]);
+  if hn < 1 { return -1; } // mutant: equivalent (a valid summary is always a nonempty JSON object)
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], CC_CONV_DETAIL_SCHEMA);
+  jo_key(o[..], "conversation"); jo_raw(o[..], cast(string) head[0..<hn]);
+  jo_key(o[..], "turns");
+  jo_arr(o[..]);
+  for t: turns { jo_raw(o[..], t); }
+  jo_end(o[..]);
+  jo_key(o[..], "events");
+  jo_arr(o[..]);
+  for ev: events { jo_raw(o[..], ev); }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ct_len(o[..]);
+}
+
+cc_v2_route :: (method: string, path: string, id_out: [] u8) -> int #export_c #effects(all) {
+  if path == "/api/chat/v2/stream" {
+    return ifx method == "GET" then CC_RT_ACCT_STREAM else CC_RT_METHOD_NOT_ALLOWED;
+  }
+  if path == "/api/chat/v2/conversations" {
+    return ifx method == "GET" then CC_RT_CONV_LIST else CC_RT_METHOD_NOT_ALLOWED;
+  }
+  if path == "/api/chat/v2/sync" {
+    return ifx method == "POST" then CC_RT_SYNC else CC_RT_METHOD_NOT_ALLOWED;
+  }
+  prefix := "/api/chat/v2/conversations/";
+  if path.count < prefix.count + 36 || cast(string) path[0..<prefix.count] != prefix { return CC_RT_NONE; }
+  cid := cast(string) path[prefix.count..<prefix.count + 36];
+  if !ct_id(cid, "cnv_", 32) || id_out.count < 36 { return CC_RT_NONE; }
+  tail := cast(string) path[prefix.count + 36..<path.count];
+  if tail.count == 0 {
+    for i: 0..<36 { id_out[i] = cid[i]; }
+    return ifx method == "GET" then CC_RT_CONV_GET else CC_RT_METHOD_NOT_ALLOWED;
+  }
+  if tail == "/stream" {
+    for i: 0..<36 { id_out[i] = cid[i]; }
+    return ifx method == "GET" then CC_RT_CONV_STREAM else CC_RT_METHOD_NOT_ALLOWED;
+  }
+  if tail == "/events" {
+    for i: 0..<36 { id_out[i] = cid[i]; }
+    return ifx method == "POST" then CC_RT_CONV_EVENTS else CC_RT_METHOD_NOT_ALLOWED;
+  }
+  if tail == "/meta" {
+    for i: 0..<36 { id_out[i] = cid[i]; }
+    return ifx method == "POST" then CC_RT_CONV_META else CC_RT_METHOD_NOT_ALLOWED;
+  }
+  return CC_RT_NONE;
+}
+
+// ---- tests
+
+#test "compute and cost provenance enforces strictly zero cost for local models" {
+  #assert cc_compute_valid("local", 0);
+  #assert !cc_compute_valid("local", 1);
+  #assert !cc_compute_valid("local", -1);
+  #assert cc_compute_valid("cloud", 0);
+  #assert cc_compute_valid("cloud", 42500);
+  #assert cc_compute_valid("cloud", CC_TIME_MAX);
+  #assert !cc_compute_valid("cloud", -1);
+  #assert !cc_compute_valid("cloud", CC_TIME_MAX + 1);
+  #assert !cc_compute_valid("", 0);
+  #assert !cc_compute_valid("hybrid", 0);
+  #assert cc_opt_compute_valid("", 0);
+  #assert !cc_opt_compute_valid("", 1);
+  #assert cc_opt_compute_valid("local", 0);
+  #assert !cc_opt_compute_valid("local", 1);
+  #assert cc_opt_compute_valid("cloud", 99);
+  #assert cc_text_ok("", 1) && cc_text_ok("a", 1) && !cc_text_ok("\0", 1) && !cc_text_ok("ab", 1);
+}
+
+#test "event kinds, attachments, and rich CcEvent round-trip cleanly" #steps 40000000 {
+  names := [13] string.[
+    "started", "user_message", "text_delta", "thinking_delta",
+    "tool_call", "tool_progress", "tool_result", "approval",
+    "usage", "completed", "failed", "cancelled", "unknown"
+  ];
+  for name, idx: names {
+    k := idx + 1;
+    #assert cc_event_kind_name(k) == name && cc_event_kind_of(name) == k;
+  }
+  #assert cc_event_kind_name(0) == "" && cc_event_kind_name(14) == "" && cc_event_kind_of("bogus") == 0 && cc_event_kind_of("") == 0;
+
+  #assert cc_attachments_ok("") && cc_attachments_ok("[]") && cc_attachments_ok("[{\"name\":\"a.png\",\"mime\":\"image/png\"}]");
+  #assert !cc_attachments_ok("{}") && !cc_attachments_ok("[1]") && !cc_attachments_ok("not-json") && !cc_attachments_ok("[\0]");
+  too_many := "[{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}]";
+  exact_16 := "[{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}]";
+  #assert cc_attachments_ok(exact_16) && !cc_attachments_ok(too_many);
+
+  // Exact 65536 vs 65537 attachments byte ceiling
+  big: [131073] u8;
+  for i: 0..<big.count { big[i] = 'a'; }
+  att_buf: [65537] u8;
+  for i: 0..<att_buf.count { att_buf[i] = 'x'; }
+  pre := "[{\"a\":\""; suf := "\"}]";
+  for i: 0..<pre.count { att_buf[i] = pre[i]; }
+  for i: 0..<suf.count { att_buf[65536 - suf.count + i] = suf[i]; }
+  #assert cc_attachments_ok(cast(string) att_buf[0..<65536]);
+  for i: 0..<suf.count { att_buf[65536 - suf.count + i] = 'x'; }
+  for i: 0..<suf.count { att_buf[65537 - suf.count + i] = suf[i]; }
+  #assert !cc_attachments_ok(cast(string) att_buf[0..<65537]);
+
+  cid := "cnv_0123456789abcdef0123456789abcdef";
+  tid := "trn_fedcba9876543210fedcba9876543210";
+  e: [1] CcEvent;
+  e[0] = CcEvent.{
+    conversation = cid, turn = tid, sequence = CT_SEQUENCE_MAX, kind = CC_EV_TOOL_RESULT, state = CT_UNKNOWN,
+    text = "ok", tool_id = "call_1", tool_name = "apply_patch", tool_args = "{\"path\":\"a.coax\"}",
+    diff = "@@ -1 +1 @@\n-old\n+new\n", failed = true, approval_status = "approved",
+    attachments = "[{\"name\":\"shot.png\",\"mime\":\"image/png\"}]",
+    compute = "cloud", model = "google/gemini-4-neon", cost_msat = 1200,
+    source_device = "mac-desktop", workspace = "/work/openagents",
+    has_usage = true, usage = CtUsage.{input = CT_SEQUENCE_MAX, output = 40, cache_read = 10, cache_write = 0, reasoning = 5},
+    stop_reason = "end_turn", created_at_ms = 1700000000000
+  };
+  buf: [8192] u8;
+  n := cc_event_write(e[..], buf[..]);
+  #assert n > 0;
+  got: [1] CcEvent;
+  arena: [4096] u8;
+  #assert cc_event_read(cast(string) buf[0..<n], got[..], arena[..]);
+  #assert got[0].conversation == cid && got[0].turn == tid && got[0].sequence == CT_SEQUENCE_MAX;
+  #assert got[0].kind == CC_EV_TOOL_RESULT && got[0].state == CT_UNKNOWN;
+  #assert got[0].text == "ok" && got[0].tool_id == "call_1" && got[0].tool_name == "apply_patch";
+  #assert got[0].tool_args == "{\"path\":\"a.coax\"}" && got[0].diff == "@@ -1 +1 @@\n-old\n+new\n";
+  #assert got[0].failed && got[0].approval_status == "approved";
+  #assert got[0].attachments == "[{\"name\":\"shot.png\",\"mime\":\"image/png\"}]";
+  #assert got[0].compute == "cloud" && got[0].model == "google/gemini-4-neon" && got[0].cost_msat == 1200;
+  #assert got[0].source_device == "mac-desktop" && got[0].workspace == "/work/openagents";
+  #assert got[0].has_usage && got[0].usage.input == CT_SEQUENCE_MAX && got[0].usage.output == 40 && got[0].usage.reasoning == 5;
+  #assert got[0].stop_reason == "end_turn" && got[0].created_at_ms == 1700000000000;
+
+  // Local $0 event with minimum bounds (seq=1, kind=1, state=1, created=0)
+  loc: [1] CcEvent;
+  loc[0] = CcEvent.{
+    conversation = cid, turn = tid, sequence = 1, kind = CC_EV_STARTED, state = CT_QUEUED,
+    text = "reasoning", compute = "local", model = "inkling-2-mini", cost_msat = 0,
+    created_at_ms = 0
+  };
+  n2 := cc_event_write(loc[..], buf[..]);
+  #assert n2 > 0 && cc_event_read(cast(string) buf[0..<n2], got[..], arena[..]);
+  #assert got[0].kind == CC_EV_STARTED && got[0].state == CT_QUEUED && !got[0].has_usage && got[0].attachments == "" && !got[0].failed;
+  #assert got[0].compute == "local" && got[0].cost_msat == 0 && got[0].created_at_ms == 0;
+
+  // Kind=13 boundary & all approval statuses
+  e13 := [1] CcEvent.[loc[0]]; e13[0].kind = CC_EV_UNKNOWN; #assert cc_event_valid(e13[..]);
+  for st: [4] string.["requested", "approved", "denied", "steered"] {
+    ap := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid, sequence = 2, kind = CC_EV_APPROVAL, state = CT_RUNNING, approval_status = st, created_at_ms = 1}];
+    #assert cc_event_valid(ap[..]);
+  }
+  bad_ap := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid, sequence = 2, kind = CC_EV_APPROVAL, state = CT_RUNNING, approval_status = "", created_at_ms = 1}];
+  #assert !cc_event_valid(bad_ap[..]);
+
+  // Exact byte ceiling tests for CcEvent fields
+  b: [1] CcEvent;
+  b[0] = loc[0]; b[0].text = cast(string) big[0..<16384]; #assert cc_event_valid(b[..]);
+  b[0].text = cast(string) big[0..<16385]; #assert !cc_event_valid(b[..]);
+  b[0] = loc[0]; b[0].tool_id = cast(string) big[0..<128]; #assert cc_event_valid(b[..]);
+  b[0].tool_id = cast(string) big[0..<129]; #assert !cc_event_valid(b[..]);
+  b[0] = loc[0]; b[0].tool_name = cast(string) big[0..<128]; #assert cc_event_valid(b[..]);
+  b[0].tool_name = cast(string) big[0..<129]; #assert !cc_event_valid(b[..]);
+  b[0] = loc[0]; b[0].tool_args = cast(string) big[0..<16384]; #assert cc_event_valid(b[..]);
+  b[0].tool_args = cast(string) big[0..<16385]; #assert !cc_event_valid(b[..]);
+  b[0] = loc[0]; b[0].diff = cast(string) big[0..<32768]; #assert cc_event_valid(b[..]);
+  b[0].diff = cast(string) big[0..<32769]; #assert !cc_event_valid(b[..]);
+  b[0] = loc[0]; b[0].model = cast(string) big[0..<160]; #assert cc_event_valid(b[..]);
+  b[0].model = cast(string) big[0..<161]; #assert !cc_event_valid(b[..]);
+  b[0] = loc[0]; b[0].source_device = cast(string) big[0..<80]; #assert cc_event_valid(b[..]);
+  b[0].source_device = cast(string) big[0..<81]; #assert !cc_event_valid(b[..]);
+  b[0] = loc[0]; b[0].workspace = cast(string) big[0..<512]; #assert cc_event_valid(b[..]);
+  b[0].workspace = cast(string) big[0..<513]; #assert !cc_event_valid(b[..]);
+  b[0] = loc[0]; b[0].stop_reason = cast(string) big[0..<80]; #assert cc_event_valid(b[..]);
+  b[0].stop_reason = cast(string) big[0..<81]; #assert !cc_event_valid(b[..]);
+
+  // Refusals: bad ids, bad seq/kind/state, missing tool name, local with cost>0, bad usage
+  b[0] = e[0]; b[0].conversation = "bad"; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].turn = "bad"; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].sequence = 0; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].sequence = CT_SEQUENCE_MAX + 1; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].kind = 0; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].kind = 14; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].state = 0; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].state = 7; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].compute = "local"; b[0].cost_msat = 1; #assert cc_event_write(b[..], buf[..]) == -1;
+  b[0] = e[0]; b[0].tool_name = ""; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].kind = CC_EV_TOOL_CALL; b[0].tool_name = ""; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].kind = CC_EV_TOOL_PROGRESS; b[0].tool_name = ""; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].approval_status = "weird"; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].attachments = "{}"; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].usage.input = -2; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].usage.output = CT_SEQUENCE_MAX + 1; #assert !cc_event_valid(b[..]);
+  b[0] = e[0]; b[0].created_at_ms = -1; #assert !cc_event_valid(b[..]);
+
+  // Reader exact raw size ceiling (131072 vs 131073), closed-object checks, and scalar type refusals
+  pad: [131073] u8;
+  for i: 0..<pad.count { pad[i] = ' '; }
+  for i: 0..<n2 { pad[131072 - n2 + i] = buf[i]; }
+  #assert cc_event_read(cast(string) pad[0..<131072], got[..], arena[..]);
+  for i: 0..<pad.count { pad[i] = ' '; }
+  for i: 0..<n2 { pad[131073 - n2 + i] = buf[i]; }
+  #assert !cc_event_read(cast(string) pad[0..<131073], got[..], arena[..]);
+
+  #assert !cc_event_read("{", got[..], arena[..]);
+  #assert !cc_event_read(cast(string) buf[0..<n], got[..], arena[0..<10]);
+  // Missing key (same len 22), extra key (len 23), wrong schema (len 22), escaped key, domain-invalid, exact arena fit & optional-field arena overflow
+  base_ev := "{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0}";
+  #assert cc_event_read(base_ev, got[..], arena[0..<72]);
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":\"hello\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0}", got[..], arena[0..<74]);
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":0,\"type\":\"started\",\"state\":\"queued\",\"text\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0}", got[..], arena[..]);
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"\\u0074ext\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0}", got[..], arena[..]);
+  // wrong schema
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v1\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0}", got[..], arena[..]);
+  // extra key (23 keys)
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0,\"extra\":1}", got[..], arena[..]);
+  // missing key swapped for unknown key (still 22 keys)
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"bogus\":0}", got[..], arena[..]);
+  // wrong scalar types on fields where default empty/false/0 would otherwise be valid!
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":123,\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0}", got[..], arena[..]);
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":1,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0}", got[..], arena[..]);
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":{},\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0}", got[..], arena[..]);
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":\"0\",\"source_device\":\"\",\"workspace\":\"\",\"usage\":null,\"stop_reason\":\"\",\"created_at_ms\":0}", got[..], arena[..]);
+  #assert !cc_event_read("{\"schema\":\"openagents.chat.event.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"sequence\":1,\"type\":\"started\",\"state\":\"queued\",\"text\":\"\",\"tool_id\":\"\",\"tool_name\":\"\",\"tool_args\":\"\",\"diff\":\"\",\"failed\":false,\"approval_status\":\"\",\"attachments\":[],\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"usage\":{},\"stop_reason\":\"\",\"created_at_ms\":0}", got[..], arena[..]);
+}
+
+#test "sync, meta, account events, sidebar summaries, and v2 route matching" #steps 80000000 {
+  cid := "cnv_0123456789abcdef0123456789abcdef";
+  tid := "trn_fedcba9876543210fedcba9876543210";
+  cid2 := "cnv_11111111111111111111111111111111";
+  tid2 := "trn_22222222222222222222222222222222";
+  big: [131073] u8;
+  for i: 0..<big.count { big[i] = 'a'; }
+  ebuf: [4096] u8;
+  ev := [1] CcEvent.[CcEvent.{
+    conversation = cid, turn = tid, sequence = 1, kind = CC_EV_TEXT_DELTA, state = CT_RUNNING,
+    text = "hi", compute = "local", model = "inkling-2-mini", cost_msat = 0, created_at_ms = 10
+  }];
+  en := cc_event_write(ev[..], ebuf[..]);
+  #assert en > 0;
+  ev_str := cast(string) ebuf[0..<en];
+
+  req: [1] CcSyncReq;
+  req[0] = CcSyncReq.{
+    operation = "op_sync_1", conversation = cid, turn = tid, title = "Local Chat",
+    has_pinned = true, pinned = true, has_archived = true, archived = true,
+    compute = "cloud", model = "google/gemini-4-neon", cost_msat = 75,
+    source_device = "mac", workspace = "/repo", user_text = "hello",
+    attachments = "[{\"name\":\"f.txt\"}]", state = CT_UNKNOWN, output = "hi",
+    stop_reason = "end_turn", error = "minor",
+    has_usage = true, usage = CtUsage.{input = 5, output = 2},
+  };
+  sbuf: [32768] u8;
+  evs := [1] string.[ev_str];
+  sn := cc_sync_write(req[..], evs[..], sbuf[..]);
+  #assert sn > 0;
+  parsed: [1] CcSyncReq;
+  arena: [8192] u8;
+  #assert cc_sync_read(cast(string) sbuf[0..<sn], parsed[..], arena[..]);
+  #assert parsed[0].operation == "op_sync_1" && parsed[0].conversation == cid && parsed[0].turn == tid;
+  #assert parsed[0].title == "Local Chat" && parsed[0].has_pinned && parsed[0].pinned && parsed[0].has_archived && parsed[0].archived;
+  #assert parsed[0].compute == "cloud" && parsed[0].model == "google/gemini-4-neon" && parsed[0].cost_msat == 75;
+  #assert parsed[0].source_device == "mac" && parsed[0].workspace == "/repo" && parsed[0].user_text == "hello";
+  #assert parsed[0].attachments == "[{\"name\":\"f.txt\"}]" && parsed[0].state == CT_UNKNOWN && parsed[0].output == "hi";
+  #assert parsed[0].stop_reason == "end_turn" && parsed[0].error == "minor" && parsed[0].event_count == 1;
+  #assert parsed[0].has_usage && parsed[0].usage.input == 5 && parsed[0].usage.output == 2;
+  #assert cast(string) sbuf[parsed[0].event_starts[0]..<parsed[0].event_ends[0]] == ev_str;
+
+  // 1-byte operation/model/state=1, empty conv/turn, null pinned/archived/usage, empty state/attachments/events
+  req2 := [1] CcSyncReq.[CcSyncReq.{
+    operation = "x", title = "New", compute = "local", model = "m", cost_msat = 0, state = CT_QUEUED
+  }];
+  empty_evs := evs[0..<0];
+  sn2 := cc_sync_write(req2[..], empty_evs, sbuf[..]);
+  #assert sn2 > 0 && cc_sync_read(cast(string) sbuf[0..<sn2], parsed[..], arena[..]);
+  #assert parsed[0].operation == "x" && parsed[0].model == "m" && parsed[0].state == CT_QUEUED && parsed[0].attachments == "";
+
+  req3 := [1] CcSyncReq.[CcSyncReq.{
+    operation = "y", compute = "cloud", model = "m", cost_msat = 0, state = 0
+  }];
+  sn3 := cc_sync_write(req3[..], empty_evs, sbuf[..]);
+  #assert sn3 > 0 && cc_sync_read(cast(string) sbuf[0..<sn3], parsed[..], arena[..]);
+  #assert parsed[0].conversation == "" && parsed[0].turn == "" && !parsed[0].has_pinned && !parsed[0].has_archived && !parsed[0].has_usage && parsed[0].state == 0 && parsed[0].event_count == 0;
+
+  // Exact 32 events valid vs 33 events invalid (both writer and reader)
+  evs33: [33] string;
+  for i: 0..<33 { evs33[i] = ev_str; }
+  sn32 := cc_sync_write(req[..], evs33[0..<32], sbuf[..]);
+  #assert sn32 > 0 && cc_sync_read(cast(string) sbuf[0..<sn32], parsed[..], arena[..]) && parsed[0].event_count == 32;
+  #assert cc_sync_write(req[..], evs33[..], sbuf[..]) == -1;
+
+  // Exact byte ceilings on CcSyncReq
+  bs: [1] CcSyncReq;
+  bs[0] = req3[0]; bs[0].operation = cast(string) big[0..<80]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) > 0;
+  bs[0].operation = cast(string) big[0..<81]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req3[0]; bs[0].title = cast(string) big[0..<160]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) > 0;
+  bs[0].title = cast(string) big[0..<161]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req3[0]; bs[0].model = cast(string) big[0..<160]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) > 0;
+  bs[0].model = cast(string) big[0..<161]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req3[0]; bs[0].source_device = cast(string) big[0..<80]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) > 0;
+  bs[0].source_device = cast(string) big[0..<81]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req3[0]; bs[0].workspace = cast(string) big[0..<512]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) > 0;
+  bs[0].workspace = cast(string) big[0..<513]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req3[0]; bs[0].stop_reason = cast(string) big[0..<80]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) > 0;
+  bs[0].stop_reason = cast(string) big[0..<81]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req3[0]; bs[0].error = cast(string) big[0..<512]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) > 0;
+  bs[0].error = cast(string) big[0..<513]; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req3[0]; bs[0].user_text = cast(string) big[0..<32768]; #assert cc_sync_valid(bs[..]);
+  bs[0].user_text = cast(string) big[0..<32769]; #assert !cc_sync_valid(bs[..]);
+  bs[0] = req3[0]; bs[0].output = cast(string) big[0..<131072]; #assert cc_sync_valid(bs[..]);
+  bs[0].output = cast(string) big[0..<131073]; #assert !cc_sync_valid(bs[..]);
+
+  // Sync write/read refusals (including 1-byte bad conv/turn, partial conv/turn with events, malformed fields, 524288 ceiling)
+  bs[0] = req[0]; bs[0].conversation = ""; #assert cc_sync_write(bs[..], evs[..], sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].turn = ""; #assert cc_sync_write(bs[..], evs[..], sbuf[..]) == -1;
+  bad_ev := [1] CcEvent.[ev[0]]; bad_ev[0].conversation = cid2;
+  ebuf2: [4096] u8; en2 := cc_event_write(bad_ev[..], ebuf2[..]);
+  one_s: [1] string;
+  one_s[0] = cast(string) ebuf2[0..<en2]; #assert cc_sync_write(req[..], one_s[..], sbuf[..]) == -1;
+  bad_ev2 := [1] CcEvent.[ev[0]]; bad_ev2[0].turn = tid2;
+  en3 := cc_event_write(bad_ev2[..], ebuf2[..]);
+  one_s[0] = cast(string) ebuf2[0..<en3]; #assert cc_sync_write(req[..], one_s[..], sbuf[..]) == -1;
+  one_s[0] = "{}"; #assert cc_sync_write(req[..], one_s[..], sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].compute = "local"; bs[0].cost_msat = 5; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].operation = ""; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].conversation = "x"; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].turn = "x"; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].model = ""; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].state = 7; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].state = -1; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].usage.input = -2; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+  bs[0] = req[0]; bs[0].attachments = "bad"; #assert cc_sync_write(bs[..], empty_evs, sbuf[..]) == -1;
+
+  // Sync reader: closed object, bad types, bad state, bad usage, bad events array/count/mismatch, 524288 bound
+  #assert !cc_sync_read("{", parsed[..], arena[..]);
+  sn3 = cc_sync_write(req3[..], empty_evs, sbuf[..]);
+  base_sync := cast(string) sbuf[0..<sn3];
+  #assert cc_sync_read(base_sync, parsed[..], arena[0..<7]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"local\",\"model\":\"m\",\"cost_msat\":1,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"x\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"\\u0074itle\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"bad\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[],\"x\":1}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"bogus\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":1,\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":{},\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":1,\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"bogus\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":{},\"events\":[]}", parsed[..], arena[..]);
+  #assert !cc_sync_read("{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":{}}", parsed[..], arena[..]);
+  // Sync reader event refusals: empty conv / empty turn with event, bad event item, mismatched conv/turn, 33 events
+  jbuf: [32768] u8;
+  jo1: [1] Jo;
+  jo_start(jo1[..], jbuf[..]);
+  jo_put(jo1[..], "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"");
+  jo_put(jo1[..], cid); jo_put(jo1[..], "\",\"turn_id\":\"\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[");
+  jo_put(jo1[..], ev_str); jo_put(jo1[..], "]}");
+  #assert !cc_sync_read(jo_text(jo1[..]), parsed[..], arena[..]);
+  jo_start(jo1[..], jbuf[..]);
+  jo_put(jo1[..], "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"\",\"turn_id\":\"");
+  jo_put(jo1[..], tid); jo_put(jo1[..], "\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[");
+  jo_put(jo1[..], ev_str); jo_put(jo1[..], "]}");
+  #assert !cc_sync_read(jo_text(jo1[..]), parsed[..], arena[..]);
+  jo_start(jo1[..], jbuf[..]);
+  jo_put(jo1[..], "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"");
+  jo_put(jo1[..], cid); jo_put(jo1[..], "\",\"turn_id\":\""); jo_put(jo1[..], tid);
+  jo_put(jo1[..], "\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[{}]}");
+  #assert !cc_sync_read(jo_text(jo1[..]), parsed[..], arena[..]);
+  jo_start(jo1[..], jbuf[..]);
+  jo_put(jo1[..], "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"");
+  jo_put(jo1[..], cid2); jo_put(jo1[..], "\",\"turn_id\":\""); jo_put(jo1[..], tid);
+  jo_put(jo1[..], "\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[");
+  jo_put(jo1[..], ev_str); jo_put(jo1[..], "]}");
+  #assert !cc_sync_read(jo_text(jo1[..]), parsed[..], arena[..]);
+  jo_start(jo1[..], jbuf[..]);
+  jo_put(jo1[..], "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"");
+  jo_put(jo1[..], cid); jo_put(jo1[..], "\",\"turn_id\":\""); jo_put(jo1[..], tid2);
+  jo_put(jo1[..], "\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[");
+  jo_put(jo1[..], ev_str); jo_put(jo1[..], "]}");
+  #assert !cc_sync_read(jo_text(jo1[..]), parsed[..], arena[..]);
+  jo_start(jo1[..], jbuf[..]);
+  jo_put(jo1[..], "{\"schema\":\"openagents.chat.sync.v2\",\"operation_id\":\"y\",\"conversation_id\":\"");
+  jo_put(jo1[..], cid); jo_put(jo1[..], "\",\"turn_id\":\""); jo_put(jo1[..], tid);
+  jo_put(jo1[..], "\",\"title\":\"\",\"pinned\":null,\"archived\":null,\"compute\":\"cloud\",\"model\":\"m\",\"cost_msat\":0,\"source_device\":\"\",\"workspace\":\"\",\"user_text\":\"\",\"attachments\":[],\"state\":\"\",\"output\":\"\",\"stop_reason\":\"\",\"error\":\"\",\"usage\":null,\"events\":[");
+  for i: 0..<33 { if i > 0 { jo_put(jo1[..], ","); } jo_put(jo1[..], ev_str); }
+  jo_put(jo1[..], "]}");
+  #assert !cc_sync_read(jo_text(jo1[..]), parsed[..], arena[..]);
+
+  // Exact 524288 vs 524289 byte bound on cc_sync_read
+  big_sync: [524289] u8;
+  for i: 0..<big_sync.count { big_sync[i] = ' '; }
+  for i: 0..<sn3 { big_sync[524288 - sn3 + i] = sbuf[i]; }
+  #assert cc_sync_read(cast(string) big_sync[0..<524288], parsed[..], arena[..]);
+  for i: 0..<big_sync.count { big_sync[i] = ' '; }
+  for i: 0..<sn3 { big_sync[524289 - sn3 + i] = sbuf[i]; }
+  #assert !cc_sync_read(cast(string) big_sync[0..<524289], parsed[..], arena[..]);
+}
+
+#test "meta, account events, sidebar summaries, conversation details, and v2 routes" #steps 40000000 {
+  cid := "cnv_0123456789abcdef0123456789abcdef";
+  tid := "trn_fedcba9876543210fedcba9876543210";
+  big: [131073] u8;
+  for i: 0..<big.count { big[i] = 'a'; }
+  arena: [8192] u8;
+  ebuf: [4096] u8;
+  ev := [1] CcEvent.[CcEvent.{
+    conversation = cid, turn = tid, sequence = 1, kind = CC_EV_TEXT_DELTA, state = CT_RUNNING,
+    text = "hi", compute = "local", model = "inkling-2-mini", cost_msat = 0, created_at_ms = 10
+  }];
+  en := cc_event_write(ev[..], ebuf[..]);
+  #assert en > 0;
+  ev_str := cast(string) ebuf[0..<en];
+  evs := [1] string.[ev_str];
+  empty_evs := evs[0..<0];
+  one_s: [1] string;
+  jbuf: [8192] u8;
+  jo1: [1] Jo;
+
+  // Sync reply exact output + boundary checks
+  rbuf: [4097] u8;
+  rn := cc_sync_reply_write(cid, tid, CT_SEQUENCE_MAX, CC_TIME_MAX, true, rbuf[..]);
+  #assert rn > 0 && cast(string) rbuf[0..<rn] == "{\"schema\":\"openagents.chat.sync-reply.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"revision\":2147483645,\"last_event_id\":9007199254740991,\"replayed\":true}";
+  rn0 := cc_sync_reply_write(cid, "", 1, 0, false, rbuf[..]);
+  #assert rn0 > 0 && cast(string) rbuf[0..<rn0] == "{\"schema\":\"openagents.chat.sync-reply.v2\",\"conversation_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"turn_id\":\"\",\"revision\":1,\"last_event_id\":0,\"replayed\":false}";
+  #assert cc_sync_reply_write("bad", tid, 1, 0, false, rbuf[..]) == -1;
+  #assert cc_sync_reply_write(cid, "x", 1, 0, false, rbuf[..]) == -1;
+  #assert cc_sync_reply_write(cid, tid, 0, 0, false, rbuf[..]) == -1;
+  #assert cc_sync_reply_write(cid, tid, CT_SEQUENCE_MAX + 1, 0, false, rbuf[..]) == -1;
+  #assert cc_sync_reply_write(cid, tid, 1, -1, false, rbuf[..]) == -1;
+  #assert cc_sync_reply_write(cid, tid, 1, CC_TIME_MAX + 1, false, rbuf[..]) == -1;
+
+  // Meta request round-trip, exact output, bounds, closed-object & 4096 ceiling
+  mr := [1] CcMetaReq.[CcMetaReq.{operation = "x", has_title = true, title = "Renamed", has_pinned = true, pinned = true, has_archived = true, archived = true}];
+  mn := cc_meta_write(mr[..], rbuf[..]);
+  #assert mn > 0 && cast(string) rbuf[0..<mn] == "{\"schema\":\"openagents.chat.meta.v2\",\"operation_id\":\"x\",\"title\":\"Renamed\",\"pinned\":true,\"archived\":true}";
+  mgo: [1] CcMetaReq;
+  #assert cc_meta_read(cast(string) rbuf[0..<mn], mgo[..], arena[..]);
+  #assert mgo[0].operation == "x" && mgo[0].has_title && mgo[0].title == "Renamed" && mgo[0].has_pinned && mgo[0].pinned && mgo[0].has_archived && mgo[0].archived;
+  mr2 := [1] CcMetaReq.[CcMetaReq.{operation = "op_m2", has_pinned = true, pinned = false}];
+  mn2 := cc_meta_write(mr2[..], rbuf[..]);
+  #assert mn2 > 0 && cast(string) rbuf[0..<mn2] == "{\"schema\":\"openagents.chat.meta.v2\",\"operation_id\":\"op_m2\",\"title\":null,\"pinned\":false,\"archived\":null}";
+  #assert cc_meta_read(cast(string) rbuf[0..<mn2], mgo[..], arena[0..<5]) && !mgo[0].has_title && mgo[0].has_pinned && !mgo[0].pinned && !mgo[0].has_archived;
+  pad4: [4097] u8;
+  for i: 0..<pad4.count { pad4[i] = ' '; }
+  for i: 0..<mn2 { pad4[4096 - mn2 + i] = rbuf[i]; }
+  #assert cc_meta_read(cast(string) pad4[0..<4096], mgo[..], arena[..]);
+  for i: 0..<pad4.count { pad4[i] = ' '; }
+  for i: 0..<mn2 { pad4[4097 - mn2 + i] = rbuf[i]; }
+  #assert !cc_meta_read(cast(string) pad4[0..<4097], mgo[..], arena[..]);
+  mr3 := [1] CcMetaReq.[CcMetaReq.{operation = "op_m3", has_title = true, title = "OnlyTitle"}];
+  mn3 := cc_meta_write(mr3[..], rbuf[..]);
+  #assert mn3 > 0 && cast(string) rbuf[0..<mn3] == "{\"schema\":\"openagents.chat.meta.v2\",\"operation_id\":\"op_m3\",\"title\":\"OnlyTitle\",\"pinned\":null,\"archived\":null}";
+  #assert !cc_meta_read("{\"schema\":\"openagents.chat.meta.v2\",\"operation_id\":\"x\",\"\\u0074itle\":null,\"pinned\":true,\"archived\":null}", mgo[..], arena[..]);
+  bm: [1] CcMetaReq;
+  bm[0] = CcMetaReq.{operation = cast(string) big[0..<80], has_title = true, title = cast(string) big[0..<160]};
+  #assert cc_meta_write(bm[..], rbuf[..]) > 0;
+  bm[0].operation = cast(string) big[0..<81]; #assert cc_meta_write(bm[..], rbuf[..]) == -1;
+  bm[0] = CcMetaReq.{operation = "op", has_title = true, title = cast(string) big[0..<161]}; #assert cc_meta_write(bm[..], rbuf[..]) == -1;
+  bm[0] = CcMetaReq.{operation = "op_m3"}; #assert cc_meta_write(bm[..], rbuf[..]) == -1;
+  bm[0] = CcMetaReq.{operation = "", has_pinned = true}; #assert cc_meta_write(bm[..], rbuf[..]) == -1;
+  #assert !cc_meta_read("{", mgo[..], arena[..]);
+  #assert !cc_meta_read("{\"schema\":\"bad\",\"operation_id\":\"x\",\"title\":null,\"pinned\":true,\"archived\":null}", mgo[..], arena[..]);
+  #assert !cc_meta_read("{\"schema\":\"openagents.chat.meta.v2\",\"operation_id\":\"x\",\"title\":null,\"pinned\":true,\"archived\":null,\"k\":1}", mgo[..], arena[..]);
+  #assert !cc_meta_read("{\"schema\":\"openagents.chat.meta.v2\",\"operation_id\":\"x\",\"title\":null,\"pinned\":true,\"bogus\":null}", mgo[..], arena[..]);
+  #assert !cc_meta_read("{\"schema\":\"openagents.chat.meta.v2\",\"operation_id\":\"x\",\"title\":123,\"pinned\":true,\"archived\":null}", mgo[..], arena[..]);
+  #assert !cc_meta_read("{\"schema\":\"openagents.chat.meta.v2\",\"operation_id\":\"x\",\"title\":null,\"pinned\":null,\"archived\":null}", mgo[..], arena[..]);
+
+  // Account event round-trip, exact fields, bounds, closed-object & 4096 ceiling
+  for et: [6] string.["conversation_created", "conversation_updated", "turn_started", "turn_completed", "turn_failed", "turn_cancelled"] {
+    ae := [1] CcAcctEvent.[CcAcctEvent.{
+      conversation = cid, turn = tid, event_type = et, title = "T", compute = "cloud",
+      model = "google/gemini-4-neon", cost_msat = 10, pinned = true, archived = true,
+      source_device = "web", revision = CT_SEQUENCE_MAX, updated_at_ms = 55
+    }];
+    an := cc_acct_event_write(ae[..], rbuf[..]);
+    ago: [1] CcAcctEvent;
+    #assert an > 0 && cc_acct_event_read(cast(string) rbuf[0..<an], ago[..], arena[..]);
+    #assert ago[0].event_type == et && ago[0].conversation == cid && ago[0].turn == tid && ago[0].title == "T";
+    #assert ago[0].compute == "cloud" && ago[0].model == "google/gemini-4-neon" && ago[0].cost_msat == 10;
+    #assert ago[0].pinned && ago[0].archived && ago[0].source_device == "web" && ago[0].revision == CT_SEQUENCE_MAX && ago[0].updated_at_ms == 55;
+  }
+  lib_ev := [1] CcAcctEvent.[CcAcctEvent.{event_type = "library_updated", revision = 0, updated_at_ms = 77}];
+  lan := cc_acct_event_write(lib_ev[..], rbuf[..]);
+  ago2: [1] CcAcctEvent;
+  #assert lan > 0 && cc_acct_event_read(cast(string) rbuf[0..<lan], ago2[..], arena[0..<15]) && ago2[0].conversation == "" && ago2[0].event_type == "library_updated" && !ago2[0].pinned && !ago2[0].archived;
+  #assert !cc_acct_event_read("{\"schema\":\"openagents.chat.account-event.v2\",\"event_type\":\"library_updated\",\"conversation_id\":\"\",\"turn_id\":\"\",\"\\u0074itle\":\"\",\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"pinned\":false,\"archived\":false,\"source_device\":\"\",\"revision\":0,\"updated_at_ms\":0}", ago2[..], arena[..]);
+  for i: 0..<pad4.count { pad4[i] = ' '; }
+  for i: 0..<lan { pad4[4096 - lan + i] = rbuf[i]; }
+  #assert cc_acct_event_read(cast(string) pad4[0..<4096], ago2[..], arena[..]);
+  for i: 0..<pad4.count { pad4[i] = ' '; }
+  for i: 0..<lan { pad4[4097 - lan + i] = rbuf[i]; }
+  #assert !cc_acct_event_read(cast(string) pad4[0..<4097], ago2[..], arena[..]);
+  ba: [1] CcAcctEvent;
+  ba[0] = CcAcctEvent.{event_type = "turn_started", conversation = cid, title = cast(string) big[0..<160], model = cast(string) big[0..<160], source_device = cast(string) big[0..<80]};
+  #assert cc_acct_event_write(ba[..], rbuf[..]) > 0;
+  ba[0].title = cast(string) big[0..<161]; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "turn_started", conversation = cid, model = cast(string) big[0..<161]}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "turn_started", conversation = cid, source_device = cast(string) big[0..<81]}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "bogus", conversation = cid}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "library_updated", conversation = cid}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "turn_started", conversation = ""}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "turn_started", conversation = cid, turn = "x"}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "turn_started", conversation = cid, compute = "local", cost_msat = 1}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "turn_started", conversation = cid, revision = -1}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "turn_started", conversation = cid, revision = CT_SEQUENCE_MAX + 1}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  ba[0] = CcAcctEvent.{event_type = "turn_started", conversation = cid, updated_at_ms = -1}; #assert cc_acct_event_write(ba[..], rbuf[..]) == -1;
+  #assert !cc_acct_event_read("{", ago2[..], arena[..]);
+  #assert !cc_acct_event_read("{\"schema\":\"bad\",\"event_type\":\"library_updated\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"pinned\":false,\"archived\":false,\"source_device\":\"\",\"revision\":0,\"updated_at_ms\":0}", ago2[..], arena[..]);
+  #assert !cc_acct_event_read("{\"schema\":\"openagents.chat.account-event.v2\",\"event_type\":\"library_updated\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"pinned\":false,\"archived\":false,\"source_device\":\"\",\"revision\":0,\"updated_at_ms\":0,\"x\":1}", ago2[..], arena[..]);
+  #assert !cc_acct_event_read("{\"schema\":\"openagents.chat.account-event.v2\",\"event_type\":\"library_updated\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":\"\",\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"pinned\":false,\"archived\":false,\"source_device\":\"\",\"revision\":0,\"bogus\":0}", ago2[..], arena[..]);
+  #assert !cc_acct_event_read("{\"schema\":\"openagents.chat.account-event.v2\",\"event_type\":\"library_updated\",\"conversation_id\":\"\",\"turn_id\":\"\",\"title\":1,\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"pinned\":false,\"archived\":false,\"source_device\":\"\",\"revision\":0,\"updated_at_ms\":0}", ago2[..], arena[..]);
+  #assert !cc_acct_event_read("{\"schema\":\"openagents.chat.account-event.v2\",\"event_type\":\"library_updated\",\"conversation_id\":\"x\",\"turn_id\":\"\",\"title\":\"\",\"compute\":\"\",\"model\":\"\",\"cost_msat\":0,\"pinned\":false,\"archived\":false,\"source_device\":\"\",\"revision\":0,\"updated_at_ms\":0}", ago2[..], arena[..]);
+
+  // Sidebar summary, list, turn summary, and conversation detail (exact output assertions!)
+  cs := [1] CcConvSummary.[CcConvSummary.{
+    id = cid, title = "T", revision = CT_SEQUENCE_MAX, pinned = true, archived = false,
+    active_turn = tid, compute = "cloud", model = "google/gemini-4-neon", cost_msat = 12,
+    source_device = "mac", workspace = "/w", created_at_ms = 10, updated_at_ms = 10
+  }];
+  cbuf: [2048] u8;
+  cn := cc_conv_summary_write(cs[..], cbuf[..]);
+  expected_cs := "{\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"title\":\"T\",\"revision\":2147483645,\"pinned\":true,\"archived\":false,\"active_turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":12,\"source_device\":\"mac\",\"workspace\":\"/w\",\"created_at_ms\":10,\"updated_at_ms\":10}";
+  #assert cn > 0 && cast(string) cbuf[0..<cn] == expected_cs;
+  lbuf: [4096] u8;
+  one_s[0] = cast(string) cbuf[0..<cn];
+  ln := cc_conv_list_write(one_s[..], lbuf[..]);
+  #assert ln > 0 && cast(string) lbuf[0..<ln] == "{\"schema\":\"openagents.chat.conversations.v2\",\"conversations\":[{\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"title\":\"T\",\"revision\":2147483645,\"pinned\":true,\"archived\":false,\"active_turn_id\":\"trn_fedcba9876543210fedcba9876543210\",\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":12,\"source_device\":\"mac\",\"workspace\":\"/w\",\"created_at_ms\":10,\"updated_at_ms\":10}]}";
+
+  cs_bad: [1] CcConvSummary;
+  cs_bad[0] = cs[0]; cs_bad[0].revision = 1; cs_bad[0].active_turn = ""; cs_bad[0].title = cast(string) big[0..<160]; cs_bad[0].model = cast(string) big[0..<160]; cs_bad[0].source_device = cast(string) big[0..<80]; cs_bad[0].workspace = cast(string) big[0..<512];
+  #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) > 0;
+  cs_bad[0] = cs[0]; cs_bad[0].title = cast(string) big[0..<161]; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].model = cast(string) big[0..<161]; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].source_device = cast(string) big[0..<81]; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].workspace = cast(string) big[0..<513]; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].id = "bad"; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].revision = 0; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].revision = CT_SEQUENCE_MAX + 1; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].active_turn = "x"; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].compute = "local"; cs_bad[0].cost_msat = 1; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].updated_at_ms = 9; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+  cs_bad[0] = cs[0]; cs_bad[0].created_at_ms = -1; #assert cc_conv_summary_write(cs_bad[..], cbuf[..]) == -1;
+
+  ts := [1] CcTurnSummary.[CcTurnSummary.{
+    id = tid, ordinal = CT_SEQUENCE_MAX, state = CT_UNKNOWN, compute = "local", model = "inkling-2-mini",
+    cost_msat = 0, source_device = "mac", workspace = "/w", user_text = "hi", output = "yo",
+    attachments = "[{\"name\":\"a\"}]", stop_reason = "end_turn", error = "",
+    has_usage = true, usage = CtUsage.{input = 3, output = 4}, sequence = CT_SEQUENCE_MAX,
+    created_at_ms = 10, updated_at_ms = 20
+  }];
+  tbuf: [4096] u8;
+  tn := cc_turn_summary_write(ts[..], tbuf[..]);
+  expected_ts := "{\"id\":\"trn_fedcba9876543210fedcba9876543210\",\"ordinal\":2147483645,\"state\":\"unknown\",\"compute\":\"local\",\"model\":\"inkling-2-mini\",\"cost_msat\":0,\"source_device\":\"mac\",\"workspace\":\"/w\",\"user_text\":\"hi\",\"output\":\"yo\",\"attachments\":[{\"name\":\"a\"}],\"stop_reason\":\"end_turn\",\"error\":\"\",\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"cache_read_tokens\":null,\"cache_write_tokens\":null,\"reasoning_tokens\":null},\"sequence\":2147483645,\"created_at_ms\":10,\"updated_at_ms\":20}";
+  #assert tn > 0 && cast(string) tbuf[0..<tn] == expected_ts;
+  ts_empty := [1] CcTurnSummary.[ts[0]]; ts_empty[0].ordinal = 1; ts_empty[0].state = CT_QUEUED; ts_empty[0].sequence = 0; ts_empty[0].attachments = ""; ts_empty[0].has_usage = false;
+  tn_e := cc_turn_summary_write(ts_empty[..], tbuf[..]);
+  #assert tn_e > 0 && cast(string) tbuf[0..<tn_e] == "{\"id\":\"trn_fedcba9876543210fedcba9876543210\",\"ordinal\":1,\"state\":\"queued\",\"compute\":\"local\",\"model\":\"inkling-2-mini\",\"cost_msat\":0,\"source_device\":\"mac\",\"workspace\":\"/w\",\"user_text\":\"hi\",\"output\":\"yo\",\"attachments\":[],\"stop_reason\":\"end_turn\",\"error\":\"\",\"usage\":null,\"sequence\":0,\"created_at_ms\":10,\"updated_at_ms\":20}";
+  // Restore full ts into tbuf for detail check
+  tn = cc_turn_summary_write(ts[..], tbuf[..]);
+  ts_bad: [1] CcTurnSummary;
+  big_out: [200000] u8;
+  ts_bad[0] = ts[0]; ts_bad[0].model = cast(string) big[0..<160]; ts_bad[0].source_device = cast(string) big[0..<80]; ts_bad[0].workspace = cast(string) big[0..<512]; ts_bad[0].user_text = cast(string) big[0..<32768]; ts_bad[0].output = cast(string) big[0..<131072]; ts_bad[0].stop_reason = cast(string) big[0..<80]; ts_bad[0].error = cast(string) big[0..<512];
+  #assert cc_turn_summary_write(ts_bad[..], big_out[..]) > 0;
+  ts_bad[0] = ts[0]; ts_bad[0].model = cast(string) big[0..<161]; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].source_device = cast(string) big[0..<81]; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].workspace = cast(string) big[0..<513]; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].user_text = cast(string) big[0..<32769]; #assert cc_turn_summary_write(ts_bad[..], big_out[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].output = cast(string) big[0..<131073]; #assert cc_turn_summary_write(ts_bad[..], big_out[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].stop_reason = cast(string) big[0..<81]; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].error = cast(string) big[0..<513]; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].id = "bad"; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].ordinal = 0; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].ordinal = CT_SEQUENCE_MAX + 1; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].state = 0; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].state = 7; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].cost_msat = 1; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].usage.input = -2; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].sequence = -1; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].sequence = CT_SEQUENCE_MAX + 1; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].created_at_ms = -1; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].updated_at_ms = -1; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+  ts_bad[0] = ts[0]; ts_bad[0].attachments = "bad"; #assert cc_turn_summary_write(ts_bad[..], tbuf[..]) == -1;
+
+  dbuf: [8192] u8;
+  one_s[0] = cast(string) tbuf[0..<tn];
+  dn := cc_conv_detail_write(cs[..], one_s[..], evs[..], dbuf[..]);
+  jo_start(jo1[..], jbuf[..]);
+  jo_put(jo1[..], "{\"schema\":\"openagents.chat.conversation.v2\",\"conversation\":");
+  jo_put(jo1[..], expected_cs);
+  jo_put(jo1[..], ",\"turns\":["); jo_put(jo1[..], expected_ts);
+  jo_put(jo1[..], "],\"events\":["); jo_put(jo1[..], ev_str); jo_put(jo1[..], "]}");
+  #assert dn > 0 && cast(string) dbuf[0..<dn] == jo_text(jo1[..]);
+  #assert cc_conv_detail_write(cs_bad[..], empty_evs, empty_evs, dbuf[..]) == -1;
+
+  // Route matching (zero idb before every call so every copy loop is verified!)
+  idb: [36] u8;
+  #assert cc_v2_route("GET", "/api/chat/v2/stream", idb[..]) == CC_RT_ACCT_STREAM;
+  #assert cc_v2_route("POST", "/api/chat/v2/stream", idb[..]) == CC_RT_METHOD_NOT_ALLOWED;
+  #assert cc_v2_route("GET", "/api/chat/v2/conversations", idb[..]) == CC_RT_CONV_LIST;
+  #assert cc_v2_route("POST", "/api/chat/v2/conversations", idb[..]) == CC_RT_METHOD_NOT_ALLOWED;
+  #assert cc_v2_route("POST", "/api/chat/v2/sync", idb[..]) == CC_RT_SYNC;
+  #assert cc_v2_route("GET", "/api/chat/v2/sync", idb[..]) == CC_RT_METHOD_NOT_ALLOWED;
+  for i: 0..<36 { idb[i] = 0; }
+  #assert cc_v2_route("GET", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef", idb[..]) == CC_RT_CONV_GET && cast(string) idb[0..<36] == cid;
+  #assert cc_v2_route("POST", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef", idb[..]) == CC_RT_METHOD_NOT_ALLOWED;
+  for i: 0..<36 { idb[i] = 0; }
+  #assert cc_v2_route("GET", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef/stream", idb[..]) == CC_RT_CONV_STREAM && cast(string) idb[0..<36] == cid;
+  #assert cc_v2_route("POST", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef/stream", idb[..]) == CC_RT_METHOD_NOT_ALLOWED;
+  for i: 0..<36 { idb[i] = 0; }
+  #assert cc_v2_route("POST", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef/events", idb[..]) == CC_RT_CONV_EVENTS && cast(string) idb[0..<36] == cid;
+  #assert cc_v2_route("GET", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef/events", idb[..]) == CC_RT_METHOD_NOT_ALLOWED;
+  for i: 0..<36 { idb[i] = 0; }
+  #assert cc_v2_route("POST", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef/meta", idb[..]) == CC_RT_CONV_META && cast(string) idb[0..<36] == cid;
+  #assert cc_v2_route("GET", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef/meta", idb[..]) == CC_RT_METHOD_NOT_ALLOWED;
+  #assert cc_v2_route("GET", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef/other", idb[..]) == CC_RT_NONE;
+  #assert cc_v2_route("GET", "/api/chat/v2/conversations/not_a_conv_id", idb[..]) == CC_RT_NONE;
+  #assert cc_v2_route("GET", "/api/chat/v2/conversations/cnv_0123456789abcdef0123456789abcdef", idb[0..<35]) == CC_RT_NONE;
+  #assert cc_v2_route("GET", "/api/chat/v1/stream", idb[..]) == CC_RT_NONE;
+}

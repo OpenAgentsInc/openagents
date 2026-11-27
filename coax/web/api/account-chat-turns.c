@@ -29,13 +29,20 @@ static long long nullable(PGresult *r,int row,int col){return PQgetisnull(r,row,
 static PGresult *turn_row(PGconn *db,const char *account,const char *id,bool lock){const char *v[]={account,id};return PQexecParams(db,lock?"SELECT " TURN_FIELDS ",t.admitted_for FROM chat.turns_v2 t JOIN chat.conversations_v2 c ON c.account=t.account AND c.id=t.conversation WHERE t.account=$1 AND t.id=$2 FOR UPDATE OF t":"SELECT " TURN_FIELDS ",t.admitted_for FROM chat.turns_v2 t JOIN chat.conversations_v2 c ON c.account=t.account AND c.id=t.conversation WHERE t.account=$1 AND t.id=$2",2,NULL,v,NULL,NULL,0);}
 static bool view(PGresult *r,int row,coax_t_CtView *v){if(!tuples(r)||row>=PQntuples(r))return false;coax_t_CtUsage u={.input=nullable(r,row,9),.output=nullable(r,row,10),.cache_read=nullable(r,row,11),.cache_write=nullable(r,row,12),.reasoning=nullable(r,row,13)};return cta_restore((coax_v_t_CtView){v,1},ts(PQgetvalue(r,row,1)),ts(PQgetvalue(r,row,2)),number(r,row,3),number(r,row,5),PQgetvalue(r,row,4)[0]=='t',ts(PQgetvalue(r,row,6)),ts(PQgetvalue(r,row,7)),ts(PQgetvalue(r,row,8)),(coax_v_t_CtUsage){&u,1});}
 static int64_t control(PGresult *r,coax_t_CtView *v,unsigned char *out,size_t cap){return view(r,0,v)?ctr_control_write((coax_v_t_CtView){v,1},number(r,0,21),tb(out,cap)):-1;}
+static bool cloud_emit_account_event(PGconn *db, const char *account, const char *conv,
+                                     const char *turn, const char *event_type, const char *title,
+                                     const char *compute, const char *model, long long cost_msat,
+                                     bool pinned, bool archived, const char *source_device,
+                                     long long revision, long long now_ms);
+static bool account_chat_cloud_dispatch(const request *q, int rt, const char *cid);
 static bool save_view(PGconn *db,PGresult *r,coax_t_CtView *v,coax_t_CtEvent *event){
  unsigned char *wire=calloc(1,131073);char *text=strndup((char *)v->content.e,(size_t)v->bytes),*reason=strndup((char *)v->reason.e,(size_t)v->nr),*error=strndup((char *)v->error.e,(size_t)v->ne);if(!wire||!text||!reason||!error){free(wire);free(text);free(reason);free(error);return false;}
- int64_t n=ct_event_write((coax_v_t_CtEvent){event,1},tb(wire,131072));char state[32],seq[32],before[32],ms[32],u[5][32];num(state,v->state);num(seq,v->sequence);num(before,number(r,0,5));num(ms,(long long)api_now_ms());long long counts[]={v->usage.input,v->usage.output,v->usage.cache_read,v->usage.cache_write,v->usage.reasoning};for(int i=0;i<5;i++){u[i][0]=0;if(counts[i]>=0)num(u[i],counts[i]);}
+ int64_t n=ct_event_write((coax_v_t_CtEvent){event,1},tb(wire,131072));char state[32],seq[32],before[32],ms[32],u[5][32];long long now_ms=(long long)api_now_ms();num(state,v->state);num(seq,v->sequence);num(before,number(r,0,5));num(ms,now_ms);long long counts[]={v->usage.input,v->usage.output,v->usage.cache_read,v->usage.cache_write,v->usage.reasoning};for(int i=0;i<5;i++){u[i][0]=0;if(counts[i]>=0)num(u[i],counts[i]);}
  const char *p[]={PQgetvalue(r,0,0),PQgetvalue(r,0,2),state,v->stop_requested?"true":"false",seq,text,reason,error,u[0],u[1],u[2],u[3],u[4],ms,before};
  PGresult *w=n>0?PQexecParams(db,"UPDATE chat.turns_v2 SET state=$3::int,stop_requested=$4::bool,sequence=$5::bigint,output=$6,stop_reason=$7,error=$8,input_tokens=nullif($9,'')::bigint,output_tokens=nullif($10,'')::bigint,cache_read_tokens=nullif($11,'')::bigint,cache_write_tokens=nullif($12,'')::bigint,reasoning_tokens=nullif($13,'')::bigint,updated_ms=$14::bigint,heartbeat_ms=$14::bigint WHERE account=$1 AND id=$2 AND sequence=$15::bigint RETURNING id",15,NULL,p,NULL,NULL,0):NULL;
- bool ok=tuples(w)&&PQntuples(w)==1;PQclear(w);const char *ev[]={p[0],p[1],seq,(char *)wire};if(ok)ok=exec_sql(db,"INSERT INTO chat.turn_events_v2(account,turn,sequence,record) VALUES($1,$2,$3::bigint,$4)",4,ev);
+ bool ok=tuples(w)&&PQntuples(w)==1;PQclear(w);const char *ev[]={p[0],p[1],seq,PQgetvalue(r,0,1),(char *)wire};if(ok)ok=exec_sql(db,"INSERT INTO chat.turn_events_v2(account,turn,sequence,conversation,record) VALUES($1,$2,$3::bigint,$4,$5)",5,ev);
  const char *cv[]={p[0],PQgetvalue(r,0,1),ms};if(ok)ok=exec_sql(db,"UPDATE chat.conversations_v2 SET updated_ms=$3::bigint WHERE account=$1 AND id=$2",3,cv);
+ if(ok&&ct_terminal(v->state)){const char *et=v->state==DONE?"turn_completed":v->state==CANCELLED?"turn_cancelled":"turn_failed";ok=cloud_emit_account_event(db,p[0],PQgetvalue(r,0,1),p[1],et,"","cloud",PQgetvalue(r,0,15),0,false,false,"web",number(r,0,21),now_ms);}
  free(wire);free(text);free(reason);free(error);return ok;
 }
 static bool operation_lock(PGconn *db,const char *account,const char *operation){const char *p[]={account,operation};return exec_sql(db,"SELECT pg_advisory_xact_lock(hashtextextended('durable:'||$1||':'||$2,0))",2,p);}
@@ -73,7 +80,7 @@ static void submit(const request *q,PGconn *db,const auth_principal *p,const cha
  if(fresh){const char *cv[]={cid,p->account,project,title,legacy,legacy_revision,legacy_record,ms};if(!exec_sql(db,"INSERT INTO chat.conversations_v2(id,account,project,revision,title,legacy_thread,legacy_revision,legacy_record,created_ms,updated_ms) VALUES($1,$2,nullif($3,''),1,$4,nullif($5,''),CASE WHEN $5<>'' THEN $6::bigint END,$7,$8::bigint,$8::bigint)",8,cv)){goto done;}}
  else {const char *cv[]={p->account,cid,revision,ms};if(!exec_sql(db,"UPDATE chat.conversations_v2 SET revision=$3::bigint,updated_ms=$4::bigint WHERE account=$1 AND id=$2",4,cv)){goto done;}}
  const char *tv[]={tid,p->account,cid,revision,op,hash,canonical_request,(char *)out,context.snapshot_id,context.snapshot,ms,(char *)native,admitted_for};
- if(!exec_sql(db,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,snapshot_id,snapshot_json,state,model,provider,effort,created_ms,updated_ms,native_input_json,admitted_for) VALUES($1,$2,$3,$4::bigint,$5,$6,$7,$8,nullif($9,''),$10,1,'google/gemini-4-hydrogen','google','low',$11::bigint,$11::bigint,$12,$13)",13,tv)||!operation_save(db,p->account,op,q->path,hash,tid)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
+ if(!exec_sql(db,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,snapshot_id,snapshot_json,state,model,provider,effort,created_ms,updated_ms,native_input_json,admitted_for) VALUES($1,$2,$3,$4::bigint,$5,$6,$7,$8,nullif($9,''),$10,1,'google/gemini-4-hydrogen','google','low',$11::bigint,$11::bigint,$12,$13)",13,tv)||!operation_save(db,p->account,op,q->path,hash,tid)||!cloud_emit_account_event(db,p->account,cid,tid,fresh?"conversation_created":"turn_started",title,"cloud","google/gemini-4-hydrogen",0,false,false,"web",before+1,now)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
  r=turn_row(db,p->account,tid,false);n=control(r,v,out,CT_CAP);if(n<1){goto done;}(void)chat_wake();reply(q,202,out,(size_t)n);goto replied;
  done: if(tx)exec_sql(db,"ROLLBACK",0,NULL);refuse(q,status,why);
  replied: if(tx)exec_sql(db,"ROLLBACK",0,NULL);PQclear(c);PQclear(r);free(legacy_record);free(canonical_request);projects_context_free(&context);free(s);free(h);free(v);free(out);free(native);
@@ -205,6 +212,8 @@ static void stream_events(const request *q,PGconn *db,const auth_principal *p){
  }
 }
 bool account_chat_turn_route(const request *q){
+ char v2_cid[37]={0};int v2=(int)cc_v2_route(ts(q->method),ts(q->path),tb(v2_cid,36));
+ if(v2!=0)return account_chat_cloud_dispatch(q,v2,v2_cid);
  const char *path=q->path;int op=!strcmp(path,"/api/chat/submit/v2alpha1")?1:!strcmp(path,"/api/chat/stop/v2alpha1")?2:!strcmp(path,"/api/chat/turn/v2alpha1")?3:!strcmp(path,"/api/chat/events/v2alpha1")?4:!strcmp(path,"/api/chat/conversations/v2alpha1")?5:!strcmp(path,"/api/chat/conversation/v2alpha1")?6:!strcmp(path,"/api/chat/runner/v2alpha1")?7:!strcmp(path,"/api/chat/context/v2alpha1")?8:!strcmp(path,"/api/chat/input/v2alpha1")?9:!strcmp(path,"/api/chat/native-input/v1alpha1")?10:!strcmp(path,"/api/chat/turn-task/v1alpha1")?11:!strcmp(path,"/api/chat/events/stream/v2alpha1")?12:0;if(!op)return false;
  PGconn *db=api_db();if(!db){refuse(q,503,"Chat storage unavailable.");return true;}if(op==7){runner(q,db);return true;}
  const auth_principal *p=auth_principal_of(q);if(!p||!ctw_owns(p->kind,p->level,ts(p->account),ts(p->account))){refuse(q,401,"Log in first.");return true;}
@@ -260,5 +269,6 @@ static void hosted_model_run(const request *q,const char *account,const char *tu
  if(m.db){PQfinish(m.db);}
  free(m.stream);
 }
+#include "account-chat-cloud.c"
 #include "account-chat-tasks.c"
 #include "gamebuilder-agents.c"

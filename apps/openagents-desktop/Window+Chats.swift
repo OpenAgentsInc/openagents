@@ -304,6 +304,7 @@ extension CoderWindow {
             self.titleGenVersion[id, default: 0] += 1
             self.store.rename(id, to: title)
             self.daemonClient.updateSessionMeta(sessionID: id, title: title)
+            if id != Foreman.chatID { self.cloudSync.syncMeta(chatID: id, title: title) }
             cd_chats(self.page, self.chatLines)
             self.wake()
         }
@@ -365,6 +366,7 @@ extension CoderWindow {
         }
         store.setArchived(id, true)
         daemonClient.updateSessionMeta(sessionID: id, archived: true)
+        cloudSync.syncMeta(chatID: id, archived: true)
         sidebarUndo = .archive(ids: [id])
         cd_sb_undo_show(page, "Archived “" + title + "”", 1, 6.0)
         cd_chats(page, chatLines)
@@ -374,6 +376,7 @@ extension CoderWindow {
     func unarchiveChat(_ id: String) {
         store.setArchived(id, false)
         daemonClient.updateSessionMeta(sessionID: id, archived: false)
+        if id != Foreman.chatID { cloudSync.syncMeta(chatID: id, archived: false) }
         cd_chats(page, chatLines)
         wake()
     }
@@ -559,6 +562,16 @@ extension CoderWindow {
         var name = [CChar](repeating: 0, count: 256)
         let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
         store.keep(id: id, title: title, folder: chatFolder, text: text, worktree: madeWorktree(r, for: id), touchUpdated: touchUpdated && !closing)
+        if id != Foreman.chatID {
+            cloudSync.syncSavedChat(
+                chatID: id,
+                title: title,
+                folder: chatFolder,
+                chatJSON: text,
+                pinned: store.isPinned(id),
+                archived: store.isArchived(id)
+            )
+        }
         if shown { chat = id; cd_current(page, id) } else { r.chat = id; if id != chat { unread.insert(id) } }
         // the worker's queue binds to the chat once it is kept, so its run names the chat: a new
         // chat's first message and a Foreman chat start before they have an id (#13755)
@@ -734,11 +747,48 @@ extension CoderWindow {
         if cleaned != meta.title {
             store.rename(chatID, to: cleaned)
             daemonClient.updateSessionMeta(sessionID: chatID, title: cleaned)
+            if chatID != Foreman.chatID { cloudSync.syncMeta(chatID: chatID, title: cleaned) }
             cd_chats(page, chatLines)
             #if OA_FULL
             syncForemanUI()
             #endif
             wake()
+        }
+    }
+
+    // MARK: - Unified Cloud Chat Sync (#14093)
+
+    func setupCloudChatSync() {
+        cloudSync.onRemoteConversation = { [weak self] remote in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let id = remote.localChatID
+                let ws = remote.workspace.isEmpty ? self.folder.path : remote.workspace
+                self.store.keep(id: id, title: remote.title, folder: ws, text: remote.chatJSON)
+                if self.store.isArchived(id) != remote.archived {
+                    self.store.setArchived(id, remote.archived)
+                }
+                if self.store.isPinned(id) != remote.pinned {
+                    self.store.togglePin(id)
+                }
+                cd_chats(self.page, self.chatLines)
+                self.wake()
+            }
+        }
+        NotificationCenter.default.addObserver(forName: AppAuth.didChangeSession, object: nil, queue: .main) { [weak self] _ in
+            self?.refreshCloudChatSync()
+        }
+        refreshCloudChatSync()
+    }
+
+    func refreshCloudChatSync() {
+        if FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn {
+            cloudSync.startLiveStream()
+            Task.detached { [weak self] in
+                _ = await self?.cloudSync.flushOutbox(ignoreBackoff: false)
+            }
+        } else {
+            cloudSync.stopLiveStream()
         }
     }
 }

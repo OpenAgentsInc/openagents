@@ -1,6 +1,7 @@
 // Firm reason: 6 (the compiled page's C boundary for the macOS SDK).
 #include "host.h"
 #include "desktop-core-mac.h"
+#include "cloud-chat-wire-mac.h"
 #include "../shared/native/tailnet-codec.h"
 #include "account-mac.h"
 #ifdef OA_FULL

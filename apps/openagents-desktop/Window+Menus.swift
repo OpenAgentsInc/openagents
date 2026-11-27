@@ -5,7 +5,9 @@ import AppKit
 extension CoderWindow {
     private func togglePin(_ id: String) {
         store.togglePin(id)
-        daemonClient.updateSessionMeta(sessionID: id, pinned: store.isPinned(id))
+        let pinned = store.isPinned(id)
+        daemonClient.updateSessionMeta(sessionID: id, pinned: pinned)
+        if id != Foreman.chatID { cloudSync.syncMeta(chatID: id, pinned: pinned) }
         cd_chats(page, chatLines)
         wake()
     }

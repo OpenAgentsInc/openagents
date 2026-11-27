@@ -3466,6 +3466,20 @@ CREATE FUNCTION chat.model_ok(m text) RETURNS boolean
 
 
 --
+-- Name: notify_account_event_v2(); Type: FUNCTION; Schema: chat; Owner: -
+--
+
+CREATE FUNCTION chat.notify_account_event_v2() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  PERFORM pg_notify('oa_account_events_v2', NEW.account || '|' || NEW.id::text);
+  RETURN NULL;
+END;
+$$;
+
+
+--
 -- Name: notify_turn_event_v2(); Type: FUNCTION; Schema: chat; Owner: -
 --
 
@@ -3474,6 +3488,9 @@ CREATE FUNCTION chat.notify_turn_event_v2() RETURNS trigger
     AS $$
 BEGIN
   PERFORM pg_notify('oa_turn_events_v2', NEW.turn || '|' || NEW.sequence::text);
+  IF NEW.conversation <> '' THEN
+    PERFORM pg_notify('oa_conv_events_v2', NEW.conversation || '|' || NEW.event_id::text);
+  END IF;
   RETURN NULL;
 END;
 $$;
@@ -21057,6 +21074,39 @@ CREATE TABLE auth.workos_pending (
 
 
 --
+-- Name: account_events_v2; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.account_events_v2 (
+    id bigint NOT NULL,
+    account text NOT NULL,
+    conversation text DEFAULT ''::text NOT NULL,
+    event_type text NOT NULL,
+    record text NOT NULL,
+    created_ms bigint NOT NULL
+);
+
+
+--
+-- Name: account_events_v2_id_seq; Type: SEQUENCE; Schema: chat; Owner: -
+--
+
+CREATE SEQUENCE chat.account_events_v2_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: account_events_v2_id_seq; Type: SEQUENCE OWNED BY; Schema: chat; Owner: -
+--
+
+ALTER SEQUENCE chat.account_events_v2_id_seq OWNED BY chat.account_events_v2.id;
+
+
+--
 -- Name: account_library_commands_v1; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -21158,7 +21208,11 @@ CREATE TABLE chat.conversations_v2 (
     legacy_revision bigint,
     legacy_record text,
     created_ms bigint NOT NULL,
-    updated_ms bigint NOT NULL
+    updated_ms bigint NOT NULL,
+    source_device text DEFAULT ''::text NOT NULL,
+    workspace text DEFAULT ''::text NOT NULL,
+    pinned boolean DEFAULT false NOT NULL,
+    archived boolean DEFAULT false NOT NULL
 );
 
 
@@ -21241,6 +21295,19 @@ CREATE TABLE chat.project_threads_v1 (
 
 
 --
+-- Name: sync_operations_v2; Type: TABLE; Schema: chat; Owner: -
+--
+
+CREATE TABLE chat.sync_operations_v2 (
+    account text NOT NULL,
+    operation text NOT NULL,
+    digest text NOT NULL,
+    response text NOT NULL,
+    created_ms bigint NOT NULL
+);
+
+
+--
 -- Name: task_capture_pages_v1; Type: TABLE; Schema: chat; Owner: -
 --
 
@@ -21289,8 +21356,29 @@ CREATE TABLE chat.turn_events_v2 (
     account text NOT NULL,
     turn text NOT NULL,
     sequence bigint NOT NULL,
-    record text NOT NULL
+    record text NOT NULL,
+    event_id bigint NOT NULL,
+    conversation text DEFAULT ''::text NOT NULL
 );
+
+
+--
+-- Name: turn_events_v2_event_id_seq; Type: SEQUENCE; Schema: chat; Owner: -
+--
+
+CREATE SEQUENCE chat.turn_events_v2_event_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: turn_events_v2_event_id_seq; Type: SEQUENCE OWNED BY; Schema: chat; Owner: -
+--
+
+ALTER SEQUENCE chat.turn_events_v2_event_id_seq OWNED BY chat.turn_events_v2.event_id;
 
 
 --
@@ -21410,7 +21498,14 @@ CREATE TABLE chat.turns_v2 (
     updated_ms bigint NOT NULL,
     native_input_json text,
     admitted_for text DEFAULT ''::text NOT NULL,
-    CONSTRAINT turns_v2_admitted_for_check CHECK ((admitted_for = ANY (ARRAY[''::text, 'gamebuilder-agent'::text])))
+    compute text DEFAULT 'cloud'::text NOT NULL,
+    cost_msat bigint DEFAULT 0 NOT NULL,
+    source_device text DEFAULT ''::text NOT NULL,
+    workspace text DEFAULT ''::text NOT NULL,
+    attachments_json text DEFAULT '[]'::text NOT NULL,
+    CONSTRAINT turns_v2_admitted_for_check CHECK ((admitted_for = ANY (ARRAY[''::text, 'gamebuilder-agent'::text]))),
+    CONSTRAINT turns_v2_check CHECK (((cost_msat >= 0) AND ((compute <> 'local'::text) OR (cost_msat = 0)))),
+    CONSTRAINT turns_v2_compute_check CHECK ((compute = ANY (ARRAY['cloud'::text, 'local'::text])))
 );
 
 
@@ -24355,6 +24450,13 @@ ALTER TABLE ONLY auth.recovery_requests ALTER COLUMN id SET DEFAULT nextval('aut
 
 
 --
+-- Name: account_events_v2 id; Type: DEFAULT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.account_events_v2 ALTER COLUMN id SET DEFAULT nextval('chat.account_events_v2_id_seq'::regclass);
+
+
+--
 -- Name: conversations id; Type: DEFAULT; Schema: chat; Owner: -
 --
 
@@ -24366,6 +24468,13 @@ ALTER TABLE ONLY chat.conversations ALTER COLUMN id SET DEFAULT nextval('chat.co
 --
 
 ALTER TABLE ONLY chat.events ALTER COLUMN id SET DEFAULT nextval('chat.events_id_seq'::regclass);
+
+
+--
+-- Name: turn_events_v2 event_id; Type: DEFAULT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.turn_events_v2 ALTER COLUMN event_id SET DEFAULT nextval('chat.turn_events_v2_event_id_seq'::regclass);
 
 
 --
@@ -25236,6 +25345,14 @@ ALTER TABLE ONLY auth.workos_pending
 
 
 --
+-- Name: account_events_v2 account_events_v2_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.account_events_v2
+    ADD CONSTRAINT account_events_v2_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: account_library_commands_v1 account_library_commands_v1_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -25313,6 +25430,14 @@ ALTER TABLE ONLY chat.events
 
 ALTER TABLE ONLY chat.project_threads_v1
     ADD CONSTRAINT project_threads_v1_pkey PRIMARY KEY (account, thread);
+
+
+--
+-- Name: sync_operations_v2 sync_operations_v2_pkey; Type: CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.sync_operations_v2
+    ADD CONSTRAINT sync_operations_v2_pkey PRIMARY KEY (account, operation);
 
 
 --
@@ -27155,6 +27280,13 @@ CREATE INDEX workos_pending_expires ON auth.workos_pending USING btree (expires_
 
 
 --
+-- Name: account_events_v2_stream; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE INDEX account_events_v2_stream ON chat.account_events_v2 USING btree (account, id);
+
+
+--
 -- Name: account_threads_v1_recent; Type: INDEX; Schema: chat; Owner: -
 --
 
@@ -27190,6 +27322,13 @@ CREATE INDEX conversations_v2_project ON chat.conversations_v2 USING btree (acco
 
 
 --
+-- Name: conversations_v2_sidebar; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE INDEX conversations_v2_sidebar ON chat.conversations_v2 USING btree (account, archived, pinned DESC, updated_ms DESC, id);
+
+
+--
 -- Name: events_turn; Type: INDEX; Schema: chat; Owner: -
 --
 
@@ -27201,6 +27340,20 @@ CREATE INDEX events_turn ON chat.events USING btree (turn, id);
 --
 
 CREATE INDEX project_threads_lookup_v1 ON chat.project_threads_v1 USING btree (account, project);
+
+
+--
+-- Name: turn_events_v2_conv_stream; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE INDEX turn_events_v2_conv_stream ON chat.turn_events_v2 USING btree (account, conversation, event_id);
+
+
+--
+-- Name: turn_events_v2_event_id; Type: INDEX; Schema: chat; Owner: -
+--
+
+CREATE UNIQUE INDEX turn_events_v2_event_id ON chat.turn_events_v2 USING btree (event_id);
 
 
 --
@@ -27897,6 +28050,13 @@ CREATE TRIGGER wallet_backup_forward BEFORE UPDATE OF epoch, slots, object, vaul
 
 
 --
+-- Name: account_events_v2 account_events_v2_notify; Type: TRIGGER; Schema: chat; Owner: -
+--
+
+CREATE TRIGGER account_events_v2_notify AFTER INSERT ON chat.account_events_v2 FOR EACH ROW EXECUTE FUNCTION chat.notify_account_event_v2();
+
+
+--
 -- Name: turn_events_v2 turn_events_v2_notify; Type: TRIGGER; Schema: chat; Owner: -
 --
 
@@ -28392,6 +28552,14 @@ ALTER TABLE ONLY auth.workos_identities
 
 
 --
+-- Name: account_events_v2 account_events_v2_account_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.account_events_v2
+    ADD CONSTRAINT account_events_v2_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
 -- Name: account_library_commands_v1 account_library_commands_v1_account_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
 --
 
@@ -28453,6 +28621,14 @@ ALTER TABLE ONLY chat.events
 
 ALTER TABLE ONLY chat.project_threads_v1
     ADD CONSTRAINT project_threads_v1_account_thread_fkey FOREIGN KEY (account, thread) REFERENCES chat.account_threads_v1(account, id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: sync_operations_v2 sync_operations_v2_account_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: -
+--
+
+ALTER TABLE ONLY chat.sync_operations_v2
+    ADD CONSTRAINT sync_operations_v2_account_fkey FOREIGN KEY (account) REFERENCES auth.accounts(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

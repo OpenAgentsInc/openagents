@@ -33,11 +33,19 @@
 
 #define STREAM_HANDOFF_MAGIC 0x4F415354u
 #define STREAM_NOTIFY_CHANNEL "oa_turn_events_v2"
+#define STREAM_CONV_NOTIFY_CHANNEL "oa_conv_events_v2"
+#define STREAM_ACCT_NOTIFY_CHANNEL "oa_account_events_v2"
 #define STREAM_MAX_CLIENTS 1024
 #define STREAM_RETRY_MS 3000
 #define STREAM_DB_IDLE_MS 30000
 #define STREAM_FRAME_CAP (160 * 1024)
 #define STREAM_MAX_EVENTS 128
+
+enum {
+  STREAM_KIND_TURN = 0,
+  STREAM_KIND_CONV = 1,
+  STREAM_KIND_ACCOUNT = 2
+};
 
 static coax_string sp_cs(const char *s, size_t n) { return (coax_string){s ? s : "", (int64_t)n}; }
 static coax_string sp_cstr(const char *s) { return sp_cs(s, s ? strlen(s) : 0); }
@@ -99,11 +107,12 @@ bool api_stream_write_retry(int fd, int64_t retry_ms) {
 
 typedef struct {
   uint32_t magic;
+  int32_t kind;
   int32_t turn_state;
   int64_t after_seq;
   int64_t turn_seq;
   char account[40];
-  char turn[37];
+  char target[40];
   char extra_headers[512];
 } stream_handoff_msg;
 
@@ -113,17 +122,18 @@ void stream_client_init(int send_fd) {
   stream_send_fd = send_fd;
 }
 
-bool stream_handoff_turn_events(const request *q, const char *account, const char *turn,
-                                int64_t after_seq, int64_t turn_seq, int turn_state) {
-  if (stream_send_fd < 0 || !q || q->fd < 0 || !account || !turn) return false;
+static bool stream_handoff_send(const request *q, int32_t kind, const char *account,
+                                const char *target, int64_t after_seq, int64_t turn_seq, int turn_state) {
+  if (stream_send_fd < 0 || !q || q->fd < 0 || !account) return false;
   stream_handoff_msg payload;
   memset(&payload, 0, sizeof payload);
   payload.magic = STREAM_HANDOFF_MAGIC;
+  payload.kind = kind;
   payload.turn_state = (int32_t)turn_state;
   payload.after_seq = after_seq;
   payload.turn_seq = turn_seq;
   snprintf(payload.account, sizeof payload.account, "%s", account);
-  snprintf(payload.turn, sizeof payload.turn, "%s", turn);
+  if (target) snprintf(payload.target, sizeof payload.target, "%s", target);
 
   const char *auth_hdr = auth_extra_headers();
   const char *route_env = getenv("OA_API_ROUTE_HEADER");
@@ -172,13 +182,30 @@ bool stream_handoff_turn_events(const request *q, const char *account, const cha
   return false;
 }
 
+bool stream_handoff_turn_events(const request *q, const char *account, const char *turn,
+                                int64_t after_seq, int64_t turn_seq, int turn_state) {
+  if (!turn) return false;
+  return stream_handoff_send(q, STREAM_KIND_TURN, account, turn, after_seq, turn_seq, turn_state);
+}
+
+bool stream_handoff_conv_events(const request *q, const char *account, const char *conversation,
+                                int64_t after_event_id) {
+  if (!conversation) return false;
+  return stream_handoff_send(q, STREAM_KIND_CONV, account, conversation, after_event_id, 0, 0);
+}
+
+bool stream_handoff_account_events(const request *q, const char *account, int64_t after_id) {
+  return stream_handoff_send(q, STREAM_KIND_ACCOUNT, account, "", after_id, 0, 0);
+}
+
 // ---- non-blocking streaming plane process
 
 typedef struct {
   int fd;
   int slot;
+  int kind;
   char account[40];
-  char turn[37];
+  char target[40];
   int64_t last_seq;
   int64_t connected_ms;
   int64_t last_send_ms;
@@ -377,16 +404,27 @@ static bool plane_ensure_listen_db(stream_plane *p) {
     p->listen_db = NULL;
     p->listen_sock = -1;
   }
-  if (!sp_channel_valid(sp_cstr(STREAM_NOTIFY_CHANNEL))) return false;
+  const char *channels[3] = {
+    STREAM_NOTIFY_CHANNEL,
+    STREAM_CONV_NOTIFY_CHANNEL,
+    STREAM_ACCT_NOTIFY_CHANNEL
+  };
+  for (int i = 0; i < 3; i++) {
+    if (!sp_channel_valid(sp_cstr(channels[i]))) return false;
+  }
   PGconn *c = api_db_new();
   if (!c) return false;
-  PGresult *r = PQexec(c, "LISTEN " STREAM_NOTIFY_CHANNEL);
-  bool ok = r && PQresultStatus(r) == PGRES_COMMAND_OK;
-  PQclear(r);
-  if (!ok) {
-    api_log("stream: LISTEN %s failed: %s", STREAM_NOTIFY_CHANNEL, PQerrorMessage(c));
-    PQfinish(c);
-    return false;
+  for (int i = 0; i < 3; i++) {
+    char cmd[128];
+    snprintf(cmd, sizeof cmd, "LISTEN %s", channels[i]);
+    PGresult *r = PQexec(c, cmd);
+    bool ok = r && PQresultStatus(r) == PGRES_COMMAND_OK;
+    PQclear(r);
+    if (!ok) {
+      api_log("stream: LISTEN %s failed: %s", channels[i], PQerrorMessage(c));
+      PQfinish(c);
+      return false;
+    }
   }
   int sock = PQsocket(c);
   if (sock < 0 || !ev_add_read(p->ev_fd, sock, TAG_PG_LISTEN)) {
@@ -399,9 +437,9 @@ static bool plane_ensure_listen_db(stream_plane *p) {
   return true;
 }
 
-// Replay all newly committed turn events strictly after c->last_seq in exact
-// ascending sequence order. Returns false if the client was closed (backpressure
-// or socket error).
+// Replay newly committed events strictly after c->last_seq in exact ascending
+// order for turn, conversation, or account-wide streams. Returns false if the
+// client was closed (backpressure, terminal turn end, or socket error).
 static bool plane_catchup_client(stream_plane *p, stream_client *c, int64_t now_ms) {
   PGconn *qdb = plane_query_db(p);
   if (!qdb) return true;
@@ -412,12 +450,29 @@ static bool plane_catchup_client(stream_plane *p, stream_client *c, int64_t now_
   for (;;) {
     char after_s[32];
     snprintf(after_s, sizeof after_s, "%lld", (long long)c->last_seq);
-    const char *params[4] = {c->account, c->turn, after_s, limit_s};
-    PGresult *r = PQexecParams(qdb,
-      "SELECT sequence, record FROM chat.turn_events_v2 "
-      "WHERE account = $1 AND turn = $2 AND sequence > $3::bigint "
-      "ORDER BY sequence ASC LIMIT $4::int",
-      4, NULL, params, NULL, NULL, 0);
+    PGresult *r = NULL;
+    if (c->kind == STREAM_KIND_TURN) {
+      const char *params[4] = {c->account, c->target, after_s, limit_s};
+      r = PQexecParams(qdb,
+        "SELECT sequence, 'turn', record FROM chat.turn_events_v2 "
+        "WHERE account = $1 AND turn = $2 AND sequence > $3::bigint "
+        "ORDER BY sequence ASC LIMIT $4::int",
+        4, NULL, params, NULL, NULL, 0);
+    } else if (c->kind == STREAM_KIND_CONV) {
+      const char *params[4] = {c->account, c->target, after_s, limit_s};
+      r = PQexecParams(qdb,
+        "SELECT event_id, 'chat_event', record FROM chat.turn_events_v2 "
+        "WHERE account = $1 AND conversation = $2 AND event_id > $3::bigint "
+        "ORDER BY event_id ASC LIMIT $4::int",
+        4, NULL, params, NULL, NULL, 0);
+    } else {
+      const char *params[3] = {c->account, after_s, limit_s};
+      r = PQexecParams(qdb,
+        "SELECT id, event_type, record FROM chat.account_events_v2 "
+        "WHERE account = $1 AND id > $2::bigint "
+        "ORDER BY id ASC LIMIT $3::int",
+        3, NULL, params, NULL, NULL, 0);
+    }
     if (!r || PQresultStatus(r) != PGRES_TUPLES_OK) {
       PQclear(r);
       return true;
@@ -426,14 +481,15 @@ static bool plane_catchup_client(stream_plane *p, stream_client *c, int64_t now_
     for (int i = 0; i < rows; i++) {
       int64_t seq = strtoll(PQgetvalue(r, i, 0), NULL, 10);
       if (seq <= c->last_seq) continue;
-      const char *rec = PQgetvalue(r, i, 1);
-      int rec_len = PQgetlength(r, i, 1);
+      const char *ev_name = PQgetvalue(r, i, 1);
+      const char *rec = PQgetvalue(r, i, 2);
+      int rec_len = PQgetlength(r, i, 2);
       int64_t fn = sp_sse_event_frame(sp_buf(p->frame_buf, STREAM_FRAME_CAP),
-                                      seq, sp_cstr("turn"), sp_cs(rec, (size_t)rec_len));
+                                      seq, sp_cstr(ev_name), sp_cs(rec, (size_t)rec_len));
       if (fn <= 0) continue;
       if (!client_enqueue(p, c, p->frame_buf, (size_t)fn)) {
-        api_log("stream: closing slow client on turn %s (queue limit %lld bytes)",
-                c->turn, (long long)p->max_queue_bytes);
+        api_log("stream: closing slow client kind=%d target=%s (queue limit %lld bytes)",
+                c->kind, c->target[0] ? c->target : c->account, (long long)p->max_queue_bytes);
         PQclear(r);
         plane_close_client(p, c);
         return false;
@@ -445,22 +501,24 @@ static bool plane_catchup_client(stream_plane *p, stream_client *c, int64_t now_
     if (rows < (int)p->replay_batch) break;
   }
 
-  // Check if the turn has reached a terminal state and all committed events have been queued.
-  const char *tparams[2] = {c->account, c->turn};
-  PGresult *tr = PQexecParams(qdb,
-    "SELECT state, sequence FROM chat.turns_v2 WHERE account = $1 AND id = $2",
-    2, NULL, tparams, NULL, NULL, 0);
-  if (tr && PQresultStatus(tr) == PGRES_TUPLES_OK && PQntuples(tr) == 1) {
-    int64_t st = strtoll(PQgetvalue(tr, 0, 0), NULL, 10);
-    int64_t tseq = strtoll(PQgetvalue(tr, 0, 1), NULL, 10);
-    if (sp_is_terminal_state(st) && c->last_seq >= tseq) {
-      c->closing = true;
+  // Only single-turn streams auto-close once the turn is terminal and caught up.
+  if (c->kind == STREAM_KIND_TURN) {
+    const char *tparams[2] = {c->account, c->target};
+    PGresult *tr = PQexecParams(qdb,
+      "SELECT state, sequence FROM chat.turns_v2 WHERE account = $1 AND id = $2",
+      2, NULL, tparams, NULL, NULL, 0);
+    if (tr && PQresultStatus(tr) == PGRES_TUPLES_OK && PQntuples(tr) == 1) {
+      int64_t st = strtoll(PQgetvalue(tr, 0, 0), NULL, 10);
+      int64_t tseq = strtoll(PQgetvalue(tr, 0, 1), NULL, 10);
+      if (sp_is_terminal_state(st) && c->last_seq >= tseq) {
+        c->closing = true;
+      }
     }
-  }
-  PQclear(tr);
-  if (c->closing && c->out_off == c->out_len) {
-    plane_close_client(p, c);
-    return false;
+    PQclear(tr);
+    if (c->closing && c->out_off == c->out_len) {
+      plane_close_client(p, c);
+      return false;
+    }
   }
   return true;
 }
@@ -533,8 +591,9 @@ static void plane_accept_handoffs(stream_plane *p, int64_t now_ms) {
     if (!c) { close(client_fd); continue; }
     c->fd = client_fd;
     c->slot = slot;
+    c->kind = payload.kind;
     snprintf(c->account, sizeof c->account, "%.*s", (int)(sizeof c->account - 1), payload.account);
-    snprintf(c->turn, sizeof c->turn, "%.*s", (int)(sizeof c->turn - 1), payload.turn);
+    snprintf(c->target, sizeof c->target, "%.*s", (int)(sizeof c->target - 1), payload.target);
     c->last_seq = payload.after_seq;
     c->connected_ms = now_ms;
     c->last_send_ms = now_ms;
@@ -566,9 +625,21 @@ static void plane_accept_handoffs(stream_plane *p, int64_t now_ms) {
 }
 
 typedef struct {
-  char turn[37];
+  int kind;
+  char key[41];
   int64_t max_seq;
-} notified_turn;
+} notified_target;
+
+static void plane_wake_matching(stream_plane *p, int kind, const char *key, int64_t max_seq, int64_t now_ms) {
+  for (int s = 0; s < STREAM_MAX_CLIENTS; s++) {
+    stream_client *c = p->clients[s];
+    if (!c || c->kind != kind || c->last_seq >= max_seq) continue;
+    const char *ckey = (kind == STREAM_KIND_ACCOUNT) ? c->account : c->target;
+    if (!strcmp(ckey, key)) {
+      (void)plane_catchup_client(p, c, now_ms);
+    }
+  }
+}
 
 static void plane_drain_notifies(stream_plane *p, int64_t now_ms) {
   if (!p->listen_db) return;
@@ -582,49 +653,61 @@ static void plane_drain_notifies(stream_plane *p, int64_t now_ms) {
     return;
   }
 
-  notified_turn batch[128];
+  notified_target batch[128];
   int nbatch = 0;
   PGnotify *nfy;
   while ((nfy = PQnotifies(p->listen_db)) != NULL) {
-    uint8_t turn_bytes[36];
+    int kind = -1;
+    char key[41] = {0};
     int64_t seq = 0;
-    if (nfy->extra && sp_notify_parse(sp_cstr(nfy->extra),
-                                      sp_buf(turn_bytes, sizeof turn_bytes),
-                                      (coax_v_s64){&seq, 1})) {
-      char turn_id[37];
-      memcpy(turn_id, turn_bytes, 36);
-      turn_id[36] = 0;
+    if (nfy->relname && nfy->extra) {
+      if (!strcmp(nfy->relname, STREAM_NOTIFY_CHANNEL)) {
+        uint8_t turn_bytes[36];
+        if (sp_notify_parse(sp_cstr(nfy->extra), sp_buf(turn_bytes, sizeof turn_bytes), (coax_v_s64){&seq, 1})) {
+          kind = STREAM_KIND_TURN;
+          memcpy(key, turn_bytes, 36);
+          key[36] = 0;
+        }
+      } else if (!strcmp(nfy->relname, STREAM_CONV_NOTIFY_CHANNEL)) {
+        uint8_t conv_bytes[36];
+        if (sp_conv_notify_parse(sp_cstr(nfy->extra), sp_buf(conv_bytes, sizeof conv_bytes), (coax_v_s64){&seq, 1})) {
+          kind = STREAM_KIND_CONV;
+          memcpy(key, conv_bytes, 36);
+          key[36] = 0;
+        }
+      } else if (!strcmp(nfy->relname, STREAM_ACCT_NOTIFY_CHANNEL)) {
+        uint8_t acct_bytes[40];
+        int64_t acct_len = 0;
+        if (sp_acct_notify_parse(sp_cstr(nfy->extra), sp_buf(acct_bytes, sizeof acct_bytes),
+                                 (coax_v_s64){&acct_len, 1}, (coax_v_s64){&seq, 1}) &&
+            acct_len > 0 && acct_len <= 40) {
+          kind = STREAM_KIND_ACCOUNT;
+          memcpy(key, acct_bytes, (size_t)acct_len);
+          key[acct_len] = 0;
+        }
+      }
+    }
+    if (kind >= 0) {
       int found = -1;
       for (int i = 0; i < nbatch; i++) {
-        if (!strcmp(batch[i].turn, turn_id)) { found = i; break; }
+        if (batch[i].kind == kind && !strcmp(batch[i].key, key)) { found = i; break; }
       }
       if (found >= 0) {
         if (seq > batch[found].max_seq) batch[found].max_seq = seq;
       } else if (nbatch < (int)(sizeof batch / sizeof batch[0])) {
-        memcpy(batch[nbatch].turn, turn_id, 37);
+        batch[nbatch].kind = kind;
+        memcpy(batch[nbatch].key, key, sizeof key);
         batch[nbatch].max_seq = seq;
         nbatch++;
       } else {
-        // Flush partial batch if more than 128 distinct turns notified at once.
-        for (int s = 0; s < STREAM_MAX_CLIENTS; s++) {
-          stream_client *c = p->clients[s];
-          if (c && !strcmp(c->turn, turn_id) && c->last_seq < seq) {
-            (void)plane_catchup_client(p, c, now_ms);
-          }
-        }
+        plane_wake_matching(p, kind, key, seq, now_ms);
       }
     }
     PQfreemem(nfy);
   }
 
   for (int b = 0; b < nbatch; b++) {
-    for (int s = 0; s < STREAM_MAX_CLIENTS; s++) {
-      stream_client *c = p->clients[s];
-      if (!c) continue;
-      if (!strcmp(c->turn, batch[b].turn) && c->last_seq < batch[b].max_seq) {
-        (void)plane_catchup_client(p, c, now_ms);
-      }
-    }
+    plane_wake_matching(p, batch[b].kind, batch[b].key, batch[b].max_seq, now_ms);
   }
 }
 
