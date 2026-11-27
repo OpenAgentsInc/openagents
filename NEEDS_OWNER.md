@@ -200,22 +200,22 @@ group. Install it from that group; the handoff records the delivery and checks.
 - [ ] Share excerpt → verify the chooser and Cancel; check VoiceOver and
       largest text. Model/effort, attachments and mic remain hidden.
 
-## WorkOS Authentication provisioning & rollout (#14097, #14100, #14101, #14102, #14103)
+## WorkOS Authentication provisioning & rollout (#14097–#14103)
 
-**Completed & verified live (2026-11-26):**
+**Completed & verified live (2026-11-26 / 2026-11-27) — Phases 0–4 CLOSED (#14097, #14098, #14099, #14100, #14101):**
 - All 8 GCP Secret Manager secrets (`oa-workos-{api-key,client-id,webhook-secret,action-secret}` for staging and production) are provisioned in `openagentsgemini` and bound strictly to `serviceAccount:157437760789-compute@developer.gserviceaccount.com`.
-- `oa-api-staging` (`oa-api-staging-00254-8gl`) and production `oa-api` (`oa-api-00182-rqs`) are deployed from `82e13ef7f6` with migration `0218_workos_auth.sql` applied, WorkOS secrets mounted, and 1-minute Cloud Scheduler `workos-events` mirror pollers active (`oa-api-staging-workos-events`, `oa-api-workos-events`, both HTTP 200).
-- **Staging (`https://staging.openagents.com/login`) is LIVE with `OA_WORKOS_ENABLED=1`** and verified end-to-end: `coax/web/api/workos-env-check.sh --staging` passed; Custom Coax GPU UI (`login.d5133e1ac69c.wasm` 82,232 B + `login/key.28785eb3124e.js`) verified in headless Chrome (`1280x900` & `390x844`) showing Magic Auth, Email + Password, Google, GitHub, Apple, and Enterprise SSO; live WorkOS Staging `/oauth/start`, `/device/start`, `/password/register` -> `verify-email`, live WorkOS `user.created`/`user.deleted` webhooks (HTTP 200), live `/api/auth/workos/action` HMAC-SHA256 `Allow` on both staging and production, and `apps/openagents-desktop/tests/account-check.sh --live https://staging.openagents.com` passed.
-- **Production Cloud Run backups & restore drill verified live:** `oa-db-dump-auth` redeployed with `OA_BACKUP_SCHEMA=auth:workos` (`gs://openagentsgemini-db-backups/oa_analytics-auth/20261127T014041Z.dump.age`, 310,049 B) and `oa-db-drill-jnp5k` decrypted & restored the post-migration full dump `oa_analytics/20261127T014337Z.dump.age` (`gs://openagentsgemini-db-backups/drills/20261127T014527Z.json`: `"ok":true,"tables":229,"rows":504747,"restore_exit":0,"restore_errors":0`).
-- **Production safety preserved:** `oa-api` (`openagents.com`) remains at `OA_WORKOS_ENABLED=0` and `gamebuilder.org` remains strictly isolated (`HTTP 403`) until the owner completes the items below.
+- `oa-api-staging` (`oa-api-staging-00257-rwh`) and production `oa-api` (`oa-api-00182-rqs`) are deployed with migration `0218_workos_auth.sql` applied, WorkOS secrets mounted, and 1-minute Cloud Scheduler `workos-events` mirror pollers active (`oa-api-staging-workos-events`, `oa-api-workos-events`, both HTTP 200).
+- **Staging (`https://staging.openagents.com/login`) is LIVE with `OA_WORKOS_ENABLED=1`** and verified end-to-end: `coax/web/api/workos-env-check.sh --staging` passed; Staging `GoogleOAuth`, `GitHubOAuth`, and `AppleOAuth` all return `HTTP/2 302`; Custom Coax GPU UI verified in headless Chrome (`1280x900` & `390x844`); live `/device/start`, `/password/register`, webhooks, and AuthKit Actions verified.
+- **Native Phase 4 (#14101) verified & closed:** iOS Simulator `OpenAgentsTests` 20/20 + `check.sh`, `app-services-check.sh`, `screen.coax` 144/144, macOS Desktop `account-check.sh --live https://staging.openagents.com`, Android `app-login-unit.coax` 631/631 + NDK `aarch64-linux-android35-clang -Werror`, and CLI `workos_cli_e2e.sh` against `workos/emulate` + live staging `/device/start` all passed.
+- **Production Cloud Run backups & restore drill verified live:** `oa-db-dump-auth` (`OA_BACKUP_SCHEMA=auth:workos`, `20261127T014041Z.dump.age`, 310,049 B) and `oa-db-drill-jnp5k` (`"ok":true,"tables":229,"rows":504747,"restore_errors":0`). Production `GitHubOAuth` (`HTTP/2 302`), JWKS, and Device Auth are live; `oa-api` remains safely at `OA_WORKOS_ENABLED=0` until the items below are completed.
 
-### Remaining owner-only actions
+### Remaining owner-only actions (blocking #14102 & #14103)
 
-1. **WorkOS Dashboard — Production OAuth credentials & Radar (#14097):**
-   - [ ] In the WorkOS **Production** environment, verify **Email + Password**, **Magic Auth**, **Enterprise SSO**, and **Optional Organizations** are enabled, and configure **real production OAuth credentials** for **Google OAuth**, **GitHub OAuth**, and **Apple OAuth** (replacing any demo credentials; keep Phone/SMS and Radar SMS challenges **OFF** per D3).
+1. **WorkOS Dashboard — Production Google & Apple OAuth credentials + Radar (#14102):**
+   - [ ] In the WorkOS **Production** environment, enable and configure **real production OAuth credentials** for **Google OAuth** and **Apple OAuth** (both currently return `HTTP/2 404` on WorkOS Production; `GitHubOAuth` already returns `302`; keep Phone/SMS and Radar SMS challenges **OFF** per D3).
    - [ ] Enable **WorkOS Radar** on Staging and Production when ready (deferred by owner; keep Radar SMS challenges OFF).
 2. **Production cutover (`openagents.com`, #14102):**
-   - [ ] Ship the updated web bundle to production (`coax/web/release.sh` or `coax/web/deploy.sh apps/openagents-web openagents-web`, after unrelated `main-green` blockers in `labs/bitcoin-lab.coax` and `chat/index.html` are cleared) so `openagents.com/login` loads the WorkOS `login.wasm` + `login/key.js`.
+   - [ ] Ship the updated `openagents-web` production bundle (`coax/web/release.sh`, once unrelated `main-green` blockers are cleared) so `openagents.com/login` loads the WorkOS `login.wasm` + `login/key.js` (currently on the 2026-11-13 bundle).
    - [ ] Enable WorkOS on production `oa-api` and validate:
      ```bash
      gcloud run services update oa-api \
@@ -224,29 +224,21 @@ group. Install it from that group; the handoff records the delivery and checks.
      coax/web/api/workos-env-check.sh --production
      ```
      *(Instant zero-data-loss rollback: set `OA_WORKOS_ENABLED=0`.)*
-3. **Physical mobile device / TestFlight & Android emulator sign-off (#14101):**
-   - [ ] On a physical iPhone / TestFlight build and Android device/emulator, interactively verify Sign in with Apple (Guideline 4.8), Google, GitHub, Magic Auth, Email + Password, and `ASWebAuthenticationSession` (`openagents://auth/callback`) / Android Custom Tabs App Link (`https://openagents.com/app/auth/callback`) against `staging.openagents.com` or `openagents.com`.
-   - [ ] Test interactive OAuth/SSO sign-in from macOS OpenAgents Desktop (`OpenAgents ▸ Log In…`) and CLI (`openagents login --workos --origin https://staging.openagents.com`).
+3. **Optional physical-device interactive sign-off:**
+   - [ ] On a physical iPhone / TestFlight build, interactively confirm Sign in with Apple (`ASWebAuthenticationSession`, `openagents://auth/callback`) against `staging.openagents.com` or `openagents.com`.
 4. **Phase 5 follow-up — `gamebuilder.org` cutover & legacy email-code retirement (#14102):**
    - [ ] After `openagents.com` runs stably on WorkOS, add `gamebuilder.org` callback URI in WorkOS Dashboard, flip `OA_WORKOS_GAMEBUILDER_ENABLED=1`, and follow `docs/auth/2026-11-26-workos-cutover-runbook.md` §5 (keeping Resend strictly for first-party security notices).
 
-## WorkOS Pipes — GitHub integration provider (#14126, 2026-11-26)
+## WorkOS Pipes — GitHub integration provider (#14126, 2026-11-27 — COMPLETED)
 
-OpenAgents API (`/api/integrations/github/{status,connect,repos,disconnect}`) and Web Home/Settings UI wire WorkOS Pipes for user-authorized GitHub repository browsing and read-only cloud tools (zero GitHub tokens stored in OpenAgents Postgres or browser storage).
+- [x] **WorkOS Staging & Production Pipes → User → GitHub** configured and verified live (`GET /user_management/users/{uid}/data_providers`, `POST /data-integrations/github/authorize`, `POST /data-integrations/github/token` all HTTP 200; scopes `repo, read:user`).
+- [x] `dom_go` in `coax/web/dom-host.js` (`b8bf4be167`) updated and deployed to `staging.openagents.com` to allow top-level `https://*.workos.com` OAuth redirects. Issue **#14126** closed.
 
-- [ ] In the **WorkOS Staging** and **WorkOS Production** dashboards, open **Pipes → Providers → GitHub** and enable the GitHub provider (with your GitHub OAuth App / GitHub App client ID + secret and read scopes `repo, read:user` or `public_repo, read:user` depending on private repo support).
-- [ ] Verify the WorkOS Pipes redirect callback URL is registered on the GitHub App/OAuth App per the WorkOS Pipes GitHub setup card.
-- [ ] After enabling GitHub in WorkOS Staging, click **Connect GitHub** on `https://staging.openagents.com/` or `https://staging.openagents.com/settings/account` and confirm repositories load in the New Project quick-picker.
+## Cloud Sandbox GCE VM backend (#14128, #14130, 2026-11-27 — COMPLETED)
 
-## Cloud Sandbox GCE VM backend opt-in (#14128, 2026-11-27)
-
-The first-party GCP `oa-boat` Boat-v1 control plane (`coax/web/boat/`), `#authority` multi-tenant sandbox admission/policy (`coax/lib/boat/sandbox-policy.coax`, `coax/web/boat/boat-service-policy.coax`), durable `turns_v2` sandbox worker engine (`coax/web/agent/sandbox.coax`), and Web/API `?target=sandbox` dispatch are landed and verified locally with `boat conform --lifecycle` + mock GCE Compute Engine VM lifecycle tests (ASan/UBSan clean, zero serviceAccount, no external IP). GCP Secret Manager already contains `oa-boat-api-key` and `oa-boat-ssh-key`.
-
-- [ ] When ready to enable live billable GCE sandbox VMs on staging (`e2-standard-2` / `e2-standard-4` / `c3d-highcpu-8` in `openagentsgemini` `us-central1-a`), run:
-  ```bash
-  coax/web/boat/deploy.sh --staging
-  ```
-- [ ] Point `oa-agent-staging` (`OA_BOAT_API_BASE` + `OA_BOAT_API_KEY=oa-boat-api-key:latest`) at the deployed `oa-boat-staging` Cloud Run URL and verify `coax/web/tool.sh boat conform --lifecycle` against a live GCE sandbox VM.
+- [x] Deployed first-party GCP **`oa-boat-staging`** (`oa-boat-staging-00003-tvd`, `https://oa-boat-staging-ezxz4mgdsq-uc.a.run.app`, least-privilege `oa-boat@openagentsgemini.iam.gserviceaccount.com`, Direct VPC Egress `default/default`, `--no-cpu-throttling`, mounted `oa-boat-api-key` & `oa-boat-ssh-key`) from `5a0bd2f956`.
+- [x] Wired **`oa-agent-staging`** (`oa-agent-staging-00024-d7v`) with `OA_BOAT_API_BASE` and `OA_BOAT_API_KEY=oa-boat-api-key:latest`.
+- [x] Verified live GCE VM lifecycle end-to-end with `BOAT_HOSTED=1 coax/web/tool.sh boat conform --lifecycle` (**14/14 passed, `conform: 0 failed`** on a real `e2-standard-2` Debian 12 VM with zero external IP, zero project-admin SA, Cloud NAT egress, sync + detached NDJSON streaming commands, file read/write, stop, and delete; zero leaked VMs). Issues **#14128** and **#14130** closed.
 
 
 
