@@ -57,8 +57,8 @@ institute_noir_css :: (out: [] u8, at: int) -> int {
   n = in_put(out, n, "*,*::before,*::after{box-sizing:border-box;border-radius:0}");
   n = in_put(out, n, "html,body,#coaxial-root{margin:0;padding:0;background:#000000;color:#f1efe8;font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}");
   n = in_put(out, n, "html:has(.chat),body:has(.chat){height:100%;overflow:hidden;overscroll-behavior:none}body:has(.chat){position:fixed;inset:0}");
-  n = in_put(out, n, "body::before{display:none}svg.fr{display:none}::selection{background:var(--white-20);color:#ffffff}");
-  n = in_put(out, n, "button,a,[role=button]{cursor:default;font-family:inherit}input,textarea{cursor:text;font-family:inherit}");
+  n = in_put(out, n, "body::before{display:none}svg.fr{display:none}::selection{background:rgba(255,255,255,.22);color:#ffffff}::-moz-selection{background:rgba(255,255,255,.22);color:#ffffff}");
+  n = in_put(out, n, "button,a,[role=button]{cursor:default;font-family:inherit}input,textarea{cursor:text;font-family:inherit;caret-color:#f1efe8}");
   n = in_put(out, n, ":focus-visible{outline:2px solid var(--in-focus-ring);outline-offset:2px}");
   n = in_put(out, n, ".log:focus,.log:focus-visible,.vl-scroll:focus,.vl-scroll:focus-visible{outline:none !important;box-shadow:none !important}");
   n = in_put(out, n, "::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--white-04)}::-webkit-scrollbar-thumb{background:rgba(64,64,64,.50)}::-webkit-scrollbar-thumb:hover{background:rgba(64,64,64,.70)}");
