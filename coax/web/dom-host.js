@@ -439,7 +439,17 @@ async function start() {
   const keptKey = `coaxial.dom.${app}.kept`;
   const keep = (at, len) => { if (len > 4096) return; try { localStorage.setItem(keptKey, text.decode(new Uint8Array(memory.buffer, at, len))); } catch { /* refused: kept for this visit only */ } };
   const go = (at, len, push) => {
-    const url = mounted(text.decode(new Uint8Array(memory.buffer, at, len)));
+    const raw = text.decode(new Uint8Array(memory.buffer, at, len));
+    if (!push && raw.startsWith("https://")) {
+      try {
+        const ext = new URL(raw);
+        if (ext.protocol === "https:" && (ext.hostname === "workos.com" || ext.hostname.endsWith(".workos.com"))) {
+          location.assign(ext.href);
+          return;
+        }
+      } catch { /* fall through to same-origin guard */ }
+    }
+    const url = mounted(raw);
     if (!url.startsWith("/") || url.startsWith("//")) return;
     if (!push || fixed) { if (!(top && shellGo(url))) location.assign(url); return; }   // in the shell's frame, the shell's
     pushed = true;
