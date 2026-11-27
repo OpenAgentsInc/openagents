@@ -3455,7 +3455,11 @@ static int run_flawed(DesktopApp *a) {
 // with "Allow delegating to other local harnesses" off: no Claude sub-agent may start. =two asks
 // for two Claude sub-agents in one message: both must run at the same time. =stop stops the turn
 // while its Claude sub-agent runs a long command: nothing of it may be left running. =file has the
-// sub-agent write a file: it must land in the chat's working folder (--cwd).
+// sub-agent write a file: it must land in the chat's working folder (--cwd). =missing and =unauthed
+// are run with a HOME (and for =missing a PATH) where the claude command is absent or not signed in:
+// the probe must say which, no Claude sub-agent may start, and the chat must say why. =routed sends
+// "Use Claude to ..." on Auto with no word about tools: the router's plan must start the sub-agent.
+// =own asks for a general-purpose sub-agent on Local: it must run in oa-worker on the local model.
 static int run_delegate_claude_turn(DesktopApp *a, int mode);
 // Whatever the check found, none of its workers is left running.
 static int run_delegate_claude(DesktopApp *a, int mode) {
@@ -3468,7 +3472,10 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
   int allow = mode != 2;
   if (!oa_core_init(vc(a), cs(""), cs(""))) return flow_fail("init", "the chat store did not open");
   if (!a->flawed_worker_bin[0]) return flow_fail("worker", "oa-worker is not beside the app");
-  if (!claude_sub_ready(a)) return flow_fail("claude", a->claude_worker_bin[0] ? "the claude command is not installed" : "claudeworker is not beside the app");
+  // =missing and =unauthed are run in a HOME and PATH where the claude command is absent, or has no
+  // sign-in: the probe must say so, no Claude worker may start, and the chat must say why.
+  int unavailable = mode == 6 || mode == 7;
+  if (!unavailable && !claude_sub_ready(a)) return flow_fail("claude", a->claude_worker_bin[0] ? "the claude command is not installed" : "claudeworker is not beside the app");
   if (a->daemon_bin[0]) oa_core_daemon_ensure(vc(a), cs(a->daemon_bin), 1500);
   flow_ok("service", oa_core_daemon_owns_runs(vc(a)) ? "workers start through the resident host service" : "no resident host service: workers start directly");
   a->page = cd_open_ex(a->resources, 1, FLOW_W, FLOW_H);
@@ -3482,15 +3489,30 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
   if (have < 21) return flow_fail("settings", "the page has no setting for delegating to other local harnesses");
   v[20] = allow ? 1 : 0;
   cd_flawed_prefs_set(a->page, v, have);
-  cd_claude_sub(a->page, 1);
-  if (!cd_pick_model(a->page, "oa:local")) return flow_fail("model", "the page did not pick Local");
+  if (unavailable) {
+    claude_probe_auth(a);
+    const char *want = mode == 6 ? "Not installed" : "Not signed in";
+    if (a->claude_ready || !strstr(a->claude_status, want)) {
+      fprintf(stderr, "delegate-claude-test: the probe said: %s\n", a->claude_status);
+      return flow_fail("probe", mode == 6 ? "the probe did not say the claude command is not installed (run this case with claude off PATH and an empty HOME)"
+                                           : "the probe did not say Claude Code is not signed in (run this case with an empty HOME)");
+    }
+    flow_ok("probe", a->claude_status);
+  } else {
+    cd_claude_sub(a->page, 1);
+  }
+  // =routed: on Auto, with no word about tools: the router's plan names Claude as the delegate
+  if (!cd_pick_model(a->page, mode == 8 ? "oa:auto" : "oa:local")) return flow_fail("model", "the page did not pick its model");
   flow_ok("settings", allow ? "delegating to other local harnesses is on" : "delegating to other local harnesses is off");
   const char *ask_text =
-      mode == 3 ? "Call your Agent tool twice in the same message, both with subagent_type claude-haiku. The first prompt: Reply with exactly the word KIWI and nothing else. The second prompt: Reply with exactly the word PLUM and nothing else. Then tell me both words the sub-agents replied with."
+      mode == 9 ? "Use your Agent tool once, with subagent_type general-purpose and this prompt: Reply with exactly the word KIWI and nothing else. Then tell me the word the sub-agent replied with."
+    : mode == 8 ? "Use Claude to reply with exactly the word KIWI and nothing else. Then tell me the word it replied with."
+    : mode == 3 ? "Call your Agent tool twice in the same message, both with subagent_type claude-haiku. The first prompt: Reply with exactly the word KIWI and nothing else. The second prompt: Reply with exactly the word PLUM and nothing else. Then tell me both words the sub-agents replied with."
     : mode == 5 ? "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Create a file named oa-delegate-check.txt in the current folder that holds the one word GUAVA. Then reply with the word DONE. Then tell me what the sub-agent replied."
     : mode == 4 ? "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Run this exact shell command in the foreground and wait for it to end: for i in $(seq 1 120); do sleep 1; done; echo OA_STOP_MARKER. Then reply with the word DONE. Then tell me what the sub-agent replied."
     : "Use your Agent tool once, with subagent_type claude-haiku and this prompt: Reply with exactly the word KIWI and nothing else. Then tell me the word the sub-agent replied with.";
   if (!cd_set_text(a->page, ask_text) || !cd_submit(a->page)) return flow_fail("send", "the draft was not sent");
+  int ran_own = 0;   // a sub-agent started in oa-worker, the chat's own agent
   int ran_claude = 0, approved = 0, saw_running = 0, ended = 0, most = 0, stop_at = -1, stopped = 0;
   for (int t = 0; t < 60000 && !ended; t++) {   // ten minutes at most
     pump_host(a);
@@ -3504,6 +3526,7 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
     }
     int now = 0;
     for (int i = 0; i < OA_SUBAGENTS; i++) {
+      if (a->sub_active[i] && cd_agent_engine(a->page, a->sub_agent_id[i]) == 0) ran_own = 1;
       if (a->sub_active[i] && cd_agent_engine(a->page, a->sub_agent_id[i]) == 1) {
         now++;
         if (!ran_claude) {
@@ -3540,6 +3563,22 @@ static int run_delegate_claude_turn(DesktopApp *a, int mode) {
       return flow_fail("off", "the reply does not name the setting that turns delegating on");
     }
     flow_ok("off", "the reply names the setting that turns delegating on");
+  } else if (mode == 9) {
+    // =own: a chat on the local model hands a task to a sub-agent of its own kind, with no cloud sign-in needed
+    if (ran_claude) return flow_fail("own", "the sub-agent ran in Claude Code, which nobody asked for");
+    if (!ran_own || !ask || !strstr(ask, "KIWI")) {
+      fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : "");
+      return flow_fail("own", !ran_own ? "no sub-agent started in oa-worker" : "the chat does not hold the sub-agent's word");
+    }
+    flow_ok("own", "a local chat's own sub-agent ran on the local model and its word came back");
+  } else if (unavailable) {
+    if (ran_claude) return flow_fail("unavailable", "a Claude sub-agent started though Claude Code cannot run here");
+    flow_ok("unavailable", "no Claude sub-agent started");
+    if (n <= 0 || !strstr(a->save_buf, "not available on this computer")) {
+      fprintf(stderr, "delegate-claude-test: chat as kept:\n%.3000s\n", n > 0 ? a->save_buf : "");
+      return flow_fail("unavailable", "the chat does not say that Claude Code is not available on this computer");
+    }
+    flow_ok("unavailable", "the chat says Claude Code is not available on this computer");
   } else if (mode == 4) {
     if (!stopped) return flow_fail("stop", "no Claude sub-agent started, so nothing was stopped");
     for (int k = 0; k < 300; k++) { pump_host(a); cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f); flow_sleep_ms(10); }
@@ -3965,6 +4004,10 @@ static int oa_main(int argc, char **argv) {
     else if (strcmp(argv[i], "--delegate-claude-test=two") == 0) delegate_test = 3;
     else if (strcmp(argv[i], "--delegate-claude-test=stop") == 0) delegate_test = 4;
     else if (strcmp(argv[i], "--delegate-claude-test=file") == 0) delegate_test = 5;
+    else if (strcmp(argv[i], "--delegate-claude-test=missing") == 0) delegate_test = 6;
+    else if (strcmp(argv[i], "--delegate-claude-test=unauthed") == 0) delegate_test = 7;
+    else if (strcmp(argv[i], "--delegate-claude-test=routed") == 0) delegate_test = 8;
+    else if (strcmp(argv[i], "--delegate-claude-test=own") == 0) delegate_test = 9;
     else if (strcmp(argv[i], "--input-test") == 0) input = 1;
     else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     else if (strcmp(argv[i], "--resources") == 0 && i + 1 < argc) snprintf(app.resources, sizeof(app.resources), "%s", argv[++i]);

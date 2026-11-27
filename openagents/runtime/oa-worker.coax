@@ -7471,6 +7471,11 @@ tool_main :: () -> int #export_c #effects(all) {
       ap := cast(string) run[0].active_pack[0..<run[0].nactive_pack];
       at := cast(string) run[0].active_tier[0..<run[0].nactive_tier];
       fww_route_auto_plan_v2(tk, repo_name, ap, at, local_ready, cloud_ready, door_pref, cfg[0].allow_local_harnesses, req[0].agents && req[0].claude, plan[..]);
+      // The offline plan names no delegate; a message that plainly asks for Claude gets it when Claude can run.
+      if plan[0].ok && (plan[0].explicit_delegate.count == 0 || plan[0].explicit_delegate == "none")
+         && req[0].agents && req[0].claude && cfg[0].allow_local_harnesses && fww_text_asks_for_claude(tk) {
+        plan[0].explicit_delegate = "claude";
+      }
       if plan[0].ok {
         if plan[0].npacks > 0 { run[0].nactive_pack = fww_keep(run[0].active_pack[..], plan[0].capability_packs[0]); }
         run[0].nactive_tier = fww_keep(run[0].active_tier[..], plan[0].compute_tier);

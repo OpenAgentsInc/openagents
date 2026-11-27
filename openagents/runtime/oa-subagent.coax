@@ -370,6 +370,32 @@ fww_subagent_git :: (asked: string, own_worktree: bool, most: string) -> string 
   #assert fww_subagent_git("push", false, "none") == "none" && fww_subagent_git("", true, "none") == "none";
 }
 
+// Whether this run's model is the local one (Local picked, or Auto that chose it).
+fww_run_is_local :: (r: [] FwRun) -> bool {
+  m := cast(string) r[0].model[0..<r[0].nmodel];
+  return m == "oa:local" || gw_is_local_model(m);
+}
+// Whether a message plainly tells the chat to hand its task to Claude ("Use Claude to ...",
+// "Have Claude Opus review ..."). The router's model doors answer this themselves; this is for the
+// offline plan, which has no such answer (GitHub #14104). Only a direct instruction counts.
+fww_text_asks_for_claude :: (text: string) -> bool {
+  heads := [8] string.["use claude ", "have claude ", "ask claude ", "let claude ", "delegate to claude", "delegate this to claude", "delegate it to claude", "hand this to claude"];
+  for h: heads {
+    if text.count < h.count { continue; }
+    for i: 0..<text.count - h.count + 1 {
+      if i > 0 && text[i - 1] != ' ' && text[i - 1] != '\n' && text[i - 1] != ',' && text[i - 1] != '.' { continue; }   // a word's start
+      if oa_ag_eq_ci(cast(string) text[i..<i + h.count], h) { return true; }
+    }
+  }
+  return false;
+}
+#test "sub-agents (#14104): only a direct instruction asks for Claude" {
+  #assert fww_text_asks_for_claude("Use Claude to fix this") && fww_text_asks_for_claude("Please have Claude Opus review the diff.");
+  #assert fww_text_asks_for_claude("fix it, then ask claude to check") && fww_text_asks_for_claude("Delegate this to Claude");
+  #assert !fww_text_asks_for_claude("What is Claude?") && !fww_text_asks_for_claude("refuse claude tokens") && !fww_text_asks_for_claude("");
+  #assert !fww_text_asks_for_claude("the claude worker crashed") && !fww_text_asks_for_claude("excuse claude ");
+}
+
 // The app's sub-agent level for a subagent_type that names Claude Code, or "" (GitHub #14104).
 fww_claude_level :: (kind: string) -> string {
   if oa_ag_eq_ci(kind, "claude-haiku") { return "haiku"; }
@@ -659,7 +685,8 @@ fww_start_delegate_batch :: (r: [] FwRun, cfg: [] FwConfig, h: [] FwHist, home: 
 
     // Desktop host mode: append task object to MWW_DELEGATE tasks JSON array
     jo_obj(jo[..]);
-    jo_key(jo[..], "level"); jo_str(jo[..], ifx claude_level.count > 0 then claude_level else "neon");
+    // A chat on the local model has local sub-agents: a computer with no cloud sign-in can still delegate.
+    jo_key(jo[..], "level"); jo_str(jo[..], ifx claude_level.count > 0 then claude_level else ifx fww_run_is_local(r) then "inkling" else "neon");
     jo_key(jo[..], "task"); jo_str(jo[..], eff_prompt);
     jo_key(jo[..], "subagent_type"); jo_str(jo[..], ifx is_fork then "fork" else type_s);
     if desc_s.count > 0 { jo_key(jo[..], "description"); jo_str(jo[..], desc_s); }

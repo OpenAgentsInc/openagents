@@ -881,6 +881,7 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
       is_fork = s[0].turns[i].agents[j].is_fork,
       fork_context_path = cast(string) s[0].turns[i].agents[j].fork_ctx_path[0..<s[0].turns[i].agents[j].fork_ctx_path_n],
     };
+    if level == CP_LEVEL_INKLING { t.local = true; t.model = "inkling-2-mini"; }   // a local chat's sub-agent is local too
     if s[0].turns[i].agents[j].model_ovr_n > 0 {
       t.model = cast(string) s[0].turns[i].agents[j].model_ovr[0..<s[0].turns[i].agents[j].model_ovr_n];
     }
