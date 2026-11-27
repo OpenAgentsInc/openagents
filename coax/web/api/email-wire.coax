@@ -35,7 +35,7 @@ emw_reply_id :: (r: [] EmwReply) -> string #effects(all) { return cast(string) r
 emw_read_reply :: (body: string, nodes: [] JvNode, r: [] EmwReply) -> bool #effects(all) {
   r[0] = EmwReply.{};
   d: [1] Jv;
-  if !jv_parse(d[..], body, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  if !jv_parse(d[..], body, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return false; } // mutant: equivalent (jv_fail sets count=0 so jv_kind!=JV_OBJECT on parse failure; non-objects make jv_get/jv_str return -1 without touching r[0])
   sn := jv_str(d[0], jv_get(d[0], 0, "state"), r[0].state[..]); idn := jv_str(d[0], jv_get(d[0], 0, "id"), r[0].id[..]);
   if sn < 1 || idn < 0 { return false; }
   r[0].state_n = sn; r[0].id_n = idn;
@@ -52,7 +52,9 @@ emw_read_reply :: (body: string, nodes: [] JvNode, r: [] EmwReply) -> bool #effe
   #assert cast(string) back[0..<m] == body;
   n = emw_reply_write("already sent", "", b[..]);
   #assert cast(string) b[0..<n] == "{\"state\":\"already sent\",\"id\":\"\"}" && emw_read_reply(cast(string) b[0..<n], nodes[..], r[..]) && emw_reply_id(r[..]) == "";
-  #assert !emw_read_reply("{\"id\":\"msg-1\"}", nodes[..], r[..]) && !emw_read_reply("[]", nodes[..], r[..]);
+  #assert !emw_read_reply("{\"id\":\"msg-1\"}", nodes[..], r[..]) && r[0].state_n == 0 && r[0].id_n == 0 && !emw_read_reply("[]", nodes[..], r[..]);
+  #assert emw_read_reply("{\"state\":\"a\",\"id\":\"\"}", nodes[..], r[..]) && emw_reply_state(r[..]) == "a" && emw_reply_id(r[..]) == "";
+  #assert !emw_read_reply("{\"state\":\"\",\"id\":\"x\"}", nodes[..], r[..]) && r[0].state_n == 0 && r[0].id_n == 0;
   n = emw_error_write("to: not on this service's \"allow\\list\"", b[..]);
   #assert cast(string) b[0..<n] == "{\"error\":\"to: not on this service's allowlist\"}";
   long: [400] u8; for i: 0..<400 { long[i] = 'a'; }

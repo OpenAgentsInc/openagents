@@ -285,10 +285,15 @@ lnw_probe_refused_write :: (out: [] u8) -> int #export_c #effects(all) {
   body = cast(string) b[0..<n];
   wtail := ",\"nip05\":\"\",\"waiting\":{\"mode\":\"spark\",\"target\":\"02ab\",\"ready_at\":7}}";
   #assert body[n - wtail.count..<n] == wtail;
+  n = lnw_card_write(lim[..], 24, false, "al", "x.test", "none", "active", "", "", 1, 0, false, "", false, "", "", "", "1", b[..]);
+  body = cast(string) b[0..<n];
+  #assert body[n - 13..<n] == ",\"notices\":1}";
   lhead := "min_msat 1000\nlimit_max_msat 500000000\ncomment_chars 280\nchange_wait_hours 24\nspark_receiving 0\nnow_s 1763000001\nperson 1\n";
   n = lnw_card_none_lines(lim[..], 24, false, 1763000001, true, "alice", b[..]);
   body = cast(string) b[0..<n];
   #assert body[0..<lhead.count] == lhead && body[lhead.count..<n] == "suggest alice\n" && lnw_card_none_lines(lim[..], 24, false, 1763000001, true, "alice", b[0..<n - 1]) == -1;
+  n = lnw_card_none_lines(lim[0..<3], 24, false, 1763000001, true, "a", b[..]);
+  #assert cast(string) b[lhead.count..<n] == "suggest a\n";
   n = lnw_card_none_lines(lim[..], 72, true, 0, false, "", b[..]);
   #assert cast(string) b[0..<n] == "min_msat 1000\nlimit_max_msat 500000000\ncomment_chars 280\nchange_wait_hours 72\nspark_receiving 1\nnow_s 0\nperson 0\n";
   #assert lnw_card_none_lines(lim[0..<2], 72, true, 0, false, "", b[..]) == -1;
@@ -299,6 +304,8 @@ lnw_probe_refused_write :: (out: [] u8) -> int #export_c #effects(all) {
   n = lnw_card_lines(lim[..], 24, false, 1763000001, true, "al", "x.test", "forward", "off", "b@c.d", "02ab", 3, 0, false, "cd34", true, "spark", "02ef", "1763000000", b[..]);
   body = cast(string) b[0..<n];
   #assert body[lhead.count..<n] == "address al@x.test\nname al\nmode forward\nstate off\nrevision 3\nmax_msat 0\ncomments_on 0\nforward_to b@c.d\nspark_pubkey 02ab\nnip05 cd34\nwaiting_mode spark\nwaiting_ready_s 1763000000\nwaiting_target 02ef\n";
+  n = lnw_card_lines(lim[0..<3], 24, false, 1763000001, true, "al", "x.test", "none", "active", "f", "s", 1, 0, false, "n", false, "", "", "", b[..]);
+  #assert cast(string) b[lhead.count..<n] == "address al@x.test\nname al\nmode none\nstate active\nrevision 1\nmax_msat 0\ncomments_on 0\nforward_to f\nspark_pubkey s\nnip05 n\n";
 }
 
 #test "available, the proof, the relay's filter, the profile and what was published" {
@@ -325,9 +332,9 @@ lnw_probe_refused_write :: (out: [] u8) -> int #export_c #effects(all) {
   n = lnw_profile_write("ab12", true, 1763000001, "alice@openagents.com", false, 4, "{\"lud16\":\"alice@openagents.com\",\"about\":\"a\\nb\"}", b[..]);
   #assert cast(string) b[0..<n] == "{\"pubkey\":\"ab12\",\"found\":true,\"created_at\":1763000001,\"address\":\"alice@openagents.com\",\"nip05\":false,\"relays\":4,\"content\":\"{\\\"lud16\\\":\\\"alice@openagents.com\\\",\\\"about\\\":\\\"a\\\\nb\\\"}\"}";
   #assert lnw_profile_write("ab12", true, 1763000001, "alice@openagents.com", false, 4, "{\"lud16\":\"alice@openagents.com\",\"about\":\"a\\nb\"}", b[0..<n - 1]) == -1;
-  ctl := [5] u8.['a', 10, 9, 1, 0xc3];
+  ctl := [7] u8.['a', 10, 9, 1, 31, ' ', 0xc3];
   n = lnw_profile_write("", false, 0, "@x", true, 0, cast(string) ctl[..], b[..]);
-  pre := "{\"pubkey\":\"\",\"found\":false,\"created_at\":0,\"address\":\"@x\",\"nip05\":true,\"relays\":0,\"content\":\"a\\u000a\\u0009\\u0001";
+  pre := "{\"pubkey\":\"\",\"found\":false,\"created_at\":0,\"address\":\"@x\",\"nip05\":true,\"relays\":0,\"content\":\"a\\u000a\\u0009\\u0001\\u001f ";
   #assert n == pre.count + 3 && cast(string) b[0..<pre.count] == pre && b[pre.count] == 0xc3 && cast(string) b[pre.count + 1..<n] == "\"}";
   n = lnw_profile_write("", false, 0, "@x", true, 0, "", b[..]);
   #assert cast(string) b[0..<n] == "{\"pubkey\":\"\",\"found\":false,\"created_at\":0,\"address\":\"@x\",\"nip05\":true,\"relays\":0,\"content\":\"\"}";

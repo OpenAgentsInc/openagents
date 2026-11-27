@@ -36,7 +36,7 @@ adw_esc :: (o: [] Jo, s: string, cap: int) #effects(all) {
       if c == '"' || c == '\\' { jo_byte(o, '\\'); jo_byte(o, c); k += 2; }
       else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[c >> 4]); jo_byte(o, hex[c & 15]); k += 6; }
       else { jo_byte(o, c); k += 1; }
-    } else { k = cap; }
+    } else { k = cap; } // mutant: equivalent (once k + 7 >= cap, k never changes and is unused after the loop)
   }
 }
 
@@ -151,9 +151,13 @@ adw_push_gone_detail_write :: (device: string, out: [] u8) -> int #export_c #eff
   #assert cast(string) b[0..<n] == "{\"error\":\"This device's clock is off by more than a minute. Set the time and try again.\",\"device_proof\":\"clock\",\"now_ms\":1800000000000}";
   n = adw_refusal_write("", "", true, 0, b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"\",\"device_proof\":\"\",\"now_ms\":0}";
   n = adw_refusal_write("", "", false, 7, b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"\",\"device_proof\":\"\"}";
-  odd := [5] u8.['"', '\\', 10, 9, 1];
+  odd := [6] u8.['"', '\\', 10, 9, 1, 31];
   n = adw_refusal_write(cast(string) odd[..], "none", true, -1, b[..]);
-  #assert cast(string) b[0..<n] == "{\"error\":\"\\\"\\\\\\u000a\\u0009\\u0001\",\"device_proof\":\"none\",\"now_ms\":-1}";
+  #assert cast(string) b[0..<n] == "{\"error\":\"\\\"\\\\\\u000a\\u0009\\u0001\\u001f\",\"device_proof\":\"none\",\"now_ms\":-1}";
+  // refusal words cut at ADW_WORDS (300): 293 plain bytes kept
+  longw: [310] u8; for i: 0..<310 { longw[i] = 'w'; }
+  n = adw_refusal_write(cast(string) longw[..], "bad", false, 0, b[..]);
+  #assert n == adw_refusal_write(cast(string) longw[0..<293], "bad", false, 0, b[..]) && n == 1 + adw_refusal_write(cast(string) longw[0..<292], "bad", false, 0, b[..]);
   n = adw_refusal_lines("No such device.", "unknown", false, 0, b[..]);
   #assert cast(string) b[0..<n] == "error No such device.\ndevice_proof unknown\n" && adw_refusal_lines("No such device.", "unknown", false, 0, b[0..<n - 1]) == -1;
   n = adw_refusal_lines("Set the time.", "clock", true, 1800000000000, b[..]);
@@ -173,10 +177,16 @@ adw_push_gone_detail_write :: (device: string, out: [] u8) -> int #export_c #eff
   n = adw_devices_row_write(n, 1, "12", "", "android", "tee", "0", "0", "0", false, b[..]);
   n = adw_devices_close_write(n, b[..]);
   #assert cast(string) b[0..<n] == "{\"now_ms\":1800000000000,\"devices\":[{\"id\":7,\"name\":\"Ada's \\\"phone\\\" \\\\ 1\",\"platform\":\"ios\",\"store\":\"enclave\",\"created_ms\":1799990000000,\"last_seen_ms\":1799999000000,\"sessions\":2,\"this\":true},{\"id\":12,\"name\":\"\",\"platform\":\"android\",\"store\":\"tee\",\"created_ms\":0,\"last_seen_ms\":0,\"sessions\":0,\"this\":false}]}";
-  // a name's cut: 193 bytes kept, as a 200-byte buffer kept them
+  // a name's cut: 193 plain bytes, 97 quotes (k += 2) or 33 control bytes (k += 6) kept in a 200-byte buffer
   long: [300] u8; for i: 0..<300 { long[i] = 'n'; }
   n = adw_devices_row_write(0, 0, "1", cast(string) long[..], "", "", "1", "1", "1", false, b[..]);
   #assert n == adw_devices_row_write(0, 0, "1", cast(string) long[0..<193], "", "", "1", "1", "1", false, b[..]) && n == 1 + adw_devices_row_write(0, 0, "1", cast(string) long[0..<192], "", "", "1", "1", "1", false, b[..]);
+  for i: 0..<100 { long[i] = '"'; }
+  n = adw_devices_row_write(0, 0, "1", cast(string) long[0..<100], "", "", "1", "1", "1", false, b[..]);
+  #assert n == adw_devices_row_write(0, 0, "1", cast(string) long[0..<97], "", "", "1", "1", "1", false, b[..]) && n == 2 + adw_devices_row_write(0, 0, "1", cast(string) long[0..<96], "", "", "1", "1", "1", false, b[..]);
+  for i: 0..<40 { long[i] = 31; }
+  n = adw_devices_row_write(0, 0, "1", cast(string) long[0..<40], "", "", "1", "1", "1", false, b[..]);
+  #assert n == adw_devices_row_write(0, 0, "1", cast(string) long[0..<33], "", "", "1", "1", "1", false, b[..]) && n == 6 + adw_devices_row_write(0, 0, "1", cast(string) long[0..<32], "", "", "1", "1", "1", false, b[..]);
   n = adw_devices_open_lines(1800000000000, 2, b[..]);
   #assert cast(string) b[0..<n] == "now_ms 1800000000000\ncount 2\n" && adw_devices_open_lines(1800000000000, 2, b[0..<n - 1]) == -1;
   n = adw_devices_row_lines(n, "7", "ios", "enclave", "1799999000000", "2", true, "Ada's \"phone\" \\ 1", b[..]);

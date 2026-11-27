@@ -74,11 +74,11 @@ gw_sse_line :: (s: [] GwSse, raw: string) -> GwSseEvent {
     ev.data = cast(string) s[0].data[0..<s[0].nd];
     return ev;
   }
-  if line[0] == ':' { return GwSseEvent.{}; }
+  if line[0] == ':' { return GwSseEvent.{}; } // mutant: equivalent (':' -> ';' is equivalent because ':' gives field "" and ';' gives field[0]==';', neither matching "data" or "event")
   colon := -1;
-  for i: 0..<line.count { if line[i] == ':' { colon = i; break; } }
+  for i: 0..<line.count { if line[i] == ':' { colon = i; break; } } // mutant: equivalent (line 77 already returned when line[0] == ':', so i == 0 never matches)
   field := line; value := "";
-  if colon >= 0 {
+  if colon >= 0 { // mutant: equivalent (line 77 already returned when line[0] == ':', so colon is -1 or >= 1, never 0)
     field = cast(string) line[0..<colon];
     v := colon + 1;
     if v < line.count && line[v] == ' ' { v += 1; }
@@ -119,7 +119,19 @@ gw_sse_line :: (s: [] GwSse, raw: string) -> GwSseEvent {
   #assert !e.ready;
   e = gw_sse_line(s[..], "data");
   e = gw_sse_line(s[..], "");
-  #assert e.ready && e.data == "" && e.name == "message";
+  #assert e.ready && !e.truncated && e.data == "" && e.name == "message";
+  // one-byte comment, one-byte event name, colon at end of line, standalone CR dispatch, empty event name resets to message
+  e = gw_sse_line(s[..], ":");
+  #assert !e.ready;
+  e = gw_sse_line(s[..], "event: x");
+  e = gw_sse_line(s[..], "data:");
+  e = gw_sse_line(s[..], "\r");
+  #assert e.ready && !e.truncated && e.name == "x" && e.data == "";
+  e = gw_sse_line(s[..], "event: prev");
+  e = gw_sse_line(s[..], "event:");
+  e = gw_sse_line(s[..], "data: ok");
+  e = gw_sse_line(s[..], "");
+  #assert e.ready && !e.truncated && e.name == "message" && e.data == "ok";
 }
 
 #test "an event too large for its buffer is flagged, and the next one reads whole" {
@@ -128,6 +140,10 @@ gw_sse_line :: (s: [] GwSse, raw: string) -> GwSseEvent {
   e := gw_sse_line(s[..], "data: 0123456789");
   e = gw_sse_line(s[..], "");
   #assert e.ready && e.truncated;
+  e = gw_sse_line(s[..], "event: 0123456789");
+  e = gw_sse_line(s[..], "data: 1");
+  e = gw_sse_line(s[..], "");
+  #assert e.ready && e.truncated && e.name == "message" && e.data == "1";
   e = gw_sse_line(s[..], "event: ok");
   e = gw_sse_line(s[..], "data: 42");
   e = gw_sse_line(s[..], "");

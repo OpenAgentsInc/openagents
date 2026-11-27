@@ -112,6 +112,7 @@ WBW_TEST_TAIL :: "\"factor\":{\"type\":\"number\"},\"degrees\":{\"type\":\"numbe
   for i: 0..<16 { raw[i] = 1; }
   n = wbw_request_write(cast(string) raw[0..<8], "", "", cast(string) raw[0..<8], 2048, b[..]);
   #assert n > 0 && n <= wbw_request_room(16) && wbw_request_room(16) == 96 + WBW_FIXED && wbw_request_room(-1) == -1;
+  #assert wbw_request_room(0) == WBW_FIXED && wbw_request_room(16777216) == 16777216 * 6 + WBW_FIXED && wbw_request_room(16777217) == -1;
   n = wbw_request_write("", "", "", "", 2048, b[..]);
   #assert n == 1209 && n <= WBW_FIXED;
 }

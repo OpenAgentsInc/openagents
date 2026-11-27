@@ -28,7 +28,7 @@ ALW_OTHER :: 39;    // an account id in an audit detail, at most ("%.39s")
 ALW_VIA :: 16;      // a way in, at most ("%.16s")
 ALW_EMAIL :: 400;   // the escaped address's buffer in auth-life.c before this file
 
-alw_cut :: (s: string, n: int) -> string #effects(all) { return ifx s.count > n then s[0..<n] else s; }
+alw_cut :: (s: string, n: int) -> string #effects(all) { return ifx s.count > n then s[0..<n] else s; } // mutant: equivalent (when s.count == n, s[0..<n] is s)
 alw_bool :: (o: [] Jo, b: bool) #effects(all) { jo_put(o, ifx b then "true" else "false"); }
 alw_bit :: (o: [] Jo, b: bool) #effects(all) { jo_put(o, ifx b then "1" else "0"); }
 // name, then a number.
@@ -42,7 +42,7 @@ alw_esc :: (o: [] Jo, s: string, cap: int) #effects(all) {
       if c == '"' || c == '\\' { jo_byte(o, '\\'); jo_byte(o, c); k += 2; }
       else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[c >> 4]); jo_byte(o, hex[c & 15]); k += 6; }
       else { jo_byte(o, c); k += 1; }
-    } else { k = cap; }
+    } else { k = cap; } // mutant: equivalent (once k + 7 >= cap, k never changes and is unused after the loop)
   }
 }
 alw_state_ok :: (state: string) -> bool #effects(all) { return state == "unfrozen" || state == "kept" || state == "ready"; }
@@ -242,6 +242,9 @@ alw_money :: (body: string) -> bool #export_c #effects(all) {
   #assert alw_life_lines("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, b[0..<n - 1]) == -1;
   n = alw_life_lines("acct_2", "person", "freeze", 11, 12, 13, 14, 0, 1, 0, 2, 2, 21000, 0, 0, 3, "2027-02-11 00:00 UTC", 1, true, false, false, b[..]);
   #assert cast(string) b[0..<n] == "account acct_2\nkind person\nfrozen freeze\nfrozen_ms 11\ndelete_asked_ms 12\npurge_ms 13\nnow_ms 14\nstrong 0\nemails 1\nkeys 0\nagents 2\nagents_paused 2\ncredit_msat 21000\nworlds 0\nsaves 0\nmerged_from 3\npurge_at 2027-02-11 00:00 UTC\nlevel 1\nlimited 1\nfresh 0\nproved 0\n";
+  // one-byte frozen and purge_at values are not replaced by "no" or "-"
+  n = alw_life_lines("a", "p", "x", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "t", 0, false, false, false, b[..]);
+  #assert cast(string) b[0..<n] == "account a\nkind p\nfrozen x\nfrozen_ms 0\ndelete_asked_ms 0\npurge_ms 0\nnow_ms 0\nstrong 0\nemails 0\nkeys 0\nagents 0\nagents_paused 0\ncredit_msat 0\nworlds 0\nsaves 0\nmerged_from 0\npurge_at t\nlevel 0\nlimited 0\nfresh 0\nproved 0\n";
 }
 
 #test "the export's rows: the head, an email escaped as auth.c escaped it, the agents" {
@@ -254,13 +257,19 @@ alw_money :: (body: string) -> bool #export_c #effects(all) {
   n = alw_export_email_write("7", "a@b.example", "2026-11-13 10:00:00.123456+00", b[..]);
   #assert cast(string) b[0..<n] == "{\"type\":\"email\",\"id\":7,\"address\":\"a@b.example\",\"added_at\":\"2026-11-13 10:00:00.123456+00\"}";
   #assert alw_export_email_write("7", "a@b.example", "2026-11-13 10:00:00.123456+00", b[0..<n - 1]) == -1;
-  odd := [8] u8.['"', 'a', '\\', 10, 9, 1, 0xc3, 0xa9];
+  odd := [10] u8.['"', 'a', '\\', 10, 9, 1, 31, ' ', 0xc3, 0xa9];
   n = alw_export_email_write("12", cast(string) odd[..], "", b[..]);
-  #assert cast(string) b[0..<n] == "{\"type\":\"email\",\"id\":12,\"address\":\"\\\"a\\\\\\u000a\\u0009\\u0001é\",\"added_at\":\"\"}";
-  // the cut: 393 bytes of a long address are kept, as a 400-byte buffer kept them
+  #assert cast(string) b[0..<n] == "{\"type\":\"email\",\"id\":12,\"address\":\"\\\"a\\\\\\u000a\\u0009\\u0001\\u001f é\",\"added_at\":\"\"}";
+  // the cut: 393 plain bytes, 197 quotes (k += 2) or 66 control bytes (k += 6) kept in a 400-byte buffer
   long: [500] u8; for i: 0..<500 { long[i] = 'a'; }
   n = alw_export_email_write("1", cast(string) long[..], "", b[..]);
   #assert n == 393 + 50 && alw_export_email_write("1", cast(string) long[0..<393], "", b[..]) == n && alw_export_email_write("1", cast(string) long[0..<392], "", b[..]) == n - 1;
+  for i: 0..<210 { long[i] = '"'; }
+  n = alw_export_email_write("1", cast(string) long[0..<210], "", b[..]);
+  #assert n == 394 + 50 && alw_export_email_write("1", cast(string) long[0..<197], "", b[..]) == n && alw_export_email_write("1", cast(string) long[0..<196], "", b[..]) == n - 2;
+  for i: 0..<70 { long[i] = 31; }
+  n = alw_export_email_write("1", cast(string) long[0..<70], "", b[..]);
+  #assert n == 396 + 50 && alw_export_email_write("1", cast(string) long[0..<66], "", b[..]) == n && alw_export_email_write("1", cast(string) long[0..<65], "", b[..]) == n - 6;
   n = alw_export_agents_write("CgV4eXo+/w==", b[..]);
   #assert cast(string) b[0..<n] == "{\"type\":\"agents\",\"message\":\"openagents.account.v1alpha1.AgentList\",\"base64\":\"CgV4eXo+/w==\"}";
   #assert alw_export_agents_write("CgV4eXo+/w==", b[0..<n - 1]) == -1;

@@ -78,4 +78,8 @@ erw_words2_write :: (key: string, word: string, key2: string, word2: string, out
   n = erw_word_write("", "", b[..]); #assert cast(string) b[0..<n] == "{}" && erw_word_write("Slug", "x", b[..]) == -1 && erw_word_write("slug", "x", b[0..<11]) == -1;
   #assert erw_num_write("Kept", 3, b[..]) == -1 && erw_words2_write("file", "a", "", "b", b[..]) == -1 && erw_num_write("kept", 3, b[0..<9]) == -1;
   #assert erw_error_write("no database", b[0..<22]) == -1 && erw_error_spaced_write("x", b[0..<5]) == -1;
+  // key bounds: 1..32 bytes of a-z, 0-9, _
+  #assert erw_key_ok("a") && erw_key_ok("z") && erw_key_ok("0") && erw_key_ok("9") && erw_key_ok("_");
+  #assert erw_key_ok("abcdefghijklmnopqrstuvwxyz012345") && !erw_key_ok("abcdefghijklmnopqrstuvwxyz0123456");
+  #assert !erw_key_ok("`") && !erw_key_ok("{") && !erw_key_ok("/") && !erw_key_ok(":");
 }

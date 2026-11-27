@@ -33,6 +33,7 @@ aw_error :: (o: [] Jo, text: string) #effects(all) {
   #assert jo_text(o[..]) == "{\"error\":\"a \\\"b\\\" \\\\ c\"}";
   aw_at(o[..], b[0..<22], 0); aw_error(o[..], "no database"); #assert aw_len(o[..]) == -1;
   aw_at(o[..], b[..], 65); #assert aw_len(o[..]) == -1;
+  aw_at(o[..], b[..], 64); #assert aw_len(o[..]) == 64; jo_put(o[..], "x"); #assert aw_len(o[..]) == -1;
   aw_at(o[..], b[..], -1); #assert aw_len(o[..]) == -1;
   aw_at(o[..], b[..], 3); jo_put(o[..], "x"); #assert aw_len(o[..]) == 4 && b[3] == 'x';
 }

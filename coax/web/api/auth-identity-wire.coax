@@ -16,9 +16,21 @@ AIW_G :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
  #assert aiw_write("acct_example",AIW_G,2,b[0..<20])<0;
 }
 #test "identity metadata reads through its one codec with closed fields and bounded outputs" {
- b:[512]u8;account:[128]u8;pub:[64]u8;length:[1]int;n:=aiw_write("fixture",AIW_G,2,b[..]);#assert n>0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],length[..])==2 && cast(string)account[0..<7]=="fixture" && cast(string)pub[..]==AIW_G;
- n=aiw_write("fixture",AIW_G,1,b[..]);#assert n>0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],length[..])==1;
- #assert aiw_read("{}",account[..],pub[..],length[..])==0 && aiw_read("{",account[..],pub[..],length[..])==0 && aiw_read(cast(string)b[0..<n],account[0..<6],pub[..],length[..])==0 && aiw_read(cast(string)b[0..<n],account[..],pub[0..<63],length[..])==0;
+ b:[512]u8;account:[128]u8;pub:[64]u8;length:[1]int;two_len:[2]int;
+ n:=aiw_write("fixture",AIW_G,2,b[..]);#assert n>0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],length[..])==2 && length[0]==7 && cast(string)account[0..<7]=="fixture" && cast(string)pub[..]==AIW_G;
+ #assert aiw_read(cast(string)b[0..<n],account[..],pub[..],length[0..<0])==0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],two_len[..])==0;
+ n=aiw_write("fixture",AIW_G,1,b[..]);#assert n>0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],length[..])==1 && length[0]==7;
+ length[0]=99;#assert aiw_read("{}",account[..],pub[..],length[..])==0 && length[0]==0;
+ #assert aiw_read("{",account[..],pub[..],length[..])==0 && aiw_read(cast(string)b[0..<n],account[0..<6],pub[..],length[..])==0 && aiw_read(cast(string)b[0..<n],account[..],pub[0..<63],length[..])==0;
+ // closed fields, exact schema, known source, and account length 1..127; a refused 4-field object leaves length[0] zero
+ length[0]=99;#assert aiw_read("{\"schema\":\"openagents.account.identity.v1\",\"account\":\"a\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"extra\":\"account\"}",account[..],pub[..],length[..])==0 && length[0]==0;
+ #assert aiw_read("{\"schema\":\"openagents.account.identity.v2\",\"account\":\"a\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"account\"}",account[..],pub[..],length[..])==0;
+ #assert aiw_read("{\"schema\":\"openagents.account.identity.v1\",\"account\":\"a\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"other\"}",account[..],pub[..],length[..])==0;
+ #assert aiw_read("{\"schema\":\"openagents.account.identity.v1\",\"account\":\"\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"account\"}",account[..],pub[..],length[..])==0;
+ n=aiw_write("a",AIW_G,2,b[..]);#assert n>0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],length[..])==2 && length[0]==1 && account[0]=='a';
+ long:[128]u8;for i:0..<128 {long[i]='a';}
+ n=aiw_write(cast(string)long[0..<127],AIW_G,2,b[..]);#assert n>0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],length[..])==2 && length[0]==127;
+ n=aiw_write(cast(string)long[..],AIW_G,2,b[..]);#assert n>0 && aiw_read(cast(string)b[0..<n],account[..],pub[..],length[..])==0;
 }
 aiw_read :: (raw:string,account:[]u8,pub:[]u8,length:[]int)->int #export_c #effects(all) {
  if length.count!=1 {return 0;}length[0]=0;d:[1]Jv;nodes:[12]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return 0;}v:=d[0];fields:=[4]string.["schema","account","pubkey","source"];
