@@ -10,12 +10,27 @@
 #load "../../../../components/skin/mono.coax";
 #load "../../../../components/ui/kit/stream_markdown.coax";
 #load "../../../../components/backend/html.coax";
+#load "../../../../coax/lib/encoding/json.coax";
+#load "../../books-mermaid.coax";
 
 BK_MAX_ENTRIES :: 512;
 BK_TEXT_CAP :: 131072;
 BK_SUM_CHUNK :: 2048;
 BK_MD_CHUNK :: 16384;
 BK_MD_FALLBACK :: 49152;
+BK_MAX_H2 :: 64;
+BK_H2_POOL :: 8192;
+BK_SEARCH_MAX_H2 :: 12;
+BK_META_MAX :: 320;
+BK_META_ITEMS :: 4096;
+BK_META_POOL :: 131072;
+
+BK_ALERT_NONE :: 0;
+BK_ALERT_NOTE :: 1;
+BK_ALERT_TIP :: 2;
+BK_ALERT_IMPORTANT :: 3;
+BK_ALERT_WARNING :: 4;
+BK_ALERT_CAUTION :: 5;
 
 BK_BOOK_COUNT :: 9;
 BK_SLUGS :: [9] string.["coax", "openagents", "bitcoin", "nostr", "coder", "psionic", "metaverse-engine", "everglade", "claude-code"];
@@ -47,7 +62,7 @@ BK_INDEX_DESC :: "All nine OpenAgents books rendered directly from repository Ma
 
 BK_HYBRID_CSS :: "a.row{text-decoration:none}a.row[aria-current=true]{border:1px solid var(--line-bright);background:var(--surface)}[data-frame]:not(:has(>svg.fr)){border:1px solid var(--line-dim);background:var(--surface)}.md .md-h{margin:10px 0 0;font:600 16px/1.35 var(--sans);color:#fff}.md .md-code-block{border:1px solid var(--line-dim);background:var(--surface);max-width:100%}.md .md-code-hdr{display:flex;justify-content:space-between;align-items:center;padding:5px 12px;border-bottom:1px solid var(--line-dim);font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}.md .md-code-copy{display:none}.md .md-pre{padding:12px 14px;overflow-x:auto;white-space:pre}.md .md-code-body{background:none;padding:0}.md .md-code-line{display:block;min-height:1.5em}.syn-com{color:var(--ink-faint);font-style:italic}.syn-kw{color:#fff;font-weight:600}.syn-fn{color:#e6e6e6}.syn-ty{color:#d4d4d4;text-decoration:underline;text-decoration-color:var(--line-dim);text-underline-offset:3px}.syn-str{color:#c8c8c8}.syn-num{color:#b8b8b8}.syn-attr{color:var(--ink-muted)}.syn-punc{color:var(--ink-faint)}.md-island-callout{border:1px solid var(--line);border-left:3px solid #fff;background:var(--surface);padding:12px 16px;display:flex;flex-direction:column;gap:4px}.md-island-title{margin:0;font:600 11px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:#fff}.md-island-body{margin:0;color:var(--ink-muted);font-size:13px}";
 
-BK_CSS :: ".bk-nav{width:280px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}.bk-top{display:flex;flex-wrap:wrap;gap:6px 12px;padding:4px 10px 10px;margin-bottom:4px;border-bottom:1px solid var(--line-dim)}.bk-head{padding:8px 10px 10px;border-bottom:1px solid var(--line-dim);display:flex;flex-direction:column;gap:3px}.bk-head-t{margin:0;font:600 14px/1.35 var(--sans);color:#fff}.bk-part{margin:14px 0 4px;padding:0 10px;font:500 10px/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint)}.bk-body{max-width:860px}.bk-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding-bottom:12px;border-bottom:1px solid var(--line-dim)}.bk-crumb{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}.bk-crumb a{color:var(--ink-muted);text-decoration:none}.bk-crumb a:hover{color:#fff}.bk-pager{display:flex;justify-content:space-between;gap:16px;padding-top:24px;margin-top:8px;border-top:1px solid var(--line-dim)}.bk-pg{display:flex;flex-direction:column;gap:3px;padding:10px 14px;border:1px solid var(--line-dim);text-decoration:none;color:var(--ink);max-width:48%;transition:border-color .15s,background .15s}.bk-pg:hover{border-color:var(--line-bright);background:var(--surface)}.bk-pg-next{margin-left:auto;text-align:right}.bk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}.bk-card{display:flex;flex-direction:column;gap:8px;padding:16px 18px;border:1px solid var(--line-dim);background:var(--surface);text-decoration:none;color:var(--ink);transition:border-color .15s}.bk-card:hover{border-color:var(--line-bright)}.bk-card-t{margin:0;font:600 15px/1.35 var(--sans);color:#fff}.bk-card-d{margin:0;color:var(--ink-muted);font-size:13px;line-height:1.5}.md h1.md-h{font-size:26px;line-height:1.25;margin:2px 0 8px}.md h2.md-h{font-size:19px;margin:18px 0 4px;padding-top:10px;border-top:1px solid var(--line-dim)}.md h3.md-h{font-size:15px;margin:12px 0 2px}.md hr.md-hr{border:0;border-top:1px solid var(--line-dim);margin:14px 0}.md table{display:block;overflow-x:auto;max-width:100%}@media (max-width:1060px){.bk-nav{width:auto;max-height:42vh;flex-direction:column;flex-wrap:nowrap;overflow-y:auto}}";
+BK_CSS :: ".bk-nav{width:280px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}.bk-top{display:flex;flex-wrap:wrap;gap:6px 12px;padding:4px 10px 10px;margin-bottom:4px;border-bottom:1px solid var(--line-dim)}.bk-head{padding:8px 10px 10px;border-bottom:1px solid var(--line-dim);display:flex;flex-direction:column;gap:3px}.bk-head-t{margin:0;font:600 14px/1.35 var(--sans);color:#fff}.bk-part{margin:14px 0 4px;padding:0 10px;font:500 10px/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint)}.bk-body{max-width:860px}.bk-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding-bottom:12px;border-bottom:1px solid var(--line-dim)}.bk-crumb{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}.bk-crumb a{color:var(--ink-muted);text-decoration:none}.bk-crumb a:hover{color:#fff}.bk-meta-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 14px;border:1px solid var(--line-dim);background:var(--surface);font:12px/1.45 var(--mono);color:var(--ink-muted)}.bk-badge{display:inline-flex;align-items:center;padding:2px 8px;border:1px solid var(--line);font:600 10px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}.bk-st-implemented{background:#fff;color:#000;border-color:#fff}.bk-st-written{border-color:#fff;color:#fff}.bk-st-partly{border-color:var(--line);color:var(--ink)}.bk-st-draft{border-style:dashed;border-color:var(--line);color:var(--ink-muted)}.bk-meta-item{display:inline-flex;align-items:baseline;gap:6px;min-width:0;max-width:100%}.bk-meta-k{font:500 10px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}.bk-meta-v{color:var(--ink);overflow-wrap:anywhere}.bk-meta-adopted{flex:1 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding-top:6px;border-top:1px solid var(--line-dim)}.bk-meta-a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line-dim);font:12px/1.4 var(--mono)}.bk-meta-a:hover{color:#fff;border-bottom-color:#fff}.bk-ontoc{border:1px solid var(--line-dim);background:var(--surface);padding:10px 14px}.bk-ontoc-s{cursor:pointer;font:500 11px/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-muted);list-style:none}.bk-ontoc-s::-webkit-details-marker{display:none}.bk-ontoc-s::before{content:'+ ';color:var(--ink-faint)}.bk-ontoc-d[open] .bk-ontoc-s::before{content:'- '}.bk-ontoc-l{margin:10px 0 2px;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:5px 16px}.bk-ontoc-l a{color:var(--ink-muted);text-decoration:none;font:13px/1.4 var(--sans);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bk-ontoc-l a:hover{color:#fff}.bk-alert{border:1px solid var(--line-dim);border-left:3px solid var(--line);background:var(--surface);padding:12px 16px;display:flex;flex-direction:column;gap:8px}.bk-alert-t{margin:0;font:600 11px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:#fff}.bk-alert .md-quote-p{color:var(--ink)}.bk-alert-tip{border-left:3px dashed var(--line-bright)}.bk-alert-important{border-color:var(--line);border-left:3px solid #fff}.bk-alert-warning{border-color:var(--line);border-left:4px double #fff;background:var(--raised)}.bk-alert-caution{border-color:#fff;border-left:4px solid #fff;background:var(--raised)}.bk-mermaid-wrap{margin:4px 0;padding:12px;border:1px solid var(--line-dim);background:var(--surface);overflow-x:auto}.bk-mermaid{display:block;max-width:100%;height:auto;margin:0 auto;font-family:var(--mono)}.bk-idx-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.bk-pager{display:flex;justify-content:space-between;gap:16px;padding-top:24px;margin-top:8px;border-top:1px solid var(--line-dim)}.bk-pg{display:flex;flex-direction:column;gap:3px;padding:10px 14px;border:1px solid var(--line-dim);text-decoration:none;color:var(--ink);max-width:48%;transition:border-color .15s,background .15s}.bk-pg:hover{border-color:var(--line-bright);background:var(--surface)}.bk-pg-next{margin-left:auto;text-align:right}.bk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}.bk-card{display:flex;flex-direction:column;gap:8px;padding:16px 18px;border:1px solid var(--line-dim);background:var(--surface);text-decoration:none;color:var(--ink);transition:border-color .15s}.bk-card:hover{border-color:var(--line-bright)}.bk-card-t{margin:0;font:600 15px/1.35 var(--sans);color:#fff}.bk-card-d{margin:0;color:var(--ink-muted);font-size:13px;line-height:1.5}.md h1.md-h{font-size:26px;line-height:1.25;margin:2px 0 8px}.md h2.md-h{font-size:19px;margin:18px 0 4px;padding-top:10px;border-top:1px solid var(--line-dim)}.md h3.md-h{font-size:15px;margin:12px 0 2px}.md hr.md-hr{border:0;border-top:1px solid var(--line-dim);margin:14px 0}.md table{display:block;overflow-x:auto;max-width:100%}@media (max-width:1060px){.bk-nav{width:auto;max-height:42vh;flex-direction:column;flex-wrap:nowrap;overflow-y:auto}}";
 
 // Joins a directory and non-empty child segment with '/', or returns `dir` when `child` is empty.
 // Returns "" if the combined path does not fit in `out`.
@@ -420,20 +435,52 @@ bk_emit_code_html :: (b: [] HtBuf, lang: string, code: string) {
   ht_put(b, "</code></pre></div>");
 }
 
-// Emits inline Markdown runs into Tree `t`, rewriting book-relative `.md` links via `bk_rewrite_href`.
-bk_emit_runs :: (t: [] Tree, doc: [] MdDoc, book_slug: string, base_id: string, text: string, runs: [] MdRun) {
-  if runs.count == 0 {
-    if text.count > 0 {
-      id_buf: [128] u8;
-      _ = tr_leaf(t, tr_cat(id_buf[..], base_id, ".t"), TG_SPAN, "", text);
+// GitHub-style alert callout detection (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`).
+BkAlert :: struct {
+  kind: int;
+  skip: int;
+  cls: string;
+  label: string;
+}
+
+bk_alert_info :: (text: string) -> BkAlert {
+  a := 0;
+  while a < text.count && text[a] == ' ' { a += 1; }
+  rem := cast(string) text[a..<text.count];
+  tags := [5] string.["[!NOTE]", "[!TIP]", "[!IMPORTANT]", "[!WARNING]", "[!CAUTION]"];
+  classes := [5] string.[
+    "bk-alert bk-alert-note",
+    "bk-alert bk-alert-tip",
+    "bk-alert bk-alert-important",
+    "bk-alert bk-alert-warning",
+    "bk-alert bk-alert-caution",
+  ];
+  labels := [5] string.["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"];
+  for k: 0..<5 {
+    tg := tags[k];
+    if bk_starts(rem, tg) && (rem.count == tg.count || rem[tg.count] == ' ') {
+      sk := a + tg.count;
+      while sk < text.count && text[sk] == ' ' { sk += 1; }
+      return BkAlert.{kind = k + 1, skip = sk, cls = classes[k], label = labels[k]};
     }
+  }
+  return BkAlert.{};
+}
+
+// Emits inline Markdown runs into Tree `t` starting at byte offset `skip`, rewriting book links.
+bk_emit_runs_from :: (t: [] Tree, doc: [] MdDoc, book_slug: string, base_id: string, text: string, runs: [] MdRun, skip: int) {
+  if skip >= text.count { return; }
+  if runs.count == 0 {
+    id_buf: [128] u8;
+    _ = tr_leaf(t, tr_cat(id_buf[..], base_id, ".t"), TG_SPAN, "", cast(string) text[skip..<text.count]);
     return;
   }
   hbuf: [512] u8;
   for k: 0..<runs.count {
     r := runs[k];
-    if r.to <= r.from || r.to > text.count { continue; }
-    seg := cast(string) text[r.from..<r.to];
+    rf := ifx r.from < skip then skip else r.from; // mutant: equivalent (when r.from == skip, both branches equal skip)
+    if r.to <= rf || r.to > text.count { continue; }
+    seg := cast(string) text[rf..<r.to];
     id_buf: [128] u8; p_buf: [128] u8;
     rid := tr_join(id_buf[..], tr_cat(p_buf[..], base_id, ".r."), k);
     if (r.marks & MD_LINK) != 0 {
@@ -453,6 +500,10 @@ bk_emit_runs :: (t: [] Tree, doc: [] MdDoc, book_slug: string, base_id: string, 
       _ = tr_leaf(t, rid, TG_SPAN, "", seg);
     }
   }
+}
+
+bk_emit_runs :: (t: [] Tree, doc: [] MdDoc, book_slug: string, base_id: string, text: string, runs: [] MdRun) {
+  bk_emit_runs_from(t, doc, book_slug, base_id, text, runs, 0);
 }
 
 bk_is_html_comment :: (text: string) -> bool {
@@ -481,6 +532,8 @@ bk_render_block_html :: (hb: [] HtBuf, doc: [] MdDoc, b: int, t: [] Tree, book_s
       tr_begin(t);
       smd_render_island(t, bid, ik, code);
       bk_flush_tree(hb, t);
+    } else if lang == "mermaid" && mm_render_svg(hb, code, bid) {
+      // Pure-Coax build-time Mermaid SVG emitted directly into hb
     } else {
       bk_emit_code_html(hb, lang, code);
     }
@@ -489,6 +542,32 @@ bk_render_block_html :: (hb: [] HtBuf, doc: [] MdDoc, b: int, t: [] Tree, book_s
 
   if blk.kind == MB_PARA && blk.heading == 0 && bk_is_html_comment(md_block_text(doc, b)) {
     return seq + 1;
+  }
+
+  if blk.kind == MB_QUOTE && blk.items > 0 { // mutant: equivalent (empty quote reads zero-initialized item "" -> BK_ALERT_NONE)
+    al := bk_alert_info(md_item_text(doc, blk.item0));
+    if al.kind != BK_ALERT_NONE {
+      ht_put(hb, "<aside id=\"");
+      ht_escape_attr(hb, bid);
+      ht_put(hb, "\" class=\"");
+      ht_put(hb, al.cls);
+      ht_put(hb, "\" role=\"note\"><p class=\"bk-alert-t\">");
+      ht_put(hb, al.label);
+      ht_put(hb, "</p>");
+      for k: 0..<blk.items {
+        itxt := md_item_text(doc, blk.item0 + k);
+        sk := ifx k == 0 then al.skip else 0;
+        if sk >= itxt.count { continue; }
+        qid := tr_join(p2[..], tr_cat(p3[..], bid, ".q."), k);
+        tr_begin(t);
+        _ = tr_open(t, qid, TG_P, "md-quote-p");
+        bk_emit_runs_from(t, doc, book_slug, qid, itxt, md_item_runs(doc, blk.item0 + k), sk);
+        tr_close(t);
+        bk_flush_tree(hb, t);
+      }
+      ht_put(hb, "</aside>");
+      return seq + 1;
+    }
   }
 
   tr_begin(t);
@@ -624,9 +703,301 @@ bk_emit_meta :: (hb: [] HtBuf, title: string, desc: string, path: string) {
   ht_put(hb, "\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n");
 }
 
-// Writes the HTML5 document header + sticky book TOC sidebar + article opening `<div class="md">`.
-// Uses external `/books/mono.css` and emits ZERO <script> tags.
-bk_write_chapter_head_nav :: (book_idx: int, toc: [] BkToc, active: int, mid_href: string, mid_label: string, out: [] u8) -> int {
+// ---- In-page h2 "On this page" TOC, chapters.json metadata banner, and static search index
+
+BkH2 :: struct {
+  title_at: int; title_n: int;
+  slug_at: int; slug_n: int;
+}
+
+BkHeadings :: struct {
+  items: [BK_MAX_H2] BkH2;
+  n: int;
+  pool: [BK_H2_POOL] u8;
+  pn: int;
+}
+
+bk_h2_pool_add :: (hs: [] BkHeadings, s: string) -> int {
+  at := hs[0].pn;
+  for c: s {
+    if hs[0].pn >= BK_H2_POOL { break; }
+    hs[0].pool[hs[0].pn] = c;
+    hs[0].pn += 1;
+  }
+  return at;
+}
+
+bk_h2_str :: (hs: [] BkHeadings, at: int, n: int) -> string {
+  if n < 1 || at < 0 || at + n > hs[0].pn { return ""; }
+  return cast(string) hs[0].pool[at..<at + n];
+}
+
+bk_h2_title :: (hs: [] BkHeadings, i: int) -> string { return bk_h2_str(hs, hs[0].items[i].title_at, hs[0].items[i].title_n); }
+bk_h2_slug :: (hs: [] BkHeadings, i: int) -> string { return bk_h2_str(hs, hs[0].items[i].slug_at, hs[0].items[i].slug_n); }
+
+// Collects all h2 headings from chapter Markdown using the single shared Markdown parser.
+bk_collect_h2 :: (hs: [] BkHeadings, src: string, doc: [] MdDoc) -> int {
+  hs[0].n = 0;
+  hs[0].pn = 0;
+  pos := 0;
+  sbuf: [96] u8;
+  while pos < src.count {
+    cut := bk_next_cut(src, pos, BK_MD_CHUNK, BK_MD_FALLBACK); // mutant: equivalent (safe boundary chunking is invariant to 1-byte limit shifts)
+    seg := cast(string) src[pos..<cut];
+    pos = cut;
+    doc[0] = MdDoc.{};
+    _ = md_parse(doc, seg, 0); // mutant: equivalent (part tag unused)
+    for b: 0..<doc[0].nb {
+      if hs[0].n >= BK_MAX_H2 { return hs[0].n; }
+      blk := doc[0].blocks[b];
+      if blk.kind == MB_PARA && blk.heading == 2 {
+        title := smd_trim(md_block_text(doc, b));
+        slug := bk_heading_slug(title, sbuf[..]);
+        if slug.count > 0 && hs[0].pn + title.count + slug.count <= BK_H2_POOL {
+          t_at := bk_h2_pool_add(hs, title);
+          t_n := hs[0].pn - t_at;
+          s_at := bk_h2_pool_add(hs, slug);
+          s_n := hs[0].pn - s_at;
+          hs[0].items[hs[0].n] = BkH2.{title_at = t_at, title_n = t_n, slug_at = s_at, slug_n = s_n};
+          hs[0].n += 1;
+        }
+      }
+    }
+  }
+  return hs[0].n;
+}
+
+// Emits collapsible 0-KB-JS "On this page" h2 TOC when a chapter has >= 2 h2 headings.
+bk_emit_ontoc :: (hb: [] HtBuf, hs: [] BkHeadings) {
+  if hs[0].n < 2 { return; }
+  ht_put(hb, "<aside class=\"bk-ontoc\" aria-label=\"On this page\"><details class=\"bk-ontoc-d\" open><summary class=\"bk-ontoc-s\">On this page (");
+  bk_put_int(hb, hs[0].n);
+  ht_put(hb, ")</summary><ol class=\"bk-ontoc-l\">");
+  for i: 0..<hs[0].n {
+    ht_put(hb, "<li><a href=\"#");
+    ht_escape_attr(hb, bk_h2_slug(hs, i));
+    ht_put(hb, "\">");
+    ht_escape_text(hb, bk_h2_title(hs, i));
+    ht_put(hb, "</a></li>");
+  }
+  ht_put(hb, "</ol></details></aside>");
+}
+
+BkSpan :: struct { at: int; n: int; }
+
+BkChMeta :: struct {
+  file: BkSpan;
+  status: BkSpan;
+  profile: BkSpan;
+  qt0: int; qt_n: int;
+  ad0: int; ad_n: int;
+}
+
+BkBookMeta :: struct {
+  entries: [BK_META_MAX] BkChMeta;
+  n: int;
+  items: [BK_META_ITEMS] BkSpan;
+  ni: int;
+  pool: [BK_META_POOL] u8;
+  pn: int;
+}
+
+bk_meta_pool_add :: (m: [] BkBookMeta, s: string) -> BkSpan {
+  at := m[0].pn;
+  if s.count == 0 || at + s.count > BK_META_POOL { return BkSpan.{at = at, n = 0}; }
+  for c: s {
+    m[0].pool[m[0].pn] = c;
+    m[0].pn += 1;
+  }
+  return BkSpan.{at = at, n = s.count};
+}
+
+bk_meta_str :: (m: [] BkBookMeta, sp: BkSpan) -> string {
+  if sp.n < 1 || sp.at < 0 || sp.at + sp.n > m[0].pn { return ""; }
+  return cast(string) m[0].pool[sp.at..<sp.at + sp.n];
+}
+
+bk_meta_read_str :: (m: [] BkBookMeta, raw: string) -> BkSpan {
+  ubuf: [1024] u8;
+  un := json_unescape(raw, ubuf[..]);
+  if un < 0 { return BkSpan.{}; } // mutant: equivalent (when un == 0, bk_meta_pool_add also returns empty span n == 0)
+  return bk_meta_pool_add(m, cast(string) ubuf[0..<un]);
+}
+
+// Parses a book's `chapters.json` using the shared streaming JSON parser (coax/lib/encoding/json.coax).
+bk_parse_chapters_json :: (m: [] BkBookMeta, src: string) -> int {
+  m[0].n = 0;
+  m[0].ni = 0;
+  m[0].pn = 0;
+  j: [1] Json;
+  json_start(j[..], src);
+  if json_next(j[..]) != JSON_OBJECT { return 0; }
+  while true {
+    t := json_next(j[..]);
+    if t != JSON_STRING { break; }
+    is_ch := json_is(json_text(j[..]), "chapters");
+    vt := json_next(j[..]);
+    if !is_ch || vt != JSON_ARRAY {
+      if !json_skip(j[..]) { break; }
+      continue;
+    }
+    while true {
+      et := json_next(j[..]);
+      if et == JSON_ARRAY_END { break; }
+      if et != JSON_OBJECT {
+        if !json_skip(j[..]) { break; }
+        continue;
+      }
+      ch := BkChMeta.{};
+      qt_tmp: [16] BkSpan; qt_c := 0;
+      ad_tmp: [32] BkSpan; ad_c := 0;
+      while true {
+        kt := json_next(j[..]);
+        if kt != JSON_STRING { break; }
+        kraw := json_text(j[..]);
+        fvt := json_next(j[..]);
+        if json_is(kraw, "file") && fvt == JSON_STRING {
+          ch.file = bk_meta_read_str(m, json_text(j[..]));
+        } else if json_is(kraw, "status") && fvt == JSON_STRING {
+          ch.status = bk_meta_read_str(m, json_text(j[..]));
+        } else if json_is(kraw, "profile") && fvt == JSON_STRING {
+          ch.profile = bk_meta_read_str(m, json_text(j[..]));
+        } else if json_is(kraw, "qualified_targets") && fvt == JSON_ARRAY {
+          while true {
+            at := json_next(j[..]);
+            if at == JSON_ARRAY_END { break; }
+            if at == JSON_STRING && qt_c < 16 {
+              sp := bk_meta_read_str(m, json_text(j[..]));
+              if sp.n > 0 { qt_tmp[qt_c] = sp; qt_c += 1; }
+            } else if !json_skip(j[..]) { break; }
+          }
+        } else if json_is(kraw, "adopted_by") && fvt == JSON_ARRAY {
+          while true {
+            at := json_next(j[..]);
+            if at == JSON_ARRAY_END { break; }
+            if at == JSON_STRING && ad_c < 32 {
+              sp := bk_meta_read_str(m, json_text(j[..]));
+              if sp.n > 0 { ad_tmp[ad_c] = sp; ad_c += 1; }
+            } else if !json_skip(j[..]) { break; }
+          }
+        } else {
+          if !json_skip(j[..]) { break; }
+        }
+      }
+      if j[0].tok != JSON_ERROR && ch.file.n > 0 && m[0].n < BK_META_MAX {
+        ch.qt0 = m[0].ni;
+        for q: 0..<qt_c {
+          if m[0].ni < BK_META_ITEMS { m[0].items[m[0].ni] = qt_tmp[q]; m[0].ni += 1; ch.qt_n += 1; }
+        }
+        ch.ad0 = m[0].ni;
+        for a: 0..<ad_c {
+          if m[0].ni < BK_META_ITEMS { m[0].items[m[0].ni] = ad_tmp[a]; m[0].ni += 1; ch.ad_n += 1; }
+        }
+        m[0].entries[m[0].n] = ch;
+        m[0].n += 1;
+      }
+    }
+  }
+  return m[0].n;
+}
+
+bk_meta_find :: (m: [] BkBookMeta, file: string) -> int {
+  if file.count == 0 { return -1; }
+  for i: 0..<m[0].n {
+    if bk_meta_str(m, m[0].entries[i].file) == file { return i; }
+  }
+  return -1;
+}
+
+bk_status_class :: (status: string) -> string {
+  if status == "implemented" { return "bk-badge bk-st-implemented"; }
+  if status == "written" { return "bk-badge bk-st-written"; }
+  if status == "partly implemented" { return "bk-badge bk-st-partly"; }
+  return "bk-badge bk-st-draft";
+}
+
+bk_safe_repo_path :: (p: string) -> bool {
+  if p.count == 0 || p[0] == '/' { return false; }
+  for i: 0..<p.count {
+    c := p[i];
+    if c <= 32 || c == '\\' || c == '"' || c == '\'' || c == '<' || c == '>' { return false; }
+    if c == '.' && i + 1 < p.count && p[i + 1] == '.' { return false; }
+  }
+  return true;
+}
+
+// Emits `<div class="bk-meta-bar">` showing truthful chapter status, profile, qualified targets, and adopted_by links.
+bk_emit_meta_bar :: (hb: [] HtBuf, m: [] BkBookMeta, idx: int) {
+  if idx < 0 || idx >= m[0].n { return; }
+  ch := m[0].entries[idx];
+  st := bk_meta_str(m, ch.status);
+  prof := bk_meta_str(m, ch.profile);
+  if st.count == 0 && prof.count == 0 && ch.qt_n == 0 && ch.ad_n == 0 { return; }
+  ht_put(hb, "<div class=\"bk-meta-bar\">");
+  if st.count > 0 {
+    ht_put(hb, "<span class=\"");
+    ht_put(hb, bk_status_class(st));
+    ht_put(hb, "\">");
+    ht_escape_text(hb, st);
+    ht_put(hb, "</span>");
+  }
+  if prof.count > 0 {
+    ht_put(hb, "<span class=\"bk-meta-item\"><span class=\"bk-meta-k\">Profile</span><span class=\"bk-meta-v\">");
+    ht_escape_text(hb, prof);
+    ht_put(hb, "</span></span>");
+  }
+  if ch.qt_n > 0 {
+    ht_put(hb, "<span class=\"bk-meta-item\"><span class=\"bk-meta-k\">Qualified</span><span class=\"bk-meta-v\">");
+    for q: 0..<ch.qt_n {
+      if q > 0 { ht_put(hb, ", "); }
+      ht_escape_text(hb, bk_meta_str(m, m[0].items[ch.qt0 + q]));
+    }
+    ht_put(hb, "</span></span>");
+  }
+  if ch.ad_n > 0 {
+    ht_put(hb, "<div class=\"bk-meta-adopted\"><span class=\"bk-meta-k\">Adopted by</span>");
+    for a: 0..<ch.ad_n {
+      p := bk_meta_str(m, m[0].items[ch.ad0 + a]);
+      if !bk_safe_repo_path(p) { continue; }
+      dup := false;
+      for prev: 0..<a {
+        if bk_meta_str(m, m[0].items[ch.ad0 + prev]) == p { dup = true; break; }
+      }
+      if dup { continue; }
+      ht_put(hb, "<a class=\"bk-meta-a\" href=\"https://github.com/OpenAgentsInc/openagents/blob/main/");
+      ht_escape_attr(hb, p);
+      ht_put(hb, "\">");
+      ht_escape_text(hb, p);
+      ht_put(hb, "</a>");
+    }
+    ht_put(hb, "</div>");
+  }
+  ht_put(hb, "</div>");
+}
+
+// Appends one `{b,t,u,s,h}` JSON entry for `/books/search.json` into `out` at `at`, or -1 on overflow.
+bk_write_search_item :: (out: [] u8, at: int, first: bool, book_slug: string, title: string, url: string, status: string, hs: [] BkHeadings) -> int {
+  n := at;
+  if !first { n = json_raw(out, n, ","); }
+  n = json_raw(out, n, "{\"b\":");
+  n = json_write_string(out, n, book_slug);
+  n = json_raw(out, n, ",\"t\":");
+  n = json_write_string(out, n, title);
+  n = json_raw(out, n, ",\"u\":");
+  n = json_write_string(out, n, url);
+  n = json_raw(out, n, ",\"s\":");
+  n = json_write_string(out, n, status);
+  n = json_raw(out, n, ",\"h\":[");
+  limit := ifx hs[0].n > BK_SEARCH_MAX_H2 then BK_SEARCH_MAX_H2 else hs[0].n; // mutant: equivalent (when equal both branches equal BK_SEARCH_MAX_H2)
+  for i: 0..<limit {
+    if i > 0 { n = json_raw(out, n, ","); }
+    n = json_write_string(out, n, bk_h2_title(hs, i));
+  }
+  return json_raw(out, n, "]}");
+}
+
+// Writes the HTML5 document header + sticky book TOC sidebar + breadcrumb bar into `hb`.
+bk_emit_chapter_chrome :: (hb: [] HtBuf, book_idx: int, toc: [] BkToc, active: int, mid_href: string, mid_label: string) {
   titles := BK_TITLES;
   slugs := BK_SLUGS;
   descs := BK_DESCS;
@@ -644,64 +1015,79 @@ bk_write_chapter_head_nav :: (book_idx: int, toc: [] BkToc, active: int, mid_hre
     page_path = cast(string) pbuf[0..<pn];
   }
 
-  hb := [1] HtBuf.[HtBuf.{bytes = out}];
-  ht_put(hb[..], "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>");
-  ht_escape_text(hb[..], ch_title);
+  ht_put(hb, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>");
+  ht_escape_text(hb, ch_title);
   if ch_title != book_title {
-    ht_put(hb[..], " — ");
-    ht_escape_text(hb[..], book_title);
+    ht_put(hb, " — ");
+    ht_escape_text(hb, book_title);
   }
-  ht_put(hb[..], "</title>");
-  bk_emit_meta(hb[..], ch_title, book_desc, page_path);
-  ht_put(hb[..], "<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\">");
+  ht_put(hb, "</title>");
+  bk_emit_meta(hb, ch_title, book_desc, page_path);
+  ht_put(hb, "<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\">");
 
   // Sticky book TOC sidebar
-  ht_put(hb[..], "<nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\">");
-  ht_put(hb[..], "<div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"");
-  ht_escape_attr(hb[..], mid_href);
-  ht_put(hb[..], "\">");
-  ht_escape_text(hb[..], mid_label);
-  ht_put(hb[..], "</a><a class=\"lk\" href=\"/\">Home</a></div>");
-  ht_put(hb[..], "<div class=\"bk-head\"><p class=\"bk-head-t\">");
-  ht_escape_text(hb[..], book_title);
-  ht_put(hb[..], "</p><span class=\"meta\">");
-  bk_put_int(hb[..], toc[0].chapters);
-  ht_put(hb[..], " chapters · 0 KB JS</span></div>");
+  ht_put(hb, "<nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\">");
+  ht_put(hb, "<div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"");
+  ht_escape_attr(hb, mid_href);
+  ht_put(hb, "\">");
+  ht_escape_text(hb, mid_label);
+  ht_put(hb, "</a><a class=\"lk\" href=\"/\">Home</a></div>");
+  ht_put(hb, "<div class=\"bk-head\"><p class=\"bk-head-t\">");
+  ht_escape_text(hb, book_title);
+  ht_put(hb, "</p><span class=\"meta\">");
+  bk_put_int(hb, toc[0].chapters);
+  ht_put(hb, " chapters · 0 KB JS</span></div>");
 
   for i: 0..<toc[0].n {
     ent := toc[0].entries[i];
     if ent.is_part {
-      ht_put(hb[..], "<p class=\"bk-part\">");
-      ht_escape_text(hb[..], bk_entry_title(toc, i));
-      ht_put(hb[..], "</p>");
+      ht_put(hb, "<p class=\"bk-part\">");
+      ht_escape_text(hb, bk_entry_title(toc, i));
+      ht_put(hb, "</p>");
     } else {
       href := bk_entry_href(toc, i);
-      ht_put(hb[..], "<a class=\"row\" href=\"");
-      ht_escape_attr(hb[..], href);
-      ht_put_u8(hb[..], '"');
-      if i == active { ht_put(hb[..], " aria-current=\"true\""); }
-      ht_put(hb[..], "><span class=\"row-t\">");
-      ht_escape_text(hb[..], bk_entry_title(toc, i));
-      ht_put(hb[..], "</span>");
+      ht_put(hb, "<a class=\"row\" href=\"");
+      ht_escape_attr(hb, href);
+      ht_put_u8(hb, '"');
+      if i == active { ht_put(hb, " aria-current=\"true\""); }
+      ht_put(hb, "><span class=\"row-t\">");
+      ht_escape_text(hb, bk_entry_title(toc, i));
+      ht_put(hb, "</span>");
       note := bk_entry_note(toc, i);
       if note.count > 0 {
-        ht_put(hb[..], "<span class=\"meta\">");
-        ht_escape_text(hb[..], note);
-        ht_put(hb[..], "</span>");
+        ht_put(hb, "<span class=\"meta\">");
+        ht_escape_text(hb, note);
+        ht_put(hb, "</span>");
       }
-      ht_put(hb[..], "</a>");
+      ht_put(hb, "</a>");
     }
   }
-  ht_put(hb[..], "</nav>");
+  ht_put(hb, "</nav>");
 
   // Main article body header + breadcrumb + raw Markdown link
-  ht_put(hb[..], "<article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/");
-  ht_escape_attr(hb[..], book_slug);
-  ht_put(hb[..], "\">");
-  ht_escape_text(hb[..], book_title);
-  ht_put(hb[..], "</a></div><a class=\"lk\" href=\"");
-  ht_escape_attr(hb[..], page_path);
-  ht_put(hb[..], "/index.md\">Raw Markdown</a></div><div class=\"md\">");
+  ht_put(hb, "<article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/");
+  ht_escape_attr(hb, book_slug);
+  ht_put(hb, "\">");
+  ht_escape_text(hb, book_title);
+  ht_put(hb, "</a></div><a class=\"lk\" href=\"");
+  ht_escape_attr(hb, page_path);
+  ht_put(hb, "/index.md\">Raw Markdown</a></div>");
+}
+
+// Writes the HTML5 document header + sticky book TOC sidebar + optional metadata banner & On-this-page TOC + `<div class="md">`.
+bk_write_chapter_head_ex :: (book_idx: int, toc: [] BkToc, active: int, mid_href: string, mid_label: string, meta: [] BkBookMeta, meta_idx: int, hs: [] BkHeadings, out: [] u8) -> int {
+  hb := [1] HtBuf.[HtBuf.{bytes = out}];
+  bk_emit_chapter_chrome(hb[..], book_idx, toc, active, mid_href, mid_label);
+  bk_emit_meta_bar(hb[..], meta, meta_idx);
+  bk_emit_ontoc(hb[..], hs);
+  ht_put(hb[..], "<div class=\"md\">");
+  return ifx hb[0].overflow then -1 else hb[0].n;
+}
+
+bk_write_chapter_head_nav :: (book_idx: int, toc: [] BkToc, active: int, mid_href: string, mid_label: string, out: [] u8) -> int {
+  hb := [1] HtBuf.[HtBuf.{bytes = out}];
+  bk_emit_chapter_chrome(hb[..], book_idx, toc, active, mid_href, mid_label);
+  ht_put(hb[..], "<div class=\"md\">");
   return ifx hb[0].overflow then -1 else hb[0].n;
 }
 
@@ -778,6 +1164,7 @@ bk_render_books_index_nav :: (counts: [] int, mid_href: string, mid_label: strin
 
   ht_put(hb[..], "<article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header>");
   ht_put(hb[..], "<p class=\"sec-n\">All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p>");
+  ht_put(hb[..], "<div class=\"bk-idx-acts\"><a class=\"lk\" href=\"/books/search.json\">Search Index (JSON)</a><a class=\"lk\" href=\"/books/index.md\">Raw Markdown</a></div>");
   ht_put(hb[..], "<div class=\"bk-grid\">");
   for k: 0..<BK_BOOK_COUNT {
     cnt := ifx k < counts.count then counts[k] else 0;
@@ -1065,13 +1452,207 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   // Books catalog index: exact full HTML with short counts slice + 10-element counts slice + custom nav
   short_c := [1] int.[57];
   in_n := bk_render_books_index(short_c[..], out[..]);
-  w_idx := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><meta name=\"description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><link rel=\"canonical\" href=\"https://openagents.com/books\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"Books\"><meta property=\"og:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta property=\"og:url\" content=\"https://openagents.com/books\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"Books\"><meta name=\"twitter:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\"><div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/books\">Books</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">57 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">coax/book · 57 chapters</span></a><a class=\"row\" href=\"/books/openagents\"><span class=\"row-t\">The OpenAgents Book</span><span class=\"meta\">openagents/book · 0 chapters</span></a><a class=\"row\" href=\"/books/bitcoin\"><span class=\"row-t\">Bitcoin From Scratch</span><span class=\"meta\">bitcoin/book · 0 chapters</span></a><a class=\"row\" href=\"/books/nostr\"><span class=\"row-t\">Nostr From Scratch</span><span class=\"meta\">nostr/book · 0 chapters</span></a><a class=\"row\" href=\"/books/coder\"><span class=\"row-t\">Coder: Coding Agents From Scratch</span><span class=\"meta\">coder/book · 0 chapters</span></a><a class=\"row\" href=\"/books/psionic\"><span class=\"row-t\">Psionic: ML From Scratch</span><span class=\"meta\">psionic/book · 0 chapters</span></a><a class=\"row\" href=\"/books/metaverse-engine\"><span class=\"row-t\">Building the OpenAgents Metaverse Engine</span><span class=\"meta\">metaverse-engine/book · 0 chapters</span></a><a class=\"row\" href=\"/books/everglade\"><span class=\"row-t\">Building Everglade</span><span class=\"meta\">everglade/book · 0 chapters</span></a><a class=\"row\" href=\"/books/claude-code\"><span class=\"row-t\">Reverse Engineering Claude Code</span><span class=\"meta\">claude-code/book · 0 chapters</span></a></nav><article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header><p class=\"sec-n\">All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p><div class=\"bk-grid\"><a class=\"bk-card\" href=\"/books/coax\"><span class=\"meta\">coax/book · 57 chapters</span><h2 class=\"bk-card-t\">The Coax Programming Language</h2><p class=\"bk-card-d\">Programs in Coax, the language every other OpenAgents book uses.</p></a><a class=\"bk-card\" href=\"/books/openagents\"><span class=\"meta\">openagents/book · 0 chapters</span><h2 class=\"bk-card-t\">The OpenAgents Book</h2><p class=\"bk-card-d\">The OpenAgents apps, Bitcoin/Lightning wallet, and composable general agent.</p></a><a class=\"bk-card\" href=\"/books/bitcoin\"><span class=\"meta\">bitcoin/book · 0 chapters</span><h2 class=\"bk-card-t\">Bitcoin From Scratch</h2><p class=\"bk-card-d\">Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to channels.</p></a><a class=\"bk-card\" href=\"/books/nostr\"><span class=\"meta\">nostr/book · 0 chapters</span><h2 class=\"bk-card-t\">Nostr From Scratch</h2><p class=\"bk-card-d\">A Nostr client, a relay, and the NIPs OpenAgents uses, built from scratch.</p></a><a class=\"bk-card\" href=\"/books/coder\"><span class=\"meta\">coder/book · 0 chapters</span><h2 class=\"bk-card-t\">Coder: Coding Agents From Scratch</h2><p class=\"bk-card-d\">OpenAgents' coding agent, sandbox, harness, and lessons from other agents.</p></a><a class=\"bk-card\" href=\"/books/psionic\"><span class=\"meta\">psionic/book · 0 chapters</span><h2 class=\"bk-card-t\">Psionic: ML From Scratch</h2><p class=\"bk-card-d\">A machine-learning library in Coax that runs, serves, and trains models.</p></a><a class=\"bk-card\" href=\"/books/metaverse-engine\"><span class=\"meta\">metaverse-engine/book · 0 chapters</span><h2 class=\"bk-card-t\">Building the OpenAgents Metaverse Engine</h2><p class=\"bk-card-d\">A real-time engine: frame loop, world, renderer, physics, realms, and multiplayer.</p></a><a class=\"bk-card\" href=\"/books/everglade\"><span class=\"meta\">everglade/book · 0 chapters</span><h2 class=\"bk-card-t\">Building Everglade</h2><p class=\"bk-card-d\">An MMORPG on the D&amp;D 5E SRD, built on the OpenAgents Metaverse Engine.</p></a><a class=\"bk-card\" href=\"/books/claude-code\"><span class=\"meta\">claude-code/book · 0 chapters</span><h2 class=\"bk-card-t\">Reverse Engineering Claude Code</h2><p class=\"bk-card-d\">Bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase.</p></a></div></article></div></main></body></html>";
+  w_idx := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><meta name=\"description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><link rel=\"canonical\" href=\"https://openagents.com/books\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"Books\"><meta property=\"og:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta property=\"og:url\" content=\"https://openagents.com/books\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"Books\"><meta name=\"twitter:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\"><div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/books\">Books</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">57 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">coax/book · 57 chapters</span></a><a class=\"row\" href=\"/books/openagents\"><span class=\"row-t\">The OpenAgents Book</span><span class=\"meta\">openagents/book · 0 chapters</span></a><a class=\"row\" href=\"/books/bitcoin\"><span class=\"row-t\">Bitcoin From Scratch</span><span class=\"meta\">bitcoin/book · 0 chapters</span></a><a class=\"row\" href=\"/books/nostr\"><span class=\"row-t\">Nostr From Scratch</span><span class=\"meta\">nostr/book · 0 chapters</span></a><a class=\"row\" href=\"/books/coder\"><span class=\"row-t\">Coder: Coding Agents From Scratch</span><span class=\"meta\">coder/book · 0 chapters</span></a><a class=\"row\" href=\"/books/psionic\"><span class=\"row-t\">Psionic: ML From Scratch</span><span class=\"meta\">psionic/book · 0 chapters</span></a><a class=\"row\" href=\"/books/metaverse-engine\"><span class=\"row-t\">Building the OpenAgents Metaverse Engine</span><span class=\"meta\">metaverse-engine/book · 0 chapters</span></a><a class=\"row\" href=\"/books/everglade\"><span class=\"row-t\">Building Everglade</span><span class=\"meta\">everglade/book · 0 chapters</span></a><a class=\"row\" href=\"/books/claude-code\"><span class=\"row-t\">Reverse Engineering Claude Code</span><span class=\"meta\">claude-code/book · 0 chapters</span></a></nav><article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header><p class=\"sec-n\">All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p><div class=\"bk-idx-acts\"><a class=\"lk\" href=\"/books/search.json\">Search Index (JSON)</a><a class=\"lk\" href=\"/books/index.md\">Raw Markdown</a></div><div class=\"bk-grid\"><a class=\"bk-card\" href=\"/books/coax\"><span class=\"meta\">coax/book · 57 chapters</span><h2 class=\"bk-card-t\">The Coax Programming Language</h2><p class=\"bk-card-d\">Programs in Coax, the language every other OpenAgents book uses.</p></a><a class=\"bk-card\" href=\"/books/openagents\"><span class=\"meta\">openagents/book · 0 chapters</span><h2 class=\"bk-card-t\">The OpenAgents Book</h2><p class=\"bk-card-d\">The OpenAgents apps, Bitcoin/Lightning wallet, and composable general agent.</p></a><a class=\"bk-card\" href=\"/books/bitcoin\"><span class=\"meta\">bitcoin/book · 0 chapters</span><h2 class=\"bk-card-t\">Bitcoin From Scratch</h2><p class=\"bk-card-d\">Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to channels.</p></a><a class=\"bk-card\" href=\"/books/nostr\"><span class=\"meta\">nostr/book · 0 chapters</span><h2 class=\"bk-card-t\">Nostr From Scratch</h2><p class=\"bk-card-d\">A Nostr client, a relay, and the NIPs OpenAgents uses, built from scratch.</p></a><a class=\"bk-card\" href=\"/books/coder\"><span class=\"meta\">coder/book · 0 chapters</span><h2 class=\"bk-card-t\">Coder: Coding Agents From Scratch</h2><p class=\"bk-card-d\">OpenAgents' coding agent, sandbox, harness, and lessons from other agents.</p></a><a class=\"bk-card\" href=\"/books/psionic\"><span class=\"meta\">psionic/book · 0 chapters</span><h2 class=\"bk-card-t\">Psionic: ML From Scratch</h2><p class=\"bk-card-d\">A machine-learning library in Coax that runs, serves, and trains models.</p></a><a class=\"bk-card\" href=\"/books/metaverse-engine\"><span class=\"meta\">metaverse-engine/book · 0 chapters</span><h2 class=\"bk-card-t\">Building the OpenAgents Metaverse Engine</h2><p class=\"bk-card-d\">A real-time engine: frame loop, world, renderer, physics, realms, and multiplayer.</p></a><a class=\"bk-card\" href=\"/books/everglade\"><span class=\"meta\">everglade/book · 0 chapters</span><h2 class=\"bk-card-t\">Building Everglade</h2><p class=\"bk-card-d\">An MMORPG on the D&amp;D 5E SRD, built on the OpenAgents Metaverse Engine.</p></a><a class=\"bk-card\" href=\"/books/claude-code\"><span class=\"meta\">claude-code/book · 0 chapters</span><h2 class=\"bk-card-t\">Reverse Engineering Claude Code</h2><p class=\"bk-card-d\">Bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase.</p></a></div></article></div></main></body></html>";
   #assert in_n > 0 && cast(string) out[0..<in_n] == w_idx;
   in_np := bk_render_books_index_nav(short_c[..], "/projects", "Projects", out[..]);
-  w_idxp := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><meta name=\"description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><link rel=\"canonical\" href=\"https://openagents.com/books\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"Books\"><meta property=\"og:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta property=\"og:url\" content=\"https://openagents.com/books\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"Books\"><meta name=\"twitter:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\"><div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/projects\">Projects</a><a class=\"lk\" href=\"/books\">Books</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">57 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">coax/book · 57 chapters</span></a><a class=\"row\" href=\"/books/openagents\"><span class=\"row-t\">The OpenAgents Book</span><span class=\"meta\">openagents/book · 0 chapters</span></a><a class=\"row\" href=\"/books/bitcoin\"><span class=\"row-t\">Bitcoin From Scratch</span><span class=\"meta\">bitcoin/book · 0 chapters</span></a><a class=\"row\" href=\"/books/nostr\"><span class=\"row-t\">Nostr From Scratch</span><span class=\"meta\">nostr/book · 0 chapters</span></a><a class=\"row\" href=\"/books/coder\"><span class=\"row-t\">Coder: Coding Agents From Scratch</span><span class=\"meta\">coder/book · 0 chapters</span></a><a class=\"row\" href=\"/books/psionic\"><span class=\"row-t\">Psionic: ML From Scratch</span><span class=\"meta\">psionic/book · 0 chapters</span></a><a class=\"row\" href=\"/books/metaverse-engine\"><span class=\"row-t\">Building the OpenAgents Metaverse Engine</span><span class=\"meta\">metaverse-engine/book · 0 chapters</span></a><a class=\"row\" href=\"/books/everglade\"><span class=\"row-t\">Building Everglade</span><span class=\"meta\">everglade/book · 0 chapters</span></a><a class=\"row\" href=\"/books/claude-code\"><span class=\"row-t\">Reverse Engineering Claude Code</span><span class=\"meta\">claude-code/book · 0 chapters</span></a></nav><article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header><p class=\"sec-n\">All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p><div class=\"bk-grid\"><a class=\"bk-card\" href=\"/books/coax\"><span class=\"meta\">coax/book · 57 chapters</span><h2 class=\"bk-card-t\">The Coax Programming Language</h2><p class=\"bk-card-d\">Programs in Coax, the language every other OpenAgents book uses.</p></a><a class=\"bk-card\" href=\"/books/openagents\"><span class=\"meta\">openagents/book · 0 chapters</span><h2 class=\"bk-card-t\">The OpenAgents Book</h2><p class=\"bk-card-d\">The OpenAgents apps, Bitcoin/Lightning wallet, and composable general agent.</p></a><a class=\"bk-card\" href=\"/books/bitcoin\"><span class=\"meta\">bitcoin/book · 0 chapters</span><h2 class=\"bk-card-t\">Bitcoin From Scratch</h2><p class=\"bk-card-d\">Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to channels.</p></a><a class=\"bk-card\" href=\"/books/nostr\"><span class=\"meta\">nostr/book · 0 chapters</span><h2 class=\"bk-card-t\">Nostr From Scratch</h2><p class=\"bk-card-d\">A Nostr client, a relay, and the NIPs OpenAgents uses, built from scratch.</p></a><a class=\"bk-card\" href=\"/books/coder\"><span class=\"meta\">coder/book · 0 chapters</span><h2 class=\"bk-card-t\">Coder: Coding Agents From Scratch</h2><p class=\"bk-card-d\">OpenAgents' coding agent, sandbox, harness, and lessons from other agents.</p></a><a class=\"bk-card\" href=\"/books/psionic\"><span class=\"meta\">psionic/book · 0 chapters</span><h2 class=\"bk-card-t\">Psionic: ML From Scratch</h2><p class=\"bk-card-d\">A machine-learning library in Coax that runs, serves, and trains models.</p></a><a class=\"bk-card\" href=\"/books/metaverse-engine\"><span class=\"meta\">metaverse-engine/book · 0 chapters</span><h2 class=\"bk-card-t\">Building the OpenAgents Metaverse Engine</h2><p class=\"bk-card-d\">A real-time engine: frame loop, world, renderer, physics, realms, and multiplayer.</p></a><a class=\"bk-card\" href=\"/books/everglade\"><span class=\"meta\">everglade/book · 0 chapters</span><h2 class=\"bk-card-t\">Building Everglade</h2><p class=\"bk-card-d\">An MMORPG on the D&amp;D 5E SRD, built on the OpenAgents Metaverse Engine.</p></a><a class=\"bk-card\" href=\"/books/claude-code\"><span class=\"meta\">claude-code/book · 0 chapters</span><h2 class=\"bk-card-t\">Reverse Engineering Claude Code</h2><p class=\"bk-card-d\">Bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase.</p></a></div></article></div></main></body></html>";
+  w_idxp := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><meta name=\"description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><link rel=\"canonical\" href=\"https://openagents.com/books\"><link rel=\"alternate\" type=\"text/markdown\" href=\"/books/index.md\"><meta name=\"theme-color\" content=\"#000000\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:site_name\" content=\"OpenAgents\"><meta property=\"og:title\" content=\"Books\"><meta property=\"og:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta property=\"og:url\" content=\"https://openagents.com/books\"><meta property=\"og:image\" content=\"https://openagents.com/og/default.jpg\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta property=\"og:image:alt\" content=\"OpenAgents\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"Books\"><meta name=\"twitter:description\" content=\"All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting and zero JavaScript.\"><meta name=\"twitter:image\" content=\"https://openagents.com/og/default.jpg\">\n<link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\"><div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/projects\">Projects</a><a class=\"lk\" href=\"/books\">Books</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">57 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">coax/book · 57 chapters</span></a><a class=\"row\" href=\"/books/openagents\"><span class=\"row-t\">The OpenAgents Book</span><span class=\"meta\">openagents/book · 0 chapters</span></a><a class=\"row\" href=\"/books/bitcoin\"><span class=\"row-t\">Bitcoin From Scratch</span><span class=\"meta\">bitcoin/book · 0 chapters</span></a><a class=\"row\" href=\"/books/nostr\"><span class=\"row-t\">Nostr From Scratch</span><span class=\"meta\">nostr/book · 0 chapters</span></a><a class=\"row\" href=\"/books/coder\"><span class=\"row-t\">Coder: Coding Agents From Scratch</span><span class=\"meta\">coder/book · 0 chapters</span></a><a class=\"row\" href=\"/books/psionic\"><span class=\"row-t\">Psionic: ML From Scratch</span><span class=\"meta\">psionic/book · 0 chapters</span></a><a class=\"row\" href=\"/books/metaverse-engine\"><span class=\"row-t\">Building the OpenAgents Metaverse Engine</span><span class=\"meta\">metaverse-engine/book · 0 chapters</span></a><a class=\"row\" href=\"/books/everglade\"><span class=\"row-t\">Building Everglade</span><span class=\"meta\">everglade/book · 0 chapters</span></a><a class=\"row\" href=\"/books/claude-code\"><span class=\"row-t\">Reverse Engineering Claude Code</span><span class=\"meta\">claude-code/book · 0 chapters</span></a></nav><article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header><p class=\"sec-n\">All nine OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p><div class=\"bk-idx-acts\"><a class=\"lk\" href=\"/books/search.json\">Search Index (JSON)</a><a class=\"lk\" href=\"/books/index.md\">Raw Markdown</a></div><div class=\"bk-grid\"><a class=\"bk-card\" href=\"/books/coax\"><span class=\"meta\">coax/book · 57 chapters</span><h2 class=\"bk-card-t\">The Coax Programming Language</h2><p class=\"bk-card-d\">Programs in Coax, the language every other OpenAgents book uses.</p></a><a class=\"bk-card\" href=\"/books/openagents\"><span class=\"meta\">openagents/book · 0 chapters</span><h2 class=\"bk-card-t\">The OpenAgents Book</h2><p class=\"bk-card-d\">The OpenAgents apps, Bitcoin/Lightning wallet, and composable general agent.</p></a><a class=\"bk-card\" href=\"/books/bitcoin\"><span class=\"meta\">bitcoin/book · 0 chapters</span><h2 class=\"bk-card-t\">Bitcoin From Scratch</h2><p class=\"bk-card-d\">Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to channels.</p></a><a class=\"bk-card\" href=\"/books/nostr\"><span class=\"meta\">nostr/book · 0 chapters</span><h2 class=\"bk-card-t\">Nostr From Scratch</h2><p class=\"bk-card-d\">A Nostr client, a relay, and the NIPs OpenAgents uses, built from scratch.</p></a><a class=\"bk-card\" href=\"/books/coder\"><span class=\"meta\">coder/book · 0 chapters</span><h2 class=\"bk-card-t\">Coder: Coding Agents From Scratch</h2><p class=\"bk-card-d\">OpenAgents' coding agent, sandbox, harness, and lessons from other agents.</p></a><a class=\"bk-card\" href=\"/books/psionic\"><span class=\"meta\">psionic/book · 0 chapters</span><h2 class=\"bk-card-t\">Psionic: ML From Scratch</h2><p class=\"bk-card-d\">A machine-learning library in Coax that runs, serves, and trains models.</p></a><a class=\"bk-card\" href=\"/books/metaverse-engine\"><span class=\"meta\">metaverse-engine/book · 0 chapters</span><h2 class=\"bk-card-t\">Building the OpenAgents Metaverse Engine</h2><p class=\"bk-card-d\">A real-time engine: frame loop, world, renderer, physics, realms, and multiplayer.</p></a><a class=\"bk-card\" href=\"/books/everglade\"><span class=\"meta\">everglade/book · 0 chapters</span><h2 class=\"bk-card-t\">Building Everglade</h2><p class=\"bk-card-d\">An MMORPG on the D&amp;D 5E SRD, built on the OpenAgents Metaverse Engine.</p></a><a class=\"bk-card\" href=\"/books/claude-code\"><span class=\"meta\">claude-code/book · 0 chapters</span><h2 class=\"bk-card-t\">Reverse Engineering Claude Code</h2><p class=\"bk-card-d\">Bottom-up reverse-engineering guide to the Claude Code 2.1.88–2.1.331 codebase.</p></a></div></article></div></main></body></html>";
   #assert in_np > 0 && cast(string) out[0..<in_np] == w_idxp;
   ten_c := [10] int.[57, 0, 0, 0, 0, 0, 0, 0, 0, 999];
   in_n10 := bk_render_books_index(ten_c[..], out[..]);
   #assert in_n10 == in_n && cast(string) out[0..<in_n10] == w_idx;
   #assert bk_render_books_index(short_c[..], tiny[..]) == -1;
+}
+
+#test "bk alerts, mermaid SVG hook, On-this-page h2 TOC, chapters.json meta bar, and search.json item" {
+  // Alert parsing: all 5 kinds, 1 & 2 leading spaces, all-spaces, exact EOF tag, and non-matching prefixes
+  a0 := bk_alert_info("[!NOTE]  hello");
+  #assert a0.kind == BK_ALERT_NOTE && a0.skip == 9 && a0.cls == "bk-alert bk-alert-note" && a0.label == "NOTE";
+  a1 := bk_alert_info(" [!TIP]");
+  #assert a1.kind == BK_ALERT_TIP && a1.skip == 7 && a1.cls == "bk-alert bk-alert-tip" && a1.label == "TIP";
+  a2 := bk_alert_info("[!IMPORTANT] x");
+  #assert a2.kind == BK_ALERT_IMPORTANT && a2.label == "IMPORTANT";
+  a3 := bk_alert_info("[!WARNING] y");
+  #assert a3.kind == BK_ALERT_WARNING && a3.label == "WARNING";
+  a4 := bk_alert_info("[!CAUTION] z");
+  #assert a4.kind == BK_ALERT_CAUTION && a4.label == "CAUTION";
+  #assert bk_alert_info("[!NOTEBOOK] x").kind == BK_ALERT_NONE && bk_alert_info("plain").kind == BK_ALERT_NONE && bk_alert_info("   ").kind == BK_ALERT_NONE;
+
+  // Alert callouts (including 1-item alert, empty quote block, Tree depth==0) & Mermaid SVG rendering + fallback
+  doc: [1] MdDoc; t: [1] Tree; out: [32768] u8;
+  md_al := "> [!NOTE]\n> **Bold** and `code` [link](ch02.md)\n>\n> Second para.\n\n> [!WARNING]\n>\n> Only second.\n\n> [!TIP]\n> Single\n\n>\n\n```mermaid\nflowchart LR\n  A[\"In\"] --> B[\"Out\"]\n```\n\n```mermaid\npie title Unsupported\n```\n";
+  n := bk_render_md_html(md_al, "coax", doc[..], t[..], out[..]);
+  html := cast(string) out[0..<n];
+  #assert n > 0;
+  #assert mm_has(html, "<aside id=\"b.0\" class=\"bk-alert bk-alert-note\" role=\"note\"><p class=\"bk-alert-t\">NOTE</p><p id=\"b.0.q.0\" class=\"md-quote-p\"><strong id=\"b.0.q.0.r.1\">Bold</strong>");
+  #assert mm_has(html, "href=\"/books/coax/ch02\"") && mm_has(html, "<p id=\"b.0.q.1\" class=\"md-quote-p\"><span id=\"b.0.q.1.r.0\">Second para.</span></p></aside>");
+  #assert mm_has(html, "<aside id=\"b.1\" class=\"bk-alert bk-alert-warning\" role=\"note\"><p class=\"bk-alert-t\">WARNING</p><p id=\"b.1.q.1\" class=\"md-quote-p\"><span id=\"b.1.q.1.r.0\">Only second.</span></p></aside>");
+  #assert mm_has(html, "<aside id=\"b.2\" class=\"bk-alert bk-alert-tip\" role=\"note\"><p class=\"bk-alert-t\">TIP</p><p id=\"b.2.q.0\" class=\"md-quote-p\"><span id=\"b.2.q.0.r.0\">Single</span></p></aside>");
+  #assert mm_has(html, "<blockquote id=\"b.3\" class=\"md-quote\"></blockquote>");
+  #assert !mm_has(html, "[!NOTE]") && !mm_has(html, "[!WARNING]") && !mm_has(html, "[!TIP]");
+  #assert mm_has(html, "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\"") && mm_has(html, "data-lang=\"mermaid\"");
+  // Verify alert rendering leaves Tree depth cleanly at 0 (kills removed tr_close) and MB_LIST/MB_PARA are not misclassified as quote
+  doc[0] = MdDoc.{}; _ = md_parse(doc[..], "> [!NOTE]\n> hi\n\n- [!NOTE] item\n\n>\n", 0);
+  hb_dp := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  _ = bk_render_block_html(hb_dp[..], doc[..], 0, t[..], "coax", 0);
+  #assert t[0].depth == 0;
+  _ = bk_render_block_html(hb_dp[..], doc[..], 1, t[..], "coax", 1);
+  #assert mm_has(cast(string) out[0..<hb_dp[0].n], "<ul id=\"b.1\" class=\"md-list\">");
+  _ = bk_render_block_html(hb_dp[..], doc[..], 2, t[..], "coax", 2);
+  #assert mm_has(cast(string) out[0..<hb_dp[0].n], "<blockquote id=\"b.2\" class=\"md-quote\"></blockquote>");
+
+  // bk_emit_runs_from direct edge cases (skip >= count, 0 runs with nonzero skip)
+  tr_begin(t[..]);
+  dr: [1] MdRun;
+  bk_emit_runs_from(t[..], doc[..], "coax", "sf0", "abc", dr[0..<0], 3);
+  bk_emit_runs_from(t[..], doc[..], "coax", "sf1", "abc", dr[0..<0], 1);
+  #assert t[0].n == 1 && tr_text_of(t[..], 0) == "bc";
+
+  // In-page h2 TOC collection & emission (pre-dirty reset, 1-char at block 0, pool/max caps, 1 omitted, >=2 rendered)
+  hs: [1] BkHeadings;
+  hs[0].n = 5; hs[0].pn = 5;
+  #assert bk_collect_h2(hs[..], "## A\n\n### Sub\n", doc[..]) == 1 && hs[0].pn == 2;
+  #assert bk_h2_title(hs[..], 0) == "A" && bk_h2_slug(hs[..], 0) == "a";
+  hb_one := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  bk_emit_ontoc(hb_one[..], hs[..]);
+  #assert hb_one[0].n == 0;
+
+  #assert bk_collect_h2(hs[..], "## First <A>\n\n##    \n\n## ---\n\n## Second Section\n", doc[..]) == 2;
+  #assert bk_h2_title(hs[..], 0) == "First <A>" && bk_h2_slug(hs[..], 0) == "first-a";
+  #assert bk_h2_title(hs[..], 1) == "Second Section" && bk_h2_slug(hs[..], 1) == "second-section";
+  #assert bk_h2_str(hs[..], -1, 1) == "" && bk_h2_str(hs[..], 0, 0) == "" && bk_h2_str(hs[..], hs[0].pn, 1) == "";
+  hb_toc := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  bk_emit_ontoc(hb_toc[..], hs[..]);
+  #assert cast(string) out[0..<hb_toc[0].n] == "<aside class=\"bk-ontoc\" aria-label=\"On this page\"><details class=\"bk-ontoc-d\" open><summary class=\"bk-ontoc-s\">On this page (2)</summary><ol class=\"bk-ontoc-l\"><li><a href=\"#first-a\">First &lt;A&gt;</a></li><li><a href=\"#second-section\">Second Section</a></li></ol></details></aside>";
+
+  // BK_H2_POOL exact boundary & BK_MAX_H2 exact saturation across multi-chunk markdown
+  hs_cap: [1] BkHeadings;
+  hs_cap[0].pn = BK_H2_POOL - 1;
+  pat := bk_h2_pool_add(hs_cap[..], "xy");
+  #assert pat == BK_H2_POOL - 1 && hs_cap[0].pn == BK_H2_POOL && bk_h2_str(hs_cap[..], pat, 1) == "x";
+  big_h2: [2048] u8; bh_n := 0;
+  for k: 0..<70 { bh_n = bk_copy_str(big_h2[..], bh_n, "## H\n\n"); }
+  #assert bk_collect_h2(hs_cap[..], cast(string) big_h2[0..<bh_n], doc[..]) == BK_MAX_H2;
+  // Exact BK_H2_POOL boundary: 36 headings of 128 'a's (36*(128+96) = 8064) + 64 'a's (+128 = 8192 exact fit) vs 64 'a's+'!' (+129 = 8193 refused)
+  long_h2: [8192] u8; lh_n := 0;
+  for k: 0..<36 {
+    lh_n = bk_copy_str(long_h2[..], lh_n, "## ");
+    for j: 0..<128 { lh_n = bk_copy_str(long_h2[..], lh_n, "a"); }
+    lh_n = bk_copy_str(long_h2[..], lh_n, "\n\n");
+  }
+  base_lh := lh_n;
+  lh_n = bk_copy_str(long_h2[..], base_lh, "## ");
+  for j: 0..<64 { lh_n = bk_copy_str(long_h2[..], lh_n, "a"); }
+  lh_n = bk_copy_str(long_h2[..], lh_n, "\n");
+  #assert bk_collect_h2(hs_cap[..], cast(string) long_h2[0..<lh_n], doc[..]) == 37 && hs_cap[0].pn == BK_H2_POOL;
+  lh_n = bk_copy_str(long_h2[..], base_lh, "## ");
+  for j: 0..<64 { lh_n = bk_copy_str(long_h2[..], lh_n, "a"); }
+  lh_n = bk_copy_str(long_h2[..], lh_n, "!\n");
+  #assert bk_collect_h2(hs_cap[..], cast(string) long_h2[0..<lh_n], doc[..]) == 36 && hs_cap[0].pn == 8064;
+
+  // chapters.json parsing, lookup, status classes, repo-path safety, and meta bar emission
+  #assert bk_status_class("implemented") == "bk-badge bk-st-implemented";
+  #assert bk_status_class("written") == "bk-badge bk-st-written";
+  #assert bk_status_class("partly implemented") == "bk-badge bk-st-partly";
+  #assert bk_status_class("planned") == "bk-badge bk-st-draft";
+  #assert bk_safe_repo_path("a") && bk_safe_repo_path("!") && bk_safe_repo_path("a.b") && bk_safe_repo_path("a.") && bk_safe_repo_path("coax/lib/a.coax");
+  #assert !bk_safe_repo_path("") && !bk_safe_repo_path("/abs") && !bk_safe_repo_path("\\bs") && !bk_safe_repo_path("a\\b") && !bk_safe_repo_path("a'b") && !bk_safe_repo_path("a<b") && !bk_safe_repo_path("a>b") && !bk_safe_repo_path("../x") && !bk_safe_repo_path("a/..") && !bk_safe_repo_path("a b") && !bk_safe_repo_path("a\"b");
+
+  meta: [1] BkBookMeta;
+  // Pool & string reader exact bounds
+  meta[0].pn = BK_META_POOL - 1;
+  sp_empty := bk_meta_pool_add(meta[..], "");
+  #assert sp_empty.n == 0 && meta[0].pn == BK_META_POOL - 1;
+  sp_over := bk_meta_pool_add(meta[..], "ab");
+  #assert sp_over.n == 0 && meta[0].pn == BK_META_POOL - 1;
+  sp_fit := bk_meta_pool_add(meta[..], "a");
+  #assert sp_fit.n == 1 && meta[0].pn == BK_META_POOL && bk_meta_str(meta[..], sp_fit) == "a";
+  #assert bk_meta_read_str(meta[..], "").n == 0 && bk_meta_read_str(meta[..], "\\u").n == 0;
+  meta[0].pn = 0;
+  sp_1 := bk_meta_read_str(meta[..], "x");
+  #assert sp_1.at == 0 && sp_1.n == 1 && bk_meta_str(meta[..], sp_1) == "x";
+  #assert bk_meta_str(meta[..], BkSpan.{at = -1, n = 1}) == "" && bk_meta_str(meta[..], BkSpan.{at = 0, n = 0}) == "" && bk_meta_str(meta[..], BkSpan.{at = 1, n = 1}) == "";
+
+  // Pre-dirty meta and verify invalid / non-object / malformed / non-array / rich JSON
+  meta[0].n = 4; meta[0].ni = 4; meta[0].pn = 4;
+  #assert bk_parse_chapters_json(meta[..], "[]") == 0 && meta[0].n == 0 && meta[0].ni == 0 && meta[0].pn == 0;
+  #assert bk_parse_chapters_json(meta[..], "{\"chapters\":123}") == 0;
+  #assert bk_parse_chapters_json(meta[..], "{\"chapters\":[{\"file\":\"a\",\"qualified_targets\":[1") == 0;
+  #assert bk_parse_chapters_json(meta[..], "{\"chapters\":[{\"file\":\"a\",\"adopted_by\":[1") == 0;
+  #assert bk_parse_chapters_json(meta[..], "{\"chapters\":[{\"file\":\"a\",\"extra\":[1") == 0;
+  #assert bk_parse_chapters_json(meta[..], "{\"chapters\":[[1") == 0;
+  #assert bk_parse_chapters_json(meta[..], "{\"bad\":[1") == 0;
+
+  cjs := "{\"book\":\"coax\",\"extra\":[1,2],\"chapters\":[123,{\"file\":null,\"status\":\"moved\"},{\"file\":\"a\",\"status\":\"s\",\"profile\":null,\"qualified_targets\":[],\"adopted_by\":[]},{\"file\":\"ch01.md\",\"depends_on\":[\"coax:0\"],\"status\":\"implemented\",\"profile\":\"native C\",\"qualified_targets\":[\"cpu\",\"\",1,\"wasm\"],\"adopted_by\":[\"coax/a.coax\",\"\",2,\"coax/b.coax\",\"coax/a.coax\",\"../bad\",\"coax/b.coax\"]},{\"file\":\"p\",\"profile\":\"P\"},{\"file\":\"q\",\"qualified_targets\":[\"x\"]},{\"file\":\"r\",\"adopted_by\":[\"z.coax\"]},{\"file\":\"ch02.md\",\"status\":\"\",\"profile\":\"\",\"qualified_targets\":[],\"adopted_by\":[]}]}";
+  #assert bk_parse_chapters_json(meta[..], cjs) == 6;
+  #assert bk_meta_find(meta[..], "") == -1 && bk_meta_find(meta[..], "missing.md") == -1;
+  ma := bk_meta_find(meta[..], "a");
+  m0 := bk_meta_find(meta[..], "ch01.md");
+  mp := bk_meta_find(meta[..], "p");
+  mq := bk_meta_find(meta[..], "q");
+  mr := bk_meta_find(meta[..], "r");
+  m2 := bk_meta_find(meta[..], "ch02.md");
+  #assert ma == 0 && m0 == 1 && mp == 2 && mq == 3 && mr == 4 && m2 == 5;
+  #assert meta[0].entries[m0].ad_n == 5 && meta[0].entries[m0].qt_n == 2;
+
+  hb_mb := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  meta[0].entries[meta[0].n].status = meta[0].entries[m0].status; // non-empty stale slot at index n kills >= -> >
+  bk_emit_meta_bar(hb_mb[..], meta[..], -1);
+  bk_emit_meta_bar(hb_mb[..], meta[..], meta[0].n);
+  bk_emit_meta_bar(hb_mb[..], meta[..], m2);
+  #assert hb_mb[0].n == 0;
+  // Single-field chapters kill every `&& -> ||` and `> 0 -> > 1` guard in bk_emit_meta_bar
+  bk_emit_meta_bar(hb_mb[..], meta[..], ma);
+  #assert cast(string) out[0..<hb_mb[0].n] == "<div class=\"bk-meta-bar\"><span class=\"bk-badge bk-st-draft\">s</span></div>";
+  hb_mb[0].n = 0; bk_emit_meta_bar(hb_mb[..], meta[..], mp);
+  #assert cast(string) out[0..<hb_mb[0].n] == "<div class=\"bk-meta-bar\"><span class=\"bk-meta-item\"><span class=\"bk-meta-k\">Profile</span><span class=\"bk-meta-v\">P</span></span></div>";
+  hb_mb[0].n = 0; bk_emit_meta_bar(hb_mb[..], meta[..], mq);
+  #assert cast(string) out[0..<hb_mb[0].n] == "<div class=\"bk-meta-bar\"><span class=\"bk-meta-item\"><span class=\"bk-meta-k\">Qualified</span><span class=\"bk-meta-v\">x</span></span></div>";
+  hb_mb[0].n = 0; bk_emit_meta_bar(hb_mb[..], meta[..], mr);
+  #assert cast(string) out[0..<hb_mb[0].n] == "<div class=\"bk-meta-bar\"><div class=\"bk-meta-adopted\"><span class=\"bk-meta-k\">Adopted by</span><a class=\"bk-meta-a\" href=\"https://github.com/OpenAgentsInc/openagents/blob/main/z.coax\">z.coax</a></div></div>";
+  hb_mb[0].n = 0; bk_emit_meta_bar(hb_mb[..], meta[..], m0);
+  #assert cast(string) out[0..<hb_mb[0].n] == "<div class=\"bk-meta-bar\"><span class=\"bk-badge bk-st-implemented\">implemented</span><span class=\"bk-meta-item\"><span class=\"bk-meta-k\">Profile</span><span class=\"bk-meta-v\">native C</span></span><span class=\"bk-meta-item\"><span class=\"bk-meta-k\">Qualified</span><span class=\"bk-meta-v\">cpu, wasm</span></span><div class=\"bk-meta-adopted\"><span class=\"bk-meta-k\">Adopted by</span><a class=\"bk-meta-a\" href=\"https://github.com/OpenAgentsInc/openagents/blob/main/coax/a.coax\">coax/a.coax</a><a class=\"bk-meta-a\" href=\"https://github.com/OpenAgentsInc/openagents/blob/main/coax/b.coax\">coax/b.coax</a></div></div>";
+
+  // Verify qt_c=16, ad_c=32, BK_META_MAX=320, and BK_META_ITEMS=4096 caps cleanly
+  jbig: [65536] u8; jn := 0;
+  jn = bk_copy_str(jbig[..], jn, "{\"chapters\":[");
+  for k: 0..<322 {
+    if k > 0 { jn = bk_copy_str(jbig[..], jn, ","); }
+    if k == 0 {
+      jn = bk_copy_str(jbig[..], jn, "{\"file\":\"f0\",\"qualified_targets\":[");
+      for q: 0..<18 { if q > 0 { jn = bk_copy_str(jbig[..], jn, ","); } jn = bk_copy_str(jbig[..], jn, "\"t\""); }
+      jn = bk_copy_str(jbig[..], jn, "],\"adopted_by\":[");
+      for a: 0..<34 { if a > 0 { jn = bk_copy_str(jbig[..], jn, ","); } jn = bk_copy_str(jbig[..], jn, "\"a\""); }
+      jn = bk_copy_str(jbig[..], jn, "]}");
+    } else {
+      jn = bk_copy_str(jbig[..], jn, "{\"file\":\"f\",\"qualified_targets\":[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"0\"],\"adopted_by\":[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"0\"]}");
+    }
+  }
+  jn = bk_copy_str(jbig[..], jn, "]}");
+  mcap: [1] BkBookMeta;
+  #assert bk_parse_chapters_json(mcap[..], cast(string) jbig[0..<jn]) == BK_META_MAX;
+  #assert mcap[0].entries[0].qt_n == 16 && mcap[0].entries[0].ad_n == 32 && mcap[0].ni == BK_META_ITEMS;
+  // Also verify second chapter's qt0 != 0 (kills removed `ch.qt0 = m[0].ni`) and ad0 != 0
+  #assert mcap[0].entries[1].qt0 == 48 && mcap[0].entries[1].ad0 == 58;
+
+  // bk_write_chapter_head_ex combines breadcrumb + meta bar + ontoc cleanly (and rejects overflow)
+  toc: [1] BkToc;
+  _ = bk_parse_summary(toc[..], "coax", "* [Ch 1](ch01.md)\n", doc[..]);
+  hex := bk_write_chapter_head_ex(0, toc[..], 0, "/projects", "Projects", meta[..], m0, hs[..], out[..]);
+  hex_s := cast(string) out[0..<hex];
+  #assert hex > 0 && bk_starts(hex_s, "<!doctype html>") && mm_has(hex_s, "<div class=\"bk-meta-bar\">") && mm_has(hex_s, "<aside class=\"bk-ontoc\"") && mm_has(hex_s, "</aside><div class=\"md\">");
+  tiny_ex: [16] u8;
+  #assert bk_write_chapter_head_ex(0, toc[..], 0, "/projects", "Projects", meta[..], m0, hs[..], tiny_ex[..]) == -1;
+
+  // bk_write_search_item emits valid compact JSON array entries and caps headings at BK_SEARCH_MAX_H2 (12)
+  hs13: [1] BkHeadings;
+  #assert bk_collect_h2(hs13[..], "## 1\n\n## 2\n\n## 3\n\n## 4\n\n## 5\n\n## 6\n\n## 7\n\n## 8\n\n## 9\n\n## 10\n\n## 11\n\n## 12\n\n## 13\n", doc[..]) == 13;
+  sjb: [4096] u8;
+  sn := json_raw(sjb[..], 0, "[");
+  sn = bk_write_search_item(sjb[..], sn, true, "coax", "Ch \"1\"", "/books/coax/ch01", "implemented", hs[..]);
+  sn = bk_write_search_item(sjb[..], sn, false, "coder", "Ch 2", "/books/coder/ch02", "", hs13[..]);
+  sn = json_raw(sjb[..], sn, "]");
+  #assert sn > 0 && cast(string) sjb[0..<sn] == "[{\"b\":\"coax\",\"t\":\"Ch \\\"1\\\"\",\"u\":\"/books/coax/ch01\",\"s\":\"implemented\",\"h\":[\"First <A>\",\"Second Section\"]},{\"b\":\"coder\",\"t\":\"Ch 2\",\"u\":\"/books/coder/ch02\",\"s\":\"\",\"h\":[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"10\",\"11\",\"12\"]}]";
+  #assert json_valid(cast(string) sjb[0..<sn]);
+  small_sj: [8] u8;
+  #assert bk_write_search_item(small_sj[..], 0, true, "coax", "T", "/u", "s", hs[..]) == -1;
 }

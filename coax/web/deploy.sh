@@ -245,7 +245,7 @@ books_src = os.path.join(app, "build", "books")
 if not only_page and os.path.isdir(books_src):
     books_dst = os.path.join(site, "books")
     os.makedirs(books_dst, exist_ok=True)
-    for name in ("mono.css", "index.html", "index.md"):
+    for name in ("mono.css", "search.json", "index.html", "index.md"):
         src = os.path.join(books_src, name)
         if os.path.isfile(src):
             shutil.copy(src, os.path.join(books_dst, name))

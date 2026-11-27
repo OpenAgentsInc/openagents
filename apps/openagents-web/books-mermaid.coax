@@ -1,0 +1,1639 @@
+// Pure-Coax build-time Mermaid -> monochrome inline SVG renderer (0 KB JS).
+// Supports:
+//   - flowchart / graph (TD, TB, LR, BT): rectangle/round/diamond nodes, <br/> line breaks,
+//     subgraphs, ampersand fan-in/fan-out, solid/dashed/thick/bidirectional arrows, pipe & inline labels.
+//   - sequenceDiagram: participant/actor aliases, solid/dashed/cross/self messages,
+//     loop/opt/alt/else/end frames, and Note boxes.
+// Strictly monochrome palette matching components/skin/mono.coax (zero color hue).
+// Returns false on unsupported syntax or capacity overflow so callers fall back to a code block.
+// Test natively:
+//   ./coax/bin/coax test apps/openagents-web/books-mermaid.coax --library
+#load "../../components/backend/html.coax";
+
+MM_MAX_NODES :: 64;
+MM_MAX_EDGES :: 128;
+MM_MAX_SUBS :: 16;
+MM_MAX_PARTS :: 16;
+MM_MAX_EVENTS :: 96;
+MM_MAX_FRAMES :: 16;
+MM_TEXT_CAP :: 16384;
+MM_MAX_LINES :: 4;
+
+MM_DIR_TD :: 0;
+MM_DIR_LR :: 1;
+MM_DIR_BT :: 2;
+
+MM_SHAPE_RECT :: 0;
+MM_SHAPE_ROUND :: 1;
+MM_SHAPE_DIAMOND :: 2;
+
+MM_EDGE_SOLID :: 0;
+MM_EDGE_DASHED :: 1;
+MM_EDGE_THICK :: 2;
+MM_EDGE_BIDIR :: 3;
+
+MM_EV_MSG :: 0;
+MM_EV_NOTE :: 1;
+MM_EV_FOPEN :: 2;
+MM_EV_FELSE :: 3;
+MM_EV_FEND :: 4;
+
+MM_SEQ_DASHED :: 1;
+MM_SEQ_CROSS :: 2;
+
+MmSpan :: struct { at: int; n: int; }
+
+MmNode :: struct {
+  id: MmSpan;
+  label: MmSpan;
+  shape: int;
+  sub: int;
+  alias_sub: int;
+  x: int; y: int; w: int; h: int;
+}
+
+MmEdge :: struct {
+  from: int;
+  to: int;
+  style: int;
+  label: MmSpan;
+  back: bool;
+}
+
+MmSub :: struct {
+  id: MmSpan;
+  title: MmSpan;
+  x: int; y: int; w: int; h: int;
+}
+
+MmFlow :: struct {
+  dir: int;
+  nodes: [MM_MAX_NODES] MmNode;
+  nn: int;
+  edges: [MM_MAX_EDGES] MmEdge;
+  ne: int;
+  subs: [MM_MAX_SUBS] MmSub;
+  ns: int;
+  text: [MM_TEXT_CAP] u8;
+  tn: int;
+  overflow: bool;
+}
+
+MmPart :: struct {
+  id: MmSpan;
+  label: MmSpan;
+  x: int;
+}
+
+MmSeqEv :: struct {
+  kind: int;
+  from: int;
+  to: int;
+  flags: int;
+  tag: MmSpan;
+  label: MmSpan;
+  y: int;
+}
+
+MmSeq :: struct {
+  parts: [MM_MAX_PARTS] MmPart;
+  np: int;
+  evs: [MM_MAX_EVENTS] MmSeqEv;
+  ne: int;
+  text: [MM_TEXT_CAP] u8;
+  tn: int;
+  overflow: bool;
+}
+
+MmLines :: struct {
+  from: [MM_MAX_LINES] int;
+  to: [MM_MAX_LINES] int;
+  n: int;
+  max_len: int;
+}
+
+// ---- shared string, pool, int, and wrapping helpers
+
+mm_trim :: (s: string) -> string {
+  a := 0;
+  while a < s.count && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r') { a += 1; }
+  b := s.count;
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+mm_starts :: (s: string, pfx: string) -> bool {
+  return s.count >= pfx.count && cast(string) s[0..<pfx.count] == pfx;
+}
+
+mm_unquote :: (raw: string) -> string {
+  s := mm_trim(raw);
+  if s.count >= 2 && s[0] == '"' && s[s.count - 1] == '"' {
+    return cast(string) s[1..<s.count - 1];
+  }
+  return s;
+}
+
+mm_line_end :: (s: string, i: int) -> int {
+  j := i;
+  while j < s.count && s[j] != '\n' { j += 1; }
+  return j;
+}
+
+mm_put_int :: (hb: [] HtBuf, v: int) {
+  if v < 0 {
+    ht_put_u8(hb, '-');
+    mm_put_int(hb, -v);
+    return;
+  }
+  buf: [24] u8;
+  d := 0;
+  x := v;
+  if x == 0 { buf[0] = '0'; d = 1; }
+  while x > 0 {
+    buf[d] = cast(u8) ('0' + x % 10);
+    x /= 10;
+    d += 1;
+  }
+  while d > 0 {
+    d -= 1;
+    ht_put_u8(hb, buf[d]);
+  }
+}
+
+mm_pool_add :: (pool: [] u8, tn: [] int, ov: [] bool, s: string) -> MmSpan {
+  at := tn[0];
+  if at + s.count > pool.count {
+    ov[0] = true;
+    return MmSpan.{at = at, n = 0};
+  }
+  for c: s {
+    pool[tn[0]] = c;
+    tn[0] += 1;
+  }
+  return MmSpan.{at = at, n = s.count};
+}
+
+mm_span :: (pool: [] u8, sp: MmSpan) -> string {
+  if sp.n < 1 || sp.at < 0 || sp.at + sp.n > pool.count { return ""; }
+  return cast(string) pool[sp.at..<sp.at + sp.n];
+}
+
+// Splits `s` on `<br/>`/`<br>` and wraps long segments at word boundaries (up to MM_MAX_LINES lines).
+mm_wrap :: (s: string, max_chars: int, out: [] MmLines) {
+  out[0] = MmLines.{};
+  i := 0;
+  while i < s.count { // mutant: equivalent (i >= s.count breaks on next line)
+    while i < s.count && s[i] == ' ' { i += 1; }
+    if i >= s.count { break; } // mutant: equivalent (loop exits with i == s.count)
+    // Scan up to next <br/> or <br> or end of string
+    seg_end := i;
+    br_skip := 0; // mutant: equivalent (without <br>, seg_end == s.count exits outer loop either way)
+    while seg_end < s.count {
+      if seg_end + 5 <= s.count && cast(string) s[seg_end..<seg_end + 5] == "<br/>" { br_skip = 5; break; }
+      if seg_end + 4 <= s.count && cast(string) s[seg_end..<seg_end + 4] == "<br>" { br_skip = 4; break; }
+      seg_end += 1;
+    }
+    p := i;
+    while p < seg_end { // mutant: equivalent (p >= seg_end breaks on next line)
+      while p < seg_end && s[p] == ' ' { p += 1; }
+      if p >= seg_end { break; } // mutant: equivalent (loop exits with p == seg_end)
+      end := seg_end;
+      if end - p > max_chars && out[0].n + 1 < MM_MAX_LINES {
+        cut := p + max_chars;
+        // Prefer breaking at a space, slash, or plus within the second half of the line
+        best := -1;
+        k := cut;
+        while k > p + max_chars / 3 {
+          if s[k] == ' ' { best = k; break; }
+          if (s[k] == '/' || s[k] == '+') && best < 0 { best = k + 1; } // mutant: equivalent (best is -1 or k + 1 >= 2, never 0 or 1)
+          k -= 1;
+        }
+        end = ifx best > p then best else cut; // mutant: equivalent (best is either -1 or >= p + max_chars/3 + 1 > p)
+      }
+      trim_e := end;
+      while trim_e > p && s[trim_e - 1] == ' ' { trim_e -= 1; } // mutant: equivalent (s[p] != ' ' after leading-space skip)
+      li := out[0].n;
+      out[0].from[li] = p;
+      out[0].to[li] = trim_e;
+      out[0].n += 1;
+      ln := trim_e - p;
+      if ln > out[0].max_len { out[0].max_len = ln; } // mutant: equivalent (equal assigns same max_len)
+      if out[0].n >= MM_MAX_LINES { return; }
+      p = end;
+    }
+    i = seg_end + br_skip;
+  }
+}
+
+// Emits centered multi-line `<text>` with `<tspan>` children inside SVG.
+mm_svg_text_lines :: (hb: [] HtBuf, s: string, max_chars: int, cx: int, cy: int, line_h: int, fill: string, size: int) {
+  ls: [1] MmLines;
+  mm_wrap(s, max_chars, ls[..]);
+  if ls[0].n == 0 { return; }
+  ht_put(hb, "<text x=\""); mm_put_int(hb, cx);
+  ht_put(hb, "\" y=\""); mm_put_int(hb, cy);
+  ht_put(hb, "\" text-anchor=\"middle\" fill=\""); ht_put(hb, fill);
+  ht_put(hb, "\" font-size=\""); mm_put_int(hb, size);
+  ht_put(hb, "\">");
+  start_y := cy - ((ls[0].n - 1) * line_h) / 2 + size / 3;
+  for k: 0..<ls[0].n {
+    ht_put(hb, "<tspan x=\""); mm_put_int(hb, cx);
+    ht_put(hb, "\" y=\""); mm_put_int(hb, start_y + k * line_h);
+    ht_put(hb, "\">");
+    ht_escape_text(hb, cast(string) s[ls[0].from[k]..<ls[0].to[k]]);
+    ht_put(hb, "</tspan>");
+  }
+  ht_put(hb, "</text>");
+}
+
+// ---- Flowchart parser
+
+mm_flow_pool :: (f: [] MmFlow, s: string) -> MmSpan {
+  tn := [1] int.[f[0].tn];
+  ov := [1] bool.[f[0].overflow];
+  sp := mm_pool_add(f[0].text[..], tn[..], ov[..], s);
+  f[0].tn = tn[0];
+  f[0].overflow = ov[0];
+  return sp;
+}
+
+mm_flow_str :: (f: [] MmFlow, sp: MmSpan) -> string {
+  return mm_span(f[0].text[..], sp);
+}
+
+mm_flow_find_node :: (f: [] MmFlow, id: string) -> int {
+  for i: 0..<f[0].nn {
+    if mm_flow_str(f, f[0].nodes[i].id) == id { return i; }
+  }
+  return -1;
+}
+
+mm_flow_add_node :: (f: [] MmFlow, id: string, label: string, shape: int, sub: int) -> int {
+  if id.count == 0 { return -1; }
+  idx := mm_flow_find_node(f, id);
+  if idx >= 0 {
+    if label.count > 0 {
+      f[0].nodes[idx].label = mm_flow_pool(f, label);
+      f[0].nodes[idx].shape = shape;
+    }
+    if sub >= 0 && f[0].nodes[idx].sub < 0 {
+      f[0].nodes[idx].sub = sub;
+    }
+    return idx;
+  }
+  if f[0].nn >= MM_MAX_NODES { f[0].overflow = true; return -1; }
+  ni := f[0].nn;
+  f[0].nn += 1;
+  id_sp := mm_flow_pool(f, id);
+  lb_sp := ifx label.count > 0 then mm_flow_pool(f, label) else id_sp;
+  f[0].nodes[ni] = MmNode.{id = id_sp, label = lb_sp, shape = shape, sub = sub, alias_sub = -1};
+  return ni;
+}
+
+mm_flow_add_edge :: (f: [] MmFlow, from: int, to: int, style: int, label: string) {
+  if from < 0 || to < 0 { return; }
+  if f[0].ne >= MM_MAX_EDGES { f[0].overflow = true; return; }
+  ei := f[0].ne;
+  f[0].ne += 1;
+  f[0].edges[ei] = MmEdge.{from = from, to = to, style = style, label = mm_flow_pool(f, label)};
+}
+
+// Parses one node token (`ID`, `ID["Label"]`, `ID(Label)`, `ID{Label}`) and registers it in `f`.
+mm_flow_parse_node :: (f: [] MmFlow, raw: string, cur_sub: int) -> int {
+  s := mm_trim(raw);
+  if s.count > 0 && s[s.count - 1] == ';' { s = mm_trim(cast(string) s[0..<s.count - 1]); }
+  if s.count == 0 { return -1; }
+  br := -1;
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '[' || c == '(' || c == '{' { br = i; break; }
+  }
+  if br < 0 {
+    return mm_flow_add_node(f, s, "", MM_SHAPE_RECT, cur_sub);
+  }
+  id := mm_trim(cast(string) s[0..<br]);
+  open := s[br];
+  close: u8 = ifx open == '[' then cast(u8) ']' else ifx open == '(' then cast(u8) ')' else cast(u8) '}';
+  shape := ifx open == '[' then MM_SHAPE_RECT else ifx open == '(' then MM_SHAPE_ROUND else MM_SHAPE_DIAMOND;
+  end := s.count - 1;
+  if s[end] != close {
+    return mm_flow_add_node(f, id, "", shape, cur_sub);
+  }
+  inner := cast(string) s[br + 1..<end];
+  // Unwrap double-bracket forms like [[text]] or ((text))
+  if inner.count >= 2 && inner[0] == open && inner[inner.count - 1] == close {
+    inner = cast(string) inner[1..<inner.count - 1];
+  }
+  return mm_flow_add_node(f, id, mm_unquote(inner), shape, cur_sub);
+}
+
+// Scans `s` starting at `from` for the next arrow operator outside quotes/brackets.
+MmArrow :: struct { found: bool; start: int; end: int; style: int; lbl_from: int; lbl_to: int; }
+
+mm_find_arrow :: (s: string, from: int) -> MmArrow {
+  in_q := false;
+  depth := 0;
+  i := from;
+  while i < s.count {
+    c := s[i];
+    if c == '"' { in_q = !in_q; i += 1; continue; }
+    if !in_q {
+      if c == '[' || c == '(' || c == '{' { depth += 1; i += 1; continue; }
+      if c == ']' || c == ')' || c == '}' { if depth > 0 { depth -= 1; } i += 1; continue; }
+      if depth == 0 {
+        style := -1;
+        op_len: int;
+        if i + 4 <= s.count && cast(string) s[i..<i + 4] == "<-->" { style = MM_EDGE_BIDIR; op_len = 4; }
+        else if i + 4 <= s.count && cast(string) s[i..<i + 4] == "-.->" { style = MM_EDGE_DASHED; op_len = 4; }
+        else if i + 3 <= s.count && cast(string) s[i..<i + 3] == "==>" { style = MM_EDGE_THICK; op_len = 3; }
+        else if i + 3 <= s.count && cast(string) s[i..<i + 3] == "-->" { style = MM_EDGE_SOLID; op_len = 3; }
+        if style >= 0 {
+          ae := i + op_len;
+          lf: int; lt: int;
+          // Optional |label| right after operator
+          k := ae;
+          while k < s.count && s[k] == ' ' { k += 1; }
+          if k < s.count && s[k] == '|' {
+            j := k + 1;
+            while j < s.count && s[j] != '|' { j += 1; }
+            if j < s.count {
+              lf = k + 1; lt = j;
+              ae = j + 1;
+            }
+          }
+          return MmArrow.{found = true, start = i, end = ae, style = style, lbl_from = lf, lbl_to = lt};
+        }
+        // Inline label form: `-- "label" -->` or `-- label -->` (minimum 6 bytes: `-- -->`)
+        if i + 6 <= s.count && s[i] == '-' && s[i + 1] == '-' && s[i + 2] == ' ' {
+          jq := false;
+          j := i + 3;
+          while j + 3 <= s.count {
+            if s[j] == '"' { jq = !jq; j += 1; continue; }
+            if !jq && cast(string) s[j..<j + 3] == "-->" {
+              return MmArrow.{found = true, start = i, end = j + 3, style = MM_EDGE_SOLID, lbl_from = i + 3, lbl_to = j};
+            }
+            j += 1;
+          }
+        }
+      }
+    }
+    i += 1;
+  }
+  return MmArrow.{};
+}
+
+// Parses one &-separated list of node tokens (`B1 & B2 & B3`) into `ids`, returning count.
+mm_flow_parse_group :: (f: [] MmFlow, seg: string, cur_sub: int, ids: [] int) -> int {
+  cnt := 0;
+  in_q := false;
+  depth := 0;
+  start := 0;
+  for i: 0..<seg.count {
+    c := seg[i];
+    if c == '"' { in_q = !in_q; continue; }
+    if !in_q {
+      if c == '[' || c == '(' || c == '{' { depth += 1; }
+      else if c == ']' || c == ')' || c == '}' { if depth > 0 { depth -= 1; } }
+      else if depth == 0 && c == '&' {
+        nid := mm_flow_parse_node(f, cast(string) seg[start..<i], cur_sub);
+        if nid >= 0 && cnt < ids.count { ids[cnt] = nid; cnt += 1; }
+        start = i + 1;
+      }
+    }
+  }
+  nid := mm_flow_parse_node(f, cast(string) seg[start..<seg.count], cur_sub);
+  if nid >= 0 && cnt < ids.count { ids[cnt] = nid; cnt += 1; }
+  return cnt;
+}
+
+mm_flow_parse :: (f: [] MmFlow, src: string) -> bool {
+  f[0] = MmFlow.{};
+  pos := 0;
+  has_hdr := false;
+  cur_sub := -1;
+
+  while pos < src.count { // mutant: equivalent (pos == src.count yields empty line and advances pos past src.count)
+    e := mm_line_end(src, pos);
+    line := mm_trim(cast(string) src[pos..<e]);
+    pos = e + 1;
+    if line.count == 0 || mm_starts(line, "%%") { continue; }
+    if !has_hdr {
+      rest := "";
+      if mm_starts(line, "flowchart ") { rest = mm_trim(cast(string) line[10..<line.count]); }
+      else if mm_starts(line, "graph ") { rest = mm_trim(cast(string) line[6..<line.count]); }
+      else { return false; }
+      if rest == "TD" || rest == "TB" { f[0].dir = MM_DIR_TD; } // mutant: equivalent (MM_DIR_TD == 0 matches zero-initialized f[0].dir)
+      else if rest == "LR" { f[0].dir = MM_DIR_LR; }
+      else if rest == "BT" { f[0].dir = MM_DIR_BT; }
+      else { return false; }
+      has_hdr = true;
+      continue;
+    }
+    if line == "end" { cur_sub = -1; continue; }
+    if mm_starts(line, "subgraph ") {
+      if f[0].ns >= MM_MAX_SUBS { f[0].overflow = true; return false; }
+      r := mm_trim(cast(string) line[9..<line.count]);
+      br := -1; // mutant: equivalent (only br > 0 enters the bracket branch)
+      for k: 0..<r.count { if r[k] == '[' { br = k; break; } }
+      sid := r;
+      stitle := r;
+      if br > 0 && r[r.count - 1] == ']' {
+        sid = mm_trim(cast(string) r[0..<br]);
+        stitle = mm_unquote(cast(string) r[br + 1..<r.count - 1]);
+      } else {
+        sid = mm_unquote(r);
+        stitle = sid;
+      }
+      si := f[0].ns;
+      f[0].ns += 1;
+      f[0].subs[si] = MmSub.{id = mm_flow_pool(f, sid), title = mm_flow_pool(f, stitle)};
+      cur_sub = si;
+      continue;
+    }
+    if mm_starts(line, "classDef ") || mm_starts(line, "class ") || mm_starts(line, "style ") ||
+       mm_starts(line, "linkStyle ") || mm_starts(line, "click ") || mm_starts(line, "direction ") {
+      continue;
+    }
+
+    ar := mm_find_arrow(line, 0);
+    if !ar.found {
+      _ = mm_flow_parse_node(f, line, cur_sub);
+      continue;
+    }
+    // Handle single and chained edges on one line (A --> B --> C)
+    lhs_ids: [16] int;
+    nl := mm_flow_parse_group(f, cast(string) line[0..<ar.start], cur_sub, lhs_ids[..]);
+    cur := ar;
+    while cur.found {
+      nxt := mm_find_arrow(line, cur.end);
+      rhs_end := ifx nxt.found then nxt.start else line.count;
+      rhs_ids: [16] int;
+      nr := mm_flow_parse_group(f, cast(string) line[cur.end..<rhs_end], cur_sub, rhs_ids[..]);
+      lbl := ifx cur.lbl_to > cur.lbl_from then mm_unquote(cast(string) line[cur.lbl_from..<cur.lbl_to]) else ""; // mutant: equivalent (equal bounds slice to "")
+      for a: 0..<nl {
+        for b: 0..<nr {
+          mm_flow_add_edge(f, lhs_ids[a], rhs_ids[b], cur.style, lbl);
+        }
+      }
+      nl = nr;
+      for b: 0..<nr { lhs_ids[b] = rhs_ids[b]; }
+      cur = nxt;
+    }
+  }
+  if !has_hdr || f[0].overflow || f[0].nn == 0 { return false; } // mutant: equivalent (!has_hdr at loop exit implies f[0].nn == 0)
+
+  // Mark bare nodes matching a subgraph ID (e.g., `Relay --> Cloud`) as subgraph aliases.
+  for u: 0..<f[0].nn {
+    if f[0].nodes[u].sub >= 0 { continue; }
+    uid := mm_flow_str(f, f[0].nodes[u].id);
+    if uid != mm_flow_str(f, f[0].nodes[u].label) { continue; }
+    for si: 0..<f[0].ns {
+      if mm_flow_str(f, f[0].subs[si].id) == uid {
+        f[0].nodes[u].alias_sub = si;
+        break;
+      }
+    }
+  }
+  return true;
+}
+
+// ---- Flowchart layout (cycle-safe DAG ranking + cluster-aware placement)
+
+// Iterative 3-color DFS marking back-edges among edges whose endpoints satisfy `mask[u] && mask[v]`.
+// Then computes longest-path rank for every masked node into `ranks[0..<n]`, returning max_rank.
+mm_dag_rank :: (n: int, e_from: [] int, e_to: [] int, e_back: [] bool, ne: int, ranks: [] int) -> int {
+  color: [MM_MAX_NODES] int; // 0 = white, 1 = gray, 2 = black
+  stk_v: [MM_MAX_NODES] int;
+  stk_e: [MM_MAX_NODES] int;
+  indeg: [MM_MAX_NODES] int;
+  for i: 0..<n { ranks[i] = 0; }
+  for ei: 0..<ne {
+    e_back[ei] = false;
+    if e_from[ei] == e_to[ei] { e_back[ei] = true; continue; } // mutant: equivalent (self-loops are also marked back by gray color[u]==1 in DFS)
+    indeg[e_to[ei]] += 1; // mutant: equivalent (indeg is only tested against 0)
+  }
+  // Visit roots (indeg == 0) first, then any remaining cycle components.
+  for pass: 0..<2 { // mutant: equivalent (all nodes are visited by end of pass 1)
+    for start: 0..<n {
+      if color[start] != 0 { continue; }
+      if pass == 0 && indeg[start] != 0 { continue; }
+      stk_v[0] = start;
+      stk_e[0] = 0;
+      color[start] = 1;
+      sp := 1;
+      while sp > 0 {
+        u := stk_v[sp - 1];
+        ei := stk_e[sp - 1];
+        pushed := false;
+        while ei < ne {
+          cur_e := ei;
+          ei += 1;
+          if e_from[cur_e] != u || e_back[cur_e] { continue; }
+          v := e_to[cur_e];
+          if color[v] == 1 {
+            e_back[cur_e] = true;
+          } else if color[v] == 0 {
+            stk_e[sp - 1] = ei; // mutant: equivalent (restarting edge scan from 0 skips already-black/back edges identically)
+            if sp < MM_MAX_NODES { // mutant: equivalent (each node enters gray stack at most once, so sp <= n <= MM_MAX_NODES)
+              stk_v[sp] = v;
+              stk_e[sp] = 0;
+              color[v] = 1;
+              sp += 1;
+              pushed = true;
+              break;
+            }
+          }
+        }
+        if !pushed {
+          color[u] = 2; // mutant: equivalent (black color is only distinguished from 0 and 1)
+          sp -= 1;
+        }
+      }
+    }
+  }
+  for iter: 0..<n { // mutant: equivalent (longest path in an n-node DAG has at most n - 1 edges)
+    for ei: 0..<ne {
+      if e_back[ei] { continue; }
+      u := e_from[ei];
+      v := e_to[ei];
+      if ranks[v] < ranks[u] + 1 { // mutant: equivalent (when ranks[v] == ranks[u] + 1, assigning ranks[u] + 1 is a no-op)
+        ranks[v] = ranks[u] + 1;
+      }
+    }
+  }
+  mr := 0;
+  for i: 0..<n { if ranks[i] > mr { mr = ranks[i]; } } // mutant: equivalent (equal assigns same max)
+  return mr;
+}
+
+// Measures each visible node's box dimensions from its wrapped label text.
+mm_flow_measure :: (f: [] MmFlow) {
+  ls: [1] MmLines;
+  for i: 0..<f[0].nn {
+    if f[0].nodes[i].alias_sub >= 0 { continue; } // mutant: equivalent (alias node w/h are overwritten from subs[alias_sub] in mm_flow_layout)
+    lbl := mm_flow_str(f, f[0].nodes[i].label);
+    mm_wrap(lbl, 26, ls[..]);
+    lines := ls[0].n;
+    if lines == 0 { lines = 1; }
+    w := ls[0].max_len * 7 + 26;
+    if w < 104 { w = 104; } // mutant: equivalent (clamp at exact boundary 104 assigns 104)
+    if w > 228 { w = 228; } // mutant: equivalent (clamp at exact boundary 228 assigns 228)
+    h := lines * 15 + 16;
+    if f[0].nodes[i].shape == MM_SHAPE_DIAMOND {
+      w += 24;
+      h += 14;
+    }
+    f[0].nodes[i].w = w;
+    f[0].nodes[i].h = h;
+  }
+}
+
+// Lays out a set of boxes `bx/by/bw/bh` with `ranks[0..<cnt]` in either TD (rows) or LR (cols).
+// Writes relative (x, y) into `bx/by` and returns bounding (out_w, out_h).
+MmSize :: struct { w: int; h: int; }
+
+mm_layout_ranked :: (cnt: int, ranks: [] int, max_rank: int, bw: [] int, bh: [] int, bx: [] int, by: [] int, is_lr: bool, max_per_row: int, gap_x: int, gap_y: int) -> MmSize {
+  if cnt == 0 { return MmSize.{}; }
+  if !is_lr {
+    // Rows top-to-bottom; wrap wide ranks into sub-rows of at most `max_per_row`.
+    row_w: [MM_MAX_NODES] int;
+    row_h: [MM_MAX_NODES] int;
+    item_row: [MM_MAX_NODES] int;
+    nr := 0;
+    for r: 0..<max_rank + 1 { // mutant: equivalent (no item has rank > max_rank)
+      in_r := 0;
+      for i: 0..<cnt {
+        if ranks[i] != r { continue; }
+        if in_r > 0 && in_r % max_per_row == 0 { nr += 1; }
+        item_row[i] = nr;
+        if row_w[nr] > 0 { row_w[nr] += gap_x; }
+        row_w[nr] += bw[i];
+        if bh[i] > row_h[nr] { row_h[nr] = bh[i]; } // mutant: equivalent (equal assigns same row_h)
+        in_r += 1;
+      }
+      if in_r > 0 { nr += 1; }
+    }
+    tot_w := 0;
+    for r: 0..<nr { if row_w[r] > tot_w { tot_w = row_w[r]; } } // mutant: equivalent (equal assigns same tot_w)
+    y := 0;
+    for r: 0..<nr {
+      x := (tot_w - row_w[r]) / 2;
+      for i: 0..<cnt {
+        if item_row[i] != r { continue; }
+        bx[i] = x;
+        by[i] = y + (row_h[r] - bh[i]) / 2;
+        x += bw[i] + gap_x;
+      }
+      y += row_h[r];
+      if r + 1 < nr { y += gap_y; }
+    }
+    return MmSize.{w = tot_w, h = y};
+  }
+  // LR: columns left-to-right, stacked vertically inside each column.
+  col_w: [MM_MAX_NODES] int;
+  col_h: [MM_MAX_NODES] int;
+  item_col: [MM_MAX_NODES] int;
+  nc := 0;
+  for r: 0..<max_rank + 1 { // mutant: equivalent (no item has rank > max_rank)
+    in_c := 0;
+    for i: 0..<cnt {
+      if ranks[i] != r { continue; }
+      item_col[i] = nc;
+      if col_h[nc] > 0 { col_h[nc] += gap_y; }
+      col_h[nc] += bh[i];
+      if bw[i] > col_w[nc] { col_w[nc] = bw[i]; } // mutant: equivalent (equal assigns same col_w)
+      in_c += 1; // mutant: equivalent (in_c is only tested via in_c > 0)
+    }
+    if in_c > 0 { nc += 1; }
+  }
+  tot_h := 0;
+  for c: 0..<nc { if col_h[c] > tot_h { tot_h = col_h[c]; } } // mutant: equivalent (equal assigns same tot_h)
+  x := 0;
+  for c: 0..<nc {
+    y := (tot_h - col_h[c]) / 2;
+    for i: 0..<cnt {
+      if item_col[i] != c { continue; }
+      bx[i] = x + (col_w[c] - bw[i]) / 2;
+      by[i] = y;
+      y += bh[i] + gap_y;
+    }
+    x += col_w[c];
+    if c + 1 < nc { x += gap_x; }
+  }
+  return MmSize.{w = x, h = tot_h};
+}
+
+mm_flow_layout :: (f: [] MmFlow) -> MmSize {
+  mm_flow_measure(f);
+  pad := 24;
+
+  // Case 1: no subgraphs — direct Sugiyama layered layout on all nodes
+  if f[0].ns == 0 {
+    ef: [MM_MAX_EDGES] int;
+    et: [MM_MAX_EDGES] int;
+    eb: [MM_MAX_EDGES] bool;
+    for ei: 0..<f[0].ne {
+      ef[ei] = f[0].edges[ei].from;
+      et[ei] = f[0].edges[ei].to;
+    }
+    ranks: [MM_MAX_NODES] int;
+    mr := mm_dag_rank(f[0].nn, ef[..], et[..], eb[..], f[0].ne, ranks[..]);
+    for ei: 0..<f[0].ne { f[0].edges[ei].back = eb[ei]; }
+    if f[0].dir == MM_DIR_BT {
+      for i: 0..<f[0].nn { ranks[i] = mr - ranks[i]; }
+    }
+    bw: [MM_MAX_NODES] int; bh: [MM_MAX_NODES] int;
+    bx: [MM_MAX_NODES] int; by: [MM_MAX_NODES] int;
+    for i: 0..<f[0].nn {
+      bw[i] = f[0].nodes[i].w;
+      bh[i] = f[0].nodes[i].h;
+    }
+    is_lr := f[0].dir == MM_DIR_LR;
+    sz := mm_layout_ranked(f[0].nn, ranks[..], mr, bw[..], bh[..], bx[..], by[..], is_lr, 3, ifx is_lr then 68 else 28, ifx is_lr then 22 else 48);
+    for i: 0..<f[0].nn {
+      f[0].nodes[i].x = pad + bx[i];
+      f[0].nodes[i].y = pad + by[i];
+    }
+    return MmSize.{w = sz.w + pad * 2, h = sz.h + pad * 2};
+  }
+
+  // Case 2: cluster-aware layout when subgraphs exist.
+  // First lay out each subgraph internally relative to (0, 0).
+  sub_pad := 14;
+  sub_hdr := 30;
+  for si: 0..<f[0].ns {
+    members: [MM_MAX_NODES] int;
+    mc := 0;
+    n2m: [MM_MAX_NODES] int;
+    for i: 0..<f[0].nn { n2m[i] = -1; }
+    for i: 0..<f[0].nn {
+      if f[0].nodes[i].sub == si {
+        n2m[i] = mc;
+        members[mc] = i;
+        mc += 1;
+      }
+    }
+    ief: [MM_MAX_EDGES] int; iet: [MM_MAX_EDGES] int; ieb: [MM_MAX_EDGES] bool;
+    ine := 0; // mutant: equivalent (zero-init (0,0) slots are ignored self-loops in mm_dag_rank)
+    for ei: 0..<f[0].ne {
+      u := n2m[f[0].edges[ei].from];
+      v := n2m[f[0].edges[ei].to];
+      if u >= 0 && v >= 0 {
+        ief[ine] = u; iet[ine] = v;
+        ine += 1; // mutant: equivalent (skipped zero-init (0,0) slots are ignored self-loops in mm_dag_rank)
+      }
+    }
+    iranks: [MM_MAX_NODES] int;
+    imr := mm_dag_rank(mc, ief[..], iet[..], ieb[..], ine, iranks[..]);
+    if f[0].dir == MM_DIR_BT {
+      for k: 0..<mc { iranks[k] = imr - iranks[k]; }
+    }
+    ibw: [MM_MAX_NODES] int; ibh: [MM_MAX_NODES] int;
+    ibx: [MM_MAX_NODES] int; iby: [MM_MAX_NODES] int;
+    for k: 0..<mc {
+      ibw[k] = f[0].nodes[members[k]].w;
+      ibh[k] = f[0].nodes[members[k]].h;
+    }
+    // Inside an LR diagram, stack nodes vertically inside each subgraph column (max_per_row = 1).
+    per_row := ifx f[0].dir == MM_DIR_LR then 1 else 3;
+    isz := mm_layout_ranked(mc, iranks[..], imr, ibw[..], ibh[..], ibx[..], iby[..], false, per_row, 18, 28);
+    title_min := mm_flow_str(f, f[0].subs[si].title).count * 7 + 28;
+    sw := isz.w + sub_pad * 2;
+    if title_min > sw { sw = title_min; } // mutant: equivalent (equal assigns same sw)
+    off_x := (sw - isz.w) / 2;
+    for k: 0..<mc {
+      f[0].nodes[members[k]].x = off_x + ibx[k];
+      f[0].nodes[members[k]].y = sub_hdr + sub_pad + iby[k];
+    }
+    f[0].subs[si].w = sw;
+    f[0].subs[si].h = sub_hdr + isz.h + sub_pad * 2;
+  }
+
+  // Build top-level blocks: blocks 0..<ns are subgraphs, remaining are ungrouped visible nodes.
+  node_blk: [MM_MAX_NODES] int;
+  blk_node: [MM_MAX_NODES] int; // -1 for subgraph blocks, else node index
+  bw: [MM_MAX_NODES] int; bh: [MM_MAX_NODES] int;
+  bx: [MM_MAX_NODES] int; by: [MM_MAX_NODES] int;
+  nb := f[0].ns;
+  for si: 0..<f[0].ns {
+    blk_node[si] = -1;
+    bw[si] = f[0].subs[si].w;
+    bh[si] = f[0].subs[si].h;
+  }
+  for i: 0..<f[0].nn {
+    if f[0].nodes[i].alias_sub >= 0 {
+      node_blk[i] = f[0].nodes[i].alias_sub;
+    } else if f[0].nodes[i].sub >= 0 {
+      node_blk[i] = f[0].nodes[i].sub;
+    } else {
+      node_blk[i] = nb;
+      blk_node[nb] = i;
+      bw[nb] = f[0].nodes[i].w;
+      bh[nb] = f[0].nodes[i].h;
+      nb += 1;
+    }
+  }
+  bef: [MM_MAX_EDGES] int; bet: [MM_MAX_EDGES] int; beb: [MM_MAX_EDGES] bool;
+  bne := 0; // mutant: equivalent (zero-init (0,0) slots are ignored self-loops in mm_dag_rank)
+  for ei: 0..<f[0].ne {
+    bu := node_blk[f[0].edges[ei].from];
+    bv := node_blk[f[0].edges[ei].to];
+    if bu != bv {
+      bef[bne] = bu; bet[bne] = bv;
+      bne += 1; // mutant: equivalent (skipped zero-init (0,0) slots are ignored self-loops in mm_dag_rank)
+    }
+  }
+  branks: [MM_MAX_NODES] int;
+  bmr := mm_dag_rank(nb, bef[..], bet[..], beb[..], bne, branks[..]);
+  if f[0].dir == MM_DIR_BT {
+    for b: 0..<nb { branks[b] = bmr - branks[b]; }
+  }
+  is_lr := f[0].dir == MM_DIR_LR;
+  bsz := mm_layout_ranked(nb, branks[..], bmr, bw[..], bh[..], bx[..], by[..], is_lr, 2, ifx is_lr then 88 else 32, ifx is_lr then 28 else 48);
+  for b: 0..<nb {
+    if blk_node[b] < 0 {
+      f[0].subs[b].x = pad + bx[b];
+      f[0].subs[b].y = pad + by[b];
+    } else {
+      ni := blk_node[b];
+      f[0].nodes[ni].x = pad + bx[b];
+      f[0].nodes[ni].y = pad + by[b];
+    }
+  }
+  // Translate member nodes and alias nodes into final coordinates.
+  for i: 0..<f[0].nn {
+    if f[0].nodes[i].alias_sub >= 0 {
+      s := f[0].subs[f[0].nodes[i].alias_sub];
+      f[0].nodes[i].x = s.x; f[0].nodes[i].y = s.y;
+      f[0].nodes[i].w = s.w; f[0].nodes[i].h = s.h;
+    } else if f[0].nodes[i].sub >= 0 {
+      s := f[0].subs[f[0].nodes[i].sub];
+      f[0].nodes[i].x += s.x;
+      f[0].nodes[i].y += s.y;
+    }
+  }
+  // Mark back-edges in final coordinates for cleaner curved routing.
+  for ei: 0..<f[0].ne {
+    u := f[0].nodes[f[0].edges[ei].from];
+    v := f[0].nodes[f[0].edges[ei].to];
+    if is_lr { f[0].edges[ei].back = v.x < u.x; }
+    else if f[0].dir == MM_DIR_BT { f[0].edges[ei].back = v.y > u.y; }
+    else { f[0].edges[ei].back = v.y < u.y; }
+  }
+  return MmSize.{w = bsz.w + pad * 2, h = bsz.h + pad * 2};
+}
+
+// ---- Flowchart SVG emitter
+
+mm_emit_svg_defs :: (hb: [] HtBuf, id_pfx: string) {
+  ht_put(hb, "<defs><marker id=\""); ht_escape_attr(hb, id_pfx);
+  ht_put(hb, "-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker>");
+  ht_put(hb, "<marker id=\""); ht_escape_attr(hb, id_pfx);
+  ht_put(hb, "-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs>");
+}
+
+mm_flow_emit_svg :: (hb: [] HtBuf, f: [] MmFlow, id_pfx: string) {
+  sz := mm_flow_layout(f);
+  ht_put(hb, "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Flowchart diagram\" viewBox=\"0 0 ");
+  mm_put_int(hb, sz.w); ht_put_u8(hb, ' '); mm_put_int(hb, sz.h);
+  ht_put(hb, "\" width=\""); mm_put_int(hb, sz.w);
+  ht_put(hb, "\" height=\""); mm_put_int(hb, sz.h);
+  ht_put(hb, "\">");
+  mm_emit_svg_defs(hb, id_pfx);
+
+  // 1. Subgraph containers
+  for si: 0..<f[0].ns {
+    s := f[0].subs[si];
+    ht_put(hb, "<g class=\"mm-sub\"><rect x=\""); mm_put_int(hb, s.x);
+    ht_put(hb, "\" y=\""); mm_put_int(hb, s.y);
+    ht_put(hb, "\" width=\""); mm_put_int(hb, s.w);
+    ht_put(hb, "\" height=\""); mm_put_int(hb, s.h);
+    ht_put(hb, "\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/>");
+    ht_put(hb, "<text x=\""); mm_put_int(hb, s.x + 10);
+    ht_put(hb, "\" y=\""); mm_put_int(hb, s.y + 19);
+    ht_put(hb, "\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">");
+    ht_escape_text(hb, mm_flow_str(f, s.title));
+    ht_put(hb, "</text></g>");
+  }
+
+  // 2. Edges (drawn behind nodes so arrowheads sit crisply on borders)
+  for ei: 0..<f[0].ne {
+    e := f[0].edges[ei];
+    u := f[0].nodes[e.from];
+    v := f[0].nodes[e.to];
+    ucx := u.x + u.w / 2; ucy := u.y + u.h / 2;
+    vcx := v.x + v.w / 2; vcy := v.y + v.h / 2;
+    dx := vcx - ucx; dy := vcy - ucy;
+    adx := ifx dx < 0 then -dx else dx; // mutant: equivalent (-0 == 0)
+    ady := ifx dy < 0 then -dy else dy; // mutant: equivalent (-0 == 0)
+    x1 := ucx; y1 := ucy; x2 := vcx; y2 := vcy;
+    c1x: int; c1y: int; c2x: int; c2y: int;
+    if adx > ady {
+      // Horizontal anchor
+      if dx >= 0 { x1 = u.x + u.w; x2 = v.x; } // mutant: equivalent (adx > ady >= 0 implies dx != 0)
+      else { x1 = u.x; x2 = v.x + v.w; }
+      mx := (x1 + x2) / 2;
+      c1x = mx; c1y = y1; c2x = mx; c2y = y2;
+      if e.back { c1y -= 28; c2y -= 28; }
+    } else {
+      // Vertical anchor
+      if dy >= 0 { y1 = u.y + u.h; y2 = v.y; } // mutant: equivalent (dy == 0 only when centers coincide)
+      else { y1 = u.y; y2 = v.y + v.h; }
+      my := (y1 + y2) / 2;
+      c1x = x1; c1y = my; c2x = x2; c2y = my;
+      if e.back { c1x += 36; c2x += 36; }
+    }
+    ht_put(hb, "<path d=\"M"); mm_put_int(hb, x1); ht_put_u8(hb, ' '); mm_put_int(hb, y1);
+    ht_put(hb, " C"); mm_put_int(hb, c1x); ht_put_u8(hb, ' '); mm_put_int(hb, c1y);
+    ht_put(hb, ","); mm_put_int(hb, c2x); ht_put_u8(hb, ' '); mm_put_int(hb, c2y);
+    ht_put(hb, ","); mm_put_int(hb, x2); ht_put_u8(hb, ' '); mm_put_int(hb, y2);
+    ht_put(hb, "\" fill=\"none\" stroke=\"");
+    ht_put(hb, ifx e.style == MM_EDGE_THICK then "#f2f2f2" else "#8a8a8a");
+    ht_put(hb, "\" stroke-width=\"");
+    ht_put(hb, ifx e.style == MM_EDGE_THICK then "2.2" else "1.2");
+    ht_put(hb, "\"");
+    if e.style == MM_EDGE_DASHED { ht_put(hb, " stroke-dasharray=\"5 4\""); }
+    if e.style == MM_EDGE_BIDIR {
+      ht_put(hb, " marker-start=\"url(#"); ht_escape_attr(hb, id_pfx); ht_put(hb, "-arr)\"");
+    }
+    ht_put(hb, " marker-end=\"url(#"); ht_escape_attr(hb, id_pfx); ht_put(hb, "-arr)\"/>");
+  }
+
+  // 3. Nodes
+  for i: 0..<f[0].nn {
+    nd := f[0].nodes[i];
+    if nd.alias_sub >= 0 { continue; }
+    cx := nd.x + nd.w / 2;
+    cy := nd.y + nd.h / 2;
+    ht_put(hb, "<g class=\"mm-node\">");
+    if nd.shape == MM_SHAPE_DIAMOND {
+      ht_put(hb, "<polygon points=\"");
+      mm_put_int(hb, cx); ht_put_u8(hb, ','); mm_put_int(hb, nd.y); ht_put_u8(hb, ' ');
+      mm_put_int(hb, nd.x + nd.w); ht_put_u8(hb, ','); mm_put_int(hb, cy); ht_put_u8(hb, ' ');
+      mm_put_int(hb, cx); ht_put_u8(hb, ','); mm_put_int(hb, nd.y + nd.h); ht_put_u8(hb, ' ');
+      mm_put_int(hb, nd.x); ht_put_u8(hb, ','); mm_put_int(hb, cy);
+      ht_put(hb, "\" fill=\"#141414\" stroke=\"#c8c8c8\" stroke-width=\"1.2\"/>");
+    } else {
+      ht_put(hb, "<rect x=\""); mm_put_int(hb, nd.x);
+      ht_put(hb, "\" y=\""); mm_put_int(hb, nd.y);
+      ht_put(hb, "\" width=\""); mm_put_int(hb, nd.w);
+      ht_put(hb, "\" height=\""); mm_put_int(hb, nd.h);
+      if nd.shape == MM_SHAPE_ROUND { ht_put(hb, "\" rx=\"10"); }
+      ht_put(hb, "\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/>");
+    }
+    mm_svg_text_lines(hb, mm_flow_str(f, nd.label), 26, cx, cy, 15, "#f2f2f2", 11);
+    ht_put(hb, "</g>");
+  }
+
+  // 4. Edge labels on dark pills (drawn on top so no line obscures text)
+  for ei: 0..<f[0].ne {
+    e := f[0].edges[ei];
+    lbl := mm_flow_str(f, e.label);
+    if lbl.count == 0 { continue; }
+    u := f[0].nodes[e.from];
+    v := f[0].nodes[e.to];
+    mx := (u.x + u.w / 2 + v.x + v.w / 2) / 2;
+    my := (u.y + u.h / 2 + v.y + v.h / 2) / 2;
+    if e.back { mx += 22; }
+    ls: [1] MmLines;
+    mm_wrap(lbl, 28, ls[..]);
+    pw := ls[0].max_len * 6 + 12;
+    ph := ls[0].n * 13 + 6;
+    ht_put(hb, "<rect x=\""); mm_put_int(hb, mx - pw / 2);
+    ht_put(hb, "\" y=\""); mm_put_int(hb, my - ph / 2);
+    ht_put(hb, "\" width=\""); mm_put_int(hb, pw);
+    ht_put(hb, "\" height=\""); mm_put_int(hb, ph);
+    ht_put(hb, "\" fill=\"#0a0a0a\" stroke=\"#2a2a2a\" stroke-width=\"1\"/>");
+    mm_svg_text_lines(hb, lbl, 28, mx, my, 13, "#b8b8b8", 10);
+  }
+
+  ht_put(hb, "</svg></div>");
+}
+
+// ---- Sequence diagram parser & SVG emitter
+
+mm_seq_pool :: (sq: [] MmSeq, s: string) -> MmSpan {
+  tn := [1] int.[sq[0].tn];
+  ov := [1] bool.[sq[0].overflow];
+  sp := mm_pool_add(sq[0].text[..], tn[..], ov[..], s);
+  sq[0].tn = tn[0];
+  sq[0].overflow = ov[0];
+  return sp;
+}
+
+mm_seq_str :: (sq: [] MmSeq, sp: MmSpan) -> string {
+  return mm_span(sq[0].text[..], sp);
+}
+
+mm_seq_part :: (sq: [] MmSeq, id: string, label: string) -> int {
+  if id.count == 0 { return -1; }
+  for i: 0..<sq[0].np {
+    if mm_seq_str(sq, sq[0].parts[i].id) == id {
+      if label.count > 0 { sq[0].parts[i].label = mm_seq_pool(sq, label); }
+      return i;
+    }
+  }
+  if sq[0].np >= MM_MAX_PARTS { sq[0].overflow = true; return -1; }
+  pi := sq[0].np;
+  sq[0].np += 1;
+  id_sp := mm_seq_pool(sq, id);
+  lb_sp := ifx label.count > 0 then mm_seq_pool(sq, label) else id_sp;
+  sq[0].parts[pi] = MmPart.{id = id_sp, label = lb_sp};
+  return pi;
+}
+
+mm_seq_push_ev :: (sq: [] MmSeq, ev: MmSeqEv) {
+  if sq[0].ne >= MM_MAX_EVENTS { sq[0].overflow = true; return; }
+  sq[0].evs[sq[0].ne] = ev;
+  sq[0].ne += 1;
+}
+
+mm_seq_parse :: (sq: [] MmSeq, src: string) -> bool {
+  sq[0] = MmSeq.{};
+  pos := 0;
+  has_hdr := false;
+
+  while pos < src.count { // mutant: equivalent (pos == src.count yields empty line and advances pos past src.count)
+    e := mm_line_end(src, pos);
+    line := mm_trim(cast(string) src[pos..<e]);
+    pos = e + 1;
+    if line.count == 0 || mm_starts(line, "%%") { continue; } // mutant: equivalent (no valid sequenceDiagram command has length 1)
+    if !has_hdr {
+      if line != "sequenceDiagram" { return false; }
+      has_hdr = true;
+      continue;
+    }
+    if mm_starts(line, "participant ") || mm_starts(line, "actor ") {
+      skip := ifx mm_starts(line, "participant ") then 12 else 6;
+      r := mm_trim(cast(string) line[skip..<line.count]);
+      as_at := -1; // mutant: equivalent (only as_at > 0 enters the alias branch)
+      for k: 0..<r.count - 3 { // mutant: equivalent (trimmed r cannot start or end with ' ', so " as " never matches at 0 or r.count - 4)
+        if cast(string) r[k..<k + 4] == " as " { as_at = k; break; }
+      }
+      if as_at > 0 { // mutant: equivalent (trimmed r cannot start with ' ', so as_at is never 0)
+        _ = mm_seq_part(sq, mm_trim(cast(string) r[0..<as_at]), mm_unquote(cast(string) r[as_at + 4..<r.count]));
+      } else {
+        _ = mm_seq_part(sq, mm_unquote(r), "");
+      }
+      continue;
+    }
+    if mm_starts(line, "loop ") || mm_starts(line, "opt ") || mm_starts(line, "alt ") {
+      sp := 0; // mutant: equivalent (line starts with loop/opt/alt, so line[0] != ' ')
+      while sp < line.count && line[sp] != ' ' { sp += 1; } // mutant: equivalent (loop/opt/alt prefix guarantees a space before line.count)
+      tag := cast(string) line[0..<sp];
+      lbl := mm_unquote(cast(string) line[sp + 1..<line.count]);
+      mm_seq_push_ev(sq, MmSeqEv.{kind = MM_EV_FOPEN, tag = mm_seq_pool(sq, tag), label = mm_seq_pool(sq, lbl)});
+      continue;
+    }
+    if mm_starts(line, "else ") || line == "else" {
+      lbl := ifx line.count > 5 then mm_unquote(cast(string) line[5..<line.count]) else ""; // mutant: equivalent (trimmed else line never has length 5)
+      mm_seq_push_ev(sq, MmSeqEv.{kind = MM_EV_FELSE, label = mm_seq_pool(sq, lbl)});
+      continue;
+    }
+    if line == "end" {
+      mm_seq_push_ev(sq, MmSeqEv.{kind = MM_EV_FEND});
+      continue;
+    }
+    if mm_starts(line, "Note ") {
+      colon := -1; // mutant: equivalent (only colon > 5 enters Note body)
+      for k: 0..<line.count { if line[k] == ':' { colon = k; break; } } // mutant: equivalent (line starts with "Note ", so line[0] != ':')
+      if colon > 5 { // mutant: equivalent (colon == 5 gives empty head -> p1 = -1)
+        head := mm_trim(cast(string) line[5..<colon]);
+        lbl := mm_unquote(cast(string) line[colon + 1..<line.count]);
+        p_str := head;
+        if mm_starts(head, "over ") { p_str = mm_trim(cast(string) head[5..<head.count]); }
+        else if mm_starts(head, "left of ") { p_str = mm_trim(cast(string) head[8..<head.count]); }
+        else if mm_starts(head, "right of ") { p_str = mm_trim(cast(string) head[9..<head.count]); }
+        comma := -1;
+        for k: 0..<p_str.count { if p_str[k] == ',' { comma = k; break; } }
+        p1 := ifx comma >= 0 then mm_seq_part(sq, mm_trim(cast(string) p_str[0..<comma]), "") else mm_seq_part(sq, p_str, "");
+        p2 := ifx comma >= 0 then mm_seq_part(sq, mm_trim(cast(string) p_str[comma + 1..<p_str.count]), "") else p1; // mutant: equivalent (comma == 0 gives p1 = -1 above, rejecting note)
+        if p1 >= 0 && p2 >= 0 {
+          mm_seq_push_ev(sq, MmSeqEv.{kind = MM_EV_NOTE, from = p1, to = p2, label = mm_seq_pool(sq, lbl)});
+        }
+      }
+      continue;
+    }
+    // Message line: A->>B: msg, A-->>B: msg, A--xB: msg, A-xB: msg, A-->B: msg, A->B: msg
+    colon := -1; // mutant: equivalent (colon <= 0 rejects both -1 and 0)
+    for k: 0..<line.count { if line[k] == ':' { colon = k; break; } }
+    if colon <= 0 { continue; } // mutant: equivalent (colon <= 1 leaves head too short for any 2-char arrow)
+    head := cast(string) line[0..<colon];
+    msg := mm_unquote(cast(string) line[colon + 1..<line.count]);
+    op_at := -1; op_len: int; flags: int; // mutant: equivalent (op_at > 0 rejects both -1 and 0)
+    for k: 0..<head.count {
+      if k + 4 <= head.count && cast(string) head[k..<k + 4] == "-->>" { op_at = k; op_len = 4; flags = MM_SEQ_DASHED; break; }
+      if k + 3 <= head.count && cast(string) head[k..<k + 3] == "--x" { op_at = k; op_len = 3; flags = MM_SEQ_DASHED | MM_SEQ_CROSS; break; } // mutant: equivalent (k + 3 == head.count yields empty rhs)
+      if k + 3 <= head.count && cast(string) head[k..<k + 3] == "->>" { op_at = k; op_len = 3; break; }
+      if k + 3 <= head.count && cast(string) head[k..<k + 3] == "-->" { op_at = k; op_len = 3; flags = MM_SEQ_DASHED; break; } // mutant: equivalent (k + 3 == head.count yields empty rhs)
+      if k + 2 <= head.count && cast(string) head[k..<k + 2] == "-x" { op_at = k; op_len = 2; flags = MM_SEQ_CROSS; break; } // mutant: equivalent (k + 2 == head.count yields empty rhs)
+      if k + 2 <= head.count && cast(string) head[k..<k + 2] == "->" { op_at = k; op_len = 2; break; } // mutant: equivalent (k + 2 == head.count yields empty rhs)
+    }
+    if op_at > 0 { // mutant: equivalent (op_at == 0 yields empty lhs)
+      lhs := mm_trim(cast(string) head[0..<op_at]);
+      rhs := mm_trim(cast(string) head[op_at + op_len..<head.count]);
+      if rhs.count > 0 {
+        a := mm_seq_part(sq, lhs, "");
+        b := mm_seq_part(sq, rhs, "");
+        if a >= 0 && b >= 0 {
+          mm_seq_push_ev(sq, MmSeqEv.{kind = MM_EV_MSG, from = a, to = b, flags = flags, label = mm_seq_pool(sq, msg)});
+        }
+      }
+    }
+  }
+  return has_hdr && !sq[0].overflow && sq[0].np > 0 && sq[0].ne > 0;
+}
+
+mm_seq_emit_svg :: (hb: [] HtBuf, sq: [] MmSeq, id_pfx: string) {
+  pad_x := 20;
+  col_w := 148;
+  box_w := 132;
+  box_h := 44;
+  tot_w := pad_x * 2 + sq[0].np * col_w;
+  for i: 0..<sq[0].np {
+    sq[0].parts[i].x = pad_x + i * col_w + col_w / 2;
+  }
+
+  // Assign vertical Y positions to events and resolve frame boxes.
+  y := 20 + box_h + 26;
+  f_start: [MM_MAX_FRAMES] int;
+  f_ev: [MM_MAX_FRAMES] int;
+  f_sp := 0;
+  frame_x1: [MM_MAX_EVENTS] int;
+  frame_y1: [MM_MAX_EVENTS] int;
+  frame_x2: [MM_MAX_EVENTS] int;
+  frame_y2: [MM_MAX_EVENTS] int;
+  frame_open_idx: [MM_MAX_EVENTS] int;
+  nf := 0;
+
+  for i: 0..<sq[0].ne {
+    ev := sq[0].evs[i];
+    if ev.kind == MM_EV_FOPEN {
+      if f_sp < MM_MAX_FRAMES {
+        f_start[f_sp] = y;
+        f_ev[f_sp] = i;
+        f_sp += 1;
+      }
+      y += 28;
+    } else if ev.kind == MM_EV_FELSE {
+      sq[0].evs[i].y = y;
+      y += 24;
+    } else if ev.kind == MM_EV_FEND {
+      if f_sp > 0 {
+        f_sp -= 1;
+        inset := 10 + f_sp * 6;
+        frame_x1[nf] = inset;
+        frame_y1[nf] = f_start[f_sp];
+        frame_x2[nf] = tot_w - inset;
+        frame_y2[nf] = y + 4;
+        frame_open_idx[nf] = f_ev[f_sp];
+        nf += 1;
+      }
+      y += 16;
+    } else if ev.kind == MM_EV_NOTE {
+      sq[0].evs[i].y = y;
+      y += 42;
+    } else {
+      sq[0].evs[i].y = y;
+      y += ifx ev.from == ev.to then 48 else 42;
+    }
+  }
+  foot_y := y + 12;
+  tot_h := foot_y + box_h + 20;
+
+  ht_put(hb, "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Sequence diagram\" viewBox=\"0 0 ");
+  mm_put_int(hb, tot_w); ht_put_u8(hb, ' '); mm_put_int(hb, tot_h);
+  ht_put(hb, "\" width=\""); mm_put_int(hb, tot_w);
+  ht_put(hb, "\" height=\""); mm_put_int(hb, tot_h);
+  ht_put(hb, "\">");
+  mm_emit_svg_defs(hb, id_pfx);
+
+  // 1. Lifelines & top/bottom participant boxes
+  for i: 0..<sq[0].np {
+    p := sq[0].parts[i];
+    lbl := mm_seq_str(sq, p.label);
+    ht_put(hb, "<line x1=\""); mm_put_int(hb, p.x); ht_put(hb, "\" y1=\""); mm_put_int(hb, 20 + box_h);
+    ht_put(hb, "\" x2=\""); mm_put_int(hb, p.x); ht_put(hb, "\" y2=\""); mm_put_int(hb, foot_y);
+    ht_put(hb, "\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/>");
+    for row: 0..<2 {
+      by := ifx row == 0 then 20 else foot_y;
+      ht_put(hb, "<rect x=\""); mm_put_int(hb, p.x - box_w / 2);
+      ht_put(hb, "\" y=\""); mm_put_int(hb, by);
+      ht_put(hb, "\" width=\""); mm_put_int(hb, box_w);
+      ht_put(hb, "\" height=\""); mm_put_int(hb, box_h);
+      ht_put(hb, "\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/>");
+      mm_svg_text_lines(hb, lbl, 18, p.x, by + box_h / 2, 13, "#f2f2f2", 10);
+    }
+  }
+
+  // 2. Control frames (loop / opt / alt)
+  for k: 0..<nf {
+    ev := sq[0].evs[frame_open_idx[k]];
+    x1 := frame_x1[k]; y1 := frame_y1[k];
+    fw := frame_x2[k] - x1; fh := frame_y2[k] - y1;
+    ht_put(hb, "<rect x=\""); mm_put_int(hb, x1); ht_put(hb, "\" y=\""); mm_put_int(hb, y1);
+    ht_put(hb, "\" width=\""); mm_put_int(hb, fw); ht_put(hb, "\" height=\""); mm_put_int(hb, fh);
+    ht_put(hb, "\" fill=\"none\" stroke=\"#444\" stroke-width=\"1\"/>");
+    ht_put(hb, "<rect x=\""); mm_put_int(hb, x1); ht_put(hb, "\" y=\""); mm_put_int(hb, y1);
+    ht_put(hb, "\" width=\"46\" height=\"18\" fill=\"#262626\" stroke=\"#6b6b6b\" stroke-width=\"1\"/>");
+    ht_put(hb, "<text x=\""); mm_put_int(hb, x1 + 23); ht_put(hb, "\" y=\""); mm_put_int(hb, y1 + 12);
+    ht_put(hb, "\" text-anchor=\"middle\" fill=\"#fff\" font-size=\"9\" font-weight=\"600\">");
+    ht_escape_text(hb, mm_seq_str(sq, ev.tag));
+    ht_put(hb, "</text><text x=\""); mm_put_int(hb, x1 + 54); ht_put(hb, "\" y=\""); mm_put_int(hb, y1 + 12);
+    ht_put(hb, "\" fill=\"#9a9a9a\" font-size=\"10\">[");
+    ht_escape_text(hb, mm_seq_str(sq, ev.label));
+    ht_put(hb, "]</text>");
+  }
+
+  // 3. Else dividers, notes, and messages
+  for i: 0..<sq[0].ne {
+    ev := sq[0].evs[i];
+    if ev.kind == MM_EV_FELSE {
+      ht_put(hb, "<line x1=\"16\" y1=\""); mm_put_int(hb, ev.y);
+      ht_put(hb, "\" x2=\""); mm_put_int(hb, tot_w - 16);
+      ht_put(hb, "\" y2=\""); mm_put_int(hb, ev.y);
+      ht_put(hb, "\" stroke=\"#444\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/>");
+      lbl := mm_seq_str(sq, ev.label);
+      if lbl.count > 0 {
+        ht_put(hb, "<text x=\"24\" y=\""); mm_put_int(hb, ev.y + 13);
+        ht_put(hb, "\" fill=\"#9a9a9a\" font-size=\"10\">[else ");
+        ht_escape_text(hb, lbl);
+        ht_put(hb, "]</text>");
+      }
+    } else if ev.kind == MM_EV_NOTE {
+      x1 := sq[0].parts[ev.from].x;
+      x2 := sq[0].parts[ev.to].x;
+      lo := ifx x1 < x2 then x1 else x2; // mutant: equivalent (equal returns same x)
+      hi := ifx x1 > x2 then x1 else x2; // mutant: equivalent (equal returns same x)
+      nw := hi - lo + 110;
+      nx := (lo + hi) / 2 - nw / 2;
+      ht_put(hb, "<rect x=\""); mm_put_int(hb, nx); ht_put(hb, "\" y=\""); mm_put_int(hb, ev.y);
+      ht_put(hb, "\" width=\""); mm_put_int(hb, nw); ht_put(hb, "\" height=\"28\" fill=\"#161616\" stroke=\"#6b6b6b\" stroke-width=\"1\"/>");
+      mm_svg_text_lines(hb, mm_seq_str(sq, ev.label), 32, (lo + hi) / 2, ev.y + 14, 12, "#f2f2f2", 10);
+    } else if ev.kind == MM_EV_MSG {
+      x1 := sq[0].parts[ev.from].x;
+      x2 := sq[0].parts[ev.to].x;
+      lbl := mm_seq_str(sq, ev.label);
+      dashed := (ev.flags & MM_SEQ_DASHED) != 0;
+      cross := (ev.flags & MM_SEQ_CROSS) != 0;
+      if ev.from == ev.to {
+        // Self-call loop on the right side of lifeline
+        ht_put(hb, "<path d=\"M"); mm_put_int(hb, x1); ht_put_u8(hb, ' '); mm_put_int(hb, ev.y + 10);
+        ht_put(hb, " H"); mm_put_int(hb, x1 + 36);
+        ht_put(hb, " V"); mm_put_int(hb, ev.y + 30);
+        ht_put(hb, " H"); mm_put_int(hb, x1 + 4);
+        ht_put(hb, "\" fill=\"none\" stroke=\"#c8c8c8\" stroke-width=\"1.2\"");
+        if dashed { ht_put(hb, " stroke-dasharray=\"5 4\""); }
+        ht_put(hb, " marker-end=\"url(#"); ht_escape_attr(hb, id_pfx);
+        ht_put(hb, ifx cross then "-x)\"/>" else "-arr)\"/>");
+        ht_put(hb, "<text x=\""); mm_put_int(hb, x1 + 42); ht_put(hb, "\" y=\""); mm_put_int(hb, ev.y + 23);
+        ht_put(hb, "\" fill=\"#e6e6e6\" font-size=\"10\">");
+        ht_escape_text(hb, lbl);
+        ht_put(hb, "</text>");
+      } else {
+        ay := ev.y + 20;
+        ht_put(hb, "<line x1=\""); mm_put_int(hb, x1); ht_put(hb, "\" y1=\""); mm_put_int(hb, ay);
+        ht_put(hb, "\" x2=\""); mm_put_int(hb, x2); ht_put(hb, "\" y2=\""); mm_put_int(hb, ay);
+        ht_put(hb, "\" stroke=\"#c8c8c8\" stroke-width=\"1.2\"");
+        if dashed { ht_put(hb, " stroke-dasharray=\"5 4\""); }
+        ht_put(hb, " marker-end=\"url(#"); ht_escape_attr(hb, id_pfx);
+        ht_put(hb, ifx cross then "-x)\"/>" else "-arr)\"/>");
+        mx := (x1 + x2) / 2;
+        span_w := ifx x2 > x1 then x2 - x1 else x1 - x2; // mutant: equivalent (ev.from != ev.to so x1 != x2)
+        max_c := span_w / 6;
+        if max_c > 64 { max_c = 64; } // mutant: equivalent (clamp at exact boundary 64 assigns 64)
+        mm_svg_text_lines(hb, lbl, max_c, mx, ev.y + 7, 12, "#e6e6e6", 10);
+      }
+    }
+  }
+
+  ht_put(hb, "</svg></div>");
+}
+
+// Public entry point: renders a Mermaid code fence to inline monochrome SVG in `hb`.
+// Returns true if rendered cleanly; returns false (rolling back `hb`) on unsupported syntax or overflow.
+mm_render_svg :: (hb: [] HtBuf, src: string, id_pfx: string) -> bool {
+  saved_n := hb[0].n;
+  saved_ov := hb[0].overflow;
+  fl: [1] MmFlow;
+  if mm_flow_parse(fl[..], src) {
+    mm_flow_emit_svg(hb, fl[..], id_pfx);
+    if hb[0].overflow { hb[0].n = saved_n; hb[0].overflow = saved_ov; return false; }
+    return true;
+  }
+  sq: [1] MmSeq;
+  if mm_seq_parse(sq[..], src) {
+    mm_seq_emit_svg(hb, sq[..], id_pfx);
+    if hb[0].overflow { hb[0].n = saved_n; hb[0].overflow = saved_ov; return false; }
+    return true;
+  }
+  return false;
+}
+
+// ---- checks
+
+mm_has :: (hay: string, needle: string) -> bool {
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    if cast(string) hay[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+#test "mm string, pool, int, has, and word-wrapping helpers handle exact boundaries" {
+  #assert mm_trim(" \t\rab\r\t ") == "ab" && mm_trim("   ") == "";
+  #assert mm_starts("abc", "abc") && mm_starts("abc", "ab") && !mm_starts("a", "ab") && !mm_starts("ac", "ab");
+  #assert mm_unquote("\"hi\"") == "hi" && mm_unquote("\"\"") == "" && mm_unquote("\"") == "\"";
+  #assert mm_line_end("ab\ncd", 0) == 2 && mm_line_end("ab", 0) == 2;
+  #assert mm_has("ab", "ab") && mm_has("abc", "bc") && !mm_has("a", "ab") && !mm_has("ab", "cd");
+
+  ib: [32] u8;
+  hb := [1] HtBuf.[HtBuf.{bytes = ib[..]}];
+  mm_put_int(hb[..], 0); ht_put_u8(hb[..], ','); mm_put_int(hb[..], 123); ht_put_u8(hb[..], ','); mm_put_int(hb[..], -42);
+  #assert cast(string) ib[0..<hb[0].n] == "0,123,-42";
+
+  pool: [4] u8; tn := [1] int.[0]; ov := [1] bool.[false];
+  s1 := mm_pool_add(pool[..], tn[..], ov[..], "ab");
+  #assert !ov[0] && mm_span(pool[..], s1) == "ab";
+  s_fit := mm_pool_add(pool[..], tn[..], ov[..], "cd");
+  #assert !ov[0] && mm_span(pool[..], s_fit) == "cd" && tn[0] == 4;
+  s2 := mm_pool_add(pool[..], tn[..], ov[..], "e");
+  #assert ov[0] && s2.n == 0 && mm_span(pool[..], s2) == "";
+  #assert mm_span(pool[..], MmSpan.{at = -1, n = 1}) == "" && mm_span(pool[..], MmSpan.{at = 4, n = 1}) == "";
+
+  ls: [1] MmLines;
+  // Exact boundary: <br/>, <br>, trailing <br/> & <br>, space/slash/plus/hard breaks, k > p + max_chars/3, max 4 lines with long 4th line
+  w1 := "alpha<br/>beta<br>one two three four";
+  mm_wrap(w1, 10, ls[..]);
+  #assert ls[0].n == 4 && ls[0].max_len == 10;
+  #assert cast(string) w1[ls[0].from[0]..<ls[0].to[0]] == "alpha";
+  #assert cast(string) w1[ls[0].from[1]..<ls[0].to[1]] == "beta";
+  #assert cast(string) w1[ls[0].from[2]..<ls[0].to[2]] == "one two";
+  #assert cast(string) w1[ls[0].from[3]..<ls[0].to[3]] == "three four";
+  w2 := "aaaa/bb/bbcccc";
+  mm_wrap(w2, 10, ls[..]);
+  #assert ls[0].n == 2 && cast(string) w2[ls[0].from[0]..<ls[0].to[0]] == "aaaa/bb/" && cast(string) w2[ls[0].from[1]..<ls[0].to[1]] == "bbcccc";
+  w3 := "abcdef+ghijkl";
+  mm_wrap(w3, 10, ls[..]);
+  #assert ls[0].n == 2 && cast(string) w3[ls[0].from[0]..<ls[0].to[0]] == "abcdef+" && cast(string) w3[ls[0].from[1]..<ls[0].to[1]] == "ghijkl";
+  w4 := "012 45678901"; // space at index 3 == 10/3 -> must NOT break at 3, hard-cuts at 10
+  mm_wrap(w4, 10, ls[..]);
+  #assert ls[0].n == 2 && cast(string) w4[ls[0].from[0]..<ls[0].to[0]] == "012 456789" && cast(string) w4[ls[0].from[1]..<ls[0].to[1]] == "01";
+  w5 := "0123 5678901"; // space at index 4 > 10/3 -> breaks at 4
+  mm_wrap(w5, 10, ls[..]);
+  #assert ls[0].n == 2 && cast(string) w5[ls[0].from[0]..<ls[0].to[0]] == "0123" && cast(string) w5[ls[0].from[1]..<ls[0].to[1]] == "5678901";
+  // Exact max_chars length stays 1 line; trailing <br/> and <br>; 4th line stays unbroken even if > max_chars; 5th segment stopped
+  mm_wrap("0123456789", 10, ls[..]);
+  #assert ls[0].n == 1 && ls[0].max_len == 10;
+  mm_wrap("a<br/>", 10, ls[..]);
+  #assert ls[0].n == 1 && ls[0].max_len == 1;
+  mm_wrap("a<br>", 10, ls[..]);
+  #assert ls[0].n == 1 && ls[0].max_len == 1;
+  mm_wrap("   !a   ", 10, ls[..]);
+  #assert ls[0].n == 1 && ls[0].max_len == 2;
+  mm_wrap("   <br/>  a   <br>  ", 10, ls[..]);
+  #assert ls[0].n == 1 && ls[0].max_len == 1;
+  mm_wrap("", 10, ls[..]);
+  #assert ls[0].n == 0 && ls[0].max_len == 0;
+  w6 := "1<br/>2<br/>3<br/>0123456789abcdef<br/>5";
+  mm_wrap(w6, 10, ls[..]);
+  #assert ls[0].n == 4 && cast(string) w6[ls[0].from[3]..<ls[0].to[3]] == "0123456789abcdef";
+  w7 := "!a<br/>!b";
+  mm_wrap(w7, 10, ls[..]);
+  #assert ls[0].n == 2 && cast(string) w7[ls[0].from[0]..<ls[0].to[0]] == "!a" && cast(string) w7[ls[0].from[1]..<ls[0].to[1]] == "!b";
+  mm_wrap("0123456789   ", 10, ls[..]);
+  #assert ls[0].n == 1 && ls[0].max_len == 10;
+}
+
+#test "mm_dag_rank and mm_layout_ranked produce exact ranks, back-edges, and wrapped coordinates" {
+  // Pre-dirtied ranks/back, self-loop, 3-node chain with root at high index (2->1->0->1 cycle), 2-branch node, and reverse-order DAG (6->5->4->3)
+  ef := [10] int.[0, 2, 1, 0, 2, 6, 5, 4, 7, 8];
+  et := [10] int.[0, 1, 0, 1, 3, 5, 4, 3, 8, 7];
+  eb := [10] bool.[true, true, true, true, true, true, true, true, true, true];
+  rk := [9] int.[9, 9, 9, 9, 9, 9, 9, 9, 9];
+  mr := mm_dag_rank(9, ef[..], et[..], eb[..], 10, rk[..]);
+  // Root 2 visits 1 -> 0 -> back(0->1) and 2 -> 3; root 6 visits 5 -> 4 -> 3; isolated cycle 7<->8 marks 8->7 back
+  #assert mr == 3 && eb[0] && !eb[1] && !eb[2] && eb[3] && !eb[4] && !eb[5] && !eb[6] && !eb[7] && !eb[8] && eb[9];
+  #assert rk[2] == 0 && rk[1] == 1 && rk[0] == 2 && rk[6] == 0 && rk[5] == 1 && rk[4] == 2 && rk[3] == 3 && rk[7] == 0 && rk[8] == 1;
+
+  // Zero edges -> max_rank == 0
+  #assert mm_dag_rank(2, ef[..], et[..], eb[..], 0, rk[..]) == 0;
+
+  // DFS stack-pointer & stk_e reset verification via root->hi->lo->hi cycle gadgets + diamond DAG
+  ef2 := [18] int.[5,  3, 2, 0, 1, 2, 2, 7, 2, 9,  2, 12, 11,  1, 14, 13, 16, 15];
+  et2 := [18] int.[16, 14, 0, 1, 0, 3, 7, 8, 9, 7, 12, 11, 12, 10, 13, 14, 15, 16];
+  eb2: [18] bool;
+  rk2: [17] int;
+  mr2 := mm_dag_rank(17, ef2[..], et2[..], eb2[..], 18, rk2[..]);
+  // Only e4 (1->0), e12 (11->12), e15 (13->14), e17 (15->16) are back-edges; diamond e9 (9->7) is NOT back
+  #assert mr2 == 3 && eb2[4] && !eb2[3] && !eb2[9] && !eb2[11] && eb2[12] && !eb2[14] && eb2[15] && !eb2[16] && eb2[17];
+  #assert rk2[2] == 0 && rk2[0] == 1 && rk2[1] == 2 && rk2[10] == 3 && rk2[7] == 2 && rk2[8] == 3;
+
+  // Empty layout returns 0x0; non-empty layout with an empty middle rank exercises in_r == 0 / in_c == 0
+  bx: [4] int; by: [4] int;
+  bw := [4] int.[100, 120, 80, 100];
+  bh := [4] int.[30, 40, 30, 30];
+  r0 := [4] int.[0, 0, 0, 2];
+  #assert mm_layout_ranked(0, r0[..], 0, bw[..], bh[..], bx[..], by[..], false, 2, 10, 20).w == 0;
+
+  // TD with row wrap (3 items in rank 0 wrapped at max_per_row=2 -> 2 sub-rows + empty rank 1 skipped + 1 row for rank 2)
+  sz_td := mm_layout_ranked(4, r0[..], 2, bw[..], bh[..], bx[..], by[..], false, 2, 10, 20);
+  #assert sz_td.w == 230 && sz_td.h == 140;
+  #assert bx[0] == 0 && by[0] == 5 && bx[1] == 110 && by[1] == 0 && bx[2] == 75 && by[2] == 60 && bx[3] == 65 && by[3] == 110;
+
+  // LR layout (2 cols, skipping empty rank 1)
+  sz_lr := mm_layout_ranked(4, r0[..], 2, bw[..], bh[..], bx[..], by[..], true, 2, 20, 10);
+  #assert sz_lr.w == 240 && sz_lr.h == 120;
+  #assert bx[0] == 10 && by[0] == 0 && bx[1] == 0 && by[1] == 40 && bx[2] == 20 && by[2] == 90 && bx[3] == 140 && by[3] == 45;
+
+  // 1px & 0px boxes exercise max_per_row == 1 wrap, row_w/col_h > 0, and tot_w/tot_h == 0 boundaries
+  b1 := [2] int.[1, 1]; r1 := [2] int.[0, 0];
+  sz_1r := mm_layout_ranked(2, r1[..], 0, b1[..], b1[..], bx[..], by[..], false, 1, 10, 20);
+  #assert sz_1r.w == 1 && sz_1r.h == 22 && by[0] == 0 && by[1] == 21;
+  sz_2r := mm_layout_ranked(2, r1[..], 0, b1[..], b1[..], bx[..], by[..], false, 2, 10, 20);
+  #assert sz_2r.w == 12 && sz_2r.h == 1;
+  sz_1c := mm_layout_ranked(2, r1[..], 0, b1[..], b1[..], bx[..], by[..], true, 1, 10, 20);
+  #assert sz_1c.w == 1 && sz_1c.h == 22;
+  b0 := [1] int.[0];
+  #assert mm_layout_ranked(1, r1[..], 0, b0[..], b0[..], bx[..], by[..], false, 1, 10, 20).w == 0;
+  #assert mm_layout_ranked(1, r1[..], 0, b0[..], b0[..], bx[..], by[..], true, 1, 10, 20).h == 0;
+}
+
+#test "mm_render_svg matches exact SVG across TD, BT, LR, and Sequence fixtures" {
+  out: [65536] u8;
+
+  // 1. TD flowchart covering all shapes, arrows, inline label, &, cycle, XML escape, comments, classDef
+  hb := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  fc := "%% c\nflowchart TD\n  A[\"Start <1&2>\"] --> B{\"Gate?\"}\n  B -->|\"yes\"| C(\"Run\")\n  B -- \"no\" --> D[[\"Done\"]];\n  C <--> E[Sync]\n  C -.->|dash| F[Log]\n  E ==> F\n  A & C --> F\n  F --> A\n  classDef x fill:#000\n";
+  #assert mm_render_svg(hb[..], fc, "m0") && !hb[0].overflow;
+  want_td := "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Flowchart diagram\" viewBox=\"0 0 284 409\" width=\"284\" height=\"409\"><defs><marker id=\"m0-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"m0-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><path d=\"M142 55 C142 79,142 79,142 103\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m0-arr)\"/><path d=\"M142 148 C142 172,76 172,76 196\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m0-arr)\"/><path d=\"M142 148 C142 172,208 172,208 196\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m0-arr)\"/><path d=\"M76 227 C76 251,142 251,142 275\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-start=\"url(#m0-arr)\" marker-end=\"url(#m0-arr)\"/><path d=\"M76 227 C76 290,142 290,142 354\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" stroke-dasharray=\"5 4\" marker-end=\"url(#m0-arr)\"/><path d=\"M142 306 C142 330,142 330,142 354\" fill=\"none\" stroke=\"#f2f2f2\" stroke-width=\"2.2\" marker-end=\"url(#m0-arr)\"/><path d=\"M142 55 C142 204,142 204,142 354\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m0-arr)\"/><path d=\"M76 227 C76 290,142 290,142 354\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m0-arr)\"/><path d=\"M142 354 C178 204,178 204,142 55\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m0-arr)\"/><g class=\"mm-node\"><rect x=\"90\" y=\"24\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"142\" y=\"39\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"142\" y=\"42\">Start &lt;1&amp;2&gt;</tspan></text></g><g class=\"mm-node\"><polygon points=\"142,103 206,125 142,148 78,125\" fill=\"#141414\" stroke=\"#c8c8c8\" stroke-width=\"1.2\"/><text x=\"142\" y=\"125\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"142\" y=\"128\">Gate?</tspan></text></g><g class=\"mm-node\"><rect x=\"24\" y=\"196\" width=\"104\" height=\"31\" rx=\"10\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"76\" y=\"211\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"76\" y=\"214\">Run</tspan></text></g><g class=\"mm-node\"><rect x=\"156\" y=\"196\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"208\" y=\"211\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"208\" y=\"214\">Done</tspan></text></g><g class=\"mm-node\"><rect x=\"90\" y=\"275\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"142\" y=\"290\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"142\" y=\"293\">Sync</tspan></text></g><g class=\"mm-node\"><rect x=\"90\" y=\"354\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"142\" y=\"369\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"142\" y=\"372\">Log</tspan></text></g><rect x=\"94\" y=\"159\" width=\"30\" height=\"19\" fill=\"#0a0a0a\" stroke=\"#2a2a2a\" stroke-width=\"1\"/><text x=\"109\" y=\"168\" text-anchor=\"middle\" fill=\"#b8b8b8\" font-size=\"10\"><tspan x=\"109\" y=\"171\">yes</tspan></text><rect x=\"163\" y=\"159\" width=\"24\" height=\"19\" fill=\"#0a0a0a\" stroke=\"#2a2a2a\" stroke-width=\"1\"/><text x=\"175\" y=\"168\" text-anchor=\"middle\" fill=\"#b8b8b8\" font-size=\"10\"><tspan x=\"175\" y=\"171\">no</tspan></text><rect x=\"91\" y=\"281\" width=\"36\" height=\"19\" fill=\"#0a0a0a\" stroke=\"#2a2a2a\" stroke-width=\"1\"/><text x=\"109\" y=\"290\" text-anchor=\"middle\" fill=\"#b8b8b8\" font-size=\"10\"><tspan x=\"109\" y=\"293\">dash</tspan></text></svg></div>";
+  #assert cast(string) out[0..<hb[0].n] == want_td;
+
+  // 2. BT flowchart with subgraphs, internal edge, alias targeting subgraph 0 (L0), and BT back-edge
+  hb2 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  bt := "flowchart BT\n  subgraph L0[\"Layer 0\"]\n    A[\"Atom\"]\n    A2[\"Two\"]\n    A --> A2\n  end\n  subgraph L1[\"Layer 1\"]\n    B[\"Top\"]\n  end\n  A2 --> B\n  B --> L0\n";
+  #assert mm_render_svg(hb2[..], bt, "m1") && !hb2[0].overflow;
+  want_bt := "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Flowchart diagram\" viewBox=\"0 0 180 333\" width=\"180\" height=\"333\"><defs><marker id=\"m1-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"m1-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><g class=\"mm-sub\"><rect x=\"24\" y=\"161\" width=\"132\" height=\"148\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"34\" y=\"180\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">Layer 0</text></g><g class=\"mm-sub\"><rect x=\"24\" y=\"24\" width=\"132\" height=\"89\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"34\" y=\"43\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">Layer 1</text></g><path d=\"M90 264 C90 250,90 250,90 236\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m1-arr)\"/><path d=\"M90 205 C90 152,90 152,90 99\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m1-arr)\"/><path d=\"M90 99 C126 130,126 130,90 161\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m1-arr)\"/><g class=\"mm-node\"><rect x=\"38\" y=\"264\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"90\" y=\"279\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"90\" y=\"282\">Atom</tspan></text></g><g class=\"mm-node\"><rect x=\"38\" y=\"205\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"90\" y=\"220\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"90\" y=\"223\">Two</tspan></text></g><g class=\"mm-node\"><rect x=\"38\" y=\"68\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"90\" y=\"83\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"90\" y=\"86\">Top</tspan></text></g></svg></div>";
+  #assert cast(string) out[0..<hb2[0].n] == want_bt;
+
+  // 3. LR flowchart with 3 subgraphs (2 stacked in same rank), outside node, and LR back-edge
+  hb3 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  lr := "graph LR\n  Out[\"Entry\"] --> N1\n  subgraph S1[\"Left\"]\n    N1[\"One\"]\n    N2[\"Two\"]\n    N1 --> N2\n  end\n  subgraph S2\n    N3[\"Three\"]\n  end\n  subgraph S3\n    N4[\"Four\"]\n  end\n  N2 --> N3\n  N2 --> N4\n  N3 --> Out\n";
+  #assert mm_render_svg(hb3[..], lr, "m2") && !hb3[0].overflow;
+  want_lr := "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Flowchart diagram\" viewBox=\"0 0 592 254\" width=\"592\" height=\"254\"><defs><marker id=\"m2-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"m2-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><g class=\"mm-sub\"><rect x=\"24\" y=\"53\" width=\"132\" height=\"148\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"34\" y=\"72\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">Left</text></g><g class=\"mm-sub\"><rect x=\"244\" y=\"24\" width=\"132\" height=\"89\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"254\" y=\"43\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">S2</text></g><g class=\"mm-sub\"><rect x=\"244\" y=\"141\" width=\"132\" height=\"89\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"254\" y=\"160\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">S3</text></g><path d=\"M464 126 C303 98,303 84,142 112\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m2-arr)\"/><path d=\"M90 128 C90 142,90 142,90 156\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m2-arr)\"/><path d=\"M142 171 C200 171,200 83,258 83\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m2-arr)\"/><path d=\"M142 171 C200 171,200 200,258 200\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m2-arr)\"/><path d=\"M362 83 C413 83,413 126,464 126\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#m2-arr)\"/><g class=\"mm-node\"><rect x=\"464\" y=\"111\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"516\" y=\"126\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"516\" y=\"129\">Entry</tspan></text></g><g class=\"mm-node\"><rect x=\"38\" y=\"97\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"90\" y=\"112\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"90\" y=\"115\">One</tspan></text></g><g class=\"mm-node\"><rect x=\"38\" y=\"156\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"90\" y=\"171\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"90\" y=\"174\">Two</tspan></text></g><g class=\"mm-node\"><rect x=\"258\" y=\"68\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"310\" y=\"83\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"310\" y=\"86\">Three</tspan></text></g><g class=\"mm-node\"><rect x=\"258\" y=\"185\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"310\" y=\"200\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"310\" y=\"203\">Four</tspan></text></g></svg></div>";
+  #assert cast(string) out[0..<hb3[0].n] == want_lr;
+
+  // 4. Sequence diagram covering participant, actor, quotes, all 6 arrows, self-calls, loop/alt/else/opt/end, Notes
+  hb4 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  sd := "%% s\nsequenceDiagram\n  participant Q as \"query.ts\"\n  actor U as User\n  participant A\n  U->>Q: \"prompt & <cmd>\"\n  loop Turns\n    Q->>A: call()\n    alt ok\n      A-->>Q: reply\n    else err\n      A--xQ: fail\n    else\n      Q->>Q: retry\n    end\n    opt self\n      Q--xQ: drop\n    end\n    Note over Q,A: synced\n    Note left of U: local\n    Note right of A: remote\n  end\n  A-xU: abort\n  U-->A: ping\n  A->U: pong\n";
+  #assert mm_render_svg(hb4[..], sd, "s0") && !hb4[0].overflow;
+  want_sd := "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Sequence diagram\" viewBox=\"0 0 484 862\" width=\"484\" height=\"862\"><defs><marker id=\"s0-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"s0-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><line x1=\"94\" y1=\"64\" x2=\"94\" y2=\"798\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"28\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"94\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"94\" y=\"45\">query.ts</tspan></text><rect x=\"28\" y=\"798\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"94\" y=\"820\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"94\" y=\"823\">query.ts</tspan></text><line x1=\"242\" y1=\"64\" x2=\"242\" y2=\"798\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"176\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"242\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"242\" y=\"45\">User</tspan></text><rect x=\"176\" y=\"798\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"242\" y=\"820\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"242\" y=\"823\">User</tspan></text><line x1=\"390\" y1=\"64\" x2=\"390\" y2=\"798\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"324\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"390\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"390\" y=\"45\">A</tspan></text><rect x=\"324\" y=\"798\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"390\" y=\"820\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"390\" y=\"823\">A</tspan></text><rect x=\"16\" y=\"202\" width=\"452\" height=\"212\" fill=\"none\" stroke=\"#444\" stroke-width=\"1\"/><rect x=\"16\" y=\"202\" width=\"46\" height=\"18\" fill=\"#262626\" stroke=\"#6b6b6b\" stroke-width=\"1\"/><text x=\"39\" y=\"214\" text-anchor=\"middle\" fill=\"#fff\" font-size=\"9\" font-weight=\"600\">alt</text><text x=\"70\" y=\"214\" fill=\"#9a9a9a\" font-size=\"10\">[ok]</text><rect x=\"16\" y=\"426\" width=\"452\" height=\"80\" fill=\"none\" stroke=\"#444\" stroke-width=\"1\"/><rect x=\"16\" y=\"426\" width=\"46\" height=\"18\" fill=\"#262626\" stroke=\"#6b6b6b\" stroke-width=\"1\"/><text x=\"39\" y=\"438\" text-anchor=\"middle\" fill=\"#fff\" font-size=\"9\" font-weight=\"600\">opt</text><text x=\"70\" y=\"438\" fill=\"#9a9a9a\" font-size=\"10\">[self]</text><rect x=\"10\" y=\"132\" width=\"464\" height=\"516\" fill=\"none\" stroke=\"#444\" stroke-width=\"1\"/><rect x=\"10\" y=\"132\" width=\"46\" height=\"18\" fill=\"#262626\" stroke=\"#6b6b6b\" stroke-width=\"1\"/><text x=\"33\" y=\"144\" text-anchor=\"middle\" fill=\"#fff\" font-size=\"9\" font-weight=\"600\">loop</text><text x=\"64\" y=\"144\" fill=\"#9a9a9a\" font-size=\"10\">[Turns]</text><line x1=\"242\" y1=\"110\" x2=\"94\" y2=\"110\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" marker-end=\"url(#s0-arr)\"/><text x=\"168\" y=\"97\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"168\" y=\"100\">prompt &amp; &lt;cmd&gt;</tspan></text><line x1=\"94\" y1=\"180\" x2=\"390\" y2=\"180\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" marker-end=\"url(#s0-arr)\"/><text x=\"242\" y=\"167\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"242\" y=\"170\">call()</tspan></text><line x1=\"390\" y1=\"250\" x2=\"94\" y2=\"250\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" stroke-dasharray=\"5 4\" marker-end=\"url(#s0-arr)\"/><text x=\"242\" y=\"237\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"242\" y=\"240\">reply</tspan></text><line x1=\"16\" y1=\"272\" x2=\"468\" y2=\"272\" stroke=\"#444\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"24\" y=\"285\" fill=\"#9a9a9a\" font-size=\"10\">[else err]</text><line x1=\"390\" y1=\"316\" x2=\"94\" y2=\"316\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" stroke-dasharray=\"5 4\" marker-end=\"url(#s0-x)\"/><text x=\"242\" y=\"303\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"242\" y=\"306\">fail</tspan></text><line x1=\"16\" y1=\"338\" x2=\"468\" y2=\"338\" stroke=\"#444\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><path d=\"M94 372 H130 V392 H98\" fill=\"none\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" marker-end=\"url(#s0-arr)\"/><text x=\"136\" y=\"385\" fill=\"#e6e6e6\" font-size=\"10\">retry</text><path d=\"M94 464 H130 V484 H98\" fill=\"none\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" stroke-dasharray=\"5 4\" marker-end=\"url(#s0-x)\"/><text x=\"136\" y=\"477\" fill=\"#e6e6e6\" font-size=\"10\">drop</text><rect x=\"39\" y=\"518\" width=\"406\" height=\"28\" fill=\"#161616\" stroke=\"#6b6b6b\" stroke-width=\"1\"/><text x=\"242\" y=\"532\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"242\" y=\"535\">synced</tspan></text><rect x=\"187\" y=\"560\" width=\"110\" height=\"28\" fill=\"#161616\" stroke=\"#6b6b6b\" stroke-width=\"1\"/><text x=\"242\" y=\"574\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"242\" y=\"577\">local</tspan></text><rect x=\"335\" y=\"602\" width=\"110\" height=\"28\" fill=\"#161616\" stroke=\"#6b6b6b\" stroke-width=\"1\"/><text x=\"390\" y=\"616\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"390\" y=\"619\">remote</tspan></text><line x1=\"390\" y1=\"680\" x2=\"242\" y2=\"680\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" marker-end=\"url(#s0-x)\"/><text x=\"316\" y=\"667\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"316\" y=\"670\">abort</tspan></text><line x1=\"242\" y1=\"722\" x2=\"390\" y2=\"722\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" stroke-dasharray=\"5 4\" marker-end=\"url(#s0-arr)\"/><text x=\"316\" y=\"709\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"316\" y=\"712\">ping</tspan></text><line x1=\"390\" y1=\"764\" x2=\"242\" y2=\"764\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" marker-end=\"url(#s0-arr)\"/><text x=\"316\" y=\"751\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"316\" y=\"754\">pong</tspan></text></svg></div>";
+  #assert cast(string) out[0..<hb4[0].n] == want_sd;
+
+  // 5. Plain LR (no subgraphs) with 1-char node, long wrapped node (>26 chars), and long wrapped back-edge label (>28 chars)
+  hb5 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  plr := "flowchart LR\n  A[\"x\"] --> B[\"Very Long Wrapped Node Label Exceeding Limit\"]\n  B --> C[\"Two\"]\n  B --> D[\"Three\"]\n  C -->|\"Long edge label wrapping across two lines cleanly\"| A\n";
+  #assert mm_render_svg(hb5[..], plr, "p0") && !hb5[0].overflow;
+  want_plr := "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Flowchart diagram\" viewBox=\"0 0 572 132\" width=\"572\" height=\"132\"><defs><marker id=\"p0-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"p0-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><path d=\"M128 65 C162 65,162 66,196 66\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p0-arr)\"/><path d=\"M376 66 C410 66,410 39,444 39\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p0-arr)\"/><path d=\"M376 66 C410 66,410 92,444 92\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p0-arr)\"/><path d=\"M444 39 C286 11,286 37,128 65\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p0-arr)\"/><g class=\"mm-node\"><rect x=\"24\" y=\"50\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"76\" y=\"65\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"76\" y=\"68\">x</tspan></text></g><g class=\"mm-node\"><rect x=\"196\" y=\"43\" width=\"180\" height=\"46\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"286\" y=\"66\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"286\" y=\"62\">Very Long Wrapped Node</tspan><tspan x=\"286\" y=\"77\">Label Exceeding Limit</tspan></text></g><g class=\"mm-node\"><rect x=\"444\" y=\"24\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"496\" y=\"39\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"496\" y=\"42\">Two</tspan></text></g><g class=\"mm-node\"><rect x=\"444\" y=\"77\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"496\" y=\"92\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"496\" y=\"95\">Three</tspan></text></g><rect x=\"230\" y=\"36\" width=\"156\" height=\"32\" fill=\"#0a0a0a\" stroke=\"#2a2a2a\" stroke-width=\"1\"/><text x=\"308\" y=\"52\" text-anchor=\"middle\" fill=\"#b8b8b8\" font-size=\"10\"><tspan x=\"308\" y=\"49\">Long edge label wrapping</tspan><tspan x=\"308\" y=\"62\">across two lines cleanly</tspan></text></svg></div>";
+  #assert cast(string) out[0..<hb5[0].n] == want_plr;
+
+  // 6. Plain BT (no subgraphs) & TD with 4 siblings (wraps at max_per_row=3)
+  hb6 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  #assert mm_render_svg(hb6[..], "flowchart BT\n  A[\"Lo\"] --> B[\"Hi\"]\n", "p1") && !hb6[0].overflow;
+  want_pbt := "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Flowchart diagram\" viewBox=\"0 0 152 158\" width=\"152\" height=\"158\"><defs><marker id=\"p1-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"p1-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><path d=\"M76 103 C76 79,76 79,76 55\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p1-arr)\"/><g class=\"mm-node\"><rect x=\"24\" y=\"103\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"76\" y=\"118\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"76\" y=\"121\">Lo</tspan></text></g><g class=\"mm-node\"><rect x=\"24\" y=\"24\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"76\" y=\"39\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"76\" y=\"42\">Hi</tspan></text></g></svg></div>";
+  #assert cast(string) out[0..<hb6[0].n] == want_pbt;
+
+  hb7 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  #assert mm_render_svg(hb7[..], "flowchart TD\n  R[\"R\"] --> N1[\"1\"]\n  R --> N2[\"2\"]\n  R --> N3[\"3\"]\n  R --> N4[\"4\"]\n", "p2") && !hb7[0].overflow;
+  want_ptd4 := "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Flowchart diagram\" viewBox=\"0 0 416 237\" width=\"416\" height=\"237\"><defs><marker id=\"p2-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"p2-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><path d=\"M156 39 C142 39,142 118,128 118\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p2-arr)\"/><path d=\"M208 55 C208 79,208 79,208 103\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p2-arr)\"/><path d=\"M260 39 C274 39,274 118,288 118\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p2-arr)\"/><path d=\"M208 55 C208 118,208 118,208 182\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p2-arr)\"/><g class=\"mm-node\"><rect x=\"156\" y=\"24\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"208\" y=\"39\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"208\" y=\"42\">R</tspan></text></g><g class=\"mm-node\"><rect x=\"24\" y=\"103\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"76\" y=\"118\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"76\" y=\"121\">1</tspan></text></g><g class=\"mm-node\"><rect x=\"156\" y=\"103\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"208\" y=\"118\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"208\" y=\"121\">2</tspan></text></g><g class=\"mm-node\"><rect x=\"288\" y=\"103\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"340\" y=\"118\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"340\" y=\"121\">3</tspan></text></g><g class=\"mm-node\"><rect x=\"156\" y=\"182\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"208\" y=\"197\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"208\" y=\"200\">4</tspan></text></g></svg></div>";
+  #assert cast(string) out[0..<hb7[0].n] == want_ptd4;
+
+  // 7. TD subgraphs with 1-node long title (>sw), 4 internal nodes, 3 child subgraphs (max_per_row=2), and TD back-edge
+  hb8 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  subtd := "flowchart TD\n  subgraph S0[\"S0\"]\n    A[\"1\"]\n    B[\"2\"]\n    C[\"3\"]\n    D[\"4\"]\n  end\n  subgraph S1[\"A Long Subgraph Title Here!!\"]\n    E[\"5\"]\n  end\n  subgraph S2[\"S2\"]\n    F[\"6\"]\n  end\n  subgraph S3[\"S3\"]\n    G[\"7\"]\n  end\n  A --> E\n  A --> F\n  A --> G\n  E --> A\n";
+  #assert mm_render_svg(hb8[..], subtd, "p3") && !hb8[0].overflow;
+  want_subtd := "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Flowchart diagram\" viewBox=\"0 0 436 470\" width=\"436\" height=\"470\"><defs><marker id=\"p3-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"p3-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><g class=\"mm-sub\"><rect x=\"30\" y=\"24\" width=\"376\" height=\"148\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"40\" y=\"43\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">S0</text></g><g class=\"mm-sub\"><rect x=\"24\" y=\"220\" width=\"224\" height=\"89\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"34\" y=\"239\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">A Long Subgraph Title Here!!</text></g><g class=\"mm-sub\"><rect x=\"280\" y=\"220\" width=\"132\" height=\"89\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"290\" y=\"239\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">S2</text></g><g class=\"mm-sub\"><rect x=\"152\" y=\"357\" width=\"132\" height=\"89\" fill=\"#050505\" stroke=\"#3a3a3a\" stroke-dasharray=\"5 4\" stroke-width=\"1\"/><text x=\"162\" y=\"376\" fill=\"#9a9a9a\" font-size=\"10\" letter-spacing=\"1.2\">S3</text></g><path d=\"M96 99 C96 181,136 181,136 264\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p3-arr)\"/><path d=\"M148 83 C221 83,221 279,294 279\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p3-arr)\"/><path d=\"M96 99 C96 250,218 250,218 401\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p3-arr)\"/><path d=\"M136 264 C172 181,132 181,96 99\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#p3-arr)\"/><g class=\"mm-node\"><rect x=\"44\" y=\"68\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"96\" y=\"83\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"96\" y=\"86\">1</tspan></text></g><g class=\"mm-node\"><rect x=\"166\" y=\"68\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"218\" y=\"83\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"218\" y=\"86\">2</tspan></text></g><g class=\"mm-node\"><rect x=\"288\" y=\"68\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"340\" y=\"83\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"340\" y=\"86\">3</tspan></text></g><g class=\"mm-node\"><rect x=\"166\" y=\"127\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"218\" y=\"142\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"218\" y=\"145\">4</tspan></text></g><g class=\"mm-node\"><rect x=\"84\" y=\"264\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"136\" y=\"279\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"136\" y=\"282\">5</tspan></text></g><g class=\"mm-node\"><rect x=\"294\" y=\"264\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"346\" y=\"279\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"346\" y=\"282\">6</tspan></text></g><g class=\"mm-node\"><rect x=\"166\" y=\"401\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"218\" y=\"416\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"218\" y=\"419\">7</tspan></text></g></svg></div>";
+  #assert cast(string) out[0..<hb8[0].n] == want_subtd;
+
+  // 8. Sequence with 5 participants, wrapped participant (>18), wrapped note (>32), adjacent msg (>24), and wide msg (>64)
+  hb9 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  sd2 := "sequenceDiagram\n  participant P1 as \"Long Participant Label\"\n  participant P2\n  participant P3\n  participant P4\n  participant P5\n  P1->>P2: \"Adjacent message over 24 chars\"\n  P1->>P5: \"Wide span message exceeding sixty four characters to exercise the 64 clamp\"\n  Note over P1,P2: \"A longer note spanning two lines cleanly\"\n";
+  #assert mm_render_svg(hb9[..], sd2, "s1") && !hb9[0].overflow;
+  want_sd2 := "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Sequence diagram\" viewBox=\"0 0 780 292\" width=\"780\" height=\"292\"><defs><marker id=\"s1-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"s1-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><line x1=\"94\" y1=\"64\" x2=\"94\" y2=\"228\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"28\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"94\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"94\" y=\"39\">Long Participant</tspan><tspan x=\"94\" y=\"52\">Label</tspan></text><rect x=\"28\" y=\"228\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"94\" y=\"250\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"94\" y=\"247\">Long Participant</tspan><tspan x=\"94\" y=\"260\">Label</tspan></text><line x1=\"242\" y1=\"64\" x2=\"242\" y2=\"228\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"176\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"242\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"242\" y=\"45\">P2</tspan></text><rect x=\"176\" y=\"228\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"242\" y=\"250\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"242\" y=\"253\">P2</tspan></text><line x1=\"390\" y1=\"64\" x2=\"390\" y2=\"228\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"324\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"390\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"390\" y=\"45\">P3</tspan></text><rect x=\"324\" y=\"228\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"390\" y=\"250\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"390\" y=\"253\">P3</tspan></text><line x1=\"538\" y1=\"64\" x2=\"538\" y2=\"228\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"472\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"538\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"538\" y=\"45\">P4</tspan></text><rect x=\"472\" y=\"228\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"538\" y=\"250\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"538\" y=\"253\">P4</tspan></text><line x1=\"686\" y1=\"64\" x2=\"686\" y2=\"228\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"620\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"686\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"686\" y=\"45\">P5</tspan></text><rect x=\"620\" y=\"228\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"686\" y=\"250\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"686\" y=\"253\">P5</tspan></text><line x1=\"94\" y1=\"110\" x2=\"242\" y2=\"110\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" marker-end=\"url(#s1-arr)\"/><text x=\"168\" y=\"97\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"168\" y=\"94\">Adjacent message over 24</tspan><tspan x=\"168\" y=\"106\">chars</tspan></text><line x1=\"94\" y1=\"152\" x2=\"686\" y2=\"152\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" marker-end=\"url(#s1-arr)\"/><text x=\"390\" y=\"139\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"390\" y=\"136\">Wide span message exceeding sixty four characters to exercise</tspan><tspan x=\"390\" y=\"148\">the 64 clamp</tspan></text><rect x=\"39\" y=\"174\" width=\"258\" height=\"28\" fill=\"#161616\" stroke=\"#6b6b6b\" stroke-width=\"1\"/><text x=\"168\" y=\"188\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"168\" y=\"185\">A longer note spanning two lines</tspan><tspan x=\"168\" y=\"197\">cleanly</tspan></text></svg></div>";
+  #assert cast(string) out[0..<hb9[0].n] == want_sd2;
+
+  // 9. Exact 27-char node (wrap@26), 29-char edge (wrap@28), 19-char participant (wrap@18), 33-char note (wrap@32)
+  hbw := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  #assert mm_render_svg(hbw[..], "flowchart TD\n  A[\"012345678901234567890123456\"] -->|\"01234567890123456789012345678\"| B[\"b\"]\n", "w0");
+  #assert cast(string) out[0..<hbw[0].n] == "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Flowchart diagram\" viewBox=\"0 0 256 173\" width=\"256\" height=\"173\"><defs><marker id=\"w0-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"w0-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><path d=\"M128 70 C128 94,128 94,128 118\" fill=\"none\" stroke=\"#8a8a8a\" stroke-width=\"1.2\" marker-end=\"url(#w0-arr)\"/><g class=\"mm-node\"><rect x=\"24\" y=\"24\" width=\"208\" height=\"46\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"128\" y=\"47\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"128\" y=\"43\">01234567890123456789012345</tspan><tspan x=\"128\" y=\"58\">6</tspan></text></g><g class=\"mm-node\"><rect x=\"76\" y=\"118\" width=\"104\" height=\"31\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"128\" y=\"133\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"11\"><tspan x=\"128\" y=\"136\">b</tspan></text></g><rect x=\"38\" y=\"74\" width=\"180\" height=\"32\" fill=\"#0a0a0a\" stroke=\"#2a2a2a\" stroke-width=\"1\"/><text x=\"128\" y=\"90\" text-anchor=\"middle\" fill=\"#b8b8b8\" font-size=\"10\"><tspan x=\"128\" y=\"87\">0123456789012345678901234567</tspan><tspan x=\"128\" y=\"100\">8</tspan></text></svg></div>";
+  hbs := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  #assert mm_render_svg(hbs[..], "sequenceDiagram\n  participant A as \"0123456789012345678\"\n  participant B\n  A->>B: x\n  Note over A,B: \"012345678901234567890123456789012\"\n", "s2");
+  #assert cast(string) out[0..<hbs[0].n] == "<div class=\"bk-mermaid-wrap\"><svg class=\"bk-mermaid\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"Sequence diagram\" viewBox=\"0 0 336 250\" width=\"336\" height=\"250\"><defs><marker id=\"s2-arr\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 1.5 L9 5 L0 8.5 Z\" fill=\"#c8c8c8\"/></marker><marker id=\"s2-x\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M2 2 L8 8 M8 2 L2 8\" stroke=\"#fff\" stroke-width=\"1.6\"/></marker></defs><line x1=\"94\" y1=\"64\" x2=\"94\" y2=\"186\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"28\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"94\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"94\" y=\"39\">012345678901234567</tspan><tspan x=\"94\" y=\"52\">8</tspan></text><rect x=\"28\" y=\"186\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"94\" y=\"208\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"94\" y=\"205\">012345678901234567</tspan><tspan x=\"94\" y=\"218\">8</tspan></text><line x1=\"242\" y1=\"64\" x2=\"242\" y2=\"186\" stroke=\"#2a2a2a\" stroke-dasharray=\"4 4\" stroke-width=\"1\"/><rect x=\"176\" y=\"20\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"242\" y=\"42\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"242\" y=\"45\">B</tspan></text><rect x=\"176\" y=\"186\" width=\"132\" height=\"44\" fill=\"#141414\" stroke=\"#6b6b6b\" stroke-width=\"1.1\"/><text x=\"242\" y=\"208\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"242\" y=\"211\">B</tspan></text><line x1=\"94\" y1=\"110\" x2=\"242\" y2=\"110\" stroke=\"#c8c8c8\" stroke-width=\"1.2\" marker-end=\"url(#s2-arr)\"/><text x=\"168\" y=\"97\" text-anchor=\"middle\" fill=\"#e6e6e6\" font-size=\"10\"><tspan x=\"168\" y=\"100\">x</tspan></text><rect x=\"39\" y=\"132\" width=\"258\" height=\"28\" fill=\"#161616\" stroke=\"#6b6b6b\" stroke-width=\"1\"/><text x=\"168\" y=\"146\" text-anchor=\"middle\" fill=\"#f2f2f2\" font-size=\"10\"><tspan x=\"168\" y=\"143\">01234567890123456789012345678901</tspan><tspan x=\"168\" y=\"155\">2</tspan></text></svg></div>";
+}
+
+#test "mm_render_svg handles unsupported syntax, capacity overflows, and tight-buffer rollback" {
+  out: [65536] u8;
+  hb_bad := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  ht_put(hb_bad[..], "keep");
+  #assert !mm_render_svg(hb_bad[..], "pie title Pets\n  \"Dogs\" : 386\n", "x");
+  #assert !mm_render_svg(hb_bad[..], "flowchart XX\n  A --> B\n", "x");
+  #assert !mm_render_svg(hb_bad[..], "flowchart TD\n", "x");
+  #assert !mm_render_svg(hb_bad[..], "sequenceDiagram\n", "x");
+  #assert hb_bad[0].n == 4 && !hb_bad[0].overflow;
+
+  // Tight buffer overflow rolls back cleanly and returns false
+  tiny: [32] u8;
+  hb_tiny := [1] HtBuf.[HtBuf.{bytes = tiny[..]}];
+  ht_put(hb_tiny[..], "ok");
+  #assert !mm_render_svg(hb_tiny[..], "flowchart TD\n  A --> B\n", "t");
+  #assert hb_tiny[0].n == 2 && !hb_tiny[0].overflow;
+  #assert !mm_render_svg(hb_tiny[..], "sequenceDiagram\n  A->>B: hi\n", "t");
+  #assert hb_tiny[0].n == 2 && !hb_tiny[0].overflow;
+
+  // Direct mm_find_arrow exact end-of-string and bracket/quote boundaries
+  #assert mm_find_arrow("A<-->", 0).style == MM_EDGE_BIDIR && mm_find_arrow("A<-->", 0).end == 5;
+  #assert mm_find_arrow("A-.->", 0).style == MM_EDGE_DASHED && mm_find_arrow("A-.->", 0).end == 5;
+  #assert mm_find_arrow("A==>", 0).style == MM_EDGE_THICK && mm_find_arrow("A==>", 0).end == 4;
+  #assert mm_find_arrow("A-->", 0).style == MM_EDGE_SOLID && mm_find_arrow("A-->", 0).end == 4;
+  #assert mm_find_arrow("A-->|x|", 0).lbl_from == 5 && mm_find_arrow("A-->|x|", 0).end == 7;
+  #assert mm_find_arrow("A-->||", 0).end == 6 && mm_find_arrow("A-->||", 0).lbl_from == 5 && mm_find_arrow("A-->||", 0).lbl_to == 5;
+  #assert !mm_find_arrow("A--", 0).found && !mm_find_arrow("A-- ", 0).found && !mm_find_arrow("A-- unclosed", 0).found && mm_find_arrow("A-- -->", 0).start == 1 && mm_find_arrow("A-- -->", 0).end == 7;
+  ar_x := mm_find_arrow("A-- x-->", 0);
+  #assert ar_x.found && ar_x.start == 1 && ar_x.lbl_from == 4 && ar_x.lbl_to == 5 && ar_x.end == 8;
+  ar_q := mm_find_arrow("A-- \"a\"-->", 0);
+  #assert ar_q.found && ar_q.start == 1 && ar_q.lbl_from == 4 && ar_q.lbl_to == 7 && ar_q.end == 10;
+  #assert !mm_find_arrow("A[-->] B(-->) C{-->} \"-->\" ]", 0).found;
+  #assert mm_find_arrow("]A-->B", 0).found && mm_find_arrow("A[x]-->B", 0).start == 4;
+
+  // Direct parser edge cases: brackets/quotes inside labels & groups, chained edges, 1-char labels, double-bracket empty/1-char, subgraph edge cases
+  fl: [1] MmFlow;
+  fl[0].nn = 3; fl[0].overflow = true;
+  edge_src := "flowchart TB\n  A[\"x --> y & (z)\"] & B(\"p & q\") & C{\"r & s\"} -- \"a --> b\" --> D --> |x| E[e]\n  E -->|unclosed\n  X --> Y1 & Y2 --> Z\n  \"Qa\"-->Qb\n  W\n  class A foo\n  style A fill:#000\n  linkStyle 0 stroke:#fff\n  click A\n  direction LR\n  F[unclosed\n  G[[]]\n  H[a]\n  ;\n  [noid]\n  subgraph [bad]\n    S0[\"x\"]\n  end\n  subgraph S1[unclosed\n  end\n  subgraph \"Q\"\n    Q[\"q\"]\n  end\n  subgraph [[dbl]]\n  end\n  subgraph K[Title]\n  end\n";
+  #assert mm_flow_parse(fl[..], edge_src) && fl[0].ns == 5;
+  #assert mm_flow_str(fl[..], fl[0].subs[0].id) == "[bad]" && mm_flow_str(fl[..], fl[0].subs[1].id) == "S1[unclosed";
+  #assert mm_flow_str(fl[..], fl[0].subs[2].title) == "Q" && mm_flow_str(fl[..], fl[0].subs[3].id) == "[[dbl]]" && mm_flow_str(fl[..], fl[0].subs[4].title) == "Title";
+  #assert fl[0].ne == 10 && mm_flow_str(fl[..], fl[0].edges[0].label) == "a --> b" && mm_flow_str(fl[..], fl[0].edges[3].label) == "x";
+  #assert fl[0].edges[3].from == mm_flow_find_node(fl[..], "D") && fl[0].edges[3].to == mm_flow_find_node(fl[..], "E");
+  #assert fl[0].edges[7].from == mm_flow_find_node(fl[..], "Y1") && fl[0].edges[8].from == mm_flow_find_node(fl[..], "Y2") && fl[0].edges[9].to == mm_flow_find_node(fl[..], "Qb");
+  #assert mm_flow_find_node(fl[..], "W") >= 0 && mm_flow_find_node(fl[..], ";") == -1;
+  // Node inside subgraph Q (sub == 2) keeps alias_sub == -1; sub == 0 node S0 keeps sub == 0 when re-added to sub 1
+  q_idx := mm_flow_find_node(fl[..], "Q");
+  #assert q_idx >= 0 && fl[0].nodes[q_idx].alias_sub == -1 && fl[0].nodes[q_idx].sub == 2;
+  #assert mm_flow_add_node(fl[..], "Q", "q", MM_SHAPE_RECT, 0) == q_idx && fl[0].nodes[q_idx].sub == 2;
+  s0_idx := mm_flow_find_node(fl[..], "S0");
+  #assert mm_flow_add_node(fl[..], "S0", "", MM_SHAPE_RECT, 1) == s0_idx && fl[0].nodes[s0_idx].sub == 0;
+  #assert mm_flow_add_node(fl[..], "", "x", MM_SHAPE_RECT, -1) == -1;
+  f_idx := mm_flow_find_node(fl[..], "F");
+  #assert mm_flow_str(fl[..], fl[0].nodes[f_idx].label) == "F";
+  #assert mm_flow_add_node(fl[..], "F", "z", MM_SHAPE_ROUND, 0) == f_idx && mm_flow_str(fl[..], fl[0].nodes[f_idx].label) == "z" && fl[0].nodes[f_idx].shape == MM_SHAPE_ROUND && fl[0].nodes[f_idx].sub == 0;
+  // Direct mm_flow_parse_node boundaries: ";", "[noid]", bare shape, double-bracket exact checks
+  #assert mm_flow_parse_node(fl[..], ";", -1) == -1 && mm_flow_parse_node(fl[..], "[noid]", -1) == -1;
+  bare_i := mm_flow_parse_node(fl[..], "BareNode", -1);
+  #assert bare_i >= 0 && fl[0].nodes[bare_i].shape == MM_SHAPE_RECT;
+  g1_i := mm_flow_parse_node(fl[..], "G1[[]]", -1);
+  g2_i := mm_flow_parse_node(fl[..], "G2[[a]]", -1);
+  g3_i := mm_flow_parse_node(fl[..], "G3[[a]", -1);
+  g4_i := mm_flow_parse_node(fl[..], "G4[a]]", -1);
+  #assert mm_flow_str(fl[..], fl[0].nodes[g1_i].label) == "G1" && mm_flow_str(fl[..], fl[0].nodes[g2_i].label) == "a";
+  #assert mm_flow_str(fl[..], fl[0].nodes[g3_i].label) == "[a" && mm_flow_str(fl[..], fl[0].nodes[g4_i].label) == "a]";
+  // mm_flow_parse_group cap + quote/bracket/depth protection + exact IDs
+  gids: [2] int;
+  #assert mm_flow_parse_group(fl[..], "A[x] &  & B{y} & C(z) & ]", -1, gids[..]) == 2 && gids[0] == mm_flow_find_node(fl[..], "A") && gids[1] == mm_flow_find_node(fl[..], "B");
+  g6: [6] int;
+  #assert mm_flow_parse_group(fl[..], "&P0", -1, g6[..]) == 1 && g6[0] == mm_flow_find_node(fl[..], "P0");
+  #assert mm_flow_parse_group(fl[..], "P1\"a&b\" & Q1[c&d] & R1(e&f) & S9{g&h}&T9 & ]U9", -1, g6[..]) == 6;
+  #assert g6[0] == mm_flow_find_node(fl[..], "P1\"a&b\"") && g6[1] == mm_flow_find_node(fl[..], "Q1") && g6[2] == mm_flow_find_node(fl[..], "R1") && g6[3] == mm_flow_find_node(fl[..], "S9") && g6[4] == mm_flow_find_node(fl[..], "T9") && g6[5] == mm_flow_find_node(fl[..], "]U9");
+  #assert mm_flow_parse_group(fl[..], "]V1 & V2", -1, g6[..]) == 2 && g6[1] == mm_flow_find_node(fl[..], "V2");
+  // Alias at node 0 + node inside sub 0 matching sub 1 id + <br/> empty-wrap measure
+  fa: [1] MmFlow;
+  #assert mm_flow_parse(fa[..], "flowchart TD\n  S0 --> N[\"<br/>\"]\n  subgraph S0\n    S1\n  end\n  subgraph S1\n    X\n  end\n");
+  #assert fa[0].nodes[0].alias_sub == 0 && fa[0].nodes[2].alias_sub == -1 && fa[0].nodes[2].sub == 0;
+  mm_flow_measure(fa[..]);
+  #assert fa[0].nodes[1].h == 31;
+  // Back-edge at edge 0 (non-subgraph) + self-loop adx == ady == 0
+  hb_sl := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  #assert mm_render_svg(hb_sl[..], "flowchart TD\n  B --> A\n  A --> B\n  C --> A\n  A --> A\n", "sl");
+  sl_s := cast(string) out[0..<hb_sl[0].n];
+  #assert mm_has(sl_s, "C112 158,112 158,76 134") && mm_has(sl_s, "M76 134 C112 118,112 118,76 103");
+  // Cluster layout edge cases: Out(0)->N1b(member 1), internal N2(member 2)->N1(member 0), LR 2-node same-rank stack, alias to sub 1, ungrouped node at i>0
+  fl_lr: [1] MmFlow;
+  #assert mm_flow_parse(fl_lr[..], "flowchart LR\n  Out\n  subgraph S0\n    N1\n    N1b\n    N2\n    N2 --> N1\n  end\n  subgraph S1\n    M1\n  end\n  Out --> N1b\n  S0 --> S1\n  S1 --> Tail\n");
+  _ = mm_flow_layout(fl_lr[..]);
+  // N1b and N2 are both rank 0 (Out->N1b is external, not N1->N1b) stacked vertically; N2(member 2)->N1(member 0) places N1 below both; Tail is ungrouped node i>0 right of S1
+  n1_i := mm_flow_find_node(fl_lr[..], "N1");
+  n1b_i := mm_flow_find_node(fl_lr[..], "N1b");
+  n2_i := mm_flow_find_node(fl_lr[..], "N2");
+  tail_i := mm_flow_find_node(fl_lr[..], "Tail");
+  #assert fl_lr[0].nodes[n2_i].y < fl_lr[0].nodes[n1_i].y && fl_lr[0].nodes[n1b_i].y < fl_lr[0].nodes[n1_i].y && fl_lr[0].nodes[n1b_i].x == fl_lr[0].nodes[n2_i].x && fl_lr[0].nodes[n1b_i].y != fl_lr[0].nodes[n2_i].y;
+  #assert fl_lr[0].nodes[tail_i].x > fl_lr[0].subs[1].x;
+  // Alias to sub 1 (alias_sub == 1) + outgoing edge from alias uses s.h + same-y self-loop in TD and BT
+  fl_td: [1] MmFlow;
+  #assert mm_flow_parse(fl_td[..], "flowchart TD\n  subgraph S0\n    A\n  end\n  subgraph S1\n    B\n  end\n  subgraph S2\n    C\n  end\n  S0 --> S1\n  S0 --> S2\n  A --> A\n");
+  _ = mm_flow_layout(fl_td[..]);
+  #assert fl_td[0].nodes[mm_flow_find_node(fl_td[..], "S0")].h == fl_td[0].subs[0].h && !fl_td[0].edges[2].back;
+  hb_td2 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  #assert mm_render_svg(hb_td2[..], "flowchart TD\n  subgraph S0\n    A\n  end\n  subgraph S1\n    B\n  end\n  subgraph S2\n    C\n  end\n  S0 --> S1\n  S0 --> S2\n  A --> A\n", "t2");
+  #assert mm_has(cast(string) out[0..<hb_td2[0].n], "M172 113 C");
+  fl_bt: [1] MmFlow;
+  #assert mm_flow_parse(fl_bt[..], "flowchart BT\n  subgraph S0\n    A\n  end\n  subgraph S1\n    B\n  end\n  S0 --> S1\n  A --> A\n");
+  _ = mm_flow_layout(fl_bt[..]);
+  #assert !fl_bt[0].edges[1].back;
+  // mm_flow_add_edge rejects negative endpoints and sets overflow at cap
+  ne0 := fl[0].ne;
+  mm_flow_add_edge(fl[..], -1, 0, MM_EDGE_SOLID, "");
+  mm_flow_add_edge(fl[..], 0, -1, MM_EDGE_SOLID, "");
+  #assert fl[0].ne == ne0;
+  fl[0].nn = MM_MAX_NODES;
+  #assert mm_flow_add_node(fl[..], "Z99", "z", MM_SHAPE_RECT, -1) == -1 && fl[0].overflow;
+  fl[0].overflow = false; fl[0].ne = MM_MAX_EDGES;
+  mm_flow_add_edge(fl[..], 0, 1, MM_EDGE_SOLID, "");
+  #assert fl[0].overflow;
+  // Pool overflow in mm_flow_pool sets fl[0].overflow
+  fl[0].overflow = false; fl[0].tn = MM_TEXT_CAP;
+  _ = mm_flow_pool(fl[..], "x");
+  #assert fl[0].overflow;
+  // Subgraph cap overflow (17 subgraphs -> refused) and 65-node overflow -> mm_flow_parse returns false
+  sub17: [512] u8; s17 := 0;
+  for c: "flowchart TD\n" { sub17[s17] = c; s17 += 1; }
+  for k: 0..<17 { for c: "subgraph S\nend\n" { sub17[s17] = c; s17 += 1; } }
+  #assert !mm_flow_parse(fl[..], cast(string) sub17[0..<s17]) && fl[0].overflow;
+  #assert !mm_flow_parse(fl[..], "A --> B\n");
+
+  // Sequence parser edge cases: pre-dirty reset, 1-char IDs/aliases/else/notes, arrows at exact end of head, no-header, 0-part, 0-event, 1-part/1-ev, overflow, nested 17 frames + stray end
+  sq: [1] MmSeq;
+  sq[0].np = 3; sq[0].overflow = true;
+  #assert !mm_seq_parse(sq[..], "A->>B: x\n");
+  #assert !mm_seq_parse(sq[..], "sequenceDiagram\n  participant A\n");
+  #assert !mm_seq_parse(sq[..], "sequenceDiagram\n  loop L\n  end\n");
+  #assert mm_seq_parse(sq[..], "sequenceDiagram\n  A->>A: self\n") && sq[0].np == 1 && sq[0].ne == 1;
+  seq_edge := "sequenceDiagram\n  participant A as B\n  :A->>B: bad\n  nocolon\n  A B: noarrow\n  ->>A->>B: nofrom\n  A--: bad\n  Z1--x: no_to\n  Z2-->>: no_to\n  Z3->>: no_to\n  Z4-->: no_to\n  Z5-x: no_to\n  Z6->: no_to\n  Note bad\n  Note :empty\n  Note over ,A: bad\n  Note over A,: bad\n  Note A:n\n  Note right of A:m\n  alt x\n    A->>B:1\n  else y\n    B->>A:2\n  end\n  end\n";
+  #assert mm_seq_parse(sq[..], seq_edge) && sq[0].np == 2 && sq[0].ne == 8 && mm_seq_str(sq[..], sq[0].parts[0].label) == "B";
+  #assert mm_seq_str(sq[..], sq[0].evs[0].label) == "n" && mm_seq_str(sq[..], sq[0].evs[1].label) == "m";
+  #assert mm_seq_str(sq[..], sq[0].evs[3].label) == "1" && mm_seq_str(sq[..], sq[0].evs[4].label) == "y";
+  hb_el := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  #assert mm_render_svg(hb_el[..], "sequenceDiagram\n  alt a\n    A->>B: 1\n  else x\n    B->>A: 2\n  end\n", "e1") && mm_has(cast(string) out[0..<hb_el[0].n], "[else x]");
+  // Render sequence with 17 nested loops + stray end (hits MM_MAX_FRAMES cap and f_sp == 0 guard cleanly)
+  f17: [512] u8; fn17 := 0;
+  for c: "sequenceDiagram\n  A->>B: x\n" { f17[fn17] = c; fn17 += 1; }
+  for k: 0..<17 { for c: "loop L\n" { f17[fn17] = c; fn17 += 1; } }
+  for k: 0..<18 { for c: "end\n" { f17[fn17] = c; fn17 += 1; } }
+  hbf := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  #assert mm_render_svg(hbf[..], cast(string) f17[0..<fn17], "f17") && !hbf[0].overflow;
+  // Direct capacity & pool overflow checks for MmSeq
+  #assert mm_seq_part(sq[..], "", "x") == -1;
+  #assert mm_seq_part(sq[..], "A", "Z") == 0 && mm_seq_str(sq[..], sq[0].parts[0].label) == "Z";
+  sq[0].np = MM_MAX_PARTS;
+  #assert mm_seq_part(sq[..], "Over", "") == -1 && sq[0].overflow;
+  sq[0].overflow = false; sq[0].ne = MM_MAX_EVENTS;
+  mm_seq_push_ev(sq[..], MmSeqEv.{});
+  #assert sq[0].overflow;
+  sq[0].overflow = false; sq[0].tn = MM_TEXT_CAP;
+  _ = mm_seq_pool(sq[..], "x");
+  #assert sq[0].overflow;
+  p17: [512] u8; pn17 := 0;
+  for c: "sequenceDiagram\n" { p17[pn17] = c; pn17 += 1; }
+  for k: 0..<16 { for c: "participant P" { p17[pn17] = c; pn17 += 1; } p17[pn17] = cast(u8) ('a' + k); pn17 += 1; p17[pn17] = '\n'; pn17 += 1; }
+  for c: "Pa->>Pb: ok\nPa->>NewP: x\n" { p17[pn17] = c; pn17 += 1; }
+  #assert !mm_seq_parse(sq[..], cast(string) p17[0..<pn17]) && sq[0].overflow && sq[0].ne == 1;
+}

@@ -14,6 +14,8 @@ BkWork :: struct {
   raw: [BK_RAW_CAP] u8;
   out: [BK_OUT_CAP] u8;
   toc: [1] BkToc;
+  meta: [1] BkBookMeta;
+  hs: [1] BkHeadings;
   doc: [1] MdDoc;
   tree: [1] Tree;
 }
@@ -30,8 +32,8 @@ bk_emit_mono_css :: (out_dir: string) -> bool {
   return fs_write(css_path, cast(string) css_buf[0..<n]);
 }
 
-// Streams one chapter HTML document to disk (head + block-chunked Markdown HTML + foot) plus raw index.md.
-bk_emit_book_chapter :: (w: [] BkWork, book_idx: int, active: int, out_dir: string, md_src: string, mid_href: string, mid_label: string) -> bool {
+// Streams one chapter HTML document to disk (head + meta bar + On-this-page TOC + block-chunked Markdown HTML + foot) plus raw index.md.
+bk_emit_book_chapter :: (w: [] BkWork, book_idx: int, active: int, meta_idx: int, out_dir: string, md_src: string, mid_href: string, mid_label: string) -> bool {
   if !fs_mkdir(out_dir) { return false; }
   slugs := BK_SLUGS;
   book_slug := slugs[book_idx];
@@ -40,7 +42,8 @@ bk_emit_book_chapter :: (w: [] BkWork, book_idx: int, active: int, out_dir: stri
   md_path := fs_join(out_dir, "index.md", p2[..]);
   if html_path == "" || md_path == "" { return false; }
 
-  hn := bk_write_chapter_head_nav(book_idx, w[0].toc[..], active, mid_href, mid_label, w[0].out[..]);
+  _ = bk_collect_h2(w[0].hs[..], md_src, w[0].doc[..]);
+  hn := bk_write_chapter_head_ex(book_idx, w[0].toc[..], active, mid_href, mid_label, w[0].meta[..], meta_idx, w[0].hs[..], w[0].out[..]);
   if hn <= 0 || !fs_write(html_path, cast(string) w[0].out[0..<hn]) { return false; }
 
   pos := 0;
@@ -70,15 +73,21 @@ bk_emit_book_chapter :: (w: [] BkWork, book_idx: int, active: int, out_dir: stri
   return true;
 }
 
-// Discovers and renders all 9 repository books under `out_dir` with 0 KB JS / 0 KB Wasm.
+// Discovers and renders all 9 repository books under `out_dir` with 0 KB JS / 0 KB Wasm, plus `search.json`.
 // Returns total chapters rendered, or -1 on error.
 bk_emit_books :: (out_dir: string, mid_href: string, mid_label: string) -> int {
   if out_dir.count == 0 || !bk_emit_mono_css(out_dir) { return -1; }
   w: [1] BkWork;
   slugs := BK_SLUGS;
   dirs := BK_DIRS;
+  titles := BK_TITLES;
   counts: [BK_BOOK_COUNT] int;
   total_rendered := 0;
+
+  sj_buf: [FS_PATH_MAX] u8;
+  search_path := fs_join(out_dir, "search.json", sj_buf[..]);
+  if search_path == "" || !fs_write(search_path, "[") { return -1; }
+  search_first := true;
 
   for bi: 0..<BK_BOOK_COUNT {
     book_slug := slugs[bi];
@@ -93,6 +102,17 @@ bk_emit_books :: (out_dir: string, mid_href: string, mid_label: string) -> int {
       tool_err("books-emit: TOC capacity overflow on ");
       tool_errln(sum_path);
       return -1;
+    }
+
+    // Load chapters.json once per book for status / profile / qualified_targets / adopted_by badges.
+    w[0].meta[0].n = 0;
+    w[0].meta[0].ni = 0;
+    w[0].meta[0].pn = 0;
+    mp: [FS_PATH_MAX] u8;
+    meta_path := fs_join(book_dir, "chapters.json", mp[..]);
+    if meta_path != "" && fs_kind(meta_path) == FS_FILE {
+      mn := fs_read(meta_path, w[0].raw[..]);
+      if mn > 0 { _ = bk_parse_chapters_json(w[0].meta[..], cast(string) w[0].raw[0..<mn]); }
     }
 
     bdir_buf: [FS_PATH_MAX] u8;
@@ -121,7 +141,14 @@ bk_emit_books :: (out_dir: string, mid_href: string, mid_label: string) -> int {
       } else {
         md_text = "# Planned Chapter\n\nThis chapter is listed in `SUMMARY.md` and has not been drafted yet.\n";
       }
-      if !bk_emit_book_chapter(w[..], bi, ei, ch_out, md_text, mid_href, mid_label) { return -1; }
+      meta_idx := bk_meta_find(w[0].meta[..], file);
+      if !bk_emit_book_chapter(w[..], bi, ei, meta_idx, ch_out, md_text, mid_href, mid_label) { return -1; }
+
+      ch_status := ifx meta_idx >= 0 then bk_meta_str(w[0].meta[..], w[0].meta[0].entries[meta_idx].status) else bk_entry_note(w[0].toc[..], ei);
+      sjn := bk_write_search_item(w[0].out[..], 0, search_first, book_slug, bk_entry_title(w[0].toc[..], ei), bk_entry_href(w[0].toc[..], ei), ch_status, w[0].hs[..]);
+      if sjn <= 0 || !fs_append(search_path, cast(string) w[0].out[0..<sjn]) { return -1; }
+      search_first = false;
+
       rendered += 1;
     }
 
@@ -131,13 +158,21 @@ bk_emit_books :: (out_dir: string, mid_href: string, mid_label: string) -> int {
       if rm_path != "" && fs_kind(rm_path) == FS_FILE {
         rn := fs_read(rm_path, w[0].raw[..]);
         if rn >= 0 {
-          if !bk_emit_book_chapter(w[..], bi, -1, book_out, cast(string) w[0].raw[0..<rn], mid_href, mid_label) { return -1; }
+          if !bk_emit_book_chapter(w[..], bi, -1, -1, book_out, cast(string) w[0].raw[0..<rn], mid_href, mid_label) { return -1; }
+          ubuf: [128] u8;
+          un := bk_copy_str(ubuf[..], 0, "/books/");
+          un = bk_copy_str(ubuf[..], un, book_slug);
+          sjn := bk_write_search_item(w[0].out[..], 0, search_first, book_slug, titles[bi], cast(string) ubuf[0..<un], "", w[0].hs[..]);
+          if sjn <= 0 || !fs_append(search_path, cast(string) w[0].out[0..<sjn]) { return -1; }
+          search_first = false;
         }
       }
     }
     counts[bi] = rendered;
     total_rendered += rendered;
   }
+
+  if !fs_append(search_path, "]\n") { return -1; }
 
   ih_buf: [FS_PATH_MAX] u8; im_buf: [FS_PATH_MAX] u8;
   idx_html := fs_join(out_dir, "index.html", ih_buf[..]);

@@ -123,9 +123,12 @@ tool_main :: ()->int #export_c #effects(all) {
     // /books static SSR library (0 KB JS / 0 KB Wasm, built by apps/openagents-web/books-build.coax into build/books/)
     at=src_page(port,"/books",b,n[..]);
     books_page:=ifx at>0 then cast(string)b[at..<n[0]] else "";
-    failed+=src_check(at>0 && src_has(books_page,"data-coax-ssr=\"1\"") && src_has(books_page,"href=\"/books/coax\"") && !src_has(books_page,"<script"),"/books serves the 0-KB-JS books catalog");
+    failed+=src_check(at>0 && src_has(books_page,"data-coax-ssr=\"1\"") && src_has(books_page,"href=\"/books/coax\"") && src_has(books_page,"href=\"/books/search.json\"") && !src_has(books_page,"<script"),"/books serves the 0-KB-JS books catalog with search index link");
     at=src_page(port,"/books/mono.css",b,n[..]);
     failed+=src_check(at>0 && src_has(cast(string)b[0..<at],"text/css") && src_has(cast(string)b[at..<n[0]],".bk-nav"),"/books/mono.css serves the shared stylesheet");
+    at=src_page(port,"/books/search.json",b,n[..]);
+    books_sj:=ifx at>0 then cast(string)b[at..<n[0]] else "";
+    failed+=src_check(at>0 && src_has(cast(string)b[0..<at],"application/json") && ws_starts(books_sj,"[{\"b\":") && src_has(books_sj,"/books/coax/ch01-getting-started") && src_has(books_sj,"/books/claude-code"),"/books/search.json serves the cross-book static search index");
     at=src_page(port,"/books/coax",b,n[..]);
     coax_book:=ifx at>0 then cast(string)b[at..<n[0]] else "";
     failed+=src_check(at>0 && src_has(coax_book,"The Coax Programming Language") && src_has(coax_book,"href=\"/books/coax/ch01-getting-started\"") && !src_has(coax_book,"<script"),"/books/coax serves The Coax Programming Language (0 KB JS)");
