@@ -1,4 +1,4 @@
-// Firm reason: 6 (XCUITest suite launching the native pure-black OpenAgents Cloud iOS app on Simulator and verifying Cloud shell, Account, Wallet, Environments & Projects, Usage, Sidebar, and Composer).
+// Firm reason: 6 (XCUITest suite launching the native pure-black OpenAgents Cloud iOS app on Simulator and verifying strict signed-out Login Gate, Email sign-in flow, signed-in Cloud shell, Account, Wallet, Environments & Projects, Usage, Sidebar, Composer, and Sign Out back to Login Gate).
 import XCTest
 
 final class OpenAgentsUITests: XCTestCase {
@@ -11,18 +11,52 @@ final class OpenAgentsUITests: XCTestCase {
     }
 
     @MainActor
-    func testPureBlackOpenAgentsCloudShellAccountWalletEnvironmentsUsageAndComposer() {
+    func testSignedOutShowsStrictLoginGateOnly() {
         let app = XCUIApplication()
         app.launchArguments = ["-OAResetStateForTests"]
         app.launch()
 
-        // Top navigation bar & Cloud sign-in onboarding appear immediately.
+        // Signed-out root shows ONLY the full-screen Login Gate (Google, Apple, Email).
+        let googleBtn = app.buttons["login.google"]
+        let appleBtn = app.buttons["login.apple"]
+        let emailBtn = app.buttons["login.email"]
+        XCTAssertTrue(googleBtn.waitForExistence(timeout: 15))
+        XCTAssertTrue(appleBtn.exists)
+        XCTAssertTrue(emailBtn.exists)
+
+        // Zero GitHub login anywhere.
+        XCTAssertFalse(app.buttons["Continue with GitHub"].exists)
+
+        // Strict auth gate: ZERO chat, sidebar, composer, or usage HUD visible before sign-in.
+        XCTAssertFalse(app.buttons["nav.sidebar"].exists)
+        XCTAssertFalse(app.buttons["nav.computerPill"].exists)
+        XCTAssertFalse(app.buttons["nav.newChat"].exists)
+        XCTAssertFalse(app.buttons["chat.usageBar"].exists)
+        XCTAssertFalse(app.buttons["chat.fullAuto"].exists)
+        XCTAssertFalse(app.textViews["chat.composer"].exists)
+        XCTAssertFalse(app.textFields["chat.composer"].exists)
+
+        // Personal or work email opens the clean pure-black email code sign-in sheet and closes cleanly.
+        emailBtn.tap()
+        XCTAssertTrue(app.textFields["login.email.input"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["login.email.send"].exists)
+        app.buttons["login.email.close"].tap()
+        XCTAssertTrue(googleBtn.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testSignedInPureBlackOpenAgentsCloudShellAndSignOutReturnsToLoginGate() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-OAResetStateForTests", "-OADemoPreview", "1"]
+        app.launch()
+
+        // Signed-in Cloud workspace renders Metal GPU top bar, Usage HUD, and Composer.
         let sidebarButton = app.buttons["nav.sidebar"]
         XCTAssertTrue(sidebarButton.waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["nav.computerPill"].exists)
         XCTAssertTrue(app.buttons["nav.workspace"].exists)
         XCTAssertTrue(app.buttons["nav.newChat"].exists)
-        XCTAssertTrue(app.buttons["chat.signIn"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["login.google"].exists)
 
         // Composer exposes Attachment (+), Model, Effort, Execution Target, Live Voice, Dictation, Full Auto & Usage HUD.
         XCTAssertTrue(app.buttons["chat.attachButton"].exists)
@@ -62,17 +96,25 @@ final class OpenAgentsUITests: XCTestCase {
             )
         }
 
-        // Open Account sheet from sidebar and dismiss cleanly.
+        // Verify composer accepts text natively after closing sidebar via Account -> Done.
         app.buttons["sidebar.account"].tap()
         XCTAssertTrue(app.buttons["account.done"].waitForExistence(timeout: 5))
         app.buttons["account.done"].tap()
         XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
 
-        // Verify composer accepts text natively.
         let composer = composerElement(app)
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         composer.tap()
         composer.typeText("/cloud")
         XCTAssertTrue(app.buttons["chat.send"].isEnabled)
+
+        // Signing out returns immediately to the strict full-screen Login Gate.
+        sidebarButton.tap()
+        XCTAssertTrue(app.buttons["sidebar.account"].waitForExistence(timeout: 5))
+        app.buttons["sidebar.account"].tap()
+        XCTAssertTrue(app.buttons["account.logout"].waitForExistence(timeout: 5))
+        app.buttons["account.logout"].tap()
+        XCTAssertTrue(app.buttons["login.google"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["nav.sidebar"].exists)
     }
 }

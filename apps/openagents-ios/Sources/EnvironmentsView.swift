@@ -14,10 +14,10 @@ struct EnvironmentsView: View {
                 if !account.isLoggedIn {
                     Section {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Sign in to OpenAgents Cloud")
+                            Text("Log in to OpenAgents Cloud")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(OATheme.textPrimary)
-                            Text("Sign in to choose execution targets, browse enrolled computers, and attach Cloud Projects.")
+                            Text("Log in to choose execution targets, browse enrolled computers, and attach Cloud Projects.")
                                 .font(.system(size: 13))
                                 .foregroundStyle(OATheme.textSecondary)
                         }
@@ -116,7 +116,7 @@ struct EnvironmentsView: View {
                     Text("No enrolled computers yet")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(OATheme.textPrimary)
-                    Text("Sign into OpenAgents Desktop on your Mac or run `openagents-cli` on Linux to enroll a computer for $0 local execution through OpenAgents Cloud.")
+                    Text("Log in to OpenAgents Desktop on your Mac or run `openagents-cli` on Linux to enroll a computer for $0 local execution through OpenAgents Cloud.")
                         .font(.system(size: 13))
                         .foregroundStyle(OATheme.textSecondary)
                 }

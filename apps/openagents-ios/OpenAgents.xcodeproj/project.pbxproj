@@ -25,6 +25,7 @@
 		7AD3562212739D9331D9535D /* AppAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B5B40FB5A03D1054E56FC0E /* AppAccount.swift */; };
 		860FDD09B1FAC4A337F20EE0 /* gpu-carrier.c in Sources */ = {isa = PBXBuildFile; fileRef = B54FA4F3CD334853AD93403E /* gpu-carrier.c */; settings = {COMPILER_FLAGS = "-IGenerated -I../shared/host/linux -I../shared/host/apple -Wno-unused-function"; }; };
 		8AC17B8699E0E506A46A2B2E /* UsageDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DC268B267684D5B3F9F304A /* UsageDashboardView.swift */; };
+		9022823ECA491471BD5817E1 /* LoginGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0BF1455EB2A89C3DDD38FDE /* LoginGateView.swift */; };
 		93EB5486574ED467A074D84B /* KitPasskey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB401C7AEDFAADE5726A7289 /* KitPasskey.swift */; };
 		9ACF93FBF39B83D0E6C83A4E /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2055820A908A3ED4ED7700E /* RootView.swift */; };
 		9D277FECD7983C700B492B16 /* OpenAgentsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D220059D60690578918F03F6 /* OpenAgentsUITests.swift */; };
@@ -93,6 +94,7 @@
 		D93485E80682BE91725B68FB /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
 		DA40AEA4A96E6DF00B9AEB74 /* SparkWallet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkWallet.swift; sourceTree = "<group>"; };
 		DB2FEE5DB88D6342EC654DE0 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+		E0BF1455EB2A89C3DDD38FDE /* LoginGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginGateView.swift; sourceTree = "<group>"; };
 		E7FEFA66D7647AB48D8FD7CE /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
 		EA582415B707553CC69B42D0 /* VoiceDictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceDictationController.swift; sourceTree = "<group>"; };
 		EF75972EB91F08AA7258E690 /* TurnNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnNotifications.swift; sourceTree = "<group>"; };
@@ -200,6 +202,7 @@
 				AA438CE337B8EACD86AEBCE9 /* CloudCore.swift */,
 				04ADAC960D11E31717820452 /* EnvironmentsView.swift */,
 				416EC9E05EB2CFA4018DC3FD /* GpuRootViewController.swift */,
+				E0BF1455EB2A89C3DDD38FDE /* LoginGateView.swift */,
 				72E06FF982F973DDE2F2AA7E /* MobileAccountController.swift */,
 				618389525D4ABD68D46E4F1A /* MobileCloudChat.swift */,
 				7287092EC54ECECF2E2805B9 /* MobileWalletController.swift */,
@@ -380,6 +383,7 @@
 				4F98D1706FADE33ADACD9EF8 /* KitAccess.swift in Sources */,
 				7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */,
 				93EB5486574ED467A074D84B /* KitPasskey.swift in Sources */,
+				9022823ECA491471BD5817E1 /* LoginGateView.swift in Sources */,
 				D2336215C40E814FC1DD3C62 /* MobileAccountController.swift in Sources */,
 				2235B2825A9E8635D08276EA /* MobileCloudChat.swift in Sources */,
 				52B07FEA6249CA52F8B1B3AE /* MobileWalletController.swift in Sources */,
@@ -545,7 +549,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1432;
+				CURRENT_PROJECT_VERSION = 1433;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -653,7 +657,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1432;
+				CURRENT_PROJECT_VERSION = 1433;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

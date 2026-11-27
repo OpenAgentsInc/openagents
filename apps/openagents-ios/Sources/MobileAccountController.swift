@@ -52,6 +52,11 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         super.init()
         self.isLoggedIn = resolvedAuth.loggedIn
         self.accountID = resolvedAuth.tokens?.account ?? ""
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "OADemoPreview") {
+            enableDebugDemoSignedIn()
+        }
+        #endif
         self.account.changed = { [weak self] in
             guard let self else { return }
             let nowLoggedIn = self.auth.loggedIn
@@ -69,7 +74,7 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
     }
 
     var sidebarLabel: String {
-        if !isLoggedIn { return "Sign In & Cloud" }
+        if !isLoggedIn { return "Log in & Cloud" }
         if !email.isEmpty { return email }
         return "Account · Cloud"
     }
@@ -184,7 +189,7 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
             awaitingEmailCode = false
             pendingEmailAddress = ""
             pendingOrgs = []
-            statusMessage = "Signed in."
+            statusMessage = "Logged in."
             await refresh()
             onAuthChanged?(true)
         case .said(let msg):
@@ -207,7 +212,7 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         switch ans {
         case .done:
             pendingOrgs = []
-            statusMessage = "Signed in."
+            statusMessage = "Logged in."
             await refresh()
             onAuthChanged?(true)
         case .said(let msg):
@@ -230,7 +235,7 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         switch ans {
         case .done:
             pendingOrgs = []
-            statusMessage = "Signed in."
+            statusMessage = "Logged in."
             await refresh()
             onAuthChanged?(true)
         case .said(let msg):
@@ -248,7 +253,7 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
             let ask = PasskeyAsk(anchor: keyWindow())
             let assertion = try await ask.assert(challenge)
             _ = try await auth.passkeyLogin(challenge, assertion)
-            statusMessage = "Signed in with Passkey."
+            statusMessage = "Logged in with Passkey."
             await refresh()
             onAuthChanged?(true)
         } catch {
@@ -278,6 +283,17 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         }
     }
 
+    #if DEBUG
+    func enableDebugDemoSignedIn() {
+        isLoggedIn = true
+        email = "demo@openagents.com"
+        accountID = "acct_demo_preview"
+        creditMsat = 25_000_000
+        promoMicros = 5_000_000
+        promoExpiresAt = "2027-02-25T00:00:00Z"
+    }
+    #endif
+
     func signInWithWorkOS(provider: String, emailHint: String = "") async {
         isBusy = true
         errorMessage = nil
@@ -285,7 +301,8 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         defer { isBusy = false }
         let cfg = await account.loadWorkOSConfig()
         guard cfg.enabled, !cfg.clientID.isEmpty else {
-            errorMessage = "OAuth sign-in is not enabled on this server."
+            let label = provider == "AppleOAuth" ? "Apple" : provider == "GoogleOAuth" ? "Google" : "OAuth"
+            errorMessage = "\(label) login is temporarily unavailable. Use Personal or work email to log in."
             return
         }
         do {
@@ -300,7 +317,7 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
             switch ans {
             case .done:
                 pendingOrgs = []
-                statusMessage = "Signed in."
+                statusMessage = "Logged in."
                 await refresh()
                 onAuthChanged?(true)
             case .said(let msg):
@@ -308,8 +325,9 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
                 errorMessage = msg
             }
         } catch {
-            if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
-                errorMessage = AppAccount.words(error)
+            let msg = AppAccount.words(error)
+            if (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin && msg != "Sign-in cancelled." {
+                errorMessage = msg
             }
         }
     }
@@ -348,7 +366,7 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
                 if let cbURL {
                     cont.resume(returning: cbURL)
                 } else {
-                    cont.resume(throwing: err ?? AppAuth.Failure.said("Sign-in cancelled."))
+                    cont.resume(throwing: err ?? AppAuth.Failure.said("Login cancelled."))
                 }
             }
             session.presentationContextProvider = self
@@ -356,7 +374,7 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
             self.webAuthSession = session
             if !session.start() {
                 self.webAuthSession = nil
-                cont.resume(throwing: AppAuth.Failure.said("Could not start sign-in session."))
+                cont.resume(throwing: AppAuth.Failure.said("Could not start login session."))
             }
         }
     }

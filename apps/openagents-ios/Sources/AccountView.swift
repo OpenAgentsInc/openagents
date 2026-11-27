@@ -73,7 +73,7 @@ struct AccountView: View {
                     }
                 }
                 Spacer()
-                Text("Signed In")
+                Text("Logged In")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.black)
                     .padding(.horizontal, 8)
@@ -165,7 +165,7 @@ struct AccountView: View {
             Button(role: .destructive) {
                 Task { await account.signOut() }
             } label: {
-                Text("Sign Out")
+                Text("Log Out")
                     .font(.system(size: 14, weight: .semibold))
                     .frame(maxWidth: .infinity)
             }
@@ -177,25 +177,6 @@ struct AccountView: View {
 
     @ViewBuilder
     private var signInSections: some View {
-        Section {
-            Button {
-                Task { await account.signInWithPasskey() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "person.badge.key.fill")
-                    Text("Sign In with Passkey")
-                        .font(.system(size: 15, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-            }
-            .disabled(account.isBusy)
-            .accessibilityIdentifier("account.passkey")
-            .listRowBackground(OATheme.elevated)
-        } footer: {
-            Text("Sign in to chat directly in OpenAgents Cloud and sync conversations across iPhone, Mac Desktop, and Web.")
-        }
-
         Section {
             TextField(text: $emailDraft, prompt: Text(verbatim: "you@example.com").foregroundStyle(OATheme.textMuted)) {
                 EmptyView()
@@ -220,7 +201,7 @@ struct AccountView: View {
                 } label: {
                     HStack {
                         if account.isBusy { ProgressView().controlSize(.small) }
-                        Text("Sign In with Password")
+                        Text("Log in with Password")
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity)
@@ -253,15 +234,16 @@ struct AccountView: View {
             }
         } header: {
             Text("Email")
+        } footer: {
+            Text("Log in to chat directly in OpenAgents Cloud and sync conversations across iPhone, Mac Desktop, and Web.")
         }
 
         if account.workosEnabled {
             Section {
-                oauthButton(title: "Continue with Apple", provider: "AppleOAuth")
                 oauthButton(title: "Continue with Google", provider: "GoogleOAuth")
-                oauthButton(title: "Continue with GitHub", provider: "GitHubOAuth")
+                oauthButton(title: "Continue with Apple", provider: "AppleOAuth")
             } header: {
-                Text("Single Sign-On")
+                Text("Continue With")
             }
         }
     }
@@ -298,7 +280,7 @@ struct AccountView: View {
             } label: {
                 HStack {
                     if account.isBusy { ProgressView().controlSize(.small) }
-                    Text("Verify & Sign In")
+                    Text("Verify & Log in")
                         .font(.system(size: 14, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)

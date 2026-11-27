@@ -742,7 +742,7 @@ final class MobileCloudChat: ObservableObject {
         }
 
         guard auth.loggedIn else {
-            lastError = "Sign in to your OpenAgents account to start chatting."
+            lastError = "Log in to your OpenAgents account to start chatting."
             onConversationsUpdated?()
             return
         }
@@ -1141,7 +1141,7 @@ final class MobileCloudChat: ObservableObject {
                 for try await b in bytes { errData.append(b); if errData.count >= 8192 { break } }
                 let parsedErr = (try? JSONSerialization.jsonObject(with: errData) as? [String: Any])?["error"] as? String
                 if status == 401 {
-                    result.error = "Sign in to OpenAgents to continue."
+                    result.error = "Log in to OpenAgents to continue."
                 } else if status == 402 {
                     result.error = "Insufficient Cloud credits. Add credit at openagents.com to continue."
                 } else {

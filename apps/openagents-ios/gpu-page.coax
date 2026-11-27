@@ -1172,7 +1172,7 @@ ios_draw_empty_state :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, top: f32, w:
     else "OpenAgents Cloud";
   sub_buf: [140] u8; sub := "";
   if !s[0].account_logged_in {
-    sub = "Sign in to chat in OpenAgents Cloud and sync across devices";
+    sub = "Log in to chat in OpenAgents Cloud and sync across devices";
   } else if s[0].workspace_name_n > 0 {
     sn := el_put(sub_buf[..], 0, "Project: ");
     sn = el_put(sub_buf[..], sn, cast(string) s[0].workspace_name[0..<s[0].workspace_name_n]);
@@ -1196,9 +1196,9 @@ ios_draw_empty_state :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, top: f32, w:
   }
   if need_btn {
     cy += 18.0f32;
-    bw1 := app_button_width(f, -1, "Sign In to OpenAgents");
+    bw1 := app_button_width(f, -1, "Log in to OpenAgents");
     if bw1 > col_w { bw1 = col_w; }
-    _ := app_button(f, "chat.signIn", x + (w - bw1) / 2.0f32, cy, bw1, -1, "Sign In to OpenAgents", APP_BUTTON_PRIMARY, 0, IOS_HIT_ACCOUNT);
+    _ := app_button(f, "chat.signIn", x + (w - bw1) / 2.0f32, cy, bw1, -1, "Log in to OpenAgents", APP_BUTTON_PRIMARY, 0, IOS_HIT_ACCOUNT);
   }
 }
 
@@ -1716,7 +1716,7 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
     if recents_cnt == 0 && working_ses == 0 && n < IOS_SIDE_CAP {
       s[0].side_rows[n] = AppSideRow.{
         id = "side.empty",
-        title = ifx !s[0].account_logged_in then "Sign in to see Cloud chats" else "No chats yet",
+        title = ifx !s[0].account_logged_in then "Log in to see Cloud chats" else "No chats yet",
         state = EL_S_DISABLED, action = 0,
       };
       n += 1;
@@ -1731,7 +1731,7 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
   n = ios_push_sec_header(s, sh, n, 2, "PROJECTS", proj_cnt, false);
   if !s[0].sec_collapsed[2] {
     if proj_cnt == 0 && n < IOS_SIDE_CAP {
-      s[0].side_rows[n] = AppSideRow.{id = "side.proj.empty", title = ifx !s[0].account_logged_in then "Sign in for Projects" else "No Cloud Projects yet", quiet = true, state = EL_S_DISABLED, action = 0};
+      s[0].side_rows[n] = AppSideRow.{id = "side.proj.empty", title = ifx !s[0].account_logged_in then "Log in for Projects" else "No Cloud Projects yet", quiet = true, state = EL_S_DISABLED, action = 0};
       n += 1;
     } else {
       for i: 0..<s[0].intro_n {
@@ -1745,7 +1745,7 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
   n = ios_push_sec_header(s, sh, n, 3, "ENVIRONMENTS", s[0].machines_n, false);
   if !s[0].sec_collapsed[3] {
     if s[0].machines_n == 0 && n < IOS_SIDE_CAP {
-      s[0].side_rows[n] = AppSideRow.{id = "side.env.empty", title = "Sign in to view targets", quiet = true, state = EL_S_DISABLED, action = 0};
+      s[0].side_rows[n] = AppSideRow.{id = "side.env.empty", title = "Log in to view targets", quiet = true, state = EL_S_DISABLED, action = 0};
       n += 1;
     } else {
       for i: 0..<s[0].machines_n {
@@ -1789,7 +1789,7 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
   fy := list_bottom + 4.0f32;
   fy += app_divider(f, x, fy, w) + 4.0f32;
   acct_lbl := ifx s[0].account_label_n > 0 then cast(string) s[0].account_label[0..<s[0].account_label_n]
-    else ifx s[0].account_logged_in then "Account · Cloud" else "Sign In & Cloud";
+    else ifx s[0].account_logged_in then "Account · Cloud" else "Log in & Cloud";
   fy += app_side_action(f, "sidebar.account", x - 4.0f32, fy, w + 8.0f32, ICON_SET_ACCOUNT, acct_lbl, 0, IOS_HIT_ACCOUNT);
   wal_lbl := ifx s[0].wallet_label_n > 0 then cast(string) s[0].wallet_label[0..<s[0].wallet_label_n] else "Spark Wallet";
   fy += app_side_action(f, "sidebar.wallet", x - 4.0f32, fy, w + 8.0f32, ICON_WALLET, wal_lbl, 0, IOS_HIT_WALLET);
@@ -2748,8 +2748,8 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
   s: [1] IosPhonePage; o: [1] IosTestOut;
   ios_test_atlas(s[0].atlas[..]);
 
-  // Signed-out empty state shows Cloud Sign In CTA
-  ios_set_account_wallet(s[..], "Sign In & Cloud", false, "Spark Wallet", false);
+  // Logged-out empty state shows Cloud Log in CTA
+  ios_set_account_wallet(s[..], "Log in & Cloud", false, "Spark Wallet", false);
   v0 := ios_test_frame(s[..], o[..]);
   #assert v0 > 0 && s[0].refused == 0;
   #assert ios_test_has(s[..], "chat.signIn");

@@ -36,9 +36,18 @@ struct OpenAgentsApp: App {
                     if loggedIn {
                         cloudChat.start()
                     } else {
+                        shell.isAccountPresented = false
+                        shell.isWalletPresented = false
+                        shell.isEnvironmentsPresented = false
+                        shell.isUsagePresented = false
                         cloudChat.clearOnSignOut()
                     }
                 }
+                #if DEBUG
+                if UserDefaults.standard.bool(forKey: "OADemoPreview") {
+                    account.enableDebugDemoSignedIn()
+                }
+                #endif
                 if scenePhase != .background {
                     Task {
                         await account.refresh()
