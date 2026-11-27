@@ -192,5 +192,9 @@ We combine **four independent verification layers**:
 - **Gate:** Passing conformance extension scenarios (`tasks-*`, `sep-2640-*`, `auth/client-credentials-*`, `auth/dpop*`, `auth/enterprise-managed-authorization`).
 
 ### Phase 7 — Product Integration & Repo Cleanup
-- **Deliverables:** Migrate all 5 existing ad-hoc MCP implementations (`apps/openagents-cli/{mcp,executor-mcp}.coax`, `coder/tui/{oasim,lean-run}-mcp.coax`, `coax/lib/agent/claude/mcp.coax`) onto `coax/lib/mcp/`; expose MCP client manager for OpenAgents Desktop / Coder / CLI hosts; register `coax/lib/mcp/` in `coax/LIBRARIES.md`; wire `tools/mcp-conformance/run.sh` into CI.
+- **Deliverables:** Migrate all 5 existing ad-hoc MCP implementations (`apps/openagents-cli/{mcp,executor-mcp}.coax`, `coder/tui/{oasim,lean-run}-mcp.coax`, `coax/lib/agent/claude/mcp.coax`) onto `coax/lib/mcp/`; expose MCP client manager + IDE config importer for OpenAgents Desktop / Coder / CLI hosts; register `coax/lib/mcp/` in `coax/LIBRARIES.md`; wire `tools/mcp-conformance/run.sh` into CI.
 - **Gate:** Zero ad-hoc JSON-RPC MCP framing left in the repository; green CI conformance gate on both `2025-11-25` and `2026-07-28`.
+
+### Phase 8 — Unified MCP Tool Gateway (`coax/lib/mcp/gateway/`)
+- **Deliverables:** Layered cleanly *above* `coax/lib/mcp/` per [unified-tool-gateway-spec.md](unified-tool-gateway-spec.md): `#authority` grant/approval/egress policies, Vault-isolated reusable accounts, SWR tool catalog, 4-mode elicitation & upstream elicitation forwarding (`mrtr`/`native`/`ui`/`model`), deterministic Code-Mode (`execute`) powered by `coax/lib/rlm/script.coax`, and the unified `openagents gateway` MCP endpoint.
+- **Gate:** 0 surviving mutants on `#authority` gateway policy modules, full pause/resume E2E across all 4 elicitation modes, green `emulate` OAuth+MCP integration suite, and zero credential exposure in sandbox/wire traces.
