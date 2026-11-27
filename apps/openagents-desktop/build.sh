@@ -207,6 +207,11 @@ swift_files=("${core_swift[@]}")
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/metaverse-viewer.c" -o "$work/c/metaverse-viewer-all.o"
   ld -r "$work/c/metaverse-viewer-all.o" -exported_symbol '_oa_mv_*' -o "$work/c/metaverse-viewer.o"
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$here" -c "$here/mv_host.c" -o "$work/c/mv_host.o"
+  if [[ ! -s "$repo/gamebuilder/build/stamp.coax" ]]; then
+    mkdir -p "$repo/gamebuilder/build"
+    gb_sha="$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo "0000000000")"
+    printf 'GB_COMMIT :: "%s";\nGB_DIRTY :: false;\n' "${gb_sha:0:10}" > "$repo/gamebuilder/build/stamp.coax"
+  fi
   if obj_stale "$work/c/gamebuilder-core.o" "$repo/gamebuilder/core/desktop-bridge.coax" "$repo/gamebuilder/core/controls.coax" "$repo/gamebuilder/core/editor.coax" "$repo/gamebuilder/core/commands.coax" "$repo/gamebuilder/core/world.coax"; then
     "$coax" c "$repo/gamebuilder/core/desktop-bridge.coax" --run-steps 250000000 --library --header "$work/c/gamebuilder-core.h" > "$work/c/gamebuilder-core.c"
     /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/gamebuilder-core.c" -o "$work/c/gamebuilder-core-all.o"
