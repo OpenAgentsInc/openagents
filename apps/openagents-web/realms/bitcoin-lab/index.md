@@ -162,7 +162,7 @@ authentication; direct links are accessible. No public listing is authorized.
 | [120. Formal properties](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L319) | Node | planned | not available |
 | [121. One seed for Nostr and Bitcoin](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch121-one-seed-for-nostr-and-bitcoin.md) | Node | implemented | not available |
 | [122. Agent treasuries](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch122-agent-treasuries.md) | Wallets | implemented | not available |
-| [123. Paying for requests](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L327) | Wallets | planned | not available |
+| [123. Paying for requests and verified work](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch123-paying-for-requests.md) | Wallets | implemented | not available |
 | [124. Our node on Pylons and Metaverse OS](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/PLAN.md#L328) | Node | planned | not available |
 | [125. Address history, balances and spends](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch125-address-history-balances-and-spends.md) | Transactions/UTXOs | implemented | not available |
 
