@@ -21,6 +21,7 @@ chat_usage :: () {
 }
 #test "chat writes require complete reference pairs and reserve legacy provenance for new conversations" {
  a:[1]Args;#assert ccli_references(a[..],true);_=args_add(a[..],"--project-rev");_=args_add(a[..],"1");#assert !ccli_references(a[..],true);_=args_add(a[..],"--project");_=args_add(a[..],"prj_0123456789abcdef0123456789abcdef");#assert ccli_references(a[..],true);
+ #assert ct_id("550e8400-e29b-41d4-a716-446655440000","cnv_",32) && ct_id("550e8400-e29b-41d4-a716-446655440000","trn_",32) && ct_id("550e8400-e29b-41d4-a716-446655440000","prj_",32);
  b:[1]Args;_=args_add(b[..],"--legacy-thread");_=args_add(b[..],"m_0123456789abcdef0123");#assert !ccli_references(b[..],true);_=args_add(b[..],"--legacy-rev");_=args_add(b[..],"1");#assert ccli_references(b[..],true) && !ccli_references(b[..],false);
 }
 ccli_references :: (a:[]Args,fresh:bool)->bool {

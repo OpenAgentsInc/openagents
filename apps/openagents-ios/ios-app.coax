@@ -97,6 +97,8 @@ ios_cc_vd_sentence_end :: (src: string) -> int #export_c #effects(all) {
   #assert sn > 0;
   stn := ios_cc_stop_write("ios-stop-1", "trn_0123456789abcdef0123456789abcdef", buf[..]);
   #assert stn > 0;
+  #assert ios_cc_stop_write("ios-stop-uuid", "550e8400-e29b-41d4-a716-446655440000", buf[..]) > 0;
+  #assert ios_cc_submit_write("ios-op-uuid", "550e8400-e29b-41d4-a716-446655440000", 1, "660e8400-e29b-41d4-a716-446655440000", 1, "UUID submit", buf[..]) > 0;
   #assert ios_cc_tool_kind_valid("web_search") && ios_cc_tool_kind_valid("github_read_file") && !ios_cc_tool_kind_valid("bash");
   #assert ios_cc_web_tools_json(buf[..]) > 100;
   #assert ios_cc_classify_prompt("Explain Coax") == PL_WORK_READ_ONLY;

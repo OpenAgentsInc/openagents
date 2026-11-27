@@ -116,6 +116,8 @@ tool_main :: ()->int #export_c #effects(all) {
     at=src_page(port,"/worlds/new",b,n[..]);
     failed+=src_check(at>0,"/worlds/new is unchanged");
     // /chat/:id SPA routing serves /chat/index.html with SSR shell (#14094), leaving /chat/index.md intact
+    at=src_page(port,"/chat/550e8400-e29b-41d4-a716-446655440000",b,n[..]);
+    failed+=src_check(at>0 && src_has(cast(string)b[at..<n[0]],"data-app=\"chat-web\"") && src_has(cast(string)b[at..<n[0]],"data-coax-ssr=\"1\""),"/chat/<uuid> serves /chat/index.html SSR shell");
     at=src_page(port,"/chat/cnv_0123456789abcdef0123456789abcdef",b,n[..]);
     failed+=src_check(at>0 && src_has(cast(string)b[at..<n[0]],"data-app=\"chat-web\"") && src_has(cast(string)b[at..<n[0]],"data-coax-ssr=\"1\""),"/chat/cnv_<32hex> serves /chat/index.html SSR shell");
     at=src_page(port,"/chat/index.md",b,n[..]);

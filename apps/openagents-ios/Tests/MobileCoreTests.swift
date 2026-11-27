@@ -65,7 +65,38 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertEqual(followJSON["conversation_id"] as? String, "cnv_0123456789abcdef0123456789abcdef")
         XCTAssertEqual(followJSON["expected_revision"] as? Int, 2)
 
-        // Durable turn stop request validation.
+        // Canonical lowercase UUIDs are generated and accepted alongside legacy prefixed IDs.
+        let newConv = MobileCloudChat.newConversationID()
+        let newTurn = MobileCloudChat.newTurnID()
+        let detTurn1 = MobileCloudChat.turnID(conversationID: newConv, ordinal: 1)
+        let detTurn2 = MobileCloudChat.turnID(conversationID: newConv, ordinal: 2)
+        XCTAssertTrue(MobileCloudChat.isCanonicalUUID(newConv) && MobileCloudChat.isValidConversationID(newConv))
+        XCTAssertTrue(MobileCloudChat.isCanonicalUUID(newTurn))
+        XCTAssertTrue(MobileCloudChat.isCanonicalUUID(detTurn1) && detTurn1 == MobileCloudChat.turnID(conversationID: newConv, ordinal: 1) && detTurn1 != detTurn2)
+        XCTAssertTrue(MobileCloudChat.isValidConversationID("cnv_0123456789abcdef0123456789abcdef"))
+        XCTAssertFalse(MobileCloudChat.isValidConversationID("550E8400-e29b-41d4-a716-446655440000"))
+        XCTAssertFalse(MobileCloudChat.isValidConversationID("trn_0123456789abcdef0123456789abcdef"))
+
+        let uuidConv = "550e8400-e29b-41d4-a716-446655440000"
+        let uuidProj = "660e8400-e29b-41d4-a716-446655440000"
+        let uuidTurn = "770e8400-e29b-41d4-a716-446655440000"
+        let uuidFollow = try XCTUnwrap(CloudCore.encodeSubmit(
+            operation: "ios:sub:uuid",
+            conversation: uuidConv,
+            revision: 3,
+            project: uuidProj,
+            projectRevision: 1,
+            prompt: "UUID follow up"
+        ))
+        let uuidFollowJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: uuidFollow) as? [String: Any])
+        XCTAssertEqual(uuidFollowJSON["conversation_id"] as? String, uuidConv)
+        XCTAssertEqual(uuidFollowJSON["project_id"] as? String, uuidProj)
+
+        let uuidStop = try XCTUnwrap(CloudCore.encodeStop(operation: "ios:stop:uuid", turn: uuidTurn))
+        let uuidStopJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: uuidStop) as? [String: Any])
+        XCTAssertEqual(uuidStopJSON["turn_id"] as? String, uuidTurn)
+
+        // Durable turn stop request validation (legacy trn_ remains supported).
         let stop = try XCTUnwrap(CloudCore.encodeStop(
             operation: "ios:stop:1",
             turn: "trn_0123456789abcdef0123456789abcdef"

@@ -74,16 +74,23 @@ struct CloudChatSyncCheck {
         try! fm.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: tmp) }
 
-        // 1. Deterministic conversation & turn ID mapping + canonical cnv_ preservation.
+        // 1. Canonical lowercase UUID preservation, deterministic UUID mapping, & legacy cnv_ compatibility.
         let cidA = CloudChatSync.conversationID(for: "550e8400-e29b-41d4-a716-446655440000")
         let cidB = CloudChatSync.conversationID(for: "550e8400-e29b-41d4-a716-446655440000")
-        check(cidA == cidB, "conversationID is deterministic")
-        check(CloudChatSync.isCanonicalConvID(cidA), "conversationID has canonical cnv_<32hex> format")
-        let already = "cnv_0123456789abcdef0123456789abcdef"
-        check(CloudChatSync.conversationID(for: already) == already, "canonical cnv_ preserved verbatim")
+        check(cidA == "550e8400-e29b-41d4-a716-446655440000" && cidA == cidB, "canonical lowercase UUID preserved verbatim")
+        check(CloudChatSync.isCanonicalUUID(cidA) && CloudChatSync.isCanonicalConvID(cidA), "canonical UUID accepted")
+        let derived = CloudChatSync.conversationID(for: "desktop-local-1")
+        check(CloudChatSync.isCanonicalUUID(derived) && derived == CloudChatSync.conversationID(for: "desktop-local-1"), "non-UUID local ID maps deterministically to lowercase UUID")
+        let legacy = "cnv_0123456789abcdef0123456789abcdef"
+        check(CloudChatSync.isCanonicalConvID(legacy) && !CloudChatSync.isCanonicalUUID(legacy), "legacy cnv_ accepted as canonical conv ID")
+        check(CloudChatSync.conversationID(for: legacy) == legacy, "legacy cnv_ preserved verbatim")
+        check(!CloudChatSync.isCanonicalConvID("550E8400-e29b-41d4-a716-446655440000"), "uppercase UUID rejected")
+        check(!CloudChatSync.isCanonicalConvID("trn_0123456789abcdef0123456789abcdef"), "trn_ rejected as conv ID")
+        let freshUUID = CloudChatSync.newConversationID()
+        check(CloudChatSync.isCanonicalUUID(freshUUID), "newConversationID emits canonical lowercase UUID")
         let tid1 = CloudChatSync.turnID(for: cidA, ordinal: 1)
         let tid2 = CloudChatSync.turnID(for: cidA, ordinal: 2)
-        check(tid1.hasPrefix("trn_") && tid1.count == 36 && tid1 != tid2, "turnID deterministic and distinct per ordinal")
+        check(CloudChatSync.isCanonicalUUID(tid1) && CloudChatSync.isCanonicalUUID(tid2) && tid1 != tid2, "turnID emits deterministic distinct lowercase UUIDs per ordinal")
 
         // 2. Compute & cost provenance strictly enforces $0 for local Inkling 2 Mini.
         let localProv = CloudChatSync.classifyModel("inkling-2-mini", isLocalHint: false, observedCostMsat: 999)
@@ -152,8 +159,8 @@ struct CloudChatSyncCheck {
         check(endReq.contains("\"cost_msat\":0") && endReq.contains("\"reasoning_tokens\":18"), "ended event preserves usage and forces $0 local cost")
         check(reqs[7].path.hasSuffix("/meta") && reqs[7].body.contains("\"pinned\":true"), "meta sync updates title/pin")
 
-        // 4. Incoming Web/Mobile SSE event -> fetches conversation & materializes into Desktop callback + persists cursor.
-        let webConvID = "cnv_abcdef0123456789abcdef0123456789"
+        // 4. Incoming Web/Mobile SSE event (canonical UUID) -> fetches conversation & materializes into Desktop callback + persists cursor.
+        let webConvID = "660e8400-e29b-41d4-a716-446655440001"
         server.remoteDetailJSON = """
         {
           "conversation": {

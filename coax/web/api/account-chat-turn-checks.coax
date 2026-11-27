@@ -210,6 +210,26 @@ ct_check_replace :: (raw:string,key:string,value:string,out:[]u8)->string {
  id:[36]u8;_=js_copy(id[..],CT_TEST_CONVERSATION);id[35]=cast(u8)byte;
  allowed:="0123456789abcdef";expected:=false;for c:allowed {if cast(int)c==byte {expected=true;}}
  #assert ct_id(cast(string)id[..],"cnv_",32)==expected;
+ u:[36]u8;_=js_copy(u[..],"550e8400-e29b-41d4-a716-446655440000");
+ for pos:[2]int.[0,35] {old:=u[pos];u[pos]=cast(u8)byte;#assert ct_is_uuid(cast(string)u[..])==expected;u[pos]=old;}
+}
+#test "canonical lowercase UUIDs are accepted globally for 32-hex IDs without relaxing legacy prefixes or m_20" {
+ u:="550e8400-e29b-41d4-a716-446655440000";
+ #assert ct_is_uuid(u) && ct_id(u,"cnv_",32) && ct_id(u,"trn_",32) && ct_id(u,"prj_",32) && ct_id(u,"ctx_",32) && ct_id(u,"run_",32);
+ #assert !ct_id(u,"m_",20) && !ct_id(u,"x_",31) && !ct_id(u,"x_",33);
+ #assert !ct_is_uuid("550e8400-e29b-41d4-a716-44665544000") && !ct_is_uuid("550e8400-e29b-41d4-a716-4466554400000");
+ #assert !ct_is_uuid("550E8400-e29b-41d4-a716-446655440000") && !ct_is_uuid("550e8400-e29b-41d4-a716-44665544000g");
+ for h:[4]int.[8,13,18,23] {
+  bad:[36]u8;_=js_copy(bad[..],u);bad[h]='0';#assert !ct_is_uuid(cast(string)bad[..]);
+  bad[h]='-';bad[h-1]='-';#assert !ct_is_uuid(cast(string)bad[..]);
+  bad[h-1]='0';bad[h+1]='-';#assert !ct_is_uuid(cast(string)bad[..]);
+ }
+ #assert !ct_id(CT_TEST_TURN,"cnv_",32) && !ct_id(CT_TEST_CONVERSATION,"trn_",32);
+ b:[4096]u8;r:[1]CtSubmit;arena:[174]u8;one:=[1]string.["Hi"];
+ n:=ct_submit_write("op-uuid",u,1,"660e8400-e29b-41d4-a716-446655440000",2,"",-1,one[..],b[..]);
+ #assert n>0 && ct_submit_read(cast(string)b[0..<n],r[..],arena[..]) && r[0].conversation==u && r[0].project=="660e8400-e29b-41d4-a716-446655440000";
+ op:[80]u8;turn:[36]u8;sn:=ct_stop_write("stop-uuid",u,b[..]);
+ #assert sn>0 && ct_stop_read(cast(string)b[0..<sn],op[..],turn[..])==9 && cast(string)turn[..]==u;
 }
 ct_check_alias :: (raw:string,key:string,out:[]u8)->string {
  d:[1]Jv;nodes:[128]JvNode;o:[1]Jo;if !jv_parse(d[..],raw,nodes[..]) {return "";}at:=jv_get(d[0],0,key);

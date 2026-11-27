@@ -2,6 +2,8 @@
  a:[44]u8;_=js_copy(a[..],"account/cnv_0123456789abcdef0123456789abcdef");
  hex:=false;for c:"0123456789abcdef" {if cast(int)c==byte {hex=true;}}
  for pos:[2]int.[12,43] {old:=a[pos];a[pos]=cast(u8)byte;#assert chlib_key(cast(string)a[..])==hex;a[pos]=old;}
+ u:[44]u8;_=js_copy(u[..],"account/550e8400-e29b-41d4-a716-446655440000");
+ for pos:[2]int.[8,43] {old:=u[pos];u[pos]=cast(u8)byte;#assert chlib_key(cast(string)u[..])==hex;u[pos]=old;}
  d:[200]u8;for i:0..<200 {d[i]='a';}_:=js_copy(d[..],"device/");d[71]='/';
  for pos:[2]int.[7,70] {d[pos]=cast(u8)byte;#assert chlib_key(cast(string)d[..])==hex;d[pos]='a';}
  session:=false;for c:"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_." {if cast(int)c==byte {session=true;}}
@@ -10,10 +12,18 @@
 #test "library key bounds and constructors preserve full identity without writing refused output" {
  d:[201]u8;for i:0..<201 {d[i]='a';}_:=js_copy(d[..],"device/");d[71]='/';
  #assert !chlib_key(cast(string)d[0..<72]) && chlib_key(cast(string)d[0..<73]) && chlib_key(cast(string)d[0..<200]) && !chlib_key(cast(string)d[..]);
- for s:[8]string.["","account/","account/cnv_","ACCOUNT/cnv_0123456789abcdef0123456789abcdef","account/xxx_0123456789abcdef0123456789abcdef","devicex/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/a","device/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-a","device/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"] {#assert !chlib_key(s);}
+ for s:[11]string.["","account/","account/cnv_","ACCOUNT/cnv_0123456789abcdef0123456789abcdef","account/xxx_0123456789abcdef0123456789abcdef","account/550e8400-e29b-41d4-a716-44665544000","account/550e8400-e29b-41d4-a716-4466554400000","ACCOUNT/550e8400-e29b-41d4-a716-446655440000","devicex/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/a","device/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-a","device/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"] {#assert !chlib_key(s);}
+ uk:="account/550e8400-e29b-41d4-a716-446655440000";
+ #assert chlib_key(uk);
+ for h:[4]int.[16,21,26,31] {
+  bad:[44]u8;_=js_copy(bad[..],uk);bad[h]='0';#assert !chlib_key(cast(string)bad[..]);
+  bad[h]='-';bad[h-1]='-';#assert !chlib_key(cast(string)bad[..]);
+  bad[h-1]='0';bad[h+1]='-';#assert !chlib_key(cast(string)bad[..]);
+ }
  id:="cnv_0123456789abcdef0123456789abcdef";out:[201]u8;out[0]=77;
  #assert chlib_account_key(id,out[0..<43])=="" && out[0]==77 && chlib_account_key("short",out[..])=="";
  #assert chlib_account_key(id,out[0..<44])=="account/cnv_0123456789abcdef0123456789abcdef";
+ #assert chlib_account_key("550e8400-e29b-41d4-a716-446655440000",out[0..<44])==uk;
  host:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
  #assert chlib_device_key(host,"a",out[0..<73])=="device/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/a";
  out[0]=77;#assert chlib_device_key(host,"a",out[0..<72])=="" && out[0]==77;

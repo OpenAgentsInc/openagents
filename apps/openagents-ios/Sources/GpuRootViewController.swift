@@ -1089,9 +1089,9 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             )
         ]
         cloudChat.projects = [
-            CloudProject(id: "prj_0123456789abcdef0123456789abcdef", revision: 1, name: "OpenAgents Core", description: "Coax + Cloud platform", repoCanonical: "github.com/openagentsinc/openagents", updatedAtMs: nowMs - 60_000)
+            CloudProject(id: "01234567-89ab-4cde-8f01-23456789abcd", revision: 1, name: "OpenAgents Core", description: "Coax + Cloud platform", repoCanonical: "github.com/openagentsinc/openagents", updatedAtMs: nowMs - 60_000)
         ]
-        let demoConvID = "cnv_0123456789abcdef0123456789abcdef"
+        let demoConvID = "11234567-89ab-4cde-8f01-23456789abcd"
         cloudChat.conversations = [
             MobileCloudConversation(
                 id: demoConvID,
@@ -1106,7 +1106,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
                 compute: "cloud",
                 sourceDevice: "ios-mobile",
                 turns: [
-                    MobileCloudTurn(id: "trn_01", userText: "Inspect Cloud Chat v2 sync and Tier 1 tools.", output: "OpenAgents Cloud streaming, Tier 1 tools, and enrolled computer placement are active.", complete: true)
+                    MobileCloudTurn(id: "21234567-89ab-4cde-8f01-23456789abcd", userText: "Inspect Cloud Chat v2 sync and Tier 1 tools.", output: "OpenAgents Cloud streaming, Tier 1 tools, and enrolled computer placement are active.", complete: true)
                 ],
                 items: []
             )

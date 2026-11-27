@@ -13,12 +13,26 @@
  #assert !ex_scope(true,true,false,true,true) && !ex_scope(true,true,true,false,true);
  #assert !ex_scope(true,true,true,true,false);
 }
-#test "execution references keep their namespace and exact hex identity" {
+#test "execution references keep their namespace and accept canonical lowercase UUIDs or exact legacy hex" {
  #assert ex_reference("cnv_0123456789abcdef0123456789abcdef","cnv_");
  #assert !ex_reference("trn_0123456789abcdef0123456789abcdef","cnv_");
  #assert !ex_reference("cnv_0123456789abcdef0123456789abcdeF","cnv_");
  #assert !ex_reference("cnv_0123456789abcdef0123456789abcde","cnv_");
  #assert !ex_reference("cnv_0123456789abcdef0123456789abcdef0","cnv_") && !ex_reference("","cnv_");
+ u:="550e8400-e29b-41d4-a716-446655440000";
+ #assert ex_reference(u,"cnv_") && ex_reference(u,"trn_") && ex_reference(u,"prj_");
+ #assert !ex_reference("550e8400-e29b-41d4-a716-44665544000","cnv_") && !ex_reference("550e8400-e29b-41d4-a716-4466554400000","cnv_");
+ #assert !ex_reference("550E8400-e29b-41d4-a716-446655440000","cnv_") && !ex_reference("550e8400-e29b-41d4-a716-44665544000g","cnv_");
+ for h:[4]int.[8,13,18,23] {
+  bad:[36]u8;for c,i:u {bad[i]=c;}bad[h]='0';#assert !ex_reference(cast(string)bad[..],"cnv_");
+  bad[h]='-';bad[h-1]='-';#assert !ex_reference(cast(string)bad[..],"cnv_");
+  bad[h-1]='0';bad[h+1]='-';#assert !ex_reference(cast(string)bad[..],"cnv_");
+ }
+}
+#forall "execution UUID reference admits exactly lowercase ASCII hex digits at every hex slot" byte:0..<128 {
+ u:[36]u8;for c,i:"550e8400-e29b-41d4-a716-446655440000" {u[i]=c;}
+ allowed:=(byte>=48 && byte<=57) || (byte>=97 && byte<=102);
+ for pos:[2]int.[0,35] {old:=u[pos];u[pos]=cast(u8)byte;#assert ex_reference(cast(string)u[..],"cnv_")==allowed;u[pos]=old;}
 }
 #test "execution pins the exact host workspace input and authenticated provider account" {
  b:=ExBinding.{host="host",workspace="workspace",input_hash="hash",input_bytes=12,engine="codex",account="system"};
@@ -74,7 +88,17 @@
 ex_scope :: (configured:bool,enabled:bool,device:bool,grant:bool,admitted:bool)->bool #effects(all) {
  return admitted && ea_scope(configured,enabled,device,grant);
 }
+ex_uuid :: (value:string)->bool #effects(all) {
+ if value.count!=36 {return false;}
+ for i:0..<36 {
+  c:=value[i];
+  if i==8 || i==13 || i==18 || i==23 {if c!='-' {return false;}}
+  else if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}
+ }
+ return true;
+}
 ex_reference :: (value:string,prefix:string)->bool #effects(all) {
+ if ex_uuid(value) {return true;}
  return value.count==prefix.count+32 && value[0..<prefix.count]==prefix && ea_id(cast(string)value[prefix.count..<value.count],32);
 }
 ex_pin :: (b:ExBinding,host:string,workspace:string,hash:string,bytes:int,engine:string,account:string,authenticated:bool,signing_in:bool)->bool #effects(all) {

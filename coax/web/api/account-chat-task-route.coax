@@ -33,11 +33,21 @@ ctn_route_finish :: (h:[]CtnRouter,status:int,answer:string)->int #export_c #eff
  if h[0].w[0].request!="" {a:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=a[..]}];gr:=gd_result(h[0].w[0].body[..],ar[..],status,answer);rtr_finish(h[0].q[..],h[0].e[..],gr,h[0].d[..],h[0].w[..]);}
  if !ctn_route_ready(h[0].d[0].ok,h[0].d[0].door_problem,h[0].d[0].engine) {return -1;}return rtr_station_index(h[0].q[..],h[0].d[0].station);
 }
+ctn_hex32 :: (value:string,out:[]u8)->string #effects(all) {
+ if value.count!=36 || out.count<32 {return "";}
+ if value[8]=='-' {
+  n:=0;for i:0..<36 {if i!=8 && i!=13 && i!=18 && i!=23 {out[n]=value[i];n+=1;}}
+  return cast(string)out[0..<32];
+ }
+ for i:0..<32 {out[i]=value[4+i];}
+ return cast(string)out[0..<32];
+}
 ctn_bind :: (h:[]CtnRouter,s:[]CtnSelect,row:int,turn:string,conversation:string,command:string,enrollment:string,raw:string,now:int,out:[]u8)->int #export_c #effects(all) {
  if row<0 || row>=h[0].q[0].n || s[0].selected<0 || s[0].selected>=s[0].n || !ex_reference(turn,"trn_") || !ex_reference(conversation,"cnv_") {return -1;}
- model:=s[0].offer[0].models[s[0].model[s[0].selected]];level:=s[0].level[s[0].selected];input_hash:[64]u8;report_hash:[64]u8;
+ model:=s[0].offer[0].models[s[0].model[s[0].selected]];level:=s[0].level[s[0].selected];input_hash:[64]u8;report_hash:[64]u8;task_hex:[32]u8;
+ task_id:=ctn_hex32(turn,task_hex[..]);
  report:=cast(string)h[0].reports[row][0..<h[0].nr[row]];_=S_hex(S_hash(raw),input_hash[..]);_=S_hex(S_hash(report),report_hash[..]);
- b:=ExBinding.{task=cast(string)turn[4..<36],conversation=conversation,turn=turn,route=s[0].offer[0].probe,host=cast(string)h[0].hosts[row][..],workspace=s[0].offer[0].workspace,session=cast(string)turn[4..<36],command=command,engine=h[0].d[0].engine,account=s[0].offer[0].account,model=model.id,effort=ifx level<0 then "" else model.levels[level],input_hash=cast(string)input_hash[..],input_bytes=raw.count,report_hash=cast(string)report_hash[..],report_at=h[0].q[0].stations[row].reported_at_ms,issued=now,expires=xo_deadline(now,300000)};
+ b:=ExBinding.{task=task_id,conversation=conversation,turn=turn,route=s[0].offer[0].probe,host=cast(string)h[0].hosts[row][..],workspace=s[0].offer[0].workspace,session=task_id,command=command,engine=h[0].d[0].engine,account=s[0].offer[0].account,model=model.id,effort=ifx level<0 then "" else model.levels[level],input_hash=cast(string)input_hash[..],input_bytes=raw.count,report_hash=cast(string)report_hash[..],report_at=h[0].q[0].stations[row].reported_at_ms,issued=now,expires=xo_deadline(now,300000)};
  decision:[RTR_DECISION_MAX]u8;dispatch:[RTR_DECISION_MAX]u8;dn:=ctn_route_write(h,decision[..]);pn:=ctn_dispatch_write(h,row,b,dispatch[..]);if dn<1 || pn<1 {return -1;}
  return ctt_write(CttTask.{binding=b,decision=cast(string)decision[0..<dn],report=report,offer=s[0].offer[0],enrollment=enrollment,reason="The typed router selected this computer and engine; native_model resolved an exact actual SDK model/effort pair.",dispatch=cast(string)dispatch[0..<pn]},out);
 }
@@ -47,4 +57,10 @@ ctn_dispatch_write :: (h:[]CtnRouter,row:int,b:ExBinding,out:[]u8)->int #export_
  q:[1]RtrRequest;wire:[RTR_REPORT_MAX]u8;host:[64]u8;
  if !rtr_report_read(cast(string)h[0].reports[row][0..<h[0].nr[row]],h[0].nodes[..],wire[..],q[..],0,host[..]) {return -1;}
  d:=[1]RtrDecision.[h[0].d[0]];d[0].station=q[0].stations[0].id;d[0].model=b.model;d[0].effort=b.effort;return rtr_decision_write(d[..],out);
+}
+#test "ctn_hex32 extracts 32 hex chars from both canonical UUID and legacy prefixed turn IDs" {
+ b:[32]u8;
+ #assert ctn_hex32("550e8400-e29b-41d4-a716-44665544009f",b[..])=="550e8400e29b41d4a71644665544009f";
+ #assert ctn_hex32("trn_0123456789abcdef0123456789abcdef",b[..])=="0123456789abcdef0123456789abcdef";
+ #assert ctn_hex32("short",b[..])=="";
 }

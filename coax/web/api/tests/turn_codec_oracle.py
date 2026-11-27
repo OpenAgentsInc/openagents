@@ -29,8 +29,15 @@ def integer(value, minimum=0):
     return type(value) is int and minimum <= value <= LIMIT
 
 
+UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
 def identity(value, prefix, digits=32):
-    return isinstance(value, str) and re.fullmatch(prefix + "[0-9a-f]{%d}" % digits, value) is not None
+    if not isinstance(value, str):
+        return False
+    if digits == 32 and UUID_RE.fullmatch(value) is not None:
+        return True
+    return re.fullmatch(prefix + "[0-9a-f]{%d}" % digits, value) is not None
 
 
 def reference(kind, obj):
@@ -166,6 +173,19 @@ for field, prefix, kind, base in [("conversation_id", "cnv_", 2, event), ("turn_
             digits[index] = c
             changed[field] = prefix + "".join(digits)
             check(kind, changed)
+    for sample in [
+        "550e8400-e29b-41d4-a716-446655440000",
+        "550E8400-e29b-41d4-a716-446655440000",
+        "550e84000e29b-41d4-a716-446655440000",
+        "550e8400-e29b041d4-a716-446655440000",
+        "550e8400-e29b-41d40a716-446655440000",
+        "550e8400-e29b-41d4-a7160446655440000",
+        "550e8400-e29b-41d4-a716-44665544000",
+        "550e8400-e29b-41d4-a716-4466554400000",
+    ]:
+        changed = copy.deepcopy(base)
+        changed[field] = sample
+        check(kind, changed)
 for size in [0, 1, 80, 81]:
     for text in ["x" * size, "é" * size]:
         for kind, base in [(1, submit), (3, stop)]:

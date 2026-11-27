@@ -8,8 +8,21 @@
 #test "restricted accounts retain reads but cannot mutate private projects" {
  #assert prp_change(true,false,false,false) && !prp_change(false,false,false,false) && !prp_change(true,true,false,false) && !prp_change(true,false,true,false) && !prp_change(true,false,false,true);
 }
-#test "canonical project identities are bounded hex and not legacy slugs" {
- #assert prp_id("prj_0123456789abcdef0123456789abcdef") && !prp_id("prj_0123456789abcdef0123456789abcdeg") && !prp_id("prj_0123456789abcdef0123456789abcde") && !prp_id("prj_:123456789abcdef0123456789abcdef") && !prp_id("mobile-kit") && !prp_id("xxx_0123456789abcdef0123456789abcdef");
+#test "canonical project identities accept lowercase UUIDs or bounded legacy prj_ hex and not legacy slugs" {
+ #assert prp_id("prj_0123456789abcdef0123456789abcdef") && !prp_id("prj_0123456789abcdef0123456789abcdeg") && !prp_id("prj_0123456789abcdef0123456789abcde") && !prp_id("prj_0123456789abcdef0123456789abcdef0") && !prp_id("prj_:123456789abcdef0123456789abcdef") && !prp_id("mobile-kit") && !prp_id("xxx_0123456789abcdef0123456789abcdef");
+ u:="550e8400-e29b-41d4-a716-446655440000";
+ #assert prp_id(u) && !prp_id("550e8400-e29b-41d4-a716-44665544000") && !prp_id("550e8400-e29b-41d4-a716-4466554400000");
+ #assert !prp_id("550E8400-e29b-41d4-a716-446655440000") && !prp_id("550e8400-e29b-41d4-a716-44665544000g");
+ for h:[4]int.[8,13,18,23] {
+  bad:[36]u8;for c,i:u {bad[i]=c;}bad[h]='0';#assert !prp_id(cast(string)bad[..]);
+  bad[h]='-';bad[h-1]='-';#assert !prp_id(cast(string)bad[..]);
+  bad[h-1]='0';bad[h+1]='-';#assert !prp_id(cast(string)bad[..]);
+ }
+}
+#forall "project UUID identity admits exactly lowercase ASCII hex digits at endpoints" byte:0..<128 {
+ u:[36]u8;for c,i:"550e8400-e29b-41d4-a716-446655440000" {u[i]=c;}
+ allowed:=(byte>=48 && byte<=57) || (byte>=97 && byte<=102);
+ for pos:[2]int.[0,35] {old:=u[pos];u[pos]=cast(u8)byte;#assert prp_id(cast(string)u[..])==allowed;u[pos]=old;}
 }
 #test "shared writes fence revisions and retire before overflow" {
  #assert prp_revision(0,0) && prp_revision(2147483645,2147483645) && !prp_revision(1,0) && !prp_revision(-1,-1) && !prp_revision(2147483646,2147483646);
@@ -22,7 +35,19 @@
 }
 prp_access :: (kind:int,verified:bool,account:string,owner:string)->bool #export_c #effects(all) {return kind==2 && verified && account.count>0 && account==owner;}
 prp_change :: (owns:bool,limited:bool,frozen:bool,archived:bool)->bool #export_c #effects(all) {return owns && !limited && !frozen && !archived;}
-prp_id :: (id:string)->bool #export_c #effects(all) {if id.count!=36 || id[0..<4]!="prj_" {return false;}for i:4..<36 {c:=id[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+prp_id :: (id:string)->bool #export_c #effects(all) {
+ if id.count!=36 {return false;}
+ if id[0..<4]=="prj_" {
+  for i:4..<36 {c:=id[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+ }
+ for i:0..<36 {
+  c:=id[i];
+  if i==8 || i==13 || i==18 || i==23 {if c!='-' {return false;}}
+  else if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}
+ }
+ return true;
+}
 prp_revision :: (asked:int,current:int)->bool #export_c #effects(all) {return asked>=0 && asked==current && asked<2147483646;}
 prp_capacity :: (count:int,bytes:int)->bool #export_c #effects(all) {return count>=0 && count<200 && bytes>=0 && bytes<=1048576;}
 prp_context :: (bytes:int)->bool #export_c #effects(all) {return pcb_context(bytes);}

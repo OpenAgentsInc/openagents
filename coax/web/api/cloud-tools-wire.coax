@@ -78,6 +78,26 @@ CpMeterReq :: struct {
   seconds: int;
 }
 
+cp_turn_id_valid :: (id: string) -> bool #effects(all) {
+  if id.count != 36 { return false; }
+  if cast(string) id[0..<4] == "trn_" {
+    for i: 4..<36 {
+      c := id[i];
+      if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+    }
+    return true;
+  }
+  for i: 0..<36 {
+    c := id[i];
+    if i == 8 || i == 13 || i == 18 || i == 23 {
+      if c != '-' { return false; }
+    } else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+      return false;
+    }
+  }
+  return true;
+}
+
 cp_c_meter_req_read :: (raw: string, out: [] CpMeterReq) -> bool #export_c #effects(all) {
   out[0] = CpMeterReq.{};
   d: [1] Jv; nodes: [64] JvNode;
@@ -86,8 +106,7 @@ cp_c_meter_req_read :: (raw: string, out: [] CpMeterReq) -> bool #export_c #effe
   t_at := jv_get(d[0], 0, "turn_id");
   if jv_kind(d[0], t_at) != JV_STRING { return false; }
   tn := jv_str(d[0], t_at, out[0].turn[..]);
-  if tn != 36 { return false; }
-  if cast(string) out[0].turn[0..<4] != "trn_" { return false; }
+  if tn != 36 || !cp_turn_id_valid(cast(string) out[0].turn[0..<36]) { return false; }
   out[0].turn_n = tn;
   s_at := jv_get(d[0], 0, "size");
   if jv_kind(d[0], s_at) == JV_STRING {
@@ -140,8 +159,17 @@ cp_c_meter_res_write :: (turn_id: string, compute: string, seconds: int, debit_m
   #assert cp_c_pricing_json(tiny[..]) == -1;
 
   mr: [1] CpMeterReq;
+  #assert cp_turn_id_valid("trn_0123456789abcdef0123456789abcdef");
+  #assert !cp_turn_id_valid("trn_0123456789abcdef0123456789abcde") && !cp_turn_id_valid("trn_0123456789abcdef0123456789abcdef0");
+  #assert !cp_turn_id_valid("trn_g123456789abcdef0123456789abcdef") && !cp_turn_id_valid("trn_:123456789abcdef0123456789abcdef") && !cp_turn_id_valid("trn_0123456789abcdef0123456789abcdeg");
+  #assert cp_turn_id_valid("550e8400-e29b-41d4-a716-44665544000f");
+  #assert !cp_turn_id_valid("g50e8400-e29b-41d4-a716-44665544000f") && !cp_turn_id_valid(":50e8400-e29b-41d4-a716-44665544000f") && !cp_turn_id_valid("550e8400-e29b-41d4-a716-44665544000g");
   #assert cp_c_meter_req_read("{\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"size\":\"small\",\"seconds\":0}", mr[..]);
   #assert cast(string) mr[0].turn[0..<mr[0].turn_n] == "trn_0123456789abcdef0123456789abcdef" && cast(string) mr[0].size[0..<mr[0].size_n] == "small" && mr[0].seconds == 0;
+  #assert cp_c_meter_req_read("{\"turn_id\":\"550e8400-e29b-41d4-a716-44665544000f\",\"size\":\"default\",\"seconds\":60}", mr[..]);
+  #assert cast(string) mr[0].turn[0..<mr[0].turn_n] == "550e8400-e29b-41d4-a716-44665544000f" && mr[0].seconds == 60;
+  #assert !cp_c_meter_req_read("{\"turn_id\":\"550E8400-e29b-41d4-a716-446655440000\",\"seconds\":1}", mr[..]);
+  #assert !cp_c_meter_req_read("{\"turn_id\":\"550e84000e29b-41d4-a716-446655440000\",\"seconds\":1}", mr[..]);
   #assert cp_c_meter_req_read("{\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"seconds\":86400}", mr[..]) && mr[0].size_n == 0 && mr[0].seconds == 86400;
   #assert !cp_c_meter_req_read("bad", mr[..]) && !cp_c_meter_req_read("[]", mr[..]) && !cp_c_meter_req_read("{\"seconds\":1}", mr[..]);
   #assert !cp_c_meter_req_read("{\"turn_id\":\"trn_short\",\"seconds\":1}", mr[..]);

@@ -17,7 +17,17 @@ CtEvent :: struct {
  conversation:string;turn:string;sequence:int;kind:int;state:int;stop_requested:bool;
  index:int= -1;delta:string;has_usage:bool;usage:CtUsage;reason:string;error:string;
 }
+ct_is_uuid :: (value:string)->bool {
+ if value.count!=36 {return false;}
+ for i:0..<36 {
+  c:=value[i];
+  if i==8 || i==13 || i==18 || i==23 {if c!='-' {return false;}}
+  else if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}
+ }
+ return true;
+}
 ct_id :: (value:string,prefix:string,hex:int)->bool {
+ if hex==32 && ct_is_uuid(value) {return true;}
  if value.count!=prefix.count+hex || value[0..<prefix.count]!=prefix {return false;}
  for i:prefix.count..<value.count {c:=value[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
  return true;

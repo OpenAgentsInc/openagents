@@ -3,7 +3,7 @@ import CryptoKit
 import Foundation
 
 struct MobileCloudConversation: Identifiable, Equatable {
-    let id: String // cnv_<32 hex>
+    let id: String // canonical lowercase UUID (or legacy cnv_<32 hex>)
     var title: String
     var model: String
     var workspace: String
@@ -172,21 +172,54 @@ final class MobileCloudChat: ObservableObject {
         return "\(target) · Today \(spend)"
     }
 
+    static func isCanonicalUUID(_ id: String) -> Bool {
+        let bytes = Array(id.utf8)
+        guard bytes.count == 36 else { return false }
+        for i in 0..<36 {
+            let b = bytes[i]
+            if i == 8 || i == 13 || i == 18 || i == 23 {
+                if b != 45 { return false }
+            } else {
+                let ok = (b >= 48 && b <= 57) || (b >= 97 && b <= 102)
+                if !ok { return false }
+            }
+        }
+        return true
+    }
+
+    static func isValidConversationID(_ id: String) -> Bool {
+        if isCanonicalUUID(id) { return true }
+        guard id.count == 36, id.hasPrefix("cnv_") else { return false }
+        for b in id.dropFirst(4).utf8 {
+            let ok = (b >= 48 && b <= 57) || (b >= 97 && b <= 102)
+            if !ok { return false }
+        }
+        return true
+    }
+
+    private static func formatUUIDv4(from raw: [UInt8]) -> String {
+        var b = Array(raw.prefix(16))
+        if b.count < 16 { b.append(contentsOf: repeatElement(0, count: 16 - b.count)) }
+        b[6] = (b[6] & 0x0F) | 0x40
+        b[8] = (b[8] & 0x3F) | 0x80
+        return String(
+            format: "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+            b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]
+        )
+    }
+
     static func newConversationID() -> String {
-        var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, 16, &bytes)
-        return "cnv_" + bytes.map { String(format: "%02x", $0) }.joined()
+        UUID().uuidString.lowercased()
     }
 
     static func newTurnID() -> String {
-        var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, 16, &bytes)
-        return "trn_" + bytes.map { String(format: "%02x", $0) }.joined()
+        UUID().uuidString.lowercased()
     }
 
     static func turnID(conversationID: String, ordinal: Int) -> String {
         let hash = SHA256.hash(data: Data(("openagents.ios.turn:\(conversationID):\(ordinal)").utf8))
-        return "trn_" + hash.prefix(16).map { String(format: "%02x", $0) }.joined()
+        return formatUUIDv4(from: Array(hash.prefix(16)))
     }
 
     private func nextOpID(prefix: String) -> String {

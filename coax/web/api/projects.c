@@ -18,7 +18,14 @@ static bool run(PGconn *db,const char *sql,int n,const char *const *v) {PGresult
 static void respond(const request *q,int status,const char *body,size_t n) {api_respond(q->fd,status,"application/json","Cache-Control: private, no-store\r\nVary: Cookie, Authorization\r\n",body,n);}
 static void problem(const request *q,int status,const char *code,const char *message,long long revision,const char *op) {unsigned char b[4096];int64_t n=pr_error(prs(code),prs(message),revision,prs(op),prb(b,sizeof b));respond(q,status,(const char *)b,n>0?(size_t)n:0);}
 static void digest(const char *body,size_t n,char out[65]) {(void)pr_hash((coax_string){body,(int64_t)n},prb(out,64));out[64]=0;}
-bool api_object_id(char out[37],const char *prefix) {unsigned char r[16];if(RAND_bytes(r,16)!=1)return false;memcpy(out,prefix,4);for(int i=0;i<16;i++)snprintf(out+4+2*i,3,"%02x",r[i]);return true;}
+bool api_object_id(char out[37],const char *prefix) {
+ unsigned char r[16];if(RAND_bytes(r,16)!=1)return false;
+ if(prefix && !strcmp(prefix,"cmd_")){memcpy(out,prefix,4);for(int i=0;i<16;i++)snprintf(out+4+2*i,3,"%02x",r[i]);return true;}
+ r[6]=(unsigned char)((r[6]&0x0f)|0x40);r[8]=(unsigned char)((r[8]&0x3f)|0x80);
+ snprintf(out,37,"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+  r[0],r[1],r[2],r[3],r[4],r[5],r[6],r[7],r[8],r[9],r[10],r[11],r[12],r[13],r[14],r[15]);
+ return true;
+}
 static void integer(char out[32],long long value) {snprintf(out,32,"%lld",value);}
 static PGresult *project_rows(PGconn *db,const char *account,const char *id,bool lock) {
  const char *v[]={account,id};return PQexecParams(db,lock?

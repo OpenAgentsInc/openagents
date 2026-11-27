@@ -105,7 +105,23 @@ final class CloudChatSync: @unchecked Sendable {
 
     // MARK: - Deterministic Identity & Provenance Mapping
 
+    static func isCanonicalUUID(_ id: String) -> Bool {
+        let bytes = Array(id.utf8)
+        guard bytes.count == 36 else { return false }
+        for i in 0..<36 {
+            let b = bytes[i]
+            if i == 8 || i == 13 || i == 18 || i == 23 {
+                if b != 45 { return false }
+            } else {
+                let ok = (b >= 48 && b <= 57) || (b >= 97 && b <= 102)
+                if !ok { return false }
+            }
+        }
+        return true
+    }
+
     static func isCanonicalConvID(_ id: String) -> Bool {
+        if isCanonicalUUID(id) { return true }
         guard id.count == 36, id.hasPrefix("cnv_") else { return false }
         for b in id.dropFirst(4).utf8 {
             let ok = (b >= 48 && b <= 57) || (b >= 97 && b <= 102)
@@ -114,17 +130,33 @@ final class CloudChatSync: @unchecked Sendable {
         return true
     }
 
+    private static func formatUUIDv4(from raw: [UInt8]) -> String {
+        var b = Array(raw.prefix(16))
+        if b.count < 16 { b.append(contentsOf: repeatElement(0, count: 16 - b.count)) }
+        b[6] = (b[6] & 0x0F) | 0x40
+        b[8] = (b[8] & 0x3F) | 0x80
+        return String(
+            format: "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+            b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]
+        )
+    }
+
+    static func newConversationID() -> String {
+        UUID().uuidString.lowercased()
+    }
+
     static func conversationID(for localID: String) -> String {
         if isCanonicalConvID(localID) { return localID }
+        let lowered = localID.lowercased()
+        if isCanonicalUUID(lowered) { return lowered }
         let hash = SHA256.hash(data: Data(("openagents.desktop.chat:" + localID).utf8))
-        let hex = hash.prefix(16).map { String(format: "%02x", $0) }.joined()
-        return "cnv_" + hex
+        return formatUUIDv4(from: Array(hash.prefix(16)))
     }
 
     static func turnID(for conversationID: String, ordinal: Int) -> String {
         let hash = SHA256.hash(data: Data(("openagents.desktop.turn:\(conversationID):\(ordinal)").utf8))
-        let hex = hash.prefix(16).map { String(format: "%02x", $0) }.joined()
-        return "trn_" + hex
+        return formatUUIDv4(from: Array(hash.prefix(16)))
     }
 
     static func classifyModel(_ model: String, isLocalHint: Bool = false, observedCostMsat: Int64 = 0) -> (compute: String, costMsat: Int64) {
@@ -695,7 +727,7 @@ final class CloudChatSync: @unchecked Sendable {
         lastSyncedDigest[convID] = digest
         lock.unlock()
 
-        let opID = "snap:\(convID.dropFirst(4).prefix(12)):\(ordinal):\(digest)"
+        let opID = "snap:\(convID.prefix(12)):\(ordinal):\(digest)"
         let turnState: Int64 = reply.isEmpty ? Self.stateRunning : Self.stateCompleted
         guard let syncBody = Self.encodeSync(
             operationID: opID, conversationID: convID, turnID: tid, title: title,

@@ -224,6 +224,11 @@ st, j = call({"tool": "github_get_pr", "arguments": {"repo": "OpenAgentsInc/open
 assert st == 200 and j["ok"] and "PR #42 [open] Add tools" in j["output"] and "Implements Tier 1." in j["output"], j
 
 # 4. Tier 2 Computer Pinning on POST /api/chat/submit/v2alpha1?host=<64hex>
+import re
+UUID4_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+def is_uuid4(s):
+    return isinstance(s, str) and UUID4_RE.match(s) is not None
+
 def submit_pin(op_id, host_q):
     hdrs = {"Content-Type": "application/json", "Cookie": f"__Host-oa_session={tok}", "Origin": api}
     payload = {"schema": "openagents.chat.submit.v2alpha1", "operation_id": op_id, "conversation_id": "", "expected_revision": 0, "project_id": None, "expected_project_revision": None, "legacy_thread_id": None, "legacy_thread_revision": None, "content": [{"type": "text", "text": "Run tests on Mac Studio"}]}
@@ -239,7 +244,7 @@ assert st == 400, st
 st, _ = submit_pin("op_pin_missing", "b" * 64)
 assert st == 404, st
 st, j = submit_pin("op_pin_ok", "a" * 64)
-assert st == 202 and j.get("turn_id", "").startswith("trn_"), (st, j)
+assert st == 202 and is_uuid4(j.get("turn_id", "")) and is_uuid4(j.get("conversation_id", "")), (st, j)
 row = subprocess.check_output([psql, pgurl, "-tAc", f"SELECT compute||'|'||source_device||'|'||workspace FROM chat.turns_v2 WHERE id='{j['turn_id']}'"]).decode().strip()
 assert row == f"local|Mac Studio Lab|host:{'a'*64}", row
 
@@ -259,7 +264,7 @@ assert st == 400, st
 st, _ = submit_qs("op_sb_bad_sz", "target=sandbox&size=huge")
 assert st == 400, st
 st, j = submit_qs("op_sb_ok", "target=sandbox&size=small")
-assert st == 202 and j.get("turn_id", "").startswith("trn_"), (st, j)
+assert st == 202 and is_uuid4(j.get("turn_id", "")) and is_uuid4(j.get("conversation_id", "")), (st, j)
 srow = subprocess.check_output([psql, pgurl, "-tAc", f"SELECT compute||'|'||source_device||'|'||workspace FROM chat.turns_v2 WHERE id='{j['turn_id']}'"]).decode().strip()
 assert srow == "sandbox|cloud-sandbox|sandbox:small", srow
 
@@ -313,13 +318,13 @@ subprocess.run([psql, pgurl, "-v", "ON_ERROR_STOP=1", "-c",
 ], check=True, stdout=subprocess.DEVNULL)
 
 st, sb_turn = submit_user("op_u_paid_sb", "target=sandbox&size=small")
-assert st == 202 and sb_turn.get("turn_id", "").startswith("trn_"), (st, sb_turn)
+assert st == 202 and is_uuid4(sb_turn.get("turn_id", "")), (st, sb_turn)
 st, mres = api_req("POST", "/api/chat/sandbox/meter/v1", body={"turn_id": sb_turn["turn_id"], "size": "small", "seconds": 900})
 assert st == 200 and mres["debit_msat"] == 5625 and mres["total_cost_msat"] == 5625 and mres["credit_msat"] == 4375, (st, mres)
 
 # 6d. User's own enrolled computer run strictly costs 0 msat ($0 local compute)
 st, loc_turn = submit_user("op_u_local", f"host={'c'*64}", text="Run coax test locally")
-assert st == 202 and loc_turn.get("turn_id", "").startswith("trn_"), (st, loc_turn)
+assert st == 202 and is_uuid4(loc_turn.get("turn_id", "")), (st, loc_turn)
 st, lres = api_req("POST", "/api/chat/sandbox/meter/v1", body={"turn_id": loc_turn["turn_id"], "size": "large", "seconds": 3600})
 assert st == 200 and lres["compute"] == "local" and lres["debit_msat"] == 0 and lres["total_cost_msat"] == 0 and lres["credit_msat"] == 4375, (st, lres)
 
@@ -341,7 +346,7 @@ assert st == 200 and p_kc["tier"] == 3 and p_kc["compute"] == "sandbox" and "kee
 
 # 6g. Live POST /api/chat/submit/v2alpha1?target=auto routes code turn to online enrolled computer ($0 local) and records placement_reason
 st, auto_turn = submit_user("op_u_auto_local", "target=auto", text="Run coax test on this repo")
-assert st == 202 and auto_turn.get("turn_id", "").startswith("trn_"), (st, auto_turn)
+assert st == 202 and is_uuid4(auto_turn.get("turn_id", "")), (st, auto_turn)
 arow = subprocess.check_output([psql, pgurl, "-tAc", f"SELECT compute||'|'||source_device||'|'||workspace||'|'||placement_reason FROM chat.turns_v2 WHERE id='{auto_turn['turn_id']}'"]).decode().strip()
 assert arow.startswith(f"local|MacBook Pro M4|host:{'c'*64}|Matched enrolled computer"), arow
 

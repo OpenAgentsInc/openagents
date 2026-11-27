@@ -24,7 +24,15 @@ ChatLibrary :: struct {rows:[CHLIB_MAX]ClEntry;n:int;revision:int;}
 }
 chlib_key :: (key:string)->bool #effects(all) {
  if key.count>CHLIB_KEY {return false;}
- if key.count==44 && key[0..<12]=="account/cnv_" {for c:key[12..<44] {if !(c>='0' && c<='9' || c>='a' && c<='f') {return false;}}return true;}
+ if key.count==44 && key[0..<8]=="account/" {
+  if key[8..<12]=="cnv_" {for c:key[12..<44] {if !(c>='0' && c<='9' || c>='a' && c<='f') {return false;}}return true;}
+  for i:8..<44 {
+   c:=key[i];
+   if i==16 || i==21 || i==26 || i==31 {if c!='-' {return false;}}
+   else if !(c>='0' && c<='9' || c>='a' && c<='f') {return false;}
+  }
+  return true;
+ }
  if key.count<73 || key[0..<7]!="device/" || key[71]!='/' {return false;}
  for c:key[7..<71] {if !(c>='0' && c<='9' || c>='a' && c<='f') {return false;}}
  for c:key[72..<key.count] {if !(c>='a' && c<='z' || c>='A' && c<='Z' || c>='0' && c<='9' || c=='-' || c=='_' || c=='.') {return false;}}

@@ -25,14 +25,14 @@ nct_control_case :: (t:[]Ap,c:[]Sc,project:string,message:string,mode:string) {
   stop:=[5]string.["chat","stop",tid,"--operation-id","native-stop-request"];st=sc_cli(t,c,stop[..]);ap_check(t,"chat Stop remains available after funding is removed",st==0,sc_text(c));
   // The queue retained a Stop before crashing, and its original window has
   // expired without reaching the native owner. Use the primary codec bytes.
-  now:=cxproc_wall_us()/1000;raw:[1024]u8;n:=xt_request_write(XtRequest.{method="StopTask",task=cast(string)tid[4..<36],command="11111111111111111111111111111111",issued=now-300002,expires=now-2},raw[..]);
-  sb_clear(query[..]);sb(query[..],"UPDATE chat.turn_tasks_v1 SET stop_json='");sb(query[..],cast(string)raw[0..<ifx n>0 then n else 0]);sb(query[..],"' WHERE turn='");sb(query[..],tid);sb(query[..],"'");ap_do(t,sb_text(query[..]));
-  sb_clear(tag[..]);sb(tag[..],"stop-expired");ok=nct_claim_run(t,tid,sb_text(tag[..]));
-  sb_clear(query[..]);sb(query[..],"SELECT count(*) FROM chat.task_stop_commands_v1 WHERE turn='");sb(query[..],tid);sb(query[..],"'");count:[32]u8;
-  ap_check(t,"expired Stop retries then reconciles and retains both attempts before a new effect",ok && ap_sql(t,sb_text(query[..]),count[..])=="2",cast(string)count[..]);
- }else {
-  path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"deny.json",path[..]);deny:=[10]string.["tasks","deny",EX_TEST_HASH,cast(string)tid[4..<36],"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c,deny[..]);ap_check(t,"CLI denial reaches the native permission owner",st==0,sc_text(c));
- }
+   now:=cxproc_wall_us()/1000;raw:[1024]u8;tid_hex:[32]u8;n:=xt_request_write(XtRequest.{method="StopTask",task=ctn_hex32(tid,tid_hex[..]),command="11111111111111111111111111111111",issued=now-300002,expires=now-2},raw[..]);
+   sb_clear(query[..]);sb(query[..],"UPDATE chat.turn_tasks_v1 SET stop_json='");sb(query[..],cast(string)raw[0..<ifx n>0 then n else 0]);sb(query[..],"' WHERE turn='");sb(query[..],tid);sb(query[..],"'");ap_do(t,sb_text(query[..]));
+   sb_clear(tag[..]);sb(tag[..],"stop-expired");ok=nct_claim_run(t,tid,sb_text(tag[..]));
+   sb_clear(query[..]);sb(query[..],"SELECT count(*) FROM chat.task_stop_commands_v1 WHERE turn='");sb(query[..],tid);sb(query[..],"'");count:[32]u8;
+   ap_check(t,"expired Stop retries then reconciles and retains both attempts before a new effect",ok && ap_sql(t,sb_text(query[..]),count[..])=="2",cast(string)count[..]);
+  }else {
+   path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"deny.json",path[..]);tid_hex:[32]u8;deny:=[10]string.["tasks","deny",EX_TEST_HASH,ctn_hex32(tid,tid_hex[..]),"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c,deny[..]);ap_check(t,"CLI denial reaches the native permission owner",st==0,sc_text(c));
+  }
  sb_clear(tag[..]);sb(tag[..],mode);sb(tag[..],"-result");ap_check(t,"native Stop or denial is reconciled by a new worker",nct_claim_run(t,tid,sb_text(tag[..])),ap_body(t));
  sb_clear(query[..]);sb(query[..],"SELECT state FROM chat.turns_v2 WHERE id='");sb(query[..],tid);sb(query[..],"'");out:[32]u8;ap_check(t,"saved native control outcome is authoritative",ap_sql(t,sb_text(query[..]),out[..])==(ifx mode=="stop" then "5" else "4"),cast(string)out[..]);
  if mode=="stop" {sb_clear(query[..]);sb(query[..],"UPDATE auth.accounts SET team=true WHERE id=(SELECT account FROM chat.turns_v2 WHERE id='");sb(query[..],tid);sb(query[..],"')");ap_do(t,sb_text(query[..]));}
@@ -42,20 +42,21 @@ nct_capture_case :: (t:[]Ap,c:[]Sc,project:string,message:string,root:string) {
  start:=[10]string.["chat","new","--project",project,"--project-rev","1","--file",message,"--operation-id","native-large-capture"];st:=sc_cli(t,c,start[..]);control:[1]CtControl;arena:[72]u8;turn:[36]u8;ok:=st==0 && ctr_control_read(sc_text(c),control[..],arena[..]);if ok {_=js_copy(turn[..],control[0].turn);}tid:=cast(string)turn[..];
  ap_check(t,"large transcript uses one separately admitted turn",ok,sc_text(c));
  if ok {
+  tid_hex:[32]u8;task_hex:=ctn_hex32(tid,tid_hex[..]);
   ok=nct_claim_run(t,tid,"large-start") && nct_claim_run(t,tid,"large-first-pages");q:[1]Sb;out:[2048]u8;
   sb(q[..],"SELECT count(*)||'|'||(SELECT output FROM chat.turns_v2 WHERE id='");sb(q[..],tid);sb(q[..],"') FROM chat.task_capture_pages_v1 WHERE turn='");sb(q[..],tid);sb(q[..],"'");
   ap_check(t,"a claim retains exactly eight primary pages and publishes no partial assistant text",ok && ap_sql(t,sb_text(q[..]),out[..])=="8|",cast(string)out[..]);
   sb_clear(q[..]);sb(q[..],"SELECT capture_json FROM chat.turn_tasks_v1 WHERE turn='");sb(q[..],tid);sb(q[..],"'");request:[1024]u8;raw:=ap_sql(t,sb_text(q[..]),request[..]);read:[1]XhRequest;ra:[256]u8;
-  ap_check(t,"the saved capture request pins the per-task reader and initial read identity",xh_request_read(raw,read[..],ra[..]) && read[0].task==cast(string)tid[4..<36] && read[0].reader==read[0].task && read[0].hash=="" && read[0].offset==0,raw);
+  ap_check(t,"the saved capture request pins the per-task reader and initial read identity",xh_request_read(raw,read[..],ra[..]) && read[0].task==task_hex && read[0].reader==read[0].task && read[0].hash=="" && read[0].offset==0,raw);
   ok=nct_claim_run(t,tid,"large-resume");sb_clear(q[..]);sb(q[..],"SELECT output||'|'||(SELECT count(*) FROM chat.task_capture_pages_v1 WHERE turn=t.id)||'|'||(SELECT capture_json IS NULL FROM chat.turn_tasks_v1 WHERE turn=t.id) FROM chat.turns_v2 t WHERE id='");sb(q[..],tid);sb(q[..],"'");
   ap_check(t,"a fresh worker resumes the same capture and atomically retires the complete cache",ok && ap_sql(t,sb_text(q[..]),out[..])=="Checking native task. |0|true",cast(string)out[..]);
-  command_path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"large-approve.json",command_path[..]);approve:=[10]string.["tasks","approve",EX_TEST_HASH,cast(string)tid[4..<36],"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c,approve[..]);ap_check(t,"large task keeps its original held permission identity",st==0,sc_text(c));
+  command_path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"large-approve.json",command_path[..]);approve:=[10]string.["tasks","approve",EX_TEST_HASH,task_hex,"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c,approve[..]);ap_check(t,"large task keeps its original held permission identity",st==0,sc_text(c));
   ok=nct_claim_run(t,tid,"large-terminal-first");sb_clear(q[..]);sb(q[..],"SELECT state FROM chat.turns_v2 WHERE id='");sb(q[..],tid);sb(q[..],"'");ap_check(t,"terminal native status waits for its whole terminal capture",ok && ap_sql(t,sb_text(q[..]),out[..])=="2",cast(string)out[..]);
   ok=nct_claim_run(t,tid,"large-terminal-resume");sb_clear(q[..]);sb(q[..],"SELECT state||'|'||output FROM chat.turns_v2 WHERE id='");sb(q[..],tid);sb(q[..],"'");finished:=ok && ap_sql(t,sb_text(q[..]),out[..])=="3|Checking native task. Native task complete.";ap_check(t,"resumed terminal capture saves the exact final answer once",finished,cast(string)out[..]);
   // This independent case has consumed its complete capture. Retire only its
   // ephemeral fixture reader; keep the native transcript and the four-reader
   // product budget, rather than occupying that budget for the next case.
-  captures:[FS_PATH_MAX]u8;reader:[FS_PATH_MAX]u8;if finished {ap_check(t,"the completed large-capture fixture retires its own ephemeral reader",fs_remove(xh_reader_dir(fs_join(root,"captures",captures[..]),EX_TEST_HASH,cast(string)tid[4..<36],reader[..])),"");}
+  captures:[FS_PATH_MAX]u8;reader:[FS_PATH_MAX]u8;if finished {ap_check(t,"the completed large-capture fixture retires its own ephemeral reader",fs_remove(xh_reader_dir(fs_join(root,"captures",captures[..]),EX_TEST_HASH,task_hex,reader[..])),"");}
  }
  _=fs_remove(toggle);
 }
@@ -65,8 +66,9 @@ nct_account_case :: (t:[]Ap,c:[]Sc,project:string,message:string) {
  ap_check(t,"native account preflight uses the existing provider account process",nct_claim_run(t,tid,"account-start") && nct_claim_run(t,tid,"account-observe"),ap_body(t));
  inspect:=[3]string.["chat","task",tid];st=sc_cli(t,c,inspect[..]);task:[1]CttTask;ta:[CTT_ARENA]u8;ok=st==0 && ctt_read(sc_text(c),task[..],ta[..]);
  ap_check(t,"the saved binding selects the fresh Claude profile while system quota is exhausted",ok && task[0].binding.engine=="claude" && task[0].binding.account==EX_TEST_ID && task[0].offer.account==EX_TEST_ID,sc_text(c));if !ok {return;}
- show:=[4]string.["tasks","show",EX_TEST_HASH,cast(string)tid[4..<36]];st=sc_cli(t,c,show[..]);v:[1]XtStatus;va:[2048]u8;ap_check(t,"the selected Claude profile owns the actual held native task",st==0 && xt_status_read(sc_text(c),v[..],va[..]) && v[0].state==XT_WAITING && v[0].binding.account==EX_TEST_ID,sc_text(c));
- path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"account-approve.json",path[..]);approve:=[10]string.["tasks","approve",EX_TEST_HASH,cast(string)tid[4..<36],"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c,approve[..]);
+ tid_hex:[32]u8;task_hex:=ctn_hex32(tid,tid_hex[..]);
+ show:=[4]string.["tasks","show",EX_TEST_HASH,task_hex];st=sc_cli(t,c,show[..]);v:[1]XtStatus;va:[2048]u8;ap_check(t,"the selected Claude profile owns the actual held native task",st==0 && xt_status_read(sc_text(c),v[..],va[..]) && v[0].state==XT_WAITING && v[0].binding.account==EX_TEST_ID,sc_text(c));
+ path:[FS_PATH_MAX]u8;command:=fs_join(c[0].dir,"account-approve.json",path[..]);approve:=[10]string.["tasks","approve",EX_TEST_HASH,task_hex,"--rev","2","--interaction","native-request","--command-file",command];st=sc_cli(t,c,approve[..]);
  ap_check(t,"the selected Claude profile remains pinned through its permission and result",st==0 && nct_claim_run(t,tid,"account-result"),sc_text(c));
  if st!=0 {env:[4096]u8;trace:[8192]u8;ab:[FS_PATH_MAX]u8;file:=fs_join(fs_dir(ap_env(t,"API_BIN")),"native-audit",ab[..]);n:=fs_read(file,trace[..]);if n>0 {print("native fixture trace: %\n",cast(string)trace[0..<n]);}}
  q:[1]Sb;sb(q[..],"SELECT provider||'|'||state::text FROM chat.turns_v2 WHERE id='");sb(q[..],tid);sb(q[..],"'");out:[64]u8;ap_check(t,"the saved turn reports the actual Claude provider and completion",ap_sql(t,sb_text(q[..]),out[..])=="anthropic|3",cast(string)out[..]);
@@ -101,7 +103,7 @@ nct_checks :: (parent:[]Ap,stranger:string) {
     ac_mail_stop(server,dir);server=ifx fs_mkdir_private(dir) then ac_server_port(t,"coax/web/api/tests/durable_chat_checks.coax",dir,"native-decisions-claude",jo_text(digits[..])) else -1;
     ap_check(t,"the account case starts a separate typed Claude decision fixture",server>=0,"");if server>=0 {nct_account_case(t,c[..],project,message);}
     sb_clear(q[..]);sb(q[..],"UPDATE chat.environment_connections_v1 SET relay='wss://replacement.invalid' WHERE account='");sb(q[..],owner);sb(q[..],"'");ap_do(t,sb_text(q[..]));st=sc_cli(t,c[..],show[..]);ap_check(t,"a replacement enrollment cannot inspect an earlier native task",st!=0 && ap_has(sc_text(c[..]),"404"),sc_text(c[..]));
-    original_turn:[36]u8;o:[1]Jo;jo_start(o[..],original_turn[..]);jo_put(o[..],"trn_");jo_put(o[..],native_id);inspect[2]=jo_text(o[..]);st=sc_cli(t,c[..],inspect[..]);ap_check(t,"the owner retains immutable association history after enrollment replacement",st==0 && ctt_read(sc_text(c[..]),task[..],ta[..]),sc_text(c[..]));
+    inspect[2]=tid;st=sc_cli(t,c[..],inspect[..]);ap_check(t,"the owner retains immutable association history after enrollment replacement",st==0 && ctt_read(sc_text(c[..]),task[..],ta[..]),sc_text(c[..]));
    }
   }
  }

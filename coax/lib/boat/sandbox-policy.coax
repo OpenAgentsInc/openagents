@@ -67,10 +67,21 @@ sb_plain_ok :: (s: string, max_len: int) -> bool #effects(all) {
 }
 
 sb_turn_id_ok :: (id: string) -> bool #effects(all) {
-  if id.count != 36 || cast(string) id[0..<4] != "trn_" { return false; }
-  for i: 4..<36 {
+  if id.count != 36 { return false; }
+  if cast(string) id[0..<4] == "trn_" {
+    for i: 4..<36 {
+      c := id[i];
+      if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+    }
+    return true;
+  }
+  for i: 0..<36 {
     c := id[i];
-    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+    if i == 8 || i == 13 || i == 18 || i == 23 {
+      if c != '-' { return false; }
+    } else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+      return false;
+    }
   }
   return true;
 }
@@ -195,8 +206,21 @@ sb_worker_command :: (turn_id: string, model: string, repo: string, ref: string,
   #assert sb_turn_id_ok(tid);
   #assert !sb_turn_id_ok("trn_g123456789abcdef0123456789abcdef"); // bad at index 4
   #assert !sb_turn_id_ok("trn_:123456789abcdef0123456789abcdef"); // ':' == '9'+1
-  #assert !sb_turn_id_ok("trn_0123456789abcdef0123456789abcde") && !sb_turn_id_ok("cnv_0123456789abcdef0123456789abcdef");
+  #assert !sb_turn_id_ok("trn_0123456789abcdef0123456789abcde") && !sb_turn_id_ok("trn_0123456789abcdef0123456789abcdef0") && !sb_turn_id_ok("cnv_0123456789abcdef0123456789abcdef");
   #assert !sb_turn_id_ok("trn_0123456789ABCDEF0123456789abcdef") && !sb_turn_id_ok("trn_0123456789abcdef0123456789abcdeg");
+  utid := "550e8400-e29b-41d4-a716-44665544000f";
+  #assert sb_turn_id_ok(utid);
+  #assert !sb_turn_id_ok("550e8400-e29b-41d4-a716-44665544000") && !sb_turn_id_ok("550e8400-e29b-41d4-a716-4466554400000");
+  #assert !sb_turn_id_ok("550E8400-e29b-41d4-a716-446655440000") && !sb_turn_id_ok("g50e8400-e29b-41d4-a716-446655440000") && !sb_turn_id_ok("550e8400-e29b-41d4-a716-44665544000g");
+  #assert !sb_turn_id_ok("/50e8400-e29b-41d4-a716-446655440000") && !sb_turn_id_ok(":50e8400-e29b-41d4-a716-446655440000") && !sb_turn_id_ok("`50e8400-e29b-41d4-a716-446655440000");
+  for h: [4] int.[8, 13, 18, 23] {
+    bad_u: [36] u8;
+    for c, i: utid { bad_u[i] = c; }
+    bad_u[h] = '0'; #assert !sb_turn_id_ok(cast(string) bad_u[..]);
+    bad_u[h] = '-'; bad_u[h - 1] = '-'; #assert !sb_turn_id_ok(cast(string) bad_u[..]);
+    bad_u[h - 1] = '0'; bad_u[h + 1] = '-'; #assert !sb_turn_id_ok(cast(string) bad_u[..]);
+  }
+  #assert sb_env_path_ok("/tmp/oa-run-550e8400-e29b-41d4-a716-44665544000f.env");
 
   // Character boundary checks for sb_alnum and sb_plain_ok
   #assert sb_alnum('a') && sb_alnum('z') && !sb_alnum('{') && sb_alnum('A') && sb_alnum('Z') && !sb_alnum('[') && sb_alnum('0') && sb_alnum('9') && !sb_alnum(':');

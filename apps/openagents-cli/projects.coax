@@ -26,10 +26,21 @@ projects_usage :: () {
 }
 #test "Project CLI paths refuse separators and ambiguous revisions before HTTP" {
  #assert pcli_id("prj_0123456789abcdef0123456789abcdef","prj_",36) && !pcli_id("prj_0123456789abcdef0123456789abcdeg","prj_",36);
+ #assert pcli_id("550e8400-e29b-41d4-a716-446655440000","prj_",36) && pcli_id("550e8400-e29b-41d4-a716-446655440000","knw_",36);
+ #assert !pcli_id("550E8400-e29b-41d4-a716-446655440000","prj_",36) && !pcli_id("550e8400-e29b-41d4-a716-446655440000","m_",22);
  #assert pcli_id("m_00000000000000000001","m_",22) && !pcli_id("m_0000000000000000000/","m_",22);
  #assert pcli_revision("1")==1 && pcli_revision("2147483645")==2147483645 && pcli_revision("")== -1 && pcli_revision("1.0")== -1 && pcli_revision("-1")== -1 && pcli_revision("2147483646")== -1;
 }
-pcli_id :: (id:string,prefix:string,n:int)->bool {if id.count!=n || id[0..<prefix.count]!=prefix {return false;}for i:prefix.count..<n {c:=id[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+pcli_uuid :: (id:string)->bool {
+ if id.count!=36 {return false;}
+ for i:0..<36 {
+  c:=id[i];
+  if i==8 || i==13 || i==18 || i==23 {if c!='-' {return false;}}
+  else if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}
+ }
+ return true;
+}
+pcli_id :: (id:string,prefix:string,n:int)->bool {if n==36 && pcli_uuid(id) {return true;}if id.count!=n || id[0..<prefix.count]!=prefix {return false;}for i:prefix.count..<n {c:=id[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
 pcli_revision :: (s:string)->int {if s.count<1 || s.count>10 {return -1;}n:=0;for c:s {if c<'0' || c>'9' {return -1;}n=n*10+cast(int)(c-'0');if n>=2147483646 {return -1;}}return ifx n<1 then -1 else n;}
 pcli_file :: (file:string,out:[]u8)->int {
  if file=="" {return -1;}n:=ifx file=="-" then cxcli_read_stdin(out) else fs_read(file,out);
@@ -53,7 +64,7 @@ projects_main :: (a:[]Args,r:[]Rep,profile:string,verb:string)->int {
  else if verb=="chat" {id=item;item=positional(a,4);if sub=="new" {fresh_chat=true;chat_write=true;kind=8;suffix="chats/new";}else {if !pcli_id(item,"m_",22) {return fail(r,EXIT_USAGE,"expected a saved chat ID");}if sub=="show" || sub=="send" {jo_put(o[..],"chats/");jo_put(o[..],item);get=sub=="show";if !get {jo_put(o[..],"/messages");kind=9;chat_write=true;}}else if sub=="link" {kind=6;suffix="chats";}else if sub=="complete" {kind=7;suffix="complete";}else {return fail(r,EXIT_USAGE,"projects chat new|show|send|link|complete");}}}
  else if verb=="context" {get=true;op:=item;if op.count<1 || op.count>80 {return fail(r,EXIT_USAGE,"expected the completion operation ID");}encoded:[256]u8;en:=uri_component(op,encoded[..]);if en<0 {return fail(r,EXIT_USAGE,"operation ID too long");}jo_put(o[..],"context?operation_id=");jo_put(o[..],cast(string)encoded[0..<en]);}
  else {return fail(r,EXIT_USAGE,"projects list|create|show|update|instructions|knowledge|chats|chat|context");}
- if id!="" && !pcli_id(id,"prj_",36) {return fail(r,EXIT_USAGE,"expected a Project ID (prj_ and 32 hex digits)");}
+ if id!="" && !pcli_id(id,"prj_",36) {return fail(r,EXIT_USAGE,"expected a Project ID (UUID or legacy prj_ ID)");}
  if id=="" && verb!="list" && verb!="create" {return fail(r,EXIT_USAGE,"expected a Project ID");}
  if o[0].n>0 {suffix=jo_text(o[..]);}
  route:="";if verb=="list" && suffix!="" {pb:[1]Jo;jo_start(pb[..],path[..]);jo_put(pb[..],"/api/projects/v1");jo_put(pb[..],suffix);route=jo_text(pb[..]);}else {route=pr_route(id,suffix,path[..]);}

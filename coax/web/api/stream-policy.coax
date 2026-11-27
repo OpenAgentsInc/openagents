@@ -153,7 +153,20 @@ sp_is_terminal_state :: (state: int) -> bool #export_c #effects(all) {
   return state >= SP_STATE_COMPLETED && state <= SP_STATE_UNKNOWN;
 }
 
+sp_uuid_valid :: (id: string) -> bool #effects(all) {
+  if id.count != 36 { return false; }
+  for i: 0..<36 {
+    if i == 8 || i == 13 || i == 18 || i == 23 {
+      if id[i] != '-' { return false; }
+    } else if !sp_is_lower_hex(id[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 sp_turn_id_valid :: (id: string) -> bool #export_c #effects(all) {
+  if sp_uuid_valid(id) { return true; }
   if id.count != 36 { return false; }
   if id[0] != 't' || id[1] != 'r' || id[2] != 'n' || id[3] != '_' { return false; }
   for i: 4..<36 {
@@ -163,6 +176,7 @@ sp_turn_id_valid :: (id: string) -> bool #export_c #effects(all) {
 }
 
 sp_conv_id_valid :: (id: string) -> bool #export_c #effects(all) {
+  if sp_uuid_valid(id) { return true; }
   if id.count != 36 { return false; }
   if id[0] != 'c' || id[1] != 'n' || id[2] != 'v' || id[3] != '_' { return false; }
   for i: 4..<36 {
@@ -498,6 +512,24 @@ sp_sse_event_frame :: (out: [] u8, id: int, event_name: string, data: string) ->
   #assert !sp_conv_notify_parse("cnv_0123456789abcdef0123456789abcdef:1", cout[..], sout[..]);
   #assert !sp_conv_notify_parse("cnv_0123456789abcdef0123456789abcdef|0", cout[..], sout[..]);
   #assert !sp_conv_notify_parse("trn_0123456789abcdef0123456789abcdef|1", cout[..], sout[..]);
+
+  // Canonical lowercase UUIDs for turn & conversation IDs + NOTIFY payloads
+  good_uuid := "550e8400-e29b-41d4-a716-446655440000";
+  #assert sp_uuid_valid(good_uuid) && sp_turn_id_valid(good_uuid) && sp_conv_id_valid(good_uuid);
+  #assert !sp_uuid_valid("550e8400-e29b-41d4-a716-44665544000") && !sp_uuid_valid("550e8400-e29b-41d4-a716-4466554400000");
+  #assert !sp_uuid_valid("550E8400-e29b-41d4-a716-446655440000") && !sp_uuid_valid("g50e8400-e29b-41d4-a716-446655440000") && !sp_uuid_valid("550e8400-e29b-41d4-a716-44665544000g");
+  for h: [4] int.[8, 13, 18, 23] {
+    bad_u: [36] u8;
+    for c, i: good_uuid { bad_u[i] = c; }
+    bad_u[h] = '0';
+    #assert !sp_uuid_valid(cast(string) bad_u[..]);
+    bad_u[h] = '-'; bad_u[h - 1] = '-';
+    #assert !sp_uuid_valid(cast(string) bad_u[..]);
+    bad_u[h - 1] = '0'; bad_u[h + 1] = '-';
+    #assert !sp_uuid_valid(cast(string) bad_u[..]);
+  }
+  #assert sp_notify_parse("550e8400-e29b-41d4-a716-446655440000|7", tout[..], sout[..]) && cast(string) tout[0..<36] == good_uuid && sout[0] == 7;
+  #assert sp_conv_notify_parse("550e8400-e29b-41d4-a716-446655440000|9", cout[..], sout[..]) && cast(string) cout[0..<36] == good_uuid && sout[0] == 9;
 
   #assert sp_acct_id_valid("a") && sp_acct_id_valid("AZ_az-09.:") && sp_acct_id_valid("1234567890123456789012345678901234567890");
   #assert !sp_acct_id_valid("") && !sp_acct_id_valid("12345678901234567890123456789012345678901");
