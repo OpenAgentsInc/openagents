@@ -260,6 +260,9 @@
     .actions { width: 100%; flex-direction: column; }
     .btn { width: 100%; max-width: 340px; }
   }
+  .inside body { overflow: auto; display: block; padding: 0; }
+  .inside body > main, .inside body > footer { display: none; }
+  .inside #home-root { position: fixed; inset: 0; overflow-y: auto; background: #000; z-index: 30; }
 </style>
 </head>
 <body>
@@ -280,6 +283,10 @@
     <a class="btn btn-secondary" href="https://testflight.apple.com/join/dvQdns5B" target="_blank" rel="noopener noreferrer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
       <span>Join the TestFlight</span>
+    </a>
+
+    <a class="btn btn-secondary" href="/login">
+      <span>Sign in</span>
     </a>
   </div>
 
@@ -329,6 +336,20 @@ document.querySelectorAll('[data-copy]').forEach((btn) => {
     });
   });
 });
+</script>
+<script type="module">
+let inside = false;
+try {
+  const r = await fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(3000) });
+  inside = r.ok && (await r.json()).logged_in === true;
+} catch {}
+if (inside) {
+  document.documentElement.classList.add("inside");
+  const root = document.createElement("div"); root.id = "home-root"; document.body.appendChild(root);
+  const shell = document.createElement("script"); shell.type = "module"; shell.src = "/coaxial/dom-host.js";
+  shell.dataset.app = "chat-web"; shell.dataset.root = "home-root";
+  document.body.appendChild(shell);
+}
 </script>
 </body>
 </html>
