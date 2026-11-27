@@ -24,9 +24,9 @@ apps_sdk_css :: (out: [] u8, at: int) -> int {
   n = as_put(out, n, "--yellow-300:#ffd240;--yellow-400:#ffc300;--yellow-500:#e0ac00;--yellow-a25:rgba(255,195,0,.08);--yellow-a50:rgba(255,195,0,.16);");
   n = as_put(out, n, "--red-300:#ff6764;--red-400:#fa423e;--red-500:#e02e2a;--red-600:#ba2623;--red-a25:rgba(250,66,62,.08);--red-a50:rgba(250,66,62,.16);--red-a75:rgba(250,66,62,.30);");
   n = as_put(out, n, "--purple-300:#ad7bf9;--purple-400:#924ff7;--purple-500:#8046d9;--purple-a25:rgba(146,79,247,.08);--purple-a50:rgba(146,79,247,.16);--purple-a75:rgba(146,79,247,.28);");
-  n = as_put(out, n, "--color-surface:var(--gray-0);--color-surface-secondary:var(--gray-75);--color-surface-tertiary:var(--gray-200);--color-surface-elevated:var(--gray-150);--color-surface-elevated-secondary:var(--gray-250);");
-  n = as_put(out, n, "--color-text:var(--gray-1000);--color-text-secondary:var(--gray-700);--color-text-tertiary:var(--gray-600);--color-text-inverse:var(--gray-0);--color-text-disabled:var(--gray-500);");
-  n = as_put(out, n, "--color-border-subtle:var(--alpha-06);--color-border:var(--alpha-12);--color-border-strong:var(--alpha-20);--color-ring:var(--blue-400);");
+  n = as_put(out, n, "--color-surface:#000000;--color-surface-secondary:#0a0a0a;--color-surface-tertiary:#141414;--color-surface-elevated:#0e0e0e;--color-surface-elevated-secondary:#191919;");
+  n = as_put(out, n, "--color-text:#ededed;--color-text-secondary:#9a9a9a;--color-text-tertiary:#737373;--color-text-inverse:#0a0a0a;--color-text-disabled:#555555;");
+  n = as_put(out, n, "--color-border-subtle:#1b1b1b;--color-border:#2c2c2c;--color-border-strong:#404040;--color-ring:var(--blue-400);");
   n = as_put(out, n, "--font-sans:ui-sans-serif,-apple-system,system-ui,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;");
   n = as_put(out, n, "--font-mono:ui-monospace,'SFMono-Regular','SF Mono',Menlo,Monaco,Consolas,monospace;");
   n = as_put(out, n, "--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:10px;--radius-xl:12px;--radius-2xl:16px;--radius-3xl:20px;--radius-full:9999px;");

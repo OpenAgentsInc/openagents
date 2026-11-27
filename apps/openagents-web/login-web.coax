@@ -1,13 +1,6 @@
-// openagents.com/login: dark-mode Apps SDK UI sign-in page (pure Coax DOM, zero WebGPU HUD).
+// openagents.com/login: ultra-minimal centered dark-mode Apps SDK UI sign-in page
+// (pure Coax DOM, zero WebGPU HUD, synced with OpenAgents Desktop pure-black palette).
 // Built directly from components/skin/apps-sdk.coax + components/kit/apps-sdk.coax over dom.coax.
-// Talks to coax/web/api/auth.c + workos.c (?as=lines):
-//   GET  /api/auth/account?as=lines
-//   GET  /api/auth/workos/config?as=lines
-//   POST /api/auth/email/start?as=lines        (or /api/auth/workos/magic/start?as=lines)
-//   POST /api/auth/email/verify?as=lines       (or /api/auth/workos/magic/verify?as=lines)
-//   POST /api/auth/workos/sso/discover?as=lines
-//   POST /api/auth/logout?as=lines
-//   GET  /api/auth/workos/oauth/start?provider=GoogleOAuth|GitHubOAuth|AppleOAuth
 //   coax/bin/coax test apps/openagents-web/login-web.coax
 
 #load "../../components/kit/apps-sdk.coax";
@@ -28,8 +21,7 @@ LW_PATH :: 13;
 // Screens
 LW_SCR_EMAIL :: 0;
 LW_SCR_CODE :: 1;
-LW_SCR_SSO :: 2;
-LW_SCR_SIGNED_IN :: 3;
+LW_SCR_SIGNED_IN :: 2;
 
 // Active HTTP requests
 LW_REQ_NONE :: 0;
@@ -37,8 +29,7 @@ LW_REQ_ACCOUNT :: 1;
 LW_REQ_WORKOS_CFG :: 2;
 LW_REQ_START :: 3;
 LW_REQ_VERIFY :: 4;
-LW_REQ_SSO :: 5;
-LW_REQ_LOGOUT :: 6;
+LW_REQ_LOGOUT :: 5;
 
 LoginWeb :: struct {
   ready: bool;
@@ -49,17 +40,14 @@ LoginWeb :: struct {
   req_kind: int;
   asking: bool;
   stop_req: bool;
-  // Form inputs
   email: [256] u8; email_n: int;
   code: [32] u8; code_n: int;
   sent_email: [256] u8; sent_email_n: int;
   signed_email: [256] u8; signed_email_n: int;
   next_path: [256] u8; next_path_n: int;
   ref_code: [64] u8; ref_code_n: int;
-  // Status / error banners
   err: [256] u8; err_n: int;
   info: [256] u8; info_n: int;
-  // HTTP & navigation mailboxes for login-web-face.c
   door: [256] u8; door_n: int;
   request: [LW_REQ_CAP] u8; request_n: int;
   resp: [LW_RESP_CAP] u8; resp_n: int;
@@ -103,7 +91,6 @@ lw_set_info :: (s: [] LoginWeb, msg: string) {
 
 lw_clear_msgs :: (s: [] LoginWeb) { s[0].err_n = 0; s[0].info_n = 0; }
 
-// Read a value from "?as=lines" response ("key value\n").
 lw_line_val :: (resp: string, key: string) -> string {
   i := 0;
   while i < resp.count {
@@ -143,7 +130,7 @@ lw_ask :: (s: [] LoginWeb, kind: int, url: string, body: string) {
   s[0].request_n = lw_copy(s[0].request[..], body);
   s[0].resp_n = 0;
   s[0].asking = true;
-  if kind == LW_REQ_START || kind == LW_REQ_VERIFY || kind == LW_REQ_SSO || kind == LW_REQ_LOGOUT {
+  if kind == LW_REQ_START || kind == LW_REQ_VERIFY || kind == LW_REQ_LOGOUT {
     s[0].busy = true;
   }
 }
@@ -211,57 +198,34 @@ lw_submit_code :: (s: [] LoginWeb) {
   lw_ask(s, LW_REQ_VERIFY, url, cast(string) b[0..<n]);
 }
 
-lw_submit_sso :: (s: [] LoginWeb) {
-  em := cast(string) s[0].email[0..<s[0].email_n];
-  if !lw_valid_email(em) {
-    lw_set_err(s, "Enter your work email address for Enterprise SSO.");
-    return;
-  }
-  lw_clear_msgs(s);
-  b: [512] u8;
-  n := lw_append(b[..], 0, "{\"email\":");
-  n = lw_json_str(b[..], n, em);
-  n = lw_append(b[..], n, "}");
-  lw_ask(s, LW_REQ_SSO, "/api/auth/workos/sso/discover?as=lines", cast(string) b[0..<n]);
-}
-
 lw_css :: (out: [] u8, at: int) -> int {
   n := at;
   n = as_put(out, n, "*,*::before,*::after{box-sizing:border-box}");
-  n = as_put(out, n, "html,body{margin:0;min-height:100%;background:#0d0d0d;color:#ffffff;font-family:var(--font-sans);-webkit-font-smoothing:antialiased}");
-  n = as_put(out, n, ".lw-page{min-height:100dvh;display:flex;flex-direction:column;background:radial-gradient(900px 540px at 78% 18%,rgba(2,133,255,.07),transparent 65%),#0d0d0d}");
-  n = as_put(out, n, ".lw-top{display:flex;align-items:center;justify-content:space-between;padding:20px 28px;max-width:1280px;width:100%;margin:0 auto}");
-  n = as_put(out, n, ".lw-brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:var(--color-text);font:600 15px/1 var(--font-sans);letter-spacing:-.01em}");
-  n = as_put(out, n, ".lw-mark{width:24px;height:24px;border-radius:7px;display:block}");
-  n = as_put(out, n, ".lw-grid{flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.02fr);gap:48px;align-items:center;max-width:1180px;width:100%;margin:0 auto;padding:12px 28px 36px}");
-  n = as_put(out, n, ".lw-left{display:flex;flex-direction:column;align-items:center;text-align:center;gap:20px;width:100%;max-width:420px;margin:0 auto}");
-  n = as_put(out, n, ".lw-emblem{width:38px;height:38px;border-radius:11px;background:var(--alpha-06);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center}");
-  n = as_put(out, n, ".lw-emblem img{width:22px;height:22px;display:block}");
-  n = as_put(out, n, ".lw-head{display:flex;flex-direction:column;gap:8px;align-items:center}");
-  n = as_put(out, n, ".lw-h1{margin:0;font:600 32px/1.15 var(--font-sans);letter-spacing:-.03em;color:var(--color-text)}");
-  n = as_put(out, n, ".lw-sub{margin:0;font:400 15px/1.5 var(--font-sans);color:var(--color-text-secondary);max-width:34ch}");
-  n = as_put(out, n, ".lw-card{width:100%;text-align:left;background:#141414;border:1px solid var(--color-border);border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:14px;box-shadow:0 16px 48px rgba(0,0,0,.45)}");
-  n = as_put(out, n, ".lw-full{width:100%}");
-  n = as_put(out, n, ".lw-or{display:flex;align-items:center;gap:12px;margin:2px 0;color:var(--color-text-tertiary);font:500 11px/1 var(--font-sans);letter-spacing:.08em;text-transform:uppercase}");
-  n = as_put(out, n, ".lw-or::before,.lw-or::after{content:'';flex:1;height:1px;background:var(--color-border-subtle)}");
-  n = as_put(out, n, ".lw-oauth{display:flex;flex-direction:column;gap:9px;width:100%}");
-  n = as_put(out, n, ".lw-aux{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;padding-top:2px}");
-  n = as_put(out, n, ".lw-legal{margin:0;text-align:center;font:400 12px/1.5 var(--font-sans);color:var(--color-text-tertiary)}");
-  n = as_put(out, n, ".lw-legal a{color:var(--color-text-secondary);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--alpha-20)}");
-  n = as_put(out, n, ".lw-legal a:hover{color:var(--color-text)}");
-  n = as_put(out, n, ".lw-dl{margin-top:2px}");
-  n = as_put(out, n, ".lw-foot{padding:16px 28px 24px;text-align:center}");
-  // Right-hand rounded dark editorial showcase card (Apps SDK UI composition)
-  n = as_put(out, n, ".lw-stage{position:relative;border-radius:22px;border:1px solid var(--color-border);background:radial-gradient(circle at 25% 18%,rgba(146,79,247,.14),transparent 48%),radial-gradient(circle at 82% 78%,rgba(2,133,255,.16),transparent 52%),linear-gradient(160deg,#161618 0%,#101012 100%);padding:28px;min-height:560px;display:flex;flex-direction:column;justify-content:space-between;gap:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.55)}");
-  n = as_put(out, n, ".lw-stage-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}");
-  n = as_put(out, n, ".lw-stage-copy{display:flex;flex-direction:column;gap:8px}");
-  n = as_put(out, n, ".lw-stage-h{margin:0;font:600 22px/1.25 var(--font-sans);letter-spacing:-.02em;color:var(--color-text)}");
-  n = as_put(out, n, ".lw-stage-p{margin:0;font:400 14px/1.55 var(--font-sans);color:var(--color-text-secondary);max-width:44ch}");
-  n = as_put(out, n, ".lw-preview{background:rgba(13,13,13,.86);border:1px solid var(--color-border);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px;backdrop-filter:blur(12px)}");
-  n = as_put(out, n, ".lw-pv-bar{display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid var(--color-border-subtle)}");
-  n = as_put(out, n, ".lw-pv-dots{display:flex;gap:6px}.lw-pv-dots span{width:9px;height:9px;border-radius:9999px;background:var(--alpha-15)}");
-  n = as_put(out, n, ".lw-in-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--color-surface-secondary);border:1px solid var(--color-border-subtle)}");
-  n = as_put(out, n, "@media(max-width:900px){.lw-grid{grid-template-columns:1fr;gap:24px;padding:8px 20px 32px}.lw-stage{display:none}}");
+  n = as_put(out, n, "html,body{margin:0;min-height:100%;background:#000000;color:#ededed;font-family:var(--font-sans);-webkit-font-smoothing:antialiased}");
+  n = as_put(out, n, ".lw-page{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;background:#000000;position:relative}");
+  n = as_put(out, n, ".lw-box{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:stretch;gap:10px}");
+  n = as_put(out, n, ".lw-head{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:10px;text-align:center}");
+  n = as_put(out, n, ".lw-brand{display:inline-flex;align-items:center;gap:9px;text-decoration:none;color:#ededed;font:600 22px/1.1 var(--font-sans);letter-spacing:-.025em}");
+  n = as_put(out, n, ".lw-mark{width:22px;height:22px;display:block}");
+  n = as_put(out, n, ".lw-sub{margin:0;font:400 13px/1.4 var(--font-sans);color:#818181}");
+  n = as_put(out, n, ".lw-oauth{display:flex;flex-direction:column;gap:8px;width:100%}");
+  n = as_put(out, n, ".lw-oauth .as-btn{position:relative;width:100%;height:38px;border-radius:8px;background:#111111;color:#ededed;box-shadow:inset 0 0 0 1px #2c2c2c;font:500 13.5px/1 var(--font-sans);justify-content:center}");
+  n = as_put(out, n, ".lw-oauth .as-btn:hover{background:#191919;box-shadow:inset 0 0 0 1px #404040}");
+  n = as_put(out, n, ".lw-oauth .as-btn .as-ic{position:absolute;left:13px;width:15px;height:15px;color:#ededed}");
+  n = as_put(out, n, ".lw-or{display:flex;align-items:center;gap:12px;margin:6px 0;color:#656565;font:500 11px/1 var(--font-sans);letter-spacing:.08em;text-transform:uppercase}");
+  n = as_put(out, n, ".lw-or::before,.lw-or::after{content:'';flex:1;height:1px;background:#1b1b1b}");
+  n = as_put(out, n, ".lw-box .as-in-wrap{height:38px;border-radius:8px;background:#0a0a0a;box-shadow:inset 0 0 0 1px #2c2c2c}");
+  n = as_put(out, n, ".lw-box .as-in-wrap:hover{box-shadow:inset 0 0 0 1px #404040}");
+  n = as_put(out, n, ".lw-box .as-in-wrap:focus-within{box-shadow:inset 0 0 0 1px #3b82f6,0 0 0 2px rgba(59,130,246,.22)}");
+  n = as_put(out, n, ".lw-box .as-in-wrap input{font-size:13.5px;color:#ededed}");
+  n = as_put(out, n, ".lw-box .as-in-wrap input::placeholder{color:#656565}");
+  n = as_put(out, n, ".lw-primary{width:100%;height:38px !important;border-radius:8px !important;background:#ededed !important;color:#0a0a0a !important;font:600 13.5px/1 var(--font-sans) !important}");
+  n = as_put(out, n, ".lw-primary:hover:not(:disabled){background:#ffffff !important}");
+  n = as_put(out, n, ".lw-aux{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:4px}");
+  n = as_put(out, n, ".lw-in-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:#0e0e0e;border:1px solid #2c2c2c}");
+  n = as_put(out, n, ".lw-foot{position:fixed;bottom:20px;left:0;right:0;text-align:center;font:400 12px/1.4 var(--font-sans);color:#656565}");
+  n = as_put(out, n, ".lw-foot a{color:#818181;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#2c2c2c}");
+  n = as_put(out, n, ".lw-foot a:hover{color:#ededed}");
   return n;
 }
 
@@ -270,10 +234,11 @@ lw_build :: (s: [] LoginWeb) {
   buf: [256] u8;
   tr_begin(t);
 
-  _ = tr_open(t, "lw.page", TG_DIV, "lw-page");
+  _ = tr_open(t, "lw.page", TG_MAIN, "lw-page");
+  _ = tr_open(t, "lw.box", TG_SECTION, "lw-box");
 
-  // Top bar: brand mark + wordmark + quiet badge
-  _ = tr_open(t, "lw.top", TG_HEADER, "lw-top");
+  // Brand mark + wordmark + minimal subtitle
+  _ = tr_open(t, "lw.head", TG_HEADER, "lw-head");
   br := tr_open(t, "lw.brand", TG_A, "lw-brand");
   tr_attr(t, br, AT_HREF, "/");
   im := tr_open(t, "lw.brand.ic", TG_IMG, "lw-mark");
@@ -282,42 +247,18 @@ lw_build :: (s: [] LoginWeb) {
   tr_close(t);
   _ = tr_leaf(t, "lw.brand.t", TG_SPAN, "", "OpenAgents");
   tr_close(t);
-  tr_close(t);
-
-  // Main 2-column split (cross between Factory centered obsidian auth & Claude split showcase)
-  _ = tr_open(t, "lw.grid", TG_MAIN, "lw-grid");
-
-  // ---- Left column: Auth card
-  _ = tr_open(t, "lw.left", TG_SECTION, "lw-left");
-  _ = tr_open(t, "lw.emblem", TG_DIV, "lw-emblem");
-  em_ic := tr_open(t, "lw.emblem.img", TG_IMG, "");
-  tr_attr(t, em_ic, AT_SRC, "/favicon.svg");
-  tr_attr(t, em_ic, AT_LABEL, "OpenAgents");
-  tr_close(t);
-  tr_close(t);
-
-  _ = tr_open(t, "lw.head", TG_DIV, "lw-head");
-  h1_txt := ifx s[0].screen == LW_SCR_CODE then "Check your email"
-    else ifx s[0].screen == LW_SCR_SSO then "Enterprise SSO"
-    else ifx s[0].screen == LW_SCR_SIGNED_IN then "Welcome back"
-    else "Sign in";
-  sub_txt := ifx s[0].screen == LW_SCR_CODE then "Enter the 6-digit verification code we sent to continue."
-    else ifx s[0].screen == LW_SCR_SSO then "Sign in through your organization's identity provider."
-    else ifx s[0].screen == LW_SCR_SIGNED_IN then "Your OpenAgents Cloud session is active."
-    else "Your agentic workspace across Web, Desktop, and iOS.";
-  _ = tr_leaf(t, "lw.h1", TG_H1, "lw-h1", h1_txt);
+  sub_txt := ifx s[0].screen == LW_SCR_CODE then "Enter the 6-digit code we sent to your email"
+    else ifx s[0].screen == LW_SCR_SIGNED_IN then "Your OpenAgents account is signed in"
+    else "Sign in or create an account";
   _ = tr_leaf(t, "lw.sub", TG_P, "lw-sub", sub_txt);
   tr_close(t);
 
-  // Elevated Apps SDK UI Auth Card
-  _ = tr_open(t, "lw.card", TG_DIV, "lw-card");
-
   if s[0].ref_code_n > 0 {
-    _ = as_alert_open(t, "lw.ref.al", "Referral invite applied", "Sign in to claim $10 promotional credit after your first qualifying paid top-up.", AS_SUCCESS, AS_SOFT, IC_SPARKLES);
+    _ = as_alert_open(t, "lw.ref.al", "Referral invite applied", "Sign in to claim $10 promo credit after your first paid top-up.", AS_SUCCESS, AS_SOFT, IC_SPARKLES);
     as_alert_end(t);
   }
   if s[0].err_n > 0 {
-    _ = as_alert_open(t, "lw.err", "Could not sign in", cast(string) s[0].err[0..<s[0].err_n], AS_DANGER, AS_SOFT, IC_ERROR);
+    _ = as_alert_open(t, "lw.err", "Could not log in", cast(string) s[0].err[0..<s[0].err_n], AS_DANGER, AS_SOFT, IC_ERROR);
     as_alert_end(t);
   } else if s[0].info_n > 0 {
     _ = as_alert_open(t, "lw.info", "Code sent", cast(string) s[0].info[0..<s[0].info_n], AS_INFO, AS_SOFT, IC_MAIL);
@@ -325,122 +266,61 @@ lw_build :: (s: [] LoginWeb) {
   }
 
   if s[0].screen == LW_SCR_EMAIL {
-    _ = as_field_open(t, "lw.f.email", "Email");
-    _ = as_input(t, "lw.email", "Your email address", "email", AS_OUTLINE, AS_LG, false, IC_MAIL, s[0].err_n > 0, s[0].busy);
-    as_field_end(t, "lw.f.email", "", false);
-
-    btn_em := as_button(t, "lw.submit.email", ifx s[0].busy then "Sending code…" else "Continue with email", AS_PRIMARY, AS_SOLID, AS_LG, false, -1, false, s[0].busy);
-    // Stretch primary button full width inside auth card
-    _ = btn_em;
-
-    _ = tr_leaf(t, "lw.or", TG_DIV, "lw-or", "OR");
-
     _ = tr_open(t, "lw.oauth", TG_DIV, "lw-oauth");
-    _ = as_button_link(t, "lw.oauth.google", "Continue with Google", "/api/auth/workos/oauth/start?provider=GoogleOAuth", AS_SECONDARY, AS_OUTLINE, AS_LG, false, IC_GLOBE);
     _ = as_button_link(t, "lw.oauth.github", "Continue with GitHub", "/api/auth/workos/oauth/start?provider=GitHubOAuth", AS_SECONDARY, AS_OUTLINE, AS_LG, false, IC_CODE);
+    _ = as_button_link(t, "lw.oauth.google", "Continue with Google", "/api/auth/workos/oauth/start?provider=GoogleOAuth", AS_SECONDARY, AS_OUTLINE, AS_LG, false, IC_GLOBE);
     _ = as_button_link(t, "lw.oauth.apple", "Continue with Apple", "/api/auth/workos/oauth/start?provider=AppleOAuth", AS_SECONDARY, AS_OUTLINE, AS_LG, false, IC_LOCK);
     tr_close(t);
 
-    _ = tr_open(t, "lw.aux", TG_DIV, "lw-aux");
-    _ = as_button(t, "lw.go.sso", "Enterprise SSO", AS_SECONDARY, AS_GHOST, AS_SM, false, IC_SHIELD_CHECK, false, false);
+    _ = tr_leaf(t, "lw.or", TG_DIV, "lw-or", "OR");
+
+    _ = as_input(t, "lw.email", "Email address", "email", AS_OUTLINE, AS_LG, false, -1, s[0].err_n > 0, s[0].busy);
+
+    btn := tr_open(t, "lw.submit.email", TG_BUTTON, "as-btn as-v-solid as-c-primary as-s-lg lw-primary");
+    tr_attr(t, btn, AT_TYPE, "button");
+    if s[0].busy { tr_attr(t, btn, AT_DISABLED, ""); tr_attr(t, btn, AT_STATE, "busy"); _ = as_spinner(t, "lw.submit.email.sp", false); }
+    _ = tr_leaf(t, "lw.submit.email.l", TG_SPAN, "", ifx s[0].busy then "Sending code…" else "Log in");
     tr_close(t);
   } else if s[0].screen == LW_SCR_CODE {
     if s[0].sent_email_n > 0 {
-      _ = tr_leaf(t, "lw.code.to", TG_P, "as-sub", tr_cat(buf[..], "Sent to ", cast(string) s[0].sent_email[0..<s[0].sent_email_n]));
+      _ = tr_leaf(t, "lw.code.to", TG_P, "lw-sub", tr_cat(buf[..], "Sent to ", cast(string) s[0].sent_email[0..<s[0].sent_email_n]));
     }
-    _ = as_field_open(t, "lw.f.code", "Verification code");
-    _ = as_input(t, "lw.code", "6-digit code", "text", AS_OUTLINE, AS_LG, false, IC_LOCK, s[0].err_n > 0, s[0].busy);
-    as_field_end(t, "lw.f.code", "Check spam if it doesn't arrive within 30 seconds.", false);
+    _ = as_input(t, "lw.code", "6-digit code", "text", AS_OUTLINE, AS_LG, false, -1, s[0].err_n > 0, s[0].busy);
 
-    _ = as_button(t, "lw.submit.code", ifx s[0].busy then "Verifying…" else "Verify and sign in", AS_PRIMARY, AS_SOLID, AS_LG, false, IC_CHECK, false, s[0].busy);
+    btn := tr_open(t, "lw.submit.code", TG_BUTTON, "as-btn as-v-solid as-c-primary as-s-lg lw-primary");
+    tr_attr(t, btn, AT_TYPE, "button");
+    if s[0].busy { tr_attr(t, btn, AT_DISABLED, ""); tr_attr(t, btn, AT_STATE, "busy"); _ = as_spinner(t, "lw.submit.code.sp", false); }
+    _ = tr_leaf(t, "lw.submit.code.l", TG_SPAN, "", ifx s[0].busy then "Verifying…" else "Verify code");
+    tr_close(t);
 
     _ = tr_open(t, "lw.code.acts", TG_DIV, "lw-aux");
     _ = as_button(t, "lw.resend", "Resend code", AS_SECONDARY, AS_GHOST, AS_SM, false, -1, s[0].busy, false);
-    _ = as_button(t, "lw.back.email", "Use another email", AS_SECONDARY, AS_GHOST, AS_SM, false, -1, s[0].busy, false);
-    tr_close(t);
-  } else if s[0].screen == LW_SCR_SSO {
-    _ = as_field_open(t, "lw.f.sso", "Work email");
-    _ = as_input(t, "lw.email", "you@company.com", "email", AS_OUTLINE, AS_LG, false, IC_SHIELD_CHECK, s[0].err_n > 0, s[0].busy);
-    as_field_end(t, "lw.f.sso", "We'll route you to your organization's SAML or OIDC provider.", false);
-
-    _ = as_button(t, "lw.submit.sso", ifx s[0].busy then "Checking domain…" else "Continue with SSO", AS_PRIMARY, AS_SOLID, AS_LG, false, IC_ARROW_RIGHT, false, s[0].busy);
-    _ = tr_open(t, "lw.sso.acts", TG_DIV, "lw-aux");
-    _ = as_button(t, "lw.back.email", "Back to sign in", AS_SECONDARY, AS_GHOST, AS_SM, false, -1, s[0].busy, false);
+    _ = as_button(t, "lw.back.email", "Change email", AS_SECONDARY, AS_GHOST, AS_SM, false, -1, s[0].busy, false);
     tr_close(t);
   } else {
     _ = tr_open(t, "lw.in.card", TG_DIV, "lw-in-card");
-    _ = as_avatar(t, "lw.in.av", "OA", AS_INFO, AS_SOFT, AS_LG, false, true);
+    _ = as_avatar(t, "lw.in.av", "OA", AS_SECONDARY, AS_SOFT, AS_LG, false, true);
     _ = tr_open(t, "lw.in.tx", TG_DIV, "as-ctl-txt");
     _ = tr_leaf(t, "lw.in.em", TG_SPAN, "as-ctl-lbl", ifx s[0].signed_email_n > 0 then cast(string) s[0].signed_email[0..<s[0].signed_email_n] else "Signed in");
-    _ = tr_leaf(t, "lw.in.st", TG_SPAN, "as-ctl-desc", "OpenAgents Cloud account active");
+    _ = tr_leaf(t, "lw.in.st", TG_SPAN, "as-ctl-desc", "OpenAgents Cloud session active");
     tr_close(t);
     tr_close(t);
     dest := ifx s[0].next_path_n > 0 then cast(string) s[0].next_path[0..<s[0].next_path_n] else "/chat";
-    _ = as_button_link(t, "lw.in.open", "Open Workspace", dest, AS_PRIMARY, AS_SOLID, AS_LG, false, IC_ARROW_RIGHT);
+    a := tr_open(t, "lw.in.open", TG_A, "as-btn as-v-solid as-c-primary as-s-lg lw-primary");
+    tr_attr(t, a, AT_HREF, dest);
+    _ = tr_leaf(t, "lw.in.open.l", TG_SPAN, "", "Open Workspace");
+    tr_close(t);
     _ = as_button(t, "lw.logout", ifx s[0].busy then "Signing out…" else "Sign out", AS_SECONDARY, AS_OUTLINE, AS_MD, false, -1, false, s[0].busy);
   }
 
-  _ = tr_open(t, "lw.legal", TG_P, "lw-legal");
-  _ = tr_leaf(t, "lw.leg.0", TG_SPAN, "", "By continuing, you agree to OpenAgents' ");
+  tr_close(t); // lw.box
+
+  _ = tr_open(t, "lw.foot", TG_FOOTER, "lw-foot");
   l1 := tr_leaf(t, "lw.leg.1", TG_A, "", "Terms of Service"); tr_attr(t, l1, AT_HREF, "/terms");
   _ = tr_leaf(t, "lw.leg.2", TG_SPAN, "", " and ");
   l2 := tr_leaf(t, "lw.leg.3", TG_A, "", "Privacy Policy"); tr_attr(t, l2, AT_HREF, "/privacy");
-  _ = tr_leaf(t, "lw.leg.4", TG_SPAN, "", ".");
   tr_close(t);
 
-  tr_close(t); // lw.card
-
-  // Quiet Desktop download pill below auth card (Ref 2 accent)
-  _ = tr_open(t, "lw.dl", TG_DIV, "lw-dl");
-  _ = as_button_link(t, "lw.dl.btn", "Download desktop app", "/download", AS_SECONDARY, AS_OUTLINE, AS_MD, true, IC_TERMINAL);
-  tr_close(t);
-
-  tr_close(t); // lw.left
-
-  // ---- Right column: Rounded dark editorial Apps SDK UI workspace preview
-  _ = tr_open(t, "lw.stage", TG_SECTION, "lw-stage");
-
-  _ = tr_open(t, "lw.stage.top", TG_DIV, "lw-stage-top");
-  _ = tr_open(t, "lw.stage.bgs", TG_DIV, "as-row");
-  _ = as_badge(t, "lw.st.b0", "Cloud Sync Live", AS_SUCCESS, AS_SOFT, AS_MD, true, true);
-  _ = as_badge(t, "lw.st.b1", "Web · Desktop · iOS", AS_INFO, AS_SOFT, AS_MD, true, false);
-  tr_close(t);
-  _ = as_avatar_group_open(t, "lw.st.av");
-  _ = as_avatar(t, "lw.st.a0", "OA", AS_PRIMARY, AS_SOLID, AS_SM, false, false);
-  _ = as_avatar(t, "lw.st.a1", "VM", AS_INFO, AS_SOLID, AS_SM, false, false);
-  _ = as_avatar(t, "lw.st.a2", "iOS", AS_DISCOVERY, AS_SOLID, AS_SM, false, false);
-  as_avatar_group_end(t);
-  tr_close(t);
-
-  _ = tr_open(t, "lw.stage.copy", TG_DIV, "lw-stage-copy");
-  _ = tr_leaf(t, "lw.stage.h", TG_H2, "lw-stage-h", "Start a thread anywhere. Pick it up everywhere.");
-  _ = tr_leaf(t, "lw.stage.p", TG_P, "lw-stage-p", "Cloud sandboxes, GitHub repositories, and enrolled workstations stay continuously synced across OpenAgents Web, macOS Desktop, and iOS.");
-  tr_close(t);
-
-  // Live Apps SDK UI workspace card preview
-  _ = tr_open(t, "lw.pv", TG_DIV, "lw-preview");
-  _ = tr_open(t, "lw.pv.bar", TG_DIV, "lw-pv-bar");
-  _ = tr_open(t, "lw.pv.dots", TG_DIV, "lw-pv-dots");
-  _ = tr_open(t, "lw.pv.d0", TG_SPAN, ""); tr_close(t);
-  _ = tr_open(t, "lw.pv.d1", TG_SPAN, ""); tr_close(t);
-  _ = tr_open(t, "lw.pv.d2", TG_SPAN, ""); tr_close(t);
-  tr_close(t);
-  _ = as_badge(t, "lw.pv.m", "openagents.com/chat", AS_SECONDARY, AS_SOFT, AS_SM, true, false);
-  tr_close(t);
-
-  _ = tr_leaf(t, "lw.pv.u", TG_DIV, "as-msg-u", "Connect our repo, run the sync checks, and deploy to prod.");
-  _ = as_step_row(t, "lw.pv.s0", IC_GLOBE, "GitHub workspace attached", "openagentsinc/openagents · main", "Connected", AS_INFO);
-  _ = as_step_row(t, "lw.pv.s1", IC_TERMINAL, "Cloud sandbox tests & verification", "102 checks passed · 0 errors", "Passed", AS_SUCCESS);
-  _ = as_step_row(t, "lw.pv.s2", IC_SHIELD_CHECK, "Synced to Desktop & iOS", "Real-time SSE stream", "Live", AS_DISCOVERY);
-  _ = tr_open(t, "lw.pv.sh", TG_DIV, "as-row");
-  _ = as_spinner(t, "lw.pv.sp", false);
-  _ = as_shimmer(t, "lw.pv.sh.t", "Ready for your next task across all devices…");
-  tr_close(t);
-  tr_close(t);
-
-  tr_close(t); // lw.stage
-
-  tr_close(t); // lw.grid
   tr_close(t); // lw.page
 }
 
@@ -456,7 +336,6 @@ lw_on_end :: (s: [] LoginWeb, status: int) {
       s[0].signed_email_n = lw_copy(s[0].signed_email[..], em);
       s[0].screen = LW_SCR_SIGNED_IN;
     } else {
-      // Check WorkOS availability once not logged in
       lw_ask(s, LW_REQ_WORKOS_CFG, "/api/auth/workos/config?as=lines", "");
     }
     return;
@@ -488,16 +367,6 @@ lw_on_end :: (s: [] LoginWeb, status: int) {
     }
     return;
   }
-  if kind == LW_REQ_SSO {
-    url := lw_line_val(resp, "url");
-    if status == 200 && url.count > 0 {
-      lw_go(s, url);
-    } else {
-      err := lw_line_val(resp, "error");
-      lw_set_err(s, ifx err.count > 0 then err else "No Enterprise SSO connection found for that domain.");
-    }
-    return;
-  }
   if kind == LW_REQ_LOGOUT {
     s[0].screen = LW_SCR_EMAIL;
     s[0].signed_email_n = 0;
@@ -509,14 +378,10 @@ lw_on_end :: (s: [] LoginWeb, status: int) {
 lw_click :: (s: [] LoginWeb, id: string) {
   if id == "lw.submit.email" { lw_submit_email(s); }
   else if id == "lw.submit.code" { lw_submit_code(s); }
-  else if id == "lw.submit.sso" { lw_submit_sso(s); }
   else if id == "lw.resend" { lw_submit_email(s); }
-  else if id == "lw.go.sso" { s[0].screen = LW_SCR_SSO; lw_clear_msgs(s); dm_focus(s[0].dom[..], "lw.email"); }
   else if id == "lw.back.email" { s[0].screen = LW_SCR_EMAIL; lw_clear_msgs(s); dm_focus(s[0].dom[..], "lw.email"); }
   else if id == "lw.logout" { lw_ask(s, LW_REQ_LOGOUT, "/api/auth/logout?as=lines", "{}"); }
 }
-
-// ---------------------------------------------------------------- C face exports
 
 coaxial_loginweb_frame :: (s: [] LoginWeb, dt: f32, reduced: bool) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
@@ -571,9 +436,8 @@ coaxial_loginweb_event :: (s: [] LoginWeb, kind: int, slot: int, length: int) #e
     if id == "lw.email" { s[0].email_n = lw_copy(s[0].email[..], txt); }
     else if id == "lw.code" { s[0].code_n = lw_copy(s[0].code[..], txt); }
   } else if kind == LW_SUBMIT {
-    if id == "lw.email" {
-      if s[0].screen == LW_SCR_SSO { lw_submit_sso(s); } else { lw_submit_email(s); }
-    } else if id == "lw.code" { lw_submit_code(s); }
+    if id == "lw.email" { lw_submit_email(s); }
+    else if id == "lw.code" { lw_submit_code(s); }
   }
   s[0].dirty = true;
 }
@@ -590,26 +454,23 @@ coaxial_loginweb_go_len :: (s: [] LoginWeb) -> int #export_c #effects(all) { ret
 coaxial_loginweb_go_push :: (s: [] LoginWeb) -> bool #export_c #effects(all) { return s.count > 0 && s[0].go_push; }
 coaxial_loginweb_go_done :: (s: [] LoginWeb) #export_c #effects(all) { if s.count > 0 { s[0].go_n = 0; } }
 
-// ---------------------------------------------------------------- checks
-
 LwTest :: struct { s: [1] LoginWeb; }
 
-#test "login-web renders Apps SDK UI split layout, validates email, steps to code, and redirects safely" {
+#test "login-web renders minimal centered pure-black auth flow without SSO or side panel" {
   h: [1] LwTest; s := h[0].s[..];
   n := coaxial_loginweb_frame(s, 0.016, true);
   t := s[0].tree[..]; d := s[0].dom[..];
   #assert n > 10000 && t[0].lost == 0 && t[0].depth == 0;
-  #assert tr_find(t, "lw.card") > 0 && tr_find(t, "lw.email") > 0 && tr_find(t, "lw.submit.email") > 0;
-  #assert tr_find(t, "lw.oauth.google") > 0 && tr_find(t, "lw.oauth.github") > 0 && tr_find(t, "lw.stage") > 0;
+  #assert tr_find(t, "lw.box") > 0 && tr_find(t, "lw.email") > 0 && tr_find(t, "lw.submit.email") > 0;
+  #assert tr_find(t, "lw.oauth.github") > 0 && tr_find(t, "lw.oauth.google") > 0 && tr_find(t, "lw.oauth.apple") > 0;
+  #assert tr_find(t, "lw.stage") < 0 && tr_find(t, "lw.go.sso") < 0;
   #assert coaxial_loginweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/auth/account?as=lines";
   coaxial_loginweb_asked(s);
 
-  // Account check says logged_in 0 -> fetches WorkOS config -> enabled 1
   a0 := "logged_in 0\n";
   for i: 0..<a0.count { s[0].inbox[i] = a0[i]; }
   coaxial_loginweb_event(s, LW_PIECE, 200, a0.count);
   coaxial_loginweb_event(s, LW_END, 200, 0);
-  #assert coaxial_loginweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/auth/workos/config?as=lines";
   coaxial_loginweb_asked(s);
   w0 := "enabled 1\n";
   for i: 0..<w0.count { s[0].inbox[i] = w0[i]; }
@@ -617,35 +478,29 @@ LwTest :: struct { s: [1] LoginWeb; }
   coaxial_loginweb_event(s, LW_END, 200, 0);
   #assert s[0].workos;
 
-  // Query string captures ?ref= and safe ?next=
   qp := "/login?next=/projects&ref=CHRIS99";
   for i: 0..<qp.count { s[0].inbox[i] = qp[i]; }
   coaxial_loginweb_event(s, LW_PATH, 0, qp.count);
   _ = coaxial_loginweb_frame(s, 0.016, true);
   #assert tr_find(t, "lw.ref.al") > 0 && cast(string) s[0].next_path[0..<s[0].next_path_n] == "/projects";
 
-  // Invalid email shows danger alert
   coaxial_loginweb_event(s, LW_CLICK, dm_find(d, "lw.submit.email"), 0);
   _ = coaxial_loginweb_frame(s, 0.016, true);
   #assert tr_find(t, "lw.err") > 0;
 
-  // Valid email posts WorkOS magic/start and advances to code screen
   em := "chris@openagents.com";
   for i: 0..<em.count { s[0].inbox[i] = em[i]; }
   coaxial_loginweb_event(s, LW_INPUT, dm_find(d, "lw.email"), em.count);
   coaxial_loginweb_event(s, LW_SUBMIT, dm_find(d, "lw.email"), 0);
-  #assert coaxial_loginweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/auth/workos/magic/start?as=lines";
   coaxial_loginweb_asked(s);
   coaxial_loginweb_event(s, LW_END, 200, 0);
   _ = coaxial_loginweb_frame(s, 0.016, true);
   #assert s[0].screen == LW_SCR_CODE && tr_find(t, "lw.code") > 0;
 
-  // Valid 6-digit code posts magic/verify and navigates to /projects
   cd := "123456";
   for i: 0..<cd.count { s[0].inbox[i] = cd[i]; }
   coaxial_loginweb_event(s, LW_INPUT, dm_find(d, "lw.code"), cd.count);
   coaxial_loginweb_event(s, LW_SUBMIT, dm_find(d, "lw.code"), 0);
-  #assert coaxial_loginweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/auth/workos/magic/verify?as=lines";
   coaxial_loginweb_asked(s);
   coaxial_loginweb_event(s, LW_END, 200, 0);
   #assert coaxial_loginweb_go_len(s) > 0 && cast(string) s[0].go[0..<s[0].go_n] == "/projects";

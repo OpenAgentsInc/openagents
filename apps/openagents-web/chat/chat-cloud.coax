@@ -3093,7 +3093,7 @@ cwc_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".cc-tbtn{cursor:pointer;color:var(--color-text);background:var(--alpha-06);box-shadow:inset 0 0 0 1px var(--color-border);transition:background-color var(--as-dur) ease,box-shadow var(--as-dur) ease}");
   n = mc(out, n, ".cc-tbtn:hover,.cc-tbtn[aria-expanded=true]{background:var(--alpha-12);box-shadow:inset 0 0 0 1px var(--color-border-strong)}");
   n = mc(out, n, ".cc-tmenu{display:flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:var(--radius-xl);background:var(--color-surface-elevated);border:1px solid var(--color-border);box-shadow:var(--shadow-elev)}");
-  n = mc(out, n, ".cc-topt-on{background:#ffffff !important;color:#0d0d0d !important;font-weight:600}");
+  n = mc(out, n, ".cc-topt-on{background:#ffffff !important;color:#000000 !important;font-weight:600}");
   n = mc(out, n, ".cc-pill-local{background:var(--green-a50);color:var(--green-300)}.cc-pill-live{background:var(--blue-a50);color:var(--blue-200)}");
   n = mc(out, n, ".cc-recon{background:var(--orange-a50);color:var(--orange-300);box-shadow:inset 0 0 0 1px var(--orange-a75)}");
 
@@ -3137,7 +3137,7 @@ cwc_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".cc-login{max-width:440px;margin:auto;padding:28px;border-radius:var(--radius-2xl);border:1px solid var(--color-border);background:var(--color-surface-elevated);box-shadow:var(--shadow-elev);display:flex;flex-direction:column;gap:14px}");
   n = mc(out, n, ".cc-login .hd-t{font:600 20px/1.3 var(--font-sans);letter-spacing:-.02em;text-transform:none;color:var(--color-text)}");
   n = mc(out, n, ".cc-login .lede{font:400 14px/1.55 var(--font-sans);color:var(--color-text-secondary)}");
-  n = mc(out, n, ".cc-login .btn{align-self:flex-start;height:40px;padding:0 22px;border-radius:var(--radius-full);background:#ffffff;color:#0d0d0d;font:600 14px/1 var(--font-sans);letter-spacing:0;text-transform:none}");
+  n = mc(out, n, ".cc-login .btn{align-self:flex-start;height:40px;padding:0 22px;border-radius:var(--radius-full);background:#ffffff;color:#000000;font:600 14px/1 var(--font-sans);letter-spacing:0;text-transform:none}");
   n = mc(out, n, ".cc-login .btn:hover{background:#e5e5e5}");
   n = mc(out, n, ".cc-jump{position:sticky;bottom:14px;align-self:center;appearance:none;height:32px;padding:0 14px;border-radius:var(--radius-full);background:var(--color-surface-elevated);border:1px solid var(--color-border-strong);color:var(--color-text);font:500 12.5px/1 var(--font-sans);box-shadow:var(--shadow-elev);cursor:pointer}");
   n = mc(out, n, ".cc-jump:hover{background:var(--color-surface-elevated-secondary)}");
@@ -3156,7 +3156,7 @@ cwc_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".menu .row[aria-current=true]{background:var(--alpha-12);color:var(--color-text);font-weight:500}");
   n = mc(out, n, ".btn{display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 15px;border-radius:var(--radius-md);background:var(--alpha-10);color:var(--color-text);font:500 13px/1 var(--font-sans);letter-spacing:0;text-transform:none;transition:background-color var(--as-dur) ease,color var(--as-dur) ease,transform 100ms ease}");
   n = mc(out, n, ".btn:hover:not([disabled]){background:var(--alpha-15)}.btn:active:not([disabled]){transform:scale(.98)}");
-  n = mc(out, n, ".btn[data-state=primary]{background:#ffffff;color:#0d0d0d;font-weight:600}.btn[data-state=primary]:hover:not([disabled]){background:#e5e5e5}");
+  n = mc(out, n, ".btn[data-state=primary]{background:#ffffff;color:#000000;font-weight:600}.btn[data-state=primary]:hover:not([disabled]){background:#e5e5e5}");
   n = mc(out, n, ".btn[disabled]{background:var(--alpha-08);color:var(--color-text-tertiary);cursor:not-allowed}");
   n = mc(out, n, ".composer-r>.btn{height:34px;padding:0 18px;border-radius:var(--radius-full)}");
   n = mc(out, n, ".lk{height:30px;padding:0 12px;border-radius:var(--radius-md);background:var(--alpha-06);box-shadow:inset 0 0 0 1px var(--color-border);color:var(--color-text);font:500 12.5px/1 var(--font-sans);letter-spacing:0;text-transform:none}");
