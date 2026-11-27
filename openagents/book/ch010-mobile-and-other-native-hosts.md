@@ -62,10 +62,16 @@ width, not the platform's name.
 The desktop app already owns the primary chat workflow and configures the
 computer it runs on as an environment (chapter 8): a resident environment
 service (`coder-host`), runnable without the window, owns the agent's turns,
-so closing the app never stops them (`#14027`, `#14032`). Phone-to-desktop
-reachability routes over **Tailnet → LAN → Nostr relay failover**
-(`#13993`, `#14030`, `#14032`) without requiring a public port. The
-[desktop and environment plan](../../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
+so closing the app never stops them (`#14027`, `#14032`). Both `coder-host`
+and [`phone-agent-policy.coax`](../../coax/lib/agent/environment/phone-agent-policy.coax)
+converge onto OpenAgents Core (`oa-worker`, capability `oa.core.v1`, models
+`oa:auto`, `oa:gemini-4-neon`, and optional `$0` `oa:inkling-2-mini`) as the
+primary engine across macOS and iOS Tailscale surfaces, while external
+harnesses (`PA_AGY`, `PA_CLAUDE`) are gated behind opt-in delegated
+sub-agent execution (`OA_ALLOW_LOCAL_HARNESSES=1`, `#14060`, `#14073`).
+Phone-to-desktop reachability routes over **Tailnet → LAN → Nostr relay
+failover** (`#13993`, `#14030`, `#14032`) without requiring a public port.
+The [desktop and environment plan](../../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
 owns that service.
 
 This chapter qualifies the remaining native hosts—iOS, Linux desktop, and

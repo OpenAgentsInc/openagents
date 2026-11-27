@@ -59,11 +59,13 @@ scale):
 - Shared knowledge base & semantic retrieval (`#14058`, `NIP-KB`, chapters 20–22).
 - OpenAgents Studio, conversational plugin/skill authoring interview, and
   sandboxed third-party plugin runtime (`#14059`, chapters 38–42).
-- General public `NIP-REG` / `NIP-EVAL` / `NIP-PAY` plugin economy and
-  book-reconciled cross-host conformance (`#14060`, chapters 43–61).
+- Public-scale live third-party plugin marketplace operations (the signed
+  `NIP-REG`/`NIP-EVAL` registry, `#authority` `pay/` economy policies, and
+  `oa-worker` macOS/iOS convergence landed in `#14060` and `#14073`,
+  chapters 10, 54–58; live hosted marketplace scale remains open).
 - Deep session introspection, borderless cross-window control, full mobile
   feature parity on iOS/Android, and Metaverse Engine Windows host conformance
-  (`#14066`–`#14068`, `#14073`–`#14094`, chapters 10, 75, 77).
+  (`#14066`–`#14068`, `#14074`–`#14094`, chapters 10, 75, 77).
 - Independent outside contributors operating Pylons and submitting winning
   capabilities at scale, sustained real-world compounding across public users,
   and composition working outside software. 1.0 does not need all three of
