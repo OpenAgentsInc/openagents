@@ -29,6 +29,16 @@ site_under :: (path:string,root:string)->bool #effects(all) {
   return path.count==root.count || path[root.count]=='/';
 }
 
+// Whether `seg` is a canonical cloud chat conversation ID ("cnv_" + 32 lowercase hex chars).
+site_chat_conv_id :: (seg:string)->bool #effects(all) {
+  if seg.count!=36 || seg[0]!='c' || seg[1]!='n' || seg[2]!='v' || seg[3]!='_' {return false;}
+  for i:4..<36 {
+    c:=seg[i];
+    if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}
+  }
+  return true;
+}
+
 site_route :: (path:string)->SiteRoute #export_c #effects(all) {
   if site_under(path,"/verse/galaxy") || site_under(path,"/metaverse/galaxy") {return SiteRoute.{status=301,to="/worlds",skip=path.count,query=false};}
   if site_under(path,"/forge") {return SiteRoute.{status=301,to="/worlds/new",skip=path.count,query=true};}
@@ -37,6 +47,12 @@ site_route :: (path:string)->SiteRoute #export_c #effects(all) {
   if site_under(path,"/verse") {return SiteRoute.{status=301,to="/metaverse",skip=6,query=true};}
   if site_under(path,"/projects/verse") {return SiteRoute.{status=301,to="/projects/metaverse",skip=15,query=true};}
   if site_under(path,"/projects/metaverse") {return SiteRoute.{status=0,to="/projects/verse",skip=19,query=false};}
+  // Unified cloud chat SPA routes (/chat/cnv_<32hex>, #14094): serve /chat/index.html so reloads hydrate cleanly.
+  if path.count>=42 && cast(string)path[0..<6]=="/chat/" {
+    end:=path.count;
+    if end>6 && path[end-1]=='/' {end-=1;}
+    if site_chat_conv_id(cast(string)path[6..<end]) {return SiteRoute.{status=0,to="/chat/index.html",skip=path.count,query=false};}
+  }
   return SiteRoute.{status=0,to="",skip=0,query=false};
 }
 
@@ -104,4 +120,12 @@ site_goes :: (path:string,out:[]u8)->string #effects(all) {
   b:[256]u8;c:[256]u8;
   old:=[12]string.["/verse","/verse/","/verse/index.md","/verse/galaxy","/metaverse/galaxy","/projects/verse","/projects/verse/","/projects/verse/index.md","/forge","/forge/my-realm","/worlds/splice","/worlds/splice/index.md"];
   for p:old {to:=site_goes(p,b[..]);#assert site_route(p).status==301 && site_route(to).status==0;}
+}
+#test "/chat/cnv_<32hex> serves /chat/index.html without affecting /chat/index.md or malformed paths" {
+  b:[256]u8;
+  r:=site_route("/chat/cnv_0123456789abcdef0123456789abcdef");
+  #assert r.status==0 && site_goes("/chat/cnv_0123456789abcdef0123456789abcdef",b[..])=="/chat/index.html";
+  r2:=site_route("/chat/cnv_0123456789abcdef0123456789abcdef/");
+  #assert r2.status==0 && site_goes("/chat/cnv_0123456789abcdef0123456789abcdef/",b[..])=="/chat/index.html";
+  #assert site_route("/chat").to.count==0 && site_route("/chat/index.md").to.count==0 && site_route("/chat/cnv_short").to.count==0 && site_route("/chat/cnv_0123456789ABCDEF0123456789abcdef").to.count==0;
 }

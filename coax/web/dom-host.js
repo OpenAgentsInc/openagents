@@ -515,6 +515,20 @@ async function start() {
     const slot = slotOf(e.target, "dialog[data-slot]");
     if (slot >= 0) { e.preventDefault(); send(DOM_DIALOG_CANCEL, slot); }
   }, true);
+  // VirtualList scroll & viewport telemetry (event 19: "scrollTop clientHeight", #14094).
+  let scrollRaf = 0, scrollTarget = null;
+  root.addEventListener("scroll", (e) => {
+    const el = e.target;
+    if (!el || !ours(el) || el.getAttribute?.("role") !== "list" || el.dataset?.slot === undefined) return;
+    scrollTarget = el;
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0;
+      const cur = scrollTarget; scrollTarget = null;
+      if (!cur || !cur.isConnected || !alive()) return;
+      send(19, Number(cur.dataset.slot), `${Math.round(cur.scrollTop)} ${Math.round(cur.clientHeight)}`);
+    });
+  }, true);
   addEventListener("pagehide", () => { streamStop(); streamPool.stopAll(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden && alive()) streamPool.onVisible(); });
   root.addEventListener("keydown", (e) => {

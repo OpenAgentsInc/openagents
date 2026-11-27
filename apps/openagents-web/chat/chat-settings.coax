@@ -355,12 +355,10 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   #assert s[0].agents_asked && s[0].aready[0] == 1 && s[0].aready[1] == -1 && s[0].aready[2] == -1 && s[0].aready[3] == 1;
   #assert tr_text_of(t, tr_find(t, "machine.agent.1.a")) == "Ready" && tr_text_of(t, tr_find(t, "machine.agent.2.a")) == "Codex isn't installed here.";
   #assert tr_text_of(t, tr_find(t, "machine.agent.3.a")) == "Not ready" && tr_text_of(t, tr_find(t, "machine.switch.l")) == "On" && tr_attr_of(t, tr_find(t, "machine.switch"), AT_PRESSED) == "true";
-  // the chat's agent menu: OpenAgents, Claude Code and Microcoder; no dead rows
-  cw_test_path(s, "/chat"); cw_test_press(s, "agent"); b = coaxial_chatweb_frame(s, 0.016, true);
-  #assert tr_find(t, "agent.0") >= 0 && tr_find(t, "agent.1") >= 0 && tr_find(t, "agent.2") < 0 && tr_find(t, "agent.3") < 0 && tr_find(t, "agent.4") >= 0;
-  cw_test_press(s, "agent.1"); #assert cw_agent(s) == 1;
-  cw_test_press(s, "agent"); b = coaxial_chatweb_frame(s, 0.016, true); cw_test_press(s, "agent.2"); #assert cw_agent(s) == 1 && s[0].amenu;   // not ready: no row to press
-  cw_test_press(s, "agent.0"); #assert cw_agent(s) == 0;
+  // /chat now uses the unified OpenAgents Core model menu (no legacy multi-harness agent menu zoo; #14094)
+  cw_test_path(s, "/chat"); cw_test_press(s, "model"); b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "agent") < 0 && tr_find(t, "model.0") >= 0 && tr_find(t, "model.1") >= 0 && tr_find(t, "model.4") >= 0;
+  cw_test_press(s, "model.1"); #assert s[0].cc[0].core_model == 1;
   cw_test_path(s, "/settings/models");
   // a new chat's agent: the same ones
   cw_test_press(s, "set.agent"); b = coaxial_chatweb_frame(s, 0.016, true);

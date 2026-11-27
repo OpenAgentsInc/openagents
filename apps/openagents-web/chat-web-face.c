@@ -14,6 +14,10 @@
 // arrives; one at a time (a new one ends the last).
 IMPORT("dom_stream") void dom_stream(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len);
 IMPORT("dom_stream_stop") void dom_stream_stop(void);
+// Multiplexed keyed concurrent streams (slots 0..15, Last-Event-ID + reconnect, #14089 + #14094).
+IMPORT("dom_stream_open") int32_t dom_stream_open(uint32_t slot, uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, uint32_t last_id, uint32_t last_id_len, int32_t flags);
+IMPORT("dom_stream_close") void dom_stream_close(uint32_t slot);
+IMPORT("dom_stream_close_all") void dom_stream_close_all(void);
 // A setting kept in this browser (Settings, This machine), given back as event 12 when the page starts.
 IMPORT("dom_keep") void dom_keep(uint32_t at, uint32_t len);
 // An address on this site: pushed, the page stays and the address bar shows it (the app shell drew it);
@@ -35,6 +39,25 @@ static void asks(uint32_t state) {
     int64_t n = coaxial_chatweb_ask(at(state));
     dom_stream((uint32_t)(uintptr_t)s->door.e, (uint32_t)s->door_n, (uint32_t)(uintptr_t)s->request.e, (uint32_t)(n < 0 ? 0 : n));
     coaxial_chatweb_asked(at(state));
+  }
+  // Drain Coax UI multiplexed stream closes and opens (slots 0..15: SSE subscriptions + concurrent HTTP commands).
+  int64_t cslot;
+  while ((cslot = coaxial_chatweb_stream_close(at(state))) >= 0) {
+    dom_stream_close((uint32_t)cslot);
+  }
+  while (coaxial_chatweb_stream_open(at(state))) {
+    int64_t slot = coaxial_chatweb_stream_slot(at(state));
+    int64_t flags = coaxial_chatweb_stream_flags(at(state));
+    int64_t ulen = coaxial_chatweb_stream_url_len(at(state));
+    int64_t blen = coaxial_chatweb_stream_body_len(at(state));
+    int64_t llen = coaxial_chatweb_stream_last_id_len(at(state));
+    (void)dom_stream_open(
+      (uint32_t)slot,
+      (uint32_t)(uintptr_t)s->cc.e[0].tx_active_url.e, (uint32_t)ulen,
+      (uint32_t)(uintptr_t)s->cc.e[0].tx_active_body.e, (uint32_t)blen,
+      (uint32_t)(uintptr_t)s->cc.e[0].tx_active_last_id.e, (uint32_t)llen,
+      (int32_t)flags
+    );
   }
 }
 
@@ -62,3 +85,5 @@ EXPORT("dom_act_kind") int32_t dom_act_kind(uint32_t state) { return (int32_t)co
 EXPORT("dom_act") uint32_t dom_act(uint32_t state) { return (uint32_t)(uintptr_t)(coaxial_chatweb_act_planned(at(state)) ? raw(state)->planned.e : raw(state)->vact.e); }
 EXPORT("dom_act_len") uint32_t dom_act_len(uint32_t state) { return (uint32_t)coaxial_chatweb_act_len(at(state)); }
 EXPORT("dom_act_done") void dom_act_done(uint32_t state) { coaxial_chatweb_act_done(at(state)); }
+EXPORT("dom_drive") uint32_t dom_drive(uint32_t state, int32_t length) { return (uint32_t)coaxial_chatweb_drive(at(state), length); }
+EXPORT("dom_drive_out") uint32_t dom_drive_out(uint32_t state) { return (uint32_t)(uintptr_t)raw(state)->cc.e[0].drive_out.e; }

@@ -57,6 +57,7 @@
 #load "site-side.coax";                      // the side's rules: places, who is logged in, search, sections
 #load "settings-web.coax";                   // Settings in the shell: its sections, its search, Account, Limits, About
 #load "chat/chat-settings.coax";                  // and the sections that are this module's state: Agents and models, Appearance
+#load "chat/chat-cloud.coax";                     // unified Cloud Chat v2 on Coax UI + VirtualList + StreamMd (#14094)
 #load "../../components/backend/dom.coax";
 #load "../../coax/lib/gateway/types.coax";   // the request and the stream's events
 #load "../../coax/lib/gateway/chat.coax";    // Chat Completions: the request's body, a chunk
@@ -169,6 +170,8 @@ CW_PLANNED :: 8;       // an action for the page that opened this conversation: 
 // words come as "heard|WORDS"), while the strip holds it (CW_VOICE); and the page's own words about what came of
 // a turn's realm steps (its action 34, CW_SAID), as an answer of the agent's.
 CW_VOICE :: 16; CW_VOICE_ON :: 17; CW_SAID :: 18;
+// VirtualList scroll & viewport telemetry ("scrollTop clientHeight", dom-host.js, #14094).
+CW_SCROLL :: 19;
 // To the host: the voice held or let go ("hold", "end"; voice.js action 7), and an answer to what it heard, to speak
 // (voice.js action 9).
 CW_ACT_VOICE :: 7; CW_ACT_SAY :: 9;
@@ -285,6 +288,24 @@ ChatWeb :: struct {
   ui: [1] Ui;
   tree: [1] Tree;
   dom: [1] Dom;
+  cloud_mode: bool;
+  cc: [1] ChatCloud;
+}
+
+cw_is_cloud :: (s: [] ChatWeb) -> bool {
+  return s[0].cloud_mode && (s[0].page == SS_CHATS || s[0].page == SS_HOME) && s[0].sel_n == 0 && s[0].wwire_n == 0;
+}
+
+cw_sync_cloud_nav :: (s: [] ChatWeb) {
+  if s[0].cc[0].push_url_n > 0 {
+    if s[0].page == SS_SIDE { cw_go_to(s, cast(string) s[0].cc[0].push_url[0..<s[0].cc[0].push_url_n], false); }
+    else { cw_go_to(s, cast(string) s[0].cc[0].push_url[0..<s[0].cc[0].push_url_n], true); s[0].page = SS_CHATS; }
+    s[0].cc[0].push_url_n = 0;
+  }
+  if s[0].cc[0].clip_n > 0 {
+    s[0].clip_n = cw_put(s[0].clip[..], 0, cast(string) s[0].cc[0].clip[0..<s[0].cc[0].clip_n]);
+    s[0].cc[0].clip_n = 0;
+  }
 }
 
 cw_put :: (out: [] u8, at: int, text: string) -> int {
@@ -409,6 +430,9 @@ cw_side :: (s: [] ChatWeb) {
     if k==SS_FEED {_=k_sub_place(t,u,"side.feed",names[k],"/feed");_=k_sub_place(t,u,"side.messages","Messages","/messages");continue;}
     open := (s[0].shut & (1 << k)) == 0;
     f := k_fold(t, u, ids[k], icons[k], names[k], open, (k == SS_CHATS && s[0].page == SS_CHATS) || (s[0].page == SS_SIDE && k == s[0].here), adds[k]);
+    if open && k == SS_CHATS && s[0].cloud_mode {
+      cwc_draw_sidebar_items(s[0].cc[..], t, u);
+    }
     if open && k == SS_CHATS && s[0].local == 1 && !s[0].local_off && s[0].ns + s[0].nc > 0 {
       // the sections, top to bottom, each with what the search keeps of it
       marks := [3] string.["side.run", "side.claude", "side.recent"]; labels := SS_SECTION_NAMES;
@@ -472,6 +496,10 @@ cw_at :: (s: [] ChatWeb, path: string) {
   if sec >= 0 || s[0].page == SS_FOOT { s[0].mworld_n = cw_world_of(path, s[0].mworld[..]); }
   s[0].here = ss_side_place(path);
   if s[0].page == SS_HELD { cw_hold(s, path); }
+  if s[0].page == SS_CHATS && cwc_route_path(s[0].cc[..], path) {
+    s[0].cloud_mode = true;
+    cwc_boot(s[0].cc[..]);
+  }
 }
 // The world an address names, in out: the editor's /worlds/ID, or Settings' ?world=ID (a world's ID: lowercase
 // letters, digits and dashes). 0 for none. Bounded reading of an address the route already chose.
@@ -671,6 +699,30 @@ cw_build :: (s: [] ChatWeb) {
   }
   if s[0].page == SS_SIDE { tr_close(t); return; }   // the editor's left: the side, and nothing beside it (the home page is a new chat)
   if s[0].page == SW_PAGE { cw_settings_page(s); tr_close(t); return; }   // Settings, beside the side
+  if cw_is_cloud(s) {
+    cwc_draw_hud(s[0].cc[..], t);
+    cwc_draw_transcript(s[0].cc[..], t, u);
+    if s[0].cc[0].auth_state != CWC_AUTH_ANON {
+      cf := k_composer_begin(t, u, "composer", "Ask anything");
+      tr_attr(t, cf, AT_FOCUS, "");
+      _ = k_icon_button(t, "settings", IC_SETTINGS, "Settings");
+      cnames := CWC_MODEL_NAMES;
+      cnotes := CWC_MODEL_NOTES;
+      cm := s[0].cc[0].core_model;
+      cbuf: [UI_ID] u8;
+      k_select_begin(t, u, "model", cwc_model_name(s[0].cc[..]), "Model", s[0].menu);
+      if s[0].menu {
+        for m: 0..<CWC_MODELS {
+          _ = k_row(t, u, tr_join(cbuf[..], "model.", m), cnames[m], cnotes[m], m == cm);
+        }
+      }
+      k_select_end(t, s[0].menu);
+      active_stream := s[0].cc[0].web_streaming || s[0].cc[0].remote_running;
+      k_composer_end(t, u, "composer", ifx active_stream then "Stop" else "Send", active_stream || cw_has_words(s));
+    }
+    tr_close(t);
+    return;
+  }
   if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 || ci_any(s) { cw_transcript(s); }   // an error shows in a new chat too, and visitors' ideas
   if s[0].wwire_n > 0 && s[0].view == CW_CHAT {
     // in the editor: what "this" and "here" mean to the agent now
@@ -1539,6 +1591,8 @@ cw_tick :: (s: [] ChatWeb) {
     if !s[0].agents_asked && (s[0].page == SW_PAGE || s[0].amenu) { if cw_go(s, CF_AGENTS, "/local/agents", "") { s[0].agents_asked = true; } return; }
   }
   if s[0].local == 0 && !s[0].local_off && s[0].known_asked && !s[0].live && s[0].time > 0.2 { if cw_go(s, CF_LIST, "/local/sessions", "") { s[0].list_at = s[0].time; } return; }
+  // In Cloud Chat mode (/chat & /chat/:id), zero legacy 1Hz /api/chat/turn polling runs; live SSE drives everything.
+  if cw_is_cloud(s) { return; }
   if !s[0].live || s[0].turn <= 0 { return; }
   url: [96] u8; num: [24] u8;
   if s[0].stopping && !s[0].stop_sent && s[0].conv > 0 {
@@ -1575,12 +1629,16 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   }
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].time += step;
+  s[0].cc[0].now_ms = cast(int) (s[0].time * 1000.0) + 1;
+  if s[0].cc[0].dirty { s[0].dirty = true; s[0].cc[0].dirty = false; }
+  cw_sync_cloud_nav(s);
   cw_tick(s);
   cw_speak(s);
   if !s[0].dirty && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
     n := mono_held_css(s[0].css[..], mono_work_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..]))));
+    n = cwc_css(s[0].css[..], n);
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   ui_begin(s[0].ui[..], s[0].time, reduced);
@@ -1593,9 +1651,20 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   return bytes;
 }
 // Whether the host is to call again next frame: something changed or is moving, or a Claude turn is at work.
-coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating || (s[0].live && s[0].turn > 0) || s[0].local >= 0); }
+coaxial_chatweb_busy :: (s: [] ChatWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].cc[0].dirty || s[0].animating || s[0].cc[0].web_streaming || s[0].cc[0].remote_running || (s[0].live && s[0].turn > 0) || (s[0].local >= 0 && !s[0].local_off)); }
 coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #export_c #effects(all) {
   if s.count < 1 { return; }
+  if kind >= UI_SUB_EVENT_BASE {
+    n := ifx length < 0 then 0 else ifx length > CW_INBOX then CW_INBOX else length;
+    _ = cwc_on_stream_event(s[0].cc[..], kind, slot, cast(string) s[0].inbox[0..<n]);
+    cw_sync_cloud_nav(s);
+    s[0].dirty = true; return;
+  }
+  if kind == CW_SCROLL {
+    n := ifx length < 0 then 0 else ifx length > CW_INBOX then CW_INBOX else length;
+    cwc_on_scroll(s[0].cc[..], cast(string) s[0].inbox[0..<n]);
+    s[0].dirty = true; return;
+  }
   if kind == CW_PIECE {
     n := ifx length < 0 then 0 else ifx length > CW_INBOX then CW_INBOX else length;
     cw_piece(s, slot, cast(string) s[0].inbox[0..<n]);
@@ -1654,6 +1723,21 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     s[0].dirty = true; return;
   }
   id := dm_slot_id(s[0].dom[..], slot);
+  if kind == CW_INPUT && s[0].cloud_mode {
+    n := ifx length < 0 then 0 else ifx length > CW_INBOX then CW_INBOX else length;
+    if cwc_on_input(s[0].cc[..], id, cast(string) s[0].inbox[0..<n]) {
+      cw_sync_cloud_nav(s);
+      s[0].dirty = true; return;
+    }
+  }
+  if kind == CW_SUBMIT && s[0].cloud_mode && cwc_on_submit(s[0].cc[..], id) {
+    cw_sync_cloud_nav(s);
+    s[0].dirty = true; return;
+  }
+  if kind == CW_CLICK && s[0].cloud_mode && cwc_on_click(s[0].cc[..], id) {
+    cw_sync_cloud_nav(s);
+    s[0].dirty = true; return;
+  }
   if kind == CW_INPUT && id == "composer" {
     n := ifx length < 0 then 0 else ifx length > CW_DRAFT then CW_DRAFT else length;
     for i: 0..<n { s[0].draft[i] = s[0].inbox[i]; }
@@ -1664,12 +1748,28 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     for i: 0..<n { s[0].key[i] = s[0].inbox[i]; s[0].inbox[i] = 0; }   // the key doesn't stay in the inbox
     s[0].key_n = n;
   }
-  else if kind == CW_SUBMIT && id == "composer" { cw_send(s); }
+  else if kind == CW_SUBMIT && id == "composer" {
+    if cw_is_cloud(s) {
+      if cwc_send(s[0].cc[..], cast(string) s[0].draft[0..<s[0].draft_n]) {
+        s[0].draft_n = 0; s[0].menu = false;
+        dm_value(s[0].dom[..], "composer", "");
+        cw_sync_cloud_nav(s);
+      }
+    } else { cw_send(s); }
+  }
   else if kind == CW_SUBMIT && id == "claude.key" { cw_connect(s); }
   else if kind == CW_CLICK && ci_press(s, id) {}   // Accept or Decline on a visitor's idea (chat-ideas.coax)
   else if kind == CW_CLICK && id == "composer.talk" { cw_talk(s); }
   else if kind == CW_CLICK && id == "composer.send" {
-    if s[0].live { cw_stop(s); }
+    if cw_is_cloud(s) {
+      if s[0].cc[0].web_streaming || s[0].cc[0].remote_running { cwc_stop(s[0].cc[..]); }
+      else if cwc_send(s[0].cc[..], cast(string) s[0].draft[0..<s[0].draft_n]) {
+        s[0].draft_n = 0; s[0].menu = false;
+        dm_value(s[0].dom[..], "composer", "");
+      }
+      cw_sync_cloud_nav(s);
+    }
+    else if s[0].live { cw_stop(s); }
     else if s[0].lrun && !cw_has_words(s) { s[0].stop_due = true; }
     else { cw_send(s); }
   }
@@ -1692,6 +1792,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     if !cw_keeps(s, url) { cw_go_to(s, url, false); }   // the shell holds a new world's and a new project's pages
   }
   else if kind == CW_CLICK && id == "fold.chats.add" {
+    if s[0].cloud_mode && s[0].page != SS_SIDE { cwc_new_chat(s[0].cc[..]); cw_sync_cloud_nav(s); }
     cw_new_chat(s); cw_to_chat(s); dm_focus(s[0].dom[..], "composer");
   }
   // the side: home and the chat are drawn here, so their links stay in the shell; the other places are pages of their own
@@ -1740,7 +1841,9 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_CLICK && cw_index(id, "model.") >= 0 {
     m := cw_index(id, "model.");
-    if m < CW_HOSTED && (!cw_claude_model(m) || cw_connected(s)) && (m != CW_GEMINI_AGENT || CW_REPO_LIVE) { s[0].model = m; }
+    if cw_is_cloud(s) {
+      if m < CWC_MODELS { s[0].cc[0].core_model = m; }
+    } else if m < CW_HOSTED && (!cw_claude_model(m) || cw_connected(s)) && (m != CW_GEMINI_AGENT || CW_REPO_LIVE) { s[0].model = m; }
     s[0].menu = false;
     dm_focus(s[0].dom[..], "composer");   // a model chosen: the caret is back in the field
   }
@@ -1752,10 +1855,13 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   else if kind == CW_CLICK && cq_press(id) == 1 { s[0].opens_n = cq_toggle(s[0].opens[..], s[0].opens_n, id); }
   else if kind == CW_CLICK && cq_press(id) == 2 { cw_copy_call(s, id); }
   else if kind == CW_CLICK && cw_copy_of(id) < 0 && id.count > 5 && cast(string) id[id.count - 5..<id.count] == ".copy" {
-    // a code block's Copy: the code beside it, as the page shows it
+    // a code block's Copy: the code beside it, as the page shows it (plain or syntax-highlighted StreamMd)
     pre: [UI_ID] u8;
     at := tr_find(s[0].tree[..], tr_cat(pre[..], cast(string) id[0..<id.count - 5], ".pre"));
-    if at >= 0 { s[0].clip_n = cw_put(s[0].clip[..], 0, tr_text_of(s[0].tree[..], at)); }
+    if at >= 0 {
+      if s[0].tree[0].nodes[at].has_text { s[0].clip_n = cw_put(s[0].clip[..], 0, tr_text_of(s[0].tree[..], at)); }
+      else { s[0].clip_n = cwc_collect_tree_text(s[0].tree[..], at, s[0].clip[..], 0); }
+    }
   }
   else if kind == CW_CLICK && cw_copy_of(id) >= 0 {
     k := cw_copy_of(id) - (s[0].total - s[0].count);
@@ -1851,6 +1957,39 @@ coaxial_chatweb_stop :: (s: [] ChatWeb) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].stop { return false; }
   s[0].stop = false;
   return true;
+}
+// Multiplexed stream slot bridge for chat-web-face.c (#14089 + #14094).
+coaxial_chatweb_stream_close :: (s: [] ChatWeb) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then cwc_host_take_close(s[0].cc[..]) else -1;
+}
+coaxial_chatweb_stream_open :: (s: [] ChatWeb) -> bool #export_c #effects(all) {
+  return s.count > 0 && cwc_host_take_open(s[0].cc[..]);
+}
+coaxial_chatweb_stream_slot :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].cc[0].tx_active_slot else -1; }
+coaxial_chatweb_stream_flags :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].cc[0].tx_active_flags else 0; }
+coaxial_chatweb_stream_url_len :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].cc[0].tx_active_url_n else 0; }
+coaxial_chatweb_stream_body_len :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].cc[0].tx_active_body_n else 0; }
+coaxial_chatweb_stream_last_id_len :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].cc[0].tx_active_last_id_n else 0; }
+// Coax UI Message Timeline inspector for dom_drive (#14092).
+coaxial_chatweb_drive :: (s: [] ChatWeb, length: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  n := ifx length < 0 || length > CW_INBOX then 0 else length;
+  op := cast(string) s[0].inbox[0..<n];
+  if op == "timeline on" { tl_enable(s[0].cc[0].timeline[..]); s[0].cc[0].drive_out_n = cwc_put(s[0].cc[0].drive_out[..], 0, "ok"); return s[0].cc[0].drive_out_n; }
+  res := tl_drive(s[0].cc[0].timeline[..], op, s[0].cc[0].drive_out[..]);
+  s[0].cc[0].drive_out_n = ifx res > 0 then res else 0;
+  return s[0].cc[0].drive_out_n;
+}
+// SSR initial HTML rendering for /chat & /chat/:id (#14092 + #14094).
+cw_ssr_html :: (s: [] ChatWeb, out: [] u8) -> int {
+  if !s[0].ready {
+    _ = mono_frames(s[0].sets[..]);
+    s[0].ready = true;
+  }
+  ui_begin(s[0].ui[..], s[0].time, true);
+  cw_build(s);
+  ui_end(s[0].ui[..]);
+  return cwc_render_ssr_root(s[0].tree[..], out);
 }
 
 // ---------------------------------------------------------------- checks
@@ -3385,4 +3524,7 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   cw_test_answer(s, 200, "");
   #assert cw_test_go(s) == "/" && !coaxial_chatweb_go_push(s) && s[0].me_n == 0;
 }
+
+#load "chat/chat-web-story-checks.coax";
+
 

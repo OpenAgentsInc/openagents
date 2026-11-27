@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Chat · OpenAgents</title>
-<meta name="description" content="The OpenAgents chat, being rebuilt.">
+<meta name="description" content="OpenAgents Cloud Chat — persistent, real-time multi-device chat across Web, Desktop, and Mobile.">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -12,10 +12,16 @@
 <style>
 html,body{margin:0;background:#000;color:#f2f2f2}
 body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.6}
+#chat{display:flex;flex-direction:column;min-height:100dvh}
+.cc-hud{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid #2a2a2a;background:#0a0a0a}
+.cc-pill{font:500 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;padding:4px 8px;border:1px solid #2a2a2a;color:#9a9a9a}
+.comp{margin-top:auto;padding:12px 16px;border-top:1px solid #2a2a2a;display:flex;gap:8px;align-items:flex-end}
+#composer{flex:1;background:#0a0a0a;color:#f2f2f2;border:1px solid #2a2a2a;padding:10px 12px;font:inherit;resize:none}
+#composer\.send{background:#c8c8c8;color:#000;border:0;padding:10px 16px;font:500 11px/1 ui-monospace,monospace;letter-spacing:.15em;text-transform:uppercase}
 </style>
 </head>
 <body>
-<main id="coaxial-root"></main>
+<main id="coaxial-root" data-coax-ssr="1"><main id="chat" class="chat"><header id="cc.hud" class="cc-hud" aria-label="Cloud chat status and usage"><span id="cc.hud.tier" class="cc-pill">Cloud · OpenAgents Auto</span></header><div id="log" class="log vl-scroll" role="list" aria-label="Conversation transcript" data-state="pinned" tabindex="0"><div id="thread" class="thread"></div></div><div id="composer.box" class="comp"><textarea id="composer" class="field" placeholder="Ask anything" rows="1" autofocus></textarea><button id="composer.send" class="btn" disabled>Send</button></div></main></main>
 <script type="module" src="/coaxial/dom-host.js" data-app="chat-web" data-root="coaxial-root"></script>
 </body>
 </html>

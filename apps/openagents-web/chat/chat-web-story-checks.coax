@@ -1,0 +1,559 @@
+// Zero-Browser Coax UI Story / Scene / Play + SSR + VirtualList + Deterministic Replay
+// test suite for openagents.com/chat (#14094).
+// Uses components/ui/test_harness.coax (#14092) and #authority schema constants from
+// coax/web/api/account-chat-cloud-wire.coax (#14093) with zero duplicated schema literals.
+
+CwcTestOpen :: struct {
+  slot: int;
+  flags: int;
+  url: [256] u8; url_n: int;
+  body: [4096] u8; body_n: int;
+  last_id: [32] u8; last_id_n: int;
+}
+
+CwcTestLog :: struct {
+  opens: [32] CwcTestOpen; open_n: int;
+  closes: [32] int; close_n: int;
+}
+
+cwc_t_drain :: (s: [] ChatWeb, ops: [] CwcTestLog) {
+  while true {
+    cs := coaxial_chatweb_stream_close(s);
+    if cs < 0 { break; }
+    if ops[0].close_n < 32 { ops[0].closes[ops[0].close_n] = cs; ops[0].close_n += 1; }
+  }
+  while coaxial_chatweb_stream_open(s) {
+    if ops[0].open_n >= 32 { continue; }
+    o := ops[0].opens[ops[0].open_n..<ops[0].open_n + 1];
+    o[0] = CwcTestOpen.{};
+    o[0].slot = coaxial_chatweb_stream_slot(s);
+    o[0].flags = coaxial_chatweb_stream_flags(s);
+    ul := coaxial_chatweb_stream_url_len(s);
+    bl := coaxial_chatweb_stream_body_len(s);
+    ll := coaxial_chatweb_stream_last_id_len(s);
+    o[0].url_n = cwc_put(o[0].url[..], 0, cast(string) s[0].cc[0].tx_active_url[0..<ul]);
+    o[0].body_n = cwc_put(o[0].body[..], 0, cast(string) s[0].cc[0].tx_active_body[0..<bl]);
+    o[0].last_id_n = cwc_put(o[0].last_id[..], 0, cast(string) s[0].cc[0].tx_active_last_id[0..<ll]);
+    ops[0].open_n += 1;
+  }
+}
+
+cwc_t_find_open :: (ops: [] CwcTestLog, url_sub: string) -> int {
+  i := ops[0].open_n - 1;
+  while i >= 0 {
+    u := cast(string) ops[0].opens[i].url[0..<ops[0].opens[i].url_n];
+    if sc_contains(u, url_sub) { return i; }
+    i -= 1;
+  }
+  return -1;
+}
+
+cwc_t_has_close :: (ops: [] CwcTestLog, slot: int) -> bool {
+  for i: 0..<ops[0].close_n { if ops[0].closes[i] == slot { return true; } }
+  return false;
+}
+
+cwc_t_stream_ev :: (s: [] ChatWeb, slot: int, phase: int, status: int, payload: string) {
+  if payload.count == 0 {
+    coaxial_chatweb_event(s, UI_SUB_EVENT_BASE + slot * 4 + phase, status, 0);
+    return;
+  }
+  at := 0;
+  while at < payload.count {
+    n := payload.count - at;
+    if n > CW_INBOX { n = CW_INBOX; }
+    for i: 0..<n { s[0].inbox[i] = payload[at + i]; }
+    coaxial_chatweb_event(s, UI_SUB_EVENT_BASE + slot * 4 + phase, status, n);
+    at += n;
+  }
+}
+
+cwc_t_http_reply :: (s: [] ChatWeb, slot: int, status: int, body: string) {
+  cwc_t_stream_ev(s, slot, UI_SUB_PHASE_OPEN, status, "");
+  if body.count > 0 { cwc_t_stream_ev(s, slot, UI_SUB_PHASE_CHUNK, status, body); }
+  cwc_t_stream_ev(s, slot, UI_SUB_PHASE_END, status, "");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+}
+
+cwc_t_sse_push :: (s: [] ChatWeb, slot: int, sse_id: string, data_json: string) {
+  buf: [8192] u8;
+  n := 0;
+  if sse_id.count > 0 {
+    n = cwc_put(buf[..], n, "id: ");
+    n = cwc_put(buf[..], n, sse_id);
+    n = cwc_put(buf[..], n, "\n");
+  }
+  n = cwc_put(buf[..], n, "data: ");
+  n = cwc_put(buf[..], n, data_json);
+  n = cwc_put(buf[..], n, "\n\n");
+  cwc_t_stream_ev(s, slot, UI_SUB_PHASE_CHUNK, 200, cast(string) buf[0..<n]);
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+}
+
+cwc_t_list_json :: (out: [] u8, rows_json: string) -> string {
+  n := cwc_put(out, 0, "{\"schema\":\"");
+  n = cwc_put(out, n, CC_CONV_LIST_SCHEMA);
+  n = cwc_put(out, n, "\",\"conversations\":[");
+  n = cwc_put(out, n, rows_json);
+  n = cwc_put(out, n, "]}");
+  return cast(string) out[0..<n];
+}
+
+cwc_t_detail_json :: (out: [] u8, conv_json: string, turns_json: string, events_json: string) -> string {
+  n := cwc_put(out, 0, "{\"schema\":\"");
+  n = cwc_put(out, n, CC_CONV_DETAIL_SCHEMA);
+  n = cwc_put(out, n, "\",\"conversation\":");
+  n = cwc_put(out, n, conv_json);
+  n = cwc_put(out, n, ",\"turns\":[");
+  n = cwc_put(out, n, turns_json);
+  n = cwc_put(out, n, "],\"events\":[");
+  n = cwc_put(out, n, events_json);
+  n = cwc_put(out, n, "]}");
+  return cast(string) out[0..<n];
+}
+
+cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
+  for i: 0..<op.count { s[0].inbox[i] = op[i]; }
+  n := coaxial_chatweb_drive(s, op.count);
+  return cast(string) s[0].cc[0].drive_out[0..<n];
+}
+
+// ---------------------------------------------------------------- #14094 Story / Scene / Play Checks
+
+#test "14094 Story+Scene: /chat login gating blocks anonymous chat and links to /login?next=/chat" {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_path(s, "/chat");
+  cwc_t_drain(s, ops[..]);
+
+  // Initial boot requests /api/chat/v2/conversations & /api/v1/inference/usage concurrently; zero SSE yet.
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  ui := cwc_t_find_open(ops[..], "/api/v1/inference/usage");
+  #assert li >= 0 && ui >= 0 && ops[0].opens[li].slot >= CWC_HTTP_BASE;
+  #assert pl_stream_find(s[0].cc[0].rt[..], "acct.stream") < 0;
+
+  // 401 on /api/chat/v2/conversations gates the UI cleanly with Sign in CTA and no composer.
+  cwc_t_http_reply(s, ops[0].opens[li].slot, 401, "{\"error\":\"unauthorized\"}");
+  t := s[0].tree[..];
+  #assert s[0].cc[0].auth_state == CWC_AUTH_ANON;
+  #assert sc_by_role(t, "region", "Sign in required") >= 0;
+  #assert sc_by_text(t, "Sign in to OpenAgents") >= 0;
+  cta := sc_by_role(t, "link", "Sign in");
+  #assert cta >= 0 && tr_attr_of(t, cta, AT_HREF) == "/login?next=/chat";
+  #assert tr_find(t, "composer") < 0 && tr_find(t, "log") < 0;
+  #assert !cwc_send(s[0].cc[..], "should not send while logged out");
+  #assert pl_stream_find(s[0].cc[0].rt[..], "acct.stream") < 0;
+}
+
+#test "14094 Story+Scene+Play: /chat/:id routes directly, hydrates Local $0 Inkling + Cloud turns, tool diffs, thinking toggle, and Usage HUD" {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  cid := "cnv_11111111111111111111111111111111";
+  tid1 := "trn_11111111111111111111111111111111";
+  tid2 := "trn_22222222222222222222222222222222";
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_path(s, "/chat/cnv_11111111111111111111111111111111");
+  cwc_t_drain(s, ops[..]);
+
+  // Both list & detail + usage open concurrently on distinct slots without buffer contention.
+  di := cwc_t_find_open(ops[..], "/api/chat/v2/conversations/cnv_11111111111111111111111111111111");
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  ui := cwc_t_find_open(ops[..], "/api/v1/inference/usage");
+  // Find exact list slot (not detail URL)
+  list_slot := -1;
+  for k: 0..<ops[0].open_n {
+    if cast(string) ops[0].opens[k].url[0..<ops[0].opens[k].url_n] == "/api/chat/v2/conversations" { list_slot = ops[0].opens[k].slot; }
+  }
+  #assert di >= 0 && list_slot >= CWC_HTTP_BASE && ui >= 0 && ops[0].opens[di].slot != list_slot;
+
+  // Build detail payload using #authority cc_event_write for thinking + tool_call + tool_result with diff.
+  ev1_b: [1024] u8; ev2_b: [1024] u8; ev3_b: [1024] u8;
+  e1 := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid1, sequence = 1, kind = CC_EV_THINKING_DELTA, state = CT_RUNNING, text = "Inspecting workspace config", compute = "local", model = "inkling-2-mini", cost_msat = 0, source_device = "mac-desktop", created_at_ms = 1001}];
+  e2 := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid1, sequence = 2, kind = CC_EV_TOOL_CALL, state = CT_RUNNING, tool_id = "call_1", tool_name = "edit_file", tool_args = "{\"path\":\"app.coax\"}", compute = "local", model = "inkling-2-mini", cost_msat = 0, source_device = "mac-desktop", created_at_ms = 1002}];
+  e3 := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid1, sequence = 3, kind = CC_EV_TOOL_RESULT, state = CT_RUNNING, tool_id = "call_1", tool_name = "edit_file", text = "Patched 1 line", diff = "@@ -1,1 +1,1 @@\n-old_val\n+new_val", compute = "local", model = "inkling-2-mini", cost_msat = 0, source_device = "mac-desktop", created_at_ms = 1003}];
+  n1 := cc_event_write(e1[..], ev1_b[..]);
+  n2 := cc_event_write(e2[..], ev2_b[..]);
+  n3 := cc_event_write(e3[..], ev3_b[..]);
+  #assert n1 > 0 && n2 > 0 && n3 > 0;
+
+  evs: [4096] u8; en := 0;
+  en = cwc_put(evs[..], en, cast(string) ev1_b[0..<n1]); en = cwc_put(evs[..], en, ",");
+  en = cwc_put(evs[..], en, cast(string) ev2_b[0..<n2]); en = cwc_put(evs[..], en, ",");
+  en = cwc_put(evs[..], en, cast(string) ev3_b[0..<n3]);
+
+  det_buf: [8192] u8;
+  det := cwc_t_detail_json(
+    det_buf[..],
+    "{\"id\":\"cnv_11111111111111111111111111111111\",\"title\":\"Desktop Inkling Session\",\"revision\":4,\"pinned\":true,\"archived\":false,\"active_turn_id\":\"\",\"compute\":\"local\",\"model\":\"inkling-2-mini\",\"cost_msat\":0,\"source_device\":\"mac-desktop\"}",
+    "{\"id\":\"trn_11111111111111111111111111111111\",\"ordinal\":1,\"state\":\"completed\",\"compute\":\"local\",\"model\":\"inkling-2-mini\",\"cost_msat\":0,\"source_device\":\"mac-desktop\",\"user_text\":\"Fix the build\",\"output\":\"Updated app.coax locally.\",\"usage\":{\"input_tokens\":50,\"output_tokens\":20,\"cache_read_tokens\":0}},{\"id\":\"trn_22222222222222222222222222222222\",\"ordinal\":2,\"state\":\"completed\",\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":120,\"source_device\":\"web\",\"user_text\":\"Summarize\",\"output\":\"Cloud summary ready.\",\"usage\":{\"input_tokens\":120,\"output_tokens\":45,\"cache_read_tokens\":80}}",
+    cast(string) evs[0..<en]
+  );
+  list_buf: [2048] u8;
+  lst := cwc_t_list_json(
+    list_buf[..],
+    "{\"id\":\"cnv_11111111111111111111111111111111\",\"title\":\"Desktop Inkling Session\",\"revision\":4,\"pinned\":true,\"archived\":false,\"active_turn_id\":\"\",\"compute\":\"local\",\"model\":\"inkling-2-mini\",\"cost_msat\":0,\"source_device\":\"mac-desktop\",\"updated_at_ms\":5000}"
+  );
+  usage_json := "{\"who\":\"acct_1\",\"credit_msat\":250000,\"today\":{\"requests\":7,\"usd_micros\":12500},\"total\":{\"calls\":20,\"in_tokens\":2000,\"cached_in_tokens\":900,\"out_tokens\":800,\"usd_micros\":45000},\"decisions\":{\"calls\":2}}";
+
+  // Deliver all three responses concurrently!
+  cwc_t_http_reply(s, list_slot, 200, lst);
+  cwc_t_http_reply(s, ops[0].opens[di].slot, 200, det);
+  cwc_t_http_reply(s, ops[0].opens[ui].slot, 200, usage_json);
+  cwc_t_drain(s, ops[..]);
+
+  // Story: keyed SSE subscriptions declared & opened for both account stream and active conversation stream.
+  rt := s[0].cc[0].rt[..];
+  #assert st_expect_sub(rt, s[0].cc[0].comp_side, "acct.stream", UI_SUB_SSE, "/api/chat/v2/stream");
+  #assert st_expect_sub(rt, s[0].cc[0].comp_transcript, "conv.stream", UI_SUB_SSE, "/api/chat/v2/conversations/cnv_11111111111111111111111111111111/stream");
+  #assert cwc_t_find_open(ops[..], "/api/chat/v2/stream") >= 0;
+  #assert cwc_t_find_open(ops[..], "/api/chat/v2/conversations/cnv_11111111111111111111111111111111/stream") >= 0;
+
+  // Scene: Local $0 Inkling provenance, Cloud Usage HUD, tool diff lines, and collapsible thinking card.
+  t := s[0].tree[..];
+  #assert s[0].cc[0].msg_n == 6;   // user1, thinking1, tool1, asst1, user2, asst2
+  #assert sc_by_text(t, "Local · $0.00") >= 0 && sc_by_text(t, "inkling-2-mini") >= 0 && sc_by_text(t, "mac-desktop") >= 0;
+  #assert sc_by_text(t, "Today $0.0125 · 7 req · 250 sats · 900 cached") >= 0;
+  #assert sc_by_text(t, "Updated app.coax locally.") >= 0 && sc_by_text(t, "Cloud summary ready.") >= 0;
+  #assert sc_by_text(t, "+new_val") >= 0 && sc_by_text(t, "-old_val") >= 0;
+  // Thinking card starts collapsed; clicking cc.tog.1 expands it cleanly.
+  #assert tr_attr_of(t, tr_find(t, "cc.tog.1"), AT_EXPANDED) == "false";
+  cw_test_press(s, "cc.tog.1");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_attr_of(t, tr_find(t, "cc.tog.1"), AT_EXPANDED) == "true";
+  #assert sc_by_text(t, "Inspecting workspace config") >= 0;
+  // Idle check: once settled (and no local Coder daemon on host), cloud chat stops rAF (zero CPU burn).
+  s[0].local = -1;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert !coaxial_chatweb_busy(s);
+}
+
+#test "14094 Story+Scene+Play: live Web SSE streaming with StreamMd syntax-highlighted Copy, write-through sync, and zero 1Hz polling" {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_answer(s, 200, "{\"claude\":null}");
+  cw_test_path(s, "/chat");
+  cwc_t_drain(s, ops[..]);
+
+  // Authenticate with empty list.
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  list_buf: [256] u8;
+  cwc_t_http_reply(s, ops[0].opens[li].slot, 200, cwc_t_list_json(list_buf[..], ""));
+  cwc_t_drain(s, ops[..]);
+  ops[0].open_n = 0; ops[0].close_n = 0;
+
+  // Select Gemini 4 Argon from Unified OpenAgents Core 5-model menu (no legacy agent zoo).
+  cw_test_press(s, "model");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_find(t, "model.0") >= 0 && tr_find(t, "model.4") >= 0 && tr_find(t, "model.5") < 0 && tr_find(t, "agent") < 0;
+  cw_test_press(s, "model.3");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].cc[0].core_model == 3 && cwc_model_id(s[0].cc[..]) == "google/gemini-4-argon";
+
+  // Type and submit prompt -> pushes /chat/cnv_..., opens POST /api/chat/complete on Slot 4 + write-through sync.
+  cw_test_type(s, "composer", "Show a coax function");
+  cw_test_enter(s, "composer");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+
+  go := cw_test_go(s);
+  #assert go.count == 42 && cast(string) go[0..<10] == "/chat/cnv_" && coaxial_chatweb_go_push(s);
+  ci := cwc_t_find_open(ops[..], "/api/chat/complete");
+  si := cwc_t_find_open(ops[..], "/api/chat/v2/sync");
+  #assert ci >= 0 && ops[0].opens[ci].slot == CWC_TURN_SLOT;
+  #assert sc_contains(cast(string) ops[0].opens[ci].body[0..<ops[0].opens[ci].body_n], "\"model\":\"google/gemini-4-argon\"");
+  #assert sc_contains(cast(string) ops[0].opens[ci].body[0..<ops[0].opens[ci].body_n], "\"stream\":true");
+  #assert si >= 0 && sc_contains(cast(string) ops[0].opens[si].body[0..<ops[0].opens[si].body_n], CC_SYNC_SCHEMA);
+
+  // Verify ZERO 1Hz /api/chat/turn or /local/* polling over 120 frames (>10 simulated seconds)!
+  for f: 0..<120 { _ = coaxial_chatweb_frame(s, 0.1, true); }
+  cwc_t_drain(s, ops[..]);
+  #assert cwc_t_find_open(ops[..], "/api/chat/turn") < 0 && cwc_t_find_open(ops[..], "/local/") < 0;
+  #assert cw_test_door(s) != "/api/chat/turn";
+
+  // Stream chunked Gateway SSE tokens (reasoning + heading + fenced coax code block + usage).
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_OPEN, 200, "");
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Planning snippet\"}}]}\n\n");
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, "data: {\"choices\":[{\"delta\":{\"content\":\"## Demo\\n\\n```coax\\n\"}}]}\n\n");
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, "data: {\"choices\":[{\"delta\":{\"content\":\"add :: () { return 42; }\\n```\\n\"}}]}\n\n");
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":14,\"completion_tokens\":22,\"prompt_tokens_details\":{\"cached_tokens\":6}}}\n\n");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+
+  // Incremental StreamMd rendered heading + code block while still streaming.
+  #assert sc_by_role(t, "heading", "Demo") >= 0;
+  #assert sc_by_text(t, "return") >= 0 && sc_by_text(t, "42") >= 0;
+  // Code block Copy extracts full source text across syntax-highlighted token spans!
+  copy_id := "";
+  for ni: 0..<t[0].n {
+    nid := tr_id(t, ni);
+    if nid.count > 5 && cast(string) nid[nid.count - 5..<nid.count] == ".copy" { copy_id = nid; break; }
+  }
+  #assert copy_id.count > 0;
+  cw_test_press(s, copy_id);
+  #assert coaxial_chatweb_clip(s) > 0 && sc_contains(cast(string) s[0].clip[0..<s[0].clip_n], "add :: () { return 42; }");
+  coaxial_chatweb_clip_done(s);
+
+  // Finish stream -> write-through POST /api/chat/v2/conversations/:id/events + Usage HUD refresh.
+  ops[0].open_n = 0;
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_END, 200, "");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  #assert !s[0].cc[0].web_streaming;
+  #assert cwc_t_find_open(ops[..], "/events") >= 0 && cwc_t_find_open(ops[..], "/api/v1/inference/usage") >= 0;
+  // Answer Copy button copies markdown text cleanly.
+  cw_test_press(s, "cc.copy.1");
+  #assert coaxial_chatweb_clip(s) > 0 && sc_contains(cast(string) s[0].clip[0..<s[0].clip_n], "## Demo");
+}
+
+#test "14094 Story+Scene+Play: live Desktop observation, Last-Event-ID reconnect with zero duplicates, and Stop turn steering" {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  cid := "cnv_22222222222222222222222222222222";
+  tid := "trn_33333333333333333333333333333333";
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_path(s, "/chat/cnv_22222222222222222222222222222222");
+  cwc_t_drain(s, ops[..]);
+  // Authenticate so Slot 0 & Slot 1 SSE open.
+  list_slot := -1;
+  for k: 0..<ops[0].open_n {
+    if cast(string) ops[0].opens[k].url[0..<ops[0].opens[k].url_n] == "/api/chat/v2/conversations" { list_slot = ops[0].opens[k].slot; }
+  }
+  lb: [256] u8;
+  cwc_t_http_reply(s, list_slot, 200, cwc_t_list_json(lb[..], ""));
+  cwc_t_drain(s, ops[..]);
+  cslot := pl_stream_find(s[0].cc[0].rt[..], "conv.stream");
+  #assert cslot == 1;
+
+  // Receive live SSE frames from Desktop (local $0 Inkling): thinking, tool_call, tool_result+diff, text_delta.
+  evb: [1024] u8;
+  cwc_t_stream_ev(s, cslot, UI_SUB_PHASE_OPEN, 200, "");
+  e1 := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid, sequence = 1, kind = CC_EV_THINKING_DELTA, state = CT_RUNNING, text = "Reading tree", compute = "local", model = "inkling-2-mini", cost_msat = 0, source_device = "mac-desktop", created_at_ms = 2001}];
+  n1 := cc_event_write(e1[..], evb[..]); #assert n1 > 0; cwc_t_sse_push(s, cslot, "101", cast(string) evb[0..<n1]);
+  e2 := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid, sequence = 2, kind = CC_EV_TOOL_CALL, state = CT_RUNNING, tool_id = "tc_9", tool_name = "grep", tool_args = "{\"q\":\"main\"}", compute = "local", model = "inkling-2-mini", cost_msat = 0, source_device = "mac-desktop", created_at_ms = 2002}];
+  n2 := cc_event_write(e2[..], evb[..]); #assert n2 > 0; cwc_t_sse_push(s, cslot, "102", cast(string) evb[0..<n2]);
+  e3 := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid, sequence = 3, kind = CC_EV_TOOL_RESULT, state = CT_RUNNING, tool_id = "tc_9", tool_name = "grep", text = "2 matches", diff = "+match line", compute = "local", model = "inkling-2-mini", cost_msat = 0, source_device = "mac-desktop", created_at_ms = 2003}];
+  n3 := cc_event_write(e3[..], evb[..]); #assert n3 > 0; cwc_t_sse_push(s, cslot, "103", cast(string) evb[0..<n3]);
+  e4 := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid, sequence = 4, kind = CC_EV_TEXT_DELTA, state = CT_RUNNING, text = "Hello ", compute = "local", model = "inkling-2-mini", cost_msat = 0, source_device = "mac-desktop", created_at_ms = 2004}];
+  n4 := cc_event_write(e4[..], evb[..]); #assert n4 > 0; cwc_t_sse_push(s, cslot, "104", cast(string) evb[0..<n4]);
+
+  t := s[0].tree[..];
+  #assert s[0].cc[0].remote_running && cast(string) s[0].cc[0].conv_last_id[0..<s[0].cc[0].conv_last_id_n] == "104";
+  #assert sc_by_text(t, "Live from mac-desktop (Local $0)") >= 0;
+  #assert sc_by_role(t, "button", "Stop turn") >= 0;
+
+  // Inject transient drop -> Reconnecting status pill shows.
+  cwc_t_stream_ev(s, cslot, UI_SUB_PHASE_ERROR, 0, "reconnecting 500");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].cc[0].conv_reconnecting && sc_by_role(t, "status", "Reconnecting live stream...") >= 0;
+
+  // Stream reconnects and replays seq 4 (duplicate!) followed by seq 5 -> zero duplicate text or tool cards!
+  cwc_t_stream_ev(s, cslot, UI_SUB_PHASE_OPEN, 200, "");
+  cwc_t_sse_push(s, cslot, "104", cast(string) evb[0..<n4]);
+  e5 := [1] CcEvent.[CcEvent.{conversation = cid, turn = tid, sequence = 5, kind = CC_EV_TEXT_DELTA, state = CT_RUNNING, text = "world!", compute = "local", model = "inkling-2-mini", cost_msat = 0, source_device = "mac-desktop", created_at_ms = 2005}];
+  n5 := cc_event_write(e5[..], evb[..]); #assert n5 > 0; cwc_t_sse_push(s, cslot, "105", cast(string) evb[0..<n5]);
+
+  #assert !s[0].cc[0].conv_reconnecting && tr_find(t, "cc.recon") < 0;
+  #assert sc_by_text(t, "Hello world!") >= 0 && sc_by_text(t, "Hello Hello") < 0;
+  tool_cnt := 0;
+  for i: 0..<s[0].cc[0].msg_n { if s[0].cc[0].msgs[i].kind == CWC_M_TOOL { tool_cnt += 1; } }
+  #assert tool_cnt == 1;
+
+  // Pressing "Stop turn" emits POST /api/chat/stop/v2alpha1 steering command!
+  ops[0].open_n = 0;
+  cw_test_press(s, "cc.stop.remote");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  #assert cwc_t_find_open(ops[..], "/api/chat/stop/v2alpha1") >= 0;
+}
+
+#test "14094 Story+Scene+Play: live sidebar SSE, search, pin, rename, archive, and keyed SSE swap on chat switch" {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_path(s, "/chat");
+  cwc_t_drain(s, ops[..]);
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  lb: [2048] u8;
+  lst := cwc_t_list_json(
+    lb[..],
+    "{\"id\":\"cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"title\":\"Alpha Plan\",\"revision\":1,\"pinned\":false,\"archived\":false,\"active_turn_id\":\"\",\"compute\":\"cloud\",\"model\":\"google/gemini-4-neon\",\"cost_msat\":0,\"source_device\":\"web\",\"updated_at_ms\":2000},{\"id\":\"cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"title\":\"Beta Notes\",\"revision\":1,\"pinned\":false,\"archived\":false,\"active_turn_id\":\"\",\"compute\":\"local\",\"model\":\"inkling-2-mini\",\"cost_msat\":0,\"source_device\":\"mac-desktop\",\"updated_at_ms\":1000}"
+  );
+  cwc_t_http_reply(s, ops[0].opens[li].slot, 200, lst);
+  cwc_t_drain(s, ops[..]);
+  aslot := pl_stream_find(s[0].cc[0].rt[..], "acct.stream");
+  #assert aslot == 0;
+
+  // Live account SSE marks Beta Notes as actively working from iOS.
+  aeb: [1024] u8;
+  ae := [1] CcAcctEvent.[CcAcctEvent.{
+    conversation = "cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    turn = "trn_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    event_type = "turn_started",
+    title = "Beta Notes",
+    compute = "cloud",
+    model = "google/gemini-4-neon",
+    source_device = "ios-mobile",
+    revision = 2,
+    updated_at_ms = 3000
+  }];
+  aen := cc_acct_event_write(ae[..], aeb[..]);
+  #assert aen > 0;
+  cwc_t_sse_push(s, aslot, "55", cast(string) aeb[0..<aen]);
+  t := s[0].tree[..];
+  // Beta moved to index 0 (newest updated_at_ms = 3000) and displays live working indicator!
+  #assert s[0].cc[0].convs[0].working && tr_find(t, "cc.work.0") >= 0;
+
+  // Search filters sidebar cleanly.
+  cw_test_type(s, "side.search", "Alpha");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert sc_by_text(t, "Alpha Plan") >= 0 && sc_by_text(t, "Beta Notes") < 0;
+  cw_test_type(s, "side.search", "");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert sc_by_text(t, "Beta Notes") >= 0;
+
+  // Pin Alpha (currently index 1) -> moves to index 0 + POST .../meta with CC_META_SCHEMA.
+  ops[0].open_n = 0;
+  cw_test_press(s, "cc.pin.1");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  mi := cwc_t_find_open(ops[..], "/api/chat/v2/conversations/cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/meta");
+  #assert mi >= 0 && sc_contains(cast(string) ops[0].opens[mi].body[0..<ops[0].opens[mi].body_n], CC_META_SCHEMA);
+  #assert s[0].cc[0].convs[0].pinned && cast(string) s[0].cc[0].convs[0].title[0..<s[0].cc[0].convs[0].title_n] == "Alpha Plan";
+
+  // Rename Alpha (now index 0) -> optimistic title update + POST .../meta.
+  ops[0].open_n = 0;
+  cw_test_press(s, "cc.ren.0");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_type(s, "cc.ren.in", "Alpha Renamed");
+  cw_test_enter(s, "cc.ren.in");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  #assert sc_by_text(t, "Alpha Renamed") >= 0;
+  #assert cwc_t_find_open(ops[..], "/meta") >= 0;
+
+  // Archive Beta (index 1) -> hides from active list, visible when Archived toggle pressed.
+  cw_test_press(s, "cc.arc.1");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert sc_by_text(t, "Beta Notes") < 0;
+  cw_test_press(s, "side.arc");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert sc_by_text(t, "Beta Notes") >= 0;
+  cw_test_press(s, "cc.arc.1");   // restore Beta
+  cw_test_press(s, "side.arc");   // back to active
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+
+  // Switch chats: open Alpha (index 0), then switch to Beta (index 1) -> closes old conv SSE slot & opens new one!
+  ops[0].open_n = 0; ops[0].close_n = 0;
+  cw_test_press(s, "cc.open.0");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  #assert cwc_t_find_open(ops[..], "/api/chat/v2/conversations/cnv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/stream") >= 0;
+
+  ops[0].open_n = 0; ops[0].close_n = 0;
+  cw_test_press(s, "cc.open.1");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  #assert cwc_t_has_close(ops[..], 1);
+  #assert cwc_t_find_open(ops[..], "/api/chat/v2/conversations/cnv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/stream") >= 0;
+}
+
+#test "14094 Scene+Play: VirtualList renders 1,200-message (>150 KB) transcript smoothly with zero 96 KB cap" #steps 300000000 #traversal 536870912 {
+  h: [1] CwTest; s := h[0].s[..];
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_path(s, "/chat");
+  c := s[0].cc[..];
+  c[0].auth_state = CWC_AUTH_IN;
+
+  // Populate 1,200 messages (~165 KB total text in msg_pool; far past legacy 96 KB cap!).
+  line_b: [200] u8;
+  for i: 0..<1200 {
+    n := cwc_put(line_b[..], 0, "msg-");
+    if i < 1000 { n = cwc_put(line_b[..], n, "0"); }
+    if i < 100 { n = cwc_put(line_b[..], n, "0"); }
+    if i < 10 { n = cwc_put(line_b[..], n, "0"); }
+    n = cwc_put_int(line_b[..], n, i);
+    n = cwc_put(line_b[..], n, " persistent multi-device transcript payload verified on Coax UI VirtualList without 96KB truncation cap.");
+    sp := cwc_pool_put(c, cast(string) line_b[0..<n]);
+    m := CwcMsg.{kind = ifx (i % 2) == 0 then CWC_M_USER else CWC_M_ASSISTANT, text_at = sp.at, text_n = sp.n};
+    _ = cwc_append_msg(c, m);
+  }
+  vl_scroll_to_bottom(c[0].vl[..]);
+  c[0].dirty = true;
+  bytes := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert bytes > 0 && !s[0].dom[0].overflow && t[0].lost == 0;
+  #assert c[0].msg_n == 1200 && c[0].msg_pool_n > 130000;
+  #assert tr_find(t, "earlier") < 0;   // zero legacy truncation banner!
+  vis := sc_count_role(t, "listitem");
+  #assert vis > 0 && vis <= 32;        // strictly virtualized window!
+  #assert sc_by_text(t, "msg-1199") >= 0 && sc_by_text(t, "msg-0100") < 0;
+
+  // Scroll via CW_SCROLL telemetry to middle (~y=7800 for msg-0100) -> reveals msg-0100 and Jump button.
+  sc_cmd := "7800 640";
+  for i: 0..<sc_cmd.count { s[0].inbox[i] = sc_cmd[i]; }
+  coaxial_chatweb_event(s, CW_SCROLL, 0, sc_cmd.count);
+  bytes = coaxial_chatweb_frame(s, 0.016, true);
+  #assert bytes > 0 && !s[0].dom[0].overflow;
+  #assert sc_by_text(t, "msg-0100") >= 0 && sc_by_role(t, "button", "Scroll to latest message") >= 0;
+
+  // Click Jump to latest -> snaps back to bottom!
+  cw_test_press(s, "cc.jump");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert sc_by_text(t, "msg-1199") >= 0 && tr_find(t, "cc.jump") < 0;
+}
+
+#test "14094 SSR HTML hydration parity with chat/index.html" {
+  hs: [1] CwTest; ss := hs[0].s[..];
+  cw_test_path(ss, "/chat");
+  ss[0].cc[0].auth_state = CWC_AUTH_IN;
+  ssr_buf: [65536] u8;
+  hn := cw_ssr_html(ss, ssr_buf[..]);
+  #assert hn > 0;
+  html := cast(string) ssr_buf[0..<hn];
+  #assert sc_contains(html, "id=\"coaxial-root\" data-coax-ssr=\"1\"");
+  #assert sc_contains(html, "id=\"chat\"") && sc_contains(html, "id=\"cc.hud\"");
+  #assert sc_contains(html, "id=\"log\"") && sc_contains(html, "id=\"thread\"");
+  #assert sc_contains(html, "id=\"composer\"") && sc_contains(html, "id=\"composer.send\"");
+}
+
+#test "14094 deterministic UiTimeline replay and dom_drive inspection" #steps 80000000 {
+  // Run identical auth + SSE stream + reconnect scenario twice (one CwTest live at a time) -> 0 divergence (-1).
+  tls: [2] UiTimeline;
+  cnt_b: [32] u8; cnt_n := 0;
+  has_step0 := false;
+  for run: 0..<2 {
+    h: [1] CwTest;
+    s := h[0].s[..];
+    ops: [1] CwcTestLog;
+    #assert cwc_t_drive(s, "timeline on") == "ok";
+    _ = coaxial_chatweb_frame(s, 0.016, true);
+    cw_test_path(s, "/chat/cnv_44444444444444444444444444444444");
+    cwc_t_drain(s, ops[..]);
+    list_slot := -1;
+    for k: 0..<ops[0].open_n {
+      if cast(string) ops[0].opens[k].url[0..<ops[0].opens[k].url_n] == "/api/chat/v2/conversations" { list_slot = ops[0].opens[k].slot; }
+    }
+    lb: [256] u8;
+    cwc_t_http_reply(s, list_slot, 200, cwc_t_list_json(lb[..], ""));
+    cwc_t_drain(s, ops[..]);
+    cslot := pl_stream_find(s[0].cc[0].rt[..], "conv.stream");
+    evb: [512] u8;
+    e := [1] CcEvent.[CcEvent.{conversation = "cnv_44444444444444444444444444444444", turn = "trn_55555555555555555555555555555555", sequence = 1, kind = CC_EV_TEXT_DELTA, state = CT_RUNNING, text = "Deterministic", compute = "cloud", model = "google/gemini-4-neon", source_device = "mac-desktop", created_at_ms = 3001}];
+    en := cc_event_write(e[..], evb[..]);
+    #assert en > 0;
+    cwc_t_stream_ev(s, cslot, UI_SUB_PHASE_OPEN, 200, "");
+    cwc_t_sse_push(s, cslot, "1", cast(string) evb[0..<en]);
+    cwc_t_stream_ev(s, cslot, UI_SUB_PHASE_ERROR, 0, "reconnecting 500");
+    cwc_t_stream_ev(s, cslot, UI_SUB_PHASE_OPEN, 200, "");
+    _ = coaxial_chatweb_frame(s, 0.016, true);
+    tls[run] = s[0].cc[0].timeline[0];
+    if run == 0 {
+      cnt_n = cwc_put(cnt_b[..], 0, cwc_t_drive(s, "timeline count"));
+      has_step0 = sc_contains(cwc_t_drive(s, "timeline dump"), "step=0 ");
+    }
+  }
+  #assert tl_replay_compare(tls[0..<1], tls[1..<2]) == -1;
+  #assert cnt_n > 0 && cast(string) cnt_b[0..<cnt_n] != "0" && has_step0;
+}

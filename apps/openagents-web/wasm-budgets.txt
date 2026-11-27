@@ -41,7 +41,10 @@ chat 270000
 # calls' work log (chat-tools.coax, #13481) and 274,043 with the side lighting a place's page (#13483), both on a
 # Linux build host; 338,100 with our own tools for a Gemini message (chat-hosted.coax: the command table's help, routes and
 # properties for every realm row, function tools, the calls run and answered: #13504) on a Linux build host; about 5% room.
-chat-web 362000
+# 485,946 bytes measured 2026-11-26 on a Mac release build after rebuilding /chat on Coax UI Core (UiRuntime, router,
+# parts, VirtualList, incremental StreamMd + syntax highlighting, SSR HTML, UiTimeline) and the #authority unified cloud
+# chat v2 wire codec (chat-cloud.coax, account-chat-cloud-wire.coax: #14094); about 5% room.
+chat-web 512000
 milestone 128000
 # /nostr-chat, Nostr from scratch as a scripted chat on the same components (nostr-chat.coax): the frames set and the
 # library's signing, relay, NIP-44 and NIP-59 code it runs in the page: 309,585 bytes measured 2026-11-12 on a Linux build host;
