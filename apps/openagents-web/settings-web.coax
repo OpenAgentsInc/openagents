@@ -847,7 +847,7 @@ sw_home :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string, projects_n: in
   sw_link(s, t, u, "home.go.lightning", "Lightning Address", "Claim or manage your name@openagents.com payment address.", "Open", "/settings/lightning");
   sw_link(s, t, u, "home.go.agents", "Agents", "Agents acting on your behalf and their permissions.", "Open", "/settings/agents");
   sw_link(s, t, u, "home.go.data", "Your data", "Export what we hold about you, or freeze your account.", "Open", "/settings/data");
-  if sw_row(s, t, u, "home.out.row", "Log out", "Sign out of this browser.") { btn := k_button(t, u, "home.out", "Log out", BS_PLAIN); k_set_row_end(t); }
+  if sw_row(s, t, u, "home.out.row", "Log out", "Log out of this browser.") { btn := k_button(t, u, "home.out", "Log out", BS_PLAIN); k_set_row_end(t); }
   sw_group_end(s, t);
   tr_close(t); tr_close(t);
 }

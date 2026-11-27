@@ -259,7 +259,7 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   cwc_t_drain(s, ops[..]);
 
   go := cw_test_go(s);
-  #assert go.count == 42 && cast(string) go[0..<10] == "/chat/cnv_" && coaxial_chatweb_go_push(s);
+  #assert go.count == 42 && cast(string) go[0..<6] == "/chat/" && cwc_is_uuid(cast(string) go[6..<42]) && cast(string) go[6..<10] != "cnv_" && coaxial_chatweb_go_push(s);
   ci := cwc_t_find_open(ops[..], "/api/v1/inference");
   si := cwc_t_find_open(ops[..], "/api/chat/v2/sync");
   #assert ci >= 0 && ops[0].opens[ci].slot == CWC_TURN_SLOT;
@@ -647,14 +647,14 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   _ = coaxial_chatweb_frame(s, 0.016, true);
   cwc_t_drain(s, ops[..]);
 
-  // Web dispatches POST /api/tools/cloud/v1 and shows running tool card in transcript.
+  // Web dispatches POST /api/tools/cloud/v1 and shows running tool row with concise repo summary.
   ti := cwc_t_find_open(ops[..], "/api/tools/cloud/v1");
   #assert ti >= 0 && s[0].cc[0].tool_running;
   tbody := cast(string) ops[0].opens[ti].body[0..<ops[0].opens[ti].body_n];
   #assert sc_contains(tbody, "\"tool\":\"github_tree\"") && sc_contains(tbody, "OpenAgentsInc/openagents");
-  #assert sc_by_text(t, "github_tree · running") >= 0;
+  #assert sc_by_text(t, "github_tree · OpenAgentsInc/openagents") >= 0 && sc_by_text(t, "running") >= 0;
 
-  // Deliver tool output -> card turns done, continuation /api/v1/inference opens with tool result and echoed thought_signature!
+  // Deliver tool output -> compact group collapses to "Thought process · ran 1 tool", continuation /api/v1/inference opens with tool result and echoed thought_signature!
   tool_slot := ops[0].opens[ti].slot;
   ops[0].open_n = 0;
   cwc_t_http_reply(s, tool_slot, 200, "{\"schema\":\"openagents.cloud.tool.res.v1alpha1\",\"tool\":\"github_tree\",\"ok\":true,\"output\":\"d coax\\nf AGENTS.md\\n\"}");
@@ -665,16 +665,20 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   req2 := cast(string) ops[0].opens[inf2].body[0..<ops[0].opens[inf2].body_n];
   #assert sc_contains(req2, "\"role\":\"tool\"") && sc_contains(req2, "call_gh1") && sc_contains(req2, "AGENTS.md");
   #assert sc_contains(req2, "\"extra_content\":{\"google\":{\"thought_signature\":\"AY89a1/vertex_sig_test_123\"}}");
-  #assert sc_by_text(t, "github_tree · done") >= 0;
+  #assert sc_by_text(t, "Thought process · ran 1 tool") >= 0 && sc_by_text(t, "github_tree · done") < 0;
 
-  // Stream final answer -> turn completes cleanly.
+  // Stream final answer -> turn completes cleanly and group stays compactly collapsed until clicked.
   ans_sse := "data: {\"choices\":[{\"delta\":{\"content\":\"Root contains **coax/** and **AGENTS.md**.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
   cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_OPEN, 200, "");
   cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, ans_sse);
   cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_END, 200, "");
   _ = coaxial_chatweb_frame(s, 0.016, true);
   #assert !s[0].cc[0].web_streaming && !s[0].cc[0].tool_running && s[0].cc[0].error_n == 0;
-  #assert sc_by_text(t, "AGENTS.md") >= 0;
+  #assert sc_by_text(t, "AGENTS.md") >= 0 && sc_by_text(t, "Thought process · ran 1 tool") >= 0;
+  // Expanding the activity group reveals the compact labeled tool row.
+  cw_test_press(s, "cc.grp.2");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert sc_by_text(t, "github_tree · OpenAgentsInc/openagents") >= 0;
 }
 
 #test "14127 Story+Scene+Play: Execution Target switcher pins Tier 2 Computer submit and sends inline Approve/Deny RespondTask" #steps 120000000 {
@@ -848,7 +852,7 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   n = cwc_css(s[0].css[..], n);
   #assert n > 45000 && n < CW_CSS - 4096;
   css := cast(string) s[0].css[0..<n];
-  #assert sc_contains(css, "--color-surface") && sc_contains(css, "svg.fr{display:none}") && sc_contains(css, ".cc-welcome");
+  #assert sc_contains(css, "--color-surface") && sc_contains(css, "svg.fr{display:none}") && sc_contains(css, ".cc-welcome") && sc_contains(css, ".log:focus,.log:focus-visible");
 
   _ = coaxial_chatweb_frame(s, 0.016, true);
   cw_test_path(s, "/chat");
@@ -865,4 +869,113 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   _ = coaxial_chatweb_frame(s, 0.016, true);
   cwc_t_drain(s, ops[..]);
   #assert s[0].cc[0].msg_n >= 2 && tr_find(t, "cc.welcome") < 0 && cwc_t_find_open(ops[..], "/api/v1/inference") >= 0;
+}
+
+#test "12 sequential large 8KB github_tree/github_read_file tool calls complete without conversation buffer overflow and collapse into one Desktop activity group" #steps 300000000 #traversal 536870912 {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  // Canonical UUID deep link routes cleanly before starting a fresh chat too.
+  cw_test_path(s, "/chat/550e8400-e29b-41d4-a716-446655440000");
+  #assert cwc_active_id(s[0].cc[..]) == "550e8400-e29b-41d4-a716-446655440000";
+  cwc_new_chat(s[0].cc[..]);
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  lb: [256] u8;
+  cwc_t_http_reply(s, ops[0].opens[li].slot, 200, cwc_t_list_json(lb[..], ""));
+  cwc_t_drain(s, ops[..]);
+  ops[0].open_n = 0;
+
+  cw_test_type(s, "composer", "Audit all 12 core modules in OpenAgentsInc/openagents");
+  cw_test_enter(s, "composer");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  // Newly minted conversation ID is a canonical lowercase UUIDv4 with hyphens at 8,13,18,23 and no cnv_ prefix.
+  cid := cwc_active_id(s[0].cc[..]);
+  #assert cid.count == 36 && cwc_is_uuid(cid) && cid[8] == '-' && cid[13] == '-' && cid[18] == '-' && cid[23] == '-' && cid[14] == '4' && cast(string) cid[0..<4] != "cnv_";
+  #assert cwc_t_find_open(ops[..], "/api/v1/inference") >= 0;
+
+  // Build an 8.5 KB tool output JSON payload (~8600 bytes raw text > 7 KB CWC_TOOL_RESULT_CAP).
+  big_out: [8600] u8;
+  bn := 0;
+  while bn + 64 < big_out.count {
+    bn = cwc_put(big_out[..], bn, "line: module implementation detail and verification payload 012\n");
+  }
+  res_json: [12288] u8;
+  o: [1] Jo; jo_start(o[..], res_json[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], CLD_TOOL_RES_SCHEMA);
+  jo_key(o[..], "tool"); jo_str(o[..], "github_read_file");
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "output"); jo_str(o[..], cast(string) big_out[0..<bn]);
+  jo_end(o[..]);
+  #assert !o[0].bad;
+  big_reply := cast(string) res_json[0..<o[0].n];
+
+  // Execute 12 sequential large tool rounds (alternating github_tree and github_read_file).
+  for step: 0..<12 {
+    ops[0].open_n = 0;
+    sse: [1024] u8;
+    sn := cwc_put(sse[..], 0, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_big_");
+    sn = cwc_put_int(sse[..], sn, step);
+    sn = cwc_put(sse[..], sn, "\",\"type\":\"function\",\"function\":{\"name\":\"");
+    if (step % 4) == 0 {
+      sn = cwc_put(sse[..], sn, "github_tree\",\"arguments\":\"{\\\"repo\\\":\\\"OpenAgentsInc/openagents\\\",\\\"path\\\":\\\"dir_");
+      sn = cwc_put_int(sse[..], sn, step);
+      sn = cwc_put(sse[..], sn, "\\\"}\"");
+    } else {
+      sn = cwc_put(sse[..], sn, "github_read_file\",\"arguments\":\"{\\\"repo\\\":\\\"OpenAgentsInc/openagents\\\",\\\"path\\\":\\\"src/mod_");
+      sn = cwc_put_int(sse[..], sn, step);
+      sn = cwc_put(sse[..], sn, ".coax\\\"}\"");
+    }
+    sn = cwc_put(sse[..], sn, "}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+
+    cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_OPEN, 200, "");
+    cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, cast(string) sse[0..<sn]);
+    cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_END, 200, "");
+    _ = coaxial_chatweb_frame(s, 0.016, true);
+    cwc_t_drain(s, ops[..]);
+
+    ti := cwc_t_find_open(ops[..], "/api/tools/cloud/v1");
+    #assert ti >= 0 && s[0].cc[0].tool_running && s[0].cc[0].error_n == 0;
+    tool_slot := ops[0].opens[ti].slot;
+    ops[0].open_n = 0;
+    cwc_t_http_reply(s, tool_slot, 200, big_reply);
+    cwc_t_drain(s, ops[..]);
+
+    // Every single continuation must succeed with zero buffer-overflow error!
+    #assert s[0].cc[0].error_n == 0 && !s[0].cc[0].tool_conv[0].failed;
+    #assert cwc_t_find_open(ops[..], "/api/v1/inference") >= 0 && s[0].cc[0].web_streaming;
+  }
+
+  // Verify individual large tool outputs were cleanly truncated with "\n... [truncated]".
+  #assert sc_contains(s[0].cc[0].tool_conv[0].messages[2].result.output, "\n... [truncated]");
+
+  // Stream clean final assistant answer after all 12 tool rounds.
+  ans := "data: {\"choices\":[{\"delta\":{\"content\":\"Audited all 12 modules cleanly with zero overflow.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_OPEN, 200, "");
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_CHUNK, 200, ans);
+  cwc_t_stream_ev(s, CWC_TURN_SLOT, UI_SUB_PHASE_END, 200, "");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+
+  t := s[0].tree[..];
+  #assert !s[0].cc[0].web_streaming && !s[0].cc[0].tool_running && s[0].cc[0].error_n == 0;
+  #assert sc_by_text(t, "Audited all 12 modules cleanly with zero overflow.") >= 0;
+  // All 12 consecutive tool calls collapse into ONE single Desktop-style activity disclosure!
+  #assert sc_by_text(t, "Thought process · ran 12 tools") >= 0;
+  #assert tr_find(t, "cc.grp.2") >= 0 && tr_find(t, "cc.tog.2") < 0;
+  // Clicking the group expands all 12 compact labeled tool rows!
+  cw_test_press(s, "cc.grp.2");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert sc_by_text(t, "github_tree · OpenAgentsInc/openagents/dir_0") >= 0;
+  #assert sc_by_text(t, "github_read_file · src/mod_11.coax") >= 0;
+
+  // Canonical UUID deep-link /chat/<uuid> routes cleanly and requests /api/chat/v2/conversations/<uuid>.
+  ops[0].open_n = 0;
+  cw_test_path(s, "/chat/550e8400-e29b-41d4-a716-446655440000");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  #assert cwc_active_id(s[0].cc[..]) == "550e8400-e29b-41d4-a716-446655440000";
+  #assert cwc_t_find_open(ops[..], "/api/chat/v2/conversations/550e8400-e29b-41d4-a716-446655440000") >= 0;
 }

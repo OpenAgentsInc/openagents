@@ -444,67 +444,68 @@ cw_side :: (s: [] ChatWeb) {
   if s[0].side_closed && !s[0].mob_side_open { o := k_side_open(t, "side.show", "Show the side"); return; }
   side := k_side(t, "side", "Places");
   if s[0].mob_side_open { tr_attr(t, side, AT_STATE, "open"); }
+  // Top header: OpenAgents monochrome power mark + wordmark + collapse sidebar icon button (Desktop parity).
   hd := k_side_head(t, "side.h", "OpenAgents", "/");
   hide := k_icon_button(t, "side.hide", IC_SIDEBAR, "Hide the side");
   tr_close(t);
-  // Chats, Projects and Worlds: each a heading that opens and shuts its list in place, a + at its right
-  l := k_side_folds(t, "side");
-  names := SS_NAMES; adds := SS_NEW_LABELS; icons := [3] int.[IC_CHATS, IC_FOLDER, IC_GLOBE]; ids := [3] string.["fold.chats", "fold.projects", "fold.worlds"];
-  for k: 0..<SS_PLACES {
-    if k==SS_FEED {_=k_sub_place(t,u,"side.feed",names[k],"/feed");_=k_sub_place(t,u,"side.messages","Messages","/messages");continue;}
-    open := (s[0].shut & (1 << k)) == 0;
-    f := k_fold(t, u, ids[k], icons[k], names[k], open, (k == SS_CHATS && s[0].page == SS_CHATS) || (s[0].page == SS_SIDE && k == s[0].here), adds[k]);
-    if open && k == SS_CHATS && s[0].cloud_mode {
-      cwc_draw_sidebar_items(s[0].cc[..], t, u);
-    }
-    if open && k == SS_CHATS && s[0].local == 1 && !s[0].local_off && s[0].ns + s[0].nc > 0 {
-      // the sections, top to bottom, each with what the search keeps of it
-      marks := [3] string.["side.run", "side.claude", "side.recent"]; labels := SS_SECTION_NAMES;
-      for sec: 0..<SS_SECTIONS {
-        n := 0;
-        for j: 0..<s[0].ns { if cw_side_keeps(s, j, false, sec) { n += 1; } }
-        for j: 0..<s[0].nc { if cw_side_keeps(s, j, true, sec) { n += 1; } }
-        if n == 0 { continue; }
-        h := k_side_mark(t, marks[sec], labels[sec], n);
-        for j: 0..<s[0].ns { if cw_side_keeps(s, j, false, sec) { cw_side_row(s, j); } }
-        for j: 0..<s[0].nc { if cw_side_keeps(s, j, true, sec) { cw_claude_row(s, j); } }
-      }
-    }
-    if open && k == SS_PROJECTS {
-      for ap: 0..<s[0].set[0].naprojs {
-        apid := cast(string) s[0].set[0].aproj_id[ap][0..<s[0].set[0].aproj_id_n[ap]];
-        ahref: [64] u8; ahn := cw_put(ahref[..], 0, "/chat?project="); ahn = cw_put(ahref[..], ahn, apid);
-        aidb: [UI_ID] u8;
-        _ = k_sub_place(t, u, tr_join(aidb[..], "aproject.", ap), cast(string) s[0].set[0].aproj_name[ap][0..<s[0].set[0].aproj_name_n[ap]], cast(string) ahref[0..<ahn]);
-      }
-      for p: 0..<s[0].projects_n {   // each project they are in, opening its page
-        pid := cast(string) s[0].projects[p].id[0..<s[0].projects[p].id_n];
-        href: [80] u8; hn := ss_project_href(pid, href[..]);
-        idb: [UI_ID] u8;
-        r := k_sub_place(t, u, tr_cat(idb[..], "project.", pid), cast(string) s[0].projects[p].name[0..<s[0].projects[p].name_n], cast(string) href[0..<hn]);
-      }
-    }
-    if open && k == SS_WORLDS {
-      for w: 0..<s[0].worlds_n {   // each world they may edit, opening its editor
-        wid := cast(string) s[0].worlds[w].id[0..<s[0].worlds[w].id_n];
-        href: [80] u8; hn := ss_world_href(wid, href[..]);
-        idb: [UI_ID] u8;
-        r := k_sub_place(t, u, tr_cat(idb[..], "world.", wid), cast(string) s[0].worlds[w].name[0..<s[0].worlds[w].name_n], cast(string) href[0..<hn]);
-      }
-    }
-    tr_close(t);
+  // Top primary actions: New chat + Dashboard (Desktop 1:1 structure, Apps SDK UI rows).
+  _ = k_side_places(t, "side");
+  nb := tr_open(t, "side.new", TG_BUTTON, "row row-i side-act");
+  tr_attr(t, nb, AT_TYPE, "button");
+  tr_attr(t, nb, AT_LABEL, "New chat");
+  _ = k_icon(t, "side.new.ic", IC_COMPOSE_EDIT_SQUARE);
+  _ = tr_leaf(t, "side.new.t", TG_SPAN, "row-t", "New chat");
+  tr_close(t);
+  _ = k_place(t, u, "side.dash", IC_GRID, "Dashboard", "/", s[0].page == SS_HOME);
+  // Scrollable body: always-visible Recents + Projects (zero Worlds/Feed/Messages/Machines clutter).
+  _ = k_side_list(t, "side");
+  if s[0].cloud_mode {
+    cwc_draw_sidebar_items(s[0].cc[..], t, u);
   }
-  if s[0].set[0].nenvs > 0 {
-    _ = k_side_mark(t, "side.envs", "Computers", s[0].set[0].nenvs);
-    for e: 0..<s[0].set[0].nenvs {
-      ehref: [96] u8; ehn := cw_put(ehref[..], 0, "/chat?host="); ehn = cw_put(ehref[..], ehn, cast(string) s[0].set[0].env_host[e][..]);
-      eidb: [UI_ID] u8;
-      er := k_sub_place(t, u, tr_join(eidb[..], "env.", e), cast(string) s[0].set[0].env_name[e][0..<s[0].set[0].env_name_n[e]], cast(string) ehref[0..<ehn]);
-      tr_attr(t, er, AT_STATE, ifx s[0].set[0].env_online[e] then "online" else "offline");
+  if s[0].local == 1 && !s[0].local_off && s[0].ns + s[0].nc > 0 {
+    marks := [3] string.["side.run", "side.claude", "side.recent"]; labels := SS_SECTION_NAMES;
+    for sec: 0..<SS_SECTIONS {
+      n := 0;
+      for j: 0..<s[0].ns { if cw_side_keeps(s, j, false, sec) { n += 1; } }
+      for j: 0..<s[0].nc { if cw_side_keeps(s, j, true, sec) { n += 1; } }
+      if n == 0 { continue; }
+      h := k_side_mark(t, marks[sec], labels[sec], n);
+      for j: 0..<s[0].ns { if cw_side_keeps(s, j, false, sec) { cw_side_row(s, j); } }
+      for j: 0..<s[0].nc { if cw_side_keeps(s, j, true, sec) { cw_claude_row(s, j); } }
     }
+  }
+  // Projects section: clean header + "+" button + user's projects directly listed.
+  phd := tr_open(t, "side.projects.hd", TG_DIV, "cc-sec-hd");
+  _ = tr_leaf(t, "side.projects.t", TG_SPAN, "cc-sec-lbl", "Projects");
+  _ = k_icon_button(t, "fold.projects.add", IC_PLUS, "New project");
+  tr_close(t);
+  _ = phd;
+  for ap: 0..<s[0].set[0].naprojs {
+    apid := cast(string) s[0].set[0].aproj_id[ap][0..<s[0].set[0].aproj_id_n[ap]];
+    ahref: [64] u8; ahn := cw_put(ahref[..], 0, "/chat?project="); ahn = cw_put(ahref[..], ahn, apid);
+    aidb: [UI_ID] u8;
+    _ = k_place(t, u, tr_join(aidb[..], "aproject.", ap), IC_FOLDER, cast(string) s[0].set[0].aproj_name[ap][0..<s[0].set[0].aproj_name_n[ap]], cast(string) ahref[0..<ahn], false);
+  }
+  for p: 0..<s[0].projects_n {
+    pid := cast(string) s[0].projects[p].id[0..<s[0].projects[p].id_n];
+    href: [80] u8; hn := ss_project_href(pid, href[..]);
+    idb: [UI_ID] u8;
+    _ = k_place(t, u, tr_cat(idb[..], "project.", pid), IC_FOLDER, cast(string) s[0].projects[p].name[0..<s[0].projects[p].name_n], cast(string) href[0..<hn], s[0].page == SS_SIDE && s[0].here == SS_PROJECTS);
   }
   k_side_end(t);
-  w := k_who(t, u, "who", cast(string) s[0].me[0..<s[0].me_n], ifx s[0].me_n > 0 then "/settings" else "/login", true);
+  // Bottom pinned footer: email + Credits pill + Log out (or Log in when anonymous).
+  ft := tr_open(t, "who", TG_DIV, "side-f");
+  if s[0].me_n == 0 {
+    _ = k_place(t, u, "who.go", IC_ENTER_LOGIN, "Log in", "/login", false);
+  } else {
+    a := k_place(t, u, "who.go", IC_AVATAR_PROFILE, cast(string) s[0].me[0..<s[0].me_n], "/settings", false);
+    tr_attr(t, a, AT_TITLE, "Settings");
+    cr := tr_leaf(t, "who.credits", TG_A, "side-cred", "Credits");
+    tr_attr(t, cr, AT_HREF, "/settings/account");
+    _ = k_icon_button(t, "who.out", IC_LOGOUT, "Log out");
+  }
+  tr_close(t);
+  _ = ft;
   tr_close(t);
 }
 // Whether the side lists a conversation in a section: Coder's session k, or Claude Code's conversation k (`claude`).
@@ -745,7 +746,6 @@ cw_build :: (s: [] ChatWeb) {
     if s[0].cc[0].auth_state != CWC_AUTH_ANON {
       cf := k_composer_begin(t, u, "composer", "Ask anything");
       tr_attr(t, cf, AT_FOCUS, "");
-      _ = k_icon_button(t, "settings", IC_SETTINGS, "Settings");
       cnames := CWC_MODEL_NAMES;
       cnotes := CWC_MODEL_NOTES;
       cm := s[0].cc[0].core_model;
@@ -757,6 +757,8 @@ cw_build :: (s: [] ChatWeb) {
         }
       }
       k_select_end(t, s[0].menu);
+      cwc_draw_target_picker(s[0].cc[..], t);
+      _ = k_icon_button(t, "settings", IC_SETTINGS, "Settings");
       active_stream := s[0].cc[0].web_streaming || s[0].cc[0].tool_running || s[0].cc[0].remote_running;
       k_composer_end(t, u, "composer", ifx active_stream then "Stop" else "Send", active_stream || cw_has_words(s));
     }
@@ -2060,13 +2062,13 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     news := SS_NEW_HREFS; url := news[ifx id == "fold.worlds.add" then SS_WORLDS else SS_PROJECTS];
     if !cw_keeps(s, url) { cw_go_to(s, url, false); }   // the shell holds a new world's and a new project's pages
   }
-  else if kind == CW_CLICK && id == "fold.chats.add" {
+  else if kind == CW_CLICK && (id == "side.new" || id == "fold.chats.add") {
     if s[0].cloud_mode && s[0].page != SS_SIDE { cwc_new_chat(s[0].cc[..]); cw_sync_cloud_nav(s); }
     cw_new_chat(s); cw_to_chat(s); dm_focus(s[0].dom[..], "composer");
   }
   // the side: home and the chat are drawn here, so their links stay in the shell; the other places are pages of their own
-  else if kind == CW_CLICK && id == "side.h.home" {   // home is the logged-in Home Dashboard, at /; logged out, the home page is the public one
-    if s[0].me_n == 0 { return; }
+  else if kind == CW_CLICK && (id == "side.h.home" || id == "side.dash") {   // home is the logged-in Home Dashboard, at /; logged out, the home page is the public one
+    if s[0].me_n == 0 { cw_go_to(s, "/login", false); return; }
     s[0].page = SS_HOME; cw_go_to(s, "/", true);
   }
   else if kind == CW_CLICK && id == "side.mob" { s[0].mob_side_open = !s[0].mob_side_open; }
@@ -2577,7 +2579,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   tl: [1] CwTest; l := tl[0].s[..];
   cw_test_local(l, CW_T_SESSIONS);
   t := l[0].tree[..];
-  #assert l[0].local == 1 && l[0].ns == 2 && tr_find(t, "side") >= 0 && tr_find(t, "fold.chats.add") >= 0;
+  #assert l[0].local == 1 && l[0].ns == 2 && tr_find(t, "side") >= 0 && tr_find(t, "side.new") >= 0;
   #assert tr_text_of(t, tr_find(t, "s.0.t")) == "fix the build" && tr_text_of(t, tr_find(t, "s.0.m")) == "claude" && tr_text_of(t, tr_find(t, "s.1.m")) == "microcoder";
   #assert tr_text_of(t, tr_find(t, "side.run.t")) == "Running" && tr_text_of(t, tr_find(t, "side.recent.t")) == "Recent" && tr_attr_of(t, tr_find(t, "s.0"), AT_STATE) == "busy" && tr_find(t, "s.0.busy") >= 0 && tr_find(t, "s.1.busy") < 0;
   // a Claude Code conversation open in a terminal here is running too, and turns while it is busy; one not open is under Claude Code
@@ -2785,7 +2787,7 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   cw_test_press(s, "s.1");
   #assert s[0].model == 10 && cw_sel(s) == "20261111-010101-001";
   cw_test_answer(s, 200, "x");
-  cw_test_press(s, "fold.chats.add");
+  cw_test_press(s, "side.new");
   #assert s[0].sel_n == 0 && s[0].count == 0;
 }
 
@@ -3683,21 +3685,19 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   #assert coaxial_chatweb_go_len(s) == 0 && s[0].page == SS_SIDE;
 }
 
-#test "the side is always there: its head, then Chats, Projects and Worlds as folds with a + each, Chats current, and who is logged in at its foot" {
+#test "the side matches Desktop: head, New chat & Dashboard actions, always-visible Recents & Projects, no Worlds/Feed/Messages clutter, and foot with Credits + Log out" {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   t := s[0].tree[..];
   #assert tr_find(t, "side") >= 0 && tr_text_of(t, tr_find(t, "side.h.name")) == "OpenAgents" && tr_attr_of(t, tr_find(t, "side.h.home"), AT_HREF) == "/";
-  // the head holds only the mark and Hide the side, with the plain sidebar icon; New chat is the + on Chats
-  #assert tr_find(t, "side.new") < 0 && tr_attr_of(t, tr_find(t, "side.hide"), AT_LABEL) == "Hide the side" && tr_attr_of(t, tr_find(t, "side.hide.ic.use"), AT_HREF) == "/build/icons/sidebar.svg#i";
-  #assert tr_text_of(t, tr_find(t, "fold.chats.t")) == "Chats" && tr_attr_of(t, tr_find(t, "fold.chats.b"), AT_CURRENT) == "true" && tr_attr_of(t, tr_find(t, "fold.chats.b"), AT_EXPANDED) == "true";
-  #assert tr_attr_of(t, tr_find(t, "fold.chats.add"), AT_LABEL) == "New chat" && tr_attr_of(t, tr_find(t, "fold.projects.add"), AT_LABEL) == "New project" && tr_attr_of(t, tr_find(t, "fold.worlds.add"), AT_LABEL) == "New world";
-  #assert !tr_has(t, tr_find(t, "fold.worlds.b"), AT_CURRENT) && tr_find(t, "place.projects") < 0 && tr_find(t, "place.worlds") < 0;
-  #assert tr_text_of(t, tr_find(t, "who.go.t")) == "a•••@example.com" && tr_attr_of(t, tr_find(t, "who.go"), AT_HREF) == "/settings" && tr_find(t, "who.out") >= 0;
-  // the worlds they may edit are in Worlds, each opening its editor; the projects they are in are in Projects
-  #assert tr_text_of(t, tr_find(t, "world.splice.t")) == "Splice" && tr_attr_of(t, tr_find(t, "world.splice"), AT_HREF) == "/worlds/splice?edit" && t[0].nodes[tr_find(t, "world.splice")].parent == tr_find(t, "fold.worlds");
-  #assert tr_text_of(t, tr_find(t, "project.coax.t")) == "Coax" && tr_attr_of(t, tr_find(t, "project.coax"), AT_HREF) == "/projects/coax" && t[0].nodes[tr_find(t, "project.coax")].parent == tr_find(t, "fold.projects");
-  // nobody logged in: Log in instead, and no worlds or projects are asked for
+  #assert tr_find(t, "side.new") >= 0 && tr_text_of(t, tr_find(t, "side.new.t")) == "New chat" && tr_attr_of(t, tr_find(t, "side.hide"), AT_LABEL) == "Hide the side" && tr_attr_of(t, tr_find(t, "side.hide.ic.use"), AT_HREF) == "/build/icons/sidebar.svg#i";
+  #assert tr_find(t, "side.dash") >= 0 && tr_text_of(t, tr_find(t, "side.dash.t")) == "Dashboard" && tr_attr_of(t, tr_find(t, "side.dash"), AT_HREF) == "/";
+  #assert tr_find(t, "side.projects.t") >= 0 && tr_text_of(t, tr_find(t, "side.projects.t")) == "Projects" && tr_attr_of(t, tr_find(t, "fold.projects.add"), AT_LABEL) == "New project";
+  // Clean Desktop parity: zero Worlds, Feed, Messages, or Computers clutter in the chat sidebar.
+  #assert tr_find(t, "fold.worlds") < 0 && tr_find(t, "world.splice") < 0 && tr_find(t, "side.feed") < 0 && tr_find(t, "side.messages") < 0 && tr_find(t, "side.envs") < 0;
+  #assert tr_text_of(t, tr_find(t, "project.coax.t")) == "Coax" && tr_attr_of(t, tr_find(t, "project.coax"), AT_HREF) == "/projects/coax";
+  #assert tr_text_of(t, tr_find(t, "who.go.t")) == "a•••@example.com" && tr_attr_of(t, tr_find(t, "who.go"), AT_HREF) == "/settings" && tr_find(t, "who.credits") >= 0 && tr_attr_of(t, tr_find(t, "who.credits"), AT_HREF) == "/settings/account" && tr_find(t, "who.out") >= 0;
+  // nobody logged in: Log in instead, and no projects are asked for
   ts2: [1] CwTest; o := ts2[0].s[..];
   n := coaxial_chatweb_frame(o, 0.016, true);
   cw_test_answer(o, 401, "");
@@ -3706,49 +3706,26 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   cw_test_answer(o, 200, "logged_in 0\n");
   n = coaxial_chatweb_frame(o, 0.016, true);
   n = coaxial_chatweb_frame(o, 0.016, true);
-  #assert !coaxial_chatweb_asking(o) && tr_find(o[0].tree[..], "world.splice") < 0 && tr_find(o[0].tree[..], "project.coax") < 0;
-  #assert tr_text_of(o[0].tree[..], tr_find(o[0].tree[..], "who.go.t")) == "Log in" && tr_attr_of(o[0].tree[..], tr_find(o[0].tree[..], "who.go"), AT_HREF) == "/login" && tr_find(o[0].tree[..], "who.out") < 0;
+  #assert !coaxial_chatweb_asking(o) && tr_find(o[0].tree[..], "project.coax") < 0;
+  #assert tr_text_of(o[0].tree[..], tr_find(o[0].tree[..], "who.go.t")) == "Log in" && tr_attr_of(o[0].tree[..], tr_find(o[0].tree[..], "who.go"), AT_HREF) == "/login" && tr_find(o[0].tree[..], "who.out") < 0 && tr_find(o[0].tree[..], "who.credits") < 0;
 }
 
-#test "a fold's heading shuts and opens its list in place, and this browser keeps which are shut; each + makes a new one" {
+#test "New chat, Dashboard, Credits, and Projects + navigate cleanly inside the shell" {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
-  t := s[0].tree[..];
-  cw_test_press(s, "fold.worlds.b"); n := coaxial_chatweb_frame(s, 0.016, true);
-  #assert coaxial_chatweb_go_len(s) == 0 && tr_attr_of(t, tr_find(t, "fold.worlds.b"), AT_EXPANDED) == "false" && tr_find(t, "world.splice") < 0 && tr_find(t, "project.coax") >= 0;
-  #assert cast(string) s[0].keep[0..<coaxial_chatweb_keep_len(s)] == "local=on&shut=4";
-  coaxial_chatweb_keep_done(s);
-  cw_test_press(s, "fold.projects.b"); n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert tr_find(t, "project.coax") < 0 && cast(string) s[0].keep[0..<coaxial_chatweb_keep_len(s)] == "local=on&shut=6";
-  coaxial_chatweb_keep_done(s);
-  cw_test_press(s, "fold.worlds.b"); n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert tr_attr_of(t, tr_find(t, "fold.worlds.b"), AT_EXPANDED) == "true" && tr_find(t, "world.splice") >= 0 && s[0].shut == 2;
-  ts2: [1] CwTest; k := ts2[0].s[..];
-  w := "local=on&shut=5"; for i: 0..<w.count { k[0].inbox[i] = w[i]; }
-  coaxial_chatweb_event(k, CW_KEPT, 0, w.count);
-  #assert k[0].shut == 5;
-  cw_test_press(s, "fold.worlds.add");
-  #assert cw_test_go(s) == "/worlds/new" && coaxial_chatweb_go_push(s) && s[0].page == SS_HELD;
-  coaxial_chatweb_go_done(s);
   cw_test_press(s, "fold.projects.add");
   #assert cw_test_go(s) == "/projects#new" && coaxial_chatweb_go_push(s) && s[0].page == SS_HELD;
-  n = coaxial_chatweb_frame(s, 0.016, true);
+  n := coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_text_of(s[0].tree[..], tr_find(s[0].tree[..], "loading.n")) == "Projects";
   coaxial_chatweb_go_done(s);
-  cw_test_path(s, "/");
-  cw_test_press(s, "fold.chats.add");
+  cw_test_press(s, "side.dash");
+  #assert s[0].page == SS_HOME && cw_test_go(s) == "/" && coaxial_chatweb_go_push(s);
+  coaxial_chatweb_go_done(s);
+  cw_test_press(s, "who.credits");
+  #assert s[0].page == SW_PAGE && s[0].set[0].section == SW_ACCOUNT && cw_test_go(s) == "/settings/account" && coaxial_chatweb_go_push(s);
+  coaxial_chatweb_go_done(s);
+  cw_test_press(s, "side.new");
   #assert s[0].page == SS_CHATS && cw_test_go(s) == "/chat" && coaxial_chatweb_go_push(s);
-  // Empty sidebar folds navigate directly to their section instead of silently toggling nothing
-  te: [1] CwTest; e := te[0].s[..];
-  cw_test_path(e, "/");
-  cw_test_press(e, "fold.chats.b");
-  #assert e[0].page == SS_CHATS && cw_test_go(e) == "/chat" && coaxial_chatweb_go_push(e);
-  coaxial_chatweb_go_done(e);
-  cw_test_press(e, "fold.projects.b");
-  #assert e[0].page == SS_HELD && cw_test_go(e) == "/projects" && coaxial_chatweb_go_push(e);
-  coaxial_chatweb_go_done(e);
-  cw_test_press(e, "fold.worlds.b");
-  #assert e[0].page == SS_HELD && cw_test_go(e) == "/worlds" && coaxial_chatweb_go_push(e);
 }
 
 #test "at / the shell shows the side and the logged-in home dashboard; New chat and the mark move between Home and Chat without leaving the page" #steps 200000000 #traversal 536870912 {
@@ -3756,7 +3733,7 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   cw_test_open(s, "{\"claude\":null}");
   cw_test_path(s, "/");
   t := s[0].tree[..];
-  #assert s[0].page == SS_HOME && tr_class(t, 0) == "home" && tr_find(t, "side") >= 0 && tr_find(t, "home.b.t") >= 0 && tr_find(t, "home.status") >= 0 && tr_find(t, "composer") < 0 && !tr_has(t, tr_find(t, "fold.chats.b"), AT_CURRENT);
+  #assert s[0].page == SS_HOME && tr_class(t, 0) == "home" && tr_find(t, "side") >= 0 && tr_find(t, "home.b.t") >= 0 && tr_find(t, "home.status") >= 0 && tr_find(t, "composer") < 0 && tr_attr_of(t, tr_find(t, "side.dash"), AT_CURRENT) == "true";
   // Home Dashboard fetches lifecycle/credit and WorkOS orgs, displays them, and supports inline org switching
   for i: 0..<4 {
     n := coaxial_chatweb_frame(s, 0.016, true);
@@ -3783,7 +3760,7 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   cw_test_press(s, "side.h.home");
   #assert s[0].page == SS_HOME && cw_test_go(s) == "/" && coaxial_chatweb_go_push(s);
   coaxial_chatweb_go_done(s);
-  cw_test_press(s, "fold.chats.add");
+  cw_test_press(s, "side.new");
   #assert s[0].page == SS_CHATS && cw_test_go(s) == "/chat" && coaxial_chatweb_go_push(s);
   coaxial_chatweb_go_done(s); n = coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_class(t, 0) == "chat" && tr_find(t, "composer") >= 0 && coaxial_chatweb_go_len(s) == 0;
@@ -3811,21 +3788,18 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   // the editor's left: the side alone, and New chat goes to the chat's own page
   cw_test_path(s, "/side"); n = coaxial_chatweb_frame(s, 0.016, true);
   #assert s[0].page == SS_SIDE && tr_class(t, 0) == "home" && tr_find(t, "side") >= 0 && tr_find(t, "composer") < 0;
-  cw_test_press(s, "fold.chats.add");
+  cw_test_press(s, "side.new");
   #assert s[0].page == SS_SIDE && cw_test_go(s) == "/chat" && !coaxial_chatweb_go_push(s);
 }
 
-#test "the side alone on a place's own page lights that place's heading; the editor's side lights none" {
+#test "the side alone on a place's own page lights projects when at /side/projects and stays clean on /side" {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   t := s[0].tree[..];
   cw_test_path(s, "/side/projects");
-  #assert s[0].page == SS_SIDE && tr_find(t, "side") >= 0 && tr_find(t, "composer") < 0;
-  #assert tr_attr_of(t, tr_find(t, "fold.projects.b"), AT_CURRENT) == "true" && !tr_has(t, tr_find(t, "fold.chats.b"), AT_CURRENT) && !tr_has(t, tr_find(t, "fold.worlds.b"), AT_CURRENT);
-  cw_test_path(s, "/side/worlds");
-  #assert tr_attr_of(t, tr_find(t, "fold.worlds.b"), AT_CURRENT) == "true" && !tr_has(t, tr_find(t, "fold.projects.b"), AT_CURRENT);
+  #assert s[0].page == SS_SIDE && tr_find(t, "side") >= 0 && tr_find(t, "composer") < 0 && tr_attr_of(t, tr_find(t, "project.coax"), AT_CURRENT) == "true";
   cw_test_path(s, "/side");
-  #assert !tr_has(t, tr_find(t, "fold.worlds.b"), AT_CURRENT) && !tr_has(t, tr_find(t, "fold.chats.b"), AT_CURRENT);
+  #assert s[0].page == SS_SIDE && !tr_has(t, tr_find(t, "project.coax"), AT_CURRENT);
 }
 
 #test "the side can be put away and brought back, and this browser keeps that; Log out logs out and goes home" {

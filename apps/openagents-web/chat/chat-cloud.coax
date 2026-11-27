@@ -100,9 +100,11 @@ CWC_MSG_SUBMIT_ERR :: 24;
 CWC_MSG_APPR_OK    :: 25;
 CWC_MSG_APPR_ERR   :: 26;
 
-CWC_TOOL_MAX_STEPS :: 5;
-CWC_TOOL_RX_BUF    :: 32768;
-CWC_MAX_ENVS       :: 16;
+CWC_TOOL_MAX_STEPS  :: 16;
+CWC_TOOL_RX_BUF     :: 65536;
+CWC_TOOL_POOL       :: 262144; // 256 KiB owned tool-loop conversation pool
+CWC_TOOL_RESULT_CAP :: 7168;   // 7 KiB per individual tool result sent back to model
+CWC_MAX_ENVS        :: 16;
 
 // Stream slot partitioning over #14089's 16 multiplexed slots (0..15).
 // Slots 0..3: UiRuntime keyed SSE subscriptions (account feed + active conversation).
@@ -120,7 +122,8 @@ CWC_MSG_POOL   :: 1048576; // 1 MiB text + diff/args pool
 CWC_SSE_BUF    :: 65536;
 CWC_HTTP_BIG   :: 262144;  // conversation list / detail response buffer
 CWC_HTTP_SMALL :: 8192;    // usage / sync / meta / stop response buffer
-CWC_TX_BUF     :: 65536;   // outgoing request body buffer
+CWC_TX_BUF     :: 262144;  // outgoing request body buffer (supports 16-step tool loops)
+CWC_TX_POOL    :: 327680;  // queued outgoing body pool
 
 // Message item kinds in transcript.
 CWC_M_USER      :: 1;
@@ -168,6 +171,8 @@ CwcMsg :: struct {
   failed: bool;
   running: bool;
   expanded: bool;
+  group_toggled: bool;
+  group_open: bool;
 }
 
 CwcUsage :: struct {
@@ -296,7 +301,7 @@ ChatCloud :: struct {
   web_cached_tok: int;
   tool_step: [1] GwToolStep;
   tool_conv: [1] GwToolConversation;
-  tool_pool: [65536] u8;
+  tool_pool: [CWC_TOOL_POOL] u8;
   tool_round: int;
   tool_running: bool;
   tool_call_idx: int;
@@ -325,6 +330,7 @@ ChatCloud :: struct {
 
   // Reusable scratch buffers (kept in state instead of WASM stack frames).
   jv_nodes: [8192] JvNode;
+  req_buf: [CWC_TX_BUF] u8;
   scratch_a: [CWC_SSE_BUF] u8;
   scratch_b: [32768] u8;
   scratch_c: [16384] u8;
@@ -332,7 +338,7 @@ ChatCloud :: struct {
   // Host multiplexed stream command queues (drained by chat-web-face.c).
   close_q: [CWC_OP_MAX] int; close_n: int;
   open_q: [CWC_OP_MAX] CwcHostOpen; open_n: int;
-  tx_pool: [CWC_TX_BUF * 2] u8; tx_pool_n: int;
+  tx_pool: [CWC_TX_POOL] u8; tx_pool_n: int;
   tx_active_url: [256] u8; tx_active_url_n: int;
   tx_active_body: [CWC_TX_BUF] u8; tx_active_body_n: int;
   tx_active_last_id: [32] u8; tx_active_last_id_n: int;
@@ -393,36 +399,130 @@ cwc_icontains :: (hay: string, needle: string) -> bool {
   return false;
 }
 
-cwc_make_id :: (c: [] ChatCloud, prefix: string, out: [] u8) -> int {
+cwc_is_hex :: (c: u8) -> bool {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+// Canonical lowercase 36-char hyphenated UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
+cwc_is_uuid :: (s: string) -> bool {
+  if s.count != 36 { return false; }
+  for i: 0..<36 {
+    if i == 8 || i == 13 || i == 18 || i == 23 {
+      if s[i] != '-' { return false; }
+    } else if !cwc_is_hex(s[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Accepts both canonical 36-char UUIDs and legacy prefixed IDs (cnv_/trn_/prj_ + 32 hex).
+cwc_valid_id :: (id: string, prefix: string) -> bool {
+  return cwc_is_uuid(id) || ct_id(id, prefix, 32);
+}
+
+// Extracts 32 lowercase hex chars from either a canonical 36-char UUID or a prefixed 36-char ID.
+cwc_id_to_hex32 :: (id: string, prefix: string, out: [] u8) -> bool {
+  if out.count < 32 { return false; }
+  if cwc_is_uuid(id) {
+    k := 0;
+    for i: 0..<36 {
+      if id[i] != '-' { out[k] = id[i]; k += 1; }
+    }
+    return k == 32;
+  }
+  if ct_id(id, prefix, 32) {
+    for i: 0..<32 { out[i] = id[prefix.count + i]; }
+    return true;
+  }
+  return false;
+}
+
+cwc_wall_ms :: (c: [] ChatCloud) -> int {
+  return ifx c[0].seed_epoch > 0 then c[0].seed_epoch * 1000 + c[0].now_ms else c[0].now_ms;
+}
+
+cwc_format_age :: (c: [] ChatCloud, updated_ms: int, out: [] u8) -> string {
+  if updated_ms <= 0 { return ""; }
+  if c[0].seed_epoch == 0 && updated_ms > 1000000000000 { return ""; }
+  now := cwc_wall_ms(c);
+  diff_s := (now - updated_ms) / 1000;
+  if diff_s < 0 { diff_s = 0; }
+  if diff_s < 60 { return cast(string) out[0..<cwc_put(out, 0, "now")]; }
+  n := 0;
+  if diff_s < 3600 {
+    n = cwc_put_int(out, 0, diff_s / 60);
+    n = cwc_put(out, n, "m");
+  } else if diff_s < 86400 {
+    n = cwc_put_int(out, 0, diff_s / 3600);
+    n = cwc_put(out, n, "h");
+  } else if diff_s < 86400 * 30 {
+    n = cwc_put_int(out, 0, diff_s / 86400);
+    n = cwc_put(out, n, "d");
+  } else {
+    n = cwc_put_int(out, 0, diff_s / (86400 * 30));
+    n = cwc_put(out, n, "mo");
+  }
+  return cast(string) out[0..<n];
+}
+
+// Truncates large tool output cleanly on a valid UTF-8 / line boundary with "\n... [truncated]".
+cwc_cap_tool_output :: (src: string, out: [] u8, max_bytes: int) -> string {
+  cap := ifx max_bytes < out.count then max_bytes else out.count;
+  if cap <= 0 { return ""; }
+  if src.count <= cap {
+    n := cwc_put(out, 0, src);
+    return cast(string) out[0..<n];
+  }
+  suffix := "\n... [truncated]";
+  if cap <= suffix.count + 8 {
+    cut := cap;
+    while cut > 0 && (src[cut] & 0xC0) == 0x80 { cut -= 1; }
+    n := cwc_put(out, 0, cast(string) src[0..<cut]);
+    return cast(string) out[0..<n];
+  }
+  cut := cap - suffix.count;
+  // Prefer a clean line boundary within the trailing 160 bytes when available.
+  back := cut;
+  min_cut := ifx cut > 160 then cut - 160 else 0;
+  while back > min_cut && src[back - 1] != '\n' { back -= 1; }
+  if back > min_cut { cut = back - 1; }
+  while cut > 0 && cut < src.count && (src[cut] & 0xC0) == 0x80 { cut -= 1; }
+  n := cwc_put(out, 0, cast(string) src[0..<cut]);
+  n = cwc_put(out, n, suffix);
+  return cast(string) out[0..<n];
+}
+
+// Generates a canonical lowercase hyphenated UUIDv4 (xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx, 36 chars).
+cwc_make_id :: (c: [] ChatCloud, tag: string, out: [] u8) -> int {
   c[0].id_seq += 1;
-  n := cwc_put(out, 0, prefix);
   hex := "0123456789abcdef";
+  var_hex := "89ab";
+  th := 0;
+  for ch: tag { th = th * 131 + cast(int) ch; }
   // Deterministic in native tests (seed_epoch == 0); unique across browser reloads via coaxial_now_seconds().
   se := c[0].seed_epoch & 0x7fffffff;
-  v1 := (se << 24) ^ (c[0].now_ms * 1000003 + c[0].id_seq * 9176 + 0x14094);
-  v2 := (se * 2654435761) ^ (c[0].id_seq * 2654435761 + c[0].conv_n * 31 + c[0].msg_n * 7 + 0x9e3779b9);
-  for i: 0..<16 {
-    if n < out.count { out[n] = hex[(v1 >> ((15 - i) * 4)) & 15]; n += 1; }
-  }
-  for i: 0..<16 {
-    if n < out.count { out[n] = hex[(v2 >> ((15 - i) * 4)) & 15]; n += 1; }
+  v1 := (se << 24) ^ (c[0].now_ms * 1000003 + c[0].id_seq * 9176 + th * 17 + 0x14094);
+  v2 := (se * 2654435761) ^ (c[0].id_seq * 2654435761 + c[0].conv_n * 31 + c[0].msg_n * 7 + th * 65599 + 0x9e3779b9);
+  h: [32] u8;
+  for i: 0..<16 { h[i] = hex[(v1 >> ((15 - i) * 4)) & 15]; }
+  for i: 0..<16 { h[16 + i] = hex[(v2 >> ((15 - i) * 4)) & 15]; }
+  // RFC 4122 UUIDv4 version nibble ('4') and variant nibble ('8'|'9'|'a'|'b').
+  h[12] = '4';
+  h[16] = var_hex[(v2 >> 4) & 3];
+  n := 0;
+  for i: 0..<32 {
+    if i == 8 || i == 12 || i == 16 || i == 20 {
+      if n < out.count { out[n] = '-'; n += 1; }
+    }
+    if n < out.count { out[n] = h[i]; n += 1; }
   }
   return n;
 }
 
 cwc_make_op :: (c: [] ChatCloud, tag: string, out: [] u8) -> int {
   c[0].op_seq += 1;
-  n := cwc_put(out, 0, "web_");
-  if c[0].seed_epoch > 0 {
-    n = cwc_put_int(out, n, c[0].seed_epoch);
-    n = cwc_put(out, n, "_");
-    n = cwc_put_int(out, n, c[0].now_ms);
-    n = cwc_put(out, n, "_");
-  }
-  n = cwc_put(out, n, tag);
-  n = cwc_put(out, n, "_");
-  n = cwc_put_int(out, n, c[0].op_seq);
-  return n;
+  return cwc_make_id(c, tag, out);
 }
 
 cwc_format_usd_micros :: (micros: int, out: [] u8) -> string {
@@ -677,7 +777,7 @@ cwc_fetch_usage :: (c: [] ChatCloud) {
 }
 
 cwc_fetch_detail :: (c: [] ChatCloud, cid: string) {
-  if !ct_id(cid, "cnv_", 32) { return; }
+  if !cwc_valid_id(cid, "cnv_") { return; }
   url: [128] u8;
   un := cwc_put(url[..], 0, "/api/chat/v2/conversations/");
   un = cwc_put(url[..], un, cid);
@@ -746,7 +846,7 @@ cwc_new_chat :: (c: [] ChatCloud) {
 
 cwc_open_conversation :: (c: [] ChatCloud, cid: string, push: bool) {
   cwc_init(c);
-  if !ct_id(cid, "cnv_", 32) { return; }
+  if !cwc_valid_id(cid, "cnv_") { return; }
   same := c[0].active_id_n == cid.count && cwc_active_id(c) == cid;
   if !same {
     if c[0].web_streaming { cwc_queue_close(c, CWC_TURN_SLOT); }
@@ -790,7 +890,7 @@ cwc_query_param :: (raw_path: string, key: string, out: [] u8) -> int {
 cwc_route_path :: (c: [] ChatCloud, raw_path: string) -> bool {
   cwc_init(c);
   pbuf: [40] u8; pn := cwc_query_param(raw_path, "project", pbuf[..]);
-  if pn == 36 && cast(string) pbuf[0..<4] == "prj_" { c[0].sel_project_n = cwc_put(c[0].sel_project[..], 0, cast(string) pbuf[0..<36]); }
+  if pn == 36 && cwc_valid_id(cast(string) pbuf[0..<36], "prj_") { c[0].sel_project_n = cwc_put(c[0].sel_project[..], 0, cast(string) pbuf[0..<36]); }
   else if pn == 0 && cwc_query_param(raw_path, "host", pbuf[0..<1]) > 0 { c[0].sel_project_n = 0; }
   hbuf: [68] u8; hn := cwc_query_param(raw_path, "host", hbuf[..]);
   if hn == 64 && cld_hex64(cast(string) hbuf[0..<64]) {
@@ -803,7 +903,7 @@ cwc_route_path :: (c: [] ChatCloud, raw_path: string) -> bool {
   m := ui_route_match("/chat/:id", raw_path);
   if m.matched {
     cid := ui_route_param("/chat/:id", raw_path, m, "id");
-    if ct_id(cid, "cnv_", 32) {
+    if cwc_valid_id(cid, "cnv_") {
       cwc_open_conversation(c, cid, false);
       return true;
     }
@@ -869,8 +969,8 @@ cwc_append_msg :: (c: [] ChatCloud, m: CwcMsg) -> int {
   c[0].msgs[idx] = m;
   c[0].msg_n += 1;
   est := ifx m.kind == CWC_M_ASSISTANT then 96.0f32
-         else ifx m.kind == CWC_M_TOOL then 84.0f32
-         else ifx m.kind == CWC_M_THINKING then 52.0f32
+         else ifx m.kind == CWC_M_TOOL then 8.0f32
+         else ifx m.kind == CWC_M_THINKING then 12.0f32
          else 60.0f32;
   _ = vl_append(c[0].vl[..], est);
   return idx;
@@ -1646,14 +1746,29 @@ cwc_start_inference_step :: (c: [] ChatCloud) -> bool {
   sys_s := cwc_build_system_prompt(c, sys_b[..]);
   msgs := gwt_conversation_messages(c[0].tool_conv[..]);
   if msgs.count == 0 { return false; }
+  tools_json := ifx c[0].tool_round < CWC_TOOL_MAX_STEPS then CLD_WEB_TOOLS_JSON else "";
   req := GwRequest.{
     model = cwc_model_id(c),
     system = sys_s,
     messages = msgs,
-    tools = ifx c[0].tool_round < CWC_TOOL_MAX_STEPS then CLD_WEB_TOOLS_JSON else "",
+    tools = tools_json,
     stream = true
   };
-  bn := gw_chat_body(req, 0, c[0].scratch_a[..]);
+  bn := gw_chat_body(req, 0, c[0].req_buf[..]);
+  // If JSON serialization still exceeds CWC_TX_BUF (e.g. heavy escaping across many rounds),
+  // compact the oldest tool outputs in a local copy while preserving all call_ids & thought_signatures.
+  if bn <= 0 && msgs.count <= GW_TOOL_MESSAGES {
+    trimmed: [GW_TOOL_MESSAGES] GwMessage;
+    for i: 0..<msgs.count { trimmed[i] = msgs[i]; }
+    for i: 0..<msgs.count {
+      if trimmed[i].role == "tool" && trimmed[i].result.output.count > 256 {
+        trimmed[i].result.output = "[earlier tool output compacted]";
+        req.messages = trimmed[0..<msgs.count];
+        bn = gw_chat_body(req, 0, c[0].req_buf[..]);
+        if bn > 0 { break; }
+      }
+    }
+  }
   if bn <= 0 { return false; }
   c[0].web_streaming = true;
   c[0].web_sse_n = 0;
@@ -1662,7 +1777,7 @@ cwc_start_inference_step :: (c: [] ChatCloud) -> bool {
   gwt_step_begin(c[0].tool_step[..]);
   idx := c[0].web_msg_idx;
   c[0].tool_text_at = ifx idx >= 0 && idx < c[0].msg_n then c[0].msgs[idx].text_n else 0;
-  cwc_queue_open(c, CWC_TURN_SLOT, "/api/v1/inference", cast(string) c[0].scratch_a[0..<bn], "", 0);
+  cwc_queue_open(c, CWC_TURN_SLOT, "/api/v1/inference", cast(string) c[0].req_buf[0..<bn], "", 0);
   return true;
 }
 
@@ -1777,9 +1892,16 @@ cwc_on_tool_reply :: (c: [] ChatCloud, http_ok: bool, status: int, body: string)
       res_n = cwc_put(c[0].scratch_b[..], 0, "Cloud tool execution failed.");
     }
   }
-  // Cap tool output stored in GwToolConversation pool to 12 KB so multi-step turns fit comfortably.
-  pool_cap := ifx res_n > 12288 then 12288 else res_n;
-  res_s := cast(string) c[0].scratch_b[0..<pool_cap];
+  // Cap each individual tool result cleanly at ~7 KB with "\n... [truncated]" before appending
+  // into GwToolConversation, and dynamically clamp if pool headroom is tight so 12-16+ sequential
+  // tool calls never overflow the conversation buffer. Store in req_buf (idle while tools run)
+  // so cwc_emit_tool_event's scratch_b sync serialization never aliases or clobbers res_s.
+  raw_out := cast(string) c[0].scratch_b[0..<res_n];
+  avail := CWC_TOOL_POOL - c[0].tool_conv[0].used - 2048;
+  if avail < 256 { avail = CWC_TOOL_POOL - c[0].tool_conv[0].used - 64; }
+  cap := CWC_TOOL_RESULT_CAP;
+  if avail < cap { cap = ifx avail > 0 then avail else 0; }
+  res_s := cwc_cap_tool_output(raw_out, c[0].req_buf[..], cap);
   cwc_emit_tool_event(c, CC_EV_TOOL_RESULT, call.call_id, call.name, "", res_s, !tool_ok);
   _ = gwt_conversation_result(c[0].tool_conv[..], GwToolResult.{call_id = call.call_id, output = res_s, is_error = !tool_ok});
   c[0].tool_call_idx += 1;
@@ -1849,17 +1971,18 @@ cwc_send_approval :: (c: [] ChatCloud, msg_idx: int, allow: bool) {
     return;
   }
   m := c[0].msgs[msg_idx];
-  // Extract 32-hex task_id from turn ("trn_<32hex>") or generate deterministic 32-hex command_id.
+  // Extract 32-hex task_id from canonical UUID or legacy "trn_<32hex>".
   task_id: [32] u8;
-  if m.turn_n == 36 && cast(string) m.turn[0..<4] == "trn_" {
-    _ = cwc_put(task_id[..], 0, cast(string) m.turn[4..<36]);
-  } else if c[0].active_turn_n == 36 && cast(string) c[0].active_turn_id[0..<4] == "trn_" {
-    _ = cwc_put(task_id[..], 0, cast(string) c[0].active_turn_id[4..<36]);
-  } else {
+  if !cwc_id_to_hex32(cast(string) m.turn[0..<m.turn_n], "trn_", task_id[..]) &&
+     !cwc_id_to_hex32(cast(string) c[0].active_turn_id[0..<c[0].active_turn_n], "trn_", task_id[..]) {
     _ = cwc_put(task_id[..], 0, "00000000000000000000000000000000");
   }
   cmd_full: [36] u8;
-  _ = cwc_make_id(c, "cmd_", cmd_full[..]);
+  cmd_n := cwc_make_id(c, "cmd", cmd_full[..]);
+  cmd_hex: [32] u8;
+  if !cwc_id_to_hex32(cast(string) cmd_full[0..<cmd_n], "cmd_", cmd_hex[..]) {
+    _ = cwc_put(cmd_hex[..], 0, "00000000000000000000000000000001");
+  }
   inter := ifx m.tool_id_n > 0 then cast(string) m.tool_id[0..<m.tool_id_n] else "approval";
   rev := ifx c[0].active_revision > 0 then c[0].active_revision else 1;
   issued := ifx c[0].now_ms > 0 then c[0].now_ms else 1;
@@ -1869,7 +1992,7 @@ cwc_send_approval :: (c: [] ChatCloud, msg_idx: int, allow: bool) {
   jo_key(o[..], "schema"); jo_str(o[..], "openagents.environment.execution.task-request.v1alpha1");
   jo_key(o[..], "method"); jo_str(o[..], "RespondTask");
   jo_key(o[..], "task_id"); jo_str(o[..], cast(string) task_id[..]);
-  jo_key(o[..], "command_id"); jo_str(o[..], cast(string) cmd_full[4..<36]);
+  jo_key(o[..], "command_id"); jo_str(o[..], cast(string) cmd_hex[..]);
   jo_key(o[..], "expected_revision"); jo_int(o[..], rev);
   jo_key(o[..], "interaction_id"); jo_str(o[..], inter);
   jo_key(o[..], "allow"); jo_bool(o[..], allow);
@@ -1973,7 +2096,7 @@ cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
   c[0].convs[si].compute_n = cwc_put(c[0].convs[si].compute[..], 0, "cloud");
   c[0].convs[si].model_n = cwc_put(c[0].convs[si].model[..], 0, cwc_model_id(c));
   c[0].convs[si].dev_n = cwc_put(c[0].convs[si].source_device[..], 0, "web");
-  c[0].convs[si].updated_at_ms = c[0].now_ms;
+  c[0].convs[si].updated_at_ms = cwc_wall_ms(c);
   cwc_sort_convs(c);
 
   // Build Chat Completions streaming request from newest messages fitting 40 KB (reserve room for tool loop).
@@ -2627,6 +2750,15 @@ cwc_on_click :: (c: [] ChatCloud, id: string) -> bool {
     c[0].dirty = true;
     return true;
   }
+  k = cwc_index_after(id, "cc.grp.");
+  if k >= 0 && k < c[0].msg_n {
+    g_end := cwc_activity_group_end(c, k);
+    cur_open := ifx c[0].msgs[k].group_toggled then c[0].msgs[k].group_open else cwc_group_default_open(c, k, g_end);
+    c[0].msgs[k].group_toggled = true;
+    c[0].msgs[k].group_open = !cur_open;
+    c[0].dirty = true;
+    return true;
+  }
   k = cwc_index_after(id, "cc.tog.");
   if k >= 0 && k < c[0].msg_n {
     c[0].msgs[k].expanded = !c[0].msgs[k].expanded;
@@ -2650,10 +2782,135 @@ cwc_on_click :: (c: [] ChatCloud, id: string) -> bool {
   return false;
 }
 
-// ---- Tree Rendering (Sidebar, Cloud Usage HUD, VirtualList Transcript, Diff/Tool/Thinking Cards)
+// ---- Tree Rendering (Desktop-Parity Sidebar, 48px Header, Grouped Tools, VirtualList Transcript)
+
+cwc_is_activity :: (m: CwcMsg) -> bool {
+  return m.kind == CWC_M_THINKING || m.kind == CWC_M_TOOL;
+}
+
+cwc_is_transparent :: (m: CwcMsg) -> bool {
+  return m.kind == CWC_M_ASSISTANT && !m.running && m.text_n == 0;
+}
+
+// Finds start index of maximal contiguous activity run (bridging transparent empty assistant placeholders).
+cwc_activity_group_start :: (c: [] ChatCloud, idx: int) -> int {
+  start := idx;
+  i := idx - 1;
+  while i >= 0 {
+    m := c[0].msgs[i];
+    if cwc_is_activity(m) { start = i; i -= 1; continue; }
+    if cwc_is_transparent(m) { i -= 1; continue; }
+    break;
+  }
+  return start;
+}
+
+// Finds exclusive end index of maximal contiguous activity run starting at or containing `idx`.
+cwc_activity_group_end :: (c: [] ChatCloud, idx: int) -> int {
+  end := idx + 1;
+  i := idx + 1;
+  while i < c[0].msg_n {
+    m := c[0].msgs[i];
+    if cwc_is_activity(m) { end = i + 1; i += 1; continue; }
+    if cwc_is_transparent(m) { i += 1; continue; }
+    break;
+  }
+  return end;
+}
+
+cwc_group_default_open :: (c: [] ChatCloud, g_start: int, g_end: int) -> bool {
+  for i: g_start..<g_end {
+    m := c[0].msgs[i];
+    if !cwc_is_activity(m) { continue; }
+    if m.running || m.failed || m.extra_n > 0 { return true; }
+    if m.appr_n > 0 && cast(string) m.approval[0..<m.appr_n] == "pending" { return true; }
+  }
+  return false;
+}
+
+// Extracts a concise, human-readable target argument from tool JSON/plain args (e.g. repo, path, query, url, cmd).
+cwc_tool_arg_summary :: (tool_name: string, args: string, out: [] u8) -> string {
+  if args.count == 0 { return ""; }
+  // Plain non-JSON args (e.g. "coax test"): take first line cleanly.
+  if args[0] != '{' {
+    e := 0;
+    while e < args.count && e < 64 && args[e] != '\n' && args[e] != '\r' { e += 1; }
+    n := cwc_put(out, 0, cast(string) args[0..<e]);
+    if e < args.count && args[e] != '\n' && args[e] != '\r' { n = cwc_put(out, n, "..."); }
+    return cast(string) out[0..<n];
+  }
+  d: [1] Jv;
+  nodes: [64] JvNode;
+  if !jv_parse(d[..], args, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return ""; }
+  v := d[0];
+  p_buf: [128] u8; p_n := cwc_jv_str_into(v, jv_get(v, 0, "path"), p_buf[..]);
+  r_buf: [128] u8; r_n := cwc_jv_str_into(v, jv_get(v, 0, "repo"), r_buf[..]);
+  q_buf: [128] u8; q_n := cwc_jv_str_into(v, jv_get(v, 0, "query"), q_buf[..]);
+  if q_n == 0 { q_n = cwc_jv_str_into(v, jv_get(v, 0, "q"), q_buf[..]); }
+  u_buf: [128] u8; u_n := cwc_jv_str_into(v, jv_get(v, 0, "url"), u_buf[..]);
+  cmd_buf: [128] u8; cmd_n := cwc_jv_str_into(v, jv_get(v, 0, "cmd"), cmd_buf[..]);
+  if cmd_n == 0 { cmd_n = cwc_jv_str_into(v, jv_get(v, 0, "command"), cmd_buf[..]); }
+
+  raw: [160] u8; rn := 0;
+  if tool_name == "github_tree" {
+    if r_n > 0 {
+      rn = cwc_put(raw[..], rn, cast(string) r_buf[0..<r_n]);
+      if p_n > 0 { rn = cwc_put(raw[..], rn, "/"); rn = cwc_put(raw[..], rn, cast(string) p_buf[0..<p_n]); }
+    } else if p_n > 0 {
+      rn = cwc_put(raw[..], rn, cast(string) p_buf[0..<p_n]);
+    }
+  } else if tool_name == "github_get_pr" {
+    pr_num := jv_int(v, jv_get(v, 0, "number"), 0);
+    if r_n > 0 { rn = cwc_put(raw[..], rn, cast(string) r_buf[0..<r_n]); }
+    if pr_num > 0 {
+      if rn > 0 { rn = cwc_put(raw[..], rn, " "); }
+      rn = cwc_put(raw[..], rn, "#");
+      rn = cwc_put_int(raw[..], rn, pr_num);
+    }
+  } else if p_n > 0 {
+    rn = cwc_put(raw[..], rn, cast(string) p_buf[0..<p_n]);
+  } else if q_n > 0 {
+    rn = cwc_put(raw[..], rn, cast(string) q_buf[0..<q_n]);
+  } else if u_n > 0 {
+    u_s := cast(string) u_buf[0..<u_n];
+    if u_s.count > 8 && cast(string) u_s[0..<8] == "https://" { u_s = cast(string) u_s[8..<u_s.count]; }
+    else if u_s.count > 7 && cast(string) u_s[0..<7] == "http://" { u_s = cast(string) u_s[7..<u_s.count]; }
+    rn = cwc_put(raw[..], rn, u_s);
+  } else if cmd_n > 0 {
+    rn = cwc_put(raw[..], rn, cast(string) cmd_buf[0..<cmd_n]);
+  } else if r_n > 0 {
+    rn = cwc_put(raw[..], rn, cast(string) r_buf[0..<r_n]);
+  } else {
+    // Fallback: first short string property in JSON object.
+    cnt := jv_len(v, 0);
+    for i: 0..<cnt {
+      at := jv_at(v, 0, i);
+      if jv_kind(v, at) == JV_STRING {
+        fn := cwc_jv_str_into(v, at, raw[..]);
+        if fn > 0 { rn = fn; break; }
+      }
+    }
+  }
+  if rn == 0 { return ""; }
+  // Clamp cleanly to 56 bytes on single line.
+  max_c := 56;
+  cut := 0;
+  while cut < rn && cut < max_c && raw[cut] != '\n' && raw[cut] != '\r' { cut += 1; }
+  while cut > 0 && cut < rn && (raw[cut] & 0xC0) == 0x80 { cut -= 1; }
+  n := cwc_put(out, 0, cast(string) raw[0..<cut]);
+  if cut < rn { n = cwc_put(out, n, "..."); }
+  return cast(string) out[0..<n];
+}
 
 cwc_draw_sidebar_items :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
-  // Search box & Archived filter toggle.
+  // Desktop-parity "Recents" section header + subtle Archived toggle.
+  shd := tr_open(t, "side.recents.hd", TG_DIV, "cc-sec-hd");
+  _ = tr_leaf(t, "side.recents.t", TG_SPAN, "cc-sec-lbl", ifx c[0].show_archived then "Archived" else "Recents");
+  arc_btn := tr_leaf(t, "side.arc", TG_BUTTON, "cc-sec-btn", ifx c[0].show_archived then "Active" else "Archived");
+  tr_attr(t, arc_btn, AT_PRESSED, ifx c[0].show_archived then "true" else "false");
+  tr_close(t);
+
+  // Compact quiet search field tucked under Recents header.
   sb_wrap := tr_open(t, "side.bar", TG_DIV, "cc-sbar");
   srch := tr_open(t, "side.search", TG_INPUT, "cc-search");
   tr_attr(t, srch, AT_TYPE, "search");
@@ -2661,13 +2918,12 @@ cwc_draw_sidebar_items :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
   tr_attr(t, srch, AT_LABEL, "Search conversations");
   tr_attr(t, srch, AT_VALUE, cast(string) c[0].search[0..<c[0].search_n]);
   tr_close(t);
-  arc_btn := tr_leaf(t, "side.arc", TG_BUTTON, "cc-sbtn", ifx c[0].show_archived then "Active" else "Archived");
-  tr_attr(t, arc_btn, AT_PRESSED, ifx c[0].show_archived then "true" else "false");
   tr_close(t);
 
   q := cast(string) c[0].search[0..<c[0].search_n];
   active := cwc_active_id(c);
   b1: [64] u8; b2: [64] u8; b3: [96] u8;
+  shown := 0;
 
   for i: 0..<c[0].conv_n {
     cv := c[0].convs[i];
@@ -2675,6 +2931,7 @@ cwc_draw_sidebar_items :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
     title := ifx cv.title_n > 0 then cast(string) cv.title[0..<cv.title_n] else "New chat";
     cid := cast(string) cv.id[0..<cv.id_n];
     if q.count > 0 && !cwc_icontains(title, q) && !cwc_icontains(cast(string) cv.model[0..<cv.model_n], q) { continue; }
+    shown += 1;
 
     is_cur := active.count == 36 && cid == active;
     row := tr_open(t, tr_join(b1[..], "cc.row.", i), TG_DIV, "cc-crow");
@@ -2685,10 +2942,13 @@ cwc_draw_sidebar_items :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
       tr_attr(t, ri, AT_LABEL, "Rename conversation");
       tr_attr(t, ri, AT_VALUE, cast(string) c[0].rename_buf[0..<c[0].rename_n]);
       tr_close(t);
+      ra := tr_open(t, "cc.ren.acts", TG_DIV, "cc-ren-acts");
       _ = tr_leaf(t, "cc.ren.ok", TG_BUTTON, "cc-sbtn", "Save");
       _ = tr_leaf(t, "cc.ren.no", TG_BUTTON, "cc-sbtn", "Cancel");
+      tr_close(t);
+      _ = ra;
     } else {
-      // Main open link/button with live working badge and compute provenance.
+      // Desktop single-line chat row: title left, subtle relative timestamp / live dot right.
       open_btn := tr_open(t, tr_join(b2[..], "cc.open.", i), TG_BUTTON, "cc-copen");
       if is_cur { tr_attr(t, open_btn, AT_CURRENT, "page"); }
       if cv.working {
@@ -2696,24 +2956,15 @@ cwc_draw_sidebar_items :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
         tr_attr(t, sp, AT_LABEL, "Working");
       }
       _ = tr_leaf(t, tr_join(b3[..], "cc.t.", i), TG_SPAN, "cc-ctitle", title);
-      // Provenance sub-label: Local $0 vs Cloud + pinned marker.
-      sub: [96] u8; sn := 0;
-      if cv.pinned { sn = cwc_put(sub[..], sn, "Pinned · "); }
-      if cast(string) cv.compute[0..<cv.compute_n] == "local" {
-        sn = cwc_put(sub[..], sn, "Local · $0");
-      } else if cv.model_n > 0 {
-        sn = cwc_put(sub[..], sn, cast(string) cv.model[0..<cv.model_n]);
-      } else {
-        sn = cwc_put(sub[..], sn, "Cloud");
+      age_b: [16] u8;
+      age_s := cwc_format_age(c, cv.updated_at_ms, age_b[..]);
+      if cv.pinned && age_s.count == 0 { age_s = "pinned"; }
+      if age_s.count > 0 {
+        _ = tr_leaf(t, tr_join(b3[..], "cc.age.", i), TG_SPAN, "cc-cage", age_s);
       }
-      if cv.dev_n > 0 && cast(string) cv.source_device[0..<cv.dev_n] != "web" {
-        sn = cwc_put(sub[..], sn, " · ");
-        sn = cwc_put(sub[..], sn, cast(string) cv.source_device[0..<cv.dev_n]);
-      }
-      _ = tr_leaf(t, tr_join(b3[..], "cc.sub.", i), TG_SPAN, "cc-csub", cast(string) sub[0..<sn]);
       tr_close(t);
 
-      // Compact pin / rename / archive controls.
+      // Compact pin / rename / archive controls revealed cleanly on hover / focus.
       acts := tr_open(t, tr_join(b2[..], "cc.acts.", i), TG_DIV, "cc-cacts");
       pb := tr_leaf(t, tr_join(b3[..], "cc.pin.", i), TG_BUTTON, "cc-sbtn", ifx cv.pinned then "Unpin" else "Pin");
       tr_attr(t, pb, AT_LABEL, ifx cv.pinned then "Unpin conversation" else "Pin conversation");
@@ -2725,53 +2976,48 @@ cwc_draw_sidebar_items :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
     }
     tr_close(t);
   }
+  if shown == 0 && c[0].auth_state == CWC_AUTH_IN {
+    _ = tr_leaf(t, "side.recents.empty", TG_P, "cc-sempty", ifx q.count > 0 then "No matching chats" else ifx c[0].show_archived then "No archived chats" else "No chats yet");
+  }
   _ = u;
+}
+
+// Execution Target selector popover rendered inside the composer toolbar (Apps SDK UI).
+cwc_draw_target_picker :: (c: [] ChatCloud, t: [] Tree) {
+  wrap := tr_open(t, "cc.target.wrap", TG_DIV, "cc-tanchor");
+  tlb: [96] u8;
+  tbtn := tr_leaf(t, "cc.target", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_COMPUTER then "sel cc-tbtn cc-tbtn-local" else "sel cc-tbtn", cwc_target_label(c, tlb[..]));
+  tr_attr(t, tbtn, AT_EXPANDED, ifx c[0].target_menu then "true" else "false");
+  tr_attr(t, tbtn, AT_LABEL, "Select execution target");
+  if c[0].target_menu {
+    tm := tr_open(t, "cc.target.menu", TG_DIV, "menu pop cc-tmenu");
+    tr_attr(t, tm, AT_ROLE, "menu");
+    _ = tr_leaf(t, "cc.tgt.auto", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_AUTO then "row cc-topt cc-topt-on" else "row cc-topt", "Auto");
+    _ = tr_leaf(t, "cc.tgt.cloud", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_CLOUD then "row cc-topt cc-topt-on" else "row cc-topt", "Cloud (Tools)");
+    eb: [48] u8;
+    for ei: 0..<c[0].env_n {
+      en_s := ifx c[0].env_name_n[ei] > 0 then cast(string) c[0].env_name[ei][0..<c[0].env_name_n[ei]] else cast(string) c[0].env_host[ei][0..<8];
+      sel_e := c[0].target_kind == CLD_TARGET_COMPUTER && c[0].sel_host_n == 64 &&
+               cast(string) c[0].sel_host[0..<64] == cast(string) c[0].env_host[ei][..];
+      _ = tr_leaf(t, tr_join(eb[..], "cc.tgt.env.", ei), TG_BUTTON, ifx sel_e then "row cc-topt cc-topt-on" else "row cc-topt", en_s);
+    }
+    _ = tr_leaf(t, "cc.tgt.sandbox", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_SANDBOX then "row cc-topt cc-topt-on" else "row cc-topt", "Cloud Sandbox");
+    tr_close(t);
+  }
+  tr_close(t);
+  _ = wrap;
 }
 
 cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
   hud := tr_open(t, "cc.hud", TG_HEADER, "cc-hud");
   tr_attr(t, hud, AT_LABEL, "Cloud chat status and usage");
 
-  // Compute / model pill
-  pill: [128] u8; pn := 0;
-  cmp_s := cast(string) c[0].active_compute[0..<c[0].active_compute_n];
-  is_local := cmp_s == "local";
-  is_sandbox := cmp_s == "sandbox";
-  if is_local {
-    pn = cwc_put(pill[..], pn, "Local · $0.00");
-    if c[0].active_model_n > 0 {
-      pn = cwc_put(pill[..], pn, " · ");
-      pn = cwc_put(pill[..], pn, cast(string) c[0].active_model[0..<c[0].active_model_n]);
-    }
-  } else if is_sandbox {
-    pn = cwc_put(pill[..], pn, "Sandbox · ");
-    pn = cwc_put(pill[..], pn, ifx c[0].active_model_n > 0 then cast(string) c[0].active_model[0..<c[0].active_model_n] else cwc_model_name(c));
-  } else {
-    pn = cwc_put(pill[..], pn, "Cloud · ");
-    pn = cwc_put(pill[..], pn, ifx c[0].active_model_n > 0 then cast(string) c[0].active_model[0..<c[0].active_model_n] else cwc_model_name(c));
-  }
-  _ = tr_leaf(t, "cc.hud.tier", TG_SPAN, ifx is_local then "cc-pill cc-pill-local" else "cc-pill", cast(string) pill[0..<pn]);
+  // Left: active conversation title (Desktop 1:1 header parity).
+  title_s := ifx c[0].active_title_n > 0 then cast(string) c[0].active_title[0..<c[0].active_title_n] else "New chat";
+  _ = tr_leaf(t, "cc.hud.title", TG_SPAN, "cc-hud-title", title_s);
 
-  // Execution Target selector pill (#14127): Auto | Cloud | <Enrolled Computer> | Sandbox
-  tlb: [96] u8;
-  tbtn := tr_leaf(t, "cc.target", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_COMPUTER then "cc-pill cc-pill-local cc-tbtn" else "cc-pill cc-tbtn", cwc_target_label(c, tlb[..]));
-  tr_attr(t, tbtn, AT_EXPANDED, ifx c[0].target_menu then "true" else "false");
-  tr_attr(t, tbtn, AT_LABEL, "Select execution target");
-  if c[0].target_menu {
-    tm := tr_open(t, "cc.target.menu", TG_DIV, "cc-tmenu");
-    tr_attr(t, tm, AT_ROLE, "menu");
-    _ = tr_leaf(t, "cc.tgt.auto", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_AUTO then "cc-sbtn cc-topt-on" else "cc-sbtn", "Auto");
-    _ = tr_leaf(t, "cc.tgt.cloud", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_CLOUD then "cc-sbtn cc-topt-on" else "cc-sbtn", "Cloud (Tools)");
-    eb: [48] u8;
-    for ei: 0..<c[0].env_n {
-      en_s := ifx c[0].env_name_n[ei] > 0 then cast(string) c[0].env_name[ei][0..<c[0].env_name_n[ei]] else cast(string) c[0].env_host[ei][0..<8];
-      sel_e := c[0].target_kind == CLD_TARGET_COMPUTER && c[0].sel_host_n == 64 &&
-               cast(string) c[0].sel_host[0..<64] == cast(string) c[0].env_host[ei][..];
-      _ = tr_leaf(t, tr_join(eb[..], "cc.tgt.env.", ei), TG_BUTTON, ifx sel_e then "cc-sbtn cc-topt-on" else "cc-sbtn", en_s);
-    }
-    _ = tr_leaf(t, "cc.tgt.sandbox", TG_BUTTON, ifx c[0].target_kind == CLD_TARGET_SANDBOX then "cc-sbtn cc-topt-on" else "cc-sbtn", "Cloud Sandbox");
-    tr_close(t);
-  }
+  // Right: compact quiet status & usage pills.
+  hr := tr_open(t, "cc.hud.r", TG_DIV, "cc-hud-r");
 
   if c[0].sel_project_n > 0 {
     pb: [160] u8; pbn := cwc_put(pb[..], 0, "Project · ");
@@ -2795,6 +3041,26 @@ cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
     }
     _ = tr_leaf(t, "cc.hud.host", TG_SPAN, "cc-pill cc-pill-local", cast(string) hb[0..<hbn]);
   }
+
+  // Quiet compute / model pill
+  pill: [128] u8; pn := 0;
+  cmp_s := cast(string) c[0].active_compute[0..<c[0].active_compute_n];
+  is_local := cmp_s == "local";
+  is_sandbox := cmp_s == "sandbox";
+  if is_local {
+    pn = cwc_put(pill[..], pn, "Local · $0.00");
+    if c[0].active_model_n > 0 {
+      pn = cwc_put(pill[..], pn, " · ");
+      pn = cwc_put(pill[..], pn, cast(string) c[0].active_model[0..<c[0].active_model_n]);
+    }
+  } else if is_sandbox {
+    pn = cwc_put(pill[..], pn, "Sandbox · ");
+    pn = cwc_put(pill[..], pn, ifx c[0].active_model_n > 0 then cast(string) c[0].active_model[0..<c[0].active_model_n] else cwc_model_name(c));
+  } else {
+    pn = cwc_put(pill[..], pn, "Cloud · ");
+    pn = cwc_put(pill[..], pn, ifx c[0].active_model_n > 0 then cast(string) c[0].active_model[0..<c[0].active_model_n] else cwc_model_name(c));
+  }
+  _ = tr_leaf(t, "cc.hud.tier", TG_SPAN, ifx is_local then "cc-pill cc-pill-local" else "cc-pill", cast(string) pill[0..<pn]);
 
   // Usage & Billing HUD (#14072 parity)
   if c[0].usage[0].loaded {
@@ -2823,7 +3089,7 @@ cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
       un = cwc_put_int(ub[..], un, c[0].usage[0].total_cached_tokens);
       un = cwc_put(ub[..], un, " cached");
     }
-    _ = tr_leaf(t, "cc.hud.usage", TG_SPAN, "cc-pill", cast(string) ub[0..<un]);
+    _ = tr_leaf(t, "cc.hud.usage", TG_SPAN, "cc-pill cc-pill-usage", cast(string) ub[0..<un]);
   }
 
   // Live remote Desktop observation banner + Stop steer button
@@ -2843,6 +3109,8 @@ cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
     tr_attr(t, rc, AT_ROLE, "status");
   }
   tr_close(t);
+  _ = hr;
+  tr_close(t);
 }
 
 cwc_draw_diff :: (t: [] Tree, base_id: string, diff: string) {
@@ -2861,6 +3129,167 @@ cwc_draw_diff :: (t: [] Tree, base_id: string, diff: string) {
     at = e + 1;
     line_i += 1;
   }
+  tr_close(t);
+}
+
+// Draws a compact Desktop-style activity group ("Thought process · ran N tools") for [g_start..g_end).
+cwc_draw_activity_group :: (c: [] ChatCloud, t: [] Tree, g_start: int, g_end: int) {
+  b1: [64] u8; b2: [96] u8; b3: [96] u8; b4: [96] u8;
+  tool_cnt := 0;
+  think_cnt := 0;
+  any_run := false;
+  any_fail := false;
+  run_tool_idx := -1;
+  for i: g_start..<g_end {
+    m := c[0].msgs[i];
+    if m.kind == CWC_M_TOOL {
+      tool_cnt += 1;
+      if m.running { any_run = true; run_tool_idx = i; }
+      if m.failed { any_fail = true; }
+    } else if m.kind == CWC_M_THINKING {
+      think_cnt += 1;
+      if m.running { any_run = true; }
+    }
+  }
+  is_open := ifx c[0].msgs[g_start].group_toggled then c[0].msgs[g_start].group_open else cwc_group_default_open(c, g_start, g_end);
+
+  // Solo thinking block without tools: keep clean single collapsible trigger `cc.tog.<g_start>`.
+  if tool_cnt == 0 && think_cnt == 1 {
+    m := c[0].msgs[g_start];
+    id := tr_join(b1[..], "m.", g_start);
+    txt := cwc_msg_text(c, g_start);
+    card := tr_open(t, id, TG_DIV, "cc-act");
+    tr_attr(t, card, AT_ROLE, "listitem");
+    col := UkCollapsible.{open = m.expanded};
+    tog := tr_open(t, tr_join(b2[..], "cc.tog.", g_start), TG_BUTTON, "cc-act-hd");
+    bid := tr_cat(b3[..], id, ".body");
+    uk_collapsible_apply_trigger(t, tog, col, bid);
+    _ = tr_leaf(t, tr_cat(b4[..], id, ".lbl"), TG_SPAN, ifx m.running then "as-shimmer cc-act-lbl" else "cc-act-lbl",
+                ifx m.running then "Thinking..." else "Thought process");
+    _ = as_icon(t, tr_cat(b4[..], id, ".chev"), ifx m.expanded then IC_CHEVRON_DOWN else IC_CHEVRON_RIGHT, "cc-act-chev");
+    tr_close(t);
+    body := tr_leaf(t, bid, TG_DIV, "cc-think-body", txt);
+    uk_collapsible_apply_content(t, body, col);
+    tr_close(t);
+    return;
+  }
+
+  // Group summary header (Desktop parity: "Thought process · ran N tools").
+  gid := tr_join(b1[..], "cc.act.", g_start);
+  grp := tr_open(t, gid, TG_DIV, "cc-act");
+  tr_attr(t, grp, AT_ROLE, "listitem");
+
+  sum: [160] u8; sn := 0;
+  if any_run && run_tool_idx >= 0 {
+    rm := c[0].msgs[run_tool_idx];
+    sn = cwc_put(sum[..], sn, "Working · ");
+    sn = cwc_put(sum[..], sn, cast(string) rm.tool_name[0..<rm.tool_name_n]);
+    ab: [72] u8;
+    as_s := cwc_tool_arg_summary(cast(string) rm.tool_name[0..<rm.tool_name_n], cwc_msg_args(c, run_tool_idx), ab[..]);
+    if as_s.count > 0 { sn = cwc_put(sum[..], sn, " · "); sn = cwc_put(sum[..], sn, as_s); }
+  } else if any_run {
+    sn = cwc_put(sum[..], sn, "Thinking...");
+  } else {
+    sn = cwc_put(sum[..], sn, "Thought process");
+    if tool_cnt > 0 {
+      sn = cwc_put(sum[..], sn, " · ran ");
+      sn = cwc_put_int(sum[..], sn, tool_cnt);
+      sn = cwc_put(sum[..], sn, ifx tool_cnt == 1 then " tool" else " tools");
+    }
+    if any_fail { sn = cwc_put(sum[..], sn, " · failed"); }
+  }
+
+  gcol := UkCollapsible.{open = is_open};
+  gtog := tr_open(t, tr_join(b2[..], "cc.grp.", g_start), TG_BUTTON, "cc-act-hd");
+  gbid := tr_cat(b3[..], gid, ".list");
+  uk_collapsible_apply_trigger(t, gtog, gcol, gbid);
+  _ = tr_leaf(t, tr_cat(b4[..], gid, ".lbl"), TG_SPAN, ifx any_run then "as-shimmer cc-act-lbl" else "cc-act-lbl", cast(string) sum[0..<sn]);
+  _ = as_icon(t, tr_cat(b4[..], gid, ".chev"), ifx is_open then IC_CHEVRON_DOWN else IC_CHEVRON_RIGHT, "cc-act-chev");
+  tr_close(t);
+
+  list_n := tr_open(t, gbid, TG_DIV, "cc-act-list");
+  uk_collapsible_apply_content(t, list_n, gcol);
+  if is_open {
+    for j: g_start..<g_end {
+      m := c[0].msgs[j];
+      if !cwc_is_activity(m) { continue; }
+      mid := tr_join(b1[..], "m.", j);
+      txt := cwc_msg_text(c, j);
+
+      if m.kind == CWC_M_THINKING {
+        trow := tr_open(t, mid, TG_DIV, "cc-titem");
+        col := UkCollapsible.{open = m.expanded};
+        tog := tr_open(t, tr_join(b2[..], "cc.tog.", j), TG_BUTTON, "cc-trow");
+        bid := tr_cat(b3[..], mid, ".body");
+        uk_collapsible_apply_trigger(t, tog, col, bid);
+        _ = tr_leaf(t, tr_cat(b4[..], mid, ".dot"), TG_SPAN, ifx m.running then "cc-tdot cc-tdot-run" else "cc-tdot", "");
+        _ = tr_leaf(t, tr_cat(b4[..], mid, ".nm"), TG_SPAN, "cc-tname", ifx m.running then "Thinking..." else "Thought process");
+        _ = as_icon(t, tr_cat(b4[..], mid, ".ch"), ifx m.expanded then IC_CHEVRON_DOWN else IC_CHEVRON_RIGHT, "cc-tchev");
+        tr_close(t);
+        body := tr_leaf(t, bid, TG_DIV, "cc-think-body", txt);
+        uk_collapsible_apply_content(t, body, col);
+        tr_close(t);
+        _ = trow;
+        continue;
+      }
+
+      // Compact single-line tool row: subtle dot/check + tool_name · concise_arg (expandable on click).
+      titem := tr_open(t, mid, TG_DIV, ifx m.failed then "cc-titem cc-titem-fail" else "cc-titem");
+      col := UkCollapsible.{open = m.expanded};
+      tname := cast(string) m.tool_name[0..<m.tool_name_n];
+      ab: [72] u8;
+      arg_s := cwc_tool_arg_summary(tname, cwc_msg_args(c, j), ab[..]);
+      lbl_b: [160] u8; ln := cwc_put(lbl_b[..], 0, tname);
+      if arg_s.count > 0 {
+        ln = cwc_put(lbl_b[..], ln, " · ");
+        ln = cwc_put(lbl_b[..], ln, arg_s);
+      }
+      if m.appr_n > 0 {
+        ln = cwc_put(lbl_b[..], ln, " · ");
+        ln = cwc_put(lbl_b[..], ln, cast(string) m.approval[0..<m.appr_n]);
+      }
+
+      tog := tr_open(t, tr_join(b2[..], "cc.tog.", j), TG_BUTTON, "cc-trow");
+      bid := tr_cat(b3[..], mid, ".body");
+      uk_collapsible_apply_trigger(t, tog, col, bid);
+      if m.running {
+        _ = tr_leaf(t, tr_cat(b4[..], mid, ".st"), TG_SPAN, "cc-tdot cc-tdot-run", "");
+      } else if m.failed {
+        _ = tr_leaf(t, tr_cat(b4[..], mid, ".st"), TG_SPAN, "cc-tdot cc-tdot-fail", "");
+      } else {
+        _ = as_icon(t, tr_cat(b4[..], mid, ".st"), IC_CHECK, "cc-tchk");
+      }
+      _ = tr_leaf(t, tr_cat(b4[..], mid, ".lbl"), TG_SPAN, "cc-tlabel", cast(string) lbl_b[0..<ln]);
+      if m.running {
+        _ = tr_leaf(t, tr_cat(b4[..], mid, ".rs"), TG_SPAN, "cc-tstatus", "running");
+      } else if m.failed {
+        _ = tr_leaf(t, tr_cat(b4[..], mid, ".rs"), TG_SPAN, "cc-tstatus cc-tstatus-fail", "failed");
+      }
+      _ = as_icon(t, tr_cat(b4[..], mid, ".ch"), ifx m.expanded then IC_CHEVRON_DOWN else IC_CHEVRON_RIGHT, "cc-tchev");
+      tr_close(t);
+
+      pan := tr_open(t, bid, TG_DIV, "cc-tool-body");
+      uk_collapsible_apply_content(t, pan, col);
+      if m.expanded {
+        args_s := cwc_msg_args(c, j);
+        if args_s.count > 0 { _ = tr_leaf(t, tr_cat(b2[..], mid, ".args"), TG_PRE, "cc-code", args_s); }
+        if txt.count > 0 { _ = tr_leaf(t, tr_cat(b2[..], mid, ".out"), TG_PRE, "cc-code", txt); }
+        diff_s := cwc_msg_extra(c, j);
+        if diff_s.count > 0 { cwc_draw_diff(t, mid, diff_s); }
+      }
+      if m.appr_n > 0 && cast(string) m.approval[0..<m.appr_n] == "pending" {
+        arow := tr_open(t, tr_cat(b2[..], mid, ".appr"), TG_DIV, "cc-appr-row");
+        _ = tr_leaf(t, tr_join(b3[..], "cc.appr.ok.", j), TG_BUTTON, "cc-sbtn cc-topt-on", "Approve");
+        _ = tr_leaf(t, tr_join(b3[..], "cc.appr.no.", j), TG_BUTTON, "cc-sbtn", "Deny");
+        tr_close(t);
+        _ = arow;
+      }
+      tr_close(t);
+      tr_close(t);
+      _ = titem;
+    }
+  }
+  tr_close(t);
   tr_close(t);
 }
 
@@ -2887,7 +3316,12 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
   if c[0].msg_n == 0 && !c[0].conv_loading && c[0].error_n == 0 {
     _ = tr_open(t, "cc.welcome", TG_DIV, "cc-welcome");
     _ = tr_open(t, "cc.welcome.icw", TG_DIV, "cc-welcome-ic");
-    _ = as_icon(t, "cc.welcome.ico", IC_SPARKLES, "as-ic-lg");
+    mk := tr_open(t, "cc.welcome.mark", TG_SVG, "cc-welcome-svg");
+    tr_attr(t, mk, AT_HIDDEN, "true");
+    mu := tr_open(t, "cc.welcome.mark.u", TG_USE, "");
+    tr_attr(t, mu, AT_HREF, MONO_MARK);
+    tr_close(t);
+    tr_close(t);
     tr_close(t);
     _ = tr_leaf(t, "cc.welcome.h", TG_H2, "cc-welcome-t", "What can I help you build?");
     _ = tr_leaf(t, "cc.welcome.s", TG_P, "cc-welcome-s", "Synced live across Web, Desktop, and Mobile — with Cloud tools, GitHub repos, and your enrolled computers.");
@@ -2901,6 +3335,7 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
     tr_close(t);
   }
 
+  last_act_start := -1;
   for k: r.first..<r.last {
     if k < 0 || k >= c[0].msg_n { continue; }
     m := c[0].msgs[k];
@@ -2915,56 +3350,17 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
       continue;
     }
 
-    if m.kind == CWC_M_THINKING {
-      card := tr_open(t, id, TG_DIV, "cc-think");
-      tr_attr(t, card, AT_ROLE, "listitem");
-      col := UkCollapsible.{open = m.expanded};
-      tog := tr_leaf(t, tr_join(b2[..], "cc.tog.", k), TG_BUTTON, "cc-trig",
-                     ifx m.running then "Thinking..." else "Thought process");
-      bid := tr_cat(b3[..], id, ".body");
-      uk_collapsible_apply_trigger(t, tog, col, bid);
-      body := tr_leaf(t, bid, TG_DIV, "cc-think-body", txt);
-      uk_collapsible_apply_content(t, body, col);
-      tr_close(t);
-      continue;
-    }
-
-    if m.kind == CWC_M_TOOL {
-      card := tr_open(t, id, TG_DIV, ifx m.failed then "cc-tool cc-tool-fail" else "cc-tool");
-      tr_attr(t, card, AT_ROLE, "listitem");
-      col := UkCollapsible.{open = m.expanded};
-      hdr: [128] u8; hn := cwc_put(hdr[..], 0, cast(string) m.tool_name[0..<m.tool_name_n]);
-      hn = cwc_put(hdr[..], hn, ifx m.running then " · running" else ifx m.failed then " · failed" else " · done");
-      if m.appr_n > 0 {
-        hn = cwc_put(hdr[..], hn, " · ");
-        hn = cwc_put(hdr[..], hn, cast(string) m.approval[0..<m.appr_n]);
-      }
-      tog := tr_leaf(t, tr_join(b2[..], "cc.tog.", k), TG_BUTTON, "cc-trig", cast(string) hdr[0..<hn]);
-      bid := tr_cat(b3[..], id, ".body");
-      uk_collapsible_apply_trigger(t, tog, col, bid);
-      pan := tr_open(t, bid, TG_DIV, "cc-tool-body");
-      uk_collapsible_apply_content(t, pan, col);
-      if m.expanded {
-        args_s := cwc_msg_args(c, k);
-        if args_s.count > 0 { _ = tr_leaf(t, tr_cat(b2[..], id, ".args"), TG_PRE, "cc-code", args_s); }
-        if txt.count > 0 { _ = tr_leaf(t, tr_cat(b2[..], id, ".out"), TG_PRE, "cc-code", txt); }
-        diff_s := cwc_msg_extra(c, k);
-        if diff_s.count > 0 { cwc_draw_diff(t, id, diff_s); }
-      }
-      if m.appr_n > 0 && cast(string) m.approval[0..<m.appr_n] == "pending" {
-        arow := tr_open(t, tr_cat(b2[..], id, ".appr"), TG_DIV, "cc-cacts");
-        _ = tr_leaf(t, tr_join(b3[..], "cc.appr.ok.", k), TG_BUTTON, "cc-sbtn cc-topt-on", "Approve");
-        _ = tr_leaf(t, tr_join(b3[..], "cc.appr.no.", k), TG_BUTTON, "cc-sbtn", "Deny");
-        tr_close(t);
-        _ = arow;
-      }
-      tr_close(t);
-      tr_close(t);
+    if cwc_is_activity(m) {
+      g_start := cwc_activity_group_start(c, k);
+      if g_start == last_act_start { continue; }
+      last_act_start = g_start;
+      g_end := cwc_activity_group_end(c, g_start);
+      cwc_draw_activity_group(c, t, g_start, g_end);
       continue;
     }
 
     // Skip empty non-running assistant placeholders (e.g. step 0 emitted tool calls before answering).
-    if !m.running && txt.count == 0 { continue; }
+    if cwc_is_transparent(m) { continue; }
 
     // CWC_M_ASSISTANT: incremental StreamMd for live message, StreamMd render for visible completed items.
     item := tr_open(t, tr_cat(b2[..], id, ".row"), TG_DIV, "cc-row");
@@ -3033,155 +3429,189 @@ cwc_draw_transcript :: (c: [] ChatCloud, t: [] Tree, u: [] Ui) {
   }
 }
 
-// Appends dark-mode Apps SDK UI rules for /chat, its AppShell, Sidebar, HUD, Thread, Composer, and Settings.
+// Appends pure-black Desktop-parity Apps SDK UI rules for /chat, AppShell, Sidebar, 48px Header, Thread, Composer & Settings.
 cwc_css :: (out: [] u8, at: int) -> int {
   n := at;
-  // ---- Obsidian Apps SDK ground & suppression of legacy scanline grid and chamfered SVG frame overlays
-  n = mc(out, n, ":root{--ground:var(--color-surface);--surface:var(--color-surface-secondary);--raised:var(--color-surface-elevated);--line-dim:var(--color-border-subtle);--line:var(--color-border);--line-bright:var(--color-border-strong);--ink:var(--color-text);--ink-muted:var(--color-text-secondary);--ink-faint:var(--color-text-tertiary)}");
-  n = mc(out, n, "html,body{background:var(--color-surface);color:var(--color-text);font:400 14px/1.55 var(--font-sans);-webkit-font-smoothing:antialiased}");
+  // ---- Pure #000000 Noir Apps SDK ground & suppression of legacy scanline grid and SVG frame overlays
+  n = mc(out, n, ":root{--ground:#000000;--surface:#050505;--raised:#141414;--line-dim:#1b1b1b;--line:#242424;--line-bright:#383838;--ink:#ededed;--ink-muted:#9a9a9a;--ink-faint:#656565}");
+  n = mc(out, n, "html,body{background:#000000;color:#ededed;font:400 14px/1.55 var(--font-sans);-webkit-font-smoothing:antialiased}");
   n = mc(out, n, "body::before{display:none}svg.fr{display:none}::selection{background:var(--blue-a75);color:#ffffff}");
+  n = mc(out, n, ".log:focus,.log:focus-visible,.vl-scroll:focus,.vl-scroll:focus-visible{outline:none !important;box-shadow:none !important}");
 
-  // ---- AppShell & Obsidian Sidebar (#161616)
-  n = mc(out, n, ".chat{padding:0 16px 20px;background:var(--color-surface)}");
-  n = mc(out, n, ".chat:has(.side){margin-left:280px;max-width:none;padding:0 0 20px}");
-  n = mc(out, n, ".chat:has(.side)>:not(.side):not(.log),.chat:has(.side) .log>*{width:calc(100% - 40px);max-width:780px;margin-left:auto;margin-right:auto}");
-  n = mc(out, n, ".chat:has(.side)>header.cc-hud{width:100% !important;max-width:none !important;margin:0 !important}");
-  n = mc(out, n, ".side{width:280px;background:var(--color-surface-secondary);border-right:1px solid var(--color-border-subtle);padding:12px 10px;gap:6px}");
-  n = mc(out, n, ".side-h{min-height:36px;padding:0 4px 4px 10px;gap:6px}");
-  n = mc(out, n, ".side-b{font:600 14px/1 var(--font-sans);letter-spacing:-.015em;color:var(--color-text);gap:9px}");
-  n = mc(out, n, ".side-b>.ic{width:18px;height:18px;color:var(--color-text)}");
-  n = mc(out, n, ".side-l{gap:2px;padding-right:2px;scrollbar-color:var(--alpha-15) transparent}");
-  n = mc(out, n, ".side-m{padding:14px 10px 6px;font:600 11px/1 var(--font-sans);letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-tertiary)}");
-  n = mc(out, n, ".side-f{padding-top:10px;margin-top:4px;border-top:1px solid var(--color-border-subtle);gap:6px}");
-  n = mc(out, n, ".side .row,.side .fold-b{border-radius:var(--radius-md);padding:7px 10px;color:var(--color-text-secondary);font:500 13px/1.3 var(--font-sans);transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
-  n = mc(out, n, ".side .row:hover,.side .row:focus-visible,.side .fold-b:hover,.side .fold-b:focus-visible{background:var(--alpha-06);color:var(--color-text)}");
-  n = mc(out, n, ".side .row[aria-current=true],.side .fold-b[aria-current=true]{background:var(--alpha-10);color:var(--color-text)}");
-  n = mc(out, n, ".side .row-s{padding-left:32px;font-weight:400}");
-  n = mc(out, n, ".side .row-s[data-state=online],.side .row-s[data-state=offline]{padding-left:14px;gap:8px}");
-  n = mc(out, n, ".side .row-s[data-state=online]::before,.side .row-s[data-state=offline]::before{content:'';width:7px;height:7px;border-radius:9999px;flex:none}");
-  n = mc(out, n, ".side .row-s[data-state=online]::before{background:var(--green-400);box-shadow:0 0 0 3px var(--green-a25)}");
-  n = mc(out, n, ".side .row-s[data-state=offline]::before{background:var(--gray-500)}");
-  n = mc(out, n, ".ib{width:30px;height:30px;border-radius:var(--radius-md);color:var(--color-text-tertiary);transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
-  n = mc(out, n, ".ib:hover,.ib:focus-visible{background:var(--alpha-08);color:var(--color-text)}");
-  n = mc(out, n, ".ib[data-state=side]{top:11px;left:12px;background:var(--color-surface-elevated);border:1px solid var(--color-border);color:var(--color-text-secondary)}");
-  n = mc(out, n, ".ib[data-state=side]:hover{background:var(--color-surface-elevated-secondary);color:var(--color-text)}");
-  n = mc(out, n, ".fold-h{gap:2px}.fold-b>.ic:last-child{opacity:.7}");
-  n = mc(out, n, ".side-f .row{border-radius:var(--radius-lg);padding:8px 10px}");
+  // ---- Desktop-Parity AppShell & 260px Pure-Black Sidebar (#050505, 1px #1b1b1b border, aligned 48px header divider)
+  n = mc(out, n, ".chat{max-width:none;margin:0;padding:0 0 20px;background:#000000}");
+  n = mc(out, n, ".chat:has(.side){margin-left:260px;max-width:none;padding:0 0 20px}");
+  n = mc(out, n, ".chat>:not(.side):not(.log):not(.cc-hud):not(.mob-top):not(.ib),.chat .log>*{box-sizing:border-box;width:calc(100% - 40px);max-width:740px;margin-left:auto;margin-right:auto}");
+  n = mc(out, n, ".chat>header.cc-hud,.chat:has(.side)>header.cc-hud{width:100% !important;max-width:none !important;margin:0 !important}");
+  n = mc(out, n, ".side{width:260px;background:#050505;border-right:1px solid #1b1b1b;padding:0;gap:0}");
+  n = mc(out, n, ".side-h{height:48px;min-height:48px;box-sizing:border-box;padding:0 10px 0 14px;gap:6px;border-bottom:1px solid #1b1b1b}");
+  n = mc(out, n, ".side-b{font:600 14px/1 var(--font-sans);letter-spacing:-.015em;color:#ededed;gap:8px}");
+  n = mc(out, n, ".side-b>.ic{width:17px;height:17px;color:#ededed}");
+  n = mc(out, n, ".side-p{padding:8px 8px 6px;border-bottom:0;gap:2px}");
+  n = mc(out, n, ".side-l{padding:2px 8px 8px;gap:2px;scrollbar-color:var(--alpha-15) transparent}");
+  n = mc(out, n, ".side-m{padding:12px 10px 4px;font:500 11.5px/1 var(--font-sans);letter-spacing:0;text-transform:none;color:#656565}");
+  n = mc(out, n, ".side-f{padding:8px 10px;margin-top:0;border-top:1px solid #1b1b1b;gap:6px;align-items:center}");
+  n = mc(out, n, ".side .row,.side-act{height:32px;min-height:32px;box-sizing:border-box;border-radius:8px;padding:0 10px;color:#b5b5b5;font:500 13px/1 var(--font-sans);border:0;background:transparent;width:100%;display:flex;align-items:center;gap:9px;text-align:left;cursor:pointer;text-decoration:none;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".side-act{color:#ededed}.side .row:hover,.side .row:focus-visible,.side-act:hover,.side-act:focus-visible{background:#141414;color:#ffffff;outline:none}");
+  n = mc(out, n, ".side .row[aria-current=true]{background:#1a1b1b;color:#ffffff}");
+  n = mc(out, n, ".side .row-s{padding-left:10px;font-weight:400;color:#b5b5b5;gap:8px}.side .row-s>.ic{width:14px;height:14px;color:#737373;flex:none}");
+  n = mc(out, n, ".side-cred{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#141414;border:1px solid #262626;color:#9a9a9a;font:500 11.5px/1 var(--font-sans);text-decoration:none;flex:none;transition:background-color var(--as-dur) ease,color var(--as-dur) ease,border-color var(--as-dur) ease}");
+  n = mc(out, n, ".side-cred:hover{background:#1c1c1c;border-color:#383838;color:#ededed}");
+  n = mc(out, n, ".side-f>.row{flex:1;min-width:0;width:auto;height:30px;min-height:30px;padding:0 8px;border-radius:8px;font-size:12.5px;color:#9a9a9a}");
+  n = mc(out, n, ".ib{width:28px;height:28px;border-radius:7px;color:#737373;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".ib:hover,.ib:focus-visible{background:#141414;color:#ededed;outline:none}");
+  n = mc(out, n, ".ib[data-state=side]{top:10px;left:12px;background:#0e0e0e;border:1px solid #242424;color:#9a9a9a;z-index:6}");
+  n = mc(out, n, ".ib[data-state=side]:hover{background:#191919;color:#ededed}");
+  n = mc(out, n, ".ib[data-state=side]~.cc-hud{padding-left:52px}");
 
-  // ---- Cloud Sidebar Search & Conversation Rows
-  n = mc(out, n, ".cc-sbar{display:flex;gap:6px;padding:6px 4px 8px;align-items:center}");
-  n = mc(out, n, ".cc-search{flex:1;min-width:0;height:32px;border-radius:var(--radius-md);background:var(--color-surface);border:0;box-shadow:inset 0 0 0 1px var(--color-border);color:var(--color-text);font:400 13px/1 var(--font-sans);padding:0 10px;transition:box-shadow var(--as-dur) ease}");
-  n = mc(out, n, ".cc-search::placeholder{color:var(--color-text-tertiary)}.cc-search:focus{outline:0;box-shadow:inset 0 0 0 1px var(--alpha-40),0 0 0 2px rgba(2,133,255,.22)}");
-  n = mc(out, n, ".cc-sbtn{appearance:none;display:inline-flex;align-items:center;justify-content:center;height:26px;padding:0 9px;border:0;border-radius:var(--radius-md);background:var(--alpha-08);color:var(--color-text-secondary);font:500 12px/1 var(--font-sans);letter-spacing:0;text-transform:none;cursor:pointer;white-space:nowrap;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
-  n = mc(out, n, ".cc-sbtn:hover,.cc-sbtn:focus-visible{background:var(--alpha-15);color:var(--color-text);outline:0}");
-  n = mc(out, n, ".cc-sbtn[aria-pressed=true]{background:var(--alpha-15);color:var(--color-text)}");
-  n = mc(out, n, ".cc-crow{display:flex;flex-direction:column;gap:5px;padding:8px 10px;border-radius:var(--radius-md);border:0;transition:background-color var(--as-dur) ease}");
-  n = mc(out, n, ".cc-crow:hover{background:var(--alpha-05)}.cc-crow[data-state='current']{background:var(--alpha-10);box-shadow:inset 0 0 0 1px var(--color-border-subtle)}");
-  n = mc(out, n, ".cc-copen{appearance:none;background:none;border:0;color:var(--color-text);text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:0;min-width:0}");
-  n = mc(out, n, ".cc-ctitle{font:500 13px/1.35 var(--font-sans);color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}");
-  n = mc(out, n, ".cc-csub{font:400 11.5px/1.3 var(--font-sans);color:var(--color-text-tertiary);letter-spacing:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}");
-  n = mc(out, n, ".cc-cacts{display:flex;gap:4px;opacity:.55;transition:opacity var(--as-dur) ease}.cc-crow:hover .cc-cacts,.cc-crow:focus-within .cc-cacts,.cc-crow[data-state='current'] .cc-cacts{opacity:1}");
-  n = mc(out, n, ".cc-cacts .cc-sbtn{height:22px;padding:0 7px;font-size:11px;background:var(--alpha-06)}");
-  n = mc(out, n, ".cc-pulse{display:inline-block;margin-right:6px;color:var(--green-400)}");
+  // ---- Desktop-Parity Recents & Projects Sidebar Sections
+  n = mc(out, n, ".cc-sec-hd{display:flex;align-items:center;justify-content:space-between;height:26px;padding:8px 8px 2px;margin-top:4px}");
+  n = mc(out, n, ".cc-sec-lbl{font:500 11.5px/1 var(--font-sans);color:#656565;letter-spacing:0}");
+  n = mc(out, n, ".cc-sec-btn{appearance:none;background:none;border:0;color:#656565;font:500 11px/1 var(--font-sans);padding:3px 6px;border-radius:5px;cursor:pointer;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".cc-sec-btn:hover,.cc-sec-btn[aria-pressed=true]{background:#141414;color:#ededed}");
+  n = mc(out, n, ".cc-sec-hd .ib{width:22px;height:22px;border-radius:6px;color:#656565}");
+  n = mc(out, n, ".cc-sbar{display:flex;gap:6px;padding:4px 2px 6px;align-items:center}");
+  n = mc(out, n, ".cc-search{flex:1;min-width:0;height:28px;border-radius:7px;background:#0a0a0a;border:0;box-shadow:inset 0 0 0 1px #1b1b1b;color:#ededed;font:400 12.5px/1 var(--font-sans);padding:0 9px;transition:box-shadow var(--as-dur) ease}");
+  n = mc(out, n, ".cc-search::placeholder{color:#555555}.cc-search:focus{outline:0;box-shadow:inset 0 0 0 1px #383838}");
+  n = mc(out, n, ".cc-sbtn{appearance:none;display:inline-flex;align-items:center;justify-content:center;height:24px;padding:0 8px;border:0;border-radius:6px;background:rgba(255,255,255,.07);color:#9a9a9a;font:500 11.5px/1 var(--font-sans);letter-spacing:0;text-transform:none;cursor:pointer;white-space:nowrap;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".cc-sbtn:hover,.cc-sbtn:focus-visible{background:rgba(255,255,255,.14);color:#ededed;outline:0}");
+  n = mc(out, n, ".cc-sbtn[aria-pressed=true]{background:rgba(255,255,255,.14);color:#ededed}");
+  n = mc(out, n, ".cc-crow{display:flex;flex-direction:column;gap:0;padding:0 8px;border-radius:8px;transition:background-color var(--as-dur) ease}");
+  n = mc(out, n, ".cc-crow:hover{background:#141414}.cc-crow[data-state='current']{background:#1a1b1b}");
+  n = mc(out, n, ".cc-copen{appearance:none;background:none;border:0;color:#b5b5b5;text-align:left;cursor:pointer;display:flex;align-items:center;gap:8px;height:32px;width:100%;padding:0;min-width:0;outline:none}");
+  n = mc(out, n, ".cc-crow:hover .cc-copen,.cc-crow[data-state='current'] .cc-copen{color:#ededed}");
+  n = mc(out, n, ".cc-ctitle{flex:1;min-width:0;font:400 13px/1.3 var(--font-sans);color:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}");
+  n = mc(out, n, ".cc-crow[data-state='current'] .cc-ctitle{font-weight:500;color:#ffffff}");
+  n = mc(out, n, ".cc-cage{flex:none;font:400 11.5px/1 var(--font-sans);color:#5d5d5d;font-variant-numeric:tabular-nums}");
+  n = mc(out, n, ".cc-cacts{display:flex;gap:4px;max-height:0;overflow:hidden;opacity:0;padding:0;transition:opacity var(--as-dur) ease,max-height var(--as-dur) ease,padding var(--as-dur) ease}");
+  n = mc(out, n, ".cc-crow:hover .cc-cacts,.cc-crow:focus-within .cc-cacts{max-height:28px;opacity:1;padding:0 0 6px}");
+  n = mc(out, n, ".cc-cacts .cc-sbtn{height:20px;padding:0 6px;font-size:10.5px;background:rgba(255,255,255,.06)}");
+  n = mc(out, n, ".cc-ren-acts{display:flex;gap:4px;padding:4px 0 6px}");
+  n = mc(out, n, ".cc-sempty{margin:4px 10px 8px;font:400 12px/1.4 var(--font-sans);color:#555555}");
+  n = mc(out, n, ".cc-pulse{flex:none;font-size:9px;color:#34d399}");
 
-  // ---- Top Cloud HUD Bar (Apps SDK Soft Pill Badges)
-  n = mc(out, n, ".cc-hud{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 24px;border-bottom:1px solid var(--color-border-subtle);background:rgba(13,13,13,.88);backdrop-filter:blur(12px);position:relative;z-index:3}");
-  n = mc(out, n, ".cc-pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border:0;border-radius:var(--radius-full);background:var(--alpha-08);color:var(--color-text-secondary);font:500 12px/1 var(--font-sans);letter-spacing:0;white-space:nowrap}");
-  n = mc(out, n, "#cc\\.hud\\.tier::before{content:'';width:6px;height:6px;border-radius:9999px;background:var(--blue-300);flex:none}");
-  n = mc(out, n, "#cc\\.hud\\.tier.cc-pill-local::before{background:var(--green-400)}");
-  n = mc(out, n, "#cc\\.hud\\.usage{margin-left:auto;background:var(--alpha-05);color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}");
-  n = mc(out, n, ".cc-tbtn{cursor:pointer;color:var(--color-text);background:var(--alpha-06);box-shadow:inset 0 0 0 1px var(--color-border);transition:background-color var(--as-dur) ease,box-shadow var(--as-dur) ease}");
-  n = mc(out, n, ".cc-tbtn:hover,.cc-tbtn[aria-expanded=true]{background:var(--alpha-12);box-shadow:inset 0 0 0 1px var(--color-border-strong)}");
-  n = mc(out, n, ".cc-tmenu{display:flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:var(--radius-xl);background:var(--color-surface-elevated);border:1px solid var(--color-border);box-shadow:var(--shadow-elev)}");
-  n = mc(out, n, ".cc-topt-on{background:#ffffff !important;color:#000000 !important;font-weight:600}");
-  n = mc(out, n, ".cc-pill-local{background:var(--green-a50);color:var(--green-300)}.cc-pill-live{background:var(--blue-a50);color:var(--blue-200)}");
-  n = mc(out, n, ".cc-recon{background:var(--orange-a50);color:var(--orange-300);box-shadow:inset 0 0 0 1px var(--orange-a75)}");
+  // ---- Minimal 48px Desktop Header Bar (title left, quiet monochrome pills right — zero raw blue badges)
+  n = mc(out, n, ".cc-hud{display:flex;align-items:center;justify-content:space-between;gap:12px;height:48px;min-height:48px;box-sizing:border-box;padding:0 20px;border-bottom:1px solid #1b1b1b;background:#000000;position:relative;z-index:3;flex:none}");
+  n = mc(out, n, ".cc-hud-title{font:500 13.5px/1 var(--font-sans);color:#ededed;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}");
+  n = mc(out, n, ".cc-hud-r{display:flex;align-items:center;gap:6px;flex:none;min-width:0}");
+  n = mc(out, n, ".cc-pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border:1px solid #242424;border-radius:9999px;background:#0e0e0e;color:#9a9a9a;font:500 11.5px/1 var(--font-sans);letter-spacing:0;white-space:nowrap}");
+  n = mc(out, n, "#cc\\.hud\\.tier::before{content:'';width:5px;height:5px;border-radius:9999px;background:#737373;flex:none}");
+  n = mc(out, n, "#cc\\.hud\\.tier.cc-pill-local::before{background:#34d399}");
+  n = mc(out, n, ".cc-pill-usage{background:transparent;border-color:transparent;color:#656565;padding:0 4px;font-weight:400;font-variant-numeric:tabular-nums}");
+  n = mc(out, n, ".cc-pill-local{border-color:rgba(52,211,153,.28);background:rgba(52,211,153,.08);color:#34d399}");
+  n = mc(out, n, ".cc-pill-live{border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.10);color:#34d399}");
+  n = mc(out, n, ".cc-recon{border-color:var(--orange-a75);background:var(--orange-a25);color:var(--orange-300)}");
 
-  // ---- Transcript, Empty Welcome Hero + SuggestionChips, User/Assistant Bubbles, CodeBlock & Steps
-  n = mc(out, n, ".vl-scroll{overflow-y:auto;flex:1;min-height:0;scrollbar-color:var(--alpha-15) transparent}.vl-pad{flex-shrink:0;pointer-events:none}");
-  n = mc(out, n, ".log .thread{padding:20px 0 28px;gap:0;margin-bottom:auto}");
+  // ---- Transcript, Empty Welcome Hero + SuggestionChips, User/Assistant Bubbles, Grouped Activity & CodeBlocks
+  n = mc(out, n, ".log.vl-scroll{display:flex;flex-direction:column;overflow-y:auto;flex:1;min-height:0;scrollbar-color:var(--alpha-15) transparent}.vl-pad{flex-shrink:0;pointer-events:none}");
+  n = mc(out, n, ".log .thread{padding:24px 0 32px;gap:0;margin-bottom:auto}");
   n = mc(out, n, ".log .thread:has(.cc-welcome){margin:auto;padding:24px 0}");
-  n = mc(out, n, ".cc-welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:24px 16px;max-width:640px;margin:0 auto}");
-  n = mc(out, n, ".cc-welcome-ic{width:46px;height:46px;border-radius:14px;background:var(--color-surface-elevated);border:1px solid var(--color-border);color:var(--color-text);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-elev)}");
-  n = mc(out, n, ".cc-welcome-t{margin:0;font:600 24px/1.25 var(--font-sans);letter-spacing:-.025em;color:var(--color-text)}");
-  n = mc(out, n, ".cc-welcome-s{margin:0;max-width:48ch;font:400 14px/1.55 var(--font-sans);color:var(--color-text-tertiary)}");
-  n = mc(out, n, ".cc-welcome-chips{justify-content:center;margin-top:6px}");
+  n = mc(out, n, ".cc-welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;padding:24px 16px;max-width:600px;margin:0 auto}");
+  n = mc(out, n, ".cc-welcome-ic{width:44px;height:44px;border-radius:12px;background:#0e0e0e;border:1px solid #242424;color:#ededed;display:flex;align-items:center;justify-content:center}");
+  n = mc(out, n, ".cc-welcome-svg{width:22px;height:22px;color:#ededed}");
+  n = mc(out, n, ".cc-welcome-t{margin:0;font:600 22px/1.25 var(--font-sans);letter-spacing:-.025em;color:#ededed}");
+  n = mc(out, n, ".cc-welcome-s{margin:0;max-width:46ch;font:400 13.5px/1.55 var(--font-sans);color:#737373}");
+  n = mc(out, n, ".cc-welcome-chips{justify-content:center;margin-top:8px}");
   n = mc(out, n, ".cc-row{display:flex;flex-direction:column;width:100%}");
-  n = mc(out, n, ".msg-user{align-self:flex-end;max-width:78%;padding:11px 16px;border-radius:18px;background:var(--gray-200);border:1px solid var(--color-border-subtle);color:var(--color-text);font:400 15px/1.55 var(--font-sans)}");
-  n = mc(out, n, ".log .msg-user{margin-top:24px}");
-  n = mc(out, n, ".msg-ai{margin-top:16px;gap:8px;color:var(--gray-900)}");
-  n = mc(out, n, ".md{font:400 15px/1.65 var(--font-sans);color:var(--gray-900);gap:14px}");
-  n = mc(out, n, ".md h1,.md h2,.md h3,.md h4{margin:6px 0 0;font-family:var(--font-sans);font-weight:600;letter-spacing:-.015em;color:var(--color-text)}");
-  n = mc(out, n, ".md code{padding:2px 6px;border-radius:5px;background:var(--alpha-10);color:var(--color-text);font:400 13px/1.4 var(--font-mono)}");
+  n = mc(out, n, ".msg-user{align-self:flex-end;max-width:80%;padding:10px 16px;border-radius:18px;background:#141414;border:1px solid #242424;color:#ededed;font:400 15px/1.55 var(--font-sans)}");
+  n = mc(out, n, ".log .msg-user{margin-top:24px}.cc-row:first-child .msg-user{margin-top:0}");
+  n = mc(out, n, ".msg-ai{margin-top:12px;gap:8px;color:#ededed}");
+  n = mc(out, n, ".md{font:400 15px/1.65 var(--font-sans);color:#ededed;gap:14px}");
+  n = mc(out, n, ".md h1,.md h2,.md h3,.md h4{margin:6px 0 0;font-family:var(--font-sans);font-weight:600;letter-spacing:-.015em;color:#f5f5f5}");
+  n = mc(out, n, ".md :not(pre)>code{padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.08);color:#ededed;font:400 13px/1.4 var(--font-mono)}");
+  n = mc(out, n, ".md-code-body{display:block;padding:0;background:transparent;border-radius:0;font:inherit}.md-code-line{display:block;min-height:1.55em}");
   n = mc(out, n, ".md a{color:var(--blue-200);text-decoration-color:rgba(102,181,255,.4)}.md a:hover{color:var(--blue-300);text-decoration-color:var(--blue-300)}");
-  n = mc(out, n, ".md blockquote{padding:8px 14px;border-left:2px solid var(--blue-400);background:var(--alpha-04);border-radius:0 var(--radius-md) var(--radius-md) 0;color:var(--color-text-secondary)}");
-  n = mc(out, n, ".md table{width:100%;border-collapse:collapse;font:400 13.5px/1.45 var(--font-sans);background:var(--color-surface-secondary);border-radius:var(--radius-xl);overflow:hidden;border:1px solid var(--color-border)}");
-  n = mc(out, n, ".md th{padding:10px 14px;font:600 12px/1.2 var(--font-sans);letter-spacing:0;text-transform:none;color:var(--color-text-tertiary);background:var(--alpha-04);border-bottom:1px solid var(--color-border)}");
-  n = mc(out, n, ".md td{padding:10px 14px;color:var(--color-text);border-bottom:1px solid var(--color-border-subtle)}");
-  n = mc(out, n, ".acts{gap:8px;margin-left:0;margin-top:4px}.acts .meta{margin-left:0;font:400 12px/1.3 var(--font-sans);letter-spacing:0;text-transform:none;color:var(--color-text-tertiary)}");
-  n = mc(out, n, ".md-code-block,.code{border-radius:var(--radius-xl);border:1px solid var(--color-border);background:var(--color-surface-secondary);overflow:hidden;margin:8px 0}");
-  n = mc(out, n, ".md-code-hdr,.code-h{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--color-border-subtle);background:var(--alpha-04);font:500 12px/1 var(--font-mono);color:var(--color-text-tertiary)}");
-  n = mc(out, n, ".md-code-copy{appearance:none;background:transparent;border:0;border-radius:var(--radius-sm);color:var(--color-text-secondary);font:500 12px/1 var(--font-sans);height:24px;padding:0 8px;cursor:pointer;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
-  n = mc(out, n, ".md-code-copy:hover{background:var(--alpha-10);color:var(--color-text)}");
-  n = mc(out, n, ".md-pre,.code pre{margin:0;padding:14px 16px;overflow-x:auto;font:400 13px/1.55 var(--font-mono);color:var(--gray-900)}");
-  n = mc(out, n, ".syn-kw{color:var(--purple-300);font-weight:500}.syn-str{color:var(--green-300)}.syn-com{color:var(--gray-550)}.syn-num{color:var(--blue-200)}");
-  n = mc(out, n, ".cc-think,.cc-tool{margin-top:10px;border-radius:var(--radius-xl);border:1px solid var(--color-border-subtle);background:var(--color-surface-secondary);padding:10px 14px;display:flex;flex-direction:column;gap:8px}");
-  n = mc(out, n, ".cc-tool-fail{border-color:var(--red-a75);background:var(--red-a25)}");
-  n = mc(out, n, ".cc-trig{appearance:none;background:none;border:0;color:var(--color-text-secondary);font:500 13px/1.35 var(--font-sans);letter-spacing:0;text-transform:none;text-align:left;cursor:pointer;padding:0;transition:color var(--as-dur) ease}");
-  n = mc(out, n, ".cc-trig:hover{color:var(--color-text)}");
-  n = mc(out, n, ".cc-think-body{font:400 13.5px/1.55 var(--font-sans);color:var(--color-text-secondary);white-space:pre-wrap;padding-top:4px;border-top:1px solid var(--color-border-subtle)}");
-  n = mc(out, n, ".cc-code,.cc-diff{margin:0;padding:10px 12px;border-radius:var(--radius-lg);background:var(--color-surface);border:1px solid var(--color-border-subtle);font:400 12.5px/1.5 var(--font-mono);overflow-x:auto}");
-  n = mc(out, n, ".cc-diff-add{color:var(--green-300);background:rgba(4,184,76,.14)}.cc-diff-del{color:var(--red-300);background:rgba(250,66,62,.14)}.cc-diff-hdr{color:var(--color-text-tertiary)}");
-  n = mc(out, n, ".notice{margin-top:14px;border-radius:var(--radius-xl);background:var(--red-a25);border:1px solid var(--red-a75);padding:14px 16px;gap:4px}");
-  n = mc(out, n, ".notice-k{font:600 12px/1.3 var(--font-sans);letter-spacing:.02em;text-transform:none;color:var(--red-300)}.notice-t{font:400 13.5px/1.5 var(--font-sans);color:var(--color-text)}");
-  n = mc(out, n, ".cc-login{max-width:440px;margin:auto;padding:28px;border-radius:var(--radius-2xl);border:1px solid var(--color-border);background:var(--color-surface-elevated);box-shadow:var(--shadow-elev);display:flex;flex-direction:column;gap:14px}");
-  n = mc(out, n, ".cc-login .hd-t{font:600 20px/1.3 var(--font-sans);letter-spacing:-.02em;text-transform:none;color:var(--color-text)}");
-  n = mc(out, n, ".cc-login .lede{font:400 14px/1.55 var(--font-sans);color:var(--color-text-secondary)}");
-  n = mc(out, n, ".cc-login .btn{align-self:flex-start;height:40px;padding:0 22px;border-radius:var(--radius-full);background:#ffffff;color:#000000;font:600 14px/1 var(--font-sans);letter-spacing:0;text-transform:none}");
-  n = mc(out, n, ".cc-login .btn:hover{background:#e5e5e5}");
-  n = mc(out, n, ".cc-jump{position:sticky;bottom:14px;align-self:center;appearance:none;height:32px;padding:0 14px;border-radius:var(--radius-full);background:var(--color-surface-elevated);border:1px solid var(--color-border-strong);color:var(--color-text);font:500 12.5px/1 var(--font-sans);box-shadow:var(--shadow-elev);cursor:pointer}");
-  n = mc(out, n, ".cc-jump:hover{background:var(--color-surface-elevated-secondary)}");
+  n = mc(out, n, ".md blockquote{padding:8px 14px;border-left:2px solid #383838;background:rgba(255,255,255,.03);border-radius:0 6px 6px 0;color:#9a9a9a}");
+  n = mc(out, n, ".md table{width:100%;border-collapse:collapse;font:400 13.5px/1.45 var(--font-sans);background:#0a0a0a;border-radius:12px;overflow:hidden;border:1px solid #242424}");
+  n = mc(out, n, ".md th{padding:10px 14px;font:600 12px/1.2 var(--font-sans);letter-spacing:0;text-transform:none;color:#737373;background:rgba(255,255,255,.03);border-bottom:1px solid #242424}");
+  n = mc(out, n, ".md td{padding:10px 14px;color:#ededed;border-bottom:1px solid #1b1b1b}");
+  n = mc(out, n, ".acts{gap:8px;margin-left:0;margin-top:6px}.acts .meta{margin-left:0;font:400 12px/1.3 var(--font-sans);letter-spacing:0;text-transform:none;color:#656565}");
+  n = mc(out, n, ".md-code-block,.code{border-radius:12px;border:1px solid #242424;background:#0a0a0a;overflow:hidden;margin:8px 0}");
+  n = mc(out, n, ".md-code-hdr,.code-h{display:flex;justify-content:space-between;align-items:center;height:32px;padding:0 12px;border-bottom:1px solid #1b1b1b;background:rgba(255,255,255,.02);font:500 12px/1 var(--font-mono);color:#737373}");
+  n = mc(out, n, ".md-code-copy{appearance:none;background:transparent;border:0;border-radius:5px;color:#9a9a9a;font:500 12px/1 var(--font-sans);height:24px;padding:0 8px;cursor:pointer;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".md-code-copy:hover{background:rgba(255,255,255,.08);color:#ededed}");
+  n = mc(out, n, ".md-pre,.code pre{margin:0;padding:12px 14px;overflow-x:auto;font:400 13px/1.55 var(--font-mono);color:#ededed}");
+  n = mc(out, n, ".syn-kw{color:var(--purple-300);font-weight:500}.syn-str{color:var(--green-300)}.syn-com{color:#656565}.syn-num{color:var(--blue-200)}");
 
-  // ---- Elevated Obsidian Composer (20px radius, blue focus ring, solid white pill Send/Stop)
-  n = mc(out, n, ".composer{border-radius:var(--radius-3xl);background:var(--color-surface-elevated);border:1px solid var(--color-border-strong);padding:14px 16px 12px;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.35);transition:border-color var(--as-dur) ease,box-shadow var(--as-dur) ease}");
-  n = mc(out, n, ".composer:focus-within{border-color:var(--alpha-30);box-shadow:0 4px 24px rgba(0,0,0,.45),0 0 0 2px rgba(2,133,255,.28)}");
-  n = mc(out, n, ".composer textarea,.composer textarea.field{width:100%;max-width:none;padding:2px 0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none !important;outline:0;font:400 15px/1.55 var(--font-sans);color:var(--color-text);min-height:28px}");
-  n = mc(out, n, ".composer textarea::placeholder{color:var(--color-text-tertiary)}");
-  n = mc(out, n, ".composer-r{gap:8px}.composer-r .ib{width:32px;height:32px;border-radius:var(--radius-full);color:var(--color-text-secondary)}");
-  n = mc(out, n, ".sel{height:32px;padding:0 12px;border-radius:var(--radius-full);background:var(--alpha-06);box-shadow:inset 0 0 0 1px var(--color-border);color:var(--color-text-secondary);font:500 13px/1 var(--font-sans);letter-spacing:0;text-transform:none;transition:background-color var(--as-dur) ease,color var(--as-dur) ease,box-shadow var(--as-dur) ease}");
-  n = mc(out, n, ".sel:hover,.sel:focus-visible,.sel[aria-expanded=true]{background:var(--alpha-10);color:var(--color-text);box-shadow:inset 0 0 0 1px var(--color-border-strong)}");
-  n = mc(out, n, ".menu,.menu.pop{border-radius:var(--radius-xl);background:var(--color-surface-elevated);border:1px solid var(--color-border);padding:5px;box-shadow:var(--shadow-elev)}");
-  n = mc(out, n, ".menu .row{border-radius:var(--radius-md);padding:8px 10px;color:var(--color-text-secondary);font:400 13px/1.3 var(--font-sans)}");
-  n = mc(out, n, ".menu .row:hover,.menu .row:focus-visible{background:var(--alpha-08);color:var(--color-text)}");
-  n = mc(out, n, ".menu .row[aria-current=true]{background:var(--alpha-12);color:var(--color-text);font-weight:500}");
-  n = mc(out, n, ".btn{display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 15px;border-radius:var(--radius-md);background:var(--alpha-10);color:var(--color-text);font:500 13px/1 var(--font-sans);letter-spacing:0;text-transform:none;transition:background-color var(--as-dur) ease,color var(--as-dur) ease,transform 100ms ease}");
-  n = mc(out, n, ".btn:hover:not([disabled]){background:var(--alpha-15)}.btn:active:not([disabled]){transform:scale(.98)}");
-  n = mc(out, n, ".btn[data-state=primary]{background:#ffffff;color:#000000;font-weight:600}.btn[data-state=primary]:hover:not([disabled]){background:#e5e5e5}");
-  n = mc(out, n, ".btn[disabled]{background:var(--alpha-08);color:var(--color-text-tertiary);cursor:not-allowed}");
-  n = mc(out, n, ".composer-r>.btn{height:34px;padding:0 18px;border-radius:var(--radius-full)}");
-  n = mc(out, n, ".lk{height:30px;padding:0 12px;border-radius:var(--radius-md);background:var(--alpha-06);box-shadow:inset 0 0 0 1px var(--color-border);color:var(--color-text);font:500 12.5px/1 var(--font-sans);letter-spacing:0;text-transform:none}");
-  n = mc(out, n, ".lk:hover,.lk:focus-visible{background:var(--alpha-12);color:var(--color-text);box-shadow:inset 0 0 0 1px var(--color-border-strong)}");
+  // ---- Desktop-Parity Compact Collapsible Activity Groups ("Thought process · ran N tools")
+  n = mc(out, n, ".cc-act{margin-top:14px;display:flex;flex-direction:column;gap:4px}");
+  n = mc(out, n, ".cc-act-hd{appearance:none;background:none;border:0;padding:3px 0;display:inline-flex;align-items:center;gap:6px;align-self:flex-start;color:#818181;font:400 13px/1.4 var(--font-sans);cursor:pointer;outline:none;transition:color var(--as-dur) ease}");
+  n = mc(out, n, ".cc-act-hd:hover{color:#cdcdcd}.cc-act-lbl{font:inherit;color:inherit}.cc-act-chev{width:12px;height:12px;color:#656565;flex:none}");
+  n = mc(out, n, ".cc-act-list{display:flex;flex-direction:column;gap:1px;padding:4px;border-radius:10px;border:1px solid #1b1b1b;background:#050505}");
+  n = mc(out, n, ".cc-act-list[hidden],.cc-act-list[data-state=closed]{display:none}");
+  n = mc(out, n, ".cc-titem{display:flex;flex-direction:column;border-radius:6px}");
+  n = mc(out, n, ".cc-titem-fail .cc-tlabel{color:var(--red-300)}");
+  n = mc(out, n, ".cc-trow{appearance:none;background:transparent;border:0;width:100%;display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:6px;color:#9a9a9a;font:400 12.5px/1.35 var(--font-sans);text-align:left;cursor:pointer;outline:none;transition:background-color var(--as-dur) ease,color var(--as-dur) ease}");
+  n = mc(out, n, ".cc-trow:hover{background:rgba(255,255,255,.04);color:#ededed}");
+  n = mc(out, n, ".cc-tlabel,.cc-tname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}");
+  n = mc(out, n, ".cc-tchk{width:12px;height:12px;color:#656565;flex:none}");
+  n = mc(out, n, ".cc-tdot{width:6px;height:6px;border-radius:9999px;background:#656565;flex:none;margin:0 3px}");
+  n = mc(out, n, ".cc-tdot-run{background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.18)}");
+  n = mc(out, n, ".cc-tdot-fail{background:#fb414a}");
+  n = mc(out, n, ".cc-tstatus{flex:none;font:400 11px/1 var(--font-sans);color:#656565}.cc-tstatus-fail{color:#fb414a}");
+  n = mc(out, n, ".cc-tchev{width:11px;height:11px;color:#555555;flex:none}");
+  n = mc(out, n, ".cc-think-body{font:400 13px/1.55 var(--font-sans);color:#818181;white-space:pre-wrap;padding:6px 10px 8px 26px}");
+  n = mc(out, n, ".cc-think-body[hidden],.cc-think-body[data-state=closed],.cc-tool-body[hidden],.cc-tool-body[data-state=closed]{display:none}");
+  n = mc(out, n, ".cc-tool-body{display:flex;flex-direction:column;gap:6px;padding:4px 10px 8px 26px}");
+  n = mc(out, n, ".cc-appr-row{display:flex;gap:6px;padding-top:4px}");
+  n = mc(out, n, ".cc-code,.cc-diff{margin:0;padding:8px 10px;border-radius:8px;background:#0a0a0a;border:1px solid #1b1b1b;font:400 12px/1.5 var(--font-mono);color:#b5b5b5;overflow-x:auto;max-height:260px}");
+  n = mc(out, n, ".cc-diff-add{color:var(--green-300);background:rgba(4,184,76,.14)}.cc-diff-del{color:var(--red-300);background:rgba(250,66,62,.14)}.cc-diff-hdr{color:#656565}");
+
+  n = mc(out, n, ".notice{margin-top:14px;border-radius:12px;background:var(--red-a25);border:1px solid var(--red-a75);padding:12px 14px;gap:4px}");
+  n = mc(out, n, ".notice-k{font:600 12px/1.3 var(--font-sans);letter-spacing:.02em;text-transform:none;color:var(--red-300)}.notice-t{font:400 13.5px/1.5 var(--font-sans);color:#ededed}");
+  n = mc(out, n, ".cc-login{max-width:440px;margin:auto;padding:28px;border-radius:16px;border:1px solid #242424;background:#0e0e0e;display:flex;flex-direction:column;gap:14px}");
+  n = mc(out, n, ".cc-login .hd-t{font:600 20px/1.3 var(--font-sans);letter-spacing:-.02em;text-transform:none;color:#ededed}");
+  n = mc(out, n, ".cc-login .lede{font:400 14px/1.55 var(--font-sans);color:#9a9a9a}");
+  n = mc(out, n, ".cc-login .btn{align-self:flex-start;height:38px;padding:0 20px;border-radius:9999px;background:#ededed;color:#0a0a0a;font:600 13.5px/1 var(--font-sans);letter-spacing:0;text-transform:none}");
+  n = mc(out, n, ".cc-login .btn:hover{background:#ffffff}");
+  n = mc(out, n, ".cc-jump{position:sticky;bottom:14px;align-self:center;appearance:none;height:30px;padding:0 14px;border-radius:9999px;background:#141414;border:1px solid #2c2c2c;color:#ededed;font:500 12px/1 var(--font-sans);cursor:pointer}");
+  n = mc(out, n, ".cc-jump:hover{background:#1c1c1c}");
+
+  // ---- Desktop-Parity Rounded Obsidian Composer (#0e0e0e, 1px #2c2c2c, 20px radius, solid white Send pill)
+  n = mc(out, n, ".composer{border-radius:20px;background:#0e0e0e;border:1px solid #2c2c2c;padding:12px 14px 10px;gap:8px;box-shadow:none;transition:border-color var(--as-dur) ease}");
+  n = mc(out, n, ".composer:focus-within{border-color:#404040;box-shadow:none}");
+  n = mc(out, n, ".composer textarea,.composer textarea.field{width:100%;max-width:none;padding:2px 2px;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none !important;outline:0;font:400 14.5px/1.55 var(--font-sans);color:#ededed;min-height:26px}");
+  n = mc(out, n, ".composer textarea::placeholder{color:#656565}");
+  n = mc(out, n, ".composer-r{gap:6px;align-items:center}.composer-r .ib{width:30px;height:30px;border-radius:9999px;color:#818181}");
+  n = mc(out, n, ".sel{height:30px;padding:0 11px;border-radius:9999px;background:transparent;box-shadow:inset 0 0 0 1px #262626;color:#9a9a9a;font:500 12.5px/1 var(--font-sans);letter-spacing:0;text-transform:none;cursor:pointer;transition:background-color var(--as-dur) ease,color var(--as-dur) ease,box-shadow var(--as-dur) ease}");
+  n = mc(out, n, ".sel:hover,.sel:focus-visible,.sel[aria-expanded=true]{background:#141414;color:#ededed;box-shadow:inset 0 0 0 1px #383838;outline:none}");
+  n = mc(out, n, ".cc-tanchor{position:relative;display:inline-flex;align-items:center}");
+  n = mc(out, n, ".cc-tbtn-local{color:#34d399;box-shadow:inset 0 0 0 1px rgba(52,211,153,.32)}");
+  n = mc(out, n, ".cc-tmenu{position:absolute;left:0;bottom:calc(100% + 8px);z-index:30;width:200px;min-width:180px;display:flex;flex-direction:column;gap:2px}");
+  n = mc(out, n, ".cc-topt{border:0;background:transparent;width:100%;text-align:left;cursor:pointer}");
+  n = mc(out, n, ".cc-topt-on{background:#1c1c1c !important;color:#ffffff !important;font-weight:500}");
+  n = mc(out, n, ".menu,.menu.pop{border-radius:12px;background:#141414;border:1px solid #262626;padding:4px;box-shadow:0 10px 30px rgba(0,0,0,.65)}");
+  n = mc(out, n, ".menu .row{border-radius:7px;padding:7px 10px;color:#b5b5b5;font:400 13px/1.3 var(--font-sans)}");
+  n = mc(out, n, ".menu .row:hover,.menu .row:focus-visible{background:rgba(255,255,255,.07);color:#ffffff;outline:none}");
+  n = mc(out, n, ".menu .row[aria-current=true]{background:rgba(255,255,255,.10);color:#ffffff;font-weight:500}");
+  n = mc(out, n, ".btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 14px;border-radius:8px;background:rgba(255,255,255,.09);color:#ededed;font:500 13px/1 var(--font-sans);letter-spacing:0;text-transform:none;transition:background-color var(--as-dur) ease,color var(--as-dur) ease,transform 100ms ease}");
+  n = mc(out, n, ".btn:hover:not([disabled]){background:rgba(255,255,255,.15)}.btn:active:not([disabled]){transform:scale(.98)}");
+  n = mc(out, n, ".btn[data-state=primary]{background:#ededed;color:#0a0a0a;font-weight:600}.btn[data-state=primary]:hover:not([disabled]){background:#ffffff}");
+  n = mc(out, n, ".btn[disabled]{background:#191919;color:#555555;cursor:not-allowed}");
+  n = mc(out, n, ".composer-r>.btn{height:32px;padding:0 16px;border-radius:9999px}");
+  n = mc(out, n, ".lk{height:30px;padding:0 12px;border-radius:8px;background:#141414;box-shadow:inset 0 0 0 1px #262626;color:#ededed;font:500 12.5px/1 var(--font-sans);letter-spacing:0;text-transform:none}");
+  n = mc(out, n, ".lk:hover,.lk:focus-visible{background:#1c1c1c;color:#ffffff;box-shadow:inset 0 0 0 1px #383838}");
 
   // ---- Settings, Home Dashboard & Projects Cards inside /chat
-  n = mc(out, n, ".home{background:var(--color-surface)}.side~.st{margin-left:280px}");
-  n = mc(out, n, ".st-nav{background:var(--color-surface);border-right:1px solid var(--color-border-subtle);padding:16px 10px}");
-  n = mc(out, n, ".st-nav .row{border-radius:var(--radius-md);padding:8px 10px;color:var(--color-text-secondary);font:500 13px/1.3 var(--font-sans)}");
-  n = mc(out, n, ".st-nav .row:hover{background:var(--alpha-06);color:var(--color-text)}.st-nav .row[aria-current=true]{background:var(--alpha-10);color:var(--color-text)}");
-  n = mc(out, n, ".st-b{padding:28px 32px 96px;gap:28px}.st-t{font:600 22px/1.3 var(--font-sans);letter-spacing:-.02em;color:var(--color-text)}");
-  n = mc(out, n, ".st-g .sec-h{font:600 12px/1.3 var(--font-sans);letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-tertiary)}");
-  n = mc(out, n, ".st-l,.card{background:var(--color-surface-elevated);border:1px solid var(--color-border);border-radius:var(--radius-2xl);overflow:hidden}");
-  n = mc(out, n, ".st-r{padding:15px 20px}.st-r+.st-r{border-top:1px solid var(--color-border-subtle)}");
-  n = mc(out, n, ".st-n{font:500 14px/1.4 var(--font-sans);color:var(--color-text)}.st-a{font:400 13px/1.45 var(--font-sans);color:var(--color-text-secondary)}");
-  n = mc(out, n, ".st-v{font:500 12.5px/1.3 var(--font-mono);color:var(--color-text);padding:4px 10px;border-radius:var(--radius-full);background:var(--alpha-08)}");
-  n = mc(out, n, ".field{border-radius:var(--radius-md);background:var(--color-surface);box-shadow:inset 0 0 0 1px var(--color-border-strong);padding:8px 12px;transition:box-shadow var(--as-dur) ease}");
-  n = mc(out, n, ".field:focus-within{box-shadow:inset 0 0 0 1px var(--alpha-50),0 0 0 2px rgba(2,133,255,.25)}");
-  n = mc(out, n, ".field input{font:400 14px/1.4 var(--font-sans);color:var(--color-text)}");
-  n = mc(out, n, ".sw{font:500 12.5px/1 var(--font-sans);letter-spacing:0;text-transform:none;color:var(--color-text-secondary)}");
+  n = mc(out, n, ".home{background:#000000}.side~.st{margin-left:260px}");
+  n = mc(out, n, ".st-nav{background:#000000;border-right:1px solid #1b1b1b;padding:16px 10px}");
+  n = mc(out, n, ".st-nav .row{border-radius:8px;padding:8px 10px;color:#9a9a9a;font:500 13px/1.3 var(--font-sans)}");
+  n = mc(out, n, ".st-nav .row:hover{background:#141414;color:#ededed}.st-nav .row[aria-current=true]{background:#1a1b1b;color:#ffffff}");
+  n = mc(out, n, ".st-b{padding:28px 32px 96px;gap:28px}.st-t{font:600 22px/1.3 var(--font-sans);letter-spacing:-.02em;color:#ededed}");
+  n = mc(out, n, ".st-g .sec-h{font:600 12px/1.3 var(--font-sans);letter-spacing:.04em;text-transform:uppercase;color:#656565}");
+  n = mc(out, n, ".st-l,.card{background:#0e0e0e;border:1px solid #242424;border-radius:14px;overflow:hidden}");
+  n = mc(out, n, ".st-r{padding:15px 20px}.st-r+.st-r{border-top:1px solid #1b1b1b}");
+  n = mc(out, n, ".st-n{font:500 14px/1.4 var(--font-sans);color:#ededed}.st-a{font:400 13px/1.45 var(--font-sans);color:#9a9a9a}");
+  n = mc(out, n, ".st-v{font:500 12.5px/1.3 var(--font-mono);color:#ededed;padding:4px 10px;border-radius:9999px;background:rgba(255,255,255,.07)}");
+  n = mc(out, n, ".field{border-radius:8px;background:#000000;box-shadow:inset 0 0 0 1px #2c2c2c;padding:8px 12px;transition:box-shadow var(--as-dur) ease}");
+  n = mc(out, n, ".field:focus-within{box-shadow:inset 0 0 0 1px #404040}");
+  n = mc(out, n, ".field input{font:400 14px/1.4 var(--font-sans);color:#ededed}");
+  n = mc(out, n, ".sw{font:500 12.5px/1 var(--font-sans);letter-spacing:0;text-transform:none;color:#9a9a9a}");
   n = mc(out, n, ".sw-k{width:36px;height:20px;border-radius:9999px;border:0;background:var(--gray-350);transition:background-color 200ms var(--cubic-move)}");
   n = mc(out, n, ".sw-k::after{top:2px;left:2px;width:16px;height:16px;border-radius:9999px;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,.4);transition:left 200ms var(--cubic-move)}");
   n = mc(out, n, ".sw[aria-pressed=true] .sw-k{background:var(--blue-400)}.sw[aria-pressed=true] .sw-k::after{left:18px;background:#ffffff}");
-  n = mc(out, n, ".wk-h{border-radius:var(--radius-md)}.wk-h:hover{background:var(--alpha-06)}");
-  n = mc(out, n, "@media (max-width:760px){.chat:has(.side){margin-left:0}.side~.st{margin-left:0}.cc-hud{padding:10px 14px 10px 52px}#cc\\.hud\\.usage{margin-left:0}.slot .chat{padding:0}}");
+  n = mc(out, n, ".wk-h{border-radius:8px}.wk-h:hover{background:#141414}");
+  n = mc(out, n, "@media (max-width:760px){.chat:has(.side){margin-left:0}.side~.st{margin-left:0}.cc-hud{padding:0 14px 0 52px}.cc-pill-usage{display:none}.slot .chat{padding:0}}");
   return n;
 }
 
