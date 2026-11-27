@@ -1,11 +1,7 @@
 # OpenAgents
 
-Native macOS & iOS workspace for Antigravity, paired directly over Tailscale.
+Open-source agent workspace across Web, macOS, and iOS.
 
-- **Download for Mac (macOS 15+ Universal):** [OpenAgents.dmg](/downloads/OpenAgents.dmg)
-- **Join the iOS TestFlight:** [testflight.apple.com/join/dvQdns5B](https://testflight.apple.com/join/dvQdns5B)
-- **Build from source for Windows and Linux:** [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents)
-  - Linux: `git clone --depth 1 https://github.com/OpenAgentsInc/openagents.git && cd openagents && apps/openagents-desktop/linux/build.sh`
-  - Windows: `git clone --depth 1 https://github.com/OpenAgentsInc/openagents.git && cd openagents && apps/openagents-desktop/windows/build.sh`
+**v1.0.0 Coming Soon** — Launching **Monday, November 30, 2026 at 12:00 PM CT** (`2026-11-30T12:00:00-06:00`).
 
 © 2026 OpenAgents, Inc.
