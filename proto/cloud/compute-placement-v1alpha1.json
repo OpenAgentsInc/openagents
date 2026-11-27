@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "title": "OpenAgents Cloud Metered Sandbox Compute & Auto Placement Wire Contracts (v1alpha1)",
+  "contracts": [
+    {
+      "id": "openagents.cloud.sandbox-meter.res.v1alpha1",
+      "description": "Response from POST /api/chat/sandbox/meter/v1 settling sandbox compute seconds against inference.credit.",
+      "fields": {
+        "schema": "openagents.cloud.sandbox-meter.res.v1alpha1",
+        "turn_id": "string (trn_<32hex>)",
+        "compute": "string (local | sandbox)",
+        "seconds": "integer >= 0",
+        "debit_msat": "integer >= 0 (strictly 0 when compute == local)",
+        "total_cost_msat": "integer >= 0",
+        "credit_msat": "integer >= 0"
+      }
+    },
+    {
+      "id": "openagents.cloud.placement.res.v1alpha1",
+      "description": "Response from POST /api/chat/placement/v1 resolving Auto execution tier (Cloud Tools vs Enrolled Computer $0 vs Cloud Sandbox).",
+      "fields": {
+        "schema": "openagents.cloud.placement.res.v1alpha1",
+        "tier": "integer (1=cloud_tools, 2=computer, 3=sandbox)",
+        "compute": "string (cloud | local | sandbox)",
+        "host_pubkey": "string (empty or 64-hex enrolled host)",
+        "host_name": "string",
+        "reason": "string (human-readable placement explanation)",
+        "sandbox_rate_usd_micros_hr": "integer >= 0",
+        "credit_msat": "integer >= 0"
+      }
+    }
+  ]
+}

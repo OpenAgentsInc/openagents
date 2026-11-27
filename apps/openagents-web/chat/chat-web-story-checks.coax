@@ -800,3 +800,41 @@ cwc_t_drive :: (s: [] ChatWeb, op: string) -> string {
   #assert !s[0].cc[0].remote_running && sc_by_text(t, "Sandbox · google/gemini-4-neon") >= 0;
   #assert sc_by_text(t, "All checks passed in cloud sandbox.") >= 0;
 }
+
+#test "14129 Story+Scene+Play: HUD and Settings show sandbox+inference spend, Auto routes code turn to $0 online computer, and 402 surfaces credit prompt" #steps 120000000 {
+  h: [1] CwTest; s := h[0].s[..];
+  ops: [1] CwcTestLog;
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  sw_envs_read(s[0].set[..], 200, "env cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc|MacBook Pro M4|darwin|1|1000|1|OpenAgentsInc/openagents\n");
+  cw_test_path(s, "/chat");
+  cwc_t_drain(s, ops[..]);
+
+  li := cwc_t_find_open(ops[..], "/api/chat/v2/conversations");
+  lb: [256] u8;
+  cwc_t_http_reply(s, ops[0].opens[li].slot, 200, cwc_t_list_json(lb[..], ""));
+  ui := cwc_t_find_open(ops[..], "/api/v1/inference/usage");
+  if ui >= 0 {
+    cwc_t_http_reply(s, ops[0].opens[ui].slot, 200, "{\"credit_msat\":43750,\"today\":{\"requests\":3,\"usd_micros\":1200},\"total\":{\"calls\":3,\"in_tokens\":500,\"cached_in_tokens\":0,\"out_tokens\":200,\"usd_micros\":1200},\"decisions\":{\"calls\":1},\"sandbox\":{\"turns\":2,\"seconds\":900,\"msat\":6000},\"local\":{\"turns\":4,\"msat\":0}}");
+  }
+  cwc_t_drain(s, ops[..]);
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert sc_by_text(t, "Sandbox 900s (6 sats)") >= 0 && sc_by_text(t, "43 sats") >= 0;
+
+  // In Auto mode, a code-execution prompt automatically routes to the online enrolled computer ($0 local)!
+  ops[0].open_n = 0;
+  #assert s[0].cc[0].target_kind == CLD_TARGET_AUTO;
+  cw_test_type(s, "composer", "Run coax test now");
+  cw_test_enter(s, "composer");
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  cwc_t_drain(s, ops[..]);
+  sub := cwc_t_find_open(ops[..], "/api/chat/submit/v2alpha1?host=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
+  #assert sub >= 0 && s[0].cc[0].remote_running;
+  #assert cast(string) s[0].cc[0].active_compute[0..<s[0].cc[0].active_compute_n] == "local";
+
+  // Simulate 402 unpaid error on durable submit -> actionable credit banner appears.
+  cwc_t_http_reply(s, ops[0].opens[sub].slot, 402, "{\"error\":\"Insufficient sats credit for Cloud Sandbox.\"}");
+  cwc_t_drain(s, ops[..]);
+  _ = coaxial_chatweb_frame(s, 0.016, true);
+  #assert !s[0].cc[0].remote_running && sc_by_text(t, "Insufficient sats credit for Cloud Sandbox.") >= 0;
+}

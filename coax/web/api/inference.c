@@ -59,6 +59,7 @@
 #include "nostr.h"
 #include "stream.h"
 #include "inference-upstream-policy.generated.h"
+#include "cloud-tools-wire.generated.h"
 #include <curl/curl.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -349,7 +350,8 @@ static bool inference_auth(const request *q, char who[65], bool *free_key) {
 }
 bool inference_auth_caller(const request *q, char who[65], bool *free_key) { return inference_auth(q, who, free_key); }
 
-// GET /api/v1/inference/pricing: public authoritative OpenAgents retail rate schedule.
+// GET /api/v1/inference/pricing: public authoritative OpenAgents retail rate schedule
+// (hosted inference models + Phase 5 transparent Cloud Sandbox hourly rates + $0 local).
 static void pricing_route(const request *q) {
   if (strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET pricing"); return; }
   PGconn *db = api_db();
@@ -359,11 +361,30 @@ static void pricing_route(const request *q) {
     PQclear(r); api_error(q->fd, 500, "pricing unavailable"); return;
   }
   const char *body = PQgetvalue(r, 0, 0);
-  api_respond(q->fd, 200, "application/json", "Cache-Control: public, max-age=300\r\n", body, strlen(body));
+  size_t blen = strlen(body);
+  uint8_t sb_json[1024];
+  int64_t sn = cp_c_pricing_json((coax_v_u8){sb_json, sizeof sb_json - 1});
+  if (sn > 0 && blen > 1 && body[blen - 1] == '}') {
+    sb_json[sn] = 0;
+    size_t cap = blen + (size_t)sn + 32;
+    char *merged = malloc(cap);
+    if (merged) {
+      int n = snprintf(merged, cap, "%.*s,\"sandbox_compute\":%s}", (int)(blen - 1), body, (const char *)sb_json);
+      if (n > 0) {
+        api_respond(q->fd, 200, "application/json", "Cache-Control: public, max-age=300\r\n", merged, (size_t)n);
+        free(merged);
+        PQclear(r);
+        return;
+      }
+      free(merged);
+    }
+  }
+  api_respond(q->fd, 200, "application/json", "Cache-Control: public, max-age=300\r\n", body, blen);
   PQclear(r);
 }
 
-// GET /api/v1/inference/usage: authenticated user's cloud usage, decision usage, and credit balance.
+// GET /api/v1/inference/usage: authenticated user's cloud usage, decision usage,
+// Cloud Sandbox metered compute usage, local $0 turn count, and credit balance.
 static void usage_route(const request *q) {
   if (strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET usage"); return; }
   char who[65];
@@ -375,7 +396,40 @@ static void usage_route(const request *q) {
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     PQclear(r); api_error(q->fd, 500, "usage unavailable"); return;
   }
-  api_json(q->fd, 200, PQgetvalue(r, 0, 0));
+  const char *body = PQgetvalue(r, 0, 0);
+  size_t blen = strlen(body);
+  long long sb_turns = 0, sb_secs = 0, sb_msat = 0, loc_turns = 0;
+  PGresult *sr = PQexecParams(db,
+    "SELECT count(*) FILTER (WHERE compute = 'sandbox'), "
+    "coalesce(sum(sandbox_seconds) FILTER (WHERE compute = 'sandbox'), 0), "
+    "coalesce(sum(cost_msat) FILTER (WHERE compute = 'sandbox'), 0), "
+    "count(*) FILTER (WHERE compute = 'local') "
+    "FROM chat.turns_v2 WHERE account = $1 OR account IN (SELECT account FROM auth.nostr_keys WHERE pubkey = $1)",
+    1, NULL, v, NULL, NULL, 0);
+  if (sr && PQresultStatus(sr) == PGRES_TUPLES_OK && PQntuples(sr) == 1) {
+    sb_turns = atoll(PQgetvalue(sr, 0, 0));
+    sb_secs = atoll(PQgetvalue(sr, 0, 1));
+    sb_msat = atoll(PQgetvalue(sr, 0, 2));
+    loc_turns = atoll(PQgetvalue(sr, 0, 3));
+  }
+  if (sr) PQclear(sr);
+  if (blen > 1 && body[blen - 1] == '}') {
+    size_t cap = blen + 192;
+    char *merged = malloc(cap);
+    if (merged) {
+      int n = snprintf(merged, cap,
+        "%.*s,\"sandbox\":{\"turns\":%lld,\"seconds\":%lld,\"msat\":%lld},\"local\":{\"turns\":%lld,\"msat\":0}}",
+        (int)(blen - 1), body, sb_turns, sb_secs, sb_msat, loc_turns);
+      if (n > 0) {
+        api_json(q->fd, 200, merged);
+        free(merged);
+        PQclear(r);
+        return;
+      }
+      free(merged);
+    }
+  }
+  api_json(q->fd, 200, body);
   PQclear(r);
 }
 

@@ -1,5 +1,7 @@
-// C ABI compilation unit for oa-api Tier 1 Cloud Tools (#14127).
+// C ABI compilation unit for oa-api Tier 1 Cloud Tools (#14127) and
+// Metered Cloud Sandbox Compute Pricing & Settlement (#14129).
 #load "../../lib/cloud/tool-wire.coax";
+#load "../../lib/cloud/compute-pricing-policy.coax";
 
 cld_c_tool_admit :: (kind: int, verified: bool, account: string, limited: bool, frozen: bool) -> bool #export_c #effects(all) {
   return cld_tool_admit(kind, verified, account, limited, frozen);
@@ -37,10 +39,118 @@ cld_c_format_gh_pr :: (raw: string, nodes: [] JvNode, out: [] u8) -> int #export
   return cld_format_gh_pr(raw, nodes, out);
 }
 
-#test "cloud tools C ABI unit forwards admission, request decoding, and response writing" {
+// ---- Phase 5 (#14129): Metered Sandbox Compute Pricing & Settlement C ABI
+
+cp_c_sandbox_admit :: (size: string, credit_msat: int, usd_per_btc: int, funded_free: bool) -> int #export_c #effects(all) {
+  return cp_sandbox_admit(size, credit_msat, usd_per_btc, funded_free);
+}
+
+cp_c_turn_debit_msat :: (compute: string, size: string, seconds: int, usd_per_btc: int) -> int #export_c #effects(all) {
+  return cp_turn_debit_msat(compute, size, seconds, usd_per_btc);
+}
+
+cp_c_sandbox_usd_micros :: (size: string, seconds: int) -> int #export_c #effects(all) {
+  return cp_sandbox_usd_micros(size, seconds);
+}
+
+cp_c_sandbox_rate_hr :: (size: string) -> int #export_c #effects(all) {
+  return cp_sandbox_rate_hr(size);
+}
+
+cp_c_pricing_json :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "unit"); jo_str(o[..], "usd_micros_per_hour");
+  jo_key(o[..], "local_cost_usd_micros"); jo_int(o[..], 0);
+  jo_key(o[..], "min_reserve_seconds"); jo_int(o[..], CP_MIN_RESERVE_S);
+  jo_key(o[..], "sizes"); jo_arr(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "small"); jo_key(o[..], "vcpu"); jo_int(o[..], 2); jo_key(o[..], "memory_gb"); jo_int(o[..], 8); jo_key(o[..], "usd_micros_hr"); jo_int(o[..], CP_RATE_SMALL_HR); jo_end(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "default"); jo_key(o[..], "vcpu"); jo_int(o[..], 4); jo_key(o[..], "memory_gb"); jo_int(o[..], 16); jo_key(o[..], "usd_micros_hr"); jo_int(o[..], CP_RATE_DEFAULT_HR); jo_end(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "large"); jo_key(o[..], "vcpu"); jo_int(o[..], 8); jo_key(o[..], "memory_gb"); jo_int(o[..], 16); jo_key(o[..], "usd_micros_hr"); jo_int(o[..], CP_RATE_LARGE_HR); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+CpMeterReq :: struct {
+  turn: [40] u8; turn_n: int;
+  size: [16] u8; size_n: int;
+  seconds: int;
+}
+
+cp_c_meter_req_read :: (raw: string, out: [] CpMeterReq) -> bool #export_c #effects(all) {
+  out[0] = CpMeterReq.{};
+  d: [1] Jv; nodes: [64] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  if jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  t_at := jv_get(d[0], 0, "turn_id");
+  if jv_kind(d[0], t_at) != JV_STRING { return false; }
+  tn := jv_str(d[0], t_at, out[0].turn[..]);
+  if tn != 36 { return false; }
+  if cast(string) out[0].turn[0..<4] != "trn_" { return false; }
+  out[0].turn_n = tn;
+  s_at := jv_get(d[0], 0, "size");
+  if jv_kind(d[0], s_at) == JV_STRING {
+    sn := jv_str(d[0], s_at, out[0].size[..]);
+    if sn < 0 { return false; } // mutant: equivalent (out[0].size is 16 bytes; only "small"/"default"/"large" pass cp_sandbox_rate_hr)
+    out[0].size_n = sn;
+  }
+  secs := jv_int(d[0], jv_get(d[0], 0, "seconds"), -1);
+  if secs < 0 || secs > CP_MAX_SECONDS { return false; }
+  out[0].seconds = secs;
+  return true;
+}
+
+cp_c_meter_res_write :: (turn_id: string, compute: string, seconds: int, debit_msat: int, total_msat: int, credit_msat: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "openagents.cloud.sandbox-meter.res.v1alpha1");
+  jo_key(o[..], "turn_id"); jo_str(o[..], turn_id);
+  jo_key(o[..], "compute"); jo_str(o[..], compute);
+  jo_key(o[..], "seconds"); jo_int(o[..], seconds);
+  jo_key(o[..], "debit_msat"); jo_int(o[..], debit_msat);
+  jo_key(o[..], "total_cost_msat"); jo_int(o[..], total_msat);
+  jo_key(o[..], "credit_msat"); jo_int(o[..], credit_msat);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "cloud tools C ABI unit forwards admission, request decoding, response writing, and sandbox compute metering" {
   #assert cld_c_tool_admit(2, true, "acct_1", false, false);
+  #assert !cld_c_tool_admit(1, true, "acct_1", false, false);
+  #assert cld_c_target_valid("sandbox", "") && !cld_c_target_valid("bogus", "");
   req: [1] CldToolReq;
   #assert cld_c_tool_req_read("{\"tool\":\"github_tree\",\"arguments\":{\"repo\":\"OpenAgentsInc/openagents\"}}", false, req[..]);
-  out: [512] u8;
+  #assert !cld_c_tool_req_read("{}", false, req[..]);
+  out: [1024] u8; tiny: [1] u8; nodes: [64] JvNode;
   #assert cld_c_tool_res_write("github_tree", true, "d coax\n", "", out[..]) > 0;
+  #assert cld_c_format_exa("{\"results\":[{\"title\":\"T\",\"url\":\"https://a.com\",\"text\":\"hi\"}]}", nodes[..], out[..]) > 0;
+  #assert cld_c_format_gh_tree("[{\"type\":\"file\",\"path\":\"a.txt\"}]", nodes[..], out[..]) > 0;
+  #assert cld_c_format_gh_search("{\"items\":[{\"path\":\"a.coax\"}]}", nodes[..], out[..]) > 0;
+  #assert cld_c_format_gh_issues("[{\"number\":1,\"state\":\"open\",\"title\":\"hi\"}]", nodes[..], out[..]) > 0;
+  #assert cld_c_format_gh_pr("{\"number\":2,\"state\":\"open\",\"title\":\"pr\",\"body\":\"b\"}", nodes[..], out[..]) > 0;
+
+  // Phase 5 sandbox pricing & settlement C ABI
+  #assert cp_c_sandbox_admit("small", 0, 100000, false) == 402 && cp_c_sandbox_admit("small", 5625, 100000, false) == 200;
+  #assert cp_c_turn_debit_msat("local", "large", 3600, 100000) == 0 && cp_c_turn_debit_msat("sandbox", "small", 900, 100000) == 5625;
+  #assert cp_c_sandbox_usd_micros("default", 3600) == 45000 && cp_c_sandbox_rate_hr("large") == 90000;
+
+  pn := cp_c_pricing_json(out[..]);
+  #assert pn > 0 && cast(string) out[0..<pn] == "{\"unit\":\"usd_micros_per_hour\",\"local_cost_usd_micros\":0,\"min_reserve_seconds\":900,\"sizes\":[{\"name\":\"small\",\"vcpu\":2,\"memory_gb\":8,\"usd_micros_hr\":22500},{\"name\":\"default\",\"vcpu\":4,\"memory_gb\":16,\"usd_micros_hr\":45000},{\"name\":\"large\",\"vcpu\":8,\"memory_gb\":16,\"usd_micros_hr\":90000}]}";
+  #assert cp_c_pricing_json(tiny[..]) == -1;
+
+  mr: [1] CpMeterReq;
+  #assert cp_c_meter_req_read("{\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"size\":\"small\",\"seconds\":0}", mr[..]);
+  #assert cast(string) mr[0].turn[0..<mr[0].turn_n] == "trn_0123456789abcdef0123456789abcdef" && cast(string) mr[0].size[0..<mr[0].size_n] == "small" && mr[0].seconds == 0;
+  #assert cp_c_meter_req_read("{\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"seconds\":86400}", mr[..]) && mr[0].size_n == 0 && mr[0].seconds == 86400;
+  #assert !cp_c_meter_req_read("bad", mr[..]) && !cp_c_meter_req_read("[]", mr[..]) && !cp_c_meter_req_read("{\"seconds\":1}", mr[..]);
+  #assert !cp_c_meter_req_read("{\"turn_id\":\"trn_short\",\"seconds\":1}", mr[..]);
+  #assert !cp_c_meter_req_read("{\"turn_id\":\"cnv_0123456789abcdef0123456789abcdef\",\"seconds\":1}", mr[..]);
+  #assert !cp_c_meter_req_read("{\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\"}", mr[..]);
+  #assert !cp_c_meter_req_read("{\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"seconds\":-1}", mr[..]);
+  #assert !cp_c_meter_req_read("{\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"seconds\":86401}", mr[..]);
+
+  rn := cp_c_meter_res_write("trn_0123456789abcdef0123456789abcdef", "sandbox", 900, 5625, 5625, 4375, out[..]);
+  #assert rn > 0 && cast(string) out[0..<rn] == "{\"schema\":\"openagents.cloud.sandbox-meter.res.v1alpha1\",\"turn_id\":\"trn_0123456789abcdef0123456789abcdef\",\"compute\":\"sandbox\",\"seconds\":900,\"debit_msat\":5625,\"total_cost_msat\":5625,\"credit_msat\":4375}";
+  #assert cp_c_meter_res_write("trn_0123456789abcdef0123456789abcdef", "sandbox", 1, 1, 1, 0, tiny[..]) == -1;
 }

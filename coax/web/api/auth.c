@@ -246,6 +246,8 @@ static const auth_rule RULES[] = {
   R("GET", "/api/gamebuilder/agent/events/v1", false, AP_ACCOUNT, "an owned build agent's events after a cursor"),
   R("*",    "/api/chat/delegated/complete/v1", false, AP_HUMAN, "the same chat, told where its task would run; same admission and quotas"),
   R("*",    "/api/chat/route/v1", false, AP_HUMAN, "which computer and agent would take a task; team-funded, one decision a call"),
+  R("POST", "/api/chat/placement/v1", false, AP_HUMAN, "resolve Auto execution target across Cloud Tools, enrolled computer ($0), and Cloud Sandbox"),
+  R("POST", "/api/chat/sandbox/meter/v1", false, AP_HUMAN, "settle metered Cloud Sandbox compute seconds against account credit"),
   R("*",    "/api/chat/world/complete/v1", false, AP_HUMAN, "team-funded typed world turn; same account quotas, no write grant"),
   R("*",    "/api/chat/world/player/v1", false, AP_HUMAN, "bind this guest player to this verified session's game account"),
   R("GET", "/api/chat/project/v1", false, AP_ACCOUNT, "current member account project chats"),

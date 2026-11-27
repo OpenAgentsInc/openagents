@@ -255,8 +255,90 @@ assert st == 202 and j.get("turn_id", "").startswith("trn_"), (st, j)
 srow = subprocess.check_output([psql, pgurl, "-tAc", f"SELECT compute||'|'||source_device||'|'||workspace FROM chat.turns_v2 WHERE id='{j['turn_id']}'"]).decode().strip()
 assert srow == "sandbox|cloud-sandbox|sandbox:small", srow
 
+# 6. Phase 5 (#14129): Metered Sandbox Compute Billing (402 at 0 sats, exact msat debit, $0 local) & Auto Placement
+tok_user = make_tok(b"\x44" * 32)
+h_user = hashlib.sha256(tok_user.encode()).hexdigest()
+now_ms = int(__import__("time").time() * 1000)
+subprocess.run([psql, pgurl, "-v", "ON_ERROR_STOP=1", "-c", f"""
+INSERT INTO inference.btc_usd (one, usd_per_btc, at) VALUES (true, 100000, now())
+  ON CONFLICT (one) DO UPDATE SET usd_per_btc = 100000, at = now();
+INSERT INTO auth.accounts (id, kind, verse_account, team) VALUES ('acct_dddddddddddddddddddddddddd', 'person', 'v_paid', false);
+INSERT INTO auth.sessions (token_sha256, id, account, via_kind, client, level, l1_at, epoch)
+  VALUES ('{h_user}', 'ses_paid', 'acct_dddddddddddddddddddddddddd', 'workos', 'web', 'L1', now(), 0);
+INSERT INTO chat.environment_connections_v1 (account, host_pubkey, display_name, grant_id, epoch, relay, last_seen_ms)
+  VALUES ('acct_dddddddddddddddddddddddddd', '{"c"*64}', 'MacBook Pro M4', '{"2"*64}', 1, 'wss://relay.openagents.com', {now_ms});
+"""], check=True, stdout=subprocess.DEVNULL)
+
+def api_req(method, path, body=None, cookie=tok_user):
+    hdrs = {}
+    data = None
+    if body is not None:
+        hdrs["Content-Type"] = "application/json"
+        data = json.dumps(body).encode()
+    if cookie:
+        hdrs["Cookie"] = f"__Host-oa_session={cookie}"
+        hdrs["Origin"] = api
+    r = urllib.request.Request(api + path, data=data, headers=hdrs, method=method)
+    try:
+        with urllib.request.urlopen(r, timeout=10) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode()
+
+# 6a. GET /api/v1/inference/pricing exposes transparent retail sandbox_compute rates & $0 local
+st, pr = api_req("GET", "/api/v1/inference/pricing", cookie=None)
+assert st == 200 and pr["sandbox_compute"]["local_cost_usd_micros"] == 0, pr
+rates = {s["name"]: s["usd_micros_hr"] for s in pr["sandbox_compute"]["sizes"]}
+assert rates == {"small": 22500, "default": 45000, "large": 90000}, rates
+
+# 6b. Unfunded non-team user (0 sats) gets 402 on ?target=sandbox
+def submit_user(op_id, qs, text="Run build in sandbox"):
+    payload = {"schema": "openagents.chat.submit.v2alpha1", "operation_id": op_id, "conversation_id": "", "expected_revision": 0, "project_id": None, "expected_project_revision": None, "legacy_thread_id": None, "legacy_thread_revision": None, "content": [{"type": "text", "text": text}]}
+    return api_req("POST", f"/api/chat/submit/v2alpha1?{qs}", body=payload, cookie=tok_user)
+
+st, err_402 = submit_user("op_u_unpaid", "target=sandbox&size=small")
+assert st == 402, (st, err_402)
+
+# 6c. Top up 10,000 msat -> sandbox submit succeeds (202) and metering debits exact 5,625 msat (leaving 4,375 msat)
+subprocess.run([psql, pgurl, "-v", "ON_ERROR_STOP=1", "-c",
+    "INSERT INTO inference.credit (pubkey, msat) VALUES ('acct_dddddddddddddddddddddddddd', 10000) ON CONFLICT (pubkey) DO UPDATE SET msat = 10000;"
+], check=True, stdout=subprocess.DEVNULL)
+
+st, sb_turn = submit_user("op_u_paid_sb", "target=sandbox&size=small")
+assert st == 202 and sb_turn.get("turn_id", "").startswith("trn_"), (st, sb_turn)
+st, mres = api_req("POST", "/api/chat/sandbox/meter/v1", body={"turn_id": sb_turn["turn_id"], "size": "small", "seconds": 900})
+assert st == 200 and mres["debit_msat"] == 5625 and mres["total_cost_msat"] == 5625 and mres["credit_msat"] == 4375, (st, mres)
+
+# 6d. User's own enrolled computer run strictly costs 0 msat ($0 local compute)
+st, loc_turn = submit_user("op_u_local", f"host={'c'*64}", text="Run coax test locally")
+assert st == 202 and loc_turn.get("turn_id", "").startswith("trn_"), (st, loc_turn)
+st, lres = api_req("POST", "/api/chat/sandbox/meter/v1", body={"turn_id": loc_turn["turn_id"], "size": "large", "seconds": 3600})
+assert st == 200 and lres["compute"] == "local" and lres["debit_msat"] == 0 and lres["total_cost_msat"] == 0 and lres["credit_msat"] == 4375, (st, lres)
+
+# 6e. GET /api/v1/inference/usage reports sandbox compute seconds & msat alongside credit & local $0 turns
+st, usg = api_req("GET", "/api/v1/inference/usage")
+assert st == 200 and usg["credit_msat"] == 4375 and usg["sandbox"] == {"turns": 1, "seconds": 900, "msat": 5625} and usg["local"] == {"turns": 1, "msat": 0}, (st, usg)
+
+# 6f. POST /api/chat/placement/v1 across read-only, online, offline, busy, keep-clear station fixtures
+st, p_ro = api_req("POST", "/api/chat/placement/v1", body={"prompt": "Explain AGENTS.md"}, cookie=tok)
+assert st == 200 and p_ro["tier"] == 1 and p_ro["compute"] == "cloud", p_ro
+st, p_on = api_req("POST", "/api/chat/placement/v1", body={"prompt": "Run coax test", "station": {"online": True, "repo_matched": True, "keep_clear": False, "active_turns": 0, "max_turns": 2, "cpu_pct": 15, "free_ram_mb": 8192, "free_disk_mb": 20480}}, cookie=tok)
+assert st == 200 and p_on["tier"] == 2 and p_on["compute"] == "local" and p_on["host_pubkey"] == "a" * 64, p_on
+st, p_off = api_req("POST", "/api/chat/placement/v1", body={"prompt": "Run coax test", "station": {"online": False, "repo_matched": True}}, cookie=tok)
+assert st == 200 and p_off["tier"] == 3 and p_off["compute"] == "sandbox" and "offline" in p_off["reason"].lower(), p_off
+st, p_busy = api_req("POST", "/api/chat/placement/v1", body={"prompt": "Build project", "station": {"online": True, "repo_matched": True, "cpu_pct": 95}}, cookie=tok)
+assert st == 200 and p_busy["tier"] == 3 and p_busy["compute"] == "sandbox" and "busy" in p_busy["reason"].lower(), p_busy
+st, p_kc = api_req("POST", "/api/chat/placement/v1", body={"prompt": "Fix bug", "station": {"online": True, "repo_matched": True, "keep_clear": True}}, cookie=tok)
+assert st == 200 and p_kc["tier"] == 3 and p_kc["compute"] == "sandbox" and "keep-clear" in p_kc["reason"].lower(), p_kc
+
+# 6g. Live POST /api/chat/submit/v2alpha1?target=auto routes code turn to online enrolled computer ($0 local) and records placement_reason
+st, auto_turn = submit_user("op_u_auto_local", "target=auto", text="Run coax test on this repo")
+assert st == 202 and auto_turn.get("turn_id", "").startswith("trn_"), (st, auto_turn)
+arow = subprocess.check_output([psql, pgurl, "-tAc", f"SELECT compute||'|'||source_device||'|'||workspace||'|'||placement_reason FROM chat.turns_v2 WHERE id='{auto_turn['turn_id']}'"]).decode().strip()
+assert arow.startswith(f"local|MacBook Pro M4|host:{'c'*64}|Matched enrolled computer"), arow
+
 with open(api_log, "r", encoding="utf-8", errors="replace") as f:
     log = f.read()
 assert s_gh not in log and s_exa not in log, "LEAK in api.log!"
-print("cloud_tools_e2e_test: ALL 7 TIER 1 TOOLS + TIER 2 HOST PINNING + TIER 3 SANDBOX + SECURITY GATES PASSED (ASan/UBSan clean, zero token leaks)")
+print("cloud_tools_e2e_test: TIER 1 + TIER 2 + TIER 3 SANDBOX + PHASE 5 METERING (402/DEBIT/$0 LOCAL) + AUTO PLACEMENT PASSED (ASan/UBSan clean, zero token leaks)")
 PY

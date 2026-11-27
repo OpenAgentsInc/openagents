@@ -19,6 +19,7 @@
 #load "../../../coax/web/api/account-chat-cloud-wire.coax";
 #load "../../../coax/lib/gateway/tool-conversation.coax";
 #load "../../../coax/lib/cloud/tool-wire.coax";
+#load "../../../coax/lib/agent/engine/placement-policy.coax";
 
 // Unified OpenAgents Core compute/model menu (replaces legacy 11-model zoo).
 CWC_MODELS :: 5;
@@ -165,6 +166,10 @@ CwcUsage :: struct {
   total_out_tokens: int;
   total_usd_micros: int;
   decision_calls: int;
+  sandbox_turns: int;
+  sandbox_seconds: int;
+  sandbox_msat: int;
+  local_turns: int;
 }
 
 CwcHttpSlot :: struct {
@@ -546,6 +551,7 @@ cwc_init :: (c: [] ChatCloud) {
   if c[0].inited { return; }
   c[0].inited = true;
   c[0].auth_state = CWC_AUTH_UNKNOWN;
+  if c[0].target_kind == CLD_TARGET_NONE { c[0].target_kind = CLD_TARGET_AUTO; }
   c[0].renaming_idx = -1;
   c[0].web_msg_idx = -1;
   vl_init(c[0].vl[..], 640.0f32, 72.0f32);
@@ -1278,6 +1284,16 @@ cwc_read_usage :: (c: [] ChatCloud, raw: string) -> bool {
   if dec >= 0 && jv_kind(v, dec) == JV_OBJECT {
     u[0].decision_calls = jv_int(v, jv_get(v, dec, "calls"), 0);
   }
+  sb := jv_get(v, 0, "sandbox");
+  if sb >= 0 && jv_kind(v, sb) == JV_OBJECT {
+    u[0].sandbox_turns = jv_int(v, jv_get(v, sb, "turns"), 0);
+    u[0].sandbox_seconds = jv_int(v, jv_get(v, sb, "seconds"), 0);
+    u[0].sandbox_msat = jv_int(v, jv_get(v, sb, "msat"), 0);
+  }
+  loc := jv_get(v, 0, "local");
+  if loc >= 0 && jv_kind(v, loc) == JV_OBJECT {
+    u[0].local_turns = jv_int(v, jv_get(v, loc, "turns"), 0);
+  }
   return true;
 }
 
@@ -1874,6 +1890,18 @@ cwc_send :: (c: [] ChatCloud, raw_prompt: string) -> bool {
   if c[0].target_kind == CLD_TARGET_SANDBOX {
     return cwc_send_durable(c, prompt, true);
   }
+  // Auto placement (#14129): classify workload & route code turns to an online enrolled computer ($0 local).
+  if c[0].target_kind == CLD_TARGET_AUTO && pl_classify_prompt(prompt) == PL_WORK_CODE_EXEC {
+    online_i := -1;
+    for ei: 0..<c[0].env_n {
+      if c[0].env_online[ei] { online_i = ei; break; }
+    }
+    if online_i >= 0 {
+      c[0].sel_host_n = cwc_put(c[0].sel_host[..], 0, cast(string) c[0].env_host[online_i][..]);
+      c[0].host_name_n = cwc_put(c[0].host_name[..], 0, cast(string) c[0].env_name[online_i][0..<c[0].env_name_n[online_i]]);
+      return cwc_send_durable(c, prompt, false);
+    }
+  }
 
   // Allocate conversation ID on first message and push /chat/<cid>.
   fresh_conv := c[0].active_id_n != 36;
@@ -2343,7 +2371,11 @@ cwc_drain_msgs :: (c: [] ChatCloud) {
         ar: [1] ClArena; ar[0].buf = c[0].scratch_c[..];
         said = cl_str(ar[..], payload, "error");
       }
-      c[0].error_n = cwc_put(c[0].error[..], 0, ifx said.count > 0 then said else "Could not dispatch turn to enrolled computer.");
+      if msg.arg_i == 402 {
+        c[0].error_n = cwc_put(c[0].error[..], 0, ifx said.count > 0 then said else "Insufficient sats credit for Cloud Sandbox. Top up in Settings or switch Target to your computer ($0).");
+      } else {
+        c[0].error_n = cwc_put(c[0].error[..], 0, ifx said.count > 0 then said else "Could not dispatch durable turn.");
+      }
       c[0].dirty = true;
     } else if msg.tag == CWC_MSG_APPR_ERR {
       said := "";
@@ -2743,6 +2775,13 @@ cwc_draw_hud :: (c: [] ChatCloud, t: [] Tree) {
     un = cwc_put(ub[..], un, " req · ");
     un = cwc_put_int(ub[..], un, c[0].usage[0].credit_msat / 1000);
     un = cwc_put(ub[..], un, " sats");
+    if c[0].usage[0].sandbox_seconds > 0 || c[0].usage[0].sandbox_msat > 0 {
+      un = cwc_put(ub[..], un, " · Sandbox ");
+      un = cwc_put_int(ub[..], un, c[0].usage[0].sandbox_seconds);
+      un = cwc_put(ub[..], un, "s (");
+      un = cwc_put_int(ub[..], un, c[0].usage[0].sandbox_msat / 1000);
+      un = cwc_put(ub[..], un, " sats)");
+    }
     if c[0].usage[0].total_cached_tokens > 0 {
       un = cwc_put(ub[..], un, " · ");
       un = cwc_put_int(ub[..], un, c[0].usage[0].total_cached_tokens);

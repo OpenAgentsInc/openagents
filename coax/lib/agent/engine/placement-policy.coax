@@ -1,0 +1,210 @@
+// Automatic Execution Target placement policy (Phase 5, #14129).
+// Pure #authority rules for Auto routing across:
+//   - Tier 1 Instant Cloud Tools (read-only / research / GitHub inspection; zero VM boot)
+//   - Tier 2 Enrolled Computer   (code edit / build / test when online, repo-matched, free capacity, $0)
+//   - Tier 3 Cloud Sandbox       (code edit / build / test overflow or parallel cloud execution)
+//
+//   ./coax/bin/coax test coax/lib/agent/engine/placement-policy.coax
+//   ./coax/bin/coax mutate coax/lib/agent/engine/placement-policy.coax
+#authority;
+
+PL_TIER_CLOUD_TOOLS :: 1;
+PL_TIER_COMPUTER    :: 2;
+PL_TIER_SANDBOX     :: 3;
+
+PL_WORK_READ_ONLY   :: 0;
+PL_WORK_CODE_EXEC   :: 1;
+
+PL_MIN_FREE_RAM_MB  :: 2048;
+PL_MIN_FREE_DISK_MB :: 2048;
+PL_MAX_CPU_PCT      :: 85;
+
+PL_ST_OK         :: 0;
+PL_ST_OFFLINE    :: 1;
+PL_ST_KEEP_CLEAR :: 2;
+PL_ST_NO_REPO    :: 3;
+PL_ST_BUSY       :: 4;
+PL_ST_LOW_RES    :: 5;
+
+PlStation :: struct {
+  online: bool;
+  repo_matched: bool;
+  keep_clear: bool;
+  active_turns: int;
+  max_turns: int;
+  cpu_pct: int;
+  free_ram_mb: int;
+  free_disk_mb: int;
+}
+
+PlDecision :: struct {
+  tier: int;
+  station_status: int;
+  reason: string;
+}
+
+// Evaluates whether an enrolled computer (DescribeStation telemetry) can accept a Tier 2 code turn.
+pl_station_eligible :: (st: PlStation) -> int #effects(all) {
+  if !st.online { return PL_ST_OFFLINE; }
+  if st.keep_clear { return PL_ST_KEEP_CLEAR; }
+  if !st.repo_matched { return PL_ST_NO_REPO; }
+  if st.active_turns < 0 || st.active_turns >= st.max_turns { return PL_ST_BUSY; }
+  if st.cpu_pct < 0 || st.cpu_pct >= PL_MAX_CPU_PCT { return PL_ST_BUSY; }
+  if st.free_ram_mb < PL_MIN_FREE_RAM_MB || st.free_disk_mb < PL_MIN_FREE_DISK_MB { return PL_ST_LOW_RES; }
+  return PL_ST_OK;
+}
+
+pl_sandbox_overflow_reason :: (st_code: int) -> string #effects(all) {
+  if st_code == PL_ST_OFFLINE { return "Enrolled computer offline; routed to Cloud Sandbox"; }
+  if st_code == PL_ST_KEEP_CLEAR { return "Enrolled computer marked keep-clear; routed to Cloud Sandbox"; }
+  if st_code == PL_ST_NO_REPO { return "Enrolled computer lacks project repo; routed to Cloud Sandbox"; }
+  if st_code == PL_ST_BUSY { return "Enrolled computer busy; overflowed to Cloud Sandbox"; }
+  return "Enrolled computer low on RAM or disk; overflowed to Cloud Sandbox";
+}
+
+// Decides Auto execution target from workload kind, parallel-cloud hint, station telemetry, and sandbox funding.
+pl_decide_auto :: (work_kind: int, parallel_cloud: bool, has_station: bool, st: PlStation, sandbox_funded: bool) -> PlDecision #effects(all) {
+  if work_kind == PL_WORK_READ_ONLY {
+    return PlDecision.{tier = PL_TIER_CLOUD_TOOLS, station_status = PL_ST_OK, reason = "Read-only or research turn routed to Instant Cloud Tools"};
+  }
+  if parallel_cloud {
+    if sandbox_funded {
+      return PlDecision.{tier = PL_TIER_SANDBOX, station_status = PL_ST_OK, reason = "Parallel cloud execution requested; routed to Cloud Sandbox"};
+    }
+    if has_station && pl_station_eligible(st) == PL_ST_OK {
+      return PlDecision.{tier = PL_TIER_COMPUTER, station_status = PL_ST_OK, reason = "Cloud Sandbox unfunded; routed to enrolled computer ($0 local)"};
+    }
+    return PlDecision.{tier = PL_TIER_CLOUD_TOOLS, station_status = PL_ST_OFFLINE, reason = "Cloud Sandbox requires sats credit; routed to Instant Cloud Tools"};
+  }
+  if has_station {
+    el := pl_station_eligible(st);
+    if el == PL_ST_OK {
+      return PlDecision.{tier = PL_TIER_COMPUTER, station_status = PL_ST_OK, reason = "Matched enrolled computer online with free capacity ($0 local)"};
+    }
+    if sandbox_funded {
+      return PlDecision.{tier = PL_TIER_SANDBOX, station_status = el, reason = pl_sandbox_overflow_reason(el)};
+    }
+    return PlDecision.{tier = PL_TIER_CLOUD_TOOLS, station_status = el, reason = "Enrolled computer unavailable and Cloud Sandbox unfunded; using Cloud Tools"};
+  }
+  if sandbox_funded {
+    return PlDecision.{tier = PL_TIER_SANDBOX, station_status = PL_ST_OFFLINE, reason = "No enrolled computer linked; routed to Cloud Sandbox"};
+  }
+  return PlDecision.{tier = PL_TIER_CLOUD_TOOLS, station_status = PL_ST_OFFLINE, reason = "No enrolled computer linked and Cloud Sandbox unfunded; using Cloud Tools"};
+}
+
+pl_tier_compute :: (tier: int) -> string #effects(all) {
+  if tier == PL_TIER_COMPUTER { return "local"; }
+  if tier == PL_TIER_SANDBOX { return "sandbox"; }
+  return "cloud";
+}
+
+pl_lower :: (c: u8) -> u8 #effects(all) {
+  return ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+}
+
+pl_contains_ci :: (hay: string, needle: string) -> bool #effects(all) {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  limit := hay.count - needle.count + 1;
+  for i: 0..<limit {
+    ok := true;
+    for j: 0..<needle.count {
+      if pl_lower(hay[i + j]) != needle[j] { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+// Fast deterministic workload classifier for Auto mode: detects code-edit/build/test/shell turns.
+pl_classify_prompt :: (prompt: string) -> int #effects(all) {
+  if pl_contains_ci(prompt, "run ") || pl_contains_ci(prompt, "test") || pl_contains_ci(prompt, "build") ||
+     pl_contains_ci(prompt, "compile") || pl_contains_ci(prompt, "fix ") || pl_contains_ci(prompt, "edit ") ||
+     pl_contains_ci(prompt, "patch") || pl_contains_ci(prompt, "refactor") || pl_contains_ci(prompt, "commit") ||
+     pl_contains_ci(prompt, "shell") || pl_contains_ci(prompt, "coax ") {
+    return PL_WORK_CODE_EXEC;
+  }
+  return PL_WORK_READ_ONLY;
+}
+
+#test "station eligibility enforces online, keep-clear, repo match, concurrency, CPU, RAM, and disk thresholds" {
+  good := PlStation.{online = true, repo_matched = true, keep_clear = false, active_turns = 0, max_turns = 2, cpu_pct = 84, free_ram_mb = 2048, free_disk_mb = 2048};
+  #assert pl_station_eligible(good) == PL_ST_OK;
+
+  s := good; s.active_turns = 1; s.cpu_pct = 0; #assert pl_station_eligible(s) == PL_ST_OK;
+  s = good; s.online = false; #assert pl_station_eligible(s) == PL_ST_OFFLINE;
+  s = good; s.keep_clear = true; #assert pl_station_eligible(s) == PL_ST_KEEP_CLEAR;
+  s = good; s.repo_matched = false; #assert pl_station_eligible(s) == PL_ST_NO_REPO;
+  s = good; s.max_turns = 0; #assert pl_station_eligible(s) == PL_ST_BUSY;
+  s = good; s.active_turns = -1; #assert pl_station_eligible(s) == PL_ST_BUSY;
+  s = good; s.active_turns = 2; #assert pl_station_eligible(s) == PL_ST_BUSY;
+  s = good; s.cpu_pct = -1; #assert pl_station_eligible(s) == PL_ST_BUSY;
+  s = good; s.cpu_pct = 85; #assert pl_station_eligible(s) == PL_ST_BUSY;
+  s = good; s.free_ram_mb = 2047; #assert pl_station_eligible(s) == PL_ST_LOW_RES;
+  s = good; s.free_disk_mb = 2047; #assert pl_station_eligible(s) == PL_ST_LOW_RES;
+}
+
+#test "Auto placement routes read-only to Cloud Tools, healthy matched computer to $0 Local, and overflow/parallel to Sandbox" {
+  ok_st := PlStation.{online = true, repo_matched = true, keep_clear = false, active_turns = 0, max_turns = 2, cpu_pct = 20, free_ram_mb = 8192, free_disk_mb = 20000};
+  off_st := ok_st; off_st.online = false;
+  kc_st := ok_st; kc_st.keep_clear = true;
+  nr_st := ok_st; nr_st.repo_matched = false;
+  busy_st := ok_st; busy_st.cpu_pct = 92;
+  low_st := ok_st; low_st.free_disk_mb = 512;
+
+  // Read-only always Tier 1 Cloud Tools (zero VM boot)
+  d := pl_decide_auto(PL_WORK_READ_ONLY, true, true, ok_st, true);
+  #assert d.tier == PL_TIER_CLOUD_TOOLS && d.station_status == PL_ST_OK && d.reason == "Read-only or research turn routed to Instant Cloud Tools";
+  #assert pl_tier_compute(PL_TIER_CLOUD_TOOLS) == "cloud" && pl_tier_compute(PL_TIER_COMPUTER) == "local" && pl_tier_compute(PL_TIER_SANDBOX) == "sandbox";
+
+  // Parallel cloud hint
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, true, true, ok_st, true);
+  #assert d.tier == PL_TIER_SANDBOX && d.station_status == PL_ST_OK && d.reason == "Parallel cloud execution requested; routed to Cloud Sandbox";
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, true, true, ok_st, false);
+  #assert d.tier == PL_TIER_COMPUTER && d.station_status == PL_ST_OK && d.reason == "Cloud Sandbox unfunded; routed to enrolled computer ($0 local)";
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, true, true, off_st, false);
+  #assert d.tier == PL_TIER_CLOUD_TOOLS && d.station_status == PL_ST_OFFLINE && d.reason == "Cloud Sandbox requires sats credit; routed to Instant Cloud Tools";
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, true, false, ok_st, false);
+  #assert d.tier == PL_TIER_CLOUD_TOOLS && d.station_status == PL_ST_OFFLINE;
+
+  // Code exec with matched healthy enrolled computer -> Tier 2 ($0 local)
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, false, true, ok_st, true);
+  #assert d.tier == PL_TIER_COMPUTER && d.station_status == PL_ST_OK && d.reason == "Matched enrolled computer online with free capacity ($0 local)";
+
+  // Code exec overflows to Tier 3 Cloud Sandbox with exact typed reason for every refusal
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, false, true, off_st, true);
+  #assert d.tier == PL_TIER_SANDBOX && d.station_status == PL_ST_OFFLINE && d.reason == "Enrolled computer offline; routed to Cloud Sandbox";
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, false, true, kc_st, true);
+  #assert d.tier == PL_TIER_SANDBOX && d.station_status == PL_ST_KEEP_CLEAR && d.reason == "Enrolled computer marked keep-clear; routed to Cloud Sandbox";
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, false, true, nr_st, true);
+  #assert d.tier == PL_TIER_SANDBOX && d.station_status == PL_ST_NO_REPO && d.reason == "Enrolled computer lacks project repo; routed to Cloud Sandbox";
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, false, true, busy_st, true);
+  #assert d.tier == PL_TIER_SANDBOX && d.station_status == PL_ST_BUSY && d.reason == "Enrolled computer busy; overflowed to Cloud Sandbox";
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, false, true, low_st, true);
+  #assert d.tier == PL_TIER_SANDBOX && d.station_status == PL_ST_LOW_RES && d.reason == "Enrolled computer low on RAM or disk; overflowed to Cloud Sandbox";
+
+  // Unfunded fallback when enrolled computer is unavailable or absent
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, false, true, busy_st, false);
+  #assert d.tier == PL_TIER_CLOUD_TOOLS && d.station_status == PL_ST_BUSY && d.reason == "Enrolled computer unavailable and Cloud Sandbox unfunded; using Cloud Tools";
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, false, false, ok_st, true);
+  #assert d.tier == PL_TIER_SANDBOX && d.station_status == PL_ST_OFFLINE && d.reason == "No enrolled computer linked; routed to Cloud Sandbox";
+  d = pl_decide_auto(PL_WORK_CODE_EXEC, false, false, ok_st, false);
+  #assert d.tier == PL_TIER_CLOUD_TOOLS && d.station_status == PL_ST_OFFLINE && d.reason == "No enrolled computer linked and Cloud Sandbox unfunded; using Cloud Tools";
+}
+
+#test "prompt classifier distinguishes code execution from read-only queries case-insensitively" {
+  #assert pl_lower('A') == 'a' && pl_lower('Z') == 'z' && pl_lower('@') == '@' && pl_lower('[') == '[' && pl_lower('a') == 'a';
+  #assert !pl_contains_ci("abc", "") && !pl_contains_ci("ab", "abc") && pl_contains_ci("abc", "abc") && pl_contains_ci("abc", "bc") && !pl_contains_ci("xbc", "abc") && !pl_contains_ci("abc", "z");
+  #assert pl_classify_prompt("What is the weather in Austin?") == PL_WORK_READ_ONLY;
+  #assert pl_classify_prompt("Explain AGENTS.md") == PL_WORK_READ_ONLY;
+  #assert pl_classify_prompt("RUN the benchmark") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("Please TEST this module") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("BUILD release binary") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("COMPILE shader") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("FIX the login bug") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("EDIT README") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("Apply PATCH now") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("REFACTOR router") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("COMMIT changes") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("Open SHELL") == PL_WORK_CODE_EXEC;
+  #assert pl_classify_prompt("COAX check") == PL_WORK_CODE_EXEC;
+}

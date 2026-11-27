@@ -7818,6 +7818,44 @@
         "coax/web/api/cloud-tools-wire.coax"
       ],
       "note": "Tier 1 Instant Cloud Tools response envelope (POST /api/tools/cloud/v1; #14127)."
+    },
+    {
+      "id": "openagents.cloud.sandbox-meter.res.v1alpha1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/cloud/compute-placement-v1alpha1.json",
+      "codec": "coax/web/api/cloud-tools-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/cloud-tools-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/lib/cloud/compute-pricing-policy.coax",
+        "coax/web/api/cloud-tools-wire.coax",
+        "coax/web/api/cloud-tools.c"
+      ],
+      "tests": [
+        "coax/lib/cloud/compute-pricing-policy.coax",
+        "coax/web/api/cloud-tools-wire.coax"
+      ],
+      "note": "Metered Cloud Sandbox compute settlement response (POST /api/chat/sandbox/meter/v1; #14129)."
+    },
+    {
+      "id": "openagents.cloud.placement.res.v1alpha1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/cloud/compute-placement-v1alpha1.json",
+      "codec": "coax/web/api/router-wire.coax",
+      "check": "coax/bin/coax test coax/web/api/router-wire.coax --library",
+      "step": "new",
+      "files": [
+        "coax/lib/agent/engine/placement-policy.coax",
+        "coax/web/api/router-wire.coax",
+        "coax/web/api/router.c"
+      ],
+      "tests": [
+        "coax/lib/agent/engine/placement-policy.coax",
+        "coax/web/api/router-wire.coax"
+      ],
+      "note": "Automatic Execution Target placement response (POST /api/chat/placement/v1; #14129)."
     }
   ]
 }

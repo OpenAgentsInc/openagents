@@ -128,7 +128,139 @@ static size_t ct_slice_lines(const char *src, size_t len, int64_t from_line, int
   return n;
 }
 
+// Phase 5 (#14129): POST /api/chat/sandbox/meter/v1
+// Settles metered Cloud Sandbox runtime seconds against inference.credit and chat.turns_v2.
+// Strictly enforces 0 msat for compute='local' (user's own enrolled computer).
+static void sandbox_meter_handle(const request *q) {
+  if (strcmp(q->method, "POST") != 0) { api_error(q->fd, 405, "POST this."); return; }
+  const auth_principal *p = auth_principal_of(q);
+  if (!p || p->kind != 2 || !p->account[0]) { api_error(q->fd, 401, "Log in first."); return; }
+  if (!auth_same_site(q)) { api_error(q->fd, 403, "Cross-site write refused."); return; }
+  if (!cld_c_tool_admit(p->kind, p->level >= 1, ct_cs(p->account), p->limited, p->frozen != 0)) {
+    api_error(q->fd, 403, "This account cannot settle sandbox metering.");
+    return;
+  }
+  coax_t_CpMeterReq mr;
+  if (!cp_c_meter_req_read((coax_string){q->body, (int64_t)q->body_len}, (coax_v_t_CpMeterReq){&mr, 1})) {
+    api_error(q->fd, 400, "Invalid sandbox metering request.");
+    return;
+  }
+  char turn_id[40] = {0}, req_size[16] = {0};
+  memcpy(turn_id, mr.turn.e, (size_t)mr.turn_n);
+  if (mr.size_n > 0) memcpy(req_size, mr.size.e, (size_t)mr.size_n);
+  long long seconds = (long long)mr.seconds;
+
+  PGconn *db = api_db();
+  if (!db) { api_error(q->fd, 503, "Account storage unavailable."); return; }
+  PGresult *tx = PQexec(db, "BEGIN");
+  if (!tx || PQresultStatus(tx) != PGRES_COMMAND_OK) { if (tx) PQclear(tx); api_error(q->fd, 503, "Transaction unavailable."); return; }
+  PQclear(tx);
+
+  const char *qv[2] = {p->account, turn_id};
+  PGresult *tr = PQexecParams(db,
+    "SELECT compute, workspace, cost_msat, sandbox_seconds FROM chat.turns_v2 WHERE account = $1 AND id = $2 FOR UPDATE",
+    2, NULL, qv, NULL, NULL, 0);
+  if (!tr || PQresultStatus(tr) != PGRES_TUPLES_OK) {
+    if (tr) PQclear(tr);
+    PQclear(PQexec(db, "ROLLBACK"));
+    api_error(q->fd, 503, "Turn lookup failed.");
+    return;
+  }
+  if (PQntuples(tr) != 1) {
+    PQclear(tr);
+    PQclear(PQexec(db, "ROLLBACK"));
+    api_error(q->fd, 404, "Turn not found.");
+    return;
+  }
+  char compute[16] = {0}, ws[96] = {0};
+  snprintf(compute, sizeof compute, "%s", PQgetvalue(tr, 0, 0));
+  snprintf(ws, sizeof ws, "%s", PQgetvalue(tr, 0, 1));
+  long long prev_cost = atoll(PQgetvalue(tr, 0, 2));
+  PQclear(tr);
+
+  const char *sz = *req_size ? req_size : (!strncmp(ws, "sandbox:", 8) ? ws + 8 : "small");
+  long long usd_per_btc = 100000;
+  PGresult *br = PQexec(db, "SELECT usd_per_btc FROM inference.btc_usd LIMIT 1");
+  if (br && PQresultStatus(br) == PGRES_TUPLES_OK && PQntuples(br) == 1) {
+    long long v = atoll(PQgetvalue(br, 0, 0));
+    if (v > 0) usd_per_btc = v;
+  }
+  if (br) PQclear(br);
+
+  int64_t debit = cp_c_turn_debit_msat(ct_cs(compute), ct_cs(sz), (int64_t)seconds, (int64_t)usd_per_btc);
+  if (debit < 0) {
+    PQclear(PQexec(db, "ROLLBACK"));
+    api_error(q->fd, 400, "Turn compute tier or sandbox size is not meterable.");
+    return;
+  }
+
+  bool is_sandbox = !strcmp(compute, "sandbox");
+  bool free_acct = p->team || p->admin;
+  long long billed = (is_sandbox && !free_acct) ? (long long)debit : 0;
+  long long new_total = prev_cost + (is_sandbox ? (long long)debit : 0);
+
+  if (is_sandbox) {
+    char sec_s[32], deb_s[32];
+    snprintf(sec_s, sizeof sec_s, "%lld", seconds);
+    snprintf(deb_s, sizeof deb_s, "%lld", (long long)debit);
+    const char *uv[4] = {p->account, turn_id, sec_s, deb_s};
+    PGresult *ur = PQexecParams(db,
+      "UPDATE chat.turns_v2 SET sandbox_seconds = sandbox_seconds + $3::bigint, cost_msat = cost_msat + $4::bigint WHERE account = $1 AND id = $2",
+      4, NULL, uv, NULL, NULL, 0);
+    if (!ur || PQresultStatus(ur) != PGRES_COMMAND_OK) {
+      if (ur) PQclear(ur);
+      PQclear(PQexec(db, "ROLLBACK"));
+      api_error(q->fd, 503, "Could not update turn compute cost.");
+      return;
+    }
+    PQclear(ur);
+  }
+
+  const char *who = p->pubkey[0] ? p->pubkey : p->account;
+  if (billed > 0) {
+    char bil_s[32];
+    snprintf(bil_s, sizeof bil_s, "%lld", billed);
+    const char *dv[3] = {who, p->account, bil_s};
+    PGresult *dr = PQexecParams(db,
+      "UPDATE inference.credit SET msat = GREATEST(0, msat - $3::bigint), updated = now() WHERE pubkey = $1 OR pubkey = $2",
+      3, NULL, dv, NULL, NULL, 0);
+    if (!dr || PQresultStatus(dr) != PGRES_COMMAND_OK) {
+      if (dr) PQclear(dr);
+      PQclear(PQexec(db, "ROLLBACK"));
+      api_error(q->fd, 503, "Could not debit compute credit.");
+      return;
+    }
+    PQclear(dr);
+  }
+
+  long long credit_left = 0;
+  const char *cv[2] = {who, p->account};
+  PGresult *cr = PQexecParams(db,
+    "SELECT coalesce((SELECT msat FROM inference.credit WHERE pubkey = $1 OR pubkey = $2 ORDER BY msat DESC LIMIT 1), 0)",
+    2, NULL, cv, NULL, NULL, 0);
+  if (cr && PQresultStatus(cr) == PGRES_TUPLES_OK && PQntuples(cr) == 1) {
+    credit_left = atoll(PQgetvalue(cr, 0, 0));
+  }
+  if (cr) PQclear(cr);
+
+  PGresult *cm = PQexec(db, "COMMIT");
+  if (!cm || PQresultStatus(cm) != PGRES_COMMAND_OK) {
+    if (cm) PQclear(cm);
+    PQclear(PQexec(db, "ROLLBACK"));
+    api_error(q->fd, 503, "Could not commit metering settlement.");
+    return;
+  }
+  PQclear(cm);
+
+  uint8_t out[512];
+  int64_t n = cp_c_meter_res_write(ct_cs(turn_id), ct_cs(compute), (int64_t)seconds,
+                                   is_sandbox ? debit : 0, new_total, credit_left, (coax_v_u8){out, sizeof out});
+  if (n < 1) { api_error(q->fd, 503, "Could not encode metering response."); return; }
+  api_respond(q->fd, 200, "application/json", "Cache-Control: private, no-store\r\nVary: Cookie, Authorization\r\n", out, (size_t)n);
+}
+
 bool cloud_tools_route(const request *q) {
+  if (strcmp(q->path, "/api/chat/sandbox/meter/v1") == 0) { sandbox_meter_handle(q); return true; }
   if (strcmp(q->path, "/api/tools/cloud/v1") != 0) return false;
   if (strcmp(q->method, "POST") != 0) { api_error(q->fd, 405, "POST this."); return true; }
   const auth_principal *p = auth_principal_of(q);

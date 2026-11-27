@@ -22,10 +22,41 @@ cw_home_page :: (s: [] ChatWeb) {
 }
 
 // The page: its frame (settings-web.coax), and each section, of which only the one shown is drawn.
+cw_settings_compute :: (s: [] ChatWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..]; w := s[0].set[..];
+  if !sw_section(w, SW_ACCOUNT) || !w[0].logged { return; }
+  cu := s[0].cc[0].usage[0];
+  if !cu.loaded { return; }
+  sw_group(w, t, u, "acct.compute", "Compute & inference spend");
+  ib: [128] u8; usd: [32] u8;
+  in_n := cwc_put(ib[..], 0, "Today ");
+  in_n = cwc_put(ib[..], in_n, cwc_format_usd_micros(cu.today_usd_micros, usd[..]));
+  in_n = cwc_put(ib[..], in_n, " · ");
+  in_n = cwc_put_int(ib[..], in_n, cu.today_requests);
+  in_n = cwc_put(ib[..], in_n, " req");
+  sw_fact(w, t, u, "acct.compute.inf", "Hosted inference", cast(string) ib[0..<in_n]);
+
+  sb: [160] u8;
+  sn := cwc_put_int(sb[..], 0, cu.sandbox_turns);
+  sn = cwc_put(sb[..], sn, " turns · ");
+  sn = cwc_put_int(sb[..], sn, cu.sandbox_seconds);
+  sn = cwc_put(sb[..], sn, "s · ");
+  sn = cwc_put_int(sb[..], sn, cu.sandbox_msat / 1000);
+  sn = cwc_put(sb[..], sn, " sats ($0.0225 / $0.0450 / $0.0900 per hr)");
+  sw_fact(w, t, u, "acct.compute.sb", "Cloud Sandbox compute", cast(string) sb[0..<sn]);
+
+  lb: [96] u8;
+  ln := cwc_put_int(lb[..], 0, cu.local_turns);
+  ln = cwc_put(lb[..], ln, " turns · $0.00 (your enrolled computers)");
+  sw_fact(w, t, u, "acct.compute.loc", "Local computer runs", cast(string) lb[0..<ln]);
+  sw_group_end(w, t);
+}
+
 cw_settings_page :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..]; w := s[0].set[..];
   sw_page_begin(w, t, u);
   sw_account(w, t, u, cast(string) s[0].me[0..<s[0].me_n]);
+  cw_settings_compute(s);
   cw_settings_models(s);
   cw_settings_look(s);
   names := CS_LIMIT_NAMES; values := CS_LIMIT_VALUES;

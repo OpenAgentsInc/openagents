@@ -9,6 +9,7 @@
 #include "environment-process.h"
 #include "auth-policy.generated.h"
 #include "cloud-tools-wire.generated.h"
+#include "router-wire.generated.h"
 #include <stdlib.h>
 #include <string.h>
 #define CT_CAP (1u<<20)
@@ -62,7 +63,30 @@ static void submit(const request *q,PGconn *db,const auth_principal *p,const cha
  if(prior==2){r=turn_row(db,p->account,tid,false);n=control(r,v,out,CT_CAP);if(n<1){goto done;}status=202;reply(q,status,out,(size_t)n);goto replied;}
  // A limited session submits only where ap_limited_write names this route (a GameBuilder build agent; never /api/chat/submit/v2alpha1).
  bool limited=p->limited&&!ap_limited_write(ts(q->method),ts(q->path));
- if(!act_turn_for(ts(admitted_for))||!ct_admit(true,act_funded_turn(p->kind,ts(p->account),p->team,ts(admitted_for)),limited,p->frozen!=0,false,true,true)){status=403;why="Agent chat is currently available to the unrestricted team beta.";goto done;}
+ char pin_host[66]={0},pin_name[81]={0},pin_ws[72]={0},target[16]={0},sb_size[16]={0},place_reason[256]={0};
+ api_query(q,"host",pin_host,sizeof pin_host);
+ api_query(q,"target",target,sizeof target);
+ api_query(q,"size",sb_size,sizeof sb_size);
+ bool is_sandbox=false,funded=act_funded_turn(p->kind,ts(p->account),p->team,ts(admitted_for));
+ long long credit_msat=0,usd_per_btc=100000;
+ if(p->kind==2&&!limited&&p->frozen==0&&(*pin_host||!strcmp(target,"sandbox")||!strcmp(target,"auto"))){
+  const char *who=p->pubkey[0]?p->pubkey:p->account;
+  const char *cv[]={who,p->account};
+  PGresult *cr=PQexecParams(db,"SELECT coalesce((SELECT msat FROM inference.credit WHERE pubkey=$1 OR pubkey=$2 ORDER BY msat DESC LIMIT 1),0)",2,NULL,cv,NULL,NULL,0);
+  if(tuples(cr)&&PQntuples(cr)==1)credit_msat=number(cr,0,0);PQclear(cr);
+  PGresult *br=PQexec(db,"SELECT usd_per_btc FROM inference.btc_usd LIMIT 1");
+  if(tuples(br)&&PQntuples(br)==1&&number(br,0,0)>0)usd_per_btc=number(br,0,0);PQclear(br);
+  if(!strcmp(target,"sandbox")){
+   const char *sz=*sb_size?sb_size:"small";
+   int64_t adm=cp_c_sandbox_admit(ts(sz),(int64_t)credit_msat,(int64_t)usd_per_btc,p->team||p->admin);
+   if(adm==400){status=400;why="Invalid sandbox size (use small, default, or large).";goto done;}
+   if(adm==402){status=402;why="Insufficient sats credit for Cloud Sandbox. Top up credit in Settings or run on an enrolled computer ($0).";goto done;}
+   funded=true;
+  }else if(*pin_host||!strcmp(target,"auto")){
+   funded=true;
+  }
+ }
+ if(!act_turn_for(ts(admitted_for))||!ct_admit(true,funded,limited,p->frozen!=0,false,true,true)){status=403;why="Agent chat is currently available to the unrestricted team beta.";goto done;}
  const char *owner[]={p->account};if(!exec_sql(db,"SELECT pg_advisory_xact_lock(hashtextextended('durable-account:'||$1,0))",1,owner)){goto done;}r=PQexecParams(db,"SELECT count(*) FROM chat.turns_v2 WHERE account=$1 AND state IN (1,2)",1,NULL,owner,NULL,NULL,0);bool capacity=tuples(r)&&PQntuples(r)==1&&ctw_queue(number(r,0,0));PQclear(r);r=NULL;if(!capacity){status=429;why="32 chats are queued or running on this account, the most at once. Stop or finish one before queuing more.";goto done;}
  bool fresh=!*cid;if(fresh&&!api_object_id(cid,"cnv_")){goto done;}if(!api_object_id(tid,"trn_")){goto done;}long long now=(long long)api_now_ms();num(ms,now);
  if(*project){status=projects_context(db,p->account,project,cid,op,s->project_revision,now,&context);if(status!=200){why=status==404?"not found":status==409?"Project changed. Reopen it before sending.":"The complete Project context does not fit.";goto done;}status=503;}
@@ -81,29 +105,46 @@ static void submit(const request *q,PGconn *db,const auth_principal *p,const cha
  if(fresh){const char *cv[]={cid,p->account,project,title,legacy,legacy_revision,legacy_record,ms};if(!exec_sql(db,"INSERT INTO chat.conversations_v2(id,account,project,revision,title,legacy_thread,legacy_revision,legacy_record,created_ms,updated_ms) VALUES($1,$2,nullif($3,''),1,$4,nullif($5,''),CASE WHEN $5<>'' THEN $6::bigint END,$7,$8::bigint,$8::bigint)",8,cv)){goto done;}}
  else {const char *cv[]={p->account,cid,revision,ms};if(!exec_sql(db,"UPDATE chat.conversations_v2 SET revision=$3::bigint,updated_ms=$4::bigint WHERE account=$1 AND id=$2",4,cv)){goto done;}}
  const char *tv[]={tid,p->account,cid,revision,op,hash,canonical_request,(char *)out,context.snapshot_id,context.snapshot,ms,(char *)native,admitted_for};
- char pin_host[66]={0},pin_name[81]={0},pin_ws[72]={0},target[16]={0},sb_size[16]={0};
- api_query(q,"host",pin_host,sizeof pin_host);
- api_query(q,"target",target,sizeof target);
- api_query(q,"size",sb_size,sizeof sb_size);
- bool is_sandbox=false;
  if(*pin_host){
   if((*target&&strcmp(target,"computer"))||!cld_c_target_valid(ts("computer"),ts(pin_host))){status=400;why="Invalid target computer.";goto done;}
   const char *pv[]={p->account,pin_host};PGresult *pr=PQexecParams(db,"SELECT display_name FROM chat.environment_connections_v1 WHERE account=$1 AND host_pubkey=$2",2,NULL,pv,NULL,NULL,0);
   bool found=tuples(pr)&&PQntuples(pr)==1;if(found)snprintf(pin_name,sizeof pin_name,"%s",PQgetvalue(pr,0,0));PQclear(pr);
   if(!found){status=404;why="Target computer not found.";goto done;}
   snprintf(pin_ws,sizeof pin_ws,"host:%s",pin_host);
+  snprintf(place_reason,sizeof place_reason,"Explicit enrolled computer target selected ($0 local)");
  }else if(!strcmp(target,"sandbox")){
   if(!cld_c_target_valid(ts("sandbox"),ts(""))){status=400;why="Invalid execution target.";goto done;}
   const char *sz=*sb_size?sb_size:"small";
-  if(strcmp(sz,"small")&&strcmp(sz,"default")&&strcmp(sz,"large")){status=400;why="Invalid sandbox size (use small, default, or large).";goto done;}
   is_sandbox=true;
   snprintf(pin_name,sizeof pin_name,"cloud-sandbox");
   snprintf(pin_ws,sizeof pin_ws,"sandbox:%s",sz);
+  snprintf(place_reason,sizeof place_reason,"Explicit Cloud Sandbox target selected");
+ }else if(!strcmp(target,"auto")){
+  const char *sz=*sb_size?sb_size:"small";
+  if(cp_c_sandbox_rate_hr(ts(sz))<0){status=400;why="Invalid sandbox size (use small, default, or large).";goto done;}
+  bool sb_funded=cp_c_sandbox_admit(ts(sz),(int64_t)credit_msat,(int64_t)usd_per_btc,p->team||p->admin)==200;
+  char cut_s[32];num(cut_s,now-120000LL);
+  const char *ev[]={p->account,project,cut_s};
+  PGresult *er=PQexecParams(db,
+   "SELECT e.host_pubkey,e.display_name,(e.last_seen_ms>=$3::bigint) AS online,"
+   "($2='' OR EXISTS(SELECT 1 FROM projects.environment_bindings_v1 b WHERE b.account=$1 AND b.project=$2 AND b.host_pubkey=e.host_pubkey) "
+   " OR EXISTS(SELECT 1 FROM projects.private_v1 pr WHERE pr.account=$1 AND pr.id=$2 AND (pr.repo_canonical='' OR position(pr.repo_canonical in lower(e.workspaces_json))>0))) AS repo_ok,"
+   "(SELECT count(*) FROM chat.turns_v2 t WHERE t.account=$1 AND t.workspace=('host:'||e.host_pubkey) AND t.state IN (1,2)) AS active_turns "
+   "FROM chat.environment_connections_v1 e WHERE e.account=$1 "
+   "ORDER BY (e.last_seen_ms>=$3::bigint) DESC, repo_ok DESC, e.last_seen_ms DESC LIMIT 1",3,NULL,ev,NULL,NULL,0);
+  bool has_st=tuples(er)&&PQntuples(er)==1;
+  bool st_on=false,st_repo=false;long long st_act=0;char cand_host[66]={0},cand_name[81]={0};
+  if(has_st){snprintf(cand_host,sizeof cand_host,"%s",PQgetvalue(er,0,0));snprintf(cand_name,sizeof cand_name,"%s",PQgetvalue(er,0,1));st_on=PQgetvalue(er,0,2)[0]=='t';st_repo=PQgetvalue(er,0,3)[0]=='t';st_act=number(er,0,4);}
+  PQclear(er);
+  int64_t wk=pl_c_classify_prompt(ts(canonical_request));
+  int64_t tier=pl_c_decide_auto(wk,false,has_st,st_on,st_repo,false,st_act,2,20,8192,20480,sb_funded,tb(place_reason,sizeof place_reason-1));
+  if(tier==2&&*cand_host){snprintf(pin_host,sizeof pin_host,"%s",cand_host);snprintf(pin_name,sizeof pin_name,"%s",cand_name);snprintf(pin_ws,sizeof pin_ws,"host:%s",cand_host);}
+  else if(tier==3){is_sandbox=true;snprintf(pin_name,sizeof pin_name,"cloud-sandbox");snprintf(pin_ws,sizeof pin_ws,"sandbox:%s",sz);}
  }else if(*target&&!cld_c_target_valid(ts(target),ts(""))){
   status=400;why="Invalid execution target.";goto done;
  }
  if(!exec_sql(db,"INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,snapshot_id,snapshot_json,state,model,provider,effort,created_ms,updated_ms,native_input_json,admitted_for) VALUES($1,$2,$3,$4::bigint,$5,$6,$7,$8,nullif($9,''),$10,1,'google/gemini-4-hydrogen','google','low',$11::bigint,$11::bigint,$12,$13)",13,tv)||!operation_save(db,p->account,op,q->path,hash,tid))goto done;
- if(*pin_host||is_sandbox){const char *cmp=*pin_host?"local":"sandbox";const char *up[]={p->account,tid,cmp,pin_name,pin_ws};if(!exec_sql(db,"UPDATE chat.turns_v2 SET compute=$3,source_device=$4,workspace=$5 WHERE account=$1 AND id=$2",5,up))goto done;}
+ if(*pin_host||is_sandbox||*place_reason){const char *cmp=*pin_host?"local":is_sandbox?"sandbox":"cloud";const char *dev=(*pin_host||is_sandbox)?pin_name:"web";const char *up[]={p->account,tid,cmp,dev,pin_ws,place_reason};if(!exec_sql(db,"UPDATE chat.turns_v2 SET compute=$3,source_device=$4,workspace=$5,placement_reason=$6 WHERE account=$1 AND id=$2",6,up))goto done;}
  if(!cloud_emit_account_event(db,p->account,cid,tid,fresh?"conversation_created":"turn_started",title,*pin_host?"local":is_sandbox?"sandbox":"cloud","google/gemini-4-hydrogen",0,false,false,(*pin_host||is_sandbox)?pin_name:"web",before+1,now)||!exec_sql(db,"COMMIT",0,NULL)){goto done;}tx=false;
  r=turn_row(db,p->account,tid,false);n=control(r,v,out,CT_CAP);if(n<1){goto done;}(void)chat_wake();reply(q,202,out,(size_t)n);goto replied;
  done: if(tx)exec_sql(db,"ROLLBACK",0,NULL);refuse(q,status,why);

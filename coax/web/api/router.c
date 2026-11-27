@@ -8,6 +8,7 @@
 #include "api.h"
 #include "account-chat-wire.generated.h"
 #include "router-wire.generated.h"
+#include "cloud-tools-wire.generated.h"
 #include <limits.h>
 #include <signal.h>
 #include <stdio.h>
@@ -153,7 +154,106 @@ static bool router_has_credit(const char *who) {
   return ok;
 }
 
+static void placement_handle(const request *q) {
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST this"); return; }
+  const auth_principal *p = auth_principal_of(q);
+  if (!p || !act_owns(p->kind, rs(p->account), rs(p->account))) { api_error(q->fd, 401, "Log in first."); return; }
+  if (!auth_same_site(q)) { api_error(q->fd, 403, "Cross-site write refused."); return; }
+  coax_t_PlReq req;
+  if (!pl_c_placement_req_read((coax_string){q->body, (int64_t)q->body_len}, (coax_v_t_PlReq){&req, 1})) {
+    api_error(q->fd, 400, "Invalid placement request.");
+    return;
+  }
+  char prompt[513] = {0}, project_id[41] = {0}, sz[17] = "small";
+  if (req.prompt_n > 0) memcpy(prompt, req.prompt.e, (size_t)req.prompt_n);
+  if (req.project_n > 0) memcpy(project_id, req.project_id.e, (size_t)req.project_n);
+  if (req.size_n > 0) { memcpy(sz, req.size.e, (size_t)req.size_n); sz[req.size_n] = 0; }
+  if (cp_c_sandbox_rate_hr(rs(sz)) < 0) { api_error(q->fd, 400, "Invalid sandbox size."); return; }
+
+  PGconn *db = api_db();
+  if (!db) { api_error(q->fd, 503, "Account storage unavailable."); return; }
+  const char *who = p->pubkey[0] ? p->pubkey : p->account;
+  long long credit_msat = 0, usd_per_btc = 100000;
+  const char *cv[2] = {who, p->account};
+  PGresult *cr = PQexecParams(db,
+    "SELECT coalesce((SELECT msat FROM inference.credit WHERE pubkey = $1 OR pubkey = $2 ORDER BY msat DESC LIMIT 1), 0)",
+    2, NULL, cv, NULL, NULL, 0);
+  if (cr && PQresultStatus(cr) == PGRES_TUPLES_OK && PQntuples(cr) == 1) credit_msat = atoll(PQgetvalue(cr, 0, 0));
+  if (cr) PQclear(cr);
+  PGresult *br = PQexec(db, "SELECT usd_per_btc FROM inference.btc_usd LIMIT 1");
+  if (br && PQresultStatus(br) == PGRES_TUPLES_OK && PQntuples(br) == 1) {
+    long long v = atoll(PQgetvalue(br, 0, 0));
+    if (v > 0) usd_per_btc = v;
+  }
+  if (br) PQclear(br);
+
+  bool free_acct = p->team || p->admin;
+  bool sandbox_funded = cp_c_sandbox_admit(rs(sz), (int64_t)credit_msat, (int64_t)usd_per_btc, free_acct) == 200;
+
+  bool has_station = false;
+  coax_t_PlStation st = {0};
+  char host_pk[65] = {0}, host_name[81] = {0};
+  if (req.has_station_override) {
+    has_station = true;
+    st = req.station;
+    const char *ev[1] = {p->account};
+    PGresult *er = PQexecParams(db,
+      "SELECT host_pubkey, display_name FROM chat.environment_connections_v1 WHERE account = $1 ORDER BY last_seen_ms DESC LIMIT 1",
+      1, NULL, ev, NULL, NULL, 0);
+    if (er && PQresultStatus(er) == PGRES_TUPLES_OK && PQntuples(er) == 1) {
+      snprintf(host_pk, sizeof host_pk, "%s", PQgetvalue(er, 0, 0));
+      snprintf(host_name, sizeof host_name, "%s", PQgetvalue(er, 0, 1));
+    }
+    if (er) PQclear(er);
+  } else {
+    long long now_wall = (long long)api_now_ms();
+    char cut_s[32];
+    snprintf(cut_s, sizeof cut_s, "%lld", now_wall - 120000LL);
+    const char *ev[3] = {p->account, project_id, cut_s};
+    PGresult *er = PQexecParams(db,
+      "SELECT e.host_pubkey, e.display_name, (e.last_seen_ms >= $3::bigint) AS online, "
+      "($2 = '' OR EXISTS(SELECT 1 FROM projects.environment_bindings_v1 b WHERE b.account = $1 AND b.project = $2 AND b.host_pubkey = e.host_pubkey) "
+      " OR EXISTS(SELECT 1 FROM projects.private_v1 pr WHERE pr.account = $1 AND pr.id = $2 AND (pr.repo_canonical = '' OR position(pr.repo_canonical in lower(e.workspaces_json)) > 0))) AS repo_ok, "
+      "(SELECT count(*) FROM chat.turns_v2 t WHERE t.account = $1 AND t.workspace = ('host:' || e.host_pubkey) AND t.state IN (1,2)) AS active_turns "
+      "FROM chat.environment_connections_v1 e WHERE e.account = $1 "
+      "ORDER BY (e.last_seen_ms >= $3::bigint) DESC, repo_ok DESC, e.last_seen_ms DESC LIMIT 1",
+      3, NULL, ev, NULL, NULL, 0);
+    if (er && PQresultStatus(er) == PGRES_TUPLES_OK && PQntuples(er) == 1) {
+      has_station = true;
+      snprintf(host_pk, sizeof host_pk, "%s", PQgetvalue(er, 0, 0));
+      snprintf(host_name, sizeof host_name, "%s", PQgetvalue(er, 0, 1));
+      st.online = PQgetvalue(er, 0, 2)[0] == 't';
+      st.repo_matched = PQgetvalue(er, 0, 3)[0] == 't';
+      st.keep_clear = false;
+      st.active_turns = atoll(PQgetvalue(er, 0, 4));
+      st.max_turns = 2;
+      st.cpu_pct = 20;
+      st.free_ram_mb = 8192;
+      st.free_disk_mb = 20480;
+    }
+    if (er) PQclear(er);
+  }
+
+  int64_t work_kind = pl_c_classify_prompt(rs(prompt));
+  uint8_t reason[256] = {0};
+  int64_t tier = pl_c_decide_auto(work_kind, req.parallel_cloud, has_station,
+                                  st.online, st.repo_matched, st.keep_clear,
+                                  st.active_turns, st.max_turns, st.cpu_pct,
+                                  st.free_ram_mb, st.free_disk_mb, sandbox_funded,
+                                  (coax_v_u8){reason, sizeof reason - 1});
+  uint8_t out[1024];
+  int64_t rate_hr = cp_c_sandbox_rate_hr(rs(sz));
+  int64_t n = pl_c_placement_res_write(tier,
+                                       tier == 2 ? rs(host_pk) : rs(""),
+                                       tier == 2 ? rs(host_name) : (tier == 3 ? rs("Cloud Sandbox") : rs("Cloud")),
+                                       rs((const char *)reason), rate_hr, (int64_t)credit_msat,
+                                       (coax_v_u8){out, sizeof out});
+  if (n < 1) { api_error(q->fd, 503, "Could not encode placement decision."); return; }
+  api_respond(q->fd, 200, "application/json", ROUTER_HEADERS, out, (size_t)n);
+}
+
 bool router_route(const request *q) {
+  if (!strcmp(q->path, "/api/chat/placement/v1")) { placement_handle(q); return true; }
   if (strcmp(q->path, "/api/chat/route/v1")) return false;
   if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST this"); return true; }
   const auth_principal *p = auth_principal_of(q);

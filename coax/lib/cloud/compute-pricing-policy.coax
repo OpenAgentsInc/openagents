@@ -1,0 +1,137 @@
+// Metered Cloud Sandbox compute pricing & admission policy (Phase 5, #14129).
+// Pure #authority rules for transparent retail sandbox rates, exact msat billing,
+// strict $0.00 local computer runs, and pre-start 402 credit admission.
+//
+//   ./coax/bin/coax test coax/lib/cloud/compute-pricing-policy.coax
+//   ./coax/bin/coax mutate coax/lib/cloud/compute-pricing-policy.coax
+#authority;
+
+// Transparent retail hourly rates (usd_micros per hour; +25% over GCE base):
+//   small   (2 vCPU,  8 GiB, e2-standard-2): $0.0225 / hr
+//   default (4 vCPU, 16 GiB, e2-standard-4): $0.0450 / hr
+//   large   (8 vCPU, 16 GiB, c3d-highcpu-8): $0.0900 / hr
+//   local   (user's enrolled computer):      $0.0000 / hr (strictly 0 msat)
+CP_RATE_SMALL_HR   :: 22500;
+CP_RATE_DEFAULT_HR :: 45000;
+CP_RATE_LARGE_HR   :: 90000;
+CP_MAX_SECONDS     :: 86400; // 24h cap per metered turn slice
+CP_MIN_RESERVE_S   :: 900;   // 15-minute minimum pre-start credit reserve
+
+CP_ADMIT_OK      :: 200;
+CP_ADMIT_BAD_REQ :: 400;
+CP_ADMIT_UNPAID  :: 402;
+
+cp_sandbox_rate_hr :: (size: string) -> int #effects(all) {
+  if size == "small" { return CP_RATE_SMALL_HR; }
+  if size == "default" { return CP_RATE_DEFAULT_HR; }
+  if size == "large" { return CP_RATE_LARGE_HR; }
+  return -1;
+}
+
+// Retail usd_micros billed for `seconds` of a sandbox size class (rounded up to whole usd_micros).
+cp_sandbox_usd_micros :: (size: string, seconds: int) -> int #effects(all) {
+  rate := cp_sandbox_rate_hr(size);
+  if rate == -1 { return -1; }
+  if seconds < 0 || seconds > CP_MAX_SECONDS { return -1; }
+  if seconds == 0 { return 0; } // mutant: equivalent ((rate * 0 + 3599) / 3600 == 0)
+  return (rate * seconds + 3599) / 3600;
+}
+
+// Converts usd_micros (1e-6 USD) to msat (1e-11 BTC) at `usd_per_btc`, rounded up.
+// Matches 0216_inference_openagents_pricing.sql: ceil(usd_micros * 100000 / usd_per_btc).
+cp_usd_micros_to_msat :: (usd_micros: int, usd_per_btc: int) -> int #effects(all) {
+  if usd_micros < 0 || usd_per_btc <= 0 { return -1; }
+  if usd_micros == 0 { return 0; } // mutant: equivalent ((0 * 100000 + usd_per_btc - 1) / usd_per_btc == 0 for positive usd_per_btc)
+  return (usd_micros * 100000 + usd_per_btc - 1) / usd_per_btc;
+}
+
+// Exact msat debit for one turn's compute slice.
+// User's enrolled computer ("local") is strictly 0 msat for any valid non-negative duration.
+cp_turn_debit_msat :: (compute: string, size: string, seconds: int, usd_per_btc: int) -> int #effects(all) {
+  if seconds < 0 || seconds > CP_MAX_SECONDS { return -1; }
+  if compute == "local" { return 0; }
+  if compute == "sandbox" {
+    usd := cp_sandbox_usd_micros(size, seconds);
+    if usd < 0 { return -1; } // mutant: equivalent (cp_usd_micros_to_msat also returns -1 when usd < 0)
+    return cp_usd_micros_to_msat(usd, usd_per_btc);
+  }
+  return -1;
+}
+
+// Minimum credit reserve (msat) required to start a sandbox turn (15 minutes at size's rate).
+cp_sandbox_min_reserve_msat :: (size: string, usd_per_btc: int) -> int #effects(all) {
+  return cp_turn_debit_msat("sandbox", size, CP_MIN_RESERVE_S, usd_per_btc);
+}
+
+// Pre-start sandbox billing admission:
+// - 400 on invalid size
+// - 200 when funded_free (team/admin allowance)
+// - 402 when unfunded (credit_msat < 15-minute reserve or missing BTC/USD rate)
+// - 200 when credit_msat >= reserve
+cp_sandbox_admit :: (size: string, credit_msat: int, usd_per_btc: int, funded_free: bool) -> int #effects(all) {
+  if cp_sandbox_rate_hr(size) == -1 { return CP_ADMIT_BAD_REQ; }
+  if funded_free { return CP_ADMIT_OK; }
+  reserve := cp_sandbox_min_reserve_msat(size, usd_per_btc);
+  if reserve == -1 || credit_msat < reserve { return CP_ADMIT_UNPAID; }
+  return CP_ADMIT_OK;
+}
+
+#test "sandbox retail pricing rates, rounding, and BTC/msat conversion are exact" {
+  #assert cp_sandbox_rate_hr("small") == 22500;
+  #assert cp_sandbox_rate_hr("default") == 45000;
+  #assert cp_sandbox_rate_hr("large") == 90000;
+  #assert cp_sandbox_rate_hr("xlarge") == -1 && cp_sandbox_rate_hr("") == -1;
+
+  // 1 hour exact, 0 seconds = 0, 1 second rounds up, 24h cap exact, out-of-range refused
+  #assert cp_sandbox_usd_micros("small", 0) == 0;
+  #assert cp_sandbox_usd_micros("small", 1) == 7;          // ceil(22500/3600) = 7
+  #assert cp_sandbox_usd_micros("small", 160) == 1000;     // 22500 * 160 / 3600 = 1000 exact
+  #assert cp_sandbox_usd_micros("small", 161) == 1007;     // ceil(3622500/3600) = 1007
+  #assert cp_sandbox_usd_micros("small", 3600) == 22500;
+  #assert cp_sandbox_usd_micros("default", 3600) == 45000;
+  #assert cp_sandbox_usd_micros("large", 3600) == 90000;
+  #assert cp_sandbox_usd_micros("large", 86400) == 2160000;
+  #assert cp_sandbox_usd_micros("small", -1) == -1;
+  #assert cp_sandbox_usd_micros("small", 86401) == -1;
+  #assert cp_sandbox_usd_micros("bogus", 10) == -1;
+
+  // usd_micros -> msat conversion (e.g. $100,000/BTC => 1 usd_micro == 1 msat)
+  #assert cp_usd_micros_to_msat(0, 100000) == 0;
+  #assert cp_usd_micros_to_msat(1, 100000) == 1;
+  #assert cp_usd_micros_to_msat(5625, 100000) == 5625;
+  #assert cp_usd_micros_to_msat(1, 200000) == 1;           // ceil(100000 / 200000) = 1
+  #assert cp_usd_micros_to_msat(2, 200000) == 1;           // 200000 / 200000 = 1 exact
+  #assert cp_usd_micros_to_msat(3, 200000) == 2;           // ceil(300000 / 200000) = 2
+  #assert cp_usd_micros_to_msat(1, 1) == 100000;
+  #assert cp_usd_micros_to_msat(1, 99999) == 2;            // remainder == 1 rounds up cleanly
+  #assert cp_usd_micros_to_msat(1000, 50000) == 2000;
+  #assert cp_usd_micros_to_msat(-1, 100000) == -1;
+  #assert cp_usd_micros_to_msat(100, 0) == -1;
+  #assert cp_usd_micros_to_msat(100, -1) == -1;
+}
+
+#test "local computer runs strictly cost 0 msat and sandbox admission enforces 402 at exact reserve boundary" {
+  // Local computer always 0 msat regardless of duration or machine size label
+  #assert cp_turn_debit_msat("local", "", 0, 0) == 0;
+  #assert cp_turn_debit_msat("local", "large", 3600, 100000) == 0;
+  #assert cp_turn_debit_msat("local", "large", 86400, 100000) == 0;
+  #assert cp_turn_debit_msat("local", "", -1, 100000) == -1;
+  #assert cp_turn_debit_msat("local", "", 86401, 100000) == -1;
+
+  // Sandbox debit and invalid compute rejected
+  #assert cp_turn_debit_msat("sandbox", "small", 900, 100000) == 5625;   // 15m of $0.0225/hr = 5625 usd_micros = 5625 msat
+  #assert cp_turn_debit_msat("sandbox", "default", 900, 100000) == 11250;
+  #assert cp_turn_debit_msat("sandbox", "large", 900, 100000) == 22500;
+  #assert cp_turn_debit_msat("sandbox", "bogus", 900, 100000) == -1;
+  #assert cp_turn_debit_msat("sandbox", "small", 900, 0) == -1;
+  #assert cp_turn_debit_msat("cloud", "small", 900, 100000) == -1;
+
+  // Reserve helper & 402 admission boundaries
+  #assert cp_sandbox_min_reserve_msat("small", 100000) == 5625;
+  #assert cp_sandbox_admit("bad", 999999, 100000, true) == CP_ADMIT_BAD_REQ;
+  #assert cp_sandbox_admit("small", 0, 0, true) == CP_ADMIT_OK;            // team/admin funded
+  #assert cp_sandbox_admit("small", 0, 100000, false) == CP_ADMIT_UNPAID;  // 0 sats -> 402
+  #assert cp_sandbox_admit("small", 5624, 100000, false) == CP_ADMIT_UNPAID;
+  #assert cp_sandbox_admit("small", 5625, 100000, false) == CP_ADMIT_OK;
+  #assert cp_sandbox_admit("small", 10000, 0, false) == CP_ADMIT_UNPAID;   // missing BTC/USD rate -> fail closed 402
+}

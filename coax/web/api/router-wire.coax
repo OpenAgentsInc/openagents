@@ -9,6 +9,7 @@
 //
 // The decision key never comes here, and nothing here opens a socket.
 #load "../../lib/agent/router/decide.coax";
+#load "../../lib/agent/engine/placement-policy.coax";
 
 RW_REQUEST :: 65536;        // a RouteRequest's JSON
 RW_GOOGLE :: 32768;         // the request for Google
@@ -46,4 +47,127 @@ rw_finish :: (s: [] RwState, status: int, answer: string, ms: int, out: [] u8) -
     s[0].d[0].latency_ms = ifx ms > 0 && ms < 1000000 then ms else 0;
   }
   return rtr_decision_write(s[0].d[..], out);
+}
+
+// ---- Phase 5 (#14129): Automatic Execution Target Placement C ABI
+
+PlReq :: struct {
+  prompt: [512] u8; prompt_n: int;
+  project_id: [40] u8; project_n: int;
+  size: [16] u8; size_n: int;
+  parallel_cloud: bool;
+  has_station_override: bool;
+  station: PlStation;
+}
+
+pl_c_classify_prompt :: (prompt: string) -> int #export_c #effects(all) {
+  return pl_classify_prompt(prompt);
+}
+
+pl_c_decide_auto :: (work_kind: int, parallel_cloud: bool, has_station: bool, online: bool, repo_matched: bool, keep_clear: bool, active_turns: int, max_turns: int, cpu_pct: int, free_ram_mb: int, free_disk_mb: int, sandbox_funded: bool, reason_out: [] u8) -> int #export_c #effects(all) {
+  st := PlStation.{
+    online = online, repo_matched = repo_matched, keep_clear = keep_clear,
+    active_turns = active_turns, max_turns = max_turns,
+    cpu_pct = cpu_pct, free_ram_mb = free_ram_mb, free_disk_mb = free_disk_mb
+  };
+  dec := pl_decide_auto(work_kind, parallel_cloud, has_station, st, sandbox_funded);
+  n := ifx dec.reason.count > reason_out.count then reason_out.count else dec.reason.count; // mutant: equivalent (equal counts give same n)
+  for i: 0..<n { reason_out[i] = dec.reason[i]; }
+  if n < reason_out.count { reason_out[n] = 0; }
+  return dec.tier;
+}
+
+pl_c_placement_req_read :: (raw: string, out: [] PlReq) -> bool #export_c #effects(all) {
+  out[0] = PlReq.{};
+  d: [1] Jv; nodes: [128] JvNode;
+  if !jv_parse(d[..], raw, nodes[..]) { return false; }
+  if jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  p_at := jv_get(d[0], 0, "prompt");
+  if jv_kind(d[0], p_at) == JV_STRING {
+    pn := jv_str(d[0], p_at, out[0].prompt[..]);
+    if pn < 0 { return false; }
+    out[0].prompt_n = pn;
+  }
+  prj_at := jv_get(d[0], 0, "project_id");
+  if jv_kind(d[0], prj_at) == JV_STRING {
+    prjn := jv_str(d[0], prj_at, out[0].project_id[..]);
+    if prjn < 0 { return false; }
+    out[0].project_n = prjn;
+  }
+  sz_at := jv_get(d[0], 0, "size");
+  if jv_kind(d[0], sz_at) == JV_STRING {
+    szn := jv_str(d[0], sz_at, out[0].size[..]);
+    if szn < 0 { return false; }
+    out[0].size_n = szn;
+  }
+  out[0].parallel_cloud = jv_kind(d[0], jv_get(d[0], 0, "parallel_cloud")) == JV_TRUE;
+  st_at := jv_get(d[0], 0, "station");
+  if jv_kind(d[0], st_at) == JV_OBJECT {
+    out[0].has_station_override = true;
+    out[0].station = PlStation.{
+      online = jv_kind(d[0], jv_get(d[0], st_at, "online")) == JV_TRUE,
+      repo_matched = jv_kind(d[0], jv_get(d[0], st_at, "repo_matched")) == JV_TRUE,
+      keep_clear = jv_kind(d[0], jv_get(d[0], st_at, "keep_clear")) == JV_TRUE,
+      active_turns = jv_int(d[0], jv_get(d[0], st_at, "active_turns"), 0),
+      max_turns = jv_int(d[0], jv_get(d[0], st_at, "max_turns"), 2),
+      cpu_pct = jv_int(d[0], jv_get(d[0], st_at, "cpu_pct"), 10),
+      free_ram_mb = jv_int(d[0], jv_get(d[0], st_at, "free_ram_mb"), 8192),
+      free_disk_mb = jv_int(d[0], jv_get(d[0], st_at, "free_disk_mb"), 20480)
+    };
+  }
+  return true;
+}
+
+pl_c_placement_res_write :: (tier: int, host: string, host_name: string, reason: string, rate_hr: int, credit_msat: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "openagents.cloud.placement.res.v1alpha1");
+  jo_key(o[..], "tier"); jo_int(o[..], tier);
+  jo_key(o[..], "compute"); jo_str(o[..], pl_tier_compute(tier));
+  jo_key(o[..], "host_pubkey"); jo_str(o[..], host);
+  jo_key(o[..], "host_name"); jo_str(o[..], host_name);
+  jo_key(o[..], "reason"); jo_str(o[..], reason);
+  jo_key(o[..], "sandbox_rate_usd_micros_hr"); jo_int(o[..], rate_hr);
+  jo_key(o[..], "credit_msat"); jo_int(o[..], credit_msat);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+#test "router-wire Phase 5 placement C ABI decodes requests, decides tiers, and encodes responses" {
+  #assert pl_c_classify_prompt("Explain docs") == PL_WORK_READ_ONLY && pl_c_classify_prompt("Run coax test") == PL_WORK_CODE_EXEC;
+  rb: [128] u8; rb[127] = 'X';
+  t1 := pl_c_decide_auto(PL_WORK_CODE_EXEC, false, true, true, true, false, 0, 2, 15, 8192, 20480, true, rb[..]);
+  #assert t1 == PL_TIER_COMPUTER && rb[0] == 'M';
+  // Truncated reason buffer (exact fit without NUL vs overflow)
+  sm: [4] u8;
+  t2 := pl_c_decide_auto(PL_WORK_READ_ONLY, false, false, false, false, false, 0, 0, 0, 0, 0, false, sm[..]);
+  #assert t2 == PL_TIER_CLOUD_TOOLS && cast(string) sm[..] == "Read";
+  // Buffer with room receives NUL terminator
+  rb2: [128] u8; for i: 0..<128 { rb2[i] = 'Z'; }
+  _ = pl_c_decide_auto(PL_WORK_CODE_EXEC, true, false, false, false, false, 0, 0, 0, 0, 0, true, rb2[..]);
+  #assert rb2[59] == 0;
+
+  req: [1] PlReq;
+  #assert !pl_c_placement_req_read("bad", req[..]) && !pl_c_placement_req_read("[]", req[..]);
+  req[0].prompt_n = 5; req[0].parallel_cloud = true;
+  #assert pl_c_placement_req_read("{}", req[..]) && !req[0].parallel_cloud && !req[0].has_station_override && req[0].prompt_n == 0;
+  #assert pl_c_placement_req_read("{\"prompt\":\"\",\"project_id\":\"\",\"size\":\"\"}", req[..]) && req[0].prompt_n == 0 && req[0].project_n == 0 && req[0].size_n == 0;
+  #assert pl_c_placement_req_read("{\"prompt\":\"run test\",\"project_id\":\"prj_1\",\"size\":\"large\",\"parallel_cloud\":true,\"station\":{\"online\":true,\"repo_matched\":true,\"keep_clear\":false,\"active_turns\":1,\"max_turns\":3,\"cpu_pct\":40,\"free_ram_mb\":4096,\"free_disk_mb\":8192}}", req[..]);
+  #assert cast(string) req[0].prompt[0..<req[0].prompt_n] == "run test" && cast(string) req[0].project_id[0..<req[0].project_n] == "prj_1" && cast(string) req[0].size[0..<req[0].size_n] == "large";
+  #assert req[0].parallel_cloud && req[0].has_station_override && req[0].station.online && req[0].station.repo_matched && !req[0].station.keep_clear;
+  #assert req[0].station.active_turns == 1 && req[0].station.max_turns == 3 && req[0].station.cpu_pct == 40 && req[0].station.free_ram_mb == 4096 && req[0].station.free_disk_mb == 8192;
+  #assert pl_c_placement_req_read("{\"station\":{\"online\":false,\"keep_clear\":true}}", req[..]) && !req[0].station.online && req[0].station.keep_clear && req[0].station.active_turns == 0 && req[0].station.max_turns == 2 && req[0].station.cpu_pct == 10 && req[0].station.free_ram_mb == 8192 && req[0].station.free_disk_mb == 20480;
+  // Oversized string fields rejected cleanly
+  #assert !pl_c_placement_req_read("{\"size\":\"0123456789abcdef0\"}", req[..]);
+  #assert !pl_c_placement_req_read("{\"project_id\":\"01234567890123456789012345678901234567890\"}", req[..]);
+  big_p: [530] u8;
+  big_p[0] = '{'; big_p[1] = '"'; big_p[2] = 'p'; big_p[3] = 'r'; big_p[4] = 'o'; big_p[5] = 'm'; big_p[6] = 'p'; big_p[7] = 't'; big_p[8] = '"'; big_p[9] = ':'; big_p[10] = '"';
+  for i: 11..<524 { big_p[i] = 'a'; }
+  big_p[524] = '"'; big_p[525] = '}';
+  #assert !pl_c_placement_req_read(cast(string) big_p[0..<526], req[..]);
+
+  out: [512] u8; tiny: [1] u8;
+  wn := pl_c_placement_res_write(PL_TIER_COMPUTER, "aa", "Mac", "ok", 22500, 5000, out[..]);
+  #assert wn > 0 && cast(string) out[0..<wn] == "{\"schema\":\"openagents.cloud.placement.res.v1alpha1\",\"tier\":2,\"compute\":\"local\",\"host_pubkey\":\"aa\",\"host_name\":\"Mac\",\"reason\":\"ok\",\"sandbox_rate_usd_micros_hr\":22500,\"credit_msat\":5000}";
+  #assert pl_c_placement_res_write(PL_TIER_CLOUD_TOOLS, "", "", "r", 0, 0, tiny[..]) == -1;
 }
