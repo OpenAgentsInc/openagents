@@ -2,14 +2,12 @@
 
 OpenAgents Web's Coax component library, led by the dark-mode **Apps SDK UI** basic kit (`components/skin/apps-sdk.coax` and `components/kit/apps-sdk.coax`) alongside the legacy Mono Frames showcase. Everything renders directly to real browser DOM nodes from compiled Coax WebAssembly (`components/core/tree.coax` + `components/backend/dom.coax`), with 755 bundled SVG icons (`components/core/icons.coax`) and zero WebGPU requirement.
 
-## Apps SDK UI basics (dark mode)
+## Apps SDK UI (complete dark-mode catalog)
 
-- **Buttons & icon buttons**: `as_button` and `as_icon_button` across `AS_SOLID`, `AS_SOFT`, `AS_OUTLINE`, and `AS_GHOST` variants; semantic colors (`AS_PRIMARY`, `AS_SECONDARY`, `AS_INFO`, `AS_SUCCESS`, `AS_WARNING`, `AS_DANGER`, `AS_DISCOVERY`); sizes `sm`/`md`/`lg`/`xl`; optional pill radius, leading icon, disabled, and busy spinner states.
-- **Badges & avatars**: `as_badge` (soft, solid, outline, pill, status dot), `as_avatar` (sizes, square, online indicator), and `as_avatar_group_open/end`.
-- **Alerts**: `as_alert_open/end` across semantic colors and variants, automatically emitting `role="alert"` on danger banners.
-- **Forms**: `as_field_open/end`, `as_input` (outline/soft, pill, leading icon, validation `aria-invalid`, disabled), and `as_textarea`.
-- **Selection controls**: `as_switch` (`role="switch"`), `as_checkbox` (`role="checkbox"`), and `as_seg_open/item/end` (`role="radiogroup"`).
-- **Surfaces & feedback**: elevated `as_card_open/end`, `as_spinner`, `as_shimmer`, `as_link`, `as_divider`, `as_code` with copy button, `as_empty_open/end`, and dark-mode surface/color token swatches.
+- **Actions & display**: `as_button`, `as_icon_button`, `as_button_link`, `as_copy_button`, `as_link`, `as_badge`, `as_spinner`, `as_loading_dots`, `as_progress_ring` (`CircularProgress`), `as_progress_bar`, `as_avatar`, `as_avatar_group_open/end`, `as_alert_open/end`, `as_empty_open/end`, `as_image`, `as_shimmer`, `as_kbd`, `as_breadcrumb_*`.
+- **Forms**: `as_field_open/end`, `as_input`, `as_textarea`, `as_checkbox`, `as_switch`, `as_segmented` (`as_seg_*`), `as_radio_group_*`, `as_slider`, `as_select_*`, `as_tag_input_*`, and `as_date_input` (DatePicker & DateRangePicker + calendar grid).
+- **Overlays**: `as_popover_*`, `as_menu_*`, `as_tooltip_*`, and native modal `as_dialog_*` (`<dialog data-modal="true">`).
+- **Content & shell**: `as_card_*`, `as_divider`, `as_tabs_*`, `as_code`, `as_source`, `as_link_card`, `as_step_row`, data tables, prose, `as_sidebar_item`, `as_suggestion_chip`, thread bubbles, and composer.
 
 ## Legacy Mono Frames set
 

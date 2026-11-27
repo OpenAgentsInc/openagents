@@ -21,10 +21,16 @@
 WG_INBOX :: 4096;      // a press's or a field's text from the host
 WG_DRAFT :: 1024;
 WG_SENT :: 4;          // messages the composer has sent, kept
-WG_CSS :: 65536;
+WG_CSS :: 98304;
 WG_AS_SNIPPET :: "#load \"components/kit/apps-sdk.coax\";\n\n_ = as_card_open(t, \"card\", \"Cloud\", \"Live\");\n_ = as_button(t, \"run\", \"Start\", AS_PRIMARY,\n  AS_SOLID, AS_MD, true, IC_PLAY, false, false);\nas_card_end(t);";
 WG_AS_TARGETS :: [3] string.["Cloud", "Sandbox", "Local"];
 WG_AS_TARGET_DESC :: [3] string.["Managed OpenAgents Cloud runners with instant SSE sync.", "Isolated GCE container VM with GitHub repo workspace.", "Your enrolled Mac or Linux workstation over local daemon."];
+WG_AS_MODELS :: [3] string.["Gemini 4 Neon", "Claude Opus 5.5", "Inkling 2 Mini (Local)"];
+WG_AS_RADIOS :: [3] string.["Lightning (sats)", "Promo credit first", "Card top-up"];
+WG_AS_RADIO_DESC :: [3] string.["Instant settlement with 1% referral kickback.", "Spend eligible promotional credit up to $5/UTC day.", "Auto-refill when balance drops below threshold."];
+WG_AS_TAGS_CAP :: 6;
+WG_AS_TAG_LEN :: 24;
+WG_DIALOG_CANCEL :: 18;
 WG_CLICK :: 1; WG_INPUT :: 2; WG_SUBMIT :: 3;
 WG_ROWS :: [3] string.["Zero-base the chat", "Why the runner ran out of memory", "Port the frames to SVG"];
 WG_ROW_META :: [3] string.["Opus 5.5 · Nov 11 21:40", "Sonnet 5.5 · Nov 11 14:02", "Haiku 5.5 · Nov 10 09:15"];
@@ -47,6 +53,26 @@ WebPage :: struct {
   as_chk: [2] bool;
   as_seg: int;
   as_copied: bool;
+  as_key_copied: bool;
+  as_radio: int;
+  as_slider: int;
+  as_sel_open: bool;
+  as_sel_idx: int;
+  as_tags: [WG_AS_TAGS_CAP] [WG_AS_TAG_LEN] u8;
+  as_tag_n: [WG_AS_TAGS_CAP] int;
+  as_ntags: int;
+  as_tag_draft: [WG_AS_TAG_LEN] u8;
+  as_tag_draft_n: int;
+  as_cal_day: int;
+  as_range_preset: int;
+  as_pop_open: bool;
+  as_menu_open: bool;
+  as_menu_last: int;
+  as_tip_open: bool;
+  as_dialog_open: bool;
+  as_tab: int;
+  as_sb: int;
+  as_chip_pick: int;
   presses: int;
   tool_open: bool;
   work: [4] bool;                    // the work log's run, group, refused row and its Show all are open
@@ -268,30 +294,270 @@ wg_as_showcase :: (s: [] WebPage) {
   tr_close(t);
   tr_close(t);
 
-  // 5. Surfaces, Streaming & Empty State
-  _ = wg_as_section(t, "as.surfaces", "Surfaces, Streaming & Code", "Elevated cards, spinner/shimmer indicators, links, copyable code blocks, and empty states.");
+  // 5. Complete Forms (RadioGroup, Slider, SelectControl, TagInput, DatePicker & DateRangePicker)
+  _ = wg_as_section(t, "as.forms2", "RadioGroup, Slider, Select, TagInput & Dates", "Every Apps SDK UI form primitive with live interactive state.");
+  _ = tr_open(t, "as.forms2.grid", TG_DIV, "as-grid2");
+
+  _ = as_card_open(t, "as.rad.card", "RadioGroup & Slider", "Billing preference · Spend limit");
+  _ = as_radio_group_open(t, "as.rg", "Billing preference", false);
+  rnames := WG_AS_RADIOS; rdescs := WG_AS_RADIO_DESC;
+  for k: 0..<3 { _ = as_radio_item(t, tr_join(buf[..], "as.rg.", k), rnames[k], rdescs[k], k == s[0].as_radio, false); }
+  as_radio_group_end(t);
+  _ = as_divider(t, "as.rad.div");
+  sv_buf: [16] u8; sp_buf: [16] u8; sn_buf: [16] u8;
+  sv := tr_cat(sv_buf[..], "$", tr_join(sn_buf[..], "", s[0].as_slider));
+  sp := tr_join(sp_buf[..], "", s[0].as_slider);
+  _ = as_slider(t, "as.sl", "Daily sandbox budget", sv, "0", "100", "5", sp, sp);
+  as_card_end(t);
+
+  _ = as_card_open(t, "as.sel2.card", "Select, TagInput & Date Pickers", "Dropdown · Removable tags · Calendar");
+  models_as := WG_AS_MODELS;
+  _ = as_field_open(t, "as.f.model", "Default model");
+  _ = as_select_open(t, "as.sel", models_as[s[0].as_sel_idx], s[0].as_sel_open);
+  if s[0].as_sel_open {
+    for k: 0..<3 { _ = as_select_option(t, tr_join(buf[..], "as.sel.", k), models_as[k], k == s[0].as_sel_idx); }
+  }
+  as_select_end(t, s[0].as_sel_open);
+  as_field_end(t, "as.f.model", "", false);
+
+  _ = as_field_open(t, "as.f.tags", "Workspace tags");
+  _ = as_tag_input_open(t, "as.tags");
+  for k: 0..<s[0].as_ntags {
+    _ = as_tag_chip(t, tr_join(buf[..], "as.tag.", k), cast(string) s[0].as_tags[k][0..<s[0].as_tag_n[k]]);
+  }
+  as_tag_input_end(t, "as.tags.in", "Add tag + Enter…");
+  as_field_end(t, "as.f.tags", "Click × to remove or type a label and press Enter.", false);
+
+  _ = as_field_open(t, "as.f.dates", "DatePicker & DateRangePicker");
+  _ = tr_open(t, "as.date.row", TG_DIV, "as-date-row");
+  _ = as_date_input(t, "as.dt.start", ifx s[0].as_range_preset == 0 then "2026-11-23" else ifx s[0].as_range_preset == 1 then "2026-10-31" else "2026-09-01", "Start date");
+  _ = tr_leaf(t, "as.dt.to", TG_SPAN, "as-sub", "→");
+  _ = as_date_input(t, "as.dt.end", "2026-11-30", "End date");
+  _ = as_button(t, "as.rng.0", "7d", ifx s[0].as_range_preset == 0 then AS_PRIMARY else AS_SECONDARY, ifx s[0].as_range_preset == 0 then AS_SOLID else AS_OUTLINE, AS_SM, true, -1, false, false);
+  _ = as_button(t, "as.rng.1", "30d", ifx s[0].as_range_preset == 1 then AS_PRIMARY else AS_SECONDARY, ifx s[0].as_range_preset == 1 then AS_SOLID else AS_OUTLINE, AS_SM, true, -1, false, false);
+  _ = as_button(t, "as.rng.2", "90d", ifx s[0].as_range_preset == 2 then AS_PRIMARY else AS_SECONDARY, ifx s[0].as_range_preset == 2 then AS_SOLID else AS_OUTLINE, AS_SM, true, -1, false, false);
+  tr_close(t);
+  _ = tr_open(t, "as.cal", TG_DIV, "as-cal");
+  _ = tr_open(t, "as.cal.hd", TG_DIV, "as-cal-hd");
+  _ = tr_leaf(t, "as.cal.m", TG_SPAN, "", "November 2026");
+  _ = as_badge(t, "as.cal.day.b", tr_join(buf[..], "Nov ", s[0].as_cal_day), AS_INFO, AS_SOFT, AS_SM, true, false);
+  tr_close(t);
+  _ = tr_open(t, "as.cal.g", TG_DIV, "as-cal-grid");
+  dows := [7] string.["S", "M", "T", "W", "T", "F", "S"];
+  for d: 0..<7 { _ = tr_leaf(t, tr_join(buf[..], "as.cal.w.", d), TG_SPAN, "as-cal-dow", dows[d]); }
+  for d: 22..<31 {
+    day_s: [8] u8;
+    db := tr_leaf(t, tr_join(buf[..], "as.cal.d.", d), TG_BUTTON, "as-cal-day", tr_join(day_s[..], "", d));
+    tr_attr(t, db, AT_TYPE, "button");
+    if d == s[0].as_cal_day || d == 30 { tr_attr(t, db, AT_SELECTED, "true"); }
+    else if d > s[0].as_cal_day && d < 30 { tr_attr(t, db, AT_STATE, "range"); }
+  }
+  tr_close(t);
+  tr_close(t);
+  as_field_end(t, "as.f.dates", "", false);
+  as_card_end(t);
+  tr_close(t);
+  tr_close(t);
+
+  // 6. Overlays (Popover, Menu, Tooltip, Modal Dialog)
+  _ = wg_as_section(t, "as.overlays", "Overlays (Popover, Menu, Tooltip & Dialog)", "Anchored floating surfaces, action menus with keyboard shortcuts, tooltips, and native modal <dialog>.");
+  _ = as_card_open(t, "as.ov.card", "Interactive Overlays", "Click triggers to open live surfaces");
+  _ = tr_open(t, "as.ov.row", TG_DIV, "as-row");
+
+  // Popover
+  _ = as_popover_open(t, "as.pop");
+  _ = as_button(t, "as.pop.trig", ifx s[0].as_pop_open then "Close Popover" else "Open Popover", AS_SECONDARY, AS_OUTLINE, AS_MD, pill, IC_INFO, false, false);
+  if s[0].as_pop_open {
+    _ = as_popover_panel_open(t, "as.pop.panel");
+    _ = tr_leaf(t, "as.pop.t", TG_H3, "as-h3", "Cloud Sandbox Quota");
+    _ = tr_leaf(t, "as.pop.d", TG_P, "as-sub", "2 of 4 container slots active · 72% daily budget remaining.");
+    _ = as_progress_bar(t, "as.pop.pb", "72");
+    _ = as_button(t, "as.pop.ok", "Done", AS_PRIMARY, AS_SOLID, AS_SM, true, -1, false, false);
+  }
+  as_popover_end(t, s[0].as_pop_open);
+
+  // Menu
+  _ = as_popover_open(t, "as.menu.wrap");
+  _ = as_button(t, "as.menu.trig", ifx s[0].as_menu_open then "Close Menu" else "Actions Menu", AS_SECONDARY, AS_SOFT, AS_MD, pill, IC_CHEVRON_DOWN, false, false);
+  if s[0].as_menu_open {
+    _ = as_menu_panel_open(t, "as.menu.panel", "Thread actions");
+    _ = as_menu_item(t, "as.menu.0", "Duplicate thread", IC_COPY, "⌘D", false);
+    _ = as_menu_item(t, "as.menu.1", "Open in Desktop", IC_TERMINAL, "⌘O", false);
+    _ = as_menu_item(t, "as.menu.2", "Share referral link", IC_LINK, "⇧⌘C", false);
+    _ = as_menu_sep(t, "as.menu.sep");
+    _ = as_menu_item(t, "as.menu.3", "Delete thread", IC_TRASH, "⌫", true);
+    tr_close(t);
+  }
+  tr_close(t);
+
+  // Tooltip
+  _ = as_tooltip_open(t, "as.tip");
+  _ = as_button(t, "as.tip.btn", "Hover or Pin Tooltip", AS_SECONDARY, AS_OUTLINE, AS_MD, pill, IC_SPARKLES, false, false);
+  as_tooltip_end(t, "as.tip", "Synced live via Coax SSE · ⌘K to search", s[0].as_tip_open);
+
+  // Native Modal Dialog trigger
+  _ = as_button(t, "as.dlg.open", "Open Modal Dialog", AS_PRIMARY, AS_SOLID, AS_MD, pill, IC_PLAY, false, false);
+
+  // ButtonLink + CopyButton + Kbd
+  _ = as_button_link(t, "as.btn.link", "ButtonLink →", "/books", AS_INFO, AS_SOFT, AS_MD, pill, IC_GLOBE);
+  _ = as_copy_button(t, "as.cp.btn", "Copy API Key", s[0].as_key_copied, AS_OUTLINE, AS_MD, pill);
+  _ = as_kbd(t, "as.kbd.0", "⌘K");
+  tr_close(t);
+
+  if s[0].as_menu_last > 0 {
+    m_acts := [4] string.["Duplicated thread.", "Opened in Desktop.", "Copied referral link.", "Delete confirmed."];
+    _ = tr_leaf(t, "as.menu.said", TG_P, "as-sub", m_acts[s[0].as_menu_last - 1]);
+  }
+  as_card_end(t);
+
+  if s[0].as_dialog_open {
+    _ = as_dialog_open(t, "as.dlg", "Deploy to OpenAgents Production?", "as.dlg.close");
+    _ = tr_leaf(t, "as.dlg.p", TG_P, "", "This uses a native <dialog> promoted via showModal() in dom-host.js with backdrop blur and Escape cancellation.");
+    _ = as_alert_open(t, "as.dlg.al", "Canary rollout enabled", "All 6 shards will verify before switching traffic.", AS_INFO, AS_SOFT, IC_SHIELD_CHECK);
+    as_alert_end(t);
+    _ = as_dialog_footer_open(t, "as.dlg.ft");
+    _ = as_button(t, "as.dlg.cancel", "Cancel", AS_SECONDARY, AS_GHOST, AS_MD, false, -1, false, false);
+    _ = as_button(t, "as.dlg.ok", "Confirm deploy", AS_PRIMARY, AS_SOLID, AS_MD, true, IC_CHECK, false, false);
+    as_dialog_end(t);
+  }
+  tr_close(t);
+
+  // 7. Indicators, Media, Breadcrumb, Tabs, Table, Prose, Source, LinkCard & Activity
+  _ = wg_as_section(t, "as.surfaces", "Content, Indicators, Tabs, Table & Media", "CircularProgress, LoadingDots, ProgressBar, Image, Breadcrumb, Tabs, Data Table, Prose, Source chips, LinkCards, Activity steps, CodeBlock, and EmptyMessage.");
   _ = tr_open(t, "as.surf.grid", TG_DIV, "as-grid2");
 
-  _ = as_card_open(t, "as.stream.card", "Live Agent Feedback", "Spinner · ShimmerText · TextLink");
-  _ = tr_open(t, "as.stream.row", TG_DIV, "as-row");
+  _ = as_card_open(t, "as.stream.card", "Indicators, Progress & Code", "Spinner · LoadingDots · CircularProgress · Shimmer");
+  _ = tr_open(t, "as.ind.row", TG_DIV, "as-row");
   _ = as_spinner(t, "as.sp.sm", false);
-  _ = as_shimmer(t, "as.sh.0", "Compiling Coax component tree and syncing workspace…");
+  _ = as_spinner(t, "as.sp.lg", true);
+  _ = as_loading_dots(t, "as.ld.0");
+  _ = as_progress_ring(t, "as.pr.0", "35", "35%", AS_INFO);
+  _ = as_progress_ring(t, "as.pr.1", "72", "72%", AS_DISCOVERY);
+  _ = as_progress_ring(t, "as.pr.2", "100", "100%", AS_SUCCESS);
   tr_close(t);
+  _ = as_progress_bar(t, "as.pb.0", "68");
+  _ = as_shimmer(t, "as.sh.0", "Compiling Coax component tree and syncing workspace…");
+  _ = as_breadcrumb_open(t, "as.bc", "Breadcrumb");
+  _ = as_breadcrumb_item(t, "as.bc.0", "OpenAgents", "/", false, false);
+  _ = as_breadcrumb_item(t, "as.bc.1", "Design System", "/components", false, true);
+  _ = as_breadcrumb_item(t, "as.bc.2", "Apps SDK UI", "", true, true);
+  as_breadcrumb_end(t);
+  _ = as_code(t, "as.code", "coax", WG_AS_SNIPPET, s[0].as_copied);
+  as_card_end(t);
+
+  _ = as_card_open(t, "as.tabs.card", "Tabs, Prose, Table & Activity", "Interactive tabbed content panel");
+  _ = as_tabs_open(t, "as.tabs", "Content views");
+  _ = as_tab(t, "as.tab.0", "Table", IC_CODE, s[0].as_tab == 0);
+  _ = as_tab(t, "as.tab.1", "Prose & Sources", IC_INFO, s[0].as_tab == 1);
+  _ = as_tab(t, "as.tab.2", "Activity & Media", IC_TERMINAL, s[0].as_tab == 2);
+  as_tabs_end(t);
+
+  if s[0].as_tab == 0 {
+    _ = tr_open(t, "as.tbl.w", TG_DIV, "as-tbl-wrap");
+    _ = tr_open(t, "as.tbl", TG_TABLE, "as-tbl");
+    _ = tr_open(t, "as.tbl.hr", TG_TR, "");
+    _ = tr_leaf(t, "as.tbl.h0", TG_TH, "", "Surface");
+    _ = tr_leaf(t, "as.tbl.h1", TG_TH, "", "Runtime");
+    _ = tr_leaf(t, "as.tbl.h2", TG_TH, "", "Status");
+    tr_close(t);
+    _ = tr_open(t, "as.tbl.r0", TG_TR, "");
+    _ = tr_leaf(t, "as.tbl.r0.0", TG_TD, "", "OpenAgents Web");
+    _ = tr_leaf(t, "as.tbl.r0.1", TG_TD, "", "Coax WASM DOM");
+    _ = tr_open(t, "as.tbl.r0.2", TG_TD, ""); _ = as_badge(t, "as.tbl.b0", "Live", AS_SUCCESS, AS_SOFT, AS_SM, true, true); tr_close(t);
+    tr_close(t);
+    _ = tr_open(t, "as.tbl.r1", TG_TR, "");
+    _ = tr_leaf(t, "as.tbl.r1.0", TG_TD, "", "OpenAgents iOS");
+    _ = tr_leaf(t, "as.tbl.r1.1", TG_TD, "", "Coax Metal Cloud");
+    _ = tr_open(t, "as.tbl.r1.2", TG_TD, ""); _ = as_badge(t, "as.tbl.b1", "TestFlight", AS_INFO, AS_SOFT, AS_SM, true, true); tr_close(t);
+    tr_close(t);
+    _ = tr_open(t, "as.tbl.r2", TG_TR, "");
+    _ = tr_leaf(t, "as.tbl.r2.0", TG_TD, "", "OpenAgents Desktop");
+    _ = tr_leaf(t, "as.tbl.r2.1", TG_TD, "", "Coax Native Metal");
+    _ = tr_open(t, "as.tbl.r2.2", TG_TD, ""); _ = as_badge(t, "as.tbl.b2", "Installed", AS_DISCOVERY, AS_SOFT, AS_SM, true, false); tr_close(t);
+    tr_close(t);
+    tr_close(t);
+    tr_close(t);
+  } else if s[0].as_tab == 1 {
+    _ = tr_open(t, "as.prose", TG_DIV, "as-prose");
+    _ = tr_leaf(t, "as.prose.h", TG_H4, "", "Composable dark-mode prose");
+    _ = tr_open(t, "as.prose.p", TG_P, "");
+    _ = tr_leaf(t, "as.prose.p0", TG_SPAN, "", "Every web surface shares ");
+    _ = tr_leaf(t, "as.prose.p1", TG_CODE, "", "apps_sdk_css()");
+    _ = tr_leaf(t, "as.prose.p2", TG_SPAN, "", " with zero inline styles and full keyboard/ARIA support.");
+    tr_close(t);
+    _ = tr_leaf(t, "as.prose.bq", TG_BLOCKQUOTE, "", "One shared Coax component kit across Chat, Settings, Projects, and Referrals.");
+    tr_close(t);
+    _ = tr_open(t, "as.sources", TG_DIV, "as-row");
+    _ = as_source(t, "as.src.0", "docs/v1/web.md", "/books", IC_GLOBE);
+    _ = as_source(t, "as.src.1", "components/kit/apps-sdk.coax", "/components", IC_CODE);
+    tr_close(t);
+    _ = as_link_card(t, "as.lc.0", "OpenAgents Books", "817 chapters across 9 engineering books", "/books", IC_ARROW_RIGHT);
+  } else {
+    _ = as_step_row(t, "as.st.0", IC_CHECK_CIRCLE, "Build kit.wasm", "238 KB · 1.6 s", "Passed", AS_SUCCESS);
+    _ = as_step_row(t, "as.st.1", IC_TERMINAL, "Run 102 component checks", "26 ms · 0 lost nodes", "Passed", AS_SUCCESS);
+    _ = as_image(t, "as.img.0", "/favicon.svg", "OpenAgents Emblem", "Responsive 16:9 media card with rounded frame and caption");
+  }
   _ = tr_open(t, "as.stream.links", TG_DIV, "as-row");
   _ = as_link(t, "as.lk.books", "OpenAgents Books", "/books", false);
   _ = as_link(t, "as.lk.chat", "Open Cloud Chat", "/chat", true);
   tr_close(t);
-  _ = as_code(t, "as.code", "coax", WG_AS_SNIPPET, s[0].as_copied);
   as_card_end(t);
 
   _ = as_empty_open(t, "as.empty", IC_FOLDER, "No cloud sandboxes running", "Pick a GitHub repository or start a session to spin up an isolated workspace container.");
   _ = as_button(t, "as.empty.cta", "Create workspace", AS_PRIMARY, AS_SOLID, AS_MD, true, IC_PLUS, false, false);
   as_empty_end(t);
 
+  _ = as_card_open(t, "as.media.card", "Image & LinkCard", "Local-origin media + destination cards");
+  _ = as_link_card(t, "as.lc.1", "Cloud Chat Workspace", "Synced threads, GitHub repos & GCE sandboxes", "/chat", IC_ARROW_RIGHT);
+  _ = as_link_card(t, "as.lc.2", "GPU & Motion Gallery", "WebGPU shader primitives and spring physics", "/components-gpu", IC_SPARKLES);
+  as_card_end(t);
+
   tr_close(t);
   tr_close(t);
 
-  // 6. Dark-Mode Token Swatches
+  // 8. AppShell, Sidebar, Messages, SuggestionChips & Composer
+  _ = wg_as_section(t, "as.shell", "AppShell, Sidebar, Thread & Composer", "The complete dark-mode chat shell composed from Apps SDK UI primitives.");
+  _ = tr_open(t, "as.shell.demo", TG_DIV, "as-shell-demo");
+  _ = tr_open(t, "as.sb", TG_NAV, "as-sidebar");
+  tr_attr(t, tr_find(t, "as.sb"), AT_LABEL, "Demo sidebar");
+  _ = tr_leaf(t, "as.sb.l0", TG_SPAN, "as-sb-lbl", "Workspace");
+  _ = as_sidebar_item(t, "as.sb.0", IC_SPARKLES, "Cloud Chat", s[0].as_sb == 0);
+  _ = as_sidebar_item(t, "as.sb.1", IC_FOLDER, "Projects", s[0].as_sb == 1);
+  _ = as_sidebar_item(t, "as.sb.2", IC_GLOBE, "Worlds", s[0].as_sb == 2);
+  _ = as_sidebar_item(t, "as.sb.3", IC_SETTINGS, "Settings", s[0].as_sb == 3);
+  tr_close(t);
+
+  _ = tr_open(t, "as.shell.main", TG_DIV, "as-shell-main");
+  _ = tr_leaf(t, "as.msg.u0", TG_DIV, "as-msg-u", "Port every Apps SDK UI component to Coax in dark mode.");
+  _ = tr_open(t, "as.msg.a0", TG_DIV, "as-msg-a");
+  _ = tr_leaf(t, "as.msg.a0.p", TG_P, "", "Done — all Actions, Forms, Overlays, Content, and Shell components are now live in components/kit/apps-sdk.coax.");
+  _ = tr_open(t, "as.chips", TG_DIV, "as-chips");
+  chips := [3] string.["Inspect mobile parity", "Run cross-surface sync", "Deploy staging"];
+  for k: 0..<3 { _ = as_suggestion_chip(t, tr_join(buf[..], "as.chip.", k), IC_SPARKLES, chips[k]); }
+  tr_close(t);
+  if s[0].as_chip_pick > 0 {
+    _ = tr_leaf(t, "as.chip.said", TG_SPAN, "as-sub", tr_cat(buf[..], "Selected suggestion: ", chips[s[0].as_chip_pick - 1]));
+  }
+  tr_close(t);
+  _ = tr_open(t, "as.comp", TG_DIV, "as-composer");
+  ct := tr_open(t, "as.comp.in", TG_TEXTAREA, "");
+  tr_attr(t, ct, AT_PLACEHOLDER, "Ask OpenAgents anything…");
+  tr_attr(t, ct, AT_LABEL, "Demo composer");
+  tr_attr(t, ct, AT_ROWS, "2");
+  tr_close(t);
+  _ = tr_open(t, "as.comp.ft", TG_DIV, "as-composer-ft");
+  _ = tr_open(t, "as.comp.l", TG_DIV, "as-row");
+  _ = as_icon_button(t, "as.comp.add", IC_PLUS, "Attach", AS_SECONDARY, AS_GHOST, AS_SM, true, false);
+  _ = as_badge(t, "as.comp.m", models_as[s[0].as_sel_idx], AS_SECONDARY, AS_SOFT, AS_MD, true, false);
+  tr_close(t);
+  _ = as_icon_button(t, "as.comp.send", IC_ARROW_RIGHT, "Send message", AS_PRIMARY, AS_SOLID, AS_MD, true, false);
+  tr_close(t);
+  tr_close(t);
+  tr_close(t);
+  tr_close(t);
+  tr_close(t);
+
+  // 9. Dark-Mode Token Swatches
   _ = wg_as_section(t, "as.tokens", "Dark-Mode Design Tokens", "Obsidian surface ladder and WCAG AA semantic colors from components/skin/apps-sdk.coax.");
   _ = tr_open(t, "as.swatches", TG_DIV, "as-swatches");
   wg_as_swatch(t, "as.sw.s0", "as-swatch-chip as-sw-surface", "Surface", "#0d0d0d");
@@ -631,6 +897,44 @@ wg_click :: (s: [] WebPage, id: string) {
     s[0].clip_n = 0;
     for c: WG_AS_SNIPPET { if s[0].clip_n < WG_DRAFT { s[0].clip[s[0].clip_n] = c; s[0].clip_n += 1; } }
   }
+  else if id == "as.cp.btn" {
+    s[0].as_key_copied = true;
+    s[0].clip_n = 0;
+    ktxt := "oa_live_demo_token";
+    for c: ktxt { if s[0].clip_n < WG_DRAFT { s[0].clip[s[0].clip_n] = c; s[0].clip_n += 1; } }
+  }
+  else if wg_index(id, "as.rg.") >= 0 && wg_index(id, "as.rg.") < 3 { s[0].as_radio = wg_index(id, "as.rg."); }
+  else if id == "as.sel" { s[0].as_sel_open = !s[0].as_sel_open; }
+  else if wg_index(id, "as.sel.") >= 0 && wg_index(id, "as.sel.") < 3 { s[0].as_sel_idx = wg_index(id, "as.sel."); s[0].as_sel_open = false; }
+  else if id.count == 10 && wg_id_is(id, "as.tag.") && cast(string) id[8..<10] == ".x" && id[7] >= '0' && id[7] <= '5' {
+    rm := cast(int) (id[7] - '0');
+    if rm < s[0].as_ntags {
+      for j: rm + 1..<s[0].as_ntags { s[0].as_tags[j - 1] = s[0].as_tags[j]; s[0].as_tag_n[j - 1] = s[0].as_tag_n[j]; }
+      s[0].as_ntags -= 1;
+    }
+  }
+  else if wg_index(id, "as.rng.") >= 0 && wg_index(id, "as.rng.") < 3 { s[0].as_range_preset = wg_index(id, "as.rng."); }
+  else if id.count == 11 && wg_id_is(id, "as.cal.d.") && id[9] >= '0' && id[9] <= '9' && id[10] >= '0' && id[10] <= '9' {
+    day := cast(int) (id[9] - '0') * 10 + cast(int) (id[10] - '0');
+    if day >= 22 && day <= 30 { s[0].as_cal_day = day; }
+  }
+  else if id == "as.pop.trig" { s[0].as_pop_open = !s[0].as_pop_open; s[0].as_menu_open = false; }
+  else if id == "as.pop.ok" { s[0].as_pop_open = false; }
+  else if id == "as.menu.trig" { s[0].as_menu_open = !s[0].as_menu_open; s[0].as_pop_open = false; }
+  else if wg_index(id, "as.menu.") >= 0 && wg_index(id, "as.menu.") < 4 { s[0].as_menu_last = wg_index(id, "as.menu.") + 1; s[0].as_menu_open = false; }
+  else if id == "as.tip.btn" { s[0].as_tip_open = !s[0].as_tip_open; }
+  else if id == "as.dlg.open" { s[0].as_dialog_open = true; }
+  else if id == "as.dlg.close" || id == "as.dlg.cancel" || id == "as.dlg.ok" { s[0].as_dialog_open = false; }
+  else if wg_index(id, "as.tab.") >= 0 && wg_index(id, "as.tab.") < 3 { s[0].as_tab = wg_index(id, "as.tab."); }
+  else if wg_index(id, "as.sb.") >= 0 && wg_index(id, "as.sb.") < 4 { s[0].as_sb = wg_index(id, "as.sb."); }
+  else if wg_index(id, "as.chip.") >= 0 && wg_index(id, "as.chip.") < 3 { s[0].as_chip_pick = wg_index(id, "as.chip.") + 1; }
+}
+
+wg_as_seed_tag :: (s: [] WebPage, tag: string) {
+  if s[0].as_ntags >= WG_AS_TAGS_CAP { return; }
+  k := s[0].as_ntags; n := 0;
+  for c: tag { if n < WG_AS_TAG_LEN { s[0].as_tags[k][n] = c; n += 1; } }
+  if n > 0 { s[0].as_tag_n[k] = n; s[0].as_ntags += 1; }
 }
 
 // ---------------------------------------------------------------- the face's calls
@@ -642,6 +946,11 @@ coaxial_kit_frame :: (s: [] WebPage, dt: f32, reduced: bool) -> int #export_c #e
     n := mono_frames(s[0].sets[..]);
     s[0].as_sw[0] = true;
     s[0].as_chk[0] = true;
+    s[0].as_slider = 45;
+    s[0].as_cal_day = 27;
+    wg_as_seed_tag(s, "coax");
+    wg_as_seed_tag(s, "dark-mode");
+    wg_as_seed_tag(s, "apps-sdk");
     s[0].ready = true; s[0].dirty = true;
   }
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
@@ -669,6 +978,25 @@ coaxial_kit_event :: (s: [] WebPage, kind: int, slot: int, length: int) #export_
   id := dm_slot_id(s[0].dom[..], slot);
   if id.count == 0 { return; }
   if kind == WG_CLICK { wg_click(s, id); }
+  else if kind == WG_DIALOG_CANCEL && id == "as.dlg" { s[0].as_dialog_open = false; }
+  else if kind == WG_INPUT && id == "as.sl" {
+    v := 0;
+    lim := ifx length < 0 then 0 else ifx length > 8 then 8 else length;
+    for i: 0..<lim { c := s[0].inbox[i]; if c >= '0' && c <= '9' { v = v * 10 + cast(int) (c - '0'); } }
+    s[0].as_slider = ifx v < 0 then 0 else ifx v > 100 then 100 else v;
+  }
+  else if kind == WG_INPUT && id == "as.tags.in" {
+    n := ifx length < 0 then 0 else ifx length > WG_AS_TAG_LEN then WG_AS_TAG_LEN else length;
+    for i: 0..<n { s[0].as_tag_draft[i] = s[0].inbox[i]; }
+    s[0].as_tag_draft_n = n;
+  }
+  else if kind == WG_SUBMIT && id == "as.tags.in" {
+    if s[0].as_tag_draft_n > 0 {
+      wg_as_seed_tag(s, cast(string) s[0].as_tag_draft[0..<s[0].as_tag_draft_n]);
+      s[0].as_tag_draft_n = 0;
+      dm_value(s[0].dom[..], "as.tags.in", "");
+    }
+  }
   else if kind == WG_INPUT && id == "composer" {
     n := ifx length < 0 then 0 else ifx length > WG_DRAFT then WG_DRAFT else ifx length > WG_INBOX then WG_INBOX else length;
     for i: 0..<n { s[0].draft[i] = s[0].inbox[i]; }
@@ -839,4 +1167,21 @@ WgTest :: struct { s: [1] WebPage; }
   coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.alert.restore"), 0);
   _ = coaxial_kit_frame(s, 0.016, true);
   #assert !s[0].as_alert_gone && tr_find(t, "as.al.info") > 0;
+
+  // Complete Apps SDK UI interactions: RadioGroup, Slider, Select, TagInput, Popover, Menu, Dialog, Tabs, Shell
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.rg.1"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.sel"), 0);
+  _ = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].as_radio == 1 && s[0].as_sel_open && tr_find(t, "as.sel.2") > 0;
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.sel.2"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.tag.0.x"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.pop.trig"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.dlg.open"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.tab.1"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "as.chip.0"), 0);
+  _ = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].as_sel_idx == 2 && !s[0].as_sel_open && s[0].as_ntags == 2 && s[0].as_pop_open && s[0].as_dialog_open && tr_find(t, "as.dlg") > 0 && s[0].as_tab == 1 && s[0].as_chip_pick == 1;
+  coaxial_kit_event(s, WG_DIALOG_CANCEL, dm_find(d, "as.dlg"), 0);
+  _ = coaxial_kit_frame(s, 0.016, true);
+  #assert !s[0].as_dialog_open && tr_find(t, "as.dlg") < 0;
 }

@@ -65,7 +65,8 @@ components 260000
 # and mono_page_css, #13483), on a Linux build host; about 6% room.
 # 161,580 with the slider's two ends in words and why it stops at each (k_slider_ends, #13686), measured 2026-11-18 on a Linux build host; about 5% room.
 # 221,437 with the dark-mode Apps SDK UI skin (components/skin/apps-sdk.coax), basic Coax DOM kit (components/kit/apps-sdk.coax), and interactive showcase at /components, measured 2026-11-27 on macOS; about 10% room.
-kit 245000
+# 265,784 with the complete Apps SDK UI catalog (ButtonLink, CopyButton, LoadingDots, CircularProgress, ProgressBar, Image, Kbd, Breadcrumb, RadioGroup, Slider, Select, TagInput, DatePicker/DateRangePicker, Popover, Menu, Tooltip, native modal Dialog, Tabs, Table, Prose, Source, LinkCard, Activity, Sidebar, Composer, SuggestionChips), measured 2026-11-27 on macOS; about 9% room.
+kit 290000
 # The editor shell ?edit opens over an engine page (metaverse-engine/editor/shell.coax, #13416): the frames set, the dock,
 # the browser backend, the world edit codec and the editor model's: 103,413 bytes measured 2026-11-13 on a Mac; about 8% room.
 # With the viewport's strip (E8, #13417: tool, grid, Add, fly, pause, step, simulate): 106,452 bytes measured 2026-11-13 on a Mac; about 11% room.

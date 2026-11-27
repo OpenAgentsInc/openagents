@@ -383,18 +383,410 @@ as_empty_open :: (t: [] Tree, id: string, icon: int, title: string, desc: string
 }
 as_empty_end :: (t: [] Tree) { tr_close(t); }
 
+// ---- Complete Apps SDK UI set (Actions, Forms, Overlays, Content, Shell) ----
+
+as_pct_var :: (out: [] u8, pct_text: string) -> string {
+  n := as_put(out, 0, "--p:");
+  n = as_put(out, n, pct_text);
+  return cast(string) out[0..<n];
+}
+
+// ButtonLink (anchor styled identically to Button).
+as_button_link :: (t: [] Tree, id: string, label: string, href: string, color: int, variant: int, size: int, pill: bool, icon: int) -> int {
+  cb: [128] u8; ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  n := as_put(cb[..], 0, "as-btn ");
+  n = as_put(cb[..], n, as_variant_cls(variant));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_color_cls(color));
+  n = as_put(cb[..], n, " ");
+  n = as_put(cb[..], n, as_size_cls(size));
+  if pill { n = as_put(cb[..], n, " as-pill"); }
+  i := tr_open(t, id, TG_A, cast(string) cb[0..<n]);
+  tr_attr(t, i, AT_HREF, href);
+  if icon >= 0 { _ = as_icon(t, as_cat(ida[..], id, ".ic"), icon, ifx size == AS_SM then "as-ic-sm" else ""); }
+  _ = tr_leaf(t, as_cat(idb[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
+  return i;
+}
+
+// CopyButton (flips label & icon when copied).
+as_copy_button :: (t: [] Tree, id: string, label: string, copied: bool, variant: int, size: int, pill: bool) -> int {
+  return as_button(t, id, ifx copied then "Copied" else label, AS_SECONDARY, variant, size, pill, ifx copied then IC_CHECK else IC_COPY, false, false);
+}
+
+// LoadingDots (3-dot pulsing indicator).
+as_loading_dots :: (t: [] Tree, id: string) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_SPAN, "as-dots");
+  tr_attr(t, i, AT_ROLE, "status");
+  tr_attr(t, i, AT_LABEL, "Loading");
+  _ = tr_open(t, as_cat(ida[..], id, ".0"), TG_SPAN, ""); tr_close(t);
+  _ = tr_open(t, as_cat(idb[..], id, ".1"), TG_SPAN, ""); tr_close(t);
+  _ = tr_open(t, as_cat(idc[..], id, ".2"), TG_SPAN, ""); tr_close(t);
+  tr_close(t);
+  return i;
+}
+
+// CircularProgress (conic ring using percentage text "0".."100").
+as_progress_ring :: (t: [] Tree, id: string, pct_text: string, label: string, color: int) -> int {
+  cb: [64] u8; vb: [32] u8; ida: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_DIV, as_cls3(cb[..], "as-ring", as_color_cls(color), ""));
+  tr_attr(t, i, AT_ROLE, "progressbar");
+  tr_attr(t, i, AT_VALUE, pct_text);
+  tr_attr(t, i, AT_VARS, as_pct_var(vb[..], pct_text));
+  _ = tr_leaf(t, as_cat(ida[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
+  return i;
+}
+
+// Linear ProgressBar.
+as_progress_bar :: (t: [] Tree, id: string, pct_text: string) -> int {
+  vb: [32] u8; ida: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_DIV, "as-pbar");
+  tr_attr(t, i, AT_ROLE, "progressbar");
+  tr_attr(t, i, AT_VALUE, pct_text);
+  f := tr_open(t, as_cat(ida[..], id, ".f"), TG_DIV, "as-pbar-fill");
+  tr_attr(t, f, AT_VARS, as_pct_var(vb[..], pct_text));
+  tr_close(t);
+  tr_close(t);
+  return i;
+}
+
+// Image (framed local-origin image with alt & optional caption).
+as_image :: (t: [] Tree, id: string, src: string, alt: string, caption: string) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_DIV, "as-img-wrap");
+  img := tr_open(t, as_cat(ida[..], id, ".img"), TG_IMG, "as-img");
+  if src.count > 0 { tr_attr(t, img, AT_SRC, src); }
+  tr_attr(t, img, AT_LABEL, alt);
+  tr_close(t);
+  if caption.count > 0 { _ = tr_leaf(t, as_cat(idb[..], id, ".cap"), TG_SPAN, "as-img-cap", caption); }
+  tr_close(t);
+  return i;
+}
+
+// Kbd shortcut cap.
+as_kbd :: (t: [] Tree, id: string, keys: string) -> int {
+  return tr_leaf(t, id, TG_SPAN, "as-kbd", keys);
+}
+
+// Breadcrumb navigation.
+as_breadcrumb_open :: (t: [] Tree, id: string, label: string) -> int {
+  i := tr_open(t, id, TG_NAV, "as-crumbs");
+  tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+as_breadcrumb_item :: (t: [] Tree, id: string, label: string, href: string, current: bool, with_sep: bool) -> int {
+  ida: [AS_ID_CAP] u8;
+  if with_sep { _ = tr_leaf(t, as_cat(ida[..], id, ".sep"), TG_SPAN, "as-crumb-sep", "/"); }
+  if current || href.count == 0 {
+    c := tr_leaf(t, id, TG_SPAN, "as-crumb", label);
+    if current { tr_attr(t, c, AT_CURRENT, "page"); }
+    return c;
+  }
+  a := tr_leaf(t, id, TG_A, "as-crumb", label);
+  tr_attr(t, a, AT_HREF, href);
+  return a;
+}
+as_breadcrumb_end :: (t: [] Tree) { tr_close(t); }
+
+// RadioGroup & RadioItem.
+as_radio_group_open :: (t: [] Tree, id: string, label: string, horizontal: bool) -> int {
+  i := tr_open(t, id, TG_DIV, ifx horizontal then "as-radios as-horiz" else "as-radios");
+  tr_attr(t, i, AT_ROLE, "radiogroup");
+  tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+as_radio_item :: (t: [] Tree, id: string, label: string, desc: string, checked: bool, disabled: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_BUTTON, "as-radio");
+  tr_attr(t, i, AT_TYPE, "button");
+  tr_attr(t, i, AT_ROLE, "radio");
+  tr_attr(t, i, AT_CHECKED, ifx checked then "true" else "false");
+  if disabled { tr_attr(t, i, AT_DISABLED, ""); }
+  dt := tr_open(t, as_cat(ida[..], id, ".d"), TG_SPAN, "as-radio-dot");
+  tr_attr(t, dt, AT_HIDDEN, "true");
+  tr_close(t);
+  _ = tr_open(t, as_cat(idb[..], id, ".tx"), TG_SPAN, "as-ctl-txt");
+  _ = tr_leaf(t, as_cat(idc[..], id, ".l"), TG_SPAN, "as-ctl-lbl", label);
+  if desc.count > 0 { _ = tr_leaf(t, as_cat(idd[..], id, ".ds"), TG_SPAN, "as-ctl-desc", desc); }
+  tr_close(t);
+  tr_close(t);
+  return i;
+}
+as_radio_group_end :: (t: [] Tree) { tr_close(t); }
+
+// Slider (range input with live value badge & min/max labels).
+as_slider :: (t: [] Tree, id: string, label: string, val_text: string, min_s: string, max_s: string, step_s: string, cur_s: string, pct_s: string) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8; ide: [AS_ID_CAP] u8; idf: [AS_ID_CAP] u8; vb: [32] u8;
+  w := tr_open(t, as_cat(ida[..], id, ".w"), TG_DIV, "as-slider");
+  _ = tr_open(t, as_cat(idb[..], id, ".hd"), TG_DIV, "as-slider-hd");
+  _ = tr_leaf(t, as_cat(idc[..], id, ".lbl"), TG_SPAN, "as-label", label);
+  _ = tr_leaf(t, as_cat(idd[..], id, ".val"), TG_SPAN, "as-slider-val", val_text);
+  tr_close(t);
+  inp := tr_open(t, id, TG_INPUT, "");
+  tr_attr(t, inp, AT_TYPE, "range");
+  tr_attr(t, inp, AT_MIN, min_s);
+  tr_attr(t, inp, AT_MAX, max_s);
+  tr_attr(t, inp, AT_STEP, step_s);
+  tr_attr(t, inp, AT_VALUE, cur_s);
+  tr_attr(t, inp, AT_LABEL, label);
+  tr_attr(t, inp, AT_VARS, as_pct_var(vb[..], pct_s));
+  tr_close(t);
+  _ = tr_open(t, as_cat(ide[..], id, ".ends"), TG_DIV, "as-slider-ends");
+  _ = tr_leaf(t, as_cat(idf[..], id, ".mn"), TG_SPAN, "", min_s);
+  _ = tr_leaf(t, as_cat(ida[..], id, ".mx"), TG_SPAN, "", max_s);
+  tr_close(t);
+  tr_close(t);
+  return inp;
+}
+
+// Select / SelectControl (trigger + optional open listbox).
+as_select_open :: (t: [] Tree, id: string, current_label: string, open: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8;
+  w := tr_open(t, as_cat(ida[..], id, ".w"), TG_DIV, "as-select");
+  b := tr_open(t, id, TG_BUTTON, "as-select-trig");
+  tr_attr(t, b, AT_TYPE, "button");
+  tr_attr(t, b, AT_HASPOPUP, "listbox");
+  tr_attr(t, b, AT_EXPANDED, ifx open then "true" else "false");
+  _ = tr_leaf(t, as_cat(idb[..], id, ".v"), TG_SPAN, "", current_label);
+  _ = as_icon(t, as_cat(idc[..], id, ".ic"), IC_CHEVRON_DOWN, "as-ic-sm");
+  tr_close(t);
+  if open {
+    lb := tr_open(t, as_cat(idd[..], id, ".list"), TG_DIV, "as-select-list");
+    tr_attr(t, lb, AT_ROLE, "listbox");
+  }
+  return w;
+}
+as_select_option :: (t: [] Tree, id: string, label: string, selected: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  o := tr_open(t, id, TG_BUTTON, "as-select-opt");
+  tr_attr(t, o, AT_TYPE, "button");
+  tr_attr(t, o, AT_ROLE, "option");
+  tr_attr(t, o, AT_SELECTED, ifx selected then "true" else "false");
+  _ = tr_leaf(t, as_cat(ida[..], id, ".l"), TG_SPAN, "", label);
+  if selected { _ = as_icon(t, as_cat(idb[..], id, ".ck"), IC_CHECK, "as-ic-sm"); }
+  tr_close(t);
+  return o;
+}
+as_select_end :: (t: [] Tree, open: bool) {
+  if open { tr_close(t); }
+  tr_close(t);
+}
+
+// TagInput (removable chips + inline text input).
+as_tag_input_open :: (t: [] Tree, id: string) -> int { return tr_open(t, id, TG_DIV, "as-tags"); }
+as_tag_chip :: (t: [] Tree, id: string, label: string) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8;
+  c := tr_open(t, id, TG_SPAN, "as-tag");
+  _ = tr_leaf(t, as_cat(ida[..], id, ".l"), TG_SPAN, "", label);
+  x := tr_open(t, as_cat(idb[..], id, ".x"), TG_BUTTON, "as-tag-x");
+  tr_attr(t, x, AT_TYPE, "button");
+  tr_attr(t, x, AT_LABEL, "Remove tag");
+  _ = as_icon(t, as_cat(idc[..], id, ".ic"), IC_X_CROSSED, "as-ic-sm");
+  tr_close(t);
+  tr_close(t);
+  return c;
+}
+as_tag_input_end :: (t: [] Tree, input_id: string, placeholder: string) {
+  inp := tr_open(t, input_id, TG_INPUT, "");
+  tr_attr(t, inp, AT_TYPE, "text");
+  tr_attr(t, inp, AT_PLACEHOLDER, placeholder);
+  tr_attr(t, inp, AT_LABEL, placeholder);
+  tr_close(t);
+  tr_close(t);
+}
+
+// DatePicker & DateRangePicker inputs.
+as_date_input :: (t: [] Tree, id: string, value: string, label: string) -> int {
+  inp := tr_open(t, id, TG_INPUT, "as-date-in");
+  tr_attr(t, inp, AT_TYPE, "date");
+  tr_attr(t, inp, AT_VALUE, value);
+  tr_attr(t, inp, AT_LABEL, label);
+  tr_close(t);
+  return inp;
+}
+
+// Popover (anchor + trigger + optional floating panel).
+as_popover_open :: (t: [] Tree, id: string) -> int { return tr_open(t, id, TG_DIV, "as-ov-anchor"); }
+as_popover_panel_open :: (t: [] Tree, id: string) -> int {
+  p := tr_open(t, id, TG_DIV, "as-popover");
+  tr_attr(t, p, AT_ROLE, "dialog");
+  return p;
+}
+as_popover_end :: (t: [] Tree, open: bool) {
+  if open { tr_close(t); }
+  tr_close(t);
+}
+
+// Menu (dropdown menu panel with items, shortcuts, separators).
+as_menu_panel_open :: (t: [] Tree, id: string, label: string) -> int {
+  m := tr_open(t, id, TG_DIV, "as-menu");
+  tr_attr(t, m, AT_ROLE, "menu");
+  tr_attr(t, m, AT_LABEL, label);
+  return m;
+}
+as_menu_item :: (t: [] Tree, id: string, label: string, icon: int, shortcut: string, danger: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_BUTTON, ifx danger then "as-menu-item as-c-danger" else "as-menu-item");
+  tr_attr(t, i, AT_TYPE, "button");
+  tr_attr(t, i, AT_ROLE, "menuitem");
+  _ = tr_open(t, as_cat(ida[..], id, ".l"), TG_SPAN, "as-menu-l");
+  if icon >= 0 { _ = as_icon(t, as_cat(idb[..], id, ".ic"), icon, "as-ic-sm"); }
+  _ = tr_leaf(t, as_cat(idc[..], id, ".t"), TG_SPAN, "", label);
+  tr_close(t);
+  if shortcut.count > 0 { _ = as_kbd(t, as_cat(idd[..], id, ".k"), shortcut); }
+  tr_close(t);
+  return i;
+}
+as_menu_sep :: (t: [] Tree, id: string) -> int {
+  s := tr_open(t, id, TG_DIV, "as-menu-sep");
+  tr_attr(t, s, AT_ROLE, "separator");
+  tr_close(t);
+  return s;
+}
+
+// Tooltip wrapper around a trigger child.
+as_tooltip_open :: (t: [] Tree, id: string) -> int { return tr_open(t, id, TG_SPAN, "as-tip-wrap"); }
+as_tooltip_end :: (t: [] Tree, id: string, tip: string, forced_open: bool) {
+  ida: [AS_ID_CAP] u8;
+  tp := tr_leaf(t, as_cat(ida[..], id, ".tip"), TG_SPAN, "as-tip", tip);
+  tr_attr(t, tp, AT_ROLE, "tooltip");
+  if forced_open { tr_attr(t, tp, AT_STATE, "open"); }
+  tr_close(t);
+}
+
+// Native modal Dialog (<dialog data-modal="true"> managed by dom-host.js showModal/close).
+as_dialog_open :: (t: [] Tree, id: string, title: string, close_id: string) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8;
+  d := tr_open(t, id, TG_DIALOG, "as-dialog");
+  tr_attr(t, d, AT_MODAL, "true");
+  tr_attr(t, d, AT_LABEL, title);
+  _ = tr_open(t, as_cat(ida[..], id, ".hd"), TG_DIV, "as-dialog-hd");
+  _ = tr_leaf(t, as_cat(idb[..], id, ".t"), TG_H3, "as-card-title", title);
+  _ = as_icon_button(t, close_id, IC_X_CROSSED, "Close dialog", AS_SECONDARY, AS_GHOST, AS_SM, true, false);
+  tr_close(t);
+  _ = tr_open(t, as_cat(idc[..], id, ".bd"), TG_DIV, "as-dialog-bd");
+  return d;
+}
+as_dialog_footer_open :: (t: [] Tree, id: string) -> int {
+  tr_close(t); // close body
+  return tr_open(t, id, TG_DIV, "as-dialog-ft");
+}
+as_dialog_end :: (t: [] Tree) {
+  tr_close(t); // close footer
+  tr_close(t); // close dialog
+}
+
+// Tabs (role="tablist" + role="tab").
+as_tabs_open :: (t: [] Tree, id: string, label: string) -> int {
+  i := tr_open(t, id, TG_DIV, "as-tabs");
+  tr_attr(t, i, AT_ROLE, "tablist");
+  tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+as_tab :: (t: [] Tree, id: string, label: string, icon: int, selected: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  i := tr_open(t, id, TG_BUTTON, "as-tab");
+  tr_attr(t, i, AT_TYPE, "button");
+  tr_attr(t, i, AT_ROLE, "tab");
+  tr_attr(t, i, AT_SELECTED, ifx selected then "true" else "false");
+  if icon >= 0 { _ = as_icon(t, as_cat(ida[..], id, ".ic"), icon, "as-ic-sm"); }
+  _ = tr_leaf(t, as_cat(idb[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
+  return i;
+}
+as_tabs_end :: (t: [] Tree) { tr_close(t); }
+
+// Source citation chip.
+as_source :: (t: [] Tree, id: string, label: string, href: string, icon: int) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  a := tr_open(t, id, TG_A, "as-source");
+  tr_attr(t, a, AT_HREF, href);
+  if icon >= 0 { _ = as_icon(t, as_cat(ida[..], id, ".ic"), icon, "as-ic-sm"); }
+  _ = tr_leaf(t, as_cat(idb[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
+  return a;
+}
+
+// LinkCard.
+as_link_card :: (t: [] Tree, id: string, title: string, desc: string, href: string, icon: int) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8;
+  a := tr_open(t, id, TG_A, "as-link-card");
+  tr_attr(t, a, AT_HREF, href);
+  _ = tr_open(t, as_cat(ida[..], id, ".l"), TG_DIV, "as-ctl-txt");
+  _ = tr_leaf(t, as_cat(idb[..], id, ".t"), TG_SPAN, "as-ctl-lbl", title);
+  if desc.count > 0 { _ = tr_leaf(t, as_cat(idc[..], id, ".d"), TG_SPAN, "as-ctl-desc", desc); }
+  tr_close(t);
+  _ = as_icon(t, as_cat(idd[..], id, ".ic"), ifx icon >= 0 then icon else IC_ARROW_RIGHT, "");
+  tr_close(t);
+  return a;
+}
+
+// Activity / ToolCall Step row.
+as_step_row :: (t: [] Tree, id: string, icon: int, title: string, meta: string, badge_label: string, badge_color: int) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8; idd: [AS_ID_CAP] u8; ide: [AS_ID_CAP] u8; idf: [AS_ID_CAP] u8;
+  r := tr_open(t, id, TG_DIV, "as-step");
+  _ = tr_open(t, as_cat(ida[..], id, ".l"), TG_DIV, "as-step-l");
+  if icon >= 0 { _ = as_icon(t, as_cat(idb[..], id, ".ic"), icon, "as-ic-sm"); }
+  _ = tr_open(t, as_cat(idc[..], id, ".tx"), TG_DIV, "as-ctl-txt");
+  _ = tr_leaf(t, as_cat(idd[..], id, ".t"), TG_SPAN, "as-step-t", title);
+  if meta.count > 0 { _ = tr_leaf(t, as_cat(ide[..], id, ".m"), TG_SPAN, "as-step-m", meta); }
+  tr_close(t);
+  tr_close(t);
+  if badge_label.count > 0 { _ = as_badge(t, as_cat(idf[..], id, ".bg"), badge_label, badge_color, AS_SOFT, AS_SM, true, false); }
+  tr_close(t);
+  return r;
+}
+
+// Shell Sidebar Item.
+as_sidebar_item :: (t: [] Tree, id: string, icon: int, label: string, current: bool) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8; idc: [AS_ID_CAP] u8;
+  b := tr_open(t, id, TG_BUTTON, "as-sb-item");
+  tr_attr(t, b, AT_TYPE, "button");
+  if current { tr_attr(t, b, AT_CURRENT, "page"); }
+  _ = tr_open(t, as_cat(ida[..], id, ".l"), TG_SPAN, "as-menu-l");
+  if icon >= 0 { _ = as_icon(t, as_cat(idb[..], id, ".ic"), icon, "as-ic-sm"); }
+  _ = tr_leaf(t, as_cat(idc[..], id, ".t"), TG_SPAN, "", label);
+  tr_close(t);
+  tr_close(t);
+  return b;
+}
+
+// SuggestionChip.
+as_suggestion_chip :: (t: [] Tree, id: string, icon: int, label: string) -> int {
+  ida: [AS_ID_CAP] u8; idb: [AS_ID_CAP] u8;
+  b := tr_open(t, id, TG_BUTTON, "as-chip");
+  tr_attr(t, b, AT_TYPE, "button");
+  if icon >= 0 { _ = as_icon(t, as_cat(ida[..], id, ".ic"), icon, "as-ic-sm"); }
+  _ = tr_leaf(t, as_cat(idb[..], id, ".l"), TG_SPAN, "", label);
+  tr_close(t);
+  return b;
+}
+
 #test "apps-sdk kit builds every basic component with valid ARIA and zero lost nodes" {
   t: [1] Tree;
   tr_begin(t[..]);
   _ = tr_open(t[..], "root", TG_MAIN, "as-root");
   b := as_button(t[..], "b.pri", "Continue", AS_PRIMARY, AS_SOLID, AS_MD, true, IC_ARROW_RIGHT, false, false);
   #assert tr_class(t[..], b) == "as-btn as-v-solid as-c-primary as-s-md as-pill";
+  _ = as_button_link(t[..], "b.lk", "Open", "/chat", AS_INFO, AS_SOFT, AS_MD, true, IC_GLOBE);
+  _ = as_copy_button(t[..], "b.cp", "Copy key", true, AS_OUTLINE, AS_SM, false);
   bl := as_button(t[..], "b.busy", "Saving", AS_INFO, AS_SOFT, AS_LG, false, -1, false, true);
   #assert tr_has(t[..], bl, AT_DISABLED) && tr_attr_of(t[..], bl, AT_STATE) == "busy";
   ib := as_icon_button(t[..], "b.ic", IC_COPY, "Copy", AS_SECONDARY, AS_GHOST, AS_SM, true, false);
   #assert tr_attr_of(t[..], ib, AT_LABEL) == "Copy";
   bg := as_badge(t[..], "bg.ok", "Live", AS_SUCCESS, AS_SOFT, AS_MD, true, true);
   #assert tr_class(t[..], bg) == "as-badge as-v-soft as-c-success as-s-md as-pill";
+  _ = as_loading_dots(t[..], "ld.1");
+  _ = as_progress_ring(t[..], "pr.1", "72", "72%", AS_INFO);
+  _ = as_progress_bar(t[..], "pb.1", "65");
+  _ = as_image(t[..], "im.1", "/favicon.svg", "OpenAgents mark", "Caption");
+  _ = as_kbd(t[..], "kb.1", "Cmd+K");
+  _ = as_breadcrumb_open(t[..], "bc.1", "Path");
+  _ = as_breadcrumb_item(t[..], "bc.1.0", "Home", "/", false, false);
+  _ = as_breadcrumb_item(t[..], "bc.1.1", "Components", "", true, true);
+  as_breadcrumb_end(t[..]);
   al := as_alert_open(t[..], "al.err", "Rate limit", "Try again shortly.", AS_DANGER, AS_SOFT, IC_ERROR);
   as_alert_end(t[..]);
   #assert tr_attr_of(t[..], al, AT_ROLE) == "alert";
@@ -410,6 +802,40 @@ as_empty_end :: (t: [] Tree) { tr_close(t); }
   #assert tr_attr_of(t[..], sw, AT_ROLE) == "switch" && tr_attr_of(t[..], sw, AT_CHECKED) == "true";
   ck := as_checkbox(t[..], "ck.1", "Commit footer", "Add referral link", false, false);
   #assert tr_attr_of(t[..], ck, AT_ROLE) == "checkbox" && tr_attr_of(t[..], ck, AT_CHECKED) == "false";
+  _ = as_radio_group_open(t[..], "rg.1", "Billing", false);
+  r0 := as_radio_item(t[..], "rg.1.0", "Lightning", "Instant sats", true, false);
+  as_radio_group_end(t[..]);
+  #assert tr_attr_of(t[..], r0, AT_ROLE) == "radio" && tr_attr_of(t[..], r0, AT_CHECKED) == "true";
+  _ = as_slider(t[..], "sl.1", "Budget", "$25", "0", "100", "5", "25", "25");
+  _ = as_select_open(t[..], "sel.1", "Gemini 4 Neon", true);
+  _ = as_select_option(t[..], "sel.1.0", "Gemini 4 Neon", true);
+  as_select_end(t[..], true);
+  _ = as_tag_input_open(t[..], "tg.1");
+  _ = as_tag_chip(t[..], "tg.1.0", "coax");
+  as_tag_input_end(t[..], "tg.1.in", "Add tag");
+  _ = as_date_input(t[..], "dt.1", "2026-11-30", "Launch date");
+  _ = as_popover_open(t[..], "pop.1");
+  _ = as_popover_panel_open(t[..], "pop.1.p");
+  _ = as_menu_panel_open(t[..], "mn.1", "Actions");
+  _ = as_menu_item(t[..], "mn.1.0", "Duplicate", IC_COPY, "Cmd+D", false);
+  _ = as_menu_sep(t[..], "mn.1.s");
+  tr_close(t[..]);
+  as_popover_end(t[..], true);
+  _ = as_tooltip_open(t[..], "tt.1");
+  _ = as_button(t[..], "tt.1.b", "Hover", AS_SECONDARY, AS_OUTLINE, AS_SM, false, -1, false, false);
+  as_tooltip_end(t[..], "tt.1", "Tooltip text", false);
+  dlg := as_dialog_open(t[..], "dlg.1", "Confirm", "dlg.1.x");
+  _ = as_dialog_footer_open(t[..], "dlg.1.ft");
+  as_dialog_end(t[..]);
+  #assert tr_attr_of(t[..], dlg, AT_MODAL) == "true";
+  _ = as_tabs_open(t[..], "tb.1", "Sections");
+  _ = as_tab(t[..], "tb.1.0", "Overview", IC_INFO, true);
+  as_tabs_end(t[..]);
+  _ = as_source(t[..], "src.1", "openagents.com", "/books", IC_GLOBE);
+  _ = as_link_card(t[..], "lc.1", "Spec", "v1.0.0 launch spec", "/books", IC_ARROW_RIGHT);
+  _ = as_step_row(t[..], "st.1", IC_TERMINAL, "Run E2E suite", "18 ms", "Passed", AS_SUCCESS);
+  _ = as_sidebar_item(t[..], "sb.1", IC_FOLDER, "Projects", true);
+  _ = as_suggestion_chip(t[..], "ch.1", IC_SPARKLES, "Summarize PR");
   _ = as_seg_open(t[..], "seg.1", "Target", AS_MD, true);
   s0 := as_seg_item(t[..], "seg.1.0", "Cloud", IC_GLOBE, true);
   s1 := as_seg_item(t[..], "seg.1.1", "Local", IC_TERMINAL, false);
@@ -423,5 +849,5 @@ as_empty_end :: (t: [] Tree) { tr_close(t); }
   _ = as_empty_open(t[..], "em.1", IC_FOLDER, "No projects yet", "Create one to start.");
   as_empty_end(t[..]);
   tr_close(t[..]);
-  #assert t[0].lost == 0 && t[0].depth == 0 && t[0].n > 40;
+  #assert t[0].lost == 0 && t[0].depth == 0 && t[0].n > 110;
 }
