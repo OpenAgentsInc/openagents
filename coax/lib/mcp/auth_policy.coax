@@ -1,0 +1,690 @@
+// MCP OAuth 2.1 pure #authority policy engine (2025-11-25 & 2026-07-28):
+//   - RFC 7235/6750 WWW-Authenticate Bearer challenge parser & emitter
+//   - RFC 9728 Protected Resource Metadata discovery URL sequence
+//   - RFC 8414 & OIDC Discovery 1.0 URL sequence & strict metadata validation
+//   - Client registration priority chain (Pre-registered -> CIMD -> DCR)
+//   - RFC 9207 exact callback `iss` validation (no normalization!)
+//   - Scope selection priority, offline_access gating & 403 step-up union
+//   - Token endpoint auth method selection (basic / post / none)
+#load "../json/json.coax";
+#load "uri_template.coax";
+#authority;
+
+// Client registration selection priority.
+MCP_REG_NONE :: 0;
+MCP_REG_PRE_REGISTERED :: 1;
+MCP_REG_CIMD :: 2;
+MCP_REG_DCR :: 3;
+
+// Token endpoint authentication method bitmask & selection.
+MCP_TOKEN_AUTH_NONE :: 1;
+MCP_TOKEN_AUTH_BASIC :: 2;
+MCP_TOKEN_AUTH_POST :: 4;
+
+MCP_DEFAULT_SCOPE_MAX_RETRIES :: 2;
+
+McpWwwAuth :: struct {
+  ok: bool;
+  has_bearer: bool;
+  error_from: int; error_to: int;
+  scope_from: int; scope_to: int;
+  resource_metadata_from: int; resource_metadata_to: int;
+  error_desc_from: int; error_desc_to: int;
+}
+
+McpAsMeta :: struct {
+  ok: bool;
+  auth_endpoint_node: int = -1;
+  token_endpoint_node: int = -1;
+  registration_endpoint_node: int = -1;
+  cimd_supported: bool;
+  iss_param_supported: bool;
+  offline_access_supported: bool;
+  token_auth_mask: int;
+}
+
+#test "WWW-Authenticate Bearer parser extracts resource_metadata, scope, error, and error_description" {
+  h1 := "Bearer resource_metadata=\"https://mcp.example.com/.well-known/oauth-protected-resource\", scope=\"files:read files:write\"";
+  w := mcp_www_auth_parse(h1);
+  #assert w.ok && w.has_bearer;
+  #assert h1[w.resource_metadata_from..<w.resource_metadata_to] == "https://mcp.example.com/.well-known/oauth-protected-resource";
+  #assert h1[w.scope_from..<w.scope_to] == "files:read files:write";
+  #assert w.error_to == w.error_from;
+
+  // 403 insufficient_scope with multiple challenges and case-insensitive scheme/keys
+  h2 := "Basic realm=\"other\", bearer ERROR=\"insufficient_scope\", Scope=\"admin:write\", resource_metadata=\"https://mcp.example.com/.well-known/oauth-protected-resource/mcp\", error_description=\"Need admin\"";
+  w = mcp_www_auth_parse(h2);
+  #assert w.ok && w.has_bearer;
+  #assert h2[w.error_from..<w.error_to] == "insufficient_scope";
+  #assert h2[w.scope_from..<w.scope_to] == "admin:write";
+  #assert h2[w.resource_metadata_from..<w.resource_metadata_to] == "https://mcp.example.com/.well-known/oauth-protected-resource/mcp";
+  #assert h2[w.error_desc_from..<w.error_desc_to] == "Need admin";
+
+  // Token-valued param (unquoted) and bare Bearer
+  h3 := "Bearer error=invalid_token";
+  w = mcp_www_auth_parse(h3);
+  #assert w.ok && w.has_bearer && h3[w.error_from..<w.error_to] == "invalid_token";
+
+  w = mcp_www_auth_parse("Bearer");
+  #assert w.ok && w.has_bearer;
+
+  // Non-bearer or malformed quotes
+  w = mcp_www_auth_parse("Basic realm=\"x\"");
+  #assert w.ok && !w.has_bearer;
+  #assert !mcp_www_auth_parse("Bearer scope=\"unterminated").ok;
+
+  // Formatter round-trips cleanly
+  out: [256] u8;
+  n := mcp_auth_format_www_auth("https://mcp.example.com/.well-known/oauth-protected-resource", "insufficient_scope", "files:write", out[..]);
+  #assert n > 0;
+  w = mcp_www_auth_parse(cast(string) out[0..<n]);
+  #assert w.ok && w.has_bearer;
+  #assert cast(string) out[w.error_from..<w.error_to] == "insufficient_scope";
+  #assert cast(string) out[w.scope_from..<w.scope_to] == "files:write";
+  #assert cast(string) out[w.resource_metadata_from..<w.resource_metadata_to] == "https://mcp.example.com/.well-known/oauth-protected-resource";
+  #assert mcp_auth_format_www_auth("https://a.test/prm", "", "", out[0..<10]) == -1;
+}
+
+#test "RFC 9728 PRM and RFC 8414 / OIDC AS discovery URL sequences match exact MCP priority order" {
+  out: [256] u8;
+
+  // PRM with resource_metadata header overrides step 0
+  n := mcp_prm_discovery_url("https://example.com/public/mcp", "https://example.com/custom-prm", 0, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/custom-prm";
+  #assert mcp_prm_discovery_url("https://example.com/public/mcp", "https://example.com/custom-prm", 1, out[..]) == -1;
+
+  // PRM without header, with path -> step 0 path-scoped, step 1 root, step 2 none
+  n = mcp_prm_discovery_url("https://example.com/public/mcp", "", 0, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/.well-known/oauth-protected-resource/public/mcp";
+  n = mcp_prm_discovery_url("https://example.com/public/mcp", "", 1, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/.well-known/oauth-protected-resource";
+  #assert mcp_prm_discovery_url("https://example.com/public/mcp", "", 2, out[..]) == -1;
+
+  // PRM without header, at root -> step 0 root only
+  n = mcp_prm_discovery_url("https://example.com", "", 0, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/.well-known/oauth-protected-resource";
+  #assert mcp_prm_discovery_url("https://example.com", "", 1, out[..]) == -1;
+
+  // AS discovery WITH path (3 exact endpoints in priority order)
+  n = mcp_as_discovery_url("https://auth.example.com/tenant1", 0, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://auth.example.com/.well-known/oauth-authorization-server/tenant1";
+  n = mcp_as_discovery_url("https://auth.example.com/tenant1", 1, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://auth.example.com/.well-known/openid-configuration/tenant1";
+  n = mcp_as_discovery_url("https://auth.example.com/tenant1", 2, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://auth.example.com/tenant1/.well-known/openid-configuration";
+  #assert mcp_as_discovery_url("https://auth.example.com/tenant1", 3, out[..]) == -1;
+
+  // AS discovery WITHOUT path (2 exact endpoints in priority order)
+  n = mcp_as_discovery_url("https://auth.example.com", 0, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://auth.example.com/.well-known/oauth-authorization-server";
+  n = mcp_as_discovery_url("https://auth.example.com", 1, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://auth.example.com/.well-known/openid-configuration";
+  #assert mcp_as_discovery_url("https://auth.example.com", 2, out[..]) == -1;
+}
+
+#test "AS metadata validation enforces exact issuer match and mandatory PKCE S256" {
+  nodes: [128] JvNode; d: [1] Jv;
+
+  good := "{\"issuer\":\"https://auth.example.com/t1\",\"authorization_endpoint\":\"https://auth.example.com/t1/authorize\",\"token_endpoint\":\"https://auth.example.com/t1/token\",\"registration_endpoint\":\"https://auth.example.com/t1/register\",\"code_challenge_methods_supported\":[\"S256\"],\"client_id_metadata_document_supported\":true,\"authorization_response_iss_parameter_supported\":true,\"scopes_supported\":[\"openid\",\"offline_access\"],\"token_endpoint_auth_methods_supported\":[\"client_secret_post\",\"none\"]}";
+  #assert jv_parse(d[..], good, nodes[..]);
+  m := mcp_as_metadata_validate("https://auth.example.com/t1", d[0]);
+  #assert m.ok && m.cimd_supported && m.iss_param_supported && m.offline_access_supported;
+  #assert m.auth_endpoint_node > 0 && m.token_endpoint_node > 0 && m.registration_endpoint_node > 0;
+  #assert m.token_auth_mask == (MCP_TOKEN_AUTH_POST | MCP_TOKEN_AUTH_NONE);
+
+  // Issuer mismatch MUST fail (exact string match, no trailing slash or case folding!)
+  #assert !mcp_as_metadata_validate("https://auth.example.com/t1/", d[0]).ok;
+  #assert !mcp_as_metadata_validate("https://AUTH.example.com/t1", d[0]).ok;
+  #assert !mcp_as_metadata_validate("https://other.example.com/t1", d[0]).ok;
+
+  // Missing S256 in code_challenge_methods_supported MUST fail
+  no_s256 := "{\"issuer\":\"https://auth.example.com\",\"authorization_endpoint\":\"https://auth.example.com/a\",\"token_endpoint\":\"https://auth.example.com/t\",\"code_challenge_methods_supported\":[\"plain\"]}";
+  #assert jv_parse(d[..], no_s256, nodes[..]);
+  #assert !mcp_as_metadata_validate("https://auth.example.com", d[0]).ok;
+
+  no_pkce := "{\"issuer\":\"https://auth.example.com\",\"authorization_endpoint\":\"https://auth.example.com/a\",\"token_endpoint\":\"https://auth.example.com/t\"}";
+  #assert jv_parse(d[..], no_pkce, nodes[..]);
+  #assert !mcp_as_metadata_validate("https://auth.example.com", d[0]).ok;
+
+  // Default token_endpoint_auth_methods_supported when omitted is client_secret_basic (RFC 8414)
+  def_auth := "{\"issuer\":\"https://auth.example.com\",\"authorization_endpoint\":\"https://auth.example.com/a\",\"token_endpoint\":\"https://auth.example.com/t\",\"code_challenge_methods_supported\":[\"S256\"]}";
+  #assert jv_parse(d[..], def_auth, nodes[..]);
+  m = mcp_as_metadata_validate("https://auth.example.com", d[0]);
+  #assert m.ok && m.token_auth_mask == MCP_TOKEN_AUTH_BASIC && !m.offline_access_supported;
+}
+
+#test "RFC 9207 callback iss validation obeys exact 4-row truth table without normalization" {
+  expected := "https://auth.example.com";
+  // Row 1: advertised=true, present=true -> exact string compare
+  #assert mcp_auth_validate_iss(true, true, "https://auth.example.com", expected);
+  #assert !mcp_auth_validate_iss(true, true, "https://auth.example.com/", expected);
+  #assert !mcp_auth_validate_iss(true, true, "https://AUTH.example.com", expected);
+  #assert !mcp_auth_validate_iss(true, true, "https://evil.example.com", expected);
+  // Row 2: advertised=true, present=false -> MUST reject
+  #assert !mcp_auth_validate_iss(true, false, "", expected);
+  // Row 3: advertised=false, present=true -> STILL compare exact string (RFC 9207 local policy)
+  #assert mcp_auth_validate_iss(false, true, "https://auth.example.com", expected);
+  #assert !mcp_auth_validate_iss(false, true, "https://evil.example.com", expected);
+  #assert !mcp_auth_validate_iss(false, true, "https://auth.example.com/", expected);
+  // Row 4: advertised=false, present=false -> proceed
+  #assert mcp_auth_validate_iss(false, false, "", expected);
+}
+
+#test "registration priority, CIMD URL validation, token auth selection, and scope step-up" {
+  // Priority: Pre-registered > CIMD > DCR > None
+  #assert mcp_auth_select_registration(true, true, true, true) == MCP_REG_PRE_REGISTERED;
+  #assert mcp_auth_select_registration(false, true, true, true) == MCP_REG_CIMD;
+  #assert mcp_auth_select_registration(false, false, true, true) == MCP_REG_DCR;
+  #assert mcp_auth_select_registration(false, true, false, true) == MCP_REG_DCR;
+  #assert mcp_auth_select_registration(false, false, false, false) == MCP_REG_NONE;
+
+  // CIMD URL must be https with non-root path, no fragment, no userinfo
+  #assert mcp_auth_cimd_url_ok("https://app.example.com/oauth/client.json");
+  #assert !mcp_auth_cimd_url_ok("http://app.example.com/client.json");
+  #assert !mcp_auth_cimd_url_ok("https://app.example.com");
+  #assert !mcp_auth_cimd_url_ok("https://app.example.com/");
+  #assert !mcp_auth_cimd_url_ok("https://app.example.com/client.json#x");
+  #assert !mcp_auth_cimd_url_ok("https://user@app.example.com/client.json");
+
+  // Token auth selection
+  #assert mcp_auth_select_token_auth(MCP_TOKEN_AUTH_BASIC | MCP_TOKEN_AUTH_POST, true) == MCP_TOKEN_AUTH_BASIC;
+  #assert mcp_auth_select_token_auth(MCP_TOKEN_AUTH_POST | MCP_TOKEN_AUTH_NONE, true) == MCP_TOKEN_AUTH_POST;
+  #assert mcp_auth_select_token_auth(MCP_TOKEN_AUTH_NONE, true) == MCP_TOKEN_AUTH_NONE;
+  #assert mcp_auth_select_token_auth(MCP_TOKEN_AUTH_BASIC | MCP_TOKEN_AUTH_NONE, false) == MCP_TOKEN_AUTH_NONE;
+  #assert mcp_auth_select_token_auth(MCP_TOKEN_AUTH_BASIC, false) == 0;
+
+  // Scope selection priority & offline_access gating
+  out: [128] u8;
+  n := mcp_auth_select_initial_scopes("files:read", "other:scope", true, true, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "files:read offline_access";
+  n = mcp_auth_select_initial_scopes("files:read", "other:scope", true, false, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "files:read";
+  n = mcp_auth_select_initial_scopes("", "mcp:tools mcp:resources", false, true, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "mcp:tools mcp:resources";
+  n = mcp_auth_select_initial_scopes("", "", false, false, out[..]);
+  #assert n == 0;
+  // Already contains offline_access -> no duplicate
+  n = mcp_auth_select_initial_scopes("files:read offline_access", "", true, true, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "files:read offline_access";
+
+  // 403 insufficient_scope union & retry limit
+  n = mcp_auth_step_up_scopes("files:read openid", "files:write files:read", 0, 2, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "files:read openid files:write";
+  // Retry limit enforced
+  #assert mcp_auth_step_up_scopes("files:read", "files:write", 2, 2, out[..]) == -1;
+  #assert mcp_auth_step_up_scopes("files:read", "", 0, 2, out[..]) == -1;
+  #assert mcp_auth_step_up_scopes("files:read", "files:write", 0, 2, out[0..<8]) == -1;
+}
+
+#test "auth_policy boundary, malformed input, and buffer-limit coverage" {
+  // mcp_ws_or_comma & mcp_auth_tchar boundaries
+  #assert mcp_ws_or_comma(' ') && mcp_ws_or_comma('\t') && mcp_ws_or_comma(',');
+  #assert !mcp_ws_or_comma('\n');
+  #assert mcp_auth_tchar('0') && mcp_auth_tchar('9') && !mcp_auth_tchar('/') && !mcp_auth_tchar(':');
+  #assert mcp_auth_tchar('A') && mcp_auth_tchar('Z') && !mcp_auth_tchar('@') && !mcp_auth_tchar('[');
+  #assert mcp_auth_tchar('a') && mcp_auth_tchar('z') && !mcp_auth_tchar('{');
+
+  // WWW-Authenticate parser edge cases
+  w := mcp_www_auth_parse("error=\"ignored\"");
+  #assert w.ok && !w.has_bearer && w.error_to == w.error_from;
+  w = mcp_www_auth_parse("Bearer ");
+  #assert w.ok && w.has_bearer;
+  h_sp := " Bearer,error=invalid_token";
+  w = mcp_www_auth_parse(h_sp);
+  #assert w.ok && w.has_bearer && h_sp[w.error_from..<w.error_to] == "invalid_token";
+  h_eq1 := "Bearer error = invalid_token";
+  w = mcp_www_auth_parse(h_eq1);
+  #assert w.ok && w.has_bearer && h_eq1[w.error_from..<w.error_to] == "invalid_token";
+  h_eq2 := "Bearer error\t=\tinvalid_token";
+  w = mcp_www_auth_parse(h_eq2);
+  #assert w.ok && w.has_bearer && h_eq2[w.error_from..<w.error_to] == "invalid_token";
+  #assert !mcp_www_auth_parse("Bearer error\n=x").ok;
+  #assert !mcp_www_auth_parse("Bearer error=\nx").ok;
+  #assert !mcp_www_auth_parse("Bearer error=").ok;
+  #assert !mcp_www_auth_parse("Bearer error= ").ok;
+  h_esc := "Bearer error=\"a\\\"b]c\"";
+  w = mcp_www_auth_parse(h_esc);
+  #assert w.ok && h_esc[w.error_from..<w.error_to] == "a\\\"b]c";
+  h_esc2 := "Bearer error=\"a\\b\"";
+  w = mcp_www_auth_parse(h_esc2);
+  #assert w.ok && h_esc2[w.error_from..<w.error_to] == "a\\b";
+  #assert !mcp_www_auth_parse("Bearer error=\"a\\").ok;
+  #assert !mcp_www_auth_parse("Bearer error=\"a\\\"").ok;
+  #assert !mcp_www_auth_parse("Bearer error=\"x\"@").ok;
+  h_switch := "Bearer error=\"a\", Basic scope=\"b\"";
+  w = mcp_www_auth_parse(h_switch);
+  #assert w.ok && w.has_bearer && h_switch[w.error_from..<w.error_to] == "a" && w.scope_to == w.scope_from;
+
+  // WWW-Authenticate formatter exact output, validation, and buffer limits
+  out: [256] u8;
+  n := mcp_auth_format_www_auth("https://a.test/prm", "err", "sc", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "Bearer error=\"err\", scope=\"sc\", resource_metadata=\"https://a.test/prm\"";
+  n = mcp_auth_format_www_auth("", "", "", out[0..<6]);
+  #assert n == 6 && cast(string) out[0..<n] == "Bearer";
+  #assert mcp_auth_format_www_auth("", "", "", out[0..<5]) == -1;
+  n = mcp_auth_format_www_auth("a", "", "", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "Bearer resource_metadata=\"a\"";
+  n = mcp_auth_format_www_auth("#] ~", "", "", out[..]);
+  #assert n > 0;
+  #assert mcp_auth_format_www_auth("a\"b", "", "", out[..]) == -1;
+  #assert mcp_auth_format_www_auth("a\\b", "", "", out[..]) == -1;
+  ctrl_b := [3] u8.['a', 0x1F, 'b'];
+  del_b := [3] u8.['a', 0x7F, 'b'];
+  #assert mcp_auth_format_www_auth(cast(string) ctrl_b[..], "", "", out[..]) == -1;
+  #assert mcp_auth_format_www_auth(cast(string) del_b[..], "", "", out[..]) == -1;
+  #assert mcp_auth_format_www_auth("", "e", "", out[0..<6]) == -1;
+  #assert mcp_auth_format_www_auth("", "e", "", out[0..<12]) == -1;
+  #assert mcp_auth_format_www_auth("", "e", "", out[0..<14]) == -1;
+  #assert mcp_auth_format_www_auth("", "e", "", out[0..<15]) == -1;
+  #assert mcp_auth_format_www_auth("", "", "s", out[0..<10]) == -1;
+
+  // PRM & AS discovery URL edge cases and buffer limits
+  #assert mcp_prm_discovery_url("https://example.com", "", -1, out[..]) == -1;
+  #assert mcp_prm_discovery_url("https://example.com", "a", 0, out[..]) == -1;
+  #assert mcp_prm_discovery_url("https://example.com", "https://example.com/prm", 0, out[0..<5]) == -1;
+  #assert mcp_prm_discovery_url("://bad", "", 0, out[..]) == -1;
+  #assert mcp_prm_discovery_url("https:noauth", "", 0, out[..]) == -1;
+  #assert mcp_prm_discovery_url("https:///path", "", 0, out[..]) == -1;
+  n = mcp_prm_discovery_url("https://example.com/public/mcp/", "", 0, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/.well-known/oauth-protected-resource/public/mcp";
+  n = mcp_prm_discovery_url("https://example.com/", "", 0, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/.well-known/oauth-protected-resource";
+  n = mcp_prm_discovery_url("https://example.com/0", "", 0, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/.well-known/oauth-protected-resource/0";
+  #assert mcp_prm_discovery_url("https://example.com/p", "", 0, out[0..<5]) == -1;
+  #assert mcp_prm_discovery_url("https://example.com/p", "", 0, out[0..<25]) == -1;
+  #assert mcp_prm_discovery_url("https://example.com/p", "", 0, out[0..<57]) == -1;
+  #assert mcp_prm_discovery_url("https://example.com/p", "", 1, out[0..<5]) == -1;
+  #assert mcp_prm_discovery_url("https://example.com/p", "", 1, out[0..<25]) == -1;
+  #assert mcp_prm_discovery_url("https://example.com", "", 0, out[0..<5]) == -1;
+  #assert mcp_prm_discovery_url("https://example.com", "", 0, out[0..<25]) == -1;
+
+  #assert mcp_as_discovery_url("https://auth.example.com", -1, out[..]) == -1;
+  #assert mcp_as_discovery_url("://bad", 0, out[..]) == -1;
+  #assert mcp_as_discovery_url("https:noauth", 0, out[..]) == -1;
+  #assert mcp_as_discovery_url("https:///path", 0, out[..]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com/t1", 0, out[0..<5]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com/t1", 0, out[0..<30]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com/t1", 0, out[0..<64]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com/t1", 1, out[0..<5]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com/t1", 1, out[0..<30]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com/t1", 1, out[0..<58]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com/t1", 2, out[0..<5]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com/t1", 2, out[0..<25]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com/t1", 2, out[0..<35]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com", 0, out[0..<5]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com", 0, out[0..<30]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com", 1, out[0..<5]) == -1;
+  #assert mcp_as_discovery_url("https://auth.example.com", 1, out[0..<30]) == -1;
+
+  // AS metadata validation edge cases
+  nodes: [128] JvNode; d: [1] Jv;
+  empty_jv: Jv;
+  #assert !mcp_as_metadata_validate("https://a.test", empty_jv).ok;
+  #assert jv_parse(d[..], "[]", nodes[..]);
+  #assert !mcp_as_metadata_validate("https://a.test", d[0]).ok;
+  #assert jv_parse(d[..], "{\"issuer\":\"\",\"authorization_endpoint\":\"a\",\"token_endpoint\":\"t\",\"code_challenge_methods_supported\":[\"S256\"]}", nodes[..]);
+  #assert !mcp_as_metadata_validate("", d[0]).ok;
+  #assert jv_parse(d[..], "{\"issuer\":\"a\",\"authorization_endpoint\":\"a\",\"token_endpoint\":\"t\",\"code_challenge_methods_supported\":[\"S256\"],\"registration_endpoint\":123,\"token_endpoint_auth_methods_supported\":[\"client_secret_basic\"]}", nodes[..]);
+  m := mcp_as_metadata_validate("a", d[0]);
+  #assert m.ok && m.registration_endpoint_node == -1 && m.token_auth_mask == MCP_TOKEN_AUTH_BASIC;
+  #assert jv_parse(d[..], "{\"issuer\":\"a\",\"authorization_endpoint\":\"a\",\"token_endpoint\":\"t\",\"code_challenge_methods_supported\":[\"S256\"],\"token_endpoint_auth_methods_supported\":[\"client_secret_post\"]}", nodes[..]);
+  m = mcp_as_metadata_validate("a", d[0]);
+  #assert m.ok && m.token_auth_mask == MCP_TOKEN_AUTH_POST;
+  #assert jv_parse(d[..], "{\"issuer\":\"a\",\"token_endpoint\":\"t\",\"code_challenge_methods_supported\":[\"S256\"]}", nodes[..]);
+  #assert !mcp_as_metadata_validate("a", d[0]).ok;
+  #assert jv_parse(d[..], "{\"issuer\":\"a\",\"authorization_endpoint\":\"a\",\"code_challenge_methods_supported\":[\"S256\"]}", nodes[..]);
+  #assert !mcp_as_metadata_validate("a", d[0]).ok;
+
+  // CIMD URL edge cases
+  #assert !mcp_auth_cimd_url_ok("://bad");
+  #assert !mcp_auth_cimd_url_ok("https:noauth/path");
+  #assert !mcp_auth_cimd_url_ok("https:///client.json");
+  #assert mcp_auth_cimd_url_ok("https://app.example.com/a");
+
+  // Scope list & selection edge cases
+  #assert !mcp_scope_list_contains("a ", "b");
+  #assert !mcp_scope_list_contains("a ", "");
+  n = mcp_auth_select_initial_scopes("a ", "other", false, false, out[..]);
+  #assert n == 1 && cast(string) out[0..<n] == "a";
+  n = mcp_auth_select_initial_scopes("a b", "", false, false, out[..]);
+  #assert n == 3 && cast(string) out[0..<n] == "a b";
+  n = mcp_auth_select_initial_scopes("a", "other", false, false, out[..]);
+  #assert n == 1 && cast(string) out[0..<n] == "a";
+  #assert mcp_auth_select_initial_scopes("files:read", "", false, false, out[0..<3]) == -1;
+  #assert mcp_auth_select_initial_scopes("a", "", true, true, out[0..<5]) == -1;
+  #assert mcp_auth_step_up_scopes("a", "b", 0, 2, out[0..<1]) == -1;
+  #assert mcp_auth_step_up_scopes("a", "bcdef", 0, 2, out[0..<3]) == -1;
+}
+
+// --- WWW-Authenticate RFC 7235/6750 Bearer parser & formatter ---
+
+mcp_ws_or_comma :: (c: u8) -> bool #effects(all) { return c == ' ' || c == '\t' || c == ','; }
+
+mcp_auth_tchar :: (c: u8) -> bool #effects(all) {
+  if (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') { return true; }
+  for s: "!#$%&'*+-.^_`|~" { if c == s { return true; } }
+  return false;
+}
+
+mcp_www_auth_parse :: (header: string) -> McpWwwAuth #effects(all) {
+  r: McpWwwAuth;
+  i := 0;
+  in_bearer := false;
+  while i < header.count { // mutant: equivalent (loop exits immediately at i >= header.count)
+    while i < header.count && mcp_ws_or_comma(header[i]) { i += 1; }
+    if i >= header.count { break; }
+
+    tok_start := i;
+    while i < header.count && mcp_auth_tchar(header[i]) { i += 1; }
+    if i == tok_start { return r; }
+    tok := header[tok_start..<i];
+
+    // Skip optional spaces after token to see if '=' follows (param) or not (scheme).
+    j := i;
+    while j < header.count && (header[j] == ' ' || header[j] == '\t') { j += 1; }
+    if j < header.count && header[j] == '=' {
+      // auth-param: key = value
+      i = j + 1;
+      while i < header.count && (header[i] == ' ' || header[i] == '\t') { i += 1; }
+      if i >= header.count { return r; }
+      vfrom: int; vto: int;
+      if header[i] == '"' {
+        i += 1;
+        vfrom = i;
+        while i < header.count && header[i] != '"' {
+          if header[i] == '\\' {
+            i += 2;
+          } else {
+            i += 1;
+          }
+        }
+        if i >= header.count || header[i] != '"' { return r; }
+        vto = i;
+        i += 1;
+      } else {
+        vfrom = i;
+        while i < header.count && mcp_auth_tchar(header[i]) { i += 1; }
+        vto = i;
+        if vto == vfrom { return r; }
+      }
+      if in_bearer {
+        if mcp_uri_eq_ci(tok, "error") { r.error_from = vfrom; r.error_to = vto; }
+        else if mcp_uri_eq_ci(tok, "scope") { r.scope_from = vfrom; r.scope_to = vto; }
+        else if mcp_uri_eq_ci(tok, "resource_metadata") { r.resource_metadata_from = vfrom; r.resource_metadata_to = vto; }
+        else if mcp_uri_eq_ci(tok, "error_description") { r.error_desc_from = vfrom; r.error_desc_to = vto; }
+      }
+    } else {
+      // New auth-scheme (e.g. Bearer, Basic)
+      if mcp_uri_eq_ci(tok, "Bearer") {
+        r.has_bearer = true;
+        in_bearer = true;
+      } else {
+        in_bearer = false;
+      }
+    }
+  }
+  r.ok = true;
+  return r;
+}
+
+mcp_auth_buf_put :: (out: [] u8, pos: [] int, s: string) -> bool #effects(all) {
+  if pos[0] + s.count > out.count { return false; }
+  for c: s { out[pos[0]] = c; pos[0] += 1; }
+  return true;
+}
+
+mcp_auth_put_param :: (out: [] u8, pos: [] int, first: [] bool, key: string, val: string) -> bool #effects(all) {
+  if val.count == 0 { return true; }
+  for c: val { if c == '"' || c == '\\' || c < 0x20 || c >= 0x7F { return false; } }
+  sep := ifx first[0] then " " else ", ";
+  first[0] = false;
+  if !mcp_auth_buf_put(out, pos, sep) { return false; }
+  if !mcp_auth_buf_put(out, pos, key) { return false; }
+  if !mcp_auth_buf_put(out, pos, "=\"") { return false; }
+  if !mcp_auth_buf_put(out, pos, val) { return false; }
+  return mcp_auth_buf_put(out, pos, "\"");
+}
+
+mcp_auth_format_www_auth :: (resource_metadata: string, err: string, scope: string, out: [] u8) -> int #effects(all) {
+  pos: [1] int;
+  first := [1] bool.[true];
+  if !mcp_auth_buf_put(out, pos[..], "Bearer") { return -1; }
+  if !mcp_auth_put_param(out, pos[..], first[..], "error", err) { return -1; }
+  if !mcp_auth_put_param(out, pos[..], first[..], "scope", scope) { return -1; }
+  if !mcp_auth_put_param(out, pos[..], first[..], "resource_metadata", resource_metadata) { return -1; }
+  return pos[0];
+}
+
+// --- RFC 9728 PRM & RFC 8414 / OIDC Discovery URL builders ---
+
+mcp_auth_origin_end :: (uri: string, u: McpUri) -> int #effects(all) {
+  return u.path_from;
+}
+
+mcp_auth_clean_path :: (uri: string, u: McpUri) -> string #effects(all) {
+  p := uri[u.path_from..<u.path_to];
+  while p.count > 0 && p[p.count - 1] == '/' { p = p[0..<p.count - 1]; }
+  return p;
+}
+
+// Step-indexed RFC 9728 PRM discovery URL builder (step = 0, 1, ...; returns -1 when exhausted).
+mcp_prm_discovery_url :: (mcp_server_url: string, www_resource_metadata: string, step: int, out: [] u8) -> int #effects(all) {
+  if step < 0 { return -1; }
+  if www_resource_metadata.count > 0 {
+    if step != 0 { return -1; }
+    if !mcp_uri_parse(www_resource_metadata).ok { return -1; }
+    pos: [1] int;
+    if !mcp_auth_buf_put(out, pos[..], www_resource_metadata) { return -1; }
+    return pos[0];
+  }
+  u := mcp_uri_parse(mcp_server_url);
+  if !u.ok || !u.has_authority || u.host_to <= u.host_from { return -1; } // mutant: equivalent (!u.ok implies !u.has_authority)
+  origin := mcp_server_url[0..<mcp_auth_origin_end(mcp_server_url, u)];
+  path := mcp_auth_clean_path(mcp_server_url, u);
+  pos: [1] int;
+  if path.count > 0 { // mutant: equivalent (authority path starts with '/' and has trailing '/' stripped, so count is 0 or >= 2)
+    if step == 0 {
+      if !mcp_auth_buf_put(out, pos[..], origin) { return -1; }
+      if !mcp_auth_buf_put(out, pos[..], "/.well-known/oauth-protected-resource") { return -1; }
+      if !mcp_auth_buf_put(out, pos[..], path) { return -1; }
+      return pos[0];
+    }
+    if step == 1 {
+      if !mcp_auth_buf_put(out, pos[..], origin) { return -1; }
+      if !mcp_auth_buf_put(out, pos[..], "/.well-known/oauth-protected-resource") { return -1; }
+      return pos[0];
+    }
+    return -1;
+  }
+  if step == 0 {
+    if !mcp_auth_buf_put(out, pos[..], origin) { return -1; }
+    if !mcp_auth_buf_put(out, pos[..], "/.well-known/oauth-protected-resource") { return -1; }
+    return pos[0];
+  }
+  return -1;
+}
+
+// Step-indexed RFC 8414 / OIDC Discovery 1.0 URL builder (returns -1 when exhausted).
+mcp_as_discovery_url :: (issuer_url: string, step: int, out: [] u8) -> int #effects(all) {
+  if step < 0 { return -1; }
+  u := mcp_uri_parse(issuer_url);
+  if !u.ok || !u.has_authority || u.host_to <= u.host_from { return -1; } // mutant: equivalent (!u.ok implies !u.has_authority)
+  origin := issuer_url[0..<mcp_auth_origin_end(issuer_url, u)];
+  path := mcp_auth_clean_path(issuer_url, u);
+  pos: [1] int;
+  if path.count > 0 { // mutant: equivalent (authority path starts with '/' and has trailing '/' stripped, so count is 0 or >= 2)
+    if step == 0 {
+      if !mcp_auth_buf_put(out, pos[..], origin) { return -1; }
+      if !mcp_auth_buf_put(out, pos[..], "/.well-known/oauth-authorization-server") { return -1; }
+      if !mcp_auth_buf_put(out, pos[..], path) { return -1; }
+      return pos[0];
+    }
+    if step == 1 {
+      if !mcp_auth_buf_put(out, pos[..], origin) { return -1; }
+      if !mcp_auth_buf_put(out, pos[..], "/.well-known/openid-configuration") { return -1; }
+      if !mcp_auth_buf_put(out, pos[..], path) { return -1; }
+      return pos[0];
+    }
+    if step == 2 {
+      if !mcp_auth_buf_put(out, pos[..], origin) { return -1; }
+      if !mcp_auth_buf_put(out, pos[..], path) { return -1; }
+      if !mcp_auth_buf_put(out, pos[..], "/.well-known/openid-configuration") { return -1; }
+      return pos[0];
+    }
+    return -1;
+  }
+  if step == 0 {
+    if !mcp_auth_buf_put(out, pos[..], origin) { return -1; }
+    if !mcp_auth_buf_put(out, pos[..], "/.well-known/oauth-authorization-server") { return -1; }
+    return pos[0];
+  }
+  if step == 1 {
+    if !mcp_auth_buf_put(out, pos[..], origin) { return -1; }
+    if !mcp_auth_buf_put(out, pos[..], "/.well-known/openid-configuration") { return -1; }
+    return pos[0];
+  }
+  return -1;
+}
+
+// --- AS metadata validation (RFC 8414 / OIDC + MCP S256 gate) ---
+
+mcp_jv_array_has_str :: (d: Jv, arr: int, want: string) -> bool #effects(all) {
+  if jv_kind(d, arr) != JV_ARRAY { return false; }
+  for i: 0..<jv_len(d, arr) {
+    el := jv_at(d, arr, i);
+    if jv_kind(d, el) == JV_STRING && jv_raw_eq(jv_raw(d, el), want) { return true; }
+  }
+  return false;
+}
+
+mcp_as_metadata_validate :: (expected_issuer: string, meta: Jv) -> McpAsMeta #effects(all) {
+  r: McpAsMeta;
+  if jv_kind(meta, 0) != JV_OBJECT { return r; }
+
+  // RFC 8414 §3.3 / OIDC §4.3: exact string match on `issuer`.
+  iss_n := jv_get(meta, 0, "issuer");
+  if jv_kind(meta, iss_n) != JV_STRING { return r; }
+  ibuf: [MCP_URI_MAX] u8;
+  ilen := jv_str(meta, iss_n, ibuf[..]);
+  if ilen <= 0 || cast(string) ibuf[0..<ilen] != expected_issuer { return r; }
+
+  auth_n := jv_get(meta, 0, "authorization_endpoint");
+  tok_n := jv_get(meta, 0, "token_endpoint");
+  if jv_kind(meta, auth_n) != JV_STRING || jv_kind(meta, tok_n) != JV_STRING { return r; }
+
+  // Mandatory PKCE S256 support check.
+  pkce_n := jv_get(meta, 0, "code_challenge_methods_supported");
+  if !mcp_jv_array_has_str(meta, pkce_n, "S256") { return r; }
+
+  reg_n := jv_get(meta, 0, "registration_endpoint");
+  if jv_kind(meta, reg_n) != JV_STRING { reg_n = -1; }
+
+  cimd_n := jv_get(meta, 0, "client_id_metadata_document_supported");
+  iss_sup_n := jv_get(meta, 0, "authorization_response_iss_parameter_supported");
+  scopes_n := jv_get(meta, 0, "scopes_supported");
+
+  auth_methods_n := jv_get(meta, 0, "token_endpoint_auth_methods_supported");
+  mask := 0;
+  if auth_methods_n < 0 { // mutant: equivalent (jv_get on root object 0 returns -1 or >= 1, never 0)
+    // Per RFC 8414 Section 2, default when omitted is client_secret_basic.
+    mask = MCP_TOKEN_AUTH_BASIC;
+  } else {
+    if mcp_jv_array_has_str(meta, auth_methods_n, "none") { mask |= MCP_TOKEN_AUTH_NONE; }
+    if mcp_jv_array_has_str(meta, auth_methods_n, "client_secret_basic") { mask |= MCP_TOKEN_AUTH_BASIC; }
+    if mcp_jv_array_has_str(meta, auth_methods_n, "client_secret_post") { mask |= MCP_TOKEN_AUTH_POST; }
+  }
+
+  r.ok = true;
+  r.auth_endpoint_node = auth_n;
+  r.token_endpoint_node = tok_n;
+  r.registration_endpoint_node = reg_n;
+  r.cimd_supported = jv_kind(meta, cimd_n) == JV_TRUE;
+  r.iss_param_supported = jv_kind(meta, iss_sup_n) == JV_TRUE;
+  r.offline_access_supported = mcp_jv_array_has_str(meta, scopes_n, "offline_access");
+  r.token_auth_mask = mask;
+  return r;
+}
+
+// --- Registration priority, CIMD, token auth, RFC 9207 iss, scopes ---
+
+mcp_auth_select_registration :: (has_prereg: bool, cimd_supported: bool, has_cimd_url: bool, has_reg_endpoint: bool) -> int #effects(all) {
+  if has_prereg { return MCP_REG_PRE_REGISTERED; }
+  if cimd_supported && has_cimd_url { return MCP_REG_CIMD; }
+  if has_reg_endpoint { return MCP_REG_DCR; }
+  return MCP_REG_NONE;
+}
+
+mcp_auth_cimd_url_ok :: (url: string) -> bool #effects(all) {
+  u := mcp_uri_parse(url);
+  if !u.ok || !u.has_authority || u.has_userinfo || u.has_fragment { return false; } // mutant: equivalent (!u.ok implies !u.has_authority)
+  if u.host_to <= u.host_from { return false; }
+  if !mcp_uri_eq_ci(url[u.scheme_from..<u.scheme_to], "https") { return false; }
+  path := url[u.path_from..<u.path_to];
+  return path.count > 1 && path[0] == '/';
+}
+
+mcp_auth_select_token_auth :: (supported_mask: int, has_secret: bool) -> int #effects(all) {
+  if has_secret {
+    if (supported_mask & MCP_TOKEN_AUTH_BASIC) != 0 { return MCP_TOKEN_AUTH_BASIC; }
+    if (supported_mask & MCP_TOKEN_AUTH_POST) != 0 { return MCP_TOKEN_AUTH_POST; }
+  }
+  if (supported_mask & MCP_TOKEN_AUTH_NONE) != 0 { return MCP_TOKEN_AUTH_NONE; }
+  return 0;
+}
+
+// Exact RFC 9207 §2.4 + MCP 2026-07-28 callback `iss` validation (NO normalization).
+mcp_auth_validate_iss :: (iss_supported_advertised: bool, has_iss: bool, callback_iss: string, expected_issuer: string) -> bool #effects(all) {
+  if has_iss { return callback_iss == expected_issuer; }
+  return !iss_supported_advertised;
+}
+
+mcp_scope_list_contains :: (list: string, token: string) -> bool #effects(all) {
+  i := 0;
+  while i < list.count {
+    while i < list.count && list[i] == ' ' { i += 1; }
+    start := i;
+    while i < list.count && list[i] != ' ' { i += 1; }
+    if i > start && list[start..<i] == token { return true; }
+  }
+  return false;
+}
+
+mcp_scope_append_unique :: (src: string, out: [] u8, pos: [] int) -> bool #effects(all) {
+  i := 0;
+  while i < src.count {
+    while i < src.count && src[i] == ' ' { i += 1; }
+    start := i;
+    while i < src.count && src[i] != ' ' { i += 1; }
+    if i > start {
+      tok := src[start..<i];
+      if !mcp_scope_list_contains(cast(string) out[0..<pos[0]], tok) {
+        if pos[0] > 0 {
+          if !mcp_auth_buf_put(out, pos, " ") { return false; }
+        }
+        if !mcp_auth_buf_put(out, pos, tok) { return false; }
+      }
+    }
+  }
+  return true;
+}
+
+mcp_auth_select_initial_scopes :: (www_auth_scope: string, prm_scopes_supported: string, want_offline: bool, as_supports_offline: bool, out: [] u8) -> int #effects(all) {
+  pos: [1] int;
+  base := ifx www_auth_scope.count > 0 then www_auth_scope else prm_scopes_supported;
+  if !mcp_scope_append_unique(base, out, pos[..]) { return -1; }
+  if want_offline && as_supports_offline {
+    if !mcp_scope_append_unique("offline_access", out, pos[..]) { return -1; }
+  }
+  return pos[0];
+}
+
+// Computes deduplicated union of prev_scopes and challenge_scopes with bounded retry limit.
+mcp_auth_step_up_scopes :: (prev_scopes: string, challenge_scopes: string, retry_count: int, max_retries: int, out: [] u8) -> int #effects(all) {
+  if retry_count < 0 || retry_count >= max_retries { return -1; }
+  if challenge_scopes.count == 0 { return -1; }
+  pos: [1] int;
+  if !mcp_scope_append_unique(prev_scopes, out, pos[..]) { return -1; }
+  if !mcp_scope_append_unique(challenge_scopes, out, pos[..]) { return -1; }
+  return pos[0];
+}

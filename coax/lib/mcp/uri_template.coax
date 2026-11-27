@@ -1,0 +1,928 @@
+// General RFC 3986 URI parser & RFC 8707 canonicalizer (for arbitrary MCP
+// resource schemes, localhost/IPv4/IPv6 loopback, and OAuth PRM/AS endpoints)
+// plus RFC 6570 Level 1-3 URI Template validator, expander, and reverse matcher.
+// Pure caller-buffer #authority module.
+#authority;
+
+MCP_URI_MAX :: 2048;
+MCP_URI_HEX :: "0123456789ABCDEF";
+
+McpUri :: struct {
+  ok: bool;
+  scheme_from: int; scheme_to: int;
+  has_authority: bool;
+  has_userinfo: bool;
+  host_from: int; host_to: int;
+  has_port: bool;
+  port: int;
+  path_from: int; path_to: int;
+  has_query: bool;
+  query_from: int; query_to: int;
+  has_fragment: bool;
+  fragment_from: int; fragment_to: int;
+}
+
+McpTemplateVar :: struct {
+  name: string;
+  value: string;
+}
+
+McpTemplateMatch :: struct {
+  name_from: int; name_to: int;
+  val_from: int; val_to: int;
+}
+
+#test "general RFC 3986 URI parser supports MCP resource schemes, loopback, IPv4, IPv6, and fragments" {
+  // file:/// with empty authority host
+  f := "file:///projects/myapp/config.json";
+  u := mcp_uri_parse(f);
+  #assert u.ok && f[u.scheme_from..<u.scheme_to] == "file" && u.has_authority;
+  #assert u.host_from == u.host_to && f[u.path_from..<u.path_to] == "/projects/myapp/config.json";
+  #assert !u.has_query && !u.has_fragment && !u.has_port && !u.has_userinfo;
+
+  // Custom MCP schemes (memo://, test://, urn:...)
+  m := "memo://insights/2026?fmt=md#top";
+  u = mcp_uri_parse(m);
+  #assert u.ok && m[u.scheme_from..<u.scheme_to] == "memo" && m[u.host_from..<u.host_to] == "insights";
+  #assert m[u.path_from..<u.path_to] == "/2026" && u.has_query && m[u.query_from..<u.query_to] == "fmt=md";
+  #assert u.has_fragment && m[u.fragment_from..<u.fragment_to] == "top";
+
+  urn := "urn:mcp:resource:42";
+  u = mcp_uri_parse(urn);
+  #assert u.ok && !u.has_authority && urn[u.scheme_from..<u.scheme_to] == "urn" && urn[u.path_from..<u.path_to] == "mcp:resource:42";
+
+  // Localhost, IPv4, IPv6 loopback with ports
+  loc := "http://127.0.0.1:3000/mcp";
+  u = mcp_uri_parse(loc);
+  #assert u.ok && loc[u.host_from..<u.host_to] == "127.0.0.1" && u.has_port && u.port == 3000 && loc[u.path_from..<u.path_to] == "/mcp";
+
+  v6 := "http://[::1]:8080/mcp";
+  u = mcp_uri_parse(v6);
+  #assert u.ok && v6[u.host_from..<u.host_to] == "[::1]" && u.has_port && u.port == 8080 && v6[u.path_from..<u.path_to] == "/mcp";
+
+  // Userinfo tracked cleanly
+  ui := "https://user:pass@example.com/a";
+  u = mcp_uri_parse(ui);
+  #assert u.ok && u.has_userinfo && ui[u.host_from..<u.host_to] == "example.com";
+
+  // Reject invalid URIs
+  bad := [18] string.[
+    "", "no-scheme", "1bad://host", "http://host:0/a", "http://host:080/a",
+    "http://host:65536/a", "http://host:abc/a", "http://[::1/a", "http://[]/a",
+    "http://[zz]/a", "https://host/a b", "https://host/%2", "https://host/%GG",
+    "https://host/a\nb", "https://host?a b", "https://host#a b", "http://host:/a",
+    "://missing-scheme"
+  ];
+  for s: bad { #assert !mcp_uri_parse(s).ok; }
+
+  // Exact MCP_URI_MAX boundary.
+  big: [MCP_URI_MAX + 1] u8;
+  pfx := "https://a.test/";
+  for i: 0..<big.count { big[i] = 'x'; }
+  for i: 0..<pfx.count { big[i] = pfx[i]; }
+  #assert mcp_uri_parse(cast(string) big[0..<MCP_URI_MAX]).ok;
+  #assert !mcp_uri_parse(cast(string) big[..]).ok;
+}
+
+#test "RFC 8707 canonical resource URI lowercases scheme/host, strips default ports and root slash, and guards mismatch" {
+  out: [256] u8;
+  n := mcp_uri_canonical_resource("HTTPS://MCP.Example.COM:443/", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://mcp.example.com";
+
+  n = mcp_uri_canonical_resource("HTTP://127.0.0.1:80/mcp", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "http://127.0.0.1/mcp";
+
+  n = mcp_uri_canonical_resource("https://MCP.Example.com:8443/Server/MCP", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://mcp.example.com:8443/Server/MCP";
+
+  n = mcp_uri_canonical_resource("http://[::1]:3000/mcp", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "http://[::1]:3000/mcp";
+
+  // Rejects fragments, userinfo, non-http(s), empty host, insufficient buffer.
+  #assert mcp_uri_canonical_resource("https://mcp.example.com#frag", out[..]) == -1;
+  #assert mcp_uri_canonical_resource("https://user@mcp.example.com/mcp", out[..]) == -1;
+  #assert mcp_uri_canonical_resource("file:///tmp/x", out[..]) == -1;
+  #assert mcp_uri_canonical_resource("https:///mcp", out[..]) == -1;
+  #assert mcp_uri_canonical_resource("mcp.example.com", out[..]) == -1;
+  #assert mcp_uri_canonical_resource("https://mcp.example.com/mcp", out[0..<10]) == -1;
+
+  // Resource matching (RFC 9728 / auth/resource-mismatch):
+  // Exact canonical match or hierarchical parent path match on identical origin.
+  #assert mcp_uri_resource_matches("https://MCP.example.com:443/mcp", "https://mcp.example.com/mcp");
+  #assert mcp_uri_resource_matches("https://mcp.example.com/mcp", "https://mcp.example.com");
+  #assert mcp_uri_resource_matches("https://mcp.example.com/api/v1/mcp", "https://mcp.example.com/api");
+  // Must reject different origin, sibling path, or partial path prefix (/api vs /apiv2).
+  #assert !mcp_uri_resource_matches("https://mcp.example.com/mcp", "https://other.example.com/mcp");
+  #assert !mcp_uri_resource_matches("https://mcp.example.com/mcp", "http://mcp.example.com/mcp");
+  #assert !mcp_uri_resource_matches("https://mcp.example.com/apiv2", "https://mcp.example.com/api");
+  #assert !mcp_uri_resource_matches("https://mcp.example.com/mcp", "https://mcp.example.com/mcp/sub");
+  #assert !mcp_uri_resource_matches("bad", "https://mcp.example.com");
+}
+
+#test "RFC 6570 Level 1-3 template validation and expansion match normative examples" {
+  vars := [5] McpTemplateVar.[
+    McpTemplateVar.{name = "var", value = "value"},
+    McpTemplateVar.{name = "hello", value = "Hello World!"},
+    McpTemplateVar.{name = "path", value = "/foo/bar"},
+    McpTemplateVar.{name = "x", value = "1024"},
+    McpTemplateVar.{name = "y", value = "768"}
+  ];
+  out: [256] u8;
+
+  // Level 1: simple string expansion
+  n := mcp_uri_template_expand("https://example.com/{var}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/value";
+  n = mcp_uri_template_expand("https://example.com/{hello}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/Hello%20World%21";
+
+  // Level 2: reserved (+), fragment (#)
+  n = mcp_uri_template_expand("{+path}/here", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "/foo/bar/here";
+  n = mcp_uri_template_expand("here?ref={+path}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "here?ref=/foo/bar";
+  n = mcp_uri_template_expand("X{#hello}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "X#Hello%20World!";
+
+  // Level 3: multi-var, dot, path segment, path param, query, query continuation, prefix modifier
+  n = mcp_uri_template_expand("map?{x,y}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "map?1024,768";
+  n = mcp_uri_template_expand("X{.var,x}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "X.value.1024";
+  n = mcp_uri_template_expand("{/var,x}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "/value/1024";
+  n = mcp_uri_template_expand("{;x,y,undef}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == ";x=1024;y=768";
+  n = mcp_uri_template_expand("{?x,y,undef}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "?x=1024&y=768";
+  n = mcp_uri_template_expand("?fixed=yes{&x,y}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "?fixed=yes&x=1024&y=768";
+  n = mcp_uri_template_expand("{var:3}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "val";
+  // Undefined variable expands to empty string
+  n = mcp_uri_template_expand("test://{undef}/end", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "test:///end";
+
+  // Empty value in ; vs ?
+  ev := [1] McpTemplateVar.[McpTemplateVar.{name = "empty", value = ""}];
+  n = mcp_uri_template_expand("{;empty}", ev[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == ";empty";
+  n = mcp_uri_template_expand("{?empty}", ev[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "?empty=";
+
+  // Invalid templates rejected.
+  bad_t := [12] string.[
+    "{", "}", "{}", "{a", "a}", "{!a}", "{a:0}", "{a:10000}", "{a:}", "{a,,b}", "{a b}", "a{b{c}}"
+  ];
+  for t: bad_t {
+    #assert !mcp_uri_template_valid(t);
+    #assert mcp_uri_template_expand(t, vars[..], out[..]) == -1;
+  }
+
+  // Buffer overflow refusal.
+  #assert mcp_uri_template_expand("https://example.com/{var}", vars[..], out[0..<10]) == -1;
+}
+
+#test "URI template reverse matcher extracts and percent-decodes variables cleanly" {
+  ms: [8] McpTemplateMatch;
+  vbuf: [256] u8;
+
+  // Multi-segment MCP resource template
+  tmpl := "test://template/{category}/{id}";
+  uri := "test://template/books/hello%20world";
+  k := mcp_uri_template_match(tmpl, uri, ms[..], vbuf[..]);
+  #assert k == 2;
+  #assert tmpl[ms[0].name_from..<ms[0].name_to] == "category" && cast(string) vbuf[ms[0].val_from..<ms[0].val_to] == "books";
+  #assert tmpl[ms[1].name_from..<ms[1].name_to] == "id" && cast(string) vbuf[ms[1].val_from..<ms[1].val_to] == "hello world";
+
+  // Reserved operator {+path} matches slashes
+  tmpl2 := "file:///{+path}";
+  uri2 := "file:///a/b/c.txt";
+  k = mcp_uri_template_match(tmpl2, uri2, ms[..], vbuf[..]);
+  #assert k == 1 && tmpl2[ms[0].name_from..<ms[0].name_to] == "path";
+  #assert cast(string) vbuf[ms[0].val_from..<ms[0].val_to] == "a/b/c.txt";
+
+  // Simple {id} MUST NOT match across '/'
+  #assert mcp_uri_template_match("test://items/{id}", "test://items/a/b", ms[..], vbuf[..]) == -1;
+
+  // Literal-only template matches exact URI
+  #assert mcp_uri_template_match("test://static", "test://static", ms[..], vbuf[..]) == 0;
+  #assert mcp_uri_template_match("test://static", "test://other", ms[..], vbuf[..]) == -1;
+
+  // Suffix literal anchoring & query template
+  tmpl3 := "https://api.example.com/users/{user_id}/profile.json";
+  k = mcp_uri_template_match(tmpl3, "https://api.example.com/users/u_42/profile.json", ms[..], vbuf[..]);
+  #assert k == 1 && cast(string) vbuf[ms[0].val_from..<ms[0].val_to] == "u_42";
+  #assert mcp_uri_template_match(tmpl3, "https://api.example.com/users/u_42/other.json", ms[..], vbuf[..]) == -1;
+
+  // Capacity refusal when out_vars or val_buf is too small
+  #assert mcp_uri_template_match(tmpl, uri, ms[0..<1], vbuf[..]) == -1;
+  #assert mcp_uri_template_match(tmpl, uri, ms[..], vbuf[0..<4]) == -1;
+  // Malformed percent escape in URI rejected
+  #assert mcp_uri_template_match("test://items/{id}", "test://items/bad%2G", ms[..], vbuf[..]) == -1;
+}
+
+#test "URI character classification, hex, and percent helpers cover exact boundaries" {
+  #assert mcp_uri_alpha('A') && mcp_uri_alpha('Z') && mcp_uri_alpha('a') && mcp_uri_alpha('z');
+  #assert !mcp_uri_alpha('@') && !mcp_uri_alpha('[') && !mcp_uri_alpha('`') && !mcp_uri_alpha('{');
+
+  #assert mcp_uri_digit('0') && mcp_uri_digit('9') && !mcp_uri_digit('/') && !mcp_uri_digit(':');
+
+  #assert mcp_uri_lower('A') == 'a' && mcp_uri_lower('Z') == 'z';
+  #assert mcp_uri_lower('@') == '@' && mcp_uri_lower('[') == '[' && mcp_uri_lower('a') == 'a';
+
+  #assert mcp_uri_hex('0') == 0 && mcp_uri_hex('9') == 9 && mcp_uri_hex('/') == -1 && mcp_uri_hex(':') == -1;
+  #assert mcp_uri_hex('A') == 10 && mcp_uri_hex('F') == 15 && mcp_uri_hex('@') == -1 && mcp_uri_hex('G') == -1;
+  #assert mcp_uri_hex('a') == 10 && mcp_uri_hex('f') == 15 && mcp_uri_hex('`') == -1 && mcp_uri_hex('g') == -1;
+
+  #assert mcp_uri_unreserved('-') && mcp_uri_unreserved('.') && mcp_uri_unreserved('_') && mcp_uri_unreserved('~');
+  #assert !mcp_uri_unreserved(',') && !mcp_uri_unreserved('/') && !mcp_uri_unreserved('`') && !mcp_uri_unreserved(127);
+
+  #assert mcp_uri_pchar_unencoded(':') && mcp_uri_pchar_unencoded('@') && !mcp_uri_pchar_unencoded('?');
+
+  #assert mcp_uri_scheme_char('+') && mcp_uri_scheme_char('-') && mcp_uri_scheme_char('.');
+  #assert !mcp_uri_scheme_char(',') && !mcp_uri_scheme_char('/') && !mcp_uri_scheme_char('=');
+
+  #assert mcp_uri_ipv6_char('0') && mcp_uri_ipv6_char('9') && mcp_uri_ipv6_char('A') && mcp_uri_ipv6_char('f');
+  #assert mcp_uri_ipv6_char(':') && mcp_uri_ipv6_char('.') && !mcp_uri_ipv6_char('/') && !mcp_uri_ipv6_char('g');
+
+  #assert mcp_uri_check_pct("%00", 0) && mcp_uri_check_pct("%0A", 0) && mcp_uri_check_pct("x%f9", 1);
+  #assert !mcp_uri_check_pct("%0", 0) && !mcp_uri_check_pct("%", 0) && !mcp_uri_check_pct("%G0", 0) && !mcp_uri_check_pct("%0G", 0);
+
+  #assert mcp_uri_eq_ci("abc", "ABC") && !mcp_uri_eq_ci("abc", "bbc") && !mcp_uri_eq_ci("ab", "abc");
+}
+
+#test "RFC 3986 URI parser covers scheme, userinfo, host, IPv6, port, path, query, fragment edge cases" {
+  // Scheme chars, single-char scheme, no-authority with single slash, empty authority
+  #assert mcp_uri_parse("a+b-c.1://h").ok;
+  #assert mcp_uri_parse("a://h").ok;
+  #assert mcp_uri_parse("a://").has_authority;
+  #assert mcp_uri_parse("http://").ok;
+  #assert mcp_uri_parse("a:").ok;
+  #assert mcp_uri_parse("a:/").ok;
+  #assert mcp_uri_parse("a:/x").ok;
+
+  // Authority ending at '#' and '?'
+  u := mcp_uri_parse("http://host#frag");
+  #assert u.ok && "http://host#frag"[u.host_from..<u.host_to] == "host" && u.has_fragment;
+  u = mcp_uri_parse("http://host?q=1");
+  #assert u.ok && "http://host?q=1"[u.host_from..<u.host_to] == "host" && u.has_query;
+
+  // Userinfo with percent-encoding and invalid forms
+  #assert mcp_uri_parse("http://u%20v:p@host/a").ok;
+  #assert mcp_uri_parse("http://@host/a").ok;
+  #assert !mcp_uri_parse("http://u%20 @host/a").ok;
+  #assert !mcp_uri_parse("http://u%2@host/a").ok;
+  #assert !mcp_uri_parse("http://u%GG@host/a").ok;
+  #assert !mcp_uri_parse("http://u v@host/a").ok;
+
+  // IPv6 host edge cases
+  #assert mcp_uri_parse("http://[::1]").ok;
+  #assert mcp_uri_parse("http://[a]/x").ok;
+  #assert mcp_uri_parse("http://[::ffff:127.0.0.1]/x").ok;
+  #assert !mcp_uri_parse("http://[z1]/a").ok;
+  #assert !mcp_uri_parse("http://[::1]x/a").ok;
+  #assert !mcp_uri_parse("http://[]:80/a").ok;
+
+  // Reg-name host percent-encoding and invalid forms
+  #assert mcp_uri_parse("http://a%20b/x").ok;
+  #assert !mcp_uri_parse("http://a%20 b/x").ok;
+  #assert !mcp_uri_parse("http://a%2/x").ok;
+  #assert !mcp_uri_parse("http://a%GG/x").ok;
+  #assert !mcp_uri_parse("http://a b/x").ok;
+
+  // Port exact upper bound
+  u = mcp_uri_parse("http://host:65535/a");
+  #assert u.ok && u.has_port && u.port == 65535;
+
+  // Path, query, and fragment percent-encoding and special chars
+  #assert mcp_uri_parse("http://host/a%20b/c@d#f").ok;
+  #assert !mcp_uri_parse("http://host/a%20 b").ok;
+  #assert mcp_uri_parse("http://host/a?k=%20v&x/y?z").ok;
+  #assert !mcp_uri_parse("http://host/a?k=%20 v").ok;
+  #assert !mcp_uri_parse("http://host/a?k=%2").ok;
+  #assert mcp_uri_parse("http://host/a#x%20y/z?w").ok;
+  #assert !mcp_uri_parse("http://host/a#x%20 y").ok;
+  #assert !mcp_uri_parse("http://host/a#x%2").ok;
+}
+
+#test "RFC 8707 canonical resource URI and resource_matches cover buffer and query boundaries" {
+  out: [64] u8;
+  // Exact buffer fit for scheme+host (len 11)
+  #assert mcp_uri_canonical_resource("https://a.b", out[0..<11]) == 11;
+  #assert mcp_uri_canonical_resource("https://a.b", out[0..<10]) == -1;
+
+  // Exact buffer fit with non-default port and zero digits (len 16)
+  n := mcp_uri_canonical_resource("https://a.b:1000", out[0..<16]);
+  #assert n == 16 && cast(string) out[0..<n] == "https://a.b:1000";
+  #assert mcp_uri_canonical_resource("https://a.b:1000", out[0..<15]) == -1;
+
+  // Exact buffer fit with path (len 14)
+  #assert mcp_uri_canonical_resource("https://a.b/xy", out[0..<14]) == 14;
+  #assert mcp_uri_canonical_resource("https://a.b/xy", out[0..<13]) == -1;
+
+  // Query preserved and exact buffer fit (len 16)
+  n = mcp_uri_canonical_resource("https://a.b/?q=1", out[0..<16]);
+  #assert n == 16 && cast(string) out[0..<n] == "https://a.b/?q=1";
+  #assert mcp_uri_canonical_resource("https://a.b/?q=1", out[0..<15]) == -1;
+
+  // Non-authority and non-http(s) URIs rejected
+  #assert mcp_uri_canonical_resource("urn:foo:bar", out[..]) == -1;
+  #assert mcp_uri_canonical_resource("ftp://example.com/x", out[..]) == -1;
+
+  // resource_matches with invalid advertised resource and port mismatch
+  #assert !mcp_uri_resource_matches("https://a.b/mcp", "bad");
+  #assert !mcp_uri_resource_matches("https://a.b:8443/mcp", "https://a.b");
+  #assert !mcp_uri_resource_matches("https://a.b:8443/mcp", "https://a.b:8444");
+}
+
+#test "RFC 6570 template validation, expansion, and matching cover boundary and error paths" {
+  // Varname percent-encoding, dot, prefix max, explode modifier
+  #assert mcp_uri_template_valid("{a%20b}");
+  #assert !mcp_uri_template_valid("{a%20 b}");
+  #assert !mcp_uri_template_valid("{a%2G}");
+  #assert !mcp_uri_template_valid("{a%2}");
+  #assert mcp_uri_template_valid("{a.b}");
+  #assert !mcp_uri_template_valid("{:3}");
+  #assert !mcp_uri_template_valid("{a:1x}");
+  #assert mcp_uri_template_valid("{a:9999}");
+  #assert mcp_uri_template_valid("{a*}");
+  #assert !mcp_uri_template_valid("{*}");
+  #assert !mcp_uri_template_valid("{+}");
+  #assert !mcp_uri_template_valid("{a,}");
+  #assert mcp_uri_template_valid("{a}!");
+  #assert mcp_uri_template_valid("{a}~");
+  #assert !mcp_uri_template_valid("{a} ");
+  del_buf := [4] u8.['{', 'a', '}', 0x7F];
+  #assert !mcp_uri_template_valid(cast(string) del_buf[..]);
+
+  // Exact MCP_URI_MAX boundary for template
+  big: [MCP_URI_MAX + 1] u8;
+  for i: 0..<big.count { big[i] = 'a'; }
+  #assert mcp_uri_template_valid(cast(string) big[0..<MCP_URI_MAX]);
+  #assert !mcp_uri_template_valid(cast(string) big[..]);
+
+  // Reserved expansion preserving valid %XX vs encoding invalid %XX and non-reserved encoding
+  vars := [5] McpTemplateVar.[
+    McpTemplateVar.{name = "pct", value = "a%20b"},
+    McpTemplateVar.{name = "badpct", value = "a%2G"},
+    McpTemplateVar.{name = "sp", value = " "},
+    McpTemplateVar.{name = "empty", value = ""},
+    McpTemplateVar.{name = "pct3", value = "%20"}
+  ];
+  out: [64] u8;
+  n := mcp_uri_template_expand("{+pct}", vars[..], out[0..<5]);
+  #assert n == 5 && cast(string) out[0..<n] == "a%20b";
+  #assert mcp_uri_template_expand("{+pct}", vars[..], out[0..<4]) == -1;
+  n = mcp_uri_template_expand("{+pct3}", vars[..], out[0..<3]);
+  #assert n == 3 && cast(string) out[0..<n] == "%20";
+  #assert mcp_uri_template_expand("{+pct3}", vars[..], out[0..<2]) == -1;
+  n = mcp_uri_template_expand("{+badpct}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "a%252G";
+  n = mcp_uri_template_expand("{pct}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "a%2520b";
+  n = mcp_uri_template_expand("{pct:1,pct}", vars[..], out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "a,a%2520b";
+
+  // Exact buffer fits for keep, pct-encode, sep, vname, ifemp, '=', val
+  #assert mcp_uri_template_expand("{sp}", vars[..], out[0..<3]) == 3;
+  #assert mcp_uri_template_expand("{sp}", vars[..], out[0..<2]) == -1;
+  #assert mcp_uri_template_expand("{?sp}", vars[..], out[0..<0]) == -1;
+  #assert mcp_uri_template_expand("{?sp}", vars[..], out[0..<1]) == -1;
+  #assert mcp_uri_template_expand("{?sp}", vars[..], out[0..<3]) == -1;
+  #assert mcp_uri_template_expand("{?sp}", vars[..], out[0..<4]) == -1;
+  #assert mcp_uri_template_expand("{?sp}", vars[..], out[0..<7]) == 7;
+  n = mcp_uri_template_expand("{&empty}", vars[..], out[0..<7]);
+  #assert n == 7 && cast(string) out[0..<n] == "&empty=";
+  #assert mcp_uri_template_expand("{&empty}", vars[..], out[0..<6]) == -1;
+  n = mcp_uri_template_expand("{pct:5}", vars[..], out[..]);
+  #assert n == 7 && cast(string) out[0..<n] == "a%2520b";
+
+  // Reverse matcher error & boundary paths
+  ms: [4] McpTemplateMatch;
+  vbuf: [32] u8;
+  #assert mcp_uri_template_match("{", "a", ms[..], vbuf[..]) == -1;
+  #assert mcp_uri_template_match("abc", "ab", ms[..], vbuf[..]) == -1;
+  #assert mcp_uri_template_match("ab", "abc", ms[..], vbuf[..]) == -1;
+  #assert mcp_uri_template_match("x/{id}", "x/%2", ms[..], vbuf[..]) == -1;
+  #assert mcp_uri_template_match("x/{id}", "x/%", ms[..], vbuf[..]) == -1;
+  #assert mcp_uri_template_match("x/{id}", "x/%G0", ms[..], vbuf[..]) == -1;
+  k := mcp_uri_template_match("x/{id}", "x/%21", ms[..], vbuf[0..<1]);
+  #assert k == 1 && cast(string) vbuf[ms[0].val_from..<ms[0].val_to] == "!";
+  k = mcp_uri_template_match("x/{id}", "x/%01", ms[..], vbuf[0..<1]);
+  #assert k == 1 && vbuf[ms[0].val_from] == 1;
+  #assert mcp_uri_template_match("x/{id}", "x/%21", ms[..], vbuf[0..<0]) == -1;
+  k = mcp_uri_template_match("{id}/end", "/end", ms[..], vbuf[..]);
+  #assert k == 1 && ms[0].val_from == ms[0].val_to;
+  #assert mcp_uri_template_match("{id}/end", "a/b/end", ms[..], vbuf[..]) == -1;
+  #assert mcp_uri_template_match("{id}/end", "a/other", ms[..], vbuf[..]) == -1;
+}
+
+mcp_uri_alpha :: (c: u8) -> bool #effects(all) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); }
+mcp_uri_digit :: (c: u8) -> bool #effects(all) { return c >= '0' && c <= '9'; }
+mcp_uri_lower :: (c: u8) -> u8 #effects(all) { return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c; }
+
+mcp_uri_hex :: (c: u8) -> int #effects(all) {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A' + 10); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a' + 10); }
+  return -1;
+}
+
+mcp_uri_unreserved :: (c: u8) -> bool #effects(all) {
+  return mcp_uri_alpha(c) || mcp_uri_digit(c) || c == '-' || c == '.' || c == '_' || c == '~';
+}
+
+mcp_uri_sub_delim :: (c: u8) -> bool #effects(all) {
+  for s: "!$&'()*+,;=" { if c == s { return true; } }
+  return false;
+}
+
+mcp_uri_gen_delim :: (c: u8) -> bool #effects(all) {
+  for s: ":/?#[]@" { if c == s { return true; } }
+  return false;
+}
+
+mcp_uri_pchar_unencoded :: (c: u8) -> bool #effects(all) {
+  return mcp_uri_unreserved(c) || mcp_uri_sub_delim(c) || c == ':' || c == '@';
+}
+
+mcp_uri_scheme_char :: (c: u8) -> bool #effects(all) {
+  return mcp_uri_alpha(c) || mcp_uri_digit(c) || c == '+' || c == '-' || c == '.';
+}
+
+mcp_uri_ipv6_char :: (c: u8) -> bool #effects(all) {
+  return mcp_uri_hex(c) >= 0 || c == ':' || c == '.';
+}
+
+mcp_uri_check_pct :: (s: string, i: int) -> bool #effects(all) {
+  return i + 2 < s.count && mcp_uri_hex(s[i + 1]) >= 0 && mcp_uri_hex(s[i + 2]) >= 0;
+}
+
+mcp_uri_parse :: (text: string) -> McpUri #effects(all) {
+  bad: McpUri;
+  if text.count == 0 || text.count > MCP_URI_MAX { return bad; }
+  if !mcp_uri_alpha(text[0]) { return bad; }
+  p: McpUri;
+  i := 1;
+  while i < text.count && text[i] != ':' {
+    if !mcp_uri_scheme_char(text[i]) { return bad; }
+    i += 1;
+  }
+  if i >= text.count || text[i] != ':' { return bad; }
+  p.scheme_to = i;
+  i += 1;
+
+  if i + 1 < text.count && text[i] == '/' && text[i + 1] == '/' {
+    p.has_authority = true;
+    i += 2;
+    auth_start := i;
+    while i < text.count && text[i] != '/' && text[i] != '?' && text[i] != '#' { i += 1; }
+    auth_end := i;
+
+    // Optional userinfo@
+    at_pos := -1;
+    for k: auth_start..<auth_end {
+      if text[k] == '@' { at_pos = k; }
+    }
+    host_start := auth_start;
+    if at_pos >= 0 { // mutant: equivalent (auth_start >= 4 so at_pos is either -1 or >= 4)
+      p.has_userinfo = true;
+      k := auth_start;
+      while k < at_pos {
+        if text[k] == '%' {
+          if !mcp_uri_check_pct(text, k) { return bad; }
+          k += 3;
+        } else {
+          if !mcp_uri_unreserved(text[k]) && !mcp_uri_sub_delim(text[k]) && text[k] != ':' { return bad; }
+          k += 1;
+        }
+      }
+      host_start = at_pos + 1;
+    }
+
+    // Host: IPv6 literal [...] or reg-name (including IPv4/localhost/empty for file:///)
+    host_end := auth_end;
+    port_start := -1;
+    if host_start < auth_end && text[host_start] == '[' {
+      close := -1; // mutant: equivalent (host_start >= 4 so close == 0 still fails close <= host_start + 1)
+      for k: host_start + 1..<auth_end {
+        if text[k] == ']' { close = k; break; }
+        if !mcp_uri_ipv6_char(text[k]) { return bad; }
+      }
+      if close <= host_start + 1 { return bad; }
+      host_end = close + 1;
+      if host_end < auth_end {
+        if text[host_end] != ':' { return bad; }
+        port_start = host_end + 1;
+      }
+    } else {
+      k := host_start;
+      while k < auth_end {
+        if text[k] == ':' {
+          host_end = k;
+          port_start = k + 1;
+          break;
+        }
+        if text[k] == '%' {
+          if !mcp_uri_check_pct(text, k) { return bad; }
+          k += 3;
+        } else {
+          if !mcp_uri_unreserved(text[k]) && !mcp_uri_sub_delim(text[k]) { return bad; }
+          k += 1;
+        }
+      }
+    }
+    p.host_from = host_start; p.host_to = host_end;
+
+    if port_start >= 0 { // mutant: equivalent (port_start is either -1 or >= 5)
+      if port_start >= auth_end { return bad; }
+      if text[port_start] == '0' { return bad; }
+      port := 0;
+      for k: port_start..<auth_end {
+        if !mcp_uri_digit(text[k]) { return bad; }
+        port = port * 10 + cast(int) (text[k] - '0');
+        if port > 65535 { return bad; }
+      }
+      p.has_port = true;
+      p.port = port;
+    }
+  }
+
+  // Path
+  p.path_from = i;
+  while i < text.count && text[i] != '?' && text[i] != '#' {
+    if text[i] == '%' {
+      if !mcp_uri_check_pct(text, i) { return bad; }
+      i += 3;
+    } else {
+      if !mcp_uri_pchar_unencoded(text[i]) && text[i] != '/' { return bad; }
+      i += 1;
+    }
+  }
+  p.path_to = i;
+
+  // Query
+  if i < text.count && text[i] == '?' {
+    p.has_query = true;
+    i += 1;
+    p.query_from = i;
+    while i < text.count && text[i] != '#' {
+      if text[i] == '%' {
+        if !mcp_uri_check_pct(text, i) { return bad; }
+        i += 3;
+      } else {
+        if !mcp_uri_pchar_unencoded(text[i]) && text[i] != '/' && text[i] != '?' { return bad; }
+        i += 1;
+      }
+    }
+    p.query_to = i;
+  }
+
+  // Fragment
+  if i < text.count && text[i] == '#' {
+    p.has_fragment = true;
+    i += 1;
+    p.fragment_from = i;
+    while i < text.count {
+      if text[i] == '%' {
+        if !mcp_uri_check_pct(text, i) { return bad; }
+        i += 3;
+      } else {
+        if !mcp_uri_pchar_unencoded(text[i]) && text[i] != '/' && text[i] != '?' { return bad; }
+        i += 1;
+      }
+    }
+    p.fragment_to = i;
+  }
+
+  p.ok = true;
+  return p;
+}
+
+mcp_uri_eq_ci :: (a: string, b: string) -> bool #effects(all) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    if mcp_uri_lower(a[i]) != mcp_uri_lower(b[i]) { return false; }
+  }
+  return true;
+}
+
+// Writes RFC 8707 canonical MCP resource URI into out. Returns written length or -1.
+mcp_uri_canonical_resource :: (uri: string, out: [] u8) -> int #effects(all) {
+  u := mcp_uri_parse(uri);
+  if !u.has_authority || u.has_userinfo || u.has_fragment { return -1; }
+  if u.host_to <= u.host_from { return -1; }
+  scheme := uri[u.scheme_from..<u.scheme_to];
+  is_https := mcp_uri_eq_ci(scheme, "https");
+  is_http := mcp_uri_eq_ci(scheme, "http");
+  if !is_https && !is_http { return -1; }
+
+  def_port := ifx is_https then 443 else 80;
+  include_port := u.has_port && u.port != def_port;
+  path := uri[u.path_from..<u.path_to];
+  if path == "/" && !u.has_query { path = ""; }
+
+  n := 0;
+  // Scheme (lowercase) + "://"
+  need := scheme.count + 3 + (u.host_to - u.host_from);
+  if need > out.count { return -1; }
+  for i: u.scheme_from..<u.scheme_to { out[n] = mcp_uri_lower(uri[i]); n += 1; }
+  out[n] = ':'; out[n + 1] = '/'; out[n + 2] = '/'; n += 3;
+  // Host (lowercase)
+  for i: u.host_from..<u.host_to { out[n] = mcp_uri_lower(uri[i]); n += 1; }
+  // Non-default port
+  if include_port {
+    pbuf: [8] u8; plen := 0; pv := u.port;
+    while pv > 0 { pbuf[plen] = cast(u8) ('0' + pv % 10); plen += 1; pv /= 10; }
+    if n + 1 + plen > out.count { return -1; }
+    out[n] = ':'; n += 1;
+    for k: 0..<plen { out[n] = pbuf[plen - 1 - k]; n += 1; }
+  }
+  // Path
+  if n + path.count > out.count { return -1; }
+  for c: path { out[n] = c; n += 1; }
+  // Optional query
+  if u.has_query {
+    qlen := u.query_to - u.query_from;
+    if n + 1 + qlen > out.count { return -1; }
+    out[n] = '?'; n += 1;
+    for i: u.query_from..<u.query_to { out[n] = uri[i]; n += 1; }
+  }
+  return n;
+}
+
+// RFC 9728 / MCP auth/resource-mismatch guard: advertised PRM `resource` must
+// match the canonical target MCP server URL (exact match or parent path prefix
+// on the exact same origin).
+mcp_uri_resource_matches :: (target_url: string, advertised_resource: string) -> bool #effects(all) {
+  tb: [MCP_URI_MAX] u8; ab: [MCP_URI_MAX] u8;
+  tn := mcp_uri_canonical_resource(target_url, tb[..]);
+  an := mcp_uri_canonical_resource(advertised_resource, ab[..]);
+  if tn <= 0 || an <= 0 { return false; } // mutant: equivalent (mcp_uri_canonical_resource returns -1 or >= 8, never 0)
+  t := cast(string) tb[0..<tn];
+  a := cast(string) ab[0..<an];
+  if t == a { return true; }
+  // Check hierarchical parent match: both t and a are canonical http(s)://host[:port][path]
+  // URIs with non-empty host, so a prefix ending at a '/' boundary in t guarantees same origin.
+  if an < tn && t[0..<an] == a && t[an] == '/' { return true; } // mutant: equivalent (t == a already handled above, so an == tn implies t[0..<an] != a)
+  return false;
+}
+
+// --- RFC 6570 Level 1-3 URI Templates ---
+
+mcp_tmpl_op_valid :: (c: u8) -> bool #effects(all) {
+  return c == '+' || c == '#' || c == '.' || c == '/' || c == ';' || c == '?' || c == '&';
+}
+
+mcp_tmpl_varname_ok :: (s: string) -> bool #effects(all) {
+  if s.count == 0 { return false; }
+  i := 0;
+  while i < s.count {
+    c := s[i];
+    if c == '%' {
+      if !mcp_uri_check_pct(s, i) { return false; }
+      i += 3;
+    } else if mcp_uri_alpha(c) || mcp_uri_digit(c) || c == '_' || c == '.' {
+      i += 1;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+mcp_tmpl_parse_varspec :: (spec: string, name_end: [] int, prefix_len: [] int) -> bool #effects(all) {
+  if spec.count == 0 { return false; }
+  colon := -1;
+  for i: 0..<spec.count { // mutant: equivalent (spec starting with ':' fails mcp_tmpl_varname_ok either way)
+    if spec[i] == ':' { colon = i; break; }
+  }
+  if colon >= 0 { // mutant: equivalent (spec starting with ':' fails mcp_tmpl_varname_ok either way)
+    if !mcp_tmpl_varname_ok(spec[0..<colon]) { return false; }
+    if colon + 1 >= spec.count || spec[colon + 1] == '0' { return false; }
+    plen := 0;
+    for i: colon + 1..<spec.count {
+      if !mcp_uri_digit(spec[i]) { return false; }
+      plen = plen * 10 + cast(int) (spec[i] - '0');
+      if plen > 9999 { return false; }
+    }
+    name_end[0] = colon;
+    prefix_len[0] = plen;
+    return true;
+  }
+  end := spec.count;
+  if spec[end - 1] == '*' { end -= 1; }
+  if !mcp_tmpl_varname_ok(spec[0..<end]) { return false; }
+  name_end[0] = end;
+  prefix_len[0] = 0;
+  return true;
+}
+
+mcp_uri_template_valid :: (tmpl: string) -> bool #effects(all) {
+  if tmpl.count > MCP_URI_MAX { return false; }
+  i := 0;
+  while i < tmpl.count {
+    c := tmpl[i];
+    if c == '}' { return false; }
+    if c == '{' {
+      i += 1;
+      start := i;
+      while i < tmpl.count && tmpl[i] != '}' { i += 1; }
+      if i >= tmpl.count || i == start { return false; }
+      expr := tmpl[start..<i];
+      pos := 0;
+      if mcp_tmpl_op_valid(expr[0]) { pos = 1; }
+      // Comma-separated varspecs
+      vs := pos;
+      ne: [1] int; pl: [1] int;
+      while true {
+        ve := vs;
+        while ve < expr.count && expr[ve] != ',' { ve += 1; }
+        if !mcp_tmpl_parse_varspec(expr[vs..<ve], ne[..], pl[..]) { return false; }
+        if ve == expr.count { break; }
+        vs = ve + 1;
+        if vs == expr.count { return false; }
+      }
+      i += 1;
+    } else {
+      if c <= 0x20 || c >= 0x7F { return false; }
+      i += 1;
+    }
+  }
+  return true;
+}
+
+mcp_tmpl_append_pct :: (val: string, allow_reserved: bool, out: [] u8, pos: [] int) -> bool #effects(all) {
+  i := 0;
+  while i < val.count {
+    c := val[i];
+    keep := mcp_uri_unreserved(c);
+    if allow_reserved && (mcp_uri_sub_delim(c) || mcp_uri_gen_delim(c)) { keep = true; }
+    if allow_reserved && c == '%' && mcp_uri_check_pct(val, i) {
+      if pos[0] + 3 > out.count { return false; }
+      out[pos[0]] = val[i]; out[pos[0] + 1] = val[i + 1]; out[pos[0] + 2] = val[i + 2];
+      pos[0] += 3; i += 3; continue;
+    }
+    if keep {
+      if pos[0] >= out.count { return false; }
+      out[pos[0]] = c; pos[0] += 1;
+    } else {
+      if pos[0] + 3 > out.count { return false; }
+      out[pos[0]] = '%';
+      out[pos[0] + 1] = MCP_URI_HEX[cast(int) c / 16];
+      out[pos[0] + 2] = MCP_URI_HEX[cast(int) c % 16];
+      pos[0] += 3;
+    }
+    i += 1;
+  }
+  return true;
+}
+
+mcp_tmpl_append_raw :: (s: string, out: [] u8, pos: [] int) -> bool #effects(all) {
+  if pos[0] + s.count > out.count { return false; }
+  for c: s { out[pos[0]] = c; pos[0] += 1; }
+  return true;
+}
+
+mcp_tmpl_lookup :: (vars: [] McpTemplateVar, name: string) -> int #effects(all) {
+  for i: 0..<vars.count {
+    if vars[i].name == name { return i; }
+  }
+  return -1;
+}
+
+mcp_uri_template_expand :: (tmpl: string, vars: [] McpTemplateVar, out: [] u8) -> int #effects(all) {
+  if !mcp_uri_template_valid(tmpl) { return -1; }
+  pos: [1] int;
+  i := 0;
+  while i < tmpl.count {
+    if tmpl[i] != '{' {
+      if pos[0] >= out.count { return -1; }
+      out[pos[0]] = tmpl[i]; pos[0] += 1;
+      i += 1; continue;
+    }
+    i += 1;
+    start := i;
+    while i < tmpl.count && tmpl[i] != '}' { i += 1; } // mutant: equivalent (mcp_uri_template_valid guarantees matching '}')
+    expr := tmpl[start..<i];
+    i += 1;
+
+    op: u8 = 0;
+    vpos := 0;
+    if mcp_tmpl_op_valid(expr[0]) { op = expr[0]; vpos = 1; }
+    allow_res := op == '+' || op == '#';
+    named := op == ';' || op == '?' || op == '&';
+    ifemp := ifx op == '?' || op == '&' then "=" else "";
+    first_sep := ifx op == '+' then "" else ifx op == 0 then "" else expr[0..<1];
+    next_sep := ifx op == '.' then "." else ifx op == '/' then "/" else ifx op == ';' then ";" else ifx op == '?' || op == '&' then "&" else ",";
+
+    first := true;
+    vs := vpos;
+    ne: [1] int; pl: [1] int;
+    while true {
+      ve := vs;
+      while ve < expr.count && expr[ve] != ',' { ve += 1; }
+      spec := expr[vs..<ve];
+      _ := mcp_tmpl_parse_varspec(spec, ne[..], pl[..]);
+      vname := spec[0..<ne[0]];
+      idx := mcp_tmpl_lookup(vars, vname);
+      if idx >= 0 {
+        sep := ifx first then first_sep else next_sep;
+        if !mcp_tmpl_append_raw(sep, out, pos[..]) { return -1; }
+        first = false;
+        val := vars[idx].value;
+        if pl[0] > 0 && pl[0] < val.count { val = val[0..<pl[0]]; } // mutant: equivalent (val[0..<val.count] == val)
+        if named {
+          if !mcp_tmpl_append_raw(vname, out, pos[..]) { return -1; }
+          if val.count == 0 {
+            if !mcp_tmpl_append_raw(ifemp, out, pos[..]) { return -1; }
+          } else {
+            if !mcp_tmpl_append_raw("=", out, pos[..]) { return -1; }
+          }
+        }
+        if !mcp_tmpl_append_pct(val, allow_res, out, pos[..]) { return -1; }
+      }
+      if ve == expr.count { break; }
+      vs = ve + 1;
+    }
+  }
+  return pos[0];
+}
+
+mcp_tmpl_decode_pct :: (raw: string, out: [] u8, pos: [] int) -> bool #effects(all) {
+  i := 0;
+  while i < raw.count {
+    if raw[i] == '%' {
+      if i + 2 >= raw.count { return false; }
+      hi := mcp_uri_hex(raw[i + 1]);
+      lo := mcp_uri_hex(raw[i + 2]);
+      if hi < 0 || lo < 0 { return false; }
+      if pos[0] >= out.count { return false; }
+      out[pos[0]] = cast(u8) (hi * 16 + lo);
+      pos[0] += 1;
+      i += 3;
+    } else {
+      if pos[0] >= out.count { return false; }
+      out[pos[0]] = raw[i];
+      pos[0] += 1;
+      i += 1;
+    }
+  }
+  return true;
+}
+
+// Reverse-matches a concrete URI against a single-variable-per-expression
+// Level 1-2 template ({var} or {+var}) and extracts percent-decoded values.
+// Returns count of matched variables, or -1 on mismatch or capacity refusal.
+mcp_uri_template_match :: (tmpl: string, uri: string, out_vars: [] McpTemplateMatch, val_buf: [] u8) -> int #effects(all) {
+  if !mcp_uri_template_valid(tmpl) { return -1; }
+  ti := 0; ui := 0; mc := 0;
+  vpos: [1] int;
+  while ti < tmpl.count {
+    if tmpl[ti] != '{' {
+      if ui >= uri.count || uri[ui] != tmpl[ti] { return -1; }
+      ti += 1; ui += 1; continue;
+    }
+    ti += 1;
+    estart := ti;
+    while ti < tmpl.count && tmpl[ti] != '}' { ti += 1; } // mutant: equivalent (mcp_uri_template_valid guarantees matching '}')
+    eend := ti;
+    ti += 1;
+    allow_slash := false;
+    nstart := estart;
+    if tmpl[nstart] == '+' { allow_slash = true; nstart += 1; }
+    // Find literal segment following this expression (up to next '{' or end).
+    lit_start := ti;
+    lit_end := ti;
+    while lit_end < tmpl.count && tmpl[lit_end] != '{' { lit_end += 1; }
+    lit := tmpl[lit_start..<lit_end];
+
+    val_start := ui;
+    val_end := uri.count;
+    if lit.count == 0 {
+      // Expression reaches end of URI.
+      if !allow_slash {
+        for k: val_start..<uri.count { if uri[k] == '/' { return -1; } }
+      }
+    } else {
+      // Find earliest occurrence of `lit` in uri[val_start..] respecting slash rules.
+      found := -1;
+      k := val_start;
+      while k + lit.count <= uri.count {
+        if uri[k..<k + lit.count] == lit { found = k; break; }
+        if !allow_slash && uri[k] == '/' { return -1; }
+        k += 1;
+      }
+      if found < 0 { return -1; }
+      val_end = found;
+    }
+    if mc >= out_vars.count { return -1; }
+    vfrom := vpos[0];
+    if !mcp_tmpl_decode_pct(uri[val_start..<val_end], val_buf, vpos[..]) { return -1; }
+    out_vars[mc] = McpTemplateMatch.{name_from = nstart, name_to = eend, val_from = vfrom, val_to = vpos[0]};
+    mc += 1;
+    ui = val_end;
+  }
+  if ui != uri.count { return -1; }
+  return mc;
+}

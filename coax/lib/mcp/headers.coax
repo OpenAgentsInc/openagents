@@ -1,0 +1,474 @@
+// MCP 2026-07-28 Streamable HTTP header codecs, validators (SEP-2243),
+// =?base64?...?= sentinel value encoding/decoding, and DNS-rebinding Origin
+// policy. Pure caller-buffer #authority module.
+#load "../encoding/base64.coax";
+#load "uri_template.coax";
+#authority;
+
+MCP_HDR_PROTOCOL_VERSION :: "MCP-Protocol-Version";
+MCP_HDR_METHOD :: "Mcp-Method";
+MCP_HDR_NAME :: "Mcp-Name";
+MCP_HDR_PARAM_PREFIX :: "Mcp-Param-";
+MCP_HDR_SESSION_ID :: "MCP-Session-Id";
+MCP_HDR_B64_PREFIX :: "=?base64?";
+MCP_HDR_B64_SUFFIX :: "?=";
+
+MCP_HDR_VAL_MAX :: 4096;
+MCP_HDR_SAFE_INT_MAX :: 9007199254740991;
+MCP_HDR_SAFE_INT_MIN :: -9007199254740991;
+
+#forall "RFC 9110 tchar matches exact token character alphabet" b: 0..<256 {
+  c := cast(u8) b;
+  expected := (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122);
+  for s: "!#$%&'*+-.^_`|~" { if c == s { expected = true; } }
+  #assert mcp_http_tchar(c) == expected;
+}
+
+#test "HTTP token validation and Mcp-Param header formatting enforce RFC 9110 tchar" {
+  #assert mcp_http_token_ok("Region") && mcp_http_token_ok("X-Tenant_1.2") && mcp_http_token_ok("a!#$%&'*+-.^_`|~");
+  bad := [10] string.["", "a b", "a:b", "a/b", "a\rb", "a\nb", "a\tb", "a(b)", "a\"b", "café"];
+  for s: bad { #assert !mcp_http_token_ok(s); }
+
+  out: [64] u8;
+  n := mcp_header_format_param_name("Region", out[..]);
+  #assert n == 16 && cast(string) out[0..<n] == "Mcp-Param-Region";
+  #assert mcp_header_format_param_name("Region", out[0..<16]) == 16;
+  #assert mcp_header_format_param_name("Region", out[0..<15]) == -1;
+  #assert mcp_header_format_param_name("", out[..]) == -1;
+  #assert mcp_header_format_param_name("bad\r\n", out[..]) == -1;
+
+  #assert mcp_header_name_eq_ci("MCP-Protocol-Version", "mcp-protocol-version");
+  #assert mcp_header_name_eq_ci("Mcp-Param-Region", "MCP-PARAM-REGION");
+  #assert !mcp_header_name_eq_ci("Mcp-Name", "Mcp-Method");
+
+  #assert mcp_header_requires_name("tools/call");
+  #assert mcp_header_requires_name("resources/read");
+  #assert mcp_header_requires_name("prompts/get");
+  #assert !mcp_header_requires_name("tools/list");
+  #assert !mcp_header_requires_name("server/discover");
+}
+
+#test "SEP-2243 value encoding and decoding match every normative spec vector" {
+  enc: [128] u8; dec: [128] u8;
+
+  // 1. Plain ASCII -> unchanged
+  n := mcp_header_encode_value("us-west1", enc[..]);
+  #assert n == 8 && cast(string) enc[0..<n] == "us-west1";
+  m := mcp_header_decode_value(cast(string) enc[0..<n], dec[..]);
+  #assert m == 8 && cast(string) dec[0..<m] == "us-west1";
+
+  // Internal space and tab are safe when not leading/trailing
+  n = mcp_header_encode_value("Seattle, WA", enc[..]);
+  #assert n == 11 && cast(string) enc[0..<n] == "Seattle, WA";
+  n = mcp_header_encode_value("a\tb", enc[..]);
+  #assert n == 3 && cast(string) enc[0..<n] == "a\tb";
+
+  // Empty string -> empty plain value
+  n = mcp_header_encode_value("", enc[..]);
+  #assert n == 0;
+  m = mcp_header_decode_value("", dec[..]);
+  #assert m == 0;
+
+  // 2. Non-ASCII -> =?base64?SGVsbG8sIOS4lueVjA==?=
+  n = mcp_header_encode_value("Hello, 世界", enc[..]);
+  #assert n > 0 && cast(string) enc[0..<n] == "=?base64?SGVsbG8sIOS4lueVjA==?=";
+  m = mcp_header_decode_value(cast(string) enc[0..<n], dec[..]);
+  #assert m > 0 && cast(string) dec[0..<m] == "Hello, 世界";
+
+  // 3. Leading/trailing spaces -> =?base64?IHBhZGRlZCA=?=
+  n = mcp_header_encode_value(" padded ", enc[..]);
+  #assert n > 0 && cast(string) enc[0..<n] == "=?base64?IHBhZGRlZCA=?=";
+  m = mcp_header_decode_value(cast(string) enc[0..<n], dec[..]);
+  #assert m == 8 && cast(string) dec[0..<m] == " padded ";
+
+  // Leading/trailing tab also triggers base64
+  n = mcp_header_encode_value("\tx", enc[..]);
+  #assert n > 0 && mcp_header_is_b64_sentinel(cast(string) enc[0..<n]);
+  n = mcp_header_encode_value("x\t", enc[..]);
+  #assert n > 0 && mcp_header_is_b64_sentinel(cast(string) enc[0..<n]);
+
+  // 4. Embedded newline -> =?base64?bGluZTEKbGluZTI=?=
+  n = mcp_header_encode_value("line1\nline2", enc[..]);
+  #assert n > 0 && cast(string) enc[0..<n] == "=?base64?bGluZTEKbGluZTI=?=";
+  m = mcp_header_decode_value(cast(string) enc[0..<n], dec[..]);
+  #assert m == 11 && cast(string) dec[0..<m] == "line1\nline2";
+
+  // 5. Literal sentinel -> =?base64?PT9iYXNlNjQ/bGl0ZXJhbD89?=
+  n = mcp_header_encode_value("=?base64?literal?=", enc[..]);
+  #assert n > 0 && cast(string) enc[0..<n] == "=?base64?PT9iYXNlNjQ/bGl0ZXJhbD89?=";
+  m = mcp_header_decode_value(cast(string) enc[0..<n], dec[..]);
+  #assert m == 18 && cast(string) dec[0..<m] == "=?base64?literal?=";
+
+  // Uppercase sentinel is NOT recognized as encoded (markers are case-sensitive lowercase).
+  #assert !mcp_header_is_b64_sentinel("=?BASE64?Zm9v?=");
+  n = mcp_header_encode_value("=?BASE64?Zm9v?=", enc[..]);
+  #assert n == 15 && cast(string) enc[0..<n] == "=?BASE64?Zm9v?=";
+
+  // Decode rejects control chars, non-ASCII, and invalid base64 sentinel payloads.
+  #assert mcp_header_decode_value("bad\r\nval", dec[..]) == -1;
+  del_val := [7] u8.['b','a','d',127,'v','a','l'];
+  #assert mcp_header_decode_value(cast(string) del_val[..], dec[..]) == -1;
+  #assert mcp_header_decode_value("Hello, 世界", dec[..]) == -1;
+  #assert mcp_header_decode_value("=?base64?!!!?=", dec[..]) == -1;
+  #assert mcp_header_decode_value("=?base64?Zg?=", dec[..]) == -1;
+
+  // Capacity refusal and exact-fit boundaries on encode and decode.
+  #assert mcp_header_encode_value("us-west1", enc[0..<8]) == 8;
+  #assert mcp_header_encode_value("us-west1", enc[0..<7]) == -1;
+  #assert mcp_header_encode_value("line1\nline2", enc[0..<27]) == 27;
+  #assert mcp_header_encode_value("line1\nline2", enc[0..<20]) == -1;
+  #assert mcp_header_decode_value("us-west1", dec[0..<8]) == 8;
+  #assert mcp_header_decode_value("us-west1", dec[0..<7]) == -1;
+  #assert mcp_header_decode_value("=?base64?bGluZTEKbGluZTI=?=", dec[0..<5]) == -1;
+
+  // Boundary ASCII chars ('!' = 0x21, '~' = 0x7E) and exact empty sentinel.
+  #assert mcp_header_is_b64_sentinel("=?base64??=");
+  n = mcp_header_encode_value("!~", enc[..]);
+  #assert n == 2 && cast(string) enc[0..<n] == "!~";
+  n = mcp_header_encode_value("~!", enc[..]);
+  #assert n == 2 && cast(string) enc[0..<n] == "~!";
+  m = mcp_header_decode_value("!~", dec[..]);
+  #assert m == 2 && cast(string) dec[0..<m] == "!~";
+
+  // Max length boundaries for encode (4096) and decode (8192).
+  big_enc_in: [4097] u8;
+  big_enc_out: [4097] u8;
+  for i: 0..<4097 { big_enc_in[i] = 'a'; }
+  #assert mcp_header_encode_value(cast(string) big_enc_in[0..<4096], big_enc_out[..]) == 4096;
+  #assert mcp_header_encode_value(cast(string) big_enc_in[0..<4097], big_enc_out[..]) == -1;
+
+  big_dec_in: [8193] u8;
+  big_dec_out: [8193] u8;
+  for i: 0..<8193 { big_dec_in[i] = 'a'; }
+  #assert mcp_header_decode_value(cast(string) big_dec_in[0..<8192], big_dec_out[..]) == 8192;
+  #assert mcp_header_decode_value(cast(string) big_dec_in[0..<8193], big_dec_out[..]) == -1;
+}
+
+#test "numeric integer header validation matches 42 with 42.0 and enforces JS safe integer range" {
+  #assert mcp_header_int_eq_json_number("42", "42");
+  #assert mcp_header_int_eq_json_number("42", "42.0");
+  #assert mcp_header_int_eq_json_number("42", "42.000");
+  #assert mcp_header_int_eq_json_number("-7", "-7.0");
+  #assert mcp_header_int_eq_json_number("0", "-0");
+  #assert mcp_header_int_eq_json_number("0", "0.0");
+  #assert mcp_header_int_eq_json_number("42", "4.2e1");
+  #assert mcp_header_int_eq_json_number("420", "4.2e+2");
+  #assert mcp_header_int_eq_json_number("4", "400e-2");
+  #assert mcp_header_int_eq_json_number("9007199254740991", "9007199254740991");
+  #assert mcp_header_int_eq_json_number("-9007199254740991", "-9007199254740991");
+
+  // Refusals: mismatch, non-integer fraction, out of safe range, malformed.
+  #assert !mcp_header_int_eq_json_number("42", "43");
+  #assert !mcp_header_int_eq_json_number("42", "42.5");
+  #assert !mcp_header_int_eq_json_number("42", "4.25e1");
+  #assert !mcp_header_int_eq_json_number("9007199254740992", "9007199254740992");
+  #assert !mcp_header_int_eq_json_number("-9007199254740992", "-9007199254740992");
+  #assert !mcp_header_int_eq_json_number("42.0", "42");
+  #assert !mcp_header_int_eq_json_number("", "0");
+  #assert !mcp_header_int_eq_json_number("abc", "0");
+  #assert !mcp_header_int_eq_json_number("42", "");
+
+  // Direct parser boundary tests.
+  v: [1] int;
+  #assert !mcp_parse_safe_int_strict("-", v[..]);
+  #assert !mcp_parse_safe_int_strict("1:", v[..]);
+  #assert mcp_parse_safe_int_strict("9007199254740991", v[..]) && v[0] == 9007199254740991;
+  #assert !mcp_parse_safe_int_strict("9007199254740992", v[..]);
+
+  v[0] = 99;
+  #assert mcp_parse_json_safe_int("0", v[..]) && v[0] == 0;
+  #assert mcp_parse_json_safe_int("01", v[..]) && v[0] == 1;
+  #assert mcp_parse_json_safe_int("1.9e1", v[..]) && v[0] == 19;
+  #assert mcp_parse_json_safe_int("4.2E1", v[..]) && v[0] == 42;
+  #assert mcp_parse_json_safe_int("1e0", v[..]) && v[0] == 1;
+  #assert mcp_parse_json_safe_int("1e9", v[..]) && v[0] == 1000000000;
+  #assert mcp_parse_json_safe_int("1e10", v[..]) && v[0] == 10000000000;
+  #assert mcp_parse_json_safe_int("900719925474099e1", v[..]) && v[0] == 9007199254740990;
+  #assert !mcp_parse_json_safe_int("900719925474100e1", v[..]);
+  #assert !mcp_parse_json_safe_int("9007199254740992", v[..]);
+  #assert !mcp_parse_json_safe_int("", v[..]);
+  #assert !mcp_parse_json_safe_int("-", v[..]);
+  #assert !mcp_parse_json_safe_int("/", v[..]);
+  #assert !mcp_parse_json_safe_int(":", v[..]);
+  #assert !mcp_parse_json_safe_int("1:", v[..]);
+  #assert !mcp_parse_json_safe_int("1.", v[..]);
+  #assert !mcp_parse_json_safe_int("1./", v[..]);
+  #assert !mcp_parse_json_safe_int("1.:", v[..]);
+  #assert !mcp_parse_json_safe_int("1.0:", v[..]);
+  #assert !mcp_parse_json_safe_int("0.0:e2", v[..]);
+  #assert !mcp_parse_json_safe_int("4.2F1", v[..]);
+  #assert !mcp_parse_json_safe_int("1e", v[..]);
+  #assert !mcp_parse_json_safe_int("1e+", v[..]);
+  #assert !mcp_parse_json_safe_int("1e/", v[..]);
+  #assert !mcp_parse_json_safe_int("1e:", v[..]);
+  #assert !mcp_parse_json_safe_int("1e1:", v[..]);
+  #assert !mcp_parse_json_safe_int("0e1:", v[..]);
+  #assert !mcp_parse_json_safe_int("42abc", v[..]);
+  #assert !mcp_parse_json_safe_int("42.5", v[..]);
+  #assert !mcp_parse_json_safe_int("4e-2", v[..]);
+
+  zeros65: [65] u8;
+  for i: 0..<65 { zeros65[i] = '0'; }
+  #assert mcp_parse_json_safe_int(cast(string) zeros65[0..<64], v[..]) && v[0] == 0;
+  #assert !mcp_parse_json_safe_int(cast(string) zeros65[0..<65], v[..]);
+
+  frac66: [66] u8;
+  frac66[0] = '0'; frac66[1] = '.';
+  for i: 2..<66 { frac66[i] = '0'; }
+  #assert mcp_parse_json_safe_int(cast(string) frac66[0..<65], v[..]) && v[0] == 0;
+  #assert !mcp_parse_json_safe_int(cast(string) frac66[0..<66], v[..]);
+}
+
+#test "Origin DNS-rebinding guard allows absent Origin, localhost when enabled, and explicit allowlist only" {
+  allow := [3] string.["https://app.example.com", "https://studio.example.com:8443", "http://a"];
+
+  // Absent Origin header (non-browser client) is permitted.
+  #assert mcp_origin_check(false, "", allow[..], true);
+  #assert mcp_origin_check(false, "", allow[..], false);
+
+  // Explicit allowlist matches (case-insensitive scheme/host, default port normalized).
+  #assert mcp_origin_check(true, "https://app.example.com", allow[..], false);
+  #assert mcp_origin_check(true, "HTTPS://APP.EXAMPLE.COM:443", allow[..], false);
+  #assert mcp_origin_check(true, "https://studio.example.com:8443", allow[..], false);
+  #assert mcp_origin_check(true, "http://a", allow[..], false);
+
+  // Localhost origins allowed only when allow_localhost is true.
+  #assert mcp_origin_check(true, "http://localhost", allow[..], true);
+  #assert mcp_origin_check(true, "http://localhost:3000", allow[..], true);
+  #assert mcp_origin_check(true, "https://localhost:8443", allow[..], true);
+  #assert mcp_origin_check(true, "http://127.0.0.1:5173", allow[..], true);
+  #assert mcp_origin_check(true, "http://[::1]:3000", allow[..], true);
+  #assert !mcp_origin_check(true, "http://localhost:3000", allow[..], false);
+  #assert !mcp_origin_check(true, "http://127.0.0.1:5173", allow[..], false);
+
+  // Evil/malformed origins MUST be rejected (HTTP 403 Forbidden).
+  evil := [20] string.[
+    "",
+    "null",
+    "https://evil.com",
+    "https://bad.example.com",
+    "http://localhost.evil.com",
+    "http://127.0.0.1.evil.com",
+    "http://app.example.com",
+    "https://app.example.com:8443",
+    "https://app.example.com/path",
+    "https://app.example.com?q=1",
+    "https://app.example.com#frag",
+    "https://user@app.example.com",
+    "file:///etc/passwd",
+    "http://user@localhost",
+    "http://localhost?q=1",
+    "http://localhost#frag",
+    "http:localhost",
+    "http://localhost:bad",
+    "ftp://localhost",
+    "http://"
+  ];
+  for o: evil {
+    #assert !mcp_origin_check(true, o, allow[..], true);
+  }
+}
+
+mcp_http_tchar :: (c: u8) -> bool #effects(all) {
+  if (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') { return true; }
+  for s: "!#$%&'*+-.^_`|~" { if c == s { return true; } }
+  return false;
+}
+
+mcp_http_token_ok :: (s: string) -> bool #effects(all) {
+  if s.count == 0 { return false; }
+  for c: s { if !mcp_http_tchar(c) { return false; } }
+  return true;
+}
+
+mcp_header_name_eq_ci :: (a: string, b: string) -> bool #effects(all) {
+  return mcp_uri_eq_ci(a, b);
+}
+
+mcp_header_format_param_name :: (param: string, out: [] u8) -> int #effects(all) {
+  if !mcp_http_token_ok(param) { return -1; }
+  need := MCP_HDR_PARAM_PREFIX.count + param.count;
+  if need > out.count { return -1; }
+  for i: 0..<MCP_HDR_PARAM_PREFIX.count { out[i] = MCP_HDR_PARAM_PREFIX[i]; }
+  for i: 0..<param.count { out[MCP_HDR_PARAM_PREFIX.count + i] = param[i]; }
+  return need;
+}
+
+mcp_header_requires_name :: (method: string) -> bool #effects(all) {
+  return method == "tools/call" || method == "resources/read" || method == "prompts/get";
+}
+
+mcp_header_is_b64_sentinel :: (s: string) -> bool #effects(all) {
+  if s.count < MCP_HDR_B64_PREFIX.count + MCP_HDR_B64_SUFFIX.count { return false; }
+  return s[0..<MCP_HDR_B64_PREFIX.count] == MCP_HDR_B64_PREFIX &&
+         s[s.count - MCP_HDR_B64_SUFFIX.count..<s.count] == MCP_HDR_B64_SUFFIX;
+}
+
+mcp_header_field_value_chars_ok :: (s: string) -> bool #effects(all) {
+  for c: s {
+    if !((c >= 0x21 && c <= 0x7E) || c == 0x20 || c == 0x09) { return false; }
+  }
+  return true;
+}
+
+mcp_header_value_plain_safe :: (s: string) -> bool #effects(all) {
+  if s.count == 0 { return true; }
+  first := s[0]; last := s[s.count - 1];
+  if first == 0x20 || first == 0x09 || last == 0x20 || last == 0x09 { return false; }
+  if !mcp_header_field_value_chars_ok(s) { return false; }
+  if mcp_header_is_b64_sentinel(s) { return false; }
+  return true;
+}
+
+mcp_header_encode_value :: (raw: string, out: [] u8) -> int #effects(all) {
+  if raw.count > MCP_HDR_VAL_MAX { return -1; }
+  if mcp_header_value_plain_safe(raw) {
+    if raw.count > out.count { return -1; }
+    for i: 0..<raw.count { out[i] = raw[i]; }
+    return raw.count;
+  }
+  b64_len := base64_encode_size(raw.count);
+  total := MCP_HDR_B64_PREFIX.count + b64_len + MCP_HDR_B64_SUFFIX.count;
+  if total > out.count { return -1; }
+  for i: 0..<MCP_HDR_B64_PREFIX.count { out[i] = MCP_HDR_B64_PREFIX[i]; }
+  r := base64_encode_checked(raw, out[MCP_HDR_B64_PREFIX.count..<MCP_HDR_B64_PREFIX.count + b64_len], false);
+  if r.error != NC_OK || r.written != b64_len { return -1; } // mutant: equivalent (out slice has exact base64_encode_size capacity so encode cannot fail)
+  sfx_off := MCP_HDR_B64_PREFIX.count + b64_len;
+  for i: 0..<MCP_HDR_B64_SUFFIX.count { out[sfx_off + i] = MCP_HDR_B64_SUFFIX[i]; }
+  return total;
+}
+
+mcp_header_decode_value :: (hdr: string, out: [] u8) -> int #effects(all) {
+  if hdr.count > MCP_HDR_VAL_MAX * 2 { return -1; }
+  if !mcp_header_field_value_chars_ok(hdr) { return -1; }
+  if mcp_header_is_b64_sentinel(hdr) {
+    payload := hdr[MCP_HDR_B64_PREFIX.count..<hdr.count - MCP_HDR_B64_SUFFIX.count];
+    r := base64_decode_checked(payload, out, false);
+    if r.error != NC_OK { return -1; }
+    return r.written;
+  }
+  if hdr.count > out.count { return -1; }
+  for i: 0..<hdr.count { out[i] = hdr[i]; }
+  return hdr.count;
+}
+
+// Parses an exact decimal integer within JS safe range [-(2^53-1), 2^53-1].
+mcp_parse_safe_int_strict :: (s: string, out_val: [] int) -> bool #effects(all) {
+  if s.count == 0 { return false; }
+  neg := false; i := 0;
+  if s[0] == '-' { neg = true; i = 1; }
+  if i >= s.count { return false; }
+  acc := 0;
+  while i < s.count {
+    c := s[i];
+    if c < '0' || c > '9' { return false; }
+    d := cast(int) (c - '0');
+    if acc > (MCP_HDR_SAFE_INT_MAX - d) / 10 { return false; }
+    acc = acc * 10 + d;
+    i += 1;
+  }
+  out_val[0] = ifx neg then -acc else acc;
+  return true;
+}
+
+// Parses a JSON number token as an exact integer within JS safe range
+// (accepts 42, 42.0, -0, 4.2e1, 400e-2; rejects non-integers like 42.5).
+mcp_parse_json_safe_int :: (raw: string, out_val: [] int) -> bool #effects(all) {
+  if raw.count == 0 { return false; }
+  neg := false; i := 0;
+  if raw[0] == '-' { neg = true; i = 1; }
+  if i >= raw.count || raw[i] < '0' || raw[i] > '9' { return false; } // mutant: equivalent (':' is not consumed by digit/dot/exp loops and fails i != raw.count)
+
+  // Collect all significant digits and decimal shift (exponent).
+  digits: [64] u8;
+  dlen := 0;
+  scale := 0;
+  while i < raw.count && raw[i] >= '0' && raw[i] <= '9' {
+    if dlen < digits.count { digits[dlen] = raw[i]; dlen += 1; } else { return false; }
+    i += 1;
+  }
+  if i < raw.count && raw[i] == '.' {
+    i += 1;
+    if i >= raw.count || raw[i] < '0' || raw[i] > '9' { return false; } // mutant: equivalent (':' is not consumed by frac/exp loops and fails i != raw.count)
+    while i < raw.count && raw[i] >= '0' && raw[i] <= '9' {
+      if dlen < digits.count { digits[dlen] = raw[i]; dlen += 1; scale -= 1; } else { return false; }
+      i += 1;
+    }
+  }
+  if i < raw.count && (raw[i] == 'e' || raw[i] == 'E') {
+    i += 1;
+    eneg := false;
+    if i < raw.count && (raw[i] == '+' || raw[i] == '-') { eneg = raw[i] == '-'; i += 1; }
+    if i >= raw.count || raw[i] < '0' || raw[i] > '9' { return false; } // mutant: equivalent (':' is not consumed by exp loop and fails i != raw.count)
+    ex := 0;
+    while i < raw.count && raw[i] >= '0' && raw[i] <= '9' {
+      if ex < 10000 { ex = ex * 10 + cast(int) (raw[i] - '0'); } // mutant: equivalent (any ex >= 10000 overflows safe int identically)
+      i += 1;
+    }
+    scale = ifx eneg then scale - ex else scale + ex;
+  }
+  if i != raw.count { return false; }
+
+  // Trim leading zeros.
+  start := 0;
+  while start < dlen && digits[start] == '0' { start += 1; }
+  if start == dlen { out_val[0] = 0; return true; }
+
+  // If scale < 0, the last (-scale) digits must all be '0'.
+  end := dlen;
+  if scale < 0 { // mutant: equivalent (for scale == 0, need_zeros == 0 so block is a no-op)
+    need_zeros := -scale;
+    if need_zeros > end - start { return false; } // mutant: equivalent (digits[start] != '0' so need_zeros >= end - start fails loop or bounds)
+    for k: end - need_zeros..<end {
+      if digits[k] != '0' { return false; }
+    }
+    end -= need_zeros;
+  }
+
+  acc := 0;
+  for k: start..<end {
+    d := cast(int) (digits[k] - '0');
+    if acc > (MCP_HDR_SAFE_INT_MAX - d) / 10 { return false; }
+    acc = acc * 10 + d;
+  }
+  for k: 0..<scale {
+    if acc > MCP_HDR_SAFE_INT_MAX / 10 { return false; }
+    acc *= 10;
+  }
+  out_val[0] = ifx neg then -acc else acc;
+  return true;
+}
+
+mcp_header_int_eq_json_number :: (hdr_val: string, json_raw: string) -> bool #effects(all) {
+  hv: [1] int; jv: [1] int;
+  if !mcp_parse_safe_int_strict(hdr_val, hv[..]) { return false; }
+  if !mcp_parse_json_safe_int(json_raw, jv[..]) { return false; }
+  return hv[0] == jv[0];
+}
+
+// Validates Origin header against DNS rebinding attacks (403 Forbidden on false).
+mcp_origin_check :: (has_origin: bool, origin: string, allowed_origins: [] string, allow_localhost: bool) -> bool #effects(all) {
+  if !has_origin { return true; }
+  u := mcp_uri_parse(origin);
+  if !u.ok || u.has_userinfo || u.has_query || u.has_fragment { return false; }
+  if u.path_to != u.path_from { return false; }
+  scheme := origin[u.scheme_from..<u.scheme_to];
+  if !mcp_uri_eq_ci(scheme, "http") && !mcp_uri_eq_ci(scheme, "https") { return false; }
+  host := origin[u.host_from..<u.host_to];
+  if host.count == 0 { return false; }
+
+  if allow_localhost {
+    if mcp_uri_eq_ci(host, "localhost") || host == "127.0.0.1" || host == "[::1]" { return true; }
+  }
+
+  ob: [MCP_URI_MAX] u8;
+  on := mcp_uri_canonical_resource(origin, ob[..]);
+  if on <= 0 { return false; } // mutant: equivalent (validated http/https origin with non-empty host always canonicalizes to >= 8 bytes)
+  canon := cast(string) ob[0..<on];
+  for allowed: allowed_origins {
+    ab: [MCP_URI_MAX] u8;
+    an := mcp_uri_canonical_resource(allowed, ab[..]);
+    if an == on && cast(string) ab[0..<an] == canon { return true; }
+  }
+  return false;
+}

@@ -1,0 +1,453 @@
+// MCP JSON-RPC 2.0 envelope classifier, error-code registry, and writer.
+// Enforces MCP wire rules across 2025-11-25 and 2026-07-28: single message per
+// frame (batch arrays refused), exact "jsonrpc":"2.0", non-null string/integer
+// request IDs, duplicate top-level key refusal, and caller-owned Jo output.
+#load "../json/json.coax";
+#authority;
+
+// Standard JSON-RPC 2.0 error codes.
+MCP_ERR_PARSE :: -32700;
+MCP_ERR_INVALID_REQUEST :: -32600;
+MCP_ERR_METHOD_NOT_FOUND :: -32601;
+MCP_ERR_INVALID_PARAMS :: -32602;
+MCP_ERR_INTERNAL :: -32603;
+
+// MCP-specific error codes.
+MCP_ERR_RESOURCE_NOT_FOUND_LEGACY :: -32002; // 2025-11-25 (2026-07-28 uses -32602 per SEP-2164)
+MCP_ERR_HEADER_MISMATCH :: -32020;           // 2026-07-28 HTTP 400 header mismatch / missing
+MCP_ERR_MISSING_CAPABILITY :: -32021;        // 2026-07-28 MRTR missing required client capability
+MCP_ERR_UNSUPPORTED_VERSION :: -32022;       // 2026-07-28 HTTP 400 unsupported protocol version
+MCP_ERR_URL_ELICITATION_REQUIRED :: -32042;  // 2025-11-25 out-of-band URL elicitation required
+
+// Classified message kinds.
+JRPC_NONE :: 0;
+JRPC_REQUEST :: 1;
+JRPC_NOTIFICATION :: 2;
+JRPC_RESPONSE_OK :: 3;
+JRPC_RESPONSE_ERR :: 4;
+
+// JSON-RPC id kinds.
+JRPC_ID_NONE :: 0;
+JRPC_ID_INT :: 1;
+JRPC_ID_STR :: 2;
+
+JrpcMessage :: struct {
+  ok: bool;
+  kind: int;
+  err_code: int;
+  id_kind: int;
+  id_node: int = -1;
+  id_int: int;
+  method_node: int = -1;
+  params_node: int = -1;
+  result_node: int = -1;
+  error_node: int = -1;
+  error_code: int;
+  error_msg_node: int = -1;
+  error_data_node: int = -1;
+}
+
+#test "classify valid requests, notifications, ok responses, and error responses" {
+  nodes: [64] JvNode; d: [1] Jv;
+
+  // Request with integer id and object params.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":42,\"method\":\"tools/list\",\"params\":{}}", nodes[..]);
+  m := jrpc_classify(d[0]);
+  #assert m.ok && m.kind == JRPC_REQUEST && m.err_code == 0;
+  #assert m.id_kind == JRPC_ID_INT && m.id_int == 42 && m.id_node > 0;
+  #assert jv_raw(d[0], m.method_node) == "tools/list" && jv_kind(d[0], m.params_node) == JV_OBJECT;
+
+  // Request with negative integer id and no params.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":-7,\"method\":\"server/discover\"}", nodes[..]);
+  m = jrpc_classify(d[0]);
+  #assert m.ok && m.kind == JRPC_REQUEST && m.id_kind == JRPC_ID_INT && m.id_int == -7 && m.params_node == -1;
+
+  // Request with string id and array params (valid JSON-RPC 2.0).
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":\"req-1\",\"method\":\"ping\",\"params\":[1]}", nodes[..]);
+  m = jrpc_classify(d[0]);
+  #assert m.ok && m.kind == JRPC_REQUEST && m.id_kind == JRPC_ID_STR && jv_raw(d[0], m.id_node) == "req-1";
+  #assert jv_kind(d[0], m.params_node) == JV_ARRAY;
+
+  // Notification (no id).
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", nodes[..]);
+  m = jrpc_classify(d[0]);
+  #assert m.ok && m.kind == JRPC_NOTIFICATION && m.id_kind == JRPC_ID_NONE && m.id_node == -1 && m.id_int == 0;
+  #assert jv_raw(d[0], m.method_node) == "notifications/initialized";
+
+  // Success response.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":42,\"result\":{\"resultType\":\"complete\"}}", nodes[..]);
+  m = jrpc_classify(d[0]);
+  #assert m.ok && m.kind == JRPC_RESPONSE_OK && m.err_code == 0 && m.id_kind == JRPC_ID_INT && m.id_int == 42 && m.id_node > 0;
+  #assert jv_kind(d[0], m.result_node) == JV_OBJECT && m.error_node == -1;
+
+  // Error response with data and string id.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":\"e1\",\"error\":{\"code\":-32022,\"message\":\"Unsupported\",\"data\":{\"requested\":\"1900-01-01\"}}}", nodes[..]);
+  m = jrpc_classify(d[0]);
+  #assert m.ok && m.kind == JRPC_RESPONSE_ERR && m.err_code == 0 && m.id_kind == JRPC_ID_STR && m.id_node > 0 && jv_raw(d[0], m.id_node) == "e1";
+  #assert m.error_node > 0 && m.error_code == MCP_ERR_UNSUPPORTED_VERSION && jv_raw(d[0], m.error_msg_node) == "Unsupported";
+  #assert jv_kind(d[0], m.error_data_node) == JV_OBJECT;
+
+  // Error response with null id (valid for parse/invalid-request errors).
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}", nodes[..]);
+  m = jrpc_classify(d[0]);
+  #assert m.ok && m.kind == JRPC_RESPONSE_ERR && m.id_kind == JRPC_ID_NONE && m.error_code == MCP_ERR_PARSE && m.error_data_node == -1;
+
+  // Error response without id (allowed for transport-level 403/400 JSON-RPC errors per spec).
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Forbidden\"}}", nodes[..]);
+  m = jrpc_classify(d[0]);
+  #assert m.ok && m.kind == JRPC_RESPONSE_ERR && m.id_kind == JRPC_ID_NONE && m.error_code == MCP_ERR_INVALID_REQUEST;
+}
+
+#test "classify refuses batches, wrong jsonrpc, bad ids, duplicate keys, and malformed envelopes" {
+  nodes: [64] JvNode; d: [1] Jv;
+
+  // Unparsed document returns parse error.
+  #assert !jv_parse(d[..], "{bad", nodes[..]);
+  m := jrpc_classify(d[0]);
+  #assert !m.ok && m.err_code == MCP_ERR_PARSE;
+
+  bad := [26] string.[
+    // Batching prohibited since 2025-06-18
+    "[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}]",
+    "[]",
+    "null",
+    "123",
+    // Missing or wrong jsonrpc version
+    "{\"id\":1,\"method\":\"ping\"}",
+    "{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"ping\"}",
+    "{\"jsonrpc\":2.0,\"id\":1,\"method\":\"ping\"}",
+    // Invalid ids on request / ok response
+    "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"ping\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"ping\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"ping\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1e2,\"method\":\"ping\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":[],\"method\":\"ping\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":{},\"method\":\"ping\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":{}}",
+    "{\"jsonrpc\":\"2.0\",\"result\":{}}",
+    // Invalid method / params
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":123}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":42}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":null}",
+    // Ambiguous request + response or result + error
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"result\":{}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"error\":{\"code\":-1,\"message\":\"x\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{},\"error\":{\"code\":-1,\"message\":\"x\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{},\"params\":{}}",
+    // Malformed error object
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":\"oops\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":\"-1\",\"message\":\"x\"}}"
+  ];
+  for s: bad {
+    #assert jv_parse(d[..], s, nodes[..]);
+    r := jrpc_classify(d[0]);
+    #assert !r.ok && r.err_code == MCP_ERR_INVALID_REQUEST;
+  }
+
+  // More malformed error object cases + duplicate keys + invalid error id.
+  bad2 := [8] string.[
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":1.5,\"message\":\"x\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-1}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-1,\"message\":9}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"x\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":true,\"error\":{\"code\":-1,\"message\":\"x\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"a\",\"method\":\"b\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"a\",\"\\u006dethod\":\"b\"}",
+    "{\"jsonrpc\":\"2.0\",\"id\":9223372036854775808,\"method\":\"ping\"}"
+  ];
+  for s: bad2 {
+    #assert jv_parse(d[..], s, nodes[..]);
+    r := jrpc_classify(d[0]);
+    #assert !r.ok && r.err_code == MCP_ERR_INVALID_REQUEST;
+  }
+
+  // Error object with duplicate key is also refused.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-1,\"code\":-2,\"message\":\"x\"}}", nodes[..]);
+  #assert !jrpc_classify(d[0]).ok;
+}
+
+#test "writers format exact JSON-RPC 2.0 envelopes and surface buffer overflow via jo.bad" {
+  buf: [512] u8; o: [1] Jo;
+
+  // Request with int id.
+  jo_start(o[..], buf[..]);
+  jrpc_write_request_int(o[..], 7, "tools/call");
+  jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "add"); jo_end(o[..]);
+  jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"add\"}}";
+
+  // Request with string id.
+  jo_start(o[..], buf[..]);
+  jrpc_write_request_str(o[..], "req-9", "server/discover");
+  jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":\"req-9\",\"method\":\"server/discover\"}";
+
+  // Notification.
+  jo_start(o[..], buf[..]);
+  jrpc_write_notification(o[..], "notifications/progress");
+  jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}";
+
+  // Result response copying id node from parsed request.
+  nodes: [16] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":\"abc\",\"method\":\"ping\"}", nodes[..]);
+  req := jrpc_classify(d[0]);
+  #assert req.ok;
+  jo_start(o[..], buf[..]);
+  jrpc_write_result_head(o[..], d[0], req);
+  jo_obj(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":\"abc\",\"result\":{}}";
+
+  // Error response with integer id.
+  #assert jv_parse(d[..], "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"bad\"}", nodes[..]);
+  req = jrpc_classify(d[0]);
+  jo_start(o[..], buf[..]);
+  jrpc_write_error(o[..], d[0], req, MCP_ERR_METHOD_NOT_FOUND, "Method not found");
+  #assert !o[0].bad && jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}";
+
+  // Error response with null id (when no valid request id exists).
+  empty: JrpcMessage;
+  jo_start(o[..], buf[..]);
+  jrpc_write_error(o[..], d[0], empty, MCP_ERR_PARSE, "Parse error");
+  #assert !o[0].bad && jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}";
+
+  // UnsupportedProtocolVersionError (-32022) with supported[] and requested.
+  sup := [2] string.["2026-07-28", "2025-11-25"];
+  jo_start(o[..], buf[..]);
+  jrpc_write_unsupported_version(o[..], d[0], req, "1900-01-01", sup[..]);
+  #assert !o[0].bad;
+  #assert jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":-32022,\"message\":\"Unsupported protocol version\",\"data\":{\"supported\":[\"2026-07-28\",\"2025-11-25\"],\"requested\":\"1900-01-01\"}}}";
+
+  // Round-trip every written envelope back through jrpc_classify!
+  #assert jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  err_m := jrpc_classify(d[0]);
+  #assert err_m.ok && err_m.kind == JRPC_RESPONSE_ERR && err_m.error_code == MCP_ERR_UNSUPPORTED_VERSION && err_m.id_int == 5;
+
+  // Tiny buffer sets jo.bad.
+  small: [8] u8;
+  jo_start(o[..], small[..]);
+  jrpc_write_error(o[..], d[0], req, MCP_ERR_INTERNAL, "boom");
+  #assert o[0].bad;
+
+  // String id with id_node == -1 falls back to null; id_node == 0 writes root string node.
+  bad_str_id: JrpcMessage;
+  bad_str_id.id_kind = JRPC_ID_STR;
+  jo_start(o[..], buf[..]);
+  jrpc_write_error(o[..], d[0], bad_str_id, MCP_ERR_INTERNAL, "x");
+  #assert !o[0].bad && jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32603,\"message\":\"x\"}}";
+
+  #assert jv_parse(d[..], "\"root-id\"", nodes[..]);
+  root_str_id: JrpcMessage;
+  root_str_id.id_kind = JRPC_ID_STR;
+  root_str_id.id_node = 0;
+  jo_start(o[..], buf[..]);
+  jrpc_write_error(o[..], d[0], root_str_id, MCP_ERR_INTERNAL, "x");
+  #assert !o[0].bad && jo_text(o[..]) == "{\"jsonrpc\":\"2.0\",\"id\":\"root-id\",\"error\":{\"code\":-32603,\"message\":\"x\"}}";
+
+  // Direct edge cases for jrpc_raw_keys_equal: empty keys, first-byte mismatch, and >128-byte overflow.
+  #assert jrpc_raw_keys_equal("", "");
+  #assert !jrpc_raw_keys_equal("ab", "bb");
+  long_key := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  #assert !jrpc_raw_keys_equal(long_key, long_key);
+}
+
+jrpc_exact_int :: (d: Jv, node: int, out_val: [] int) -> bool #effects(all) {
+  if jv_kind(d, node) != JV_NUMBER { return false; }
+  raw := jv_raw(d, node);
+  v := jv_int(d, node, 0);
+  if v == 0 && raw != "0" && raw != "-0" { return false; }
+  out_val[0] = v;
+  return true;
+}
+
+jrpc_has_dup_keys :: (d: Jv, obj: int) -> bool #effects(all) {
+  n := jv_len(d, obj);
+  for i: 0..<n {
+    a := jv_at(d, obj, i);
+    ak := jv_key(d, a);
+    for j: i + 1..<n {
+      b := jv_at(d, obj, j);
+      bk := jv_key(d, b);
+      // Compare decoded keys via jv_raw_eq when either contains an escape.
+      if ak == bk { return true; }
+      if jrpc_raw_keys_equal(ak, bk) { return true; }
+    }
+  }
+  return false;
+}
+
+jrpc_raw_keys_equal :: (a: string, b: string) -> bool #effects(all) {
+  ba: [128] u8; bb: [128] u8;
+  na := jv_unescape(a, ba[..]);
+  nb := jv_unescape(b, bb[..]);
+  if na < 0 || na != nb { return false; }
+  for i: 0..<na {
+    if ba[i] != bb[i] { return false; }
+  }
+  return true;
+}
+
+jrpc_classify :: (d: Jv) -> JrpcMessage #effects(all) {
+  r: JrpcMessage;
+  if !d.ok { r.err_code = MCP_ERR_PARSE; return r; }
+  r.err_code = MCP_ERR_INVALID_REQUEST;
+  if jv_kind(d, 0) != JV_OBJECT { return r; }
+  if jrpc_has_dup_keys(d, 0) { return r; }
+
+  ver := jv_get(d, 0, "jsonrpc");
+  if jv_kind(d, ver) != JV_STRING || !jv_raw_eq(jv_raw(d, ver), "2.0") { return r; }
+
+  id_n := jv_get(d, 0, "id");
+  method_n := jv_get(d, 0, "method");
+  params_n := jv_get(d, 0, "params");
+  result_n := jv_get(d, 0, "result");
+  error_n := jv_get(d, 0, "error");
+
+  id_kind := JRPC_ID_NONE;
+  id_int := 0;
+  id_is_null := false;
+  if id_n != -1 {
+    ik := jv_kind(d, id_n);
+    if ik == JV_STRING {
+      id_kind = JRPC_ID_STR;
+    } else if ik == JV_NUMBER {
+      iv: [1] int;
+      if !jrpc_exact_int(d, id_n, iv[..]) { return r; }
+      id_kind = JRPC_ID_INT;
+      id_int = iv[0];
+    } else if ik == JV_NULL {
+      id_is_null = true;
+    } else {
+      return r;
+    }
+  }
+
+  if method_n != -1 {
+    // Request or notification: must not carry result or error, nor null id.
+    if result_n != -1 || error_n != -1 || id_is_null { return r; }
+    if jv_kind(d, method_n) != JV_STRING || jv_raw(d, method_n).count == 0 { return r; }
+    if params_n != -1 {
+      pk := jv_kind(d, params_n);
+      if pk != JV_OBJECT && pk != JV_ARRAY { return r; }
+    }
+    r.ok = true;
+    r.err_code = 0;
+    r.kind = ifx id_n != -1 then JRPC_REQUEST else JRPC_NOTIFICATION;
+    r.id_kind = id_kind;
+    r.id_node = id_n;
+    r.id_int = id_int;
+    r.method_node = method_n;
+    r.params_node = params_n;
+    return r;
+  }
+
+  // Response: must not carry params; must carry XOR(result, error).
+  if params_n != -1 { return r; }
+  if result_n != -1 && error_n != -1 { return r; }
+
+  if result_n != -1 {
+    if id_kind == JRPC_ID_NONE { return r; }
+    r.ok = true;
+    r.err_code = 0;
+    r.kind = JRPC_RESPONSE_OK;
+    r.id_kind = id_kind;
+    r.id_node = id_n;
+    r.id_int = id_int;
+    r.result_node = result_n;
+    return r;
+  }
+
+  // Error response.
+  if jv_kind(d, error_n) != JV_OBJECT || jrpc_has_dup_keys(d, error_n) { return r; }
+  code_n := jv_get(d, error_n, "code");
+  msg_n := jv_get(d, error_n, "message");
+  data_n := jv_get(d, error_n, "data");
+  cv: [1] int;
+  if !jrpc_exact_int(d, code_n, cv[..]) { return r; }
+  if jv_kind(d, msg_n) != JV_STRING { return r; }
+
+  r.ok = true;
+  r.err_code = 0;
+  r.kind = JRPC_RESPONSE_ERR;
+  r.id_kind = id_kind;
+  r.id_node = id_n;
+  r.id_int = id_int;
+  r.error_node = error_n;
+  r.error_code = cv[0];
+  r.error_msg_node = msg_n;
+  r.error_data_node = data_n;
+  return r;
+}
+
+jrpc_write_id :: (o: [] Jo, d: Jv, m: JrpcMessage) #effects(all) {
+  jo_key(o, "id");
+  if m.id_kind == JRPC_ID_INT {
+    jo_int(o, m.id_int);
+  } else if m.id_kind == JRPC_ID_STR && m.id_node >= 0 {
+    jv_write(d, m.id_node, o);
+  } else {
+    jo_null(o);
+  }
+}
+
+jrpc_write_request_int :: (o: [] Jo, id: int, method: string) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "jsonrpc"); jo_str(o, "2.0");
+  jo_key(o, "id"); jo_int(o, id);
+  jo_key(o, "method"); jo_str(o, method);
+}
+
+jrpc_write_request_str :: (o: [] Jo, id: string, method: string) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "jsonrpc"); jo_str(o, "2.0");
+  jo_key(o, "id"); jo_str(o, id);
+  jo_key(o, "method"); jo_str(o, method);
+}
+
+jrpc_write_notification :: (o: [] Jo, method: string) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "jsonrpc"); jo_str(o, "2.0");
+  jo_key(o, "method"); jo_str(o, method);
+}
+
+jrpc_write_result_head :: (o: [] Jo, d: Jv, req: JrpcMessage) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "jsonrpc"); jo_str(o, "2.0");
+  jrpc_write_id(o, d, req);
+  jo_key(o, "result");
+}
+
+jrpc_write_error :: (o: [] Jo, d: Jv, req: JrpcMessage, code: int, message: string) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "jsonrpc"); jo_str(o, "2.0");
+  jrpc_write_id(o, d, req);
+  jo_key(o, "error");
+  jo_obj(o);
+  jo_key(o, "code"); jo_int(o, code);
+  jo_key(o, "message"); jo_str(o, message);
+  jo_end(o);
+  jo_end(o);
+}
+
+jrpc_write_unsupported_version :: (o: [] Jo, d: Jv, req: JrpcMessage, requested: string, supported: [] string) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "jsonrpc"); jo_str(o, "2.0");
+  jrpc_write_id(o, d, req);
+  jo_key(o, "error");
+  jo_obj(o);
+  jo_key(o, "code"); jo_int(o, MCP_ERR_UNSUPPORTED_VERSION);
+  jo_key(o, "message"); jo_str(o, "Unsupported protocol version");
+  jo_key(o, "data");
+  jo_obj(o);
+  jo_key(o, "supported");
+  jo_arr(o);
+  for v: supported { jo_str(o, v); }
+  jo_end(o);
+  jo_key(o, "requested"); jo_str(o, requested);
+  jo_end(o);
+  jo_end(o);
+  jo_end(o);
+}
