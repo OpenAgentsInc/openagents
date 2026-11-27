@@ -897,3 +897,19 @@
     #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].git == want[j];
   }
 }
+
+#test "sub-agents (#14122): MWW_DELEGATE propagates resume_transcript_path, transcript_path, mode, read_only, and worktree_path into McTask" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_set_text(s, "resume scout") && coder_page_submit(s);
+  del := "{\"kind\":\"delegate\",\"wait_all\":true,\"ticket\":19,\"tasks\":[{\"level\":\"neon\",\"subagent_type\":\"Explore\",\"agent_id\":\"aexp-1111222233334444\",\"read_only\":true,\"mode\":\"plan\",\"git\":\"none\",\"worktree_path\":\"/tmp/wt/scout\",\"transcript_path\":\"/h/.openagents/subagents/s1/agent-aexp-1111222233334444.jsonl\",\"resume_transcript_path\":\"/h/.openagents/subagents/s1/agent-aexp-1111222233334444.jsonl\",\"task\":\"Follow up\"}]}";
+  #assert coder_page_line(s, del) == MWW_DELEGATE && s[0].turns[0].nagents == 1;
+  #assert coder_page_agent_next(s) == 0;
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  n := coder_page_agent_task(s, 0, "s1", "/repo", out[..]);
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]);
+  #assert back[0].is_subagent && back[0].read_only && back[0].mode == "plan" && back[0].cwd == "/tmp/wt/scout";
+  #assert back[0].agent_id == "aexp-1111222233334444" && back[0].subagent_type == "Explore";
+  #assert back[0].resume_transcript_path == "/h/.openagents/subagents/s1/agent-aexp-1111222233334444.jsonl";
+  #assert back[0].transcript_path == "/h/.openagents/subagents/s1/agent-aexp-1111222233334444.jsonl";
+}

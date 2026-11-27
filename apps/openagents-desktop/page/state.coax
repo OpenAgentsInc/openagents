@@ -283,6 +283,9 @@ CpAgent :: struct {
   disallowed_tools: [192] u8; disallowed_tools_n: int;// CSV tool denylist (#14096)
   task_long_at: int; task_long_n: int;                // full prompt in CoderPage.long_buf when > CP_AGENT_TASK (#14096)
   fork_ctx_path: [256] u8; fork_ctx_path_n: int;      // FORK_AGENT cache-exact context snapshot path (#14096)
+  resume_tx_at: int; resume_tx_n: int;                // sidechain DAG JSONL path in long_buf for SendMessage resume (#14122)
+  tx_path_at: int; tx_path_n: int;                    // sidechain DAG JSONL path in long_buf for live append (#14122)
+  perm_mode: [24] u8; perm_mode_n: int;               // permissionMode override propagated on MWW_DELEGATE (#14122)
   is_background: bool; omit_claudemd: bool; read_only: bool; is_cc_agent: bool; is_fork: bool;
   git: int;                                           // what it may do with git: 0 none, 1 commit, 2 push (CP_AGENT_GIT; #14104)
   tokens_in: int; tokens_out: int;

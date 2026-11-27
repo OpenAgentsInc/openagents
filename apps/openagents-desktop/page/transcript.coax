@@ -520,6 +520,18 @@ cp_pane_open :: (s: [] CoderPage, turn: int, j: int) {
   s[0].pane_open = true; s[0].pane_turn = turn; s[0].pane_agent = j; s[0].pane_parsed = -1;
   s[0].pane_scroll = 0; s[0].pane_content = 0; s[0].pane_stick = s[0].turns[turn].agents[j].state == CP_RUNNING;
 }
+cp_long_put :: (s: [] CoderPage, text: string, out_at: [] int, out_n: [] int) {
+  out_at[0] = 0; out_n[0] = 0;
+  if text.count == 0 || s[0].long_n + text.count > s[0].long_buf.count { return; }
+  at := s[0].long_n;
+  for k: 0..<text.count { s[0].long_buf[at + k] = text[k]; }
+  s[0].long_n = at + text.count;
+  out_at[0] = at; out_n[0] = text.count;
+}
+cp_long_str :: (s: [] CoderPage, at: int, n: int) -> string {
+  if n <= 0 || at < 0 || at + n > s[0].long_n { return ""; }
+  return cast(string) s[0].long_buf[at..<at + n];
+}
 cp_agent_task_full :: (s: [] CoderPage, i: int, j: int) -> string {
   at := s[0].turns[i].agents[j].task_long_at;
   n := s[0].turns[i].agents[j].task_long_n;
@@ -609,6 +621,23 @@ cp_delegate_ex :: (s: [] CoderPage, i: int, tasks: string, ticket: int, wait_all
     if fk_b.ok && fk_b.value { s[0].turns[i].agents[j].is_fork = true; }
     fkp_s := cl_str(ar[..], one, "fork_context_path");
     if fkp_s.count > 0 { s[0].turns[i].agents[j].fork_ctx_path_n = cp_out(s[0].turns[i].agents[j].fork_ctx_path[..], fkp_s); }
+    rtx_s := cl_str(ar[..], one, "resume_transcript_path");
+    if rtx_s.count > 0 {
+      at0 := [1] int.[0]; n0 := [1] int.[0];
+      cp_long_put(s, rtx_s, at0[..], n0[..]);
+      s[0].turns[i].agents[j].resume_tx_at = at0[0];
+      s[0].turns[i].agents[j].resume_tx_n = n0[0];
+      s[0].turns[i].agents[j].is_cc_agent = true;
+    }
+    txp_s := cl_str(ar[..], one, "transcript_path");
+    if txp_s.count > 0 {
+      at0 := [1] int.[0]; n0 := [1] int.[0];
+      cp_long_put(s, txp_s, at0[..], n0[..]);
+      s[0].turns[i].agents[j].tx_path_at = at0[0];
+      s[0].turns[i].agents[j].tx_path_n = n0[0];
+    }
+    pm_s := cl_str(ar[..], one, "mode");
+    if pm_s.count > 0 { s[0].turns[i].agents[j].perm_mode_n = cp_out(s[0].turns[i].agents[j].perm_mode[..], pm_s); }
     s[0].turns[i].agents[j].state = CP_RUNNING; s[0].turns[i].agents[j].start_due = true;
     s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1; s[0].turns[i].agents[j].heard = s[0].clock;
     s[0].turns[i].agents[j].after = s[0].turns[i].early_cmds + s[0].turns[i].ncmds;
@@ -885,6 +914,9 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
       git = CP_AGENT_GIT[s[0].turns[i].agents[j].git],
       is_fork = s[0].turns[i].agents[j].is_fork,
       fork_context_path = cast(string) s[0].turns[i].agents[j].fork_ctx_path[0..<s[0].turns[i].agents[j].fork_ctx_path_n],
+      resume_transcript_path = cp_long_str(s, s[0].turns[i].agents[j].resume_tx_at, s[0].turns[i].agents[j].resume_tx_n),
+      transcript_path = cp_long_str(s, s[0].turns[i].agents[j].tx_path_at, s[0].turns[i].agents[j].tx_path_n),
+      mode = cast(string) s[0].turns[i].agents[j].perm_mode[0..<s[0].turns[i].agents[j].perm_mode_n],
     };
     if level == CP_LEVEL_INKLING { t.local = true; t.model = "inkling-2-mini"; }   // a local chat's sub-agent is local too
     if s[0].turns[i].agents[j].model_ovr_n > 0 {

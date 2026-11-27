@@ -13,6 +13,10 @@ FLAWED_WT_MAX_SLUG_LEN :: 64;
 FLAWED_WT_MAX_PAT_LEN  :: 256;
 FLAWED_WT_STALE_DAYS   :: 30;
 FLAWED_WT_STALE_MS     :: 30 * 24 * 60 * 60 * 1000;
+FLAWED_SUB_MAX_SESSION_LEN :: 96;
+FLAWED_SUB_MAX_ID_LEN      :: 64;
+FLAWED_TASK_OUTPUT_DEFAULT_TIMEOUT_MS :: 30000;
+FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS     :: 120000;
 
 // Agent definition source precedence (loadAgentsDir.ts:193-221: lowest -> highest).
 FLAWED_ASRC_BUILTIN :: 1;
@@ -452,6 +456,64 @@ flawed_subagent_resolve_engine :: (requested_engine: int, allow_local_harnesses:
   return FLAWED_SUB_ENGINE_OPENAGENTS;
 }
 
+// Sanitizes a session ID into a single safe, non-hidden directory component under
+// <home>/.openagents/subagents/<sanitized_session_id> (#14122).
+// Maps unsafe characters (and any leading '.') to '_', caps at FLAWED_SUB_MAX_SESSION_LEN,
+// and returns 0 (triggering legacy flat-dir fallback) when empty or containing no ASCII [A-Za-z0-9].
+flawed_subagent_sanitize_session_id :: (session_id: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  lim := session_id.count;
+  if lim > FLAWED_SUB_MAX_SESSION_LEN { lim = FLAWED_SUB_MAX_SESSION_LEN; } // mutant: equivalent // lim == FLAWED_SUB_MAX_SESSION_LEN assigns the same value
+  if lim > out.count { lim = out.count; } // mutant: equivalent // lim == out.count assigns the same value
+  has_alnum := false;
+  for i: 0..<lim {
+    c := session_id[i];
+    if (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) {
+      has_alnum = true;
+    }
+    if flawed_wt_is_slug_char(c) && !(i == 0 && c == 46) {
+      out[i] = c;
+    } else {
+      out[i] = 95;
+    }
+  }
+  if !has_alnum { return 0; }
+  return lim;
+}
+
+// Validates a subagent ID before direct path construction `agent-<id>.meta.json` (#14122).
+// Blocks empty, oversized, slash/backslash/control/whitespace, and '.'/'..' traversal inputs.
+flawed_subagent_id_safe :: (id: string) -> bool #effects(reads, traps) {
+  n := id.count;
+  if n == 0 || n > FLAWED_SUB_MAX_ID_LEN { return false; }
+  if n == 1 && id[0] == 46 { return false; }
+  if n == 2 && id[0] == 46 && id[1] == 46 { return false; }
+  for i: 0..<n {
+    if !flawed_wt_is_slug_char(id[i]) { return false; }
+  }
+  return true;
+}
+
+// Classifies sidechain metadata filenames matching `agent-<non-empty-id>.meta.json` (#14122).
+flawed_subagent_is_meta_filename :: (name: string) -> bool #effects(reads, traps) {
+  // "agent-" (6) + at least 1 char + ".meta.json" (10) = 17 min bytes.
+  if name.count < 17 { return false; }
+  if cast(string) name[0..<6] != "agent-" { return false; }
+  return cast(string) name[(name.count - 10)..<name.count] == ".meta.json";
+}
+
+// Bounds TaskOutput blocking timeout (#14122):
+// - block == false -> 0 (immediate non-blocking poll)
+// - block == true, no timeout -> default 30000 ms
+// - block == true, timeout <= 0 -> 0 (explicit non-blocking poll)
+// - block == true, timeout > 120000 -> clamped to 120000 ms
+flawed_task_output_effective_timeout_ms :: (block: bool, has_timeout: bool, raw_timeout_ms: int) -> int #effects(traps) {
+  if !block { return 0; }
+  if !has_timeout { return FLAWED_TASK_OUTPUT_DEFAULT_TIMEOUT_MS; }
+  if raw_timeout_ms <= 0 { return 0; } // mutant: equivalent // raw_timeout_ms == 0 falls through to return 0
+  if raw_timeout_ms > FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS { return FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS; } // mutant: equivalent // raw_timeout_ms == FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS returns the same value
+  return raw_timeout_ms;
+}
+
 #test "subagent: external delegatable executor routing and opt-in gating (#14053, #14071)" {
   #assert flawed_subagent_engine_for_level("neon") == FLAWED_SUB_ENGINE_OPENAGENTS;
   #assert flawed_subagent_engine_for_level("carbon") == FLAWED_SUB_ENGINE_OPENAGENTS;
@@ -730,4 +792,75 @@ flawed_subagent_resolve_engine :: (requested_engine: int, allow_local_harnesses:
   #assert !flawed_wt_include_matches(doc, "../escape");
   #assert !flawed_wt_include_matches(doc, "/etc/passwd");
   #assert !flawed_wt_include_matches(doc, ".git/config");
+}
+
+#test "subagent: session-id sanitization, safe agent-id & meta filename checks, and TaskOutput timeout clamping (#14122)" {
+  // 1. Session ID sanitization: safe chars kept, unsafe & leading '.' mapped to '_', empty/no-alnum -> 0, exact caps
+  sb: [128] u8;
+  #assert flawed_subagent_sanitize_session_id("", sb[..]) == 0;
+  #assert flawed_subagent_sanitize_session_id("abc", sb[0..<0]) == 0;
+  #assert flawed_subagent_sanitize_session_id("...", sb[..]) == 0;
+  #assert flawed_subagent_sanitize_session_id("..", sb[..]) == 0;
+  #assert flawed_subagent_sanitize_session_id("///   ", sb[..]) == 0;
+  // Exact ASCII alnum boundaries: '@' (64), 'A' (65), 'Z' (90), '[' (91), '`' (96), 'a' (97), 'z' (122), '{' (123), '/' (47), '0' (48), '9' (57), ':' (58)
+  #assert flawed_subagent_sanitize_session_id("@", sb[..]) == 0 && flawed_subagent_sanitize_session_id("[", sb[..]) == 0;
+  #assert flawed_subagent_sanitize_session_id("`", sb[..]) == 0 && flawed_subagent_sanitize_session_id("{", sb[..]) == 0;
+  #assert flawed_subagent_sanitize_session_id("/", sb[..]) == 0 && flawed_subagent_sanitize_session_id(":", sb[..]) == 0;
+  n_A := flawed_subagent_sanitize_session_id("A", sb[..]); #assert n_A == 1 && cast(string) sb[0..<n_A] == "A";
+  n_Z := flawed_subagent_sanitize_session_id("Z", sb[..]); #assert n_Z == 1 && cast(string) sb[0..<n_Z] == "Z";
+  n_a := flawed_subagent_sanitize_session_id("a", sb[..]); #assert n_a == 1 && cast(string) sb[0..<n_a] == "a";
+  n_z := flawed_subagent_sanitize_session_id("z", sb[..]); #assert n_z == 1 && cast(string) sb[0..<n_z] == "z";
+  n_0 := flawed_subagent_sanitize_session_id("0", sb[..]); #assert n_0 == 1 && cast(string) sb[0..<n_0] == "0";
+  n_9 := flawed_subagent_sanitize_session_id("9", sb[..]); #assert n_9 == 1 && cast(string) sb[0..<n_9] == "9";
+
+  n1 := flawed_subagent_sanitize_session_id("chat-550e8400_v1.2", sb[..]);
+  #assert n1 == 18 && cast(string) sb[0..<n1] == "chat-550e8400_v1.2";
+  n2 := flawed_subagent_sanitize_session_id("local:chat/abc def", sb[..]);
+  #assert n2 == 18 && cast(string) sb[0..<n2] == "local_chat_abc_def";
+  n3 := flawed_subagent_sanitize_session_id("../etc/passwd", sb[..]);
+  #assert n3 == 13 && cast(string) sb[0..<n3] == "_._etc_passwd";
+  n4 := flawed_subagent_sanitize_session_id(".hidden", sb[..]);
+  #assert n4 == 7 && cast(string) sb[0..<n4] == "_hidden";
+
+  // Exact length cap at FLAWED_SUB_MAX_SESSION_LEN (96) and exact output buffer cap
+  s97: [97] u8;
+  for i: 0..<97 { s97[i] = 'x'; }
+  #assert flawed_subagent_sanitize_session_id(cast(string) s97[0..<96], sb[..]) == 96;
+  #assert flawed_subagent_sanitize_session_id(cast(string) s97[..], sb[..]) == 96;
+  small: [4] u8;
+  nsm := flawed_subagent_sanitize_session_id("abcdef", small[..]);
+  #assert nsm == 4 && cast(string) small[0..<nsm] == "abcd";
+  #assert flawed_subagent_sanitize_session_id("abcd", small[..]) == 4;
+
+  // 2. Subagent ID path safety
+  #assert !flawed_subagent_id_safe("");
+  #assert !flawed_subagent_id_safe(".") && !flawed_subagent_id_safe("..");
+  #assert flawed_subagent_id_safe("a") && flawed_subagent_id_safe(".a") && flawed_subagent_id_safe("a.") && flawed_subagent_id_safe("..a");
+  #assert flawed_subagent_id_safe("aexplore-0123456789abcdef") && flawed_subagent_id_safe("agent_1.0");
+  #assert !flawed_subagent_id_safe("/a") && !flawed_subagent_id_safe("+a");
+  #assert !flawed_subagent_id_safe("a/b") && !flawed_subagent_id_safe("a\\b") && !flawed_subagent_id_safe("../x") && !flawed_subagent_id_safe("a b");
+  id65: [65] u8;
+  for i: 0..<65 { id65[i] = 'a'; }
+  #assert flawed_subagent_id_safe(cast(string) id65[0..<64]);
+  #assert !flawed_subagent_id_safe(cast(string) id65[..]);
+
+  // 3. Sidechain meta filename classification
+  #assert flawed_subagent_is_meta_filename("agent-a.meta.json");
+  #assert flawed_subagent_is_meta_filename("agent-aexp-0123456789abcdef.meta.json");
+  #assert !flawed_subagent_is_meta_filename("agent-.meta.json");
+  #assert !flawed_subagent_is_meta_filename("agxnt-a.meta.json");
+  #assert !flawed_subagent_is_meta_filename("agent-a.meta.jsox");
+  #assert !flawed_subagent_is_meta_filename("agent-a.jsonl");
+
+  // 4. TaskOutput effective timeout clamping
+  #assert flawed_task_output_effective_timeout_ms(false, false, 0) == 0;
+  #assert flawed_task_output_effective_timeout_ms(false, true, 5000) == 0;
+  #assert flawed_task_output_effective_timeout_ms(true, false, 0) == FLAWED_TASK_OUTPUT_DEFAULT_TIMEOUT_MS;
+  #assert flawed_task_output_effective_timeout_ms(true, false, 500) == FLAWED_TASK_OUTPUT_DEFAULT_TIMEOUT_MS;
+  #assert flawed_task_output_effective_timeout_ms(true, true, 0) == 0;
+  #assert flawed_task_output_effective_timeout_ms(true, true, -5) == 0;
+  #assert flawed_task_output_effective_timeout_ms(true, true, 1) == 1;
+  #assert flawed_task_output_effective_timeout_ms(true, true, 15000) == 15000;
+  #assert flawed_task_output_effective_timeout_ms(true, true, FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS) == FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS;
+  #assert flawed_task_output_effective_timeout_ms(true, true, FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS + 1) == FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS;
 }

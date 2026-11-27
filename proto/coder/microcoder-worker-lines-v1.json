@@ -130,6 +130,16 @@
      "name": "attachments",
      "type": "array",
      "note": "optional multimodal attachments forwarded to ACP prompt blocks (#14002)"
+    },
+    {
+     "name": "resume_transcript_path",
+     "type": "string",
+     "note": "optional sidechain DAG JSONL transcript path hydrated into FwHist on SendMessage resume (#14122)"
+    },
+    {
+     "name": "transcript_path",
+     "type": "string",
+     "note": "optional sidechain DAG JSONL transcript path where a subagent appends live structured turns (#14122)"
     }
    ]
   },

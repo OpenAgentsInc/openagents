@@ -6380,8 +6380,13 @@ FwRun :: struct {
   read_dedup_cur: [1] int;
   git_snap: [2560] u8; ngit_snap: int;
   git_snap_cwd: [FS_PATH_MAX] u8; ngit_snap_cwd: int;
-  // Subagent delegation & worktree runtime (#14096)
+  // Subagent delegation & worktree runtime (#14096, #14122)
   home: [FS_PATH_MAX] u8; nhome: int;
+  session_id: [128] u8; nsession_id: int;
+  agent_id: [48] u8; nagent_id: int;
+  sidechain_jsonl: [FS_PATH_MAX] u8; nsidechain_jsonl: int;
+  dag_head_uuid: [64] u8; ndag_head_uuid: int;
+  dag_seq: int;
   host_agents: bool;
   host_claude: bool;   // this turn may hand a task to Claude Code: the app can run it and the person allowed it (GitHub #14104)
   routed_delegate: [32] u8; nrouted_delegate: int; // System One router explicit_delegate choice (e.g. "claude", #14104)
@@ -7858,6 +7863,7 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     }
     h[0].msgs[mi].nblocks = nb;
     h[0].nmsgs += 1;
+    fww_run_append_sidechain_msg(r, h, mi, b[0].compact_buf[..]);
   }
 
   if need_wrapup {
@@ -8071,6 +8077,7 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     if nb > 0 {
       h[0].msgs[mi].nblocks = nb;
       h[0].nmsgs += 1;
+      fww_run_append_sidechain_msg(r, h, mi, b[0].compact_buf[..]);
     }
   }
 
@@ -9061,6 +9068,216 @@ tool_main :: () -> int #export_c #effects(all) {
     return 0;
   }
 
+  if fww_flag_asked("--selftest-subagent") {
+    tmp_b: [FS_PATH_MAX] u8;
+    tmp := fs_temp("oa-sub-e2e-", tmp_b[..]);
+    if tmp.count == 0 { print("FAIL: fs_temp failed\n"); return 1; }
+    defer { _ = fs_remove(tmp); }
+    home_b: [FS_PATH_MAX] u8; home_d := fs_join(tmp, "home", home_b[..]);
+    _ = fs_mkdir_all(home_d);
+
+    // 1. Session-scoped metadata + append-only structured DAG JSONL + multi-turn resume append + truncated-tail tolerance
+    r1: [1] FwRun; h1: [1] FwHist; b1: [1] FwBufs;
+    r1[0].nhome = fww_keep(r1[0].home[..], home_d);
+    r1[0].nsession_id = fww_keep(r1[0].session_id[..], "sess:alpha/1");
+    rec_a: [1] FwSubagentRec;
+    rec_a[0] = FwSubagentRec.{active = true, running = false, read_only = true, start_ms = 1700000001000};
+    rec_a[0].nagent_id = fww_keep(rec_a[0].agent_id[..], "aexp-1111222233334444");
+    rec_a[0].nname = fww_keep(rec_a[0].name[..], "scout");
+    rec_a[0].nsubagent_type = fww_keep(rec_a[0].subagent_type[..], "Explore");
+    rec_a[0].ndesc = fww_keep(rec_a[0].desc[..], "Inspect runtime");
+    rec_a[0].nwt_path = fww_keep(rec_a[0].wt_path[..], "/tmp/wt/scout");
+    rec_a[0].nwt_branch = fww_keep(rec_a[0].wt_branch[..], "worktree-scout");
+    rec_a[0].nperm_mode = fww_keep(rec_a[0].perm_mode[..], "plan");
+    rec_a[0].ngit = fww_keep(rec_a[0].git[..], "none");
+    rec_a[0].nlevel = fww_keep(rec_a[0].level[..], "neon");
+    rec_a[0].nsession_id = fww_keep(rec_a[0].session_id[..], "sess:alpha/1");
+    rec_a[0].noutput_file = fww_subagent_write_meta(home_d, "sess:alpha/1", rec_a[..], rec_a[0].output_file[..]);
+    jpath_a := cast(string) rec_a[0].output_file[0..<rec_a[0].noutput_file];
+    if !fww_contains_ci(jpath_a, "/.openagents/subagents/sess_alpha_1/agent-aexp-1111222233334444.jsonl") {
+      print("FAIL 1: unexpected session-scoped path: %\n", jpath_a); return 1;
+    }
+
+    // Child appends 4 structured turns (user -> assistant[thinking+sig+tool_use] -> tool_results[is_error] -> assistant[text])
+    r1[0].nagent_id = fww_keep(r1[0].agent_id[..], "aexp-1111222233334444");
+    r1[0].nsidechain_jsonl = fww_keep(r1[0].sidechain_jsonl[..], jpath_a);
+    fww_hist_push_user(h1[..], "Find auth files");
+    fww_run_append_sidechain_msg(r1[..], h1[..], 0, b1[0].compact_buf[..]);
+    a0 := [1] int.[0];
+    h1[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 2};
+    tb0 := FwBlock.{kind = FWW_MB_THINK};
+    tb0.text_n = fww_slab_put(h1[..], "checking wire", a0[..]); tb0.text_at = a0[0];
+    tb0.sig_n = fww_slab_put(h1[..], "SIG_A1", a0[..]); tb0.sig_at = a0[0];
+    tu0 := FwBlock.{kind = FWW_MB_TOOL_USE};
+    tu0.id_n = fww_slab_put(h1[..], "tc_1", a0[..]); tu0.id_at = a0[0];
+    tu0.name_n = fww_slab_put(h1[..], "Read", a0[..]); tu0.name_at = a0[0];
+    tu0.text_n = fww_slab_put(h1[..], "{\"file_path\":\"a.coax\"}", a0[..]); tu0.text_at = a0[0];
+    tu0.sig_n = fww_slab_put(h1[..], "SIG_TU1", a0[..]); tu0.sig_at = a0[0];
+    h1[0].msgs[1].blocks[0] = tb0; h1[0].msgs[1].blocks[1] = tu0;
+    h1[0].nmsgs = 2;
+    fww_run_append_sidechain_msg(r1[..], h1[..], 1, b1[0].compact_buf[..]);
+    h1[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+    tr0 := FwBlock.{kind = FWW_MB_TOOL_RES, is_error = true};
+    tr0.id_n = fww_slab_put(h1[..], "tc_1", a0[..]); tr0.id_at = a0[0];
+    tr0.name_n = fww_slab_put(h1[..], "Read", a0[..]); tr0.name_at = a0[0];
+    tr0.text_n = fww_slab_put(h1[..], "missing file", a0[..]); tr0.text_at = a0[0];
+    h1[0].msgs[2].blocks[0] = tr0;
+    h1[0].nmsgs = 3;
+    fww_run_append_sidechain_msg(r1[..], h1[..], 2, b1[0].compact_buf[..]);
+    fww_hist_push_assistant_text(h1[..], "a.coax was missing");
+    fww_run_append_sidechain_msg(r1[..], h1[..], 3, b1[0].compact_buf[..]);
+
+    // Simulate a crash leaving a truncated trailing line, then load into a fresh resumed worker and append turn 2!
+    _ = fs_append(jpath_a, "{\"uuid\":\"partial-crash\",\"role\":\"user\",\"blocks\":[");
+    h2: [1] FwHist; r2: [1] FwRun; leaf_n := [1] int.[0];
+    loaded_n := fww_subagent_load_jsonl(jpath_a, h2[..], b1[0].req_body[..], b1[0].compact_buf[..], r2[0].dag_head_uuid[..], leaf_n[..]);
+    r2[0].ndag_head_uuid = leaf_n[0];
+    if loaded_n != 4 || r2[0].ndag_head_uuid == 0 {
+      print("FAIL 1: expected 4 hydrated msgs with leaf uuid, got % (leaf=%)\n", loaded_n, r2[0].ndag_head_uuid); return 1;
+    }
+    if h2[0].msgs[1].blocks[0].kind != FWW_MB_THINK || fww_slab_str(h2[..], h2[0].msgs[1].blocks[0].sig_at, h2[0].msgs[1].blocks[0].sig_n) != "SIG_A1" {
+      print("FAIL 1: thinking/sig block lost\n"); return 1;
+    }
+    if h2[0].msgs[2].blocks[0].kind != FWW_MB_TOOL_RES || !h2[0].msgs[2].blocks[0].is_error {
+      print("FAIL 1: tool_result is_error lost\n"); return 1;
+    }
+    // Resumed worker appends turn 2 (user + assistant) chained off hydrated leaf uuid!
+    r2[0].nsidechain_jsonl = fww_keep(r2[0].sidechain_jsonl[..], jpath_a);
+    r2[0].nagent_id = fww_keep(r2[0].agent_id[..], "aexp-1111222233334444");
+    r2[0].nsession_id = fww_keep(r2[0].session_id[..], "sess:alpha/1");
+    _ = fs_append(jpath_a, "\n"); // terminate truncated crash line cleanly before next append
+    fww_hist_push_user(h2[..], "Check b.coax instead");
+    fww_run_append_sidechain_msg(r2[..], h2[..], 4, b1[0].compact_buf[..]);
+    fww_hist_push_assistant_text(h2[..], "Found b.coax!");
+    fww_run_append_sidechain_msg(r2[..], h2[..], 5, b1[0].compact_buf[..]);
+
+    h3: [1] FwHist; leaf3_b: [64] u8; leaf3_n := [1] int.[0];
+    loaded3 := fww_subagent_load_jsonl(jpath_a, h3[..], b1[0].req_body[..], b1[0].compact_buf[..], leaf3_b[..], leaf3_n[..]);
+    if loaded3 != 6 || fww_hist_msg_text(h3[..], 5) != "Found b.coax!" {
+      print("FAIL 1: expected 6 chained msgs across initial+resumed runs, got %\n", loaded3); return 1;
+    }
+    print("OK 1/4 session-scoped DAG JSONL multi-turn append, crash-tail recovery, and structured FwHist hydration\n");
+
+    // 2. Also persist a cross-session agent and a legacy flat-dir agent, then test disk-backed SendMessage after >24-slot eviction!
+    rec_other: [1] FwSubagentRec;
+    rec_other[0] = FwSubagentRec.{active = true, read_only = false, start_ms = 1700000002000};
+    rec_other[0].nagent_id = fww_keep(rec_other[0].agent_id[..], "agen-other555566667777");
+    rec_other[0].nname = fww_keep(rec_other[0].name[..], "prior-builder");
+    rec_other[0].nsubagent_type = fww_keep(rec_other[0].subagent_type[..], "general-purpose");
+    rec_other[0].nperm_mode = fww_keep(rec_other[0].perm_mode[..], "acceptEdits");
+    rec_other[0].ngit = fww_keep(rec_other[0].git[..], "commit");
+    rec_other[0].nlevel = fww_keep(rec_other[0].level[..], "neon");
+    rec_other[0].noutput_file = fww_subagent_write_meta(home_d, "sess-old-99", rec_other[..], rec_other[0].output_file[..]);
+
+    rec_flat: [1] FwSubagentRec;
+    rec_flat[0] = FwSubagentRec.{active = true, read_only = true, start_ms = 1700000003000};
+    rec_flat[0].nagent_id = fww_keep(rec_flat[0].agent_id[..], "aplan-flat888899990000");
+    rec_flat[0].nsubagent_type = fww_keep(rec_flat[0].subagent_type[..], "Plan");
+    rec_flat[0].nperm_mode = fww_keep(rec_flat[0].perm_mode[..], "plan");
+    rec_flat[0].ngit = fww_keep(rec_flat[0].git[..], "none");
+    rec_flat[0].nlevel = fww_keep(rec_flat[0].level[..], "inkling");
+    rec_flat[0].noutput_file = fww_subagent_write_meta(home_d, "", rec_flat[..], rec_flat[0].output_file[..]);
+    flat_jp := cast(string) rec_flat[0].output_file[0..<rec_flat[0].noutput_file];
+    if !fww_contains_ci(flat_jp, "/.openagents/subagents/agent-aplan-flat888899990000.jsonl") {
+      print("FAIL 2: empty session_id did not fall back to legacy flat dir: %\n", flat_jp); return 1;
+    }
+
+    // Fill all 24 slots in a fresh parent FwRun (none matching scout/other/flat); slot 5 is oldest non-running, slot 0 is running!
+    rp: [1] FwRun;
+    rp[0].nhome = fww_keep(rp[0].home[..], home_d);
+    rp[0].nsession_id = fww_keep(rp[0].session_id[..], "sess:alpha/1");
+    rp[0].host_agents = true;
+    rp[0].nsubagents = FWW_MAX_SUBAGENT_RECS;
+    for i: 0..<FWW_MAX_SUBAGENT_RECS {
+      rp[0].subagents[i] = FwSubagentRec.{active = true, running = (i == 0), start_ms = 10000 + i * 100};
+      rp[0].subagents[i].nagent_id = fww_keep(rp[0].subagents[i].agent_id[..], "afiller");
+    }
+    rp[0].subagents[5].start_ms = 500; // oldest non-running -> MUST be evicted first, NEVER running slot 0!
+
+    // Restore scout by friendly name via SendMessage -> evicts slot 5 and emits MWW_DELEGATE with resume_transcript_path!
+    wire_b: [8192] u8; res_b: [2048] u8; err_b := [1] bool.[false];
+    sent := fww_tool_send_message(rp[..], 0, "{\"to\":\"scout\",\"message\":\"Follow up on b.coax\"}", res_b[..], err_b[..], wire_b[..]);
+    if !sent || err_b[0] || !rp[0].waiting_delegate || rp[0].delegate_slots[0].rec_idx != 5 || !rp[0].subagents[0].running {
+      print("FAIL 2: disk-backed SendMessage restore/eviction failed (slot=%)\n", rp[0].delegate_slots[0].rec_idx); return 1;
+    }
+    restored := rp[0].subagents[5];
+    if cast(string) restored.subagent_type[0..<restored.nsubagent_type] != "Explore" ||
+       !restored.read_only ||
+       cast(string) restored.perm_mode[0..<restored.nperm_mode] != "plan" ||
+       cast(string) restored.wt_path[0..<restored.nwt_path] != "/tmp/wt/scout" ||
+       cast(string) restored.last_reply[0..<restored.nlast_reply] != "Found b.coax!" {
+      print("FAIL 2: restored metadata mismatch\n"); return 1;
+    }
+    // Check cross-session lookup by friendly name & legacy flat-dir lookup by agent_id
+    ri_other := fww_find_or_load_subagent_rec(rp[..], "prior-builder");
+    ri_flat := fww_find_or_load_subagent_rec(rp[..], "aplan-flat888899990000");
+    if ri_other < 0 || cast(string) rp[0].subagents[ri_other].git[0..<rp[0].subagents[ri_other].ngit] != "commit" ||
+       ri_flat < 0 || cast(string) rp[0].subagents[ri_flat].level[0..<rp[0].subagents[ri_flat].nlevel] != "inkling" {
+      print("FAIL 2: cross-session or legacy flat-dir lookup failed (% / %)\n", ri_other, ri_flat); return 1;
+    }
+    print("OK 2/4 disk-backed SendMessage lookup (session, cross-session, legacy flat) + 24-slot eviction + metadata restore\n");
+
+    // 3. Blocking TaskOutput(block=false, block=true+short timeout, block=true+completion) on a REAL child subprocess!
+    rt: [1] FwRun;
+    rt[0].nhome = fww_keep(rt[0].home[..], home_d);
+    rt[0].nsession_id = fww_keep(rt[0].session_id[..], "sess-to");
+    rt[0].host_agents = false;
+    rt[0].nsubagents = 1;
+    rt[0].subagents[0] = FwSubagentRec.{active = true, running = true, is_bg = true, start_ms = proc_now_ms()};
+    rt[0].subagents[0].nagent_id = fww_keep(rt[0].subagents[0].agent_id[..], "abg-9999000011112222");
+    rt[0].subagents[0].ndesc = fww_keep(rt[0].subagents[0].desc[..], "bg worker");
+    rt[0].subagents[0].nlast_prompt = fww_keep(rt[0].subagents[0].last_prompt[..], "Compute answer");
+    rt[0].subagents[0].noutput_file = fww_subagent_write_meta(home_d, "sess-to", rt[0].subagents[0..<1], rt[0].subagents[0].output_file[..]);
+
+    ph := proc_new();
+    if ph < 0 || !proc_arg(ph, "/bin/sh") || !proc_arg(ph, "-c") ||
+       !proc_arg(ph, "sleep 0.2; printf '{\"kind\":\"reply\",\"text\":\"partial\"}\\n{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"final bg answer\"}\\n'") ||
+       proc_start(ph) != 0 {
+      if ph >= 0 { _ = proc_release(ph); }
+      print("FAIL 3: could not spawn mock child process\n"); return 1;
+    }
+    rt[0].local_subs[0] = FwLocalSubProc.{active = true, done = false, is_bg = true, h = ph, rec_idx = 0, tool_idx = 0};
+
+    ob: [2048] u8; oerr := [1] bool.[false];
+    // 3a. Non-blocking poll (block=false) returns immediately while child is still running
+    t0 := proc_now_ms();
+    n_nb := fww_tool_task_output(rt[..], "{\"task_id\":\"abg-9999000011112222\",\"block\":false}", ob[..], oerr[..]);
+    if oerr[0] || !fww_contains_ci(cast(string) ob[0..<n_nb], "status: running") || (proc_now_ms() - t0) > 120 {
+      print("FAIL 3a: block=false should return running immediately: %\n", cast(string) ob[0..<n_nb]);
+      _ = proc_release(ph); return 1;
+    }
+    // 3b. Short blocking timeout (40ms) expires cleanly with timed_out: true without hanging
+    n_to := fww_tool_task_output(rt[..], "{\"task_id\":\"abg-9999000011112222\",\"block\":true,\"timeout\":40}", ob[..], oerr[..]);
+    if oerr[0] || !fww_contains_ci(cast(string) ob[0..<n_to], "status: running") || !fww_contains_ci(cast(string) ob[0..<n_to], "timed_out: true") {
+      print("FAIL 3b: short timeout should return running + timed_out: %\n", cast(string) ob[0..<n_to]);
+      _ = proc_release(ph); return 1;
+    }
+    // 3c. Blocking wait (timeout=3000) waits until child emits MWW_ENDED and returns completed + final reply + fallback DAG JSONL
+    n_ok := fww_tool_task_output(rt[..], "{\"task_id\":\"abg-9999000011112222\",\"block\":true,\"timeout\":3000}", ob[..], oerr[..]);
+    ok_s := cast(string) ob[0..<n_ok];
+    if oerr[0] || rt[0].subagents[0].running || rt[0].local_subs[0].active ||
+       !fww_contains_ci(ok_s, "status: completed") || !fww_contains_ci(ok_s, "final bg answer") {
+      print("FAIL 3c: blocking TaskOutput did not complete cleanly: %\n", ok_s); return 1;
+    }
+    // Verify fallback DAG JSONL was appended on disk and loads cleanly!
+    bg_of := cast(string) rt[0].subagents[0].output_file[0..<rt[0].subagents[0].noutput_file];
+    h_bg: [1] FwHist; bg_leaf: [64] u8; bg_ln := [1] int.[0];
+    bg_msgs := fww_subagent_load_jsonl(bg_of, h_bg[..], b1[0].req_body[..], b1[0].compact_buf[..], bg_leaf[..], bg_ln[..]);
+    if bg_msgs != 2 || fww_hist_msg_text(h_bg[..], 0) != "Compute answer" || fww_hist_msg_text(h_bg[..], 1) != "final bg answer" {
+      print("FAIL 3c: fallback DAG JSONL missing or mismatched (msgs=%)\n", bg_msgs); return 1;
+    }
+    print("OK 3/4 blocking TaskOutput (block=false, timeout expiry, blocking wait-to-completion + fallback DAG JSONL)\n");
+
+    // 4. Verify completed fast path on disk-backed evicted agent via TaskOutput
+    rt[0].nsubagents = 0; // clear memory completely
+    n_disk := fww_tool_task_output(rt[..], "{\"task_id\":\"abg-9999000011112222\",\"block\":true,\"timeout\":500}", ob[..], oerr[..]);
+    if oerr[0] || !fww_contains_ci(cast(string) ob[0..<n_disk], "status: completed") || !fww_contains_ci(cast(string) ob[0..<n_disk], "final bg answer") {
+      print("FAIL 4: TaskOutput disk fallback after eviction failed: %\n", cast(string) ob[0..<n_disk]); return 1;
+    }
+    print("OK 4/4 TaskOutput disk-backed lookup after in-memory eviction\n");
+    return 0;
+  }
+
   homebuf: [4096] u8;
   home := cl_getenv("CODER_HOME", homebuf[..]);
   if home.count == 0 { home = cl_getenv("HOME", homebuf[..]); }
@@ -9303,6 +9520,19 @@ tool_main :: () -> int #export_c #effects(all) {
 
     run[0].ncwd = fww_keep(run[0].cwd[..], cd);
     run[0].nhome = fww_keep(run[0].home[..], home);
+    if req[0].session.count > 0 {
+      run[0].nsession_id = fww_keep(run[0].session_id[..], req[0].session);
+    }
+    if req[0].agent_id.count > 0 {
+      run[0].nagent_id = fww_keep(run[0].agent_id[..], req[0].agent_id);
+    }
+    eff_sc_jsonl := ifx req[0].transcript_path.count > 0 then req[0].transcript_path else req[0].resume_transcript_path;
+    if eff_sc_jsonl.count > 0 {
+      if run[0].nsidechain_jsonl != eff_sc_jsonl.count || cast(string) run[0].sidechain_jsonl[0..<run[0].nsidechain_jsonl] != eff_sc_jsonl {
+        run[0].nsidechain_jsonl = fww_keep(run[0].sidechain_jsonl[..], eff_sc_jsonl);
+        run[0].ndag_head_uuid = 0;
+      }
+    }
     run[0].host_agents = req[0].agents;
     run[0].host_claude = req[0].agents && req[0].claude && cfg[0].allow_local_harnesses;
     run[0].is_subagent = req[0].is_subagent;
@@ -9394,7 +9624,15 @@ tool_main :: () -> int #export_c #effects(all) {
     if req[0].is_fork && req[0].fork_context_path.count > 0 && hist[0].nmsgs == 0 {
       _ = fww_load_fork_context(hist[..], req[0].fork_context_path);
     }
+    if req[0].resume_transcript_path.count > 0 && hist[0].nmsgs == 0 {
+      leaf_n := [1] int.[0];
+      _ = fww_subagent_load_jsonl(req[0].resume_transcript_path, hist[..], bufs[0].req_body[..], bufs[0].compact_buf[..], run[0].dag_head_uuid[..], leaf_n[..]);
+      run[0].ndag_head_uuid = leaf_n[0];
+    }
     fww_hist_push_user(hist[..], tk);
+    if hist[0].nmsgs > 0 {
+      fww_run_append_sidechain_msg(run[..], hist[..], hist[0].nmsgs - 1, bufs[0].compact_buf[..]);
+    }
     fww_hist_sanitize(hist[..], bufs[0].compact_buf[..]);
     mc_steer_clear(st[..]); st[0].nd = 0;
 
@@ -10799,4 +11037,123 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert flawed_wt_include_matches(".env.local\n!*.bak\n../escape\n", ".env.local");
   #assert !flawed_wt_include_matches(".env.local\n!*.bak\n../escape\n", "../escape");
   #assert flawed_wt_stale_sweep_can_remove(flawed_wt_is_ephemeral_name("agent-1"), false, flawed_wt_is_older_than_cutoff(100, 100 + FLAWED_WT_STALE_MS, FLAWED_WT_STALE_MS), true, true);
+}
+
+#test "flawedworker: append-only DAG JSONL round-trip, crash-tail tolerance, branching, meta restore, eviction, and TaskOutput args (#14122)" #steps 200000000 {
+  // 1. Build structured multi-turn FwHist (user, assistant[thinking+sig, tool_use+sig], tool_results[tool_result+is_error], assistant[text])
+  h_src: [1] FwHist;
+  fww_hist_push_user(h_src[..], "Audit auth");
+  a0 := [1] int.[0];
+  h_src[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 2};
+  th := FwBlock.{kind = FWW_MB_THINK};
+  th.text_n = fww_slab_put(h_src[..], "checking wire.coax", a0[..]); th.text_at = a0[0];
+  th.sig_n = fww_slab_put(h_src[..], "SIG_THINK_1", a0[..]); th.sig_at = a0[0];
+  tu := FwBlock.{kind = FWW_MB_TOOL_USE};
+  tu.id_n = fww_slab_put(h_src[..], "call_42", a0[..]); tu.id_at = a0[0];
+  tu.name_n = fww_slab_put(h_src[..], "Read", a0[..]); tu.name_at = a0[0];
+  tu.text_n = fww_slab_put(h_src[..], "{\"file_path\":\"wire.coax\"}", a0[..]); tu.text_at = a0[0];
+  tu.sig_n = fww_slab_put(h_src[..], "SIG_TU_42", a0[..]); tu.sig_at = a0[0];
+  h_src[0].msgs[1].blocks[0] = th;
+  h_src[0].msgs[1].blocks[1] = tu;
+  h_src[0].nmsgs = 2;
+  h_src[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+  tr := FwBlock.{kind = FWW_MB_TOOL_RES, is_error = true};
+  tr.id_n = fww_slab_put(h_src[..], "call_42", a0[..]); tr.id_at = a0[0];
+  tr.name_n = fww_slab_put(h_src[..], "Read", a0[..]); tr.name_at = a0[0];
+  tr.text_n = fww_slab_put(h_src[..], "ENOENT", a0[..]); tr.text_at = a0[0];
+  h_src[0].msgs[2].blocks[0] = tr;
+  h_src[0].nmsgs = 3;
+  fww_hist_push_assistant_text(h_src[..], "File missing, checked fallback.");
+
+  // Format all 4 turns + an abandoned branch (u_dead off u1) + a duplicate u2 + a truncated trailing crash line
+  jsonl: [16384] u8;
+  jn := 0;
+  jn += fww_subagent_format_dag_line(h_src[0].msgs[0], h_src[..], "u1", "", "aexp-abc", "sess-1", 1000, jsonl[jn..<jsonl.count]);
+  // Abandoned fork off u1 (must be skipped when reconstructing chain from leaf u4!)
+  jn += fww_subagent_format_text_dag_line("assistant", "ABANDONED BRANCH", "u_dead", "u1", "aexp-abc", "sess-1", 1001, jsonl[jn..<jsonl.count]);
+  jn += fww_subagent_format_dag_line(h_src[0].msgs[1], h_src[..], "u2", "u1", "aexp-abc", "sess-1", 1002, jsonl[jn..<jsonl.count]);
+  // Duplicate u2 (must be deduplicated, keeping original)
+  jn += fww_subagent_format_text_dag_line("assistant", "DUPLICATE", "u2", "u1", "aexp-abc", "sess-1", 1003, jsonl[jn..<jsonl.count]);
+  jn += fww_subagent_format_dag_line(h_src[0].msgs[2], h_src[..], "u3", "u2", "aexp-abc", "sess-1", 1004, jsonl[jn..<jsonl.count]);
+  jn += fww_subagent_format_dag_line(h_src[0].msgs[3], h_src[..], "u4", "u3", "aexp-abc", "sess-1", 1005, jsonl[jn..<jsonl.count]);
+  // Truncated trailing line simulating mid-write crash
+  jn = fww_cat(jsonl[..], jn, "{\"uuid\":\"u5\",\"parentUuid\":\"u4\",\"role\":\"user\",\"blocks\":[");
+
+  raw_s := cast(string) jsonl[0..<jn];
+  #assert fww_contains_ci(raw_s, "\"isSidechain\":true") && fww_contains_ci(raw_s, "\"parentUuid\":null") && fww_contains_ci(raw_s, "\"sessionId\":\"sess-1\"");
+  #assert flawed_scan_jsonl_valid_lines(raw_s) == 6;
+
+  // Hydrate into fresh FwHist -> must recover exact 4-message active chain [u1, u2, u3, u4], leaf == "u4", skipping abandoned branch & crash tail!
+  h_dst: [1] FwHist;
+  scratch: [8192] u8;
+  leaf_b: [64] u8; leaf_n := [1] int.[0];
+  hydrated := fww_subagent_parse_jsonl_to_hist(raw_s, h_dst[..], scratch[..], leaf_b[..], leaf_n[..]);
+  #assert hydrated == 4 && cast(string) leaf_b[0..<leaf_n[0]] == "u4";
+  #assert h_dst[0].msgs[0].role == FWW_MROLE_USER && fww_hist_msg_text(h_dst[..], 0) == "Audit auth";
+  #assert h_dst[0].msgs[1].role == FWW_MROLE_ASSISTANT && h_dst[0].msgs[1].nblocks == 2;
+  #assert h_dst[0].msgs[1].blocks[0].kind == FWW_MB_THINK && fww_slab_str(h_dst[..], h_dst[0].msgs[1].blocks[0].text_at, h_dst[0].msgs[1].blocks[0].text_n) == "checking wire.coax";
+  #assert fww_slab_str(h_dst[..], h_dst[0].msgs[1].blocks[0].sig_at, h_dst[0].msgs[1].blocks[0].sig_n) == "SIG_THINK_1";
+  #assert h_dst[0].msgs[1].blocks[1].kind == FWW_MB_TOOL_USE && fww_slab_str(h_dst[..], h_dst[0].msgs[1].blocks[1].id_at, h_dst[0].msgs[1].blocks[1].id_n) == "call_42";
+  #assert fww_slab_str(h_dst[..], h_dst[0].msgs[1].blocks[1].name_at, h_dst[0].msgs[1].blocks[1].name_n) == "Read";
+  #assert fww_slab_str(h_dst[..], h_dst[0].msgs[1].blocks[1].sig_at, h_dst[0].msgs[1].blocks[1].sig_n) == "SIG_TU_42";
+  #assert h_dst[0].msgs[2].role == FWW_MROLE_TOOL_RESULTS && h_dst[0].msgs[2].blocks[0].kind == FWW_MB_TOOL_RES && h_dst[0].msgs[2].blocks[0].is_error;
+  #assert fww_slab_str(h_dst[..], h_dst[0].msgs[2].blocks[0].text_at, h_dst[0].msgs[2].blocks[0].text_n) == "ENOENT";
+  #assert h_dst[0].msgs[3].role == FWW_MROLE_ASSISTANT && fww_hist_msg_text(h_dst[..], 3) == "File missing, checked fallback.";
+
+  // Lightweight tail scanner also extracts last assistant text & leaf uuid
+  rep_b: [512] u8; rep_n := [1] int.[0];
+  fww_subagent_scan_jsonl_tail(raw_s, rep_b[..], rep_n[..], leaf_b[..], leaf_n[..]);
+  #assert cast(string) rep_b[0..<rep_n[0]] == "File missing, checked fallback." && cast(string) leaf_b[0..<leaf_n[0]] == "u4";
+
+  // Legacy 2-line {"role","content"} JSONL still hydrates cleanly
+  legacy := "{\"role\":\"user\",\"content\":\"old prompt\"}\n{\"role\":\"assistant\",\"content\":\"old answer\"}\n";
+  #assert fww_subagent_parse_jsonl_to_hist(legacy, h_dst[..], scratch[..], leaf_b[..], leaf_n[..]) == 2;
+  #assert fww_hist_msg_text(h_dst[..], 0) == "old prompt" && fww_hist_msg_text(h_dst[..], 1) == "old answer";
+
+  // 2. Metadata JSON format/parse round-trip (all 12 fields!)
+  m_in: [1] FwSubagentRec;
+  m_in[0] = FwSubagentRec.{active = true, read_only = true, start_ms = 1732690800123};
+  m_in[0].nagent_id = fww_keep(m_in[0].agent_id[..], "aexp-deadbeef00112233");
+  m_in[0].nsubagent_type = fww_keep(m_in[0].subagent_type[..], "Explore");
+  m_in[0].ndesc = fww_keep(m_in[0].desc[..], "Scan core");
+  m_in[0].nname = fww_keep(m_in[0].name[..], "auditor");
+  m_in[0].nwt_path = fww_keep(m_in[0].wt_path[..], "/tmp/wt/auditor");
+  m_in[0].nwt_branch = fww_keep(m_in[0].wt_branch[..], "worktree-auditor");
+  m_in[0].nperm_mode = fww_keep(m_in[0].perm_mode[..], "plan");
+  m_in[0].ngit = fww_keep(m_in[0].git[..], "commit");
+  m_in[0].nlevel = fww_keep(m_in[0].level[..], "inkling");
+  mb: [2048] u8;
+  mn := fww_subagent_format_meta_json(m_in[..], "sess-42", mb[..]);
+  #assert mn > 0;
+  m_out: [1] FwSubagentRec;
+  #assert fww_subagent_parse_meta_json(cast(string) mb[0..<mn], "/h/.openagents/subagents/sess-42/agent-aexp-deadbeef00112233.jsonl", m_out[..]);
+  #assert cast(string) m_out[0].agent_id[0..<m_out[0].nagent_id] == "aexp-deadbeef00112233";
+  #assert cast(string) m_out[0].subagent_type[0..<m_out[0].nsubagent_type] == "Explore";
+  #assert cast(string) m_out[0].name[0..<m_out[0].nname] == "auditor";
+  #assert cast(string) m_out[0].wt_path[0..<m_out[0].nwt_path] == "/tmp/wt/auditor";
+  #assert cast(string) m_out[0].wt_branch[0..<m_out[0].nwt_branch] == "worktree-auditor";
+  #assert m_out[0].start_ms == 1732690800123 && m_out[0].read_only && m_out[0].one_shot;
+  #assert cast(string) m_out[0].perm_mode[0..<m_out[0].nperm_mode] == "plan";
+  #assert cast(string) m_out[0].git[0..<m_out[0].ngit] == "commit";
+  #assert cast(string) m_out[0].level[0..<m_out[0].nlevel] == "inkling";
+  #assert cast(string) m_out[0].session_id[0..<m_out[0].nsession_id] == "sess-42";
+
+  // 3. 24-slot eviction picks oldest non-running slot (never evicting running slots when idle slots exist)
+  r_ev: [1] FwRun;
+  r_ev[0].nsubagents = FWW_MAX_SUBAGENT_RECS;
+  for i: 0..<FWW_MAX_SUBAGENT_RECS {
+    r_ev[0].subagents[i] = FwSubagentRec.{active = true, running = (i == 0), start_ms = 5000 + i * 10};
+  }
+  r_ev[0].subagents[0].start_ms = 1; // running and oldest -> MUST NOT be evicted!
+  r_ev[0].subagents[17].start_ms = 100; // oldest non-running -> MUST be evicted!
+  #assert fww_alloc_subagent_slot(r_ev[..]) == 17;
+
+  // 4. TaskOutput argument parsing (default block=true -> 30000ms, block=false -> 0, timeout=0 -> 0, cap 120000ms)
+  tid_b: [64] u8; tid_n := [1] int.[0]; w_ms := [1] int.[0];
+  #assert !fww_parse_task_output_args("{}", tid_b[..], tid_n[..], w_ms[..]);
+  #assert fww_parse_task_output_args("{\"task_id\":\"a1\"}", tid_b[..], tid_n[..], w_ms[..]) && cast(string) tid_b[0..<tid_n[0]] == "a1" && w_ms[0] == FLAWED_TASK_OUTPUT_DEFAULT_TIMEOUT_MS;
+  #assert fww_parse_task_output_args("{\"task_id\":\"a1\",\"block\":false,\"timeout\":5000}", tid_b[..], tid_n[..], w_ms[..]) && w_ms[0] == 0;
+  #assert fww_parse_task_output_args("{\"task_id\":\"a1\",\"block\":true,\"timeout\":0}", tid_b[..], tid_n[..], w_ms[..]) && w_ms[0] == 0;
+  #assert fww_parse_task_output_args("{\"task_id\":\"a1\",\"block\":true,\"timeout\":2500}", tid_b[..], tid_n[..], w_ms[..]) && w_ms[0] == 2500;
+  #assert fww_parse_task_output_args("{\"task_id\":\"a1\",\"block\":true,\"timeout\":999999}", tid_b[..], tid_n[..], w_ms[..]) && w_ms[0] == FLAWED_TASK_OUTPUT_MAX_TIMEOUT_MS;
 }
