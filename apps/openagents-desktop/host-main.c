@@ -2807,9 +2807,7 @@ static void handle_action(DesktopApp *a, int act) {
     case 160: local_start_download(a); break;
     case 161: local_cancel_download(a); break;
     case 162:
-#ifdef OA_FULL
       agy_connect_start(a);
-#endif
       break;
     case 163: oa_core_worktrees_set(cs("newChatWorktree"), cd_worktree(a->page) != 0 ? 1 : 0); break;
     case 216: refresh_dashboard(a); break;   // CP_ASK_DASHBOARD
@@ -3180,12 +3178,7 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
     int tid = cd_term_new_tab(a->page, "smoke", tmp);
     int pty_pid = -1;
     int pty_h = cd_pty_spawn(NULL, tmp, 80, 24, &pty_pid);
-#ifdef OA_MINIMAL
-    // The minimal build leaves the terminal pane out (page/v1-stubs.coax): only the PTY is checked.
-    if (tid < 0 || pty_h < 0) {
-#else
     if (tid <= 0 || pty_h < 0) {
-#endif
       fprintf(stderr, "smoke: cd_pty_spawn failed (tid=%d, h=%d)\n", tid, pty_h);
       return 1;
     }
@@ -4074,9 +4067,7 @@ static int oa_main(int argc, char **argv) {
     }
   }
   cd_agy(app.page, ((dc_flags & (1LL << 3)) && app.agy_worker_bin[0]) ? 1 : 0);
-#ifdef OA_FULL
-  agy_connect_sync(&app);   // developer full profile only; release uses cloud-first OpenAgents onboarding (#14087)
-#endif
+  agy_connect_sync(&app);
   set_folder(&app, app.folder);
   cd_worktree_set(app.page, oa_core_worktrees_get(cs("newChatWorktree")) ? 1 : 0);
   refresh_settings_info(&app);

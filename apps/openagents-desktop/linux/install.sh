@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around build.sh and XDG desktop file installation; holds no logic)
 # Builds and installs OpenAgents Desktop for Linux into ~/.openagents/ and ~/.local/share/applications/.
-#   apps/openagents-desktop/linux/install.sh [--full|--minimal]
-# --minimal (or OA_RELEASE_MINIMAL=1): build and install only the v1.0 minimal artifact set
-#   (keeping claudeworker for Claude sub-agents and agyworker for the onboarding's Connect Google Antigravity). Default is --full.
+#   apps/openagents-desktop/linux/install.sh
+# OpenAgents Desktop builds a single unified profile (#14116); --minimal and --full are accepted as no-op aliases.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -13,24 +12,16 @@ app_dir="${OPENAGENTS_APP_DIR:-$HOME/.openagents/desktop}"
 xdg_apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 xdg_icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
 
-minimal=0
-if [[ "${OA_RELEASE_MINIMAL:-0}" == "1" ]]; then minimal=1; fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --minimal) minimal=1 ;;
-    --full) minimal=0 ;;
-    *) echo "install.sh: unknown argument $1 (use --full or --minimal)" >&2; exit 2 ;;
+    --minimal|--full) ;;  # unified build profile (#14116); kept as compatibility aliases
+    *) echo "install.sh: unknown argument $1" >&2; exit 2 ;;
   esac
   shift
 done
 
-if [[ "$minimal" == 1 ]]; then
-  "$here/build.sh" --minimal
-  src_dir="$here/build/minimal-stage"
-else
-  "$here/build.sh" --full
-  src_dir="$here/build"
-fi
+"$here/build.sh"
+src_dir="$here/build"
 
 mkdir -p "$bin_dir" "$app_dir" "$xdg_apps" "$xdg_icons"
 
@@ -41,13 +32,8 @@ put() { install -m 0755 "$1" "$2.new" && mv -f "$2.new" "$2"; }
 put_data() { install -m 0644 "$1" "$2.new" && mv -f "$2.new" "$2"; }
 put "$src_dir/OpenAgents" "$app_dir/OpenAgents"
 # the workers and the run daemon build.sh puts beside OpenAgents (host-main.c looks for them there)
-if [[ "$minimal" == 1 ]]; then
-  rm -f "$app_dir/inky" "$app_dir/mcworker" "$app_dir/openagents-daemon"
-  helpers=(oa-worker claudeworker agyworker coder-host gitguard psionic-inkling-serve)
-else
-  rm -f "$app_dir/inky" "$app_dir/mcworker"
-  helpers=(oa-worker claudeworker agyworker gitguard coder-host openagents-daemon psionic-inkling-serve)
-fi
+rm -f "$app_dir/inky" "$app_dir/mcworker"
+helpers=(oa-worker claudeworker agyworker gitguard coder-host openagents-daemon psionic-inkling-serve)
 for name in "${helpers[@]}"; do
   if [[ -x "$src_dir/$name" ]]; then put "$src_dir/$name" "$app_dir/$name"; fi
 done
@@ -67,9 +53,5 @@ if [[ -f "$repo/components/icons/oa-mark.svg" ]]; then
   cp "$repo/components/icons/oa-mark.svg" "$xdg_icons/openagents-desktop.svg"
 fi
 
-if [[ "$minimal" == 1 ]]; then
-  echo "installed $bin_dir/openagents-desktop (minimal)"
-else
-  echo "installed $bin_dir/openagents-desktop"
-fi
+echo "installed $bin_dir/openagents-desktop"
 echo "desktop entry: $xdg_apps/openagents-desktop.desktop"

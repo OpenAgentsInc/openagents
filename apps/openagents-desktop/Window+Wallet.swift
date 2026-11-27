@@ -309,9 +309,7 @@ extension CoderWindow {
     }
 
     func openWalletPane() {
-        #if OA_FULL
         closeGym()
-        #endif
         syncWalletSettings()
         let w = DesktopWalletController.shared
         if w.hasSeed && !w.ready && !w.busy {

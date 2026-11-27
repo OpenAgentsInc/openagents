@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around git, build.sh, PlistBuddy, codesign and launchctl; holds no logic)
 # Keeps /Applications/OpenAgents.app at the newest origin/main.
-#   apps/openagents-desktop/install.sh [--minimal|--full] [--force] [--local]
-#                                                                  build origin/main (or current checkout with --local) and install it now
-#                                                                  (defaults to --minimal); --force bypasses skip/up-to-date caches and active-reply deferral.
+#   apps/openagents-desktop/install.sh [--force] [--local]
+#                                                                  build origin/main (or current checkout with --local) and install it now;
+#                                                                  --force bypasses skip/up-to-date caches and active-reply deferral.
 #                                                                  An OpenAgents (or legacy Coder) open from /Applications is quit first and opened again after.
 #                                                                  Exits 4 when deferred (active reply, inside app, or lock held).
-#   apps/openagents-desktop/install.sh [--minimal|--full] --agent  also check every 15 minutes (a LaunchAgent), and run once now
+#   apps/openagents-desktop/install.sh --agent                     also check every 15 minutes (a LaunchAgent), and run once now
 #   apps/openagents-desktop/install.sh --remove-agent              stop the checks
-#   apps/openagents-desktop/install.sh [--minimal|--full] --check  what the LaunchAgent runs: build when main moved, install
+#   apps/openagents-desktop/install.sh --check                     what the LaunchAgent runs: build when main moved, install
 #                                                                  only while OpenAgents is closed (the build waits beside it until then)
-#   apps/openagents-desktop/install.sh [--minimal|--full] --status what is installed, what waits, what main is at
-# --minimal (default; OA_RELEASE_MINIMAL=0 or --full selects the full developer build) builds the v1.0
-# minimal release profile, watches only v1.0 Coax roots, and verifies the bundle with
-# apps/openagents-desktop/v1-bundle-check.coax before promoting it to /Applications/OpenAgents.app.
+#   apps/openagents-desktop/install.sh --status                    what is installed, what waits, what main is at
+# OpenAgents Desktop builds a single unified profile (#14116); --minimal and --full are accepted as no-op aliases.
 # It builds in a checkout of its own under ~/.cache/openagents/coder-release, never in yours.
 # Each build records what it read: the Coax sources of the page, the shader and the workers
 # (coax deps), and the folders of the compiler, the C, Swift and Objective-C hosts and the
@@ -37,15 +35,12 @@ label="com.openagents.desktop-update"
 legacy_label="com.openagents.coder-update"
 agent_plist="$HOME/Library/LaunchAgents/$label.plist"
 legacy_agent_plist="$HOME/Library/LaunchAgents/$legacy_label.plist"
-minimal=1
-if [[ "${OA_RELEASE_MINIMAL:-1}" == "0" ]]; then minimal=0; fi
 mode="now"
 force_build=0
 use_local=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --minimal) minimal=1 ;;
-    --full) minimal=0 ;;
+    --minimal|--full) ;;  # unified build profile (#14116); kept as compatibility aliases
     --force) export OA_INSTALL_FORCE=1; force_build=1 ;;
     --local) use_local=1 ;;
     now|--agent|--remove-agent|--check|--status) mode="$1" ;;
@@ -53,10 +48,9 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
-want_profile="full"
-[[ "$minimal" == 1 ]] && want_profile="minimal"
+want_profile="unified"
 # Bump whenever fixed/roots tracking changes so stale $state/inputs files never skip a needed rebuild.
-inputs_schema="6"
+inputs_schema="7"
 # What every build reads besides the Coax sources coax deps lists: the compiler's inputs (as
 # coax/provenance.sh lists them), what coax/web/tool.sh links into the workers, and the app's
 # hosts and assets.
@@ -65,11 +59,7 @@ fixed=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto ':(glob)coax/*' 
        coax/lib/nostr/nip06.coax pay metaverse/stage-resources/bip39-english.txt
        openagents/core openagents/knowledge
        apps/shared/auth apps/shared/host apps/shared/native components/chat components/fonts components/icons components/NOTICE apps/openagents-desktop/native psionic/platform psionic/lib/inkling)
-if [[ "$minimal" == 1 ]]; then
-  roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/gitguard.coax coder/tui/claudeworker.coax)
-else
-  roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/agyworker.coax coder/tui/gitguard.coax coder/tui/claudeworker.coax coder/tui/oasim.coax coder/tui/lean-run.coax coder/tui/tbench-run.coax coder/tui/gbench-run.coax metaverse/rh-flythrough.coax)
-fi
+roots=(components/backend/gpu-shader.coax components/backend/composition-shader.coax coder/tui/host.coax coder/tui/oa-worker.coax coder/tui/agyworker.coax coder/tui/gitguard.coax coder/tui/claudeworker.coax coder/tui/oasim.coax coder/tui/lean-run.coax coder/tui/tbench-run.coax coder/tui/gbench-run.coax metaverse/rh-flythrough.coax)
 mkdir -p "$state"
 
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') coder-release: $*"; }
@@ -93,7 +83,7 @@ profile_of() {
   [[ -f "$1/Contents/Info.plist" ]] || return 0
   local p
   p="$(/usr/libexec/PlistBuddy -c "Print :OAProfile" "$1/Contents/Info.plist" 2>/dev/null || true)"
-  [[ -n "$p" ]] && echo "$p" || echo "full"
+  [[ -n "$p" ]] && echo "$p" || echo "unified"
 }
 # The app's folder in a checkout: apps/openagents-desktop once the Phase 2 move lands (#13780), apps/coder-desktop
 # before it. Checked per build, so this script keeps working across the move.
@@ -331,17 +321,12 @@ fi
 
 write_agent_plist() {
   mkdir -p "$HOME/Library/LaunchAgents"
-  local extra_arg="<string>--full</string>" extra_env=$'\n    <key>OA_RELEASE_MINIMAL</key><string>0</string>'
-  if [[ "$minimal" == 1 ]]; then
-    extra_arg="<string>--minimal</string>"
-    extra_env=$'\n    <key>OA_RELEASE_MINIMAL</key><string>1</string>'
-  fi
   cat > "$agent_plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$label</string>
-  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$state/install.sh</string><string>--check</string>${extra_arg}</array>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$state/install.sh</string><string>--check</string></array>
   <key>StartInterval</key><integer>900</integer>
   <key>RunAtLoad</key><true/>
   <key>ProcessType</key><string>Background</string>
@@ -349,24 +334,12 @@ write_agent_plist() {
   <key>Nice</key><integer>10</integer>
   <key>EnvironmentVariables</key><dict>
     <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.nix-profile/bin</string>
-    <key>HOME</key><string>$HOME</string>${extra_env}
+    <key>HOME</key><string>$HOME</string>
   </dict>
   <key>StandardOutPath</key><string>$state/log</string>
   <key>StandardErrorPath</key><string>$state/log</string>
 </dict></plist>
 PLIST
-}
-
-verify_minimal_bundle() {
-  local bundle="$1"
-  local check_repo="${build_src:-$src}"
-  [[ -f "$check_repo/apps/openagents-desktop/v1-bundle-check.coax" ]] || check_repo="$repo_here"
-  [[ -f "$check_repo/apps/openagents-desktop/v1-bundle-check.coax" ]] || check_repo="$clone"
-  local v1_stage="${OA_V1_STAGE:-1}"
-  if ! (cd "$check_repo" && coax/web/tool.sh apps/openagents-desktop/v1-bundle-check.coax --platform macos --stage "$v1_stage" "$bundle") >> "$state/build.log" 2>&1; then
-    say "v1-bundle-check failed (stage $v1_stage): $state/build.log"
-    return 1
-  fi
 }
 
 retire_legacy_agent() {
@@ -495,45 +468,22 @@ if [[ "$need_build" == 1 ]]; then
   if [[ -f "$build_src/$appdir/desktop-core.coax" ]]; then
     roots+=("$appdir/desktop-core.coax")
   fi
-  if [[ "$minimal" == 1 && -f "$build_src/$appdir/app-v1.coax" ]]; then
-    roots+=("$appdir/app-v1.coax")
-  else
-    roots+=("$appdir/app.coax")
-  fi
+  roots+=("$appdir/app.coax")
   (cd "$build_src" && coax/build.sh) > "$state/build.log" 2>&1 || { say "coax build failed: $state/build.log"; exit 1; }
   # Always remove any prior staged .app bundle before building so stale workers/resources from older
   # commits can never leak across builds even if building a commit with an older build.sh.
   rm -rf "$stage/OpenAgents.app"
   build_env=(CODER_BUILD="$stage")
-  build_args=()
-  if [[ "$minimal" == 1 ]]; then
-    build_env+=(OA_RELEASE_MINIMAL=1)
-    if grep -q -- '--minimal' "$build_src/$appdir/build.sh" 2>/dev/null; then
-      build_args+=(--minimal)
-    fi
-  else
-    build_env+=(OA_RELEASE_MINIMAL=0)
-    if grep -q -- '--full' "$build_src/$appdir/build.sh" 2>/dev/null; then
-      build_args+=(--full)
-    fi
-  fi
-  env "${build_env[@]}" "$build_src/$appdir/build.sh" ${build_args[@]+"${build_args[@]}"} >> "$state/build.log" 2>&1 || { say "OpenAgents build failed: $state/build.log"; exit 1; }
+  env "${build_env[@]}" "$build_src/$appdir/build.sh" >> "$state/build.log" 2>&1 || { say "OpenAgents build failed: $state/build.log"; exit 1; }
   plist="$stage/OpenAgents.app/Contents/Info.plist"
   rev_count="$((28830 + $(git -C "$build_src" rev-list --count HEAD)))"
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $rev_count" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OACommit" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :OACommit string $target" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OAProfile" "$plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :OAProfile string $want_profile" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OABuildDate" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :OABuildDate string $(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$plist"
   codesign --force --sign - "$stage/OpenAgents.app" >> "$state/build.log" 2>&1
-  if [[ "$minimal" == 1 ]]; then
-    if ! verify_minimal_bundle "$stage/OpenAgents.app"; then
-      rm -rf "$stage/OpenAgents.app"
-      exit 1
-    fi
-  fi
   # What this build read, relative to the checkout, for the next check.
   if [[ "$use_local" == 0 ]]; then
     { printf '%s\n' "${fixed[@]}"
@@ -572,10 +522,6 @@ if [[ -n "$pids" ]]; then
     say "OpenAgents is still running; quit it before installing so its bundle is not removed out from under it"
     exit 1
   fi
-fi
-
-if [[ "$minimal" == 1 ]]; then
-  verify_minimal_bundle "$stage/OpenAgents.app" || exit 1
 fi
 
 # Swap it in whole: always clean any leftover staging/backup paths first so ditto never merges into stale files.

@@ -56,6 +56,7 @@ CpSimPane :: struct {
   connected: bool;
   devices: [CP_SIM_DEVICES] CpSimDevice; ndevices: int;
   pick: int;                  // the device shown, -1 none
+  want_udid: [40] u8; want_udid_n: int;   // device asked for by attach/ask before list arrives
   state: int;                 // CP_SIM_*
   why: [512] u8; why_n: int;  // the last failure, as the helper said it
   display_live: bool; input: bool; xcode: [24] u8; xcode_n: int;   // the helper's capabilities
@@ -199,14 +200,16 @@ cp_sim_follow :: (s: [] CoderPage) {
 }
 cp_sim_list :: (s: [] CoderPage, m: [] SwMsg) {
   p := cp_sim(s);
-  keep := cp_sim_udid(s); kb: [40] u8; keep = cast(string) kb[0..<cp_out(kb[..], keep)];
+  keep := cp_sim_udid(s);
+  if p[0].want_udid_n > 0 { keep = cp_sim_s(p[0].want_udid[..], p[0].want_udid_n); }
+  kb: [40] u8; keep = cast(string) kb[0..<cp_out(kb[..], keep)];
   p[0].ndevices = 0; p[0].pick = -1;
   for i: 0..<m[0].ndevs {
     if p[0].ndevices == CP_SIM_DEVICES { break; }
     d := p[0].devices[p[0].ndevices..<p[0].ndevices + 1];
     d[0].udid_n = cp_out(d[0].udid[..], sw_dev_udid(m, i)); d[0].name_n = cp_out(d[0].name[..], sw_dev_name(m, i));
     d[0].runtime_n = cp_out(d[0].runtime[..], sw_dev_runtime(m, i)); d[0].state = cp_sim_state_of(sw_dev_state(m, i));
-    if sw_dev_udid(m, i) == keep { p[0].pick = p[0].ndevices; }
+    if sw_dev_udid(m, i) == keep { p[0].pick = p[0].ndevices; p[0].want_udid_n = 0; }
     p[0].ndevices += 1;
   }
   // else the first booted one
@@ -274,6 +277,17 @@ cp_sim_event :: (s: [] CoderPage, m: [] SwMsg) {
     }
     cp_sim_follow(s); cp_sim_queue_list(s); return;
   }
+  if ev == "attach" {
+    dev := sw_str(m, SW_F_DEVICE);
+    found := false;
+    if dev.count > 0 {
+      for i: 0..<p[0].ndevices { if cp_sim_s(p[0].devices[i].udid[..], p[0].devices[i].udid_n) == dev { p[0].pick = i; found = true; } }
+      p[0].want_udid_n = ifx found then 0 else cp_out(p[0].want_udid[..], dev);
+    }
+    p[0].closed_by_person = false;
+    cp_sim_show(s); cp_sim_follow(s);
+    return;
+  }
   if ev == "ask" {
     if p[0].nasks == CP_SIM_ASKS { return; }   // the helper refuses it when its two minutes pass
     a := p[0].asks[p[0].nasks..<p[0].nasks + 1];
@@ -282,7 +296,10 @@ cp_sim_event :: (s: [] CoderPage, m: [] SwMsg) {
     a[0].op_n = cp_out(a[0].op[..], sw_str(m, SW_F_OP));
     p[0].nasks += 1;
     // the card is seen: the pane opens and comes forward, on the device asked about
-    for i: 0..<p[0].ndevices { if cp_sim_s(p[0].devices[i].udid[..], p[0].devices[i].udid_n) == sw_str(m, SW_F_DEVICE) { p[0].pick = i; } }
+    dev := sw_str(m, SW_F_DEVICE);
+    found := false;
+    for i: 0..<p[0].ndevices { if cp_sim_s(p[0].devices[i].udid[..], p[0].devices[i].udid_n) == dev { p[0].pick = i; found = true; } }
+    if dev.count > 0 && !found { p[0].want_udid_n = cp_out(p[0].want_udid[..], dev); }
     cp_sim_show(s); cp_sim_follow(s);
     return;
   }

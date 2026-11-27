@@ -76,14 +76,10 @@ final class CoderWorker {
             "OA_DESKTOP_VERSION": BundleMetadata.currentUpdateIdentifier,
         ]
         for (k, v) in extraEnv { env[k] = v }
-        #if OA_FULL
         // oasim (the iOS Simulator's command, #13811) is in Contents/Resources: on the PATH after the person's own
         if let res = Bundle.main.resourcePath, FileManager.default.isExecutableFile(atPath: res + "/oasim"), let p = env["PATH"], !p.split(separator: ":").contains(Substring(res)) { env["PATH"] = p + ":" + res }
-        #endif
         for (k, v) in ChatWorktree.caches(for: folder) where env[k] == nil && ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
-        #if OA_FULL
         if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
-        #endif
         return (env, ["CODER_CLAUDE_KEY"])
     }
 
@@ -176,11 +172,7 @@ final class CoderWorker {
     private func startRun(_ path: String, _ daemon: CoderDaemonClient) -> Bool {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let hadPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        #if OA_FULL
         let claudeKey = CoderKey.current ?? ""
-        #else
-        let claudeKey = ""
-        #endif
         let extra = extraEnvLines()
         var idBuf = [UInt8](repeating: 0, count: 128)
         var failBuf = [UInt8](repeating: 0, count: 512)
@@ -236,11 +228,7 @@ final class CoderWorker {
     private func startRunAsync(_ path: String, _ daemon: CoderDaemonClient, completion: @escaping (Bool) -> Void) {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let hadPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        #if OA_FULL
         let claudeKey = CoderKey.current ?? ""
-        #else
-        let claudeKey = ""
-        #endif
         let extra = extraEnvLines()
         let prog = program
         let fld = folder
@@ -521,7 +509,6 @@ final class CoderWorker {
     }
 }
 
-#if OA_FULL
 enum CoderKey {
     static var file: URL {
         let p = DesktopCore.withCoaxString("claude-key") { cn in
@@ -624,7 +611,6 @@ enum CoderGemini {
 }
 
 func coderApplyOpenRouter(_ page: UnsafeMutableRawPointer?) { cd_openrouter(page, CoderOpenRouter.main, CoderOpenRouter.sub) }
-#endif
 
 /// What the bundled workers report about this Mac, asked of the workers themselves so the app and a
 /// run never disagree: the sign-in Gemini models run on (`mcworker --auth`: Vertex AI from a service
@@ -663,14 +649,10 @@ enum CoderProbes {
     }
     static var geminiReady: Bool { geminiAuth.kind == "vertex" || geminiAuth.kind == "key" }
     private static func readAuth() -> (kind: String, text: String) {
-        #if OA_MINIMAL
-        return ("none", "")
-        #else
         let line = ask("mcworker", ["--auth"], timeout: 10)
         let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
         guard let kind = parts.first, kind == "vertex" || kind == "key" else { return ("none", "") }
         return (kind, parts.count > 1 ? parts[1] : "")
-        #endif
     }
     static func refreshGeminiAuth(_ done: @escaping () -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
@@ -928,7 +910,6 @@ enum CoderAntigravity {
     }
 }
 
-#if OA_FULL
 /// What a chat is told about the tools the app ships (ple-run; docs/desktop/steer-ple-from-chat.md):
 /// the words are Coax's (dc_tools_note); this finds the program. Gym is experimental, and so is this.
 func coderToolsNote() -> String {
@@ -948,7 +929,3 @@ func coderToolsNote() -> String {
 func coderSkillsNote(repoFolder: URL? = nil) -> String {
     return SkillsCatalog.enabledSkillsNote(repoFolder: repoFolder)
 }
-#else
-func coderToolsNote() -> String { "" }
-func coderSkillsNote(repoFolder: URL? = nil) -> String { "" }
-#endif

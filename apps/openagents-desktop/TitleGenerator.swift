@@ -363,7 +363,7 @@ final class ChatTitleGenerator: @unchecked Sendable {
 
     /// Optional hook wired by the app host to inspect whether Local Psionic Metal is already ready.
     var localServerProvider: (() -> (baseURL: String, model: String)?)?
-    /// Optional hook wired by the app host (`#if OA_FULL`) to sign OpenAgents hosted gateway requests (NIP-98).
+    /// Optional hook wired by the app host to sign OpenAgents hosted gateway requests (NIP-98).
     var hostedGatewayProvider: ((_ url: String, _ body: String) -> String?)?
 
     private let workQueue = DispatchQueue(label: "openagents.coder.title-generator", qos: .utility, attributes: .concurrent)

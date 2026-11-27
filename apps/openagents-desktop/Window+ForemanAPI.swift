@@ -27,7 +27,7 @@ extension CoderWindow {
             return
         }
         if request.path.hasPrefix("/v1/wallet/") {
-            #if OA_FULL && OA_WALLET
+            #if OA_WALLET
             guard FeatureFlags.isOn(.wallet) else {
                 done(ForemanResponse(status: 403, body: ["error": "wallet feature flag is disabled"]))
                 return
@@ -38,7 +38,6 @@ extension CoderWindow {
             #endif
             return
         }
-        #if OA_FULL
         if request.path == "/v1/gym" && (request.method == "GET" || request.method == "POST") {
             guard FeatureFlags.isOn(.gym) else {
                 done(ForemanResponse(status: 403, body: ["error": "gym feature flag is disabled"]))
@@ -96,7 +95,6 @@ extension CoderWindow {
             }
             return
         }
-        #endif
         if let response = handleForemanManagement(request) {
             done(response)
             return
@@ -456,29 +454,19 @@ extension CoderWindow {
             if let denied = ForemanAPI.tierChange(from: previous, to: tier, raiseAllowed: raiseAllowed) {
                 return audited("set_tier", nil, ["from": previous.wireName, "to": tier.wireName], denied)
             }
-            #if OA_FULL
             setForemanTier(tier)
-            #else
-            foremanTier = tier
-            tier.save()
-            #endif
             return audited("set_tier", nil, ["from": previous.wireName, "to": tier.wireName], ForemanResponse(status: 200, body: [
                 "ok": true, "tier": tier.wireName, "tier_level": tier.rawValue, "tier_label": tier.label, "previous": previous.wireName
             ]))
         case ("GET", "/v1/foreman"):
             return ForemanResponse(status: 200, body: foremanState())
         case ("POST", "/v1/foreman/open"):
-            #if OA_FULL
             openForeman()
             guard isForemanShown else {
                 return ForemanResponse(status: 409, body: ["error": "Coder could not switch to the Foreman chat"])
             }
             return ForemanResponse(status: 200, body: foremanState())
-            #else
-            return ForemanResponse(status: 404, body: ["error": "Foreman chat UI is not enabled in --minimal; use /v1/sessions*"])
-            #endif
         case ("POST", "/v1/foreman/prompt"):
-            #if OA_FULL
             let prompt = ((payload["prompt"] as? String) ?? (payload["message"] as? String) ?? "")
             guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return ForemanResponse(status: 400, body: ["error": "prompt is required"])
@@ -500,9 +488,6 @@ extension CoderWindow {
             return audited("prompt", Foreman.chatID, ["steer": steer, "bytes": prompt.utf8.count], ForemanResponse(status: 200, body: [
                 "ok": true, "chat_id": Foreman.chatID, "status": "running", "event_cursor": foremanEvents.latestID
             ]))
-            #else
-            return ForemanResponse(status: 404, body: ["error": "Foreman chat UI is not enabled in --minimal; use /v1/sessions*"])
-            #endif
         case ("POST", "/v1/foreman/stop"):
             var stopped = false
             if chat == Foreman.chatID && cd_running(page) != 0 {
@@ -513,20 +498,14 @@ extension CoderWindow {
             if stopped {
                 _ = foremanEvents.emit(type: "chat.stopped", chatID: Foreman.chatID, data: ["title": Foreman.title])
                 cd_chats(page, chatLines)
-                #if OA_FULL
                 syncForemanUI()
-                #endif
                 wake()
             }
             return audited("stop", Foreman.chatID, [:], ForemanResponse(status: 200, body: ["ok": true, "chat_id": Foreman.chatID, "status": stopped ? "stopped" : "already_idle"]))
         case ("POST", "/v1/foreman/reset"):
-            #if OA_FULL
             resetForeman()
             _ = foremanEvents.emit(type: "foreman.reset", chatID: Foreman.chatID, data: ["title": Foreman.title])
             return audited("reset", Foreman.chatID, [:], ForemanResponse(status: 200, body: foremanState()))
-            #else
-            return ForemanResponse(status: 404, body: ["error": "Foreman chat UI is not enabled in --minimal; use /v1/sessions*"])
-            #endif
         default:
             return nil
         }
@@ -654,9 +633,7 @@ extension CoderWindow {
             }
         }
         cd_chats(page, chatLines)
-        #if OA_FULL
         syncForemanUI()
-        #endif
         wake()
         return ForemanResponse(status: 200, body: ["ok": true, "stopped": stopped])
     }

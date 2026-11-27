@@ -160,7 +160,6 @@ extension CoderWindow {
         }
         cd_flags_set(back, FeatureFlags.mask)
         AgentSettings.apply(to: back)
-        #if OA_FULL
         cd_skills(back, FeatureFlags.isOn(.mcp) ? coderSkillsNote() : "")
         if ComposerModelVisibility.showOtherModels {
             if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
@@ -168,10 +167,6 @@ extension CoderWindow {
         } else {
             cd_claude(back, 0)
         }
-        #else
-        cd_skills(back, "")
-        cd_claude(back, 0)
-        #endif
         syncLocalState(on: back)
         if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
         if let budgetUSD = payload["budget_usd"] as? Double, budgetUSD > 0 {
@@ -219,9 +214,7 @@ extension CoderWindow {
         _ = foremanEvents.emit(type: "chat.started", chatID: id, data: ["title": store.title(id) ?? title])
         if (payload["open"] as? Bool) == true { open(id) }
         cd_chats(page, chatLines)
-        #if OA_FULL
         syncForemanUI()
-        #endif
         wake()
         return ForemanResponse(status: 200, body: [
             "ok": true,
@@ -281,7 +274,6 @@ extension CoderWindow {
         }
         cd_flags_set(back, FeatureFlags.mask)
         AgentSettings.apply(to: back)
-        #if OA_FULL
         cd_skills(back, FeatureFlags.isOn(.mcp) ? coderSkillsNote() : "")
         if ComposerModelVisibility.showOtherModels {
             if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
@@ -289,10 +281,6 @@ extension CoderWindow {
         } else {
             cd_claude(back, 0)
         }
-        #else
-        cd_skills(back, "")
-        cd_claude(back, 0)
-        #endif
         syncLocalState(on: back)
         if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
         guard cd_load(back, saved) != 0 else {
@@ -328,9 +316,7 @@ extension CoderWindow {
         keep(moved)
         _ = foremanEvents.emit(type: "chat.started", chatID: id, data: ["title": store.title(id) ?? "Chat"])
         cd_chats(page, chatLines)
-        #if OA_FULL
         syncForemanUI()
-        #endif
         wake()
         return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "session_id": "local:chat:\(id)", "status": "running"])
     }
@@ -358,9 +344,7 @@ extension CoderWindow {
             }
             _ = foremanEvents.emit(type: "chat.stopped", chatID: id, data: ["title": store.title(id) ?? "Chat"])
             cd_chats(page, chatLines)
-            #if OA_FULL
             syncForemanUI()
-            #endif
             wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "action": "stop", "status": "stopped"])
         case "pin":

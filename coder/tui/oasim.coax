@@ -79,7 +79,7 @@ os_connect :: () -> int {
   pb: [OS_PATH] u8; prog := os_env("OA_SIMHOST", ifx k > 0 && k <= me.count then cast(string) me[0..<k] else "", pb[..]);
   if prog.count == 0 { return -1; }
   p := proc_new();
-  ok := p >= 0 && proc_arg(p, prog) && proc_arg(p, "serve") && proc_detach(p) && proc_start(p) == 0;
+  ok := p >= 0 && proc_arg(p, prog) && proc_arg(p, "serve") && proc_detach(p) && proc_quiet(p) && proc_start(p) == 0;
   if p >= 0 { _ = proc_release(p); }
   if !ok { return -1; }
   deadline := proc_now_ms() + 5000;

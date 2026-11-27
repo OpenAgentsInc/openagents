@@ -5,8 +5,6 @@ import Darwin
 import Foundation
 import Metal
 
-#if OA_FULL
-
 struct GtaWorkbenchState {
     var paused: Bool = false
     var denoiserOn: Bool = true
@@ -1880,5 +1878,3 @@ final class GtaWorkbenchSession {
         return String(format: " GTA VI Key Lento · %.1f FPS (GPU %.1fms) · %@ · %@ · %@%@ ", smoothFps, state.gpuMs, modeStr, camStr, animName, posStr)
     }
 }
-
-#endif

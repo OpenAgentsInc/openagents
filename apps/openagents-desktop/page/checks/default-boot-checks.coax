@@ -1,75 +1,11 @@
-// Slim v1.0 desktop page root (docs/desktop/openagents-v1-spec.md §4.4, §5.6).
-// Loads only the core v1.0 page modules + page/v1-stubs.coax (omitting the 19
-// flagged-off panel modules and their 8 library dependencies). Full developer
-// builds keep page.coax and all 846+ checks untouched.
-//   coax/bin/coax test apps/openagents-desktop/page-v1.coax --library
+// Checks for the default out-of-the-box boot state of the unified desktop page (#14116):
+// cloud-first onboarding with Account auth default ON, optional $0 local Inkling, core
+// Settings pages, File Viewer, Full Auto, Usage, Voice, Environments/Introspection, and
+// Bitcoin Spark + Nostr Wallet pane with default feature flags (migrated from retired page-v1.coax).
+#load "../parts.coax";
+#load "checks-kit.coax";
 
-#load "../../components/app/activity.coax";
-#load "../../components/app/nav.coax";
-#load "../../components/app/followups.coax";
-#load "../../components/app/overlay.coax";
-#load "../../components/app/palette.coax";
-#load "../../components/app/toast.coax";
-#load "../../components/app/cargo.coax";
-#load "../../components/app/mention.coax";
-#load "../shared/app/view/shell.coax";
-#load "../../components/kit/foreman_hud.coax";
-#load "../../components/core/edit.coax";
-#load "../../components/chat/editor.coax";
-#load "../../components/skin/arcade.coax";
-#load "../../components/backend/gpu.coax";
-#load "../../coax/lib/agent/engine/mcworker-wire.coax";
-#load "../../coax/lib/gateway/card.coax";
-#load "../../coax/lib/agent/desktop/checkpoint.coax";
-#load "../../coax/lib/agent/desktop/flags.coax";
-#load "../../coax/lib/agent/desktop/introspect.coax";
-#load "settings.coax";
-
-#load "page/state.coax";
-#load "page/v1-stubs.coax";
-#load "page/selection.coax";
-#load "page/editor.coax";
-#load "page/compose.coax";
-#load "page/skin.coax";
-#load "page/agent_settings.coax";
-#load "page/models.coax";
-#load "page/providers_settings.coax";
-#load "page/goal.coax";
-#load "page/transcript.coax";
-#load "page/chats.coax";
-#load "page/dashboard.coax";
-#load "page/walletpane.coax";
-#load "page/sidebar_groups.coax";
-#load "page/persist.coax";
-#load "page/input.coax";
-#load "page/layout/layout.coax";
-#load "page/layout/titlebar.coax";
-#load "page/layout/sidebar.coax";
-#load "page/layout/pane.coax";
-#load "page/gitdiff.coax";
-#load "page/layout/review.coax";
-#load "page/filepane.coax";
-#load "page/filetree.coax";
-#load "page/layout/conversation.coax";
-#load "page/host-api.coax";
-#load "page/followups.coax";
-#load "page/todos.coax";
-#load "page/permit.coax";
-#load "page/overlay.coax";
-#load "page/palette.coax";
-#load "page/attach.coax";
-#load "page/shows.coax";
-#load "page/mention.coax";
-#load "page/gitactions.coax";
-#load "page/checkpoint.coax";
-#load "page/notify.coax";
-#load "page/find.coax";
-#load "page/usage.coax";
-#load "page/voice.coax";
-#load "page/environments.coax";
-#load "page/introspect.coax";
-
-#test "page-v1: minimal release boots cloud-first with Account auth default ON, optional $0 local Inkling, and valid frames" {
+#test "unified page: default boot is cloud-first with Account auth ON, optional $0 local Inkling, and valid frames" {
   s: [1] CoderPage;
   st: [1] CpCheckLean;
   cp_store_bind(s[..], st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
@@ -119,7 +55,7 @@
   #assert coder_page_pick_model(s[..], "oa:gemini-4-neon") && coder_page_model_flawed(s[..]) && !coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
   #assert coder_page_pick_model(s[..], "inkling-2-mini") && coder_page_model_flawed(s[..]) && coder_page_model_flawed_local(s[..]) && coder_page_model_provider(s[..]) == 8;
 
-  // Core v1.0 Settings pages are allowed (General, Agent, Account, Providers, Models, Usage, Voice, About & updates).
+  // Core Settings pages are allowed by default (General, Agent, Account, Providers, Models, Usage, Voice, Connections, About & updates).
   def_flags := dc_flags_defaults();
   #assert cp_set_page_ok_flags(def_flags, CP_PG_GENERAL);
   #assert cp_set_page_ok_flags(def_flags, CP_PG_FLAWED);
@@ -157,22 +93,19 @@
   s[0].flawed[0].backend = 0;
   coder_page_set_cloud_authed(s[..], true);
 
-  // Settings -> Flawed & Settings -> Providers open directly on the slim v1.0 page without any feature flag.
+  // Settings -> Flawed & Settings -> Providers open directly without any feature flag.
   coder_page_settings_open(s[..], CP_PG_FLAWED, "");
   #assert coder_page_settings_page(s[..]) == CP_PG_FLAWED;
-  // Prefs roundtrip & press handling on Settings -> Flawed.
   pv: [CP_FLAWED_PREFS_COUNT] int;
   #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT;
   #assert pv[0] == 0 && pv[1] == 0 && pv[4] == 2 && pv[6] == 0 && pv[9] == 0 && pv[11] == 1 && pv[12] == 1 && pv[16] == 1;
   #assert cp_flawed_settings_press(s[..], "set.flawed.pmode.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
   #assert cp_flawed_settings_press(s[..], "set.flawed.ctx1m.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
   #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[6] == 1 && pv[18] == 1 && pv[20] == 0;
-  // Opt-in local harness delegation toggle defaults Off and persists cleanly through prefs (#14071).
   #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
   #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[20] == 1;
   #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.0") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
   #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[20] == 0;
-  // Sub-agent engine gating: external harnesses clamp to 0 (oa-worker) when Off and unlock only when On (#14071).
   s[0].nturns = 1;
   s[0].turns[0].nagents = 2;
   s[0].turns[0].agents[0].level = CP_LEVEL_CLAUDE;
@@ -188,7 +121,7 @@
   #assert coder_page_settings_page(s[..]) == CP_PG_PROVIDERS;
   coder_page_settings_open(s[..], -2, "");
 
-  // Sending a message and rendering a frame succeed cleanly on the slim page.
+  // Sending a message and rendering a frame succeed cleanly.
   #assert coder_page_set_text(s[..], "Hello Flawed");
   #assert coder_page_submit(s[..]);
   #assert coder_page_action(s[..]) == CP_ASK_SEND;
@@ -196,7 +129,7 @@
   #assert cp_rich_run_cmd(s[..], CP_CMD_FORK);
   #assert coder_page_action(s[..]) == CP_ASK_FORK;
 
-  // Core right-pane File Viewer works unconditionally in the minimal v1.0 app with flags == 0 (#13992).
+  // Core right-pane File Viewer works with default flags (#13992).
   fb: [64] u8; src := "static int main(void) { return 0; }\n";
   #assert coder_page_file_open(s[..], "/Users/me/work/inkling-gguf.c", fb[0..<cp_out(fb[..], src)], src.count);
   #assert coder_page_file_shown(s[..]);
@@ -220,20 +153,20 @@
   #assert cast(string) sn[0..<sn_len] == "GITHUB_TOKEN";
   #assert coder_page_permit_secret_done(s[..], true) && coder_page_action(s[..]) == CP_ASK_ANSWER;
 
-  // Always Show My Usage works unconditionally in --minimal with flags == 0 (#14064).
+  // Always Show My Usage works with default flags (#14064).
   ai := coder_page_usage_set_account(s[..], CP_US_PROV_GEMINI, "Default", "Vertex", CP_US_ST_OBSERVED, "", 1000, false, 0);
   #assert ai >= 0 && coder_page_usage_add_window(s[..], ai, "5h", 4200, 9999999999);
   #assert cp_usage_ring_share(s[..]) > 0.40f32;
   #assert coder_page_usage_spend_add(s[..], "/tmp/chat1.json", CP_US_PROV_GEMINI, "gemini-4-neon", 100000, 0, 20000, 150000);
   #assert coder_page_usage_total_cost_micros(s[..]) >= 150000 && coder_page_usage_total_tokens(s[..]) == 120000;
 
-  // Dictation & Voice settings work unconditionally in --minimal with flags == 0 (#14065).
+  // Dictation & Voice settings work with default flags (#14065).
   coder_page_voice_set_state(s[..], CP_VOICE_LISTENING, "");
   #assert coder_page_voice_state(s[..]) == CP_VOICE_LISTENING;
   coder_page_voice_set_state(s[..], CP_VOICE_IDLE, "");
   #assert coder_page_voice_state(s[..]) == CP_VOICE_IDLE;
 
-  // Environments/Connections & Universal Introspection work unconditionally in --minimal (#14066).
+  // Environments/Connections & Universal Introspection work with default flags (#14066).
   #assert coder_page_env_load_ssh_config(s[..], "Host studio\n  HostName 100.88.1.10\n  User chris\n") == 1;
   #assert coder_page_env_count(s[..]) == 2;
   #assert coder_page_introspect_set_tui(s[..], "dev\t0\t0\t12345\tzsh\t/Users/chris/work/openagents\tdev-shell\t1\n", "", false) == 1;

@@ -6,8 +6,6 @@ import AVFoundation
 import Metal
 import simd
 
-#if OA_FULL
-
 /// Synthesizes GameBuilder's Coax PCM sound bank (ed_play_sound) once and plays events on macOS CoreAudio
 /// strictly when Play mode is active and unmuted.
 final class GameBuilderAudioPlayer {
@@ -748,5 +746,3 @@ final class GameBuilderSession {
         }.resume()
     }
 }
-
-#endif

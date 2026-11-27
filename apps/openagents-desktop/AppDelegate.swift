@@ -9,10 +9,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     private var opened: [URL] = []   // files & openagents:// URLs the Mac asked Coder to open before its window was up
     var accountStatusItem: NSMenuItem?
     var accountItems: [NSMenuItem] = []   // OpenAgents > Log In… and the rest: gated on .account (default ON; #14087)
-    #if OA_FULL
     var foremanMenuItem: NSMenuItem?      // the Foreman menu: gated on .foreman
     var gatedMenuItems: [(NSMenuItem, () -> Bool)] = []
-    #endif
     func applicationDidFinishLaunching(_ notification: Notification) {
         DefaultsMigration.migrateIfNeeded()
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path, let main = CoderWindow(resources: resources) else {
@@ -21,11 +19,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         self.main = main
         main.installPaletteKeys()
         DesktopActivation.shared.start(delegate: self)
-        #if OA_FULL
         if FeatureFlags.isOn(.scheduled) {
             ScheduledTaskManager.shared.start(delegate: self)
         }
-        #endif
         TestLaunch.start()
         MacPush.delegateForwards = true
         MacAccount.shared.changed = { [weak self] in
@@ -35,18 +31,10 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
                 self?.main?.refreshCloudChatSync()
             }
         }
-        #if OA_FULL
         if FeatureFlags.isOn(.pairing) {
             CoderTailnet.shared.start()   // a phone on your tailnet pairs with no code (Tailnet.swift, #13778)
         }
         applyFlags()
-        #else
-        CoderTailnet.shared.start()   // zero-config mobile pairing over Tailscale in minimal build
-        if FeatureFlags.isOn(.account) {
-            Task.detached { await MacAccount.shared.look() }
-        }
-        DispatchQueue.main.async { self.refreshAccountMenu() }
-        #endif
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "OpenAgents")
@@ -128,7 +116,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func accountSecurity(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task { @MainActor in await MacAccount.shared.showSecurity() } }
     @objc func accountLinkDevice(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task { @MainActor in await MacAccount.shared.linkDeviceKey() } }
     @objc func accountLogout(_ sender: Any?) { guard FeatureFlags.isOn(.account) else { return }; Task.detached { await MacAccount.shared.logout() } }
-    #if OA_FULL
     /// Applies the resolved 30-flag mask to all menu items and delegate-owned background services.
     func applyFlags() {
         let acctOn = FeatureFlags.isOn(.account)
@@ -145,7 +132,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     func applyExperimental(_ on: Bool) {
         applyFlags()
     }
-    #endif
     @objc private func showWindow() {
         NSApp.activate(ignoringOtherApps: true)
         main?.show()
@@ -188,9 +174,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         KeepAwakeManager.shared.release()
         let keepLocalServer = (main?.runsOutliveQuit == true) && ((main?.runningCount ?? 0) > 0)
         DesktopActivation.shared.stop()
-        #if OA_FULL
         ScheduledTaskManager.shared.stop()
-        #endif
         main?.retire()
         for w in extraWindows { w.retire() }
         LocalModelServer.shared.stopIfIdle(runsOutlive: keepLocalServer)
@@ -206,7 +190,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func editCopy(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("c").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: sender) } }
     @objc func editPaste(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("v").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: sender) } }
     @objc func editSelectAll(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("a").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: sender) } }
-    #if OA_FULL
     @objc func toggleSimulator(_ sender: Any?) { guard FeatureFlags.isOn(.simulator) else { return }; main?.toggleSimulator() }
     @objc func toggleTerminal(_ sender: Any?) { guard FeatureFlags.isOn(.terminal) else { return }; main?.toggleTerminal() }
     @objc func toggleWebPreview(_ sender: Any?) { guard FeatureFlags.isOn(.preview) else { return }; main?.toggleWebPreview() }
@@ -219,7 +202,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func openAgentsPage(_ sender: Any?) { guard FeatureFlags.isOn(.agents) else { return }; AgentsPageController.shared.present(window: main) }
     @objc func openCapabilityStudio(_ sender: Any?) { guard FeatureFlags.isOn(.capabilities) else { return }; CapabilityStudio.shared.present(window: main) }
     @objc func openScene(_ sender: Any?) { guard FeatureFlags.isOn(.scenes) else { return }; main?.chooseSceneFile() }
-    #endif
     @objc func chooseModel(_ sender: Any?) { main?.toggleModels() }
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
     @objc func previousChat(_ sender: Any?) { main?.stepChat(-1) }
@@ -233,7 +215,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
     @objc func actualSize(_ sender: Any?) { main?.zoom(nil) }
     @objc func selectChat(_ sender: NSMenuItem) { main?.openChat(at: sender.tag) }
-    #if OA_FULL
     @objc func openForeman(_ sender: Any?) { main?.openForeman() }
     @objc func setForemanTier(_ sender: NSMenuItem) {
         switch sender.tag {
@@ -250,7 +231,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func openRouterModels(_ sender: Any?) { guard FeatureFlags.isOn(.modelsOpenrouter) else { return }; main?.openSettings(1, row: "set.or") }
     @objc func openScheduledTasks(_ sender: Any?) { guard FeatureFlags.isOn(.scheduled) else { return }; ScheduledTaskManager.shared.showScheduledTasksDialog() }
     @objc func openUpdateEverything(_ sender: Any?) { guard FeatureFlags.isOn(.scheduled) else { return }; ScheduledTaskManager.shared.showUpdateEverythingDialog() }
-    #endif
     @objc func stopAllChats(_ sender: Any?) { main?.stopAllChats() }
     @objc func checkForUpdates(_ sender: Any?) { main?.openSettings(4, row: "set.update"); main?.checkForUpdates() }
     @objc func openSettings(_ sender: Any?) { main?.openSettings() }
@@ -265,7 +245,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(accountSecurity(_:)) || item.action == #selector(accountLinkDevice(_:)) || item.action == #selector(accountLogout(_:)) {
             return FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn
         }
-        #if OA_FULL
         if item.action == #selector(openScene(_:)) { return FeatureFlags.isOn(.scenes) }
         if item.action == #selector(toggleSimulator(_:)) { return FeatureFlags.isOn(.simulator) }
         if item.action == #selector(toggleTerminal(_:)) { return FeatureFlags.isOn(.terminal) }
@@ -291,7 +270,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             }
             return true
         }
-        #endif
         if item.action == #selector(renameChat(_:)) { return main?.canRename == true }
         if item.action == #selector(forkChat(_:)) { return main?.canFork == true }
         if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
@@ -366,7 +344,6 @@ enum TestLaunch {
 }
 
 @main struct CoderApp {
-    #if OA_FULL
     /// Offscreen Metal capture of the Lean 4 & Riemann Hypothesis Proof Workbench (#13946).
     /// Renders directly into an offscreen MTLTexture with ZERO windows and ZERO focus stealing.
     static func runLeanRhShots(outDir: String) -> Int32 {
@@ -479,7 +456,6 @@ enum TestLaunch {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         return view.recordWalkthroughMP4(to: url, width: 1920, height: 1080, fps: 30) ? 0 : 1
     }
-    #endif
 
     /// Offscreen Metal PNG capture of Settings -> Providers and Add provider 3-step modal wizard (ZERO windows).
     /// Renders with flags == 0 (core basic flow, no feature flags enabled).
@@ -1000,7 +976,6 @@ enum TestLaunch {
         if let at = CommandLine.arguments.firstIndex(of: "--shot-providers"), at + 1 < CommandLine.arguments.count {
             exit(runProvidersShots(outDir: CommandLine.arguments[at + 1]))
         }
-        #if OA_FULL
         if let at = CommandLine.arguments.firstIndex(of: "--shot-lean-rh"), at + 1 < CommandLine.arguments.count {
             exit(runLeanRhShots(outDir: CommandLine.arguments[at + 1]))
         }
@@ -1010,7 +985,6 @@ enum TestLaunch {
         if let at = CommandLine.arguments.firstIndex(of: "--record-rh-3d"), at + 1 < CommandLine.arguments.count {
             exit(runRh3dRecord(outPath: CommandLine.arguments[at + 1]))
         }
-        #endif
         let app = NSApplication.shared; app.setActivationPolicy(.regular)
         let delegate = CoderDelegate(); app.delegate = delegate
         let bar = NSMenu(), appItem = NSMenuItem(), editItem = NSMenuItem()
@@ -1022,11 +996,9 @@ enum TestLaunch {
         newWinItem.keyEquivalentModifierMask = [.command, .shift]
         newWinItem.target = delegate
         file.addItem(withTitle: "Open Folder…", action: #selector(CoderDelegate.openFolder(_:)), keyEquivalent: "o").target = delegate
-        #if OA_FULL
         let openSceneItem = file.addItem(withTitle: "Open 3D Scene…", action: #selector(CoderDelegate.openScene(_:)), keyEquivalent: "")
         openSceneItem.target = delegate
         delegate.gatedMenuItems.append((openSceneItem, { FeatureFlags.isOn(.scenes) }))
-        #endif
         file.addItem(withTitle: "Search…", action: #selector(CoderDelegate.search(_:)), keyEquivalent: "k").target = delegate
         file.addItem(withTitle: "Save", action: #selector(CoderDelegate.saveFile(_:)), keyEquivalent: "s").target = delegate
         file.addItem(.separator())
@@ -1056,7 +1028,6 @@ enum TestLaunch {
         view.addItem(withTitle: "Toggle Sidebar", action: #selector(CoderDelegate.toggleSidebar(_:)), keyEquivalent: "b").target = delegate
         let chooseModelItem = view.addItem(withTitle: "Choose Model", action: #selector(CoderDelegate.chooseModel(_:)), keyEquivalent: "/")
         chooseModelItem.target = delegate
-        #if OA_FULL
         let sim = view.addItem(withTitle: "iOS Simulator", action: #selector(CoderDelegate.toggleSimulator(_:)), keyEquivalent: "s")
         sim.target = delegate; sim.keyEquivalentModifierMask = [.command, .option]
         delegate.gatedMenuItems.append((sim, { FeatureFlags.isOn(.simulator) }))
@@ -1087,7 +1058,6 @@ enum TestLaunch {
         let agentsItem = view.addItem(withTitle: "Agents (Coder, Tester, Game Builder)…", action: #selector(CoderDelegate.openAgentsPage(_:)), keyEquivalent: "A")
         agentsItem.target = delegate; agentsItem.keyEquivalentModifierMask = [.command, .shift]
         delegate.gatedMenuItems.append((agentsItem, { FeatureFlags.isOn(.agents) }))
-        #endif
         // Control-Tab is heard before the composer takes it (Window+Palette.swift); these name the keys
         let next = view.addItem(withTitle: "Next Chat", action: #selector(CoderDelegate.nextChat(_:)), keyEquivalent: "\t")
         next.target = delegate; next.keyEquivalentModifierMask = [.control]
@@ -1110,16 +1080,13 @@ enum TestLaunch {
         delegate.accountItems = [acctSeparator, acctItem, security, link, logout]
         for item in delegate.accountItems { item.isHidden = !FeatureFlags.isOn(.account) }
         appMenu.addItem(.separator())
-        #if OA_FULL
         let claudeKeyItem = appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "")
         claudeKeyItem.target = delegate
         delegate.gatedMenuItems.append((claudeKeyItem, { FeatureFlags.isOn(.modelsClaude) }))
         let orItem = appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "")
         orItem.target = delegate
         delegate.gatedMenuItems.append((orItem, { FeatureFlags.isOn(.modelsOpenrouter) }))
-        #endif
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(CoderDelegate.checkForUpdates(_:)), keyEquivalent: "").target = delegate
-        #if OA_FULL
         let updAllItem = appMenu.addItem(withTitle: "Update Everything…", action: #selector(CoderDelegate.openUpdateEverything(_:)), keyEquivalent: "")
         updAllItem.target = delegate
         delegate.gatedMenuItems.append((updAllItem, { FeatureFlags.isOn(.scheduled) }))
@@ -1129,12 +1096,9 @@ enum TestLaunch {
         let capItem = appMenu.addItem(withTitle: "New Local Capability (Two-Arm Eval)…", action: #selector(CoderDelegate.openCapabilityStudio(_:)), keyEquivalent: "")
         capItem.target = delegate
         delegate.gatedMenuItems.append((capItem, { FeatureFlags.isOn(.capabilities) }))
-        #endif
         appMenu.addItem(withTitle: "Install CLI Shim…", action: #selector(CoderDelegate.toggleCliShim(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Hold-to-Quit Protection (⌘Q×2)", action: #selector(CoderDelegate.toggleQuitHold(_:)), keyEquivalent: "").target = delegate
-        #if OA_FULL
         for (item, check) in delegate.gatedMenuItems { item.isHidden = !check() }
-        #endif
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide OpenAgents", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
@@ -1154,7 +1118,6 @@ enum TestLaunch {
         let findPrev = edit.addItem(withTitle: "Find Previous", action: #selector(CoderDelegate.findPrev(_:)), keyEquivalent: "g")
         findPrev.target = delegate; findPrev.keyEquivalentModifierMask = [.command, .shift]
         appItem.submenu = appMenu; editItem.submenu = edit; bar.addItem(appItem); bar.addItem(fileItem); bar.addItem(editItem); bar.addItem(viewItem)
-        #if OA_FULL
         let foremanItem = NSMenuItem(), foremanMenu = NSMenu(title: "Foreman")
         // Command-` is also heard in Window.swift before macOS window cycling.
         let openForemanItem = foremanMenu.addItem(withTitle: "Open Foreman", action: #selector(CoderDelegate.openForeman(_:)), keyEquivalent: "`")
@@ -1177,7 +1140,6 @@ enum TestLaunch {
         foremanItem.submenu = foremanMenu
         delegate.foremanMenuItem = foremanItem; foremanItem.isHidden = !FeatureFlags.isOn(.foreman)
         bar.addItem(foremanItem)
-        #endif
         app.mainMenu = bar
         app.run()
     }

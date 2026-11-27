@@ -1,7 +1,6 @@
 // Firm reason: 6 (AppKit/WebKit native multi-tab WKWebView host with CAShapeLayer even-odd cutout masking, 3 isolated WKWebsiteDataStore profiles, unified oa-browser-bridge.js, Human Supremacy input interceptor, and IOSurface/MTLTexture Phase 3 OSR hook).
 // Spec: docs/browser/desktop-browser-pane-spec.md (§5, §6.2, §7.1, §8); Issues #14107, #14108, #14109.
 import AppKit
-#if OA_FULL
 import WebKit
 import Metal
 import QuartzCore
@@ -271,4 +270,3 @@ final class BrowserViewportView: NSView {
         }
     }
 }
-#endif

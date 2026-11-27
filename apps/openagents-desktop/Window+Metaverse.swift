@@ -4,7 +4,6 @@ import AppKit
 import UniformTypeIdentifiers
 import simd
 
-#if OA_FULL
 final class MetaverseWindowState {
     var scenes: [String: MetaverseTabScene] = [:]
     var gbSessions: [String: GameBuilderSession] = [:]
@@ -845,4 +844,3 @@ extension CoderWindow {
         wake()
     }
 }
-#endif
