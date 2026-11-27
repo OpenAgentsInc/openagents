@@ -85,9 +85,12 @@ after_generated() { while [[ ! -e "$generated" ]]; do kill -0 $$ 2> /dev/null ||
     [[ -z "$status_data" ]] || wait "$status_data"
     timed status "$here/../../coax/web/wasm.sh" "$here/status.coax" "$here/status-face.c" "$here/build/status.wasm" &
     status_page=$!
-    # /login and /login/email: email-code and key login, on the homepage's Grid (login.coax loads newland.coax).
+    # /login/email and legacy login helpers (login.coax loads newland.coax).
     timed login "$here/../../coax/web/wasm.sh" "$here/login.coax" "$here/login-face.c" "$here/build/login.wasm" "$here/../../coax/lib/qr/qr-memory.coax" &
     login_page=$!
+    # /login: dark-mode Apps SDK UI Coax DOM sign-in page (zero WebGPU HUD).
+    timed login-web "$here/../../coax/web/wasm.sh" "$here/login-web.coax" "$here/login-web-face.c" "$here/build/login-web.wasm" &
+    login_web_page=$!
     # /settings/security: ways in, recovery and the re-auth prompt (security.coax loads login.coax).
     timed security "$here/../../coax/web/wasm.sh" "$here/security.coax" "$here/security-face.c" "$here/build/security.wasm" &
     security_page=$!
@@ -103,7 +106,7 @@ after_generated() { while [[ ! -e "$generated" ]]; do kill -0 $$ 2> /dev/null ||
     # /settings/wallet: the wallet's daily limit and its encrypted backup (wallet.coax loads login.coax).
     timed wallet "$here/../../coax/web/wasm.sh" "$here/wallet.coax" "$here/wallet-face.c" "$here/build/wallet.wasm" &
     wallet_page=$!
-    wait "$newland"; wait "$connectpylon"; wait "$status_page"; wait "$login_page"; wait "$security_page"; wait "$life_page"; wait "$devices_page"; wait "$lightning_page"; wait "$wallet_page"
+    wait "$newland"; wait "$connectpylon"; wait "$status_page"; wait "$login_page"; wait "$login_web_page"; wait "$security_page"; wait "$life_page"; wait "$devices_page"; wait "$lightning_page"; wait "$wallet_page"
   ) &
   home=$!
   # The project pages: every projects/<slug>/project.json with a page, its tasks

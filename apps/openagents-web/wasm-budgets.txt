@@ -298,6 +298,8 @@ stair 290000
 status 80000
 # /login: the homepage Grid, the login screens, passkeys (#13215), the phone app's QR (coax/lib/qr, about 12 KB) (#13204), and WorkOS Custom Coax UI (Magic Auth, Google/GitHub/Apple OAuth, Enterprise SSO, org picker/switcher, #14100): 78,643 bytes measured 2026-11-26; about 9% room
 login 86000
+# /login (dark-mode Apps SDK UI Coax DOM page, zero WebGPU HUD): 140,570 bytes measured 2026-11-27 on macOS; ~11% room.
+login-web 156000
 # /settings/security: login.coax's helpers plus the ways in, passkeys (#13215), recovery and the re-auth prompt (#13212, #13213): 78,110 bytes measured 2026-11-11; about 10% room
 security 86000
 # /settings/data and /settings/delete: login.coax's helpers plus freeze, export, merge and deletion (#13214): 61,017 bytes measured 2026-11-11; about 10% room
