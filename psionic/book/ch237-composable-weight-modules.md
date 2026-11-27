@@ -379,12 +379,14 @@ npm") over the registered single-codec schemas in
 - **Eight shipping Class-E coding-agent cores (`module-v2.coax` + `module-v2-wave2.coax`):**
   - Wave 1 (`#13917`): `oa-exec-diff-verify` (unified-diff hunk/line verification), `oa-exec-json-schema` (bounded JSON/wire schema validation), `oa-exec-dep-sched` (DAG readiness and cycle detection), and `oa-exec-arith-budget` (exact satoshi/token budget accounting).
   - Wave 2 (`#13955`): `oa-exec-patch-rebase` (multi-hunk line-offset rebaser and overlap/EOF guard), `oa-exec-glob-match` (deterministic bounded glob/segment matcher, zero ReDoS), `oa-exec-semver-solve` (semantic-version range comparator), and `oa-exec-wire-bounds` (protobuf/varint framing bounds validator).
-  - Two zero-recompilation linked composites (`oa-exec-schema-diff-linked` and `oa-exec-wire-patch-linked`), all invoked directly by Microcoder (`coax/lib/microcoder/executor-guard.coax`), OpenAgents Desktop, and `openagents mcp --domains executor`.
-- **Third-party author admission & payout gate (`#13955`):** `#authority`
-  [`peer/module-author.coax`](../lib/peer/module-author.coax) (`53/53` mutants
+  - Two zero-recompilation linked composites (`oa-exec-schema-diff-linked` and `oa-exec-wire-patch-linked`, `#13962`), invoked directly by `openagents/core` (`coder/tui/oa-worker.coax`), OpenAgents Desktop, and `openagents mcp --domains executor` (replacing deprecated `coax/lib/microcoder`, `#13983`).
+- **Third-party author admission, Nostr kind `30212` publishing & 3-leg royalty gate (`#13955`, `#13960`–`#13962`):** `#authority`
+  [`peer/module-author.coax`](../lib/peer/module-author.coax) (`66/66` mutants
   killed, `0` survived) enforces signature, distinct reviewer key, SHA-256
   digest match, Class-E exactness, `>= 20` passing conformance cases, tamper
-  refusal, held-out Gym lift strictly above 2σ, and default-OFF author payout
-  gating via `pay/executor-settlement.coax` (`openagents module publish-check`;
+  refusal, held-out Gym lift strictly above 2σ, Nostr kind `30212` signed
+  module publication (`#13960`), and default-OFF 3-leg author-royalty payout
+  gating (`<= 25%` / `2500 bps` cap) via `pay/executor-settlement.coax` (`#13961`,
+  `openagents module publish-check`;
   [Wave 2 verification record](../../docs/verification/executor-w22-wave2-modules.md),
   [W6.1 verification record](../../docs/verification/executor-w61-coding-agent.md)).

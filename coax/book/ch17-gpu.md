@@ -381,21 +381,22 @@ ok   #test the dance icon is a note: a head, a stem, a flag (1 case, 1779 steps)
 7 checks, 7 passed, 0 failed
 ```
 
-The stages live in `apps/openagents-ios/OpenAgents/Platform/Stages.metal`,
-which begins with the comment "All scalar visual math is generated from
-Coax." Its fragment stages are mostly one line that unpacks vectors and
-calls a generated function:
+In the original iOS pipeline, hand-written stages lived in a companion Metal
+file (`Stages.metal`, superseded by unified Coax shaders emitted via
+`coax metal` / `coax wgsl` / `coax spirv`), beginning with the comment "All
+scalar visual math is generated from Coax." Its fragment stages unpacked
+vectors and called generated functions:
 
 ```c
 fragment float4 dot_fragment(DotOut in [[stage_in]]) {float c=metaverse_dot(in.uv.x,in.uv.y,in.light,in.soft,in.crisp);return float4(c,c,c,0);}
 ```
 
-The app's build script, `apps/openagents-ios/generate.sh`, joins the two
-exactly as we did:
+`apps/openagents-ios/generate.sh` originally joined the two like this (today
+`generate.sh` emits full Coax Metal graphics and component shaders directly):
 
 ```shell
 "$compiler" metal metaverse/light.coax > "$out/HomeShaders.txt.tmp"
-cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"
+# (historical stage concatenation before full Coax shader emission)
 mv "$out/HomeShaders.txt.tmp" "$out/HomeShaders.txt"
 ```
 
@@ -568,3 +569,17 @@ plus a `10.72M`-parameter 6-layer transformer distillation run across `4.92M`
 tokens) and NVIDIA RTX 4080 CUDA (`91.9k steps/s` `i64`, `63.8k steps/s` native
 `f64`; see `docs/verification/executor-w13-gpu-sched.md` and
 `docs/verification/executor-distill-h1-h3-h5.md`).
+
+Beyond exact VM execution, the production GPU compute and graphics libraries
+ship directly in Coax:
+
+- **Apple Silicon Metal 4 & matrix math (`coax/lib/compute/apple.coax`, `coax/lib/compute/mma.coax`):**
+  single-source `#authority` Metal 4 FlashAttention (`am_flash_attn_m4`),
+  in-tile `IQ4S`/`Q8S` BF16 Neural Accelerator GEMMs, GPU Top-64 / sparse top-k
+  sampling, zero-scatter MoE (`am_moe_sum_gather`), and `Q8_0` KV quantization
+  powering `psionic-inkling-serve` (`3,556` mutants, `3,525` killed, `0`
+  survived; see `psionic/book/ch269-inkling-2-mini-on-metal.md`).
+- **Triple-target graphics shaders (`coax wgsl`, `coax metal`, `coax spirv`) & GPU contracts (`coax/lib/gpu/`):**
+  one Coax shader source emits WebGPU WGSL, Apple Metal, and Vulkan SPIR-V
+  (used across macOS Metal 4, Linux Vulkan, and Windows Win32/Vulkan hosts),
+  backed by checked GPU frame/format descriptors in `coax/lib/gpu/{formats,frame,registry,types}.coax`.

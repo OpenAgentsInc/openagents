@@ -79,6 +79,14 @@
       "modes": ["debug", "release"]
     },
     {
+      "source": "openagents/examples/capability-economy-e2e.coax",
+      "chapter": "openagents/book/ch058-payouts-to-authors.md",
+      "stdout": "openagents/examples/capability-economy-e2e.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"],
+      "run_steps": 100000000
+    },
+    {
       "source": "openagents/examples/psionic-hybrid-serve.coax",
       "chapter": "openagents/book/ch069-models-we-serve.md",
       "stdout": "openagents/examples/psionic-hybrid-serve.out",

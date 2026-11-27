@@ -3,9 +3,11 @@
 Inkling 2 Mini's core strength is agentic coding, search, and tool use. A raw
 token stream is not enough for an agent harness: the server must separate
 native reasoning/thinking segments from final assistant text, parse structured
-tool calls reliably, constrain strict JSON-schema outputs so Microcoder and
-structured callers never receive markdown fences or prose wrappers, and stream
-typed Open Responses events over `/v1/responses`.
+tool calls reliably, constrain strict JSON-schema outputs so `openagents/core`
+(`oa-worker.coax`), Inky (`coax/lib/inky/`), and structured callers never
+receive markdown fences, raw tool-call JSON leaks, or prose wrappers, and
+stream typed Open Responses events over `/v1/responses` on both Metal 4 and
+CUDA.
 
 Building on [chapter 77](ch077-call-a-tool.md),
 [chapter 78](ch078-device-generation-calls-a-tool.md),
@@ -61,10 +63,12 @@ InklingParseResult :: struct {
 }
 ```
 
-## Strict JSON schema & Microcoder compatibility
+## Strict JSON schema & agent-loop compatibility
 
-Microcoder (`coax/lib/gateway/psionic.coax` via `gw_psionic_strict`) and Open
-Responses callers request strict structured JSON through either:
+Agent callers (`openagents/core/` via `coder/tui/oa-worker.coax`, Inky via
+[`coax/lib/inky/loop.coax`](../../coax/lib/inky/loop.coax), and gateway
+clients via `coax/lib/gateway/psionic.coax` `gw_psionic_strict`; Microcoder is
+now deprecated `#13983`) request strict structured JSON through either:
 
 - Open Responses `text.format` (`type: "json_schema"` or `"json_object"`), or
 - Chat Completions `response_format` (`type: "json_schema"` or `"json_object"`).
@@ -95,11 +99,16 @@ Responses SSE event names (`response.reasoning_summary_text.delta`,
 `total_tokens`, and `loop_count` accounting for multi-pass looped execution.
 
 In [`psionic/platform/inkling-serve.c`](../platform/inkling-serve.c),
-`/v1/responses` parses `input[]` items of type `function_call` and
-`function_call_output` (`call_id`, `name`, `arguments`, `output`) alongside
-`reasoning.effort` and `tools[]`, reuses the cached Metal KV prefix across
-matching prompt tokens on multi-turn tool loops, and reports the active engine
-`loop_count` in `usage`.
+`/v1/responses` and `/v1/chat/completions` parse `input[]` items of type
+`function_call` and `function_call_output` (`call_id`, `name`, `arguments`,
+`output`) alongside `reasoning.effort` and `tools[]`, stream live thinking
+tokens without Nagle or poll stalls (`d388bfb3f4`,
+[`coax/lib/inky/run-poll-host.coax`](../../coax/lib/inky/run-poll-host.coax)),
+retain post-decode KV cache and native tool-error propagation across turns
+(`0fe366840e`), suppress raw tool-call JSON leaks under `tool_choice=none`
+(`e7c3a80ae8`), maintain a multi-slot SWA-backed prefix cache with opt-in
+prompt-lookup verification on both Metal 4 and CUDA (`71d5d3d92a`), and report
+the active engine `loop_count` in `usage`.
 
 <!-- source: psionic/examples/inkling-responses.coax example -->
 ```jai

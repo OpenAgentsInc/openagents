@@ -20,8 +20,11 @@ prove almost nothing, fix that, and then watch the build stop a plausible
 > Note: Stable error codes, fix lines, `--json`, `coax explain`,
 > `coax check`, `coax test`, `#authority`, `coax mutate`, `coax layout`
 > and readable C output all work in the current `coax0`. So do `coax query`
-> and a first formatter slice (below). A resident compiler server and
-> expansion traces are designed (spec §17.3) and marked where they come up.
+> and a first formatter slice (below). The resident compiler `coax serve`
+> (`#13138`, `#13142`, [Chapter 46](ch46-resident-compilation.md)) accelerates
+> repeated edit-check loops today; a dedicated resident query/edit RPC server
+> and expansion traces remain designed (spec §17.3) and are marked where they
+> come up.
 
 The agent can edit the checks, directives and build scripts as well as the
 implementation. Compiler gates do not protect their own configuration from
@@ -596,7 +599,9 @@ in between (exit 3, the file untouched). An unclosed comment or string is
 refused with its line and the lexer's code, never written. The repository's
 1,358 Coax files format idempotently; 34 would change.
 
-> Note: A resident query server, revision-bound structured edits and
+> Note: While `coax serve` already provides a resident compilation cache and
+> changed-body-first skeleton checks ([Chapter 46](ch46-resident-compilation.md)),
+> a dedicated resident query server, revision-bound structured edits and
 > canonical statement layout (indentation, line breaking) remain planned.
 > Richer effect and expansion queries also wait for the relevant language
 > features. Generated declarations should keep the chain that produced them

@@ -982,7 +982,14 @@
       ],
       "source": [
         "pay/executor-settlement.coax",
-        "psionic/lib/peer/pay.coax"
+        "psionic/lib/peer/pay.coax",
+        "pay/price-policy.coax",
+        "pay/receipt-policy.coax",
+        "pay/payout-policy.coax",
+        "openagents/registry/registry.coax",
+        "openagents/registry/install.coax",
+        "openagents/examples/capability-economy-e2e.coax",
+        "openagents/examples/capability-economy-e2e.out"
       ],
       "qualified_targets": [
         "cpu"

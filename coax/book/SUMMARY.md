@@ -56,7 +56,7 @@
 * [29. Units and coordinate frames](ch29-units-and-frames.md) — partly implemented
 * [30. Typed clocks and multirate ticks](ch30-clocks-and-ticks.md) — partly implemented
 * [31. Bounded control](ch31-bounded-control.md) — planned
-* [32. Strict math, integrators and deterministic jobs](ch32-strict-math-and-integrators.md) — planned
+* [32. Strict math, integrators and deterministic jobs](ch32-strict-math-and-integrators.md) — partly implemented
 * [33. Replay and snapshots](ch33-replay-and-snapshots.md) — planned
 * [34. Importing robot models](ch34-robot-models.md) — planned
 * [35. Stamped sensors and supervised actuators](ch35-sensors-and-actuators.md) — planned
@@ -76,7 +76,7 @@
 
 * [44. A self-hosted compiler](ch44-self-hosting.md) — planned
 * [45. Replacing a procedure body while it runs](ch45-body-replacement.md) — planned
-* [46. Resident compilation and state migration](ch46-resident-compilation.md) — planned
+* [46. Resident compilation and state migration](ch46-resident-compilation.md) — partly implemented
 * [47. Backends chosen by profiling](ch47-backends.md) — planned
 
 ## Appendices

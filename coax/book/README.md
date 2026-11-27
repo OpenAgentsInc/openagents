@@ -180,7 +180,7 @@ its own prerequisites and consumer are ready.
    retain exact examples, diagnostics and the limits in
    [chapter 23](ch23-verification-boundaries.md). Keep source, target evidence
    and direct adoption separate in the registry and the
-   [paths through all four books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
+   [paths through all eight books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
 2. **Finish shared application contracts.** Close the roadmap's remaining
    R0 device, frame-tail, development-loop and independent-review gates.
    Chapters [6](ch06-memory.md), [7](ch07-errors.md),
@@ -237,7 +237,7 @@ on your path.
 
 To write current Coax, build a playable realm, run an original model, train a
 small model or sign and verify a Nostr event, see
-[Paths through the four books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
+[Paths through all eight books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
 
 
 - [Foreword](foreword.md) and [Introduction](introduction.md)
@@ -279,7 +279,7 @@ small model or sign and verify a Nostr event, see
   [29. Units and coordinate frames](ch29-units-and-frames.md) (partly implemented),
   [30. Typed clocks and multirate ticks](ch30-clocks-and-ticks.md) (partly implemented),
   [31. Bounded control](ch31-bounded-control.md) (planned),
-  [32. Strict math, integrators and deterministic jobs](ch32-strict-math-and-integrators.md) (planned),
+  [32. Strict math, integrators and deterministic jobs](ch32-strict-math-and-integrators.md) (partly implemented),
   [33. Replay and snapshots](ch33-replay-and-snapshots.md) (planned),
   [34. Importing robot models](ch34-robot-models.md) (planned),
   [35. Stamped sensors and supervised actuators](ch35-sensors-and-actuators.md) (planned),
@@ -295,7 +295,7 @@ small model or sign and verify a Nostr event, see
 - Part IX. Finishing the toolchain:
   [44. A self-hosted compiler](ch44-self-hosting.md) (planned),
   [45. Replacing a procedure body while it runs](ch45-body-replacement.md) (planned),
-  [46. Resident compilation and state migration](ch46-resident-compilation.md) (planned),
+  [46. Resident compilation and state migration](ch46-resident-compilation.md) (partly implemented),
   [47. Backends chosen by profiling](ch47-backends.md) (planned)
 - Appendices: [A. Keywords, directives and types](appendix-a-keywords.md),
   [B. Error codes](appendix-b-error-codes.md),

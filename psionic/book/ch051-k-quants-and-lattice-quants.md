@@ -757,6 +757,16 @@ notice is in [psionic/NOTICE](../NOTICE).
 - [Chapter 50](ch050-quantized-weights-and-caches.md): half precision, Q8_0
   and Q4_0, and the quality card.
 
+## Production Metal 4 & CUDA `IQ4_NL` / `IQ4S` adoption
+
+In production Inkling 2 Mini serving ([chapter 269](ch269-inkling-2-mini-on-metal.md)),
+aligned in-tile `IQ4S` / `IQ4_NL` BF16 Neural Accelerator GEMMs in
+[`coax/lib/compute/apple.coax`](../../coax/lib/compute/apple.coax) and
+[`psionic/platform/inkling-metal.c`](../platform/inkling-metal.c) (alongside
+`coax cuda` NVRTC kernels in [`psionic/platform/inkling-cuda.c`](../platform/inkling-cuda.c))
+run the shipping 17.63 GB `Inkling-2-Mini-IQ4_NL.gguf` checkpoint at
+`110–188 tok/s` on Metal 4 and `75.7+ tok/s` on RTX 4080 CUDA.
+
 ## Sources
 
 - [Chapter plan](PLAN.md), Part V.

@@ -48,8 +48,12 @@ driver ties them together. Here is where everything lives:
 | `src/check.cpp` | Storage and graph transport for the Coax checker, then reconstruction of native checked objects |
 | `src/eval.cpp` | Runs `#run`, constants, `#assert` and checks over the checked tree, within budgets |
 | `src/emit_c.cpp` | The checked tree to one C11 file with its runtime; headers and layout reports |
-| `lib/compiler/compute.coax` | The CUDA compute subset: which types, statements, calls and kernel signatures `coax cuda` admits |
+| `lib/compiler/compute.coax` | The CUDA/Metal compute subset: which types, statements, calls and kernel signatures `coax cuda` and `coax metal-compute` admit |
+| `lib/compiler/wgsl.coax` | Checked shader emission for WebGPU WGSL, Apple Metal graphics, and Vulkan SPIR-V |
+| `lib/compiler/strict-math.coax` | Fixed Coax transcendental kernels (`sin`, `cos`, `exp`, `log`) shared between compile-time evaluation and generated C (`#12917`) |
 | `src/compute.cpp` | Walks the kernels and what they reach, and reports the policy's refusals (E0700, E0701) |
+| `src/serve.cpp` | Resident compilation server (`coax serve`, `#13138`): per-unit token/lex memoization across invocations |
+| `src/skeleton.cpp` | Changed-body-first checker (`#13142`): checks modified procedure bodies ahead of a full-program pass |
 | `src/verify.cpp` | `coax test` and `coax mutate` |
 | `lib/compiler/sources.coax` | Source load syntax, canonical identity/cycles, graph budgets and verification scope |
 | `src/sources.cpp` | Filesystem reads and source/diagnostic storage transport |
@@ -57,11 +61,14 @@ driver ties them together. Here is where everything lives:
 | `src/errors.cpp` | The explanation for every error code (`coax explain`) |
 | `src/main.cpp` | The command-line driver, and the file that includes all the others |
 
-Notice the checks alongside the implementation in all four compiler modules.
+Notice the checks alongside the implementation in all compiler Coax modules.
 Each starts with `#authority;`, the directive
 from Chapter 11 that says every procedure needs a check and that the
 checks run on every build. The compiler's front end is held to the same
-rule we asked of the wallet code in `pay/wallet.coax`.
+rule we asked of the wallet code in `pay/wallet.coax`. Recent 5-iteration
+performance hillclimbs (`d261ba5f08`, `5157ae4294`) tightened the checker,
+evaluator, resident `coax serve` loop, and C emitter while preserving
+byte-exact bootstrap determinism.
 
 The C++ side is a *unity build*: `main.cpp` `#include`s every other `.cpp`
 file, so the whole C++ frontend is one translation unit compiled by one

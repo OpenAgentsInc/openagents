@@ -99,7 +99,9 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
   mutants killed), and live `openagents module publish`/`search`/`install` E2E
   against `nostr/relay/bin/relay` (#13960).
 
-Planned paths: `openagents/registry/`.
+Shipped paths: [`openagents/registry/registry.coax`](../../openagents/registry/registry.coax) (`#14060`, NIP-EXT 3184/30184, NIP-REG catalog admission, NIP-EVAL 3189 quorum).
+
+Planned paths: `openagents/registry/sync-daemon.coax`.
 
 ## Sources
 

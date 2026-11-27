@@ -82,8 +82,11 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
   [`coax/tests/lightning/invoice_vectors.coax`](../../coax/tests/lightning/invoice_vectors.coax),
   and `shasum -a 256` over the fixture preimage giving the payment hash.
 
-Planned paths: `pay/price-policy.coax`, an `#authority` file in the Payments
-context ([`pay/`](../../pay)).
+Shipped paths: [`pay/price-policy.coax`](../../pay/price-policy.coax), an `#authority` file in the Payments
+context ([`pay/`](../../pay), shipped in `#14060` and exercised in
+[`openagents/examples/capability-economy-e2e.coax`](../examples/capability-economy-e2e.coax)).
+
+Planned paths: `pay/x402-gateway.coax`.
 
 ## Sources
 

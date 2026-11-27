@@ -10,12 +10,21 @@ Metal Shading Language (`coax metal-compute`), drives it on Apple Silicon via
 explicit ≥32 GB unified-memory residency guardrails
 ([`psionic/lib/inkling-metal.coax`](../lib/inkling-metal.coax)).
 
-The first release ships Inkling 2 Mini as the 17.63 GB (`16,812 MiB`) `IQ4_NL`
+The default release ships Inkling 2 Mini as the 17.63 GB (`16,812 MiB`) `IQ4_NL`
 GGUF checkpoint (`Inkling-2-Mini-IQ4_NL.gguf`) with Metal 4 Neural Accelerators,
-FP16 attention, warp routers, and 4-warp register-dequantizing decode (`ink_dv_iq4`,
-`ink_dv_q8`), while `psionic/lib/inkling/kernels.coax` also emits register-dequantizing
+FP16/FlashAttention, warp routers, and 4-warp register-dequantizing decode (`ink_dv_iq4`,
+`ink_dv_q8`), alongside **21 GGML quantizations**, the **Maple Uncensored safetensors
+overlay** (`feff1652bc`), and **rank-8 LoRA routing adapters** (`#14028`).
+Smaller quantized variants lower the hardware floor to 12–16 GB machines, while
+`psionic/lib/inkling-metal.coax` keeps the explicit `>= 32 GB` unified-memory
+guardrail for the default 17.63 GB `IQ4_NL` checkpoint. Meanwhile,
+`psionic/lib/inkling/kernels.coax` also emits register-dequantizing
 **NVFP4** (`ink_dv_nvfp4`) and **MXFP8** (`ink_dv_mxfp8`) Metal GPU kernels
-verified bit-exact (`0.00e+00` max abs error) on Apple Silicon.
+verified bit-exact (`0.00e+00` max abs error) on Apple Silicon, and
+[`psionic/platform/inkling-cuda.c`](../platform/inkling-cuda.c) +
+[`psionic/lib/inkling/kernels-cuda.coax`](../lib/inkling/kernels-cuda.coax)
+run the exact same GGUF model on Linux and Windows NVIDIA GPUs via `coax cuda`
+and NVRTC with zero cuBLAS or cuDNN dependency (`#13966`, `#13975`–`#13977`).
 
 Because 5 of every 6 physical layers use a 1,024-token sliding window, Inkling 2
 Mini (`K = 3`, `48` logical slots) needs only **8 full-context KV slots** and
@@ -259,5 +268,8 @@ main :: () {
 - **Metal 4 FlashAttention, lossless `Q8S` + `Q8_0` KV, GPU Top-64, Ch 102 adaptive DSpark, and async `DiskPromptCache`**:
   - **Lossless `Q8S` + block-32 `Q8_0` KV cache (`INK_KV_Q8=1`, default):** halves KV RAM (`772 → 412 MiB` at `ctx=4096`, `max_ctx 3.44M → 6.49M` on 128 GB M5 Max) with `--verify-prefill-decode cos=0.999968, top1_diff=0.07926, ok=true`; compact weight unmapping holds peak footprint to `19.75 GiB` (`19,753 MiB`).
   - **1-pass Metal 4 FlashAttention (`am_flash_attn_m4`) + aligned in-tile `IQ4S`/`Q8S` BF16 Neural Accelerator GEMMs + zero-scatter MoE (`am_moe_sum_gather`):** shrinks `attn_scores` scratch from `2.3 GB → 3.2 MB`, lifts 2K–4K cold prefill from `857 → 2,038–2,315 tok/s` (`2.4×`), and keeps `temp=0.6` decode (`88.4 tok/s`, GPU exact Top-64) at parity with greedy decode (`89.6 tok/s`).
-  - **Tiered RAM + async NVMe `DiskPromptCache` & HTTP/1.1 Keep-Alive (`psionic-inkling-serve`):** pre-`<|end_message|>` checkpointing cuts 4.6K-token follow-up TTFT from `3.50 s → 0.15 s` (`22.7×`) in RAM and cuts 5.0K-token cross-restart cold TTFT from `2.22 s → 0.039–0.048 s` (`46×–67×`, bit-exact output parity) with zero TTFT/decode write stall.
-  - **Verification (`#authority`):** `coax test coax/lib/compute/apple.coax --library` (`20/20`), `coax mutate coax/lib/compute/apple.coax --library --changed origin/main` (**2,166 mutants, 2,113 killed, 0 survived, 53 marked equivalent**).
+  - **Tiered RAM + async NVMe `DiskPromptCache`, `MTLBinaryArchive` caching & HTTP/1.1 Keep-Alive (`psionic-inkling-serve`):** pre-`<|end_message|>` checkpointing cuts 4.6K-token follow-up TTFT from `3.50 s → 0.15 s` (`22.7×`) in RAM and cuts 5.0K-token cross-restart cold TTFT from `2.22 s → 0.039–0.048 s` (`46×–67×`, bit-exact output parity) with zero TTFT/decode write stall.
+  - **Phase 8 grouped-MoE `_nb` verification, Cascade DSpark & Fast Apply ([inkling-metal-report.md](../docs/targets/inkling-metal-report.md)):** default lossless `Q8_0` (`188.1 tok/s` `nb=8` peak) and opt-in `INK_FAST_Q4=1` (`169.8 tok/s` end-to-end `file_edit`, `260.9 tok/s` peak) with `0` parity mismatches, default-on Native Coax DSpark + Cascade per-request utility gate (`INK_DSPARK=0` opt-out), GPU sparse top-k (`ink_topk_filter`), SuffixDecoding-lite, and OpenAI `"prediction"` Fast Apply.
+  - **Verification (`#authority`):** `coax test coax/lib/compute/apple.coax --library` and `coax mutate coax/lib/compute/apple.coax --library` (**3,556 mutants, 3,525 killed, 0 survived, 31 marked equivalent**).
+- **Live NVIDIA RTX 4080 CUDA verification (`psionic/platform/inkling-cuda-build.sh`, Linux & Windows):**
+  - Single-source Coax kernels (`psionic/lib/inkling/kernels-cuda.coax` via `coax cuda` + NVRTC, zero cuBLAS/cuDNN) with per-layer LRU VRAM expert caching (`INK_MIN_EXPERT_SLOTS = 16`, `INK_VRAM_MARGIN_MB = 384`) deliver `75.7+` tok/s decode and `634` tok/s prefill on an RTX 4080 (`#13966`, `#13975`–`#13977`).

@@ -813,7 +813,10 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/lib/compute/apple.coax",
+        "psionic/platform/inkling-metal.c"
+      ]
     },
     {
       "number": 42,
@@ -1026,7 +1029,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/lib/compute/apple.coax",
+        "psionic/platform/inkling-metal.c"
+      ]
     },
     {
       "number": 51,
@@ -1049,7 +1055,11 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/lib/compute/apple.coax",
+        "psionic/platform/inkling-metal.c",
+        "psionic/platform/inkling-cuda.c"
+      ]
     },
     {
       "number": 52,
@@ -2196,7 +2206,9 @@
         "cpu",
         "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/platform/inkling-metal.c"
+      ]
     },
     {
       "number": 103,
@@ -4199,7 +4211,10 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/platform/inkling-metal.c",
+        "psionic/platform/inkling-serve.c"
+      ]
     },
     {
       "number": 177,
@@ -5396,7 +5411,10 @@
         "cpu",
         "metal"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/hybrid-exec.coax",
+        "psionic/lib/executor-desktop.coax"
+      ]
     },
     {
       "number": 237,
@@ -5414,14 +5432,17 @@
       "qualified_targets": [
         "cpu"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "psionic/lib/module-v2-wave2.coax",
+        "psionic/lib/hybrid-exec.coax"
+      ]
     },
     {
       "number": 238,
       "title": "Pay for verified work",
       "file": "ch238-pay-for-verified-work.md",
       "status": "implemented",
-      "profile": "psionic-verified-pay-v1, live 2-device Bitcoin mainnet Spark settlement & NIP-PYLON 30201 feed",
+      "profile": "psionic-verified-pay-v1, live 2-device Bitcoin mainnet Spark settlement, 3-leg royalties & NIP-PYLON 30201 feed",
       "depends_on": [
         24,
         25,
@@ -6125,7 +6146,7 @@
       "title": "Inkling 2 Mini on Metal",
       "file": "ch269-inkling-2-mini-on-metal.md",
       "status": "implemented",
-      "profile": "bounded Apple Silicon >= 32GB residency planner and fused NVFP4/MXFP8 matvec",
+      "profile": "Apple Silicon Metal 4 + Linux/Windows CUDA Inkling 2 Mini kernels, Q8S/Q8_0 KV, DSpark, and >= 32GB IQ4_NL residency planner",
       "depends_on": [
         47,
         72,
@@ -6135,21 +6156,27 @@
         "psionic/examples/inkling-metal.coax",
         "psionic/lib/inkling-metal.coax",
         "psionic/lib/inkling/kernels.coax",
+        "psionic/lib/inkling/kernels-cuda.coax",
         "psionic/platform/inkling-metal.c",
+        "psionic/platform/inkling-cuda.c",
         "psionic/platform/inkling-cli.c"
       ],
       "qualified_targets": [
         "cpu",
-        "metal"
+        "metal",
+        "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/lib/compute/apple.coax",
+        "psionic/platform/inkling-serve.c"
+      ]
     },
     {
       "number": 270,
       "title": "Tool calls and Responses for Inkling 2 Mini",
       "file": "ch270-tool-calls-and-responses-for-inkling-2-mini.md",
       "status": "implemented",
-      "profile": "Inkling 2 Mini native reasoning/tool-call parser, strict JSON schema constrained sampler, and /v1/responses Metal 4 server",
+      "profile": "Inkling 2 Mini native reasoning/tool-call parser, strict JSON schema sampler, and /v1/responses Metal 4 & CUDA server",
       "depends_on": [
         77,
         78,
@@ -6163,16 +6190,20 @@
       ],
       "qualified_targets": [
         "cpu",
-        "metal"
+        "metal",
+        "cuda"
       ],
-      "adopted_by": []
+      "adopted_by": [
+        "coax/lib/inky/loop.coax",
+        "coder/tui/oa-worker.coax"
+      ]
     },
     {
       "number": 271,
       "title": "Run Inkling 2 Mini in OpenAgents Desktop",
       "file": "ch271-run-inkling-2-mini-in-openagents-desktop.md",
       "status": "implemented",
-      "profile": "OpenAgents Desktop selectable Inkling 2 Mini integration, 32K Metal runner, verified Local Models store, and Microcoder tool-use routing",
+      "profile": "OpenAgents Desktop multi-variant Inkling 2 Mini integration, 32K Metal/CUDA runner, verified store, and oa-worker/Inky routing",
       "depends_on": [
         270
       ],
@@ -6186,10 +6217,12 @@
       ],
       "qualified_targets": [
         "cpu",
-        "metal"
+        "metal",
+        "cuda"
       ],
       "adopted_by": [
-        "apps/openagents-desktop/page/models.coax"
+        "apps/openagents-desktop/page/models.coax",
+        "apps/openagents-desktop/host-core.coax"
       ]
     },
     {

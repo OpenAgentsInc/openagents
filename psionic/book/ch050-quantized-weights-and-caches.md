@@ -696,6 +696,15 @@ leaves zero survivors of 495 mutants.
 - [Chapter 60](ch060-original-mxfp4-weights.md): the MXFP4 decoder, a profile
   still to add.
 
+## Production quantized KV cache adoption (`Q8S` / `Q8_0`)
+
+In production Inkling 2 Mini serving ([chapter 269](ch269-inkling-2-mini-on-metal.md)),
+[`coax/lib/compute/apple.coax`](../../coax/lib/compute/apple.coax) and
+[`psionic/platform/inkling-metal.c`](../platform/inkling-metal.c) enable
+lossless `Q8S` + block-32 `Q8_0` KV quantization by default (`INK_KV_Q8=1`),
+halving KV RAM (`772 → 412 MiB` at `ctx=4096`, `max_ctx 3.44M → 6.49M` on
+128 GB Apple Silicon, `cos=0.999968`) across 21 GGML quant formats (`#14028`).
+
 ## Sources
 
 - [Chapter plan](PLAN.md), Part V.

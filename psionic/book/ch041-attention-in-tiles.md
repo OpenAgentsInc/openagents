@@ -777,6 +777,15 @@ synthetic runs above.
   them in local memory; the tile and block sizes are fixed and untuned.
 - **Chapter 233's measurements.** Chapter 233 has not adopted either profile.
 
+## Production Metal 4 FlashAttention adoption
+
+In production Inkling 2 Mini serving ([chapter 269](ch269-inkling-2-mini-on-metal.md)),
+[`coax/lib/compute/apple.coax`](../../coax/lib/compute/apple.coax) (`am_flash_attn_m4`)
+and [`psionic/platform/inkling-metal.c`](../platform/inkling-metal.c) adopt
+single-pass online-softmax tiled attention on Apple Silicon Metal 4, shrinking
+attention score scratch from `2.3 GB → 3.2 MB` and lifting 2K–4K cold prefill
+to `2,038–2,315 tok/s` (`2.4×`, zero parity mismatches).
+
 ## Sources
 
 - [Chapter plan](PLAN.md), Part V.

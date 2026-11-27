@@ -350,8 +350,10 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 198, 199, 215–250, 253–255 have runnable code; the [introduction](README.md)
-table gives each one's exact status. The new small-robot chapters 256–265 are
-design drafts. Earlier chapter status rows retain their runnable scopes.
+Chapters 1–199, 215–250, 253–255, 257–259, and 266–274 have runnable code
+(200–214 and 251–252 moved to [Coder](../../coder/book/SUMMARY.md)); the
+[introduction](README.md) table gives each one's exact status. Small-robot
+chapters 256 and 260–265 remain design drafts. Earlier chapter status rows
+retain their runnable scopes.
 The physics engine and spacecraft chapters
 are in the [Metaverse Engine book](../../metaverse-engine/book/README.md).

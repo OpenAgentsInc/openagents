@@ -124,9 +124,10 @@ hs_admit :: (table:[]u8)->bool #export_c #effects(all) {return pw_digest(table,H
 
 Layout parsing on later calls is not a new identity admission. The toy table
 used by compiler checks and the example has different ordinary IDs and must
-not be supplied to a real gpt-oss model. The native gate authenticates
-`psionic/fixtures/harmony/gptoss.hst` and checks changed and truncated bytes
-against the runtime admission function.
+not be supplied to a real gpt-oss model. The native gate authenticates the
+external original tokenizer file (`gptoss.hst`, kept outside the repository
+beside the checkpoint) and checks changed and truncated bytes against the
+runtime admission function.
 
 ## Render a typed message
 

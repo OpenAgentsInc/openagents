@@ -783,6 +783,18 @@ mutants.
 - **Approximate reconstruction.** No approximate profile exists; every page
   identity is exact.
 
+## Production tiered prefix caching & cross-model cache translation
+
+In production Inkling 2 Mini serving ([chapter 269](ch269-inkling-2-mini-on-metal.md),
+[chapter 270](ch270-tool-calls-and-responses-for-inkling-2-mini.md)),
+[`psionic/platform/inkling-metal.c`](../platform/inkling-metal.c) and
+[`psionic/platform/inkling-serve.c`](../platform/inkling-serve.c) implement a
+multi-slot SWA-backed RAM prefix cache (`71d5d3d92a`) plus an async NVMe
+`DiskPromptCache` (`08a733fddc`) that cuts 5.0K-token cross-restart cold TTFT
+from `2.22 s → 0.039–0.048 s` (`46×–67×`) with bit-exact parity. For
+extending prefix reuse across distinct model families in routers and swarms,
+see [`psionic/docs/speculative-encoding.md`](../docs/speculative-encoding.md) (`#14049`).
+
 ## Sources
 
 - [Chapter plan](PLAN.md)

@@ -80,7 +80,9 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
   lines, written from spec 26.6 alone, that sums the same receipts and
   prints the same totals.
 
-Planned paths: `pay/receipt-policy.coax` and `pay/call-meter.coax`, beside
+Shipped paths: [`pay/receipt-policy.coax`](../../pay/receipt-policy.coax) (`#14060`, canonical JCS `openagents.capability.receipt.v1` codec and public call meter, exercised in [`openagents/examples/capability-economy-e2e.coax`](../examples/capability-economy-e2e.coax)).
+
+Planned paths: `pay/call-meter.coax`, beside
 the speech meter in [`pay/voice-meter.coax`](../../pay/voice-meter.coax).
 
 ## Sources

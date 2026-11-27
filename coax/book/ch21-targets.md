@@ -12,12 +12,19 @@ The point of the chapter is a habit more than a feature. "It compiles for
 that CPU" and "it works on that platform" are different claims, and this
 chapter is about the work between them.
 
-> Note: `coax0` itself runs on the build Mac (macOS on Apple silicon), and
-> its test suites run there. The iOS app compiles Coax's C output with the
-> iOS SDK and ships it. Coax Native Web (formerly Coaxial) now has a narrow Wasm/WebGPU splash path in
-> `coax/web/` and `apps/openagents-web/`, using upstream LLVM and a native
-> browser host. It is an initial consumer, not the complete engine target
-> described by spec §17.2 and §20, stage 7.
+> Note: `coax0` runs on macOS (Apple silicon) and Linux x86-64, and cross-builds
+> Windows x86-64 desktop executables (`apps/openagents-desktop/windows/`,
+> `coax/platform/*-win32.c`). The iOS app compiles Coax's C output with the
+> iOS SDK and ships it. **Coax Web** (`coax/web.md`, formerly *Coax Native Web*
+> / *Coaxial*) ships Wasm/WebGPU, DOM rendering (`components/backend/dom.coax`),
+> **Coax UI Core** (`components/ui/runtime.coax`, `policy.coax`), **Coax UI Kit**
+> (`components/ui/kit/{parts,stream_markdown,virtual_list}.coax`), **Coax UI
+> Router** (`components/ui/router.coax`), **Native SSR/Hydration**
+> (`components/backend/html.coax`, `coax/web/dom-hydrate.js`, zero-browser
+> `components/ui/test_harness.coax`), and 0-KB-Wasm SSR books
+> (`apps/openagents-web/demos/docs-starter/`). General target-aware layout
+> queries and full browser source debugging remain separate gates (spec §17.2
+> and §20, stage 7).
 
 ## What "supported" means
 
@@ -248,9 +255,10 @@ a WASI sysroot and get an object, but a browser isn't a WASI host either:
 there's no standard error for `coax_trap` to write to, and `print` has to
 become a call into JavaScript. A browser target needs its own small
 runtime, with traps, printing and memory provided as explicit host
-imports. Coax Native Web's `coax/web/wasm.sh` supplies upstream LLVM, a WASI
-sysroot and application-specific C faces; `host.js` supplies memory and
-WebGPU for the current site and Metaverse consumers. That application path
+imports. Coax Web's `coax/web/wasm.sh` supplies upstream LLVM, a WASI
+sysroot and application-specific C faces; `host.js` and `dom-host.js` /
+`dom-hydrate.js` supply memory, WebGPU, DOM, and native SSR hydration for the
+site, Coax UI demos, and Metaverse consumers. That application path
 does not make this bare invocation work or establish general target-aware
 layouts and browser source debugging. Its current scope and consumer
 evidence are recorded in `coax/web.md`.
@@ -285,11 +293,14 @@ and rendering (spec §20, stage 7), not a Wasm link and a promise.
 ## Later targets
 
 Android, Linux and Windows follow the same rule, each with its own
-runtime, linker, ABI and debugging evidence. Some of the work is
-predictable from Listing 21-1: Android and Linux have a hosted C library
-and Clang; Windows needs a compiler that provides the overflow builtins
-(Clang does) and a different answer for crash reporting. None of it has
-been done, so none of it is claimed.
+runtime, linker, ABI and debugging evidence. Linux x86-64 runs both `coax0`
+and the Vulkan desktop host (`apps/openagents-desktop/linux/`), Android links
+compiled Coax via `apps/shared/host/android/`, and Windows ships the Win32 +
+Vulkan desktop carrier (`apps/openagents-desktop/windows/`, `#14046`) over
+Win32 platform shims (`coax/platform/{process,socket,store-file,tls}-win32.c`).
+Full cross-target layout queries (`native-lp64` remains the sole named layout
+profile) and native Windows/Android CI release qualification remain separate
+gates.
 
 Until each row has its evidence, the accurate description of Coax's
 output is narrow: C11 that builds and runs on the tested Mac, and that the
@@ -305,9 +316,9 @@ line mapping and LLDB names are verified on Mac and iOS Simulator; physical
 device debugging and broader ABI cases still need their own evidence. The generated C asks for a hosted C
 library, `abort`, the overflow builtins and an honored `FP_CONTRACT`
 pragma, and its layout assertions encode a 64-bit Apple layout, which is
-exactly why they fire on 32-bit x86. Coax Native Web's narrow Wasm/WebGPU splash is
-an initial browser consumer; the full engine runtime, layout and debugging
-proof remains a separate vertical slice.
+exactly why they fire on 32-bit x86. Coax Web's Wasm/WebGPU, DOM, and native SSR runtime is
+a production browser and web-publishing consumer; full cross-target engine layout and debugging
+proof beyond the qualified Apple hosts remains a separate vertical slice.
 
 So far the reader of Coax code has been a person. In practice most Coax in
 this repository is written by agents, and the next chapter looks at the

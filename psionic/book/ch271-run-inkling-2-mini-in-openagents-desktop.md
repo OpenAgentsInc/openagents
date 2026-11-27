@@ -1,9 +1,10 @@
 # 271. Run Inkling 2 Mini in OpenAgents Desktop
 
-Part XXVII culminates in making Inkling 2 Mini a first-class, selectable local
-model inside OpenAgents Desktop (`apps/openagents-desktop/`), backed by the
-native Metal 4 runtime ([chapter 269](ch269-inkling-2-mini-on-metal.md)) and
-the `/v1/responses` + strict JSON-schema server
+Part XXVII culminates in making Inkling 2 Mini a first-class, selectable `$0.00`
+local model inside OpenAgents Desktop (`apps/openagents-desktop/` across macOS
+Metal 4, Linux Vulkan/CUDA, and Windows Win32/CUDA `#14046`), backed by the
+native Metal 4 and CUDA runtimes ([chapter 269](ch269-inkling-2-mini-on-metal.md))
+and the `/v1/responses` + strict JSON-schema server
 ([chapter 270](ch270-tool-calls-and-responses-for-inkling-2-mini.md)).
 
 - `#authority` hardware/disk/SHA-256 readiness gating:
@@ -11,15 +12,18 @@ the `/v1/responses` + strict JSON-schema server
 - Runnable verification example:
   [`psionic/examples/inkling-desktop.coax`](../examples/inkling-desktop.coax)
 - OpenAgents Desktop integration:
-  - Composer model picker & `--model inkling-2-mini` launch support:
+  - Composer model picker, multi-variant GGUF/Maple catalog (`#14028`, `feff1652bc`), Linux/Windows variant picker (`3c3a222ce2`), and `--model inkling-2-mini` launch support:
     [`apps/openagents-desktop/page/models.coax`](../../apps/openagents-desktop/page/models.coax),
     [`apps/openagents-desktop/page/layout/conversation.coax`](../../apps/openagents-desktop/page/layout/conversation.coax),
+    [`apps/openagents-desktop/host-core.coax`](../../apps/openagents-desktop/host-core.coax),
     [`apps/openagents-desktop/Window.swift`](../../apps/openagents-desktop/Window.swift)
   - Verified Local Models downloader & SHA-256 store (`~/.openagents/models/inkling-2-mini/`):
     [`apps/openagents-desktop/LocalModels.swift`](../../apps/openagents-desktop/LocalModels.swift)
-  - Resident 32K-context Psionic Metal server lifecycle & Microcoder routing:
+  - Resident 32K-context Psionic Metal/CUDA server lifecycle, cloud-first `$0.00` local tier onboarding (`#14072`, `#14087`), and unified `openagents/core` (`oa-worker.coax`) + `Inky` (`coax/lib/inky/`) routing:
     [`apps/openagents-desktop/Window+Dialogs.swift`](../../apps/openagents-desktop/Window+Dialogs.swift),
     [`apps/openagents-desktop/Window+Runs.swift`](../../apps/openagents-desktop/Window+Runs.swift),
+    [`apps/openagents-desktop/page/usage.coax`](../../apps/openagents-desktop/page/usage.coax),
+    [`coder/tui/oa-worker.coax`](../../coder/tui/oa-worker.coax),
     [`apps/openagents-desktop/AppDelegate.swift`](../../apps/openagents-desktop/AppDelegate.swift)
 
 ```shell
@@ -168,14 +172,17 @@ inkling_desktop_summary :: (st: InklingDesktopStatus) -> string #effects(all) {
 2. **CLI launch flag (`--model inkling-2-mini`)**: selects `Inkling 2 Mini (Local)`
    immediately when installed, opens the Local Models manager when weights are
    not yet downloaded, or presents a clear 32 GB RAM notice on smaller Macs.
-3. **Resident Psionic Metal 4 server (`LocalModelServer`)**: launches the
-   bundled `psionic-inkling-serve` + `inkling-kernels.metal` on
-   `http://127.0.0.1:18794` with `--ctx 32768` (aligned with
+3. **Resident Psionic Metal 4 / CUDA server (`LocalModelServer` & `host-main.c`)**:
+   launches the bundled `psionic-inkling-serve` (Metal 4 on macOS, CUDA on
+   Linux/Windows) on `http://127.0.0.1:18794` with `--ctx 32768` (aligned with
    `coax/lib/gateway/card.coax`), logs stderr to
    `~/.openagents/logs/psionic-inkling-serve.log`, detects port conflicts and
-   early exits immediately, routes Microcoder (`mcworker`) via
-   `PSIONIC_BASE_URL` + `PSIONIC_MODEL=inkling-2-mini` with strict JSON schema
-   enforcement (`gw_psionic_strict`), and stops cleanly on app termination
+   early exits immediately, routes the unified `openagents/core` worker
+   (`coder/tui/oa-worker.coax`, `#14050`–`#14053`) and `Inky`
+   (`coax/lib/inky/`; Microcoder `mcworker` is deprecated `#13983`) via
+   `PSIONIC_BASE_URL` + `PSIONIC_MODEL=inkling-2-mini`, enforces `$0.00` local
+   compute accounting in `page/usage.coax` beside OpenAgents Cloud onboarding
+   (`#14072`, `#14087`), and stops cleanly on app termination
    (`AppDelegate.applicationWillTerminate`) or model deletion.
 
 <!-- source: psionic/examples/inkling-desktop.coax example -->

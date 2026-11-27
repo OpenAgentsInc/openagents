@@ -358,8 +358,9 @@ python3 -I psionic/tests/pylon/pylon_e2e.py build/pylon-e2e
 Since [chapter 218](ch218-a-pylon-checks-itself-before-serving.md), the
 Pylon checks its engine against a shipped reference set before it
 publishes anything. It takes `--references` and `--identity-state`. The
-harness passes `psionic/fixtures/pylon/MODEL.selfcheck` and a fresh state
-file, and checks that the self-check passed and the identity was recorded.
+harness passes a model-specific reference file (e.g. `<model>.selfcheck`)
+and a fresh state file, and checks that the self-check passed and the
+identity was recorded.
 
 Midway, while job r-7 is with the engine, the harness stops the relay,
 keeps it down for 4 s and starts it again on the same port and store. The

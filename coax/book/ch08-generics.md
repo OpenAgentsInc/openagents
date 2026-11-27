@@ -243,7 +243,7 @@ Today, the type parameter is accepted, but `n > result` is refused: an
 unconstrained `$T` does not promise that comparison exists. This keeps
 valid copy/index algorithms usable without pretending that every type
 is ordered. The current spelling is `values: [] $T: ordered`; the next
-section explains its bound. The retained [0.40.0 verification record](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-generic-constraints-2026-10-31.json)
+section explains its bound. The retained [generics constraint test suite](https://github.com/OpenAgentsInc/openagents/blob/main/coax/tests/generics.py)
 records the initial built-in constraint delivery.
 
 > Note: This is the Jai syntax, and Jai programmers will recognize it. In

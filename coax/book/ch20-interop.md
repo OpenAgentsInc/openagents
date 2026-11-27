@@ -610,8 +610,9 @@ from 0 in the order you write them, so adding a member in the middle of a
 Coax enum silently shifts the Swift copy. For any enum that crosses the
 boundary, either write every value explicitly or add new members only at
 the end, and when you change it, check the `#define` lines in the
-regenerated header against the Swift table. The app does
-exactly this in `apps/openagents-ios/OpenAgents/Wallet/WalletRules.swift`:
+regenerated header against the Swift table. The shared Apple Breez Spark
+wallet host ([`apps/shared/host/apple/SparkWallet.swift`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/shared/host/apple/SparkWallet.swift))
+mirrors `pay/wallet.coax`'s enum codes across the Swift/C boundary the same way:
 
 ```swift
 /// pay/wallet.coax's enum codes, as Wallet.h defines them (Swift can't
@@ -1096,12 +1097,12 @@ ease.coax:16:3: error[E0377]: a loop is outside the Metal scalar profile
 ```
 
 The app uses this for `metaverse/light.coax`, its sky, dots, glass bar,
-bloom and tone mapping. `generate.sh` writes `coax metal
-metaverse/light.coax` and appends the hand-written stage functions from
-`Stages.metal`, which bind textures and pack vectors and call the Coax
-functions. The tests run the C build of the same file, so one source is
-checked on the CPU and drawn on the GPU. Chapter 17 covers GPU programs in
-general.
+bloom and tone mapping. Originally `generate.sh` ran `coax metal
+metaverse/light.coax` and appended hand-written stage functions from a
+companion Metal stage file (`Stages.metal`); today full Coax graphics shaders
+compile directly via `coax metal`, `coax wgsl`, and `coax spirv`. The tests
+run the C build of the same file, so one source is checked on the CPU and
+drawn on the GPU. Chapter 17 covers GPU programs in general.
 
 ## Planned: buffers without copies
 

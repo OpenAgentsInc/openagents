@@ -1697,7 +1697,7 @@ others can't.
 | Native engine | `metaverse/test_voice.sh` | The libraries and C face under AddressSanitizer and UBSan, every frame kind round-tripped, `protoc` cross-check |
 | Host, offline | `metaverse/voice-host/test.sh --offline` | Whole sessions over a real socket with the deterministic local provider |
 | Host, live | `metaverse/voice-host/test.sh` | One real Google recognition on a committed fixture |
-| Simulator | `apps/openagents-ios/tools/voice-sim-test.sh` | The app in the Grid, end to end, with a bundled recording |
+| Native apps | `apps/openagents-desktop/page/voice.coax`, `Window+Voice.swift` (and historical iOS simulator suite `voice-sim-test.sh`) | Desktop voice panel & audio session (`#14065`) over the same Coax voice engine |
 
 ### Worst-case frames under a step budget
 
@@ -1866,12 +1866,14 @@ sentence by sentence, at about 3.4 seconds from end of turn to the first
 reply audio. A run on one Mac is a data point, not a latency claim; the
 design asks for a harness that records each step on real phones.
 
-### The app in the simulator
+### The app hosts
 
-The last layer is `apps/openagents-ios/tools/voice-sim-test.sh`. It builds
-the app, starts a local offline host and, when credentials are available,
-live Google/echo and Google/Gemini cases. It boots a dedicated Simulator
-and runs `Tests/VoiceUITests.swift`: the Grid toggle, consent, transcript,
+Originally the iOS end-to-end layer ran via a dedicated simulator harness
+(`voice-sim-test.sh`, now retired as voice consolidated into the shared
+display-list kit and OpenAgents Desktop's voice panel in
+`apps/openagents-desktop/page/voice.coax` and `Window+Voice.swift`, `#14065`).
+That historical simulator suite booted a dedicated Simulator and ran
+`Tests/VoiceUITests.swift`: the Grid toggle, consent, transcript,
 reply and level indicator, followed by talking over the reply. Playback
 checks also cover first-audio delay, duration, gaps and caption loss.
 `-OAVoiceFixture` feeds the actual uplink path without proving a physical

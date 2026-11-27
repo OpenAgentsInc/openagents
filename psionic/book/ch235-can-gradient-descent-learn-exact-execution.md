@@ -216,8 +216,8 @@ es_examples :: (program:[]TmOp,rows:[]int,steps:int,ex:[]EsExample,n:int)->int #
 ```
 
 The training rows are exactly the rows of traces that [chapter
-245](ch247-outcomes-become-training-rows.md) admitted, each after [chapter
-232](ch234-exact-replay-as-a-verification-class.md) replayed it whole. The
+247](ch247-outcomes-become-training-rows.md) admitted, each after [chapter
+234](ch234-exact-replay-as-a-verification-class.md) replayed it whole. The
 state for each row is chapter 234's fold of the rows before it. A trace with
 one token changed, and its digest recomputed to match, fails replay and
 never reaches training. The held-out traces are admitted too, as `heldout`

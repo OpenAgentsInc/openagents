@@ -657,8 +657,8 @@ have test vectors.
 
 ## Replay tests (planned)
 
-> Note: Not implemented. Today, write a golden `#test` as in Listing
-> 13-7.
+> Note: Not implemented. Today, write a golden `#test` as in the replay
+> checks earlier in this chapter.
 
 Determinism is a claim about a whole pipeline: how input is serialized,
 the order of replay, compiler flags, SIMD lowering and job scheduling.

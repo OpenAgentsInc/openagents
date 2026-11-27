@@ -93,7 +93,9 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
   beside `coax/bin/coax test psionic/lib/peer/release-promote.coax` and
   `coax/bin/coax test psionic/lib/module-v2-wave2.coax`.
 
-Planned paths: `openagents/registry/install.coax`, `openagents/registry/defaults/`.
+Shipped paths: [`openagents/registry/install.coax`](../../openagents/registry/install.coax) (`#14060`, SHA-256 hash-pinned inert install, active-run lock pin, monotone signed defaults rollout/rollback).
+
+Planned paths: `openagents/registry/defaults/`.
 
 ## Sources
 

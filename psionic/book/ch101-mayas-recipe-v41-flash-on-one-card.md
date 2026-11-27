@@ -48,8 +48,8 @@ and [`deepseek-recipe-refuse.coax`](../examples/deepseek-recipe-refuse.coax).
 ## What the recipe is
 
 The source is our pre-reset notes on Maya (`mw00/project-maya` at
-`451f9cb6a2`, read 2026-10-21, kept in history at
-`docs/research/deepseek/2026-10-21-project-maya.md`) and Maya-S, its V4.1
+`451f9cb6a2`, read 2026-10-21, kept in git history at
+`git show 0b401561a0^:docs/research/deepseek/2026-10-21-project-maya.md`) and Maya-S, its V4.1
 quant (`peasantsmith/DeepSeek-V4.1-Flash-1017-Maya-GGUF`, MIT). Maya-S is not
 a new format. It is a choice of ordinary GGUF block types, one per tensor
 kind, plus a calibration recipe for the routed experts:

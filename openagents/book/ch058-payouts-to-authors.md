@@ -1,15 +1,23 @@
 # 58. Payouts to authors
 
-> **Status: partly implemented.** The `#authority` **3-leg author-royalty
+> **Status: partly implemented.** Both the `#authority` **3-leg author-royalty
 > settlement** ledger (`Worker + Validator + Module Author`, royalty capped at
-> `<= 25%` / `2500 bps`, repeat-safe idempotency, rolling UTC daily caps) is
-> implemented and mutation-tested (`101/101` mutants killed, `#13961`) in
-> [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax) and
-> [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax), driving live
-> Breez Spark payouts in [`apps/openagents-cli/pylon-settle.coax`](../../apps/openagents-cli/pylon-settle.coax)
-> (see also [chapter 70](ch070-pylons.md)). Remaining: general scheduled batch
-> payouts and held balances for non-executor plugin authors
-> (`pay/payout-policy.coax`, tracked in `#14060`).
+> `<= 25%` / `2500 bps`, repeat-safe idempotency, rolling UTC daily caps,
+> `101/101` mutants killed, `#13961`) in
+> [`pay/executor-settlement.coax`](../../pay/executor-settlement.coax) /
+> [`psionic/lib/peer/pay.coax`](../../psionic/lib/peer/pay.coax) (driving live
+> Breez Spark payouts in [`apps/openagents-cli/pylon-settle.coax`](../../apps/openagents-cli/pylon-settle.coax),
+> see [chapter 70](ch070-pylons.md)) and the `#authority` **capability economy**
+> payout runner (`#14060`) in [`pay/price-policy.coax`](../../pay/price-policy.coax),
+> [`pay/receipt-policy.coax`](../../pay/receipt-policy.coax),
+> [`pay/payout-policy.coax`](../../pay/payout-policy.coax),
+> [`openagents/registry/registry.coax`](../../openagents/registry/registry.coax),
+> and [`openagents/registry/install.coax`](../../openagents/registry/install.coax)
+> are implemented and exercised end-to-end by
+> [`openagents/examples/capability-economy-e2e.coax`](../examples/capability-economy-e2e.coax)
+> (`paid + held == earned` conservation, dust-free sat conversion, retry backoff,
+> rolling UTC caps, and Lightning/Spark settlement proof). Remaining: scheduled
+> production daemon wiring over live host wallets for third-party plugins.
 
 ## Premise
 
@@ -104,9 +112,12 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
   and the sum of payouts and balances is worked out by hand from the
   receipts.
 
-Planned paths: `pay/payout-policy.coax`, in the Payments context
+Shipped paths: [`pay/payout-policy.coax`](../../pay/payout-policy.coax) (`#14060`) and
+[`pay/executor-settlement.coax`](../../pay/executor-settlement.coax) (`#13961`), in the Payments context
 ([`pay/`](../../pay)) beside the tips in
 [`pay/makerpay-policy.coax`](../../pay/makerpay-policy.coax).
+
+Planned paths: `pay/payout-runner.coax`.
 
 ## Sources
 

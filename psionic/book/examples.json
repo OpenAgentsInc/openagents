@@ -3820,7 +3820,6 @@
       "chapter": "psionic/book/ch154-transcribe-while-someone-speaks.md",
       "consumer": "psionic/platform/incremental-cli.c",
       "evidence": [
-        "docs/verification/incremental-asr-2026-11-03/README.md",
         "docs/verification/incremental-asr-2026-11-03/README.md"
       ]
     },

@@ -438,6 +438,18 @@ a fixed length of 5 with 4 drafted: shape
 Until a measurement shows drafting gains over the target alone, speculation
 stays off by default.
 
+## Production adaptive DSpark & cross-model cache translation
+
+In production Inkling 2 Mini serving ([chapter 269](ch269-inkling-2-mini-on-metal.md)),
+[`psionic/platform/inkling-metal.c`](../platform/inkling-metal.c) runs
+default-on Native Coax DSpark with a Cascade per-request utility gate
+(`INK_DSPARK=0` opt-out) that backs off whenever live throughput drops below
+`B=1` decode, reaching `169.8 tok/s` end-to-end on `file_edit` (`260.9 tok/s`
+`nb=8` peak) with `0` parity mismatches. For heterogeneous multi-model swarms
+where one model hands prefilled context to another, see the technical study on
+**Speculative Encoding: Many-to-Many Cache Translation** (`#14049`,
+[`psionic/docs/speculative-encoding.md`](../docs/speculative-encoding.md)).
+
 ## Sources
 
 - [Chapter plan](PLAN.md)

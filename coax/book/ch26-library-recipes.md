@@ -212,3 +212,24 @@ When adding a recipe, choose one existing public boundary, retain independent
 expected output and refusal cases, and record its limits beside the code.
 Use the existing books for broader systems instead of copying their internal
 implementations into the example.
+
+## Coax Web UI & Sans-I/O SDK libraries
+
+The same caller-owned, zero-heap, `#authority` library discipline scales to
+full application frameworks and third-party API SDKs:
+
+- **Coax UI Core, Kit, Router & Native SSR (`components/ui/`, `components/backend/`):**
+  per-component MVU runtime (`components/ui/runtime.coax`), policies
+  (`policy.coax`), headless interactive parts, `VirtualList`, and streaming
+  Markdown (`components/ui/kit/{parts,virtual_list,stream_markdown}.coax`),
+  client/SSR router (`components/ui/router.coax`), DOM and native HTML
+  backends (`components/backend/{dom,html}.coax`), and a zero-browser
+  Story/Scene/Play test harness (`components/ui/test_harness.coax`), driving
+  0-KB-Wasm SSR prerendering for all 8 repository books in
+  `apps/openagents-web/demos/docs-starter/`.
+- **Sans-I/O `#authority` WorkOS SDK (`coax/lib/workos/` + `tools/oagen-coax/`):**
+  pure effect-free Coax helpers (`pkce.coax`, `jwt.coax`, `flow.coax`,
+  `seal.coax`, `webhook.coax`, `retry.coax`, `url.coax`) paired with checked-in
+  OpenAPI bindings emitted by `tools/oagen-coax/` covering 269 endpoints with
+  borrowed `Jv` views, typed presence getters, and direct-to-buffer encoders
+  for the locked WorkOS hybrid `acct_` auth architecture (`#14097`–`#14103`).

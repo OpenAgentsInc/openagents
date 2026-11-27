@@ -1,6 +1,6 @@
 # 238. Pay for verified work
 
-> **Status: implemented.** In-process buyer escrow (`VpLedger`) and the W4.3 Executor Network two-leg (`WORKER` + `VALIDATOR`) settlement layer are implemented, mutation-verified (`psionic/lib/peer/pay.coax`, 438/438 root mutants killed; `pay/executor-settlement.coax`, 63/63 killed; `psionic/lib/peer/settled-feed.coax`, 581/581 killed), and qualified end-to-end on **live Bitcoin mainnet (`--network bitcoin`)** across two distinct physical devices (Apple M5 Max worker + `coderos-4080` RTX 4080 Linux validator over a live Coax Nostr relay -> Breez Spark `0.27.2` mainnet two-leg settlement: `200 sats` worker + `50 sats` validator, `real_bitcoin_moved: true`, verified recipient mainnet balances, zero double-spend on restart, and live signed `NIP-PYLON` kind `30201` pool projection with `paid_msat.bitcoin = 250000`). See [the W4.3 mainnet verification record](../../docs/verification/executor-w43-mainnet-settlement.md).
+> **Status: implemented.** In-process buyer escrow (`VpLedger`) and the W4.3 / `#13961` Executor Network **3-leg (`WORKER` + `VALIDATOR` + `MODULE AUTHOR`)** settlement layer are implemented, mutation-verified (`psionic/lib/peer/pay.coax`, 438/438 root mutants killed; `pay/executor-settlement.coax`, 101/101 killed; `psionic/lib/peer/settled-feed.coax`, 581/581 killed), and qualified end-to-end on **live Bitcoin mainnet (`--network bitcoin`)** across two distinct physical devices (Apple M5 Max worker + `coderos-4080` RTX 4080 Linux validator over a live Coax Nostr relay -> Breez Spark `0.27.2` mainnet settlement: `200 sats` worker + `50 sats` validator, plus `#13961` 3-leg author-royalty admission capped at `<= 25%` / `2500 bps`, `openagents pylon verify-relay` `#13963`, `real_bitcoin_moved: true`, verified recipient mainnet balances, zero double-spend on restart, and live signed `NIP-PYLON` kind `30201` pool projection with `paid_msat.bitcoin = 250000`). See [the W4.3 mainnet verification record](../../docs/verification/executor-w43-mainnet-settlement.md).
 
 [Chapter 195](ch195-check-a-peers-work.md) built a checker. It admits a
 peer's receipt, samples some of the work, runs it again and says whether the
@@ -30,7 +30,9 @@ ledger addresses all three:
   same totals.
 - **A wallet boundary.** An intent becomes the amount a Bitcoin wallet would
   be asked to pay: millisatoshis for a Lightning invoice, whole sats for a
-  Spark transfer. Nothing here pays it.
+  Spark transfer. The `#authority` ledger itself never holds keys or talks to
+  a wallet; the live settlement bridge (`openagents pylon settle`) executes
+  released intents through Breez Spark outside the policy core.
 
 One `#authority` file holds every decision:
 [`peer/pay.coax`](../lib/peer/pay.coax). It loads chapter 195's
@@ -508,26 +510,28 @@ whole-sat rule and the recount's refusals.
 
 `peer/pay.coax` is an `#authority` file (`coax mutate psionic/lib/peer/pay.coax --root-only`:
 438/438 root mutants killed, 0 survived, 0 marked equivalent; it composes
-`pay/executor-settlement.coax` at 63/63 killed and `psionic/lib/executor-wire.coax`,
+`pay/executor-settlement.coax` at **101/101 killed** including 3-leg author-royalty
+splits (`#13961`) and `psionic/lib/executor-wire.coax`,
 with `psionic/lib/peer/settled-feed.coax` at 581/581 killed for reconciled public
 feeds and `NIP-PYLON` kind `30201` pool projection). Run it with the other Psionic units:
 
 ```shell
 psionic/check.sh --only peer/pay
+coax/bin/coax mutate pay/executor-settlement.coax --root-only
 coax/bin/coax mutate psionic/lib/peer/settled-feed.coax --root-only
 coax/web/tool.sh psionic/tools/executor-settle-e2e.coax
 ```
 
 ## Live qualification
 
-All W4.1–W4.3 components are implemented and qualified end-to-end on `main`:
+All W4.1–W4.3 and `#13961`/`#13963` components are implemented and qualified end-to-end on `main`:
 
-- **Worker admission & independent replay validator:** implemented in W4.1/W4.2
+- **Worker admission, independent replay validator & relay verification:** implemented in W4.1/W4.2 and `#13963`
   (`psionic/lib/pylon/executor-selfcheck.coax`, `psionic/lib/peer/executor-audit.coax`,
-  `openagents pylon executor start`, `openagents pylon validate --auto`).
-- **Two-leg escrow, Ch 234 / W5 verdicts, rolling UTC daily caps & W2.1 schemas:**
-  implemented in `pay/executor-settlement.coax`, `psionic/lib/peer/pay.coax`
-  (`vp_exec_admit_replay_pair`, `vp_exec_admit_training_pair`, `vp_exec_owner_review`,
+  `openagents pylon executor start`, `openagents pylon validate --auto`, `openagents pylon verify-relay`).
+- **Three-leg escrow (`WORKER` + `VALIDATOR` + `MODULE AUTHOR`), Ch 234 / W5 verdicts, rolling UTC daily caps & W2.1 schemas:**
+  implemented in `pay/executor-settlement.coax` (`es_admit_three_leg_split`, hard `<= 25%` / `2500 bps` royalty cap, `101/101` mutants killed, `#13961`), `psionic/lib/peer/pay.coax`
+  (`vp_exec_admit_replay_pair`, `vp_exec_admit_author_leg`, `vp_exec_admit_training_pair`, `vp_exec_owner_review`,
   `vp_exec_record_settlement`, `vp_exec_recount`), and `psionic/lib/executor-wire.coax`
   (`proto/openagents/executor/v1alpha1/settlement.proto`).
 - **Reconciled public settled feed & `NIP-PYLON` `30201` pool projection:**
@@ -560,16 +564,21 @@ All W4.1–W4.3 components are implemented and qualified end-to-end on `main`:
 
 ## In the other books
 
-This chapter stops at a payment intent. The payment itself is built
-elsewhere:
+The pure `#authority` escrow core (`peer/pay.coax`) emits payment intents
+without touching keys or sockets, while the live Executor Network settlement
+bridge (`openagents pylon settle` + Breez Spark) executes released 2-leg and
+3-leg intents above. The payment primitives and broader marketplace rails are
+built in the companion books:
 
 - A Lightning invoice and its checks:
   [Bitcoin chapter 114](../../bitcoin/book/ch114-invoices.md).
 - Finding a route and paying:
   [Bitcoin chapter 113](../../bitcoin/book/ch113-find-a-route-and-pay.md).
-- Paying for an HTTP request over Lightning:
+- Paying for an HTTP request and 3-leg settlement over Lightning/Spark:
+  [Bitcoin chapter 123](../../bitcoin/book/ch123-paying-for-requests.md) and
   [Nostr chapter 86](../../nostr/book/ch086-lightning-payments-for-requests.md).
 - A fixed-price order settled against a payment preimage:
   [Nostr chapter 80](../../nostr/book/ch080-jobs-labor-and-markets.md).
-- The step from this chapter's intent to a settled payment is open. See
+- Executor Network live mainnet settlement is qualified above; general in-world
+  game-guard micro-settlement remains open in
   [A guard's decision is paid for](../../docs/books/capstones/a-guard-decision-is-paid-for.md).

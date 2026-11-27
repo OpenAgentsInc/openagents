@@ -1,8 +1,11 @@
 # 46. Resident compilation and state migration
 
-> Note: This feature is planned and not available in `coax0`. The syntax
-> shown follows [the Coax specification](https://github.com/OpenAgentsInc/openagents/tree/main/coax/spec.md) and may change
-> before it's built. This is roadmap R27.
+> **Status: partly implemented.** The check cache (`#12647`), resident
+> compiler daemon `coax serve` (`#13138`, `coax/src/serve.cpp`,
+> `coax/tests/serve.coax`), and changed-body-first skeleton checker (`#13142`,
+> `coax/src/skeleton.cpp`, accelerated further in `d261ba5f08`) ship and run in
+> `coax0` today. Live hot code replacement and transactional state migration
+> remain planned (roadmap R27, spec stage 8).
 
 `coax0` checks and emits a whole program on every run. Its resident
 compiler, `coax serve`, keeps the per-file work between runs, and checks an
@@ -61,9 +64,9 @@ process for each compiler binary and user. You don't start it: the first
 or `coax deps` starts one and runs as before, and later commands run in it.
 
 ```console
-$ coax check apps/openagents-web/old/experimental/fivelab.coax     # starts a resident, compiles cold
-$ coax check apps/openagents-web/old/experimental/fivelab.coax     # runs in the resident, fills its memo
-$ coax check apps/openagents-web/old/experimental/fivelab.coax     # reuses every unit's lex
+$ coax check apps/openagents-desktop/page.coax --library     # starts a resident, compiles cold
+$ coax check apps/openagents-desktop/page.coax --library     # runs in the resident, fills its memo
+$ coax check apps/openagents-desktop/page.coax --library     # reuses every unit's lex
 $ coax serve status
 coax serve: pid 40243, up 50 s, 3 requests (0 running), 294 unit lexes kept in 159 MiB ...
 $ coax serve stop
@@ -107,10 +110,10 @@ program with every other body emptied (fivelab: a tenth of its tokens) and
 runs the ordinary checker over it, while the compile itself goes on parsing.
 
 ```console
-$ coax c apps/openagents-web/old/experimental/fivelab.coax --library > fivelab.c     # passes: the resident keeps its skeleton
-$ $EDITOR metaverse/experimental-dungeon.coax                           # a mistake inside one procedure
-$ coax c apps/openagents-web/old/experimental/fivelab.coax --library > fivelab.c
-metaverse/experimental-dungeon.coax:398:63: error[E0325]: 'x' is bool but is initialized with int
+$ coax c apps/openagents-desktop/page.coax --library > page.c     # passes: the resident keeps its skeleton
+$ $EDITOR apps/openagents-desktop/page/usage.coax                 # a mistake inside one procedure
+$ coax c apps/openagents-desktop/page.coax --library > page.c
+apps/openagents-desktop/page/usage.coax:398:63: error[E0325]: 'x' is bool but is initialized with int
 1 error
 $ coax serve status
 coax serve: ... 1 checked programs remembered, 1 errors from changed bodies alone ...

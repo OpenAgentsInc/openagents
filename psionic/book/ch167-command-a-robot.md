@@ -1260,8 +1260,7 @@ goals remain planned.
 
 ## Planned additional modules
 
-- `psionic/lib/robotics/control.coax` (broader control profiles and IK), `plan.coax` (RRT-Connect,
-  shortcutting and timed-reference integration).
+- Planned future modules (not yet in the tree): broader control/IK profiles (`control.coax`) and motion planning (`plan.coax`: RRT-Connect, shortcutting and timed-reference integration).
 
 ## Remaining acceptance checks and oracles
 

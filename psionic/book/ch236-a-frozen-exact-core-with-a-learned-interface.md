@@ -120,7 +120,7 @@ fc_admit :: (core:FcCore)->WmStatus #effects(all) {
 
 The core has eleven gate-graph nodes: four inputs, an add, a subtract, a
 product, a zero test, a constant and a select. [Chapter
-227](ch229-compile-a-gate-graph-into-a-block.md) compiles them into ReLU
+229](ch229-compile-a-gate-graph-into-a-block.md) compiles them into ReLU
 layers. Inside chapter 228's range they are exact.
 
 [Chapter 237](ch237-composable-weight-modules.md)'s admission checks three
@@ -339,7 +339,7 @@ as the miss.
 
 The [example](../examples/core-interface.coax) admits each controller's
 training traces through [chapter
-245](ch247-outcomes-become-training-rows.md). Each controller is its own
+247](ch247-outcomes-become-training-rows.md). Each controller is its own
 artifact over a shared exposure ledger. The example then trains each
 controller and scores it on 20 runs.
 
@@ -401,7 +401,8 @@ main :: () {
 
 For the live W3.1 hybrid runtime wiring the real 16.38 GB `Inkling-2-Mini` GGUF
 on Metal 4 with a rank-8 LoRA routing adapter (`11/48 → 48/48` on held-out
-tasks, `0` silent hallucinations, KV cache reused across exact calls) and the
-four W2.2 Class-E compiled weight modules, see
+tasks, `0` silent hallucinations, KV cache reused across exact calls) and all
+**eight** W2.2 Class-E compiled weight modules plus **two** zero-recompilation
+linked composites (`#13962`), see
 [`examples/hybrid-exec.coax`](../examples/hybrid-exec.coax) and
 [the W3.1 hybrid executor verification record](../../docs/verification/executor-w31-hybrid-exec.md).

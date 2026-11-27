@@ -102,7 +102,7 @@ command outcomes cannot be established by a pure state-machine test.
 
 ### A bounded differential experiment
 
-The optional `tools/differential.py` generates valid small-integer programs
+The optional `coax/tools/differential.py` generates valid small-integer programs
 with branches, aggregate returns, ordered writes through caller-buffer views
 and deferred cleanup. A separate Python integer/state model supplies expected
 values. Each generated source checks those expectations with evaluator
