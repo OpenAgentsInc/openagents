@@ -95,8 +95,10 @@ final class MobileCloudChat: ObservableObject {
     }
 
     @Published var draftText: String = ""
+    @Published var queuedFollowUp: String? = nil
     @Published var pendingAttachments: [CloudAttachment] = []
     @Published var isStreamConnected: Bool = false
+    @Published var isLoadingConversation: Bool = false
     @Published var isSending: Bool = false
     @Published var activeTurnID: String?
     @Published var activeTurnIsDurable: Bool = false
@@ -117,22 +119,14 @@ final class MobileCloudChat: ObservableObject {
     init(auth: AppAuth? = nil, session: URLSession = .shared) {
         self.auth = auth ?? MobileAccountController.shared.auth
         self.session = session
-        let savedModel = UserDefaults.standard.string(forKey: Self.modelKey) ?? CloudModelOption.catalog[0].id
-        self.selectedModelID = CloudModelOption.catalog.contains(where: { $0.id == savedModel }) ? savedModel : CloudModelOption.catalog[0].id
+        // Always default to OpenAgents Auto routing (matches Web & Desktop v1.0.0; no manual model picking).
+        self.selectedModelID = CloudModelOption.catalog[0].id
         let savedEff = UserDefaults.standard.string(forKey: Self.effortKey).flatMap(CloudThinkingEffort.init(rawValue:)) ?? .medium
         self.selectedEffort = savedEff
         self.selectedTarget = CloudExecutionTarget.fromPersisted(UserDefaults.standard.string(forKey: Self.targetKey))
         self.selectedProjectID = UserDefaults.standard.string(forKey: Self.projectKey)
-        if UserDefaults.standard.object(forKey: Self.fullAutoKey) == nil {
-            self.fullAutoEnabled = true
-        } else {
-            self.fullAutoEnabled = UserDefaults.standard.bool(forKey: Self.fullAutoKey)
-        }
-        if UserDefaults.standard.object(forKey: Self.autoAnswerKey) == nil {
-            self.autoAnswerQuestions = true
-        } else {
-            self.autoAnswerQuestions = UserDefaults.standard.bool(forKey: Self.autoAnswerKey)
-        }
+        self.fullAutoEnabled = true
+        self.autoAnswerQuestions = true
     }
 
     var isSignedIn: Bool { auth.loggedIn }
@@ -259,7 +253,9 @@ final class MobileCloudChat: ObservableObject {
         activeSendTask?.cancel()
         activeSendTask = nil
         isStreamConnected = false
+        isLoadingConversation = false
         isSending = false
+        queuedFollowUp = nil
         activeTurnID = nil
         activeTurnIsDurable = false
         activeTurnStartedAt = nil
@@ -286,6 +282,8 @@ final class MobileCloudChat: ObservableObject {
         convSSEConversationID = nil
         activeConversationID = nil
         activeItems = []
+        isLoadingConversation = false
+        queuedFollowUp = nil
         lastError = nil
         composerFocusNonce &+= 1
         onConversationsUpdated?()
@@ -294,14 +292,35 @@ final class MobileCloudChat: ObservableObject {
     func selectConversation(_ id: String) {
         let cleanID = id.hasPrefix("cloud:") ? String(id.dropFirst("cloud:".count)) : id
         activeConversationID = cleanID
+        queuedFollowUp = nil
         if let existing = conversations.first(where: { $0.id == cleanID }) {
-            activeItems = existing.items.isEmpty ? Self.itemsFromTurns(existing.turns, updatedAtMs: existing.updatedAtMs) : existing.items
+            let localItems = existing.items.isEmpty ? Self.itemsFromTurns(existing.turns, updatedAtMs: existing.updatedAtMs) : existing.items
+            activeItems = localItems
+            isLoadingConversation = localItems.isEmpty
         } else {
             activeItems = []
+            isLoadingConversation = true
         }
         ensureConversationSSE(for: cleanID)
         Task { await pullConversation(cleanID) }
         onConversationsUpdated?()
+    }
+
+    func clearQueuedFollowUp() {
+        queuedFollowUp = nil
+        onConversationsUpdated?()
+    }
+
+    func formattedActiveTranscript() -> String {
+        activeItems.compactMap { item -> String? in
+            let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            switch item.role {
+            case .user: return "User:\n\(text)"
+            case .assistant: return "OpenAgents:\n\(text)"
+            case .thought, .tool, .notice: return nil
+            }
+        }.joined(separator: "\n\n")
     }
 
     func chooseModel(_ modelID: String) {
@@ -514,6 +533,7 @@ final class MobileCloudChat: ObservableObject {
             )
             upsertConversation(updated)
             if activeConversationID == convID && !(isSending && !activeTurnIsDurable) {
+                isLoadingConversation = false
                 activeItems = items
                 if !activeTurn.isEmpty {
                     activeTurnID = activeTurn
@@ -524,11 +544,16 @@ final class MobileCloudChat: ObservableObject {
                     activeTurnID = nil
                     activeTurnIsDurable = false
                     activeTurnStartedAt = nil
+                    drainQueuedFollowUpIfReady()
                 }
             }
             onConversationsUpdated?()
             return updated
         } catch {
+            if activeConversationID == convID {
+                isLoadingConversation = false
+                onConversationsUpdated?()
+            }
             return nil
         }
     }
@@ -556,7 +581,12 @@ final class MobileCloudChat: ObservableObject {
         guard let idx = conversations.firstIndex(where: { $0.id == convID }) else { return }
         let nextPin = !conversations[idx].pinned
         conversations[idx].pinned = nextPin
+        conversations.sort {
+            if $0.pinned != $1.pinned { return $0.pinned }
+            return $0.updatedAtMs > $1.updatedAtMs
+        }
         await updateConversationMeta(convID, title: nil, pinned: nextPin, archived: nil)
+        showToast(nextPin ? "Pinned chat" : "Unpinned chat")
         onConversationsUpdated?()
     }
 
@@ -641,7 +671,7 @@ final class MobileCloudChat: ObservableObject {
             let (data, resp) = try await session.data(for: authed)
             guard (resp as? HTTPURLResponse)?.statusCode == 200,
                   let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let rows = root["data"] as? [[String: Any]] else { return }
+                  let rows = Self.extractProjectRows(root) else { return }
             projects = Self.parseProjects(rows)
             if let sel = selectedProjectID, !projects.contains(where: { $0.id == sel }) {
                 selectedProjectID = nil
@@ -650,6 +680,12 @@ final class MobileCloudChat: ObservableObject {
         } catch {
             // Keep cached projects on transient error.
         }
+    }
+
+    static func extractProjectRows(_ root: [String: Any]) -> [[String: Any]]? {
+        if let rows = root["data"] as? [[String: Any]] { return rows }
+        if let rows = root["projects"] as? [[String: Any]] { return rows }
+        return nil
     }
 
     static func parseProjects(_ rows: [[String: Any]]) -> [CloudProject] {
@@ -779,7 +815,15 @@ final class MobileCloudChat: ObservableObject {
             onConversationsUpdated?()
             return
         }
-        guard !isSending else { return }
+        if isSending {
+            queuedFollowUp = prompt
+            if overrideText == nil {
+                draftText = ""
+            }
+            showToast("Queued follow-up")
+            onConversationsUpdated?()
+            return
+        }
 
         if overrideText == nil {
             draftText = ""
@@ -791,6 +835,14 @@ final class MobileCloudChat: ObservableObject {
         activeSendTask = Task { [weak self] in
             await self?.executeTurn(prompt: prompt, imageAttachments: imageAttachments)
         }
+    }
+
+    private func drainQueuedFollowUpIfReady() {
+        guard !isSending, let nextPrompt = queuedFollowUp?.trimmingCharacters(in: .whitespacesAndNewlines), !nextPrompt.isEmpty else {
+            return
+        }
+        queuedFollowUp = nil
+        sendMessage(overrideText: nextPrompt)
     }
 
     func stopActiveTurn() async {
@@ -1120,6 +1172,9 @@ final class MobileCloudChat: ObservableObject {
         activeTurnID = nil
         activeTurnStartedAt = nil
         onConversationsUpdated?()
+        if !Task.isCancelled && turnSucceeded {
+            drainQueuedFollowUpIfReady()
+        }
     }
 
     private struct InferenceStepResult {
@@ -1798,6 +1853,9 @@ final class MobileCloudChat: ObservableObject {
             activeTurnStartedAt = nil
             await pullConversation(convID)
             onConversationsUpdated?()
+            if kind == "completed" {
+                drainQueuedFollowUpIfReady()
+            }
         default:
             break
         }
@@ -1836,7 +1894,7 @@ final class MobileCloudChat: ObservableObject {
         }
     }
 
-    private static func itemsFromTurns(_ turns: [MobileCloudTurn], updatedAtMs: Int64) -> [CloudTranscriptItem] {
+    static func itemsFromTurns(_ turns: [MobileCloudTurn], updatedAtMs: Int64) -> [CloudTranscriptItem] {
         var out: [CloudTranscriptItem] = []
         for turn in turns {
             if !turn.userText.isEmpty {
@@ -1848,11 +1906,11 @@ final class MobileCloudChat: ObservableObject {
                     startedAtMs: updatedAtMs
                 ))
             }
-            if !turn.output.isEmpty || !turn.complete {
+            if !turn.output.isEmpty {
                 out.append(CloudTranscriptItem(
                     id: "\(turn.id)-a",
                     role: .assistant,
-                    text: turn.output.isEmpty ? "Thinking…" : turn.output,
+                    text: turn.output,
                     complete: turn.complete,
                     startedAtMs: updatedAtMs
                 ))
@@ -1861,7 +1919,7 @@ final class MobileCloudChat: ObservableObject {
         return out
     }
 
-    private static func buildTranscriptItems(
+    static func buildTranscriptItems(
         turns: [MobileCloudTurn],
         events: [[String: Any]],
         updatedAtMs: Int64
@@ -1913,11 +1971,11 @@ final class MobileCloudChat: ObservableObject {
             if let tools = toolsByTurn[turn.id] {
                 out.append(contentsOf: tools)
             }
-            if !turn.output.isEmpty || !turn.complete {
+            if !turn.output.isEmpty {
                 out.append(CloudTranscriptItem(
                     id: "\(turn.id)-a",
                     role: .assistant,
-                    text: turn.output.isEmpty ? "Thinking…" : turn.output,
+                    text: turn.output,
                     complete: turn.complete,
                     startedAtMs: updatedAtMs
                 ))

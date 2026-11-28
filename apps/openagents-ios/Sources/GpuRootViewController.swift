@@ -8,14 +8,12 @@ import UniformTypeIdentifiers
 struct GpuRootHostView: UIViewControllerRepresentable {
     @ObservedObject var account: MobileAccountController
     @ObservedObject var cloudChat: MobileCloudChat
-    @ObservedObject var wallet: MobileWalletController
     @ObservedObject var shell: MobileShellState
 
     func makeUIViewController(context: Context) -> GpuRootViewController {
         GpuRootViewController(
             account: account,
             cloudChat: cloudChat,
-            wallet: wallet,
             shell: shell
         )
     }
@@ -29,7 +27,6 @@ struct GpuRootHostView: UIViewControllerRepresentable {
 final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrollViewDelegate, KitAccessSource, PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
     private let account: MobileAccountController
     private let cloudChat: MobileCloudChat
-    private let wallet: MobileWalletController
     private let shell: MobileShellState
     private let dictation = VoiceDictationController()
     private var cancellables: Set<AnyCancellable> = []
@@ -53,12 +50,10 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
     init(
         account: MobileAccountController,
         cloudChat: MobileCloudChat,
-        wallet: MobileWalletController,
         shell: MobileShellState
     ) {
         self.account = account
         self.cloudChat = cloudChat
-        self.wallet = wallet
         self.shell = shell
         super.init(nibName: nil, bundle: nil)
     }
@@ -173,12 +168,6 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             .store(in: &cancellables)
 
         cloudChat.objectWillChange
-            .sink { [weak self] _ in
-                Task { @MainActor [weak self] in self?.markDirtyAndWake() }
-            }
-            .store(in: &cancellables)
-
-        wallet.objectWillChange
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in self?.markDirtyAndWake() }
             }
@@ -338,20 +327,20 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             surface,
             account.sidebarLabel,
             signedIn ? 1 : 0,
-            wallet.sidebarLabel,
-            wallet.ready ? 1 : 0
+            "",
+            0
         )
 
         let bannerErr = dictation.errorMessage ?? cloudChat.lastError ?? ""
         let toast = cloudChat.statusToast ?? ""
         oa_ios_set_banners(surface, bannerErr, 0, toast)
 
-        oa_ios_set_full_auto(surface, cloudChat.fullAutoEnabled ? 1 : 0)
+        oa_ios_set_full_auto(surface, 1)
         oa_ios_set_usage(surface, cloudChat.usageStripSummary, 0)
         oa_ios_set_voice_duplex(surface, dictation.duplexState.rawValue, dictation.audioLevel)
         oa_ios_set_approval(surface, 0, "", "")
         oa_ios_approval_options_clear(surface)
-        oa_ios_set_queued(surface, "")
+        oa_ios_set_queued(surface, cloudChat.queuedFollowUp ?? "")
 
         // Slash command autocomplete suggestions
         let slashes = cloudChat.matchingSlashCommands
@@ -363,12 +352,10 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         oa_ios_todos_clear(surface)
         oa_ios_folders_clear(surface)
 
-        let modelOpt = cloudChat.selectedModelOption
-        let effortLabel = modelOpt.supportsThinking ? cloudChat.selectedEffort.label : ""
         oa_ios_set_composer(
             surface,
-            modelOpt.chipLabel,
-            effortLabel,
+            "OA Auto",
+            "",
             cloudChat.selectedTarget.shortChipLabel,
             Int32(cloudChat.pendingAttachments.count),
             dictation.isListening ? 1 : 0
@@ -380,12 +367,16 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             }
             return 0
         }()
+        let workingBusy = cloudChat.isSending || cloudChat.isLoadingConversation
+        let workingText = cloudChat.isLoadingConversation && !cloudChat.isSending
+            ? "Loading conversation…"
+            : cloudChat.activePhaseLabel
         oa_ios_set_working(
             surface,
-            cloudChat.isSending ? 1 : 0,
-            cloudChat.isSending ? 1 : 0,
+            workingBusy ? 1 : 0,
+            workingBusy ? 1 : 0,
             elapsedSecs,
-            cloudChat.activePhaseLabel
+            workingText
         )
 
         // Sidebar: Synced OpenAgents Cloud conversations
@@ -395,18 +386,26 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             let isCurrent = cloudChat.activeConversationID == conv.id
             let isWorking = !conv.activeTurnID.isEmpty || (isCurrent && cloudChat.isSending)
             let age = Self.relativeAge(nowMs: nowMs, atMs: conv.updatedAtMs)
+            let computeLabel: String = {
+                switch conv.compute.lowercased() {
+                case "sandbox": return "Sandbox"
+                case "local": return "Computer"
+                default: return "Cloud"
+                }
+            }()
             oa_ios_sessions_push(
                 surface,
                 conv.id,
                 conv.title,
                 conv.workspace.isEmpty ? "Cloud" : conv.workspace,
-                conv.model,
+                computeLabel,
                 age,
                 isWorking ? 1 : 0,
                 isCurrent ? 1 : 0,
                 0,
                 0
             )
+            oa_ios_session_set_pinned(surface, conv.id, conv.pinned ? 1 : 0)
             if let last = conv.turns.last {
                 oa_ios_session_set_preview(surface, conv.id, last.userText, "", last.output)
             }
@@ -643,12 +642,12 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
                 editor.set(cloudChat.draftText)
                 _ = focusComposer()
             }
+        case OA_IOS_ACT_CLEAR_QUEUED:
+            cloudChat.clearQueuedFollowUp()
         case OA_IOS_ACT_DASHBOARD_CHANGED:
             if arg == "1" {
                 dismissKeyboard(surface)
             }
-        case OA_IOS_ACT_TOGGLE_FULL_AUTO:
-            cloudChat.toggleFullAuto()
         case OA_IOS_ACT_OPEN_USAGE:
             dismissKeyboard(surface)
             shell.isUsagePresented = true
@@ -687,21 +686,20 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         case OA_IOS_ACT_OPEN_ACCOUNT:
             dismissKeyboard(surface)
             shell.isAccountPresented = true
-        case OA_IOS_ACT_OPEN_WALLET:
-            dismissKeyboard(surface)
-            shell.isWalletPresented = true
         default:
             break
         }
         markDirtyAndWake()
     }
 
-    // MARK: - Hardware Keyboard Shortcuts (Cmd+D, Cmd+N, Cmd+\, Cmd+Up/Down, Cmd+1..9)
+    // MARK: - Hardware Keyboard Shortcuts (Cmd+D, Cmd+N, Cmd+P, Cmd+B, Cmd+\, Cmd+Up/Down, Cmd+1..9)
 
     override var keyCommands: [UIKeyCommand]? {
         var cmds: [UIKeyCommand] = [
             UIKeyCommand(title: "Dashboard", action: #selector(cmdToggleDashboard), input: "d", modifierFlags: .command),
             UIKeyCommand(title: "New Chat", action: #selector(cmdNewChat), input: "n", modifierFlags: .command),
+            UIKeyCommand(title: "Projects & Environments", action: #selector(cmdOpenProjects), input: "p", modifierFlags: .command),
+            UIKeyCommand(title: "Toggle Sidebar", action: #selector(cmdToggleSidebar), input: "b", modifierFlags: .command),
             UIKeyCommand(title: "Toggle Sidebar", action: #selector(cmdToggleSidebar), input: "\\", modifierFlags: .command),
             UIKeyCommand(title: "Jump to Top", action: #selector(cmdJumpTop), input: UIKeyCommand.inputUpArrow, modifierFlags: .command),
             UIKeyCommand(title: "Jump to Bottom", action: #selector(cmdJumpBottom), input: UIKeyCommand.inputDownArrow, modifierFlags: .command),
@@ -710,6 +708,13 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             cmds.append(UIKeyCommand(title: "Chat \(n)", action: #selector(cmdSelectChatByIndex(_:)), input: "\(n)", modifierFlags: .command))
         }
         return cmds
+    }
+
+    @objc private func cmdOpenProjects() {
+        guard let surface else { return }
+        dismissKeyboard(surface)
+        shell.isEnvironmentsPresented = true
+        markDirtyAndWake()
     }
 
     @objc private func cmdToggleDashboard() {
@@ -781,6 +786,24 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         sheet.addAction(UIAlertAction(title: "Environments & Projects", style: .default) { [weak self] _ in
             self?.shell.isEnvironmentsPresented = true
         })
+        if let conv = cloudChat.activeConversation {
+            sheet.addAction(UIAlertAction(title: conv.pinned ? "Unpin Chat" : "Pin Chat", style: .default) { [weak self] _ in
+                Task { await self?.cloudChat.togglePinConversation(conv.id) }
+            })
+            sheet.addAction(UIAlertAction(title: "Rename Chat", style: .default) { [weak self] _ in
+                self?.presentRenameChatAlert(conv: conv)
+            })
+            let transcript = cloudChat.formattedActiveTranscript()
+            if !transcript.isEmpty {
+                sheet.addAction(UIAlertAction(title: "Copy Chat", style: .default) { _ in
+                    UIPasteboard.general.string = transcript
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                })
+            }
+            sheet.addAction(UIAlertAction(title: "Archive Chat", style: .destructive) { [weak self] _ in
+                Task { await self?.cloudChat.archiveConversation(conv.id) }
+            })
+        }
         sheet.addAction(UIAlertAction(title: "Account & Cloud", style: .default) { [weak self] _ in
             self?.shell.isAccountPresented = true
         })
@@ -790,6 +813,22 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             popover.sourceRect = CGRect(x: 32, y: view.bounds.maxY - 90, width: 44, height: 44)
         }
         present(sheet, animated: true)
+    }
+
+    private func presentRenameChatAlert(conv: MobileCloudConversation) {
+        let alert = UIAlertController(title: "Rename Chat", message: nil, preferredStyle: .alert)
+        alert.overrideUserInterfaceStyle = .dark
+        alert.addTextField { tf in
+            tf.text = conv.title
+            tf.placeholder = "Chat title"
+            tf.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self] _ in
+            let nextTitle = alert.textFields?.first?.text ?? ""
+            Task { await self?.cloudChat.renameConversation(conv.id, title: nextTitle) }
+        })
+        present(alert, animated: true)
     }
 
     private func presentPhotoPicker() {
@@ -1089,7 +1128,25 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             CloudProject(id: "01234567-89ab-4cde-8f01-23456789abcd", revision: 1, name: "OpenAgents Core", description: "Coax + Cloud platform", repoCanonical: "github.com/openagentsinc/openagents", updatedAtMs: nowMs - 60_000)
         ]
         let demoConvID = "11234567-89ab-4cde-8f01-23456789abcd"
+        let pinnedConvID = "31234567-89ab-4cde-8f01-23456789abcd"
         cloudChat.conversations = [
+            MobileCloudConversation(
+                id: pinnedConvID,
+                title: "v1.0.0 Launch Readiness",
+                model: "google/gemini-4-neon",
+                workspace: "OpenAgents Core",
+                revision: 3,
+                updatedAtMs: nowMs - 120_000,
+                pinned: true,
+                archived: false,
+                activeTurnID: "",
+                compute: "sandbox",
+                sourceDevice: "ios-mobile",
+                turns: [
+                    MobileCloudTurn(id: "41234567-89ab-4cde-8f01-23456789abcd", userText: "Audit v1 launch checklist across Desktop, Web, and Mobile.", output: "All Cloud Sync and Sandbox gates verified.", complete: true)
+                ],
+                items: []
+            ),
             MobileCloudConversation(
                 id: demoConvID,
                 title: "Verify OpenAgents Cloud Mode on iOS",

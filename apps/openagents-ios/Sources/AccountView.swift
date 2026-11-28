@@ -123,8 +123,55 @@ struct AccountView: View {
                     .foregroundStyle(cloudChat.isStreamConnected ? OATheme.statusReady : OATheme.textSecondary)
             }
             .listRowBackground(OATheme.surface)
+
+            HStack {
+                Text("GitHub")
+                    .font(.system(size: 14))
+                    .foregroundStyle(OATheme.textSecondary)
+                Spacer()
+                if account.githubConnected {
+                    Text(account.formattedGitHubStatus)
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .foregroundStyle(OATheme.statusReady)
+                } else {
+                    Button("Connect GitHub") {
+                        Task { await account.connectGitHub() }
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .disabled(account.isBusy)
+                }
+            }
+            .accessibilityIdentifier("account.github")
+            .listRowBackground(OATheme.surface)
         } header: {
             Text("OpenAgents Cloud")
+        }
+
+        if account.organizations.count > 1 {
+            Section {
+                ForEach(account.organizations, id: \.id) { org in
+                    Button {
+                        Task { await account.switchOrganization(org) }
+                    } label: {
+                        HStack {
+                            Text(org.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(OATheme.textPrimary)
+                            Spacer()
+                            if account.activeOrgID == org.id {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color.white)
+                            }
+                        }
+                    }
+                    .disabled(account.isBusy)
+                    .listRowBackground(OATheme.surface)
+                }
+            } header: {
+                Text("Organization")
+            }
         }
 
         Section {

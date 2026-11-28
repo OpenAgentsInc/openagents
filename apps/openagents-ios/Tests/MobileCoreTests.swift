@@ -339,4 +339,43 @@ final class MobileCoreTests: XCTestCase {
         let imgObj = try XCTUnwrap(parts[1]["image_url"] as? [String: Any])
         XCTAssertTrue((imgObj["url"] as? String)?.hasPrefix("data:image/jpeg;base64,") == true)
     }
+
+    @MainActor
+    func testGitHubStatusProjectsFallbackAndTranscriptInvariants() throws {
+        // GitHub Pipes status parsing supports both login and username keys.
+        let gh1 = MobileAccountController.parseGitHubStatus(["connected": true, "login": "AtlantisPleb"])
+        XCTAssertTrue(gh1.connected)
+        XCTAssertEqual(gh1.login, "AtlantisPleb")
+        let gh2 = MobileAccountController.parseGitHubStatus(["connected": true, "username": "ada"])
+        XCTAssertTrue(gh2.connected)
+        XCTAssertEqual(gh2.login, "ada")
+        let gh3 = MobileAccountController.parseGitHubStatus(["connected": false])
+        XCTAssertFalse(gh3.connected)
+        XCTAssertEqual(gh3.login, "")
+
+        // /api/projects/v1 parser accepts both "data" and "projects" keys (matching oa-api & Desktop).
+        let projRow: [String: Any] = ["id": "660e8400-e29b-41d4-a716-446655440000", "name": "OpenAgents"]
+        XCTAssertEqual(MobileCloudChat.extractProjectRows(["data": [projRow]])?.count, 1)
+        XCTAssertEqual(MobileCloudChat.extractProjectRows(["projects": [projRow]])?.count, 1)
+        XCTAssertNil(MobileCloudChat.extractProjectRows(["empty": []]))
+
+        // Incomplete turn with empty output does NOT inject a fake "Thinking…" assistant bubble.
+        let pendingTurn = MobileCloudTurn(id: "t1", userText: "Check status", output: "", complete: false)
+        let built = MobileCloudChat.itemsFromTurns([pendingTurn], updatedAtMs: 1000)
+        XCTAssertEqual(built.count, 1)
+        XCTAssertEqual(built[0].role, .user)
+        XCTAssertEqual(built[0].text, "Check status")
+
+        // Queued follow-up state clears cleanly and formats full chat transcript for Copy Chat.
+        let chat = MobileCloudChat(auth: AppAuth(origin: "https://openagents.com"))
+        chat.queuedFollowUp = "Next check tests"
+        chat.clearQueuedFollowUp()
+        XCTAssertNil(chat.queuedFollowUp)
+        chat.activeItems = [
+            CloudTranscriptItem(id: "u1", role: .user, text: "Hello", complete: true),
+            CloudTranscriptItem(id: "t1", role: .thought, text: "Reasoning", complete: true),
+            CloudTranscriptItem(id: "a1", role: .assistant, text: "Hi there!", complete: true),
+        ]
+        XCTAssertEqual(chat.formattedActiveTranscript(), "User:\nHello\n\nOpenAgents:\nHi there!")
+    }
 }

@@ -336,6 +336,12 @@ void oa_ios_sessions_push(void *surface, const char *id, const char *title, cons
   ios_sessions_push(oa_state(c), oa_str(id), oa_str(title), oa_str(repo), oa_str(branch), oa_str(status), busy != 0, current != 0, attention != 0, unread != 0);
   oa_changed(c);
 }
+void oa_ios_session_set_pinned(void *surface, const char *id, int pinned) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_session_set_pinned(oa_state(c), oa_str(id), pinned != 0);
+  oa_changed(c);
+}
 void oa_ios_session_set_preview(void *surface, const char *id, const char *ask, const char *activity, const char *reply) {
   IosGpuHost *c = surface;
   if (!c) return;

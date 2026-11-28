@@ -1,11 +1,10 @@
-// Firm reason: 6 (iOS SwiftUI @main application entry point for OpenAgents: 100% OpenAgents Cloud mode over the Metal GPU surface, Account/Passkey, Spark Wallet, and Voice).
+// Firm reason: 6 (iOS SwiftUI @main application entry point for OpenAgents: 100% OpenAgents Cloud mode over the Metal GPU surface, Account/Passkey, Environments & Projects, and Voice).
 import SwiftUI
 import UIKit
 
 @MainActor
 final class MobileShellState: ObservableObject {
     @Published var isAccountPresented: Bool = false
-    @Published var isWalletPresented: Bool = false
     @Published var isEnvironmentsPresented: Bool = false
     @Published var isUsagePresented: Bool = false
 }
@@ -14,7 +13,6 @@ final class MobileShellState: ObservableObject {
 struct OpenAgentsApp: App {
     @StateObject private var account = MobileAccountController.shared
     @StateObject private var cloudChat = MobileCloudChat.shared
-    @StateObject private var wallet = MobileWalletController.shared
     @StateObject private var shell = MobileShellState()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -23,7 +21,6 @@ struct OpenAgentsApp: App {
             RootView(
                 account: account,
                 cloudChat: cloudChat,
-                wallet: wallet,
                 shell: shell
             )
             .preferredColorScheme(.dark)
@@ -37,7 +34,6 @@ struct OpenAgentsApp: App {
                         cloudChat.start()
                     } else {
                         shell.isAccountPresented = false
-                        shell.isWalletPresented = false
                         shell.isEnvironmentsPresented = false
                         shell.isUsagePresented = false
                         cloudChat.clearOnSignOut()

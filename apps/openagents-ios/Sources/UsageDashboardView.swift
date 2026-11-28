@@ -1,4 +1,4 @@
-// Firm reason: 6 (iOS pure-black OLED SwiftUI Usage Dashboard & Full Auto Controls sheet backed by /api/v1/inference/usage and Coax #authority Full Auto policy).
+// Firm reason: 6 (iOS pure-black OLED SwiftUI Usage & Credits sheet backed by /api/v1/inference/usage and /api/auth/life).
 import SwiftUI
 
 struct UsageDashboardView: View {
@@ -9,12 +9,15 @@ struct UsageDashboardView: View {
     var body: some View {
         NavigationStack {
             List {
-                // 1. Active Target & Model
+                // 1. Active Session Context
                 Section {
-                    metricRow(label: "Active Model", value: cloudChat.selectedModelOption.label, accent: OATheme.textPrimary)
+                    metricRow(label: "Routing", value: "OpenAgents Auto", accent: OATheme.textPrimary)
                     metricRow(label: "Execution Target", value: cloudChat.selectedTarget.displayLabel, accent: OATheme.statusReady)
                     if let proj = cloudChat.selectedProject {
                         metricRow(label: "Active Project", value: proj.name, accent: OATheme.textSecondary)
+                    }
+                    if account.isLoggedIn {
+                        metricRow(label: "GitHub", value: account.formattedGitHubStatus, accent: account.githubConnected ? OATheme.statusReady : OATheme.textSecondary)
                     }
                 } header: {
                     Text("Active Session")
@@ -64,35 +67,10 @@ struct UsageDashboardView: View {
                         }
                     }
                 }
-
-                // 3. Full Auto Policy Controls
-                Section {
-                    Toggle("Full Auto Mode (Zero Approval Nags)", isOn: Binding(
-                        get: { cloudChat.fullAutoEnabled },
-                        set: { cloudChat.setFullAuto($0) }
-                    ))
-                    .font(.system(size: 14))
-                    .tint(OATheme.statusReady)
-                    .accessibilityIdentifier("usage.fullAutoToggle")
-                    .listRowBackground(OATheme.surface)
-
-                    Toggle("Auto-Answer Structured Questions", isOn: Binding(
-                        get: { cloudChat.autoAnswerQuestions },
-                        set: { cloudChat.setAutoAnswerQuestions($0) }
-                    ))
-                    .font(.system(size: 14))
-                    .tint(OATheme.statusReady)
-                    .disabled(!cloudChat.fullAutoEnabled)
-                    .listRowBackground(OATheme.surface)
-                } header: {
-                    Text("Full Auto Policy")
-                } footer: {
-                    Text("Controlled by Coax #authority Full Auto policy across Cloud Tools, Cloud Sandbox, and enrolled computers.")
-                }
             }
             .scrollContentBackground(.hidden)
             .background(OATheme.background)
-            .navigationTitle("Usage & Controls")
+            .navigationTitle("Usage & Credits")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

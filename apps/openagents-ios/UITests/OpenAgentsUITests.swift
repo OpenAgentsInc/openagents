@@ -58,19 +58,21 @@ final class OpenAgentsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["nav.newChat"].exists)
         XCTAssertFalse(app.buttons["login.google"].exists)
 
-        // Composer exposes Attachment (+), Model, Effort, Execution Target, Live Voice, Dictation, Full Auto & Usage HUD.
+        // Composer exposes Attachment (+), bottom-left Execution Target chip, Live Voice, Dictation & Usage HUD.
+        // Model picker, effort picker, and Full Auto mode toggle are omitted in v1.0.0 (parity with Web & Desktop).
         XCTAssertTrue(app.buttons["chat.attachButton"].exists)
-        XCTAssertTrue(app.buttons["chat.modelPicker"].exists)
-        XCTAssertTrue(app.buttons["chat.effortPicker"].exists)
+        XCTAssertFalse(app.buttons["chat.modelPicker"].exists)
+        XCTAssertFalse(app.buttons["chat.effortPicker"].exists)
+        XCTAssertFalse(app.buttons["chat.fullAuto"].exists)
         XCTAssertTrue(app.buttons["chat.reviewMode"].exists)
         XCTAssertTrue(app.buttons["chat.liveVoiceButton"].exists)
         XCTAssertTrue(app.buttons["chat.micButton"].exists)
-        XCTAssertTrue(app.buttons["chat.fullAuto"].exists)
         XCTAssertTrue(app.buttons["chat.usageBar"].exists)
 
-        // Open Usage Dashboard sheet and dismiss cleanly.
+        // Open Usage & Credits sheet and verify no Full Auto Policy toggle exists, then dismiss cleanly.
         app.buttons["chat.usageBar"].tap()
         XCTAssertTrue(app.buttons["usage.done"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.switches["usage.fullAutoToggle"].exists)
         app.buttons["usage.done"].tap()
         XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
 
@@ -82,23 +84,24 @@ final class OpenAgentsUITests: XCTestCase {
         app.buttons["environments.done"].tap()
         XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
 
-        // Open sidebar and verify Cloud sections + Account, Wallet, and Environments footer buttons.
+        // Open sidebar and verify Cloud sections (Pinned + Chats + Projects + Environments) + Account & Environments footer (NO Spark Wallet in v1.0.0).
         sidebarButton.tap()
         XCTAssertTrue(app.buttons["sidebar.newChat"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["sidebar.dashboard"].exists)
         XCTAssertTrue(app.buttons["sidebar.account"].exists)
-        XCTAssertTrue(app.buttons["sidebar.wallet"].exists)
+        XCTAssertFalse(app.buttons["sidebar.wallet"].exists)
         XCTAssertTrue(app.buttons["sidebar.computers"].exists)
-        for secID in ["side.sec.1", "side.sec.2", "side.sec.3"] {
+        for secID in ["side.sec.4", "side.sec.1", "side.sec.2", "side.sec.3"] {
             XCTAssertTrue(
                 app.otherElements[secID].exists || app.buttons[secID].exists || app.cells[secID].exists || app.staticTexts[secID].exists,
                 "Expected Cloud sidebar section \(secID)"
             )
         }
 
-        // Verify composer accepts text natively after closing sidebar via Account -> Done.
+        // Open Account & Cloud sheet and verify GitHub status row + Done dismiss.
         app.buttons["sidebar.account"].tap()
         XCTAssertTrue(app.buttons["account.done"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["account.github"].exists || app.staticTexts["GitHub"].exists)
         app.buttons["account.done"].tap()
         XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
 

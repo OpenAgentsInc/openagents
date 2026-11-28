@@ -139,6 +139,7 @@ void oa_ios_folders_push(void *surface, const char *path, const char *label, int
 
 void oa_ios_sessions_clear(void *surface);
 void oa_ios_sessions_push(void *surface, const char *id, const char *title, const char *repo, const char *branch, const char *status, int busy, int current, int attention, int unread);
+void oa_ios_session_set_pinned(void *surface, const char *id, int pinned);
 void oa_ios_session_set_preview(void *surface, const char *id, const char *ask, const char *activity, const char *reply);
 
 void oa_ios_items_clear(void *surface, int reset_scroll);

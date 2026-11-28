@@ -34,6 +34,10 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
     @Published var promoExpiresAt: String = ""
     @Published var workosEnabled: Bool = false
     @Published var workosClientID: String = ""
+    @Published var githubConnected: Bool = false
+    @Published var githubLogin: String = ""
+    @Published var organizations: [AppAuth.WorkOSOrg] = []
+    @Published var activeOrgID: String = ""
     @Published var pendingOrgs: [AppAuth.WorkOSOrg] = []
     @Published var awaitingEmailCode: Bool = false
     @Published var pendingEmailAddress: String = ""
@@ -67,6 +71,10 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
                 self.creditMsat = nil
                 self.promoMicros = 0
                 self.promoExpiresAt = ""
+                self.githubConnected = false
+                self.githubLogin = ""
+                self.organizations = []
+                self.activeOrgID = ""
                 self.pendingOrgs = []
             }
             self.onAuthChanged?(nowLoggedIn)
@@ -104,6 +112,17 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         return (msat, promo, exp)
     }
 
+    static func parseGitHubStatus(_ obj: [String: Any]) -> (connected: Bool, login: String) {
+        let connected = (obj["connected"] as? Bool) == true
+        let login = (obj["login"] as? String) ?? (obj["username"] as? String) ?? ""
+        return (connected, login)
+    }
+
+    var formattedGitHubStatus: String {
+        if !githubConnected { return "Not connected" }
+        return githubLogin.isEmpty ? "Connected" : "@\(githubLogin)"
+    }
+
     func refresh() async {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "OADemoPreview") && !auth.loggedIn && isLoggedIn {
@@ -120,6 +139,10 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
             creditMsat = nil
             promoMicros = 0
             promoExpiresAt = ""
+            githubConnected = false
+            githubLogin = ""
+            organizations = []
+            activeOrgID = ""
             return
         }
         _ = await account.refresh()
@@ -146,6 +169,71 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         }
         if !loadedLife, let msat = try? await auth.creditMsat() {
             creditMsat = max(0, msat)
+        }
+        await refreshGitHubStatus()
+        if workosEnabled, let orgs = try? await auth.workosOrgs() {
+            organizations = orgs
+            if activeOrgID.isEmpty, let first = orgs.first {
+                activeOrgID = first.id
+            }
+        }
+    }
+
+    func refreshGitHubStatus() async {
+        guard isLoggedIn, let url = URL(string: auth.origin + "/api/integrations/github/status") else { return }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 12)
+        req.httpMethod = "GET"
+        if let authed = try? await auth.authorize(req),
+           let (data, resp) = try? await URLSession.shared.data(for: authed),
+           (resp as? HTTPURLResponse)?.statusCode == 200,
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let parsed = Self.parseGitHubStatus(obj)
+            githubConnected = parsed.connected
+            githubLogin = parsed.login
+        }
+    }
+
+    func connectGitHub() async {
+        guard isLoggedIn else { return }
+        isBusy = true
+        errorMessage = nil
+        statusMessage = nil
+        defer { isBusy = false }
+        guard let url = URL(string: auth.origin + "/api/integrations/github/connect") else { return }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 15)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{\"return_to\":\"/settings\"}".utf8)
+        do {
+            let authed = try await auth.authorize(req)
+            let (data, resp) = try await URLSession.shared.data(for: authed)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if (200..<300).contains(code),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let authURLStr = (obj["url"] as? String) ?? (obj["authorize_url"] as? String),
+               let authURL = URL(string: authURLStr) {
+                await UIApplication.shared.open(authURL)
+            } else {
+                statusMessage = "Open openagents.com/settings to connect your GitHub account."
+            }
+        } catch {
+            errorMessage = AppAccount.words(error)
+        }
+    }
+
+    func switchOrganization(_ org: AppAuth.WorkOSOrg) async {
+        guard isLoggedIn else { return }
+        isBusy = true
+        errorMessage = nil
+        statusMessage = nil
+        defer { isBusy = false }
+        do {
+            let switched = try await auth.workosSwitchOrg(org.id)
+            activeOrgID = switched
+            statusMessage = "Switched organization to \(org.name)."
+            await refresh()
+        } catch {
+            errorMessage = AppAccount.words(error)
         }
     }
 
@@ -289,6 +377,8 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         creditMsat = 25_000_000
         promoMicros = 5_000_000
         promoExpiresAt = "2027-02-25T00:00:00Z"
+        githubConnected = true
+        githubLogin = "OpenAgentsInc"
     }
     #endif
 
@@ -342,6 +432,10 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
         creditMsat = nil
         promoMicros = 0
         promoExpiresAt = ""
+        githubConnected = false
+        githubLogin = ""
+        organizations = []
+        activeOrgID = ""
         awaitingEmailCode = false
         pendingEmailAddress = ""
         pendingOrgs = []

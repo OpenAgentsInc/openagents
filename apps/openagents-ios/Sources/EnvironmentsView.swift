@@ -77,6 +77,7 @@ struct EnvironmentsView: View {
                 selected: cloudChat.selectedTarget == .auto
             ) {
                 cloudChat.selectTarget(.auto)
+                dismiss()
             }
 
             targetRow(
@@ -86,6 +87,7 @@ struct EnvironmentsView: View {
                 selected: cloudChat.selectedTarget == .cloud
             ) {
                 cloudChat.selectTarget(.cloud)
+                dismiss()
             }
 
             targetRow(
@@ -98,6 +100,7 @@ struct EnvironmentsView: View {
                 }()
             ) {
                 cloudChat.selectTarget(.sandbox(size: "small"))
+                dismiss()
             }
         } header: {
             Text("Execution Target")
@@ -116,7 +119,7 @@ struct EnvironmentsView: View {
                     Text("No enrolled computers yet")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(OATheme.textPrimary)
-                    Text("Log in to OpenAgents Desktop on your Mac or run `openagents-cli` on Linux to enroll a computer for $0 local execution through OpenAgents Cloud.")
+                    Text("Log in to OpenAgents Desktop on your Mac or run `openagents environments enroll` on Linux to enroll a computer for $0 local execution through OpenAgents Cloud.")
                         .font(.system(size: 13))
                         .foregroundStyle(OATheme.textSecondary)
                 }
