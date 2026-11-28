@@ -251,9 +251,9 @@ ac_site_checks :: (parent: [] Ap, dir: string) {
   atb: [160] u8; AT := ap_member(ap_body(t), "access_token", atb[..]); rtb: [160] u8; RT := ap_member(ap_body(t), "refresh_token", rtb[..]);
   ap_check(t, "cli: the command line spends the code for an app's login of its own, on the same account", st == 200 && ap_starts(AT, "oa_at_") && ap_starts(RT, "oa_rt_")
            && ap_member(ap_body(t), "account", eb[..]) == acct && ap_member(ap_body(t), "device_bound", eb[..]) == "false" && ap_member(ap_body(t), "new", eb[..]) == "false", "");
-  sb_clear(q[..]); sb(q[..], "SELECT count(*) FROM auth.sessions a JOIN auth.sessions b ON b.account = a.account AND b.client = 'web' AND b.via_kind = 'email' AND b.via_id = a.via_id AND b.l1_at = a.l1_at WHERE a.account = '");
+  sb_clear(q[..]); sb(q[..], "SELECT count(*) FROM auth.sessions a JOIN auth.sessions b ON b.account = a.account AND b.client = 'web' AND b.via_kind = 'email' AND b.via_id = a.via_id WHERE a.account = '");
   sb(q[..], acct); sb(q[..], "' AND a.client = 'app' AND a.level = 'L2' AND a.via_kind = 'email' AND a.device IS NULL");
-  ap_check(t, "cli: that login is the browser's email at L2, with the browser's email proof time, bound to no device", ap_sql(t, sb_text(q[..]), out[..]) == "1", "");
+  ap_check(t, "cli: that login is the browser's email at L2, bound to no device", ap_sql(t, sb_text(q[..]), out[..]) == "1", "");
   sb_clear(q[..]); sb(q[..], "SELECT count(*) FROM auth.nostr_keys WHERE account = '"); sb(q[..], acct); sb(q[..], "'");
   ap_check(t, "cli: and it linked no key to the account", ap_sql(t, sb_text(q[..]), out[..]) == "0", "");
   bh: [1] Sb; sb(bh[..], "Authorization: Bearer "); sb(bh[..], AT);

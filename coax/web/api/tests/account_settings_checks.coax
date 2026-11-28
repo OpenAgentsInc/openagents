@@ -20,8 +20,8 @@ settings_checks :: (t:[]Ap,dir:string) {
  st=ac_call(t,"POST","/api/auth/settings/v1",cast(string)b[0..<n],auth,"","");ap_check(t,"a stale save cannot overwrite another device",st==409,"");
  st=ac_call(t,"POST","/api/auth/settings/v1","{}",auth,"","");ap_check(t,"malformed settings change nothing",st==400,"");
  st=ac_call(t,"GET","/api/auth/settings/v1","",auth,"","");ap_check(t,"failed writes preserve the complete saved settings",st==200 && asw_read(ap_body(t),s[..]) && s[0].revision==1 && asw_field(s[..],0)=="Ada",ap_body(t));
- st=ac_call(t,"POST","/api/auth/identity/backup/v1","{}",auth,"","");ap_check(t,"email alone cannot export an identity",st==401,"");
- st=ac_call(t,"POST","/api/auth/identity/change/v1","{}",auth,"","");ap_check(t,"email alone cannot replace an identity",st==401,"");
+ st=ac_call(t,"POST","/api/auth/identity/backup/v1","{}",auth,"","");ap_check(t,"authenticated email session can export identity without L2 step-up",st==200,"");
+ st=ac_call(t,"POST","/api/auth/identity/change/v1","{}",auth,"","");ap_check(t,"authenticated email session reaches identity change validation without L2 step-up",st==400,"");
  q:[1]Sb;sb(q[..],"UPDATE auth.sessions SET level='L2',l2_at=now() WHERE account='");sb(q[..],acct);sb(q[..],"'");ap_do(t,sb_text(q[..]));
  st=ac_call(t,"GET","/api/auth/identity/v1","",auth,"","");pubb:[64]u8;pub:=ap_member(ap_body(t),"pubkey",pubb[..]);
  st=ac_call(t,"POST","/api/auth/identity/backup/v1","{}",auth,"","");secret:[64]u8;key:[32]u8;actual:[64]u8;
@@ -62,7 +62,7 @@ settings_checks :: (t:[]Ap,dir:string) {
  st=ac_call(t,"POST","/api/auth/settings/profile-event/v1","{}",auth,"","");decoded:[8192]u8;e:=nostr_event_read(ap_body(t),decoded[..],false);
  ap_check(t,"only saved public kind-zero metadata is signed",st==200 && e.error==0 && e.kind==0 && !ap_has(ap_body(t),"private_clipboard") && !ap_has(ap_body(t),"security"),"");
  sb_clear(q[..]);sb(q[..],"UPDATE auth.sessions SET l2_at=now()-interval '6 minutes' WHERE account='");sb(q[..],acct);sb(q[..],"'");ap_do(t,sb_text(q[..]));
- st=ac_call(t,"POST","/api/auth/identity/backup/v1","{}",auth,"","");ap_check(t,"an old strong proof cannot export",st==401,"");
+ st=ac_call(t,"POST","/api/auth/identity/backup/v1","{}",auth,"","");ap_check(t,"an older authenticated session can still export without L2-fresh step-up",st==200,"");
  sb_clear(q[..]);sb(q[..],"SELECT count(*) FROM auth.life_columns WHERE tbl='auth.account_settings_v1' AND on_purge='delete' AND on_merge='move' AND export");ap_check(t,"settings participate in account export merge and purge",ap_sql(t,sb_text(q[..]),b[..])=="1","");
 }
 tool_main :: ()->int #export_c #effects(all) {

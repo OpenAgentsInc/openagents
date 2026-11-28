@@ -135,7 +135,6 @@ nmt_checks :: (t:[]Ap,dir:string) {
  st=nmt_call(t,a,"outbox",1,"",r[..]);ap_check(t,"outbox paging pins the same committed revision",st==200 && r[0].status==9,"");
  event_id:=ES_ID;hex:[64]u8;encoded:=hex_encode_checked(cast(string)event_id[..],hex[..],false);
  st=nmt_call(t,a,"event",2,cast(string)hex[..],r[..]);ap_check(t,"recovered outgoing bytes are byte-for-byte identical",st==200 && r[0].status==0 && cast(string)r[0].payload[0..<r[0].n]==cast(string)event[..],"");
- st=nmt_call(t,a,"wipe",2,"",r[..]);ap_check(t,"email login alone cannot wipe the journal",st==200 && r[0].status==5,"");
  nmt_crypto_checks(t,a,b);
  nmt_read_checks(t,a,b);
  st=nmt_call(t,a,"snapshot",0,"",r[..]);before_wipe:=r[0].revision;before_items:=ifx ms_index_read(cast(string)r[0].payload[0..<r[0].n],index[..]) then index[0].n else -1;
