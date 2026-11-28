@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+.oa-prose p { margin: 0.4rem 0; }
+.oa-prose p:first-child { margin-top: 0; }
+.oa-prose p:last-child { margin-bottom: 0; }
+.oa-prose ul, .oa-prose ol { margin: 0.4rem 0; padding-left: 1.25rem; }
+.oa-prose ul { list-style: disc; }
+.oa-prose ol { list-style: decimal; }
+.oa-prose pre {
+  margin: 0.5rem 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  background: rgb(9 9 11);
+  border: 1px solid rgb(39 39 42);
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+.oa-prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+}
+.oa-prose :not(pre) > code {
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  background: rgb(39 39 42);
+}
+.oa-prose h1, .oa-prose h2, .oa-prose h3 {
+  font-weight: 600;
+  margin: 0.6rem 0 0.3rem;
+}
+.oa-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+.oa-prose th, .oa-prose td {
+  border: 1px solid rgb(39 39 42);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}

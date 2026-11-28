@@ -7,6 +7,7 @@ Design and execution specs for building OpenAgents' web frontend and cloud contr
 | Document | Scope |
 | --- | --- |
 | [`half-day-sprint.md`](half-day-sprint.md) | Time-boxed 4-hour feasibility sprint and Go/No-Go gate: wire a live `@effect/ui` streaming chat UI (`VirtualList` + `Markdown` + `Query.StreamService` + `DevTools` MCP) directly to the compiled `oa-worker` binary. |
+| [`sprint-results.md`](sprint-results.md) | Completed sprint scorecard (**GO**), real measured E2E/browser/MCP/bundle results, and technical findings from [`apps/openagents-effect-spike/`](../../apps/openagents-effect-spike/README.md). |
 | [`full-architecture.md`](full-architecture.md) | Target production architecture: Effect v4 control plane, long-lived Linux `oa-worker` sandbox bridge, canonical `openagents.chat.event.v2` / `mcworker-wire` schema mapping, `@effect/ui` frontend decomposition, deployment, phased rollout, and optional future Coax-to-WASM kernel. |
 
 ## Core Decisions
