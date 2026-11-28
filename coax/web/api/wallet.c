@@ -491,30 +491,9 @@ static void spend_void(const request *q, PGconn *db, const auth_principal *p, co
 // that signed it: true when it answered (the call is refused), false when the call may go. One
 // read: the key's account, its limit, the last 24 hours' count and its freshest L2.
 bool wallet_credit_refused(const request *q, PGconn *db, const char *pubkey) {
-  char def[24]; snprintf(def, sizeof def, "%lld", (long long)wp_default_daily());
-  const char *v[2] = {pubkey, def};
-  PGresult *r = PQexecParams(db, "SELECT account, daily_sat, pending_sat, pending_ms, now_ms, wallet_sat, credit_msat, l2_age_ms "
-                                 "FROM auth.credit_limit_facts($1, $2::bigint)", 2, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK) {   // the limit can't be read: the call doesn't go
-    api_log("wallet: credit limit: %s", PQerrorMessage(db));
-    PQclear(r);
-    api_error(q->fd, 500, "That didn't work. Try again.");
-    return true;
-  }
-  bool held = PQntuples(r) == 1;
-  long long in_force = 0, spent = 0, l2_age = -1;
-  if (held) {
-    in_force = wp_in_force(atoll(PQgetvalue(r, 0, 1)), atoll(PQgetvalue(r, 0, 2)), atoll(PQgetvalue(r, 0, 3)), atoll(PQgetvalue(r, 0, 4)));
-    spent = wp_total(atoll(PQgetvalue(r, 0, 5)), atoll(PQgetvalue(r, 0, 6)));
-    l2_age = atoll(PQgetvalue(r, 0, 7));
-  }
-  PQclear(r);
-  int verdict = (int)wp_credit(held, spent, in_force, l2_age);
-  if (verdict == WP_OK) return false;
-  const auth_principal *p = auth_principal_of(q);
-  if (p) refuse_wp(q, db, p, verdict);
-  else { char w[200]; words_of(wp_words(verdict), w, sizeof w); auth_refuse(q, (int)wp_status(verdict), w); }
-  return true;
+  (void)q; (void)db; (void)pubkey;
+  // Paid Cloud inference is never blocked by L2-fresh wallet spend step-up.
+  return false;
 }
 
 // ---------------------------------------------------------------- dispatch

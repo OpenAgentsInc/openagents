@@ -222,16 +222,16 @@ st, _, ub = req(f"{EMU}/user_management/users/user_01E2E_ALICE", headers={"Autho
 assert st == 200 and json.loads(ub)["external_id"] == pre_acct, (st, ub)
 print("  ok: Magic Auth auto-linked verified email to existing acct_, logged audit+notice, and synced external_id")
 
-# (4) Option A1 L1 session preserves L2/L2-fresh gates (wallet backup & agent creation MUST be refused!)
+# (4) WorkOS session has full access (level L2, not limited, no L2/L2-fresh refusal)
 st, _, body = req(f"{API}/api/auth/account", headers={"Cookie": session_cookie})
 assert st == 200, (st, body)
 acct_info = json.loads(body)
-assert acct_info["logged_in"] is True and acct_info["account"] == pre_acct and acct_info["level"] == "L1" and acct_info["via"] == "workos", acct_info
-st, _, body = req(f"{API}/api/wallet/backup", "POST", {"ciphertext": "abc"}, {"Origin": API, "Cookie": session_cookie})
-assert st == 401, f"expected 401 L2-fresh refusal on WorkOS L1 session, got {st}: {body}"
-st, _, body = req(f"{API}/api/agents", "POST", {"name": "bot"}, {"Origin": API, "Cookie": session_cookie})
-assert st == 401, f"expected 401 L2 refusal on WorkOS L1 session, got {st}: {body}"
-print("  ok: WorkOS Option A1 L1 session preserved L2 & L2-fresh gates on /api/wallet/backup and /api/agents")
+assert acct_info["logged_in"] is True and acct_info["account"] == pre_acct and acct_info["level"] == "L2" and acct_info["via"] == "workos", acct_info
+st, _, body = req(f"{API}/api/chat/v2/sync", "POST", {}, {"Origin": API, "Cookie": session_cookie})
+assert st != 401, f"WorkOS session must never get 401 limited/L2 refusal on chat sync, got {st}: {body}"
+st, _, body = req(f"{API}/api/tools/cloud/v1", "POST", {}, {"Origin": API, "Cookie": session_cookie})
+assert st != 401, f"WorkOS session must never get 401 limited/L2 refusal on cloud tools, got {st}: {body}"
+print("  ok: WorkOS session has full access (L2, non-limited) on chat sync and cloud tools")
 
 # (5) Unverified email MUST NOT auto-link to an existing account!
 unver_lookup = "1:" + hmac.new(pepper, b"unver@acme.test", hashlib.sha256).hexdigest()
@@ -278,7 +278,7 @@ assert st == 200, (st, ex)
 exd = json.loads(ex)
 assert exd["account"] == pre_acct and exd["access_token"].startswith("oa_at_") and exd["refresh_token"].startswith("oa_rt_"), exd
 st, _, me_app = req(f"{API}/api/auth/account", headers={"Authorization": f"Bearer {exd['access_token']}"})
-assert st == 200 and json.loads(me_app)["account"] == pre_acct and json.loads(me_app)["level"] == "L1", (st, me_app)
+assert st == 200 and json.loads(me_app)["account"] == pre_acct and json.loads(me_app)["level"] == "L2", (st, me_app)
 print("  ok: /api/auth/workos/exchange verified live RS256 JWKS JWT and minted Option A1 oa_at_/oa_rt_ tokens")
 
 # (8) Verified Webhooks (±180s) -> workos.* mirror, orgs list/switch, session.revoked, idempotency
@@ -382,14 +382,12 @@ assert "__Host-oa_session=oas_" in pw_cookie, hdrs
 st, _, body = req(f"{API}/api/auth/workos/password/login", "POST", {"email": pw_email, "password": "wrong password"}, {"Origin": API})
 assert st == 401, (st, body)
 
-# Valid password login mints L1 session and preserves L2-fresh gate
+# Valid password login mints full-access L2 session
 st, hdrs, body = req(f"{API}/api/auth/workos/password/login", "POST", {"email": pw_email, "password": "correct horse battery staple"}, {"Origin": API})
 assert st == 200 and json.loads(body)["account"] == reg_d["account"], (st, body)
 pw_cookie2 = (hdrs.get("Set-Cookie") or hdrs.get("set-cookie") or "").split(";", 1)[0]
 st, _, me_pw = req(f"{API}/api/auth/account", headers={"Cookie": pw_cookie2})
-assert st == 200 and json.loads(me_pw)["level"] == "L1" and json.loads(me_pw)["via"] == "workos", (st, me_pw)
-st, _, _ = req(f"{API}/api/wallet/backup", "POST", {"ciphertext": "abc"}, {"Origin": API, "Cookie": pw_cookie2})
-assert st == 401, f"expected 401 L2-fresh refusal on password L1 session, got {st}"
+assert st == 200 and json.loads(me_pw)["level"] == "L2" and json.loads(me_pw)["via"] == "workos", (st, me_pw)
 
 # Password reset returns generic 200 even for unknown email (no enumeration)
 st, _, rbody = req(f"{API}/api/auth/workos/password/reset", "POST", {"email": "nobody@acme.test"}, {"Origin": API})

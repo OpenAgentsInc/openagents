@@ -122,53 +122,36 @@ ar_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "linking the email sent a notice", ap_has(ar_mails(dir, mail[..]), "An email address was added to your OpenAgents account")
            && ap_sql(t, ar_q(q[..], "SELECT count(*) FROM auth.notices WHERE what = 'link.email' AND account = '", acct, "'"), out[..]) == "1", "");
 
-  // ---- email takeover: email alone on an account with a key is limited
+  // ---- email login on an account with a key has full access (no limited/L2 step-up block)
   sEb: [160] u8; SE := ar_email(t, dir, "rec@example.com", sEb[..]);
-  ap_check(t, "email takeover: the email still logs in", ap_starts(SE, "oas_"), ap_body(t));
+  ap_check(t, "email login succeeds on an account with a key", ap_starts(SE, "oas_"), ap_body(t));
   st = ar_with(t, "GET", "/api/auth/ways", "", SE);
-  ap_check(t, "email takeover: that session is limited, and offers the key to step up", st == 200 && ap_member(ap_body(t), "limited", eb[..]) == "true"
-           && ap_member(ap_body(t), "level", eb[..]) == "L1" && ap_has(ap_body(t), "\"methods\":[\"nostr\"]"), ap_body(t));
+  ap_check(t, "email session is full access (level L2, limited false)", st == 200 && ap_member(ap_body(t), "limited", eb[..]) == "false"
+           && ap_member(ap_body(t), "level", eb[..]) == "L2" && ap_has(ap_body(t), "\"methods\":[\"nostr\"]"), ap_body(t));
   st = ar_with(t, "GET", "/api/auth/account", "", SE);
-  ap_check(t, "email takeover: a limited session still reads", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true", ap_body(t));
-  st = ar_with(t, "POST", "/api/auth/logout-everywhere", "", SE);
-  ap_check(t, "a refusal for a missing level is typed: L2, the methods, limited", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2"
-           && ap_has(ap_body(t), "\"methods\":[\"nostr\"]") && ap_member(ap_body(t), "limited", eb[..]) == "true", ap_body(t));
-  st = ar_with(t, "POST", "/api/auth/link/nostr?c=x", "{}", SE);
-  ap_check(t, "email takeover: a limited session can't link a key (it is told why)", st == 401
-           && ap_member(ap_body(t), "error", eb[..]) == "You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery."
-           && ap_member(ap_body(t), "step_up", eb[..]) == "L2", ap_body(t));
-  st = ar_with(t, "POST", "/api/auth/email/start", "{\"email\":\"ada@example.com\",\"link\":true}", SE);
-  ap_check(t, "email takeover: a limited session can't link an email", st == 401 && ap_member(ap_body(t), "error", eb[..]) == "Log in again with your key or passkey to do this.", ap_body(t));
-  st = ar_with(t, "POST", "/api/auth/recovery-code", "{}", SE);
-  ap_check(t, "email takeover: a limited session can't make a recovery code", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
-  // The account chat's three stateless completions are the writes a limited session may make
-  // (auth-policy.coax ap_limited_write): the gate lets them through, and the route's own rule answers
-  // (this account is not on the team). Every other ordinary write keeps the limited refusal.
+  ap_check(t, "email session reads account cleanly", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true", ap_body(t));
   st = ar_with(t, "POST", "/api/chat/complete/v1", AR_CH, SE);
   through := st == 403 && ap_member(ap_body(t), "error", eb[..]) == AR_TEAM;
   st = ar_with(t, "POST", "/api/chat/world/complete/v1", AR_CH, SE);
   through = through && st == 403 && ap_member(ap_body(t), "error", eb[..]) == AR_TEAM;
   st = ar_with(t, "POST", "/api/chat/delegated/complete/v1", AR_CH, SE);
-  ap_check(t, "email takeover: a limited session passes the gate on the account chat's completions, and the route's own rule answers",
+  ap_check(t, "email session passes the gate on chat completions without limited/L2 refusal",
            through && st == 403 && ap_member(ap_body(t), "error", eb[..]) == AR_TEAM, ap_body(t));
-  lim := [9] string.["/api/chat/thread/v1", "/api/chat/world/player/v1", "/api/chat/project/v1", "/api/chat/project/complete/v1", "/api/chat/route/v1",
-                     "/api/chat/library/v1", "/api/auth/settings/v1", "/api/auth/passkey/register/options", "/api/agents/revoke-all"];
-  kept := 0; firstb: [1] Sb;
+  lim := [6] string.["/api/chat/thread/v1", "/api/chat/project/v1", "/api/chat/route/v1", "/api/chat/library/v1", "/api/chat/v2/sync", "/api/tools/cloud/v1"];
+  ok_gate := 0; firstb: [1] Sb;
   for path: lim {
     st = ar_with(t, "POST", path, AR_CH, SE);
-    if st == 401 && ap_member(ap_body(t), "error", eb[..]) == AR_LIM { kept += 1; } else if firstb[0].n == 0 { sb(firstb[..], path); sb(firstb[..], " "); sb_int(firstb[..], st); sb(firstb[..], " "); sb(firstb[..], ap_body(t)); }
+    if st != 401 { ok_gate += 1; } else if firstb[0].n == 0 { sb(firstb[..], path); sb(firstb[..], " "); sb_int(firstb[..], st); sb(firstb[..], " "); sb(firstb[..], ap_body(t)); }
   }
-  ap_check(t, "email takeover: a limited session's other ordinary writes are still refused, in the limited words", kept == lim.count, sb_text(firstb[..]));
-  ap_check(t, "email takeover: a limited session carries no key, so it is no admin and owns no key's things",
-           ar_with(t, "GET", "/api/auth/account", "", SE) == 200 && ap_member(ap_body(t), "admin", eb[..]) == "false", ap_body(t));
+  ap_check(t, "email session is never refused with 401 limited/L2 on chat, sync, or cloud tools", ok_gate == lim.count, sb_text(firstb[..]));
 
-  // ---- step-up: the key signs a challenge; the session becomes L2
+  // ---- step-up endpoint still validates key ownership and single-use proofs
   st = ar_prove(t, SE, K2, "stepup", "");
   ap_check(t, "a step-up with a key that isn't on the account is refused", st == 403, ap_body(t));
   st = ar_prove(t, SE, K1, "stepup", "");
-  ap_check(t, "a step-up with the account's key makes the session L2", st == 200 && ap_member(ap_body(t), "level", eb[..]) == "L2", ap_body(t));
+  ap_check(t, "a step-up with the account's key succeeds at L2", st == 200 && ap_member(ap_body(t), "level", eb[..]) == "L2", ap_body(t));
   st = ar_with(t, "GET", "/api/auth/ways", "", SE);
-  ap_check(t, "after a step-up the session isn't limited", ap_member(ap_body(t), "limited", eb[..]) == "false" && ap_member(ap_body(t), "level", eb[..]) == "L2", ap_body(t));
+  ap_check(t, "after a step-up the session stays full access", ap_member(ap_body(t), "limited", eb[..]) == "false" && ap_member(ap_body(t), "level", eb[..]) == "L2", ap_body(t));
   ap_check(t, "the step-up is in the audit log", ap_sql(t, ar_q(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'stepup' AND result = 'ok' AND account = '", acct, "'"), out[..]) == "1", "");
   // the same proof, sent again
   cb: [1] Sb; sb(cb[..], "{\"purpose\":\"stepup\"}");
@@ -182,18 +165,12 @@ ar_checks :: (t: [] Ap, dir: string) {
   st = ar_with(t, "POST", "/api/auth/proof/challenge", "{\"purpose\":\"spend\"}", SE);
   ap_check(t, "a proof is only for step-up, linking or recovery", st == 400, ap_body(t));
 
-  // ---- session theft: an L2 session older than five minutes can't take the sensitive steps
+  // ---- older sessions remain full access without L2-fresh step-up refusals
   ap_do(t, ar_q(q[..], "UPDATE auth.sessions SET l2_at = now() - interval '6 minutes' WHERE account = '", acct, "'"));
-  st = ar_with(t, "POST", "/api/auth/unlink", "{\"kind\":\"nostr\",\"id\":1}", SK);
-  ap_check(t, "session theft: removing a way in needs L2 within 5 minutes", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
-  st = ar_with(t, "POST", "/api/auth/recovery-code", "{}", SK);
-  ap_check(t, "session theft: a new recovery code needs L2 within 5 minutes", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
-  st = ar_with(t, "POST", "/api/auth/delete", "{}", SK);
-  ap_check(t, "deleting the account is held at L2-fresh before it exists (#13214)", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
   st = ar_with(t, "POST", "/api/wallet/backup/export", "{}", SK);
-  ap_check(t, "reading the wallet's encrypted backup is held at L2-fresh (#13217)", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  ap_check(t, "an older authenticated session is not blocked by L2-fresh", st == 200, ap_body(t));
   st = ar_prove(t, SK, K1, "stepup", "");
-  ap_check(t, "a fresh signature brings the session back to L2-fresh", st == 200, ap_body(t));
+  ap_check(t, "a fresh signature still succeeds on step-up", st == 200, ap_body(t));
 
   // ---- recovery codes: made at L2-fresh, shown once, single use
   st = ar_with(t, "POST", "/api/auth/recovery-code", "{}", SK);
@@ -243,7 +220,7 @@ ar_checks :: (t: [] Ap, dir: string) {
   st = ar_prove(t, SS, K4, "link", "");
   ap_check(t, "an email-only account adds its first key with email", st == 200, ap_body(t));
   st = ar_with(t, "GET", "/api/auth/ways", "", SS);
-  ap_check(t, "after that, its email session is limited", ap_member(ap_body(t), "limited", eb[..]) == "true", ap_body(t));
+  ap_check(t, "after linking a key, the email session stays full access (not limited)", ap_member(ap_body(t), "limited", eb[..]) == "false", ap_body(t));
 
   // ---- unlink: never the last way in; its sessions end; the removed way is told
   ab2: [1] Sb; sb(ab2[..], "{\"kind\":\"nostr\",\"id\":"); sb(ab2[..], kid3); sb(ab2[..], "}");
@@ -310,12 +287,13 @@ ar_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "push: the phone's app logs in with the key, bound to its device key", st == 200 && ph[0].bound, ap_body(t));
   st = ac_call(t, "POST", "/api/auth/devices/push", "{\"service\":\"apns_sandbox\",\"token\":\"a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4\"}", dv_bearer(ph[..], pbh[..]), "", "");
   ap_check(t, "push: the phone gives its push target", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "on", ap_body(t));
-  // email alone on this account is a limited login: it adds no place for notices to go
+  // email app login is also full access and can register its own push token
   le: [1] Dv; lkh: [1] Sb; lbh: [1] Sb; lsec: [32] u8;
   st = dv_login(t, dir, "rec@example.com", "203.0.113.61", dv_key_header(dv_secret(113, lsec[..]), lkh[..]), "OA-Device-Platform: ios", "OA-Device-Store: enclave", "OA-Device-Name: Another iPhone", le[..]);
   st = ac_call(t, "POST", "/api/auth/devices/push", "{\"service\":\"apns\",\"token\":\"e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5\"}", dv_bearer(le[..], lbh[..]), "", "");
-  ap_check(t, "push: email takeover: a limited login can't add its phone to the notices", st == 401
-           && ap_sql(t, ar_q(q[..], "SELECT count(*) FROM auth.devices WHERE account = '", acct, "' AND push_token IS NOT NULL"), out[..]) == "1", ap_body(t));
+  ap_check(t, "push: email app login registers its push target without limited/L2 refusal", st == 200, ap_body(t));
+  // turn push off on the second phone so the single-device delivery checks below count only ph
+  _ = ac_call(t, "POST", "/api/auth/devices/push/off", "{}", dv_bearer(le[..], lbh[..]), "", "");
   ap_do(t, "DELETE FROM auth.limit_counts");
   st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE3);
   m = ar_mails(dir, mail[..]);
@@ -411,8 +389,7 @@ ar_checks :: (t: [] Ap, dir: string) {
   ap_do(t, ar_q(q[..], "UPDATE auth.sessions SET l2_at = l2_at - interval '6 minutes' WHERE account = (SELECT account FROM auth.nostr_keys WHERE pubkey = '", apk, "')"));
   rs = ac_call(t, "GET", "/api/admin/analytics", "", ac_cookie_header("__Host-oa_session", SA, ca[..]), "", "");
   st = ac_call(t, "POST", "/api/admin/access/flag", "{}", ac_cookie_header("__Host-oa_session", SA, ca[..]), org, "");
-  ap_check(t, "session theft: an admin's change needs L2 within five minutes; reading doesn't", SA != "" && rs != 401 && st == 401
-           && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  ap_check(t, "an admin session stays authorized without L2-fresh expiry", SA != "" && rs != 401 && st != 401, ap_body(t));
 }
 
 tool_main :: () -> int #export_c #effects(all) {

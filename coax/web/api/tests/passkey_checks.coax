@@ -135,14 +135,14 @@ pc_checks :: (t: [] Ap, dir: string) {
            && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.notices WHERE what = 'passkey.clone' AND account = '", acct, "'"), out[..]) == "2"
            && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'passkey.clone' AND account = '", acct, "'"), out[..]) == "2", ap_body(t));
 
-  // ---- email takeover and step-up
+  // ---- email login and passkey step-up
   ap_check(t, "the owner links an email", pc_link_email(t, dir, SK, "pk@example.com") == 200, ap_body(t));
   seb: [160] u8; SE := pc_email(t, dir, "pk@example.com", seb[..]);
   st = pc_with(t, "GET", "/api/auth/ways", "", SE);
-  ap_check(t, "email takeover: email alone on an account with a passkey is limited, and offers the passkey", st == 200
-           && ap_member(ap_body(t), "limited", eb[..]) == "true" && ap_has(ap_body(t), "passkey"), ap_body(t));
+  ap_check(t, "email login on an account with a passkey is full access (not limited)", st == 200
+           && ap_member(ap_body(t), "limited", eb[..]) == "false" && ap_has(ap_body(t), "passkey"), ap_body(t));
   st = pc_with(t, "POST", "/api/auth/passkey/register/options", "{}", SE);
-  ap_check(t, "email takeover: a limited session can't add a passkey", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2", ap_body(t));
+  ap_check(t, "email session can start passkey registration without L2 block", st == 200, ap_body(t));
   st = pc_stepup(t, SE, P3, plain);
   ap_check(t, "another account: a passkey on another account doesn't step this session up", st == 403
            && ap_member(ap_body(t), "error", eb[..]) == "That passkey isn't on this account. Use one you added.", ap_body(t));

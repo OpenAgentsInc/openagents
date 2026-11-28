@@ -778,8 +778,8 @@ static void finish_workos_auth_api(const request *q, PGconn *db, long status, co
       snprintf(extra_lines, sizeof extra_lines, "organization_id %s\n", org_id);
     }
     (void)clear_cookie_name;
-    // Always mint OpenAgents Option A1 session at L1 (preserving Passkey/Nostr L2/L2-fresh gates).
-    auth_logged_in(q, db, acct, "workos", NULL, "L1", app, made, action, extra_json, extra_lines);
+    // Mint full-access OpenAgents session (no L1/L2 step-up tiers).
+    auth_logged_in(q, db, acct, "workos", NULL, "L2", app, made, action, extra_json, extra_lines);
     return;
   }
 
@@ -1939,7 +1939,7 @@ static void route_exchange(const request *q, PGconn *db, const char *body) {
       auth_refuse(q, 500, "That didn't work. Try again.");
       return;
     }
-    auth_logged_in(q, db, acct, "workos", NULL, "L1", true, made, "login.workos_device", NULL, NULL);
+    auth_logged_in(q, db, acct, "workos", NULL, "L2", true, made, "login.workos_device", NULL, NULL);
     return;
   }
 

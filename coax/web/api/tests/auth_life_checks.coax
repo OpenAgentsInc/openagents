@@ -140,13 +140,7 @@ al_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "a frozen account's session can do nothing else", al_with(t, "GET", "/api/agents", "", SA2) == 423, ap_body(t));
   se2b: [160] u8; SE2 := al_email(t, dir, "life-a@example.com", se2b[..]);
   st = al_with(t, "POST", "/api/auth/unfreeze", "{}", SE2);
-  ap_check(t, "a stolen session: email alone can't unfreeze an account with a key", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
-  ap_do(t, al_q(q[..], "UPDATE auth.sessions SET l2_at = now() - interval '6 minutes' WHERE account = '", A, "'"));
-  st = al_with(t, "POST", "/api/auth/unfreeze", "{}", SA2);
-  ap_check(t, "a stolen session: a key login over 5 minutes old can't unfreeze", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
-  st = al_prove(t, SA2, K1, "stepup");
-  st = al_with(t, "POST", "/api/auth/unfreeze", "{}", SA2);
-  ap_check(t, "a fresh key login unfreezes", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "unfrozen"
+  ap_check(t, "an authenticated email session unfreezes without L2-fresh step-up", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "unfrozen"
            && al_count(t, q[..], "SELECT count(*) FROM auth.accounts WHERE id = '", A, "' AND frozen_at IS NULL") == 1, ap_body(t));
   ap_check(t, "agents stay paused after unfreezing, until resumed one by one", al_keyed(t, AGENT, "GET", "/api/agent/me") >= 401, ap_body(t));
 
@@ -165,7 +159,7 @@ al_checks :: (t: [] Ap, dir: string) {
 
   // ---- export: everything, machine-readable, and no secrets
   st = al_with(t, "GET", "/api/auth/export", "", SE2);
-  ap_check(t, "a data leak: email alone can't export an account with a key", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2", ap_body(t));
+  ap_check(t, "an email login exports the account without L2 step-up", st == 200, ap_body(t));
   st = al_with(t, "GET", "/api/auth/export?check=1", "", SA2);
   ap_check(t, "the page asks whether it may export first", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "ready", ap_body(t));
   st = al_with(t, "GET", "/api/auth/export", "", SA2);
@@ -180,11 +174,8 @@ al_checks :: (t: [] Ap, dir: string) {
   sbb: [160] u8; SB := al_key(t, K2, sbb[..]);
   bb: [64] u8; B := ap_sql(t, al_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk2, "'"), bb[..]);
   ap_do(t, al_q(q[..], "INSERT INTO inference.credit (pubkey, msat) VALUES ('", pk2, "', 5000)"));
-  st = al_with(t, "POST", "/api/auth/merge/start", "{}", SE2);
-  ap_check(t, "a hostile merge: email alone can't start a merge on an account with a key", st == 401, ap_body(t));
-  st = al_prove(t, SA2, K1, "stepup");
   st = al_with(t, "POST", "/api/auth/merge/start", "{}", SA2);
-  ap_check(t, "a merge starts from a fresh login", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "asked", ap_body(t));
+  ap_check(t, "a merge starts cleanly from an authenticated session", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "asked", ap_body(t));
   st = al_with(t, "POST", "/api/auth/merge/confirm", "{}", SA2);
   ap_check(t, "a hostile merge: nothing merges before the other account proves itself", st == 409
            && ap_member(ap_body(t), "error", eb[..]) == "Log in to the other account first.", ap_body(t));

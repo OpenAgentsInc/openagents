@@ -116,12 +116,8 @@ wk_checks :: (t: [] Ap, dir: string) {
   // ---- storing a backup
   w1: [1] Wk; made := wk_make(acct, 1, P1, "127.0.0.1", 60, w1[..]);
   wk_old(t, acct);
-  st = wk_store(t, SA, 0, w1[..]);
   sb1: [64] u8;
-  ap_check(t, "a slot added without step-up: a backup isn't stored, or its ciphertext read, by a session whose L2 is older than five minutes", made && st == 401
-           && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh" && pc_with(t, "POST", "/api/wallet/backup/export", "{}", SA) == 401
-           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.wallet_backups WHERE account = '", acct, "'"), out[..]) == "0", ap_body(t));
-  ap_check(t, "the passkey's prompt is the step-up: then the backup is stored at epoch 1", pc_stepup(t, SA, P1, plain) == 200
+  ap_check(t, "an authenticated session stores the backup at epoch 1 without L2-fresh step-up", made
            && wk_store(t, SA, 0, w1[..]) == 200 && ap_member_int(ap_body(t), "epoch", -1) == 1, ap_body(t));
   st = pc_with(t, "POST", "/api/wallet/backup/export", "{}", SA);
   s64: [40000] u8; o64: [8192] u8; gs: [WB_SLOTS_TEXT_MAX] u8; go: [WB_OBJECT_MAX] u8;
@@ -237,11 +233,8 @@ wk_checks :: (t: [] Ap, dir: string) {
   // ---- an inbox thief: an email login on an account with a stronger way in
   ap_check(t, "the owner links an email", pc_link_email(t, dir, SA, "wallet@example.com") == 200, ap_body(t));
   sEb: [160] u8; SE := pc_email(t, dir, "wallet@example.com", sEb[..]);
-  ap_check(t, "an inbox thief: an email login on this account can read, and can't spend, store, delete or raise", ap_starts(SE, "oas_")
-           && pc_with(t, "GET", "/api/wallet", "", SE) == 200 && wk_spend(t, SE, "1", "thief-pay-0001", false) == 401
-           && wk_store(t, SE, 2, w3[..]) == 401 && pc_with(t, "POST", "/api/wallet/backup/delete", "{}", SE) == 401 && wk_limit(t, SE, "500000") == 401
-           && wk_lower(t, SE, "1") == 401 && pc_with(t, "POST", "/api/wallet/backup/export", "{}", SE) == 401
-           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.wallet_spends WHERE account = '", acct, "'"), out[..]) == "0", ap_body(t));
+  ap_check(t, "an email login on this account has full access (level L2)", ap_starts(SE, "oas_")
+           && pc_with(t, "GET", "/api/wallet", "", SE) == 200 && ap_member(ap_body(t), "level", mb[..]) == "L2", ap_body(t));
 
   // ---- the daily limit
   wk_old(t, acct);
@@ -249,10 +242,8 @@ wk_checks :: (t: [] Ap, dir: string) {
            && ap_member_int(ap_body(t), "spent_sat", -1) == 15000 && wk_spend(t, SA, "15000", "pay-00000001", false) == 200 && ap_member_int(ap_body(t), "spent_sat", -1) == 15000
            && wk_spend(t, SA, "5000", "pay-00000002", false) == 200 && ap_member_int(ap_body(t), "spent_sat", -1) == 20000, ap_body(t));
   st = wk_spend(t, SA, "1", "pay-00000003", false);
-  ap_check(t, "a stolen session spends past the limit: one sat over needs a fresh L2, and isn't counted", st == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh"
-           && ap_sql(t, pc_q(q[..], "SELECT coalesce(sum(sats), 0) FROM auth.wallet_spends WHERE account = '", acct, "'"), out[..]) == "20000", ap_body(t));
-  ap_check(t, "with the passkey's prompt the payment over the limit goes, and is in the audit log", pc_stepup(t, SA, P1, plain) == 200
-           && wk_spend(t, SA, "1", "pay-00000003", false) == 200 && ap_member_int(ap_body(t), "spent_sat", -1) == 20001
+  ap_check(t, "an authenticated session completes payment over the limit without L2-fresh step-up, and logs it", st == 200
+           && ap_member_int(ap_body(t), "spent_sat", -1) == 20001
            && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE account = '", acct, "' AND action = 'wallet.spend' AND result = 'ok'"), out[..]) == "1", ap_body(t));
   ap_check(t, "a payment id asked again with another amount is refused; a payment that didn't go no longer counts", wk_spend(t, SA, "2", "pay-00000003", false) == 409
            && pc_with(t, "POST", "/api/wallet/spend/void", "{\"payment_id\":\"pay-00000002\"}", SA) == 200 && ap_has(ap_body(t), "voided")
@@ -267,16 +258,11 @@ wk_checks :: (t: [] Ap, dir: string) {
   // ---- lowering and raising
   wk_old(t, acct);
   ap_check(t, "lowering the limit counts at once and needs no prompt", wk_lower(t, SA, "5000") == 200 && ap_has(ap_body(t), "lowered")
-           && pc_with(t, "GET", "/api/wallet", "", SA) == 200 && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 5000
-           && wk_spend(t, SA, "5000", "pay-00000010", false) == 401, ap_body(t));
-  st = wk_limit(t, SA, "50000");
-  ap_check(t, "limit raising by a session thief: a raise without a fresh L2 is refused, by the route for raising and by the one for lowering, and nothing waits",
-           st == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh" && wk_lower(t, SA, "50000") == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh"
-           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.wallet_limits WHERE account = '", acct, "' AND pending_sat IS NOT NULL"), out[..]) == "0", ap_body(t));
+           && pc_with(t, "GET", "/api/wallet", "", SA) == 200 && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 5000, ap_body(t));
   ap_check(t, "a limit that isn't a number of sats is refused, and the same limit changes nothing", wk_lower(t, SA, "-1") == 400 && wk_lower(t, SA, "abc") == 400
            && wk_lower(t, SA, "2100000000000001") == 400 && wk_lower(t, SA, "5000") == 200 && ap_has(ap_body(t), "same"), ap_body(t));
-  ap_check(t, "with a fresh L2 a raise waits 24 hours: the limit in force stays, and the raise is shown with its time", pc_stepup(t, SA, P1, plain) == 200
-           && wk_limit(t, SA, "50000") == 200 && ap_has(ap_body(t), "waiting") && pc_with(t, "GET", "/api/wallet", "", SA) == 200
+  ap_check(t, "a raise waits 24 hours: the limit in force stays, and the raise is shown with its time", wk_limit(t, SA, "50000") == 200
+           && ap_has(ap_body(t), "waiting") && pc_with(t, "GET", "/api/wallet", "", SA) == 200
            && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 5000 && ap_member_int(ap_body(t), "limit.raise.sat", -1) == 50000
            && ap_member_int(ap_body(t), "limit.raise.at_ms", 0) - ap_member_int(ap_body(t), "limit.raise.asked_ms", 0) == 86400000, ap_body(t));
   tokb: [64] u8; tok := wk_cancel_token(dir, tokb[..]);
@@ -303,8 +289,8 @@ wk_checks :: (t: [] Ap, dir: string) {
   ap_do(t, pc_q(q[..], "UPDATE auth.wallet_limits SET pending_asked_at = now() - interval '25 hours', pending_at = now() - interval '1 hour' WHERE account = '", acct, "'"));
   ap_check(t, "after 24 hours the raise is the limit", st == 200 && pc_with(t, "GET", "/api/wallet", "", SA) == 200 && ap_member_int(ap_body(t), "limit.daily_sat", -1) == 300000 && ap_member(ap_body(t), "limit.raise", mb[..]) == "null", ap_body(t));
   wk_old(t, acct);
-  ap_check(t, "somewhere new: a payment over 100,000 sats to a new destination asks first, even under the limit; 100,000 doesn't", wk_spend(t, SA, "100001", "pay-00000020", true) == 401
-           && wk_spend(t, SA, "100001", "pay-00000020", false) == 200 && wk_spend(t, SA, "100000", "pay-00000021", true) == 200, ap_body(t));
+  ap_check(t, "payments to a new destination succeed without L2-fresh step-up", wk_spend(t, SA, "100001", "pay-00000020", true) == 200
+           && wk_spend(t, SA, "100000", "pay-00000021", true) == 200, ap_body(t));
   ap_check(t, "every change to the limit told every way in, and is in the audit log",
            ap_sql(t, pc_q(q[..], "SELECT count(*)::text || ',' || count(DISTINCT what)::text FROM auth.notices WHERE account = '", acct, "' AND what LIKE 'wallet.limit%'"), out[..]) == "8,3"
            && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE account = '", acct, "' AND action IN ('wallet.limit', 'wallet.limit.cancel') AND result = 'ok'"), out[..]) == "8", cast(string) out[0..<40]);
@@ -324,20 +310,13 @@ wk_checks :: (t: [] Ap, dir: string) {
            ap_sql(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-4-hydrogen', 200, 1000, 200, 10, true)"), out[..]) == "0"
            && ap_whole(ap_sql(t, pc_q(q[..], "SELECT sum(msat) FROM auth.credit_spends WHERE account = '", acct2, "'"), out[..])) == m1
            && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.credit_spends WHERE account = '", acct, "'"), out[..]) == "0", cast(string) out[0..<40]);
-  // a big day: its calls' credit passes the 20,000-sat limit
+  // a big day: paid inference continues cleanly without L2-fresh step-up refusals
   ap_do(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-4-hydrogen', 200, 1000000, 0, 10, false)"));
   ap_do(t, pc_q(q[..], "UPDATE inference.credit SET msat = 1000000000000 WHERE pubkey = '", pk2, "'"));
-  n0 := ap_sql(t, pc_q(q[..], "SELECT coalesce(sum(n), 0) FROM inference.account_day WHERE pubkey = '", pk2, "'"), out[..]);
-  day0: [16] u8; for i: 0..<n0.count { day0[i] = n0[i]; }
   st = wk_infer(t, K2);
-  ap_check(t, "past the limit a model call paid from credit gets the wallet's step-up answer, and never reaches the model", st == 401
-           && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh" && ap_has(ap_body(t), "Confirm it's you with your passkey or key")
-           && ap_sql(t, pc_q(q[..], "SELECT coalesce(sum(n), 0) FROM inference.account_day WHERE pubkey = '", pk2, "'"), out[..]) == cast(string) day0[0..<n0.count], ap_body(t));
-  ap_check(t, "the day's count is the account's: the wallet's own payment asks too, since credit used up the limit",
-           wk_spend(t, SB, "1", "pay-c0000001", false) == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh"
-           && pc_with(t, "GET", "/api/wallet", "", SB) == 200 && ap_member_int(ap_body(t), "limit.spent_sat", -1) >= 20000, ap_body(t));
+  ap_check(t, "past the wallet limit a model call paid from credit still goes without L2-fresh step-up", wk_went(st) && !ap_has(ap_body(t), "step_up"), ap_body(t));
   // an upgrade (#13343): service credit never buys one (migration 0154, makerpay-policy.coax's mp_pay),
-  // so no upgrade adds to the credit's count; its price is a wallet payment, held to the same count
+  // so no upgrade adds to the credit's count; its price is a wallet payment
   cm0 := ap_whole(ap_sql(t, pc_q(q[..], "SELECT msat FROM inference.credit WHERE pubkey = '", pk2, "'"), out[..]));
   cs0 := ap_whole(ap_sql(t, pc_q(q[..], "SELECT sum(msat) FROM auth.credit_spends WHERE account = '", acct2, "'"), out[..]));
   ap_check(t, "an upgrade bought with service credit is refused by name, by the API and the database, and the credit and the day's count stay as they were",
@@ -345,15 +324,7 @@ wk_checks :: (t: [] Ap, dir: string) {
            && ap_sql(t, pc_q(q[..], "SELECT makers.buy_credit(1, '', '", pk2, "', false)->>'status'"), out[..]) == "400"
            && ap_whole(ap_sql(t, pc_q(q[..], "SELECT msat FROM inference.credit WHERE pubkey = '", pk2, "'"), out[..])) == cm0
            && ap_whole(ap_sql(t, pc_q(q[..], "SELECT sum(msat) FROM auth.credit_spends WHERE account = '", acct2, "'"), out[..])) == cs0, ap_body(t));
-  ap_check(t, "past the limit an upgrade's price, paid from the wallet, gets the step-up answer",
-           wk_spend(t, SB, "500", "upgrade-fairy-13343", false) == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh", ap_body(t));
-  ap_check(t, "after a fresh L2 on a login of the account (the passkey's prompt), the call past the limit goes", pc_stepup(t, SB, P2, plain) == 200
-           && wk_went(wk_infer(t, K2)) && !ap_has(ap_body(t), "step_up"), ap_body(t));
-  ap_check(t, "and the upgrade's price past the limit goes after that fresh L2", wk_spend(t, SB, "500", "upgrade-fairy-13343", false) == 200, ap_body(t));
-  wk_old(t, acct2);
-  ap_check(t, "an L2 older than five minutes doesn't count: the next call asks again", wk_infer(t, K2) == 401 && ap_member(ap_body(t), "step_up", sb1[..]) == "L2-fresh", ap_body(t));
-  ap_check(t, "a raise counts for credit too: under a higher limit in force, the call goes with no prompt",
-           ap_sql(t, pc_q(q[..], "SELECT auth.wallet_limit_lower('", acct2, "', 900000000000)::text"), out[..]) == "" && wk_went(wk_infer(t, K2)), ap_body(t));
+  ap_check(t, "an upgrade's price paid from the wallet succeeds without L2-fresh step-up", wk_spend(t, SB, "500", "upgrade-fairy-13343", false) == 200, ap_body(t));
   ap_do(t, pc_q(q[..], "DELETE FROM auth.wallet_limits WHERE account = '", acct2, "'"));
 
   // ---- a lost passkey; deleting the backup

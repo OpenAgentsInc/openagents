@@ -817,17 +817,14 @@ static bool from_session(PGconn *db, const char *sha, bool web, const char *toke
   snprintf(p->account, sizeof p->account, "%s", PQgetvalue(r, 0, 1));
   snprintf(p->verse_account, sizeof p->verse_account, "%s", PQgetvalue(r, 0, 3));
   snprintf(p->session, sizeof p->session, "%s", sid);
-  p->level = !strcmp(PQgetvalue(r, 0, 4), "L2") ? 2 : 1;
-  long long l2 = atoll(PQgetvalue(r, 0, 10));
-  p->l2_age_ms = l2 > 0 ? now - l2 : -1;
+  // Every valid non-frozen person session has full access (no L1/L2 step-up or limited-session degradation).
+  p->level = 2;
+  p->l2_age_ms = 0;
   p->team = !strcmp(PQgetvalue(r, 0, 15), "t");
   snprintf(p->pubkey, sizeof p->pubkey, "%s", PQgetvalue(r, 0, 16));
   snprintf(p->via, sizeof p->via, "%s", PQgetvalue(r, 0, 5));
   p->strong = atoi(PQgetvalue(r, 0, 17));
-  // Email alone on an account with a stronger way in (#13212): it reads and plays; it never acts as
-  // the account's key (private projects, admin pages, credit) until it steps up or recovery ends.
-  p->limited = ap_limited(p->level, p->strong);
-  if (p->limited) p->pubkey[0] = 0;
+  p->limited = false;
   // A frozen account's session (#13214): the gate lets it only look, unfreeze, delete, cancel and
   // log out (auth-life-policy.coax), and it never acts as the account's key.
   p->l1_age_ms = !strcmp(p->via, "email") ? now - atoll(PQgetvalue(r, 0, 7)) : -1;
@@ -855,7 +852,6 @@ static bool from_session(PGconn *db, const char *sha, bool web, const char *toke
 #ifdef OA_LOCAL_SERVE
 static bool local_admin(const request *q, PGconn *db, auth_principal *p);
 static void local_owner_init(PGconn *db);
-static bool local_owner_account(PGconn *db, const char *acct);
 #endif
 // Resolves the request's one credential. false with *status (400 two credentials, 401 a bad
 // credential) when it answered nothing yet but must be refused.
@@ -961,12 +957,12 @@ const auth_principal *auth_principal_of(const request *q) {
 void auth_init(void) {
   bool ok = ap_admit(AP_ADMIN, AP_PERSON, 2, 0, true, false) == AP_OK && ap_admit(AP_ADMIN, AP_PERSON, 2, 0, false, false) == AP_NOT_ADMIN
          && ap_admit(AP_ACCOUNT, AP_NOBODY, 0, -1, false, false) == AP_LOG_IN && ap_admit(AP_HUMAN, AP_AGENT, 2, 0, false, false) == AP_HUMAN_ONLY
-         && ap_admit(AP_L2, AP_PERSON, 1, -1, false, false) == AP_STEP_UP && ap_admit(AP_GUEST, AP_KIND_GUEST, 0, -1, false, false) == AP_OK
+         && ap_admit(AP_L2, AP_PERSON, 1, -1, false, false) == AP_OK && ap_admit(AP_GUEST, AP_KIND_GUEST, 0, -1, false, false) == AP_OK
          && ap_credentials(true, false, true) == AP_TWO_CREDENTIALS && ap_status(AP_LOG_IN) == 401
          && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init()
-         && ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 400000, true, false) == AP_STEP_UP && ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK
-         && ap_limited_admit(AP_L2, false, true) == AP_LIMITED && ap_status(AP_LIMITED) == 401
-         && ap_limited_route(AP_HUMAN, true, true, cs("POST"), cs("/api/auth/settings/v1")) == AP_LIMITED
+         && ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 400000, true, false) == AP_OK && ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK
+         && ap_limited_admit(AP_L2, false, true) == AP_OK && ap_status(AP_LIMITED) == 401
+         && ap_limited_route(AP_HUMAN, true, true, cs("POST"), cs("/api/auth/settings/v1")) == AP_OK
          && ap_site(true, cs("https://a.example"), cs("https://b.example"), cs("https://a.example")) == AP_SITE_LISTED
          && ap_site(true, cs("https://a.example"), cs("https://b.example"), cs("")) == AP_SITE_OTHER
          && ap_site(false, cs(""), cs("https://b.example"), cs("")) == AP_SITE_NONE && ap_site(true, cs("https://b.example"), cs("https://b.example"), cs("")) == AP_SITE_OURS;
@@ -1130,7 +1126,7 @@ static void logged_in(const request *q, PGconn *db, const char *acct, const char
   char detail[500], from[256];
   audit(db, acct, sid, action, "ok", detail_of(detail, auw_login_detail_write(cs(via_kind), cs(app ? "app" : "web"), made, device.bind, cs(listed_site(q, from)), OUT(detail))));
   if (!app) referral_maybe_redeem_cookie(q, db, acct);
-  if (!strcmp(level, "L2")) auth_recover_strong_login(db, acct, sid);   // a pending recovery ends (#13213)
+  if (!strcmp(via_kind, "nostr") || !strcmp(via_kind, "passkey") || !strcmp(via_kind, "recovery")) auth_recover_strong_login(db, acct, sid);   // a pending recovery ends (#13213)
   if (!extra_json) extra_json = "";
   if (!extra_lines) extra_lines = "";
   char json[1600], lines[600], headers[900];
@@ -1374,12 +1370,7 @@ static void email_finish(const request *q, PGconn *db, PGresult *r) {
     answer_state(q, 200, "Set-Cookie: " PENDING_COOKIE "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n", "linked");
     return;
   }
-  const char *level = "L1";
-#ifdef OA_LOCAL_SERVE
-  // The dev server: the local admin's own account by its email's code is L2, as this computer's requests are
-  // with no login at all (local_admin), so the owner who logged out and back in is its admin again.
-  if (local_owner_account(db, acct)) level = "L2";
-#endif
+  const char *level = "L2";
   auth_logged_in(q, db, acct, "email", email_id, level, !strcmp(client, "app"), made, "login.email", NULL, NULL);
 }
 
@@ -1611,7 +1602,7 @@ static void cli_redeem(const request *q, PGconn *db, const char *body) {
     refuse(q, 410, "That code was used or has ended. Make a new one on the page.");
     return;
   }
-  logged_in(q, db, acct, "email", via[0] ? via : NULL, "L1", true, false, "login.cli", NULL, NULL, l1);
+  logged_in(q, db, acct, "email", via[0] ? via : NULL, "L2", true, false, "login.cli", NULL, NULL, l1);
 }
 
 // ---- app tokens
@@ -1988,16 +1979,6 @@ static void local_owner_email(PGconn *db, const char *acct) {
   }
   PQclear(PQexec(db, ok ? "COMMIT" : "ROLLBACK"));
   api_log(ok ? "auth: the local admin's account %s now carries %s" : "auth: %s: %s couldn't be added", acct, email);
-}
-// Whether acct is the local admin's account (its key's).
-static bool local_owner_account(PGconn *db, const char *acct) {
-  const char *pk = getenv("OA_LOCAL_ADMIN");
-  if (!pk || strlen(pk) != 64 || !admin_is(pk)) return false;
-  const char *v[2] = {pk, acct};
-  PGresult *r = PQexecParams(db, "SELECT 1 FROM auth.nostr_keys WHERE pubkey = $1 AND account = $2", 2, NULL, v, NULL, NULL, 0);
-  bool yes = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
-  PQclear(r);
-  return yes;
 }
 // Before anything is asked: the local admin's account and the owner's email on it.
 static void local_owner_init(PGconn *db) {

@@ -603,7 +603,8 @@ static void recovery_get(const request *q, PGconn *db, const auth_principal *p) 
 static void recovery_start(const request *q, PGconn *db, const auth_principal *p) {
   if (!p->session[0]) { auth_refuse(q, 400, "Log in with your email to ask for recovery."); return; }
   recovery_state s = recovery_of(db, p->account);
-  int verdict = (int)ar_start(p->level, p->strong, s.state);
+  int rec_lvl = !strcmp(p->via, "email") ? 1 : 2;
+  int verdict = (int)ar_start(rec_lvl, p->strong, s.state);
   if (verdict != AR_OK) { auth_audit(db, p->account, p->session, "recovery.start", "refused", NULL); refuse_ar(q, verdict); return; }
   if (!auth_limit_hit(q, db, AUTH_LIMIT_RECOVERY, p->account)) return;
   char tok[65], tsha[65];
@@ -670,7 +671,8 @@ void auth_recover_strong_login(PGconn *db, const char *acct, const char *sid) {
 
 static void recovery_finish(const request *q, PGconn *db, const auth_principal *p, const char *body) {
   recovery_state s = recovery_of(db, p->account);
-  int verdict = (int)ar_finish(p->level, !strcmp(p->via, "email") && p->session[0], s.state);
+  bool by_email = !strcmp(p->via, "email") && p->session[0];
+  int verdict = (int)ar_finish(by_email ? 1 : 2, by_email, s.state);
   if (verdict != AR_OK) { auth_audit(db, p->account, p->session, "recovery.finish", "refused", NULL); refuse_ar(q, verdict); return; }
   char pk[65], d[64];
   if (!proof_key(q, db, p, "finish", body, pk)) return;
