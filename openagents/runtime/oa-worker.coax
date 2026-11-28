@@ -2861,6 +2861,21 @@ fww_build_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, platform:
   return n;
 }
 
+fww_has_oa_desktop_cli :: (home: string) -> bool {
+  if fs_exists("/usr/local/bin/oa-desktop") { return true; }
+  if home.count > 0 {
+    p: [FS_PATH_MAX] u8;
+    if fs_exists(fs_join(home, ".openagents/bin/oa-desktop", p[..])) { return true; }
+  }
+  eb: [512] u8;
+  return fww_trim(cl_getenv("OA_DESKTOP_AUTH_FILE", eb[..])).count > 0;
+}
+
+fww_append_desktop_delegation_prompt :: (has_cli: bool, out: [] u8, at: int) -> int {
+  if !has_cli { return at; }
+  return fww_cat(out, at, "\n\n# Connected Computers (`oa-desktop`)\nYou have access to the user's connected personal computers (Mac, Linux/NixOS desktops, GPU workstations) via `oa-desktop` (NIP-HOST + NIP-REACH + NIP-TERM). When the user asks what computers are connected, asks about hardware/GPU/OS/files on another machine, or asks to run a command/build/test on one of their computers, run Bash with:\n- `oa-desktop hosts` — list live connected computers, status, platforms, IDs, and admitted NIP-WS workspace roots.\n- `oa-desktop exec --host <label-or-id> [--cwd <admitted-root>] [--timeout MS] -- <command>` — delegate a command to that machine inside an admitted workspace root (`--host` matches label, hostname, or ID; omitting `--cwd` uses the host's first admitted root). Never fabricate output if a path is refused as `outside_workspace`; report the refusal verbatim.");
+}
+
 fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: [] u8) -> int {
   platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
   n := fww_build_coding_system_prompt_core(cfg, cwd, platform, out);
@@ -2868,6 +2883,7 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   // Claude Code as a sub-agent (GitHub #14104). Said whether or not it is allowed, so a request
   // for Claude reaches the Agent tool and comes back with the reason, never runs on another model.
   n = fww_cat(out, n, "\n\n# Claude Code sub-agents\nWhen the user asks for a task to be done by Claude or Claude Code, call Agent with subagent_type claude-haiku, claude-sonnet, claude-opus or claude-fable (claude-sonnet when they name no model). Use these only when the user asks for Claude. If that call fails, tell the user the reason it gives, word for word, and do not do the task another way.");
+  n = fww_append_desktop_delegation_prompt(fww_has_oa_desktop_cli(home), out, n);
 
   if !cfg[0].bare_mode {
     // Load user instructions (~/.openagents/instructions.md), capped at 4 KiB
@@ -13292,5 +13308,14 @@ fww_find_bytes :: (hay: string, needle: string) -> int {
   #assert !fww_glob_needs_top_dirs("*.ts") && !fww_glob_needs_top_dirs("src/**/*.coax");
   #assert fww_glob_is_ignored_dir(".git") && fww_glob_is_ignored_dir("node_modules") && fww_glob_is_ignored_dir("dist");
   #assert !fww_glob_is_ignored_dir("openagents") && !fww_glob_is_ignored_dir("openagents.com");
+}
+
+#test "oa-worker: connected_computers delegation prompt gated on oa-desktop availability (#14152)" {
+  buf: [2048] u8;
+  n0 := fww_append_desktop_delegation_prompt(false, buf[..], 0);
+  #assert n0 == 0;
+  n1 := fww_append_desktop_delegation_prompt(true, buf[..], 0);
+  s1 := cast(string) buf[0..<n1];
+  #assert n1 > 0 && fww_contains_ci(s1, "oa-desktop hosts") && fww_contains_ci(s1, "oa-desktop exec --host") && fww_contains_ci(s1, "outside_workspace");
 }
 
