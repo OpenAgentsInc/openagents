@@ -784,9 +784,6 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         sheet.addAction(UIAlertAction(title: "Account & Cloud", style: .default) { [weak self] _ in
             self?.shell.isAccountPresented = true
         })
-        sheet.addAction(UIAlertAction(title: "Spark Wallet", style: .default) { [weak self] _ in
-            self?.shell.isWalletPresented = true
-        })
         sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         if let popover = sheet.popoverPresentationController {
             popover.sourceView = view

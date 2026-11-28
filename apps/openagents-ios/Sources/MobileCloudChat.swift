@@ -166,8 +166,8 @@ final class MobileCloudChat: ObservableObject {
             return "\(target) · Today \(spend) · \(promo) promo"
         }
         if usageSnapshot.creditMsat > 0 {
-            let sats = usageSnapshot.creditMsat / 1000
-            return "\(target) · Today \(spend) · \(sats) sats"
+            let credit = CloudUsageSnapshot.formatUsd(micros: usageSnapshot.creditMsat / 1000)
+            return "\(target) · Today \(spend) · \(credit)"
         }
         return "\(target) · Today \(spend)"
     }

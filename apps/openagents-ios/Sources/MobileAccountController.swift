@@ -83,10 +83,8 @@ final class MobileAccountController: NSObject, ObservableObject, ASWebAuthentica
 
     var formattedPaidCredits: String {
         guard let msat = creditMsat else { return "—" }
-        let sats = max(0, msat / 1000)
-        let nf = NumberFormatter()
-        nf.numberStyle = .decimal
-        return (nf.string(from: NSNumber(value: sats)) ?? "\(sats)") + " sats"
+        // Display in USD only (no bitcoin/sats units in v1.0 UI).
+        return CloudUsageSnapshot.formatUsd(micros: max(0, msat / 1000))
     }
 
     var formattedPromoCredits: String {

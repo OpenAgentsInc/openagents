@@ -1641,8 +1641,8 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
   cur += app_side_action(f, "sidebar.dashboard", x - 4.0f32, cur, w + 8.0f32, ICON_WIDGET, dash_lbl, ifx s[0].dashboard then EL_S_CURRENT else 0, IOS_HIT_DASHBOARD) + 4.0f32;
   cur += app_divider(f, x, cur, w) + 4.0f32;
 
-  // Footer reserved height (Account + Spark Wallet + Environments & Projects)
-  foot_rows: f32 = 3.0f32;
+  // Footer reserved height (Account + Environments & Projects; no Bitcoin/Spark Wallet in v1.0.0)
+  foot_rows: f32 = 2.0f32;
   foot_h := foot_rows * sk.app.side_row + 16.0f32;
   list_bottom := bottom - foot_h;
   if list_bottom < cur + 40.0f32 { list_bottom = cur + 40.0f32; }
@@ -1785,14 +1785,12 @@ ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: 
   _ := app_side_window(f, x - 4.0f32, cur, w + 8.0f32, s[0].side_viewport, s[0].side_rows[0..<n], soff, 0, IOS_HIT_SELECT_SESSION);
   if working_total > 0 && !f[0].reduced_motion { uiframe_tick(f); }
 
-  // Pinned footer: divider + Account + Spark Wallet + Environments & Projects
+  // Pinned footer: divider + Account + Environments & Projects (no Bitcoin/Spark Wallet in v1.0.0)
   fy := list_bottom + 4.0f32;
   fy += app_divider(f, x, fy, w) + 4.0f32;
   acct_lbl := ifx s[0].account_label_n > 0 then cast(string) s[0].account_label[0..<s[0].account_label_n]
     else ifx s[0].account_logged_in then "Account · Cloud" else "Log in & Cloud";
   fy += app_side_action(f, "sidebar.account", x - 4.0f32, fy, w + 8.0f32, ICON_SET_ACCOUNT, acct_lbl, 0, IOS_HIT_ACCOUNT);
-  wal_lbl := ifx s[0].wallet_label_n > 0 then cast(string) s[0].wallet_label[0..<s[0].wallet_label_n] else "Spark Wallet";
-  fy += app_side_action(f, "sidebar.wallet", x - 4.0f32, fy, w + 8.0f32, ICON_WALLET, wal_lbl, 0, IOS_HIT_WALLET);
   _ := app_side_action(f, "sidebar.computers", x - 4.0f32, fy, w + 8.0f32, ICON_SETTINGS, "Environments & Projects", 0, IOS_HIT_COMPUTERS);
   _ := keyed_layer;
 }
@@ -2768,15 +2766,11 @@ ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
   #assert v > 0 && s[0].refused == 0;
   #assert ios_test_has(s[..], "nav.sidebar") && ios_test_has(s[..], "nav.computerPill") && ios_test_has(s[..], "chat.composer") && ios_test_has(s[..], "chat.modelPicker");
 
-  // Open drawer via sidebar button and verify Account, Wallet, Environments, and session card
+  // Open drawer via sidebar button and verify Account, Environments, and session card (no Wallet in v1.0.0)
   #assert ios_activate(s[..], "nav.sidebar") && s[0].drawer;
   _ = ios_test_frame(s[..], o[..]);
-  #assert ios_test_has(s[..], "drawer") && ios_test_has(s[..], "ses.s1") && ios_test_has(s[..], "sidebar.account") && ios_test_has(s[..], "sidebar.wallet") && ios_test_has(s[..], "sidebar.computers");
+  #assert ios_test_has(s[..], "drawer") && ios_test_has(s[..], "ses.s1") && ios_test_has(s[..], "sidebar.account") && !ios_test_has(s[..], "sidebar.wallet") && ios_test_has(s[..], "sidebar.computers");
   #assert ios_activate(s[..], "sidebar.account") && !s[0].drawer && ios_take_action(s[..]) == IOS_ACT_OPEN_ACCOUNT;
-  _ = ios_test_frame(s[..], o[..]);
-  #assert ios_activate(s[..], "nav.sidebar") && s[0].drawer;
-  _ = ios_test_frame(s[..], o[..]);
-  #assert ios_activate(s[..], "sidebar.wallet") && !s[0].drawer && ios_take_action(s[..]) == IOS_ACT_OPEN_WALLET;
   _ = ios_test_frame(s[..], o[..]);
   #assert ios_activate(s[..], "nav.sidebar") && s[0].drawer;
   _ = ios_test_frame(s[..], o[..]);
