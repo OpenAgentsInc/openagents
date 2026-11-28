@@ -2767,6 +2767,36 @@ fww_active_packs :: (cwd: string, include_coax_intel: bool) -> int {
   return mask;
 }
 
+fww_append_workspace_repos :: (cwd: string, out: [] u8, at: int) -> int {
+  n := at;
+  if cwd.count == 0 { return n; }
+  root_git_b: [FS_PATH_MAX] u8;
+  if fs_exists(fs_join(cwd, ".git", root_git_b[..])) { return n; }
+  mlst: [1] FsList;
+  mn := fs_list(cwd, mlst[..]);
+  repo_count := 0;
+  for mi: 0..<mn {
+    mname := fs_entry(mlst[..], mi);
+    if fww_glob_is_ignored_dir(mname) || mname[0] == '.' { continue; }
+    mfull_b: [FS_PATH_MAX] u8;
+    mfull := fs_join(cwd, mname, mfull_b[..]);
+    if fs_kind(mfull) != FS_DIR { continue; }
+    mgit_b: [FS_PATH_MAX] u8;
+    if !fs_exists(fs_join(mfull, ".git", mgit_b[..])) { continue; }
+    if repo_count == 0 {
+      n = fww_cat(out, n, "\n\n# Workspace Repositories\nThis workspace contains checked-out Git repository directories directly under the working directory:\n");
+    }
+    n = fww_cat(out, n, "- ");
+    n = fww_cat(out, n, mname);
+    n = fww_cat(out, n, "/\n");
+    repo_count += 1;
+  }
+  if repo_count > 0 {
+    n = fww_cat(out, n, "Never omit sibling repositories or assume only one repository exists from truncated Glob/Grep output. Inspect every repository listed above when answering workspace or repository questions.");
+  }
+  return n;
+}
+
 // Compact coding system prompt for 32K local Inkling 2 Mini (#14055).
 fww_build_local_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, platform: string, out: [] u8) -> int {
   n := 0;
@@ -2834,6 +2864,7 @@ fww_build_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, platform:
 fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: [] u8) -> int {
   platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
   n := fww_build_coding_system_prompt_core(cfg, cwd, platform, out);
+  n = fww_append_workspace_repos(cwd, out, n);
   // Claude Code as a sub-agent (GitHub #14104). Said whether or not it is allowed, so a request
   // for Claude reaches the Agent tool and comes back with the reason, never runs on another model.
   n = fww_cat(out, n, "\n\n# Claude Code sub-agents\nWhen the user asks for a task to be done by Claude or Claude Code, call Agent with subagent_type claude-haiku, claude-sonnet, claude-opus or claude-fable (claude-sonnet when they name no model). Use these only when the user asks for Claude. If that call fails, tell the user the reason it gives, word for word, and do not do the task another way.");
@@ -4465,6 +4496,56 @@ fww_tool_write :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: [
   return rn;
 }
 
+fww_glob_is_ignored_dir :: (name: string) -> bool {
+  return name.count == 0 || name == "." || name == ".." || name == ".git" || name == "node_modules" || name == ".build" || name == "build" || name == "target" || name == "dist" || name == ".venv" || name == ".cache" || name == "DerivedData";
+}
+
+fww_glob_needs_top_dirs :: (pat: string) -> bool {
+  return pat == "*" || pat == "*/" || pat == "**/*";
+}
+
+fww_glob_emit_top_dirs :: (dir: string, rel_prefix: string, out: [] u8, at: [] int, hits: [] int, max_hits: int) {
+  lst: [1] FsList;
+  n := fs_list(dir, lst[..]);
+  for i: 0..<n {
+    if hits[0] >= max_hits || at[0] + 64 >= out.count { break; }
+    name := fs_entry(lst[..], i);
+    if fww_glob_is_ignored_dir(name) { continue; }
+    fb: [FS_PATH_MAX] u8;
+    full := fs_join(dir, name, fb[..]);
+    if fs_kind(full) != FS_DIR { continue; }
+    if rel_prefix.count > 0 {
+      at[0] = fww_cat(out, at[0], rel_prefix);
+      at[0] = fww_cat(out, at[0], "/");
+    }
+    at[0] = fww_cat(out, at[0], name);
+    at[0] = fww_cat(out, at[0], "/\n");
+    hits[0] += 1;
+  }
+}
+
+fww_glob_append_top_dirs_summary :: (dir: string, out: [] u8, at: [] int) {
+  lst: [1] FsList;
+  n := fs_list(dir, lst[..]);
+  emitted := 0;
+  for i: 0..<n {
+    if emitted >= 24 || at[0] + 96 >= out.count { break; }
+    name := fs_entry(lst[..], i);
+    if fww_glob_is_ignored_dir(name) { continue; }
+    fb: [FS_PATH_MAX] u8;
+    full := fs_join(dir, name, fb[..]);
+    if fs_kind(full) != FS_DIR { continue; }
+    if emitted == 0 {
+      at[0] = fww_cat(out, at[0], "; top-level directories: ");
+    } else {
+      at[0] = fww_cat(out, at[0], ", ");
+    }
+    at[0] = fww_cat(out, at[0], name);
+    at[0] = fww_cat(out, at[0], "/");
+    emitted += 1;
+  }
+}
+
 fww_glob_walk :: (dir: string, rel_prefix: string, pattern: string, depth: int, out: [] u8, at: [] int, hits: [] int, max_hits: int) {
   if depth > 12 || hits[0] >= max_hits || at[0] + 64 >= out.count { return; }
   lst: [1] FsList;
@@ -4472,7 +4553,7 @@ fww_glob_walk :: (dir: string, rel_prefix: string, pattern: string, depth: int, 
   for i: 0..<n {
     if hits[0] >= max_hits || at[0] + 64 >= out.count { break; }
     name := fs_entry(lst[..], i);
-    if name.count == 0 || name == "." || name == ".." || name == ".git" || name == "node_modules" || name == ".build" || name == "build" || name == "target" || name == "dist" || name == ".venv" || name == ".cache" || name == "DerivedData" { continue; }
+    if fww_glob_is_ignored_dir(name) { continue; }
     fb: [FS_PATH_MAX] u8;
     full := fs_join(dir, name, fb[..]);
     rb: [FS_PATH_MAX] u8;
@@ -4539,11 +4620,18 @@ fww_tool_glob :: (cwd: string, args_json: string, out_res: [] u8, is_err: [] boo
   max_hits := 150;
   at := [1] int.[0];
   hits := [1] int.[0];
-  fww_glob_walk(base, rel_pre, pat, 0, out_res, at[..], hits[..], max_hits);
+  if fww_glob_needs_top_dirs(pat) {
+    fww_glob_emit_top_dirs(base, rel_pre, out_res, at[..], hits[..], max_hits);
+  }
+  if pat != "*/" {
+    fww_glob_walk(base, rel_pre, pat, 0, out_res, at[..], hits[..], max_hits);
+  }
   if hits[0] == 0 {
     at[0] = fww_keep(out_res, "No files matched.");
   } else if hits[0] >= max_hits {
-    at[0] = fww_cat(out_res, at[0], "... [truncated at 150 files; narrow pattern or pass path=...]");
+    at[0] = fww_cat(out_res, at[0], "... [truncated at 150 results");
+    fww_glob_append_top_dirs_summary(base, out_res, at[..]);
+    at[0] = fww_cat(out_res, at[0], "; narrow pattern or pass path=...]");
   }
   fww_send(wire_out, mww_command(wire_out, label, 0, false, cast(string) out_res[0..<at[0]]));
   return at[0];
@@ -13198,3 +13286,11 @@ fww_find_bytes :: (hay: string, needle: string) -> int {
   #assert fww_session_translate_mww("{\"kind\":\"ready\"}", out[..]) == 0;
   #assert fww_session_translate_mww("{\"kind\":\"stats\",\"ttft_ms\":10}", out[..]) == 0;
 }
+
+#test "oa-worker: multi-repo Glob helpers classify top-dir patterns and ignored dirs" {
+  #assert fww_glob_needs_top_dirs("*") && fww_glob_needs_top_dirs("*/") && fww_glob_needs_top_dirs("**/*");
+  #assert !fww_glob_needs_top_dirs("*.ts") && !fww_glob_needs_top_dirs("src/**/*.coax");
+  #assert fww_glob_is_ignored_dir(".git") && fww_glob_is_ignored_dir("node_modules") && fww_glob_is_ignored_dir("dist");
+  #assert !fww_glob_is_ignored_dir("openagents") && !fww_glob_is_ignored_dir("openagents.com");
+}
+
