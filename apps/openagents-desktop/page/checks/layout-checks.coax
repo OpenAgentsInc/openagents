@@ -550,15 +550,12 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert cp_press(s, surface_find(s[0].surface[..], "coder.art.close")) && !cp_art_shown(s);
 }
 
-#test "P2.1 (#14144): inline Permission Mode chip, Message Action Bar (Edit/Retry/Fork), and ⌘K Outline" {
+#test "P2.1 (#14144): single unified mode (no Permission Mode chip), Message Action Bar (Edit/Retry/Fork), and ⌘K Outline" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   f: [1] UiFrame;
-  // Inline Permission Mode chip cycles Ask -> Auto-edit -> Full Auto -> Ask.
+  // No Ask / Auto-edit / Full Auto mode toggle chip rendered below composer.
   #assert cp_bar_draw(s, f[..], 1400, 900);
-  pm := surface_find(s[0].surface[..], "coder.perm.mode");
-  #assert pm >= 0 && s[0].perm_mode == CP_PERM_ASK;
-  #assert cp_press(s, pm) && s[0].perm_mode == CP_PERM_AUTO_EDIT;
-  #assert cp_press(s, pm) && s[0].perm_mode == CP_PERM_FULL_AUTO;
+  #assert surface_find(s[0].surface[..], "coder.perm.mode") < 0;
   // Completed turn exposes Retry and Fork inline actions, and ⌘K includes Outline #1.
   #assert coder_page_set_text(s, "Explain Metal shaders") && coder_page_submit(s);
   s[0].turns[0].reply_n = cp_out(s[0].turns[0].reply[..], "Shaders run on GPU.");
@@ -573,23 +570,29 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert found_outline;
 }
 
-#test "P2.2 (#14145): first-class Sidebar Catalog screens (Projects, Artifacts, Scheduled, Plugins) with nav history" {
-  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+#test "P2.2 (#14145): Sidebar shows Projects (Cmd/Ctrl+P) without Artifacts/Scheduled/Plugins and logged-out Log in button" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true; s[0].cloud_authed = false;
   f: [1] UiFrame;
   #assert cp_bar_draw(s, f[..], 1400, 900);
-  // All 4 catalog links appear in the sidebar.
-  p_row := surface_find(s[0].surface[..], "coder.cat.plugins");
-  #assert surface_find(s[0].surface[..], "coder.cat.projects") >= 0 && surface_find(s[0].surface[..], "coder.cat.artifacts") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.cat.scheduled") >= 0 && p_row >= 0;
-  // Open Plugins catalog and switch All -> Skills filter.
-  #assert cp_press(s, p_row) && s[0].catalog_view == CP_CAT_PLUGINS;
-  #assert cp_bar_draw(s, f[..], 1400, 900);
-  #assert surface_find(s[0].surface[..], "coder.cat.plug.mcp") >= 0 && surface_find(s[0].surface[..], "coder.cat.plug.skills") >= 0;
-  #assert cp_press(s, surface_find(s[0].surface[..], "coder.cat.filter.skills")) && s[0].catalog_filter == 2;
-  #assert cp_bar_draw(s, f[..], 1400, 900);
-  #assert surface_find(s[0].surface[..], "coder.cat.plug.mcp") < 0 && surface_find(s[0].surface[..], "coder.cat.plug.skills") >= 0;
-  // Back history returns cleanly to Chat canvas.
+  // Projects appears in sidebar; Artifacts, Scheduled, and Plugins are removed.
+  proj_row := surface_find(s[0].surface[..], "coder.cat.projects");
+  #assert proj_row >= 0;
+  #assert surface_find(s[0].surface[..], "coder.cat.artifacts") < 0;
+  #assert surface_find(s[0].surface[..], "coder.cat.scheduled") < 0;
+  #assert surface_find(s[0].surface[..], "coder.cat.plugins") < 0;
+  // Bottom-left Log in button is visible when logged out and triggers CP_ASK_LOGIN.
+  login_row := surface_find(s[0].surface[..], "coder.side.login");
+  #assert login_row >= 0 && cp_press(s, login_row) && coder_page_action(s) == CP_ASK_LOGIN;
+  // Cmd/Ctrl+P and coder_page_projects_open open Projects; Back returns cleanly to Chat canvas.
+  s[0].ctrl_keys = true;
+  #assert coder_page_key(s, 'p', MOD_CTRL) && s[0].catalog_view == CP_CAT_PROJECTS;
   #assert cp_nav_go(s, -1) && s[0].catalog_view == CP_CAT_NONE;
+  coder_page_projects_open(s);
+  #assert s[0].catalog_view == CP_CAT_PROJECTS;
+  // Logged-in state hides the bottom-left Log in button.
+  s[0].cloud_authed = true;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  #assert surface_find(s[0].surface[..], "coder.side.login") < 0;
 }
 
 #test "P3.1 (#14146): autonomous sessionHalo perimeter border renders during Foreman/goal runs" {

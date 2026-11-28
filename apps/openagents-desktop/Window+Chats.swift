@@ -151,6 +151,12 @@ extension CoderWindow {
         syncDashboard()
         wake()
     }
+    /// File > Projects (Command-P / Control-P): opens Projects screen.
+    func openProjects() {
+        if settingsOpen { closeSettings() }
+        cd_projects_open(page)
+        wake()
+    }
     /// Opens the Nth chat from the top of the sidebar list (1 is the first), matching the sidebar's
     /// live visual order (Working, Pinned, Recents, expanded Snoozed, or Archived view) and ⌘1..9 badges.
     func openChat(at index: Int) {

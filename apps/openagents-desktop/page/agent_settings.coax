@@ -320,48 +320,35 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   y += cp_set_group(s, f, "set.flawed.compute.group", x, y, w, mrows[0..<nmrows]) + t.block_gap;
 
   // 2. Safety & Permissions
-  y += set_section_head(f, "set.flawed.perm.head", x, y, w, "Safety & Permissions",
-    "Default is Allow All. Permission prompts, OS shell confinement, and destructive-git guards are opt-in below.") + t.section_gap;
-  prows: [6] SetRow;
-  pm := cp_flawed_clamp(fl[0].permission_mode, 0, 4);
-  prows[0] = SetRow.{id = "set.flawed.pmode", name = "Permission mode",
-    desc = ifx pm == 1 then "Ask (opt-in) — read-only tools run freely; prompt before edits, writes, and shell commands."
-           else ifx pm == 2 then "Accept Edits (opt-in) — auto-approve file edits & writes; prompt before shell commands."
-           else ifx pm == 3 then "Plan (opt-in) — read-only exploration and planning; block mutating tools."
-           else ifx pm == 4 then "Don't Ask (opt-in) — auto-deny any tool that would prompt instead of pausing."
-           else "Allow All (default) — approve every tool automatically with no prompts.",
-    kind = SET_ROW_CHOICE, noptions = 5, chosen = pm, action = CP_SET_ACT};
-  prows[0].options[0] = "Allow All";
-  prows[0].options[1] = "Ask";
-  prows[0].options[2] = "Accept Edits";
-  prows[0].options[3] = "Plan";
-  prows[0].options[4] = "Don't Ask";
+  y += set_section_head(f, "set.flawed.perm.head", x, y, w, "Safety & Tools",
+    "Single autonomous execution mode. OS shell confinement, git guards, and optional tools are configured below.") + t.section_gap;
+  prows: [5] SetRow;
 
   sb := cp_flawed_clamp(fl[0].sandbox_mode, 0, 2);
-  prows[1] = SetRow.{id = "set.flawed.sandbox", name = "OS shell sandbox",
+  prows[0] = SetRow.{id = "set.flawed.sandbox", name = "OS shell sandbox",
     desc = ifx sb == 1 then "Auto — wrap shell commands in macOS sandbox-exec restricting writes to workspace and /tmp."
            else ifx sb == 2 then "Enforced — require OS sandbox on every shell command and fail closed if unavailable."
            else "Off — run shell commands directly without sandbox confinement.",
     kind = SET_ROW_CHOICE, noptions = 3, chosen = sb, action = CP_SET_ACT};
-  prows[1].options[0] = "Off"; prows[1].options[1] = "Auto"; prows[1].options[2] = "Enforced";
+  prows[0].options[0] = "Off"; prows[0].options[1] = "Auto"; prows[0].options[2] = "Enforced";
 
-  prows[2] = SetRow.{id = "set.flawed.gitguard", name = "Git safety guard",
+  prows[1] = SetRow.{id = "set.flawed.gitguard", name = "Git safety guard",
     desc = "Opt-in: block destructive git commands (force push to main, hard reset, clean -fd) before execution.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx cp_flawed_git_guard(s) then 1 else 0, action = CP_SET_ACT};
-  prows[2].options[0] = "Off"; prows[2].options[1] = "On";
+  prows[1].options[0] = "Off"; prows[1].options[1] = "On";
 
   tval := ifx fl[0].tools_summary_n > 0 then sheet_pool(sh, cast(string) fl[0].tools_summary[0..<fl[0].tools_summary_n]) else "All built-in tools";
-  prows[3] = SetRow.{id = "set.flawed.tools", name = "Tool rules & directories",
+  prows[2] = SetRow.{id = "set.flawed.tools", name = "Tool rules & directories",
     desc = "Configure allowedTools, disallowedTools (CSV), and additionalDirs accessible outside the working folder.",
     value = tval, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
 
-  prows[4] = SetRow.{id = "set.flawed.xtools", name = "X API tool (XSearch)",
+  prows[3] = SetRow.{id = "set.flawed.xtools", name = "X API tool (XSearch)",
     desc = "Opt-in read-only X API v2 search, user lookup, timelines, and posts. Zero token overhead when Off or unconfigured.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].x_tools_enabled then 1 else 0, action = CP_SET_ACT};
-  prows[4].options[0] = "Off"; prows[4].options[1] = "On";
+  prows[3].options[0] = "Off"; prows[3].options[1] = "On";
 
   xkey_val := ifx fl[0].x_key_label_n > 0 then sheet_pool(sh, cast(string) fl[0].x_key_label[0..<fl[0].x_key_label_n]) else "Not set";
-  prows[5] = SetRow.{id = "set.flawed.xkey", name = "X API Bearer token",
+  prows[4] = SetRow.{id = "set.flawed.xkey", name = "X API Bearer token",
     desc = "Optional X API v2 Bearer token stored locally (0600, percent-encoding preserved verbatim, never logged). Saving automatically enables XSearch.",
     value = xkey_val, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
   y += cp_set_group(s, f, "set.flawed.perm.group", x, y, w, prows[..]) + t.block_gap;
@@ -549,7 +536,7 @@ cp_flawed_settings_press :: (s: [] CoderPage, id: string) -> bool {
   v = cp_number(id, "set.flawed.tdisp.");
   if v == 0 || v == 1 { fl[0].thinking_display = v; s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
   v = cp_number(id, "set.flawed.pmode.");
-  if v >= 0 && v <= 4 { fl[0].permission_mode = v; s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
+  if v >= 0 && v <= 4 { fl[0].permission_mode = 0; return false; }
   v = cp_number(id, "set.flawed.bypass.");
   if v == 0 || v == 1 { fl[0].bypass_danger = (v == 1); s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
   v = cp_number(id, "set.flawed.sandbox.");

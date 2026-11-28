@@ -274,8 +274,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   }
   if act >= CP_ART_OPEN && act <= CP_ART_NEXT_VER { return cp_art_press(s, act, surface_id(s[0].surface[..], row)); }
   if act == CP_PERM_CYCLE {
-    s[0].perm_mode = (s[0].perm_mode + 1) % 3;
-    return true;
+    s[0].perm_mode = CP_PERM_FULL_AUTO;
+    return false;
   }
   if act == CP_TURN_EDIT {
     turn := cp_number(surface_id(s[0].surface[..], row), "t");

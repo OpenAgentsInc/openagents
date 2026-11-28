@@ -84,6 +84,7 @@ int cd_stop_agent(void *page);
 void cd_chats(void *page, const char *list);
 void cd_current(void *page, const char *id);
 void cd_dashboard_open(void *page, int open);
+void cd_projects_open(void *page);
 int cd_dashboard_shown(void *page);
 void cd_dashboard_items(void *page, const char *list);
 int cd_elapsed_s(void *page);

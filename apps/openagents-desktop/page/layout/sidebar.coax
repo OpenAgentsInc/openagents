@@ -196,13 +196,8 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   if cp_flag(s, DC_FLAG_FOREMAN) {
     sy += cp_side_foreman(s, f, sw, sy, cur, running);
   }
-  // First-class Sidebar Catalog links (#14145)
-  {
-    sy += cp_side_action_keys(f, "coder.cat.projects", 0, sy, sw, ICON_FOLDER, "Projects", "", s[0].ctrl_keys, ifx s[0].catalog_view == CP_CAT_PROJECTS then EL_S_CURRENT else 0, CP_CAT_OPEN_PROJECTS);
-    sy += cp_side_action_keys(f, "coder.cat.artifacts", 0, sy, sw, ICON_DOCUMENT, "Artifacts", "", s[0].ctrl_keys, ifx s[0].catalog_view == CP_CAT_ARTIFACTS then EL_S_CURRENT else 0, CP_CAT_OPEN_ARTIFACTS);
-    sy += cp_side_action_keys(f, "coder.cat.scheduled", 0, sy, sw, ICON_CHECKLIST, "Scheduled", "", s[0].ctrl_keys, ifx s[0].catalog_view == CP_CAT_SCHEDULED then EL_S_CURRENT else 0, CP_CAT_OPEN_SCHEDULED);
-    sy += cp_side_action_keys(f, "coder.cat.plugins", 0, sy, sw, ICON_GLOBAL, "Plugins", "", s[0].ctrl_keys, ifx s[0].catalog_view == CP_CAT_PLUGINS then EL_S_CURRENT else 0, CP_CAT_OPEN_PLUGINS);
-  }
+  // Projects sidebar link with ⌘P / Ctrl+P shortcut badge (Artifacts, Scheduled, and Plugins removed)
+  sy += cp_side_action_keys(f, "coder.cat.projects", 0, sy, sw, ICON_FOLDER, "Projects", "P", s[0].ctrl_keys, ifx s[0].catalog_view == CP_CAT_PROJECTS then EL_S_CURRENT else 0, CP_CAT_OPEN_PROJECTS);
   sy += 4.0f32;
   sy += cp_sb_bulk_bar(s, f, sw, sy);
   stop := sy + 2.0f32;
@@ -454,7 +449,8 @@ cp_side_credits_pill :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32,
   }
   sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
 }
-// T3 Code-style horizontal sidebar footer bar: utility icon buttons on the left, account credits pill on the right.
+// Horizontal sidebar footer bar: when logged out, shows a bottom-left "Log in" button
+// (with Settings gear on the right); when logged in, utility icon buttons + credits pill.
 cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, row_h: f32) -> f32 {
   k := f[0].skin; a := k.app;
   sheet_fill(f[0].sheet, x, y - 4.0f32, w, cp_px(s), 0, k.hairline);
@@ -463,6 +459,36 @@ cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, 
   bx := x + a.row_inset;
   gap := 4.0f32;
   right_edge := x + w - a.row_inset;
+  if !s[0].cloud_authed {
+    max_lw := right_edge - side - gap - bx;
+    lbl := "Log in";
+    pad_x := 10.0f32;
+    ic := a.icon;
+    ic_gap := 6.0f32;
+    tw := measure_width(f[0].m, k.small.face, lbl);
+    want_lw := ceil(tw) + ic + ic_gap + 2.0f32 * pad_x;
+    if want_lw < 84.0f32 { want_lw = 84.0f32; }
+    if max_lw >= 56.0f32 {
+      lw := ifx want_lw <= max_lw then want_lw else max_lw;
+      lk := uiframe_key(f, "coder.side.login");
+      lp := uiframe_press(f, lk, "coder.side.login");
+      lhv := uiframe_hover(f, lk, "coder.side.login");
+      lbg := rgba_mix(k.raised, k.hover, lhv);
+      if lp > 0 { lbg = rgba_mix(lbg, k.hover, lp); }
+      lbd := rgba_mix(k.hairline, k.field_edge, lhv);
+      lrow := uiframe_semantic(f, "coder.side.login", EL_BUTTON, lbl, bx, by, lw, side, 0, CP_CLOUD_LOGIN);
+      _ := sheet_box(f[0].sheet, bx, by, lw, side, 6.0f32, k.border, lbg, lbd);
+      sheet_icon(f[0].sheet, ICON_SET_ACCOUNT, bx + pad_x, by + (side - ic) / 2.0f32, ic, k.ink);
+      tx := bx + pad_x + ic + ic_gap;
+      room := bx + lw - pad_x - tx;
+      if room > 0 {
+        _ := sheet_text(f[0].sheet, f[0].m, -1, tx, by + (side - k.small.line) / 2.0f32, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, lbl, room));
+      }
+      sheet_hit(f[0].sheet, UIFRAME_HIT, lrow, 0, bx, by, lw, side);
+    }
+    _ := cp_side_icon_btn(f, "coder.me.settings", "Settings", right_edge - side, by, side, ICON_SETTINGS, false, CP_SET_TOGGLE);
+    return row_h;
+  }
   // Measure the right-aligned account credits pill first so left icon buttons never overlap it.
   cb: [48] u8;
   credits_txt := sheet_pool(f[0].sheet, cp_usage_credits_label(s, cb[..]));

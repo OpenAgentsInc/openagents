@@ -228,6 +228,7 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     if key == '0' && !shift { return cp_chord_cmd(s, CP_PC_ACTUAL); }
     if (key == 'n' || key == 'N') && !shift { s[0].side_drawer = false; return cp_new(s); }
     if (key == 'd' || key == 'D') && !shift { return cp_dashboard_open(s); }
+    if (key == 'p' || key == 'P') && !shift { return cp_cat_open(s, CP_CAT_PROJECTS); }
     if (key == 'o' || key == 'O') && !shift { return cp_chord_cmd(s, CP_PC_FOLDER); }
     if (key == 'b' || key == 'B') && !shift {
       if cp_has_fg_running_agents(s) { return coder_page_background_agents(s) > 0; }

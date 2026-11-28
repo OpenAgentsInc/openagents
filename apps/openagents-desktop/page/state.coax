@@ -775,6 +775,7 @@ cp_check_rows :: (p: [] CoderPage, st: [] CpCheckRows) -> [] CoderPage {
 
 cp_init :: (s: [] CoderPage) {
   s[0].ready = true;
+  s[0].perm_mode = CP_PERM_FULL_AUTO;
   s[0].fld[0].kb = CP_KB_COMPOSER; s[0].fld[0].dlg_at = -1;
   g := s[0].gen[..];
   s[0].surface[0] = surface_over(

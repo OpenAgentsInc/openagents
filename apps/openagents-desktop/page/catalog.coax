@@ -34,6 +34,11 @@ cp_cat_open :: (s: [] CoderPage, cat: int) -> bool {
   return true;
 }
 
+coder_page_projects_open :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  _ = cp_cat_open(s, CP_CAT_PROJECTS);
+}
+
 cp_cat_press :: (s: [] CoderPage, act: int) -> bool {
   if act == CP_CAT_OPEN_PROJECTS { return cp_cat_open(s, CP_CAT_PROJECTS); }
   if act == CP_CAT_OPEN_ARTIFACTS { return cp_cat_open(s, CP_CAT_ARTIFACTS); }

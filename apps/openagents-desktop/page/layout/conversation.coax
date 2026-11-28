@@ -1414,15 +1414,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   if show_goal { other_right += w_goal + gap; }
   fw := ifx show_branch then w_folder else w_short;
   right_total := other_right + (ifx show_folder then fw + gap else 0.0f32);
-  // Inline Permission Mode chip below composer (Ask | Auto-edit | Full Auto, #14144)
-  if !running && !show_fu_draft {
-    pm_lbl := ifx s[0].perm_mode == CP_PERM_FULL_AUTO then "Full Auto" else ifx s[0].perm_mode == CP_PERM_AUTO_EDIT then "Auto-edit" else "Ask";
-    w_pm := cp_foot_chip_width(f, -1, pm_lbl, false);
-    if fx + w_pm + right_total <= end_x {
-      if fx > x + side { fx += gap; }
-      fx += cp_foot_chip(f, "coder.perm.mode", "Permission mode (Ask / Auto-edit / Full Auto)", fx, y, w_pm, -1, pm_lbl, false, ifx s[0].perm_mode != CP_PERM_ASK then EL_S_CURRENT else 0, CP_PERM_CYCLE);
-    }
-  }
+  // Single unified execution mode (no Ask / Auto-edit / Full Auto mode toggle chip).
   // Fresh Session toggle & Multi-model fan-out chips: gated by models.external
   if cp_flag(s, DC_FLAG_MODELS_EXTERNAL) && !running && (s[0].nturns > 0 || s[0].prov[0].fresh_session) {
     fresh_lbl := ifx s[0].prov[0].fresh_session then "Fresh ✓" else "Fresh";

@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 107;
+CP_SET_ENTRIES :: 106;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -124,7 +124,6 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.url", name = "Custom API base URL", terms = "openagents base url proxy endpoint gateway"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tmode", name = "Thinking mode", terms = "openagents adaptive extended thinking reasoning budget"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.effort", name = "Default effort", terms = "openagents effort low medium high xhigh max reasoning"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.pmode", name = "Permission mode", terms = "openagents permission allow all ask accept edits plan auto dont ask bypass"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.sandbox", name = "OS shell sandbox", terms = "openagents sandbox seatbelt sandbox-exec bash confinement"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tools", name = "Tool rules & directories", terms = "openagents allowedTools disallowedTools additionalDirs tools"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.xtools", name = "X API tool (XSearch)", terms = "x twitter xsearch api posts tweets search social optional tool"},
@@ -1347,7 +1346,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert surface_find(s[0].surface[..], "set.flawed.model") >= 0;
   #assert surface_find(s[0].surface[..], "set.flawed.backend") >= 0;
   #assert surface_find(s[0].surface[..], "set.flawed.tmode") >= 0;
-  #assert surface_find(s[0].surface[..], "set.flawed.pmode") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.pmode") < 0;
   #assert surface_find(s[0].surface[..], "set.flawed.bypass") >= 0;
   #assert surface_find(s[0].surface[..], "set.flawed.sandbox") >= 0;
   #assert surface_find(s[0].surface[..], "set.flawed.cache") >= 0;
